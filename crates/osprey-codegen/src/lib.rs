@@ -18,6 +18,7 @@ mod cast;
 mod closure;
 mod collections;
 mod conv;
+mod effect_generics;
 mod effects;
 mod error;
 mod expr;

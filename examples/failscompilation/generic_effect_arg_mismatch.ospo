@@ -1,0 +1,19 @@
+// The effect row pins Stash's instantiation to int; performing put with a
+// string must be rejected. Implements [EFFECTS-GENERIC-ROWS]
+effect Stash<T> {
+    put: fn(T) -> Unit
+    take: fn() -> T
+}
+
+fn bad() -> int !Stash<int> = {
+    perform Stash.put("not an int")
+    perform Stash.take()
+}
+
+fn main() -> Unit = {
+    let n = handle Stash
+        take => 1
+        put v => print("put")
+    in bad()
+    print("${n}")
+}

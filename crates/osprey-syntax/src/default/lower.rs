@@ -2,8 +2,8 @@
 //! `effect`, `extern`, `module`), type expressions, and match patterns.
 
 use osprey_ast::{
-    EffectOperation, Expr, ExternParameter, Parameter, Pattern, Position, Program, Stmt, TypeExpr,
-    TypeField, TypeVariant,
+    EffectOperation, EffectRef, Expr, ExternParameter, Parameter, Pattern, Position, Program,
+    Stmt, TypeExpr, TypeField, TypeParam, TypeVariant, Variance,
 };
 use tree_sitter::Node;
 
@@ -120,6 +120,7 @@ impl<'a> Lowerer<'a> {
             },
             "function_declaration" => Stmt::Function {
                 name: self.field_text(node, "name"),
+                type_params: self.lower_type_params(node),
                 parameters: self.lower_params(node.child_by_field_name("parameters")),
                 return_type: node
                     .child_by_field_name("return_type")
@@ -140,6 +141,7 @@ impl<'a> Lowerer<'a> {
             "type_declaration" => self.lower_type_decl(node),
             "effect_declaration" => Stmt::Effect {
                 name: self.field_text(node, "name"),
+                type_params: self.lower_type_params(node),
                 operations: self.lower_operations(node),
                 position: Some(self.pos(node)),
             },
@@ -179,10 +181,7 @@ impl<'a> Lowerer<'a> {
         };
         Stmt::Type {
             name: self.field_text(node, "name"),
-            type_params: node
-                .child_by_field_name("type_parameters")
-                .map(|tp| self.texts_of_kind(tp, "identifier"))
-                .unwrap_or_default(),
+            type_params: self.lower_type_params(node),
             variants,
             validation_func: self
                 .first_child_of_kind(node, "type_validation")
@@ -260,13 +259,42 @@ impl<'a> Lowerer<'a> {
             .collect()
     }
 
-    fn lower_effects(&self, effects: Option<Node<'_>>) -> Vec<String> {
+    /// Lower a declaration's `type_parameters` field into variance-carrying
+    /// [`TypeParam`]s. Implements [TYPE-VARIANCE-DECL].
+    fn lower_type_params(&self, node: Node<'_>) -> Vec<TypeParam> {
+        let Some(list) = node.child_by_field_name("type_parameters") else {
+            return Vec::new();
+        };
+        self.named_of_kind(list, "type_parameter")
+            .iter()
+            .map(|tp| TypeParam {
+                name: self.field_text(*tp, "name"),
+                variance: match tp.child_by_field_name("variance") {
+                    Some(v) if self.text(v) == "out" => Variance::Covariant,
+                    Some(_) => Variance::Contravariant,
+                    None => Variance::Invariant,
+                },
+            })
+            .collect()
+    }
+
+    /// Lower an effect row into effect references with optional type
+    /// arguments (`!State<int>`). Implements [EFFECTS-GENERIC-ROWS].
+    fn lower_effects(&self, effects: Option<Node<'_>>) -> Vec<EffectRef> {
         let Some(effects) = effects else {
             return Vec::new();
         };
-        self.descendants_of_kind(effects, "identifier")
+        self.descendants_of_kind(effects, "effect_ref")
             .iter()
-            .map(|n| self.text(*n))
+            .map(|r| EffectRef {
+                name: self.field_text(*r, "name"),
+                type_args: self
+                    .first_child_of_kind(*r, "type_arguments")
+                    .and_then(|ta| self.first_child_of_kind(ta, "type_list"))
+                    .map(|l| self.lower_type_list(l))
+                    .unwrap_or_default(),
+                position: Some(self.pos(*r)),
+            })
             .collect()
     }
 
@@ -313,7 +341,7 @@ impl<'a> Lowerer<'a> {
         }
     }
 
-    fn lower_type_list(&self, list: Node<'_>) -> Vec<TypeExpr> {
+    pub(crate) fn lower_type_list(&self, list: Node<'_>) -> Vec<TypeExpr> {
         let mut out = Vec::new();
         let mut cursor = list.walk();
         for child in list.named_children(&mut cursor) {
@@ -627,17 +655,50 @@ mod tests {
             first_pattern("-1.5"),
             Pattern::Literal(b) if matches!(*b, Expr::Float(f) if f < 0.0)
         ));
-        // Generic type params on a type declaration (type_parameters field).
-        match one("type Foo<T> = Bar | Baz\n") {
+        // Generic type params on a type declaration (type_parameters field),
+        // including variance markers. Implements [TYPE-VARIANCE-DECL].
+        match one("type Foo<T, out U, in V> = Bar | Baz\n") {
             Stmt::Type {
                 type_params,
                 variants,
                 ..
             } => {
-                assert_eq!(type_params, vec!["T"]);
+                let names: Vec<&str> = type_params.iter().map(|p| p.name.as_str()).collect();
+                assert_eq!(names, vec!["T", "U", "V"]);
+                let vs: Vec<osprey_ast::Variance> =
+                    type_params.iter().map(|p| p.variance).collect();
+                assert_eq!(
+                    vs,
+                    vec![
+                        osprey_ast::Variance::Invariant,
+                        osprey_ast::Variance::Covariant,
+                        osprey_ast::Variance::Contravariant
+                    ]
+                );
                 assert_eq!(variants.len(), 2);
             }
             s => panic!("expected type, got {s:?}"),
+        }
+        // Fn-level type params and a generic effect declaration.
+        // Implements [TYPE-GENERICS-FN] and [EFFECTS-GENERIC-DECL].
+        match one("fn map2<T, U>(f: (T) -> U, x: T) -> U = f(x)\n") {
+            Stmt::Function { type_params, .. } => {
+                assert_eq!(type_params.len(), 2);
+                assert_eq!(type_params[0].name, "T");
+            }
+            s => panic!("expected function, got {s:?}"),
+        }
+        match one("effect State<T> {\n  get: fn() -> T\n}\n") {
+            Stmt::Effect {
+                type_params,
+                operations,
+                ..
+            } => {
+                assert_eq!(type_params.len(), 1);
+                assert_eq!(type_params[0].name, "T");
+                assert_eq!(operations.len(), 1);
+            }
+            s => panic!("expected effect, got {s:?}"),
         }
     }
 
@@ -662,9 +723,16 @@ mod tests {
             }
             s => panic!("expected assignment, got {s:?}"),
         }
-        // Function effect clause `! [Log, State]` (lower_effects descendants).
-        match one("fn act() ! [Log, State] = 1\n") {
-            Stmt::Function { effects, .. } => assert_eq!(effects, vec!["Log", "State"]),
+        // Function effect clause `! [Log, State<int>]` — effect refs carry
+        // optional type arguments. Implements [EFFECTS-GENERIC-ROWS].
+        match one("fn act() ! [Log, State<int>] = 1\n") {
+            Stmt::Function { effects, .. } => {
+                let names: Vec<&str> = effects.iter().map(|e| e.name.as_str()).collect();
+                assert_eq!(names, vec!["Log", "State"]);
+                assert!(effects[0].type_args.is_empty());
+                assert_eq!(effects[1].type_args.len(), 1);
+                assert_eq!(effects[1].type_args[0].name, "int");
+            }
             s => panic!("expected function, got {s:?}"),
         }
         // Bare structural `{ name, age }` and a fixed-length list `[a, b]`.

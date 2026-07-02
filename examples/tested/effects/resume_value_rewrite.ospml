@@ -23,3 +23,21 @@ result =
             answer
     in total ()
 print ("result=" + toString result)
+
+// A generic effect's instantiation flows through resume too: Relay<string>'s
+// erased operation result unboxes back to a string at the perform site.
+// Implements [EFFECTS-GENERIC-INSTANTIATION]
+effect Relay T
+    ask : Unit => T
+
+echoWord : Unit -> string ! Relay<string>
+echoWord () = perform Relay.ask ()
+
+word =
+    handle Relay
+        ask =>
+            answer = resume "carried"
+            print ("relay answered: " + answer)
+            answer
+    in echoWord ()
+print ("word=" + word)

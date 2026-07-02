@@ -279,6 +279,11 @@ Default flat multi-parameter vs ML curried/nested chain. See
 | Record construction | `T { f: v }` | `T` + indented `f = v` | `Expr::TypeConstructor` |
 | Record update | `r { f: v }` | layout update | `Expr::Update` |
 | Effect declaration | `effect E { op: fn(T)->U }` | `effect E` + `op : T => U` | `Stmt::Effect` + `EffectOperation` |
+| Generic type params | `type Box<T>` / `type Feed<out T>` | `type Box T` / `type Feed out T` | `Stmt::Type { type_params: Vec<TypeParam> }` |
+| Fn type params | `fn pick<T>(a: T, b: T)` | `pick<T> : (T, T) -> T` + binding | `Stmt::Function { type_params }` |
+| Generic effect | `effect Stash<T> { … }` | `effect Stash T` + ops | `Stmt::Effect { type_params }` |
+| Effect row w/ args | `!Stash<int>` / `![A<T>, B]` | `! Stash<int>` / `! [A<T>, B]` | `Stmt::Function { effects: Vec<EffectRef> }` |
+| Ctor type args | `Box<int> { item: 7 }` | `Box<int>(item = 7)` | `Expr::TypeConstructor { type_args }` |
 | Perform | `perform E.op(a)` | `perform E.op a` | `Expr::Perform` |
 
 † See [Currying Canonicalisation](#currying-canonicalisation): Default

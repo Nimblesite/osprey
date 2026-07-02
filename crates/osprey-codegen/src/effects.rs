@@ -15,16 +15,23 @@ use crate::expr::gen_expr;
 use crate::freevars::free_idents;
 use crate::llty::{LType, Value};
 use crate::types::{ltype_of, result_inner};
-use osprey_ast::{Expr, HandlerArm, MatchArm, NamedArgument, Stmt};
+use osprey_ast::{contains_resume, Expr, HandlerArm, MatchArm, NamedArgument, Stmt};
 use std::collections::{BTreeSet, HashSet};
 
 /// A parsed effect-operation signature: parameter types, the result LLVM type,
-/// and (when the result is `Result<T, _>`) the success inner type.
+/// and (when the result is `Result<T, _>`) the success inner type. A generic
+/// effect's type-parameter slots are ERASED — they travel as boxed `i64` and
+/// the `*_erased` flags mark which slots must box/unbox at the boundaries.
+/// Implements [EFFECTS-GENERIC-RUNTIME].
 #[derive(Clone)]
 pub(crate) struct OpSig {
     pub params: Vec<LType>,
     pub ret: LType,
     pub ret_result_inner: Option<LType>,
+    /// Per-parameter: whether the declared type is an effect type parameter.
+    pub param_erased: Vec<bool>,
+    /// Whether the declared result is an effect type parameter.
+    pub ret_erased: bool,
 }
 
 impl OpSig {
@@ -35,6 +42,8 @@ impl OpSig {
             params: vec![LType::I64; arity],
             ret: LType::I64,
             ret_result_inner: None,
+            param_erased: vec![false; arity],
+            ret_erased: false,
         }
     }
 
@@ -68,16 +77,27 @@ fn ret_and_exit(
 }
 
 /// Bind each of an arm's operation parameters as an SSA value (`%name`, typed
-/// from `sig`, defaulting to `i64`) and append it to the emitted `params` list.
+/// from `sig`, defaulting to `i64`) and append it to the emitted `params`
+/// list. An erased (generic) slot arrives as a boxed `i64` and is unboxed to
+/// the type inference resolved for this handle site. Implements
+/// [EFFECTS-GENERIC-RUNTIME].
 fn bind_arm_params(
     cg: &mut Codegen,
     arm: &HandlerArm,
     sig: &OpSig,
+    resolved: Option<&osprey_types::OpType>,
     params: &mut Vec<(LType, String)>,
 ) {
     for (i, pname) in arm.params.iter().enumerate() {
         let pty = sig.params.get(i).copied().unwrap_or(LType::I64);
-        cg.bind(pname.clone(), Value::new(format!("%{pname}"), pty));
+        let erased = sig.param_erased.get(i).copied().unwrap_or(false);
+        let bound = match resolved.and_then(|r| r.params.get(i)).filter(|_| erased) {
+            Some(rt) => {
+                crate::effect_generics::unbox_erased(cg, &format!("%{pname}"), rt)
+            }
+            None => Value::new(format!("%{pname}"), pty),
+        };
+        cg.bind(pname.clone(), bound);
         params.push((pty, pname.clone()));
     }
 }
@@ -120,16 +140,36 @@ impl ArmCap {
 /// Build an [`OpSig`] from inference's resolved operation signature — the one
 /// source of truth for effect types (no string re-parsing in the backend).
 pub(crate) fn op_sig_of(op: &osprey_types::OpType) -> OpSig {
-    let inner = result_inner(&op.ret);
-    let ret = if inner.is_some() {
+    // A slot mentioning a type parameter ANYWHERE (a bare `T` or a nested
+    // `Result<T, string>`) is erased: it travels as one boxed `i64`, boxed
+    // and unboxed against each site's resolved instantiation — a nested
+    // parameter changes the slot's concrete shape per instantiation just as
+    // a top-level one does. Implements [EFFECTS-GENERIC-RUNTIME].
+    let ret_erased = osprey_types::has_type_var(&op.ret);
+    let inner = if ret_erased { None } else { result_inner(&op.ret) };
+    let ret = if ret_erased {
+        LType::I64
+    } else if inner.is_some() {
         LType::Ptr
     } else {
         ltype_of(&op.ret)
     };
     OpSig {
-        params: op.params.iter().map(ltype_of).collect(),
+        params: op
+            .params
+            .iter()
+            .map(|t| {
+                if osprey_types::has_type_var(t) {
+                    LType::I64
+                } else {
+                    ltype_of(t)
+                }
+            })
+            .collect(),
         ret,
         ret_result_inner: inner,
+        param_erased: op.params.iter().map(osprey_types::has_type_var).collect(),
+        ret_erased,
     }
 }
 
@@ -146,6 +186,25 @@ fn declare_stack(cg: &mut Codegen) {
     cg.add_extern("declare i32 @__osprey_handler_pop()");
     cg.add_extern("declare i8* @__osprey_handler_lookup(i8*, i8*)");
     cg.add_extern("declare i8* @__osprey_handler_lookup_env(i8*, i8*)");
+}
+
+/// Branch on a null handler pointer: print `unhandled effect: <key>.<op>` and
+/// exit, so a missed lookup fails loudly instead of calling null. Implements
+/// [EFFECTS-GENERIC-RUNTIME].
+fn emit_unhandled_guard(cg: &mut Codegen, raw: &str, lookup_key: &str, operation: &str) {
+    cg.add_extern("declare i32 @puts(i8*)");
+    cg.add_extern("declare void @exit(i32)");
+    let msg = cg.string_constant(&format!("unhandled effect: {lookup_key}.{operation}"));
+    let is_null = cg.emit_reg(format!("icmp eq i8* {raw}, null"));
+    let abort_lbl = cg.fresh_label();
+    let ok_lbl = cg.fresh_label();
+    cg.emit(format!("br i1 {is_null}, label %{abort_lbl}, label %{ok_lbl}"));
+    cg.start_block(&abort_lbl);
+    let p = cg.fresh_reg();
+    cg.emit(format!("{p} = call i32 @puts(i8* {})", msg.operand));
+    cg.emit("call void @exit(i32 1)");
+    cg.emit("unreachable");
+    cg.start_block(&ok_lbl);
 }
 
 fn declare_coro(cg: &mut Codegen) {
@@ -341,19 +400,29 @@ pub(crate) fn gen_handler(
     effect: &str,
     arms: &[HandlerArm],
     body: &Expr,
+    position: Option<osprey_ast::Position>,
 ) -> Result<Value> {
     declare_stack(cg);
+    let site_ops = crate::effect_generics::site_handler_ops(cg, position);
     if arms.iter().any(|arm| contains_resume(&arm.body)) {
-        return gen_resuming_handler(cg, effect, arms, body);
+        return gen_resuming_handler(cg, effect, arms, body, site_ops.as_ref());
     }
+    // A generic effect's handler registers under its instantiation-mangled
+    // key, so only same-instantiation performs resolve to it. Implements
+    // [EFFECTS-GENERIC-RUNTIME].
+    let key = site_ops.as_ref().map_or_else(
+        || effect.to_string(),
+        |s| crate::effect_generics::runtime_effect_key(effect, &s.effect_args),
+    );
     let caps = capture_list(cg, arms);
     let (env, env_ty) = build_env(cg, &caps);
     for arm in arms {
         let sig = op_sig_for(cg, effect, arm);
+        let resolved = site_ops.as_ref().and_then(|m| m.ops.get(&arm.operation));
         let id = cg.next_handler_id();
         let fn_name = format!("__handler_{effect}_{}_{id}", arm.operation);
-        emit_handler_fn(cg, &fn_name, arm, &sig, &caps, &env_ty)?;
-        let eff_s = cg.string_constant(effect);
+        emit_handler_fn(cg, &fn_name, arm, &sig, resolved, &caps, &env_ty)?;
+        let eff_s = cg.string_constant(&key);
         let op_s = cg.string_constant(&arm.operation);
         let fp = cg.fresh_reg();
         cg.emit(format!(
@@ -376,80 +445,6 @@ pub(crate) fn gen_handler(
     Ok(result)
 }
 
-fn contains_resume(e: &Expr) -> bool {
-    match e {
-        Expr::Resume(_) => true,
-        Expr::InterpolatedStr(parts) => parts.iter().any(
-            |p| matches!(p, osprey_ast::InterpolatedPart::Expr(inner) if contains_resume(inner)),
-        ),
-        Expr::List(xs) => xs.iter().any(contains_resume),
-        Expr::Map(entries) => entries
-            .iter()
-            .any(|entry| contains_resume(&entry.key) || contains_resume(&entry.value)),
-        Expr::Object(fields)
-        | Expr::TypeConstructor { fields, .. }
-        | Expr::Update { fields, .. } => fields.iter().any(|f| contains_resume(&f.value)),
-        Expr::Binary { left, right, .. } | Expr::Pipe { left, right } => {
-            contains_resume(left) || contains_resume(right)
-        }
-        Expr::Unary { operand, .. } => contains_resume(operand),
-        Expr::Call {
-            function,
-            arguments,
-            named_arguments,
-        } => {
-            contains_resume(function)
-                || arguments.iter().any(contains_resume)
-                || named_arguments.iter().any(|n| contains_resume(&n.value))
-        }
-        Expr::MethodCall {
-            target,
-            arguments,
-            named_arguments,
-            ..
-        } => {
-            contains_resume(target)
-                || arguments.iter().any(contains_resume)
-                || named_arguments.iter().any(|n| contains_resume(&n.value))
-        }
-        Expr::FieldAccess { target, .. } => contains_resume(target),
-        Expr::Index { target, index } => contains_resume(target) || contains_resume(index),
-        Expr::Lambda { body, .. } | Expr::Spawn(body) | Expr::Await(body) | Expr::Recv(body) => {
-            contains_resume(body)
-        }
-        Expr::Yield(Some(value)) => contains_resume(value),
-        Expr::Send { channel, value } => contains_resume(channel) || contains_resume(value),
-        Expr::Match { value, arms } => {
-            contains_resume(value) || arms.iter().any(|arm| contains_resume(&arm.body))
-        }
-        Expr::Block { statements, value } => {
-            statements.iter().any(stmt_contains_resume)
-                || value.as_deref().is_some_and(contains_resume)
-        }
-        Expr::Select { arms } => arms.iter().any(|arm| contains_resume(&arm.body)),
-        Expr::Perform {
-            arguments,
-            named_arguments,
-            ..
-        } => {
-            arguments.iter().any(contains_resume)
-                || named_arguments.iter().any(|n| contains_resume(&n.value))
-        }
-        // A nested handler owns its own `resume`; do not mark the outer handler
-        // as a resuming region because of it.
-        Expr::Handler { body, .. } => contains_resume(body),
-        _ => false,
-    }
-}
-
-fn stmt_contains_resume(stmt: &Stmt) -> bool {
-    match stmt {
-        Stmt::Let { value, .. } | Stmt::Assignment { value, .. } | Stmt::Expr { value, .. } => {
-            contains_resume(value)
-        }
-        _ => false,
-    }
-}
 
 /// The bindings every arm of this region captures, in stable (sorted) order: a
 /// handler-captured mutable becomes a shared [`ArmCap::Cell`]; any other bound
@@ -536,15 +531,20 @@ fn emit_handler_fn(
     name: &str,
     arm: &HandlerArm,
     sig: &OpSig,
+    resolved: Option<&osprey_types::OpType>,
     caps: &[ArmCap],
     env_ty: &str,
 ) -> Result<()> {
     let saved = cg.enter_nested_fn();
     let mut params = vec![(LType::Ptr, String::from("__env"))];
     reload_env(cg, caps, env_ty);
-    bind_arm_params(cg, arm, sig, &mut params);
+    bind_arm_params(cg, arm, sig, resolved, &mut params);
     let body = gen_expr(cg, &arm.body)?;
-    let ret = if let Some(inner) = sig.ret_result_inner {
+    let ret = if sig.ret_erased {
+        // An erased (generic) result returns boxed; the perform site unboxes
+        // it to its resolved type. Implements [EFFECTS-GENERIC-RUNTIME].
+        crate::effect_generics::box_erased(cg, body, resolved.map(|r| &r.ret))
+    } else if let Some(inner) = sig.ret_result_inner {
         if body.result_inner.is_some() {
             body
         } else {
@@ -613,9 +613,16 @@ fn gen_resuming_handler(
     effect: &str,
     arms: &[HandlerArm],
     body: &Expr,
+    site_ops: Option<&osprey_types::HandlerSite>,
 ) -> Result<Value> {
     declare_stack(cg);
     declare_coro(cg);
+    // Same instantiation-mangled runtime key as the non-resuming path.
+    // Implements [EFFECTS-GENERIC-RUNTIME].
+    let key = site_ops.map_or_else(
+        || effect.to_string(),
+        |s| crate::effect_generics::runtime_effect_key(effect, &s.effect_args),
+    );
 
     let caps = capture_list_resuming(cg, arms, body);
     let (env, env_ty) = build_env(cg, &caps);
@@ -627,6 +634,7 @@ fn gen_resuming_handler(
     let mut drive_arms = Vec::new();
     for (op_id, arm) in arms.iter().enumerate() {
         let sig = op_sig_for(cg, effect, arm);
+        let resolved = site_ops.and_then(|m| m.ops.get(&arm.operation));
         let suspend_fn = format!("__resume_suspend_{effect}_{}_{id}_{op_id}", arm.operation);
         let arm_fn = format!("__resume_arm_{effect}_{}_{id}_{op_id}", arm.operation);
         emit_suspend_fn(cg, &suspend_fn, op_id, &sig);
@@ -638,6 +646,7 @@ fn gen_resuming_handler(
                 drive_fn: &drive_fn,
                 answer_ty,
                 sig: &sig,
+                resolved,
                 caps: &caps,
                 env_ty: &env_ty,
             },
@@ -657,7 +666,7 @@ fn gen_resuming_handler(
             "__resume_suspend_{effect}_{}_{id}_{}",
             arm.operation, arm.op_id
         );
-        let eff_s = cg.string_constant(effect);
+        let eff_s = cg.string_constant(&key);
         let op_s = cg.string_constant(&arm.operation);
         let fp = cg.emit_reg(format!(
             "bitcast {} @{suspend_fn} to i8*",
@@ -748,6 +757,7 @@ struct ArmFnSpec<'a> {
     drive_fn: &'a str,
     answer_ty: LType,
     sig: &'a OpSig,
+    resolved: Option<&'a osprey_types::OpType>,
     caps: &'a [ArmCap],
     env_ty: &'a str,
 }
@@ -759,12 +769,17 @@ fn emit_resuming_arm_fn(cg: &mut Codegen, arm: &HandlerArm, spec: &ArmFnSpec<'_>
         (LType::Ptr, String::from("__env")),
         (LType::Ptr, String::from("__coro")),
     ];
-    bind_arm_params(cg, arm, spec.sig, &mut params);
+    bind_arm_params(cg, arm, spec.sig, spec.resolved, &mut params);
+    let op_ret_is_result = spec.sig.ret_result_inner.is_some()
+        || spec
+            .resolved
+            .is_some_and(|r| result_inner(&r.ret).is_some());
     cg.resume_ctx = Some(ResumeCodegenContext {
         env: String::from("%__env"),
         coro: String::from("%__coro"),
         drive_fn: spec.drive_fn.to_string(),
         answer_ty: spec.answer_ty,
+        op_ret_is_result,
     });
     let body_raw = gen_expr(cg, &arm.body)?;
     let body = coerce_to(cg, body_raw, spec.answer_ty)?;
@@ -857,7 +872,14 @@ pub(crate) fn gen_resume(cg: &mut Codegen, value: Option<&Expr>) -> Result<Value
         Some(expr) => gen_expr(cg, expr)?,
         None => Value::unit(),
     };
-    let raw_value = crate::result::unwrap(cg, raw_value);
+    // The resume value lands in the operation-result slot: unwrap a Result
+    // only when the operation does NOT expect one (the usual value-site
+    // rule); a Result-instantiated slot receives the whole block.
+    let raw_value = if ctx.op_ret_is_result {
+        raw_value
+    } else {
+        crate::result::unwrap(cg, raw_value)
+    };
     let boxed_value = box_codegen_value(cg, raw_value);
     let resumed = cg.call(
         "i64",
@@ -903,7 +925,12 @@ fn box_codegen_value(cg: &mut Codegen, value: Value) -> Value {
     box_to_i64(cg, value)
 }
 
-fn unbox_coro_value(cg: &mut Codegen, raw: &str, ty: LType, result_inner: Option<LType>) -> Value {
+pub(crate) fn unbox_coro_value(
+    cg: &mut Codegen,
+    raw: &str,
+    ty: LType,
+    result_inner: Option<LType>,
+) -> Value {
     if let Some(inner) = result_inner {
         let ptr = cg.emit_reg(format!("inttoptr i64 {raw} to i8*"));
         let struct_ty = crate::llty::result_struct_ty(inner);
@@ -913,35 +940,60 @@ fn unbox_coro_value(cg: &mut Codegen, raw: &str, ty: LType, result_inner: Option
     unbox_from_i64(cg, raw, ty)
 }
 
-/// `perform Effect.op(args)` — look up the active handler and call it.
+/// `perform Effect.op(args)` — look up the active handler and call it. An
+/// erased (generic) slot boxes its argument and unboxes its result against
+/// the signature inference resolved for this site. Implements
+/// [EFFECTS-GENERIC-RUNTIME].
 pub(crate) fn gen_perform(
     cg: &mut Codegen,
     effect: &str,
     operation: &str,
     args: &[Expr],
+    position: Option<osprey_ast::Position>,
 ) -> Result<Value> {
     declare_stack(cg);
-    let key = format!("{effect}.{operation}");
+    let sig_key = format!("{effect}.{operation}");
     let sig = cg
-        .effect_op(&key)
+        .effect_op(&sig_key)
         .unwrap_or_else(|| OpSig::default_for_arity(args.len()));
+    let site = crate::effect_generics::site_perform_op(cg, position);
+    // Look up the handler under the instantiation-mangled key, so a
+    // mismatched instantiation misses (a loud unhandled-effect abort) rather
+    // than reaching a handler of the wrong type. Implements
+    // [EFFECTS-GENERIC-RUNTIME].
+    let lookup_key = site.as_ref().map_or_else(
+        || effect.to_string(),
+        |s| crate::effect_generics::runtime_effect_key(effect, &s.effect_args),
+    );
 
     // Evaluate + coerce arguments to the operation's parameter types.
     let mut typed = Vec::new();
     for (i, a) in args.iter().enumerate() {
         let v = gen_expr(cg, a)?;
-        let want = sig.params.get(i).copied().unwrap_or(LType::I64);
-        let v = coerce_to(cg, v, want)?;
+        let v = if sig.param_erased.get(i).copied().unwrap_or(false) {
+            crate::effect_generics::box_erased(
+                cg,
+                v,
+                site.as_ref().and_then(|s| s.op.params.get(i)),
+            )
+        } else {
+            let want = sig.params.get(i).copied().unwrap_or(LType::I64);
+            coerce_to(cg, v, want)?
+        };
         typed.push(v.typed());
     }
 
-    let eff_s = cg.string_constant(effect);
+    let eff_s = cg.string_constant(&lookup_key);
     let op_s = cg.string_constant(operation);
     let raw = cg.fresh_reg();
     cg.emit(format!(
         "{raw} = call i8* @__osprey_handler_lookup(i8* {}, i8* {})",
         eff_s.operand, op_s.operand
     ));
+    // A missed lookup returns null — abort with a message instead of calling
+    // a null pointer (an instantiation mismatch on a generic effect misses by
+    // design, [EFFECTS-GENERIC-RUNTIME]).
+    emit_unhandled_guard(cg, &raw, &lookup_key, operation);
     let env = cg.fresh_reg();
     cg.emit(format!(
         "{env} = call i8* @__osprey_handler_lookup_env(i8* {}, i8* {})",
@@ -957,6 +1009,12 @@ pub(crate) fn gen_perform(
         "{r} = call {ret_ty} {fp}({})",
         call_args.join(", ")
     ));
+    if sig.ret_erased {
+        return Ok(match site {
+            Some(s) => crate::effect_generics::unbox_erased(cg, &r, &s.op.ret),
+            None => Value::new(r, LType::I64),
+        });
+    }
     Ok(match sig.ret_result_inner {
         Some(inner) => Value::result(r, inner),
         None => Value::new(r, sig.ret),

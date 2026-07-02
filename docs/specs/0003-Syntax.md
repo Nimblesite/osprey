@@ -90,11 +90,20 @@ result  = calculateValue data
 ## Function Declarations
 
 ```ebnf
-fnDecl    ::= docComment? "fn" ID "(" paramList? ")" ("->" type)? effectSet?
+fnDecl    ::= docComment? "fn" ID ("<" typeParamList ">")? "(" paramList? ")"
+              ("->" type)? effectSet?
               ("=" expr | "{" blockBody "}")
 paramList ::= param ("," param)*
 param     ::= ID (":" type)?
+effectSet ::= "!" effectRef | "!" "[" effectRef ("," effectRef)* "]"
+effectRef ::= ID ("<" typeList ">")?
 ```
+
+The optional `<typeParamList>` declares the function's type parameters
+([TYPE-GENERICS-FN](0004-TypeSystem.md#generics-and-variance)); variance
+markers are not permitted there. `effectSet` is the declared effect row —
+each reference may apply type arguments to a generic effect
+([EFFECTS-GENERIC-ROWS](0017-AlgebraicEffects.md#generic-effects)).
 
 ```osprey
 fn double(x)   = x * 2
@@ -156,6 +165,8 @@ The foreign function must use the C ABI (`extern "C"` and `#[no_mangle]` in Rust
 
 ```ebnf
 typeDecl          ::= docComment? "type" ID ("<" typeParamList ">")? "=" (unionType | recordType)
+typeParamList     ::= typeParam ("," typeParam)*
+typeParam         ::= ("in" | "out")? ID
 unionType         ::= variant ("|" variant)*
 recordType        ::= "{" fieldDeclarations "}"
 variant           ::= ID ("{" fieldDeclarations "}")?
@@ -164,11 +175,20 @@ fieldDeclaration  ::= ID ":" type constraint?
 constraint        ::= "where" function_name
 ```
 
+`typeParam`'s optional `in`/`out` marker declares the parameter's variance
+([TYPE-VARIANCE-DECL](0004-TypeSystem.md#generics-and-variance)); `in` and
+`out` are contextual keywords reserved only inside `<…>`
+([Lexical Structure](0002-LexicalStructure.md#keywords)).
+
 ```osprey
 type Color = Red | Green | Blue
 
 type Shape = Circle    { radius: int }
            | Rectangle { width: int, height: int }
+
+type Pair<T, U>  = Pair { first: T, second: U }
+type Feed<out T> = Feed { supply: T } | Dry
+type Gate<in T>  = Gate { admit: (T) -> bool } | Open
 ```
 
 ```osprey-ml

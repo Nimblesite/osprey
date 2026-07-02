@@ -211,5 +211,20 @@ print("typeTest1(21) = ${typeResult1}")
 print("typeTest2(\"hi\") = ${typeResult2}")
 print("typeTest3(false) = ${toString(typeResult3)}")
 
+// Test declared fn type parameters + explicit construction-site type args
+// Implements [TYPE-GENERICS-FN]
+print("")
+print("Test 12: Declared type parameters")
+
+// The binder is load-bearing: without <T>, the two `T` annotations would name
+// a nominal type instead of pinning both parameters to ONE inferred type.
+fn pick<T>(first: T, second: T) = first
+
+let picked = pick(10, 20)
+let pickedStr = pick("left", "right")
+let pinned = Box<int> { item: 7 }
+print("pick<T>(10, 20) = ${picked}, pick<T>(\"left\", \"right\") = ${pickedStr}")
+print("Box<int> pinned explicitly: item = ${pinned.item}")
+
 print("=== PURE HINDLEY-MILNER TEST COMPLETE ===")
 print("All types inferred from usage context - no explicit type annotations!")

@@ -1,6 +1,7 @@
 # Type System
 
 - [Hindley-Milner Inference](#hindley-milner-inference)
+- [Generics and Variance](#generics-and-variance)
 - [Built-in Types](#built-in-types)
 - [Result Auto-Unwrapping](#result-auto-unwrapping)
 - [Function Types](#function-types)
@@ -65,6 +66,12 @@ map (`{}` at an ambiguous position, [TYPE-MAP](#map-k-v--type-map)); an `extern`
 boundary; an unconstrained polymorphic variable a caller must pin; or a return
 type that is *load-bearing* because it forces `Result<T, E>` to auto-unwrap to
 `T` at the function boundary ([Result Auto-Unwrapping](#result-auto-unwrapping)).
+Declared type-parameter binders (`fn pick<T>(…)`, `type Source<out T>`,
+`effect State<T>`) are **declaration sites, not inference sites** — a binder
+introduces the parameter the annotations refer to (and carries its variance),
+so it is never redundant where the parameter is actually used
+([Generics and Variance](#generics-and-variance)); a binder whose parameter
+appears nowhere in the signature IS redundant and must go.
 Record and union field declarations (`type Point = { x: int, y: int }`,
 `Circle { radius: int }`) are **definition sites, not inference sites** — their
 `field: Type` annotations *define* the type and are always required, never
@@ -104,6 +111,103 @@ unify(R1, R2) :=
 ### Polymorphic Variables vs `any`
 
 Inference produces polymorphic variables (`<T>`, `<A>`, …), not `any`. The `any` type is opt-in; see [The `any` Type](#the-any-type).
+
+## Generics and Variance
+
+> **Flavor layer — shared core.** Both surfaces lower to the same
+> variance-carrying `TypeParam` nodes ([FLAVOR-BOUNDARY]); the ML spellings are
+> specified in [ML Flavor Syntax](0024-MLFlavorSyntax.md#generics-flavor-ml-generics).
+
+`[TYPE-GENERICS-DECL]` **Type declarations bind type parameters; constructions
+may pin them explicitly.** `type Pair<T, U> = …` binds `T`/`U` across every
+variant field. A construction site may apply explicit type arguments —
+`Pair<int, string> { first: 1, second: "a" }` — which unify with the
+instantiation the fields would otherwise infer; an argument that contradicts a
+field is a type error. Explicit construction arguments follow
+[TYPE-NO-REDUNDANT-ANNOTATION]: write them only when the fields alone cannot
+pin the instantiation.
+
+`[TYPE-GENERICS-FN]` **Functions bind type parameters with `fn name<T, …>`.**
+A binder makes every use of `T` in the signature the SAME inference variable;
+without it, `T` in an annotation names a nominal type. The binder is
+load-bearing exactly when a parameter must relate two or more positions
+(`fn pick<T>(first: T, second: T)` pins both arguments to one type) or when a
+caller must pin an otherwise-unconstrained variable. HM inference is
+unchanged: unannotated functions stay implicitly polymorphic, and a
+polymorphic function is still monomorphised independently at each call site.
+Variance markers are **not** permitted on function binders (variance is
+declaration-site on types and effects only — [TYPE-VARIANCE-DECL]).
+
+```osprey
+fn pick<T>(first: T, second: T) = first
+let n = pick(10, 20)
+let s = pick("left", "right")
+```
+
+```osprey-ml
+pick<T> : (T, T) -> T
+pick (first, second) = first
+n = pick (10, 20)
+s = pick ("left", "right")
+```
+
+In the ML flavor the binder lives on the signature line (`pick<T> : …`); a
+binding without a signature cannot declare type parameters.
+
+`[TYPE-VARIANCE-DECL]` **Type parameters declare variance at the declaration
+site**: `out T` (covariant — `T` only flows out), `in T` (contravariant — `T`
+only flows in), unannotated (invariant — exact match). `out` and `in` are
+contextual keywords, reserved only inside type-parameter lists
+([Lexical Structure](0002-LexicalStructure.md#keywords)).
+
+```osprey
+type Feed<out T> = Feed { supply: T } | Dry
+type Gate<in T>  = Gate { admit: (T) -> bool } | Open
+```
+
+```osprey-ml
+type Feed out T =
+    Feed
+        supply : T
+    Dry
+type Gate in T =
+    Gate
+        admit : T -> bool
+    Open
+```
+
+`[TYPE-VARIANCE-POSITIONS]` **Variance is position-checked.** Walking a
+declaration's field (or effect-operation) types: fields and function results
+are OUTPUT positions; function parameters flip the polarity (INPUT); a nested
+constructor's argument composes the position with that constructor's declared
+variance (an invariant argument position demands both directions, so only
+invariant parameters may sit there). A covariant parameter in an input
+position, or a contravariant parameter in an output position, is a compile
+error. Effect operations check the same way: operation parameters are inputs,
+operation results outputs ([Algebraic Effects](0017-AlgebraicEffects.md#generic-effects)).
+
+`[TYPE-VARIANCE-ASSIGN]` **Variance directs assignability structurally, and
+the leaves match exactly.** Plain HM unification is untouched — every
+well-typed expression keeps a principal type. At *assignment sites* (call
+arguments, annotated bindings, return positions), a variance-declared
+constructor's arguments are matched directionally: covariant (`out`)
+arguments recurse expected-accepts-actual, contravariant (`in`) arguments
+recurse with the roles flipped, invariant arguments unify exactly. The
+recursion continues only through variance-declared constructors and bottoms
+out in **exact unification** — the coercive
+[Result auto-unwrap](#result-auto-unwrapping) never applies under a
+container, because it is a representation-changing coercion the compiler
+emits only at direct value sites; admitting it inside a payload would accept
+values whose stored representation is wrong. Function-typed payloads keep
+their flexibility representation-safely: unification itself normalizes
+function returns through `Result` (the function-value ABI strips the
+wrapper), so a `Feed<(int) -> Result<int, MathError>>` matches a
+`Feed<(int) -> int)` slot.
+
+Built-in constructors' declared variance: `Result<out T, out E>`,
+`List<out T>`, `Fiber<out T>`, `Map<K, out V>` (keys invariant); `Channel<T>`
+and `Ptr` are invariant. Function types are structurally contravariant in
+parameters and covariant in returns, as before.
 
 ## Built-in Types
 

@@ -28,7 +28,7 @@ pub struct CtorLayout {
 }
 
 /// One effect operation's resolved signature.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct OpType {
     /// Parameter types, in declaration order.
     pub params: Vec<Type>,
@@ -56,6 +56,35 @@ pub struct ProgramTypes {
     /// editor hover can show the type of an unannotated binding.
     /// Implements [LSP-HOVER-VARIABLES]
     pub lets: HashMap<(u32, u32), Type>,
+    /// `perform` site position `(line, column)` → the operation signature and
+    /// effect type arguments instantiated at that site, so the backend can
+    /// box/unbox erased generic operation slots against the site's concrete
+    /// types and key the runtime handler lookup by instantiation. Implements
+    /// [EFFECTS-GENERIC-INSTANTIATION].
+    pub performs: HashMap<(u32, u32), PerformSite>,
+    /// `handle` site position `(line, column)` → the effect type arguments
+    /// and each operation's signature instantiated at that site (the
+    /// handler-arm view of the same instantiation data). Implements
+    /// [EFFECTS-GENERIC-INSTANTIATION].
+    pub handler_ops: HashMap<(u32, u32), HandlerSite>,
+}
+
+/// One `perform` site's resolved instantiation.
+#[derive(Debug, Clone, PartialEq)]
+pub struct PerformSite {
+    /// The performed operation's instantiated signature.
+    pub op: OpType,
+    /// The effect's resolved type arguments at this site.
+    pub effect_args: Vec<Type>,
+}
+
+/// One `handle` site's resolved instantiation.
+#[derive(Debug, Clone, PartialEq)]
+pub struct HandlerSite {
+    /// The effect's resolved type arguments at this site.
+    pub effect_args: Vec<Type>,
+    /// Operation name → its instantiated signature.
+    pub ops: HashMap<String, OpType>,
 }
 
 impl ProgramTypes {

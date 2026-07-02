@@ -96,7 +96,11 @@ impl Checker {
             Expr::Block { statements, value } => {
                 self.infer_block(statements, value.as_deref(), env)
             }
-            Expr::TypeConstructor { name, fields, .. } => self.infer_constructor(name, fields, env),
+            Expr::TypeConstructor {
+                name,
+                type_args,
+                fields,
+            } => self.infer_constructor(name, type_args, fields, env),
             Expr::Update { record, fields } => self.infer_update(record, fields, env),
             Expr::Spawn(inner) => {
                 let t = self.infer_expr(inner, env);
@@ -116,14 +120,29 @@ impl Checker {
                 Type::unit()
             }
             Expr::Select { arms } => self.infer_arm_bodies(arms, env),
+            Expr::Perform { .. } | Expr::Handler { .. } => self.infer_effect_expr(e, env),
+            Expr::Resume(value) => self.infer_resume(value.as_deref(), env),
+        }
+    }
+
+    /// Dispatch the two effect expression forms (split out of [`Self::infer_expr`]
+    /// to keep its match within budget).
+    fn infer_effect_expr(&mut self, e: &Expr, env: &TypeEnv) -> Type {
+        match e {
             Expr::Perform {
                 effect,
                 operation,
                 arguments,
                 named_arguments,
-            } => self.infer_perform(effect, operation, arguments, named_arguments, env),
-            Expr::Handler { effect, arms, body } => self.infer_handler(effect, arms, body, env),
-            Expr::Resume(value) => self.infer_resume(value.as_deref(), env),
+                position,
+            } => self.infer_perform(effect, operation, arguments, named_arguments, *position, env),
+            Expr::Handler {
+                effect,
+                arms,
+                body,
+                position,
+            } => self.infer_handler(effect, arms, body, *position, env),
+            other => self.infer_expr(other, env),
         }
     }
 
@@ -179,73 +198,118 @@ impl Checker {
         elem
     }
 
-    /// Infer a `perform`: walk its arguments, then yield the operation result type.
+    /// Infer a `perform`: resolve the effect's instantiation innermost-first
+    /// against the enclosing handler/effect-row scopes (falling back to a
+    /// fresh instantiation of the declaration), unify the arguments against
+    /// the instantiated parameters, and yield the instantiated result type.
+    /// The resolved signature is published per site for the code generator.
+    /// Implements [EFFECTS-GENERIC-INSTANTIATION].
     fn infer_perform(
         &mut self,
         effect: &str,
         operation: &str,
         arguments: &[Expr],
         named_arguments: &[NamedArgument],
+        position: Option<osprey_ast::Position>,
         env: &TypeEnv,
     ) -> Type {
-        for a in arguments {
-            let _ = self.infer_expr(a, env);
-        }
+        let arg_tys: Vec<Type> = arguments.iter().map(|a| self.infer_expr(a, env)).collect();
         for na in named_arguments {
             let _ = self.infer_expr(&na.value, env);
         }
-        let ret = self
-            .effects
-            .get(effect)
-            .and_then(|ops| ops.get(operation))
-            .map(|op| op.ret.clone());
-        ret.unwrap_or_else(|| self.ctx.fresh())
+        let scope = self
+            .handler_scopes
+            .iter()
+            .rev()
+            .find(|s| s.name == effect)
+            .map(|s| (s.args.clone(), s.ops.clone()))
+            .or_else(|| self.effect_instance_ops(effect));
+        let Some((eff_args, ops)) = scope else {
+            return self.ctx.fresh();
+        };
+        let Some(op) = ops.get(operation).cloned() else {
+            return self.ctx.fresh();
+        };
+        if op.params.len() == arg_tys.len() {
+            for (p, a) in op.params.iter().zip(&arg_tys) {
+                self.push_assign(p, a);
+            }
+        }
+        if let Some(pos) = position {
+            self.perform_tys.push((
+                pos,
+                crate::info::OpType {
+                    params: op.params.clone(),
+                    ret: op.ret.clone(),
+                },
+                eff_args,
+            ));
+        }
+        op.ret
     }
 
-    /// Infer a `handle`: type each arm body in a child scope whose params are the
-    /// effect operation's parameter types (not fresh vars), with the arm's
-    /// `(op result, answer)` pushed so any `resume` inside types correctly. The
-    /// handled body, the arms, and the whole expression all share one answer type.
-    /// The handled body lands in the answer slot at an assignment site, so a bare
-    /// `Result<T, E>` body (e.g. ending in arithmetic) auto-unwraps into a concrete
-    /// answer just as function returns do. Implements [EFFECTS-RESUME].
+    /// Infer a `handle`: instantiate the handled effect once for this site,
+    /// type each arm body in a child scope whose params are the instantiated
+    /// operation's parameter types, with the arm's `(op result, answer)`
+    /// pushed so any `resume` inside types correctly. The handled body infers
+    /// under this instantiation (innermost-first, matching the runtime's
+    /// handler stack), so its `perform` sites pin the same type arguments.
+    /// The handled body, the arms, and the whole expression all share one
+    /// answer type; the body lands in the answer slot at an assignment site,
+    /// so a bare `Result<T, E>` body auto-unwraps into a concrete answer just
+    /// as function returns do. Implements [EFFECTS-RESUME] and
+    /// [EFFECTS-GENERIC-INSTANTIATION].
     fn infer_handler(
         &mut self,
         effect: &str,
         arms: &[osprey_ast::HandlerArm],
         body: &Expr,
+        position: Option<osprey_ast::Position>,
         env: &TypeEnv,
     ) -> Type {
+        let (eff_args, inst_ops) = self.effect_instance_ops(effect).unwrap_or_default();
         let answer = self.ctx.fresh();
         for arm in arms {
-            let (params, op_ret) = self.op_param_ret(effect, &arm.operation, arm.params.len());
+            let (params, op_ret) = match inst_ops.get(&arm.operation) {
+                Some(op) if op.params.len() == arm.params.len() => {
+                    (op.params.clone(), op.ret.clone())
+                }
+                _ => (
+                    (0..arm.params.len()).map(|_| self.ctx.fresh()).collect(),
+                    self.ctx.fresh(),
+                ),
+            };
             let mut local = env.child();
             for (p, pty) in arm.params.iter().zip(params) {
                 local.insert(p.clone(), crate::ty::Scheme::mono(pty));
             }
-            // Arm bodies stay independently typed (a tail-resume `get` arm yields
-            // the op result, a `set` arm yields Unit — they must not unify with
-            // each other); only `resume` threads the shared answer type, via the
-            // pushed context.
-            self.resume_ctx.push((op_ret, answer.clone()));
-            let _ = self.infer_expr(&arm.body, &local);
+            self.resume_ctx.push((op_ret.clone(), answer.clone()));
+            let arm_ty = self.infer_expr(&arm.body, &local);
             let _ = self.resume_ctx.pop();
+            // A non-resuming arm's value substitutes for the operation's
+            // RESULT (value substitution — this is what pins a generic
+            // effect's instantiation from its handler); a resuming arm's
+            // value is the handler's ANSWER. A `Unit` operation discards the
+            // arm's value, so anything goes there. Implements
+            // [EFFECTS-RESUME] and [EFFECTS-GENERIC-INSTANTIATION].
+            if osprey_ast::contains_resume(&arm.body) {
+                self.push_assign(&answer, &arm_ty);
+            } else if !self.ctx.prune(&op_ret).is_named(crate::ty::names::UNIT) {
+                self.push_assign(&op_ret, &arm_ty);
+            }
         }
+        self.handler_scopes.push(crate::check::EffectScope {
+            name: effect.to_string(),
+            args: eff_args.clone(),
+            ops: inst_ops.clone(),
+        });
         let body_ty = self.infer_expr(body, env);
+        let _ = self.handler_scopes.pop();
+        if let Some(pos) = position {
+            self.handler_tys.push((pos, eff_args, inst_ops));
+        }
         self.push_assign(&answer, &body_ty);
         answer
-    }
-
-    /// The `(param types, result type)` of `effect.operation`, falling back to
-    /// fresh variables when the operation is unknown or arity disagrees.
-    fn op_param_ret(&mut self, effect: &str, operation: &str, arity: usize) -> (Vec<Type>, Type) {
-        match self.effects.get(effect).and_then(|ops| ops.get(operation)) {
-            Some(op) if op.params.len() == arity => (op.params.clone(), op.ret.clone()),
-            _ => (
-                (0..arity).map(|_| self.ctx.fresh()).collect(),
-                self.ctx.fresh(),
-            ),
-        }
     }
 
     fn lookup_ident(&mut self, name: &str, env: &TypeEnv) -> Type {
@@ -454,8 +518,33 @@ impl Checker {
         }
     }
 
-    fn infer_constructor(&mut self, name: &str, fields: &[FieldAssignment], env: &TypeEnv) -> Type {
+    fn infer_constructor(
+        &mut self,
+        name: &str,
+        type_args: &[osprey_ast::TypeExpr],
+        fields: &[FieldAssignment],
+        env: &TypeEnv,
+    ) -> Type {
         if let Some((args, declared, owner, is_record)) = self.ctor_instance(name) {
+            // Explicit construction-site type arguments (`Box<int> { ... }`)
+            // pin the instance's fresh variables, resolving names against the
+            // enclosing function's type-parameter binder. Implements
+            // [TYPE-GENERICS-DECL].
+            if !type_args.is_empty() {
+                if type_args.len() == args.len() {
+                    let binder = self.current_fn_typarams.clone();
+                    for (a, te) in args.iter().zip(type_args) {
+                        let written = crate::convert::type_expr_to_type(te, &binder);
+                        self.push_unify(a, &written);
+                    }
+                } else {
+                    self.errors.push(TypeError::new(format!(
+                        "constructor `{name}` takes {} type argument(s), got {}",
+                        args.len(),
+                        type_args.len()
+                    )));
+                }
+            }
             let dmap: BTreeMap<String, Type> = declared.into_iter().collect();
             for fa in fields {
                 let vt = self.infer_expr(&fa.value, env);
@@ -732,6 +821,7 @@ mod tests {
         use osprey_ast::{Expr, FieldAssignment, Parameter, Program, Stmt, TypeExpr};
         let inc = Stmt::Function {
             name: "inc".into(),
+            type_params: Vec::new(),
             parameters: vec![Parameter {
                 name: "n".into(),
                 ty: Some(TypeExpr::named("int")),
@@ -832,6 +922,7 @@ mod tests {
         let prog = Program {
             statements: vec![Stmt::Function {
                 name: "combine".into(),
+                type_params: Vec::new(),
                 parameters: vec![int_param("self"), int_param("other"), int_param("third")],
                 return_type: Some(TypeExpr::named("int")),
                 body: Expr::Binary {
@@ -899,6 +990,7 @@ mod tests {
                     name: "msg".into(),
                     value: Expr::Str("hi".into()),
                 }],
+                position: None,
             },
             position: None,
         };

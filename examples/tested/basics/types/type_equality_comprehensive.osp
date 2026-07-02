@@ -86,4 +86,28 @@ print("color1=${colorName(c1)} color3=${colorName(c3)}")
 print("sameRR=${toString(sameColor(a: c1, b: c2))}")
 print("sameRB=${toString(sameColor(a: c1, b: c3))}")
 
+// --- Declaration-site variance: out T (covariant) / in T (contravariant) ---
+// Variance is position-checked: `out T` may appear only where the payload
+// flows out, `in T` only where it flows in (function parameters flip the
+// polarity). Payload instantiations match exactly at the leaves; function
+// payloads stay flexible through the representation-safe fn-return
+// normalization. Implements [TYPE-VARIANCE-DECL], [TYPE-VARIANCE-ASSIGN]
+type Feed<out T> = Feed { supply: T } | Dry
+type Gate<in T> = Gate { admit: (T) -> bool } | Open
+
+fn label(f: Feed<(int) -> int>) = match f {
+    Feed { supply } => "supplied"
+    Dry => "dry"
+}
+fn mkFeed() -> Feed<(int) -> Result<int, MathError>> = Feed { supply: |x| => x * 2 }
+
+fn describe(g: Gate<(int) -> Result<int, MathError>>) = match g {
+    Gate { admit } => "guarded"
+    Open => "open"
+}
+fn mkGate() -> Gate<(int) -> int> = Gate { admit: |f| => true }
+
+print("fn-payload feed accepted: ${label(mkFeed())}")
+print("fn-payload gate accepted: ${describe(mkGate())}")
+
 print("=== TYPE EQUALITY COMPLETE ===")

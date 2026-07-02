@@ -95,7 +95,7 @@ errorProne value = match value
                 Success value => value
                 Error message => 0
 
-writeConfigFile configName data =
+writeConfigFile (configName, data) =
     filename = match "config_" + configName + ".txt"
         Success value => value
         Error message => "config.txt"
@@ -180,3 +180,33 @@ in
     testMockedInput ()
 
     print ("🎯 Final Results: Calc=" + toString calcResult + ", Process=" + toString processResult + ", Errors=[" + toString errorResult1 + "," + toString errorResult2 + "," + toString errorResult3 + "], Async=" + toString asyncResult + " 🎉")
+
+// --- Generic effects: one declaration, many instantiations ---
+// Implements [EFFECTS-GENERIC-DECL], [EFFECTS-GENERIC-INSTANTIATION],
+// [EFFECTS-GENERIC-ROWS], [FLAVOR-ML-GENERICS]
+effect Stash T
+    put : T => Unit
+    take : Unit => T
+
+relabel : Unit -> string ! Stash<string>
+relabel () =
+    cur = perform Stash.take ()
+    perform Stash.put "kept"
+    cur
+
+bumped : Unit -> int ! Stash<int>
+bumped () =
+    n = perform Stash.take ()
+    n + 1
+
+words =
+    handle Stash
+        take => "stash-words"
+        put v => print "📦 Stash<string> put: ${v}"
+    in relabel ()
+count =
+    handle Stash
+        take => 41
+        put v => print "📦 Stash<int> put: ${v}"
+    in bumped ()
+print "Generic Stash: <string> gave ${words}, <int> gave ${count}"

@@ -1,0 +1,5 @@
+// Variance annotations are declaration-site on types/effects only; a function
+// type parameter must be unannotated. Implements [TYPE-VARIANCE-DECL]
+fn pick<out T>(first: T, second: T) -> T = first
+
+fn main() -> Unit = print("${pick(1, 2)}")

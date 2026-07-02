@@ -106,6 +106,28 @@ fn list_pattern_negative_cases_are_rejected() {
 }
 
 #[test]
+fn generics_and_variance_negative_cases_are_rejected() {
+    // Implements [TYPE-VARIANCE-POSITIONS], [TYPE-VARIANCE-ASSIGN],
+    // [EFFECTS-GENERIC-ROWS].
+    let dir = repo_root().join("examples/failscompilation");
+    for name in [
+        "variance_out_in_input_position.ospo",
+        "variance_in_in_output_position.ospo",
+        "variance_on_fn_type_param.ospo",
+        "variance_invariant_arg_mismatch.ospo",
+        "variance_covariant_result_payload.ospo",
+        "generic_effect_arg_mismatch.ospo",
+        "generic_effect_variance_position.ospo",
+    ] {
+        let source = fs::read_to_string(dir.join(name)).expect("read ospo");
+        assert!(
+            compile(&source).is_err(),
+            "{name} must be rejected (variance/generic-effect misuse)"
+        );
+    }
+}
+
+#[test]
 fn failscompilation_corpus_drives_rejection_paths() {
     // Every `.ospo` is run through the pipeline to cover the rejection branches.
     // The compiler does not yet reject all of them (the shell harness tracks the

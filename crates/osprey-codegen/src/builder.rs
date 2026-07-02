@@ -117,6 +117,12 @@ pub(crate) struct ResumeCodegenContext {
     pub coro: String,
     pub drive_fn: String,
     pub answer_ty: LType,
+    /// Whether the resumed operation's result type (at this handle site's
+    /// instantiation) is a `Result` — a resume value then boxes the WHOLE
+    /// Result block, never its unwrapped payload, because the perform site
+    /// unboxes the slot as a Result pointer. Implements
+    /// [EFFECTS-GENERIC-RUNTIME].
+    pub op_ret_is_result: bool,
 }
 
 /// A function value's lowered signature: parameter [`LType`]s, the return

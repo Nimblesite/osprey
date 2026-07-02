@@ -5,6 +5,11 @@
 //! enums means the type checker and codegen get compiler-enforced totality for
 //! free: adding a variant breaks every consumer until it handles the new form.
 
+mod generics;
+mod resume;
+pub use generics::{EffectRef, TypeParam, Variance};
+pub use resume::contains_resume;
+
 /// A source position: 1-based line, 0-based column.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct Position {
@@ -146,12 +151,15 @@ pub enum Stmt {
     Function {
         /// Function name.
         name: String,
+        /// Declared type parameters (`fn map<T, U>`). Implements
+        /// [TYPE-GENERICS-FN].
+        type_params: Vec<TypeParam>,
         /// Declared parameters.
         parameters: Vec<Parameter>,
         /// Declared return type, if annotated.
         return_type: Option<TypeExpr>,
-        /// Declared effect row (`!Effect` annotations).
-        effects: Vec<String>,
+        /// Declared effect row (`!Effect` / `![State<int>, Log]` annotations).
+        effects: Vec<EffectRef>,
         /// Function body expression.
         body: Expr,
         /// Leading `///` documentation, joined by newline, when written.
@@ -174,8 +182,8 @@ pub enum Stmt {
     Type {
         /// Type name.
         name: String,
-        /// Generic type parameter names.
-        type_params: Vec<String>,
+        /// Generic type parameters, with declared variance.
+        type_params: Vec<TypeParam>,
         /// Variants (one for a record, many for a union).
         variants: Vec<TypeVariant>,
         /// An optional validation function name (`where`-constrained type).
@@ -187,6 +195,9 @@ pub enum Stmt {
     Effect {
         /// Effect name.
         name: String,
+        /// Declared type parameters (`effect State<T>`). Implements
+        /// [EFFECTS-GENERIC-DECL].
+        type_params: Vec<TypeParam>,
         /// Declared operations.
         operations: Vec<EffectOperation>,
         /// Source position, if recorded.
@@ -446,6 +457,10 @@ pub enum Expr {
         arguments: Vec<Expr>,
         /// Named arguments.
         named_arguments: Vec<NamedArgument>,
+        /// Source position — the key under which inference publishes this
+        /// site's instantiated operation signature. Implements
+        /// [EFFECTS-GENERIC-INSTANTIATION].
+        position: Option<Position>,
     },
     /// `handle Effect op params => body ... in body`.
     Handler {
@@ -455,6 +470,10 @@ pub enum Expr {
         arms: Vec<HandlerArm>,
         /// The handled body expression.
         body: Box<Expr>,
+        /// Source position — the key under which inference publishes this
+        /// handler's instantiated operation signatures. Implements
+        /// [EFFECTS-GENERIC-INSTANTIATION].
+        position: Option<Position>,
     },
     /// `resume(value)` — resume the performer's delimited continuation with
     /// `value` (or `Unit` when absent). Legal only inside a handler arm body.

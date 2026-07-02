@@ -52,6 +52,7 @@ impl Lowerer<'_> {
                 effect: self.field_text(node, "effect"),
                 arms: self.lower_handler_arms(node),
                 body: Box::new(self.lower_expr_field(node, "body")),
+                position: Some(self.pos(node)),
             },
             "perform_expression" => {
                 let (arguments, named_arguments) = self.lower_arg_list(node);
@@ -60,6 +61,7 @@ impl Lowerer<'_> {
                     operation: self.field_text(node, "operation"),
                     arguments,
                     named_arguments,
+                    position: Some(self.pos(node)),
                 }
             }
             "resume_expression" => {
@@ -102,9 +104,15 @@ impl Lowerer<'_> {
                 body: Box::new(self.lower_expr_field(node, "body")),
                 position: Some(self.pos(node)),
             },
+            // Explicit construction-site type arguments (`Box<int> { ... }`)
+            // are captured for the checker. Implements [TYPE-GENERICS-DECL].
             "type_constructor" => Expr::TypeConstructor {
                 name: self.field_text(node, "name"),
-                type_args: Vec::new(),
+                type_args: self
+                    .first_child_of_kind(node, "type_arguments")
+                    .and_then(|ta| self.first_child_of_kind(ta, "type_list"))
+                    .map(|l| self.lower_type_list(l))
+                    .unwrap_or_default(),
                 fields: self.lower_field_assignments(node),
             },
             "update_expression" => Expr::Update {

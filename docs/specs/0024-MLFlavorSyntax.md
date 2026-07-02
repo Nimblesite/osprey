@@ -259,8 +259,9 @@ and currying type. An operation is a request with a **payload** and a **result**
 not a curried function.
 
 ```ebnf
-effectDecl ::= "effect" ID INDENT opSig+ DEDENT
+effectDecl ::= "effect" ID typeParam* INDENT opSig+ DEDENT
 opSig      ::= ID ":" type "=>" type
+typeParam  ::= ("in" | "out")? ID
 ```
 
 ```osprey-ml
@@ -293,6 +294,51 @@ Lowering: `effect E` + arms → `Stmt::Effect { operations }`, where each
 > `->` belongs to functions and currying. `=>` belongs to clauses and requests
 > that yield a result: it appears in `effect` operations, `handler` arms, and
 > `match` arms, always meaning "the left yields the right."
+
+## Generics ([FLAVOR-ML-GENERICS])
+
+`[FLAVOR-ML-GENERICS]` The ML flavor spells every generic binder by
+juxtaposition on declarations and by an angle-bracket binder on signatures —
+all lowering to the same variance-carrying `TypeParam` nodes the Default
+flavor produces ([TYPE-GENERICS-DECL], [TYPE-VARIANCE-DECL] in
+[Type System](0004-TypeSystem.md#generics-and-variance)):
+
+- **Type declarations** take whitespace parameters with optional variance
+  markers: `type Box T =`, `type Feed out T =`, `type Gate in T =` — twinning
+  Default `type Box<T>`, `type Feed<out T>`, `type Gate<in T>`.
+- **Effect declarations** likewise: `effect Stash T` twins
+  `effect Stash<T>` ([EFFECTS-GENERIC-DECL](0017-AlgebraicEffects.md#generic-effects)).
+- **Function type parameters** bind on the signature line:
+  `pick<T> : (T, T) -> T` twins `fn pick<T>(first: T, second: T)`. A binding
+  without a signature cannot declare type parameters. Variance markers are
+  rejected on function binders.
+- **Effect rows** apply type arguments with angle brackets:
+  `bumped : Unit -> int ! Stash<int>` twins `fn bumped() -> int !Stash<int>`
+  ([EFFECTS-GENERIC-ROWS](0017-AlgebraicEffects.md#generic-effects)).
+- **Construction sites** apply explicit type arguments on the inline record
+  form: `Box<int>(item = 7)` twins `Box<int> { item: 7 }`
+  ([TYPE-GENERICS-DECL](0004-TypeSystem.md#generics-and-variance)). The
+  layout (indented) record form takes no type arguments — use the inline
+  form when the fields alone cannot pin the instantiation.
+
+```osprey-ml
+type Feed out T =
+    Feed
+        supply : T
+    Dry
+
+effect Stash T
+    put : T => Unit
+    take : Unit => T
+
+pick<T> : (T, T) -> T
+pick (first, second) = first
+```
+
+`out` stays an ordinary identifier outside type-parameter position; `in` (the
+hard keyword of `handle … in`) is accepted contextually inside a parameter
+list. A generic signature is distinguished from a `name < expr` comparison by
+requiring the whole `name<params…> :` shape before committing.
 
 ## Handlers
 

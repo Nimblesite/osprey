@@ -22,13 +22,14 @@
 //!   [`Expr::TypeConstructor`], [`Expr::Block`], and [`Expr::InterpolatedStr`].
 
 use super::cst::{
-    MlArm, MlEffectOp, MlExpr, MlExternParam, MlField, MlHandleArm, MlItem, MlParam, MlPattern,
-    MlType, MlTypeField, MlVariant,
+    MlArm, MlEffectOp, MlEffectRef, MlExpr, MlExternParam, MlField, MlHandleArm, MlItem, MlParam,
+    MlPattern, MlType, MlTypeField, MlTypeParam, MlVariance, MlVariant,
 };
 use crate::strings::{lower_interpolation, unquote};
 use osprey_ast::{
-    EffectOperation, Expr, ExternParameter, FieldAssignment, HandlerArm, MapEntry, MatchArm,
-    Parameter, Pattern, Position, Program, Stmt, TypeExpr, TypeField, TypeVariant,
+    EffectOperation, EffectRef, Expr, ExternParameter, FieldAssignment, HandlerArm, MapEntry,
+    MatchArm, Parameter, Pattern, Position, Program, Stmt, TypeExpr, TypeField, TypeParam,
+    TypeVariant, Variance,
 };
 use std::cell::RefCell;
 use std::collections::HashSet;
@@ -165,10 +166,22 @@ fn collect_names_in_expr(expr: &MlExpr, out: &mut HashSet<String>) {
 /// local signed functions work too.
 fn lower_items(items: Vec<MlItem>) -> Vec<Stmt> {
     let mut out = Vec::new();
-    let mut pending: Option<(String, MlType, Vec<String>)> = None;
+    let mut pending: Option<MlSig> = None;
     for item in items {
         match item {
-            MlItem::Signature { name, ty, effects } => pending = Some((name, ty, effects)),
+            MlItem::Signature {
+                name,
+                type_params,
+                ty,
+                effects,
+            } => {
+                pending = Some(MlSig {
+                    name,
+                    type_params,
+                    ty,
+                    effects,
+                });
+            }
             MlItem::Binding {
                 mutable,
                 name,
@@ -177,13 +190,11 @@ fn lower_items(items: Vec<MlItem>) -> Vec<Stmt> {
                 body,
                 pos,
             } => {
-                // Pair the binding with its preceding signature's type and
-                // effect row (both `None`/empty when unsigned), passed as one
-                // `sig` argument so the lowerer stays within the parameter budget.
-                let sig = pending
-                    .take()
-                    .filter(|(signed, _, _)| *signed == name)
-                    .map(|(_, ty, effects)| (ty, effects));
+                // Pair the binding with its preceding signature's type params,
+                // type and effect row (all `None`/empty when unsigned), passed
+                // as one `sig` argument so the lowerer stays within the
+                // parameter budget.
+                let sig = pending.take().filter(|s| s.name == name);
                 out.push(lower_binding(
                     mutable, name, params, uncurried, body, pos, sig,
                 ));
@@ -205,7 +216,7 @@ fn lower_items(items: Vec<MlItem>) -> Vec<Stmt> {
                 pending = None;
                 out.push(Stmt::Type {
                     name,
-                    type_params,
+                    type_params: type_params.into_iter().map(lower_type_param).collect(),
                     variants: variants.into_iter().map(lower_variant).collect(),
                     validation_func: None,
                     position: Some(pos),
@@ -227,12 +238,14 @@ fn lower_items(items: Vec<MlItem>) -> Vec<Stmt> {
             }
             MlItem::Effect {
                 name,
+                type_params,
                 operations,
                 pos,
             } => {
                 pending = None;
                 out.push(Stmt::Effect {
                     name,
+                    type_params: type_params.into_iter().map(lower_type_param).collect(),
                     operations: operations.into_iter().map(lower_effect_op).collect(),
                     position: Some(pos),
                 });
@@ -328,13 +341,14 @@ fn lower_binding(
     uncurried: bool,
     body: MlExpr,
     pos: Position,
-    sig: Option<(MlType, Vec<String>)>,
+    sig: Option<MlSig>,
 ) -> Stmt {
     let body = lower_expr(body);
-    // Split the paired signature into its declared type and effect row.
-    let (ty, effects) = match sig {
-        Some((ty, effects)) => (Some(ty), effects),
-        None => (None, Vec::new()),
+    // Split the paired signature into its type params, declared type and
+    // effect row.
+    let (type_params, ty, effects) = match sig {
+        Some(s) => (s.type_params, Some(s.ty), s.effects),
+        None => (Vec::new(), None, Vec::new()),
     };
     let ty = ty.as_ref();
     // An empty surface parameter list is a value binding; a non-empty one (even
@@ -358,12 +372,50 @@ fn lower_binding(
     };
     Stmt::Function {
         name,
+        type_params: type_params.into_iter().map(lower_type_param).collect(),
         parameters,
         return_type,
-        effects,
+        effects: effects.into_iter().map(lower_effect_ref).collect(),
         body,
         doc: None,
         position: Some(pos),
+    }
+}
+
+/// A parsed signature awaiting its binding: `name<T, U> : ty ! effects`.
+struct MlSig {
+    name: String,
+    type_params: Vec<MlTypeParam>,
+    ty: MlType,
+    effects: Vec<MlEffectRef>,
+}
+
+/// Lower one CST type parameter to the canonical variance-carrying
+/// [`TypeParam`] — byte-identical to the Default flavor's lowering.
+/// Implements [TYPE-VARIANCE-DECL].
+fn lower_type_param(p: MlTypeParam) -> TypeParam {
+    TypeParam {
+        name: p.name,
+        variance: match p.variance {
+            MlVariance::Invariant => Variance::Invariant,
+            MlVariance::Covariant => Variance::Covariant,
+            MlVariance::Contravariant => Variance::Contravariant,
+        },
+    }
+}
+
+/// Lower one effect-row reference to the canonical [`EffectRef`], threading
+/// its type arguments through the shared [`type_expr`] path so they are
+/// byte-identical to the Default flavor's. Implements [EFFECTS-GENERIC-ROWS].
+fn lower_effect_ref(r: MlEffectRef) -> EffectRef {
+    EffectRef {
+        name: r.name,
+        type_args: r
+            .args
+            .iter()
+            .map(|a| type_expr(a).unwrap_or_else(|| TypeExpr::named(render_type(a))))
+            .collect(),
+        position: Some(r.pos),
     }
 }
 
@@ -376,7 +428,7 @@ fn build_function_flat(
     body: Expr,
     sig: Option<&MlType>,
 ) -> (Vec<Parameter>, Expr, Option<TypeExpr>) {
-    let spine = sig.map(arrow_spine).unwrap_or_default();
+    let spine = expand_tuple_head(sig.map(arrow_spine).unwrap_or_default(), params.len());
     let consumed = params.len();
     let parameters = params
         .into_iter()
@@ -398,6 +450,20 @@ fn build_function_flat(
         body,
         arrow_of(spine.get(consumed..).unwrap_or(&[])),
     )
+}
+
+/// An uncurried binding may be signed with the tuple spelling
+/// `(T, U) -> R`: the tuple's parts type the parameters one-to-one and the
+/// rest of the spine is the return — matching the Default flavor's
+/// `fn f(a: T, b: U) -> R` exactly ([FLAVOR-ML-GENERICS]). A curried spine
+/// (`T -> U -> R`) keeps typing parameters positionally.
+fn expand_tuple_head(spine: Vec<MlType>, param_count: usize) -> Vec<MlType> {
+    match spine.split_first() {
+        Some((MlType::Tuple(parts), rest)) if parts.len() == param_count => {
+            parts.iter().cloned().chain(rest.iter().cloned()).collect()
+        }
+        _ => spine,
+    }
 }
 
 /// Lower one `op : P => R` effect operation line to the canonical
@@ -657,9 +723,19 @@ fn lower_expr(expr: MlExpr) -> Expr {
             value: Box::new(lower_expr(*scrutinee)),
             arms: arms.into_iter().map(lower_arm).collect(),
         },
-        MlExpr::Record { name, fields } => Expr::TypeConstructor {
+        MlExpr::Record {
             name,
-            type_args: Vec::new(),
+            type_args,
+            fields,
+        } => Expr::TypeConstructor {
+            name,
+            // Thread explicit construction-site type arguments through the
+            // shared `type_expr` path — byte-identical to the Default
+            // flavor's `Ctor<t> { … }`. Implements [FLAVOR-ML-GENERICS].
+            type_args: type_args
+                .iter()
+                .map(|a| type_expr(a).unwrap_or_else(|| TypeExpr::named(render_type(a))))
+                .collect(),
             fields: fields.into_iter().map(lower_field).collect(),
         },
         MlExpr::Block { items, value } => lower_block(items, value),
@@ -668,16 +744,24 @@ fn lower_expr(expr: MlExpr) -> Expr {
             effect,
             operation,
             args,
+            pos,
         } => Expr::Perform {
             effect,
             operation,
             arguments: args.into_iter().map(lower_expr).collect(),
             named_arguments: Vec::new(),
+            position: Some(pos),
         },
-        MlExpr::Handle { effect, arms, body } => Expr::Handler {
+        MlExpr::Handle {
+            effect,
+            arms,
+            body,
+            pos,
+        } => Expr::Handler {
             effect,
             arms: arms.into_iter().map(lower_handle_arm).collect(),
             body: Box::new(lower_expr(*body)),
+            position: Some(pos),
         },
         MlExpr::Resume(value) => Expr::Resume(value.map(|e| Box::new(lower_expr(*e)))),
         MlExpr::Await(inner) => Expr::Await(Box::new(lower_expr(*inner))),
@@ -859,7 +943,7 @@ fn parse_fragment(frag: &str) -> Expr {
 )]
 mod tests {
     use super::super::parse_ml;
-    use osprey_ast::{Expr, InterpolatedPart, Pattern, Stmt};
+    use osprey_ast::{Expr, InterpolatedPart, Pattern, Stmt, Variance};
 
     fn stmts(src: &str) -> Vec<Stmt> {
         let parsed = parse_ml(src);
@@ -1622,7 +1706,72 @@ mod tests {
             "expected function, got {s:?}"
         );
         if let Stmt::Function { effects, .. } = s {
-            assert_eq!(effects, vec!["Trace".to_owned()]);
+            let names: Vec<&str> = effects.iter().map(|e| e.name.as_str()).collect();
+            assert_eq!(names, vec!["Trace"]);
+            assert!(effects[0].type_args.is_empty());
+        }
+    }
+
+    #[test]
+    fn generic_signature_and_effect_row_args_thread_into_function() {
+        // `tick<T> : Unit -> int ! State<int>` — the signature's type-param
+        // binder and the row's type arguments both land on the canonical
+        // `Stmt::Function`, byte-identical to the Default
+        // `fn tick<T>() -> int !State<int>`. Implements [FLAVOR-ML-GENERICS],
+        // [EFFECTS-GENERIC-ROWS].
+        let s = one("tick<T> : Unit -> int ! State<int>\ntick () =\n    perform State.get ()\n");
+        if let Stmt::Function {
+            type_params,
+            effects,
+            ..
+        } = s
+        {
+            assert_eq!(type_params.len(), 1);
+            assert_eq!(type_params[0].name, "T");
+            assert_eq!(effects.len(), 1);
+            assert_eq!(effects[0].name, "State");
+            assert_eq!(effects[0].type_args.len(), 1);
+            assert_eq!(effects[0].type_args[0].name, "int");
+        } else {
+            panic!("expected function, got {s:?}");
+        }
+    }
+
+    #[test]
+    fn variance_markers_lower_onto_type_and_effect_params() {
+        // `type Source out T =` / `type Sink in T =` — variance markers lower
+        // to the canonical `TypeParam` variance the Default `type Source<out T>`
+        // carries. Implements [TYPE-VARIANCE-DECL].
+        let s = one("type Source out T =\n    produce : T\n");
+        if let Stmt::Type { type_params, .. } = s {
+            assert_eq!(type_params.len(), 1);
+            assert_eq!(type_params[0].name, "T");
+            assert_eq!(type_params[0].variance, Variance::Covariant);
+        } else {
+            panic!("expected type, got {s:?}");
+        }
+        let s = one("type Sink in T =\n    accept : T -> Unit\n");
+        if let Stmt::Type { type_params, .. } = s {
+            assert_eq!(type_params[0].variance, Variance::Contravariant);
+        } else {
+            panic!("expected type, got {s:?}");
+        }
+        // `effect State T` — a generic effect declaration.
+        // Implements [EFFECTS-GENERIC-DECL].
+        let s = one("effect State T\n    get : Unit => T\n    set : T => Unit\n");
+        if let Stmt::Effect {
+            type_params,
+            operations,
+            ..
+        } = s
+        {
+            assert_eq!(type_params.len(), 1);
+            assert_eq!(type_params[0].name, "T");
+            assert_eq!(operations.len(), 2);
+            assert_eq!(operations[0].ty, "fn() -> T");
+            assert_eq!(operations[1].ty, "fn(T) -> Unit");
+        } else {
+            panic!("expected effect, got {s:?}");
         }
     }
 
@@ -1648,6 +1797,7 @@ mod tests {
                     operation,
                     arguments,
                     named_arguments,
+                    ..
                 },
             ..
         } = s
@@ -1678,7 +1828,9 @@ mod tests {
             "expected handler, got {s:?}"
         );
         if let Stmt::Let {
-            value: Expr::Handler { effect, arms, body },
+            value: Expr::Handler {
+                effect, arms, body, ..
+            },
             ..
         } = s
         {

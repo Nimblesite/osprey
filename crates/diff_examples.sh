@@ -87,7 +87,9 @@ for x in $FAILED; do echo "  $x"; done
 # (validations not yet ported — effects safety, `any` rules, named-arg checks,
 # print-on-record). Port a validation -> decrease the number. An INCREASE is a
 # regression and fails CI. Target: 0.
-FC_EXPECTED_ESCAPES=12
+# 12 -> 11: perform-argument unification ([EFFECTS-GENERIC-INSTANTIATION]) now
+# rejects effect-parameter type mismatches at compile time.
+FC_EXPECTED_ESCAPES=11
 FCDIR=$ROOT/examples/failscompilation
 fc_rej=0; fc_esc=0
 typeset -a FC_ESCAPED

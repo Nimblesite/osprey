@@ -49,5 +49,9 @@ Test 11: Type equality and String methods
 typeTest1(21) = 42
 typeTest2("hi") = hihi
 typeTest3(false) = true
+
+Test 12: Declared type parameters
+pick<T>(10, 20) = 10, pick<T>("left", "right") = left
+Box<int> pinned explicitly: item = 7
 === PURE HINDLEY-MILNER TEST COMPLETE ===
 All types inferred from usage context - no explicit type annotations!

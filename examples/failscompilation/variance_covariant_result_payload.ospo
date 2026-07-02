@@ -1,0 +1,15 @@
+// Variance never lifts the coercive Result auto-unwrap under a container:
+// a Feed<Result<int, string>> is NOT assignable where Feed<int> is expected,
+// even under `out T` — the stored representation differs and no coercion is
+// emitted inside containers. Implements [TYPE-VARIANCE-ASSIGN]
+type Feed<out T> = Feed { supply: T } | Dry
+
+fn check(n: int) -> Result<int, string> = Success { value: n }
+fn mkFeed(n: int) -> Feed<Result<int, string>> = Feed { supply: check(n) }
+
+fn firstItem(f: Feed<int>) = match f {
+    Feed { supply } => supply
+    Dry => 0
+}
+
+fn main() -> Unit = print("got ${firstItem(mkFeed(42))}")

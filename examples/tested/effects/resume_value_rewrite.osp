@@ -29,3 +29,21 @@ let result = handle Supply
     }
 in total()
 print("result=" + toString(result))
+
+// A generic effect's instantiation flows through resume too: Relay<string>'s
+// erased operation result unboxes back to a string at the perform site.
+// Implements [EFFECTS-GENERIC-INSTANTIATION]
+effect Relay<T> {
+    ask: fn() -> T
+}
+
+fn echoWord() -> string !Relay<string> = perform Relay.ask()
+
+let word = handle Relay
+    ask => {
+        let answer = resume("carried")
+        print("relay answered: " + answer)
+        answer
+    }
+in echoWord()
+print("word=" + word)

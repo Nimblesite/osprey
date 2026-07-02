@@ -102,6 +102,9 @@ module.exports = grammar({
         optional($.doc_comment),
         'fn',
         field('name', $.identifier),
+        // `fn map<T, U>(...)` — declared type parameters. Implements
+        // [TYPE-GENERICS-FN].
+        optional(seq('<', field('type_parameters', $.type_parameter_list), '>')),
         '(',
         optional(field('parameters', $.parameter_list)),
         ')',
@@ -143,7 +146,13 @@ module.exports = grammar({
         optional($.type_validation),
       ),
 
-    type_parameter_list: ($) => sep1(',', $.identifier),
+    // A type parameter optionally carries declaration-site variance:
+    // `out T` (covariant) / `in T` (contravariant). `out`/`in` are contextual
+    // keywords reserved only inside `<...>` parameter lists. Implements
+    // [TYPE-VARIANCE-DECL].
+    type_parameter_list: ($) => sep1(',', $.type_parameter),
+    type_parameter: ($) =>
+      seq(optional(field('variance', choice('in', 'out'))), field('name', $.identifier)),
 
     union_type: ($) => prec.right(sep1('|', $.variant)),
     variant: ($) =>
@@ -163,11 +172,14 @@ module.exports = grammar({
     type_validation: ($) => seq('where', $.identifier),
 
     // ---------- EFFECTS ----------
+    // `effect State<T> { ... }` — effects accept type parameters (with
+    // variance) for full polymorphism. Implements [EFFECTS-GENERIC-DECL].
     effect_declaration: ($) =>
       seq(
         optional($.doc_comment),
         'effect',
         field('name', $.identifier),
+        optional(seq('<', field('type_parameters', $.type_parameter_list), '>')),
         '{',
         repeat($.operation_declaration),
         '}',
@@ -175,12 +187,15 @@ module.exports = grammar({
     operation_declaration: ($) =>
       seq(field('name', $.identifier), ':', field('type', $._type)),
 
+    // Effect rows reference effects optionally applied to type arguments:
+    // `!State<int>`, `![State<int>, Log]`. Implements [EFFECTS-GENERIC-ROWS].
     effect_set: ($) =>
       choice(
-        seq('!', $.identifier),
+        seq('!', $.effect_ref),
         seq('!', '[', $.effect_list, ']'),
       ),
-    effect_list: ($) => sep1(',', $.identifier),
+    effect_list: ($) => sep1(',', $.effect_ref),
+    effect_ref: ($) => seq(field('name', $.identifier), optional($.type_arguments)),
 
     // ---------- TYPES ----------
     _type: ($) =>

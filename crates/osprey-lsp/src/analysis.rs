@@ -227,18 +227,30 @@ fn sym_of(stmt: &Stmt) -> Option<SymbolInfo> {
     match stmt {
         Stmt::Function {
             name,
+            type_params,
             parameters,
             return_type,
             doc,
             position,
             ..
-        } => Some(fn_sym(
-            name,
-            param_pairs(parameters),
-            return_type.as_ref(),
-            doc.clone(),
-            *position,
-        )),
+        } => {
+            let mut sym = fn_sym(
+                name,
+                param_pairs(parameters),
+                return_type.as_ref(),
+                doc.clone(),
+                *position,
+            );
+            let binder = render_type_params(type_params);
+            if !binder.is_empty() {
+                let with_binder = sym
+                    .ty
+                    .replacen(&format!("fn {name}("), &format!("fn {name}{binder}("), 1);
+                sym.ty.clone_from(&with_binder);
+                sym.signature = Some(with_binder);
+            }
+            Some(sym)
+        }
         Stmt::Extern {
             name,
             parameters,
@@ -258,10 +270,54 @@ fn sym_of(stmt: &Stmt) -> Option<SymbolInfo> {
             position,
             ..
         } => Some(let_sym(name, ty.as_ref(), doc.clone(), *position)),
-        Stmt::Type { name, position, .. } => Some(decl_sym(name, "type", *position)),
-        Stmt::Effect { name, position, .. } => Some(decl_sym(name, "effect", *position)),
+        Stmt::Type {
+            name,
+            type_params,
+            position,
+            ..
+        } => Some(generic_decl_sym(name, type_params, "type", *position)),
+        Stmt::Effect {
+            name,
+            type_params,
+            position,
+            ..
+        } => Some(generic_decl_sym(name, type_params, "effect", *position)),
         _ => None,
     }
+}
+
+/// A type/effect declaration symbol whose signature shows the binder
+/// (`type Option<T>`, `effect State<T>`) while the name stays bare for
+/// lookups. Implements [TYPE-GENERICS-DECL].
+fn generic_decl_sym(
+    name: &str,
+    type_params: &[osprey_ast::TypeParam],
+    kind: &str,
+    position: Option<Position>,
+) -> SymbolInfo {
+    let mut sym = decl_sym(name, kind, position);
+    let binder = render_type_params(type_params);
+    if !binder.is_empty() {
+        sym.signature = Some(format!("{kind} {name}{binder}"));
+    }
+    sym
+}
+
+/// Render a declaration's type-parameter binder (`<T, out U>`), empty when it
+/// has none. Implements [TYPE-GENERICS-DECL].
+fn render_type_params(params: &[osprey_ast::TypeParam]) -> String {
+    if params.is_empty() {
+        return String::new();
+    }
+    let shown: Vec<String> = params
+        .iter()
+        .map(|p| match p.variance {
+            osprey_ast::Variance::Covariant => format!("out {}", p.name),
+            osprey_ast::Variance::Contravariant => format!("in {}", p.name),
+            osprey_ast::Variance::Invariant => p.name.clone(),
+        })
+        .collect();
+    format!("<{}>", shown.join(", "))
 }
 
 fn fn_sym(
@@ -649,6 +705,7 @@ mod tests {
                 operation: "op".into(),
                 arguments: vec![blk("perform")],
                 named_arguments: vec![narg("performnamed")],
+                position: None,
             },
             Expr::Handler {
                 effect: "E".into(),
@@ -658,6 +715,7 @@ mod tests {
                     body: blk("handlerarm"),
                 }],
                 body: b("handlerbody"),
+                position: None,
             },
         ]
     }

@@ -37,8 +37,8 @@
 //!   concrete authoritative spec of layout-driven token insertion.
 
 use super::cst::{
-    MlArm, MlEffectOp, MlExpr, MlExternParam, MlField, MlHandleArm, MlItem, MlParam, MlPattern,
-    MlType, MlTypeField, MlVariant,
+    MlArm, MlEffectOp, MlEffectRef, MlExpr, MlExternParam, MlField, MlHandleArm, MlItem, MlParam,
+    MlPattern, MlType, MlTypeField, MlTypeParam, MlVariance, MlVariant,
 };
 use super::lexer::lex;
 use super::token::{TokKind, Token};
@@ -225,13 +225,45 @@ impl Parser<'_> {
         })
     }
 
-    /// Bare type-parameter names between the type name and `=` (e.g. `T` in
-    /// `type Box T = …`), in order.
-    fn type_params(&mut self) -> Vec<String> {
+    /// Type parameters between a declaration's name and its body (e.g. `T` in
+    /// `type Box T = …`), in order, each with an optional variance marker:
+    /// `out T` (covariant) / `in T` (contravariant). `out` and `in` are
+    /// contextual keywords reserved inside type-parameter position in BOTH
+    /// flavors — a marker must be followed by a parameter name. Implements
+    /// [TYPE-VARIANCE-DECL].
+    fn type_params(&mut self) -> Vec<MlTypeParam> {
         let mut out = Vec::new();
-        while let TokKind::Ident(name) = self.peek() {
-            out.push(name.clone());
-            self.advance();
+        loop {
+            let variance = match self.peek() {
+                TokKind::Ident(name) if name == "out" => Some(MlVariance::Covariant),
+                TokKind::KwIn => Some(MlVariance::Contravariant),
+                _ => None,
+            };
+            match (variance, self.peek()) {
+                (Some(variance), _) => {
+                    let marker = if variance == MlVariance::Covariant {
+                        "out"
+                    } else {
+                        "in"
+                    };
+                    self.advance(); // the marker
+                    if let Some(name) = self.ident() {
+                        out.push(MlTypeParam { name, variance });
+                    } else {
+                        self.error(format!("expected a type parameter name after '{marker}'"));
+                        break;
+                    }
+                }
+                (None, TokKind::Ident(name)) => {
+                    let name = name.clone();
+                    self.advance();
+                    out.push(MlTypeParam {
+                        name,
+                        variance: MlVariance::Invariant,
+                    });
+                }
+                _ => break,
+            }
         }
         out
     }
@@ -368,9 +400,13 @@ impl Parser<'_> {
         let pos = self.pos();
         self.advance(); // `effect`
         let name = self.ident()?;
+        // `effect State T` — type parameters between the name and the
+        // operation block. Implements [EFFECTS-GENERIC-DECL].
+        let type_params = self.type_params();
         let operations = self.effect_operations();
         Some(MlItem::Effect {
             name,
+            type_params,
             operations,
             pos,
         })
@@ -424,9 +460,60 @@ impl Parser<'_> {
         match self.peek_at(1) {
             TokKind::Colon => self.signature(),
             TokKind::ColonEq => self.assignment(),
+            _ if self.at_generic_signature() => self.signature(),
             _ if self.is_binding_head() => self.binding(),
             _ => Some(self.expr_item()),
         }
+    }
+
+    /// Whether the current item is a generic signature `name<T, U> : type` —
+    /// an identifier, then a `<`-delimited list of parameter names (with
+    /// optional `out`/`in` markers), then `:`. Distinguished from a `name < x`
+    /// comparison by requiring the whole binder-plus-colon shape before
+    /// committing. Implements [FLAVOR-ML-GENERICS].
+    fn at_generic_signature(&self) -> bool {
+        if !matches!(self.peek_at(1), TokKind::Op(op) if op == "<") {
+            return false;
+        }
+        let mut j = 2;
+        loop {
+            // Optional variance marker before each parameter name.
+            if matches!(self.peek_at(j), TokKind::KwIn)
+                || matches!(self.peek_at(j), TokKind::Ident(n) if n == "out"
+                    && matches!(self.peek_at(j + 1), TokKind::Ident(_)))
+            {
+                j += 1;
+            }
+            if !matches!(self.peek_at(j), TokKind::Ident(_)) {
+                return false;
+            }
+            j += 1;
+            match self.peek_at(j) {
+                TokKind::Comma => j += 1,
+                TokKind::Op(op) if op == ">" => {
+                    return matches!(self.peek_at(j + 1), TokKind::Colon)
+                }
+                _ => return false,
+            }
+        }
+    }
+
+    /// The `<T, U>` binder of a generic signature. The caller has already
+    /// validated the whole shape via [`Self::at_generic_signature`], so this
+    /// only consumes: `<`, comma-separated parameter groups, `>`.
+    fn signature_type_params(&mut self) -> Vec<MlTypeParam> {
+        if !matches!(self.peek(), TokKind::Op(op) if op == "<") {
+            return Vec::new();
+        }
+        self.advance(); // `<`
+        let mut out = self.type_params();
+        while self.eat(&TokKind::Comma) {
+            out.append(&mut self.type_params());
+        }
+        if matches!(self.peek(), TokKind::Op(op) if op == ">") {
+            self.advance(); // `>`
+        }
+        out
     }
 
     /// `name := value` → an assignment.
@@ -438,31 +525,41 @@ impl Parser<'_> {
         Some(MlItem::Assign { name, value, pos })
     }
 
-    /// `name : type` → a type signature for the binding that follows, with an
-    /// optional trailing effect row `! Name(, Name)*` or `! [Name, …]`
-    /// ([FLAVOR-ML-EFFECT]).
+    /// `name : type` / `name<T, U> : type` → a type signature for the binding
+    /// that follows, with an optional trailing effect row `! Ref(, Ref)*` or
+    /// `! [Ref, …]` ([FLAVOR-ML-EFFECT], [FLAVOR-ML-GENERICS]).
     fn signature(&mut self) -> Option<MlItem> {
         let name = self.ident()?;
-        self.advance(); // `:`
+        let type_params = self.signature_type_params();
+        if !self.eat(&TokKind::Colon) {
+            self.error("expected ':' in signature");
+        }
         let ty = self.ty();
         let effects = self.effect_row();
-        Some(MlItem::Signature { name, ty, effects })
+        Some(MlItem::Signature {
+            name,
+            type_params,
+            ty,
+            effects,
+        })
     }
 
-    /// An optional effect row after a signature's type: `! Name(, Name)*` or the
-    /// bracketed `! [Name, …]`. Empty when no `!` is present ([FLAVOR-ML-EFFECT]).
-    fn effect_row(&mut self) -> Vec<String> {
+    /// An optional effect row after a signature's type: `! Ref(, Ref)*` or the
+    /// bracketed `! [Ref, …]`, each reference optionally applied to type
+    /// arguments (`State<int>`). Empty when no `!` is present
+    /// ([FLAVOR-ML-EFFECT], [EFFECTS-GENERIC-ROWS]).
+    fn effect_row(&mut self) -> Vec<MlEffectRef> {
         if !matches!(self.peek(), TokKind::Op(op) if op == "!") {
             return Vec::new();
         }
         self.advance(); // `!`
         let bracketed = self.eat(&TokKind::LBracket);
         let mut effects = Vec::new();
-        if let Some(name) = self.ident() {
-            effects.push(name);
+        if let Some(r) = self.effect_ref() {
+            effects.push(r);
             while self.eat(&TokKind::Comma) {
-                if let Some(name) = self.ident() {
-                    effects.push(name);
+                if let Some(r) = self.effect_ref() {
+                    effects.push(r);
                 }
             }
         }
@@ -470,6 +567,22 @@ impl Parser<'_> {
             self.error("expected ']' to close effect row");
         }
         effects
+    }
+
+    /// One effect reference in an effect row: a name plus optional
+    /// angle-bracketed type arguments.
+    fn effect_ref(&mut self) -> Option<MlEffectRef> {
+        let pos = self.pos();
+        let name = self.ident()?;
+        let args = if self.at_angle_open() {
+            match self.ty_generic_args(name.clone()) {
+                MlType::App { args, .. } => args,
+                _ => Vec::new(),
+            }
+        } else {
+            Vec::new()
+        };
+        Some(MlEffectRef { name, args, pos })
     }
 
     /// A type: arrows are right-associative (`a -> b -> c` = `a -> (b -> c)`).
@@ -768,7 +881,17 @@ impl Parser<'_> {
         if let MlExpr::Ident(name) = &func {
             if self.at_inline_record() {
                 let name = name.clone();
-                func = self.inline_record(name);
+                func = self.inline_record(name, Vec::new());
+            } else if is_constructor(name) && self.at_generic_record() {
+                // `Box<int>(item = 7)` — explicit construction-site type
+                // arguments. Implements [TYPE-GENERICS-DECL],
+                // [FLAVOR-ML-GENERICS].
+                let name = name.clone();
+                let type_args = match self.ty_generic_args(name.clone()) {
+                    MlType::App { args, .. } => args,
+                    _ => Vec::new(),
+                };
+                func = self.inline_record(name, type_args);
             }
         }
         // `f ()` is a zero-argument application, not application to unit.
@@ -929,7 +1052,11 @@ impl Parser<'_> {
     fn ident_atom(&mut self, name: String) -> MlExpr {
         if is_constructor(&name) && matches!(self.peek(), TokKind::Indent) {
             let fields = self.record_fields();
-            MlExpr::Record { name, fields }
+            MlExpr::Record {
+                name,
+                type_args: Vec::new(),
+                fields,
+            }
         } else {
             MlExpr::Ident(name)
         }
@@ -1061,6 +1188,7 @@ impl Parser<'_> {
     /// whitespace-applied arguments ([FLAVOR-ML-EFFECT]). The head is the
     /// dotted `Effect.operation`; the trailing atoms are its arguments.
     fn perform_expr(&mut self) -> MlExpr {
+        let pos = self.pos();
         self.advance(); // `perform`
         let effect = self.ident().unwrap_or_default();
         if !self.eat(&TokKind::Dot) {
@@ -1075,6 +1203,7 @@ impl Parser<'_> {
                 effect,
                 operation,
                 args: Vec::new(),
+                pos,
             };
         }
         let mut args = Vec::new();
@@ -1085,12 +1214,14 @@ impl Parser<'_> {
             effect,
             operation,
             args,
+            pos,
         }
     }
 
     /// `handle Effect` + indented `op param* => body` arms + `in body` — install
     /// an effect handler over the body expression ([FLAVOR-ML-EFFECT]).
     fn handle_expr(&mut self) -> MlExpr {
+        let pos = self.pos();
         self.advance(); // `handle`
         let effect = self.ident().unwrap_or_default();
         let mut arms = Vec::new();
@@ -1117,6 +1248,7 @@ impl Parser<'_> {
             effect,
             arms,
             body: Box::new(body),
+            pos,
         }
     }
 
@@ -1372,7 +1504,7 @@ impl Parser<'_> {
     /// expression/argument position ([FLAVOR-ML-RECORD]). Layout is suppressed
     /// inside parens, so the fields are a simple comma list; it lowers to the
     /// same [`MlExpr::Record`] the layout form produces.
-    fn inline_record(&mut self, name: String) -> MlExpr {
+    fn inline_record(&mut self, name: String, type_args: Vec<MlType>) -> MlExpr {
         self.advance(); // `(`
         let mut fields = Vec::new();
         if !matches!(self.peek(), TokKind::RParen) {
@@ -1392,7 +1524,11 @@ impl Parser<'_> {
         if !self.eat(&TokKind::RParen) {
             self.error("expected ')'");
         }
-        MlExpr::Record { name, fields }
+        MlExpr::Record {
+            name,
+            type_args,
+            fields,
+        }
     }
 
     /// One `field = value` initialiser, shared by the layout and inline record
@@ -1411,6 +1547,38 @@ impl Parser<'_> {
         matches!(self.peek(), TokKind::LParen)
             && matches!(self.peek_at(1), TokKind::Ident(_))
             && matches!(self.peek_at(2), TokKind::Eq)
+    }
+
+    /// Whether the current `<` opens a construction-site type-argument list
+    /// followed by an inline record (`Ctor<int>(field = v)`): scan a balanced
+    /// `<…>` of type-shaped tokens, then require the `( Ident =` record
+    /// opener — so a `Ctor < x` comparison never misparses.
+    fn at_generic_record(&self) -> bool {
+        if !matches!(self.peek(), TokKind::Op(op) if op == "<") {
+            return false;
+        }
+        let mut depth = 0usize;
+        let mut j = 0usize;
+        loop {
+            match self.peek_at(j) {
+                TokKind::Op(op) if op == "<" => depth += 1,
+                TokKind::Op(op) if op == ">" => {
+                    depth = depth.saturating_sub(1);
+                    if depth == 0 {
+                        return matches!(self.peek_at(j + 1), TokKind::LParen)
+                            && matches!(self.peek_at(j + 2), TokKind::Ident(_))
+                            && matches!(self.peek_at(j + 3), TokKind::Eq);
+                    }
+                }
+                TokKind::Ident(_)
+                | TokKind::Comma
+                | TokKind::Arrow
+                | TokKind::LParen
+                | TokKind::RParen => {}
+                _ => return false,
+            }
+            j += 1;
+        }
     }
 
     // --- bodies and helpers ----------------------------------------------

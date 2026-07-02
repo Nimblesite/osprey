@@ -1,0 +1,5 @@
+// A contravariant (`in`) type parameter may not appear in an output position.
+// Implements [TYPE-VARIANCE-POSITIONS]
+type Bad<in T> = Bad { held: T } | Nothing2
+
+fn main() -> Unit = print("must not compile")
