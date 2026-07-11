@@ -56,6 +56,10 @@ module.exports = grammar({
     [$.map_entry, $.field_assignment],
     // `{ expr }` — trailing block value vs a lone expression-statement in a block.
     [$.expression_statement, $.block],
+    // `if cond { ID }` — the brace opens the `if` consequence (a bare identifier
+    // expression), NOT a structural-ternary field-pattern on the condition; the
+    // `}` with no trailing `?` rules the field-pattern out, GLR resolves it.
+    [$.primary_expression, $.field_pattern],
     // `await ( x )` — the await_call form vs unary `await` over a parenthesized expr.
     [$.primary_expression, $.await_call],
     // `Name [` / `Name <` — array/generic type vs a bare type identifier.
@@ -223,6 +227,7 @@ module.exports = grammar({
     expression: ($) =>
       choice(
         $.match_expression,
+        $.if_expression,
         $.handler_expression,
         $.select_expression,
         $.ternary_expression,
@@ -237,6 +242,32 @@ module.exports = grammar({
       prec.dynamic(2, seq('match', field('value', $.expression), '{', repeat($.match_arm), '}')),
 
     match_arm: ($) => seq(field('pattern', $.pattern), '=>', field('body', $.expression)),
+
+    // Populist Default-flavor conditional (Kotlin/Swift/Rust shape). Osprey is
+    // expression-oriented, so `if` yields a value and the `else` branch is
+    // required; each branch is a single expression wrapped in braces. `else if`
+    // chains nest into `alternative`. Lowers to the same boolean `match` the
+    // ternary desugars to — no new AST node, no type/codegen changes
+    // ([FLAVOR-BOUNDARY]). The ML flavor keeps its layout `match`; this
+    // spelling is Default-only. The braces here are literal delimiters of the
+    // `if`, distinct from a `block` expression, which sidesteps the structural
+    // ternary's `cond { field } ? …` form.
+    if_expression: ($) =>
+      prec.right(
+        PREC.ternary,
+        seq(
+          'if',
+          field('condition', $.expression),
+          '{',
+          field('consequence', $.expression),
+          '}',
+          'else',
+          choice(
+            seq('{', field('alternative', $.expression), '}'),
+            field('alternative', $.if_expression),
+          ),
+        ),
+      ),
 
     handler_expression: ($) =>
       prec.right(seq('handle', field('effect', $.identifier), repeat1($.handler_arm), 'in', field('body', $.expression))),

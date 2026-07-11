@@ -45,6 +45,10 @@ impl Lowerer<'_> {
                 value: Box::new(self.lower_expr_field(node, "value")),
                 arms: self.lower_arms(node),
             },
+            // Populist Default-flavor `if cond { a } else { b }` desugars to the
+            // same boolean `match` the ternary uses; `else if` nests into the
+            // `false` arm. No new AST node ([FLAVOR-BOUNDARY]).
+            "if_expression" => self.lower_if(node),
             "select_expression" => Expr::Select {
                 arms: self.lower_arms(node),
             },
@@ -125,6 +129,25 @@ impl Lowerer<'_> {
             "identifier" => Expr::Identifier(self.text(node)),
             "ternary_expression" => self.lower_ternary(node),
             _ => Expr::Bool(false),
+        }
+    }
+
+    /// `if cond { a } else { b }` desugars to `match cond { true => a  false => b }`,
+    /// reusing the boolean-match path. `else if` is a nested `if_expression` in
+    /// the `alternative` field, so it recurses naturally into the `false` arm.
+    fn lower_if(&self, node: Node<'_>) -> Expr {
+        Expr::Match {
+            value: Box::new(self.lower_expr_field(node, "condition")),
+            arms: vec![
+                MatchArm {
+                    pattern: Pattern::Literal(Box::new(Expr::Bool(true))),
+                    body: self.lower_expr_field(node, "consequence"),
+                },
+                MatchArm {
+                    pattern: Pattern::Literal(Box::new(Expr::Bool(false))),
+                    body: self.lower_expr_field(node, "alternative"),
+                },
+            ],
         }
     }
 
