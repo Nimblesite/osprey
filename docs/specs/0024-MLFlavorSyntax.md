@@ -113,6 +113,27 @@ in the [References](#references) section.
 String interpolation keeps `${…}`. Parentheses remain available for grouping and
 precedence; they are not mandatory call punctuation.
 
+## Comments
+
+`[FLAVOR-ML-COMMENTS]` The ML flavor has two ordinary comment forms and one
+documentation form:
+
+- **`// …`** — a line comment to end of line.
+- **`(* … *)`** — a block comment in the ML-family (SML/OCaml/F#) convention.
+  It **nests**, so a commented-out region containing another `(* *)` closes
+  correctly; an unterminated block comment is a lexical error. Layout ignores
+  comment content entirely (it is trivia the layout lexer skips).
+- **`(** … *)`** — a **documentation comment** (the odoc double-star
+  convention), specified in
+  [Documentation Comments](0026-DocumentationComments.md) `[DOC-SIGIL-ML]`. It
+  attaches to the following declaration and lowers to the same `DocComment` the
+  Default flavor's `///` produces. An empty `(**)` or an all-star banner
+  `(*****)` is an ordinary comment, not a doc.
+
+The Default (brace) flavor's ordinary line comment is `//` and its doc comment
+is `///` ([0026](0026-DocumentationComments.md) `[DOC-SIGIL-DEFAULT]`); the ML
+block forms are the layout-flavor idiom for the same roles.
+
 ## Bindings and Mutation
 
 `[FLAVOR-ML-BIND]` `=` **binds**, `:=` **mutates**. There is no `let`: a bare

@@ -32,6 +32,11 @@ This directory holds **all spec documents** for the project:
   - [`0025-ModulesAndNamespaces.md`](0025-ModulesAndNamespaces.md) — multi-file
     application structure: path-independent namespaces, explicit module exports,
     signatures, state modules, import resolution, and project assembly.
+  - [`0026-DocumentationComments.md`](0026-DocumentationComments.md) — the
+    **documentation system**: `///` (Default) and `(** … *)` (ML) sigils
+    lowering to one structured `DocComment`, a shared Markdown body, recognised
+    sections, executable examples wired into the golden harness, and export —
+    grounded in the literate-programming and API-documentation literature.
 
 ## Spec ID convention
 

@@ -76,8 +76,10 @@ impl Scanner {
         });
     }
 
-    /// Skip inline whitespace, newlines (layout is position-derived later), and
-    /// `// …` line comments.
+    /// Skip inline whitespace, newlines (layout is position-derived later),
+    /// `// …` line comments, and `(* … *)` block comments. The block form is
+    /// the ML-family convention (SML / OCaml / F#) and **nests**, so a
+    /// commented-out region containing another `(* *)` closes correctly.
     fn skip_trivia(&mut self) {
         while let Some(c) = self.peek(0) {
             match c {
@@ -89,7 +91,38 @@ impl Scanner {
                         let _ = self.bump();
                     }
                 }
+                '(' if self.peek(1) == Some('*') => self.skip_block_comment(),
                 _ => break,
+            }
+        }
+    }
+
+    /// Consume a nesting `(* … *)` block comment (opener already at the cursor).
+    /// An unterminated comment records a lexical error rather than looping.
+    fn skip_block_comment(&mut self) {
+        let start = self.pos();
+        let _ = self.bump(); // (
+        let _ = self.bump(); // *
+        let mut depth = 1;
+        while depth > 0 {
+            match (self.peek(0), self.peek(1)) {
+                (Some('('), Some('*')) => {
+                    let _ = self.bump();
+                    let _ = self.bump();
+                    depth += 1;
+                }
+                (Some('*'), Some(')')) => {
+                    let _ = self.bump();
+                    let _ = self.bump();
+                    depth -= 1;
+                }
+                (Some(_), _) => {
+                    let _ = self.bump();
+                }
+                (None, _) => {
+                    self.error(start, "unterminated `(* … *)` block comment");
+                    return;
+                }
             }
         }
     }
@@ -458,6 +491,31 @@ mod tests {
     fn reports_unterminated_string() {
         let (_, errors) = lex("x = \"oops\n");
         assert!(errors.iter().any(|e| e.message.contains("unterminated")));
+    }
+
+    #[test]
+    fn skips_nesting_block_comments() {
+        // `(* … *)` block comments (ML-family convention) are trivia and NEST,
+        // so an inner `(* *)` does not close the outer early. The binding
+        // survives with no stray tokens.
+        let k = kinds("x = (* outer (* inner *) still *) 42\n");
+        assert_eq!(
+            k,
+            vec![
+                TokKind::Ident("x".to_owned()),
+                TokKind::Eq,
+                TokKind::Int(42),
+                TokKind::Eof,
+            ]
+        );
+    }
+
+    #[test]
+    fn reports_unterminated_block_comment() {
+        let (_, errors) = lex("x = (* never closed\n");
+        assert!(errors
+            .iter()
+            .any(|e| e.message.contains("unterminated `(* … *)` block comment")));
     }
 
     #[test]
