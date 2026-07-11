@@ -82,4 +82,20 @@ silentR =
         perform Logger.log "silenced"
         0
 print ("regions prod=" + toString prodR + " silent=" + toString silentR)
+
+effect Gift
+    get : int => int
+
+ask tag = perform Gift.get tag
+
+pairSum (a, b) =
+    f1 = spawn (ask a)
+    f2 = spawn (ask b)
+    (await f1) + (await f2)
+
+raceSum =
+    handle Gift
+        get tag => resume (tag * 10)
+    in pairSum (1, 2)
+print ("race-free sum " + toString raceSum)
 print "=== done ==="

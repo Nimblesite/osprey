@@ -143,18 +143,17 @@ instantiation variables against the written arguments (reuse
 `current_fn_typarams` threading from construction sites). ML spelling TBD
 (angle-bracket `f<int>(x)` vs a signature-only story).
 
-### 2. Generic functions as first-class values
+### 2. Generic functions as first-class values — ✅ landed (plan 0002)
 
-**State:** bails. `let g = identity; apply(g, 5)` errors
-`codegen: unsupported construct: a generic function as a function value`.
-This is [plan 0002](0002-codegen-generic-function-values.md)'s open bail —
-generics did not create it, but declared type parameters enlarge its surface
-(a user can now *name* a polymorphic function intending to pass it).
-
-**Scope:** belongs to plan 0002 (per-`(name, concrete-type-args)`
-monomorphic specialization cache + forwarder emission). Tracked there;
-listed here because it is the most common thing users will hit once they
-write explicit generic signatures. No new work in *this* plan — close 0002.
+**State (2026-07): works.** `let g = identity` binds as a call alias; a
+generic function flowing into a concrete function-typed slot specialises to
+the slot's ABI (emitted like a capture-free lambda); lambda arguments to
+generic HOFs dispatch indirectly (`fn also(x, f) = f(x)` applied at two
+instantiations works). The enabling checker fix: builtin scheme binder ids
+(`Var(0)`/`Var(1)`) no longer collide with live inference variables
+(`RESERVED_SCHEME_VARS`), which had been silently blocking let-generalization
+of `-> T`-annotated functions. Remaining in plan 0002: only the still-generic
+lambda *returned* from a generic function (loud bail).
 
 ### 3. Static proof of the handler/row instantiation seam
 
@@ -206,9 +205,11 @@ Remaining:
 - [ ] **Call-site type application** `identity<int>(5)` — grammar +
       `Expr::Call.type_args` + both-flavor lowering + checker unification
       (§What-is-left 1).
-- [ ] **Generic functions as values** — land [plan 0002](0002-codegen-generic-function-values.md)'s
-      specialization cache; then a generic `let g = identity` passed to a HOF
-      compiles (§What-is-left 2).
+- [x] **Generic functions as values** — landed via [plan 0002](0002-codegen-generic-function-values.md):
+      slot-driven specialization + let-alias + inline fn-typed arg
+      registration; `let g = identity` passed to a HOF compiles and runs
+      (§What-is-left 2). Only the returned still-generic lambda remains, in
+      plan 0002.
 - [ ] **Static handler/row seam** — effect-row polymorphism on `Type::Fun`
       so the instantiation mismatch becomes a compile error, not a runtime
       abort; owned by [plan 0016](0016-algebraic-effects-and-handlers.md)

@@ -308,6 +308,16 @@ Semantics:
   exceptions and early exit.
 - An arm whose body is a plain value (no `resume`) is the implicit tail-resume of
   [Handler-Owned State]; the two styles coexist per effect.
+- **Serialized concurrent performs [EFFECTS-FIBER-PERFORM].** Fibers spawned
+  inside the handled body may perform into the same resuming handler
+  concurrently; each perform claims the handler's operation channel
+  exclusively for its full suspend→resume round-trip, and queued performs are
+  dispatched in turn. Answers are therefore deterministic per performer —
+  never interleaved or cross-delivered.
+- **`resume` is lexical to the arm.** A lambda written inside an arm runs when
+  *called*, not where it is written, so the arm's continuation is not live
+  inside it: `resume` inside a lambda body is a **type error** (`` `resume` is
+  only valid inside a handler arm ``), exactly as at top level.
 
 ```osprey
 effect Audit { step: fn(string) -> int }
@@ -402,6 +412,13 @@ The compiler enforces three static checks on effect programs. Each failure is a 
 | Every `perform` has a handler      | Runtime crash / unhandled exn   |
 | No circular effect dependency      | Stack overflow                  |
 | No handler that performs the same effect it handles | Infinite loop |
+
+> **Status — enforcement is at runtime today.** This section specifies the
+> designed state. In the current Rust compiler the first two checks are
+> enforced by a **runtime abort** (`unhandled effect: <Effect>.<op>`, nonzero
+> exit) rather than a compile error, and the self-performing-handler check is
+> not yet enforced. The compile-time checks land with effect rows on function
+> types — [plan 0016 §Phase C](../plans/0016-algebraic-effects-and-handlers.md).
 
 ### Circular Dependency Example
 

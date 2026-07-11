@@ -367,7 +367,9 @@ label =
         Done code   => "done (${code})"
 ```
 
-Pattern semantics, exhaustiveness, and the ternary shorthand are in [Pattern Matching](0007-PatternMatching.md).
+Pattern semantics, exhaustiveness, and the two-arm shorthands — the ternary
+and the Default-flavor `if`/`else if`/`else` expression ([GRAMMAR-IF-ELSE]) —
+are in [Pattern Matching](0007-PatternMatching.md).
 
 ## Variable Binding
 

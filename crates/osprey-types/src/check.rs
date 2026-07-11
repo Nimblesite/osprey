@@ -142,6 +142,12 @@ impl Checker {
         };
         c.register_result_ctors();
         c.register_builtin_variances();
+        // Burn the ids the builtin schemes hand-write as quantified binders so
+        // no live inference variable can collide with them (they stay
+        // permanently unbound). See `builtins::RESERVED_SCHEME_VARS`.
+        for _ in 0..crate::builtins::RESERVED_SCHEME_VARS {
+            let _ = c.ctx.fresh();
+        }
         c
     }
 
@@ -856,6 +862,50 @@ mod tests {
              }\n",
         );
         assert!(errs.iter().any(|e| e.message.contains("type mismatch")));
+    }
+
+    #[test]
+    fn declared_typaram_functions_generalize_regardless_of_binding_direction() {
+        // Regression lock for the builtin binder-id collision: builtin schemes
+        // quantify hand-written Var(0)/Var(1); when the fresh supply also
+        // handed out those ids, a var-var unification routed through them made
+        // `TypeEnv::free_vars` resolve THROUGH a builtin's binder, and
+        // `fn identity<T>(x) -> T = x` silently lost its polymorphism (the
+        // failure depended on which side of the unification held the typaram
+        // var). All three annotation spellings must stay polymorphic across
+        // two instantiations. See `builtins::RESERVED_SCHEME_VARS`.
+        ok("fn id1<T>(x: T) -> T = x\n\
+            print(\"${id1(5)} ${id1(\"hi\")}\")\n");
+        ok("fn id2<T>(x: T) = x\n\
+            print(\"${id2(5)} ${id2(\"hi\")}\")\n");
+        ok("fn id3<T>(x) -> T = x\n\
+            print(\"${id3(5)} ${id3(\"hi\")}\")\n");
+        // The HOF shape that first exposed it: a generic fn passed by name to
+        // an inferred HOF, applied at two different instantiations.
+        ok("fn identity<T>(x: T) -> T = x\n\
+            fn apply(f, x) = f(x)\n\
+            print(\"${apply(identity, 5)} ${apply(identity, \"hi\")}\")\n");
+    }
+
+    #[test]
+    fn resume_inside_an_arm_lambda_is_a_type_error() {
+        // A lambda body runs when called, not where it is written, so the
+        // arm's continuation is not live inside it ([EFFECTS-RESUME]).
+        let errs = check(
+            "effect E { op: fn() -> int }\n\
+             fn go() -> int !E = perform E.op()\n\
+             let r = handle E\n\
+                 op => {\n\
+                     let f = |x| => resume(x)\n\
+                     f(9)\n\
+                 }\n\
+             in go()\n",
+        );
+        assert!(
+            errs.iter()
+                .any(|e| e.message.contains("`resume` is only valid inside a handler arm")),
+            "expected the lambda-resume rejection, got: {errs:?}"
+        );
     }
 
     #[test]

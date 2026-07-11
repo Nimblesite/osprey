@@ -34,6 +34,16 @@ fn res(ok: Type) -> Type {
     Type::result(ok, err())
 }
 
+/// How many low variable ids the builtin schemes below use as hand-written
+/// quantified binders (`Var(0)`, `Var(1)`). The checker's fresh-variable
+/// supply must never allocate these ids as live inference variables: a
+/// collision lets user unification bind an id that `TypeEnv::free_vars` then
+/// resolves *through* a builtin's binder, making a user variable look
+/// free-in-env and silently blocking let-generalization — e.g.
+/// `fn identity<T>(x) -> T = x` losing its polymorphism depending on which
+/// direction a var-var unification happened to bind. [TYPE-GENERICS-FN]
+pub const RESERVED_SCHEME_VARS: u32 = 2;
+
 fn mono(env: &mut TypeEnv, name: &str, params: Vec<Type>, ret: Type) {
     env.insert(name, Scheme::mono(Type::fun(params, ret)));
 }

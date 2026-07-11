@@ -1,6 +1,10 @@
 # Pattern Matching
 
-`match` is the only branching construct in Osprey. Record patterns are matched structurally by field name, not by field order. See [Type System](0004-TypeSystem.md) for type unification rules.
+`match` is the only branching construct in Osprey's canonical AST — every
+surface conditional (the ternary, `?:`, and the Default flavor's
+`if`/`else` [GRAMMAR-IF-ELSE]) desugars to it at lowering. Record patterns
+are matched structurally by field name, not by field order. See
+[Type System](0004-TypeSystem.md) for type unification rules.
 
 > **Flavor layer — mixed.**  A `match` lowers to `Expr::Match` over `MatchArm`s, each carrying a `Pattern` (`Wildcard`, `Literal`, `Constructor { name, fields, sub_patterns }`, `TypeAnnotated`, `Structural`, `List`, `Binding`). Only the *spelling* of these patterns is a surface (CST) concern: this chapter shows the Default flavor — a one-field variant is `Success { value }`, where the ML flavor writes `Success value` ([`[FLAVOR-ML-MATCH]`](0024-MLFlavorSyntax.md#match)) — but both flavors lower to the **same** `Pattern::Constructor { name, fields }`. Everything else here — exhaustiveness checking, `any`/union narrowing, and arm semantics — is shared-core: it runs on the canonical AST and is flavor-blind ([`[FLAVOR-BOUNDARY]`](0023-LanguageFlavors.md#the-one-law)). See [Language Flavors](0023-LanguageFlavors.md) and [ML Flavor Syntax](0024-MLFlavorSyntax.md).
 
@@ -203,4 +207,46 @@ status =
     match isActive
         true  => "Active"
         false => "Inactive"
+```
+
+## if / else (Syntactic Sugar) [GRAMMAR-IF-ELSE]
+
+The Default flavor also spells the boolean two-arm match the way mainstream
+languages do. `if` is an **expression** — it always yields a value, so the
+`else` branch is mandatory and each branch is a single expression in braces:
+
+```ebnf
+if_expr ::= "if" expr "{" expr "}" "else" ( "{" expr "}" | if_expr )
+```
+
+```osprey
+fn tier(score) = if score >= 2000 { Epic } else if score >= 500 { Solid } else { Starter }
+```
+
+Desugars to the boolean match — no new AST node crosses the
+[FLAVOR-BOUNDARY], so it emits IR byte-identical to the explicit form:
+
+```osprey
+fn tier(score) = match score >= 2000 {
+    true  => Epic
+    false => match score >= 500 {
+        true  => Solid
+        false => Starter
+    }
+}
+```
+
+`else if` is simply a nested `if` expression in the `else` position, giving
+flat multi-way chains without indentation creep. An `if` with no `else` is a
+parse error — there is no value for the false path
+(`examples/failscompilation/if_without_else.ospo`).
+
+The ML flavor deliberately omits `if`/`else`: it writes the `match` directly.
+
+```osprey-ml
+tier score = match score >= 2000
+    true  => Epic
+    false => match score >= 500
+        true  => Solid
+        false => Starter
 ```

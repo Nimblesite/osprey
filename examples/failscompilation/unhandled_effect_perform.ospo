@@ -1,19 +1,16 @@
-// 🚀 SUPREMO ALGEBRAIC EFFECTS WITH PERFORM! 🔥
-
-// Effect declaration for logging
+// A `perform` with NO enclosing handler anywhere on the path must be
+// rejected. Enforcement today is the runtime unhandled-effect abort — a
+// nonzero exit the must-reject suite counts; the compile-time diagnostic is
+// tracked in plan 0016 (effect rows). This file must never gain a handler
+// for Logger.
 effect Logger {
     log: fn(string) -> Unit
 }
 
-// Effectful function that uses perform
-fn testLogging() -> Unit !Logger = {
-    perform Logger.log("Testing perform expression!")
-}
+fn testLogging() -> Unit !Logger = perform Logger.log("Testing perform expression!")
 
-// Main function 
 fn main() -> Unit = {
-    print("Testing perform expression parsing...")
+    print("Testing perform without a handler...")
     testLogging()
-    print("🎉 PERFORM TEST COMPLETE! 🎉")
-    print("Value: " + toString(finalUndefinedVariable))  // This should cause compilation error!
-} 
+    print("unreachable: the unhandled perform above must abort")
+}

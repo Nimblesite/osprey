@@ -1,0 +1,6 @@
+// `if` is an EXPRESSION, not a statement: it always produces a value, so the
+// `else` branch is mandatory ([GRAMMAR-IF-ELSE]). An `if` with no `else` has no
+// value on the false path and must be rejected at parse time.
+fn sign(n) = if n > 0 { 1 }
+
+print(sign(5))

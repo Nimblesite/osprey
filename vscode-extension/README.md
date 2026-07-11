@@ -14,18 +14,19 @@ strong compile-time safety.
 Hindley-Milner type checker, one effect system, one runtime, one standard
 library, one LLVM/wasm backend — fronted by two first-class **flavors**:
 
-- **Default flavor (`.osp`)** — C-style braces, `fn`, `f(x: a, y: b)` calls with
-  named arguments. The surface a systems programmer reaches for: explicit,
-  familiar, block-structured. **Fully implemented today.**
-- **ML flavor (`.ospml`)** — offside-rule layout (indentation, no braces),
-  curry-by-default, whitespace application `f a b`, `\x => e` lambdas, `:=`
-  mutation. The surface an FP devotee reaches for: terse, expression-first,
-  ML/Haskell-shaped. **In active development.**
+- **Default flavor (`.osp`)** — the accessible surface: C-style braces, `fn`,
+  `f(x: a, y: b)` calls with named arguments, `if`/`else if`/`else`. Borrows
+  the shapes of Kotlin, Swift, Go, Dart, C#, and Java so it reads like home.
+  **Fully implemented today.**
+- **ML flavor (`.ospml`)** — the uncompromising surface: offside-rule layout
+  (indentation, no braces), curry-by-default, whitespace application `f a b`,
+  `\x => e` lambdas, `:=` mutation. The best of the ML family, all the way —
+  no C-isms, no concessions. **In active development.**
 
 Neither flavor is the watered-down one: the surface goes all the way in your
-direction. Systems programmers get real braces; FP devotees get real layout and
-real currying. Pick your tribe and go all in — nobody is forced into the other
-camp's spelling.
+direction. Mainstream developers get a surface that reads like the languages
+they already know; FP devotees get real layout and real currying. Pick your
+tribe and go all in — nobody is forced into the other camp's spelling.
 
 Select the flavor *per file* (the `.ospml` extension, a leading
 `// osprey: flavor=ml` marker, or the `--flavor ml` CLI flag — all shipping

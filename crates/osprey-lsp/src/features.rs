@@ -206,7 +206,12 @@ fn symbol_item(s: &SymbolInfo) -> CompletionItem {
 
 /// The fixed keyword/snippet completions (superset of the old TS server's six).
 fn keyword_items() -> Vec<CompletionItem> {
-    const KEYWORDS: [(&str, &str, &str); 6] = [
+    const KEYWORDS: [(&str, &str, &str); 7] = [
+        (
+            "if",
+            "Conditional expression [GRAMMAR-IF-ELSE]",
+            "if ${1:condition} { ${2:then} } else { ${3:else} }",
+        ),
         (
             "fn",
             "Function declaration",

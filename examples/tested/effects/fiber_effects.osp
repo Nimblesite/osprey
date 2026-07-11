@@ -103,4 +103,24 @@ in {
     0
 }
 print("regions prod=" + toString(prodR) + " silent=" + toString(silentR))
+
+// (3) Two fibers perform concurrently into ONE resuming handler: each perform
+// claims the op channel exclusively, so the answers stay deterministic — this
+// locks the fiber-perform race fix ([EFFECTS-FIBER-PERFORM]).
+effect Gift {
+    get: fn(int) -> int
+}
+
+fn ask(tag) !Gift = perform Gift.get(tag)
+
+fn pairSum(a, b) !Gift = {
+    let f1 = spawn ask(a)
+    let f2 = spawn ask(b)
+    await(f1) + await(f2)
+}
+
+let raceSum = handle Gift
+    get tag => resume(tag * 10)
+in pairSum(1, 2)
+print("race-free sum " + toString(raceSum))
 print("=== done ===")

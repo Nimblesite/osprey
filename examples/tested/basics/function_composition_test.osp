@@ -163,4 +163,14 @@ let computed = fold(map(range(1, 4), makeAdder(10)), 0, fn(a, b) => a + b)
 let fieldcb = fold(filter(range(8, 13), vchk.check), 0, fn(a, b) => a + b)
 print("chain3: ${tri3(1)(2)(3)} computed: ${computed} fieldcb: ${fieldcb}")
 
+// === Generic functions as first-class values [TYPE-GENERICS-FN] ===
+// A generic function specialises into a concrete function-typed slot, a
+// let-bound generic name stays callable (call alias), and the Kotlin-style
+// scope-function idiom works: a generic HOF applies its lambda argument at
+// two different instantiations (int and string).
+fn identity<T>(x: T) -> T = x
+fn alsoDo(x, f) = f(x)
+let idAlias = identity
+print("generic-values: ${applyFunction(value: 33, func: identity)} ${idAlias(7)} ${alsoDo(21, fn(n) => n * 2)} ${alsoDo("osp", fn(s) => s + "!")}")
+
 print("=== Function Composition Test Complete ===")

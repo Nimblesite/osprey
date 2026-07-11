@@ -1,0 +1,9 @@
+// A CAPTURING lambda cannot cross the C boundary: an FFI callback slot takes
+// a raw code pointer, so there is nowhere to carry the closure environment —
+// a cell pointer would be jumped into as code. Codegen rejects it loudly
+// ([TYPE-FN-CLOSURE]); the fix is a named (capture-free) function.
+extern fn registerCallback(cb: fn(int) -> int) -> int
+
+let base = 10
+let r = registerCallback(fn(x) => x + base)
+print("${r}")

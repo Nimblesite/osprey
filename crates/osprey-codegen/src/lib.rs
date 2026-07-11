@@ -765,13 +765,31 @@ mod tests {
     }
 
     #[test]
-    fn generic_function_as_a_value_is_rejected() {
-        // A generic (polymorphic) function used as a first-class value has no
-        // single concrete ABI — closure.rs named_fn_cell rejects it loudly.
-        let err = compile_err(
+    fn generic_function_into_concrete_slot_specialises() {
+        // A generic (polymorphic) function flowing into a CONCRETE
+        // function-typed slot is specialised to the slot's ABI — emitted as a
+        // capture-free closure (expr.rs eval_arg → closure::emit_closure).
+        // Implements [TYPE-GENERICS-FN].
+        let ir = module(
             "fn identity(x) = x\n\
              fn apply(f: (int) -> int, v: int) -> int = f(v)\n\
              fn main() -> Unit = print(\"${apply(identity, 3)}\")\n",
+        );
+        assert!(ir.contains("__closure_fn_"));
+    }
+
+    #[test]
+    fn generic_function_value_without_a_slot_is_rejected() {
+        // With NO consuming slot to fix the ABI (a still-generic lambda
+        // returned from a generic function), codegen still rejects loudly —
+        // a variables-as-i64 ABI would silently corrupt string/float
+        // instantiations (closure.rs lambda_value).
+        let err = compile_err(
+            "fn mk<T>(x: T) = |y| => x\n\
+             fn main() -> Unit = {\n\
+               let f = mk(1)\n\
+               print(\"${f(0)}\")\n\
+             }\n",
         );
         assert!(matches!(err, CodegenError::Unsupported(_)));
     }

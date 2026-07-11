@@ -243,7 +243,8 @@ module.exports = grammar({
 
     match_arm: ($) => seq(field('pattern', $.pattern), '=>', field('body', $.expression)),
 
-    // Populist Default-flavor conditional (Kotlin/Swift/Rust shape). Osprey is
+    // Populist Default-flavor conditional [GRAMMAR-IF-ELSE]
+    // (Kotlin/Swift/Rust shape). Osprey is
     // expression-oriented, so `if` yields a value and the `else` branch is
     // required; each branch is a single expression wrapped in braces. `else if`
     // chains nest into `alternative`. Lowers to the same boolean `match` the

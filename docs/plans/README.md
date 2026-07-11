@@ -11,7 +11,7 @@ repros.
 
 | # | Plan | Subsystem | Status today | Scope |
 |---|------|-----------|--------------|-------|
-| [0002](0002-codegen-generic-function-values.md) | Generic functions & lambdas as values | codegen | Concrete capture-free/capturing lambdas work; generic ones bail | Medium |
+| [0002](0002-codegen-generic-function-values.md) | Generic functions & lambdas as values | codegen | Slot-driven specialization + let-alias landed; only a returned still-generic lambda bails | Low (remainder) |
 | [0004](0004-collection-stdlib-completion.md) | Collection / map stdlib surface | stdlib | `listXxx`/`mapXxx` implemented; spec bare names + a few ops missing | Low–Medium |
 | [0005](0005-runtime-result-bridge.md) | HTTP/WebSocket `Result` bridge | runtime | Functions work but return raw `int64_t`, not `Result<T, string>` | Medium |
 | [0007](0007-fiber-select.md) | `select` over channels | runtime | Parser + types work; codegen takes first arm; no runtime multiplexing | Medium |
@@ -22,8 +22,8 @@ repros.
 | [0012](0012-osprey-debugger.md) | Modern Osprey debugger | compiler/editor/runtime | Spec written; Phase 1 source line debugging in progress | High |
 | [0013](0013-ml-flavor-frontend.md) | ML flavor frontend (layout syntax, curry-by-default) | frontend/types/codegen/tooling | Frontend shipped (68 `.ospml` twins, VSIX, equivalence tests); handler *values* + ML must-reject remain | Mostly done |
 | [0014](0014-modules-and-namespaces.md) | Modules, namespaces & multi-file apps | frontend/resolver/types/codegen/lsp | Spec written ([0025](../specs/0025-ModulesAndNamespaces.md)); parser has only early `import`/`module` grouping | High |
-| [0015](0015-generics-and-variance.md) | Generics with `in`/`out` variance & generic effects | frontend/types/codegen (both flavors) | Core landed (fn/type/effect type params, variance, generic effects); turbofish + generic-fn-values + static seam remain | Mostly done |
-| [0016](0016-algebraic-effects-and-handlers.md) | Algebraic effects roadmap (resume/handler-values/multi-shot) | effects/types/codegen/runtime | Tail + single-shot resume + generic effects + multi-shot rejection (Phase A) done; handler values, effect-row polymorphism, wasm effects remain | High |
+| [0015](0015-generics-and-variance.md) | Generics with `in`/`out` variance & generic effects | frontend/types/codegen (both flavors) | Core + generic-fn-values landed; turbofish + static seam remain | Mostly done |
+| [0016](0016-algebraic-effects-and-handlers.md) | Algebraic effects roadmap (resume/handler-values/multi-shot) | effects/types/codegen/runtime | Tail + single-shot resume + generic effects + multi-shot rejection + fiber-perform race fix + lambda-resume type error done; handler values, effect rows (incl. static unhandled-effect checks), wasm effects remain | High |
 
 These were surfaced from `CodegenError::unsupported(...)` call sites, the
 `## Status` sections of the language specs (`docs/specs/`), and runtime `TODO`

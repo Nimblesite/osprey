@@ -101,6 +101,33 @@ let r = match x {
             body: (expression (primary_expression (literal (integer))))))))))
 
 ================================================================================
+if / else-if chain (expression form, else required) [GRAMMAR-IF-ELSE]
+================================================================================
+
+let t = if score >= 90 { "A" } else if score >= 80 { "B" } else { "C" }
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (statement
+    (let_declaration
+      name: (identifier)
+      value: (expression
+        (if_expression
+          condition: (expression
+            (binary_expression
+              left: (expression (primary_expression (identifier)))
+              right: (expression (primary_expression (literal (integer))))))
+          consequence: (expression (primary_expression (literal (string))))
+          alternative: (if_expression
+            condition: (expression
+              (binary_expression
+                left: (expression (primary_expression (identifier)))
+                right: (expression (primary_expression (literal (integer))))))
+            consequence: (expression (primary_expression (literal (string))))
+            alternative: (expression (primary_expression (literal (string))))))))))
+
+================================================================================
 Pipe chain (left-associative) with UFCS-style calls
 ================================================================================
 

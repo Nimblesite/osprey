@@ -133,8 +133,9 @@ impl Lowerer<'_> {
     }
 
     /// `if cond { a } else { b }` desugars to `match cond { true => a  false => b }`,
-    /// reusing the boolean-match path. `else if` is a nested `if_expression` in
-    /// the `alternative` field, so it recurses naturally into the `false` arm.
+    /// reusing the boolean-match path ([GRAMMAR-IF-ELSE]). `else if` is a nested
+    /// `if_expression` in the `alternative` field, so it recurses naturally into
+    /// the `false` arm.
     fn lower_if(&self, node: Node<'_>) -> Expr {
         Expr::Match {
             value: Box::new(self.lower_expr_field(node, "condition")),

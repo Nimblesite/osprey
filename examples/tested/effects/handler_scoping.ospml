@@ -54,3 +54,32 @@ nestedCall () =
     r = deepNestedOp ()
     perform Logger.log "after nested"
     r
+
+effect Ask
+    ask : int => int
+effect Tell
+    tell : int => int
+
+askBoth n =
+    a = perform Ask.ask n
+    perform Tell.tell a
+
+nested =
+    handle Ask
+        ask v => resume (v + 1)
+    in
+        handle Tell
+            tell v => resume (v * 2)
+        in askBoth 4
+
+askOnce n = perform Ask.ask n
+
+shadowed =
+    handle Ask
+        ask v => resume (v + 100)
+    in
+        handle Ask
+            ask v => resume (v + 1)
+        in askOnce 1
+print ("nested resuming " + toString nested + " shadowed resume " + toString shadowed)
+print "=== resume scoping done ==="

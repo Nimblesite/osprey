@@ -489,7 +489,15 @@ impl Checker {
             local.insert(p.name.clone(), crate::ty::Scheme::mono(ty.clone()));
             ptys.push(ty);
         }
+        // A lambda body runs when *called*, not where it is written: the
+        // enclosing arm's continuation is not live inside it, so `resume`
+        // there is the same hard error as at top level. Codegen already
+        // clears its arm state across lambda boundaries (builder.rs) — this
+        // keeps the checker in agreement so the program is rejected here,
+        // with a type error, instead of deep in codegen. [EFFECTS-RESUME]
+        let saved_resume_ctx = std::mem::take(&mut self.resume_ctx);
         let body_ty = self.infer_expr(body, &local);
+        self.resume_ctx = saved_resume_ctx;
         let ret = match return_type {
             Some(te) => {
                 let r = type_expr_to_type(te, &empty);

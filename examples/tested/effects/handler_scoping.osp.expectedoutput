@@ -14,3 +14,5 @@ forward chain result: 42
 [OUTER-DEBUG] debug outer
 [OUTER-LOG] outer result: 21
 === done ===
+nested resuming 10 shadowed resume 2
+=== resume scoping done ===

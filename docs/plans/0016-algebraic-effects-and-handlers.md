@@ -63,6 +63,26 @@ continuation runtime is native-only). This plan sequences those to done.
    (runtime guard in `__osprey_coro_resume`). A multi-shot-*capable* runtime
    (stack copying or CPS) is still out of scope — see Risks.
 
+1b. ~~**Concurrent fiber performs into one resuming handler were silently
+   wrong.**~~ **FIXED ([EFFECTS-FIBER-PERFORM]).** Two fibers spawned inside a
+   handled body, each performing into the same resuming handler, shared one
+   op/args/resume_value channel with no ownership: a second perform overwrote
+   the first's arguments and both consumed the same resume value —
+   nondeterministic wrong answers with exit 0 (audit repro: expected `r=3`,
+   observed `r=4` on 4 of 5 runs). Each perform now claims the channel
+   exclusively for its full ping-pong (`in_flight` in
+   `compiler/runtime/effects_runtime.c` `__osprey_coro_suspend`); queued
+   performs are dispatched by the existing drive-loop re-entry. Locked by
+   `examples/tested/effects/fiber_effects.{osp,ospml}` §(3) — deterministic
+   `race-free sum 30`.
+
+1c. ~~**`resume` inside a lambda in an arm: checker accepted, codegen
+   rejected.**~~ **FIXED.** The checker's `resume_ctx` is now cleared across
+   `Expr::Lambda` boundaries (matching codegen): a lambda body runs when
+   *called*, not where it is written, so the arm's continuation is not live
+   inside it. Now a type error (`` `resume` is only valid inside a handler
+   arm ``); pinned by `examples/failscompilation/resume_in_arm_lambda.ospo`.
+
 2. **First-class handler values do not parse.**
    ```osprey-ml
    db = handler Log
@@ -147,6 +167,21 @@ last ML gap (plan 0013 Phase 0) and the richer Default surface.
 Turns the plan-0015 §3 runtime abort into a compile error. This is
 effect-row polymorphism — the largest type-system piece.
 
+> **Scope is wider than the seam (2026-07 audit).** The Rust compiler
+> currently has **no compile-time unhandled-effect checking at all** — every
+> rejection (unhandled perform, undeclared operation, missing `!E` row,
+> circular handler dependency) is the runtime null-lookup abort emitted by
+> `emit_unhandled_guard` (`crates/osprey-codegen/src/effects.rs`). The Go-era
+> static checks were not ported (`crates/diff_examples.sh` documents the
+> escapes: `FC_EXPECTED_ESCAPES` counts fc cases that *compile* when they
+> should be compile errors). Spec 0017's §Static Safety Checks describes the
+> designed state, with a Status note marking enforcement as runtime-abort
+> today. Phase C's rows are the machinery that restores the static checks —
+> when it lands, ratchet `FC_EXPECTED_ESCAPES` down. Also unenforced today:
+> a handler arm performing its own effect **hangs** (LLVM turns the
+> arm→perform→arm recursion into an infinite loop) instead of erroring — the
+> self-recursion check belongs to this phase too.
+
 - [ ] **Effect rows on function types**: add an effect-row component to
       `Type::Fun` (a set of instantiated `EffectRef`s, plus a row variable
       `!E` for polymorphism), so a call carries the callee's declared row into
@@ -222,6 +257,13 @@ but the least user-visible (the runtime already fails safe).
 
 ## TODO (roll-up)
 
+- [x] **Fiber-perform race** — concurrent performs into one resuming handler
+      serialized per-coro (`in_flight`, [EFFECTS-FIBER-PERFORM]); was
+      nondeterministic silent wrong answers. Locked in
+      `fiber_effects.{osp,ospml}`.
+- [x] **Lambda-resume checker/codegen split** — `resume` inside an arm lambda
+      is now a type error (`resume_ctx` cleared across `Expr::Lambda`);
+      pinned by `resume_in_arm_lambda.ospo`.
 - [x] **Phase A** — reject multi-shot resume (runtime guard +
       failscompilation + 0017 §Status). *Done.* (Optional static-detection
       refinement deferred; the runtime guard is sound and total.)

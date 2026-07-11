@@ -41,3 +41,27 @@ word =
             answer
     in echoWord ()
 print ("word=" + word)
+
+effect Checked
+    half : int => Result<int, string>
+
+runChecked : Unit -> int ! Checked
+runChecked () =
+    r = perform Checked.half 10
+    match r
+        Success value => value
+        Error message => 0
+
+checked =
+    handle Checked
+        half n => resume (Success(value = n))
+    in runChecked ()
+
+echoNum : Unit -> int ! Relay<int>
+echoNum () = perform Relay.ask ()
+
+num =
+    handle Relay
+        ask => resume 41
+    in echoNum ()
+print ("checked=" + toString checked + " num=" + toString num)
