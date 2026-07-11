@@ -111,6 +111,10 @@ pub(crate) enum MlItem {
         /// Source position.
         pos: Position,
     },
+    /// A `(** … *)` documentation comment's raw text, paired by the lowerer
+    /// with the declaration that follows it ([DOC-SIGIL-ML]) — the same
+    /// pairing pattern as [`MlItem::Signature`].
+    Doc(String),
 }
 
 /// Declaration-site variance of a type parameter, exactly as written

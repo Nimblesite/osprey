@@ -171,6 +171,11 @@ impl Parser<'_> {
     /// error.
     fn item(&mut self) -> Option<MlItem> {
         match self.peek() {
+            TokKind::Doc(text) => {
+                let text = text.clone();
+                self.advance();
+                Some(MlItem::Doc(text))
+            }
             TokKind::KwMut => self.mut_binding(),
             TokKind::KwType => self.type_decl(),
             TokKind::KwExtern => self.extern_decl(),

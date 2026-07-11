@@ -27,9 +27,9 @@ use super::cst::{
 };
 use crate::strings::{lower_interpolation, unquote};
 use osprey_ast::{
-    EffectOperation, EffectRef, Expr, ExternParameter, FieldAssignment, HandlerArm, MapEntry,
-    MatchArm, Parameter, Pattern, Position, Program, Stmt, TypeExpr, TypeField, TypeParam,
-    TypeVariant, Variance,
+    DocComment, DocScope, EffectOperation, EffectRef, Expr, ExternParameter, FieldAssignment,
+    HandlerArm, MapEntry, MatchArm, Parameter, Pattern, Position, Program, Stmt, TypeExpr,
+    TypeField, TypeParam, TypeVariant, Variance,
 };
 use std::cell::RefCell;
 use std::collections::HashSet;
@@ -167,8 +167,14 @@ fn collect_names_in_expr(expr: &MlExpr, out: &mut HashSet<String>) {
 fn lower_items(items: Vec<MlItem>) -> Vec<Stmt> {
     let mut out = Vec::new();
     let mut pending: Option<MlSig> = None;
+    // The most recent `(** … *)` doc comment, attached to the next declaration
+    // ([DOC-SIGIL-ML]) — the same pairing pattern as a signature.
+    let mut pending_doc: Option<DocComment> = None;
     for item in items {
         match item {
+            MlItem::Doc(text) => {
+                pending_doc = Some(crate::docparse::parse_doc(&text, DocScope::Outer));
+            }
             MlItem::Signature {
                 name,
                 type_params,
@@ -195,12 +201,12 @@ fn lower_items(items: Vec<MlItem>) -> Vec<Stmt> {
                 // as one `sig` argument so the lowerer stays within the
                 // parameter budget.
                 let sig = pending.take().filter(|s| s.name == name);
-                out.push(lower_binding(
-                    mutable, name, params, uncurried, body, pos, sig,
-                ));
+                let stmt = lower_binding(mutable, name, params, uncurried, body, pos, sig);
+                out.push(attach_doc(stmt, pending_doc.take()));
             }
             MlItem::Assign { name, value, pos } => {
                 pending = None;
+                pending_doc = None;
                 out.push(Stmt::Assignment {
                     name,
                     value: lower_expr(value),
@@ -219,6 +225,7 @@ fn lower_items(items: Vec<MlItem>) -> Vec<Stmt> {
                     type_params: type_params.into_iter().map(lower_type_param).collect(),
                     variants: variants.into_iter().map(lower_variant).collect(),
                     validation_func: None,
+                    doc: pending_doc.take(),
                     position: Some(pos),
                 });
             }
@@ -233,6 +240,7 @@ fn lower_items(items: Vec<MlItem>) -> Vec<Stmt> {
                     name,
                     parameters: params.into_iter().map(lower_extern_param).collect(),
                     return_type: return_type.as_ref().and_then(type_expr),
+                    doc: pending_doc.take(),
                     position: Some(pos),
                 });
             }
@@ -247,11 +255,13 @@ fn lower_items(items: Vec<MlItem>) -> Vec<Stmt> {
                     name,
                     type_params: type_params.into_iter().map(lower_type_param).collect(),
                     operations: operations.into_iter().map(lower_effect_op).collect(),
+                    doc: pending_doc.take(),
                     position: Some(pos),
                 });
             }
             MlItem::Expr { value, pos } => {
                 pending = None;
+                pending_doc = None;
                 out.push(Stmt::Expr {
                     value: lower_expr(value),
                     position: Some(pos),
@@ -260,6 +270,48 @@ fn lower_items(items: Vec<MlItem>) -> Vec<Stmt> {
         }
     }
     out
+}
+
+/// Attach a pending doc comment to the `Function`/`Let` a binding lowered to.
+/// A binding lowers to exactly one of those two, so this covers both.
+fn attach_doc(stmt: Stmt, doc: Option<DocComment>) -> Stmt {
+    match stmt {
+        Stmt::Function {
+            name,
+            type_params,
+            parameters,
+            return_type,
+            effects,
+            body,
+            position,
+            ..
+        } => Stmt::Function {
+            name,
+            type_params,
+            parameters,
+            return_type,
+            effects,
+            body,
+            doc,
+            position,
+        },
+        Stmt::Let {
+            name,
+            mutable,
+            ty,
+            value,
+            position,
+            ..
+        } => Stmt::Let {
+            name,
+            mutable,
+            ty,
+            value,
+            doc,
+            position,
+        },
+        other => other,
+    }
 }
 
 /// Lower one `extern` parameter to a canonical [`ExternParameter`], threading its

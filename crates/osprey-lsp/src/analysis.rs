@@ -238,7 +238,7 @@ fn sym_of(stmt: &Stmt) -> Option<SymbolInfo> {
                 name,
                 param_pairs(parameters),
                 return_type.as_ref(),
-                doc.clone(),
+                render_doc(doc),
                 *position,
             );
             let binder = render_type_params(type_params);
@@ -255,12 +255,13 @@ fn sym_of(stmt: &Stmt) -> Option<SymbolInfo> {
             name,
             parameters,
             return_type,
+            doc,
             position,
         } => Some(fn_sym(
             name,
             extern_pairs(parameters),
             return_type.as_ref(),
-            None,
+            render_doc(doc),
             *position,
         )),
         Stmt::Let {
@@ -269,21 +270,29 @@ fn sym_of(stmt: &Stmt) -> Option<SymbolInfo> {
             doc,
             position,
             ..
-        } => Some(let_sym(name, ty.as_ref(), doc.clone(), *position)),
+        } => Some(let_sym(name, ty.as_ref(), render_doc(doc), *position)),
         Stmt::Type {
             name,
             type_params,
+            doc,
             position,
             ..
-        } => Some(generic_decl_sym(name, type_params, "type", *position)),
+        } => Some(generic_decl_sym(name, type_params, "type", render_doc(doc), *position)),
         Stmt::Effect {
             name,
             type_params,
+            doc,
             position,
             ..
-        } => Some(generic_decl_sym(name, type_params, "effect", *position)),
+        } => Some(generic_decl_sym(name, type_params, "effect", render_doc(doc), *position)),
         _ => None,
     }
+}
+
+/// Render a declaration's structured doc comment to the Markdown a hover shows,
+/// or `None` when it has none ([DOC-EXPORT], hover half).
+fn render_doc(doc: &Option<osprey_ast::DocComment>) -> Option<String> {
+    doc.as_ref().map(osprey_ast::DocComment::render_markdown)
 }
 
 /// A type/effect declaration symbol whose signature shows the binder
@@ -293,9 +302,11 @@ fn generic_decl_sym(
     name: &str,
     type_params: &[osprey_ast::TypeParam],
     kind: &str,
+    doc: Option<String>,
     position: Option<Position>,
 ) -> SymbolInfo {
     let mut sym = decl_sym(name, kind, position);
+    sym.doc = doc;
     let binder = render_type_params(type_params);
     if !binder.is_empty() {
         sym.signature = Some(format!("{kind} {name}{binder}"));
@@ -523,6 +534,64 @@ mod tests {
         ] {
             assert!(json.contains(frag), "missing {frag} in {json}");
         }
+    }
+
+    /// The rendered hover markdown for `name` in `src`, via the real symbol
+    /// path (`collect_all_symbols` → `doc`).
+    fn doc_for(src: &str, name: &str) -> Option<String> {
+        let parsed = osprey_syntax::parse_program(src);
+        assert!(parsed.errors.is_empty(), "{:?}", parsed.errors);
+        collect_all_symbols(&parsed.program)
+            .into_iter()
+            .find(|s| s.name == name)
+            .and_then(|s| s.doc)
+    }
+
+    #[test]
+    fn doc_comments_reach_hover_for_every_declaration_kind() {
+        // Default flavor: fn, type, effect each carry their /// doc into hover.
+        let src = "/// Doubles the input.\n\
+                   fn double(x) = x * 2\n\
+                   /// A performance tier.\n\
+                   type Tier = Epic | Solid\n\
+                   /// Emits a line.\n\
+                   effect Console { emit: fn(string) -> Unit }\n";
+        assert!(doc_for(src, "double").is_some_and(|d| d.contains("Doubles the input.")));
+        assert!(doc_for(src, "Tier").is_some_and(|d| d.contains("A performance tier.")));
+        assert!(doc_for(src, "Console").is_some_and(|d| d.contains("Emits a line.")));
+    }
+
+    #[test]
+    fn structured_sections_render_in_hover() {
+        let src = "/// Divides two numbers.\n\
+                   ///\n\
+                   /// # Parameters\n\
+                   /// - a: the numerator\n\
+                   ///\n\
+                   /// # Returns\n\
+                   /// the quotient\n\
+                   fn div(a, b) = intDiv(a, b)\n";
+        let d = doc_for(src, "div").expect("div doc");
+        assert!(d.contains("Divides two numbers."), "{d}");
+        assert!(d.contains("**Parameters**") && d.contains("`a`"), "{d}");
+        assert!(d.contains("**Returns**") && d.contains("the quotient"), "{d}");
+    }
+
+    #[test]
+    fn ml_flavor_doc_comments_reach_hover() {
+        // The ML (** … *) doc form lowers to the same DocComment and renders
+        // identically ([DOC-SIGIL-ML]).
+        let src = "(** Doubles the input. *)\n\
+                   double x = x * 2\n\
+                   (** A performance tier. *)\n\
+                   type Tier =\n    Epic\n    Solid\n";
+        let parsed = osprey_syntax::parse_program_with_flavor(src, osprey_syntax::Flavor::Ml);
+        assert!(parsed.errors.is_empty(), "{:?}", parsed.errors);
+        let syms = collect_all_symbols(&parsed.program);
+        let doc = syms.iter().find(|s| s.name == "double").and_then(|s| s.doc.clone());
+        assert!(doc.is_some_and(|d| d.contains("Doubles the input.")), "ml fn doc");
+        let tdoc = syms.iter().find(|s| s.name == "Tier").and_then(|s| s.doc.clone());
+        assert!(tdoc.is_some_and(|d| d.contains("A performance tier.")), "ml type doc");
     }
 
     #[test]

@@ -504,6 +504,8 @@ description: "Try Osprey programming language online with interactive code examp
             symbols: /[=><!~?:&|+\-*\/^%\\]+/,
             tokenizer: {
                 root: [
+                    // ML-flavor (* … *) block comments (incl. (** *) docs); nest via @push.
+                    [/\(\*/, 'comment', '@blockComment'],
                     [/\/\/.*$/, 'comment'],
                     // Type / union-variant names start with a capital letter.
                     [/[A-Z][\w$]*/, 'type'],
@@ -521,6 +523,13 @@ description: "Try Osprey programming language online with interactive code examp
                 ],
                 whitespace: [
                     [/[ \t\r\n]+/, ''],
+                ],
+                // Nesting (* … *) block comment: everything stays 'comment'.
+                blockComment: [
+                    [/\(\*/, 'comment', '@push'],
+                    [/\*\)/, 'comment', '@pop'],
+                    [/[^(*]+/, 'comment'],
+                    [/[(*]/, 'comment'],
                 ],
                 // String literals with `${...}` interpolation highlighted as code.
                 string: [

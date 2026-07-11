@@ -5,8 +5,10 @@
 //! enums means the type checker and codegen get compiler-enforced totality for
 //! free: adding a variant breaks every consumer until it handles the new form.
 
+mod doc;
 mod generics;
 mod resume;
+pub use doc::{DocComment, DocExample, DocScope};
 pub use generics::{EffectRef, TypeParam, Variance};
 pub use resume::contains_resume;
 
@@ -133,8 +135,8 @@ pub enum Stmt {
         ty: Option<TypeExpr>,
         /// The bound value expression.
         value: Expr,
-        /// Leading `///` documentation, joined by newline, when written.
-        doc: Option<String>,
+        /// Structured documentation comment, when written ([DOC-MODEL]).
+        doc: Option<DocComment>,
         /// Source position, if recorded.
         position: Option<Position>,
     },
@@ -162,8 +164,8 @@ pub enum Stmt {
         effects: Vec<EffectRef>,
         /// Function body expression.
         body: Expr,
-        /// Leading `///` documentation, joined by newline, when written.
-        doc: Option<String>,
+        /// Structured documentation comment, when written ([DOC-MODEL]).
+        doc: Option<DocComment>,
         /// Source position, if recorded.
         position: Option<Position>,
     },
@@ -175,6 +177,8 @@ pub enum Stmt {
         parameters: Vec<ExternParameter>,
         /// Declared return type, if any.
         return_type: Option<TypeExpr>,
+        /// Structured documentation comment, when written ([DOC-MODEL]).
+        doc: Option<DocComment>,
         /// Source position, if recorded.
         position: Option<Position>,
     },
@@ -188,6 +192,8 @@ pub enum Stmt {
         variants: Vec<TypeVariant>,
         /// An optional validation function name (`where`-constrained type).
         validation_func: Option<String>,
+        /// Structured documentation comment, when written ([DOC-MODEL]).
+        doc: Option<DocComment>,
         /// Source position, if recorded.
         position: Option<Position>,
     },
@@ -200,6 +206,8 @@ pub enum Stmt {
         type_params: Vec<TypeParam>,
         /// Declared operations.
         operations: Vec<EffectOperation>,
+        /// Structured documentation comment, when written ([DOC-MODEL]).
+        doc: Option<DocComment>,
         /// Source position, if recorded.
         position: Option<Position>,
     },
@@ -209,6 +217,8 @@ pub enum Stmt {
         name: String,
         /// Statements inside the module.
         body: Vec<Stmt>,
+        /// Structured documentation comment, when written ([DOC-MODEL]).
+        doc: Option<DocComment>,
     },
     /// A bare expression statement.
     Expr {

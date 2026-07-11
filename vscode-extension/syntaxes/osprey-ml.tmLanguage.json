@@ -19,8 +19,31 @@
     "comments": {
       "patterns": [
         {
+          "name": "comment.block.documentation.osprey-ml",
+          "begin": "\\(\\*\\*(?!\\))",
+          "end": "\\*\\)",
+          "patterns": [{ "include": "#block-comment-inner" }]
+        },
+        {
+          "name": "comment.block.osprey-ml",
+          "begin": "\\(\\*",
+          "end": "\\*\\)",
+          "patterns": [{ "include": "#block-comment-inner" }]
+        },
+        {
           "name": "comment.line.double-slash.osprey-ml",
           "match": "//.*$"
+        }
+      ]
+    },
+    "block-comment-inner": {
+      "comment": "Nested (* … *) inside a block comment; recurse so the whole region stays comment-colored.",
+      "patterns": [
+        {
+          "name": "comment.block.osprey-ml",
+          "begin": "\\(\\*",
+          "end": "\\*\\)",
+          "patterns": [{ "include": "#block-comment-inner" }]
         }
       ]
     },

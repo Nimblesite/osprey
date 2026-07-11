@@ -110,17 +110,16 @@ mod tests {
                 ..
             } => {
                 assert_eq!(name, "retries");
-                assert_eq!(
-                    doc.as_deref(),
-                    Some("The retry budget.\nBounded above by `maxRetries`.")
-                );
+                // The multi-line doc is one paragraph → the whole summary.
+                let d = doc.as_ref().expect("doc present");
+                assert_eq!(d.summary, "The retry budget. Bounded above by `maxRetries`.");
                 assert_eq!(position.map(|p| p.line), Some(3));
             }
             s => panic!("expected let, got {s:?}"),
         }
         match one("/// Adds two ints.\nfn add(a: int, b: int) -> int = a + b\n") {
             Stmt::Function { doc, position, .. } => {
-                assert_eq!(doc.as_deref(), Some("Adds two ints."));
+                assert_eq!(doc.as_ref().map(|d| d.summary.clone()).as_deref(), Some("Adds two ints."));
                 assert_eq!(position.map(|p| p.line), Some(2));
             }
             s => panic!("expected function, got {s:?}"),

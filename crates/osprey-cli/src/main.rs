@@ -793,6 +793,19 @@ mod tests {
         }
     }
 
+    /// Run a legacy regression fixture whose source filename predates the
+    /// `.osp` convention but whose expected output remains an `.osp` golden.
+    fn assert_bug_example_matches(rel_source: &str, rel_expected: &str) {
+        let _guard = example_lock();
+        let source = repo_root().join(rel_source);
+        let expected_path = repo_root().join(rel_expected);
+        let expected = read_text(&expected_path).unwrap_or_else(|e| panic!("{e}"));
+        let actual = run_example(&source).unwrap_or_else(|e| panic!("{e}"));
+
+        assert_eq!(actual.code, Some(0), "{}\n{}", rel_source, actual.stderr);
+        assert_eq!(actual.stdout.trim(), expected.trim(), "{rel_source}");
+    }
+
     fn collect_sources(dir: &Path, out: &mut Vec<PathBuf>) {
         let Ok(entries) = fs::read_dir(dir) else {
             return;
@@ -823,6 +836,22 @@ mod tests {
             Ok(rel) => rel.to_string_lossy().replace('\\', "/"),
             Err(_) => path.to_string_lossy().replace('\\', "/"),
         }
+    }
+
+    #[test]
+    fn bugs_fiber_determinism_bug_runs_in_spawn_order() {
+        assert_bug_example_matches(
+            "examples/bugs/fiber_determinism_bug",
+            "examples/bugs/fiber_determinism_bug.osp.expectedoutput",
+        );
+    }
+
+    #[test]
+    fn bugs_fiber_exact_replica_runs_in_spawn_order() {
+        assert_bug_example_matches(
+            "examples/bugs/fiber_exact_replica_test.bug",
+            "examples/bugs/fiber_exact_replica_test.osp.expectedoutput",
+        );
     }
 
     #[test]

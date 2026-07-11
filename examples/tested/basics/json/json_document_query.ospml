@@ -1,0 +1,33 @@
+// Query a JSON API payload with Osprey's built-in JSON document functions.
+// `jsonParse` owns the parsed document until `jsonFree` releases it; paths use
+// dots for object fields and `[index]` for array elements.
+
+reportValue (document, path) =
+    match jsonGet document path
+        Success value => print "${path} = ${value}"
+        Error message => print "${path} error: ${message}"
+
+reportPayload document =
+    reportValue (document, "service.name")
+    reportValue (document, "service.version")
+    reportValue (document, "features[1]")
+    reportValue (document, "settings.enabled")
+    featureCount = jsonLength document "features"
+    print "features = ${toString featureCount}"
+    missing = reportValue (document, "service.owner")
+    jsonFree document
+
+payload = "{\"service\":{\"name\":\"osprey-api\",\"version\":\"1.4\"},\"features\":[\"json\",\"http\",\"fibers\"],\"settings\":{\"enabled\":true}}"
+
+print "=== JSON document query ==="
+match jsonParse payload
+    Success document => reportPayload document
+    Error message => print "parse error: ${message}"
+
+match jsonParse "{\"service\":"
+    Success document =>
+        jsonFree document
+        print "invalid payload unexpectedly parsed"
+    Error message => print "invalid payload rejected"
+
+print "=== JSON query complete ==="

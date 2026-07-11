@@ -293,6 +293,7 @@ impl Checker {
                     type_params,
                     operations,
                     position,
+                    ..
                 } => self.collect_effect(name, type_params, operations, *position),
                 Stmt::Extern {
                     name,

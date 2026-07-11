@@ -16,6 +16,24 @@ use super::token::{keyword_or_ident, TokKind, Token};
 use crate::SyntaxError;
 use osprey_ast::Position;
 
+/// Normalise a `(** … *)` doc comment's raw inner text: trim the outer blank
+/// margins and, per line, drop leading whitespace and one optional `*`
+/// continuation marker (the odoc convention), so an aligned doc block lowers to
+/// clean prose. The shared body parser handles Markdown structure from there.
+fn strip_doc_lines(raw: &str) -> String {
+    raw.trim()
+        .lines()
+        .map(|line| {
+            let t = line.trim_start();
+            let body = t.strip_prefix('*').map_or(t, |r| r.strip_prefix(' ').unwrap_or(r));
+            body.trim_end()
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+        .trim()
+        .to_string()
+}
+
 /// Lex `source` into a layout-resolved token stream terminated by
 /// [`TokKind::Eof`], plus any lexical errors.
 pub(crate) fn lex(source: &str) -> (Vec<Token>, Vec<SyntaxError>) {
@@ -91,10 +109,70 @@ impl Scanner {
                         let _ = self.bump();
                     }
                 }
-                '(' if self.peek(1) == Some('*') => self.skip_block_comment(),
+                // A `(**`-with-content doc comment stops trivia-skipping so
+                // `scan_token` can emit it as a `Doc` token ([DOC-SIGIL-ML]);
+                // an ordinary `(* … *)` (or an empty/banner `(**)`/`(*****)`)
+                // is skipped as trivia.
+                '(' if self.peek(1) == Some('*') => {
+                    if self.at_doc_comment() {
+                        break;
+                    }
+                    self.skip_block_comment();
+                }
                 _ => break,
             }
         }
+    }
+
+    /// True when the cursor is at a `(**`-opened doc comment: the opener is
+    /// `(**` and the char after the second `*` is neither another `*` (banner
+    /// `(*****)`) nor `)` (empty `(**)`). Matches odoc's rule ([DOC-SIGIL-ML]).
+    fn at_doc_comment(&self) -> bool {
+        self.peek(0) == Some('(')
+            && self.peek(1) == Some('*')
+            && self.peek(2) == Some('*')
+            && !matches!(self.peek(3), Some('*') | Some(')') | None)
+    }
+
+    /// Scan a `(** … *)` doc comment (cursor at the opener) into its raw inner
+    /// text with the sigil and one optional surrounding space stripped. Reuses
+    /// the nesting/termination discipline of [`skip_block_comment`].
+    fn scan_doc_comment(&mut self) -> TokKind {
+        let start = self.pos();
+        let _ = self.bump(); // (
+        let _ = self.bump(); // *
+        let _ = self.bump(); // *
+        let mut text = String::new();
+        let mut depth = 1;
+        while depth > 0 {
+            match (self.peek(0), self.peek(1)) {
+                (Some('('), Some('*')) => {
+                    text.push('(');
+                    text.push('*');
+                    let _ = self.bump();
+                    let _ = self.bump();
+                    depth += 1;
+                }
+                (Some('*'), Some(')')) => {
+                    let _ = self.bump();
+                    let _ = self.bump();
+                    depth -= 1;
+                    if depth > 0 {
+                        text.push('*');
+                        text.push(')');
+                    }
+                }
+                (Some(c), _) => {
+                    text.push(c);
+                    let _ = self.bump();
+                }
+                (None, _) => {
+                    self.error(start, "unterminated `(** … *)` doc comment");
+                    break;
+                }
+            }
+        }
+        TokKind::Doc(strip_doc_lines(&text))
     }
 
     /// Consume a nesting `(* … *)` block comment (opener already at the cursor).
@@ -147,6 +225,9 @@ impl Scanner {
     }
 
     fn scan_token(&mut self, pos: Position) -> Option<TokKind> {
+        if self.at_doc_comment() {
+            return Some(self.scan_doc_comment());
+        }
         let c = self.peek(0)?;
         match c {
             '0'..='9' => Some(self.scan_number(pos)),

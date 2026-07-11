@@ -2,15 +2,20 @@
 //! `effect`, `extern`, `module`), type expressions, and match patterns.
 
 use osprey_ast::{
-    EffectOperation, EffectRef, Expr, ExternParameter, Parameter, Pattern, Position, Program,
-    Stmt, TypeExpr, TypeField, TypeParam, TypeVariant, Variance,
+    DocComment, DocScope, EffectOperation, EffectRef, Expr, ExternParameter, Parameter, Pattern,
+    Position, Program, Stmt, TypeExpr, TypeField, TypeParam, TypeVariant, Variance,
 };
 use tree_sitter::Node;
 
-/// Strip one doc-comment line's leading whitespace, its `///` marker, and one
-/// optional following space — leaving the prose. Implements [LSP-HOVER-DOCS]
+/// Strip one doc-comment line's leading whitespace, its `///`/`//!` marker, and
+/// one optional following space — leaving the prose. Implements
+/// [DOC-SIGIL-DEFAULT].
 fn strip_doc_line(line: &str) -> &str {
-    let rest = line.trim_start().strip_prefix("///").unwrap_or(line);
+    let t = line.trim_start();
+    let rest = t
+        .strip_prefix("///")
+        .or_else(|| t.strip_prefix("//!"))
+        .unwrap_or(line);
     rest.strip_prefix(' ').unwrap_or(rest)
 }
 
@@ -50,14 +55,20 @@ impl<'a> Lowerer<'a> {
         self.pos(node.child_by_field_name(field).unwrap_or(node))
     }
 
-    /// The leading `///` documentation of a declaration, each line stripped of
-    /// its `///` (and one optional space) and joined by newline; `None` when the
-    /// declaration carries no doc comment. Implements [LSP-HOVER-DOCS]
-    pub(crate) fn doc_text(&self, node: Node<'_>) -> Option<String> {
+    /// The leading `///`/`//!` documentation of a declaration, stripped of its
+    /// markers and lowered into a structured [`DocComment`] by the shared
+    /// flavor-neutral parser; `None` when the declaration carries no doc
+    /// comment. Implements [DOC-SIGIL-DEFAULT], [DOC-MODEL].
+    pub(crate) fn doc_text(&self, node: Node<'_>) -> Option<DocComment> {
         let doc = self.first_child_of_kind(node, "doc_comment")?;
         let text = self.text(doc);
+        let scope = if text.trim_start().starts_with("//!") {
+            DocScope::Inner
+        } else {
+            DocScope::Outer
+        };
         let body: Vec<&str> = text.lines().map(strip_doc_line).collect();
-        Some(body.join("\n"))
+        Some(crate::docparse::parse_doc(&body.join("\n"), scope))
     }
 
     /// First *named* child (skips anonymous tokens). Used to unwrap the wrapper
@@ -136,6 +147,7 @@ impl<'a> Lowerer<'a> {
                 return_type: node
                     .child_by_field_name("return_type")
                     .map(|n| self.lower_type(n)),
+                doc: self.doc_text(node),
                 position: Some(self.pos(node)),
             },
             "type_declaration" => self.lower_type_decl(node),
@@ -143,6 +155,7 @@ impl<'a> Lowerer<'a> {
                 name: self.field_text(node, "name"),
                 type_params: self.lower_type_params(node),
                 operations: self.lower_operations(node),
+                doc: self.doc_text(node),
                 position: Some(self.pos(node)),
             },
             "module_declaration" => Stmt::Module {
@@ -153,6 +166,7 @@ impl<'a> Lowerer<'a> {
                     .filter_map(|n| self.first_named(*n))
                     .filter_map(|n| self.lower_stmt(n))
                     .collect(),
+                doc: self.doc_text(node),
             },
             "expression_statement" => {
                 let expr = self.first_named(node)?;
@@ -187,6 +201,7 @@ impl<'a> Lowerer<'a> {
                 .first_child_of_kind(node, "type_validation")
                 .and_then(|tv| self.first_named(tv))
                 .map(|n| self.text(n)),
+            doc: self.doc_text(node),
             position: Some(self.pos(node)),
         }
     }
@@ -580,7 +595,7 @@ mod tests {
         }
         // A module body re-enters lower_stmt for nested declarations.
         match one("module M {\n  let x = 1\n  fn f() = x\n}\n") {
-            Stmt::Module { name, body } => {
+            Stmt::Module { name, body, .. } => {
                 assert_eq!(name, "M");
                 assert_eq!(body.len(), 2);
                 assert!(matches!(body[0], Stmt::Let { .. }));
