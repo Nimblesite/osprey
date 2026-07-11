@@ -11,7 +11,9 @@ Effect declarations, `perform` expressions, effect annotations on function types
 - **Implicit tail-resume.** An arm whose body is an ordinary expression returns that value to the `perform` site, which continues. This is the cheap default and handlers may own mutable state with it (see [Handler-Owned State]).
 - **Explicit `resume`.** An arm whose body contains a `resume` expression captures the performer's *delimited continuation*: `resume(v)` runs the rest of the handled computation with `v` as the operation's result and yields its answer back to the arm, so the arm can run code **after** the performer continues. Single-shot (each continuation is resumed at most once) and **deep** (the handler stays installed for the resumed computation). See [Resuming Handlers]. **Status: executable for single-shot deep continuations via the thread-as-continuation runtime in [plan 0008](../plans/0008-algebraic-effects-resume.md).**
 
-Multi-shot resume (resuming one continuation more than once) remains a follow-up.
+Multi-shot resume (resuming one continuation more than once) is **rejected at
+runtime** with a clear fatal message rather than silently returning a wrong
+answer; a multi-shot-capable runtime remains a follow-up ([plan 0016](../plans/0016-algebraic-effects-and-handlers.md) §Phase A).
 
 ## Keywords
 
@@ -294,8 +296,13 @@ Semantics:
 
 - **Deep.** The handler stays installed for the resumed computation: if the
   continuation performs the effect again, the same arm runs again.
-- **Single-shot.** Each continuation is resumed at most once. Multi-shot resume
-  remains a follow-up.
+- **Single-shot.** Each continuation is resumed at most once. Resuming an
+  already-consumed continuation (multi-shot) is **rejected at runtime** with
+  `fatal: continuation already resumed (multi-shot resume is not supported)`
+  and a nonzero exit — the thread-as-continuation model cannot re-run a
+  completed stack, and a loud abort beats silently returning the stale first
+  result. A multi-shot-capable runtime remains a follow-up
+  ([plan 0016](../plans/0016-algebraic-effects-and-handlers.md) §Phase A).
 - **Abort.** An arm that returns *without* resuming discards the continuation;
   its value becomes the result of the whole `handle … in` — the basis for
   exceptions and early exit.

@@ -1,0 +1,25 @@
+// Multi-shot resume is rejected [EFFECTS-RESUME]. The thread-as-continuation
+// runtime is single-shot: a completed pthread stack cannot be re-run. An arm
+// that resumes the SAME continuation twice must be refused loudly, not return a
+// stale first result with exit 0. This is a *runtime* rejection (the first
+// resume runs the body to completion, the second aborts), so it lives in the
+// must-reject suite by its nonzero exit — matching the language's "unsupported,
+// not silently wrong" contract until a multi-shot-capable runtime exists.
+
+effect Choose {
+    pick: fn() -> int
+}
+
+fn both() -> int !Choose = {
+    let x = perform Choose.pick()
+    x + 1
+}
+
+let total = handle Choose
+    pick => {
+        let a = resume(10)
+        let b = resume(20)
+        a + b
+    }
+in both()
+print("total=" + toString(total))

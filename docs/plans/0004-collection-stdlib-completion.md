@@ -61,8 +61,8 @@ Two viable approaches:
    derivable from existing `listGet`/slice ops) thin C runtime helpers.
 4. **Implement list `indexOf`.** Add C runtime equality scan + signature + dispatch.
 5. **Implement `filterEntries`, `foldEntries`, `zipToMap`, `groupBy`.** These take
-   callbacks — sequence after [Plan 0001](0001-codegen-higher-order-calls.md) so
-   computed callbacks work. Add C runtime + signatures + dispatch.
+   callbacks; computed callbacks already work (plan 0001, higher-order calls,
+   is done and retired). Add C runtime + signatures + dispatch.
 6. **Run `find-similar` before adding** each C helper to avoid duplicating an
    existing scan/fold primitive.
 
@@ -86,7 +86,8 @@ Two viable approaches:
 - [ ] Receiver-directed codegen dispatch to existing `listXxx`/`mapXxx` lowering.
 - [ ] Implement `head` (Result) and `tail` (total) — signatures, dispatch, C if needed.
 - [ ] Implement list `indexOf`.
-- [ ] Implement `filterEntries`, `foldEntries`, `zipToMap`, `groupBy` (after 0001).
+- [ ] Implement `filterEntries`, `foldEntries`, `zipToMap`, `groupBy`
+      (computed callbacks already work — plan 0001 done).
 - [ ] `find-similar` before adding any C helper; no duplicate primitives.
 - [ ] Extend `tested/basics/lists` + a map example; refresh `.expectedoutput`.
 - [ ] `make ci` green.

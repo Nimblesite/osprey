@@ -66,15 +66,16 @@ cross the C ABI) and is **out of scope** — keep that error.
   value used at two instantiations (`int` and `string`), and call both. Refresh
   `.expectedoutput`.
 - Add a generic-typed lambda stored in a `let` and passed to a higher-order
-  function (depends on [Plan 0001](0001-codegen-higher-order-calls.md)).
+  function (higher-order calls themselves already work — that was plan 0001,
+  since completed and retired).
 - Keep/extend a `failscompilation` case proving a *capturing* lambda as an FFI
   callback is still rejected.
 
 ## Risks / considerations
 
 - Specialization can multiply emitted code; dedupe rigorously via the cache.
-- Interacts with [Plan 0001](0001-codegen-higher-order-calls.md): both touch the
-  function-value path — sequence 0001 first, then 0002.
+- The higher-order-call path this builds on (plan 0001) is already done and
+  retired; this plan is the remaining generic-value slice of that work.
 - Verify ABI correctness for `float`/`string` instantiations (the exact hazard the
   current guard guards against).
 

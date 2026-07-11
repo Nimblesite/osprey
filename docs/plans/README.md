@@ -15,15 +15,15 @@ repros.
 | [0004](0004-collection-stdlib-completion.md) | Collection / map stdlib surface | stdlib | `listXxx`/`mapXxx` implemented; spec bare names + a few ops missing | Low–Medium |
 | [0005](0005-runtime-result-bridge.md) | HTTP/WebSocket `Result` bridge | runtime | Functions work but return raw `int64_t`, not `Result<T, string>` | Medium |
 | [0007](0007-fiber-select.md) | `select` over channels | runtime | Parser + types work; codegen takes first arm; no runtime multiplexing | Medium |
-| [0008](0008-algebraic-effects-resume.md) | Effect `resume` / continuations | effects | Single-shot deep `resume` landed; multi-shot rejection moved to 0016 | Done (single-shot) |
+| [0008](0008-algebraic-effects-resume.md) | Effect `resume` / continuations | effects | Single-shot deep `resume` landed; multi-shot now rejected loudly at runtime | Done |
 | [0009](0009-lsp-context-and-cross-file.md) | LSP context-awareness & cross-file | lsp | Variable hover (type+docs) landed; completion/sig-help still identifier-only, single-file | Medium |
-| [0010](0010-cross-language-benchmark-suite.md) | Cross-language benchmark suite | benchmarks | 18 cases × 5 langs shipped; `intDiv` added; feature-blocked classics (arrays, float) pending | Low–High |
+| [0010](0010-cross-language-benchmark-suite.md) | Cross-language benchmark suite | benchmarks | 22 cases × 5 langs shipped; `intDiv` added; feature-blocked classics (arrays, float) pending | Low–High |
 | [0011](0011-arc-gc-implementation.md) | Reclaiming memory backends (tracing GC + ARC) | codegen/runtime | Phase 1 conservative GC shipped (`--memory=gc`); Perceus ARC + Cheney + static-mode not started | High |
 | [0012](0012-osprey-debugger.md) | Modern Osprey debugger | compiler/editor/runtime | Spec written; Phase 1 source line debugging in progress | High |
 | [0013](0013-ml-flavor-frontend.md) | ML flavor frontend (layout syntax, curry-by-default) | frontend/types/codegen/tooling | Frontend shipped (68 `.ospml` twins, VSIX, equivalence tests); handler *values* + ML must-reject remain | Mostly done |
 | [0014](0014-modules-and-namespaces.md) | Modules, namespaces & multi-file apps | frontend/resolver/types/codegen/lsp | Spec written ([0025](../specs/0025-ModulesAndNamespaces.md)); parser has only early `import`/`module` grouping | High |
 | [0015](0015-generics-and-variance.md) | Generics with `in`/`out` variance & generic effects | frontend/types/codegen (both flavors) | Core landed (fn/type/effect type params, variance, generic effects); turbofish + generic-fn-values + static seam remain | Mostly done |
-| [0016](0016-algebraic-effects-and-handlers.md) | Algebraic effects roadmap (resume/handler-values/multi-shot) | effects/types/codegen/runtime | Tail + single-shot resume + generic effects work; multi-shot rejection, handler values, effect-row polymorphism, wasm effects remain | High |
+| [0016](0016-algebraic-effects-and-handlers.md) | Algebraic effects roadmap (resume/handler-values/multi-shot) | effects/types/codegen/runtime | Tail + single-shot resume + generic effects + multi-shot rejection (Phase A) done; handler values, effect-row polymorphism, wasm effects remain | High |
 
 These were surfaced from `CodegenError::unsupported(...)` call sites, the
 `## Status` sections of the language specs (`docs/specs/`), and runtime `TODO`

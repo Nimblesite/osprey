@@ -20,8 +20,9 @@ Osprey's effects work: `effect` declarations, `perform`, `handle … in`
 (Default) / `handle … in`/`… do` (ML), effect annotations, compile-time
 unhandled-effect rejection, handler-owned `mut` state, **generic effects**
 (`effect State<T>` with per-site instantiation), and **single-shot deep
-`resume`** (thread-as-continuation). What is NOT complete: **multi-shot
-resume** (today silently wrong, not rejected), **first-class handler values**
+`resume`** (thread-as-continuation), and **multi-shot rejection** (a second
+resume on a consumed continuation now aborts loudly — Phase A, done). What is
+NOT complete: a **multi-shot-capable runtime**, **first-class handler values**
 (`handler E { … }` and multi-install `handle a b do body`), **static effect
 safety across the handler/row instantiation seam** (currently a runtime
 abort, not a compile error), and **effects on the wasm target** (the
@@ -48,18 +49,19 @@ continuation runtime is native-only). This plan sequences those to done.
 
 ## Where it stops (each with a repro)
 
-1. **Multi-shot resume is silently wrong, not rejected.**
+1. ~~**Multi-shot resume is silently wrong, not rejected.**~~ **FIXED (Phase A).**
    ```osprey
    effect Choose { pick: fn() -> bool }
    handle Choose
        pick => { let a = resume(true)  let b = resume(false)  a + b }
    in both()
    ```
-   A correct multi-shot fork would run the continuation twice; the
-   thread-as-continuation runtime cannot resume a consumed pthread, so the
-   second `resume` is a **no-op** and the program prints a wrong answer with
-   **exit 0** — no diagnostic. This is the most dangerous gap: silent
-   incorrectness beats a loud "unsupported."
+   The thread-as-continuation runtime cannot resume a consumed pthread. This
+   previously made the second `resume` a **no-op** that returned a wrong answer
+   with **exit 0** — no diagnostic. It now aborts with `fatal: continuation
+   already resumed (multi-shot resume is not supported)` and a nonzero exit
+   (runtime guard in `__osprey_coro_resume`). A multi-shot-*capable* runtime
+   (stack copying or CPS) is still out of scope — see Risks.
 
 2. **First-class handler values do not parse.**
    ```osprey-ml
@@ -86,24 +88,27 @@ continuation runtime is native-only). This plan sequences those to done.
 
 ## Phasing
 
-### Phase A — Reject multi-shot resume with a clear diagnostic — ⬜ (smallest, do first)
+### Phase A — Reject multi-shot resume with a clear diagnostic — ✅ (done)
 
-Closes the silent-incorrectness hole immediately, independent of everything
-else. The thread-as-continuation model is inherently single-shot (a live
-pthread stack cannot be cloned), so the correct near-term behavior is a
-**loud rejection**, not a wrong answer.
+Closed the silent-incorrectness hole. The thread-as-continuation model is
+inherently single-shot (a live pthread stack cannot be cloned), so the
+near-term behavior is a **loud rejection**, not a wrong answer.
 
-- [ ] Detect a second `resume` on the same continuation. Cheapest sound
-      approach: the coro carries a `resumed` flag; `__osprey_coro_resume`
-      aborts with `fatal: continuation already resumed (multi-shot resume is
-      not supported)` if already consumed. Runtime-side, always correct.
-- [ ] Prefer a **compile-time** diagnostic where statically obvious: an arm
-      whose body `resume`s on two control-flow paths that both execute (not
-      mutually-exclusive match arms) — reject in `osprey-types` with the arm's
-      span. Keep the runtime guard as the backstop for dynamic cases.
-- [ ] `examples/failscompilation/` case: a double-`resume` arm rejected with
-      the clear message; document the single-shot limitation in 0017 §Status.
-- [ ] Flip plan 0008's open TODO `[ ] Reject multi-shot resume with a clear
+- [x] Detect a second `resume` on the same continuation. `__osprey_coro_resume`
+      now aborts with `fatal: continuation already resumed (multi-shot resume
+      is not supported)` and a nonzero exit when the coro is already done (the
+      continuation was consumed). Runtime-side, always correct — the legitimate
+      drive→resume→drive re-entry leaves the coro *suspended*, not done, so it
+      never trips the guard. (`compiler/runtime/effects_runtime.c`.)
+- [ ] *(Optional, deferred.)* A **compile-time** diagnostic where statically
+      obvious — an arm that `resume`s on two always-executed control-flow paths
+      — would beat the runtime guard for those cases. Not implemented: the
+      runtime guard is sound and total, and the static analysis (distinguishing
+      always-both from mutually-exclusive match arms) is a nontrivial follow-up.
+- [x] `examples/failscompilation/multishot_resume_rejected.ospo`: a
+      double-`resume` arm rejected (nonzero exit) with the clear fatal message;
+      single-shot limitation documented in 0017 §Status.
+- [x] Flipped plan 0008's open TODO `Reject multi-shot resume with a clear
       diagnostic`.
 
 ### Phase B — First-class handler values + multi-install — ⬜ (the big feature)
@@ -184,17 +189,17 @@ effect-row polymorphism — the largest type-system piece.
 ## Dependencies & sequencing
 
 ```
-A (reject multi-shot)      independent — ship first, closes a silent bug
+A (reject multi-shot)      ✅ DONE — closed the silent-correctness bug
 B (handler values)         independent of A; unblocks plan 0013 Phase 0
 C (effect-row polymorphism) independent of A/B; closes plan 0015 §3
 D (wasm effects)           independent; target parity
 E (polish)                 after B (handler values change diagnostics surface)
 ```
 
-A and B are the highest value: A removes a silent-correctness footgun for a
-few lines of runtime code; B unlocks a whole class of programs and finishes
-the ML flavor. C is the deepest (a type-system feature) but the least
-user-visible (the runtime already fails safe).
+A is done (it removed a silent-correctness footgun for a few lines of runtime
+code). B is now the highest-value remaining work: it unlocks a whole class of
+programs and finishes the ML flavor. C is the deepest (a type-system feature)
+but the least user-visible (the runtime already fails safe).
 
 ## Risks
 
@@ -217,8 +222,9 @@ user-visible (the runtime already fails safe).
 
 ## TODO (roll-up)
 
-- [ ] **Phase A** — reject multi-shot resume (runtime guard + static case +
-      failscompilation + 0017 §Status). *Smallest; ship first.*
+- [x] **Phase A** — reject multi-shot resume (runtime guard +
+      failscompilation + 0017 §Status). *Done.* (Optional static-detection
+      refinement deferred; the runtime guard is sound and total.)
 - [ ] **Phase B** — first-class handler values + multi-install (AST, types,
       state, codegen, both surfaces, tests). *Unblocks plan 0013 Phase 0.*
 - [ ] **Phase C** — effect-row polymorphism on `Type::Fun`; static seam

@@ -356,10 +356,18 @@ int64_t __osprey_coro_resume(void *raw, int64_t value) {
         return 0;
     }
     pthread_mutex_lock(&coro->lock);
+    // Multi-shot rejection [EFFECTS-RESUME]: the thread-as-continuation model is
+    // single-shot — a consumed (completed) pthread stack cannot be re-run. A
+    // second `resume` on an already-finished continuation would silently return
+    // the stale first result (a wrong answer with exit 0), so reject it loudly
+    // instead. Legitimate re-entry (the body performed again) leaves the coro
+    // suspended, not done, and never reaches this guard.
     if (coro->done) {
-        int64_t result = coro->result;
         pthread_mutex_unlock(&coro->lock);
-        return result;
+        fprintf(stderr,
+                "fatal: continuation already resumed "
+                "(multi-shot resume is not supported)\n");
+        exit(1);
     }
     coro->resume_value = value;
     coro->suspended = false;

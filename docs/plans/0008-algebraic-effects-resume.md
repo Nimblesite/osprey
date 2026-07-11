@@ -2,12 +2,13 @@
 
 **Subsystem:** `crates/osprey-syntax`, `crates/osprey-ast`, `crates/osprey-types`,
 `crates/osprey-codegen`, `compiler/runtime`
-**Status:** Single-shot deep `resume` landed — thread-as-continuation (Option B).
-**Two open items** (multi-shot rejection, `make ci` note) are now tracked by
-the umbrella effects roadmap [plan 0016](0016-algebraic-effects-and-handlers.md)
-§Phase A. This plan documents the *single-shot resume* work specifically;
-0016 covers the path to a complete effect system (multi-shot rejection,
-first-class handler values, effect-row polymorphism, wasm effects).
+**Status:** Complete for what it scopes. Single-shot deep `resume` landed —
+thread-as-continuation (Option B) — and multi-shot resume is now **rejected at
+runtime** with a clear fatal message (the last open item). The umbrella effects
+roadmap [plan 0016](0016-algebraic-effects-and-handlers.md) tracks the path to a
+complete effect system beyond single-shot (a multi-shot-capable runtime,
+first-class handler values, effect-row polymorphism, wasm effects). This plan
+documents the *single-shot resume* work specifically.
 **Spec:** [0017-AlgebraicEffects.md](../specs/0017-AlgebraicEffects.md)
 
 ## Summary
@@ -72,8 +73,12 @@ existing direct-call path and emits the coroutine path only for arms that mentio
 ## Where it stops
 
 Multi-shot resume (resuming the same continuation more than once) remains a
-follow-up. The landed implementation is single-shot and stackful; a live pthread
-stack is not cloned.
+follow-up: the landed implementation is single-shot and stackful; a live pthread
+stack is not cloned. Attempting it is no longer silently wrong — a second
+`resume` on a consumed continuation aborts with `fatal: continuation already
+resumed (multi-shot resume is not supported)` and a nonzero exit. A genuinely
+multi-shot-capable runtime (stack copying or CPS) is scoped in
+[plan 0016](0016-algebraic-effects-and-handlers.md).
 
 ## Chosen design — thread-as-continuation (Option B)
 
@@ -146,14 +151,17 @@ that never resumes returns directly → host sets `abort`, joins the body, frees
 3. **Runtime.** Done: the `Coro` ABI above in `effects_runtime.c`.
 4. **Codegen.** Done: static gate; suspend-trampolines; `body_thunk`; the host
    `drive`/`dispatch_arm`; lower `resume`.
-5. **Multi-shot** follow-up.
+5. **Multi-shot** rejected at runtime (loud fatal, nonzero exit); a
+   multi-shot-*capable* runtime is a follow-up scoped in
+   [plan 0016](0016-algebraic-effects-and-handlers.md).
 
 ## Testing
 
 - CLI regression: `explicit_resume_runs_the_performer_continuation` asserts
   LIFO post-`resume` output for the Audit/pipeline example.
-- `failscompilation` case: multi-shot resume rejected with a clear message (until
-  implemented).
+- `failscompilation` case: `multishot_resume_rejected.ospo` — a double-`resume`
+  arm aborts with the clear fatal message and a nonzero exit (a *runtime*
+  rejection, counted by the must-reject suite's nonzero-exit check).
 
 ## Risks / considerations
 
@@ -173,10 +181,13 @@ that never resumes returns directly → host sets `abort`, joins the body, frees
       existing handler stack).
 - [x] Implement the `__osprey_coro_*` continuation ABI in `effects_runtime.c`.
 - [x] Codegen handler arms to capture the continuation + emit resume.
-- [ ] Reject multi-shot resume with a clear diagnostic — **moved to
-      [plan 0016](0016-algebraic-effects-and-handlers.md) §Phase A** (today a
-      double-`resume` silently no-ops the second call and returns a wrong
-      answer with exit 0; must become a loud rejection).
+- [x] Reject multi-shot resume with a clear diagnostic — **done** (tracked by
+      [plan 0016](0016-algebraic-effects-and-handlers.md) §Phase A). A second
+      `resume` on a consumed continuation now aborts with `fatal: continuation
+      already resumed (multi-shot resume is not supported)` and a nonzero exit
+      (runtime guard in `__osprey_coro_resume`, `effects_runtime.c`), instead of
+      silently returning the stale first result with exit 0. Covered by
+      `examples/failscompilation/multishot_resume_rejected.ospo`.
 - [x] Add a resuming-handler CLI regression test.
 - [x] Update 0017 §Status once single-shot resume lands.
 - [x] `make ci` green.
