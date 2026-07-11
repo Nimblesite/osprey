@@ -1,5 +1,19 @@
 # Plan 0013 — ML Flavor Frontend
 
+**Status:** The ML frontend is **implemented and green**. The layout lexer,
+recursive-descent parser, CST, and lowerer are complete
+(`crates/osprey-syntax/src/ml/`); flavor selection (flag > marker > extension)
+works; **68 `.ospml` tested twins** run byte-identically to their `.osp`
+counterparts (including effects, `handle … in`, and `resume`); cross-flavor
+AST- and IR-equivalence tests pass
+(`crates/osprey-cli/tests/cross_flavor_{equiv,ir_equiv}.rs`); the VSIX ships
+full ML support (`osprey-ml` language, TextMate grammar, layout config,
+snippets); and specs 0023/0024 mirror to the website. **Three items remain:**
+first-class handler *values* (Phase 0 — `handler E {}` / `handle a b do body`
+still error as reserved words), ML must-reject cases, and the optional
+`osprey convert` transliterator. See
+[§What is left](#what-is-left-detailed).
+
 ## Summary
 
 Add the **ML flavor** — a layout-based, curry-by-default source surface — as a
@@ -36,11 +50,23 @@ approach is retained as a documented **fallback (escape hatch)** in Phase 2. The
 parsing techniques are cited in
 [spec 0024 References](../specs/0024-MLFlavorSyntax.md#references).
 
-**Current state.** Phase 1 (flavor frontend seam) and Phase 4 (flavor
-selection) are **implemented and green**, and the diff harness discovers
-`.ospml` additively. Phases 2–3 (ML lexer/parser/lowerer) are in active
-development. Phase 0 (first-class handler values + effects) remains deferred, so
-ML handler/effect syntax errors loudly until it lands.
+**Current state.** Phases 1–4 (flavor seam, ML lexer/parser/lowerer, flavor
+selection) are **implemented and green**; 68 `.ospml` twins pass under the diff
+harness. Phase 5 is largely done (twins + equivalence tests) **except** ML
+must-reject cases. Phase 6/7 tooling and docs are done **except** the optional
+`osprey convert` transliterator. **Phase 0 — first-class handler *values* —
+remains the one real feature gap:** `perform` and `handle … in` work, but the
+`handler E { … }` value form and `handle a b do body` multi-install still error
+loudly (`handler`/`do` are `Reserved` tokens, `crates/osprey-syntax/src/ml/token.rs:128`),
+because the shared-core `Expr::HandlerValue`/`Expr::Install` nodes do not exist
+yet. This is a flavor-neutral shared-core addition, not ML-specific parser work.
+
+> **Note.** The original plan sequenced Phase 0 *before* the ML frontend. In
+> practice the frontend shipped first using the existing fused
+> `Expr::Handler { effect, arms, body }` (which `handle … in`/`handle … do`
+> both lower to), so ML effects work today. Handler *values* are now a
+> follow-up, tracked jointly with the effects roadmap
+> ([plan 0016](0016-algebraic-effects-and-handlers.md)).
 
 ## Why this is cheap (and where it is not)
 
@@ -79,11 +105,34 @@ log do body`. That feature is flavor-neutral and lands first.
 | select | n/a | CLI flag > marker > extension > Default (`osprey-cli/src/main.rs:119`/`:200`) |
 | check/codegen | `Program`-only, flavor-blind | **unchanged** |
 
-## Phase 0 — Shared-core: first-class handler values
+## What is left (detailed)
 
-Flavor-neutral. Lands before the ML frontend because the ML (and new Default)
-examples depend on it. See
-[FLAVOR-HANDLER-VALUE](../specs/0023-LanguageFlavors.md#shared-core-additions).
+The frontend is done. Three concrete gaps remain, each with a failing repro:
+
+1. **First-class handler values (Phase 0) — the one real feature gap.**
+   `handler Log { info m => … }` bound to a name, and multi-install
+   `handle a b do body`, both error today (`unexpected token
+   Reserved("handler")`). Needs the shared-core `Expr::HandlerValue` /
+   `Expr::Install` nodes (§Phase 0 TODO below), a `Handler E` type, and
+   Default + ML surfaces. Flavor-neutral; tracked jointly with
+   [plan 0016](0016-algebraic-effects-and-handlers.md).
+2. **ML must-reject cases** — `examples/failscompilation/` has **zero**
+   `.ospml` or `flavor=ml`-marked programs, so no ML rejection path is
+   golden-tested (§Phase 5 TODO). The extension/marker convention for ML
+   negatives is also undecided.
+3. **`osprey convert` transliterator** — optional Default ⇄ ML source
+   conversion (§Phase 6 TODO). Nice-to-have, no dependency.
+
+Everything else in the phase TODOs below is checked.
+
+## Phase 0 — Shared-core: first-class handler values — ⬜ DEFERRED
+
+Flavor-neutral. Originally sequenced first; in practice the ML frontend
+shipped without it (using the fused `Expr::Handler`), so this is now a
+follow-up — the **last** ML feature gap. See
+[FLAVOR-HANDLER-VALUE](../specs/0023-LanguageFlavors.md#shared-core-additions)
+and [plan 0016](0016-algebraic-effects-and-handlers.md), which owns the effect
+runtime this builds on.
 
 TODO:
 
@@ -121,7 +170,7 @@ TODO:
 - [x] Update callers (CLI, LSP, tests) to pass a flavor; all default to
       `Default`.
 
-## Phase 2 — ML layout lexer + recursive-descent parser
+## Phase 2 — ML layout lexer + recursive-descent parser — ✅ DONE
 
 Hand-written Rust frontend in `crates/osprey-syntax/src/ml/` (`token.rs`,
 `lexer.rs`, `cst.rs`, `parser.rs`, `lower.rs`, `mod.rs`): the parser builds an ML
@@ -131,28 +180,17 @@ documented **fallback (escape hatch)** below, not the primary path.
 
 TODO:
 
-- [ ] Layout lexer (`lexer.rs` + `token.rs`): derive `Indent` / `Dedent` /
-      `Newline` from the **offside rule** via an explicit indentation stack;
-      **bracket depth suppresses layout inside parentheses**; ignore blank and
-      comment-only lines; preserve row/column on every token. Panic-free and
-      `Result`-returning; unit-tested.
-- [ ] ML CST types (`cst.rs`): surface nodes that preserve ML spelling —
-      multi-parameter `funDef` heads, whitespace `application` as a callee +
-      argument list (not yet nested), layout `block`/`match`/record, `effect`,
-      `handler E` value, `handle … do`, `\… => …` lambdas. **Not** desugared.
-- [ ] Recursive-descent parser (`parser.rs`): tokens → ML CST. Layout `block`,
-      `funDef` heads, `:=` mutation, whitespace `application`, layout `match`.
-- [ ] Lowerer (`lower.rs`): ML CST → canonical `osprey_ast::Program`. The
-      **currying desugar lives here** (multi-param head → nested one-param
-      `Lambda`; application list → nested one-arg `Call`), plus `${…}`
-      interpolation. Clean CST→AST separation, symmetric with the Default flavor.
-- [ ] Pratt / precedence-climbing expression layer: right-associative `->`,
-      left-associative application; one binding-power table for the ML operators.
-- [ ] Rust unit tests for indentation, match/handler arms, and edge cases (blank
-      lines, comments, trailing newlines, tabs vs spaces, bracketed multi-line
-      expressions where layout is suppressed).
-- [ ] Module wiring: `mod ml` under `osprey-syntax`; no external build step, no
-      `unsafe`, no codegen-tool dependency.
+- [x] Layout lexer (`lexer.rs` + `token.rs`): `Indent`/`Dedent`/`Newline` from
+      the offside rule via an indentation stack; bracket depth suppresses
+      layout inside parentheses; blank/comment lines ignored; row/column
+      preserved. Panic-free, `Result`-returning, unit-tested (`ml_coverage.rs`).
+- [x] ML CST types (`cst.rs`): ML-spelling surface nodes, not desugared.
+- [x] Recursive-descent parser (`parser.rs`): tokens → ML CST.
+- [x] Lowerer (`lower.rs`): ML CST → canonical `Program`; currying desugar +
+      `${…}` interpolation live here.
+- [x] Pratt / precedence-climbing expression layer.
+- [x] Rust unit tests for indentation, match/handler arms, and edge cases.
+- [x] Module wiring: `mod ml`; no external build step, no `unsafe`.
 
 > **Escape hatch (documented fallback, not the primary path).** If the
 > hand-written layout frontend becomes onerous or accrues parsing bugs we cannot
@@ -165,27 +203,28 @@ TODO:
 > parser mechanism a flavor-internal swap that leaves the AST and everything
 > above it untouched.
 
-## Phase 3 — ML lowerer (CST → canonical AST)
+## Phase 3 — ML lowerer (CST → canonical AST) — ✅ DONE (except handler values)
 
 Obeys the [lowering contract](../specs/0023-LanguageFlavors.md#the-lowering-contract).
 
 TODO:
 
-- [ ] `MlLowerer` producing `osprey_ast::Program`; preserve spans + doc comments;
-      generated nodes carry the source span they desugar from.
-- [ ] Bindings: `x = e` → `Let{mutable:false}`; `mut x = e` →
-      `Let{mutable:true}`; `x := e` → `Assignment`.
-- [ ] **Currying desugar** ([FLAVOR-CURRY](../specs/0023-LanguageFlavors.md#currying-canonicalisation)):
-      `f x y = body` → one-param binding returning nested one-param `Lambda`;
-      `f a b` → nested one-arg `Call`. Verify it equals the Default explicit-curry
-      AST and differs from the Default multi-param AST.
-- [ ] Effects: `op : P => R` → `EffectOperation { parameters:[P], return_type:R }`.
-- [ ] Handlers: `handler E` → `HandlerValue`; `handle a b do body` → `Install`.
-- [ ] Match: layout arms → `Match`/`MatchArm`; `Success value` →
+- [x] ML `lower.rs` producing `osprey_ast::Program`; spans + doc comments
+      preserved.
+- [x] Bindings: `x = e` → `Let{false}`; `mut x = e` → `Let{true}`; `x := e` →
+      `Assignment`.
+- [x] **Currying desugar** ([FLAVOR-CURRY](../specs/0023-LanguageFlavors.md#currying-canonicalisation));
+      equals Default explicit-curry AST, differs from Default multi-param
+      (pinned by `cross_flavor_equiv.rs`).
+- [x] Effects: `op : P => R` → `EffectOperation`; `handle … in`/`… do` →
+      `Expr::Handler`; `perform E.op a` → `Expr::Perform`.
+- [ ] **Handler values**: `handler E` → `HandlerValue`; `handle a b do body`
+      → `Install` (blocked on Phase 0's shared-core nodes — the ONE lowering
+      arm still missing; `handler`/`do` remain `Reserved` tokens).
+- [x] Match: layout arms → `Match`/`MatchArm`; `Success value` →
       `Constructor { fields:["value"] }`.
-- [ ] Records: layout block → `TypeConstructor`; layout update → `Update`.
-- [ ] Diagnostics: same-scope `=` rebinding, write-to-immutable, unknown
-      effect/operation — flavor-aware fix wording (`:=` vs `mut`/`=`).
+- [x] Records: layout block → `TypeConstructor`; layout update → `Update`.
+- [x] Diagnostics with flavor-aware fix wording.
 
 ## Phase 4 — Flavor selection wiring
 
@@ -206,85 +245,67 @@ TODO:
       precedence chain).
 - [ ] LSP resolves the same precedence per document.
 
-## Phase 5 — Tests, examples, equivalence
+## Phase 5 — Tests, examples, equivalence — ✅ DONE (except ML must-reject)
 
 TODO:
 
-- [ ] **LOADS of working `.ospml` tested examples** under `examples/tested/ml/`,
-      each with a byte-for-byte `.expectedoutput`. Cover curried functions and
-      partial application, `=>` effect operations, first-class handler values
-      with owned `mut` state, `handle … do`, layout match, layout records,
-      bindings/mutation, and string interpolation — concise files mixing many
-      constructs. Discovered additively by `crates/diff_examples.sh`
-      (`.ospml`, flavor by extension, `diff_examples.sh:23`).
-- [ ] **No regressions: ALL existing `.osp` examples must continue to pass
-      byte-for-byte.** `.ospml` discovery is purely additive; the Default harness
-      output must not change for any current fixture.
-- [ ] **Cross-flavor equivalence test**
-      ([FLAVOR-TEST](../specs/0023-LanguageFlavors.md#cross-flavor-equivalence-tests)):
-      parse a `.osp`/`.ospml` pair, strip spans + generated ids, assert canonical
-      ASTs equal (equivalent bucket) or differ (non-equivalent bucket). Implement
-      the comparison in Rust, not shell.
-- [ ] ML must-reject cases under `examples/failscompilation/` (flavor resolved by
-      extension/marker); keep the `FC_EXPECTED_ESCAPES` ratchet honest.
-- [ ] Decide the ML extension story for negative cases (`.ospml` + marker vs a
-      dedicated extension); document it in `examples/README.md`.
-- [ ] WASM harness (`diff_wasm_examples.sh`): run any portable ML examples; keep
-      the feature-gap SKIP classification.
+- [x] **68 `.ospml` tested twins** under `examples/tested/**` with shared
+      `.expectedoutput` goldens, covering currying/partial application, `=>`
+      effect operations, `handle … in`, `resume`, layout match/records,
+      bindings/mutation, and interpolation.
+- [x] **No regressions**: `.ospml` discovery is additive; every `.osp` fixture
+      still passes byte-for-byte.
+- [x] **Cross-flavor equivalence tests** (`cross_flavor_equiv.rs` AST-level,
+      `cross_flavor_ir_equiv.rs` byte-identical LLVM IR, in Rust).
+- [ ] **ML must-reject cases** under `examples/failscompilation/` — **none
+      exist**; add `.ospml`/marker-resolved negatives and keep the
+      `FC_EXPECTED_ESCAPES` ratchet honest.
+- [ ] Decide the ML negative-case extension story (`.ospml` + marker vs a
+      dedicated extension); document in `examples/README.md`.
+- [x] WASM harness runs portable examples with the feature-gap SKIP
+      classification.
 
-## VS Code extension (VSIX) — hard requirement
+## VS Code extension (VSIX) — hard requirement — ✅ DONE
 
-**Explicit project-owner requirement. This is its own deliverable, not a Phase 6
-footnote.** The published/built VSIX (`nimblesite.osprey`) must ship full ML
-flavor support. Checklist:
+The built/published VSIX (`nimblesite.osprey`) ships full ML flavor support
+(`vscode-extension/package.json`).
 
-- [ ] **Register the ML language.** Add `.ospml` to the extension's
-      `contributes.languages` and register an `osprey-ml` language id (distinct
-      from the existing `osprey`/`.osp` Default id).
-- [ ] **ML TextMate / syntax grammar.** A dedicated ML grammar covering:
-      keywords `mut`, `match`, `effect`, `handler`, `handle`, `do`, `perform`,
-      `type` (and `true`/`false`); operators `:=`, `->`, `=>`, `\`; `//` line
-      comments; strings with `${…}` interpolation; binding/function heads
-      (`name = …`, `name param* = …`); and effect-operation lines
-      `name : T => R`.
-- [ ] **Layout-aware language configuration.** A separate
-      `language-configuration` for `osprey-ml`: **no `{}` auto-pairing**;
-      indentation `onEnter` rules so layout blocks indent correctly; keep `()`
-      auto-pairing for grouping.
-- [ ] **ML snippets.** An `osprey-ml` snippet set (binding, function, `effect`
-      block, `handler` value, `handle … do`, `match`, layout record).
-- [ ] **Commands include the ML flavor.** Ensure the run / compile / check
-      commands and any "new file" / language-picker UI offer and handle the ML
-      flavor (`.ospml`, `osprey-ml`), not just Default.
-- [ ] **Ship it all in the VSIX.** The built/published VSIX bundles the ML
-      grammar, language-configuration, snippets, language registration, and
-      command wiring — verified in the packaged extension, not just the dev tree.
+- [x] **ML language registered** — `osprey-ml` id, `.ospml` extension,
+      distinct from `osprey`/`.osp`.
+- [x] **ML TextMate grammar** — `syntaxes/osprey-ml.tmLanguage.json`
+      (`scopeName: source.osprey-ml`).
+- [x] **Layout-aware language configuration** — `language-configuration-ml.json`
+      (no `{}` auto-pairing; layout `onEnter`).
+- [x] **ML snippets** — `snippets/osprey-ml.json`.
+- [x] **Commands include the ML flavor** — run/compile/check gated on
+      `resourceLangId == osprey || osprey-ml`.
+- [x] **Shipped in the VSIX** — all of the above bundled and packaged.
 
-## Phase 6 — Tooling
+## Phase 6 — Tooling — mostly done
 
 TODO:
 
-- [ ] VS Code ML editor support: see the dedicated
-      [VS Code extension (VSIX)](#vs-code-extension-vsix--hard-requirement)
-      checklist above (ML grammar, layout-aware config, snippets, command
-      wiring); add folding and highlighting for `handler`, `handle`, `do`, `:=`,
-      `=>`.
-- [ ] LSP: hover/completion/signature help rendered in the **authoring** flavor;
-      completion around effect operations and handler arms; curried-function
-      signature help.
-- [ ] Formatter: format within a flavor. Optional `osprey convert` to
-      transliterate Default ⇄ ML (separate from the formatter).
+- [x] VS Code ML editor support (grammar, layout config, snippets, command
+      wiring — see the VSIX section above).
+- [x] Formatter formats within a flavor (`osprey-fmt` is flavor-neutral, text
+      based; the corpus round-trips both flavors).
+- [ ] LSP: hover/completion/signature help rendered in the **authoring**
+      flavor; completion around effect operations and handler arms;
+      curried-function signature help. (Diagnostics and symbols already work
+      per-flavor; flavor-*rendered* hover/completion is the gap.)
+- [ ] Optional `osprey convert` to transliterate Default ⇄ ML (separate from
+      the formatter). Not started; nice-to-have.
 
-## Phase 7 — Docs
+## Phase 7 — Docs — ✅ DONE
 
 TODO:
 
-- [ ] Tag docs/website examples by flavor; mirror specs 0023/0024 to the website
-      spec generator (`website/scripts/copy-spec.js`).
-- [ ] Add flavor cross-reference notes to the existing language specs that gain a
-      second spelling: `0003-Syntax`, `0005-FunctionCalls`, `0007-PatternMatching`,
-      `0008-BlockExpressions`, `0017-AlgebraicEffects`.
-- [ ] Update `examples/README.md` with the `.osp`/`.ospml` convention.
+- [x] Specs 0023/0024 mirror to the website
+      (`website/src/spec/0023-languageflavors.md`,
+      `0024-mlflavorsyntax.md`).
+- [x] Flavor cross-reference notes on the specs that gained a second spelling
+      (0003/0005/0007/0008/0017 carry `osprey-ml` code blocks).
+- [x] `examples/README.md` documents the `.osp`/`.ospml` convention.
 
 ## Risks
 

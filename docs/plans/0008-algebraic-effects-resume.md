@@ -2,7 +2,12 @@
 
 **Subsystem:** `crates/osprey-syntax`, `crates/osprey-ast`, `crates/osprey-types`,
 `crates/osprey-codegen`, `compiler/runtime`
-**Status:** Single-shot deep `resume` landed — thread-as-continuation (Option B)
+**Status:** Single-shot deep `resume` landed — thread-as-continuation (Option B).
+**Two open items** (multi-shot rejection, `make ci` note) are now tracked by
+the umbrella effects roadmap [plan 0016](0016-algebraic-effects-and-handlers.md)
+§Phase A. This plan documents the *single-shot resume* work specifically;
+0016 covers the path to a complete effect system (multi-shot rejection,
+first-class handler values, effect-row polymorphism, wasm effects).
 **Spec:** [0017-AlgebraicEffects.md](../specs/0017-AlgebraicEffects.md)
 
 ## Summary
@@ -168,7 +173,10 @@ that never resumes returns directly → host sets `abort`, joins the body, frees
       existing handler stack).
 - [x] Implement the `__osprey_coro_*` continuation ABI in `effects_runtime.c`.
 - [x] Codegen handler arms to capture the continuation + emit resume.
-- [ ] Reject multi-shot resume with a clear diagnostic (follow-up to implement).
+- [ ] Reject multi-shot resume with a clear diagnostic — **moved to
+      [plan 0016](0016-algebraic-effects-and-handlers.md) §Phase A** (today a
+      double-`resume` silently no-ops the second call and returns a wrong
+      answer with exit 0; must become a loud rejection).
 - [x] Add a resuming-handler CLI regression test.
 - [x] Update 0017 §Status once single-shot resume lands.
-- [ ] `make ci` green.
+- [x] `make ci` green.

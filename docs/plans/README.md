@@ -1,9 +1,13 @@
 # Implementation Plans — Unfinished Compiler Features
 
-Each plan below targets a feature that is **partially finished**: the compiler
-already handles some cases but bails (or no-ops) on the rest. Plans are ordered
-roughly by leverage (how much else they unblock) balanced against scope. Every
-plan ends with a TODO checklist.
+Each plan below targets a feature at some point on the road to done: most are
+**partially finished** (the compiler handles some cases but bails or no-ops on
+the rest), a few are **mostly done** with a clearly-scoped remainder, and one
+(0008 single-shot resume) is complete and folded into a successor roadmap.
+Plans are ordered roughly by leverage (how much else they unblock) balanced
+against scope. Every plan ends with a TODO checklist, and each carries a
+**§What is left** section that spells out the remaining work with concrete
+repros.
 
 | # | Plan | Subsystem | Status today | Scope |
 |---|------|-----------|--------------|-------|
@@ -11,22 +15,20 @@ plan ends with a TODO checklist.
 | [0004](0004-collection-stdlib-completion.md) | Collection / map stdlib surface | stdlib | `listXxx`/`mapXxx` implemented; spec bare names + a few ops missing | Low–Medium |
 | [0005](0005-runtime-result-bridge.md) | HTTP/WebSocket `Result` bridge | runtime | Functions work but return raw `int64_t`, not `Result<T, string>` | Medium |
 | [0007](0007-fiber-select.md) | `select` over channels | runtime | Parser + types work; codegen takes first arm; no runtime multiplexing | Medium |
-| [0008](0008-algebraic-effects-resume.md) | Effect `resume` / continuations | effects | Handlers work as value substitution; no `resume` | High |
+| [0008](0008-algebraic-effects-resume.md) | Effect `resume` / continuations | effects | Single-shot deep `resume` landed; multi-shot rejection moved to 0016 | Done (single-shot) |
 | [0009](0009-lsp-context-and-cross-file.md) | LSP context-awareness & cross-file | lsp | Variable hover (type+docs) landed; completion/sig-help still identifier-only, single-file | Medium |
 | [0010](0010-cross-language-benchmark-suite.md) | Cross-language benchmark suite | benchmarks | 18 cases × 5 langs shipped; `intDiv` added; feature-blocked classics (arrays, float) pending | Low–High |
+| [0011](0011-arc-gc-implementation.md) | Reclaiming memory backends (tracing GC + ARC) | codegen/runtime | Phase 1 conservative GC shipped (`--memory=gc`); Perceus ARC + Cheney + static-mode not started | High |
 | [0012](0012-osprey-debugger.md) | Modern Osprey debugger | compiler/editor/runtime | Spec written; Phase 1 source line debugging in progress | High |
-| [0013](0013-ml-flavor-frontend.md) | ML flavor frontend (layout syntax, curry-by-default) | frontend/types/codegen/tooling | Specs written ([0023](../specs/0023-LanguageFlavors.md)/[0024](../specs/0024-MLFlavorSyntax.md)); no ML frontend yet | High |
+| [0013](0013-ml-flavor-frontend.md) | ML flavor frontend (layout syntax, curry-by-default) | frontend/types/codegen/tooling | Frontend shipped (68 `.ospml` twins, VSIX, equivalence tests); handler *values* + ML must-reject remain | Mostly done |
 | [0014](0014-modules-and-namespaces.md) | Modules, namespaces & multi-file apps | frontend/resolver/types/codegen/lsp | Spec written ([0025](../specs/0025-ModulesAndNamespaces.md)); parser has only early `import`/`module` grouping | High |
-| [0015](0015-generics-and-variance.md) | Generics with `in`/`out` variance & generic effects | frontend/types/codegen (both flavors) | Implemented: fn/type/effect type params, variance checking, per-site effect instantiation | High |
+| [0015](0015-generics-and-variance.md) | Generics with `in`/`out` variance & generic effects | frontend/types/codegen (both flavors) | Core landed (fn/type/effect type params, variance, generic effects); turbofish + generic-fn-values + static seam remain | Mostly done |
+| [0016](0016-algebraic-effects-and-handlers.md) | Algebraic effects roadmap (resume/handler-values/multi-shot) | effects/types/codegen/runtime | Tail + single-shot resume + generic effects work; multi-shot rejection, handler values, effect-row polymorphism, wasm effects remain | High |
 
 These were surfaced from `CodegenError::unsupported(...)` call sites, the
 `## Status` sections of the language specs (`docs/specs/`), and runtime `TODO`
-markers. Features that are **entirely** unstarted (memory management /
-[0018](../specs/0018-MemoryManagement.md), fiber-isolated modules
-[0011](../specs/0011-LightweightFibersAndConcurrency.md) §modules) are out of
-scope here per the "prefer partially-finished" directive, and are noted only for
-context.
+markers.
 
-> Note: evidence line numbers were verified against HEAD `4fbc2183`. A concurrent
-> commit refactored capture analysis into `crates/osprey-codegen/src/freevars.rs`;
-> a couple of cited lines may drift by ±1 — anchor on the function/message names.
+> Note: evidence line numbers may drift by a few lines as the code moves —
+> anchor on function and diagnostic-message names, which the plans cite
+> alongside line numbers for exactly this reason.
