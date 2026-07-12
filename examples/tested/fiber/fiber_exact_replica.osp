@@ -95,7 +95,6 @@ fn processAlphaBatch() -> int ![Logger, Metrics] = {
     batchTotal
 }
 
-<<<<<<< Updated upstream
 fiber_set_deterministic_mode(enabled: true)
 handle Metrics
     recordSuccess taskId processed => print("✅ " + taskId + " succeeded: " + toString(processed) + " units")
@@ -106,20 +105,4 @@ in {
     let results1 = processAlphaBatch()
     print("Total: " + toString(results1))
     print("=== Test Complete ===")
-=======
-fn main() -> Unit = {
-    fiber_set_deterministic_mode(enabled: true)
-    handle Metrics
-        recordSuccess taskId processed => print("✅ " + taskId + " succeeded: " + toString(processed) + " units")
-    in handle Logger
-        info msg => print("ℹ️  " + msg)
-    in {
-        print("=== Fiber Execution Order Test ===")
-        
-        let results1 = processAlphaBatch()
-        
-        print("Total: " + toString(results1))
-        print("=== Test Complete ===")
-    }
->>>>>>> Stashed changes
 }
