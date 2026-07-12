@@ -22,14 +22,17 @@
 //!   [`Expr::TypeConstructor`], [`Expr::Block`], and [`Expr::InterpolatedStr`].
 
 use super::cst::{
-    MlArm, MlEffectOp, MlEffectRef, MlExpr, MlExternParam, MlField, MlHandleArm, MlItem, MlParam,
-    MlPattern, MlType, MlTypeField, MlTypeParam, MlVariance, MlVariant,
+    MlArm, MlEffectOp, MlEffectRef, MlExpr, MlExternParam, MlField, MlHandleArm, MlImport,
+    MlImportSelection, MlItem, MlModuleKind, MlNamespaceName, MlParam, MlPattern, MlSignatureItem,
+    MlSymbolPath, MlType, MlTypeField, MlTypeParam, MlVariance, MlVariant,
 };
 use crate::strings::{lower_interpolation, unquote};
 use osprey_ast::{
     DocComment, DocScope, EffectOperation, EffectRef, Expr, ExternParameter, FieldAssignment,
-    HandlerArm, MapEntry, MatchArm, Parameter, Pattern, Position, Program, Stmt, TypeExpr,
-    TypeField, TypeParam, TypeVariant, Variance,
+    HandlerArm, ImportDecl, ImportMember, ImportSelection, ImportTarget, MapEntry, MatchArm,
+    ModuleItem, ModuleKind, NamespaceName, Parameter, Pattern, Position, Program,
+    SignatureAscription, SignatureItem, SignatureType, Stmt, SymbolPath, TypeExpr, TypeField,
+    TypeParam, TypeVariant, Variance, Visibility,
 };
 use std::cell::RefCell;
 use std::collections::HashSet;
@@ -71,6 +74,13 @@ fn collect_bound_names(items: &[MlItem], out: &mut HashSet<String>) {
             }
             MlItem::Assign { value, .. } | MlItem::Expr { value, .. } => {
                 collect_names_in_expr(value, out);
+            }
+            MlItem::Namespace {
+                body: Some(body), ..
+            }
+            | MlItem::Module { body, .. } => collect_bound_names(body, out),
+            MlItem::Export { item, .. } | MlItem::Opaque { item, .. } => {
+                collect_bound_names(std::slice::from_ref(item.as_ref()), out);
             }
             _ => {}
         }
@@ -175,7 +185,7 @@ fn lower_items(items: Vec<MlItem>) -> Vec<Stmt> {
             MlItem::Doc(text) => {
                 pending_doc = Some(crate::docparse::parse_doc(&text, DocScope::Outer));
             }
-            MlItem::Signature {
+            MlItem::ValueSignature {
                 name,
                 type_params,
                 ty,
@@ -691,6 +701,9 @@ fn lower_expr(expr: MlExpr) -> Expr {
         MlExpr::Bool(b) => Expr::Bool(b),
         MlExpr::Str(raw) => lower_string(&raw),
         MlExpr::Ident(name) => Expr::Identifier(name),
+        MlExpr::Path(path) => Expr::Path(SymbolPath {
+            segments: path.segments,
+        }),
         MlExpr::Paren(inner) => lower_expr(*inner),
         MlExpr::Unary { op, operand } => Expr::Unary {
             op,
@@ -925,6 +938,10 @@ fn lower_application(func: MlExpr, arg: MlExpr) -> Expr {
     args.reverse();
     let curried = match &head {
         MlExpr::Ident(name) => BOUND_NAMES.with(|s| s.borrow().contains(name)),
+        // A qualified callable's declaration lives outside this source file.
+        // Preserve ML's curry-by-default application spine; authors explicitly
+        // select a flat cross-flavor call with `(a, b)` ([FLAVOR-INTEROP]).
+        MlExpr::Path(_) => true,
         _ => true,
     };
     if curried {

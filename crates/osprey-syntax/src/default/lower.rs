@@ -2,9 +2,12 @@
 //! `effect`, `extern`, `module`), type expressions, and match patterns.
 
 use super::position_from_point;
+use crate::strings::unquote;
 use osprey_ast::{
-    DocComment, DocScope, EffectOperation, EffectRef, Expr, ExternParameter, Parameter, Pattern,
-    Position, Program, Stmt, TypeExpr, TypeField, TypeParam, TypeVariant, Variance,
+    DocComment, DocScope, EffectOperation, EffectRef, Expr, ExternParameter, ImportDecl,
+    ImportMember, ImportSelection, ImportTarget, ModuleItem, ModuleKind, NamespaceName, Parameter,
+    Pattern, Position, Program, SignatureAscription, SignatureItem, SignatureType, Stmt,
+    SymbolPath, TypeExpr, TypeField, TypeParam, TypeVariant, Variance, Visibility,
 };
 use tree_sitter::Node;
 
@@ -96,20 +99,54 @@ impl<'a> Lowerer<'a> {
     pub fn lower_program(&self, root: Node<'_>) -> Program {
         let mut statements = Vec::new();
         let mut cursor = root.walk();
-        for child in root.named_children(&mut cursor) {
-            if child.kind() == "statement" {
-                if let Some(stmt) = self.first_named(child).and_then(|n| self.lower_stmt(n)) {
-                    statements.push(stmt);
-                }
+        let source_statements: Vec<Node<'_>> = root
+            .named_children(&mut cursor)
+            .filter(|child| child.kind() == "statement")
+            .collect();
+        let mut index = 0;
+        while let Some(wrapper) = source_statements.get(index).copied() {
+            let Some(node) = self.first_named(wrapper) else {
+                index += 1;
+                continue;
+            };
+            // A file-scoped namespace owns every following declaration in the
+            // file. Canonicalise that relationship here rather than making
+            // later phases reinterpret source order. [MODULES-FILE-SCOPED-NAMESPACE]
+            if node.kind() == "namespace_declaration"
+                && node.child_by_field_name("body").is_none()
+            {
+                let body = source_statements[index + 1..]
+                    .iter()
+                    .filter_map(|s| self.first_named(*s))
+                    .filter_map(|s| self.lower_stmt(s))
+                    .collect();
+                statements.push(Stmt::Namespace {
+                    name: self.lower_namespace_name(node.child_by_field_name("name")),
+                    body,
+                    file_scoped: true,
+                    position: Some(self.field_pos(node, "keyword")),
+                });
+                break;
             }
+            if let Some(stmt) = self.lower_stmt(node) {
+                statements.push(stmt);
+            }
+            index += 1;
         }
         Program { statements }
     }
 
     pub(crate) fn lower_stmt(&self, node: Node<'_>) -> Option<Stmt> {
         Some(match node.kind() {
-            "import_statement" => Stmt::Import {
-                module: self.texts_of_kind(node, "identifier"),
+            "import_statement" => Stmt::Import(self.lower_import(node)),
+            "namespace_declaration" => Stmt::Namespace {
+                name: self.lower_namespace_name(node.child_by_field_name("name")),
+                body: node
+                    .child_by_field_name("body")
+                    .map(|body| self.lower_statement_children(body))
+                    .unwrap_or_default(),
+                file_scoped: node.child_by_field_name("body").is_none(),
+                position: Some(self.field_pos(node, "keyword")),
             },
             "let_declaration" => Stmt::Let {
                 name: self.field_text(node, "name"),
@@ -156,14 +193,34 @@ impl<'a> Lowerer<'a> {
                 position: Some(self.pos(node)),
             },
             "module_declaration" => Stmt::Module {
-                name: self.field_text(node, "name"),
+                path: node
+                    .child_by_field_name("path")
+                    .map_or_else(SymbolPath::default, |p| self.lower_symbol_path(p)),
+                kind: if node.child_by_field_name("state").is_some() {
+                    ModuleKind::State
+                } else {
+                    ModuleKind::Plain
+                },
+                signature: node
+                    .child_by_field_name("signature")
+                    .map(|s| self.lower_signature_ascription(s)),
                 body: self
-                    .named_of_kind(node, "module_statement")
+                    .named_of_kind(node, "module_item")
                     .iter()
-                    .filter_map(|n| self.first_named(*n))
-                    .filter_map(|n| self.lower_stmt(n))
+                    .filter_map(|item| self.lower_module_item(*item))
                     .collect(),
                 doc: self.doc_text(node),
+                position: Some(self.field_pos(node, "keyword")),
+            },
+            "signature_declaration" => Stmt::Signature {
+                name: self.field_text(node, "name"),
+                items: self
+                    .named_of_kind(node, "signature_item")
+                    .iter()
+                    .filter_map(|item| self.lower_signature_item(*item))
+                    .collect(),
+                doc: self.doc_text(node),
+                position: Some(self.field_pos(node, "keyword")),
             },
             "expression_statement" => {
                 let expr = self.first_named(node)?;
@@ -178,7 +235,11 @@ impl<'a> Lowerer<'a> {
 
     fn lower_type_decl(&self, node: Node<'_>) -> Stmt {
         let def = node.child_by_field_name("definition");
-        let variants = match def.map(|d| (d.kind(), d)) {
+        let mut alias = match def.map(|d| (d.kind(), d)) {
+            Some(("type_alias", d)) => self.first_named(d).map(|t| self.lower_type(t)),
+            _ => None,
+        };
+        let mut variants = match def.map(|d| (d.kind(), d)) {
             Some(("union_type", d)) => self.map_of_kind(d, "variant", Self::lower_variant),
             Some(("record_type", d)) => vec![TypeVariant {
                 name: self.field_text(node, "name"),
@@ -186,10 +247,27 @@ impl<'a> Lowerer<'a> {
             }],
             _ => Vec::new(),
         };
+        // Preserve the historical `type Color = Red` one-variant union while
+        // making the adoption-friendly `type UserId = int` spelling an alias.
+        // Osprey constructors conventionally begin uppercase; a lone lowercase
+        // RHS therefore has an unambiguous type-alias interpretation.
+        if alias.is_none()
+            && variants.len() == 1
+            && variants[0].fields.is_empty()
+            && variants[0]
+                .name
+                .chars()
+                .next()
+                .is_some_and(char::is_lowercase)
+        {
+            alias = Some(TypeExpr::named(variants[0].name.clone()));
+            variants.clear();
+        }
         Stmt::Type {
             name: self.field_text(node, "name"),
             type_params: self.lower_type_params(node),
             variants,
+            alias,
             validation_func: self
                 .first_child_of_kind(node, "type_validation")
                 .and_then(|tv| self.first_named(tv))

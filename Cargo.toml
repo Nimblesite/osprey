@@ -7,6 +7,7 @@ members = [
     "tree-sitter-osprey",
     "crates/osprey-ast",
     "crates/osprey-syntax",
+    "crates/osprey-project",
     "crates/osprey-types",
     "crates/osprey-debug",
     "crates/osprey-codegen",
@@ -27,6 +28,7 @@ tree-sitter = "0.24"
 tree-sitter-language = "0.1"
 osprey-ast = { path = "crates/osprey-ast" }
 osprey-syntax = { path = "crates/osprey-syntax" }
+osprey-project = { path = "crates/osprey-project" }
 osprey-types = { path = "crates/osprey-types" }
 osprey-debug = { path = "crates/osprey-debug" }
 osprey-codegen = { path = "crates/osprey-codegen" }

@@ -65,6 +65,14 @@ module.exports = grammar({
     // `Name [` / `Name <` — array/generic type vs a bare type identifier.
     [$.array_type, $.type_identifier],
     [$.generic_type, $.type_identifier],
+    // A single bare identifier remains an identifier; qualified paths require
+    // at least one `::`, so these only overlap while the lexer has not yet seen
+    // the separator.
+    [$.qualified_path, $.primary_expression],
+    // `type Alias = Name` is intentionally kept as the historical one-variant
+    // union spelling. Unambiguous function/generic/array aliases use type_alias;
+    // opaque aliases are disambiguated by their module-item prefix.
+    [$.union_type, $.type_alias],
   ],
 
   rules: {
@@ -74,6 +82,7 @@ module.exports = grammar({
     statement: ($) =>
       choice(
         $.import_statement,
+        $.namespace_declaration,
         $.let_declaration,
         $.assignment,
         $.function_declaration,
@@ -81,11 +90,60 @@ module.exports = grammar({
         $.type_declaration,
         $.effect_declaration,
         $.module_declaration,
+        $.signature_declaration,
         $.expression_statement,
       ),
 
     import_statement: ($) =>
-      seq('import', sep1('.', $.identifier)),
+      seq(
+        'import',
+        choice(
+          // Compatibility with the original Default spelling. It lowers to
+          // the same namespace + SymbolPath model as `::` imports.
+          field('legacy_target', $.legacy_import_path),
+          seq(
+            field('target', $.import_target),
+            optional(field('tail', $.import_tail)),
+          ),
+        ),
+      ),
+
+    legacy_import_path: ($) =>
+      seq($.identifier, repeat1(seq('.', $.identifier))),
+
+    import_target: ($) =>
+      prec.right(
+        seq(
+          field('namespace', $.namespace_name),
+          repeat(seq('::', field('segment', $.identifier))),
+        ),
+      ),
+
+    import_tail: ($) =>
+      choice(
+        seq('as', field('alias', $.identifier)),
+        seq('::', '{', optional($.import_member_list), '}'),
+        seq('::', '*'),
+      ),
+
+    import_member_list: ($) => sep1(',', $.import_member),
+    import_member: ($) =>
+      seq(
+        field('name', $.identifier),
+        optional(seq('as', field('alias', $.identifier))),
+      ),
+
+    namespace_name: ($) => choice($.identifier, $.string),
+
+    namespace_declaration: ($) =>
+      seq(
+        optional($.doc_comment),
+        'namespace',
+        field('name', $.namespace_name),
+        choice(';', field('body', $.namespace_body)),
+      ),
+
+    namespace_body: ($) => seq('{', repeat($.statement), '}'),
 
     // ---------- DECLARATIONS ----------
     let_declaration: ($) =>
@@ -146,7 +204,7 @@ module.exports = grammar({
         field('name', $.identifier),
         optional(seq('<', field('type_parameters', $.type_parameter_list), '>')),
         '=',
-        field('definition', choice($.union_type, $.record_type)),
+        field('definition', choice($.record_type, $.union_type, $.type_alias)),
         optional($.type_validation),
       ),
 
@@ -159,8 +217,9 @@ module.exports = grammar({
       seq(optional(field('variance', choice('in', 'out'))), field('name', $.identifier)),
 
     union_type: ($) => prec.right(sep1('|', $.variant)),
+    type_alias: ($) => prec.dynamic(-1, $._type),
     variant: ($) =>
-      prec.right(seq(field('name', $.identifier), optional(seq('{', $.field_declarations, '}')))),
+      prec.right(1, seq(field('name', choice($.qualified_path, $.identifier)), optional(seq('{', $.field_declarations, '}')))),
 
     record_type: ($) => seq('{', $.field_declarations, '}'),
 
@@ -199,7 +258,7 @@ module.exports = grammar({
         seq('!', '[', $.effect_list, ']'),
       ),
     effect_list: ($) => sep1(',', $.effect_ref),
-    effect_ref: ($) => seq(field('name', $.identifier), optional($.type_arguments)),
+    effect_ref: ($) => seq(field('name', choice($.qualified_path, $.identifier)), optional($.type_arguments)),
 
     // ---------- TYPES ----------
     _type: ($) =>
@@ -216,9 +275,9 @@ module.exports = grammar({
         seq('fn', '(', optional($.type_list), ')', '->', $._type),
       ),
     generic_type: ($) =>
-      seq(field('name', $.identifier), '<', $.type_list, '>'),
-    array_type: ($) => seq(field('name', $.identifier), '[', $._type, ']'),
-    type_identifier: ($) => $.identifier,
+      seq(field('name', choice($.qualified_path, $.identifier)), '<', $.type_list, '>'),
+    array_type: ($) => seq(field('name', choice($.qualified_path, $.identifier)), '[', $._type, ']'),
+    type_identifier: ($) => choice($.qualified_path, $.identifier),
     type_list: ($) => sep1(',', $._type),
 
     // ---------- EXPRESSIONS ----------
@@ -271,7 +330,7 @@ module.exports = grammar({
       ),
 
     handler_expression: ($) =>
-      prec.right(seq('handle', field('effect', $.identifier), repeat1($.handler_arm), 'in', field('body', $.expression))),
+      prec.right(seq('handle', field('effect', choice($.qualified_path, $.identifier)), repeat1($.handler_arm), 'in', field('body', $.expression))),
     handler_arm: ($) =>
       seq(field('operation', $.identifier), optional($.handler_params), '=>', field('body', $.expression)),
     handler_params: ($) => repeat1($.identifier),
@@ -361,6 +420,7 @@ module.exports = grammar({
         $.object_literal,
         $.literal,
         $.lambda_expression,
+        $.qualified_path,
         $.identifier,
         seq('(', $.expression, ')'),
       ),
@@ -371,7 +431,7 @@ module.exports = grammar({
     send_call: ($) => seq('send', '(', $.expression, ',', $.expression, ')'),
     recv_call: ($) => seq('recv', '(', $.expression, ')'),
     perform_expression: ($) =>
-      seq('perform', field('effect', $.identifier), '.', field('operation', $.identifier), '(', optional($.argument_list), ')'),
+      seq('perform', field('effect', choice($.qualified_path, $.identifier)), '.', field('operation', $.identifier), '(', optional($.argument_list), ')'),
     // `resume(v)` resumes the performer's delimited continuation with `v`;
     // `resume()` resumes with Unit. Only legal inside a handler arm body.
     // Implements [EFFECTS-RESUME].
@@ -379,7 +439,7 @@ module.exports = grammar({
       seq('resume', '(', field('value', optional($.expression)), ')'),
 
     type_constructor: ($) =>
-      prec.dynamic(1, seq(field('name', $.identifier), optional($.type_arguments), '{', $.field_assignments, '}')),
+      prec.dynamic(1, seq(field('name', choice($.qualified_path, $.identifier)), optional($.type_arguments), '{', $.field_assignments, '}')),
     type_arguments: ($) => seq('<', $.type_list, '>'),
 
     update_expression: ($) =>
@@ -418,8 +478,8 @@ module.exports = grammar({
         $.integer, $.float, $.string, $.interpolated_string, $.boolean, // 0, 1.5, "x", true
         prec.right(seq(field('operator', choice('-', '+')), choice($.integer, $.float))), // -1, +42
         $.list_pattern, // [], [x], [a, b], [head, ...tail]
-        seq(field('name', $.identifier), '{', $.field_pattern, '}'), // Ok { value }
-        seq(field('name', $.identifier), '(', sep1(',', $.pattern), ')'), // Some(x)
+        seq(field('name', choice($.qualified_path, $.identifier)), '{', $.field_pattern, '}'), // Ok { value }
+        seq(field('name', choice($.qualified_path, $.identifier)), '(', sep1(',', $.pattern), ')'), // Some(x)
         seq(field('name', $.identifier), ':', '{', $.field_pattern, '}'), // p: { x, y }
         seq(field('name', $.identifier), ':', field('type', $._type)), // value: Int
         seq(field('name', $.identifier), optional(field('binding', $.identifier))), // bare var / capture
@@ -444,9 +504,104 @@ module.exports = grammar({
 
     // ---------- MODULES ----------
     module_declaration: ($) =>
-      seq(optional($.doc_comment), 'module', field('name', $.identifier), '{', repeat($.module_statement), '}'),
-    module_statement: ($) =>
-      choice($.let_declaration, $.function_declaration, $.type_declaration),
+      seq(
+        optional($.doc_comment),
+        optional(field('state', 'state')),
+        'module',
+        field('path', $.symbol_path),
+        optional(field('signature', $.signature_ascription)),
+        '{',
+        repeat($.module_item),
+        '}',
+      ),
+
+    signature_ascription: ($) =>
+      seq(
+        ':',
+        field('path', $.symbol_path),
+        optional(seq('+', field('extra', 'extra'))),
+      ),
+
+    module_item: ($) =>
+      choice($.export_declaration, $._module_declaration),
+
+    export_declaration: ($) =>
+      seq(
+        optional($.doc_comment),
+        'export',
+        choice(
+          seq(field('opaque', 'opaque'), field('declaration', $.type_declaration)),
+          field('declaration', $._module_declaration),
+        ),
+      ),
+
+    _module_declaration: ($) =>
+      choice(
+        $.let_declaration,
+        $.function_declaration,
+        $.extern_declaration,
+        $.type_declaration,
+        $.effect_declaration,
+        $.module_declaration,
+        $.signature_declaration,
+      ),
+
+    // ---------- SIGNATURES ----------
+    signature_declaration: ($) =>
+      seq(
+        optional($.doc_comment),
+        'signature',
+        field('name', $.identifier),
+        '{',
+        repeat($.signature_item),
+        '}',
+      ),
+
+    signature_item: ($) =>
+      choice(
+        $.signature_value,
+        $.signature_function,
+        $.signature_type,
+        $.effect_declaration,
+        $.signature_module,
+      ),
+
+    signature_value: ($) =>
+      seq('let', field('name', $.identifier), ':', field('type', $._type)),
+
+    signature_function: ($) =>
+      seq(
+        'fn',
+        field('name', $.identifier),
+        optional(seq('<', field('type_parameters', $.type_parameter_list), '>')),
+        '(',
+        optional(field('parameters', $.extern_parameter_list)),
+        ')',
+        optional(seq('->', field('return_type', $._type))),
+        optional(field('effects', $.effect_set)),
+      ),
+
+    signature_type: ($) =>
+      seq(
+        optional(field('opaque', 'opaque')),
+        'type',
+        field('name', $.identifier),
+        optional(seq('<', field('type_parameters', $.type_parameter_list), '>')),
+        optional(seq('=', field('definition', $._type))),
+      ),
+
+    signature_module: ($) =>
+      seq(
+        'module',
+        field('path', $.symbol_path),
+        field('signature', $.signature_ascription),
+      ),
+
+    // One-or-more `::` separators distinguishes an expression/type path from
+    // an ordinary identifier without flavor-dependent semantic lookahead.
+    qualified_path: ($) =>
+      seq($.identifier, repeat1(seq('::', $.identifier))),
+    symbol_path: ($) => sep1('::', $.identifier),
 
     // ---------- TERMINALS ----------
     boolean: ($) => choice('true', 'false'),

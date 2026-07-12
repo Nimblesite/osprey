@@ -12,9 +12,175 @@
 
 use osprey_ast::Position;
 
+/// A source-level namespace/module/member path. Segments are kept separate so
+/// qualification can never be confused with value-level `.` access
+/// ([MODULES-MODEL], [MODULES-ABI]).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct MlSymbolPath {
+    /// Path segments in source order; a valid path is never empty.
+    pub segments: Vec<String>,
+}
+
+/// The first, logical namespace component of a namespace/import declaration.
+/// Quoted slash labels are opaque strings, not path hierarchies
+/// ([MODULES-NAMESPACE], [MODULES-PATH-INDEPENDENCE]).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum MlNamespaceName {
+    /// An ordinary identifier label such as `billing`.
+    Ident(String),
+    /// An opaque quoted label such as `"billing/api"`.
+    Quoted(String),
+}
+
+/// The selection made by one import ([MODULES-IMPORT]).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum MlImportSelection {
+    /// Import the target namespace/module itself.
+    Whole,
+    /// Import an explicit layout list of exported members.
+    Members(Vec<MlImportMember>),
+    /// Import every exported member (policy-controlled escape hatch).
+    Wildcard,
+}
+
+/// One member inside an explicit layout import list.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct MlImportMember {
+    /// Exported member name at the target.
+    pub name: String,
+    /// Optional local alias after `as`.
+    pub alias: Option<String>,
+}
+
+/// A parsed logical import target and its local projection.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct MlImport {
+    /// Logical namespace label, independent of a physical file path.
+    pub namespace: MlNamespaceName,
+    /// Module path below the namespace (possibly empty for a namespace import).
+    pub path: MlSymbolPath,
+    /// Optional alias for a whole import.
+    pub alias: Option<String>,
+    /// Whole target, selected members, or wildcard.
+    pub selection: MlImportSelection,
+}
+
+/// Whether a module is a plain abstraction boundary or a state owner.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum MlModuleKind {
+    /// A stateless plain module.
+    Plain,
+    /// A `state Name` module owning private mutable cells.
+    State,
+}
+
+/// One public requirement in a named module signature
+/// ([MODULES-SIGNATURE]).
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) enum MlSignatureItem {
+    /// A value/function type and optional effect row.
+    Value {
+        /// Required exported name.
+        name: String,
+        /// Declared generic binders.
+        type_params: Vec<MlTypeParam>,
+        /// Required value/function type.
+        ty: MlType,
+        /// Required effect row.
+        effects: Vec<MlEffectRef>,
+        /// Source position of the name.
+        pos: Position,
+    },
+    /// An abstract (`type T`) or manifest (`type T = R`) type requirement.
+    Type {
+        /// Required type name.
+        name: String,
+        /// `None` for an abstract type; `Some` for a manifest representation.
+        manifest: Option<MlType>,
+        /// Source position of the `type` keyword.
+        pos: Position,
+    },
+    /// An effect and its operation interface.
+    Effect {
+        /// Required effect name.
+        name: String,
+        /// Declared generic binders.
+        type_params: Vec<MlTypeParam>,
+        /// Required operations.
+        operations: Vec<MlEffectOp>,
+        /// Source position of the `effect` keyword.
+        pos: Position,
+    },
+    /// A nested module requirement ascribed to another named signature.
+    Module {
+        /// Required nested module name.
+        name: String,
+        /// Signature the nested module must satisfy.
+        signature: MlSymbolPath,
+        /// Source position of the `module` keyword.
+        pos: Position,
+    },
+}
+
 /// A top-level item or a statement inside a layout block.
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum MlItem {
+    /// A logical namespace/module import ([MODULES-IMPORT]).
+    Import {
+        /// Parsed target, alias, and member projection.
+        import: MlImport,
+        /// Source position of the `import` keyword.
+        pos: Position,
+    },
+    /// A logical namespace contribution. `body: None` is file-scoped; `Some`
+    /// is an indented block contribution ([MODULES-FILE-SCOPED-NAMESPACE]).
+    Namespace {
+        /// Logical namespace label.
+        name: MlNamespaceName,
+        /// Optional indented contribution body.
+        body: Option<Vec<MlItem>>,
+        /// Source position of the `namespace` keyword.
+        pos: Position,
+    },
+    /// A plain or state module with an optional named signature ascription.
+    Module {
+        /// Qualified module path.
+        path: MlSymbolPath,
+        /// Plain versus state-owning module.
+        kind: MlModuleKind,
+        /// Optional named interface controlling the complete export surface.
+        signature: Option<MlSymbolPath>,
+        /// Private-by-default implementation items.
+        body: Vec<MlItem>,
+        /// Source position of the module/state keyword.
+        pos: Position,
+    },
+    /// A named module signature declaration.
+    ModuleSignature {
+        /// Signature name.
+        name: String,
+        /// Public requirements in source order.
+        items: Vec<MlSignatureItem>,
+        /// Source position of the `signature` keyword.
+        pos: Position,
+    },
+    /// Exactly one explicitly exported declaration group. An exported value
+    /// signature propagates to its immediately-following bare definition.
+    Export {
+        /// Declaration carrying explicit public visibility.
+        item: Box<MlItem>,
+        /// Source position of the `export` keyword.
+        pos: Position,
+    },
+    /// An explicitly opaque type declaration. This wrapper is valid only under
+    /// one [`MlItem::Export`] in an un-ascribed module; named signatures express
+    /// abstraction with a bare `type T` requirement instead.
+    Opaque {
+        /// Wrapped type declaration.
+        item: Box<MlItem>,
+        /// Source position of the `opaque` keyword.
+        pos: Position,
+    },
     /// `mut? name param* = body`. Zero params ⇒ a value binding; one or more
     /// (including the unit marker) ⇒ a function definition. Currying is not yet
     /// applied — `params` is the flat surface list; `uncurried` records *which*
@@ -50,7 +216,7 @@ pub(crate) enum MlItem {
     /// the same name that follows it. Kept in the CST so the lowerer can apply
     /// concrete parameter/return types (which the type checker and codegen rely
     /// on for curried closures and `Result` auto-unwrap).
-    Signature {
+    ValueSignature {
         /// The signed name.
         name: String,
         /// Declared type parameters from a `name<T, U> :` binder, in order
@@ -61,6 +227,8 @@ pub(crate) enum MlItem {
         /// The effect row from a trailing `! Ref(, Ref)*` (or `! [Ref, …]`),
         /// empty when the signature declares no effects ([FLAVOR-ML-EFFECT]).
         effects: Vec<MlEffectRef>,
+        /// Source position of the signed name.
+        pos: Position,
     },
     /// `type Name param* =` + an indented layout block of variants
     /// ([FLAVOR-ML-TYPE]). A union/enum lists uppercase constructor variants
@@ -113,7 +281,7 @@ pub(crate) enum MlItem {
     },
     /// A `(** … *)` documentation comment's raw text, paired by the lowerer
     /// with the declaration that follows it ([DOC-SIGIL-ML]) — the same
-    /// pairing pattern as [`MlItem::Signature`].
+    /// pairing pattern as [`MlItem::ValueSignature`].
     Doc(String),
 }
 
@@ -240,6 +408,9 @@ pub(crate) enum MlExpr {
     Str(String),
     /// Identifier or constructor reference.
     Ident(String),
+    /// A namespace/module/member-qualified reference such as `Tax::addTax`.
+    /// This is distinct from [`MlExpr::Field`] so `.` remains value access.
+    Path(MlSymbolPath),
     /// Prefix unary (`-x`, `!x`).
     Unary {
         /// Operator spelling.

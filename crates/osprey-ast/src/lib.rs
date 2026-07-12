@@ -23,6 +23,148 @@ pub struct Position {
     pub column: u32,
 }
 
+/// A canonical namespace/module/member path (`Tax::Rates::standard`).
+///
+/// Paths are structured at the flavor boundary so later phases never have to
+/// split source spelling or confuse qualification with value member access.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Default)]
+pub struct SymbolPath {
+    /// Path segments in source order. A well-formed source path is non-empty;
+    /// the empty value is useful for namespace-only imports.
+    pub segments: Vec<String>,
+}
+
+impl SymbolPath {
+    /// Build a path from its ordered segments.
+    #[must_use]
+    pub fn new(segments: impl IntoIterator<Item = impl Into<String>>) -> Self {
+        Self {
+            segments: segments.into_iter().map(Into::into).collect(),
+        }
+    }
+
+    /// Build a one-segment path.
+    #[must_use]
+    pub fn single(segment: impl Into<String>) -> Self {
+        Self {
+            segments: vec![segment.into()],
+        }
+    }
+
+    /// Whether this path contains no segments.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.segments.is_empty()
+    }
+
+    /// The final segment, when present.
+    #[must_use]
+    pub fn last(&self) -> Option<&str> {
+        self.segments.last().map(String::as_str)
+    }
+}
+
+impl std::fmt::Display for SymbolPath {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.segments.join("::"))
+    }
+}
+
+/// A logical namespace label. Quotedness is preserved because quoted labels
+/// (notably slash labels) require an import alias before qualified use.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum NamespaceName {
+    /// An ordinary identifier label (`billing`).
+    Identifier(String),
+    /// A quoted opaque label (`"billing/api"`). The stored value is unquoted.
+    Quoted(String),
+}
+
+impl NamespaceName {
+    /// The semantic label without source quotes.
+    #[must_use]
+    pub fn label(&self) -> &str {
+        match self {
+            Self::Identifier(label) | Self::Quoted(label) => label,
+        }
+    }
+
+    /// Whether the source used the quoted namespace form.
+    #[must_use]
+    pub const fn is_quoted(&self) -> bool {
+        matches!(self, Self::Quoted(_))
+    }
+}
+
+/// The namespace plus optional nested path named by an import.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ImportTarget {
+    /// Logical namespace label (never a physical file path).
+    pub namespace: NamespaceName,
+    /// Module path inside the namespace; empty for a namespace-only import.
+    pub path: SymbolPath,
+}
+
+/// One explicitly imported member and its optional local alias.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ImportMember {
+    /// Exported member name.
+    pub name: String,
+    /// Local name introduced by `as`, when present.
+    pub alias: Option<String>,
+}
+
+/// The surface selected from an import target.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ImportSelection {
+    /// Import the target namespace/module as a whole.
+    Whole,
+    /// Import only the listed exported members.
+    Members(Vec<ImportMember>),
+    /// Import every exported member (policy-checked in project mode).
+    Wildcard,
+}
+
+/// A canonical import edge as contributed by one source file.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ImportDecl {
+    /// Namespace/module being imported.
+    pub target: ImportTarget,
+    /// Alias for the whole target (`import billing::Tax as T`).
+    pub alias: Option<String>,
+    /// Whole target, explicit member list, or wildcard.
+    pub selection: ImportSelection,
+    /// Source position of the `import` keyword.
+    pub position: Option<Position>,
+}
+
+/// Whether a module owns ordinary declarations or durable private state.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ModuleKind {
+    /// A closed, stateless-by-default module boundary.
+    Plain,
+    /// A declared owner of durable private mutable state.
+    State,
+}
+
+/// Visibility of a declaration inside a closed module.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Visibility {
+    /// Visible only inside the owning module.
+    Private,
+    /// Part of the module's public surface.
+    Exported,
+}
+
+/// A module/signature ascription (`: StoreSig` / `: StoreSig + extra`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SignatureAscription {
+    /// Signature path being ascribed.
+    pub path: SymbolPath,
+    /// Whether exports beyond the signature are explicitly allowed.
+    pub allow_extra: bool,
+}
+
 /// A parsed program: the sequence of top-level statements.
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct Program {
@@ -118,14 +260,106 @@ pub struct EffectOperation {
     pub return_type: String,
 }
 
+/// Whether a signature type is abstract or exposes a manifest representation.
+#[derive(Debug, Clone, PartialEq)]
+pub enum SignatureType {
+    /// No representation is visible to clients.
+    Abstract,
+    /// The public representation is the given type expression.
+    Manifest(TypeExpr),
+}
+
+/// One typed item in an explicit module signature.
+#[derive(Debug, Clone, PartialEq)]
+pub enum SignatureItem {
+    /// An immutable exported value (`let empty: Store`).
+    Value {
+        /// Exported value name.
+        name: String,
+        /// Declared value type.
+        ty: TypeExpr,
+        /// Source position of the item.
+        position: Option<Position>,
+    },
+    /// An exported function contract.
+    Function {
+        /// Exported function name.
+        name: String,
+        /// Declared generic binders.
+        type_params: Vec<TypeParam>,
+        /// Parameter types in call order (parameter names are not contractual).
+        parameters: Vec<TypeExpr>,
+        /// Declared result type.
+        return_type: TypeExpr,
+        /// Declared effect row.
+        effects: Vec<EffectRef>,
+        /// Source position of the item.
+        position: Option<Position>,
+    },
+    /// An abstract or manifest exported type contract.
+    Type {
+        /// Exported type name.
+        name: String,
+        /// Declared generic binders.
+        type_params: Vec<TypeParam>,
+        /// Abstract or manifest representation.
+        definition: SignatureType,
+        /// Whether the representation stays opaque outside the module even
+        /// when the implementation supplies a manifest type.
+        opaque: bool,
+        /// Source position of the item.
+        position: Option<Position>,
+    },
+    /// An exported algebraic-effect contract.
+    Effect {
+        /// Exported effect name.
+        name: String,
+        /// Declared generic binders.
+        type_params: Vec<TypeParam>,
+        /// Operation contracts.
+        operations: Vec<EffectOperation>,
+        /// Source position of the item.
+        position: Option<Position>,
+    },
+    /// A nested module constrained by another signature.
+    Module {
+        /// Nested module path.
+        path: SymbolPath,
+        /// Required signature and optional-extra policy.
+        signature: SignatureAscription,
+        /// Source position of the item.
+        position: Option<Position>,
+    },
+}
+
+/// A declaration inside a closed module, with its public-surface metadata.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ModuleItem {
+    /// Private by default; `export` makes the item public.
+    pub visibility: Visibility,
+    /// Representation-hiding marker for exported type declarations.
+    pub opaque: bool,
+    /// The underlying declaration.
+    pub declaration: Box<Stmt>,
+}
+
 /// A statement: every top-level declaration and binding form, plus bare
 /// expressions.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Stmt {
-    /// `import a.b.c` — a dotted module path.
-    Import {
-        /// The module path segments.
-        module: Vec<String>,
+    /// An import edge to a logical namespace/module surface.
+    Import(ImportDecl),
+    /// A block-scoped or file-scoped logical namespace contribution.
+    Namespace {
+        /// Opaque logical namespace label.
+        name: NamespaceName,
+        /// Statements contributed to the namespace. For a file-scoped
+        /// declaration this contains the declarations following the semicolon.
+        body: Vec<Stmt>,
+        /// `true` for `namespace name;`, `false` for a brace block.
+        file_scoped: bool,
+        /// Source position of the `namespace` keyword.
+        position: Option<Position>,
     },
     /// `let`/`mut` binding.
     Let {
@@ -192,6 +426,9 @@ pub enum Stmt {
         type_params: Vec<TypeParam>,
         /// Variants (one for a record, many for a union).
         variants: Vec<TypeVariant>,
+        /// Manifest alias representation (`type UserId = int`), when this is a
+        /// type alias rather than a record/union declaration.
+        alias: Option<TypeExpr>,
         /// An optional validation function name (`where`-constrained type).
         validation_func: Option<String>,
         /// Structured documentation comment, when written ([DOC-MODEL]).
@@ -213,14 +450,31 @@ pub enum Stmt {
         /// Source position, if recorded.
         position: Option<Position>,
     },
-    /// A `module` block grouping nested statements.
+    /// A closed `module` / `state module` implementation boundary.
     Module {
-        /// Module name.
-        name: String,
-        /// Statements inside the module.
-        body: Vec<Stmt>,
+        /// Possibly nested module path.
+        path: SymbolPath,
+        /// Plain module or durable-state owner.
+        kind: ModuleKind,
+        /// Explicit signature ascription, when present.
+        signature: Option<SignatureAscription>,
+        /// Declarations and their module-local visibility metadata.
+        body: Vec<ModuleItem>,
         /// Structured documentation comment, when written ([DOC-MODEL]).
         doc: Option<DocComment>,
+        /// Source position of the `module` keyword (or leading `state`).
+        position: Option<Position>,
+    },
+    /// An explicit interface contract for modules.
+    Signature {
+        /// Signature name.
+        name: String,
+        /// Typed public-surface items.
+        items: Vec<SignatureItem>,
+        /// Structured documentation comment, when written ([DOC-MODEL]).
+        doc: Option<DocComment>,
+        /// Source position of the `signature` keyword.
+        position: Option<Position>,
     },
     /// A bare expression statement.
     Expr {
@@ -334,6 +588,8 @@ pub enum Expr {
     InterpolatedStr(Vec<InterpolatedPart>),
     /// A bare identifier reference.
     Identifier(String),
+    /// A namespace/module-qualified reference (`billing::Tax::addTax`).
+    Path(SymbolPath),
     /// `[a, b, c]` list literal.
     List(Vec<Expr>),
     /// `{ k: v, ... }` map literal.

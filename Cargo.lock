@@ -428,6 +428,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "osprey-project"
+version = "0.0.0-dev"
+dependencies = [
+ "osprey-ast",
+ "osprey-syntax",
+]
+
+[[package]]
 name = "osprey-runtime-sys"
 version = "0.0.0-dev"
 dependencies = [

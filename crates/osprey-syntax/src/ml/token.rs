@@ -67,6 +67,25 @@ pub(crate) enum TokKind {
     KwRecv,
     /// `select` — choose among ready channel arms ([FLAVOR-ML-CONCURRENCY]).
     KwSelect,
+    /// `import` — introduces a logical namespace/module dependency
+    /// ([MODULES-IMPORT]).
+    KwImport,
+    /// `namespace` — introduces a file- or block-scoped namespace contribution
+    /// ([MODULES-NAMESPACE]).
+    KwNamespace,
+    /// `module` — introduces a plain layout module ([MODULES-MODULE]).
+    KwModule,
+    /// `signature` — introduces a named module interface ([MODULES-SIGNATURE]).
+    KwSignature,
+    /// `export` — marks one declaration group as public ([MODULES-EXPORTS]).
+    KwExport,
+    /// `opaque` — hides an exported type representation ([MODULES-OPAQUE-TYPES]).
+    KwOpaque,
+    /// `state` — introduces a state-owning module; ML deliberately omits the
+    /// redundant second `module` keyword ([MODULES-STATE-MODULE]).
+    KwState,
+    /// `as` — introduces an import alias ([MODULES-IMPORT]).
+    KwAs,
     /// A reserved word reserved for a not-yet-implemented construct (`handler`,
     /// `do`). Carries its spelling so the parser can report a precise
     /// "not yet supported" diagnostic.
@@ -77,6 +96,9 @@ pub(crate) enum TokKind {
     ColonEq,
     /// `:`.
     Colon,
+    /// `::` — namespace/module/symbol qualification; `.` remains value access
+    /// ([MODULES-IMPORT], [MODULES-ABI]).
+    ColonColon,
     /// `->`.
     Arrow,
     /// `=>`.
@@ -128,6 +150,14 @@ pub(crate) fn keyword_or_ident(text: &str) -> TokKind {
         "send" => TokKind::KwSend,
         "recv" => TokKind::KwRecv,
         "select" => TokKind::KwSelect,
+        "import" => TokKind::KwImport,
+        "namespace" => TokKind::KwNamespace,
+        "module" => TokKind::KwModule,
+        "signature" => TokKind::KwSignature,
+        "export" => TokKind::KwExport,
+        "opaque" => TokKind::KwOpaque,
+        "state" => TokKind::KwState,
+        "as" => TokKind::KwAs,
         "handler" | "do" => TokKind::Reserved(text.to_owned()),
         _ => TokKind::Ident(text.to_owned()),
     }

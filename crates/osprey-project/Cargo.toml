@@ -1,0 +1,14 @@
+[package]
+name = "osprey-project"
+description = "Project loading, namespace assembly, and module resolution for Osprey"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+osprey-ast = { workspace = true }
+osprey-syntax = { workspace = true }
+
+[lints]
+workspace = true
