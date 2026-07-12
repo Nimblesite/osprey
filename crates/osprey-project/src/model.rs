@@ -1,6 +1,8 @@
 //! Canonical names and declaration metadata used while assembling a project.
 
-use osprey_ast::{ModuleKind, Position, SignatureAscription, SignatureItem, Visibility};
+use osprey_ast::{
+    Expr, ModuleKind, Position, SignatureAscription, SignatureItem, Stmt, Visibility,
+};
 use std::collections::{BTreeMap, BTreeSet};
 
 /// Stable logical identity of a declaration.
@@ -60,6 +62,7 @@ fn push_hex_segment(out: &mut String, segment: &str) {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum DeclKind {
     Function,
+    Extern,
     Value,
     Type,
     Constructor,
@@ -73,14 +76,14 @@ pub(crate) struct DeclInfo {
     pub kind: DeclKind,
     pub visibility: Visibility,
     pub owner: Vec<String>,
-    pub source: usize,
-    pub position: Option<Position>,
     pub state_owner: bool,
+    pub opaque: bool,
 }
 
 impl DeclInfo {
-    pub fn visible_from(&self, module: &[String]) -> bool {
-        self.visibility == Visibility::Exported || module.starts_with(&self.owner)
+    pub fn visible_from(&self, same_namespace: bool, module: &[String]) -> bool {
+        self.visibility == Visibility::Exported
+            || (same_namespace && module.starts_with(&self.owner))
     }
 }
 
@@ -90,10 +93,20 @@ pub(crate) struct ModuleInfo {
     pub kind: ModuleKind,
     pub signature: Option<SignatureAscription>,
     pub exports: BTreeSet<String>,
+    pub explicit_exports: BTreeSet<String>,
     pub state_cells: BTreeSet<String>,
     pub effects: BTreeSet<String>,
-    pub handler_functions: BTreeSet<String>,
     pub source: usize,
+    pub position: Option<Position>,
+}
+
+/// One immutable declaration eligible for compile-time inlining.
+#[derive(Debug, Clone)]
+pub(crate) struct ConstantInfo {
+    pub value: Expr,
+    pub source: usize,
+    pub contribution: usize,
+    pub module: Vec<String>,
     pub position: Option<Position>,
 }
 
@@ -103,6 +116,10 @@ pub(crate) struct ProjectGraph {
     pub declarations: BTreeMap<SymbolKey, DeclInfo>,
     pub modules: BTreeMap<SymbolKey, ModuleInfo>,
     pub signatures: BTreeMap<SymbolKey, Vec<SignatureItem>>,
+    pub constants: BTreeMap<SymbolKey, ConstantInfo>,
+    pub annotations: BTreeMap<SymbolKey, SignatureItem>,
+    pub namespaces: BTreeSet<String>,
+    pub implementations: BTreeMap<SymbolKey, Stmt>,
 }
 
 #[cfg(test)]
@@ -115,7 +132,10 @@ mod tests {
         let one = SymbolKey::new("billing/api", vec!["Tax".into(), "add".into()]);
         let two = SymbolKey::new("billing", vec!["api".into(), "Tax".into(), "add".into()]);
         assert_ne!(one.mangled(), two.mangled());
-        assert!(one.mangled().chars().all(|c| c.is_ascii_alphanumeric() || c == '_'));
+        assert!(one
+            .mangled()
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '_'));
         assert_eq!(one.source_name(), "billing/api::Tax::add");
     }
 }

@@ -2,7 +2,7 @@
 layout: page
 title: "Language Server & Editor Integrations"
 description: "Osprey Language Specification: Language Server & Editor Integrations"
-date: 2026-07-01
+date: 2026-07-12
 tags: ["specification", "reference", "documentation"]
 author: "Christian Findlay"
 permalink: "/spec/0020-languageserverandeditors/"
@@ -278,16 +278,13 @@ Every binding is hoverable, not just top-level declarations:
 
 ### Documentation comments `[LSP-HOVER-DOCS]`
 
-A binding can be documented exactly like a function. A `///` documentation
-comment immediately above any declaration — `fn` **or** `let`/`mut` — is captured
-by the grammar (a `doc_comment` node, distinct from a `//` line comment),
-lowered onto the AST node's `doc` field, and rendered in hover as prose beneath
-the signature/type line. This is the same path functions already used; the
-feature is that **variables get it too**, satisfying "document variables like we
-can document functions". The grammar attaches `optional($.doc_comment)` to the
-declaration forms in [`tree-sitter-osprey/grammar.js`](https://github.com/Nimblesite/osprey/blob/main/tree-sitter-osprey/grammar.js);
-lowering lives in [`osprey-syntax/src/lower.rs`](https://github.com/Nimblesite/osprey/blob/main/crates/osprey-syntax/src/lower.rs)
-(`doc_text`).
+Every declaration form can be documented — `fn`, `let`/`mut`, `type`, `effect`,
+`extern`, and `module` — in **both flavors** (`///` in Default, `(** … *)` in
+ML). The doc comment is lowered into the structured
+[`DocComment`](/spec/0026-documentationcomments/) on the AST node's `doc` field, and
+hover renders it as Markdown (summary, body, then recognised sections) beneath
+the signature/type line. See [Documentation Comments](/spec/0026-documentationcomments/)
+for the full model, sigils, sections, and body markup.
 
 ```osprey
 /// The greeting shown to the operator on connect.
@@ -296,6 +293,14 @@ let banner = "hello"
 
 Hovering `banner` shows `banner: string` followed by _"The greeting shown to the
 operator on connect."_
+
+**Doc-link hover `[DOC-LINK]`.** A `[Symbol]` intra-doc link inside a doc
+comment is itself hoverable: putting the cursor on `[helper]` or
+`[Console.emit]` shows the referenced declaration's own hover. Rendering lives
+in [`osprey-lsp/src/features.rs`](https://github.com/Nimblesite/osprey/blob/main/crates/osprey-lsp/src/features.rs)
+(`doc_link_target` / `resolve_link`); doc capture lives in
+[`osprey-syntax/src/docparse.rs`](https://github.com/Nimblesite/osprey/blob/main/crates/osprey-syntax/src/docparse.rs)
+and each flavor's lowerer.
 
 ## Position encoding `[LSP-ENCODING]`
 

@@ -243,6 +243,9 @@ pub(crate) enum MlItem {
         type_params: Vec<MlTypeParam>,
         /// The declared variants (one per constructor; a record has exactly one).
         variants: Vec<MlVariant>,
+        /// A direct manifest alias (`type UserId = int`) instead of a
+        /// variant/record body.
+        alias: Option<MlType>,
         /// Source position of the `type` keyword.
         pos: Position,
     },

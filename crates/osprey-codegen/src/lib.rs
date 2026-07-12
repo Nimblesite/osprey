@@ -64,6 +64,11 @@ fn stmt_idents(s: &osprey_ast::Stmt, out: &mut std::collections::BTreeSet<String
             freevars::free_idents(e, out);
         }
         Stmt::Module { body, .. } => {
+            for item in body {
+                stmt_idents(&item.declaration, out);
+            }
+        }
+        Stmt::Namespace { body, .. } => {
             for inner in body {
                 stmt_idents(inner, out);
             }

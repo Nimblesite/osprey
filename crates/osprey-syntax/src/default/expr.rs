@@ -4,7 +4,7 @@
 use super::lower::Lowerer;
 use crate::strings::{lower_interpolation, unquote};
 use osprey_ast::{
-    Expr, FieldAssignment, HandlerArm, MapEntry, MatchArm, NamedArgument, Pattern, Stmt,
+    Expr, FieldAssignment, HandlerArm, MapEntry, MatchArm, NamedArgument, Pattern, Stmt, SymbolPath,
 };
 use tree_sitter::Node;
 
@@ -77,22 +77,7 @@ impl Lowerer<'_> {
             }
             "await_call" => Expr::Await(Box::new(self.lower_inner_expr(node))),
             "recv_call" => Expr::Recv(Box::new(self.lower_inner_expr(node))),
-            "send_call" => {
-                let mut cursor = node.walk();
-                let mut exprs = node
-                    .named_children(&mut cursor)
-                    .filter(|c| c.kind() == "expression");
-                let channel = exprs
-                    .next()
-                    .map_or(Expr::Bool(false), |n| self.lower_expr(n));
-                let value = exprs
-                    .next()
-                    .map_or(Expr::Bool(false), |n| self.lower_expr(n));
-                Expr::Send {
-                    channel: Box::new(channel),
-                    value: Box::new(value),
-                }
-            }
+            "send_call" => self.lower_send(node),
             "lambda_expression" => Expr::Lambda {
                 parameters: self.lower_params(node.child_by_field_name("parameters").or_else(
                     || {
@@ -126,9 +111,26 @@ impl Lowerer<'_> {
             "object_literal" => Expr::Object(self.lower_field_assignments(node)),
             "block" => self.lower_block(node),
             "literal" => self.lower_literal(node),
+            "qualified_path" => Expr::Path(SymbolPath::new(
+                self.descendants_of_kind(node, "identifier")
+                    .into_iter()
+                    .map(|identifier| self.text(identifier)),
+            )),
             "identifier" => Expr::Identifier(self.text(node)),
             "ternary_expression" => self.lower_ternary(node),
             _ => Expr::Bool(false),
+        }
+    }
+
+    fn lower_send(&self, node: Node<'_>) -> Expr {
+        let mut cursor = node.walk();
+        let mut expressions = node
+            .named_children(&mut cursor)
+            .filter(|child| child.kind() == "expression")
+            .map(|expression| self.lower_expr(expression));
+        Expr::Send {
+            channel: Box::new(expressions.next().unwrap_or(Expr::Bool(false))),
+            value: Box::new(expressions.next().unwrap_or(Expr::Bool(false))),
         }
     }
 

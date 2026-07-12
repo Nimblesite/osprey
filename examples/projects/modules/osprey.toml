@@ -1,0 +1,8 @@
+[project]
+name = "modules"
+source_roots = ["src"]
+default_namespace = "billing"
+entry = "src/main.osp"
+
+[modules]
+allow_wildcard_imports = false

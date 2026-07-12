@@ -6,7 +6,7 @@
   "scripts": {
     "start": "npm run update-playground && npm run copy-spec && npm run generate-docs && eleventy --serve",
     "dev": "npm run update-playground && npm run copy-spec && npm run generate-docs && eleventy --serve --watch",
-    "build": "npm run update-playground && npm run generate-docs && eleventy",
+    "build": "npm run update-playground && npm run copy-spec && npm run generate-docs && eleventy",
     "copy-spec": "node scripts/copy-spec.js",
     "generate-docs": "bash scripts/generate-docs.sh && npm run add-ml-twins",
     "add-ml-twins": "python3 scripts/add-ml-twins.py",

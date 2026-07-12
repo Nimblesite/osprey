@@ -20,7 +20,7 @@
 //! program that references those symbols fails at link with a clear undefined
 //! symbol, not silently.
 
-use crate::{find_runtime_lib, stem_of, Cli};
+use crate::{find_runtime_lib, scratch_stem};
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode};
 
@@ -49,14 +49,14 @@ pub(crate) fn build(path: &str, program: &osprey_ast::Program, out: &Path) -> Re
             "{RUNTIME_LIB} not found — run `make wasm` to build it"
         ))
     })?;
-    let obj = compile_object(&stem_of(path), &ir)?;
+    let obj = compile_object(&scratch_stem(path), &ir)?;
     link(&obj, &archive, &libdir, out)
 }
 
 /// `--run` for wasm: build to a temp `.wasm`, then execute it under a WASI host.
-pub(crate) fn run(cli: &Cli, program: &osprey_ast::Program) -> ExitCode {
-    let wasm = std::env::temp_dir().join(format!("{}.wasm", stem_of(&cli.path)));
-    if let Err(code) = build(&cli.path, program, &wasm) {
+pub(crate) fn run(path: &str, program: &osprey_ast::Program) -> ExitCode {
+    let wasm = std::env::temp_dir().join(format!("{}.wasm", scratch_stem(path)));
+    if let Err(code) = build(path, program, &wasm) {
         return code;
     }
     run_host(&wasm)
@@ -454,7 +454,7 @@ mod tests {
         let program = osprey_syntax::parse_program("let n = 1\nprint(\"${n}\")\n").program;
         let out = std::env::temp_dir().join("osprey_full_driver_unit.wasm");
         let built = build("unit.osp", &program, &out);
-        let _ran = run(&stub_cli(), &program);
+        let _ran = run("unit.osp", &program);
 
         if let Some(a) = &archive {
             let _ = std::fs::remove_file(a);
@@ -466,21 +466,6 @@ mod tests {
             }
         }
         assert!(built.is_ok(), "stubbed toolchain drives a clean build");
-    }
-
-    /// A minimal wasm-target `Cli` for driving `run` in a unit test.
-    fn stub_cli() -> Cli {
-        Cli {
-            path: "unit.osp".to_string(),
-            mode: "--run".to_string(),
-            quiet: true,
-            policy: crate::sandbox::Policy::allow_all(),
-            memory: "default".to_string(),
-            target: "wasm32".to_string(),
-            output: None,
-            debug: false,
-            flavor: None,
-        }
     }
 
     // End-to-end build+run, exercised only where the wasm toolchain is present

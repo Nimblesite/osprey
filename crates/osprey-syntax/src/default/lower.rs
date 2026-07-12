@@ -2,12 +2,10 @@
 //! `effect`, `extern`, `module`), type expressions, and match patterns.
 
 use super::position_from_point;
-use crate::strings::unquote;
 use osprey_ast::{
-    DocComment, DocScope, EffectOperation, EffectRef, Expr, ExternParameter, ImportDecl,
-    ImportMember, ImportSelection, ImportTarget, ModuleItem, ModuleKind, NamespaceName, Parameter,
-    Pattern, Position, Program, SignatureAscription, SignatureItem, SignatureType, Stmt,
-    SymbolPath, TypeExpr, TypeField, TypeParam, TypeVariant, Variance, Visibility,
+    DocComment, DocScope, EffectOperation, EffectRef, Expr, ExternParameter, ModuleKind, Parameter,
+    Pattern, Position, Program, Stmt, SymbolPath, TypeExpr, TypeField, TypeParam, TypeVariant,
+    Variance,
 };
 use tree_sitter::Node;
 
@@ -112,10 +110,11 @@ impl<'a> Lowerer<'a> {
             // A file-scoped namespace owns every following declaration in the
             // file. Canonicalise that relationship here rather than making
             // later phases reinterpret source order. [MODULES-FILE-SCOPED-NAMESPACE]
-            if node.kind() == "namespace_declaration"
-                && node.child_by_field_name("body").is_none()
+            if node.kind() == "namespace_declaration" && node.child_by_field_name("body").is_none()
             {
-                let body = source_statements[index + 1..]
+                let body = source_statements
+                    .get(index.saturating_add(1)..)
+                    .unwrap_or_default()
                     .iter()
                     .filter_map(|s| self.first_named(*s))
                     .filter_map(|s| self.lower_stmt(s))
@@ -251,17 +250,20 @@ impl<'a> Lowerer<'a> {
         // making the adoption-friendly `type UserId = int` spelling an alias.
         // Osprey constructors conventionally begin uppercase; a lone lowercase
         // RHS therefore has an unambiguous type-alias interpretation.
-        if alias.is_none()
-            && variants.len() == 1
-            && variants[0].fields.is_empty()
-            && variants[0]
-                .name
-                .chars()
-                .next()
-                .is_some_and(char::is_lowercase)
-        {
-            alias = Some(TypeExpr::named(variants[0].name.clone()));
-            variants.clear();
+        let lowercase_alias = match variants.as_slice() {
+            [variant]
+                if variant.fields.is_empty()
+                    && variant.name.chars().next().is_some_and(char::is_lowercase) =>
+            {
+                Some(variant.name.clone())
+            }
+            _ => None,
+        };
+        if alias.is_none() {
+            if let Some(name) = lowercase_alias {
+                alias = Some(TypeExpr::named(name));
+                variants.clear();
+            }
         }
         Stmt::Type {
             name: self.field_text(node, "name"),
@@ -306,7 +308,7 @@ impl<'a> Lowerer<'a> {
         out
     }
 
-    fn lower_operations(&self, node: Node<'_>) -> Vec<EffectOperation> {
+    pub(crate) fn lower_operations(&self, node: Node<'_>) -> Vec<EffectOperation> {
         self.named_of_kind(node, "operation_declaration")
             .iter()
             .map(|op| EffectOperation {
@@ -347,7 +349,7 @@ impl<'a> Lowerer<'a> {
 
     /// Lower a declaration's `type_parameters` field into variance-carrying
     /// [`TypeParam`]s. Implements [TYPE-VARIANCE-DECL].
-    fn lower_type_params(&self, node: Node<'_>) -> Vec<TypeParam> {
+    pub(crate) fn lower_type_params(&self, node: Node<'_>) -> Vec<TypeParam> {
         let Some(list) = node.child_by_field_name("type_parameters") else {
             return Vec::new();
         };
@@ -366,7 +368,7 @@ impl<'a> Lowerer<'a> {
 
     /// Lower an effect row into effect references with optional type
     /// arguments (`!State<int>`). Implements [EFFECTS-GENERIC-ROWS].
-    fn lower_effects(&self, effects: Option<Node<'_>>) -> Vec<EffectRef> {
+    pub(crate) fn lower_effects(&self, effects: Option<Node<'_>>) -> Vec<EffectRef> {
         let Some(effects) = effects else {
             return Vec::new();
         };
@@ -493,7 +495,7 @@ impl<'a> Lowerer<'a> {
             "field_pattern" => Pattern::Structural {
                 fields: self.field_pattern_names(inner),
             },
-            "identifier" => {
+            "identifier" | "qualified_path" => {
                 // Could be: constructor `Ctor { fields }`, type-annotated, sub-patterns,
                 // or a bare binding. Inspect siblings of the name field.
                 let name = self.text(inner);
@@ -656,25 +658,6 @@ mod tests {
         let mut cursor = node.walk();
         let children: Vec<Node<'t>> = node.children(&mut cursor).collect();
         children.into_iter().find_map(|c| find_kind(c, kind))
-    }
-
-    #[test]
-    fn lowers_import_and_module() {
-        // `import` exercises lower_stmt's Import arm (texts_of_kind identifiers).
-        match one("import std.io.file\n") {
-            Stmt::Import { module } => assert_eq!(module, vec!["std", "io", "file"]),
-            s => panic!("expected import, got {s:?}"),
-        }
-        // A module body re-enters lower_stmt for nested declarations.
-        match one("module M {\n  let x = 1\n  fn f() = x\n}\n") {
-            Stmt::Module { name, body, .. } => {
-                assert_eq!(name, "M");
-                assert_eq!(body.len(), 2);
-                assert!(matches!(body[0], Stmt::Let { .. }));
-                assert!(matches!(body[1], Stmt::Function { .. }));
-            }
-            s => panic!("expected module, got {s:?}"),
-        }
     }
 
     #[test]

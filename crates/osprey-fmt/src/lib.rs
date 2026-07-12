@@ -167,4 +167,54 @@ mod tests {
         assert_eq!(indent_to(2), "        ");
         assert_eq!(indent_to(-3), "");
     }
+
+    #[test]
+    fn default_modules_preserve_file_namespace_paths_and_signature_blocks() {
+        // [MODULES-FILE-SCOPED-NAMESPACE] Formatting changes indentation only;
+        // the semicolon namespace and `::` qualification survive verbatim.
+        let src = concat!(
+            "namespace \"com.example/reports\";\n",
+            "signature TaxApi {\n",
+            "    fn rate() -> int\n",
+            "}\n",
+            "module Tax : TaxApi {\n",
+            "    export fn rate() -> int = 10\n",
+            "}\n",
+            "import \"com.example/reports\" as reports\n",
+            "let gross = reports::Tax::rate()\n",
+        );
+        let once = format_source(src, Flavor::Default).expect("formats modules");
+        assert_eq!(once, src, "canonical module source is preserved");
+        assert!(
+            once.starts_with("namespace \"com.example/reports\";\n"),
+            "{once}"
+        );
+        assert!(once.contains("    fn rate() -> int\n"), "{once}");
+        assert!(once.contains("reports::Tax::rate()"), "{once}");
+        assert_eq!(
+            format_source(&once, Flavor::Default).expect("idempotent"),
+            once
+        );
+    }
+
+    #[test]
+    fn ml_layout_import_members_and_modules_are_preserved_idempotently() {
+        // [MODULES-IMPORT] The creamy ML surface keeps layout member imports;
+        // `::` remains qualification and no Default braces/semicolons appear.
+        let src = concat!(
+            "namespace billing\n",
+            "import billing::Tax\n",
+            "    addTax\n",
+            "    zero as noTax\n",
+            "module Invoice\n",
+            "    export total = addTax 100\n",
+        );
+        let once = format_source(src, Flavor::Ml).expect("formats ML modules");
+        assert_eq!(once, src, "canonical ML module source is preserved");
+        assert!(once.contains("import billing::Tax\n"), "{once}");
+        assert!(once.contains("    addTax\n    zero as noTax\n"), "{once}");
+        assert!(once.contains("module Invoice\n    export total"), "{once}");
+        assert!(!once.contains('{') && !once.contains(';'), "{once}");
+        assert_eq!(format_source(&once, Flavor::Ml).expect("idempotent"), once);
+    }
 }

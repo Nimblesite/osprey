@@ -2,7 +2,7 @@
 layout: page
 title: "Memory Management"
 description: "Osprey Language Specification: Memory Management"
-date: 2026-07-01
+date: 2026-07-12
 tags: ["specification", "reference", "documentation"]
 author: "Christian Findlay"
 permalink: "/spec/0018-memorymanagement/"

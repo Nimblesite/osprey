@@ -2,7 +2,7 @@
 layout: page
 title: "Error Handling"
 description: "Osprey Language Specification: Error Handling"
-date: 2026-07-01
+date: 2026-07-12
 tags: ["specification", "reference", "documentation"]
 author: "Christian Findlay"
 permalink: "/spec/0013-errorhandling/"

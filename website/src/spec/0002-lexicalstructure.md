@@ -2,7 +2,7 @@
 layout: page
 title: "Lexical Structure"
 description: "Osprey Language Specification: Lexical Structure"
-date: 2026-07-01
+date: 2026-07-12
 tags: ["specification", "reference", "documentation"]
 author: "Christian Findlay"
 permalink: "/spec/0002-lexicalstructure/"
@@ -29,9 +29,15 @@ ID := [a-zA-Z_][a-zA-Z0-9_]*
 
 ```
 fn let mut type match extern import module where
-effect perform handle in
+effect perform handle in resume
 spawn await yield select
 ```
+
+**Contextual keywords.** `out` and `in` mark variance inside a
+type-parameter list only (`type Source<out T>`, `effect Emit<in T>` —
+[TYPE-VARIANCE-DECL](/spec/0004-typesystem/#generics-and-variance)). `out` is an
+ordinary identifier everywhere else; `in` remains the hard keyword of
+`handle … in` and is merely *accepted* in type-parameter position.
 
 ## Literals
 

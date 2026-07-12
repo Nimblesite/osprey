@@ -2,7 +2,7 @@
 layout: page
 title: "Foreign Function Interface"
 description: "Osprey Language Specification: Foreign Function Interface"
-date: 2026-07-01
+date: 2026-07-12
 tags: ["specification", "reference", "documentation"]
 author: "Christian Findlay"
 permalink: "/spec/0019-foreignfunctioninterface/"

@@ -11,13 +11,24 @@ fn add(a: int, b: int) -> int = a + b
     (function_declaration
       name: (identifier)
       parameters: (parameter_list
-        (parameter name: (identifier) type: (type_identifier (identifier)))
-        (parameter name: (identifier) type: (type_identifier (identifier))))
-      return_type: (type_identifier (identifier))
+        (parameter
+          name: (identifier)
+          type: (type_identifier
+            (identifier)))
+        (parameter
+          name: (identifier)
+          type: (type_identifier
+            (identifier))))
+      return_type: (type_identifier
+        (identifier))
       body: (expression
         (binary_expression
-          left: (expression (primary_expression (identifier)))
-          right: (expression (primary_expression (identifier))))))))
+          left: (expression
+            (primary_expression
+              (identifier)))
+          right: (expression
+            (primary_expression
+              (identifier))))))))
 
 ================================================================================
 Union type declaration
@@ -32,9 +43,12 @@ type Color = Red | Green | Blue
     (type_declaration
       name: (identifier)
       definition: (union_type
-        (variant name: (identifier))
-        (variant name: (identifier))
-        (variant name: (identifier))))))
+        (variant
+          name: (identifier))
+        (variant
+          name: (identifier))
+        (variant
+          name: (identifier))))))
 
 ================================================================================
 Effect declaration with function-typed operation
@@ -51,8 +65,11 @@ effect Log { info: fn(string) -> Unit }
       (operation_declaration
         name: (identifier)
         type: (function_type
-          (type_list (type_identifier (identifier)))
-          (type_identifier (identifier)))))))
+          (type_list
+            (type_identifier
+              (identifier)))
+          (type_identifier
+            (identifier)))))))
 
 ================================================================================
 Short lambda
@@ -69,11 +86,18 @@ let f = |x| => x * 2
       value: (expression
         (primary_expression
           (lambda_expression
-            (parameter_list (parameter name: (identifier)))
+            (parameter_list
+              (parameter
+                name: (identifier)))
             body: (expression
               (binary_expression
-                left: (expression (primary_expression (identifier)))
-                right: (expression (primary_expression (literal (integer))))))))))))
+                left: (expression
+                  (primary_expression
+                    (identifier)))
+                right: (expression
+                  (primary_expression
+                    (literal
+                      (integer))))))))))))
 
 ================================================================================
 Match with constructor destructuring and wildcard
@@ -92,13 +116,23 @@ let r = match x {
       name: (identifier)
       value: (expression
         (match_expression
-          value: (expression (primary_expression (identifier)))
+          value: (expression
+            (primary_expression
+              (identifier)))
           (match_arm
-            pattern: (pattern name: (identifier) (field_pattern (identifier)))
-            body: (expression (primary_expression (identifier))))
+            pattern: (pattern
+              name: (identifier)
+              (field_pattern
+                (identifier)))
+            body: (expression
+              (primary_expression
+                (identifier))))
           (match_arm
             pattern: (pattern)
-            body: (expression (primary_expression (literal (integer))))))))))
+            body: (expression
+              (primary_expression
+                (literal
+                  (integer))))))))))
 
 ================================================================================
 if / else-if chain (expression form, else required) [GRAMMAR-IF-ELSE]
@@ -116,16 +150,35 @@ let t = if score >= 90 { "A" } else if score >= 80 { "B" } else { "C" }
         (if_expression
           condition: (expression
             (binary_expression
-              left: (expression (primary_expression (identifier)))
-              right: (expression (primary_expression (literal (integer))))))
-          consequence: (expression (primary_expression (literal (string))))
+              left: (expression
+                (primary_expression
+                  (identifier)))
+              right: (expression
+                (primary_expression
+                  (literal
+                    (integer))))))
+          consequence: (expression
+            (primary_expression
+              (literal
+                (string))))
           alternative: (if_expression
             condition: (expression
               (binary_expression
-                left: (expression (primary_expression (identifier)))
-                right: (expression (primary_expression (literal (integer))))))
-            consequence: (expression (primary_expression (literal (string))))
-            alternative: (expression (primary_expression (literal (string))))))))))
+                left: (expression
+                  (primary_expression
+                    (identifier)))
+                right: (expression
+                  (primary_expression
+                    (literal
+                      (integer))))))
+            consequence: (expression
+              (primary_expression
+                (literal
+                  (string))))
+            alternative: (expression
+              (primary_expression
+                (literal
+                  (string))))))))))
 
 ================================================================================
 Pipe chain (left-associative) with UFCS-style calls
@@ -143,11 +196,254 @@ let n = items |> map(double) |> sum()
         (pipe_expression
           left: (expression
             (pipe_expression
-              left: (expression (primary_expression (identifier)))
+              left: (expression
+                (primary_expression
+                  (identifier)))
               right: (expression
                 (call_expression
-                  callee: (expression (primary_expression (identifier)))
-                  (argument_list (expression (primary_expression (identifier))))))))
+                  callee: (expression
+                    (primary_expression
+                      (identifier)))
+                  (argument_list
+                    (expression
+                      (primary_expression
+                        (identifier))))))))
           right: (expression
             (call_expression
-              callee: (expression (primary_expression (identifier))))))))))
+              callee: (expression
+                (primary_expression
+                  (identifier))))))))))
+
+================================================================================
+Namespaces and structured imports [MODULES-NAMESPACE] [MODULES-IMPORT]
+================================================================================
+
+namespace billing;
+import billing::Tax::{addTax, zero as noTax}
+import "billing/api" as billingApi
+import std.io.file
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (statement
+    (namespace_declaration
+      (namespace_name
+        (identifier))))
+  (statement
+    (import_statement
+      (import_target
+        (namespace_name
+          (identifier))
+        (identifier))
+      (import_tail
+        (import_member_list
+          (import_member
+            (identifier))
+          (import_member
+            (identifier)
+            (identifier))))))
+  (statement
+    (import_statement
+      (import_target
+        (namespace_name
+          (string)))
+      (import_tail
+        (identifier))))
+  (statement
+    (import_statement
+      (legacy_import_path
+        (identifier)
+        (identifier)
+        (identifier)))))
+
+================================================================================
+State module, exports, opacity, and signature [MODULES-MODULE] [MODULES-SIGNATURE]
+================================================================================
+
+signature StoreSig {
+  opaque type Store
+  type Count = int
+  let zero: Count
+  fn empty() -> Store
+  effect StoreFx { load: fn() -> Store }
+  module Nested : NestedSig + extra
+}
+
+state module Storage::Memory : StoreSig + extra {
+  mut count = 0
+  export opaque type Store = int
+  export fn empty() -> Store = count
+  export effect StoreFx { load: fn() -> Store }
+  export module Nested { export let value = 1 }
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (statement
+    (signature_declaration
+      (identifier)
+      (signature_item
+        (signature_type
+          (identifier)))
+      (signature_item
+        (signature_type
+          (identifier)
+          (type_identifier
+            (identifier))))
+      (signature_item
+        (signature_value
+          (identifier)
+          (type_identifier
+            (identifier))))
+      (signature_item
+        (signature_function
+          (identifier)
+          (type_identifier
+            (identifier))))
+      (signature_item
+        (effect_declaration
+          (identifier)
+          (operation_declaration
+            (identifier)
+            (function_type
+              (type_identifier
+                (identifier))))))
+      (signature_item
+        (signature_module
+          (symbol_path
+            (identifier))
+          (signature_ascription
+            (symbol_path
+              (identifier)))))))
+  (statement
+    (module_declaration
+      (symbol_path
+        (identifier)
+        (identifier))
+      (signature_ascription
+        (symbol_path
+          (identifier)))
+      (module_item
+        (let_declaration
+          (identifier)
+          (expression
+            (primary_expression
+              (literal
+                (integer))))))
+      (module_item
+        (export_declaration
+          (type_declaration
+            (identifier)
+            (union_type
+              (variant
+                (identifier))))))
+      (module_item
+        (export_declaration
+          (function_declaration
+            (identifier)
+            (type_identifier
+              (identifier))
+            (expression
+              (primary_expression
+                (identifier))))))
+      (module_item
+        (export_declaration
+          (effect_declaration
+            (identifier)
+            (operation_declaration
+              (identifier)
+              (function_type
+                (type_identifier
+                  (identifier)))))))
+      (module_item
+        (export_declaration
+          (module_declaration
+            (symbol_path
+              (identifier))
+            (module_item
+              (export_declaration
+                (let_declaration
+                  (identifier)
+                  (expression
+                    (primary_expression
+                      (literal
+                        (integer)))))))))))))
+
+================================================================================
+Qualified value, type, constructor, and effect paths [MODULES-FLAVOR-PROJECTION]
+================================================================================
+
+fn run(x: billing::Money) -> billing::Result<int> = {
+  let money = billing::Money { cents: 1 }
+  perform billing::Ledger.post(money)
+  billing::Tax::addTax(x)
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (statement
+    (function_declaration
+      (identifier)
+      (parameter_list
+        (parameter
+          (identifier)
+          (type_identifier
+            (qualified_path
+              (identifier)
+              (identifier)))))
+      (generic_type
+        (qualified_path
+          (identifier)
+          (identifier))
+        (type_list
+          (type_identifier
+            (identifier))))
+      (expression
+        (primary_expression
+          (block
+            (statement
+              (let_declaration
+                (identifier)
+                (expression
+                  (primary_expression
+                    (type_constructor
+                      (qualified_path
+                        (identifier)
+                        (identifier))
+                      (field_assignments
+                        (field_assignment
+                          (identifier)
+                          (expression
+                            (primary_expression
+                              (literal
+                                (integer)))))))))))
+            (statement
+              (expression_statement
+                (expression
+                  (primary_expression
+                    (perform_expression
+                      (qualified_path
+                        (identifier)
+                        (identifier))
+                      (identifier)
+                      (argument_list
+                        (expression
+                          (primary_expression
+                            (identifier)))))))))
+            (statement
+              (expression_statement
+                (expression
+                  (call_expression
+                    (expression
+                      (primary_expression
+                        (qualified_path
+                          (identifier)
+                          (identifier)
+                          (identifier))))
+                    (argument_list
+                      (expression
+                        (primary_expression
+                          (identifier))))))))))))))

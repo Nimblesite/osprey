@@ -1,0 +1,30 @@
+namespace billing
+
+import "billing/api" as taxApi
+
+module Greeting
+    export label cents = "tax=${taxApi::Tax::addTax cents}"
+
+signature CounterApi
+    effect CounterFx
+        next : Unit => int
+    run : (Unit -> Unit) -> Unit
+
+state Counter : CounterApi
+    mut count = 0
+
+    effect CounterFx
+        next : Unit => int
+
+    run action =
+        handle CounterFx
+            next =>
+                count := count + 1
+                count
+        in action ()
+
+module CounterFake
+    export run action =
+        handle Counter::CounterFx
+            next => 41
+        in action ()

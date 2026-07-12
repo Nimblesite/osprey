@@ -23,22 +23,35 @@ pub(crate) fn extract(config: &ProjectConfig, sources: &[SourceFile]) -> Vec<Con
 fn from_file(config: &ProjectConfig, source: usize, statements: &[Stmt]) -> Vec<Contribution> {
     let mut out = Vec::new();
     let mut unscoped = Vec::new();
+    let file_imports: Vec<ImportDecl> = statements
+        .iter()
+        .filter_map(|statement| match statement {
+            Stmt::Import(import) => Some(import.clone()),
+            _ => None,
+        })
+        .collect();
     for statement in statements {
         match statement {
             Stmt::Namespace { name, body, .. } => {
-                out.push(build(source, name.clone(), body.clone()));
+                out.push(build(source, name.clone(), body.clone(), &file_imports));
             }
+            Stmt::Import(_) => {}
             other => unscoped.push(other.clone()),
         }
     }
     if !unscoped.is_empty() {
-        out.push(build(source, default_name(config), unscoped));
+        out.push(build(source, default_name(config), unscoped, &file_imports));
     }
     out
 }
 
-fn build(source: usize, namespace: NamespaceName, statements: Vec<Stmt>) -> Contribution {
-    let mut imports = Vec::new();
+fn build(
+    source: usize,
+    namespace: NamespaceName,
+    statements: Vec<Stmt>,
+    file_imports: &[ImportDecl],
+) -> Contribution {
+    let mut imports = file_imports.to_vec();
     let mut declarations = Vec::new();
     for statement in statements {
         match statement {
@@ -87,6 +100,8 @@ mod tests {
             },
         };
         let found = extract(&ProjectConfig::for_root(Path::new("app")), &[source]);
-        assert_eq!(found[0].namespace.label(), "billing/api");
+        assert!(found
+            .first()
+            .is_some_and(|item| item.namespace.label() == "billing/api"));
     }
 }

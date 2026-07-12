@@ -32,7 +32,11 @@ impl ProjectConfig {
             .and_then(|value| value.to_str())
             .unwrap_or("app")
             .to_string();
-        let source = if root.join("src").is_dir() { "src" } else { "." };
+        let source = if root.join("src").is_dir() {
+            "src"
+        } else {
+            "."
+        };
         Self {
             default_namespace: Some(name.clone()),
             name,
@@ -44,6 +48,10 @@ impl ProjectConfig {
     }
 
     /// Parse the supported `osprey.toml` keys.
+    ///
+    /// # Errors
+    ///
+    /// Returns every malformed supported manifest value with its source line.
     pub fn parse(text: &str, path: &Path) -> Result<Self, Vec<ProjectError>> {
         let root = path.parent().unwrap_or_else(|| Path::new("."));
         let mut config = Self::for_root(root);
@@ -127,7 +135,10 @@ fn parse_list(value: &str) -> Result<Vec<String>, String> {
     if inner.trim().is_empty() {
         return Ok(Vec::new());
     }
-    inner.split(',').map(|item| parse_string(item.trim())).collect()
+    inner
+        .split(',')
+        .map(|item| parse_string(item.trim()))
+        .collect()
 }
 
 fn parse_bool(value: &str) -> Result<bool, String> {

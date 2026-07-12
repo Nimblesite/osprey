@@ -41,6 +41,7 @@ impl Checker {
                 Type::string()
             }
             Expr::Identifier(name) => self.lookup_ident(name, env),
+            Expr::Path(path) => self.lookup_ident(&path.to_string(), env),
             Expr::List(items) => {
                 let elem = self.ctx.fresh();
                 for it in items {
@@ -350,6 +351,10 @@ impl Checker {
     ) -> Type {
         let (fname, ft) = match function {
             Expr::Identifier(n) => (Some(n.clone()), self.lookup_ident(n, env)),
+            Expr::Path(path) => {
+                let name = path.to_string();
+                (Some(name.clone()), self.lookup_ident(&name, env))
+            }
             other => (None, self.infer_expr(other, env)),
         };
         let args = self.ordered_arg_types(fname.as_deref(), arguments, named, env);

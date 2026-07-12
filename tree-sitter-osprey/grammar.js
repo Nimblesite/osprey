@@ -44,6 +44,9 @@ module.exports = grammar({
     [$.primary_expression, $.type_constructor],
     [$.primary_expression, $.generic_type],
     [$.type_identifier, $.type_constructor],
+    // `import a::b::{x}` must keep both parses alive until the token following
+    // `::` distinguishes another target segment from an import tail.
+    [$.import_target],
     // `ID {` — bare variable ref vs type-constructor vs record update.
     [$.primary_expression, $.type_constructor, $.update_expression],
     // `{` opens a block, a map literal, or an object literal; brace body decides.
@@ -68,11 +71,9 @@ module.exports = grammar({
     // A single bare identifier remains an identifier; qualified paths require
     // at least one `::`, so these only overlap while the lexer has not yet seen
     // the separator.
-    [$.qualified_path, $.primary_expression],
     // `type Alias = Name` is intentionally kept as the historical one-variant
     // union spelling. Unambiguous function/generic/array aliases use type_alias;
     // opaque aliases are disambiguated by their module-item prefix.
-    [$.union_type, $.type_alias],
   ],
 
   rules: {
@@ -112,11 +113,9 @@ module.exports = grammar({
       seq($.identifier, repeat1(seq('.', $.identifier))),
 
     import_target: ($) =>
-      prec.right(
-        seq(
-          field('namespace', $.namespace_name),
-          repeat(seq('::', field('segment', $.identifier))),
-        ),
+      seq(
+        field('namespace', $.namespace_name),
+        repeat(seq('::', field('segment', $.identifier))),
       ),
 
     import_tail: ($) =>
@@ -138,7 +137,7 @@ module.exports = grammar({
     namespace_declaration: ($) =>
       seq(
         optional($.doc_comment),
-        'namespace',
+        field('keyword', 'namespace'),
         field('name', $.namespace_name),
         choice(';', field('body', $.namespace_body)),
       ),
@@ -507,7 +506,7 @@ module.exports = grammar({
       seq(
         optional($.doc_comment),
         optional(field('state', 'state')),
-        'module',
+        field('keyword', 'module'),
         field('path', $.symbol_path),
         optional(field('signature', $.signature_ascription)),
         '{',
@@ -550,7 +549,7 @@ module.exports = grammar({
     signature_declaration: ($) =>
       seq(
         optional($.doc_comment),
-        'signature',
+        field('keyword', 'signature'),
         field('name', $.identifier),
         '{',
         repeat($.signature_item),

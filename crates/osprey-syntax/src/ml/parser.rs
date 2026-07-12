@@ -37,9 +37,9 @@
 //!   concrete authoritative spec of layout-driven token insertion.
 
 use super::cst::{
-    MlArm, MlEffectOp, MlEffectRef, MlExpr, MlExternParam, MlField, MlHandleArm, MlImport,
-    MlImportMember, MlImportSelection, MlItem, MlModuleKind, MlNamespaceName, MlParam, MlPattern,
-    MlSignatureItem, MlSymbolPath, MlType, MlTypeField, MlTypeParam, MlVariance, MlVariant,
+    MlArm, MlEffectOp, MlEffectRef, MlExpr, MlExternParam, MlField, MlHandleArm, MlItem,
+    MlModuleKind, MlParam, MlPattern, MlSymbolPath, MlType, MlTypeField, MlTypeParam, MlVariance,
+    MlVariant,
 };
 use super::lexer::lex;
 use super::token::{TokKind, Token};
@@ -58,7 +58,7 @@ pub(crate) fn parse(source: &str) -> (Vec<MlItem>, Vec<SyntaxError>) {
         };
         parser.program()
     };
-    validate_module_items(&items, None, &mut errors);
+    super::modules::validate(&items, &mut errors);
     (items, errors)
 }
 
@@ -85,14 +85,14 @@ fn infix_bp(op: &str) -> Option<u8> {
 }
 
 /// Recursive-descent + Pratt parser over the layout-resolved token slice.
-struct Parser<'t> {
+pub(super) struct Parser<'t> {
     toks: &'t [Token],
     i: usize,
     errors: &'t mut Vec<SyntaxError>,
 }
 
 impl Parser<'_> {
-    fn peek(&self) -> &TokKind {
+    pub(super) fn peek(&self) -> &TokKind {
         self.toks.get(self.i).map_or(&TokKind::Eof, |t| &t.kind)
     }
 
@@ -102,19 +102,19 @@ impl Parser<'_> {
             .map_or(&TokKind::Eof, |t| &t.kind)
     }
 
-    fn pos(&self) -> Position {
+    pub(super) fn pos(&self) -> Position {
         self.toks.get(self.i).map_or(Position::default(), |t| t.pos)
     }
 
     /// Consume the current token, discarding it (callers peek first when they
     /// need its payload).
-    fn advance(&mut self) {
+    pub(super) fn advance(&mut self) {
         if self.i < self.toks.len() {
             self.i += 1;
         }
     }
 
-    fn eat(&mut self, kind: &TokKind) -> bool {
+    pub(super) fn eat(&mut self, kind: &TokKind) -> bool {
         if self.peek() == kind {
             self.i += 1;
             true
@@ -123,12 +123,12 @@ impl Parser<'_> {
         }
     }
 
-    fn error(&mut self, message: impl Into<String>) {
+    pub(super) fn error(&mut self, message: impl Into<String>) {
         let position = self.pos();
         self.error_at(position, message);
     }
 
-    fn error_at(&mut self, position: Position, message: impl Into<String>) {
+    pub(super) fn error_at(&mut self, position: Position, message: impl Into<String>) {
         self.errors.push(SyntaxError {
             message: message.into(),
             position,
@@ -137,7 +137,7 @@ impl Parser<'_> {
 
     /// Panic-mode recovery (Dragon Book §4.1.4): drop tokens up to the next
     /// statement separator so one bad line cannot derail the rest.
-    fn recover(&mut self) {
+    pub(super) fn recover(&mut self) {
         while !matches!(
             self.peek(),
             TokKind::Newline | TokKind::Dedent | TokKind::Eof
@@ -146,13 +146,13 @@ impl Parser<'_> {
         }
     }
 
-    fn skip_separators(&mut self) {
+    pub(super) fn skip_separators(&mut self) {
         while matches!(self.peek(), TokKind::Newline) {
             self.i += 1;
         }
     }
 
-    fn at_block_end(&self) -> bool {
+    pub(super) fn at_block_end(&self) -> bool {
         matches!(self.peek(), TokKind::Dedent | TokKind::Eof)
     }
 
@@ -175,7 +175,7 @@ impl Parser<'_> {
 
     /// Parse one item, or `None` for a skipped signature line or a recoverable
     /// error.
-    fn item(&mut self) -> Option<MlItem> {
+    pub(super) fn item(&mut self) -> Option<MlItem> {
         match self.peek() {
             TokKind::Doc(text) => {
                 let text = text.clone();
@@ -210,344 +210,34 @@ impl Parser<'_> {
     /// member projection ([MODULES-IMPORT]). ML uses layout instead of Default's
     /// punctuation-heavy `::{...}` member list.
     fn import_decl(&mut self) -> Option<MlItem> {
-        let pos = self.pos();
-        self.advance(); // `import`
-        let namespace = self.namespace_name()?;
-        let path = self.path_tail();
-        let alias = if self.eat(&TokKind::KwAs) {
-            self.ident()
-        } else {
-            None
-        };
-        let selection = if self.eat(&TokKind::Indent) {
-            if alias.is_some() {
-                self.error("an aliased whole import cannot also select members");
-            }
-            self.import_selection()
-        } else {
-            MlImportSelection::Whole
-        };
-        Some(MlItem::Import {
-            import: MlImport {
-                namespace,
-                path,
-                alias,
-                selection,
-            },
-            pos,
-        })
-    }
-
-    /// Parse the indented lines below an import. `*` must be the sole line;
-    /// named members may each carry one `as Alias`.
-    fn import_selection(&mut self) -> MlImportSelection {
-        self.skip_separators();
-        if matches!(self.peek(), TokKind::Op(op) if op == "*") {
-            self.advance();
-            self.skip_separators();
-            if !matches!(self.peek(), TokKind::Dedent | TokKind::Eof) {
-                self.error("wildcard import '*' must be the only selected member");
-                self.recover();
-            }
-            let _ = self.eat(&TokKind::Dedent);
-            return MlImportSelection::Wildcard;
-        }
-        let mut members = Vec::new();
-        while !self.at_block_end() {
-            self.skip_separators();
-            if self.at_block_end() {
-                break;
-            }
-            let before = self.i;
-            if let Some(name) = self.ident() {
-                let alias = if self.eat(&TokKind::KwAs) {
-                    self.ident()
-                } else {
-                    None
-                };
-                members.push(MlImportMember { name, alias });
-            } else {
-                self.recover();
-            }
-            if self.i == before {
-                self.recover();
-            }
-        }
-        let _ = self.eat(&TokKind::Dedent);
-        MlImportSelection::Members(members)
+        super::module_parse::import_decl(self)
     }
 
     /// `namespace name`: an indented body is a block contribution; without one
     /// the declaration applies to subsequent declarations in the file
     /// ([MODULES-FILE-SCOPED-NAMESPACE]).
     fn namespace_decl(&mut self) -> Option<MlItem> {
-        let pos = self.pos();
-        self.advance(); // `namespace`
-        let name = self.namespace_name()?;
-        let body = if self.eat(&TokKind::Indent) {
-            Some(self.items_until_dedent())
-        } else {
-            None
-        };
-        Some(MlItem::Namespace { name, body, pos })
+        super::module_parse::namespace_decl(self)
     }
 
     /// A layout module head. ML deliberately spells a state module `state Name`
     /// rather than the redundant `state module Name` ([MODULES-STATE-MODULE]).
     fn module_decl(&mut self, kind: MlModuleKind) -> Option<MlItem> {
-        let pos = self.pos();
-        self.advance(); // `module` / `state`
-        if kind == MlModuleKind::State && matches!(self.peek(), TokKind::KwModule) {
-            self.error("ML state modules are written 'state Name', without redundant 'module'");
-            self.advance();
-        }
-        let path = self.symbol_path()?;
-        let signature = if self.eat(&TokKind::Colon) {
-            self.symbol_path()
-        } else {
-            None
-        };
-        if !self.eat(&TokKind::Indent) {
-            self.error("module declaration requires an indented body");
-            return Some(MlItem::Module {
-                path,
-                kind,
-                signature,
-                body: Vec::new(),
-                pos,
-            });
-        }
-        let body = self.items_until_dedent();
-        Some(MlItem::Module {
-            path,
-            kind,
-            signature,
-            body,
-            pos,
-        })
+        super::module_parse::module_decl(self, kind)
     }
 
     /// `signature Name` plus its public, export-free interface requirements.
     fn module_signature_decl(&mut self) -> Option<MlItem> {
-        let pos = self.pos();
-        self.advance(); // `signature`
-        let name = self.ident()?;
-        if !self.eat(&TokKind::Indent) {
-            self.error("signature declaration requires an indented body");
-            return Some(MlItem::ModuleSignature {
-                name,
-                items: Vec::new(),
-                pos,
-            });
-        }
-        let items = self.signature_items();
-        Some(MlItem::ModuleSignature { name, items, pos })
-    }
-
-    fn signature_items(&mut self) -> Vec<MlSignatureItem> {
-        let mut items = Vec::new();
-        loop {
-            self.skip_separators();
-            if self.at_block_end() {
-                break;
-            }
-            let before = self.i;
-            match self.signature_item() {
-                Some(item) => items.push(item),
-                None => self.recover(),
-            }
-            if self.i == before {
-                self.recover();
-            }
-        }
-        let _ = self.eat(&TokKind::Dedent);
-        items
-    }
-
-    fn signature_item(&mut self) -> Option<MlSignatureItem> {
-        match self.peek() {
-            TokKind::Ident(_) => self.signature_value_item(),
-            TokKind::KwType => self.signature_type_item(),
-            TokKind::KwEffect => self.signature_effect_item(),
-            TokKind::KwModule => self.signature_module_item(),
-            TokKind::KwExport => {
-                self.error("signature items are public by definition; remove redundant 'export'");
-                None
-            }
-            TokKind::KwOpaque => {
-                self.error("write 'type T' for an abstract ML signature type; 'opaque' is redundant");
-                None
-            }
-            other => {
-                self.error(format!("unexpected token {other:?} in signature"));
-                None
-            }
-        }
-    }
-
-    fn signature_value_item(&mut self) -> Option<MlSignatureItem> {
-        let pos = self.pos();
-        let name = self.ident()?;
-        let type_params = self.signature_type_params();
-        if !self.eat(&TokKind::Colon) {
-            self.error("expected ':' in signature value");
-        }
-        let ty = self.ty();
-        let effects = self.effect_row();
-        Some(MlSignatureItem::Value {
-            name,
-            type_params,
-            ty,
-            effects,
-            pos,
-        })
-    }
-
-    fn signature_type_item(&mut self) -> Option<MlSignatureItem> {
-        let pos = self.pos();
-        self.advance(); // `type`
-        let name = self.ident()?;
-        let manifest = if self.eat(&TokKind::Eq) {
-            Some(self.ty())
-        } else {
-            None
-        };
-        Some(MlSignatureItem::Type {
-            name,
-            manifest,
-            pos,
-        })
-    }
-
-    fn signature_effect_item(&mut self) -> Option<MlSignatureItem> {
-        let pos = self.pos();
-        self.advance(); // `effect`
-        let name = self.ident()?;
-        let type_params = self.type_params();
-        let operations = self.effect_operations();
-        Some(MlSignatureItem::Effect {
-            name,
-            type_params,
-            operations,
-            pos,
-        })
-    }
-
-    fn signature_module_item(&mut self) -> Option<MlSignatureItem> {
-        let pos = self.pos();
-        self.advance(); // `module`
-        let name = self.ident()?;
-        if !self.eat(&TokKind::Colon) {
-            self.error("expected ':' in nested module signature item");
-        }
-        let signature = self.symbol_path()?;
-        Some(MlSignatureItem::Module {
-            name,
-            signature,
-            pos,
-        })
+        super::module_parse::signature_decl(self)
     }
 
     /// Wrap exactly one following declaration in explicit visibility metadata.
     fn export_decl(&mut self) -> Option<MlItem> {
-        let pos = self.pos();
-        self.advance(); // `export`
-        if self.eat(&TokKind::KwExport) {
-            self.error_at(pos, "duplicate 'export' is redundant");
-        }
-        let item = self.item()?;
-        if !is_exportable(&item) {
-            self.error_at(pos, "'export' must modify a value, function, type, effect, extern, or module declaration");
-        }
-        Some(MlItem::Export {
-            item: Box::new(item),
-            pos,
-        })
+        super::module_parse::export_decl(self)
     }
 
     fn opaque_decl(&mut self) -> Option<MlItem> {
-        let pos = self.pos();
-        self.advance(); // `opaque`
-        if !self.eat(&TokKind::KwType) {
-            self.error("'opaque' may modify only a type declaration");
-            return None;
-        }
-        let item = self.type_decl_after_keyword(pos)?;
-        Some(MlItem::Opaque {
-            item: Box::new(item),
-            pos,
-        })
-    }
-
-    /// Parse declarations until the matching `Dedent`. Unlike expression block
-    /// parsing, module/namespace bodies do not reinterpret the final expression
-    /// as a trailing block value.
-    fn items_until_dedent(&mut self) -> Vec<MlItem> {
-        let mut items = Vec::new();
-        loop {
-            self.skip_separators();
-            if self.at_block_end() {
-                break;
-            }
-            let before = self.i;
-            match self.item() {
-                Some(item) => items.push(item),
-                None => self.recover(),
-            }
-            if self.i == before {
-                self.recover();
-            }
-        }
-        let _ = self.eat(&TokKind::Dedent);
-        items
-    }
-
-    fn namespace_name(&mut self) -> Option<MlNamespaceName> {
-        match self.peek().clone() {
-            TokKind::Ident(name) => {
-                self.advance();
-                Some(MlNamespaceName::Ident(name))
-            }
-            TokKind::Str(name) => {
-                self.advance();
-                Some(MlNamespaceName::Quoted(name))
-            }
-            other => {
-                self.error(format!("expected namespace name, found {other:?}"));
-                None
-            }
-        }
-    }
-
-    fn symbol_path(&mut self) -> Option<MlSymbolPath> {
-        let first = self.ident()?;
-        let mut path = MlSymbolPath {
-            segments: vec![first],
-        };
-        while self.eat(&TokKind::ColonColon) {
-            if let Some(segment) = self.ident() {
-                path.segments.push(segment);
-            } else {
-                self.error("expected path segment after '::'");
-                break;
-            }
-        }
-        Some(path)
-    }
-
-    /// Continue an import target after its namespace label. The first namespace
-    /// component is deliberately stored separately from the module path.
-    fn path_tail(&mut self) -> MlSymbolPath {
-        let mut segments = Vec::new();
-        while self.eat(&TokKind::ColonColon) {
-            if let Some(segment) = self.ident() {
-                segments.push(segment);
-            } else {
-                self.error("expected import path segment after '::'");
-                break;
-            }
-        }
-        MlSymbolPath { segments }
+        super::module_parse::opaque_decl(self)
     }
 
     /// `mut name = body` → a mutable binding.
@@ -580,15 +270,20 @@ impl Parser<'_> {
 
     /// Finish a type declaration after its `type` token has already been
     /// consumed (also reused by `opaque type`).
-    fn type_decl_after_keyword(&mut self, pos: Position) -> Option<MlItem> {
+    pub(super) fn type_decl_after_keyword(&mut self, pos: Position) -> Option<MlItem> {
         let name = self.ident()?;
         let type_params = self.type_params();
         let _ = self.expect_eq();
-        let variants = self.type_body(&name);
+        let (variants, alias) = match self.peek() {
+            TokKind::Indent => (self.type_body(&name), None),
+            TokKind::Newline | TokKind::Dedent | TokKind::Eof => (Vec::new(), None),
+            _ => (Vec::new(), Some(self.ty())),
+        };
         Some(MlItem::Type {
             name,
             type_params,
             variants,
+            alias,
             pos,
         })
     }
@@ -599,7 +294,7 @@ impl Parser<'_> {
     /// contextual keywords reserved inside type-parameter position in BOTH
     /// flavors — a marker must be followed by a parameter name. Implements
     /// [TYPE-VARIANCE-DECL].
-    fn type_params(&mut self) -> Vec<MlTypeParam> {
+    pub(super) fn type_params(&mut self) -> Vec<MlTypeParam> {
         let mut out = Vec::new();
         loop {
             let variance = match self.peek() {
@@ -781,7 +476,7 @@ impl Parser<'_> {
     }
 
     /// The indented `op : P => R` operation lines of an `effect` block.
-    fn effect_operations(&mut self) -> Vec<MlEffectOp> {
+    pub(super) fn effect_operations(&mut self) -> Vec<MlEffectOp> {
         let mut operations = Vec::new();
         if !self.eat(&TokKind::Indent) {
             return operations;
@@ -869,7 +564,7 @@ impl Parser<'_> {
     /// The `<T, U>` binder of a generic signature. The caller has already
     /// validated the whole shape via [`Self::at_generic_signature`], so this
     /// only consumes: `<`, comma-separated parameter groups, `>`.
-    fn signature_type_params(&mut self) -> Vec<MlTypeParam> {
+    pub(super) fn signature_type_params(&mut self) -> Vec<MlTypeParam> {
         if !matches!(self.peek(), TokKind::Op(op) if op == "<") {
             return Vec::new();
         }
@@ -918,7 +613,7 @@ impl Parser<'_> {
     /// bracketed `! [Ref, …]`, each reference optionally applied to type
     /// arguments (`State<int>`). Empty when no `!` is present
     /// ([FLAVOR-ML-EFFECT], [EFFECTS-GENERIC-ROWS]).
-    fn effect_row(&mut self) -> Vec<MlEffectRef> {
+    pub(super) fn effect_row(&mut self) -> Vec<MlEffectRef> {
         if !matches!(self.peek(), TokKind::Op(op) if op == "!") {
             return Vec::new();
         }
@@ -957,7 +652,7 @@ impl Parser<'_> {
     }
 
     /// A type: arrows are right-associative (`a -> b -> c` = `a -> (b -> c)`).
-    fn ty(&mut self) -> MlType {
+    pub(super) fn ty(&mut self) -> MlType {
         let from = self.ty_app();
         if self.eat(&TokKind::Arrow) {
             return MlType::Arrow {
@@ -2016,7 +1711,7 @@ impl Parser<'_> {
         }
     }
 
-    fn ident(&mut self) -> Option<String> {
+    pub(super) fn ident(&mut self) -> Option<String> {
         if let TokKind::Ident(name) = self.peek() {
             let name = name.clone();
             self.advance();
@@ -2051,127 +1746,6 @@ impl Parser<'_> {
             false
         }
     }
-}
-
-/// Validate declaration-group rules which need sibling context. Keeping this
-/// pass over the faithful CST makes the parser routines small while still
-/// rejecting redundancy before canonical lowering ([MODULES-EXPORTS]).
-fn validate_module_items(
-    items: &[MlItem],
-    module_ascribed: Option<bool>,
-    errors: &mut Vec<SyntaxError>,
-) {
-    for (index, item) in items.iter().enumerate() {
-        match item {
-            MlItem::Namespace {
-                body: Some(body), ..
-            } => validate_module_items(body, None, errors),
-            MlItem::Namespace { body: None, .. } => {}
-            MlItem::Module {
-                signature, body, ..
-            } => validate_module_items(body, Some(signature.is_some()), errors),
-            MlItem::Export {
-                item: exported,
-                pos,
-            } => {
-                match module_ascribed {
-                    None => push_validation_error(
-                        errors,
-                        *pos,
-                        "namespace declarations are public by default; 'export' is valid only inside an un-ascribed module",
-                    ),
-                    Some(true) => push_validation_error(
-                        errors,
-                        *pos,
-                        "an ascribed module exports exactly its signature; remove redundant 'export'",
-                    ),
-                    Some(false) => {}
-                }
-                if matches!(exported.as_ref(), MlItem::Binding { mutable: true, .. }) {
-                    push_validation_error(errors, *pos, "mutable cells cannot be exported");
-                }
-                if let MlItem::ValueSignature { name, .. } = exported.as_ref() {
-                    validate_signature_follower(items, index, name, true, *pos, errors);
-                }
-                if let MlItem::Opaque { item, .. } = exported.as_ref() {
-                    if !matches!(item.as_ref(), MlItem::Type { .. }) {
-                        push_validation_error(
-                            errors,
-                            *pos,
-                            "'opaque' may modify only an exported type declaration",
-                        );
-                    }
-                }
-            }
-            MlItem::Opaque { pos, .. } => push_validation_error(
-                errors,
-                *pos,
-                "an opaque representation requires exactly one 'export opaque type' declaration",
-            ),
-            MlItem::ValueSignature { name, pos, .. } => {
-                validate_signature_follower(items, index, name, false, *pos, errors);
-            }
-            _ => {}
-        }
-    }
-}
-
-fn validate_signature_follower(
-    items: &[MlItem],
-    index: usize,
-    name: &str,
-    exported_signature: bool,
-    pos: Position,
-    errors: &mut Vec<SyntaxError>,
-) {
-    let follower = items.get(index.saturating_add(1));
-    let matching_bare = matches!(
-        follower,
-        Some(MlItem::Binding {
-            name: following,
-            ..
-        }) if following == name
-    );
-    if matching_bare {
-        return;
-    }
-    let matching_exported = matches!(
-        follower,
-        Some(MlItem::Export { item, .. })
-            if matches!(item.as_ref(), MlItem::Binding { name: following, .. } if following == name)
-    );
-    let message = if exported_signature && matching_exported {
-        format!(
-            "'{name}' is already exported by its signature; remove 'export' from the definition"
-        )
-    } else {
-        format!("signature for '{name}' must be immediately followed by its bare definition")
-    };
-    push_validation_error(errors, pos, message);
-}
-
-fn push_validation_error(
-    errors: &mut Vec<SyntaxError>,
-    position: Position,
-    message: impl Into<String>,
-) {
-    errors.push(SyntaxError {
-        message: message.into(),
-        position,
-    });
-}
-
-fn is_exportable(item: &MlItem) -> bool {
-    matches!(
-        item,
-        MlItem::Binding { .. }
-            | MlItem::ValueSignature { .. }
-            | MlItem::Type { .. }
-            | MlItem::Effect { .. }
-            | MlItem::Extern { .. }
-            | MlItem::Module { .. }
-            | MlItem::Opaque { .. }
-    )
 }
 
 /// An uppercase initial marks a constructor/type name; lowercase marks a value

@@ -16,6 +16,7 @@
 ; --- Keywords ---
 [
   "let" "mut" "fn" "extern" "type" "module" "import"
+  "namespace" "signature" "export" "opaque" "state" "as" "extra"
   "effect" "perform" "handle" "in"
   "match" "select" "where" "if" "else"
 ] @keyword
@@ -26,14 +27,14 @@
 
 ; --- Operators ---
 [
-  "=" "->" "=>" "|>" "?" ":"
+  "=" "->" "=>" "|>" "?" ":" "::"
   "==" "!=" "<" ">" "<=" ">=" "&&" "||" "!" "%"
   "+" "-" "*" "/"
 ] @operator
 
 ; --- Punctuation ---
 [ "(" ")" "{" "}" "[" "]" ] @punctuation.bracket
-[ "," "." "|" ] @punctuation.delimiter
+[ "," "." ";" "|" ] @punctuation.delimiter
 
 ; --- Declarations & names ---
 (function_declaration name: (identifier) @function)
@@ -43,6 +44,12 @@
 (let_declaration name: (identifier) @variable)
 (effect_declaration name: (identifier) @type)
 (operation_declaration name: (identifier) @function.method)
+(namespace_declaration name: (namespace_name (identifier) @namespace))
+(namespace_declaration name: (namespace_name (string) @string.special))
+(module_declaration path: (symbol_path (identifier) @namespace))
+(signature_declaration name: (identifier) @type)
+(signature_module path: (symbol_path (identifier) @namespace))
+(qualified_path (identifier) @namespace)
 
 ; --- Types ---
 (type_declaration name: (identifier) @type)

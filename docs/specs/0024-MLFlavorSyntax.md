@@ -19,6 +19,7 @@ subordinate to that contract. Implementation is tracked in
 - [Bindings and Mutation](#bindings-and-mutation)
 - [Functions and Currying](#functions-and-currying)
 - [Function Calls](#function-calls)
+- [Modules and Namespaces](#modules-and-namespaces)
 - [Effects](#effects)
 - [Handlers](#handlers)
 - [Match](#match)
@@ -52,8 +53,13 @@ subordinate to that contract. Implementation is tracked in
   precedence-climbing) parser in
   [`crates/osprey-syntax/src/ml/`](../../crates/osprey-syntax/src/ml/) (see
   [`[FLAVOR-ML-LAYOUT]`](#layout-model)).
-- **Phase 0 — first-class handler values + effects: deferred.** ML
-  handler/effect syntax errors loudly until this shared-core feature lands.
+- **Modules and namespaces: implemented.** File/block namespaces, layout
+  modules and signatures, concise state modules, explicit exports, layout
+  imports, and `::` symbol paths lower to the shared module AST specified by
+  [Modules and Namespaces](0025-ModulesAndNamespaces.md).
+- **First-class handler values: deferred.** ML effect declarations,
+  `perform`, and the existing fused `handle ... in ...` form are implemented;
+  only reusable handler values/installers await the shared-core feature.
 
 The parsing techniques and the offside rule are cited in the
 [References](#references) section.
@@ -271,6 +277,127 @@ Lowering: whitespace application `f a b` → nested `Expr::Call`, one argument e
 **uncurried** saturated call → a single `Call(f, [a, b])` (matching Default's
 `f(x: a, y: b)`); a single parenthesised expression `f (a)` is just grouping and
 lowers to `Call(f, [a])`.
+
+## Modules and Namespaces
+
+`[FLAVOR-ML-MODULES]` Module semantics are defined by
+[Modules and Namespaces](0025-ModulesAndNamespaces.md). This section defines
+only the ML projection: layout supplies every body boundary, `::` qualifies
+logical symbols, and visibility is written exactly once.
+
+```ebnf
+namespaceDecl ::= "namespace" namespaceName (INDENT item+ DEDENT)?
+namespaceName ::= ID | STRING
+moduleDecl    ::= "module" symbolPath (":" symbolPath)? INDENT item+ DEDENT
+stateDecl     ::= "state" symbolPath (":" symbolPath)? INDENT item+ DEDENT
+signatureDecl ::= "signature" ID INDENT signatureItem+ DEDENT
+symbolPath    ::= ID ("::" ID)*
+```
+
+A namespace header without an indented body is file-scoped. An indented body is
+one block contribution to the open namespace:
+
+```osprey-ml
+namespace billing
+
+module Tax
+    ...
+```
+
+```osprey-ml
+namespace billing
+    module Tax
+        ...
+```
+
+A named signature is the whole public contract of an ascribed module. Signature
+items are public by definition, and implementation declarations do not repeat
+`export`:
+
+```osprey-ml
+signature TaxApi
+    type Money
+    type Rate = int
+    addTax : Money -> Money
+
+module Tax : TaxApi
+    type Money = int
+    type Rate = int
+
+    addTax cents = cents
+```
+
+In a signature, bare `type T` is abstract; `type T = R` is manifest. Writing
+`opaque type T` there is redundant and rejected. An ascribed module exports
+exactly its signature, so any explicit `export` inside it is also rejected.
+
+An un-ascribed module marks each public declaration group exactly once. The
+inference-first form exports the definition directly; when a type contract is
+genuinely load-bearing, an exported value signature transfers visibility to
+the immediately following same-name bare definition:
+
+```osprey-ml
+module Tax
+    defaultRate = 10
+
+    export addTax cents =
+        cents + cents * defaultRate / 100
+
+    export zero cents = cents
+    export opaque type UserId = int
+```
+
+Prefixing both a signature and its definition with `export` is an error, as is
+an orphan signature. `export mut` is always an error: module-owned cells are
+private.
+
+The state-owning form is deliberately `state Name`, never the redundant
+`state module Name`:
+
+```osprey-ml
+state Counter
+    mut count = 0
+
+    export effect CounterFx
+        read : Unit => int
+
+    export run action =
+        handle CounterFx
+            read => count
+        in
+            action ()
+```
+
+State never leaks through an ordinary accessor. `run` installs the capability;
+the private cell is read only inside its handler arm. First-class exported
+handler values will provide the still-cleaner factory form described in
+[Handlers](#handlers) once that shared-core feature lands.
+
+Imports use the same logical targets as the shared model, but explicit member
+selection is a layout list rather than Default's brace list:
+
+```ebnf
+importDecl   ::= "import" importTarget ("as" ID)?
+               | "import" importTarget INDENT importMember+ DEDENT
+               | "import" importTarget INDENT "*" DEDENT
+importMember ::= ID ("as" ID)?
+```
+
+```osprey-ml
+import billing::Tax
+import billing::Tax as T
+import billing::Tax
+    addTax
+    zero as noTax
+import "billing/api" as api
+
+gross = T::addTax 100
+```
+
+`::` is namespace/module/member qualification; `.` remains value field access.
+Qualified whitespace application is still curried (`Tax::add 1 2`). Calling a
+flat multi-parameter API uses the explicit uncurried form
+`Tax::add (1, 2)`, matching Default `Tax::add(1, 2)`.
 
 ## Effects
 
@@ -498,6 +625,12 @@ is in [FLAVOR-LAYER](0023-LanguageFlavors.md#flavor-concern-vs-shared-core-conce
 | `\x y => e` | curried `Expr::Lambda` chain |
 | `f a b` | nested one-arg `Expr::Call` — `Call(Call(f,[a]),[b])` |
 | `f (a, b)` (saturated) | single multi-arg `Expr::Call` — `Call(f, [a, b])` |
+| `namespace n` + following declarations | file-scoped `Stmt::Namespace` |
+| `module M : S` + layout body | `Stmt::Module { kind: Plain, signature: S }` |
+| `state M` + layout body | `Stmt::Module { kind: State }` |
+| `signature S` + layout items | `Stmt::Signature` |
+| layout member import | `Stmt::Import` + explicit `ImportSelection` |
+| `A::B::value` | `Expr::Path(SymbolPath)` |
 | `type T =` + variant/field layout | `Stmt::Type` + `TypeVariant` |
 | `[a, b, c]` / `xs[i]` | `Expr::List` / `Expr::Index` |
 | layout block | `Expr::Block` |
@@ -657,4 +790,6 @@ layout lexer.
   contract, currying canonicalisation, and shared-core handler-value feature.
 - [Algebraic Effects](0017-AlgebraicEffects.md) — effect semantics shared by both
   flavors.
+- [Modules and Namespaces](0025-ModulesAndNamespaces.md) — shared namespace,
+  module, signature, import, export, and state-ownership semantics.
 - [Plan 0013 — ML Flavor Frontend](../plans/0013-ml-flavor-frontend.md).

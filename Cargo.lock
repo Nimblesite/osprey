@@ -379,8 +379,10 @@ dependencies = [
  "osprey-debug",
  "osprey-fmt",
  "osprey-lsp",
+ "osprey-project",
  "osprey-syntax",
  "osprey-types",
+ "serde_json",
  "tokio",
 ]
 

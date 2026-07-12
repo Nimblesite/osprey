@@ -15,13 +15,23 @@ it belongs to a project; it does **not** decide the names it exports.
 
 ## Status `[MODULES-STATUS]`
 
-The Default frontend currently parses only stub forms of dotted `import` and
-`module Name { ... }`; the ML frontend has neither form yet. The stubs do not
-resolve imports, expose module members, enforce privacy, or reach codegen.
-Cross-file resolution, namespaces, exports, signatures, state ownership, and
-project assembly therefore remain planned. This chapter is the normative
-contract for that implementation and supersedes the
-fiber-isolated module sketch in [Fibers and Concurrency](0011-LightweightFibersAndConcurrency.md#fiber-isolated-modules-planned).
+The initial module system is implemented end to end in both flavors. The shared
+AST, project loader, namespace graph, import/privacy/signature checks, resolved
+linkage names, state-owner validation, handler-local state materialization,
+type checking, native/LLVM codegen, project CLI, formatter, and same-document
+editor features are active. Mixed `.osp`/`.ospml` projects build and run through
+the same canonical graph.
+
+The implementation fails loudly at the remaining semantic boundaries. In
+particular, opaque manifest aliases are rejected rather than flattened to their
+private representation; owner-transparent/client-nominal alias checking needs a
+non-flat interface-aware checker. Separate importer checking, parameterised and
+recursive modules, ranked import suggestions, incremental cross-file LSP
+indexing, module reference-page generation, and source-name restoration in
+native debugger/stack frames remain planned and are unchecked in
+[plan 0014](../plans/0014-modules-and-namespaces.md). This chapter remains the
+normative contract for those pieces and supersedes the fiber-isolated module
+sketch in [Fibers and Concurrency](0011-LightweightFibersAndConcurrency.md#fiber-isolated-modules-planned).
 
 ## Research Basis `[MODULES-RESEARCH]`
 
@@ -322,17 +332,18 @@ unascribed module exports only declarations marked `export`; an ascribed module'
 signature is its complete public surface.
 
 ```ebnf
-defaultModuleDecl ::= "module" symbolPath signatureAscription?
+defaultModuleDecl ::= "module" symbolPath defaultSignatureAscription?
                       "{" defaultModuleItem* "}"
-defaultStateDecl ::= "state" "module" symbolPath signatureAscription?
+defaultStateDecl ::= "state" "module" symbolPath defaultSignatureAscription?
                      "{" defaultModuleItem* "}"
 defaultModuleItem ::= "export"? statement
-mlModuleDecl ::= "module" symbolPath signatureAscription?
+mlModuleDecl ::= "module" symbolPath mlSignatureAscription?
                  NEWLINE INDENT mlModuleItem+ DEDENT
-mlStateDecl ::= "state" symbolPath signatureAscription?
+mlStateDecl ::= "state" symbolPath mlSignatureAscription?
                 NEWLINE INDENT mlModuleItem+ DEDENT
 mlModuleItem ::= "export"? statement
-signatureAscription ::= ":" symbolPath ("+" "extra")?
+defaultSignatureAscription ::= ":" symbolPath ("+" "extra")?
+mlSignatureAscription ::= ":" symbolPath
 ```
 
 Default flavor:
@@ -343,7 +354,7 @@ namespace billing;
 module Tax {
     let defaultRate = 10
 
-    export fn addTax(cents: int) -> int =
+    export fn addTax(cents) =
         cents + cents * defaultRate / 100
 }
 ```
@@ -356,8 +367,7 @@ namespace billing
 module Tax
     defaultRate = 10
 
-    export addTax : int -> int
-    addTax cents =
+    export addTax cents =
         cents + cents * defaultRate / 100
 ```
 
@@ -413,7 +423,14 @@ gross = addTax 100
 other = Tax::addTax 100
 ```
 
-Resolution rules:
+### Name Resolution `[MODULES-RESOLUTION]`
+
+Resolution is lexical and deterministic: local bindings and declarations win,
+then the current module and its parents, imported aliases, imported members,
+explicit namespace-qualified paths, and finally built-ins. An import never
+silently replaces a nearer declaration.
+
+Additional import rules:
 
 - Identifier namespace labels can be used directly with `::`:
   `billing::Tax::addTax(100)`.
@@ -527,7 +544,8 @@ effectSignatureBody ::= "{" effectOperationSpec* "}"
                       | NEWLINE INDENT effectOperationSpec+ DEDENT
 effectOperationSpec ::= IDENT ":" typeExpr         /* Default fn type */
                       | IDENT ":" mlType "=>" mlType
-signatureAscription ::= ":" symbolPath ("+" "extra")?
+defaultSignatureAscription ::= ":" symbolPath ("+" "extra")?
+mlSignatureAscription ::= ":" symbolPath
 ```
 
 Default flavor:
@@ -571,7 +589,6 @@ module MemoryStore : StoreSig
         load : Unit => Store
         save : Store => Unit
 
-    empty : Unit -> Store
     empty () =
         Store
             values = []
@@ -590,9 +607,11 @@ Signature conformance is checked structurally:
 - Effect operations must match names, parameter types, return types, and effect
   rows.
 - Extra private declarations are allowed.
-- Other implementation declarations stay private. `: StoreSig + extra` opts
-  into additionally exporting declarations explicitly marked `export`; without
-  `+ extra`, such extra exports are rejected.
+- Other implementation declarations stay private. In Default,
+  `: StoreSig + extra` opts into additionally exporting declarations explicitly
+  marked `export`; without `+ extra`, such extra exports are rejected. ML keeps
+  ascription exact: extend the named signature or use an unascribed module
+  instead of adding a redundant `+ extra`/`export` side channel.
 
 ### Separate Checking `[MODULES-SEPARATE-CHECKING]`
 
@@ -691,7 +710,6 @@ state Counter : CounterSig
         next : Unit => int
         read : Unit => int
 
-    run : (Unit -> Unit) -> Unit
     run action =
         handle CounterFx
             next () =>
@@ -728,9 +746,9 @@ Rules:
   Pure helpers remain legal when all state arrives through explicit parameters.
 - A state module must export its effect surface and at least one installer that
   establishes the owning handler region.
-- A namespace may contain at most one unannotated state module. Additional state
-  owners require `@state_boundary("reason")` and are reported by LSP and docs
-  tooling as architecture-visible boundaries.
+- A namespace may contain at most one state module in the initial module
+  system. There is no annotation, ordinary-function, or ambient-state escape
+  hatch; additional owners are a compile-time error.
 - Cached derived cells are forbidden in Phase 1. Derived values are computed in
   handler arms or by pure helpers over explicit values.
 
@@ -866,8 +884,8 @@ Module diagnostics must be architecture-facing:
 - unknown import: show candidate namespaces from the project graph;
 - ambiguous import: show all providers and suggest aliases;
 - exported private dependency: show the hidden type/value in the public signature;
-- state scatter: show every state module in the namespace and require
-  `@state_boundary`;
+- state scatter: show every state module in the namespace and require the state
+  to be consolidated behind one algebraic-effect boundary;
 - top-level mutable state: suggest `state module` or handler-owned state;
 - path drift: warn, never change semantics.
 

@@ -136,41 +136,37 @@
       ]
     },
     "import_target": {
-      "type": "PREC_RIGHT",
-      "value": 0,
-      "content": {
-        "type": "SEQ",
-        "members": [
-          {
-            "type": "FIELD",
-            "name": "namespace",
-            "content": {
-              "type": "SYMBOL",
-              "name": "namespace_name"
-            }
-          },
-          {
-            "type": "REPEAT",
-            "content": {
-              "type": "SEQ",
-              "members": [
-                {
-                  "type": "STRING",
-                  "value": "::"
-                },
-                {
-                  "type": "FIELD",
-                  "name": "segment",
-                  "content": {
-                    "type": "SYMBOL",
-                    "name": "identifier"
-                  }
-                }
-              ]
-            }
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "FIELD",
+          "name": "namespace",
+          "content": {
+            "type": "SYMBOL",
+            "name": "namespace_name"
           }
-        ]
-      }
+        },
+        {
+          "type": "REPEAT",
+          "content": {
+            "type": "SEQ",
+            "members": [
+              {
+                "type": "STRING",
+                "value": "::"
+              },
+              {
+                "type": "FIELD",
+                "name": "segment",
+                "content": {
+                  "type": "SYMBOL",
+                  "name": "identifier"
+                }
+              }
+            ]
+          }
+        }
+      ]
     },
     "import_tail": {
       "type": "CHOICE",
@@ -328,8 +324,12 @@
           ]
         },
         {
-          "type": "STRING",
-          "value": "namespace"
+          "type": "FIELD",
+          "name": "keyword",
+          "content": {
+            "type": "STRING",
+            "value": "namespace"
+          }
         },
         {
           "type": "FIELD",
@@ -3849,8 +3849,12 @@
           ]
         },
         {
-          "type": "STRING",
-          "value": "module"
+          "type": "FIELD",
+          "name": "keyword",
+          "content": {
+            "type": "STRING",
+            "value": "module"
+          }
         },
         {
           "type": "FIELD",
@@ -4052,8 +4056,12 @@
           ]
         },
         {
-          "type": "STRING",
-          "value": "signature"
+          "type": "FIELD",
+          "name": "keyword",
+          "content": {
+            "type": "STRING",
+            "value": "signature"
+          }
         },
         {
           "type": "FIELD",
@@ -4592,6 +4600,9 @@
       "type_constructor"
     ],
     [
+      "import_target"
+    ],
+    [
       "primary_expression",
       "type_constructor",
       "update_expression"
@@ -4640,14 +4651,6 @@
     [
       "generic_type",
       "type_identifier"
-    ],
-    [
-      "qualified_path",
-      "primary_expression"
-    ],
-    [
-      "union_type",
-      "type_alias"
     ]
   ],
   "precedences": [],

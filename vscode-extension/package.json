@@ -108,6 +108,10 @@
     ],
     "snippets": [
       {
+        "language": "osprey",
+        "path": "./snippets/osprey.json"
+      },
+      {
         "language": "osprey-ml",
         "path": "./snippets/osprey-ml.json"
       }

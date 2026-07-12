@@ -14,7 +14,10 @@ use crate::model::{CompletionItem, CompletionKind, Location, SignatureInfo, Span
 use crate::text::{measure, occurrences};
 
 // LSP `SymbolKind` numeric codes.
+const SYMBOL_MODULE: u8 = 2;
+const SYMBOL_NAMESPACE: u8 = 3;
 const SYMBOL_CLASS: u8 = 5;
+const SYMBOL_INTERFACE: u8 = 11;
 const SYMBOL_FUNCTION: u8 = 12;
 const SYMBOL_VARIABLE: u8 = 13;
 // LSP `CompletionItemKind` numeric codes.
@@ -193,6 +196,9 @@ pub fn symbols_result(symbols: &[SymbolInfo], text: &str, encoding: PositionEnco
 fn symbol_json(s: &SymbolInfo, text: &str, encoding: PositionEncoding) -> Value {
     let span = identifier_span(s, text, encoding);
     let kind = match s.kind {
+        crate::analysis::SymbolKind::Namespace => SYMBOL_NAMESPACE,
+        crate::analysis::SymbolKind::Module => SYMBOL_MODULE,
+        crate::analysis::SymbolKind::Signature => SYMBOL_INTERFACE,
         crate::analysis::SymbolKind::Function => SYMBOL_FUNCTION,
         crate::analysis::SymbolKind::Variable => SYMBOL_VARIABLE,
         crate::analysis::SymbolKind::Type => SYMBOL_CLASS,
@@ -211,7 +217,7 @@ fn symbol_json(s: &SymbolInfo, text: &str, encoding: PositionEncoding) -> Value 
 /// whole-word occurrence of the name; fall back to the keyword column.
 fn identifier_span(s: &SymbolInfo, text: &str, encoding: PositionEncoding) -> Span {
     let line = s.position.map_or(0, |p| p.line.saturating_sub(1));
-    occurrences(text, &s.name, encoding)
+    occurrences(text, &s.source_name, encoding)
         .into_iter()
         .find(|o| o.line == line)
         .map_or_else(
@@ -221,7 +227,7 @@ fn identifier_span(s: &SymbolInfo, text: &str, encoding: PositionEncoding) -> Sp
                     line,
                     col,
                     line,
-                    col.saturating_add(measure(&s.name, encoding)),
+                    col.saturating_add(measure(&s.source_name, encoding)),
                 )
             },
             |o| (o.line, o.start, o.line, o.end),
@@ -371,8 +377,12 @@ mod tests {
 
     #[test]
     fn symbols_result_maps_every_symbol_kind_to_its_lsp_code() {
-        // A type, a function, and a `let` exercise all three `SymbolKind` arms.
-        let value = symbols_value("type Shade = Light | Dark\nfn f() -> Unit = 1\nlet x = 2\n");
+        // [MODULES-NAMESPACE] Container kinds use their dedicated LSP codes.
+        let value = symbols_value(
+            "namespace app { module M { export fn f() -> Unit = 1 } }\n\
+             signature Api { fn f() -> Unit }\n\
+             type Shade = Light | Dark\nlet x = 2\n",
+        );
         let by_name = |name: &str| {
             value
                 .as_array()
@@ -384,8 +394,11 @@ mod tests {
                 .and_then(|s| s.pointer("/kind"))
                 .cloned()
         };
+        assert_eq!(by_name("app"), Some(Value::from(SYMBOL_NAMESPACE)));
+        assert_eq!(by_name("app::M"), Some(Value::from(SYMBOL_MODULE)));
+        assert_eq!(by_name("Api"), Some(Value::from(SYMBOL_INTERFACE)));
         assert_eq!(by_name("Shade"), Some(Value::from(SYMBOL_CLASS)));
-        assert_eq!(by_name("f"), Some(Value::from(SYMBOL_FUNCTION)));
+        assert_eq!(by_name("app::M::f"), Some(Value::from(SYMBOL_FUNCTION)));
         assert_eq!(by_name("x"), Some(Value::from(SYMBOL_VARIABLE)));
     }
 
@@ -397,6 +410,7 @@ mod tests {
         // occurrence scan misses and the keyword-column fallback is used.
         let sym = SymbolInfo {
             name: "ghost".to_owned(),
+            source_name: "ghost".to_owned(),
             kind: SymbolKind::Variable,
             ty: "int".to_owned(),
             position: Some(Position { line: 1, column: 4 }),

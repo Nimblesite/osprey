@@ -16,18 +16,25 @@
 
 mod docs;
 mod fmt;
+mod project;
 mod sandbox;
 mod wasm;
 
 use osprey_syntax::Flavor;
+use project::CompilationInput;
 use sandbox::Policy;
-use std::path::{Path, PathBuf};
+use std::path::Path;
+#[cfg(test)]
+use std::path::PathBuf;
 use std::process::{Command, ExitCode};
 
-const USAGE: &str = "usage: osprey <file.osp> [--check | --ast | --llvm | --compile | --run | \
+const USAGE: &str =
+    "usage: osprey <file-or-project> [--check | --ast | --llvm | --compile | --run | \
 --symbols] [--quiet] [--debug] [--flavor default|ml] [--memory=default|gc] \
 [--target=native|wasm32] [-o <out>] \
 [--sandbox | --no-http | --no-websocket | --no-fs | --no-ffi]\n\
+       osprey build [project] [--quiet] [--debug] [--memory=default|gc] \
+[--target=native|wasm32] [-o <out>]\n\
        osprey fmt [--check | --stdout] [--flavor default|ml] <path...>\n\
        osprey --hover <name>\n\
        osprey --docs --docs-dir <dir>\n\
@@ -129,8 +136,18 @@ fn run_lsp() -> ExitCode {
 /// Parse the argument list: the first non-flag is the source path; mode flags
 /// select the action (last one wins); the rest toggle behaviour.
 fn parse_args(args: &[String]) -> Result<Cli, String> {
+    let project_build = args.first().map(String::as_str) == Some("build");
+    let args = if project_build {
+        args.get(1..).unwrap_or_default()
+    } else {
+        args
+    };
     let mut path = None;
-    let mut mode = String::from("--check");
+    let mut mode = String::from(if project_build {
+        "--compile"
+    } else {
+        "--check"
+    });
     let mut quiet = false;
     let mut policy = Policy::allow_all();
     let mut memory = String::from("default");
@@ -141,6 +158,13 @@ fn parse_args(args: &[String]) -> Result<Cli, String> {
     let mut it = args.iter();
     while let Some(a) = it.next() {
         match a.as_str() {
+            "--ast" | "--check" | "--llvm" | "--compile" | "--run" | "--symbols" | "--hover"
+                if project_build =>
+            {
+                return Err(format!(
+                    "`osprey build` does not accept mode flag {a}\n{USAGE}"
+                ));
+            }
             "--ast" | "--check" | "--llvm" | "--compile" | "--run" | "--symbols" | "--hover" => {
                 mode.clone_from(a);
             }
@@ -194,6 +218,17 @@ fn parse_args(args: &[String]) -> Result<Cli, String> {
             debug,
             flavor,
         }),
+        None if project_build => Ok(Cli {
+            path: ".".to_string(),
+            mode,
+            quiet,
+            policy,
+            memory,
+            target,
+            output,
+            debug,
+            flavor,
+        }),
         None => Err(USAGE.to_string()),
     }
 }
@@ -230,19 +265,44 @@ fn parse_flavor(value: &str) -> Result<Flavor, String> {
 
 /// Parse, gate (syntax → sandbox → types), and dispatch the selected mode.
 fn run(cli: &Cli) -> ExitCode {
+    let input = match load_input(cli) {
+        Ok(input) => input,
+        Err(code) => return code,
+    };
+    let violations = sandbox::violations(input.program(), cli.policy);
+    if !violations.is_empty() {
+        for violation in &violations {
+            eprintln!("{}: {violation}", input.display_path());
+        }
+        return ExitCode::FAILURE;
+    }
+    dispatch(cli, &input)
+}
+
+fn load_input(cli: &Cli) -> Result<CompilationInput, ExitCode> {
     let path = &cli.path;
+    if project::is_project_path(path) {
+        if cli.flavor.is_some() {
+            eprintln!("error: --flavor applies to single files; projects select flavor per source");
+            return Err(ExitCode::from(2));
+        }
+        return project::CompilationInput::load_project(path).map_err(|errors| {
+            print_project_errors(&errors, path);
+            ExitCode::FAILURE
+        });
+    }
     let source = match std::fs::read_to_string(path) {
         Ok(s) => s,
         Err(e) => {
             eprintln!("error: cannot read {path}: {e}");
-            return ExitCode::from(2);
+            return Err(ExitCode::from(2));
         }
     };
     let flavor = match osprey_syntax::resolve_flavor(cli.flavor, path, &source) {
         Ok(flavor) => flavor,
         Err(msg) => {
             eprintln!("{msg}");
-            return ExitCode::from(2);
+            return Err(ExitCode::from(2));
         }
     };
     let parsed = osprey_syntax::parse_program_with_flavor(&source, flavor);
@@ -253,33 +313,39 @@ fn run(cli: &Cli) -> ExitCode {
                 err.position.line, err.position.column, err.message
             );
         }
-        return ExitCode::FAILURE;
+        return Err(ExitCode::FAILURE);
     }
-    let violations = sandbox::violations(&parsed.program, cli.policy);
-    if !violations.is_empty() {
-        for v in &violations {
-            eprintln!("{path}: {v}");
-        }
-        return ExitCode::FAILURE;
+    if project::needs_assembly(&parsed.program) {
+        return CompilationInput::one_source(path, flavor, source, parsed.program).map_err(
+            |errors| {
+                print_project_errors(&errors, path);
+                ExitCode::FAILURE
+            },
+        );
     }
-    dispatch(cli, &parsed.program, &source)
+    Ok(CompilationInput::script(path, source, parsed.program))
+}
+
+fn print_project_errors(errors: &[osprey_project::ProjectError], fallback: &str) {
+    for error in errors {
+        eprintln!("{}", project::format_project_error(error, fallback));
+    }
 }
 
 /// Route the type-gated modes: an ill-typed program never reaches codegen.
-fn dispatch(cli: &Cli, program: &osprey_ast::Program, source: &str) -> ExitCode {
-    let path = &cli.path;
+fn dispatch(cli: &Cli, input: &CompilationInput) -> ExitCode {
+    let path = input.display_path();
+    let program = input.program();
     match cli.mode.as_str() {
-        "--check" => run_check(cli, program),
+        "--check" => run_check(cli, input),
         // The outline must work for ill-typed (but parsable) files, so
         // `--symbols` deliberately skips the type gate.
         "--symbols" => {
-            println!("{}", osprey_lsp::symbols_json(program));
+            println!("{}", input.symbols_json());
             ExitCode::SUCCESS
         }
-        "--llvm" | "--run" | "--compile" if report_type_errors(path, program) > 0 => {
-            ExitCode::FAILURE
-        }
-        "--llvm" => match compile_ir(path, program, cli.debug) {
+        "--llvm" | "--run" | "--compile" if report_type_errors(input) > 0 => ExitCode::FAILURE,
+        "--llvm" => match compile_ir(input.debug_path(), program, cli.debug) {
             Ok(ir) => {
                 print!("{ir}");
                 ExitCode::SUCCESS
@@ -289,8 +355,8 @@ fn dispatch(cli: &Cli, program: &osprey_ast::Program, source: &str) -> ExitCode 
                 ExitCode::FAILURE
             }
         },
-        "--run" => run_program(cli, program, source),
-        "--compile" => compile_program_to_disk(cli, program, source),
+        "--run" => run_program(cli, input),
+        "--compile" => compile_program_to_disk(cli, input),
         _ => {
             println!("{program:#?}");
             ExitCode::SUCCESS
@@ -300,21 +366,22 @@ fn dispatch(cli: &Cli, program: &osprey_ast::Program, source: &str) -> ExitCode 
 
 /// Type-check `program`, print every error in `file:line:col: message` form,
 /// and return how many there were. The shared gate for every compiling mode.
-fn report_type_errors(path: &str, program: &osprey_ast::Program) -> usize {
-    let errors = osprey_types::check_program(program);
+fn report_type_errors(input: &CompilationInput) -> usize {
+    let errors = osprey_types::check_program(input.program());
     for e in &errors {
-        match e.position {
-            Some(p) => eprintln!("{path}:{}:{}: {}", p.line, p.column, e.message),
-            None => eprintln!("{path}: {}", e.message),
-        }
+        eprintln!("{}", input.diagnostic(e.position, &e.message));
     }
     errors.len()
 }
 
-fn run_check(cli: &Cli, program: &osprey_ast::Program) -> ExitCode {
-    if report_type_errors(&cli.path, program) == 0 {
+fn run_check(cli: &Cli, input: &CompilationInput) -> ExitCode {
+    if report_type_errors(input) == 0 {
         if !cli.quiet {
-            println!("{}: ok ({} statements)", cli.path, program.statements.len());
+            println!(
+                "{}: ok ({} statements)",
+                input.display_path(),
+                input.program().statements.len()
+            );
         }
         return ExitCode::SUCCESS;
     }
@@ -331,15 +398,22 @@ fn reject_debug_wasm(debug: bool) -> Option<ExitCode> {
 
 /// `--compile`: build the artifact at `-o` (or the source stem, `.wasm` for the
 /// wasm target) — a host executable via clang, or WebAssembly via wasm-ld.
-fn compile_program_to_disk(cli: &Cli, program: &osprey_ast::Program, source: &str) -> ExitCode {
-    let out = output_path(&cli.path, cli.output.as_deref(), &cli.target);
+fn compile_program_to_disk(cli: &Cli, input: &CompilationInput) -> ExitCode {
+    let out = input.output_path(cli.output.as_deref(), &cli.target);
     let result = if cli.target == "wasm32" {
         if let Some(code) = reject_debug_wasm(cli.debug) {
             return code;
         }
-        wasm::build(&cli.path, program, &out)
+        wasm::build(input.debug_path(), input.program(), &out)
     } else {
-        build_executable(&cli.path, program, source, &out, &cli.memory, cli.debug)
+        build_executable(
+            input.debug_path(),
+            input.program(),
+            input.source(),
+            &out,
+            &cli.memory,
+            cli.debug,
+        )
     };
     match result {
         Ok(()) => {
@@ -354,6 +428,7 @@ fn compile_program_to_disk(cli: &Cli, program: &osprey_ast::Program, source: &st
 
 /// The output artifact path: the explicit `-o` value, else the source stem in
 /// the current directory — with a `.wasm` extension for the wasm target.
+#[cfg(test)]
 fn output_path(src: &str, output: Option<&str>, target: &str) -> PathBuf {
     match output {
         Some(o) => PathBuf::from(o),
@@ -364,15 +439,22 @@ fn output_path(src: &str, output: Option<&str>, target: &str) -> PathBuf {
 
 /// Compile to a temp artifact and run it — the `--run` end-to-end path. Native
 /// runs the executable directly; wasm runs it under a WASI host (`wasmtime`).
-fn run_program(cli: &Cli, program: &osprey_ast::Program, source: &str) -> ExitCode {
+fn run_program(cli: &Cli, input: &CompilationInput) -> ExitCode {
     if cli.target == "wasm32" {
         if let Some(code) = reject_debug_wasm(cli.debug) {
             return code;
         }
-        return wasm::run(cli, program);
+        return wasm::run(input.debug_path(), input.program());
     }
-    let exe = std::env::temp_dir().join(format!("{}.out", stem_of(&cli.path)));
-    if let Err(code) = build_executable(&cli.path, program, source, &exe, &cli.memory, cli.debug) {
+    let exe = std::env::temp_dir().join(format!("{}.out", scratch_stem(input.display_path())));
+    if let Err(code) = build_executable(
+        input.debug_path(),
+        input.program(),
+        input.source(),
+        &exe,
+        &cli.memory,
+        cli.debug,
+    ) {
         return code;
     }
     match Command::new(&exe).status() {
@@ -401,7 +483,7 @@ fn build_executable(
             return Err(ExitCode::FAILURE);
         }
     };
-    let ll = std::env::temp_dir().join(format!("{}.ll", stem_of(path)));
+    let ll = std::env::temp_dir().join(format!("{}.ll", scratch_stem(path)));
     if let Err(e) = std::fs::write(&ll, ir.as_bytes()) {
         eprintln!("error: cannot write IR to {}: {e}", ll.display());
         return Err(ExitCode::FAILURE);
@@ -491,6 +573,21 @@ pub(crate) fn stem_of(path: &str) -> String {
         .to_string()
 }
 
+/// A process-unique scratch stem, preventing concurrent CLI builds of files
+/// named `main` from overwriting each other's temporary IR and executables.
+pub(crate) fn scratch_stem(path: &str) -> String {
+    use std::hash::{Hash, Hasher};
+
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    path.hash(&mut hasher);
+    format!(
+        "{}-{}-{:x}",
+        stem_of(path),
+        std::process::id(),
+        hasher.finish()
+    )
+}
+
 /// The exit code to propagate for a finished child: its own code when it exited
 /// normally, else (Unix) `128 + signal` for a signal death — so a segfaulting
 /// program is NOT masked as success (`status.code()` is `None` for a signal).
@@ -566,9 +663,19 @@ fn directive<'a>(line: &'a str, key: &str) -> Option<&'a str> {
 
 /// Search the conventional install/build locations for a runtime static lib:
 /// the working directory's repo layout, then next to the `osprey` executable
-/// (the release-tarball layout, and `target/release` two levels under the repo
-/// root), then the system lib dir.
+/// and below each of its ancestors (covering arbitrary in-workspace Cargo
+/// target/profile nesting and release-tarball layouts), the compile-time
+/// workspace as a development fallback, then the system lib dir.
 pub(crate) fn find_runtime_lib(lib: &str) -> Option<String> {
+    let executable_dir = std::env::current_exe()
+        .ok()
+        .and_then(|executable| executable.parent().map(Path::to_path_buf));
+    runtime_lib_candidates(lib, executable_dir.as_deref())
+        .into_iter()
+        .find(|candidate| Path::new(candidate).exists())
+}
+
+fn runtime_lib_candidates(lib: &str, executable_dir: Option<&Path>) -> Vec<String> {
     let mut roots = vec![
         format!("compiler/bin/{lib}"),
         format!("compiler/lib/{lib}"),
@@ -576,17 +683,20 @@ pub(crate) fn find_runtime_lib(lib: &str) -> Option<String> {
         format!("../bin/{lib}"),
         format!("../../bin/{lib}"),
     ];
-    if let Some(dir) = std::env::current_exe()
-        .ok()
-        .and_then(|e| e.parent().map(std::path::Path::to_path_buf))
-    {
+    if let Some(dir) = executable_dir {
         roots.push(dir.join(lib).display().to_string());
-        for up in ["../../compiler/lib", "../../compiler/bin"] {
-            roots.push(dir.join(up).join(lib).display().to_string());
+        for ancestor in dir.ancestors() {
+            for relative in ["compiler/lib", "compiler/bin", "bin"] {
+                roots.push(ancestor.join(relative).join(lib).display().to_string());
+            }
         }
     }
+    let workspace = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    for relative in ["compiler/lib", "compiler/bin"] {
+        roots.push(workspace.join(relative).join(lib).display().to_string());
+    }
     roots.push(format!("/usr/local/lib/{lib}"));
-    roots.into_iter().find(|p| Path::new(p).exists())
+    roots
 }
 
 /// OpenSSL link flags, searching the conventional Homebrew/system lib dirs.
@@ -1726,6 +1836,18 @@ mod tests {
     }
 
     #[test]
+    fn parse_args_build_defaults_to_current_project_and_compile() {
+        let default = parse_args(&args(&["build"])).expect("build parses");
+        assert_eq!(default.path, ".");
+        assert_eq!(default.mode, "--compile");
+        let explicit =
+            parse_args(&args(&["build", "apps/demo", "--quiet"])).expect("explicit project parses");
+        assert_eq!(explicit.path, "apps/demo");
+        assert!(explicit.quiet);
+        assert!(parse_args(&args(&["build", ".", "--check"])).is_err());
+    }
+
+    #[test]
     fn parse_args_accepts_flavor_flag_in_both_spellings() {
         // No flag ⇒ unset, so resolution falls through to marker/extension.
         assert_eq!(parse_args(&args(&["f.osp"])).expect("ok").flavor, None);
@@ -1838,6 +1960,14 @@ mod tests {
     }
 
     #[test]
+    fn scratch_stems_disambiguate_equal_filenames_in_different_projects() {
+        let left = scratch_stem("/apps/left/src/main.osp");
+        let right = scratch_stem("/apps/right/src/main.osp");
+        assert_ne!(left, right);
+        assert!(left.starts_with("main-"));
+    }
+
+    #[test]
     fn directive_parses_both_spellings_and_ignores_others() {
         assert_eq!(directive("// @link: sqlite3", "link"), Some("sqlite3"));
         assert_eq!(
@@ -1890,6 +2020,16 @@ mod tests {
         assert!(find_runtime_lib("definitely_not_a_real_lib_xyz.a").is_none());
     }
 
+    #[test]
+    fn runtime_search_walks_above_arbitrarily_nested_cargo_profiles() {
+        let root = PathBuf::from("workspace");
+        let executable_dir = root.join("target/llvm-cov-target/ci/deps");
+        let lib = "libfiber_runtime.a";
+        let candidates = runtime_lib_candidates(lib, Some(&executable_dir));
+        let expected = root.join("compiler/bin").join(lib).display().to_string();
+        assert!(candidates.contains(&expected), "{candidates:?}");
+    }
+
     #[cfg(unix)]
     #[test]
     fn child_exit_code_maps_codes_and_signals() {
@@ -1906,9 +2046,11 @@ mod tests {
     #[test]
     fn report_type_errors_counts_zero_for_valid_and_more_for_ill_typed() {
         let ok = osprey_syntax::parse_program("let x = 1\nprint(x)\n").program;
-        assert_eq!(report_type_errors("ok.osp", &ok), 0);
+        let ok = CompilationInput::script("ok.osp", String::new(), ok);
+        assert_eq!(report_type_errors(&ok), 0);
         let bad = osprey_syntax::parse_program("let y = 1 + \"oops\" - true\n").program;
-        assert!(report_type_errors("bad.osp", &bad) > 0);
+        let bad = CompilationInput::script("bad.osp", String::new(), bad);
+        assert!(report_type_errors(&bad) > 0);
     }
 
     fn temp_source(name: &str, body: &str) -> String {
@@ -1969,7 +2111,8 @@ mod tests {
         // An undefined identifier yields an error carrying a source position,
         // exercising the `Some(position)` diagnostic arm.
         let bad = osprey_syntax::parse_program("print(missingVariable)\n").program;
-        assert!(report_type_errors("bad.osp", &bad) > 0);
+        let bad = CompilationInput::script("bad.osp", String::new(), bad);
+        assert!(report_type_errors(&bad) > 0);
     }
 
     #[test]
@@ -2004,16 +2147,17 @@ mod tests {
     #[test]
     fn wasm_target_rejects_debug_then_dispatches_to_the_backend() {
         let program = osprey_syntax::parse_program("let n = 1\nprint(\"${n}\")\n").program;
+        let input = CompilationInput::script("p.osp", String::new(), program);
         let mut c = cli("p.osp", "--compile", Policy::allow_all());
         c.target = "wasm32".to_string();
         // --debug + --target=wasm32 is rejected before any toolchain work.
         c.debug = true;
-        let _ = compile_program_to_disk(&c, &program, "");
-        let _ = run_program(&c, &program, "");
+        let _ = compile_program_to_disk(&c, &input);
+        let _ = run_program(&c, &input);
         // Without --debug the wasm build/run driver is dispatched (it fails
         // cleanly without the wasm toolchain, but the dispatch lines execute).
         c.debug = false;
-        let _ = compile_program_to_disk(&c, &program, "");
-        let _ = run_program(&c, &program, "");
+        let _ = compile_program_to_disk(&c, &input);
+        let _ = run_program(&c, &input);
     }
 }

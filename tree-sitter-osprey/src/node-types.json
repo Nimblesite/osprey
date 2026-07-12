@@ -1439,6 +1439,16 @@
     "type": "module_declaration",
     "named": true,
     "fields": {
+      "keyword": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "module",
+            "named": false
+          }
+        ]
+      },
       "path": {
         "multiple": false,
         "required": true,
@@ -1595,6 +1605,16 @@
           {
             "type": "namespace_body",
             "named": true
+          }
+        ]
+      },
+      "keyword": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "namespace",
+            "named": false
           }
         ]
       },
@@ -2137,6 +2157,16 @@
     "type": "signature_declaration",
     "named": true,
     "fields": {
+      "keyword": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "signature",
+            "named": false
+          }
+        ]
+      },
       "name": {
         "multiple": false,
         "required": true,

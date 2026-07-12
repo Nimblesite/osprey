@@ -533,8 +533,24 @@ impl Checker {
                 Stmt::Module { body, .. } => {
                     let mut inner = env.child();
                     let prog = Program {
+                        statements: body
+                            .iter()
+                            .map(|item| item.declaration.as_ref().clone())
+                            .collect(),
+                    };
+                    // Module declarations live in their own lexical scope. Run
+                    // both checker passes there: the old implementation only
+                    // ran pass two, so module functions were never registered
+                    // and their bodies were silently skipped.
+                    self.collect(&prog, &mut inner);
+                    self.check(&prog, &mut inner);
+                }
+                Stmt::Namespace { body, .. } => {
+                    let mut inner = env.child();
+                    let prog = Program {
                         statements: body.clone(),
                     };
+                    self.collect(&prog, &mut inner);
                     self.check(&prog, &mut inner);
                 }
                 // `let` / assignment / bare-expr statements infer the same way at
@@ -864,6 +880,14 @@ mod tests {
         let errs = check(
             "module Bad {\n\
                let y: int = \"not an int\"\n\
+             }\n",
+        );
+        assert!(errs.iter().any(|e| e.message.contains("type mismatch")));
+        // Module functions must run both declaration collection and body
+        // checking; historically only module lets reached inference.
+        let errs = check(
+            "module BadFn {\n\
+               fn broken() -> int = \"not an int\"\n\
              }\n",
         );
         assert!(errs.iter().any(|e| e.message.contains("type mismatch")));

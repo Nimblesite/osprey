@@ -31,8 +31,8 @@ use osprey_ast::{
     DocComment, DocScope, EffectOperation, EffectRef, Expr, ExternParameter, FieldAssignment,
     HandlerArm, ImportDecl, ImportMember, ImportSelection, ImportTarget, MapEntry, MatchArm,
     ModuleItem, ModuleKind, NamespaceName, Parameter, Pattern, Position, Program,
-    SignatureAscription, SignatureItem, SignatureType, Stmt, SymbolPath, TypeExpr, TypeField,
-    TypeParam, TypeVariant, Variance, Visibility,
+    SignatureAscription, SignatureItem, Stmt, SymbolPath, TypeExpr, TypeField, TypeParam,
+    TypeVariant, Variance,
 };
 use std::cell::RefCell;
 use std::collections::HashSet;
@@ -174,68 +174,156 @@ fn collect_names_in_expr(expr: &MlExpr, out: &mut HashSet<String>) {
 /// same name that immediately follows it. An orphaned signature (no matching
 /// binding next) is dropped. Used at top level and inside layout blocks so
 /// local signed functions work too.
-fn lower_items(items: Vec<MlItem>) -> Vec<Stmt> {
-    let mut out = Vec::new();
-    let mut pending: Option<MlSig> = None;
-    // The most recent `(** … *)` doc comment, attached to the next declaration
-    // ([DOC-SIGIL-ML]) — the same pairing pattern as a signature.
-    let mut pending_doc: Option<DocComment> = None;
-    for item in items {
+pub(super) fn lower_items(items: Vec<MlItem>) -> Vec<Stmt> {
+    if let Some(index) = items
+        .iter()
+        .position(|item| matches!(item, MlItem::Namespace { body: None, .. }))
+    {
+        return lower_file_namespace(items, index);
+    }
+    ItemLower::default().lower_all(items)
+}
+
+/// A file-scoped namespace owns every declaration after its header. Imports
+/// before the header remain file-level edges.
+fn lower_file_namespace(mut items: Vec<MlItem>, index: usize) -> Vec<Stmt> {
+    let tail = items.split_off(index.saturating_add(1));
+    match items.pop() {
+        Some(MlItem::Namespace { name, pos, .. }) => {
+            let mut out = lower_items(items);
+            out.push(Stmt::Namespace {
+                name: lower_namespace_name(name),
+                body: lower_items(tail),
+                file_scoped: true,
+                position: Some(pos),
+            });
+            out
+        }
+        _ => lower_items(items),
+    }
+}
+
+/// Stateful pairing of docs/signatures with the declaration they annotate.
+#[derive(Default)]
+struct ItemLower {
+    out: Vec<Stmt>,
+    pending: Option<MlSig>,
+    pending_doc: Option<DocComment>,
+}
+
+impl ItemLower {
+    fn lower_all(mut self, items: Vec<MlItem>) -> Vec<Stmt> {
+        for item in items {
+            self.lower_item(item);
+        }
+        self.out
+    }
+
+    fn lower_item(&mut self, item: MlItem) {
         match item {
             MlItem::Doc(text) => {
-                pending_doc = Some(crate::docparse::parse_doc(&text, DocScope::Outer));
+                self.pending_doc = Some(crate::docparse::parse_doc(&text, DocScope::Outer));
             }
-            MlItem::ValueSignature {
+            item @ MlItem::ValueSignature { .. } => self.lower_signature(item),
+            item @ MlItem::Binding { .. } => self.lower_binding_item(item),
+            item @ (MlItem::Assign { .. }
+            | MlItem::Expr { .. }
+            | MlItem::Import { .. }
+            | MlItem::Export { .. }
+            | MlItem::Opaque { .. }) => self.lower_simple(item),
+            item @ (MlItem::Type { .. } | MlItem::Extern { .. } | MlItem::Effect { .. }) => {
+                self.lower_declaration(item);
+            }
+            item @ (MlItem::Namespace { .. }
+            | MlItem::Module { .. }
+            | MlItem::ModuleSignature { .. }) => self.lower_container(item),
+        }
+    }
+
+    fn lower_signature(&mut self, item: MlItem) {
+        if let MlItem::ValueSignature {
+            name,
+            type_params,
+            ty,
+            effects,
+            ..
+        } = item
+        {
+            self.pending = Some(MlSig {
                 name,
                 type_params,
                 ty,
                 effects,
-            } => {
-                pending = Some(MlSig {
-                    name,
-                    type_params,
-                    ty,
-                    effects,
-                });
-            }
-            MlItem::Binding {
-                mutable,
-                name,
-                params,
-                uncurried,
-                body,
-                pos,
-            } => {
-                // Pair the binding with its preceding signature's type params,
-                // type and effect row (all `None`/empty when unsigned), passed
-                // as one `sig` argument so the lowerer stays within the
-                // parameter budget.
-                let sig = pending.take().filter(|s| s.name == name);
-                let stmt = lower_binding(mutable, name, params, uncurried, body, pos, sig);
-                out.push(attach_doc(stmt, pending_doc.take()));
-            }
+            });
+        }
+    }
+
+    fn lower_binding_item(&mut self, item: MlItem) {
+        let MlItem::Binding {
+            mutable,
+            name,
+            params,
+            uncurried,
+            body,
+            pos,
+        } = item
+        else {
+            return;
+        };
+        let sig = self
+            .pending
+            .take()
+            .filter(|signature| signature.name == name);
+        let stmt = lower_binding(mutable, name, params, uncurried, body, pos, sig);
+        self.out.push(attach_doc(stmt, self.pending_doc.take()));
+    }
+
+    fn lower_simple(&mut self, item: MlItem) {
+        match item {
             MlItem::Assign { name, value, pos } => {
-                pending = None;
-                pending_doc = None;
-                out.push(Stmt::Assignment {
+                self.clear_pending();
+                self.out.push(Stmt::Assignment {
                     name,
                     value: lower_expr(value),
                     position: Some(pos),
                 });
             }
+            MlItem::Expr { value, pos } => {
+                self.clear_pending();
+                self.out.push(Stmt::Expr {
+                    value: lower_expr(value),
+                    position: Some(pos),
+                });
+            }
+            MlItem::Import { import, pos } => {
+                self.clear_pending();
+                self.out.push(Stmt::Import(lower_import(import, pos)));
+            }
+            MlItem::Export { item, .. } | MlItem::Opaque { item, .. } => {
+                self.pending = None;
+                self.out.extend(lower_items(vec![*item]));
+            }
+            _ => {}
+        }
+    }
+
+    fn lower_declaration(&mut self, item: MlItem) {
+        self.pending = None;
+        match item {
             MlItem::Type {
                 name,
                 type_params,
                 variants,
+                alias,
                 pos,
             } => {
-                pending = None;
-                out.push(Stmt::Type {
+                self.out.push(Stmt::Type {
                     name,
                     type_params: type_params.into_iter().map(lower_type_param).collect(),
                     variants: variants.into_iter().map(lower_variant).collect(),
+                    alias: alias.as_ref().map(required_type_expr),
                     validation_func: None,
-                    doc: pending_doc.take(),
+                    doc: self.pending_doc.take(),
                     position: Some(pos),
                 });
             }
@@ -245,12 +333,11 @@ fn lower_items(items: Vec<MlItem>) -> Vec<Stmt> {
                 return_type,
                 pos,
             } => {
-                pending = None;
-                out.push(Stmt::Extern {
+                self.out.push(Stmt::Extern {
                     name,
                     parameters: params.into_iter().map(lower_extern_param).collect(),
                     return_type: return_type.as_ref().and_then(type_expr),
-                    doc: pending_doc.take(),
+                    doc: self.pending_doc.take(),
                     position: Some(pos),
                 });
             }
@@ -260,32 +347,144 @@ fn lower_items(items: Vec<MlItem>) -> Vec<Stmt> {
                 operations,
                 pos,
             } => {
-                pending = None;
-                out.push(Stmt::Effect {
+                self.out.push(Stmt::Effect {
                     name,
                     type_params: type_params.into_iter().map(lower_type_param).collect(),
                     operations: operations.into_iter().map(lower_effect_op).collect(),
-                    doc: pending_doc.take(),
+                    doc: self.pending_doc.take(),
                     position: Some(pos),
                 });
             }
-            MlItem::Expr { value, pos } => {
-                pending = None;
-                pending_doc = None;
-                out.push(Stmt::Expr {
-                    value: lower_expr(value),
-                    position: Some(pos),
-                });
-            }
+            _ => {}
         }
     }
-    out
+
+    fn lower_container(&mut self, item: MlItem) {
+        self.pending = None;
+        match item {
+            MlItem::Namespace {
+                name,
+                body: Some(body),
+                pos,
+            } => {
+                self.out.push(Stmt::Namespace {
+                    name: lower_namespace_name(name),
+                    body: lower_items(body),
+                    file_scoped: false,
+                    position: Some(pos),
+                });
+            }
+            MlItem::Namespace {
+                body: None,
+                name,
+                pos,
+            } => {
+                self.out.push(Stmt::Namespace {
+                    name: lower_namespace_name(name),
+                    body: Vec::new(),
+                    file_scoped: true,
+                    position: Some(pos),
+                });
+            }
+            MlItem::Module {
+                path,
+                kind,
+                signature,
+                body,
+                pos,
+            } => {
+                self.out.push(Stmt::Module {
+                    path: lower_symbol_path(path),
+                    kind: lower_module_kind(kind),
+                    signature: signature.map(|path| SignatureAscription {
+                        path: lower_symbol_path(path),
+                        allow_extra: false,
+                    }),
+                    body: lower_module_items(body),
+                    doc: self.pending_doc.take(),
+                    position: Some(pos),
+                });
+            }
+            MlItem::ModuleSignature { name, items, pos } => {
+                self.out.push(Stmt::Signature {
+                    name,
+                    items: items.into_iter().map(lower_signature_item).collect(),
+                    doc: self.pending_doc.take(),
+                    position: Some(pos),
+                });
+            }
+            _ => {}
+        }
+    }
+
+    fn clear_pending(&mut self) {
+        self.pending = None;
+        self.pending_doc = None;
+    }
+}
+
+fn lower_namespace_name(name: MlNamespaceName) -> NamespaceName {
+    match name {
+        MlNamespaceName::Ident(label) => NamespaceName::Identifier(label),
+        MlNamespaceName::Quoted(label) => NamespaceName::Quoted(crate::strings::unquote(&label)),
+    }
+}
+
+fn lower_symbol_path(path: MlSymbolPath) -> SymbolPath {
+    SymbolPath {
+        segments: path.segments,
+    }
+}
+
+fn lower_import(import: MlImport, pos: Position) -> ImportDecl {
+    ImportDecl {
+        target: ImportTarget {
+            namespace: lower_namespace_name(import.namespace),
+            path: lower_symbol_path(import.path),
+        },
+        alias: import.alias,
+        selection: match import.selection {
+            MlImportSelection::Whole => ImportSelection::Whole,
+            MlImportSelection::Wildcard => ImportSelection::Wildcard,
+            MlImportSelection::Members(members) => ImportSelection::Members(
+                members
+                    .into_iter()
+                    .map(|member| ImportMember {
+                        name: member.name,
+                        alias: member.alias,
+                    })
+                    .collect(),
+            ),
+        },
+        position: Some(pos),
+    }
+}
+
+const fn lower_module_kind(kind: MlModuleKind) -> ModuleKind {
+    match kind {
+        MlModuleKind::Plain => ModuleKind::Plain,
+        MlModuleKind::State => ModuleKind::State,
+    }
+}
+
+/// Lower implementation declarations while retaining the visibility/opacity
+/// wrappers which exist only inside a closed module ([MODULES-EXPORTS]).
+fn lower_module_items(items: Vec<MlItem>) -> Vec<ModuleItem> {
+    super::module_lower::module_items(items)
+}
+
+fn lower_signature_item(item: MlSignatureItem) -> SignatureItem {
+    super::module_lower::signature_item(item)
+}
+
+fn required_type_expr(ty: &MlType) -> TypeExpr {
+    super::module_lower::required_type(ty)
 }
 
 /// Attach a pending doc comment to the `Function`/`Let` a binding lowered to.
 /// A binding lowers to exactly one of those two, so this sets whichever it is —
 /// matching by mutable reference to the `doc` field only, no struct rebuild.
-fn attach_doc(mut stmt: Stmt, doc: Option<DocComment>) -> Stmt {
+pub(super) fn attach_doc(mut stmt: Stmt, doc: Option<DocComment>) -> Stmt {
     if let Stmt::Function { doc: slot, .. } | Stmt::Let { doc: slot, .. } = &mut stmt {
         *slot = doc;
     }
@@ -329,7 +528,7 @@ fn lower_type_field(field: MlTypeField) -> TypeField {
 /// type checker's `convert.rs` accepts (`int -> bool` is rejected). The argument
 /// side is always parenthesised (`(int)`, or a tuple's own `(a, b)`); the result
 /// side is rendered bare so a curried tail reads `(int) -> (int) -> int`.
-fn render_type(ty: &MlType) -> String {
+pub(super) fn render_type(ty: &MlType) -> String {
     match ty {
         MlType::Name(name) => name.clone(),
         MlType::App { head, args } => {
@@ -364,7 +563,7 @@ fn render_tuple(parts: &[MlType]) -> String {
 /// `Function` (twinning Default `fn f(x, y)`); `f x y = …` (curried) builds a
 /// one-parameter `Function` returning a `Lambda` chain ([FLAVOR-ML-CURRY]). The
 /// unit marker `()` yields a zero-parameter function, matching `fn f() = …`.
-fn lower_binding(
+pub(super) fn lower_binding(
     mutable: bool,
     name: String,
     params: Vec<MlParam>,
@@ -413,17 +612,33 @@ fn lower_binding(
 }
 
 /// A parsed signature awaiting its binding: `name<T, U> : ty ! effects`.
-struct MlSig {
-    name: String,
+pub(super) struct MlSig {
+    pub(super) name: String,
     type_params: Vec<MlTypeParam>,
     ty: MlType,
     effects: Vec<MlEffectRef>,
 }
 
+impl MlSig {
+    pub(super) fn new(
+        name: String,
+        type_params: Vec<MlTypeParam>,
+        ty: MlType,
+        effects: Vec<MlEffectRef>,
+    ) -> Self {
+        Self {
+            name,
+            type_params,
+            ty,
+            effects,
+        }
+    }
+}
+
 /// Lower one CST type parameter to the canonical variance-carrying
 /// [`TypeParam`] — byte-identical to the Default flavor's lowering.
 /// Implements [TYPE-VARIANCE-DECL].
-fn lower_type_param(p: MlTypeParam) -> TypeParam {
+pub(super) fn lower_type_param(p: MlTypeParam) -> TypeParam {
     TypeParam {
         name: p.name,
         variance: match p.variance {
@@ -437,7 +652,7 @@ fn lower_type_param(p: MlTypeParam) -> TypeParam {
 /// Lower one effect-row reference to the canonical [`EffectRef`], threading
 /// its type arguments through the shared [`type_expr`] path so they are
 /// byte-identical to the Default flavor's. Implements [EFFECTS-GENERIC-ROWS].
-fn lower_effect_ref(r: MlEffectRef) -> EffectRef {
+pub(super) fn lower_effect_ref(r: MlEffectRef) -> EffectRef {
     EffectRef {
         name: r.name,
         type_args: r
@@ -500,7 +715,7 @@ fn expand_tuple_head(spine: Vec<MlType>, param_count: usize) -> Vec<MlType> {
 /// [`EffectOperation`], rendering the payload/result into the `fn(P) -> R`
 /// surface string the Default flavor emits ([FLAVOR-ML-EFFECT]). `parameters`
 /// and `return_type` stay empty/blank, matching the Default-flavor shape.
-fn lower_effect_op(op: MlEffectOp) -> EffectOperation {
+pub(super) fn lower_effect_op(op: MlEffectOp) -> EffectOperation {
     EffectOperation {
         ty: format!(
             "fn({}) -> {}",
@@ -636,7 +851,7 @@ fn lower_lambda(params: Vec<MlParam>, body: Expr, pos: Position) -> Expr {
 
 /// Flatten the top-level arrow spine of a type: `a -> b -> c` ⇒ `[a, b, c]`,
 /// `(a, b) -> c` ⇒ `[(a,b), c]`, a non-arrow ⇒ a single-element list.
-fn arrow_spine(ty: &MlType) -> Vec<MlType> {
+pub(super) fn arrow_spine(ty: &MlType) -> Vec<MlType> {
     match ty {
         MlType::Arrow { from, to } => {
             let mut spine = vec![(**from).clone()];
@@ -649,7 +864,7 @@ fn arrow_spine(ty: &MlType) -> Vec<MlType> {
 
 /// Rebuild a right-associative function type from an arrow-spine slice: `[]` ⇒
 /// no type, `[t]` ⇒ `t`, `[a, b, …]` ⇒ `a -> (b -> …)`.
-fn arrow_of(slice: &[MlType]) -> Option<TypeExpr> {
+pub(super) fn arrow_of(slice: &[MlType]) -> Option<TypeExpr> {
     match slice {
         [] => None,
         [single] => type_expr(single),
@@ -659,7 +874,7 @@ fn arrow_of(slice: &[MlType]) -> Option<TypeExpr> {
             is_array: false,
             array_element: None,
             is_function: true,
-            parameter_types: vec![type_expr(first)?],
+            parameter_types: arrow_parameter_types(first)?,
             return_type: Some(Box::new(arrow_of(rest)?)),
             position: None,
         }),
@@ -669,7 +884,7 @@ fn arrow_of(slice: &[MlType]) -> Option<TypeExpr> {
 /// Convert an ML type to a canonical [`TypeExpr`]. A tuple type has no canonical
 /// `TypeExpr` form, so it (and anything containing one) yields `None` — leaving
 /// that position to inference rather than annotating it wrongly.
-fn type_expr(ty: &MlType) -> Option<TypeExpr> {
+pub(super) fn type_expr(ty: &MlType) -> Option<TypeExpr> {
     match ty {
         MlType::Name(name) => Some(TypeExpr::named(name.clone())),
         MlType::App { head, args } => {
@@ -685,11 +900,21 @@ fn type_expr(ty: &MlType) -> Option<TypeExpr> {
             is_array: false,
             array_element: None,
             is_function: true,
-            parameter_types: vec![type_expr(from)?],
+            parameter_types: arrow_parameter_types(from)?,
             return_type: Some(Box::new(type_expr(to)?)),
             position: None,
         }),
         MlType::Tuple(_) => None,
+    }
+}
+
+/// ML's bare `Unit` arrow domain is the zero-argument function boundary, just
+/// as `()` is the zero-argument binding/call marker. Other domains contribute
+/// one canonical parameter; tuple domains are handled by their callers.
+fn arrow_parameter_types(domain: &MlType) -> Option<Vec<TypeExpr>> {
+    match domain {
+        MlType::Name(name) if name == UNIT_PAYLOAD => Some(Vec::new()),
+        other => Some(vec![type_expr(other)?]),
     }
 }
 
@@ -739,19 +964,7 @@ fn lower_expr(expr: MlExpr) -> Expr {
             uncurried,
             body,
             pos,
-        } => {
-            let body = lower_expr(*body);
-            if uncurried {
-                Expr::Lambda {
-                    parameters: flat_params(params),
-                    return_type: None,
-                    body: Box::new(body),
-                    position: Some(pos),
-                }
-            } else {
-                lower_lambda(params, body, pos)
-            }
-        }
+        } => lower_lambda_node(params, uncurried, *body, pos),
         MlExpr::Match { scrutinee, arms } => Expr::Match {
             value: Box::new(lower_expr(*scrutinee)),
             arms: arms.into_iter().map(lower_arm).collect(),
@@ -807,6 +1020,19 @@ fn lower_expr(expr: MlExpr) -> Expr {
         MlExpr::Select(arms) => Expr::Select {
             arms: arms.into_iter().map(lower_arm).collect(),
         },
+    }
+}
+
+fn lower_lambda_node(params: Vec<MlParam>, uncurried: bool, body: MlExpr, pos: Position) -> Expr {
+    let body = lower_expr(body);
+    if !uncurried {
+        return lower_lambda(params, body, pos);
+    }
+    Expr::Lambda {
+        parameters: flat_params(params),
+        return_type: None,
+        body: Box::new(body),
+        position: Some(pos),
     }
 }
 
@@ -938,10 +1164,8 @@ fn lower_application(func: MlExpr, arg: MlExpr) -> Expr {
     args.reverse();
     let curried = match &head {
         MlExpr::Ident(name) => BOUND_NAMES.with(|s| s.borrow().contains(name)),
-        // A qualified callable's declaration lives outside this source file.
-        // Preserve ML's curry-by-default application spine; authors explicitly
-        // select a flat cross-flavor call with `(a, b)` ([FLAVOR-INTEROP]).
-        MlExpr::Path(_) => true,
+        // Qualified and higher-order callables preserve ML's curry-by-default
+        // spine; `(a, b)` explicitly selects a flat interop call.
         _ => true,
     };
     if curried {

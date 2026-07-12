@@ -2,7 +2,7 @@
 layout: page
 title: "Algebraic Effects"
 description: "Osprey Language Specification: Algebraic Effects"
-date: 2026-07-01
+date: 2026-07-12
 tags: ["specification", "reference", "documentation"]
 author: "Christian Findlay"
 permalink: "/spec/0017-algebraiceffects/"
@@ -21,7 +21,9 @@ Effect declarations, `perform` expressions, effect annotations on function types
 - **Implicit tail-resume.** An arm whose body is an ordinary expression returns that value to the `perform` site, which continues. This is the cheap default and handlers may own mutable state with it (see [Handler-Owned State]).
 - **Explicit `resume`.** An arm whose body contains a `resume` expression captures the performer's *delimited continuation*: `resume(v)` runs the rest of the handled computation with `v` as the operation's result and yields its answer back to the arm, so the arm can run code **after** the performer continues. Single-shot (each continuation is resumed at most once) and **deep** (the handler stays installed for the resumed computation). See [Resuming Handlers]. **Status: executable for single-shot deep continuations via the thread-as-continuation runtime in [plan 0008](https://github.com/Nimblesite/osprey/blob/main/docs/plans/0008-algebraic-effects-resume.md).**
 
-Multi-shot resume (resuming one continuation more than once) remains a follow-up.
+Multi-shot resume (resuming one continuation more than once) is **rejected at
+runtime** with a clear fatal message rather than silently returning a wrong
+answer; a multi-shot-capable runtime remains a follow-up ([plan 0016](https://github.com/Nimblesite/osprey/blob/main/docs/plans/0016-algebraic-effects-and-handlers.md) §Phase A).
 
 ## Keywords
 
@@ -32,9 +34,12 @@ effect perform handle in resume
 ## Effect Declarations
 
 ```ebnf
-effectDecl ::= docComment? "effect" IDENT "{" opDecl* "}"
+effectDecl ::= docComment? "effect" IDENT ("<" typeParamList ">")? "{" opDecl* "}"
 opDecl     ::= IDENT ":" fnType
 ```
+
+`typeParamList` is the shared production from [Syntax](/spec/0003-syntax/#type-declarations)
+— effects accept type parameters (with variance) exactly as type declarations do.
 
 ```osprey
 effect State {
@@ -49,9 +54,98 @@ effect State
     set : int => unit
 ```
 
+### Generic Effects
+
+`[EFFECTS-GENERIC-DECL]` **Effects accept type arguments for full
+polymorphism.** `effect State<T>` binds `T` across every operation signature;
+one declaration serves every instantiation. Type parameters may carry variance
+(`effect Ask<out T>`, `effect Emit<in T>`), position-checked against the
+operation signatures: operation parameters are input positions, operation
+results output positions ([TYPE-VARIANCE-POSITIONS](/spec/0004-typesystem/#generics-and-variance)).
+
+```osprey
+effect Stash<T> {
+    put  : fn(T) -> Unit
+    take : fn() -> T
+}
+```
+
+```osprey-ml
+effect Stash T
+    put : T => Unit
+    take : Unit => T
+```
+
+`[EFFECTS-GENERIC-INSTANTIATION]` **Each `handle` site and each effect-row
+entry instantiates the effect independently.** A handler's arms pin its
+instantiation: a non-resuming arm's value substitutes for the operation's
+result, so `take => "stash-words"` pins `Stash<string>` (an arm handling a
+`Unit`-resulted operation may yield anything — the value is discarded). Inside
+the handled body, `perform` sites resolve against the innermost enclosing
+instantiation of their effect, matching the runtime's innermost-wins handler
+stack; inside a function, the declared effect row provides the instantiation.
+Two instantiations of one effect coexist in one program:
+
+```osprey
+let words = handle Stash
+    take => "stash-words"
+    put v => print("put: ${v}")
+in relabel()
+let count = handle Stash
+    take => 41
+    put v => print("put: ${v}")
+in bumped()
+```
+
+`[EFFECTS-GENERIC-ROWS]` **Effect rows carry type arguments.** A row entry
+`!State<int>` (or `![State<int>, Log]`) pins the instantiation the function's
+`perform` sites check against; performing an operation with arguments that
+contradict the row is a compile error. A bare row entry on a generic effect
+leaves the instantiation to inference. The row is the function's declared
+interface to its dynamically-scoped handler: the checker verifies each side
+against its declared instantiation independently (it does not globally prove
+that every runtime handler matches every performer's row) — the runtime's
+instantiation-keyed dispatch ([EFFECTS-GENERIC-RUNTIME]) is what turns a
+handler/row mismatch into a loud unhandled-effect abort instead of undefined
+behaviour.
+
+```osprey
+fn bumped() -> int !Stash<int> = {
+    let n = perform Stash.take()
+    n + 1
+}
+```
+
+```osprey-ml
+bumped : Unit -> int ! Stash<int>
+bumped () =
+    n = perform Stash.take ()
+    n + 1
+```
+
+`[EFFECTS-GENERIC-RUNTIME]` **Instantiations are erased in the ABI and keyed
+in dispatch.** A generic effect's operations keep ONE ABI program-wide: every
+type-parameter-mentioning slot travels as a uniform boxed machine word, boxed
+at `perform` sites and unboxed at handler-arm entry (and inversely for
+results) against the signature inference resolved per site. Handlers
+register on the runtime stack under their RESOLVED instantiation
+(`Stash$int`), and `perform` sites look up under theirs — so a handler only
+satisfies performs of the same instantiation, and the innermost
+same-instantiation handler wins. A mismatch (or an instantiation the checker
+could not resolve at a site) misses the lookup and aborts loudly with
+`unhandled effect: …`, never confusing values of different types.
+Monomorphic effects keep their bare names — their programs compile
+byte-identically to before. The C runtime treats keys as opaque strings and
+needs no changes.
+
 ## Effectful Function Types
 
-A function declares the effects it may perform with `!E` after its return type. `E` is either a single effect or a bracketed set.
+A function declares the effects it may perform with `!E` after its return type. `E` is either a single effect reference or a bracketed set; each reference may apply type arguments to a generic effect (`!State<int>`, `![State<int>, Log]` — [EFFECTS-GENERIC-ROWS](#generic-effects)).
+
+```ebnf
+effectSet  ::= "!" effectRef | "!" "[" effectRef ("," effectRef)* "]"
+effectRef  ::= IDENT ("<" typeList ">")?
+```
 
 ```osprey
 fn read() -> string !IO = perform IO.readLine()
@@ -212,13 +306,28 @@ Semantics:
 
 - **Deep.** The handler stays installed for the resumed computation: if the
   continuation performs the effect again, the same arm runs again.
-- **Single-shot.** Each continuation is resumed at most once. Multi-shot resume
-  remains a follow-up.
+- **Single-shot.** Each continuation is resumed at most once. Resuming an
+  already-consumed continuation (multi-shot) is **rejected at runtime** with
+  `fatal: continuation already resumed (multi-shot resume is not supported)`
+  and a nonzero exit — the thread-as-continuation model cannot re-run a
+  completed stack, and a loud abort beats silently returning the stale first
+  result. A multi-shot-capable runtime remains a follow-up
+  ([plan 0016](https://github.com/Nimblesite/osprey/blob/main/docs/plans/0016-algebraic-effects-and-handlers.md) §Phase A).
 - **Abort.** An arm that returns *without* resuming discards the continuation;
   its value becomes the result of the whole `handle … in` — the basis for
   exceptions and early exit.
 - An arm whose body is a plain value (no `resume`) is the implicit tail-resume of
   [Handler-Owned State]; the two styles coexist per effect.
+- **Serialized concurrent performs [EFFECTS-FIBER-PERFORM].** Fibers spawned
+  inside the handled body may perform into the same resuming handler
+  concurrently; each perform claims the handler's operation channel
+  exclusively for its full suspend→resume round-trip, and queued performs are
+  dispatched in turn. Answers are therefore deterministic per performer —
+  never interleaved or cross-delivered.
+- **`resume` is lexical to the arm.** A lambda written inside an arm runs when
+  *called*, not where it is written, so the arm's continuation is not live
+  inside it: `resume` inside a lambda body is a **type error** (`` `resume` is
+  only valid inside a handler arm ``), exactly as at top level.
 
 ```osprey
 effect Audit { step: fn(string) -> int }
@@ -313,6 +422,13 @@ The compiler enforces three static checks on effect programs. Each failure is a 
 | Every `perform` has a handler      | Runtime crash / unhandled exn   |
 | No circular effect dependency      | Stack overflow                  |
 | No handler that performs the same effect it handles | Infinite loop |
+
+> **Status — enforcement is at runtime today.** This section specifies the
+> designed state. In the current Rust compiler the first two checks are
+> enforced by a **runtime abort** (`unhandled effect: <Effect>.<op>`, nonzero
+> exit) rather than a compile error, and the self-performing-handler check is
+> not yet enforced. The compile-time checks land with effect rows on function
+> types — [plan 0016 §Phase C](https://github.com/Nimblesite/osprey/blob/main/docs/plans/0016-algebraic-effects-and-handlers.md).
 
 ### Circular Dependency Example
 

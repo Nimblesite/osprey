@@ -38,5 +38,40 @@
     "prefix": "main",
     "description": "A main binding (ML flavor)",
     "body": ["main = do", "  ${1:print \"Hello, Osprey!\"}"]
+  },
+  "File namespace": {
+    "prefix": "namespace",
+    "description": "A file-scoped logical namespace [MODULES-NAMESPACE]",
+    "body": ["namespace ${1:app}", "", "${0}"]
+  },
+  "Module": {
+    "prefix": "module",
+    "description": "A closed ML module [MODULES-MODULE]",
+    "body": ["module ${1:Name}", "    ${0}"]
+  },
+  "State module": {
+    "prefix": "state",
+    "description": "A punctuation-free ML state owner [MODULES-STATE-MODULE]",
+    "body": ["state ${1:Store}", "    ${0}"]
+  },
+  "Module signature": {
+    "prefix": "signature",
+    "description": "An explicit ML module signature [MODULES-SIGNATURE]",
+    "body": ["signature ${1:Api}", "    ${2:value} : ${3:Type}"]
+  },
+  "Qualified import": {
+    "prefix": "import",
+    "description": "Import a logical module with :: qualification [MODULES-IMPORT]",
+    "body": ["import ${1:namespace}::${2:Module}${3: as Alias}"]
+  },
+  "Exported binding": {
+    "prefix": "export",
+    "description": "Export one module binding [MODULES-EXPORTS]",
+    "body": ["export ${1:name} = ${2:value}"]
+  },
+  "Opaque exported type": {
+    "prefix": "opaque",
+    "description": "Export an opaque ML type [MODULES-OPAQUE-TYPES]",
+    "body": ["export opaque type ${1:Name} = ${2:Representation}"]
   }
 }
