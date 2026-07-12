@@ -38,6 +38,24 @@ import {
 
 const extensionId = "nimblesite.osprey";
 
+// startDebugRaced runs the real startDebugging path but never hangs the suite
+// on a host without a debug UI: it resolves to a marker string once VS Code
+// settles or a timeout elapses, whichever comes first.
+async function startDebugRaced(
+  config: vscode.DebugConfiguration,
+  budgetMs = 6000,
+): Promise<string> {
+  const timeout = new Promise<string>((resolve) =>
+    setTimeout(() => resolve("timeout"), budgetMs),
+  );
+  const start = Promise.resolve(
+    vscode.debug.startDebugging(undefined, config),
+  )
+    .then((value) => `resolved:${String(value)}`)
+    .catch((error: unknown) => `error:${String(error)}`);
+  return Promise.race([start, timeout]);
+}
+
 // The compiled test lives at <ext>/out/test/suite, so the extension root is
 // three levels up. The release pipeline stamps a shipwright.json into the
 // extension root (it is gitignored as a build-time artifact); we replicate that
@@ -1509,24 +1527,6 @@ suite("Osprey Command Handler Coverage", () => {
     assert.ok(all.includes("osprey.setLanguage"), "setLanguage registered");
   });
 
-  // startDebugRaced runs the real startDebugging path but never hangs the suite
-  // on a host without a debug UI: it resolves to a marker string once VS Code
-  // settles or a timeout elapses, whichever comes first.
-  async function startDebugRaced(
-    config: vscode.DebugConfiguration,
-    budgetMs = 6000,
-  ): Promise<string> {
-    const timeout = new Promise<string>((resolve) =>
-      setTimeout(() => resolve("timeout"), budgetMs),
-    );
-    const start = Promise.resolve(
-      vscode.debug.startDebugging(undefined, config),
-    )
-      .then((v) => `resolved:${String(v)}`)
-      .catch((error: unknown) => `error:${String(error)}`);
-    return Promise.race([start, timeout]);
-  }
-
   test("osprey.debug with an active .osp editor drives the real launch path", async function () {
     this.timeout(45000);
     // The osprey.debug command reads window.activeTextEditor, synthesizes a
@@ -1800,23 +1800,6 @@ suite("Osprey Activation Side-Effect Coverage", () => {
     assert.strictEqual(restored, original, "config value restored");
   });
 
-  // startDebugging may depend on a host lldb-dap installation, so always race it
-  // against a timeout and assert only that the extension survives the provider
-  // path.
-  async function startDebugRaced(
-    config: vscode.DebugConfiguration,
-  ): Promise<string> {
-    const timeout = new Promise<string>((resolve) =>
-      setTimeout(() => resolve("timeout"), 4000),
-    );
-    const start = Promise.resolve(
-      vscode.debug.startDebugging(undefined, config),
-    )
-      .then((v) => `resolved:${String(v)}`)
-      .catch((error: unknown) => `error:${String(error)}`);
-    return Promise.race([start, timeout]);
-  }
-
   test("debug provider synthesizes a config from the active osprey editor", async function () {
     this.timeout(30000);
 
@@ -1840,7 +1823,7 @@ suite("Osprey Activation Side-Effect Coverage", () => {
       type: "",
       name: "",
       request: "",
-    } as unknown as vscode.DebugConfiguration);
+    } as unknown as vscode.DebugConfiguration, 4000);
     await settle(2500);
 
     assert.ok(typeof outcome === "string", "debug start settled to a string");
@@ -1863,7 +1846,7 @@ suite("Osprey Activation Side-Effect Coverage", () => {
       type: "osprey",
       name: "Debug Osprey File",
       request: "launch",
-    } as vscode.DebugConfiguration);
+    } as vscode.DebugConfiguration, 4000);
     await settle(1500);
 
     assert.ok(typeof outcome === "string", "debug start settled to a string");
@@ -2318,6 +2301,36 @@ suite("Osprey Binary Resolution Unit Tests", () => {
     } as unknown as vscode.ExtensionContext;
   }
 
+  function savedServerSettings(): [
+    vscode.WorkspaceConfiguration,
+    string | undefined,
+    string | undefined,
+  ] {
+    const config = vscode.workspace.getConfiguration("osprey");
+    return [
+      config,
+      config.get<string>("server.compilerPath"),
+      config.get<string>("server.path"),
+    ];
+  }
+
+  async function restoreServerSettings(
+    config: vscode.WorkspaceConfiguration,
+    compilerPath: string | undefined,
+    serverPath: string | undefined,
+  ): Promise<void> {
+    await config.update(
+      "server.compilerPath",
+      compilerPath ?? "",
+      vscode.ConfigurationTarget.Global,
+    );
+    await config.update(
+      "server.path",
+      serverPath ?? "",
+      vscode.ConfigurationTarget.Global,
+    );
+  }
+
   setup(() => {
     tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "osprey-unit-"));
   });
@@ -2420,9 +2433,7 @@ suite("Osprey Binary Resolution Unit Tests", () => {
   test("resolveServerCommand falls back to bundled then PATH", async () => {
     // No user path: with a bundled binary present it returns that; without one
     // it falls back to the bare `osprey` PATH lookup.
-    const config = vscode.workspace.getConfiguration("osprey");
-    const originalCompiler = config.get<string>("server.compilerPath");
-    const originalPath = config.get<string>("server.path");
+    const [config, originalCompiler, originalPath] = savedServerSettings();
     await config.update(
       "server.compilerPath",
       "",
@@ -2451,16 +2462,7 @@ suite("Osprey Binary Resolution Unit Tests", () => {
         "prefers the bundled binary over the PATH fallback",
       );
     } finally {
-      await config.update(
-        "server.compilerPath",
-        originalCompiler ?? "",
-        vscode.ConfigurationTarget.Global,
-      );
-      await config.update(
-        "server.path",
-        originalPath ?? "",
-        vscode.ConfigurationTarget.Global,
-      );
+      await restoreServerSettings(config, originalCompiler, originalPath);
     }
   });
 
@@ -2471,9 +2473,7 @@ suite("Osprey Binary Resolution Unit Tests", () => {
     // fall back and warn. tempDir has no bundled binary, so the fallback is the
     // bare `osprey` PATH lookup; then we stage a bundled binary and confirm it
     // is preferred.
-    const config = vscode.workspace.getConfiguration("osprey");
-    const originalCompiler = config.get<string>("server.compilerPath");
-    const originalPath = config.get<string>("server.path");
+    const [config, originalCompiler, originalPath] = savedServerSettings();
     const missing = path.join(tempDir, "does", "not", "exist", "osprey");
     await config.update(
       "server.compilerPath",
@@ -2525,16 +2525,7 @@ suite("Osprey Binary Resolution Unit Tests", () => {
         "missing user path falls back to the bundled binary when present",
       );
     } finally {
-      await config.update(
-        "server.compilerPath",
-        originalCompiler ?? "",
-        vscode.ConfigurationTarget.Global,
-      );
-      await config.update(
-        "server.path",
-        originalPath ?? "",
-        vscode.ConfigurationTarget.Global,
-      );
+      await restoreServerSettings(config, originalCompiler, originalPath);
     }
   });
 

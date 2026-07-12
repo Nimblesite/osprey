@@ -1,4 +1,6 @@
-// Exact replica of the fiber pattern from osprey_mega_showcase that causes non-determinism
+// A multi-step fiber batch preserves spawn order when each worker is awaited.
+
+extern fn fiber_set_deterministic_mode(enabled: bool) -> int
 
 effect Logger {
     info: fn(string) -> Unit
@@ -18,14 +20,11 @@ fn calculateComplexity(priority) = match priority {
     Low => 75
 }
 
-fn calculateTime(complexity) = complexity / 10 + 5
+fn calculateTime(complexity: int) -> int = intDiv(complexity, 10) + 7
 
-fn calculateEfficiency(duration) = match duration < 50 {
+fn calculateEfficiency(duration) = match duration < 100 {
     true => 100
-    false => match duration < 100 {
-        true => 75
-        false => 50
-    }
+    false => 50
 }
 
 fn preprocessData(rawData) = rawData * 2 + 100
@@ -38,7 +37,7 @@ fn processTask(taskId: string, dataSize: int, priority: TaskPriority) -> TaskRes
     perform Logger.info("Starting task: " + taskId + " with data size: " + toString(dataSize))
     
     let complexity = calculateComplexity(priority)
-    let expectedTime = calculateTime(complexity)
+    let actualTime = calculateTime(complexity)
     
     let preprocessed = preprocessData(dataSize)
     let isValid = validateData(preprocessed)
@@ -46,7 +45,6 @@ fn processTask(taskId: string, dataSize: int, priority: TaskPriority) -> TaskRes
     match isValid {
         true => {
             let processed = transformData(preprocessed)
-            let actualTime = expectedTime + 2
             let efficiency = calculateEfficiency(actualTime)
             
             perform Metrics.recordSuccess(taskId, processed)
@@ -77,6 +75,7 @@ fn processTaskForBatch(taskId: string, dataSize: int, priority: TaskPriority) ->
 fn processAlphaTask1() = processTaskForBatch(taskId: "task-alpha-1", dataSize: 150, priority: High)
 fn processAlphaTask2() = processTaskForBatch(taskId: "task-alpha-2", dataSize: 200, priority: Medium) 
 fn processAlphaTask3() = processTaskForBatch(taskId: "task-alpha-3", dataSize: 75, priority: Urgent)
+fn sumBatchResults(first: int, second: int, third: int) -> int = first + second + third
 
 fn processAlphaBatch() -> int ![Logger, Metrics] = {
     perform Logger.info("Processing batch: alpha")
@@ -89,24 +88,21 @@ fn processAlphaBatch() -> int ![Logger, Metrics] = {
     let result2 = await(worker2)
     let result3 = await(worker3)
     
-    let batchTotal = result1 + result2 + result3
+    let batchTotal = sumBatchResults(result1, result2, result3)
     
     perform Logger.info("Batch alpha processed: " + toString(batchTotal) + " total data units")
     
     batchTotal
 }
 
-fn main() -> Unit = {
-    handle Metrics
-        recordSuccess taskId processed => print("✅ " + taskId + " succeeded: " + toString(processed) + " units")
-    in handle Logger
-        info msg => print("ℹ️  " + msg)
-    in {
-        print("=== Fiber Execution Order Test ===")
-        
-        let results1 = processAlphaBatch()
-        
-        print("Total: " + toString(results1))
-        print("=== Test Complete ===")
-    }
+fiber_set_deterministic_mode(enabled: true)
+handle Metrics
+    recordSuccess taskId processed => print("✅ " + taskId + " succeeded: " + toString(processed) + " units")
+in handle Logger
+    info msg => print("ℹ️  " + msg)
+in {
+    print("=== Fiber Execution Order Test ===")
+    let results1 = processAlphaBatch()
+    print("Total: " + toString(results1))
+    print("=== Test Complete ===")
 }

@@ -9,13 +9,13 @@
 
 use crate::builder::{CellSlot, Codegen, ResumeCodegenContext};
 use crate::cast::coerce_to;
-use crate::conv::{box_to_i64, unbox_from_i64};
+use crate::conv::unbox_from_i64;
 use crate::error::Result;
 use crate::expr::gen_expr;
 use crate::freevars::free_idents;
 use crate::llty::{LType, Value};
 use crate::types::{ltype_of, result_inner};
-use osprey_ast::{contains_resume, Expr, HandlerArm, MatchArm, NamedArgument, Stmt};
+use osprey_ast::{contains_resume, Expr, HandlerArm, MatchArm, Stmt};
 use std::collections::{BTreeSet, HashSet};
 
 /// A parsed effect-operation signature: parameter types, the result LLVM type,
@@ -92,9 +92,7 @@ fn bind_arm_params(
         let pty = sig.params.get(i).copied().unwrap_or(LType::I64);
         let erased = sig.param_erased.get(i).copied().unwrap_or(false);
         let bound = match resolved.and_then(|r| r.params.get(i)).filter(|_| erased) {
-            Some(rt) => {
-                crate::effect_generics::unbox_erased(cg, &format!("%{pname}"), rt)
-            }
+            Some(rt) => crate::effect_generics::unbox_erased(cg, &format!("%{pname}"), rt),
             None => Value::new(format!("%{pname}"), pty),
         };
         cg.bind(pname.clone(), bound);
@@ -146,7 +144,11 @@ pub(crate) fn op_sig_of(op: &osprey_types::OpType) -> OpSig {
     // parameter changes the slot's concrete shape per instantiation just as
     // a top-level one does. Implements [EFFECTS-GENERIC-RUNTIME].
     let ret_erased = osprey_types::has_type_var(&op.ret);
-    let inner = if ret_erased { None } else { result_inner(&op.ret) };
+    let inner = if ret_erased {
+        None
+    } else {
+        result_inner(&op.ret)
+    };
     let ret = if ret_erased {
         LType::I64
     } else if inner.is_some() {
@@ -198,7 +200,9 @@ fn emit_unhandled_guard(cg: &mut Codegen, raw: &str, lookup_key: &str, operation
     let is_null = cg.emit_reg(format!("icmp eq i8* {raw}, null"));
     let abort_lbl = cg.fresh_label();
     let ok_lbl = cg.fresh_label();
-    cg.emit(format!("br i1 {is_null}, label %{abort_lbl}, label %{ok_lbl}"));
+    cg.emit(format!(
+        "br i1 {is_null}, label %{abort_lbl}, label %{ok_lbl}"
+    ));
     cg.start_block(&abort_lbl);
     let p = cg.fresh_reg();
     cg.emit(format!("{p} = call i32 @puts(i8* {})", msg.operand));
@@ -274,9 +278,7 @@ fn scan_expr(e: &Expr, muts: &mut BTreeSet<String>, captured: &mut BTreeSet<Stri
 }
 
 fn scan_arms(arms: &[MatchArm], muts: &mut BTreeSet<String>, captured: &mut BTreeSet<String>) {
-    for arm in arms {
-        scan_expr(&arm.body, muts, captured);
-    }
+    scan_slice(arms, muts, captured, |arm| &arm.body);
 }
 
 /// Recurse into every child expression of `e` (the variants that are not
@@ -290,7 +292,7 @@ fn scan_children(e: &Expr, muts: &mut BTreeSet<String>, captured: &mut BTreeSet<
                 }
             }
         }
-        Expr::List(xs) => scan_all(xs, muts, captured),
+        Expr::List(xs) => scan_slice(xs, muts, captured, |x| x),
         Expr::Map(es) => {
             for en in es {
                 scan_expr(&en.key, muts, captured);
@@ -300,9 +302,7 @@ fn scan_children(e: &Expr, muts: &mut BTreeSet<String>, captured: &mut BTreeSet<
         Expr::Object(fs)
         | Expr::TypeConstructor { fields: fs, .. }
         | Expr::Update { fields: fs, .. } => {
-            for f in fs {
-                scan_expr(&f.value, muts, captured);
-            }
+            scan_slice(fs, muts, captured, |f| &f.value);
         }
         Expr::Binary { left, right, .. } | Expr::Pipe { left, right } => {
             scan_expr(left, muts, captured);
@@ -315,8 +315,8 @@ fn scan_children(e: &Expr, muts: &mut BTreeSet<String>, captured: &mut BTreeSet<
             named_arguments,
         } => {
             scan_expr(function, muts, captured);
-            scan_all(arguments, muts, captured);
-            scan_named(named_arguments, muts, captured);
+            scan_slice(arguments, muts, captured, |x| x);
+            scan_slice(named_arguments, muts, captured, |n| &n.value);
         }
         Expr::MethodCall {
             target,
@@ -325,8 +325,8 @@ fn scan_children(e: &Expr, muts: &mut BTreeSet<String>, captured: &mut BTreeSet<
             ..
         } => {
             scan_expr(target, muts, captured);
-            scan_all(arguments, muts, captured);
-            scan_named(named_arguments, muts, captured);
+            scan_slice(arguments, muts, captured, |x| x);
+            scan_slice(named_arguments, muts, captured, |n| &n.value);
         }
         Expr::FieldAccess { target, .. } => scan_expr(target, muts, captured),
         Expr::Index { target, index } => {
@@ -346,28 +346,26 @@ fn scan_children(e: &Expr, muts: &mut BTreeSet<String>, captured: &mut BTreeSet<
             named_arguments,
             ..
         } => {
-            scan_all(arguments, muts, captured);
-            scan_named(named_arguments, muts, captured);
+            scan_slice(arguments, muts, captured, |x| x);
+            scan_slice(named_arguments, muts, captured, |n| &n.value);
         }
         Expr::Resume(Some(value)) => scan_expr(value, muts, captured),
         _ => {}
     }
 }
 
-fn scan_all(xs: &[Expr], muts: &mut BTreeSet<String>, captured: &mut BTreeSet<String>) {
-    for x in xs {
-        scan_expr(x, muts, captured);
-    }
-}
-
-fn scan_named(
-    named: &[NamedArgument],
+/// Recurse into each element of `items`, projecting it to its sub-expression
+/// with `pick`. The one place the effect scanner fans out over a collection
+/// node, threading `muts`/`captured` through [`osprey_ast::walk_each`].
+fn scan_slice<T>(
+    items: &[T],
     muts: &mut BTreeSet<String>,
     captured: &mut BTreeSet<String>,
+    pick: impl Fn(&T) -> &Expr,
 ) {
-    for n in named {
-        scan_expr(&n.value, muts, captured);
-    }
+    osprey_ast::walk_each(items, &mut (muts, captured), pick, |e, (m, c)| {
+        scan_expr(e, m, c);
+    });
 }
 
 fn scan_stmt(s: &Stmt, muts: &mut BTreeSet<String>, captured: &mut BTreeSet<String>) {
@@ -444,7 +442,6 @@ pub(crate) fn gen_handler(
     }
     Ok(result)
 }
-
 
 /// The bindings every arm of this region captures, in stable (sorted) order: a
 /// handler-captured mutable becomes a shared [`ArmCap::Cell`]; any other bound
@@ -914,15 +911,7 @@ pub(crate) fn gen_resume(cg: &mut Codegen, value: Option<&Expr>) -> Result<Value
 }
 
 fn box_codegen_value(cg: &mut Codegen, value: Value) -> Value {
-    if value.result_inner.is_some() {
-        let ptr = cg.emit_reg(format!(
-            "bitcast {} {} to i8*",
-            value.llvm_ty(),
-            value.operand
-        ));
-        return box_to_i64(cg, Value::new(ptr, LType::Ptr));
-    }
-    box_to_i64(cg, value)
+    crate::effect_generics::box_raw_value(cg, value)
 }
 
 pub(crate) fn unbox_coro_value(

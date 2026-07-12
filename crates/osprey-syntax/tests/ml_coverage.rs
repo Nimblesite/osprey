@@ -933,7 +933,9 @@ fn construction_site_type_args_parse_in_ml() {
     let stmts = ml_ok("type Box T =\n    item : T\npinned = Box<int>(item = 7)\n");
     match &stmts[1] {
         Stmt::Let {
-            value: Expr::TypeConstructor { name, type_args, .. },
+            value: Expr::TypeConstructor {
+                name, type_args, ..
+            },
             ..
         } => {
             assert_eq!(name, "Box");

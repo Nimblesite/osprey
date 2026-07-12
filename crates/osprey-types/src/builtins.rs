@@ -331,7 +331,7 @@ mod tests {
     fn registers_core_and_polymorphic_builtins() {
         let e = base_env();
         assert!(e.get("print").is_some());
-        assert!(e.get("map").unwrap().vars.len() == 2);
-        assert!(e.get("await").unwrap().vars.len() == 1);
+        assert_eq!(e.get("map").unwrap().vars.len(), 2);
+        assert_eq!(e.get("await").unwrap().vars.len(), 1);
     }
 }

@@ -8,9 +8,11 @@
 mod doc;
 mod generics;
 mod resume;
+mod visit;
 pub use doc::{DocComment, DocExample, DocScope};
 pub use generics::{EffectRef, TypeParam, Variance};
 pub use resume::contains_resume;
+pub use visit::walk_each;
 
 /// A source position: 1-based line, 0-based column.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]

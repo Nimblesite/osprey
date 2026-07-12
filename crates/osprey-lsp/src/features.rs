@@ -460,7 +460,10 @@ mod tests {
                    fn main() = helper(1)\n";
         let col = col_of(src, 2, "helper");
         let md = hover(src, "file:///a.osp", 2, col, U16).expect("hover over [helper]");
-        assert!(md.contains("fn helper(n)"), "resolves to helper's signature: {md}");
+        assert!(
+            md.contains("fn helper(n)"),
+            "resolves to helper's signature: {md}"
+        );
         assert!(md.contains("A helper."), "shows helper's docs: {md}");
     }
 
@@ -473,7 +476,10 @@ mod tests {
                    fn go() = 1\n";
         let col = col_of(src, 2, "Console");
         let md = hover(src, "file:///a.osp", 2, col, U16).expect("hover over [Console.emit]");
-        assert!(md.contains("Console") && md.contains("Emits lines."), "{md}");
+        assert!(
+            md.contains("Console") && md.contains("Emits lines."),
+            "{md}"
+        );
     }
 
     #[test]

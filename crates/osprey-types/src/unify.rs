@@ -153,16 +153,8 @@ pub fn unify_assignable(
     // contravariant (`in`) argument matches assignably with the roles flipped,
     // and an invariant argument must unify exactly — plain `unify` (and with
     // it HM principal types) is untouched. Implements [TYPE-VARIANCE-ASSIGN].
-    if let (Type::Con { name: n1, args: a1 }, Type::Con { name: n2, args: a2 }) =
-        (&expected, &actual)
-    {
-        if n1 == n2 && a1.len() == a2.len() && !a1.is_empty() {
-            if let Some(vs) = ctx.variance_of(n1).map(<[Variance]>::to_vec) {
-                if vs.len() == a1.len() && vs.iter().any(|v| *v != Variance::Invariant) {
-                    return unify_args_with_variance(ctx, a1, a2, &vs);
-                }
-            }
-        }
+    if let Some(result) = unify_declared_variance_args(ctx, &expected, &actual) {
+        return result;
     }
     unify(ctx, &expected, &actual)
 }
@@ -196,18 +188,52 @@ fn unify_args_with_variance(
 fn unify_variant_arg(ctx: &mut InferCtx, expected: &Type, actual: &Type) -> Result<(), TypeError> {
     let expected = ctx.prune(expected);
     let actual = ctx.prune(actual);
-    if let (Type::Con { name: n1, args: a1 }, Type::Con { name: n2, args: a2 }) =
-        (&expected, &actual)
-    {
-        if n1 == n2 && a1.len() == a2.len() && !a1.is_empty() {
-            if let Some(vs) = ctx.variance_of(n1).map(<[Variance]>::to_vec) {
-                if vs.len() == a1.len() && vs.iter().any(|v| *v != Variance::Invariant) {
-                    return unify_args_with_variance(ctx, a1, a2, &vs);
-                }
-            }
-        }
+    if let Some(result) = unify_declared_variance_args(ctx, &expected, &actual) {
+        return result;
     }
     unify(ctx, &expected, &actual)
+}
+
+/// Recurse through a matching constructor when it declares non-invariant
+/// parameter variance. `None` leaves the caller to use ordinary unification.
+fn unify_declared_variance_args(
+    ctx: &mut InferCtx,
+    expected: &Type,
+    actual: &Type,
+) -> Option<Result<(), TypeError>> {
+    let (
+        Type::Con {
+            name: expected_name,
+            args: expected_args,
+        },
+        Type::Con {
+            name: actual_name,
+            args: actual_args,
+        },
+    ) = (expected, actual)
+    else {
+        return None;
+    };
+    if expected_name != actual_name
+        || expected_args.len() != actual_args.len()
+        || expected_args.is_empty()
+    {
+        return None;
+    }
+    let variances = ctx.variance_of(expected_name)?.to_vec();
+    if variances.len() != expected_args.len()
+        || !variances
+            .iter()
+            .any(|variance| *variance != Variance::Invariant)
+    {
+        return None;
+    }
+    Some(unify_args_with_variance(
+        ctx,
+        expected_args,
+        actual_args,
+        &variances,
+    ))
 }
 
 fn bind_var(ctx: &mut InferCtx, id: VarId, t: &Type) -> Result<(), TypeError> {

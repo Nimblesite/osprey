@@ -389,6 +389,7 @@ impl DiagnosticsSink for LspSink {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::wire::assert_at;
     use lspkit_server::jsonrpc::read_message;
     use serde_json::json;
     use tokio::io::{duplex, DuplexStream};
@@ -525,13 +526,6 @@ mod tests {
     /// carries neither a `result` nor an `error`.
     fn is_null_result(message: &Message) -> bool {
         message.result.is_none() && message.error.is_none()
-    }
-
-    /// Assert that `value` carries `expected` at the JSON pointer `pointer`.
-    /// Collapses the pervasive `assert_eq!(v.pointer(p), Some(&Value::from(x)))`
-    /// boilerplate into a single call.
-    fn assert_at(value: &Value, pointer: &str, expected: impl Into<Value>) {
-        assert_eq!(value.pointer(pointer), Some(&expected.into()), "{pointer}");
     }
 
     /// The array carried by a request's `result`, cloned out for inspection.

@@ -25,12 +25,16 @@ const COMPLETION_KEYWORD: u8 = 14;
 // LSP `InsertTextFormat`: snippet.
 const INSERT_SNIPPET: u8 = 2;
 
+/// The value at `params[outer][inner]`, if both levels are present — the shared
+/// two-level lookup behind every request-field accessor below.
+fn nested<'a>(params: &'a Value, outer: &str, inner: &str) -> Option<&'a Value> {
+    params.get(outer).and_then(|o| o.get(inner))
+}
+
 /// The document URI of a request's `textDocument`, if present.
 #[must_use]
 pub fn doc_uri(params: &Value) -> Option<String> {
-    params
-        .get("textDocument")
-        .and_then(|d| d.get("uri"))
+    nested(params, "textDocument", "uri")
         .and_then(Value::as_str)
         .map(str::to_owned)
 }
@@ -45,9 +49,7 @@ pub fn position(params: &Value) -> Option<(u32, u32)> {
 /// Whether a references request asks to include the declaration.
 #[must_use]
 pub fn include_declaration(params: &Value) -> bool {
-    params
-        .get("context")
-        .and_then(|c| c.get("includeDeclaration"))
+    nested(params, "context", "includeDeclaration")
         .and_then(Value::as_bool)
         .unwrap_or(false)
 }
@@ -63,9 +65,7 @@ fn field_u32(value: &Value, key: &str) -> u32 {
 /// The full text of a `textDocument/didOpen`.
 #[must_use]
 pub fn open_text(params: &Value) -> Option<String> {
-    params
-        .get("textDocument")
-        .and_then(|d| d.get("text"))
+    nested(params, "textDocument", "text")
         .and_then(Value::as_str)
         .map(str::to_owned)
 }
@@ -73,9 +73,7 @@ pub fn open_text(params: &Value) -> Option<String> {
 /// The document version of a `didOpen`/`didChange`, defaulting to 0.
 #[must_use]
 pub fn version(params: &Value) -> i32 {
-    params
-        .get("textDocument")
-        .and_then(|d| d.get("version"))
+    nested(params, "textDocument", "version")
         .and_then(Value::as_i64)
         .and_then(|n| i32::try_from(n).ok())
         .unwrap_or(0)
@@ -303,15 +301,14 @@ fn diagnostic_json(d: &Diagnostic) -> Value {
 }
 
 #[cfg(test)]
+/// Assert that `value` carries `expected` at the JSON pointer `pointer`.
+pub(crate) fn assert_at(value: &Value, pointer: &str, expected: impl Into<Value>) {
+    assert_eq!(value.pointer(pointer), Some(&expected.into()), "{pointer}");
+}
+
+#[cfg(test)]
 mod tests {
     use super::*;
-
-    /// Assert that `value` carries `expected` at the JSON pointer `pointer`.
-    /// Collapses the pervasive `assert_eq!(v.pointer(p), Some(&Value::from(x)))`
-    /// boilerplate into one call.
-    fn assert_at(value: &Value, pointer: &str, expected: impl Into<Value>) {
-        assert_eq!(value.pointer(pointer), Some(&expected.into()), "{pointer}");
-    }
 
     /// Assert that the JSON pointer `pointer` resolves to nothing on `value`.
     fn assert_absent(value: &Value, pointer: &str) {

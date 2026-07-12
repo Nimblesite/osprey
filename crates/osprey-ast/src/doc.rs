@@ -64,13 +64,13 @@ pub struct DocComment {
 }
 
 impl DocComment {
-    /// A summary-only outer doc — the common case, and the shape a bare doc
-    /// comment with no recognised sections lowers to.
+    /// Create a doc with its free-form text populated and every optional
+    /// section empty. Flavor parsers fill the recognised sections afterwards.
     #[must_use]
-    pub fn summary_only(summary: impl Into<String>) -> DocComment {
+    pub fn new(summary: impl Into<String>, body: impl Into<String>, scope: DocScope) -> DocComment {
         DocComment {
             summary: summary.into(),
-            body: String::new(),
+            body: body.into(),
             params: Vec::new(),
             returns: None,
             raises: Vec::new(),
@@ -79,8 +79,15 @@ impl DocComment {
             since: None,
             deprecated: None,
             author: None,
-            scope: DocScope::Outer,
+            scope,
         }
+    }
+
+    /// A summary-only outer doc — the common case, and the shape a bare doc
+    /// comment with no recognised sections lowers to.
+    #[must_use]
+    pub fn summary_only(summary: impl Into<String>) -> DocComment {
+        Self::new(summary, String::new(), DocScope::Outer)
     }
 
     /// Render the whole doc comment as the Markdown block a hover shows: the
@@ -153,5 +160,59 @@ fn render_examples(out: &mut String, examples: &[DocExample]) {
         if let Some(o) = &ex.expected_output {
             push_para(out, &format!("```\n{o}\n```"));
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn summary_only_leaves_every_section_empty() {
+        let doc = DocComment::summary_only("Adds two ints.");
+        assert_eq!(doc.summary, "Adds two ints.");
+        assert!(doc.body.is_empty());
+        assert!(doc.params.is_empty() && doc.returns.is_none());
+        assert_eq!(doc.scope, DocScope::Outer);
+        // A summary-only doc renders as just its summary line.
+        assert_eq!(doc.render_markdown(), "Adds two ints.");
+    }
+
+    #[test]
+    fn render_markdown_emits_every_populated_section_in_order() {
+        let mut doc = DocComment::new("Divide.", "Long form.", DocScope::Outer);
+        doc.deprecated = Some("use `div` instead".to_owned());
+        doc.params = vec![("a".to_owned(), "numerator".to_owned())];
+        doc.returns = Some("the quotient".to_owned());
+        doc.raises = vec![("DivByZero".to_owned(), "when `b == 0`".to_owned())];
+        doc.examples = vec![DocExample {
+            code: "divide(6, 2)".to_owned(),
+            expected_output: Some("3".to_owned()),
+            run: true,
+        }];
+        doc.see_also = vec!["[div]".to_owned()];
+        doc.since = Some("1.2".to_owned());
+        let md = doc.render_markdown();
+        // Summary and body head the block; each section carries its bold heading.
+        assert!(md.starts_with("Divide.\n\nLong form."));
+        for needle in [
+            "**Deprecated.** use `div` instead",
+            "**Parameters**",
+            "- `a` — numerator",
+            "**Returns**",
+            "the quotient",
+            "**Raises**",
+            "- `DivByZero` — when `b == 0`",
+            "**Examples**",
+            "```osprey\ndivide(6, 2)\n```",
+            "**See also**",
+            "[div]",
+            "**Since**",
+            "1.2",
+        ] {
+            assert!(md.contains(needle), "missing {needle:?} in:\n{md}");
+        }
+        // The trailing whitespace is trimmed.
+        assert_eq!(md, md.trim_end());
     }
 }

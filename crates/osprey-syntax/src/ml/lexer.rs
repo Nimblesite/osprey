@@ -25,7 +25,9 @@ fn strip_doc_lines(raw: &str) -> String {
         .lines()
         .map(|line| {
             let t = line.trim_start();
-            let body = t.strip_prefix('*').map_or(t, |r| r.strip_prefix(' ').unwrap_or(r));
+            let body = t
+                .strip_prefix('*')
+                .map_or(t, |r| r.strip_prefix(' ').unwrap_or(r));
             body.trim_end()
         })
         .collect::<Vec<_>>()
@@ -303,13 +305,7 @@ impl Scanner {
                 // Inside `${…}` a quote opens a nested string; consume it whole
                 // (honouring escapes) so its content stays in the raw token.
                 Some('"') => self.scan_nested_string(pos, &mut raw),
-                Some('\\') => {
-                    let _ = self.bump();
-                    raw.push('\\');
-                    if let Some(escaped) = self.bump() {
-                        raw.push(escaped);
-                    }
-                }
+                Some('\\') => self.copy_escape(&mut raw),
                 Some(c) => {
                     if c == '{' && raw.ends_with('$') {
                         interp_depth += 1;
@@ -341,18 +337,21 @@ impl Scanner {
                     raw.push('"');
                     break;
                 }
-                Some('\\') => {
-                    let _ = self.bump();
-                    raw.push('\\');
-                    if let Some(escaped) = self.bump() {
-                        raw.push(escaped);
-                    }
-                }
+                Some('\\') => self.copy_escape(raw),
                 Some(c) => {
                     let _ = self.bump();
                     raw.push(c);
                 }
             }
+        }
+    }
+
+    /// Consume an escape sequence while preserving its source spelling.
+    fn copy_escape(&mut self, raw: &mut String) {
+        let _ = self.bump();
+        raw.push('\\');
+        if let Some(escaped) = self.bump() {
+            raw.push(escaped);
         }
     }
 

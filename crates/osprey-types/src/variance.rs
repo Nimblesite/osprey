@@ -64,10 +64,9 @@ pub(crate) fn validate_type_decl(
     params: &[TypeParam],
     variants: &[TypeVariant],
 ) -> Vec<TypeError> {
-    let declared = declared_map(params);
-    if declared.values().all(|v| *v == Variance::Invariant) {
+    let Some(declared) = non_invariant_declared_map(params) else {
         return Vec::new();
-    }
+    };
     let mut errors = Vec::new();
     for variant in variants {
         for field in &variant.fields {
@@ -93,10 +92,9 @@ pub(crate) fn validate_effect_decl(
     params: &[TypeParam],
     operations: &[EffectOperation],
 ) -> Vec<TypeError> {
-    let declared = declared_map(params);
-    if declared.values().all(|v| *v == Variance::Invariant) {
+    let Some(declared) = non_invariant_declared_map(params) else {
         return Vec::new();
-    }
+    };
     let mut errors = Vec::new();
     for op in operations {
         let (ps, ret) = parse_fn_sig(&op.ty, &HashMap::new());
@@ -126,11 +124,15 @@ pub(crate) fn reject_fn_variance(name: &str, params: &[TypeParam]) -> Vec<TypeEr
         .collect()
 }
 
-fn declared_map(params: &[TypeParam]) -> HashMap<String, Variance> {
-    params
+fn non_invariant_declared_map(params: &[TypeParam]) -> Option<HashMap<String, Variance>> {
+    let declared: HashMap<_, _> = params
         .iter()
         .map(|p| (p.name.clone(), p.variance))
-        .collect()
+        .collect();
+    declared
+        .values()
+        .any(|variance| *variance != Variance::Invariant)
+        .then_some(declared)
 }
 
 /// Walk a declared type at the given polarity, reporting every
@@ -147,7 +149,11 @@ fn walk(
         Type::Con { name, args } => {
             if let Some(v) = declared.get(name) {
                 if !legal(*v, polarity) {
-                    let marker = if *v == Variance::Covariant { "out" } else { "in" };
+                    let marker = if *v == Variance::Covariant {
+                        "out"
+                    } else {
+                        "in"
+                    };
                     errors.push(TypeError::new(format!(
                         "type parameter `{name}` is declared `{marker} {name}` but appears \
                          in {} position in {label}",
@@ -236,13 +242,23 @@ mod tests {
         let ctx = InferCtx::new();
         let params = [tp("T", Variance::Contravariant)];
         // Legal: T as a function parameter (input).
-        let ok = validate_type_decl(&ctx, "Sink", &params, &[variant(&[("accept", "(T) -> Unit")])]);
+        let ok = validate_type_decl(
+            &ctx,
+            "Sink",
+            &params,
+            &[variant(&[("accept", "(T) -> Unit")])],
+        );
         assert!(ok.is_empty(), "unexpected: {ok:?}");
         // Illegal: T as a plain field (output).
         let errs = validate_type_decl(&ctx, "Bad", &params, &[variant(&[("held", "T")])]);
         assert!(errs.iter().any(|e| e.message.contains("output position")));
         // Double flip: T in the parameter of a parameter-function is output again.
-        let errs = validate_type_decl(&ctx, "Bad2", &params, &[variant(&[("g", "((T) -> int) -> int")])]);
+        let errs = validate_type_decl(
+            &ctx,
+            "Bad2",
+            &params,
+            &[variant(&[("g", "((T) -> int) -> int")])],
+        );
         assert!(errs.iter().any(|e| e.message.contains("output position")));
     }
 
@@ -257,7 +273,9 @@ mod tests {
         // An unregistered constructor's args are invariant positions: illegal
         // for an `out` param.
         let errs = validate_type_decl(&ctx, "Bad", &co, &[variant(&[("cell", "Cell<T>")])]);
-        assert!(errs.iter().any(|e| e.message.contains("invariant position")));
+        assert!(errs
+            .iter()
+            .any(|e| e.message.contains("invariant position")));
     }
 
     #[test]
@@ -285,7 +303,9 @@ mod tests {
     #[test]
     fn fn_type_params_reject_variance_markers() {
         let errs = reject_fn_variance("map", &[tp("T", Variance::Covariant)]);
-        assert!(errs.iter().any(|e| e.message.contains("only valid on type")));
+        assert!(errs
+            .iter()
+            .any(|e| e.message.contains("only valid on type")));
         assert!(reject_fn_variance("map", &[tp("T", Variance::Invariant)]).is_empty());
     }
 }

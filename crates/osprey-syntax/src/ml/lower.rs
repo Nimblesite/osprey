@@ -273,45 +273,13 @@ fn lower_items(items: Vec<MlItem>) -> Vec<Stmt> {
 }
 
 /// Attach a pending doc comment to the `Function`/`Let` a binding lowered to.
-/// A binding lowers to exactly one of those two, so this covers both.
-fn attach_doc(stmt: Stmt, doc: Option<DocComment>) -> Stmt {
-    match stmt {
-        Stmt::Function {
-            name,
-            type_params,
-            parameters,
-            return_type,
-            effects,
-            body,
-            position,
-            ..
-        } => Stmt::Function {
-            name,
-            type_params,
-            parameters,
-            return_type,
-            effects,
-            body,
-            doc,
-            position,
-        },
-        Stmt::Let {
-            name,
-            mutable,
-            ty,
-            value,
-            position,
-            ..
-        } => Stmt::Let {
-            name,
-            mutable,
-            ty,
-            value,
-            doc,
-            position,
-        },
-        other => other,
+/// A binding lowers to exactly one of those two, so this sets whichever it is —
+/// matching by mutable reference to the `doc` field only, no struct rebuild.
+fn attach_doc(mut stmt: Stmt, doc: Option<DocComment>) -> Stmt {
+    if let Stmt::Function { doc: slot, .. } | Stmt::Let { doc: slot, .. } = &mut stmt {
+        *slot = doc;
     }
+    stmt
 }
 
 /// Lower one `extern` parameter to a canonical [`ExternParameter`], threading its

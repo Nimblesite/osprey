@@ -43,9 +43,7 @@ pub(crate) fn gen_match(cg: &mut Codegen, value: &Expr, arms: &[MatchArm]) -> Re
 fn gen_list_match(cg: &mut Codegen, disc: &Value, arms: &[MatchArm]) -> Result<Value> {
     let list_val = crate::cast::coerce_to(cg, disc.clone(), LType::Ptr)?;
     let len = cg.call("i64", "osprey_list_length", "i8*", &[&list_val.operand]);
-    let end = cg.fresh_label();
-    let mut phi_in: Vec<(Value, String)> = Vec::new();
-    let last = arms.len().saturating_sub(1);
+    let (end, mut phi_in, last) = match_state(cg, arms);
 
     for (i, arm) in arms.iter().enumerate() {
         match &arm.pattern {
@@ -60,17 +58,11 @@ fn gen_list_match(cg: &mut Codegen, disc: &Value, arms: &[MatchArm]) -> Result<V
                 ));
                 cg.start_block(&body_lbl);
                 bind_list_arm(cg, &list_val, elements, rest.as_deref(), n);
-                push_arm(cg, &arm.body, &mut phi_in)?;
-                cg.emit(format!("br label %{end}"));
-                cg.start_block(&next_lbl);
-                if i == last {
-                    cg.emit("unreachable");
-                }
+                finish_guarded_arm(cg, arm, &mut phi_in, &end, &next_lbl, i == last)?;
             }
             Pattern::Wildcard | Pattern::Binding(_) | Pattern::TypeAnnotated { .. } => {
                 bind_catch_all(cg, &arm.pattern, &list_val);
-                push_arm(cg, &arm.body, &mut phi_in)?;
-                cg.emit(format!("br label %{end}"));
+                emit_arm_body(cg, arm, &mut phi_in, &end)?;
                 break;
             }
             _ => return Err(CodegenError::unsupported("non-list arm in list match")),
@@ -310,8 +302,7 @@ fn gen_union_match(
             ));
             cg.start_block(&body_lbl);
             bind_variant_fields(cg, disc, &name, &fields);
-            push_arm(cg, &arm.body, &mut phi_in)?;
-            cg.emit(format!("br label %{end}"));
+            emit_arm_body(cg, arm, &mut phi_in, &end)?;
             cg.start_block(&next_lbl);
         } else {
             match &arm.pattern {
@@ -321,8 +312,7 @@ fn gen_union_match(
                     {
                         cg.bind(n.clone(), disc.clone());
                     }
-                    push_arm(cg, &arm.body, &mut phi_in)?;
-                    cg.emit(format!("br label %{end}"));
+                    emit_arm_body(cg, arm, &mut phi_in, &end)?;
                     break;
                 }
                 _ => return Err(CodegenError::unsupported("structural union arm")),
@@ -374,16 +364,13 @@ fn bind_variant_fields(cg: &mut Codegen, disc: &Value, variant: &str, pat_fields
 
 /// Literal/catch-all match: compare-and-branch chain joined by a `phi`.
 fn gen_literal_match(cg: &mut Codegen, disc: &Value, arms: &[MatchArm]) -> Result<Value> {
-    let end = cg.fresh_label();
-    let mut phi_in: Vec<(Value, String)> = Vec::new();
-    let last = arms.len().saturating_sub(1);
+    let (end, mut phi_in, last) = match_state(cg, arms);
 
     for (i, arm) in arms.iter().enumerate() {
         match &arm.pattern {
             Pattern::Wildcard | Pattern::Binding(_) | Pattern::TypeAnnotated { .. } => {
                 bind_catch_all(cg, &arm.pattern, disc);
-                push_arm(cg, &arm.body, &mut phi_in)?;
-                cg.emit(format!("br label %{end}"));
+                emit_arm_body(cg, arm, &mut phi_in, &end)?;
                 break;
             }
             Pattern::Literal(lit) => {
@@ -394,12 +381,7 @@ fn gen_literal_match(cg: &mut Codegen, disc: &Value, arms: &[MatchArm]) -> Resul
                     "br i1 {cond}, label %{body_lbl}, label %{next_lbl}"
                 ));
                 cg.start_block(&body_lbl);
-                push_arm(cg, &arm.body, &mut phi_in)?;
-                cg.emit(format!("br label %{end}"));
-                cg.start_block(&next_lbl);
-                if i == last {
-                    cg.emit("unreachable");
-                }
+                finish_guarded_arm(cg, arm, &mut phi_in, &end, &next_lbl, i == last)?;
             }
             _ => return Err(CodegenError::unsupported("destructuring match arm")),
         }
@@ -407,6 +389,40 @@ fn gen_literal_match(cg: &mut Codegen, disc: &Value, arms: &[MatchArm]) -> Resul
 
     cg.start_block(&end);
     finish_phi(cg, &phi_in)
+}
+
+/// Allocate the common join state for a compare-and-branch match chain.
+fn match_state(cg: &mut Codegen, arms: &[MatchArm]) -> (String, Vec<(Value, String)>, usize) {
+    (cg.fresh_label(), Vec::new(), arms.len().saturating_sub(1))
+}
+
+/// Generate a successful match arm and branch to the common result block.
+fn emit_arm_body(
+    cg: &mut Codegen,
+    arm: &MatchArm,
+    phi_in: &mut Vec<(Value, String)>,
+    end: &str,
+) -> Result<()> {
+    push_arm(cg, &arm.body, phi_in)?;
+    cg.emit(format!("br label %{end}"));
+    Ok(())
+}
+
+/// Complete a guarded arm after its shape-specific bindings have been emitted.
+fn finish_guarded_arm(
+    cg: &mut Codegen,
+    arm: &MatchArm,
+    phi_in: &mut Vec<(Value, String)>,
+    end: &str,
+    next: &str,
+    is_last: bool,
+) -> Result<()> {
+    emit_arm_body(cg, arm, phi_in, end)?;
+    cg.start_block(next);
+    if is_last {
+        cg.emit("unreachable");
+    }
+    Ok(())
 }
 
 /// Join the arm values with a `phi`. A single arm needs none. When the arms

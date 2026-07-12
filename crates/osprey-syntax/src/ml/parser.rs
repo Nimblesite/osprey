@@ -1338,24 +1338,23 @@ impl Parser<'_> {
     /// arms, reusing the `match` arm grammar ([FLAVOR-ML-CONCURRENCY]).
     fn select_expr(&mut self) -> MlExpr {
         self.advance(); // `select`
-        let mut arms = Vec::new();
-        if self.eat(&TokKind::Indent) {
-            while !self.at_block_end() {
-                self.skip_separators();
-                if self.at_block_end() {
-                    break;
-                }
-                arms.push(self.match_arm());
-            }
-            let _ = self.eat(&TokKind::Dedent);
-        }
-        MlExpr::Select(arms)
+        MlExpr::Select(self.match_arms_block())
     }
 
     /// `match scrutinee` + indented `pattern => body` arms.
     fn match_expr(&mut self) -> MlExpr {
         self.advance(); // `match`
         let scrutinee = self.expr(0);
+        let arms = self.match_arms_block();
+        MlExpr::Match {
+            scrutinee: Box::new(scrutinee),
+            arms,
+        }
+    }
+
+    /// Parse an optional indented run of `pattern => body` arms shared by
+    /// `match` and `select`.
+    fn match_arms_block(&mut self) -> Vec<MlArm> {
         let mut arms = Vec::new();
         if self.eat(&TokKind::Indent) {
             while !self.at_block_end() {
@@ -1367,10 +1366,7 @@ impl Parser<'_> {
             }
             let _ = self.eat(&TokKind::Dedent);
         }
-        MlExpr::Match {
-            scrutinee: Box::new(scrutinee),
-            arms,
-        }
+        arms
     }
 
     fn match_arm(&mut self) -> MlArm {

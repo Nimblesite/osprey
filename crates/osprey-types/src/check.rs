@@ -159,12 +159,12 @@ impl Checker {
             names::RESULT,
             vec![Variance::Covariant, Variance::Covariant],
         );
-        self.ctx.set_variance(names::LIST, vec![Variance::Covariant]);
-        self.ctx.set_variance(names::FIBER, vec![Variance::Covariant]);
-        self.ctx.set_variance(
-            names::MAP,
-            vec![Variance::Invariant, Variance::Covariant],
-        );
+        self.ctx
+            .set_variance(names::LIST, vec![Variance::Covariant]);
+        self.ctx
+            .set_variance(names::FIBER, vec![Variance::Covariant]);
+        self.ctx
+            .set_variance(names::MAP, vec![Variance::Invariant, Variance::Covariant]);
     }
 
     /// Built-in `Result` constructors `Success { value: T }` / `Error { message: E }`.
@@ -681,11 +681,7 @@ impl Checker {
 /// Type-check a program. Returns every type error found (empty ⇒ well-typed).
 #[must_use]
 pub fn check_program(program: &Program) -> Vec<TypeError> {
-    let mut checker = Checker::new();
-    let mut env = base_env();
-    checker.collect(program, &mut env);
-    checker.check(program, &mut env);
-    checker.errors
+    checked_program(program).errors
 }
 
 /// Run inference and publish the resolved signatures, constructor layouts and
@@ -695,10 +691,7 @@ pub fn check_program(program: &Program) -> Vec<TypeError> {
 #[must_use]
 pub fn infer_program(program: &Program) -> crate::info::ProgramTypes {
     use crate::info::{CtorLayout, ProgramTypes};
-    let mut checker = Checker::new();
-    let mut env = base_env();
-    checker.collect(program, &mut env);
-    checker.check(program, &mut env);
+    let mut checker = checked_program(program);
 
     let functions = checker
         .fn_sigs
@@ -716,11 +709,7 @@ pub fn infer_program(program: &Program) -> crate::info::ProgramTypes {
             // A declared type parameter resolves to a type variable — the
             // backend lowers a variable to its uniform boxed representation,
             // which is exactly the generic-payload rule.
-            let pmap: HashMap<String, Type> = info
-                .type_params
-                .iter()
-                .map(|p| (p.clone(), Type::Var(0)))
-                .collect();
+            let pmap = erased_type_params(&info.type_params);
             let fields = info
                 .fields
                 .iter()
@@ -746,11 +735,7 @@ pub fn infer_program(program: &Program) -> crate::info::ProgramTypes {
         .effects
         .iter()
         .map(|(name, info)| {
-            let pmap: HashMap<String, Type> = info
-                .type_params
-                .iter()
-                .map(|p| (p.clone(), Type::Var(0)))
-                .collect();
+            let pmap = erased_type_params(&info.type_params);
             let ops = info
                 .ops
                 .iter()
@@ -795,6 +780,25 @@ pub fn infer_program(program: &Program) -> crate::info::ProgramTypes {
         performs,
         handler_ops,
     }
+}
+
+/// Collect declarations and type-check a program before either caller consumes
+/// diagnostics or publishes inferred backend metadata.
+fn checked_program(program: &Program) -> Checker {
+    let mut checker = Checker::new();
+    let mut env = base_env();
+    checker.collect(program, &mut env);
+    checker.check(program, &mut env);
+    checker
+}
+
+/// The code generator's erased view assigns every declared generic parameter
+/// the uniform boxed type-variable representation.
+fn erased_type_params(type_params: &[String]) -> HashMap<String, Type> {
+    type_params
+        .iter()
+        .map(|parameter| (parameter.clone(), Type::Var(0)))
+        .collect()
 }
 
 /// Resolve one operation signature against the final substitution.
@@ -903,8 +907,9 @@ mod tests {
              in go()\n",
         );
         assert!(
-            errs.iter()
-                .any(|e| e.message.contains("`resume` is only valid inside a handler arm")),
+            errs.iter().any(|e| e
+                .message
+                .contains("`resume` is only valid inside a handler arm")),
             "expected the lambda-resume rejection, got: {errs:?}"
         );
     }

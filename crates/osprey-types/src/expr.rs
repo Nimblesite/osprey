@@ -135,7 +135,14 @@ impl Checker {
                 arguments,
                 named_arguments,
                 position,
-            } => self.infer_perform(effect, operation, arguments, named_arguments, *position, env),
+            } => self.infer_perform(
+                effect,
+                operation,
+                arguments,
+                named_arguments,
+                *position,
+                env,
+            ),
             Expr::Handler {
                 effect,
                 arms,
@@ -705,9 +712,7 @@ impl Checker {
                     let _ = unify(&mut self.ctx, lt, rt);
                     self.ctx.fresh()
                 } else {
-                    self.push_assign(&Type::int(), lt);
-                    self.push_assign(&Type::int(), rt);
-                    res_math(Type::int())
+                    self.int_arithmetic_result(lt, rt)
                 }
             }
             // "-" and "*": unlike "+", these have no string/list overload, so
@@ -717,12 +722,18 @@ impl Checker {
                 if l.is_named(names::FLOAT) || r.is_named(names::FLOAT) {
                     res_math(Type::float())
                 } else {
-                    self.push_assign(&Type::int(), lt);
-                    self.push_assign(&Type::int(), rt);
-                    res_math(Type::int())
+                    self.int_arithmetic_result(lt, rt)
                 }
             }
         }
+    }
+
+    /// Constrain both operands to integers and preserve arithmetic's Result
+    /// error channel.
+    fn int_arithmetic_result(&mut self, left: &Type, right: &Type) -> Type {
+        self.push_assign(&Type::int(), left);
+        self.push_assign(&Type::int(), right);
+        res_math(Type::int())
     }
 }
 

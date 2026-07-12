@@ -20,10 +20,7 @@ pub(crate) fn site_perform_op(cg: &Codegen, position: Option<Position>) -> Optio
 }
 
 /// The instantiation inference resolved for the `handle` at `position`.
-pub(crate) fn site_handler_ops(
-    cg: &Codegen,
-    position: Option<Position>,
-) -> Option<HandlerSite> {
+pub(crate) fn site_handler_ops(cg: &Codegen, position: Option<Position>) -> Option<HandlerSite> {
     let p = position?;
     cg.prog.handler_ops.get(&(p.line, p.column)).cloned()
 }
@@ -55,6 +52,12 @@ pub(crate) fn box_erased(cg: &mut Codegen, value: Value, resolved: Option<&Type>
     } else {
         value
     };
+    box_raw_value(cg, value)
+}
+
+/// Box a codegen value without applying any Result auto-unwrap coercion.
+/// Callers that require the value-site coercion do that before entering here.
+pub(crate) fn box_raw_value(cg: &mut Codegen, value: Value) -> Value {
     if value.result_inner.is_some() {
         let ptr = cg.emit_reg(format!(
             "bitcast {} {} to i8*",

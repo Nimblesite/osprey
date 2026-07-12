@@ -57,13 +57,7 @@ pub(crate) fn gen_constructor(
         .ctor_struct_ty(name)
         .ok_or_else(|| CodegenError::unknown(name))?;
     let obj = cg.malloc_struct(&struct_ty);
-
-    // tag
-    let tagp = cg.fresh_reg();
-    cg.emit(format!(
-        "{tagp} = getelementptr {struct_ty}, {struct_ty}* {obj}, i32 0, i32 0"
-    ));
-    cg.emit(format!("store i64 {}, i64* {tagp}", view.tag));
+    store_tag(cg, &struct_ty, obj.as_str(), view.tag);
 
     // fields, in declared order
     for (i, (fname, fty)) in view.fields.iter().enumerate() {
@@ -96,11 +90,7 @@ pub(crate) fn gen_object(cg: &mut Codegen, fields: &[FieldAssignment]) -> Result
     let owner = cg.register_obj_layout(layout);
 
     let obj = cg.malloc_struct(&struct_ty);
-    let tagp = cg.fresh_reg();
-    cg.emit(format!(
-        "{tagp} = getelementptr {struct_ty}, {struct_ty}* {obj}, i32 0, i32 0"
-    ));
-    cg.emit(format!("store i64 0, i64* {tagp}"));
+    store_tag(cg, &struct_ty, obj.as_str(), 0);
     for (i, (_, v)) in vals.iter().enumerate() {
         store_field(cg, &struct_ty, obj.as_str(), i + 1, v.ty, &v.operand);
     }
@@ -204,12 +194,7 @@ pub(crate) fn gen_update(
         base.operand
     ));
     let obj = cg.malloc_struct(&struct_ty);
-
-    let tagp = cg.fresh_reg();
-    cg.emit(format!(
-        "{tagp} = getelementptr {struct_ty}, {struct_ty}* {obj}, i32 0, i32 0"
-    ));
-    cg.emit(format!("store i64 {}, i64* {tagp}", view.tag));
+    store_tag(cg, &struct_ty, obj.as_str(), view.tag);
 
     for (i, (fname, fty)) in view.fields.iter().enumerate() {
         let val = match fields.iter().find(|f| &f.name == fname) {
@@ -275,6 +260,13 @@ pub(crate) fn store_field(
         "{p} = getelementptr {struct_ty}, {struct_ty}* {obj}, i32 0, i32 {idx}"
     ));
     cg.emit(format!("store {fty} {val}, {fty}* {p}"));
+}
+
+/// Write the leading variant tag into slot 0 of a `{ i64 tag, fields… }` block.
+/// The tag is slot 0 with LLVM type `i64`, so this is `store_field` specialised —
+/// named for the one job every record/variant/update block starts with.
+fn store_tag(cg: &mut Codegen, struct_ty: &str, obj: &str, tag: i64) {
+    store_field(cg, struct_ty, obj, 0, LType::I64, &tag.to_string());
 }
 
 /// Load the `idx`-th element of a `{TY}*` block, returning the value register.

@@ -1,33 +1,52 @@
-// Query a JSON API payload with Osprey's built-in JSON document functions.
-// `jsonParse` owns the parsed document until `jsonFree` releases it; paths use
-// dots for object fields and `[index]` for array elements.
+// JSON's six primitive value kinds form a recursive tagged union. Objects map
+// names to JsonValue and arrays contain JsonValue, so traversal narrows every
+// node with `match` before descending to the next level.
 
-reportValue (document, path) =
-    match jsonGet document path
-        Success value => print "${path} = ${value}"
-        Error message => print "${path} error: ${message}"
+type JsonValue =
+    JsonNull
+    JsonBoolean
+        value : bool
+    JsonNumber
+        value : int
+    JsonString
+        value : string
+    JsonArray
+        values : List JsonValue
+    JsonObject
+        fields : Map string JsonValue
 
-reportPayload document =
-    reportValue (document, "service.name")
-    reportValue (document, "service.version")
-    reportValue (document, "features[1]")
-    reportValue (document, "settings.enabled")
-    featureCount = jsonLength document "features"
-    print "features = ${toString featureCount}"
-    missing = reportValue (document, "service.owner")
-    jsonFree document
+describe : JsonValue -> string
+describe value =
+    match value
+        JsonNull => "null"
+        JsonBoolean value => "boolean"
+        JsonNumber value => "number"
+        JsonString value => "string"
+        JsonArray values => "array"
+        JsonObject fields => "object"
 
-payload = "{\"service\":{\"name\":\"osprey-api\",\"version\":\"1.4\"},\"features\":[\"json\",\"http\",\"fibers\"],\"settings\":{\"enabled\":true}}"
+// This is a recursive JSON walk: match the object/array container, then pass
+// each nested JsonValue to the same matcher. The document below has one root
+// field, making the path and its output deterministic.
+reportDeepString : JsonValue -> Unit
+reportDeepString value =
+    match value
+        JsonObject fields => forEachList (mapValues fields) reportDeepString
+        JsonArray values => forEachList values reportDeepString
+        JsonString value => print "deeply nested string = ${value}"
+        JsonNull => print "unexpected null"
+        JsonBoolean value => print "unexpected boolean"
+        JsonNumber value => print "unexpected number"
 
-print "=== JSON document query ==="
-match jsonParse payload
-    Success document => reportPayload document
-    Error message => print "parse error: ${message}"
+deepestValue = JsonString(value = "devon@osprey.dev")
+innerArray = JsonArray(values = List() |> listAppend deepestValue)
+outerArray = JsonArray(values = List() |> listAppend innerArray)
+document = JsonObject(fields = Map() |> mapSet "workspace" outerArray)
 
-match jsonParse "{\"service\":"
-    Success document =>
-        jsonFree document
-        print "invalid payload unexpectedly parsed"
-    Error message => print "invalid payload rejected"
-
-print "=== JSON query complete ==="
+print "=== JSON value union ==="
+match document
+    JsonObject fields => print "root is ${describe document} with ${toString (mapLength fields)} field"
+    _ => print "root is not an object"
+reportDeepString document
+print "types: ${describe JsonNull}, ${describe (JsonBoolean(value = true))}, ${describe (JsonNumber(value = 17))}, ${describe deepestValue}, ${describe outerArray}, ${describe document}"
+print "=== JSON value union complete ==="

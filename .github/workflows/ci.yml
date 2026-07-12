@@ -80,6 +80,15 @@ jobs:
           sudo apt-get install -y jq xvfb
           cargo install cargo-llvm-cov --locked || true
 
+      # [CI-DESLOP] The duplication gate. `make lint` runs the `deslop` target,
+      # which enforces the ceiling in .deslop.toml (deslop exits 3 when over).
+      # Installed from the Nimblesite Homebrew tap so the gate is ENFORCED here;
+      # the Makefile only skips it when the binary is entirely absent.
+      - name: Install deslop (duplication gate)
+        uses: Homebrew/actions/setup-homebrew@master
+      - name: Install deslop
+        run: brew install nimblesite/tap/deslop
+
       # [SWR-VERSION-MANIFEST] keep shipwright.json valid against the in-repo
       # Shipwright schema. Do not use @nimblesite/shipwright-validate-manifest:
       # published versions currently ship without their bundled schemas.

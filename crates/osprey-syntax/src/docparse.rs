@@ -13,19 +13,7 @@ use osprey_ast::{DocComment, DocExample, DocScope};
 pub(crate) fn parse_doc(raw: &str, scope: DocScope) -> DocComment {
     let (free, sections) = split_sections(raw);
     let (summary, body) = split_summary(&free);
-    let mut doc = DocComment {
-        summary,
-        body,
-        params: Vec::new(),
-        returns: None,
-        raises: Vec::new(),
-        examples: Vec::new(),
-        see_also: Vec::new(),
-        since: None,
-        deprecated: None,
-        author: None,
-        scope,
-    };
+    let mut doc = DocComment::new(summary, body, scope);
     for (heading, content) in sections {
         apply_section(&mut doc, &heading, &content);
     }
@@ -132,8 +120,8 @@ fn is_fence(line: &str, info: &str) -> bool {
         .is_some_and(|rest| rest.trim() == info)
 }
 
-/// Collect fenced-block lines until the closing ```; the iterator is left just
-/// past the closing fence.
+/// Collect fenced-block lines until the closing fence; the iterator is left
+/// just past that fence.
 fn collect_fence<'a, I: Iterator<Item = &'a str>>(lines: &mut std::iter::Peekable<I>) -> String {
     let mut body: Vec<&str> = Vec::new();
     for l in lines.by_ref() {
@@ -248,21 +236,20 @@ fn non_empty(s: &str) -> Option<String> {
 #[must_use]
 pub fn doc_links(text: &str) -> Vec<String> {
     let mut out = Vec::new();
-    let bytes = text.as_bytes();
-    let mut i = 0;
-    while i < bytes.len() {
-        if bytes[i] == b'[' {
-            if let Some(close) = text[i + 1..].find(']') {
-                let inner = &text[i + 1..i + 1 + close];
-                let after = text[i + 1 + close + 1..].chars().next();
-                if is_symbol_link(inner) && after != Some('(') {
-                    out.push(inner.to_string());
-                }
-                i += close + 2;
-                continue;
-            }
+    // Walk each `[` and pair it with the next `]`; a UTF-8-safe scan via
+    // `char_indices` (no byte indexing, so multi-byte prose can't panic).
+    let mut rest = text;
+    while let Some(open) = rest.find('[') {
+        let after_open = &rest[open + 1..];
+        let Some(close) = after_open.find(']') else {
+            break;
+        };
+        let inner = &after_open[..close];
+        let after = after_open[close + 1..].chars().next();
+        if is_symbol_link(inner) && after != Some('(') {
+            out.push(inner.to_string());
         }
-        i += 1;
+        rest = &after_open[close + 1..];
     }
     out
 }
@@ -274,16 +261,23 @@ fn is_symbol_link(inner: &str) -> bool {
         && inner
             .chars()
             .all(|c| c.is_alphanumeric() || c == '_' || c == '.')
-        && inner.chars().next().is_some_and(|c| c.is_alphabetic())
+        && inner.chars().next().is_some_and(char::is_alphabetic)
 }
 
 #[cfg(test)]
+#[expect(
+    clippy::indexing_slicing,
+    reason = "test assertions: an out-of-bounds index is a test failure, not a production panic"
+)]
 mod tests {
     use super::*;
 
     #[test]
     fn summary_and_body_split_on_blank_line() {
-        let d = parse_doc("Doubles its argument.\n\nA longer note here.", DocScope::Outer);
+        let d = parse_doc(
+            "Doubles its argument.\n\nA longer note here.",
+            DocScope::Outer,
+        );
         assert_eq!(d.summary, "Doubles its argument.");
         assert_eq!(d.body, "A longer note here.");
     }
@@ -309,7 +303,10 @@ mod tests {
             ]
         );
         assert_eq!(d.returns.as_deref(), Some("the quotient"));
-        assert_eq!(d.raises, vec![("DivByZero".to_string(), "on zero".to_string())]);
+        assert_eq!(
+            d.raises,
+            vec![("DivByZero".to_string(), "on zero".to_string())]
+        );
         assert_eq!(d.since.as_deref(), Some("0.4.0"));
     }
 
@@ -336,6 +333,57 @@ mod tests {
     #[test]
     fn symbol_links_are_found_and_markdown_links_ignored() {
         let links = doc_links("See [safeDivide] and [Console.emit], not [text](http://x).");
-        assert_eq!(links, vec!["safeDivide".to_string(), "Console.emit".to_string()]);
+        assert_eq!(
+            links,
+            vec!["safeDivide".to_string(), "Console.emit".to_string()]
+        );
+    }
+
+    #[test]
+    fn unclosed_bracket_stops_the_link_scan_without_panicking() {
+        // A `[` with no matching `]` ends the scan; earlier links still surface.
+        assert_eq!(doc_links("[ok] then [dangling"), vec!["ok".to_string()]);
+        assert!(doc_links("[]").is_empty(), "empty brackets are not links");
+    }
+
+    #[test]
+    fn deprecated_and_see_also_sections_and_singular_aliases_lower() {
+        // `# Example`/`# See`/`# Deprecated` aliases, a bullet without a colon,
+        // and a doctest with no `output` fence (compile-only, run == false).
+        let raw = "Legacy op.\n\n\
+                   # Parameters\n- bareName\n\n\
+                   # See also\n[newOp], https://x\n\n\
+                   # Example\n```osprey\nlegacy()\n```\n\n\
+                   # Deprecated\nuse `newOp`";
+        let d = parse_doc(raw, DocScope::Outer);
+        assert_eq!(d.params, vec![("bareName".to_string(), String::new())]);
+        assert_eq!(
+            d.see_also,
+            vec!["[newOp]".to_string(), "https://x".to_string()]
+        );
+        assert_eq!(d.examples.len(), 1);
+        assert!(!d.examples[0].run, "no output fence ⇒ compile-only");
+        assert_eq!(d.deprecated.as_deref(), Some("use `newOp`"));
+    }
+
+    #[test]
+    fn all_at_tag_aliases_fold_into_their_fields() {
+        let raw = "Summary.\n\n\
+                   @raise DivByZero on zero\n\
+                   @throws Overflow\n\
+                   @see [other]\n\
+                   @deprecated gone in 2.0\n\
+                   @author Devon";
+        let d = parse_doc(raw, DocScope::Outer);
+        assert_eq!(
+            d.raises,
+            vec![
+                ("DivByZero".to_string(), "on zero".to_string()),
+                ("Overflow".to_string(), String::new()),
+            ]
+        );
+        assert_eq!(d.see_also, vec!["[other]".to_string()]);
+        assert_eq!(d.deprecated.as_deref(), Some("gone in 2.0"));
+        assert_eq!(d.author.as_deref(), Some("Devon"));
     }
 }

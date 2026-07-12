@@ -1,6 +1,7 @@
 //! Statement, type, and pattern lowering: declarations (`fn`, `let`, `type`,
 //! `effect`, `extern`, `module`), type expressions, and match patterns.
 
+use super::position_from_point;
 use osprey_ast::{
     DocComment, DocScope, EffectOperation, EffectRef, Expr, ExternParameter, Parameter, Pattern,
     Position, Program, Stmt, TypeExpr, TypeField, TypeParam, TypeVariant, Variance,
@@ -41,11 +42,7 @@ impl<'a> Lowerer<'a> {
         reason = "kept for Lowerer method-call ergonomics"
     )]
     pub(crate) fn pos(&self, node: Node<'_>) -> Position {
-        let p = node.start_position();
-        Position {
-            line: u32::try_from(p.row).unwrap_or(u32::MAX).saturating_add(1),
-            column: u32::try_from(p.column).unwrap_or(u32::MAX),
-        }
+        position_from_point(node.start_position())
     }
 
     /// Position of `node`'s named `field`, or `node`'s own start when absent. A
@@ -182,11 +179,7 @@ impl<'a> Lowerer<'a> {
     fn lower_type_decl(&self, node: Node<'_>) -> Stmt {
         let def = node.child_by_field_name("definition");
         let variants = match def.map(|d| (d.kind(), d)) {
-            Some(("union_type", d)) => self
-                .named_of_kind(d, "variant")
-                .iter()
-                .map(|v| self.lower_variant(*v))
-                .collect(),
+            Some(("union_type", d)) => self.map_of_kind(d, "variant", Self::lower_variant),
             Some(("record_type", d)) => vec![TypeVariant {
                 name: self.field_text(node, "name"),
                 fields: self.lower_field_decls(d),
@@ -449,11 +442,7 @@ impl<'a> Lowerer<'a> {
                         ty: self.lower_type(ty),
                     };
                 }
-                let subs: Vec<Pattern> = self
-                    .named_of_kind(pat, "pattern")
-                    .iter()
-                    .map(|p| self.lower_pattern(*p))
-                    .collect();
+                let subs = self.map_of_kind(pat, "pattern", Self::lower_pattern);
                 if !subs.is_empty() {
                     return Pattern::Constructor {
                         name,
@@ -479,11 +468,7 @@ impl<'a> Lowerer<'a> {
     /// (each a `pattern`) become the fixed-prefix patterns in source order, and
     /// the `rest` field (an identifier) becomes the optional tail binder.
     fn lower_list_pattern(&self, node: Node<'_>) -> Pattern {
-        let elements = self
-            .named_of_kind(node, "pattern")
-            .iter()
-            .map(|p| self.lower_pattern(*p))
-            .collect();
+        let elements = self.map_of_kind(node, "pattern", Self::lower_pattern);
         let rest = node.child_by_field_name("rest").map(|r| self.text(r));
         Pattern::List { elements, rest }
     }
@@ -510,20 +495,29 @@ impl<'a> Lowerer<'a> {
         out
     }
 
-    /// The source text of every named child of `node` of the given `kind`.
-    pub(crate) fn texts_of_kind(&self, node: Node<'_>, kind: &str) -> Vec<String> {
+    /// Map every named child of `node` of the given `kind` through `f` — the
+    /// shared "collect the children of a kind, lower each" step behind the
+    /// per-kind accessors below and the variant/pattern lowering sites.
+    pub(crate) fn map_of_kind<T>(
+        &self,
+        node: Node<'_>,
+        kind: &str,
+        f: impl Fn(&Self, Node<'_>) -> T,
+    ) -> Vec<T> {
         self.named_of_kind(node, kind)
             .iter()
-            .map(|n| self.text(*n))
+            .map(|n| f(self, *n))
             .collect()
+    }
+
+    /// The source text of every named child of `node` of the given `kind`.
+    pub(crate) fn texts_of_kind(&self, node: Node<'_>, kind: &str) -> Vec<String> {
+        self.map_of_kind(node, kind, Self::text)
     }
 
     /// The lowered expression of every named child of `node` of the given `kind`.
     pub(crate) fn exprs_of_kind(&self, node: Node<'_>, kind: &str) -> Vec<Expr> {
-        self.named_of_kind(node, kind)
-            .iter()
-            .map(|e| self.lower_expr(*e))
-            .collect()
+        self.map_of_kind(node, kind, Self::lower_expr)
     }
 
     /// Recursive search for all descendants of a kind (for nested wrappers).

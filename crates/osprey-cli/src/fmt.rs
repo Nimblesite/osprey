@@ -66,10 +66,10 @@ fn parse(args: &[String]) -> Result<FmtArgs, String> {
                 let value = it
                     .next()
                     .ok_or_else(|| format!("--flavor requires a value (default|ml)\n{USAGE}"))?;
-                out.flavor = Some(parse_flavor(value)?);
+                out.flavor = Some(super::parse_flavor(value)?);
             }
             flag if flag.starts_with("--flavor=") => {
-                out.flavor = Some(parse_flavor(
+                out.flavor = Some(super::parse_flavor(
                     flag.strip_prefix("--flavor=").unwrap_or_default(),
                 )?);
             }
@@ -81,10 +81,6 @@ fn parse(args: &[String]) -> Result<FmtArgs, String> {
         return Err(USAGE.to_owned());
     }
     Ok(out)
-}
-
-fn parse_flavor(value: &str) -> Result<Flavor, String> {
-    value.parse().map_err(|e| format!("{e}\n{USAGE}"))
 }
 
 /// Expand the given paths into a flat list of source files, recursing into
