@@ -1,8 +1,8 @@
 [project]
-name = "modules"
+name = "talon-bank"
 source_roots = ["src"]
-default_namespace = "billing"
-entry = "src/main.osp"
+default_namespace = "bank"
+entry = "src/main.ospml"
 
 [modules]
 allow_wildcard_imports = false

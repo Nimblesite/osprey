@@ -1,0 +1,104 @@
+// web/pages — the SERVER-DRIVEN UI. [MODULES-NAMESPACE] [MODULES-IMPORT]
+//
+// This layer lives in its own quoted namespace, `"bank/web"`, and its imports
+// are the whole architecture story: it can see `bank::Api` (plus the pure
+// `bank::Money` domain formatter) and nothing else. There is no Ledger
+// import, no Sqlite import, no Store capability in scope — the UI CANNOT
+// talk to the database, because the module system won't resolve a path to
+// it. Every byte it renders comes from the same JSON the API serves to
+// external clients, consumed in-process via `Api::accountsJson` /
+// `Api::activityJson`.
+
+namespace "bank/web"
+
+import bank::Api
+import bank::Money
+
+module Pages
+    // The `headers` string is spliced verbatim into the wire response, so
+    // each header line must carry its own CRLF terminator.
+    html : string -> HttpResponse
+    html body = HttpResponse(status = 200, headers = "Content-Type: text/html; charset=utf-8\r\n", contentType = "text/html", streamFd = -1, isComplete = true, partialBody = body)
+
+    // The design system, inlined: dark ledger-paper navy, osprey-gold accents,
+    // tabular numerals for money. One request, zero external assets.
+    style : Unit -> string
+    style () = "<style>:root{color-scheme:dark}*{margin:0;box-sizing:border-box}body{font:15px/1.6 -apple-system,'Segoe UI',sans-serif;background:#0b1220;color:#e8edf7;min-height:100vh;display:grid;place-items:center}main{width:min(880px,94vw);padding:2.5rem 0}h1{font-size:1.9rem;letter-spacing:-.02em}h1 em{color:#d9a441;font-style:normal}.tag{color:#8b96ad;margin:.15rem 0 1.4rem}.tiles{display:grid;grid-template-columns:repeat(3,1fr);gap:1rem;margin-bottom:1rem}.tile{background:#141d2f;border:1px solid #22304a;border-radius:14px;padding:1rem 1.25rem}.tile b{display:block;font-size:1.45rem;font-variant-numeric:tabular-nums}.tile.gold b{color:#d9a441}.tile span{color:#8b96ad;font-size:.75rem;text-transform:uppercase;letter-spacing:.08em}.grid{display:grid;grid-template-columns:1fr 1fr;gap:1rem;align-items:start}.card{background:#141d2f;border:1px solid #22304a;border-radius:14px;padding:1.25rem;box-shadow:0 12px 40px #0007}.card h2{font-size:.8rem;color:#8b96ad;text-transform:uppercase;letter-spacing:.1em;margin-bottom:.75rem}table{width:100%;border-collapse:collapse}th{text-align:left;color:#8b96ad;font-size:.72rem;text-transform:uppercase;letter-spacing:.08em;padding:.35rem .5rem;border-bottom:1px solid #22304a}td{padding:.6rem .5rem;border-bottom:1px solid #1a2438}tr:last-child td{border-bottom:0}.num{text-align:right;font-variant-numeric:tabular-nums}.money{color:#7ddba3;font-weight:600}.owner{font-weight:600}.badge{display:inline-block;background:#22304a;color:#aab6cf;border-radius:999px;padding:0 .6em;font-size:.78rem}.feed{list-style:none}.feed li{display:flex;gap:.7rem;align-items:baseline;padding:.5rem 0;border-bottom:1px solid #1a2438}.feed li:last-child{border-bottom:0}.kind{flex:none;width:1.5rem;height:1.5rem;border-radius:8px;display:grid;place-items:center;align-self:center;font-weight:700;font-size:.85rem}.credit .kind{background:#12351f;color:#7ddba3}.debit .kind{background:#3a2c12;color:#e3b34d}.refused .kind{background:#3a1520;color:#ef7a93}.what{flex:1;min-width:0}.what small{display:block;color:#8b96ad}.amt{font-variant-numeric:tabular-nums;font-weight:600}.refused .amt{color:#ef7a93;text-decoration:line-through}footer{color:#5c677e;font-size:.8rem;margin-top:1.25rem}footer code{color:#8b96ad}</style>"
+
+    // One <tr> per account, straight off the API's JSON — recursion over the
+    // parsed document, no mutation anywhere.
+    accountRows : int -> int -> string
+    accountRows doc i =
+        owner = jsonGet doc "[${i}].owner"
+        match owner
+            Error message => ""
+            Success value =>
+                id = match jsonGet doc "[${i}].id"
+                    Success n => n
+                    Error nope => "?"
+                cash = match jsonGet doc "[${i}].balance"
+                    Success money => money
+                    Error nope => "?"
+                "<tr><td><span class=\"badge\">#${id}</span></td><td class=\"owner\">${value}</td><td class=\"num money\">${cash}</td></tr>${accountRows doc (i + 1)}"
+
+    // Accumulator recursion: the running sum rides the argument list, so the
+    // checked `+` auto-unwraps at the call site.
+    vault : int -> int -> int -> int
+    vault doc i acc =
+        cents = jsonGet doc "[${i}].cents"
+        match cents
+            Error message => acc
+            Success value =>
+                held = match parseInt value
+                    Success n => n
+                    Error nope => 0
+                vault doc (i + 1) (acc + held)
+
+    mark : string -> string
+    mark kind = match kind
+        "credit" => "+"
+        "debit" => "–"
+        _ => "✕"
+
+    // One feed line per journal entry, newest first, styled by kind.
+    feedItems : int -> int -> string
+    feedItems doc i =
+        kind = jsonGet doc "[${i}].kind"
+        match kind
+            Error message => ""
+            Success value =>
+                note = match jsonGet doc "[${i}].note"
+                    Success text => text
+                    Error nope => "?"
+                who = match jsonGet doc "[${i}].owner"
+                    Success name => name
+                    Error nope => "?"
+                cents = match jsonGet doc "[${i}].cents"
+                    Success raw => match parseInt raw
+                        Success n => n
+                        Error bad => 0
+                    Error nope => 0
+                "<li class=\"${value}\"><span class=\"kind\">${mark value}</span><span class=\"what\">${note}<small>${who}</small></span><span class=\"amt\">${Money::show cents}</span></li>${feedItems doc (i + 1)}"
+
+    tiles : int -> int -> string
+    tiles accountsDoc activityDoc =
+        held = vault accountsDoc 0 0
+        "<div class=\"tiles\"><div class=\"tile gold\"><b>${Money::show held}</b><span>total on deposit</span></div><div class=\"tile\"><b>${jsonLength accountsDoc ""}</b><span>accounts</span></div><div class=\"tile\"><b>${jsonLength activityDoc ""}</b><span>journalled movements</span></div></div>"
+
+    // No effect row is spelled here: the checker infers that rendering needs
+    // whatever the Api views need. This file never names the storage
+    // capability — it genuinely does not know it exists.
+    dashboard () =
+        accounts = Api::accountsJson ()
+        activity = Api::activityJson ()
+        accountsDoc = jsonParse accounts
+        activityDoc = jsonParse activity
+        page = "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>Talon Bank</title>${style ()}</head><body><main><h1><em>◭</em> Talon Bank</h1><p class=\"tag\">capability-checked banking, compiled by Osprey</p>${tiles accountsDoc activityDoc}<div class=\"grid\"><div class=\"card\"><h2>Accounts</h2><table><thead><tr><th>No.</th><th>Owner</th><th class=\"num\">Balance</th></tr></thead><tbody>${accountRows accountsDoc 0}</tbody></table></div><div class=\"card\"><h2>Activity</h2><ul class=\"feed\">${feedItems activityDoc 0}</ul></div></div><footer>server-driven — rendered from <code>/api/accounts</code> + <code>/api/activity</code>, the UI holds no database capability</footer></main></body></html>"
+        freedAccounts = jsonFree accountsDoc
+        freedActivity = jsonFree activityDoc
+        html page
+
+    export render : string -> HttpResponse
+    render path = match path
+        "/" => dashboard ()
+        _ => html "<!doctype html><html><body><h1>404</h1></body></html>"

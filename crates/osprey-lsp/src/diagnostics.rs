@@ -308,11 +308,11 @@ mod tests {
 
     #[cfg(unix)]
     #[test]
-    fn mixed_flavor_module_files_use_the_assembled_project_graph() {
+    fn module_files_use_the_assembled_project_graph() {
         let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
         for relative in [
-            "examples/projects/modules/src/main.osp",
-            "examples/projects/modules/src/cream.ospml",
+            "examples/projects/modules/src/main.ospml",
+            "examples/projects/modules/src/web/pages.ospml",
         ] {
             let path = root.join(relative);
             let source = std::fs::read_to_string(&path).expect("read module example");
@@ -326,17 +326,13 @@ mod tests {
     #[test]
     fn project_diagnostics_map_resolution_and_type_errors_to_the_open_file() {
         let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
-        let cream_path = root.join("examples/projects/modules/src/cream.ospml");
-        let cream = std::fs::read_to_string(&cream_path).expect("read ML module example");
-        let unresolved = cream.replace(
-            "import \"billing/api\" as taxApi",
-            "import \"missing/api\" as taxApi",
+        let main_path = root.join("examples/projects/modules/src/main.ospml");
+        let main = std::fs::read_to_string(&main_path).expect("read ML module example");
+        let unresolved = main.replace(
+            "import \"bank/web\" as web",
+            "import \"missing/web\" as web",
         );
-        let diagnostics = compute(
-            &unresolved,
-            &format!("file://{}", cream_path.display()),
-            U16,
-        );
+        let diagnostics = compute(&unresolved, &format!("file://{}", main_path.display()), U16);
         assert!(
             diagnostics
                 .iter()
@@ -344,9 +340,7 @@ mod tests {
             "{diagnostics:?}"
         );
 
-        let main_path = root.join("examples/projects/modules/src/main.osp");
-        let main = std::fs::read_to_string(&main_path).expect("read Default module example");
-        let ill_typed = main.replace("let first = allocate()", "let first: int = \"wrong\"");
+        let ill_typed = main.replace("served = Metrics::track boot", "served = Metrics::track 42");
         let diagnostics = compute(&ill_typed, &format!("file://{}", main_path.display()), U16);
         assert!(
             diagnostics

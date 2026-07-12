@@ -1,0 +1,136 @@
+// api/routes — the JSON API over the data. [MODULES-IMPORT] [MODULES-EFFECTS]
+//
+// The ONLY layer that talks to storage, and it does so purely through the
+// `Ledger::Store` capability — this file never imports the Sqlite library,
+// so it cannot bypass the effect surface even by accident. The import graph
+// IS the architecture, and the compiler enforces it.
+//
+// The module exports its own cross-cutting `Audit` effect: every mutation is
+// announced as a domain fact, and the composition root decides what an audit
+// line physically is (here: a console log).
+
+namespace bank
+
+import bank::Accounts
+import bank::Ledger
+import bank::Money
+
+// `Account` itself needs no import: this file shares `namespace bank` with
+// domain/accounts.ospml, and one namespace is one logical declaration space
+// no matter how many physical files contribute to it. [MODULES-NAMESPACE]
+
+module Api
+    export effect Audit
+        log : string => Unit
+
+    // The `headers` string is spliced verbatim into the wire response, so
+    // each header line must carry its own CRLF terminator.
+    json : int -> string -> HttpResponse
+    json status body = HttpResponse(status = status, headers = "Content-Type: application/json\r\n", contentType = "application/json", streamFd = -1, isComplete = true, partialBody = body)
+
+    refuse : string -> HttpResponse
+    refuse why = json 422 "{\"error\":\"${why}\"}"
+
+    // Pull one string field out of a JSON request body.
+    field : string -> string -> string
+    field body path =
+        doc = jsonParse body
+        v = match jsonGet doc path
+            Success value => value
+            Error message => ""
+        freed = jsonFree doc
+        v
+
+    num : string -> string -> int
+    num body path = match parseInt (field body path)
+        Success value => value
+        Error message => 0
+
+    load : int -> Account ! Ledger::Store
+    load id = Account(id = id, owner = perform Ledger::Store.owner id, balance = perform Ledger::Store.balance id)
+
+    // Render accounts 1..count as a JSON array, recursively — no loops, no state.
+    rows : int -> int -> string ! Ledger::Store
+    rows id count = match id > count
+        true => ""
+        false =>
+            sep = match id < count
+                true => ","
+                false => ""
+            "${Accounts::json (load id)}${sep}${rows (id + 1) count}"
+
+    onOpen : string -> HttpResponse ! [Ledger::Store, Audit]
+    onOpen body =
+        name = field body "name"
+        match Accounts::namable name
+            false => refuse "owner name required"
+            true =>
+                id = perform Ledger::Store.open name
+                perform Audit.log "account #${id} opened for ${name}"
+                json 201 (Accounts::json (load id))
+
+    onDeposit : string -> HttpResponse ! [Ledger::Store, Audit]
+    onDeposit body =
+        id = num body "account"
+        cents = num body "cents"
+        note = field body "note"
+        match Accounts::movable cents
+            false => refuse "amount must be positive"
+            true =>
+                balance = perform Ledger::Store.credit id cents note
+                perform Audit.log "deposit ${Money::show cents} -> account #${id} (${note})"
+                json 200 (Accounts::json (load id))
+
+    onWithdraw : string -> HttpResponse ! [Ledger::Store, Audit]
+    onWithdraw body =
+        id = num body "account"
+        cents = num body "cents"
+        note = field body "note"
+        attempt = perform Ledger::Store.debit id cents note
+        match attempt
+            Landed balance =>
+                perform Audit.log "withdraw ${Money::show cents} from account #${id} (${note})"
+                json 200 (Accounts::json (load id))
+            Refused why =>
+                perform Audit.log "withdraw ${Money::show cents} from account #${id} REFUSED (${why})"
+                refuse why
+
+    // A transfer COMPOSES the capability: debit then credit, atomically
+    // refused when funds are missing. Business flow lives here, not in SQL.
+    onTransfer : string -> HttpResponse ! [Ledger::Store, Audit]
+    onTransfer body =
+        from = num body "from"
+        to = num body "to"
+        cents = num body "cents"
+        note = field body "note"
+        attempt = perform Ledger::Store.debit from cents note
+        match attempt
+            Refused why =>
+                perform Audit.log "transfer ${Money::show cents} account #${from} -> account #${to} REFUSED (${why})"
+                refuse why
+            Landed balance =>
+                landed = perform Ledger::Store.credit to cents note
+                perform Audit.log "transfer ${Money::show cents} account #${from} -> account #${to} (${note})"
+                json 200 "[${Accounts::json (load from)},${Accounts::json (load to)}]"
+
+    // The canonical JSON views, exported on their own so the web layer can
+    // consume the API in-process without unwrapping HTTP envelopes.
+    export accountsJson : Unit -> string ! Ledger::Store
+    accountsJson () = "[${rows 1 (perform Ledger::Store.count ())}]"
+
+    export activityJson : Unit -> string ! Ledger::Store
+    activityJson () = perform Ledger::Store.activity ()
+
+    export route : string -> string -> string -> HttpResponse ! [Ledger::Store, Audit]
+    route method path body = match method
+        "GET" => match path
+            "/api/accounts" => json 200 (accountsJson ())
+            "/api/activity" => json 200 (activityJson ())
+            _ => json 404 "{\"error\":\"no such endpoint\"}"
+        "POST" => match path
+            "/api/accounts" => onOpen body
+            "/api/deposit" => onDeposit body
+            "/api/withdraw" => onWithdraw body
+            "/api/transfer" => onTransfer body
+            _ => json 404 "{\"error\":\"no such endpoint\"}"
+        _ => json 404 "{\"error\":\"no such endpoint\"}"

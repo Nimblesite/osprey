@@ -1,0 +1,110 @@
+// store/ledger — the STORAGE CAPABILITY. [MODULES-EFFECTS]
+//
+// `Store` is an algebraic effect exported from this module: it is the ONLY way
+// any layer above can reach the ledger. App code says WHAT it needs
+// (`perform Ledger::Store.credit …`); the composition root in main.ospml
+// decides HOW, by installing handler arms that pair each operation with the
+// SQL implementation exported below. Unhandled operations are COMPILE errors,
+// and swapping SQLite for a fake is a main-only change — the api/ and web/
+// layers never know.
+//
+// The bank is DOUBLE-ENTRY at the storage level: every movement — including
+// a refused one — lands as a row in `entries`, so the activity feed is a
+// faithful audit ledger, not a best-effort log.
+//
+// The SQL functions take the open database as an explicit `Ptr` parameter, so
+// this module stays stateless and pure-by-construction. [MODULES-STATE-SOURCE-OF-TRUTH]
+
+namespace bank
+
+import bank::Sqlite
+
+module Ledger
+    // The capability surface. `debit` is fallible — overdrafts are refused —
+    // so its operation returns the domain `Outcome` union the caller must
+    // pattern-match exhaustively.
+    export effect Store
+        open : string => int
+        credit : (int, int, string) => int
+        debit : (int, int, string) => Outcome
+        balance : int => int
+        owner : int => string
+        count : Unit => int
+        activity : Unit => string
+
+    // Idempotent reset-and-create: the demo starts from a known-empty ledger
+    // no matter what a previous run left in the database file.
+    export schema : Ptr -> int
+    schema db =
+        droppedEntries = Sqlite::run db "DROP TABLE IF EXISTS entries"
+        droppedAccounts = Sqlite::run db "DROP TABLE IF EXISTS accounts"
+        accounts = Sqlite::run db "CREATE TABLE accounts (id INTEGER PRIMARY KEY, owner TEXT NOT NULL, balance INTEGER NOT NULL DEFAULT 0)"
+        Sqlite::run db "CREATE TABLE entries (id INTEGER PRIMARY KEY, account INTEGER NOT NULL, kind TEXT NOT NULL, cents INTEGER NOT NULL, note TEXT NOT NULL)"
+
+    // Every movement is journalled, refusals included — all four values
+    // BOUND through the library's prepared-statement cursor, never spliced.
+    journal : Ptr -> int -> string -> int -> string -> int
+    journal db account kind cents note =
+        cursor = Sqlite::query db "INSERT INTO entries (account, kind, cents, note) VALUES (?, ?, ?, ?)"
+        b1 = Sqlite::bindIntAt cursor 1 account
+        b2 = Sqlite::bindTextAt cursor 2 kind
+        b3 = Sqlite::bindIntAt cursor 3 cents
+        b4 = Sqlite::bindTextAt cursor 4 note
+        stepped = Sqlite::step cursor
+        Sqlite::closeQuery cursor
+
+    export openSql : Ptr -> string -> int
+    openSql db name = Sqlite::insertIntText db "INSERT INTO accounts (balance, owner) VALUES (?, ?)" 0 name
+
+    export creditSql : Ptr -> int -> int -> string -> int
+    creditSql db id cents note =
+        rc = Sqlite::updateIntInt db "UPDATE accounts SET balance = balance + ? WHERE id = ?" cents id
+        entry = journal db id "credit" cents note
+        balanceSql db id
+
+    // A debit is transactional and guarded: the UPDATE only fires when the
+    // funds exist, and the row-check decides commit versus refusal. Either
+    // way the attempt is journalled.
+    export debitSql : Ptr -> int -> int -> string -> Outcome
+    debitSql db id cents note =
+        before = balanceSql db id
+        match before < cents
+            true =>
+                entry = journal db id "refused" cents note
+                Refused(why = "insufficient funds")
+            false =>
+                begun = Sqlite::run db "BEGIN IMMEDIATE"
+                rc = Sqlite::updateIntInt db "UPDATE accounts SET balance = balance - ? WHERE id = ?" cents id
+                entry = journal db id "debit" cents note
+                done = Sqlite::run db "COMMIT"
+                Landed(balance = balanceSql db id)
+
+    export balanceSql : Ptr -> int -> int
+    balanceSql db id = Sqlite::queryInt db "SELECT balance FROM accounts WHERE id = ?" id
+
+    export ownerSql : Ptr -> int -> string
+    ownerSql db id = Sqlite::queryText db "SELECT owner FROM accounts WHERE id = ?" id
+
+    export countSql : Ptr -> int
+    countSql db = Sqlite::queryScalar db "SELECT COUNT(*) FROM accounts"
+
+    // Walk the journal newest-first with the library's cursor API and render
+    // it as the JSON the API serves. SQLITE_ROW is 100.
+    feedRows : Ptr -> string -> string
+    feedRows cursor sep =
+        stepped = Sqlite::step cursor
+        match stepped == 100
+            false => ""
+            true =>
+                kind = Sqlite::textAt cursor 0
+                cents = Sqlite::intAt cursor 1
+                note = Sqlite::textAt cursor 2
+                who = Sqlite::textAt cursor 3
+                "${sep}{\"kind\":\"${kind}\",\"cents\":${cents},\"note\":\"${note}\",\"owner\":\"${who}\"}${feedRows cursor ","}"
+
+    export activitySql : Ptr -> string
+    activitySql db =
+        cursor = Sqlite::query db "SELECT e.kind, e.cents, e.note, a.owner FROM entries e JOIN accounts a ON a.id = e.account ORDER BY e.id DESC LIMIT 8"
+        listing = feedRows cursor ""
+        closed = Sqlite::closeQuery cursor
+        "[${listing}]"
