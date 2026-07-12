@@ -3,7 +3,7 @@
 
 This file provides guidance for agents when working with code in this repository.
 
-⚠️ NEVER ASk THE USER QUESTIONS! USER YOUR JUDGEMENT. ACT AUTONOMOUSLY ⚠️
+⚠️ NEVER ASK THE USER QUESTIONS! USE YOUR JUDGEMENT. ACT AUTONOMOUSLY ⚠️
 ⚠️ **NEVER DUPLICATE CODE** - Edit in place, never create new versions. Use deslop - find-similar before adding code, and deslop-top-offenders after modifying code ⚠️
 ⚠️ DO NOT USE GIT - ESPECIALLY NOT PUTTING YOUR SIGNATURE ON COMMITS ⚠️
 ⚠️ PRACTICE TOKEN ECONOMICS ⚠️
