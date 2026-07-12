@@ -168,9 +168,12 @@ markup, parsed by one flavor-neutral parser and rendered by one backend.
 
 Two additions on top of plain CommonMark, both shared by both flavors:
 
-- **Intra-doc links** — `[Symbol]` with no URL resolves against Osprey's symbol
-  table (the rustdoc convention). Links never dangle because they are checked
-  against real declarations. Inline code that is *not* a link uses backticks.
+- **Intra-doc links** `[DOC-LINK]` — `[Symbol]` with no URL resolves against
+  Osprey's symbol table (the rustdoc convention). Bare (`[helper]`) and dotted
+  (`[Console.emit]`, resolving to the owner) forms are supported; a
+  `[text](url)` Markdown link is left alone. In the editor, hovering a
+  `[Symbol]` link shows the referenced element's own hover. Inline code that is
+  *not* a link uses backticks.
 - **Example fences** — a ` ```osprey ` fenced block is an executable example
   (see [Doctests](#executable-examples-doctests)); an optional following
   ` ```output ` fence is its expected stdout.
@@ -345,21 +348,45 @@ and the lowered model is the same.
 
 ## Status
 
-**Specified; implementation phased.** The Default flavor already lexes `///`
-doc comments and attaches them to `fn`/`let` in the AST, with LSP hover
-rendering and a builtin-only `--docs` Markdown exporter — the partial base this
-chapter completes. The build-out is tracked in
-[plan 0018](../plans/0018-documentation-comments.md):
+**Implemented — capture, model, hover, and links are live; doctest-harness
+wiring and user-declaration `--docs` export remain.**
 
-1. The `DocComment`/`DocExample` model and AST fields on all declaration forms.
-2. Default lowering extended to `type`/`effect`/`extern`/`module` (grammar
-   already parses their `///`; lowering currently drops it).
-3. ML `(** … *)` lexing/CST/lowering — the ML flavor captures **no** docs today
-   and so currently violates the `[FLAVOR-LOWER-CONTRACT]` requirement to
-   preserve `doc` fields; this closes that breach.
-4. The shared flavor-neutral body/section parser.
-5. Doctest extraction into the golden harness and user-declaration `--docs`
-   export.
+Shipped and tested:
+
+- The structured `DocComment` / `DocExample` / `DocScope` model
+  ([crates/osprey-ast/src/doc.rs](../../crates/osprey-ast/src/doc.rs)), on the
+  `doc` field of **every** declaration form (`fn`, `let`/`mut`, `type`,
+  `effect`, `extern`, `module`).
+- The **shared flavor-neutral body parser**
+  ([crates/osprey-syntax/src/docparse.rs](../../crates/osprey-syntax/src/docparse.rs)):
+  summary/body split, recognised `#` sections, `@tag` aliases, `[Symbol]` link
+  extraction, and ```osprey```/```output``` doctest extraction. One parser,
+  both flavors.
+- **Default `///` + `//!`** lowering for all six declaration forms
+  ([default/lower.rs](../../crates/osprey-syntax/src/default/lower.rs)).
+- **ML `(** … *)`** lexing (nesting, banner/empty disambiguation), CST/parser
+  threading, and lowering
+  ([ml/lexer.rs](../../crates/osprey-syntax/src/ml/lexer.rs),
+  [ml/lower.rs](../../crates/osprey-syntax/src/ml/lower.rs)) — this **closes the
+  `[FLAVOR-LOWER-CONTRACT]` breach**: the ML flavor previously dropped every
+  comment and hardcoded `doc: None`.
+- **Cross-flavor equivalence** is machine-checked: a `///` Default function and
+  its `(** *)` ML twin lower to an identical `DocComment`
+  (`crates/osprey-cli/tests/cross_flavor_equiv.rs`).
+- **LSP hover** renders the structured `DocComment` (summary, body, sections)
+  for every declaration kind in both flavors, and a **`[Symbol]` intra-doc link
+  under the cursor hovers to the referenced element** — bare (`[helper]`) and
+  dotted (`[Console.emit]`) ([crates/osprey-lsp/src/features.rs](../../crates/osprey-lsp/src/features.rs)).
+
+Remaining (tracked in [plan 0018](../plans/0018-documentation-comments.md)
+Phase 3):
+
+- Doctest **execution**: the extractor populates `DocExample`s; wiring them into
+  the golden harness so their output is byte-checked is not yet done.
+- `osprey --docs` exporting **user** declarations (it exports builtins today).
+- `//!` module-scope grammar in the Default tree-sitter grammar (the lexer and
+  lowerer already recognise `//!`; adding the grammar attachment point is the
+  remainder).
 
 ## References
 

@@ -31,10 +31,54 @@ pub fn hover(
     let word = word_under(text, line, character, enc)?;
     let parsed = osprey_syntax::parse_program_for_path(path, text);
     let symbols = collect_all_symbols(&parsed.program);
+    // A `[Symbol]` intra-doc link under the cursor resolves to the referenced
+    // element's own hover — the whole dotted target (`Effect.op`), not just the
+    // sub-word the cursor happens to sit on ([DOC-LINK]).
+    if let Some(target) = doc_link_target(text, line, character) {
+        if let Some(hov) = resolve_link(&symbols, &target, &parsed.program) {
+            return Some(hov);
+        }
+    }
     match best_match(&symbols, &word, line) {
         Some(sym) => Some(symbol_hover(sym, &parsed.program)),
         None => builtin_hover(&word),
     }
+}
+
+/// The `[Symbol]` link the cursor sits inside on `line`, if any: the bracketed
+/// content when the cursor is between a `[` and its matching `]` and the
+/// content is a dotted identifier (not a `[text](url)` markdown link).
+/// Implements [DOC-LINK].
+fn doc_link_target(text: &str, line: u32, character: u32) -> Option<String> {
+    let src = nth_line(text, line)?;
+    let col = usize::try_from(character).ok()?;
+    let open = src.get(..col)?.rfind('[')?;
+    let close_rel = src.get(open + 1..)?.find(']')?;
+    let close = open + 1 + close_rel;
+    if col > close {
+        return None;
+    }
+    let inner = src.get(open + 1..close)?;
+    let followed_by_paren = src.get(close + 1..).and_then(|s| s.chars().next()) == Some('(');
+    let dotted = !inner.is_empty()
+        && !inner.contains(char::is_whitespace)
+        && inner
+            .chars()
+            .all(|c| c.is_alphanumeric() || c == '_' || c == '.')
+        && inner.chars().next().is_some_and(char::is_alphabetic);
+    (dotted && !followed_by_paren).then(|| inner.to_string())
+}
+
+/// Resolve a `[Symbol]` link target to its hover: a bare name resolves to its
+/// declaration or a builtin; a dotted `Effect.op` / `Type.variant` resolves to
+/// the owner declaration's hover. Implements [DOC-LINK].
+fn resolve_link(symbols: &[SymbolInfo], target: &str, program: &Program) -> Option<String> {
+    let head = target.split('.').next().unwrap_or(target);
+    symbols
+        .iter()
+        .find(|s| s.name == head)
+        .map(|s| symbol_hover(s, program))
+        .or_else(|| builtin_hover(head))
 }
 
 /// The declaration of `word` in scope at `line` (0-based): the binding declared
@@ -396,6 +440,40 @@ mod tests {
         let md = hover(src, "file:///a.osp", 1, 4, U16).expect("hover over `dbl`");
         assert!(md.contains("fn dbl(x: int) -> int"), "signature: {md}");
         assert!(md.contains("Doubles `x`."), "docs: {md}");
+    }
+
+    /// The 0-based column just inside the first occurrence of `needle` on
+    /// 0-based `line` of `src` — a cursor position over that word.
+    fn col_of(src: &str, line: usize, needle: &str) -> u32 {
+        let text = src.lines().nth(line).expect("line exists");
+        let at = text.find(needle).expect("needle on line");
+        u32::try_from(at).expect("column fits") + 1
+    }
+
+    #[test]
+    fn hover_on_a_doc_link_resolves_to_the_referenced_element() {
+        // A `[Symbol]` intra-doc link in a comment hovers to that symbol's own
+        // docs ([DOC-LINK]) — here `[helper]` on the doc line of `main`.
+        let src = "/// A helper.\n\
+                   fn helper(n) = n + 1\n\
+                   /// Calls [helper] to do the work.\n\
+                   fn main() = helper(1)\n";
+        let col = col_of(src, 2, "helper");
+        let md = hover(src, "file:///a.osp", 2, col, U16).expect("hover over [helper]");
+        assert!(md.contains("fn helper(n)"), "resolves to helper's signature: {md}");
+        assert!(md.contains("A helper."), "shows helper's docs: {md}");
+    }
+
+    #[test]
+    fn hover_on_a_dotted_doc_link_resolves_the_owner() {
+        // `[Console.emit]` resolves to the `Console` effect declaration.
+        let src = "/// Emits lines.\n\
+                   effect Console { emit: fn(string) -> Unit }\n\
+                   /// Uses [Console.emit] to print.\n\
+                   fn go() = 1\n";
+        let col = col_of(src, 2, "Console");
+        let md = hover(src, "file:///a.osp", 2, col, U16).expect("hover over [Console.emit]");
+        assert!(md.contains("Console") && md.contains("Emits lines."), "{md}");
     }
 
     #[test]

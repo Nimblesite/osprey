@@ -2,9 +2,9 @@
 
 **Subsystem:** `crates/osprey-ast` + `crates/osprey-syntax` (default + ml) +
 `crates/osprey-lsp` + `crates/osprey-cli` + `crates/diff_examples.sh`
-**Status:** Partially implemented — Default `///` on `fn`/`let` + hover +
-builtin-only `--docs` exist; the structured model, the other declaration forms,
-the whole ML side, and doctests are not built.
+**Status:** Phases 1–2 done (structured model, both flavors capture docs on all
+six declaration forms, hover renders them, `[Symbol]` links hover). Phase 3
+(doctest execution + user-declaration `--docs` export) remains.
 **Spec:** [0026-DocumentationComments.md](../specs/0026-DocumentationComments.md)
 (`[DOC-*]`); LSP hover [0020](../specs/0020-LanguageServerAndEditors.md)
 `[LSP-HOVER-DOCS]`; lowering contract [0023](../specs/0023-LanguageFlavors.md)
@@ -117,11 +117,21 @@ through the existing golden harness. Today only a fragment exists.
 
 ## TODO
 
-- [ ] Phase 1: `DocComment`/`DocExample`/`DocScope` model + AST fields on all
-      declaration forms; shared body parser; Default lowering for all six forms;
-      LSP hover renders the model.
-- [ ] Phase 2: ML `(** *)` lexing/CST/parser/lowering via the shared parser;
-      cross-flavor `DocComment` equivalence; closes `[FLAVOR-LOWER-CONTRACT]`.
-- [ ] Phase 3: doctest extraction into the golden harness; user-declaration
-      `--docs` export; `//!` inner docs.
-- [ ] `make ci` green.
+- [x] Phase 1: `DocComment`/`DocExample`/`DocScope` model + AST fields on all
+      six declaration forms; shared body parser (sections, `@tag` aliases,
+      `[Symbol]` links, doctest extraction); Default lowering for all six forms;
+      LSP hover renders the structured model.
+- [x] Phase 2: ML `(** *)` lexing (nesting + banner/empty disambiguation) /
+      CST / parser / lowering via the shared parser; cross-flavor `DocComment`
+      equivalence test; **closes `[FLAVOR-LOWER-CONTRACT]`** (ML no longer drops
+      docs).
+- [x] `[Symbol]` intra-doc links hover to the referenced element (bare +
+      dotted); the doc-link extractor (`docparse::doc_links`).
+- [ ] Phase 3a: doctest **execution** — wire extracted `DocExample`s into the
+      `diff_examples.sh` golden harness (compiled under the file's flavor,
+      output byte-checked).
+- [ ] Phase 3b: `osprey --docs` exports **user** declarations from
+      `DocComment` (builtins already export from `BuiltinDocView`).
+- [ ] Phase 3c: `//!` inner/module-scope grammar attachment in the tree-sitter
+      grammar (lexer + lowerer already recognise `//!`).
+- [x] `make ci` green (Phases 1–2).

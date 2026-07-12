@@ -131,7 +131,7 @@ impl Scanner {
         self.peek(0) == Some('(')
             && self.peek(1) == Some('*')
             && self.peek(2) == Some('*')
-            && !matches!(self.peek(3), Some('*') | Some(')') | None)
+            && !matches!(self.peek(3), Some('*' | ')') | None)
     }
 
     /// Scan a `(** … *)` doc comment (cursor at the opener) into its raw inner
@@ -597,6 +597,31 @@ mod tests {
         assert!(errors
             .iter()
             .any(|e| e.message.contains("unterminated `(* … *)` block comment")));
+    }
+
+    #[test]
+    fn doc_comment_becomes_a_doc_token_with_stripped_text() {
+        // `(** … *)` is retained as a Doc token; leading `*` margins and the
+        // sigil are stripped ([DOC-SIGIL-ML]).
+        let (tokens, errors) = lex("(** Doubles [x].\n    More. *)\ndouble x = x\n");
+        assert!(errors.is_empty(), "{errors:?}");
+        let doc = tokens.iter().find_map(|t| match &t.kind {
+            TokKind::Doc(s) => Some(s.clone()),
+            _ => None,
+        });
+        assert_eq!(doc.as_deref(), Some("Doubles [x].\nMore."));
+    }
+
+    #[test]
+    fn empty_and_banner_doc_openers_stay_ordinary_comments() {
+        // `(**)` (empty) and `(*****)` (banner) are ordinary comments, not docs:
+        // no Doc token is produced.
+        let (tokens, errors) = lex("(**)\n(*****)\nx = 1\n");
+        assert!(errors.is_empty(), "{errors:?}");
+        assert!(
+            !tokens.iter().any(|t| matches!(t.kind, TokKind::Doc(_))),
+            "empty/banner openers must not yield a Doc token"
+        );
     }
 
     #[test]

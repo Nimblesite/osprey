@@ -4,7 +4,7 @@
 //! exporter never see a flavor difference ([FLAVOR-BOUNDARY]). Implements
 //! spec 0026 `[DOC-MODEL]`.
 //!
-//! The body markup (CommonMark + `[Symbol]` links + ```osprey``` doctests) is
+//! The body markup (`CommonMark` + `[Symbol]` links + ```osprey``` doctests) is
 //! identical across flavors; parsing raw text into this structure lives in
 //! `osprey-syntax` (flavor-neutral), so this crate stays a pure data model.
 
