@@ -21,7 +21,7 @@ repros.
 | [0011](0011-arc-gc-implementation.md) | Reclaiming memory backends (tracing GC + ARC) | codegen/runtime | Phase 1 conservative GC shipped (`--memory=gc`); Perceus ARC + Cheney + static-mode not started | High |
 | [0012](0012-osprey-debugger.md) | Modern Osprey debugger | compiler/editor/runtime | Spec written; Phase 1 source line debugging in progress | High |
 | [0013](0013-ml-flavor-frontend.md) | ML flavor frontend (layout syntax, curry-by-default) | frontend/types/codegen/tooling | Frontend shipped (68 `.ospml` twins, VSIX, equivalence tests); handler *values* + ML must-reject remain | Mostly done |
-| [0014](0014-modules-and-namespaces.md) | Modules, namespaces & multi-file apps | frontend/resolver/types/codegen/lsp | Initial Default + ML project compiler is live; opaque manifest aliases and cross-file LSP/interface checking remain | High |
+| [0014](0014-modules-and-namespaces.md) | Modules, namespaces & multi-file apps | frontend/resolver/types/codegen/lsp | Initial Default + ML project compiler and project-aware diagnostics are live; opaque manifest aliases, cross-file navigation, and interface checking remain | High |
 | [0015](0015-generics-and-variance.md) | Generics with `in`/`out` variance & generic effects | frontend/types/codegen (both flavors) | Core + generic-fn-values landed; turbofish + static seam remain | Mostly done |
 | [0016](0016-algebraic-effects-and-handlers.md) | Algebraic effects roadmap (resume/handler-values/multi-shot) | effects/types/codegen/runtime | Tail + single-shot resume + generic effects + multi-shot rejection + fiber-perform race fix + lambda-resume type error done; handler values, effect rows (incl. static unhandled-effect checks), wasm effects remain | High |
 

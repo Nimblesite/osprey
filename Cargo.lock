@@ -420,6 +420,7 @@ dependencies = [
  "lspkit-vfs",
  "osprey-ast",
  "osprey-fmt",
+ "osprey-project",
  "osprey-syntax",
  "osprey-types",
  "serde",

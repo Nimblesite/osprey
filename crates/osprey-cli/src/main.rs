@@ -2028,6 +2028,11 @@ mod tests {
         let candidates = runtime_lib_candidates(lib, Some(&executable_dir));
         let expected = root.join("compiler/bin").join(lib).display().to_string();
         assert!(candidates.contains(&expected), "{candidates:?}");
+        let fallbacks = runtime_lib_candidates(lib, None);
+        assert!(fallbacks.contains(&format!("/usr/local/lib/{lib}")));
+        assert!(fallbacks
+            .iter()
+            .any(|path| path.ends_with("compiler/lib/libfiber_runtime.a")));
     }
 
     #[cfg(unix)]
@@ -2092,6 +2097,22 @@ mod tests {
         ));
         let path = temp_source("broken", "fn = = =\n");
         let _ = run(&cli(path, "--check", Policy::allow_all())); // parse-error branch
+    }
+
+    #[test]
+    fn load_input_reports_project_and_module_assembly_errors() {
+        let missing = std::env::temp_dir()
+            .join(format!("osprey_cli_missing_{}", std::process::id()))
+            .join("osprey.toml");
+        assert!(load_input(&cli(
+            missing.display().to_string(),
+            "--check",
+            Policy::allow_all()
+        ))
+        .is_err());
+        let source = "module A { export let x = 1 }\nmodule A { export let x = 2 }\n";
+        let path = temp_source("duplicate_module", source);
+        assert!(load_input(&cli(path, "--check", Policy::allow_all())).is_err());
     }
 
     #[test]

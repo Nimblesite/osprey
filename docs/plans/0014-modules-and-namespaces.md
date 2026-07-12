@@ -10,7 +10,8 @@ state. Namespaces are flat-first opaque labels; module/member qualification uses
 
 The compiler now has one shared module AST, both surface projections, a
 compiler-facing project resolver, deterministic flattening into the existing
-checker/backend, project CLI commands, and module-aware same-document tooling.
+checker/backend, project CLI commands, project-aware editor diagnostics, and
+module-aware same-document navigation.
 The remaining work is listed explicitly below rather than hidden behind a
 generic "modules planned" status.
 
@@ -24,8 +25,9 @@ generic "modules planned" status.
   resolved flat program for the existing type checker and backend.
 - `osprey build`, directory/manifest inputs, and module-aware single files work;
   ordinary scripts still bypass assembly unchanged.
-- LSP/formatter/editor support understands module syntax within a document.
-  Incremental cross-file LSP indexing remains part of plan 0009.
+- LSP diagnostics assemble the saved mixed-flavor project graph and overlay the
+  current document buffer; formatter/navigation understand module syntax within
+  a document. Incremental cross-file indexing remains part of plan 0009.
 - Opaque record/union boundaries retain nominal structure. Opaque manifest
   aliases are rejected loudly because the flat checker cannot yet expose their
   representation only to the owner without leaking its ABI to clients.
@@ -105,7 +107,7 @@ TODO:
 TODO:
 
 - [x] Add `ProjectGraph` and assembled-project metadata in the compiler-facing
-      `osprey-project` crate, consumed by the CLI; LSP adoption remains below.
+      `osprey-project` crate, consumed by the CLI and LSP diagnostics.
 - [x] Read `osprey.toml` with `source_roots`, `default_namespace`, and module
       policy. Single-file mode remains unchanged.
 - [x] Scan `.osp` and `.ospml` files under source roots.
@@ -195,6 +197,9 @@ TODO:
       ranked candidate suggestions remain.
 - [ ] LSP: maintain an incremental project graph across open files and source
       roots.
+- [x] LSP: run diagnostics through the mixed-flavor project assembler, overlay
+      the current unsaved document, and map project/type errors back to its
+      physical local lines.
 - [x] LSP: same-document go-to-definition, references, hover, completion, and
       fully-qualified document symbols understand namespaces/modules/imports.
       Cross-file behavior depends on the incremental graph item above.
@@ -223,6 +228,8 @@ TODO:
       tests.
 - [x] Add compile-fail project tests for namespace/plain-module/exported `mut`,
       duplicate/private boundaries, state scatter, and initializer failures.
+- [x] Add LSP regressions proving the runnable mixed-flavor project has no false
+      cross-file diagnostics and real project/type errors map to the open file.
 - [ ] Add LSP integration tests for cross-file completion/hover/definition.
 - [ ] `make ci` green.
 

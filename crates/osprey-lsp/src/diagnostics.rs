@@ -8,7 +8,9 @@
 
 use lspkit_server::{Diagnostic, Severity};
 use lspkit_vfs::PositionEncoding;
-use osprey_ast::Position;
+use osprey_ast::{Position, Program};
+use osprey_project::{AssembledProject, ProjectError};
+use std::path::{Path, PathBuf};
 
 const SOURCE: &str = "osprey";
 
@@ -27,13 +29,161 @@ pub fn compute(source: &str, path: &str, encoding: PositionEncoding) -> Vec<Diag
             .map(|e| diagnostic(source, e.position, &e.message, "syntax-error", encoding))
             .collect();
     }
-    osprey_types::check_program(&parsed.program)
+    if let Some(diagnostics) = project_diagnostics(source, path, &parsed.program, encoding) {
+        return diagnostics;
+    }
+    type_diagnostics(source, &parsed.program, encoding)
+}
+
+fn type_diagnostics(
+    source: &str,
+    program: &Program,
+    encoding: PositionEncoding,
+) -> Vec<Diagnostic> {
+    osprey_types::check_program(program)
         .iter()
         .map(|e| {
             let pos = e.position.unwrap_or(Position { line: 1, column: 0 });
             diagnostic(source, pos, &e.message, "type-error", encoding)
         })
         .collect()
+}
+
+fn project_diagnostics(
+    source: &str,
+    uri: &str,
+    program: &Program,
+    encoding: PositionEncoding,
+) -> Option<Vec<Diagnostic>> {
+    let file = file_path(uri)?;
+    let root = project_root(&file)?;
+    let (config, mut sources) = match osprey_project::load(&root) {
+        Ok(loaded) => loaded,
+        Err(errors) => return Some(project_errors(source, &file, &errors, encoding)),
+    };
+    let source_file = sources
+        .iter_mut()
+        .find(|candidate| same_path(&candidate.path, &file))?;
+    source_file.source = source.to_string();
+    source_file.program = program.clone();
+    match osprey_project::assemble(&config, &sources) {
+        Ok(project) => Some(assembled_type_errors(source, &file, &project, encoding)),
+        Err(errors) => Some(project_errors(source, &file, &errors, encoding)),
+    }
+}
+
+fn assembled_type_errors(
+    source: &str,
+    file: &Path,
+    project: &AssembledProject,
+    encoding: PositionEncoding,
+) -> Vec<Diagnostic> {
+    osprey_types::check_program(&project.program)
+        .iter()
+        .filter_map(|error| {
+            let position = if let Some(global) = error.position {
+                let (owner, line) = project.source_at_line(global.line)?;
+                same_path(&owner.path, file).then_some(Position {
+                    line,
+                    column: global.column,
+                })?
+            } else {
+                let is_entry = project
+                    .entry()
+                    .is_some_and(|entry| same_path(&entry.path, file));
+                is_entry.then_some(Position { line: 1, column: 0 })?
+            };
+            Some(diagnostic(
+                source,
+                position,
+                &error.message,
+                "type-error",
+                encoding,
+            ))
+        })
+        .collect()
+}
+
+fn project_errors(
+    source: &str,
+    file: &Path,
+    errors: &[ProjectError],
+    encoding: PositionEncoding,
+) -> Vec<Diagnostic> {
+    errors
+        .iter()
+        .filter(|error| {
+            error
+                .path
+                .as_deref()
+                .is_none_or(|path| same_path(path, file))
+        })
+        .map(|error| {
+            let position = Position {
+                line: error
+                    .line
+                    .and_then(|line| u32::try_from(line).ok())
+                    .unwrap_or(1),
+                column: error
+                    .column
+                    .and_then(|column| u32::try_from(column).ok())
+                    .unwrap_or(0),
+            };
+            diagnostic(source, position, &error.message, "project-error", encoding)
+        })
+        .collect()
+}
+
+fn project_root(file: &Path) -> Option<PathBuf> {
+    file.parent()?
+        .ancestors()
+        .find(|directory| directory.join("osprey.toml").is_file())
+        .map(Path::to_path_buf)
+}
+
+fn same_path(left: &Path, right: &Path) -> bool {
+    let normalize =
+        |path: &Path| std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
+    normalize(left) == normalize(right)
+}
+
+fn file_path(uri: &str) -> Option<PathBuf> {
+    let encoded = uri.strip_prefix("file://")?;
+    let decoded = percent_decode(encoded)?;
+    #[cfg(windows)]
+    let decoded = decoded
+        .strip_prefix('/')
+        .filter(|path| path.as_bytes().get(1) == Some(&b':'))
+        .unwrap_or(&decoded)
+        .to_string();
+    Some(PathBuf::from(decoded))
+}
+
+fn percent_decode(encoded: &str) -> Option<String> {
+    let bytes = encoded.as_bytes();
+    let mut decoded = Vec::with_capacity(bytes.len());
+    let mut index = 0;
+    while let Some(&byte) = bytes.get(index) {
+        if byte == b'%' {
+            let high = hex(*bytes.get(index.saturating_add(1))?)?;
+            let low = hex(*bytes.get(index.saturating_add(2))?)?;
+            decoded.push((high << 4) | low);
+            index = index.saturating_add(3);
+        } else {
+            decoded.push(byte);
+            index = index.saturating_add(1);
+        }
+    }
+    String::from_utf8(decoded).ok()
+}
+
+const fn hex(byte: u8) -> Option<u8> {
+    match byte {
+        b'0'..=b'9' => Some(byte - b'0'),
+        b'a'..=b'f' => Some(byte - b'a' + 10),
+        b'A'..=b'F' => Some(byte - b'A' + 10),
+        _ => None,
+    }
 }
 
 /// Build one error diagnostic spanning the offending line from `pos` onward.
@@ -154,5 +304,100 @@ mod tests {
         assert!(!u16.is_empty() && !u8.is_empty(), "{u16:?} {u8:?}");
         assert!(u16.iter().all(|d| d.range.0 == 0));
         assert!(u8.iter().all(|d| d.range.0 == 0));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn mixed_flavor_module_files_use_the_assembled_project_graph() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+        for relative in [
+            "examples/projects/modules/src/main.osp",
+            "examples/projects/modules/src/cream.ospml",
+        ] {
+            let path = root.join(relative);
+            let source = std::fs::read_to_string(&path).expect("read module example");
+            let uri = format!("file://{}", path.display());
+            let diagnostics = compute(&source, &uri, U16);
+            assert!(diagnostics.is_empty(), "{relative}: {diagnostics:?}");
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn project_diagnostics_map_resolution_and_type_errors_to_the_open_file() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let cream_path = root.join("examples/projects/modules/src/cream.ospml");
+        let cream = std::fs::read_to_string(&cream_path).expect("read ML module example");
+        let unresolved = cream.replace(
+            "import \"billing/api\" as taxApi",
+            "import \"missing/api\" as taxApi",
+        );
+        let diagnostics = compute(
+            &unresolved,
+            &format!("file://{}", cream_path.display()),
+            U16,
+        );
+        assert!(
+            diagnostics
+                .iter()
+                .any(|item| item.code.as_deref() == Some("project-error")),
+            "{diagnostics:?}"
+        );
+
+        let main_path = root.join("examples/projects/modules/src/main.osp");
+        let main = std::fs::read_to_string(&main_path).expect("read Default module example");
+        let ill_typed = main.replace("let first = allocate()", "let first: int = \"wrong\"");
+        let diagnostics = compute(&ill_typed, &format!("file://{}", main_path.display()), U16);
+        assert!(
+            diagnostics
+                .iter()
+                .any(|item| item.code.as_deref() == Some("type-error")),
+            "{diagnostics:?}"
+        );
+
+        let source = "print(missing)\n";
+        let project = AssembledProject {
+            program: osprey_syntax::parse_program(source).program,
+            entry_prologue: Vec::new(),
+            entry_source: 0,
+            sources: vec![osprey_project::SourceMetadata {
+                index: 0,
+                path: PathBuf::from("entry.osp"),
+                flavor: osprey_syntax::Flavor::Default,
+                source: source.to_string(),
+                global_line_start: 1,
+                global_line_end: 1,
+            }],
+            source_name_by_mangled: std::collections::BTreeMap::new(),
+        };
+        let diagnostics = assembled_type_errors(
+            source,
+            Path::new("entry.osp"),
+            &project,
+            PositionEncoding::Utf16,
+        );
+        assert!(!diagnostics.is_empty(), "{diagnostics:?}");
+        assert!(assembled_type_errors(
+            source,
+            Path::new("other.osp"),
+            &project,
+            PositionEncoding::Utf16,
+        )
+        .is_empty());
+    }
+
+    #[test]
+    fn file_uri_decoding_is_strict_and_handles_spaces() {
+        assert_eq!(
+            file_path("file:///tmp/with%20space/a.osp"),
+            Some(PathBuf::from("/tmp/with space/a.osp"))
+        );
+        assert_eq!(
+            file_path("file:///tmp/with%2fslash.osp"),
+            Some(PathBuf::from("/tmp/with/slash.osp"))
+        );
+        assert!(file_path("untitled:buffer").is_none());
+        assert!(file_path("file:///tmp/bad%GG.osp").is_none());
+        assert!(file_path("file:///tmp/truncated%.osp").is_none());
     }
 }

@@ -411,6 +411,53 @@ mod tests {
     }
 
     #[test]
+    fn exported_docs_attach_to_every_declaration_and_repair_uppercase_opaque_aliases() {
+        let statements = parse(
+            "module Documented {\n\
+               /// value docs\n\
+               export let answer = 42\n\
+               /// function docs\n\
+               export fn identity(x) = x\n\
+               /// extern docs\n\
+               export extern fn log(message: string)\n\
+               /// opaque type docs\n\
+               export opaque type Token = Raw\n\
+               /// effect docs\n\
+               export effect Ping { ping: fn() -> Unit }\n\
+               /// nested module docs\n\
+               export module Inner { let value = 1 }\n\
+               /// signature docs\n\
+               export signature InnerApi { let value: int }\n\
+             }\n",
+        );
+        let Stmt::Module { body, .. } = &statements[0] else {
+            panic!("expected documented module")
+        };
+        assert_eq!(body.len(), 7);
+        for item in body {
+            let doc = match item.declaration.as_ref() {
+                Stmt::Let { doc, .. }
+                | Stmt::Function { doc, .. }
+                | Stmt::Extern { doc, .. }
+                | Stmt::Type { doc, .. }
+                | Stmt::Effect { doc, .. }
+                | Stmt::Module { doc, .. }
+                | Stmt::Signature { doc, .. } => doc,
+                other => panic!("unexpected documented declaration: {other:?}"),
+            };
+            assert!(doc.is_some(), "missing export doc on {item:?}");
+        }
+        assert!(matches!(
+            body[3].declaration.as_ref(),
+            Stmt::Type {
+                alias: Some(alias),
+                variants,
+                ..
+            } if alias.name == "Raw" && variants.is_empty()
+        ));
+    }
+
+    #[test]
     fn lowers_qualified_paths_in_calls_types_and_interpolation() {
         let statements = parse(
             "fn run(x: billing::Money) = billing::Tax::addTax(x)\n\

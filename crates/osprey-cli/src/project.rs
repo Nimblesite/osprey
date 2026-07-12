@@ -395,6 +395,25 @@ mod tests {
         let aggregated = aggregate_sources(&project);
         assert!(aggregated.contains("// @link: sqlite3"));
         assert!(aggregated.contains("// @linkdir: /opt/lib"));
+
+        let input = CompilationInput::assembled(
+            project,
+            aggregated,
+            "demo".to_string(),
+            OutputDefault::Project {
+                root: PathBuf::from("out"),
+                name: "demo".to_string(),
+            },
+        );
+        assert_eq!(input.debug_path(), "first.osp");
+        assert_eq!(
+            input.diagnostic(Some(Position { line: 2, column: 3 }), "bad"),
+            "first.osp:2:3: bad"
+        );
+        assert_eq!(
+            input.output_path(None, "wasm32"),
+            PathBuf::from("out/demo.wasm")
+        );
     }
 
     #[test]
@@ -422,5 +441,33 @@ mod tests {
         assert!(json.contains("\"name\":\"remaining\""));
         assert!(!json.contains("reapp::maining"));
         assert!(json.contains("\"path\":\"src/main.osp\""));
+    }
+
+    #[test]
+    fn project_errors_include_every_available_location_component() {
+        let cases = [
+            (
+                Some(PathBuf::from("src/a.osp")),
+                Some(2),
+                Some(3),
+                "src/a.osp:2:3: bad",
+            ),
+            (None, Some(4), None, "fallback:4: bad"),
+            (
+                Some(PathBuf::from("src/b.osp")),
+                None,
+                Some(9),
+                "src/b.osp: bad",
+            ),
+        ];
+        for (path, line, column, expected) in cases {
+            let error = ProjectError {
+                message: "bad".to_string(),
+                path,
+                line,
+                column,
+            };
+            assert_eq!(format_project_error(&error, "fallback"), expected);
+        }
     }
 }

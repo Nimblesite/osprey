@@ -11,6 +11,7 @@ osprey-ast = { workspace = true }
 osprey-syntax = { workspace = true }
 osprey-types = { workspace = true }
 osprey-fmt = { workspace = true }
+osprey-project = { workspace = true }
 
 # Reused lspkit building blocks (published on crates.io). [LSP-REUSE-LSPKIT]
 lspkit = { workspace = true }

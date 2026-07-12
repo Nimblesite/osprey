@@ -28,9 +28,9 @@ it belongs to a project; it does **not** decide the names it exports.
 The initial module system is implemented end to end in both flavors. The shared
 AST, project loader, namespace graph, import/privacy/signature checks, resolved
 linkage names, state-owner validation, handler-local state materialization,
-type checking, native/LLVM codegen, project CLI, formatter, and same-document
-editor features are active. Mixed `.osp`/`.ospml` projects build and run through
-the same canonical graph.
+type checking, native/LLVM codegen, project CLI, formatter, project-aware
+cross-file diagnostics, and same-document navigation features are active. Mixed
+`.osp`/`.ospml` projects build and run through the same canonical graph.
 
 The implementation fails loudly at the remaining semantic boundaries. In
 particular, opaque manifest aliases are rejected rather than flattened to their

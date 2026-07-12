@@ -278,3 +278,180 @@ fn parenthesised_cross_flavor_call_is_flat() {
         } if arguments.len() == 2
     ));
 }
+
+#[test]
+fn signature_values_effects_and_nested_modules_lower_completely() {
+    let statements = ok(concat!(
+        "signature Service\n",
+        "    version : int\n",
+        "    choose : (int, string) -> bool\n",
+        "    effect Store T\n",
+        "        get : Unit => T\n",
+        "    module Nested : Contracts::NestedApi\n",
+    ));
+
+    let Stmt::Signature { items, .. } = &statements[0] else {
+        panic!("expected signature, got {:?}", statements[0]);
+    };
+    assert!(matches!(
+        &items[0],
+        SignatureItem::Value { name, ty, .. } if name == "version" && ty.name == "int"
+    ));
+    assert!(matches!(
+        &items[1],
+        SignatureItem::Function {
+            name,
+            parameters,
+            return_type,
+            ..
+        } if name == "choose" && parameters.len() == 2 && return_type.name == "bool"
+    ));
+    assert!(matches!(
+        &items[2],
+        SignatureItem::Effect {
+            name,
+            type_params,
+            operations,
+            ..
+        } if name == "Store" && type_params.len() == 1 && operations.len() == 1
+    ));
+    assert!(matches!(
+        &items[3],
+        SignatureItem::Module { path, signature, .. }
+            if path.to_string() == "Nested"
+                && signature.path.to_string() == "Contracts::NestedApi"
+                && !signature.allow_extra
+    ));
+}
+
+#[test]
+fn module_declaration_docs_attach_to_every_supported_declaration() {
+    let statements = ok(concat!(
+        "module Documented\n",
+        "    (** value docs *)\n",
+        "    answer = 42\n",
+        "    (** function docs *)\n",
+        "    identity x = x\n",
+        "    (** extern docs *)\n",
+        "    extern log (message : string)\n",
+        "    (** type docs *)\n",
+        "    type Id = int\n",
+        "    (** effect docs *)\n",
+        "    effect Ping\n",
+        "        ping : Unit => Unit\n",
+        "    (** nested module docs *)\n",
+        "    module Inner\n",
+        "        value = 1\n",
+        "    (** signature docs *)\n",
+        "    signature InnerApi\n",
+        "        value : int\n",
+        "    (** import docs are deliberately discarded *)\n",
+        "    import billing\n",
+    ));
+
+    let Stmt::Module { body, .. } = &statements[0] else {
+        panic!("expected module, got {:?}", statements[0]);
+    };
+    assert_eq!(body.len(), 8);
+    for declaration in &body[..7] {
+        let has_doc = match declaration.declaration.as_ref() {
+            Stmt::Let { doc, .. }
+            | Stmt::Function { doc, .. }
+            | Stmt::Extern { doc, .. }
+            | Stmt::Type { doc, .. }
+            | Stmt::Effect { doc, .. }
+            | Stmt::Module { doc, .. }
+            | Stmt::Signature { doc, .. } => doc.is_some(),
+            other => panic!("expected a documentable declaration, got {other:?}"),
+        };
+        assert!(has_doc, "missing attached doc: {declaration:?}");
+    }
+    assert!(matches!(body[7].declaration.as_ref(), Stmt::Import(_)));
+}
+
+#[test]
+fn malformed_module_heads_and_signature_items_recover_with_specific_errors() {
+    let missing_module_body = errors("module Empty\nnext = 1\n");
+    assert!(missing_module_body
+        .iter()
+        .any(|error| error.contains("module declaration requires an indented body")));
+
+    let missing_signature_body = errors("signature Empty\nnext = 1\n");
+    assert!(missing_signature_body
+        .iter()
+        .any(|error| error.contains("signature declaration requires an indented body")));
+
+    let missing_value_colon = errors("signature Api\n    value int\n");
+    assert!(missing_value_colon
+        .iter()
+        .any(|error| error.contains("expected ':' in signature value")));
+
+    let missing_module_colon = errors("signature Api\n    module Child ChildApi\n");
+    assert!(missing_module_colon
+        .iter()
+        .any(|error| error.contains("expected ':' in nested module signature item")));
+
+    let unexpected_item = errors("signature Api\n    import billing\n");
+    assert!(unexpected_item
+        .iter()
+        .any(|error| error.contains("unexpected token") && error.contains("signature")));
+}
+
+#[test]
+fn malformed_import_projections_recover_with_specific_errors() {
+    let selected_alias = errors("import billing as b\n    item\n");
+    assert!(selected_alias
+        .iter()
+        .any(|error| error.contains("aliased whole import cannot also select members")));
+
+    let wildcard_tail = errors("import billing\n    *\n    item\n");
+    assert!(wildcard_tail
+        .iter()
+        .any(|error| error.contains("wildcard import '*' must be the only selected member")));
+
+    let invalid_member = errors("import billing\n    42\n");
+    assert!(
+        invalid_member
+            .iter()
+            .any(|error| error.contains("expected an identifier")),
+        "{invalid_member:?}"
+    );
+
+    let missing_segment = errors("import billing::\n");
+    assert!(missing_segment
+        .iter()
+        .any(|error| error.contains("expected path segment after '::'")));
+}
+
+#[test]
+fn invalid_export_opaque_and_namespace_forms_are_diagnosed() {
+    let duplicate_export = errors("module M\n    export export x = 1\n");
+    assert!(duplicate_export
+        .iter()
+        .any(|error| error.contains("duplicate 'export'")));
+
+    let invalid_export = errors("module M\n    export import billing\n");
+    assert!(invalid_export
+        .iter()
+        .any(|error| error.contains("'export' must modify")));
+
+    let invalid_opaque = errors("module M\n    export opaque effect E\n");
+    assert!(invalid_opaque
+        .iter()
+        .any(|error| error.contains("'opaque' may modify only a type declaration")));
+
+    let unexported_opaque = errors("module M\n    opaque type Id = int\n");
+    assert!(unexported_opaque
+        .iter()
+        .any(|error| error.contains("requires exactly one 'export opaque type'")));
+
+    let namespace_export = errors("export x = 1\n");
+    assert!(namespace_export
+        .iter()
+        .any(|error| error.contains("namespace declarations are public by default")));
+
+    let invalid_namespace = errors("namespace 42\n");
+    assert!(invalid_namespace
+        .iter()
+        .any(|error| error.contains("expected namespace name")));
+}
