@@ -116,3 +116,24 @@ test.describe('server-driven web UI', () => {
     await expect(page.locator('h1')).toHaveText('404');
   });
 });
+
+// Runs last: it opens an account, mutating the shared server's state, so it
+// must not precede the count-sensitive assertions above.
+test.describe('typed JSON encoding', () => {
+  test('escapes quotes and backslashes so the response stays valid JSON', async ({ request }) => {
+    // Without the Json encoder's escaping (domain/json.ospml), an owner name
+    // containing a quote produces a malformed body and request.json() throws.
+    const tricky = 'Amelia "Mel" Chen \\ Co.';
+    const created = await request.post('/api/accounts', { data: { name: tricky } });
+    expect(created.status()).toBe(201);
+    expect((await created.json()).owner).toBe(tricky);
+
+    const accounts = await (await request.get('/api/accounts')).json();
+    expect(accounts.some((a) => a.owner === tricky)).toBe(true);
+
+    // The dashboard re-parses that same JSON, so a broken escape would drop
+    // the row; the server-rendered page must still show the tricky name.
+    const page = await request.get('/');
+    expect(await page.text()).toContain('Amelia "Mel" Chen');
+  });
+});

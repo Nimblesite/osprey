@@ -18,6 +18,7 @@
 namespace bank
 
 import bank::Sqlite
+import bank::Json
 
 module Ledger
     // The capability surface. `debit` is fallible — overdrafts are refused —
@@ -100,7 +101,8 @@ module Ledger
                 cents = Sqlite::intAt cursor 1
                 note = Sqlite::textAt cursor 2
                 who = Sqlite::textAt cursor 3
-                "${sep}{\"kind\":\"${kind}\",\"cents\":${cents},\"note\":\"${note}\",\"owner\":\"${who}\"}${feedRows cursor ","}"
+                entry = Json::obj (Json::strField "kind" kind + "," + Json::numField "cents" cents + "," + Json::strField "note" note + "," + Json::strField "owner" who)
+                "${sep}${entry}${feedRows cursor ","}"
 
     export activitySql : Ptr -> string
     activitySql db =

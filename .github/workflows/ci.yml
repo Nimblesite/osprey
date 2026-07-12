@@ -64,6 +64,7 @@ jobs:
             vscode-extension/package-lock.json
             webcompiler/package-lock.json
             website/package-lock.json
+            examples/projects/modules/e2e/package-lock.json
 
       # Rust toolchain + clang/LLVM + C runtime archives + the osprey binary.
       - name: Setup Osprey Compiler
@@ -105,6 +106,26 @@ jobs:
       # tests spawn a real VS Code Electron build.
       - name: Test
         run: xvfb-run -a make test
+
+      # Talon Bank modules showcase (examples/projects/modules): real Chromium
+      # drives the compiled osprey binary serving its HTTP API and web UI.
+      - name: Install bank e2e dependencies
+        run: npm ci
+        working-directory: ./examples/projects/modules/e2e
+      - name: Install Playwright Chromium
+        run: npx playwright install --with-deps chromium
+        working-directory: ./examples/projects/modules/e2e
+      - name: Bank e2e (Playwright)
+        run: npx playwright test
+        working-directory: ./examples/projects/modules/e2e
+      - name: Upload bank e2e results on failure
+        uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: bank-e2e-results
+          path: examples/projects/modules/e2e/test-results/
+          if-no-files-found: ignore
+          retention-days: 7
 
       - name: Upload test logs on failure
         uses: actions/upload-artifact@v4

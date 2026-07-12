@@ -27,6 +27,7 @@ Output is deterministic and byte-compared against `expectedoutput` by
 src/
   lib/sqlite.ospml       module Sqlite        SQLite library: C FFI externs + typed helpers
   domain/money.ospml     module Money         pure cents arithmetic  (signature-ascribed)
+  domain/json.ospml      module Json          typed JSON encoder, escaping in one place (signature-ascribed)
   domain/accounts.ospml  module Accounts      Account record, Outcome union, pure rules
   store/ledger.ospml     module Ledger        effect Store (capability) + SQL implementations
   store/metrics.ospml    state Metrics        the namespace's ONE state module (request counter)
@@ -56,6 +57,11 @@ web ("bank/web")  ──imports──▶  api  ──performs──▶  Ledger::
 - **Double-entry journal.** Every movement — refusals included — lands as a
   bound-parameter row in `entries`; a transfer writes both sides. The activity
   feed is an audit ledger, not a best-effort log.
+- **JSON is built from strong types, never spliced.** No layer hand-writes
+  `"{\"error\":\"...\"}"`. `domain/json.ospml` owns encoding through typed
+  combinators (`strField`/`numField`/`obj`/`arr`), so string escaping lives in
+  exactly one place — an owner name like `Amelia "Mel" Chen` yields valid JSON
+  instead of a broken document. (SQL input is bound, never spliced, too.)
 - **One state owner.** `state Metrics` owns the only mutable cell in the app.
   The cell is readable and writable exclusively inside its own effect's
   handler arms, and that region exists only while the exported installer
@@ -69,7 +75,7 @@ web ("bank/web")  ──imports──▶  api  ──performs──▶  Ledger::
 | Quoted namespace + alias import | `web/pages.ospml` (`namespace "bank/web"`), `import "bank/web" as web` in main |
 | Cross-file namespace merging | `Account`/`Outcome` declared in domain, used in api with no import |
 | `module` with `export` markers | Sqlite, Accounts, Ledger, Api, Pages |
-| Signature-ascribed module (no redundant exports) | `module Money : MoneyApi` |
+| Signature-ascribed module (no redundant exports) | `module Money : MoneyApi`, `module Json : JsonApi` |
 | Signature-ascribed **state** module | `state Metrics : MetricsApi` |
 | Effect declared in a signature | `MetricsApi.MetricsFx` |
 | Effect exported from a module | `Ledger::Store`, `Api::Audit` |

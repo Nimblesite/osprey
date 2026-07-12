@@ -118,6 +118,13 @@ test: build
 	$(MAKE) _test_vscode_extension
 	$(MAKE) _coverage_check_vscode_extension
 
+## bank-e2e: Browser end-to-end tests for the Talon Bank modules showcase
+##           (examples/projects/modules) — real Chromium via Playwright drives
+##           the compiled osprey binary serving its HTTP API and web UI.
+bank-e2e: build
+	@echo "==> Bank e2e (Playwright)..."
+	cd examples/projects/modules/e2e && npm ci && npx playwright install chromium && npx playwright test
+
 ## lint: Run all linters/analyzers (read-only). Does NOT format.
 lint: deslop
 	@echo "==> Linting..."
@@ -150,8 +157,8 @@ clean:
 	$(RM) $(RTB) compiler/lib outputs lcov.info test.log
 	cd $(EXT_DIR) && $(RM) out dist coverage test.log
 
-## ci: lint + test + build (full CI simulation)
-ci: lint test build
+## ci: lint + test + bank-e2e + build (full CI simulation)
+ci: lint test bank-e2e build
 
 ## wasm: Build everything for the WebAssembly target, ready to go — the wasm
 ## runtime archive (compiler/bin/libosprey_runtime_wasm.a), the hello example,

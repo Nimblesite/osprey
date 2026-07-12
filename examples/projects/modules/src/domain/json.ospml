@@ -1,0 +1,61 @@
+// domain/json — the TYPED JSON ENCODER. [MODULES-SIGNATURE]
+//
+// One place, and only one place, turns Osprey values into JSON text. No layer
+// above ever splices a raw `${value}` inside a string literal — they build
+// documents by composing these typed combinators, so string escaping (quotes,
+// backslashes) is handled centrally and correctly. A name like
+// `Amelia "Mel" Chen` round-trips through `jsonParse` instead of producing a
+// broken document.
+//
+// The signature is the module's whole public surface, so no `export` markers
+// appear inside and nothing beyond the combinators can leak.
+
+namespace bank
+
+signature JsonApi
+    strField : string -> string -> string
+    numField : string -> int -> string
+    obj : string -> string
+    arr : string -> string
+    error : string -> string
+
+module Json : JsonApi
+    // JSON string escaping: backslash first (so we never double-escape the
+    // escapes we just added), then the double-quote. `replace` is fallible;
+    // on the impossible failure path the input passes through unchanged.
+    unwrap : Result<string, Error> -> string
+    unwrap r = match r
+        Success value => value
+        Error message => ""
+
+    escape : string -> string
+    escape s =
+        bslash = "\\"
+        quote = "\""
+        step = unwrap (replace s bslash (bslash + bslash))
+        unwrap (replace step quote (bslash + quote))
+
+    quoted : string -> string
+    quoted s =
+        quote = "\""
+        quote + escape s + quote
+
+    // `"key":"escaped value"` — a string-valued object member.
+    strField : string -> string -> string
+    strField key value = quoted key + ":" + quoted value
+
+    // `"key":123` — a number-valued object member (integers need no escaping).
+    numField : string -> int -> string
+    numField key value = quoted key + ":" + toString value
+
+    // Wrap a comma-joined member list into an object / array. Callers join the
+    // members with `,`; these only add the braces so nesting stays composable.
+    obj : string -> string
+    obj members = "{" + members + "}"
+
+    arr : string -> string
+    arr elements = "[" + elements + "]"
+
+    // The one canonical error body shape, so every 4xx path is identical.
+    error : string -> string
+    error why = obj (strField "error" why)

@@ -14,6 +14,7 @@ namespace bank
 import bank::Accounts
 import bank::Ledger
 import bank::Money
+import bank::Json
 
 // `Account` itself needs no import: this file shares `namespace bank` with
 // domain/accounts.ospml, and one namespace is one logical declaration space
@@ -29,7 +30,7 @@ module Api
     json status body = HttpResponse(status = status, headers = "Content-Type: application/json\r\n", contentType = "application/json", streamFd = -1, isComplete = true, partialBody = body)
 
     refuse : string -> HttpResponse
-    refuse why = json 422 "{\"error\":\"${why}\"}"
+    refuse why = json 422 (Json::error why)
 
     // Pull one string field out of a JSON request body.
     field : string -> string -> string
@@ -111,7 +112,7 @@ module Api
             Landed balance =>
                 landed = perform Ledger::Store.credit to cents note
                 perform Audit.log "transfer ${Money::show cents} account #${from} -> account #${to} (${note})"
-                json 200 "[${Accounts::json (load from)},${Accounts::json (load to)}]"
+                json 200 (Json::arr (Accounts::json (load from) + "," + Accounts::json (load to)))
 
     // The canonical JSON views, exported on their own so the web layer can
     // consume the API in-process without unwrapping HTTP envelopes.

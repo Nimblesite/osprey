@@ -8,6 +8,7 @@
 namespace bank
 
 import bank::Money
+import bank::Json
 
 type Account =
     id : int
@@ -31,10 +32,12 @@ module Accounts
     export movable : int -> bool
     movable cents = Money::positive cents
 
-    // Both the machine field (`cents`) and the display field (`balance`), so
-    // API consumers never re-parse formatted money.
+    // Built through the typed `Json` encoder, so `owner` is escaped exactly
+    // once and a name with quotes still yields valid JSON. Both the machine
+    // field (`cents`) and the display field (`balance`) ship, so API consumers
+    // never re-parse formatted money.
     export json : Account -> string
-    json a = "{\"id\":${a.id},\"owner\":\"${a.owner}\",\"cents\":${a.balance},\"balance\":\"${Money::show a.balance}\"}"
+    json a = Json::obj (Json::numField "id" a.id + "," + Json::strField "owner" a.owner + "," + Json::numField "cents" a.balance + "," + Json::strField "balance" (Money::show a.balance))
 
     // One TUI table row: `│  1 │ Amelia Chen  │ $2,462.40 │`
     export row : Account -> string
