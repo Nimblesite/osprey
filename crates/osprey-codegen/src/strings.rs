@@ -258,8 +258,7 @@ fn nullable_str(
     args: &[Expr],
     _named: &[NamedArgument],
 ) -> Result<Value> {
-    let sig: Vec<(usize, LType)> = argtys.iter().enumerate().map(|(i, t)| (i, *t)).collect();
-    let (ops, params) = typed_args(cg, &sig, args)?;
+    let (ops, params) = typed_args_for_types(cg, argtys, args)?;
     let op_refs: Vec<&str> = ops.iter().map(String::as_str).collect();
     let ptr = cg.call("i8*", cname, &params, &op_refs);
     result_from_nullable(cg, &ptr, Some(errmsg))
@@ -328,8 +327,7 @@ fn split(cg: &mut Codegen, args: &[Expr]) -> Result<Value> {
 /// success or a static `i8*` error message, which lands directly in the Result's
 /// errmsg slot. `argtys` lists the leading argument types before the out-slot.
 fn cursor_int(cg: &mut Codegen, cname: &str, argtys: &[LType], args: &[Expr]) -> Result<Value> {
-    let sig: Vec<(usize, LType)> = argtys.iter().enumerate().map(|(i, t)| (i, *t)).collect();
-    let (mut ops, params) = typed_args(cg, &sig, args)?;
+    let (mut ops, params) = typed_args_for_types(cg, argtys, args)?;
     let slot = cg.fresh_reg();
     cg.emit(format!("{slot} = alloca i64"));
     cg.emit(format!("store i64 0, i64* {slot}"));
@@ -344,6 +342,20 @@ fn cursor_int(cg: &mut Codegen, cname: &str, argtys: &[LType], args: &[Expr]) ->
     let disc = cg.fresh_reg();
     cg.emit(format!("{disc} = select i1 {is_err}, i8 1, i8 0"));
     make_result(cg, Value::new(parsed, LType::I64), LType::I64, &disc, &emsg)
+}
+
+/// Lower positional arguments according to their declared LLVM types.
+fn typed_args_for_types(
+    cg: &mut Codegen,
+    argtys: &[LType],
+    args: &[Expr],
+) -> Result<(Vec<String>, String)> {
+    let signature: Vec<_> = argtys
+        .iter()
+        .enumerate()
+        .map(|(index, ty)| (index, *ty))
+        .collect();
+    typed_args(cg, &signature, args)
 }
 
 /// `fromCodePoint(cp: int) -> Result<string, _>` — the C encoder returns NULL on

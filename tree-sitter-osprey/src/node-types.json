@@ -269,6 +269,16 @@
             "named": true
           }
         ]
+      },
+      "type_parameters": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "type_parameter_list",
+            "named": true
+          }
+        ]
       }
     },
     "children": {
@@ -295,7 +305,33 @@
       "required": true,
       "types": [
         {
-          "type": "identifier",
+          "type": "effect_ref",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "effect_ref",
+    "named": true,
+    "fields": {
+      "name": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "identifier",
+            "named": true
+          }
+        ]
+      }
+    },
+    "children": {
+      "multiple": false,
+      "required": false,
+      "types": [
+        {
+          "type": "type_arguments",
           "named": true
         }
       ]
@@ -314,7 +350,7 @@
           "named": true
         },
         {
-          "type": "identifier",
+          "type": "effect_ref",
           "named": true
         }
       ]
@@ -338,6 +374,10 @@
         },
         {
           "type": "handler_expression",
+          "named": true
+        },
+        {
+          "type": "if_expression",
           "named": true
         },
         {
@@ -681,6 +721,16 @@
             "named": true
           }
         ]
+      },
+      "type_parameters": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "type_parameter_list",
+            "named": true
+          }
+        ]
       }
     },
     "children": {
@@ -836,6 +886,46 @@
           "named": true
         }
       ]
+    }
+  },
+  {
+    "type": "if_expression",
+    "named": true,
+    "fields": {
+      "alternative": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "expression",
+            "named": true
+          },
+          {
+            "type": "if_expression",
+            "named": true
+          }
+        ]
+      },
+      "condition": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "expression",
+            "named": true
+          }
+        ]
+      },
+      "consequence": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "expression",
+            "named": true
+          }
+        ]
+      }
     }
   },
   {
@@ -1945,6 +2035,36 @@
     }
   },
   {
+    "type": "type_parameter",
+    "named": true,
+    "fields": {
+      "name": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "identifier",
+            "named": true
+          }
+        ]
+      },
+      "variance": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "in",
+            "named": false
+          },
+          {
+            "type": "out",
+            "named": false
+          }
+        ]
+      }
+    }
+  },
+  {
     "type": "type_parameter_list",
     "named": true,
     "fields": {},
@@ -1953,7 +2073,7 @@
       "required": true,
       "types": [
         {
-          "type": "identifier",
+          "type": "type_parameter",
           "named": true
         }
       ]
@@ -2207,6 +2327,10 @@
     "named": false
   },
   {
+    "type": "else",
+    "named": false
+  },
+  {
     "type": "extern",
     "named": false
   },
@@ -2229,6 +2353,10 @@
   {
     "type": "identifier",
     "named": true
+  },
+  {
+    "type": "if",
+    "named": false
   },
   {
     "type": "import",
@@ -2264,6 +2392,10 @@
   },
   {
     "type": "mut",
+    "named": false
+  },
+  {
+    "type": "out",
     "named": false
   },
   {

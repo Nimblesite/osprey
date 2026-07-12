@@ -5,7 +5,7 @@
 //! parameters, `let`s in blocks, `match`/`select`/handler pattern bindings)
 //! are subtracted; everything else referenced is free.
 
-use osprey_ast::{Expr, FieldAssignment, InterpolatedPart, MatchArm, NamedArgument, Pattern, Stmt};
+use osprey_ast::{Expr, InterpolatedPart, MatchArm, Pattern, Stmt};
 use std::collections::BTreeSet;
 
 /// Collect the free identifiers of `e` into `out` (sorted, deduplicated).
@@ -44,14 +44,14 @@ fn walk(e: &Expr, bound: &mut Vec<String>, out: &mut BTreeSet<String>) {
                 }
             }
         }
-        Expr::List(xs) => walk_all(xs, bound, out),
+        Expr::List(xs) => walk_slice(xs, bound, out, |x| x),
         Expr::Map(entries) => {
             for en in entries {
                 walk(&en.key, bound, out);
                 walk(&en.value, bound, out);
             }
         }
-        Expr::Object(fields) => walk_fields(fields, bound, out),
+        Expr::Object(fields) => walk_slice(fields, bound, out, |f| &f.value),
         Expr::Binary { left, right, .. } | Expr::Pipe { left, right } => {
             walk(left, bound, out);
             walk(right, bound, out);
@@ -70,8 +70,8 @@ fn walk_rest(e: &Expr, bound: &mut Vec<String>, out: &mut BTreeSet<String>) {
             named_arguments,
         } => {
             walk(function, bound, out);
-            walk_all(arguments, bound, out);
-            walk_named(named_arguments, bound, out);
+            walk_slice(arguments, bound, out, |x| x);
+            walk_slice(named_arguments, bound, out, |n| &n.value);
         }
         Expr::MethodCall {
             target,
@@ -80,8 +80,8 @@ fn walk_rest(e: &Expr, bound: &mut Vec<String>, out: &mut BTreeSet<String>) {
             ..
         } => {
             walk(target, bound, out);
-            walk_all(arguments, bound, out);
-            walk_named(named_arguments, bound, out);
+            walk_slice(arguments, bound, out, |x| x);
+            walk_slice(named_arguments, bound, out, |n| &n.value);
         }
         Expr::FieldAccess { target, .. } => walk(target, bound, out),
         Expr::Index { target, index } => {
@@ -99,10 +99,10 @@ fn walk_rest(e: &Expr, bound: &mut Vec<String>, out: &mut BTreeSet<String>) {
             walk_arms(arms, bound, out);
         }
         Expr::Block { statements, value } => walk_block(statements, value.as_deref(), bound, out),
-        Expr::TypeConstructor { fields, .. } => walk_fields(fields, bound, out),
+        Expr::TypeConstructor { fields, .. } => walk_slice(fields, bound, out, |f| &f.value),
         Expr::Update { record, fields } => {
             note(record, bound, out);
-            walk_fields(fields, bound, out);
+            walk_slice(fields, bound, out, |f| &f.value);
         }
         e2 => walk_fiber(e2, bound, out),
     }
@@ -124,8 +124,8 @@ fn walk_fiber(e: &Expr, bound: &mut Vec<String>, out: &mut BTreeSet<String>) {
             named_arguments,
             ..
         } => {
-            walk_all(arguments, bound, out);
-            walk_named(named_arguments, bound, out);
+            walk_slice(arguments, bound, out, |x| x);
+            walk_slice(named_arguments, bound, out, |n| &n.value);
         }
         Expr::Resume(Some(value)) => walk(value, bound, out),
         Expr::Handler { arms, body, .. } => {
@@ -197,22 +197,16 @@ fn pattern_bindings(p: &Pattern) -> Vec<String> {
     }
 }
 
-fn walk_all(xs: &[Expr], bound: &mut Vec<String>, out: &mut BTreeSet<String>) {
-    for x in xs {
-        walk(x, bound, out);
-    }
-}
-
-fn walk_named(named: &[NamedArgument], bound: &mut Vec<String>, out: &mut BTreeSet<String>) {
-    for n in named {
-        walk(&n.value, bound, out);
-    }
-}
-
-fn walk_fields(fields: &[FieldAssignment], bound: &mut Vec<String>, out: &mut BTreeSet<String>) {
-    for f in fields {
-        walk(&f.value, bound, out);
-    }
+/// Recurse into each element of `items`, projecting it to its sub-expression
+/// with `pick`. The one place the free-variable walker fans out over a
+/// collection node, threading `bound`/`out` through [`osprey_ast::walk_each`].
+fn walk_slice<T>(
+    items: &[T],
+    bound: &mut Vec<String>,
+    out: &mut BTreeSet<String>,
+    pick: impl Fn(&T) -> &Expr,
+) {
+    osprey_ast::walk_each(items, &mut (bound, out), pick, |e, (b, o)| walk(e, b, o));
 }
 
 #[cfg(test)]

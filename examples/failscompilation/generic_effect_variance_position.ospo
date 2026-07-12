@@ -1,0 +1,7 @@
+// A covariant (`out`) effect type parameter may not appear in an operation's
+// parameter (input) position. Implements [TYPE-VARIANCE-POSITIONS]
+effect Bad<out T> {
+    send: fn(T) -> Unit
+}
+
+fn main() -> Unit = print("must not compile")

@@ -45,6 +45,10 @@ impl Lowerer<'_> {
                 value: Box::new(self.lower_expr_field(node, "value")),
                 arms: self.lower_arms(node),
             },
+            // Populist Default-flavor `if cond { a } else { b }` desugars to the
+            // same boolean `match` the ternary uses; `else if` nests into the
+            // `false` arm. No new AST node ([FLAVOR-BOUNDARY]).
+            "if_expression" => self.lower_if(node),
             "select_expression" => Expr::Select {
                 arms: self.lower_arms(node),
             },
@@ -52,6 +56,7 @@ impl Lowerer<'_> {
                 effect: self.field_text(node, "effect"),
                 arms: self.lower_handler_arms(node),
                 body: Box::new(self.lower_expr_field(node, "body")),
+                position: Some(self.pos(node)),
             },
             "perform_expression" => {
                 let (arguments, named_arguments) = self.lower_arg_list(node);
@@ -60,6 +65,7 @@ impl Lowerer<'_> {
                     operation: self.field_text(node, "operation"),
                     arguments,
                     named_arguments,
+                    position: Some(self.pos(node)),
                 }
             }
             "resume_expression" => {
@@ -102,9 +108,15 @@ impl Lowerer<'_> {
                 body: Box::new(self.lower_expr_field(node, "body")),
                 position: Some(self.pos(node)),
             },
+            // Explicit construction-site type arguments (`Box<int> { ... }`)
+            // are captured for the checker. Implements [TYPE-GENERICS-DECL].
             "type_constructor" => Expr::TypeConstructor {
                 name: self.field_text(node, "name"),
-                type_args: Vec::new(),
+                type_args: self
+                    .first_child_of_kind(node, "type_arguments")
+                    .and_then(|ta| self.first_child_of_kind(ta, "type_list"))
+                    .map(|l| self.lower_type_list(l))
+                    .unwrap_or_default(),
                 fields: self.lower_field_assignments(node),
             },
             "update_expression" => Expr::Update {
@@ -117,6 +129,26 @@ impl Lowerer<'_> {
             "identifier" => Expr::Identifier(self.text(node)),
             "ternary_expression" => self.lower_ternary(node),
             _ => Expr::Bool(false),
+        }
+    }
+
+    /// `if cond { a } else { b }` desugars to `match cond { true => a  false => b }`,
+    /// reusing the boolean-match path ([GRAMMAR-IF-ELSE]). `else if` is a nested
+    /// `if_expression` in the `alternative` field, so it recurses naturally into
+    /// the `false` arm.
+    fn lower_if(&self, node: Node<'_>) -> Expr {
+        Expr::Match {
+            value: Box::new(self.lower_expr_field(node, "condition")),
+            arms: vec![
+                MatchArm {
+                    pattern: Pattern::Literal(Box::new(Expr::Bool(true))),
+                    body: self.lower_expr_field(node, "consequence"),
+                },
+                MatchArm {
+                    pattern: Pattern::Literal(Box::new(Expr::Bool(false))),
+                    body: self.lower_expr_field(node, "alternative"),
+                },
+            ],
         }
     }
 

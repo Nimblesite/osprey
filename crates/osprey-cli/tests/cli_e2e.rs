@@ -134,10 +134,12 @@ fn run_file_cc(path: &Path, mode: &str, cc: &str) -> Out {
     finish(cmd)
 }
 
-/// Type-clean but codegen-rejected: a generic function used as a first-class
-/// value. It passes the type gate, so every compiling mode reaches codegen and
-/// fails there — exercising the `Err` arms `compile_program` feeds.
-const GENERIC_AS_VALUE: &str = "fn id(x) = x\nlet f = id\nprint(\"ok\")\n";
+/// Type-clean but codegen-rejected: a still-generic lambda returned from a
+/// generic function has no concrete cell ABI (`let f = id` and slot-typed
+/// uses now specialise instead — [TYPE-GENERICS-FN]). It passes the type
+/// gate, so every compiling mode reaches codegen and fails there —
+/// exercising the `Err` arms `compile_program` feeds.
+const GENERIC_AS_VALUE: &str = "fn mk<T>(x: T) = |y| => x\nlet f = mk(1)\nprint(\"${f(0)}\")\n";
 
 /// Explicit effect resume must run the rest of the handled computation and then
 /// return the handled computation's answer to the arm.

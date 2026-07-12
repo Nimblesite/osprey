@@ -504,6 +504,8 @@ description: "Try Osprey programming language online with interactive code examp
             symbols: /[=><!~?:&|+\-*\/^%\\]+/,
             tokenizer: {
                 root: [
+                    // ML-flavor (* … *) block comments (incl. (** *) docs); nest via @push.
+                    [/\(\*/, 'comment', '@blockComment'],
                     [/\/\/.*$/, 'comment'],
                     // Type / union-variant names start with a capital letter.
                     [/[A-Z][\w$]*/, 'type'],
@@ -521,6 +523,13 @@ description: "Try Osprey programming language online with interactive code examp
                 ],
                 whitespace: [
                     [/[ \t\r\n]+/, ''],
+                ],
+                // Nesting (* … *) block comment: everything stays 'comment'.
+                blockComment: [
+                    [/\(\*/, 'comment', '@push'],
+                    [/\*\)/, 'comment', '@pop'],
+                    [/[^(*]+/, 'comment'],
+                    [/[(*]/, 'comment'],
                 ],
                 // String literals with `${...}` interpolation highlighted as code.
                 string: [
@@ -600,13 +609,9 @@ fn crunch(n) = range(1, n) |> filter(even) |> map(sq) |> fold(0, fn(a, b) => a +
 // Exhaustive match over a union — drop a case and it won't compile.
 type Tier = Epic | Solid | Starter
 
-fn tier(score) = match score >= 2000 {
-    true  => Epic
-    false => match score >= 500 {
-        true  => Solid
-        false => Starter
-    }
-}
+// \`if\`/\`else if\` desugars to the same boolean match the ML twin writes
+// explicitly — byte-identical IR across flavors ([FLAVOR-IR-EQUIV]).
+fn tier(score) = if score >= 2000 { Epic } else if score >= 500 { Solid } else { Starter }
 
 fn badge(t) = match t {
     Epic    => "🟣 EPIC"
@@ -638,12 +643,32 @@ print("  Σeven² <40  = \${rc}  \${badge(tier(rc))}")
 print("══════════════════════════════════════\\ntotal \${ra + rb + rc}  ·  fleet \${badge(tier(ra + rb + rc))}")
 `,
         // @generated:ospml — filled from examples/tested/basics/osprey_mega_showcase.ospml by scripts/update-playground.js
-        ospml: `effect Console
+        ospml: `(* ═══════════════════════════════════════════════════════════════════════
+   Osprey feature tour, ML flavor. Comments use the ML-family forms:
+     (*  … *)  ordinary block comment (nests)
+     (** … *)  documentation comment  (odoc double-star — spec 0026)
+     //  …     line comment
+   The (** *) docs below show the ML documentation idiom; each attaches to the
+   declaration that follows it. See docs/specs/0026-DocumentationComments.md.
+   ═══════════════════════════════════════════════════════════════════════ *)
+
+(** An effect that emits a line of human-readable output.
+    The handler decides where the line goes — a real console, or nowhere. *)
+effect Console
     emit : string => Unit
 
+(** A ledger effect: post a signed [amount] and get the running balance back.
+    Whether that balance is real or faked is entirely the handler's choice. *)
 effect Ledger
     post : int => int
 
+(** Run a fixed sequence of account operations, purely in terms of effects.
+    Performs [Console.emit] and [Ledger.post] — it does NOT know or care how
+    either is handled, which is what lets [realWorld] and [dryRun] give it two
+    completely different behaviours from the same code.
+
+    # Returns
+    The balance after the final deposit. *)
 account () =
     perform Console.emit "open account"
     afterDeposit = perform Ledger.post 100
@@ -654,16 +679,23 @@ account () =
     perform Console.emit "withdraw 90  → balance \${afterDraw}"
     afterMore
 
+(** The PRODUCTION interpretation of [account]: the ledger mutates a real
+    running balance and the console prints each line. Same [account] body,
+    real-world handlers. *)
 realWorld () =
     mut balance = 0
     handle Console
         emit line => print "  💸 \${line}"
     in handle Ledger
+        (* the resuming arm updates state, then hands the balance back *)
         post amount =>
             balance := balance + amount
             balance
     in account ()
 
+(** The DRY-RUN interpretation of [account]: the console is tagged and the
+    ledger is a no-op that always reports a zero balance. Same [account] body,
+    fake handlers — this is the payoff of algebraic effects. *)
 dryRun () =
     handle Console
         emit line => print "  🧪 [dry-run] \${line}"
@@ -671,27 +703,38 @@ dryRun () =
         post amount => 0
     in account ()
 
+(** [true] when [x] is even. *)
 even x = (x % 2) == 0
+
+(** The square of [x]. *)
 sq x   = x * x
 
+(** Σ of the squares of the even numbers in [1, n).
+    A pure pipeline: no loops, no mutation — [range] feeds [filter], [map],
+    then [fold]. *)
 crunch n = range 1 n |> filter even |> map sq |> fold 0 (\\(a, b) => a + b)
 
+(** A performance tier a score falls into. Exhaustive: dropping a variant is a
+    compile error at every [match] over it. *)
 type Tier =
     Epic
     Solid
     Starter
 
+(** Classify a [score] into its [Tier] via nested boolean matches. *)
 tier score = match score >= 2000
     true  => Epic
     false => match score >= 500
         true  => Solid
         false => Starter
 
+(** The display badge for a [Tier]. *)
 badge t = match t
     Epic    => "🟣 EPIC"
     Solid   => "🔵 SOLID"
     Starter => "🟢 STARTER"
 
+(* ── ACT 1 · algebraic effects: one body, two worlds ─────────────────────── *)
 print "🦅 OSPREY FEATURE TOUR\\n══════════════════════════════════════"
 print "ACT 1 · algebraic effects — same code, two worlds"
 
@@ -700,8 +743,10 @@ print "  ↳ realWorld() returned \${real}"
 mock = dryRun ()
 print "  ↳ dryRun()   returned \${mock}"
 
+(* ── ACT 2 · fibers run the pure pipelines concurrently ──────────────────── *)
 print "══════════════════════════════════════\\nACT 2 · fibers compute functional pipelines in parallel"
 
+(* each crunch runs in its own fiber; await in order for deterministic output *)
 fa = spawn (crunch 10)
 fb = spawn (crunch 20)
 fc = spawn (crunch 40)

@@ -1,17 +1,17 @@
 # Plan 0002 — Generic Functions & Lambdas as First-Class Values
 
 **Subsystem:** `crates/osprey-codegen` (with `crates/osprey-types` support)
-**Status:** Partially implemented
+**Status:** Mostly done — slot-driven specialization + let-alias landed; one
+scoped remainder (a still-generic lambda *returned* from a generic function)
 **Spec:** [0004-TypeSystem.md](../specs/0004-TypeSystem.md), [0005-FunctionCalls.md](../specs/0005-FunctionCalls.md)
 
 ## Summary
 
-Function values work when their type is fully concrete. A capture-free lambda
-becomes a constant cell; a capturing lambda is heap-allocated with its captures
-snapshotted; a named monomorphic function can be taken as a value via a
-forwarder. What does **not** work is taking a *generic* function or a
-*generic-typed* lambda as a value — the backend refuses rather than risk treating
-a `string`/`float` instantiation as `i64`.
+Function values work when their type is fully concrete, **and a generic
+function now specialises wherever a consuming slot fixes its ABI**. The only
+remaining refusal is a function value whose type is *nowhere* concrete — a
+still-generic lambda returned from a generic function — which keeps its loud
+bail rather than risk treating a `string`/`float` instantiation as `i64`.
 
 ## What works today
 
@@ -20,73 +20,83 @@ a `string`/`float` instantiation as `i64`.
 - Named top-level (monomorphic) function as a value via an emitted forwarder cell
   — `named_fn_cell` / `emit_forwarder` in
   [closure.rs](../../crates/osprey-codegen/src/closure.rs).
+- **Generic function into a concrete function-typed slot** — `eval_arg`
+  specialises it to the slot's ABI by emitting its (params, body) exactly like
+  a capture-free lambda (`expr.rs` → `closure::emit_closure`); the FFI variant
+  lifts through `raw_callback_lambda`. Implements [TYPE-GENERICS-FN].
+- **`let g = identity` (generic target)** — bound as a call alias in `gen_bind`
+  ([lower.rs](../../crates/osprey-codegen/src/lower.rs)): `g(5)` specialises at
+  its call sites exactly as a direct call would; a value use resolves the alias
+  where a consuming slot fixes the ABI. Annotated lets work the same way.
+- **Function-valued arguments to generic HOFs** — `try_inline` registers a
+  lambda/function-typed argument's signature for its parameter
+  (`bind_inline_arg` in [genfn.rs](../../crates/osprey-codegen/src/genfn.rs)),
+  so the inlined body's `f(x)` dispatches through the closure cell. Previously
+  this emitted a call to a nonexistent symbol — a **link error** — for
+  `fn also(x, f) = f(x)` applied to a lambda (the Kotlin-`let` idiom).
+- **The `-> T` generalization poisoning is fixed at the root**: builtin schemes
+  hand-write `Var(0)`/`Var(1)` as quantified binders, and the checker's fresh
+  supply used to hand out those same ids to live inference variables; once a
+  var-var unification routed through a colliding id, `TypeEnv::free_vars`
+  resolved *through* the builtin's binder and silently blocked
+  let-generalization (`fn identity<T>(x) -> T = x` lost its polymorphism
+  depending on unification direction). The checker now reserves the builtin
+  binder ids (`builtins::RESERVED_SCHEME_VARS`,
+  [crates/osprey-types/src/check.rs](../../crates/osprey-types/src/check.rs)).
 - Concreteness gate: `fn_value_concrete` decides whether a function type is safe
   to lower as a value — [crates/osprey-codegen/src/types.rs](../../crates/osprey-codegen/src/types.rs).
 
-## Where it bails
+## What is left
+
+One bail remains, by design until per-instantiation cells exist:
 
 ```rust
-// closure.rs:52  — generic-typed lambda value
+// closure.rs — lambda_value
 "a closure value with a still-generic type (wrap it in a function with concrete parameter/return types)"
-
-// closure.rs (~205) — capturing lambda as an FFI callback
-"a capturing lambda as an FFI callback (captures cannot cross the C boundary; use a named function)"
-
-// closure.rs:288 — generic function as a function value
-"a generic function as a function value"
 ```
 
-The root cause is that generic functions are **monomorphized by inlining at each
-call site**, so there is no single definition whose address can be taken, and a
-lambda inside a generic body has one source position serving many instantiations.
-The FFI-callback case is a deliberate, permanent restriction (captures cannot
-cross the C ABI) and is **out of scope** — keep that error.
+Repro: `fn mk<T>(x: T) = |y| => x` then `let f = mk(1)` — the lambda's `y` is
+genuinely polymorphic at the point the value must be emitted (the binding
+generalizes to `∀y. (y) -> int`), so no single concrete ABI exists. Pinned by
+`generic_function_value_without_a_slot_is_rejected`
+([crates/osprey-codegen/src/lib.rs](../../crates/osprey-codegen/src/lib.rs))
+and the `cli_e2e` codegen-error fixtures. Supporting it needs specialisation
+at the *call* sites of the value (`f(0)` → int), i.e. a per-instantiation
+cache keyed by use-site resolution — the original "on-demand monomorphic
+copies" strategy, now needed only for this last shape.
 
-## Implementation plan
+Known hazard (pre-existing, unchanged): a *recursive* generic function
+specialised by inlining falls back to a direct call to a symbol that is never
+emitted (the `inlining` re-entry guard's fallback). Recursive generic
+functions as values are untested territory.
 
-1. **Decide the strategy: on-demand monomorphic copies.** When a generic
-   function (or a lambda in a generic body) is used as a *value*, emit a concrete
-   specialization keyed by the resolved type arguments at that use site, then take
-   the address of that specialization.
-2. **Key specializations.** Add a `(name, [concrete type args])` → emitted-symbol
-   cache alongside `fnval_cells` so each distinct instantiation is emitted once.
-3. **Resolve the concrete types.** Pull the resolved type arguments for the use
-   site from the type table (the inliner already computes these for call sites;
-   reuse that resolution rather than re-inferring).
-4. **Emit a forwarder per specialization** and a constant cell pointing at it,
-   mirroring `emit_forwarder`/`named_fn_cell` but parameterized by the concrete
-   `FnSig`.
-5. **For generic-typed lambdas**, materialize the lambda against the resolved
-   `FnSig` (reuse `emit_closure`) instead of erroring in `lambda_value`.
-6. **Keep the FFI-callback bail** unchanged.
+- The FFI-callback case is a deliberate, permanent restriction (captures cannot
+  cross the C ABI): now pinned by
+  `examples/failscompilation/ffi_capturing_callback.ospo`.
 
 ## Testing
 
-- Extend a `tested/basics` example: define `identity<T>(x: T) -> T`, pass it as a
-  value used at two instantiations (`int` and `string`), and call both. Refresh
-  `.expectedoutput`.
-- Add a generic-typed lambda stored in a `let` and passed to a higher-order
-  function (depends on [Plan 0001](0001-codegen-higher-order-calls.md)).
-- Keep/extend a `failscompilation` case proving a *capturing* lambda as an FFI
-  callback is still rejected.
-
-## Risks / considerations
-
-- Specialization can multiply emitted code; dedupe rigorously via the cache.
-- Interacts with [Plan 0001](0001-codegen-higher-order-calls.md): both touch the
-  function-value path — sequence 0001 first, then 0002.
-- Verify ABI correctness for `float`/`string` instantiations (the exact hazard the
-  current guard guards against).
+- `examples/tested/basics/function_composition_test.osp` §"Generic functions as
+  first-class values": `identity<T>` into a concrete slot, a let-alias call,
+  and `alsoDo(x, f) = f(x)` applied at **two instantiations** (int and string).
+- `generic_function_into_concrete_slot_specialises` unit test (codegen lib.rs).
+- `examples/failscompilation/ffi_capturing_callback.ospo` — capturing lambda
+  across the C boundary still rejected loudly.
 
 ## TODO
 
-- [ ] Add a `(name, type-args)` specialization cache for function values.
-- [ ] Resolve concrete type args at the use site from the type table.
-- [ ] Emit one forwarder + cell per specialization; replace the `closure.rs:288`
-      bail.
-- [ ] Materialize generic-typed lambdas against the resolved `FnSig`; replace the
-      `closure.rs:52` bail.
-- [ ] Leave the FFI-callback restriction in place.
-- [ ] Add `tested/basics` coverage for a generic function used at ≥2
-      instantiations; refresh `.expectedoutput`.
-- [ ] `make ci` green.
+- [x] Resolve concrete types at the use site — done slot-driven: the consuming
+      slot's `FnSig` (call argument, FFI callback) or a call alias (`let`).
+- [x] Replace the `named_fn_cell` "generic function as a function value" bail
+      for slot-typed uses and let-bound names.
+- [x] Keep the FFI-callback restriction; pin it with a failscompilation case.
+- [x] `tested/basics` coverage for a generic function used at ≥2
+      instantiations; `.expectedoutput` refreshed.
+- [x] Root-cause and fix the `-> T` generalization poisoning (builtin binder
+      id collision — `RESERVED_SCHEME_VARS`).
+- [ ] Materialize a still-generic *returned* lambda against its call-site
+      instantiations (per-instantiation cache) — replaces the last
+      `lambda_value` bail.
+- [ ] Emit-once dedupe cache for repeated same-slot specializations (pure code
+      size; correctness is already right).
+- [x] `make ci` green.

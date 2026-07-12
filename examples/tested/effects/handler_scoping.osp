@@ -73,3 +73,34 @@ fn nestedCall() !Logger = {
     perform Logger.log("after nested")
     r
 }
+
+// (3) RESUME under scoping — regression locks:
+//     nested RESUMING handlers for different effects compose, and the
+//     innermost handler of a shadowed effect wins for `resume` too.
+effect Ask {
+    ask: fn(int) -> int
+}
+effect Tell {
+    tell: fn(int) -> int
+}
+
+fn askBoth(n) ![Ask, Tell] = {
+    let a = perform Ask.ask(n)
+    perform Tell.tell(a)
+}
+
+let nested = handle Ask
+    ask v => resume(v + 1)
+in handle Tell
+    tell v => resume(v * 2)
+in askBoth(4)
+
+fn askOnce(n) !Ask = perform Ask.ask(n)
+
+let shadowed = handle Ask
+    ask v => resume(v + 100)
+in handle Ask
+    ask v => resume(v + 1)
+in askOnce(1)
+print("nested resuming " + toString(nested) + " shadowed resume " + toString(shadowed))
+print("=== resume scoping done ===")

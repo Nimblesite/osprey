@@ -1,0 +1,5 @@
+=== JSON value union ===
+root is object with 1 field
+deeply nested string = devon@osprey.dev
+types: null, boolean, number, string, array, object
+=== JSON value union complete ===

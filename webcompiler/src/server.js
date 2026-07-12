@@ -84,6 +84,23 @@ app.get('/api', (req, res) => {
     })
 })
 
+function logCompilerResult(result) {
+    console.log('🔨 COMPILER OUTPUT (stderr):')
+    console.log('-'.repeat(50))
+    console.log(result.stderr || 'NO COMPILER OUTPUT')
+    console.log('-'.repeat(50))
+
+    console.log('📋 PROGRAM OUTPUT (stdout):')
+    console.log('-'.repeat(50))
+    console.log(result.stdout || 'NO PROGRAM OUTPUT')
+    console.log('-'.repeat(50))
+}
+
+function sendSystemError(res, error) {
+    console.error('❌ System error:', error.message)
+    res.status(500).json({ success: false, error: error.message })
+}
+
 // Compile endpoint
 app.post('/api/compile', async (req, res) => {
     const { code } = req.body
@@ -103,17 +120,7 @@ app.post('/api/compile', async (req, res) => {
     try {
         const result = await runOspreyCompiler(['--sandbox', '--ast'], code)
 
-        // LOG THE COMPILER OUTPUT
-        console.log('🔨 COMPILER OUTPUT (stderr):')
-        console.log('-'.repeat(50))
-        console.log(result.stderr || 'NO COMPILER OUTPUT')
-        console.log('-'.repeat(50))
-
-        // LOG THE PROGRAM OUTPUT
-        console.log('📋 PROGRAM OUTPUT (stdout):')
-        console.log('-'.repeat(50))
-        console.log(result.stdout || 'NO PROGRAM OUTPUT')
-        console.log('-'.repeat(50))
+        logCompilerResult(result)
 
         if (result.success) {
             console.log('✅ Compile success, exit code:', result.exitCode)
@@ -149,8 +156,7 @@ app.post('/api/compile', async (req, res) => {
             })
         }
     } catch (error) {
-        console.error('❌ System error:', error.message)
-        res.status(500).json({ success: false, error: error.message })
+        sendSystemError(res, error)
     }
 })
 
@@ -173,17 +179,7 @@ app.post('/api/run', async (req, res) => {
     try {
         const result = await runOspreyCompiler(['--run'], code)
 
-        // LOG THE COMPILER OUTPUT
-        console.log('🔨 COMPILER OUTPUT (stderr):')
-        console.log('-'.repeat(50))
-        console.log(result.stderr || 'NO COMPILER OUTPUT')
-        console.log('-'.repeat(50))
-
-        // LOG THE PROGRAM OUTPUT
-        console.log('📋 PROGRAM OUTPUT (stdout):')
-        console.log('-'.repeat(50))
-        console.log(result.stdout || 'NO PROGRAM OUTPUT')
-        console.log('-'.repeat(50))
+        logCompilerResult(result)
 
         if (result.success) {
             console.log('✅ Run success, exit code:', result.exitCode)
@@ -230,8 +226,7 @@ app.post('/api/run', async (req, res) => {
             })
         }
     } catch (error) {
-        console.error('❌ System error:', error.message)
-        res.status(500).json({ success: false, error: error.message })
+        sendSystemError(res, error)
     }
 })
 
@@ -566,4 +561,4 @@ server.listen(PORT, '0.0.0.0', () => {
     console.log(`🔨 Compile/Run API available at http://0.0.0.0:${PORT}/api`)
     console.log(`🏥 Health check: http://0.0.0.0:${PORT}/api`)
     console.log(`🌐 Server accessible from external hosts on port ${PORT}`)
-}) 
+})

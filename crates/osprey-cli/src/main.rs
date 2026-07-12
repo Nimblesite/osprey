@@ -826,6 +826,16 @@ mod tests {
     }
 
     #[test]
+    fn fiber_fiber_determinism_osp() {
+        assert_example_matches("examples/tested/fiber/fiber_determinism.osp");
+    }
+
+    #[test]
+    fn fiber_fiber_exact_replica_osp() {
+        assert_example_matches("examples/tested/fiber/fiber_exact_replica.osp");
+    }
+
+    #[test]
     fn all_tested_examples_are_registered_as_individual_tests() {
         let discovered = tested_example_sources()
             .iter()
@@ -876,6 +886,8 @@ mod tests {
         "examples/tested/basics/field_access_comprehensive.ospml",
         "examples/tested/basics/files/file_io_json_workflow.osp",
         "examples/tested/basics/files/file_io_json_workflow.ospml",
+        "examples/tested/basics/json/json_document_query.osp",
+        "examples/tested/basics/json/json_document_query.ospml",
         "examples/tested/basics/function_composition_test.osp",
         "examples/tested/basics/functional/functional_showcase.osp",
         "examples/tested/basics/functional/functional_showcase.ospml",
@@ -948,6 +960,8 @@ mod tests {
         "examples/tested/effects/resume_unit_markers.ospml",
         "examples/tested/effects/resume_value_rewrite.osp",
         "examples/tested/effects/resume_value_rewrite.ospml",
+        "examples/tested/fiber/fiber_determinism.osp",
+        "examples/tested/fiber/fiber_exact_replica.osp",
         "examples/tested/fiber/fiber_showcase.osp",
         "examples/tested/fiber/fiber_showcase.ospml",
         "examples/tested/http/http_client_example.osp",
@@ -1094,6 +1108,16 @@ mod tests {
     #[test]
     fn basics_files_file_io_json_workflow_ospml() {
         assert_example_matches("examples/tested/basics/files/file_io_json_workflow.ospml");
+    }
+
+    #[test]
+    fn basics_json_json_document_query_osp() {
+        assert_example_matches("examples/tested/basics/json/json_document_query.osp");
+    }
+
+    #[test]
+    fn basics_json_json_document_query_ospml() {
+        assert_example_matches("examples/tested/basics/json/json_document_query.ospml");
     }
 
     #[test]

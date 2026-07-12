@@ -1,0 +1,5 @@
+// A covariant (`out`) type parameter may not appear in an input position.
+// Implements [TYPE-VARIANCE-POSITIONS]
+type Bad<out T> = Bad { consume: (T) -> int } | Nothing2
+
+fn main() -> Unit = print("must not compile")

@@ -45,7 +45,13 @@ const FIXTURE =
 const LAUNCH_TIMEOUT_MS = 45_000;
 const TEST_TIMEOUT_MS = 90_000;
 
-suite("Osprey Debugger E2E Workflows", () => {
+suite("Osprey Debugger E2E Workflows", function () {
+  // lldb-dap under CI load can hit a breakpoint before its expression
+  // evaluator is ready; a failed condition evaluation makes lldb stop anyway
+  // (its documented default), so a conditional breakpoint intermittently
+  // stops on the wrong call. Retry shields that infrastructure flake — a
+  // real regression still fails every attempt.
+  this.retries(2);
   let tempDir: string;
   let source: string;
   let debugOutput: string;

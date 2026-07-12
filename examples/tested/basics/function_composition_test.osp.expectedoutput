@@ -32,4 +32,5 @@ evensum: 20
 elem: 12
 elem: 15
 chain3: 6 computed: 36 fieldcb: 23
+generic-values: 33 7 42 osp!
 === Function Composition Test Complete ===

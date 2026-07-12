@@ -23,4 +23,6 @@ b
 color1=red color3=blue
 sameRR=true
 sameRB=false
+fn-payload feed accepted: supplied
+fn-payload gate accepted: guarded
 === TYPE EQUALITY COMPLETE ===

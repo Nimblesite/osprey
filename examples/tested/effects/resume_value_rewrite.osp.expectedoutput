@@ -5,3 +5,6 @@ seen after third: 330
 seen after second: 330
 seen after first: 330
 result=330
+relay answered: carried
+word=carried
+checked=10 num=41

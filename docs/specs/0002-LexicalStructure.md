@@ -19,9 +19,15 @@ ID := [a-zA-Z_][a-zA-Z0-9_]*
 
 ```
 fn let mut type match extern import module where
-effect perform handle in
+effect perform handle in resume
 spawn await yield select
 ```
+
+**Contextual keywords.** `out` and `in` mark variance inside a
+type-parameter list only (`type Source<out T>`, `effect Emit<in T>` —
+[TYPE-VARIANCE-DECL](0004-TypeSystem.md#generics-and-variance)). `out` is an
+ordinary identifier everywhere else; `in` remains the hard keyword of
+`handle … in` and is merely *accepted* in type-parameter position.
 
 ## Literals
 

@@ -17,7 +17,7 @@
 [
   "let" "mut" "fn" "extern" "type" "module" "import"
   "effect" "perform" "handle" "in"
-  "match" "select" "where"
+  "match" "select" "where" "if" "else"
 ] @keyword
 
 [
@@ -51,10 +51,10 @@
 (array_type name: (identifier) @type)
 (variant name: (identifier) @constructor)
 (type_constructor name: (identifier) @type)
-(type_parameter_list (identifier) @type.parameter)
+(type_parameter name: (identifier) @type.parameter)
 
 ; --- Effects ---
-(effect_set (identifier) @type)
+(effect_ref name: (identifier) @type)
 (perform_expression effect: (identifier) @type operation: (identifier) @function.method)
 (handler_expression effect: (identifier) @type)
 (handler_arm operation: (identifier) @function.method)

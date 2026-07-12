@@ -53,11 +53,14 @@ pub(crate) enum MlItem {
     Signature {
         /// The signed name.
         name: String,
+        /// Declared type parameters from a `name<T, U> :` binder, in order
+        /// ([FLAVOR-ML-GENERICS], [TYPE-GENERICS-FN]).
+        type_params: Vec<MlTypeParam>,
         /// The declared type.
         ty: MlType,
-        /// The effect row from a trailing `! Name(, Name)*` (or `! [Name, …]`),
+        /// The effect row from a trailing `! Ref(, Ref)*` (or `! [Ref, …]`),
         /// empty when the signature declares no effects ([FLAVOR-ML-EFFECT]).
-        effects: Vec<String>,
+        effects: Vec<MlEffectRef>,
     },
     /// `type Name param* =` + an indented layout block of variants
     /// ([FLAVOR-ML-TYPE]). A union/enum lists uppercase constructor variants
@@ -67,8 +70,9 @@ pub(crate) enum MlItem {
     Type {
         /// The type's name.
         name: String,
-        /// Type parameters between the name and `=` (e.g. `T`), in order.
-        type_params: Vec<String>,
+        /// Type parameters between the name and `=` (e.g. `T`, `out T`,
+        /// `in T`), in order ([TYPE-VARIANCE-DECL]).
+        type_params: Vec<MlTypeParam>,
         /// The declared variants (one per constructor; a record has exactly one).
         variants: Vec<MlVariant>,
         /// Source position of the `type` keyword.
@@ -92,6 +96,9 @@ pub(crate) enum MlItem {
     Effect {
         /// The effect name.
         name: String,
+        /// Type parameters between the name and the operation block (e.g. `T`
+        /// in `effect State T`), in order ([EFFECTS-GENERIC-DECL]).
+        type_params: Vec<MlTypeParam>,
         /// The declared operations, in order.
         operations: Vec<MlEffectOp>,
         /// Source position of the `effect` keyword.
@@ -104,6 +111,43 @@ pub(crate) enum MlItem {
         /// Source position.
         pos: Position,
     },
+    /// A `(** … *)` documentation comment's raw text, paired by the lowerer
+    /// with the declaration that follows it ([DOC-SIGIL-ML]) — the same
+    /// pairing pattern as [`MlItem::Signature`].
+    Doc(String),
+}
+
+/// Declaration-site variance of a type parameter, exactly as written
+/// ([TYPE-VARIANCE-DECL]).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum MlVariance {
+    /// Unannotated.
+    Invariant,
+    /// `out T`.
+    Covariant,
+    /// `in T`.
+    Contravariant,
+}
+
+/// One declared type parameter with its optional variance marker.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct MlTypeParam {
+    /// The parameter name.
+    pub name: String,
+    /// The written variance marker (`Invariant` when unannotated).
+    pub variance: MlVariance,
+}
+
+/// One effect reference inside an effect row, optionally applied to type
+/// arguments (`State<int>`) ([EFFECTS-GENERIC-ROWS]).
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct MlEffectRef {
+    /// The effect name.
+    pub name: String,
+    /// The applied type arguments (empty for a bare reference).
+    pub args: Vec<MlType>,
+    /// Source position of the effect name.
+    pub pos: Position,
 }
 
 /// A parenthesised `name : type` parameter of an `extern` declaration.
@@ -280,10 +324,15 @@ pub(crate) enum MlExpr {
         /// The arms.
         arms: Vec<MlArm>,
     },
-    /// Constructor record literal `Name` + indented `field = value` lines.
+    /// Constructor record literal `Name` + indented `field = value` lines, or
+    /// the inline `Name(field = value)` — optionally with explicit
+    /// construction-site type arguments `Name<t, …>(field = value)`
+    /// ([TYPE-GENERICS-DECL], [FLAVOR-ML-GENERICS]).
     Record {
         /// Constructor/type name.
         name: String,
+        /// Explicit construction-site type arguments (empty when inferred).
+        type_args: Vec<MlType>,
         /// Field initialisers.
         fields: Vec<MlField>,
     },
@@ -306,6 +355,9 @@ pub(crate) enum MlExpr {
         operation: String,
         /// The performed arguments, in order.
         args: Vec<MlExpr>,
+        /// Source position of the `perform` keyword
+        /// ([EFFECTS-GENERIC-INSTANTIATION]).
+        pos: Position,
     },
     /// `handle Effect` + indented arms + `in body` — install an effect handler
     /// over the `body` expression ([FLAVOR-ML-EFFECT]).
@@ -316,6 +368,9 @@ pub(crate) enum MlExpr {
         arms: Vec<MlHandleArm>,
         /// The handled body expression (after `in`).
         body: Box<MlExpr>,
+        /// Source position of the `handle` keyword
+        /// ([EFFECTS-GENERIC-INSTANTIATION]).
+        pos: Position,
     },
     /// `resume` or `resume value` — resume a suspended continuation
     /// ([FLAVOR-ML-EFFECT]).

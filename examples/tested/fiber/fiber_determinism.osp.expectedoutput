@@ -1,6 +1,6 @@
-=== Fiber Non-Determinism Bug Test ===
-This test should execute tasks in order 1, 2, 3
-But due to pthread race conditions, sometimes task 3 runs before task 2
+=== Fiber Determinism Test ===
+This test executes tasks in spawn order 1, 2, 3
+The deterministic run scheduler preserves that order
 
 ℹ️  Starting task: task-1 with data size: 150
 ✅ task-1 succeeded: 1200 units

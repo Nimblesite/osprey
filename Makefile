@@ -119,10 +119,23 @@ test: build
 	$(MAKE) _coverage_check_vscode_extension
 
 ## lint: Run all linters/analyzers (read-only). Does NOT format.
-lint:
+lint: deslop
 	@echo "==> Linting..."
 	cargo clippy --workspace --all-targets -- -D warnings
 	cd $(EXT_DIR) && npm run lint
+
+## deslop: Code-duplication gate [CI-DESLOP]. Fails the build when measured
+## duplication exceeds the ceiling in .deslop.toml (exit 3). Exclusions and the
+## threshold live in that committed config — the single source of truth. When
+## the `deslop` binary is absent the gate is skipped with a loud warning so a
+## fresh checkout still builds; CI installs it, so the gate is enforced there.
+deslop:
+	@echo "==> Duplication gate (deslop)..."
+	@if command -v deslop >/dev/null 2>&1; then \
+		deslop . --nohtml --nojson --output $(CURDIR)/target/deslop-report --log-to-console --log-level error --no-color; \
+	else \
+		echo "WARNING: deslop not installed — skipping duplication gate. Install: https://deslop.live"; \
+	fi
 
 ## fmt: Format all code in-place. Pass CHECK=1 for read-only check (CI use).
 fmt:

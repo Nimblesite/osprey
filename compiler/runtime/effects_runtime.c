@@ -233,6 +233,11 @@ typedef struct OspreyCoro {
     bool suspended;
     bool done;
     bool abort;
+    // One perform occupies the op/args/resume_value channel at a time
+    // [EFFECTS-FIBER-PERFORM]. Concurrent performers (fibers spawned inside
+    // the handled body) queue on this flag instead of overwriting each
+    // other's arguments and stealing each other's resume value.
+    bool in_flight;
     int64_t op_id;
     int64_t args[16];
     int64_t arg_count;
@@ -261,6 +266,7 @@ void *__osprey_coro_new(void *env) {
     coro->suspended = false;
     coro->done = false;
     coro->abort = false;
+    coro->in_flight = false;
     coro->op_id = 0;
     coro->arg_count = 0;
     coro->resume_value = 0;
@@ -327,6 +333,20 @@ int64_t __osprey_coro_suspend(void *raw, int64_t op_id, int64_t *args, int64_t a
         return 0;
     }
     pthread_mutex_lock(&coro->lock);
+    // Claim the channel [EFFECTS-FIBER-PERFORM]: a second concurrent perform
+    // (e.g. from a sibling fiber) must wait its turn, or it would overwrite
+    // this perform's arguments and both would consume the same resume value —
+    // nondeterministic wrong answers with exit 0. The drive loop re-enters on
+    // re-suspension, so a queued perform is dispatched as soon as the current
+    // one's resume value is consumed.
+    while (coro->in_flight && !coro->abort) {
+        pthread_cond_wait(&coro->cond, &coro->lock);
+    }
+    if (coro->abort) {
+        pthread_mutex_unlock(&coro->lock);
+        pthread_exit(NULL);
+    }
+    coro->in_flight = true;
     coro->op_id = op_id;
     coro->arg_count = arg_count;
     int64_t capped = arg_count;
@@ -346,6 +366,8 @@ int64_t __osprey_coro_suspend(void *raw, int64_t op_id, int64_t *args, int64_t a
         pthread_exit(NULL);
     }
     int64_t resume_value = coro->resume_value;
+    coro->in_flight = false;
+    pthread_cond_broadcast(&coro->cond);
     pthread_mutex_unlock(&coro->lock);
     return resume_value;
 }
@@ -356,10 +378,18 @@ int64_t __osprey_coro_resume(void *raw, int64_t value) {
         return 0;
     }
     pthread_mutex_lock(&coro->lock);
+    // Multi-shot rejection [EFFECTS-RESUME]: the thread-as-continuation model is
+    // single-shot — a consumed (completed) pthread stack cannot be re-run. A
+    // second `resume` on an already-finished continuation would silently return
+    // the stale first result (a wrong answer with exit 0), so reject it loudly
+    // instead. Legitimate re-entry (the body performed again) leaves the coro
+    // suspended, not done, and never reaches this guard.
     if (coro->done) {
-        int64_t result = coro->result;
         pthread_mutex_unlock(&coro->lock);
-        return result;
+        fprintf(stderr,
+                "fatal: continuation already resumed "
+                "(multi-shot resume is not supported)\n");
+        exit(1);
     }
     coro->resume_value = value;
     coro->suspended = false;

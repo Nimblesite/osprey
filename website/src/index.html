@@ -1,7 +1,7 @@
 ---
 layout: layouts/base.njk
 title: "Functional Language, Two Flavors, One Core"
-description: "Osprey is one functional language fronted by two first-class syntaxes: a brace-style Default flavor for systems programmers and an offside-rule ML flavor for FP devotees. One type checker, one effect system, one runtime."
+description: "Osprey is one functional language fronted by two first-class syntaxes: an accessible brace-style Default flavor that reads like Kotlin, Swift, or Go, and an uncompromising offside-rule ML flavor for FP devotees. One type checker, one effect system, one runtime."
 ---
 
 <section class="hero">
@@ -13,9 +13,9 @@ description: "Osprey is one functional language fronted by two first-class synta
       </h1>
       <p class="hero-subtitle animate-on-scroll">
         Osprey is <strong>one</strong> functional language fronted by <strong>two</strong> first-class flavors:
-        a brace-style <strong>Default</strong> flavor for systems programmers and an offside-rule <strong>ML</strong>
-        flavor for FP devotees. One Hindley-Milner type checker, one effect system, one fiber runtime, one LLVM
-        backend — pick your tribe, go all in.
+        an accessible brace-style <strong>Default</strong> flavor that reads like the languages you already know,
+        and an uncompromising offside-rule <strong>ML</strong> flavor for FP devotees. One Hindley-Milner type
+        checker, one effect system, one fiber runtime, one LLVM backend — pick your tribe, go all in.
       </p>
       <div class="hero-actions animate-on-scroll">
         <a href="/playground/" class="btn btn-primary btn-lg">
@@ -129,18 +129,14 @@ scoop install osprey</code></pre>
 
     <div class="two-column">
       <div class="content">
-        <h3>Default flavor — for systems programmers</h3>
-        <p>C-style braces, <code>fn</code>, and <code>f(x: a, y: b)</code> calls with named arguments. Explicit,
-          familiar, block-structured. Fully implemented today.</p>
+        <h3>Default flavor — accessible by design</h3>
+        <p>C-style braces, <code>fn</code>, <code>if</code>/<code>else</code>, and <code>f(x: a, y: b)</code> calls
+          with named arguments. Reads like the Kotlin, Swift, or Go you already know. Fully implemented today.</p>
         <div class="code-example">
-          <pre class="language-osprey"><code class="language-osprey">// Default flavor (.osp) — braces, fn, named args
-fn double(n: int) -> int = n * 2
+          <pre class="language-osprey"><code class="language-osprey">// Default flavor (.osp) — braces, fn, if/else, named args
+fn double(n) = n * 2
 
-fn analyzeNumber(n: int) -> string = match n {
-  0 => "Zero"
-  42 => "The answer!"
-  _ => "Something else"
-}
+fn analyzeNumber(n) = if n == 0 { "Zero" } else if n == 42 { "The answer!" } else { "Something else" }
 
 print("double 21 = ${double(21)}")
 print(analyzeNumber(42))</code></pre>

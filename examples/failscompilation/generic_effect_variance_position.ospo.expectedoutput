@@ -1,0 +1,1 @@
+type parameter `T` is declared `out T` but appears in input position in operation `send` of `Bad`

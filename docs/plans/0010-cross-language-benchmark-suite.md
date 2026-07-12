@@ -2,7 +2,7 @@
 
 **Subsystem:** `benchmarks/` (harness + cases), `Makefile` (`make bench`),
 `.devcontainer` (comparison toolchains)
-**Status:** Suite shipped (18 cases × 5 languages); `intDiv` added; **native codegen now optimized (`-O2`) and allocation routed through a swappable backend** — Osprey is fastest of all five on 7 cases and at parity on most others; only `binarytrees` (escaping allocations) still lags. Feature-blocked classics (arrays, float) pending
+**Status:** Suite shipped (22 cases × 5 languages); `intDiv` added; **native codegen now optimized (`-O2`) and allocation routed through a swappable backend** — Osprey is fastest of all five on 7 cases and at parity on most others; only `binarytrees` (escaping allocations) still lags. Feature-blocked classics (arrays, float) pending
 **Spec ID:** `[BENCH-SUITE]`
 
 ## Summary
@@ -16,11 +16,12 @@ RSS). All source lives **in-tree and version-controlled** under
 `benchmarks/cases/<name>/` — `<name>.{osp,rs,c,ml,hs}` + `expected.txt` +
 `bench.json`. Only build/run *output* (`benchmarks/results/`) is gitignored.
 
-## What works today (18 cases)
+## What works today (22 cases)
 
-**Recursion-bound:** `fib`, `ackermann`, `tak`, `hanoi`, `pascal`, `coins`, `mutual`
-**Iteration / number theory:** `primes`, `gcdsum`, `nestedloop`, `factorial`, `powmod`, `josephus`, `coprime`
+**Recursion-bound:** `fib`, `ackermann`, `tak`, `hanoi`, `pascal`, `coins`, `mutual`, `exprtree`
+**Iteration / number theory:** `primes`, `gcdsum`, `nestedloop`, `factorial`, `powmod`, `josephus`, `coprime`, `listops`
 **Integer division (`intDiv`):** `collatz`, `digitsum`, `isqrt`
+**String / map:** `textstats`, `wordfreq`
 **Allocation / memory:** `binarytrees`
 
 Harness: [benchmarks/run.sh](../../benchmarks/run.sh) (toolchain detection,
@@ -98,7 +99,7 @@ codegen/runtime path is half-built.
 - [x] Harness: build-once, correctness oracle, CPU (hyperfine) + peak RSS.
 - [x] `report.py`: CPU + peak-memory tables, geomean-vs-each-language summary cards,
       fastest-cell badging + Osprey-win stars.
-- [x] 18 cases × 5 languages, all source version-controlled under `cases/`.
+- [x] 22 cases × 5 languages, all source version-controlled under `cases/`.
 - [x] `make bench` target + `BENCH_FILTER`; `.gitignore` tracks source, ignores `results/`.
 - [x] Dev container: `ghc`, `ocaml`, `time`, hyperfine.
 - [x] README documents methodology, fairness caveats, the memory finding.

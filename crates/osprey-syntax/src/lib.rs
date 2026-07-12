@@ -13,10 +13,12 @@
 use osprey_ast::{Position, Program};
 
 mod default;
+mod docparse;
 mod ml;
 mod strings;
 
 pub use default::{parse_tree, Lowerer};
+pub use docparse::doc_links;
 
 /// A syntax error located in the source (an ERROR/MISSING node from tree-sitter).
 #[derive(Debug, Clone, PartialEq)]

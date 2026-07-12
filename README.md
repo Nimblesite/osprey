@@ -7,9 +7,10 @@
 <p align="center">
   <strong>One core. Two surfaces. Zero compromise.</strong><br/>
   One Hindley-Milner type checker, one effect system, one runtime, one LLVM/wasm
-  backend — fronted by two first-class syntaxes. A C-style surface for the
-  <strong>systems programmer</strong> and a layout-based ML surface for the
-  <strong>FP devotee</strong>.<br/>Written in Rust, outputs to LLVM.
+  backend — fronted by two first-class syntaxes. An <strong>accessible</strong>
+  brace-style surface that reads like the mainstream languages you already know,
+  and an <strong>uncompromising</strong> layout-based ML surface for the FP
+  devotee.<br/>Written in Rust, outputs to LLVM.
 </p>
 
 ⭐ **[Star us on GitHub](https://github.com/Nimblesite/osprey)** to support the project and allow us to submit to Homebrew! ⭐
@@ -20,19 +21,22 @@ Osprey is **one language** with **two first-class, permanent syntaxes** called
 flavors. Neither is the watered-down one — each goes all the way in its own
 direction.
 
-- **Default flavor (`.osp`)** — C-style braces, `fn`, `f(x: a, y: b)` calls with
-  named arguments. The surface a **systems programmer** reaches for: explicit,
-  familiar, block-structured. **Fully implemented today** (specs 0001–0022).
-- **ML flavor (`.ospml`)** — offside-rule layout (indentation, no braces),
-  curry-by-default, whitespace application `f a b`, `\x => e` lambdas, `:=`
-  mutation, `->` for types and `=>` for clauses. The surface an **FP devotee**
-  reaches for: terse, expression-first, ML/Haskell-shaped. **In active
-  development**, with runnable proof in [`examples/tested/ml/`](examples/tested/ml/).
+- **Default flavor (`.osp`)** — the **accessible** surface. C-style braces,
+  `fn`, `f(x: a, y: b)` calls with named arguments, `if`/`else if`/`else`, the
+  `? :` ternary. It deliberately borrows the shapes of Kotlin, Swift, Go, Dart,
+  C#, and Java, so a mainstream developer can read a `.osp` file cold.
+  **Fully implemented today** (specs 0001–0022).
+- **ML flavor (`.ospml`)** — the **uncompromising** surface. Offside-rule layout
+  (indentation, no braces), curry-by-default, whitespace application `f a b`,
+  `\x => e` lambdas, `:=` mutation, `->` for types and `=>` for clauses. The
+  most elegant constructs of the ML family, all the way — no C-isms, no
+  concessions. **In active development**, with runnable proof in
+  [`examples/tested/ml/`](examples/tested/ml/).
 
 **No compromise — pick your tribe.** ML is not "braces optional"; Default is not
-deprecated or transitional. Systems programmers get real braces; FP folks get
-real layout and real currying. Nobody is asked to accept the other camp's
-spelling — pick your flavor and go all in.
+deprecated or transitional. Mainstream developers get a surface that reads like
+home; FP folks get real layout and real currying. Nobody is asked to accept the
+other camp's spelling — pick your flavor and go all in.
 
 ### The same program, both flavors
 

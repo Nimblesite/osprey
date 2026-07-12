@@ -12,7 +12,7 @@
 
 use crate::{Flavor, Parsed, SyntaxError};
 use osprey_ast::{Position, Program};
-use tree_sitter::{Node, Parser, Tree};
+use tree_sitter::{Node, Parser, Point, Tree};
 
 mod expr;
 mod lower;
@@ -67,15 +67,22 @@ fn collect_errors(node: Node<'_>, src: &[u8], out: &mut Vec<SyntaxError>) {
             } else {
                 format!("syntax error near {:?}", node.utf8_text(src).unwrap_or(""))
             },
-            position: Position {
-                line: u32::try_from(p.row).unwrap_or(u32::MAX).saturating_add(1),
-                column: u32::try_from(p.column).unwrap_or(u32::MAX),
-            },
+            position: position_from_point(p),
         });
     }
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
         collect_errors(child, src, out);
+    }
+}
+
+/// Convert a tree-sitter point to Osprey's one-based-line source position.
+pub(crate) fn position_from_point(point: Point) -> Position {
+    Position {
+        line: u32::try_from(point.row)
+            .unwrap_or(u32::MAX)
+            .saturating_add(1),
+        column: u32::try_from(point.column).unwrap_or(u32::MAX),
     }
 }
 
@@ -110,9 +117,11 @@ mod tests {
                 ..
             } => {
                 assert_eq!(name, "retries");
+                // The multi-line doc is one paragraph → the whole summary.
+                let d = doc.as_ref().expect("doc present");
                 assert_eq!(
-                    doc.as_deref(),
-                    Some("The retry budget.\nBounded above by `maxRetries`.")
+                    d.summary,
+                    "The retry budget. Bounded above by `maxRetries`."
                 );
                 assert_eq!(position.map(|p| p.line), Some(3));
             }
@@ -120,7 +129,10 @@ mod tests {
         }
         match one("/// Adds two ints.\nfn add(a: int, b: int) -> int = a + b\n") {
             Stmt::Function { doc, position, .. } => {
-                assert_eq!(doc.as_deref(), Some("Adds two ints."));
+                assert_eq!(
+                    doc.as_ref().map(|d| d.summary.clone()).as_deref(),
+                    Some("Adds two ints.")
+                );
                 assert_eq!(position.map(|p| p.line), Some(2));
             }
             s => panic!("expected function, got {s:?}"),

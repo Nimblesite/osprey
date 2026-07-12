@@ -16,6 +16,26 @@ use super::token::{keyword_or_ident, TokKind, Token};
 use crate::SyntaxError;
 use osprey_ast::Position;
 
+/// Normalise a `(** … *)` doc comment's raw inner text: trim the outer blank
+/// margins and, per line, drop leading whitespace and one optional `*`
+/// continuation marker (the odoc convention), so an aligned doc block lowers to
+/// clean prose. The shared body parser handles Markdown structure from there.
+fn strip_doc_lines(raw: &str) -> String {
+    raw.trim()
+        .lines()
+        .map(|line| {
+            let t = line.trim_start();
+            let body = t
+                .strip_prefix('*')
+                .map_or(t, |r| r.strip_prefix(' ').unwrap_or(r));
+            body.trim_end()
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+        .trim()
+        .to_string()
+}
+
 /// Lex `source` into a layout-resolved token stream terminated by
 /// [`TokKind::Eof`], plus any lexical errors.
 pub(crate) fn lex(source: &str) -> (Vec<Token>, Vec<SyntaxError>) {
@@ -76,8 +96,10 @@ impl Scanner {
         });
     }
 
-    /// Skip inline whitespace, newlines (layout is position-derived later), and
-    /// `// …` line comments.
+    /// Skip inline whitespace, newlines (layout is position-derived later),
+    /// `// …` line comments, and `(* … *)` block comments. The block form is
+    /// the ML-family convention (SML / OCaml / F#) and **nests**, so a
+    /// commented-out region containing another `(* *)` closes correctly.
     fn skip_trivia(&mut self) {
         while let Some(c) = self.peek(0) {
             match c {
@@ -89,7 +111,98 @@ impl Scanner {
                         let _ = self.bump();
                     }
                 }
+                // A `(**`-with-content doc comment stops trivia-skipping so
+                // `scan_token` can emit it as a `Doc` token ([DOC-SIGIL-ML]);
+                // an ordinary `(* … *)` (or an empty/banner `(**)`/`(*****)`)
+                // is skipped as trivia.
+                '(' if self.peek(1) == Some('*') => {
+                    if self.at_doc_comment() {
+                        break;
+                    }
+                    self.skip_block_comment();
+                }
                 _ => break,
+            }
+        }
+    }
+
+    /// True when the cursor is at a `(**`-opened doc comment: the opener is
+    /// `(**` and the char after the second `*` is neither another `*` (banner
+    /// `(*****)`) nor `)` (empty `(**)`). Matches odoc's rule ([DOC-SIGIL-ML]).
+    fn at_doc_comment(&self) -> bool {
+        self.peek(0) == Some('(')
+            && self.peek(1) == Some('*')
+            && self.peek(2) == Some('*')
+            && !matches!(self.peek(3), Some('*' | ')') | None)
+    }
+
+    /// Scan a `(** … *)` doc comment (cursor at the opener) into its raw inner
+    /// text with the sigil and one optional surrounding space stripped. Reuses
+    /// the nesting/termination discipline of [`skip_block_comment`].
+    fn scan_doc_comment(&mut self) -> TokKind {
+        let start = self.pos();
+        let _ = self.bump(); // (
+        let _ = self.bump(); // *
+        let _ = self.bump(); // *
+        let mut text = String::new();
+        let mut depth = 1;
+        while depth > 0 {
+            match (self.peek(0), self.peek(1)) {
+                (Some('('), Some('*')) => {
+                    text.push('(');
+                    text.push('*');
+                    let _ = self.bump();
+                    let _ = self.bump();
+                    depth += 1;
+                }
+                (Some('*'), Some(')')) => {
+                    let _ = self.bump();
+                    let _ = self.bump();
+                    depth -= 1;
+                    if depth > 0 {
+                        text.push('*');
+                        text.push(')');
+                    }
+                }
+                (Some(c), _) => {
+                    text.push(c);
+                    let _ = self.bump();
+                }
+                (None, _) => {
+                    self.error(start, "unterminated `(** … *)` doc comment");
+                    break;
+                }
+            }
+        }
+        TokKind::Doc(strip_doc_lines(&text))
+    }
+
+    /// Consume a nesting `(* … *)` block comment (opener already at the cursor).
+    /// An unterminated comment records a lexical error rather than looping.
+    fn skip_block_comment(&mut self) {
+        let start = self.pos();
+        let _ = self.bump(); // (
+        let _ = self.bump(); // *
+        let mut depth = 1;
+        while depth > 0 {
+            match (self.peek(0), self.peek(1)) {
+                (Some('('), Some('*')) => {
+                    let _ = self.bump();
+                    let _ = self.bump();
+                    depth += 1;
+                }
+                (Some('*'), Some(')')) => {
+                    let _ = self.bump();
+                    let _ = self.bump();
+                    depth -= 1;
+                }
+                (Some(_), _) => {
+                    let _ = self.bump();
+                }
+                (None, _) => {
+                    self.error(start, "unterminated `(* … *)` block comment");
+                    return;
+                }
             }
         }
     }
@@ -114,6 +227,9 @@ impl Scanner {
     }
 
     fn scan_token(&mut self, pos: Position) -> Option<TokKind> {
+        if self.at_doc_comment() {
+            return Some(self.scan_doc_comment());
+        }
         let c = self.peek(0)?;
         match c {
             '0'..='9' => Some(self.scan_number(pos)),
@@ -189,13 +305,7 @@ impl Scanner {
                 // Inside `${…}` a quote opens a nested string; consume it whole
                 // (honouring escapes) so its content stays in the raw token.
                 Some('"') => self.scan_nested_string(pos, &mut raw),
-                Some('\\') => {
-                    let _ = self.bump();
-                    raw.push('\\');
-                    if let Some(escaped) = self.bump() {
-                        raw.push(escaped);
-                    }
-                }
+                Some('\\') => self.copy_escape(&mut raw),
                 Some(c) => {
                     if c == '{' && raw.ends_with('$') {
                         interp_depth += 1;
@@ -227,18 +337,21 @@ impl Scanner {
                     raw.push('"');
                     break;
                 }
-                Some('\\') => {
-                    let _ = self.bump();
-                    raw.push('\\');
-                    if let Some(escaped) = self.bump() {
-                        raw.push(escaped);
-                    }
-                }
+                Some('\\') => self.copy_escape(raw),
                 Some(c) => {
                     let _ = self.bump();
                     raw.push(c);
                 }
             }
+        }
+    }
+
+    /// Consume an escape sequence while preserving its source spelling.
+    fn copy_escape(&mut self, raw: &mut String) {
+        let _ = self.bump();
+        raw.push('\\');
+        if let Some(escaped) = self.bump() {
+            raw.push(escaped);
         }
     }
 
@@ -458,6 +571,56 @@ mod tests {
     fn reports_unterminated_string() {
         let (_, errors) = lex("x = \"oops\n");
         assert!(errors.iter().any(|e| e.message.contains("unterminated")));
+    }
+
+    #[test]
+    fn skips_nesting_block_comments() {
+        // `(* … *)` block comments (ML-family convention) are trivia and NEST,
+        // so an inner `(* *)` does not close the outer early. The binding
+        // survives with no stray tokens.
+        let k = kinds("x = (* outer (* inner *) still *) 42\n");
+        assert_eq!(
+            k,
+            vec![
+                TokKind::Ident("x".to_owned()),
+                TokKind::Eq,
+                TokKind::Int(42),
+                TokKind::Eof,
+            ]
+        );
+    }
+
+    #[test]
+    fn reports_unterminated_block_comment() {
+        let (_, errors) = lex("x = (* never closed\n");
+        assert!(errors
+            .iter()
+            .any(|e| e.message.contains("unterminated `(* … *)` block comment")));
+    }
+
+    #[test]
+    fn doc_comment_becomes_a_doc_token_with_stripped_text() {
+        // `(** … *)` is retained as a Doc token; leading `*` margins and the
+        // sigil are stripped ([DOC-SIGIL-ML]).
+        let (tokens, errors) = lex("(** Doubles [x].\n    More. *)\ndouble x = x\n");
+        assert!(errors.is_empty(), "{errors:?}");
+        let doc = tokens.iter().find_map(|t| match &t.kind {
+            TokKind::Doc(s) => Some(s.clone()),
+            _ => None,
+        });
+        assert_eq!(doc.as_deref(), Some("Doubles [x].\nMore."));
+    }
+
+    #[test]
+    fn empty_and_banner_doc_openers_stay_ordinary_comments() {
+        // `(**)` (empty) and `(*****)` (banner) are ordinary comments, not docs:
+        // no Doc token is produced.
+        let (tokens, errors) = lex("(**)\n(*****)\nx = 1\n");
+        assert!(errors.is_empty(), "{errors:?}");
+        assert!(
+            !tokens.iter().any(|t| matches!(t.kind, TokKind::Doc(_))),
+            "empty/banner openers must not yield a Doc token"
+        );
     }
 
     #[test]

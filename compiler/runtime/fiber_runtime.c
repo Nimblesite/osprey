@@ -62,13 +62,14 @@ static int64_t execution_queue[1000];
 static int64_t queue_size = 0;
 
 // Enable/disable deterministic fiber execution
-void fiber_set_deterministic_mode(bool enabled) {
+int64_t fiber_set_deterministic_mode(bool enabled) {
   pthread_mutex_lock(&runtime_mutex);
   deterministic_mode = enabled;
   if (enabled) {
     queue_size = 0; // Reset queue when enabling
   }
   pthread_mutex_unlock(&runtime_mutex);
+  return 0;
 }
 
 // Execute a fiber directly (for deterministic mode)

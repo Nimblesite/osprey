@@ -30,6 +30,9 @@ pub(crate) enum TokKind {
     Str(String),
     /// Identifier or keyword-as-name (lowercase var / uppercase constructor).
     Ident(String),
+    /// A `(** … *)` documentation comment's raw inner text (sigil stripped).
+    /// Attaches to the declaration that follows ([DOC-SIGIL-ML]).
+    Doc(String),
     /// `mut`.
     KwMut,
     /// `true`.

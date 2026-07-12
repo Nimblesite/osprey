@@ -2,7 +2,11 @@
 
 **Subsystem:** `compiler/runtime` (C), `crates/osprey-codegen` (extern call ABI),
 `crates/osprey-types` (signatures)
-**Status:** Partially implemented
+**Status:** Partially implemented. Two sub-items landed (the `httpListen`
+handler bridge now uses the `HttpResponse` record; WebSocket `listen` sets
+`SO_REUSEADDR`). The core remaining work is converting the create/listen/stop +
+client + WebSocket intrinsics from raw `int64_t` to `Result<T, string>` and
+threading real error messages.
 **Spec:** [0014-HTTP.md](../specs/0014-HTTP.md), [0015-WebSockets.md](../specs/0015-WebSockets.md), [0013-ErrorHandling.md](../specs/0013-ErrorHandling.md)
 
 ## Summary
@@ -41,10 +45,16 @@ subsystems, so it is planned together to avoid duplicate work.
 - Runtime functions return bare `int64_t` codes, so the `Result<T, string>`
   surface that the rest of the language relies on is synthesized loosely (or not
   at all) at the ABI boundary, and error *messages* are lost (only codes survive).
-- `httpListen`'s handler bridge expects a raw `string` return rather than the
-  spec'd `HttpResponse` record.
-- WebSocket `listen` `bind()` fails in some environments (likely missing
-  `SO_REUSEADDR` / IPv4-vs-IPv6 dual-stack handling).
+- ~~`httpListen`'s handler bridge expects a raw `string` return~~ — **fixed**:
+  the C bridge now returns the `HttpResponse` record (`HttpRequestHandler` →
+  `HttpResponse *` in [http_shared.h:61](../../compiler/runtime/http_shared.h),
+  read back in `http_server_runtime.c`), and the tested handler returns
+  `HttpResponse`.
+- ~~WebSocket `listen` `bind()` fails in some environments~~ — the core fix
+  landed: `listen` now sets `SO_REUSEADDR`
+  ([websocket_server_runtime.c:218](../../compiler/runtime/websocket_server_runtime.c)),
+  matching the HTTP server. Address-family selection is still fixed `AF_INET`
+  (no explicit dual-stack), a minor remaining nicety.
 
 ## Implementation plan
 
@@ -86,9 +96,12 @@ subsystems, so it is planned together to avoid duplicate work.
 - [ ] Settle on the shared C `Result` struct mirroring the codegen Result ABI.
 - [ ] Convert HTTP create/listen/stop + client to return `Result<T, string>`;
       update `extern_call.rs` descriptors.
-- [ ] Switch `httpListen`'s handler bridge to the `HttpResponse` record.
+- [x] Switch `httpListen`'s handler bridge to the `HttpResponse` record — done
+      (`HttpRequestHandler` returns `HttpResponse *`, `http_shared.h:61`).
 - [ ] Convert WebSocket functions to `Result<T, string>`.
-- [ ] Fix WebSocket `listen` bind (`SO_REUSEADDR`, address family).
+- [x] Fix WebSocket `listen` bind — `SO_REUSEADDR` set
+      (`websocket_server_runtime.c:218`). *(Explicit address-family/dual-stack
+      selection still `AF_INET`-only — minor.)*
 - [ ] Thread real error messages into `Error` payloads ([ERR-PAYLOAD]).
 - [ ] Factor shared socket setup once (`find-similar` first).
 - [ ] Extend `tested/http` (+ websocket) examples with `Result` matching and a

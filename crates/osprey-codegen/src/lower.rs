@@ -337,16 +337,29 @@ fn gen_bind(cg: &mut Codegen, name: &str, value: &Expr, unwrap: bool) -> Result<
         }
         return Ok(());
     }
+    if let Expr::Identifier(n) = value {
+        let target = cg.call_aliases.get(n).cloned().unwrap_or_else(|| n.clone());
+        if cg.lookup(&target).is_none() && cg.fn_defs.contains_key(&target) {
+            // `let g = identity` where the target is a GENERIC function: no
+            // single concrete cell ABI exists, so bind as a call alias — g's
+            // call sites specialise the target exactly as direct calls do,
+            // and a value use resolves the alias where a consuming slot fixes
+            // the ABI ([TYPE-GENERICS-FN]).
+            let _ = cg.call_aliases.insert(name.to_string(), target);
+            return Ok(());
+        }
+    }
     let v = gen_expr(cg, value)?;
     let v = if unwrap {
         crate::result::unwrap(cg, v)
     } else {
         v
     };
-    // A non-lambda (re)binding invalidates any stale beta-reduction entry for
-    // the name — `mut f = fn(x) => …; f = makeAdder(10)` must call the new
-    // closure, not the old inline body.
+    // A non-lambda (re)binding invalidates any stale beta-reduction entry or
+    // call alias for the name — `mut f = fn(x) => …; f = makeAdder(10)` must
+    // call the new closure, not the old inline body.
     let _ = cg.lambdas.remove(name);
+    let _ = cg.call_aliases.remove(name);
     // A function-valued binding (`let add5 = makeAdder(5)`) registers its
     // function type so `add5(3)` lowers as a closure call.
     if let Some(ty) = fn_result_type(cg, value) {
@@ -357,11 +370,18 @@ fn gen_bind(cg: &mut Codegen, name: &str, value: &Expr, unwrap: bool) -> Result<
     Ok(())
 }
 
-/// The function type of a `let` initializer that produces a function value: a
-/// call whose callee returns a function, an alias of another function-typed
-/// local or a top-level function, or a function-typed record field.
-fn fn_result_type(cg: &Codegen, value: &Expr) -> Option<osprey_types::Type> {
+/// The function type of an expression that produces a function value: a
+/// lambda with a concretely-inferred type, a call whose callee returns a
+/// function, an alias of another function-typed local or a top-level function,
+/// or a function-typed record field. Shared with `genfn::try_inline`, which
+/// uses it to keep inlined function-typed parameters callable.
+pub(crate) fn fn_result_type(cg: &Codegen, value: &Expr) -> Option<osprey_types::Type> {
     match value {
+        Expr::Lambda { position, .. } => cg
+            .prog
+            .lambda_type(*position)
+            .filter(|t| crate::types::fn_value_concrete(t))
+            .cloned(),
         Expr::Call { function, .. } => match &**function {
             Expr::Identifier(f) => cg.call_result_fn_type(f),
             _ => None,

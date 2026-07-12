@@ -279,6 +279,11 @@ Default flat multi-parameter vs ML curried/nested chain. See
 | Record construction | `T { f: v }` | `T` + indented `f = v` | `Expr::TypeConstructor` |
 | Record update | `r { f: v }` | layout update | `Expr::Update` |
 | Effect declaration | `effect E { op: fn(T)->U }` | `effect E` + `op : T => U` | `Stmt::Effect` + `EffectOperation` |
+| Generic type params | `type Box<T>` / `type Feed<out T>` | `type Box T` / `type Feed out T` | `Stmt::Type { type_params: Vec<TypeParam> }` |
+| Fn type params | `fn pick<T>(a: T, b: T)` | `pick<T> : (T, T) -> T` + binding | `Stmt::Function { type_params }` |
+| Generic effect | `effect Stash<T> { … }` | `effect Stash T` + ops | `Stmt::Effect { type_params }` |
+| Effect row w/ args | `!Stash<int>` / `![A<T>, B]` | `! Stash<int>` / `! [A<T>, B]` | `Stmt::Function { effects: Vec<EffectRef> }` |
+| Ctor type args | `Box<int> { item: 7 }` | `Box<int>(item = 7)` | `Expr::TypeConstructor { type_args }` |
 | Perform | `perform E.op(a)` | `perform E.op a` | `Expr::Perform` |
 
 † See [Currying Canonicalisation](#currying-canonicalisation): Default
@@ -559,12 +564,25 @@ is a single language — one type checker, one effect system, one runtime, one
 standard library, one backend — fronted by two **first-class, permanent**
 syntaxes. Neither surface is the diluted one.
 
-- **Default flavor (`.osp`)** — C-style braces, `fn`, `f(x: a, y: b)` calls with
-  named arguments. The surface a **systems programmer** reaches for: explicit,
-  familiar, block-structured.
-- **ML flavor (`.ospml`)** — offside-rule layout, curry-by-default, whitespace
-  application `f a b`, `\x => e` lambdas, `:=` mutation. The surface an **FP
-  devotee** reaches for: terse, expression-first, ML/Haskell-shaped.
+- **Default flavor (`.osp`)** — the **populist** surface. C-style braces, `fn`,
+  `f(x: a, y: b)` calls with named arguments, `if`/`else if`/`else`
+  ([GRAMMAR-IF-ELSE]), the `? :` ternary. It deliberately borrows shapes from
+  Kotlin, Swift, Go, Dart, C#, and Java **wherever that aids adoption**: a
+  mainstream developer should read a `.osp` file cold and follow it. Every such
+  convenience is pure surface — it desugars at lowering, never adding AST.
+- **ML flavor (`.ospml`)** — the **uncompromising** surface. Offside-rule
+  layout, curry-by-default, whitespace application `f a b`, `\x => e` lambdas,
+  `:=` mutation. It takes the most elegant constructs the ML family ever
+  produced and goes all the way: no braces, no C-isms, no concession to
+  mainstream familiarity. Populist sugar (e.g. `if`/`else`) is deliberately
+  **omitted** here — ML writes the `match` directly.
+
+**Strategy (2026-07, supersedes earlier "walk the line" framing).** The Default
+flavor no longer balances adoption against ML purity — the two-flavor
+architecture removes the need. Default optimizes for **accessibility** and
+mainstream adoption; ML optimizes for **extreme elegance** with zero
+compromise. Each flavor goes further in its own direction *because* the other
+exists, and both still erase to the same canonical AST ([FLAVOR-BOUNDARY]).
 
 **The "no compromise" claim, stated precisely.** The ML flavor is *not* "braces
 optional" and the Default flavor is *not* a deprecated transitional dialect (see

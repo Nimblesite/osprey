@@ -44,6 +44,27 @@ fn scrub_positions(debug: &str) -> String {
 }
 
 #[test]
+fn doc_comments_lower_identically_across_flavors() {
+    // A `///`-documented Default function and its `(** … *)` ML twin lower to
+    // the SAME DocComment on the canonical AST — the doc body markup is
+    // flavor-neutral, only the sigil differs ([DOC-MODEL], [FLAVOR-BOUNDARY]).
+    // Both are curried single-param functions so the whole AST (doc included)
+    // matches, not just the doc field.
+    let default_doc = "/// Doubles `x`.\n\
+                       ///\n\
+                       /// # Returns\n\
+                       /// twice x\n\
+                       fn dbl(x) = fn(y) => x + y\n";
+    let ml_doc = "(** Doubles `x`.\n\n    # Returns\n    twice x *)\n\
+                  dbl x y = x + y\n";
+    assert_eq!(
+        canonical(default_doc, Flavor::Default),
+        canonical(ml_doc, Flavor::Ml),
+        "a documented function must lower to an identical DocComment in both flavors"
+    );
+}
+
+#[test]
 fn ml_multiparam_equals_default_explicit_curry() {
     // Both lower to a one-parameter Function { params: [x] } whose body is a
     // Lambda { params: [y], body: x + y } — ML curries by default, so the

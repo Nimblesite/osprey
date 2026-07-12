@@ -34,7 +34,13 @@ pub(crate) fn gen_expr(cg: &mut Codegen, expr: &Expr) -> Result<Value> {
             // cell — the one function-value representation. (C-runtime callback
             // slots request a raw code pointer explicitly via `fn_pointer`.)
             None if cg.fn_params.contains_key(name) => crate::closure::named_fn_cell(cg, name),
-            None => Err(CodegenError::unknown(name)),
+            // A call alias (`let g = identity`) used as a value resolves to its
+            // target's cell; a still-generic target bails loudly in
+            // `named_fn_cell` when no consuming slot fixes its ABI.
+            None => match cg.call_aliases.get(name).cloned() {
+                Some(target) => crate::closure::named_fn_cell(cg, &target),
+                None => Err(CodegenError::unknown(name)),
+            },
         },
         Expr::Binary { op, left, right } => gen_binary(cg, op, left, right),
         Expr::Unary { op, operand } => gen_unary(cg, op, operand),
@@ -66,9 +72,15 @@ pub(crate) fn gen_expr(cg: &mut Codegen, expr: &Expr) -> Result<Value> {
             effect,
             operation,
             arguments,
+            position,
             ..
-        } => crate::effects::gen_perform(cg, effect, operation, arguments),
-        Expr::Handler { effect, arms, body } => crate::effects::gen_handler(cg, effect, arms, body),
+        } => crate::effects::gen_perform(cg, effect, operation, arguments, *position),
+        Expr::Handler {
+            effect,
+            arms,
+            body,
+            position,
+        } => crate::effects::gen_handler(cg, effect, arms, body, *position),
         Expr::Resume(value) => crate::effects::gen_resume(cg, value.as_deref()),
         // A lambda in plain value position (returned, block tail, stored in a
         // field) becomes a closure cell, typed by inference.
@@ -669,10 +681,25 @@ fn eval_arg(cg: &mut Codegen, expr: &Expr, sig: Option<&FnSig>, ffi: bool) -> Re
                 crate::closure::emit_closure(cg, parameters, body, sig)
             }
         }
-        (Expr::Identifier(n), Some(_))
-            if ffi && cg.lookup(n).is_none() && cg.fn_params.contains_key(n) =>
-        {
-            Ok(fn_pointer(cg, n))
+        (Expr::Identifier(n), Some(sig)) if cg.lookup(n).is_none() => {
+            // Resolve a call alias (`let g = identity`) to its real target.
+            let target = cg.call_aliases.get(n).cloned().unwrap_or_else(|| n.clone());
+            // A GENERIC named function flowing into a concrete function-typed
+            // slot: specialise it to the slot's ABI — its (params, body) emit
+            // exactly like a capture-free lambda. A monomorphic name keeps its
+            // once-per-module forwarder cell via `gen_expr`/`named_fn_cell`.
+            // Implements [TYPE-GENERICS-FN].
+            if let Some((params, body)) = cg.fn_defs.get(&target).cloned() {
+                return if ffi {
+                    crate::closure::raw_callback_lambda(cg, &params, &body, sig)
+                } else {
+                    crate::closure::emit_closure(cg, &params, &body, sig)
+                };
+            }
+            if ffi && cg.fn_params.contains_key(&target) {
+                return Ok(fn_pointer(cg, &target));
+            }
+            gen_expr(cg, expr)
         }
         _ => gen_expr(cg, expr),
     }

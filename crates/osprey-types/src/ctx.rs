@@ -4,18 +4,34 @@
 //! so a chain of variable bindings is walked once and then answers in one hop.
 
 use crate::ty::{Type, VarId};
-use std::collections::BTreeSet;
+use osprey_ast::Variance;
+use std::collections::{BTreeSet, HashMap};
 
 /// Holds every type variable's binding. Variable ids are indices into `subst`.
 #[derive(Debug, Default)]
 pub struct InferCtx {
     subst: Vec<Option<Type>>,
+    /// Type-constructor name → declared per-parameter variance, consulted by
+    /// assignability so `Source<out T>` matches covariantly. Implements
+    /// [TYPE-VARIANCE-ASSIGN].
+    variances: HashMap<String, Vec<Variance>>,
 }
 
 impl InferCtx {
     /// Create an empty context with no allocated type variables.
     pub fn new() -> InferCtx {
         InferCtx::default()
+    }
+
+    /// Register a type constructor's declared per-parameter variance.
+    pub fn set_variance(&mut self, name: impl Into<String>, variances: Vec<Variance>) {
+        let _ = self.variances.insert(name.into(), variances);
+    }
+
+    /// The declared per-parameter variance of a type constructor, if any.
+    #[must_use]
+    pub fn variance_of(&self, name: &str) -> Option<&[Variance]> {
+        self.variances.get(name).map(Vec::as_slice)
     }
 
     /// Allocate a fresh, unbound type variable.

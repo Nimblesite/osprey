@@ -12,6 +12,7 @@
 use crate::ctx::InferCtx;
 use crate::error::TypeError;
 use crate::ty::{names, Type, VarId};
+use osprey_ast::Variance;
 
 /// Unify two types, recording the solution in `ctx`. Errors are structural; a
 /// failing call may have applied partial bindings, so callers that want to
@@ -147,7 +148,92 @@ pub fn unify_assignable(
             return unify_assignable(ctx, er, ar);
         }
     }
+    // Declared variance directs how a constructor's arguments match at
+    // assignment sites: a covariant (`out`) argument matches assignably, a
+    // contravariant (`in`) argument matches assignably with the roles flipped,
+    // and an invariant argument must unify exactly — plain `unify` (and with
+    // it HM principal types) is untouched. Implements [TYPE-VARIANCE-ASSIGN].
+    if let Some(result) = unify_declared_variance_args(ctx, &expected, &actual) {
+        return result;
+    }
     unify(ctx, &expected, &actual)
+}
+
+/// Match a constructor's expected/actual argument lists under the declared
+/// per-parameter variance. The leaves use EXACT unification, never the
+/// coercive assignability rules: Result auto-unwrap is a representation-
+/// changing coercion codegen emits only at direct value sites, so admitting
+/// it under a container would accept values whose stored representation is
+/// wrong. Directional recursion continues only through variance-declared
+/// constructors. Implements [TYPE-VARIANCE-ASSIGN].
+fn unify_args_with_variance(
+    ctx: &mut InferCtx,
+    expected: &[Type],
+    actual: &[Type],
+    variances: &[Variance],
+) -> Result<(), TypeError> {
+    for ((e, a), v) in expected.iter().zip(actual).zip(variances) {
+        match v {
+            Variance::Covariant => unify_variant_arg(ctx, e, a)?,
+            Variance::Contravariant => unify_variant_arg(ctx, a, e)?,
+            Variance::Invariant => unify(ctx, e, a)?,
+        }
+    }
+    Ok(())
+}
+
+/// One variance-position argument: recurse directionally through same-name
+/// variance-declared constructors, and unify exactly everywhere else (plain
+/// `unify` already normalizes function returns representation-safely).
+fn unify_variant_arg(ctx: &mut InferCtx, expected: &Type, actual: &Type) -> Result<(), TypeError> {
+    let expected = ctx.prune(expected);
+    let actual = ctx.prune(actual);
+    if let Some(result) = unify_declared_variance_args(ctx, &expected, &actual) {
+        return result;
+    }
+    unify(ctx, &expected, &actual)
+}
+
+/// Recurse through a matching constructor when it declares non-invariant
+/// parameter variance. `None` leaves the caller to use ordinary unification.
+fn unify_declared_variance_args(
+    ctx: &mut InferCtx,
+    expected: &Type,
+    actual: &Type,
+) -> Option<Result<(), TypeError>> {
+    let (
+        Type::Con {
+            name: expected_name,
+            args: expected_args,
+        },
+        Type::Con {
+            name: actual_name,
+            args: actual_args,
+        },
+    ) = (expected, actual)
+    else {
+        return None;
+    };
+    if expected_name != actual_name
+        || expected_args.len() != actual_args.len()
+        || expected_args.is_empty()
+    {
+        return None;
+    }
+    let variances = ctx.variance_of(expected_name)?.to_vec();
+    if variances.len() != expected_args.len()
+        || !variances
+            .iter()
+            .any(|variance| *variance != Variance::Invariant)
+    {
+        return None;
+    }
+    Some(unify_args_with_variance(
+        ctx,
+        expected_args,
+        actual_args,
+        &variances,
+    ))
 }
 
 fn bind_var(ctx: &mut InferCtx, id: VarId, t: &Type) -> Result<(), TypeError> {
@@ -512,6 +598,33 @@ mod tests {
         // unifies `int` with the Result's inner payload.
         let r = Type::result(Type::int(), Type::prim("E"));
         unify_assignable(&mut c, &Type::int(), &r).unwrap();
+    }
+
+    #[test]
+    fn variance_argument_matching_is_exact_at_the_leaves() {
+        // Implements [TYPE-VARIANCE-ASSIGN]: the coercive Result unwrap NEVER
+        // applies under a container — it is a representation-changing
+        // coercion codegen emits only at direct value sites — so a
+        // Result-payload instantiation is rejected under EVERY variance.
+        let mut c = InferCtx::new();
+        c.set_variance("Feed", vec![Variance::Covariant]);
+        c.set_variance("Gate", vec![Variance::Contravariant]);
+        let feed = |t: Type| Type::con("Feed", vec![t]);
+        let gate = |t: Type| Type::con("Gate", vec![t]);
+        let res = Type::result(Type::int(), Type::prim("MathError"));
+        assert!(unify_assignable(&mut c, &feed(Type::int()), &feed(res.clone())).is_err());
+        assert!(unify_assignable(&mut c, &gate(res.clone()), &gate(Type::int())).is_err());
+        // Function payloads stay flexible representation-safely: plain unify
+        // normalizes fn returns through Result (the closure ABI strips the
+        // wrapper), so a Result-returning fn payload matches an int-returning
+        // slot under a covariant (or any) parameter.
+        let fnres = Type::fun(vec![Type::int()], res.clone());
+        let fnint = Type::fun(vec![Type::int()], Type::int());
+        unify_assignable(&mut c, &feed(fnint.clone()), &feed(fnres.clone())).unwrap();
+        // Directional recursion continues through nested variance-declared
+        // constructors and still bottoms out exactly.
+        unify_assignable(&mut c, &feed(feed(fnint)), &feed(feed(fnres))).unwrap();
+        assert!(unify_assignable(&mut c, &feed(feed(Type::int())), &feed(feed(res))).is_err());
     }
 
     #[test]

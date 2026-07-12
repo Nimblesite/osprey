@@ -48,8 +48,9 @@ optional timeout/`_` arm; the runtime has no `select` over multiple channels —
    time-bounded.
 4. **Codegen the dispatch.** Replace `gen_select` to: evaluate the channel handles,
    call `channel_select`, then branch to the matching arm body with its binding in
-   scope. This depends on cooperative blocking from
-   [Plan 0006](0006-fiber-yield.md) so a blocked `select` yields rather than spins.
+   scope. This relies on cooperative blocking (`fiber_yield`, already in
+   `compiler/runtime/fiber_runtime.c` — that was plan 0006, since completed and
+   retired) so a blocked `select` yields rather than spins.
 5. **Preserve deterministic mode** for the differential harness (deterministic
    tie-breaking when multiple ops are ready).
 
@@ -63,8 +64,9 @@ optional timeout/`_` arm; the runtime has no `select` over multiple channels —
 
 - Fairness vs. determinism: pick a deterministic tie-break for tests while keeping
   reasonable fairness in normal mode.
-- Sequence after [Plan 0006](0006-fiber-yield.md): a correct blocking `select`
-  needs the cooperative scheduler.
+- The cooperative-blocking primitive a correct blocking `select` needs
+  (`fiber_yield`) already exists — that was plan 0006, since completed and
+  retired.
 
 ## TODO
 

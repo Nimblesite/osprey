@@ -41,13 +41,9 @@ fn crunch(n) = range(1, n) |> filter(even) |> map(sq) |> fold(0, fn(a, b) => a +
 // Exhaustive match over a union — drop a case and it won't compile.
 type Tier = Epic | Solid | Starter
 
-fn tier(score) = match score >= 2000 {
-    true  => Epic
-    false => match score >= 500 {
-        true  => Solid
-        false => Starter
-    }
-}
+// `if`/`else if` desugars to the same boolean match the ML twin writes
+// explicitly — byte-identical IR across flavors ([FLAVOR-IR-EQUIV]).
+fn tier(score) = if score >= 2000 { Epic } else if score >= 500 { Solid } else { Starter }
 
 fn badge(t) = match t {
     Epic    => "🟣 EPIC"

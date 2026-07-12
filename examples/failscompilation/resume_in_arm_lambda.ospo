@@ -1,0 +1,17 @@
+// `resume` captures the CURRENT arm's continuation; a lambda body runs when
+// called, not where it is written, so the continuation is not live inside it.
+// The checker rejects this ([EFFECTS-RESUME]) — same hard error as a top-level
+// `resume` — keeping the type checker and codegen in agreement.
+effect E {
+    op: fn() -> int
+}
+
+fn go() -> int !E = perform E.op()
+
+let r = handle E
+    op => {
+        let f = |x| => resume(x)
+        f(9)
+    }
+in go()
+print("r=${r}")

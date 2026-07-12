@@ -13,8 +13,8 @@ use crate::error::TypeError;
 use crate::ty::{names, Scheme, Type};
 use crate::unify::{unify, unify_assignable};
 use osprey_ast::{
-    EffectOperation, Expr, ExternParameter, Parameter, Position, Program, Stmt, TypeExpr,
-    TypeVariant,
+    EffectOperation, EffectRef, Expr, ExternParameter, Parameter, Position, Program, Stmt,
+    TypeExpr, TypeParam, TypeVariant, Variance,
 };
 use std::collections::{HashMap, HashSet};
 
@@ -50,13 +50,33 @@ pub(crate) struct CtorInfo {
 /// whether the owner is a record).
 pub(crate) type CtorInstance = (Vec<Type>, Vec<(String, Type)>, String, bool);
 
+/// One in-scope effect instantiation: the effect's name, its resolved type
+/// arguments, and the operations instantiated at them.
+pub(crate) struct EffectScope {
+    pub name: String,
+    pub args: Vec<Type>,
+    pub ops: HashMap<String, crate::info::OpType>,
+}
+
+/// A declared effect, stored generically: its type parameters plus each
+/// operation's written signature, instantiated per handle site / effect-row
+/// entry. Implements [EFFECTS-GENERIC-DECL].
+#[derive(Clone)]
+pub(crate) struct EffectInfo {
+    /// The effect's declared type parameter names, in order.
+    pub type_params: Vec<String>,
+    /// Operation name → written signature (`fn(T) -> Unit`), in declaration
+    /// order.
+    pub ops: Vec<(String, String)>,
+}
+
 /// All cross-cutting declaration tables, plus the inference context.
 pub struct Checker {
     pub(crate) ctx: InferCtx,
     pub(crate) errors: Vec<TypeError>,
     pub(crate) ctors: HashMap<String, CtorInfo>,
-    /// Effect name -> operation name -> resolved signature.
-    pub(crate) effects: HashMap<String, HashMap<String, crate::info::OpType>>,
+    /// Effect name -> its generic declaration (type params + raw op sigs).
+    pub(crate) effects: HashMap<String, EffectInfo>,
     /// Union/Result type name -> its variant constructor names (exhaustiveness).
     pub(crate) union_variants: HashMap<String, Vec<String>>,
     /// Function/extern name -> declared parameter names (for named arguments).
@@ -78,6 +98,26 @@ pub struct Checker {
     /// argument against the operation result and itself as the answer.
     /// Implements [EFFECTS-RESUME].
     pub(crate) resume_ctx: Vec<(Type, Type)>,
+    /// Stack of in-scope effect instantiations — one entry per enclosing
+    /// `handle` body or declared effect-row entry — resolved innermost-first
+    /// by `perform` sites, matching the runtime's innermost-wins handler
+    /// stack. Implements [EFFECTS-GENERIC-INSTANTIATION].
+    pub(crate) handler_scopes: Vec<EffectScope>,
+    /// Every `perform` site's instantiated operation signature and effect
+    /// type arguments, keyed by its source position — resolved and published
+    /// for the code generator.
+    pub(crate) perform_tys: Vec<(Position, crate::info::OpType, Vec<Type>)>,
+    /// Every `handle` site's instantiated effect type arguments and operation
+    /// signatures, keyed by its source position — resolved and published for
+    /// the code generator.
+    pub(crate) handler_tys: Vec<(Position, Vec<Type>, HashMap<String, crate::info::OpType>)>,
+    /// Function name → its declared type parameters bound to fresh inference
+    /// variables (empty for undeclared). Implements [TYPE-GENERICS-FN].
+    pub(crate) fn_typarams: HashMap<String, HashMap<String, Type>>,
+    /// The type parameters of the function whose body is currently being
+    /// inferred, so annotations inside the body (explicit construction-site
+    /// type arguments) resolve the binder's variables, not nominal names.
+    pub(crate) current_fn_typarams: HashMap<String, Type>,
 }
 
 impl Checker {
@@ -94,9 +134,37 @@ impl Checker {
             let_tys: Vec::new(),
             builtins: HashSet::new(),
             resume_ctx: Vec::new(),
+            handler_scopes: Vec::new(),
+            perform_tys: Vec::new(),
+            handler_tys: Vec::new(),
+            fn_typarams: HashMap::new(),
+            current_fn_typarams: HashMap::new(),
         };
         c.register_result_ctors();
+        c.register_builtin_variances();
+        // Burn the ids the builtin schemes hand-write as quantified binders so
+        // no live inference variable can collide with them (they stay
+        // permanently unbound). See `builtins::RESERVED_SCHEME_VARS`.
+        for _ in 0..crate::builtins::RESERVED_SCHEME_VARS {
+            let _ = c.ctx.fresh();
+        }
         c
+    }
+
+    /// Built-in constructors' declared variance: producers are covariant in
+    /// what they produce; `Map` keys are looked up (invariant) while values
+    /// only flow out. Implements [TYPE-VARIANCE-ASSIGN].
+    fn register_builtin_variances(&mut self) {
+        self.ctx.set_variance(
+            names::RESULT,
+            vec![Variance::Covariant, Variance::Covariant],
+        );
+        self.ctx
+            .set_variance(names::LIST, vec![Variance::Covariant]);
+        self.ctx
+            .set_variance(names::FIBER, vec![Variance::Covariant]);
+        self.ctx
+            .set_variance(names::MAP, vec![Variance::Invariant, Variance::Covariant]);
     }
 
     /// Built-in `Result` constructors `Success { value: T }` / `Error { message: E }`.
@@ -197,17 +265,36 @@ impl Checker {
         if self.builtins.is_empty() {
             self.builtins = env.bound_names();
         }
+        // Register every declared type's variance first, so position
+        // validation sees nested constructors' variance regardless of
+        // declaration order. Implements [TYPE-VARIANCE-DECL].
+        for stmt in &program.statements {
+            if let Stmt::Type {
+                name, type_params, ..
+            } = stmt
+            {
+                self.ctx.set_variance(
+                    name.clone(),
+                    type_params.iter().map(|p| p.variance).collect(),
+                );
+            }
+        }
         for stmt in &program.statements {
             match stmt {
                 Stmt::Type {
                     name,
                     type_params,
                     variants,
+                    position,
                     ..
-                } => self.collect_type(name, type_params, variants),
+                } => self.collect_type(name, type_params, variants, *position),
                 Stmt::Effect {
-                    name, operations, ..
-                } => self.collect_effect(name, operations),
+                    name,
+                    type_params,
+                    operations,
+                    position,
+                    ..
+                } => self.collect_effect(name, type_params, operations, *position),
                 Stmt::Extern {
                     name,
                     parameters,
@@ -216,16 +303,29 @@ impl Checker {
                 } => self.collect_extern(name, parameters, return_type.as_ref(), env),
                 Stmt::Function {
                     name,
+                    type_params,
                     parameters,
                     return_type,
+                    position,
                     ..
-                } => self.collect_function(name, parameters, return_type.as_ref(), env),
+                } => {
+                    self.collect_function(name, type_params, parameters, return_type.as_ref(), env);
+                    for e in crate::variance::reject_fn_variance(name, type_params) {
+                        self.record_err(e, *position);
+                    }
+                }
                 _ => {}
             }
         }
     }
 
-    fn collect_type(&mut self, name: &str, type_params: &[String], variants: &[TypeVariant]) {
+    fn collect_type(
+        &mut self,
+        name: &str,
+        type_params: &[TypeParam],
+        variants: &[TypeVariant],
+        position: Option<Position>,
+    ) {
         let is_record = match variants.first() {
             Some(first) => variants.len() == 1 && first.name == name,
             None => false,
@@ -236,6 +336,7 @@ impl Checker {
                 variants.iter().map(|v| v.name.clone()).collect(),
             );
         }
+        let param_names: Vec<String> = type_params.iter().map(|p| p.name.clone()).collect();
         for v in variants {
             let fields = v
                 .fields
@@ -247,20 +348,96 @@ impl Checker {
                 CtorInfo {
                     owner: name.to_string(),
                     owner_is_record: is_record,
-                    type_params: type_params.to_vec(),
+                    type_params: param_names.clone(),
                     fields,
                 },
             );
         }
+        for e in crate::variance::validate_type_decl(&self.ctx, name, type_params, variants) {
+            self.record_err(e, position);
+        }
     }
 
-    fn collect_effect(&mut self, name: &str, operations: &[EffectOperation]) {
-        let mut ops = HashMap::new();
-        for op in operations {
-            let (params, ret) = parse_fn_sig(&op.ty, &HashMap::new());
-            let _ = ops.insert(op.name.clone(), crate::info::OpType { params, ret });
+    fn collect_effect(
+        &mut self,
+        name: &str,
+        type_params: &[TypeParam],
+        operations: &[EffectOperation],
+        position: Option<Position>,
+    ) {
+        let _ = self.effects.insert(
+            name.to_string(),
+            EffectInfo {
+                type_params: type_params.iter().map(|p| p.name.clone()).collect(),
+                ops: operations
+                    .iter()
+                    .map(|op| (op.name.clone(), op.ty.clone()))
+                    .collect(),
+            },
+        );
+        for e in crate::variance::validate_effect_decl(&self.ctx, name, type_params, operations) {
+            self.record_err(e, position);
         }
-        let _ = self.effects.insert(name.to_string(), ops);
+    }
+
+    /// Instantiate an effect's operations at fresh type arguments — one
+    /// instance per handle site / unresolved perform. Returns `None` for an
+    /// undeclared effect. Implements [EFFECTS-GENERIC-INSTANTIATION].
+    pub(crate) fn effect_instance_ops(
+        &mut self,
+        effect: &str,
+    ) -> Option<(Vec<Type>, HashMap<String, crate::info::OpType>)> {
+        let info = self.effects.get(effect)?.clone();
+        let mut pmap = HashMap::new();
+        let mut args = Vec::new();
+        for p in &info.type_params {
+            let v = self.ctx.fresh();
+            args.push(v.clone());
+            let _ = pmap.insert(p.clone(), v);
+        }
+        Some((args, Self::instantiate_ops(&info, &pmap)))
+    }
+
+    /// Instantiate an effect at an effect-row entry's declared type arguments
+    /// (`!State<int>`), resolving each argument against the enclosing
+    /// function's type parameters; missing arguments become fresh variables.
+    /// Implements [EFFECTS-GENERIC-ROWS].
+    fn effect_row_scope(
+        &mut self,
+        row: &EffectRef,
+        fn_typarams: &HashMap<String, Type>,
+    ) -> Option<EffectScope> {
+        let info = self.effects.get(&row.name)?.clone();
+        let mut pmap = HashMap::new();
+        let mut args = Vec::new();
+        for (i, p) in info.type_params.iter().enumerate() {
+            let t = match row.type_args.get(i) {
+                Some(te) => type_expr_to_type(te, fn_typarams),
+                None => self.ctx.fresh(),
+            };
+            args.push(t.clone());
+            let _ = pmap.insert(p.clone(), t);
+        }
+        Some(EffectScope {
+            name: row.name.clone(),
+            args,
+            ops: Self::instantiate_ops(&info, &pmap),
+        })
+    }
+
+    /// Parse an effect's raw operation signatures against an instantiation of
+    /// its type parameters.
+    fn instantiate_ops(
+        info: &EffectInfo,
+        pmap: &HashMap<String, Type>,
+    ) -> HashMap<String, crate::info::OpType> {
+        info.ops
+            .iter()
+            .map(|(op_name, sig)| {
+                let (params, ret) = parse_fn_sig(sig, pmap);
+                (op_name.clone(), crate::info::OpType { params, ret })
+            })
+            .collect()
     }
 
     fn collect_extern(
@@ -302,6 +479,7 @@ impl Checker {
     fn collect_function(
         &mut self,
         name: &str,
+        type_params: &[TypeParam],
         parameters: &[Parameter],
         return_type: Option<&TypeExpr>,
         env: &mut TypeEnv,
@@ -312,18 +490,27 @@ impl Checker {
             )));
             return;
         }
-        let empty = HashMap::new();
+        // Declared type parameters (`fn map<T, U>`) bind to fresh inference
+        // variables so every `T` in the signature is the SAME variable —
+        // without a binder, `T` would be a nominal type named "T".
+        // Implements [TYPE-GENERICS-FN].
+        let mut typarams = HashMap::new();
+        for tp in type_params {
+            let v = self.ctx.fresh();
+            let _ = typarams.insert(tp.name.clone(), v);
+        }
         let params: Vec<Type> = parameters
             .iter()
             .map(|p| match &p.ty {
-                Some(te) => type_expr_to_type(te, &empty),
+                Some(te) => type_expr_to_type(te, &typarams),
                 None => self.ctx.fresh(),
             })
             .collect();
         let ret = match return_type {
-            Some(te) => type_expr_to_type(te, &empty),
+            Some(te) => type_expr_to_type(te, &typarams),
             None => self.ctx.fresh(),
         };
+        let _ = self.fn_typarams.insert(name.to_string(), typarams);
         self.record_fn_params(name, parameters);
         let _ = self
             .fn_sigs
@@ -338,10 +525,11 @@ impl Checker {
                 Stmt::Function {
                     name,
                     parameters,
+                    effects,
                     body,
                     position,
                     ..
-                } => self.check_function(name, parameters, body, env, *position),
+                } => self.check_function(name, parameters, effects, body, env, *position),
                 Stmt::Module { body, .. } => {
                     let mut inner = env.child();
                     let prog = Program {
@@ -360,6 +548,7 @@ impl Checker {
         &mut self,
         name: &str,
         parameters: &[Parameter],
+        effects: &[EffectRef],
         body: &Expr,
         env: &mut TypeEnv,
         pos: Option<Position>,
@@ -372,7 +561,21 @@ impl Checker {
         for (p, ty) in parameters.iter().zip(&params) {
             local.insert(p.name.clone(), Scheme::mono(ty.clone()));
         }
+        // The declared effect row instantiates each referenced effect for the
+        // body's `perform` sites (`!State<int>` pins `T` to `int`).
+        // Implements [EFFECTS-GENERIC-ROWS].
+        let typarams = self.fn_typarams.get(name).cloned().unwrap_or_default();
+        let scopes: Vec<_> = effects
+            .iter()
+            .filter_map(|r| self.effect_row_scope(r, &typarams))
+            .collect();
+        let pushed = scopes.len();
+        self.handler_scopes.extend(scopes);
+        self.current_fn_typarams = typarams;
         let body_ty = self.infer_expr(body, &local);
+        self.current_fn_typarams = HashMap::new();
+        self.handler_scopes
+            .truncate(self.handler_scopes.len().saturating_sub(pushed));
         self.unify_or_err(&ret, &body_ty, &format!("function `{name}` body"), pos);
         // Generalize the now-constrained signature so later call sites can use
         // the function polymorphically (HM let-generalization for top-level fns).
@@ -478,11 +681,7 @@ impl Checker {
 /// Type-check a program. Returns every type error found (empty ⇒ well-typed).
 #[must_use]
 pub fn check_program(program: &Program) -> Vec<TypeError> {
-    let mut checker = Checker::new();
-    let mut env = base_env();
-    checker.collect(program, &mut env);
-    checker.check(program, &mut env);
-    checker.errors
+    checked_program(program).errors
 }
 
 /// Run inference and publish the resolved signatures, constructor layouts and
@@ -492,10 +691,7 @@ pub fn check_program(program: &Program) -> Vec<TypeError> {
 #[must_use]
 pub fn infer_program(program: &Program) -> crate::info::ProgramTypes {
     use crate::info::{CtorLayout, ProgramTypes};
-    let mut checker = Checker::new();
-    let mut env = base_env();
-    checker.collect(program, &mut env);
-    checker.check(program, &mut env);
+    let mut checker = checked_program(program);
 
     let functions = checker
         .fn_sigs
@@ -513,11 +709,7 @@ pub fn infer_program(program: &Program) -> crate::info::ProgramTypes {
             // A declared type parameter resolves to a type variable — the
             // backend lowers a variable to its uniform boxed representation,
             // which is exactly the generic-payload rule.
-            let pmap: HashMap<String, Type> = info
-                .type_params
-                .iter()
-                .map(|p| (p.clone(), Type::Var(0)))
-                .collect();
+            let pmap = erased_type_params(&info.type_params);
             let fields = info
                 .fields
                 .iter()
@@ -535,18 +727,115 @@ pub fn infer_program(program: &Program) -> crate::info::ProgramTypes {
         })
         .collect();
     let unions = checker.union_variants.clone();
+    // The erased view of every effect: each declared type parameter resolves
+    // to a type variable, which the backend lowers to its uniform boxed
+    // representation — one operation ABI per program regardless of how many
+    // instantiations exist. Implements [EFFECTS-GENERIC-RUNTIME].
+    let effects = checker
+        .effects
+        .iter()
+        .map(|(name, info)| {
+            let pmap = erased_type_params(&info.type_params);
+            let ops = info
+                .ops
+                .iter()
+                .map(|(op_name, sig)| {
+                    let (params, ret) = parse_fn_sig(sig, &pmap);
+                    (op_name.clone(), crate::info::OpType { params, ret })
+                })
+                .collect();
+            (name.clone(), ops)
+        })
+        .collect();
     let lambda_tys = checker.lambda_tys.clone();
     let let_tys = checker.let_tys.clone();
     let lambdas = resolve_positioned(&mut checker.ctx, &lambda_tys);
     let lets = resolve_positioned(&mut checker.ctx, &let_tys);
+    let perform_tys = checker.perform_tys.clone();
+    let performs = dedupe_sites(perform_tys.iter().map(|(pos, op, args)| {
+        let site = crate::info::PerformSite {
+            op: resolve_op(&mut checker.ctx, op),
+            effect_args: args.iter().map(|t| checker.ctx.apply(t)).collect(),
+        };
+        ((pos.line, pos.column), site)
+    }));
+    let handler_tys = checker.handler_tys.clone();
+    let handler_ops = dedupe_sites(handler_tys.iter().map(|(pos, args, ops)| {
+        let site = crate::info::HandlerSite {
+            effect_args: args.iter().map(|t| checker.ctx.apply(t)).collect(),
+            ops: ops
+                .iter()
+                .map(|(n, op)| (n.clone(), resolve_op(&mut checker.ctx, op)))
+                .collect(),
+        };
+        ((pos.line, pos.column), site)
+    }));
     ProgramTypes {
         functions,
         ctors,
         unions,
-        effects: checker.effects.clone(),
+        effects,
         lambdas,
         lets,
+        performs,
+        handler_ops,
     }
+}
+
+/// Collect declarations and type-check a program before either caller consumes
+/// diagnostics or publishes inferred backend metadata.
+fn checked_program(program: &Program) -> Checker {
+    let mut checker = Checker::new();
+    let mut env = base_env();
+    checker.collect(program, &mut env);
+    checker.check(program, &mut env);
+    checker
+}
+
+/// The code generator's erased view assigns every declared generic parameter
+/// the uniform boxed type-variable representation.
+fn erased_type_params(type_params: &[String]) -> HashMap<String, Type> {
+    type_params
+        .iter()
+        .map(|parameter| (parameter.clone(), Type::Var(0)))
+        .collect()
+}
+
+/// Resolve one operation signature against the final substitution.
+fn resolve_op(ctx: &mut InferCtx, op: &crate::info::OpType) -> crate::info::OpType {
+    crate::info::OpType {
+        params: op.params.iter().map(|t| ctx.apply(t)).collect(),
+        ret: ctx.apply(&op.ret),
+    }
+}
+
+/// Collect position-keyed effect sites, DROPPING any key that appears with
+/// two different resolutions. String-interpolation fragments are re-parsed
+/// with fragment-relative positions, so two performs in different fragments
+/// can share a `(line, column)` key — publishing either one would hand
+/// codegen the wrong signature. Without an entry the backend degrades to the
+/// unmangled, fully-boxed path, which fails loudly (unhandled effect) rather
+/// than confusing types. Implements [EFFECTS-GENERIC-INSTANTIATION].
+fn dedupe_sites<S: PartialEq>(
+    entries: impl Iterator<Item = ((u32, u32), S)>,
+) -> HashMap<(u32, u32), S> {
+    let mut out: HashMap<(u32, u32), S> = HashMap::new();
+    let mut conflicted: HashSet<(u32, u32)> = HashSet::new();
+    for (key, site) in entries {
+        if conflicted.contains(&key) {
+            continue;
+        }
+        match out.get(&key) {
+            Some(existing) if *existing != site => {
+                let _ = out.remove(&key);
+                let _ = conflicted.insert(key);
+            }
+            _ => {
+                let _ = out.insert(key, site);
+            }
+        }
+    }
+    out
 }
 
 /// Resolve a list of source-position-keyed types against the final
@@ -578,6 +867,51 @@ mod tests {
              }\n",
         );
         assert!(errs.iter().any(|e| e.message.contains("type mismatch")));
+    }
+
+    #[test]
+    fn declared_typaram_functions_generalize_regardless_of_binding_direction() {
+        // Regression lock for the builtin binder-id collision: builtin schemes
+        // quantify hand-written Var(0)/Var(1); when the fresh supply also
+        // handed out those ids, a var-var unification routed through them made
+        // `TypeEnv::free_vars` resolve THROUGH a builtin's binder, and
+        // `fn identity<T>(x) -> T = x` silently lost its polymorphism (the
+        // failure depended on which side of the unification held the typaram
+        // var). All three annotation spellings must stay polymorphic across
+        // two instantiations. See `builtins::RESERVED_SCHEME_VARS`.
+        ok("fn id1<T>(x: T) -> T = x\n\
+            print(\"${id1(5)} ${id1(\"hi\")}\")\n");
+        ok("fn id2<T>(x: T) = x\n\
+            print(\"${id2(5)} ${id2(\"hi\")}\")\n");
+        ok("fn id3<T>(x) -> T = x\n\
+            print(\"${id3(5)} ${id3(\"hi\")}\")\n");
+        // The HOF shape that first exposed it: a generic fn passed by name to
+        // an inferred HOF, applied at two different instantiations.
+        ok("fn identity<T>(x: T) -> T = x\n\
+            fn apply(f, x) = f(x)\n\
+            print(\"${apply(identity, 5)} ${apply(identity, \"hi\")}\")\n");
+    }
+
+    #[test]
+    fn resume_inside_an_arm_lambda_is_a_type_error() {
+        // A lambda body runs when called, not where it is written, so the
+        // arm's continuation is not live inside it ([EFFECTS-RESUME]).
+        let errs = check(
+            "effect E { op: fn() -> int }\n\
+             fn go() -> int !E = perform E.op()\n\
+             let r = handle E\n\
+                 op => {\n\
+                     let f = |x| => resume(x)\n\
+                     f(9)\n\
+                 }\n\
+             in go()\n",
+        );
+        assert!(
+            errs.iter().any(|e| e
+                .message
+                .contains("`resume` is only valid inside a handler arm")),
+            "expected the lambda-resume rejection, got: {errs:?}"
+        );
     }
 
     #[test]
@@ -624,6 +958,35 @@ mod tests {
             "let type published: {:?}",
             info.lets
         );
+    }
+
+    #[test]
+    fn conflicting_effect_site_keys_are_dropped() {
+        // Two sites sharing one (line, column) key with DIFFERENT resolutions
+        // (string-interpolation fragments re-parse at fragment-relative
+        // positions) must both be dropped; agreeing duplicates are kept.
+        // Implements [EFFECTS-GENERIC-INSTANTIATION].
+        use crate::info::PerformSite;
+        use crate::ty::Type;
+        let site = |t: Type| PerformSite {
+            op: crate::info::OpType {
+                params: Vec::new(),
+                ret: t.clone(),
+            },
+            effect_args: vec![t],
+        };
+        let entries = vec![
+            ((1, 0), site(Type::int())),
+            ((1, 0), site(Type::string())),
+            ((1, 0), site(Type::int())),
+            ((2, 4), site(Type::bool())),
+            ((3, 1), site(Type::unit())),
+            ((3, 1), site(Type::unit())),
+        ];
+        let out = super::dedupe_sites(entries.into_iter());
+        assert!(!out.contains_key(&(1, 0)), "conflicted key must be dropped");
+        assert!(out.contains_key(&(2, 4)));
+        assert!(out.contains_key(&(3, 1)), "agreeing duplicates are kept");
     }
 
     #[test]

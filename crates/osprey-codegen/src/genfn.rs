@@ -32,23 +32,40 @@ pub(crate) fn try_inline(
     // positional), then bind it as a value — or, when the argument is a bare
     // callee name, as a call alias so the parameter stays callable.
     let saved_aliases = cg.call_aliases.clone();
+    let saved_ptr_locals = cg.fn_ptr_locals.clone();
+    let saved_value_types = cg.fn_value_types.clone();
     cg.push_scope();
     let _ = cg.inlining.insert(name.to_string());
     let result = (|| {
         for (p, a) in pair_args(&params, args, named) {
-            if let Some(callee) = alias_target(cg, a) {
-                let _ = cg.call_aliases.insert(p.name.clone(), callee);
-            } else {
-                let v = gen_expr(cg, a)?;
-                cg.bind(p.name.clone(), v);
-            }
+            bind_inline_arg(cg, p, a)?;
         }
         gen_expr(cg, &body)
     })();
     let _ = cg.inlining.remove(name);
     cg.pop_scope();
     cg.call_aliases = saved_aliases;
+    cg.fn_ptr_locals = saved_ptr_locals;
+    cg.fn_value_types = saved_value_types;
     result.map(Some)
+}
+
+/// Bind one inlined-call argument to its parameter: a bare callee name becomes
+/// a call alias; anything else binds as a value. A function-valued argument (a
+/// lambda, a function-typed local, a call returning a function) also registers
+/// the parameter's signature, so the inlined body's `f(x)` dispatches through
+/// the closure cell instead of emitting a call to a symbol that does not exist.
+fn bind_inline_arg(cg: &mut Codegen, p: &Parameter, a: &Expr) -> Result<()> {
+    if let Some(callee) = alias_target(cg, a) {
+        let _ = cg.call_aliases.insert(p.name.clone(), callee);
+        return Ok(());
+    }
+    let v = gen_expr(cg, a)?;
+    if let Some(ty) = crate::lower::fn_result_type(cg, a) {
+        cg.bind_fn_local(&p.name, ty);
+    }
+    cg.bind(p.name.clone(), v);
+    Ok(())
 }
 
 /// Pair parameters with their argument expressions — named arguments matched by

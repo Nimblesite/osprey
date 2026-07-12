@@ -18,4 +18,5 @@ has high true
   81
 [PROD] prod path
 regions prod=10 silent=0
+race-free sum 30
 === done ===

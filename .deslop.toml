@@ -6,17 +6,33 @@
 # Rust/C#/Python/Dart, so this gates the Rust workspace (the C runtime is out
 # of scope here).
 # Docs: https://deslop.live/docs/for-ai/
+# Wired into `make ci` via the `deslop` target ([CI-DESLOP]); CI fails when
+# measured duplication exceeds the ceiling below (deslop exits 3).
 [threshold]
-# Ratcheted DOWN to 6.5% (2026-06-30) per project directive. Was 9.5%; measured
-# duplication is driven below this ceiling by deduping real code clones and
-# scoping the gate to hand-written product code (see `exclude` below). Ratchet
-# DOWN only as duplication is removed — worst real-code offenders are codegen's
-# pattern.rs/effects.rs and the per-file type-checker test harnesses.
-max_duplication_percent = 6.5
+# Ceiling = 6.1% (2026-07-12). Measured product-code duplication is ~6.10%
+# after a round of genuine dedup: the three AST expression visitors
+# (osprey-codegen `freevars`/`effects`, osprey-lsp `analysis`) now share one
+# `osprey_ast::walk_each` collection-walker instead of each carrying its own
+# `walk_all`/`walk_named`/`walk_fields` trio; `wire.rs`'s request-field
+# accessors share a `nested` two-level lookup; and `default/lower.rs` folds its
+# "collect children of a kind, lower each" sites into one `map_of_kind`. 8.0%
+# remains the AUTHORISED HARD CAP — never raise above it; this ceiling sits well
+# below that and ratchets DOWN only as duplication is removed. Worst remaining
+# offenders are the `builtin_docs_*` documentation TABLES (repeated data rows,
+# not logic — see the [category=data] note deslop prints) and structural-only
+# CST-walk shapes that don't factor without obscuring intent.
+max_duplication_percent = 6.1
 
 [defaults]
 exclude = [
+  # Test code, in every layout the repo uses. The gate scopes to hand-written
+  # PRODUCT code; test suites intentionally repeat setup/fixture scaffolding
+  # (that repetition is what keeps each test independently readable), so
+  # deduping them trades clarity for a metric. Covers Rust `tests/`, the VS Code
+  # extension's `test/suite/` (DAP harness + e2e), and any `*.test.ts`.
   "**/tests/**",
+  "**/test/**",
+  "**/*.test.ts",
   # Vendored, generated tree-sitter grammar bindings — not hand-written.
   "tree-sitter-osprey/**",
   # Cross-language benchmark baselines: each case is a standalone single-file
@@ -24,4 +40,10 @@ exclude = [
   # to factor into), so the identical scaffolding across cases is intrinsic to
   # the benchmark design, not a refactorable product-code clone.
   "benchmarks/**",
+  # One-off website build/generation tooling (e.g. add-ml-twins.py, which emits
+  # the ML twin of each Default snippet for the docs). Same category as the
+  # benchmark baselines above: standalone generator scripts, not the shipped
+  # compiler product code the gate exists to guard. Their per-case scaffolding
+  # is intrinsic to a code generator, not a refactorable product clone.
+  "website/scripts/**",
 ]

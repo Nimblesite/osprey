@@ -27,6 +27,7 @@ mod pattern;
 mod testutil;
 mod ty;
 mod unify;
+mod variance;
 
 pub use builtin_docs::{
     builtin_doc_view, builtin_hover_markdown, builtin_names, BuiltinDocView, BuiltinParam,
@@ -34,7 +35,7 @@ pub use builtin_docs::{
 pub use builtins::builtin_signature;
 pub use check::{check_program, infer_program};
 pub use error::TypeError;
-pub use info::{CtorLayout, OpType, ProgramTypes};
+pub use info::{CtorLayout, HandlerSite, OpType, PerformSite, ProgramTypes};
 pub use ty::{has_type_var, names, Scheme, Type, VarId};
 
 #[cfg(test)]

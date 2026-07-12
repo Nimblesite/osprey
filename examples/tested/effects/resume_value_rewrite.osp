@@ -29,3 +29,48 @@ let result = handle Supply
     }
 in total()
 print("result=" + toString(result))
+
+// A generic effect's instantiation flows through resume too: Relay<string>'s
+// erased operation result unboxes back to a string at the perform site.
+// Implements [EFFECTS-GENERIC-INSTANTIATION]
+effect Relay<T> {
+    ask: fn() -> T
+}
+
+fn echoWord() -> string !Relay<string> = perform Relay.ask()
+
+let word = handle Relay
+    ask => {
+        let answer = resume("carried")
+        print("relay answered: " + answer)
+        answer
+    }
+in echoWord()
+print("word=" + word)
+
+// A Result-typed operation resumes with the WHOLE Result value: the
+// op-result slot is Result-instantiated, so `resume` does not auto-unwrap it.
+effect Checked {
+    half: fn(int) -> Result<int, string>
+}
+
+fn runChecked() -> int !Checked = {
+    let r = perform Checked.half(10)
+    match r {
+        Success { value } => value
+        Error { message } => 0
+    }
+}
+
+let checked = handle Checked
+    half n => resume(Success { value: n })
+in runChecked()
+
+// The SAME generic effect at a second instantiation — Relay<int> alongside
+// the Relay<string> above, both with resuming arms.
+fn echoNum() -> int !Relay<int> = perform Relay.ask()
+
+let num = handle Relay
+    ask => resume(41)
+in echoNum()
+print("checked=" + toString(checked) + " num=" + toString(num))

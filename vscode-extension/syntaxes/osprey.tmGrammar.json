@@ -41,6 +41,11 @@
     "comments": {
       "patterns": [
         {
+          "comment": "/// documentation comment — matched before // so it is not swallowed by the plain line comment",
+          "name": "comment.line.documentation.osprey",
+          "match": "///.*$"
+        },
+        {
           "name": "comment.line.double-slash.osprey",
           "match": "//.*$"
         }

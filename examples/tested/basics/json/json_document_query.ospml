@@ -1,0 +1,52 @@
+// JSON's six primitive value kinds form a recursive tagged union. Objects map
+// names to JsonValue and arrays contain JsonValue, so traversal narrows every
+// node with `match` before descending to the next level.
+
+type JsonValue =
+    JsonNull
+    JsonBoolean
+        value : bool
+    JsonNumber
+        value : int
+    JsonString
+        value : string
+    JsonArray
+        values : List JsonValue
+    JsonObject
+        fields : Map string JsonValue
+
+describe : JsonValue -> string
+describe value =
+    match value
+        JsonNull => "null"
+        JsonBoolean value => "boolean"
+        JsonNumber value => "number"
+        JsonString value => "string"
+        JsonArray values => "array"
+        JsonObject fields => "object"
+
+// This is a recursive JSON walk: match the object/array container, then pass
+// each nested JsonValue to the same matcher. The document below has one root
+// field, making the path and its output deterministic.
+reportDeepString : JsonValue -> Unit
+reportDeepString value =
+    match value
+        JsonObject fields => forEachList (mapValues fields) reportDeepString
+        JsonArray values => forEachList values reportDeepString
+        JsonString value => print "deeply nested string = ${value}"
+        JsonNull => print "unexpected null"
+        JsonBoolean value => print "unexpected boolean"
+        JsonNumber value => print "unexpected number"
+
+deepestValue = JsonString(value = "devon@osprey.dev")
+innerArray = JsonArray(values = List() |> listAppend deepestValue)
+outerArray = JsonArray(values = List() |> listAppend innerArray)
+document = JsonObject(fields = Map() |> mapSet "workspace" outerArray)
+
+print "=== JSON value union ==="
+match document
+    JsonObject fields => print "root is ${describe document} with ${toString (mapLength fields)} field"
+    _ => print "root is not an object"
+reportDeepString document
+print "types: ${describe JsonNull}, ${describe (JsonBoolean(value = true))}, ${describe (JsonNumber(value = 17))}, ${describe deepestValue}, ${describe outerArray}, ${describe document}"
+print "=== JSON value union complete ==="

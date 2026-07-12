@@ -56,6 +56,10 @@ module.exports = grammar({
     [$.map_entry, $.field_assignment],
     // `{ expr }` — trailing block value vs a lone expression-statement in a block.
     [$.expression_statement, $.block],
+    // `if cond { ID }` — the brace opens the `if` consequence (a bare identifier
+    // expression), NOT a structural-ternary field-pattern on the condition; the
+    // `}` with no trailing `?` rules the field-pattern out, GLR resolves it.
+    [$.primary_expression, $.field_pattern],
     // `await ( x )` — the await_call form vs unary `await` over a parenthesized expr.
     [$.primary_expression, $.await_call],
     // `Name [` / `Name <` — array/generic type vs a bare type identifier.
@@ -102,6 +106,9 @@ module.exports = grammar({
         optional($.doc_comment),
         'fn',
         field('name', $.identifier),
+        // `fn map<T, U>(...)` — declared type parameters. Implements
+        // [TYPE-GENERICS-FN].
+        optional(seq('<', field('type_parameters', $.type_parameter_list), '>')),
         '(',
         optional(field('parameters', $.parameter_list)),
         ')',
@@ -143,7 +150,13 @@ module.exports = grammar({
         optional($.type_validation),
       ),
 
-    type_parameter_list: ($) => sep1(',', $.identifier),
+    // A type parameter optionally carries declaration-site variance:
+    // `out T` (covariant) / `in T` (contravariant). `out`/`in` are contextual
+    // keywords reserved only inside `<...>` parameter lists. Implements
+    // [TYPE-VARIANCE-DECL].
+    type_parameter_list: ($) => sep1(',', $.type_parameter),
+    type_parameter: ($) =>
+      seq(optional(field('variance', choice('in', 'out'))), field('name', $.identifier)),
 
     union_type: ($) => prec.right(sep1('|', $.variant)),
     variant: ($) =>
@@ -163,11 +176,14 @@ module.exports = grammar({
     type_validation: ($) => seq('where', $.identifier),
 
     // ---------- EFFECTS ----------
+    // `effect State<T> { ... }` — effects accept type parameters (with
+    // variance) for full polymorphism. Implements [EFFECTS-GENERIC-DECL].
     effect_declaration: ($) =>
       seq(
         optional($.doc_comment),
         'effect',
         field('name', $.identifier),
+        optional(seq('<', field('type_parameters', $.type_parameter_list), '>')),
         '{',
         repeat($.operation_declaration),
         '}',
@@ -175,12 +191,15 @@ module.exports = grammar({
     operation_declaration: ($) =>
       seq(field('name', $.identifier), ':', field('type', $._type)),
 
+    // Effect rows reference effects optionally applied to type arguments:
+    // `!State<int>`, `![State<int>, Log]`. Implements [EFFECTS-GENERIC-ROWS].
     effect_set: ($) =>
       choice(
-        seq('!', $.identifier),
+        seq('!', $.effect_ref),
         seq('!', '[', $.effect_list, ']'),
       ),
-    effect_list: ($) => sep1(',', $.identifier),
+    effect_list: ($) => sep1(',', $.effect_ref),
+    effect_ref: ($) => seq(field('name', $.identifier), optional($.type_arguments)),
 
     // ---------- TYPES ----------
     _type: ($) =>
@@ -208,6 +227,7 @@ module.exports = grammar({
     expression: ($) =>
       choice(
         $.match_expression,
+        $.if_expression,
         $.handler_expression,
         $.select_expression,
         $.ternary_expression,
@@ -222,6 +242,33 @@ module.exports = grammar({
       prec.dynamic(2, seq('match', field('value', $.expression), '{', repeat($.match_arm), '}')),
 
     match_arm: ($) => seq(field('pattern', $.pattern), '=>', field('body', $.expression)),
+
+    // Populist Default-flavor conditional [GRAMMAR-IF-ELSE]
+    // (Kotlin/Swift/Rust shape). Osprey is
+    // expression-oriented, so `if` yields a value and the `else` branch is
+    // required; each branch is a single expression wrapped in braces. `else if`
+    // chains nest into `alternative`. Lowers to the same boolean `match` the
+    // ternary desugars to — no new AST node, no type/codegen changes
+    // ([FLAVOR-BOUNDARY]). The ML flavor keeps its layout `match`; this
+    // spelling is Default-only. The braces here are literal delimiters of the
+    // `if`, distinct from a `block` expression, which sidesteps the structural
+    // ternary's `cond { field } ? …` form.
+    if_expression: ($) =>
+      prec.right(
+        PREC.ternary,
+        seq(
+          'if',
+          field('condition', $.expression),
+          '{',
+          field('consequence', $.expression),
+          '}',
+          'else',
+          choice(
+            seq('{', field('alternative', $.expression), '}'),
+            field('alternative', $.if_expression),
+          ),
+        ),
+      ),
 
     handler_expression: ($) =>
       prec.right(seq('handle', field('effect', $.identifier), repeat1($.handler_arm), 'in', field('body', $.expression))),

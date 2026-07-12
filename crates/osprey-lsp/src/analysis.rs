@@ -6,8 +6,8 @@
 //! `osprey --hover` CLI modes render from here.
 
 use osprey_ast::{
-    Expr, ExternParameter, FieldAssignment, InterpolatedPart, MatchArm, NamedArgument, Parameter,
-    Position, Program, Stmt, TypeExpr,
+    walk_each, Expr, ExternParameter, InterpolatedPart, Parameter, Position, Program, Stmt,
+    TypeExpr,
 };
 use std::fmt::Write as _;
 
@@ -52,8 +52,8 @@ pub struct SymbolInfo {
     pub parameters: Vec<(String, String)>,
     /// Rendered return type for functions.
     pub return_type: Option<String>,
-    /// Leading `///` documentation, when the declaration carries one.
-    /// Implements [LSP-HOVER-DOCS]
+    /// The declaration's documentation rendered to hover Markdown, when it
+    /// carries a doc comment (either flavor). Implements [LSP-HOVER-DOCS].
     pub doc: Option<String>,
 }
 
@@ -112,12 +112,12 @@ fn walk_expr(e: &Expr, out: &mut Vec<SymbolInfo>) {
                 walk_expr(x, out);
             }
         }),
-        Expr::List(xs) => walk_each(xs, out),
+        Expr::List(xs) => walk_each(xs, out, |x| x, walk_expr),
         Expr::Map(entries) => entries.iter().for_each(|en| {
             walk_expr(&en.key, out);
             walk_expr(&en.value, out);
         }),
-        Expr::Object(fields) => walk_fields(fields, out),
+        Expr::Object(fields) => walk_each(fields, out, |f| &f.value, walk_expr),
         Expr::Binary { left, right, .. } | Expr::Pipe { left, right } => {
             walk_expr(left, out);
             walk_expr(right, out);
@@ -136,8 +136,8 @@ fn walk_expr_rest(e: &Expr, out: &mut Vec<SymbolInfo>) {
             named_arguments,
         } => {
             walk_expr(function, out);
-            walk_each(arguments, out);
-            walk_named(named_arguments, out);
+            walk_each(arguments, out, |x| x, walk_expr);
+            walk_each(named_arguments, out, |n| &n.value, walk_expr);
         }
         Expr::MethodCall {
             target,
@@ -146,8 +146,8 @@ fn walk_expr_rest(e: &Expr, out: &mut Vec<SymbolInfo>) {
             ..
         } => {
             walk_expr(target, out);
-            walk_each(arguments, out);
-            walk_named(named_arguments, out);
+            walk_each(arguments, out, |x| x, walk_expr);
+            walk_each(named_arguments, out, |n| &n.value, walk_expr);
         }
         Expr::FieldAccess { target, .. } => walk_expr(target, out),
         Expr::Index { target, index } => {
@@ -157,7 +157,7 @@ fn walk_expr_rest(e: &Expr, out: &mut Vec<SymbolInfo>) {
         Expr::Lambda { body, .. } => walk_expr(body, out),
         Expr::Match { value, arms } => {
             walk_expr(value, out);
-            walk_arms(arms, out);
+            walk_each(arms, out, |arm| &arm.body, walk_expr);
         }
         Expr::Block { statements, value } => {
             walk_stmts(statements, out);
@@ -166,7 +166,7 @@ fn walk_expr_rest(e: &Expr, out: &mut Vec<SymbolInfo>) {
             }
         }
         Expr::TypeConstructor { fields, .. } | Expr::Update { fields, .. } => {
-            walk_fields(fields, out);
+            walk_each(fields, out, |f| &f.value, walk_expr);
         }
         other => walk_expr_fiber(other, out),
     }
@@ -180,14 +180,14 @@ fn walk_expr_fiber(e: &Expr, out: &mut Vec<SymbolInfo>) {
             walk_expr(channel, out);
             walk_expr(value, out);
         }
-        Expr::Select { arms } => walk_arms(arms, out),
+        Expr::Select { arms } => walk_each(arms, out, |arm| &arm.body, walk_expr),
         Expr::Perform {
             arguments,
             named_arguments,
             ..
         } => {
-            walk_each(arguments, out);
-            walk_named(named_arguments, out);
+            walk_each(arguments, out, |x| x, walk_expr);
+            walk_each(named_arguments, out, |n| &n.value, walk_expr);
         }
         Expr::Handler { arms, body, .. } => {
             for arm in arms {
@@ -199,56 +199,45 @@ fn walk_expr_fiber(e: &Expr, out: &mut Vec<SymbolInfo>) {
     }
 }
 
-fn walk_each(xs: &[Expr], out: &mut Vec<SymbolInfo>) {
-    for x in xs {
-        walk_expr(x, out);
-    }
-}
-
-fn walk_named(named: &[NamedArgument], out: &mut Vec<SymbolInfo>) {
-    for n in named {
-        walk_expr(&n.value, out);
-    }
-}
-
-fn walk_fields(fields: &[FieldAssignment], out: &mut Vec<SymbolInfo>) {
-    for f in fields {
-        walk_expr(&f.value, out);
-    }
-}
-
-fn walk_arms(arms: &[MatchArm], out: &mut Vec<SymbolInfo>) {
-    for arm in arms {
-        walk_expr(&arm.body, out);
-    }
-}
-
 fn sym_of(stmt: &Stmt) -> Option<SymbolInfo> {
     match stmt {
         Stmt::Function {
             name,
+            type_params,
             parameters,
             return_type,
             doc,
             position,
             ..
-        } => Some(fn_sym(
-            name,
-            param_pairs(parameters),
-            return_type.as_ref(),
-            doc.clone(),
-            *position,
-        )),
+        } => {
+            let mut sym = fn_sym(
+                name,
+                param_pairs(parameters),
+                return_type.as_ref(),
+                render_doc(doc.as_ref()),
+                *position,
+            );
+            let binder = render_type_params(type_params);
+            if !binder.is_empty() {
+                let with_binder =
+                    sym.ty
+                        .replacen(&format!("fn {name}("), &format!("fn {name}{binder}("), 1);
+                sym.ty.clone_from(&with_binder);
+                sym.signature = Some(with_binder);
+            }
+            Some(sym)
+        }
         Stmt::Extern {
             name,
             parameters,
             return_type,
+            doc,
             position,
         } => Some(fn_sym(
             name,
             extern_pairs(parameters),
             return_type.as_ref(),
-            None,
+            render_doc(doc.as_ref()),
             *position,
         )),
         Stmt::Let {
@@ -257,11 +246,82 @@ fn sym_of(stmt: &Stmt) -> Option<SymbolInfo> {
             doc,
             position,
             ..
-        } => Some(let_sym(name, ty.as_ref(), doc.clone(), *position)),
-        Stmt::Type { name, position, .. } => Some(decl_sym(name, "type", *position)),
-        Stmt::Effect { name, position, .. } => Some(decl_sym(name, "effect", *position)),
+        } => Some(let_sym(
+            name,
+            ty.as_ref(),
+            render_doc(doc.as_ref()),
+            *position,
+        )),
+        Stmt::Type {
+            name,
+            type_params,
+            doc,
+            position,
+            ..
+        } => Some(generic_decl_sym(
+            name,
+            type_params,
+            "type",
+            render_doc(doc.as_ref()),
+            *position,
+        )),
+        Stmt::Effect {
+            name,
+            type_params,
+            doc,
+            position,
+            ..
+        } => Some(generic_decl_sym(
+            name,
+            type_params,
+            "effect",
+            render_doc(doc.as_ref()),
+            *position,
+        )),
         _ => None,
     }
+}
+
+/// Render a declaration's structured doc comment to the Markdown a hover shows,
+/// or `None` when it has none ([DOC-EXPORT], hover half).
+fn render_doc(doc: Option<&osprey_ast::DocComment>) -> Option<String> {
+    doc.map(osprey_ast::DocComment::render_markdown)
+}
+
+/// A type/effect declaration symbol whose signature shows the binder
+/// (`type Option<T>`, `effect State<T>`) while the name stays bare for
+/// lookups. Implements [TYPE-GENERICS-DECL].
+fn generic_decl_sym(
+    name: &str,
+    type_params: &[osprey_ast::TypeParam],
+    kind: &str,
+    doc: Option<String>,
+    position: Option<Position>,
+) -> SymbolInfo {
+    let mut sym = decl_sym(name, kind, position);
+    sym.doc = doc;
+    let binder = render_type_params(type_params);
+    if !binder.is_empty() {
+        sym.signature = Some(format!("{kind} {name}{binder}"));
+    }
+    sym
+}
+
+/// Render a declaration's type-parameter binder (`<T, out U>`), empty when it
+/// has none. Implements [TYPE-GENERICS-DECL].
+fn render_type_params(params: &[osprey_ast::TypeParam]) -> String {
+    if params.is_empty() {
+        return String::new();
+    }
+    let shown: Vec<String> = params
+        .iter()
+        .map(|p| match p.variance {
+            osprey_ast::Variance::Covariant => format!("out {}", p.name),
+            osprey_ast::Variance::Contravariant => format!("in {}", p.name),
+            osprey_ast::Variance::Invariant => p.name.clone(),
+        })
+        .collect();
+    format!("<{}>", shown.join(", "))
 }
 
 fn fn_sym(
@@ -469,6 +529,79 @@ mod tests {
         }
     }
 
+    /// The rendered hover markdown for `name` in `src`, via the real symbol
+    /// path (`collect_all_symbols` → `doc`).
+    fn doc_for(src: &str, name: &str) -> Option<String> {
+        let parsed = osprey_syntax::parse_program(src);
+        assert!(parsed.errors.is_empty(), "{:?}", parsed.errors);
+        collect_all_symbols(&parsed.program)
+            .into_iter()
+            .find(|s| s.name == name)
+            .and_then(|s| s.doc)
+    }
+
+    #[test]
+    fn doc_comments_reach_hover_for_every_declaration_kind() {
+        // Default flavor: fn, type, effect each carry their /// doc into hover.
+        let src = "/// Doubles the input.\n\
+                   fn double(x) = x * 2\n\
+                   /// A performance tier.\n\
+                   type Tier = Epic | Solid\n\
+                   /// Emits a line.\n\
+                   effect Console { emit: fn(string) -> Unit }\n";
+        assert!(doc_for(src, "double").is_some_and(|d| d.contains("Doubles the input.")));
+        assert!(doc_for(src, "Tier").is_some_and(|d| d.contains("A performance tier.")));
+        assert!(doc_for(src, "Console").is_some_and(|d| d.contains("Emits a line.")));
+    }
+
+    #[test]
+    fn structured_sections_render_in_hover() {
+        let src = "/// Divides two numbers.\n\
+                   ///\n\
+                   /// # Parameters\n\
+                   /// - a: the numerator\n\
+                   ///\n\
+                   /// # Returns\n\
+                   /// the quotient\n\
+                   fn div(a, b) = intDiv(a, b)\n";
+        let d = doc_for(src, "div").expect("div doc");
+        assert!(d.contains("Divides two numbers."), "{d}");
+        assert!(d.contains("**Parameters**") && d.contains("`a`"), "{d}");
+        assert!(
+            d.contains("**Returns**") && d.contains("the quotient"),
+            "{d}"
+        );
+    }
+
+    #[test]
+    fn ml_flavor_doc_comments_reach_hover() {
+        // The ML (** … *) doc form lowers to the same DocComment and renders
+        // identically ([DOC-SIGIL-ML]).
+        let src = "(** Doubles the input. *)\n\
+                   double x = x * 2\n\
+                   (** A performance tier. *)\n\
+                   type Tier =\n    Epic\n    Solid\n";
+        let parsed = osprey_syntax::parse_program_with_flavor(src, osprey_syntax::Flavor::Ml);
+        assert!(parsed.errors.is_empty(), "{:?}", parsed.errors);
+        let syms = collect_all_symbols(&parsed.program);
+        let doc = syms
+            .iter()
+            .find(|s| s.name == "double")
+            .and_then(|s| s.doc.clone());
+        assert!(
+            doc.is_some_and(|d| d.contains("Doubles the input.")),
+            "ml fn doc"
+        );
+        let tdoc = syms
+            .iter()
+            .find(|s| s.name == "Tier")
+            .and_then(|s| s.doc.clone());
+        assert!(
+            tdoc.is_some_and(|d| d.contains("A performance tier.")),
+            "ml type doc"
+        );
+    }
+
     #[test]
     fn hover_renders_builtin_signature_and_rejects_unknowns() {
         let md = builtin_hover("print");
@@ -549,7 +682,9 @@ mod tests {
         reason = "exhaustive fixture: one arm per AST container variant is the point"
     )]
     fn every_container_with_a_nested_let() -> Vec<osprey_ast::Expr> {
-        use osprey_ast::{Expr, FieldAssignment, HandlerArm, MapEntry, NamedArgument, Pattern};
+        use osprey_ast::{
+            Expr, FieldAssignment, HandlerArm, MapEntry, MatchArm, NamedArgument, Pattern,
+        };
         let blk = |name: &str| Expr::Block {
             statements: vec![Stmt::Let {
                 name: name.into(),
@@ -649,6 +784,7 @@ mod tests {
                 operation: "op".into(),
                 arguments: vec![blk("perform")],
                 named_arguments: vec![narg("performnamed")],
+                position: None,
             },
             Expr::Handler {
                 effect: "E".into(),
@@ -658,6 +794,7 @@ mod tests {
                     body: blk("handlerarm"),
                 }],
                 body: b("handlerbody"),
+                position: None,
             },
         ]
     }
