@@ -21,6 +21,7 @@ import {
   TransportKind,
 } from "vscode-languageclient/node";
 import { registerOspreyDebugPanel } from "./debug-panel";
+import { registerProfilerCommands } from "./profiler/profile-run";
 import { registerOspreyTestExplorer } from "./test-explorer";
 
 // @nimblesite/shipwright-vscode is ESM-only; this extension is CommonJS, so it
@@ -360,6 +361,11 @@ export function activate(context: ExtensionContext) {
   // server-enabled gate: test discovery/running only needs the compiler CLI, so
   // it must keep working even with the LSP disabled.
   registerOspreyTestExplorer(context, () => resolveServerCommand(context));
+
+  // CPU profiler ([PROF-VSCODE-FLAME]): the Profile Current File command, the
+  // interactive flame-graph webview, and inline heat decorations. Also
+  // registered before the server gate — it only needs the compiler CLI.
+  registerProfilerCommands(context, () => resolveServerCommand(context));
 
   // Check if Osprey server is enabled
   const config = workspace.getConfiguration("osprey");

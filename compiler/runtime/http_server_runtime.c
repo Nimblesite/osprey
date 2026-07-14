@@ -1,287 +1,19 @@
-#include "http_shared.h"
-#include <ctype.h>
-#include <limits.h>
+#include "http_server_internal.h"
 
-extern int64_t fiber_spawn(int64_t (*fn)(void));
+extern int64_t fiber_await(int64_t fiber_id);
+extern int64_t fiber_spawn_env(int64_t (*fn)(void *), void *environment);
 
 static const char *simple_response_body = "Hello, World!";
 
-#define MAX_HTTP_REQUEST_BYTES (1024U * 1024U)
-#define MAX_HTTP_HEADER_BYTES (32U * 1024U)
-
-typedef enum {
-  REQUEST_COMPLETE,
-  REQUEST_INCOMPLETE,
-  REQUEST_MALFORMED,
-  REQUEST_TOO_LARGE,
-  REQUEST_READ_FAILED
-} RequestReadStatus;
-
-typedef struct {
-  char *data;
-  char method[16];
-  char path[256];
-  char *headers;
-  char *body;
-  size_t received_bytes;
-  size_t header_bytes;
-  size_t expected_body_bytes;
-} HttpRequestBuffer;
-
-// `send` is allowed to write fewer bytes than requested (and can be interrupted
-// after writing none). HTTP Content-Length promises the whole payload, so every
-// response write must drain the buffer before the connection is closed.
-static bool socket_was_interrupted(void) {
 #ifdef _WIN32
-  return WSAGetLastError() == WSAEINTR;
+#define HTTP_SHUTDOWN_BOTH SD_BOTH
 #else
-  return errno == EINTR;
+#define HTTP_SHUTDOWN_BOTH SHUT_RDWR
 #endif
-}
 
-static int send_some(int socket_fd, const char *data, size_t length) {
-  int chunk = length > (size_t)INT_MAX ? INT_MAX : (int)length;
-  int written = send(socket_fd, data, chunk, 0);
-  if (written > 0) {
-    return written;
-  }
-  return written < 0 && socket_was_interrupted() ? 0 : -1;
-}
+#define HTTP_ACCEPT_POLL_MS 100U
 
-static int send_all(int socket_fd, const char *data, size_t length) {
-  size_t offset = 0;
-  while (offset < length) {
-    int written = send_some(socket_fd, data + offset, length - offset);
-    if (written < 0) {
-      return -1;
-    }
-    offset += (size_t)written;
-  }
-  return 0;
-}
-
-static bool header_name_is(const char *text, size_t length,
-                           const char *expected) {
-  if (length != strlen(expected)) {
-    return false;
-  }
-  for (size_t i = 0; i < length; i++) {
-    if (tolower((unsigned char)text[i]) !=
-        tolower((unsigned char)expected[i])) {
-      return false;
-    }
-  }
-  return true;
-}
-
-static RequestReadStatus parse_decimal(const char *start, const char *end,
-                                       size_t *result) {
-  while (start < end && (*start == ' ' || *start == '\t')) {
-    start++;
-  }
-  if (start == end || !isdigit((unsigned char)*start)) {
-    return REQUEST_MALFORMED;
-  }
-  size_t value = 0;
-  while (start < end && isdigit((unsigned char)*start)) {
-    size_t digit = (size_t)(*start++ - '0');
-    if (value > (MAX_HTTP_REQUEST_BYTES - digit) / 10U) {
-      return REQUEST_TOO_LARGE;
-    }
-    value = value * 10U + digit;
-  }
-  while (start < end && (*start == ' ' || *start == '\t')) {
-    start++;
-  }
-  if (start != end) {
-    return REQUEST_MALFORMED;
-  }
-  *result = value;
-  return REQUEST_COMPLETE;
-}
-
-static RequestReadStatus record_content_length(const char *value,
-                                               const char *end, bool *found,
-                                               size_t *length) {
-  size_t candidate = 0;
-  RequestReadStatus status = parse_decimal(value, end, &candidate);
-  if (status != REQUEST_COMPLETE) {
-    return status;
-  }
-  if (*found && candidate != *length) {
-    return REQUEST_MALFORMED;
-  }
-  *found = true;
-  *length = candidate;
-  return REQUEST_COMPLETE;
-}
-
-static RequestReadStatus parse_content_length(const HttpRequestBuffer *request,
-                                              size_t *length) {
-  const char *header_end = request->data + request->header_bytes - 4U;
-  const char *line = strstr(request->data, "\r\n");
-  bool found = false;
-  *length = 0;
-  if (!line) {
-    return REQUEST_MALFORMED;
-  }
-  for (line += 2; line < header_end;) {
-    const char *line_end = strstr(line, "\r\n");
-    const char *colon = line_end ? memchr(line, ':', (size_t)(line_end - line)) : NULL;
-    if (!line_end || line_end > header_end || !colon) {
-      return REQUEST_MALFORMED;
-    }
-    if (header_name_is(line, (size_t)(colon - line), "Content-Length")) {
-      RequestReadStatus status =
-          record_content_length(colon + 1, line_end, &found, length);
-      if (status != REQUEST_COMPLETE) {
-        return status;
-      }
-    }
-    line = line_end + 2;
-  }
-  return REQUEST_COMPLETE;
-}
-
-static RequestReadStatus receive_chunk(int socket_fd,
-                                       HttpRequestBuffer *request) {
-  size_t remaining = MAX_HTTP_REQUEST_BYTES - request->received_bytes;
-  if (remaining == 0) {
-    return REQUEST_TOO_LARGE;
-  }
-  ssize_t received;
-  do {
-    received = recv(socket_fd, request->data + request->received_bytes,
-                    remaining, 0);
-  } while (received < 0 && socket_was_interrupted());
-  if (received < 0) {
-    return REQUEST_READ_FAILED;
-  }
-  if (received == 0) {
-    return REQUEST_INCOMPLETE;
-  }
-  request->received_bytes += (size_t)received;
-  request->data[request->received_bytes] = '\0';
-  return REQUEST_COMPLETE;
-}
-
-static RequestReadStatus inspect_headers(HttpRequestBuffer *request,
-                                         size_t *target_bytes) {
-  const char *end = strstr(request->data, "\r\n\r\n");
-  if (!end) {
-    return request->received_bytes >= MAX_HTTP_HEADER_BYTES ? REQUEST_TOO_LARGE
-                                                            : REQUEST_INCOMPLETE;
-  }
-  request->header_bytes = (size_t)(end - request->data) + 4U;
-  if (request->header_bytes > MAX_HTTP_HEADER_BYTES) {
-    return REQUEST_TOO_LARGE;
-  }
-  RequestReadStatus status =
-      parse_content_length(request, &request->expected_body_bytes);
-  if (status != REQUEST_COMPLETE) {
-    return status;
-  }
-  if (request->expected_body_bytes >
-      MAX_HTTP_REQUEST_BYTES - request->header_bytes) {
-    return REQUEST_TOO_LARGE;
-  }
-  *target_bytes = request->header_bytes + request->expected_body_bytes;
-  return REQUEST_COMPLETE;
-}
-
-static RequestReadStatus finish_request(HttpRequestBuffer *request,
-                                        size_t target_bytes) {
-  if (sscanf(request->data, "%15s %255s", request->method, request->path) != 2) {
-    return REQUEST_MALFORMED;
-  }
-  char *line_end = strstr(request->data, "\r\n");
-  if (!line_end) {
-    return REQUEST_MALFORMED;
-  }
-  char *headers_end = request->data + request->header_bytes - 4U;
-  request->data[target_bytes] = '\0';
-  *headers_end = '\0';
-  request->headers = line_end + 2 < headers_end ? line_end + 2 : headers_end;
-  request->body = request->data + request->header_bytes;
-  return REQUEST_COMPLETE;
-}
-
-static RequestReadStatus read_http_request(int socket_fd,
-                                           HttpRequestBuffer *request) {
-  memset(request, 0, sizeof(*request));
-  request->data = malloc(MAX_HTTP_REQUEST_BYTES + 1U);
-  if (!request->data) {
-    return REQUEST_READ_FAILED;
-  }
-  request->data[0] = '\0';
-  size_t target_bytes = 0;
-  while (true) {
-    RequestReadStatus status = receive_chunk(socket_fd, request);
-    if (status != REQUEST_COMPLETE) {
-      return status;
-    }
-    if (request->header_bytes == 0) {
-      status = inspect_headers(request, &target_bytes);
-      if (status != REQUEST_COMPLETE && status != REQUEST_INCOMPLETE) {
-        return status;
-      }
-    }
-    if (request->header_bytes > 0 && request->received_bytes >= target_bytes) {
-      return finish_request(request, target_bytes);
-    }
-  }
-}
-
-static const char *status_reason(int64_t status) {
-  switch (status) {
-  case 200:
-    return "OK";
-  case 201:
-    return "Created";
-  case 400:
-    return "Bad Request";
-  case 404:
-    return "Not Found";
-  case 405:
-    return "Method Not Allowed";
-  case 413:
-    return "Content Too Large";
-  case 422:
-    return "Unprocessable Content";
-  default:
-    return "Error";
-  }
-}
-
-static bool send_response(int client_fd, int64_t status, const char *headers,
-                          const char *body) {
-  char wire_headers[MAX_HTTP_BUFFER];
-  size_t body_bytes = strlen(body);
-  int header_bytes = snprintf(wire_headers, sizeof(wire_headers),
-                              "HTTP/1.1 %" PRId64 " %s\r\n%sContent-Length: "
-                              "%zu\r\nConnection: close\r\n\r\n",
-                              status, status_reason(status), headers, body_bytes);
-  if (header_bytes < 0 || (size_t)header_bytes >= sizeof(wire_headers)) {
-    return false;
-  }
-  return send_all(client_fd, wire_headers, (size_t)header_bytes) == 0 &&
-         send_all(client_fd, body, body_bytes) == 0;
-}
-
-static const char *read_status_name(RequestReadStatus status) {
-  switch (status) {
-  case REQUEST_INCOMPLETE:
-    return "incomplete";
-  case REQUEST_MALFORMED:
-    return "malformed";
-  case REQUEST_TOO_LARGE:
-    return "too_large";
-  case REQUEST_READ_FAILED:
-    return "io_error";
-  default:
-    return "complete";
-  }
-}
+typedef enum { LISTENER_IDLE, LISTENER_READY, LISTENER_FAILED } ListenerStatus;
 
 static void label_partial_request(HttpRequestBuffer *request) {
   if (request->data && request->received_bytes > 0) {
@@ -295,50 +27,35 @@ static void label_partial_request(HttpRequestBuffer *request) {
   }
 }
 
-static void log_exchange(const HttpRequestBuffer *request,
-                         RequestReadStatus read_status, int64_t status,
-                         size_t response_bytes, bool sent) {
-  size_t body_received = request->received_bytes > request->header_bytes
-                             ? request->received_bytes - request->header_bytes
-                             : 0;
-  fprintf(stderr,
-          "[http] method=%s path=%s request_bytes=%zu header_bytes=%zu "
-          "body_bytes=%zu expected_body_bytes=%zu status=%" PRId64
-          " response_body_bytes=%zu read=%s sent=%s\n",
-          request->method, request->path, request->received_bytes,
-          request->header_bytes, body_received, request->expected_body_bytes,
-          status, response_bytes, read_status_name(read_status),
-          sent ? "true" : "false");
-}
-
 static void reject_request(int client_fd, HttpRequestBuffer *request,
                            RequestReadStatus read_status) {
-  static const char *bad = "{\"error\":\"malformed HTTP request\"}";
-  static const char *large = "{\"error\":\"HTTP request too large\"}";
-  bool oversized = read_status == REQUEST_TOO_LARGE;
-  const char *body = oversized ? large : bad;
-  int64_t status = oversized ? 413 : 400;
   label_partial_request(request);
-  bool sent = send_response(client_fd, status,
-                            "Content-Type: application/json\r\n", body);
-  log_exchange(request, read_status, status, strlen(body), sent);
+  const char *body = http_rejection_body(read_status);
+  int64_t status = http_rejection_status(read_status);
+  bool sent = http_send_response(client_fd, status,
+                                 "Content-Type: application/json\r\n", body);
+  http_log_exchange(request, read_status, status, strlen(body), sent);
+}
+
+static struct HttpResponse *call_handler(HttpServer *server,
+                                         HttpRequestBuffer *request) {
+  return server->handler ? server->handler(request->method, request->path,
+                                           request->headers, request->body)
+                         : NULL;
 }
 
 static void serve_request(int client_fd, HttpServer *server,
                           HttpRequestBuffer *request) {
-  struct HttpResponse *response = server->handler
-                                      ? server->handler(request->method,
-                                                        request->path,
-                                                        request->headers,
-                                                        request->body)
-                                      : NULL;
-  int64_t status = response && response->partialBody ? response->status : 200;
-  const char *headers = response && response->headers ? response->headers :
-                                                       "Content-Type: text/plain\r\n";
-  const char *body = response && response->partialBody ? response->partialBody
-                                                       : simple_response_body;
-  bool sent = send_response(client_fd, status, headers, body);
-  log_exchange(request, REQUEST_COMPLETE, status, strlen(body), sent);
+  struct HttpResponse *response = call_handler(server, request);
+  bool has_response = response && response->partialBody;
+  int64_t status = has_response ? response->status : 200;
+  const char *headers = response && response->headers
+                            ? response->headers
+                            : "Content-Type: text/plain\r\n";
+  const char *body =
+      has_response ? response->partialBody : simple_response_body;
+  bool sent = http_send_response(client_fd, status, headers, body);
+  http_log_exchange(request, REQUEST_COMPLETE, status, strlen(body), sent);
 }
 
 static void process_client(int client_fd, HttpServer *server) {
@@ -352,148 +69,349 @@ static void process_client(int client_fd, HttpServer *server) {
   free(request.data);
 }
 
-static HttpServer *find_listening_server(void) {
-  HttpServer *server = NULL;
-  pthread_mutex_lock(&runtime_mutex);
-  for (int i = 1; i < MAX_SERVERS; i++) {
-    if (servers[i] && servers[i]->is_listening) {
-      server = servers[i];
+static bool server_is_listening(HttpServer *server) {
+  pthread_mutex_lock(&server->mutex);
+  bool listening = server->is_listening;
+  pthread_mutex_unlock(&server->mutex);
+  return listening;
+}
+
+static int server_socket(HttpServer *server) {
+  pthread_mutex_lock(&server->mutex);
+  int socket_fd = server->socket_fd;
+  pthread_mutex_unlock(&server->mutex);
+  return socket_fd;
+}
+
+static bool claim_client(HttpServer *server, int client_fd) {
+  pthread_mutex_lock(&server->mutex);
+  bool claimed = server->is_listening;
+  if (claimed) {
+    server->active_client_fd = client_fd;
+  }
+  pthread_mutex_unlock(&server->mutex);
+  return claimed;
+}
+
+static void release_client(HttpServer *server, int client_fd) {
+  pthread_mutex_lock(&server->mutex);
+  if (server->active_client_fd == client_fd) {
+    server->active_client_fd = -1;
+  }
+  pthread_mutex_unlock(&server->mutex);
+}
+
+static void destroy_server(HttpServer *server) {
+  free(server->address);
+  pthread_mutex_destroy(&server->mutex);
+  free(server);
+}
+
+static void close_server_listener(HttpServer *server);
+
+static void finish_server_loop(HttpServer *server) {
+  pthread_mutex_lock(&server->mutex);
+  server->loop_scheduled = false;
+  bool destroy = server->destroy_on_exit;
+  pthread_mutex_unlock(&server->mutex);
+  if (destroy) {
+    close_server_listener(server);
+    destroy_server(server);
+  }
+}
+
+static void record_server_thread(HttpServer *server) {
+  pthread_mutex_lock(&server->mutex);
+  server->server_thread = pthread_self();
+  server->thread_known = true;
+  pthread_mutex_unlock(&server->mutex);
+}
+
+static void handle_accepted_client(HttpServer *server, int client_fd) {
+  if (!http_configure_client_socket(client_fd)) {
+    close(client_fd);
+    return;
+  }
+  if (claim_client(server, client_fd)) {
+    process_client(client_fd, server);
+    release_client(server, client_fd);
+  }
+  close(client_fd);
+}
+
+static bool valid_listener_socket(int socket_fd) {
+#ifdef _WIN32
+  return socket_fd >= 0;
+#else
+  return socket_fd >= 0 && socket_fd < FD_SETSIZE;
+#endif
+}
+
+static int select_listener(int socket_fd, fd_set *read_set,
+                           struct timeval *timeout) {
+#ifdef _WIN32
+  (void)socket_fd;
+  return select(0, read_set, NULL, NULL, timeout);
+#else
+  return select(socket_fd + 1, read_set, NULL, NULL, timeout);
+#endif
+}
+
+static ListenerStatus listener_status(HttpServer *server) {
+  int socket_fd = server_socket(server);
+  if (!valid_listener_socket(socket_fd)) {
+    return LISTENER_FAILED;
+  }
+  fd_set read_set;
+  FD_ZERO(&read_set);
+  FD_SET(socket_fd, &read_set);
+  struct timeval timeout = {0, HTTP_ACCEPT_POLL_MS * 1000U};
+  int ready = select_listener(socket_fd, &read_set, &timeout);
+  if (ready > 0) {
+    return LISTENER_READY;
+  }
+  return ready == 0 || http_socket_interrupted() ? LISTENER_IDLE
+                                                 : LISTENER_FAILED;
+}
+
+static bool accept_ready_client(HttpServer *server) {
+  struct sockaddr_in address;
+  socklen_t length = sizeof(address);
+  int client_fd =
+      accept(server_socket(server), (struct sockaddr *)&address, &length);
+  if (client_fd >= 0) {
+    handle_accepted_client(server, client_fd);
+    return true;
+  }
+  return http_socket_interrupted() || !server_is_listening(server);
+}
+
+static int64_t server_loop_fiber(void *environment) {
+  HttpServer *server = environment;
+  record_server_thread(server);
+  while (server_is_listening(server)) {
+    ListenerStatus status = listener_status(server);
+    if (status == LISTENER_FAILED ||
+        (status == LISTENER_READY && !accept_ready_client(server))) {
       break;
     }
   }
+  finish_server_loop(server);
+  return 0;
+}
+
+static bool valid_server_id(int64_t server_id) {
+  return server_id > 0 && server_id < MAX_SERVERS;
+}
+
+static HttpServer *unregister_server(int64_t server_id) {
+  if (!valid_server_id(server_id)) {
+    return NULL;
+  }
+  pthread_mutex_lock(&runtime_mutex);
+  HttpServer *server = servers[server_id];
+  servers[server_id] = NULL;
   pthread_mutex_unlock(&runtime_mutex);
   return server;
 }
 
-static int64_t server_loop_fiber(void) {
-  HttpServer *server = find_listening_server();
+static HttpServer *allocate_server(int64_t id, int port, const char *address) {
+  HttpServer *server = calloc(1, sizeof(*server));
   if (!server) {
-    return -1;
+    return NULL;
   }
-  while (server->is_listening) {
-    struct sockaddr_in client_address;
-    socklen_t address_length = sizeof(client_address);
-    int client_fd = accept(server->socket_fd, (struct sockaddr *)&client_address,
-                           &address_length);
-    if (client_fd >= 0) {
-      process_client(client_fd, server);
-      close(client_fd);
-    }
+  server->address = strdup(address);
+  if (!server->address || pthread_mutex_init(&server->mutex, NULL) != 0) {
+    free(server->address);
+    free(server);
+    return NULL;
   }
-  return 0;
+  server->id = id;
+  server->port = port;
+  server->socket_fd = -1;
+  server->active_client_fd = -1;
+  server->server_fiber_id = -1;
+  return server;
 }
 
-// Create HTTP server - returns server_id or negative error
 int64_t http_create_server(int64_t port, char *address) {
-  if (port < 1 || port > 65535) {
-    return -1;
+  if (port < 1 || port > 65535 || !address) {
+    return !address ? -2 : -1;
   }
-
-  if (!address) {
-    return -2;
-  }
-
   int64_t id = get_next_id();
-  HttpServer *server = malloc(sizeof(HttpServer));
+  if (!valid_server_id(id)) {
+    return -3;
+  }
+  HttpServer *server = allocate_server(id, (int)port, address);
   if (!server) {
     return -3;
   }
-
-  server->id = id;
-  server->port = (int)port;
-  server->address = strdup(address);
-  if (!server->address) {
-    free(server);
-    return -3;
-  }
-  server->socket_fd = -1;
-  server->is_listening = false;
-  pthread_mutex_init(&server->mutex, NULL);
-
   pthread_mutex_lock(&runtime_mutex);
   servers[id] = server;
   pthread_mutex_unlock(&runtime_mutex);
-
   return id;
 }
 
-// Start HTTP server listening - returns 0 on success
-int64_t http_listen(int64_t server_id, HttpRequestHandler handler) {
-  pthread_mutex_lock(&runtime_mutex);
-  HttpServer *server = servers[server_id];
-  pthread_mutex_unlock(&runtime_mutex);
-
-  if (!server) {
-    return -1;
-  }
-
-  // Store the handler function pointer
-  server->handler = handler;
-
-  // Create socket
-  server->socket_fd = socket(AF_INET, SOCK_STREAM, 0);
-  if (server->socket_fd < 0) {
+static int open_listener(void) {
+  int socket_fd = socket(AF_INET, SOCK_STREAM, 0);
+  if (socket_fd < 0) {
     return -2;
   }
-
-  // Set socket options
-  int opt = 1;
-  // optval is `const char *` on Winsock, `const void *` on POSIX; the cast is
-  // portable to both. [WINDOWS-PORT-PHASE2]
-  if (setsockopt(server->socket_fd, SOL_SOCKET, SO_REUSEADDR, (const char *)&opt,
-                 sizeof(opt)) < 0) {
-    close(server->socket_fd);
+  int enabled = 1;
+  if (setsockopt(socket_fd, SOL_SOCKET, SO_REUSEADDR, (const char *)&enabled,
+                 sizeof(enabled)) < 0) {
+    close(socket_fd);
     return -3;
   }
+  return socket_fd;
+}
 
-  // Bind socket
-  struct sockaddr_in server_addr;
-  server_addr.sin_family = AF_INET;
-  server_addr.sin_port = htons(server->port);
-  server_addr.sin_addr.s_addr = inet_addr(server->address);
-
-  if (bind(server->socket_fd, (struct sockaddr *)&server_addr,
-           sizeof(server_addr)) < 0) {
-    close(server->socket_fd);
+static int bind_listener(HttpServer *server, int socket_fd) {
+  struct sockaddr_in address;
+  memset(&address, 0, sizeof(address));
+  address.sin_family = AF_INET;
+  address.sin_port = htons(server->port);
+  address.sin_addr.s_addr = inet_addr(server->address);
+  if (bind(socket_fd, (struct sockaddr *)&address, sizeof(address)) < 0) {
     return -4;
   }
+  return listen(socket_fd, SOMAXCONN) < 0 ? -5 : 0;
+}
 
-  // Start listening
-  if (listen(server->socket_fd, SOMAXCONN) < 0) {
-    close(server->socket_fd);
-    return -5;
+static void close_failed_listener(int socket_fd) {
+  if (socket_fd >= 0) {
+    close(socket_fd);
   }
+}
 
+static void mark_server_started(HttpServer *server, int socket_fd,
+                                HttpRequestHandler handler) {
+  pthread_mutex_lock(&server->mutex);
+  server->handler = handler;
+  server->socket_fd = socket_fd;
   server->is_listening = true;
+  server->loop_scheduled = true;
+  pthread_mutex_unlock(&server->mutex);
+}
 
-  // Spawn a fiber to handle the server loop (non-blocking)
-  int64_t fiber_id = fiber_spawn(server_loop_fiber);
+static void mark_spawn_failed(HttpServer *server) {
+  pthread_mutex_lock(&server->mutex);
+  server->is_listening = false;
+  server->loop_scheduled = false;
+  server->socket_fd = -1;
+  pthread_mutex_unlock(&server->mutex);
+}
+
+static int spawn_server_loop(HttpServer *server) {
+  int64_t fiber_id = fiber_spawn_env(server_loop_fiber, server);
   if (fiber_id < 0) {
-    server->is_listening = false;
-    close(server->socket_fd);
     return -6;
   }
-
-  fprintf(stderr, "HTTP server listening on %s:%d\n", server->address, server->port);
-
+  pthread_mutex_lock(&server->mutex);
+  server->server_fiber_id = fiber_id;
+  pthread_mutex_unlock(&server->mutex);
   return 0;
 }
 
-// Stop HTTP server - returns 0 on success
-int64_t http_stop_server(int64_t server_id) {
+static int launch_server(HttpServer *server, int socket_fd,
+                         HttpRequestHandler handler) {
+  mark_server_started(server, socket_fd, handler);
+  int status = spawn_server_loop(server);
+  if (status < 0) {
+    mark_spawn_failed(server);
+    close_failed_listener(socket_fd);
+  }
+  return status;
+}
+
+static bool server_can_listen(HttpServer *server) {
+  pthread_mutex_lock(&server->mutex);
+  bool available =
+      !server->is_listening && !server->loop_scheduled && server->socket_fd < 0;
+  pthread_mutex_unlock(&server->mutex);
+  return available;
+}
+
+static int listen_registered_server(HttpServer *server,
+                                    HttpRequestHandler handler) {
+  if (!server_can_listen(server)) {
+    return -7;
+  }
+  int socket_fd = open_listener();
+  int status = socket_fd < 0 ? socket_fd : bind_listener(server, socket_fd);
+  if (status < 0) {
+    close_failed_listener(socket_fd);
+    return status;
+  }
+  status = launch_server(server, socket_fd, handler);
+  if (status < 0) {
+    return status;
+  }
+  fprintf(stderr, "HTTP server listening on %s:%d\n", server->address,
+          server->port);
+  return 0;
+}
+
+int64_t http_listen(int64_t server_id, HttpRequestHandler handler) {
+  if (!valid_server_id(server_id)) {
+    return -1;
+  }
   pthread_mutex_lock(&runtime_mutex);
   HttpServer *server = servers[server_id];
-  if (server) {
-    servers[server_id] = NULL;
-    server->is_listening = false;
-    if (server->socket_fd >= 0) {
-      close(server->socket_fd);
-    }
-    free(server->address);
-    pthread_mutex_destroy(&server->mutex);
-    free(server);
-  }
+  int status = server ? listen_registered_server(server, handler) : -1;
   pthread_mutex_unlock(&runtime_mutex);
+  return status;
+}
 
+static bool stop_is_from_server(HttpServer *server) {
+  return server->thread_known &&
+         pthread_equal(server->server_thread, pthread_self()) != 0;
+}
+
+static void shutdown_server_sockets(HttpServer *server) {
+  if (server->socket_fd >= 0) {
+    (void)shutdown(server->socket_fd, HTTP_SHUTDOWN_BOTH);
+  }
+  if (server->active_client_fd >= 0) {
+    (void)shutdown(server->active_client_fd, HTTP_SHUTDOWN_BOTH);
+  }
+}
+
+static void close_server_listener(HttpServer *server) {
+  pthread_mutex_lock(&server->mutex);
+  int socket_fd = server->socket_fd;
+  server->socket_fd = -1;
+  pthread_mutex_unlock(&server->mutex);
+  if (socket_fd >= 0) {
+    close(socket_fd);
+  }
+}
+
+static int64_t request_server_stop(HttpServer *server, bool *self_stop) {
+  pthread_mutex_lock(&server->mutex);
+  server->is_listening = false;
+  *self_stop = stop_is_from_server(server);
+  server->destroy_on_exit = *self_stop;
+  int64_t fiber_id = server->server_fiber_id;
+  shutdown_server_sockets(server);
+  pthread_mutex_unlock(&server->mutex);
+  return fiber_id;
+}
+
+int64_t http_stop_server(int64_t server_id) {
+  HttpServer *server = unregister_server(server_id);
+  if (!server) {
+    return valid_server_id(server_id) ? 0 : -1;
+  }
+  bool self_stop = false;
+  int64_t fiber_id = request_server_stop(server, &self_stop);
+  if (self_stop) {
+    return 0;
+  }
+  if (fiber_id > 0 && fiber_await(fiber_id) < 0) {
+    return -2;
+  }
+  close_server_listener(server);
+  destroy_server(server);
   return 0;
 }

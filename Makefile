@@ -62,14 +62,14 @@ A    ?= -c -fPIC -O2 -D_FORTIFY_SOURCE=2 -fstack-protector-strong -Werror -Wall 
 B    ?= $(A) -std=c11
 OSSL ?= -DOPENSSL_SUPPRESS_DEPRECATED -DOPENSSL_API_COMPAT=30000 -Wno-deprecated-declarations
 # Object lists for the archives (paths relative to compiler/, where `ar` runs).
-FIB_OBJ  ?= bin/memory_runtime.o bin/fiber_runtime.o bin/system_runtime.o bin/effects_runtime.o bin/string_runtime.o bin/string_runtime_list.o bin/list_runtime.o bin/map_runtime.o bin/map_runtime_hamt.o bin/json_runtime.o bin/ffi_runtime.o bin/term_runtime.o bin/random_runtime.o bin/test_runtime.o
-HTTP_OBJ ?= bin/http_shared.o bin/http_client_runtime.o bin/http_server_runtime.o bin/websocket_client_runtime.o bin/websocket_server_runtime.o $(FIB_OBJ)
+FIB_OBJ  ?= bin/memory_runtime.o bin/fiber_runtime.o bin/system_runtime.o bin/effects_runtime.o bin/string_runtime.o bin/string_runtime_list.o bin/list_runtime.o bin/map_runtime.o bin/map_runtime_hamt.o bin/json_runtime.o bin/ffi_runtime.o bin/term_runtime.o bin/random_runtime.o bin/test_runtime.o bin/profiler_runtime.o bin/profiler_sampler.o
+HTTP_OBJ ?= bin/http_shared.o bin/http_client_runtime.o bin/http_server_request.o bin/http_server_response.o bin/http_server_runtime.o bin/websocket_client_runtime.o bin/websocket_server_runtime.o $(FIB_OBJ)
 # GC backend archives (osprey --memory=gc): the tracing collector replaces
 # memory_runtime.o, and the value-container units are rebuilt with the malloc
 # redirect (osp_gc_shim.h) so their nodes live in the managed heap. Everything
 # else is the same object. Implements [GC-TRACE-CONSERVATIVE], docs/plans/0011.
-FIB_OBJ_GC  ?= bin/memory_gc.o bin/fiber_runtime.o bin/system_runtime.o bin/effects_runtime.o bin/string_runtime.o bin/string_runtime_list.o bin/gc/list_runtime.o bin/gc/map_runtime.o bin/gc/map_runtime_hamt.o bin/json_runtime.o bin/ffi_runtime.o bin/term_runtime.o bin/random_runtime.o bin/test_runtime.o
-HTTP_OBJ_GC ?= bin/http_shared.o bin/http_client_runtime.o bin/http_server_runtime.o bin/websocket_client_runtime.o bin/websocket_server_runtime.o $(FIB_OBJ_GC)
+FIB_OBJ_GC  ?= bin/memory_gc.o bin/fiber_runtime.o bin/system_runtime.o bin/effects_runtime.o bin/string_runtime.o bin/string_runtime_list.o bin/gc/list_runtime.o bin/gc/map_runtime.o bin/gc/map_runtime_hamt.o bin/json_runtime.o bin/ffi_runtime.o bin/term_runtime.o bin/random_runtime.o bin/test_runtime.o bin/profiler_runtime.o bin/profiler_sampler.o
+HTTP_OBJ_GC ?= bin/http_shared.o bin/http_client_runtime.o bin/http_server_request.o bin/http_server_response.o bin/http_server_runtime.o bin/websocket_client_runtime.o bin/websocket_server_runtime.o $(FIB_OBJ_GC)
 
 # WebAssembly (wasm32-wasip1) cross-build toolchain — opt-in via `make wasm`.
 # Compiles the portable C-runtime subset (no pthreads/sockets/OpenSSL/syscalls)
@@ -92,7 +92,9 @@ WASM_CFLAGS  ?= --target=$(WASM_TARGET) --sysroot=$(WASI_SYSROOT) -O2 -std=c11 -
 # containers + JSON + effects + the browser host bridge. Excludes fiber
 # (pthreads), http/websocket (sockets/OpenSSL), system (fork/wait), term
 # (termios) and ffi (dlopen).
-WASM_RT_SRC  ?= memory_runtime string_runtime string_runtime_list list_runtime map_runtime map_runtime_hamt json_runtime effects_runtime test_runtime web_runtime
+# profiler_runtime compiles to inert stubs on wasm32 (no pthreads/signals) but
+# must be present: codegen anchors `osp_prof_boot` into every main [PROF-ACTIVATE-ENV].
+WASM_RT_SRC  ?= memory_runtime string_runtime string_runtime_list list_runtime map_runtime map_runtime_hamt json_runtime effects_runtime test_runtime web_runtime profiler_runtime
 # `make wasm-serve` static-host dir + port for the in-browser example.
 WASM_SERVE_DIR  ?= examples/wasm
 WASM_SERVE_PORT ?= 8080
@@ -116,6 +118,7 @@ test: build
 	$(MAKE) _coverage_check_rust
 	$(MAKE) _test_c_runtime
 	$(MAKE) _test_differential
+	$(MAKE) _test_profiler
 	$(MAKE) _test_vscode_extension
 	$(MAKE) _coverage_check_vscode_extension
 
@@ -126,7 +129,13 @@ bank: bank-web
 	@echo "==> Talon Bank live on http://127.0.0.1:18790  (Ctrl-C to stop)"
 	@touch /tmp/talon_bank.hold
 	@trap 'rm -f /tmp/talon_bank.hold' EXIT INT TERM; \
-	  (sleep 2 && (command -v open >/dev/null && open http://127.0.0.1:18790 || true)) & \
+	  (if command -v open >/dev/null && command -v curl >/dev/null; then \
+	    attempts=0; \
+	    until accounts="$$(curl -fsS http://127.0.0.1:18790/api/accounts 2>/dev/null)" && [[ "$$accounts" == *'"Priya Sharma"'* ]]; do \
+	      attempts=$$((attempts + 1)); [ "$$attempts" -ge 200 ] && exit 0; sleep 0.1; \
+	    done; \
+	    open http://127.0.0.1:18790; \
+	  fi) & \
 	  ./$(BIN) examples/projects/modules --run
 
 ## bank-web: Regenerate the embedded React host + Osprey WebAssembly client.
@@ -285,6 +294,8 @@ _runtime:
 	  $(CC) $(B) runtime/term_runtime.c         -o bin/term_runtime.o && \
 	  $(CC) $(B) runtime/random_runtime.c       -o bin/random_runtime.o && \
 	  $(CC) $(B) runtime/test_runtime.c         -o bin/test_runtime.o && \
+	  $(CC) $(B) runtime/profiler_runtime.c     -o bin/profiler_runtime.o && \
+	  $(CC) $(B) runtime/profiler_sampler.c     -o bin/profiler_sampler.o && \
 	  $(CC) -c -fPIC -O2 -D_FORTIFY_SOURCE=2 -fstack-protector-strong -Werror -Wall -Wextra \
 	        -Wformat -Werror=format-security -Werror=implicit-function-declaration \
 	        -Werror=incompatible-pointer-types -Werror=int-conversion -Warray-bounds -ftrapv \
@@ -292,6 +303,8 @@ _runtime:
 	        -DWITH_OPENSSL $(OSSL) `pkg-config --cflags openssl 2>/dev/null || echo ""` \
 	        runtime/http_shared.c -o bin/http_shared.o && \
 	  $(CC) $(A) $(OSSL) `pkg-config --cflags openssl 2>/dev/null || echo ""` runtime/http_client_runtime.c      -o bin/http_client_runtime.o && \
+	  $(CC) $(A) $(OSSL) `pkg-config --cflags openssl 2>/dev/null || echo ""` runtime/http_server_request.c     -o bin/http_server_request.o && \
+	  $(CC) $(A) $(OSSL) `pkg-config --cflags openssl 2>/dev/null || echo ""` runtime/http_server_response.c    -o bin/http_server_response.o && \
 	  $(CC) $(A) $(OSSL) `pkg-config --cflags openssl 2>/dev/null || echo ""` runtime/http_server_runtime.c      -o bin/http_server_runtime.o && \
 	  $(CC) $(A) $(OSSL) `pkg-config --cflags openssl 2>/dev/null || echo ""` runtime/websocket_client_runtime.c -o bin/websocket_client_runtime.o && \
 	  $(CC) $(A) $(OSSL) `pkg-config --cflags openssl 2>/dev/null || echo ""` runtime/websocket_server_runtime.c -o bin/websocket_server_runtime.o && \
@@ -371,7 +384,16 @@ _test_c_runtime:
 	  -ftrapv -std=c11 -D_GNU_SOURCE $(OSSL) \
 	  `pkg-config --cflags openssl 2>/dev/null || echo ""` \
 	  runtime/http_server_request_tests.c -pthread \
-	  -o bin/http_server_request_tests && ./bin/http_server_request_tests
+	  -o bin/http_server_request_tests && ./bin/http_server_request_tests && \
+	  $(CC) -O2 -g -fno-omit-frame-pointer -D_FORTIFY_SOURCE=2 -fstack-protector-strong -Werror -Wall -Wextra \
+	  -ftrapv -std=c11 -D_GNU_SOURCE \
+	  runtime/profiler_runtime_tests.c runtime/profiler_runtime.c runtime/profiler_sampler.c -pthread \
+	  -o bin/profiler_runtime_tests && ./bin/profiler_runtime_tests
+
+# [PROF-TEST] end-to-end profiler gate: --profile runs, exports, and reports.
+_test_profiler:
+	@echo "==> [profiler] osprey --profile end-to-end..."
+	@bash scripts/test_profiler.sh
 
 # Differential golden harness: every examples/tested/*.osp run through
 # `osprey --run` must match its .expectedoutput byte-for-byte, and the

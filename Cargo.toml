@@ -14,6 +14,7 @@ members = [
     "crates/osprey-runtime-sys",
     "crates/osprey-fmt",
     "crates/osprey-lsp",
+    "crates/osprey-profiler",
     "crates/osprey-cli",
 ]
 
@@ -34,6 +35,7 @@ osprey-debug = { path = "crates/osprey-debug" }
 osprey-codegen = { path = "crates/osprey-codegen" }
 osprey-fmt = { path = "crates/osprey-fmt" }
 osprey-lsp = { path = "crates/osprey-lsp" }
+osprey-profiler = { path = "crates/osprey-profiler" }
 tree-sitter-osprey = { path = "tree-sitter-osprey" }
 
 # Language-server building blocks, reused from the published lspkit crates

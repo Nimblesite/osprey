@@ -102,7 +102,13 @@ fn testing(e: &mut TypeEnv) {
     // type — Unit for a Default-flavor imperative case, a `Verdict` for the pure
     // ML-flavor value model, which `test` pattern-matches and reports.
     // [TESTING-BUILTIN-TEST], [TESTING-VERDICT]
-    poly(e, "test", vec![0], vec![s(), Type::fun(vec![], Type::Var(0))], u());
+    poly(
+        e,
+        "test",
+        vec![0],
+        vec![s(), Type::fun(vec![], Type::Var(0))],
+        u(),
+    );
     // expect(actual, expected): Jest argument order. [TESTING-BUILTIN-EXPECT]
     mono(e, "expect", vec![any(), any()], u());
     // check(label, expected, actual): Alcotest argument order. [TESTING-BUILTIN-CHECK]

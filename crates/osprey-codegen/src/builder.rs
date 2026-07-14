@@ -1004,7 +1004,7 @@ impl Codegen {
             .and_then(|d| d.current_scope)
             .map_or_else(String::new, |id| format!(" !dbg !{id}"));
         self.funcs.push(format!(
-            "define {ret} @{name}({param_list}){dbg} {{\n{body}\n}}"
+            "define {ret} @{name}({param_list}) #0{dbg} {{\n{body}\n}}"
         ));
         self.pop_scope();
         if let Some(debug) = self.debug.as_mut() {
@@ -1030,6 +1030,8 @@ impl Codegen {
         }
         out.push('\n');
         out.push_str(&self.funcs.join("\n\n"));
+        out.push('\n');
+        out.push_str(FRAME_POINTER_ATTRS);
         out.push('\n');
         if let Some(debug) = &self.debug {
             out.push('\n');
@@ -1091,6 +1093,13 @@ impl Codegen {
         }
     }
 }
+
+/// Attribute group applied to every generated function: keep frame pointers in
+/// ALL functions (Darwin's default drops them in leaves), so the profiler's
+/// async frame-pointer chain walk is valid from any sample point. Implements
+/// [PROF-CODEGEN-FP], docs/specs/0028-Profiler.md; cost is ~1% (arm64 reserves
+/// x29 for the frame chain by ABI anyway).
+pub(crate) const FRAME_POINTER_ATTRS: &str = "attributes #0 = { \"frame-pointer\"=\"all\" }";
 
 /// The swappable allocation hook declaration. `noalias` + the allocator
 /// attributes (`allocsize`/`allockind`/`alloc-family`) make LLVM treat

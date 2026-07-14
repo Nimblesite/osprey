@@ -147,5 +147,8 @@ fn suite_passes(file: &Path) -> bool {
     if report_type_errors(&input) > 0 {
         return false;
     }
-    matches!(execute_native(&input, "default", false), Ok(0))
+    matches!(
+        execute_native(&input, "default", osprey_debug::BuildKind::Release),
+        Ok(0)
+    )
 }

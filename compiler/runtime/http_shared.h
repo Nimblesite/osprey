@@ -47,14 +47,15 @@ typedef enum {
   HTTP_OPTIONS = 6
 } HttpMethod;
 
-// HTTP Response structure (matches Osprey HttpResponse type - REMOVED REDUNDANT LENGTH FIELDS)
+// HTTP Response structure (matches Osprey HttpResponse type - REMOVED REDUNDANT
+// LENGTH FIELDS)
 typedef struct HttpResponse {
   int64_t status;
   char *headers;
   char *contentType;
   int64_t streamFd;
   bool isComplete;
-  char *partialBody;  // Runtime automatically calculates length using strlen()
+  char *partialBody; // Runtime automatically calculates length using strlen()
 } HttpResponse;
 
 // Function pointer type for HTTP request handlers
@@ -67,7 +68,12 @@ typedef struct {
   int port;
   char *address;
   int socket_fd;
+  int active_client_fd;
   bool is_listening;
+  bool loop_scheduled;
+  bool thread_known;
+  bool destroy_on_exit;
+  int64_t server_fiber_id;
   pthread_t server_thread;
   pthread_mutex_t mutex;
   HttpRequestHandler handler; // Function pointer to Osprey callback

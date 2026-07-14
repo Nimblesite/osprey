@@ -108,6 +108,12 @@ fn compile_program_with_options(program: &Program, options: CodegenOptions) -> R
         .and_then(|(_, position)| position)
         .or_else(|| top_level.iter().find_map(|stmt| stmt_position(stmt)));
     cg.begin_function("main", main_position);
+    // Anchor the profiler into the link and give it a deterministic activation
+    // point: static archives only extract referenced objects, so without this
+    // call a fiber-less program would link no profiler at all. A no-op unless
+    // OSPREY_PROFILE is set [PROF-ACTIVATE-ENV], docs/specs/0028-Profiler.md.
+    cg.add_extern("declare void @osp_prof_boot()");
+    cg.emit("call void @osp_prof_boot()");
     if let Some((body, _)) = user_main {
         cg.cell_vars = crate::effects::captured_mut_vars(body);
         let _ = gen_expr(&mut cg, body)?;

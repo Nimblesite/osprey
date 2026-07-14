@@ -1519,12 +1519,14 @@ suite("Osprey Command Handler Coverage", () => {
     );
   });
 
-  test("all four osprey commands are registered", async () => {
+  test("all osprey commands are registered", async () => {
     const all = await vscode.commands.getCommands(true);
     assert.ok(all.includes("osprey.compile"), "compile registered");
     assert.ok(all.includes("osprey.run"), "run registered");
     assert.ok(all.includes("osprey.debug"), "debug registered");
     assert.ok(all.includes("osprey.setLanguage"), "setLanguage registered");
+    assert.ok(all.includes("osprey.profileCurrentFile"), "profile registered");
+    assert.ok(all.includes("osprey.profiler.openLast"), "openLast registered");
   });
 
   test("osprey.debug with an active .osp editor drives the real launch path", async function () {

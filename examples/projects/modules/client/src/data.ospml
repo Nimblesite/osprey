@@ -24,40 +24,76 @@ module BankData
     export activityCount : string -> int
     activityCount source = accountCount source
 
-    parsed : string -> int
-    parsed value = match parseInt value
-        Success n => n
-        Error message => 0
-
-    add : int -> int -> int
-    add left right = match left + right
-        Success value => value
-        Error message => 0
-
-    multiply : int -> int -> int
-    multiply left right = match left * right
-        Success value => value
-        Error message => 0
-
     remove source token = match replace source token ""
         Success value => value
         Error message => source
 
-    // Form-only decimal parsing; canonical display stays in bank::Money.
-    export amountCents : string -> int
-    amountCents source =
-        normalized = trim (remove (remove (trim source) "$") ",")
-        dot = indexOf normalized "."
-        match dot
-            Error message => multiply (parsed normalized) 100
+    digitAt source index = match byteAt source index
+        Success value => value >= 48 && value <= 57
+        Error message => false
+
+    digitsFrom source index = match index >= byteLength source
+        true => true
+        false => match digitAt source index
+            true => digitsFrom source (index + 1)
+            false => false
+
+    digits source = length source > 0 && digitsFrom source 0
+
+    validGroup group first = match first
+        true => length group > 0 && length group <= 3 && digits group
+        false => length group == 3 && digits group
+
+    groupedDigits source first =
+        comma = indexOf source ","
+        match comma
+            Error message => match first
+                true => digits source
+                false => validGroup source false
             Success at =>
-                whole = parsed (take normalized at)
-                tail = take (drop normalized (add at 1)) 2
-                fraction = match length tail
-                    0 => 0
-                    1 => multiply (parsed tail) 10
-                    _ => parsed tail
-                add (multiply whole 100) fraction
+                group = take source at
+                rest = drop source (at + 1)
+                validGroup group first && groupedDigits rest false
+
+    fractionCents source = match parseInt source
+        Error message => 0
+        Success value => match length source == 1
+            false => value
+            true => match value * 10
+                Success cents => cents
+                Error message => 0
+
+    combineCents whole fraction = match parseInt (remove whole ",")
+        Error message => 0
+        Success dollars => match dollars * 100
+            Error message => 0
+            Success base => match base + fractionCents fraction
+                Success cents => cents
+                Error message => 0
+
+    decimalCents source at =
+        whole = take source at
+        fraction = drop source (at + 1)
+        valid = groupedDigits whole true && length fraction > 0 && length fraction <= 2 && digits fraction
+        match valid
+            true => combineCents whole fraction
+            false => 0
+
+    parsedAmount source = match indexOf source "."
+        Success at => decimalCents source at
+        Error message => match groupedDigits source true
+            true => combineCents source "0"
+            false => 0
+
+    // Form-only decimal parsing; canonical display stays in bank::Money.
+    export amountCents source =
+        trimmed = trim source
+        unsigned = match startsWith trimmed "$"
+            true => drop trimmed 1
+            false => trimmed
+        match startsWith unsigned "-" || startsWith unsigned "+"
+            true => 0
+            false => parsedAmount unsigned
 
     totalFrom : int -> int -> int -> int
     totalFrom doc index running =

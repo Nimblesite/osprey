@@ -30,6 +30,8 @@ fi
 
 gcc -c http_shared.c -o http_shared.o -pthread $OPENSSL_CFLAGS
 gcc -c http_client_runtime.c -o http_client_runtime.o -pthread $OPENSSL_CFLAGS
+gcc -c http_server_request.c -o http_server_request.o -pthread $OPENSSL_CFLAGS
+gcc -c http_server_response.c -o http_server_response.o -pthread $OPENSSL_CFLAGS
 gcc -c http_server_runtime.c -o http_server_runtime.o -pthread $OPENSSL_CFLAGS
 gcc -c websocket_client_runtime.c -o websocket_client_runtime.o -pthread $OPENSSL_CFLAGS
 gcc -c websocket_server_runtime.c -o websocket_server_runtime.o -pthread $OPENSSL_CFLAGS
@@ -43,6 +45,8 @@ echo "🧪 Compiling test suite..."
 gcc -o test_http_runtime http_runtime_tests.c \
     http_shared.o \
     http_client_runtime.o \
+    http_server_request.o \
+    http_server_response.o \
     http_server_runtime.o \
     websocket_client_runtime.o \
     websocket_server_runtime.o \
@@ -73,4 +77,4 @@ echo "🎉 All tests passed! HTTP runtime is working correctly."
 # Clean up
 rm -f *.o test_http_runtime
 
-echo "✅ Test cleanup complete." 
+echo "✅ Test cleanup complete."

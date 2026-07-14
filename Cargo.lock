@@ -379,6 +379,7 @@ dependencies = [
  "osprey-debug",
  "osprey-fmt",
  "osprey-lsp",
+ "osprey-profiler",
  "osprey-project",
  "osprey-syntax",
  "osprey-types",
@@ -428,6 +429,14 @@ dependencies = [
  "thiserror",
  "tokio",
  "tokio-util",
+]
+
+[[package]]
+name = "osprey-profiler"
+version = "0.0.0-dev"
+dependencies = [
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

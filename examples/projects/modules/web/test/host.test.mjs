@@ -58,6 +58,24 @@ test("traces HTTP metadata without retaining request or response bodies", async 
   assertBodyPrivacy(logs, host.bridge.trace);
 });
 
+test("correlates requests without exposing URL query data", async () => {
+  const { events, host, logs } = hostHarness();
+  let init;
+  await withFetch(async (_url, request) => {
+    init = request;
+    return { status: 200, text: async () => "{}" };
+  }, () => host.runHttp({
+    id: "mutate-withdraw", method: "POST",
+    url: "/api/withdraw?token=private-query", body: "{}",
+  }));
+
+  const request = host.bridge.trace[0];
+  assert.equal(init.headers["X-Osprey-Request-Id"], request.correlationId);
+  assert.equal(request.url, "/api/withdraw");
+  assert.equal(events[0].id, "mutate-withdraw");
+  assert.equal(JSON.stringify({ logs, trace: host.bridge.trace }).includes("private-query"), false);
+});
+
 test("turns fetch failures into useful JSON errors and bounded diagnostics", async () => {
   const { events, host } = hostHarness();
   await withFetch(async () => { throw new TypeError("Load failed"); }, async () => {

@@ -22,6 +22,10 @@
       "threshold": 98,
       "language": "rust"
     },
+    "osprey-profiler": {
+      "threshold": 95,
+      "language": "rust"
+    },
     "osprey-runtime-sys": {
       "threshold": 99,
       "language": "rust"

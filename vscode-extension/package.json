@@ -39,6 +39,8 @@
     "onCommand:osprey.compile",
     "onCommand:osprey.run",
     "onCommand:osprey.debug",
+    "onCommand:osprey.profileCurrentFile",
+    "onCommand:osprey.profiler.openLast",
     "onDebugResolve:osprey",
     "workspaceContains:**/*.test.osp",
     "workspaceContains:**/*.test.ospml"
@@ -138,6 +140,16 @@
         "command": "osprey.setLanguage",
         "title": "Set Language to Osprey",
         "category": "Osprey"
+      },
+      {
+        "command": "osprey.profileCurrentFile",
+        "title": "Profile Current File",
+        "category": "Osprey"
+      },
+      {
+        "command": "osprey.profiler.openLast",
+        "title": "Show Last Profile",
+        "category": "Osprey"
       }
     ],
     "menus": {
@@ -156,6 +168,11 @@
           "when": "resourceLangId == osprey || resourceLangId == osprey-ml",
           "command": "osprey.debug",
           "group": "navigation@3"
+        },
+        {
+          "when": "resourceLangId == osprey || resourceLangId == osprey-ml",
+          "command": "osprey.profileCurrentFile",
+          "group": "navigation@4"
         }
       ],
       "commandPalette": [
@@ -169,6 +186,10 @@
         },
         {
           "command": "osprey.debug",
+          "when": "resourceLangId == osprey || resourceLangId == osprey-ml"
+        },
+        {
+          "command": "osprey.profileCurrentFile",
           "when": "resourceLangId == osprey || resourceLangId == osprey-ml"
         }
       ]
@@ -305,6 +326,11 @@
           "type": "string",
           "default": "",
           "description": "Path to lldb-dap. Leave empty to use `lldb-dap` on PATH."
+        },
+        "osprey.profiler.inlineHeat": {
+          "type": "boolean",
+          "default": true,
+          "description": "After profiling, show inline per-line heat annotations (NN.N% · M samples) and overview-ruler marks in the profiled source files."
         }
       }
     }

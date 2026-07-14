@@ -1,10 +1,14 @@
+#include <errno.h>
 #include <pthread.h>
 #include <sched.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <time.h>
 #include <unistd.h>
+
+#include "profiler_runtime.h"
 
 // Forward declarations for effect handler snapshot/restore
 typedef struct HandlerSnapshot HandlerSnapshot;
@@ -86,6 +90,10 @@ static void execute_fiber_directly(Fiber *fiber) {
 static void *fiber_thread_func(void *arg) {
   Fiber *fiber = (Fiber *)arg;
 
+  // Fibers are 1:1 pthreads, so registering here gives the CPU profiler exact
+  // per-fiber sample attribution [PROF-COLLECT-REGISTRY]. No-op when inactive.
+  osp_prof_thread_register(fiber->id, "fiber");
+
   // Restore parent's effect handlers so perform calls work inside the fiber
   if (fiber->handler_snapshot != NULL) {
     __osprey_handler_restore(fiber->handler_snapshot);
@@ -94,6 +102,7 @@ static void *fiber_thread_func(void *arg) {
 
   // Execute the fiber function
   fiber->result = run_fiber_fn(fiber);
+  osp_prof_thread_unregister();
 
   // Mark as completed and signal
   pthread_mutex_lock(&fiber->mutex);
@@ -335,9 +344,29 @@ int64_t channel_recv(int64_t channel_id) {
   return value;
 }
 
-// Sleep for specified milliseconds
+// Sleep for specified milliseconds. On Linux the profiler's directed SIGPROF
+// would cut a plain usleep short (sleeping calls are exempt from SA_RESTART),
+// so sleep to an absolute deadline and re-arm on EINTR — the wait stays exact
+// whether or not sampling is active [PROF-COLLECT-SAMPLER].
 int64_t fiber_sleep(int64_t milliseconds) {
-  usleep((unsigned int)(milliseconds * 1000)); // Convert milliseconds to microseconds
+#if defined(__linux__)
+  struct timespec until;
+  if (clock_gettime(CLOCK_MONOTONIC, &until) != 0) {
+    usleep((unsigned int)(milliseconds * 1000));
+    return 0;
+  }
+  until.tv_sec += (time_t)(milliseconds / 1000);
+  until.tv_nsec += (long)(milliseconds % 1000) * 1000000L;
+  if (until.tv_nsec >= 1000000000L) {
+    until.tv_sec += 1;
+    until.tv_nsec -= 1000000000L;
+  }
+  while (clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME, &until, NULL) ==
+         EINTR) {
+  }
+#else
+  usleep((unsigned int)(milliseconds * 1000)); // ms -> µs
+#endif
   return 0;
 }
 

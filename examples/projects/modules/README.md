@@ -64,6 +64,11 @@ small flat messages through the stable `osprey_web_dispatch` WebAssembly
 export. `osp_alloc` provides safe host-to-Wasm string allocation. This avoids a
 chatty component-level FFI and keeps React replaceable.
 
+HTTP diagnostics are correlated without retaining financial payloads. The
+native server logs request IDs, framing byte counts, response status, and send
+outcome. The browser keeps its latest metadata-only entries in
+`window.__TALON_BRIDGE__.trace` and mirrors them to the developer console.
+
 The reusable pieces are split clearly:
 
 ```text

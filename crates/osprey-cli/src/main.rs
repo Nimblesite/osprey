@@ -5,7 +5,9 @@
 //! an executable (`--compile`), compile-and-run via clang (`--run`), emit the
 //! document outline as JSON (`--symbols`), list statically-discoverable test
 //! cases as JSON (`--list-tests`, [TESTING-LIST]), or print a built-in's
-//! signature as markdown (`--hover <name>`). `osprey test` discovers and runs
+//! signature as markdown (`--hover <name>`). `--profile` runs under the
+//! sampling CPU profiler and prints a report ([PROF-CLI-RUN],
+//! docs/specs/0028-Profiler.md). `osprey test` discovers and runs
 //! test suites ([TESTING-CLI-RUN], `test_cmd`). Every compiling mode gates on Hindley-Milner
 //! type inference first — an ill-typed program never reaches codegen — and on
 //! the capability sandbox (`--sandbox`, `--no-http`, `--no-websocket`,
@@ -26,15 +28,13 @@ mod wasm;
 use osprey_syntax::Flavor;
 use project::CompilationInput;
 use sandbox::Policy;
-use std::path::Path;
-#[cfg(test)]
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode};
 
 pub(crate) const USAGE: &str =
     "usage: osprey <file-or-project> [--check | --ast | --llvm | --compile | --run | \
---symbols | --list-tests] [--quiet] [--debug] [--flavor default|ml] [--memory=default|gc] \
-[--target=native|wasm32] [-o <out>] \
+--symbols | --list-tests] [--quiet] [--debug] [--profile] [--flavor default|ml] \
+[--memory=default|gc] [--target=native|wasm32] [-o <out>] \
 [--sandbox | --no-http | --no-websocket | --no-fs | --no-ffi]\n\
        osprey build [project] [--quiet] [--debug] [--memory=default|gc] \
 [--target=native|wasm32] [-o <out>]\n\
@@ -62,6 +62,10 @@ pub(crate) struct Cli {
     output: Option<String>,
     /// Emit source-level debug metadata and link a debugger-friendly binary.
     debug: bool,
+    /// Profile the run [PROF-CLI-RUN]: build with line tables + frame pointers
+    /// at full optimization, sample via the in-runtime profiler, then export
+    /// and report (docs/specs/0028-Profiler.md).
+    profile: bool,
     /// Explicit source flavor from `--flavor`; `None` when unset, so flavor
     /// resolution falls through to the marker/extension precedence
     /// ([FLAVOR-SELECT], docs/specs/0023-LanguageFlavors.md).
@@ -81,6 +85,7 @@ impl Cli {
             target: String::from("native"),
             output: None,
             debug: false,
+            profile: false,
             flavor: None,
         }
     }
@@ -180,6 +185,8 @@ fn parse_args(args: &[String]) -> Result<Cli, String> {
     let mut target = String::from("native");
     let mut output = None;
     let mut debug = false;
+    let mut profile = false;
+    let mut mode_explicit = false;
     let mut flavor = None;
     let mut it = args.iter();
     while let Some(a) = it.next() {
@@ -195,9 +202,11 @@ fn parse_args(args: &[String]) -> Result<Cli, String> {
             "--ast" | "--check" | "--llvm" | "--compile" | "--run" | "--symbols"
             | "--list-tests" | "--hover" => {
                 mode.clone_from(a);
+                mode_explicit = true;
             }
             "--quiet" => quiet = true,
             "--debug" => debug = true,
+            "--profile" => profile = true,
             "--sandbox" => policy = Policy::sandbox(),
             "--no-http" => policy.http = false,
             "--no-websocket" => policy.websocket = false,
@@ -234,31 +243,50 @@ fn parse_args(args: &[String]) -> Result<Cli, String> {
             other => return Err(format!("unexpected argument {other}\n{USAGE}")),
         }
     }
-    match path {
-        Some(path) => Ok(Cli {
-            path,
-            mode,
-            quiet,
-            policy,
-            memory,
-            target,
-            output,
-            debug,
-            flavor,
-        }),
-        None if project_build => Ok(Cli {
-            path: ".".to_string(),
-            mode,
-            quiet,
-            policy,
-            memory,
-            target,
-            output,
-            debug,
-            flavor,
-        }),
-        None => Err(USAGE.to_string()),
+    let path = match path {
+        Some(path) => path,
+        None if project_build => ".".to_string(),
+        None => return Err(USAGE.to_string()),
+    };
+    let mut cli = Cli {
+        path,
+        mode,
+        quiet,
+        policy,
+        memory,
+        target,
+        output,
+        debug,
+        profile,
+        flavor,
+    };
+    apply_profile_rules(&mut cli, mode_explicit || project_build)?;
+    Ok(cli)
+}
+
+/// Enforce the `--profile` interaction rules [PROF-CLI-RUN]: it conflicts with
+/// `--debug` (profiling needs optimized code, debugging needs `-O0`), and a
+/// bare `--profile` means "run it and profile it" — unless a mode was chosen
+/// explicitly (or this is `osprey build`, whose mode is fixed).
+fn apply_profile_rules(cli: &mut Cli, mode_chosen: bool) -> Result<(), String> {
+    if cli.profile && cfg!(windows) {
+        // The sampling runtime is POSIX-only; a silent no-op profile would
+        // mislead, so refuse up front.
+        return Err(format!(
+            "--profile is not supported on Windows yet (the sampling profiler \
+is POSIX-only)\n{USAGE}"
+        ));
     }
+    if cli.profile && cli.debug {
+        return Err(format!(
+            "--profile and --debug are mutually exclusive (profiling needs \
+optimized code; debugging needs -O0)\n{USAGE}"
+        ));
+    }
+    if cli.profile && !mode_chosen {
+        cli.mode = String::from("--run");
+    }
+    Ok(())
 }
 
 /// Validate the `--target=` value: `native` (host executable) or `wasm32`
@@ -379,7 +407,7 @@ fn dispatch(cli: &Cli, input: &CompilationInput) -> ExitCode {
             ExitCode::SUCCESS
         }
         "--llvm" | "--run" | "--compile" if report_type_errors(input) > 0 => ExitCode::FAILURE,
-        "--llvm" => match compile_ir(input.debug_path(), program, cli.debug) {
+        "--llvm" => match compile_ir(input.debug_path(), program, build_kind(cli)) {
             Ok(ir) => {
                 print!("{ir}");
                 ExitCode::SUCCESS
@@ -422,12 +450,28 @@ fn run_check(cli: &Cli, input: &CompilationInput) -> ExitCode {
     ExitCode::FAILURE
 }
 
-fn reject_debug_wasm(debug: bool) -> Option<ExitCode> {
-    if debug {
+fn reject_debug_wasm(cli: &Cli) -> Option<ExitCode> {
+    if cli.debug {
         eprintln!("error: --debug is currently supported only for --target=native");
         return Some(ExitCode::from(2));
     }
+    if cli.profile {
+        eprintln!("error: --profile is currently supported only for --target=native");
+        return Some(ExitCode::from(2));
+    }
     None
+}
+
+/// The native build kind this invocation asked for (`--debug` and `--profile`
+/// are mutually exclusive; `parse_args` enforces that).
+fn build_kind(cli: &Cli) -> osprey_debug::BuildKind {
+    if cli.debug {
+        osprey_debug::BuildKind::Debug
+    } else if cli.profile {
+        osprey_debug::BuildKind::Profile
+    } else {
+        osprey_debug::BuildKind::Release
+    }
 }
 
 /// `--compile`: build the artifact at `-o` (or the source stem, `.wasm` for the
@@ -435,7 +479,7 @@ fn reject_debug_wasm(debug: bool) -> Option<ExitCode> {
 fn compile_program_to_disk(cli: &Cli, input: &CompilationInput) -> ExitCode {
     let out = input.output_path(cli.output.as_deref(), &cli.target);
     let result = if cli.target == "wasm32" {
-        if let Some(code) = reject_debug_wasm(cli.debug) {
+        if let Some(code) = reject_debug_wasm(cli) {
             return code;
         }
         wasm::build(input.debug_path(), input.program(), &out)
@@ -446,7 +490,7 @@ fn compile_program_to_disk(cli: &Cli, input: &CompilationInput) -> ExitCode {
             input.source(),
             &out,
             &cli.memory,
-            cli.debug,
+            build_kind(cli),
         )
     };
     match result {
@@ -475,12 +519,17 @@ fn output_path(src: &str, output: Option<&str>, target: &str) -> PathBuf {
 /// runs the executable directly; wasm runs it under a WASI host (`wasmtime`).
 fn run_program(cli: &Cli, input: &CompilationInput) -> ExitCode {
     if cli.target == "wasm32" {
-        if let Some(code) = reject_debug_wasm(cli.debug) {
+        if let Some(code) = reject_debug_wasm(cli) {
             return code;
         }
         return wasm::run(input.debug_path(), input.program());
     }
-    match execute_native(input, &cli.memory, cli.debug) {
+    let run = if cli.profile {
+        execute_profiled(cli, input)
+    } else {
+        execute_native(input, &cli.memory, build_kind(cli))
+    };
+    match run {
         Ok(code) => ExitCode::from(code),
         Err(code) => code,
     }
@@ -492,7 +541,7 @@ fn run_program(cli: &Cli, input: &CompilationInput) -> ExitCode {
 pub(crate) fn execute_native(
     input: &CompilationInput,
     memory: &str,
-    debug: bool,
+    kind: osprey_debug::BuildKind,
 ) -> Result<u8, ExitCode> {
     let exe = std::env::temp_dir().join(format!("{}.out", scratch_stem(input.display_path())));
     build_executable(
@@ -501,7 +550,7 @@ pub(crate) fn execute_native(
         input.source(),
         &exe,
         memory,
-        debug,
+        kind,
     )?;
     match Command::new(&exe).status() {
         Ok(s) => Ok(child_exit_code(s)),
@@ -509,6 +558,69 @@ pub(crate) fn execute_native(
             eprintln!("error: could not run {}: {e}", exe.display());
             Err(ExitCode::FAILURE)
         }
+    }
+}
+
+/// The `--run --profile` pipeline [PROF-CLI-RUN]: profile-build the program,
+/// run it with the in-runtime sampler active [PROF-ACTIVATE-ENV], then
+/// symbolize, export, and print the terminal report. The program's own exit
+/// code is preserved; a post-processing failure warns but never masks the run.
+fn execute_profiled(cli: &Cli, input: &CompilationInput) -> Result<u8, ExitCode> {
+    let exe = std::env::temp_dir().join(format!("{}.out", scratch_stem(input.display_path())));
+    build_executable(
+        input.debug_path(),
+        input.program(),
+        input.source(),
+        &exe,
+        &cli.memory,
+        osprey_debug::BuildKind::Profile,
+    )?;
+    let raw = std::env::temp_dir().join(format!("{}.osprof.json", scratch_stem(cli.path.as_str())));
+    let status = Command::new(&exe).env("OSPREY_PROFILE", &raw).status();
+    let code = match status {
+        Ok(s) => child_exit_code(s),
+        Err(e) => {
+            eprintln!("error: could not run {}: {e}", exe.display());
+            return Err(ExitCode::FAILURE);
+        }
+    };
+    report_profile(cli, &exe, &raw);
+    let _ = std::fs::remove_file(&raw);
+    Ok(code)
+}
+
+/// Post-process a raw profile into the exports + terminal report; failures are
+/// reported to stderr without failing the run.
+fn report_profile(cli: &Cli, exe: &Path, raw: &Path) {
+    use std::io::IsTerminal;
+    let (out_dir, stem) = profile_export_target(cli);
+    let opts = osprey_profiler::ProfileOptions {
+        raw_path: raw.to_path_buf(),
+        binary_path: exe.to_path_buf(),
+        source_path: cli.path.clone(),
+        out_dir,
+        stem,
+        color: std::io::stdout().is_terminal() && std::env::var_os("NO_COLOR").is_none(),
+    };
+    match osprey_profiler::process_profile(&opts) {
+        Ok(outcome) => print!("{}", outcome.report),
+        Err(e) => eprintln!("osprey: profile post-processing failed: {e}"),
+    }
+}
+
+/// Where the profile exports land [PROF-CLI-RUN]: `-o dir/name` puts
+/// `dir/name.speedscope.json` (etc.) there; the default is the source stem in
+/// the working directory.
+fn profile_export_target(cli: &Cli) -> (PathBuf, String) {
+    match cli.output.as_deref() {
+        Some(output) => {
+            let dir = Path::new(output)
+                .parent()
+                .filter(|p| !p.as_os_str().is_empty())
+                .map_or_else(|| PathBuf::from("."), Path::to_path_buf);
+            (dir, stem_of(output))
+        }
+        None => (PathBuf::from("."), stem_of(&cli.path)),
     }
 }
 
@@ -520,9 +632,9 @@ fn build_executable(
     source: &str,
     exe: &Path,
     memory: &str,
-    debug: bool,
+    kind: osprey_debug::BuildKind,
 ) -> Result<(), ExitCode> {
-    let ir = match compile_ir(path, program, debug) {
+    let ir = match compile_ir(path, program, kind) {
         Ok(ir) => ir,
         Err(e) => {
             eprintln!("{path}: {e}");
@@ -534,20 +646,66 @@ fn build_executable(
         eprintln!("error: cannot write IR to {}: {e}", ll.display());
         return Err(ExitCode::FAILURE);
     }
-    let cc = c_compiler();
-    let mut cmd = Command::new(&cc);
+    if kind == osprey_debug::BuildKind::Profile {
+        return build_profile_executable(&ll, &ir, source, exe, memory);
+    }
+    let mut cmd = Command::new(c_compiler());
     let _ = cmd
         .arg(&ll)
         .arg("-o")
         .arg(exe)
         .arg("-Wno-override-module")
-        .arg(opt_flag(debug))
-        .args(debug_compile_flags(debug))
+        .arg(opt_flag(kind))
+        .args(kind.native_driver_flags())
         .args(link_args(&ir, source, memory));
+    run_build_step(cmd, &ll)
+}
+
+/// Profile builds go `.ll -> .o -> link -> dsymutil` [PROF-BUILD-MODE]: the
+/// single-step clang pipeline deletes the temp object that holds the DWARF on
+/// macOS, making line-level attribution unrecoverable.
+fn build_profile_executable(
+    ll: &Path,
+    ir: &str,
+    source: &str,
+    exe: &Path,
+    memory: &str,
+) -> Result<(), ExitCode> {
+    let kind = osprey_debug::BuildKind::Profile;
+    let obj = ll.with_extension("o");
+    let mut compile = Command::new(c_compiler());
+    let _ = compile
+        .arg("-c")
+        .arg(ll)
+        .arg("-o")
+        .arg(&obj)
+        .arg("-Wno-override-module")
+        .arg(opt_flag(kind))
+        .args(kind.native_driver_flags());
+    run_build_step(compile, ll)?;
+    let mut link = Command::new(c_compiler());
+    let _ = link
+        .arg(&obj)
+        .arg("-o")
+        .arg(exe)
+        .args(kind.native_driver_flags())
+        .args(link_args(ir, source, memory));
+    run_build_step(link, &obj)?;
+    if cfg!(target_os = "macos") {
+        // Best-effort: without a dSYM the profile still symbolizes to function
+        // names from the symbol table, just without file:line detail.
+        let _ = Command::new("dsymutil").arg(exe).status();
+    }
+    Ok(())
+}
+
+/// Run one compiler/linker step, mapping failure onto the CLI exit contract.
+fn run_build_step(mut cmd: Command, input: &Path) -> Result<(), ExitCode> {
+    let cc = c_compiler();
     match cmd.status() {
         Ok(s) if s.success() => Ok(()),
         Ok(_) => {
-            eprintln!("error: {cc} failed to compile {}", ll.display());
+            eprintln!("error: {cc} failed to compile {}", input.display());
             Err(ExitCode::FAILURE)
         }
         Err(e) => {
@@ -569,9 +727,9 @@ fn build_executable(
 fn compile_ir(
     path: &str,
     program: &osprey_ast::Program,
-    debug: bool,
+    kind: osprey_debug::BuildKind,
 ) -> osprey_codegen::Result<String> {
-    if debug {
+    if kind.wants_debug_info() {
         return osprey_codegen::compile_program_debug(
             program,
             osprey_codegen::DebugSource::from_path(path),
@@ -580,25 +738,11 @@ fn compile_ir(
     osprey_codegen::compile_program(program)
 }
 
-fn opt_flag(debug: bool) -> String {
-    let build = if debug {
-        osprey_debug::DebugBuild::ON
-    } else {
-        osprey_debug::DebugBuild::OFF
-    };
-    build.opt_flag(
+fn opt_flag(kind: osprey_debug::BuildKind) -> String {
+    kind.opt_flag(
         std::env::var("OSPREY_OPT").unwrap_or_else(|_| "-O2".to_string()),
         std::env::var("OSPREY_DEBUG_OPT").ok(),
     )
-}
-
-fn debug_compile_flags(debug: bool) -> Vec<String> {
-    let build = if debug {
-        osprey_debug::DebugBuild::ON
-    } else {
-        osprey_debug::DebugBuild::OFF
-    };
-    build.native_driver_flags()
 }
 
 /// The C compiler/linker driver used to lower the emitted LLVM IR. Defaults to
@@ -865,8 +1009,15 @@ mod tests {
         }
 
         let exe = native_exe_path(source);
-        build_executable(&path, &program, &source_text, &exe, "default", false)
-            .map_err(|code| format!("{}: native build failed: {code:?}", source.display()))?;
+        build_executable(
+            &path,
+            &program,
+            &source_text,
+            &exe,
+            "default",
+            osprey_debug::BuildKind::Release,
+        )
+        .map_err(|code| format!("{}: native build failed: {code:?}", source.display()))?;
 
         Command::new(&exe)
             .output()
@@ -2024,8 +2175,13 @@ mod tests {
 
     #[test]
     fn debug_wasm_rejection_is_centralized() {
-        assert!(reject_debug_wasm(true).is_some());
-        assert!(reject_debug_wasm(false).is_none());
+        let mut c = cli("p.osp", "--run", Policy::allow_all());
+        assert!(reject_debug_wasm(&c).is_none());
+        c.debug = true;
+        assert!(reject_debug_wasm(&c).is_some());
+        c.debug = false;
+        c.profile = true;
+        assert!(reject_debug_wasm(&c).is_some());
     }
 
     #[test]
@@ -2150,6 +2306,7 @@ mod tests {
             target: "native".to_string(),
             output: None,
             debug: false,
+            profile: false,
             flavor: None,
         }
     }
@@ -2230,15 +2387,102 @@ mod tests {
     }
 
     #[test]
-    fn compile_ir_and_debug_helpers_switch_on_the_debug_flag() {
+    fn compile_ir_and_debug_helpers_switch_on_the_build_kind() {
+        use osprey_debug::BuildKind;
         let program = osprey_syntax::parse_program("let n = 1\nprint(\"${n}\")\n").program;
-        // debug=true takes the debug-info codegen path; both opt/driver helpers
-        // branch on the same flag.
-        assert!(compile_ir("p.osp", &program, true).is_ok());
-        assert!(!opt_flag(true).is_empty());
-        assert!(!opt_flag(false).is_empty());
-        let _ = debug_compile_flags(true);
-        let _ = debug_compile_flags(false);
+        // Debug and Profile both take the debug-info codegen path; the opt
+        // flag differs (Profile keeps the release optimizer [PROF-BUILD-MODE]).
+        assert!(compile_ir("p.osp", &program, BuildKind::Debug).is_ok());
+        assert!(compile_ir("p.osp", &program, BuildKind::Profile).is_ok());
+        assert_eq!(opt_flag(BuildKind::Debug), "-O0");
+        assert!(!opt_flag(BuildKind::Release).is_empty());
+        assert_eq!(
+            opt_flag(BuildKind::Profile),
+            opt_flag(BuildKind::Release),
+            "profiling must keep release optimization"
+        );
+    }
+
+    // [PROF-CLI-RUN] end-to-end: `--profile` compiles with the profile
+    // pipeline (two-step + dsymutil), runs under the in-runtime sampler, and
+    // writes all four exports where `-o` points. POSIX-only by design.
+    #[cfg(unix)]
+    #[test]
+    fn profile_run_writes_exports_where_output_points() {
+        let path = temp_source(
+            "prof_e2e",
+            "fn dec(n: int) -> int = n - 1\n\
+             fn count(n: int) -> int = match n {\n    0 => 0\n    _ => count(dec(n))\n}\n\
+             print(\"${count(500)}\")\n",
+        );
+        let dir = std::env::temp_dir().join(format!("osprey_prof_exports_{}", std::process::id()));
+        std::fs::create_dir_all(&dir).expect("create export dir");
+        let mut c = cli(path, "--run", Policy::allow_all());
+        c.profile = true;
+        c.output = Some(dir.join("prof_e2e").display().to_string());
+        let (out_dir, stem) = profile_export_target(&c);
+        assert_eq!(out_dir, dir);
+        assert_eq!(stem, "prof_e2e");
+        let _ = run(&c);
+        for export in [
+            "prof_e2e.speedscope.json",
+            "prof_e2e.cpuprofile",
+            "prof_e2e.folded",
+            "prof_e2e.profile.json",
+        ] {
+            assert!(
+                dir.join(export).exists(),
+                "missing export {export} in {}",
+                dir.display()
+            );
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn profile_export_target_defaults_to_cwd_and_source_stem() {
+        let c = cli("examples/demo.osp", "--run", Policy::allow_all());
+        let (dir, stem) = profile_export_target(&c);
+        assert_eq!(dir, PathBuf::from("."));
+        assert_eq!(stem, "demo");
+        let mut with_bare_output = cli("a.osp", "--run", Policy::allow_all());
+        with_bare_output.output = Some("renamed".to_string());
+        let (dir, stem) = profile_export_target(&with_bare_output);
+        assert_eq!(dir, PathBuf::from("."));
+        assert_eq!(stem, "renamed");
+    }
+
+    // On Windows `--profile` is rejected outright (POSIX-only sampler), so
+    // the acceptance-path assertions only hold on unix.
+    #[cfg(unix)]
+    #[test]
+    fn parse_args_profile_implies_run_and_rejects_debug_combo() {
+        let args = vec!["main.osp".to_string(), "--profile".to_string()];
+        let cli = parse_args(&args).expect("parse --profile");
+        assert!(cli.profile);
+        assert_eq!(cli.mode, "--run");
+        assert_eq!(build_kind(&cli), osprey_debug::BuildKind::Profile);
+        // An explicit mode is preserved.
+        let args = vec![
+            "main.osp".to_string(),
+            "--compile".to_string(),
+            "--profile".to_string(),
+        ];
+        let cli = parse_args(&args).expect("parse --compile --profile");
+        assert_eq!(cli.mode, "--compile");
+        // --debug + --profile is a contradiction.
+        let args = vec![
+            "main.osp".to_string(),
+            "--debug".to_string(),
+            "--profile".to_string(),
+        ];
+        assert!(parse_args(&args).is_err());
+        // Default build kinds for the other switches.
+        let plain = parse_args(&["main.osp".to_string()]).expect("parse plain");
+        assert_eq!(build_kind(&plain), osprey_debug::BuildKind::Release);
+        let dbg =
+            parse_args(&["main.osp".to_string(), "--debug".to_string()]).expect("parse --debug");
+        assert_eq!(build_kind(&dbg), osprey_debug::BuildKind::Debug);
     }
 
     #[test]

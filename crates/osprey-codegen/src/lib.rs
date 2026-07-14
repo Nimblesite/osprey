@@ -135,10 +135,13 @@ mod tests {
     #[test]
     fn emits_main_and_puts_for_hello() {
         let ir = module("print(\"hello\")\n");
-        assert!(ir.contains("define i32 @main()"));
+        assert!(ir.contains("define i32 @main() #0"));
         assert!(ir.contains("declare i32 @puts(i8*)"));
         assert!(ir.contains("call i32 @puts"));
         assert!(ir.contains("hello\\00"));
+        // Every function keeps frame pointers so the sampling profiler's
+        // FP-chain walk is valid from any pc [PROF-CODEGEN-FP].
+        assert!(ir.contains("attributes #0 = { \"frame-pointer\"=\"all\" }"));
         assert!(ir.trim_end().ends_with('}'));
     }
 

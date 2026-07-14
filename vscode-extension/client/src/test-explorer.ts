@@ -93,8 +93,9 @@ function collectOutput(stream: Readable): () => string {
 // truncate verbose test output, and `detached` enables the group kill above. A
 // spawn failure (e.g. ENOENT) maps to exit -1 with the message in stderr.
 // Cancellation kills the process tree AND settles the promise immediately, so
-// a run always reaches its end even if the child were to linger.
-function runCompiler(
+// a run always reaches its end even if the child were to linger. Exported: the
+// profiler command ([PROF-VSCODE-FLAME]) launches the CLI through it too.
+export function runCompiler(
   command: string,
   args: readonly string[],
   cwd: string,

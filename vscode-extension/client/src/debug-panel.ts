@@ -18,6 +18,7 @@ import {
   window,
   type DebugSession,
 } from "vscode";
+import { pathBasename } from "./profiler/flame-html";
 
 /** A session that can issue DAP requests (the bit we need from DebugSession). */
 export interface DapRequester {
@@ -73,11 +74,6 @@ export interface DebugNode {
   children?: DebugNode[];
 }
 
-function basename(filePath: string): string {
-  const parts = filePath.split(/[\\/]/);
-  return parts[parts.length - 1] || filePath;
-}
-
 /** "Program" section: source, compiled binary, and live state. */
 export function buildProgramNodes(snapshot: DebugSnapshot): DebugNode[] {
   const stateLabel: Record<DebugState, string> = {
@@ -92,7 +88,7 @@ export function buildProgramNodes(snapshot: DebugSnapshot): DebugNode[] {
     nodes.push({
       kind: "info",
       label: "Source",
-      description: basename(snapshot.program.sourceProgram),
+      description: pathBasename(snapshot.program.sourceProgram),
       icon: "file-code",
     });
   }
@@ -100,7 +96,7 @@ export function buildProgramNodes(snapshot: DebugSnapshot): DebugNode[] {
     nodes.push({
       kind: "info",
       label: "Debug binary",
-      description: basename(snapshot.program.debugBinary),
+      description: pathBasename(snapshot.program.debugBinary),
       icon: "file-binary",
     });
   }
@@ -115,7 +111,7 @@ export function buildStackNodes(frames: FrameInfo[]): DebugNode[] {
   return frames.map((frame) => ({
     kind: "frame",
     label: frame.name,
-    description: frame.path ? `${basename(frame.path)}:${frame.line}` : `line ${frame.line}`,
+    description: frame.path ? `${pathBasename(frame.path)}:${frame.line}` : `line ${frame.line}`,
     icon: "debug-stackframe",
   }));
 }
@@ -146,7 +142,7 @@ export function buildProfilingNodes(): DebugNode[] {
       label: "Performance Profiling",
       icon: "dashboard",
       children: [
-        { kind: "placeholder", label: "CPU sampling", description: "planned — profileOnLaunch", icon: "watch" },
+        { kind: "placeholder", label: "CPU sampling", description: "run ⌘⇧P → Osprey: Profile Current File", icon: "watch" },
       ],
     },
     {

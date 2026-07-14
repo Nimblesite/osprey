@@ -5,6 +5,7 @@ import { createWasi } from "./wasi.js";
 
 const EMBEDDED_WASM = "__OSPREY_WASM_BASE64__";
 const HTTP_TRACE_LIMIT = 64;
+const REQUEST_ID_HEADER = "X-Osprey-Request-Id";
 const decoder = new TextDecoder("utf-8");
 const encoder = new TextEncoder();
 
@@ -14,6 +15,21 @@ function textBytes(value) {
 
 function elapsedMs(startedAt) {
   return Math.max(0, Math.round((performance.now() - startedAt) * 100) / 100);
+}
+
+function tracePath(value) {
+  try {
+    return new URL(String(value ?? ""), "http://osprey.invalid").pathname || "/";
+  } catch {
+    return String(value ?? "").split(/[?#]/, 1)[0] || "/";
+  }
+}
+
+function setHeader(headers, name, value) {
+  const existing = Object.keys(headers).find(
+    (candidate) => candidate.toLowerCase() === name.toLowerCase(),
+  );
+  headers[existing ?? name] = value;
 }
 
 function transportError(context, error) {
@@ -247,7 +263,7 @@ export class OspreyReactHost {
       correlationId: `${commandId}-${this.httpSequence}`,
       commandId,
       method: init.method,
-      url: String(command.url ?? ""),
+      url: tracePath(command.url),
       requestBytes: textBytes(init.body),
     };
   }
@@ -282,6 +298,7 @@ export class OspreyReactHost {
     const startedAt = performance.now();
     const init = requestInit(command);
     const context = this.httpContext(command, init);
+    setHeader(init.headers, REQUEST_ID_HEADER, context.correlationId);
     this.recordHttp({ ...context, phase: "request" });
     try {
       const response = await fetch(command.url, init);
