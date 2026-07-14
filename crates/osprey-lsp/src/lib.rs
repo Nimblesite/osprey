@@ -13,9 +13,11 @@ pub mod engine;
 pub mod features;
 pub mod model;
 pub mod server;
+pub mod testing;
 pub mod text;
 pub mod wire;
 
 pub use crate::analysis::{builtin_hover, symbols_json};
 pub use crate::engine::OspreyEngine;
 pub use crate::server::run_stdio;
+pub use crate::testing::tests_json;

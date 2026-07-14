@@ -35,6 +35,7 @@ mod pattern;
 mod result;
 mod runtime;
 mod strings;
+mod testing;
 mod types;
 
 pub use error::{CodegenError, Result};
@@ -139,6 +140,83 @@ mod tests {
         assert!(ir.contains("define i64 @add(i64 %a, i64 %b)"));
         assert!(ir.contains("add i64 %a, %b"));
         assert!(ir.contains("call i64 @add(i64 2, i64 3)"));
+    }
+
+    // Testing built-ins lower to the TAP runtime and re-route main's exit
+    // status through the epilogue. [TESTING-CODEGEN][TESTING-EXIT]
+    #[test]
+    fn testing_builtins_lower_to_tap_runtime_calls() {
+        let ir = module("test(\"adds\", fn() => expect(1 + 1, 2))\n");
+        assert!(ir.contains("call i32 @osp_test_begin(i8*"));
+        assert!(ir.contains("call void @osp_test_end(i8*"));
+        assert!(ir.contains("call void @osp_test_assert(i8* null, i32"));
+        assert!(ir.contains("call i32 @osp_test_finalize()"));
+        assert!(ir.contains("call i32 @strcmp(i8*"));
+    }
+
+    #[test]
+    fn check_lowers_with_label_and_named_body_calls_through() {
+        let ir = module("fn body() = check(\"sum\", 4, 2 + 2)\ntest(\"named\", body)\n");
+        // The label operand is a real string pointer, not the expect null.
+        assert!(ir.contains("@osp_test_assert(i8* %"));
+        assert!(!ir.contains("@osp_test_assert(i8* null"));
+        assert!(ir.contains("call i32 @osp_test_begin(i8*"));
+    }
+
+    #[test]
+    fn programs_without_tests_keep_the_plain_exit_path() {
+        let ir = module("print(\"hi\")\n");
+        assert!(!ir.contains("osp_test_finalize"));
+        assert!(ir.contains("ret i32 0"));
+    }
+
+    #[test]
+    fn user_functions_shadow_testing_builtins() {
+        // [TESTING-SHADOWING] a user `check` compiles as an ordinary call.
+        let ir = module("fn check(t: int) -> int = t + 1\nlet r = check(4)\nprint(r)\n");
+        assert!(!ir.contains("osp_test_assert"));
+        assert!(ir.contains("call i64 @check(i64 4)"));
+        // …and so does an extern declaration of the same name.
+        let ir = module(
+            "extern fn check(a: int, b: int, c: int) -> int\nlet r = check(1, 2, 3)\nprint(r)\n",
+        );
+        assert!(!ir.contains("osp_test_assert"));
+    }
+
+    #[test]
+    fn error_results_render_visibly_and_handles_are_rejected() {
+        // [TESTING-EQUALITY] a Result operand branches on its discriminant:
+        // Success renders bare, Error renders as Error(<message>).
+        let ir = module("expect(intDiv(1, 0), 2)\n");
+        assert!(ir.contains("call void @osp_test_assert(i8* null, i32"));
+        assert!(ir.contains("Error(%s)"));
+        // A list/map/record operand has no canonical rendering — loud error.
+        assert!(compile_err("expect([1, 2], [1, 3])\n")
+            .to_string()
+            .contains("list, map, or record"));
+    }
+
+    #[test]
+    fn assertion_operands_unwrap_results_before_comparing() {
+        // [TESTING-EQUALITY] intDiv returns Result<int, _>; expect compares
+        // its unwrapped payload's canonical string.
+        let ir = module("expect(intDiv(4, 2), 2)\n");
+        assert!(ir.contains("call void @osp_test_assert(i8* null, i32"));
+    }
+
+    #[test]
+    fn testing_builtin_arity_errors_are_loud() {
+        // The type gate rejects these in the CLI; codegen still fails loudly
+        // on its own rather than emitting a broken call.
+        assert!(compile_err("test(\"only name\")\n")
+            .to_string()
+            .contains("test needs"));
+        assert!(compile_err("expect(1)\n")
+            .to_string()
+            .contains("expect needs"));
+        assert!(compile_err("check(\"l\", 1)\n")
+            .to_string()
+            .contains("check needs"));
     }
 
     #[test]

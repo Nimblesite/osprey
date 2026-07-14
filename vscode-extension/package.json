@@ -39,7 +39,9 @@
     "onCommand:osprey.compile",
     "onCommand:osprey.run",
     "onCommand:osprey.debug",
-    "onDebugResolve:osprey"
+    "onDebugResolve:osprey",
+    "workspaceContains:**/*.test.osp",
+    "workspaceContains:**/*.test.ospml"
   ],
   "contributes": {
     "languages": [

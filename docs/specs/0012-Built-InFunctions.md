@@ -45,6 +45,39 @@ n =
 ### `toString(value: int | string | bool) -> string`
 Converts any value to its string representation.
 
+## Testing Functions — [TESTING-BUILTINS]
+
+The built-in testing framework. Normative rules — TAP output, exit codes,
+filtering, discovery, the `osprey test` runner, and the VS Code Test Explorer
+— live in [Testing Framework](0027-TestingFramework.md); the three functions
+are listed here for completeness.
+
+### `test(name: string, body: fn() -> Unit) -> Unit` — [TESTING-BUILTIN-TEST]
+Runs `body` as one named test case and prints a TAP result line. A program
+that uses any testing built-in exits non-zero when a case failed.
+
+### `expect(actual: any, expected: any) -> Unit` — [TESTING-BUILTIN-EXPECT]
+Equality assertion, Jest argument order. Canonical-string equality with
+`Result` auto-unwrap; a mismatch marks the enclosing case failed and prints a
+diagnostic without aborting the case.
+
+### `check(label: string, expected: any, actual: any) -> Unit` — [TESTING-BUILTIN-CHECK]
+Labeled equality assertion, Alcotest argument order (expected before actual).
+
+```osprey
+fn add(a, b) = a + b
+test("addition works", fn() => expect(add(2, 3), 5))
+```
+
+```osprey-ml
+add (a, b) = a + b
+test "addition works" (\() => check "sum" 5 (add (2, 3)))
+```
+
+Unlike other built-ins, these three names are shadowable: a user-defined
+`test`/`expect`/`check` function replaces the built-in
+([TESTING-SHADOWING]).
+
 ## Numeric Functions
 
 ### `abs(n: int) -> int`

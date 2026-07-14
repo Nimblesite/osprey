@@ -1,0 +1,28 @@
+// The testing framework's own executable example [TESTING-BUILTINS]:
+// Jest-style test/expect in the Default flavor, twinned with the ML file.
+fn add(a, b) = a + b
+fn double(x) = x * 2
+fn parity(n) = match n % 2 == 0 {
+    true => "even"
+    false => "odd"
+}
+
+fn additionCase() = {
+    expect(add(2, 3), 5)
+    expect(add(-1, 1), 0)
+}
+
+fn pipelineCase() = {
+    expect(10 |> double |> double, 40)
+    expect(5 |> fn(x) => x + 100, 105)
+}
+
+fn patternCase() = {
+    expect(parity(4), "even")
+    expect(parity(7), "odd")
+}
+
+test("addition works", additionCase)
+test("pipes and lambdas compose", pipelineCase)
+test("pattern matching classifies", patternCase)
+test("interpolation and bools", fn() => expect("sum=${add(20, 22)} big=${3 < 5 && 5 >= 5}", "sum=42 big=true"))

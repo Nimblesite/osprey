@@ -21,6 +21,7 @@ import {
   TransportKind,
 } from "vscode-languageclient/node";
 import { registerOspreyDebugPanel } from "./debug-panel";
+import { registerOspreyTestExplorer } from "./test-explorer";
 
 // @nimblesite/shipwright-vscode is ESM-only; this extension is CommonJS, so it
 // is loaded via dynamic import() (never a static require) inside activate().
@@ -354,6 +355,11 @@ export function activate(context: ExtensionContext) {
   const outputChannel = window.createOutputChannel("Osprey Debug");
   outputChannel.appendLine("=== Osprey Extension Activation ===");
   outputChannel.show();
+
+  // Native Test Explorer integration ([TESTING-VSCODE]). Registered before the
+  // server-enabled gate: test discovery/running only needs the compiler CLI, so
+  // it must keep working even with the LSP disabled.
+  registerOspreyTestExplorer(context, () => resolveServerCommand(context));
 
   // Check if Osprey server is enabled
   const config = workspace.getConfiguration("osprey");

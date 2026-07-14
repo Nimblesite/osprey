@@ -662,7 +662,7 @@ fn params_json(params: &[(String, String)]) -> String {
     format!("[{}]", items.join(","))
 }
 
-fn json_str(s: &str) -> String {
+pub(crate) fn json_str(s: &str) -> String {
     let mut out = String::with_capacity(s.len().saturating_add(2));
     out.push('"');
     for c in s.chars() {

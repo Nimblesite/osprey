@@ -3,8 +3,10 @@
 //! Modes: report type errors (`--check`, the default — the editor's
 //! diagnostics path), dump the AST (`--ast`), emit LLVM IR (`--llvm`), build
 //! an executable (`--compile`), compile-and-run via clang (`--run`), emit the
-//! document outline as JSON (`--symbols`), or print a built-in's signature as
-//! markdown (`--hover <name>`). Every compiling mode gates on Hindley-Milner
+//! document outline as JSON (`--symbols`), list statically-discoverable test
+//! cases as JSON (`--list-tests`, [TESTING-LIST]), or print a built-in's
+//! signature as markdown (`--hover <name>`). `osprey test` discovers and runs
+//! test suites ([TESTING-CLI-RUN], `test_cmd`). Every compiling mode gates on Hindley-Milner
 //! type inference first — an ill-typed program never reaches codegen — and on
 //! the capability sandbox (`--sandbox`, `--no-http`, `--no-websocket`,
 //! `--no-fs`, `--no-ffi`). `--quiet` suppresses non-essential output. The C
@@ -18,6 +20,7 @@ mod docs;
 mod fmt;
 mod project;
 mod sandbox;
+mod test_cmd;
 mod wasm;
 
 use osprey_syntax::Flavor;
@@ -28,13 +31,14 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::process::{Command, ExitCode};
 
-const USAGE: &str =
+pub(crate) const USAGE: &str =
     "usage: osprey <file-or-project> [--check | --ast | --llvm | --compile | --run | \
---symbols] [--quiet] [--debug] [--flavor default|ml] [--memory=default|gc] \
+--symbols | --list-tests] [--quiet] [--debug] [--flavor default|ml] [--memory=default|gc] \
 [--target=native|wasm32] [-o <out>] \
 [--sandbox | --no-http | --no-websocket | --no-fs | --no-ffi]\n\
        osprey build [project] [--quiet] [--debug] [--memory=default|gc] \
 [--target=native|wasm32] [-o <out>]\n\
+       osprey test [path] [--filter <name>] [--quiet]\n\
        osprey fmt [--check | --stdout] [--flavor default|ml] <path...>\n\
        osprey --hover <name>\n\
        osprey --docs --docs-dir <dir>\n\
@@ -42,7 +46,7 @@ const USAGE: &str =
 
 /// The parsed invocation: source path, mode flag, and behaviour switches.
 #[derive(Debug)]
-struct Cli {
+pub(crate) struct Cli {
     path: String,
     mode: String,
     quiet: bool,
@@ -62,6 +66,24 @@ struct Cli {
     /// resolution falls through to the marker/extension precedence
     /// ([FLAVOR-SELECT], docs/specs/0023-LanguageFlavors.md).
     flavor: Option<Flavor>,
+}
+
+impl Cli {
+    /// A `--run`-mode invocation for `path` with default switches — the
+    /// `osprey test` runner's per-file configuration [TESTING-CLI-RUN].
+    pub(crate) fn run_native(path: String) -> Cli {
+        Cli {
+            path,
+            mode: String::from("--run"),
+            quiet: true,
+            policy: Policy::allow_all(),
+            memory: String::from("default"),
+            target: String::from("native"),
+            output: None,
+            debug: false,
+            flavor: None,
+        }
+    }
 }
 
 fn main() -> ExitCode {
@@ -91,6 +113,10 @@ fn main() -> ExitCode {
     // `osprey fmt`: reformat Osprey sources (both flavors). No compilation.
     if args.first().map(String::as_str) == Some("fmt") {
         return fmt::run(args.get(1..).unwrap_or_default());
+    }
+    // `osprey test`: discover and run test suites. [TESTING-CLI-RUN]
+    if args.first().map(String::as_str) == Some("test") {
+        return test_cmd::run(args.get(1..).unwrap_or_default());
     }
     // `osprey --docs`: regenerate the built-in function reference from the
     // compiler's metadata. No source file is involved.
@@ -158,14 +184,16 @@ fn parse_args(args: &[String]) -> Result<Cli, String> {
     let mut it = args.iter();
     while let Some(a) = it.next() {
         match a.as_str() {
-            "--ast" | "--check" | "--llvm" | "--compile" | "--run" | "--symbols" | "--hover"
+            "--ast" | "--check" | "--llvm" | "--compile" | "--run" | "--symbols"
+            | "--list-tests" | "--hover"
                 if project_build =>
             {
                 return Err(format!(
                     "`osprey build` does not accept mode flag {a}\n{USAGE}"
                 ));
             }
-            "--ast" | "--check" | "--llvm" | "--compile" | "--run" | "--symbols" | "--hover" => {
+            "--ast" | "--check" | "--llvm" | "--compile" | "--run" | "--symbols"
+            | "--list-tests" | "--hover" => {
                 mode.clone_from(a);
             }
             "--quiet" => quiet = true,
@@ -279,7 +307,7 @@ fn run(cli: &Cli) -> ExitCode {
     dispatch(cli, &input)
 }
 
-fn load_input(cli: &Cli) -> Result<CompilationInput, ExitCode> {
+pub(crate) fn load_input(cli: &Cli) -> Result<CompilationInput, ExitCode> {
     let path = &cli.path;
     if project::is_project_path(path) {
         if cli.flavor.is_some() {
@@ -344,6 +372,12 @@ fn dispatch(cli: &Cli, input: &CompilationInput) -> ExitCode {
             println!("{}", input.symbols_json());
             ExitCode::SUCCESS
         }
+        // Static test discovery skips the type gate too, so editors can list
+        // tests mid-edit [TESTING-LIST].
+        "--list-tests" => {
+            println!("{}", osprey_lsp::tests_json(program));
+            ExitCode::SUCCESS
+        }
         "--llvm" | "--run" | "--compile" if report_type_errors(input) > 0 => ExitCode::FAILURE,
         "--llvm" => match compile_ir(input.debug_path(), program, cli.debug) {
             Ok(ir) => {
@@ -366,7 +400,7 @@ fn dispatch(cli: &Cli, input: &CompilationInput) -> ExitCode {
 
 /// Type-check `program`, print every error in `file:line:col: message` form,
 /// and return how many there were. The shared gate for every compiling mode.
-fn report_type_errors(input: &CompilationInput) -> usize {
+pub(crate) fn report_type_errors(input: &CompilationInput) -> usize {
     let errors = osprey_types::check_program(input.program());
     for e in &errors {
         eprintln!("{}", input.diagnostic(e.position, &e.message));
@@ -446,22 +480,34 @@ fn run_program(cli: &Cli, input: &CompilationInput) -> ExitCode {
         }
         return wasm::run(input.debug_path(), input.program());
     }
+    match execute_native(input, &cli.memory, cli.debug) {
+        Ok(code) => ExitCode::from(code),
+        Err(code) => code,
+    }
+}
+
+/// Compile `input` natively to a temp binary and execute it inheriting stdio;
+/// the child's exit code. Shared by `--run` and the `osprey test` runner
+/// [TESTING-CLI-RUN].
+pub(crate) fn execute_native(
+    input: &CompilationInput,
+    memory: &str,
+    debug: bool,
+) -> Result<u8, ExitCode> {
     let exe = std::env::temp_dir().join(format!("{}.out", scratch_stem(input.display_path())));
-    if let Err(code) = build_executable(
+    build_executable(
         input.debug_path(),
         input.program(),
         input.source(),
         &exe,
-        &cli.memory,
-        cli.debug,
-    ) {
-        return code;
-    }
+        memory,
+        debug,
+    )?;
     match Command::new(&exe).status() {
-        Ok(s) => ExitCode::from(child_exit_code(s)),
+        Ok(s) => Ok(child_exit_code(s)),
         Err(e) => {
             eprintln!("error: could not run {}: {e}", exe.display());
-            ExitCode::FAILURE
+            Err(ExitCode::FAILURE)
         }
     }
 }
@@ -1118,6 +1164,10 @@ mod tests {
         "examples/tested/ml/results_state_hof.ospml",
         "examples/tested/ml/strings.osp",
         "examples/tested/ml/strings.ospml",
+        "examples/tested/testing/calculator.test.osp",
+        "examples/tested/testing/calculator.test.ospml",
+        "examples/tested/testing/mlcheck.test.osp",
+        "examples/tested/testing/mlcheck.test.ospml",
     ];
 
     #[test]
@@ -1820,6 +1870,26 @@ mod tests {
     #[test]
     fn ml_strings_ospml() {
         assert_example_matches("examples/tested/ml/strings.ospml");
+    }
+
+    #[test]
+    fn testing_calculator_test_osp() {
+        assert_example_matches("examples/tested/testing/calculator.test.osp");
+    }
+
+    #[test]
+    fn testing_calculator_test_ospml() {
+        assert_example_matches("examples/tested/testing/calculator.test.ospml");
+    }
+
+    #[test]
+    fn testing_mlcheck_test_osp() {
+        assert_example_matches("examples/tested/testing/mlcheck.test.osp");
+    }
+
+    #[test]
+    fn testing_mlcheck_test_ospml() {
+        assert_example_matches("examples/tested/testing/mlcheck.test.ospml");
     }
 
     fn args(list: &[&str]) -> Vec<String> {

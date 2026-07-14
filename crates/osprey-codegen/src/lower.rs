@@ -117,7 +117,14 @@ fn compile_program_with_options(program: &Program, options: CodegenOptions) -> R
             gen_local_stmt(&mut cg, stmt)?;
         }
     }
-    cg.emit("ret i32 0");
+    // A program that used the testing built-ins exits with the TAP epilogue's
+    // status (plan + summary printed by the runtime) [TESTING-EXIT].
+    if cg.testing_used {
+        let code = cg.call("i32", "osp_test_finalize", "", &[]);
+        cg.emit(format!("ret i32 {code}"));
+    } else {
+        cg.emit("ret i32 0");
+    }
     cg.finish_function(LType::I32.as_str(), "main", &[]);
 
     Ok(cg.render())

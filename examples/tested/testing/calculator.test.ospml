@@ -1,0 +1,25 @@
+// The testing framework's own executable example [TESTING-BUILTINS]:
+// test/expect in the ML flavor, twinned with the Default file.
+add (a, b) = a + b
+double x = x * 2
+parity n =
+    match n % 2 == 0
+        true => "even"
+        false => "odd"
+
+additionCase () =
+    expect (add (2, 3)) 5
+    expect (add (-1, 1)) 0
+
+pipelineCase () =
+    expect (10 |> double |> double) 40
+    expect (5 |> \x => x + 100) 105
+
+patternCase () =
+    expect (parity 4) "even"
+    expect (parity 7) "odd"
+
+test "addition works" additionCase
+test "pipes and lambdas compose" pipelineCase
+test "pattern matching classifies" patternCase
+test "interpolation and bools" (\() => expect "sum=${add (20, 22)} big=${3 < 5 && 5 >= 5}" "sum=42 big=true")

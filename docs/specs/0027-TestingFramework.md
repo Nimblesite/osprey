@@ -56,6 +56,11 @@ The `body` argument must be a zero-parameter function: an inline lambda
 (Default `fn() => …`, ML `\() => …`) or the name of a zero-parameter function.
 Any other expression is a compile-time codegen error.
 
+Test cases must not nest: a `test` call evaluated while another case is
+running does not run its body — it prints a
+`# nested test '<name>' skipped …` diagnostic and fails the enclosing case,
+so the mistake is loud rather than silently reshuffling the run's counters.
+
 ```osprey
 test("addition works", fn() => {
     expect(add(2, 3), 5)
@@ -85,22 +90,26 @@ Both assertions are valid anywhere an expression is — inside `test` bodies,
 in helper functions called from tests, or at the top level of a script.
 
 **`[TESTING-SHADOWING]`** Unlike other runtime built-ins, `test`, `expect`,
-and `check` do NOT reserve their names: a user-defined function with the same
-name shadows the built-in in both the type environment and codegen dispatch.
-This keeps pre-existing programs (e.g. a `fn check(t: Tree)` helper) compiling
-unchanged.
+and `check` do NOT reserve their names: a user-defined function or `extern`
+declaration with the same name shadows the built-in in both the type
+environment and codegen dispatch. This keeps pre-existing programs (e.g. a
+`fn check(t: Tree)` helper or an `extern fn check(...)`) compiling unchanged.
 
 ## Equality semantics
 
-**`[TESTING-EQUALITY]`** Assertion equality is *canonical-string equality*:
-both sides are auto-unwrapped if they are `Result` values (mirroring the `==`
-operator's checker rule), rendered with the same `toString` lowering used by
-string interpolation, and compared with `strcmp`. This gives uniform,
-structural, human-explainable equality across ints, bools, floats, strings,
-`Result`s, records, and lists — the diagnostic shows exactly the two rendered
-strings that were compared. Corollary: values of different types that render
-identically (e.g. `5` and `"5"`) compare equal; assert on the value the test
-actually computes.
+**`[TESTING-EQUALITY]`** Assertion equality is *canonical-string equality*
+over values with a canonical string rendering: ints, bools, floats, strings,
+and `Result`s of those. Both sides render with the same `toString` lowering
+used by string interpolation and compare with `strcmp`; the diagnostic shows
+exactly the two rendered strings that were compared. A `Result` operand
+renders discriminant-aware: a `Success` as its bare payload (so
+`expect(intDiv(4, 2), 2)` passes), an `Error` as `Error(<message>)` (so
+asserting against a failed computation is a visible mismatch, never a blind
+payload read). Lists, maps, and records have no canonical rendering yet, so
+an assertion operand of those types is a compile-time codegen error rather
+than a silent pointer comparison. Corollary: values of different types that
+render identically (e.g. `5` and `"5"`) compare equal; assert on the value
+the test actually computes.
 
 ## TAP output protocol
 
@@ -125,9 +134,10 @@ not ok 2 - subtraction works
 - A failing assertion outside any test prints its diagnostic and counts
   toward the run's failure total without producing a result line.
 - After the program's last statement, the runtime epilogue prints the plan
-  `1..N` (N = cases executed) and a `# tests=N passed=P failed=F` summary.
-  The epilogue is emitted only for programs that use a testing built-in;
-  ordinary programs are unaffected.
+  `1..N` (N = cases executed) and a `# tests=N passed=P failed=F` summary —
+  including `1..0` when zero cases executed, so a filter that matched nothing
+  stays visible. The epilogue is emitted only for programs that use a testing
+  built-in; ordinary programs are unaffected.
 
 ## Exit code
 
@@ -158,7 +168,7 @@ gate — any Osprey program may call the testing built-ins.
 Runs test files and aggregates results. `path` (default `.`) is either a
 single file (run as-is, regardless of naming) or a directory searched
 recursively for `[TESTING-FILE-CONVENTION]` files (sorted, deterministic
-order, hidden/`target` dirs skipped). Each file is compiled and executed like
+order; hidden/`target`/`node_modules` dirs skipped; symlinks not followed). Each file is compiled and executed like
 `osprey <file> --run`; its TAP output streams through unmodified under a
 `# file: <path>` header line. `--filter` sets `OSPREY_TEST_FILTER` for the
 child processes. After all files, the runner prints
@@ -171,15 +181,18 @@ failures or compile errors), else `0`. An empty discovery set is a failure
 Static test discovery for editors. Parses the file (skipping the type gate,
 like `--symbols`, so discovery works mid-edit) and prints a JSON array of the
 statically visible test cases — `test(...)` calls whose first argument is a
-string literal, found anywhere in the program's expression trees:
+string literal, found wherever a call stands as a statement value (top level,
+block statements, lambda/handler/match bodies, namespaces, modules):
 
 ```json
 [{"name":"addition works","line":3,"column":1}]
 ```
 
-`line`/`column` are 1-based and point at the `test` call. Dynamically named
-tests (non-literal first argument) still run and report via TAP; they are
-simply not listed statically.
+`line`/`column` are 1-based and point at the test call's nearest enclosing
+statement — the call's own line in the conventional top-level layout; for a
+test that is a function or lambda body, the enclosing declaration's line.
+Dynamically named tests (non-literal first argument) still run and report via
+TAP; they are simply not listed statically.
 
 ## VS Code Test Explorer
 

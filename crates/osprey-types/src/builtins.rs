@@ -52,10 +52,16 @@ fn poly(env: &mut TypeEnv, name: &str, vars: Vec<u32>, params: Vec<Type>, ret: T
     env.insert(name, Scheme::poly(vars, Type::fun(params, ret)));
 }
 
+/// Built-ins a user function may redefine: the testing names are common
+/// identifiers, so a same-named user function shadows the built-in instead of
+/// erroring. Implements [TESTING-SHADOWING] (docs/specs/0027-TestingFramework.md).
+pub const SHADOWABLE_BUILTINS: &[&str] = &["test", "expect", "check"];
+
 /// Install every built-in into a base environment.
 pub fn base_env() -> TypeEnv {
     let mut e = TypeEnv::new();
     core(&mut e);
+    testing(&mut e);
     strings(&mut e);
     functional(&mut e);
     lists(&mut e);
@@ -87,6 +93,17 @@ fn core(e: &mut TypeEnv) {
     mono(e, "random", vec![], i());
     mono(e, "randomBelow", vec![i()], res(i()));
     mono(e, "not", vec![b()], b());
+}
+
+/// The testing framework's built-ins. Implements [TESTING-BUILTINS]
+/// (docs/specs/0027-TestingFramework.md).
+fn testing(e: &mut TypeEnv) {
+    // test(name, body): run `body` as one named test case. [TESTING-BUILTIN-TEST]
+    mono(e, "test", vec![s(), Type::fun(vec![], u())], u());
+    // expect(actual, expected): Jest argument order. [TESTING-BUILTIN-EXPECT]
+    mono(e, "expect", vec![any(), any()], u());
+    // check(label, expected, actual): Alcotest argument order. [TESTING-BUILTIN-CHECK]
+    mono(e, "check", vec![s(), any(), any()], u());
 }
 
 fn strings(e: &mut TypeEnv) {

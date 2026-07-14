@@ -98,6 +98,9 @@ pub struct Codegen {
     pub(crate) cell_slots: HashMap<String, CellSlot>,
     /// Continuation lowering context while emitting a resuming handler arm.
     pub(crate) resume_ctx: Option<ResumeCodegenContext>,
+    /// Whether any testing built-in was lowered — makes `main` return the TAP
+    /// epilogue's exit status [TESTING-EXIT].
+    pub(crate) testing_used: bool,
     /// LLVM/DWARF debug metadata state, when `--debug` was requested.
     debug: Option<DebugState>,
 }
@@ -416,6 +419,7 @@ impl Codegen {
             cell_vars: HashSet::new(),
             cell_slots: HashMap::new(),
             resume_ctx: None,
+            testing_used: false,
             debug: options.debug_source.map(DebugState::new),
         }
     }
