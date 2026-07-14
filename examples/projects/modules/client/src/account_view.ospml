@@ -1,0 +1,45 @@
+namespace talon
+
+import talon::UI
+import talon::BankData
+
+module AccountView
+    increment : int -> int
+    increment number = match number + 1
+        Success value => value
+        Error message => number
+
+    export card : int -> int -> string -> string
+    card doc index selected =
+        id = BankData::value doc "[${index}].id" "0"
+        owner = BankData::value doc "[${index}].owner" "Account"
+        balance = BankData::value doc "[${index}].balance" "$0.00"
+        accent = match index
+            0 => "violet"
+            1 => "cyan"
+            _ => "gold"
+        active = match id == selected
+            true => " selected"
+            false => ""
+        top = UI::node "span" (UI::prop "className" "account-card-top") (UI::leaf "span" (UI::prop "className" "account-mark ${accent}") "T" + "," + UI::leaf "span" (UI::prop "className" "account-more") "•••")
+        UI::node "button" (UI::prop "id" "account-${id}" + "," + UI::prop "event" "click" + "," + UI::prop "type" "button" + "," + UI::prop "className" "account-card ${accent}${active}") (top + "," + UI::leaf "span" (UI::prop "className" "account-owner") owner + "," + UI::leaf "strong" (UI::prop "className" "account-balance") balance + "," + UI::leaf "small" "" "Talon account · #${id}")
+
+    cardsFrom : int -> int -> int -> string -> string
+    cardsFrom doc index limit selected = match index >= limit
+        true => ""
+        false =>
+            owner = jsonGet doc "[${index}].owner"
+            match owner
+                Error message => ""
+                Success value =>
+                    rest = cardsFrom doc (increment index) limit selected
+                    match length rest == 0
+                        true => card doc index selected
+                        false => card doc index selected + "," + rest
+
+    export cards : string -> int -> string -> string
+    cards source limit selected =
+        doc = jsonParse source
+        rendered = cardsFrom doc 0 limit selected
+        freed = jsonFree doc
+        rendered

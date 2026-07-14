@@ -1,123 +1,158 @@
-# Talon Bank — the Osprey modules showcase
+# Talon Bank — a full Osprey web application
 
-A complete, layered banking application in ML-flavor Osprey. One
-`osprey.toml` project, eight source files, every module-system feature doing
-real work: a SQLite library over the C FFI (with a bound prepared-statement
-cursor API), a double-entry journal, a storage capability as an algebraic
-effect, a JSON API over the data (`/api/accounts`, `/api/activity`, deposits,
-withdrawals, transfers, overdraft refusals), and a server-driven web
-dashboard — stat tiles, accounts, a color-coded activity feed — that is
-*provably* unable to touch the database.
+Talon Bank is a polished banking operations console whose application logic is
+written in Osprey. The browser client is compiled to WebAssembly and owns its
+model, routing, validation, updates, view tree, and effect commands. React sits
+under that surface as a generic renderer; it does not contain banking logic.
 
-Spec: [docs/specs/0025-ModulesAndNamespaces.md](../../../docs/specs/0025-ModulesAndNamespaces.md) ·
-Plan: [docs/plans/0014-modules-and-namespaces.md](../../../docs/plans/0014-modules-and-namespaces.md)
+The native Osprey service exposes the protected JSON API and SQLite ledger.
+Its algebraic-effect boundary means neither the WebAssembly client nor the
+React host can acquire database authority.
 
-## Run it
+## Run the demo
+
+Build the browser bundle after changing the client, host, or styles:
 
 ```sh
-target/release/osprey examples/projects/modules --run
+make bank-web
 ```
 
-Output is deterministic and byte-compared against `expectedoutput` by
-`crates/osprey-cli/tests/project_e2e.rs`.
+Then launch the complete app:
 
-## Architecture
-
+```sh
+make bank
 ```
+
+Open <http://127.0.0.1:18790>. The demo includes:
+
+- a portfolio overview with live balances and recent activity;
+- account browsing, selection, detail, and account creation;
+- deposit, withdrawal, and atomic transfer workflows;
+- a searchable, filterable audit ledger, including refused movements;
+- client-side routes with browser back/forward support;
+- loading, validation, success, refusal, and service-failure states;
+- a responsive mobile navigation experience; and
+- an inspectable security view explaining the capability boundaries.
+
+The generated `src/web/bundle.ospml` is committed, so the native project still
+builds without Node or a WASI SDK. `make bank-web` is the explicit regeneration
+step.
+
+## Browser architecture
+
+```text
+browser event / HTTP response
+            │ flat JSON + opaque model
+            ▼
+ Osprey WebAssembly application
+ model · update · routing · validation · view · commands
+            │ one declarative JSON tree per render
+            ▼
+ generic React renderer + browser command host
+            │ fetch only; no storage capability
+            ▼
+       Osprey JSON API
+            │ Ledger::Store algebraic effect
+            ▼
+       SQLite ledger
+```
+
+The bridge is deliberately coarse. Osprey produces a complete render envelope,
+and the host parses it once before React reconciles the tree. Events return as
+small flat messages through the stable `osprey_web_dispatch` WebAssembly
+export. `osp_alloc` provides safe host-to-Wasm string allocation. This avoids a
+chatty component-level FFI and keeps React replaceable.
+
+The reusable pieces are split clearly:
+
+```text
+client/src/
+  model.ospml          opaque serializable application model
+  update.ospml         event, form, route, and HTTP-response transitions
+  ui.ospml             React-neutral element-tree constructors
+  commands.ospml       generic HTTP, focus, and navigation commands
+  bridge.ospml         the single render boundary
+  pages/               complete Osprey page views
+
+web/src/
+  host.js              Wasm lifecycle and generic command interpreter
+  protocol.js          safe element-tree-to-React adapter
+  wasi.js              minimal browser WASI Preview 1 host
+  styles.css           responsive Talon design system
+```
+
+`web/scripts/build.mjs` compiles the client for `wasm32-wasip1`, bundles React,
+minifies the host and CSS, embeds the Wasm bytes, and generates the native
+Osprey `Bundle` module served at `/app.js` and `/app.css`.
+
+## Server architecture
+
+```text
 src/
-  lib/sqlite.ospml       module Sqlite        SQLite library: C FFI externs + typed helpers
-  domain/money.ospml     module Money         pure cents arithmetic  (signature-ascribed)
-  domain/json.ospml      module Json          typed JSON encoder, escaping in one place (signature-ascribed)
-  domain/accounts.ospml  module Accounts      Account record, Outcome union, pure rules
-  store/ledger.ospml     module Ledger        effect Store (capability) + SQL implementations
-  store/metrics.ospml    state Metrics        the namespace's ONE state module (request counter)
-  api/routes.ospml       module Api           JSON routes + effect Audit; performs Store
-  web/pages.ospml        module Pages         server-driven HTML; sees ONLY bank::Api
-  main.ospml             (entry)              composition root: binds every capability
+  lib/sqlite.ospml       bound SQLite helpers over the C FFI
+  domain/money.ospml     exact whole-cent formatting
+  domain/json.ospml      central JSON encoding and scalar projection
+  domain/accounts.ospml  account records, outcomes, and pure rules
+  store/ledger.ospml     Store effect and transactional SQL implementation
+  store/metrics.ospml    the namespace's single state owner
+  api/routes.ospml       validated JSON routes and Audit effect
+  web/pages.ospml        capability-free app shell and embedded assets
+  web/bundle.ospml       generated React host, CSS, and Osprey Wasm client
+  main.ospml             composition root and capability handlers
 ```
 
-The dependency arrows only point down, and the module system enforces them:
+- **Storage is a capability.** `Ledger::Store` is an algebraic effect. Only the
+  composition root binds it to SQLite, so an unhandled or illicit storage
+  operation is a compile error.
+- **Transfers are atomic.** Debit, credit, and both journal entries commit in
+  one SQLite transaction.
+- **Refusals are domain outcomes.** Overdraft attempts return HTTP 422 and are
+  still recorded in the audit ledger.
+- **Money is integral.** The full path uses cents, avoiding floating-point
+  drift.
+- **Input is bound and output is encoded.** SQL uses prepared parameters, JSON
+  strings are escaped centrally, and the React adapter rejects executable DOM
+  properties and raw HTML injection.
+- **The UI has no database route.** `pages.ospml` serves static app assets and
+  imports no Ledger or SQLite module. Browser data crosses only `/api/*`.
 
-```
-web ("bank/web")  ──imports──▶  api  ──performs──▶  Ledger::Store  ──SQL──▶  Sqlite ──▶ libsqlite3
-                                 │
-                                 └──performs──▶  Api::Audit  (bound to console in main)
+## Tests
+
+Run the host unit tests and regenerate the bundle:
+
+```sh
+cd examples/projects/modules/web
+npm ci
+npm test
+npm run build
 ```
 
-- **The UI never talks to the database.** `web/pages.ospml` imports only
-  `bank::Api`. There is no `Ledger` or `Sqlite` path in scope, so a database
-  call from the UI is not merely bad style — it does not resolve.
-- **Storage is a capability.** `Ledger::Store` is an algebraic effect. The api
-  layer `perform`s it; only `main.ospml` decides what a `debit` physically is.
-  An unhandled operation is a compile error. Swapping SQLite for an in-memory
-  fake is a main-only edit.
-- **Refusal is a domain outcome, not an error.** `debit` returns the
-  `Outcome` union (`Landed`/`Refused`); every caller pattern-matches it
-  exhaustively, and an overdraft surfaces as HTTP 422 with a reason.
-- **Double-entry journal.** Every movement — refusals included — lands as a
-  bound-parameter row in `entries`; a transfer writes both sides. The activity
-  feed is an audit ledger, not a best-effort log.
-- **JSON is built from strong types, never spliced.** No layer hand-writes
-  `"{\"error\":\"...\"}"`. `domain/json.ospml` owns encoding through typed
-  combinators (`strField`/`numField`/`obj`/`arr`), so string escaping lives in
-  exactly one place — an owner name like `Amelia "Mel" Chen` yields valid JSON
-  instead of a broken document. (SQL input is bound, never spliced, too.)
-- **One state owner.** `state Metrics` owns the only mutable cell in the app.
-  The cell is readable and writable exclusively inside its own effect's
-  handler arms, and that region exists only while the exported installer
-  (`track`) is running.
+Run the real-browser suite against the compiled Osprey server:
+
+```sh
+make bank-e2e
+```
+
+Playwright covers the public API, WebAssembly boot, bridge telemetry, SPA
+navigation, account creation, money movement, refusals, filtering, responsive
+layout, and injection-safe rendering.
+
+The deterministic native tour remains byte-compared with `expectedoutput` by
+`crates/osprey-cli/tests/project_e2e.rs`.
 
 ## Module-system features exercised
 
 | Feature | Where |
 |---|---|
-| File-scoped `namespace` | every file (`namespace bank`) |
-| Quoted namespace + alias import | `web/pages.ospml` (`namespace "bank/web"`), `import "bank/web" as web` in main |
-| Cross-file namespace merging | `Account`/`Outcome` declared in domain, used in api with no import |
-| `module` with `export` markers | Sqlite, Accounts, Ledger, Api, Pages |
-| Signature-ascribed module (no redundant exports) | `module Money : MoneyApi`, `module Json : JsonApi` |
-| Signature-ascribed **state** module | `state Metrics : MetricsApi` |
-| Effect declared in a signature | `MetricsApi.MetricsFx` |
-| Effect exported from a module | `Ledger::Store`, `Api::Audit` |
-| Effect rows on module exports | `route : … ! [Ledger::Store, Audit]` |
-| Handler installer + private cells | `Metrics::track` |
-| Qualified paths in perform/handle | `perform Ledger::Store.debit`, `handle Api::Audit` |
-| Member imports | `import bank::Sqlite`, etc. |
-| Multi-file project manifest | `osprey.toml` (`source_roots`, `default_namespace`, `entry`) |
-| `@link` directive from a non-entry file | `lib/sqlite.ospml` links `sqlite3` |
+| File-scoped and quoted namespaces | native modules and `bank/web` |
+| Multi-root Osprey project | browser client plus shared domain modules |
+| Signature-ascribed modules and state | `Money`, `Json`, `Metrics` |
+| Exported algebraic effects | `Ledger::Store`, `Api::Audit` |
+| Effect rows and exhaustive outcomes | API routes and ledger mutations |
+| Private state behind an installer | request metrics |
+| Stable WebAssembly host ABI | `osprey_web_dispatch`, `osp_alloc` |
+| C FFI linking from a library module | SQLite adapter |
 
-## Browser end-to-end tests (Playwright)
-
-```sh
-cd examples/projects/modules/e2e
-npm install && npx playwright install chromium
-npx playwright test
-```
-
-The suite boots the real compiled binary (the `/tmp/talon_bank.hold` marker
-file pauses the demo just before shutdown so the server stays up), then
-drives Chromium through the dashboard and the JSON API: seeded balances,
-styled rendering, an overdraft refusal (422), and the server-driven proof
-that an API mutation appears on the next rendered page.
-
-## Known compiler defects encountered (worked around here, not fixed)
-
-Found while building this app; each reproduces in a few lines. The module
-system itself needed **zero** workarounds.
-
-1. **`deleteFile` is a phantom builtin** — typed in
-   `crates/osprey-types/src/builtins.rs` but absent from the runtime, so any
-   use fails at link time. Workaround: idempotent `DROP TABLE IF EXISTS`.
-2. **`Result` loses its variant tag through effect `resume`** — a handler arm
-   returning `Error(…)` for an op typed `… => Result<T, E>` matches
-   `Success` at the perform site with a garbage payload. User-defined unions
-   round-trip correctly, which is why `debit` returns the domain `Outcome`
-   union instead.
-3. **`HttpResponse` field readback corrupts** — constructing an
-   `HttpResponse` and then reading a string field back (e.g. `.partialBody`)
-   yields garbage or a segfault. Custom records are unaffected. Workaround:
-   `Api::accountsJson` hands the web layer the JSON string directly.
-4. **Undocumented HTTP contract** — the `headers` string of a server
-   `HttpResponse` is spliced verbatim into the wire response, so every header
-   line must be CRLF-terminated (`"Content-Type: text/html; charset=utf-8\r\n"`),
-   or browsers receive a mangled header block and fall back to text/plain.
+The relevant language specifications are
+[`0022-WebAssemblyTarget.md`](../../../docs/specs/0022-WebAssemblyTarget.md) and
+[`0025-ModulesAndNamespaces.md`](../../../docs/specs/0025-ModulesAndNamespaces.md).

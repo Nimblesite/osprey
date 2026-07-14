@@ -15,7 +15,7 @@ module.exports = defineConfig({
   },
   webServer: {
     command:
-      'touch /tmp/talon_bank.hold && trap "rm -f /tmp/talon_bank.hold" EXIT && ../../../../target/release/osprey ../.. --run',
+      'touch /tmp/talon_bank.hold && trap "rm -f /tmp/talon_bank.hold" EXIT && ../../../../target/release/osprey .. --run',
     cwd: __dirname,
     url: 'http://127.0.0.1:18790/api/accounts',
     reuseExistingServer: false,

@@ -1,0 +1,102 @@
+namespace talon
+
+import talon::UI
+import talon::BankData
+import bank::Money
+
+module ActivityView
+    visible : string -> string -> string -> string -> string -> bool
+    visible kind note owner filter search =
+        kindMatch = match filter
+            "all" => true
+            "in" => kind == "credit"
+            "out" => kind == "debit"
+            "refused" => kind == "refused"
+            _ => true
+        query = toLowerCase (trim search)
+        haystack = toLowerCase (note + " " + owner)
+        searchMatch = match length query == 0
+            true => true
+            false => contains haystack query
+        kindMatch && searchMatch
+
+    mark : string -> string
+    mark kind = match kind
+        "credit" => "↙"
+        "debit" => "↗"
+        _ => "!"
+
+    label : string -> string
+    label kind = match kind
+        "credit" => "Money in"
+        "debit" => "Money out"
+        _ => "Declined"
+
+    amount : string -> int -> string
+    amount kind cents = match kind
+        "credit" => "+${Money::show cents}"
+        "debit" => "−${Money::show cents}"
+        _ => Money::show cents
+
+    increment : int -> int
+    increment number = match number + 1
+        Success value => value
+        Error message => number
+
+    export row : int -> int -> string
+    row doc index =
+        kind = BankData::value doc "[${index}].kind" "refused"
+        note = BankData::value doc "[${index}].note" "Bank movement"
+        owner = BankData::value doc "[${index}].owner" "Talon customer"
+        account = BankData::value doc "[${index}].account" "—"
+        cents = BankData::integer doc "[${index}].cents"
+        icon = UI::leaf "span" (UI::prop "className" "movement-icon ${kind}") (mark kind)
+        copy = UI::node "span" (UI::prop "className" "movement-copy") (UI::leaf "strong" "" note + "," + UI::leaf "small" "" "${owner} · Account #${account}")
+        meta = UI::node "span" (UI::prop "className" "movement-meta") (UI::leaf "strong" (UI::prop "className" "movement-amount ${kind}") (amount kind cents) + "," + UI::leaf "small" "" (label kind))
+        UI::node "div" (UI::prop "className" "movement-row ${kind}") (icon + "," + copy + "," + meta)
+
+    rowsFrom : int -> int -> int -> string -> string -> int -> string
+    rowsFrom doc index limit filter search shown = match shown >= limit
+        true => ""
+        false =>
+            found = jsonGet doc "[${index}].kind"
+            match found
+                Error message => ""
+                Success kind =>
+                    note = BankData::value doc "[${index}].note" ""
+                    owner = BankData::value doc "[${index}].owner" ""
+                    show = visible kind note owner filter search
+                    nextShown = match show
+                        true => increment shown
+                        false => shown
+                    rest = rowsFrom doc (index + 1) limit filter search nextShown
+                    match show
+                        false => rest
+                        true => match length rest == 0
+                            true => row doc index
+                            false => row doc index + "," + rest
+
+    export rows : string -> int -> string -> string -> string
+    rows source limit filter search =
+        doc = jsonParse source
+        content = rowsFrom doc 0 limit filter search 0
+        freed = jsonFree doc
+        content
+
+    countFrom : int -> int -> string -> int -> int
+    countFrom doc index kind running =
+        found = jsonGet doc "[${index}].kind"
+        match found
+            Error message => running
+            Success value =>
+                nextCount = match value == kind
+                    true => increment running
+                    false => running
+                countFrom doc (index + 1) kind nextCount
+
+    export count : string -> string -> int
+    count source kind =
+        doc = jsonParse source
+        total = countFrom doc 0 kind 0
+        freed = jsonFree doc
+        total

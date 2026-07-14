@@ -1,0 +1,61 @@
+namespace talon
+
+import talon::UI
+import talon::BankData
+
+module MovePage
+    selectField : int -> string -> string -> string -> string -> string
+    selectField doc id name label selected =
+        options = BankData::accountOptions doc 0
+        control = UI::node "select" (UI::prop "id" id + "," + UI::prop "name" name + "," + UI::prop "className" "field-control" + "," + UI::prop "defaultValue" selected) options
+        UI::node "label" (UI::prop "className" "field") (UI::leaf "span" (UI::prop "className" "field-label") label + "," + control)
+
+    amountField : string -> string
+    amountField prefix =
+        control = UI::node "div" (UI::prop "className" "money-input") (UI::leaf "span" "" "$" + "," + UI::leaf "input" (UI::prop "id" "${prefix}-amount" + "," + UI::prop "name" "amount" + "," + UI::prop "className" "field-control" + "," + UI::prop "placeholder" "0.00" + "," + UI::prop "inputMode" "decimal" + "," + UI::prop "required" "true" + "," + UI::prop "type" "text") "")
+        UI::node "label" (UI::prop "className" "field amount-field") (UI::leaf "span" (UI::prop "className" "field-label") "Amount" + "," + control)
+
+    noteField : string -> string
+    noteField prefix = UI::field "${prefix}-note" "note" "Description" "What is this for?" "text"
+
+    submit : string -> string -> string
+    submit label icon = UI::node "button" (UI::prop "className" "button primary submit-button" + "," + UI::prop "type" "submit") (UI::text "button-icon" icon + "," + UI::text "button-label" label)
+
+    deposit : AppModel -> int -> string
+    deposit model doc =
+        intro = UI::node "div" (UI::prop "className" "form-intro") (UI::leaf "span" (UI::prop "className" "form-icon deposit") "↙" + "," + UI::node "div" "" (UI::leaf "h2" "" "Deposit funds" + "," + UI::leaf "p" "" "Credit an account instantly and journal the movement."))
+        fields = selectField doc "deposit-account" "account" "Deposit to" model.selected + "," + amountField "deposit" + "," + noteField "deposit"
+        form = UI::node "form" (UI::prop "id" "submit-deposit" + "," + UI::prop "event" "submit" + "," + UI::prop "className" "money-form") (intro + "," + UI::node "div" (UI::prop "className" "form-grid") fields + "," + submit "Deposit" "↙")
+        form
+
+    withdraw : AppModel -> int -> string
+    withdraw model doc =
+        intro = UI::node "div" (UI::prop "className" "form-intro") (UI::leaf "span" (UI::prop "className" "form-icon withdraw") "↗" + "," + UI::node "div" "" (UI::leaf "h2" "" "Withdraw funds" + "," + UI::leaf "p" "" "Debit securely. Overdraft attempts are refused and audited."))
+        fields = selectField doc "withdraw-account" "account" "Withdraw from" model.selected + "," + amountField "withdraw" + "," + noteField "withdraw"
+        UI::node "form" (UI::prop "id" "submit-withdraw" + "," + UI::prop "event" "submit" + "," + UI::prop "className" "money-form") (intro + "," + UI::node "div" (UI::prop "className" "form-grid") fields + "," + submit "Withdraw" "↗")
+
+    transfer : AppModel -> int -> string
+    transfer model doc =
+        intro = UI::node "div" (UI::prop "className" "form-intro") (UI::leaf "span" (UI::prop "className" "form-icon transfer") "⇄" + "," + UI::node "div" "" (UI::leaf "h2" "" "Transfer money" + "," + UI::leaf "p" "" "Move funds atomically between Talon accounts."))
+        accounts = UI::node "div" (UI::prop "className" "paired-fields") (selectField doc "transfer-from" "from" "From account" model.selected + "," + UI::leaf "span" (UI::prop "className" "swap-mark") "→" + "," + selectField doc "transfer-to" "to" "To account" "2")
+        fields = accounts + "," + amountField "transfer" + "," + noteField "transfer"
+        UI::node "form" (UI::prop "id" "submit-transfer" + "," + UI::prop "event" "submit" + "," + UI::prop "className" "money-form") (intro + "," + UI::node "div" (UI::prop "className" "form-grid") fields + "," + submit "Transfer" "⇄")
+
+    tip : string -> string -> string -> string
+    tip icon title body = UI::node "li" "" (UI::leaf "span" (UI::prop "className" "tip-icon") icon + "," + UI::node "span" "" (UI::leaf "strong" "" title + "," + UI::leaf "small" "" body))
+
+    export view : AppModel -> string
+    view model =
+        doc = jsonParse model.accounts
+        form = match model.moveMode
+            "deposit" => deposit model doc
+            "withdraw" => withdraw model doc
+            _ => transfer model doc
+        freed = jsonFree doc
+        depositActive = model.moveMode == "deposit"
+        withdrawActive = model.moveMode == "withdraw"
+        transferActive = model.moveMode == "transfer"
+        tabs = UI::node "div" (UI::prop "className" "segmented move-tabs" + "," + UI::prop "role" "tablist") (UI::chip "move-deposit" "Deposit" "↙" depositActive + "," + UI::chip "move-withdraw" "Withdraw" "↗" withdrawActive + "," + UI::chip "move-transfer" "Transfer" "⇄" transferActive)
+        pageHead = UI::node "header" (UI::prop "className" "page-heading") (UI::node "div" "" (UI::leaf "span" (UI::prop "className" "eyebrow") "MOVE MONEY" + "," + UI::leaf "h1" "" "Client funds, in motion" + "," + UI::leaf "p" "" "Fast bank operations, guarded by Osprey domain rules."))
+        guidance = UI::node "aside" (UI::prop "className" "card guidance-card") (UI::leaf "span" (UI::prop "className" "eyebrow") "BUILT FOR CONFIDENCE" + "," + UI::leaf "h2" "" "Every movement is protected" + "," + UI::node "ul" (UI::prop "className" "tip-list") (tip "✓" "Atomic transfers" "Both sides land together—or not at all." + "," + tip "◎" "Complete journal" "Successful and refused attempts are recorded." + "," + tip "◇" "Integer precision" "Money remains whole cents from form to ledger.") + "," + UI::node "div" (UI::prop "className" "shield-seal") (UI::leaf "strong" "" "T" + "," + UI::leaf "span" "" "Talon Shield active"))
+        UI::node "div" (UI::prop "className" "page move-page") (pageHead + "," + tabs + "," + UI::node "div" (UI::prop "className" "move-grid") (UI::node "section" (UI::prop "className" "card form-card") form + "," + guidance))

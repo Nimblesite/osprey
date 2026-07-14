@@ -1,0 +1,12 @@
+// The complete React/WASM boundary: one coarse data crossing, no component FFI.
+namespace talon
+
+import bank::Json
+
+extern osprey_web_render (payload : string) -> int
+
+module Bridge
+    export present : string -> string -> string -> int
+    present model view commands =
+        envelope = Json::obj (Json::strField "model" model + "," + Json::rawField "view" view + "," + Json::rawField "commands" commands)
+        osprey_web_render envelope

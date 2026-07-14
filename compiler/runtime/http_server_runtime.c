@@ -1,4 +1,5 @@
 #include "http_shared.h"
+#include <limits.h>
 
 // Forward declaration of fiber functions
 extern int64_t fiber_spawn(int64_t (*fn)(void));
@@ -15,6 +16,38 @@ static const char *simple_response_headers = "HTTP/1.1 200 OK\r\n"
                                             "Content-Length: %zu\r\n"
                                             "Connection: close\r\n"
                                             "\r\n";
+
+// `send` is allowed to write fewer bytes than requested (and can be interrupted
+// after writing none). HTTP Content-Length promises the whole payload, so every
+// response write must drain the buffer before the connection is closed.
+static bool send_was_interrupted(void) {
+#ifdef _WIN32
+  return WSAGetLastError() == WSAEINTR;
+#else
+  return errno == EINTR;
+#endif
+}
+
+static int send_some(int socket_fd, const char *data, size_t length) {
+  int chunk = length > (size_t)INT_MAX ? INT_MAX : (int)length;
+  int written = send(socket_fd, data, chunk, 0);
+  if (written > 0) {
+    return written;
+  }
+  return written < 0 && send_was_interrupted() ? 0 : -1;
+}
+
+static int send_all(int socket_fd, const char *data, size_t length) {
+  size_t offset = 0;
+  while (offset < length) {
+    int written = send_some(socket_fd, data + offset, length - offset);
+    if (written < 0) {
+      return -1;
+    }
+    offset += (size_t)written;
+  }
+  return 0;
+}
 
 // Server loop fiber function that actually handles requests
 static int64_t server_loop_fiber(void) {
@@ -80,7 +113,7 @@ static int64_t server_loop_fiber(void) {
         if (response && response->partialBody) {
           // Calculate actual body length instead of using hardcoded partialLength
           size_t actual_body_length = strlen(response->partialBody);
-          
+
           // Build proper HTTP response with status and headers
           snprintf(http_response, sizeof(http_response),
                    "HTTP/1.1 %" PRId64 " %s\r\n"
@@ -96,20 +129,22 @@ static int64_t server_loop_fiber(void) {
                    response->headers ? response->headers : "",
                    actual_body_length);
 
-          // Send headers first
-          send(client_fd, http_response, strlen(http_response), 0);
-
-          // Send body using actual string length, not hardcoded partialLength
-          send(client_fd, response->partialBody, actual_body_length, 0);
+          // Send headers first, then every body byte. Large generated JS/CSS
+          // bundles commonly exceed one socket-buffer write.
+          if (send_all(client_fd, http_response, strlen(http_response)) == 0) {
+            (void)send_all(client_fd, response->partialBody, actual_body_length);
+          }
 
           // Clean up allocated memory (if needed)
           // Note: Osprey-allocated memory should be managed by Osprey
         } else {
           // Fallback to simple response with dynamic length calculation
           size_t body_len = strlen(simple_response_body);
-          snprintf(http_response, sizeof(http_response), simple_response_headers, body_len);
-          send(client_fd, http_response, strlen(http_response), 0);
-          send(client_fd, simple_response_body, body_len, 0);
+          snprintf(http_response, sizeof(http_response), simple_response_headers,
+                   body_len);
+          if (send_all(client_fd, http_response, strlen(http_response)) == 0) {
+            (void)send_all(client_fd, simple_response_body, body_len);
+          }
         }
       }
       close(client_fd);

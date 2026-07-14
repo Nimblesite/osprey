@@ -1,0 +1,19 @@
+namespace talon
+
+import talon::UI
+
+module SecurityPage
+    control : string -> string -> string -> string -> string
+    control icon title body status = UI::node "li" (UI::prop "className" "security-control") (UI::leaf "span" (UI::prop "className" "security-icon") icon + "," + UI::node "span" (UI::prop "className" "security-copy") (UI::leaf "strong" "" title + "," + UI::leaf "small" "" body) + "," + UI::leaf "span" (UI::prop "className" "status-pill success") status)
+
+    layer : string -> string -> string -> string -> string
+    layer number title code body = UI::node "li" (UI::prop "className" "architecture-layer") (UI::leaf "span" (UI::prop "className" "layer-number") number + "," + UI::node "div" "" (UI::leaf "small" "" code + "," + UI::leaf "h3" "" title + "," + UI::leaf "p" "" body))
+
+    export view : AppModel -> string
+    view model =
+        pageHead = UI::node "header" (UI::prop "className" "page-heading") (UI::node "div" "" (UI::leaf "span" (UI::prop "className" "eyebrow") "SECURITY & ARCHITECTURE" + "," + UI::leaf "h1" "" "Trust you can inspect" + "," + UI::leaf "p" "" "Talon is a real Osprey application—not a JavaScript mock wearing its data."))
+        hero = UI::node "section" (UI::prop "className" "security-hero") (UI::node "div" (UI::prop "className" "security-orbit") (UI::leaf "span" (UI::prop "className" "orbit-ring ring-one") "" + "," + UI::leaf "span" (UI::prop "className" "orbit-ring ring-two") "" + "," + UI::leaf "strong" "" "T") + "," + UI::node "div" (UI::prop "className" "security-hero-copy") (UI::leaf "span" (UI::prop "className" "status-pill success") "● All systems protected" + "," + UI::leaf "h2" "" "Capability-checked by construction" + "," + UI::leaf "p" "" "The browser can request bank operations, but it never receives storage authority. Osprey’s module and effect boundaries decide what code is allowed to do."))
+        controls = UI::node "section" (UI::prop "className" "card security-card") (UI::node "div" (UI::prop "className" "section-heading") (UI::node "div" "" (UI::leaf "span" (UI::prop "className" "eyebrow") "ACTIVE CONTROLS" + "," + UI::leaf "h2" "" "Protection status")) + "," + UI::node "ul" (UI::prop "className" "security-list") (control "◇" "Storage isolation" "The UI has no Ledger or SQLite capability." "Enforced" + "," + control "⇄" "Atomic transfers" "Debit and credit commit as one transaction." "Enforced" + "," + control "◎" "Immutable audit trail" "Refused overdrafts are journalled too." "Live" + "," + control "¢" "Whole-cent arithmetic" "No floating-point drift in money flows." "Verified"))
+        layers = UI::node "ol" (UI::prop "className" "architecture-stack") (layer "01" "React renderer" "HOST / VIEW" "Turns declarative nodes into a fast, accessible interface. It owns no bank logic." + "," + layer "02" "Osprey Web App" "WASM / MODEL · UPDATE · VIEW" "Owns routing, interactions, validation, state transitions, and command descriptions." + "," + layer "03" "HTTP capability" "COMMAND / API" "The only browser-side effect: typed requests to the public bank endpoints." + "," + layer "04" "Ledger service" "OSPREY / EFFECT HANDLERS" "Domain rules and SQLite authority remain on the server, beyond the UI boundary.")
+        architecture = UI::node "section" (UI::prop "className" "card architecture-card" + "," + UI::prop "id" "architecture") (UI::leaf "span" (UI::prop "className" "eyebrow") "HOW THIS APP RUNS" + "," + UI::leaf "h2" "" "A thin host. A serious Osprey core." + "," + UI::leaf "p" (UI::prop "className" "architecture-lead") "React is deliberately below the Osprey surface. The app emits plain view data and generic commands; the host renders and transports them." + "," + layers)
+        UI::node "div" (UI::prop "className" "page security-page") (pageHead + "," + hero + "," + UI::node "div" (UI::prop "className" "security-grid") (controls + "," + architecture))

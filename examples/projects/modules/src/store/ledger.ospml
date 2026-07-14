@@ -28,6 +28,7 @@ module Ledger
         open : string => int
         credit : (int, int, string) => int
         debit : (int, int, string) => Outcome
+        transfer : (int, int, int, string) => Outcome
         balance : int => int
         owner : int => string
         count : Unit => int
@@ -80,6 +81,26 @@ module Ledger
                 done = Sqlite::run db "COMMIT"
                 Landed(balance = balanceSql db id)
 
+    // Both sides of a transfer and their journal rows commit as one SQLite
+    // transaction. The API validates both account ids before invoking this
+    // capability, so a successful debit can never disappear into a missing
+    // destination account. [MODULES-TRANSFER-ATOMIC]
+    export transferSql : Ptr -> int -> int -> int -> string -> Outcome
+    transferSql db fromId toId cents note =
+        before = balanceSql db fromId
+        match before < cents
+            true =>
+                entry = journal db fromId "refused" cents note
+                Refused(why = "insufficient funds")
+            false =>
+                begun = Sqlite::run db "BEGIN IMMEDIATE"
+                debited = Sqlite::updateIntInt db "UPDATE accounts SET balance = balance - ? WHERE id = ?" cents fromId
+                credited = Sqlite::updateIntInt db "UPDATE accounts SET balance = balance + ? WHERE id = ?" cents toId
+                sent = journal db fromId "debit" cents note
+                received = journal db toId "credit" cents note
+                done = Sqlite::run db "COMMIT"
+                Landed(balance = balanceSql db fromId)
+
     export balanceSql : Ptr -> int -> int
     balanceSql db id = Sqlite::queryInt db "SELECT balance FROM accounts WHERE id = ?" id
 
@@ -97,16 +118,18 @@ module Ledger
         match stepped == 100
             false => ""
             true =>
-                kind = Sqlite::textAt cursor 0
-                cents = Sqlite::intAt cursor 1
-                note = Sqlite::textAt cursor 2
-                who = Sqlite::textAt cursor 3
-                entry = Json::obj (Json::strField "kind" kind + "," + Json::numField "cents" cents + "," + Json::strField "note" note + "," + Json::strField "owner" who)
+                id = Sqlite::intAt cursor 0
+                account = Sqlite::intAt cursor 1
+                kind = Sqlite::textAt cursor 2
+                cents = Sqlite::intAt cursor 3
+                note = Sqlite::textAt cursor 4
+                who = Sqlite::textAt cursor 5
+                entry = Json::obj (Json::numField "id" id + "," + Json::numField "account" account + "," + Json::strField "kind" kind + "," + Json::numField "cents" cents + "," + Json::strField "note" note + "," + Json::strField "owner" who)
                 "${sep}${entry}${feedRows cursor ","}"
 
     export activitySql : Ptr -> string
     activitySql db =
-        cursor = Sqlite::query db "SELECT e.kind, e.cents, e.note, a.owner FROM entries e JOIN accounts a ON a.id = e.account ORDER BY e.id DESC LIMIT 8"
+        cursor = Sqlite::query db "SELECT e.id, e.account, e.kind, e.cents, e.note, a.owner FROM entries e JOIN accounts a ON a.id = e.account ORDER BY e.id DESC LIMIT 50"
         listing = feedRows cursor ""
         closed = Sqlite::closeQuery cursor
         "[${listing}]"

@@ -26,7 +26,7 @@ type Outcome =
 module Accounts
     // Domain rule: an account must be opened with a non-empty owner name.
     export namable : string -> bool
-    namable owner = length owner > 0
+    namable owner = length (trim owner) > 0
 
     // Domain rule: money can only move in positive whole-cent amounts.
     export movable : int -> bool

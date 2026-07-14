@@ -17,7 +17,7 @@ import "bank/web" as web
 
 // One deterministic tour of the whole stack, driven over REAL HTTP by the
 // in-process client: JSON mutations, a refused overdraft, the JSON listing,
-// and the server-driven HTML dashboard.
+// and the Osprey-WASM application shell.
 fetch : int -> string -> string
 fetch client path =
     reply = httpGetResponse client path ""
@@ -45,7 +45,9 @@ drive client =
     print "--- GET /api/accounts ---\n${fetch client "/api/accounts"}"
     print "--- GET /api/activity ---\n${fetch client "/api/activity"}"
     page = fetch client "/"
-    print "--- GET / (server-driven ui) ---\nhtml=${startsWith page "<!doctype html>"} title=${contains page "<title>Talon Bank</title>"} vault=${contains page "$7,980.25"} feedRefusal=${contains page "vintage synthesizer"}"
+    hasRoot = contains page "id=\"app\""
+    hasClient = contains page "src=\"/app.js\""
+    print "--- GET / (Osprey wasm + React app) ---\nhtml=${startsWith page "<!doctype html>"} title=${contains page "<title>Talon Bank</title>"} appRoot=${hasRoot} client=${hasClient}"
 
 // Playwright hold: while /tmp/talon_bank.hold exists the server keeps serving
 // and the demo pauses right here — remove the file (or never create it) and
@@ -69,6 +71,20 @@ table id count = match id > count
         print (Accounts::row account)
         table (id + 1) count
 
+serve : Ptr -> int ! [Ledger::Store, Metrics::MetricsFx]
+serve db =
+    server = httpCreateServer 18790 "127.0.0.1"
+    listening = httpListen server handleRequest
+    client = httpCreateClient "http://127.0.0.1:18790" 5000
+    print "[boot] api + web listening on http://127.0.0.1:18790"
+    drive client
+    print "┌────┬──────────────┬───────────┐"
+    table 1 (perform Ledger::Store.count ())
+    held = hold ()
+    stopped = httpStopServer server
+    closed = Sqlite::shutdown db
+    perform Metrics::MetricsFx.total ()
+
 // Everything below runs inside the Metrics installer's handler region, so
 // the request counter cell exists exactly as long as the bank is serving.
 boot : Unit -> int ! Metrics::MetricsFx
@@ -80,27 +96,17 @@ boot () =
         open name => Ledger::openSql db name
         credit id cents note => Ledger::creditSql db id cents note
         debit id cents note => Ledger::debitSql db id cents note
+        transfer fromId toId cents note => Ledger::transferSql db fromId toId cents note
         balance id => Ledger::balanceSql db id
         owner id => Ledger::ownerSql db id
         count => Ledger::countSql db
         activity => Ledger::activitySql db
     in handle Api::Audit
         log line => print "[audit] ${line}"
-    in
-        server = httpCreateServer 18790 "127.0.0.1"
-        listening = httpListen server handleRequest
-        client = httpCreateClient "http://127.0.0.1:18790" 5000
-        print "[boot] api + web listening on http://127.0.0.1:18790"
-        drive client
-        print "┌────┬──────────────┬───────────┐"
-        table 1 (perform Ledger::Store.count ())
-        held = hold ()
-        stopped = httpStopServer server
-        closed = Sqlite::shutdown db
-        perform Metrics::MetricsFx.total ()
+    in serve db
 
 // The router: every request is counted by the state module, then dispatched —
-// `/api/*` to the JSON API, everything else to the server-driven web UI.
+// `/api/*` to the JSON API, everything else to the browser-app host.
 handleRequest : string -> string -> string -> string -> HttpResponse
 handleRequest (method, path, headers, body) =
     seen = perform Metrics::MetricsFx.hit path

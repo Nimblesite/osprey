@@ -1,0 +1,203 @@
+@layer reset {
+  *,
+  *::before,
+  *::after {
+    box-sizing: border-box;
+  }
+
+  html,
+  body,
+  #app {
+    min-height: 100%;
+  }
+
+  html {
+    background: #f5f6f2;
+    color-scheme: light;
+    font-synthesis: none;
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  body,
+  h1,
+  h2,
+  h3,
+  h4,
+  p,
+  figure,
+  blockquote,
+  dl,
+  dd {
+    margin: 0;
+  }
+
+  body {
+    min-width: 320px;
+  }
+
+  button,
+  input,
+  select,
+  textarea {
+    color: inherit;
+    font: inherit;
+  }
+
+  button,
+  [role="button"] {
+    cursor: pointer;
+  }
+
+  img,
+  svg {
+    display: block;
+    max-width: 100%;
+  }
+
+  ul,
+  ol {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  table {
+    border-collapse: collapse;
+    border-spacing: 0;
+  }
+}
+
+@layer tokens {
+  :root {
+    --ink-950: #071a1c;
+    --ink-900: #0a2426;
+    --ink-850: #102e30;
+    --ink-800: #17383a;
+    --ink-700: #2d5051;
+    --ink-600: #4f6d6c;
+    --ink-500: #718987;
+    --ink-400: #9aa9a5;
+    --ink-300: #c5ceca;
+    --ink-200: #dde3df;
+    --ink-150: #e9ece8;
+    --ink-100: #f2f4f0;
+    --paper: #f7f7f2;
+    --white: #ffffff;
+    --coral: #ff6b4a;
+    --coral-dark: #d94d31;
+    --coral-soft: #fff0e9;
+    --mint: #9ee2c3;
+    --mint-dark: #1e795a;
+    --mint-soft: #e5f8ef;
+    --gold: #e4b654;
+    --gold-soft: #fff7df;
+    --red: #c83852;
+    --red-soft: #fff0f2;
+    --blue: #3d71a9;
+    --blue-soft: #edf5ff;
+    --sidebar-width: 252px;
+    --topbar-height: 82px;
+    --page-gutter: clamp(24px, 3.4vw, 58px);
+    --radius-xs: 8px;
+    --radius-sm: 12px;
+    --radius: 18px;
+    --radius-lg: 26px;
+    --radius-xl: 34px;
+    --shadow-sm: 0 1px 2px rgb(7 26 28 / 5%), 0 8px 24px rgb(7 26 28 / 5%);
+    --shadow: 0 2px 4px rgb(7 26 28 / 4%), 0 20px 54px rgb(7 26 28 / 9%);
+    --shadow-float: 0 28px 80px rgb(7 26 28 / 20%);
+    --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+    --font-sans: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    --font-display: "Avenir Next", Avenir, var(--font-sans);
+  }
+}
+
+@layer base {
+  body {
+    background:
+      radial-gradient(circle at 76% 0%, rgb(158 226 195 / 19%), transparent 25rem),
+      var(--paper);
+    color: var(--ink-900);
+    font-family: var(--font-sans);
+    font-size: 15px;
+    line-height: 1.5;
+  }
+
+  ::selection {
+    background: var(--mint);
+    color: var(--ink-950);
+  }
+
+  :focus-visible {
+    outline: 3px solid rgb(255 107 74 / 30%);
+    outline-offset: 2px;
+  }
+
+  a {
+    color: inherit;
+    text-decoration: none;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4 {
+    color: var(--ink-950);
+    font-family: var(--font-display);
+    font-weight: 700;
+    letter-spacing: -0.035em;
+    line-height: 1.1;
+  }
+
+  h1 {
+    font-size: clamp(2rem, 4vw, 3.65rem);
+  }
+
+  h2 {
+    font-size: clamp(1.35rem, 2vw, 1.9rem);
+  }
+
+  h3 {
+    font-size: 1.08rem;
+  }
+
+  button {
+    border: 0;
+  }
+}
+
+
+@layer utilities {
+  .sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
+  .tone-positive,
+  .positive {
+    color: var(--mint-dark);
+  }
+
+  .tone-negative,
+  .negative {
+    color: var(--red);
+  }
+
+  .text-right {
+    text-align: right;
+  }
+
+  .nowrap {
+    white-space: nowrap;
+  }
+
+  .mobile-only {
+    display: none;
+  }
+}

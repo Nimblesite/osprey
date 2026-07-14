@@ -1,0 +1,8 @@
+[project]
+name = "talon-bank-client"
+source_roots = ["src", "../src/domain"]
+default_namespace = "talon"
+entry = "src/main.ospml"
+
+[modules]
+allow_wildcard_imports = false

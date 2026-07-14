@@ -1,0 +1,33 @@
+namespace talon
+
+import talon::OverviewPage
+import talon::AccountsPage
+import talon::MovePage
+import talon::ActivityPage
+import talon::SecurityPage
+import talon::Layout
+import talon::Model
+import talon::Commands
+import talon::Bridge
+import talon::Update
+
+module App
+    page : AppModel -> string
+    page model = match model.route
+        "overview" => OverviewPage::view model
+        "accounts" => AccountsPage::view model
+        "move" => MovePage::view model
+        "activity" => ActivityPage::view model
+        "security" => SecurityPage::view model
+        _ => OverviewPage::view model
+
+    export present : AppModel -> string -> int
+    present model commands = Bridge::present (Model::encode model) (Layout::shell model (page model)) commands
+
+    export start : Unit -> int
+    start () = present (Model::initial ()) (Commands::hydrate ())
+
+    export receive : string -> int
+    receive payload =
+        updated = Update::dispatch payload
+        present updated.model updated.commands

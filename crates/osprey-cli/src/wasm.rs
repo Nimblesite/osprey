@@ -16,9 +16,10 @@
 //! step 3 control the exact link line and sidestep the missing builtins archive.
 //! The result is a command module (`_start` → `__wasm_call_ctors` →
 //! `__main_void`) that runs uniformly under `wasmtime`, Node's WASI and a browser
-//! WASI shim. The non-portable runtime (fibers/HTTP/FFI) is out of scope: a
-//! program that references those symbols fails at link with a clear undefined
-//! symbol, not silently.
+//! WASI shim. The non-portable runtime (fibers/socket HTTP/FFI) is out of scope:
+//! a program that references those symbols fails at link with a clear undefined
+//! symbol, not silently. Browser UI messaging uses the portable `osprey_web`
+//! host ABI below.
 
 use crate::{find_runtime_lib, scratch_stem};
 use std::path::{Path, PathBuf};
@@ -30,6 +31,12 @@ const TRIPLE: &str = "wasm32-wasip1";
 const RUNTIME_LIB: &str = "libosprey_runtime_wasm.a";
 /// Candidate multiarch lib subdir names inside a WASI sysroot, newest first.
 const LIB_SUBDIRS: [&str; 2] = ["wasm32-wasip1", "wasm32-wasi"];
+/// Source-level browser event entry point. When present it is rooted and
+/// exported from the otherwise command-oriented WASI module. [WASM-WEB-ABI]
+const WEB_DISPATCH: &str = "osprey_web_dispatch";
+/// A flattened project symbol ends in a length-prefixed, hex-encoded source
+/// segment. This is the mangled terminal segment for [`WEB_DISPATCH`].
+const WEB_DISPATCH_MANGLED_SUFFIX: &str = "_19x6f73707265795f7765625f6469737061746368";
 
 /// Lower `program` to the `.wasm` at `out`. [WASM-TARGET]
 ///
@@ -38,8 +45,9 @@ const LIB_SUBDIRS: [&str; 2] = ["wasm32-wasip1", "wasm32-wasi"];
 /// Returns the CLI failure code if codegen fails, the toolchain (sysroot /
 /// runtime archive / `wasm-ld`) is missing, or clang/`wasm-ld` exits non-zero.
 pub(crate) fn build(path: &str, program: &osprey_ast::Program, out: &Path) -> Result<(), ExitCode> {
+    let web_dispatch = web_dispatch_export(program);
     let ir = match osprey_codegen::compile_program(program) {
-        Ok(ir) => with_entry_thunk(&ir),
+        Ok(ir) => with_web_dispatch_thunk(&with_entry_thunk(&ir), web_dispatch),
         Err(e) => return Err(fail(&format!("{path}: {e}"))),
     };
     let sysroot = wasi_sysroot().map_err(|e| fail(&e))?;
@@ -50,7 +58,7 @@ pub(crate) fn build(path: &str, program: &osprey_ast::Program, out: &Path) -> Re
         ))
     })?;
     let obj = compile_object(&scratch_stem(path), &ir)?;
-    link(&obj, &archive, &libdir, out)
+    link(&obj, &archive, &libdir, out, web_dispatch)
 }
 
 /// `--run` for wasm: build to a temp `.wasm`, then execute it under a WASI host.
@@ -82,10 +90,16 @@ fn compile_object(stem: &str, ir: &str) -> Result<PathBuf, ExitCode> {
 }
 
 /// Link the wasm object + runtime archive + libc into a command module.
-fn link(obj: &Path, archive: &str, libdir: &Path, out: &Path) -> Result<(), ExitCode> {
+fn link(
+    obj: &Path,
+    archive: &str,
+    libdir: &Path,
+    out: &Path,
+    web_dispatch: Option<&str>,
+) -> Result<(), ExitCode> {
     run_tool(
         &tool("OSPREY_WASM_LD", "wasm-ld"),
-        &link_argv(obj, archive, libdir, out),
+        &link_argv(obj, archive, libdir, out, web_dispatch),
     )
 }
 
@@ -105,16 +119,65 @@ fn clang_argv(ll: &Path, obj: &Path) -> Vec<String> {
 
 /// `wasm-ld` argv: the sysroot's `crt1-command.o` `_start`, the program object,
 /// the runtime archive (on-demand), and libc from the sysroot lib dir.
-fn link_argv(obj: &Path, archive: &str, libdir: &Path, out: &Path) -> Vec<String> {
+/// Exporting `osp_alloc` also roots its on-demand archive member so browser
+/// hosts can copy UTF-8 request JSON into wasm memory. [WASM-WEB-ABI]
+fn link_argv(
+    obj: &Path,
+    archive: &str,
+    libdir: &Path,
+    out: &Path,
+    web_dispatch: Option<&str>,
+) -> Vec<String> {
+    let mut argv = base_link_argv(obj, archive, libdir, out);
+    argv.extend(
+        web_dispatch
+            .is_some()
+            .then(|| format!("--export={WEB_DISPATCH}")),
+    );
+    argv
+}
+
+fn base_link_argv(obj: &Path, archive: &str, libdir: &Path, out: &Path) -> Vec<String> {
     vec![
         libdir.join("crt1-command.o").display().to_string(),
         obj.display().to_string(),
         archive.to_string(),
         format!("-L{}", libdir.display()),
         "-lc".to_string(),
+        "--export=osp_alloc".to_string(),
         "-o".to_string(),
         out.display().to_string(),
     ]
+}
+
+/// Return the actual LLVM/linkage name of the browser dispatcher, if the
+/// flattened AST defines it. Single-file programs retain the source spelling;
+/// project assembly uses `__osp_<len>x<hex>...` and preserves the source name
+/// in the terminal segment. [WASM-WEB-ABI]
+fn web_dispatch_export(program: &osprey_ast::Program) -> Option<&str> {
+    program.statements.iter().find_map(|statement| {
+        let osprey_ast::Stmt::Function { name, .. } = statement else {
+            return None;
+        };
+        (name == WEB_DISPATCH || is_mangled_web_dispatch(name)).then_some(name.as_str())
+    })
+}
+
+fn is_mangled_web_dispatch(name: &str) -> bool {
+    name.starts_with("__osp_") && name.ends_with(WEB_DISPATCH_MANGLED_SUFFIX)
+}
+
+/// Add a stable browser ABI symbol in front of a project-mangled dispatcher.
+/// The Osprey convention is `fn osprey_web_dispatch(message: string) -> int`;
+/// strings are `i8*` and `int` is `i64` in the LLVM ABI. A single-file source
+/// already emits the stable name and needs no duplicate definition.
+fn with_web_dispatch_thunk(ir: &str, actual: Option<&str>) -> String {
+    match actual {
+        Some(symbol) if symbol != WEB_DISPATCH => format!(
+            "{ir}\ndefine i64 @{WEB_DISPATCH}(i8* %message) {{\n  %r = call i64 @{symbol}(i8* %message)\n  ret i64 %r\n}}\n"
+        ),
+        _ => ir.to_string(),
+    }
 }
 
 /// Locate a WASI sysroot: `OSPREY_WASI_SYSROOT` if set, else the first existing
@@ -223,11 +286,33 @@ mod tests {
     /// (`OSPREY_WASM_*`, `*_SYSROOT`) so they neither race each other nor the
     /// end-to-end build below — env is shared across the parallel test threads.
     static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    const WEB_ABI_SOURCE: &str = "namespace app;\n\
+         extern fn osprey_web_render(message: string) -> int\n\
+         extern fn osprey_web_command(message: string) -> int\n\
+         fn osprey_web_dispatch(message: string) -> int = 0\n\
+         fn main() = {\n\
+           let rendered = osprey_web_render(\"boot\")\n\
+           osprey_web_command(\"ready\")\n\
+         }\n";
 
     fn lock_env() -> std::sync::MutexGuard<'static, ()> {
         ENV_LOCK
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+
+    fn assemble_web_program(source: &str, root: &str) -> osprey_ast::Program {
+        osprey_project::assemble(
+            &osprey_project::ProjectConfig::for_root(Path::new(root)),
+            &[osprey_project::SourceFile {
+                path: PathBuf::from("client.osp"),
+                flavor: osprey_syntax::Flavor::Default,
+                source: source.to_string(),
+                program: osprey_syntax::parse_program(source).program,
+            }],
+        )
+        .expect("assemble web project")
+        .program
     }
 
     #[test]
@@ -236,6 +321,18 @@ mod tests {
         assert!(out.contains("define i32 @main()"), "original main kept");
         assert!(out.contains("define i32 @__main_void()"), "thunk added");
         assert!(out.contains("call i32 @main()"), "thunk calls main");
+    }
+
+    #[test]
+    fn web_dispatch_thunk_stabilizes_a_project_mangled_symbol() {
+        let mangled = format!("__osp_3x617070{WEB_DISPATCH_MANGLED_SUFFIX}");
+        let out = with_web_dispatch_thunk("; module", Some(&mangled));
+        assert!(out.contains("define i64 @osprey_web_dispatch(i8* %message)"));
+        assert!(out.contains(&format!("call i64 @{mangled}(i8* %message)")));
+        assert!(out.contains("ret i64 %r"));
+
+        let unchanged = with_web_dispatch_thunk("; module", Some(WEB_DISPATCH));
+        assert_eq!(unchanged, "; module", "source spelling needs no thunk");
     }
 
     #[test]
@@ -256,13 +353,49 @@ mod tests {
             "/lib/libosprey_runtime_wasm.a",
             Path::new("/sys/lib/wasm32-wasip1"),
             Path::new("/out/p.wasm"),
+            None,
         );
         assert!(argv.iter().any(|a| a.ends_with("crt1-command.o")));
         assert!(argv.iter().any(|a| a == "/lib/libosprey_runtime_wasm.a"));
         assert!(argv.iter().any(|a| a == "-L/sys/lib/wasm32-wasip1"));
         assert!(argv.iter().any(|a| a == "-lc"));
+        assert!(argv.iter().any(|a| a == "--export=osp_alloc"));
+        assert!(!argv.iter().any(|a| a.contains(WEB_DISPATCH)));
         let oi = argv.iter().position(|a| a == "-o").expect("has -o");
         assert_eq!(argv.get(oi + 1).map(String::as_str), Some("/out/p.wasm"));
+    }
+
+    #[test]
+    fn link_argv_exports_the_discovered_web_dispatch_symbol() {
+        let mangled = format!("__osp_3x617070{WEB_DISPATCH_MANGLED_SUFFIX}");
+        let argv = link_argv(
+            Path::new("/tmp/p.o"),
+            "/lib/libosprey_runtime_wasm.a",
+            Path::new("/sys/lib/wasm32-wasip1"),
+            Path::new("/out/p.wasm"),
+            Some(&mangled),
+        );
+        assert!(argv.iter().any(|a| a == "--export=osprey_web_dispatch"));
+        assert!(!argv.iter().any(|a| a == &format!("--export={mangled}")));
+    }
+
+    #[test]
+    fn finds_source_and_project_mangled_web_dispatch_functions() {
+        let source =
+            osprey_syntax::parse_program("fn osprey_web_dispatch(message: string) -> int = 0\n")
+                .program;
+        assert_eq!(web_dispatch_export(&source), Some(WEB_DISPATCH));
+
+        let project_source = "namespace app;\nfn osprey_web_dispatch(message: string) -> int = 0\n";
+        let project = assemble_web_program(project_source, "/tmp/web-dispatch-project");
+        let mangled = web_dispatch_export(&project).expect("find flattened dispatcher");
+        assert_ne!(mangled, WEB_DISPATCH);
+        assert!(mangled.starts_with("__osp_"));
+        assert!(mangled.ends_with(WEB_DISPATCH_MANGLED_SUFFIX));
+
+        let ordinary =
+            osprey_syntax::parse_program("fn dispatch(message: string) = message\n").program;
+        assert_eq!(web_dispatch_export(&ordinary), None);
     }
 
     #[test]
@@ -349,6 +482,7 @@ mod tests {
             "/tmp/rt.a",
             Path::new("/tmp/libdir"),
             Path::new("/tmp/out.wasm"),
+            None,
         );
         // A stand-in that exits non-zero → link reports a CLI failure.
         std::env::set_var("OSPREY_WASM_LD", "false");
@@ -357,6 +491,7 @@ mod tests {
             "/tmp/rt.a",
             Path::new("/tmp/libdir"),
             Path::new("/tmp/out.wasm"),
+            None,
         );
         match prev {
             Some(v) => std::env::set_var("OSPREY_WASM_LD", v),
@@ -489,5 +624,34 @@ mod tests {
         build("e2e.osp", &program, &out).expect("wasm build");
         let bytes = std::fs::read(&out).expect("read wasm");
         assert!(bytes.starts_with(b"\0asm"), "wasm magic header");
+        build_web_abi_fixture();
+    }
+
+    fn build_web_abi_fixture() {
+        let web = assemble_web_program(WEB_ABI_SOURCE, "/tmp/web-abi-e2e");
+        let actual = web_dispatch_export(&web).expect("flattened web dispatcher");
+        assert_ne!(actual, WEB_DISPATCH);
+        let web_out =
+            std::env::temp_dir().join(format!("osprey_wasm_web_e2e_{}.wasm", std::process::id()));
+        build("web-e2e.osp", &web, &web_out).expect("web ABI wasm build");
+        let web_bytes = std::fs::read(&web_out).expect("read web wasm");
+        assert_web_abi_names(&web_bytes);
+    }
+
+    fn assert_web_abi_names(web_bytes: &[u8]) {
+        for expected in [
+            "osprey_web_dispatch",
+            "osp_alloc",
+            "osprey_web",
+            "render",
+            "command",
+        ] {
+            assert!(
+                web_bytes
+                    .windows(expected.len())
+                    .any(|window| window == expected.as_bytes()),
+                "web module contains import/export name {expected}"
+            );
+        }
     }
 }

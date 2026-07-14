@@ -50,7 +50,7 @@ fn arg(path: &Path) -> String {
     path.to_string_lossy().into_owned()
 }
 
-const FIXTURE_SOURCES: [&str; 10] = [
+const FIXTURE_SOURCES: [&str; 11] = [
     "osprey.toml",
     "src/main.ospml",
     "src/lib/sqlite.ospml",
@@ -60,6 +60,7 @@ const FIXTURE_SOURCES: [&str; 10] = [
     "src/store/ledger.ospml",
     "src/store/metrics.ospml",
     "src/api/routes.ospml",
+    "src/web/bundle.ospml",
     "src/web/pages.ospml",
 ];
 

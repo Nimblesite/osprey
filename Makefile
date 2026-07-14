@@ -7,7 +7,7 @@
 # --run`) and TypeScript sub-projects (vscode-extension, webcompiler, website).
 # =============================================================================
 
-.PHONY: build test lint fmt clean ci setup run install bench wasm wasm-site wasm-serve vsix-rebuild-reinstall bank bank-e2e
+.PHONY: build test lint fmt clean ci setup run install bench wasm wasm-site wasm-serve vsix-rebuild-reinstall bank bank-web bank-e2e
 
 # ---------------------------------------------------------------------------
 # OS Detection
@@ -89,9 +89,10 @@ WASI_SYSROOT ?= $(shell for d in "$$OSPREY_WASI_SYSROOT" \
   /usr/share/wasi-sysroot; do [ -n "$$d" ] && [ -d "$$d" ] && { echo "$$d"; break; }; done)
 WASM_CFLAGS  ?= --target=$(WASM_TARGET) --sysroot=$(WASI_SYSROOT) -O2 -std=c11 -Wall -Wextra -Werror -c
 # Portable subset that compiles for wasm32: allocator + strings + value
-# containers + JSON + effects. Excludes fiber (pthreads), http/websocket
-# (sockets/OpenSSL), system (fork/wait), term (termios) and ffi (dlopen).
-WASM_RT_SRC  ?= memory_runtime string_runtime string_runtime_list list_runtime map_runtime map_runtime_hamt json_runtime effects_runtime test_runtime
+# containers + JSON + effects + the browser host bridge. Excludes fiber
+# (pthreads), http/websocket (sockets/OpenSSL), system (fork/wait), term
+# (termios) and ffi (dlopen).
+WASM_RT_SRC  ?= memory_runtime string_runtime string_runtime_list list_runtime map_runtime map_runtime_hamt json_runtime effects_runtime test_runtime web_runtime
 # `make wasm-serve` static-host dir + port for the in-browser example.
 WASM_SERVE_DIR  ?= examples/wasm
 WASM_SERVE_PORT ?= 8080
@@ -127,6 +128,13 @@ bank: build
 	@trap 'rm -f /tmp/talon_bank.hold' EXIT INT TERM; \
 	  (sleep 2 && (command -v open >/dev/null && open http://127.0.0.1:18790 || true)) & \
 	  ./$(BIN) examples/projects/modules --run
+
+## bank-web: Regenerate the embedded React host + Osprey WebAssembly client.
+##           Requires Node and a WASI sysroot; the generated Osprey Bundle is
+##           committed so ordinary native/CI builds do not need either tool.
+bank-web: build _runtime_wasm
+	@echo "==> Building Talon Bank browser application..."
+	cd examples/projects/modules/web && npm ci && npm run build
 
 ## bank-e2e: Browser end-to-end tests for the Talon Bank modules showcase
 ##           (examples/projects/modules) — real Chromium via Playwright drives
@@ -202,7 +210,7 @@ wasm: build _runtime_wasm
 	  echo "$$out" | grep -Eq '(^| )NOEXP=0 ' || { echo 'FAIL: example missing .expectedoutput'; exit 1; }
 	@echo "==> wasm ready: built + validated + WASI/browser smoke + golden suite green"
 
-wasm wasm-site _runtime_wasm: export PATH := $(WASM_PATH_PREFIX)$(PATH)
+wasm wasm-site _runtime_wasm bank-web: export PATH := $(WASM_PATH_PREFIX)$(PATH)
 
 ## wasm-site: Build only the WebAssembly artifacts published by the website.
 ##      Used by GitHub Pages before `npm run build`; does not rely on checked-in
@@ -338,16 +346,21 @@ _coverage_check_rust:
 	echo "[rust] OK: all crates meet their thresholds"
 
 # Hardened C runtime unit tests (assertion-driven; a failed assert aborts the
-# binary). Covers the string cursor (BUILTIN-STRING-CURSOR) + the error-message
-# contract ([ERR-PAYLOAD]) exhaustively, under the same hardening flags the
-# archives use. Built as an executable (no `-c`), so it links the runtime TUs
-# directly. Runs on the `make test` (ubuntu) job; Windows CI uses its own steps.
+# binary). Covers the string cursor (BUILTIN-STRING-CURSOR), error-message
+# contract ([ERR-PAYLOAD]), and full HTTP response writes, under the same
+# hardening flags the archives use. Built as executables (no `-c`), so they link
+# the runtime TUs directly. Runs on `make test`; Windows CI uses its own steps.
 _test_c_runtime:
-	@echo "==> [c-runtime] string cursor + error-message contract tests..."
+	@echo "==> [c-runtime] string/error contract + HTTP write tests..."
 	@cd compiler && $(CC) -O2 -D_FORTIFY_SOURCE=2 -fstack-protector-strong -Werror -Wall -Wextra \
 	  -ftrapv -std=c11 -D_GNU_SOURCE \
 	  runtime/string_runtime_tests.c runtime/string_runtime.c runtime/string_runtime_list.c \
-	  -o bin/string_runtime_tests && ./bin/string_runtime_tests
+	  -o bin/string_runtime_tests && ./bin/string_runtime_tests && \
+	  $(CC) -O2 -D_FORTIFY_SOURCE=2 -fstack-protector-strong -Werror -Wall -Wextra \
+	  -ftrapv -std=c11 -D_GNU_SOURCE $(OSSL) \
+	  `pkg-config --cflags openssl 2>/dev/null || echo ""` \
+	  runtime/http_server_send_tests.c -pthread \
+	  -o bin/http_server_send_tests && ./bin/http_server_send_tests
 
 # Differential golden harness: every examples/tested/*.osp run through
 # `osprey --run` must match its .expectedoutput byte-for-byte, and the

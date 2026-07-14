@@ -81,7 +81,7 @@ fn stmt_idents(s: &osprey_ast::Stmt, out: &mut std::collections::BTreeSet<String
 #[cfg(test)]
 mod tests {
     use super::*;
-    use osprey_syntax::parse_program;
+    use osprey_syntax::{parse_program, parse_program_with_flavor, Flavor};
 
     fn module(src: &str) -> String {
         let parsed = parse_program(src);
@@ -91,6 +91,16 @@ mod tests {
             parsed.errors
         );
         compile_program(&parsed.program).expect("codegen should succeed")
+    }
+
+    fn ml_module(src: &str) -> String {
+        let parsed = parse_program_with_flavor(src, Flavor::Ml);
+        assert!(
+            parsed.errors.is_empty(),
+            "syntax errors: {:?}",
+            parsed.errors
+        );
+        compile_program(&parsed.program).expect("ML codegen should succeed")
     }
 
     fn debug_module(src: &str) -> String {
@@ -773,6 +783,23 @@ mod tests {
         );
         assert!(ir.contains("getelementptr"));
         assert!(ir.contains("store i64"));
+    }
+
+    #[test]
+    fn ml_curried_string_result_compares_with_string_parameter() {
+        let ir = ml_module(
+            r#"value : int -> string -> string -> string
+value doc path fallback = fallback
+
+card : int -> int -> string -> string
+card doc index selected =
+    id = value doc "[${index}].id" "0"
+    match id == selected
+        true => " selected"
+        false => ""
+"#,
+        );
+        assert!(ir.contains("call i32 @strcmp(i8*"));
     }
 
     // ---- fibers (fiber.rs) ----

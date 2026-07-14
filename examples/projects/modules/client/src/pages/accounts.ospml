@@ -1,0 +1,40 @@
+namespace talon
+
+import talon::UI
+import talon::BankData
+import talon::AccountView
+import talon::ActivityView
+
+module AccountsPage
+    detail : AppModel -> string
+    detail model =
+        doc = jsonParse model.accounts
+        index = BankData::accountIndex doc model.selected
+        id = BankData::value doc "[${index}].id" "—"
+        owner = BankData::value doc "[${index}].owner" "No account selected"
+        balance = BankData::value doc "[${index}].balance" "$0.00"
+        cents = BankData::integer doc "[${index}].cents"
+        freed = jsonFree doc
+        available = match cents > 0
+            true => "Ready to move"
+            false => "Waiting for first deposit"
+        heading = UI::node "div" (UI::prop "className" "detail-heading") (UI::node "div" "" (UI::leaf "span" (UI::prop "className" "account-mark violet") "T" + "," + UI::leaf "div" "" (UI::leaf "small" "" "TALON ACCOUNT #${id}" + "," + UI::leaf "h2" "" owner)) + "," + UI::leaf "span" (UI::prop "className" "status-pill success") "● Active")
+        balanceBlock = UI::node "div" (UI::prop "className" "detail-balance") (UI::leaf "small" "" "Available balance" + "," + UI::leaf "strong" "" balance + "," + UI::leaf "span" "" available)
+        actions = UI::node "div" (UI::prop "className" "detail-actions") (UI::button "quick-deposit" "button primary" "Deposit" "+" + "," + UI::button "quick-withdraw" "button secondary" "Withdraw" "−" + "," + UI::button "quick-transfer" "button secondary" "Transfer" "↗")
+        facts = UI::node "dl" (UI::prop "className" "detail-facts") (UI::node "div" "" (UI::leaf "dt" "" "Account ID" + "," + UI::leaf "dd" "" "#${id}") + "," + UI::node "div" "" (UI::leaf "dt" "" "Ledger" + "," + UI::leaf "dd" "" "Journaled") + "," + UI::node "div" "" (UI::leaf "dt" "" "Overdrafts" + "," + UI::leaf "dd" "" "Refused"))
+        UI::node "section" (UI::prop "className" "card account-detail") (heading + "," + balanceBlock + "," + actions + "," + facts)
+
+    export view : AppModel -> string
+    view model =
+        cards = AccountView::cards model.accounts 99 model.selected
+        recent = ActivityView::rows model.activity 4 "all" ""
+        pageHead = UI::node "header" (UI::prop "className" "page-heading") (UI::node "div" "" (UI::leaf "span" (UI::prop "className" "eyebrow") "ACCOUNTS" + "," + UI::leaf "h1" "" "Client accounts" + "," + UI::leaf "p" "" "Every managed balance and protected client account in one view.") + "," + UI::button "accounts-open" "button primary" "Open account" "+")
+        allCards = match length cards == 0
+            true => UI::empty "◇" "No accounts yet" "Open an account in seconds—no paperwork required."
+            false => UI::node "div" (UI::prop "className" "account-grid account-grid-wide") cards
+        recentBody = match length recent == 0
+            true => UI::empty "↯" "No movements" "Activity for this account will show here."
+            false => UI::node "div" (UI::prop "className" "activity-list") recent
+        recentCard = UI::node "section" (UI::prop "className" "card compact-activity") (UI::node "div" (UI::prop "className" "section-heading") (UI::leaf "h2" "" "Latest movements" + "," + UI::button "accounts-activity" "text-button" "See all" "→") + "," + recentBody)
+        detailGrid = UI::node "div" (UI::prop "className" "account-detail-grid") (detail model + "," + recentCard)
+        UI::node "div" (UI::prop "className" "page accounts-page") (pageHead + "," + allCards + "," + detailGrid)

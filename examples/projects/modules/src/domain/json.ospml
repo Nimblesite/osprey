@@ -13,11 +13,14 @@
 namespace bank
 
 signature JsonApi
+    quote : string -> string
     strField : string -> string -> string
     numField : string -> int -> string
+    rawField : string -> string -> string
     obj : string -> string
     arr : string -> string
     error : string -> string
+    getOr : string -> string -> string -> string
 
 module Json : JsonApi
     // JSON string escaping: backslash first (so we never double-escape the
@@ -35,18 +38,23 @@ module Json : JsonApi
         step = unwrap (replace s bslash (bslash + bslash))
         unwrap (replace step quote (bslash + quote))
 
-    quoted : string -> string
-    quoted s =
+    quote : string -> string
+    quote s =
         quote = "\""
         quote + escape s + quote
 
     // `"key":"escaped value"` — a string-valued object member.
     strField : string -> string -> string
-    strField key value = quoted key + ":" + quoted value
+    strField key value = quote key + ":" + quote value
 
     // `"key":123` — a number-valued object member (integers need no escaping).
     numField : string -> int -> string
-    numField key value = quoted key + ":" + toString value
+    numField key value = quote key + ":" + toString value
+
+    // An already-encoded JSON value. Kept explicit so callers cannot confuse
+    // protocol trees with ordinary escaped application strings.
+    rawField : string -> string -> string
+    rawField key value = quote key + ":" + value
 
     // Wrap a comma-joined member list into an object / array. Callers join the
     // members with `,`; these only add the braces so nesting stays composable.
@@ -59,3 +67,14 @@ module Json : JsonApi
     // The one canonical error body shape, so every 4xx path is identical.
     error : string -> string
     error why = obj (strField "error" why)
+
+    // Scalar-only projection used by the browser model boundary. Documents
+    // are always freed here, so consumers cannot accidentally retain handles.
+    getOr : string -> string -> string -> string
+    getOr source path fallback =
+        doc = jsonParse source
+        value = match jsonGet doc path
+            Success found => found
+            Error message => fallback
+        freed = jsonFree doc
+        value

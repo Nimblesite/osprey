@@ -1,0 +1,34 @@
+namespace talon
+
+import talon::UI
+import bank::Money
+import talon::BankData
+import talon::ActivityView
+import talon::AccountView
+
+module OverviewPage
+    stat : string -> string -> string -> string -> string
+    stat icon label value trend = UI::node "article" (UI::prop "className" "stat-card") (UI::leaf "span" (UI::prop "className" "stat-icon") icon + "," + UI::node "span" (UI::prop "className" "stat-copy") (UI::leaf "small" "" label + "," + UI::leaf "strong" "" value + "," + UI::leaf "em" "" trend))
+
+    export view : AppModel -> string
+    view model =
+        total = BankData::total model.accounts
+        accounts = BankData::accountCount model.accounts
+        movements = BankData::activityCount model.activity
+        cards = AccountView::cards model.accounts 3 model.selected
+        recent = ActivityView::rows model.activity 5 "all" ""
+        heroCopy = UI::node "div" (UI::prop "className" "hero-copy") (UI::leaf "span" (UI::prop "className" "eyebrow") "MANAGED PORTFOLIO" + "," + UI::leaf "h1" "" (Money::show total) + "," + UI::leaf "p" "" "Across ${accounts} protected client accounts" + "," + UI::node "div" (UI::prop "className" "hero-actions") (UI::button "quick-transfer" "button primary" "Move money" "↗" + "," + UI::button "quick-deposit" "button ghost-on-dark" "Add funds" "+"))
+        heroArt = UI::node "div" (UI::prop "className" "hero-art" + "," + UI::prop "aria-hidden" "true") (UI::leaf "span" (UI::prop "className" "orb orb-one") "" + "," + UI::leaf "span" (UI::prop "className" "orb orb-two") "" + "," + UI::leaf "span" (UI::prop "className" "hero-monogram") "T")
+        hero = UI::node "section" (UI::prop "className" "hero-card") (heroCopy + "," + heroArt)
+        stats = UI::node "section" (UI::prop "className" "stat-grid") (stat "↙" "Money in" (toString (ActivityView::count model.activity "credit")) "healthy inflow" + "," + stat "↗" "Money out" (toString (ActivityView::count model.activity "debit")) "this cycle" + "," + stat "◎" "Journal entries" (toString movements) "fully audited")
+        accountsHead = UI::node "div" (UI::prop "className" "section-heading") (UI::node "div" "" (UI::leaf "span" (UI::prop "className" "eyebrow") "MANAGED CLIENTS" + "," + UI::leaf "h2" "" "Client accounts") + "," + UI::button "overview-accounts" "text-button" "View all" "→")
+        accountBody = match length cards == 0
+            true => UI::empty "◇" "No accounts yet" "Open your first account to start moving money."
+            false => UI::node "div" (UI::prop "className" "account-grid") cards
+        accountsSection = UI::node "section" (UI::prop "className" "section-block") (accountsHead + "," + accountBody)
+        activityHead = UI::node "div" (UI::prop "className" "section-heading") (UI::node "div" "" (UI::leaf "span" (UI::prop "className" "eyebrow") "LIVE LEDGER" + "," + UI::leaf "h2" "" "Recent activity") + "," + UI::button "overview-activity" "text-button" "Full history" "→")
+        activityBody = match length recent == 0
+            true => UI::empty "↯" "Nothing to report" "New movements will appear here instantly."
+            false => UI::node "div" (UI::prop "className" "activity-list") recent
+        activitySection = UI::node "section" (UI::prop "className" "card section-block") (activityHead + "," + activityBody)
+        UI::node "div" (UI::prop "className" "page overview-page") (hero + "," + stats + "," + accountsSection + "," + activitySection)

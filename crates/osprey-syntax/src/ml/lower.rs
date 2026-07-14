@@ -795,25 +795,38 @@ fn build_function(
 fn curry_params(params: Vec<MlParam>, body: Expr, spine: &[MlType], pos: Position) -> Expr {
     let mut acc = body;
     for (i, param) in params.into_iter().enumerate().rev() {
-        let parameters = match param {
-            MlParam::Named(name) => vec![Parameter {
-                name,
-                ty: spine.get(i).and_then(type_expr),
-            }],
-            MlParam::Typed(name, ty) => vec![Parameter {
-                name,
-                ty: type_expr(&ty),
-            }],
-            MlParam::Unit => Vec::new(),
-        };
         acc = Expr::Lambda {
-            parameters,
+            parameters: curry_parameter(param, spine.get(i)),
             return_type: arrow_of(spine.get(i + 1..).unwrap_or(&[])),
             body: Box::new(acc),
-            position: Some(pos),
+            position: Some(curry_position(pos, i)),
         };
     }
     acc
+}
+
+fn curry_parameter(param: MlParam, inferred: Option<&MlType>) -> Vec<Parameter> {
+    match param {
+        MlParam::Named(name) => vec![Parameter {
+            name,
+            ty: inferred.and_then(type_expr),
+        }],
+        MlParam::Typed(name, ty) => vec![Parameter {
+            name,
+            ty: type_expr(&ty),
+        }],
+        MlParam::Unit => Vec::new(),
+    }
+}
+
+/// Give every synthesized curry lambda its own `ProgramTypes::lambdas` key;
+/// sharing the binding position lets an outer parameter ABI replace an inner.
+fn curry_position(pos: Position, index: usize) -> Position {
+    let offset = u32::try_from(index).unwrap_or(u32::MAX);
+    Position {
+        line: pos.line,
+        column: pos.column.saturating_add(offset).saturating_add(1),
+    }
 }
 
 /// Lower a lambda head over an already-lowered `body`. A unit-only or empty head

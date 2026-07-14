@@ -50,6 +50,9 @@ module Api
     load : int -> Account ! Ledger::Store
     load id = Account(id = id, owner = perform Ledger::Store.owner id, balance = perform Ledger::Store.balance id)
 
+    validAccount : int -> bool ! Ledger::Store
+    validAccount id = id > 0 && id <= perform Ledger::Store.count ()
+
     // Render accounts 1..count as a JSON array, recursively — no loops, no state.
     rows : int -> int -> string ! Ledger::Store
     rows id count = match id > count
@@ -62,7 +65,7 @@ module Api
 
     onOpen : string -> HttpResponse ! [Ledger::Store, Audit]
     onOpen body =
-        name = field body "name"
+        name = trim (field body "name")
         match Accounts::namable name
             false => refuse "owner name required"
             true =>
@@ -77,42 +80,58 @@ module Api
         note = field body "note"
         match Accounts::movable cents
             false => refuse "amount must be positive"
-            true =>
-                balance = perform Ledger::Store.credit id cents note
-                perform Audit.log "deposit ${Money::show cents} -> account #${id} (${note})"
-                json 200 (Accounts::json (load id))
+            true => match validAccount id
+                false => refuse "account not found"
+                true =>
+                    balance = perform Ledger::Store.credit id cents note
+                    perform Audit.log "deposit ${Money::show cents} -> account #${id} (${note})"
+                    json 200 (Accounts::json (load id))
 
     onWithdraw : string -> HttpResponse ! [Ledger::Store, Audit]
     onWithdraw body =
         id = num body "account"
         cents = num body "cents"
         note = field body "note"
-        attempt = perform Ledger::Store.debit id cents note
-        match attempt
-            Landed balance =>
-                perform Audit.log "withdraw ${Money::show cents} from account #${id} (${note})"
-                json 200 (Accounts::json (load id))
-            Refused why =>
-                perform Audit.log "withdraw ${Money::show cents} from account #${id} REFUSED (${why})"
-                refuse why
+        match Accounts::movable cents
+            false => refuse "amount must be positive"
+            true => match validAccount id
+                false => refuse "account not found"
+                true =>
+                    attempt = perform Ledger::Store.debit id cents note
+                    match attempt
+                        Landed balance =>
+                            perform Audit.log "withdraw ${Money::show cents} from account #${id} (${note})"
+                            json 200 (Accounts::json (load id))
+                        Refused why =>
+                            perform Audit.log "withdraw ${Money::show cents} from account #${id} REFUSED (${why})"
+                            refuse why
 
-    // A transfer COMPOSES the capability: debit then credit, atomically
-    // refused when funds are missing. Business flow lives here, not in SQL.
+    // A transfer delegates one atomic domain operation to the storage
+    // capability after validating the public request at the API boundary.
+    transferReply : int -> int -> int -> string -> Outcome -> HttpResponse ! [Ledger::Store, Audit]
+    transferReply from to cents note attempt = match attempt
+        Refused why =>
+            perform Audit.log "transfer ${Money::show cents} account #${from} -> account #${to} REFUSED (${why})"
+            refuse why
+        Landed balance =>
+            perform Audit.log "transfer ${Money::show cents} account #${from} -> account #${to} (${note})"
+            json 200 (Json::arr (Accounts::json (load from) + "," + Accounts::json (load to)))
+
     onTransfer : string -> HttpResponse ! [Ledger::Store, Audit]
     onTransfer body =
         from = num body "from"
         to = num body "to"
         cents = num body "cents"
         note = field body "note"
-        attempt = perform Ledger::Store.debit from cents note
-        match attempt
-            Refused why =>
-                perform Audit.log "transfer ${Money::show cents} account #${from} -> account #${to} REFUSED (${why})"
-                refuse why
-            Landed balance =>
-                landed = perform Ledger::Store.credit to cents note
-                perform Audit.log "transfer ${Money::show cents} account #${from} -> account #${to} (${note})"
-                json 200 (Json::arr (Accounts::json (load from) + "," + Accounts::json (load to)))
+        match Accounts::movable cents
+            false => refuse "amount must be positive"
+            true => match validAccount from && validAccount to
+                false => refuse "account not found"
+                true => match from == to
+                    true => refuse "accounts must be different"
+                    false =>
+                        attempt = perform Ledger::Store.transfer from to cents note
+                        transferReply from to cents note attempt
 
     // The canonical JSON views, exported on their own so the web layer can
     // consume the API in-process without unwrapping HTTP envelopes.

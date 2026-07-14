@@ -1,0 +1,23 @@
+{
+  "name": "@osprey/talon-web-host",
+  "version": "0.0.0-dev",
+  "private": true,
+  "type": "module",
+  "description": "React host for an Osprey WebAssembly application",
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "build:host": "node scripts/build.mjs --host-only",
+    "test": "node --test",
+    "check": "npm run test && npm run build:host"
+  },
+  "dependencies": {
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7"
+  },
+  "devDependencies": {
+    "esbuild": "^0.28.1"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
