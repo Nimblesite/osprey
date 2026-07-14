@@ -1168,6 +1168,7 @@ mod tests {
         "examples/tested/testing/calculator.test.ospml",
         "examples/tested/testing/mlcheck.test.osp",
         "examples/tested/testing/mlcheck.test.ospml",
+        "examples/tested/testing/verdict.test.ospml",
     ];
 
     #[test]
@@ -1890,6 +1891,11 @@ mod tests {
     #[test]
     fn testing_mlcheck_test_ospml() {
         assert_example_matches("examples/tested/testing/mlcheck.test.ospml");
+    }
+
+    #[test]
+    fn testing_verdict_test_ospml() {
+        assert_example_matches("examples/tested/testing/verdict.test.ospml");
     }
 
     fn args(list: &[&str]) -> Vec<String> {

@@ -12,13 +12,18 @@ order.
 > shared core exactly like every other built-in ([0012](0012-Built-InFunctions.md)):
 > the same functions exist in every flavor and lower to the same canonical
 > `Expr::Call` nodes. Only the spelling is a flavor concern. The Default
-> surface reads like Jest (`test("adds", fn() => expect(add(2, 3), 5))`); the
-> ML surface reads like Alcotest (`test "adds" (\() => check "sum" 5 (add (2, 3)))`).
-> See [Language Flavors](0023-LanguageFlavors.md).
+> surface reads like Jest (`test("adds", fn() => expect(add(2, 3), 5))`) and
+> stays imperative — a `fn() -> Unit` case firing soft assertions. The ML
+> surface keeps the Alcotest-style spelling but adopts a *pure, value-based*
+> model: a case is a pure function returning a three-state `Verdict`
+> (`Pass | Fail | Skip`), and `test` reports it. See
+> [the Verdict model](#the-pure-ml-flavor-verdict-model) and
+> [Language Flavors](0023-LanguageFlavors.md).
 
 - [Status](#status)
 - [The built-ins](#the-built-ins)
 - [Equality semantics](#equality-semantics)
+- [The pure ML-flavor Verdict model](#the-pure-ml-flavor-verdict-model)
 - [TAP output protocol](#tap-output-protocol)
 - [Exit code](#exit-code)
 - [Test filtering](#test-filtering)
@@ -43,7 +48,7 @@ They are ordinary built-ins: declared in the type checker's base environment,
 lowered by codegen, backed by the C runtime. No new grammar, keywords, or AST
 nodes exist for testing.
 
-### `test(name: string, body: fn() -> Unit) -> Unit` — `[TESTING-BUILTIN-TEST]`
+### `test(name: string, body: fn() -> a) -> Unit` — `[TESTING-BUILTIN-TEST]`
 
 Runs `body` as one named test case and prints exactly one TAP result line for
 it. Test cases execute inline, in source order, wherever the `test` call is
@@ -51,6 +56,16 @@ evaluated (top level is the convention). A test passes when no assertion
 inside its body fails; assertions are soft — a failing `expect`/`check` marks
 the case failed and execution continues, so one case can report several
 mismatches.
+
+The body's return type is polymorphic (`fn() -> a`), which is what lets one
+`test` built-in drive both surfaces:
+
+- **Imperative (Unit) body** — the Default-flavor style. The body runs
+  `expect`/`check` for their side effect and returns `Unit`; `test` records
+  nothing extra, the inline assertions having already reported.
+- **Verdict body** — the pure ML-flavor style (`[TESTING-VERDICT]`). The body
+  returns a `Verdict` value; `test` pattern-matches it and reports the single
+  outcome. No exceptions, no side-effecting assertions.
 
 The `body` argument must be a zero-parameter function: an inline lambda
 (Default `fn() => …`, ML `\() => …`) or the name of a zero-parameter function.
@@ -111,6 +126,60 @@ than a silent pointer comparison. Corollary: values of different types that
 render identically (e.g. `5` and `"5"`) compare equal; assert on the value
 the test actually computes.
 
+## The pure ML-flavor Verdict model
+
+**`[TESTING-VERDICT]`** The Default flavor keeps the imperative, soft-assertion
+style familiar from Jest/Alcotest: a case is a `fn() -> Unit` that fires
+`expect`/`check` for their side effect. The ML flavor gets a *pure, value-based*
+surface instead, in the spirit of QuickCheck's three-state result — a test case
+is a pure function returning a **`Verdict`** value, and `test` is the sole
+effect boundary that reports it.
+
+`Verdict` is an ordinary user-declared union with three states — no compiler
+magic beyond the report primitives below:
+
+```osprey-ml
+type Verdict =
+    Pass
+    Fail
+        reason : string
+    Skip
+        why : string
+```
+
+The surface is built from ordinary pure functions over that type. Because a
+curried, generic, union-returning function currently defeats monomorphization,
+the equality assertions take a **tuple** argument (which the shared-core lowering
+accepts in both flavors):
+
+- `check (label, expected, actual) -> Verdict` — `Pass` on equality, else
+  `Fail` carrying the labeled mismatch. Polymorphic over the compared type
+  (int, string, bool) via the same canonical-string equality as the imperative
+  built-in.
+- `assume cond -> Verdict` — QuickCheck's `==>`: a false precondition yields
+  `Skip`, not `Fail`, so an unmet assumption is a distinct third outcome rather
+  than a spurious failure.
+- `andThen first rest -> Verdict` — sequences two verdicts; the first `Fail`
+  or `Skip` short-circuits, so a case is a single `andThen` chain of checks.
+
+`test` recognizes a `Verdict`-typed body by its inferred type, pattern-matches
+it, and calls exactly one report primitive. These primitives are internal
+codegen targets (like the TAP runtime's `osp_test_assert`), not user-facing
+built-ins: `reportPass()`, `reportFail(reason)`, `reportSkip(why)`. A `Pass`
+records nothing; a `Fail` fails the case and prints its reason; a `Skip` emits
+the TAP `# SKIP` directive.
+
+```osprey-ml
+depositClears () =
+    andThen (check ("balance", 425000, ledgerBalance))
+        (check ("count", 1, txnCount))
+
+overdraftRefused () = assume (not enoughFunds)   // Skip when the guard holds
+
+test "a cleared deposit updates the balance" depositClears
+test "an overdraft is refused" overdraftRefused
+```
+
 ## TAP output protocol
 
 **`[TESTING-TAP]`** A compiled test binary writes
@@ -121,28 +190,34 @@ output the program itself prints:
 ok 1 - addition works
 # check 'difference' failed: expected 2, got 3
 not ok 2 - subtraction works
-1..2
-# tests=2 passed=1 failed=1
+ok 3 - overflow guard # SKIP precondition not met
+1..3
+# tests=3 passed=1 failed=1 skipped=1
 ```
 
 - One `ok N - name` / `not ok N - name` line per executed test case, numbered
   from 1 in execution order, printed when the case's body finishes.
+- A case whose `Verdict` is `Skip` still prints an `ok` line, suffixed with the
+  TAP `# SKIP <why>` directive (`[TESTING-VERDICT]`); it counts as skipped,
+  neither passed nor failed.
 - Each failing assertion prints one `#` diagnostic line at the moment it
-  fails: `# expect failed: expected E, got A` or
-  `# check 'label' failed: expected E, got A`. Diagnostics for a case
-  therefore appear immediately *before* its result line.
+  fails: `# expect failed: expected E, got A`,
+  `# check 'label' failed: expected E, got A`, or `# fail: <reason>` for a
+  reported `Verdict` `Fail`. Diagnostics for a case therefore appear
+  immediately *before* its result line.
 - A failing assertion outside any test prints its diagnostic and counts
   toward the run's failure total without producing a result line.
 - After the program's last statement, the runtime epilogue prints the plan
-  `1..N` (N = cases executed) and a `# tests=N passed=P failed=F` summary —
-  including `1..0` when zero cases executed, so a filter that matched nothing
-  stays visible. The epilogue is emitted only for programs that use a testing
-  built-in; ordinary programs are unaffected.
+  `1..N` (N = cases executed) and a `# tests=N passed=P failed=F skipped=S`
+  summary — including `1..0` when zero cases executed, so a filter that matched
+  nothing stays visible. The epilogue is emitted only for programs that use a
+  testing built-in; ordinary programs are unaffected.
 
 ## Exit code
 
 **`[TESTING-EXIT]`** A test binary exits `0` when every executed test case
-passed and no out-of-case assertion failed, else `1`. Compile errors keep
+passed or skipped and no out-of-case assertion failed, else `1`. A `Skip`
+verdict is not a failure and does not change the exit code. Compile errors keep
 their existing CLI exit codes.
 
 ## Test filtering
@@ -210,25 +285,33 @@ registered from `activate()` and packaged in the VSIX:
   (cwd = the file's directory), with `OSPREY_TEST_FILTER=<name>` when a
   single case is requested, parses the TAP stream, and maps `ok`/`not ok`
   lines back to test items by name. `#` diagnostic lines preceding a
-  `not ok` line become the failure message. Cases absent from the output are
-  marked skipped; a non-TAP failure (e.g. compile error) marks the file item
-  errored with the compiler's stderr.
+  `not ok` line become the failure message. A `# SKIP` directive on an `ok`
+  line marks that case skipped in the Explorer (`[TESTING-VERDICT]`); the name
+  matched against `--list-tests` is the text before the directive. Cases absent
+  from the output are also marked skipped; a non-TAP failure (e.g. compile
+  error) marks the file item errored with the compiler's stderr.
 
 ## Runtime
 
 **`[TESTING-RUNTIME]`** `compiler/runtime/test_runtime.c` holds the run
-state (cases executed/failed, in-case failure count) and four symbols emitted
-by codegen: `osp_test_begin(name)` (returns whether the case runs, applying
-`[TESTING-FILTER]`), `osp_test_assert(label, ok, expected, actual)` (label is
-NULL for `expect`), `osp_test_end(name)` (prints the TAP result line), and
-`osp_test_finalize()` (prints plan + summary, returns the exit code). The
-unit is dependency-free C11, compiled into `libfiber_runtime.a` (and its
+state (cases executed/failed/skipped, in-case failure and skip flags) and the
+symbols emitted by codegen: `osp_test_begin(name)` (returns whether the case
+runs, applying `[TESTING-FILTER]`), `osp_test_assert(label, ok, expected,
+actual)` (label is NULL for `expect`), the `Verdict` report primitives
+`osp_test_pass()` / `osp_test_fail(reason)` / `osp_test_skip(why)`
+(`[TESTING-VERDICT]`), `osp_test_end(name)` (prints the TAP result line, with a
+`# SKIP` directive when the case reported `Skip`), and `osp_test_finalize()`
+(prints plan + summary including `skipped=S`, returns the exit code). The unit
+is dependency-free C11, compiled into `libfiber_runtime.a` (and its
 `_gc`/HTTP/wasm siblings), and assumes single-fiber test execution
 (`[TESTING-RISK-FIBERS]`).
 
-**`[TESTING-CODEGEN]`** Codegen lowers the three built-ins in
+**`[TESTING-CODEGEN]`** Codegen lowers the built-ins in
 `crates/osprey-codegen/src/testing.rs`: `test` evaluates its name, calls
 `osp_test_begin`, branches around the inlined body, and calls `osp_test_end`;
+when the body's inferred type is `Verdict` it pattern-matches the result and
+reports it through `osp_test_pass`/`fail`/`skip` (`[TESTING-VERDICT]`), else the
+body's inline `expect`/`check` already recorded via `osp_test_assert`.
 `expect`/`check` unwrap + stringify both values, `strcmp`-compare, and call
 `osp_test_assert`. Any use sets a per-module flag that makes `main` return
 `osp_test_finalize()` instead of `0`.

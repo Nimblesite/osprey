@@ -107,6 +107,11 @@ jobs:
       - name: Test
         run: xvfb-run -a make test
 
+      # Talon Bank native unit tests: the pure domain layer (money, json,
+      # accounts) exercised through the built-in `osprey test` harness.
+      - name: Bank native tests (osprey test)
+        run: make bank-test
+
       # Talon Bank modules showcase (examples/projects/modules): real Chromium
       # drives the compiled osprey binary serving its HTTP API and web UI.
       - name: Install bank e2e dependencies

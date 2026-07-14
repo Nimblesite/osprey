@@ -1,0 +1,35 @@
+// The pure Verdict model's Pass and Skip states end to end [TESTING-VERDICT]:
+// a case that folds two good checks, and one an unmet `assume` precondition
+// short-circuits to Skip (emitting the TAP `# SKIP` directive). ML-flavor only
+// — the imperative Default flavor has no Verdict surface, so there is no `.osp`
+// twin. The Fail state is exercised by the framework's own codegen tests.
+type Verdict =
+    Pass
+    Fail
+        reason : string
+    Skip
+        why : string
+
+check (label, expected, actual) = match expected == actual
+    true => Pass
+    false => Fail(reason = "${label}: expected ${expected}, got ${actual}")
+
+assume cond = match cond
+    true => Pass
+    false => Skip(why = "precondition not met")
+
+andThen first rest = match first
+    Pass => rest
+    Fail reason => Fail(reason = reason)
+    Skip why => Skip(why = why)
+
+add (a, b) = a + b
+
+passingCase () =
+    andThen (check ("sum", 5, add (2, 3))) (check ("bool", true, 3 < 5))
+
+skippedCase () =
+    andThen (assume (2 > 3)) (check ("unreached", 0, 1))
+
+test "pass folds two good checks" passingCase
+test "skip short-circuits on an unmet precondition" skippedCase

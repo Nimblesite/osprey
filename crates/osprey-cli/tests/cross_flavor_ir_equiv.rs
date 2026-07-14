@@ -14,11 +14,34 @@
 //! Default twin `examples/tested/ml/<stem>.osp`. The test compiles both through
 //! `osprey_codegen::compile_program` (in-process — no built binary required) and
 //! asserts the emitted IR text is identical.
+//!
+//! Exception: a handful of examples are an *intentionally ML-only surface* with
+//! no Default-flavor equivalent — the pure three-state `Verdict` testing model
+//! ([TESTING-VERDICT], docs/specs/0027) is the case in point: the Default flavor
+//! stays imperative (`fn() -> Unit` firing soft assertions), so a Verdict case
+//! has no twin to be IR-identical to. Those stems are listed in
+//! [`ML_ONLY_STEMS`] and skipped by both tests below.
 
 use std::path::{Path, PathBuf};
 
 use osprey_codegen::compile_program;
 use osprey_syntax::{parse_program_with_flavor, Flavor};
+
+/// Stems that are an intentionally ML-only surface (no Default twin, exempt from
+/// IR equivalence). Keep this list tiny and each entry justified — it is a hole
+/// in the headline `[FLAVOR-IR-EQUIV]` guarantee, warranted only when the ML
+/// program genuinely has no Default-flavor spelling.
+const ML_ONLY_STEMS: &[&str] = &[
+    // The pure `Verdict` testing model is ML-only by design [TESTING-VERDICT].
+    "verdict.test",
+];
+
+/// Whether `path`'s stem is an allowlisted ML-only surface.
+fn is_ml_only(path: &Path) -> bool {
+    path.file_stem()
+        .and_then(|s| s.to_str())
+        .is_some_and(|stem| ML_ONLY_STEMS.contains(&stem))
+}
 
 /// `examples/tested`, resolved from the crate manifest dir so the test runs
 /// unchanged on a dev box and in CI. Every `.ospml` ANYWHERE under this tree is
@@ -73,7 +96,7 @@ fn every_ml_example_has_a_default_twin() {
     let dir = ml_examples_dir();
     let missing: Vec<String> = ml_stems(&dir)
         .into_iter()
-        .filter(|p| !p.with_extension("osp").exists())
+        .filter(|p| !is_ml_only(p) && !p.with_extension("osp").exists())
         .map(|p| {
             p.file_name()
                 .and_then(|n| n.to_str())

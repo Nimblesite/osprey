@@ -23,6 +23,9 @@ export interface TapResult {
   readonly name: string;
   readonly ok: boolean;
   readonly comments: string[];
+  /** A `# SKIP` directive marked the case skipped ([TESTING-VERDICT]); its
+   *  reason, if any. `undefined` when the case was not skipped. */
+  readonly skipReason?: string;
 }
 
 /** What a run should report for one leaf test ([TESTING-TAP]). */
@@ -102,11 +105,12 @@ export interface TapStream {
   readonly sawPlan: boolean;
 }
 
-// The runtime prints results as exactly `ok N - name` / `not ok N - name`
-// ([TESTING-TAP]); the name is everything after "- " to end of line, captured
-// byte-exact (leading/trailing whitespace preserved) so it matches
+// The runtime prints results as exactly `ok N - name` / `not ok N - name`,
+// with an optional ` # SKIP reason` directive on a skipped case ([TESTING-TAP],
+// [TESTING-VERDICT]); the name is everything after "- " up to any directive,
+// captured byte-exact (leading/trailing whitespace preserved) so it matches
 // `--list-tests` names precisely.
-const TAP_RESULT = /^(not )?ok \d+ - (.*)$/;
+const TAP_RESULT = /^(not )?ok \d+ - (.*?)(?: # SKIP ?(.*))?$/;
 const TAP_COMMENT = /^#\s?(.*)$/;
 const TAP_PLAN = /^\d+\.\.\d+$/;
 const TAP_SUMMARY = /^tests=\d+ passed=\d+ failed=\d+/;
@@ -126,7 +130,13 @@ export function parseTapStream(stdout: string): TapStream {
   for (const line of stdout.split(/\r?\n/)) {
     const result = TAP_RESULT.exec(line);
     if (result) {
-      results.push({ name: result[2], ok: result[1] === undefined, comments });
+      const skipped = result[3] !== undefined;
+      results.push({
+        name: result[2],
+        ok: result[1] === undefined,
+        comments,
+        ...(skipped ? { skipReason: result[3] } : {}),
+      });
       comments = [];
     } else if (TAP_PLAN.test(line)) {
       sawPlan = true;
@@ -223,6 +233,9 @@ export function outcomeForLeaf(
   const matches = results.filter((result) => result.name === name);
   const result = matches[matches.length - 1];
   if (result === undefined) {
+    return { status: "skipped" };
+  }
+  if (result.skipReason !== undefined) {
     return { status: "skipped" };
   }
   if (result.ok) {

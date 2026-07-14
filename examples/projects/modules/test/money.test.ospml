@@ -1,0 +1,67 @@
+// Native test suite for the pure money formatter. [TESTING-BUILTINS]
+//
+// `osprey test` compiles each *.test.ospml in isolation (no project
+// assembly), so a suite embeds the pure logic it exercises — the same pattern
+// the framework's own examples use. This module mirrors
+// src/domain/money.ospml verbatim; a divergence here is a real signal that the
+// two have drifted. It is signature-ascribed exactly like the original, so the
+// test proves the sealed surface too.
+
+signature MoneyApi
+    show : int -> string
+    positive : int -> bool
+
+module Money : MoneyApi
+    pennies : int -> string
+    pennies c = match c % 100 < 10
+        true => "0${c % 100}"
+        false => "${c % 100}"
+
+    triple : int -> string
+    triple n = match n < 10
+        true => "00${n}"
+        false => match n < 100
+            true => "0${n}"
+            false => "${n}"
+
+    group : int -> string
+    group dollars = match dollars < 1000
+        true => "${dollars}"
+        false => "${group (intDiv dollars 1000)},${triple (dollars % 1000)}"
+
+    show : int -> string
+    show cents = "$${group (intDiv cents 100)}.${pennies cents}"
+
+    positive : int -> bool
+    positive cents = cents > 0
+
+// --- cents formatting: the exact strings the API and UI ship ---
+centsCase () =
+    check "whole dollars" "$50.00" (Money::show 5000)
+    check "with cents" "$19.80" (Money::show 1980)
+    check "single-digit cents zero-pad" "$50.05" (Money::show 5005)
+    check "one cent" "$0.01" (Money::show 1)
+    check "zero" "$0.00" (Money::show 0)
+    check "ninety-nine cents" "$0.99" (Money::show 99)
+
+// --- thousands grouping across every magnitude boundary ---
+groupingCase () =
+    check "under a thousand" "$999.99" (Money::show 99999)
+    check "exactly one thousand" "$1,000.00" (Money::show 100000)
+    check "four-figure demo balance" "$2,462.40" (Money::show 246240)
+    check "vault total" "$7,980.25" (Money::show 798025)
+    check "ten thousand" "$10,000.00" (Money::show 1000000)
+    check "hundred thousand" "$100,000.00" (Money::show 10000000)
+    check "one million" "$1,000,000.00" (Money::show 100000000)
+    check "grouping zero-pads inner triples" "$1,002,003.04" (Money::show 100200304)
+
+// --- the domain guard used by movable/deposit validation ---
+positiveCase () =
+    check "positive is true" true (Money::positive 1)
+    check "large positive" true (Money::positive 500000)
+    check "zero is not positive" false (Money::positive 0)
+    check "negative is not positive" false (Money::positive (0 - 100))
+
+test "cents format to two padded places" centsCase
+test "dollars group in thousands at every boundary" groupingCase
+test "positive guard classifies amounts" positiveCase

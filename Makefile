@@ -7,7 +7,7 @@
 # --run`) and TypeScript sub-projects (vscode-extension, webcompiler, website).
 # =============================================================================
 
-.PHONY: build test lint fmt clean ci setup run install bench wasm wasm-site wasm-serve vsix-rebuild-reinstall bank bank-web bank-e2e
+.PHONY: build test lint fmt clean ci setup run install bench wasm wasm-site wasm-serve vsix-rebuild-reinstall bank bank-web bank-test bank-e2e
 
 # ---------------------------------------------------------------------------
 # OS Detection
@@ -136,6 +136,12 @@ bank-web: build _runtime_wasm
 	@echo "==> Building Talon Bank browser application..."
 	cd examples/projects/modules/web && npm ci && npm run build
 
+## bank-test: Native Osprey unit tests for the Talon Bank pure domain layer,
+##            run through the built-in `osprey test` harness (TAP output).
+bank-test: build
+	@echo "==> Bank native tests (osprey test)..."
+	./$(BIN) test examples/projects/modules/test
+
 ## bank-e2e: Browser end-to-end tests for the Talon Bank modules showcase
 ##           (examples/projects/modules) — real Chromium via Playwright drives
 ##           the compiled osprey binary serving its HTTP API and web UI.
@@ -175,8 +181,8 @@ clean:
 	$(RM) $(RTB) compiler/lib outputs lcov.info test.log
 	cd $(EXT_DIR) && $(RM) out dist coverage test.log
 
-## ci: lint + test + bank-e2e + build (full CI simulation)
-ci: lint test bank-e2e build
+## ci: lint + test + bank-test + bank-e2e + build (full CI simulation)
+ci: lint test bank-test bank-e2e build
 
 ## wasm: Build everything for the WebAssembly target, ready to go — the wasm
 ## runtime archive (compiler/bin/libosprey_runtime_wasm.a), the hello example,

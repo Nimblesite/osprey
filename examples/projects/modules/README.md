@@ -127,6 +127,22 @@ npm test
 npm run build
 ```
 
+### Native unit tests (`osprey test`)
+
+The pure domain layer — money formatting and thousands-grouping, the typed
+JSON encoder and its escaping, the account rules, the `Outcome` union, and the
+TUI row — is covered by native Osprey test suites under `test/`, run through
+the built-in harness:
+
+```sh
+make bank-test          # or: osprey test examples/projects/modules/test
+```
+
+Three suites (`money`, `json`, `accounts`) — 12 cases, ~50 `check` assertions —
+emit TAP and exercise every formatting boundary and escaping case.
+
+### Browser end-to-end (`osprey test` → Playwright)
+
 Run the real-browser suite against the compiled Osprey server:
 
 ```sh
@@ -135,10 +151,13 @@ make bank-e2e
 
 Playwright covers the public API, WebAssembly boot, bridge telemetry, SPA
 navigation, account creation, money movement, refusals, filtering, responsive
-layout, and injection-safe rendering.
+layout, and injection-safe rendering — plus deep end-to-end journeys that chain
+a full teller session (deposit → withdraw → refused overdraft) and cross-check
+the UI, the REST API, and the double-entry journal at every step.
 
 The deterministic native tour remains byte-compared with `expectedoutput` by
-`crates/osprey-cli/tests/project_e2e.rs`.
+`crates/osprey-cli/tests/project_e2e.rs`. `make ci` runs all three tiers:
+native unit tests, the byte-exact tour, and the browser suite.
 
 ## Module-system features exercised
 

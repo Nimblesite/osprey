@@ -279,5 +279,188 @@ function ospreyWebAssemblySuite() {
   test('renders a styled 404 document for unknown native paths', rendersStyled404);
 }
 
+// ─── Deep end-to-end journeys ──────────────────────────────────────────────
+// Each case below chains MANY user interactions and asserts heavily after each
+// one — the app, the API, and the audit journal are all cross-checked so a
+// regression in any layer is caught. These run last (serial mode) because they
+// mutate shared server state.
+
+const CENTS = (dollars) => Math.round(dollars * 100);
+
+async function centsFor(request, id) {
+  return (await accountById(request, id)).cents;
+}
+
+async function submitDeposit(page, { account, amount, note }) {
+  await page.locator('#nav-move').click();
+  await expect(page.locator('.move-page h1')).toHaveText('Client funds, in motion');
+  await page.locator('#move-deposit').click();
+  await page.locator('#deposit-account').selectOption(String(account));
+  await page.locator('#deposit-amount').fill(amount);
+  await page.locator('#deposit-note').fill(note);
+  await page.locator('#submit-deposit button[type="submit"]').click();
+  await expect(page.locator('.toast.success')).toContainText('Deposit complete');
+}
+
+async function submitWithdraw(page, { account, amount, note }) {
+  await page.locator('#nav-move').click();
+  await page.locator('#move-withdraw').click();
+  await page.locator('#withdraw-account').selectOption(String(account));
+  await page.locator('#withdraw-amount').fill(amount);
+  await page.locator('#withdraw-note').fill(note);
+  await page.locator('#submit-withdraw button[type="submit"]').click();
+}
+
+// A full teller session: deposit, withdraw, and a refused overdraft — each
+// verified in the UI toast, the account card, the REST balance, and the
+// double-entry journal, so all four views stay in lock-step.
+async function runsAFullTellerSession({ page, request }) {
+  // This journey deliberately triggers a 422 refusal, so the browser will log
+  // that failed request. Assert only on genuine JS/page errors, not the
+  // expected 4xx network log lines.
+  const jsErrors = [];
+  page.on('pageerror', (error) => jsErrors.push(error.message));
+  await openApp(page);
+
+  const startOne = await centsFor(request, 1);
+  const startTwo = await centsFor(request, 2);
+  const startJournal = (await (await request.get('/api/activity')).json()).length;
+
+  // 1) Deposit into account 1. Assert against the ACTUAL resulting balance —
+  // earlier suites in this serial run may have already moved this account, so
+  // the card must match the API's current display string, not a fixed literal.
+  await submitDeposit(page, { account: 1, amount: '150.00', note: 'payroll top-up' });
+  expect(await centsFor(request, 1)).toBe(startOne + CENTS(150));
+  const afterDeposit = await accountById(request, 1);
+  await page.locator('#nav-accounts').click();
+  await expect(page.locator('#account-1')).toContainText(afterDeposit.balance);
+
+  // 2) Withdraw a smaller sum from account 2.
+  await submitWithdraw(page, { account: 2, amount: '17.85', note: 'atm cash' });
+  await expect(page.locator('.toast.success')).toContainText('Withdrawal complete');
+  expect(await centsFor(request, 2)).toBe(startTwo - CENTS(17.85));
+
+  // 3) Attempt an overdraft on account 2 — refused, balance untouched.
+  const beforeOverdraft = await centsFor(request, 2);
+  await submitWithdraw(page, { account: 2, amount: '50000.00', note: 'yacht deposit' });
+  await expect(page.locator('.toast.error')).toContainText('insufficient funds');
+  expect(await centsFor(request, 2)).toBe(beforeOverdraft);
+
+  // 4) The journal recorded all three attempts, newest first, refusal included.
+  const feed = await (await request.get('/api/activity')).json();
+  expect(feed.length).toBe(startJournal + 3);
+  const mine = feed.slice(0, 3).map((entry) => ({ kind: entry.kind, note: entry.note }));
+  expect(mine).toEqual([
+    { kind: 'refused', note: 'yacht deposit' },
+    { kind: 'debit', note: 'atm cash' },
+    { kind: 'credit', note: 'payroll top-up' },
+  ]);
+
+  // 5) The activity page reflects the same three, and the refused filter isolates one.
+  await page.locator('#nav-activity').click();
+  await expect(page.locator('.movement-row')).toHaveCount(feed.length);
+  await page.locator('#activity-search').fill('yacht deposit');
+  await expect(page.locator('.movement-row')).toHaveCount(1);
+  await expect(page.locator('.movement-row')).toContainText('Marcus Webb');
+  await page.locator('#activity-search').fill('');
+  await page.locator('#filter-in').click();
+  await expect(page.locator('.movement-row').first()).toContainText('payroll top-up');
+
+  expect(jsErrors).toEqual([]);
+}
+
+// Drives every route and every stat/hero surface, asserting the numbers the
+// overview derives from the live API stay internally consistent.
+async function keepsOverviewConsistentAcrossRoutes({ page, request }) {
+  await openApp(page);
+  const accounts = await (await request.get('/api/accounts')).json();
+  const activity = await (await request.get('/api/activity')).json();
+  const totalCents = accounts.reduce((sum, a) => sum + a.cents, 0);
+  const totalDollars = `$${(totalCents / 100).toLocaleString('en-US', { minimumFractionDigits: 2 })}`;
+
+  // Hero total equals the summed balances.
+  await expect(page.locator('.hero-card')).toContainText(totalDollars);
+
+  // Three stat cards: inflow count, outflow count, journal size — each matches the feed.
+  const inflow = activity.filter((e) => e.kind === 'credit').length;
+  const outflow = activity.filter((e) => e.kind === 'debit').length;
+  const stats = page.locator('.stat-card');
+  await expect(stats).toHaveCount(3);
+  await expect(stats.nth(0)).toContainText(String(inflow));
+  await expect(stats.nth(1)).toContainText(String(outflow));
+  await expect(stats.nth(2)).toContainText(String(activity.length));
+
+  // Every account card is present with its exact display balance.
+  await page.locator('#nav-accounts').click();
+  await expect(page.locator('.account-card')).toHaveCount(accounts.length);
+  for (const account of accounts) {
+    await expect(page.locator(`#account-${account.id}`)).toContainText(account.owner);
+    await expect(page.locator(`#account-${account.id}`)).toContainText(account.balance);
+  }
+
+  // Walk all five routes via nav; each lands on its known heading.
+  const routes = [
+    ['#nav-overview', /\$[\d,]+\.\d\d/],
+    ['#nav-accounts', 'Client accounts'],
+    ['#nav-move', 'Client funds, in motion'],
+    ['#nav-activity', 'Activity'],
+    ['#nav-security', 'Trust you can inspect'],
+  ];
+  for (const [nav, heading] of routes) {
+    await page.locator(nav).click();
+    if (heading instanceof RegExp) {
+      await expect(page.locator('h1').first()).toHaveText(heading);
+    } else {
+      await expect(page.locator('h1').first()).toHaveText(heading);
+    }
+  }
+}
+
+// Exercises the client-side move-form validation through the UI: a
+// self-transfer and a zero-amount deposit each surface an error toast and are
+// stopped before they reach the API, so no money moves. Also confirms the
+// server's own guard rejects a self-transfer if called directly.
+async function guardsEveryMoveForm({ page, request }) {
+  await openApp(page);
+  const before = await (await request.get('/api/accounts')).json();
+
+  // Self-transfer: the client blocks it before the request goes out.
+  await page.locator('#nav-move').click();
+  await page.locator('#move-transfer').click();
+  await page.locator('#transfer-from').selectOption('2');
+  await page.locator('#transfer-to').selectOption('2');
+  await page.locator('#transfer-amount').fill('10.00');
+  await page.locator('#transfer-note').fill('same account');
+  await page.locator('#submit-transfer button[type="submit"]').click();
+  await expect(page.locator('.toast.error')).toContainText('Source and destination must be different');
+
+  // Balances are exactly as before — nothing moved.
+  expect(await (await request.get('/api/accounts')).json()).toEqual(before);
+
+  // A zero-amount deposit is rejected by the client's positive-amount check.
+  await page.locator('#move-deposit').click();
+  await page.locator('#deposit-account').selectOption('1');
+  await page.locator('#deposit-amount').fill('0');
+  await page.locator('#deposit-note').fill('nothing');
+  await page.locator('#submit-deposit button[type="submit"]').click();
+  await expect(page.locator('.toast.error')).toContainText('positive amount');
+  expect(await (await request.get('/api/accounts')).json()).toEqual(before);
+
+  // The server enforces the same self-transfer rule independently of the UI.
+  const direct = await request.post('/api/transfer', {
+    data: { from: 2, to: 2, cents: 1000, note: 'direct self-transfer' },
+  });
+  expect(direct.status()).toBe(422);
+  expect(await direct.json()).toEqual({ error: 'accounts must be different' });
+  expect(await (await request.get('/api/accounts')).json()).toEqual(before);
+}
+
+function deepJourneySuite() {
+  test('runs a full teller session kept in lock-step across UI, API, and journal', runsAFullTellerSession);
+  test('keeps the overview totals consistent while navigating every route', keepsOverviewConsistentAcrossRoutes);
+  test('guards every move form against invalid input without moving money', guardsEveryMoveForm);
+}
+
 test.describe('protected JSON API', protectedJsonApiSuite);
 test.describe('Osprey WebAssembly application', ospreyWebAssemblySuite);
+test.describe('deep end-to-end journeys', deepJourneySuite);

@@ -3,4 +3,4 @@ ok 2 - pipes and lambdas compose
 ok 3 - pattern matching classifies
 ok 4 - interpolation and bools
 1..4
-# tests=4 passed=4 failed=0
+# tests=4 passed=4 failed=0 skipped=0

@@ -98,8 +98,11 @@ fn core(e: &mut TypeEnv) {
 /// The testing framework's built-ins. Implements [TESTING-BUILTINS]
 /// (docs/specs/0027-TestingFramework.md).
 fn testing(e: &mut TypeEnv) {
-    // test(name, body): run `body` as one named test case. [TESTING-BUILTIN-TEST]
-    mono(e, "test", vec![s(), Type::fun(vec![], u())], u());
+    // test(name, body): run `body` as one named test case. The body returns any
+    // type — Unit for a Default-flavor imperative case, a `Verdict` for the pure
+    // ML-flavor value model, which `test` pattern-matches and reports.
+    // [TESTING-BUILTIN-TEST], [TESTING-VERDICT]
+    poly(e, "test", vec![0], vec![s(), Type::fun(vec![], Type::Var(0))], u());
     // expect(actual, expected): Jest argument order. [TESTING-BUILTIN-EXPECT]
     mono(e, "expect", vec![any(), any()], u());
     // check(label, expected, actual): Alcotest argument order. [TESTING-BUILTIN-CHECK]

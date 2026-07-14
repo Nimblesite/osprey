@@ -1,0 +1,4 @@
+ok 1 - pass folds two good checks
+ok 2 - skip short-circuits on an unmet precondition # SKIP precondition not met
+1..2
+# tests=2 passed=1 failed=0 skipped=1

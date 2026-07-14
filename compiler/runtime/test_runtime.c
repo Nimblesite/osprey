@@ -14,8 +14,11 @@
 
 static int64_t tests_run = 0;
 static int64_t tests_failed = 0;
-static int64_t stray_failures = 0; /* failing asserts outside any case */
-static int64_t case_failures = -1; /* -1 = not inside a test case */
+static int64_t tests_skipped = 0;   /* cases reported Skip [TESTING-VERDICT] */
+static int64_t stray_failures = 0;  /* failing asserts outside any case */
+static int64_t case_failures = -1;  /* -1 = not inside a test case */
+static int64_t case_skipped = 0;    /* current case reported Skip */
+static const char *skip_reason = ""; /* why the current case was skipped */
 
 /* Begin the named case: 0 = skip, 1 = run. Skips on a filter mismatch
    [TESTING-FILTER]; a nested test() inside a running case does not run — it
@@ -34,7 +37,28 @@ int32_t osp_test_begin(const char *name) {
         return 0;
     }
     case_failures = 0;
+    case_skipped = 0;
+    skip_reason = "";
     return 1;
+}
+
+/* Record a Verdict value from a pure ML-flavor case [TESTING-VERDICT].
+   Pass is a no-op; Fail bumps the case/stray failure count with its reason;
+   Skip marks the case skipped so osp_test_end emits a TAP SKIP directive. */
+void osp_test_pass(void) {}
+
+void osp_test_fail(const char *reason) {
+    printf("# fail: %s\n", reason == NULL ? "" : reason);
+    if (case_failures >= 0) {
+        case_failures += 1;
+    } else {
+        stray_failures += 1;
+    }
+}
+
+void osp_test_skip(const char *reason) {
+    case_skipped = 1;
+    skip_reason = reason == NULL ? "" : reason;
 }
 
 /* Record one assertion; on mismatch print the `#` diagnostic [TESTING-TAP].
@@ -57,16 +81,23 @@ void osp_test_assert(const char *label, int32_t ok, const char *expected,
     }
 }
 
-/* Close the current case and print its TAP result line [TESTING-TAP]. */
+/* Close the current case and print its TAP result line [TESTING-TAP]. A Skip
+   reported by the case wins over a pass and emits a SKIP directive; a failing
+   assertion still fails the case regardless [TESTING-VERDICT]. */
 void osp_test_end(const char *name) {
     tests_run += 1;
     if (case_failures > 0) {
         tests_failed += 1;
         printf("not ok %lld - %s\n", (long long)tests_run, name);
+    } else if (case_skipped != 0) {
+        tests_skipped += 1;
+        printf("ok %lld - %s # SKIP %s\n", (long long)tests_run, name,
+               skip_reason);
     } else {
         printf("ok %lld - %s\n", (long long)tests_run, name);
     }
     case_failures = -1;
+    case_skipped = 0;
 }
 
 /* Print the plan + summary — always, even for a zero-case run (`1..0`), so a
@@ -74,7 +105,9 @@ void osp_test_end(const char *name) {
    [TESTING-EXIT]. */
 int32_t osp_test_finalize(void) {
     printf("1..%lld\n", (long long)tests_run);
-    printf("# tests=%lld passed=%lld failed=%lld\n", (long long)tests_run,
-           (long long)(tests_run - tests_failed), (long long)tests_failed);
+    printf("# tests=%lld passed=%lld failed=%lld skipped=%lld\n",
+           (long long)tests_run,
+           (long long)(tests_run - tests_failed - tests_skipped),
+           (long long)tests_failed, (long long)tests_skipped);
     return (tests_failed > 0 || stray_failures > 0) ? 1 : 0;
 }

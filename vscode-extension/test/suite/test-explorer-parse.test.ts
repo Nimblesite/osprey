@@ -66,6 +66,22 @@ suite("Test Explorer parsing", () => {
       );
     });
 
+    test("a SKIP directive splits the name from the reason and marks the case skipped", () => {
+      const results = parseTapOutput(
+        "ok 1 - runs\nok 2 - precondition unmet # SKIP not on a full moon\nok 3 - bare skip # SKIP\n1..3\n",
+      );
+      assert.deepStrictEqual(results, [
+        { name: "runs", ok: true, comments: [] },
+        {
+          name: "precondition unmet",
+          ok: true,
+          comments: [],
+          skipReason: "not on a full moon",
+        },
+        { name: "bare skip", ok: true, comments: [], skipReason: "" },
+      ]);
+    });
+
     test("parseTapStream reports the plan line and stray trailing diagnostics", () => {
       const stream = parseTapStream(
         "ok 1 - fine\n# expect failed: expected 5, got 2\n1..1\n# tests=1 passed=1 failed=0\n",
@@ -160,6 +176,15 @@ suite("Test Explorer parsing", () => {
       });
       assert.deepStrictEqual(outcomeForLeaf("missing", results), { status: "skipped" });
       assert.strictEqual(outcomeForLeaf("dup", results).status, "failed");
+    });
+
+    test("outcomeForLeaf reports a SKIP-directive case as skipped", () => {
+      const results = [
+        { name: "s", ok: true, comments: [], skipReason: "precondition not met" },
+        { name: "t", ok: true, comments: [], skipReason: "" },
+      ];
+      assert.deepStrictEqual(outcomeForLeaf("s", results), { status: "skipped" });
+      assert.deepStrictEqual(outcomeForLeaf("t", results), { status: "skipped" });
     });
 
     test("isCompileFailure and compileFailureMessage", () => {
