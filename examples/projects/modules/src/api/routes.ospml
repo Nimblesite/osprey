@@ -32,6 +32,10 @@ module Api
     refuse : string -> HttpResponse
     refuse why = json 422 (Json::error why)
 
+    reject operation why =
+        perform Audit.log "${operation} REFUSED (${why})"
+        refuse why
+
     // Pull one string field out of a JSON request body.
     field : string -> string -> string
     field body path =
@@ -67,7 +71,7 @@ module Api
     onOpen body =
         name = trim (field body "name")
         match Accounts::namable name
-            false => refuse "owner name required"
+            false => reject "open account" "owner name required"
             true =>
                 id = perform Ledger::Store.open name
                 perform Audit.log "account #${id} opened for ${name}"
@@ -79,9 +83,9 @@ module Api
         cents = num body "cents"
         note = field body "note"
         match Accounts::movable cents
-            false => refuse "amount must be positive"
+            false => reject "deposit to account #${id}" "amount must be positive"
             true => match validAccount id
-                false => refuse "account not found"
+                false => reject "deposit to account #${id}" "account not found"
                 true =>
                     balance = perform Ledger::Store.credit id cents note
                     perform Audit.log "deposit ${Money::show cents} -> account #${id} (${note})"
@@ -93,9 +97,9 @@ module Api
         cents = num body "cents"
         note = field body "note"
         match Accounts::movable cents
-            false => refuse "amount must be positive"
+            false => reject "withdraw from account #${id}" "amount must be positive"
             true => match validAccount id
-                false => refuse "account not found"
+                false => reject "withdraw from account #${id}" "account not found"
                 true =>
                     attempt = perform Ledger::Store.debit id cents note
                     match attempt
@@ -124,11 +128,11 @@ module Api
         cents = num body "cents"
         note = field body "note"
         match Accounts::movable cents
-            false => refuse "amount must be positive"
+            false => reject "transfer account #${from} -> account #${to}" "amount must be positive"
             true => match validAccount from && validAccount to
-                false => refuse "account not found"
+                false => reject "transfer account #${from} -> account #${to}" "account not found"
                 true => match from == to
-                    true => refuse "accounts must be different"
+                    true => reject "transfer account #${from} -> account #${to}" "accounts must be different"
                     false =>
                         attempt = perform Ledger::Store.transfer from to cents note
                         transferReply from to cents note attempt

@@ -39,18 +39,20 @@ module BankData
         Success value => value
         Error message => 0
 
+    remove source token = match replace source token ""
+        Success value => value
+        Error message => source
+
     // Form-only decimal parsing; canonical display stays in bank::Money.
     export amountCents : string -> int
     amountCents source =
-        withoutDollar = match replace (trim source) "$" ""
-            Success value => value
-            Error message => source
-        dot = indexOf withoutDollar "."
+        normalized = trim (remove (remove (trim source) "$") ",")
+        dot = indexOf normalized "."
         match dot
-            Error message => multiply (parsed withoutDollar) 100
+            Error message => multiply (parsed normalized) 100
             Success at =>
-                whole = parsed (take withoutDollar at)
-                tail = take (drop withoutDollar (add at 1)) 2
+                whole = parsed (take normalized at)
+                tail = take (drop normalized (add at 1)) 2
                 fraction = match length tail
                     0 => 0
                     1 => multiply (parsed tail) 10

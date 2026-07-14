@@ -119,10 +119,10 @@ test: build
 	$(MAKE) _test_vscode_extension
 	$(MAKE) _coverage_check_vscode_extension
 
-## bank: Run the Talon Bank showcase and keep it serving for manual testing.
+## bank: Rebuild and run the Talon Bank showcase for manual testing.
 ##       Opens http://127.0.0.1:18790 (dashboard) / /api/accounts (JSON API).
 ##       The hold marker keeps the server up; Ctrl-C removes it and exits.
-bank: build
+bank: bank-web
 	@echo "==> Talon Bank live on http://127.0.0.1:18790  (Ctrl-C to stop)"
 	@touch /tmp/talon_bank.hold
 	@trap 'rm -f /tmp/talon_bank.hold' EXIT INT TERM; \
@@ -145,7 +145,7 @@ bank-test: build
 ## bank-e2e: Browser end-to-end tests for the Talon Bank modules showcase
 ##           (examples/projects/modules) — real Chromium via Playwright drives
 ##           the compiled osprey binary serving its HTTP API and web UI.
-bank-e2e: build
+bank-e2e: bank-web
 	@echo "==> Bank e2e (Playwright)..."
 	cd examples/projects/modules/e2e && npm ci && npx playwright install chromium && npx playwright test
 
@@ -353,11 +353,11 @@ _coverage_check_rust:
 
 # Hardened C runtime unit tests (assertion-driven; a failed assert aborts the
 # binary). Covers the string cursor (BUILTIN-STRING-CURSOR), error-message
-# contract ([ERR-PAYLOAD]), and full HTTP response writes, under the same
+# contract ([ERR-PAYLOAD]), and complete HTTP reads/writes, under the same
 # hardening flags the archives use. Built as executables (no `-c`), so they link
 # the runtime TUs directly. Runs on `make test`; Windows CI uses its own steps.
 _test_c_runtime:
-	@echo "==> [c-runtime] string/error contract + HTTP write tests..."
+	@echo "==> [c-runtime] string/error contract + HTTP read/write tests..."
 	@cd compiler && $(CC) -O2 -D_FORTIFY_SOURCE=2 -fstack-protector-strong -Werror -Wall -Wextra \
 	  -ftrapv -std=c11 -D_GNU_SOURCE \
 	  runtime/string_runtime_tests.c runtime/string_runtime.c runtime/string_runtime_list.c \
@@ -366,7 +366,12 @@ _test_c_runtime:
 	  -ftrapv -std=c11 -D_GNU_SOURCE $(OSSL) \
 	  `pkg-config --cflags openssl 2>/dev/null || echo ""` \
 	  runtime/http_server_send_tests.c -pthread \
-	  -o bin/http_server_send_tests && ./bin/http_server_send_tests
+	  -o bin/http_server_send_tests && ./bin/http_server_send_tests && \
+	  $(CC) -O2 -D_FORTIFY_SOURCE=2 -fstack-protector-strong -Werror -Wall -Wextra \
+	  -ftrapv -std=c11 -D_GNU_SOURCE $(OSSL) \
+	  `pkg-config --cflags openssl 2>/dev/null || echo ""` \
+	  runtime/http_server_request_tests.c -pthread \
+	  -o bin/http_server_request_tests && ./bin/http_server_request_tests
 
 # Differential golden harness: every examples/tested/*.osp run through
 # `osprey --run` must match its .expectedoutput byte-for-byte, and the

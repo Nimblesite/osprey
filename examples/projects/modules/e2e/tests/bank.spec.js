@@ -13,6 +13,13 @@ const NEWEST_ACTIVITY = {
   owner: 'Marcus Webb',
 };
 
+const REFUSED_WITHDRAWAL = {
+  account: '3',
+  amount: '9,999.99',
+  cents: 999999,
+  note: 'Wasm protected refusal',
+};
+
 const MALFORMED_MUTATIONS = [
   ['/api/withdraw', { account: 1, cents: -5000 }, 'amount must be positive'],
   ['/api/transfer', { from: 2, to: 999, cents: 5000 }, 'account not found'],
@@ -211,16 +218,42 @@ async function movesFundsAtomically({ page, request }) {
   await expectAtomicTransfer(request, accountOneBefore, accountTwoBefore);
 }
 
+function withdrawalGate() {
+  let markPending;
+  let release;
+  const pending = new Promise((resolve) => { markPending = resolve; });
+  const resume = new Promise((resolve) => { release = resolve; });
+  const handler = async (route) => {
+    markPending(route.request().postDataJSON());
+    await resume;
+    await route.continue();
+  };
+  return { handler, pending, release };
+}
+
+async function expectRefusalForm(page) {
+  await expect(page.locator('#withdraw-account')).toHaveValue(REFUSED_WITHDRAWAL.account);
+  await expect(page.locator('#withdraw-amount')).toHaveValue(REFUSED_WITHDRAWAL.amount);
+  await expect(page.locator('#withdraw-note')).toHaveValue(REFUSED_WITHDRAWAL.note);
+}
+
 async function showsDomainRefusals({ page }) {
+  const gate = withdrawalGate();
+  await page.route('**/api/withdraw', gate.handler, { times: 1 });
   await openApp(page);
   await page.locator('#nav-move').click();
   await page.locator('#move-withdraw').click();
-  await page.locator('#withdraw-account').selectOption('3');
-  await page.locator('#withdraw-amount').fill('999999.00');
-  await page.locator('#withdraw-note').fill('Wasm protected refusal');
+  await page.locator('#withdraw-account').selectOption(REFUSED_WITHDRAWAL.account);
+  await page.locator('#withdraw-amount').fill(REFUSED_WITHDRAWAL.amount);
+  await page.locator('#withdraw-note').fill(REFUSED_WITHDRAWAL.note);
   await page.locator('#submit-withdraw button[type="submit"]').click();
+  const request = await gate.pending;
+  expect(request.cents).toBe(REFUSED_WITHDRAWAL.cents);
+  await expectRefusalForm(page);
+  gate.release();
   await expect(page.locator('.toast.error')).toContainText('Operation refused');
   await expect(page.locator('.toast.error')).toContainText('insufficient funds');
+  await expectRefusalForm(page);
   await page.locator('#nav-activity').click();
   await page.locator('#filter-refused').click();
   await expect(page.locator('.activity-page')).toContainText('Wasm protected refusal');

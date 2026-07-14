@@ -193,12 +193,23 @@ module Update
         marked = Model::set model resource "true"
         loaded (Model::notice marked "error" "Bank data unavailable" "The ${resource} request failed. Refresh to try again.")
 
-    apiError : string -> string
-    apiError data = Json::getOr data "error" "The ledger could not complete that operation."
+    statusError status = match status
+        0 => "The browser could not reach the ledger. Check the bridge diagnostics and try again."
+        _ => match status >= 500
+            true => "The ledger failed with HTTP ${status}. Try again shortly."
+            false => match status >= 400
+                true => "The ledger refused the request with HTTP ${status}, but returned no error detail."
+                false => "The ledger returned an unexpected HTTP ${status} response."
+
+    apiError data status =
+        message = Json::getOr data "error" ""
+        match length message > 0
+            true => message
+            false => statusError status
 
     mutation : AppModel -> string -> int -> string -> UpdateResult
     mutation model id status data = match status >= 200 && status < 300
-        false => result (Model::notice (Model::set model "busy" "false") "error" "Operation refused" (apiError data)) (Commands::hydrate ())
+        false => result (Model::notice (Model::set model "busy" "false") "error" "Operation refused" (apiError data status)) (Commands::hydrate ())
         true =>
             title = match id
                 "mutate-open" => "Account opened"

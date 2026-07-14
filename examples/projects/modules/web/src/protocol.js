@@ -202,6 +202,10 @@ function renderChildren(node, send, keyPath) {
   return children;
 }
 
+function stableNodeKey(node, sourceProps, keyPath) {
+  return node.key ?? sourceProps.key ?? sourceProps.id ?? keyPath;
+}
+
 function renderNode(node, send, keyPath) {
   if (node === null || node === undefined || node === false) return null;
   if (typeof node === "string" || typeof node === "number") return String(node);
@@ -213,10 +217,10 @@ function renderNode(node, send, keyPath) {
   const tag = typeof node.tag === "string" && node.tag ? node.tag : "div";
   const sourceProps = node.props && typeof node.props === "object" ? node.props : {};
   const props = domProps(sourceProps, send);
-  props.key = node.key ?? sourceProps.key ?? keyPath;
+  props.key = stableNodeKey(node, sourceProps, keyPath);
 
   if (VOID_TAGS.has(tag.toLowerCase())) return React.createElement(tag, props);
-  return React.createElement(tag, props, ...renderChildren(node, send, keyPath));
+  return React.createElement(tag, props, ...renderChildren(node, send, String(props.key)));
 }
 
 export function nodeToReact(node, send) {

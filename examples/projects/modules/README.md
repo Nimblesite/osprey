@@ -11,13 +11,14 @@ React host can acquire database authority.
 
 ## Run the demo
 
-Build the browser bundle after changing the client, host, or styles:
+Regenerate only the browser bundle after changing the client, host, or styles:
 
 ```sh
 make bank-web
 ```
 
-Then launch the complete app:
+Launch the complete app (this also regenerates the browser bundle, so the
+served Wasm and React host cannot be stale):
 
 ```sh
 make bank
@@ -34,9 +35,9 @@ Open <http://127.0.0.1:18790>. The demo includes:
 - a responsive mobile navigation experience; and
 - an inspectable security view explaining the capability boundaries.
 
-The generated `src/web/bundle.ospml` is committed, so the native project still
-builds without Node or a WASI SDK. `make bank-web` is the explicit regeneration
-step.
+The generated `src/web/bundle.ospml` is committed, so ordinary native builds
+still work without Node or a WASI SDK. Demo targets (`make bank` and
+`make bank-e2e`) deliberately regenerate it before serving or testing.
 
 ## Browser architecture
 

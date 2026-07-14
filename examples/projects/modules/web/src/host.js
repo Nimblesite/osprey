@@ -4,8 +4,24 @@ import { commandKind, nodeToReact, normalizeEnvelope } from "./protocol.js";
 import { createWasi } from "./wasi.js";
 
 const EMBEDDED_WASM = "__OSPREY_WASM_BASE64__";
+const HTTP_TRACE_LIMIT = 64;
 const decoder = new TextDecoder("utf-8");
 const encoder = new TextEncoder();
+
+function textBytes(value) {
+  return encoder.encode(String(value ?? "")).byteLength;
+}
+
+function elapsedMs(startedAt) {
+  return Math.max(0, Math.round((performance.now() - startedAt) * 100) / 100);
+}
+
+function transportError(context, error) {
+  const detail = String(error?.message ?? error ?? "Unknown network error");
+  return JSON.stringify({
+    error: `${context.method} ${context.url} could not reach the ledger: ${detail}`,
+  });
+}
 
 function runtimeDispatch(exports) {
   const dispatch =
@@ -41,7 +57,7 @@ function requestInit(command) {
 }
 
 function httpEvent(command, status, data) {
-  return { kind: "http", id: String(command.id ?? ""), status, data };
+  return { kind: "http", id: String(command.id ?? command.commandId ?? ""), status, data };
 }
 
 function wasmImports(host, wasi) {
@@ -67,6 +83,7 @@ function bridgeTelemetry() {
     events: 0,
     lastPayloadBytes: 0,
     lastDecodeMs: 0,
+    trace: [],
   };
 }
 
@@ -116,6 +133,8 @@ export class OspreyReactHost {
     this.model = "{}";
     this.renderSequence = 0;
     this.pendingRenders = [];
+    this.httpSequence = 0;
+    this.logger = console;
     this.bridge = bridgeTelemetry();
     window.__TALON_BRIDGE__ = this.bridge;
     this.onPopState = () => {
@@ -221,13 +240,55 @@ export class OspreyReactHost {
     }
   }
 
+  httpContext(command, init) {
+    const commandId = String(command.id || "http");
+    this.httpSequence += 1;
+    return {
+      correlationId: `${commandId}-${this.httpSequence}`,
+      commandId,
+      method: init.method,
+      url: String(command.url ?? ""),
+      requestBytes: textBytes(init.body),
+    };
+  }
+
+  recordHttp(entry, level = "info") {
+    this.bridge.trace.push(entry);
+    const excess = this.bridge.trace.length - HTTP_TRACE_LIMIT;
+    if (excess > 0) this.bridge.trace.splice(0, excess);
+    const log = this.logger[level] ?? this.logger.info ?? this.logger.log;
+    log?.call(this.logger, "[talon:bridge]", entry);
+  }
+
+  completeHttp(context, startedAt, status, data) {
+    const entry = {
+      ...context, phase: "response", status,
+      responseBytes: textBytes(data), durationMs: elapsedMs(startedAt),
+    };
+    this.recordHttp(entry, status >= 400 ? "warn" : "info");
+    this.dispatch(httpEvent(context, status, data));
+  }
+
+  failHttp(context, startedAt, error) {
+    const entry = {
+      ...context, phase: "response", status: 0, responseBytes: 0,
+      durationMs: elapsedMs(startedAt), error: String(error?.message ?? error),
+    };
+    this.recordHttp(entry, "warn");
+    this.dispatch(httpEvent(context, 0, transportError(context, error)));
+  }
+
   async runHttp(command) {
+    const startedAt = performance.now();
+    const init = requestInit(command);
+    const context = this.httpContext(command, init);
+    this.recordHttp({ ...context, phase: "request" });
     try {
-      const response = await fetch(command.url, requestInit(command));
+      const response = await fetch(command.url, init);
       const data = await response.text();
-      this.dispatch(httpEvent(command, response.status, data));
+      this.completeHttp(context, startedAt, response.status, data);
     } catch (error) {
-      this.dispatch(httpEvent(command, 0, String(error?.message ?? error)));
+      this.failHttp(context, startedAt, error);
     }
   }
 

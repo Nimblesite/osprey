@@ -106,6 +106,24 @@ test("maps declarative clicks without leaking the event prop to the DOM", () => 
 
 test("serializes form submission data into the flat data field", serializesFormSubmission);
 
+test("keeps semantic node keys stable when conditional siblings appear", () => {
+  const main = {
+    tag: "main", props: { id: "main-content" },
+    children: [{
+      tag: "section",
+      children: [{ tag: "form", props: { id: "submit-withdraw" } }],
+    }],
+  };
+  const before = nodeToReact({ tag: "div", children: [main] }, () => {});
+  const after = nodeToReact({
+    tag: "div",
+    children: [{ tag: "div", props: { className: "top-progress" } }, main],
+  }, () => {});
+  assert.equal(before.props.children.key, "main-content");
+  assert.equal(after.props.children[1].key, before.props.children.key);
+  assert.equal(after.props.children[1].props.children.key, before.props.children.props.children.key);
+});
+
 test("renders nested protocol nodes as React elements", () => {
   const element = nodeToReact(
     {
