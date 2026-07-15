@@ -152,3 +152,76 @@ fn suite_passes(file: &Path) -> bool {
         Ok(0)
     )
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_reads_path_filter_and_quiet_and_rejects_junk() {
+        let ok = parse(&[
+            "suite".to_string(),
+            "--filter".to_string(),
+            "adds".to_string(),
+            "--quiet".to_string(),
+        ])
+        .expect("valid opts");
+        assert_eq!(ok.path, "suite");
+        assert_eq!(ok.filter.as_deref(), Some("adds"));
+        assert!(ok.quiet);
+
+        assert_eq!(parse(&[]).expect("default").path, ".");
+        assert!(parse(&["--filter".to_string()]).is_err());
+        assert!(parse(&["--bogus".to_string()]).is_err());
+        assert!(parse(&["a".to_string(), "b".to_string()]).is_err());
+    }
+
+    #[test]
+    fn only_test_suffixed_files_are_recognized() {
+        assert!(is_test_file(Path::new("money.test.osp")));
+        assert!(is_test_file(Path::new("json.test.ospml")));
+        assert!(!is_test_file(Path::new("money.osp")));
+        assert!(!is_test_file(Path::new("notes.txt")));
+    }
+
+    #[test]
+    fn hidden_target_and_node_modules_directories_are_skipped() {
+        assert!(skipped_dir_entry(Path::new("proj/.git")));
+        assert!(skipped_dir_entry(Path::new("proj/target")));
+        assert!(skipped_dir_entry(Path::new("proj/node_modules")));
+        assert!(!skipped_dir_entry(Path::new("proj/src")));
+    }
+
+    #[test]
+    fn discover_returns_a_single_file_as_is_and_walks_directories_sorted() {
+        let root = std::env::temp_dir().join(format!("osprey-test-cmd-{}", std::process::id()));
+        let nested = root.join("nested");
+        let skipped = root.join("target");
+        std::fs::create_dir_all(&nested).expect("mkdir nested");
+        std::fs::create_dir_all(&skipped).expect("mkdir target");
+        std::fs::write(root.join("b.test.osp"), "").expect("write b");
+        std::fs::write(nested.join("a.test.ospml"), "").expect("write a");
+        std::fs::write(root.join("ignore.osp"), "").expect("write ignore");
+        std::fs::write(skipped.join("c.test.osp"), "").expect("write skipped");
+
+        // A single file is returned verbatim, no matter its name.
+        let plain = root.join("ignore.osp");
+        assert_eq!(discover(&plain), vec![plain.clone()]);
+
+        // A directory walk finds only *.test.* files, skips target/, and sorts.
+        let found = discover(&root);
+        assert_eq!(
+            found,
+            vec![root.join("b.test.osp"), nested.join("a.test.ospml")]
+                .into_iter()
+                .collect::<std::collections::BTreeSet<_>>()
+                .into_iter()
+                .collect::<Vec<_>>()
+        );
+
+        // An unreadable directory yields nothing rather than panicking.
+        assert!(discover(&root.join("does-not-exist")).is_empty());
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
+}

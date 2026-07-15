@@ -2104,6 +2104,25 @@ mod tests {
     }
 
     #[test]
+    fn osprey_build_rejects_every_mode_flag() {
+        for flag in [
+            "--ast",
+            "--check",
+            "--llvm",
+            "--compile",
+            "--run",
+            "--symbols",
+            "--list-tests",
+            "--hover",
+        ] {
+            assert!(
+                parse_args(&args(&["build", ".", flag])).is_err(),
+                "build must reject {flag}"
+            );
+        }
+    }
+
+    #[test]
     fn parse_args_last_mode_wins_and_quiet_sets() {
         let cli = parse_args(&args(&["--ast", "f.osp", "--llvm", "--run", "--quiet"])).expect("ok");
         assert_eq!(cli.mode, "--run");
@@ -2352,6 +2371,15 @@ mod tests {
         let source = "module A { export let x = 1 }\nmodule A { export let x = 2 }\n";
         let path = temp_source("duplicate_module", source);
         assert!(load_input(&cli(path, "--check", Policy::allow_all())).is_err());
+        // `--flavor` on a directory project is rejected: projects pick a flavor
+        // per source file, so a whole-project flavor is meaningless.
+        let mut with_flavor = cli(
+            std::env::temp_dir().to_string_lossy().into_owned(),
+            "--check",
+            Policy::allow_all(),
+        );
+        with_flavor.flavor = Some(Flavor::Ml);
+        assert!(load_input(&with_flavor).is_err());
     }
 
     #[test]

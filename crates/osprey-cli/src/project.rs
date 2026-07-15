@@ -443,6 +443,56 @@ mod tests {
         assert!(json.contains("\"path\":\"src/main.osp\""));
     }
 
+    fn empty_project(source_name_by_mangled: std::collections::BTreeMap<String, String>) -> AssembledProject {
+        AssembledProject {
+            program: Program {
+                statements: Vec::new(),
+            },
+            entry_prologue: Vec::new(),
+            entry_source: 0,
+            sources: Vec::new(),
+            source_name_by_mangled,
+        }
+    }
+
+    #[test]
+    fn an_entryless_project_falls_back_to_its_display_path() {
+        let input = CompilationInput::assembled(
+            empty_project(std::collections::BTreeMap::new()),
+            String::new(),
+            "whole/project".to_string(),
+            OutputDefault::Project {
+                root: PathBuf::from("out"),
+                name: "demo".to_string(),
+            },
+        );
+        // No entry source → debug_path and an unlocatable diagnostic both use display_path.
+        assert_eq!(input.debug_path(), "whole/project");
+        assert_eq!(
+            input.diagnostic(Some(Position { line: 7, column: 2 }), "oops"),
+            "whole/project:7:2: oops"
+        );
+        assert_eq!(input.diagnostic(None, "oops"), "whole/project: oops");
+    }
+
+    #[test]
+    fn project_symbol_projection_is_a_noop_on_unmappable_input() {
+        let project = empty_project(std::collections::BTreeMap::new());
+        // Non-JSON input is returned verbatim.
+        assert_eq!(project_symbols_json("not json".to_string(), &project), "not json");
+        // Valid JSON that is not an array is also returned verbatim.
+        assert_eq!(
+            project_symbols_json("{\"a\":1}".to_string(), &project),
+            "{\"a\":1}"
+        );
+        // An array entry that is not an object, has no mapped name, and no
+        // position exercises every early-return guard in update_project_symbol.
+        assert_eq!(
+            project_symbols_json("[42]".to_string(), &project),
+            "[42]"
+        );
+    }
+
     #[test]
     fn project_errors_include_every_available_location_component() {
         let cases = [

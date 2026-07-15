@@ -336,6 +336,15 @@ mod tests {
     }
 
     #[test]
+    fn compile_object_reports_an_unwritable_ir_path() {
+        // A stem pointing through a directory that does not exist makes the
+        // temp `.ll` write fail, so compile_object returns the CLI failure code
+        // before it ever needs a real clang — the toolchain-free error path.
+        let stem = format!("osprey_missing_dir_{}/ir", std::process::id());
+        assert!(compile_object(&stem, "; ir").is_err());
+    }
+
+    #[test]
     fn clang_argv_targets_wasm_and_compiles_only() {
         let argv = clang_argv(Path::new("/tmp/p.ll"), Path::new("/tmp/p.o"));
         assert!(argv.iter().any(|a| a == "--target=wasm32-wasip1"));
