@@ -54,6 +54,12 @@ Returns the byte at the given index (0-255), or an error if the index is out of 
 
 Returns the number of bytes in the string's UTF-8 encoding.
 
+## [check](check/)
+
+**Signature:** `check(label: string, expected: any, actual: any) -> Unit`
+
+Labeled equality assertion in Alcotest argument order (expected before actual). Behaves exactly like expect, with the label in the failure diagnostic.
+
 ## [cleanupProcess](cleanupprocess/)
 
 **Signature:** `cleanupProcess(handle: int) -> Unit`
@@ -95,6 +101,12 @@ Returns s without its first n bytes. Clamps; never fails.
 **Signature:** `endsWith(s: string, suffix: string) -> bool`
 
 True if s ends with suffix.
+
+## [expect](expect/)
+
+**Signature:** `expect(actual: any, expected: any) -> Unit`
+
+Asserts two values are equal (canonical-string equality, Results auto-unwrapped). On mismatch, marks the enclosing test failed and prints a diagnostic; execution continues.
 
 ## [fiberDone](fiberdone/)
 
@@ -557,6 +569,12 @@ Returns the terminal height in rows.
 **Signature:** `termShowCursor() -> int`
 
 Shows the terminal cursor.
+
+## [test](test/)
+
+**Signature:** `test(name: string, body: () -> t0) -> Unit`
+
+Runs `body` as one named test case and prints a TAP result line. A case fails when any assertion inside it fails; the program exits non-zero if any case failed.
 
 ## [toLowerCase](tolowercase/)
 

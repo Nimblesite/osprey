@@ -2,7 +2,7 @@
 layout: page
 title: "ML Flavor Syntax"
 description: "Osprey Language Specification: ML Flavor Syntax"
-date: 2026-07-12
+date: 2026-07-15
 tags: ["specification", "reference", "documentation"]
 author: "Christian Findlay"
 permalink: "/spec/0024-mlflavorsyntax/"

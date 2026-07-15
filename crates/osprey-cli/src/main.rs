@@ -1133,6 +1133,11 @@ mod tests {
     }
 
     #[test]
+    fn fiber_cpu_profiling_demo_osp() {
+        assert_example_matches("examples/tested/fiber/cpu_profiling_demo.osp");
+    }
+
+    #[test]
     fn fiber_fiber_determinism_osp() {
         assert_example_matches("examples/tested/fiber/fiber_determinism.osp");
     }
@@ -1267,6 +1272,7 @@ mod tests {
         "examples/tested/effects/resume_unit_markers.ospml",
         "examples/tested/effects/resume_value_rewrite.osp",
         "examples/tested/effects/resume_value_rewrite.ospml",
+        "examples/tested/fiber/cpu_profiling_demo.osp",
         "examples/tested/fiber/fiber_determinism.osp",
         "examples/tested/fiber/fiber_exact_replica.osp",
         "examples/tested/fiber/fiber_showcase.osp",

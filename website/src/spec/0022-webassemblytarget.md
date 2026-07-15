@@ -2,7 +2,7 @@
 layout: page
 title: "WebAssembly Target"
 description: "Osprey Language Specification: WebAssembly Target"
-date: 2026-07-12
+date: 2026-07-15
 tags: ["specification", "reference", "documentation"]
 author: "Christian Findlay"
 permalink: "/spec/0022-webassemblytarget/"
@@ -106,12 +106,60 @@ which the portable core doesn't need (wasm has native `i64`). Sysroot and tool
 locations are discovered from `OSPREY_WASI_SYSROOT` / `OSPREY_WASM_LD` or the
 conventional Homebrew / wasi-sdk / Linux paths.
 
+### Browser application ABI [WASM-WEB-ABI]
+
+The wasm runtime provides a deliberately small message bridge so Osprey can own
+application state and behaviour while React (or another JavaScript UI library)
+owns the DOM. An Osprey web program declares the two host notifications as
+ordinary externs; no JavaScript or React detail leaks into the language surface:
+
+```osprey
+extern fn osprey_web_render(message: string) -> int
+extern fn osprey_web_command(message: string) -> int
+```
+
+`compiler/runtime/web_runtime.c` implements those functions and imports
+`render(pointer)` and `command(pointer)` from the WebAssembly import module
+`osprey_web`. Each message is a NUL-terminated UTF-8 string, conventionally
+JSON. The JavaScript import must decode the message synchronously; the wrapper
+then returns status `0` to Osprey. Because `web_runtime.o` is pulled from the
+runtime archive only on demand, command-line wasm programs that do not call the
+bridge acquire no `osprey_web` imports.
+
+Browser events travel in the other direction through one optional convention:
+
+```osprey
+fn osprey_web_dispatch(message: string) -> int = {
+    // decode the event, update Osprey state, then render
+    0
+}
+```
+
+The wasm linker always exports `osp_alloc`. When this function is present it
+also exports a stable `osprey_web_dispatch`. Project assembly normally mangles
+module function names, so the compiler scans the flattened AST for either the
+source spelling or its mangled terminal segment and emits an `i8* -> i64`
+forwarding thunk under the stable name. The browser therefore never needs to
+know Osprey's project mangling. To dispatch an event, the host UTF-8-encodes its
+JSON plus a trailing NUL, reserves that many bytes with `osp_alloc`, copies them
+into exported linear memory, and calls `osprey_web_dispatch(pointer)`. At the
+JavaScript API boundary `osp_alloc` is `(i64) -> i32`, so its byte-count argument
+is a `BigInt`; the dispatcher's `i64` status is likewise returned as a `BigInt`.
+Because allocation can grow linear memory, the host creates its `Uint8Array`
+view from `memory.buffer` *after* the allocation.
+
+This is an event/render boundary, not a per-DOM-node FFI. A render crosses wasm
+once with a view model and React reconciles it entirely in JavaScript; an event
+crosses once in the opposite direction. The bridge cost therefore scales with
+message size and event frequency rather than component count.
+
 ### Runtime subset [WASM-TARGET-RUNTIME]
 
 `make _runtime_wasm` cross-compiles the portable C units — allocator, strings,
-list/map containers, JSON, and the effect *handler stack* — to
-`libosprey_runtime_wasm.a` (the thread-based effect *continuations* are split
-out; see [WASM-TARGET-EFFECTS]). The allocator is the default `malloc`
+list/map containers, JSON, the browser message bridge, and the effect *handler
+stack* — to `libosprey_runtime_wasm.a` (the thread-based effect
+*continuations* are split out; see [WASM-TARGET-EFFECTS]). The allocator is the
+default `malloc`
 passthrough (`@osp_alloc`); how memory is managed on wasm — and why the tracing
 GC is excluded — is detailed in [WASM-TARGET-MEMORY] below. Non-portable units
 (fibers, HTTP/WebSocket, system, terminal, FFI, CSPRNG) are excluded; because
@@ -188,11 +236,13 @@ wasm uses the default allocate-and-leak-until-exit backend.
 
 ## Limitations
 
-- **No fibers/HTTP/WebSocket/FFI/`random`/`input`/resumable effects.** These
+- **No fibers/socket HTTP/WebSocket/FFI/`random`/`input`/resumable effects.** These
   depend on pthreads / sockets / OpenSSL / `dlopen` / syscalls absent under
   `wasm32-wasip1`. A program using them fails at link, not silently. Effect
   *handlers* still work on wasm; only `resume`-based continuations are excluded
-  ([WASM-TARGET-EFFECTS]).
+  ([WASM-TARGET-EFFECTS]). Browser-hosted UI messaging is available through the
+  separate `osprey_web` ABI described above; it does not provide network
+  sockets inside wasm.
 - **WASI in the browser** needs a shim (`examples/wasm/wasi-shim.mjs`, loaded by
   `index.html` and exercised headlessly by `scripts/wasm-browser-smoke.mjs`),
   mapping `fd_write` to the page/console. A future `wasm32-unknown-unknown` mode
@@ -217,3 +267,6 @@ wasm uses the default allocate-and-leak-until-exit backend.
   (undefined symbol) are SKIPped. Reports `PASS=47 FAIL=0 SKIP=23 NOEXP=0`.
 - CI `wasm` job runs the validate + Node-WASI smoke **and** the golden suite on
   every PR.
+- `cargo test -p osprey-cli wasm::tests` — asserts dispatcher discovery, stable
+  thunk generation, and the exact `wasm-ld` export flags without requiring a
+  browser host.
