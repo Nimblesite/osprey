@@ -443,7 +443,9 @@ mod tests {
         assert!(json.contains("\"path\":\"src/main.osp\""));
     }
 
-    fn empty_project(source_name_by_mangled: std::collections::BTreeMap<String, String>) -> AssembledProject {
+    fn empty_project(
+        source_name_by_mangled: std::collections::BTreeMap<String, String>,
+    ) -> AssembledProject {
         AssembledProject {
             program: Program {
                 statements: Vec::new(),
@@ -479,7 +481,10 @@ mod tests {
     fn project_symbol_projection_is_a_noop_on_unmappable_input() {
         let project = empty_project(std::collections::BTreeMap::new());
         // Non-JSON input is returned verbatim.
-        assert_eq!(project_symbols_json("not json".to_string(), &project), "not json");
+        assert_eq!(
+            project_symbols_json("not json".to_string(), &project),
+            "not json"
+        );
         // Valid JSON that is not an array is also returned verbatim.
         assert_eq!(
             project_symbols_json("{\"a\":1}".to_string(), &project),
@@ -487,10 +492,7 @@ mod tests {
         );
         // An array entry that is not an object, has no mapped name, and no
         // position exercises every early-return guard in update_project_symbol.
-        assert_eq!(
-            project_symbols_json("[42]".to_string(), &project),
-            "[42]"
-        );
+        assert_eq!(project_symbols_json("[42]".to_string(), &project), "[42]");
     }
 
     #[test]

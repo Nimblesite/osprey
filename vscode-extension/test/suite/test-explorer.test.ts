@@ -444,16 +444,29 @@ suite("Osprey Test Explorer", () => {
       const controller = newController();
       const file = await discoveredFile(controller, passUri);
       const source = new vscode.CancellationTokenSource();
+      // Cancel deterministically the instant the run reports `started` — that
+      // fires before the compiler is awaited, so the post-run cancellation
+      // guard always wins the race (a wall-clock timer here is flaky: a fast or
+      // cached compile can finish and report a result before the timer lands).
       const sink = new RecordingSink();
-      const running = executeRunRequest(
+      const cancellingSink = new Proxy(sink, {
+        get(target, prop, receiver) {
+          if (prop === "started") {
+            return (test: vscode.TestItem) => {
+              target.started(test);
+              source.cancel();
+            };
+          }
+          return Reflect.get(target, prop, receiver);
+        },
+      });
+      await executeRunRequest(
         controller,
         new vscode.TestRunRequest([file]),
-        sink,
+        cancellingSink,
         source.token,
         () => compiler,
       );
-      setTimeout(() => source.cancel(), 50);
-      await running;
       const resultKinds = ["passed", "failed", "errored", "skipped"];
       assert.ok(sink.events.every((event) => !resultKinds.includes(event.kind)));
       assert.deepStrictEqual(sink.events[sink.events.length - 1], { kind: "end" });
