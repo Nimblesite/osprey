@@ -206,9 +206,15 @@ mod tests {
         assert!(!contains_resume(&Expr::Integer(1)));
         assert!(!contains_resume(&Expr::Yield(None)));
         let import_only = Expr::Block {
-            statements: vec![crate::Stmt::Import {
-                module: vec!["m".into()],
-            }],
+            statements: vec![crate::Stmt::Import(crate::ImportDecl {
+                target: crate::ImportTarget {
+                    namespace: crate::NamespaceName::Identifier("m".into()),
+                    path: crate::SymbolPath::default(),
+                },
+                alias: None,
+                selection: crate::ImportSelection::Whole,
+                position: None,
+            })],
             value: None,
         };
         assert!(!contains_resume(&import_only));

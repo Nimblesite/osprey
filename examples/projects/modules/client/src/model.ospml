@@ -1,0 +1,89 @@
+// The host persists this as opaque JSON. Every field is deliberately scalar;
+// API documents are escaped JSON strings because jsonGet cannot return trees.
+namespace talon
+
+import bank::Json
+
+type AppModel =
+    route : string
+    moveMode : string
+    selected : string
+    activityFilter : string
+    search : string
+    modal : string
+    menu : string
+    loading : string
+    busy : string
+    accountsLoaded : string
+    activityLoaded : string
+    noticeTone : string
+    noticeTitle : string
+    noticeBody : string
+    accounts : string
+    activity : string
+
+module Model
+    export initial : Unit -> AppModel
+    initial () = AppModel(route = "overview", moveMode = "transfer", selected = "1", activityFilter = "all", search = "", modal = "closed", menu = "closed", loading = "true", busy = "false", accountsLoaded = "false", activityLoaded = "false", noticeTone = "", noticeTitle = "", noticeBody = "", accounts = "[]", activity = "[]")
+
+    export decode : string -> AppModel
+    decode source = match length source == 0
+        true => initial ()
+        false => AppModel(
+            route = Json::getOr source "route" "overview",
+            moveMode = Json::getOr source "moveMode" "transfer",
+            selected = Json::getOr source "selected" "1",
+            activityFilter = Json::getOr source "activityFilter" "all",
+            search = Json::getOr source "search" "",
+            modal = Json::getOr source "modal" "closed",
+            menu = Json::getOr source "menu" "closed",
+            loading = Json::getOr source "loading" "false",
+            busy = Json::getOr source "busy" "false",
+            accountsLoaded = Json::getOr source "accountsLoaded" "false",
+            activityLoaded = Json::getOr source "activityLoaded" "false",
+            noticeTone = Json::getOr source "noticeTone" "",
+            noticeTitle = Json::getOr source "noticeTitle" "",
+            noticeBody = Json::getOr source "noticeBody" "",
+            accounts = Json::getOr source "accounts" "[]",
+            activity = Json::getOr source "activity" "[]")
+
+    export encode : AppModel -> string
+    encode m = Json::obj (
+        Json::strField "route" m.route + "," + Json::strField "moveMode" m.moveMode + "," +
+        Json::strField "selected" m.selected + "," + Json::strField "activityFilter" m.activityFilter + "," +
+        Json::strField "search" m.search + "," + Json::strField "modal" m.modal + "," +
+        Json::strField "menu" m.menu + "," + Json::strField "loading" m.loading + "," +
+        Json::strField "busy" m.busy + "," + Json::strField "accountsLoaded" m.accountsLoaded + "," +
+        Json::strField "activityLoaded" m.activityLoaded + "," + Json::strField "noticeTone" m.noticeTone + "," +
+        Json::strField "noticeTitle" m.noticeTitle + "," + Json::strField "noticeBody" m.noticeBody + "," +
+        Json::strField "accounts" m.accounts + "," + Json::strField "activity" m.activity)
+
+    choose : string -> string -> string -> string -> string
+    choose changed target value old = match changed == target
+        true => value
+        false => old
+
+    export set : AppModel -> string -> string -> AppModel
+    set m changed value = AppModel(
+        route = choose changed "route" value m.route,
+        moveMode = choose changed "moveMode" value m.moveMode,
+        selected = choose changed "selected" value m.selected,
+        activityFilter = choose changed "activityFilter" value m.activityFilter,
+        search = choose changed "search" value m.search,
+        modal = choose changed "modal" value m.modal,
+        menu = choose changed "menu" value m.menu,
+        loading = choose changed "loading" value m.loading,
+        busy = choose changed "busy" value m.busy,
+        accountsLoaded = choose changed "accountsLoaded" value m.accountsLoaded,
+        activityLoaded = choose changed "activityLoaded" value m.activityLoaded,
+        noticeTone = choose changed "noticeTone" value m.noticeTone,
+        noticeTitle = choose changed "noticeTitle" value m.noticeTitle,
+        noticeBody = choose changed "noticeBody" value m.noticeBody,
+        accounts = choose changed "accounts" value m.accounts,
+        activity = choose changed "activity" value m.activity)
+
+    export notice : AppModel -> string -> string -> string -> AppModel
+    notice m tone title body = set (set (set m "noticeTone" tone) "noticeTitle" title) "noticeBody" body
+
+    export clearNotice : AppModel -> AppModel
+    clearNotice m = notice m "" "" ""

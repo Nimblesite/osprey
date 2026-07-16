@@ -16,6 +16,7 @@ use tree_sitter::{Node, Parser, Point, Tree};
 
 mod expr;
 mod lower;
+mod modules;
 
 pub use lower::Lowerer;
 
@@ -69,12 +70,36 @@ fn collect_errors(node: Node<'_>, src: &[u8], out: &mut Vec<SyntaxError>) {
             },
             position: position_from_point(p),
         });
+    } else if node.kind() == "identifier"
+        && node
+            .utf8_text(src)
+            .is_ok_and(|word| MODULE_KEYWORDS.contains(&word))
+    {
+        let p = node.start_position();
+        let word = node.utf8_text(src).unwrap_or_default();
+        out.push(SyntaxError {
+            message: format!("`{word}` is reserved for the module system"),
+            position: position_from_point(p),
+        });
     }
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
         collect_errors(child, src, out);
     }
 }
+
+/// Tree-sitter keywords are contextual at identifier-only parse states. The
+/// language contract reserves module words globally, so reject an identifier
+/// node carrying one even when the CST could otherwise accept it.
+const MODULE_KEYWORDS: &[&str] = &[
+    "namespace",
+    "signature",
+    "export",
+    "opaque",
+    "state",
+    "as",
+    "extra",
+];
 
 /// Convert a tree-sitter point to Osprey's one-based-line source position.
 pub(crate) fn position_from_point(point: Point) -> Position {

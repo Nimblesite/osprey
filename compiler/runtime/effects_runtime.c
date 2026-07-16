@@ -7,6 +7,8 @@
 #include <stdbool.h>
 #include <stdint.h>  // int64_t — explicit so the wasm32-wasip1 sysroot resolves it
 #include <pthread.h>
+
+#include "profiler_runtime.h"
 #ifdef __wasm__
 // wasm32-wasip1 is single-threaded: the effect handler stack needs no real
 // locking, so the mutex ops become no-ops. The thread-based coroutine
@@ -281,12 +283,16 @@ void *__osprey_coro_new(void *env) {
 static void *__osprey_coro_thread(void *raw) {
     CoroStartArgs *args = (CoroStartArgs *)raw;
     OspreyCoro *coro = args->coro;
+    // Effect continuations run on their own pthread; register so profiler
+    // samples attribute to them distinctly [PROF-COLLECT-REGISTRY].
+    osp_prof_thread_register(-1, "effect");
     if (args->snapshot != NULL) {
         __osprey_handler_restore(args->snapshot);
         args->snapshot = NULL;
     }
     int64_t result = args->body(args->body_env);
     free(args);
+    osp_prof_thread_unregister();
 
     pthread_mutex_lock(&coro->lock);
     coro->result = result;

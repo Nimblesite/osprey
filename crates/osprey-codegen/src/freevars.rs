@@ -37,6 +37,7 @@ fn walk(e: &Expr, bound: &mut Vec<String>, out: &mut BTreeSet<String>) {
     match e {
         Expr::Integer(_) | Expr::Float(_) | Expr::Str(_) | Expr::Bool(_) => {}
         Expr::Identifier(n) => note(n, bound, out),
+        Expr::Path(path) => note(&path.to_string(), bound, out),
         Expr::InterpolatedStr(parts) => {
             for p in parts {
                 if let InterpolatedPart::Expr(inner) = p {

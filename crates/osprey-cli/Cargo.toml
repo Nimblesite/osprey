@@ -14,10 +14,13 @@ path = "src/main.rs"
 osprey-ast = { workspace = true }
 osprey-debug = { workspace = true }
 osprey-syntax = { workspace = true }
+osprey-project = { workspace = true }
 osprey-types = { workspace = true }
 osprey-codegen = { workspace = true }
 osprey-fmt = { workspace = true }
 osprey-lsp = { workspace = true }
+osprey-profiler = { workspace = true }
+serde_json = { workspace = true }
 tokio = { workspace = true }
 
 [lints]

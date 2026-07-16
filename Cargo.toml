@@ -7,12 +7,14 @@ members = [
     "tree-sitter-osprey",
     "crates/osprey-ast",
     "crates/osprey-syntax",
+    "crates/osprey-project",
     "crates/osprey-types",
     "crates/osprey-debug",
     "crates/osprey-codegen",
     "crates/osprey-runtime-sys",
     "crates/osprey-fmt",
     "crates/osprey-lsp",
+    "crates/osprey-profiler",
     "crates/osprey-cli",
 ]
 
@@ -27,11 +29,13 @@ tree-sitter = "0.24"
 tree-sitter-language = "0.1"
 osprey-ast = { path = "crates/osprey-ast" }
 osprey-syntax = { path = "crates/osprey-syntax" }
+osprey-project = { path = "crates/osprey-project" }
 osprey-types = { path = "crates/osprey-types" }
 osprey-debug = { path = "crates/osprey-debug" }
 osprey-codegen = { path = "crates/osprey-codegen" }
 osprey-fmt = { path = "crates/osprey-fmt" }
 osprey-lsp = { path = "crates/osprey-lsp" }
+osprey-profiler = { path = "crates/osprey-profiler" }
 tree-sitter-osprey = { path = "tree-sitter-osprey" }
 
 # Language-server building blocks, reused from the published lspkit crates

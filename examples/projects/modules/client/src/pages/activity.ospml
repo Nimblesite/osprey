@@ -1,0 +1,30 @@
+namespace talon
+
+import talon::UI
+import talon::BankData
+import talon::ActivityView
+
+module ActivityPage
+    stat : string -> string -> int -> string
+    stat icon label value = UI::node "div" (UI::prop "className" "mini-stat") (UI::leaf "span" "" icon + "," + UI::node "div" "" (UI::leaf "small" "" label + "," + UI::leaf "strong" "" (toString value)))
+
+    export view : AppModel -> string
+    view model =
+        total = BankData::activityCount model.activity
+        credits = ActivityView::count model.activity "credit"
+        debits = ActivityView::count model.activity "debit"
+        refused = ActivityView::count model.activity "refused"
+        rows = ActivityView::rows model.activity 100 model.activityFilter model.search
+        pageHead = UI::node "header" (UI::prop "className" "page-heading") (UI::node "div" "" (UI::leaf "span" (UI::prop "className" "eyebrow") "AUDIT TRAIL" + "," + UI::leaf "h1" "" "Activity" + "," + UI::leaf "p" "" "Every credit, debit, transfer side, and refusal in one live ledger.") + "," + UI::button "activity-refresh" "button secondary" "Refresh" "↻")
+        search = UI::node "label" (UI::prop "className" "search-box" + "," + UI::prop "htmlFor" "activity-search") (UI::leaf "span" "" "⌕" + "," + UI::leaf "input" (UI::prop "id" "activity-search" + "," + UI::prop "name" "search" + "," + UI::prop "event" "input" + "," + UI::prop "value" model.search + "," + UI::prop "placeholder" "Search description or owner" + "," + UI::prop "type" "search") "")
+        allActive = model.activityFilter == "all"
+        inActive = model.activityFilter == "in"
+        outActive = model.activityFilter == "out"
+        refusedActive = model.activityFilter == "refused"
+        filters = UI::node "div" (UI::prop "className" "filter-row") (UI::chip "filter-all" "All ${total}" "" allActive + "," + UI::chip "filter-in" "Money in ${credits}" "↙" inActive + "," + UI::chip "filter-out" "Money out ${debits}" "↗" outActive + "," + UI::chip "filter-refused" "Declined ${refused}" "!" refusedActive)
+        summary = UI::node "div" (UI::prop "className" "mini-stat-grid") (stat "◎" "Total entries" total + "," + stat "↙" "Credits" credits + "," + stat "↗" "Debits" debits + "," + stat "!" "Protected refusals" refused)
+        body = match length rows == 0
+            true => UI::empty "⌕" "No matching activity" "Try another search or broaden the movement filter."
+            false => UI::node "div" (UI::prop "className" "activity-list activity-list-full") rows
+        ledger = UI::node "section" (UI::prop "className" "card ledger-card") (UI::node "div" (UI::prop "className" "ledger-toolbar") (search + "," + filters) + "," + body)
+        UI::node "div" (UI::prop "className" "page activity-page") (pageHead + "," + summary + "," + ledger)

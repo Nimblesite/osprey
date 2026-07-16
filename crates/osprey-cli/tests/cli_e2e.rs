@@ -515,3 +515,214 @@ fn run_reports_an_uninvokable_c_compiler() {
     assert_ne!(o.code, Some(0));
     assert!(!o.stderr.is_empty(), "{}", o.stderr);
 }
+
+// --- testing framework (docs/specs/0027-TestingFramework.md) ---------------
+
+const PASSING_TESTS: &str = "test(\"adds\", fn() => expect(1 + 1, 2))\n\
+test(\"labeled\", fn() => check(\"sum\", 4, 2 + 2))\n";
+
+const FAILING_TESTS: &str = "test(\"bad math\", fn() => expect(1 + 1, 3))\n\
+test(\"good math\", fn() => expect(2 + 2, 4))\n";
+
+/// Write `body` to `<dir>/<name>` and return the path.
+fn write_in(dir: &Path, name: &str, body: &str) -> PathBuf {
+    let path = dir.join(name);
+    let _ = std::fs::write(&path, body);
+    path
+}
+
+// [TESTING-TAP][TESTING-EXIT] a test binary reports TAP and exits by outcome.
+#[test]
+fn test_builtins_emit_tap_and_exit_status() {
+    let pass = temp_osp("tap_pass", PASSING_TESTS);
+    let o = run_file(&pass, &["--run"]);
+    assert_eq!(o.code, Some(0), "{}", o.stderr);
+    assert!(o.stdout.contains("ok 1 - adds"), "{}", o.stdout);
+    assert!(o.stdout.contains("1..2"), "{}", o.stdout);
+    assert!(
+        o.stdout.contains("# tests=2 passed=2 failed=0"),
+        "{}",
+        o.stdout
+    );
+
+    let fail = temp_osp("tap_fail", FAILING_TESTS);
+    let o = run_file(&fail, &["--run"]);
+    assert_eq!(o.code, Some(1), "{}", o.stdout);
+    assert!(
+        o.stdout.contains("# expect failed: expected 3, got 2"),
+        "{}",
+        o.stdout
+    );
+    assert!(o.stdout.contains("not ok 1 - bad math"), "{}", o.stdout);
+    assert!(o.stdout.contains("ok 2 - good math"), "{}", o.stdout);
+    assert!(
+        o.stdout.contains("# tests=2 passed=1 failed=1"),
+        "{}",
+        o.stdout
+    );
+}
+
+// [TESTING-FILTER] the env var exact-matches one case; others skip silently.
+#[test]
+fn test_filter_env_selects_one_case() {
+    let prog = temp_osp("tap_filter", FAILING_TESTS);
+    let mut cmd = osprey();
+    let _ = cmd
+        .arg(&prog)
+        .arg("--run")
+        .env("OSPREY_TEST_FILTER", "good math");
+    let o = finish(cmd);
+    assert_eq!(o.code, Some(0), "{}", o.stdout);
+    assert!(o.stdout.contains("ok 1 - good math"), "{}", o.stdout);
+    assert!(!o.stdout.contains("bad math"), "{}", o.stdout);
+    assert!(o.stdout.contains("1..1"), "{}", o.stdout);
+}
+
+// [TESTING-LIST] static discovery lists literal names with positions and
+// skips dynamic names; a testless file lists as [].
+#[test]
+fn list_tests_reports_literal_cases_as_json() {
+    let prog = temp_osp(
+        "list_tests",
+        "let name = \"dyn\"\ntest(\"first\", fn() => expect(1, 1))\ntest(name, fn() => expect(1, 1))\n",
+    );
+    let o = run_file(&prog, &["--list-tests"]);
+    assert_eq!(o.code, Some(0), "{}", o.stderr);
+    assert_eq!(
+        o.stdout.trim(),
+        "[{\"name\":\"first\",\"line\":2,\"column\":1}]"
+    );
+
+    let none = temp_osp("list_none", HELLO);
+    let o = run_file(&none, &["--list-tests"]);
+    assert_eq!(o.stdout.trim(), "[]");
+}
+
+// [TESTING-CLI-RUN] the runner discovers *.test.osp{,ml} under a directory,
+// streams TAP under headers, and aggregates the exit status.
+#[test]
+fn test_subcommand_runs_directories_and_files() {
+    let dir = temp_dir("suite");
+    let _ = write_in(&dir, "pass.test.osp", PASSING_TESTS);
+    let _ = write_in(
+        &dir,
+        "fail.test.ospml",
+        "test \"ml bad\" (\\() => check \"v\" 3 (1 + 1))\n",
+    );
+    let _ = write_in(&dir, "ignored.osp", HELLO);
+
+    let o = run_args(&["test", dir.to_string_lossy().as_ref()]);
+    assert_eq!(o.code, Some(1), "{}", o.stdout);
+    assert!(o.stdout.contains("# file:"), "{}", o.stdout);
+    assert!(o.stdout.contains("ok 1 - adds"), "{}", o.stdout);
+    assert!(
+        o.stdout.contains("# check 'v' failed: expected 3, got 2"),
+        "{}",
+        o.stdout
+    );
+    assert!(
+        o.stdout.contains("# suites: 1 passed, 1 failed"),
+        "{}",
+        o.stdout
+    );
+    assert!(
+        !o.stdout.contains("v=hi"),
+        "plain .osp files must be ignored"
+    );
+
+    // A single file runs regardless of naming; --filter reaches the children.
+    let single = write_in(&dir, "single.osp", FAILING_TESTS);
+    let o = run_args(&[
+        "test",
+        single.to_string_lossy().as_ref(),
+        "--filter",
+        "good math",
+        "--quiet",
+    ]);
+    assert_eq!(o.code, Some(0), "{}", o.stdout);
+    assert!(
+        o.stdout.contains("# suites: 1 passed, 0 failed"),
+        "{}",
+        o.stdout
+    );
+    assert!(!o.stdout.contains("# file:"), "--quiet drops headers");
+}
+
+// A compile-error suite fails the run; an empty discovery set is loud.
+#[test]
+fn test_subcommand_reports_broken_and_missing_suites() {
+    let dir = temp_dir("suite_bad");
+    let _ = write_in(&dir, "broken.test.osp", "test(\"x\", fn() => expect(1)\n");
+    let o = run_args(&["test", dir.to_string_lossy().as_ref()]);
+    assert_eq!(o.code, Some(1), "{}", o.stdout);
+    assert!(
+        o.stdout.contains("# suites: 0 passed, 1 failed"),
+        "{}",
+        o.stdout
+    );
+
+    let empty = temp_dir("suite_empty");
+    let o = run_args(&["test", empty.to_string_lossy().as_ref()]);
+    assert_eq!(o.code, Some(1), "{}", o.stderr);
+    assert!(o.stderr.contains("no test files found"), "{}", o.stderr);
+
+    let o = run_args(&["test", "--filter"]);
+    assert_eq!(o.code, Some(2), "{}", o.stderr);
+    let o = run_args(&["test", "--nonsense"]);
+    assert_eq!(o.code, Some(2), "{}", o.stderr);
+    let o = run_args(&["test", "a", "b"]);
+    assert_eq!(o.code, Some(2), "{}", o.stderr);
+}
+
+// A nested test() must not silently reshuffle counters: it fails the
+// enclosing case loudly [TESTING-BUILTIN-TEST], and a zero-case run still
+// prints its plan so a matchless filter is visible [TESTING-TAP].
+#[test]
+fn nested_tests_fail_loudly_and_zero_case_runs_keep_the_plan() {
+    let nested = temp_osp(
+        "tap_nested",
+        "test(\"outer\", fn() => {\n    expect(1, 2)\n    test(\"inner\", fn() => expect(3, 3))\n})\n",
+    );
+    let o = run_file(&nested, &["--run"]);
+    assert_eq!(o.code, Some(1), "{}", o.stdout);
+    assert!(
+        o.stdout.contains("# nested test 'inner' skipped"),
+        "{}",
+        o.stdout
+    );
+    assert!(o.stdout.contains("not ok 1 - outer"), "{}", o.stdout);
+
+    let prog = temp_osp("tap_nomatch", PASSING_TESTS);
+    let mut cmd = osprey();
+    let _ = cmd
+        .arg(&prog)
+        .arg("--run")
+        .env("OSPREY_TEST_FILTER", "matches nothing");
+    let o = finish(cmd);
+    assert_eq!(o.code, Some(0), "{}", o.stdout);
+    assert!(o.stdout.contains("1..0"), "{}", o.stdout);
+    assert!(
+        o.stdout.contains("# tests=0 passed=0 failed=0"),
+        "{}",
+        o.stdout
+    );
+}
+
+// [TESTING-EQUALITY] an Error operand is a visible mismatch, never a blind
+// payload read.
+#[test]
+fn error_result_assertions_render_the_error() {
+    let prog = temp_osp(
+        "tap_err_result",
+        "test(\"div\", fn() => expect(intDiv(1, 0), 2))\n",
+    );
+    let o = run_file(&prog, &["--run"]);
+    assert_eq!(o.code, Some(1), "{}", o.stdout);
+    assert!(
+        o.stdout
+            .contains("# expect failed: expected 2, got Error(division by zero)"),
+        "{}",
+        o.stdout
+    );
+    assert!(o.stdout.contains("not ok 1 - div"), "{}", o.stdout);
+}

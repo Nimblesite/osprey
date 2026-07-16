@@ -1,0 +1,47 @@
+// CPU profiling showcase (docs/specs/0028-Profiler.md). Run it normally with
+// the harness, or profile it:
+//
+//   osprey cpu_profiling_demo.osp --profile
+//
+// The terminal report prints after the program output, and the exports
+// (cpu_profiling_demo.speedscope.json / .cpuprofile / .folded / .profile.json)
+// land in the working directory — drag the speedscope file onto
+// https://speedscope.app, open the .cpuprofile in VS Code, or run the
+// "Osprey: Profile Current File" command for the interactive flame graph with
+// inline heat annotations. The profile shows three distinct fibers: this main
+// thread and the effect handler burning CPU in fib (on-CPU samples), and the
+// napping fiber blocked in sleep (waiting samples).
+
+effect Tuning {
+    baseline: fn(int) -> int
+}
+
+fn add(a: int, b: int) -> int = a + b
+fn sub(a: int, b: int) -> int = a - b
+
+// The hot tower: naive double recursion keeps the sampler busy, and its
+// self-time dominates the flame graph.
+fn fib(n: int) -> int = match n {
+    0 => 0
+    1 => 1
+    _ => add(fib(sub(n, 1)), fib(sub(n, 2)))
+}
+
+// A waiting fiber: contributes off-CPU "waiting" samples, not compute.
+fn napper() = {
+    sleep(40)
+    40
+}
+
+// Effectful compute: the resumable handler below answers from its own fib
+// tower, so the effect continuation thread appears as its own hot fiber.
+fn tuned(n: int) -> int ![Tuning] = add(fib(n), perform Tuning.baseline(n))
+
+handle Tuning
+    baseline n => resume(fib(sub(n, 2)))
+in {
+    let worker = spawn fib(36)
+    let idler = spawn napper()
+    let local = tuned(37)
+    print("tuned(37) = ${local}, worker = ${await(worker)}, napped = ${await(idler)}ms")
+}

@@ -810,16 +810,16 @@ fn empty_interpolation_fragment_falls_back_to_an_identifier() {
 }
 
 #[test]
-fn orphan_signature_without_a_matching_binding_is_dropped() {
-    // A signature whose name does not match the next binding is discarded, and
-    // the following binding still lowers cleanly (untyped).
-    match ml_one("foo : int\nbar = 1\n") {
-        Stmt::Let { name, ty, .. } => {
-            assert_eq!(name, "bar");
-            assert!(ty.is_none());
-        }
-        other => panic!("expected a let, got {other:?}"),
-    }
+fn orphan_signature_without_a_matching_binding_is_rejected() {
+    let parsed = ml_err("foo : int\nbar = 1\n");
+    assert!(
+        parsed
+            .errors
+            .iter()
+            .any(|error| error.message.contains("immediately followed")),
+        "errors: {:?}",
+        parsed.errors
+    );
 }
 
 // ---- generics, variance, and generic effects ([FLAVOR-ML-GENERICS]) ----

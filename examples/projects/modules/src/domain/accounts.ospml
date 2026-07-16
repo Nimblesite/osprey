@@ -1,0 +1,54 @@
+// domain/accounts — the PURE core of the bank. [MODULES-MODULE]
+//
+// A record type shared across every layer, plus the business rules and the
+// canonical renderings of an account (JSON for the API, a table row for the
+// TUI). No effects, no IO, no state: every export is a pure function, so this
+// module is trivially testable and reusable from any layer above it.
+
+namespace bank
+
+import bank::Money
+import bank::Json
+
+type Account =
+    id : int
+    owner : string
+    balance : int
+
+// A refused movement is a DOMAIN OUTCOME, not an error: the union makes both
+// futures first-class values that every layer must pattern-match exhaustively.
+type Outcome =
+    Landed
+        balance : int
+    Refused
+        why : string
+
+module Accounts
+    // Domain rule: an account must be opened with a non-empty owner name.
+    export namable : string -> bool
+    namable owner = length (trim owner) > 0
+
+    // Domain rule: money can only move in positive whole-cent amounts.
+    export movable : int -> bool
+    movable cents = Money::positive cents
+
+    // Built through the typed `Json` encoder, so `owner` is escaped exactly
+    // once and a name with quotes still yields valid JSON. Both the machine
+    // field (`cents`) and the display field (`balance`) ship, so API consumers
+    // never re-parse formatted money.
+    export json : Account -> string
+    json a = Json::obj (Json::numField "id" a.id + "," + Json::strField "owner" a.owner + "," + Json::numField "cents" a.balance + "," + Json::strField "balance" (Money::show a.balance))
+
+    // One TUI table row: `│  1 │ Amelia Chen  │ $2,462.40 │`
+    export row : Account -> string
+    row a =
+        owner = match padEnd a.owner 12 " "
+            Success value => value
+            Error message => a.owner
+        cash = match padStart (Money::show a.balance) 9 " "
+            Success value => value
+            Error message => Money::show a.balance
+        id = match padStart (toString a.id) 2 " "
+            Success value => value
+            Error message => toString a.id
+        "│ ${id} │ ${owner} │ ${cash} │"

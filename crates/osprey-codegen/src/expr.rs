@@ -483,6 +483,9 @@ fn gen_call(
         // names below are reserved. Each dispatcher returns `None` when the name
         // is not its builtin, so the chain falls through to a user call.
         _ => {
+            if let Some(v) = crate::testing::gen(cg, name, arguments, named)? {
+                return Ok(v);
+            }
             if let Some(v) = crate::strings::gen(cg, name, arguments, named)? {
                 return Ok(v);
             }

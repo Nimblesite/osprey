@@ -2,7 +2,7 @@
 layout: page
 title: "Syntax"
 description: "Osprey Language Specification: Syntax"
-date: 2026-07-01
+date: 2026-07-15
 tags: ["specification", "reference", "documentation"]
 author: "Christian Findlay"
 permalink: "/spec/0003-syntax/"
@@ -100,11 +100,20 @@ result  = calculateValue data
 ## Function Declarations
 
 ```ebnf
-fnDecl    ::= docComment? "fn" ID "(" paramList? ")" ("->" type)? effectSet?
+fnDecl    ::= docComment? "fn" ID ("<" typeParamList ">")? "(" paramList? ")"
+              ("->" type)? effectSet?
               ("=" expr | "{" blockBody "}")
 paramList ::= param ("," param)*
 param     ::= ID (":" type)?
+effectSet ::= "!" effectRef | "!" "[" effectRef ("," effectRef)* "]"
+effectRef ::= ID ("<" typeList ">")?
 ```
+
+The optional `<typeParamList>` declares the function's type parameters
+([TYPE-GENERICS-FN](/spec/0004-typesystem/#generics-and-variance)); variance
+markers are not permitted there. `effectSet` is the declared effect row —
+each reference may apply type arguments to a generic effect
+([EFFECTS-GENERIC-ROWS](/spec/0017-algebraiceffects/#generic-effects)).
 
 ```osprey
 fn double(x)   = x * 2
@@ -166,6 +175,8 @@ The foreign function must use the C ABI (`extern "C"` and `#[no_mangle]` in Rust
 
 ```ebnf
 typeDecl          ::= docComment? "type" ID ("<" typeParamList ">")? "=" (unionType | recordType)
+typeParamList     ::= typeParam ("," typeParam)*
+typeParam         ::= ("in" | "out")? ID
 unionType         ::= variant ("|" variant)*
 recordType        ::= "{" fieldDeclarations "}"
 variant           ::= ID ("{" fieldDeclarations "}")?
@@ -174,11 +185,20 @@ fieldDeclaration  ::= ID ":" type constraint?
 constraint        ::= "where" function_name
 ```
 
+`typeParam`'s optional `in`/`out` marker declares the parameter's variance
+([TYPE-VARIANCE-DECL](/spec/0004-typesystem/#generics-and-variance)); `in` and
+`out` are contextual keywords reserved only inside `<…>`
+([Lexical Structure](/spec/0002-lexicalstructure/#keywords)).
+
 ```osprey
 type Color = Red | Green | Blue
 
 type Shape = Circle    { radius: int }
            | Rectangle { width: int, height: int }
+
+type Pair<T, U>  = Pair { first: T, second: U }
+type Feed<out T> = Feed { supply: T } | Dry
+type Gate<in T>  = Gate { admit: (T) -> bool } | Open
 ```
 
 ```osprey-ml
@@ -357,7 +377,9 @@ label =
         Done code   => "done (${code})"
 ```
 
-Pattern semantics, exhaustiveness, and the ternary shorthand are in [Pattern Matching](/spec/0007-patternmatching/).
+Pattern semantics, exhaustiveness, and the two-arm shorthands — the ternary
+and the Default-flavor `if`/`else if`/`else` expression ([GRAMMAR-IF-ELSE]) —
+are in [Pattern Matching](/spec/0007-patternmatching/).
 
 ## Variable Binding
 

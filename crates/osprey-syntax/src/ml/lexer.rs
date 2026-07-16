@@ -391,6 +391,7 @@ fn two_char_operator(c: char, next: Option<char>) -> Option<TokKind> {
     let next = next?;
     let kind = match (c, next) {
         (':', '=') => TokKind::ColonEq,
+        (':', ':') => TokKind::ColonColon,
         ('-', '>') => TokKind::Arrow,
         ('=', '>') => TokKind::FatArrow,
         ('=', '=') => TokKind::Op("==".to_owned()),

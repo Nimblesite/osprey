@@ -6,14 +6,20 @@
 //! `osprey --hover` CLI modes render from here.
 
 use osprey_ast::{
-    walk_each, Expr, ExternParameter, InterpolatedPart, Parameter, Position, Program, Stmt,
-    TypeExpr,
+    walk_each, Expr, ExternParameter, InterpolatedPart, NamedArgument, Parameter, Position,
+    Program, Stmt, TypeExpr,
 };
 use std::fmt::Write as _;
 
 /// What kind of declaration a [`SymbolInfo`] describes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SymbolKind {
+    /// A logical namespace contribution.
+    Namespace,
+    /// A closed plain/state module boundary.
+    Module,
+    /// An explicit module interface.
+    Signature,
     /// A function or `extern fn`.
     Function,
     /// A `let` binding.
@@ -27,6 +33,9 @@ impl SymbolKind {
     #[must_use]
     pub const fn as_str(self) -> &'static str {
         match self {
+            Self::Namespace => "namespace",
+            Self::Module => "module",
+            Self::Signature => "signature",
             Self::Function => "function",
             Self::Variable => "variable",
             Self::Type => "type",
@@ -37,8 +46,10 @@ impl SymbolKind {
 /// One outline entry derived from a top-level declaration.
 #[derive(Debug, Clone)]
 pub struct SymbolInfo {
-    /// Declared name.
+    /// Collision-safe qualified source name (`billing::Tax::addTax`).
     pub name: String,
+    /// Name as written on the declaration line (`addTax` / `Tax`).
+    pub source_name: String,
     /// What sort of declaration this is.
     pub kind: SymbolKind,
     /// Rendered type/category text (signature for functions, annotation for
@@ -62,16 +73,98 @@ pub struct SymbolInfo {
 #[must_use]
 pub fn collect_symbols(program: &Program) -> Vec<SymbolInfo> {
     let mut out = Vec::new();
-    collect(&program.statements, &mut out);
+    collect(&program.statements, &[], &mut out);
     out
 }
 
-fn collect(stmts: &[Stmt], out: &mut Vec<SymbolInfo>) {
+fn collect(stmts: &[Stmt], prefix: &[String], out: &mut Vec<SymbolInfo>) {
     for stmt in stmts {
         match stmt {
-            Stmt::Module { body, .. } => collect(body, out),
-            other => out.extend(sym_of(other)),
+            Stmt::Namespace {
+                name,
+                body,
+                position,
+                ..
+            } => {
+                let label = name.label();
+                out.push(container_sym(
+                    prefix,
+                    label,
+                    SymbolKind::Namespace,
+                    *position,
+                ));
+                let child_prefix = extended(prefix, std::slice::from_ref(&label.to_owned()));
+                collect(body, &child_prefix, out);
+            }
+            Stmt::Module {
+                path,
+                body,
+                position,
+                ..
+            } => {
+                out.push(container_sym(
+                    prefix,
+                    &path.to_string(),
+                    SymbolKind::Module,
+                    *position,
+                ));
+                let child_prefix = extended(prefix, &path.segments);
+                for item in body {
+                    collect(
+                        std::slice::from_ref(item.declaration.as_ref()),
+                        &child_prefix,
+                        out,
+                    );
+                }
+            }
+            Stmt::Signature { name, position, .. } => out.push(container_sym(
+                prefix,
+                name,
+                SymbolKind::Signature,
+                *position,
+            )),
+            other => {
+                if let Some(mut symbol) = sym_of(other) {
+                    qualify_symbol(&mut symbol, prefix);
+                    out.push(symbol);
+                }
+            }
         }
+    }
+}
+
+fn extended(prefix: &[String], segments: &[String]) -> Vec<String> {
+    prefix.iter().chain(segments).cloned().collect()
+}
+
+fn qualified(prefix: &[String], source_name: &str) -> String {
+    if prefix.is_empty() {
+        source_name.to_owned()
+    } else {
+        format!("{}::{source_name}", prefix.join("::"))
+    }
+}
+
+fn qualify_symbol(symbol: &mut SymbolInfo, prefix: &[String]) {
+    symbol.name = qualified(prefix, &symbol.source_name);
+}
+
+fn container_sym(
+    prefix: &[String],
+    source_name: &str,
+    kind: SymbolKind,
+    position: Option<Position>,
+) -> SymbolInfo {
+    SymbolInfo {
+        name: qualified(prefix, source_name),
+        source_name: source_name.to_owned(),
+        kind,
+        ty: kind.as_str().to_owned(),
+        position,
+        signature: None,
+        parameters: Vec::new(),
+        return_type: None,
+        doc: None,
     }
 }
 
@@ -82,62 +175,116 @@ fn collect(stmts: &[Stmt], out: &mut Vec<SymbolInfo>) {
 #[must_use]
 pub fn collect_all_symbols(program: &Program) -> Vec<SymbolInfo> {
     let mut out = Vec::new();
-    walk_stmts(&program.statements, &mut out);
+    walk_stmts(&program.statements, &[], &mut out);
     out
 }
 
-fn walk_stmts(stmts: &[Stmt], out: &mut Vec<SymbolInfo>) {
+fn walk_stmts(stmts: &[Stmt], prefix: &[String], out: &mut Vec<SymbolInfo>) {
     for stmt in stmts {
-        out.extend(sym_of(stmt));
-        walk_stmt_body(stmt, out);
+        match stmt {
+            Stmt::Namespace {
+                name,
+                body,
+                position,
+                ..
+            } => {
+                let label = name.label().to_owned();
+                out.push(container_sym(
+                    prefix,
+                    &label,
+                    SymbolKind::Namespace,
+                    *position,
+                ));
+                walk_stmts(body, &extended(prefix, &[label]), out);
+            }
+            Stmt::Module {
+                path,
+                body,
+                position,
+                ..
+            } => {
+                out.push(container_sym(
+                    prefix,
+                    &path.to_string(),
+                    SymbolKind::Module,
+                    *position,
+                ));
+                let child_prefix = extended(prefix, &path.segments);
+                for item in body {
+                    walk_stmts(
+                        std::slice::from_ref(item.declaration.as_ref()),
+                        &child_prefix,
+                        out,
+                    );
+                }
+            }
+            Stmt::Signature { name, position, .. } => out.push(container_sym(
+                prefix,
+                name,
+                SymbolKind::Signature,
+                *position,
+            )),
+            other => {
+                if let Some(mut symbol) = sym_of(other) {
+                    qualify_symbol(&mut symbol, prefix);
+                    out.push(symbol);
+                }
+                walk_stmt_body(other, prefix, out);
+            }
+        }
     }
 }
 
-fn walk_stmt_body(stmt: &Stmt, out: &mut Vec<SymbolInfo>) {
+fn walk_stmt_body(stmt: &Stmt, prefix: &[String], out: &mut Vec<SymbolInfo>) {
     match stmt {
-        Stmt::Module { body, .. } => walk_stmts(body, out),
-        Stmt::Function { body, .. } => walk_expr(body, out),
+        Stmt::Function { body, .. } => walk_expr(body, prefix, out),
         Stmt::Let { value, .. } | Stmt::Assignment { value, .. } | Stmt::Expr { value, .. } => {
-            walk_expr(value, out);
+            walk_expr(value, prefix, out);
         }
         _ => {}
     }
 }
 
 /// Descend an expression collecting nested `let` bindings (first third).
-fn walk_expr(e: &Expr, out: &mut Vec<SymbolInfo>) {
+fn walk_expr(e: &Expr, prefix: &[String], out: &mut Vec<SymbolInfo>) {
     match e {
         Expr::InterpolatedStr(parts) => parts.iter().for_each(|p| {
             if let InterpolatedPart::Expr(x) = p {
-                walk_expr(x, out);
+                walk_expr(x, prefix, out);
             }
         }),
-        Expr::List(xs) => walk_each(xs, out, |x| x, walk_expr),
+        Expr::List(xs) => walk_each(xs, out, |x| x, |x, out| walk_expr(x, prefix, out)),
         Expr::Map(entries) => entries.iter().for_each(|en| {
-            walk_expr(&en.key, out);
-            walk_expr(&en.value, out);
+            walk_expr(&en.key, prefix, out);
+            walk_expr(&en.value, prefix, out);
         }),
-        Expr::Object(fields) => walk_each(fields, out, |f| &f.value, walk_expr),
+        Expr::Object(fields) => walk_each(
+            fields,
+            out,
+            |f| &f.value,
+            |x, out| {
+                walk_expr(x, prefix, out);
+            },
+        ),
         Expr::Binary { left, right, .. } | Expr::Pipe { left, right } => {
-            walk_expr(left, out);
-            walk_expr(right, out);
+            walk_expr(left, prefix, out);
+            walk_expr(right, prefix, out);
         }
-        Expr::Unary { operand, .. } => walk_expr(operand, out),
-        other => walk_expr_rest(other, out),
+        Expr::Unary { operand, .. } => walk_expr(operand, prefix, out),
+        other => walk_expr_rest(other, prefix, out),
     }
 }
 
 /// Continuation of [`walk_expr`] — call/navigation/block forms (second third).
-fn walk_expr_rest(e: &Expr, out: &mut Vec<SymbolInfo>) {
+fn walk_expr_rest(e: &Expr, prefix: &[String], out: &mut Vec<SymbolInfo>) {
     match e {
         Expr::Call {
             function,
             arguments,
             named_arguments,
         } => {
-            walk_expr(function, out);
-            walk_each(arguments, out, |x| x, walk_expr);
-            walk_each(named_arguments, out, |n| &n.value, walk_expr);
+            walk_expr(function, prefix, out);
+            walk_arguments(arguments, named_arguments, prefix, out);
         }
         Expr::MethodCall {
             target,
@@ -145,57 +292,92 @@ fn walk_expr_rest(e: &Expr, out: &mut Vec<SymbolInfo>) {
             named_arguments,
             ..
         } => {
-            walk_expr(target, out);
-            walk_each(arguments, out, |x| x, walk_expr);
-            walk_each(named_arguments, out, |n| &n.value, walk_expr);
+            walk_expr(target, prefix, out);
+            walk_arguments(arguments, named_arguments, prefix, out);
         }
-        Expr::FieldAccess { target, .. } => walk_expr(target, out),
+        Expr::FieldAccess { target, .. } => walk_expr(target, prefix, out),
         Expr::Index { target, index } => {
-            walk_expr(target, out);
-            walk_expr(index, out);
+            walk_expr(target, prefix, out);
+            walk_expr(index, prefix, out);
         }
-        Expr::Lambda { body, .. } => walk_expr(body, out),
+        Expr::Lambda { body, .. } => walk_expr(body, prefix, out),
         Expr::Match { value, arms } => {
-            walk_expr(value, out);
-            walk_each(arms, out, |arm| &arm.body, walk_expr);
+            walk_expr(value, prefix, out);
+            walk_each(
+                arms,
+                out,
+                |arm| &arm.body,
+                |x, out| {
+                    walk_expr(x, prefix, out);
+                },
+            );
         }
         Expr::Block { statements, value } => {
-            walk_stmts(statements, out);
+            walk_stmts(statements, prefix, out);
             if let Some(v) = value {
-                walk_expr(v, out);
+                walk_expr(v, prefix, out);
             }
         }
         Expr::TypeConstructor { fields, .. } | Expr::Update { fields, .. } => {
-            walk_each(fields, out, |f| &f.value, walk_expr);
+            walk_each(
+                fields,
+                out,
+                |f| &f.value,
+                |x, out| {
+                    walk_expr(x, prefix, out);
+                },
+            );
         }
-        other => walk_expr_fiber(other, out),
+        other => walk_expr_fiber(other, prefix, out),
     }
 }
 
 /// Final third of [`walk_expr`]: fiber/effect forms; leaves fall through.
-fn walk_expr_fiber(e: &Expr, out: &mut Vec<SymbolInfo>) {
+fn walk_expr_fiber(e: &Expr, prefix: &[String], out: &mut Vec<SymbolInfo>) {
     match e {
-        Expr::Spawn(i) | Expr::Await(i) | Expr::Recv(i) | Expr::Yield(Some(i)) => walk_expr(i, out),
-        Expr::Send { channel, value } => {
-            walk_expr(channel, out);
-            walk_expr(value, out);
+        Expr::Spawn(i) | Expr::Await(i) | Expr::Recv(i) | Expr::Yield(Some(i)) => {
+            walk_expr(i, prefix, out);
         }
-        Expr::Select { arms } => walk_each(arms, out, |arm| &arm.body, walk_expr),
+        Expr::Send { channel, value } => {
+            walk_expr(channel, prefix, out);
+            walk_expr(value, prefix, out);
+        }
+        Expr::Select { arms } => walk_each(
+            arms,
+            out,
+            |arm| &arm.body,
+            |x, out| {
+                walk_expr(x, prefix, out);
+            },
+        ),
         Expr::Perform {
             arguments,
             named_arguments,
             ..
         } => {
-            walk_each(arguments, out, |x| x, walk_expr);
-            walk_each(named_arguments, out, |n| &n.value, walk_expr);
+            walk_arguments(arguments, named_arguments, prefix, out);
         }
         Expr::Handler { arms, body, .. } => {
             for arm in arms {
-                walk_expr(&arm.body, out);
+                walk_expr(&arm.body, prefix, out);
             }
-            walk_expr(body, out);
+            walk_expr(body, prefix, out);
         }
         _ => {}
+    }
+}
+
+fn walk_arguments(
+    arguments: &[Expr],
+    named_arguments: &[NamedArgument],
+    prefix: &[String],
+    out: &mut Vec<SymbolInfo>,
+) {
+    for argument in arguments {
+        walk_expr(argument, prefix, out);
+    }
+    for argument in named_arguments {
+        walk_expr(&argument.value, prefix, out);
     }
 }
 
@@ -336,6 +518,7 @@ fn fn_sym(
     let signature = format!("fn {name}({}) -> {ret}", shown.join(", "));
     SymbolInfo {
         name: name.into(),
+        source_name: name.into(),
         kind: SymbolKind::Function,
         ty: signature.clone(),
         position,
@@ -362,6 +545,7 @@ fn let_sym(
 ) -> SymbolInfo {
     SymbolInfo {
         name: name.into(),
+        source_name: name.into(),
         kind: SymbolKind::Variable,
         ty: ty.map(render_type).unwrap_or_default(),
         position,
@@ -375,6 +559,7 @@ fn let_sym(
 fn decl_sym(name: &str, ty: &str, position: Option<Position>) -> SymbolInfo {
     SymbolInfo {
         name: name.into(),
+        source_name: name.into(),
         kind: SymbolKind::Type,
         ty: ty.into(),
         position,
@@ -477,7 +662,7 @@ fn params_json(params: &[(String, String)]) -> String {
     format!("[{}]", items.join(","))
 }
 
-fn json_str(s: &str) -> String {
+pub(crate) fn json_str(s: &str) -> String {
     let mut out = String::with_capacity(s.len().saturating_add(2));
     out.push('"');
     for c in s.chars() {
@@ -656,22 +841,46 @@ mod tests {
     }
 
     #[test]
-    fn collect_symbols_recurses_into_modules_and_skips_non_declarations() {
-        // A module body's declarations surface in the flat outline, while
-        // statements that are not declarations (the bare expression) are dropped.
+    fn collect_symbols_qualifies_module_members_and_skips_non_declarations() {
+        // [MODULES-ABI] A flat wire outline keeps collision-safe source names:
+        // the module itself plus qualified members, never flattened leaves.
         let parsed = osprey_syntax::parse_program(
             "module Inner {\n  fn helper() -> int = 1\n  let seed = 2\n}\n",
         );
         assert!(parsed.errors.is_empty(), "{:?}", parsed.errors);
         let syms = collect_symbols(&parsed.program);
         let names: Vec<&str> = syms.iter().map(|s| s.name.as_str()).collect();
-        assert!(names.contains(&"helper"), "{names:?}");
-        assert!(names.contains(&"seed"), "{names:?}");
+        assert_eq!(names, ["Inner", "Inner::helper", "Inner::seed"]);
         // The `let` carries no annotation, so its rendered type is empty and its
         // kind is `Variable`.
-        let seed = syms.iter().find(|s| s.name == "seed").expect("seed symbol");
+        let seed = syms
+            .iter()
+            .find(|s| s.name == "Inner::seed")
+            .expect("seed symbol");
         assert_eq!(seed.kind, SymbolKind::Variable);
         assert_eq!(seed.ty, "");
+    }
+
+    #[test]
+    fn namespace_module_and_signature_symbols_never_flatten_collisions() {
+        // [MODULES-NAMESPACE] Two modules may export the same leaf name. The
+        // outline preserves both ownership paths and the container kinds.
+        let parsed = osprey_syntax::parse_program(
+            "namespace sales { module Tax { export fn rate() = 10 } }\n\
+             namespace payroll { module Tax { export fn rate() = 20 } }\n\
+             signature TaxSig { fn rate() -> int }\n",
+        );
+        assert!(parsed.errors.is_empty(), "{:?}", parsed.errors);
+        let symbols = collect_symbols(&parsed.program);
+        let named = |name: &str| symbols.iter().find(|symbol| symbol.name == name);
+        assert_eq!(named("sales").map(|s| s.kind), Some(SymbolKind::Namespace));
+        assert_eq!(
+            named("sales::Tax").map(|s| s.kind),
+            Some(SymbolKind::Module)
+        );
+        assert!(named("sales::Tax::rate").is_some());
+        assert!(named("payroll::Tax::rate").is_some());
+        assert_eq!(named("TaxSig").map(|s| s.kind), Some(SymbolKind::Signature));
     }
 
     /// One of every container `Expr` variant, each holding a block whose single
@@ -860,6 +1069,9 @@ mod tests {
 
     #[test]
     fn symbol_kind_as_str_round_trips_each_variant() {
+        assert_eq!(SymbolKind::Namespace.as_str(), "namespace");
+        assert_eq!(SymbolKind::Module.as_str(), "module");
+        assert_eq!(SymbolKind::Signature.as_str(), "signature");
         assert_eq!(SymbolKind::Function.as_str(), "function");
         assert_eq!(SymbolKind::Variable.as_str(), "variable");
         assert_eq!(SymbolKind::Type.as_str(), "type");

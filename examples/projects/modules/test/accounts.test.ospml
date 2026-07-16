@@ -1,0 +1,151 @@
+// Native test suite for the account domain rules and renderings.
+// [TESTING-BUILTINS]
+//
+// Mirrors src/domain/{money,json,accounts}.ospml. Exercises the pure business
+// rules (namable/movable), the Outcome union pattern-match, the JSON encoding
+// of an Account (escaping included), and the fixed-width TUI row.
+
+module Money
+    pennies : int -> string
+    pennies c = match c % 100 < 10
+        true => "0${c % 100}"
+        false => "${c % 100}"
+
+    triple : int -> string
+    triple n = match n < 10
+        true => "00${n}"
+        false => match n < 100
+            true => "0${n}"
+            false => "${n}"
+
+    group : int -> string
+    group dollars = match dollars < 1000
+        true => "${dollars}"
+        false => "${group (intDiv dollars 1000)},${triple (dollars % 1000)}"
+
+    export show : int -> string
+    show cents = "$${group (intDiv cents 100)}.${pennies cents}"
+
+    export positive : int -> bool
+    positive cents = cents > 0
+
+module Json
+    unwrap : Result<string, Error> -> string
+    unwrap r = match r
+        Success value => value
+        Error message => ""
+
+    escape : string -> string
+    escape s =
+        bslash = "\\"
+        quote = "\""
+        step = unwrap (replace s bslash (bslash + bslash))
+        unwrap (replace step quote (bslash + quote))
+
+    quoted : string -> string
+    quoted s =
+        quote = "\""
+        quote + escape s + quote
+
+    export strField : string -> string -> string
+    strField key value = quoted key + ":" + quoted value
+
+    export numField : string -> int -> string
+    numField key value = quoted key + ":" + toString value
+
+    export obj : string -> string
+    obj members = "{" + members + "}"
+
+type Account =
+    id : int
+    owner : string
+    balance : int
+
+type Outcome =
+    Landed
+        balance : int
+    Refused
+        why : string
+
+module Accounts
+    export namable : string -> bool
+    namable owner = length owner > 0
+
+    export movable : int -> bool
+    movable cents = Money::positive cents
+
+    export json : Account -> string
+    json a = Json::obj (Json::numField "id" a.id + "," + Json::strField "owner" a.owner + "," + Json::numField "cents" a.balance + "," + Json::strField "balance" (Money::show a.balance))
+
+    export row : Account -> string
+    row a =
+        owner = match padEnd a.owner 12 " "
+            Success value => value
+            Error message => a.owner
+        cash = match padStart (Money::show a.balance) 9 " "
+            Success value => value
+            Error message => Money::show a.balance
+        id = match padStart (toString a.id) 2 " "
+            Success value => value
+            Error message => toString a.id
+        "│ ${id} │ ${owner} │ ${cash} │"
+
+q = "\""
+
+// A refusal is a domain value, not an error: classify one exhaustively.
+settle : Outcome -> string
+settle o = match o
+    Landed balance => "landed ${balance}"
+    Refused why => "refused ${why}"
+
+// The pure ML-flavor testing surface [TESTING-VERDICT]: a three-state Verdict
+// value and combinators. A case is a pure function returning a Verdict; `test`
+// pattern-matches and reports it. No exceptions, no imperative assertions.
+type Verdict =
+    Pass
+    Fail
+        reason : string
+    Skip
+        why : string
+
+check (label, expected, actual) = match expected == actual
+    true => Pass
+    false => Fail(reason = "${label}: expected ${expected}, got ${actual}")
+
+andThen first rest = match first
+    Pass => rest
+    Fail reason => Fail(reason = reason)
+    Skip why => Skip(why = why)
+
+// --- account-opening rule ---
+namableCase () =
+    real = andThen (check ("a real name is namable", true, Accounts::namable "Amelia Chen")) (check ("single char is namable", true, Accounts::namable "x"))
+    andThen real (check ("empty name is refused", false, Accounts::namable ""))
+
+// --- movement-amount rule ---
+movableCase () =
+    pos = andThen (check ("positive cents move", true, Accounts::movable 5000)) (check ("one cent moves", true, Accounts::movable 1))
+    zeroNeg = andThen (check ("zero does not move", false, Accounts::movable 0)) (check ("negative does not move", false, Accounts::movable (0 - 250)))
+    andThen pos zeroNeg
+
+// --- the Outcome union both API and main pattern-match ---
+outcomeCase () =
+    andThen (check ("landed carries the new balance", "landed 3600", settle (Landed(balance = 3600)))) (check ("refused carries the reason", "refused insufficient funds", settle (Refused(why = "insufficient funds"))))
+
+// --- JSON rendering, escaping the owner name through the encoder ---
+jsonCase () =
+    plain = check ("plain account row", "{${q}id${q}:1,${q}owner${q}:${q}Amelia Chen${q},${q}cents${q}:246240,${q}balance${q}:${q}$2,462.40${q}}", Accounts::json (Account(id = 1, owner = "Amelia Chen", balance = 246240)))
+    andThen plain (check ("owner with a quote stays valid JSON", "{${q}id${q}:9,${q}owner${q}:${q}a${bs}${q}b${q},${q}cents${q}:0,${q}balance${q}:${q}$0.00${q}}", Accounts::json (Account(id = 9, owner = "a${q}b", balance = 0))))
+
+// --- fixed-width TUI row alignment ---
+rowCase () =
+    wide = check ("row pads owner and right-aligns money", "│  1 │ Amelia Chen  │ $2,462.40 │", Accounts::row (Account(id = 1, owner = "Amelia Chen", balance = 246240)))
+    andThen wide (check ("short owner and small balance pad out", "│  3 │ Bo           │     $0.05 │", Accounts::row (Account(id = 3, owner = "Bo", balance = 5))))
+
+bs = "\\"
+
+test "namable enforces a non-empty owner" namableCase
+test "movable enforces positive whole cents" movableCase
+test "Outcome classifies landed vs refused" outcomeCase
+test "Account renders escaped JSON" jsonCase
+test "Account renders an aligned TUI row" rowCase

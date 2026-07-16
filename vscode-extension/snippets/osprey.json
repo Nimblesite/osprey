@@ -1,0 +1,37 @@
+{
+  "File namespace": {
+    "prefix": "namespace",
+    "description": "A file-scoped logical namespace [MODULES-NAMESPACE]",
+    "body": ["namespace ${1:app};", "", "${0}"]
+  },
+  "Module": {
+    "prefix": "module",
+    "description": "A closed Default-flavor module [MODULES-MODULE]",
+    "body": ["module ${1:Name} {", "    ${0}", "}"]
+  },
+  "State module": {
+    "prefix": "state",
+    "description": "A durable state owner [MODULES-STATE-MODULE]",
+    "body": ["state module ${1:Store} {", "    ${0}", "}"]
+  },
+  "Module signature": {
+    "prefix": "signature",
+    "description": "An explicit module signature [MODULES-SIGNATURE]",
+    "body": ["signature ${1:Api} {", "    fn ${2:value}() -> ${3:Type}", "}"]
+  },
+  "Qualified import": {
+    "prefix": "import",
+    "description": "Import a logical module with :: qualification [MODULES-IMPORT]",
+    "body": ["import ${1:namespace}::${2:Module}${3: as Alias}"]
+  },
+  "Exported function": {
+    "prefix": "export",
+    "description": "Export one module function [MODULES-EXPORTS]",
+    "body": ["export fn ${1:name}(${2:params}) = ${3:body}"]
+  },
+  "Opaque exported type": {
+    "prefix": "opaque",
+    "description": "Export an opaque type alias [MODULES-OPAQUE-TYPES]",
+    "body": ["export opaque type ${1:Name} = ${2:Representation}"]
+  }
+}

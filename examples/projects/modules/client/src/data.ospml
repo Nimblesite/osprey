@@ -1,0 +1,141 @@
+// Read-only projections over the API JSON strings held inside the scalar model.
+namespace talon
+
+import talon::UI
+
+module BankData
+    export value : int -> string -> string -> string
+    value doc path fallback = match jsonGet doc path
+        Success found => found
+        Error message => fallback
+
+    export integer : int -> string -> int
+    integer doc path = match parseInt (value doc path "0")
+        Success found => found
+        Error message => 0
+
+    export accountCount : string -> int
+    accountCount source =
+        doc = jsonParse source
+        count = jsonLength doc ""
+        freed = jsonFree doc
+        count
+
+    export activityCount : string -> int
+    activityCount source = accountCount source
+
+    remove source token = match replace source token ""
+        Success value => value
+        Error message => source
+
+    digitAt source index = match byteAt source index
+        Success value => value >= 48 && value <= 57
+        Error message => false
+
+    digitsFrom source index = match index >= byteLength source
+        true => true
+        false => match digitAt source index
+            true => digitsFrom source (index + 1)
+            false => false
+
+    digits source = length source > 0 && digitsFrom source 0
+
+    validGroup group first = match first
+        true => length group > 0 && length group <= 3 && digits group
+        false => length group == 3 && digits group
+
+    groupedDigits source first =
+        comma = indexOf source ","
+        match comma
+            Error message => match first
+                true => digits source
+                false => validGroup source false
+            Success at =>
+                group = take source at
+                rest = drop source (at + 1)
+                validGroup group first && groupedDigits rest false
+
+    fractionCents source = match parseInt source
+        Error message => 0
+        Success value => match length source == 1
+            false => value
+            true => match value * 10
+                Success cents => cents
+                Error message => 0
+
+    combineCents whole fraction = match parseInt (remove whole ",")
+        Error message => 0
+        Success dollars => match dollars * 100
+            Error message => 0
+            Success base => match base + fractionCents fraction
+                Success cents => cents
+                Error message => 0
+
+    decimalCents source at =
+        whole = take source at
+        fraction = drop source (at + 1)
+        valid = groupedDigits whole true && length fraction > 0 && length fraction <= 2 && digits fraction
+        match valid
+            true => combineCents whole fraction
+            false => 0
+
+    parsedAmount source = match indexOf source "."
+        Success at => decimalCents source at
+        Error message => match groupedDigits source true
+            true => combineCents source "0"
+            false => 0
+
+    // Form-only decimal parsing; canonical display stays in bank::Money.
+    export amountCents source =
+        trimmed = trim source
+        unsigned = match startsWith trimmed "$"
+            true => drop trimmed 1
+            false => trimmed
+        match startsWith unsigned "-" || startsWith unsigned "+"
+            true => 0
+            false => parsedAmount unsigned
+
+    totalFrom : int -> int -> int -> int
+    totalFrom doc index running =
+        item = jsonGet doc "[${index}].cents"
+        match item
+            Error message => running
+            Success value => match parseInt value
+                Error bad => totalFrom doc (index + 1) running
+                Success cents => totalFrom doc (index + 1) (running + cents)
+
+    export total : string -> int
+    total source =
+        doc = jsonParse source
+        amount = totalFrom doc 0 0
+        freed = jsonFree doc
+        amount
+
+    findIndex : int -> int -> int -> int
+    findIndex doc index wanted =
+        candidate = jsonGet doc "[${index}].id"
+        match candidate
+            Error message => 0
+            Success raw => match parseInt raw
+                Success id => match id == wanted
+                    true => index
+                    false => findIndex doc (index + 1) wanted
+                Error bad => findIndex doc (index + 1) wanted
+
+    export accountIndex : int -> string -> int
+    accountIndex doc selected = match parseInt selected
+        Success wanted => findIndex doc 0 wanted
+        Error message => 0
+
+    export accountOptions : int -> int -> string
+    accountOptions doc index =
+        owner = jsonGet doc "[${index}].owner"
+        match owner
+            Error message => ""
+            Success name =>
+                id = value doc "[${index}].id" "0"
+                option = UI::option id "#${id} · ${name}"
+                rest = accountOptions doc (index + 1)
+                match length rest == 0
+                    true => option
+                    false => option + "," + rest

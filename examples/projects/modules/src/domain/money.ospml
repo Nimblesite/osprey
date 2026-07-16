@@ -1,0 +1,40 @@
+// domain/money — PURE money arithmetic and formatting. [MODULES-SIGNATURE]
+//
+// `Money : MoneyApi` is a signature-ascribed module: the signature is its
+// complete public surface, so nothing inside carries an `export` marker and
+// nothing beyond the signature can leak. Every function is a pure expression —
+// amounts are integer cents, so there is no floating-point drift anywhere in
+// the bank.
+
+namespace bank
+
+signature MoneyApi
+    show : int -> string
+    positive : int -> bool
+
+module Money : MoneyApi
+    // "$4,250.05" — cents are zero-padded via the two-digit remainder and
+    // dollars are thousands-grouped by recursion. `/` is float division in
+    // Osprey, so all of this runs on `intDiv`.
+    pennies : int -> string
+    pennies c = match c % 100 < 10
+        true => "0${c % 100}"
+        false => "${c % 100}"
+
+    triple : int -> string
+    triple n = match n < 10
+        true => "00${n}"
+        false => match n < 100
+            true => "0${n}"
+            false => "${n}"
+
+    group : int -> string
+    group dollars = match dollars < 1000
+        true => "${dollars}"
+        false => "${group (intDiv dollars 1000)},${triple (dollars % 1000)}"
+
+    show : int -> string
+    show cents = "$${group (intDiv cents 100)}.${pennies cents}"
+
+    positive : int -> bool
+    positive cents = cents > 0

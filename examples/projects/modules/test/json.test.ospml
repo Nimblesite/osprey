@@ -1,0 +1,82 @@
+// Native test suite for the typed JSON encoder. [TESTING-BUILTINS]
+//
+// Mirrors src/domain/json.ospml (see money.test.ospml for why suites embed
+// their subject). The escaping combinators are the whole point of the module,
+// so they get the heaviest coverage: a value with quotes and backslashes must
+// round-trip into VALID JSON, not a broken document.
+
+signature JsonApi
+    strField : string -> string -> string
+    numField : string -> int -> string
+    obj : string -> string
+    arr : string -> string
+    error : string -> string
+
+module Json : JsonApi
+    unwrap : Result<string, Error> -> string
+    unwrap r = match r
+        Success value => value
+        Error message => ""
+
+    escape : string -> string
+    escape s =
+        bslash = "\\"
+        quote = "\""
+        step = unwrap (replace s bslash (bslash + bslash))
+        unwrap (replace step quote (bslash + quote))
+
+    quoted : string -> string
+    quoted s =
+        quote = "\""
+        quote + escape s + quote
+
+    strField : string -> string -> string
+    strField key value = quoted key + ":" + quoted value
+
+    numField : string -> int -> string
+    numField key value = quoted key + ":" + toString value
+
+    obj : string -> string
+    obj members = "{" + members + "}"
+
+    arr : string -> string
+    arr elements = "[" + elements + "]"
+
+    error : string -> string
+    error why = obj (strField "error" why)
+
+// The literal building blocks, so every later assertion reads unambiguously.
+q = "\""
+bs = "\\"
+
+// --- plain field encoding (no escaping needed) ---
+fieldCase () =
+    check "string field" "${q}owner${q}:${q}Amelia${q}" (Json::strField "owner" "Amelia")
+    check "number field" "${q}id${q}:7" (Json::numField "id" 7)
+    check "negative number field" "${q}delta${q}:-42" (Json::numField "delta" (0 - 42))
+    check "zero number field" "${q}n${q}:0" (Json::numField "n" 0)
+
+// --- the escaping contract: quotes and backslashes must be escaped ONCE ---
+escapeCase () =
+    check "embedded quote" "${q}owner${q}:${q}Amelia ${bs}${q}Mel${bs}${q} Chen${q}" (Json::strField "owner" "Amelia ${q}Mel${q} Chen")
+    check "backslash" "${q}path${q}:${q}C:${bs}${bs}tmp${q}" (Json::strField "path" "C:${bs}tmp")
+    check "backslash before quote stays two escapes" "${q}s${q}:${q}${bs}${bs}${bs}${q}${q}" (Json::strField "s" "${bs}${q}")
+    check "empty value" "${q}note${q}:${q}${q}" (Json::strField "note" "")
+
+// --- structure combinators compose into whole documents ---
+structureCase () =
+    check "object of two members" "{${q}id${q}:1,${q}owner${q}:${q}Bob${q}}" (Json::obj (Json::numField "id" 1 + "," + Json::strField "owner" "Bob"))
+    check "array of scalars" "[1,2,3]" (Json::arr "1,2,3")
+    check "empty object" "{}" (Json::obj "")
+    check "empty array" "[]" (Json::arr "")
+    check "nested array of objects" "[{${q}k${q}:1}]" (Json::arr (Json::obj (Json::numField "k" 1)))
+
+// --- the canonical error body every 4xx path returns ---
+errorCase () =
+    check "plain error" "{${q}error${q}:${q}insufficient funds${q}}" (Json::error "insufficient funds")
+    check "error escapes its message" "{${q}error${q}:${q}bad ${bs}${q}quote${bs}${q}${q}}" (Json::error "bad ${q}quote${q}")
+
+test "scalar fields encode with quoted keys" fieldCase
+test "string escaping is applied exactly once" escapeCase
+test "obj and arr compose into documents" structureCase
+test "error body is a valid escaped object" errorCase

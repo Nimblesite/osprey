@@ -105,7 +105,12 @@ fn extern_violations(statements: &[Stmt], out: &mut Vec<String>) {
             Stmt::Extern { name, .. } => out.push(format!(
                 "security: extern function `{name}` is disabled by --no-ffi"
             )),
-            Stmt::Module { body, .. } => extern_violations(body, out),
+            Stmt::Module { body, .. } => {
+                for item in body {
+                    extern_violations(std::slice::from_ref(item.declaration.as_ref()), out);
+                }
+            }
+            Stmt::Namespace { body, .. } => extern_violations(body, out),
             _ => {}
         }
     }

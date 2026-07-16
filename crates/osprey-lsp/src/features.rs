@@ -13,7 +13,7 @@ use crate::analysis::{
     builtin_hover, collect_all_symbols, collect_symbols, SymbolInfo, SymbolKind,
 };
 use crate::model::{CompletionItem, CompletionKind, Location, SignatureInfo, Span};
-use crate::text::{occurrences, prefix_to, word_at, Occurrence};
+use crate::text::{occurrences, path_at, prefix_to, Occurrence};
 
 /// Hover markdown for the identifier at `(line, character)`: the symbol's
 /// signature, or `name: type` for a binding — inferring an unannotated `let`'s
@@ -41,7 +41,7 @@ pub fn hover(
     }
     match best_match(&symbols, &word, line) {
         Some(sym) => Some(symbol_hover(sym, &parsed.program)),
-        None => builtin_hover(&word),
+        None => builtin_hover(word.rsplit("::").next().unwrap_or(&word)),
     }
 }
 
@@ -64,7 +64,7 @@ fn doc_link_target(text: &str, line: u32, character: u32) -> Option<String> {
         && !inner.contains(char::is_whitespace)
         && inner
             .chars()
-            .all(|c| c.is_alphanumeric() || c == '_' || c == '.')
+            .all(|c| c.is_alphanumeric() || c == '_' || c == '.' || c == ':')
         && inner.chars().next().is_some_and(char::is_alphabetic);
     (dotted && !followed_by_paren).then(|| inner.to_string())
 }
@@ -73,10 +73,13 @@ fn doc_link_target(text: &str, line: u32, character: u32) -> Option<String> {
 /// declaration or a builtin; a dotted `Effect.op` / `Type.variant` resolves to
 /// the owner declaration's hover. Implements [DOC-LINK].
 fn resolve_link(symbols: &[SymbolInfo], target: &str, program: &Program) -> Option<String> {
-    let head = target.split('.').next().unwrap_or(target);
+    let head = target
+        .split(['.', ':'])
+        .find(|segment| !segment.is_empty())
+        .unwrap_or(target);
     symbols
         .iter()
-        .find(|s| s.name == head)
+        .find(|symbol| symbol_matches(symbol, head))
         .map(|s| symbol_hover(s, program))
         .or_else(|| builtin_hover(head))
 }
@@ -86,18 +89,31 @@ fn resolve_link(symbols: &[SymbolInfo], target: &str, program: &Program) -> Opti
 /// first match — resolving local shadowing without a full scope walk.
 fn best_match<'a>(symbols: &'a [SymbolInfo], word: &str, line: u32) -> Option<&'a SymbolInfo> {
     let cursor = line.saturating_add(1); // AST positions are 1-based lines.
-    let matches = || symbols.iter().filter(|s| s.name == word);
+    let matches = || symbols.iter().filter(|symbol| symbol_matches(symbol, word));
     matches()
         .filter(|s| s.position.is_some_and(|p| p.line <= cursor))
         .max_by_key(|s| s.position.map_or(0, |p| p.line))
         .or_else(|| matches().next())
 }
 
+fn symbol_matches(symbol: &SymbolInfo, query: &str) -> bool {
+    symbol.name == query
+        || symbol.source_name == query
+        || (query.contains("::")
+            && symbol
+                .name
+                .strip_suffix(query)
+                .is_some_and(|prefix| prefix.is_empty() || prefix.ends_with("::")))
+}
+
 /// Render `s` as hover markdown: a code-fenced signature/type, then its docs.
 fn symbol_hover(s: &SymbolInfo, program: &Program) -> String {
-    let code = match &s.signature {
-        Some(sig) => sig.clone(),
-        None => format!("{}: {}", s.name, displayed_type(s, program)),
+    let code = match (s.kind, &s.signature) {
+        (_, Some(sig)) => sig.clone(),
+        (SymbolKind::Namespace | SymbolKind::Module | SymbolKind::Signature, None) => {
+            format!("{} {}", s.kind.as_str(), s.name)
+        }
+        (_, None) => format!("{}: {}", s.name, displayed_type(s, program)),
     };
     let mut out = format!("```osprey\n{code}\n```");
     if let Some(doc) = &s.doc {
@@ -150,15 +166,30 @@ pub fn references(
     let Some(word) = word_under(text, line, character, enc) else {
         return Vec::new();
     };
-    let decls: Vec<(u32, u32)> = declarations(text, uri, &word, enc)
-        .iter()
-        .map(|o| (o.line, o.start))
-        .collect();
-    occurrences(text, &word, enc)
+    let declarations = declarations(text, uri, &word, enc);
+    let decls: Vec<(u32, u32)> = declarations.iter().map(|o| (o.line, o.start)).collect();
+    let mut found: Vec<Location> = occurrences(text, &word, enc)
         .into_iter()
         .filter(|o| include_declaration || !decls.contains(&(o.line, o.start)))
         .map(|o| located(uri, (o.line, o.start, o.line, o.end)))
-        .collect()
+        .collect();
+    if include_declaration {
+        for declaration in declarations {
+            let location = located(
+                uri,
+                (
+                    declaration.line,
+                    declaration.start,
+                    declaration.line,
+                    declaration.end,
+                ),
+            );
+            if !found.contains(&location) {
+                found.push(location);
+            }
+        }
+    }
+    found
 }
 
 /// Signature help for the call enclosing `(line, character)`.
@@ -175,7 +206,7 @@ pub fn signature_help(
     let parsed = osprey_syntax::parse_program_for_path(path, text);
     let sym = collect_symbols(&parsed.program)
         .into_iter()
-        .find(|s| s.name == name && s.kind == SymbolKind::Function)?;
+        .find(|s| symbol_matches(s, &name) && s.kind == SymbolKind::Function)?;
     let params: Vec<String> = sym.parameters.iter().map(param_label).collect();
     let last = u32::try_from(params.len().saturating_sub(1)).unwrap_or(0);
     Some(SignatureInfo {
@@ -189,14 +220,14 @@ pub fn signature_help(
 #[must_use]
 pub fn completion(text: &str, path: &str) -> Vec<CompletionItem> {
     let parsed = osprey_syntax::parse_program_for_path(path, text);
-    keyword_items()
+    keyword_items(path)
         .into_iter()
         .chain(collect_symbols(&parsed.program).iter().map(symbol_item))
         .collect()
 }
 
 fn word_under(text: &str, line: u32, character: u32, enc: PositionEncoding) -> Option<String> {
-    word_at(nth_line(text, line)?, character, enc).map(|w| w.word)
+    path_at(nth_line(text, line)?, character, enc).map(|word| word.word)
 }
 
 fn nth_line(text: &str, line: u32) -> Option<&str> {
@@ -217,13 +248,33 @@ fn located(uri: &str, span: Span) -> Location {
 /// declaration line — the location editors expect for go-to-definition.
 fn declarations(text: &str, path: &str, name: &str, enc: PositionEncoding) -> Vec<Occurrence> {
     let parsed = osprey_syntax::parse_program_for_path(path, text);
-    let occs = occurrences(text, name, enc);
     collect_symbols(&parsed.program)
         .iter()
-        .filter(|s| s.name == name)
-        .filter_map(|s| s.position.map(|p| p.line.saturating_sub(1)))
-        .filter_map(|line| occs.iter().find(|o| o.line == line).cloned())
+        .filter(|symbol| symbol_matches(symbol, name))
+        .filter_map(|symbol| declaration_occurrence(text, symbol, enc))
         .collect()
+}
+
+fn declaration_occurrence(
+    text: &str,
+    symbol: &SymbolInfo,
+    enc: PositionEncoding,
+) -> Option<Occurrence> {
+    let position = symbol.position?;
+    let line = position.line.saturating_sub(1);
+    occurrences(text, &symbol.source_name, enc)
+        .into_iter()
+        .find(|occurrence| occurrence.line == line)
+        .or_else(|| {
+            let end = position
+                .column
+                .saturating_add(crate::text::measure(&symbol.source_name, enc));
+            Some(Occurrence {
+                line,
+                start: position.column,
+                end,
+            })
+        })
 }
 
 fn param_label((name, ty): &(String, String)) -> String {
@@ -238,7 +289,9 @@ fn symbol_item(s: &SymbolInfo) -> CompletionItem {
     let kind = match s.kind {
         SymbolKind::Function => CompletionKind::Function,
         SymbolKind::Variable => CompletionKind::Variable,
-        SymbolKind::Type => CompletionKind::Type,
+        SymbolKind::Type | SymbolKind::Namespace | SymbolKind::Module | SymbolKind::Signature => {
+            CompletionKind::Type
+        }
     };
     CompletionItem {
         label: s.name.clone(),
@@ -249,8 +302,8 @@ fn symbol_item(s: &SymbolInfo) -> CompletionItem {
 }
 
 /// The fixed keyword/snippet completions (superset of the old TS server's six).
-fn keyword_items() -> Vec<CompletionItem> {
-    const KEYWORDS: [(&str, &str, &str); 7] = [
+fn keyword_items(path: &str) -> Vec<CompletionItem> {
+    const BASE: [(&str, &str, &str); 7] = [
         (
             "if",
             "Conditional expression [GRAMMAR-IF-ELSE]",
@@ -283,8 +336,12 @@ fn keyword_items() -> Vec<CompletionItem> {
             "effect ${1:Name} {\n\t${2:op}: ${3:fn() -> Unit}\n}",
         ),
     ];
-    KEYWORDS
-        .iter()
+    let ml = std::path::Path::new(path)
+        .extension()
+        .is_some_and(|extension| extension.eq_ignore_ascii_case("ospml"));
+    let modules = module_keyword_specs(ml);
+    BASE.iter()
+        .chain(modules.iter())
         .map(|(label, detail, snippet)| CompletionItem {
             label: (*label).to_owned(),
             kind: CompletionKind::Keyword,
@@ -292,6 +349,67 @@ fn keyword_items() -> Vec<CompletionItem> {
             insert_text: Some((*snippet).to_owned()),
         })
         .collect()
+}
+
+fn module_keyword_specs(ml: bool) -> [(&'static str, &'static str, &'static str); 8] {
+    [
+        (
+            "namespace",
+            "Logical namespace [MODULES-NAMESPACE]",
+            if ml {
+                "namespace ${1:name}"
+            } else {
+                "namespace ${1:name};"
+            },
+        ),
+        (
+            "import",
+            "Namespace/module import [MODULES-IMPORT]",
+            "import ${1:namespace}::${2:Module}",
+        ),
+        (
+            "module",
+            "Closed module boundary [MODULES-MODULE]",
+            if ml {
+                "module ${1:Name}\n\t${0}"
+            } else {
+                "module ${1:Name} {\n\t${0}\n}"
+            },
+        ),
+        (
+            "signature",
+            "Explicit module interface [MODULES-SIGNATURE]",
+            if ml {
+                "signature ${1:Name}\n\t${0}"
+            } else {
+                "signature ${1:Name} {\n\t${0}\n}"
+            },
+        ),
+        (
+            "export",
+            "Export a module declaration [MODULES-EXPORTS]",
+            if ml {
+                "export ${1:name} = ${2:value}"
+            } else {
+                "export fn ${1:name}(${2:params}) = ${3:body}"
+            },
+        ),
+        (
+            "state",
+            "Durable state owner [MODULES-STATE-MODULE]",
+            if ml {
+                "state ${1:Name}\n\t${0}"
+            } else {
+                "state module ${1:Name} {\n\t${0}\n}"
+            },
+        ),
+        (
+            "opaque",
+            "Opaque exported type [MODULES-OPAQUE-TYPES]",
+            "opaque type ${1:Name}",
+        ),
+        ("as", "Import alias [MODULES-IMPORT]", "as ${1:Alias}"),
+    ]
 }
 
 /// Parse `before` (the line text up to the cursor) and return the name of the
@@ -410,6 +528,74 @@ mod tests {
         assert!(items
             .iter()
             .any(|i| i.label == "add" && i.kind == CompletionKind::Function));
+    }
+
+    #[test]
+    fn qualified_hover_definition_and_references_resolve_one_module_member() {
+        // [MODULES-ABI] `::` is scanned as one symbol. Two colliding leaf names
+        // remain independently navigable through their qualified paths.
+        let src = "namespace sales {\n\
+                     module Tax { export fn rate() -> int = 10 }\n\
+                   }\n\
+                   namespace payroll {\n\
+                     module Tax { export fn rate() -> int = 20 }\n\
+                   }\n\
+                   let chosen = sales::Tax::rate()\n";
+        let column = col_of(src, 6, "sales::Tax::rate");
+        let hover = hover(src, "file:///modules.osp", 6, column, U16).expect("hover");
+        assert!(hover.contains("fn rate() -> int"), "{hover}");
+
+        let definitions = definition(src, "file:///modules.osp", 6, column, U16);
+        assert_eq!(definitions.len(), 1, "{definitions:?}");
+        assert_eq!(
+            definitions.first().map(|location| location.span.0),
+            Some(1),
+            "sales declaration line"
+        );
+
+        let references = references(src, "file:///modules.osp", 6, column, U16, true);
+        assert_eq!(references.len(), 2, "use plus declaration: {references:?}");
+        assert!(!references.iter().any(|location| location.span.0 == 4));
+    }
+
+    #[test]
+    fn completion_includes_qualified_symbols_and_flavor_specific_module_snippets() {
+        // [MODULES-FLAVOR-PROJECTION] Both flavors expose the same concepts,
+        // while insertion text stays idiomatic for the active surface.
+        let src = "namespace billing { module Tax { export fn addTax(x) = x } }\n";
+        let default = completion(src, "file:///billing.osp");
+        assert!(default
+            .iter()
+            .any(|item| item.label == "billing::Tax::addTax"));
+        assert!(default.iter().any(|item| {
+            item.label == "state"
+                && item
+                    .insert_text
+                    .as_deref()
+                    .is_some_and(|text| text.starts_with("state module"))
+        }));
+        for keyword in [
+            "namespace",
+            "import",
+            "module",
+            "signature",
+            "export",
+            "opaque",
+            "as",
+        ] {
+            assert!(
+                default.iter().any(|item| item.label == keyword),
+                "{keyword}"
+            );
+        }
+
+        let ml = completion("module Tax\n    x = 1\n", "file:///billing.ospml");
+        assert!(ml.iter().any(|item| {
+            item.label == "state"
+                && item.insert_text.as_deref().is_some_and(|text| {
+                    text.starts_with("state ") && !text.starts_with("state module")
+                })
+        }));
     }
 
     #[test]

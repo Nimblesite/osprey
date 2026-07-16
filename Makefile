@@ -7,7 +7,7 @@
 # --run`) and TypeScript sub-projects (vscode-extension, webcompiler, website).
 # =============================================================================
 
-.PHONY: build test lint fmt clean ci setup run install bench wasm wasm-site wasm-serve vsix-rebuild-reinstall
+.PHONY: build test lint fmt clean ci setup run install bench wasm wasm-site wasm-serve vsix-rebuild-reinstall bank bank-web bank-test bank-e2e
 
 # ---------------------------------------------------------------------------
 # OS Detection
@@ -62,14 +62,14 @@ A    ?= -c -fPIC -O2 -D_FORTIFY_SOURCE=2 -fstack-protector-strong -Werror -Wall 
 B    ?= $(A) -std=c11
 OSSL ?= -DOPENSSL_SUPPRESS_DEPRECATED -DOPENSSL_API_COMPAT=30000 -Wno-deprecated-declarations
 # Object lists for the archives (paths relative to compiler/, where `ar` runs).
-FIB_OBJ  ?= bin/memory_runtime.o bin/fiber_runtime.o bin/system_runtime.o bin/effects_runtime.o bin/string_runtime.o bin/string_runtime_list.o bin/list_runtime.o bin/map_runtime.o bin/map_runtime_hamt.o bin/json_runtime.o bin/ffi_runtime.o bin/term_runtime.o bin/random_runtime.o
-HTTP_OBJ ?= bin/http_shared.o bin/http_client_runtime.o bin/http_server_runtime.o bin/websocket_client_runtime.o bin/websocket_server_runtime.o $(FIB_OBJ)
+FIB_OBJ  ?= bin/memory_runtime.o bin/fiber_runtime.o bin/system_runtime.o bin/effects_runtime.o bin/string_runtime.o bin/string_runtime_list.o bin/list_runtime.o bin/map_runtime.o bin/map_runtime_hamt.o bin/json_runtime.o bin/ffi_runtime.o bin/term_runtime.o bin/random_runtime.o bin/test_runtime.o bin/profiler_runtime.o bin/profiler_sampler.o
+HTTP_OBJ ?= bin/http_shared.o bin/http_client_runtime.o bin/http_server_request.o bin/http_server_response.o bin/http_server_runtime.o bin/websocket_client_runtime.o bin/websocket_server_runtime.o $(FIB_OBJ)
 # GC backend archives (osprey --memory=gc): the tracing collector replaces
 # memory_runtime.o, and the value-container units are rebuilt with the malloc
 # redirect (osp_gc_shim.h) so their nodes live in the managed heap. Everything
 # else is the same object. Implements [GC-TRACE-CONSERVATIVE], docs/plans/0011.
-FIB_OBJ_GC  ?= bin/memory_gc.o bin/fiber_runtime.o bin/system_runtime.o bin/effects_runtime.o bin/string_runtime.o bin/string_runtime_list.o bin/gc/list_runtime.o bin/gc/map_runtime.o bin/gc/map_runtime_hamt.o bin/json_runtime.o bin/ffi_runtime.o bin/term_runtime.o bin/random_runtime.o
-HTTP_OBJ_GC ?= bin/http_shared.o bin/http_client_runtime.o bin/http_server_runtime.o bin/websocket_client_runtime.o bin/websocket_server_runtime.o $(FIB_OBJ_GC)
+FIB_OBJ_GC  ?= bin/memory_gc.o bin/fiber_runtime.o bin/system_runtime.o bin/effects_runtime.o bin/string_runtime.o bin/string_runtime_list.o bin/gc/list_runtime.o bin/gc/map_runtime.o bin/gc/map_runtime_hamt.o bin/json_runtime.o bin/ffi_runtime.o bin/term_runtime.o bin/random_runtime.o bin/test_runtime.o bin/profiler_runtime.o bin/profiler_sampler.o
+HTTP_OBJ_GC ?= bin/http_shared.o bin/http_client_runtime.o bin/http_server_request.o bin/http_server_response.o bin/http_server_runtime.o bin/websocket_client_runtime.o bin/websocket_server_runtime.o $(FIB_OBJ_GC)
 
 # WebAssembly (wasm32-wasip1) cross-build toolchain — opt-in via `make wasm`.
 # Compiles the portable C-runtime subset (no pthreads/sockets/OpenSSL/syscalls)
@@ -89,9 +89,12 @@ WASI_SYSROOT ?= $(shell for d in "$$OSPREY_WASI_SYSROOT" \
   /usr/share/wasi-sysroot; do [ -n "$$d" ] && [ -d "$$d" ] && { echo "$$d"; break; }; done)
 WASM_CFLAGS  ?= --target=$(WASM_TARGET) --sysroot=$(WASI_SYSROOT) -O2 -std=c11 -Wall -Wextra -Werror -c
 # Portable subset that compiles for wasm32: allocator + strings + value
-# containers + JSON + effects. Excludes fiber (pthreads), http/websocket
-# (sockets/OpenSSL), system (fork/wait), term (termios) and ffi (dlopen).
-WASM_RT_SRC  ?= memory_runtime string_runtime string_runtime_list list_runtime map_runtime map_runtime_hamt json_runtime effects_runtime
+# containers + JSON + effects + the browser host bridge. Excludes fiber
+# (pthreads), http/websocket (sockets/OpenSSL), system (fork/wait), term
+# (termios) and ffi (dlopen).
+# profiler_runtime compiles to inert stubs on wasm32 (no pthreads/signals) but
+# must be present: codegen anchors `osp_prof_boot` into every main [PROF-ACTIVATE-ENV].
+WASM_RT_SRC  ?= memory_runtime string_runtime string_runtime_list list_runtime map_runtime map_runtime_hamt json_runtime effects_runtime test_runtime web_runtime profiler_runtime
 # `make wasm-serve` static-host dir + port for the in-browser example.
 WASM_SERVE_DIR  ?= examples/wasm
 WASM_SERVE_PORT ?= 8080
@@ -115,8 +118,45 @@ test: build
 	$(MAKE) _coverage_check_rust
 	$(MAKE) _test_c_runtime
 	$(MAKE) _test_differential
+	$(MAKE) _test_profiler
 	$(MAKE) _test_vscode_extension
 	$(MAKE) _coverage_check_vscode_extension
+
+## bank: Rebuild and run the Talon Bank showcase for manual testing.
+##       Opens http://127.0.0.1:18790 (dashboard) / /api/accounts (JSON API).
+##       The hold marker keeps the server up; Ctrl-C removes it and exits.
+bank: bank-web
+	@echo "==> Talon Bank live on http://127.0.0.1:18790  (Ctrl-C to stop)"
+	@touch /tmp/talon_bank.hold
+	@trap 'rm -f /tmp/talon_bank.hold' EXIT INT TERM; \
+	  (if command -v open >/dev/null && command -v curl >/dev/null; then \
+	    attempts=0; \
+	    until accounts="$$(curl -fsS http://127.0.0.1:18790/api/accounts 2>/dev/null)" && [[ "$$accounts" == *'"Priya Sharma"'* ]]; do \
+	      attempts=$$((attempts + 1)); [ "$$attempts" -ge 200 ] && exit 0; sleep 0.1; \
+	    done; \
+	    open http://127.0.0.1:18790; \
+	  fi) & \
+	  ./$(BIN) examples/projects/modules --run
+
+## bank-web: Regenerate the embedded React host + Osprey WebAssembly client.
+##           Requires Node and a WASI sysroot; the generated Osprey Bundle is
+##           committed so ordinary native/CI builds do not need either tool.
+bank-web: build _runtime_wasm
+	@echo "==> Building Talon Bank browser application..."
+	cd examples/projects/modules/web && npm ci && npm run build
+
+## bank-test: Native Osprey unit tests for the Talon Bank pure domain layer,
+##            run through the built-in `osprey test` harness (TAP output).
+bank-test: build
+	@echo "==> Bank native tests (osprey test)..."
+	./$(BIN) test examples/projects/modules/test
+
+## bank-e2e: Browser end-to-end tests for the Talon Bank modules showcase
+##           (examples/projects/modules) — real Chromium via Playwright drives
+##           the compiled osprey binary serving its HTTP API and web UI.
+bank-e2e: bank-web
+	@echo "==> Bank e2e (Playwright)..."
+	cd examples/projects/modules/e2e && npm ci && npx playwright install chromium && npx playwright test
 
 ## lint: Run all linters/analyzers (read-only). Does NOT format.
 lint: deslop
@@ -150,8 +190,8 @@ clean:
 	$(RM) $(RTB) compiler/lib outputs lcov.info test.log
 	cd $(EXT_DIR) && $(RM) out dist coverage test.log
 
-## ci: lint + test + build (full CI simulation)
-ci: lint test build
+## ci: lint + test + bank-test + bank-e2e + build (full CI simulation)
+ci: lint test bank-test bank-e2e build
 
 ## wasm: Build everything for the WebAssembly target, ready to go — the wasm
 ## runtime archive (compiler/bin/libosprey_runtime_wasm.a), the hello example,
@@ -185,7 +225,7 @@ wasm: build _runtime_wasm
 	  echo "$$out" | grep -Eq '(^| )NOEXP=0 ' || { echo 'FAIL: example missing .expectedoutput'; exit 1; }
 	@echo "==> wasm ready: built + validated + WASI/browser smoke + golden suite green"
 
-wasm wasm-site _runtime_wasm: export PATH := $(WASM_PATH_PREFIX)$(PATH)
+wasm wasm-site _runtime_wasm bank-web: export PATH := $(WASM_PATH_PREFIX)$(PATH)
 
 ## wasm-site: Build only the WebAssembly artifacts published by the website.
 ##      Used by GitHub Pages before `npm run build`; does not rely on checked-in
@@ -253,6 +293,9 @@ _runtime:
 	  $(CC) $(B) runtime/ffi_runtime.c          -o bin/ffi_runtime.o && \
 	  $(CC) $(B) runtime/term_runtime.c         -o bin/term_runtime.o && \
 	  $(CC) $(B) runtime/random_runtime.c       -o bin/random_runtime.o && \
+	  $(CC) $(B) runtime/test_runtime.c         -o bin/test_runtime.o && \
+	  $(CC) $(B) runtime/profiler_runtime.c     -o bin/profiler_runtime.o && \
+	  $(CC) $(B) runtime/profiler_sampler.c     -o bin/profiler_sampler.o && \
 	  $(CC) -c -fPIC -O2 -D_FORTIFY_SOURCE=2 -fstack-protector-strong -Werror -Wall -Wextra \
 	        -Wformat -Werror=format-security -Werror=implicit-function-declaration \
 	        -Werror=incompatible-pointer-types -Werror=int-conversion -Warray-bounds -ftrapv \
@@ -260,6 +303,8 @@ _runtime:
 	        -DWITH_OPENSSL $(OSSL) `pkg-config --cflags openssl 2>/dev/null || echo ""` \
 	        runtime/http_shared.c -o bin/http_shared.o && \
 	  $(CC) $(A) $(OSSL) `pkg-config --cflags openssl 2>/dev/null || echo ""` runtime/http_client_runtime.c      -o bin/http_client_runtime.o && \
+	  $(CC) $(A) $(OSSL) `pkg-config --cflags openssl 2>/dev/null || echo ""` runtime/http_server_request.c     -o bin/http_server_request.o && \
+	  $(CC) $(A) $(OSSL) `pkg-config --cflags openssl 2>/dev/null || echo ""` runtime/http_server_response.c    -o bin/http_server_response.o && \
 	  $(CC) $(A) $(OSSL) `pkg-config --cflags openssl 2>/dev/null || echo ""` runtime/http_server_runtime.c      -o bin/http_server_runtime.o && \
 	  $(CC) $(A) $(OSSL) `pkg-config --cflags openssl 2>/dev/null || echo ""` runtime/websocket_client_runtime.c -o bin/websocket_client_runtime.o && \
 	  $(CC) $(A) $(OSSL) `pkg-config --cflags openssl 2>/dev/null || echo ""` runtime/websocket_server_runtime.c -o bin/websocket_server_runtime.o && \
@@ -320,16 +365,35 @@ _coverage_check_rust:
 	echo "[rust] OK: all crates meet their thresholds"
 
 # Hardened C runtime unit tests (assertion-driven; a failed assert aborts the
-# binary). Covers the string cursor (BUILTIN-STRING-CURSOR) + the error-message
-# contract ([ERR-PAYLOAD]) exhaustively, under the same hardening flags the
-# archives use. Built as an executable (no `-c`), so it links the runtime TUs
-# directly. Runs on the `make test` (ubuntu) job; Windows CI uses its own steps.
+# binary). Covers the string cursor (BUILTIN-STRING-CURSOR), error-message
+# contract ([ERR-PAYLOAD]), and complete HTTP reads/writes, under the same
+# hardening flags the archives use. Built as executables (no `-c`), so they link
+# the runtime TUs directly. Runs on `make test`; Windows CI uses its own steps.
 _test_c_runtime:
-	@echo "==> [c-runtime] string cursor + error-message contract tests..."
+	@echo "==> [c-runtime] string/error contract + HTTP read/write tests..."
 	@cd compiler && $(CC) -O2 -D_FORTIFY_SOURCE=2 -fstack-protector-strong -Werror -Wall -Wextra \
 	  -ftrapv -std=c11 -D_GNU_SOURCE \
 	  runtime/string_runtime_tests.c runtime/string_runtime.c runtime/string_runtime_list.c \
-	  -o bin/string_runtime_tests && ./bin/string_runtime_tests
+	  -o bin/string_runtime_tests && ./bin/string_runtime_tests && \
+	  $(CC) -O2 -D_FORTIFY_SOURCE=2 -fstack-protector-strong -Werror -Wall -Wextra \
+	  -ftrapv -std=c11 -D_GNU_SOURCE $(OSSL) \
+	  `pkg-config --cflags openssl 2>/dev/null || echo ""` \
+	  runtime/http_server_send_tests.c -pthread \
+	  -o bin/http_server_send_tests && ./bin/http_server_send_tests && \
+	  $(CC) -O2 -D_FORTIFY_SOURCE=2 -fstack-protector-strong -Werror -Wall -Wextra \
+	  -ftrapv -std=c11 -D_GNU_SOURCE $(OSSL) \
+	  `pkg-config --cflags openssl 2>/dev/null || echo ""` \
+	  runtime/http_server_request_tests.c -pthread \
+	  -o bin/http_server_request_tests && ./bin/http_server_request_tests && \
+	  $(CC) -O2 -g -fno-omit-frame-pointer -D_FORTIFY_SOURCE=2 -fstack-protector-strong -Werror -Wall -Wextra \
+	  -ftrapv -std=c11 -D_GNU_SOURCE \
+	  runtime/profiler_runtime_tests.c runtime/profiler_runtime.c runtime/profiler_sampler.c -pthread \
+	  -o bin/profiler_runtime_tests && ./bin/profiler_runtime_tests
+
+# [PROF-TEST] end-to-end profiler gate: --profile runs, exports, and reports.
+_test_profiler:
+	@echo "==> [profiler] osprey --profile end-to-end..."
+	@bash scripts/test_profiler.sh
 
 # Differential golden harness: every examples/tested/*.osp run through
 # `osprey --run` must match its .expectedoutput byte-for-byte, and the

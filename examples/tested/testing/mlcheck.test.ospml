@@ -1,0 +1,26 @@
+// Alcotest-style check(label, expected, actual) in the ML flavor
+// [TESTING-BUILTIN-CHECK], twinned with the Default file.
+sub (a, b) = a - b
+classify n =
+    match n
+        0 => "zero"
+        1 => "one"
+        _ => "many"
+
+arithmeticCase () =
+    check "difference" 4 (sub (7, 3))
+    check "product" 42 (6 * 7)
+
+classifyCase () =
+    check "zero" "zero" (classify 0)
+    check "one" "one" (classify 1)
+    check "many" "many" (classify 9)
+
+stringsCase () =
+    check "contains" true (contains ("talon bank", "bank"))
+    check "repeat unwraps Result" "ababab" (repeat ("ab", 3))
+    check "list length" 3 (listLength [10, 20, 30])
+
+test "arithmetic checks" arithmeticCase
+test "classification checks" classifyCase
+test "string and list checks" stringsCase

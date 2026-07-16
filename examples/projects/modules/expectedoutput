@@ -1,0 +1,25 @@
+=== Talon Bank — one Osprey app, every module feature ===
+[boot] fresh ledger at /tmp/talon_bank.db
+[boot] api + web listening on http://127.0.0.1:18790
+[audit] account #1 opened for Amelia Chen
+[audit] account #2 opened for Marcus Webb
+[audit] account #3 opened for Priya Sharma
+[audit] deposit $4,250.00 -> account #1 (March salary — Nimble Robotics)
+[audit] deposit $1,980.25 -> account #2 (freelance invoice #4021)
+[audit] deposit $3,600.00 -> account #3 (research grant Q1)
+[audit] withdraw $1,850.00 from account #1 (rent — 12 Fern St)
+[audit] transfer $62.40 account #2 -> account #1 (dinner split)
+[audit] withdraw $9,999.00 from account #2 REFUSED (insufficient funds)
+[http] open=201/201/201 deposit=200/200/200 rent=200 transfer=200 overdraft=422
+--- GET /api/accounts ---
+[{"id":1,"owner":"Amelia Chen","cents":246240,"balance":"$2,462.40"},{"id":2,"owner":"Marcus Webb","cents":191785,"balance":"$1,917.85"},{"id":3,"owner":"Priya Sharma","cents":360000,"balance":"$3,600.00"}]
+--- GET /api/activity ---
+[{"id":7,"account":2,"kind":"refused","cents":999900,"note":"vintage synthesizer","owner":"Marcus Webb"},{"id":6,"account":1,"kind":"credit","cents":6240,"note":"dinner split","owner":"Amelia Chen"},{"id":5,"account":2,"kind":"debit","cents":6240,"note":"dinner split","owner":"Marcus Webb"},{"id":4,"account":1,"kind":"debit","cents":185000,"note":"rent — 12 Fern St","owner":"Amelia Chen"},{"id":3,"account":3,"kind":"credit","cents":360000,"note":"research grant Q1","owner":"Priya Sharma"},{"id":2,"account":2,"kind":"credit","cents":198025,"note":"freelance invoice #4021","owner":"Marcus Webb"},{"id":1,"account":1,"kind":"credit","cents":425000,"note":"March salary — Nimble Robotics","owner":"Amelia Chen"}]
+--- GET / (Osprey wasm + React app) ---
+html=true title=true appRoot=true client=true
+┌────┬──────────────┬───────────┐
+│  1 │ Amelia Chen  │ $2,462.40 │
+│  2 │ Marcus Webb  │ $1,917.85 │
+│  3 │ Priya Sharma │ $3,600.00 │
+└────┴──────────────┴───────────┘
+[metrics] 12 requests served — goodbye

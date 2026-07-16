@@ -36,6 +36,7 @@ fn builtin_docs() -> impl Iterator<Item = &'static BuiltinDoc> {
     use crate::builtin_docs_sys as sys;
     [
         lang::CORE,
+        lang::TESTING,
         lang::STRINGS,
         lang::FUNCTIONAL,
         lang::LISTS,

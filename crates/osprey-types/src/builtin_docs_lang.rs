@@ -95,6 +95,30 @@ pub(crate) static CORE: &[BuiltinDoc] = &[
     ),
 ];
 
+/// Testing framework built-in documentation [TESTING-BUILTINS]
+/// (docs/specs/0027-TestingFramework.md). Prose only — types come from the
+/// authoritative scheme in `builtins.rs`, joined by name.
+pub(crate) static TESTING: &[BuiltinDoc] = &[
+    builtin_doc!(
+        "test",
+        "Runs `body` as one named test case and prints a TAP result line. A case fails when any assertion inside it fails; the program exits non-zero if any case failed.",
+        ["name" => "The test case's name", "body" => "A zero-parameter function containing the case's assertions"],
+        "test(\"addition works\", fn() => expect(2 + 3, 5))",
+    ),
+    builtin_doc!(
+        "expect",
+        "Asserts two values are equal (canonical-string equality, Results auto-unwrapped). On mismatch, marks the enclosing test failed and prints a diagnostic; execution continues.",
+        ["actual" => "The computed value", "expected" => "The value it should equal"],
+        "test(\"doubling\", fn() => expect(21 * 2, 42))",
+    ),
+    builtin_doc!(
+        "check",
+        "Labeled equality assertion in Alcotest argument order (expected before actual). Behaves exactly like expect, with the label in the failure diagnostic.",
+        ["label" => "A short description of what is being checked", "expected" => "The value the actual must equal", "actual" => "The computed value"],
+        "test(\"doubling\", fn() => check(\"double\", 42, 21 * 2))",
+    ),
+];
+
 /// `strings` built-in documentation. Prose only — types come from the
 /// authoritative scheme in `builtins.rs`, joined by name.
 pub(crate) static STRINGS: &[BuiltinDoc] = &[

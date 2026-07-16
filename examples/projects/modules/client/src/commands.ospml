@@ -1,0 +1,22 @@
+namespace talon
+
+import bank::Json
+
+module Commands
+    http : string -> string -> string -> string -> string
+    http id method url body = Json::obj (Json::strField "kind" "http" + "," + Json::strField "id" id + "," + Json::strField "method" method + "," + Json::strField "url" url + "," + Json::strField "body" body)
+
+    export none : string
+    none = "[]"
+
+    export hydrate : Unit -> string
+    hydrate () = Json::arr (http "accounts" "GET" "/api/accounts" "" + "," + http "activity" "GET" "/api/activity" "")
+
+    export focus : string -> string
+    focus id = Json::arr (Json::obj (Json::strField "kind" "focus" + "," + Json::strField "id" id))
+
+    export navigate : string -> string
+    navigate route = Json::arr (Json::obj (Json::strField "kind" "navigate" + "," + Json::strField "url" "#/${route}"))
+
+    export post : string -> string -> string -> string
+    post id url body = Json::arr (http id "POST" url body)

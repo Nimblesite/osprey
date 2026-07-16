@@ -29,10 +29,26 @@ pub(crate) fn to_string_value(cg: &mut Codegen, v: Value) -> Result<Value> {
 /// payload comes from the errmsg slot (slot 2), which `load_errmsg` already
 /// falls back to the bare `"Error"` constant when unset. Implements [ERR-PAYLOAD].
 fn result_to_string(cg: &mut Codegen, v: &Value) -> Result<Value> {
+    result_string(cg, v, true)
+}
+
+/// [`result_to_string`] minus the `Success(…)` wrapping: a Success renders as
+/// its bare payload, an Error as `Error(<message>)`. The assertion operands'
+/// rendering — a Success compares as its payload, an Error is a visible
+/// mismatch, never a blind payload load. [TESTING-EQUALITY]
+pub(crate) fn result_payload_or_error_string(cg: &mut Codegen, v: &Value) -> Result<Value> {
+    result_string(cg, v, false)
+}
+
+fn result_string(cg: &mut Codegen, v: &Value, wrap_success: bool) -> Result<Value> {
     let (_sl, el, end) = crate::result::open_result_branch(cg, v);
     let val = crate::result::load_value(cg, v);
     let vs = to_string_value(cg, val)?;
-    let succ = sprintf_wrap(cg, "Success(%s)", &vs.operand);
+    let succ = if wrap_success {
+        sprintf_wrap(cg, "Success(%s)", &vs.operand)
+    } else {
+        vs.operand
+    };
     let sb = cg.snapshot_to(&end);
 
     cg.start_block(&el);

@@ -1,0 +1,49 @@
+// Declarative React-neutral view nodes. `event` is interpreted by the host and
+// never reaches the DOM; Osprey only deals in data and stable event ids.
+namespace talon
+
+import bank::Json
+
+module UI
+    export prop : string -> string -> string
+    prop key value = Json::strField key value
+
+    export props : string -> string
+    props members = Json::obj members
+
+    export node : string -> string -> string -> string
+    node tag properties children = Json::obj (Json::strField "tag" tag + "," + Json::rawField "props" (props properties) + "," + Json::rawField "children" (Json::arr children))
+
+    export leaf : string -> string -> string -> string
+    leaf tag properties text = Json::obj (Json::strField "tag" tag + "," + Json::strField "text" text + "," + Json::rawField "props" (props properties))
+
+    export text : string -> string -> string
+    text className value = leaf "span" (prop "className" className) value
+
+    export button : string -> string -> string -> string -> string
+    button id className label icon =
+        children = match length icon == 0
+            true => ""
+            false => text "button-icon" icon + ","
+        node "button" (prop "id" id + "," + prop "className" className + "," + prop "event" "click" + "," + prop "type" "button") (children + text "button-label" label)
+
+    export chip : string -> string -> string -> bool -> string
+    chip id label icon active =
+        activeClass = match active
+            true => "chip active"
+            false => "chip"
+        button id activeClass label icon
+
+    export field : string -> string -> string -> string -> string -> string
+    field id name label placeholder kind =
+        control = leaf "input" (prop "id" id + "," + prop "name" name + "," + prop "className" "field-control" + "," + prop "placeholder" placeholder + "," + prop "type" kind) ""
+        node "label" (prop "className" "field") (leaf "span" (prop "className" "field-label") label + "," + control)
+
+    export selectStart : string -> string -> string -> string
+    selectStart id name label = leaf "label" (prop "className" "field-label" + "," + prop "htmlFor" id) label + "," + node "select" (prop "id" id + "," + prop "name" name + "," + prop "className" "field-control") ""
+
+    export option : string -> string -> string
+    option value label = leaf "option" (prop "value" value) label
+
+    export empty : string -> string -> string -> string
+    empty icon title body = node "div" (prop "className" "empty-state") (leaf "div" (prop "className" "empty-icon") icon + "," + leaf "h3" "" title + "," + leaf "p" "" body)

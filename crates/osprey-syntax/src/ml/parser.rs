@@ -37,8 +37,9 @@
 //!   concrete authoritative spec of layout-driven token insertion.
 
 use super::cst::{
-    MlArm, MlEffectOp, MlEffectRef, MlExpr, MlExternParam, MlField, MlHandleArm, MlItem, MlParam,
-    MlPattern, MlType, MlTypeField, MlTypeParam, MlVariance, MlVariant,
+    MlArm, MlEffectOp, MlEffectRef, MlExpr, MlExternParam, MlField, MlHandleArm, MlItem,
+    MlModuleKind, MlParam, MlPattern, MlSymbolPath, MlType, MlTypeField, MlTypeParam, MlVariance,
+    MlVariant,
 };
 use super::lexer::lex;
 use super::token::{TokKind, Token};
@@ -57,6 +58,7 @@ pub(crate) fn parse(source: &str) -> (Vec<MlItem>, Vec<SyntaxError>) {
         };
         parser.program()
     };
+    super::modules::validate(&items, &mut errors);
     (items, errors)
 }
 
@@ -83,14 +85,14 @@ fn infix_bp(op: &str) -> Option<u8> {
 }
 
 /// Recursive-descent + Pratt parser over the layout-resolved token slice.
-struct Parser<'t> {
+pub(super) struct Parser<'t> {
     toks: &'t [Token],
     i: usize,
     errors: &'t mut Vec<SyntaxError>,
 }
 
 impl Parser<'_> {
-    fn peek(&self) -> &TokKind {
+    pub(super) fn peek(&self) -> &TokKind {
         self.toks.get(self.i).map_or(&TokKind::Eof, |t| &t.kind)
     }
 
@@ -100,19 +102,19 @@ impl Parser<'_> {
             .map_or(&TokKind::Eof, |t| &t.kind)
     }
 
-    fn pos(&self) -> Position {
+    pub(super) fn pos(&self) -> Position {
         self.toks.get(self.i).map_or(Position::default(), |t| t.pos)
     }
 
     /// Consume the current token, discarding it (callers peek first when they
     /// need its payload).
-    fn advance(&mut self) {
+    pub(super) fn advance(&mut self) {
         if self.i < self.toks.len() {
             self.i += 1;
         }
     }
 
-    fn eat(&mut self, kind: &TokKind) -> bool {
+    pub(super) fn eat(&mut self, kind: &TokKind) -> bool {
         if self.peek() == kind {
             self.i += 1;
             true
@@ -121,8 +123,12 @@ impl Parser<'_> {
         }
     }
 
-    fn error(&mut self, message: impl Into<String>) {
+    pub(super) fn error(&mut self, message: impl Into<String>) {
         let position = self.pos();
+        self.error_at(position, message);
+    }
+
+    pub(super) fn error_at(&mut self, position: Position, message: impl Into<String>) {
         self.errors.push(SyntaxError {
             message: message.into(),
             position,
@@ -131,7 +137,7 @@ impl Parser<'_> {
 
     /// Panic-mode recovery (Dragon Book §4.1.4): drop tokens up to the next
     /// statement separator so one bad line cannot derail the rest.
-    fn recover(&mut self) {
+    pub(super) fn recover(&mut self) {
         while !matches!(
             self.peek(),
             TokKind::Newline | TokKind::Dedent | TokKind::Eof
@@ -140,13 +146,13 @@ impl Parser<'_> {
         }
     }
 
-    fn skip_separators(&mut self) {
+    pub(super) fn skip_separators(&mut self) {
         while matches!(self.peek(), TokKind::Newline) {
             self.i += 1;
         }
     }
 
-    fn at_block_end(&self) -> bool {
+    pub(super) fn at_block_end(&self) -> bool {
         matches!(self.peek(), TokKind::Dedent | TokKind::Eof)
     }
 
@@ -169,7 +175,7 @@ impl Parser<'_> {
 
     /// Parse one item, or `None` for a skipped signature line or a recoverable
     /// error.
-    fn item(&mut self) -> Option<MlItem> {
+    pub(super) fn item(&mut self) -> Option<MlItem> {
         match self.peek() {
             TokKind::Doc(text) => {
                 let text = text.clone();
@@ -180,6 +186,13 @@ impl Parser<'_> {
             TokKind::KwType => self.type_decl(),
             TokKind::KwExtern => self.extern_decl(),
             TokKind::KwEffect => self.effect_decl(),
+            TokKind::KwImport => self.import_decl(),
+            TokKind::KwNamespace => self.namespace_decl(),
+            TokKind::KwModule => self.module_decl(MlModuleKind::Plain),
+            TokKind::KwState => self.module_decl(MlModuleKind::State),
+            TokKind::KwSignature => self.module_signature_decl(),
+            TokKind::KwExport => self.export_decl(),
+            TokKind::KwOpaque => self.opaque_decl(),
             TokKind::Reserved(word) => {
                 let word = word.clone();
                 self.error(format!(
@@ -191,6 +204,40 @@ impl Parser<'_> {
             TokKind::Ident(_) => self.ident_item(),
             _ => Some(self.expr_item()),
         }
+    }
+
+    /// `import target`, optional whole-target alias, and an optional indented
+    /// member projection ([MODULES-IMPORT]). ML uses layout instead of Default's
+    /// punctuation-heavy `::{...}` member list.
+    fn import_decl(&mut self) -> Option<MlItem> {
+        super::module_parse::import_decl(self)
+    }
+
+    /// `namespace name`: an indented body is a block contribution; without one
+    /// the declaration applies to subsequent declarations in the file
+    /// ([MODULES-FILE-SCOPED-NAMESPACE]).
+    fn namespace_decl(&mut self) -> Option<MlItem> {
+        super::module_parse::namespace_decl(self)
+    }
+
+    /// A layout module head. ML deliberately spells a state module `state Name`
+    /// rather than the redundant `state module Name` ([MODULES-STATE-MODULE]).
+    fn module_decl(&mut self, kind: MlModuleKind) -> Option<MlItem> {
+        super::module_parse::module_decl(self, kind)
+    }
+
+    /// `signature Name` plus its public, export-free interface requirements.
+    fn module_signature_decl(&mut self) -> Option<MlItem> {
+        super::module_parse::signature_decl(self)
+    }
+
+    /// Wrap exactly one following declaration in explicit visibility metadata.
+    fn export_decl(&mut self) -> Option<MlItem> {
+        super::module_parse::export_decl(self)
+    }
+
+    fn opaque_decl(&mut self) -> Option<MlItem> {
+        super::module_parse::opaque_decl(self)
     }
 
     /// `mut name = body` → a mutable binding.
@@ -218,14 +265,25 @@ impl Parser<'_> {
     fn type_decl(&mut self) -> Option<MlItem> {
         let pos = self.pos();
         self.advance(); // `type`
+        self.type_decl_after_keyword(pos)
+    }
+
+    /// Finish a type declaration after its `type` token has already been
+    /// consumed (also reused by `opaque type`).
+    pub(super) fn type_decl_after_keyword(&mut self, pos: Position) -> Option<MlItem> {
         let name = self.ident()?;
         let type_params = self.type_params();
         let _ = self.expect_eq();
-        let variants = self.type_body(&name);
+        let (variants, alias) = match self.peek() {
+            TokKind::Indent => (self.type_body(&name), None),
+            TokKind::Newline | TokKind::Dedent | TokKind::Eof => (Vec::new(), None),
+            _ => (Vec::new(), Some(self.ty())),
+        };
         Some(MlItem::Type {
             name,
             type_params,
             variants,
+            alias,
             pos,
         })
     }
@@ -236,7 +294,7 @@ impl Parser<'_> {
     /// contextual keywords reserved inside type-parameter position in BOTH
     /// flavors — a marker must be followed by a parameter name. Implements
     /// [TYPE-VARIANCE-DECL].
-    fn type_params(&mut self) -> Vec<MlTypeParam> {
+    pub(super) fn type_params(&mut self) -> Vec<MlTypeParam> {
         let mut out = Vec::new();
         loop {
             let variance = match self.peek() {
@@ -418,7 +476,7 @@ impl Parser<'_> {
     }
 
     /// The indented `op : P => R` operation lines of an `effect` block.
-    fn effect_operations(&mut self) -> Vec<MlEffectOp> {
+    pub(super) fn effect_operations(&mut self) -> Vec<MlEffectOp> {
         let mut operations = Vec::new();
         if !self.eat(&TokKind::Indent) {
             return operations;
@@ -506,7 +564,7 @@ impl Parser<'_> {
     /// The `<T, U>` binder of a generic signature. The caller has already
     /// validated the whole shape via [`Self::at_generic_signature`], so this
     /// only consumes: `<`, comma-separated parameter groups, `>`.
-    fn signature_type_params(&mut self) -> Vec<MlTypeParam> {
+    pub(super) fn signature_type_params(&mut self) -> Vec<MlTypeParam> {
         if !matches!(self.peek(), TokKind::Op(op) if op == "<") {
             return Vec::new();
         }
@@ -534,6 +592,7 @@ impl Parser<'_> {
     /// that follows, with an optional trailing effect row `! Ref(, Ref)*` or
     /// `! [Ref, …]` ([FLAVOR-ML-EFFECT], [FLAVOR-ML-GENERICS]).
     fn signature(&mut self) -> Option<MlItem> {
+        let pos = self.pos();
         let name = self.ident()?;
         let type_params = self.signature_type_params();
         if !self.eat(&TokKind::Colon) {
@@ -541,11 +600,12 @@ impl Parser<'_> {
         }
         let ty = self.ty();
         let effects = self.effect_row();
-        Some(MlItem::Signature {
+        Some(MlItem::ValueSignature {
             name,
             type_params,
             ty,
             effects,
+            pos,
         })
     }
 
@@ -553,7 +613,7 @@ impl Parser<'_> {
     /// bracketed `! [Ref, …]`, each reference optionally applied to type
     /// arguments (`State<int>`). Empty when no `!` is present
     /// ([FLAVOR-ML-EFFECT], [EFFECTS-GENERIC-ROWS]).
-    fn effect_row(&mut self) -> Vec<MlEffectRef> {
+    pub(super) fn effect_row(&mut self) -> Vec<MlEffectRef> {
         if !matches!(self.peek(), TokKind::Op(op) if op == "!") {
             return Vec::new();
         }
@@ -578,7 +638,8 @@ impl Parser<'_> {
     /// angle-bracketed type arguments.
     fn effect_ref(&mut self) -> Option<MlEffectRef> {
         let pos = self.pos();
-        let name = self.ident()?;
+        let first = self.ident()?;
+        let name = self.qualified_name_tail(first);
         let args = if self.at_angle_open() {
             match self.ty_generic_args(name.clone()) {
                 MlType::App { args, .. } => args,
@@ -591,7 +652,7 @@ impl Parser<'_> {
     }
 
     /// A type: arrows are right-associative (`a -> b -> c` = `a -> (b -> c)`).
-    fn ty(&mut self) -> MlType {
+    pub(super) fn ty(&mut self) -> MlType {
         let from = self.ty_app();
         if self.eat(&TokKind::Arrow) {
             return MlType::Arrow {
@@ -625,6 +686,7 @@ impl Parser<'_> {
         match self.peek().clone() {
             TokKind::Ident(name) => {
                 self.advance();
+                let name = self.qualified_name_tail(name);
                 if self.at_angle_open() {
                     self.ty_generic_args(name)
                 } else {
@@ -1055,6 +1117,19 @@ impl Parser<'_> {
     /// directly followed by an indented `field = value` block — a record
     /// literal ([FLAVOR-ML-RECORD]).
     fn ident_atom(&mut self, name: String) -> MlExpr {
+        let mut segments = vec![name];
+        while self.eat(&TokKind::ColonColon) {
+            if let Some(segment) = self.ident() {
+                segments.push(segment);
+            } else {
+                self.error("expected path segment after '::'");
+                break;
+            }
+        }
+        if segments.len() > 1 {
+            return MlExpr::Path(MlSymbolPath { segments });
+        }
+        let name = segments.pop().unwrap_or_default();
         if is_constructor(&name) && matches!(self.peek(), TokKind::Indent) {
             let fields = self.record_fields();
             MlExpr::Record {
@@ -1195,7 +1270,8 @@ impl Parser<'_> {
     fn perform_expr(&mut self) -> MlExpr {
         let pos = self.pos();
         self.advance(); // `perform`
-        let effect = self.ident().unwrap_or_default();
+        let first = self.ident().unwrap_or_default();
+        let effect = self.qualified_name_tail(first);
         if !self.eat(&TokKind::Dot) {
             self.error("expected '.' between effect and operation in perform");
         }
@@ -1228,7 +1304,8 @@ impl Parser<'_> {
     fn handle_expr(&mut self) -> MlExpr {
         let pos = self.pos();
         self.advance(); // `handle`
-        let effect = self.ident().unwrap_or_default();
+        let first = self.ident().unwrap_or_default();
+        let effect = self.qualified_name_tail(first);
         let mut arms = Vec::new();
         if self.eat(&TokKind::Indent) {
             while !self.at_block_end() {
@@ -1469,6 +1546,7 @@ impl Parser<'_> {
     /// `_` → wildcard; `Ctor a b` → constructor binding payload fields; a bare
     /// lowercase name → a binding ([FLAVOR-ML-MATCH]).
     fn ident_pattern(&mut self, name: String) -> MlPattern {
+        let name = self.qualified_name_tail(name);
         if name == "_" {
             return MlPattern::Wildcard;
         }
@@ -1633,7 +1711,7 @@ impl Parser<'_> {
         }
     }
 
-    fn ident(&mut self) -> Option<String> {
+    pub(super) fn ident(&mut self) -> Option<String> {
         if let TokKind::Ident(name) = self.peek() {
             let name = name.clone();
             self.advance();
@@ -1642,6 +1720,22 @@ impl Parser<'_> {
             self.error("expected an identifier");
             None
         }
+    }
+
+    /// Consume zero or more `::segment` suffixes after an already-consumed
+    /// identifier, retaining the written qualification for canonical fields
+    /// which still store type/effect/constructor names as strings.
+    fn qualified_name_tail(&mut self, first: String) -> String {
+        let mut segments = vec![first];
+        while self.eat(&TokKind::ColonColon) {
+            if let Some(segment) = self.ident() {
+                segments.push(segment);
+            } else {
+                self.error("expected path segment after '::'");
+                break;
+            }
+        }
+        segments.join("::")
     }
 
     fn expect_eq(&mut self) -> bool {

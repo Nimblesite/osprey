@@ -508,10 +508,10 @@ mod tests {
 
     #[test]
     fn result_pattern_with_an_unknown_field_binds_a_fresh_var() {
-        // `Success { extra }` over a Result binds the standard `value`/`message`
+        // `Success { surplus }` over a Result binds the standard `value`/`message`
         // and a fresh var for any other field name (the `_ => fresh()` arm).
         ok("fn f(r: Result<int, Error>) -> int = match r {\n\
-              Success { value, extra } => value\n\
+              Success { value, surplus } => value\n\
               Error { message } => 0\n\
             }\n");
     }

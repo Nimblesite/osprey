@@ -2,7 +2,7 @@
 layout: page
 title: "Debugger"
 description: "Osprey Language Specification: Debugger"
-date: 2026-07-01
+date: 2026-07-15
 tags: ["specification", "reference", "documentation"]
 author: "Christian Findlay"
 permalink: "/spec/0021-debugger/"

@@ -1,0 +1,87 @@
+namespace talon
+
+import talon::UI
+
+module Layout
+    routeTitle : string -> string
+    routeTitle route = match route
+        "overview" => "Overview"
+        "accounts" => "Accounts"
+        "move" => "Move money"
+        "activity" => "Activity"
+        _ => "Security"
+
+    navItem : AppModel -> string -> string -> string -> string
+    navItem model route icon label =
+        active = match model.route == route
+            true => " active"
+            false => ""
+        current = match model.route == route
+            true => "," + UI::prop "aria-current" "page"
+            false => ""
+        UI::node "button" (UI::prop "id" "nav-${route}" + "," + UI::prop "event" "click" + "," + UI::prop "type" "button" + "," + UI::prop "className" "nav-item${active}" + current) (UI::leaf "span" (UI::prop "className" "nav-icon") icon + "," + UI::leaf "span" (UI::prop "className" "nav-label") label)
+
+    sidebar : AppModel -> string
+    sidebar model =
+        mobile = match model.menu
+            "open" => " open"
+            _ => ""
+        brand = UI::node "div" (UI::prop "className" "brand") (UI::node "span" (UI::prop "className" "brand-mark") (UI::leaf "span" "" "T") + "," + UI::node "span" (UI::prop "className" "brand-copy") (UI::leaf "strong" "" "Talon" + "," + UI::leaf "small" "" "PRIVATE BANK"))
+        nav = UI::node "nav" (UI::prop "className" "main-nav" + "," + UI::prop "aria-label" "Primary navigation") (UI::leaf "span" (UI::prop "className" "nav-section-label") "BANKING" + "," + navItem model "overview" "⌂" "Overview" + "," + navItem model "accounts" "◫" "Accounts" + "," + navItem model "move" "⇄" "Move money" + "," + navItem model "activity" "◎" "Activity" + "," + UI::leaf "span" (UI::prop "className" "nav-section-label secondary") "SYSTEM" + "," + navItem model "security" "◇" "Security")
+        profile = UI::node "div" (UI::prop "className" "sidebar-profile") (UI::leaf "span" (UI::prop "className" "avatar") "TO" + "," + UI::node "span" "" (UI::leaf "strong" "" "Talon Operations" + "," + UI::leaf "small" "" "Bank console") + "," + UI::leaf "span" (UI::prop "className" "profile-more") "•••")
+        UI::node "aside" (UI::prop "className" "sidebar${mobile}") (brand + "," + nav + "," + UI::node "div" (UI::prop "className" "sidebar-bottom") (UI::node "div" (UI::prop "className" "secure-chip") (UI::leaf "span" "" "◇" + "," + UI::leaf "span" "" "Protected session") + "," + profile))
+
+    topbar : AppModel -> string
+    topbar model =
+        title = routeTitle model.route
+        menu = UI::button "toggle-menu" "icon-button mobile-menu" "Menu" "☰"
+        greeting = UI::node "div" (UI::prop "className" "topbar-title") (UI::leaf "small" "" "LIVE OPERATIONS · OSPREY ONLINE" + "," + UI::leaf "strong" "" title)
+        actions = UI::node "div" (UI::prop "className" "topbar-actions") (UI::button "topbar-refresh" "icon-button" "Refresh" "↻" + "," + UI::node "button" (UI::prop "id" "topbar-activity" + "," + UI::prop "event" "click" + "," + UI::prop "type" "button" + "," + UI::prop "className" "icon-button notification-button" + "," + UI::prop "aria-label" "Activity notifications") (UI::leaf "span" "" "♢" + "," + UI::leaf "span" (UI::prop "className" "notification-dot") "") + "," + UI::button "topbar-open" "button primary top-open" "Open account" "+")
+        UI::node "header" (UI::prop "className" "topbar") (menu + "," + greeting + "," + actions)
+
+    loading : Unit -> string
+    loading () = UI::node "div" (UI::prop "className" "page loading-page" + "," + UI::prop "aria-label" "Loading bank data") (UI::node "div" (UI::prop "className" "skeleton skeleton-hero") "" + "," + UI::node "div" (UI::prop "className" "skeleton-grid") (UI::leaf "span" (UI::prop "className" "skeleton") "" + "," + UI::leaf "span" (UI::prop "className" "skeleton") "" + "," + UI::leaf "span" (UI::prop "className" "skeleton") "") + "," + UI::node "div" (UI::prop "className" "skeleton skeleton-table") "")
+
+    notice : AppModel -> string
+    notice model = match length model.noticeTone == 0
+        true => ""
+        false =>
+            icon = match model.noticeTone
+                "success" => "✓"
+                "error" => "!"
+                _ => "◎"
+            UI::node "aside" (UI::prop "className" "toast ${model.noticeTone}" + "," + UI::prop "role" "status") (UI::leaf "span" (UI::prop "className" "toast-icon") icon + "," + UI::node "span" (UI::prop "className" "toast-copy") (UI::leaf "strong" "" model.noticeTitle + "," + UI::leaf "small" "" model.noticeBody) + "," + UI::button "dismiss-notice" "toast-close" "Dismiss" "×")
+
+    modal : AppModel -> string
+    modal model = match model.modal == "open"
+        false => ""
+        true =>
+            head = UI::node "div" (UI::prop "className" "modal-heading") (UI::node "div" "" (UI::leaf "span" (UI::prop "className" "eyebrow") "NEW TALON ACCOUNT" + "," + UI::leaf "h2" (UI::prop "id" "open-account-title") "Open account" + "," + UI::leaf "p" "" "Create a protected client account in one step.") + "," + UI::button "close-modal" "icon-button modal-close" "Close" "×")
+            owner = UI::field "new-owner" "name" "Account owner" "Full legal name" "text"
+            reassurance = UI::node "div" (UI::prop "className" "modal-reassurance") (UI::leaf "span" "" "◇" + "," + UI::leaf "p" "" "Storage access remains server-side. Your browser receives only the account response.")
+            actions = UI::node "div" (UI::prop "className" "modal-actions") (UI::button "cancel-modal" "button secondary" "Cancel" "" + "," + UI::node "button" (UI::prop "type" "submit" + "," + UI::prop "className" "button primary") (UI::leaf "span" "" "Open account" + "," + UI::leaf "span" "" "→"))
+            form = UI::node "form" (UI::prop "id" "submit-open-account" + "," + UI::prop "event" "submit" + "," + UI::prop "className" "modal-form") (head + "," + owner + "," + reassurance + "," + actions)
+            UI::node "div" (UI::prop "className" "modal-backdrop") (UI::node "section" (UI::prop "className" "modal" + "," + UI::prop "role" "dialog" + "," + UI::prop "aria-modal" "true" + "," + UI::prop "aria-labelledby" "open-account-title") form)
+
+    export shell : AppModel -> string -> string
+    shell model content =
+        progress = match model.loading == "true" || model.busy == "true"
+            true => UI::leaf "div" (UI::prop "className" "top-progress") ""
+            false => ""
+        progressPart = match length progress == 0
+            true => ""
+            false => "," + progress
+        body = match model.loading == "true"
+            true => loading ()
+            false => content
+        toast = notice model
+        dialog = modal model
+        extras = match length toast == 0
+            true => dialog
+            false => match length dialog == 0
+                true => toast
+                false => toast + "," + dialog
+        suffix = match length extras == 0
+            true => ""
+            false => "," + extras
+        UI::node "div" (UI::prop "className" "app-shell") (sidebar model + "," + UI::node "div" (UI::prop "className" "app-main") (topbar model + progressPart + "," + UI::node "main" (UI::prop "className" "content" + "," + UI::prop "id" "main-content") body) + suffix)

@@ -28,6 +28,9 @@ use crate::{Flavor, Parsed};
 mod cst;
 mod lexer;
 mod lower;
+mod module_lower;
+mod module_parse;
+mod modules;
 mod parser;
 mod token;
 

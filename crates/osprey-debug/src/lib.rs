@@ -16,7 +16,10 @@ pub struct DebugSource {
 }
 
 impl DebugSource {
-    /// Build a source identity from a source path.
+    /// Build a source identity from a source path. The directory is always
+    /// absolute: an empty or relative `DW_AT_comp_dir` makes the macOS linker
+    /// silently skip the debug map (no `N_OSO` stabs), so `dsymutil` produces an
+    /// empty dSYM and profiler/debugger line info vanishes [PROF-BUILD-MODE].
     #[must_use]
     pub fn from_path(path: &str) -> Self {
         let path = Path::new(path);
@@ -25,14 +28,9 @@ impl DebugSource {
             .and_then(|s| s.to_str())
             .unwrap_or("input.osp")
             .to_string();
-        let directory = path
-            .parent()
-            .and_then(|p| p.to_str())
-            .unwrap_or(".")
-            .to_string();
         DebugSource {
             filename,
-            directory,
+            directory: absolute_directory(path.parent()),
         }
     }
 
@@ -40,6 +38,61 @@ impl DebugSource {
     #[must_use]
     pub fn path(&self) -> PathBuf {
         Path::new(&self.directory).join(&self.filename)
+    }
+}
+
+/// The absolute form of a source file's parent directory, resolving empty and
+/// relative parents against the working directory (falling back to `.` only
+/// when the working directory itself is unavailable).
+fn absolute_directory(parent: Option<&Path>) -> String {
+    let parent = parent.filter(|p| !p.as_os_str().is_empty());
+    let base = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+    let abs = match parent {
+        Some(p) if p.is_absolute() => p.to_path_buf(),
+        Some(p) => base.join(p),
+        None => base,
+    };
+    abs.to_str().map_or_else(|| ".".to_string(), str::to_string)
+}
+
+/// The native build kinds a compiler front-end can request.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BuildKind {
+    /// Optimized build, no debug info.
+    Release,
+    /// Source-level debugging: full debug info at `-O0`.
+    Debug,
+    /// CPU profiling [PROF-BUILD-MODE]: DWARF line info + frame pointers at
+    /// FULL optimization — a profile of an unoptimized program misleads, so
+    /// unlike `Debug` this keeps the release optimizer flag.
+    Profile,
+}
+
+impl BuildKind {
+    /// The optimizer flag to use for this build.
+    #[must_use]
+    pub fn opt_flag(self, release_default: String, debug_override: Option<String>) -> String {
+        match self {
+            BuildKind::Debug => debug_override.unwrap_or_else(|| "-O0".to_string()),
+            BuildKind::Release | BuildKind::Profile => release_default,
+        }
+    }
+
+    /// Extra C/LLVM driver flags for native builds of this kind.
+    #[must_use]
+    pub fn native_driver_flags(self) -> Vec<String> {
+        match self {
+            BuildKind::Release => Vec::new(),
+            BuildKind::Debug | BuildKind::Profile => {
+                vec!["-g".to_string(), "-fno-omit-frame-pointer".to_string()]
+            }
+        }
+    }
+
+    /// Whether codegen should emit source-level debug metadata (DWARF).
+    #[must_use]
+    pub fn wants_debug_info(self) -> bool {
+        !matches!(self, BuildKind::Release)
     }
 }
 
@@ -57,23 +110,26 @@ impl DebugBuild {
     /// A source-level debug build.
     pub const ON: DebugBuild = DebugBuild { enabled: true };
 
+    /// The [`BuildKind`] this two-state switch corresponds to.
+    #[must_use]
+    pub fn kind(self) -> BuildKind {
+        if self.enabled {
+            BuildKind::Debug
+        } else {
+            BuildKind::Release
+        }
+    }
+
     /// The optimizer flag to use for this build.
     #[must_use]
     pub fn opt_flag(self, release_default: String, debug_override: Option<String>) -> String {
-        if self.enabled {
-            return debug_override.unwrap_or_else(|| "-O0".to_string());
-        }
-        release_default
+        self.kind().opt_flag(release_default, debug_override)
     }
 
     /// Extra C/LLVM driver flags for native debug builds.
     #[must_use]
     pub fn native_driver_flags(self) -> Vec<String> {
-        if self.enabled {
-            vec!["-g".to_string(), "-fno-omit-frame-pointer".to_string()]
-        } else {
-            Vec::new()
-        }
+        self.kind().native_driver_flags()
     }
 }
 
@@ -92,12 +148,23 @@ mod tests {
     #[test]
     fn debug_source_falls_back_for_a_rootless_path() {
         // The filesystem root has neither a file name nor a parent, so both
-        // fallbacks fire: a stable basename and the current directory. This
-        // pins the NO-PLACEHOLDER fallback values, not just their execution.
+        // fallbacks fire: a stable basename and the (absolute) working
+        // directory. This pins the NO-PLACEHOLDER fallback values.
         let src = DebugSource::from_path("/");
         assert_eq!(src.filename, "input.osp");
-        assert_eq!(src.directory, ".");
-        assert_eq!(src.path(), PathBuf::from("./input.osp"));
+        assert!(Path::new(&src.directory).is_absolute());
+    }
+
+    // An empty comp_dir kills the macOS linker's debug map, so a bare relative
+    // filename must resolve its directory against the working directory.
+    #[test]
+    fn debug_source_makes_relative_parents_absolute() {
+        let src = DebugSource::from_path("solo.osp");
+        assert_eq!(src.filename, "solo.osp");
+        assert!(Path::new(&src.directory).is_absolute());
+        let nested = DebugSource::from_path("examples/nested.osp");
+        assert!(Path::new(&nested.directory).is_absolute());
+        assert!(nested.directory.ends_with("examples"));
     }
 
     #[test]
@@ -116,5 +183,24 @@ mod tests {
             .native_driver_flags()
             .iter()
             .any(|f| f == "-g"));
+        assert_eq!(DebugBuild::OFF.kind(), BuildKind::Release);
+        assert_eq!(DebugBuild::ON.kind(), BuildKind::Debug);
+    }
+
+    // [PROF-BUILD-MODE]: profiling keeps the release optimizer but adds debug
+    // info + frame pointers — the combination neither Release nor Debug gives.
+    #[test]
+    fn profile_build_keeps_optimizer_with_debug_flags() {
+        let profile = BuildKind::Profile;
+        assert_eq!(
+            profile.opt_flag("-O2".to_string(), Some("-O0".to_string())),
+            "-O2"
+        );
+        let flags = profile.native_driver_flags();
+        assert!(flags.contains(&"-g".to_string()));
+        assert!(flags.contains(&"-fno-omit-frame-pointer".to_string()));
+        assert!(profile.wants_debug_info());
+        assert!(BuildKind::Debug.wants_debug_info());
+        assert!(!BuildKind::Release.wants_debug_info());
     }
 }

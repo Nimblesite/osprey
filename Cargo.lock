@@ -379,8 +379,11 @@ dependencies = [
  "osprey-debug",
  "osprey-fmt",
  "osprey-lsp",
+ "osprey-profiler",
+ "osprey-project",
  "osprey-syntax",
  "osprey-types",
+ "serde_json",
  "tokio",
 ]
 
@@ -418,6 +421,7 @@ dependencies = [
  "lspkit-vfs",
  "osprey-ast",
  "osprey-fmt",
+ "osprey-project",
  "osprey-syntax",
  "osprey-types",
  "serde",
@@ -425,6 +429,22 @@ dependencies = [
  "thiserror",
  "tokio",
  "tokio-util",
+]
+
+[[package]]
+name = "osprey-profiler"
+version = "0.0.0-dev"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "osprey-project"
+version = "0.0.0-dev"
+dependencies = [
+ "osprey-ast",
+ "osprey-syntax",
 ]
 
 [[package]]

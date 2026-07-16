@@ -1,0 +1,121 @@
+// main — the COMPOSITION ROOT. [MODULES-EXPORTS] [MODULES-STATE-MODULE]
+//
+// The only file allowed to know everything. Here — and nowhere else — the
+// abstract `Ledger::Store` capability is bound to its SQLite implementation,
+// `Api::Audit` is bound to the console, and the `Metrics` state module's
+// installer opens the one region where request counting may mutate. The
+// layers underneath stay pure and swappable; rewiring the bank is a
+// main-only edit.
+
+namespace bank
+
+import bank::Sqlite
+import bank::Ledger
+import bank::Api
+import bank::Metrics
+import "bank/web" as web
+
+// One deterministic tour of the whole stack, driven over REAL HTTP by the
+// in-process client: JSON mutations, a refused overdraft, the JSON listing,
+// and the Osprey-WASM application shell.
+fetch : int -> string -> string
+fetch client path =
+    reply = httpGetResponse client path ""
+    match reply
+        Success value =>
+            body = match httpResponseBody value
+                Success text => text
+                Error message => "(no body)"
+            freed = httpResponseFree value
+            body
+        Error message => "GET ${path} failed"
+
+drive : int -> Unit
+drive client =
+    amelia = httpPost client "/api/accounts" "{\"name\":\"Amelia Chen\"}" ""
+    marcus = httpPost client "/api/accounts" "{\"name\":\"Marcus Webb\"}" ""
+    priya = httpPost client "/api/accounts" "{\"name\":\"Priya Sharma\"}" ""
+    salary = httpPost client "/api/deposit" "{\"account\":1,\"cents\":425000,\"note\":\"March salary — Nimble Robotics\"}" ""
+    invoice = httpPost client "/api/deposit" "{\"account\":2,\"cents\":198025,\"note\":\"freelance invoice #4021\"}" ""
+    grant = httpPost client "/api/deposit" "{\"account\":3,\"cents\":360000,\"note\":\"research grant Q1\"}" ""
+    rent = httpPost client "/api/withdraw" "{\"account\":1,\"cents\":185000,\"note\":\"rent — 12 Fern St\"}" ""
+    dinner = httpPost client "/api/transfer" "{\"from\":2,\"to\":1,\"cents\":6240,\"note\":\"dinner split\"}" ""
+    synth = httpPost client "/api/withdraw" "{\"account\":2,\"cents\":999900,\"note\":\"vintage synthesizer\"}" ""
+    print "[http] open=${amelia}/${marcus}/${priya} deposit=${salary}/${invoice}/${grant} rent=${rent} transfer=${dinner} overdraft=${synth}"
+    print "--- GET /api/accounts ---\n${fetch client "/api/accounts"}"
+    print "--- GET /api/activity ---\n${fetch client "/api/activity"}"
+    page = fetch client "/"
+    hasRoot = contains page "id=\"app\""
+    hasClient = contains page "src=\"/app.js\""
+    print "--- GET / (Osprey wasm + React app) ---\nhtml=${startsWith page "<!doctype html>"} title=${contains page "<title>Talon Bank</title>"} appRoot=${hasRoot} client=${hasClient}"
+
+// Playwright hold: while /tmp/talon_bank.hold exists the server keeps serving
+// and the demo pauses right here — remove the file (or never create it) and
+// the run finishes deterministically with identical stdout either way.
+hold : Unit -> int
+hold () =
+    marker = readFile "/tmp/talon_bank.hold"
+    match marker
+        Error message => 0
+        Success value =>
+            slept = sleep 250
+            hold ()
+
+// The TUI closing shot: render every account as a table row through the same
+// pure domain renderer the API uses.
+table : int -> int -> Unit ! Ledger::Store
+table id count = match id > count
+    true => print "└────┴──────────────┴───────────┘"
+    false =>
+        account = Account(id = id, owner = perform Ledger::Store.owner id, balance = perform Ledger::Store.balance id)
+        print (Accounts::row account)
+        table (id + 1) count
+
+serve : Ptr -> int ! [Ledger::Store, Metrics::MetricsFx]
+serve db =
+    server = httpCreateServer 18790 "127.0.0.1"
+    listening = httpListen server handleRequest
+    client = httpCreateClient "http://127.0.0.1:18790" 5000
+    print "[boot] api + web listening on http://127.0.0.1:18790"
+    drive client
+    print "┌────┬──────────────┬───────────┐"
+    table 1 (perform Ledger::Store.count ())
+    held = hold ()
+    stopped = httpStopServer server
+    closed = Sqlite::shutdown db
+    perform Metrics::MetricsFx.total ()
+
+// Everything below runs inside the Metrics installer's handler region, so
+// the request counter cell exists exactly as long as the bank is serving.
+boot : Unit -> int ! Metrics::MetricsFx
+boot () =
+    db = Sqlite::openAt "/tmp/talon_bank.db"
+    made = Ledger::schema db
+    print "[boot] fresh ledger at /tmp/talon_bank.db"
+    handle Ledger::Store
+        open name => Ledger::openSql db name
+        credit id cents note => Ledger::creditSql db id cents note
+        debit id cents note => Ledger::debitSql db id cents note
+        transfer fromId toId cents note => Ledger::transferSql db fromId toId cents note
+        balance id => Ledger::balanceSql db id
+        owner id => Ledger::ownerSql db id
+        count => Ledger::countSql db
+        activity => Ledger::activitySql db
+    in handle Api::Audit
+        log line => print "[audit] ${line}"
+    in serve db
+
+// The router: every request is counted by the state module, then dispatched —
+// `/api/*` to the JSON API, everything else to the browser-app host.
+handleRequest : string -> string -> string -> string -> HttpResponse
+handleRequest (method, path, headers, body) =
+    seen = perform Metrics::MetricsFx.hit path
+    match startsWith path "/api"
+        true => Api::route method path body
+        false => web::Pages::render path
+
+main () =
+    print "=== Talon Bank — one Osprey app, every module feature ==="
+    served = Metrics::track boot
+    print "[metrics] ${served} requests served — goodbye"
+    0

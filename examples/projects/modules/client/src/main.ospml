@@ -1,0 +1,10 @@
+// Browser composition root. The compiler exposes osprey_web_dispatch as a
+// callable wasm export; _start invokes main for the initial render.
+namespace talon
+
+import talon::App
+
+osprey_web_dispatch : string -> int
+osprey_web_dispatch payload = App::receive payload
+
+main () = App::start ()

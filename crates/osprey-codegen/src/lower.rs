@@ -108,6 +108,12 @@ fn compile_program_with_options(program: &Program, options: CodegenOptions) -> R
         .and_then(|(_, position)| position)
         .or_else(|| top_level.iter().find_map(|stmt| stmt_position(stmt)));
     cg.begin_function("main", main_position);
+    // Anchor the profiler into the link and give it a deterministic activation
+    // point: static archives only extract referenced objects, so without this
+    // call a fiber-less program would link no profiler at all. A no-op unless
+    // OSPREY_PROFILE is set [PROF-ACTIVATE-ENV], docs/specs/0028-Profiler.md.
+    cg.add_extern("declare void @osp_prof_boot()");
+    cg.emit("call void @osp_prof_boot()");
     if let Some((body, _)) = user_main {
         cg.cell_vars = crate::effects::captured_mut_vars(body);
         let _ = gen_expr(&mut cg, body)?;
@@ -117,7 +123,14 @@ fn compile_program_with_options(program: &Program, options: CodegenOptions) -> R
             gen_local_stmt(&mut cg, stmt)?;
         }
     }
-    cg.emit("ret i32 0");
+    // A program that used the testing built-ins exits with the TAP epilogue's
+    // status (plan + summary printed by the runtime) [TESTING-EXIT].
+    if cg.testing_used {
+        let code = cg.call("i32", "osp_test_finalize", "", &[]);
+        cg.emit(format!("ret i32 {code}"));
+    } else {
+        cg.emit("ret i32 0");
+    }
     cg.finish_function(LType::I32.as_str(), "main", &[]);
 
     Ok(cg.render())

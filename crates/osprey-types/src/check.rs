@@ -484,7 +484,9 @@ impl Checker {
         return_type: Option<&TypeExpr>,
         env: &mut TypeEnv,
     ) {
-        if self.builtins.contains(name) {
+        // The testing built-ins are shadowable by design [TESTING-SHADOWING]:
+        // a user `fn test/expect/check` replaces the built-in scheme below.
+        if self.builtins.contains(name) && !crate::builtins::SHADOWABLE_BUILTINS.contains(&name) {
             self.errors.push(TypeError::new(format!(
                 "cannot redefine built-in function `{name}`"
             )));
@@ -533,8 +535,24 @@ impl Checker {
                 Stmt::Module { body, .. } => {
                     let mut inner = env.child();
                     let prog = Program {
+                        statements: body
+                            .iter()
+                            .map(|item| item.declaration.as_ref().clone())
+                            .collect(),
+                    };
+                    // Module declarations live in their own lexical scope. Run
+                    // both checker passes there: the old implementation only
+                    // ran pass two, so module functions were never registered
+                    // and their bodies were silently skipped.
+                    self.collect(&prog, &mut inner);
+                    self.check(&prog, &mut inner);
+                }
+                Stmt::Namespace { body, .. } => {
+                    let mut inner = env.child();
+                    let prog = Program {
                         statements: body.clone(),
                     };
+                    self.collect(&prog, &mut inner);
                     self.check(&prog, &mut inner);
                 }
                 // `let` / assignment / bare-expr statements infer the same way at
@@ -867,6 +885,48 @@ mod tests {
              }\n",
         );
         assert!(errs.iter().any(|e| e.message.contains("type mismatch")));
+        // Module functions must run both declaration collection and body
+        // checking; historically only module lets reached inference.
+        let errs = check(
+            "module BadFn {\n\
+               fn broken() -> int = \"not an int\"\n\
+             }\n",
+        );
+        assert!(errs.iter().any(|e| e.message.contains("type mismatch")));
+    }
+
+    #[test]
+    fn testing_builtins_typecheck_and_reject_bad_arity() {
+        // [TESTING-BUILTINS] the three schemes accept the documented shapes.
+        let errs = check(
+            "test(\"adds\", fn() => expect(1 + 1, 2))\n\
+             test(\"labeled\", fn() => check(\"sum\", 4, 2 + 2))\n",
+        );
+        assert!(errs.is_empty(), "unexpected type errors: {errs:?}");
+        let errs = check("expect(1)\n");
+        assert!(errs.iter().any(|e| e.message.contains("arity")));
+        let errs = check("test(42, fn() => expect(1, 1))\n");
+        assert!(
+            !errs.is_empty(),
+            "a non-string test name must not typecheck"
+        );
+    }
+
+    #[test]
+    fn testing_builtins_are_shadowable_but_others_stay_reserved() {
+        // [TESTING-SHADOWING] a user test/expect/check replaces the built-in;
+        // every other built-in still rejects redefinition.
+        let errs = check(
+            "fn check(t: int) -> int = t + 1\n\
+             fn expect(a: int) -> int = a\n\
+             fn test(x: int) -> int = x\n\
+             let r = check(expect(test(1)))\n",
+        );
+        assert!(errs.is_empty(), "unexpected type errors: {errs:?}");
+        let errs = check("fn range(t: int) -> int = t\n");
+        assert!(errs
+            .iter()
+            .any(|e| e.message.contains("cannot redefine built-in")));
     }
 
     #[test]

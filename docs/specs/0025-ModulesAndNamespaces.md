@@ -13,17 +13,29 @@ it belongs to a project; it does **not** decide the names it exports.
 > infer semantics from `.osp` vs `.ospml` once lowering has happened. See
 > [Language Flavors](0023-LanguageFlavors.md).
 
-## Status
+## Status `[MODULES-STATUS]`
 
-`import` and `module` syntax are parsed today, and module bodies are checked in a
-child scope. Cross-file resolution, open namespaces, explicit exports,
-signatures, module-owned state rules, and project assembly are planned. This
-chapter is the normative contract for those features and supersedes the
-fiber-isolated module sketch in [Fibers and Concurrency](0011-LightweightFibersAndConcurrency.md#fiber-isolated-modules-planned).
+The initial module system is implemented end to end in both flavors. The shared
+AST, project loader, namespace graph, import/privacy/signature checks, resolved
+linkage names, state-owner validation, handler-local state materialization,
+type checking, native/LLVM codegen, project CLI, formatter, project-aware
+cross-file diagnostics, and same-document navigation features are active. Mixed
+`.osp`/`.ospml` projects build and run through the same canonical graph.
 
-## Research Basis
+The implementation fails loudly at the remaining semantic boundaries. In
+particular, opaque manifest aliases are rejected rather than flattened to their
+private representation; owner-transparent/client-nominal alias checking needs a
+non-flat interface-aware checker. Separate importer checking, parameterised and
+recursive modules, ranked import suggestions, incremental cross-file LSP
+indexing, module reference-page generation, and source-name restoration in
+native debugger/stack frames remain planned and are unchecked in
+[plan 0014](../plans/0014-modules-and-namespaces.md). This chapter remains the
+normative contract for those pieces and supersedes the fiber-isolated module
+sketch in [Fibers and Concurrency](0011-LightweightFibersAndConcurrency.md#fiber-isolated-modules-planned).
 
-`[MODULES-RESEARCH]` The design combines .NET-style logical named groups with
+## Research Basis `[MODULES-RESEARCH]`
+
+The design combines .NET-style logical named groups with
 ML-style abstraction boundaries and Osprey's algebraic effects. It deliberately
 does **not** adopt the usual .NET `Company.Product.Feature` hierarchy as an
 Osprey norm.
@@ -78,9 +90,9 @@ These are not ornamental citations. They drive the rules below: names are
 logical, interfaces are explicit, abstract state does not leak, and mutable state
 has one owner.
 
-## Comparative Practice
+## Comparative Practice `[MODULES-COMPARATIVE-PRACTICE]`
 
-`[MODULES-COMPARATIVE-PRACTICE]` The survey above yields concrete rules:
+The survey above yields concrete rules:
 
 - **Use namespaces for logical grouping, not architecture.** .NET/F# names are a
   useful precedent for path-independent grouping, but Osprey does not copy the
@@ -104,9 +116,9 @@ has one owner.
   Osprey may use similar labels for published libraries later, but app code
   should usually stay flat.
 
-## Design Goals
+## Design Goals `[MODULES-GOALS]`
 
-`[MODULES-GOALS]` The module system must make the good structure the easy
+The module system must make the good structure the easy
 structure:
 
 - **Path-independent names.** A namespace label comes from source text, not from
@@ -121,22 +133,27 @@ structure:
   the default.
 - **Separate compilation by interface.** A file can be checked against imported
   signatures without loading every implementation detail.
-- **State has a declared owner.** Top-level mutable state is forbidden outside a
-  state module or handler-owned state region.
-- **Pure logic stays pure.** Modules expose state through effect-typed operations
-  or pure query/update functions, not exported cells.
+- **State has a declared owner.** Namespace and plain-module mutable state is
+  forbidden. A state module may declare private cells, but only its algebraic-
+  effect handler arms may read or write them.
+- **Pure logic stays pure.** State crosses a module boundary only through effect
+  operations. Ordinary functions may transform explicit values, but may not
+  inspect or mutate module-owned cells.
 - **Cross-flavor interop.** A `.osp` module and `.ospml` module import each other
   through canonical signatures.
 
-## Canonical Project Model
+## Canonical Project Model `[MODULES-MODEL]`
 
-`[MODULES-MODEL]` The module system is a project graph. Concrete syntax is only
+The module system is a project graph. Concrete syntax is only
 how each flavor contributes nodes and edges to that graph.
 
 The shared model contains:
 
-- `SourceFile { path, flavor, namespace }` - a parsed file with one active
-  flavor and one namespace label, explicit or project-defaulted.
+- `SourceFile { path, flavor, contributions }` - a parsed file with one active
+  flavor and one or more namespace contributions. Unscoped declarations
+  contribute to the project's default namespace.
+- `NamespaceContribution { namespace, items, span }` - one file-scoped,
+  block-scoped, or project-defaulted contribution.
 - `Namespace { label, contributions }` - an open logical grouping of
   declarations from any number of files.
 - `Module { namespace, path, kind, exports, private_items, signature }` - a
@@ -145,8 +162,8 @@ The shared model contains:
 - `ImportEdge { from_file, target, alias, imported_members }` - a dependency on
   a namespace/module/member surface, never on a physical file.
 - `SymbolId { namespace, path }` - the stable identity for exported declarations.
-- `StateOwner { module, cells, access_paths }` - the single owner of private
-  durable state in a `state module`.
+- `StateOwner { module, cells, installers }` - private cell declarations plus
+  the handler installers allowed to instantiate and access them.
 
 Every later phase consumes this model, not surface syntax:
 
@@ -165,31 +182,39 @@ or named arguments. Those are flavor concerns described in
 [Syntax](0003-Syntax.md), [Language Flavors](0023-LanguageFlavors.md), and
 [ML Flavor Syntax](0024-MLFlavorSyntax.md).
 
-## Surface Projection
+## Surface Projection `[MODULES-FLAVOR-PROJECTION]`
 
-`[MODULES-FLAVOR-PROJECTION]` Each flavor projects the same model into its own
+Each flavor projects the same model into its own
 surface. The examples in this chapter are illustrative; the model above is the
 normative layer.
 
 | Concept | Shared model | Default flavor | ML flavor |
 | --- | --- | --- | --- |
-| Namespace contribution | `Namespace { label }` | `namespace billing { ... }` or `namespace billing;` | `namespace billing` followed by layout declarations |
+| Namespace contribution | `Namespace { label }` | `namespace billing { ... }` or `namespace billing;` | file-scoped `namespace billing`, or an indented block |
 | Module boundary | `Module { path, exports, private_items }` | `module Tax { ... }` | `module Tax` + indented body |
-| State module | `Module { kind: state }` | `state module Store { ... }` | `state module Store` + indented body |
-| Import edge | `ImportEdge` | `import billing::Tax::{addTax}` | same path form; calls use ML application |
+| State module | `Module { kind: state }` | `state module Store { ... }` | `state Store` + indented body |
+| Import edge | `ImportEdge` | `import billing::Tax::{addTax}` | `import billing::Tax` + indented member names |
 | Signature | `Signature { items }` | `signature StoreSig { ... }` | `signature StoreSig` + indented items |
-| Export | exported item metadata | `export fn f(...) = ...` | `export f : ...` / `export f x = ...` |
+| Export | exported item metadata | explicit `export fn f(...)` when unascribed | one `export` on a signature or inferred binding when unascribed; an ascribed module uses its signature |
 | Symbol path | `SymbolId { namespace, path }` | `billing::Tax::addTax` | same path; application remains whitespace |
 
-## Namespaces
+Default deliberately keeps braces, parentheses, explicit `fn`, named arguments,
+and visible export markers: a C, C#, Java, Kotlin, or Dart programmer can read
+the boundary without learning layout rules. ML deliberately removes structural
+punctuation that layout and signatures already express. These are surface
+choices only; both lower to the same graph.
 
-`[MODULES-NAMESPACE]` A `namespace` declaration contributes declarations to an
+## Namespaces `[MODULES-NAMESPACE]`
+
+A `namespace` declaration contributes declarations to an
 open logical namespace. Multiple files may contribute to the same namespace.
 Namespace labels are opaque. `billing`, `"billing/api"`, and `"ui/forms"` are
 three unrelated labels; no parent namespace is implied.
 
 ```ebnf
-namespaceDecl ::= "namespace" namespaceName ("{" statement* "}" | ";")
+defaultNamespaceDecl ::= "namespace" namespaceName ("{" statement* "}" | ";")
+mlNamespaceDecl ::= "namespace" namespaceName
+                    (NEWLINE INDENT statement+ DEDENT | NEWLINE)
 namespaceName ::= IDENT | STRING
 symbolPath ::= IDENT ("::" IDENT)*
 ```
@@ -237,7 +262,9 @@ namespace "billing/api";
 
 The slash is part of the label. It does not create a `billing` parent namespace.
 
-`[MODULES-FILE-SCOPED-NAMESPACE]` A file-scoped namespace declaration applies to
+### File-scoped Namespaces `[MODULES-FILE-SCOPED-NAMESPACE]`
+
+A file-scoped namespace declaration applies to
 all declarations after it in the file:
 
 Default flavor:
@@ -267,15 +294,22 @@ emptyInvoice id =
 ```
 
 A file may contain either one file-scoped namespace declaration or any number of
-block-scoped namespace declarations, not both.
+block-scoped namespace declarations, not both. In ML, an indented body is a
+block-scoped contribution; declarations at the namespace line's indentation make
+the declaration file-scoped. Layout makes the distinction without braces or a
+terminator.
 
-`[MODULES-PATH-INDEPENDENCE]` The physical file path is never part of the
+### Path Independence `[MODULES-PATH-INDEPENDENCE]`
+
+The physical file path is never part of the
 namespace identity. A file `src/weird/place/x.osp` may declare `namespace billing;`
 or `namespace "billing/api";`. The compiler may warn when path and namespace
 drift from project convention, but it must not change symbol identity or import
 resolution.
 
-`[MODULES-NAMESPACE-STYLE]` Namespace style is flexible but flat-first:
+### Namespace Style `[MODULES-NAMESPACE-STYLE]`
+
+Namespace style is flexible but flat-first:
 
 - Prefer one short lowercase label for app namespaces: `app`, `billing`, `ui`,
   `worker`.
@@ -288,20 +322,28 @@ resolution.
 - Never mirror folders by default. If a team chooses folder-like slash labels,
   the label remains opaque and path-independent.
 
-## Modules
+## Modules `[MODULES-MODULE]`
 
-`[MODULES-MODULE]` A `module` is a closed implementation boundary inside a
-namespace. It may contain values, functions, types, effects, nested modules, and
-private mutable state. It exports only declarations marked `export` or listed by
-its signature.
+A `module` is a closed, stateless implementation boundary inside a namespace.
+It may contain immutable values, functions, types, effects, and nested plain
+modules. A direct `mut` declaration is forbidden; ordinary local `mut` bindings
+inside its functions and blocks retain their normal lexical semantics. An
+unascribed module exports only declarations marked `export`; an ascribed module's
+signature is its complete public surface.
 
 ```ebnf
-moduleDecl ::= plainModuleDecl | stateModuleDecl
-plainModuleDecl ::= "module" symbolPath signatureAscription? "{" moduleItem* "}"
-stateModuleDecl ::= "state" "module" symbolPath signatureAscription? "{" moduleItem* "}"
-signatureAscription ::= ":" symbolPath
-moduleItem ::= exportDecl | statement
-exportDecl ::= "export" statement
+defaultModuleDecl ::= "module" symbolPath defaultSignatureAscription?
+                      "{" defaultModuleItem* "}"
+defaultStateDecl ::= "state" "module" symbolPath defaultSignatureAscription?
+                     "{" defaultModuleItem* "}"
+defaultModuleItem ::= "export"? statement
+mlModuleDecl ::= "module" symbolPath mlSignatureAscription?
+                 NEWLINE INDENT mlModuleItem+ DEDENT
+mlStateDecl ::= "state" symbolPath mlSignatureAscription?
+                NEWLINE INDENT mlModuleItem+ DEDENT
+mlModuleItem ::= "export"? statement
+defaultSignatureAscription ::= ":" symbolPath ("+" "extra")?
+mlSignatureAscription ::= ":" symbolPath
 ```
 
 Default flavor:
@@ -312,7 +354,7 @@ namespace billing;
 module Tax {
     let defaultRate = 10
 
-    export fn addTax(cents: int) -> int =
+    export fn addTax(cents) =
         cents + cents * defaultRate / 100
 }
 ```
@@ -325,28 +367,34 @@ namespace billing
 module Tax
     defaultRate = 10
 
-    export addTax : int -> int
     export addTax cents =
         cents + cents * defaultRate / 100
 ```
 
-`Tax.defaultRate` is private. `Tax.addTax` is exported.
+`Tax::defaultRate` is private. `Tax::addTax` is exported. The `::` separator is
+reserved for namespace/module paths; `.` remains value field/member access.
 
-`[MODULES-NAMESPACE-VS-MODULE]` Namespaces are open and stateless. Modules are
-closed and may own private implementation details. A namespace cannot be used as
-a runtime value; a module can be referenced as a named declaration space and,
-when it is a `state module`, has a runtime state owner.
+### Namespaces Versus Modules `[MODULES-NAMESPACE-VS-MODULE]`
 
-## Imports
+Namespaces are open and stateless. Plain modules are closed and stateless. A
+namespace cannot be used as a runtime value; a module is a named declaration
+space. Only a state module declares an owner template for durable state, and that
+state exists only inside an explicitly installed handler region.
 
-`[MODULES-IMPORT]` Imports name namespaces or modules, not files.
+## Imports `[MODULES-IMPORT]`
+
+Imports name namespaces or modules, not files. Default uses a compact braced
+member list; ML uses an indented list with no braces or commas.
 
 ```ebnf
-importStmt ::= "import" importTarget importTail?
+defaultImportStmt ::= "import" importTarget defaultImportTail?
+defaultImportTail ::= "as" IDENT
+                    | "::" "{" importMember ("," importMember)* "}"
+                    | "::" "*"
+mlImportStmt ::= "import" importTarget
+                 ("as" IDENT | "::" "*"
+                 | NEWLINE INDENT importMember (NEWLINE importMember)* DEDENT)?
 importTarget ::= namespaceName ("::" symbolPath)?
-importTail ::= "as" IDENT
-             | "::" "{" importMember ("," importMember)* "}"
-             | "::" "*"
 importMember ::= IDENT ("as" IDENT)?
 ```
 
@@ -366,7 +414,8 @@ ML flavor:
 
 ```osprey-ml
 import billing::Tax
-import billing::Tax::{addTax}
+import billing::Tax
+    addTax
 import billing::Tax as Tax
 import "billing/api" as billingApi
 
@@ -374,7 +423,14 @@ gross = addTax 100
 other = Tax::addTax 100
 ```
 
-Resolution rules:
+### Name Resolution `[MODULES-RESOLUTION]`
+
+Resolution is lexical and deterministic: local bindings and declarations win,
+then the current module and its parents, imported aliases, imported members,
+explicit namespace-qualified paths, and finally built-ins. An import never
+silently replaces a nearer declaration.
+
+Additional import rules:
 
 - Identifier namespace labels can be used directly with `::`:
   `billing::Tax::addTax(100)`.
@@ -382,8 +438,8 @@ Resolution rules:
   `import "billing/api" as billingApi`, then `billingApi::Tax::addTax(100)`.
 - `import billing::Tax` brings the exported module `Tax` into the local scope as
   `Tax`.
-- `import billing::Tax::{x, y}` brings only listed exported members into local
-  scope.
+- Default `import billing::Tax::{x, y}` and the equivalent ML indented member
+  list bring only the listed exports into local scope.
 - `import billing::Tax as Alias` brings `Alias` into local scope.
 - `import billing::Tax::*` is allowed only in examples, scripts, and tests unless the
   project enables `allow_wildcard_imports = true`; it is forbidden for state
@@ -394,11 +450,13 @@ Resolution rules:
 Imports do not execute code, allocate module state, or load files by relative
 path.
 
-## Exports And Visibility
+## Exports And Visibility `[MODULES-EXPORTS]`
 
-`[MODULES-EXPORTS]` Declarations are private by default inside modules and
+Declarations are private by default inside modules and
 public by default inside namespaces. A module controls its public surface through
-`export` or a signature.
+`export` or a signature. In an ascribed module the signature already names every
+export; ML therefore rejects redundant `export` markers there. Default may
+repeat them as an explicit readability aid, but they cannot widen the signature.
 
 Default flavor:
 
@@ -422,11 +480,13 @@ module Parser
         Expr | Stmt
 
     export parse : string -> Result<Ast, Error>
-    export parse source =
+    parse source =
         ...
 ```
 
-`[MODULES-OPAQUE-TYPES]` A module may export an opaque type, hiding its
+### Opaque Types `[MODULES-OPAQUE-TYPES]`
+
+A module may export an opaque type, hiding its
 representation:
 
 Default flavor:
@@ -447,11 +507,11 @@ module UserIds
     export opaque type UserId = int
 
     export parseUserId : string -> Result<UserId, Error>
-    export parseUserId raw =
+    parseUserId raw =
         ...
 
     export showUserId : UserId -> string
-    export showUserId id =
+    showUserId id =
         ...
 ```
 
@@ -459,14 +519,33 @@ Outside `UserIds`, `UserId` is distinct from `int`. Inside `UserIds`, the
 manifest representation is available. This is the Osprey form of ML abstract
 types and Leroy-style manifest types.
 
-## Signatures
+## Signatures `[MODULES-SIGNATURE]`
 
-`[MODULES-SIGNATURE]` A `signature` is an explicit interface for a module. It
+A `signature` is an explicit interface for a module. It
 lists the names, types, effects, and opacity visible to clients.
 
 ```ebnf
-signatureDecl ::= "signature" IDENT "{" signatureItem* "}"
-signatureItem ::= typeSpec | effectSpec | fnSpec | moduleSpec
+defaultSignatureDecl ::= "signature" IDENT "{" signatureItem* "}"
+mlSignatureDecl ::= "signature" IDENT NEWLINE
+                    INDENT signatureItem+ DEDENT
+signatureItem ::= abstractTypeSpec | manifestTypeSpec | valueSpec
+                | effectSpec | moduleSpec
+abstractTypeSpec ::= "opaque" "type" IDENT       /* Default */
+                   | "type" IDENT                 /* ML */
+manifestTypeSpec ::= "type" IDENT "=" typeExpr
+valueSpec ::= "fn" IDENT typeParams? "(" signatureParams? ")"
+              ("->" typeExpr)? effectRow?         /* Default */
+            | IDENT ":" mlType effectRow?         /* ML */
+effectSpec ::= "effect" IDENT effectSignatureBody
+moduleSpec ::= "module" IDENT ":" symbolPath
+signatureParams ::= signatureParam ("," signatureParam)*
+signatureParam ::= IDENT ":" typeExpr
+effectSignatureBody ::= "{" effectOperationSpec* "}"
+                      | NEWLINE INDENT effectOperationSpec+ DEDENT
+effectOperationSpec ::= IDENT ":" typeExpr         /* Default fn type */
+                      | IDENT ":" mlType "=>" mlType
+defaultSignatureAscription ::= ":" symbolPath ("+" "extra")?
+mlSignatureAscription ::= ":" symbolPath
 ```
 
 Default flavor:
@@ -482,7 +561,7 @@ signature StoreSig {
 }
 
 module MemoryStore : StoreSig {
-    export opaque type Store = { values: [string] }
+    export type Store = { values: [string] }
     export effect StoreFx {
         load : fn() -> Store
         save : fn(Store) -> Unit
@@ -495,44 +574,54 @@ ML flavor:
 
 ```osprey-ml
 signature StoreSig
-    opaque type Store
+    type Store
     effect StoreFx
         load : Unit => Store
         save : Store => Unit
     empty : Unit -> Store
 
 module MemoryStore : StoreSig
-    export opaque type Store =
+    type Store =
         Store
             values : [string]
 
-    export effect StoreFx
+    effect StoreFx
         load : Unit => Store
         save : Store => Unit
 
-    export empty : Unit -> Store
-    export empty () =
+    empty () =
         Store
             values = []
 ```
 
+In an ML signature, bare `type Store` is abstract; repeating `opaque` would add
+no information. The implementation supplies its representation, but clients see
+only the abstract identity. The ascription already supplies the export list, so
+the ML implementation repeats neither `export` nor signature punctuation.
+
 Signature conformance is checked structurally:
 
-- Every signature item must have a matching exported declaration.
+- Every signature item must have a matching implementation declaration; the
+  ascription exports it.
 - Types must match after applying opacity rules.
 - Effect operations must match names, parameter types, return types, and effect
   rows.
 - Extra private declarations are allowed.
-- Extra exported declarations are rejected unless the ascription is marked
-  `: StoreSig + extra`.
+- Other implementation declarations stay private. In Default,
+  `: StoreSig + extra` opts into additionally exporting declarations explicitly
+  marked `export`; without `+ extra`, such extra exports are rejected. ML keeps
+  ascription exact: extend the named signature or use an unascribed module
+  instead of adding a redundant `+ extra`/`export` side channel.
 
-`[MODULES-SEPARATE-CHECKING]` A compiler may type-check an importing file using
+### Separate Checking `[MODULES-SEPARATE-CHECKING]`
+
+A compiler may type-check an importing file using
 only the imported module's signature. The implementation body is needed only
 when compiling that module or linking the final project.
 
-## Parameterised Modules
+## Parameterised Modules `[MODULES-FUNCTOR]`
 
-`[MODULES-FUNCTOR]` A parameterised module is a module-level function from
+A parameterised module is a module-level function from
 signatures to modules. This is planned after basic signatures.
 
 ```osprey
@@ -545,30 +634,47 @@ module MakeRepo(Db: DatabaseSig, Clock: ClockSig) : RepoSig {
 Parameterised modules are the dependency-injection mechanism for reusable
 libraries. They are preferred over ambient globals.
 
-## State Ownership
+## State Ownership `[MODULES-STATE]`
 
-`[MODULES-STATE]` Mutable state may appear only in three places:
+Local mutation is unchanged: `mut` inside an ordinary function or block is a
+lexical local and may be read or written by that scope. Durable module-owned
+state is different. It may be declared only in a state module and may be
+observed or changed only by that module's owning algebraic-effect handler arms
+([EFFECTS-HANDLER-STATE](0017-AlgebraicEffects.md#handler-owned-state)).
 
-- inside a function or block as an ordinary local `mut`;
-- inside an algebraic-effect handler's owned state region
-  ([EFFECTS-HANDLER-STATE](0017-AlgebraicEffects.md#handler-owned-state));
-- inside a `state module`.
+### Forbidden Top-level State `[MODULES-STATE-TOPLEVEL]`
 
-Namespace-level `mut` is a compile-time error.
+A direct `mut` in a namespace or plain module is a compile-time error:
 
 ```osprey
 namespace badState;
 
 mut count = 0
-// error [MODULES-STATE-TOPLEVEL]:
-// mutable state must live in a function, handler, or state module
+// error: mutable state must be local or owned by a state-module handler
 ```
 
-`[MODULES-STATE-MODULE]` A `state module` is the declared owner of durable
-module state. All state cells are private, and no `mut` cell may be exported.
+### State Modules `[MODULES-STATE-MODULE]`
+
+A state module declares private cell templates, exported effects, and one or
+more handler installer functions. A cell declaration establishes its initial
+value; every subsequent read or write of that cell must occur lexically inside
+an operation arm of a `handle Effect ... in body` expression defined by the same
+state module. The installer function itself may install that handler and invoke
+the supplied body, but its ordinary code before and after the arms cannot touch
+the cells.
+
+Default flavor keeps the complete boundary explicit:
 
 ```osprey
-state module Counter {
+signature CounterSig {
+    effect CounterFx {
+        next : fn() -> int
+        read : fn() -> int
+    }
+    fn run(action: fn() -> Unit) -> Unit
+}
+
+state module Counter : CounterSig {
     mut count = 0
 
     export effect CounterFx {
@@ -576,55 +682,89 @@ state module Counter {
         read : fn() -> int
     }
 
-    export let counterHandler = handler CounterFx {
-        next => {
-            count = count + 1
-            count
-        }
-        read => count
-    }
+    export fn run(action: fn() -> Unit) -> Unit =
+        handle CounterFx
+            next => {
+                count = count + 1
+                count
+            }
+            read => count
+        in action()
 }
 ```
 
-Clients perform the effect; the module owns the cell:
+The ML projection removes the redundant module keyword, braces, and exports
+already supplied by the signature:
+
+```osprey-ml
+signature CounterSig
+    effect CounterFx
+        next : Unit => int
+        read : Unit => int
+    run : (Unit -> Unit) -> Unit
+
+state Counter : CounterSig
+    mut count = 0
+
+    effect CounterFx
+        next : Unit => int
+        read : Unit => int
+
+    run action =
+        handle CounterFx
+            next () =>
+                count := count + 1
+                count
+            read () => count
+        in action ()
+```
+
+Clients import declarations, then explicitly invoke the installer around code
+that performs the effect:
 
 ```osprey
-import Counter::{CounterFx, counterHandler}
+import app::Counter::{CounterFx, run}
 
-fn allocate() -> int !CounterFx =
-    perform CounterFx.next()
+fn allocate() -> int !CounterFx = perform CounterFx.next()
 
-handle counterHandler in {
+run(action: fn() => {
     print(toString(allocate()))
-}
+})
 ```
+
+Each call to `run` instantiates a fresh `count` cell for that handler region.
+Merely importing `Counter`, `CounterFx`, or `run` allocates nothing. First-class
+handler values and reusable `install` syntax are a later ergonomic layer (plan
+0016); the initial module implementation uses the existing fused
+`handle Effect ... in body` form.
 
 Rules:
 
-- `state module` cells are private by construction.
-- Exporting a `mut`, a pointer to a `mut`, or a closure that directly exposes
-  assignment is a compile-time error.
-- A `state module` must export at least one handler, effect, or function that is
-  the declared access path.
-- A namespace may contain at most one unannotated `state module`. Additional
-  state owners require `@state_boundary("reason")` and are reported by LSP and
-  docs tooling as architecture-visible state boundaries.
-- Derived state should be expressed as pure functions over owner state. Cached
-  derived state is forbidden in Phase 1; a later `cache mut` feature must name
-  the owner state it derives from, so invalidation can be checked.
+- State-module cells are private by construction. `export mut` is always an
+  error, as is exporting a pointer, reference, or closure that exposes a cell.
+- An ordinary function, exported or private, cannot read or write a module cell.
+  Pure helpers remain legal when all state arrives through explicit parameters.
+- A state module must export its effect surface and at least one installer that
+  establishes the owning handler region.
+- A namespace may contain at most one state module in the initial module
+  system. There is no annotation, ordinary-function, or ambient-state escape
+  hatch; additional owners are a compile-time error.
+- Cached derived cells are forbidden in Phase 1. Derived values are computed in
+  handler arms or by pure helpers over explicit values.
 
-`[MODULES-STATE-SOURCE-OF-TRUTH]` The compiler and tooling treat each state
-module as a **single source of truth** for the state it owns. Cross-module writes
-are impossible. Cross-module reads happen through exported pure queries or
-effect operations. This is the language-level answer to scattered app state.
+### Single Source of Truth `[MODULES-STATE-SOURCE-OF-TRUTH]`
 
-## Effects And Capabilities
+The compiler and tooling treat each state module as the single source of truth
+for its cells. Cross-module reads and writes are both mediated by exported effect
+operations; direct cell references cannot cross the boundary.
 
-`[MODULES-EFFECTS]` Modules do not hide effects. Exported functions and handlers
-carry ordinary Osprey effect rows. Importing a module never grants ambient
-permission; a caller must still handle or forward every effect.
+## Effects And Capabilities `[MODULES-EFFECTS]`
 
-State modules are encouraged to expose capabilities as algebraic effects:
+Modules do not hide effects. Exported functions carry ordinary Osprey effect
+rows. Importing a module never grants ambient permission; a caller must still
+handle or forward every effect.
+
+State modules expose their state capability as algebraic effects:
 
 ```osprey
 signature LedgerSig {
@@ -638,37 +778,52 @@ signature LedgerSig {
 This keeps application logic pure except for explicit `!Ledger`, while the
 module decides whether state is in memory, SQLite, HTTP, or a test fake.
 
-## Initialisation
+## Initialisation `[MODULES-INIT]`
 
-`[MODULES-INIT]` Imports have no runtime effect. Module initialization is explicit.
+Imports have no runtime effect. Module initialization is explicit.
 
 - Pure `let` declarations may be evaluated at compile time or lowered as
   constants.
-- Effectful setup must live in an exported `init` function or handler factory.
-- `state module` initial state is allocated only when its handler or instance is
-  explicitly constructed.
+- Effectful setup for a plain module must live in an exported function.
+- A state module's cell initializers run only when an installer creates its
+  handler region; each installation receives fresh cells.
 - Cyclic initialization between state modules is a compile-time error.
 
 ```osprey
 state module DbStore {
     mut conn = None
 
-    export fn init(path: string) -> Unit !Database =
-        conn = Some(perform Database.open(path))
+    export effect DbStoreFx {
+        connect : fn(string) -> Unit
+    }
+
+    export fn run(path: string, action: fn() -> Unit) -> Unit =
+        handle DbStoreFx
+            connect requestedPath => {
+                conn = Some(perform Database.open(requestedPath))
+            }
+        in {
+            perform DbStoreFx.connect(path)
+            action()
+        }
 }
 ```
 
-## Project Assembly
+Here the exported installer never accesses `conn` directly; only its `connect`
+handler arm does.
 
-`[MODULES-PROJECT]` A project compile scans configured source roots, parses every
+## Project Assembly `[MODULES-PROJECT]`
+
+A project compile scans configured source roots, parses every
 `.osp` and `.ospml` file, resolves each file's flavor, and builds one project
 namespace graph.
 
 ```toml
 [project]
 name = "billing"
-source_roots = ["src", "tests"]
+source_roots = ["src"]
 default_namespace = "billing"
+entry = "src/main.osp"
 
 [modules]
 allow_wildcard_imports = false
@@ -683,14 +838,18 @@ Single-file mode remains valid for scripts and examples. Project mode adds:
 - duplicate-name and ambiguity diagnostics;
 - one entry point.
 
-`[MODULES-ENTRYPOINT]` In project mode, executable top-level statements are
+### Entry Point `[MODULES-ENTRYPOINT]`
+
+In project mode, executable top-level statements are
 allowed only in the designated entry file or in `fn main()`. Library files must
 contain declarations only. This avoids hidden initialization order and makes
-multi-file apps deterministic.
+multi-file apps deterministic. `entry` is relative to the manifest and must name
+a file under one source root. Test source roots belong to a separate test
+configuration; a normal build does not silently compile them.
 
-## Cycles
+## Cycles `[MODULES-CYCLES]`
 
-`[MODULES-CYCLES]` Namespace declarations may be mutually visible after merging,
+Namespace declarations may be mutually visible after merging,
 but module implementation cycles are restricted.
 
 - Pure type/function cycles are allowed only when ordinary Osprey recursion rules
@@ -703,9 +862,9 @@ but module implementation cycles are restricted.
 Recursive modules are a later feature and must require explicit signatures, as in
 the ML literature.
 
-## Name Mangling And ABI
+## Name Mangling And ABI `[MODULES-ABI]`
 
-`[MODULES-ABI]` Canonical symbol names include the namespace label and `::` path:
+Canonical symbol names include the namespace label and `::` path:
 
 ```text
 billing::Tax::addTax
@@ -718,21 +877,21 @@ stack traces use source-level names.
 Cross-flavor exports use the same ABI rules as
 [Cross-Flavor Interop](0023-LanguageFlavors.md#cross-flavor-interop).
 
-## Diagnostics
+## Diagnostics `[MODULES-DIAG]`
 
-`[MODULES-DIAG]` Module diagnostics must be architecture-facing:
+Module diagnostics must be architecture-facing:
 
 - unknown import: show candidate namespaces from the project graph;
 - ambiguous import: show all providers and suggest aliases;
 - exported private dependency: show the hidden type/value in the public signature;
-- state scatter: show every state module in the namespace and require
-  `@state_boundary`;
+- state scatter: show every state module in the namespace and require the state
+  to be consolidated behind one algebraic-effect boundary;
 - top-level mutable state: suggest `state module` or handler-owned state;
 - path drift: warn, never change semantics.
 
-## Examples
+## Examples `[MODULES-EXAMPLES]`
 
-### Multi-file, Path-Independent Namespace
+### Multi-file, Path-Independent Namespace `[MODULES-EXAMPLE-MULTIFILE]`
 
 `src/a.osp`:
 
@@ -769,7 +928,7 @@ import "app/http" as httpApp
 let root = httpApp::route()
 ```
 
-### Centralised State
+### Centralised State `[MODULES-EXAMPLE-STATE]`
 
 ```osprey
 namespace app;
@@ -782,17 +941,20 @@ state module SessionStore {
         count : fn() -> int
     }
 
-    export let liveSessions = handler Sessions {
-        add id => { sessions = listAppend(sessions, id) }
-        count => listLength(sessions)
-    }
+    export fn run(action: fn() -> Unit) -> Unit =
+        handle Sessions
+            add id => { sessions = listAppend(sessions, id) }
+            count => listLength(sessions)
+        in action()
 }
 
 fn login(id: string) -> Unit !Sessions =
     perform Sessions.add(id)
 ```
 
-Application code cannot mutate `sessions`. It can only perform `Sessions`.
+Application code invokes `SessionStore::run` around a body that performs
+`Sessions`. It cannot access `sessions`, and importing the module creates no
+session store.
 
 ## References
 
