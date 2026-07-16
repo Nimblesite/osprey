@@ -2,7 +2,7 @@
 layout: page
 title: "Testing Framework"
 description: "Osprey Language Specification: Testing Framework"
-date: 2026-07-15
+date: 2026-07-16
 tags: ["specification", "reference", "documentation"]
 author: "Christian Findlay"
 permalink: "/spec/0027-testingframework/"
@@ -248,7 +248,7 @@ gate — any Osprey program may call the testing built-ins.
 
 ## CLI
 
-### `osprey test [path] [--filter <name>] [--quiet]` — `[TESTING-CLI-RUN]`
+### `osprey test [path] [--filter <name>] [--quiet] [--coverage] [--coverage-json <path>]` — `[TESTING-CLI-RUN]`
 
 Runs test files and aggregates results. `path` (default `.`) is either a
 single file (run as-is, regardless of naming) or a directory searched
@@ -279,6 +279,46 @@ test that is a function or lambda body, the enclosing declaration's line.
 Dynamically named tests (non-literal first argument) still run and report via
 TAP; they are simply not listed statically.
 
+## Line coverage
+
+**`[TESTING-COVERAGE-CLI]`** `osprey test --coverage` builds each suite with
+line-coverage instrumentation, runs it, and prints one
+`# coverage: P% (covered/total lines) <file>` row per suite (suppressed by
+`--quiet`) plus a final `# coverage total: P% (covered/total lines)` row.
+Coverage never changes suite outcomes or the exit code.
+`--coverage-json <path>` (implies `--coverage`) also writes the merged
+machine-readable report **`[TESTING-COVERAGE-JSON]`**:
+`{"files":{"<suite path>":{"lines":{"<line>":hits}}}}` — 1-based source
+lines, every coverable line present (hit count `0` when unexecuted).
+
+**`[TESTING-COVERAGE-CODEGEN]`** With coverage on
+(`osprey_codegen::compile_program_coverage`,
+`crates/osprey-codegen/src/coverage.rs`), the coverable-line universe is
+seeded from the AST up front — function definition lines and positioned
+statements, recursing through blocks, lambdas, match/handler arms, and
+module/namespace bodies — so a never-executed (even never-lowered) line
+still counts against the total. Lowering bumps a per-line `i64` counter
+global inline where control flow reaches it: at each function body entry
+(including inline-specialised generic bodies at their call sites) and before
+each positioned statement. A generated `__osp_cov_init`, called at the top
+of `main` before user code, registers every counter with the runtime.
+Coverage builds keep release optimization and emit no DWARF.
+
+**`[TESTING-COVERAGE-RUNTIME]`** `compiler/runtime/coverage_runtime.c`
+(dependency-free C11, in every runtime archive) exposes
+`osp_cov_register_line(line, &counter)`. Inert unless
+**`[TESTING-COVERAGE-ENV]`** `OSPREY_COVERAGE=<path>` names the dump file at
+process start; then an exit-time hook writes
+**`[TESTING-COVERAGE-DUMP]`**: a `# osprey-coverage v1` header followed by
+one `<line> <hits>` row per registered line, ascending, zero-hit rows
+included — a reader needs no other line universe.
+
+Lines are those of the compiled unit: a test suite compiles standalone, so
+they are the suite file's own 1-based lines. Coverage measures the suite
+file it instruments — the framework's suites embed the logic they exercise
+(the `[TESTING-CLI-RUN]` isolation model), so the rate is the honest "did my
+tests execute my code" number.
+
 ## VS Code Test Explorer
 
 **`[TESTING-VSCODE]`** The extension ships a native Testing-API integration
@@ -300,6 +340,13 @@ registered from `activate()` and packaged in the VSIX:
   matched against `--list-tests` is the text before the directive. Cases absent
   from the output are also marked skipped; a non-TAP failure (e.g. compile
   error) marks the file item errored with the compiler's stderr.
+- **Coverage** (**`[TESTING-COVERAGE-VSCODE]`**): a second run profile
+  (`TestRunProfileKind.Coverage`) executes
+  `osprey test <file> --coverage-json <tmp> --quiet` per requested file
+  (`--filter <name>` for a single case), maps the same TAP stream, then
+  parses the `[TESTING-COVERAGE-JSON]` report into `FileCoverage` +
+  per-line `StatementCoverage` — VS Code shows the percentage in the Test
+  Coverage view and hit counts in the editor gutter.
 
 ## Runtime
 

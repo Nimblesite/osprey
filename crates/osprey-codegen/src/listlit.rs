@@ -104,10 +104,7 @@ pub(crate) fn gen_list(cg: &mut Codegen, elements: &[Expr]) -> Result<Value> {
         "getelementptr {LIST_STRUCT}, {LIST_STRUCT}* {obj}, i32 0, i32 1"
     ));
     cg.emit(format!("store i8* {data}, i8** {dp}"));
-    let v = Value::handle(
-        obj,
-        lit_owner(&Value::new("", elem).with_owner(elem_owner)),
-    );
+    let v = Value::handle(obj, lit_owner(&Value::new("", elem).with_owner(elem_owner)));
     crate::arc::own(cg, &v);
     Ok(v)
 }
