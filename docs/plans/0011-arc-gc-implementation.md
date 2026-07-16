@@ -4,14 +4,19 @@
 `--memory=gc` links a mark & sweep archive, the differential harness passes
 byte-identically under it (`make _conformance-gc`), and the benchmark suite
 carries an `Osprey (GC)` column (binarytrees 2.5 GB → ~11 MB). Phase 2
-(the Perceus ARC default) is **in progress — milestones M0–M2 landed and
-green**: `--memory=arc` links a real counting backend (16-byte header,
-probe-first registry retain/release, kind/mask drop walk, leak stats), the
-full differential harness passes byte-identically under it
-(`make _conformance-arc`, PASS=148 FAIL=0), and codegen passes per-site
-layout words through `@osp_alloc_tagged`. Remaining: M3 dup/drop insertion,
-M4 containers, M5 fiber/effect boundaries, M6 Perceus precision. Phases 3–4
-(Cheney oracle, `--static-memory`) are **not started**. See
+(the Perceus ARC default) is **in progress — M0–M3 landed and green, plus
+M6's last-use drops and the soundness cores of M4/M5**: `--memory=arc`
+links a real counting backend (16-byte header, probe-first registry
+retain/release, kind/mask drop walk, leak stats); codegen threads a full
+ownership ledger (`crates/osprey-codegen/src/arc.rs` — producers own +1,
+dup-on-store, slot-based drops at region end, returns transfer +1, drop at
+last use); the harness passes byte-identically under **all three backends**
+(PASS=148 FAIL=0 each), and `OSPREY_ARC_DEBUG=1` reports **zero live
+language values** for container-free programs. Remaining in phase 2:
+container *node-level* RC (M4b — containers are currently leak-safe:
+headers reclaim, interior trie/HAMT nodes and stored elements do not),
+the M5 drain/atomic tail, and M6 borrow inference / drop-guided reuse.
+Phases 3–4 (Cheney oracle, `--static-memory`) are **not started**. See
 [§What is left](#what-is-left-detailed).
 
 Realises the [MEM-BACKENDS] contract of
@@ -282,46 +287,85 @@ harness green under BOTH `default` and `arc`**:
       (mask marks words 1, 2, 5). Boxed-generic `i64` slots stay unmarked —
       leak-safe by design. Raw buffers stay plain `osp_alloc` (kind RAW).
       Harness green under both `default` and `arc`.
-- [ ] **M3 — sound naive RC** (conformance milestone): dup-on-store /
-      drop-at-region-end per Amendment 3, ownership ledger in `Codegen`
-      (saved/restored across `enter_nested_fn`/`exit_nested_fn`), liveness
-      via `freevars` over the strict left-to-right continuation. Callee
-      borrows arguments; every producer owns; returns are +1. Mut-cell
-      rebind releases the old value (`gen_cell_store`); match arms drop
-      arm-local owners before their join `br`; `finish_phi`'s discarded-arm
-      (Unit fallback) values are dropped explicitly. C-runtime `Ret::Str`
-      returns are +1 by the M1 shim. Leak gate: harness examples that use
-      no containers/fibers/FFI report **zero live language values at exit**
-      under `OSPREY_ARC_DEBUG=1`.
-- [ ] **M4 — containers.** Element-kind flags at container creation
-      (codegen knows the HM element type; `default`/`gc` ignore the flag),
-      node refcounts inside the C ops themselves (`clone_node`'s 31 shared
-      children = 31 dups; path-copy sharing, `merge_leaves` node reuse,
-      alias-returning ops like `concat`/`remove`/`merge` retain-on-return),
-      leaf-element release keyed on the flag, immortal singleton empty
-      list/map, out-of-line internal arrays (`children`, `coll_*`, string-list
-      `items`) freed with their owning node. Map string *keys* are
-      runtime-dereferenced — release them like values. This is where
-      "zero leaked language values" extends to container programs.
-- [ ] **M5 — fiber/effect/HTTP boundaries.** Spawn-capture cells, channel
-      buffers, coro mailboxes (`args[16]`/`resume_value`/`result`), handler
-      env cells + snapshots, `test_runtime.c`'s `skip_reason`, and the
-      handler-returned `HttpResponse` (runtime releases after send) each get
-      a dup at the store and a release at their structural end; the
-      **atomic refcount branch** (`rc<0`) flips at the *syntactic* boundary
+- [x] **M3 — sound naive RC** ✅ (conformance milestone): dup-on-store /
+      drop-at-region-end per Amendment 3, ownership ledger in
+      `crates/osprey-codegen/src/arc.rs` (swapped wholesale across
+      `enter_nested_fn`/`exit_nested_fn`). Callee borrows arguments; every
+      producer owns (+1); returns transfer +1 (function/closure/handler-arm
+      epilogues retain-return-then-release-owners). Mut-cell rebind releases
+      the old value (`gen_cell_store`). Match arms / guard diamonds / loops
+      need **no special drop placement**: every owner spills to a
+      null-initialized entry-block slot (`%arc.sN`), region-end drops load
+      the slot, release, and re-null it — untaken paths leave slots null and
+      `osp_release(null)`/probe-miss is a no-op, so drops are dominance-free
+      by construction (this replaces the planned before-join-`br` and
+      `finish_phi` special cases). Per-statement and per-loop-iteration
+      regions (`gen_local_stmt`, `iter.rs` loop bodies); fold accumulators
+      retain-new-before-release-old keyed on static type. C-runtime
+      `Ret::Str` returns owned (+1 via the M1 shim). Leak gate **met**:
+      container-free harness examples report **zero live language values at
+      exit** under `OSPREY_ARC_DEBUG=1`.
+- [x] **M4a — container soundness under codegen ownership.** ✅ The pieces
+      without which M3's owned handles corrupt under `--memory=arc`:
+      alias-returning ops **retain-on-return** (`osprey_list_concat`/`_drop`,
+      `osprey_map_remove`/`_merge` — every return path now carries +1);
+      the empty-list singleton is **immortal** (`osp_mem_immortal`, rc<0,
+      declared backend-neutrally in `memory_hooks.h` with no-ops in
+      `memory_runtime.c`/`memory_gc.c`); elements/keys are **dup'd at
+      insertion** on the codegen side, keyed on the static HM type
+      (`stored_boxed_arg` — append/prepend, `mapSet`, map literals, built
+      lists' mapped elements); `osprey_map_merge` releases its unaliased
+      intermediate headers. Containers are **leak-safe, not garbage-free**:
+      dead headers reclaim; interior trie/HAMT nodes and stored elements
+      intentionally leak (a container never releases, so sharing can never
+      dangle). Flat list-literal headers (`LIST_HDR_PTR`/`SCALAR`) drop
+      precisely, elements included.
+- [ ] **M4b — container node RC** (garbage-free containers): element-kind
+      flags at container creation, node refcounts inside the C ops
+      (`clone_node`'s 31 shared children = 31 dups; path-copy sharing,
+      `merge_leaves` node reuse), leaf-element release keyed on the flag,
+      immortal/out-of-line internal arrays (`children`, `coll_*`,
+      string-list `items`) freed with their owning node, map string *keys*
+      released like values. This is where "zero leaked language values"
+      extends to container programs.
+- [x] **M5a — boundary dups + the spawn-cell release.** ✅ Every
+      pointer-erasing boundary dups before `box_to_i64` (single choke point
+      `box_codegen_value` for effects; `thunk_body`/`gen_send` for fibers;
+      fold-accumulator slots), so the receiving side always holds +1.
+      Spawn-capture cells: the spawn transfers its cell (+1) to the runtime
+      and `run_fiber_fn` releases it when the thunk returns (backend-neutral
+      via `memory_hooks.h`). Handler env cells release at handler close
+      (`gen_handler`) / after `coro_free` (resuming handlers). Effect
+      `perform` results and resuming-handle results are owned, balanced by
+      arm/body escape-retains.
+- [ ] **M5b — boundary drains + the atomic tier.** Channel buffers drained
+      at channel end, coro mailboxes (`args[16]`/`resume_value`/`result`)
+      drained in `__osprey_coro_abort`, `test_runtime.c`'s `skip_reason`,
+      the handler-returned `HttpResponse` (runtime releases after send),
+      `recv`'s untracked unboxed result. Until then these edges are
+      leak-safe (values arrive +1 and are never released). The **atomic
+      refcount branch** (`rc<0`) flips at the *syntactic* boundary
       (spawn/send/snapshot) — never off runtime threading — so deterministic
       and threaded fiber modes refcount identically ([MEM-BACKENDS]
-      byte-identical rule). `__osprey_coro_abort` drains its mailbox.
-- [ ] **M6 — Perceus precision** `[GC-ARC-BORROW]` `[GC-ARC-REUSE]`: TR
-      Fig. 6–7 owned-environment insertion (drop at last use), `collectO`
-      borrow inference (Ullrich & de Moura), drop specialization (§2.5.2),
-      drop-guided reuse/FBIP (§2.5.1). Byte-identical by construction;
-      peak-RSS deltas land in the benchmark table. Revisit the thin-ANF IR
-      here if in-walk insertion proves too entangled.
+      byte-identical rule); v1 soundness comes from the global mutex.
+- [x] **M6a — drop at last use.** ✅ TR Fig. 6's owned-environment insertion:
+      after each function-level statement, `release_dead_after` computes the
+      continuation's free identifiers (`freevars::free_idents_of_stmts`) and
+      drops `let`-bound owners the rest of the block never references —
+      gated to ledger depth 1 so a nested block/loop region can never free
+      an enclosing scope's names (a tail block IS the continuation, so the
+      gate composes). Applies to `main`'s top level too.
+- [ ] **M6b — Perceus precision tier** `[GC-ARC-BORROW]` `[GC-ARC-REUSE]`:
+      `collectO` borrow inference (Ullrich & de Moura), drop specialization
+      (TR §2.5.2), drop-guided reuse/FBIP (§2.5.1). Byte-identical by
+      construction; peak-RSS deltas land in the benchmark table. Revisit the
+      thin-ANF IR here if in-walk insertion proves too entangled.
 - [ ] **Conformance & benchmarks**: `--memory=arc` passes the full harness
       byte-identically with zero leaked language values; `Osprey (ARC)`
       benchmark column (binarytrees peak RSS next to default's 2.5 GB and
-      GC's ~11 MB).
+      GC's ~11 MB). *Current state: harness byte-identical under all three
+      backends (PASS=148 each); zero live values holds for container-free
+      programs, container programs await M4b.*
 - [ ] Decide whether ARC *replaces* `default` as the shipped default or stays
       opt-in until the Cheney oracle (phase 3) validates it.
 

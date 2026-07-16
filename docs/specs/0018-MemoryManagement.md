@@ -22,10 +22,14 @@ you no longer need.
 
 Partially implemented — the *boundary* exists, a first *reclaiming* backend
 ships (tracing GC, opt-in via `--memory=gc`), and the Perceus ARC backend is
-**in progress** (`--memory=arc` links a real counting runtime — header,
-registry, kind/mask drop — byte-identical on the full differential harness;
-compiler dup/drop insertion is the next milestone,
-[implementation plan 0011](../plans/0011-arc-gc-implementation.md) phase 2).
+**counting for real** (`--memory=arc` links the counting runtime — header,
+registry, kind/mask drop — and the compiler now inserts the full Perceus
+dup/drop discipline: producers own +1, dup-on-store, drops at region end and
+at last use, returns transfer +1. Byte-identical on the full differential
+harness under all three backends; container-free programs report zero live
+language values at exit. Containers are leak-safe pending node-level RC —
+[implementation plan 0011](../plans/0011-arc-gc-implementation.md) phase 2,
+milestones M4b/M5b/M6b).
 
 - **Swappable backend boundary [MEM-BACKENDS]: done.** All codegen heap
   allocation funnels through a single `@osp_alloc` hook (osprey-codegen

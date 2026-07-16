@@ -262,6 +262,7 @@ fn list_builder(cg: &mut Codegen, args: &[Expr], filter: bool) -> Result<Value> 
     let f = callback_of(cg, nth(args, 1)?)?;
     let bld = crate::collections::list_builder_new(cg);
     let lp = open_list_loop(cg, &l.operand);
+    crate::arc::push_frame(cg);
     let elem = Value::new(lp.elem.clone(), LType::I64);
     if filter {
         let pred = invoke(cg, &f, vec![elem.clone()])?;
@@ -279,9 +280,13 @@ fn list_builder(cg: &mut Codegen, args: &[Expr], filter: bool) -> Result<Value> 
     } else {
         let mapped = invoke(cg, &f, vec![elem])?;
         let mapped = crate::result::unwrap(cg, mapped);
+        // The built list stores the mapped element: dup it before the
+        // per-iteration region drop [GC-ARC-PERCEUS].
+        crate::arc::escape_retain(cg, &mapped);
         let boxed = box_to_i64(cg, mapped);
         crate::collections::list_builder_push(cg, &bld, &boxed.operand);
     }
+    crate::arc::pop_frame(cg);
     close_list_loop(cg, &lp);
     Ok(crate::collections::list_builder_seal(cg, &bld))
 }
@@ -292,7 +297,9 @@ fn fold_list(cg: &mut Codegen, args: &[Expr]) -> Result<Value> {
     let acc = acc_init(cg, args)?;
     let combine = callback_of(cg, nth(args, 2)?)?;
     let lp = open_list_loop(cg, &l.operand);
+    crate::arc::push_frame(cg);
     acc_step(cg, &acc, &combine, Value::new(lp.elem.clone(), LType::I64))?;
+    crate::arc::pop_frame(cg);
     close_list_loop(cg, &lp);
     Ok(acc_result(cg, &acc))
 }

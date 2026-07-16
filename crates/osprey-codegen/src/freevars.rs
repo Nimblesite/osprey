@@ -100,7 +100,15 @@ fn walk_rest(e: &Expr, bound: &mut Vec<String>, out: &mut BTreeSet<String>) {
             walk_arms(arms, bound, out);
         }
         Expr::Block { statements, value } => walk_block(statements, value.as_deref(), bound, out),
-        Expr::TypeConstructor { fields, .. } => walk_slice(fields, bound, out, |f| &f.value),
+        // `name { … }` where `name` is a bound local is a record UPDATE that
+        // reads `name` (`aggregate::gen_constructor` redirects; the parser
+        // cannot tell the forms apart). Noting a real type name is harmless:
+        // consumers filter against actual locals (captures via `cg.lookup`,
+        // liveness against `let`-bound ledger names).
+        Expr::TypeConstructor { name, fields, .. } => {
+            note(name, bound, out);
+            walk_slice(fields, bound, out, |f| &f.value);
+        }
         Expr::Update { record, fields } => {
             note(record, bound, out);
             walk_slice(fields, bound, out, |f| &f.value);
@@ -140,17 +148,28 @@ fn walk_fiber(e: &Expr, bound: &mut Vec<String>, out: &mut BTreeSet<String>) {
     }
 }
 
+/// Free identifiers of a block continuation (`statements`, then the tail
+/// `value`) — the liveness query behind last-use drops [GC-ARC-PERCEUS].
+pub(crate) fn free_idents_of_stmts<S: std::borrow::Borrow<Stmt>>(
+    statements: &[S],
+    value: Option<&Expr>,
+    out: &mut BTreeSet<String>,
+) {
+    let mut bound: Vec<String> = Vec::new();
+    walk_block(statements, value, &mut bound, out);
+}
+
 /// `let`s bind for the *rest* of the block, so statements thread the bound
 /// stack left to right and the whole block's bindings pop together.
-fn walk_block(
-    statements: &[Stmt],
+fn walk_block<S: std::borrow::Borrow<Stmt>>(
+    statements: &[S],
     value: Option<&Expr>,
     bound: &mut Vec<String>,
     out: &mut BTreeSet<String>,
 ) {
     let depth = bound.len();
     for s in statements {
-        match s {
+        match s.borrow() {
             Stmt::Let { name, value, .. } => {
                 walk(value, bound, out);
                 bound.push(name.clone());

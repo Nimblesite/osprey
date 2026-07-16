@@ -122,7 +122,8 @@ mod tests {
     use super::*;
 
     fn mask_words(meta: i64) -> Vec<u64> {
-        let bits = (meta as u64) >> 8;
+        // Same bit-preserving recovery the runtime uses (OSP_ARC_MASK_BITS).
+        let bits = u64::from_ne_bytes(meta.to_ne_bytes()) >> 8;
         (0..=MASK_MAX_WORD)
             .filter(|w| bits & (1 << w) != 0)
             .collect()

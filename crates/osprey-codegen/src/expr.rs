@@ -133,8 +133,11 @@ fn gen_block(cg: &mut Codegen, statements: &[Stmt], value: Option<&Expr>) -> Res
     // symbol table, so a nested `let` rebinds (and leaks) the name in the
     // enclosing scope. The goldens in `examples/tested` rely on this — e.g.
     // block_statements' inner `let outer` is visible to the outer `outer + inner`.
-    for s in statements {
+    for (i, s) in statements.iter().enumerate() {
         crate::lower::gen_local_stmt(cg, s)?;
+        // Last-use drops: names the continuation no longer references die
+        // here, not at function end [GC-ARC-PERCEUS].
+        crate::arc::release_dead_after(cg, statements.get(i + 1..).unwrap_or(&[]), value);
     }
     match value {
         Some(e) => gen_expr(cg, e),

@@ -301,6 +301,17 @@ mod tests {
     use super::*;
 
     #[test]
+    fn coverage_dump_path_is_stable_and_scratch_scoped() {
+        let file = Path::new("/proj/tests/math_test.osp");
+        let dump = coverage_dump_path(file);
+        assert!(dump.starts_with(std::env::temp_dir()));
+        let name = dump.file_name().and_then(|n| n.to_str()).unwrap_or("");
+        assert!(name.ends_with(".oscov.txt"), "dump name: {name}");
+        // Same suite → same dump path (the run and the collector must agree).
+        assert_eq!(dump, coverage_dump_path(file));
+    }
+
+    #[test]
     fn parse_reads_path_filter_and_quiet_and_rejects_junk() {
         let ok = parse(&[
             "suite".to_string(),

@@ -59,19 +59,34 @@ fn handle_arg(cg: &mut Codegen, args: &[Expr], i: usize) -> Result<Value> {
     coerce_to(cg, v, LType::Ptr)
 }
 
-/// The `i`-th positional argument, boxed to the uniform `i64` element ABI.
-fn boxed_arg(cg: &mut Codegen, args: &[Expr], i: usize) -> Result<Value> {
+/// The `i`-th positional argument, evaluated and unwrapped (pre-boxing).
+fn unboxed_arg(cg: &mut Codegen, args: &[Expr], i: usize) -> Result<Value> {
     let e = args
         .get(i)
         .ok_or_else(|| CodegenError::invalid("collection builtin: missing argument"))?;
     let v = gen_expr(cg, e)?;
-    let v = crate::result::unwrap(cg, v);
+    Ok(crate::result::unwrap(cg, v))
+}
+
+/// The `i`-th positional argument, boxed to the uniform `i64` element ABI.
+fn boxed_arg(cg: &mut Codegen, args: &[Expr], i: usize) -> Result<Value> {
+    let v = unboxed_arg(cg, args, i)?;
+    Ok(box_to_i64(cg, v))
+}
+
+/// [`boxed_arg`] for an element/key the container will STORE: a persistent
+/// container holds a new reference, so dup managed values before the pointer
+/// is erased into the `i64` ABI (containers never release their elements —
+/// the leak-safe M4 posture) [GC-ARC-PERCEUS].
+fn stored_boxed_arg(cg: &mut Codegen, args: &[Expr], i: usize) -> Result<Value> {
+    let v = unboxed_arg(cg, args, i)?;
+    crate::arc::escape_retain(cg, &v);
     Ok(box_to_i64(cg, v))
 }
 
 /// Own a fresh runtime container handle: every `osprey_list_*`/`osprey_map_*`
 /// producer returns +1 (fresh allocations; alias returns retain-on-return and
-/// the empty singletons are immortal — memory_arc.c, plan 0011 M4).
+/// the empty singletons are immortal — `memory_arc.c`, plan 0011 M4).
 fn own_handle(cg: &mut Codegen, v: Value) -> Value {
     crate::arc::own(cg, &v);
     v
@@ -102,10 +117,12 @@ fn one_list_handle(cg: &mut Codegen, cname: &str, args: &[Expr]) -> Result<Value
     Ok(own_handle(cg, Value::handle(r, LIST_OWNER)))
 }
 
-/// `f(handle, boxed) -> handle` (append / prepend / drop).
+/// `f(handle, boxed) -> handle` (append / prepend / drop). The second
+/// argument is stored by append/prepend (drop's count is an int — the
+/// managed-gated dup skips it).
 fn list_box2(cg: &mut Codegen, cname: &str, args: &[Expr]) -> Result<Value> {
     let h = handle_arg(cg, args, 0)?;
-    let x = boxed_arg(cg, args, 1)?;
+    let x = stored_boxed_arg(cg, args, 1)?;
     let r = cg.call("i8*", cname, "i8*, i64", &[&h.operand, &x.operand]);
     Ok(own_handle(cg, Value::handle(r, LIST_OWNER)))
 }
@@ -192,8 +209,8 @@ fn list_contains(cg: &mut Codegen, args: &[Expr]) -> Result<Value> {
 /// `mapSet(m, k, v) -> Map`.
 fn map_set(cg: &mut Codegen, args: &[Expr]) -> Result<Value> {
     let m = handle_arg(cg, args, 0)?;
-    let k = boxed_arg(cg, args, 1)?;
-    let v = boxed_arg(cg, args, 2)?;
+    let k = stored_boxed_arg(cg, args, 1)?;
+    let v = stored_boxed_arg(cg, args, 2)?;
     let r = cg.call(
         "i8*",
         "osprey_map_set",
@@ -305,9 +322,13 @@ pub(crate) fn gen_map_literal(cg: &mut Codegen, entries: &[osprey_ast::MapEntry]
     for e in entries {
         let k = gen_expr(cg, &e.key)?;
         let k = crate::result::unwrap(cg, k);
+        // The map stores both key and value: dup before the i64 erasure
+        // (see stored_boxed_arg) [GC-ARC-PERCEUS].
+        crate::arc::escape_retain(cg, &k);
         let k = box_to_i64(cg, k);
         let v = gen_expr(cg, &e.value)?;
         let v = crate::result::unwrap(cg, v);
+        crate::arc::escape_retain(cg, &v);
         let v = box_to_i64(cg, v);
         cg.call_void(
             "osprey_map_builder_put",

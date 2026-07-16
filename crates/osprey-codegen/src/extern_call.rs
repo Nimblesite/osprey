@@ -160,10 +160,12 @@ fn emit(cg: &mut Codegen, sig: &Sig, ops: &[String]) -> Result<Value> {
             cg.call("i64", sig.cname, &params, &op_refs),
             LType::I64,
         )),
-        Ret::Str => Ok(Value::new(
-            cg.call("i8*", sig.cname, &params, &op_refs),
-            LType::Str,
-        )),
+        Ret::Str => {
+            // Fresh malloc'd C buffer — the caller owns it [GC-ARC-PERCEUS].
+            let v = Value::new(cg.call("i8*", sig.cname, &params, &op_refs), LType::Str);
+            crate::arc::own(cg, &v);
+            Ok(v)
+        }
         Ret::ResultInt => {
             let r = cg.call("i64", sig.cname, &params, &op_refs);
             // The negative-i64 runtime convention carries no message string;
@@ -172,6 +174,9 @@ fn emit(cg: &mut Codegen, sig: &Sig, ops: &[String]) -> Result<Value> {
         }
         Ret::ResultStr(err) => {
             let r = cg.call("i8*", sig.cname, &params, &op_refs);
+            // Own the raw C buffer; the Result payload store dups its own +1,
+            // so this one drops at region end (null on the error path — no-op).
+            crate::arc::own(cg, &Value::new(&r, LType::Str));
             result_from_nullable(cg, &r, err)
         }
     }

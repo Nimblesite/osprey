@@ -14,6 +14,7 @@
 
 use crate::builder::Codegen;
 use crate::llty::{LType, Value};
+use osprey_ast::{Expr, Stmt};
 
 const RETAIN_DECL: &str = "declare void @osp_retain(i8*)";
 const RELEASE_DECL: &str = "declare void @osp_release(i8*)";
@@ -209,11 +210,27 @@ pub(crate) fn escape_retain(cg: &mut Codegen, v: &Value) {
     retain_val(cg, v);
 }
 
-/// Drop owners bound to names that are no longer live (M6 last-use precision,
-/// TR Fig. 6): called between block statements with the free-identifier set
-/// of the continuation. Only the outermost (function) frame is inspected —
-/// deeper frames close by their own region ends.
-pub(crate) fn release_dead(cg: &mut Codegen, live: &std::collections::BTreeSet<String>) {
+/// Drop the owners of `let` names the continuation of the current block no
+/// longer references (M6 last-use precision, TR Fig. 6). Runs ONLY at
+/// function level (ledger depth 1): a nested block / loop / statement region
+/// computes liveness for its own continuation, which says nothing about
+/// later uses in the enclosing scope — releasing function-frame names from
+/// there would be a use-after-free. A tail-position block IS the enclosing
+/// continuation, so the depth gate composes through nested tail blocks.
+pub(crate) fn release_dead_after<S: std::borrow::Borrow<Stmt>>(
+    cg: &mut Codegen,
+    rest: &[S],
+    value: Option<&Expr>,
+) {
+    if cg.arc.frames.len() != 1 {
+        return;
+    }
+    let mut live = std::collections::BTreeSet::new();
+    crate::freevars::free_idents_of_stmts(rest, value, &mut live);
+    release_dead(cg, &live);
+}
+
+fn release_dead(cg: &mut Codegen, live: &std::collections::BTreeSet<String>) {
     let mut dead = Vec::new();
     if let Some(frame) = cg.arc.frames.first_mut() {
         let mut kept = Vec::new();

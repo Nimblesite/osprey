@@ -37,6 +37,8 @@ void *osp_alloc_tagged(int64_t size, int64_t meta) {
 // duality: under tracing or leak-everything, reference counts carry no work).
 void osp_retain(void *o) { (void)o; }
 void osp_release(void *o) { (void)o; }
+// Singleton-immortality hook (memory_hooks.h) — meaningful only under ARC.
+void osp_mem_immortal(void *p) { (void)p; }
 
 // Full-collection hook — nothing to collect in a passthrough backend.
 void osp_collect(void) {}

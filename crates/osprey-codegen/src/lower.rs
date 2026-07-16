@@ -145,13 +145,15 @@ fn compile_program_with_options(program: &Program, options: CodegenOptions) -> R
         let _ = gen_expr(&mut cg, body)?;
     } else {
         cg.cell_vars = crate::effects::captured_mut_vars_in_stmts(&top_level);
-        for stmt in &top_level {
+        for (i, stmt) in top_level.iter().enumerate() {
             gen_local_stmt(&mut cg, stmt)?;
+            let rest = top_level.get(i + 1..).unwrap_or(&[]);
+            crate::arc::release_dead_after(&mut cg, rest, None);
         }
     }
     // A program that used the testing built-ins exits with the TAP epilogue's
     // status (plan + summary printed by the runtime) [TESTING-EXIT].
-    crate::arc::epilogue(cg, None);
+    crate::arc::epilogue(&mut cg, None);
     if cg.testing_used {
         let code = cg.call("i32", "osp_test_finalize", "", &[]);
         cg.emit(format!("ret i32 {code}"));

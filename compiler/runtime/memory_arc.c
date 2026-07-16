@@ -316,6 +316,21 @@ void osp_release(void *o) {
 // (Bacon/Cheng/Rajan; TR §2.2).
 void osp_collect(void) {}
 
+// Immortalize a shared C-runtime singleton (memory_hooks.h): rc < 0 makes
+// every later dup/drop skip it, so alias returns of e.g. the empty-list
+// singleton can never free it. Foreign pointers probe-miss (no-op).
+void osp_mem_immortal(void *p) {
+  if (!p) {
+    return;
+  }
+  pthread_mutex_lock(&g_lock);
+  uintptr_t *slot = arc_find((uintptr_t)p);
+  if (slot) {
+    arc_hdr((void *)*slot)->rc = -1;
+  }
+  pthread_mutex_unlock(&g_lock);
+}
+
 // --- allocation shim for the C runtime units (osp_arc_shim.h) ---------------------
 // Value-producing units (list/map/string/json) are recompiled with their libc
 // allocation calls redirected here, so runtime-minted strings and container
