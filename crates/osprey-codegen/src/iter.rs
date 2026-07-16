@@ -171,8 +171,12 @@ fn for_each(cg: &mut Codegen, args: &[Expr]) -> Result<Value> {
     let (start, end) = bounds(cg, &range);
 
     let lp = open_range_loop(cg, &start, &end);
+    // Per-iteration ARC region: values the body owns drop before the
+    // back-edge, so slots are reusable next iteration [GC-ARC-PERCEUS].
+    crate::arc::push_frame(cg);
     let elem = replay(cg, Value::new(lp.i.clone(), LType::I64), &lp.incr)?;
     let _ = invoke(cg, &consumer, vec![elem])?;
+    crate::arc::pop_frame(cg);
     close_range_loop(cg, &lp);
     Ok(range)
 }
@@ -182,6 +186,9 @@ fn for_each(cg: &mut Codegen, args: &[Expr]) -> Result<Value> {
 fn acc_init(cg: &mut Codegen, args: &[Expr]) -> Result<String> {
     let initial = gen_expr(cg, nth(args, 1)?)?;
     let initial = crate::result::unwrap(cg, initial);
+    // A pointer accumulator escapes into the loop-carried slot: dup it so the
+    // per-iteration region drop cannot free it [GC-ARC-PERCEUS].
+    crate::arc::escape_retain(cg, &initial);
     let initial = box_to_i64(cg, initial);
     let acc = cg.fresh_reg();
     cg.emit(format!("{acc} = alloca i64"));
@@ -193,8 +200,17 @@ fn acc_init(cg: &mut Codegen, args: &[Expr]) -> Result<String> {
 /// result back into the slot.
 fn acc_step(cg: &mut Codegen, acc: &str, combine: &Callback, elem: Value) -> Result<()> {
     let a = cg.emit_reg(format!("load i64, i64* {acc}"));
-    let new = invoke(cg, combine, vec![Value::new(a, LType::I64), elem])?;
+    let new = invoke(cg, combine, vec![Value::new(a.clone(), LType::I64), elem])?;
     let new = crate::result::unwrap(cg, new);
+    // Loop-carried slot rebind for a pointer accumulator: dup the incoming
+    // value BEFORE dropping the outgoing one (a combine returning `acc`
+    // unchanged must never free it). Keyed on the static type — an integer
+    // accumulator's bits must never be released [GC-ARC-PERCEUS].
+    if matches!(new.ty, LType::Str | LType::Ptr) {
+        crate::arc::escape_retain(cg, &new);
+        let old = cg.emit_reg(format!("inttoptr i64 {a} to i8*"));
+        crate::arc::release_operand(cg, &old);
+    }
     let new = box_to_i64(cg, new);
     cg.emit(format!("store i64 {}, i64* {acc}", new.operand));
     Ok(())
@@ -213,8 +229,10 @@ fn fold(cg: &mut Codegen, args: &[Expr]) -> Result<Value> {
     let (start, end) = bounds(cg, &range);
 
     let lp = open_range_loop(cg, &start, &end);
+    crate::arc::push_frame(cg);
     let elem = replay(cg, Value::new(lp.i.clone(), LType::I64), &lp.incr)?;
     acc_step(cg, &acc, &combine, elem)?;
+    crate::arc::pop_frame(cg);
     close_range_loop(cg, &lp);
 
     Ok(acc_result(cg, &acc))
@@ -231,7 +249,9 @@ fn for_each_list(cg: &mut Codegen, args: &[Expr]) -> Result<Value> {
     let l = list_arg(cg, args, 0)?;
     let consumer = callback_of(cg, nth(args, 1)?)?;
     let lp = open_list_loop(cg, &l.operand);
+    crate::arc::push_frame(cg);
     let _ = invoke(cg, &consumer, vec![Value::new(lp.elem.clone(), LType::I64)])?;
+    crate::arc::pop_frame(cg);
     close_list_loop(cg, &lp);
     Ok(l)
 }

@@ -49,7 +49,9 @@ pub(crate) fn gen_list(cg: &mut Codegen, elements: &[Expr]) -> Result<Value> {
         let obj = cg.malloc_struct(LIST_STRUCT, crate::meta::list_hdr_meta(false));
         crate::aggregate::store_field(cg, LIST_STRUCT, &obj, 0, LType::I64, "0");
         crate::aggregate::store_field(cg, LIST_STRUCT, &obj, 1, LType::Str, "null");
-        return Ok(Value::handle(obj, lit_owner(&Value::new("", LType::Str))));
+        let v = Value::handle(obj, lit_owner(&Value::new("", LType::Str)));
+        crate::arc::own(cg, &v);
+        return Ok(v);
     }
     // Evaluate elements; the first fixes the slot type.
     let mut vals = Vec::with_capacity(elements.len());
@@ -75,6 +77,9 @@ pub(crate) fn gen_list(cg: &mut Codegen, elements: &[Expr]) -> Result<Value> {
     cg.emit(format!("{arr} = bitcast i8* {data} to {}*", elem.as_str()));
     for (i, v) in vals.into_iter().enumerate() {
         let v = coerce_to(cg, v, elem)?;
+        // The header's drop releases pointer elements, so each store is a new
+        // reference [GC-ARC-PERCEUS].
+        crate::arc::dup_store(cg, elem.as_str(), &v.operand);
         let slot = cg.fresh_reg();
         cg.emit(format!(
             "{slot} = getelementptr {}, {}* {arr}, i64 {i}",
@@ -93,11 +98,18 @@ pub(crate) fn gen_list(cg: &mut Codegen, elements: &[Expr]) -> Result<Value> {
     let elems_are_ptrs = matches!(elem, LType::Str | LType::Ptr);
     let obj = cg.malloc_struct(LIST_STRUCT, crate::meta::list_hdr_meta(elems_are_ptrs));
     crate::aggregate::store_field(cg, LIST_STRUCT, &obj, 0, LType::I64, &n.to_string());
-    crate::aggregate::store_field(cg, LIST_STRUCT, &obj, 1, LType::Str, &data);
-    Ok(Value::handle(
+    // The data array is the header's OWN allocation (the LIST_HDR drop frees
+    // it exactly once) — store it without a dup, unlike user-value fields.
+    let dp = cg.emit_reg(format!(
+        "getelementptr {LIST_STRUCT}, {LIST_STRUCT}* {obj}, i32 0, i32 1"
+    ));
+    cg.emit(format!("store i8* {data}, i8** {dp}"));
+    let v = Value::handle(
         obj,
         lit_owner(&Value::new("", elem).with_owner(elem_owner)),
-    ))
+    );
+    crate::arc::own(cg, &v);
+    Ok(v)
 }
 
 /// `target[index]` — flat list-literal access (bounds-checked `Result<T, _>`) or

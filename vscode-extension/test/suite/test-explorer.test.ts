@@ -10,9 +10,9 @@ import * as path from "path";
 import * as vscode from "vscode";
 import { fileTestId, leafTestId } from "../../client/src/test-explorer-parse";
 import {
-  executeRunRequest, makeRunHandler, makeWatcherHandlers, refreshTestFile,
-  registerOspreyTestExplorer, removeTestFile, requestedItems,
-  scanWorkspaceTestFiles, testFileLabel,
+  coverageSink, detailedCoverageFor, executeRunRequest, makeRunHandler,
+  makeWatcherHandlers, refreshTestFile, registerOspreyTestExplorer,
+  removeTestFile, requestedItems, scanWorkspaceTestFiles, testFileLabel,
 } from "../../client/src/test-explorer";
 import { resolveBuiltOsprey } from "./osprey-test-env";
 import {
@@ -248,6 +248,76 @@ suite("Osprey Test Explorer", () => {
       assert.ok(hits, "coverage report reached the sink");
       assert.ok((hits.get(1) ?? 0) > 0, "double's definition line is covered");
       assert.strictEqual(hits.get(3), 0, "unused's definition line has 0 hits");
+    });
+
+    // A TestRun double recording exactly what coverageSink hands VS Code —
+    // the FileCoverage whose TestCoverageCount becomes the displayed
+    // percentage, plus the run lifecycle calls it delegates.
+    function recordingRun(received: vscode.FileCoverage[]): vscode.TestRun {
+      const noop = (): void => undefined;
+      return {
+        enqueued: noop, started: noop, passed: noop, failed: noop,
+        errored: noop, skipped: noop, appendOutput: noop, end: noop,
+        addCoverage: (fc: vscode.FileCoverage) => received.push(fc),
+      } as unknown as vscode.TestRun;
+    }
+
+    // [TESTING-COVERAGE-VSCODE] calc proof, pure layer: the numbers VS Code
+    // renders. hits {1:1, 3:0, 5:1} MUST become TestCoverageCount(2, 3) —
+    // the 66.7% badge — and three gutter StatementCoverages at 0-based lines.
+    test("coverageSink computes the exact FileCoverage counts and gutter detail", () => {
+      const received: vscode.FileCoverage[] = [];
+      const sink = coverageSink(recordingRun(received));
+      assert.ok(sink.addLineCoverage, "coverage sink accepts line coverage");
+      const uri = vscode.Uri.file("/tmp/calc.test.osp");
+      sink.addLineCoverage(uri, new Map([[1, 1], [3, 0], [5, 1]]));
+      assert.strictEqual(received.length, 1);
+      const fc = received[0];
+      assert.strictEqual(fc.uri.fsPath, uri.fsPath);
+      assert.strictEqual(fc.statementCoverage.covered, 2, "covered lines");
+      assert.strictEqual(fc.statementCoverage.total, 3, "coverable lines");
+      const detail = detailedCoverageFor(fc);
+      assert.deepStrictEqual(
+        detail.map((s) => [(s.location as vscode.Position).line, s.executed]),
+        [[0, 1], [2, 0], [4, 1]],
+        "gutter detail: 0-based lines with per-line hit counts",
+      );
+      assert.deepStrictEqual(detailedCoverageFor(new vscode.FileCoverage(
+        uri, new vscode.TestCoverageCount(0, 0),
+      )), [], "unknown FileCoverage yields no detail");
+    });
+
+    // [TESTING-COVERAGE-VSCODE] calc proof, end to end: the Coverage button's
+    // exact path — coverageSink → executeRunRequest → real compiler →
+    // --coverage-json → parsed hits → FileCoverage. The fixture has exactly 3
+    // coverable lines (double:1, unused:3, test:5) and executes 2 of them, so
+    // the run MUST surface covered=2/total=3 — the 66.7% VS Code displays.
+    test("the Coverage profile path yields covered=2/total=3 for the fixture", async function () {
+      if (!compiler) {
+        this.skip();
+      }
+      this.timeout(30000);
+      const coverageUri = writeFixture("calc-proof.test.osp", COVERAGE_FIXTURE);
+      const controller = newController();
+      const file = await discoveredFile(controller, coverageUri);
+      const received: vscode.FileCoverage[] = [];
+      await executeRunRequest(
+        controller,
+        new vscode.TestRunRequest([file]),
+        coverageSink(recordingRun(received)),
+        token(),
+        () => compiler,
+        true,
+      );
+      assert.strictEqual(received.length, 1, "one FileCoverage per suite file");
+      const fc = received[0];
+      assert.strictEqual(fc.uri.fsPath, coverageUri.fsPath);
+      assert.strictEqual(fc.statementCoverage.covered, 2, "executed lines");
+      assert.strictEqual(fc.statementCoverage.total, 3, "coverable lines");
+      const zeroHit = detailedCoverageFor(fc).find(
+        (s) => (s.location as vscode.Position).line === 2,
+      );
+      assert.strictEqual(zeroHit?.executed, 0, "dead fn renders as uncovered");
     });
 
     test("several leaves of one file run as sequential filtered invocations", async function () {
@@ -489,6 +559,40 @@ suite("Osprey Test Explorer", () => {
       );
       const resultKinds = ["passed", "failed", "errored", "skipped"];
       assert.ok(sink.events.every((event) => !resultKinds.includes(event.kind)));
+      assert.deepStrictEqual(sink.events[sink.events.length - 1], { kind: "end" });
+    });
+
+    // The unstoppable-run regression: a throw anywhere in the run loop (a
+    // rejected reporting call on a cancelled TestRun, a discovery error) must
+    // STILL end the run — an un-ended run spins forever in the Testing view
+    // and its Stop button is dead.
+    test("a run whose reporting throws still ends (and rethrows)", async function () {
+      if (!compiler) {
+        this.skip();
+      }
+      this.timeout(30000);
+      const controller = newController();
+      const file = await discoveredFile(controller, passUri);
+      const sink = new RecordingSink();
+      const boom = new Error("TestRun already ended");
+      const throwingSink = new Proxy(sink, {
+        get(target, prop, receiver) {
+          if (prop === "enqueued") {
+            return () => { throw boom; };
+          }
+          return Reflect.get(target, prop, receiver);
+        },
+      });
+      await assert.rejects(
+        executeRunRequest(
+          controller,
+          new vscode.TestRunRequest([file]),
+          throwingSink,
+          token(),
+          () => compiler,
+        ),
+        boom,
+      );
       assert.deepStrictEqual(sink.events[sink.events.length - 1], { kind: "end" });
     });
 

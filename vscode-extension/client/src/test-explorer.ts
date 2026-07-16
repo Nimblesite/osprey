@@ -191,6 +191,7 @@ export async function refreshTestFile(
   controller: vscode.TestController,
   uri: vscode.Uri,
   compiler: string,
+  token?: vscode.CancellationToken,
 ): Promise<vscode.TestItem> {
   const item = getOrCreateFileItem(controller, uri);
   const result = await runCompiler(
@@ -198,6 +199,7 @@ export async function refreshTestFile(
     [uri.fsPath, "--list-tests"],
     path.dirname(uri.fsPath),
     process.env,
+    token,
   );
   applyDiscovery(controller, item, uri, discoveryOutcome(result));
   return item;
@@ -392,10 +394,11 @@ async function ensureFileResolved(
   controller: vscode.TestController,
   plan: FilePlan<vscode.TestItem>,
   compiler: string,
+  token: vscode.CancellationToken,
 ): Promise<void> {
   const uri = plan.file.uri;
   if (plan.wholeFile && uri !== undefined && plan.file.children.size === 0) {
-    await refreshTestFile(controller, uri, compiler);
+    await refreshTestFile(controller, uri, compiler, token);
   }
 }
 
@@ -409,15 +412,22 @@ export async function executeRunRequest(
   coverage = false,
 ): Promise<void> {
   const excluded = excludedIdSet(request.exclude);
-  for (const plan of planRun(requestedItems(controller, request), excluded)) {
-    if (token.isCancellationRequested) {
-      break;
+  // end() MUST fire on every exit path — a thrown discovery/report error or a
+  // reporting call rejected by an already-cancelled TestRun would otherwise
+  // leave the run spinning forever in the Testing view, uncancellable (Stop
+  // only signals the token; VS Code retires a run only when end() is called).
+  try {
+    for (const plan of planRun(requestedItems(controller, request), excluded)) {
+      if (token.isCancellationRequested) {
+        break;
+      }
+      const compiler = resolveCompiler();
+      await ensureFileResolved(controller, plan, compiler, token);
+      await runPlan(plan, excluded, sink, token, compiler, coverage);
     }
-    const compiler = resolveCompiler();
-    await ensureFileResolved(controller, plan, compiler);
-    await runPlan(plan, excluded, sink, token, compiler, coverage);
+  } finally {
+    sink.end();
   }
-  sink.end();
 }
 
 /** The handler behind the default Run profile: one real TestRun per request. */
@@ -437,8 +447,21 @@ export function makeRunHandler(
  */
 const detailedCoverage = new WeakMap<vscode.FileCoverage, vscode.StatementCoverage[]>();
 
-/** A TestRun-backed sink whose coverage lands on the run as FileCoverage. */
-function coverageSink(run: vscode.TestRun): TestRunSink {
+/** The gutter detail stashed for one FileCoverage (what the Coverage profile's
+ *  loadDetailedCoverage serves). Exported so tests can prove the per-line
+ *  StatementCoverage values without reaching into VS Code internals. */
+export function detailedCoverageFor(
+  fileCoverage: vscode.FileCoverage,
+): vscode.StatementCoverage[] {
+  return detailedCoverage.get(fileCoverage) ?? [];
+}
+
+/**
+ * A TestRun-backed sink whose coverage lands on the run as FileCoverage.
+ * Exported so tests can assert the exact TestCoverageCount (the numbers VS
+ * Code renders as the coverage percentage) against a recording run.
+ */
+export function coverageSink(run: vscode.TestRun): TestRunSink {
   return {
     enqueued: (test) => run.enqueued(test),
     started: (test) => run.started(test),

@@ -310,7 +310,9 @@ fn gen_str_concat(cg: &mut Codegen, l: Value, r: Value) -> Result<Value> {
     let buf = cg.heap_alloc(&total);
     let _ = cg.call("i8*", "strcpy", "i8*, i8*", &[&buf, &ls.operand]);
     let _ = cg.call("i8*", "strcat", "i8*, i8*", &[&buf, &rs.operand]);
-    Ok(Value::new(buf, LType::Str))
+    let v = Value::new(buf, LType::Str);
+    crate::arc::own(cg, &v);
+    Ok(v)
 }
 
 /// The LLVM condition code for a comparison `op`. `float` picks the ordered
@@ -598,11 +600,16 @@ pub(crate) fn call_with_values(cg: &mut Codegen, name: &str, args: Vec<Value>) -
     if let Some(inner) = cg.fn_ret_result_inner(name) {
         let rty = format!("{}*", crate::llty::result_struct_ty(inner));
         let reg = emit_user_call(cg, name, &rty, &coerced, &typed);
-        return Ok(Value::result(reg, inner));
+        let v = Value::result(reg, inner);
+        // Callee epilogues transfer +1 on every return [GC-ARC-PERCEUS].
+        crate::arc::own(cg, &v);
+        return Ok(v);
     }
     let ret = cg.fn_ret_ltype(name).unwrap_or(LType::I64);
     let reg = emit_user_call(cg, name, ret.as_str(), &coerced, &typed);
-    Ok(Value::new(reg, ret).with_owner(cg.fn_ret_owner(name)))
+    let v = Value::new(reg, ret).with_owner(cg.fn_ret_owner(name));
+    crate::arc::own(cg, &v);
+    Ok(v)
 }
 
 /// Emit a call to `name` returning LLVM type `rty`. A name with no user
@@ -739,7 +746,9 @@ fn gen_interpolation(cg: &mut Codegen, parts: &[InterpolatedPart]) -> Result<Val
         "{tmp} = call i32 (i8*, i8*, ...) @sprintf(i8* {buf}, i8* {}{extra})",
         fmtv.operand
     ));
-    Ok(Value::new(buf, LType::Str))
+    let v = Value::new(buf, LType::Str);
+    crate::arc::own(cg, &v);
+    Ok(v)
 }
 
 fn first_arg<'a>(arguments: &'a [Expr], named: &'a [NamedArgument]) -> Option<&'a Expr> {

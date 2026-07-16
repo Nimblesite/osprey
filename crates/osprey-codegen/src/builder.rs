@@ -108,6 +108,11 @@ pub struct Codegen {
     /// Coverage instrumentation state, when coverage was requested
     /// [TESTING-COVERAGE-CODEGEN].
     pub(crate) coverage: Option<crate::coverage::CoverageState>,
+    /// The Perceus ownership ledger for the in-progress function
+    /// [GC-ARC-PERCEUS] (see `crate::arc`).
+    pub(crate) arc: crate::arc::ArcLedger,
+    /// Monotonic id for hoisted ARC spill slots (`%arc.sN`), per function.
+    arc_slot_count: usize,
 }
 
 /// A mutable variable promoted to a heap cell so an effect handler can own it.
@@ -152,6 +157,10 @@ pub(crate) struct SavedFn {
     cell_vars: HashSet<String>,
     cell_slots: HashMap<String, CellSlot>,
     resume_ctx: Option<ResumeCodegenContext>,
+    /// Ownership is per-function: a nested function drops its own owners at
+    /// its own epilogue, never the suspended function's [GC-ARC-PERCEUS].
+    arc: crate::arc::ArcLedger,
+    arc_slot_count: usize,
     debug_scope: Option<usize>,
     debug_position: Option<Position>,
     debug_retained_nodes: Option<usize>,
@@ -429,6 +438,8 @@ impl Codegen {
             coverage: options
                 .coverage
                 .then(crate::coverage::CoverageState::default),
+            arc: crate::arc::ArcLedger::new(),
+            arc_slot_count: 0,
         }
     }
 
@@ -623,6 +634,8 @@ impl Codegen {
             cell_vars: std::mem::take(&mut self.cell_vars),
             cell_slots: std::mem::take(&mut self.cell_slots),
             resume_ctx: self.resume_ctx.take(),
+            arc: std::mem::take(&mut self.arc),
+            arc_slot_count: self.arc_slot_count,
             debug_scope: self.debug.as_ref().and_then(|d| d.current_scope),
             debug_position: self.debug.as_ref().and_then(|d| d.current_position),
             debug_retained_nodes: self.debug.as_ref().and_then(|d| d.current_retained_nodes),
@@ -639,6 +652,7 @@ impl Codegen {
         self.label_count = 0;
         self.cur_lines = vec!["entry:".to_string()];
         self.scopes = vec![HashMap::new()];
+        self.arc_slot_count = 0;
         saved
     }
 
@@ -660,6 +674,8 @@ impl Codegen {
         self.cell_vars = saved.cell_vars;
         self.cell_slots = saved.cell_slots;
         self.resume_ctx = saved.resume_ctx;
+        self.arc = saved.arc;
+        self.arc_slot_count = saved.arc_slot_count;
         if let Some(debug) = self.debug.as_mut() {
             debug.current_scope = saved.debug_scope;
             debug.current_position = saved.debug_position;
@@ -995,6 +1011,8 @@ impl Codegen {
         self.cell_vars.clear();
         self.cell_slots.clear();
         self.resume_ctx = None;
+        self.arc = crate::arc::ArcLedger::new();
+        self.arc_slot_count = 0;
         self.push_scope();
         self.cur_lines.push("entry:".to_string());
         if let Some(debug) = self.debug.as_mut() {
@@ -1110,6 +1128,19 @@ impl Codegen {
         let obj = self.fresh_reg();
         self.emit(format!("{obj} = bitcast i8* {raw} to {struct_ty}*"));
         obj
+    }
+
+    /// Hoist a null-initialized `i8*` spill slot into the entry block and
+    /// return its register. ARC region drops load these slots, so a drop is
+    /// valid from any block and untaken paths release `null` (a no-op) —
+    /// ownership without dominance analysis [GC-ARC-PERCEUS].
+    pub(crate) fn hoist_arc_slot(&mut self) -> String {
+        let name = format!("%arc.s{}", self.arc_slot_count);
+        self.arc_slot_count += 1;
+        self.cur_lines.insert(1, format!("  {name} = alloca i8*"));
+        self.cur_lines
+            .insert(2, format!("  store i8* null, i8** {name}"));
+        name
     }
 
     /// Set the current debug source position, returning the previous position.

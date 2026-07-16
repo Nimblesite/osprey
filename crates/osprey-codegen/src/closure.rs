@@ -70,7 +70,11 @@ pub(crate) fn emit_closure(
     let fn_name = format!("__closure_fn_{id}");
     let cell_ty = cell_struct_ty(&caps);
     emit_closure_fn(cg, &fn_name, &cell_ty, &caps, parameters, body, sig)?;
-    Ok(cell_value(cg, id, &fn_name, &cell_ty, &caps, sig))
+    let v = cell_value(cg, id, &fn_name, &cell_ty, &caps, sig);
+    // The cell is a fresh +1 producer here; a spawn's cell instead transfers
+    // to the fiber runtime (fiber.rs calls `cell_value` directly).
+    crate::arc::own(cg, &v);
+    Ok(v)
 }
 
 /// The free identifiers of `body` (minus the lambda's own parameters) that are
@@ -186,10 +190,13 @@ pub(crate) fn cell_value(
     cg.emit(format!("store i8* {fnptr}, i8** {fpp}"));
     for (i, c) in caps.iter().enumerate() {
         let slot = i + 1;
+        let lty = c.val.llvm_ty();
+        // Each captured pointer is a new reference the cell's drop releases —
+        // including the same variable captured by two closures [GC-ARC-PERCEUS].
+        crate::arc::dup_store(cg, &lty, &c.val.operand);
         let p = cg.emit_reg(format!(
             "getelementptr {cell_ty}, {cell_ty}* {cell}, i32 0, i32 {slot}"
         ));
-        let lty = c.val.llvm_ty();
         cg.emit(format!("store {lty} {}, {lty}* {p}", c.val.operand));
     }
     let reg = cg.emit_reg(format!("bitcast {cell_ty}* {cell} to i8*"));
@@ -280,10 +287,13 @@ pub(crate) fn cell_call(
     let mut args = vec![format!("i8* {handle}")];
     args.extend_from_slice(typed_args);
     let r = cg.emit_reg(format!("call {ret_spelling} {fp}({})", args.join(", ")));
-    match sig.2 {
+    let v = match sig.2 {
         Some(inner) => Value::result(r, inner),
         None => Value::new(r, sig.1),
-    }
+    };
+    // Closure functions transfer +1 on return (their `ret_as_sig` epilogue).
+    crate::arc::own(cg, &v);
+    v
 }
 
 /// A top-level function used as an Osprey function value: emit (once per
@@ -330,6 +340,9 @@ fn emit_forwarder(cg: &mut Codegen, name: &str) -> Result<String> {
         Some(inner) => Value::result(r, inner),
         None => Value::new(r, cg.fn_ret_ltype(name).unwrap_or(LType::I64)),
     };
+    // The forwarded call's +1 must be owned so `ret_as_sig`'s epilogue
+    // transfers exactly one reference out [GC-ARC-PERCEUS].
+    crate::arc::own(cg, &rv);
     let emitted = ret_as_sig(cg, rv, sig.1, sig.2);
     cg.exit_nested_fn(saved, &ret_spelling, &fwd, &params);
     emitted?;
@@ -393,6 +406,9 @@ fn ret_as_sig(cg: &mut Codegen, v: Value, ret_ty: LType, ret_inner: Option<LType
             crate::cast::coerce_to(cg, u, ret_ty)?
         }
     };
+    // Nested-function epilogue: the return transfers +1, owned locals drop
+    // [GC-ARC-PERCEUS].
+    crate::arc::epilogue(cg, Some(&rv));
     cg.emit(format!("ret {} {}", rv.llvm_ty(), rv.operand));
     Ok(())
 }

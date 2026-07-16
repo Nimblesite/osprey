@@ -69,13 +69,23 @@ fn boxed_arg(cg: &mut Codegen, args: &[Expr], i: usize) -> Result<Value> {
     Ok(box_to_i64(cg, v))
 }
 
+/// Own a fresh runtime container handle: every `osprey_list_*`/`osprey_map_*`
+/// producer returns +1 (fresh allocations; alias returns retain-on-return and
+/// the empty singletons are immortal — memory_arc.c, plan 0011 M4).
+fn own_handle(cg: &mut Codegen, v: Value) -> Value {
+    crate::arc::own(cg, &v);
+    v
+}
+
 fn list_empty(cg: &mut Codegen) -> Value {
-    Value::handle(cg.call("i8*", "osprey_list_empty", "", &[]), LIST_OWNER)
+    let v = Value::handle(cg.call("i8*", "osprey_list_empty", "", &[]), LIST_OWNER);
+    own_handle(cg, v)
 }
 
 fn map_empty(cg: &mut Codegen) -> Value {
     // OSPREY_KEY_STRING = 1 (Map() defaults to string keys).
-    Value::handle(cg.call("i8*", "osprey_map_empty", "i32", &["1"]), MAP_OWNER)
+    let v = Value::handle(cg.call("i8*", "osprey_map_empty", "i32", &["1"]), MAP_OWNER);
+    own_handle(cg, v)
 }
 
 /// `f(handle) -> int`.
@@ -89,7 +99,7 @@ fn one_list_i64(cg: &mut Codegen, cname: &str, args: &[Expr]) -> Result<Value> {
 fn one_list_handle(cg: &mut Codegen, cname: &str, args: &[Expr]) -> Result<Value> {
     let h = handle_arg(cg, args, 0)?;
     let r = cg.call("i8*", cname, "i8*", &[&h.operand]);
-    Ok(Value::handle(r, LIST_OWNER))
+    Ok(own_handle(cg, Value::handle(r, LIST_OWNER)))
 }
 
 /// `f(handle, boxed) -> handle` (append / prepend / drop).
@@ -97,7 +107,7 @@ fn list_box2(cg: &mut Codegen, cname: &str, args: &[Expr]) -> Result<Value> {
     let h = handle_arg(cg, args, 0)?;
     let x = boxed_arg(cg, args, 1)?;
     let r = cg.call("i8*", cname, "i8*, i64", &[&h.operand, &x.operand]);
-    Ok(Value::handle(r, LIST_OWNER))
+    Ok(own_handle(cg, Value::handle(r, LIST_OWNER)))
 }
 
 /// A binary runtime op on two collection-handle arguments → a new handle
@@ -112,7 +122,8 @@ fn binary_handle_op(cg: &mut Codegen, args: &[Expr], cname: &str, owner: &str) -
 /// behind both list concat and map merge.
 fn combine_handles(cg: &mut Codegen, a: &Value, b: &Value, cname: &str, owner: &str) -> Value {
     let r = cg.call("i8*", cname, "i8*, i8*", &[&a.operand, &b.operand]);
-    Value::handle(r, owner)
+    let v = Value::handle(r, owner);
+    own_handle(cg, v)
 }
 
 /// Emit `osprey_list_concat` on two already-evaluated list handles.
@@ -189,7 +200,7 @@ fn map_set(cg: &mut Codegen, args: &[Expr]) -> Result<Value> {
         "i8*, i64, i64",
         &[&m.operand, &k.operand, &v.operand],
     );
-    Ok(Value::handle(r, MAP_OWNER))
+    Ok(own_handle(cg, Value::handle(r, MAP_OWNER)))
 }
 
 /// `mapRemove(m, k) -> Map`.
@@ -202,7 +213,7 @@ fn map_remove(cg: &mut Codegen, args: &[Expr]) -> Result<Value> {
         "i8*, i64",
         &[&m.operand, &k.operand],
     );
-    Ok(Value::handle(r, MAP_OWNER))
+    Ok(own_handle(cg, Value::handle(r, MAP_OWNER)))
 }
 
 /// `mapContains(m, k) -> bool`.
@@ -243,10 +254,11 @@ pub(crate) fn list_builder_push(cg: &mut Codegen, bld: &str, elem: &str) {
 }
 
 pub(crate) fn list_builder_seal(cg: &mut Codegen, bld: &str) -> Value {
-    Value::handle(
+    let v = Value::handle(
         cg.call("i8*", "osprey_list_builder_seal", "i8*", &[bld]),
         LIST_OWNER,
-    )
+    );
+    own_handle(cg, v)
 }
 
 /// `mapKeys`/`mapValues` → a `List` built by iterating the map.
@@ -304,7 +316,7 @@ pub(crate) fn gen_map_literal(cg: &mut Codegen, entries: &[osprey_ast::MapEntry]
         );
     }
     let sealed = cg.call("i8*", "osprey_map_builder_seal", "i8*", &[&bld]);
-    Ok(Value::handle(sealed, MAP_OWNER))
+    Ok(own_handle(cg, Value::handle(sealed, MAP_OWNER)))
 }
 
 /// Shared runtime map lookup → `Result<i64, _>` (also used by `m[key]` indexing).

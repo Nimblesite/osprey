@@ -151,6 +151,7 @@ fn compile_program_with_options(program: &Program, options: CodegenOptions) -> R
     }
     // A program that used the testing built-ins exits with the TAP epilogue's
     // status (plan + summary printed by the runtime) [TESTING-EXIT].
+    crate::arc::epilogue(cg, None);
     if cg.testing_used {
         let code = cg.call("i32", "osp_test_finalize", "", &[]);
         cg.emit(format!("ret i32 {code}"));
@@ -204,6 +205,9 @@ fn gen_function(
     cg.cov_hit(position);
     let body_val = gen_fn_body(cg, name, body)?;
     let ret = coerce_return(cg, name, body_val)?;
+    // Returns transfer +1; everything else the function owned drops here
+    // [GC-ARC-PERCEUS].
+    crate::arc::epilogue(cg, Some(&ret));
     cg.emit(format!("ret {} {}", ret.llvm_ty(), ret.operand));
     cg.finish_function(&ret.llvm_ty(), name, &params);
     Ok(())
@@ -245,7 +249,16 @@ fn coerce_return(cg: &mut Codegen, name: &str, body: Value) -> Result<Value> {
     crate::cast::coerce_to(cg, body, ret_ty)
 }
 
+/// Lower a statement inside its own ARC region: temporaries the statement
+/// produced and did not bind drop at its end [GC-ARC-PERCEUS].
 pub(crate) fn gen_local_stmt(cg: &mut Codegen, stmt: &Stmt) -> Result<()> {
+    crate::arc::push_frame(cg);
+    let lowered = gen_stmt_kind(cg, stmt);
+    crate::arc::pop_frame(cg);
+    lowered
+}
+
+fn gen_stmt_kind(cg: &mut Codegen, stmt: &Stmt) -> Result<()> {
     match stmt {
         // A `mut` an effect handler captures is promoted to a shared heap cell so
         // the handler owns it; its declaration allocates the cell and a
@@ -324,6 +337,8 @@ fn gen_cell_define(cg: &mut Codegen, name: &str, value: &Expr) -> Result<()> {
     let ptr = cg.emit_reg(format!(
         "getelementptr {{ {ty} }}, {{ {ty} }}* {cell}, i32 0, i32 0"
     ));
+    // The cell holds its own reference to the stored value [GC-ARC-PERCEUS].
+    crate::arc::dup_store(cg, ty, &v.operand);
     cg.emit(format!("store {ty} {}, {ty}* {ptr}", v.operand));
     let _ = cg.cell_slots.insert(
         name.to_string(),
@@ -348,6 +363,13 @@ fn gen_cell_store(cg: &mut Codegen, name: &str, value: &Expr) -> Result<()> {
     let v = crate::result::unwrap(cg, raw);
     let v = crate::cast::coerce_to(cg, v, slot.pointee)?;
     let ty = slot.pointee.as_str();
+    // Rebind order: dup the incoming value BEFORE dropping the old one, so a
+    // self-assignment never frees the value it stores [GC-ARC-PERCEUS].
+    crate::arc::dup_store(cg, ty, &v.operand);
+    if matches!(slot.pointee, LType::Str | LType::Ptr) {
+        let old = cg.emit_reg(format!("load {ty}, {ty}* {}", slot.ptr));
+        crate::arc::release_operand(cg, &old);
+    }
     cg.emit(format!("store {ty} {}, {ty}* {}", v.operand, slot.ptr));
     Ok(())
 }
@@ -376,6 +398,7 @@ fn gen_bind(cg: &mut Codegen, name: &str, value: &Expr, unwrap: bool) -> Result<
                 if let Some(sig) = Codegen::fn_value_sig(&ty) {
                     let v = crate::closure::emit_closure(cg, parameters, body, &sig)?;
                     cg.emit_debug_local(name, &v);
+                    crate::arc::bind_owned(cg, name, &v);
                     cg.bind(name.to_string(), v);
                     cg.bind_fn_local(name, ty);
                 }
@@ -412,6 +435,9 @@ fn gen_bind(cg: &mut Codegen, name: &str, value: &Expr, unwrap: bool) -> Result<
         cg.bind_fn_local(name, ty);
     }
     cg.emit_debug_local(name, &v);
+    // The binding outlives the statement region: move the statement's
+    // ownership out, or retain a borrow [GC-ARC-PERCEUS].
+    crate::arc::bind_owned(cg, name, &v);
     cg.bind(name.to_string(), v);
     Ok(())
 }

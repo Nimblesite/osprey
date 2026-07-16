@@ -94,6 +94,7 @@ fn sprintf_wrap(cg: &mut Codegen, fmt: &str, arg: &str) -> String {
         "{tmp} = call i32 (i8*, i8*, ...) @sprintf(i8* {buf}, i8* {}, i8* {arg})",
         fmtv.operand
     ));
+    crate::arc::own(cg, &Value::new(&buf, LType::Str));
     buf
 }
 
@@ -119,7 +120,9 @@ pub(crate) fn int_to_string(cg: &mut Codegen, v: Value) -> Result<Value> {
         "{tmp} = call i32 (i8*, i8*, ...) @sprintf(i8* {buf}, i8* {}, i64 {})",
         fmt.operand, i.operand
     ));
-    Ok(Value::new(buf, LType::Str))
+    let v = Value::new(buf, LType::Str);
+    crate::arc::own(cg, &v);
+    Ok(v)
 }
 
 /// Whole-valued floats must print with a trailing `.0`; the runtime handles
@@ -131,7 +134,9 @@ pub(crate) fn float_to_string(cg: &mut Codegen, v: &Value) -> Value {
         "{reg} = call i8* @osp_float_to_string(double {})",
         v.operand
     ));
-    Value::new(reg, LType::Str)
+    let out = Value::new(reg, LType::Str);
+    crate::arc::own(cg, &out);
+    out
 }
 
 pub(crate) fn bool_to_string(cg: &mut Codegen, v: &Value) -> Value {

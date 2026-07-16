@@ -72,6 +72,9 @@ fn ret_and_exit(
     params: &[(LType, String)],
     ret: &Value,
 ) {
+    // Nested-function epilogue: the return transfers +1, owned locals drop
+    // [GC-ARC-PERCEUS].
+    crate::arc::epilogue(cg, Some(ret));
     cg.emit(format!("ret {} {}", ret.llvm_ty(), ret.operand));
     cg.exit_nested_fn(saved, &sig.ret_ty(), name, params);
 }
@@ -440,6 +443,11 @@ pub(crate) fn gen_handler(
         let r = cg.fresh_reg();
         cg.emit(format!("{r} = call i32 @__osprey_handler_pop()"));
     }
+    // The popped region's env reached its structural end: drop it (its mask
+    // releases the captured values) [GC-ARC-PERCEUS], plan 0011 M5.
+    if env != "null" {
+        crate::arc::release_operand(cg, &env);
+    }
     Ok(result)
 }
 
@@ -507,6 +515,8 @@ fn build_env(cg: &mut Codegen, caps: &[ArmCap]) -> (String, String) {
             "getelementptr {env_ty}, {env_ty}* {cell}, i32 0, i32 {i}"
         ));
         let operand = store_operand(cg, c);
+        // The env's drop mask releases each captured pointer [GC-ARC-PERCEUS].
+        crate::arc::dup_store(cg, &slot_ty, &operand);
         cg.emit(format!("store {slot_ty} {operand}, {slot_ty}* {p}"));
     }
     let env = cg.emit_reg(format!("bitcast {env_ty}* {cell} to i8*"));
@@ -544,8 +554,11 @@ fn emit_handler_fn(
     bind_arm_params(cg, arm, sig, resolved, &mut params);
     let body = gen_expr(cg, &arm.body)?;
     let ret = if sig.ret_erased {
-        // An erased (generic) result returns boxed; the perform site unboxes
-        // it to its resolved type. Implements [EFFECTS-GENERIC-RUNTIME].
+        // An erased (generic) result returns boxed — pointer-ness leaves the
+        // arm's frame, so dup before the epilogue drops it [GC-ARC-PERCEUS].
+        crate::arc::escape_retain(cg, &body);
+        // The perform site unboxes it to its resolved type. Implements
+        // [EFFECTS-GENERIC-RUNTIME].
         crate::effect_generics::box_erased(cg, body, resolved.map(|r| &r.ret))
     } else if let Some(inner) = sig.ret_result_inner {
         if body.result_inner.is_some() {
@@ -695,7 +708,15 @@ fn gen_resuming_handler(
         let _ = cg.call("i32", "__osprey_handler_pop", "", &[]);
     }
     cg.call_void("__osprey_coro_free", "i8*", &[&coro]);
-    Ok(unbox_from_i64(cg, &boxed, answer_ty))
+    // The coro region ended: drop its env (mask releases the captures)
+    // [GC-ARC-PERCEUS], plan 0011 M5.
+    if env != "null" {
+        crate::arc::release_operand(cg, &env);
+    }
+    let out = unbox_from_i64(cg, &boxed, answer_ty);
+    // The body fn escape-retained its answer at the boxing site: own it here.
+    crate::arc::own(cg, &out);
+    Ok(out)
 }
 
 fn emit_resuming_body_fn(
@@ -711,6 +732,7 @@ fn emit_resuming_body_fn(
     let body = crate::result::unwrap(cg, body_raw);
     let answer_ty = body.ty;
     let boxed = box_codegen_value(cg, body);
+    crate::arc::epilogue(cg, None);
     cg.emit(format!("ret i64 {}", boxed.operand));
     cg.exit_nested_fn(saved, "i64", name, &[(LType::Ptr, String::from("__env"))]);
     Ok(answer_ty)
@@ -787,6 +809,7 @@ fn emit_resuming_arm_fn(cg: &mut Codegen, arm: &HandlerArm, spec: &ArmFnSpec<'_>
     let body_raw = gen_expr(cg, &arm.body)?;
     let body = coerce_to(cg, body_raw, spec.answer_ty)?;
     let boxed = box_codegen_value(cg, body);
+    crate::arc::epilogue(cg, None);
     cg.emit(format!("ret i64 {}", boxed.operand));
     cg.exit_nested_fn(saved, "i64", spec.name, &params);
     Ok(())
@@ -917,6 +940,9 @@ pub(crate) fn gen_resume(cg: &mut Codegen, value: Option<&Expr>) -> Result<Value
 }
 
 fn box_codegen_value(cg: &mut Codegen, value: Value) -> Value {
+    // Every effect-boundary boxing erases pointer-ness from the ARC drop
+    // walk: dup so the unboxing side owns +1 [GC-ARC-PERCEUS].
+    crate::arc::escape_retain(cg, &value);
     crate::effect_generics::box_raw_value(cg, value)
 }
 
@@ -1006,12 +1032,20 @@ pub(crate) fn gen_perform(
     ));
     if sig.ret_erased {
         return Ok(match site {
-            Some(s) => crate::effect_generics::unbox_erased(cg, &r, &s.op.ret),
+            Some(s) => {
+                let v = crate::effect_generics::unbox_erased(cg, &r, &s.op.ret);
+                // The arm escape-retained before boxing: own the +1 here.
+                crate::arc::own(cg, &v);
+                v
+            }
             None => Value::new(r, LType::I64),
         });
     }
-    Ok(match sig.ret_result_inner {
+    let out = match sig.ret_result_inner {
         Some(inner) => Value::result(r, inner),
         None => Value::new(r, sig.ret),
-    })
+    };
+    // The handler fn's epilogue transferred +1 [GC-ARC-PERCEUS].
+    crate::arc::own(cg, &out);
+    Ok(out)
 }

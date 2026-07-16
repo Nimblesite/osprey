@@ -47,8 +47,12 @@ pub(crate) fn make_result(
     cg.emit(format!(
         "{mp} = getelementptr {struct_ty}, {struct_ty}* {obj}, i32 0, i32 2"
     ));
+    // The block's drop mask releases the errmsg word too [GC-ARC-PERCEUS].
+    crate::arc::dup_store(cg, "i8*", errmsg);
     cg.emit(format!("store i8* {errmsg}, i8** {mp}"));
-    Ok(Value::result(obj, inner).with_payload_owner(payload_owner))
+    let out = Value::result(obj, inner).with_payload_owner(payload_owner);
+    crate::arc::own(cg, &out);
+    Ok(out)
 }
 
 /// A Success result wrapping `value` (disc 0, no message).

@@ -71,7 +71,9 @@ pub(crate) fn gen_constructor(
 
     let handle = cg.fresh_reg();
     cg.emit(format!("{handle} = bitcast {struct_ty}* {obj} to i8*"));
-    Ok(Value::handle(handle, view.owner))
+    let v = Value::handle(handle, view.owner);
+    crate::arc::own(cg, &v);
+    Ok(v)
 }
 
 /// `{ field: value, … }` — an anonymous object literal: the same `{ i64 tag,
@@ -97,7 +99,9 @@ pub(crate) fn gen_object(cg: &mut Codegen, fields: &[FieldAssignment]) -> Result
     }
     let handle = cg.fresh_reg();
     cg.emit(format!("{handle} = bitcast {struct_ty}* {obj} to i8*"));
-    Ok(Value::handle(handle, owner))
+    let v = Value::handle(handle, owner);
+    crate::arc::own(cg, &v);
+    Ok(v)
 }
 
 /// The layout word for a tagged-record block `{ i64 tag, fields… }`
@@ -156,6 +160,7 @@ fn gen_http_response(cg: &mut Codegen, fields: &[FieldAssignment]) -> Result<Val
             "i64" => crate::conv::as_i64(cg, v)?.operand,
             _ => crate::cast::coerce_to(cg, v, LType::Str)?.operand,
         };
+        crate::arc::dup_store(cg, llty, &operand);
         let p = cg.fresh_reg();
         cg.emit(format!(
             "{p} = getelementptr {HTTP_RESPONSE_STRUCT}, {HTTP_RESPONSE_STRUCT}* {obj}, i32 0, i32 {i}"
@@ -163,7 +168,9 @@ fn gen_http_response(cg: &mut Codegen, fields: &[FieldAssignment]) -> Result<Val
         cg.emit(format!("store {llty} {operand}, {llty}* {p}"));
     }
     let handle = cg.emit_reg(format!("bitcast {HTTP_RESPONSE_STRUCT}* {obj} to i8*"));
-    Ok(Value::handle(handle, HTTP_RESPONSE))
+    let v = Value::handle(handle, HTTP_RESPONSE);
+    crate::arc::own(cg, &v);
+    Ok(v)
 }
 
 /// Build a `Success`/`Error` value in the Result ABI: the single field becomes
@@ -230,7 +237,9 @@ pub(crate) fn gen_update(
 
     let handle = cg.fresh_reg();
     cg.emit(format!("{handle} = bitcast {struct_ty}* {obj} to i8*"));
-    Ok(Value::handle(handle, owner))
+    let v = Value::handle(handle, owner);
+    crate::arc::own(cg, &v);
+    Ok(v)
 }
 
 /// `obj.field` — recover the record layout from the handle's owner type and
@@ -276,6 +285,9 @@ pub(crate) fn store_field(
     fty: LType,
     val: &str,
 ) {
+    // Dup-on-store: the block's drop mask releases pointer fields, so every
+    // pointer stored here is a new reference [GC-ARC-PERCEUS].
+    crate::arc::dup_store(cg, fty.as_str(), val);
     let p = cg.fresh_reg();
     cg.emit(format!(
         "{p} = getelementptr {struct_ty}, {struct_ty}* {obj}, i32 0, i32 {idx}"

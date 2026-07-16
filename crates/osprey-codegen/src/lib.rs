@@ -12,6 +12,7 @@
 //! into a module string.
 
 mod aggregate;
+mod arc;
 mod builder;
 mod call;
 mod cast;
