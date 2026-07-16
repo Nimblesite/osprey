@@ -20,9 +20,12 @@ you no longer need.
 
 ## Status
 
-Partially implemented — the *boundary* exists and a first *reclaiming* backend
-ships (tracing GC, opt-in via `--memory=gc`); the ARC default is next
-([implementation plan 0011](../plans/0011-arc-gc-implementation.md)).
+Partially implemented — the *boundary* exists, a first *reclaiming* backend
+ships (tracing GC, opt-in via `--memory=gc`), and the Perceus ARC backend is
+**in progress** (`--memory=arc` links a real counting runtime — header,
+registry, kind/mask drop — byte-identical on the full differential harness;
+compiler dup/drop insertion is the next milestone,
+[implementation plan 0011](../plans/0011-arc-gc-implementation.md) phase 2).
 
 - **Swappable backend boundary [MEM-BACKENDS]: done.** All codegen heap
   allocation funnels through a single `@osp_alloc` hook (osprey-codegen
@@ -177,7 +180,12 @@ source code:
 
 - **ARC (default)** — non-atomic reference counting on the shared residue,
   statically elided wherever ownership is provable. Complete without a
-  cycle collector because the heap is acyclic [MEM-ACYCLIC].
+  cycle collector because the heap is acyclic [MEM-ACYCLIC]. The algorithm
+  is **Perceus** (Reinking, Xie, de Moura, Leijen), implemented from the
+  extended technical report
+  [MSR-TR-2020-42](https://www.microsoft.com/en-us/research/wp-content/uploads/2020/11/perceus-tr-v1.pdf):
+  precise, garbage-free reference counting (every value freed at its last
+  dynamic use), with drop specialization and drop-guided reuse.
 - **Tracing GC** — the conformance oracle that keeps [MEM-OPAQUE] honest.
 
 **Backend portability.** The two reclaiming backends need different things from

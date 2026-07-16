@@ -34,6 +34,9 @@ pub(crate) fn try_inline(
     let saved_aliases = cg.call_aliases.clone();
     let saved_ptr_locals = cg.fn_ptr_locals.clone();
     let saved_value_types = cg.fn_value_types.clone();
+    // The inlined body executing covers the definition line, exactly as a
+    // monomorphic call covers it via gen_function [TESTING-COVERAGE-CODEGEN].
+    cg.cov_hit_inline_fn(name);
     cg.push_scope();
     let _ = cg.inlining.insert(name.to_string());
     let result = (|| {

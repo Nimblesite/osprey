@@ -31,6 +31,23 @@ pub fn compile_program_debug(program: &Program, source: DebugSource) -> Result<S
         program,
         CodegenOptions {
             debug_source: Some(source),
+            ..CodegenOptions::default()
+        },
+    )
+}
+
+/// Compile a whole program with line-coverage instrumentation
+/// [TESTING-COVERAGE-CODEGEN].
+///
+/// # Errors
+///
+/// Returns `Err` under the same conditions as [`compile_program`].
+pub fn compile_program_coverage(program: &Program) -> Result<String> {
+    compile_program_with_options(
+        program,
+        CodegenOptions {
+            coverage: true,
+            ..CodegenOptions::default()
         },
     )
 }
@@ -38,6 +55,9 @@ pub fn compile_program_debug(program: &Program, source: DebugSource) -> Result<S
 fn compile_program_with_options(program: &Program, options: CodegenOptions) -> Result<String> {
     let prog = osprey_types::infer_program(program);
     let mut cg = Codegen::with_options(prog, options);
+    // Seed the coverage denominator from the source, not from what lowering
+    // happens to reach [TESTING-COVERAGE-CODEGEN].
+    cg.cov_seed(program);
 
     // Pre-pass: record parameter names so named-argument calls can be ordered,
     // and parse `effect` operation signatures for `handle`/`perform`.
@@ -47,6 +67,7 @@ fn compile_program_with_options(program: &Program, options: CodegenOptions) -> R
                 name,
                 parameters,
                 body,
+                position,
                 ..
             } => {
                 let _ = cg.fn_params.insert(
@@ -54,11 +75,13 @@ fn compile_program_with_options(program: &Program, options: CodegenOptions) -> R
                     parameters.iter().map(|p| p.name.clone()).collect(),
                 );
                 // A polymorphic function is specialised by inlining at each call
-                // site, so keep its body reachable.
+                // site, so keep its body reachable — and its definition line
+                // coverable through the inline path [TESTING-COVERAGE-CODEGEN].
                 if cg.is_generic_fn(name) {
                     let _ = cg
                         .fn_defs
                         .insert(name.clone(), (parameters.clone(), body.clone()));
+                    cg.cov_note_inline_fn(name, *position);
                 }
             }
             Stmt::Effect {
@@ -114,6 +137,9 @@ fn compile_program_with_options(program: &Program, options: CodegenOptions) -> R
     // OSPREY_PROFILE is set [PROF-ACTIVATE-ENV], docs/specs/0028-Profiler.md.
     cg.add_extern("declare void @osp_prof_boot()");
     cg.emit("call void @osp_prof_boot()");
+    // Register every coverable line's counter before user code runs; the
+    // init body is rendered after all lowering [TESTING-COVERAGE-CODEGEN].
+    cg.cov_emit_boot();
     if let Some((body, _)) = user_main {
         cg.cell_vars = crate::effects::captured_mut_vars(body);
         let _ = gen_expr(&mut cg, body)?;
@@ -173,6 +199,9 @@ fn gen_function(
         params.push((*pty, p.name.clone()));
     }
     cg.cell_vars = crate::effects::captured_mut_vars(body);
+    // The definition line counts as covered when the body executes
+    // [TESTING-COVERAGE-CODEGEN].
+    cg.cov_hit(position);
     let body_val = gen_fn_body(cg, name, body)?;
     let ret = coerce_return(cg, name, body_val)?;
     cg.emit(format!("ret {} {}", ret.llvm_ty(), ret.operand));
@@ -274,6 +303,9 @@ fn with_stmt_debug(
     f: impl FnOnce(&mut Codegen) -> Result<()>,
 ) -> Result<()> {
     let previous = cg.set_debug_position(position);
+    // Every positioned statement is a coverable line, bumped where control
+    // flow reaches it [TESTING-COVERAGE-CODEGEN].
+    cg.cov_hit(position);
     let result = f(cg);
     cg.restore_debug_position(previous);
     result
@@ -287,7 +319,8 @@ fn gen_cell_define(cg: &mut Codegen, name: &str, value: &Expr) -> Result<()> {
     let v = crate::result::unwrap(cg, raw);
     let pointee = v.ty;
     let ty = pointee.as_str();
-    let cell = cg.malloc_struct(&format!("{{ {ty} }}"));
+    let meta = crate::meta::struct_meta(&[crate::meta::MetaField::of_lty(pointee)]);
+    let cell = cg.malloc_struct(&format!("{{ {ty} }}"), meta);
     let ptr = cg.emit_reg(format!(
         "getelementptr {{ {ty} }}, {{ {ty} }}* {cell}, i32 0, i32 0"
     ));

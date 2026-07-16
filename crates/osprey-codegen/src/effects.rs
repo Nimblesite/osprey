@@ -494,7 +494,13 @@ fn build_env(cg: &mut Codegen, caps: &[ArmCap]) -> (String, String) {
             .collect::<Vec<_>>()
             .join(", ")
     );
-    let cell = cg.malloc_struct(&env_ty);
+    // Layout word: cell captures are `i8*` pointers to heap mut-cells, value
+    // captures mark themselves by slot type ([`crate::meta`]).
+    let mf: Vec<_> = caps
+        .iter()
+        .map(|c| crate::meta::MetaField::of_slot_ty(&c.slot_ty()))
+        .collect();
+    let cell = cg.malloc_struct(&env_ty, crate::meta::struct_meta(&mf));
     for (i, c) in caps.iter().enumerate() {
         let slot_ty = c.slot_ty();
         let p = cg.emit_reg(format!(

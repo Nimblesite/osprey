@@ -172,7 +172,14 @@ pub(crate) fn cell_value(
         let reg = cg.emit_reg(format!("bitcast {{ i8* }}* {g} to i8*"));
         return Value::new(reg, LType::Ptr);
     }
-    let cell = cg.malloc_struct(cell_ty);
+    // Layout word: the leading fnptr is a CODE pointer (never released); each
+    // capture marks itself by its slot type ([`crate::meta`]).
+    let mut mf = vec![crate::meta::MetaField::PtrOpaque];
+    mf.extend(
+        caps.iter()
+            .map(|c| crate::meta::MetaField::of_slot_ty(&c.val.llvm_ty())),
+    );
+    let cell = cg.malloc_struct(cell_ty, crate::meta::struct_meta(&mf));
     let fpp = cg.emit_reg(format!(
         "getelementptr {cell_ty}, {cell_ty}* {cell}, i32 0, i32 0"
     ));

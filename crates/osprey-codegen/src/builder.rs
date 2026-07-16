@@ -17,6 +17,8 @@ use std::fmt::Write as _;
 pub struct CodegenOptions {
     /// Source file identity used for LLVM/DWARF debug metadata.
     pub debug_source: Option<DebugSource>,
+    /// Instrument coverable lines with hit counters [TESTING-COVERAGE-CODEGEN].
+    pub coverage: bool,
 }
 
 /// Accumulates a whole module while lowering one function at a time.
@@ -103,6 +105,9 @@ pub struct Codegen {
     pub(crate) testing_used: bool,
     /// LLVM/DWARF debug metadata state, when `--debug` was requested.
     debug: Option<DebugState>,
+    /// Coverage instrumentation state, when coverage was requested
+    /// [TESTING-COVERAGE-CODEGEN].
+    pub(crate) coverage: Option<crate::coverage::CoverageState>,
 }
 
 /// A mutable variable promoted to a heap cell so an effect handler can own it.
@@ -421,6 +426,9 @@ impl Codegen {
             resume_ctx: None,
             testing_used: false,
             debug: options.debug_source.map(DebugState::new),
+            coverage: options
+                .coverage
+                .then(crate::coverage::CoverageState::default),
         }
     }
 
@@ -918,6 +926,11 @@ impl Codegen {
         let _ = self.externs.insert(decl.into());
     }
 
+    /// Append a module-level global definition (counter globals, tables).
+    pub(crate) fn add_global(&mut self, def: impl Into<String>) {
+        self.globals.push(def.into());
+    }
+
     /// Intern a string literal as a private global and return an `i8*` pointing
     /// at its first byte.
     pub(crate) fn string_constant(&mut self, text: &str) -> Value {
@@ -1031,6 +1044,11 @@ impl Codegen {
         out.push('\n');
         out.push_str(&self.funcs.join("\n\n"));
         out.push('\n');
+        if let Some(init) = self.cov_render_init() {
+            out.push('\n');
+            out.push_str(&init);
+            out.push('\n');
+        }
         out.push_str(FRAME_POINTER_ATTRS);
         out.push('\n');
         if let Some(debug) = &self.debug {
@@ -1063,17 +1081,32 @@ impl Codegen {
         self.emit_reg(format!("call i8* @osp_alloc(i64 {size})"))
     }
 
+    /// [`heap_alloc`] carrying the per-site layout word (kind + managed-pointer
+    /// mask, see [`crate::meta`]): the ARC backend stores it in the object
+    /// header so `osp_release` can drop children precisely; other backends
+    /// ignore it. Implements [GC-ARC-PERCEUS], docs/plans/0011 phase 2.
+    pub(crate) fn heap_alloc_tagged(&mut self, size: &str, meta: i64) -> String {
+        if meta == crate::meta::KIND_RAW {
+            return self.heap_alloc(size);
+        }
+        self.add_extern(OSP_ALLOC_TAGGED_DECL);
+        self.emit_reg(format!(
+            "call i8* @osp_alloc_tagged(i64 {size}, i64 {meta})"
+        ))
+    }
+
     /// Allocate a heap block sized for the LLVM struct type `struct_ty`, via the
     /// portable `getelementptr null, 1` sizeof trick, and return the typed
-    /// pointer register (`{TY}*`).
-    pub(crate) fn malloc_struct(&mut self, struct_ty: &str) -> String {
+    /// pointer register (`{TY}*`). `meta` is the site's layout word
+    /// ([`crate::meta`]).
+    pub(crate) fn malloc_struct(&mut self, struct_ty: &str, meta: i64) -> String {
         let szp = self.fresh_reg();
         self.emit(format!(
             "{szp} = getelementptr {struct_ty}, {struct_ty}* null, i64 1"
         ));
         let sz = self.fresh_reg();
         self.emit(format!("{sz} = ptrtoint {struct_ty}* {szp} to i64"));
-        let raw = self.heap_alloc(&sz);
+        let raw = self.heap_alloc_tagged(&sz, meta);
         let obj = self.fresh_reg();
         self.emit(format!("{obj} = bitcast i8* {raw} to {struct_ty}*"));
         obj
@@ -1107,6 +1140,11 @@ pub(crate) const FRAME_POINTER_ATTRS: &str = "attributes #0 = { \"frame-pointer\
 /// a custom `alloc-family` ("osprey", not "malloc") stops LLVM rewriting it to
 /// libc `calloc`/`realloc` and bypassing the backend. Implements [MEM-BACKENDS].
 pub(crate) const OSP_ALLOC_DECL: &str = "declare noalias i8* @osp_alloc(i64) allocsize(0) allockind(\"alloc,uninitialized\") mustprogress nounwind willreturn \"alloc-family\"=\"osprey\"";
+
+/// The layout-carrying twin of [`OSP_ALLOC_DECL`]: same allocator attributes
+/// (so `-O2` dead-allocation elimination still applies), plus the meta word the
+/// ARC backend stores in the object header. Implements [GC-ARC-PERCEUS].
+pub(crate) const OSP_ALLOC_TAGGED_DECL: &str = "declare noalias i8* @osp_alloc_tagged(i64, i64) allocsize(0) allockind(\"alloc,uninitialized\") mustprogress nounwind willreturn \"alloc-family\"=\"osprey\"";
 
 /// The resolved heap layout of a constructor.
 pub(crate) struct CtorView {

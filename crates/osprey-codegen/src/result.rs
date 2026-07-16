@@ -29,7 +29,14 @@ pub(crate) fn make_result(
     let v = coerce_to(cg, value, inner)?;
     let payload_owner = v.osp_ty.clone();
     let struct_ty = result_struct_ty(inner);
-    let obj = cg.malloc_struct(&struct_ty);
+    // Layout word: payload word 0 managed iff pointer-typed; the errmsg slot
+    // is always a (possibly rodata) pointer — the registry probe sorts it out.
+    let meta = crate::meta::struct_meta(&[
+        crate::meta::MetaField::of_lty(inner),
+        crate::meta::MetaField::Byte,
+        crate::meta::MetaField::PtrManaged,
+    ]);
+    let obj = cg.malloc_struct(&struct_ty, meta);
     crate::aggregate::store_field(cg, &struct_ty, obj.as_str(), 0, inner, &v.operand);
     let dp = cg.fresh_reg();
     cg.emit(format!(

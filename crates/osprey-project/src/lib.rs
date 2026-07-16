@@ -179,6 +179,34 @@ pub fn assemble(
     assemble::assemble(config, sources)
 }
 
+/// Module-bearing single files need resolver/flattening; ordinary scripts must
+/// bypass it so their existing IR and debugger symbol names remain exact.
+#[must_use]
+pub fn needs_assembly(program: &osprey_ast::Program) -> bool {
+    use osprey_ast::Stmt;
+    program.statements.iter().any(|statement| {
+        matches!(
+            statement,
+            Stmt::Namespace { .. } | Stmt::Module { .. } | Stmt::Import(_) | Stmt::Signature { .. }
+        )
+    })
+}
+
+/// Assemble one module-aware source in isolation, without sweeping up sibling
+/// files — the single-file path shared by the CLI and the language server.
+///
+/// # Errors
+///
+/// Returns all project graph, import, signature, entry, and state diagnostics.
+pub fn assemble_one(source_file: SourceFile) -> Result<AssembledProject, Vec<ProjectError>> {
+    let root = source_file
+        .path
+        .parent()
+        .map_or_else(|| PathBuf::from("."), Path::to_path_buf);
+    let config = ProjectConfig::for_root(&root);
+    assemble(&config, &[source_file])
+}
+
 /// Load and assemble a directory project in one operation.
 ///
 /// # Errors

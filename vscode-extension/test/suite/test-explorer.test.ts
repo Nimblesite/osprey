@@ -16,8 +16,8 @@ import {
 } from "../../client/src/test-explorer";
 import { resolveBuiltOsprey } from "./osprey-test-env";
 import {
-  BROKEN_FIXTURE, FAIL_FIXTURE, ML_FIXTURE, PASS_FIXTURE, RecordingSink,
-  STRAY_FIXTURE,
+  BROKEN_FIXTURE, COVERAGE_FIXTURE, FAIL_FIXTURE, ML_FIXTURE, PASS_FIXTURE,
+  RecordingSink, STRAY_FIXTURE,
 } from "./test-explorer-harness";
 
 suite("Osprey Test Explorer", () => {
@@ -228,6 +228,26 @@ suite("Osprey Test Explorer", () => {
       // The filter skipped "bad math": "good math" is the only executed case.
       assert.ok(sink.output.includes("ok 1 - good math"));
       assert.ok(!sink.output.includes("bad math"));
+    });
+
+    // [TESTING-COVERAGE-VSCODE]: a coverage run maps TAP as usual AND reports
+    // per-line hits — the executed `double` covered, the dead `unused` at 0.
+    test("a coverage run reports line hits including uncovered lines", async function () {
+      if (!compiler) {
+        this.skip();
+      }
+      this.timeout(30000);
+      const coverageUri = writeFixture("covered.test.osp", COVERAGE_FIXTURE);
+      const controller = newController();
+      const file = await discoveredFile(controller, coverageUri);
+      const sink = new RecordingSink();
+      const request = new vscode.TestRunRequest([file]);
+      await executeRunRequest(controller, request, sink, token(), () => compiler, true);
+      assert.strictEqual(sink.ofKind("passed").length, 1);
+      const hits = sink.coverage.get(coverageUri.fsPath);
+      assert.ok(hits, "coverage report reached the sink");
+      assert.ok((hits.get(1) ?? 0) > 0, "double's definition line is covered");
+      assert.strictEqual(hits.get(3), 0, "unused's definition line has 0 hits");
     });
 
     test("several leaves of one file run as sequential filtered invocations", async function () {

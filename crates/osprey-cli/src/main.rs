@@ -34,11 +34,12 @@ use std::process::{Command, ExitCode};
 pub(crate) const USAGE: &str =
     "usage: osprey <file-or-project> [--check | --ast | --llvm | --compile | --run | \
 --symbols | --list-tests] [--quiet] [--debug] [--profile] [--flavor default|ml] \
-[--memory=default|gc] [--target=native|wasm32] [-o <out>] \
+[--memory=default|gc|arc] [--target=native|wasm32] [-o <out>] \
 [--sandbox | --no-http | --no-websocket | --no-fs | --no-ffi]\n\
-       osprey build [project] [--quiet] [--debug] [--memory=default|gc] \
+       osprey build [project] [--quiet] [--debug] [--memory=default|gc|arc] \
 [--target=native|wasm32] [-o <out>]\n\
-       osprey test [path] [--filter <name>] [--quiet]\n\
+       osprey test [path] [--filter <name>] [--quiet] [--coverage] \
+[--coverage-json <path>]\n\
        osprey fmt [--check | --stdout] [--flavor default|ml] <path...>\n\
        osprey --hover <name>\n\
        osprey --docs --docs-dir <dir>\n\
@@ -300,16 +301,14 @@ fn parse_target(value: &str) -> Result<String, String> {
     }
 }
 
-/// Validate the `--memory=` value. `arc` is reserved but not yet implemented
-/// (docs/plans/0011) — reject it explicitly rather than silently mislabel.
+/// Validate the `--memory=` value: the malloc passthrough (`default`), the
+/// tracing collector (`gc`), or Perceus reference counting (`arc`) —
+/// docs/plans/0011 [MEM-BACKENDS].
 fn parse_memory(value: &str) -> Result<String, String> {
     match value {
-        "default" | "gc" => Ok(value.to_string()),
-        "arc" => {
-            Err("memory backend 'arc' is not yet implemented (available: default, gc)".to_string())
-        }
+        "default" | "gc" | "arc" => Ok(value.to_string()),
         other => Err(format!(
-            "unknown memory backend '{other}' (available: default, gc)\n{USAGE}"
+            "unknown memory backend '{other}' (available: default, gc, arc)\n{USAGE}"
         )),
     }
 }
@@ -735,6 +734,9 @@ fn compile_ir(
             osprey_codegen::DebugSource::from_path(path),
         );
     }
+    if kind == osprey_debug::BuildKind::Coverage {
+        return osprey_codegen::compile_program_coverage(program);
+    }
     osprey_codegen::compile_program(program)
 }
 
@@ -804,9 +806,14 @@ fn link_args(ir: &str, source: &str, memory: &str) -> Vec<String> {
     let uses_http = ir.contains("@http") || ir.contains("@websocket");
 
     // The reclaiming backend is a link-time archive swap — the IR is identical
-    // [MEM-BACKENDS]. `gc` links the tracing-collector archive set; `default`
-    // the malloc-passthrough set. (docs/plans/0011)
-    let suffix = if memory == "gc" { "_gc" } else { "" };
+    // [MEM-BACKENDS]. `gc` links the tracing-collector archive set, `arc` the
+    // Perceus reference-counting set, `default` the malloc-passthrough set.
+    // (docs/plans/0011)
+    let suffix = match memory {
+        "gc" => "_gc",
+        "arc" => "_arc",
+        _ => "",
+    };
     let lib = if uses_http {
         format!("libhttp_runtime{suffix}.a")
     } else {
@@ -2254,18 +2261,24 @@ mod tests {
 
     #[test]
     fn link_args_selects_gc_archive_and_validates_backend() {
-        // The `gc` backend swaps in the `_gc` archive set; `default` does not.
+        // The `gc`/`arc` backends swap in their archive sets; `default` does not.
         let gc = link_args("call void @osprey_list_empty()", "", "gc");
         assert!(
             gc.iter().any(|a| a.contains("_gc.a")) || gc.is_empty(),
             "gc backend must select a *_gc archive when one is present: {gc:?}"
         );
+        let arc = link_args("call void @osprey_list_empty()", "", "arc");
+        assert!(
+            arc.iter().any(|a| a.contains("_arc.a")) || arc.is_empty(),
+            "arc backend must select a *_arc archive when one is present: {arc:?}"
+        );
         let plain = link_args("call void @osprey_list_empty()", "", "default");
         assert!(!plain.iter().any(|a| a.contains("_gc.a")), "{plain:?}");
-        // Backend validation: default/gc accepted, arc reserved, others rejected.
+        assert!(!plain.iter().any(|a| a.contains("_arc.a")), "{plain:?}");
+        // Backend validation: default/gc/arc accepted, others rejected.
         assert_eq!(parse_memory("gc").as_deref(), Ok("gc"));
         assert_eq!(parse_memory("default").as_deref(), Ok("default"));
-        assert!(parse_memory("arc").is_err());
+        assert_eq!(parse_memory("arc").as_deref(), Ok("arc"));
         assert!(parse_memory("bogus").is_err());
     }
 

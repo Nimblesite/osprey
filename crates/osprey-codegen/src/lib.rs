@@ -18,6 +18,7 @@ mod cast;
 mod closure;
 mod collections;
 mod conv;
+mod coverage;
 mod effect_generics;
 mod effects;
 mod error;
@@ -31,6 +32,7 @@ mod listlit;
 mod llty;
 mod loops;
 mod lower;
+mod meta;
 mod pattern;
 mod result;
 mod runtime;
@@ -40,7 +42,7 @@ mod types;
 
 pub use error::{CodegenError, Result};
 pub use llty::{LType, Value};
-pub use lower::{compile_program, compile_program_debug};
+pub use lower::{compile_program, compile_program_coverage, compile_program_debug};
 pub use osprey_debug::DebugSource;
 
 /// Every identifier referenced anywhere in `program` — function bodies, lets,

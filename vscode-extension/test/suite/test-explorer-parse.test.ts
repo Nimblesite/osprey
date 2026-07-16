@@ -6,12 +6,15 @@
 import * as assert from "assert";
 import {
   compileFailureMessage,
+  coverageCounts,
+  coverageRunArgs,
   discoveryOutcome,
   excludedIdSet,
   fileTestId,
   isCompileFailure,
   leafTestId,
   outcomeForLeaf,
+  parseCoverageJson,
   parseTapOutput,
   parseTapStream,
   parseTestList,
@@ -235,6 +238,59 @@ suite("Test Explorer parsing", () => {
     test("toTerminalOutput normalizes line endings to CRLF", () => {
       assert.strictEqual(toTerminalOutput("a\nb\n"), "a\r\nb\r\n");
       assert.strictEqual(toTerminalOutput("a\r\nb"), "a\r\nb");
+    });
+
+    // [TESTING-COVERAGE-CLI] chrome from `osprey test` never masquerades as a
+    // stray-failure diagnostic.
+    test("strayFailureMessage drops osprey test runner chrome", () => {
+      const stream = parseTapStream(
+        [
+          "# file: money.test.ospml",
+          "ok 1 - fine",
+          "1..1",
+          "# coverage: 83.3% (5/6 lines) money.test.ospml",
+          "# coverage total: 83.3% (5/6 lines)",
+          "# suites: 1 passed, 0 failed",
+        ].join("\n"),
+      );
+      assert.strictEqual(strayFailureMessage(stream, 1, "boom"), "boom");
+    });
+  });
+
+  suite("coverage report", () => {
+    // [TESTING-COVERAGE-CLI]: the arguments for one instrumented run.
+    test("coverageRunArgs builds the osprey test invocation", () => {
+      assert.deepStrictEqual(coverageRunArgs("m.test.osp", "cov.json", undefined), [
+        "test",
+        "m.test.osp",
+        "--coverage-json",
+        "cov.json",
+        "--quiet",
+      ]);
+      assert.deepStrictEqual(
+        coverageRunArgs("m.test.osp", "cov.json", "one case").slice(-2),
+        ["--filter", "one case"],
+      );
+    });
+
+    // [TESTING-COVERAGE-JSON] parsing and the covered/total badge numbers.
+    test("parseCoverageJson maps files to line hits; malformed input degrades to absent", () => {
+      const report = parseCoverageJson(
+        '{"files":{"m.test.osp":{"lines":{"3":2,"7":0,"12":1}}}}',
+      );
+      assert.ok(report);
+      const hits = report.get("m.test.osp");
+      assert.ok(hits);
+      assert.strictEqual(hits.get(7), 0);
+      assert.deepStrictEqual(coverageCounts(hits), { covered: 2, total: 3 });
+
+      assert.strictEqual(parseCoverageJson("not json"), undefined);
+      assert.strictEqual(parseCoverageJson('{"nope":true}'), undefined);
+      assert.strictEqual(
+        parseCoverageJson('{"files":{"f":{"lines":{"x":1}}}}'),
+        undefined,
+      );
+      assert.strictEqual(parseCoverageJson('{"files":{"f":{}}}'), undefined);
     });
   });
 

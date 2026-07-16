@@ -321,6 +321,14 @@ void *osp_alloc(int64_t size) {
   return p;
 }
 
+// Layout-carrying allocation: the meta word (kind + pointer mask) is only
+// meaningful to the ARC backend — the conservative collector scans words, so
+// it needs no layout and treats this as a plain managed allocation.
+void *osp_alloc_tagged(int64_t size, int64_t meta) {
+  (void)meta;
+  return osp_alloc(size);
+}
+
 // Reference-count hooks are no-ops under tracing (Bacon/Cheng/Rajan duality):
 // the collector reclaims, so dup/drop carry no work.
 void osp_retain(void *o) { (void)o; }

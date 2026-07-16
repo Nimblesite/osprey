@@ -45,7 +45,8 @@ fn lit_elem(osp_ty: Option<&str>) -> Option<(LType, Option<String>)> {
 /// `[e0, e1, …]` → a flat `{ length, data }` block.
 pub(crate) fn gen_list(cg: &mut Codegen, elements: &[Expr]) -> Result<Value> {
     if elements.is_empty() {
-        let obj = cg.malloc_struct(LIST_STRUCT);
+        // No data block, no elements: nothing for the drop walk to release.
+        let obj = cg.malloc_struct(LIST_STRUCT, crate::meta::list_hdr_meta(false));
         crate::aggregate::store_field(cg, LIST_STRUCT, &obj, 0, LType::I64, "0");
         crate::aggregate::store_field(cg, LIST_STRUCT, &obj, 1, LType::Str, "null");
         return Ok(Value::handle(obj, lit_owner(&Value::new("", LType::Str))));
@@ -87,7 +88,10 @@ pub(crate) fn gen_list(cg: &mut Codegen, elements: &[Expr]) -> Result<Value> {
             elem.as_str()
         ));
     }
-    let obj = cg.malloc_struct(LIST_STRUCT);
+    // The header's kind tells the ARC drop walk whether data[0..len) holds
+    // managed pointers (string/handle elements) or scalars ([`crate::meta`]).
+    let elems_are_ptrs = matches!(elem, LType::Str | LType::Ptr);
+    let obj = cg.malloc_struct(LIST_STRUCT, crate::meta::list_hdr_meta(elems_are_ptrs));
     crate::aggregate::store_field(cg, LIST_STRUCT, &obj, 0, LType::I64, &n.to_string());
     crate::aggregate::store_field(cg, LIST_STRUCT, &obj, 1, LType::Str, &data);
     Ok(Value::handle(

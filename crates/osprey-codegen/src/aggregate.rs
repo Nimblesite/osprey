@@ -56,7 +56,7 @@ pub(crate) fn gen_constructor(
     let struct_ty = cg
         .ctor_struct_ty(name)
         .ok_or_else(|| CodegenError::unknown(name))?;
-    let obj = cg.malloc_struct(&struct_ty);
+    let obj = cg.malloc_struct(&struct_ty, tagged_fields_meta(&view.fields));
     store_tag(cg, &struct_ty, obj.as_str(), view.tag);
 
     // fields, in declared order
@@ -87,9 +87,10 @@ pub(crate) fn gen_object(cg: &mut Codegen, fields: &[FieldAssignment]) -> Result
     parts.extend(vals.iter().map(|(_, v)| v.ty.as_str().to_string()));
     let struct_ty = format!("{{ {} }}", parts.join(", "));
     let layout: Vec<(String, LType)> = vals.iter().map(|(n, v)| (n.clone(), v.ty)).collect();
+    let meta = tagged_fields_meta(&layout);
     let owner = cg.register_obj_layout(layout);
 
-    let obj = cg.malloc_struct(&struct_ty);
+    let obj = cg.malloc_struct(&struct_ty, meta);
     store_tag(cg, &struct_ty, obj.as_str(), 0);
     for (i, (_, v)) in vals.iter().enumerate() {
         store_field(cg, &struct_ty, obj.as_str(), i + 1, v.ty, &v.operand);
@@ -97,6 +98,21 @@ pub(crate) fn gen_object(cg: &mut Codegen, fields: &[FieldAssignment]) -> Result
     let handle = cg.fresh_reg();
     cg.emit(format!("{handle} = bitcast {struct_ty}* {obj} to i8*"));
     Ok(Value::handle(handle, owner))
+}
+
+/// The layout word for a tagged-record block `{ i64 tag, fields… }`
+/// ([`crate::meta`]): the leading discriminant is a scalar word; each field
+/// marks itself by its LLVM type. Generic-variant slots boxed into `i64` stay
+/// unmarked — leak-safe by design (meta.rs [GC-ARC-PERCEUS]).
+fn tagged_fields_meta(fields: &[(String, LType)]) -> i64 {
+    let mut mf = Vec::with_capacity(fields.len() + 1);
+    mf.push(crate::meta::MetaField::Word);
+    mf.extend(
+        fields
+            .iter()
+            .map(|(_, t)| crate::meta::MetaField::of_lty(*t)),
+    );
+    crate::meta::struct_meta(&mf)
 }
 
 /// The built-in HTTP response record name.
@@ -120,7 +136,12 @@ const HTTP_RESPONSE_FIELDS: [(&str, &str); 6] = [
 /// request handler hands back to the runtime. Unlike a generic record there is
 /// **no leading tag**, and the boolean `isComplete` widens to `i8`.
 fn gen_http_response(cg: &mut Codegen, fields: &[FieldAssignment]) -> Result<Value> {
-    let obj = cg.malloc_struct(HTTP_RESPONSE_STRUCT);
+    // Layout word for the fixed C ABI: string pointers at words 1, 2 and 5
+    // (headers / contentType / partialBody) — pinned by meta.rs unit tests.
+    let meta = crate::meta::struct_meta(
+        &HTTP_RESPONSE_FIELDS.map(|(_, llty)| crate::meta::MetaField::of_slot_ty(llty)),
+    );
+    let obj = cg.malloc_struct(HTTP_RESPONSE_STRUCT, meta);
     for (i, (fname, llty)) in HTTP_RESPONSE_FIELDS.iter().enumerate() {
         let fa = fields.iter().find(|f| &f.name == fname).ok_or_else(|| {
             CodegenError::invalid(format!("missing field `{fname}` for `{HTTP_RESPONSE}`"))
@@ -193,7 +214,7 @@ pub(crate) fn gen_update(
         "{src} = bitcast i8* {} to {struct_ty}*",
         base.operand
     ));
-    let obj = cg.malloc_struct(&struct_ty);
+    let obj = cg.malloc_struct(&struct_ty, tagged_fields_meta(&view.fields));
     store_tag(cg, &struct_ty, obj.as_str(), view.tag);
 
     for (i, (fname, fty)) in view.fields.iter().enumerate() {

@@ -120,7 +120,7 @@ fn range(cg: &mut Codegen, args: &[Expr]) -> Result<Value> {
     let s = as_i64(cg, s)?;
     let e = gen_expr(cg, nth(args, 1)?)?;
     let e = as_i64(cg, e)?;
-    let obj = cg.malloc_struct(RANGE_TY);
+    let obj = cg.malloc_struct(RANGE_TY, crate::meta::KIND_RAW);
     crate::aggregate::store_field(cg, RANGE_TY, &obj, 0, LType::I64, &s.operand);
     crate::aggregate::store_field(cg, RANGE_TY, &obj, 1, LType::I64, &e.operand);
     Ok(Value::handle(obj, RANGE_OWNER))
