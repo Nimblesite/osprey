@@ -312,6 +312,12 @@ void osp_release(void *o) {
   pthread_mutex_unlock(&g_lock);
 }
 
+// Codegen-proved-unique drop (memory_hooks.h): the caller proved rc == 1, so
+// this is exactly osp_release — the distinct symbol only exists to carry
+// LLVM's free-pair attributes so -O2 can delete non-escaping alloc+release
+// pairs before they ever reach the runtime.
+void osp_release_unique(void *o) { osp_release(o); }
+
 // Full-collection hook: nothing to do — acyclic naive RC is already complete
 // (Bacon/Cheng/Rajan; TR §2.2).
 void osp_collect(void) {}

@@ -333,6 +333,9 @@ void *osp_alloc_tagged(int64_t size, int64_t meta) {
 // the collector reclaims, so dup/drop carry no work.
 void osp_retain(void *o) { (void)o; }
 void osp_release(void *o) { (void)o; }
+// Codegen-proved-unique drop (memory_hooks.h) — a no-op like osp_release; the
+// separate symbol carries LLVM free-pair attributes in the emitted IR.
+void osp_release_unique(void *o) { (void)o; }
 // Singleton-immortality hook (memory_hooks.h) — meaningful only under ARC.
 void osp_mem_immortal(void *p) { (void)p; }
 

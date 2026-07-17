@@ -36,12 +36,13 @@ MEMRUNS=${BENCH_MEMRUNS:-3}
 
 # Language order is the report's column order. "Speed of light" baselines (C,
 # Rust) first after Osprey so the gap to Osprey reads left-to-right. `osprey-gc`
-# is the SAME .osp compiled with the tracing GC backend (--memory=gc), so the
-# allocation cases (binarytrees) show reclamation next to the default backend.
-LANGS=(osprey osprey-gc rust c ocaml haskell osprey-wasm rust-wasm c-wasm)
+# and `osprey-arc` are the SAME .osp compiled with the tracing-GC (--memory=gc)
+# and Perceus ARC (--memory=arc) backends, so the allocation cases
+# (binarytrees) show both reclamation strategies next to the default backend.
+LANGS=(osprey osprey-arc osprey-gc rust c csharp dart ocaml haskell osprey-wasm rust-wasm c-wasm)
 typeset -A EXT
-EXT=(osprey osp  osprey-gc osp  rust rs  c c  ocaml ml  haskell hs
-     osprey-wasm osp  rust-wasm rs  c-wasm c)
+EXT=(osprey osp  osprey-arc osp  osprey-gc osp  rust rs  c c  csharp cs  dart dart
+     ocaml ml  haskell hs  osprey-wasm osp  rust-wasm rs  c-wasm c)
 
 have() { command -v "$1" >/dev/null 2>&1 }
 
@@ -67,9 +68,11 @@ wasm_wrap() { printf '#!/bin/sh\nexec wasmtime run "%s.wasm" "$@"\n' "$1" > "$1"
 # probed once into CWASM_OK because stock clang+wasi-libc often lacks it.)
 toolchain_ok() {
   case "$1" in
-    osprey|osprey-gc) [[ -x "$OSP" ]] ;;
+    osprey|osprey-gc|osprey-arc) [[ -x "$OSP" ]] ;;
     rust)    have rustc ;;
     c)       have cc ;;
+    csharp)  have dotnet ;;
+    dart)    have dart ;;
     ocaml)   have ocamlopt ;;
     haskell) have ghc ;;
     osprey-wasm) [[ -x "$OSP" ]] && have wasmtime && [[ -f "$ROOT/compiler/lib/libosprey_runtime_wasm.a" ]] ;;
@@ -83,9 +86,19 @@ build() {
   local lang=$1 dir=$2 name=$3 out=$4
   case "$lang" in
     osprey)    ( cd "$dir" && "$OSP" "$name.osp" --compile >/dev/null 2>&1 ) && mv -f "$dir/$name" "$out" ;;
-    osprey-gc) ( cd "$dir" && "$OSP" "$name.osp" --memory=gc --compile >/dev/null 2>&1 ) && mv -f "$dir/$name" "$out" ;;
+    osprey-gc)  ( cd "$dir" && "$OSP" "$name.osp" --memory=gc --compile >/dev/null 2>&1 ) && mv -f "$dir/$name" "$out" ;;
+    osprey-arc) ( cd "$dir" && "$OSP" "$name.osp" --memory=arc --compile >/dev/null 2>&1 ) && mv -f "$dir/$name" "$out" ;;
     rust)    rustc -C opt-level=3 -C overflow-checks=off -o "$out" "$dir/$name.rs" 2>/dev/null ;;
     c)       cc -O2 -o "$out" "$dir/$name.c" 2>/dev/null ;;
+    # C# via NativeAOT (dotnet publish): a real native binary, the fair
+    # comparison against the other AOT columns. One throwaway SDK project per
+    # case in $TMP; the published binary is moved to $out.
+    csharp)  csd="$TMP/cs_$name" && rm -rf "$csd" && mkdir -p "$csd" && \
+             cp "$dir/$name.cs" "$csd/Program.cs" && \
+             printf '%s\n' '<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net10.0</TargetFramework><PublishAot>true</PublishAot><OptimizationPreference>Speed</OptimizationPreference><InvariantGlobalization>true</InvariantGlobalization><Nullable>disable</Nullable><AssemblyName>bench</AssemblyName></PropertyGroup></Project>' > "$csd/bench.csproj" && \
+             ( cd "$csd" && dotnet publish -c Release -o out --nologo -v q >/dev/null 2>&1 ) && \
+             mv -f "$csd/out/bench" "$out" ;;
+    dart)    dart compile exe "$dir/$name.dart" -o "$out" >/dev/null 2>&1 ;;
     ocaml)   cp "$dir/$name.ml" "$TMP/$name.ml" && \
              ( cd "$TMP" && ocamlopt -O3 -unsafe -o "$out" "$name.ml" >/dev/null 2>&1 ) ;;  # compile a copy: ocamlopt litters .cmi/.cmx/.o beside the source
     haskell) ghc -O2 -outputdir "$TMP/hs_$name" -o "$out" "$dir/$name.hs" >/dev/null 2>&1 ;;

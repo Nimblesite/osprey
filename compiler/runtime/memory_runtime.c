@@ -37,6 +37,9 @@ void *osp_alloc_tagged(int64_t size, int64_t meta) {
 // duality: under tracing or leak-everything, reference counts carry no work).
 void osp_retain(void *o) { (void)o; }
 void osp_release(void *o) { (void)o; }
+// Codegen-proved-unique drop (memory_hooks.h) — same no-op here; the symbol
+// exists so codegen can attach LLVM free-pair attributes to it.
+void osp_release_unique(void *o) { (void)o; }
 // Singleton-immortality hook (memory_hooks.h) — meaningful only under ARC.
 void osp_mem_immortal(void *p) { (void)p; }
 

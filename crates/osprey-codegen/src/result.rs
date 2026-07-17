@@ -52,6 +52,12 @@ pub(crate) fn make_result(
     cg.emit(format!("store i8* {errmsg}, i8** {mp}"));
     let out = Value::result(obj, inner).with_payload_owner(payload_owner);
     crate::arc::own(cg, &out);
+    // A scalar payload plus a non-register errmsg (null / rodata constant)
+    // means the block holds zero managed references — eligible for the
+    // consume-at-unwrap fast path that lets -O2 delete the whole block.
+    if !matches!(inner, LType::Str | LType::Ptr) && !errmsg.starts_with('%') {
+        crate::arc::mark_pure_scalar(cg, &out);
+    }
     Ok(out)
 }
 
@@ -225,7 +231,9 @@ pub(crate) fn repack_to_inner(cg: &mut Codegen, v: Value, inner: LType) -> Resul
 /// yielding its success payload; a non-Result value passes through.
 pub(crate) fn unwrap(cg: &mut Codegen, v: Value) -> Value {
     if v.result_inner.is_some() {
-        load_value(cg, &v)
+        let out = load_value(cg, &v);
+        crate::arc::consume_fresh(cg, &v);
+        out
     } else {
         v
     }

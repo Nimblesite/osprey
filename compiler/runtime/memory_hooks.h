@@ -11,6 +11,17 @@
 void osp_retain(void *o);
 void osp_release(void *o);
 
+// Release a reference codegen PROVES is the only one (a fresh, never-bound,
+// never-stored value consumed in the expression that created it). Runtime
+// behaviour is identical to osp_release; the separate symbol exists so
+// codegen can declare it with LLVM's allocator free-pair attributes
+// (allockind("free") / allocptr) and -O2 can delete a provably-dead
+// alloc+release pair outright — restoring the [MEM-OWNERSHIP] static-free
+// ideal for per-operation Result blocks. Those attributes let LLVM assume
+// the pointee is dead after the call, which is only true when rc == 1 —
+// hence the uniqueness proof requirement on every emission site.
+void osp_release_unique(void *o);
+
 // Mark a shared C-runtime singleton immortal (ARC: rc < 0 — dup/drop skip it
 // forever). For objects returned from multiple call sites by construction,
 // e.g. the empty-list singleton.

@@ -18,14 +18,23 @@ use osprey_ast::{Expr, Stmt};
 
 const RETAIN_DECL: &str = "declare void @osp_retain(i8*)";
 const RELEASE_DECL: &str = "declare void @osp_release(i8*)";
+/// The proved-unique drop: `allockind("free")`/`allocptr` pair it with
+/// `osp_alloc`/`osp_alloc_tagged` (same `alloc-family`), so -O2 deletes a
+/// non-escaping alloc+release outright — the [MEM-OWNERSHIP] static free.
+/// Sound ONLY where codegen proves rc == 1 (see [`consume_fresh`]): the
+/// attributes let LLVM treat the pointee as dead after the call.
+const RELEASE_UNIQUE_DECL: &str = "declare void @osp_release_unique(i8* allocptr noundef) allockind(\"free\") mustprogress nounwind willreturn \"alloc-family\"=\"osprey\"";
 
 /// One owned value: the SSA operand it was registered under (for move
 /// detection at `bind`), the binding name once `let`-bound (for last-use
-/// drops, M6), and the entry-block spill slot holding it.
+/// drops, M6), the entry-block spill slot holding it, and whether the block
+/// provably holds no managed references (a scalar-payload Result with no
+/// heap errmsg — eligible for [`consume_fresh`]).
 struct Entry {
     operand: String,
     name: Option<String>,
     slot: String,
+    pure_scalar: bool,
 }
 
 /// The per-function ownership ledger: a stack of frames (function body,
@@ -85,7 +94,47 @@ pub(crate) fn own(cg: &mut Codegen, v: &Value) {
             operand: v.operand.clone(),
             name: None,
             slot,
+            pure_scalar: false,
         });
+    }
+}
+
+/// Mark the just-owned `v` as holding no managed references (its producer
+/// proved a scalar payload and a non-heap errmsg), enabling [`consume_fresh`].
+pub(crate) fn mark_pure_scalar(cg: &mut Codegen, v: &Value) {
+    if let Some(e) = cg
+        .arc
+        .frames
+        .last_mut()
+        .and_then(|f| f.last_mut())
+        .filter(|e| e.operand == v.operand)
+    {
+        e.pure_scalar = true;
+    }
+}
+
+/// Consume a freshly produced, never-bound owner at its immediate unwrap:
+/// pop the newest innermost-frame entry when it is `v` itself, unnamed and
+/// pure-scalar, and drop it via `@osp_release_unique` — whose free-pair
+/// attributes let -O2 delete the whole non-escaping alloc+release. The gates
+/// make the rc == 1 proof: same SSA register ⇒ the creation dominates and
+/// nothing was rebound; newest entry + unnamed ⇒ no store or `let` aliased
+/// it; pure-scalar ⇒ eliding the pair drops no interior references either.
+pub(crate) fn consume_fresh(cg: &mut Codegen, v: &Value) {
+    let fresh = cg
+        .arc
+        .frames
+        .last()
+        .and_then(|f| f.last())
+        .is_some_and(|e| e.operand == v.operand && e.name.is_none() && e.pure_scalar);
+    if !fresh {
+        return;
+    }
+    if let Some(e) = cg.arc.frames.last_mut().and_then(Vec::pop) {
+        cg.add_extern(RELEASE_UNIQUE_DECL);
+        let ptr = as_i8ptr(cg, v);
+        cg.emit(format!("call void @osp_release_unique(i8* {ptr})"));
+        cg.emit(format!("store i8* null, i8** {}", e.slot));
     }
 }
 
@@ -135,6 +184,7 @@ pub(crate) fn bind_owned(cg: &mut Codegen, name: &str, v: &Value) {
             operand: v.operand.clone(),
             name: Some(name.to_string()),
             slot,
+            pure_scalar: false,
         },
     );
 }
