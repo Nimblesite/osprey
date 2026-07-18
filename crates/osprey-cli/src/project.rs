@@ -1,6 +1,6 @@
 //! CLI-facing project input and source-location handling.
 
-use osprey_ast::{Position, Program, Stmt};
+use osprey_ast::{Position, Program};
 use osprey_project::{AssembledProject, ProjectConfig, ProjectError, SourceFile};
 use osprey_syntax::Flavor;
 use std::path::{Path, PathBuf};
@@ -46,16 +46,13 @@ impl CompilationInput {
         source: String,
         program: Program,
     ) -> Result<Self, Vec<ProjectError>> {
-        let physical_path = normalize_path(Path::new(path));
         let source_file = SourceFile {
-            path: physical_path.clone(),
+            path: normalize_path(Path::new(path)),
             flavor,
             source: source.clone(),
             program,
         };
-        let root = physical_path.parent().unwrap_or_else(|| Path::new("."));
-        let config = ProjectConfig::for_root(root);
-        let assembled = osprey_project::assemble(&config, &[source_file])?;
+        let assembled = osprey_project::assemble_one(source_file)?;
         Ok(Self::assembled(
             assembled,
             source,
@@ -181,14 +178,7 @@ pub(crate) fn is_project_path(path: &str) -> bool {
 
 /// Module-bearing single files need resolver/flattening; ordinary scripts must
 /// bypass it so their existing IR and debugger symbol names remain exact.
-pub(crate) fn needs_assembly(program: &Program) -> bool {
-    program.statements.iter().any(|statement| {
-        matches!(
-            statement,
-            Stmt::Namespace { .. } | Stmt::Module { .. } | Stmt::Import(_) | Stmt::Signature { .. }
-        )
-    })
-}
+pub(crate) use osprey_project::needs_assembly;
 
 /// Render a loader/resolver failure in the compiler's standard diagnostic form.
 pub(crate) fn format_project_error(error: &ProjectError, fallback: &str) -> String {

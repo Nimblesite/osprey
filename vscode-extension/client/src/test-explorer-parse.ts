@@ -114,6 +114,10 @@ const TAP_RESULT = /^(not )?ok \d+ - (.*?)(?: # SKIP ?(.*))?$/;
 const TAP_COMMENT = /^#\s?(.*)$/;
 const TAP_PLAN = /^\d+\.\.\d+$/;
 const TAP_SUMMARY = /^tests=\d+ passed=\d+ failed=\d+/;
+// `osprey test` runner chrome ([TESTING-CLI-RUN], [TESTING-COVERAGE-CLI]):
+// per-file headers, coverage rates, and the suite tally are progress lines,
+// not failure diagnostics.
+const TEST_RUNNER_CHROME = /^(file: |coverage(?: total)?: |suites: \d+ passed)/;
 
 /**
  * Parse a TAP stream ([TESTING-TAP]): one entry per `ok`/`not ok` line, each
@@ -274,7 +278,7 @@ export function strayFailureMessage(
   const diagnostics = [
     ...stream.results.flatMap((result) => result.comments),
     ...stream.strayComments,
-  ].filter((comment) => !TAP_SUMMARY.test(comment));
+  ].filter((comment) => !TAP_SUMMARY.test(comment) && !TEST_RUNNER_CHROME.test(comment));
   return (
     diagnostics.join("\n") ||
     stderr.trim() ||
@@ -310,4 +314,83 @@ export function compileFailureMessage(stderr: string, exitCode: number): string 
 /** Test Explorer output is a pseudoterminal: lines must end in CRLF. */
 export function toTerminalOutput(text: string): string {
   return text.replace(/\r?\n/g, "\r\n");
+}
+
+/** One file's coverage: 1-based source line → hit count ([TESTING-COVERAGE-JSON]). */
+export type LineHits = ReadonlyMap<number, number>;
+
+/**
+ * The CLI arguments for one coverage run of a test file
+ * ([TESTING-COVERAGE-CLI]): `osprey test` instruments the build, writes the
+ * machine-readable report, and streams the same TAP the plain run produces.
+ * `--quiet` drops the per-file chrome; `--filter` scopes to one case.
+ */
+export function coverageRunArgs(
+  filePath: string,
+  jsonPath: string,
+  filter: string | undefined,
+): string[] {
+  return [
+    "test",
+    filePath,
+    "--coverage-json",
+    jsonPath,
+    "--quiet",
+    ...(filter === undefined ? [] : ["--filter", filter]),
+  ];
+}
+
+function parsedLineHits(value: unknown): Map<number, number> | undefined {
+  const lines = (value as { lines?: unknown }).lines;
+  if (typeof lines !== "object" || lines === null) {
+    return undefined;
+  }
+  const hits = new Map<number, number>();
+  for (const [line, count] of Object.entries(lines)) {
+    const lineNumber = Number(line);
+    if (!Number.isInteger(lineNumber) || typeof count !== "number") {
+      return undefined;
+    }
+    hits.set(lineNumber, count);
+  }
+  return hits;
+}
+
+/**
+ * Parse the `--coverage-json` report ([TESTING-COVERAGE-JSON]):
+ * `{"files":{"<path>":{"lines":{"<line>":hits}}}}` → path → line hits.
+ * `undefined` on any malformation — coverage then degrades to absent, never
+ * to wrong numbers.
+ */
+export function parseCoverageJson(text: string): Map<string, LineHits> | undefined {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    return undefined;
+  }
+  const files = (parsed as { files?: unknown }).files;
+  if (typeof files !== "object" || files === null) {
+    return undefined;
+  }
+  const report = new Map<string, LineHits>();
+  for (const [file, value] of Object.entries(files)) {
+    const hits = parsedLineHits(value);
+    if (hits === undefined) {
+      return undefined;
+    }
+    report.set(file, hits);
+  }
+  return report;
+}
+
+/** Covered/total line counts for one file's hits (the summary badge numbers). */
+export function coverageCounts(hits: LineHits): { covered: number; total: number } {
+  let covered = 0;
+  for (const count of hits.values()) {
+    if (count > 0) {
+      covered += 1;
+    }
+  }
+  return { covered, total: hits.size };
 }

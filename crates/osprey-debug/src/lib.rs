@@ -66,6 +66,9 @@ pub enum BuildKind {
     /// FULL optimization — a profile of an unoptimized program misleads, so
     /// unlike `Debug` this keeps the release optimizer flag.
     Profile,
+    /// Line-coverage instrumentation [TESTING-COVERAGE-CODEGEN]: hit counters
+    /// bumped in place at release optimization, no DWARF.
+    Coverage,
 }
 
 impl BuildKind {
@@ -74,7 +77,7 @@ impl BuildKind {
     pub fn opt_flag(self, release_default: String, debug_override: Option<String>) -> String {
         match self {
             BuildKind::Debug => debug_override.unwrap_or_else(|| "-O0".to_string()),
-            BuildKind::Release | BuildKind::Profile => release_default,
+            BuildKind::Release | BuildKind::Profile | BuildKind::Coverage => release_default,
         }
     }
 
@@ -82,7 +85,7 @@ impl BuildKind {
     #[must_use]
     pub fn native_driver_flags(self) -> Vec<String> {
         match self {
-            BuildKind::Release => Vec::new(),
+            BuildKind::Release | BuildKind::Coverage => Vec::new(),
             BuildKind::Debug | BuildKind::Profile => {
                 vec!["-g".to_string(), "-fno-omit-frame-pointer".to_string()]
             }
@@ -92,7 +95,7 @@ impl BuildKind {
     /// Whether codegen should emit source-level debug metadata (DWARF).
     #[must_use]
     pub fn wants_debug_info(self) -> bool {
-        !matches!(self, BuildKind::Release)
+        matches!(self, BuildKind::Debug | BuildKind::Profile)
     }
 }
 
@@ -202,5 +205,18 @@ mod tests {
         assert!(profile.wants_debug_info());
         assert!(BuildKind::Debug.wants_debug_info());
         assert!(!BuildKind::Release.wants_debug_info());
+    }
+
+    // [TESTING-COVERAGE-CODEGEN]: coverage builds run at release optimization
+    // with no DWARF — the counters, not line tables, carry the attribution.
+    #[test]
+    fn coverage_build_is_optimized_without_debug_info() {
+        let coverage = BuildKind::Coverage;
+        assert_eq!(
+            coverage.opt_flag("-O2".to_string(), Some("-O0".to_string())),
+            "-O2"
+        );
+        assert!(coverage.native_driver_flags().is_empty());
+        assert!(!coverage.wants_debug_info());
     }
 }

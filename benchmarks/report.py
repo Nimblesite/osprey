@@ -21,10 +21,12 @@ import sys
 from pathlib import Path
 from typing import Callable, Optional, cast
 
-ORDER: list[str] = ["osprey", "osprey-gc", "rust", "c", "ocaml", "haskell",
-                    "osprey-wasm", "rust-wasm", "c-wasm"]
-LABEL: dict[str, str] = {"osprey": "Osprey", "osprey-gc": "Osprey (GC)",
-                         "rust": "Rust", "c": "C", "ocaml": "OCaml", "haskell": "Haskell",
+ORDER: list[str] = ["osprey", "osprey-arc", "osprey-gc", "rust", "c", "csharp", "dart",
+                    "ocaml", "haskell", "osprey-wasm", "rust-wasm", "c-wasm"]
+LABEL: dict[str, str] = {"osprey": "Osprey", "osprey-arc": "Osprey (ARC)",
+                         "osprey-gc": "Osprey (GC)",
+                         "rust": "Rust", "c": "C", "csharp": "C# (AOT)", "dart": "Dart (AOT)",
+                         "ocaml": "OCaml", "haskell": "Haskell",
                          "osprey-wasm": "Osprey (wasm)", "rust-wasm": "Rust (wasm)",
                          "c-wasm": "C (wasm)"}
 REPO = Path(__file__).resolve().parent.parent

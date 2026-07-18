@@ -1,4 +1,5 @@
 #include "collection_runtime.h"
+#include "memory_hooks.h"
 
 #include <stdint.h>
 #include <stdlib.h>
@@ -74,6 +75,9 @@ static OspreyList *singleton_empty = NULL;
 OspreyList *osprey_list_empty(void) {
   if (singleton_empty == NULL) {
     singleton_empty = alloc_list(0, 0, 0, NULL, NULL);
+    /* Returned from many sites and owned by many callers at once: under ARC
+     * it must never be freed by any of them [GC-ARC-PERCEUS], plan 0011 M4. */
+    osp_mem_immortal(singleton_empty);
   }
   return singleton_empty;
 }
@@ -234,13 +238,17 @@ OspreyList *osprey_list_prepend(OspreyList *l, int64_t v) {
 }
 
 OspreyList *osprey_list_concat(OspreyList *a, OspreyList *b) {
+  /* Alias returns carry a fresh +1 (retain-on-return): the caller owns every
+   * returned handle, aliased or not [GC-ARC-PERCEUS], plan 0011 M4. */
   if (a == NULL || a->length == 0) {
     if (b == NULL) {
       return osprey_list_empty();
     }
+    osp_retain(b);
     return (OspreyList *)b;
   }
   if (b == NULL || b->length == 0) {
+    osp_retain(a);
     return (OspreyList *)a;
   }
   OspreyListBuilder *bld = osprey_list_builder_new();
@@ -260,6 +268,7 @@ OspreyList *osprey_list_concat(OspreyList *a, OspreyList *b) {
 
 OspreyList *osprey_list_drop(OspreyList *l, int64_t n) {
   if (l == NULL || n <= 0) {
+    osp_retain(l); /* alias return: +1 to the caller (see concat) */
     return (OspreyList *)l;
   }
   if (n >= l->length) {

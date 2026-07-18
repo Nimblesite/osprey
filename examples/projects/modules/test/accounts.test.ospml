@@ -144,8 +144,51 @@ rowCase () =
 
 bs = "\\"
 
+// --- MOCKING VIA ALGEBRAIC EFFECTS [TESTING-EFFECT-MOCKS] ---
+//
+// `Vault` is the same capability shape main.ospml wires to SQLite via
+// Ledger::Store. Business logic performs against the EFFECT; each test
+// installs its own handler — a mock — so one workflow is proven against
+// any storage behavior with no database, no injection framework, and
+// compile-time safety: forget a handler and the suite refuses to build.
+effect Vault
+    balance : int => int
+    debit : (int, int) => Outcome
+
+// The workflow under test: rent only moves when the guard says it can.
+payRent account cents = match Accounts::movable cents && perform Vault.balance account >= cents
+    true => perform Vault.debit account cents
+    false => Refused(why = "blocked by guard")
+
+// Mock 1: a flush account — every debit lands on a fixed 9000-cent float.
+flushVault () = handle Vault
+    balance id => 9000
+    debit id cents => Landed(balance = 9000 - cents)
+in settle (payRent 1 2500)
+
+// Mock 2: a broke account — the guard refuses before storage is even asked.
+brokeVault () = handle Vault
+    balance id => 40
+    debit id cents => Landed(balance = 0)
+in settle (payRent 1 2500)
+
+// Mock 3: interaction spy — proves the guard SHORT-CIRCUITS on a bad amount.
+// The arms are poisoned to PASS the guard and land if ever consulted: a
+// "landed"/"vault touched" result would unmask a zero-cent debit reaching
+// storage, so "refused blocked by guard" proves domain-only refusal.
+spyVault () = handle Vault
+    balance id => 999999
+    debit id cents => Refused(why = "vault touched")
+in settle (payRent 1 0)
+
+mockedVaultCase () =
+    landed = check ("flush vault lands the rent", "landed 6500", flushVault ())
+    refused = andThen landed (check ("broke vault refuses via the guard", "refused blocked by guard", brokeVault ()))
+    andThen refused (check ("zero cents never reaches storage", "refused blocked by guard", spyVault ()))
+
 test "namable enforces a non-empty owner" namableCase
 test "movable enforces positive whole cents" movableCase
 test "Outcome classifies landed vs refused" outcomeCase
 test "Account renders escaped JSON" jsonCase
 test "Account renders an aligned TUI row" rowCase
+test "effect handlers mock the vault per test" mockedVaultCase

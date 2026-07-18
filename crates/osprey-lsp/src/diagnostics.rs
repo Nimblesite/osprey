@@ -32,6 +32,9 @@ pub fn compute(source: &str, path: &str, encoding: PositionEncoding) -> Vec<Diag
     if let Some(diagnostics) = project_diagnostics(source, path, &parsed.program, encoding) {
         return diagnostics;
     }
+    if let Some(diagnostics) = standalone_diagnostics(source, path, &parsed.program, encoding) {
+        return diagnostics;
+    }
     type_diagnostics(source, &parsed.program, encoding)
 }
 
@@ -47,6 +50,51 @@ fn type_diagnostics(
             diagnostic(source, pos, &e.message, "type-error", encoding)
         })
         .collect()
+}
+
+/// Single-source assembly for a module-bearing file that no project claims —
+/// a standalone script or a file outside the manifest's `source_roots` (test
+/// suites in `test/`). Mirrors the CLI's `--check`/`osprey test` path so the
+/// editor never reports `unknown identifier` for the file's own modules.
+/// `None` for ordinary module-free scripts, which skip assembly entirely.
+fn standalone_diagnostics(
+    source: &str,
+    uri: &str,
+    program: &Program,
+    encoding: PositionEncoding,
+) -> Option<Vec<Diagnostic>> {
+    if !osprey_project::needs_assembly(program) {
+        return None;
+    }
+    let file = file_path(uri).unwrap_or_else(|| PathBuf::from(uri));
+    let flavor =
+        osprey_syntax::resolve_flavor(None, uri, source).unwrap_or(osprey_syntax::Flavor::Default);
+    let source_file = osprey_project::SourceFile {
+        path: file.clone(),
+        flavor,
+        source: source.to_string(),
+        program: program.clone(),
+    };
+    Some(assembly_diagnostics(
+        osprey_project::assemble_one(source_file),
+        source,
+        &file,
+        encoding,
+    ))
+}
+
+/// Map an assembly outcome to diagnostics for the open `file`: type errors on
+/// success, project errors on failure.
+fn assembly_diagnostics(
+    assembled: Result<AssembledProject, Vec<ProjectError>>,
+    source: &str,
+    file: &Path,
+    encoding: PositionEncoding,
+) -> Vec<Diagnostic> {
+    match assembled {
+        Ok(project) => assembled_type_errors(source, file, &project, encoding),
+        Err(errors) => project_errors(source, file, &errors, encoding),
+    }
 }
 
 fn project_diagnostics(
@@ -66,10 +114,12 @@ fn project_diagnostics(
         .find(|candidate| same_path(&candidate.path, &file))?;
     source_file.source = source.to_string();
     source_file.program = program.clone();
-    match osprey_project::assemble(&config, &sources) {
-        Ok(project) => Some(assembled_type_errors(source, &file, &project, encoding)),
-        Err(errors) => Some(project_errors(source, &file, &errors, encoding)),
-    }
+    Some(assembly_diagnostics(
+        osprey_project::assemble(&config, &sources),
+        source,
+        &file,
+        encoding,
+    ))
 }
 
 fn assembled_type_errors(
@@ -320,6 +370,22 @@ mod tests {
             let diagnostics = compute(&source, &uri, U16);
             assert!(diagnostics.is_empty(), "{relative}: {diagnostics:?}");
         }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn module_bearing_files_outside_project_roots_are_assembled_standalone() {
+        // The editor regression: a self-contained test suite living in `test/`
+        // (outside `source_roots = ["src"]`) defines `module Money` and calls
+        // `Money::positive`. `osprey <file> --check` and `osprey test` accept it
+        // via single-source assembly; the LSP must not spray
+        // `unknown identifier `Money::positive`` by checking the raw AST.
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let path = root.join("examples/projects/modules/test/accounts.test.ospml");
+        let source = std::fs::read_to_string(&path).expect("read module test suite");
+        let uri = format!("file://{}", path.display());
+        let diagnostics = compute(&source, &uri, U16);
+        assert!(diagnostics.is_empty(), "{diagnostics:?}");
     }
 
     #[cfg(unix)]

@@ -164,10 +164,11 @@ fn unary_str(
     _named: &[NamedArgument],
 ) -> Result<Value> {
     let s = arg(cg, args, 0, LType::Str)?;
-    Ok(Value::new(
-        cg.call("i8*", cname, "i8*", &[&s.operand]),
-        LType::Str,
-    ))
+    let v = Value::new(cg.call("i8*", cname, "i8*", &[&s.operand]), LType::Str);
+    // The C string runtime mints fresh malloc'd outputs (+1) — never aliases
+    // its inputs — so the caller owns every return [GC-ARC-PERCEUS].
+    crate::arc::own(cg, &v);
+    Ok(v)
 }
 
 /// `f(s: string, n: int) -> string`.
@@ -180,7 +181,9 @@ fn str_int_str(
     let s = arg(cg, args, 0, LType::Str)?;
     let n = arg(cg, args, 1, LType::I64)?;
     let r = cg.call("i8*", cname, "i8*, i64", &[&s.operand, &n.operand]);
-    Ok(Value::new(r, LType::Str))
+    let v = Value::new(r, LType::Str);
+    crate::arc::own(cg, &v);
+    Ok(v)
 }
 
 /// A runtime predicate returning `i64` truthiness, narrowed to `i1`. `sig` lists
@@ -244,6 +247,8 @@ fn substring(cg: &mut Codegen, args: &[Expr], _named: &[NamedArgument]) -> Resul
         "i8*, i64, i64",
         &[&s.operand, &start.operand, &end.operand],
     );
+    // The raw +1 return is owned here; the Result block dups its own copy.
+    crate::arc::own(cg, &Value::new(&ptr, LType::Str));
     result_from_nullable(cg, &ptr, Some("substring: index out of range"))
 }
 
@@ -261,6 +266,7 @@ fn nullable_str(
     let (ops, params) = typed_args_for_types(cg, argtys, args)?;
     let op_refs: Vec<&str> = ops.iter().map(String::as_str).collect();
     let ptr = cg.call("i8*", cname, &params, &op_refs);
+    crate::arc::own(cg, &Value::new(&ptr, LType::Str));
     result_from_nullable(cg, &ptr, Some(errmsg))
 }
 
@@ -298,7 +304,9 @@ fn parse_strict(
 fn string_list(cg: &mut Codegen, cname: &str, args: &[Expr]) -> Result<Value> {
     let s = arg(cg, args, 0, LType::Str)?;
     let r = cg.call("i8*", cname, "i8*", &[&s.operand]);
-    Ok(Value::handle(r, crate::collections::LIST_OWNER))
+    let v = Value::handle(r, crate::collections::LIST_OWNER);
+    crate::arc::own(cg, &v);
+    Ok(v)
 }
 
 /// `split(s, sep) -> Result<List<string>, _>` (NULL ⇒ Error, e.g. empty sep).
@@ -311,6 +319,7 @@ fn split(cg: &mut Codegen, args: &[Expr]) -> Result<Value> {
         "i8*, i8*",
         &[&s.operand, &sep.operand],
     );
+    crate::arc::own(cg, &Value::new(&ptr, LType::Ptr));
     let iserr = cg.fresh_reg();
     cg.emit(format!("{iserr} = icmp eq i8* {ptr}, null"));
     make_result_if_err(
@@ -363,6 +372,7 @@ fn typed_args_for_types(
 fn from_codepoint(cg: &mut Codegen, args: &[Expr]) -> Result<Value> {
     let cp = arg(cg, args, 0, LType::I64)?;
     let ptr = cg.call("i8*", "osp_string_from_codepoint", "i64", &[&cp.operand]);
+    crate::arc::own(cg, &Value::new(&ptr, LType::Str));
     result_from_nullable(cg, &ptr, Some("fromCodePoint: invalid code point"))
 }
 
@@ -376,5 +386,7 @@ fn join(cg: &mut Codegen, args: &[Expr], _named: &[NamedArgument]) -> Result<Val
         "i8*, i8*",
         &[&list.operand, &sep.operand],
     );
-    Ok(Value::new(r, LType::Str))
+    let v = Value::new(r, LType::Str);
+    crate::arc::own(cg, &v);
+    Ok(v)
 }

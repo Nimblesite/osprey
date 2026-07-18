@@ -29,7 +29,14 @@ pub(crate) fn make_result(
     let v = coerce_to(cg, value, inner)?;
     let payload_owner = v.osp_ty.clone();
     let struct_ty = result_struct_ty(inner);
-    let obj = cg.malloc_struct(&struct_ty);
+    // Layout word: payload word 0 managed iff pointer-typed; the errmsg slot
+    // is always a (possibly rodata) pointer — the registry probe sorts it out.
+    let meta = crate::meta::struct_meta(&[
+        crate::meta::MetaField::of_lty(inner),
+        crate::meta::MetaField::Byte,
+        crate::meta::MetaField::PtrManaged,
+    ]);
+    let obj = cg.malloc_struct(&struct_ty, meta);
     crate::aggregate::store_field(cg, &struct_ty, obj.as_str(), 0, inner, &v.operand);
     let dp = cg.fresh_reg();
     cg.emit(format!(
@@ -40,8 +47,18 @@ pub(crate) fn make_result(
     cg.emit(format!(
         "{mp} = getelementptr {struct_ty}, {struct_ty}* {obj}, i32 0, i32 2"
     ));
+    // The block's drop mask releases the errmsg word too [GC-ARC-PERCEUS].
+    crate::arc::dup_store(cg, "i8*", errmsg);
     cg.emit(format!("store i8* {errmsg}, i8** {mp}"));
-    Ok(Value::result(obj, inner).with_payload_owner(payload_owner))
+    let out = Value::result(obj, inner).with_payload_owner(payload_owner);
+    crate::arc::own(cg, &out);
+    // A scalar payload plus a non-register errmsg (null / rodata constant)
+    // means the block holds zero managed references — eligible for the
+    // consume-at-unwrap fast path that lets -O2 delete the whole block.
+    if !matches!(inner, LType::Str | LType::Ptr) && !errmsg.starts_with('%') {
+        crate::arc::mark_pure_scalar(cg, &out);
+    }
+    Ok(out)
 }
 
 /// A Success result wrapping `value` (disc 0, no message).
@@ -214,7 +231,9 @@ pub(crate) fn repack_to_inner(cg: &mut Codegen, v: Value, inner: LType) -> Resul
 /// yielding its success payload; a non-Result value passes through.
 pub(crate) fn unwrap(cg: &mut Codegen, v: Value) -> Value {
     if v.result_inner.is_some() {
-        load_value(cg, &v)
+        let out = load_value(cg, &v);
+        crate::arc::consume_fresh(cg, &v);
+        out
     } else {
         v
     }

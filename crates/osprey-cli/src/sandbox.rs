@@ -193,11 +193,16 @@ mod tests {
     fn no_ffi_rejects_extern_declarations_including_in_modules() {
         let mut policy = Policy::allow_all();
         policy.ffi = false;
-        let src = "extern fn sqlite3_open(filename: string, ppDb: Ptr) -> int\n";
+        let src = "extern fn sqlite3_open(filename: string, ppDb: Ptr) -> int\n\
+                   module Ffi { export extern fn log(message: string) }\n\
+                   namespace Sys { extern fn exit(code: int) -> int }\n";
         let v = violations(&prog(src), policy);
-        assert_eq!(v.len(), 1);
-        assert!(v[0].contains("sqlite3_open") && v[0].contains("--no-ffi"));
-        // ffi allowed => the same extern compiles.
+        assert_eq!(v.len(), 3, "top/module/namespace externs all gated: {v:?}");
+        assert!(v.iter().all(|m| m.contains("--no-ffi")));
+        assert!(v.iter().any(|m| m.contains("sqlite3_open")));
+        assert!(v.iter().any(|m| m.contains("log")));
+        assert!(v.iter().any(|m| m.contains("exit")));
+        // ffi allowed => the same externs compile.
         assert!(violations(&prog(src), Policy::allow_all()).is_empty());
         // Two externs each get their own message.
         let two = "extern fn a() -> int\nextern fn b() -> int\n";

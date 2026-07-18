@@ -51,6 +51,19 @@ test("fine", fn() => {
 expect(add(1, 1), 5)
 `;
 
+/**
+ * A covered `double` (line 1) and a never-called `unused` (line 3): a coverage
+ * run must report line 3 with 0 hits ([TESTING-COVERAGE-VSCODE]).
+ */
+export const COVERAGE_FIXTURE = `fn double(x) = x * 2
+
+fn unused(x) = x * 99
+
+test("doubles", fn() => {
+    expect(double(5), 10)
+})
+`;
+
 export interface SinkEvent {
   kind: "enqueued" | "started" | "passed" | "failed" | "errored" | "skipped" | "end";
   id?: string;
@@ -68,6 +81,8 @@ function messageText(message: SinkMessage): string {
 export class RecordingSink implements TestRunSink {
   public readonly events: SinkEvent[] = [];
   public output = "";
+  /** Coverage reports ([TESTING-COVERAGE-VSCODE]): fsPath → line → hits. */
+  public readonly coverage = new Map<string, ReadonlyMap<number, number>>();
 
   private record(kind: SinkEvent["kind"], test?: vscode.TestItem, message?: SinkMessage): void {
     this.events.push({
@@ -84,6 +99,9 @@ export class RecordingSink implements TestRunSink {
   public skipped(test: vscode.TestItem): void { this.record("skipped", test); }
   public appendOutput(output: string): void { this.output += output; }
   public end(): void { this.record("end"); }
+  public addLineCoverage(uri: vscode.Uri, hits: ReadonlyMap<number, number>): void {
+    this.coverage.set(uri.fsPath, hits);
+  }
   public ofKind(kind: SinkEvent["kind"]): SinkEvent[] {
     return this.events.filter((event) => event.kind === kind);
   }

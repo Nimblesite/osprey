@@ -31,6 +31,23 @@ pub fn compile_program_debug(program: &Program, source: DebugSource) -> Result<S
         program,
         CodegenOptions {
             debug_source: Some(source),
+            ..CodegenOptions::default()
+        },
+    )
+}
+
+/// Compile a whole program with line-coverage instrumentation
+/// [TESTING-COVERAGE-CODEGEN].
+///
+/// # Errors
+///
+/// Returns `Err` under the same conditions as [`compile_program`].
+pub fn compile_program_coverage(program: &Program) -> Result<String> {
+    compile_program_with_options(
+        program,
+        CodegenOptions {
+            coverage: true,
+            ..CodegenOptions::default()
         },
     )
 }
@@ -38,6 +55,9 @@ pub fn compile_program_debug(program: &Program, source: DebugSource) -> Result<S
 fn compile_program_with_options(program: &Program, options: CodegenOptions) -> Result<String> {
     let prog = osprey_types::infer_program(program);
     let mut cg = Codegen::with_options(prog, options);
+    // Seed the coverage denominator from the source, not from what lowering
+    // happens to reach [TESTING-COVERAGE-CODEGEN].
+    cg.cov_seed(program);
 
     // Pre-pass: record parameter names so named-argument calls can be ordered,
     // and parse `effect` operation signatures for `handle`/`perform`.
@@ -47,6 +67,7 @@ fn compile_program_with_options(program: &Program, options: CodegenOptions) -> R
                 name,
                 parameters,
                 body,
+                position,
                 ..
             } => {
                 let _ = cg.fn_params.insert(
@@ -54,11 +75,13 @@ fn compile_program_with_options(program: &Program, options: CodegenOptions) -> R
                     parameters.iter().map(|p| p.name.clone()).collect(),
                 );
                 // A polymorphic function is specialised by inlining at each call
-                // site, so keep its body reachable.
+                // site, so keep its body reachable — and its definition line
+                // coverable through the inline path [TESTING-COVERAGE-CODEGEN].
                 if cg.is_generic_fn(name) {
                     let _ = cg
                         .fn_defs
                         .insert(name.clone(), (parameters.clone(), body.clone()));
+                    cg.cov_note_inline_fn(name, *position);
                 }
             }
             Stmt::Effect {
@@ -114,17 +137,23 @@ fn compile_program_with_options(program: &Program, options: CodegenOptions) -> R
     // OSPREY_PROFILE is set [PROF-ACTIVATE-ENV], docs/specs/0028-Profiler.md.
     cg.add_extern("declare void @osp_prof_boot()");
     cg.emit("call void @osp_prof_boot()");
+    // Register every coverable line's counter before user code runs; the
+    // init body is rendered after all lowering [TESTING-COVERAGE-CODEGEN].
+    cg.cov_emit_boot();
     if let Some((body, _)) = user_main {
         cg.cell_vars = crate::effects::captured_mut_vars(body);
         let _ = gen_expr(&mut cg, body)?;
     } else {
         cg.cell_vars = crate::effects::captured_mut_vars_in_stmts(&top_level);
-        for stmt in &top_level {
+        for (i, stmt) in top_level.iter().enumerate() {
             gen_local_stmt(&mut cg, stmt)?;
+            let rest = top_level.get(i + 1..).unwrap_or(&[]);
+            crate::arc::release_dead_after(&mut cg, rest, None);
         }
     }
     // A program that used the testing built-ins exits with the TAP epilogue's
     // status (plan + summary printed by the runtime) [TESTING-EXIT].
+    crate::arc::epilogue(&mut cg, None);
     if cg.testing_used {
         let code = cg.call("i32", "osp_test_finalize", "", &[]);
         cg.emit(format!("ret i32 {code}"));
@@ -173,8 +202,14 @@ fn gen_function(
         params.push((*pty, p.name.clone()));
     }
     cg.cell_vars = crate::effects::captured_mut_vars(body);
+    // The definition line counts as covered when the body executes
+    // [TESTING-COVERAGE-CODEGEN].
+    cg.cov_hit(position);
     let body_val = gen_fn_body(cg, name, body)?;
     let ret = coerce_return(cg, name, body_val)?;
+    // Returns transfer +1; everything else the function owned drops here
+    // [GC-ARC-PERCEUS].
+    crate::arc::epilogue(cg, Some(&ret));
     cg.emit(format!("ret {} {}", ret.llvm_ty(), ret.operand));
     cg.finish_function(&ret.llvm_ty(), name, &params);
     Ok(())
@@ -216,7 +251,16 @@ fn coerce_return(cg: &mut Codegen, name: &str, body: Value) -> Result<Value> {
     crate::cast::coerce_to(cg, body, ret_ty)
 }
 
+/// Lower a statement inside its own ARC region: temporaries the statement
+/// produced and did not bind drop at its end [GC-ARC-PERCEUS].
 pub(crate) fn gen_local_stmt(cg: &mut Codegen, stmt: &Stmt) -> Result<()> {
+    crate::arc::push_frame(cg);
+    let lowered = gen_stmt_kind(cg, stmt);
+    crate::arc::pop_frame(cg);
+    lowered
+}
+
+fn gen_stmt_kind(cg: &mut Codegen, stmt: &Stmt) -> Result<()> {
     match stmt {
         // A `mut` an effect handler captures is promoted to a shared heap cell so
         // the handler owns it; its declaration allocates the cell and a
@@ -274,6 +318,9 @@ fn with_stmt_debug(
     f: impl FnOnce(&mut Codegen) -> Result<()>,
 ) -> Result<()> {
     let previous = cg.set_debug_position(position);
+    // Every positioned statement is a coverable line, bumped where control
+    // flow reaches it [TESTING-COVERAGE-CODEGEN].
+    cg.cov_hit(position);
     let result = f(cg);
     cg.restore_debug_position(previous);
     result
@@ -287,10 +334,13 @@ fn gen_cell_define(cg: &mut Codegen, name: &str, value: &Expr) -> Result<()> {
     let v = crate::result::unwrap(cg, raw);
     let pointee = v.ty;
     let ty = pointee.as_str();
-    let cell = cg.malloc_struct(&format!("{{ {ty} }}"));
+    let meta = crate::meta::struct_meta(&[crate::meta::MetaField::of_lty(pointee)]);
+    let cell = cg.malloc_struct(&format!("{{ {ty} }}"), meta);
     let ptr = cg.emit_reg(format!(
         "getelementptr {{ {ty} }}, {{ {ty} }}* {cell}, i32 0, i32 0"
     ));
+    // The cell holds its own reference to the stored value [GC-ARC-PERCEUS].
+    crate::arc::dup_store(cg, ty, &v.operand);
     cg.emit(format!("store {ty} {}, {ty}* {ptr}", v.operand));
     let _ = cg.cell_slots.insert(
         name.to_string(),
@@ -315,6 +365,13 @@ fn gen_cell_store(cg: &mut Codegen, name: &str, value: &Expr) -> Result<()> {
     let v = crate::result::unwrap(cg, raw);
     let v = crate::cast::coerce_to(cg, v, slot.pointee)?;
     let ty = slot.pointee.as_str();
+    // Rebind order: dup the incoming value BEFORE dropping the old one, so a
+    // self-assignment never frees the value it stores [GC-ARC-PERCEUS].
+    crate::arc::dup_store(cg, ty, &v.operand);
+    if matches!(slot.pointee, LType::Str | LType::Ptr) {
+        let old = cg.emit_reg(format!("load {ty}, {ty}* {}", slot.ptr));
+        crate::arc::release_operand(cg, &old);
+    }
     cg.emit(format!("store {ty} {}, {ty}* {}", v.operand, slot.ptr));
     Ok(())
 }
@@ -343,6 +400,7 @@ fn gen_bind(cg: &mut Codegen, name: &str, value: &Expr, unwrap: bool) -> Result<
                 if let Some(sig) = Codegen::fn_value_sig(&ty) {
                     let v = crate::closure::emit_closure(cg, parameters, body, &sig)?;
                     cg.emit_debug_local(name, &v);
+                    crate::arc::bind_owned(cg, name, &v);
                     cg.bind(name.to_string(), v);
                     cg.bind_fn_local(name, ty);
                 }
@@ -379,6 +437,9 @@ fn gen_bind(cg: &mut Codegen, name: &str, value: &Expr, unwrap: bool) -> Result<
         cg.bind_fn_local(name, ty);
     }
     cg.emit_debug_local(name, &v);
+    // The binding outlives the statement region: move the statement's
+    // ownership out, or retain a borrow [GC-ARC-PERCEUS].
+    crate::arc::bind_owned(cg, name, &v);
     cg.bind(name.to_string(), v);
     Ok(())
 }

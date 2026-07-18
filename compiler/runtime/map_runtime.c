@@ -1,4 +1,5 @@
 #include "map_runtime_internal.h"
+#include "memory_hooks.h"
 
 #include <stdint.h>
 #include <stdlib.h>
@@ -55,7 +56,10 @@ OspreyMap *osprey_map_set(OspreyMap *m, int64_t key, int64_t value) {
 }
 
 OspreyMap *osprey_map_remove(OspreyMap *m, int64_t key) {
+  /* Alias returns carry a fresh +1 (retain-on-return) so every returned
+   * handle is caller-owned [GC-ARC-PERCEUS], plan 0011 M4. */
   if (m == NULL || m->root == NULL) {
+    osp_retain(m);
     return m;
   }
   uint32_t h = osprey_map_hash_key(m->key_type, key);
@@ -63,6 +67,7 @@ OspreyMap *osprey_map_remove(OspreyMap *m, int64_t key) {
   OspreyMapNode *new_root =
       osprey_map_node_remove(m->root, 0, h, key, m->key_type, &shrunk);
   if (!shrunk) {
+    osp_retain(m);
     return m;
   }
   OspreyMap *out = (OspreyMap *)calloc(1, sizeof(OspreyMap));
@@ -130,9 +135,11 @@ int osprey_map_iter_next(OspreyMapIter *it, int64_t *out_key,
 
 OspreyMap *osprey_map_merge(OspreyMap *a, OspreyMap *b) {
   if (a == NULL || a->length == 0) {
+    osp_retain(b); /* alias return: +1 to the caller (see remove) */
     return b;
   }
   if (b == NULL || b->length == 0) {
+    osp_retain(a);
     return a;
   }
   OspreyMap *out = a;
@@ -140,7 +147,13 @@ OspreyMap *osprey_map_merge(OspreyMap *a, OspreyMap *b) {
   int64_t k;
   int64_t v;
   while (osprey_map_iter_next(it, &k, &v)) {
-    out = osprey_map_set(out, k, v);
+    OspreyMap *next = osprey_map_set(out, k, v);
+    /* Intermediate headers are unaliased transients: drop each precisely
+     * (no-op under default/gc) [GC-ARC-PERCEUS], plan 0011 M4. */
+    if (out != a) {
+      osp_release(out);
+    }
+    out = next;
   }
   free(it);
   return out;

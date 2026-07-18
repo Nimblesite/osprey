@@ -56,7 +56,11 @@ fn thunk_body(cg: &mut Codegen, e: &Expr) -> Result<LType> {
     let v = gen_expr(cg, e)?;
     let v = crate::result::unwrap(cg, v);
     let elem = v.ty;
+    // The result escapes boxed across the fiber boundary: dup it before the
+    // thunk's owners drop, so `await`'s side holds +1 [GC-ARC-PERCEUS].
+    crate::arc::escape_retain(cg, &v);
     let b = box_to_i64(cg, v);
+    crate::arc::epilogue(cg, None);
     cg.emit(format!("ret i64 {}", b.operand));
     Ok(elem)
 }
@@ -91,6 +95,9 @@ pub(crate) fn gen_send(cg: &mut Codegen, channel: &Expr, value: &Expr) -> Result
     let ch = gen_expr(cg, channel)?;
     let id = as_i64(cg, ch)?;
     let v = gen_expr(cg, value)?;
+    // The sent value escapes boxed into the channel buffer: the receiver's
+    // side owns +1 [GC-ARC-PERCEUS], plan 0011 M5.
+    crate::arc::escape_retain(cg, &v);
     let v = box_to_i64(cg, v);
     let r = cg.call(
         "i64",

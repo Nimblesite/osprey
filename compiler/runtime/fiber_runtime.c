@@ -8,6 +8,7 @@
 #include <time.h>
 #include <unistd.h>
 
+#include "memory_hooks.h"
 #include "profiler_runtime.h"
 
 // Forward declarations for effect handler snapshot/restore
@@ -37,7 +38,13 @@ typedef struct Fiber {
 // Run a fiber's entry point through whichever ABI it was spawned with.
 static int64_t run_fiber_fn(Fiber *fiber) {
   if (fiber->env_function != NULL) {
-    return fiber->env_function(fiber->env);
+    int64_t result = fiber->env_function(fiber->env);
+    // The spawn transferred the capture cell (+1) to the runtime; the thunk
+    // has fully consumed it once it returns. No-op outside the ARC backend
+    // [GC-ARC-PERCEUS], plan 0011 M5.
+    osp_release(fiber->env);
+    fiber->env = NULL;
+    return result;
   }
   return fiber->function();
 }

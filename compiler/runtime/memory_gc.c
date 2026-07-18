@@ -321,10 +321,23 @@ void *osp_alloc(int64_t size) {
   return p;
 }
 
+// Layout-carrying allocation: the meta word (kind + pointer mask) is only
+// meaningful to the ARC backend — the conservative collector scans words, so
+// it needs no layout and treats this as a plain managed allocation.
+void *osp_alloc_tagged(int64_t size, int64_t meta) {
+  (void)meta;
+  return osp_alloc(size);
+}
+
 // Reference-count hooks are no-ops under tracing (Bacon/Cheng/Rajan duality):
 // the collector reclaims, so dup/drop carry no work.
 void osp_retain(void *o) { (void)o; }
 void osp_release(void *o) { (void)o; }
+// Codegen-proved-unique drop (memory_hooks.h) — a no-op like osp_release; the
+// separate symbol carries LLVM free-pair attributes in the emitted IR.
+void osp_release_unique(void *o) { (void)o; }
+// Singleton-immortality hook (memory_hooks.h) — meaningful only under ARC.
+void osp_mem_immortal(void *p) { (void)p; }
 
 void osp_collect(void) {
   pthread_mutex_lock(&g_lock);

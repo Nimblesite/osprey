@@ -383,7 +383,30 @@ pre code { background: none; padding: 0; font-size: inherit; color: inherit; }
   margin: 0;
 }
 .hero-actions { display: flex; flex-wrap: wrap; gap: var(--space-4); }
-.hero-code { min-width: 0; }
+.hero-code { min-width: 0; display: flex; flex-direction: column; gap: var(--space-4); }
+.hero-code-caption {
+  font-size: var(--fs-code);
+  color: var(--on-surface-variant);
+  margin: 0;
+}
+.flavor-split { display: grid; gap: var(--space-4); min-width: 0; }
+.flavor-split .code-example { min-width: 0; }
+.flavor-tag {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-5);
+  font-size: var(--fs-label);
+  letter-spacing: 0.02em;
+  font-weight: 700;
+  color: var(--primary);
+  background: var(--surface-highest);
+  border-bottom: 1px solid var(--outline-variant);
+}
+.flavor-tag span { color: var(--on-surface-variant); font-weight: 500; font-family: var(--font-mono); }
+/* These code windows label the flavor themselves, so drop the traffic-light chrome. */
+.flavor-split .code-example::before { display: none; }
+.flavor-split .code-example pre { font-size: 0.82rem; }
 
 /* ---- Code window chrome (home only; prose code is styled separately) ---- */
 .code-example {
@@ -611,6 +634,352 @@ pre code { background: none; padding: 0; font-size: inherit; color: inherit; }
 .comparison-cta { text-align: center; margin-top: var(--space-6); color: var(--on-surface-variant); }
 .comparison-cta a { font-weight: 600; }
 
+/* ============================ WebAssembly SQL demo ======================= */
+.wasm-hero {
+  padding-block: clamp(3rem, 8vw, 5rem);
+}
+.wasm-copy h1,
+.wasm-hero h1 {
+  font-size: var(--fs-display);
+  max-width: 18ch;
+  margin-bottom: var(--space-5);
+}
+.wasm-lede {
+  max-width: 62ch;
+  color: var(--on-surface-variant);
+  font-size: var(--fs-body-lg);
+  margin-bottom: var(--space-6);
+}
+.eyebrow {
+  font-family: var(--font-mono);
+  font-size: var(--fs-label);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--primary-container);
+  margin: 0 0 var(--space-2);
+}
+
+/* ---- WASM demo: JUST the 3 tabs, locked to the viewport. The PAGE never
+   scrolls; the footer is hidden and only the active panel scrolls inside. ---- */
+main:has(.wasm-studio) { height: calc(100dvh - var(--header-height)); overflow: hidden; }
+body:has(.wasm-studio) .site-footer { display: none; }
+.wasm-studio {
+  height: 100%;
+  padding-block: var(--space-4);
+  overflow: hidden;
+}
+.wasm-studio .container {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-height: 0;
+}
+/* Slim live-status line (JS writes here). One line, no hero. */
+.banner-slim {
+  padding: var(--space-2) var(--space-4);
+  font-size: 0.85rem;
+  border-radius: var(--radius);
+  flex-shrink: 0;
+}
+.wasm-tabbar {
+  display: flex;
+  gap: var(--space-2);
+  border-bottom: 1px solid var(--outline-variant);
+}
+.wasm-tab {
+  flex: 1 1 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--space-4) var(--space-5);
+  background: transparent;
+  border: 1px solid transparent;
+  border-bottom: none;
+  border-radius: var(--radius) var(--radius) 0 0;
+  color: var(--on-surface-variant);
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--transition-fast), color var(--transition-fast);
+}
+.wasm-tab:hover { background: var(--surface-low); color: var(--on-surface); }
+.wasm-tab.is-active {
+  background: var(--surface-low);
+  border-color: var(--outline-variant);
+  color: var(--on-surface);
+}
+.wasm-tab-k { font-size: var(--fs-h3); font-weight: 700; }
+.wasm-tab-sub {
+  font-family: var(--font-mono);
+  font-size: var(--fs-label);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--primary-container);
+}
+.wasm-panels { flex: 1; display: flex; min-height: 0; }
+.wasm-panel {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  flex-direction: column;
+  gap: var(--space-4);
+  padding-top: var(--space-4);
+  overflow: hidden;
+}
+.wasm-panel.is-active { display: flex; }
+/* Query panel: presets + editor + buttons fixed; the RESULT table takes the
+   rest and scrolls internally so the page never grows. */
+#panel-query .console { flex: 1; min-height: 0; grid-template-rows: auto auto auto 1fr; }
+#panel-query .editor-wrap { max-height: 40%; }
+#panel-query .editor-wrap .editor-hl,
+#panel-query .console textarea { height: 100%; min-height: 6rem; }
+#panel-query .tablewrap { min-height: 0; overflow: auto; }
+/* Source panel: the code window fills and scrolls internally. */
+#panel-source .wasm-code-window { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+#panel-source .wasm-code-window pre { flex: 1; max-height: none; overflow: auto; min-height: 0; }
+.section-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  margin-bottom: var(--space-6);
+}
+.section-head h2 { margin: 0; }
+.section-head .hint {
+  max-width: 38rem;
+  margin: 0;
+  color: var(--on-surface-variant);
+  font-size: 0.9rem;
+}
+.banner {
+  border-radius: var(--radius);
+  padding: var(--space-4) var(--space-5);
+  border: 1px solid var(--outline-variant);
+  background: var(--surface-low);
+  color: var(--on-surface-variant);
+}
+.banner.warn {
+  border-color: rgba(255, 190, 101, 0.35);
+  background: rgba(255, 190, 101, 0.06);
+  color: var(--tertiary);
+}
+.banner.ok {
+  border-color: rgba(80, 250, 123, 0.3);
+  background: rgba(80, 250, 123, 0.06);
+}
+
+/* ── add-data form ── */
+.add-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--space-4);
+}
+.add-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  font-family: var(--font-mono);
+  font-size: var(--fs-label);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--on-surface-variant);
+}
+.add-form input,
+.add-form select {
+  font-family: var(--font-mono);
+  font-size: var(--fs-code);
+  color: var(--on-surface);
+  background: var(--surface-lowest);
+  border: 1px solid var(--outline-variant);
+  border-radius: var(--radius-sm);
+  padding: 0.5rem 0.75rem;
+  min-width: 8rem;
+}
+.add-form input:focus,
+.add-form select:focus {
+  outline: none;
+  border-color: var(--primary-container);
+}
+.add-status {
+  margin: var(--space-3) 0 0;
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  min-height: 1.2em;
+  color: var(--on-surface-variant);
+}
+.add-status.ok { color: #50fa7b; }
+.add-status.err { color: var(--error); }
+
+/* ── SQL console with a live highlight layer under the textarea ── */
+.console {
+  display: grid;
+  gap: var(--space-4);
+}
+.editor-wrap {
+  position: relative;
+}
+.editor-wrap .editor-hl,
+.console textarea {
+  margin: 0;
+  width: 100%;
+  min-height: 9rem;
+  font-family: var(--font-mono);
+  font-size: var(--fs-code);
+  line-height: 1.6;
+  padding: var(--space-4);
+  border: 1px solid var(--outline-variant);
+  border-radius: var(--radius);
+  white-space: pre;
+  overflow: auto;
+  tab-size: 4;
+}
+.editor-wrap .editor-hl {
+  position: absolute;
+  inset: 0;
+  background: var(--surface-lowest);
+  pointer-events: none;
+  box-shadow: none;
+}
+.console textarea {
+  position: relative;
+  resize: vertical;
+  background: transparent;
+  color: transparent;
+  caret-color: var(--on-surface);
+}
+.console textarea:focus {
+  outline: none;
+  border-color: var(--primary-container);
+  box-shadow: 0 0 0 3px rgba(119, 215, 244, 0.12);
+}
+.console-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+}
+.console-bar .spacer { flex: 1; }
+.preset {
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  color: var(--primary-container);
+  background: var(--surface-container);
+  border: 1px solid var(--outline-variant);
+  border-radius: var(--radius-pill);
+  padding: 0.35rem 0.75rem;
+  cursor: pointer;
+}
+.preset:hover { border-color: var(--primary-container); }
+.console-status {
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  color: var(--on-surface-variant);
+}
+.console-status.ok { color: #50fa7b; }
+.console-status.err { color: var(--error); }
+
+/* ── result table ── */
+.tablewrap {
+  min-width: 0;
+  overflow-x: auto;
+  border: 1px solid var(--outline-variant);
+  border-radius: var(--radius);
+}
+table.data {
+  width: 100%;
+  min-width: 22rem;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+table.data th,
+table.data td {
+  padding: var(--space-2) var(--space-4);
+  text-align: left;
+  border-bottom: 1px solid var(--outline-variant);
+  white-space: nowrap;
+}
+table.data thead th {
+  background: var(--surface-high);
+  color: var(--on-surface);
+  font-family: var(--font-mono);
+  font-size: var(--fs-label);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+table.data tbody td {
+  color: var(--on-surface-variant);
+  font-variant-numeric: tabular-nums;
+}
+table.data tbody td:first-child {
+  color: var(--on-surface);
+  font-weight: 600;
+}
+table.data tr:last-child td { border-bottom: 0; }
+table.data td.num {
+  text-align: right;
+  font-family: var(--font-mono);
+}
+
+/* ── Osprey source window ── */
+.wasm-code-window {
+  min-width: 0;
+  background: var(--surface-lowest);
+  border: 1px solid var(--outline-variant);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.35);
+}
+.wasm-code-window .chrome {
+  height: 38px;
+  background: var(--surface-highest);
+  border-bottom: 1px solid var(--outline-variant);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 14px;
+}
+.wasm-code-window .chrome span {
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+}
+.wasm-code-window .chrome span:nth-child(1) { background: #ff5f57; }
+.wasm-code-window .chrome span:nth-child(2) { background: #febc2e; }
+.wasm-code-window .chrome span:nth-child(3) { background: #28c840; }
+.wasm-code-window .chrome b {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: 0.74rem;
+  color: var(--on-surface-variant);
+  font-weight: 500;
+}
+.wasm-code-window pre {
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  max-width: 100%;
+  max-height: 34rem;
+}
+.muted {
+  color: var(--on-surface-variant);
+  padding: var(--space-4);
+  margin: 0;
+}
+.spin {
+  display: inline-block;
+  width: 0.9em;
+  height: 0.9em;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+  vertical-align: -1px;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
 /* ============================ Prose (docs / spec / blog post / status) ==== */
 /* Two-column docs layout: sticky TOC sidebar + left-aligned article, matching
    docs/designs/prose. Article is width-capped; TOC is built by js/toc.js. */
@@ -752,6 +1121,21 @@ pre code { background: none; padding: 0; font-size: inherit; color: inherit; }
   background: var(--surface-high);
   border-bottom: 1px solid var(--outline-variant);
 }
+/* Flavor badge — every Osprey code block states its flavor so a reader always
+   knows which surface (Default `.osp` vs ML `.ospml`) a snippet is written in.
+   Left accent + tinted label: Default = primary, ML = tertiary/accent. */
+.prose pre[data-flavor]::before {
+  padding-left: calc(var(--space-4) + 3px);
+  border-left: 3px solid transparent;
+}
+.prose pre[data-flavor="default"]::before {
+  border-left-color: var(--primary);
+  color: var(--primary);
+}
+.prose pre[data-flavor="ml"]::before {
+  border-left-color: var(--tertiary-dim, #ffb86c);
+  color: var(--tertiary-dim, #ffb86c);
+}
 .prose blockquote {
   margin: var(--space-6) 0;
   padding: var(--space-2) var(--space-5);
@@ -881,6 +1265,10 @@ pre code { background: none; padding: 0; font-size: inherit; color: inherit; }
 /* ============================ Responsive ================================= */
 @media (max-width: 900px) {
   .hero .container { grid-template-columns: 1fr; }
+  /* Code stays left-aligned even though the hero copy centers on mobile. */
+  .hero-code, .hero-code-caption { text-align: left; }
+  .wasm-hero-grid { grid-template-columns: 1fr; }
+  .wasm-copy h1 { max-width: 14ch; }
   .hero-subtitle { max-width: none; }
   .blog-posts { grid-template-columns: repeat(2, 1fr); }
 }
@@ -913,6 +1301,17 @@ pre code { background: none; padding: 0; font-size: inherit; color: inherit; }
   .hero-content { text-align: center; align-items: center; }
   .hero-actions { width: 100%; flex-direction: column; }
   .hero-actions .btn { width: 100%; }
+  .wasm-hero h1 { max-width: none; }
+  /* Three tabs stay in one row on phones: compact labels, no sub-caption. */
+  .wasm-tab { padding: var(--space-3); align-items: center; text-align: center; }
+  .wasm-tab-k { font-size: var(--fs-body); }
+  .wasm-tab-sub { display: none; }
+  .wasm-studio .container { min-height: 70vh; }
+  .console-bar { width: 100%; }
+  .console-bar .btn { width: 100%; }
+  .add-form { flex-direction: column; align-items: stretch; }
+  .add-form input,
+  .add-form select { width: 100%; }
   /* Blog cards stack in one dark column (docs/designs/blog-grid-mobile). */
   .blog-posts { grid-template-columns: 1fr; }
   .blog-posts .card:first-child .card-title { font-size: var(--fs-h3); }
@@ -920,13 +1319,13 @@ pre code { background: none; padding: 0; font-size: inherit; color: inherit; }
 </style></head>
 <body><main class="container" style="padding-top:3rem;padding-bottom:4rem">
 <h1>Osprey cross-language benchmarks</h1>
-<p>Osprey, Osprey (GC), Rust, C, OCaml, Haskell, Osprey (wasm), Rust (wasm) — same naive algorithm and parameters in every language, native
+<p>Osprey, Osprey (ARC), Osprey (GC), Rust, C, C# (AOT), Dart (AOT), OCaml, Haskell, Osprey (wasm), Rust (wasm) — same naive algorithm and parameters in every language, native
 release builds, output checked against an integer oracle. CPU = hyperfine
 mean&nbsp;±&nbsp;stddev; memory = peak resident set size. Generated mechanically
 by <code>benchmarks/report.py</code>; re-run with <code>make bench</code>.</p>
-<div class="bench-summary"><div class="bench-card is-accent"><span class="big">1</span><span class="lbl">CPU wins (fastest of all)</span></div><div class="bench-card "><span class="big">1.42×</span><span class="lbl">CPU vs Rust</span></div><div class="bench-card "><span class="big">1.61×</span><span class="lbl">CPU vs C</span></div><div class="bench-card "><span class="big">1.09×</span><span class="lbl">CPU vs OCaml</span></div><div class="bench-card is-good"><span class="big">0.76×</span><span class="lbl">CPU vs Haskell</span></div><div class="bench-card is-good"><span class="big">0.71×</span><span class="lbl">CPU vs Rust (wasm)</span></div></div><p>Osprey is the fastest of all five languages on <strong>primes</strong>. Lower is better; ★ marks an Osprey win.</p>
+<div class="bench-summary"><div class="bench-card is-accent"><span class="big">0</span><span class="lbl">CPU wins (fastest of all)</span></div><div class="bench-card "><span class="big">2.32×</span><span class="lbl">CPU vs Rust</span></div><div class="bench-card "><span class="big">2.65×</span><span class="lbl">CPU vs C</span></div><div class="bench-card "><span class="big">1.89×</span><span class="lbl">CPU vs C# (AOT)</span></div><div class="bench-card is-good"><span class="big">0.95×</span><span class="lbl">CPU vs Dart (AOT)</span></div><div class="bench-card "><span class="big">1.82×</span><span class="lbl">CPU vs OCaml</span></div><div class="bench-card "><span class="big">1.27×</span><span class="lbl">CPU vs Haskell</span></div><div class="bench-card "><span class="big">1.18×</span><span class="lbl">CPU vs Rust (wasm)</span></div></div><p>Osprey is the fastest of all five languages on <strong>—</strong>. Lower is better; ★ marks an Osprey win.</p>
 <h2>CPU time</h2>
-<div class="comparison-table"><table><thead><tr><th>Benchmark</th><th class="num col-osprey">Osprey</th><th class="num col-osprey">Osprey (GC)</th><th class="num">Rust</th><th class="num">C</th><th class="num">OCaml</th><th class="num">Haskell</th><th class="num col-osprey">Osprey (wasm)</th><th class="num">Rust (wasm)</th></tr></thead><tbody><tr><td>ackermann</td><td class="num col-osprey">127.4&nbsp;ms</td><td class="num col-osprey">126.6&nbsp;ms</td><td class="num">128.6&nbsp;ms</td><td class="num">126.3&nbsp;ms</td><td class="num">110.8&nbsp;ms</td><td class="num best">65.1&nbsp;ms</td><td class="num col-osprey">130.6&nbsp;ms</td><td class="num">136.1&nbsp;ms</td></tr><tr><td>binarytrees</td><td class="num col-osprey">417.1&nbsp;ms</td><td class="num col-osprey">1.498&nbsp;s</td><td class="num">711.9&nbsp;ms</td><td class="num">348.2&nbsp;ms</td><td class="num">50.2&nbsp;ms</td><td class="num best">17.0&nbsp;ms</td><td class="num col-osprey">516.0&nbsp;ms</td><td class="num">793.0&nbsp;ms</td></tr><tr><td>coins</td><td class="num col-osprey">72.1&nbsp;ms</td><td class="num col-osprey">70.2&nbsp;ms</td><td class="num">73.9&nbsp;ms</td><td class="num">69.0&nbsp;ms</td><td class="num">91.4&nbsp;ms</td><td class="num best">52.2&nbsp;ms</td><td class="num col-osprey">92.1&nbsp;ms</td><td class="num">100.5&nbsp;ms</td></tr><tr><td>collatz</td><td class="num col-osprey">12.5&nbsp;ms</td><td class="num col-osprey">11.8&nbsp;ms</td><td class="num">11.2&nbsp;ms</td><td class="num best">9.1&nbsp;ms</td><td class="num">53.8&nbsp;ms</td><td class="num">35.0&nbsp;ms</td><td class="num col-osprey">19.2&nbsp;ms</td><td class="num">22.6&nbsp;ms</td></tr><tr><td>coprime</td><td class="num col-osprey">62.9&nbsp;ms</td><td class="num col-osprey">61.3&nbsp;ms</td><td class="num">59.1&nbsp;ms</td><td class="num best">58.3&nbsp;ms</td><td class="num">86.9&nbsp;ms</td><td class="num">100.1&nbsp;ms</td><td class="num col-osprey">69.4&nbsp;ms</td><td class="num">71.3&nbsp;ms</td></tr><tr><td>digitsum</td><td class="num col-osprey">5.2&nbsp;ms</td><td class="num col-osprey best">5.1&nbsp;ms</td><td class="num">5.3&nbsp;ms</td><td class="num">5.2&nbsp;ms</td><td class="num">18.5&nbsp;ms</td><td class="num">29.7&nbsp;ms</td><td class="num col-osprey">12.3&nbsp;ms</td><td class="num">17.3&nbsp;ms</td></tr><tr><td>exprtree</td><td class="num col-osprey">6.7&nbsp;ms</td><td class="num col-osprey">20.6&nbsp;ms</td><td class="num">10.2&nbsp;ms</td><td class="num">5.7&nbsp;ms</td><td class="num best">5.2&nbsp;ms</td><td class="num">16.6&nbsp;ms</td><td class="num col-osprey">—</td><td class="num">19.8&nbsp;ms</td></tr><tr><td>factorial</td><td class="num col-osprey">33.9&nbsp;ms</td><td class="num col-osprey best">31.7&nbsp;ms</td><td class="num">32.0&nbsp;ms</td><td class="num">32.0&nbsp;ms</td><td class="num">44.0&nbsp;ms</td><td class="num">52.5&nbsp;ms</td><td class="num col-osprey">42.0&nbsp;ms</td><td class="num">45.8&nbsp;ms</td></tr><tr><td>fib</td><td class="num col-osprey">20.5&nbsp;ms</td><td class="num col-osprey">20.5&nbsp;ms</td><td class="num best">16.2&nbsp;ms</td><td class="num">17.8&nbsp;ms</td><td class="num">23.8&nbsp;ms</td><td class="num">45.1&nbsp;ms</td><td class="num col-osprey">32.8&nbsp;ms</td><td class="num">36.6&nbsp;ms</td></tr><tr><td>gcdsum</td><td class="num col-osprey">75.3&nbsp;ms</td><td class="num col-osprey">71.7&nbsp;ms</td><td class="num best">71.2&nbsp;ms</td><td class="num">71.7&nbsp;ms</td><td class="num">96.9&nbsp;ms</td><td class="num">100.2&nbsp;ms</td><td class="num col-osprey">79.1&nbsp;ms</td><td class="num">82.7&nbsp;ms</td></tr><tr><td>hanoi</td><td class="num col-osprey">39.0&nbsp;ms</td><td class="num col-osprey">36.3&nbsp;ms</td><td class="num">36.4&nbsp;ms</td><td class="num best">36.1&nbsp;ms</td><td class="num">59.9&nbsp;ms</td><td class="num">53.5&nbsp;ms</td><td class="num col-osprey">47.5&nbsp;ms</td><td class="num">51.1&nbsp;ms</td></tr><tr><td>isqrt</td><td class="num col-osprey">12.6&nbsp;ms</td><td class="num col-osprey">12.2&nbsp;ms</td><td class="num">10.1&nbsp;ms</td><td class="num best">9.6&nbsp;ms</td><td class="num">19.1&nbsp;ms</td><td class="num">40.6&nbsp;ms</td><td class="num col-osprey">23.7&nbsp;ms</td><td class="num">21.3&nbsp;ms</td></tr><tr><td>josephus</td><td class="num col-osprey">32.1&nbsp;ms</td><td class="num col-osprey">30.9&nbsp;ms</td><td class="num best">30.2&nbsp;ms</td><td class="num">30.3&nbsp;ms</td><td class="num">37.8&nbsp;ms</td><td class="num">43.0&nbsp;ms</td><td class="num col-osprey">36.9&nbsp;ms</td><td class="num">40.5&nbsp;ms</td></tr><tr><td>listops</td><td class="num col-osprey">499.2&nbsp;ms</td><td class="num col-osprey">651.0&nbsp;ms</td><td class="num">1.5&nbsp;ms</td><td class="num best">1.3&nbsp;ms</td><td class="num">2.0&nbsp;ms</td><td class="num">16.7&nbsp;ms</td><td class="num col-osprey">—</td><td class="num">13.1&nbsp;ms</td></tr><tr><td>mutual</td><td class="num col-osprey">12.6&nbsp;ms</td><td class="num col-osprey">11.9&nbsp;ms</td><td class="num">12.0&nbsp;ms</td><td class="num best">11.7&nbsp;ms</td><td class="num">28.6&nbsp;ms</td><td class="num">34.8&nbsp;ms</td><td class="num col-osprey">23.7&nbsp;ms</td><td class="num">28.1&nbsp;ms</td></tr><tr><td>nestedloop</td><td class="num col-osprey">43.6&nbsp;ms</td><td class="num col-osprey best">41.4&nbsp;ms</td><td class="num">43.2&nbsp;ms</td><td class="num">42.0&nbsp;ms</td><td class="num">52.3&nbsp;ms</td><td class="num">63.6&nbsp;ms</td><td class="num col-osprey">54.3&nbsp;ms</td><td class="num">58.0&nbsp;ms</td></tr><tr><td>pascal</td><td class="num col-osprey">27.6&nbsp;ms</td><td class="num col-osprey best">26.6&nbsp;ms</td><td class="num">27.0&nbsp;ms</td><td class="num">26.9&nbsp;ms</td><td class="num">43.5&nbsp;ms</td><td class="num">57.8&nbsp;ms</td><td class="num col-osprey">42.4&nbsp;ms</td><td class="num">47.0&nbsp;ms</td></tr><tr><td>powmod</td><td class="num col-osprey">22.6&nbsp;ms</td><td class="num col-osprey best">21.5&nbsp;ms</td><td class="num">21.8&nbsp;ms</td><td class="num">21.7&nbsp;ms</td><td class="num">56.3&nbsp;ms</td><td class="num">55.3&nbsp;ms</td><td class="num col-osprey">28.4&nbsp;ms</td><td class="num">31.7&nbsp;ms</td></tr><tr><td>primes</td><td class="num col-osprey win">6.3&nbsp;ms ★</td><td class="num col-osprey">6.4&nbsp;ms</td><td class="num">7.1&nbsp;ms</td><td class="num">6.7&nbsp;ms</td><td class="num">8.7&nbsp;ms</td><td class="num">15.8&nbsp;ms</td><td class="num col-osprey">12.5&nbsp;ms</td><td class="num">16.3&nbsp;ms</td></tr><tr><td>tak</td><td class="num col-osprey">32.6&nbsp;ms</td><td class="num col-osprey">32.4&nbsp;ms</td><td class="num best">32.2&nbsp;ms</td><td class="num">32.7&nbsp;ms</td><td class="num">43.8&nbsp;ms</td><td class="num">63.2&nbsp;ms</td><td class="num col-osprey">85.4&nbsp;ms</td><td class="num">91.1&nbsp;ms</td></tr><tr><td>textstats</td><td class="num col-osprey">3.2&nbsp;ms</td><td class="num col-osprey">3.4&nbsp;ms</td><td class="num best">2.0&nbsp;ms</td><td class="num">2.1&nbsp;ms</td><td class="num">4.0&nbsp;ms</td><td class="num">17.7&nbsp;ms</td><td class="num col-osprey">—</td><td class="num">12.2&nbsp;ms</td></tr><tr><td>wordfreq</td><td class="num col-osprey">19.3&nbsp;ms</td><td class="num col-osprey">53.3&nbsp;ms</td><td class="num">4.4&nbsp;ms</td><td class="num best">1.5&nbsp;ms</td><td class="num">2.4&nbsp;ms</td><td class="num">18.4&nbsp;ms</td><td class="num col-osprey">—</td><td class="num">15.3&nbsp;ms</td></tr></tbody></table></div>
+<div class="comparison-table"><table><thead><tr><th>Benchmark</th><th class="num col-osprey">Osprey</th><th class="num col-osprey">Osprey (ARC)</th><th class="num col-osprey">Osprey (GC)</th><th class="num">Rust</th><th class="num">C</th><th class="num">C# (AOT)</th><th class="num">Dart (AOT)</th><th class="num">OCaml</th><th class="num">Haskell</th><th class="num col-osprey">Osprey (wasm)</th><th class="num">Rust (wasm)</th></tr></thead><tbody><tr><td>ackermann</td><td class="num col-osprey">134.6&nbsp;ms</td><td class="num col-osprey">131.2&nbsp;ms</td><td class="num col-osprey">129.8&nbsp;ms</td><td class="num">130.0&nbsp;ms</td><td class="num">129.5&nbsp;ms</td><td class="num">132.4&nbsp;ms</td><td class="num">186.4&nbsp;ms</td><td class="num">111.9&nbsp;ms</td><td class="num best">65.4&nbsp;ms</td><td class="num col-osprey">146.1&nbsp;ms</td><td class="num">146.4&nbsp;ms</td></tr><tr><td>binarytrees</td><td class="num col-osprey">555.1&nbsp;ms</td><td class="num col-osprey">1.957&nbsp;s</td><td class="num col-osprey">3.177&nbsp;s</td><td class="num">752.6&nbsp;ms</td><td class="num">367.3&nbsp;ms</td><td class="num">127.7&nbsp;ms</td><td class="num">126.9&nbsp;ms</td><td class="num">52.3&nbsp;ms</td><td class="num best">16.3&nbsp;ms</td><td class="num col-osprey">573.7&nbsp;ms</td><td class="num">809.2&nbsp;ms</td></tr><tr><td>coins</td><td class="num col-osprey">78.2&nbsp;ms</td><td class="num col-osprey">78.2&nbsp;ms</td><td class="num col-osprey">78.3&nbsp;ms</td><td class="num">82.5&nbsp;ms</td><td class="num">77.6&nbsp;ms</td><td class="num">101.5&nbsp;ms</td><td class="num">122.4&nbsp;ms</td><td class="num">100.5&nbsp;ms</td><td class="num best">52.2&nbsp;ms</td><td class="num col-osprey">101.1&nbsp;ms</td><td class="num">111.1&nbsp;ms</td></tr><tr><td>collatz</td><td class="num col-osprey">104.9&nbsp;ms</td><td class="num col-osprey">263.3&nbsp;ms</td><td class="num col-osprey">251.2&nbsp;ms</td><td class="num">12.5&nbsp;ms</td><td class="num best">10.2&nbsp;ms</td><td class="num">57.0&nbsp;ms</td><td class="num">67.0&nbsp;ms</td><td class="num">59.2&nbsp;ms</td><td class="num">40.5&nbsp;ms</td><td class="num col-osprey">88.0&nbsp;ms</td><td class="num">24.2&nbsp;ms</td></tr><tr><td>coprime</td><td class="num col-osprey">67.8&nbsp;ms</td><td class="num col-osprey">67.8&nbsp;ms</td><td class="num col-osprey">67.8&nbsp;ms</td><td class="num">65.2&nbsp;ms</td><td class="num best">63.4&nbsp;ms</td><td class="num">77.1&nbsp;ms</td><td class="num">106.3&nbsp;ms</td><td class="num">90.7&nbsp;ms</td><td class="num">103.9&nbsp;ms</td><td class="num col-osprey">75.9&nbsp;ms</td><td class="num">77.2&nbsp;ms</td></tr><tr><td>digitsum</td><td class="num col-osprey">137.5&nbsp;ms</td><td class="num col-osprey">375.3&nbsp;ms</td><td class="num col-osprey">358.5&nbsp;ms</td><td class="num">5.4&nbsp;ms</td><td class="num best">5.4&nbsp;ms</td><td class="num">16.3&nbsp;ms</td><td class="num">28.9&nbsp;ms</td><td class="num">18.9&nbsp;ms</td><td class="num">29.7&nbsp;ms</td><td class="num col-osprey">104.6&nbsp;ms</td><td class="num">18.0&nbsp;ms</td></tr><tr><td>exprtree</td><td class="num col-osprey">8.0&nbsp;ms</td><td class="num col-osprey">26.5&nbsp;ms</td><td class="num col-osprey">27.5&nbsp;ms</td><td class="num">10.9&nbsp;ms</td><td class="num">6.2&nbsp;ms</td><td class="num">6.4&nbsp;ms</td><td class="num">13.3&nbsp;ms</td><td class="num best">5.1&nbsp;ms</td><td class="num">16.1&nbsp;ms</td><td class="num col-osprey">—</td><td class="num">20.2&nbsp;ms</td></tr><tr><td>factorial</td><td class="num col-osprey">261.3&nbsp;ms</td><td class="num col-osprey">843.1&nbsp;ms</td><td class="num col-osprey">666.2&nbsp;ms</td><td class="num">35.5&nbsp;ms</td><td class="num best">35.1&nbsp;ms</td><td class="num">37.2&nbsp;ms</td><td class="num">51.4&nbsp;ms</td><td class="num">48.5&nbsp;ms</td><td class="num">53.8&nbsp;ms</td><td class="num col-osprey">196.5&nbsp;ms</td><td class="num">48.8&nbsp;ms</td></tr><tr><td>fib</td><td class="num col-osprey">21.1&nbsp;ms</td><td class="num col-osprey">21.0&nbsp;ms</td><td class="num col-osprey">21.2&nbsp;ms</td><td class="num best">17.3&nbsp;ms</td><td class="num">17.7&nbsp;ms</td><td class="num">35.9&nbsp;ms</td><td class="num">51.6&nbsp;ms</td><td class="num">23.9&nbsp;ms</td><td class="num">48.4&nbsp;ms</td><td class="num col-osprey">33.0&nbsp;ms</td><td class="num">36.7&nbsp;ms</td></tr><tr><td>gcdsum</td><td class="num col-osprey">79.3&nbsp;ms</td><td class="num col-osprey">79.4&nbsp;ms</td><td class="num col-osprey">79.4&nbsp;ms</td><td class="num">79.1&nbsp;ms</td><td class="num best">79.0&nbsp;ms</td><td class="num">86.3&nbsp;ms</td><td class="num">108.8&nbsp;ms</td><td class="num">101.4&nbsp;ms</td><td class="num">106.1&nbsp;ms</td><td class="num col-osprey">86.6&nbsp;ms</td><td class="num">91.0&nbsp;ms</td></tr><tr><td>hanoi</td><td class="num col-osprey">38.1&nbsp;ms</td><td class="num col-osprey">38.0&nbsp;ms</td><td class="num col-osprey">38.4&nbsp;ms</td><td class="num best">36.9&nbsp;ms</td><td class="num">38.4&nbsp;ms</td><td class="num">38.5&nbsp;ms</td><td class="num">103.0&nbsp;ms</td><td class="num">62.4&nbsp;ms</td><td class="num">57.9&nbsp;ms</td><td class="num col-osprey">47.7&nbsp;ms</td><td class="num">51.3&nbsp;ms</td></tr><tr><td>isqrt</td><td class="num col-osprey">308.1&nbsp;ms</td><td class="num col-osprey">855.7&nbsp;ms</td><td class="num col-osprey">807.4&nbsp;ms</td><td class="num">11.0&nbsp;ms</td><td class="num best">10.4&nbsp;ms</td><td class="num">16.9&nbsp;ms</td><td class="num">32.9&nbsp;ms</td><td class="num">20.5&nbsp;ms</td><td class="num">43.7&nbsp;ms</td><td class="num col-osprey">285.8&nbsp;ms</td><td class="num">22.8&nbsp;ms</td></tr><tr><td>josephus</td><td class="num col-osprey">33.3&nbsp;ms</td><td class="num col-osprey">33.3&nbsp;ms</td><td class="num col-osprey">33.3&nbsp;ms</td><td class="num">33.5&nbsp;ms</td><td class="num best">32.9&nbsp;ms</td><td class="num">34.9&nbsp;ms</td><td class="num">42.1&nbsp;ms</td><td class="num">41.1&nbsp;ms</td><td class="num">43.7&nbsp;ms</td><td class="num col-osprey">38.5&nbsp;ms</td><td class="num">41.9&nbsp;ms</td></tr><tr><td>listops</td><td class="num col-osprey">531.7&nbsp;ms</td><td class="num col-osprey">1.088&nbsp;s</td><td class="num col-osprey">660.5&nbsp;ms</td><td class="num">1.4&nbsp;ms</td><td class="num best">1.2&nbsp;ms</td><td class="num">2.9&nbsp;ms</td><td class="num">9.8&nbsp;ms</td><td class="num">1.9&nbsp;ms</td><td class="num">18.1&nbsp;ms</td><td class="num col-osprey">—</td><td class="num">11.4&nbsp;ms</td></tr><tr><td>mutual</td><td class="num col-osprey">11.8&nbsp;ms</td><td class="num col-osprey">11.1&nbsp;ms</td><td class="num col-osprey best">10.8&nbsp;ms</td><td class="num">11.6&nbsp;ms</td><td class="num">11.7&nbsp;ms</td><td class="num">19.1&nbsp;ms</td><td class="num">297.7&nbsp;ms</td><td class="num">28.6&nbsp;ms</td><td class="num">32.6&nbsp;ms</td><td class="num col-osprey">23.4&nbsp;ms</td><td class="num">27.0&nbsp;ms</td></tr><tr><td>nestedloop</td><td class="num col-osprey">45.2&nbsp;ms</td><td class="num col-osprey">43.8&nbsp;ms</td><td class="num col-osprey">41.4&nbsp;ms</td><td class="num">42.1&nbsp;ms</td><td class="num best">41.3&nbsp;ms</td><td class="num">43.4&nbsp;ms</td><td class="num">54.4&nbsp;ms</td><td class="num">53.2&nbsp;ms</td><td class="num">60.4&nbsp;ms</td><td class="num col-osprey">60.7&nbsp;ms</td><td class="num">64.8&nbsp;ms</td></tr><tr><td>pascal</td><td class="num col-osprey">28.4&nbsp;ms</td><td class="num col-osprey">28.5&nbsp;ms</td><td class="num col-osprey">28.4&nbsp;ms</td><td class="num">28.3&nbsp;ms</td><td class="num best">27.8&nbsp;ms</td><td class="num">33.4&nbsp;ms</td><td class="num">64.7&nbsp;ms</td><td class="num">44.3&nbsp;ms</td><td class="num">59.7&nbsp;ms</td><td class="num col-osprey">43.4&nbsp;ms</td><td class="num">47.1&nbsp;ms</td></tr><tr><td>powmod</td><td class="num col-osprey">23.3&nbsp;ms</td><td class="num col-osprey best">23.3&nbsp;ms</td><td class="num col-osprey">23.4&nbsp;ms</td><td class="num">23.4&nbsp;ms</td><td class="num">23.4&nbsp;ms</td><td class="num">34.1&nbsp;ms</td><td class="num">50.5&nbsp;ms</td><td class="num">60.7&nbsp;ms</td><td class="num">58.1&nbsp;ms</td><td class="num col-osprey">30.0&nbsp;ms</td><td class="num">33.9&nbsp;ms</td></tr><tr><td>primes</td><td class="num col-osprey">6.5&nbsp;ms</td><td class="num col-osprey">6.5&nbsp;ms</td><td class="num col-osprey">6.5&nbsp;ms</td><td class="num">6.7&nbsp;ms</td><td class="num best">6.5&nbsp;ms</td><td class="num">8.6&nbsp;ms</td><td class="num">44.1&nbsp;ms</td><td class="num">8.5&nbsp;ms</td><td class="num">17.3&nbsp;ms</td><td class="num col-osprey">13.1&nbsp;ms</td><td class="num">17.1&nbsp;ms</td></tr><tr><td>tak</td><td class="num col-osprey">32.9&nbsp;ms</td><td class="num col-osprey best">32.5&nbsp;ms</td><td class="num col-osprey">32.7&nbsp;ms</td><td class="num">32.8&nbsp;ms</td><td class="num">32.6&nbsp;ms</td><td class="num">34.9&nbsp;ms</td><td class="num">81.9&nbsp;ms</td><td class="num">44.4&nbsp;ms</td><td class="num">64.7&nbsp;ms</td><td class="num col-osprey">86.6&nbsp;ms</td><td class="num">90.4&nbsp;ms</td></tr><tr><td>textstats</td><td class="num col-osprey">3.5&nbsp;ms</td><td class="num col-osprey">5.1&nbsp;ms</td><td class="num col-osprey">3.6&nbsp;ms</td><td class="num best">2.0&nbsp;ms</td><td class="num">2.1&nbsp;ms</td><td class="num">3.7&nbsp;ms</td><td class="num">11.0&nbsp;ms</td><td class="num">3.8&nbsp;ms</td><td class="num">17.3&nbsp;ms</td><td class="num col-osprey">—</td><td class="num">12.6&nbsp;ms</td></tr><tr><td>wordfreq</td><td class="num col-osprey">22.6&nbsp;ms</td><td class="num col-osprey">78.0&nbsp;ms</td><td class="num col-osprey">70.9&nbsp;ms</td><td class="num">4.5&nbsp;ms</td><td class="num best">1.5&nbsp;ms</td><td class="num">3.3&nbsp;ms</td><td class="num">10.6&nbsp;ms</td><td class="num">2.3&nbsp;ms</td><td class="num">17.3&nbsp;ms</td><td class="num col-osprey">—</td><td class="num">15.6&nbsp;ms</td></tr></tbody></table></div>
 <h2>Peak memory</h2>
-<div class="comparison-table"><table><thead><tr><th>Benchmark</th><th class="num col-osprey">Osprey</th><th class="num col-osprey">Osprey (GC)</th><th class="num">Rust</th><th class="num">C</th><th class="num">OCaml</th><th class="num">Haskell</th><th class="num col-osprey">Osprey (wasm)</th><th class="num">Rust (wasm)</th></tr></thead><tbody><tr><td>ackermann</td><td class="num col-osprey win">1.6&nbsp;MiB ★</td><td class="num col-osprey">1.7&nbsp;MiB</td><td class="num">1.8&nbsp;MiB</td><td class="num">1.6&nbsp;MiB</td><td class="num">2.6&nbsp;MiB</td><td class="num">15.1&nbsp;MiB</td><td class="num col-osprey">—</td><td class="num">—</td></tr><tr><td>binarytrees</td><td class="num col-osprey">905.0&nbsp;MiB</td><td class="num col-osprey">12.3&nbsp;MiB</td><td class="num">2.1&nbsp;MiB</td><td class="num best">1.7&nbsp;MiB</td><td class="num">5.1&nbsp;MiB</td><td class="num">11.0&nbsp;MiB</td><td class="num col-osprey">—</td><td class="num">—</td></tr><tr><td>coins</td><td class="num col-osprey">1.4&nbsp;MiB</td><td class="num col-osprey">1.5&nbsp;MiB</td><td class="num">1.5&nbsp;MiB</td><td class="num best">1.4&nbsp;MiB</td><td class="num">2.2&nbsp;MiB</td><td class="num">11.1&nbsp;MiB</td><td class="num col-osprey">—</td><td class="num">—</td></tr><tr><td>collatz</td><td class="num col-osprey">1.4&nbsp;MiB</td><td class="num col-osprey">1.4&nbsp;MiB</td><td class="num">1.5&nbsp;MiB</td><td class="num best">1.4&nbsp;MiB</td><td class="num">2.2&nbsp;MiB</td><td class="num">11.1&nbsp;MiB</td><td class="num col-osprey">—</td><td class="num">—</td></tr><tr><td>coprime</td><td class="num col-osprey">1.4&nbsp;MiB</td><td class="num col-osprey">1.5&nbsp;MiB</td><td class="num">1.5&nbsp;MiB</td><td class="num best">1.4&nbsp;MiB</td><td class="num">2.2&nbsp;MiB</td><td class="num">11.1&nbsp;MiB</td><td class="num col-osprey">—</td><td class="num">—</td></tr><tr><td>digitsum</td><td class="num col-osprey">1.4&nbsp;MiB</td><td class="num col-osprey">1.4&nbsp;MiB</td><td class="num">1.5&nbsp;MiB</td><td class="num best">1.4&nbsp;MiB</td><td class="num">2.2&nbsp;MiB</td><td class="num">11.1&nbsp;MiB</td><td class="num col-osprey">—</td><td class="num">—</td></tr><tr><td>exprtree</td><td class="num col-osprey">9.0&nbsp;MiB</td><td class="num col-osprey">6.5&nbsp;MiB</td><td class="num best">2.7&nbsp;MiB</td><td class="num">11.5&nbsp;MiB</td><td class="num">6.0&nbsp;MiB</td><td class="num">11.4&nbsp;MiB</td><td class="num col-osprey">—</td><td class="num">—</td></tr><tr><td>factorial</td><td class="num col-osprey best">1.4&nbsp;MiB</td><td class="num col-osprey">1.5&nbsp;MiB</td><td class="num">1.5&nbsp;MiB</td><td class="num best">1.4&nbsp;MiB</td><td class="num">2.2&nbsp;MiB</td><td class="num">11.1&nbsp;MiB</td><td class="num col-osprey">—</td><td class="num">—</td></tr><tr><td>fib</td><td class="num col-osprey">1.4&nbsp;MiB</td><td class="num col-osprey">1.4&nbsp;MiB</td><td class="num">1.5&nbsp;MiB</td><td class="num best">1.4&nbsp;MiB</td><td class="num">2.2&nbsp;MiB</td><td class="num">11.1&nbsp;MiB</td><td class="num col-osprey">—</td><td class="num">—</td></tr><tr><td>gcdsum</td><td class="num col-osprey">1.4&nbsp;MiB</td><td class="num col-osprey">1.5&nbsp;MiB</td><td class="num">1.5&nbsp;MiB</td><td class="num best">1.4&nbsp;MiB</td><td class="num">2.2&nbsp;MiB</td><td class="num">11.1&nbsp;MiB</td><td class="num col-osprey">—</td><td class="num">—</td></tr><tr><td>hanoi</td><td class="num col-osprey">1.4&nbsp;MiB</td><td class="num col-osprey">1.4&nbsp;MiB</td><td class="num">1.5&nbsp;MiB</td><td class="num best">1.4&nbsp;MiB</td><td class="num">2.2&nbsp;MiB</td><td class="num">11.1&nbsp;MiB</td><td class="num col-osprey">—</td><td class="num">—</td></tr><tr><td>isqrt</td><td class="num col-osprey">1.4&nbsp;MiB</td><td class="num col-osprey">1.4&nbsp;MiB</td><td class="num">1.5&nbsp;MiB</td><td class="num best">1.4&nbsp;MiB</td><td class="num">2.2&nbsp;MiB</td><td class="num">11.1&nbsp;MiB</td><td class="num col-osprey">—</td><td class="num">—</td></tr><tr><td>josephus</td><td class="num col-osprey">1.4&nbsp;MiB</td><td class="num col-osprey">1.4&nbsp;MiB</td><td class="num">1.5&nbsp;MiB</td><td class="num best">1.4&nbsp;MiB</td><td class="num">2.2&nbsp;MiB</td><td class="num">11.1&nbsp;MiB</td><td class="num col-osprey">—</td><td class="num">—</td></tr><tr><td>listops</td><td class="num col-osprey">2493.5&nbsp;MiB</td><td class="num col-osprey">4.1&nbsp;MiB</td><td class="num">1.6&nbsp;MiB</td><td class="num best">1.4&nbsp;MiB</td><td class="num">2.5&nbsp;MiB</td><td class="num">11.3&nbsp;MiB</td><td class="num col-osprey">—</td><td class="num">—</td></tr><tr><td>mutual</td><td class="num col-osprey">1.4&nbsp;MiB</td><td class="num col-osprey">1.4&nbsp;MiB</td><td class="num">1.5&nbsp;MiB</td><td class="num best">1.4&nbsp;MiB</td><td class="num">2.2&nbsp;MiB</td><td class="num">11.1&nbsp;MiB</td><td class="num col-osprey">—</td><td class="num">—</td></tr><tr><td>nestedloop</td><td class="num col-osprey">1.4&nbsp;MiB</td><td class="num col-osprey">1.4&nbsp;MiB</td><td class="num">1.5&nbsp;MiB</td><td class="num best">1.4&nbsp;MiB</td><td class="num">2.2&nbsp;MiB</td><td class="num">11.0&nbsp;MiB</td><td class="num col-osprey">—</td><td class="num">—</td></tr><tr><td>pascal</td><td class="num col-osprey">1.4&nbsp;MiB</td><td class="num col-osprey">1.5&nbsp;MiB</td><td class="num">1.5&nbsp;MiB</td><td class="num best">1.4&nbsp;MiB</td><td class="num">2.2&nbsp;MiB</td><td class="num">11.1&nbsp;MiB</td><td class="num col-osprey">—</td><td class="num">—</td></tr><tr><td>powmod</td><td class="num col-osprey best">1.4&nbsp;MiB</td><td class="num col-osprey">1.5&nbsp;MiB</td><td class="num">1.5&nbsp;MiB</td><td class="num best">1.4&nbsp;MiB</td><td class="num">2.2&nbsp;MiB</td><td class="num">11.1&nbsp;MiB</td><td class="num col-osprey">—</td><td class="num">—</td></tr><tr><td>primes</td><td class="num col-osprey best">1.4&nbsp;MiB</td><td class="num col-osprey">1.5&nbsp;MiB</td><td class="num">1.5&nbsp;MiB</td><td class="num best">1.4&nbsp;MiB</td><td class="num">2.2&nbsp;MiB</td><td class="num">11.1&nbsp;MiB</td><td class="num col-osprey">—</td><td class="num">—</td></tr><tr><td>tak</td><td class="num col-osprey">1.4&nbsp;MiB</td><td class="num col-osprey">1.4&nbsp;MiB</td><td class="num">1.5&nbsp;MiB</td><td class="num best">1.4&nbsp;MiB</td><td class="num">2.2&nbsp;MiB</td><td class="num">11.1&nbsp;MiB</td><td class="num col-osprey">—</td><td class="num">—</td></tr><tr><td>textstats</td><td class="num col-osprey best">1.4&nbsp;MiB</td><td class="num col-osprey">1.5&nbsp;MiB</td><td class="num">1.6&nbsp;MiB</td><td class="num best">1.4&nbsp;MiB</td><td class="num">2.3&nbsp;MiB</td><td class="num">11.4&nbsp;MiB</td><td class="num col-osprey">—</td><td class="num">—</td></tr><tr><td>wordfreq</td><td class="num col-osprey">52.8&nbsp;MiB</td><td class="num col-osprey">4.4&nbsp;MiB</td><td class="num">1.6&nbsp;MiB</td><td class="num best">1.4&nbsp;MiB</td><td class="num">2.3&nbsp;MiB</td><td class="num">11.3&nbsp;MiB</td><td class="num col-osprey">—</td><td class="num">—</td></tr></tbody></table></div>
+<div class="comparison-table"><table><thead><tr><th>Benchmark</th><th class="num col-osprey">Osprey</th><th class="num col-osprey">Osprey (ARC)</th><th class="num col-osprey">Osprey (GC)</th><th class="num">Rust</th><th class="num">C</th><th class="num">C# (AOT)</th><th class="num">Dart (AOT)</th><th class="num">OCaml</th><th class="num">Haskell</th><th class="num col-osprey">Osprey (wasm)</th><th class="num">Rust (wasm)</th></tr></thead><tbody><tr><td>ackermann</td><td class="num col-osprey">1.7&nbsp;MiB</td><td class="num col-osprey">1.7&nbsp;MiB</td><td class="num col-osprey">1.7&nbsp;MiB</td><td class="num">1.8&nbsp;MiB</td><td class="num best">1.7&nbsp;MiB</td><td class="num">7.1&nbsp;MiB</td><td class="num">14.2&nbsp;MiB</td><td class="num">2.7&nbsp;MiB</td><td class="num">15.1&nbsp;MiB</td><td class="num col-osprey">—</td><td class="num">—</td></tr><tr><td>binarytrees</td><td class="num col-osprey">905.1&nbsp;MiB</td><td class="num col-osprey">487.5&nbsp;MiB</td><td class="num col-osprey">27.5&nbsp;MiB</td><td class="num">2.2&nbsp;MiB</td><td class="num best">1.7&nbsp;MiB</td><td class="num">16.1&nbsp;MiB</td><td class="num">22.5&nbsp;MiB</td><td class="num">5.2&nbsp;MiB</td><td class="num">11.1&nbsp;MiB</td><td class="num col-osprey">—</td><td class="num">—</td></tr><tr><td>coins</td><td class="num col-osprey">1.5&nbsp;MiB</td><td class="num col-osprey">1.5&nbsp;MiB</td><td class="num col-osprey">1.5&nbsp;MiB</td><td class="num">1.6&nbsp;MiB</td><td class="num best">1.5&nbsp;MiB</td><td class="num">6.9&nbsp;MiB</td><td class="num">13.9&nbsp;MiB</td><td class="num">2.3&nbsp;MiB</td><td class="num">11.1&nbsp;MiB</td><td class="num col-osprey">—</td><td class="num">—</td></tr><tr><td>collatz</td><td class="num col-osprey">221.7&nbsp;MiB</td><td class="num col-osprey">65.5&nbsp;MiB</td><td class="num col-osprey">6.6&nbsp;MiB</td><td class="num">1.6&nbsp;MiB</td><td class="num best">1.4&nbsp;MiB</td><td class="num">6.8&nbsp;MiB</td><td class="num">14.0&nbsp;MiB</td><td class="num">2.3&nbsp;MiB</td><td class="num">11.1&nbsp;MiB</td><td class="num col-osprey">—</td><td class="num">—</td></tr><tr><td>coprime</td><td class="num col-osprey">1.5&nbsp;MiB</td><td class="num col-osprey">1.5&nbsp;MiB</td><td class="num col-osprey">1.5&nbsp;MiB</td><td class="num">1.6&nbsp;MiB</td><td class="num best">1.4&nbsp;MiB</td><td class="num">6.8&nbsp;MiB</td><td class="num">14.0&nbsp;MiB</td><td class="num">2.3&nbsp;MiB</td><td class="num">11.1&nbsp;MiB</td><td class="num col-osprey">—</td><td class="num">—</td></tr><tr><td>digitsum</td><td class="num col-osprey">335.1&nbsp;MiB</td><td class="num col-osprey">65.5&nbsp;MiB</td><td class="num col-osprey">6.6&nbsp;MiB</td><td class="num">1.6&nbsp;MiB</td><td class="num best">1.4&nbsp;MiB</td><td class="num">6.8&nbsp;MiB</td><td class="num">14.0&nbsp;MiB</td><td class="num">2.3&nbsp;MiB</td><td class="num">11.1&nbsp;MiB</td><td class="num col-osprey">—</td><td class="num">—</td></tr><tr><td>exprtree</td><td class="num col-osprey">9.0&nbsp;MiB</td><td class="num col-osprey">6.7&nbsp;MiB</td><td class="num col-osprey">15.2&nbsp;MiB</td><td class="num best">2.7&nbsp;MiB</td><td class="num">11.5&nbsp;MiB</td><td class="num">15.2&nbsp;MiB</td><td class="num">22.7&nbsp;MiB</td><td class="num">6.1&nbsp;MiB</td><td class="num">11.4&nbsp;MiB</td><td class="num col-osprey">—</td><td class="num">—</td></tr><tr><td>factorial</td><td class="num col-osprey">614.2&nbsp;MiB</td><td class="num col-osprey">129.5&nbsp;MiB</td><td class="num col-osprey">6.6&nbsp;MiB</td><td class="num">1.6&nbsp;MiB</td><td class="num best">1.4&nbsp;MiB</td><td class="num">6.8&nbsp;MiB</td><td class="num">14.0&nbsp;MiB</td><td class="num">2.2&nbsp;MiB</td><td class="num">11.1&nbsp;MiB</td><td class="num col-osprey">—</td><td class="num">—</td></tr><tr><td>fib</td><td class="num col-osprey">1.5&nbsp;MiB</td><td class="num col-osprey">1.5&nbsp;MiB</td><td class="num col-osprey">1.5&nbsp;MiB</td><td class="num">1.6&nbsp;MiB</td><td class="num best">1.4&nbsp;MiB</td><td class="num">6.9&nbsp;MiB</td><td class="num">13.9&nbsp;MiB</td><td class="num">2.3&nbsp;MiB</td><td class="num">11.1&nbsp;MiB</td><td class="num col-osprey">—</td><td class="num">—</td></tr><tr><td>gcdsum</td><td class="num col-osprey">1.5&nbsp;MiB</td><td class="num col-osprey">1.5&nbsp;MiB</td><td class="num col-osprey">1.5&nbsp;MiB</td><td class="num">1.6&nbsp;MiB</td><td class="num best">1.4&nbsp;MiB</td><td class="num">6.8&nbsp;MiB</td><td class="num">14.0&nbsp;MiB</td><td class="num">2.3&nbsp;MiB</td><td class="num">11.1&nbsp;MiB</td><td class="num col-osprey">—</td><td class="num">—</td></tr><tr><td>hanoi</td><td class="num col-osprey">1.5&nbsp;MiB</td><td class="num col-osprey">1.5&nbsp;MiB</td><td class="num col-osprey">1.5&nbsp;MiB</td><td class="num">1.6&nbsp;MiB</td><td class="num best">1.4&nbsp;MiB</td><td class="num">6.8&nbsp;MiB</td><td class="num">14.0&nbsp;MiB</td><td class="num">2.3&nbsp;MiB</td><td class="num">11.1&nbsp;MiB</td><td class="num col-osprey">—</td><td class="num">—</td></tr><tr><td>isqrt</td><td class="num col-osprey">779.1&nbsp;MiB</td><td class="num col-osprey">257.5&nbsp;MiB</td><td class="num col-osprey">8.3&nbsp;MiB</td><td class="num">1.6&nbsp;MiB</td><td class="num best">1.4&nbsp;MiB</td><td class="num">6.8&nbsp;MiB</td><td class="num">14.0&nbsp;MiB</td><td class="num">2.3&nbsp;MiB</td><td class="num">11.1&nbsp;MiB</td><td class="num col-osprey">—</td><td class="num">—</td></tr><tr><td>josephus</td><td class="num col-osprey">1.5&nbsp;MiB</td><td class="num col-osprey">1.5&nbsp;MiB</td><td class="num col-osprey">1.5&nbsp;MiB</td><td class="num">1.6&nbsp;MiB</td><td class="num best">1.4&nbsp;MiB</td><td class="num">6.8&nbsp;MiB</td><td class="num">14.1&nbsp;MiB</td><td class="num">2.3&nbsp;MiB</td><td class="num">11.1&nbsp;MiB</td><td class="num col-osprey">—</td><td class="num">—</td></tr><tr><td>listops</td><td class="num col-osprey">2493.5&nbsp;MiB</td><td class="num col-osprey">3383.9&nbsp;MiB</td><td class="num col-osprey">3.8&nbsp;MiB</td><td class="num">1.7&nbsp;MiB</td><td class="num best">1.5&nbsp;MiB</td><td class="num">7.1&nbsp;MiB</td><td class="num">14.3&nbsp;MiB</td><td class="num">2.6&nbsp;MiB</td><td class="num">11.4&nbsp;MiB</td><td class="num col-osprey">—</td><td class="num">—</td></tr><tr><td>mutual</td><td class="num col-osprey">1.5&nbsp;MiB</td><td class="num col-osprey">1.5&nbsp;MiB</td><td class="num col-osprey">1.5&nbsp;MiB</td><td class="num">1.6&nbsp;MiB</td><td class="num best">1.4&nbsp;MiB</td><td class="num">6.8&nbsp;MiB</td><td class="num">13.9&nbsp;MiB</td><td class="num">2.3&nbsp;MiB</td><td class="num">11.1&nbsp;MiB</td><td class="num col-osprey">—</td><td class="num">—</td></tr><tr><td>nestedloop</td><td class="num col-osprey">1.5&nbsp;MiB</td><td class="num col-osprey">1.5&nbsp;MiB</td><td class="num col-osprey">1.5&nbsp;MiB</td><td class="num">1.6&nbsp;MiB</td><td class="num best">1.4&nbsp;MiB</td><td class="num">6.9&nbsp;MiB</td><td class="num">13.9&nbsp;MiB</td><td class="num">2.2&nbsp;MiB</td><td class="num">11.1&nbsp;MiB</td><td class="num col-osprey">—</td><td class="num">—</td></tr><tr><td>pascal</td><td class="num col-osprey">1.5&nbsp;MiB</td><td class="num col-osprey">1.5&nbsp;MiB</td><td class="num col-osprey">1.5&nbsp;MiB</td><td class="num">1.6&nbsp;MiB</td><td class="num best">1.4&nbsp;MiB</td><td class="num">6.8&nbsp;MiB</td><td class="num">14.0&nbsp;MiB</td><td class="num">2.3&nbsp;MiB</td><td class="num">11.1&nbsp;MiB</td><td class="num col-osprey">—</td><td class="num">—</td></tr><tr><td>powmod</td><td class="num col-osprey">1.5&nbsp;MiB</td><td class="num col-osprey">1.5&nbsp;MiB</td><td class="num col-osprey">1.5&nbsp;MiB</td><td class="num">1.6&nbsp;MiB</td><td class="num best">1.4&nbsp;MiB</td><td class="num">6.8&nbsp;MiB</td><td class="num">13.9&nbsp;MiB</td><td class="num">2.3&nbsp;MiB</td><td class="num">11.1&nbsp;MiB</td><td class="num col-osprey">—</td><td class="num">—</td></tr><tr><td>primes</td><td class="num col-osprey">1.5&nbsp;MiB</td><td class="num col-osprey">1.5&nbsp;MiB</td><td class="num col-osprey">1.5&nbsp;MiB</td><td class="num">1.6&nbsp;MiB</td><td class="num best">1.4&nbsp;MiB</td><td class="num">6.8&nbsp;MiB</td><td class="num">14.0&nbsp;MiB</td><td class="num">2.2&nbsp;MiB</td><td class="num">11.1&nbsp;MiB</td><td class="num col-osprey">—</td><td class="num">—</td></tr><tr><td>tak</td><td class="num col-osprey">1.5&nbsp;MiB</td><td class="num col-osprey">1.5&nbsp;MiB</td><td class="num col-osprey">1.5&nbsp;MiB</td><td class="num">1.6&nbsp;MiB</td><td class="num best">1.4&nbsp;MiB</td><td class="num">6.8&nbsp;MiB</td><td class="num">14.0&nbsp;MiB</td><td class="num">2.3&nbsp;MiB</td><td class="num">11.1&nbsp;MiB</td><td class="num col-osprey">—</td><td class="num">—</td></tr><tr><td>textstats</td><td class="num col-osprey">1.5&nbsp;MiB</td><td class="num col-osprey">1.6&nbsp;MiB</td><td class="num col-osprey">1.5&nbsp;MiB</td><td class="num">1.6&nbsp;MiB</td><td class="num best">1.5&nbsp;MiB</td><td class="num">6.8&nbsp;MiB</td><td class="num">14.1&nbsp;MiB</td><td class="num">2.3&nbsp;MiB</td><td class="num">11.4&nbsp;MiB</td><td class="num col-osprey">—</td><td class="num">—</td></tr><tr><td>wordfreq</td><td class="num col-osprey">59.0&nbsp;MiB</td><td class="num col-osprey">91.9&nbsp;MiB</td><td class="num col-osprey">4.7&nbsp;MiB</td><td class="num">1.6&nbsp;MiB</td><td class="num best">1.4&nbsp;MiB</td><td class="num">6.8&nbsp;MiB</td><td class="num">14.2&nbsp;MiB</td><td class="num">2.3&nbsp;MiB</td><td class="num">11.4&nbsp;MiB</td><td class="num col-osprey">—</td><td class="num">—</td></tr></tbody></table></div>
 </main></body></html>

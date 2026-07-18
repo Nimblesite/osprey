@@ -6,17 +6,22 @@
 // wiring, structured like debug-panel.ts.
 
 import { spawn, type ChildProcess } from "child_process";
+import { promises as fs } from "fs";
+import * as os from "os";
 import * as path from "path";
 import type { Readable } from "stream";
 import * as vscode from "vscode";
 import {
   compileFailureMessage,
+  coverageCounts,
+  coverageRunArgs,
   discoveryOutcome,
   excludedIdSet,
   fileTestId,
   isCompileFailure,
   leafTestId,
   outcomeForLeaf,
+  parseCoverageJson,
   parseTapStream,
   planRun,
   strayFailureMessage,
@@ -27,6 +32,7 @@ import {
   type ExecResult,
   type FilePlan,
   type LeafOutcome,
+  type LineHits,
   type TestListParse,
 } from "./test-explorer-parse";
 
@@ -58,6 +64,8 @@ export interface TestRunSink {
   skipped(test: vscode.TestItem): void;
   appendOutput(output: string): void;
   end(): void;
+  /** Coverage runs report each file's line hits here ([TESTING-COVERAGE-VSCODE]). */
+  addLineCoverage?(uri: vscode.Uri, hits: LineHits): void;
 }
 
 // On POSIX the compiler child is spawned detached (its own process group) so
@@ -183,6 +191,7 @@ export async function refreshTestFile(
   controller: vscode.TestController,
   uri: vscode.Uri,
   compiler: string,
+  token?: vscode.CancellationToken,
 ): Promise<vscode.TestItem> {
   const item = getOrCreateFileItem(controller, uri);
   const result = await runCompiler(
@@ -190,6 +199,7 @@ export async function refreshTestFile(
     [uri.fsPath, "--list-tests"],
     path.dirname(uri.fsPath),
     process.env,
+    token,
   );
   applyDiscovery(controller, item, uri, discoveryOutcome(result));
   return item;
@@ -252,7 +262,9 @@ function includedChildren(
 // case when `filter` is set — [TESTING-FILTER]) and reports every leaf's
 // outcome. A compile error (non-zero exit, no TAP) marks `errorTarget` (the
 // file item for whole-file runs, the leaf for filtered runs) and any other
-// started leaves errored with the compiler's stderr.
+// started leaves errored with the compiler's stderr. A coverage run goes
+// through `osprey test --coverage-json` instead — same TAP, plus the report
+// fed back through the sink ([TESTING-COVERAGE-VSCODE]).
 async function runLeaves(
   errorTarget: vscode.TestItem,
   leaves: vscode.TestItem[],
@@ -260,6 +272,7 @@ async function runLeaves(
   sink: TestRunSink,
   token: vscode.CancellationToken,
   compiler: string,
+  coverage: boolean,
 ): Promise<void> {
   const uri = errorTarget.uri;
   if (uri === undefined) {
@@ -269,12 +282,50 @@ async function runLeaves(
     sink.enqueued(leaf);
     sink.started(leaf);
   }
-  const env = testRunEnv(process.env, filter);
-  const result = await runCompiler(compiler, [uri.fsPath, "--run"], path.dirname(uri.fsPath), env, token);
+  const env = testRunEnv(process.env, coverage ? undefined : filter);
+  const jsonPath = coverage ? coverageJsonPath(uri) : undefined;
+  const args =
+    jsonPath === undefined ? [uri.fsPath, "--run"] : coverageRunArgs(uri.fsPath, jsonPath, filter);
+  const result = await runCompiler(compiler, args, path.dirname(uri.fsPath), env, token);
   if (token.isCancellationRequested) {
     return;
   }
   reportLeaves(errorTarget, leaves, result, sink);
+  if (jsonPath !== undefined) {
+    await reportCoverage(uri, jsonPath, sink);
+  }
+}
+
+/** Where one file's coverage report lands (unique per file, per session). */
+function coverageJsonPath(uri: vscode.Uri): string {
+  const stem = path.basename(uri.fsPath).replace(/[^A-Za-z0-9_.-]/g, "_");
+  return path.join(os.tmpdir(), `osprey-cov-${process.pid}-${stem}.json`);
+}
+
+/** Read, parse, and forward one run's coverage report, then drop the file. */
+async function reportCoverage(
+  uri: vscode.Uri,
+  jsonPath: string,
+  sink: TestRunSink,
+): Promise<void> {
+  if (sink.addLineCoverage === undefined) {
+    return;
+  }
+  let text: string;
+  try {
+    text = await fs.readFile(jsonPath, "utf8");
+  } catch {
+    return; // compile failure — no report was written
+  }
+  await fs.rm(jsonPath, { force: true });
+  const report = parseCoverageJson(text);
+  if (report === undefined) {
+    return;
+  }
+  for (const hits of report.values()) {
+    // `osprey test <file>` reports exactly the one suite it ran.
+    sink.addLineCoverage(uri, hits);
+  }
 }
 
 function reportCompileFailure(
@@ -319,20 +370,21 @@ async function runPlan(
   sink: TestRunSink,
   token: vscode.CancellationToken,
   compiler: string,
+  coverage: boolean,
 ): Promise<void> {
   const leaves = plan.wholeFile ? includedChildren(plan.file, excluded) : plan.leaves;
   // One unfiltered process only when the whole file truly runs. A whole-file
   // request with exclusions falls through to per-leaf filtered runs so the
   // excluded cases never execute — not merely go unreported.
   if (plan.wholeFile && leaves.length === plan.file.children.size) {
-    await runLeaves(plan.file, leaves, undefined, sink, token, compiler);
+    await runLeaves(plan.file, leaves, undefined, sink, token, compiler, coverage);
     return;
   }
   for (const leaf of leaves) {
     if (token.isCancellationRequested) {
       return;
     }
-    await runLeaves(leaf, [leaf], leaf.label, sink, token, compiler);
+    await runLeaves(leaf, [leaf], leaf.label, sink, token, compiler, coverage);
   }
 }
 
@@ -342,10 +394,11 @@ async function ensureFileResolved(
   controller: vscode.TestController,
   plan: FilePlan<vscode.TestItem>,
   compiler: string,
+  token: vscode.CancellationToken,
 ): Promise<void> {
   const uri = plan.file.uri;
   if (plan.wholeFile && uri !== undefined && plan.file.children.size === 0) {
-    await refreshTestFile(controller, uri, compiler);
+    await refreshTestFile(controller, uri, compiler, token);
   }
 }
 
@@ -356,17 +409,25 @@ export async function executeRunRequest(
   sink: TestRunSink,
   token: vscode.CancellationToken,
   resolveCompiler: () => string,
+  coverage = false,
 ): Promise<void> {
   const excluded = excludedIdSet(request.exclude);
-  for (const plan of planRun(requestedItems(controller, request), excluded)) {
-    if (token.isCancellationRequested) {
-      break;
+  // end() MUST fire on every exit path — a thrown discovery/report error or a
+  // reporting call rejected by an already-cancelled TestRun would otherwise
+  // leave the run spinning forever in the Testing view, uncancellable (Stop
+  // only signals the token; VS Code retires a run only when end() is called).
+  try {
+    for (const plan of planRun(requestedItems(controller, request), excluded)) {
+      if (token.isCancellationRequested) {
+        break;
+      }
+      const compiler = resolveCompiler();
+      await ensureFileResolved(controller, plan, compiler, token);
+      await runPlan(plan, excluded, sink, token, compiler, coverage);
     }
-    const compiler = resolveCompiler();
-    await ensureFileResolved(controller, plan, compiler);
-    await runPlan(plan, excluded, sink, token, compiler);
+  } finally {
+    sink.end();
   }
-  sink.end();
 }
 
 /** The handler behind the default Run profile: one real TestRun per request. */
@@ -376,6 +437,73 @@ export function makeRunHandler(
 ): (request: vscode.TestRunRequest, token: vscode.CancellationToken) => Promise<void> {
   return (request, token) =>
     executeRunRequest(controller, request, controller.createTestRun(request), token, resolveCompiler);
+}
+
+/**
+ * Detailed line coverage stashed per FileCoverage instance, served back
+ * through the profile's loadDetailedCoverage hook — VS Code renders the
+ * percentage in the Test Coverage view and the hits in the editor gutter
+ * ([TESTING-COVERAGE-VSCODE]).
+ */
+const detailedCoverage = new WeakMap<vscode.FileCoverage, vscode.StatementCoverage[]>();
+
+/** The gutter detail stashed for one FileCoverage (what the Coverage profile's
+ *  loadDetailedCoverage serves). Exported so tests can prove the per-line
+ *  StatementCoverage values without reaching into VS Code internals. */
+export function detailedCoverageFor(
+  fileCoverage: vscode.FileCoverage,
+): vscode.StatementCoverage[] {
+  return detailedCoverage.get(fileCoverage) ?? [];
+}
+
+/**
+ * A TestRun-backed sink whose coverage lands on the run as FileCoverage.
+ * Exported so tests can assert the exact TestCoverageCount (the numbers VS
+ * Code renders as the coverage percentage) against a recording run.
+ */
+export function coverageSink(run: vscode.TestRun): TestRunSink {
+  return {
+    enqueued: (test) => run.enqueued(test),
+    started: (test) => run.started(test),
+    passed: (test, duration) => run.passed(test, duration),
+    failed: (test, message, duration) => run.failed(test, message, duration),
+    errored: (test, message, duration) => run.errored(test, message, duration),
+    skipped: (test) => run.skipped(test),
+    appendOutput: (output) => run.appendOutput(output),
+    end: () => run.end(),
+    addLineCoverage: (uri, hits) => {
+      const counts = coverageCounts(hits);
+      const file = new vscode.FileCoverage(
+        uri,
+        new vscode.TestCoverageCount(counts.covered, counts.total),
+      );
+      detailedCoverage.set(
+        file,
+        [...hits].map(
+          ([line, count]) =>
+            // Coverage lines are 1-based; vscode positions are 0-based.
+            new vscode.StatementCoverage(count, new vscode.Position(Math.max(line - 1, 0), 0)),
+        ),
+      );
+      run.addCoverage(file);
+    },
+  };
+}
+
+/** The handler + detail loader behind the Coverage profile. */
+export function makeCoverageHandler(
+  controller: vscode.TestController,
+  resolveCompiler: () => string,
+): (request: vscode.TestRunRequest, token: vscode.CancellationToken) => Promise<void> {
+  return (request, token) =>
+    executeRunRequest(
+      controller,
+      request,
+      coverageSink(controller.createTestRun(request)),
+      token,
+      resolveCompiler,
+      true,
+    );
 }
 
 /** The file-watcher callbacks (exported so they are directly testable). */
@@ -408,6 +536,18 @@ export function registerOspreyTestExplorer(
     makeRunHandler(controller, resolveCompiler),
     true,
   );
+  // Coverage profile ([TESTING-COVERAGE-VSCODE]): same discovery and TAP
+  // mapping, but each file runs through `osprey test --coverage-json`; VS Code
+  // shows the percentage in the Test Coverage view and hit counts in the
+  // gutter via the detail loader.
+  const coverageProfile = controller.createRunProfile(
+    "Coverage",
+    vscode.TestRunProfileKind.Coverage,
+    makeCoverageHandler(controller, resolveCompiler),
+    true,
+  );
+  coverageProfile.loadDetailedCoverage = (_run, fileCoverage) =>
+    Promise.resolve(detailedCoverage.get(fileCoverage) ?? []);
   const handlers = makeWatcherHandlers(controller, resolveCompiler);
   const watcher = vscode.workspace.createFileSystemWatcher(TEST_FILE_GLOB);
   watcher.onDidCreate((uri) => void handlers.refresh(uri));

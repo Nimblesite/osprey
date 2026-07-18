@@ -674,6 +674,70 @@ fn test_subcommand_reports_broken_and_missing_suites() {
     assert_eq!(o.code, Some(2), "{}", o.stderr);
 }
 
+// [TESTING-COVERAGE-CLI][TESTING-COVERAGE-JSON] --coverage instruments each
+// suite and prints per-file and total line rates; --coverage-json also writes
+// the merged machine-readable report the editor integration consumes.
+#[test]
+fn test_subcommand_coverage_reports_lines_and_writes_json() {
+    let dir = temp_dir("suite_cov");
+    let _ = write_in(&dir, "pass.test.osp", PASSING_TESTS);
+    let json = dir.join("cov.json");
+    let o = run_args(&[
+        "test",
+        dir.to_string_lossy().as_ref(),
+        "--coverage-json",
+        json.to_string_lossy().as_ref(),
+    ]);
+    assert_eq!(o.code, Some(0), "{}", o.stdout);
+    assert!(o.stdout.contains("# coverage: "), "{}", o.stdout);
+    assert!(o.stdout.contains("# coverage total: "), "{}", o.stdout);
+    let report = std::fs::read_to_string(&json).expect("coverage json");
+    assert!(report.starts_with("{\"files\":{"), "{report}");
+    assert!(report.contains("pass.test.osp"), "{report}");
+    assert!(report.contains("\"lines\":{"), "{report}");
+
+    // --quiet drops the per-file rows but keeps the aggregate.
+    let o = run_args(&[
+        "test",
+        dir.to_string_lossy().as_ref(),
+        "--coverage",
+        "--quiet",
+    ]);
+    assert_eq!(o.code, Some(0), "{}", o.stdout);
+    assert!(!o.stdout.contains("# coverage: "), "{}", o.stdout);
+    assert!(o.stdout.contains("# coverage total: "), "{}", o.stdout);
+}
+
+// A type-error suite fails before execution, so it produces no dump; the run
+// keeps going, and an unwritable JSON path is reported without aborting.
+#[test]
+fn test_subcommand_coverage_survives_type_errors_and_bad_json_paths() {
+    let dir = temp_dir("suite_cov_bad");
+    let _ = write_in(&dir, "pass.test.osp", PASSING_TESTS);
+    let _ = write_in(&dir, "typebad.test.osp", "let n: int = \"nope\"\n");
+    let bogus = dir.join("no-such-dir").join("cov.json");
+    let o = run_args(&[
+        "test",
+        dir.to_string_lossy().as_ref(),
+        "--coverage-json",
+        bogus.to_string_lossy().as_ref(),
+        "--quiet",
+    ]);
+    assert_eq!(o.code, Some(1), "{}", o.stdout);
+    assert!(
+        o.stdout.contains("# suites: 1 passed, 1 failed"),
+        "{}",
+        o.stdout
+    );
+    assert!(o.stderr.contains("type mismatch"), "{}", o.stderr);
+    assert!(o.stderr.contains("no coverage dump"), "{}", o.stderr);
+    assert!(
+        o.stderr.contains("cannot write coverage json"),
+        "{}",
+        o.stderr
+    );
+}
+
 // A nested test() must not silently reshuffle counters: it fails the
 // enclosing case loudly [TESTING-BUILTIN-TEST], and a zero-case run still
 // prints its plan so a matchless filter is visible [TESTING-TAP].

@@ -41,21 +41,26 @@ let total = walk(s, 0, 0)
 print("codepoints = ${total}")
 
 // PROOF: a multi-script string holds fewer codepoints than UTF-8 bytes.
-print(match total < bytes {
+// (Bound before printing so the ML twin — whose layout grammar cannot nest a
+// match inside a call — stays an exact structural translation.)
+let proof = match total < bytes {
     true  => "PROOF codepoints(${total}) < bytes(${bytes}): non-ASCII costs >1 byte"
     false => "PROOF FAILED: expected fewer codepoints than bytes"
-})
+}
+print(proof)
 
 // Round-trip the 4-byte emoji scalar to confirm the decoder read it whole.
-print(match codePointAt(s, 6) {
+let emoji = match codePointAt(s, 6) {
     Success { value } => "emoji scalar @byte 6 = ${value}"
     Error   { message } => "emoji decode FAILED: ${message}"
-})
+}
+print(emoji)
 
 // codePointAt landing mid-sequence must be rejected (byte 7 is inside 😀).
-print(match codePointAt(s, 7) {
+let mid = match codePointAt(s, 7) {
     Success { value } => "mid-sequence unexpectedly decoded ${value}"
     Error   { message } => "mid-sequence rejected: ${message}"
-})
+}
+print(mid)
 print("=== walk complete ===")
 0
