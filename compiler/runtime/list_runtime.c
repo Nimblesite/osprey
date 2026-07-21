@@ -192,8 +192,9 @@ int64_t osprey_list_get(OspreyList *l, int64_t i) {
   return node->slots[j & OSPREY_LIST_MASK];
 }
 
-/* Path-copy down to the leaf holding index `i` and write `v`. Returns the fresh
-   root; every clone dups its children, so each overwritten slot drops one. */
+/* Path-copy down to the leaf holding PHYSICAL index `i` and write `v`. Returns
+   the fresh root; every clone dups its children, so each overwritten slot
+   drops one. */
 static OspreyListNode *set_in_tree(OspreyList *l, int64_t i, int64_t v) {
   OspreyListNode *new_root = clone_node(l->root, node_layout(l->shift));
   OspreyListNode *cur = new_root;
@@ -214,15 +215,16 @@ static OspreyListNode *set_in_tree(OspreyList *l, int64_t i, int64_t v) {
 /* Set element at index, returning a path-copied list. Index must be in
    bounds. */
 OspreyList *osprey_list_set(OspreyList *l, int64_t i, int64_t v) {
+  int64_t j = l->offset + i;
   int64_t off = tail_offset(l);
-  if (i >= off) {
+  if (j >= off) {
     OspreyListNode *new_tail = clone_node(l->tail, NODE_LEAF_LAYOUT);
-    new_tail->slots[i - off] = v;
+    new_tail->slots[j - off] = v;
     osp_retain(l->root); /* aliased into a second header */
     return alloc_list(l->length, l->shift, l->tail_count, l->root, new_tail,
                       l->offset);
   }
-  OspreyListNode *new_root = set_in_tree(l, i, v);
+  OspreyListNode *new_root = set_in_tree(l, j, v);
   osp_retain(l->tail);
   return alloc_list(l->length, l->shift, l->tail_count, new_root, l->tail,
                     l->offset);
@@ -350,6 +352,12 @@ OspreyList *osprey_list_concat(OspreyList *a, OspreyList *b) {
   return osprey_list_builder_seal(bld);
 }
 
+/* Drop the first `n` elements as an O(1) VIEW: a fresh header sharing `l`'s
+   whole skeleton with `offset` bumped. This is what makes `[head, ...tail]`
+   recursion linear — rebuilding the remainder made every step O(n), so a
+   single traversal of an n-element list allocated O(n²/32) trie nodes. Node
+   refcounting (the +1s below) is what makes the sharing safe: the view and
+   `l` die independently and the skeleton goes when the last one does. */
 OspreyList *osprey_list_drop(OspreyList *l, int64_t n) {
   if (l == NULL || n <= 0) {
     osp_retain(l); /* alias return: +1 to the caller (see concat) */
@@ -358,11 +366,10 @@ OspreyList *osprey_list_drop(OspreyList *l, int64_t n) {
   if (n >= l->length) {
     return osprey_list_empty();
   }
-  OspreyListBuilder *b = osprey_list_builder_new();
-  for (int64_t i = n; i < l->length; i++) {
-    osprey_list_builder_push(b, osprey_list_get(l, i));
-  }
-  return osprey_list_builder_seal(b);
+  osp_retain(l->root);
+  osp_retain(l->tail);
+  return alloc_list(l->length - n, l->shift, l->tail_count, l->root, l->tail,
+                    l->offset + n);
 }
 
 OspreyList *osprey_list_reverse(OspreyList *l) {

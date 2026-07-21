@@ -105,10 +105,14 @@ fn bind_list_arm(
             "i8*, i64",
             &[&list_val.operand, &n.to_string()],
         );
-        cg.bind(
-            name.to_string(),
-            Value::handle(tail, LIST_OWNER).with_payload_owner(list_val.payload_owner.clone()),
-        );
+        let v = Value::handle(tail, LIST_OWNER).with_payload_owner(list_val.payload_owner.clone());
+        // `osprey_list_drop` returns +1 on EVERY path (fresh view or retained
+        // alias, plan 0011 M4a), so the arm owns it and must drop it at region
+        // end — without this a `[head, ...tail]` recursion leaks one list
+        // header (and, before the O(1)-view rewrite, a whole rebuilt trie) per
+        // step. [GC-ARC-PERCEUS]
+        crate::arc::own(cg, &v);
+        cg.bind(name.to_string(), v);
     }
 }
 
