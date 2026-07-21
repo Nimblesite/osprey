@@ -338,6 +338,11 @@ void osp_release(void *o) { (void)o; }
 void osp_release_unique(void *o) { (void)o; }
 // Singleton-immortality hook (memory_hooks.h) — meaningful only under ARC.
 void osp_mem_immortal(void *p) { (void)p; }
+// Layout-word stamp (memory_hooks.h) — meaningful only under ARC.
+void osp_mem_set_layout(void *p, int64_t meta) {
+  (void)p;
+  (void)meta;
+}
 
 void osp_collect(void) {
   pthread_mutex_lock(&g_lock);

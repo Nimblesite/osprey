@@ -28,6 +28,8 @@
 // memory_gc.c discipline — sound across fiber pthreads, slow but conforming.
 // The non-atomic fast path keyed on [MEM-FIBER-ISOLATION] is milestone M5.
 
+#include "memory_hooks.h"
+
 #include <pthread.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -44,14 +46,8 @@ typedef struct {
 
 #define OSP_ARC_HDR ((size_t)sizeof(OspArcHdr))
 
-// Layout-word kinds (low 8 bits of meta) — must match osprey-codegen's
-// emission (plan 0011 phase 2, Amendment 1).
-enum {
-  OSP_ARC_RAW = 0,             // opaque bytes: no children
-  OSP_ARC_MASK = 1,            // children at the masked word offsets
-  OSP_ARC_LIST_HDR_PTR = 2,    // { i64 len, i8* data }: release data[0..len), then data
-  OSP_ARC_LIST_HDR_SCALAR = 3, // { i64 len, i8* data }: release data only
-};
+// Layout-word kinds live in memory_hooks.h — the one place codegen
+// (crates/osprey-codegen/src/meta.rs) and every C runtime unit agree.
 
 #define OSP_ARC_KIND(meta) ((int)((meta) & 0xFF))
 #define OSP_ARC_MASK_BITS(meta) (((uint64_t)(meta)) >> 8)
@@ -101,9 +97,23 @@ static void arc_place(uintptr_t *tab, size_t cap, uintptr_t body) {
   tab[i] = body;
 }
 
-// Rebuild at double capacity (also compacts tombstones away).
+// The capacity the LIVE set needs: the smallest power of two at or above the
+// floor that keeps the load factor under 1/4. Sizing off `g_live` rather than
+// off the old capacity is what makes churn-heavy programs (allocate, free,
+// repeat) cheap: their tombstones fill the table without growing the live set,
+// so doubling on every rebuild would track TOTAL allocations instead of live
+// ones — 10M short-lived tree nodes cost a 128 MiB table instead of 256 KiB.
+static size_t arc_target_cap(void) {
+  size_t cap = OSP_ARC_INIT_CAP;
+  while (cap < g_live * 4 && cap < ((size_t)-1) / 2) {
+    cap *= 2;
+  }
+  return cap;
+}
+
+// Rebuild at the live-set capacity (also compacts tombstones away).
 static int arc_grow(void) {
-  size_t cap = g_cap ? g_cap * 2 : OSP_ARC_INIT_CAP;
+  size_t cap = arc_target_cap();
   uintptr_t *tab = (uintptr_t *)calloc(cap, sizeof(uintptr_t));
   if (!tab) {
     return 0;
@@ -247,6 +257,18 @@ static void arc_drop_list_hdr(char *body, uint32_t size, int elems_are_ptrs) {
   arc_drop_child(data);
 }
 
+// A flat array of managed pointers whose length the header's `size` carries —
+// the out-of-line internals of the value containers (a HAMT node's `children`,
+// a trie node's slots). The mask cannot express these: it is 56 bits wide and a
+// collision array is unbounded. Zero words (allocation slack) probe-miss.
+static void arc_drop_ptr_array(char *body, uint32_t size) {
+  for (size_t off = 0; off + 8 <= size; off += 8) {
+    void *child;
+    memcpy(&child, body + off, sizeof(child));
+    arc_drop_child(child);
+  }
+}
+
 // Free `slot`'s object and everything transitively released by it. Holds g_lock.
 static void arc_release_zero_locked(uintptr_t *slot) {
   g_wl_top = 0;
@@ -259,10 +281,12 @@ static void arc_release_zero_locked(uintptr_t *slot) {
     }
     OspArcHdr *h = arc_hdr((void *)body);
     int kind = OSP_ARC_KIND(h->meta);
-    if (kind == OSP_ARC_MASK) {
+    if (kind == OSP_MEM_MASK) {
       arc_drop_masked((char *)body, h->size, OSP_ARC_MASK_BITS(h->meta));
-    } else if (kind == OSP_ARC_LIST_HDR_PTR || kind == OSP_ARC_LIST_HDR_SCALAR) {
-      arc_drop_list_hdr((char *)body, h->size, kind == OSP_ARC_LIST_HDR_PTR);
+    } else if (kind == OSP_MEM_LIST_HDR_PTR || kind == OSP_MEM_LIST_HDR_SCALAR) {
+      arc_drop_list_hdr((char *)body, h->size, kind == OSP_MEM_LIST_HDR_PTR);
+    } else if (kind == OSP_MEM_PTR_ARRAY) {
+      arc_drop_ptr_array((char *)body, h->size);
     }
     arc_free_locked(s);
   }
@@ -278,7 +302,7 @@ void *osp_alloc_tagged(int64_t size, int64_t meta) {
   return p;
 }
 
-void *osp_alloc(int64_t size) { return osp_alloc_tagged(size, OSP_ARC_RAW); }
+void *osp_alloc(int64_t size) { return osp_alloc_tagged(size, OSP_MEM_RAW); }
 
 // dup — probe first: only live ARC objects with a non-negative rc count.
 void osp_retain(void *o) {
@@ -337,6 +361,21 @@ void osp_mem_immortal(void *p) {
   pthread_mutex_unlock(&g_lock);
 }
 
+// Stamp a shim-allocated object with its layout word (memory_hooks.h): the
+// value-container units allocate through the zeroing `calloc` redirect and tag
+// afterwards, which is what keeps a PTR_ARRAY walk over allocation slack safe.
+void osp_mem_set_layout(void *p, int64_t meta) {
+  if (!p) {
+    return;
+  }
+  pthread_mutex_lock(&g_lock);
+  uintptr_t *slot = arc_find((uintptr_t)p);
+  if (slot) {
+    arc_hdr((void *)*slot)->meta = meta;
+  }
+  pthread_mutex_unlock(&g_lock);
+}
+
 // --- allocation shim for the C runtime units (osp_arc_shim.h) ---------------------
 // Value-producing units (list/map/string/json) are recompiled with their libc
 // allocation calls redirected here, so runtime-minted strings and container
@@ -345,7 +384,7 @@ void osp_mem_immortal(void *p) {
 
 void *osp_arc_malloc(size_t size) {
   pthread_mutex_lock(&g_lock);
-  void *p = arc_alloc_locked(size, OSP_ARC_RAW);
+  void *p = arc_alloc_locked(size, OSP_MEM_RAW);
   pthread_mutex_unlock(&g_lock);
   return p;
 }
@@ -363,8 +402,9 @@ void *osp_arc_calloc(size_t n, size_t size) {
 }
 
 // Manual free from C runtime code is authoritative: it drops the object
-// regardless of rc (the C units own their transients). Foreign pointers fall
-// through to libc free.
+// regardless of rc (the C units own their transients) and releases whatever its
+// layout word says it owns, so freeing a tagged transient can never strand its
+// children. Foreign pointers fall through to libc free.
 void osp_arc_free(void *p) {
   if (!p) {
     return;
@@ -372,7 +412,7 @@ void osp_arc_free(void *p) {
   pthread_mutex_lock(&g_lock);
   uintptr_t *slot = arc_find((uintptr_t)p);
   if (slot) {
-    arc_free_locked(slot);
+    arc_release_zero_locked(slot);
     pthread_mutex_unlock(&g_lock);
     return;
   }
