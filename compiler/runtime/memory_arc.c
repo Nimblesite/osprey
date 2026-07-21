@@ -148,11 +148,31 @@ static void arc_remove(uintptr_t *slot) {
 
 // --- leak accounting (OSPREY_ARC_DEBUG=1) --------------------------------------
 
+// Kinds RAW..PTR_ARRAY (memory_hooks.h) — one histogram bucket per kind.
+#define OSP_ARC_NKINDS 5
+
 static void arc_report_leaks(void) {
   pthread_mutex_lock(&g_lock);
   // stderr only: stdout must stay byte-identical under [MEM-BACKENDS].
   fprintf(stderr, "[osp-arc] exit: %zu live objects, %zu KiB\n", g_live,
           g_live_bytes / 1024);
+  size_t count[OSP_ARC_NKINDS] = {0};
+  size_t bytes[OSP_ARC_NKINDS] = {0};
+  for (size_t i = 0; i < g_cap; i++) {
+    if (g_tab[i] > OSP_ARC_TOMB) {
+      OspArcHdr *h = arc_hdr((void *)g_tab[i]);
+      int kind = OSP_ARC_KIND(h->meta);
+      int k = (kind >= 0 && kind < OSP_ARC_NKINDS) ? kind : 0;
+      count[k]++;
+      bytes[k] += h->size;
+    }
+  }
+  for (int k = 0; k < OSP_ARC_NKINDS; k++) {
+    if (count[k]) {
+      fprintf(stderr, "[osp-arc]   kind %d: %zu objects, %zu KiB\n", k,
+              count[k], bytes[k] / 1024);
+    }
+  }
   pthread_mutex_unlock(&g_lock);
 }
 

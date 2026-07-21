@@ -55,11 +55,20 @@ static int64_t node_layout(int32_t shift) {
 static void *as_node_ptr(int64_t slot) { return (void *)(uintptr_t)slot; }
 
 struct OspreyList {
-  int64_t length;
+  int64_t length;    /* LOGICAL length (elements visible through this header) */
   int32_t shift;     /* 0 == root is a leaf; 5, 10, … one level deeper each */
   int32_t tail_count;
   OspreyListNode *root; /* NULL iff in-tree count == 0 */
-  OspreyListNode *tail; /* NULL iff length == 0 */
+  OspreyListNode *tail; /* NULL iff physical count == 0 */
+  /* Physical index of logical element 0. osprey_list_drop returns an O(1)
+   * VIEW — a fresh header sharing root/tail with offset bumped — instead of
+   * an O(n) rebuild, so `[head, ...tail]` recursion over an n-element list
+   * allocates n headers, not n²/2 nodes. Invariant: offset + length equals
+   * the physical element count (views only ever trim the FRONT), so the
+   * tail chunk always ends at the logical end and append stays valid on a
+   * view. Node RC (above) is what lets a dead view release its shared
+   * skeleton safely. */
+  int64_t offset;
 };
 
 struct OspreyListBuilder {
@@ -109,9 +118,11 @@ static OspreyListNode *wrap_path(OspreyListNode *node, int32_t level) {
   return node;
 }
 
-/* Build a header owning `root` and `tail` — both references are MOVED in. */
+/* Build a header owning `root` and `tail` — both references are MOVED in.
+   `offset` is the physical index of logical element 0 (0 except for views). */
 static OspreyList *alloc_list(int64_t length, int32_t shift, int32_t tail_count,
-                              OspreyListNode *root, OspreyListNode *tail) {
+                              OspreyListNode *root, OspreyListNode *tail,
+                              int64_t offset) {
   OspreyList *l = (OspreyList *)calloc(1, sizeof(OspreyList));
   osp_mem_set_layout(l, LIST_HDR_LAYOUT);
   l->length = length;
@@ -119,6 +130,7 @@ static OspreyList *alloc_list(int64_t length, int32_t shift, int32_t tail_count,
   l->tail_count = tail_count;
   l->root = root;
   l->tail = tail;
+  l->offset = offset;
   return l;
 }
 
@@ -126,7 +138,7 @@ static OspreyList *singleton_empty = NULL;
 
 OspreyList *osprey_list_empty(void) {
   if (singleton_empty == NULL) {
-    singleton_empty = alloc_list(0, 0, 0, NULL, NULL);
+    singleton_empty = alloc_list(0, 0, 0, NULL, NULL, 0);
     /* Returned from many sites and owned by many callers at once: under ARC
      * it must never be freed by any of them [GC-ARC-PERCEUS], plan 0011 M4. */
     osp_mem_immortal(singleton_empty);
@@ -148,8 +160,11 @@ int osprey_list_in_bounds(OspreyList *l, int64_t i) {
   return (i >= 0 && i < l->length) ? 1 : 0;
 }
 
+/* PHYSICAL index where the tail chunk starts (== physical element count minus
+   the tail's fill). All tree arithmetic below is physical; only the public
+   API speaks logical indices. */
 static int64_t tail_offset(OspreyList *l) {
-  return l->length - (int64_t)l->tail_count;
+  return l->offset + l->length - (int64_t)l->tail_count;
 }
 
 int64_t osprey_list_get(OspreyList *l, int64_t i) {
@@ -162,18 +177,19 @@ int64_t osprey_list_get(OspreyList *l, int64_t i) {
   if (l == NULL || i < 0 || i >= l->length) {
     return 0;
   }
+  int64_t j = l->offset + i;
   int64_t off = tail_offset(l);
-  if (i >= off) {
-    return l->tail->slots[i - off];
+  if (j >= off) {
+    return l->tail->slots[j - off];
   }
   OspreyListNode *node = l->root;
   int32_t s = l->shift;
   while (s > 0) {
-    int32_t slot = (int32_t)((i >> s) & OSPREY_LIST_MASK);
+    int32_t slot = (int32_t)((j >> s) & OSPREY_LIST_MASK);
     node = (OspreyListNode *)(uintptr_t)node->slots[slot];
     s -= OSPREY_LIST_BITS;
   }
-  return node->slots[i & OSPREY_LIST_MASK];
+  return node->slots[j & OSPREY_LIST_MASK];
 }
 
 /* Path-copy down to the leaf holding index `i` and write `v`. Returns the fresh
@@ -203,11 +219,13 @@ OspreyList *osprey_list_set(OspreyList *l, int64_t i, int64_t v) {
     OspreyListNode *new_tail = clone_node(l->tail, NODE_LEAF_LAYOUT);
     new_tail->slots[i - off] = v;
     osp_retain(l->root); /* aliased into a second header */
-    return alloc_list(l->length, l->shift, l->tail_count, l->root, new_tail);
+    return alloc_list(l->length, l->shift, l->tail_count, l->root, new_tail,
+                      l->offset);
   }
   OspreyListNode *new_root = set_in_tree(l, i, v);
   osp_retain(l->tail);
-  return alloc_list(l->length, l->shift, l->tail_count, new_root, l->tail);
+  return alloc_list(l->length, l->shift, l->tail_count, new_root, l->tail,
+                    l->offset);
 }
 
 /* Insert the given tail chunk at position level. Path-copies as it descends.
@@ -270,7 +288,7 @@ static OspreyListNode *leaf_of(int64_t v) {
 
 OspreyList *osprey_list_append(OspreyList *l, int64_t v) {
   if (l == NULL || l->length == 0) {
-    return alloc_list(1, 0, 1, NULL, leaf_of(v));
+    return alloc_list(1, 0, 1, NULL, leaf_of(v), 0);
   }
   /* Room in the tail? */
   if (l->tail_count < OSPREY_LIST_BRANCH) {
@@ -278,12 +296,13 @@ OspreyList *osprey_list_append(OspreyList *l, int64_t v) {
     new_tail->slots[l->tail_count] = v;
     osp_retain(l->root);
     return alloc_list(l->length + 1, l->shift, l->tail_count + 1, l->root,
-                      new_tail);
+                      new_tail, l->offset);
   }
   /* Tail is full. Push it into the tree; new tail = [v]. */
   int32_t new_shift = l->shift;
   OspreyListNode *new_root = grow_root(l, &new_shift);
-  return alloc_list(l->length + 1, new_shift, 1, new_root, leaf_of(v));
+  return alloc_list(l->length + 1, new_shift, 1, new_root, leaf_of(v),
+                    l->offset);
 }
 
 OspreyList *osprey_list_prepend(OspreyList *l, int64_t v) {
@@ -417,7 +436,7 @@ OspreyList *osprey_list_builder_seal(OspreyListBuilder *b) {
     return osprey_list_empty();
   }
   OspreyList *l = alloc_list(b->length, b->shift, b->tail_count, b->root,
-                             b->tail);
+                             b->tail, 0);
   free(b);
   return l;
 }
