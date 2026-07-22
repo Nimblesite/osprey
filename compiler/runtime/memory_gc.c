@@ -1,7 +1,7 @@
 // Tracing garbage collector backend for Osprey — the swappable `@osp_alloc`
 // implementation selected at link time by `osprey --memory=gc`. Implements
 // [MEM-BACKENDS] (docs/specs/0018) and [GC-TRACE-CONSERVATIVE]
-// (docs/plans/0011-arc-gc-implementation.md).
+// (docs/specs/0018-MemoryManagement.md [MEM-BACKENDS]).
 //
 // Algorithm: a CONSERVATIVE, NON-MOVING mark & sweep over the managed heap
 // reachable from the C stack, the machine registers, and the program's data/BSS
@@ -18,11 +18,13 @@
 // single-threaded (the main thread is the sole allocator). The first allocation
 // from any other thread permanently disables collection — a fiber's heap is
 // isolated [MEM-FIBER-ISOLATION] and a precise per-fiber collector is future
-// work (docs/plans/0011, phase 3). Every allocation and the whole collection run
+// work (the precise per-fiber collector of [MEM-BACKENDS]). Every allocation and
+// the whole collection run
 // hold one mutex, so disabling and the heap table are race-free.
 
 #include <pthread.h>
 #include <setjmp.h>
+#include <stdatomic.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -37,9 +39,13 @@
 #define OSP_GC_WORD ((uintptr_t)sizeof(void *))
 // Lower bound on the allocate-since-GC budget (a nursery-like size); the
 // live-set-adaptive threshold never drops below this. Overridable via
-// OSPREY_GC_HEAP_MB. 1 MiB keeps peak RSS tight at negligible CPU cost (the
-// hot cost is per-allocation, not per-collection).
-#define OSP_GC_MIN_HEAP_BYTES ((size_t)1u << 20)
+// OSPREY_GC_HEAP_MB. 4 MiB is the measured knee for allocation-churn workloads
+// (binarytrees): collections are O(heap-table size), so too small a floor
+// collects constantly (~53% of wall at 1 MiB) while too large a floor lets dead
+// objects pile into an ever-bigger table that each sweep must walk. 4 MiB is the
+// point where per-collection and per-allocation cost balance — same peak RSS as
+// 1 MiB, ~15% less wall — and higher floors only trade RSS away for no CPU gain.
+#define OSP_GC_MIN_HEAP_BYTES ((size_t)4u << 20)
 #define OSP_GC_INIT_TABLE_CAP ((size_t)1u << 14)
 
 // One managed allocation: base address (the table key), payload size, mark bit.
@@ -52,6 +58,30 @@ typedef struct {
 } OspGcEnt;
 
 static pthread_mutex_t g_lock = PTHREAD_MUTEX_INITIALIZER;
+
+// Adaptive locking, identical in spirit to the ARC backend: the heap starts
+// single-threaded, where the sole allocator already serializes every op and the
+// mutex is pure overhead. osp_mem_notify_multithreaded() (memory_hooks.h) trips
+// this flag from the fiber/websocket/process runtimes *before* the pthread_create
+// that first lets a second thread reach the heap; pthread_create is a full
+// barrier, so no unlocked op can race a locked one. The flag is monotonic and
+// only ever transitions single-threaded, so lock and unlock observe it equal
+// within one op. Orthogonal to g_off: the flag governs mutual exclusion, g_off
+// governs whether collection may run once a second allocator is seen.
+static atomic_int g_gc_mt = 0;
+
+static inline void gc_lock(void) {
+  if (atomic_load_explicit(&g_gc_mt, memory_order_acquire)) {
+    pthread_mutex_lock(&g_lock);
+  }
+}
+
+static inline void gc_unlock(void) {
+  if (atomic_load_explicit(&g_gc_mt, memory_order_acquire)) {
+    pthread_mutex_unlock(&g_lock);
+  }
+}
+
 static int g_init = 0;     // first allocation has run (main thread + base known)
 static int g_off = 0;      // collection permanently disabled (saw a 2nd thread)
 static pthread_t g_main;   // the sole-allocator thread that may collect
@@ -226,8 +256,8 @@ static void gc_sweep(void) {
   g_count = live;
   g_bytes = live_bytes;
   g_thresh = live_bytes * 2 > g_min_heap ? live_bytes * 2 : g_min_heap;
+  g_ncollect++; // always: read by osp_gc_collections() diagnostics, not just debug
   if (g_debug) {
-    g_ncollect++;
     // env-gated diagnostic only — not on any hot path.
     fprintf(stderr, "[osp-gc] collect #%zu: %zu live objs, %zu live KiB\n",
             g_ncollect, live, live_bytes / 1024);
@@ -262,7 +292,8 @@ static void gc_collect_locked(void) {
 
 static uintptr_t gc_stack_base(void) {
 #if defined(__APPLE__)
-  return (uintptr_t)pthread_get_stackaddr_np(pthread_self());
+  void *sa = pthread_get_stackaddr_np(pthread_self());
+  return (uintptr_t)sa;
 #elif defined(__linux__) && defined(__GLIBC__)
   pthread_attr_t a;
   void *addr = NULL;
@@ -281,25 +312,40 @@ static uintptr_t gc_stack_base(void) {
 
 // --- allocation core (g_lock held) -------------------------------------------
 
-// Maybe collect, then hand back `size` bytes of managed, tracked storage.
+// First-allocation setup: latch the sole collecting thread + its stack base and
+// read the env knobs. Runs once (g_init), under g_lock.
+static void gc_init_main(void) {
+  g_main = pthread_self();
+  g_base = gc_stack_base();
+  const char *mb = getenv("OSPREY_GC_HEAP_MB");
+  if (mb) {
+    long v = strtol(mb, NULL, 10);
+    if (v > 0) {
+      g_min_heap = (size_t)v << 20;
+      g_thresh = g_min_heap;
+    }
+  }
+  g_debug = getenv("OSPREY_GC_DEBUG") != NULL;
+  g_init = 1;
+}
+
+// Maybe collect, then hand back `size` bytes of managed, tracked storage. Once a
+// second thread has ever allocated, g_off is latched on and collection stays
+// disabled for everyone — so `!g_off` alone already guarantees main-only.
+//
+// Reclamation is left to libc malloc/free (via gc_sweep), NOT an intrusive
+// recycling pool: a tracing collector cannot reclaim a body until the next
+// collection (~a heap-budget of allocation later), so pooled reuse would cycle
+// a cold multi-MiB working set, while libc's per-size free-lists hand back the
+// just-freed, cache-hot block the next tree reuses. Measured: a pool here made
+// binarytrees ~12x SLOWER for zero reclaim benefit. [MEM-BACKENDS]
 static void *gc_managed_alloc(size_t size) {
   if (!g_init) {
-    g_main = pthread_self();
-    g_base = gc_stack_base();
-    const char *mb = getenv("OSPREY_GC_HEAP_MB");
-    if (mb) {
-      long v = strtol(mb, NULL, 10);
-      if (v > 0) {
-        g_min_heap = (size_t)v << 20;
-        g_thresh = g_min_heap;
-      }
-    }
-    g_debug = getenv("OSPREY_GC_DEBUG") != NULL;
-    g_init = 1;
+    gc_init_main();
   } else if (!pthread_equal(pthread_self(), g_main)) {
     g_off = 1; // a second thread allocates: disable collection forever
   }
-  if (!g_off && g_bytes > g_thresh && pthread_equal(pthread_self(), g_main)) {
+  if (!g_off && g_bytes > g_thresh) {
     gc_collect_locked();
   }
   void *p = malloc(size ? size : 1);
@@ -315,9 +361,9 @@ static void *gc_managed_alloc(size_t size) {
 // Implements the [MEM-BACKENDS] C interface (docs/specs/0018 §Custom Managers).
 
 void *osp_alloc(int64_t size) {
-  pthread_mutex_lock(&g_lock);
+  gc_lock();
   void *p = gc_managed_alloc(size > 0 ? (size_t)size : 0);
-  pthread_mutex_unlock(&g_lock);
+  gc_unlock();
   return p;
 }
 
@@ -325,6 +371,13 @@ void *osp_alloc(int64_t size) {
 // meaningful to the ARC backend — the conservative collector scans words, so
 // it needs no layout and treats this as a plain managed allocation.
 void *osp_alloc_tagged(int64_t size, int64_t meta) {
+  (void)meta;
+  return osp_alloc(size);
+}
+
+// Fully-initialized-by-caller twin (memory_hooks.h). The conservative collector
+// never relies on pre-zeroed bodies, so it is identical to osp_alloc_tagged.
+void *osp_alloc_tagged_noinit(int64_t size, int64_t meta) {
   (void)meta;
   return osp_alloc(size);
 }
@@ -338,13 +391,43 @@ void osp_release(void *o) { (void)o; }
 void osp_release_unique(void *o) { (void)o; }
 // Singleton-immortality hook (memory_hooks.h) — meaningful only under ARC.
 void osp_mem_immortal(void *p) { (void)p; }
+// Multithreaded-heap trip (memory_hooks.h): a second thread is about to touch
+// the heap — switch every op from lock-free to mutex-guarded (see g_gc_mt).
+void osp_mem_notify_multithreaded(void) {
+  atomic_store_explicit(&g_gc_mt, 1, memory_order_release);
+}
+// Layout-word stamp (memory_hooks.h) — meaningful only under ARC.
+void osp_mem_set_layout(void *p, int64_t meta) {
+  (void)p;
+  (void)meta;
+}
 
 void osp_collect(void) {
-  pthread_mutex_lock(&g_lock);
+  gc_lock();
   if (g_init && !g_off && pthread_equal(pthread_self(), g_main)) {
     gc_collect_locked();
   }
-  pthread_mutex_unlock(&g_lock);
+  gc_unlock();
+}
+
+// --- diagnostics (read-only snapshots; not on any hot path) ------------------
+// Objects currently tracked by the collector. Immediately after osp_collect()
+// returns on the main thread this equals the reachable (live) set, so tooling
+// and the conformance tests can assert that unreachable churn was reclaimed.
+size_t osp_gc_live_objects(void) {
+  gc_lock();
+  size_t n = g_count;
+  gc_unlock();
+  return n;
+}
+
+// Collections run since start. Lets a test confirm a collection actually fired
+// (or, after the multithread latch, that collection stopped firing).
+size_t osp_gc_collections(void) {
+  gc_lock();
+  size_t n = g_ncollect;
+  gc_unlock();
+  return n;
 }
 
 // Value-container runtime units (list/map) are compiled against osp_gc_shim.h so
@@ -352,9 +435,9 @@ void osp_collect(void) {
 // values they hold. free is a no-op — the collector owns reclamation.
 
 void *osp_gc_malloc(size_t size) {
-  pthread_mutex_lock(&g_lock);
+  gc_lock();
   void *p = gc_managed_alloc(size);
-  pthread_mutex_unlock(&g_lock);
+  gc_unlock();
   return p;
 }
 
@@ -363,9 +446,9 @@ void *osp_gc_calloc(size_t n, size_t size) {
   if (n != 0 && total / n != size) {
     return NULL; // overflow
   }
-  pthread_mutex_lock(&g_lock);
+  gc_lock();
   void *p = gc_managed_alloc(total);
-  pthread_mutex_unlock(&g_lock);
+  gc_unlock();
   if (p) {
     memset(p, 0, total);
   }
@@ -376,11 +459,11 @@ void *osp_gc_realloc(void *old, size_t size) {
   if (!old) {
     return osp_gc_malloc(size);
   }
-  pthread_mutex_lock(&g_lock);
+  gc_lock();
   OspGcEnt *e = gc_lookup((uintptr_t)old);
   size_t oldsize = e ? e->size : 0;
   void *p = gc_managed_alloc(size); // `old` stays reachable on the caller frame
-  pthread_mutex_unlock(&g_lock);
+  gc_unlock();
   if (p && oldsize) {
     memcpy(p, old, oldsize < size ? oldsize : size);
   }

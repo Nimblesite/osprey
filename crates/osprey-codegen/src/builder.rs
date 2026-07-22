@@ -40,6 +40,17 @@ pub struct Codegen {
 
     /// Declared parameter names per function, for named-argument ordering.
     pub(crate) fn_params: HashMap<String, Vec<String>>,
+    /// Type names an `extern fn` claims to return (every name in the declared
+    /// return type expression, conservatively). A foreign pointer typed as a
+    /// union would break the `KIND_MASK_DIRECT` all-children-are-ARC-bodies
+    /// proof, so these unions stay on the probing `KIND_MASK`. [GC-ARC-PERCEUS]
+    pub(crate) extern_ret_types: BTreeSet<String>,
+    /// Nullary union variant name → the module-constant handle every use of it
+    /// shares. A payload-free variant (`Leaf`, `None`) is one immutable
+    /// immortal value, so it is interned as a single `private global` with a
+    /// baked ARC header (rc = -1) instead of a fresh heap block per occurrence —
+    /// binarytrees alone stops allocating ~19.6M `Leaf`s. [GC-ARC-PERCEUS]
+    pub(crate) nullary_singletons: HashMap<String, String>,
     /// Resolved signatures, constructor layouts and union tags from inference.
     pub(crate) prog: ProgramTypes,
     /// Stream-fusion pipeline: pending `map`/`filter` stages recorded by those
@@ -113,6 +124,14 @@ pub struct Codegen {
     pub(crate) arc: crate::arc::ArcLedger,
     /// Monotonic id for hoisted ARC spill slots (`%arc.sN`), per function.
     arc_slot_count: usize,
+    /// Registers this function materialised from a `private constant` global
+    /// (string literals). They address **rodata**, never the managed heap, so
+    /// every dup/drop on one is a guaranteed registry probe-miss — a locked
+    /// hash probe that can only ever be a no-op. Classifying them here elides
+    /// the call outright ([GC-ARC-PERCEUS] M6b, TR §2.4 "unique/static"
+    /// classification). Per-function: register names restart at each
+    /// `begin_function`.
+    rodata_regs: HashSet<String>,
 }
 
 /// A mutable variable promoted to a heap cell so an effect handler can own it.
@@ -161,6 +180,7 @@ pub(crate) struct SavedFn {
     /// its own epilogue, never the suspended function's [GC-ARC-PERCEUS].
     arc: crate::arc::ArcLedger,
     arc_slot_count: usize,
+    rodata_regs: HashSet<String>,
     debug_scope: Option<usize>,
     debug_position: Option<Position>,
     debug_retained_nodes: Option<usize>,
@@ -416,6 +436,8 @@ impl Codegen {
             cur_block: String::from("entry"),
             scopes: Vec::new(),
             fn_params: HashMap::new(),
+            extern_ret_types: BTreeSet::new(),
+            nullary_singletons: HashMap::new(),
             prog,
             pending_iter_ops: Vec::new(),
             lambdas: HashMap::new(),
@@ -440,6 +462,7 @@ impl Codegen {
                 .then(crate::coverage::CoverageState::default),
             arc: crate::arc::ArcLedger::new(),
             arc_slot_count: 0,
+            rodata_regs: HashSet::new(),
         }
     }
 
@@ -636,6 +659,7 @@ impl Codegen {
             resume_ctx: self.resume_ctx.take(),
             arc: std::mem::take(&mut self.arc),
             arc_slot_count: self.arc_slot_count,
+            rodata_regs: std::mem::take(&mut self.rodata_regs),
             debug_scope: self.debug.as_ref().and_then(|d| d.current_scope),
             debug_position: self.debug.as_ref().and_then(|d| d.current_position),
             debug_retained_nodes: self.debug.as_ref().and_then(|d| d.current_retained_nodes),
@@ -676,6 +700,7 @@ impl Codegen {
         self.resume_ctx = saved.resume_ctx;
         self.arc = saved.arc;
         self.arc_slot_count = saved.arc_slot_count;
+        self.rodata_regs = saved.rodata_regs;
         if let Some(debug) = self.debug.as_mut() {
             debug.current_scope = saved.debug_scope;
             debug.current_position = saved.debug_position;
@@ -759,12 +784,49 @@ impl Codegen {
             .iter()
             .map(|(f, t)| (f.clone(), ltype_of(t)))
             .collect();
+        let mut mf = vec![crate::meta::MetaField::Word]; // leading tag
+        mf.extend(c.fields.iter().map(|(_, t)| self.field_meta(t)));
         Some(CtorView {
             owner: c.owner.clone(),
             owner_is_record: c.owner_is_record,
             tag,
             fields,
+            meta: crate::meta::struct_meta(&mf),
         })
+    }
+
+    /// The layout field for a constructor field of Osprey type `t`. A field
+    /// whose type is a DECLARED UNION is `PtrDirect`: union values can only
+    /// come from constructors (always `@osp_alloc_tagged`-headered ARC
+    /// bodies) — unless an extern claims to return that union, which would
+    /// smuggle in a foreign pointer and break the proof. Everything else
+    /// (strings can be rodata, records can cross the C ABI, `Ptr` is FFI)
+    /// keeps the probe-tolerant `LType` mapping. [GC-ARC-PERCEUS]
+    fn field_meta(&self, t: &osprey_types::Type) -> crate::meta::MetaField {
+        let proven = crate::types::proven_heap_name(t).is_some_and(|n| {
+            self.prog.unions.contains_key(n) && !self.extern_ret_types.contains(n)
+        });
+        if proven && ltype_of(t) == LType::Ptr {
+            crate::meta::MetaField::PtrDirect
+        } else {
+            crate::meta::MetaField::of_lty(ltype_of(t))
+        }
+    }
+
+    /// Record every type name in an extern's declared return type (see
+    /// [`Self::extern_ret_types`]). Called from the lowering pre-pass, before
+    /// any constructor layout is computed.
+    pub(crate) fn poison_extern_ret(&mut self, t: &osprey_ast::TypeExpr) {
+        let _ = self.extern_ret_types.insert(t.name.clone());
+        let nested = t
+            .generic_params
+            .iter()
+            .chain(t.array_element.as_deref())
+            .chain(t.parameter_types.iter())
+            .chain(t.return_type.as_deref());
+        for inner in nested {
+            self.poison_extern_ret(inner);
+        }
     }
 
     /// Resolve a field name to an owning constructor when the target's static
@@ -947,6 +1009,36 @@ impl Codegen {
         self.globals.push(def.into());
     }
 
+    /// The shared immortal handle for a nullary union variant with tag `tag`,
+    /// interning it on first use. The `private global` bakes the exact
+    /// `{ i64 meta, i32 rc, u32 size }` ARC header (`memory_arc.c`) ahead of a
+    /// one-word `{ i64 tag }` body: rc = -1 makes every dup/drop a no-op, so
+    /// the block is never freed and needs no registry slot. The returned
+    /// operand is a constant `getelementptr`+`bitcast` to the body — not a
+    /// `%`-register — so `arc::managed` treats it as borrowed and emits no
+    /// retain/release around it, exactly the immortal contract. [GC-ARC-PERCEUS]
+    pub(crate) fn nullary_singleton(&mut self, name: &str, tag: i64) -> String {
+        if let Some(handle) = self.nullary_singletons.get(name) {
+            return handle.clone();
+        }
+        // meta = KIND_RAW (a tag-only body has no managed children); rc = -1
+        // (immortal); size = 8 (the lone i64 tag). Layout matches OspArcHdr so
+        // arc_hdr(body) = body - 16 recovers these fields.
+        let global = format!("@{name}.sgl");
+        let ty = "{ i64, i32, i32, i64 }";
+        self.globals.push(format!(
+            "{global} = private global {ty} {{ i64 {raw}, i32 -1, i32 8, i64 {tag} }}, align 16",
+            raw = crate::meta::KIND_RAW
+        ));
+        let handle = format!(
+            "bitcast (i64* getelementptr inbounds ({ty}, {ty}* {global}, i64 0, i32 3) to i8*)"
+        );
+        let _ = self
+            .nullary_singletons
+            .insert(name.to_string(), handle.clone());
+        handle
+    }
+
     /// Intern a string literal as a private global and return an `i8*` pointing
     /// at its first byte.
     pub(crate) fn string_constant(&mut self, text: &str) -> Value {
@@ -960,6 +1052,7 @@ impl Codegen {
         self.emit(format!(
             "{reg} = getelementptr [{len} x i8], [{len} x i8]* {name}, i64 0, i64 0"
         ));
+        let _ = self.rodata_regs.insert(reg.clone());
         Value::new(reg, LType::Str)
     }
 
@@ -1013,6 +1106,10 @@ impl Codegen {
         self.resume_ctx = None;
         self.arc = crate::arc::ArcLedger::new();
         self.arc_slot_count = 0;
+        // Register names restart here, so a previous function's rodata
+        // registers would otherwise alias this one's heap values and silently
+        // elide their dup/drop [GC-ARC-PERCEUS].
+        self.rodata_regs.clear();
         self.push_scope();
         self.cur_lines.push("entry:".to_string());
         if let Some(debug) = self.debug.as_mut() {
@@ -1113,18 +1210,47 @@ impl Codegen {
         ))
     }
 
+    /// [`heap_alloc_tagged`] for a block the caller fully initializes before it
+    /// can drop (every masked word stored): the ARC backend skips its
+    /// drop-safety pre-zero. A `KIND_RAW` block is never zeroed anyway, so it
+    /// shares the plain allocator. [GC-ARC-PERCEUS]
+    pub(crate) fn heap_alloc_tagged_noinit(&mut self, size: &str, meta: i64) -> String {
+        if meta == crate::meta::KIND_RAW {
+            return self.heap_alloc(size);
+        }
+        self.add_extern(OSP_ALLOC_TAGGED_NOINIT_DECL);
+        self.emit_reg(format!(
+            "call i8* @osp_alloc_tagged_noinit(i64 {size}, i64 {meta})"
+        ))
+    }
+
     /// Allocate a heap block sized for the LLVM struct type `struct_ty`, via the
     /// portable `getelementptr null, 1` sizeof trick, and return the typed
     /// pointer register (`{TY}*`). `meta` is the site's layout word
     /// ([`crate::meta`]).
     pub(crate) fn malloc_struct(&mut self, struct_ty: &str, meta: i64) -> String {
+        self.malloc_struct_with(struct_ty, meta, false)
+    }
+
+    /// [`malloc_struct`] for a block the caller stores in full before it can
+    /// drop — a constructor / object literal writes the tag and every field —
+    /// so the ARC backend skips its drop-safety pre-zero. [GC-ARC-PERCEUS]
+    pub(crate) fn malloc_struct_noinit(&mut self, struct_ty: &str, meta: i64) -> String {
+        self.malloc_struct_with(struct_ty, meta, true)
+    }
+
+    fn malloc_struct_with(&mut self, struct_ty: &str, meta: i64, noinit: bool) -> String {
         let szp = self.fresh_reg();
         self.emit(format!(
             "{szp} = getelementptr {struct_ty}, {struct_ty}* null, i64 1"
         ));
         let sz = self.fresh_reg();
         self.emit(format!("{sz} = ptrtoint {struct_ty}* {szp} to i64"));
-        let raw = self.heap_alloc_tagged(&sz, meta);
+        let raw = if noinit {
+            self.heap_alloc_tagged_noinit(&sz, meta)
+        } else {
+            self.heap_alloc_tagged(&sz, meta)
+        };
         let obj = self.fresh_reg();
         self.emit(format!("{obj} = bitcast i8* {raw} to {struct_ty}*"));
         obj
@@ -1134,6 +1260,12 @@ impl Codegen {
     /// return its register. ARC region drops load these slots, so a drop is
     /// valid from any block and untaken paths release `null` (a no-op) —
     /// ownership without dominance analysis [GC-ARC-PERCEUS].
+    /// Whether `reg` addresses rodata (a string-literal global), so ARC
+    /// dup/drop on it is provably a no-op [GC-ARC-PERCEUS].
+    pub(crate) fn is_rodata(&self, reg: &str) -> bool {
+        self.rodata_regs.contains(reg)
+    }
+
     pub(crate) fn hoist_arc_slot(&mut self) -> String {
         let name = format!("%arc.s{}", self.arc_slot_count);
         self.arc_slot_count += 1;
@@ -1177,12 +1309,22 @@ pub(crate) const OSP_ALLOC_DECL: &str = "declare noalias i8* @osp_alloc(i64) all
 /// ARC backend stores in the object header. Implements [GC-ARC-PERCEUS].
 pub(crate) const OSP_ALLOC_TAGGED_DECL: &str = "declare noalias i8* @osp_alloc_tagged(i64, i64) allocsize(0) allockind(\"alloc,uninitialized\") mustprogress nounwind willreturn \"alloc-family\"=\"osprey\"";
 
+/// The non-pre-zeroing twin of [`OSP_ALLOC_TAGGED_DECL`] for caller-fully-
+/// initialized blocks (`allockind` is already `uninitialized`; the difference
+/// is only that the ARC backend skips its drop-safety memset). [GC-ARC-PERCEUS]
+pub(crate) const OSP_ALLOC_TAGGED_NOINIT_DECL: &str = "declare noalias i8* @osp_alloc_tagged_noinit(i64, i64) allocsize(0) allockind(\"alloc,uninitialized\") mustprogress nounwind willreturn \"alloc-family\"=\"osprey\"";
+
 /// The resolved heap layout of a constructor.
 pub(crate) struct CtorView {
     pub owner: String,
     pub owner_is_record: bool,
     pub tag: i64,
     pub fields: Vec<(String, LType)>,
+    /// The `@osp_alloc_tagged` layout word for the `{ i64 tag, fields… }`
+    /// block, computed from the Osprey field types (which prove more than the
+    /// erased `LType`s: an all-declared-union field set upgrades to the
+    /// probe-free `KIND_MASK_DIRECT`). [GC-ARC-PERCEUS]
+    pub meta: i64,
 }
 
 impl Default for Codegen {

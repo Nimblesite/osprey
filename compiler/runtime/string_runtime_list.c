@@ -8,11 +8,19 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "memory_hooks.h"
 #include "string_runtime.h"
 
 static osp_string_list *osp_list_new(int64_t capacity) {
     osp_string_list *list = (osp_string_list *)malloc(sizeof(osp_string_list));
     if (!list) return NULL;
+    /* `{ i64 length; char **items }` is exactly the LIST_HDR_PTR shape, so one
+     * release reclaims the whole list: items[0..length), then the array. Only
+     * the live prefix is walked, which is why the (malloc'd, uninitialised)
+     * capacity slack past `length` is harmless. Codegen owns these handles and
+     * drops them at region end — osp_string_list_free is the C-test path only.
+     * No-op off ARC. [GC-ARC-PERCEUS] plan 0011 M4b. */
+    osp_mem_set_layout(list, OSP_MEM_LIST_HDR_PTR);
     list->length = 0;
     if (capacity <= 0) {
         list->items = NULL;

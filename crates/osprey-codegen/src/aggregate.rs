@@ -53,10 +53,23 @@ pub(crate) fn gen_constructor(
     let view = cg
         .ctor_layout(name)
         .ok_or_else(|| CodegenError::unknown(name))?;
+    // A payload-free union variant (`Leaf`, `None`) is one immutable value:
+    // hand back the shared immortal singleton instead of a fresh heap block.
+    // Records keep the heap path — `r.field` and record-update need a distinct
+    // mutable-shaped block per value. [GC-ARC-PERCEUS]
+    if !view.owner_is_record && view.fields.is_empty() {
+        let handle = cg.nullary_singleton(name, view.tag);
+        return Ok(Value::handle(handle, view.owner));
+    }
     let struct_ty = cg
         .ctor_struct_ty(name)
         .ok_or_else(|| CodegenError::unknown(name))?;
-    let obj = cg.malloc_struct(&struct_ty, tagged_fields_meta(&view.fields));
+    // view.meta comes from the Osprey field types (builder.rs `field_meta`),
+    // which prove more than the erased LTypes visible here: an all-union field
+    // set upgrades to the probe-free KIND_MASK_DIRECT. noinit: the tag and every
+    // field below are stored before the block escapes, so ARC skips its
+    // drop-safety pre-zero.
+    let obj = cg.malloc_struct_noinit(&struct_ty, view.meta);
     store_tag(cg, &struct_ty, obj.as_str(), view.tag);
 
     // fields, in declared order
@@ -92,7 +105,9 @@ pub(crate) fn gen_object(cg: &mut Codegen, fields: &[FieldAssignment]) -> Result
     let meta = tagged_fields_meta(&layout);
     let owner = cg.register_obj_layout(layout);
 
-    let obj = cg.malloc_struct(&struct_ty, meta);
+    // noinit: the tag and every field are stored below before the block
+    // escapes, so ARC skips its drop-safety pre-zero.
+    let obj = cg.malloc_struct_noinit(&struct_ty, meta);
     store_tag(cg, &struct_ty, obj.as_str(), 0);
     for (i, (_, v)) in vals.iter().enumerate() {
         store_field(cg, &struct_ty, obj.as_str(), i + 1, v.ty, &v.operand);
@@ -104,10 +119,11 @@ pub(crate) fn gen_object(cg: &mut Codegen, fields: &[FieldAssignment]) -> Result
     Ok(v)
 }
 
-/// The layout word for a tagged-record block `{ i64 tag, fields… }`
-/// ([`crate::meta`]): the leading discriminant is a scalar word; each field
-/// marks itself by its LLVM type. Generic-variant slots boxed into `i64` stay
-/// unmarked — leak-safe by design (meta.rs [GC-ARC-PERCEUS]).
+/// The layout word for an ANONYMOUS-object block `{ i64 tag, fields… }`
+/// ([`crate::meta`]), from runtime value `LTypes` (named constructors carry the
+/// stronger Osprey-typed `CtorView::meta` instead): the leading discriminant
+/// is a scalar word; each field marks itself by its LLVM type. Generic-variant
+/// slots boxed into `i64` stay unmarked — leak-safe (meta.rs [GC-ARC-PERCEUS]).
 fn tagged_fields_meta(fields: &[(String, LType)]) -> i64 {
     let mut mf = Vec::with_capacity(fields.len() + 1);
     mf.push(crate::meta::MetaField::Word);
@@ -221,7 +237,12 @@ pub(crate) fn gen_update(
         "{src} = bitcast i8* {} to {struct_ty}*",
         base.operand
     ));
-    let obj = cg.malloc_struct(&struct_ty, tagged_fields_meta(&view.fields));
+    // view.meta comes from the Osprey field types (builder.rs `field_meta`),
+    // which prove more than the erased LTypes visible here: an all-union field
+    // set upgrades to the probe-free KIND_MASK_DIRECT. noinit: the tag and every
+    // field are stored below (new value or copied from the base) before the
+    // block escapes, so ARC skips its drop-safety pre-zero.
+    let obj = cg.malloc_struct_noinit(&struct_ty, view.meta);
     store_tag(cg, &struct_ty, obj.as_str(), view.tag);
 
     for (i, (fname, fty)) in view.fields.iter().enumerate() {
@@ -285,9 +306,16 @@ pub(crate) fn store_field(
     fty: LType,
     val: &str,
 ) {
-    // Dup-on-store: the block's drop mask releases pointer fields, so every
-    // pointer stored here is a new reference [GC-ARC-PERCEUS].
-    crate::arc::dup_store(cg, fty.as_str(), val);
+    // Dup-on-store: the block's drop mask releases pointer fields, so a stored
+    // pointer is normally a new reference. But a freshly-produced owner this
+    // region still holds is MOVED into the field instead — the Perceus
+    // constructor transfer skips the dup and the region-end drop. [GC-ARC-PERCEUS]
+    let moved = fty.as_str().ends_with('*')
+        && val.starts_with('%')
+        && crate::arc::consume_into_store(cg, val);
+    if !moved {
+        crate::arc::dup_store(cg, fty.as_str(), val);
+    }
     let p = cg.fresh_reg();
     cg.emit(format!(
         "{p} = getelementptr {struct_ty}, {struct_ty}* {obj}, i32 0, i32 {idx}"

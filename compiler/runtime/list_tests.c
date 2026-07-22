@@ -4,318 +4,501 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
+
+/*
+ * Vanilla-C suite for list_runtime.c — the immutable bitmapped vector trie
+ * behind List<T>. assert()-driven: any failure aborts with a non-zero exit.
+ *
+ * Covers [TYPE-LIST], [TYPE-LIST-OPS] and the container node/element
+ * refcounting of [MEM-BACKENDS] / [MEM-BACKENDS-ELEMENTS]
+ * (docs/specs/0018-MemoryManagement.md):
+ *   - persistence: every source is re-verified in full after every derived op
+ *   - the O(1) drop VIEW (offset + length == physical count): get/set/append/
+ *     length/drop on a view, a view of a view, one inside the shared tail
+ *   - trie growth across every level boundary, append path and builder path
+ *   - singleton identity + aliased (retain-on-return) results
+ *   - boundary/error arguments: NULL lists, negative and past-end indices
+ *   - a randomised differential run against a flat-array model
+ *
+ * Every check goes through CHECK() so the suite reports its assertion count.
+ */
+
+static int64_t g_checks = 0;
+#define CHECK(cond)                                                            \
+  do {                                                                         \
+    g_checks++;                                                                \
+    assert(cond);                                                              \
+  } while (0)
+#define NELEMS(a) (sizeof(a) / sizeof((a)[0]))
+
+/* Counts straddling every structural boundary: tail full (32), first push into
+   the tree (33), root internal (64/65), level-1 (1024/1025), first NULL-child
+   wrap_path at level 10 (2081), level-2 (32768/32801). */
+static const int64_t GROWTH_SIZES[] = {0,    1,    2,    31,   32,    33,
+                                       63,   64,   65,   96,   1023,  1024,
+                                       1025, 2081, 32767, 32768, 32769, 32801};
+/* Above this the builder path covers the sizes (plus one deep list below). */
+#define APPEND_BUILD_LIMIT 2100
+#define DEEP_APPEND_N 32801
+
+static const int64_t VIEW_SIZES[] = {1,  2,  32,   33,   34,   63,  64,
+                                     65, 96, 1023, 1024, 1025, 1057};
+static const int64_t VIEW_DROPS[] = {1, 2, 31, 32, 33, 34, 63, 64, 65, 1022};
+/* Views no larger than this also get the exhaustive append/set drilling. */
+#define DEEP_VIEW_LIMIT 96
+/* > 2 * OSPREY_LIST_BRANCH: crosses the tail boundary from any starting fill. */
+#define VIEW_APPEND_COUNT 70
+#define MODEL_SLACK (VIEW_APPEND_COUNT + 1)
+
+static const int64_t CAT_SIZES[] = {0, 1, 31, 32, 33, 64, 65, 100};
+#define CONCAT_B_BASE 1000000
+#define SET_SENTINEL (-1000000)
+#define OOB_SET_INDEX 100000 /* past every list here, and past one node's 32 */
+#define APPEND_SENTINEL (-2000000)
+#define EXHAUSTIVE_N 100
+#define PREPEND_N 100
 
 /* Test helpers ----------------------------------------------------- */
-
 static OspreyList *make_range_list(int64_t start, int64_t end) {
   OspreyListBuilder *b = osprey_list_builder_new();
-  for (int64_t i = start; i < end; i++) {
-    osprey_list_builder_push(b, i);
-  }
+  for (int64_t i = start; i < end; i++) osprey_list_builder_push(b, i);
   return osprey_list_builder_seal(b);
 }
 
-static void assert_list_equals_range(OspreyList *l, int64_t start, int64_t end) {
-  assert(osprey_list_length(l) == end - start);
-  for (int64_t i = 0; i < end - start; i++) {
-    int64_t expected = start + i;
-    int64_t got = osprey_list_get(l, i);
-    if (got != expected) {
-      fprintf(stderr, "expected %lld at index %lld, got %lld\n",
-              (long long)expected, (long long)i, (long long)got);
-      assert(0);
-    }
+static OspreyList *append_range_list(int64_t n) {
+  OspreyList *l = osprey_list_empty();
+  for (int64_t i = 0; i < n; i++) l = osprey_list_append(l, i);
+  return l;
+}
+
+/* Models are flat arrays with MODEL_SLACK spare cells, so appends never realloc. */
+static int64_t *new_model(int64_t n) {
+  /* calloc, not malloc: zero-fills the model buffer so an n==0 range still
+     yields provably-defined memory. Without it, gcc -O2 -Wmaybe-uninitialized
+     false-positives on the inlined empty-range paths (check_range at n==0),
+     reading the model pointer as possibly uninitialized. */
+  int64_t *m = (int64_t *)calloc((size_t)(n + MODEL_SLACK), sizeof(int64_t));
+  CHECK(m != NULL);
+  return m;
+}
+static int64_t *join_model(const int64_t *a, int64_t an, const int64_t *b,
+                           int64_t bn) {
+  int64_t *m = new_model(an + bn);
+  if (an > 0) memcpy(m, a, (size_t)an * sizeof(int64_t));
+  if (bn > 0) memcpy(m + an, b, (size_t)bn * sizeof(int64_t));
+  return m;
+}
+
+static int64_t *model_range(int64_t start, int64_t n) {
+  int64_t *m = new_model(n);
+  for (int64_t i = 0; i < n; i++) m[i] = start + i;
+  return m;
+}
+
+static void reverse_model(int64_t *m, int64_t n) {
+  for (int64_t i = 0, t = 0; i < n / 2; i++) {
+    t = m[i], m[i] = m[n - 1 - i], m[n - 1 - i] = t;
   }
+}
+
+static void check_iter(OspreyList *l, const int64_t *m, int64_t n) {
+  OspreyListIter *it = osprey_list_iter_new(l);
+  CHECK(it != NULL);
+  int64_t v = SET_SENTINEL;
+  for (int64_t i = 0; i < n; i++) {
+    CHECK(osprey_list_iter_next(it, &v) == 1);
+    CHECK(v == m[i]);
+  }
+  CHECK(osprey_list_iter_next(it, &v) == 0);
+  CHECK(osprey_list_iter_next(it, &v) == 0); /* exhaustion is stable */
+  free(it);
+}
+
+/* The workhorse: length, in-bounds + value at every index, every OOB answer,
+   and a full iteration. */
+static void check_elems(OspreyList *l, const int64_t *m, int64_t n) {
+  const int64_t oob[] = {-1, -2, n, n + 1, INT64_MIN, INT64_MAX};
+  CHECK(osprey_list_length(l) == n);
+  for (size_t k = 0; k < NELEMS(oob); k++) {
+    CHECK(osprey_list_in_bounds(l, oob[k]) == 0);
+    CHECK(osprey_list_get(l, oob[k]) == 0); /* hardened OOB get returns 0 */
+  }
+  for (int64_t i = 0; i < n; i++) {
+    CHECK(osprey_list_in_bounds(l, i) == 1);
+    CHECK(osprey_list_get(l, i) == m[i]);
+  }
+  check_iter(l, m, n);
+}
+
+static void check_range(OspreyList *l, int64_t start, int64_t n) {
+  int64_t *m = model_range(start, n);
+  check_elems(l, m, n);
+  free(m);
 }
 
 /* Tests ------------------------------------------------------------ */
-
-static void test_empty(void) {
+static void test_empty_singleton(void) {
   OspreyList *e = osprey_list_empty();
-  assert(osprey_list_length(e) == 0);
-  assert(osprey_list_in_bounds(e, 0) == 0);
-  assert(osprey_list_in_bounds(e, -1) == 0);
-  /* empty() is idempotent (returns same singleton or equivalent). */
-  assert(osprey_list_length(osprey_list_empty()) == 0);
-  printf("  list_empty OK\n");
+  CHECK(e != NULL);
+  CHECK(osprey_list_empty() == e); /* one immortal singleton, forever */
+  check_range(e, 0, 0);
+  CHECK(osprey_list_drop(e, 0) == e);
+  CHECK(osprey_list_drop(e, 1) == e);
+  CHECK(osprey_list_drop(e, INT64_MAX) == e);
+  CHECK(osprey_list_concat(e, e) == e);
+  CHECK(osprey_list_concat(NULL, NULL) == e);
+  CHECK(osprey_list_reverse(e) == e);
+  CHECK(osprey_list_reverse(NULL) == e);
+  CHECK(osprey_list_builder_seal(osprey_list_builder_new()) == e);
+  CHECK(osprey_list_drop(make_range_list(0, 40), 40) == e);
+  check_range(e, 0, 0); /* still pristine after all of the above */
 }
 
-static void test_append_small(void) {
-  OspreyList *l = osprey_list_empty();
-  for (int64_t i = 0; i < 10; i++) {
-    l = osprey_list_append(l, i * 10);
-  }
-  assert(osprey_list_length(l) == 10);
-  for (int64_t i = 0; i < 10; i++) {
-    assert(osprey_list_get(l, i) == i * 10);
-  }
-  printf("  list_append_small OK\n");
-}
-
-static void test_persistence_chain(void) {
-  /* 5 generations: each `v[k]` extends `v[k-1]` with k*1000. Verify every
-     generation keeps its independent contents. */
-  OspreyList *v[5];
-  v[0] = osprey_list_empty();
-  for (int g = 1; g < 5; g++) {
-    v[g] = osprey_list_append(v[g - 1], (int64_t)g * 1000);
-  }
-  for (int g = 0; g < 5; g++) {
-    assert(osprey_list_length(v[g]) == (int64_t)g);
-    for (int64_t i = 0; i < (int64_t)g; i++) {
-      assert(osprey_list_get(v[g], i) == (int64_t)(i + 1) * 1000);
-    }
-  }
-  printf("  list_persistence_chain (5 gens) OK\n");
-}
-
-static void test_branching_persistence(void) {
-  /* Build two divergent branches from a common ancestor; both must remain
-     valid simultaneously. */
+static void test_null_arguments(void) {
+  CHECK(osprey_list_length(NULL) == 0);
+  CHECK(osprey_list_in_bounds(NULL, 0) == 0);
+  CHECK(osprey_list_in_bounds(NULL, -1) == 0);
+  CHECK(osprey_list_in_bounds(NULL, INT64_MAX) == 0);
+  CHECK(osprey_list_get(NULL, 0) == 0);
+  CHECK(osprey_list_get(NULL, -5) == 0);
+  CHECK(osprey_list_get(NULL, INT64_MAX) == 0);
+  CHECK(osprey_list_drop(NULL, 0) == NULL); /* alias return of NULL */
+  CHECK(osprey_list_drop(NULL, 7) == NULL);
+  int64_t one = 5;
+  check_elems(osprey_list_append(NULL, one), &one, 1);
+  check_elems(osprey_list_prepend(NULL, one), &one, 1);
   OspreyList *a = make_range_list(0, 5);
-  OspreyList *branch_x = osprey_list_append(a, 99);
-  OspreyList *branch_y = osprey_list_append(a, 77);
-  OspreyList *branch_y2 = osprey_list_append(branch_y, 88);
-
-  assert(osprey_list_length(a) == 5);
-  assert(osprey_list_length(branch_x) == 6);
-  assert(osprey_list_length(branch_y) == 6);
-  assert(osprey_list_length(branch_y2) == 7);
-
-  assert(osprey_list_get(branch_x, 5) == 99);
-  assert(osprey_list_get(branch_y, 5) == 77);
-  assert(osprey_list_get(branch_y2, 5) == 77);
-  assert(osprey_list_get(branch_y2, 6) == 88);
-
-  /* a unchanged */
-  for (int64_t i = 0; i < 5; i++) {
-    assert(osprey_list_get(a, i) == i);
-  }
-  printf("  list_branching_persistence OK\n");
+  CHECK(osprey_list_concat(NULL, a) == a);
+  CHECK(osprey_list_concat(a, NULL) == a);
+  check_range(a, 0, 5);
+  OspreyListIter *it = osprey_list_iter_new(NULL);
+  int64_t v = 0;
+  CHECK(osprey_list_iter_next(it, &v) == 0);
+  free(it);
+  /* Out-of-contract set: an empty list has no in-bounds index, and a past-end
+     or negative one would subscript past a 32-slot node. Degrades like the
+     hardened osprey_list_get — unchanged list back — instead of crashing. */
+  CHECK(osprey_list_length(osprey_list_set(osprey_list_empty(), 0, 9)) == 0);
+  CHECK(osprey_list_set(NULL, 0, 9) == NULL);
+  CHECK(osprey_list_set(a, OOB_SET_INDEX, 9) == a);
+  CHECK(osprey_list_set(a, -1, 9) == a);
+  check_range(a, 0, 5);
+  check_range(osprey_list_empty(), 0, 0);
 }
 
-static void test_tree_growth_boundaries(void) {
-  /* Verify operations at the exact boundaries where the trie depth grows:
-     n = 32 (tail full), n = 33 (first push to tree), n = 1024 (level 1
-     boundary), n = 1025 (level 2 begins). */
-  int64_t boundaries[] = {31, 32, 33, 1023, 1024, 1025, 2000};
-  for (size_t bi = 0; bi < sizeof(boundaries) / sizeof(boundaries[0]); bi++) {
-    int64_t n = boundaries[bi];
+/* Every level boundary, built both ways; builder and append must agree
+   element for element. */
+static void test_growth_sizes(void) {
+  for (size_t k = 0; k < NELEMS(GROWTH_SIZES); k++) {
+    int64_t n = GROWTH_SIZES[k];
+    check_range(make_range_list(0, n), 0, n);
+    if (n <= APPEND_BUILD_LIMIT) check_range(append_range_list(n), 0, n);
+  }
+  /* One deep append-built list: grow_root level-2 stacking + wrap_path. */
+  check_range(append_range_list(DEEP_APPEND_N), 0, DEEP_APPEND_N);
+}
+
+/* Set every index in turn: one slot differs, the source stays identical. */
+static void test_set_exhaustive(void) {
+  OspreyList *base = make_range_list(0, EXHAUSTIVE_N);
+  int64_t *m = model_range(0, EXHAUSTIVE_N);
+  for (int64_t i = 0; i < EXHAUSTIVE_N; i++) {
+    OspreyList *s = osprey_list_set(base, i, SET_SENTINEL - i);
+    m[i] = SET_SENTINEL - i;
+    check_elems(s, m, EXHAUSTIVE_N);
+    m[i] = i;
+    check_elems(base, m, EXHAUSTIVE_N);
+  }
+  free(m);
+}
+
+static void check_sets(OspreyList *l, const int64_t *m, int64_t n) {
+  int64_t *e = join_model(m, n, NULL, 0);
+  for (int64_t i = 0; i < n; i++) {
+    OspreyList *s = osprey_list_set(l, i, SET_SENTINEL - i);
+    e[i] = SET_SENTINEL - i;
+    check_elems(s, e, n);
+    e[i] = m[i];
+    check_elems(l, m, n); /* persistence of the source */
+  }
+  free(e);
+}
+
+/* Set at both sides of the tail boundary for every structural size. */
+static void test_set_boundaries(void) {
+  for (size_t k = 0; k < NELEMS(GROWTH_SIZES); k++) {
+    int64_t n = GROWTH_SIZES[k];
+    if (n == 0 || n > APPEND_BUILD_LIMIT) continue;
     OspreyList *l = make_range_list(0, n);
-    assert(osprey_list_length(l) == n);
-    /* spot-check several indices: 0, mid, last */
-    assert(osprey_list_get(l, 0) == 0);
-    if (n > 1) {
-      assert(osprey_list_get(l, n / 2) == n / 2);
-      assert(osprey_list_get(l, n - 1) == n - 1);
+    int64_t *m = model_range(0, n);
+    int64_t idx[] = {0, n / 2, n - 1, n - (n % OSPREY_LIST_BRANCH) - 1};
+    for (size_t j = 0; j < NELEMS(idx); j++) {
+      int64_t i = idx[j] < 0 ? 0 : idx[j];
+      OspreyList *s = osprey_list_set(l, i, SET_SENTINEL);
+      int64_t old = m[i];
+      m[i] = SET_SENTINEL;
+      check_elems(s, m, n);
+      m[i] = old;
+      check_elems(l, m, n);
+    }
+    free(m);
+  }
+}
+
+/* Appends past the end of a (possibly shared/view) list; source must survive. */
+static void check_appends(OspreyList *l, const int64_t *m, int64_t n) {
+  int64_t *e = join_model(m, n, NULL, 0);
+  OspreyList *cur = l;
+  for (int64_t i = 0; i < VIEW_APPEND_COUNT; i++) {
+    e[n + i] = APPEND_SENTINEL - i;
+    cur = osprey_list_append(cur, e[n + i]);
+    check_elems(cur, e, n + i + 1);
+  }
+  check_elems(l, m, n);
+  free(e);
+}
+
+/* The O(1) view contract, for one list and one drop position. */
+static void check_view_at(OspreyList *l, const int64_t *m, int64_t n, int64_t k,
+                          int deep) {
+  int64_t vn = n - k;
+  OspreyList *v = osprey_list_drop(l, k);
+  check_elems(v, m + k, vn);
+  check_elems(l, m, n); /* dropping never disturbs the source */
+  CHECK(osprey_list_drop(v, 0) == v);
+  CHECK(osprey_list_drop(v, -1) == v);
+  CHECK(osprey_list_drop(v, vn) == osprey_list_empty());
+  CHECK(osprey_list_drop(v, vn + 1) == osprey_list_empty());
+  OspreyList *vv = osprey_list_drop(v, vn / 2); /* view of a view */
+  check_elems(vv, m + k + vn / 2, vn - vn / 2);
+  check_elems(v, m + k, vn);
+  if (deep) {
+    check_appends(v, m + k, vn);
+    check_sets(v, m + k, vn);
+    check_elems(l, m, n);
+  }
+}
+
+static void test_views(void) {
+  for (size_t si = 0; si < NELEMS(VIEW_SIZES); si++) {
+    int64_t n = VIEW_SIZES[si];
+    int64_t *m = model_range(0, n);
+    OspreyList *l = make_range_list(0, n);
+    CHECK(osprey_list_drop(l, 0) == l);
+    for (size_t di = 0; di < NELEMS(VIEW_DROPS); di++) {
+      int64_t k = VIEW_DROPS[di];
+      if (k >= n) continue;
+      check_view_at(l, m, n, k, n <= DEEP_VIEW_LIMIT);
+    }
+    check_view_at(l, m, n, n - 1, n <= DEEP_VIEW_LIMIT); /* last element only */
+    free(m);
+  }
+}
+
+/* concat / reverse / prepend applied to a view whose offset lands inside the
+   tail chunk of a 70-element list (tail spans physical 64..69). */
+static void test_view_derived_ops(void) {
+  const int64_t n = 70, k = 66;
+  int64_t vn = n - k;
+  OspreyList *v = osprey_list_drop(make_range_list(0, n), k);
+  int64_t *m = model_range(k, vn);
+  check_elems(v, m, vn);
+  int64_t *cm = join_model(m, vn, m, vn);
+  check_elems(osprey_list_concat(v, v), cm, vn * 2);
+  free(cm);
+  int64_t *rm = join_model(m, vn, NULL, 0);
+  reverse_model(rm, vn);
+  check_elems(osprey_list_reverse(v), rm, vn);
+  free(rm);
+  int64_t head = SET_SENTINEL;
+  int64_t *pm = join_model(&head, 1, m, vn);
+  check_elems(osprey_list_prepend(v, head), pm, vn + 1);
+  free(pm);
+  check_elems(v, m, vn); /* the view survived every derivation */
+  free(m);
+}
+
+static void test_concat_matrix(void) {
+  for (size_t i = 0; i < NELEMS(CAT_SIZES); i++) {
+    for (size_t j = 0; j < NELEMS(CAT_SIZES); j++) {
+      int64_t x = CAT_SIZES[i], y = CAT_SIZES[j];
+      int64_t *ma = model_range(0, x), *mb = model_range(CONCAT_B_BASE, y);
+      OspreyList *a = make_range_list(0, x);
+      OspreyList *b = make_range_list(CONCAT_B_BASE, CONCAT_B_BASE + y);
+      OspreyList *c = osprey_list_concat(a, b);
+      int64_t *mc = join_model(ma, x, mb, y);
+      check_elems(c, mc, x + y);
+      check_elems(a, ma, x); /* both inputs untouched */
+      check_elems(b, mb, y);
+      if (x == 0) CHECK(c == b);      /* aliased empty-left return */
+      else if (y == 0) CHECK(c == a); /* aliased empty-right return */
+      free(ma);
+      free(mb);
+      free(mc);
     }
   }
-  printf("  list_tree_growth_boundaries OK\n");
-}
-
-static void test_set_deep(void) {
-  /* Set element midway through a deep-tree list, verify prior version
-     unaffected and new version has only that one slot changed. */
-  OspreyList *base = make_range_list(0, 2000);
-  OspreyList *mutated = osprey_list_set(base, 500, -1);
-  assert(osprey_list_get(base, 500) == 500);
-  assert(osprey_list_get(mutated, 500) == -1);
-  /* surroundings unchanged */
-  assert(osprey_list_get(mutated, 499) == 499);
-  assert(osprey_list_get(mutated, 501) == 501);
-  /* far-from-modification index untouched */
-  assert(osprey_list_get(mutated, 1999) == 1999);
-  assert(osprey_list_get(mutated, 0) == 0);
-  printf("  list_set_deep OK\n");
-}
-
-static void test_set_at_extremes(void) {
-  OspreyList *l = make_range_list(10, 50);
-  OspreyList *first = osprey_list_set(l, 0, -7);
-  OspreyList *last = osprey_list_set(l, osprey_list_length(l) - 1, -9);
-  assert(osprey_list_get(first, 0) == -7);
-  assert(osprey_list_get(first, 1) == 11);
-  assert(osprey_list_get(last, 39) == -9);
-  assert(osprey_list_get(last, 38) == 48);
-  /* original list unaffected */
-  assert(osprey_list_get(l, 0) == 10);
-  assert(osprey_list_get(l, 39) == 49);
-  printf("  list_set_at_extremes OK\n");
-}
-
-static void test_concat_variations(void) {
-  OspreyList *e = osprey_list_empty();
-  OspreyList *a = make_range_list(0, 5);
-  OspreyList *b = make_range_list(5, 10);
-
-  /* empty + empty */
-  assert(osprey_list_length(osprey_list_concat(e, e)) == 0);
-  /* empty + a */
-  OspreyList *ea = osprey_list_concat(e, a);
-  assert_list_equals_range(ea, 0, 5);
-  /* a + empty */
-  OspreyList *ae = osprey_list_concat(a, e);
-  assert_list_equals_range(ae, 0, 5);
-  /* a + b */
-  OspreyList *ab = osprey_list_concat(a, b);
-  assert_list_equals_range(ab, 0, 10);
-  /* (a + b) + a */
-  OspreyList *aba = osprey_list_concat(ab, a);
-  assert(osprey_list_length(aba) == 15);
-  for (int64_t i = 0; i < 10; i++) assert(osprey_list_get(aba, i) == i);
-  for (int64_t i = 0; i < 5; i++)  assert(osprey_list_get(aba, 10 + i) == i);
-  printf("  list_concat_variations OK\n");
-}
-
-static void test_concat_crosses_tail_boundary(void) {
-  /* Both sides have non-full tails. After concat, tail of left becomes
-     part of the tree of result; verify all elements present. */
-  OspreyList *left = make_range_list(0, 50);   /* tail_count = 18 */
-  OspreyList *right = make_range_list(50, 73); /* tail_count = 23 */
-  OspreyList *r = osprey_list_concat(left, right);
-  assert_list_equals_range(r, 0, 73);
-  printf("  list_concat_crosses_tail_boundary OK\n");
-}
-
-static void test_prepend(void) {
-  OspreyList *l = make_range_list(1, 5);
-  OspreyList *p = osprey_list_prepend(l, 0);
-  assert_list_equals_range(p, 0, 5);
-  /* prepend to empty */
-  OspreyList *just_one = osprey_list_prepend(osprey_list_empty(), 42);
-  assert(osprey_list_length(just_one) == 1);
-  assert(osprey_list_get(just_one, 0) == 42);
-  /* original list unaffected */
-  assert(osprey_list_length(l) == 4);
-  assert(osprey_list_get(l, 0) == 1);
-  printf("  list_prepend OK\n");
-}
-
-static void test_drop(void) {
-  OspreyList *l = make_range_list(0, 10);
-  /* drop 0 = identity */
-  assert(osprey_list_length(osprey_list_drop(l, 0)) == 10);
-  /* drop 5 */
-  OspreyList *d5 = osprey_list_drop(l, 5);
-  assert_list_equals_range(d5, 5, 10);
-  /* drop length = empty */
-  assert(osprey_list_length(osprey_list_drop(l, 10)) == 0);
-  /* drop > length = empty */
-  assert(osprey_list_length(osprey_list_drop(l, 100)) == 0);
-  /* drop negative = identity */
-  assert(osprey_list_length(osprey_list_drop(l, -1)) == 10);
-  printf("  list_drop OK\n");
 }
 
 static void test_reverse(void) {
-  /* reverse(reverse(l)) == l for any l */
-  OspreyList *l = make_range_list(1, 50);
-  OspreyList *r = osprey_list_reverse(l);
-  OspreyList *rr = osprey_list_reverse(r);
-  assert(osprey_list_length(r) == osprey_list_length(l));
-  for (int64_t i = 0; i < 49; i++) {
-    assert(osprey_list_get(r, i) == 49 - i);
-    assert(osprey_list_get(rr, i) == osprey_list_get(l, i));
+  for (size_t k = 0; k < NELEMS(GROWTH_SIZES); k++) {
+    int64_t n = GROWTH_SIZES[k];
+    if (n > APPEND_BUILD_LIMIT) continue;
+    OspreyList *l = make_range_list(0, n);
+    int64_t *m = model_range(0, n);
+    int64_t *rm = join_model(m, n, NULL, 0);
+    reverse_model(rm, n);
+    OspreyList *r = osprey_list_reverse(l);
+    check_elems(r, rm, n);
+    check_elems(l, m, n);
+    check_elems(osprey_list_reverse(r), m, n); /* involution */
+    free(m);
+    free(rm);
   }
-  /* reverse(empty) == empty */
-  assert(osprey_list_length(osprey_list_reverse(osprey_list_empty())) == 0);
-  /* reverse of single-element list = itself */
-  OspreyList *one = osprey_list_append(osprey_list_empty(), 99);
-  OspreyList *one_r = osprey_list_reverse(one);
-  assert(osprey_list_length(one_r) == 1);
-  assert(osprey_list_get(one_r, 0) == 99);
-  printf("  list_reverse (involution) OK\n");
 }
 
-static void test_builder_matches_incremental(void) {
-  /* Builder and incremental append must produce equal lists. */
-  OspreyList *incr = osprey_list_empty();
-  for (int64_t i = 0; i < 300; i++) incr = osprey_list_append(incr, i * 7);
-  OspreyList *via = make_range_list(0, 300);
-  /* via has 0..299, multiply by 7 → use direct builder for fairness */
-  OspreyListBuilder *b = osprey_list_builder_new();
-  for (int64_t i = 0; i < 300; i++) osprey_list_builder_push(b, i * 7);
-  OspreyList *via_b = osprey_list_builder_seal(b);
-  assert(osprey_list_length(incr) == 300);
-  assert(osprey_list_length(via_b) == 300);
-  for (int64_t i = 0; i < 300; i++) {
-    assert(osprey_list_get(incr, i) == i * 7);
-    assert(osprey_list_get(via_b, i) == i * 7);
-  }
-  /* via without multiplication is also correct */
-  (void)via;
-  printf("  list_builder_matches_incremental OK\n");
-}
-
-static void test_iter_full_coverage(void) {
-  OspreyList *l = make_range_list(0, 500);
-  OspreyListIter *it = osprey_list_iter_new(l);
-  int64_t expected = 0;
-  int64_t v = 0;
-  int64_t sum = 0;
-  while (osprey_list_iter_next(it, &v)) {
-    assert(v == expected);
-    sum += v;
-    expected++;
-  }
-  assert(expected == 500);
-  assert(sum == 500 * 499 / 2); /* Gauss */
-  free(it);
-
-  /* Iter over empty produces no values. */
-  OspreyListIter *it_e = osprey_list_iter_new(osprey_list_empty());
-  assert(osprey_list_iter_next(it_e, &v) == 0);
-  free(it_e);
-  printf("  list_iter_full_coverage (sum check + empty) OK\n");
-}
-
-static void test_stress_10k(void) {
-  /* 10k elements forces level-2 internal nodes (> 32*32 = 1024). */
+static void test_prepend(void) {
   OspreyList *l = osprey_list_empty();
-  for (int64_t i = 0; i < 10000; i++) l = osprey_list_append(l, i);
-  assert(osprey_list_length(l) == 10000);
-  /* Random-access spot checks */
-  assert(osprey_list_get(l, 0) == 0);
-  assert(osprey_list_get(l, 33) == 33);
-  assert(osprey_list_get(l, 1024) == 1024);
-  assert(osprey_list_get(l, 5000) == 5000);
-  assert(osprey_list_get(l, 9999) == 9999);
-  printf("  list_stress_10k OK\n");
+  int64_t *m = new_model(PREPEND_N);
+  for (int64_t i = 0; i < PREPEND_N; i++) {
+    l = osprey_list_prepend(l, i);
+    memmove(m + 1, m, (size_t)i * sizeof(int64_t));
+    m[0] = i;
+    check_elems(l, m, i + 1);
+  }
+  /* Prepending never disturbs the version it was derived from. */
+  OspreyList *p = osprey_list_prepend(l, SET_SENTINEL);
+  CHECK(osprey_list_get(p, 0) == SET_SENTINEL);
+  check_elems(l, m, PREPEND_N);
+  free(m);
 }
 
-static void test_get_after_drop_persistence(void) {
-  /* drop returns a new list; verify both source and dropped survive
-     subsequent operations. */
-  OspreyList *l = make_range_list(0, 100);
-  OspreyList *d = osprey_list_drop(l, 50);
-  OspreyList *l2 = osprey_list_append(l, -1);
-  OspreyList *d2 = osprey_list_append(d, -2);
-  assert(osprey_list_get(l, 50) == 50);
-  assert(osprey_list_get(d, 0) == 50);
-  assert(osprey_list_get(l2, 100) == -1);
-  assert(osprey_list_get(d2, 50) == -2);
-  /* originals untouched */
-  assert(osprey_list_length(l) == 100);
-  assert(osprey_list_length(d) == 50);
-  printf("  list_drop+persistence OK\n");
+/* Sharing: many independent versions derived from one ancestor must all stay
+   valid at once (path copying + node refcounting). */
+#define BRANCH_FAN 24
+#define BRANCH_N 200
+#define BRANCH_STRIDE 7
+
+static void test_branching_persistence(void) {
+  const int64_t n = BRANCH_N, fan = BRANCH_FAN;
+  OspreyList *base = make_range_list(0, n);
+  int64_t *m = model_range(0, n);
+  OspreyList *kids[BRANCH_FAN];
+  for (int64_t i = 0; i < fan; i++) {
+    kids[i] = osprey_list_append(
+        osprey_list_set(base, i * BRANCH_STRIDE, SET_SENTINEL - i),
+        APPEND_SENTINEL - i);
+  }
+  for (int64_t i = 0; i < fan; i++) {
+    int64_t *e = join_model(m, n, NULL, 0);
+    e[i * BRANCH_STRIDE] = SET_SENTINEL - i;
+    e[n] = APPEND_SENTINEL - i;
+    check_elems(kids[i], e, n + 1);
+    free(e);
+  }
+  check_elems(base, m, n);
+  free(m);
+}
+
+/* Randomised differential run against a flat-array model. */
+#define RAND_OPS 400
+#define RAND_OP_KINDS 5
+#define RAND_VALUE_SPAN 1000
+#define RAND_SEED 0x9E3779B97F4A7C15ULL
+#define LCG_MUL 6364136223846793005ULL
+#define LCG_ADD 1442695040888963407ULL
+
+static uint64_t rng_next(uint64_t *s) {
+  *s = *s * LCG_MUL + LCG_ADD; /* unsigned: wraps, never traps under -ftrapv */
+  return *s >> 33;
+}
+
+static int64_t rand_step(OspreyList **l, int64_t *m, int64_t n, uint64_t r) {
+  int64_t v = (int64_t)(r % RAND_VALUE_SPAN) - RAND_VALUE_SPAN / 2;
+  int64_t i = n > 0 ? (int64_t)(r % (uint64_t)n) : 0;
+  switch (r % RAND_OP_KINDS) {
+  case 0:
+    *l = osprey_list_append(*l, v);
+    m[n] = v;
+    return n + 1;
+  case 1:
+    *l = osprey_list_prepend(*l, v);
+    memmove(m + 1, m, (size_t)n * sizeof(int64_t));
+    m[0] = v;
+    return n + 1;
+  case 2:
+    if (n == 0) return n;
+    *l = osprey_list_set(*l, i, v);
+    m[i] = v;
+    return n;
+  case 3:
+    if (n == 0) return n;
+    *l = osprey_list_drop(*l, i + 1);
+    memmove(m, m + i + 1, (size_t)(n - i - 1) * sizeof(int64_t));
+    return n - i - 1;
+  default:
+    *l = osprey_list_reverse(*l);
+    reverse_model(m, n);
+    return n;
+  }
+}
+
+static void test_random_ops(void) {
+  uint64_t seed = RAND_SEED;
+  int64_t *m = model_range(0, RAND_OPS + MODEL_SLACK);
+  int64_t n = 0;
+  OspreyList *l = osprey_list_empty();
+  for (int op = 0; op < RAND_OPS; op++) {
+    n = rand_step(&l, m, n, rng_next(&seed));
+    check_elems(l, m, n);
+  }
+  CHECK(n >= 0);
+  free(m);
+}
+
+/* The builder path in isolation: transient pushes, then seal. */
+static void test_builder_paths(void) {
+  for (size_t k = 0; k < NELEMS(GROWTH_SIZES); k++) {
+    int64_t n = GROWTH_SIZES[k];
+    if (n > APPEND_BUILD_LIMIT) continue;
+    OspreyListBuilder *b = osprey_list_builder_new();
+    CHECK(b != NULL);
+    for (int64_t i = 0; i < n; i++) {
+      osprey_list_builder_push(b, i * 3 - 1);
+    }
+    OspreyList *l = osprey_list_builder_seal(b);
+    int64_t *m = model_range(0, n);
+    for (int64_t i = 0; i < n; i++) {
+      m[i] = i * 3 - 1;
+    }
+    check_elems(l, m, n);
+    check_appends(l, m, n); /* seal then keep growing */
+    free(m);
+  }
 }
 
 void run_list_tests(void) {
-  printf("List:\n");
-  test_empty();
-  test_append_small();
-  test_persistence_chain();
-  test_branching_persistence();
-  test_tree_growth_boundaries();
-  test_set_deep();
-  test_set_at_extremes();
-  test_concat_variations();
-  test_concat_crosses_tail_boundary();
-  test_prepend();
-  test_drop();
+  test_empty_singleton();
+  test_null_arguments();
+  test_growth_sizes();
+  test_set_exhaustive();
+  test_set_boundaries();
+  test_views();
+  test_view_derived_ops();
+  test_concat_matrix();
   test_reverse();
-  test_builder_matches_incremental();
-  test_iter_full_coverage();
-  test_stress_10k();
-  test_get_after_drop_persistence();
+  test_prepend();
+  test_branching_persistence();
+  test_random_ops();
+  test_builder_paths();
 }
+
+/* collection_tests.c supplies its own main and calls run_list_tests(); define
+   OSPREY_TESTS_EXTERNAL_MAIN when linking against it. */
+#ifndef OSPREY_TESTS_EXTERNAL_MAIN
+int main(void) {
+  run_list_tests();
+  printf("[ok] list_runtime: %lld assertions\n", (long long)g_checks);
+  return 0;
+}
+#endif

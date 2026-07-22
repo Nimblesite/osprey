@@ -21,6 +21,11 @@ pub(crate) const KIND_MASK: i64 = 1;
 pub(crate) const KIND_LIST_HDR_PTR: i64 = 2;
 /// `{ i64 len, i8* data }` with scalar elements: release `data` only.
 pub(crate) const KIND_LIST_HDR_SCALAR: i64 = 3;
+/// A `KIND_MASK` whose every masked child is PROVEN to be an ARC body or
+/// NULL (all fields are declared-union values, which only constructors can
+/// produce): the drop walk reads child headers directly, skipping the
+/// registry probe that dominates deep-structure drops.
+pub(crate) const KIND_MASK_DIRECT: i64 = 5;
 
 /// Highest word index the 56-bit mask can name.
 const MASK_MAX_WORD: u64 = 55;
@@ -36,6 +41,12 @@ pub(crate) enum MetaField {
     Word,
     /// 8-byte managed pointer — the drop walk releases it.
     PtrManaged,
+    /// 8-byte managed pointer PROVEN to be an ARC body or NULL (a
+    /// declared-union field: only constructors mint such values, and no
+    /// extern claims to return the union). When every masked field is
+    /// `PtrDirect` the struct takes `KIND_MASK_DIRECT` and its drop walk
+    /// skips the per-child registry probe.
+    PtrDirect,
     /// 8-byte pointer the drop walk must NOT release (code pointer, foreign).
     PtrOpaque,
     /// 1-byte field (`i1` / `i8`).
@@ -47,7 +58,10 @@ pub(crate) enum MetaField {
 impl MetaField {
     fn size_align(self) -> u64 {
         match self {
-            MetaField::Word | MetaField::PtrManaged | MetaField::PtrOpaque => 8,
+            MetaField::Word
+            | MetaField::PtrManaged
+            | MetaField::PtrDirect
+            | MetaField::PtrOpaque => 8,
             MetaField::Byte => 1,
             MetaField::Half => 4,
         }
@@ -81,30 +95,36 @@ impl MetaField {
 /// The meta word for a struct laid out from `fields` in order, natural
 /// alignment (LLVM's rules for this field set). Falls back to `KIND_RAW`
 /// (leak-safe, never corrupting) when a managed pointer lands beyond the
-/// mask's reach.
+/// mask's reach. All-`PtrDirect` masks upgrade to `KIND_MASK_DIRECT`; one
+/// unproven field keeps the whole struct on the probing `KIND_MASK`.
 pub(crate) fn struct_meta(fields: &[MetaField]) -> i64 {
     let mut off: u64 = 0;
     let mut mask: u64 = 0;
+    let mut all_direct = true;
     for f in fields {
         let sa = f.size_align();
         off = off.div_ceil(sa) * sa;
-        if *f == MetaField::PtrManaged {
+        if matches!(f, MetaField::PtrManaged | MetaField::PtrDirect) {
             let word = off / 8;
             if word > MASK_MAX_WORD {
                 return KIND_RAW;
             }
             mask |= 1u64 << word;
+            all_direct &= *f == MetaField::PtrDirect;
         }
         off += sa;
     }
     if mask == 0 {
         KIND_RAW
     } else {
+        let kind = if all_direct {
+            KIND_MASK_DIRECT
+        } else {
+            KIND_MASK
+        };
         // Bit-preserving: word 55 lands on bit 63 (the sign bit); the runtime
         // recovers the mask via an unsigned cast (memory_arc.c OSP_ARC_MASK_BITS).
-        i64::from_ne_bytes(
-            ((mask << 8) | u64::from_ne_bytes(KIND_MASK.to_ne_bytes())).to_ne_bytes(),
-        )
+        i64::from_ne_bytes(((mask << 8) | u64::from_ne_bytes(kind.to_ne_bytes())).to_ne_bytes())
     }
 }
 
@@ -169,6 +189,23 @@ mod tests {
             struct_meta(&[MetaField::PtrOpaque, MetaField::Word]),
             KIND_RAW
         );
+    }
+
+    #[test]
+    fn all_proven_fields_upgrade_to_mask_direct() {
+        // { i64 tag, Tree left, Tree right, i64 v } — the binarytrees Node.
+        let m = struct_meta(&[
+            MetaField::Word,
+            MetaField::PtrDirect,
+            MetaField::PtrDirect,
+            MetaField::Word,
+        ]);
+        assert_eq!(m & 0xFF, KIND_MASK_DIRECT);
+        assert_eq!(mask_words(m), vec![1, 2]);
+        // One unproven (string) field demotes the whole struct to probing MASK.
+        let m = struct_meta(&[MetaField::Word, MetaField::PtrDirect, MetaField::PtrManaged]);
+        assert_eq!(m & 0xFF, KIND_MASK);
+        assert_eq!(mask_words(m), vec![1, 2]);
     }
 
     #[test]

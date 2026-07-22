@@ -119,7 +119,11 @@ export function runCompiler(
     const settle = (exitCode: number): void => {
       if (!settled) {
         settled = true;
-        resolve({ stdout: stdout(), stderr: `${spawnFailure}${stderr()}`, exitCode });
+        resolve({
+          stdout: stdout(),
+          stderr: `${spawnFailure}${stderr()}`,
+          exitCode,
+        });
       }
     };
     child.on("error", (error) => {
@@ -160,9 +164,18 @@ function makeLeafItem(
   uri: vscode.Uri,
   test: DiscoveredTest,
 ): vscode.TestItem {
-  const leaf = controller.createTestItem(leafTestId(uri.toString(), test.name), test.name, uri);
+  const leaf = controller.createTestItem(
+    leafTestId(uri.toString(), test.name),
+    test.name,
+    uri,
+  );
   const start = testRangeStart(test);
-  leaf.range = new vscode.Range(start.line, start.character, start.line, start.character);
+  leaf.range = new vscode.Range(
+    start.line,
+    start.character,
+    start.line,
+    start.character,
+  );
   return leaf;
 }
 
@@ -178,7 +191,9 @@ function applyDiscovery(
     return;
   }
   item.error = undefined;
-  item.children.replace(outcome.tests.map((test) => makeLeafItem(controller, uri, test)));
+  item.children.replace(
+    outcome.tests.map((test) => makeLeafItem(controller, uri, test)),
+  );
 }
 
 /**
@@ -206,7 +221,10 @@ export async function refreshTestFile(
 }
 
 /** Drop a deleted test file's item from the tree. */
-export function removeTestFile(controller: vscode.TestController, uri: vscode.Uri): void {
+export function removeTestFile(
+  controller: vscode.TestController,
+  uri: vscode.Uri,
+): void {
   controller.items.delete(fileTestId(uri.toString()));
 }
 
@@ -235,7 +253,11 @@ export function requestedItems(
   return roots;
 }
 
-function markLeaf(leaf: vscode.TestItem, outcome: LeafOutcome, sink: TestRunSink): void {
+function markLeaf(
+  leaf: vscode.TestItem,
+  outcome: LeafOutcome,
+  sink: TestRunSink,
+): void {
   if (outcome.status === "passed") {
     sink.passed(leaf);
   } else if (outcome.status === "failed") {
@@ -285,8 +307,16 @@ async function runLeaves(
   const env = testRunEnv(process.env, coverage ? undefined : filter);
   const jsonPath = coverage ? coverageJsonPath(uri) : undefined;
   const args =
-    jsonPath === undefined ? [uri.fsPath, "--run"] : coverageRunArgs(uri.fsPath, jsonPath, filter);
-  const result = await runCompiler(compiler, args, path.dirname(uri.fsPath), env, token);
+    jsonPath === undefined
+      ? [uri.fsPath, "--run"]
+      : coverageRunArgs(uri.fsPath, jsonPath, filter);
+  const result = await runCompiler(
+    compiler,
+    args,
+    path.dirname(uri.fsPath),
+    env,
+    token,
+  );
   if (token.isCancellationRequested) {
     return;
   }
@@ -334,7 +364,9 @@ function reportCompileFailure(
   result: ExecResult,
   sink: TestRunSink,
 ): void {
-  const message = new vscode.TestMessage(compileFailureMessage(result.stderr, result.exitCode));
+  const message = new vscode.TestMessage(
+    compileFailureMessage(result.stderr, result.exitCode),
+  );
   sink.errored(errorTarget, message);
   for (const leaf of leaves.filter((item) => item !== errorTarget)) {
     sink.errored(leaf, message);
@@ -372,12 +404,22 @@ async function runPlan(
   compiler: string,
   coverage: boolean,
 ): Promise<void> {
-  const leaves = plan.wholeFile ? includedChildren(plan.file, excluded) : plan.leaves;
+  const leaves = plan.wholeFile
+    ? includedChildren(plan.file, excluded)
+    : plan.leaves;
   // One unfiltered process only when the whole file truly runs. A whole-file
   // request with exclusions falls through to per-leaf filtered runs so the
   // excluded cases never execute — not merely go unreported.
   if (plan.wholeFile && leaves.length === plan.file.children.size) {
-    await runLeaves(plan.file, leaves, undefined, sink, token, compiler, coverage);
+    await runLeaves(
+      plan.file,
+      leaves,
+      undefined,
+      sink,
+      token,
+      compiler,
+      coverage,
+    );
     return;
   }
   for (const leaf of leaves) {
@@ -434,9 +476,18 @@ export async function executeRunRequest(
 export function makeRunHandler(
   controller: vscode.TestController,
   resolveCompiler: () => string,
-): (request: vscode.TestRunRequest, token: vscode.CancellationToken) => Promise<void> {
+): (
+  request: vscode.TestRunRequest,
+  token: vscode.CancellationToken,
+) => Promise<void> {
   return (request, token) =>
-    executeRunRequest(controller, request, controller.createTestRun(request), token, resolveCompiler);
+    executeRunRequest(
+      controller,
+      request,
+      controller.createTestRun(request),
+      token,
+      resolveCompiler,
+    );
 }
 
 /**
@@ -445,7 +496,10 @@ export function makeRunHandler(
  * percentage in the Test Coverage view and the hits in the editor gutter
  * ([TESTING-COVERAGE-VSCODE]).
  */
-const detailedCoverage = new WeakMap<vscode.FileCoverage, vscode.StatementCoverage[]>();
+const detailedCoverage = new WeakMap<
+  vscode.FileCoverage,
+  vscode.StatementCoverage[]
+>();
 
 /** The gutter detail stashed for one FileCoverage (what the Coverage profile's
  *  loadDetailedCoverage serves). Exported so tests can prove the per-line
@@ -482,7 +536,10 @@ export function coverageSink(run: vscode.TestRun): TestRunSink {
         [...hits].map(
           ([line, count]) =>
             // Coverage lines are 1-based; vscode positions are 0-based.
-            new vscode.StatementCoverage(count, new vscode.Position(Math.max(line - 1, 0), 0)),
+            new vscode.StatementCoverage(
+              count,
+              new vscode.Position(Math.max(line - 1, 0), 0),
+            ),
         ),
       );
       run.addCoverage(file);
@@ -494,7 +551,10 @@ export function coverageSink(run: vscode.TestRun): TestRunSink {
 export function makeCoverageHandler(
   controller: vscode.TestController,
   resolveCompiler: () => string,
-): (request: vscode.TestRunRequest, token: vscode.CancellationToken) => Promise<void> {
+): (
+  request: vscode.TestRunRequest,
+  token: vscode.CancellationToken,
+) => Promise<void> {
   return (request, token) =>
     executeRunRequest(
       controller,
@@ -510,7 +570,10 @@ export function makeCoverageHandler(
 export function makeWatcherHandlers(
   controller: vscode.TestController,
   resolveCompiler: () => string,
-): { refresh: (uri: vscode.Uri) => Promise<vscode.TestItem>; remove: (uri: vscode.Uri) => void } {
+): {
+  refresh: (uri: vscode.Uri) => Promise<vscode.TestItem>;
+  remove: (uri: vscode.Uri) => void;
+} {
   return {
     refresh: (uri) => refreshTestFile(controller, uri, resolveCompiler()),
     remove: (uri) => removeTestFile(controller, uri),
@@ -529,7 +592,10 @@ export function registerOspreyTestExplorer(
   resolveCompiler: () => string,
   controllerId: string = CONTROLLER_ID,
 ): vscode.TestController {
-  const controller = vscode.tests.createTestController(controllerId, CONTROLLER_LABEL);
+  const controller = vscode.tests.createTestController(
+    controllerId,
+    CONTROLLER_LABEL,
+  );
   controller.createRunProfile(
     "Run",
     vscode.TestRunProfileKind.Run,

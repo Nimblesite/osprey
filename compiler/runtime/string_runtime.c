@@ -13,6 +13,9 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include <stdarg.h>
+#include <stdio.h>
+
 #include "string_runtime.h"
 
 char *osp_string_dup_internal(const char *s, size_t n) {
@@ -391,4 +394,23 @@ char *osp_string_from_codepoint(int64_t cp) {
     }
     buf[n] = '\0';
     return osp_string_dup_internal(buf, (size_t)n);
+}
+
+/* Interpolation formatting (see string_runtime.h for why these exist). The
+   format string is codegen-built and contains only `%s` holes plus escaped
+   literal text, so the varargs are always `const char *`. */
+int64_t osp_format_size(const char *fmt, ...) {
+    va_list ap;
+    va_start(ap, fmt);
+    int n = vsnprintf(NULL, 0, fmt, ap);
+    va_end(ap);
+    return n < 0 ? 0 : (int64_t)n;
+}
+
+void osp_format_into(char *buf, int64_t cap, const char *fmt, ...) {
+    if (buf == NULL || cap <= 0) return;
+    va_list ap;
+    va_start(ap, fmt);
+    (void)vsnprintf(buf, (size_t)cap, fmt, ap);
+    va_end(ap);
 }

@@ -58,9 +58,14 @@ impl Default for ArcLedger {
 }
 
 /// Whether `v` is a candidate managed pointer: a register-carried heap
-/// handle/string. Literals and `null` are rodata (registry probe-miss).
-fn managed(v: &Value) -> bool {
-    matches!(v.ty, LType::Str | LType::Ptr) && v.operand.starts_with('%')
+/// handle/string. Literals and `null` are rodata (registry probe-miss), and so
+/// is a register the builder materialised from a `private constant` global —
+/// `rodata_regs` is what lets a string literal skip the dup/drop calls
+/// entirely instead of paying a locked probe to learn they are no-ops.
+fn managed(cg: &Codegen, v: &Value) -> bool {
+    matches!(v.ty, LType::Str | LType::Ptr)
+        && v.operand.starts_with('%')
+        && !cg.is_rodata(&v.operand)
 }
 
 /// `v`'s operand as a plain `i8*`, bitcasting a typed block pointer. A flat
@@ -83,19 +88,35 @@ fn as_i8ptr(cg: &mut Codegen, v: &Value) -> String {
 /// this: fresh aggregates, list literals, Result blocks, C-runtime string /
 /// container returns, user-call results (callee epilogues transfer +1).
 pub(crate) fn own(cg: &mut Codegen, v: &Value) {
-    if !managed(v) {
+    register(cg, v, false);
+}
+
+/// [`own`], but in the region that OUTLIVES the closing statement. A
+/// cell-backed `mut` needs this: a handler env only DUPs the cell pointer, so
+/// owning the cell in its own defining statement's region would free it at the
+/// statement end and leave the env — and every arm that writes through it —
+/// holding a dangling pointer.
+pub(crate) fn own_beyond_stmt(cg: &mut Codegen, v: &Value) {
+    register(cg, v, true);
+}
+
+fn register(cg: &mut Codegen, v: &Value, beyond_stmt: bool) {
+    if !managed(cg, v) {
         return;
     }
     let ptr = as_i8ptr(cg, v);
     let slot = cg.hoist_arc_slot();
     cg.emit(format!("store i8* {ptr}, i8** {slot}"));
-    if let Some(frame) = cg.arc.frames.last_mut() {
-        frame.push(Entry {
-            operand: v.operand.clone(),
-            name: None,
-            slot,
-            pure_scalar: false,
-        });
+    let entry = Entry {
+        operand: v.operand.clone(),
+        name: None,
+        slot,
+        pure_scalar: false,
+    };
+    if beyond_stmt {
+        push_parent(cg, entry);
+    } else if let Some(frame) = cg.arc.frames.last_mut() {
+        frame.push(entry);
     }
 }
 
@@ -138,6 +159,83 @@ pub(crate) fn consume_fresh(cg: &mut Codegen, v: &Value) {
     }
 }
 
+/// Perceus "move into constructor" (TR §2.3, the *own* argument rule): a store
+/// into a heap slot normally dups, because the owning block's drop mask will
+/// release that slot at the object's death. But when the stored pointer is a
+/// freshly-produced owner the current region still holds, the store can MOVE it
+/// instead — the +1 the region was about to drop at its end becomes the field's
+/// reference. No dup, no region-end release: `store_field` calls this before
+/// falling back to [`dup_store`], turning `retain(x); store x, field; …;
+/// release(x)` into a single `store x, field` on every constructor argument.
+///
+/// The safety gate is *unnamed entry of the innermost frame* — the exact rc == 1
+/// shape [`consume_fresh`] proves. `let`-bound owners are *named* and a value
+/// that might be read again is therefore never moved out from under its later
+/// uses; cell-backed `mut` owners ([`own_beyond_stmt`]) and every parent-region
+/// owner live in an outer frame and are likewise excluded. A borrow (parameter,
+/// field load, phi) was never registered, so it is not found and the caller
+/// dups it as before. Returns true when it consumed an owner.
+pub(crate) fn consume_into_store(cg: &mut Codegen, operand: &str) -> bool {
+    let slot = cg.arc.frames.last_mut().and_then(|frame| {
+        frame
+            .iter()
+            .rposition(|e| e.operand == operand && e.name.is_none())
+            .map(|at| frame.remove(at).slot)
+    });
+    match slot {
+        Some(slot) => {
+            cg.emit(format!("store i8* null, i8** {slot}"));
+            true
+        }
+        None => false,
+    }
+}
+
+/// The innermost frame's current length — the mark a `match` captures BEFORE
+/// generating its arms, so [`move_phi_owners`] can tell arm-produced owners
+/// from values that already existed at the join (above all: the scrutinee).
+pub(crate) fn frame_mark(cg: &Codegen) -> usize {
+    cg.arc.frames.last().map_or(0, Vec::len)
+}
+
+/// Perceus phi ownership merge (TR §2.3, join points): when EVERY arm of a
+/// `match` produced a fresh owner — an unnamed innermost-frame entry registered
+/// AFTER `mark` (i.e. inside its own arm) — the merged phi result *is* that
+/// single owner. Exactly one arm runs on any path, untaken arms never allocate
+/// their value, so exactly one of those +1s is live and the phi selects it.
+/// Drop the per-arm entries and re-own the phi: the value moves through the
+/// join with no dup and no per-arm release, so `fn make(d) = match d { …
+/// Node{…} }` returns by transfer instead of retain-then-release.
+///
+/// The `mark` gate is what makes this sound: an entry below it existed before
+/// the arms — the scrutinee, an outer temporary — and lives on EVERY path, so
+/// consuming it through the phi would leak it on the arms that yield something
+/// else. Borrows (parameters, field loads) were never registered and fail the
+/// gate, keeping the caller's dup/drop. Pure ledger bookkeeping: it emits no
+/// code, and the dup/drop calls it repositions are no-ops off ARC — the one IR
+/// still serves every backend. [GC-ARC-PERCEUS]
+pub(crate) fn move_phi_owners(cg: &mut Codegen, incoming: &[String], out: &Value, mark: usize) {
+    if !managed(cg, out) {
+        return;
+    }
+    let consumable = |e: &Entry| e.name.is_none() && incoming.contains(&e.operand);
+    let all_fresh = cg.arc.frames.last().is_some_and(|f| {
+        incoming.iter().all(|op| {
+            f.iter()
+                .skip(mark)
+                .any(|e| e.operand == *op && e.name.is_none())
+        })
+    });
+    if !all_fresh {
+        return;
+    }
+    if let Some(f) = cg.arc.frames.last_mut() {
+        let tail = f.split_off(mark.min(f.len()));
+        f.extend(tail.into_iter().filter(|e| !consumable(e)));
+    }
+    own(cg, out);
+}
+
 /// Open a region: statement, loop body.
 pub(crate) fn push_frame(cg: &mut Codegen) {
     cg.arc.frames.push(Vec::new());
@@ -147,6 +245,19 @@ pub(crate) fn push_frame(cg: &mut Codegen) {
 pub(crate) fn pop_frame(cg: &mut Codegen) {
     if let Some(frame) = cg.arc.frames.pop() {
         release_entries(cg, &frame);
+    }
+}
+
+/// Drop the innermost region's owners on an edge that LEAVES the region early,
+/// without closing it — a `filter` rejecting an element branches straight to
+/// the loop increment, past the fall-through region close, so the values the
+/// map stages produced this iteration would otherwise be abandoned. Safe to
+/// pair with the fall-through drop of the same entries: `release_entries`
+/// re-nulls each slot and `osp_release(null)` is a no-op. [GC-ARC-PERCEUS]
+pub(crate) fn drop_frame_inline(cg: &mut Codegen) {
+    if let Some(frame) = cg.arc.frames.pop() {
+        release_entries(cg, &frame);
+        cg.arc.frames.push(frame);
     }
 }
 
@@ -166,7 +277,7 @@ fn release_entries(cg: &mut Codegen, entries: &[Entry]) {
 /// borrow (field load, unwrap payload, alias, phi of arm-owned values) is
 /// retained so the binding survives its source. Non-candidates are untouched.
 pub(crate) fn bind_owned(cg: &mut Codegen, name: &str, v: &Value) {
-    if !managed(v) {
+    if !managed(cg, v) {
         return;
     }
     if let Some(mut e) = take_entry(cg, &v.operand) {
@@ -187,6 +298,23 @@ pub(crate) fn bind_owned(cg: &mut Codegen, name: &str, v: &Value) {
             pure_scalar: false,
         },
     );
+}
+
+/// Drop the ledger entry for `v` from whichever open region holds it, so the
+/// epilogue neither dups nor drops it. Returns false when `v` is a borrow (a
+/// parameter, a field load, a phi) the function never owned — the caller then
+/// falls back to dup-on-return.
+fn take_owner_anywhere(cg: &mut Codegen, v: &Value) -> bool {
+    if !managed(cg, v) {
+        return false;
+    }
+    for frame in &mut cg.arc.frames {
+        if let Some(at) = frame.iter().rposition(|e| e.operand == v.operand) {
+            let _ = frame.remove(at);
+            return true;
+        }
+    }
+    false
 }
 
 /// Remove and return the innermost-frame entry registered under `operand`.
@@ -215,7 +343,7 @@ pub(crate) fn release_operand(cg: &mut Codegen, operand: &str) {
 
 /// Emit `osp_retain` on a candidate value (dup).
 pub(crate) fn retain_val(cg: &mut Codegen, v: &Value) {
-    if !managed(v) {
+    if !managed(cg, v) {
         return;
     }
     let ptr = as_i8ptr(cg, v);
@@ -243,7 +371,11 @@ pub(crate) fn dup_store(cg: &mut Codegen, slot_ty: &str, operand: &str) {
 /// retain-before-release order keeps the returned value's count positive
 /// throughout. [GC-ARC-PERCEUS]
 pub(crate) fn epilogue(cg: &mut Codegen, ret: Option<&Value>) {
-    if let Some(v) = ret {
+    // Perceus return transfer (TR Fig. 6): when the returned value is itself
+    // one of this function's owners, MOVE it out of the ledger rather than
+    // dup-it-then-drop-it — the +1 the caller receives is the one the function
+    // already holds. Saves a retain/release pair on every value-returning call.
+    if let Some(v) = ret.filter(|v| !take_owner_anywhere(cg, v)) {
         retain_val(cg, v);
     }
     let frames = std::mem::take(&mut cg.arc.frames);

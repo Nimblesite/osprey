@@ -29,9 +29,9 @@ pub(crate) fn gen(
     let v = match name {
         "List" => list_empty(cg),
         "listLength" => one_list_i64(cg, "osprey_list_length", args)?,
-        "listAppend" => list_box2(cg, "osprey_list_append", args)?,
-        "listPrepend" => list_box2(cg, "osprey_list_prepend", args)?,
-        "listDrop" => list_box2(cg, "osprey_list_drop", args)?,
+        "listAppend" => list_insert(cg, "osprey_list_append_of", args)?,
+        "listPrepend" => list_insert(cg, "osprey_list_prepend_of", args)?,
+        "listDrop" => list_drop(cg, args)?,
         "listConcat" => binary_handle_op(cg, args, "osprey_list_concat", LIST_OWNER)?,
         "listReverse" => one_list_handle(cg, "osprey_list_reverse", args)?,
         "listGet" => list_get(cg, args)?,
@@ -74,14 +74,28 @@ fn boxed_arg(cg: &mut Codegen, args: &[Expr], i: usize) -> Result<Value> {
     Ok(box_to_i64(cg, v))
 }
 
-/// [`boxed_arg`] for an element/key the container will STORE: a persistent
-/// container holds a new reference, so dup managed values before the pointer
-/// is erased into the `i64` ABI (containers never release their elements —
-/// the leak-safe M4 posture) [GC-ARC-PERCEUS].
-fn stored_boxed_arg(cg: &mut Codegen, args: &[Expr], i: usize) -> Result<Value> {
+/// The runtime's element-kind flag for a value about to be stored: `"1"` when
+/// its inferred type is a managed pointer, `"0"` for a scalar. The container
+/// records it and walks exactly the slots it names when it dies — releasing a
+/// type-blind `i64` that happened to collide with a live heap address would be
+/// a use-after-free. Keyed on the same static type the dup below is.
+pub(crate) fn managed_flag(v: &Value) -> &'static str {
+    if matches!(v.ty, LType::Str | LType::Ptr) {
+        "1"
+    } else {
+        "0"
+    }
+}
+
+/// [`boxed_arg`] for an element/key the container will STORE, paired with its
+/// [`managed_flag`]. Insertion TRANSFERS the reference, so dup managed values
+/// here — before the pointer is erased into the `i64` element ABI and the
+/// region drop can reclaim them [GC-ARC-PERCEUS].
+fn stored_boxed_arg(cg: &mut Codegen, args: &[Expr], i: usize) -> Result<(Value, &'static str)> {
     let v = unboxed_arg(cg, args, i)?;
+    let flag = managed_flag(&v);
     crate::arc::escape_retain(cg, &v);
-    Ok(box_to_i64(cg, v))
+    Ok((box_to_i64(cg, v), flag))
 }
 
 /// Own a fresh runtime container handle: every `osprey_list_*`/`osprey_map_*`
@@ -117,13 +131,31 @@ fn one_list_handle(cg: &mut Codegen, cname: &str, args: &[Expr]) -> Result<Value
     Ok(own_handle(cg, Value::handle(r, LIST_OWNER)))
 }
 
-/// `f(handle, boxed) -> handle` (append / prepend / drop). The second
-/// argument is stored by append/prepend (drop's count is an int — the
-/// managed-gated dup skips it).
-fn list_box2(cg: &mut Codegen, cname: &str, args: &[Expr]) -> Result<Value> {
+/// `f(handle, element, elem_managed) -> handle` — `listAppend` / `listPrepend`.
+/// The element is STORED, so it is dup'd and the new list records its kind.
+fn list_insert(cg: &mut Codegen, cname: &str, args: &[Expr]) -> Result<Value> {
     let h = handle_arg(cg, args, 0)?;
-    let x = stored_boxed_arg(cg, args, 1)?;
-    let r = cg.call("i8*", cname, "i8*, i64", &[&h.operand, &x.operand]);
+    let (x, managed) = stored_boxed_arg(cg, args, 1)?;
+    let r = cg.call(
+        "i8*",
+        cname,
+        "i8*, i64, i32",
+        &[&h.operand, &x.operand, managed],
+    );
+    Ok(own_handle(cg, Value::handle(r, LIST_OWNER)))
+}
+
+/// `listDrop(l, n) -> handle`. `n` is a count, never stored: no dup, and the
+/// view inherits `l`'s element kind.
+fn list_drop(cg: &mut Codegen, args: &[Expr]) -> Result<Value> {
+    let h = handle_arg(cg, args, 0)?;
+    let n = boxed_arg(cg, args, 1)?;
+    let r = cg.call(
+        "i8*",
+        "osprey_list_drop",
+        "i8*, i64",
+        &[&h.operand, &n.operand],
+    );
     Ok(own_handle(cg, Value::handle(r, LIST_OWNER)))
 }
 
@@ -206,16 +238,18 @@ fn list_contains(cg: &mut Codegen, args: &[Expr]) -> Result<Value> {
     Ok(Value::new(out, LType::I1))
 }
 
-/// `mapSet(m, k, v) -> Map`.
+/// `mapSet(m, k, v) -> Map`. Both key and value are STORED; the key's kind is
+/// already carried by the map's `OspreyKeyType`, so only the value's flag
+/// crosses.
 fn map_set(cg: &mut Codegen, args: &[Expr]) -> Result<Value> {
     let m = handle_arg(cg, args, 0)?;
-    let k = stored_boxed_arg(cg, args, 1)?;
-    let v = stored_boxed_arg(cg, args, 2)?;
+    let (k, _) = stored_boxed_arg(cg, args, 1)?;
+    let (v, managed) = stored_boxed_arg(cg, args, 2)?;
     let r = cg.call(
         "i8*",
-        "osprey_map_set",
-        "i8*, i64, i64",
-        &[&m.operand, &k.operand, &v.operand],
+        "osprey_map_set_of",
+        "i8*, i64, i64, i32",
+        &[&m.operand, &k.operand, &v.operand, managed],
     );
     Ok(own_handle(cg, Value::handle(r, MAP_OWNER)))
 }
@@ -266,8 +300,31 @@ pub(crate) fn list_builder_new(cg: &mut Codegen) -> String {
     cg.call("i8*", "osprey_list_builder_new", "", &[])
 }
 
-pub(crate) fn list_builder_push(cg: &mut Codegen, bld: &str, elem: &str) {
-    cg.call_void("osprey_list_builder_push", "i8*, i64", &[bld, elem]);
+/// A builder whose element kind is known up front — `managed` is either a
+/// literal `"0"`/`"1"` or a register holding a source container's flag.
+pub(crate) fn list_builder_new_of(cg: &mut Codegen, managed: &str) -> String {
+    cg.call("i8*", "osprey_list_builder_new_of", "i32", &[managed])
+}
+
+/// Push an element the builder TAKES OVER (the caller already dup'd it),
+/// latching the builder's element kind.
+pub(crate) fn list_builder_push(cg: &mut Codegen, bld: &str, elem: &str, managed: &str) {
+    cg.call_void(
+        "osprey_list_builder_push_of",
+        "i8*, i64, i32",
+        &[bld, elem, managed],
+    );
+}
+
+/// Push an element BORROWED out of another container. The runtime dups it per
+/// the builder's own element kind — a conditional the flag only knows at run
+/// time when it came from a source handle. [GC-ARC-PERCEUS]
+pub(crate) fn list_builder_push_borrowed(cg: &mut Codegen, bld: &str, elem: &str) {
+    cg.call_void(
+        "osprey_list_builder_push_borrowed",
+        "i8*, i64",
+        &[bld, elem],
+    );
 }
 
 pub(crate) fn list_builder_seal(cg: &mut Codegen, bld: &str) -> Value {
@@ -281,7 +338,17 @@ pub(crate) fn list_builder_seal(cg: &mut Codegen, bld: &str) -> Value {
 /// `mapKeys`/`mapValues` → a `List` built by iterating the map.
 fn map_to_list(cg: &mut Codegen, args: &[Expr], take_key: bool) -> Result<Value> {
     let m = handle_arg(cg, args, 0)?;
-    let bld = list_builder_new(cg);
+    // The produced list OWNS its elements while the map still holds its own,
+    // so the builder inherits the map's element kind and dups every entry it
+    // copies out — without that the temporary list's death would free the
+    // map's keys/values [GC-ARC-PERCEUS].
+    let kind = if take_key {
+        "osprey_map_key_managed"
+    } else {
+        "osprey_map_value_managed"
+    };
+    let managed = cg.call("i32", kind, "i8*", &[&m.operand]);
+    let bld = list_builder_new_of(cg, &managed);
     let iter = cg.call("i8*", "osprey_map_iter_new", "i8*", &[&m.operand]);
     let kp = cg.fresh_reg();
     cg.emit(format!("{kp} = alloca i64"));
@@ -308,10 +375,13 @@ fn map_to_list(cg: &mut Codegen, args: &[Expr], take_key: bool) -> Result<Value>
     let slot = if take_key { &kp } else { &vp };
     let elem = cg.fresh_reg();
     cg.emit(format!("{elem} = load i64, i64* {slot}"));
-    list_builder_push(cg, &bld, &elem);
+    list_builder_push_borrowed(cg, &bld, &elem);
     cg.emit(format!("br label %{cond}"));
 
     cg.start_block(&endl);
+    // The cursor borrows the map and is dead once the walk ends; without this
+    // every mapKeys/mapValues call leaks one OspreyMapIter on every backend.
+    cg.call_void("osprey_map_iter_free", "i8*", &[&iter]);
     Ok(list_builder_seal(cg, &bld))
 }
 
@@ -322,18 +392,20 @@ pub(crate) fn gen_map_literal(cg: &mut Codegen, entries: &[osprey_ast::MapEntry]
     for e in entries {
         let k = gen_expr(cg, &e.key)?;
         let k = crate::result::unwrap(cg, k);
-        // The map stores both key and value: dup before the i64 erasure
+        // The map stores both key and value: dup before the i64 erasure, and
+        // hand the value's kind over so the sealed map walks it on death
         // (see stored_boxed_arg) [GC-ARC-PERCEUS].
         crate::arc::escape_retain(cg, &k);
         let k = box_to_i64(cg, k);
         let v = gen_expr(cg, &e.value)?;
         let v = crate::result::unwrap(cg, v);
+        let managed = managed_flag(&v);
         crate::arc::escape_retain(cg, &v);
         let v = box_to_i64(cg, v);
         cg.call_void(
-            "osprey_map_builder_put",
-            "i8*, i64, i64",
-            &[&bld, &k.operand, &v.operand],
+            "osprey_map_builder_put_of",
+            "i8*, i64, i64, i32",
+            &[&bld, &k.operand, &v.operand, managed],
         );
     }
     let sealed = cg.call("i8*", "osprey_map_builder_seal", "i8*", &[&bld]);

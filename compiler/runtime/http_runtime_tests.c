@@ -28,7 +28,7 @@ extern int64_t websocket_server_send(int64_t server_id, int64_t connection_id,
 extern int64_t websocket_server_broadcast(int64_t server_id, char *message);
 extern int64_t websocket_stop_server(int64_t server_id);
 
-void test_http_create_client() {
+void test_http_create_client(void) {
   printf("Testing http_create_client...\n");
 
   // Test valid client creation
@@ -51,7 +51,7 @@ void test_http_create_client() {
   printf("✅ http_create_client tests passed!\n\n");
 }
 
-void test_http_create_server() {
+void test_http_create_server(void) {
   printf("Testing http_create_server...\n");
 
   // Test valid server creation
@@ -74,7 +74,7 @@ void test_http_create_server() {
   printf("✅ http_create_server tests passed!\n\n");
 }
 
-void test_http_server_lifecycle() {
+void test_http_server_lifecycle(void) {
   printf("Testing HTTP server lifecycle...\n");
 
   // Create server
@@ -95,7 +95,7 @@ void test_http_server_lifecycle() {
   printf("✅ HTTP server lifecycle tests passed!\n\n");
 }
 
-void test_url_parsing() {
+void test_url_parsing(void) {
   printf("Testing URL parsing...\n");
 
   char *host;
@@ -136,7 +136,7 @@ void test_url_parsing() {
   printf("✅ URL parsing tests passed!\n\n");
 }
 
-void test_http_method_strings() {
+void test_http_method_strings(void) {
   printf("Testing HTTP method strings...\n");
 
   assert(strcmp(http_method_to_string(HTTP_GET), "GET") == 0);
@@ -148,7 +148,7 @@ void test_http_method_strings() {
   printf("✅ HTTP method tests passed!\n\n");
 }
 
-void test_http_client_request_mock() {
+void test_http_client_request_mock(void) {
   printf("Testing HTTP client request (mock)...\n");
 
   // Create client
@@ -165,7 +165,7 @@ void test_http_client_request_mock() {
   printf("✅ HTTP client request test passed (mock)!\n\n");
 }
 
-void test_websocket_create_server() {
+void test_websocket_create_server(void) {
   printf("Testing websocket_create_server...\n");
 
   // Test valid WebSocket server creation
@@ -188,7 +188,7 @@ void test_websocket_create_server() {
   printf("✅ websocket_create_server tests passed!\n\n");
 }
 
-void test_websocket_client() {
+void test_websocket_client(void) {
   printf("Testing WebSocket client functions...\n");
 
   // Test WebSocket connection creation (will fail without server, but tests
@@ -213,7 +213,7 @@ void test_websocket_client() {
   printf("✅ WebSocket client tests completed!\n\n");
 }
 
-void run_all_http_tests() {
+void run_all_http_tests(void) {
   printf("🧪 Starting HTTP Runtime Test Suite\n");
   printf("=====================================\n\n");
 
@@ -248,7 +248,7 @@ void run_all_http_tests() {
   printf("  - websocketClose(wsID: Int) -> Int\n");
 }
 
-int main() {
+int main(void) {
   run_all_http_tests();
   return 0;
 }

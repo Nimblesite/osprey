@@ -2,7 +2,7 @@
 layout: page
 title: "WebAssembly Target"
 description: "Osprey Language Specification: WebAssembly Target"
-date: 2026-07-15
+date: 2026-07-21
 tags: ["specification", "reference", "documentation"]
 author: "Christian Findlay"
 permalink: "/spec/0022-webassemblytarget/"

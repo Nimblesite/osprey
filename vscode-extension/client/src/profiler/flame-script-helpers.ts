@@ -25,7 +25,8 @@ export function fitLabelText(
   while (keep > 2) {
     keep -= Math.max(1, Math.ceil(keep * 0.15));
     const half = Math.floor(keep / 2);
-    const candidate = name.slice(0, half) + "…" + name.slice(name.length - (keep - half));
+    const candidate =
+      name.slice(0, half) + "…" + name.slice(name.length - (keep - half));
     if (measure(candidate) <= avail) {
       out = candidate;
       break;

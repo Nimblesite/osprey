@@ -2,7 +2,7 @@
 layout: page
 title: "Boolean Operations"
 description: "Osprey Language Specification: Boolean Operations"
-date: 2026-07-15
+date: 2026-07-21
 tags: ["specification", "reference", "documentation"]
 author: "Christian Findlay"
 permalink: "/spec/0009-booleanoperations/"

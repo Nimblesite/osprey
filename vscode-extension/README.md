@@ -28,7 +28,7 @@ direction. Mainstream developers get a surface that reads like the languages
 they already know; FP devotees get real layout and real currying. Pick your
 tribe and go all in — nobody is forced into the other camp's spelling.
 
-Select the flavor *per file* (the `.ospml` extension, a leading
+Select the flavor _per file_ (the `.ospml` extension, a leading
 `// osprey: flavor=ml` marker, or the `--flavor ml` CLI flag — all shipping
 today). Because both flavors lower to the same canonical AST before any type
 checking, the design lets a `.osp` file and a `.ospml` file live in one folder

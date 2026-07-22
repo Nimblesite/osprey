@@ -28,7 +28,11 @@
 // memory_gc.c discipline — sound across fiber pthreads, slow but conforming.
 // The non-atomic fast path keyed on [MEM-FIBER-ISOLATION] is milestone M5.
 
+#include "memory_hooks.h"
+#include "memory_pool.h"
+
 #include <pthread.h>
+#include <stdatomic.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -44,14 +48,8 @@ typedef struct {
 
 #define OSP_ARC_HDR ((size_t)sizeof(OspArcHdr))
 
-// Layout-word kinds (low 8 bits of meta) — must match osprey-codegen's
-// emission (plan 0011 phase 2, Amendment 1).
-enum {
-  OSP_ARC_RAW = 0,             // opaque bytes: no children
-  OSP_ARC_MASK = 1,            // children at the masked word offsets
-  OSP_ARC_LIST_HDR_PTR = 2,    // { i64 len, i8* data }: release data[0..len), then data
-  OSP_ARC_LIST_HDR_SCALAR = 3, // { i64 len, i8* data }: release data only
-};
+// Layout-word kinds live in memory_hooks.h — the one place codegen
+// (crates/osprey-codegen/src/meta.rs) and every C runtime unit agree.
 
 #define OSP_ARC_KIND(meta) ((int)((meta) & 0xFF))
 #define OSP_ARC_MASK_BITS(meta) (((uint64_t)(meta)) >> 8)
@@ -66,12 +64,60 @@ static OspArcHdr *arc_hdr(void *body) {
 #define OSP_ARC_TOMB ((uintptr_t)1)
 
 static pthread_mutex_t g_lock = PTHREAD_MUTEX_INITIALIZER;
+
+// Adaptive locking. The heap starts single-threaded, where the sole thread
+// already serializes every ARC op and the mutex is pure overhead — binarytrees
+// alone runs ~19.6M locked allocs, and pthread_mutex_* was ~17% of its wall.
+// osp_mem_notify_multithreaded() (memory_hooks.h) trips this flag from the
+// fiber runtime *before* the pthread_create that first lets a second thread
+// reach the heap. pthread_create is a full barrier, so that write
+// happens-before the child's first ARC op: no unlocked op can ever race a
+// locked one. The flag is monotonic (fibers never un-share the heap), and it
+// only ever transitions in a single-threaded context, so within one ARC op
+// arc_lock and arc_unlock always observe the same value.
+static atomic_int g_arc_mt = 0;
+
+static inline void arc_lock(void) {
+  if (atomic_load_explicit(&g_arc_mt, memory_order_acquire)) {
+    pthread_mutex_lock(&g_lock);
+  }
+}
+
+static inline void arc_unlock(void) {
+  if (atomic_load_explicit(&g_arc_mt, memory_order_acquire)) {
+    pthread_mutex_unlock(&g_lock);
+  }
+}
+
 static uintptr_t *g_tab = NULL; // body addresses; 0 = empty, 1 = tombstone
 static size_t g_cap = 0;
-static size_t g_used = 0; // live + tombstones (grow trigger)
-static size_t g_live = 0; // live objects (leak stats)
+static size_t g_used = 0;    // non-empty slots: live + pooled + tombstones (grow trigger)
+static size_t g_live = 0;    // live objects (leak stats)
+static size_t g_present = 0; // non-tombstone slots: live + pooled (table sizing)
 static size_t g_live_bytes = 0;
 static int g_debug_armed = 0;
+
+// Live-object accounting for the leak report [GC-ARC-PERCEUS], armed only by
+// OSPREY_ARC_DEBUG (arc_arm_debug). The two counters feed arc_report_leaks
+// alone, which runs only when that env registered the atexit hook — so an
+// unaudited run skips two hot global RMWs on every alloc and every free
+// (binarytrees churns ~16M objects: ~64M skipped). g_present is NOT gated: it
+// is load-bearing for table sizing (arc_target_cap) on every run.
+static int g_arc_track = 0;
+
+static inline void arc_live_inc(size_t bytes) {
+  if (g_arc_track) {
+    g_live++;
+    g_live_bytes += bytes;
+  }
+}
+
+static inline void arc_live_dec(size_t bytes) {
+  if (g_arc_track) {
+    g_live--;
+    g_live_bytes -= bytes;
+  }
+}
 
 static size_t arc_hash(uintptr_t body, size_t cap) {
   uint64_t h = (uint64_t)(body >> 3) * 0x9E3779B97F4A7C15ull;
@@ -101,9 +147,25 @@ static void arc_place(uintptr_t *tab, size_t cap, uintptr_t body) {
   tab[i] = body;
 }
 
-// Rebuild at double capacity (also compacts tombstones away).
+// The capacity the PRESENT set needs: the smallest power of two at or above the
+// floor that keeps the load factor under 1/4. Sizing off `g_present` (live +
+// pooled entries, i.e. every non-tombstone slot) rather than off the old
+// capacity is what makes churn-heavy programs (allocate, free, repeat) cheap:
+// their tombstones fill the table without growing the present set, so doubling
+// on every rebuild would track TOTAL allocations instead of resident ones —
+// 10M short-lived tree nodes cost a 128 MiB table instead of 256 KiB. Pooled
+// blocks keep their slots (recycling pool below), so they count toward present.
+static size_t arc_target_cap(void) {
+  size_t cap = OSP_ARC_INIT_CAP;
+  while (cap < g_present * 4 && cap < ((size_t)-1) / 2) {
+    cap *= 2;
+  }
+  return cap;
+}
+
+// Rebuild at the live-set capacity (also compacts tombstones away).
 static int arc_grow(void) {
-  size_t cap = g_cap ? g_cap * 2 : OSP_ARC_INIT_CAP;
+  size_t cap = arc_target_cap();
   uintptr_t *tab = (uintptr_t *)calloc(cap, sizeof(uintptr_t));
   if (!tab) {
     return 0;
@@ -116,7 +178,7 @@ static int arc_grow(void) {
   free(g_tab);
   g_tab = tab;
   g_cap = cap;
-  g_used = g_live;
+  g_used = g_present; // rebuild dropped every tombstone; only present slots remain
   return 1;
 }
 
@@ -128,28 +190,95 @@ static void arc_insert(uintptr_t body) {
   }
   arc_place(g_tab, g_cap, body);
   g_used++;
-  g_live++;
+  g_present++;
 }
 
 static void arc_remove(uintptr_t *slot) {
   *slot = OSP_ARC_TOMB;
-  g_live--;
+  g_present--;
 }
+
+// --- size-classed recycling pool ---------------------------------------------
+// The free-list mechanics live in memory_pool.h (shared with the tracing GC).
+// ARC's specialisation: a parked body KEEPS its registry slot (never
+// tombstoned) with an rc==0 sentinel the leak report skips, so a same-size
+// reuse pops the SAME address with no registry insert/remove/grow churn — the
+// surrounding logic in arc_alloc_locked / arc_free_or_recycle owns that; the
+// pool itself only threads the free-lists. Pooled slots count toward g_present,
+// never g_live. Oversized bodies, or pushes past the retention ceiling, fall
+// back to the malloc/free + registry-remove path (rare, large objects).
+static OspPool g_arc_pool; // cap_bytes 0 → OSP_POOL_DEFAULT_CAP_BYTES
 
 // --- leak accounting (OSPREY_ARC_DEBUG=1) --------------------------------------
 
+// Kinds RAW..MASK_DIRECT (memory_hooks.h) — one histogram bucket per kind.
+#define OSP_ARC_NKINDS 6
+
+// OSPREY_ARC_DEBUG=2 additionally dumps every survivor — kind, size, rc, and a
+// printable preview of its first bytes. That triple is what actually identifies
+// a leak: a 40-byte MASK is a list header, a 24-byte MASK a map header, a RAW
+// whose preview reads as text is a runtime-minted string. Triage tool, not a log.
+#define OSP_ARC_PREVIEW 24
+
+static void arc_dump_object(const void *body, const OspArcHdr *h) {
+  char preview[OSP_ARC_PREVIEW + 1];
+  size_t n = h->size < (uint32_t)OSP_ARC_PREVIEW ? h->size : OSP_ARC_PREVIEW;
+  const unsigned char *b = (const unsigned char *)body;
+  for (size_t i = 0; i < n; i++) {
+    preview[i] = (b[i] >= 0x20 && b[i] < 0x7f) ? (char)b[i] : '.';
+  }
+  preview[n] = '\0';
+  fprintf(stderr, "[osp-arc]     kind %d size %u rc %d |%s|\n",
+          OSP_ARC_KIND(h->meta), h->size, h->rc, preview);
+}
+
 static void arc_report_leaks(void) {
-  pthread_mutex_lock(&g_lock);
+  const char *level = getenv("OSPREY_ARC_DEBUG");
+  int dump = (level != NULL && level[0] >= '2');
+  arc_lock();
+  size_t count[OSP_ARC_NKINDS] = {0};
+  size_t bytes[OSP_ARC_NKINDS] = {0};
+  // Immortals (rc<0 — the empty-list singleton and friends) are excluded from
+  // the leak count on purpose: they are unreclaimable BY DESIGN, so counting
+  // them would put a permanent floor under the [GC-ARC-PERCEUS] "zero leaked
+  // language values" gate the differential harness reads off this line.
+  size_t immortal = 0;
+  for (size_t i = 0; i < g_cap; i++) {
+    if (g_tab[i] > OSP_ARC_TOMB) {
+      OspArcHdr *h = arc_hdr((void *)g_tab[i]);
+      int kind = OSP_ARC_KIND(h->meta);
+      int k = (kind >= 0 && kind < OSP_ARC_NKINDS) ? kind : 0;
+      if (h->rc == 0) {
+        continue; // parked on the recycling pool — resident, not leaked
+      }
+      if (h->rc < 0) {
+        immortal++;
+        continue;
+      }
+      count[k]++;
+      bytes[k] += h->size;
+      if (dump) {
+        arc_dump_object((const void *)g_tab[i], h);
+      }
+    }
+  }
   // stderr only: stdout must stay byte-identical under [MEM-BACKENDS].
-  fprintf(stderr, "[osp-arc] exit: %zu live objects, %zu KiB\n", g_live,
-          g_live_bytes / 1024);
-  pthread_mutex_unlock(&g_lock);
+  fprintf(stderr, "[osp-arc] exit: %zu live objects, %zu KiB (+%zu immortal)\n",
+          g_live - immortal, g_live_bytes / 1024, immortal);
+  for (int k = 0; k < OSP_ARC_NKINDS; k++) {
+    if (count[k]) {
+      fprintf(stderr, "[osp-arc]   kind %d: %zu objects, %zu bytes\n", k,
+              count[k], bytes[k]);
+    }
+  }
+  arc_unlock();
 }
 
 static void arc_arm_debug(void) {
   if (!g_debug_armed) {
     g_debug_armed = 1;
     if (getenv("OSPREY_ARC_DEBUG")) {
+      g_arc_track = 1; // gate the hot-path live counters on (arc_live_inc/dec)
       (void)atexit(arc_report_leaks);
     }
   }
@@ -157,27 +286,73 @@ static void arc_arm_debug(void) {
 
 // --- allocation ----------------------------------------------------------------
 
-// Header'd, registered allocation. Callers hold g_lock.
-static void *arc_alloc_locked(size_t size, int64_t meta) {
-  arc_arm_debug();
-  OspArcHdr *h = (OspArcHdr *)malloc(OSP_ARC_HDR + (size ? size : 1));
-  if (!h) {
-    return NULL;
-  }
+// The header records `size` in a uint32_t, so that is the hard per-object
+// ceiling. Rejecting above it does double duty: it keeps h->size EXACT (a
+// truncated size would make the drop walk read the wrong number of words and
+// g_live_bytes drift), and it makes `OSP_ARC_HDR + size` unable to wrap —
+// without the check, size = SIZE_MAX gives malloc(15), which SUCCEEDS and
+// returns a body sitting entirely outside the block.
+#define OSP_ARC_MAX_BODY ((size_t)UINT32_MAX)
+
+// A body the drop walk will READ as pointers must start zeroed: a field the
+// producer never stores would otherwise be walked as a garbage address. RAW
+// bodies are never walked, so they keep malloc's speed — and a caller that
+// PROVES it stores every masked word before the block can drop (`zero == 0`,
+// e.g. a constructor) skips the pre-zero too: ~12% of binarytrees was memset
+// re-zeroing recycled Node bodies the constructor overwrites in full.
+static void arc_init_body(void *body, int64_t meta, size_t size, int zero) {
+  OspArcHdr *h = arc_hdr(body);
   h->meta = meta;
   h->rc = 1;
   h->size = (uint32_t)size;
+  if (zero && OSP_ARC_KIND(meta) != OSP_MEM_RAW) {
+    memset(body, 0, size);
+  }
+  arc_live_inc(size);
+}
+
+// Header'd, registered allocation. Callers hold g_lock. Recycles a same-sized
+// pooled block when one is parked (no malloc, no registry insert); otherwise
+// mallocs the ROUNDED capacity so the block is reusable by any request in its
+// bucket, and registers it.
+static void *arc_alloc_locked(size_t size, int64_t meta, int zero) {
+  arc_arm_debug();
+  if (size > OSP_ARC_MAX_BODY) {
+    return NULL;
+  }
+  size_t cap = osp_pool_cap(size);
+  if (cap <= OSP_POOL_MAX_CAP) {
+    void *body = osp_pool_pop(&g_arc_pool, cap);
+    if (body) {
+      arc_init_body(body, meta, size, zero); // arc_live_inc: slot already present
+      return body;
+    }
+  }
+  OspArcHdr *h = (OspArcHdr *)malloc(OSP_ARC_HDR + cap);
+  if (!h) {
+    return NULL;
+  }
   void *body = (char *)h + OSP_ARC_HDR;
   arc_insert((uintptr_t)body);
-  g_live_bytes += size;
+  arc_init_body(body, meta, size, zero);
   return body;
 }
 
-static void arc_free_locked(uintptr_t *slot) {
-  void *body = (void *)*slot;
+// Reclaim a dead body: park it on the recycling pool (slot kept, O(1)) when it
+// fits, else remove it from the registry and hand the block back to libc. The
+// hot path (small nodes) never probes the registry — the worklist already holds
+// the body, and a pooled slot is left in place for the next same-sized alloc.
+static void arc_free_or_recycle(void *body) {
   OspArcHdr *h = arc_hdr(body);
-  g_live_bytes -= h->size;
-  arc_remove(slot);
+  arc_live_dec(h->size);
+  h->rc = 0; // pooled sentinel (leak report skips it); harmless if freed below
+  if (osp_pool_push(&g_arc_pool, body, osp_pool_cap(h->size))) {
+    return; // slot stays present; recycled in place for the next same-size alloc
+  }
+  uintptr_t *slot = arc_find((uintptr_t)body);
+  if (slot) {
+    arc_remove(slot); // g_present-- (g_live already decremented above)
+  }
   free(h);
 }
 
@@ -218,12 +393,43 @@ static void arc_drop_child(void *child) {
   }
 }
 
-static void arc_drop_masked(char *body, uint32_t size, uint64_t mask) {
+// MASK_DIRECT child drop: codegen proved every masked word of the parent is
+// NULL or an ARC body (a declared-union value can only come from a
+// constructor, and constructor blocks always allocate through
+// osp_alloc_tagged), so the registry probe above — which dominated
+// deep-structure drops at ~52% of binarytrees' CPU — collapses to a direct
+// header read. NULL (a zeroed never-stored slot) and immortals stay no-ops.
+static void arc_drop_child_direct(void *child) {
+  if (!child) {
+    return;
+  }
+  OspArcHdr *h = arc_hdr(child);
+  if (h->rc < 0) {
+    return;
+  }
+  if (--h->rc == 0) {
+    arc_wl_push((uintptr_t)child);
+  }
+}
+
+// Bodies are 16-byte aligned (16-byte header + malloc's 16-byte guarantee), so
+// every 8-byte word is aligned and a pointer field is a direct load. memcpy of
+// 8 bytes is worse than it looks: -D_FORTIFY_SOURCE routes it through
+// __memcpy_chk, which never inlines and tails into _platform_memmove — ~7% of
+// binarytrees wall was spent copying one pointer at a time in the drop walk.
+static inline void *arc_load_child(const char *at) {
+  return *(void *const *)(const void *)at;
+}
+
+static void arc_drop_masked(char *body, uint32_t size, uint64_t mask, int direct) {
   for (unsigned i = 0; mask != 0 && (size_t)(i + 1) * 8 <= size; i++, mask >>= 1) {
     if (mask & 1) {
-      void *child;
-      memcpy(&child, body + (size_t)i * 8, sizeof(child));
-      arc_drop_child(child);
+      void *child = arc_load_child(body + (size_t)i * 8);
+      if (direct) {
+        arc_drop_child_direct(child);
+      } else {
+        arc_drop_child(child);
+      }
     }
   }
 }
@@ -234,37 +440,47 @@ static void arc_drop_list_hdr(char *body, uint32_t size, int elems_are_ptrs) {
     return;
   }
   int64_t len;
-  char *data;
   memcpy(&len, body, sizeof(len));
-  memcpy(&data, body + 8, sizeof(data));
+  char *data = (char *)arc_load_child(body + 8);
   if (data && elems_are_ptrs) {
     for (int64_t j = 0; j < len; j++) {
-      void *elem;
-      memcpy(&elem, data + (size_t)j * 8, sizeof(elem));
-      arc_drop_child(elem);
+      arc_drop_child(arc_load_child(data + (size_t)j * 8));
     }
   }
   arc_drop_child(data);
 }
 
-// Free `slot`'s object and everything transitively released by it. Holds g_lock.
-static void arc_release_zero_locked(uintptr_t *slot) {
+// A flat array of managed pointers whose length the header's `size` carries —
+// the out-of-line internals of the value containers (a HAMT node's `children`,
+// a trie node's slots). The mask cannot express these: it is 56 bits wide and a
+// collision array is unbounded. Zero words (allocation slack) probe-miss.
+static void arc_drop_ptr_array(char *body, uint32_t size) {
+  for (size_t off = 0; off + 8 <= size; off += 8) {
+    arc_drop_child(arc_load_child(body + off));
+  }
+}
+
+// Free `start`'s object and everything transitively released by it. Holds
+// g_lock. Bodies enter the worklist already confirmed managed (the initial
+// caller found the slot; arc_drop_child pushes only a slot it just matched and
+// decremented to zero), so no per-node re-probe is needed — the drop walk reads
+// the header directly and reclaims via arc_free_or_recycle.
+static void arc_release_zero_locked(uintptr_t start) {
   g_wl_top = 0;
-  arc_wl_push(*slot);
+  arc_wl_push(start);
   while (g_wl_top > 0) {
     uintptr_t body = g_wl[--g_wl_top];
-    uintptr_t *s = arc_find(body);
-    if (!s) {
-      continue;
-    }
     OspArcHdr *h = arc_hdr((void *)body);
     int kind = OSP_ARC_KIND(h->meta);
-    if (kind == OSP_ARC_MASK) {
-      arc_drop_masked((char *)body, h->size, OSP_ARC_MASK_BITS(h->meta));
-    } else if (kind == OSP_ARC_LIST_HDR_PTR || kind == OSP_ARC_LIST_HDR_SCALAR) {
-      arc_drop_list_hdr((char *)body, h->size, kind == OSP_ARC_LIST_HDR_PTR);
+    if (kind == OSP_MEM_MASK || kind == OSP_MEM_MASK_DIRECT) {
+      arc_drop_masked((char *)body, h->size, OSP_ARC_MASK_BITS(h->meta),
+                      kind == OSP_MEM_MASK_DIRECT);
+    } else if (kind == OSP_MEM_LIST_HDR_PTR || kind == OSP_MEM_LIST_HDR_SCALAR) {
+      arc_drop_list_hdr((char *)body, h->size, kind == OSP_MEM_LIST_HDR_PTR);
+    } else if (kind == OSP_MEM_PTR_ARRAY) {
+      arc_drop_ptr_array((char *)body, h->size);
     }
-    arc_free_locked(s);
+    arc_free_or_recycle((void *)body);
   }
 }
 
@@ -272,20 +488,29 @@ static void arc_release_zero_locked(uintptr_t *slot) {
 // Implements the [MEM-BACKENDS] C interface (docs/specs/0018 §Custom Managers).
 
 void *osp_alloc_tagged(int64_t size, int64_t meta) {
-  pthread_mutex_lock(&g_lock);
-  void *p = arc_alloc_locked(size > 0 ? (size_t)size : 0, meta);
-  pthread_mutex_unlock(&g_lock);
+  arc_lock();
+  void *p = arc_alloc_locked(size > 0 ? (size_t)size : 0, meta, 1);
+  arc_unlock();
   return p;
 }
 
-void *osp_alloc(int64_t size) { return osp_alloc_tagged(size, OSP_ARC_RAW); }
+// Fully-initialized-by-caller twin: skip the drop-safety pre-zero (see
+// arc_init_body). Every masked word MUST be stored before the block can drop.
+void *osp_alloc_tagged_noinit(int64_t size, int64_t meta) {
+  arc_lock();
+  void *p = arc_alloc_locked(size > 0 ? (size_t)size : 0, meta, 0);
+  arc_unlock();
+  return p;
+}
+
+void *osp_alloc(int64_t size) { return osp_alloc_tagged(size, OSP_MEM_RAW); }
 
 // dup — probe first: only live ARC objects with a non-negative rc count.
 void osp_retain(void *o) {
   if (!o) {
     return;
   }
-  pthread_mutex_lock(&g_lock);
+  arc_lock();
   uintptr_t *slot = arc_find((uintptr_t)o);
   if (slot) {
     OspArcHdr *h = arc_hdr((void *)*slot);
@@ -293,7 +518,7 @@ void osp_retain(void *o) {
       h->rc++;
     }
   }
-  pthread_mutex_unlock(&g_lock);
+  arc_unlock();
 }
 
 // drop — probe first; on rc==0 run the kind/mask worklist drop.
@@ -301,15 +526,15 @@ void osp_release(void *o) {
   if (!o) {
     return;
   }
-  pthread_mutex_lock(&g_lock);
+  arc_lock();
   uintptr_t *slot = arc_find((uintptr_t)o);
   if (slot) {
     OspArcHdr *h = arc_hdr((void *)*slot);
     if (h->rc > 0 && --h->rc == 0) {
-      arc_release_zero_locked(slot);
+      arc_release_zero_locked(*slot);
     }
   }
-  pthread_mutex_unlock(&g_lock);
+  arc_unlock();
 }
 
 // Codegen-proved-unique drop (memory_hooks.h): the caller proved rc == 1, so
@@ -322,6 +547,13 @@ void osp_release_unique(void *o) { osp_release(o); }
 // (Bacon/Cheng/Rajan; TR §2.2).
 void osp_collect(void) {}
 
+// Trip the adaptive lock (memory_hooks.h): the fiber runtime calls this before
+// the pthread_create that first lets a second thread reach the heap. Monotonic
+// and idempotent — once shared, the heap stays locked for the process.
+void osp_mem_notify_multithreaded(void) {
+  atomic_store_explicit(&g_arc_mt, 1, memory_order_release);
+}
+
 // Immortalize a shared C-runtime singleton (memory_hooks.h): rc < 0 makes
 // every later dup/drop skip it, so alias returns of e.g. the empty-list
 // singleton can never free it. Foreign pointers probe-miss (no-op).
@@ -329,12 +561,27 @@ void osp_mem_immortal(void *p) {
   if (!p) {
     return;
   }
-  pthread_mutex_lock(&g_lock);
+  arc_lock();
   uintptr_t *slot = arc_find((uintptr_t)p);
   if (slot) {
     arc_hdr((void *)*slot)->rc = -1;
   }
-  pthread_mutex_unlock(&g_lock);
+  arc_unlock();
+}
+
+// Stamp a shim-allocated object with its layout word (memory_hooks.h): the
+// value-container units allocate through the zeroing `calloc` redirect and tag
+// afterwards, which is what keeps a PTR_ARRAY walk over allocation slack safe.
+void osp_mem_set_layout(void *p, int64_t meta) {
+  if (!p) {
+    return;
+  }
+  arc_lock();
+  uintptr_t *slot = arc_find((uintptr_t)p);
+  if (slot) {
+    arc_hdr((void *)*slot)->meta = meta;
+  }
+  arc_unlock();
 }
 
 // --- allocation shim for the C runtime units (osp_arc_shim.h) ---------------------
@@ -344,9 +591,9 @@ void osp_mem_immortal(void *p) {
 // teaches the container ops their own dup/drop).
 
 void *osp_arc_malloc(size_t size) {
-  pthread_mutex_lock(&g_lock);
-  void *p = arc_alloc_locked(size, OSP_ARC_RAW);
-  pthread_mutex_unlock(&g_lock);
+  arc_lock();
+  void *p = arc_alloc_locked(size, OSP_MEM_RAW, 1);
+  arc_unlock();
   return p;
 }
 
@@ -363,20 +610,26 @@ void *osp_arc_calloc(size_t n, size_t size) {
 }
 
 // Manual free from C runtime code is authoritative: it drops the object
-// regardless of rc (the C units own their transients). Foreign pointers fall
-// through to libc free.
+// regardless of rc (the C units own their transients) and releases whatever its
+// layout word says it owns, so freeing a tagged transient can never strand its
+// children. Foreign pointers fall through to libc free.
 void osp_arc_free(void *p) {
   if (!p) {
     return;
   }
-  pthread_mutex_lock(&g_lock);
+  arc_lock();
   uintptr_t *slot = arc_find((uintptr_t)p);
   if (slot) {
-    arc_free_locked(slot);
-    pthread_mutex_unlock(&g_lock);
+    // Immortals (rc < 0 — the empty-list singleton and friends) are returned
+    // from many call sites by construction: "authoritative" does not extend to
+    // them, or the next caller reads freed memory.
+    if (arc_hdr((void *)*slot)->rc >= 0) {
+      arc_release_zero_locked(*slot);
+    }
+    arc_unlock();
     return;
   }
-  pthread_mutex_unlock(&g_lock);
+  arc_unlock();
   free(p);
 }
 
@@ -384,20 +637,32 @@ void *osp_arc_realloc(void *old, size_t size) {
   if (!old) {
     return osp_arc_malloc(size);
   }
-  pthread_mutex_lock(&g_lock);
+  arc_lock();
   uintptr_t *slot = arc_find((uintptr_t)old);
   size_t oldsize = slot ? arc_hdr((void *)*slot)->size : 0;
-  pthread_mutex_unlock(&g_lock);
+  int64_t oldmeta = slot ? arc_hdr((void *)*slot)->meta : (int64_t)OSP_MEM_RAW;
+  arc_unlock();
   if (!slot) {
     return realloc(old, size); // foreign block: libc owns it
   }
   void *p = osp_arc_malloc(size);
-  if (p && oldsize) {
+  if (!p) {
+    return NULL;
+  }
+  if (oldsize) {
     memcpy(p, old, oldsize < size ? oldsize : size);
   }
-  if (p) {
-    osp_arc_free(old);
+  // The copy ALIASES old's children, so ownership moves wholesale: the new
+  // block takes the layout word, and old's is stripped to RAW before it dies —
+  // otherwise its drop walk would decrement children the copy never dup'd.
+  osp_mem_set_layout(p, oldmeta);
+  arc_lock();
+  uintptr_t *dead = arc_find((uintptr_t)old);
+  if (dead) {
+    arc_hdr((void *)*dead)->meta = (int64_t)OSP_MEM_RAW;
   }
+  arc_unlock();
+  osp_arc_free(old);
   return p;
 }
 

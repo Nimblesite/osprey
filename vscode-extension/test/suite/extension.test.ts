@@ -48,9 +48,7 @@ async function startDebugRaced(
   const timeout = new Promise<string>((resolve) =>
     setTimeout(() => resolve("timeout"), budgetMs),
   );
-  const start = Promise.resolve(
-    vscode.debug.startDebugging(undefined, config),
-  )
+  const start = Promise.resolve(vscode.debug.startDebugging(undefined, config))
     .then((value) => `resolved:${String(value)}`)
     .catch((error: unknown) => `error:${String(error)}`);
   return Promise.race([start, timeout]);
@@ -1821,11 +1819,14 @@ suite("Osprey Activation Side-Effect Coverage", () => {
       "active editor language is osprey",
     );
 
-    const outcome = await startDebugRaced({
-      type: "",
-      name: "",
-      request: "",
-    } as unknown as vscode.DebugConfiguration, 4000);
+    const outcome = await startDebugRaced(
+      {
+        type: "",
+        name: "",
+        request: "",
+      } as unknown as vscode.DebugConfiguration,
+      4000,
+    );
     await settle(2500);
 
     assert.ok(typeof outcome === "string", "debug start settled to a string");
@@ -1844,11 +1845,14 @@ suite("Osprey Activation Side-Effect Coverage", () => {
     await vscode.commands.executeCommand("workbench.action.closeAllEditors");
     await settle(300);
 
-    const outcome = await startDebugRaced({
-      type: "osprey",
-      name: "Debug Osprey File",
-      request: "launch",
-    } as vscode.DebugConfiguration, 4000);
+    const outcome = await startDebugRaced(
+      {
+        type: "osprey",
+        name: "Debug Osprey File",
+        request: "launch",
+      } as vscode.DebugConfiguration,
+      4000,
+    );
     await settle(1500);
 
     assert.ok(typeof outcome === "string", "debug start settled to a string");

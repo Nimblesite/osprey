@@ -65,6 +65,24 @@ pub fn owner_name(ty: &Type) -> Option<String> {
     }
 }
 
+/// The type NAME a runtime value of `ty` provably carries as a heap
+/// constructor block, if any — the [`crate::meta::MetaField::PtrDirect`]
+/// proof obligation. The caller must still check the name against the
+/// declared-union table (and the extern-return poison set): only then is
+/// "every value of this type is a constructor-built ARC body or NULL" true.
+/// `Result<T, E>` auto-unwraps at value sites, so it proves whatever `T` does.
+pub fn proven_heap_name(ty: &Type) -> Option<&str> {
+    match ty {
+        // Result<T, E> auto-unwraps at value sites: it proves whatever T does.
+        Type::Con { name, args } if name == names::RESULT => {
+            args.first().and_then(proven_heap_name)
+        }
+        // A declared union or any other named constructor: the name IS the proof.
+        Type::Union { name, .. } | Type::Con { name, .. } => Some(name),
+        _ => None,
+    }
+}
+
 /// When `ty` is `Result<T, E>`, the inner success type `T` as an [`LType`].
 /// Used to carry the `{ T, i8 }*` Result block across call/return boundaries.
 pub fn result_inner(ty: &Type) -> Option<LType> {

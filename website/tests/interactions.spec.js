@@ -98,6 +98,50 @@ test.describe("desktop interactions", () => {
     await expect.poll(editorValue).toContain("fn account()");
   });
 
+  test("playground compiles ML flavor: Run posts flavor=ml so .ospml reaches the ML frontend", async ({
+    page,
+  }) => {
+    // No live compiler backend in the static E2E build, so intercept the API
+    // and assert the request the playground posts. The fix: selecting ML must
+    // send flavor="ml" with the offside-rule twin, so the backend writes
+    // main.ospml and the ML frontend parses it (a .osp file rejects it).
+    let runBody = null;
+    await page.route("**/api/run", async (route) => {
+      runBody = route.request().postDataJSON();
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          success: true,
+          programOutput: "🦅 OSPREY FEATURE TOUR\n",
+        }),
+      });
+    });
+
+    await page.goto("/playground/");
+    const editorValue = () =>
+      page.evaluate(() => window.monaco?.editor?.getModels?.()[0]?.getValue() ?? "");
+    await expect.poll(editorValue, { timeout: 20_000 }).toContain("fn account()");
+
+    // Select ML, then Run.
+    await page.locator("#flavor-ospml").click();
+    await expect.poll(editorValue).toContain("account () =");
+    await page.getByRole("button", { name: "Run", exact: true }).click();
+
+    // The posted request selects ML and carries the offside-rule source.
+    await expect.poll(() => runBody).not.toBeNull();
+    expect(runBody.flavor).toBe("ml");
+    expect(runBody.code).toContain("account () =");
+    expect(runBody.code).not.toContain("fn account()");
+
+    // Default flavor still posts flavor=default (regression guard).
+    await page.locator("#flavor-osp").click();
+    await expect.poll(editorValue).toContain("fn account()");
+    await page.getByRole("button", { name: "Run", exact: true }).click();
+    await expect.poll(() => runBody?.flavor).toBe("default");
+    expect(runBody.code).toContain("fn account()");
+  });
+
   test("real-world example code is not clipped", async ({ page }) => {
     await page.goto("/");
     const clips = await page.evaluate(() =>

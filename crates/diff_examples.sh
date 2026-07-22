@@ -20,6 +20,13 @@ done
 
 pass=0; fail=0; noexp=0; comperr=0
 typeset -a FAILED
+# ARC leak audit: with OSPREY_ARC_DEBUG=1 the Perceus backend prints
+# "[osp-arc] exit: N live objects" to stderr at exit (memory_arc.c). Counting
+# the examples that end with N>0 is the only automatic check for the
+# [GC-ARC-PERCEUS] "zero leaked language values" bar — stdout comparison alone
+# cannot see a leak (nor a premature free). Off unless the env var is set.
+arc_leaky=0
+typeset -a ARC_LEAKS
 for f in $(find $EXDIR \( -name '*.osp' -o -name '*.ospml' \) | sort); do
   rel=${f#$EXDIR/}
   [[ -n "$FILTER" && "$rel" != *"$FILTER"* ]] && continue
@@ -61,6 +68,10 @@ for f in $(find $EXDIR \( -name '*.osp' -o -name '*.ospml' \) | sort); do
   # [MEM-BACKENDS] oracle: output must stay byte-identical. No effect when unset.
   actual=$($BIN "$f" --run ${=OSPREY_RUN_FLAGS:-} 2>/tmp/osprey_rs_err.txt)
   rc=$?
+  live=$(sed -n 's/^\[osp-arc\] exit: \([0-9]*\) live objects.*/\1/p' /tmp/osprey_rs_err.txt | tail -1)
+  if [[ -n "$live" && "$live" != 0 ]]; then
+    arc_leaky=$((arc_leaky+1)); ARC_LEAKS+=("$rel ($live)")
+  fi
   expected_trim="${expected#"${expected%%[![:space:]]*}"}"; expected_trim="${expected_trim%"${expected_trim##*[![:space:]]}"}"
   actual_trim="${actual#"${actual%%[![:space:]]*}"}"; actual_trim="${actual_trim%"${actual_trim##*[![:space:]]}"}"
   if [[ "$actual_trim" == "$expected_trim" ]]; then
@@ -79,6 +90,10 @@ echo "================================"
 echo "PASS=$pass FAIL=$fail NOEXP=$noexp (of $((pass+fail+noexp)))"
 echo "FAILED:"
 for x in $FAILED; do echo "  $x"; done
+if [[ -n "${OSPREY_ARC_DEBUG:-}" ]]; then
+  echo "ARC_LEAKY=$arc_leaky (examples ending with live ARC objects)"
+  for x in $ARC_LEAKS; do echo "  leak: $x"; done
+fi
 
 # ---- must-REJECT suite: examples/failscompilation -------------------------
 # Every .ospo is an ill-formed program the language defines as a compile error.

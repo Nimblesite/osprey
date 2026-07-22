@@ -47,11 +47,17 @@ suite("flame-model parseSpeedscope", () => {
   });
 
   test("rejects invalid JSON, missing frames, and missing profiles", () => {
-    for (const bad of ["{nope", "{}", '{"shared":{"frames":[{"name":1}]},"profiles":[]}']) {
+    for (const bad of [
+      "{nope",
+      "{}",
+      '{"shared":{"frames":[{"name":1}]},"profiles":[]}',
+    ]) {
       const parsed = parseSpeedscope(bad);
       assert.ok(!parsed.ok, `expected rejection for ${bad}`);
     }
-    const noProfiles = parseSpeedscope('{"shared":{"frames":[]},"profiles":[]}');
+    const noProfiles = parseSpeedscope(
+      '{"shared":{"frames":[]},"profiles":[]}',
+    );
     assert.ok(!noProfiles.ok && noProfiles.error.includes("no profiles"));
   });
 
@@ -59,15 +65,23 @@ suite("flame-model parseSpeedscope", () => {
     const evented = { ...PROFILE, type: "evented" };
     const mismatch = { ...PROFILE, weights: [1] };
     const badIndex = { ...PROFILE, samples: [[99]], weights: [1] };
-    const noSamples = { ...PROFILE, samples: undefined as unknown as number[][] };
+    const noSamples = {
+      ...PROFILE,
+      samples: undefined as unknown as number[][],
+    };
     for (const [profile, needle] of [
       [evented, "unsupported type"],
       [mismatch, "weights"],
       [badIndex, "outside shared.frames"],
       [noSamples, "missing samples"],
     ] as const) {
-      const parsed = parseSpeedscope(JSON.stringify({ shared: { frames: FRAMES }, profiles: [profile] }));
-      assert.ok(!parsed.ok && parsed.error.includes(needle), `expected "${needle}"`);
+      const parsed = parseSpeedscope(
+        JSON.stringify({ shared: { frames: FRAMES }, profiles: [profile] }),
+      );
+      assert.ok(
+        !parsed.ok && parsed.error.includes(needle),
+        `expected "${needle}"`,
+      );
     }
   });
 });
@@ -77,28 +91,47 @@ suite("flame-model left-heavy layout", () => {
 
   test("merges samples and sorts siblings heaviest-first", () => {
     const roots = byDepth(rects, 0);
-    assert.deepStrictEqual(roots.map((r) => [r.frameIdx, r.x0, r.x1, r.selfWeight, r.totalWeight]), [
-      [0, 0, 0.9375, 2, 15],
-      [3, 0.9375, 1, 1, 1],
-    ]);
+    assert.deepStrictEqual(
+      roots.map((r) => [r.frameIdx, r.x0, r.x1, r.selfWeight, r.totalWeight]),
+      [
+        [0, 0, 0.9375, 2, 15],
+        [3, 0.9375, 1, 1, 1],
+      ],
+    );
   });
 
   test("children accumulate weight and nest under the merged parent", () => {
     const depth1 = byDepth(rects, 1);
-    assert.deepStrictEqual(depth1.map((r) => [r.frameIdx, r.x0, r.x1, r.selfWeight, r.totalWeight]), [
-      [1, 0, 0.5625, 7, 9],
-      [3, 0.5625, 0.8125, 4, 4],
-    ]);
-    assert.deepStrictEqual(byDepth(rects, 2).map((r) => [r.frameIdx, r.x0, r.x1]), [[2, 0, 0.125]]);
+    assert.deepStrictEqual(
+      depth1.map((r) => [r.frameIdx, r.x0, r.x1, r.selfWeight, r.totalWeight]),
+      [
+        [1, 0, 0.5625, 7, 9],
+        [3, 0.5625, 0.8125, 4, 4],
+      ],
+    );
+    assert.deepStrictEqual(
+      byDepth(rects, 2).map((r) => [r.frameIdx, r.x0, r.x1]),
+      [[2, 0, 0.125]],
+    );
   });
 
   test("equal-weight siblings tie-break by frame index (deterministic)", () => {
-    const tied: SpeedscopeProfile = { ...PROFILE, samples: [[1], [0]], weights: [1, 1] };
-    assert.deepStrictEqual(byDepth(leftHeavyRects(tied), 0).map((r) => r.frameIdx), [0, 1]);
+    const tied: SpeedscopeProfile = {
+      ...PROFILE,
+      samples: [[1], [0]],
+      weights: [1, 1],
+    };
+    assert.deepStrictEqual(
+      byDepth(leftHeavyRects(tied), 0).map((r) => r.frameIdx),
+      [0, 1],
+    );
   });
 
   test("zero total weight yields no rects", () => {
-    assert.deepStrictEqual(leftHeavyRects({ ...PROFILE, samples: [], weights: [] }), []);
+    assert.deepStrictEqual(
+      leftHeavyRects({ ...PROFILE, samples: [], weights: [] }),
+      [],
+    );
   });
 });
 
@@ -106,22 +139,46 @@ suite("flame-model time-order layout", () => {
   const rects = timeOrderRects(PROFILE);
 
   test("adjacent identical stacks merge into continuous slabs", () => {
-    assert.deepStrictEqual(byDepth(rects, 1).map((r) => [r.frameIdx, r.x0, r.x1, r.selfWeight, r.totalWeight]), [
-      [1, 0.125, 0.6875, 7, 9],
-      [3, 0.6875, 0.9375, 4, 4],
-    ]);
+    assert.deepStrictEqual(
+      byDepth(rects, 1).map((r) => [
+        r.frameIdx,
+        r.x0,
+        r.x1,
+        r.selfWeight,
+        r.totalWeight,
+      ]),
+      [
+        [1, 0.125, 0.6875, 7, 9],
+        [3, 0.6875, 0.9375, 4, 4],
+      ],
+    );
   });
 
   test("roots split where the bottom frame changes", () => {
-    assert.deepStrictEqual(byDepth(rects, 0).map((r) => [r.frameIdx, r.x0, r.x1, r.selfWeight, r.totalWeight]), [
-      [0, 0, 0.9375, 2, 15],
-      [3, 0.9375, 1, 1, 1],
-    ]);
-    assert.deepStrictEqual(byDepth(rects, 2).map((r) => [r.frameIdx, r.x0, r.x1]), [[2, 0.5625, 0.6875]]);
+    assert.deepStrictEqual(
+      byDepth(rects, 0).map((r) => [
+        r.frameIdx,
+        r.x0,
+        r.x1,
+        r.selfWeight,
+        r.totalWeight,
+      ]),
+      [
+        [0, 0, 0.9375, 2, 15],
+        [3, 0.9375, 1, 1, 1],
+      ],
+    );
+    assert.deepStrictEqual(
+      byDepth(rects, 2).map((r) => [r.frameIdx, r.x0, r.x1]),
+      [[2, 0.5625, 0.6875]],
+    );
   });
 
   test("empty profiles produce no rects", () => {
-    assert.deepStrictEqual(timeOrderRects({ ...PROFILE, samples: [], weights: [] }), []);
+    assert.deepStrictEqual(
+      timeOrderRects({ ...PROFILE, samples: [], weights: [] }),
+      [],
+    );
   });
 });
 
@@ -134,7 +191,11 @@ suite("flame-model frame stats", () => {
   });
 
   test("a recursive stack counts its frame once", () => {
-    const recursive: SpeedscopeProfile = { ...PROFILE, samples: [[1, 1]], weights: [2] };
+    const recursive: SpeedscopeProfile = {
+      ...PROFILE,
+      samples: [[1, 1]],
+      weights: [2],
+    };
     const stats = frameStats(recursive, FRAMES.length);
     assert.strictEqual(stats.total[1], 2);
     assert.strictEqual(stats.count[1], 1);
@@ -142,7 +203,10 @@ suite("flame-model frame stats", () => {
   });
 
   test("an empty stack contributes nothing", () => {
-    const stats = frameStats({ ...PROFILE, samples: [[]], weights: [5] }, FRAMES.length);
+    const stats = frameStats(
+      { ...PROFILE, samples: [[]], weights: [5] },
+      FRAMES.length,
+    );
     assert.deepStrictEqual(stats.total, [0, 0, 0, 0]);
   });
 });
@@ -159,7 +223,10 @@ suite("flame-model colors", () => {
   test("osprey sources get the hue ramp; runtime frames a gray-blue", () => {
     assert.ok(isOspreySource("/w/a.osp") && isOspreySource("/w/a.ospml"));
     assert.ok(!isOspreySource("/usr/lib/libc.dylib") && !isOspreySource(""));
-    assert.strictEqual(colorForRank("/usr/lib/libc.dylib", 0, 4), "hsl(215, 12%, 58.0%)");
+    assert.strictEqual(
+      colorForRank("/usr/lib/libc.dylib", 0, 4),
+      "hsl(215, 12%, 58.0%)",
+    );
     assert.ok(colorForRank("/w/a.osp", 1, 4).startsWith("hsl(80.0,"));
   });
 
@@ -171,8 +238,15 @@ suite("flame-model colors", () => {
     FRAMES.forEach((frame, i) => {
       assert.strictEqual(reversedColors[reversed.indexOf(frame)], colors[i]);
     });
-    assert.strictEqual(new Set(colors).size, colors.length, "all four frames distinct");
-    assert.ok(colors[2].startsWith("hsl(215, 12%"), "runtime frame is gray-blue");
+    assert.strictEqual(
+      new Set(colors).size,
+      colors.length,
+      "all four frames distinct",
+    );
+    assert.ok(
+      colors[2].startsWith("hsl(215, 12%"),
+      "runtime frame is gray-blue",
+    );
   });
 
   test("frames without a file rank as runtime", () => {

@@ -42,7 +42,8 @@ export interface LineHeat {
 /** Resolves a path to its symlink-free form; throws when it does not exist. */
 export type RealPathFn = (filePath: string) => string;
 
-const nativeRealPath: RealPathFn = (filePath) => fs.realpathSync.native(filePath);
+const nativeRealPath: RealPathFn = (filePath) =>
+  fs.realpathSync.native(filePath);
 
 /**
  * Canonical form of a file path for heat matching: normalized, symlinks
@@ -75,7 +76,11 @@ export function fileHeat(
   const target = canonical(file);
   return hotLines
     .filter((hot) => canonical(hot.file) === target)
-    .map((hot) => ({ line: hot.line, label: heatLabel(hot), color: heatColor(hot.pct) }));
+    .map((hot) => ({
+      line: hot.line,
+      label: heatLabel(hot),
+      color: heatColor(hot.pct),
+    }));
 }
 
 /** Group annotations by tier color (one decoration type per color). */
@@ -92,7 +97,10 @@ export function groupByColor(heats: LineHeat[]): Map<string, LineHeat[]> {
 /** All tier colors — every editor gets each type set (possibly to []). */
 export const HEAT_COLORS = [HEAT_HIGH, HEAT_WARM, HEAT_MILD, HEAT_MUTED];
 
-function decorationOption(heat: LineHeat, lineCount: number): vscode.DecorationOptions | undefined {
+function decorationOption(
+  heat: LineHeat,
+  lineCount: number,
+): vscode.DecorationOptions | undefined {
   const line = heat.line - 1;
   if (line < 0 || line >= lineCount) {
     return undefined;
@@ -104,7 +112,9 @@ function decorationOption(heat: LineHeat, lineCount: number): vscode.DecorationO
 }
 
 const readInlineHeatSetting = (): boolean =>
-  vscode.workspace.getConfiguration("osprey").get<boolean>("profiler.inlineHeat", true);
+  vscode.workspace
+    .getConfiguration("osprey")
+    .get<boolean>("profiler.inlineHeat", true);
 
 /**
  * Owns the decoration types and keeps visible editors annotated with the most
@@ -115,7 +125,9 @@ export class HeatDecorationManager {
   private readonly types = new Map<string, vscode.TextEditorDecorationType>();
   private summary: ProfileSummary | undefined;
 
-  public constructor(private readonly isEnabled: () => boolean = readInlineHeatSetting) {}
+  public constructor(
+    private readonly isEnabled: () => boolean = readInlineHeatSetting,
+  ) {}
 
   /** The active summary (for tests/inspection). */
   public current(): ProfileSummary | undefined {
@@ -123,13 +135,18 @@ export class HeatDecorationManager {
   }
 
   /** Adopt a new run's summary and annotate the visible editors. */
-  public apply(summary: ProfileSummary, editors?: readonly vscode.TextEditor[]): void {
+  public apply(
+    summary: ProfileSummary,
+    editors?: readonly vscode.TextEditor[],
+  ): void {
     this.summary = summary;
     this.refresh(editors);
   }
 
   /** Re-apply (or strip, when disabled/cleared) on the visible editors. */
-  public refresh(editors: readonly vscode.TextEditor[] = vscode.window.visibleTextEditors): void {
+  public refresh(
+    editors: readonly vscode.TextEditor[] = vscode.window.visibleTextEditors,
+  ): void {
     for (const editor of editors) {
       this.decorateEditor(editor);
     }
@@ -155,7 +172,9 @@ export class HeatDecorationManager {
     for (const color of HEAT_COLORS) {
       const options = (grouped.get(color) ?? [])
         .map((heat) => decorationOption(heat, editor.document.lineCount))
-        .filter((option): option is vscode.DecorationOptions => option !== undefined);
+        .filter(
+          (option): option is vscode.DecorationOptions => option !== undefined,
+        );
       editor.setDecorations(this.typeFor(color), options);
     }
   }

@@ -16,14 +16,17 @@ export interface FlameHtmlInput {
   summary: ProfileSummary;
 }
 
-const NONCE_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+const NONCE_ALPHABET =
+  "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
 const NONCE_LENGTH = 32;
 
 /** A fresh random nonce for the webview CSP. */
 export function makeNonce(): string {
   let nonce = "";
   for (let i = 0; i < NONCE_LENGTH; i += 1) {
-    nonce += NONCE_ALPHABET.charAt(Math.floor(Math.random() * NONCE_ALPHABET.length));
+    nonce += NONCE_ALPHABET.charAt(
+      Math.floor(Math.random() * NONCE_ALPHABET.length),
+    );
   }
   return nonce;
 }
@@ -61,7 +64,9 @@ function chipsHtml(summary: ProfileSummary): string {
 
 function fiberOptionsHtml(model: FlameModel): string {
   return model.fibers
-    .map((fiber, i) => `<option value="${i}">${escapeHtml(fiber.name)}</option>`)
+    .map(
+      (fiber, i) => `<option value="${i}">${escapeHtml(fiber.name)}</option>`,
+    )
     .join("");
 }
 

@@ -3,7 +3,10 @@ import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
 import * as vscode from "vscode";
-import { buildFlameModel, type SpeedscopeFile } from "../../client/src/profiler/flame-model";
+import {
+  buildFlameModel,
+  type SpeedscopeFile,
+} from "../../client/src/profiler/flame-model";
 import {
   handlePanelMessage,
   parseSelectMessage,
@@ -53,7 +56,11 @@ suite("profiler-panel parseSelectMessage", () => {
       { type: "select", line: 3 },
       { type: "select", file: "/w/fib.osp", line: "3" },
     ]) {
-      assert.strictEqual(parseSelectMessage(bad), undefined, `expected rejection: ${JSON.stringify(bad)}`);
+      assert.strictEqual(
+        parseSelectMessage(bad),
+        undefined,
+        `expected rejection: ${JSON.stringify(bad)}`,
+      );
     }
   });
 });
@@ -62,7 +69,9 @@ suite("profiler-panel revealSource", () => {
   let filePath: string;
 
   suiteSetup(async () => {
-    const dir = await fs.promises.mkdtemp(path.join(os.tmpdir(), "osprey-panel-"));
+    const dir = await fs.promises.mkdtemp(
+      path.join(os.tmpdir(), "osprey-panel-"),
+    );
     filePath = path.join(dir, "reveal.osp");
     await fs.promises.writeFile(filePath, "line one\nline two\nline three\n");
   });
@@ -73,21 +82,35 @@ suite("profiler-panel revealSource", () => {
 
   test("selects the 1-based line, clamped into the document", async () => {
     await revealSource({ type: "select", file: filePath, line: 2 });
-    assert.strictEqual(vscode.window.activeTextEditor?.selection.active.line, 1);
+    assert.strictEqual(
+      vscode.window.activeTextEditor?.selection.active.line,
+      1,
+    );
 
     await revealSource({ type: "select", file: filePath, line: 999 });
-    const lastLine = vscode.window.activeTextEditor?.selection.active.line ?? -1;
+    const lastLine =
+      vscode.window.activeTextEditor?.selection.active.line ?? -1;
     assert.ok(lastLine >= 2, "clamps to the document end");
 
     await revealSource({ type: "select", file: filePath, line: 0 });
-    assert.strictEqual(vscode.window.activeTextEditor?.selection.active.line, 0);
+    assert.strictEqual(
+      vscode.window.activeTextEditor?.selection.active.line,
+      0,
+    );
   });
 
   test("handlePanelMessage ignores junk and survives unopenable files", async () => {
     await handlePanelMessage({ type: "noise" });
-    await handlePanelMessage({ type: "select", file: "/definitely/not/here.osp", line: 1 });
+    await handlePanelMessage({
+      type: "select",
+      file: "/definitely/not/here.osp",
+      line: 1,
+    });
     await handlePanelMessage({ type: "select", file: filePath, line: 3 });
-    assert.strictEqual(vscode.window.activeTextEditor?.selection.active.line, 2);
+    assert.strictEqual(
+      vscode.window.activeTextEditor?.selection.active.line,
+      2,
+    );
   });
 });
 

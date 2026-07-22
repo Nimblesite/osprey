@@ -17,7 +17,10 @@ import {
 
 const stoppedSnapshot: DebugSnapshot = {
   state: "stopped",
-  program: { sourceProgram: "/work/app.osp", debugBinary: "/work/.osprey-debug/app" },
+  program: {
+    sourceProgram: "/work/app.osp",
+    debugBinary: "/work/.osprey-debug/app",
+  },
   frames: [
     { id: 1, name: "square", path: "/work/app.osp", line: 1, column: 4 },
     { id: 2, name: "main", path: "/work/app.osp", line: 3, column: 1 },
@@ -49,7 +52,10 @@ suite("debug-panel builders", () => {
     assert.strictEqual(empty[0].kind, "placeholder");
 
     const nodes = buildStackNodes(stoppedSnapshot.frames);
-    assert.deepStrictEqual(nodes.map((n) => n.label), ["square", "main"]);
+    assert.deepStrictEqual(
+      nodes.map((n) => n.label),
+      ["square", "main"],
+    );
     assert.strictEqual(nodes[0].description, "app.osp:1");
   });
 
@@ -67,7 +73,10 @@ suite("debug-panel builders", () => {
 
   test("profiling nodes reserve the CPU and memory surfaces", () => {
     const nodes = buildProfilingNodes();
-    assert.deepStrictEqual(nodes.map((n) => n.label), ["Performance Profiling", "Memory"]);
+    assert.deepStrictEqual(
+      nodes.map((n) => n.label),
+      ["Performance Profiling", "Memory"],
+    );
     assert.ok(nodes.every((n) => (n.children?.length ?? 0) > 0));
   });
 
@@ -104,9 +113,15 @@ suite("OspreyDebugTreeProvider", () => {
     assert.strictEqual(sections.length, 5);
     const stack = sections.find((n) => n.label === "Call Stack");
     assert.ok(stack);
-    assert.deepStrictEqual(provider.getChildren(stack).map((n) => n.label), ["square", "main"]);
+    assert.deepStrictEqual(
+      provider.getChildren(stack).map((n) => n.label),
+      ["square", "main"],
+    );
     // A leaf node has no children.
-    assert.deepStrictEqual(provider.getChildren({ kind: "info", label: "x" }), []);
+    assert.deepStrictEqual(
+      provider.getChildren({ kind: "info", label: "x" }),
+      [],
+    );
   });
 
   test("getTreeItem maps label, description, icon, contextValue and collapsibility", () => {
@@ -114,10 +129,17 @@ suite("OspreyDebugTreeProvider", () => {
     const section = buildTree(stoppedSnapshot)[0];
     const sectionItem = provider.getTreeItem(section);
     assert.strictEqual(sectionItem.label, "Program");
-    assert.strictEqual(sectionItem.collapsibleState, TreeItemCollapsibleState.Expanded);
+    assert.strictEqual(
+      sectionItem.collapsibleState,
+      TreeItemCollapsibleState.Expanded,
+    );
     assert.strictEqual(sectionItem.contextValue, "section");
 
-    const leaf = provider.getTreeItem({ kind: "info", label: "State", description: "Paused" });
+    const leaf = provider.getTreeItem({
+      kind: "info",
+      label: "State",
+      description: "Paused",
+    });
     assert.strictEqual(leaf.collapsibleState, TreeItemCollapsibleState.None);
     assert.strictEqual(leaf.description, "Paused");
   });
@@ -150,23 +172,38 @@ suite("readDebugSnapshot", () => {
   test("reads the stopped frame and its locals", async () => {
     const session = fakeSession({
       threads: { threads: [{ id: 1 }] },
-      stackTrace: { stackFrames: [{ id: 10, name: "square", path: "/a.osp", line: 1, column: 4 }] },
-      scopes: { scopes: [{ variablesReference: 100 }, { variablesReference: 0 }] },
+      stackTrace: {
+        stackFrames: [
+          { id: 10, name: "square", path: "/a.osp", line: 1, column: 4 },
+        ],
+      },
+      scopes: {
+        scopes: [{ variablesReference: 100 }, { variablesReference: 0 }],
+      },
       variables: { variables: [{ name: "n", value: "7", type: "int" }] },
     });
     const snapshot = await readDebugSnapshot(session, program);
     assert.strictEqual(snapshot.state, "stopped");
     assert.strictEqual(snapshot.frames[0].name, "square");
-    assert.deepStrictEqual(snapshot.topVariables.map((v) => v.name), ["n"]);
+    assert.deepStrictEqual(
+      snapshot.topVariables.map((v) => v.name),
+      ["n"],
+    );
     assert.strictEqual(snapshot.program, program);
   });
 
   test("reports running when no thread has a frame", async () => {
-    const noThreads = await readDebugSnapshot(fakeSession({ threads: { threads: [] } }), program);
+    const noThreads = await readDebugSnapshot(
+      fakeSession({ threads: { threads: [] } }),
+      program,
+    );
     assert.strictEqual(noThreads.state, "running");
 
     const emptyStack = await readDebugSnapshot(
-      fakeSession({ threads: { threads: [{ id: 1 }] }, stackTrace: { stackFrames: [] } }),
+      fakeSession({
+        threads: { threads: [{ id: 1 }] },
+        stackTrace: { stackFrames: [] },
+      }),
       program,
     );
     assert.strictEqual(emptyStack.state, "running");
@@ -186,7 +223,11 @@ suite("makePanelMessageHandler", () => {
     const provider = new OspreyDebugTreeProvider();
     const session = fakeSession({
       threads: { threads: [{ id: 1 }] },
-      stackTrace: { stackFrames: [{ id: 10, name: "main", path: "/a.osp", line: 3, column: 1 }] },
+      stackTrace: {
+        stackFrames: [
+          { id: 10, name: "main", path: "/a.osp", line: 3, column: 1 },
+        ],
+      },
       scopes: { scopes: [] },
       variables: { variables: [] },
     });
@@ -199,8 +240,17 @@ suite("makePanelMessageHandler", () => {
 
   test("a continued event marks the panel running", () => {
     const provider = new OspreyDebugTreeProvider();
-    provider.update({ state: "stopped", program, frames: [], topVariables: [] });
-    makePanelMessageHandler(fakeSession({}), provider, program)({
+    provider.update({
+      state: "stopped",
+      program,
+      frames: [],
+      topVariables: [],
+    });
+    makePanelMessageHandler(
+      fakeSession({}),
+      provider,
+      program,
+    )({
       type: "event",
       event: "continued",
     });
@@ -211,7 +261,11 @@ suite("makePanelMessageHandler", () => {
     const provider = new OspreyDebugTreeProvider();
     provider.update(EMPTY_SNAPSHOT);
     const recorder: string[] = [];
-    const handler = makePanelMessageHandler(fakeSession({}, recorder), provider, program);
+    const handler = makePanelMessageHandler(
+      fakeSession({}, recorder),
+      provider,
+      program,
+    );
     handler({ type: "response", event: "stopped" });
     handler({ type: "event", event: "initialized" });
     assert.strictEqual(provider.current().state, "inactive");

@@ -9,7 +9,7 @@
 // (ARC, tracing GC, arena, pool) replaces this object by linking its own
 // implementations of the same symbols.
 //
-// The full backend ABI (docs/plans/0011-arc-gc-implementation.md §C ABI):
+// The full backend ABI (docs/specs/0018-MemoryManagement.md [MEM-BACKENDS]):
 // `osp_alloc_tagged` carries a layout word (kind + pointer mask) that only the
 // ARC backend reads; `osp_retain`/`osp_release` are dup/drop hooks that only
 // the ARC backend acts on; `osp_collect` is a full-collection hook that only
@@ -33,6 +33,13 @@ void *osp_alloc_tagged(int64_t size, int64_t meta) {
   return malloc((size_t)size);
 }
 
+// Fully-initialized-by-caller twin (memory_hooks.h). This backend never
+// pre-zeroes, so it is identical to osp_alloc_tagged.
+void *osp_alloc_tagged_noinit(int64_t size, int64_t meta) {
+  (void)meta;
+  return malloc((size_t)size);
+}
+
 // dup/drop hooks — no-ops without a counting backend (Bacon/Cheng/Rajan
 // duality: under tracing or leak-everything, reference counts carry no work).
 void osp_retain(void *o) { (void)o; }
@@ -42,6 +49,13 @@ void osp_release(void *o) { (void)o; }
 void osp_release_unique(void *o) { (void)o; }
 // Singleton-immortality hook (memory_hooks.h) — meaningful only under ARC.
 void osp_mem_immortal(void *p) { (void)p; }
+// Multithreaded-heap trip (memory_hooks.h) — this backend never locks the heap.
+void osp_mem_notify_multithreaded(void) {}
+// Layout-word stamp (memory_hooks.h) — meaningful only under ARC.
+void osp_mem_set_layout(void *p, int64_t meta) {
+  (void)p;
+  (void)meta;
+}
 
 // Full-collection hook — nothing to collect in a passthrough backend.
 void osp_collect(void) {}

@@ -65,7 +65,14 @@ test("doubles", fn() => {
 `;
 
 export interface SinkEvent {
-  kind: "enqueued" | "started" | "passed" | "failed" | "errored" | "skipped" | "end";
+  kind:
+    | "enqueued"
+    | "started"
+    | "passed"
+    | "failed"
+    | "errored"
+    | "skipped"
+    | "end";
   id?: string;
   message?: string;
 }
@@ -73,8 +80,12 @@ export interface SinkEvent {
 type SinkMessage = vscode.TestMessage | readonly vscode.TestMessage[];
 
 function messageText(message: SinkMessage): string {
-  const first = (Array.isArray(message) ? message[0] : message) as vscode.TestMessage;
-  return typeof first.message === "string" ? first.message : first.message.value;
+  const first = (
+    Array.isArray(message) ? message[0] : message
+  ) as vscode.TestMessage;
+  return typeof first.message === "string"
+    ? first.message
+    : first.message.value;
 }
 
 /** A TestRunSink that records every reported event and all appended output. */
@@ -84,22 +95,45 @@ export class RecordingSink implements TestRunSink {
   /** Coverage reports ([TESTING-COVERAGE-VSCODE]): fsPath → line → hits. */
   public readonly coverage = new Map<string, ReadonlyMap<number, number>>();
 
-  private record(kind: SinkEvent["kind"], test?: vscode.TestItem, message?: SinkMessage): void {
+  private record(
+    kind: SinkEvent["kind"],
+    test?: vscode.TestItem,
+    message?: SinkMessage,
+  ): void {
     this.events.push({
       kind,
       ...(test ? { id: test.id } : {}),
       ...(message ? { message: messageText(message) } : {}),
     });
   }
-  public enqueued(test: vscode.TestItem): void { this.record("enqueued", test); }
-  public started(test: vscode.TestItem): void { this.record("started", test); }
-  public passed(test: vscode.TestItem): void { this.record("passed", test); }
-  public failed(test: vscode.TestItem, message: SinkMessage): void { this.record("failed", test, message); }
-  public errored(test: vscode.TestItem, message: SinkMessage): void { this.record("errored", test, message); }
-  public skipped(test: vscode.TestItem): void { this.record("skipped", test); }
-  public appendOutput(output: string): void { this.output += output; }
-  public end(): void { this.record("end"); }
-  public addLineCoverage(uri: vscode.Uri, hits: ReadonlyMap<number, number>): void {
+  public enqueued(test: vscode.TestItem): void {
+    this.record("enqueued", test);
+  }
+  public started(test: vscode.TestItem): void {
+    this.record("started", test);
+  }
+  public passed(test: vscode.TestItem): void {
+    this.record("passed", test);
+  }
+  public failed(test: vscode.TestItem, message: SinkMessage): void {
+    this.record("failed", test, message);
+  }
+  public errored(test: vscode.TestItem, message: SinkMessage): void {
+    this.record("errored", test, message);
+  }
+  public skipped(test: vscode.TestItem): void {
+    this.record("skipped", test);
+  }
+  public appendOutput(output: string): void {
+    this.output += output;
+  }
+  public end(): void {
+    this.record("end");
+  }
+  public addLineCoverage(
+    uri: vscode.Uri,
+    hits: ReadonlyMap<number, number>,
+  ): void {
     this.coverage.set(uri.fsPath, hits);
   }
   public ofKind(kind: SinkEvent["kind"]): SinkEvent[] {

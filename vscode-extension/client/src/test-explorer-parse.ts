@@ -79,7 +79,10 @@ export function parseTestList(json: string): TestListParse {
   }
   const bad = parsed.find((entry) => !isDiscoveredTest(entry));
   if (bad !== undefined) {
-    return { ok: false, error: `--list-tests entry is malformed: ${JSON.stringify(bad)}` };
+    return {
+      ok: false,
+      error: `--list-tests entry is malformed: ${JSON.stringify(bad)}`,
+    };
   }
   return { ok: true, tests: parsed as DiscoveredTest[] };
 }
@@ -194,8 +197,14 @@ export function excludedIdSet(
   return new Set((exclude ?? []).map((item) => item.id));
 }
 
-function isExcluded(item: TestItemLike, excluded: ReadonlySet<string>): boolean {
-  return excluded.has(item.id) || (item.parent !== undefined && excluded.has(item.parent.id));
+function isExcluded(
+  item: TestItemLike,
+  excluded: ReadonlySet<string>,
+): boolean {
+  return (
+    excluded.has(item.id) ||
+    (item.parent !== undefined && excluded.has(item.parent.id))
+  );
 }
 
 /**
@@ -278,7 +287,10 @@ export function strayFailureMessage(
   const diagnostics = [
     ...stream.results.flatMap((result) => result.comments),
     ...stream.strayComments,
-  ].filter((comment) => !TAP_SUMMARY.test(comment) && !TEST_RUNNER_CHROME.test(comment));
+  ].filter(
+    (comment) =>
+      !TAP_SUMMARY.test(comment) && !TEST_RUNNER_CHROME.test(comment),
+  );
   return (
     diagnostics.join("\n") ||
     stderr.trim() ||
@@ -306,9 +318,15 @@ export function testRunEnv(
 }
 
 /** The message for a run that produced no TAP ([TESTING-EXIT] compile path). */
-export function compileFailureMessage(stderr: string, exitCode: number): string {
+export function compileFailureMessage(
+  stderr: string,
+  exitCode: number,
+): string {
   const detail = stderr.trim();
-  return detail || `osprey --run exited with code ${exitCode} and produced no TAP output`;
+  return (
+    detail ||
+    `osprey --run exited with code ${exitCode} and produced no TAP output`
+  );
 }
 
 /** Test Explorer output is a pseudoterminal: lines must end in CRLF. */
@@ -362,7 +380,9 @@ function parsedLineHits(value: unknown): Map<number, number> | undefined {
  * `undefined` on any malformation — coverage then degrades to absent, never
  * to wrong numbers.
  */
-export function parseCoverageJson(text: string): Map<string, LineHits> | undefined {
+export function parseCoverageJson(
+  text: string,
+): Map<string, LineHits> | undefined {
   let parsed: unknown;
   try {
     parsed = JSON.parse(text);
@@ -385,7 +405,10 @@ export function parseCoverageJson(text: string): Map<string, LineHits> | undefin
 }
 
 /** Covered/total line counts for one file's hits (the summary badge numbers). */
-export function coverageCounts(hits: LineHits): { covered: number; total: number } {
+export function coverageCounts(hits: LineHits): {
+  covered: number;
+  total: number;
+} {
   let covered = 0;
   for (const count of hits.values()) {
     if (count > 0) {

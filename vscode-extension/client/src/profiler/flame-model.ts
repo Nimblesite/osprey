@@ -82,7 +82,10 @@ function isFrame(value: unknown): value is SpeedscopeFrame {
   );
 }
 
-function profileError(p: SpeedscopeProfile, frameCount: number): string | undefined {
+function profileError(
+  p: SpeedscopeProfile,
+  frameCount: number,
+): string | undefined {
   if (p.type !== "sampled") {
     return `profile "${p.name}" has unsupported type "${p.type}"`;
   }
@@ -93,7 +96,9 @@ function profileError(p: SpeedscopeProfile, frameCount: number): string | undefi
     return `profile "${p.name}" has ${p.samples.length} samples but ${p.weights.length} weights`;
   }
   const badStack = p.samples.find(
-    (s) => !Array.isArray(s) || s.some((f) => !Number.isInteger(f) || f < 0 || f >= frameCount),
+    (s) =>
+      !Array.isArray(s) ||
+      s.some((f) => !Number.isInteger(f) || f < 0 || f >= frameCount),
   );
   return badStack === undefined
     ? undefined
@@ -116,13 +121,18 @@ export function parseSpeedscope(text: string): Result<SpeedscopeFile> {
     return raw;
   }
   const doc = raw.value as SpeedscopeFile;
-  if (!Array.isArray(doc?.shared?.frames) || !doc.shared.frames.every(isFrame)) {
+  if (
+    !Array.isArray(doc?.shared?.frames) ||
+    !doc.shared.frames.every(isFrame)
+  ) {
     return { ok: false, error: "speedscope file is missing shared.frames" };
   }
   if (!Array.isArray(doc.profiles) || doc.profiles.length === 0) {
     return { ok: false, error: "speedscope file has no profiles" };
   }
-  const bad = doc.profiles.map((p) => profileError(p, doc.shared.frames.length)).find(Boolean);
+  const bad = doc.profiles
+    .map((p) => profileError(p, doc.shared.frames.length))
+    .find(Boolean);
   return bad ? { ok: false, error: bad } : { ok: true, value: doc };
 }
 
@@ -145,7 +155,11 @@ function childOf(children: Map<number, AggNode>, frameIdx: number): AggNode {
   return node;
 }
 
-function insertStack(root: Map<number, AggNode>, stack: number[], weight: number): void {
+function insertStack(
+  root: Map<number, AggNode>,
+  stack: number[],
+  weight: number,
+): void {
   let children = root;
   let node: AggNode | undefined;
   for (const frameIdx of stack) {
@@ -193,7 +207,9 @@ export function leftHeavyRects(profile: SpeedscopeProfile): RenderRect[] {
     return [];
   }
   const root: Map<number, AggNode> = new Map();
-  profile.samples.forEach((stack, i) => insertStack(root, stack, profile.weights[i]));
+  profile.samples.forEach((stack, i) =>
+    insertStack(root, stack, profile.weights[i]),
+  );
   const out: RenderRect[] = [];
   emitAggNodes(sortedByWeight(root), 0, 0, 1 / total, out);
   return out;
@@ -209,7 +225,11 @@ interface OpenFrame {
 
 function commonPrefixLength(open: OpenFrame[], stack: number[]): number {
   let lcp = 0;
-  while (lcp < open.length && lcp < stack.length && open[lcp].frameIdx === stack[lcp]) {
+  while (
+    lcp < open.length &&
+    lcp < stack.length &&
+    open[lcp].frameIdx === stack[lcp]
+  ) {
     lcp += 1;
   }
   return lcp;
@@ -265,7 +285,10 @@ export function timeOrderRects(profile: SpeedscopeProfile): RenderRect[] {
 // --- per-frame aggregates ---------------------------------------------------------
 
 /** Self/total weight and sample count per frameIdx (recursion deduplicated). */
-export function frameStats(profile: SpeedscopeProfile, frameCount: number): FrameStats {
+export function frameStats(
+  profile: SpeedscopeProfile,
+  frameCount: number,
+): FrameStats {
   const stats: FrameStats = {
     self: new Array<number>(frameCount).fill(0),
     total: new Array<number>(frameCount).fill(0),
@@ -323,7 +346,10 @@ export function frameColors(frames: SpeedscopeFrame[]): string[] {
 // --- search ------------------------------------------------------------------------
 
 /** Case-insensitive substring match over frame names → set of frameIdx. */
-export function searchMatches(frames: SpeedscopeFrame[], query: string): Set<number> {
+export function searchMatches(
+  frames: SpeedscopeFrame[],
+  query: string,
+): Set<number> {
   const needle = query.trim().toLowerCase();
   if (needle === "") {
     return new Set();
@@ -339,7 +365,10 @@ export function searchMatches(frames: SpeedscopeFrame[], query: string): Set<num
 const maxDepth = (rects: RenderRect[]): number =>
   rects.reduce((deepest, r) => Math.max(deepest, r.depth + 1), 0);
 
-function buildFiber(profile: SpeedscopeProfile, frameCount: number): FiberFlame {
+function buildFiber(
+  profile: SpeedscopeProfile,
+  frameCount: number,
+): FiberFlame {
   const leftHeavy = leftHeavyRects(profile);
   const timeOrder = timeOrderRects(profile);
   return {

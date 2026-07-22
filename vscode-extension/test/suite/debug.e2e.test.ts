@@ -3,7 +3,11 @@ import * as fs from "fs";
 import * as path from "path";
 import * as vscode from "vscode";
 import { defaultDebugOutputPath } from "../../client/src/extension";
-import { extensionRoot, resolveBuiltOsprey, resolveRequiredLldbDap } from "./osprey-test-env";
+import {
+  extensionRoot,
+  resolveBuiltOsprey,
+  resolveRequiredLldbDap,
+} from "./osprey-test-env";
 import {
   assertCurrentLine,
   assertLocalVariable,
@@ -30,16 +34,15 @@ const extensionId = "nimblesite.osprey";
 // top-level lets (so the final frame has live locals to inspect). Line numbers
 // are load-bearing — the assertions below reference them. Verified against the
 // real lldb on this exact program before it was written.
-const FIXTURE =
-  [
-    "fn square(n) -> int = n * n", // 1
-    "fn addThree(n) -> int = n + 3", // 2
-    "let first = square(5)", // 3
-    "let second = square(7)", // 4
-    "let third = addThree(second)", // 5
-    'print("first=${first} second=${second} third=${third}")', // 6
-    "", // 7
-  ].join("\n");
+const FIXTURE = [
+  "fn square(n) -> int = n * n", // 1
+  "fn addThree(n) -> int = n + 3", // 2
+  "let first = square(5)", // 3
+  "let second = square(7)", // 4
+  "let third = addThree(second)", // 5
+  'print("first=${first} second=${second} third=${third}")', // 6
+  "", // 7
+].join("\n");
 
 // Long enough for compile + lldb-dap launch + the stepping each test drives.
 const LAUNCH_TIMEOUT_MS = 45_000;
@@ -61,7 +64,9 @@ suite("Osprey Debugger E2E Workflows", function () {
 
   suiteSetup(async function () {
     this.timeout(60_000);
-    tempDir = fs.mkdtempSync(path.join(require("os").tmpdir(), "osprey-debug-e2e-"));
+    tempDir = fs.mkdtempSync(
+      path.join(require("os").tmpdir(), "osprey-debug-e2e-"),
+    );
     source = path.join(tempDir, "workflows.osp");
     debugOutput = defaultDebugOutputPath(source);
     fs.writeFileSync(source, FIXTURE);
@@ -76,8 +81,16 @@ suite("Osprey Debugger E2E Workflows", function () {
     const config = vscode.workspace.getConfiguration("osprey");
     priorCompilerPath = config.get<string>("server.compilerPath");
     priorLldbDapPath = config.get<string>("debug.lldbDapPath");
-    await config.update("server.compilerPath", ospreyPath, vscode.ConfigurationTarget.Global);
-    await config.update("debug.lldbDapPath", lldbDapPath, vscode.ConfigurationTarget.Global);
+    await config.update(
+      "server.compilerPath",
+      ospreyPath,
+      vscode.ConfigurationTarget.Global,
+    );
+    await config.update(
+      "debug.lldbDapPath",
+      lldbDapPath,
+      vscode.ConfigurationTarget.Global,
+    );
 
     const extension = vscode.extensions.getExtension(extensionId);
     assert.ok(extension, "Osprey extension must be installed in the test host");
@@ -90,8 +103,16 @@ suite("Osprey Debugger E2E Workflows", function () {
 
   suiteTeardown(async () => {
     const config = vscode.workspace.getConfiguration("osprey");
-    await config.update("server.compilerPath", priorCompilerPath, vscode.ConfigurationTarget.Global);
-    await config.update("debug.lldbDapPath", priorLldbDapPath, vscode.ConfigurationTarget.Global);
+    await config.update(
+      "server.compilerPath",
+      priorCompilerPath,
+      vscode.ConfigurationTarget.Global,
+    );
+    await config.update(
+      "debug.lldbDapPath",
+      priorLldbDapPath,
+      vscode.ConfigurationTarget.Global,
+    );
     if (tempDir && fs.existsSync(tempDir)) {
       fs.rmSync(tempDir, { recursive: true, force: true });
     }
@@ -143,7 +164,9 @@ suite("Osprey Debugger E2E Workflows", function () {
 
     // square is called with 5 then 7; the condition must skip the n==5 call and
     // stop on n==7 only.
-    const { session, stop } = await launchToFirstStop([{ line: 1, condition: "n == 7" }]);
+    const { session, stop } = await launchToFirstStop([
+      { line: 1, condition: "n == 7" },
+    ]);
     const top = assertCurrentLine(stop.stack, 1, source);
     assert.ok(top.column >= 1, "DAP reports a 1-based source column");
     assert.ok(hasFrame(stop, "square"), "stopped inside the square frame");
@@ -179,15 +202,31 @@ suite("Osprey Debugger E2E Workflows", function () {
     await stepIn(session, stop.threadId);
     const inside = await waitForStop(session, LAUNCH_TIMEOUT_MS);
     assertCurrentLine(inside.stack, 2, source);
-    assert.ok(hasFrame(inside, "addThree"), `stepped into addThree (was ${topName(inside)})`);
+    assert.ok(
+      hasFrame(inside, "addThree"),
+      `stepped into addThree (was ${topName(inside)})`,
+    );
     // second = square(7) = 49, so addThree sees n == 49.
-    await assertLocalVariable(session, inside.stack.stackFrames[0].id, "n", /\b49\b/);
-    await assertWatch(session, inside.stack.stackFrames[0].id, "n + 3", /\b52\b/);
+    await assertLocalVariable(
+      session,
+      inside.stack.stackFrames[0].id,
+      "n",
+      /\b49\b/,
+    );
+    await assertWatch(
+      session,
+      inside.stack.stackFrames[0].id,
+      "n + 3",
+      /\b52\b/,
+    );
 
     // Step OUT: we return to the caller, main.
     await stepOut(session, inside.threadId);
     const back = await waitForStop(session, LAUNCH_TIMEOUT_MS);
-    assert.ok(hasFrame(back, "main"), `stepped back out to main (was ${topName(back)})`);
+    assert.ok(
+      hasFrame(back, "main"),
+      `stepped back out to main (was ${topName(back)})`,
+    );
 
     await continueExecution(session, back.threadId);
     await waitForDebugSessionEnd(LAUNCH_TIMEOUT_MS, session.id);
@@ -223,20 +262,35 @@ suite("Osprey Debugger E2E Workflows", function () {
 
     // First hit: square(5).
     assertCurrentLine(stop.stack, 1, source);
-    await assertLocalVariable(session, stop.stack.stackFrames[0].id, "n", /\b5\b/);
+    await assertLocalVariable(
+      session,
+      stop.stack.stackFrames[0].id,
+      "n",
+      /\b5\b/,
+    );
 
     // Second hit: square(7).
     await continueExecution(session, stop.threadId);
     const secondHit = await waitForStop(session, LAUNCH_TIMEOUT_MS);
     assertCurrentLine(secondHit.stack, 1, source);
-    await assertLocalVariable(session, secondHit.stack.stackFrames[0].id, "n", /\b7\b/);
+    await assertLocalVariable(
+      session,
+      secondHit.stack.stackFrames[0].id,
+      "n",
+      /\b7\b/,
+    );
 
     // Third hit: addThree(second) where second == 49.
     await continueExecution(session, secondHit.threadId);
     const thirdHit = await waitForStop(session, LAUNCH_TIMEOUT_MS);
     assertCurrentLine(thirdHit.stack, 2, source);
     assert.ok(hasFrame(thirdHit, "addThree"), "third stop is in addThree");
-    await assertLocalVariable(session, thirdHit.stack.stackFrames[0].id, "n", /\b49\b/);
+    await assertLocalVariable(
+      session,
+      thirdHit.stack.stackFrames[0].id,
+      "n",
+      /\b49\b/,
+    );
 
     await continueExecution(session, thirdHit.threadId);
     await waitForDebugSessionEnd(LAUNCH_TIMEOUT_MS, session.id);
@@ -256,9 +310,15 @@ suite("Osprey Debugger E2E Workflows", function () {
       "the frame exposes at least one inspectable scope",
     );
 
-    const names = (await readFrameVariables(session, frameId)).map((v) => v.name);
-    assert.ok(names.includes("first") && names.includes("second") && names.includes("third"),
-      `locals expose the top-level lets; saw ${names.join(", ")}`);
+    const names = (await readFrameVariables(session, frameId)).map(
+      (v) => v.name,
+    );
+    assert.ok(
+      names.includes("first") &&
+        names.includes("second") &&
+        names.includes("third"),
+      `locals expose the top-level lets; saw ${names.join(", ")}`,
+    );
 
     // square(5)=25, square(7)=49, addThree(49)=52.
     await assertLocalVariable(session, frameId, "first", /\b25\b/);
@@ -273,8 +333,13 @@ suite("Osprey Debugger E2E Workflows", function () {
     this.timeout(TEST_TIMEOUT_MS);
 
     // No breakpoints: the only reason we stop is stopOnEntry.
-    const { session, stop } = await launchToFirstStop([], { stopOnEntry: true });
-    assert.ok(stop.stack.stackFrames.length > 0, "stopOnEntry paused with a live stack");
+    const { session, stop } = await launchToFirstStop([], {
+      stopOnEntry: true,
+    });
+    assert.ok(
+      stop.stack.stackFrames.length > 0,
+      "stopOnEntry paused with a live stack",
+    );
 
     await continueExecution(session, stop.threadId);
     await waitForDebugSessionEnd(LAUNCH_TIMEOUT_MS, session.id);

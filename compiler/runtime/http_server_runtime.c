@@ -1,4 +1,5 @@
 #include "http_server_internal.h"
+#include "memory_hooks.h"
 
 extern int64_t fiber_await(int64_t fiber_id);
 extern int64_t fiber_spawn_env(int64_t (*fn)(void *), void *environment);
@@ -56,6 +57,11 @@ static void serve_request(int client_fd, HttpServer *server,
       has_response ? response->partialBody : simple_response_body;
   bool sent = http_send_response(client_fd, status, headers, body);
   http_log_exchange(request, REQUEST_COMPLETE, status, strlen(body), sent);
+  /* The Osprey handler transferred +1 on its HttpResponse across the C
+   * callback boundary; the response (and the header/body strings its layout
+   * word marks) dies here, once the bytes are on the wire and logged.
+   * [GC-ARC-PERCEUS] plan 0011 M5b. No-op off ARC. */
+  osp_release(response);
 }
 
 static void process_client(int client_fd, HttpServer *server) {
