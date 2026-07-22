@@ -191,30 +191,45 @@ pub(crate) fn consume_into_store(cg: &mut Codegen, operand: &str) -> bool {
     }
 }
 
+/// The innermost frame's current length — the mark a `match` captures BEFORE
+/// generating its arms, so [`move_phi_owners`] can tell arm-produced owners
+/// from values that already existed at the join (above all: the scrutinee).
+pub(crate) fn frame_mark(cg: &Codegen) -> usize {
+    cg.arc.frames.last().map_or(0, Vec::len)
+}
+
 /// Perceus phi ownership merge (TR §2.3, join points): when EVERY arm of a
-/// `match`/`if` produced a fresh owner — each an unnamed entry of the innermost
-/// frame — the merged phi result *is* that single owner. Exactly one arm runs on
-/// any path, so exactly one of those +1s is live, and the phi selects it. Drop
-/// all the per-arm entries and re-own the phi so the value moves through the
-/// join with no dup and no per-arm release: `make d = match d { … Node{…} }`
-/// then returns its result by transfer instead of retain-then-release-ing it,
-/// and `let x = match …` binds it without a dup. If any arm's value is a borrow
-/// (parameter, field load, shared binding) or is not a fresh innermost owner,
-/// nothing moves and the caller's later dup/drop stands. [GC-ARC-PERCEUS]
-pub(crate) fn move_phi_owners(cg: &mut Codegen, incoming: &[String], out: &Value) {
+/// `match` produced a fresh owner — an unnamed innermost-frame entry registered
+/// AFTER `mark` (i.e. inside its own arm) — the merged phi result *is* that
+/// single owner. Exactly one arm runs on any path, untaken arms never allocate
+/// their value, so exactly one of those +1s is live and the phi selects it.
+/// Drop the per-arm entries and re-own the phi: the value moves through the
+/// join with no dup and no per-arm release, so `fn make(d) = match d { …
+/// Node{…} }` returns by transfer instead of retain-then-release.
+///
+/// The `mark` gate is what makes this sound: an entry below it existed before
+/// the arms — the scrutinee, an outer temporary — and lives on EVERY path, so
+/// consuming it through the phi would leak it on the arms that yield something
+/// else. Borrows (parameters, field loads) were never registered and fail the
+/// gate, keeping the caller's dup/drop. Pure ledger bookkeeping: it emits no
+/// code, and the dup/drop calls it repositions are no-ops off ARC — the one IR
+/// still serves every backend. [GC-ARC-PERCEUS]
+pub(crate) fn move_phi_owners(cg: &mut Codegen, incoming: &[String], out: &Value, mark: usize) {
     if !managed(cg, out) {
         return;
     }
-    let all_fresh = cg.arc.frames.last().is_some_and(|frame| {
+    let consumable = |e: &Entry| e.name.is_none() && incoming.contains(&e.operand);
+    let all_fresh = cg.arc.frames.last().is_some_and(|f| {
         incoming
             .iter()
-            .all(|op| frame.iter().any(|e| e.operand == *op && e.name.is_none()))
+            .all(|op| f.iter().skip(mark).any(|e| e.operand == *op && e.name.is_none()))
     });
     if !all_fresh {
         return;
     }
-    if let Some(frame) = cg.arc.frames.last_mut() {
-        frame.retain(|e| !(e.name.is_none() && incoming.iter().any(|op| *op == e.operand)));
+    if let Some(f) = cg.arc.frames.last_mut() {
+        let tail = f.split_off(mark.min(f.len()));
+        f.extend(tail.into_iter().filter(|e| !consumable(e)));
     }
     own(cg, out);
 }

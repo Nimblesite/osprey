@@ -43,7 +43,7 @@ pub(crate) fn gen_match(cg: &mut Codegen, value: &Expr, arms: &[MatchArm]) -> Re
 fn gen_list_match(cg: &mut Codegen, disc: &Value, arms: &[MatchArm]) -> Result<Value> {
     let list_val = crate::cast::coerce_to(cg, disc.clone(), LType::Ptr)?;
     let len = cg.call("i64", "osprey_list_length", "i8*", &[&list_val.operand]);
-    let (end, mut phi_in, last) = match_state(cg, arms);
+    let (end, mut phi_in, last, mark) = match_state(cg, arms);
 
     for (i, arm) in arms.iter().enumerate() {
         match &arm.pattern {
@@ -69,7 +69,7 @@ fn gen_list_match(cg: &mut Codegen, disc: &Value, arms: &[MatchArm]) -> Result<V
         }
     }
     cg.start_block(&end);
-    finish_phi(cg, &phi_in)
+    finish_phi(cg, &phi_in, mark)
 }
 
 /// Bind a matched list arm's prefix elements (`osprey_list_get(l, i)`) and its
@@ -247,12 +247,13 @@ fn gen_result_match(cg: &mut Codegen, disc: Value, arms: &[MatchArm]) -> Result<
     let end = cg.fresh_label();
     cg.emit(format!("br i1 {cond}, label %{sl}, label %{el}"));
 
+    let mark = crate::arc::frame_mark(cg);
     let mut phi_in: Vec<(Value, String)> = Vec::new();
     emit_result_arm(cg, &sl, success, succ_val, &end, &mut phi_in)?;
     emit_result_arm(cg, &el, error, err_val, &end, &mut phi_in)?;
 
     cg.start_block(&end);
-    finish_phi(cg, &phi_in)
+    finish_phi(cg, &phi_in, mark)
 }
 
 /// Emit one Result arm: open `label`, bind the constructor's payload field (if
@@ -294,6 +295,7 @@ fn gen_union_match(
     cg.emit(format!("{tag} = load i64, i64* {tagp}"));
 
     let end = cg.fresh_label();
+    let mark = crate::arc::frame_mark(cg);
     let mut phi_in: Vec<(Value, String)> = Vec::new();
     let variants = cg.union_variants(owner).unwrap_or(&[]).to_vec();
 
@@ -332,7 +334,7 @@ fn gen_union_match(
     // A non-exhaustive fall-through is unreachable by construction.
     cg.emit("unreachable");
     cg.start_block(&end);
-    finish_phi(cg, &phi_in)
+    finish_phi(cg, &phi_in, mark)
 }
 
 /// Bind a matched variant's fields (in declared order) from the heap block.
@@ -374,7 +376,7 @@ fn bind_variant_fields(cg: &mut Codegen, disc: &Value, variant: &str, pat_fields
 
 /// Literal/catch-all match: compare-and-branch chain joined by a `phi`.
 fn gen_literal_match(cg: &mut Codegen, disc: &Value, arms: &[MatchArm]) -> Result<Value> {
-    let (end, mut phi_in, last) = match_state(cg, arms);
+    let (end, mut phi_in, last, mark) = match_state(cg, arms);
 
     for (i, arm) in arms.iter().enumerate() {
         match &arm.pattern {
@@ -398,12 +400,15 @@ fn gen_literal_match(cg: &mut Codegen, disc: &Value, arms: &[MatchArm]) -> Resul
     }
 
     cg.start_block(&end);
-    finish_phi(cg, &phi_in)
+    finish_phi(cg, &phi_in, mark)
 }
 
-/// Allocate the common join state for a compare-and-branch match chain.
-fn match_state(cg: &mut Codegen, arms: &[MatchArm]) -> (String, Vec<(Value, String)>, usize) {
-    (cg.fresh_label(), Vec::new(), arms.len().saturating_sub(1))
+/// Allocate the join state for a match chain: the end label, the phi inputs,
+/// the last-arm index, and the arc frame mark taken BEFORE any arm runs (the
+/// [`crate::arc::move_phi_owners`] scrutinee gate).
+fn match_state(cg: &mut Codegen, arms: &[MatchArm]) -> (String, Vec<(Value, String)>, usize, usize) {
+    let mark = crate::arc::frame_mark(cg);
+    (cg.fresh_label(), Vec::new(), arms.len().saturating_sub(1), mark)
 }
 
 /// Generate a successful match arm and branch to the common result block.
@@ -445,7 +450,7 @@ fn finish_guarded_arm(
     clippy::unnecessary_wraps,
     reason = "kept Result-returning for the uniform generator interface"
 )]
-fn finish_phi(cg: &mut Codegen, phi_in: &[(Value, String)]) -> Result<Value> {
+fn finish_phi(cg: &mut Codegen, phi_in: &[(Value, String)], mark: usize) -> Result<Value> {
     let Some((first_val, _)) = phi_in.first() else {
         return Ok(Value::unit());
     };
@@ -483,10 +488,13 @@ fn finish_phi(cg: &mut Codegen, phi_in: &[(Value, String)]) -> Result<Value> {
         .with_owner(common(|v| v.osp_ty.clone()))
         .with_payload_owner(common(|v| v.payload_owner.clone()));
     out.result_inner = result_inner;
-    // Perceus join transfer: if every arm produced a fresh owner, the phi owns
-    // the merged value directly — move the arm entries into it, no dup/drop.
+    // Perceus join transfer: if every arm produced a fresh owner AFTER `mark`
+    // (i.e. inside its own arm — never the scrutinee, which predates the mark
+    // and lives on every path), the phi owns the merged value directly — the
+    // arm entries move into it, no dup, no per-arm drop. Ledger bookkeeping
+    // only; the repositioned dup/drop calls are no-ops off ARC.
     let incoming_ops = phi_in.iter().map(|(v, _)| v.operand.clone()).collect::<Vec<_>>();
-    crate::arc::move_phi_owners(cg, &incoming_ops, &out);
+    crate::arc::move_phi_owners(cg, &incoming_ops, &out, mark);
     Ok(out)
 }
 

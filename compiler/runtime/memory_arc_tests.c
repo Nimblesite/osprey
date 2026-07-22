@@ -1,22 +1,16 @@
 // Vanilla-C tests for runtime/memory_arc.c — the Perceus ARC backend
-// ([GC-ARC-PERCEUS], docs/plans/0011 phase 2; [MEM-BACKENDS], docs/specs/0018).
-//
-//   cc -O2 -D_FORTIFY_SOURCE=2 -fstack-protector-strong -Werror -Wall -Wextra \
-//      -ftrapv -std=c11 -D_GNU_SOURCE runtime/memory_arc_tests.c \
-//      runtime/memory_arc.c -pthread -o bin/memory_arc_tests
-//
-// Never built with osp_arc_shim.h: the suite needs the real libc malloc/free to
-// build the foreign-pointer fixtures the probe-miss paths are tested against.
-//
-// memory_arc.c exports no live-count symbol, so liveness is asserted
-// structurally: the header {int64 meta; int32 rc; uint32 size} at body-16 is
-// read back with memcpy (never a struct alias), and reclamation is proved by
-// *witness* objects — a leaf whose refcount can only move if its owner was
-// really dropped and its layout word really walked, which proves a free
-// transitively without the test ever reading freed memory.
+// ([GC-ARC-PERCEUS]; [MEM-BACKENDS], docs/specs/0018). Built by the Makefile's
+// _test_c_runtime; never with osp_arc_shim.h (the foreign-pointer fixtures need
+// real libc malloc/free). memory_arc.c exports no live-count symbol, so
+// liveness is asserted structurally: the {int64 meta; int32 rc; uint32 size}
+// header at body-16 is read back with memcpy, and reclamation is proved by
+// *witness* leaves whose refcount can only move if their owner was really
+// dropped and its layout word really walked — never by reading freed memory.
 #include "memory_hooks.h"
 
 #include <assert.h>
+#include <pthread.h>
+#include <stdatomic.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -31,10 +25,8 @@ void *osp_arc_calloc(size_t n, size_t size);
 void *osp_arc_realloc(void *old, size_t size);
 void osp_arc_free(void *p);
 char *osp_arc_strdup(const char *s);
-
-static long g_checks = 0;
+static _Atomic long g_checks = 0; // atomic: the mt_churn threads CHECK too
 #define CHECK(c) do { g_checks++; assert(c); } while (0)
-
 #define W ((size_t)8)             // managed word size
 #define HDR_META_OFF ((size_t)16) // header fields, backwards from the body
 #define HDR_RC_OFF ((size_t)8)
@@ -119,9 +111,8 @@ static void t_alloc_sizes_oom(void) {
   CHECK(osp_alloc((int64_t)1 << 62) == NULL); // no such address space
   CHECK(osp_alloc_tagged(INT64_MAX, OSP_MEM_RAW) == NULL);
   CHECK(osp_arc_calloc((size_t)1 << 40, 4096) == NULL);
-  // uint32_t `size` in the header is the hard per-object ceiling: oversize is
-  // REJECTED, never truncated (truncation misdirects every drop walk, and
-  // OSP_ARC_HDR + SIZE_MAX wraps to a malloc(15) that SUCCEEDS).
+  // uint32_t header `size` is the hard ceiling: oversize is REJECTED, never
+  // truncated (OSP_ARC_HDR + SIZE_MAX wraps to a malloc(15) that SUCCEEDS).
   CHECK(osp_alloc_tagged((int64_t)UINT32_MAX + 1, OSP_MEM_RAW) == NULL);
   CHECK(osp_arc_malloc((size_t)-1) == NULL);
   CHECK(osp_arc_calloc((size_t)-1, 2) == NULL); // n * size overflows first
@@ -152,8 +143,7 @@ static void t_reclaim_reuse(void) {
     void *a = mk(48, OSP_MEM_RAW);
     osp_release(a);
     void *b = mk(48, OSP_MEM_RAW);
-    reused += (a == b);
-    CHECK(rc_of(b) == 1 && size_of(b) == 48u); // recycled slot is re-headered
+    reused += (a == b); // recycled slot is re-headered (mk re-checks rc/size)
     osp_release(b);
   }
   CHECK(reused > 0);
@@ -201,9 +191,8 @@ static void t_immortal(void) {
   CHECK(rc_of(p) == -1 && rc_of(w) == 2); // dup/drop skip rc<0 forever
   osp_mem_immortal(p);
   CHECK(rc_of(p) == -1 && load(p, 0) == w); // still live: never reclaimed
-  // Manual free is authoritative for MORTAL objects only: rc < 0 means
-  // unreclaimable by construction (many call sites return one singleton), so
-  // osp_arc_free skips it rather than hand the next caller freed memory.
+  // Manual free is authoritative for MORTAL objects only: rc < 0 is unreclaim-
+  // able by construction, so osp_arc_free skips it (no freed-memory handout).
   osp_arc_free(p);
   CHECK(rc_of(p) == -1 && load(p, 0) == w && rc_of(w) == 2);
   osp_release(w); // p keeps its own reference to w forever, by design
@@ -449,11 +438,25 @@ static void t_shim_strdup(void) {
   CHECK(size_of(d) == (uint32_t)(LONG_LEN + 1));
   osp_arc_free(d); free(big);
 }
+// The adaptive lock (memory_hooks.h): after notify (idempotent) every op takes
+// the mutex, proved under real contention by two racing churn threads.
+static void *mt_churn(void *arg) {
+  for (int i = 0; i < FANOUT; i++) {
+    void *w = witness(), *p = owner(w, 1);
+    osp_retain(p); osp_release(p); osp_arc_free(p); survived(w);
+  }
+  return arg;
+}
+static void t_multithreaded(void) {
+  osp_mem_notify_multithreaded(); osp_mem_notify_multithreaded();
+  pthread_t a, b;
+  CHECK(!pthread_create(&a, NULL, mt_churn, NULL) && !pthread_create(&b, NULL, mt_churn, NULL));
+  CHECK(pthread_join(a, NULL) == 0 && pthread_join(b, NULL) == 0);
+  t_retain_release(); // rc semantics are identical under the locked mode
+}
 // Deliberate leaks, one per kind, so the OSPREY_ARC_DEBUG=2 atexit report walks
-// every histogram bucket and dumps a survivor of each. Contents are inert:
-// nothing walks them at exit. The RAW body mixes printable and control bytes so
-// both arms of the preview sanitiser run, and the 8-byte bodies land under the
-// preview window while the 1 KiB one overruns it.
+// every bucket: RAW mixes printable/control bytes (both preview sanitiser
+// arms), 8-byte bodies fit the preview window, the 1 KiB one overruns it.
 static void t_leak_report_fixtures(void) {
   void *raw = mk(1024, OSP_MEM_RAW), *msk = mk(W, OSP_MEM_LAYOUT(0));
   void *lp = mk(16, OSP_MEM_LIST_HDR_PTR), *ls = mk(16, OSP_MEM_LIST_HDR_SCALAR);
@@ -467,7 +470,6 @@ static void t_leak_report_fixtures(void) {
   osp_mem_immortal(immortal);
   CHECK(rc_of(immortal) == -1 && rc_of(raw) == 1 && size_of(raw) == 1024u);
 }
-
 // An immortal reached AS A CHILD of a dying parent: rc < 0 means unreclaimable
 // on every path, not just the top-level release, so the walk must skip it.
 static void t_immortal_child(void) {
@@ -476,10 +478,8 @@ static void t_immortal_child(void) {
   osp_release(p); // parent dies, walks word 0 (p is freed: do not read it)
   CHECK(rc_of(forever) == -1); // untouched, live for its other holders
 }
-
 int main(void) {
-  // Must precede the first allocation: arc_arm_debug() latches once, forever.
-  // Level 2 also exercises the per-survivor dump.
+  // Precedes the first allocation: arc_arm_debug() latches once, forever.
   (void)setenv("OSPREY_ARC_DEBUG", "2", 1);
   t_alloc_and_tags(); t_alloc_sizes_oom();
   t_retain_release(); t_release_unique_collect(); t_reclaim_reuse();
@@ -489,7 +489,10 @@ int main(void) {
   t_ptr_array(); t_ptr_array_ragged();
   t_list_hdr_kinds(); t_list_hdr_edges();
   t_deep_chain(); t_wide_fanout(); t_registry_churn(); t_slot_reuse();
-  t_shim_malloc_calloc_free(); t_shim_realloc_grow(); t_shim_realloc_edges();
+  // Everything below runs LOCKED (notify is monotonic): the shim suite
+  // re-exercises the whole ABI down the arc_lock mutex branch.
+  t_multithreaded(); t_shim_malloc_calloc_free();
+  t_shim_realloc_grow(); t_shim_realloc_edges();
   t_shim_strdup(); t_leak_report_fixtures();
   printf("[ok] memory_arc: %ld assertions\n", g_checks);
   return 0;
