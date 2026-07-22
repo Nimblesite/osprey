@@ -19,6 +19,7 @@
 // Not declared in memory_hooks.h: the raw allocator, the collect hook, and the
 // osp_arc_shim.h redirect targets.
 void *osp_alloc(int64_t size);
+void *osp_alloc_tagged_noinit(int64_t size, int64_t meta);
 void osp_collect(void);
 void *osp_arc_malloc(size_t size);
 void *osp_arc_calloc(size_t n, size_t size);
@@ -315,6 +316,62 @@ static void t_deep_chain(void) {
   osp_retain(tail); CHECK(rc_of(tail) == 2); // still registered afterwards
   osp_release(tail); survived(tail);
 }
+// osp_alloc_tagged_noinit skips the drop-safety pre-zero: a recycled block
+// keeps its prior body bytes (proving no memset ran) while the header — meta,
+// rc, size — is still stamped correctly. The zeroing twin, by contrast, hands
+// back a clean body. Both must reclaim normally afterwards.
+static void t_alloc_noinit(void) {
+  int64_t mask = OSP_MEM_LAYOUT(OSP_MEM_WORD(1)); // {word0 scalar, word1 child}
+  void *a = mk(3 * W, mask);
+  memset(a, 0xA5, 3 * W); // dirty the body, then free it to the pool
+  osp_release(a);
+  // Same-sized noinit request recycles a's slot; the body past word 0 must be
+  // UNTOUCHED (word 0 is the recycling pool's intrusive free-list link, so it
+  // alone is clobbered — which is why a noinit block MUST store word 0, as a
+  // constructor's tag always does).
+  void *b = osp_alloc_tagged_noinit((int64_t)(3 * W), OSP_MEM_RAW);
+  CHECK(b == a); // recycled the very block we just freed
+  CHECK(rc_of(b) == 1 && size_of(b) == (uint32_t)(3 * W) && meta_of(b) == OSP_MEM_RAW);
+  for (size_t i = W; i < 3 * W; i++) {
+    CHECK(((unsigned char *)b)[i] == 0xA5); // no pre-zero touched words 1..2
+  }
+  osp_release(b);
+  // The zeroing twin over the same slot DOES clear a masked body in full.
+  void *c = osp_alloc_tagged((int64_t)(3 * W), mask);
+  CHECK(c == a);
+  for (size_t i = 0; i < 3 * W; i++) { CHECK(((unsigned char *)c)[i] == 0); }
+  put(c, 1, NULL); osp_release(c); // masked child NULL: a clean drop
+  // noinit with a real masked child still reclaims the child when fully stored.
+  void *w = witness();
+  void *p = osp_alloc_tagged_noinit((int64_t)(2 * W), OSP_MEM_LAYOUT(OSP_MEM_WORD(0)));
+  CHECK(rc_of(p) == 1);
+  put(p, 0, w); put_i64(p, 1, 0); osp_retain(w); // store EVERY word before drop
+  CHECK(rc_of(w) == 2);
+  osp_release(p); survived(w);
+}
+// MASK_DIRECT drops children by reading their headers, never the registry —
+// the binarytrees fast path. A binary parent (two managed children at words 0
+// and 1) over a witness proves the cascade still reaches leaves, and a NULL
+// child slot (a never-stored union field) stays a no-op.
+static void t_mask_direct(void) {
+  int64_t direct = ((int64_t)(uint64_t)(OSP_MEM_WORD(0) | OSP_MEM_WORD(1)) << 8) |
+                   OSP_MEM_MASK_DIRECT;
+  CHECK((direct & 0xFF) == OSP_MEM_MASK_DIRECT);
+  void *w = witness();
+  void *root = mk(2 * W, direct);
+  put(root, 0, owner(w, 1)); // left: a MASK parent holding a reference to w
+  put(root, 1, NULL);        // right: an unstored union field — a NULL no-op
+  CHECK(rc_of(w) == 2);
+  osp_release(root); // header-direct cascade frees left, which drops w
+  CHECK(rc_of(w) == 1);
+  osp_release(w);
+  // An immortal child (rc < 0 — an interned nullary singleton) survives a
+  // direct drop untouched.
+  void *imm = mk(W, OSP_MEM_RAW); osp_mem_immortal(imm);
+  void *p = mk(W, ((int64_t)(uint64_t)OSP_MEM_WORD(0) << 8) | OSP_MEM_MASK_DIRECT);
+  put(p, 0, imm);
+  osp_release(p); CHECK(rc_of(imm) == -1);
+}
 static void t_wide_fanout(void) {
   void *w = witness();
   void *p = mk(FANOUT * W, OSP_MEM_PTR_ARRAY);
@@ -488,7 +545,8 @@ int main(void) {
   t_mask_drop(); t_mask_bounds_and_bits();
   t_ptr_array(); t_ptr_array_ragged();
   t_list_hdr_kinds(); t_list_hdr_edges();
-  t_deep_chain(); t_wide_fanout(); t_registry_churn(); t_slot_reuse();
+  t_deep_chain(); t_alloc_noinit(); t_mask_direct(); t_wide_fanout();
+  t_registry_churn(); t_slot_reuse();
   // Everything below runs LOCKED (notify is monotonic): the shim suite
   // re-exercises the whole ABI down the arc_lock mutex branch.
   t_multithreaded(); t_shim_malloc_calloc_free();

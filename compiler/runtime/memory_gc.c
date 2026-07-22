@@ -359,6 +359,13 @@ void *osp_alloc_tagged(int64_t size, int64_t meta) {
   return osp_alloc(size);
 }
 
+// Fully-initialized-by-caller twin (memory_hooks.h). The conservative collector
+// never relies on pre-zeroed bodies, so it is identical to osp_alloc_tagged.
+void *osp_alloc_tagged_noinit(int64_t size, int64_t meta) {
+  (void)meta;
+  return osp_alloc(size);
+}
+
 // Reference-count hooks are no-ops under tracing (Bacon/Cheng/Rajan duality):
 // the collector reclaims, so dup/drop carry no work.
 void osp_retain(void *o) { (void)o; }

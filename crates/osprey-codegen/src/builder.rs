@@ -45,6 +45,12 @@ pub struct Codegen {
     /// union would break the `KIND_MASK_DIRECT` all-children-are-ARC-bodies
     /// proof, so these unions stay on the probing `KIND_MASK`. [GC-ARC-PERCEUS]
     pub(crate) extern_ret_types: BTreeSet<String>,
+    /// Nullary union variant name → the module-constant handle every use of it
+    /// shares. A payload-free variant (`Leaf`, `None`) is one immutable
+    /// immortal value, so it is interned as a single `private global` with a
+    /// baked ARC header (rc = -1) instead of a fresh heap block per occurrence —
+    /// binarytrees alone stops allocating ~19.6M `Leaf`s. [GC-ARC-PERCEUS]
+    pub(crate) nullary_singletons: HashMap<String, String>,
     /// Resolved signatures, constructor layouts and union tags from inference.
     pub(crate) prog: ProgramTypes,
     /// Stream-fusion pipeline: pending `map`/`filter` stages recorded by those
@@ -431,6 +437,7 @@ impl Codegen {
             scopes: Vec::new(),
             fn_params: HashMap::new(),
             extern_ret_types: BTreeSet::new(),
+            nullary_singletons: HashMap::new(),
             prog,
             pending_iter_ops: Vec::new(),
             lambdas: HashMap::new(),
@@ -1002,6 +1009,36 @@ impl Codegen {
         self.globals.push(def.into());
     }
 
+    /// The shared immortal handle for a nullary union variant with tag `tag`,
+    /// interning it on first use. The `private global` bakes the exact
+    /// `{ i64 meta, i32 rc, u32 size }` ARC header (memory_arc.c) ahead of a
+    /// one-word `{ i64 tag }` body: rc = -1 makes every dup/drop a no-op, so
+    /// the block is never freed and needs no registry slot. The returned
+    /// operand is a constant `getelementptr`+`bitcast` to the body — not a
+    /// `%`-register — so `arc::managed` treats it as borrowed and emits no
+    /// retain/release around it, exactly the immortal contract. [GC-ARC-PERCEUS]
+    pub(crate) fn nullary_singleton(&mut self, name: &str, tag: i64) -> String {
+        if let Some(handle) = self.nullary_singletons.get(name) {
+            return handle.clone();
+        }
+        // meta = KIND_RAW (a tag-only body has no managed children); rc = -1
+        // (immortal); size = 8 (the lone i64 tag). Layout matches OspArcHdr so
+        // arc_hdr(body) = body - 16 recovers these fields.
+        let global = format!("@{name}.sgl");
+        let ty = "{ i64, i32, i32, i64 }";
+        self.globals.push(format!(
+            "{global} = private global {ty} {{ i64 {raw}, i32 -1, i32 8, i64 {tag} }}, align 16",
+            raw = crate::meta::KIND_RAW
+        ));
+        let handle = format!(
+            "bitcast (i64* getelementptr inbounds ({ty}, {ty}* {global}, i64 0, i32 3) to i8*)"
+        );
+        let _ = self
+            .nullary_singletons
+            .insert(name.to_string(), handle.clone());
+        handle
+    }
+
     /// Intern a string literal as a private global and return an `i8*` pointing
     /// at its first byte.
     pub(crate) fn string_constant(&mut self, text: &str) -> Value {
@@ -1173,18 +1210,47 @@ impl Codegen {
         ))
     }
 
+    /// [`heap_alloc_tagged`] for a block the caller fully initializes before it
+    /// can drop (every masked word stored): the ARC backend skips its
+    /// drop-safety pre-zero. A `KIND_RAW` block is never zeroed anyway, so it
+    /// shares the plain allocator. [GC-ARC-PERCEUS]
+    pub(crate) fn heap_alloc_tagged_noinit(&mut self, size: &str, meta: i64) -> String {
+        if meta == crate::meta::KIND_RAW {
+            return self.heap_alloc(size);
+        }
+        self.add_extern(OSP_ALLOC_TAGGED_NOINIT_DECL);
+        self.emit_reg(format!(
+            "call i8* @osp_alloc_tagged_noinit(i64 {size}, i64 {meta})"
+        ))
+    }
+
     /// Allocate a heap block sized for the LLVM struct type `struct_ty`, via the
     /// portable `getelementptr null, 1` sizeof trick, and return the typed
     /// pointer register (`{TY}*`). `meta` is the site's layout word
     /// ([`crate::meta`]).
     pub(crate) fn malloc_struct(&mut self, struct_ty: &str, meta: i64) -> String {
+        self.malloc_struct_with(struct_ty, meta, false)
+    }
+
+    /// [`malloc_struct`] for a block the caller stores in full before it can
+    /// drop — a constructor / object literal writes the tag and every field —
+    /// so the ARC backend skips its drop-safety pre-zero. [GC-ARC-PERCEUS]
+    pub(crate) fn malloc_struct_noinit(&mut self, struct_ty: &str, meta: i64) -> String {
+        self.malloc_struct_with(struct_ty, meta, true)
+    }
+
+    fn malloc_struct_with(&mut self, struct_ty: &str, meta: i64, noinit: bool) -> String {
         let szp = self.fresh_reg();
         self.emit(format!(
             "{szp} = getelementptr {struct_ty}, {struct_ty}* null, i64 1"
         ));
         let sz = self.fresh_reg();
         self.emit(format!("{sz} = ptrtoint {struct_ty}* {szp} to i64"));
-        let raw = self.heap_alloc_tagged(&sz, meta);
+        let raw = if noinit {
+            self.heap_alloc_tagged_noinit(&sz, meta)
+        } else {
+            self.heap_alloc_tagged(&sz, meta)
+        };
         let obj = self.fresh_reg();
         self.emit(format!("{obj} = bitcast i8* {raw} to {struct_ty}*"));
         obj
@@ -1242,6 +1308,11 @@ pub(crate) const OSP_ALLOC_DECL: &str = "declare noalias i8* @osp_alloc(i64) all
 /// (so `-O2` dead-allocation elimination still applies), plus the meta word the
 /// ARC backend stores in the object header. Implements [GC-ARC-PERCEUS].
 pub(crate) const OSP_ALLOC_TAGGED_DECL: &str = "declare noalias i8* @osp_alloc_tagged(i64, i64) allocsize(0) allockind(\"alloc,uninitialized\") mustprogress nounwind willreturn \"alloc-family\"=\"osprey\"";
+
+/// The non-pre-zeroing twin of [`OSP_ALLOC_TAGGED_DECL`] for caller-fully-
+/// initialized blocks (`allockind` is already `uninitialized`; the difference
+/// is only that the ARC backend skips its drop-safety memset). [GC-ARC-PERCEUS]
+pub(crate) const OSP_ALLOC_TAGGED_NOINIT_DECL: &str = "declare noalias i8* @osp_alloc_tagged_noinit(i64, i64) allocsize(0) allockind(\"alloc,uninitialized\") mustprogress nounwind willreturn \"alloc-family\"=\"osprey\"";
 
 /// The resolved heap layout of a constructor.
 pub(crate) struct CtorView {

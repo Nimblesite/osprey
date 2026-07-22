@@ -317,13 +317,16 @@ static void arc_arm_debug(void) {
 
 // A body the drop walk will READ as pointers must start zeroed: a field the
 // producer never stores would otherwise be walked as a garbage address. RAW
-// bodies are never walked, so they keep malloc's speed.
-static void arc_init_body(void *body, int64_t meta, size_t size) {
+// bodies are never walked, so they keep malloc's speed — and a caller that
+// PROVES it stores every masked word before the block can drop (`zero == 0`,
+// e.g. a constructor) skips the pre-zero too: ~12% of binarytrees was memset
+// re-zeroing recycled Node bodies the constructor overwrites in full.
+static void arc_init_body(void *body, int64_t meta, size_t size, int zero) {
   OspArcHdr *h = arc_hdr(body);
   h->meta = meta;
   h->rc = 1;
   h->size = (uint32_t)size;
-  if (OSP_ARC_KIND(meta) != OSP_MEM_RAW) {
+  if (zero && OSP_ARC_KIND(meta) != OSP_MEM_RAW) {
     memset(body, 0, size);
   }
   g_live_bytes += size;
@@ -333,7 +336,7 @@ static void arc_init_body(void *body, int64_t meta, size_t size) {
 // pooled block when one is parked (no malloc, no registry insert); otherwise
 // mallocs the ROUNDED capacity so the block is reusable by any request in its
 // bucket, and registers it.
-static void *arc_alloc_locked(size_t size, int64_t meta) {
+static void *arc_alloc_locked(size_t size, int64_t meta, int zero) {
   arc_arm_debug();
   if (size > OSP_ARC_MAX_BODY) {
     return NULL;
@@ -343,7 +346,7 @@ static void *arc_alloc_locked(size_t size, int64_t meta) {
     void *body = arc_pool_pop(cap);
     if (body) {
       g_live++; // slot already present; only the live count moves
-      arc_init_body(body, meta, size);
+      arc_init_body(body, meta, size, zero);
       return body;
     }
   }
@@ -353,7 +356,7 @@ static void *arc_alloc_locked(size_t size, int64_t meta) {
   }
   void *body = (char *)h + OSP_ARC_HDR;
   arc_insert((uintptr_t)body);
-  arc_init_body(body, meta, size);
+  arc_init_body(body, meta, size, zero);
   return body;
 }
 
@@ -511,7 +514,16 @@ static void arc_release_zero_locked(uintptr_t start) {
 
 void *osp_alloc_tagged(int64_t size, int64_t meta) {
   arc_lock();
-  void *p = arc_alloc_locked(size > 0 ? (size_t)size : 0, meta);
+  void *p = arc_alloc_locked(size > 0 ? (size_t)size : 0, meta, 1);
+  arc_unlock();
+  return p;
+}
+
+// Fully-initialized-by-caller twin: skip the drop-safety pre-zero (see
+// arc_init_body). Every masked word MUST be stored before the block can drop.
+void *osp_alloc_tagged_noinit(int64_t size, int64_t meta) {
+  arc_lock();
+  void *p = arc_alloc_locked(size > 0 ? (size_t)size : 0, meta, 0);
   arc_unlock();
   return p;
 }
@@ -605,7 +617,7 @@ void osp_mem_set_layout(void *p, int64_t meta) {
 
 void *osp_arc_malloc(size_t size) {
   arc_lock();
-  void *p = arc_alloc_locked(size, OSP_MEM_RAW);
+  void *p = arc_alloc_locked(size, OSP_MEM_RAW, 1);
   arc_unlock();
   return p;
 }

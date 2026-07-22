@@ -33,6 +33,14 @@
 // Layout-carrying allocation (every backend defines it; default/gc ignore meta).
 void *osp_alloc_tagged(int64_t size, int64_t meta);
 
+// Layout-carrying allocation the caller PROMISES to fully initialize before the
+// block can be dropped: every masked word is stored, so the ARC backend skips
+// the drop-safety pre-zeroing osp_alloc_tagged does. default/gc never zero, so
+// for them this is exactly osp_alloc_tagged. Constructor blocks qualify — they
+// store the tag and every field in the same region, so nothing walks the block
+// while a masked word is still garbage. [GC-ARC-PERCEUS]
+void *osp_alloc_tagged_noinit(int64_t size, int64_t meta);
+
 // Stamp an already-allocated object with its layout word. The value-container
 // units allocate through osp_arc_shim.h's calloc redirect — which zeroes, and
 // zeroed slack words are what makes a PTR_ARRAY walk safe — so they tag after

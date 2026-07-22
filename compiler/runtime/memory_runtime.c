@@ -33,6 +33,13 @@ void *osp_alloc_tagged(int64_t size, int64_t meta) {
   return malloc((size_t)size);
 }
 
+// Fully-initialized-by-caller twin (memory_hooks.h). This backend never
+// pre-zeroes, so it is identical to osp_alloc_tagged.
+void *osp_alloc_tagged_noinit(int64_t size, int64_t meta) {
+  (void)meta;
+  return malloc((size_t)size);
+}
+
 // dup/drop hooks — no-ops without a counting backend (Bacon/Cheng/Rajan
 // duality: under tracing or leak-everything, reference counts carry no work).
 void osp_retain(void *o) { (void)o; }
