@@ -1,12 +1,12 @@
 # Algebraic Effects
 
-Osprey treats effects as first-class language features. An effect declares a set of operations; functions list the effects they may perform; handlers give meaning to operations. The compiler rejects any program that performs an unhandled effect.
+Osprey has built-in algebraic effects. An effect declares typed operations, effect annotations document expected operations, and lexical handlers give those operations meaning. Operation typing and handler execution are implemented; complete compile-time effect-row propagation and missing-handler rejection are not yet implemented.
 
-> **Flavor layer — shared core (AST and above).**  Effect semantics live entirely at and above the canonical AST and are flavor-blind: an effect declaration is `Stmt::Effect` (carrying `EffectOperation`s), `perform IDENT.op(...)` lowers to `Expr::Perform`, a `handle` region lowers to `Expr::Handler{effect, arms, body}` (arms are `HandlerArm`), and `resume(v)` lowers to `Expr::Resume`. The `handle ... in expr` spelling below is the Default-flavor (`.osp`) surface; the ML flavor writes `handle ... do expr` ([FLAVOR-ML-EFFECT]/[FLAVOR-ML-HANDLER] in [ML Flavor Syntax](0024-MLFlavorSyntax.md)) and lowers to the *same* `Handler` node — type inference, the static unhandled-effect check, and the thread-as-continuation runtime never learn which flavor produced the program ([FLAVOR-BOUNDARY] in [Language Flavors](0023-LanguageFlavors.md)). NOTE: first-class handler *values*, a `Handler E` type, and multi-install are a **deferred** Phase-0 shared-core addition ([FLAVOR-HANDLER-VALUE] in 0023) — not in the AST today; ML effect/handler syntax errors loudly until that lands, so treat ML effects as not yet working.
+> **Flavor layer — shared core (AST and above).** Effect semantics live entirely at and above the canonical AST and are flavor-blind: an effect declaration is `Stmt::Effect` (carrying `EffectOperation`s), `perform IDENT.op(...)` lowers to `Expr::Perform`, a `handle` region lowers to `Expr::Handler{effect, arms, body}` (arms are `HandlerArm`), and `resume(v)` lowers to `Expr::Resume`. The `handle ... in expr` spelling below is the Default-flavor (`.osp`) surface; the ML flavor lowers its spelling to the same nodes, so type inference and code generation do not know which flavor produced the program ([FLAVOR-BOUNDARY] in [Language Flavors](0023-LanguageFlavors.md)). First-class handler values, a `Handler E` type, and multi-install remain deferred shared-core additions ([FLAVOR-HANDLER-VALUE] in 0023); lexical handlers work in both flavors.
 
 ## Status
 
-Effect declarations, `perform` expressions, effect annotations on function types, handler parsing, and full compile-time unhandled-effect checking are implemented. A handler arm may resume the performer in two ways:
+Effect declarations, `perform` expressions, source-level effect annotations, operation type checking, lexical handlers, and native single-shot continuations are implemented. Effect annotations currently guide checking inside a function body but are not retained in `Type::Fun` or propagated through calls. Missing handlers and missing row annotations can therefore reach code generation; runtime lookup then aborts with `unhandled effect: <Effect>.<operation>`. A handler arm may resume the performer in two ways:
 
 - **Implicit tail-resume.** An arm whose body is an ordinary expression returns that value to the `perform` site, which continues. This is the cheap default and handlers may own mutable state with it (see [Handler-Owned State]).
 - **Explicit `resume`.** An arm whose body contains a `resume` expression captures the performer's *delimited continuation*: `resume(v)` runs the rest of the handled computation with `v` as the operation's result and yields its answer back to the arm, so the arm can run code **after** the performer continues. Single-shot (each continuation is resumed at most once) and **deep** (the handler stays installed for the resumed computation). See [Resuming Handlers]. **Status: executable for single-shot deep continuations via the thread-as-continuation runtime in [plan 0008](../plans/0008-algebraic-effects-resume.md).**
@@ -150,7 +150,7 @@ fetch : string -> string ![IO, Net]
 fetch url = perform Net.get url
 ```
 
-A function with no `!E` is pure; calling an effectful function from a pure context is a compilation error.
+The intended model is that a function with no `!E` is pure and that calling an effectful function from a pure context is a compilation error. The current checker does not yet propagate effect rows through function types or calls, so annotations are documentation and local operation-instantiation constraints rather than complete capabilities.
 
 ## Performing Operations
 
@@ -174,7 +174,7 @@ incrementTwice () =
     perform State.get
 ```
 
-If no enclosing handler covers an effect, the program does not compile.
+If no enclosing handler covers an effect, the current generated program aborts during runtime lookup. Compile-time rejection is the designed behavior and remains roadmap work.
 
 ## Handlers
 
@@ -227,7 +227,7 @@ in
 from the enclosing scope. Any `mut` an arm captures is promoted to a shared
 heap cell that the whole `handle` region — every arm and the code after `in` —
 sees as one location. This makes the `State` effect *real*: the effectful code
-stays pure (it only `perform`s), and the handler is the single place the state
+stays abstract over the state implementation (it only `perform`s), and the handler is the single place the state
 lives.
 
 ```osprey
@@ -385,9 +385,9 @@ stack via the existing snapshot/restore (`__osprey_handler_snapshot`), so a
 `perform` deep inside the continuation still resolves outer handlers. See
 [plan 0008](../plans/0008-algebraic-effects-resume.md).
 
-## Effect Inference
+## Effect Inference Design
 
-The compiler infers the minimal effect set of every expression. Functions either declare their effects or are required to be pure. A function may be polymorphic over an effect set:
+The design calls for the compiler to infer the minimal effect set of every expression, require unannotated functions to be pure, and permit polymorphism over an effect set. That whole-program inference is not implemented today; current annotations scope generic effect instantiation within the annotated function body.
 
 ```osprey
 fn loggedCalculation<E>(x) -> int !E = {
@@ -403,9 +403,9 @@ loggedCalculation x =
     x * 2
 ```
 
-## Static Safety Checks
+## Designed Static Safety Checks
 
-The compiler enforces three static checks on effect programs. Each failure is a compile-time error, not a runtime fault.
+The language design requires the following checks before code generation. They describe the target state, not current enforcement.
 
 | Check                              | Failure mode in other languages |
 | ---------------------------------- | ------------------------------- |
@@ -413,12 +413,7 @@ The compiler enforces three static checks on effect programs. Each failure is a 
 | No circular effect dependency      | Stack overflow                  |
 | No handler that performs the same effect it handles | Infinite loop |
 
-> **Status — enforcement is at runtime today.** This section specifies the
-> designed state. In the current Rust compiler the first two checks are
-> enforced by a **runtime abort** (`unhandled effect: <Effect>.<op>`, nonzero
-> exit) rather than a compile error, and the self-performing-handler check is
-> not yet enforced. The compile-time checks land with effect rows on function
-> types — [plan 0016 §Phase C](../plans/0016-algebraic-effects-and-handlers.md).
+> **Current status.** A missing runtime handler is guarded by an explicit abort (`unhandled effect: <Effect>.<op>`, nonzero exit). Missing or undeclared rows, circular dependencies, and a handler performing its own effect are not all statically rejected; recursive cases may instead recurse until failure. The compile-time checks require retaining and propagating rows on function types — [plan 0016 §Phase C](../plans/0016-algebraic-effects-and-handlers.md).
 
 ### Circular Dependency Example
 

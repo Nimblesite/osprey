@@ -6,6 +6,7 @@ const PAGES = [
   { name: "spec-index", path: "/spec/", kind: "prose" },
   { name: "spec-prose", path: "/spec/0001-introduction/", kind: "prose" },
   { name: "docs-index", path: "/docs/", kind: "prose" },
+  { name: "docs-web-apps", path: "/docs/web-apps/", kind: "prose" },
   { name: "docs-function", path: "/docs/functions/map/", kind: "prose" },
   { name: "docs-type", path: "/docs/types/string/", kind: "prose" },
   { name: "blog-index", path: "/blog/", kind: "listing" },

@@ -2,7 +2,7 @@
 layout: page
 title: "WebAssembly Target"
 description: "Osprey Language Specification: WebAssembly Target"
-date: 2026-07-21
+date: 2026-07-22
 tags: ["specification", "reference", "documentation"]
 author: "Christian Findlay"
 permalink: "/spec/0022-webassemblytarget/"
@@ -224,15 +224,16 @@ cannot use the second, and deliberately does not use the third:
    with the wasi-libc linear-memory model used here.
 
 **ARC is the reclaiming backend that fits wasm [WASM-TARGET-MEMORY-ARC].** The
-planned ARC default ([GC-ARC-PERCEUS], plan 0011 phase 2) is *precise* —
+native ARC backend ([GC-ARC-PERCEUS], plan 0011 phase 2) is *precise* —
 `osp_retain`/`osp_release` are compiler-inserted, so it needs none of the
 stack/register/segment scanning, `setjmp`, or threads that bar the conservative
 GC from wasm — and *complete*, because the value heap is acyclic [MEM-ACYCLIC],
 so no cycle collector is required. The Perceus dup/drop pass is target-agnostic
-codegen; once it lands natively, an ARC wasm runtime archive slots in behind
-`@osp_alloc` with zero wasm-specific work and gives wasm real, deterministic
-reclamation in plain linear memory — no Wasm-GC proposal required. Until then,
-wasm uses the default allocate-and-leak-until-exit backend.
+codegen, but the Wasm build does not yet provide or select an ARC runtime
+archive. Wiring that archive and forwarding the CLI memory selector would give
+Wasm deterministic reclamation in plain linear memory without the Wasm-GC
+proposal. Until then, Wasm uses the default allocate-until-instance-exit backend;
+`--memory=arc --target=wasm32` does not change that archive today.
 
 ## Limitations
 

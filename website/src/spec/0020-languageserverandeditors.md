@@ -2,7 +2,7 @@
 layout: page
 title: "Language Server & Editor Integrations"
 description: "Osprey Language Specification: Language Server & Editor Integrations"
-date: 2026-07-21
+date: 2026-07-22
 tags: ["specification", "reference", "documentation"]
 author: "Christian Findlay"
 permalink: "/spec/0020-languageserverandeditors/"

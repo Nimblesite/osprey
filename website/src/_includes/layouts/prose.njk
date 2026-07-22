@@ -13,7 +13,19 @@ layout: layouts/base.njk
   </aside>
   <article class="prose">
 {% if image %}
-    <img class="prose-hero" src="{{ image }}" alt="{{ title }}" width="1600" height="840" loading="eager">
+    <img class="prose-hero" src="{{ image }}" alt="{{ imageAlt | default(title) }}" width="1600" height="840" loading="eager">
+{% endif %}
+{% set titleInContent = "<h1" in content %}
+{% set authorInContent = author and (("By " ~ author) in content) %}
+{% if not titleInContent %}
+    <h1>{{ title }}</h1>
+{% endif %}
+{% if author and not authorInContent %}
+    <p class="prose-meta">
+      <span>By {{ author }}</span>
+      {% if date %}<time datetime="{{ date | htmlDateString }}">{{ date | readableDate }}</time>{% endif %}
+      {% if readingTime %}<span>{{ readingTime }} min read</span>{% endif %}
+    </p>
 {% endif %}
 {{ content | safe }}
   </article>

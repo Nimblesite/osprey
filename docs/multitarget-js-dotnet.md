@@ -51,12 +51,12 @@ They need new emitters and a non-C runtime surface.
 
 The relevant existing semantic status:
 
-- Effects: declarations, `perform`, `handle ... in`, effect annotations, and
-  compile-time unhandled-effect checking work today. Handler arms without
-  explicit `resume` are lowered as normal functions and behave as cheap
-  tail-resume/value substitution.
-- Explicit `resume`: syntax and type-checking exist, but code generation rejects
-  it. The intended design is single-shot, deep, thread-as-continuation.
+- Effects: declarations, `perform`, `handle ... in`, source annotations, and
+  operation type checking work today. Missing handlers and undeclared rows are
+  not yet rejected in every case; runtime lookup guards a missing handler.
+  Handler arms without explicit `resume` are lowered as normal functions.
+- Explicit `resume`: native code generation implements single-shot, deep,
+  thread-as-continuation semantics. The Wasm runtime excludes that pthread path.
 - Fibers: `spawn`, `await`, `yield`, and channels exist. The current runtime uses
   pthread-backed fibers in concurrent mode, with deterministic sequential
   execution in test mode. This is closer to "thread-backed task" than a green
@@ -274,11 +274,12 @@ state machines/CPS or a heavy thread-as-continuation bridge.
 
 ## Algebraic Effects: What Can Be Preserved?
 
-### Compile-Time Effect Safety
+### Effect Checking Boundary
 
-This is target-independent. Osprey's type checker already decides whether a
-program's effects are handled. JS and IL targets should receive an already
-checked/lowered program. They do not need host-language effect typing.
+Operation signature checking is target-independent, but full effect coverage is
+not implemented yet. JS and IL targets should share the same eventual effect-row
+propagation and missing-handler checks rather than relying on host-language
+effect typing.
 
 ### Tail-Resume Handlers
 

@@ -2,7 +2,7 @@
 layout: page
 title: "Introduction"
 description: "Osprey Language Specification: Introduction"
-date: 2026-07-21
+date: 2026-07-22
 tags: ["specification", "reference", "documentation"]
 author: "Christian Findlay"
 permalink: "/spec/0001-introduction/"
@@ -19,11 +19,11 @@ Osprey is a statically-typed functional language in the ML family. It compiles t
 - Hindley-Milner type inference; explicit annotations are optional.
 - Pattern matching as the only conditional construct (no `if`/`else`).
 - Immutable bindings by default; `mut` opts in to mutability.
-- Algebraic effects checked at compile time.
+- Typed algebraic-effect operations with lexical handlers; complete static handler/row coverage remains in progress.
 - `Result<T, E>` for all fallible operations; no exceptions, panics, or null.
 - In the Default flavor, named arguments are required for functions of two or more parameters (`f(x: a, y: b)`); the ML flavor uses whitespace application (`f a b`) or the uncurried grouping (`f (x, y)`) instead.
 - Lightweight fibers and channel-based concurrency.
-- Automatic memory management with no observable collector — ARC by default, tracing GC selectable, and a `--static-memory` mode with zero runtime memory operations.
+- Swappable memory backends with a non-reclaiming default plus opt-in tracing GC and Perceus ARC; the `--static-memory` subset remains a design target.
 - Built-in HTTP and WebSocket support.
 
 ## Status

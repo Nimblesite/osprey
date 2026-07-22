@@ -8,7 +8,7 @@ One generated image per post → used at three crops (hero banner, 16:9 card, 1:
 
 ## 1. Brand North Star
 
-Osprey is a modern **functional programming language**: compile-time effect safety, lightweight fiber concurrency, immutable persistent collections, pattern matching, compiles to LLVM. The brand feeling is **precise, engineered, nocturnal, premium, high-contrast, calm**.
+Osprey is a modern **functional programming language** with typed algebraic effects, lightweight fiber concurrency, immutable persistent collections, pattern matching, and LLVM code generation. The brand feeling is **precise, engineered, nocturnal, premium, high-contrast, calm**.
 
 Three non-negotiable threads must appear in **every** image:
 
