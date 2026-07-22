@@ -153,8 +153,19 @@ if have clang && have wasmtime && [[ -n "$WASI_SYSROOT" ]]; then
         -o "$TMP/cwasm_probe.wasm" "$TMP/cwasm_probe.c" 2>/dev/null && CWASM_OK=1
 fi
 
+# The bench MUST time the CURRENT sources, never a stale artifact. Rebuild the
+# C runtime archives (memory_{runtime,gc,arc}.c live here — the backend picked
+# by --memory=) AND the release compiler up front, so a code change is always
+# reflected in the numbers. Both steps are incremental, so this is ~seconds when
+# nothing changed. Escape hatch: BENCH_NO_BUILD=1 times whatever is already built.
+if [[ "${BENCH_NO_BUILD:-0}" != 1 ]]; then
+  echo "==> rebuilding osprey (C runtime archives + release compiler) so the bench times CURRENT sources"
+  ( cd "$ROOT" && make _runtime ) || { echo "FATAL: C runtime archive build failed" >&2; exit 1; }
+  ( cd "$ROOT" && cargo build --release --workspace -q ) || { echo "FATAL: release compiler build failed" >&2; exit 1; }
+fi
+
 if [[ ! -x "$OSP" ]]; then
-  echo "FATAL: osprey binary not found at $OSP — run 'make build' first." >&2
+  echo "FATAL: osprey binary not found at $OSP — run 'make build' first (or unset BENCH_NO_BUILD)." >&2
   exit 1
 fi
 
