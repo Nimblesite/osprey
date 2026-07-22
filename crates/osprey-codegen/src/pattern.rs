@@ -77,6 +77,12 @@ fn gen_list_match(cg: &mut Codegen, disc: &Value, arms: &[MatchArm]) -> Result<V
 /// proves every index is in bounds. Elements cross as the uniform `i64`,
 /// carrying the scrutinee's element owner so a list-of-handles stays usable; a
 /// `_` element binds nothing.
+///
+/// A head binding BORROWS: `osprey_list_get` hands back the list's own
+/// reference with no count, and the `i64` spelling keeps the ARC ledger from
+/// ever registering it as an owner — so nothing dups it and nothing drops it,
+/// and it stays valid exactly as long as the scrutinee does. The `...rest`
+/// view below is the opposite: a real +1 the arm owns. [GC-ARC-PERCEUS]
 fn bind_list_arm(
     cg: &mut Codegen,
     list_val: &Value,

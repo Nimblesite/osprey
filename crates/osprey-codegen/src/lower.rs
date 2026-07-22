@@ -342,6 +342,16 @@ fn gen_cell_define(cg: &mut Codegen, name: &str, value: &Expr) -> Result<()> {
     // The cell holds its own reference to the stored value [GC-ARC-PERCEUS].
     crate::arc::dup_store(cg, ty, &v.operand);
     cg.emit(format!("store {ty} {}, {ty}* {ptr}", v.operand));
+    // The cell itself is a heap allocation owned by the region that declared
+    // the `mut`. A handler env capturing it only DUPs it (`build_env`), so
+    // without this the cell outlives every region and leaks — one per captured
+    // `mut`. [GC-ARC-PERCEUS] plan 0011 M5b.
+    let handle = if ty == "i8*" {
+        ptr.clone()
+    } else {
+        cg.emit_reg(format!("bitcast {ty}* {ptr} to i8*"))
+    };
+    crate::arc::own_beyond_stmt(cg, &Value::new(handle, LType::Ptr));
     let _ = cg.cell_slots.insert(
         name.to_string(),
         crate::builder::CellSlot {

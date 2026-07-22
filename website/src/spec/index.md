@@ -2,7 +2,7 @@
 layout: page
 title: "Osprey Language Specification"
 description: "Complete language specification and syntax reference for the Osprey programming language"
-date: 2026-07-15
+date: 2026-07-21
 tags: ["specification", "reference", "documentation"]
 author: "Christian Findlay"
 permalink: "/spec/"
@@ -11,7 +11,7 @@ permalink: "/spec/"
 # Osprey Language Specification
 
 **Version:** 0.2.0  
-**Date:** 2026-07-15  
+**Date:** 2026-07-21  
 **Author:** Christian Findlay
 
 ## Table of Contents

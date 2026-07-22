@@ -113,6 +113,14 @@ pub struct Codegen {
     pub(crate) arc: crate::arc::ArcLedger,
     /// Monotonic id for hoisted ARC spill slots (`%arc.sN`), per function.
     arc_slot_count: usize,
+    /// Registers this function materialised from a `private constant` global
+    /// (string literals). They address **rodata**, never the managed heap, so
+    /// every dup/drop on one is a guaranteed registry probe-miss — a locked
+    /// hash probe that can only ever be a no-op. Classifying them here elides
+    /// the call outright ([GC-ARC-PERCEUS] M6b, TR §2.4 "unique/static"
+    /// classification). Per-function: register names restart at each
+    /// `begin_function`.
+    rodata_regs: HashSet<String>,
 }
 
 /// A mutable variable promoted to a heap cell so an effect handler can own it.
@@ -161,6 +169,7 @@ pub(crate) struct SavedFn {
     /// its own epilogue, never the suspended function's [GC-ARC-PERCEUS].
     arc: crate::arc::ArcLedger,
     arc_slot_count: usize,
+    rodata_regs: HashSet<String>,
     debug_scope: Option<usize>,
     debug_position: Option<Position>,
     debug_retained_nodes: Option<usize>,
@@ -440,6 +449,7 @@ impl Codegen {
                 .then(crate::coverage::CoverageState::default),
             arc: crate::arc::ArcLedger::new(),
             arc_slot_count: 0,
+            rodata_regs: HashSet::new(),
         }
     }
 
@@ -636,6 +646,7 @@ impl Codegen {
             resume_ctx: self.resume_ctx.take(),
             arc: std::mem::take(&mut self.arc),
             arc_slot_count: self.arc_slot_count,
+            rodata_regs: std::mem::take(&mut self.rodata_regs),
             debug_scope: self.debug.as_ref().and_then(|d| d.current_scope),
             debug_position: self.debug.as_ref().and_then(|d| d.current_position),
             debug_retained_nodes: self.debug.as_ref().and_then(|d| d.current_retained_nodes),
@@ -676,6 +687,7 @@ impl Codegen {
         self.resume_ctx = saved.resume_ctx;
         self.arc = saved.arc;
         self.arc_slot_count = saved.arc_slot_count;
+        self.rodata_regs = saved.rodata_regs;
         if let Some(debug) = self.debug.as_mut() {
             debug.current_scope = saved.debug_scope;
             debug.current_position = saved.debug_position;
@@ -960,6 +972,7 @@ impl Codegen {
         self.emit(format!(
             "{reg} = getelementptr [{len} x i8], [{len} x i8]* {name}, i64 0, i64 0"
         ));
+        let _ = self.rodata_regs.insert(reg.clone());
         Value::new(reg, LType::Str)
     }
 
@@ -1013,6 +1026,10 @@ impl Codegen {
         self.resume_ctx = None;
         self.arc = crate::arc::ArcLedger::new();
         self.arc_slot_count = 0;
+        // Register names restart here, so a previous function's rodata
+        // registers would otherwise alias this one's heap values and silently
+        // elide their dup/drop [GC-ARC-PERCEUS].
+        self.rodata_regs.clear();
         self.push_scope();
         self.cur_lines.push("entry:".to_string());
         if let Some(debug) = self.debug.as_mut() {
@@ -1134,6 +1151,12 @@ impl Codegen {
     /// return its register. ARC region drops load these slots, so a drop is
     /// valid from any block and untaken paths release `null` (a no-op) —
     /// ownership without dominance analysis [GC-ARC-PERCEUS].
+    /// Whether `reg` addresses rodata (a string-literal global), so ARC
+    /// dup/drop on it is provably a no-op [GC-ARC-PERCEUS].
+    pub(crate) fn is_rodata(&self, reg: &str) -> bool {
+        self.rodata_regs.contains(reg)
+    }
+
     pub(crate) fn hoist_arc_slot(&mut self) -> String {
         let name = format!("%arc.s{}", self.arc_slot_count);
         self.arc_slot_count += 1;

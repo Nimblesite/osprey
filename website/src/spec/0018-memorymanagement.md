@@ -2,7 +2,7 @@
 layout: page
 title: "Memory Management"
 description: "Osprey Language Specification: Memory Management"
-date: 2026-07-16
+date: 2026-07-21
 tags: ["specification", "reference", "documentation"]
 author: "Christian Findlay"
 permalink: "/spec/0018-memorymanagement/"
@@ -30,16 +30,25 @@ you no longer need.
 
 ## Status
 
-Partially implemented — the *boundary* exists, a first *reclaiming* backend
-ships (tracing GC, opt-in via `--memory=gc`), and the Perceus ARC backend is
-**counting for real** (`--memory=arc` links the counting runtime — header,
-registry, kind/mask drop — and the compiler now inserts the full Perceus
-dup/drop discipline: producers own +1, dup-on-store, drops at region end and
-at last use, returns transfer +1. Byte-identical on the full differential
-harness under all three backends; container-free programs report zero live
-language values at exit. Containers are leak-safe pending node-level RC —
-[implementation plan 0011](https://github.com/Nimblesite/osprey/blob/main/docs/plans/0011-arc-gc-implementation.md) phase 2,
-milestones M4b/M5b/M6b).
+Two reclaiming backends ship. `--memory=gc` links a conservative mark & sweep;
+`--memory=arc` links the **Perceus** reference-counting runtime (16-byte header,
+probe-first allocation registry, non-recursive kind/mask drop walk), and the
+compiler inserts the full dup/drop discipline: producers own +1, dup-on-store,
+drops at region end and at last use, and returns **transfer** their +1 rather
+than dup-then-drop. Both persistent containers refcount their interior nodes, so
+a dead version of a list or map reclaims exactly the spine it stopped sharing.
+
+All three backends are byte-identical on the whole differential harness, and
+under `OSPREY_ARC_DEBUG=1` every example reports **zero live language values at
+exit** — the [MEM-BACKENDS] leak bar, enforced on every run by the harness
+(`ARC_LEAKY` must be 0). The C runtime's memory and container units are covered
+by assertion-dense unit suites run from `make test`.
+
+Still open, tracked as future work rather than a correctness gap: the precise
+Cheney copying collector that would act as a second conformance oracle, the
+`--static-memory` subset below, and the remaining Perceus *precision* tiers
+(borrow inference, drop specialization, drop-guided reuse) — all of which are
+observationally invisible by [MEM-OPAQUE] and change only peak RSS and speed.
 
 - **Swappable backend boundary [MEM-BACKENDS]: done.** All codegen heap
   allocation funnels through a single `@osp_alloc` hook (osprey-codegen
@@ -53,16 +62,15 @@ milestones M4b/M5b/M6b).
   temporaries) non-escaping and removes them entirely. This realises the
   [MEM-OWNERSHIP] "free at last use, statically" ideal for everything whose
   lifetime LLVM can see.
-- **Reclaiming *escaping* values: tracing GC ships, ARC pending.** Values that
-  genuinely outlive their allocation site (e.g. nodes of a built-and-held tree)
-  still leak under the *default* backend, but the opt-in tracing collector
-  (`--memory=gc`, `compiler/runtime/memory_gc.c`) reclaims them — a conservative
-  mark & sweep linked behind `@osp_alloc`, complete because the heap is acyclic
-  [MEM-ACYCLIC]. On `binarytrees` it cuts peak RSS ~80× (905 MiB → ~11 MiB) with
-  byte-identical output across every differential example (`make _conformance-gc`).
-  The ARC default and a precise copying GC are the remaining work
-  ([plan 0011](https://github.com/Nimblesite/osprey/blob/main/docs/plans/0011-arc-gc-implementation.md)); this spec is the
-  contract they must satisfy.
+- **Reclaiming *escaping* values: both backends ship.** Values that genuinely
+  outlive their allocation site (nodes of a built-and-held tree, a list that
+  grows across a loop) still leak under the *default* backend, which frees
+  nothing by design. The tracing collector (`--memory=gc`,
+  `compiler/runtime/memory_gc.c`) reclaims them by conservative mark & sweep
+  behind `@osp_alloc`, complete because the heap is acyclic [MEM-ACYCLIC]. The
+  ARC backend (`--memory=arc`, `compiler/runtime/memory_arc.c`) reclaims them
+  precisely, at the last reference. Both are validated by `make _conformance-gc`
+  / `make _conformance-arc`: byte-identical output on every differential example.
 
 ## Collection Is Unobservable [MEM-OPAQUE]
 
@@ -192,15 +200,25 @@ boundary rather than sharing.
 Two backends ship out of the box, chosen at build time and invisible in
 source code:
 
-- **ARC (default)** — non-atomic reference counting on the shared residue,
-  statically elided wherever ownership is provable. Complete without a
-  cycle collector because the heap is acyclic [MEM-ACYCLIC]. The algorithm
-  is **Perceus** (Reinking, Xie, de Moura, Leijen), implemented from the
-  extended technical report
+- **ARC** — non-atomic reference counting on the shared residue, statically
+  elided wherever ownership is provable. Complete without a cycle collector
+  because the heap is acyclic [MEM-ACYCLIC]. The algorithm is **Perceus**
+  (Reinking, Xie, de Moura, Leijen), implemented from the extended technical
+  report
   [MSR-TR-2020-42](https://www.microsoft.com/en-us/research/wp-content/uploads/2020/11/perceus-tr-v1.pdf):
-  precise, garbage-free reference counting (every value freed at its last
-  dynamic use), with drop specialization and drop-guided reuse.
-- **Tracing GC** — the conformance oracle that keeps [MEM-OPAQUE] honest.
+  producers own, stores dup, owners drop at region end and at last use, and a
+  return transfers its reference rather than dup-then-drop. Drop
+  specialization and drop-guided reuse are the remaining precision tiers.
+- **Tracing GC** — the conformance oracle that keeps [MEM-OPAQUE] honest. The
+  shipped one is conservative (Boehm-style: a machine word is a root iff it
+  equals the base address of a known managed allocation, so a false positive
+  can only *retain*, never corrupt — the collector never moves). The planned
+  successor is a **precise** Cheney semi-space copier with per-fiber roots
+  through an LLVM shadow stack (`llvm.gcroot`), tracing off the same layout
+  word ARC drops with; bump allocation, free compaction, cost proportional to
+  live data, with Immix as the later mark-region upgrade. Being precise and
+  independent is exactly what makes it able to falsify an ARC ownership bug
+  that byte-identical output cannot see.
 
 **Backend portability.** The two reclaiming backends need different things from
 the host. The conservative tracing GC finds roots by scanning the native stack,
@@ -213,7 +231,44 @@ a separate, untargeted mechanism. See
 
 A reclamation backend is conforming iff every differential-harness example
 produces byte-identical output and reports zero leaked language values under
-it.
+it. Both shipped reclaiming backends meet that bar today; the ARC half of it is
+machine-checked on every run (`OSPREY_ARC_DEBUG=1` makes the harness fail on a
+nonzero `ARC_LEAKY`), because stdout comparison alone can see neither a leak nor
+a premature free.
+
+**Which backend is the shipped default.** ARC stays *opt-in* (`--memory=arc`)
+until the precise copying collector exists to cross-check it. Byte-identical
+output plus a zero leak count is a strong signal but not a proof of correct
+ownership: the two are exactly what an independent precise tracer would falsify
+if a retain were missing on a path the harness does not reach. Native builds
+therefore default to the non-reclaiming allocator, whose escaping-value
+behaviour is a bounded, well-understood leak rather than an unverified free.
+`wasm32` is the exception — it has no conservative option, so ARC is what it
+links.
+
+### Container Element Ownership [MEM-BACKENDS-ELEMENTS]
+
+The persistent `List` and `Map` store their elements in type-blind `int64`
+slots: an element that is a heap pointer and an element that is an integer are
+indistinguishable at run time. A reclaiming backend must therefore never infer
+element-ness from the bit pattern — an integer colliding with a live heap
+address would be freed out from under its owner. Containers instead carry an
+**element-kind flag fixed at the insertion that created them**, decided by the
+compiler from the element's static Hindley-Milner type, and every derived
+version inherits it. Three rules follow, and they hold for every backend
+because the non-reclaiming ones make each step a no-op:
+
+- **Insertion transfers.** The caller's reference becomes the container's; the
+  entry point does not take a second one.
+- **Internal copies dup.** Any operation that reads elements out of one
+  container and stores them into another (`concat`, `prepend`, `reverse`, the
+  `mapKeys`/`mapValues`/`filterList` builders) takes its own reference per
+  element.
+- **Extraction borrows.** `listGet`, map lookup, iteration, loop elements and a
+  `[head, …tail]` head binding all hand back a reference the container still
+  owns, valid for as long as the container is. Making extraction *owned* would
+  need the element's static type threaded to the extraction site; until then
+  the borrow is the contract.
 
 ### Custom Managers [MEM-BACKENDS-CUSTOM]
 

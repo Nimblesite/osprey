@@ -20,12 +20,12 @@ zsh benchmarks/run.sh            # run directly (assumes `make build` already ra
 zsh benchmarks/run.sh primes     # direct, single case
 ```
 
-> **Heads-up on RAM.** With the optimized build (below) every case except
-> `binarytrees` peaks at ~1.4 MB — on par with C. Under the *default* backend
-> `binarytrees` still peaks near **900 MB** because its tree nodes genuinely
-> escape and that backend never reclaims (see *Findings*); the **`Osprey (GC)`**
-> column compiles the same source with `--memory=gc` (tracing collector) and
-> brings it down to **~11 MB**. Run the default case on a machine with a few GB
+> **Heads-up on RAM.** With the optimized build (below) the non-allocating cases
+> peak at ~1.4 MB — on par with C. The allocating ones balloon under the
+> *default* backend, which never reclaims (see *Findings*): `binarytrees` peaks
+> near **905 MB**. The **`Osprey (ARC)`** and **`Osprey (GC)`** columns compile
+> the same source with `--memory=arc` / `--memory=gc` and bring that to
+> **~4.9 MB** and **~24 MB**. Run the default column on a machine with a few GB
 > free, or skip it with `BENCH_FILTER`.
 
 Results are written to `benchmarks/results/` (gitignored):
@@ -101,10 +101,10 @@ seeded token generator and runs in constant *or* randomized mode (below).
 | `exprtree`  | recursive union + records         | constructor allocation + pattern-match dispatch + modular eval | build+evaluate depth-14 trees ×10 |
 
 `listops` is a second **memory** benchmark alongside `binarytrees`: persistent
-`listAppend` allocates a fresh spine on every push, so under the default
-(non-reclaiming) backend it peaks near **2.5 GB**, while `--memory=gc` reclaims
-the dead intermediate lists to **~3.6 MB** (a ~690× cut). `wordfreq` shows the
-same effect on the HAMT (54 MB → ~3.7 MB).
+`listAppend` allocates a fresh spine on every push, and `[head, ...tail]`
+recursion walks it. It peaks at **~14 MB** under the default (non-reclaiming)
+backend, **~2.6 MB** under ARC and **~3.5 MB** under the GC. `wordfreq` shows the
+same effect on the HAMT (59 MB → 2.0 MB under ARC, 4.5 MB under the GC).
 
 ## Methodology
 
@@ -127,6 +127,7 @@ Compile commands (source of truth: [`run.sh`](run.sh)):
 | Lang | Command |
 |------|---------|
 | Osprey  | `osprey <f>.osp --compile` (emits LLVM IR, compiled by clang at `-O2`; override with `OSPREY_OPT`) |
+| Osprey (ARC) | `osprey <f>.osp --memory=arc --compile` (same IR; links the Perceus reference-counting runtime archive — [MEM-BACKENDS]) |
 | Osprey (GC) | `osprey <f>.osp --memory=gc --compile` (same IR; links the tracing-GC runtime archive — [MEM-BACKENDS]) |
 | Rust    | `rustc -C opt-level=3 -C overflow-checks=off -o <bin> <f>.rs` |
 | C       | `cc -O2 -o <bin> <f>.c` |
@@ -229,19 +230,25 @@ so every per-operation `Result` block stayed a live `malloc`. Compiling the IR a
 (heap → registers): `fib(35)` went from **0.52 s / 1.37 GB to 0.01 s / 1.4 MB**.
 See [plan 0010](../docs/plans/0010-cross-language-benchmark-suite.md).
 
-**The one remaining gap — and how the GC closes it: `binarytrees`.** Its tree
-nodes genuinely *escape* — built, held, then checksummed — so the optimizer
+**The one remaining gap — and how reclamation closes it: `binarytrees`.** Its
+tree nodes genuinely *escape* — built, held, then checksummed — so the optimizer
 cannot statically free them, and the default allocator
 (`compiler/runtime/memory_runtime.c`, a `malloc` passthrough) never reclaims:
-~900 MB. Allocation funnels through one swappable `@osp_alloc` hook
-([MEM-BACKENDS](../docs/specs/0018-MemoryManagement.md)), so linking the tracing
-collector (`compiler/runtime/memory_gc.c`, `--memory=gc`) reclaims the dead trees
-with **no language change and byte-identical output** — peak RSS drops ~80× to
-~11 MB (the `Osprey (GC)` column), on par with Haskell. The collector is a
-conservative mark & sweep, complete because the value heap is acyclic
-[MEM-ACYCLIC]; an ARC default and a precise copying GC that should reach
-C/OCaml-class numbers are the next phases
-([plan 0011](../../docs/plans/0011-arc-gc-implementation.md)).
+~905 MB. Allocation funnels through one swappable `@osp_alloc` hook
+([MEM-BACKENDS](../docs/specs/0018-MemoryManagement.md)), so a reclaiming backend
+drops in at LINK time with **no language change and byte-identical output**. The
+conservative tracing collector (`--memory=gc`) takes peak RSS to ~24 MB; Perceus
+reference counting (`--memory=arc`, `compiler/runtime/memory_arc.c`) takes it to
+**~4.9 MB** — within 3× of C, and the `Osprey (ARC)` column beats the GC on every
+allocating case in the table (on `exprtree` it beats C). Both are complete
+without a cycle collector because the value heap is acyclic [MEM-ACYCLIC].
+
+The cost is visible in the time column and is exactly what the remaining Perceus
+precision tiers address: ARC is **free** on the non-allocating cases (identical
+to the default backend, because dup/drop on rodata and on non-escaping values is
+elided at compile time) and 2–4.5× on the allocating ones, where every escaping
+value still pays a counted retain/release. Borrow inference and drop
+specialization remove those from the paths that provably do not need them.
 
 ## Not yet benchmarked (and why)
 

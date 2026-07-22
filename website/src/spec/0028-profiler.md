@@ -2,7 +2,7 @@
 layout: page
 title: "0028 — CPU Profiler"
 description: "Osprey Language Specification: 0028 — CPU Profiler"
-date: 2026-07-15
+date: 2026-07-21
 tags: ["specification", "reference", "documentation"]
 author: "Christian Findlay"
 permalink: "/spec/0028-profiler/"

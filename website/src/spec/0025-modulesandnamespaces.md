@@ -2,7 +2,7 @@
 layout: page
 title: "Modules and Namespaces"
 description: "Osprey Language Specification: Modules and Namespaces"
-date: 2026-07-15
+date: 2026-07-21
 tags: ["specification", "reference", "documentation"]
 author: "Christian Findlay"
 permalink: "/spec/0025-modulesandnamespaces/"

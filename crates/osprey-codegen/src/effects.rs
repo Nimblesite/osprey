@@ -774,6 +774,10 @@ fn emit_suspend_fn(cg: &mut Codegen, name: &str, op_id: usize, sig: &OpSig) {
         ],
     );
     let ret = unbox_coro_value(cg, &raw, sig.ret, sig.ret_result_inner);
+    // `resume(v)` DUPs v into the coro's result mailbox (box_codegen_value),
+    // so the value arrives here owned: register it, or the performer's side of
+    // every resuming operation leaks it. [GC-ARC-PERCEUS] plan 0011 M5b.
+    crate::arc::own(cg, &ret);
     ret_and_exit(cg, saved, sig, name, &params, &ret);
 }
 

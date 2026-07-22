@@ -157,7 +157,14 @@ fn replay(cg: &mut Codegen, v: Value, skip: &str) -> Result<Value> {
             let nz = cg.fresh_reg();
             cg.emit(format!("{nz} = icmp ne i64 {}, 0", pb.operand));
             let pass = cg.fresh_label();
-            cg.emit(format!("br i1 {nz}, label %{pass}, label %{skip}"));
+            let reject = cg.fresh_label();
+            cg.emit(format!("br i1 {nz}, label %{pass}, label %{reject}"));
+            // The reject edge jumps past the loop body's region close, so it
+            // drops the region itself — otherwise every value the preceding
+            // map stages owned this iteration leaks [GC-ARC-PERCEUS].
+            cg.start_block(&reject);
+            crate::arc::drop_frame_inline(cg);
+            cg.emit(format!("br label %{skip}"));
             cg.start_block(&pass);
         }
     }
@@ -260,7 +267,16 @@ fn for_each_list(cg: &mut Codegen, args: &[Expr]) -> Result<Value> {
 fn list_builder(cg: &mut Codegen, args: &[Expr], filter: bool) -> Result<Value> {
     let l = list_arg(cg, args, 0)?;
     let f = callback_of(cg, nth(args, 1)?)?;
-    let bld = crate::collections::list_builder_new(cg);
+    // `filterList` keeps the source's own elements, so its builder inherits the
+    // source's element kind and dups each one it keeps (the elements it reads
+    // are BORROWED). `mapList` produces fresh values whose static type is only
+    // known inside the loop, so its builder latches the kind at the first push.
+    let bld = if filter {
+        let managed = cg.call("i32", "osprey_list_elem_managed", "i8*", &[&l.operand]);
+        crate::collections::list_builder_new_of(cg, &managed)
+    } else {
+        crate::collections::list_builder_new(cg)
+    };
     let lp = open_list_loop(cg, &l.operand);
     crate::arc::push_frame(cg);
     let elem = Value::new(lp.elem.clone(), LType::I64);
@@ -274,17 +290,19 @@ fn list_builder(cg: &mut Codegen, args: &[Expr], filter: bool) -> Result<Value> 
         let skip = cg.fresh_label();
         cg.emit(format!("br i1 {nz}, label %{push}, label %{skip}"));
         cg.start_block(&push);
-        crate::collections::list_builder_push(cg, &bld, &lp.elem);
+        crate::collections::list_builder_push_borrowed(cg, &bld, &lp.elem);
         cg.emit(format!("br label %{skip}"));
         cg.start_block(&skip);
     } else {
         let mapped = invoke(cg, &f, vec![elem])?;
         let mapped = crate::result::unwrap(cg, mapped);
         // The built list stores the mapped element: dup it before the
-        // per-iteration region drop [GC-ARC-PERCEUS].
+        // per-iteration region drop, and tell the builder its kind
+        // [GC-ARC-PERCEUS].
+        let managed = crate::collections::managed_flag(&mapped);
         crate::arc::escape_retain(cg, &mapped);
         let boxed = box_to_i64(cg, mapped);
-        crate::collections::list_builder_push(cg, &bld, &boxed.operand);
+        crate::collections::list_builder_push(cg, &bld, &boxed.operand, managed);
     }
     crate::arc::pop_frame(cg);
     close_list_loop(cg, &lp);

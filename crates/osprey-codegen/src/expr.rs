@@ -737,16 +737,31 @@ fn gen_interpolation(cg: &mut Codegen, parts: &[InterpolatedPart]) -> Result<Val
         }
     }
     let fmtv = cg.string_constant(&fmt);
-    cg.add_extern("declare i32 @sprintf(i8*, i8*, ...)");
-    let buf = cg.heap_alloc("4096");
-    let tmp = cg.fresh_reg();
+    cg.add_extern("declare i64 @osp_format_size(i8*, ...)");
+    cg.add_extern("declare void @osp_format_into(i8*, i64, i8*, ...)");
     let extra = if args.is_empty() {
         String::new()
     } else {
         format!(", {}", args.join(", "))
     };
+    // Two passes: measure, then format into an exactly-sized buffer. The old
+    // single pass `sprintf`d into a fixed 4 KiB block — ~4 KiB wasted on EVERY
+    // interpolation (the dominant heap cost of any string-building program) and
+    // a silent overflow past it. Measuring goes through `osp_format_size`
+    // rather than `snprintf` directly because this IR is target-neutral and
+    // `size_t` is not: it is 32-bit on wasm32 and 64-bit natively, so a literal
+    // size type here mismatches wasi-libc at wasm-ld time. See
+    // string_runtime.h. [BUILTIN-STRING-INTERP]
+    let len = cg.fresh_reg();
     cg.emit(format!(
-        "{tmp} = call i32 (i8*, i8*, ...) @sprintf(i8* {buf}, i8* {}{extra})",
+        "{len} = call i64 (i8*, ...) @osp_format_size(i8* {}{extra})",
+        fmtv.operand
+    ));
+    let size = cg.fresh_reg();
+    cg.emit(format!("{size} = add i64 {len}, 1"));
+    let buf = cg.heap_alloc(&size);
+    cg.emit(format!(
+        "call void (i8*, i64, i8*, ...) @osp_format_into(i8* {buf}, i64 {size}, i8* {}{extra})",
         fmtv.operand
     ));
     let v = Value::new(buf, LType::Str);

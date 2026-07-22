@@ -151,26 +151,58 @@ static void arc_remove(uintptr_t *slot) {
 // Kinds RAW..PTR_ARRAY (memory_hooks.h) — one histogram bucket per kind.
 #define OSP_ARC_NKINDS 5
 
+// OSPREY_ARC_DEBUG=2 additionally dumps every survivor — kind, size, rc, and a
+// printable preview of its first bytes. That triple is what actually identifies
+// a leak: a 40-byte MASK is a list header, a 24-byte MASK a map header, a RAW
+// whose preview reads as text is a runtime-minted string. Triage tool, not a log.
+#define OSP_ARC_PREVIEW 24
+
+static void arc_dump_object(const void *body, const OspArcHdr *h) {
+  char preview[OSP_ARC_PREVIEW + 1];
+  size_t n = h->size < (uint32_t)OSP_ARC_PREVIEW ? h->size : OSP_ARC_PREVIEW;
+  const unsigned char *b = (const unsigned char *)body;
+  for (size_t i = 0; i < n; i++) {
+    preview[i] = (b[i] >= 0x20 && b[i] < 0x7f) ? (char)b[i] : '.';
+  }
+  preview[n] = '\0';
+  fprintf(stderr, "[osp-arc]     kind %d size %u rc %d |%s|\n",
+          OSP_ARC_KIND(h->meta), h->size, h->rc, preview);
+}
+
 static void arc_report_leaks(void) {
+  const char *level = getenv("OSPREY_ARC_DEBUG");
+  int dump = (level != NULL && level[0] >= '2');
   pthread_mutex_lock(&g_lock);
-  // stderr only: stdout must stay byte-identical under [MEM-BACKENDS].
-  fprintf(stderr, "[osp-arc] exit: %zu live objects, %zu KiB\n", g_live,
-          g_live_bytes / 1024);
   size_t count[OSP_ARC_NKINDS] = {0};
   size_t bytes[OSP_ARC_NKINDS] = {0};
+  // Immortals (rc<0 — the empty-list singleton and friends) are excluded from
+  // the leak count on purpose: they are unreclaimable BY DESIGN, so counting
+  // them would put a permanent floor under the [GC-ARC-PERCEUS] "zero leaked
+  // language values" gate the differential harness reads off this line.
+  size_t immortal = 0;
   for (size_t i = 0; i < g_cap; i++) {
     if (g_tab[i] > OSP_ARC_TOMB) {
       OspArcHdr *h = arc_hdr((void *)g_tab[i]);
       int kind = OSP_ARC_KIND(h->meta);
       int k = (kind >= 0 && kind < OSP_ARC_NKINDS) ? kind : 0;
+      if (h->rc < 0) {
+        immortal++;
+        continue;
+      }
       count[k]++;
       bytes[k] += h->size;
+      if (dump) {
+        arc_dump_object((const void *)g_tab[i], h);
+      }
     }
   }
+  // stderr only: stdout must stay byte-identical under [MEM-BACKENDS].
+  fprintf(stderr, "[osp-arc] exit: %zu live objects, %zu KiB (+%zu immortal)\n",
+          g_live - immortal, g_live_bytes / 1024, immortal);
   for (int k = 0; k < OSP_ARC_NKINDS; k++) {
     if (count[k]) {
-      fprintf(stderr, "[osp-arc]   kind %d: %zu objects, %zu KiB\n", k,
-              count[k], bytes[k] / 1024);
+      fprintf(stderr, "[osp-arc]   kind %d: %zu objects, %zu bytes\n", k,
+              count[k], bytes[k]);
     }
   }
   pthread_mutex_unlock(&g_lock);
@@ -187,9 +219,20 @@ static void arc_arm_debug(void) {
 
 // --- allocation ----------------------------------------------------------------
 
+// The header records `size` in a uint32_t, so that is the hard per-object
+// ceiling. Rejecting above it does double duty: it keeps h->size EXACT (a
+// truncated size would make the drop walk read the wrong number of words and
+// g_live_bytes drift), and it makes `OSP_ARC_HDR + size` unable to wrap —
+// without the check, size = SIZE_MAX gives malloc(15), which SUCCEEDS and
+// returns a body sitting entirely outside the block.
+#define OSP_ARC_MAX_BODY ((size_t)UINT32_MAX)
+
 // Header'd, registered allocation. Callers hold g_lock.
 static void *arc_alloc_locked(size_t size, int64_t meta) {
   arc_arm_debug();
+  if (size > OSP_ARC_MAX_BODY) {
+    return NULL;
+  }
   OspArcHdr *h = (OspArcHdr *)malloc(OSP_ARC_HDR + (size ? size : 1));
   if (!h) {
     return NULL;
@@ -198,6 +241,12 @@ static void *arc_alloc_locked(size_t size, int64_t meta) {
   h->rc = 1;
   h->size = (uint32_t)size;
   void *body = (char *)h + OSP_ARC_HDR;
+  // A body the drop walk will READ as pointers must start zeroed: a field the
+  // producer never stores would otherwise be walked as a garbage address.
+  // RAW bodies are never walked, so they keep malloc's speed.
+  if (OSP_ARC_KIND(meta) != OSP_MEM_RAW) {
+    memset(body, 0, size);
+  }
   arc_insert((uintptr_t)body);
   g_live_bytes += size;
   return body;
@@ -432,7 +481,12 @@ void osp_arc_free(void *p) {
   pthread_mutex_lock(&g_lock);
   uintptr_t *slot = arc_find((uintptr_t)p);
   if (slot) {
-    arc_release_zero_locked(slot);
+    // Immortals (rc < 0 — the empty-list singleton and friends) are returned
+    // from many call sites by construction: "authoritative" does not extend to
+    // them, or the next caller reads freed memory.
+    if (arc_hdr((void *)*slot)->rc >= 0) {
+      arc_release_zero_locked(slot);
+    }
     pthread_mutex_unlock(&g_lock);
     return;
   }
@@ -447,17 +501,29 @@ void *osp_arc_realloc(void *old, size_t size) {
   pthread_mutex_lock(&g_lock);
   uintptr_t *slot = arc_find((uintptr_t)old);
   size_t oldsize = slot ? arc_hdr((void *)*slot)->size : 0;
+  int64_t oldmeta = slot ? arc_hdr((void *)*slot)->meta : (int64_t)OSP_MEM_RAW;
   pthread_mutex_unlock(&g_lock);
   if (!slot) {
     return realloc(old, size); // foreign block: libc owns it
   }
   void *p = osp_arc_malloc(size);
-  if (p && oldsize) {
+  if (!p) {
+    return NULL;
+  }
+  if (oldsize) {
     memcpy(p, old, oldsize < size ? oldsize : size);
   }
-  if (p) {
-    osp_arc_free(old);
+  // The copy ALIASES old's children, so ownership moves wholesale: the new
+  // block takes the layout word, and old's is stripped to RAW before it dies —
+  // otherwise its drop walk would decrement children the copy never dup'd.
+  osp_mem_set_layout(p, oldmeta);
+  pthread_mutex_lock(&g_lock);
+  uintptr_t *dead = arc_find((uintptr_t)old);
+  if (dead) {
+    arc_hdr((void *)*dead)->meta = (int64_t)OSP_MEM_RAW;
   }
+  pthread_mutex_unlock(&g_lock);
+  osp_arc_free(old);
   return p;
 }
 

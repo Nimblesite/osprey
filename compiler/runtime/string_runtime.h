@@ -55,6 +55,15 @@ const char *osp_string_codepoint_at(const char *s, int64_t byte_index, int64_t *
 const char *osp_string_codepoint_width(int64_t cp, int64_t *out);
 char *osp_string_from_codepoint(int64_t cp);
 
+/* String-interpolation formatting, two-pass: measure, then write into an
+   exactly-sized buffer. Codegen calls THESE rather than snprintf directly
+   because the emitted IR is target-neutral and `size_t` is not: it is 32-bit on
+   wasm32 and 64-bit natively, so a literal size type in the IR mismatches
+   wasi-libc's snprintf signature at wasm-ld time. `int64_t` is the same
+   everywhere. [BUILTIN-STRING-INTERP] */
+int64_t osp_format_size(const char *fmt, ...);
+void osp_format_into(char *buf, int64_t cap, const char *fmt, ...);
+
 /* list API — see string_runtime_list.c */
 osp_string_list *osp_string_split(const char *s, const char *sep);
 osp_string_list *osp_string_lines(const char *s);

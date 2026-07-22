@@ -1,7 +1,7 @@
 // Tracing garbage collector backend for Osprey — the swappable `@osp_alloc`
 // implementation selected at link time by `osprey --memory=gc`. Implements
 // [MEM-BACKENDS] (docs/specs/0018) and [GC-TRACE-CONSERVATIVE]
-// (docs/plans/0011-arc-gc-implementation.md).
+// (docs/specs/0018-MemoryManagement.md [MEM-BACKENDS]).
 //
 // Algorithm: a CONSERVATIVE, NON-MOVING mark & sweep over the managed heap
 // reachable from the C stack, the machine registers, and the program's data/BSS
@@ -18,7 +18,8 @@
 // single-threaded (the main thread is the sole allocator). The first allocation
 // from any other thread permanently disables collection — a fiber's heap is
 // isolated [MEM-FIBER-ISOLATION] and a precise per-fiber collector is future
-// work (docs/plans/0011, phase 3). Every allocation and the whole collection run
+// work (the precise per-fiber collector of [MEM-BACKENDS]). Every allocation and
+// the whole collection run
 // hold one mutex, so disabling and the heap table are race-free.
 
 #include <pthread.h>

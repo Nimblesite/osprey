@@ -18,7 +18,13 @@ static int64_t tests_skipped = 0;   /* cases reported Skip [TESTING-VERDICT] */
 static int64_t stray_failures = 0;  /* failing asserts outside any case */
 static int64_t case_failures = -1;  /* -1 = not inside a test case */
 static int64_t case_skipped = 0;    /* current case reported Skip */
-static const char *skip_reason = ""; /* why the current case was skipped */
+/* Why the current case was skipped. COPIED, never aliased: the caller's
+   string is an Osprey-owned value whose region may end before the verdict is
+   printed, so holding the pointer would read freed memory under a reclaiming
+   backend ([MEM-BACKENDS], plan 0011 M5b). Truncation is harmless — the reason
+   is diagnostic text. */
+#define SKIP_REASON_MAX 256
+static char skip_reason[SKIP_REASON_MAX] = "";
 
 /* Begin the named case: 0 = skip, 1 = run. Skips on a filter mismatch
    [TESTING-FILTER]; a nested test() inside a running case does not run — it
@@ -38,7 +44,7 @@ int32_t osp_test_begin(const char *name) {
     }
     case_failures = 0;
     case_skipped = 0;
-    skip_reason = "";
+    skip_reason[0] = '\0';
     return 1;
 }
 
@@ -58,7 +64,11 @@ void osp_test_fail(const char *reason) {
 
 void osp_test_skip(const char *reason) {
     case_skipped = 1;
-    skip_reason = reason == NULL ? "" : reason;
+    if (reason == NULL) {
+        skip_reason[0] = '\0';
+        return;
+    }
+    (void)snprintf(skip_reason, sizeof(skip_reason), "%s", reason);
 }
 
 /* Record one assertion; on mismatch print the `#` diagnostic [TESTING-TAP].

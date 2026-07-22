@@ -61,6 +61,10 @@ EXT_ID         ?= nimblesite.osprey
 A    ?= -c -fPIC -O2 -D_FORTIFY_SOURCE=2 -fstack-protector-strong -Werror -Wall -Wextra -ftrapv -fPIE -D_GNU_SOURCE
 B    ?= $(A) -std=c11
 OSSL ?= -DOPENSSL_SUPPRESS_DEPRECATED -DOPENSSL_API_COMPAT=30000 -Wno-deprecated-declarations
+# C unit-test flag profile: the same hardening as the archives, but linking an
+# executable (no -c/-fPIC/-fPIE). Named once so _test_c_runtime does not repeat
+# the flag list per suite.
+T    ?= -O2 -D_FORTIFY_SOURCE=2 -fstack-protector-strong -Werror -Wall -Wextra -ftrapv -std=c11 -D_GNU_SOURCE
 # Object lists for the archives (paths relative to compiler/, where `ar` runs).
 FIB_OBJ  ?= bin/memory_runtime.o bin/fiber_runtime.o bin/system_runtime.o bin/effects_runtime.o bin/string_runtime.o bin/string_runtime_list.o bin/list_runtime.o bin/map_runtime.o bin/map_runtime_hamt.o bin/json_runtime.o bin/ffi_runtime.o bin/term_runtime.o bin/random_runtime.o bin/test_runtime.o bin/coverage_runtime.o bin/profiler_runtime.o bin/profiler_sampler.o
 HTTP_OBJ ?= bin/http_shared.o bin/http_client_runtime.o bin/http_server_request.o bin/http_server_response.o bin/http_server_runtime.o bin/websocket_client_runtime.o bin/websocket_server_runtime.o $(FIB_OBJ)
@@ -382,32 +386,58 @@ _coverage_check_rust:
 	echo "[rust] OK: all crates meet their thresholds"
 
 # Hardened C runtime unit tests (assertion-driven; a failed assert aborts the
-# binary). Covers the string cursor (BUILTIN-STRING-CURSOR), error-message
-# contract ([ERR-PAYLOAD]), and complete HTTP reads/writes, under the same
-# hardening flags the archives use. Built as executables (no `-c`), so they link
-# the runtime TUs directly. Runs on `make test`; Windows CI uses its own steps.
+# binary). Covers the string cursor (BUILTIN-STRING-CURSOR), the error-message
+# contract ([ERR-PAYLOAD]), complete HTTP reads/writes, the fiber/channel and
+# websocket surface, and — since plan 0011 phase 2 — the reclaiming memory
+# backend and both persistent containers: memory_arc.c (header, registry,
+# retain/release, every layout kind's drop walk, the shim allocators) and
+# list_runtime.c / map_runtime.c / map_runtime_hamt.c (trie + HAMT persistence,
+# O(1) views, node refcounting) [GC-ARC-PERCEUS], [MEM-BACKENDS]. Built as
+# executables (no `-c`), so they link the runtime TUs directly. Runs on
+# `make test`; Windows CI uses its own steps.
+#
+# The container suites link memory_runtime.o — the DEFAULT backend's no-op
+# hooks — so they test container semantics with reference counting neutralised;
+# memory_arc_tests covers the counting itself.
+OSSL_CFLAGS = $(OSSL) `pkg-config --cflags openssl 2>/dev/null || echo ""`
+RT_THREADS  = runtime/fiber_runtime.c runtime/system_runtime.c runtime/effects_runtime.c \
+              runtime/profiler_runtime.c runtime/profiler_sampler.c
 _test_c_runtime:
-	@echo "==> [c-runtime] string/error contract + HTTP read/write tests..."
-	@cd compiler && $(CC) -O2 -D_FORTIFY_SOURCE=2 -fstack-protector-strong -Werror -Wall -Wextra \
-	  -ftrapv -std=c11 -D_GNU_SOURCE \
+	@echo "==> [c-runtime] memory backend + containers + string/error/HTTP/fiber tests..."
+	@cd compiler && $(CC) $(T) \
+	  runtime/memory_arc_tests.c runtime/memory_arc.c -pthread \
+	  -o bin/memory_arc_tests && ./bin/memory_arc_tests && \
+	  $(CC) $(T) \
+	  runtime/list_tests.c runtime/list_runtime.c runtime/memory_runtime.c \
+	  -o bin/list_tests && ./bin/list_tests && \
+	  $(CC) $(T) \
+	  runtime/map_tests.c runtime/map_runtime.c runtime/map_runtime_hamt.c runtime/memory_runtime.c \
+	  -o bin/map_tests && ./bin/map_tests && \
+	  $(CC) $(T) \
 	  runtime/string_runtime_tests.c runtime/string_runtime.c runtime/string_runtime_list.c \
+	  runtime/memory_runtime.c \
 	  -o bin/string_runtime_tests && ./bin/string_runtime_tests && \
-	  $(CC) -O2 -D_FORTIFY_SOURCE=2 -fstack-protector-strong -Werror -Wall -Wextra \
-	  -ftrapv -std=c11 -D_GNU_SOURCE $(OSSL) \
-	  `pkg-config --cflags openssl 2>/dev/null || echo ""` \
+	  $(CC) $(T) $(OSSL_CFLAGS) \
 	  runtime/http_server_send_tests.c -pthread \
 	  -o bin/http_server_send_tests && ./bin/http_server_send_tests && \
-	  $(CC) -O2 -D_FORTIFY_SOURCE=2 -fstack-protector-strong -Werror -Wall -Wextra \
-	  -ftrapv -std=c11 -D_GNU_SOURCE $(OSSL) \
-	  `pkg-config --cflags openssl 2>/dev/null || echo ""` \
-	  runtime/http_server_request_tests.c -pthread \
+	  $(CC) $(T) $(OSSL_CFLAGS) \
+	  runtime/http_server_request_tests.c runtime/memory_runtime.c -pthread \
 	  -o bin/http_server_request_tests && ./bin/http_server_request_tests && \
+	  $(CC) $(T) \
+	  runtime/fiber_runtime_tests.c runtime/memory_runtime.c $(RT_THREADS) -pthread \
+	  -o bin/fiber_runtime_tests && ./bin/fiber_runtime_tests && \
+	  $(CC) $(T) $(OSSL_CFLAGS) \
+	  runtime/http_runtime_tests.c runtime/http_client_runtime.c runtime/http_server_runtime.c \
+	  runtime/http_server_request.c runtime/http_server_response.c runtime/http_shared.c \
+	  runtime/websocket_client_runtime.c runtime/websocket_server_runtime.c \
+	  runtime/string_runtime.c runtime/memory_runtime.c $(RT_THREADS) -pthread \
+	  `pkg-config --libs openssl 2>/dev/null || echo "-lssl -lcrypto"` \
+	  -o bin/http_runtime_tests && ./bin/http_runtime_tests && \
 	  $(CC) -O2 -g -fno-omit-frame-pointer -D_FORTIFY_SOURCE=2 -fstack-protector-strong -Werror -Wall -Wextra \
 	  -ftrapv -std=c11 -D_GNU_SOURCE \
 	  runtime/profiler_runtime_tests.c runtime/profiler_runtime.c runtime/profiler_sampler.c -pthread \
 	  -o bin/profiler_runtime_tests && ./bin/profiler_runtime_tests && \
-	  $(CC) -O2 -D_FORTIFY_SOURCE=2 -fstack-protector-strong -Werror -Wall -Wextra \
-	  -ftrapv -std=c11 -D_GNU_SOURCE \
+	  $(CC) $(T) \
 	  runtime/coverage_runtime_tests.c runtime/coverage_runtime.c \
 	  -o bin/coverage_runtime_tests && ./bin/coverage_runtime_tests
 
