@@ -100,16 +100,16 @@ editor-agnostic — Neovim and Zed are on the roadmap. See
 ## Language Features
 
 - **Functional-first**: Immutable data, pattern matching, pipe operators
-- **Algebraic Effects**: First-class effects system with compile-time safety
+- **Algebraic Effects**: Typed operations, lexical handlers, and native single-shot continuations
 - **Type-safe**: Algebraic data types with variant types
 - **HTTP-native**: Built-in server/client with streaming support
 - **Fiber concurrency**: Lightweight isolated execution contexts
 - **Zero-cost abstractions**: Compiles to efficient LLVM IR
 - **Runs in the browser**: Compiles to WebAssembly (`--target=wasm32`) — see [Compiling to WebAssembly](#compiling-to-webassembly)
 
-## Revolutionary Safety
+## Effect Safety Status
 
-🚀 **World's first language with 100% compile-time effect safety** - unhandled effects cause compilation errors, not runtime crashes!
+Effect operation arguments and results are checked statically. Complete effect-row propagation and missing-handler rejection are still in progress; today, a missing runtime handler exits with an explicit `unhandled effect` diagnostic.
 
 ## Syntax Example
 
@@ -234,17 +234,17 @@ not ported — a program using them fails at link with a clear `undefined symbol
 
 ## Status
 
-🚧 **Alpha**: Core language features implemented. Algebraic effects system working with compile-time safety, but are missing some features. HTTP and advanced features in development.
+🚧 **Alpha**: Core language features are implemented, including typed algebraic-effect operations and lexical handlers. Static effect coverage, first-class handler values, and some advanced features remain in development.
 
 See [docs/specs/](docs/specs/) for implementation status.
 
 ## Recent Major Updates
 
-- **Algebraic Effects System**: Complete implementation with compile-time safety guarantees
+- **Algebraic Effects System**: Typed operations, lexical handlers, and native explicit `resume`
 - **Effect Declarations**: `effect` keyword for defining effect operations
 - **Perform Expressions**: `perform` keyword for effect operations
 - **Handler Expressions**: `handle...in` syntax for effect handling
-- **Compile-Time Verification**: Unhandled effects cause compilation errors (world-first!)
+- **Current Safety Boundary**: operation signatures are checked statically; missing-handler coverage currently has a runtime guard
 
 ## License
 

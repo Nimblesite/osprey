@@ -2,7 +2,7 @@
 layout: page
 title: "Documentation Comments"
 description: "Osprey Language Specification: Documentation Comments"
-date: 2026-07-21
+date: 2026-07-22
 tags: ["specification", "reference", "documentation"]
 author: "Christian Findlay"
 permalink: "/spec/0026-documentationcomments/"

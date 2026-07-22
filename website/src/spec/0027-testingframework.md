@@ -2,7 +2,7 @@
 layout: page
 title: "Testing Framework"
 description: "Osprey Language Specification: Testing Framework"
-date: 2026-07-21
+date: 2026-07-22
 tags: ["specification", "reference", "documentation"]
 author: "Christian Findlay"
 permalink: "/spec/0027-testingframework/"

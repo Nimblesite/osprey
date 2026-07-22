@@ -377,8 +377,8 @@ range(1, 10) |> forEach(print)</code></pre>
   <div class="container">
     <h2 class="section-title">Algebraic Effects</h2>
     <p class="section-subtitle">
-      Osprey is the world's first language with <strong>100% compile-time effect safety</strong>. Side effects
-      live in a function's type, and an unhandled effect is a <em>compilation error</em> — never a runtime surprise.
+      Osprey has <strong>typed algebraic effects</strong>: declare operations, perform them in reusable logic,
+      and give them meaning with lexical handlers. Complete compile-time coverage checking is still in progress.
     </p>
 
     <div class="two-column">
@@ -388,9 +388,10 @@ range(1, 10) |> forEach(print)</code></pre>
           <code>handle … in</code> block — no globals, no dependency injection framework. The same logic runs
           against a production handler, a test double, or a silent one.</p>
         <ul>
-          <li>Unhandled effects fail at compile time</li>
-          <li>Handlers are first-class and composable</li>
+          <li>Operation arguments and results are type-checked</li>
+          <li>Lexical handlers compose and nest</li>
           <li>Nested handlers override outer ones</li>
+          <li>A missing handler currently fails with a runtime diagnostic</li>
           <li>Pairs naturally with fibers, HTTP, and TUIs</li>
         </ul>
       </div>
@@ -460,12 +461,12 @@ m + m2                      // right-biased union</code></pre>
   <div class="container">
     <div class="grid">
       <div class="card">
-        <h3>Compile-Time Effect Safety</h3>
-        <p>Every side effect is tracked in the type system. Unhandled effects are caught by the compiler.</p>
+        <h3>Typed Algebraic Effects</h3>
+        <p>Effect operations have checked signatures and lexical handlers; complete static coverage checking is on the roadmap.</p>
       </div>
       <div class="card">
         <h3>Memory Safe</h3>
-        <p>Strong static typing and immutable data prevent buffer overflows and data races.</p>
+        <p>Static typing and immutable application data reduce invalid states; native FFI and runtime boundaries still require care.</p>
       </div>
       <div class="card">
         <h3>Compiles to LLVM</h3>
@@ -542,19 +543,19 @@ print("client closed")</code></pre>
     <div class="philosophy-grid">
       <div class="card">
         <h3>Referential Transparency</h3>
-        <p>Functions return the same output for the same input. Side effects are explicit and tracked by the type system.</p>
+        <p>Functions return the same output for the same input. Algebraic operations are explicit and described with effect annotations.</p>
       </div>
       <div class="card">
         <h3>Immutability by Default</h3>
         <p>Data is immutable unless explicitly marked mutable, making it safe to share across fibers.</p>
       </div>
       <div class="card">
-        <h3>Explicit Error Handling</h3>
-        <p>No hidden exceptions or panics. All failures return Result types you must handle.</p>
+        <h3>Explicit Error Values</h3>
+        <p>Fallible library operations use Result values for ordinary recovery; unrecoverable runtime diagnostics remain explicit.</p>
       </div>
       <div class="card">
-        <h3>Zero-Cost Abstractions</h3>
-        <p>High-level features — effects, iterators, persistent collections — compile to efficient native code.</p>
+        <h3>Optimized Abstractions</h3>
+        <p>Effects, iterators, and persistent collections lower through LLVM and are covered by compiler and runtime tests.</p>
       </div>
     </div>
   </div>
@@ -576,7 +577,7 @@ print("client closed")</code></pre>
           <tr>
             <td>Side Effects</td>
             <td>Untracked, implicit</td>
-            <td>In the type; unhandled effects are a compile error</td>
+            <td>Typed operations and lexical handlers; static coverage is in progress</td>
           </tr>
           <tr>
             <td>Error Handling</td>

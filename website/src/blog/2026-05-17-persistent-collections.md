@@ -2,6 +2,7 @@
 layout: page.njk
 title: "Persistent Collections in Osprey: Immutable List and Map with Structural Sharing"
 excerpt: "Osprey now ships persistent List<T> and Map<K,V> backed by a 32-way bitmapped vector trie and a HAMT — the same data structures that power Clojure and Scala. Append, set and remove are O(log32 n); old versions of a collection stay valid in O(1) extra space."
+description: "Explore Osprey’s persistent List and Map, their vector-trie and HAMT internals, structural sharing, complexity, API, and current implementation tradeoffs."
 date: 2026-05-17
 tags: ["blog", "collections", "data-structures", "functional-programming", "language-design"]
 author: "Christian Findlay"

@@ -50,7 +50,13 @@
 /* Dark-only design — the theme toggle has no second theme to switch to. */
 .theme-toggle { display: none; }
 
-.mobile-menu-toggle { color: var(--on-surface); }
+.mobile-menu-toggle {
+  color: var(--on-surface);
+  min-width: 48px;
+  min-height: 48px;
+  align-items: center;
+  justify-content: center;
+}
 .mobile-menu-toggle span { background: currentColor; }
 
 /* ---- Footer ---- */
@@ -734,6 +740,9 @@ table.data td.num {
 .toc {
   position: sticky;
   top: calc(var(--header-height) + var(--space-4));
+  max-height: calc(100vh - var(--header-height) - (2 * var(--space-4)));
+  overflow-y: auto;
+  overscroll-behavior: contain;
   background: var(--surface-container);
   border: 1px solid rgba(62, 72, 76, 0.4);
   border-radius: var(--radius);
@@ -881,6 +890,15 @@ table.data td.num {
   font-style: italic;
 }
 .prose blockquote p:last-child { margin-bottom: 0; }
+.prose-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-4);
+  margin-top: calc(-1 * var(--space-4));
+  color: var(--on-surface-variant);
+  font-family: var(--font-mono);
+  font-size: var(--fs-label);
+}
 .prose table {
   width: 100%;
   border-collapse: collapse;

@@ -197,7 +197,7 @@ This specification defines the complete syntax and semantics of the Osprey progr
 
 The Osprey language is designed for elegance, safety, and performance, emphasizing:
 
-- **Algebraic effects** with compile-time safety — unhandled effects are compilation errors
+- **Typed algebraic effects** with lexical handlers; complete static coverage checking remains in progress
 - **Named arguments** for multi-parameter functions to improve readability
 - **Strong type inference** (Hindley-Milner) to reduce boilerplate while maintaining safety
 - **String interpolation** for convenient text formatting

@@ -47,6 +47,7 @@ print "total: ${total}"
 
 ## Quick Navigation
 
+- [Web Apps](web-apps/) - Build React-rendered browser apps with an Osprey WebAssembly model/update core
 - [Functions](functions/) - Built-in functions for I/O, iteration, and data transformation
 - [Types](types/) - Built-in data types (Int, String, Bool, Any)
 - [Operators](operators/) - Arithmetic, comparison, and logical operators
@@ -64,8 +65,6 @@ print "total: ${total}"
 | [contains](functions/contains/) | True if needle appears anywhere in s. Empty needle returns true. |
 | [drop](functions/drop/) | Returns s without its first n bytes. Clamps; never fails. |
 | [endsWith](functions/endswith/) | True if s ends with suffix. |
-| [fiber_await](functions/fiber_await/) | Waits for a fiber to complete and returns its result. |
-| [fiber_spawn](functions/fiber_spawn/) | Spawns a new fiber to execute the given function concurrently. |
 | [fiber_yield](functions/fiber_yield/) | Yields control to the fiber scheduler with an optional value. |
 | [filter](functions/filter/) | Filters elements in an iterator based on a predicate function. |
 | [fold](functions/fold/) | Reduces an iterator to a single value by repeatedly applying a function. |
@@ -79,7 +78,6 @@ print "total: ${total}"
 | [httpListen](functions/httplisten/) | Starts the HTTP server listening for requests with a handler function. |
 | [httpPost](functions/httppost/) | Makes an HTTP POST request with a request body. |
 | [httpPut](functions/httpput/) | Makes an HTTP PUT request with a request body. |
-| [httpRequest](functions/httprequest/) | Makes a generic HTTP request with any method. |
 | [httpStopServer](functions/httpstopserver/) | Stops the HTTP server and closes all connections. |
 | [indexOf](functions/indexof/) | Returns byte-index of first occurrence of needle, or Error(NotFound). |
 | [input](functions/input/) | Reads a string from the user's input. |
@@ -132,7 +130,6 @@ print "total: ${total}"
 | [websocketSend](functions/websocketsend/) | Sends a message through the WebSocket connection. |
 | [websocketServerBroadcast](functions/websocketserverbroadcast/) | Broadcasts a message to all connected WebSocket clients. |
 | [websocketServerListen](functions/websocketserverlisten/) | Starts the WebSocket server listening for connections. |
-| [websocketStopServer](functions/websocketstopserver/) | Stops the WebSocket server and closes all connections. |
 | [words](functions/words/) | Splits on runs of whitespace; empty results dropped. |
 | [writeFile](functions/writefile/) | Writes content to a file. Creates the file if it doesn't exist. Returns number of bytes written. |
 
@@ -175,4 +172,3 @@ print "total: ${total}"
 | [match](keywords/match/) | Pattern matching expression. Used for destructuring values and control flow based on patterns. |
 | [true](keywords/true/) | Boolean literal representing the logical value true. |
 | [type](keywords/type/) | Type declaration keyword. Used to define custom types and type aliases. |
-

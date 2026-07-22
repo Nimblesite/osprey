@@ -35,12 +35,14 @@ Release list unavailable at build time — see the [GitHub Releases](https://git
 - **Arithmetic Operations**: Safe arithmetic returning `Result` types
 - **Boolean Operations**: Logical operators and boolean expressions
 
-### Algebraic Effects (world-first compile-time effect safety)
+### Algebraic Effects
 - **`effect` declarations**: name a set of typed operations, e.g. `effect Logger { log: fn(string) -> Unit }`
 - **`perform`**: invoke an effect operation — `perform Logger.log("hi")`
 - **`handle … in`**: supply handlers for an effect over an expression; nested handlers override outer ones
 - **Effect annotations**: functions declare the effects they use — `fn f() -> T !Logger` or `![Logger, Metrics]`
-- **Compile-time safety**: an unhandled effect is a **compilation error**, not a runtime crash — verified by the test suite
+- **Typed operations**: the checker validates operation arguments/results and resolves generic effect instantiations
+- **Current coverage limit**: missing handlers and undeclared effect rows are not yet rejected in every case; a missing runtime handler aborts with an `unhandled effect` diagnostic
+- **Resuming handlers**: explicit single-shot `resume` works on native targets; Wasm currently supports non-resuming handler-stack dispatch only
 
 ### Functional Programming
 - Complete iterator family (`range`, `forEach`, `map`, `filter`, `fold`)
@@ -97,7 +99,8 @@ Release list unavailable at build time — see the [GitHub Releases](https://git
 - **Module System**: Fiber-isolated modules with proper imports
 
 ### Advanced Language Features
-- **Resumable handlers**: full algebraic-effects calculus (`resume`); handlers currently act as value substitutions
+- **Static effect coverage**: retain effect rows in function types, propagate them through calls, and reject every unhandled or undeclared effect before code generation
+- **Wasm resumable handlers**: replace the native pthread continuation path with a thread-free continuation strategy
 - **Advanced Pattern Matching**: list/`[head, ...tail]` patterns, constructor patterns with guards
 - **Select Expressions**: channel multiplexing for concurrent operations
 - **WebSockets**: client and server exist but are being hardened — the `Result`-typed API and some server bind scenarios are still in progress

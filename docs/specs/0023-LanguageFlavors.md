@@ -62,9 +62,9 @@ expressed with an explicit indent stack in safe Rust; it stays panic-free /
 `Result`-returning and unit-testable (project rules), with no `unsafe` C and no
 codegen-tool build dependency. Per [`[FLAVOR-BOUNDARY]`](#the-one-law) the
 parser **mechanism** is a below-the-AST, flavor-internal concern, so this swap
-does not change the architecture (many CSTs, one AST). The ML parser is in
-active development; first-class handler values + effects (Phase 0) remain
-deferred, so ML handler/effect syntax errors loudly until they land.
+does not change the architecture (many CSTs, one AST). The ML parser and its
+lexical `effect`/`perform`/`handle`/`resume` forms are implemented. First-class
+handler values and multi-install remain deferred shared-core additions.
 
 The decisive fact that makes the whole scheme cheap is already true: the type
 checker ([`check_program`](../../crates/osprey-types/src/check.rs),
@@ -523,9 +523,9 @@ byte-identical to the Default `let`.
 `Result`-wrapped in *both* flavors — overflow-checked `+` yields
 `Result<int, MathError>`, so a raw `y = x + 1` then `toString y` prints
 `Success(42)` in ML *and* Default alike; clean `int` output comes from the usual
-function-boundary auto-unwrap, not from any flavor-specific rule. (2) Effects /
-first-class handlers are deferred (Phase 0, [`[FLAVOR-HANDLER-VALUE]`](#shared-core-additions));
-paired fixtures use only shared-core constructs until that lands. (3) The Default
+function-boundary auto-unwrap, not from any flavor-specific rule. (2) First-class
+handler values remain deferred (Phase 0, [`[FLAVOR-HANDLER-VALUE]`](#shared-core-additions));
+lexical effect forms lower through the shared AST today. (3) The Default
 twin is authored to match the ML AST (ML is the flavor under test, Default the
 oracle), matching currying **form-for-form**: curried originals pair with ML
 whitespace `f x y`, uncurried multi-parameter originals with ML parens
@@ -540,9 +540,9 @@ The design drafts left these open; this spec settles them.
   never within a file. One flavor per compilation unit.
 - **Flavor selection:** all of CLI flag, file marker, and extension are
   supported, in the precedence above. `.ospml` is the ML extension.
-- **First-class brace handler values in Default:** yes. First-class handler
-  values, `Handler E`, and multi-install are shared-core features; the Default
-  flavor gains the brace spelling for them (a backward-compatible superset).
+- **First-class brace handler values in Default:** planned. Handler values,
+  `Handler E`, and multi-install are deferred shared-core features; the Default
+  flavor will gain the brace spelling with them.
 - **ML calling Default multi-parameter functions with whitespace application:**
   only as a saturated call; partial application requires a generated curried
   wrapper. The canonical export stays multi-parameter.
@@ -603,19 +603,16 @@ below for the honesty boundary on multi-file builds.
 
 **Honesty rules for all public copy** (NO PLACEHOLDERS extends to marketing):
 
-1. **Status must be stated.** Default = fully implemented (specs `0001`–`0022`).
-   ML = in active development. Working ML today, with runnable proof in
+1. **Status must be stated.** Default remains the most mature surface. Working
+   ML constructs have runnable proof in
    `examples/tested/ml/`: layout blocks, curry-by-default + partial application,
    whitespace application, layout `match`, `=`/`mut`/`:=`, `Result` constructor
    patterns (`Success v` / `Error e`), higher-order functions, pipes, and
    `${…}` interpolation.
-2. **Do not show ML effects/handlers as working.** First-class handler values
-   and ML `effect`/`handler`/`handle … do` are the deferred **Phase 0**
-   shared-core feature ([Shared-Core Additions](#shared-core-additions)); ML
-   handler/effect syntax errors loudly until it lands. Effect demos in public
-   copy use the **Default flavor**, which is fully implemented. ML effect syntax
-   may be shown only when explicitly labelled as the *designed* surface arriving
-   with Phase 0.
+2. **Distinguish lexical handlers from handler values.** ML `effect`, `perform`,
+   lexical `handle … in`, and `resume` forms work today. First-class `handler`
+   values and multi-install remain deferred **Phase 0** shared-core work
+   ([Shared-Core Additions](#shared-core-additions)).
 3. **ML code in copy must be real.** Prefer copying snippets verbatim from the
    tested `examples/tested/ml/` fixtures so every published ML program compiles.
 4. **Currying is the one honest difference.** Where the two flavors are compared,

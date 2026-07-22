@@ -130,3 +130,6 @@ scratchpad/
 
 
 __pycache__/
+
+
+*.wasm

@@ -213,10 +213,11 @@ source code:
 **Backend portability.** The two reclaiming backends need different things from
 the host. The conservative tracing GC finds roots by scanning the native stack,
 machine registers and data/BSS segments, so it runs on native targets only. ARC
-is *precise* (the compiler inserts retain/release) and non-atomic, so it carries
-to every target — including `wasm32`, where it is the *only* reclaiming option:
-the conservative GC cannot scan a wasm stack, and the WebAssembly-GC proposal is
-a separate, untargeted mechanism. See
+is *precise* (the compiler inserts retain/release) and non-atomic, so its design
+can carry to `wasm32`; the conservative GC cannot scan a wasm stack, and the
+WebAssembly-GC proposal is a separate, untargeted mechanism. The current Wasm
+driver does not yet select ARC, however: it always links the default
+`malloc`-passthrough runtime archive. See
 [spec 0022](0022-WebAssemblyTarget.md) [WASM-TARGET-MEMORY].
 
 A reclamation backend is conforming iff every differential-harness example
@@ -233,8 +234,10 @@ ownership: the two are exactly what an independent precise tracer would falsify
 if a retain were missing on a path the harness does not reach. Native builds
 therefore default to the non-reclaiming allocator, whose escaping-value
 behaviour is a bounded, well-understood leak rather than an unverified free.
-`wasm32` is the exception — it has no conservative option, so ARC is what it
-links.
+`wasm32` currently follows the same non-reclaiming default. Although the CLI
+accepts `--memory=arc` alongside `--target=wasm32`, that selector is not yet
+passed to the Wasm linker; an ARC-specific Wasm runtime archive remains future
+work.
 
 ### Container Element Ownership [MEM-BACKENDS-ELEMENTS]
 

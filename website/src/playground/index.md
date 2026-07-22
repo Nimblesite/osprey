@@ -436,6 +436,7 @@ description: "Try Osprey programming language online with interactive code examp
 </style>
 
 <div class="playground-container">
+    <h1 class="sr-only">Osprey Playground</h1>
     <div class="main">
         <div class="editor-container">
             <div class="editor-header">

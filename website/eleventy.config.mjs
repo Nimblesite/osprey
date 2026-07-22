@@ -48,9 +48,9 @@ export default function (eleventyConfig) {
   eleventyConfig.addPlugin(techdoc, {
     site: {
       name: "Osprey",
-      url: "https://ospreylang.dev",
+      url: "https://www.ospreylang.dev",
       description:
-        "A modern functional language with compile-time effect safety, lightweight fiber concurrency, and immutable persistent collections.",
+        "A modern functional language with typed algebraic effects, lightweight fiber concurrency, and immutable persistent collections.",
     },
     // Keep the existing blog index + docs pages; only adopt the theme's shell,
     // SEO and generated sitemap/robots/feed/llms.txt. (New designs land later.)
@@ -103,6 +103,34 @@ export default function (eleventyConfig) {
     );
   });
 
+  // The theme's virtual robots template blocks /assets/, which prevents search
+  // crawlers from fetching page CSS and blog images. Keep the generated file,
+  // but remove that one directive so crawlers can render pages like users do.
+  eleventyConfig.addTransform("robots-allow-rendering-assets", function (content, outputPath) {
+    if (!outputPath || !outputPath.endsWith("robots.txt")) return content;
+    return content.replace("Disallow: /assets/\n", "");
+  });
+
+  // Google Analytics (gtag.js) — injected into every generated HTML page's
+  // <head> so it loads site-wide regardless of which layout a page uses. The
+  // theme's base.njk ships from node_modules, so a transform (not a template
+  // edit) is the change that survives `npm install`. Guarded to inject once.
+  const GA_MEASUREMENT_ID = "G-W13F2GMGB6";
+  const GA_SNIPPET = `<!-- Google tag (gtag.js) -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=${GA_MEASUREMENT_ID}"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+  gtag('config', '${GA_MEASUREMENT_ID}');
+</script>
+`;
+  eleventyConfig.addTransform("google-analytics", function (content, outputPath) {
+    if (!outputPath || !outputPath.endsWith(".html")) return content;
+    if (content.includes(GA_MEASUREMENT_ID)) return content;
+    return content.replace("</head>", `${GA_SNIPPET}</head>`);
+  });
+
   // Playground embed shortcode (used by docs/blog markdown).
   eleventyConfig.addPairedShortcode("interactive", function (content, title = "") {
     const encoded = encodeURIComponent(content.trim());
@@ -143,12 +171,17 @@ export default function (eleventyConfig) {
   eleventyConfig.addLayoutAlias("page", "layouts/prose.njk");
   eleventyConfig.addLayoutAlias("page.njk", "layouts/prose.njk");
 
-  // The blog index renders this collection (theme blog auto-pages are disabled).
-  eleventyConfig.addCollection("blog", (api) =>
+  // Keep the custom indexes while exposing the conventional collection names
+  // consumed by the theme's feed and llms.txt templates.
+  const posts = (api) =>
     api
       .getFilteredByGlob("src/blog/**/*.md")
       .filter((p) => !p.inputPath.includes("/index."))
-      .sort((a, b) => b.date - a.date)
+      .sort((a, b) => b.date - a.date);
+  eleventyConfig.addCollection("blog", posts);
+  eleventyConfig.addCollection("posts", posts);
+  eleventyConfig.addCollection("docs", (api) =>
+    api.getFilteredByGlob("src/docs/**/*.md").filter((p) => p.data.title && p.url)
   );
 
   // Date filters the blog listing uses (the theme exposes dateFormat/isoDate).

@@ -2,6 +2,7 @@
 layout: page.njk
 title: "The Memory-Safe Revolution: Why Osprey is Built for Tomorrow's Challenges"
 excerpt: "As governments demand memory-safe code and AI accelerates vulnerability discovery, functional languages like Osprey are positioned to lead the next generation of secure, scalable software development."
+description: "See how memory-safe languages, immutable data, and functional concurrency address common systems vulnerabilities and support resilient software design."
 date: 2025-01-15
 tags: ["blog", "memory-safety", "functional-programming", "concurrency", "future-tech"]
 author: "Christian Findlay"

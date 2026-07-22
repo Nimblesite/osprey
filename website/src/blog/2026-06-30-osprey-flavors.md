@@ -2,7 +2,9 @@
 layout: page.njk
 title: "Osprey Flavors: One Core, Two Flavors, Zero Compromise"
 excerpt: "Braces or layout — pick your tribe and go all in. The ML flavor isn't braces-optional and the Default flavor isn't deprecated. It's the same language underneath."
+description: "Compare Osprey’s brace-style and ML-style flavors, how both lower to one canonical AST, and which shared compiler features and limitations apply today."
 date: 2026-06-30
+modified: 2026-07-23
 tags: ["blog", "language-design", "flavors", "functional-programming", "ml-syntax"]
 author: "Christian Findlay"
 readingTime: 7
@@ -54,7 +56,7 @@ No `fn`, no braces, no parentheses around the print argument. Layout and whitesp
 
 A flavor is not a preprocessor or a transpiler bolted onto a host language. Each flavor is a **parser plus a lowerer** that converge on **one canonical AST** — `osprey_ast::Program`. After lowering, there is exactly one type checker, one effect system, one optimiser, one LLVM/wasm backend. None of them know which flavor you wrote. The flavor is gone by the time any analysis runs.
 
-That's what makes the "no compromise" claim more than a slogan: both surfaces meet at the same tree, so both get the same Hindley-Milner inference, the same compile-time effect safety, the same performance. There is no second-class path.
+That's what makes the "no compromise" claim more than a slogan: both surfaces meet at the same tree, so both get the same Hindley-Milner inference, typed effect operations, and the same performance. There is no second-class path.
 
 The one honest difference between the surfaces is currying, and it's machine-checked. In ML, every function is curried by default:
 
@@ -133,7 +135,7 @@ To be precise about what ships today: **per-file flavor selection is implemented
 
 ## Effects: in both flavors
 
-Osprey's headline feature is compile-time-safe algebraic effects — and it works in **both** flavors. Here's the same `Logger` demo, first in the Default flavor:
+Osprey's headline feature is typed algebraic effects — and the lexical effect syntax works in **both** flavors. Here's the same `Logger` demo, first in the Default flavor:
 
 ```osprey
 effect Logger {
@@ -172,18 +174,18 @@ handle Logger
 in greet "Bob"
 ```
 
-The `!Logger` row says `greet` performs a `Logger` effect; an unhandled effect is a compile error. Swap the handler and the same code logs to stdout or stays silent — no global mutable wiring, just a different `handle` block. Both flavors lower to the same `Handler` node, so the effect checker and runtime never learn which one you wrote.
+The `!Logger` row documents and helps instantiate the `Logger` operations used by `greet`. Swap the handler and the same code logs to stdout or stays silent — no global mutable wiring, just a different `handle` block. Both flavors lower to the same `Handler` node, so the effect checker and runtime never learn which one you wrote. Complete static effect-row propagation and missing-handler rejection are still in progress; today a missing runtime handler aborts with an explicit diagnostic.
 
 ## Status, honestly
 
-The **Default flavor is fully implemented** — specs 0001 through 0022, the complete effect system, the persistent collections, the lot.
+The **Default flavor is the most mature surface**. It includes effects, persistent collections, native continuations, and the wider runtime, with the limitations recorded on the [feature status page](/status/).
 
 The **ML flavor is fully implemented too**, with runnable proof you can read and run: the [tested ML examples](https://github.com/Nimblesite/osprey/tree/main/examples/tested) cover hello-world, curry-by-default with partial application, higher-order functions, `Result` matching, layout `match`, mutation, fibers, and algebraic effects with `handle … in` — each one runs through the compiler and its `stdout` is byte-compared against a checked-in `.expectedoutput`.
 
-ML effects run today: `effect`, `perform`, `handle … in`, and `resume` all work in the ML flavor, byte-checked by the [tested examples](https://github.com/Nimblesite/osprey/tree/main/examples/tested/effects). The one honest caveat is narrow: **first-class handler *values*** — a `Handler E` type you can pass around and install dynamically — are a deferred shared-core addition that neither flavor exposes yet. Lexically-scoped `handle … in` regions, which is what effect handlers look like in practice, work in both.
+ML effects run today: `effect`, `perform`, `handle … in`, and native `resume` examples are byte-checked in the [tested examples](https://github.com/Nimblesite/osprey/tree/main/examples/tested/effects). Important shared-core limits remain: compile-time effect coverage is incomplete, and **first-class handler values** — a `Handler E` type you can pass around and install dynamically — are deferred. Lexically scoped `handle … in` regions work in both flavors.
 
 ## Pick your flavor
 
-If you live in braces and named arguments, write `.osp` and never think about layout again. If you live in layout and currying, write `.ospml` and never type a brace. Either way you get the same Hindley-Milner type checker, the same compile-time effect safety, the same backend, the same standard library — because after lowering, nothing downstream can even tell which flavor you wrote.
+If you live in braces and named arguments, write `.osp` and never think about layout again. If you live in layout and currying, write `.ospml` and never type a brace. Either way you get the same Hindley-Milner type checker, typed effect operations, backend, and standard library — because after lowering, nothing downstream can even tell which flavor you wrote.
 
 Pick your flavor. Go all in. It's the same Osprey.

@@ -15,6 +15,7 @@
       "items": [
         { "text": "Try Online", "url": "/playground/" },
         { "text": "WebAssembly Demo", "url": "/wasm/" },
+        { "text": "Web Apps Guide", "url": "/docs/web-apps/" },
         { "text": "Documentation", "url": "/docs/" },
         { "text": "Feature Status", "url": "/status/" },
         { "text": "Specification", "url": "/spec/" }

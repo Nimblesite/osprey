@@ -2,7 +2,7 @@
 layout: page
 title: "Built-in Functions"
 description: "Osprey Language Specification: Built-in Functions"
-date: 2026-07-21
+date: 2026-07-22
 tags: ["specification", "reference", "documentation"]
 author: "Christian Findlay"
 permalink: "/spec/0012-built-infunctions/"
