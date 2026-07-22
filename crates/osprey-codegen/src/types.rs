@@ -73,11 +73,12 @@ pub fn owner_name(ty: &Type) -> Option<String> {
 /// `Result<T, E>` auto-unwraps at value sites, so it proves whatever `T` does.
 pub fn proven_heap_name(ty: &Type) -> Option<&str> {
     match ty {
-        Type::Union { name, .. } => Some(name),
+        // Result<T, E> auto-unwraps at value sites: it proves whatever T does.
         Type::Con { name, args } if name == names::RESULT => {
             args.first().and_then(proven_heap_name)
         }
-        Type::Con { name, .. } => Some(name),
+        // A declared union or any other named constructor: the name IS the proof.
+        Type::Union { name, .. } | Type::Con { name, .. } => Some(name),
         _ => None,
     }
 }

@@ -117,7 +117,11 @@ pub(crate) fn struct_meta(fields: &[MetaField]) -> i64 {
     if mask == 0 {
         KIND_RAW
     } else {
-        let kind = if all_direct { KIND_MASK_DIRECT } else { KIND_MASK };
+        let kind = if all_direct {
+            KIND_MASK_DIRECT
+        } else {
+            KIND_MASK
+        };
         // Bit-preserving: word 55 lands on bit 63 (the sign bit); the runtime
         // recovers the mask via an unsigned cast (memory_arc.c OSP_ARC_MASK_BITS).
         i64::from_ne_bytes(((mask << 8) | u64::from_ne_bytes(kind.to_ne_bytes())).to_ne_bytes())

@@ -1011,7 +1011,7 @@ impl Codegen {
 
     /// The shared immortal handle for a nullary union variant with tag `tag`,
     /// interning it on first use. The `private global` bakes the exact
-    /// `{ i64 meta, i32 rc, u32 size }` ARC header (memory_arc.c) ahead of a
+    /// `{ i64 meta, i32 rc, u32 size }` ARC header (`memory_arc.c`) ahead of a
     /// one-word `{ i64 tag }` body: rc = -1 makes every dup/drop a no-op, so
     /// the block is never freed and needs no registry slot. The returned
     /// operand is a constant `getelementptr`+`bitcast` to the body — not a

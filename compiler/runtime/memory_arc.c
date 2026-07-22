@@ -29,6 +29,7 @@
 // The non-atomic fast path keyed on [MEM-FIBER-ISOLATION] is milestone M5.
 
 #include "memory_hooks.h"
+#include "memory_pool.h"
 
 #include <pthread.h>
 #include <stdatomic.h>
@@ -95,6 +96,28 @@ static size_t g_live = 0;    // live objects (leak stats)
 static size_t g_present = 0; // non-tombstone slots: live + pooled (table sizing)
 static size_t g_live_bytes = 0;
 static int g_debug_armed = 0;
+
+// Live-object accounting for the leak report [GC-ARC-PERCEUS], armed only by
+// OSPREY_ARC_DEBUG (arc_arm_debug). The two counters feed arc_report_leaks
+// alone, which runs only when that env registered the atexit hook — so an
+// unaudited run skips two hot global RMWs on every alloc and every free
+// (binarytrees churns ~16M objects: ~64M skipped). g_present is NOT gated: it
+// is load-bearing for table sizing (arc_target_cap) on every run.
+static int g_arc_track = 0;
+
+static inline void arc_live_inc(size_t bytes) {
+  if (g_arc_track) {
+    g_live++;
+    g_live_bytes += bytes;
+  }
+}
+
+static inline void arc_live_dec(size_t bytes) {
+  if (g_arc_track) {
+    g_live--;
+    g_live_bytes -= bytes;
+  }
+}
 
 static size_t arc_hash(uintptr_t body, size_t cap) {
   uint64_t h = (uint64_t)(body >> 3) * 0x9E3779B97F4A7C15ull;
@@ -167,69 +190,24 @@ static void arc_insert(uintptr_t body) {
   }
   arc_place(g_tab, g_cap, body);
   g_used++;
-  g_live++;
   g_present++;
 }
 
 static void arc_remove(uintptr_t *slot) {
   *slot = OSP_ARC_TOMB;
-  g_live--;
   g_present--;
 }
 
 // --- size-classed recycling pool ---------------------------------------------
-// A freed body is not handed back to libc: it is pushed onto an intrusive
-// per-size free-list (its first word links to the next free body) and its
-// registry slot is KEPT, so a later allocation of the same rounded size pops it
-// and reuses the SAME address — no malloc, no free, and no registry
-// insert/remove/grow churn. binarytrees alone runs ~19.6M alloc/free pairs
-// through here; recycling turns each into a stack push/pop and keeps the live
-// set (one depth-13 tree at a time) resident instead of round-tripping libc.
-//
-// Pooled blocks carry rc == 0 (live blocks are rc >= 1, immortals rc < 0), a
-// state the leak report skips. Their slots count toward g_present, never
-// g_live. Sizes above the ceiling, or pushes past the retention cap, fall back
-// to the original malloc/free + registry-remove path (rare, large objects).
-#define OSP_ARC_POOL_GRAIN ((size_t)16)      // capacity granularity (keeps 16-align)
-#define OSP_ARC_POOL_BUCKETS ((size_t)256)   // ceiling = 256 * 16 = 4096 body bytes
-#define OSP_ARC_POOL_MAX_CAP (OSP_ARC_POOL_BUCKETS * OSP_ARC_POOL_GRAIN)
-#define OSP_ARC_POOL_CAP_BYTES ((size_t)64u << 20) // retained-pool ceiling, then libc
-
-static void *g_pool[OSP_ARC_POOL_BUCKETS + 1]; // free-list heads, indexed by cap/GRAIN
-static size_t g_pool_bytes = 0;                // bytes parked on the free-lists
-
-// The rounded capacity (>= GRAIN, a multiple of GRAIN) a body of `size` occupies.
-// Deterministic, so a block freed to bucket k always has exactly k*GRAIN bytes
-// and a request mapping to bucket k needs no more — reuse cannot under-allocate.
-static size_t arc_pool_cap(size_t size) {
-  size_t s = size ? size : 1;
-  return (s + (OSP_ARC_POOL_GRAIN - 1)) & ~(OSP_ARC_POOL_GRAIN - 1);
-}
-
-// Pop a reusable body of exactly `cap` bytes, or NULL. Its registry slot is
-// still live (never tombstoned), so the caller reuses it without re-inserting.
-static void *arc_pool_pop(size_t cap) {
-  size_t b = cap / OSP_ARC_POOL_GRAIN;
-  void *body = g_pool[b];
-  if (body) {
-    g_pool[b] = *(void **)body; // unlink: the first word is the next-free link
-    g_pool_bytes -= cap;
-  }
-  return body;
-}
-
-// Park a dead body of `cap` bytes on its free-list (slot kept). Returns 0 when
-// oversized or past the retention cap, so the caller frees it to libc instead.
-static int arc_pool_push(void *body, size_t cap) {
-  if (cap > OSP_ARC_POOL_MAX_CAP || g_pool_bytes + cap > OSP_ARC_POOL_CAP_BYTES) {
-    return 0;
-  }
-  size_t b = cap / OSP_ARC_POOL_GRAIN;
-  *(void **)body = g_pool[b];
-  g_pool[b] = body;
-  g_pool_bytes += cap;
-  return 1;
-}
+// The free-list mechanics live in memory_pool.h (shared with the tracing GC).
+// ARC's specialisation: a parked body KEEPS its registry slot (never
+// tombstoned) with an rc==0 sentinel the leak report skips, so a same-size
+// reuse pops the SAME address with no registry insert/remove/grow churn — the
+// surrounding logic in arc_alloc_locked / arc_free_or_recycle owns that; the
+// pool itself only threads the free-lists. Pooled slots count toward g_present,
+// never g_live. Oversized bodies, or pushes past the retention ceiling, fall
+// back to the malloc/free + registry-remove path (rare, large objects).
+static OspPool g_arc_pool; // cap_bytes 0 → OSP_POOL_DEFAULT_CAP_BYTES
 
 // --- leak accounting (OSPREY_ARC_DEBUG=1) --------------------------------------
 
@@ -300,6 +278,7 @@ static void arc_arm_debug(void) {
   if (!g_debug_armed) {
     g_debug_armed = 1;
     if (getenv("OSPREY_ARC_DEBUG")) {
+      g_arc_track = 1; // gate the hot-path live counters on (arc_live_inc/dec)
       (void)atexit(arc_report_leaks);
     }
   }
@@ -329,7 +308,7 @@ static void arc_init_body(void *body, int64_t meta, size_t size, int zero) {
   if (zero && OSP_ARC_KIND(meta) != OSP_MEM_RAW) {
     memset(body, 0, size);
   }
-  g_live_bytes += size;
+  arc_live_inc(size);
 }
 
 // Header'd, registered allocation. Callers hold g_lock. Recycles a same-sized
@@ -341,12 +320,11 @@ static void *arc_alloc_locked(size_t size, int64_t meta, int zero) {
   if (size > OSP_ARC_MAX_BODY) {
     return NULL;
   }
-  size_t cap = arc_pool_cap(size);
-  if (cap <= OSP_ARC_POOL_MAX_CAP) {
-    void *body = arc_pool_pop(cap);
+  size_t cap = osp_pool_cap(size);
+  if (cap <= OSP_POOL_MAX_CAP) {
+    void *body = osp_pool_pop(&g_arc_pool, cap);
     if (body) {
-      g_live++; // slot already present; only the live count moves
-      arc_init_body(body, meta, size, zero);
+      arc_init_body(body, meta, size, zero); // arc_live_inc: slot already present
       return body;
     }
   }
@@ -366,17 +344,14 @@ static void *arc_alloc_locked(size_t size, int64_t meta, int zero) {
 // the body, and a pooled slot is left in place for the next same-sized alloc.
 static void arc_free_or_recycle(void *body) {
   OspArcHdr *h = arc_hdr(body);
-  g_live_bytes -= h->size;
+  arc_live_dec(h->size);
   h->rc = 0; // pooled sentinel (leak report skips it); harmless if freed below
-  if (arc_pool_push(body, arc_pool_cap(h->size))) {
-    g_live--; // slot stays present; only the live count moves
-    return;
+  if (osp_pool_push(&g_arc_pool, body, osp_pool_cap(h->size))) {
+    return; // slot stays present; recycled in place for the next same-size alloc
   }
   uintptr_t *slot = arc_find((uintptr_t)body);
   if (slot) {
-    arc_remove(slot); // g_live-- and g_present--
-  } else {
-    g_live--; // defensive: a registered body is always found
+    arc_remove(slot); // g_present-- (g_live already decremented above)
   }
   free(h);
 }

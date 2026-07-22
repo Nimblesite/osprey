@@ -120,7 +120,7 @@ pub(crate) fn gen_object(cg: &mut Codegen, fields: &[FieldAssignment]) -> Result
 }
 
 /// The layout word for an ANONYMOUS-object block `{ i64 tag, fields… }`
-/// ([`crate::meta`]), from runtime value LTypes (named constructors carry the
+/// ([`crate::meta`]), from runtime value `LTypes` (named constructors carry the
 /// stronger Osprey-typed `CtorView::meta` instead): the leading discriminant
 /// is a scalar word; each field marks itself by its LLVM type. Generic-variant
 /// slots boxed into `i64` stay unmarked — leak-safe (meta.rs [GC-ARC-PERCEUS]).

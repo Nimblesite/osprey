@@ -57,14 +57,26 @@ RTB ?= compiler/bin
 EXT_DIR        ?= vscode-extension
 EXT_ID         ?= nimblesite.osprey
 
+# Shared hardened warning sets — defined ONCE so a lint added here reaches every
+# C recipe below (archives, fiber, http_shared, unit tests). WARN is the core
+# every C translation unit compiles under. WARN_MAX adds two lints the SHIPPED
+# archive objects fully satisfy but a few in-tree test programs intentionally
+# trip (string literals passed into char* buffers under test; K&R decls), so it
+# applies to the archives only; the unit-test profile uses WARN.
+# EVERY flag here MUST be understood by BOTH clang (macOS/dev) and gcc (Linux
+# CI + the web-compiler Docker builder). clang-only spellings such as
+# -Wmissing-variable-declarations break `make _runtime` under gcc — keep the set
+# to the portable intersection.
+WARN     ?= -Werror -Wall -Wextra -Wshadow -Wpointer-arith -Wvla -Wundef -Wredundant-decls -Wcast-qual -Wcast-align -Wold-style-definition -Wbad-function-cast
+WARN_MAX ?= $(WARN) -Wstrict-prototypes -Wwrite-strings
 # C runtime compile flag profiles (hardened; mirror the original recipes).
-A    ?= -c -fPIC -O2 -D_FORTIFY_SOURCE=2 -fstack-protector-strong -Werror -Wall -Wextra -ftrapv -fPIE -D_GNU_SOURCE
+A    ?= -c -fPIC -O2 -D_FORTIFY_SOURCE=2 -fstack-protector-strong $(WARN_MAX) -ftrapv -fPIE -D_GNU_SOURCE
 B    ?= $(A) -std=c11
 OSSL ?= -DOPENSSL_SUPPRESS_DEPRECATED -DOPENSSL_API_COMPAT=30000 -Wno-deprecated-declarations
-# C unit-test flag profile: the same hardening as the archives, but linking an
+# C unit-test flag profile: the archive hardening core, but linking an
 # executable (no -c/-fPIC/-fPIE). Named once so _test_c_runtime does not repeat
 # the flag list per suite.
-T    ?= -O2 -D_FORTIFY_SOURCE=2 -fstack-protector-strong -Werror -Wall -Wextra -ftrapv -std=c11 -D_GNU_SOURCE
+T    ?= -O2 -D_FORTIFY_SOURCE=2 -fstack-protector-strong $(WARN) -ftrapv -std=c11 -D_GNU_SOURCE
 # Object lists for the archives (paths relative to compiler/, where `ar` runs).
 FIB_OBJ  ?= bin/memory_runtime.o bin/fiber_runtime.o bin/system_runtime.o bin/effects_runtime.o bin/string_runtime.o bin/string_runtime_list.o bin/list_runtime.o bin/map_runtime.o bin/map_runtime_hamt.o bin/json_runtime.o bin/ffi_runtime.o bin/term_runtime.o bin/random_runtime.o bin/test_runtime.o bin/coverage_runtime.o bin/profiler_runtime.o bin/profiler_sampler.o
 HTTP_OBJ ?= bin/http_shared.o bin/http_client_runtime.o bin/http_server_request.o bin/http_server_response.o bin/http_server_runtime.o bin/websocket_client_runtime.o bin/websocket_server_runtime.o $(FIB_OBJ)
@@ -299,7 +311,7 @@ _runtime:
 	  $(CC) $(A) -include runtime/osp_arc_shim.h runtime/string_runtime.c      -o bin/arc/string_runtime.o && \
 	  $(CC) $(A) -include runtime/osp_arc_shim.h runtime/string_runtime_list.c -o bin/arc/string_runtime_list.o && \
 	  $(CC) $(B) -include runtime/osp_arc_shim.h runtime/json_runtime.c        -o bin/arc/json_runtime.o && \
-	  $(CC) -c -fPIC -O2 -Werror -Wall -Wextra -Wpedantic -std=c11 -D_GNU_SOURCE runtime/fiber_runtime.c -o bin/fiber_runtime.o && \
+	  $(CC) -c -fPIC -O2 $(WARN_MAX) -Wpedantic -std=c11 -D_GNU_SOURCE runtime/fiber_runtime.c -o bin/fiber_runtime.o && \
 	  $(CC) $(A) runtime/system_runtime.c       -o bin/system_runtime.o && \
 	  $(CC) $(A) runtime/effects_runtime.c      -o bin/effects_runtime.o && \
 	  $(CC) $(A) runtime/string_runtime.c       -o bin/string_runtime.o && \
@@ -315,7 +327,7 @@ _runtime:
 	  $(CC) $(B) runtime/coverage_runtime.c     -o bin/coverage_runtime.o && \
 	  $(CC) $(B) runtime/profiler_runtime.c     -o bin/profiler_runtime.o && \
 	  $(CC) $(B) runtime/profiler_sampler.c     -o bin/profiler_sampler.o && \
-	  $(CC) -c -fPIC -O2 -D_FORTIFY_SOURCE=2 -fstack-protector-strong -Werror -Wall -Wextra \
+	  $(CC) -c -fPIC -O2 -D_FORTIFY_SOURCE=2 -fstack-protector-strong $(WARN_MAX) \
 	        -Wformat -Werror=format-security -Werror=implicit-function-declaration \
 	        -Werror=incompatible-pointer-types -Werror=int-conversion -Warray-bounds -ftrapv \
 	        -fno-delete-null-pointer-checks -fno-strict-overflow -fno-strict-aliasing -fPIE \
@@ -407,6 +419,12 @@ _test_c_runtime:
 	@cd compiler && $(CC) $(T) \
 	  runtime/memory_arc_tests.c runtime/memory_arc.c -pthread \
 	  -o bin/memory_arc_tests && ./bin/memory_arc_tests && \
+	  $(CC) $(T) \
+	  runtime/memory_gc_tests.c runtime/memory_gc.c -pthread \
+	  -o bin/memory_gc_tests && ./bin/memory_gc_tests && \
+	  $(CC) $(T) \
+	  runtime/memory_pool_tests.c \
+	  -o bin/memory_pool_tests && ./bin/memory_pool_tests && \
 	  $(CC) $(T) \
 	  runtime/list_tests.c runtime/list_runtime.c runtime/memory_runtime.c \
 	  -o bin/list_tests && ./bin/list_tests && \

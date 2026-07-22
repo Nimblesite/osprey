@@ -111,7 +111,8 @@ static bool append_row(int64_t fiber_id, const char *label, uint32_t *out) {
 
 static void capture_stack_bounds(OspProfSlot *slot) {
 #if defined(__APPLE__)
-  uintptr_t hi = (uintptr_t)pthread_get_stackaddr_np(pthread_self());
+  void *sa = pthread_get_stackaddr_np(pthread_self());
+  uintptr_t hi = (uintptr_t)sa;
   slot->stack_hi = hi;
   slot->stack_lo = hi - (uintptr_t)pthread_get_stacksize_np(pthread_self());
 #else
@@ -435,8 +436,9 @@ static void dump_images(FILE *f) {
   for (uint32_t i = 0; i < count; i++) {
     fprintf(f, "%s{\"path\":\"", i == 0 ? "" : ",");
     json_escape_into(f, _dyld_get_image_name(i));
+    const struct mach_header *mh = _dyld_get_image_header(i);
     fprintf(f, "\",\"base\":%" PRIu64 ",\"slide\":%" PRIu64 "}",
-            (uint64_t)(uintptr_t)_dyld_get_image_header(i),
+            (uint64_t)(uintptr_t)mh,
             (uint64_t)_dyld_get_image_vmaddr_slide(i));
   }
 }

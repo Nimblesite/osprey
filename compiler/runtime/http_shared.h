@@ -124,7 +124,7 @@ extern int64_t next_id;
 extern pthread_mutex_t runtime_mutex;
 
 // Shared utility functions
-char *http_method_to_string(HttpMethod method);
+const char *http_method_to_string(HttpMethod method);
 int parse_url(const char *url, char **host, int *port, char **path);
 char *base64_encode(const unsigned char *data, size_t input_length);
 char *generate_websocket_key(void);

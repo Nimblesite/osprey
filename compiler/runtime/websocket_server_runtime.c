@@ -358,7 +358,7 @@ int64_t websocket_stop_server(int64_t server_id) {
 }
 
 // Keep WebSocket server alive - blocks until interrupted
-void websocket_keep_alive() {
+void websocket_keep_alive(void) {
   printf("🔄 WebSocket server running - Press Ctrl+C to stop\n");
 
   // Set up signal handling for graceful shutdown

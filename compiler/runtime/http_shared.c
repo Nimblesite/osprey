@@ -43,7 +43,7 @@ int64_t get_next_id(void) {
 }
 
 // HTTP method to string conversion
-char *http_method_to_string(HttpMethod method) {
+const char *http_method_to_string(HttpMethod method) {
   switch (method) {
   case HTTP_GET:
     return "GET";
