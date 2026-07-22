@@ -31,8 +31,10 @@ const VIEWPORTS = [
 // asserts every page — playground included — is genuinely error-free.
 const KNOWN_ERRORS = [];
 
-// Third-party/CDN request failures we don't control (playground's Monaco editor).
-const IGNORED_REQUEST_HOSTS = /monaco|cdnjs|jsdelivr|unpkg|googleapis|gstatic/;
+// Third-party/CDN request failures we don't control: the playground's Monaco
+// editor and the Google Analytics beacon (gtag.js + /g/collect), whose async
+// analytics requests are aborted by headless Chromium and are not site defects.
+const IGNORED_REQUEST_HOSTS = /monaco|cdnjs|jsdelivr|unpkg|googleapis|gstatic|googletagmanager|google-analytics/;
 
 // Attaches console-error / pageerror / failed-request collectors to a page.
 function collectProblems(page, pageName) {
