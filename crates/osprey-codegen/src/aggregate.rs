@@ -56,7 +56,10 @@ pub(crate) fn gen_constructor(
     let struct_ty = cg
         .ctor_struct_ty(name)
         .ok_or_else(|| CodegenError::unknown(name))?;
-    let obj = cg.malloc_struct(&struct_ty, tagged_fields_meta(&view.fields));
+    // view.meta comes from the Osprey field types (builder.rs `field_meta`),
+    // which prove more than the erased LTypes visible here: an all-union field
+    // set upgrades to the probe-free KIND_MASK_DIRECT.
+    let obj = cg.malloc_struct(&struct_ty, view.meta);
     store_tag(cg, &struct_ty, obj.as_str(), view.tag);
 
     // fields, in declared order
@@ -104,10 +107,11 @@ pub(crate) fn gen_object(cg: &mut Codegen, fields: &[FieldAssignment]) -> Result
     Ok(v)
 }
 
-/// The layout word for a tagged-record block `{ i64 tag, fields… }`
-/// ([`crate::meta`]): the leading discriminant is a scalar word; each field
-/// marks itself by its LLVM type. Generic-variant slots boxed into `i64` stay
-/// unmarked — leak-safe by design (meta.rs [GC-ARC-PERCEUS]).
+/// The layout word for an ANONYMOUS-object block `{ i64 tag, fields… }`
+/// ([`crate::meta`]), from runtime value LTypes (named constructors carry the
+/// stronger Osprey-typed `CtorView::meta` instead): the leading discriminant
+/// is a scalar word; each field marks itself by its LLVM type. Generic-variant
+/// slots boxed into `i64` stay unmarked — leak-safe (meta.rs [GC-ARC-PERCEUS]).
 fn tagged_fields_meta(fields: &[(String, LType)]) -> i64 {
     let mut mf = Vec::with_capacity(fields.len() + 1);
     mf.push(crate::meta::MetaField::Word);
@@ -221,7 +225,10 @@ pub(crate) fn gen_update(
         "{src} = bitcast i8* {} to {struct_ty}*",
         base.operand
     ));
-    let obj = cg.malloc_struct(&struct_ty, tagged_fields_meta(&view.fields));
+    // view.meta comes from the Osprey field types (builder.rs `field_meta`),
+    // which prove more than the erased LTypes visible here: an all-union field
+    // set upgrades to the probe-free KIND_MASK_DIRECT.
+    let obj = cg.malloc_struct(&struct_ty, view.meta);
     store_tag(cg, &struct_ty, obj.as_str(), view.tag);
 
     for (i, (fname, fty)) in view.fields.iter().enumerate() {

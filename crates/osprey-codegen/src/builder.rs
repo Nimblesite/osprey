@@ -40,6 +40,11 @@ pub struct Codegen {
 
     /// Declared parameter names per function, for named-argument ordering.
     pub(crate) fn_params: HashMap<String, Vec<String>>,
+    /// Type names an `extern fn` claims to return (every name in the declared
+    /// return type expression, conservatively). A foreign pointer typed as a
+    /// union would break the `KIND_MASK_DIRECT` all-children-are-ARC-bodies
+    /// proof, so these unions stay on the probing `KIND_MASK`. [GC-ARC-PERCEUS]
+    pub(crate) extern_ret_types: BTreeSet<String>,
     /// Resolved signatures, constructor layouts and union tags from inference.
     pub(crate) prog: ProgramTypes,
     /// Stream-fusion pipeline: pending `map`/`filter` stages recorded by those
@@ -425,6 +430,7 @@ impl Codegen {
             cur_block: String::from("entry"),
             scopes: Vec::new(),
             fn_params: HashMap::new(),
+            extern_ret_types: BTreeSet::new(),
             prog,
             pending_iter_ops: Vec::new(),
             lambdas: HashMap::new(),
@@ -771,12 +777,49 @@ impl Codegen {
             .iter()
             .map(|(f, t)| (f.clone(), ltype_of(t)))
             .collect();
+        let mut mf = vec![crate::meta::MetaField::Word]; // leading tag
+        mf.extend(c.fields.iter().map(|(_, t)| self.field_meta(t)));
         Some(CtorView {
             owner: c.owner.clone(),
             owner_is_record: c.owner_is_record,
             tag,
             fields,
+            meta: crate::meta::struct_meta(&mf),
         })
+    }
+
+    /// The layout field for a constructor field of Osprey type `t`. A field
+    /// whose type is a DECLARED UNION is `PtrDirect`: union values can only
+    /// come from constructors (always `@osp_alloc_tagged`-headered ARC
+    /// bodies) — unless an extern claims to return that union, which would
+    /// smuggle in a foreign pointer and break the proof. Everything else
+    /// (strings can be rodata, records can cross the C ABI, `Ptr` is FFI)
+    /// keeps the probe-tolerant `LType` mapping. [GC-ARC-PERCEUS]
+    fn field_meta(&self, t: &osprey_types::Type) -> crate::meta::MetaField {
+        let proven = crate::types::proven_heap_name(t).is_some_and(|n| {
+            self.prog.unions.contains_key(n) && !self.extern_ret_types.contains(n)
+        });
+        if proven && ltype_of(t) == LType::Ptr {
+            crate::meta::MetaField::PtrDirect
+        } else {
+            crate::meta::MetaField::of_lty(ltype_of(t))
+        }
+    }
+
+    /// Record every type name in an extern's declared return type (see
+    /// [`Self::extern_ret_types`]). Called from the lowering pre-pass, before
+    /// any constructor layout is computed.
+    pub(crate) fn poison_extern_ret(&mut self, t: &osprey_ast::TypeExpr) {
+        let _ = self.extern_ret_types.insert(t.name.clone());
+        let nested = t
+            .generic_params
+            .iter()
+            .chain(t.array_element.as_deref())
+            .chain(t.parameter_types.iter())
+            .chain(t.return_type.as_deref());
+        for inner in nested {
+            self.poison_extern_ret(inner);
+        }
     }
 
     /// Resolve a field name to an owning constructor when the target's static
@@ -1206,6 +1249,11 @@ pub(crate) struct CtorView {
     pub owner_is_record: bool,
     pub tag: i64,
     pub fields: Vec<(String, LType)>,
+    /// The `@osp_alloc_tagged` layout word for the `{ i64 tag, fields… }`
+    /// block, computed from the Osprey field types (which prove more than the
+    /// erased `LType`s: an all-declared-union field set upgrades to the
+    /// probe-free `KIND_MASK_DIRECT`). [GC-ARC-PERCEUS]
+    pub meta: i64,
 }
 
 impl Default for Codegen {

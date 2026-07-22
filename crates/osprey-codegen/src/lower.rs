@@ -96,6 +96,12 @@ fn compile_program_with_options(program: &Program, options: CodegenOptions) -> R
                     }
                 }
             }
+            // A union an extern claims to return loses its MASK_DIRECT proof
+            // (builder.rs `field_meta`); record those before any layout lands.
+            Stmt::Extern {
+                return_type: Some(t),
+                ..
+            } => cg.poison_extern_ret(t),
             _ => {}
         }
     }

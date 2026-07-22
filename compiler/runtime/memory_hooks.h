@@ -22,6 +22,7 @@
 #define OSP_MEM_LIST_HDR_PTR 2    // { i64 len, ptr data }: release data[0..len), then data
 #define OSP_MEM_LIST_HDR_SCALAR 3 // { i64 len, ptr data }: release data only
 #define OSP_MEM_PTR_ARRAY 4       // every 8-byte word in [0, size) is a child
+#define OSP_MEM_MASK_DIRECT 5     // MASK whose children codegen PROVED are ARC bodies or NULL: drop reads their headers, no registry probe
 
 // The bit marking the 8-byte word at byte offset `off` (use with offsetof so
 // the layout can never drift from the struct).

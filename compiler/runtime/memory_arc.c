@@ -233,8 +233,8 @@ static int arc_pool_push(void *body, size_t cap) {
 
 // --- leak accounting (OSPREY_ARC_DEBUG=1) --------------------------------------
 
-// Kinds RAW..PTR_ARRAY (memory_hooks.h) — one histogram bucket per kind.
-#define OSP_ARC_NKINDS 5
+// Kinds RAW..MASK_DIRECT (memory_hooks.h) — one histogram bucket per kind.
+#define OSP_ARC_NKINDS 6
 
 // OSPREY_ARC_DEBUG=2 additionally dumps every survivor — kind, size, rc, and a
 // printable preview of its first bytes. That triple is what actually identifies
@@ -415,6 +415,25 @@ static void arc_drop_child(void *child) {
   }
 }
 
+// MASK_DIRECT child drop: codegen proved every masked word of the parent is
+// NULL or an ARC body (a declared-union value can only come from a
+// constructor, and constructor blocks always allocate through
+// osp_alloc_tagged), so the registry probe above — which dominated
+// deep-structure drops at ~52% of binarytrees' CPU — collapses to a direct
+// header read. NULL (a zeroed never-stored slot) and immortals stay no-ops.
+static void arc_drop_child_direct(void *child) {
+  if (!child) {
+    return;
+  }
+  OspArcHdr *h = arc_hdr(child);
+  if (h->rc < 0) {
+    return;
+  }
+  if (--h->rc == 0) {
+    arc_wl_push((uintptr_t)child);
+  }
+}
+
 // Bodies are 16-byte aligned (16-byte header + malloc's 16-byte guarantee), so
 // every 8-byte word is aligned and a pointer field is a direct load. memcpy of
 // 8 bytes is worse than it looks: -D_FORTIFY_SOURCE routes it through
@@ -424,10 +443,15 @@ static inline void *arc_load_child(const char *at) {
   return *(void *const *)(const void *)at;
 }
 
-static void arc_drop_masked(char *body, uint32_t size, uint64_t mask) {
+static void arc_drop_masked(char *body, uint32_t size, uint64_t mask, int direct) {
   for (unsigned i = 0; mask != 0 && (size_t)(i + 1) * 8 <= size; i++, mask >>= 1) {
     if (mask & 1) {
-      arc_drop_child(arc_load_child(body + (size_t)i * 8));
+      void *child = arc_load_child(body + (size_t)i * 8);
+      if (direct) {
+        arc_drop_child_direct(child);
+      } else {
+        arc_drop_child(child);
+      }
     }
   }
 }
@@ -470,8 +494,9 @@ static void arc_release_zero_locked(uintptr_t start) {
     uintptr_t body = g_wl[--g_wl_top];
     OspArcHdr *h = arc_hdr((void *)body);
     int kind = OSP_ARC_KIND(h->meta);
-    if (kind == OSP_MEM_MASK) {
-      arc_drop_masked((char *)body, h->size, OSP_ARC_MASK_BITS(h->meta));
+    if (kind == OSP_MEM_MASK || kind == OSP_MEM_MASK_DIRECT) {
+      arc_drop_masked((char *)body, h->size, OSP_ARC_MASK_BITS(h->meta),
+                      kind == OSP_MEM_MASK_DIRECT);
     } else if (kind == OSP_MEM_LIST_HDR_PTR || kind == OSP_MEM_LIST_HDR_SCALAR) {
       arc_drop_list_hdr((char *)body, h->size, kind == OSP_MEM_LIST_HDR_PTR);
     } else if (kind == OSP_MEM_PTR_ARRAY) {
