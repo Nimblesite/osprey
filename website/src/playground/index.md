@@ -801,7 +801,7 @@ print "════════════════════════�
             const response = await fetch(`${API_URL}/compile`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ code })
+                body: JSON.stringify({ code, flavor: currentFlavor === 'ospml' ? 'ml' : 'default' })
             });
             
             let result;
@@ -869,7 +869,7 @@ print "════════════════════════�
             const response = await fetch(`${API_URL}/run`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ code })
+                body: JSON.stringify({ code, flavor: currentFlavor === 'ospml' ? 'ml' : 'default' })
             });
             
             let result;

@@ -103,7 +103,7 @@ function sendSystemError(res, error) {
 
 // Compile endpoint
 app.post('/api/compile', async (req, res) => {
-    const { code } = req.body
+    const { code, flavor } = req.body
     console.log('📝 Compile request received')
     console.log('📄 Code length:', code?.length || 0)
     
@@ -118,7 +118,7 @@ app.post('/api/compile', async (req, res) => {
     }
 
     try {
-        const result = await runOspreyCompiler(['--sandbox', '--ast'], code)
+        const result = await runOspreyCompiler(['--sandbox', '--ast'], code, flavor)
 
         logCompilerResult(result)
 
@@ -162,7 +162,7 @@ app.post('/api/compile', async (req, res) => {
 
 // Run endpoint
 app.post('/api/run', async (req, res) => {
-    const { code } = req.body
+    const { code, flavor } = req.body
     console.log('🏃 Run request received')
     console.log('📄 Code length:', code?.length || 0)
     
@@ -177,7 +177,7 @@ app.post('/api/run', async (req, res) => {
     }
 
     try {
-        const result = await runOspreyCompiler(['--run'], code)
+        const result = await runOspreyCompiler(['--run'], code, flavor)
 
         logCompilerResult(result)
 
@@ -272,14 +272,19 @@ deleteAllTempFolders()
 // THREAD-SAFE Helper function to run Osprey compiler
 // Each request gets its own UUID-named folder for complete isolation
 // Always uses --sandbox flag for security (disables HTTP, WebSocket, file system, and FFI access)
-function runOspreyCompiler(args, code = '') {
+function runOspreyCompiler(args, code = '', flavor = 'default') {
     return new Promise(async (resolve, reject) => {
         // Diagnostics removed - too verbose for production logging
         // Create a unique UUID folder for this request - THREAD SAFE!
         const requestId = randomUUID()
         const tempBaseDir = '/tmp/osprey-temp'
         const tempRequestDir = path.join(tempBaseDir, requestId)
-        const tempFile = path.join(tempRequestDir, 'main.osp')
+        // The compiler picks the source flavor from the file extension
+        // (`.ospml` ⇒ ML, `.osp` ⇒ Default), so name the temp file to match the
+        // flavor the playground selected — ML (offside-rule) source parses only
+        // through the ML frontend. [FLAVOR-SELECT]
+        const isMl = flavor === 'ml' || flavor === 'ospml'
+        const tempFile = path.join(tempRequestDir, isMl ? 'main.ospml' : 'main.osp')
 
         try {
             // Create the unique temp directory for this request
