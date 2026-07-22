@@ -37,7 +37,11 @@ suite("Test Explorer parsing", () => {
         "# tests=2 passed=1 failed=1",
       ].join("\n");
       assert.deepStrictEqual(parseTapOutput(stream), [
-        { name: "bad math", ok: false, comments: ["expect failed: expected 3, got 2"] },
+        {
+          name: "bad math",
+          ok: false,
+          comments: ["expect failed: expected 3, got 2"],
+        },
         { name: "good math", ok: true, comments: [] },
       ]);
     });
@@ -90,7 +94,10 @@ suite("Test Explorer parsing", () => {
         "ok 1 - fine\n# expect failed: expected 5, got 2\n1..1\n# tests=1 passed=1 failed=0\n",
       );
       assert.strictEqual(stream.sawPlan, true);
-      assert.deepStrictEqual(stream.results.map((result) => result.name), ["fine"]);
+      assert.deepStrictEqual(
+        stream.results.map((result) => result.name),
+        ["fine"],
+      );
       assert.deepStrictEqual(stream.strayComments, [
         "expect failed: expected 5, got 2",
         "tests=1 passed=1 failed=0",
@@ -103,12 +110,16 @@ suite("Test Explorer parsing", () => {
   });
 
   suite("parseTestList and discoveryOutcome", () => {
-    const valid = '[{"name":"a","line":3,"column":1},{"name":"b","line":8,"column":2}]';
+    const valid =
+      '[{"name":"a","line":3,"column":1},{"name":"b","line":8,"column":2}]';
 
     test("parses a valid list and an empty list", () => {
       const parsed = parseTestList(valid);
       assert.ok(parsed.ok);
-      assert.deepStrictEqual(parsed.tests.map((t) => t.name), ["a", "b"]);
+      assert.deepStrictEqual(
+        parsed.tests.map((t) => t.name),
+        ["a", "b"],
+      );
       const empty = parseTestList("[]");
       assert.ok(empty.ok);
       assert.deepStrictEqual(empty.tests, []);
@@ -129,14 +140,22 @@ suite("Test Explorer parsing", () => {
     });
 
     test("discoveryOutcome folds exit codes and stderr", () => {
-      assert.ok(discoveryOutcome({ stdout: valid, stderr: "", exitCode: 0 }).ok);
-      const failed = discoveryOutcome({ stdout: "", stderr: "x.osp:1:0: bad\n", exitCode: 1 });
+      assert.ok(
+        discoveryOutcome({ stdout: valid, stderr: "", exitCode: 0 }).ok,
+      );
+      const failed = discoveryOutcome({
+        stdout: "",
+        stderr: "x.osp:1:0: bad\n",
+        exitCode: 1,
+      });
       assert.ok(!failed.ok);
       assert.strictEqual(failed.error, "x.osp:1:0: bad");
       const silent = discoveryOutcome({ stdout: "", stderr: "", exitCode: 3 });
       assert.ok(!silent.ok);
       assert.match(silent.error, /exited with code 3/);
-      assert.ok(!discoveryOutcome({ stdout: "garbage", stderr: "", exitCode: 0 }).ok);
+      assert.ok(
+        !discoveryOutcome({ stdout: "garbage", stderr: "", exitCode: 0 }).ok,
+      );
     });
   });
 
@@ -145,7 +164,10 @@ suite("Test Explorer parsing", () => {
       const uri = "file:///work/a.test.osp";
       assert.strictEqual(fileTestId(uri), uri);
       assert.ok(leafTestId(uri, "adds").startsWith(uri));
-      assert.notStrictEqual(leafTestId(uri, "adds"), leafTestId(uri, "subtracts"));
+      assert.notStrictEqual(
+        leafTestId(uri, "adds"),
+        leafTestId(uri, "subtracts"),
+      );
       assert.ok(leafTestId(uri, "adds").includes("adds"));
     });
 
@@ -168,7 +190,9 @@ suite("Test Explorer parsing", () => {
         { name: "dup", ok: true, comments: [] },
         { name: "dup", ok: false, comments: ["later loss"] },
       ];
-      assert.deepStrictEqual(outcomeForLeaf("p", results), { status: "passed" });
+      assert.deepStrictEqual(outcomeForLeaf("p", results), {
+        status: "passed",
+      });
       assert.deepStrictEqual(outcomeForLeaf("f", results), {
         status: "failed",
         message: "expected 3, got 2\nsecond",
@@ -177,27 +201,44 @@ suite("Test Explorer parsing", () => {
         status: "failed",
         message: "Test failed: bare",
       });
-      assert.deepStrictEqual(outcomeForLeaf("missing", results), { status: "skipped" });
+      assert.deepStrictEqual(outcomeForLeaf("missing", results), {
+        status: "skipped",
+      });
       assert.strictEqual(outcomeForLeaf("dup", results).status, "failed");
     });
 
     test("outcomeForLeaf reports a SKIP-directive case as skipped", () => {
       const results = [
-        { name: "s", ok: true, comments: [], skipReason: "precondition not met" },
+        {
+          name: "s",
+          ok: true,
+          comments: [],
+          skipReason: "precondition not met",
+        },
         { name: "t", ok: true, comments: [], skipReason: "" },
       ];
-      assert.deepStrictEqual(outcomeForLeaf("s", results), { status: "skipped" });
-      assert.deepStrictEqual(outcomeForLeaf("t", results), { status: "skipped" });
+      assert.deepStrictEqual(outcomeForLeaf("s", results), {
+        status: "skipped",
+      });
+      assert.deepStrictEqual(outcomeForLeaf("t", results), {
+        status: "skipped",
+      });
     });
 
     test("isCompileFailure and compileFailureMessage", () => {
       const noTap = parseTapStream("x.osp:1:0: syntax error");
       assert.strictEqual(isCompileFailure(1, noTap), true);
       assert.strictEqual(isCompileFailure(0, noTap), false);
-      assert.strictEqual(isCompileFailure(1, parseTapStream("not ok 1 - t\n1..1")), false);
+      assert.strictEqual(
+        isCompileFailure(1, parseTapStream("not ok 1 - t\n1..1")),
+        false,
+      );
       // A plan line proves the tests ran, even with zero results (1..0).
       assert.strictEqual(isCompileFailure(1, parseTapStream("1..0")), false);
-      assert.strictEqual(compileFailureMessage(" x.osp:1:1: bad \n", 1), "x.osp:1:1: bad");
+      assert.strictEqual(
+        compileFailureMessage(" x.osp:1:1: bad \n", 1),
+        "x.osp:1:1: bad",
+      );
       assert.match(compileFailureMessage("", 2), /exited with code 2/);
     });
 
@@ -215,7 +256,10 @@ suite("Test Explorer parsing", () => {
       // No diagnostics: stderr, then a generic message.
       const bare = parseTapStream("ok 1 - fine\n1..1\n");
       assert.strictEqual(strayFailureMessage(bare, 1, " boom \n"), "boom");
-      assert.match(String(strayFailureMessage(bare, 1, "")), /exited with code 1/);
+      assert.match(
+        String(strayFailureMessage(bare, 1, "")),
+        /exited with code 1/,
+      );
       // Explained failures produce nothing.
       assert.strictEqual(strayFailureMessage(bare, 0, ""), undefined);
       assert.strictEqual(
@@ -225,7 +269,10 @@ suite("Test Explorer parsing", () => {
     });
 
     test("testRunEnv sets the filter or scrubs an inherited one, without mutating", () => {
-      const base: NodeJS.ProcessEnv = { PATH: "/bin", OSPREY_TEST_FILTER: "stale" };
+      const base: NodeJS.ProcessEnv = {
+        PATH: "/bin",
+        OSPREY_TEST_FILTER: "stale",
+      };
       const unfiltered = testRunEnv(base, undefined);
       assert.strictEqual(unfiltered.OSPREY_TEST_FILTER, undefined);
       assert.ok(!("OSPREY_TEST_FILTER" in unfiltered));
@@ -260,13 +307,10 @@ suite("Test Explorer parsing", () => {
   suite("coverage report", () => {
     // [TESTING-COVERAGE-CLI]: the arguments for one instrumented run.
     test("coverageRunArgs builds the osprey test invocation", () => {
-      assert.deepStrictEqual(coverageRunArgs("m.test.osp", "cov.json", undefined), [
-        "test",
-        "m.test.osp",
-        "--coverage-json",
-        "cov.json",
-        "--quiet",
-      ]);
+      assert.deepStrictEqual(
+        coverageRunArgs("m.test.osp", "cov.json", undefined),
+        ["test", "m.test.osp", "--coverage-json", "cov.json", "--quiet"],
+      );
       assert.deepStrictEqual(
         coverageRunArgs("m.test.osp", "cov.json", "one case").slice(-2),
         ["--filter", "one case"],
@@ -311,7 +355,10 @@ suite("Test Explorer parsing", () => {
     test("leaves group by file; a file request subsumes its leaves", () => {
       const leafPlans = planRun([leafA1, leafA2, leafB1]);
       assert.strictEqual(leafPlans.length, 2);
-      assert.deepStrictEqual(leafPlans[0].leaves.map((l) => l.id), ["A#1", "A#2"]);
+      assert.deepStrictEqual(
+        leafPlans[0].leaves.map((l) => l.id),
+        ["A#1", "A#2"],
+      );
       assert.strictEqual(leafPlans[0].wholeFile, false);
       const merged = planRun([leafA1, fileA]);
       assert.strictEqual(merged.length, 1);
@@ -322,7 +369,10 @@ suite("Test Explorer parsing", () => {
       assert.deepStrictEqual(planRun([fileA], excludedIdSet([fileA])), []);
       assert.deepStrictEqual(planRun([leafA1], excludedIdSet([fileA])), []);
       const plans = planRun([leafA1, leafA2], excludedIdSet([leafA2]));
-      assert.deepStrictEqual(plans[0].leaves.map((l) => l.id), ["A#1"]);
+      assert.deepStrictEqual(
+        plans[0].leaves.map((l) => l.id),
+        ["A#1"],
+      );
       assert.strictEqual(excludedIdSet(undefined).size, 0);
     });
   });

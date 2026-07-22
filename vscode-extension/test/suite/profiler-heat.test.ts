@@ -16,9 +16,17 @@ import {
   HeatDecorationManager,
   heatLabel,
 } from "../../client/src/profiler/heat-decorations";
-import type { HotLineInfo, ProfileSummary } from "../../client/src/profiler/summary";
+import type {
+  HotLineInfo,
+  ProfileSummary,
+} from "../../client/src/profiler/summary";
 
-const hotLine = (file: string, line: number, pct: number, samples: number): HotLineInfo => ({
+const hotLine = (
+  file: string,
+  line: number,
+  pct: number,
+  samples: number,
+): HotLineInfo => ({
   file,
   line,
   pct,
@@ -53,8 +61,14 @@ suite("heat-decorations pure helpers", () => {
   });
 
   test("heatLabel matches the spec format", () => {
-    assert.strictEqual(heatLabel(hotLine("/w/fib.osp", 5, 12.4, 124)), " ▍ 12.4% · 124 samples");
-    assert.strictEqual(heatLabel(hotLine("/w/fib.osp", 5, 7, 1)), " ▍ 7.0% · 1 samples");
+    assert.strictEqual(
+      heatLabel(hotLine("/w/fib.osp", 5, 12.4, 124)),
+      " ▍ 12.4% · 124 samples",
+    );
+    assert.strictEqual(
+      heatLabel(hotLine("/w/fib.osp", 5, 7, 1)),
+      " ▍ 7.0% · 1 samples",
+    );
   });
 
   test("fileHeat keeps only the requested file's lines, with tier colors", () => {
@@ -64,28 +78,42 @@ suite("heat-decorations pure helpers", () => {
       hotLine("/w/fib.osp", 9, 2, 20),
     ];
     const heats = fileHeat(lines, "/w/fib.osp");
-    assert.deepStrictEqual(heats.map((h) => [h.line, h.color]), [
-      [5, HEAT_HIGH],
-      [9, HEAT_MUTED],
-    ]);
+    assert.deepStrictEqual(
+      heats.map((h) => [h.line, h.color]),
+      [
+        [5, HEAT_HIGH],
+        [9, HEAT_MUTED],
+      ],
+    );
     assert.deepStrictEqual(fileHeat(lines, "/nope.osp"), []);
   });
 
   test("canonicalHeatPath collapses dot segments and falls back for missing paths", () => {
     assert.strictEqual(
-      canonicalHeatPath(`${path.sep}nope${path.sep}..${path.sep}nope${path.sep}x.osp`),
+      canonicalHeatPath(
+        `${path.sep}nope${path.sep}..${path.sep}nope${path.sep}x.osp`,
+      ),
       `${path.sep}nope${path.sep}x.osp`,
     );
     const throwing = (): string => {
       throw new Error("ENOENT");
     };
-    assert.strictEqual(canonicalHeatPath("/gone/x.osp", throwing, "darwin"), "/gone/x.osp");
+    assert.strictEqual(
+      canonicalHeatPath("/gone/x.osp", throwing, "darwin"),
+      "/gone/x.osp",
+    );
   });
 
   test("canonicalHeatPath compares case-insensitively only on win32", () => {
     const identity = (p: string): string => p;
-    assert.strictEqual(canonicalHeatPath("/W/Fib.OSP", identity, "win32"), "/w/fib.osp");
-    assert.strictEqual(canonicalHeatPath("/W/Fib.OSP", identity, "linux"), "/W/Fib.OSP");
+    assert.strictEqual(
+      canonicalHeatPath("/W/Fib.OSP", identity, "win32"),
+      "/w/fib.osp",
+    );
+    assert.strictEqual(
+      canonicalHeatPath("/W/Fib.OSP", identity, "linux"),
+      "/W/Fib.OSP",
+    );
   });
 
   test("canonicalHeatPath resolves symlinked spellings (/tmp vs /private/tmp style)", async () => {
@@ -98,19 +126,32 @@ suite("heat-decorations pure helpers", () => {
     await fs.promises.writeFile(realFile, "fn main() = 1\n");
     const linkedFile = path.join(linkDir, "hot.osp");
     assert.notStrictEqual(linkedFile, realFile);
-    assert.strictEqual(canonicalHeatPath(linkedFile), canonicalHeatPath(realFile));
+    assert.strictEqual(
+      canonicalHeatPath(linkedFile),
+      canonicalHeatPath(realFile),
+    );
     assert.strictEqual(canonicalHeatPath(linkedFile), realFile);
     // fileHeat matches heat reported against one spelling to the other.
     const lines = [hotLine(linkedFile, 3, 25, 250)];
-    assert.deepStrictEqual(fileHeat(lines, realFile).map((h) => h.line), [3]);
-    assert.deepStrictEqual(fileHeat(lines, path.join(realDir, "other.osp")), []);
+    assert.deepStrictEqual(
+      fileHeat(lines, realFile).map((h) => h.line),
+      [3],
+    );
+    assert.deepStrictEqual(
+      fileHeat(lines, path.join(realDir, "other.osp")),
+      [],
+    );
     await fs.promises.rm(linkDir);
     await fs.promises.rm(realDir, { recursive: true });
   });
 
   test("groupByColor buckets annotations per tier", () => {
     const heats = fileHeat(
-      [hotLine("/f.osp", 1, 30, 1), hotLine("/f.osp", 2, 22, 1), hotLine("/f.osp", 3, 6, 1)],
+      [
+        hotLine("/f.osp", 1, 30, 1),
+        hotLine("/f.osp", 2, 22, 1),
+        hotLine("/f.osp", 3, 6, 1),
+      ],
       "/f.osp",
     );
     const groups = groupByColor(heats);
@@ -126,7 +167,9 @@ suite("HeatDecorationManager", () => {
   let editor: vscode.TextEditor;
 
   suiteSetup(async () => {
-    const dir = await fs.promises.mkdtemp(path.join(os.tmpdir(), "osprey-heat-"));
+    const dir = await fs.promises.mkdtemp(
+      path.join(os.tmpdir(), "osprey-heat-"),
+    );
     filePath = path.join(dir, "hot.osp");
     await fs.promises.writeFile(filePath, "fn main() = 1\nprint(main())\n");
     const document = await vscode.workspace.openTextDocument(filePath);
@@ -171,7 +214,9 @@ suite("HeatDecorationManager", () => {
     const manager = new HeatDecorationManager();
     manager.apply(summaryWith([hotLine(filePath, 1, 25, 250)]), [editor]);
     assert.strictEqual(
-      vscode.workspace.getConfiguration("osprey").get<boolean>("profiler.inlineHeat", true),
+      vscode.workspace
+        .getConfiguration("osprey")
+        .get<boolean>("profiler.inlineHeat", true),
       true,
     );
     manager.dispose();

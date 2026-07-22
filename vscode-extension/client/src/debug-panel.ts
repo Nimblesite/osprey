@@ -82,7 +82,12 @@ export function buildProgramNodes(snapshot: DebugSnapshot): DebugNode[] {
     stopped: "Paused",
   };
   const nodes: DebugNode[] = [
-    { kind: "info", label: "State", description: stateLabel[snapshot.state], icon: "pulse" },
+    {
+      kind: "info",
+      label: "State",
+      description: stateLabel[snapshot.state],
+      icon: "pulse",
+    },
   ];
   if (snapshot.program?.sourceProgram) {
     nodes.push({
@@ -106,12 +111,20 @@ export function buildProgramNodes(snapshot: DebugSnapshot): DebugNode[] {
 /** "Call Stack" section, one node per frame (top frame first). */
 export function buildStackNodes(frames: FrameInfo[]): DebugNode[] {
   if (frames.length === 0) {
-    return [{ kind: "placeholder", label: "Run to a breakpoint to inspect the stack", icon: "debug-stackframe" }];
+    return [
+      {
+        kind: "placeholder",
+        label: "Run to a breakpoint to inspect the stack",
+        icon: "debug-stackframe",
+      },
+    ];
   }
   return frames.map((frame) => ({
     kind: "frame",
     label: frame.name,
-    description: frame.path ? `${pathBasename(frame.path)}:${frame.line}` : `line ${frame.line}`,
+    description: frame.path
+      ? `${pathBasename(frame.path)}:${frame.line}`
+      : `line ${frame.line}`,
     icon: "debug-stackframe",
   }));
 }
@@ -119,12 +132,20 @@ export function buildStackNodes(frames: FrameInfo[]): DebugNode[] {
 /** "Variables" section: the current frame's locals/parameters. */
 export function buildVariableNodes(variables: VarInfo[]): DebugNode[] {
   if (variables.length === 0) {
-    return [{ kind: "placeholder", label: "No locals in scope", icon: "symbol-variable" }];
+    return [
+      {
+        kind: "placeholder",
+        label: "No locals in scope",
+        icon: "symbol-variable",
+      },
+    ];
   }
   return variables.map((variable) => ({
     kind: "variable",
     label: variable.name,
-    description: variable.type ? `${variable.value} : ${variable.type}` : variable.value,
+    description: variable.type
+      ? `${variable.value} : ${variable.type}`
+      : variable.value,
     icon: "symbol-variable",
   }));
 }
@@ -142,7 +163,12 @@ export function buildProfilingNodes(): DebugNode[] {
       label: "Performance Profiling",
       icon: "dashboard",
       children: [
-        { kind: "placeholder", label: "CPU sampling", description: "run ⌘⇧P → Osprey: Profile Current File", icon: "watch" },
+        {
+          kind: "placeholder",
+          label: "CPU sampling",
+          description: "run ⌘⇧P → Osprey: Profile Current File",
+          icon: "watch",
+        },
       ],
     },
     {
@@ -150,7 +176,12 @@ export function buildProfilingNodes(): DebugNode[] {
       label: "Memory",
       icon: "server",
       children: [
-        { kind: "placeholder", label: "Heap / allocations", description: "planned — memoryTrackOnLaunch", icon: "database" },
+        {
+          kind: "placeholder",
+          label: "Heap / allocations",
+          description: "planned — memoryTrackOnLaunch",
+          icon: "database",
+        },
       ],
     },
   ];
@@ -159,9 +190,24 @@ export function buildProfilingNodes(): DebugNode[] {
 /** Assemble the full tree (top-level sections) for a snapshot. Pure. */
 export function buildTree(snapshot: DebugSnapshot): DebugNode[] {
   return [
-    { kind: "section", label: "Program", icon: "rocket", children: buildProgramNodes(snapshot) },
-    { kind: "section", label: "Call Stack", icon: "list-tree", children: buildStackNodes(snapshot.frames) },
-    { kind: "section", label: "Variables", icon: "symbol-namespace", children: buildVariableNodes(snapshot.topVariables) },
+    {
+      kind: "section",
+      label: "Program",
+      icon: "rocket",
+      children: buildProgramNodes(snapshot),
+    },
+    {
+      kind: "section",
+      label: "Call Stack",
+      icon: "list-tree",
+      children: buildStackNodes(snapshot.frames),
+    },
+    {
+      kind: "section",
+      label: "Variables",
+      icon: "symbol-namespace",
+      children: buildVariableNodes(snapshot.topVariables),
+    },
     ...buildProfilingNodes(),
   ];
 }
@@ -184,7 +230,8 @@ export async function readDebugSnapshot(
   session: DapRequester,
   program: ProgramInfo | undefined,
 ): Promise<DebugSnapshot> {
-  const threads = ((await session.customRequest("threads")) as ThreadsResponse).threads ?? [];
+  const threads =
+    ((await session.customRequest("threads")) as ThreadsResponse).threads ?? [];
   for (const thread of threads) {
     const stack = (await session.customRequest("stackTrace", {
       threadId: thread.id,
@@ -200,14 +247,25 @@ export async function readDebugSnapshot(
   return { state: "running", program, frames: [], topVariables: [] };
 }
 
-async function readTopVariables(session: DapRequester, frameId: number): Promise<VarInfo[]> {
-  const { scopes } = (await session.customRequest("scopes", { frameId })) as ScopesResponse;
+async function readTopVariables(
+  session: DapRequester,
+  frameId: number,
+): Promise<VarInfo[]> {
+  const { scopes } = (await session.customRequest("scopes", {
+    frameId,
+  })) as ScopesResponse;
   const groups = await Promise.all(
     (scopes ?? [])
       .filter((scope) => scope.variablesReference > 0)
-      .map((scope) => session.customRequest("variables", { variablesReference: scope.variablesReference })),
+      .map((scope) =>
+        session.customRequest("variables", {
+          variablesReference: scope.variablesReference,
+        }),
+      ),
   );
-  return groups.flatMap((group) => (group as VariablesResponse).variables ?? []);
+  return groups.flatMap(
+    (group) => (group as VariablesResponse).variables ?? [],
+  );
 }
 
 /** The TreeDataProvider backing the Osprey Debug view. */
@@ -242,15 +300,18 @@ export class OspreyDebugTreeProvider implements TreeDataProvider<DebugNode> {
   }
 
   public getChildren(node?: DebugNode): DebugNode[] {
-    return node ? node.children ?? [] : buildTree(this.snapshot);
+    return node ? (node.children ?? []) : buildTree(this.snapshot);
   }
 }
 
 /** Pull the program identity out of a session's launch configuration. */
-export function programInfoFromConfig(config: Record<string, unknown>): ProgramInfo {
+export function programInfoFromConfig(
+  config: Record<string, unknown>,
+): ProgramInfo {
   return {
     sourceProgram:
-      (config.sourceProgram as string | undefined) ?? (config.program as string | undefined),
+      (config.sourceProgram as string | undefined) ??
+      (config.program as string | undefined),
     debugBinary: config.program as string | undefined,
   };
 }
@@ -277,22 +338,40 @@ export function makePanelMessageHandler(
       return;
     }
     if (message.event === "stopped") {
-      void readDebugSnapshot(session, program).then((snapshot) => provider.update(snapshot));
+      void readDebugSnapshot(session, program).then((snapshot) =>
+        provider.update(snapshot),
+      );
     } else if (message.event === "continued") {
-      provider.update({ state: "running", program, frames: [], topVariables: [] });
+      provider.update({
+        state: "running",
+        program,
+        frames: [],
+        topVariables: [],
+      });
     }
   };
 }
 
 /** Register the Osprey Debug panel and keep it in step with debug sessions. */
-export function registerOspreyDebugPanel(context: ExtensionContext): OspreyDebugTreeProvider {
+export function registerOspreyDebugPanel(
+  context: ExtensionContext,
+): OspreyDebugTreeProvider {
   const provider = new OspreyDebugTreeProvider();
   context.subscriptions.push(
     debug.registerDebugAdapterTrackerFactory("osprey", {
       createDebugAdapterTracker(session: DebugSession) {
-        const program = programInfoFromConfig(session.configuration as Record<string, unknown>);
-        provider.update({ state: "running", program, frames: [], topVariables: [] });
-        return { onDidSendMessage: makePanelMessageHandler(session, provider, program) };
+        const program = programInfoFromConfig(
+          session.configuration as Record<string, unknown>,
+        );
+        provider.update({
+          state: "running",
+          program,
+          frames: [],
+          topVariables: [],
+        });
+        return {
+          onDidSendMessage: makePanelMessageHandler(session, provider, program),
+        };
       },
     }),
     debug.onDidTerminateDebugSession(() => provider.update(EMPTY_SNAPSHOT)),

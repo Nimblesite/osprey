@@ -45,7 +45,11 @@ suite("Osprey Test-Env Resolver Unit Tests", () => {
     process.env.PATH = ["", emptyDir, scratch].join(path.delimiter);
 
     const found = resolveOspreyOnPath();
-    assert.strictEqual(found, staged, "osprey resolved from the PATH entry that has it");
+    assert.strictEqual(
+      found,
+      staged,
+      "osprey resolved from the PATH entry that has it",
+    );
     fs.rmSync(emptyDir, { recursive: true, force: true });
   });
 
@@ -59,16 +63,30 @@ suite("Osprey Test-Env Resolver Unit Tests", () => {
   });
 
   test("resolveBuiltOsprey prefers the repo release binary, else falls back to PATH", () => {
-    const built = path.resolve(extensionRoot, "..", "target", "release", OSPREY_EXE);
+    const built = path.resolve(
+      extensionRoot,
+      "..",
+      "target",
+      "release",
+      OSPREY_EXE,
+    );
     const resolved = resolveBuiltOsprey();
 
     if (fs.existsSync(built)) {
       // The made-from-source compiler is preferred over anything on PATH.
-      assert.strictEqual(resolved, built, "uses the freshly-built repo compiler");
+      assert.strictEqual(
+        resolved,
+        built,
+        "uses the freshly-built repo compiler",
+      );
     } else {
       // No built binary: it must degrade to the PATH lookup (whatever that is,
       // possibly undefined) — never the non-existent built path.
-      assert.notStrictEqual(resolved, built, "does not return a non-existent built path");
+      assert.notStrictEqual(
+        resolved,
+        built,
+        "does not return a non-existent built path",
+      );
       assert.strictEqual(
         resolved,
         resolveOspreyOnPath(),
@@ -85,7 +103,9 @@ suite("Osprey Test-Env Resolver Unit Tests", () => {
     try {
       const command = resolveRequiredLldbDap();
       assert.ok(
-        typeof command === "string" && command.length > 0 && fs.existsSync(command),
+        typeof command === "string" &&
+          command.length > 0 &&
+          fs.existsSync(command),
         `resolved lldb-dap must be a real executable path, got "${command}"`,
       );
     } catch (error) {

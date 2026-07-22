@@ -220,9 +220,11 @@ pub(crate) fn move_phi_owners(cg: &mut Codegen, incoming: &[String], out: &Value
     }
     let consumable = |e: &Entry| e.name.is_none() && incoming.contains(&e.operand);
     let all_fresh = cg.arc.frames.last().is_some_and(|f| {
-        incoming
-            .iter()
-            .all(|op| f.iter().skip(mark).any(|e| e.operand == *op && e.name.is_none()))
+        incoming.iter().all(|op| {
+            f.iter()
+                .skip(mark)
+                .any(|e| e.operand == *op && e.name.is_none())
+        })
     });
     if !all_fresh {
         return;

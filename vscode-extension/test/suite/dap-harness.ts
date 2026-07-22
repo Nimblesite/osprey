@@ -54,7 +54,10 @@ export function clearDebugBreakpoints(): void {
 }
 
 /** Replace all breakpoints with one per spec on `filePath` (1-based lines). */
-export function setSourceBreakpoints(filePath: string, specs: BreakpointSpec[]): void {
+export function setSourceBreakpoints(
+  filePath: string,
+  specs: BreakpointSpec[],
+): void {
   clearDebugBreakpoints();
   vscode.debug.addBreakpoints(
     specs.map((spec) => {
@@ -149,17 +152,26 @@ export async function evaluate(
 }
 
 /** Step over (DAP `next`). */
-export function stepOver(session: vscode.DebugSession, threadId: number): Thenable<unknown> {
+export function stepOver(
+  session: vscode.DebugSession,
+  threadId: number,
+): Thenable<unknown> {
   return session.customRequest("next", { threadId });
 }
 
 /** Step into (DAP `stepIn`). */
-export function stepIn(session: vscode.DebugSession, threadId: number): Thenable<unknown> {
+export function stepIn(
+  session: vscode.DebugSession,
+  threadId: number,
+): Thenable<unknown> {
   return session.customRequest("stepIn", { threadId });
 }
 
 /** Step out (DAP `stepOut`). */
-export function stepOut(session: vscode.DebugSession, threadId: number): Thenable<unknown> {
+export function stepOut(
+  session: vscode.DebugSession,
+  threadId: number,
+): Thenable<unknown> {
   return session.customRequest("stepOut", { threadId });
 }
 
@@ -318,7 +330,11 @@ export function assertCurrentLine(
 ): DapStackFrame {
   const top = stack.stackFrames[0];
   assert.ok(top, "expected at least one stack frame");
-  assert.strictEqual(top.line, expectedLine, `expected to stop on line ${expectedLine}`);
+  assert.strictEqual(
+    top.line,
+    expectedLine,
+    `expected to stop on line ${expectedLine}`,
+  );
   if (sourcePath !== undefined) {
     const norm = (p: string): string => p.replace(/\\/g, "/").toLowerCase();
     assert.ok(

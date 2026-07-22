@@ -15,7 +15,9 @@ export interface SelectMessage {
 }
 
 /** Validate a webview message; only well-formed selects navigate. Pure. */
-export function parseSelectMessage(message: unknown): SelectMessage | undefined {
+export function parseSelectMessage(
+  message: unknown,
+): SelectMessage | undefined {
   const select = message as SelectMessage;
   const valid =
     typeof select === "object" &&
@@ -30,7 +32,10 @@ export function parseSelectMessage(message: unknown): SelectMessage | undefined 
 /** Open the clicked frame's source beside the panel, centered on its line. */
 export async function revealSource(message: SelectMessage): Promise<void> {
   const document = await vscode.workspace.openTextDocument(message.file);
-  const editor = await vscode.window.showTextDocument(document, vscode.ViewColumn.One);
+  const editor = await vscode.window.showTextDocument(
+    document,
+    vscode.ViewColumn.One,
+  );
   const line = Math.min(Math.max(message.line - 1, 0), document.lineCount - 1);
   const range = new vscode.Range(line, 0, line, 0);
   editor.revealRange(range, vscode.TextEditorRevealType.InCenter);
@@ -62,7 +67,9 @@ function createPanel(title: string): vscode.WebviewPanel {
   created.onDidDispose(() => {
     panel = undefined;
   });
-  created.webview.onDidReceiveMessage((message) => void handlePanelMessage(message));
+  created.webview.onDidReceiveMessage(
+    (message) => void handlePanelMessage(message),
+  );
   return created;
 }
 

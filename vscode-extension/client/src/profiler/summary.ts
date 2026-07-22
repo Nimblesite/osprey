@@ -61,7 +61,8 @@ function recordsIn(value: unknown): RawRecord[] {
 }
 
 const num = (value: unknown): number => (typeof value === "number" ? value : 0);
-const str = (value: unknown): string => (typeof value === "string" ? value : "");
+const str = (value: unknown): string =>
+  typeof value === "string" ? value : "";
 
 function toFiber(raw: RawRecord): FiberInfo {
   return {
@@ -86,7 +87,12 @@ function toHotFunction(raw: RawRecord): HotFunctionInfo {
 }
 
 function toHotLine(raw: RawRecord): HotLineInfo {
-  return { file: str(raw.file), line: num(raw.line), pct: num(raw.pct), samples: num(raw.samples) };
+  return {
+    file: str(raw.file),
+    line: num(raw.line),
+    pct: num(raw.pct),
+    samples: num(raw.samples),
+  };
 }
 
 function normalizeSummary(raw: RawRecord): ProfileSummary {
@@ -102,7 +108,9 @@ function normalizeSummary(raw: RawRecord): ProfileSummary {
     hotFunctions: recordsIn(raw.hotFunctions)
       .map(toHotFunction)
       .filter((f) => f.name !== ""),
-    hotLines: recordsIn(raw.hotLines).map(toHotLine).filter((l) => l.file !== "" && l.line > 0),
+    hotLines: recordsIn(raw.hotLines)
+      .map(toHotLine)
+      .filter((l) => l.file !== "" && l.line > 0),
   };
 }
 
@@ -116,9 +124,14 @@ export function parseSummary(text: string): Result<ProfileSummary> {
     return { ok: false, error: "profile summary is not a JSON object" };
   }
   const record: RawRecord = raw.value;
-  const missing = NUMERIC_FIELDS.find((field) => typeof record[field] !== "number");
+  const missing = NUMERIC_FIELDS.find(
+    (field) => typeof record[field] !== "number",
+  );
   if (missing !== undefined) {
-    return { ok: false, error: `profile summary field "${missing}" is missing or not a number` };
+    return {
+      ok: false,
+      error: `profile summary field "${missing}" is missing or not a number`,
+    };
   }
   return { ok: true, value: normalizeSummary(record) };
 }
@@ -129,7 +142,8 @@ const formatSeconds = (seconds: number): string =>
 /** `4182 samples · 997Hz · 4.2s wall · 3.9s CPU · 3 fibers` (+ dropped). */
 export function formatSummaryHeader(summary: ProfileSummary): string {
   const fibers = `${summary.fibers.length} ${summary.fibers.length === 1 ? "fiber" : "fibers"}`;
-  const dropped = summary.droppedSamples > 0 ? ` · ${summary.droppedSamples} dropped` : "";
+  const dropped =
+    summary.droppedSamples > 0 ? ` · ${summary.droppedSamples} dropped` : "";
   return (
     `${summary.sampleCount} samples · ${summary.rateHz}Hz · ` +
     `${formatSeconds(summary.wallSeconds)} wall · ${formatSeconds(summary.cpuSeconds)} CPU · ` +
@@ -139,5 +153,7 @@ export function formatSummaryHeader(summary: ProfileSummary): string {
 
 /** A fiber's on-CPU share as a whole percentage (0 when it never sampled). */
 export function onCpuPct(fiber: FiberInfo): number {
-  return fiber.samples > 0 ? Math.round((100 * fiber.oncpuSamples) / fiber.samples) : 0;
+  return fiber.samples > 0
+    ? Math.round((100 * fiber.oncpuSamples) / fiber.samples)
+    : 0;
 }

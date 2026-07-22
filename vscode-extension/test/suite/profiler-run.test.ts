@@ -54,7 +54,16 @@ suite("profile-run summary parsing", () => {
     droppedSamples: 0,
     fibers: [{ id: 0, label: "main", samples: 100, oncpuSamples: 90 }],
     hotFunctions: [
-      { name: "fib", file: "/abs/fib.osp", line: 3, selfPct: 42.0, totalPct: 61.0, selfSamples: 420, totalSamples: 610, kind: "user" },
+      {
+        name: "fib",
+        file: "/abs/fib.osp",
+        line: 3,
+        selfPct: 42.0,
+        totalPct: 61.0,
+        selfSamples: 420,
+        totalSamples: 610,
+        kind: "user",
+      },
     ],
     hotLines: [{ file: "/abs/fib.osp", line: 5, pct: 12.0, samples: 120 }],
   });
@@ -74,7 +83,9 @@ suite("profile-run summary parsing", () => {
   test("rejects malformed documents with a field-level error", () => {
     assert.ok(!parseSummary("{oops").ok);
     assert.ok(!parseSummary("[1,2]").ok);
-    const missing = parseSummary('{"version":1,"wallSeconds":1,"cpuSeconds":1,"sampleCount":9}');
+    const missing = parseSummary(
+      '{"version":1,"wallSeconds":1,"cpuSeconds":1,"sampleCount":9}',
+    );
     assert.ok(!missing.ok && missing.error.includes('"rateHz"'));
   });
 
@@ -86,8 +97,14 @@ suite("profile-run summary parsing", () => {
     );
     assert.ok(parsed.ok);
     assert.deepStrictEqual(parsed.value.fibers, []);
-    assert.deepStrictEqual(parsed.value.hotFunctions.map((f) => f.name), ["ok"]);
-    assert.deepStrictEqual(parsed.value.hotLines.map((l) => l.line), [2]);
+    assert.deepStrictEqual(
+      parsed.value.hotFunctions.map((f) => f.name),
+      ["ok"],
+    );
+    assert.deepStrictEqual(
+      parsed.value.hotLines.map((l) => l.line),
+      [2],
+    );
     assert.strictEqual(parsed.value.droppedSamples, 0);
     assert.strictEqual(parsed.value.program, "");
   });
@@ -115,7 +132,9 @@ suite("profile-run loadArtifacts", () => {
   let dir: string;
 
   suiteSetup(async () => {
-    dir = await fs.promises.mkdtemp(path.join(os.tmpdir(), "osprey-artifacts-"));
+    dir = await fs.promises.mkdtemp(
+      path.join(os.tmpdir(), "osprey-artifacts-"),
+    );
   });
 
   test("reports missing artifacts", () => {
@@ -186,7 +205,9 @@ suite("profile-run command flow", function () {
   let okHeat: ReturnType<typeof registerProfilerCommands>;
 
   suiteSetup(async () => {
-    const dir = await fs.promises.mkdtemp(path.join(os.tmpdir(), "osprey-profrun-"));
+    const dir = await fs.promises.mkdtemp(
+      path.join(os.tmpdir(), "osprey-profrun-"),
+    );
     sourcePath = path.join(dir, "fib.osp");
     await fs.promises.writeFile(sourcePath, "fn fib(n) = n\nprint(fib(30))\n");
     const okScript = path.join(dir, "osprey-ok.sh");
@@ -198,12 +219,18 @@ suite("profile-run command flow", function () {
     okHeat = registerProfilerCommands(
       context as unknown as vscode.ExtensionContext,
       () => okScript,
-      { profile: "ospreyProfilerTest.run", openLast: "ospreyProfilerTest.openLast" },
+      {
+        profile: "ospreyProfilerTest.run",
+        openLast: "ospreyProfilerTest.openLast",
+      },
     );
     registerProfilerCommands(
       context as unknown as vscode.ExtensionContext,
       () => failScript,
-      { profile: "ospreyProfilerTest.failRun", openLast: "ospreyProfilerTest.failOpen" },
+      {
+        profile: "ospreyProfilerTest.failRun",
+        openLast: "ospreyProfilerTest.failOpen",
+      },
     );
   });
 
@@ -215,25 +242,42 @@ suite("profile-run command flow", function () {
   test("the real commands refuse politely without an osprey editor", async () => {
     await vscode.extensions.getExtension("nimblesite.osprey")?.activate();
     await vscode.commands.executeCommand("workbench.action.closeAllEditors");
-    assert.strictEqual(await vscode.commands.executeCommand(PROFILER_COMMANDS.profile), false);
-    assert.strictEqual(await vscode.commands.executeCommand(PROFILER_COMMANDS.openLast), false);
+    assert.strictEqual(
+      await vscode.commands.executeCommand(PROFILER_COMMANDS.profile),
+      false,
+    );
+    assert.strictEqual(
+      await vscode.commands.executeCommand(PROFILER_COMMANDS.openLast),
+      false,
+    );
   });
 
   test("a successful run opens the flame panel, heat marks, and openLast", async () => {
     const document = await vscode.workspace.openTextDocument(sourcePath);
     await vscode.window.showTextDocument(document);
-    const opened = await vscode.commands.executeCommand("ospreyProfilerTest.run");
+    const opened = await vscode.commands.executeCommand(
+      "ospreyProfilerTest.run",
+    );
     assert.strictEqual(opened, true);
     assert.strictEqual(okHeat.current()?.sampleCount, 1234);
     assert.strictEqual(okHeat.current()?.hotLines[0].file, sourcePath);
-    assert.strictEqual(await vscode.commands.executeCommand("ospreyProfilerTest.openLast"), true);
+    assert.strictEqual(
+      await vscode.commands.executeCommand("ospreyProfilerTest.openLast"),
+      true,
+    );
   });
 
   test("a failing run surfaces the stderr tail and opens nothing", async () => {
     const document = await vscode.workspace.openTextDocument(sourcePath);
     await vscode.window.showTextDocument(document);
-    assert.strictEqual(await vscode.commands.executeCommand("ospreyProfilerTest.failRun"), false);
-    assert.strictEqual(await vscode.commands.executeCommand("ospreyProfilerTest.failOpen"), false);
+    assert.strictEqual(
+      await vscode.commands.executeCommand("ospreyProfilerTest.failRun"),
+      false,
+    );
+    assert.strictEqual(
+      await vscode.commands.executeCommand("ospreyProfilerTest.failOpen"),
+      false,
+    );
   });
 
   test("runWithProfilingProgress supplies a live token and passes the result through", async () => {
@@ -276,7 +320,10 @@ suite("profile-run command flow", function () {
     heat.dispose();
     assert.strictEqual(opened, false);
     assert.strictEqual(remembered, false);
-    assert.ok(Date.now() - started < 10000, "cancel must kill the process tree promptly");
+    assert.ok(
+      Date.now() - started < 10000,
+      "cancel must kill the process tree promptly",
+    );
     assert.ok(lines.some((line) => line.includes("Profiling cancelled.")));
   });
 });

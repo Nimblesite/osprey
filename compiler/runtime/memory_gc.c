@@ -24,6 +24,7 @@
 
 #include <pthread.h>
 #include <setjmp.h>
+#include <stdatomic.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -38,9 +39,13 @@
 #define OSP_GC_WORD ((uintptr_t)sizeof(void *))
 // Lower bound on the allocate-since-GC budget (a nursery-like size); the
 // live-set-adaptive threshold never drops below this. Overridable via
-// OSPREY_GC_HEAP_MB. 1 MiB keeps peak RSS tight at negligible CPU cost (the
-// hot cost is per-allocation, not per-collection).
-#define OSP_GC_MIN_HEAP_BYTES ((size_t)1u << 20)
+// OSPREY_GC_HEAP_MB. 4 MiB is the measured knee for allocation-churn workloads
+// (binarytrees): collections are O(heap-table size), so too small a floor
+// collects constantly (~53% of wall at 1 MiB) while too large a floor lets dead
+// objects pile into an ever-bigger table that each sweep must walk. 4 MiB is the
+// point where per-collection and per-allocation cost balance — same peak RSS as
+// 1 MiB, ~15% less wall — and higher floors only trade RSS away for no CPU gain.
+#define OSP_GC_MIN_HEAP_BYTES ((size_t)4u << 20)
 #define OSP_GC_INIT_TABLE_CAP ((size_t)1u << 14)
 
 // One managed allocation: base address (the table key), payload size, mark bit.
@@ -53,6 +58,30 @@ typedef struct {
 } OspGcEnt;
 
 static pthread_mutex_t g_lock = PTHREAD_MUTEX_INITIALIZER;
+
+// Adaptive locking, identical in spirit to the ARC backend: the heap starts
+// single-threaded, where the sole allocator already serializes every op and the
+// mutex is pure overhead. osp_mem_notify_multithreaded() (memory_hooks.h) trips
+// this flag from the fiber/websocket/process runtimes *before* the pthread_create
+// that first lets a second thread reach the heap; pthread_create is a full
+// barrier, so no unlocked op can race a locked one. The flag is monotonic and
+// only ever transitions single-threaded, so lock and unlock observe it equal
+// within one op. Orthogonal to g_off: the flag governs mutual exclusion, g_off
+// governs whether collection may run once a second allocator is seen.
+static atomic_int g_gc_mt = 0;
+
+static inline void gc_lock(void) {
+  if (atomic_load_explicit(&g_gc_mt, memory_order_acquire)) {
+    pthread_mutex_lock(&g_lock);
+  }
+}
+
+static inline void gc_unlock(void) {
+  if (atomic_load_explicit(&g_gc_mt, memory_order_acquire)) {
+    pthread_mutex_unlock(&g_lock);
+  }
+}
+
 static int g_init = 0;     // first allocation has run (main thread + base known)
 static int g_off = 0;      // collection permanently disabled (saw a 2nd thread)
 static pthread_t g_main;   // the sole-allocator thread that may collect
@@ -316,9 +345,9 @@ static void *gc_managed_alloc(size_t size) {
 // Implements the [MEM-BACKENDS] C interface (docs/specs/0018 §Custom Managers).
 
 void *osp_alloc(int64_t size) {
-  pthread_mutex_lock(&g_lock);
+  gc_lock();
   void *p = gc_managed_alloc(size > 0 ? (size_t)size : 0);
-  pthread_mutex_unlock(&g_lock);
+  gc_unlock();
   return p;
 }
 
@@ -339,8 +368,11 @@ void osp_release(void *o) { (void)o; }
 void osp_release_unique(void *o) { (void)o; }
 // Singleton-immortality hook (memory_hooks.h) — meaningful only under ARC.
 void osp_mem_immortal(void *p) { (void)p; }
-// Multithreaded-heap trip (memory_hooks.h) — the GC already locks unconditionally.
-void osp_mem_notify_multithreaded(void) {}
+// Multithreaded-heap trip (memory_hooks.h): a second thread is about to touch
+// the heap — switch every op from lock-free to mutex-guarded (see g_gc_mt).
+void osp_mem_notify_multithreaded(void) {
+  atomic_store_explicit(&g_gc_mt, 1, memory_order_release);
+}
 // Layout-word stamp (memory_hooks.h) — meaningful only under ARC.
 void osp_mem_set_layout(void *p, int64_t meta) {
   (void)p;
@@ -348,11 +380,11 @@ void osp_mem_set_layout(void *p, int64_t meta) {
 }
 
 void osp_collect(void) {
-  pthread_mutex_lock(&g_lock);
+  gc_lock();
   if (g_init && !g_off && pthread_equal(pthread_self(), g_main)) {
     gc_collect_locked();
   }
-  pthread_mutex_unlock(&g_lock);
+  gc_unlock();
 }
 
 // Value-container runtime units (list/map) are compiled against osp_gc_shim.h so
@@ -360,9 +392,9 @@ void osp_collect(void) {
 // values they hold. free is a no-op — the collector owns reclamation.
 
 void *osp_gc_malloc(size_t size) {
-  pthread_mutex_lock(&g_lock);
+  gc_lock();
   void *p = gc_managed_alloc(size);
-  pthread_mutex_unlock(&g_lock);
+  gc_unlock();
   return p;
 }
 
@@ -371,9 +403,9 @@ void *osp_gc_calloc(size_t n, size_t size) {
   if (n != 0 && total / n != size) {
     return NULL; // overflow
   }
-  pthread_mutex_lock(&g_lock);
+  gc_lock();
   void *p = gc_managed_alloc(total);
-  pthread_mutex_unlock(&g_lock);
+  gc_unlock();
   if (p) {
     memset(p, 0, total);
   }
@@ -384,11 +416,11 @@ void *osp_gc_realloc(void *old, size_t size) {
   if (!old) {
     return osp_gc_malloc(size);
   }
-  pthread_mutex_lock(&g_lock);
+  gc_lock();
   OspGcEnt *e = gc_lookup((uintptr_t)old);
   size_t oldsize = e ? e->size : 0;
   void *p = gc_managed_alloc(size); // `old` stays reachable on the caller frame
-  pthread_mutex_unlock(&g_lock);
+  gc_unlock();
   if (p && oldsize) {
     memcpy(p, old, oldsize < size ? oldsize : size);
   }

@@ -11,10 +11,19 @@ import * as vscode from "vscode";
 import { isOspreyFile } from "../extension";
 import { runCompiler } from "../test-explorer";
 import type { ExecResult } from "../test-explorer-parse";
-import { buildFlameModel, parseSpeedscope, type FlameModel, type Result } from "./flame-model";
+import {
+  buildFlameModel,
+  parseSpeedscope,
+  type FlameModel,
+  type Result,
+} from "./flame-model";
 import { HeatDecorationManager } from "./heat-decorations";
 import { showFlamePanel } from "./profiler-panel";
-import { formatSummaryHeader, parseSummary, type ProfileSummary } from "./summary";
+import {
+  formatSummaryHeader,
+  parseSummary,
+  type ProfileSummary,
+} from "./summary";
 
 export interface ProfileArtifacts {
   stem: string;
@@ -25,7 +34,10 @@ export interface ProfileArtifacts {
 }
 
 /** The files `--profile` writes into the run's cwd for a given source. Pure. */
-export function artifactPaths(dir: string, sourcePath: string): ProfileArtifacts {
+export function artifactPaths(
+  dir: string,
+  sourcePath: string,
+): ProfileArtifacts {
   const stem = path.basename(sourcePath, path.extname(sourcePath));
   return {
     stem,
@@ -39,7 +51,10 @@ export function artifactPaths(dir: string, sourcePath: string): ProfileArtifacts
 const STDERR_TAIL_LINES = 12;
 
 /** The last non-empty stderr lines, for compact error messages. Pure. */
-export function stderrTail(stderr: string, maxLines: number = STDERR_TAIL_LINES): string {
+export function stderrTail(
+  stderr: string,
+  maxLines: number = STDERR_TAIL_LINES,
+): string {
   const lines = stderr.split(/\r?\n/).filter((line) => line.trim() !== "");
   return lines.slice(-maxLines).join("\n");
 }
@@ -58,7 +73,9 @@ function readIfExists(filePath: string): string | undefined {
 }
 
 /** Read + validate both artifacts of one run. Never throws. */
-export function loadArtifacts(artifacts: ProfileArtifacts): Result<LoadedProfile> {
+export function loadArtifacts(
+  artifacts: ProfileArtifacts,
+): Result<LoadedProfile> {
   const summaryText = readIfExists(artifacts.profileJson);
   const speedscopeText = readIfExists(artifacts.speedscope);
   if (summaryText === undefined || speedscopeText === undefined) {
@@ -73,7 +90,10 @@ export function loadArtifacts(artifacts: ProfileArtifacts): Result<LoadedProfile
   }
   const doc = parseSpeedscope(speedscopeText);
   return doc.ok
-    ? { ok: true, value: { model: buildFlameModel(doc.value), summary: summary.value } }
+    ? {
+        ok: true,
+        value: { model: buildFlameModel(doc.value), summary: summary.value },
+      }
     : doc;
 }
 
@@ -87,7 +107,10 @@ function appendStream(output: vscode.OutputChannel, text: string): void {
   }
 }
 
-function appendProcessOutput(output: vscode.OutputChannel, result: ExecResult): void {
+function appendProcessOutput(
+  output: vscode.OutputChannel,
+  result: ExecResult,
+): void {
   appendStream(output, result.stdout);
   appendStream(output, result.stderr);
   output.appendLine(`Profiler process exited with code ${result.exitCode}`);
@@ -130,7 +153,11 @@ const PROGRESS_TITLE = "Osprey: profiling…";
  */
 export const runWithProfilingProgress: ProgressRunner = (exec) =>
   vscode.window.withProgress(
-    { location: vscode.ProgressLocation.Notification, title: PROGRESS_TITLE, cancellable: true },
+    {
+      location: vscode.ProgressLocation.Notification,
+      title: PROGRESS_TITLE,
+      cancellable: true,
+    },
     (_progress, token) => exec(token),
   );
 
@@ -148,12 +175,16 @@ export async function profileActiveFile(
 ): Promise<boolean> {
   const editor = vscode.window.activeTextEditor;
   if (editor === undefined || !isOspreyFile(editor.document.fileName)) {
-    void vscode.window.showInformationMessage("Open a .osp or .ospml file to profile.");
+    void vscode.window.showInformationMessage(
+      "Open a .osp or .ospml file to profile.",
+    );
     return false;
   }
   await editor.document.save();
   const sourcePath = editor.document.fileName;
-  const tmpDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), "osprey-profile-"));
+  const tmpDir = await fs.promises.mkdtemp(
+    path.join(os.tmpdir(), "osprey-profile-"),
+  );
   output.show(true);
   output.appendLine(`Profiling ${sourcePath} → ${tmpDir}`);
   heat.clear();
@@ -162,7 +193,13 @@ export async function profileActiveFile(
     token.onCancellationRequested(() => {
       cancelled = true;
     });
-    return runCompiler(compiler, [sourcePath, "--run", "--profile"], tmpDir, process.env, token);
+    return runCompiler(
+      compiler,
+      [sourcePath, "--run", "--profile"],
+      tmpDir,
+      process.env,
+      token,
+    );
   });
   if (cancelled) {
     output.appendLine("Profiling cancelled.");

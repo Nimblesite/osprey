@@ -323,12 +323,19 @@ static void arc_drop_child(void *child) {
   }
 }
 
+// Bodies are 16-byte aligned (16-byte header + malloc's 16-byte guarantee), so
+// every 8-byte word is aligned and a pointer field is a direct load. memcpy of
+// 8 bytes is worse than it looks: -D_FORTIFY_SOURCE routes it through
+// __memcpy_chk, which never inlines and tails into _platform_memmove — ~7% of
+// binarytrees wall was spent copying one pointer at a time in the drop walk.
+static inline void *arc_load_child(const char *at) {
+  return *(void *const *)(const void *)at;
+}
+
 static void arc_drop_masked(char *body, uint32_t size, uint64_t mask) {
   for (unsigned i = 0; mask != 0 && (size_t)(i + 1) * 8 <= size; i++, mask >>= 1) {
     if (mask & 1) {
-      void *child;
-      memcpy(&child, body + (size_t)i * 8, sizeof(child));
-      arc_drop_child(child);
+      arc_drop_child(arc_load_child(body + (size_t)i * 8));
     }
   }
 }
@@ -339,14 +346,11 @@ static void arc_drop_list_hdr(char *body, uint32_t size, int elems_are_ptrs) {
     return;
   }
   int64_t len;
-  char *data;
   memcpy(&len, body, sizeof(len));
-  memcpy(&data, body + 8, sizeof(data));
+  char *data = (char *)arc_load_child(body + 8);
   if (data && elems_are_ptrs) {
     for (int64_t j = 0; j < len; j++) {
-      void *elem;
-      memcpy(&elem, data + (size_t)j * 8, sizeof(elem));
-      arc_drop_child(elem);
+      arc_drop_child(arc_load_child(data + (size_t)j * 8));
     }
   }
   arc_drop_child(data);
@@ -358,9 +362,7 @@ static void arc_drop_list_hdr(char *body, uint32_t size, int elems_are_ptrs) {
 // collision array is unbounded. Zero words (allocation slack) probe-miss.
 static void arc_drop_ptr_array(char *body, uint32_t size) {
   for (size_t off = 0; off + 8 <= size; off += 8) {
-    void *child;
-    memcpy(&child, body + off, sizeof(child));
-    arc_drop_child(child);
+    arc_drop_child(arc_load_child(body + off));
   }
 }
 

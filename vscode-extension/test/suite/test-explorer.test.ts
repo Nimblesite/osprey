@@ -10,14 +10,27 @@ import * as path from "path";
 import * as vscode from "vscode";
 import { fileTestId, leafTestId } from "../../client/src/test-explorer-parse";
 import {
-  coverageSink, detailedCoverageFor, executeRunRequest, makeRunHandler,
-  makeWatcherHandlers, refreshTestFile, registerOspreyTestExplorer,
-  removeTestFile, requestedItems, scanWorkspaceTestFiles, testFileLabel,
+  coverageSink,
+  detailedCoverageFor,
+  executeRunRequest,
+  makeRunHandler,
+  makeWatcherHandlers,
+  refreshTestFile,
+  registerOspreyTestExplorer,
+  removeTestFile,
+  requestedItems,
+  scanWorkspaceTestFiles,
+  testFileLabel,
 } from "../../client/src/test-explorer";
 import { resolveBuiltOsprey } from "./osprey-test-env";
 import {
-  BROKEN_FIXTURE, COVERAGE_FIXTURE, FAIL_FIXTURE, ML_FIXTURE, PASS_FIXTURE,
-  RecordingSink, STRAY_FIXTURE,
+  BROKEN_FIXTURE,
+  COVERAGE_FIXTURE,
+  FAIL_FIXTURE,
+  ML_FIXTURE,
+  PASS_FIXTURE,
+  RecordingSink,
+  STRAY_FIXTURE,
 } from "./test-explorer-harness";
 
 suite("Osprey Test Explorer", () => {
@@ -35,7 +48,9 @@ suite("Osprey Test Explorer", () => {
     resolveCompiler: () => string = () => compiler ?? "osprey",
   ): vscode.TestController {
     controllerSequence += 1;
-    const context = { subscriptions: disposables } as unknown as vscode.ExtensionContext;
+    const context = {
+      subscriptions: disposables,
+    } as unknown as vscode.ExtensionContext;
     return registerOspreyTestExplorer(
       context,
       resolveCompiler,
@@ -50,7 +65,9 @@ suite("Osprey Test Explorer", () => {
   }
 
   suiteSetup(() => {
-    fixtureDir = fs.mkdtempSync(path.join(os.tmpdir(), "osprey-test-explorer-"));
+    fixtureDir = fs.mkdtempSync(
+      path.join(os.tmpdir(), "osprey-test-explorer-"),
+    );
     passUri = writeFixture("pass.test.osp", PASS_FIXTURE);
     failUri = writeFixture("fail.test.osp", FAIL_FIXTURE);
     mlUri = writeFixture("ml.test.ospml", ML_FIXTURE);
@@ -90,12 +107,16 @@ suite("Osprey Test Explorer", () => {
       assert.strictEqual(item.error, undefined);
       assert.strictEqual(item.label, "pass.test.osp");
       assert.strictEqual(item.children.size, 2);
-      const first = item.children.get(leafTestId(passUri.toString(), "addition works"));
+      const first = item.children.get(
+        leafTestId(passUri.toString(), "addition works"),
+      );
       assert.ok(first);
       assert.strictEqual(first.label, "addition works");
       assert.strictEqual(first.range?.start.line, 2);
       assert.strictEqual(first.range?.start.character, 0);
-      const second = item.children.get(leafTestId(passUri.toString(), "zero identity"));
+      const second = item.children.get(
+        leafTestId(passUri.toString(), "zero identity"),
+      );
       assert.strictEqual(second?.range?.start.line, 6);
     });
 
@@ -138,17 +159,27 @@ suite("Osprey Test Explorer", () => {
 
     test("a missing compiler surfaces as the file item's error", async () => {
       const controller = newController();
-      const item = await refreshTestFile(controller, passUri, "/nonexistent/osprey-xyz");
+      const item = await refreshTestFile(
+        controller,
+        passUri,
+        "/nonexistent/osprey-xyz",
+      );
       assert.match(String(item.error), /ENOENT|nonexistent/);
     });
 
     test("removeTestFile and the watcher handlers add and drop items", async () => {
       const controller = newController();
-      const handlers = makeWatcherHandlers(controller, () => "/nonexistent/osprey-xyz");
+      const handlers = makeWatcherHandlers(
+        controller,
+        () => "/nonexistent/osprey-xyz",
+      );
       await handlers.refresh(passUri);
       assert.ok(controller.items.get(fileTestId(passUri.toString())));
       handlers.remove(passUri);
-      assert.strictEqual(controller.items.get(fileTestId(passUri.toString())), undefined);
+      assert.strictEqual(
+        controller.items.get(fileTestId(passUri.toString())),
+        undefined,
+      );
       await refreshTestFile(controller, passUri, "/nonexistent/osprey-xyz");
       removeTestFile(controller, passUri);
       assert.strictEqual(controller.items.size, 0);
@@ -160,10 +191,15 @@ suite("Osprey Test Explorer", () => {
       }
       this.timeout(30000);
       const controller = newController();
-      await scanWorkspaceTestFiles(controller, () => compiler, () =>
-        Promise.resolve([passUri]),
+      await scanWorkspaceTestFiles(
+        controller,
+        () => compiler,
+        () => Promise.resolve([passUri]),
       );
-      assert.strictEqual(controller.items.get(fileTestId(passUri.toString()))?.children.size, 2);
+      assert.strictEqual(
+        controller.items.get(fileTestId(passUri.toString()))?.children.size,
+        2,
+      );
       const emptyHost = newController();
       await scanWorkspaceTestFiles(emptyHost, () => compiler ?? "osprey");
       assert.strictEqual(emptyHost.items.size, 0);
@@ -193,17 +229,34 @@ suite("Osprey Test Explorer", () => {
       const file = await discoveredFile(controller, failUri);
       const sink = new RecordingSink();
       const request = new vscode.TestRunRequest([file]);
-      await executeRunRequest(controller, request, sink, token(), () => compiler);
+      await executeRunRequest(
+        controller,
+        request,
+        sink,
+        token(),
+        () => compiler,
+      );
       const goodId = leafTestId(failUri.toString(), "good math");
       const badId = leafTestId(failUri.toString(), "bad math");
-      assert.deepStrictEqual(sink.ofKind("passed").map((e) => e.id), [goodId]);
+      assert.deepStrictEqual(
+        sink.ofKind("passed").map((e) => e.id),
+        [goodId],
+      );
       const failures = sink.ofKind("failed");
-      assert.deepStrictEqual(failures.map((e) => e.id), [badId]);
-      assert.match(String(failures[0].message), /expect failed: expected 3, got 2/);
+      assert.deepStrictEqual(
+        failures.map((e) => e.id),
+        [badId],
+      );
+      assert.match(
+        String(failures[0].message),
+        /expect failed: expected 3, got 2/,
+      );
       assert.strictEqual(sink.ofKind("enqueued").length, 2);
       assert.ok(sink.output.includes("\r\n"));
       assert.ok(sink.output.includes("not ok 1 - bad math"));
-      assert.deepStrictEqual(sink.events[sink.events.length - 1], { kind: "end" });
+      assert.deepStrictEqual(sink.events[sink.events.length - 1], {
+        kind: "end",
+      });
     });
 
     test("a single requested leaf runs with OSPREY_TEST_FILTER", async function () {
@@ -213,7 +266,9 @@ suite("Osprey Test Explorer", () => {
       this.timeout(30000);
       const controller = newController();
       const file = await discoveredFile(controller, failUri);
-      const good = file.children.get(leafTestId(failUri.toString(), "good math"));
+      const good = file.children.get(
+        leafTestId(failUri.toString(), "good math"),
+      );
       assert.ok(good);
       const sink = new RecordingSink();
       await executeRunRequest(
@@ -223,7 +278,10 @@ suite("Osprey Test Explorer", () => {
         token(),
         () => compiler,
       );
-      assert.deepStrictEqual(sink.ofKind("passed").map((e) => e.id), [good.id]);
+      assert.deepStrictEqual(
+        sink.ofKind("passed").map((e) => e.id),
+        [good.id],
+      );
       assert.strictEqual(sink.ofKind("failed").length, 0);
       // The filter skipped "bad math": "good math" is the only executed case.
       assert.ok(sink.output.includes("ok 1 - good math"));
@@ -242,7 +300,14 @@ suite("Osprey Test Explorer", () => {
       const file = await discoveredFile(controller, coverageUri);
       const sink = new RecordingSink();
       const request = new vscode.TestRunRequest([file]);
-      await executeRunRequest(controller, request, sink, token(), () => compiler, true);
+      await executeRunRequest(
+        controller,
+        request,
+        sink,
+        token(),
+        () => compiler,
+        true,
+      );
       assert.strictEqual(sink.ofKind("passed").length, 1);
       const hits = sink.coverage.get(coverageUri.fsPath);
       assert.ok(hits, "coverage report reached the sink");
@@ -256,8 +321,14 @@ suite("Osprey Test Explorer", () => {
     function recordingRun(received: vscode.FileCoverage[]): vscode.TestRun {
       const noop = (): void => undefined;
       return {
-        enqueued: noop, started: noop, passed: noop, failed: noop,
-        errored: noop, skipped: noop, appendOutput: noop, end: noop,
+        enqueued: noop,
+        started: noop,
+        passed: noop,
+        failed: noop,
+        errored: noop,
+        skipped: noop,
+        appendOutput: noop,
+        end: noop,
         addCoverage: (fc: vscode.FileCoverage) => received.push(fc),
       } as unknown as vscode.TestRun;
     }
@@ -270,7 +341,14 @@ suite("Osprey Test Explorer", () => {
       const sink = coverageSink(recordingRun(received));
       assert.ok(sink.addLineCoverage, "coverage sink accepts line coverage");
       const uri = vscode.Uri.file("/tmp/calc.test.osp");
-      sink.addLineCoverage(uri, new Map([[1, 1], [3, 0], [5, 1]]));
+      sink.addLineCoverage(
+        uri,
+        new Map([
+          [1, 1],
+          [3, 0],
+          [5, 1],
+        ]),
+      );
       assert.strictEqual(received.length, 1);
       const fc = received[0];
       assert.strictEqual(fc.uri.fsPath, uri.fsPath);
@@ -279,12 +357,20 @@ suite("Osprey Test Explorer", () => {
       const detail = detailedCoverageFor(fc);
       assert.deepStrictEqual(
         detail.map((s) => [(s.location as vscode.Position).line, s.executed]),
-        [[0, 1], [2, 0], [4, 1]],
+        [
+          [0, 1],
+          [2, 0],
+          [4, 1],
+        ],
         "gutter detail: 0-based lines with per-line hit counts",
       );
-      assert.deepStrictEqual(detailedCoverageFor(new vscode.FileCoverage(
-        uri, new vscode.TestCoverageCount(0, 0),
-      )), [], "unknown FileCoverage yields no detail");
+      assert.deepStrictEqual(
+        detailedCoverageFor(
+          new vscode.FileCoverage(uri, new vscode.TestCoverageCount(0, 0)),
+        ),
+        [],
+        "unknown FileCoverage yields no detail",
+      );
     });
 
     // [TESTING-COVERAGE-VSCODE] calc proof, end to end: the Coverage button's
@@ -328,7 +414,9 @@ suite("Osprey Test Explorer", () => {
       const controller = newController();
       const file = await discoveredFile(controller, failUri);
       const bad = file.children.get(leafTestId(failUri.toString(), "bad math"));
-      const good = file.children.get(leafTestId(failUri.toString(), "good math"));
+      const good = file.children.get(
+        leafTestId(failUri.toString(), "good math"),
+      );
       assert.ok(bad && good);
       const sink = new RecordingSink();
       await executeRunRequest(
@@ -338,10 +426,19 @@ suite("Osprey Test Explorer", () => {
         token(),
         () => compiler,
       );
-      assert.deepStrictEqual(sink.ofKind("failed").map((e) => e.id), [bad.id]);
-      assert.deepStrictEqual(sink.ofKind("passed").map((e) => e.id), [good.id]);
+      assert.deepStrictEqual(
+        sink.ofKind("failed").map((e) => e.id),
+        [bad.id],
+      );
+      assert.deepStrictEqual(
+        sink.ofKind("passed").map((e) => e.id),
+        [good.id],
+      );
       const kinds = sink.events.map((e) => `${e.kind}:${e.id ?? ""}`);
-      assert.ok(kinds.indexOf(`failed:${bad.id}`) < kinds.indexOf(`enqueued:${good.id}`));
+      assert.ok(
+        kinds.indexOf(`failed:${bad.id}`) <
+          kinds.indexOf(`enqueued:${good.id}`),
+      );
     });
 
     test("a compile error marks the file item errored with stderr", async function () {
@@ -360,7 +457,10 @@ suite("Osprey Test Explorer", () => {
         () => compiler,
       );
       const errors = sink.ofKind("errored");
-      assert.deepStrictEqual(errors.map((e) => e.id), [file.id]);
+      assert.deepStrictEqual(
+        errors.map((e) => e.id),
+        [file.id],
+      );
       assert.match(String(errors[0].message), /syntax error/);
       assert.strictEqual(sink.ofKind("passed").length, 0);
     });
@@ -386,7 +486,10 @@ suite("Osprey Test Explorer", () => {
         token(),
         () => compiler,
       );
-      assert.deepStrictEqual(sink.ofKind("skipped").map((e) => e.id), [ghost.id]);
+      assert.deepStrictEqual(
+        sink.ofKind("skipped").map((e) => e.id),
+        [ghost.id],
+      );
     });
 
     test("a request without include runs every root", async function () {
@@ -399,7 +502,13 @@ suite("Osprey Test Explorer", () => {
       const sink = new RecordingSink();
       const request = new vscode.TestRunRequest();
       assert.strictEqual(requestedItems(controller, request).length, 1);
-      await executeRunRequest(controller, request, sink, token(), () => compiler);
+      await executeRunRequest(
+        controller,
+        request,
+        sink,
+        token(),
+        () => compiler,
+      );
       assert.strictEqual(sink.ofKind("passed").length, 2);
     });
 
@@ -477,8 +586,14 @@ suite("Osprey Test Explorer", () => {
         [leafTestId(strayUri.toString(), "fine")],
       );
       const failures = sink.ofKind("failed");
-      assert.deepStrictEqual(failures.map((e) => e.id), [file.id]);
-      assert.match(String(failures[0].message), /expect failed: expected 5, got 2/);
+      assert.deepStrictEqual(
+        failures.map((e) => e.id),
+        [file.id],
+      );
+      assert.match(
+        String(failures[0].message),
+        /expect failed: expected 5, got 2/,
+      );
       assert.strictEqual(sink.ofKind("errored").length, 0);
     });
 
@@ -558,8 +673,12 @@ suite("Osprey Test Explorer", () => {
         () => compiler,
       );
       const resultKinds = ["passed", "failed", "errored", "skipped"];
-      assert.ok(sink.events.every((event) => !resultKinds.includes(event.kind)));
-      assert.deepStrictEqual(sink.events[sink.events.length - 1], { kind: "end" });
+      assert.ok(
+        sink.events.every((event) => !resultKinds.includes(event.kind)),
+      );
+      assert.deepStrictEqual(sink.events[sink.events.length - 1], {
+        kind: "end",
+      });
     });
 
     // The unstoppable-run regression: a throw anywhere in the run loop (a
@@ -578,7 +697,9 @@ suite("Osprey Test Explorer", () => {
       const throwingSink = new Proxy(sink, {
         get(target, prop, receiver) {
           if (prop === "enqueued") {
-            return () => { throw boom; };
+            return () => {
+              throw boom;
+            };
           }
           return Reflect.get(target, prop, receiver);
         },
@@ -593,7 +714,9 @@ suite("Osprey Test Explorer", () => {
         ),
         boom,
       );
-      assert.deepStrictEqual(sink.events[sink.events.length - 1], { kind: "end" });
+      assert.deepStrictEqual(sink.events[sink.events.length - 1], {
+        kind: "end",
+      });
     });
 
     test("an item without a uri is ignored gracefully", async () => {
@@ -618,7 +741,9 @@ suite("Osprey Test Explorer", () => {
       this.timeout(30000);
       const controller = newController();
       const file = await discoveredFile(controller, passUri);
-      const good = file.children.get(leafTestId(passUri.toString(), "addition works"));
+      const good = file.children.get(
+        leafTestId(passUri.toString(), "addition works"),
+      );
       assert.ok(good);
       const handler = makeRunHandler(controller, () => compiler);
       await handler(new vscode.TestRunRequest([good]), token());

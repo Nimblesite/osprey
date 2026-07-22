@@ -406,9 +406,17 @@ fn gen_literal_match(cg: &mut Codegen, disc: &Value, arms: &[MatchArm]) -> Resul
 /// Allocate the join state for a match chain: the end label, the phi inputs,
 /// the last-arm index, and the arc frame mark taken BEFORE any arm runs (the
 /// [`crate::arc::move_phi_owners`] scrutinee gate).
-fn match_state(cg: &mut Codegen, arms: &[MatchArm]) -> (String, Vec<(Value, String)>, usize, usize) {
+fn match_state(
+    cg: &mut Codegen,
+    arms: &[MatchArm],
+) -> (String, Vec<(Value, String)>, usize, usize) {
     let mark = crate::arc::frame_mark(cg);
-    (cg.fresh_label(), Vec::new(), arms.len().saturating_sub(1), mark)
+    (
+        cg.fresh_label(),
+        Vec::new(),
+        arms.len().saturating_sub(1),
+        mark,
+    )
 }
 
 /// Generate a successful match arm and branch to the common result block.
@@ -493,7 +501,10 @@ fn finish_phi(cg: &mut Codegen, phi_in: &[(Value, String)], mark: usize) -> Resu
     // and lives on every path), the phi owns the merged value directly — the
     // arm entries move into it, no dup, no per-arm drop. Ledger bookkeeping
     // only; the repositioned dup/drop calls are no-ops off ARC.
-    let incoming_ops = phi_in.iter().map(|(v, _)| v.operand.clone()).collect::<Vec<_>>();
+    let incoming_ops = phi_in
+        .iter()
+        .map(|(v, _)| v.operand.clone())
+        .collect::<Vec<_>>();
     crate::arc::move_phi_owners(cg, &incoming_ops, &out, mark);
     Ok(out)
 }
