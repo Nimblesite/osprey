@@ -1,4 +1,5 @@
 #include "http_shared.h"
+#include "memory_hooks.h"
 #include <signal.h>
 
 // Global variable for runtime lifecycle
@@ -146,6 +147,9 @@ void *websocket_server_thread(void *arg) {
     data->client_addr = client_addr;
 
     pthread_t connection_thread;
+    // The handler thread runs user callbacks that allocate on the shared heap
+    // concurrently with this accept loop — lock the memory backend first.
+    osp_mem_notify_multithreaded();
     if (pthread_create(&connection_thread, NULL, handle_websocket_connection,
                        data) != 0) {
       printf("Failed to create connection thread\n");
@@ -241,6 +245,8 @@ int64_t websocket_server_listen(int64_t server_id) {
 
   server->is_listening = true;
 
+  // The server thread accepts and dispatches concurrently with the caller.
+  osp_mem_notify_multithreaded();
   // Start server thread
   if (pthread_create(&server->server_thread, NULL, websocket_server_thread,
                      server) != 0) {

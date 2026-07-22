@@ -6,6 +6,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "memory_hooks.h"
+
 // The process runtime spawns children and streams their output. POSIX uses
 // fork/exec/pipe/select; Windows uses the Win32 process APIs from <windows.h>
 // (via the compat header). pthreads work on both (winpthreads on Windows).
@@ -222,6 +224,9 @@ int64_t spawn_process_with_handler(const char *command, ProcessEventHandler hand
     // Parent process
     processes[process_id] = proc;
 
+    // The monitor thread fires user output callbacks that allocate on the
+    // shared heap concurrently with the caller — lock the memory backend first.
+    osp_mem_notify_multithreaded();
     // Create monitoring thread
     if (pthread_create(&proc->monitor_thread, NULL, process_monitor_thread,
                        proc) != 0) {
@@ -487,6 +492,8 @@ int64_t spawn_process_with_handler(const char *command,
   proc->stderr_rd = err_rd;
   processes[process_id] = proc;
 
+  // Monitor thread fires user callbacks concurrently with the caller.
+  osp_mem_notify_multithreaded();
   if (pthread_create(&proc->monitor_thread, NULL, process_monitor_thread, proc) != 0) {
     TerminateProcess(proc->process, 1);
     CloseHandle(proc->process);

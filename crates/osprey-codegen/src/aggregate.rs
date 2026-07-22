@@ -285,9 +285,16 @@ pub(crate) fn store_field(
     fty: LType,
     val: &str,
 ) {
-    // Dup-on-store: the block's drop mask releases pointer fields, so every
-    // pointer stored here is a new reference [GC-ARC-PERCEUS].
-    crate::arc::dup_store(cg, fty.as_str(), val);
+    // Dup-on-store: the block's drop mask releases pointer fields, so a stored
+    // pointer is normally a new reference. But a freshly-produced owner this
+    // region still holds is MOVED into the field instead — the Perceus
+    // constructor transfer skips the dup and the region-end drop. [GC-ARC-PERCEUS]
+    let moved = fty.as_str().ends_with('*')
+        && val.starts_with('%')
+        && crate::arc::consume_into_store(cg, val);
+    if !moved {
+        crate::arc::dup_store(cg, fty.as_str(), val);
+    }
     let p = cg.fresh_reg();
     cg.emit(format!(
         "{p} = getelementptr {struct_ty}, {struct_ty}* {obj}, i32 0, i32 {idx}"

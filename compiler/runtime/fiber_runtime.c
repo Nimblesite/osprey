@@ -155,6 +155,11 @@ static int64_t fiber_spawn_internal(int64_t (*fn)(void),
 
     fibers[id] = fiber;
 
+    // A real fiber thread is about to touch the shared value heap: trip the
+    // memory backend off its single-threaded fast path BEFORE the thread that
+    // needs the lock can exist (pthread_create is the happens-before barrier).
+    osp_mem_notify_multithreaded();
+
     // Create thread to execute fiber
     int result = pthread_create(&fiber->thread, NULL, fiber_thread_func, fiber);
     if (result != 0) {

@@ -42,6 +42,8 @@ void osp_release(void *o) { (void)o; }
 void osp_release_unique(void *o) { (void)o; }
 // Singleton-immortality hook (memory_hooks.h) — meaningful only under ARC.
 void osp_mem_immortal(void *p) { (void)p; }
+// Multithreaded-heap trip (memory_hooks.h) — this backend never locks the heap.
+void osp_mem_notify_multithreaded(void) {}
 // Layout-word stamp (memory_hooks.h) — meaningful only under ARC.
 void osp_mem_set_layout(void *p, int64_t meta) {
   (void)p;

@@ -31,6 +31,7 @@
 #include "memory_hooks.h"
 
 #include <pthread.h>
+#include <stdatomic.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -62,6 +63,31 @@ static OspArcHdr *arc_hdr(void *body) {
 #define OSP_ARC_TOMB ((uintptr_t)1)
 
 static pthread_mutex_t g_lock = PTHREAD_MUTEX_INITIALIZER;
+
+// Adaptive locking. The heap starts single-threaded, where the sole thread
+// already serializes every ARC op and the mutex is pure overhead — binarytrees
+// alone runs ~19.6M locked allocs, and pthread_mutex_* was ~17% of its wall.
+// osp_mem_notify_multithreaded() (memory_hooks.h) trips this flag from the
+// fiber runtime *before* the pthread_create that first lets a second thread
+// reach the heap. pthread_create is a full barrier, so that write
+// happens-before the child's first ARC op: no unlocked op can ever race a
+// locked one. The flag is monotonic (fibers never un-share the heap), and it
+// only ever transitions in a single-threaded context, so within one ARC op
+// arc_lock and arc_unlock always observe the same value.
+static atomic_int g_arc_mt = 0;
+
+static inline void arc_lock(void) {
+  if (atomic_load_explicit(&g_arc_mt, memory_order_acquire)) {
+    pthread_mutex_lock(&g_lock);
+  }
+}
+
+static inline void arc_unlock(void) {
+  if (atomic_load_explicit(&g_arc_mt, memory_order_acquire)) {
+    pthread_mutex_unlock(&g_lock);
+  }
+}
+
 static uintptr_t *g_tab = NULL; // body addresses; 0 = empty, 1 = tombstone
 static size_t g_cap = 0;
 static size_t g_used = 0; // live + tombstones (grow trigger)
@@ -172,7 +198,7 @@ static void arc_dump_object(const void *body, const OspArcHdr *h) {
 static void arc_report_leaks(void) {
   const char *level = getenv("OSPREY_ARC_DEBUG");
   int dump = (level != NULL && level[0] >= '2');
-  pthread_mutex_lock(&g_lock);
+  arc_lock();
   size_t count[OSP_ARC_NKINDS] = {0};
   size_t bytes[OSP_ARC_NKINDS] = {0};
   // Immortals (rc<0 — the empty-list singleton and friends) are excluded from
@@ -205,7 +231,7 @@ static void arc_report_leaks(void) {
               count[k], bytes[k]);
     }
   }
-  pthread_mutex_unlock(&g_lock);
+  arc_unlock();
 }
 
 static void arc_arm_debug(void) {
@@ -365,9 +391,9 @@ static void arc_release_zero_locked(uintptr_t *slot) {
 // Implements the [MEM-BACKENDS] C interface (docs/specs/0018 §Custom Managers).
 
 void *osp_alloc_tagged(int64_t size, int64_t meta) {
-  pthread_mutex_lock(&g_lock);
+  arc_lock();
   void *p = arc_alloc_locked(size > 0 ? (size_t)size : 0, meta);
-  pthread_mutex_unlock(&g_lock);
+  arc_unlock();
   return p;
 }
 
@@ -378,7 +404,7 @@ void osp_retain(void *o) {
   if (!o) {
     return;
   }
-  pthread_mutex_lock(&g_lock);
+  arc_lock();
   uintptr_t *slot = arc_find((uintptr_t)o);
   if (slot) {
     OspArcHdr *h = arc_hdr((void *)*slot);
@@ -386,7 +412,7 @@ void osp_retain(void *o) {
       h->rc++;
     }
   }
-  pthread_mutex_unlock(&g_lock);
+  arc_unlock();
 }
 
 // drop — probe first; on rc==0 run the kind/mask worklist drop.
@@ -394,7 +420,7 @@ void osp_release(void *o) {
   if (!o) {
     return;
   }
-  pthread_mutex_lock(&g_lock);
+  arc_lock();
   uintptr_t *slot = arc_find((uintptr_t)o);
   if (slot) {
     OspArcHdr *h = arc_hdr((void *)*slot);
@@ -402,7 +428,7 @@ void osp_release(void *o) {
       arc_release_zero_locked(slot);
     }
   }
-  pthread_mutex_unlock(&g_lock);
+  arc_unlock();
 }
 
 // Codegen-proved-unique drop (memory_hooks.h): the caller proved rc == 1, so
@@ -415,6 +441,13 @@ void osp_release_unique(void *o) { osp_release(o); }
 // (Bacon/Cheng/Rajan; TR §2.2).
 void osp_collect(void) {}
 
+// Trip the adaptive lock (memory_hooks.h): the fiber runtime calls this before
+// the pthread_create that first lets a second thread reach the heap. Monotonic
+// and idempotent — once shared, the heap stays locked for the process.
+void osp_mem_notify_multithreaded(void) {
+  atomic_store_explicit(&g_arc_mt, 1, memory_order_release);
+}
+
 // Immortalize a shared C-runtime singleton (memory_hooks.h): rc < 0 makes
 // every later dup/drop skip it, so alias returns of e.g. the empty-list
 // singleton can never free it. Foreign pointers probe-miss (no-op).
@@ -422,12 +455,12 @@ void osp_mem_immortal(void *p) {
   if (!p) {
     return;
   }
-  pthread_mutex_lock(&g_lock);
+  arc_lock();
   uintptr_t *slot = arc_find((uintptr_t)p);
   if (slot) {
     arc_hdr((void *)*slot)->rc = -1;
   }
-  pthread_mutex_unlock(&g_lock);
+  arc_unlock();
 }
 
 // Stamp a shim-allocated object with its layout word (memory_hooks.h): the
@@ -437,12 +470,12 @@ void osp_mem_set_layout(void *p, int64_t meta) {
   if (!p) {
     return;
   }
-  pthread_mutex_lock(&g_lock);
+  arc_lock();
   uintptr_t *slot = arc_find((uintptr_t)p);
   if (slot) {
     arc_hdr((void *)*slot)->meta = meta;
   }
-  pthread_mutex_unlock(&g_lock);
+  arc_unlock();
 }
 
 // --- allocation shim for the C runtime units (osp_arc_shim.h) ---------------------
@@ -452,9 +485,9 @@ void osp_mem_set_layout(void *p, int64_t meta) {
 // teaches the container ops their own dup/drop).
 
 void *osp_arc_malloc(size_t size) {
-  pthread_mutex_lock(&g_lock);
+  arc_lock();
   void *p = arc_alloc_locked(size, OSP_MEM_RAW);
-  pthread_mutex_unlock(&g_lock);
+  arc_unlock();
   return p;
 }
 
@@ -478,7 +511,7 @@ void osp_arc_free(void *p) {
   if (!p) {
     return;
   }
-  pthread_mutex_lock(&g_lock);
+  arc_lock();
   uintptr_t *slot = arc_find((uintptr_t)p);
   if (slot) {
     // Immortals (rc < 0 — the empty-list singleton and friends) are returned
@@ -487,10 +520,10 @@ void osp_arc_free(void *p) {
     if (arc_hdr((void *)*slot)->rc >= 0) {
       arc_release_zero_locked(slot);
     }
-    pthread_mutex_unlock(&g_lock);
+    arc_unlock();
     return;
   }
-  pthread_mutex_unlock(&g_lock);
+  arc_unlock();
   free(p);
 }
 
@@ -498,11 +531,11 @@ void *osp_arc_realloc(void *old, size_t size) {
   if (!old) {
     return osp_arc_malloc(size);
   }
-  pthread_mutex_lock(&g_lock);
+  arc_lock();
   uintptr_t *slot = arc_find((uintptr_t)old);
   size_t oldsize = slot ? arc_hdr((void *)*slot)->size : 0;
   int64_t oldmeta = slot ? arc_hdr((void *)*slot)->meta : (int64_t)OSP_MEM_RAW;
-  pthread_mutex_unlock(&g_lock);
+  arc_unlock();
   if (!slot) {
     return realloc(old, size); // foreign block: libc owns it
   }
@@ -517,12 +550,12 @@ void *osp_arc_realloc(void *old, size_t size) {
   // block takes the layout word, and old's is stripped to RAW before it dies —
   // otherwise its drop walk would decrement children the copy never dup'd.
   osp_mem_set_layout(p, oldmeta);
-  pthread_mutex_lock(&g_lock);
+  arc_lock();
   uintptr_t *dead = arc_find((uintptr_t)old);
   if (dead) {
     arc_hdr((void *)*dead)->meta = (int64_t)OSP_MEM_RAW;
   }
-  pthread_mutex_unlock(&g_lock);
+  arc_unlock();
   osp_arc_free(old);
   return p;
 }

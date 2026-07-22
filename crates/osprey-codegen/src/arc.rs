@@ -159,6 +159,66 @@ pub(crate) fn consume_fresh(cg: &mut Codegen, v: &Value) {
     }
 }
 
+/// Perceus "move into constructor" (TR §2.3, the *own* argument rule): a store
+/// into a heap slot normally dups, because the owning block's drop mask will
+/// release that slot at the object's death. But when the stored pointer is a
+/// freshly-produced owner the current region still holds, the store can MOVE it
+/// instead — the +1 the region was about to drop at its end becomes the field's
+/// reference. No dup, no region-end release: `store_field` calls this before
+/// falling back to [`dup_store`], turning `retain(x); store x, field; …;
+/// release(x)` into a single `store x, field` on every constructor argument.
+///
+/// The safety gate is *unnamed entry of the innermost frame* — the exact rc == 1
+/// shape [`consume_fresh`] proves. `let`-bound owners are *named* and a value
+/// that might be read again is therefore never moved out from under its later
+/// uses; cell-backed `mut` owners ([`own_beyond_stmt`]) and every parent-region
+/// owner live in an outer frame and are likewise excluded. A borrow (parameter,
+/// field load, phi) was never registered, so it is not found and the caller
+/// dups it as before. Returns true when it consumed an owner.
+pub(crate) fn consume_into_store(cg: &mut Codegen, operand: &str) -> bool {
+    let slot = cg.arc.frames.last_mut().and_then(|frame| {
+        frame
+            .iter()
+            .rposition(|e| e.operand == operand && e.name.is_none())
+            .map(|at| frame.remove(at).slot)
+    });
+    match slot {
+        Some(slot) => {
+            cg.emit(format!("store i8* null, i8** {slot}"));
+            true
+        }
+        None => false,
+    }
+}
+
+/// Perceus phi ownership merge (TR §2.3, join points): when EVERY arm of a
+/// `match`/`if` produced a fresh owner — each an unnamed entry of the innermost
+/// frame — the merged phi result *is* that single owner. Exactly one arm runs on
+/// any path, so exactly one of those +1s is live, and the phi selects it. Drop
+/// all the per-arm entries and re-own the phi so the value moves through the
+/// join with no dup and no per-arm release: `make d = match d { … Node{…} }`
+/// then returns its result by transfer instead of retain-then-release-ing it,
+/// and `let x = match …` binds it without a dup. If any arm's value is a borrow
+/// (parameter, field load, shared binding) or is not a fresh innermost owner,
+/// nothing moves and the caller's later dup/drop stands. [GC-ARC-PERCEUS]
+pub(crate) fn move_phi_owners(cg: &mut Codegen, incoming: &[String], out: &Value) {
+    if !managed(cg, out) {
+        return;
+    }
+    let all_fresh = cg.arc.frames.last().is_some_and(|frame| {
+        incoming
+            .iter()
+            .all(|op| frame.iter().any(|e| e.operand == *op && e.name.is_none()))
+    });
+    if !all_fresh {
+        return;
+    }
+    if let Some(frame) = cg.arc.frames.last_mut() {
+        frame.retain(|e| !(e.name.is_none() && incoming.iter().any(|op| *op == e.operand)));
+    }
+    own(cg, out);
+}
+
 /// Open a region: statement, loop body.
 pub(crate) fn push_frame(cg: &mut Codegen) {
     cg.arc.frames.push(Vec::new());

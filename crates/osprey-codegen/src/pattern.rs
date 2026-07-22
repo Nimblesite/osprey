@@ -483,6 +483,10 @@ fn finish_phi(cg: &mut Codegen, phi_in: &[(Value, String)]) -> Result<Value> {
         .with_owner(common(|v| v.osp_ty.clone()))
         .with_payload_owner(common(|v| v.payload_owner.clone()));
     out.result_inner = result_inner;
+    // Perceus join transfer: if every arm produced a fresh owner, the phi owns
+    // the merged value directly — move the arm entries into it, no dup/drop.
+    let incoming_ops = phi_in.iter().map(|(v, _)| v.operand.clone()).collect::<Vec<_>>();
+    crate::arc::move_phi_owners(cg, &incoming_ops, &out);
     Ok(out)
 }
 
