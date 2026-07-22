@@ -17,9 +17,9 @@
 #include <string.h>
 
 // Not declared in memory_hooks.h: the raw allocator, the collect hook, and the
-// osp_arc_shim.h redirect targets.
+// osp_arc_shim.h redirect targets. (osp_alloc_tagged_noinit comes from the
+// header, so declaring it here too trips -Wredundant-decls under gcc.)
 void *osp_alloc(int64_t size);
-void *osp_alloc_tagged_noinit(int64_t size, int64_t meta);
 void osp_collect(void);
 void *osp_arc_malloc(size_t size);
 void *osp_arc_calloc(size_t n, size_t size);

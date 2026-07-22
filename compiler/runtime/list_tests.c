@@ -74,7 +74,11 @@ static OspreyList *append_range_list(int64_t n) {
 
 /* Models are flat arrays with MODEL_SLACK spare cells, so appends never realloc. */
 static int64_t *new_model(int64_t n) {
-  int64_t *m = (int64_t *)malloc((size_t)(n + MODEL_SLACK) * sizeof(int64_t));
+  /* calloc, not malloc: zero-fills the model buffer so an n==0 range still
+     yields provably-defined memory. Without it, gcc -O2 -Wmaybe-uninitialized
+     false-positives on the inlined empty-range paths (check_range at n==0),
+     reading the model pointer as possibly uninitialized. */
+  int64_t *m = (int64_t *)calloc((size_t)(n + MODEL_SLACK), sizeof(int64_t));
   CHECK(m != NULL);
   return m;
 }

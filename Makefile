@@ -436,7 +436,7 @@ _test_c_runtime:
 	  runtime/memory_runtime.c \
 	  -o bin/string_runtime_tests && ./bin/string_runtime_tests && \
 	  $(CC) $(T) $(OSSL_CFLAGS) \
-	  runtime/http_server_send_tests.c -pthread \
+	  runtime/http_server_send_tests.c runtime/memory_runtime.c -pthread \
 	  -o bin/http_server_send_tests && ./bin/http_server_send_tests && \
 	  $(CC) $(T) $(OSSL_CFLAGS) \
 	  runtime/http_server_request_tests.c runtime/memory_runtime.c -pthread \
