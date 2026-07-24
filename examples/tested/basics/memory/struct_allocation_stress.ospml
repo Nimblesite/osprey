@@ -14,9 +14,9 @@ COUNT = 100000
 
 forge i = Particle(id = i, mass = i * 3, spin = i % 5)
 
-// `-> int` is load-bearing: it auto-unwraps the overflow-checked `+`
-// (Result<int, MathError>) back to int, so `energy` and the fold stay int.
-add : int -> int -> int
+// `add` stays a named function (also passed by value to `fold`); its type is
+// inferred, so this twin emits identical IR to the Default form
+// ([FLAVOR-IR-EQUIV]) — no standalone signature that would block inlining.
 add (a, b) = a + b
 
 energy p = add (p.mass, p.spin)
