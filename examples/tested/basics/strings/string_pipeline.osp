@@ -1,8 +1,20 @@
 // String API end-to-end: inspection, search, transformation, parsing,
 // pipe / UFCS / direct-call equivalence, lines/words/split returning
 // List<string>, and a small HTTP-routing pattern built on startsWith.
-// Spec: [BUILTIN-STRING-*], [BUILTIN-STRING-LIST], [BUILTIN-STRING-UFCS],
-// [BUILTIN-STRING-SEARCH]
+// Spec: [BUILTIN-STRING-UFCS] for the pipe/UFCS/direct equivalence and
+// [BUILTIN-STRING-LIST] for the splitting family. Builtins exercised:
+// [BUILTIN-STRING-LENGTH], [BUILTIN-STRING-ISEMPTY],
+// [BUILTIN-STRING-CONTAINS], [BUILTIN-STRING-STARTSWITH],
+// [BUILTIN-STRING-ENDSWITH], [BUILTIN-STRING-INDEXOF],
+// [BUILTIN-STRING-SUBSTRING], [BUILTIN-STRING-TAKE], [BUILTIN-STRING-DROP],
+// [BUILTIN-STRING-TRIM], [BUILTIN-STRING-TOLOWERCASE],
+// [BUILTIN-STRING-REPLACE], [BUILTIN-STRING-REPEAT],
+// [BUILTIN-STRING-REVERSE], [BUILTIN-STRING-PADSTART],
+// [BUILTIN-STRING-PADEND], [BUILTIN-STRING-PARSEINT],
+// [BUILTIN-STRING-PARSEFLOAT], [BUILTIN-STRING-SPLIT],
+// [BUILTIN-STRING-LINES], [BUILTIN-STRING-WORDS], the `+` operator
+// [BUILTIN-STRING-CONCAT], and [BUILTIN-COLLECTION-LENGTH] to count the
+// resulting List<string>.
 
 fn handleGet(path) =
     match path {

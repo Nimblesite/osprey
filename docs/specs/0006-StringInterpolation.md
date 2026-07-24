@@ -66,7 +66,7 @@ Interpolated expressions are automatically converted to strings:
 
 - **Primitive types**: int, float, bool converted directly
 - **String types**: Inserted as-is
-- **Result types**: interpolation auto-unwraps — the success payload is rendered (string interpolation is one of the auto-unwrap contexts in [Result Auto-Unwrapping](0004-TypeSystem.md#result-auto-unwrapping)); an `Error` renders as `Error(<message>)`, preserving the payload per [ERR-PAYLOAD](0013-ErrorHandling.md#error-payload-propagation--err-payload). To render the wrapper of a success, use `toString`.
+- **Result types**: interpolation auto-unwraps — the success payload is rendered (string interpolation is one of the auto-unwrap contexts in [Result Auto-Unwrapping](0004-TypeSystem.md#result-auto-unwrapping)); an `Error` renders as `Error(<message>)`, preserving the payload per [ERR-PAYLOAD](0013-ErrorHandling.md#error-payload-propagation--err-payload). To render the wrapper of a success, use `toString`. The `Result`-producing sources are the fallible operators `/` and `%` and fallible calls such as `intDiv` and `parseInt`; once [ARITH-PLAIN](0013-ErrorHandling.md#arithmetic-and-result--arith-plain) lands, `+ - *` will yield plain scalars and never reach this case (specified, not yet implemented).
 - **Complex types**: Use `toString()` for explicit conversion
 
 ```osprey
@@ -74,9 +74,9 @@ let num = 42
 let flag = true
 print("Number: ${num}, Flag: ${flag}")
 
-let result = 10 + 5
-print("Result: ${result}")        // "Result: 15"  (auto-unwrapped)
-print(toString(result))           // "Success(15)" (wrapper kept)
+let result = intDiv(a: 10, b: 5)
+print("Result: ${result}")        // "Result: 2"  (auto-unwrapped)
+print(toString(result))           // "Success(2)" (wrapper kept)
 ```
 
 ```osprey-ml
@@ -84,9 +84,9 @@ num = 42
 flag = true
 print "Number: ${num}, Flag: ${flag}"
 
-result = 10 + 5
-print "Result: ${result}"        // "Result: 15"  (auto-unwrapped)
-print (toString result)          // "Success(15)" (wrapper kept)
+result = intDiv (10, 5)
+print "Result: ${result}"        // "Result: 2"  (auto-unwrapped)
+print (toString result)          // "Success(2)" (wrapper kept)
 ```
 
 ## Escaping

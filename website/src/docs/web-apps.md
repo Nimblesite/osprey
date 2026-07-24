@@ -1,6 +1,5 @@
 ---
 author: Christian Findlay
-date: 2026-07-23
 description: Build Osprey web apps with a WebAssembly model/update core and React renderer. Learn the ABI, state loop, commands, effects, routing, building, and deployment.
 layout: page
 permalink: /docs/web-apps/
@@ -29,30 +28,23 @@ The result is not “React components written in Osprey.” It is a coarse messa
 
 ## The architecture at a glance
 
-``` text
-click / input / submit / location / HTTP response
-                         │
-                         │ flat JSON event + opaque model string
-                         ▼
-              osprey_web_dispatch(pointer)
-              Osprey WebAssembly instance
-        Model.decode → Update.dispatch → App.present
-                         │
-                         │ { model, view, commands }
-                         ▼
-             imported osprey_web.render(pointer)
-                 JavaScript protocol adapter
-                         │
-                         │ React elements
-                         ▼
-               React root.render(element)
-                         │
-                         ▼
-                       DOM
+```mermaid
+flowchart TD
+    event["click / input / submit / location / HTTP response"]
+    wasm["osprey_web_dispatch(pointer)<br/>Osprey WebAssembly instance<br/>Model.decode → Update.dispatch → App.present"]
+    adapter["imported osprey_web.render(pointer)<br/>JavaScript protocol adapter"]
+    react["React root.render(element)"]
+    dom["DOM"]
 
-commands:  http ──► fetch ──► HTTP-response event
-           focus ─► browser element focus
-           navigate ────────► history API
+    event -->|"flat JSON event + opaque model string"| wasm
+    wasm -->|"{ model, view, commands }"| adapter
+    adapter -->|"React elements"| react
+    react --> dom
+
+    wasm -->|"command: http"| fetchCmd["fetch"]
+    fetchCmd -->|"HTTP-response event"| event
+    wasm -->|"command: focus"| focusCmd["browser element focus"]
+    wasm -->|"command: navigate"| navCmd["history API"]
 ```
 
 This is a whole-document protocol. Osprey does not call JavaScript once per component or DOM node. It emits one render envelope; JavaScript parses it once; React performs the node-level work on its side of the boundary.
@@ -201,14 +193,11 @@ Talon's [`AppModel`](https://github.com/Nimblesite/osprey/blob/main/examples/pro
 
 The transition shape is explicit:
 
-``` text
-Event + serialized AppModel
-          │
-          ▼
-Update.dispatch : string -> UpdateResult
-          │
-          ├── model    next AppModel
-          └── commands browser work as data
+```mermaid
+flowchart TD
+    input["Event + serialized AppModel"] --> dispatch["Update.dispatch : string -> UpdateResult"]
+    dispatch --> model["model — next AppModel"]
+    dispatch --> commands["commands — browser work as data"]
 ```
 
 `Model::decode` reconstructs the record at the start of a dispatch. `Update::dispatch` pattern-matches the event kind and returns an `UpdateResult`. `Model::set` creates a new record with one changed field rather than handing the JavaScript host mutable access to Osprey data. `Model::encode` serializes the next snapshot for the envelope.
@@ -273,29 +262,22 @@ An arm containing explicit `resume` takes a different path. Native Osprey runs t
 
 ## How an Osprey project becomes `.wasm`
 
-``` text
-.osp / .ospml files + osprey.toml
-              │ parse each selected flavor
-              ▼
-        one canonical AST
-              │ project assembly, import resolution, symbol mangling
-              ▼
-       type and effect inference
-              │ target-independent code generation
-              ▼
-          textual LLVM IR
-              │ add WASI entry thunk + stable web-dispatch thunk
-              ▼
- clang --target=wasm32-wasip1 -O2 -c
-              │
-              ▼
-          Wasm object file
-              │ wasm-ld
-              │ + crt1-command.o
-              │ + libosprey_runtime_wasm.a
-              │ + wasi-libc
-              ▼
-       wasm32-wasip1 command module
+```mermaid
+flowchart TD
+    src[".osp / .ospml files + osprey.toml"]
+    ast["one canonical AST"]
+    infer["type and effect inference"]
+    ir["textual LLVM IR"]
+    clang["clang --target=wasm32-wasip1 -O2 -c"]
+    obj["Wasm object file"]
+    out["wasm32-wasip1 command module"]
+
+    src -->|"parse each selected flavor"| ast
+    ast -->|"project assembly, import resolution, symbol mangling"| infer
+    infer -->|"target-independent code generation"| ir
+    ir -->|"add WASI entry thunk + stable web-dispatch thunk"| clang
+    clang --> obj
+    obj -->|"wasm-ld + crt1-command.o + libosprey_runtime_wasm.a + wasi-libc"| out
 ```
 
 The Wasm driver adds `__main_void`, which WASI's `_start` calls, and adds a stable `osprey_web_dispatch` forwarding thunk when project assembly has mangled the source function name. `wasm-ld` always exports `osp_alloc` and exports the dispatcher when present.

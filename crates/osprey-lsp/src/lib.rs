@@ -11,6 +11,8 @@ pub mod analysis;
 pub mod diagnostics;
 pub mod engine;
 pub mod features;
+pub mod keywords;
+pub mod mlrender;
 pub mod model;
 pub mod server;
 pub mod testing;

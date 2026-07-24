@@ -1721,6 +1721,10 @@
         "required": true,
         "types": [
           {
+            "type": "_",
+            "named": false
+          },
+          {
             "type": "identifier",
             "named": true
           }
@@ -1933,6 +1937,33 @@
           }
         ]
       }
+    }
+  },
+  {
+    "type": "positional_payload",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "array_type",
+          "named": true
+        },
+        {
+          "type": "function_type",
+          "named": true
+        },
+        {
+          "type": "generic_type",
+          "named": true
+        },
+        {
+          "type": "type_identifier",
+          "named": true
+        }
+      ]
     }
   },
   {
@@ -2898,6 +2929,16 @@
           },
           {
             "type": "qualified_path",
+            "named": true
+          }
+        ]
+      },
+      "positional": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "positional_payload",
             "named": true
           }
         ]

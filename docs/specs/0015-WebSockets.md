@@ -2,7 +2,7 @@
 
 Bidirectional WebSocket communication over RFC 6455. Every operation that can fail returns `Result`; see [Error Handling](0013-ErrorHandling.md).
 
-> **Flavor layer — shared core (AST and above).**  WebSocket streaming is a runtime concern: the functions here are ordinary names, and a call like `websocketSend(wsID: wsID, message: "hello")` lowers to `Expr::Call { function, arguments, named_arguments }` with the result threaded through `Expr::Match`. From the canonical AST (`osprey_ast::Program`) onward — type inference, effect checking, IR lowering, codegen, and the C runtime — nothing inspects which flavor produced the program; WebSocket semantics are flavor-blind. Only the surface spelling of the call differs (the named-argument form shown here is the Default `.osp` surface; the ML `.ospml` whitespace-application counterpart is described in [ML Flavor Syntax](0024-MLFlavorSyntax.md)). See [Language Flavors](0023-LanguageFlavors.md).
+> **Flavor layer — shared core (AST and above).** WebSocket semantics are flavor-blind after lowering to `osprey_ast::Program`; no later phase inspects the source flavor. Examples use Default named-argument calls; see [ML Flavor Syntax](0024-MLFlavorSyntax.md) and [Language Flavors](0023-LanguageFlavors.md).
 
 ## Status
 
@@ -71,9 +71,6 @@ websocketStopServer(serverID: ServerID)                           -> Result<unit
 ```
 
 ## Server Example
-
-No `main` wrapper is needed — a program is a bare top-level script, and `main` is
-synthesised from the trailing statements (identically in both flavors):
 
 ```osprey
 match websocketCreateServer(port: 8080, address: "127.0.0.1", path: "/chat") {

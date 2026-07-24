@@ -1,16 +1,5 @@
 # 0028 — CPU Profiler
 
-Osprey ships a state-of-the-art sampling CPU profiler built into the runtime.
-It is wall-clock based, fiber-aware, bias-hardened, and needs no elevated
-permissions, no `perf`, no `dtrace`, and no attach step: the sampler lives in
-the same process as the program.
-
-Research grounding: random-offset sampling and yield-point-bias avoidance
-(Mytkowicz et al., PLDI 2010; McCanne & Torek, USENIX 1993), full-stack
-attribution instead of gprof arc propagation (Graham/Kessler/McKusick 1982's
-documented flaws), frame-pointer unwinding at fleet scale (Gregg), Go's
-per-thread timer + profBuf architecture, and samply's Mach suspend sampler.
-
 ## [PROF-ACTIVATE-ENV] Activation
 
 The profiler is compiled into every runtime archive and is **off by default**.
@@ -20,18 +9,16 @@ at process start; the raw profile is written to `<path>` at normal exit.
 default 997 — a non-round rate so sampling never phase-locks with 100/1000 Hz
 periodic activity). Because activation is environment-only, any Osprey binary —
 including production `--compile` output — can be profiled after the fact.
-The differential golden harness never sets the variable, so tested example
-output is untouched.
 
 ## [PROF-COLLECT-SAMPLER] Collection
 
 A dedicated sampler thread wakes on a jittered interval (uniform ±30% around
-the nominal period, re-drawn every tick, per McCanne-Torek) and samples every
+the nominal period, re-drawn every tick) and samples every
 registered thread. Osprey fibers are 1:1 pthreads, so per-fiber attribution is
 exact: each thread registers once at start with its fiber id and label.
 
 - **macOS**: `thread_suspend` → `thread_get_state(ARM_THREAD_STATE64)` →
-  frame-pointer walk → `thread_resume` (the samply/Instruments model). No
+  frame-pointer walk → `thread_resume`. No
   signals are delivered, so blocking syscalls are never EINTR-perturbed. While
   any thread is suspended the sampler performs no allocation; recording (which
   allocates) happens only after the resume.
@@ -47,8 +34,7 @@ exact: each thread registers once at start with its fiber id and label.
 Samples record `(t_ns, thread, stack, state)` where state classifies the
 thread as on-CPU or waiting from per-thread CPU-time deltas
 (`thread_info(THREAD_BASIC_INFO)` on Mach — `CLOCK_THREAD_CPUTIME_ID`
-under-reports on Apple Silicon; the thread CPU clock on Linux). One profile
-therefore carries both the CPU picture and the off-CPU/blocked picture.
+under-reports on Apple Silicon; the thread CPU clock on Linux).
 
 ## [PROF-COLLECT-UNWIND] Stack capture
 
@@ -136,8 +122,8 @@ Printed after the program exits (never in the harness path — only under
 split (running / waiting), and a top-10 table with columns
 `SELF% TOTAL% SELF TOTAL FUNCTION LOCATION`, Unicode eighth-block bars in the
 self gutter, and perf-style color thresholds (≥5% red/bold, ≥0.5% yellow),
-honoring `NO_COLOR` and non-TTY stdout. **No calls column** — a sampling
-profiler cannot honestly report call counts. Sample counts are shown so users
+honoring `NO_COLOR` and non-TTY stdout. Sampling does not produce call counts,
+so the report has no calls column. Sample counts are shown so users
 can apply the √n error rule; below ~100 samples the report flags low
 confidence.
 

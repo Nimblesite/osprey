@@ -882,6 +882,29 @@ table.data td.num {
   border-left-color: var(--tertiary-dim, #ffb86c);
   color: var(--tertiary-dim, #ffb86c);
 }
+/* Diagrams — mermaid (client-rendered) and typeDiagram (build-time SVG). Both
+   land in <figure class="diagram">, so they share one frame; the header bar and
+   padding the code-block rules add to <pre> would frame the mermaid source, not
+   the picture, so they are undone here. */
+.prose .diagram {
+  margin: var(--space-6) 0;
+  padding: var(--space-4);
+  overflow-x: auto;
+  text-align: center;
+  background: var(--surface-high);
+  border: 1px solid var(--outline-variant);
+  border-radius: var(--radius-md, 8px);
+}
+.prose .diagram pre.mermaid {
+  padding: 0;
+  margin: 0;
+  background: none;
+  border: 0;
+  overflow: visible;
+}
+.prose .diagram pre.mermaid::before { content: none; }
+.prose .diagram svg { max-width: 100%; height: auto; }
+
 .prose blockquote {
   margin: var(--space-6) 0;
   padding: var(--space-2) var(--space-5);

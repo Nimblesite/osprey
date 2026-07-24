@@ -1,0 +1,7 @@
+examples/failscompilation/ml_brace_record_and_question_sigil.ospo:12:8: unexpected character '{'
+examples/failscompilation/ml_brace_record_and_question_sigil.ospo:12:23: unexpected character '}'
+examples/failscompilation/ml_brace_record_and_question_sigil.ospo:14:11: unexpected character '?'
+examples/failscompilation/ml_brace_record_and_question_sigil.ospo:12:12: unexpected token Eq in expression
+examples/failscompilation/ml_brace_record_and_question_sigil.ospo:12:15: unexpected token Comma in expression
+examples/failscompilation/ml_brace_record_and_question_sigil.ospo:12:19: unexpected token Eq in expression
+examples/failscompilation/ml_brace_record_and_question_sigil.ospo:14:12: unexpected token Colon in expression

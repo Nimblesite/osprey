@@ -1,0 +1,13 @@
+// osprey: flavor=ml
+// ML-flavor must-reject. Pins [FLAVOR-ML-COMMENTS] (docs/specs/0024) and
+// [DOC-SIGIL-ML] (docs/specs/0026).
+//
+// `(** … *)` is the ML documentation comment. Like the ordinary `(* … *)` block
+// form it nests and must be closed; an unterminated one is a lexical error, not
+// a silently-swallowed rest-of-file. The opener below is never closed.
+
+(** Doubles its argument. The closing star-paren is missing on purpose.
+
+double x = x * 2
+
+print (double 21)

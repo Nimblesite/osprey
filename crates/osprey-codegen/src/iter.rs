@@ -4,7 +4,9 @@
 //! `{ i64, i64 }` (start, end); `map`/`filter` record a pending stage and pass
 //! the range through; the consuming `forEach`/`fold` emits one counted loop
 //! replaying those stages, so no intermediate collection is ever materialised.
-//! Implements [BUILTIN-ITER-*].
+//! Implements [BUILTIN-ITER], [BUILTIN-ITER-RANGE], [BUILTIN-ITER-MAP],
+//! [BUILTIN-ITER-FILTER], [BUILTIN-ITER-FOREACH], [BUILTIN-ITER-FOLD], and
+//! [BUILTIN-ITER-FUSION].
 
 use crate::builder::{Codegen, FnSig};
 use crate::conv::{as_i64, box_to_i64};

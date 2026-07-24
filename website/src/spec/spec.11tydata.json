@@ -1,0 +1,4 @@
+{
+  "_comment": "Spec pages here are GENERATED from docs/specs by scripts/copy-spec.js and gitignored - never edit or commit them. copy-spec.js stamps each page's `date:` front matter from the SOURCE spec's git history so /spec/ sitemap lastmod and JSON-LD reflect when the spec actually changed - not when the site was built. This directory-data `date` is only the fallback for when git is unavailable at generation time.",
+  "date": "git Last Modified"
+}

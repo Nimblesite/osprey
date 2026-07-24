@@ -159,18 +159,99 @@ fn gen_binary(cg: &mut Codegen, op: &str, left: &Expr, right: &Expr) -> Result<V
         return Ok(Value::new(reg, LType::I1));
     }
 
-    // Operands auto-unwrap a Result to its success payload before arithmetic or
-    // comparison — binary operands are value sites.
     let l = gen_expr(cg, left)?;
-    let l = crate::result::unwrap(cg, l);
     let r = gen_expr(cg, right)?;
-    let r = crate::result::unwrap(cg, r);
     match op {
-        "+" | "-" | "*" | "/" | "%" => gen_arith(cg, op, l, r),
-        "==" | "!=" | "<" | "<=" | ">" | ">=" => gen_comparison(cg, op, l, r),
+        "+" | "-" | "*" | "/" | "%" => gen_arith_propagating(cg, op, l, r),
+        // Comparison operands auto-unwrap a Result to its success payload —
+        // they are value sites, and a comparison has no error channel to carry.
+        "==" | "!=" | "<" | "<=" | ">" | ">=" => {
+            let l = crate::result::unwrap(cg, l);
+            let r = crate::result::unwrap(cg, r);
+            gen_comparison(cg, op, l, r)
+        }
         other => Err(CodegenError::unsupported(format!(
             "binary operator `{other}`"
         ))),
+    }
+}
+
+/// Arithmetic whose operands may themselves carry an error channel. The
+/// enclosing expression is ONE `Result`: an erroring operand makes the whole
+/// expression `Error` instead of contributing a fabricated success payload, so
+/// `(10 / 0) + 1.0` is `Error(division by zero)` and not `Success(1.0)`
+/// ([ARITH-PLAIN], Chaining Arithmetic). With no `Result` operand this is
+/// exactly [`gen_arith`].
+fn gen_arith_propagating(cg: &mut Codegen, op: &str, l: Value, r: Value) -> Result<Value> {
+    let Some((bad, msg)) = operand_error(cg, &l, &r) else {
+        return gen_arith(cg, op, l, r);
+    };
+    let (bad_bb, good_bb, end) = (cg.fresh_label(), cg.fresh_label(), cg.fresh_label());
+    cg.emit(format!("br i1 {bad}, label %{bad_bb}, label %{good_bb}"));
+
+    cg.start_block(&good_bb);
+    let lv = crate::result::unwrap(cg, l);
+    let rv = crate::result::unwrap(cg, r);
+    let value = gen_arith(cg, op, lv, rv)?;
+    let inner = value.result_inner.unwrap_or(value.ty);
+    let ok = match value.result_inner {
+        // `/` and `%` already produced the wrapper; everything else needs one,
+        // because this expression as a whole now has an error channel.
+        Some(_) => value,
+        None => crate::result::make_ok(cg, value, inner)?,
+    };
+    let okb = cg.snapshot_to(&end);
+
+    cg.start_block(&bad_bb);
+    let zero = Value::new(zero_literal(inner), inner);
+    let err = crate::result::make_result(cg, zero, inner, "1", &msg)?;
+    let errb = cg.snapshot_to(&end);
+
+    cg.start_block(&end);
+    let reg = cg.emit_reg(format!(
+        "phi {0}* [ {1}, %{okb} ], [ {2}, %{errb} ]",
+        crate::llty::result_struct_ty(inner),
+        ok.operand,
+        err.operand
+    ));
+    Ok(Value::result(reg, inner))
+}
+
+/// The "an operand already failed" flag and the message to carry onward, or
+/// `None` when neither operand has an error channel and no propagation is
+/// needed. The left operand's message wins when both failed — it failed first.
+fn operand_error(cg: &mut Codegen, l: &Value, r: &Value) -> Option<(String, String)> {
+    if l.result_inner.is_none() && r.result_inner.is_none() {
+        return None;
+    }
+    let lbad = result_failed(cg, l);
+    let rbad = result_failed(cg, r);
+    let bad = cg.emit_reg(format!("or i1 {lbad}, {rbad}"));
+    let lmsg = crate::result::load_errmsg(cg, l);
+    let rmsg = crate::result::load_errmsg(cg, r);
+    let msg = cg.emit_reg(format!(
+        "select i1 {lbad}, i8* {}, i8* {}",
+        lmsg.operand, rmsg.operand
+    ));
+    Some((bad, msg))
+}
+
+/// `true` when `v` is a Result holding an Error; the constant `false` for a
+/// value with no error channel at all.
+fn result_failed(cg: &mut Codegen, v: &Value) -> String {
+    if v.result_inner.is_none() {
+        return "false".to_owned();
+    }
+    let disc = crate::result::load_disc(cg, v);
+    cg.emit_reg(format!("icmp ne i8 {disc}, 0"))
+}
+
+/// The typed zero literal for the unread payload slot of an `Error` block.
+fn zero_literal(ty: LType) -> &'static str {
+    match ty {
+        LType::Double => "0.0",
+        LType::Str | LType::Ptr => "null",
+        _ => "0",
     }
 }
 
@@ -194,44 +275,47 @@ fn gen_arith(cg: &mut Codegen, op: &str, l: Value, r: Value) -> Result<Value> {
     if op == "+" && (l.ty == LType::Str || r.ty == LType::Str) {
         return gen_str_concat(cg, l, r);
     }
-    // Numeric arithmetic is typed `Result<…, MathError>`, so each operation
-    // builds a Success block: `/` always float, the rest follow operand type.
-    // The Success wrapper auto-unwraps at value sites (interpolation,
-    // comparison, args), but `toString`/`print` show it as `Success(n)`.
+    // `/` and `%` can be handed a divisor with no representable result, so they
+    // are typed `Result<…, MathError>` and build a Success/Error block. The
+    // Success wrapper auto-unwraps at value sites (interpolation, comparison,
+    // args), but `toString`/`print` show it as `Success(n)`.
     if op == "/" {
         return gen_division(cg, l, r);
     }
+    if op == "%" {
+        return gen_remainder(cg, l, r);
+    }
+    // `+ - *` yield the plain operand type: their only failure mode is
+    // overflow, which wraps two's complement, so every result is representable
+    // and there is nothing to report ([ARITH-PLAIN]). `checkedAdd`/`checkedSub`
+    // /`checkedMul` are the opt-in guarded siblings.
     if l.ty == LType::Double || r.ty == LType::Double {
         let ld = as_double(cg, l)?;
         let rd = as_double(cg, r)?;
         let opc = match op {
             "+" => "fadd",
             "-" => "fsub",
-            "*" => "fmul",
-            "/" => "fdiv",
-            _ => "frem",
+            _ => "fmul",
         };
         let reg = cg.emit_reg(format!("{opc} double {}, {}", ld.operand, rd.operand));
-        return crate::result::make_ok(cg, Value::new(reg, LType::Double), LType::Double);
+        return Ok(Value::new(reg, LType::Double));
     }
     let li = as_i64(cg, l)?;
     let ri = as_i64(cg, r)?;
     let opc = match op {
         "+" => "add",
         "-" => "sub",
-        "*" => "mul",
-        "/" => "sdiv",
-        _ => "srem",
+        _ => "mul",
     };
     let reg = cg.emit_reg(format!("{opc} i64 {}, {}", li.operand, ri.operand));
-    crate::result::make_ok(cg, Value::new(reg, LType::I64), LType::I64)
+    Ok(Value::new(reg, LType::I64))
 }
 
 /// The `/` operator — always float, divide-by-zero checked.
 fn gen_division(cg: &mut Codegen, l: Value, r: Value) -> Result<Value> {
     let ld = as_double(cg, l)?;
     let rd = as_double(cg, r)?;
-    gen_checked_division(
+    gen_zero_checked(
         cg,
         &ld.operand,
         &rd.operand,
@@ -242,13 +326,44 @@ fn gen_division(cg: &mut Codegen, l: Value, r: Value) -> Result<Value> {
     )
 }
 
+/// The `%` operator — remainder, modulo-by-zero checked ([ARITH-PLAIN]).
+/// `int % int` stays `int`-valued; a float operand promotes both to `float`.
+/// The guard replaces a bare `srem`, whose behaviour on a zero divisor is
+/// undefined.
+fn gen_remainder(cg: &mut Codegen, l: Value, r: Value) -> Result<Value> {
+    if l.ty == LType::Double || r.ty == LType::Double {
+        let ld = as_double(cg, l)?;
+        let rd = as_double(cg, r)?;
+        return gen_zero_checked(
+            cg,
+            &ld.operand,
+            &rd.operand,
+            LType::Double,
+            "frem double",
+            "fcmp oeq double",
+            "0.0",
+        );
+    }
+    let li = as_i64(cg, l)?;
+    let ri = as_i64(cg, r)?;
+    gen_zero_checked(
+        cg,
+        &li.operand,
+        &ri.operand,
+        LType::I64,
+        "srem i64",
+        "icmp eq i64",
+        "0",
+    )
+}
+
 /// The `intDiv(a, b)` builtin — truncating integer division, divide-by-zero
 /// checked. The integer sibling of `/` (which the spec fixes to float).
 /// Implements [BUILTIN-INTDIV].
 fn gen_int_division(cg: &mut Codegen, l: Value, r: Value) -> Result<Value> {
     let li = as_i64(cg, l)?;
     let ri = as_i64(cg, r)?;
-    gen_checked_division(
+    gen_zero_checked(
         cg,
         &li.operand,
         &ri.operand,
@@ -259,10 +374,10 @@ fn gen_int_division(cg: &mut Codegen, l: Value, r: Value) -> Result<Value> {
     )
 }
 
-/// Shared divide-by-zero skeleton for `/` and `intDiv`: a zero divisor yields
-/// `Error` (`Result<_, MathError>` disc 1), else `Success(quotient)`. `div`/`cmp`
-/// carry their LLVM type, `zero` is the typed zero literal.
-fn gen_checked_division(
+/// Shared zero-divisor skeleton for `/`, `%` and `intDiv`: a zero divisor
+/// yields `Error` (`Result<_, MathError>` disc 1), else `Success(result)`.
+/// `div`/`cmp` carry their LLVM type, `zero` is the typed zero literal.
+fn gen_zero_checked(
     cg: &mut Codegen,
     lop: &str,
     rop: &str,
@@ -271,20 +386,93 @@ fn gen_checked_division(
     cmp: &str,
     zero: &str,
 ) -> Result<Value> {
-    use crate::result::{make_result, NO_MSG};
-    let isz = cg.emit_reg(format!("{cmp} {rop}, {zero}"));
-    let (zero_bb, nonzero_bb, end) = (cg.fresh_label(), cg.fresh_label(), cg.fresh_label());
-    cg.emit(format!(
-        "br i1 {isz}, label %{zero_bb}, label %{nonzero_bb}"
-    ));
+    let bad = cg.emit_reg(format!("{cmp} {rop}, {zero}"));
+    let quotient = format!("{div} {lop}, {rop}");
+    gen_guarded(cg, &bad, inner, zero, DIVIDE_BY_ZERO, |cg| {
+        cg.emit_reg(quotient)
+    })
+}
 
-    cg.start_block(&nonzero_bb);
-    let q = cg.emit_reg(format!("{div} {lop}, {rop}"));
-    let ok = make_result(cg, Value::new(q, inner), inner, "0", NO_MSG)?;
+/// The one `MathError` reason for a zero divisor, shared by `/`, `%` and
+/// `intDiv` so the three never drift apart in golden output.
+const DIVIDE_BY_ZERO: &str = "division by zero";
+
+/// `checkedAdd` / `checkedSub` / `checkedMul` — the opt-in overflow guarantee
+/// ([ARITH-PLAIN]). `llvm.s{add,sub,mul}.with.overflow.i64` returns the wrapped
+/// value paired with an overflow bit; the bit selects `Error`, so the guarantee
+/// `+ - *` cannot give (a wrapped result is still representable) is real here.
+fn gen_checked_arith(cg: &mut Codegen, intrinsic: &str, l: Value, r: Value) -> Result<Value> {
+    const PAIR: &str = "{ i64, i1 }";
+    let li = as_i64(cg, l)?;
+    let ri = as_i64(cg, r)?;
+    cg.add_extern(format!(
+        "declare {PAIR} @llvm.{intrinsic}.with.overflow.i64(i64, i64)"
+    ));
+    let pair = cg.emit_reg(format!(
+        "call {PAIR} @llvm.{intrinsic}.with.overflow.i64(i64 {}, i64 {})",
+        li.operand, ri.operand
+    ));
+    let bad = cg.emit_reg(format!("extractvalue {PAIR} {pair}, 1"));
+    let wrapped = format!("extractvalue {PAIR} {pair}, 0");
+    gen_guarded(cg, &bad, LType::I64, "0", "integer overflow", |cg| {
+        cg.emit_reg(wrapped)
+    })
+}
+
+/// The LLVM overflow-intrinsic stem behind each `checked*` builtin.
+fn checked_intrinsic(name: &str) -> &'static str {
+    match name {
+        "checkedSub" => "ssub",
+        "checkedMul" => "smul",
+        _ => "sadd",
+    }
+}
+
+/// The two evaluated, `Result`-unwrapped operands of a binary integer builtin.
+/// Shared by `intDiv` and the `checked*` family so neither restates the
+/// arity check.
+fn two_int_args(
+    cg: &mut Codegen,
+    name: &str,
+    arguments: &[Expr],
+    named: &[NamedArgument],
+) -> Result<(Value, Value)> {
+    let args = arg_exprs(arguments, named);
+    let missing = || CodegenError::invalid(format!("{name} needs two arguments"));
+    let (an, bn) = (
+        args.first().ok_or_else(missing)?,
+        args.get(1).ok_or_else(missing)?,
+    );
+    let l = gen_expr(cg, an)?;
+    let l = crate::result::unwrap(cg, l);
+    let r = gen_expr(cg, bn)?;
+    let r = crate::result::unwrap(cg, r);
+    Ok((l, r))
+}
+
+/// The Success/Error join every guarded arithmetic builtin shares: `bad`
+/// selects the error path carrying `message`, otherwise `ok_value` runs and its
+/// register becomes the `Success` payload. `zero` is the typed zero the error
+/// block stores in the unread payload slot.
+fn gen_guarded(
+    cg: &mut Codegen,
+    bad: &str,
+    inner: LType,
+    zero: &str,
+    message: &str,
+    ok_value: impl FnOnce(&mut Codegen) -> String,
+) -> Result<Value> {
+    use crate::result::{make_result, NO_MSG};
+    let (bad_bb, good_bb, end) = (cg.fresh_label(), cg.fresh_label(), cg.fresh_label());
+    cg.emit(format!("br i1 {bad}, label %{bad_bb}, label %{good_bb}"));
+
+    cg.start_block(&good_bb);
+    let value = ok_value(cg);
+    let ok = make_result(cg, Value::new(value, inner), inner, "0", NO_MSG)?;
     let okb = cg.snapshot_to(&end);
 
-    cg.start_block(&zero_bb);
-    let msg = cg.string_constant("division by zero");
+    cg.start_block(&bad_bb);
+    let msg = cg.string_constant(message);
     let err = make_result(cg, Value::new(zero, inner), inner, "1", &msg.operand)?;
     let errb = cg.snapshot_to(&end);
 
@@ -471,24 +659,26 @@ fn gen_call(
             to_string_value(cg, v)
         }
         "intDiv" => {
-            let a = arg_exprs(arguments, named);
-            let (an, bn) = (
-                a.first()
-                    .ok_or_else(|| CodegenError::invalid("intDiv needs two arguments"))?,
-                a.get(1)
-                    .ok_or_else(|| CodegenError::invalid("intDiv needs two arguments"))?,
-            );
-            let l = gen_expr(cg, an)?;
-            let l = crate::result::unwrap(cg, l);
-            let r = gen_expr(cg, bn)?;
-            let r = crate::result::unwrap(cg, r);
+            let (l, r) = two_int_args(cg, name, arguments, named)?;
             gen_int_division(cg, l, r)
+        }
+        // The guarded siblings of `+ - *` ([ARITH-PLAIN]).
+        "checkedAdd" | "checkedSub" | "checkedMul" => {
+            let (l, r) = two_int_args(cg, name, arguments, named)?;
+            gen_checked_arith(cg, checked_intrinsic(name), l, r)
         }
         // Runtime builtins take precedence over a same-named user function: the
         // names below are reserved. Each dispatcher returns `None` when the name
         // is not its builtin, so the chain falls through to a user call.
         _ => {
             if let Some(v) = crate::testing::gen(cg, name, arguments, named)? {
+                return Ok(v);
+            }
+            // A bare name shared by the string and collection runtimes resolves
+            // on the receiver, so it must be settled BEFORE the name-keyed
+            // string/collection dispatchers below.
+            if let Some(v) = crate::collections::gen_receiver_directed(cg, name, arguments, named)?
+            {
                 return Ok(v);
             }
             if let Some(v) = crate::strings::gen(cg, name, arguments, named)? {
@@ -706,7 +896,12 @@ fn eval_arg(cg: &mut Codegen, expr: &Expr, sig: Option<&FnSig>, ffi: bool) -> Re
                 return if ffi {
                     crate::closure::raw_callback_lambda(cg, &params, &body, sig)
                 } else {
-                    crate::closure::emit_closure(cg, &params, &body, sig)
+                    // Keyed by (function, slot ABI): every use at the same ABI
+                    // lowers to a byte-identical body, so emit it once and
+                    // share the cell. Distinct ABIs still get distinct bodies —
+                    // that is what specialising means.
+                    let key = crate::closure::specialisation_key(&target, sig);
+                    crate::closure::emit_closure_keyed(cg, &params, &body, sig, Some(key))
                 };
             }
             if ffi && cg.fn_params.contains_key(&target) {
@@ -769,7 +964,7 @@ fn gen_interpolation(cg: &mut Codegen, parts: &[InterpolatedPart]) -> Result<Val
     Ok(v)
 }
 
-fn first_arg<'a>(arguments: &'a [Expr], named: &'a [NamedArgument]) -> Option<&'a Expr> {
+pub(crate) fn first_arg<'a>(arguments: &'a [Expr], named: &'a [NamedArgument]) -> Option<&'a Expr> {
     arguments
         .first()
         .or_else(|| named.first().map(|n| &n.value))

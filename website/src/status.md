@@ -2,7 +2,7 @@
 layout: page.njk
 title: Feature Status
 description: Current implementation status of Osprey language features
-date: 2026-06-18
+date: "git Last Modified"
 tags: ["status", "features", "roadmap"]
 author: "Christian Findlay"
 ---

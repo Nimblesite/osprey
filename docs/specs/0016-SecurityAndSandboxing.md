@@ -2,7 +2,7 @@
 
 The compiler can disable categories of built-in functions at compile time. Restricted functions are not lowered into the program at all — calls to them produce "undefined function" compile errors. There is no runtime overhead.
 
-> **Flavor layer — shared core (AST and above).**  Capability-based sandboxing and the effect system are one system across every flavor — entirely flavor-blind. The gated operations are ordinary calls that lower to `Expr::Call`; the permission gate enforces restrictions on the canonical `osprey_ast::Program` and in codegen, where restricted built-ins are simply never lowered or linked. Per [FLAVOR-BOUNDARY], no phase that decides what to block inspects which surface (`.osp` Default or `.ospml` ML) produced the program — security is enforced on the shared AST and below it in the runtime, never per-flavor. The flag spellings shown here are CLI concerns and are flavor-independent. See [Language Flavors](0023-LanguageFlavors.md).
+> **Flavor layer — shared core (AST and above).** Sandboxing is flavor-blind after lowering to `osprey_ast::Program`; no phase deciding what to block may inspect the source flavor ([FLAVOR-BOUNDARY]). These CLI flags apply to every flavor. See [Language Flavors](0023-LanguageFlavors.md).
 
 ## Security Flags
 
@@ -14,31 +14,14 @@ Enables sandbox mode, which disables all potentially risky operations:
 - Foreign Function Interface (FFI)
 - Process execution
 
-**Example:**
-```bash
-osprey program.osp --sandbox --llvm
-```
-
 #### Granular Security Flags
 
-For more granular control, you can disable specific categories of operations:
+Specific categories can be disabled independently:
 
 - `--no-http`: Disable HTTP client and server functions
 - `--no-websocket`: Disable WebSocket client and server functions  
 - `--no-fs`: Disable file system read/write operations
 - `--no-ffi`: Disable foreign function interface (also gates third-party C libraries such as SQLite)
-
-**Examples:**
-```bash
-# Disable only HTTP operations
-osprey program.osp --no-http --compile
-
-# Disable HTTP and WebSocket operations
-osprey program.osp --no-http --no-websocket --run
-
-# Disable file system access only
-osprey program.osp --no-fs --llvm
-```
 
 ## Blocked Functions by Category
 

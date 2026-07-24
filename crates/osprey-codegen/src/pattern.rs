@@ -175,11 +175,29 @@ fn is_result_arm(p: &Pattern) -> bool {
 /// The constructor name a pattern selects, if any: an explicit `Ctor { … }` or a
 /// bare `Ctor` (a nullary variant lowers to a `Binding` indistinguishable from a
 /// capture until we know the constructor table).
-fn pattern_ctor<'a>(cg: &Codegen, p: &'a Pattern) -> Option<(&'a str, &'a [String])> {
+fn pattern_ctor<'a>(cg: &Codegen, p: &'a Pattern) -> Option<(&'a str, Vec<String>)> {
     match p {
-        Pattern::Constructor { name, fields, .. } => Some((name, fields)),
-        Pattern::Binding(name) if cg.is_ctor(name) => Some((name, &[])),
+        // `Ctor { a, b }` names its binders directly; `Ctor(a, b)` carries them
+        // as sub-patterns, which bind by slot ([TYPE-UNION-POSITIONAL]). A
+        // sub-pattern that is not a plain binder contributes no name — nested
+        // destructuring is not supported and is rejected upstream.
+        Pattern::Constructor {
+            name,
+            fields,
+            sub_patterns,
+        } if fields.is_empty() => Some((name, sub_patterns.iter().map(binder_name).collect())),
+        Pattern::Constructor { name, fields, .. } => Some((name, fields.clone())),
+        Pattern::Binding(name) if cg.is_ctor(name) => Some((name, Vec::new())),
         _ => None,
+    }
+}
+
+/// The name a positional sub-pattern binds, or the ignored-slot placeholder for
+/// a wildcard / unsupported shape.
+fn binder_name(p: &Pattern) -> String {
+    match p {
+        Pattern::Binding(name) | Pattern::TypeAnnotated { name, .. } => name.clone(),
+        _ => String::new(),
     }
 }
 
@@ -302,7 +320,6 @@ fn gen_union_match(
     for arm in arms {
         if let Some((name, fields)) = pattern_ctor(cg, &arm.pattern) {
             let name = name.to_string();
-            let fields = fields.to_vec();
             let vpos = variants.iter().position(|v| *v == name).unwrap_or(0);
             let vtag = i64::try_from(vpos).unwrap_or(0);
             let cond = cg.fresh_reg();
@@ -353,24 +370,33 @@ fn bind_variant_fields(cg: &mut Codegen, disc: &Value, variant: &str, pat_fields
         "{src} = bitcast i8* {} to {struct_ty}*",
         disc.operand
     ));
-    // Bind each pattern field to the layout slot of the SAME name, so a reordered
-    // destructuring (`PersonData { age, name }`) binds correctly regardless of the
-    // declaration order.
-    for bind_name in pat_fields {
-        let Some((idx, (_, fty))) = view
-            .fields
-            .iter()
-            .enumerate()
-            .find(|(_, (f, _))| f == bind_name)
-        else {
-            continue;
+    // A NAMED payload binds each pattern field to the layout slot of the SAME
+    // name, so a reordered destructuring (`PersonData { age, name }`) binds
+    // correctly regardless of declaration order. A POSITIONALLY-declared variant
+    // has no field names to resolve against and binds by slot instead: the
+    // binder in column i takes payload slot i ([TYPE-UNION-POSITIONAL]).
+    let positional = view
+        .fields
+        .first()
+        .is_some_and(|(f, _)| osprey_ast::is_positional_field(f));
+    for (column, bind_name) in pat_fields.iter().enumerate() {
+        if bind_name.is_empty() {
+            continue; // an ignored slot binds nothing
+        }
+        let slot = if positional {
+            view.fields.get(column).map(|(_, fty)| (column, fty))
+        } else {
+            view.fields
+                .iter()
+                .enumerate()
+                .find(|(_, (f, _))| f == bind_name)
+                .map(|(idx, (_, fty))| (idx, fty))
         };
-        let loaded = crate::aggregate::load_field(cg, &struct_ty, src.as_str(), idx + 1, *fty);
+        let Some((idx, fty)) = slot else { continue };
+        let fty = *fty;
+        let loaded = crate::aggregate::load_field(cg, &struct_ty, src.as_str(), idx + 1, fty);
         let owner = cg.ctor_field_owner(variant, bind_name);
-        cg.bind(
-            bind_name.clone(),
-            Value::new(loaded, *fty).with_owner(owner),
-        );
+        cg.bind(bind_name.clone(), Value::new(loaded, fty).with_owner(owner));
     }
 }
 
@@ -448,22 +474,27 @@ fn finish_guarded_arm(
     Ok(())
 }
 
-/// Join the arm values with a `phi`. A single arm needs none. When the arms
-/// disagree on LLVM type the match is being used as a statement (its value is
-/// discarded) — a `phi` would be ill-typed, so yield Unit instead of emitting
-/// one. `Str`/`Ptr` count as the same type (both `i8*`). A common owner /
-/// payload-owner across arms is preserved so a matched handle (record, nested
-/// list) stays field-accessible / indexable.
-#[expect(
-    clippy::unnecessary_wraps,
-    reason = "kept Result-returning for the uniform generator interface"
-)]
+/// Join the arm values with a `phi`. A single arm needs none. `Str`/`Ptr` count
+/// as the same type (both `i8*`). A common owner / payload-owner across arms is
+/// preserved so a matched handle (record, nested list) stays field-accessible /
+/// indexable.
+///
+/// Arms that disagree on LLVM type are a hard error, not a silent Unit: a `phi`
+/// over them would be ill-typed, and yielding Unit instead converted a class of
+/// type-system mistakes into an expression that quietly evaluated to nothing.
 fn finish_phi(cg: &mut Codegen, phi_in: &[(Value, String)], mark: usize) -> Result<Value> {
     let Some((first_val, _)) = phi_in.first() else {
         return Ok(Value::unit());
     };
     let ty = first_val.ty;
-    if phi_in.iter().any(|(v, _)| v.ty.as_str() != ty.as_str()) {
+    if let Some((odd, _)) = phi_in.iter().find(|(v, _)| v.ty.as_str() != ty.as_str()) {
+        if !cg.value_discarded {
+            return Err(CodegenError::invalid(format!(
+                "match arms disagree on type: `{}` and `{}`",
+                ty.as_str(),
+                odd.ty.as_str()
+            )));
+        }
         return Ok(Value::unit());
     }
     let incoming = phi_in

@@ -1,25 +1,14 @@
 # Debugger
 
-> **Engineering spec** (tooling), not part of the `0001`-`0019` language
-> reference. It defines how Osprey programs are built, launched, and inspected
-> by debuggers.
+> Tooling spec; see [Plan 0012](../plans/0012-osprey-debugger.md).
 
-The Osprey debugger is a source-level debugging system for native Osprey
-programs. It is integrated with editors through the same extension surface as
-the language server, but it uses a different protocol: LSP is the static
-analysis plane; DAP is the runtime control plane. The implementation plan is
-[Plan 0012](../plans/0012-osprey-debugger.md).
-
-> **Flavor layer — shared core (AST and above).**  Debug info derives from the
-> canonical `osprey_ast::Program` and is flavor-blind: the same AST yields the
-> same `!DISubprogram`/`!DILocation` metadata and the same debug semantics
-> regardless of whether the program was authored in the Default (`.osp`) or ML
-> (`.ospml`) flavor. Source positions and line tables point at the *authoring*
-> flavor's source text, preserved by the lowering contract span rule
+> **Flavor layer — shared core (AST and above).** Debug info derives from
+> `osprey_ast::Program`; equivalent Default (`.osp`) and ML (`.ospml`) nodes use
+> the same metadata rules and debug semantics. Source positions and line tables
+> point to the authoring source under the span rule
 > ([FLAVOR-LOWER-CONTRACT] in [Language Flavors](0023-LanguageFlavors.md)):
-> desugared nodes carry the `Position` of the source construct, so only the
-> mapped source file (`.osp` vs `.ospml`) differs — never the debug
-> semantics. The debugger never inspects which flavor produced a program.
+> desugared nodes carry the source construct's `Position`. The debugger must not
+> inspect flavor.
 
 ## Status
 
@@ -33,8 +22,6 @@ analysis plane; DAP is the runtime control plane. The implementation plan is
 | Replay / time travel                | Planned. Requires deterministic runtime event recording.                                                  |
 
 ## Protocol Split `[DEBUGGER-PROTOCOLS]`
-
-Osprey uses two editor protocols:
 
 - **LSP** (`osprey lsp`) owns editor-time analysis: diagnostics, hover,
   symbols, definition, completion, and source position normalization.
@@ -136,46 +123,34 @@ The extension may let users configure:
 ## Reusable Debugger Helpers `[DEBUGGER-REUSE]`
 
 Generic debugger utilities MUST NOT be re-implemented per language. Osprey,
-Basilisk (Python) and SharpLsp (C#) each ship a VS Code debugger and are
-converging on the shared [LspKit](https://github.com/Nimblesite/lspkit) toolkit.
-The debugger glue has two reuse layers, and duplication across the three
-projects in either layer is a defect:
+Basilisk, and SharpLsp share them through
+[LspKit](https://github.com/Nimblesite/lspkit) in two layers:
 
-**Compiler/native layer (Rust).** Debug-build policy (`-g`, `-O0`,
-`-fno-omit-frame-pointer`, platform DWARF version), debug source identity, and
-DWARF helpers are editor- and language-neutral. They live in `osprey-debug`
-today as the seed and are candidates to upstream into an `lspkit-debug` crate
-(LspKit currently has no debugger code). `osprey-debug` intentionally avoids
-Osprey parser, type-checker, codegen, and editor dependencies. This layer only
-benefits other native-compiled languages; Python/C# do not consume it.
+**Compiler/native layer (Rust).** Editor- and language-neutral debug-build
+policy (`-g`, `-O0`, `-fno-omit-frame-pointer`, platform DWARF version), source
+identity, and DWARF helpers reside in `osprey-debug` pending an `lspkit-debug`
+crate. `osprey-debug` must not depend on the Osprey parser, type checker,
+codegen, editor, or other language-specific components. This layer applies
+only to native-compiled languages; Osprey-specific lowering remains in
+`osprey-codegen`.
 
-**Editor layer (TypeScript).** This is where Osprey, Basilisk and SharpLsp
-actually triplicate code, so it is the priority reuse target. The following are
-language-neutral and MUST be hoisted into a shared package under the LspKit
-umbrella rather than forked into each extension:
+**Editor layer (TypeScript).** The following language-neutral functions MUST
+live in a shared LspKit package:
 
 - DAP adapter resolution (setting override → common toolchain paths → PATH,
-  with a precise missing-tool error). SharpLsp's `findNetcoredbg` /
-  `getNetcoredbgCandidates` is the reference shape.
+  with a precise missing-tool error).
 - Debug-launch config synthesis/normalization (empty F5 config → defaults,
-  missing program → active file / entry artifact, profile merge). Basilisk's
-  pure `applyDebugConfigDefaults` and SharpLsp's `resolveDebugConfiguration`
-  are the reference shapes.
+  missing program → active file / entry artifact, profile merge).
 - Save-dirty-documents-or-reject, and the pre-launch native build hook.
 - The DAP test harness: a DAP client (initialize/launch/setBreakpoints/
   continue/stepIn/Out/Over/stackTrace/scopes/variables/evaluate), poll helpers,
-  and UI stubs. Basilisk's debug-integration test client and SharpLsp's
-  `pollUntilResult` / UI stubs are the reference shapes.
+  and UI stubs.
 
-Only the genuinely language-specific bits stay in each extension: the debug
-`type`, adapter name (`lldb-dap` for Osprey), compiler/build command, and
-toolchain-specific paths. Osprey-specific lowering remains in `osprey-codegen`.
-The Osprey extension's debugger code is the seed to upstream, not a private
-fork to grow in isolation.
+Each extension retains only its debug `type`, adapter name (`lldb-dap` for
+Osprey), compiler/build command, and toolchain-specific paths. The Osprey
+implementation is an upstream seed, not a private fork.
 
 ## Future Runtime Inspection `[DEBUGGER-RUNTIME]`
-
-The finished debugger must inspect Osprey values, not just native pointers.
 
 Required future support:
 
@@ -196,13 +171,11 @@ editor. Stable runtime inspection APIs are required.
 
 ## Object Graph Watch Window `[DEBUGGER-OBJECT-GRAPH]`
 
-The debugger must integrate an object graph and memory-profiler view directly
-into the watch/variables workflow. Selecting a variable or evaluating a watch
-expression must let the user answer two questions without leaving the debugger:
+The debugger must integrate an object graph and memory-profiler view into the
+watch/variables workflow. A selected variable or watch expression must expose:
 
-1. What heap values is this value connected to?
-2. What roots, variables, fibers, runtime handles, or shared structures are
-   keeping this value reachable?
+1. Connected heap values.
+2. Roots, variables, fibers, runtime handles, or shared structures retaining it.
 
 This is a debugger/profiler feature, not an Osprey language API. It must obey
 [Memory Management](0018-MemoryManagement.md) [MEM-DEBUG-OBSERVABILITY]: object
@@ -263,37 +236,6 @@ Required visual behavior:
   search, pinned nodes, and collapsible aggregate nodes.
 - Text must not overlap nodes/edges; color must not be the only carrier of
   ownership, lifetime, or retention warnings.
-
-Design authorities:
-
-- GCspy, Printezis and Jones, OOPSLA 2002, introduced a reusable architecture
-  for collecting, transmitting, storing, and replaying memory-management
-  behavior:
-  <https://dl.acm.org/doi/10.1145/583854.582451>.
-- Cork, Jump and McKinley, POPL 2007, uses summarized points-from graphs to
-  identify heap growth in garbage-collected languages:
-  <https://dl.acm.org/doi/10.1145/1190215.1190224>.
-- Object ownership profiling, Rayside et al., ASE 2007, uses ownership views to
-  find and fix leaks:
-  <https://dl.acm.org/doi/10.1145/1321631.1321661>.
-- Reiss, VISSOFT 2009, motivates interactive heap visualization for extracting
-  actionable memory-problem information:
-  <https://ieeexplore.ieee.org/document/5336418/>.
-- AntTracks TrendViz, Weninger et al., ICPE 2019, combines trace-based heap
-  reconstruction with configurable grouping and time evolution:
-  <https://dl.acm.org/doi/10.1145/3302541.3313100>.
-- Chrome DevTools, Eclipse MAT, JetBrains dotMemory, and Visual Studio memory
-  tools establish the production vocabulary: shallow size, retained size,
-  dominators, paths to roots, retention paths, snapshot diffing, and hot paths:
-  <https://developer.chrome.com/docs/devtools/memory-problems/get-started>,
-  <https://eclipse.dev/mat/>,
-  <https://www.jetbrains.com/help/dotmemory/Retained_by.html>,
-  <https://learn.microsoft.com/en-us/visualstudio/profiling/hot-path-to-root>.
-- Graph-visualization guidance comes from Herman/Melancon/Marshall's survey,
-  Holten's hierarchical edge bundles, and Munzner's H3 focus+context work:
-  <https://dl.acm.org/doi/abs/10.1109/2945.841119>,
-  <https://dl.acm.org/doi/10.1109/TVCG.2006.147>,
-  <https://dl.acm.org/doi/10.5555/857188.857627>.
 
 ## Conformance
 

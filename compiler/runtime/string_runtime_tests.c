@@ -1,5 +1,7 @@
 /*
- * Implements [BUILTIN-STRING-*] verification.
+ * Verifies [BUILTIN-STRING-INSPECTION], [BUILTIN-STRING-SEARCH],
+ * [BUILTIN-STRING-CURSOR], [BUILTIN-STRING-SUBSTRINGS], [BUILTIN-STRING-LIST],
+ * [BUILTIN-STRING-TRANSFORM], and [BUILTIN-STRING-PARSING].
  *
  * Strict assertion-driven tests for every helper in string_runtime.c and
  * string_runtime_list.c. Each test exercises both the happy path AND
@@ -7,8 +9,8 @@
  * binary's exit status is the verdict.
  *
  * Run by `make test` via the root Makefile `_test_c_runtime` target (hardened
- * flags, executable build). Covers the string cursor (BUILTIN-STRING-CURSOR)
- * and the Result error-message contract ([ERR-PAYLOAD]) exhaustively.
+ * flags, executable build). Covers the Result error-message contract
+ * ([ERR-PAYLOAD]) exhaustively.
  */
 
 #include <assert.h>

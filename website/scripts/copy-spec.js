@@ -1,12 +1,15 @@
 const fs = require('fs');
 const path = require('path');
+const { execFileSync } = require('child_process');
 
 const specSourceDir = path.resolve(__dirname, '../../docs/specs');
 const specDestDir = path.resolve(__dirname, '../src/spec');
 
 // README.md in docs/specs/ is a meta-doc for engineers, not a spec section.
-// Skip it so it doesn't end up as a /spec/readme/ page on the website.
-const SKIP_FILES = new Set(['README.md']);
+// Skip it so it doesn't end up as a /spec/readme/ page on the website. The
+// site's /spec/ index is generated from the page list at the end of this
+// script, so a source index.md (should one ever appear) is skipped too.
+const SKIP_FILES = new Set(['README.md', 'index.md']);
 
 // Ensure destination directory exists
 if (!fs.existsSync(specDestDir)) {
@@ -79,14 +82,32 @@ function generateSlug(filename) {
   return filename.replace(/\.md$/, '').toLowerCase();
 }
 
+// The generated pages are gitignored (never committed), so Eleventy's
+// `date: "git Last Modified"` on the OUTPUT file would fall back to build
+// time. Read the last commit date of the SOURCE spec instead, so /spec/
+// sitemap lastmod and JSON-LD reflect when the spec actually changed — not
+// when the site was built. Returns null when git is unavailable; the page
+// then falls back to src/spec/spec.11tydata.json.
+function specGitDate(filename) {
+  try {
+    const iso = execFileSync('git', ['log', '-1', '--format=%cI', '--', filename], {
+      cwd: specSourceDir,
+      encoding: 'utf8',
+    }).trim();
+    return iso || null;
+  } catch (error) {
+    return null;
+  }
+}
+
 // Helper function to create front matter for spec pages
-function createSpecFrontMatter(title, slug, description = '') {
+function createSpecFrontMatter(title, slug, description = '', date = null) {
+  const dateLine = date ? `date: "${date}"\n` : '';
   return `---
 layout: page
 title: "${title}"
 description: "${description}"
-date: ${new Date().toISOString().split('T')[0]}
-tags: ["specification", "reference", "documentation"]
+${dateLine}tags: ["specification", "reference", "documentation"]
 author: "Christian Findlay"
 permalink: "/spec/${slug}/"
 ---
@@ -100,9 +121,10 @@ try {
   // Remove previously generated spec pages first. Without this, renamed or
   // renumbered source files leave orphan pages behind (e.g. an old
   // 0015-http.md lingering after HTTP moved to 0014), producing duplicate
-  // content. index.md is regenerated separately at the end of this script.
+  // content. Every .md here is generated output (and gitignored), including
+  // index.md, which is rebuilt from scratch at the end of this script.
   for (const existing of fs.readdirSync(specDestDir)) {
-    if (existing.endsWith('.md') && existing !== 'index.md') {
+    if (existing.endsWith('.md')) {
       fs.unlinkSync(path.join(specDestDir, existing));
     }
   }
@@ -118,51 +140,26 @@ try {
     let content = fs.readFileSync(sourcePath, 'utf8');
     const title = extractTitle(content, file);
     const slug = generateSlug(file);
+    const date = specGitDate(file);
 
-    let destFile;
-    let permalink;
-
-    if (file === 'index.md') {
-      // Special handling for index.md - becomes the main spec page
-      destFile = 'index.md';
-      permalink = '/spec/';
-    } else {
-      // Clean content for individual pages (remove TOC sections)
-      content = cleanSpecContent(content, file);
-      destFile = `${slug}.md`;
-      permalink = `/spec/${slug}/`;
-    }
-
+    content = cleanSpecContent(content, file);
+    const destFile = `${slug}.md`;
+    const permalink = `/spec/${slug}/`;
     const destPath = path.join(specDestDir, destFile);
 
-    // Create appropriate front matter
-    const frontMatter = file === 'index.md'
-      ? `---
-layout: page
-title: "Osprey Language Specification"
-description: "Complete language specification and syntax reference for the Osprey programming language"
-date: ${new Date().toISOString().split('T')[0]}
-tags: ["specification", "reference", "documentation"]
-author: "Christian Findlay"
-permalink: "/spec/"
----
+    const frontMatter = createSpecFrontMatter(
+      title, slug, `Osprey Language Specification: ${title}`, date
+    );
+    fs.writeFileSync(destPath, frontMatter + content, 'utf8');
 
-`
-      : createSpecFrontMatter(title, slug, `Osprey Language Specification: ${title}`);
-
-    const contentWithFrontMatter = frontMatter + content;
-    fs.writeFileSync(destPath, contentWithFrontMatter, 'utf8');
-
-    // Track pages for index generation (skip index.md itself)
-    if (file !== 'index.md') {
-      specPages.push({
-        file,
-        slug,
-        title,
-        permalink,
-        order: file.match(/^(\d+)/) ? parseInt(file.match(/^(\d+)/)[1]) : 999
-      });
-    }
+    specPages.push({
+      file,
+      slug,
+      title,
+      permalink,
+      date,
+      order: file.match(/^(\d+)/) ? parseInt(file.match(/^(\d+)/)[1]) : 999
+    });
 
     console.log(`✅ Processed ${file} → ${destFile} (${permalink}) - "${title}"`);
   }
@@ -170,21 +167,19 @@ permalink: "/spec/"
   // Sort pages by order number
   specPages.sort((a, b) => a.order - b.order);
 
-  // Create/update the spec index with clean table of contents
+  // Build the spec index from scratch — like every page here it is generated
+  // output (gitignored), so there is nothing on disk to read back. Its date is
+  // the newest source-spec commit: the TOC changed when its newest entry did.
   const indexPath = path.join(specDestDir, 'index.md');
-  let indexContent = fs.readFileSync(indexPath, 'utf8');
-
-  // Remove existing front matter if present
-  const frontMatterEnd = indexContent.indexOf('---', 3);
-  if (frontMatterEnd > 0) {
-    indexContent = indexContent.substring(frontMatterEnd + 3).trim();
-  }
+  const indexDate = specPages
+    .map((page) => page.date)
+    .filter(Boolean)
+    .sort((a, b) => new Date(a) - new Date(b))
+    .pop() || null;
 
   // Create a simple introduction and table of contents only
   const newIndexContent = `# Osprey Language Specification
 
-**Version:** 0.2.0  
-**Date:** ${new Date().toISOString().split('T')[0]}  
 **Author:** Christian Findlay
 
 ## Table of Contents
@@ -216,8 +211,7 @@ The Osprey language is designed for elegance, safety, and performance, emphasizi
 layout: page
 title: "Osprey Language Specification"
 description: "Complete language specification and syntax reference for the Osprey programming language"
-date: ${new Date().toISOString().split('T')[0]}
-tags: ["specification", "reference", "documentation"]
+${indexDate ? `date: "${indexDate}"\n` : ''}tags: ["specification", "reference", "documentation"]
 author: "Christian Findlay"
 permalink: "/spec/"
 ---

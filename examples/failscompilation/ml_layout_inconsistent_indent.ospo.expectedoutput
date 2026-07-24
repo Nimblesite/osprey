@@ -1,0 +1,4 @@
+examples/failscompilation/ml_layout_inconsistent_indent.ospo:15:6: inconsistent indentation does not match any enclosing block
+examples/failscompilation/ml_layout_inconsistent_indent.ospo:15:6: unexpected token Indent in expression
+examples/failscompilation/ml_layout_inconsistent_indent.ospo:15:8: unexpected token FatArrow in expression
+examples/failscompilation/ml_layout_inconsistent_indent.ospo:17:0: unexpected token Dedent in expression

@@ -24,6 +24,18 @@ pub enum LType {
     Ptr,
 }
 
+/// The LLVM register name of parameter `index`. Parameters are named
+/// POSITIONALLY, never after their source identifier: that is what makes an
+/// ML/Default twin pair byte-identical when the two authors spell a parameter
+/// differently — including the generated scrutinee of an equational clause set,
+/// which has no source spelling at all ([FLAVOR-IR-EQUIV], [FLAVOR-ML-CLAUSES]).
+/// `$` is outside the Osprey identifier alphabet, so the name can never collide
+/// with a local; the source name survives in DWARF via `emit_debug_param`.
+#[must_use]
+pub(crate) fn param_register(index: usize) -> String {
+    format!("$p{index}")
+}
+
 impl LType {
     /// The textual LLVM spelling.
     #[must_use]

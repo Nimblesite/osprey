@@ -2,10 +2,80 @@
 
 This chapter defines the syntactic forms that make up an Osprey program. Semantics for individual constructs are in their dedicated chapters; cross-references are noted inline.
 
-> **Flavor layer — surface (CST).**  The syntactic forms here are surface spellings only; the **semantics and lowering are shared-core and flavor-blind** — every spelling collapses into the one canonical AST (`osprey_ast::Program`), the single tree every later phase consumes ([FLAVOR-BOUNDARY]). This chapter shows **both flavors**: the Default (`.osp`) spelling — C-style braces, `fn`, and `f(x: a, y: b)` named-argument calls — and, wherever the surface actually differs, the **ML (`.ospml`) twin shown inline alongside it** in `osprey-ml` blocks (offside layout, `\x => e`, whitespace application). Both spellings lower to the *same* AST nodes; see [ML Flavor Syntax](0024-MLFlavorSyntax.md) for the full ML counterpart of each form, and [Language Flavors](0023-LanguageFlavors.md) for the one-AST-many-CSTs model and the [FLAVOR-BOUNDARY] law.
->
-> The major forms below map to canonical AST nodes as follows: `let`/`mut` → `Stmt::Let{mutable}`; `fn` → `Stmt::Function`; `extern` → `Stmt::Extern`; `type` → `Stmt::Type` + `TypeVariant`; `import` → `Stmt::Import`; `module` → `Stmt::Module{name, body}`; calls → `Expr::Call{function, arguments, named_arguments}`; `match` → `Expr::Match` + `MatchArm`; `{ … }` blocks → `Expr::Block{statements, value}`; field access → `Expr::FieldAccess`; indexing → `Expr::Index`; and the pattern forms → `Pattern::*` (`Wildcard`, `Literal`, `Constructor`, `TypeAnnotated`, `Structural`, `Binding`). Names and shapes are flavor-blind from the AST upward.
+## Flavors
 
+Osprey is one language with more than one way to write it. A **flavor** is a
+surface syntax — a spelling of the language, not a dialect of it. Two flavors
+exist today, and both are permanent and first-class:
+
+- **Default** (`.osp`) — C-style: braces, parenthesised calls, named arguments.
+- **ML** (`.ospml`) — ML-style: offside-rule layout, whitespace application,
+  currying by default.
+
+All syntax can be expressed in every flavor: anything you can write in one,
+you can write in the others. The same function and call look like this in
+each:
+
+```osprey
+fn add(x, y) = x + y
+let sum = add(x: 2, y: 3)
+```
+
+```osprey-ml
+add (x, y) = x + y
+sum = add (2, 3)
+```
+
+And the same union type:
+
+```osprey
+type Shape = Circle    { radius: int }
+           | Rectangle { width: int, height: int }
+```
+
+```osprey-ml
+type Shape =
+    Circle
+        radius : int
+    Rectangle
+        width : int
+        height : int
+```
+
+Those two spellings declare one type. This is the shape both of them mean:
+
+```typediagram
+union Shape {
+  Circle { radius: Int }
+  Rectangle { width: Int, height: Int }
+}
+```
+
+Every flavor parses to the same canonical AST (`osprey_ast::Program`) before
+any semantic analysis runs, so type checking, effects, and code generation are
+identical whichever flavor a file is written in, and files in different
+flavors mix freely in one project. These two need not be the last: a flavor is
+a parser frontend over the shared core, so more may be added over time —
+including flavors defined outside this specification. The
+[FLAVOR-BOUNDARY](0023-LanguageFlavors.md) law is the contract every flavor,
+present or future, must satisfy.
+
+The rest of this chapter defines each construct in the Default spelling with
+the ML spelling alongside wherever the two differ, as above. The ML flavor is
+fully specified in [ML Flavor Syntax](0024-MLFlavorSyntax.md).
+
+> Canonical mappings: `let`/`mut` → `Stmt::Let{mutable}`; `fn` →
+> `Stmt::Function`; `extern` → `Stmt::Extern`; `type` → `Stmt::Type` +
+> `TypeVariant`; `import` → `Stmt::Import`; `module` →
+> `Stmt::Module{name, body}`; calls →
+> `Expr::Call{function, arguments, named_arguments}`; `match` → `Expr::Match` +
+> `MatchArm`; blocks → `Expr::Block{statements, value}`; field access →
+> `Expr::FieldAccess`; indexing → `Expr::Index`; patterns → `Pattern::*`.
+> Positional variants use `TypeVariant` with `TypeField::positional`
+> ([TYPE-UNION-POSITIONAL](#type-declarations)); `e ?: d` uses the ternary
+> `Expr::Match` with boolean-literal arms.
+
+- [Flavors](#flavors)
 - [Program Structure](#program-structure)
 - [Imports](#imports)
 - [Let Declarations](#let-declarations)
@@ -43,12 +113,17 @@ module Geometry {
 }
 ```
 
-> `module` has no ML-flavor surface syntax; see
-> [Modules and Namespaces](0025-ModulesAndNamespaces.md).
+```osprey-ml
+module Geometry
+    pi = 3.14159
+    area r = pi * r * r
+```
 
 Module semantics for multi-file projects, exports, signatures, state modules,
 and path-independent namespaces are defined in
-[Modules and Namespaces](0025-ModulesAndNamespaces.md).
+[Modules and Namespaces](0025-ModulesAndNamespaces.md); the ML layout forms
+(`module`, `namespace`) are in
+[ML Flavor Syntax](0024-MLFlavorSyntax.md#modules-and-namespaces).
 
 ## Imports
 
@@ -63,7 +138,7 @@ import graphics.canvas
 ```
 
 Import semantics for multi-file projects, aliases, explicit member imports, and
-wildcard policy are defined in [Modules and Namespaces](0025-ModulesAndNamespaces.md#imports).
+wildcard policy are defined in [Modules and Namespaces](0025-ModulesAndNamespaces.md#imports-modules-import).
 
 ## Let Declarations
 
@@ -94,7 +169,7 @@ fnDecl    ::= docComment? "fn" ID ("<" typeParamList ">")? "(" paramList? ")"
               ("->" type)? effectSet?
               ("=" expr | "{" blockBody "}")
 paramList ::= param ("," param)*
-param     ::= ID (":" type)?
+param     ::= (ID | "_") (":" type)?      (* `_` — see [PARAM-WILDCARD] *)
 effectSet ::= "!" effectRef | "!" "[" effectRef ("," effectRef)* "]"
 effectRef ::= ID ("<" typeList ">")?
 ```
@@ -169,7 +244,7 @@ typeParamList     ::= typeParam ("," typeParam)*
 typeParam         ::= ("in" | "out")? ID
 unionType         ::= variant ("|" variant)*
 recordType        ::= "{" fieldDeclarations "}"
-variant           ::= ID ("{" fieldDeclarations "}")?
+variant           ::= ID ("{" fieldDeclarations "}" | "(" type ("," type)* ")")?
 fieldDeclarations ::= fieldDeclaration ("," fieldDeclaration)*
 fieldDeclaration  ::= ID ":" type constraint?
 constraint        ::= "where" function_name
@@ -178,13 +253,29 @@ constraint        ::= "where" function_name
 `typeParam`'s optional `in`/`out` marker declares the parameter's variance
 ([TYPE-VARIANCE-DECL](0004-TypeSystem.md#generics-and-variance)); `in` and
 `out` are contextual keywords reserved only inside `<…>`
-([Lexical Structure](0002-LexicalStructure.md#keywords)).
+([Lexical Structure](0002-LexicalStructure.md#keywords)). A variant's payload is
+either named fields or a parenthesised positional type list
+([TYPE-UNION-POSITIONAL]); positional payloads are shared core, not ML sugar, so
+the Default spelling is `Node(Tree, Tree)` and never synthesized `_0`/`_1`
+fields. Positional constructors do **not** curry — `Node Leaf` is an arity
+error, a deliberate exception to curry-by-default, since
+`Expr::TypeConstructor` has no partial form — and diagnostics print them as
+`Node/2`. A positionally-declared variant is **constructed** with that same
+parenthesised, slot-ordered spelling — `Node(left, right)` — and destructured by
+the matching pattern form ([Match Expressions](#match-expressions)). It is the
+one call-shaped expression exempt from the named-argument rule for two or more
+arguments ([Function Calls](0005-FunctionCalls.md#rules)), because a positional
+payload has no field names to supply. Status: specified; not yet implemented (it
+requires the `positional` discrimination on `osprey_ast::TypeField`).
 
 ```osprey
 type Color = Red | Green | Blue
 
 type Shape = Circle    { radius: int }
            | Rectangle { width: int, height: int }
+
+type Tree = Leaf | Node(Tree, Tree)
+let tree  = Node(Node(Leaf, Leaf), Leaf)   // construction is positional too
 
 type Pair<T, U>  = Pair { first: T, second: U }
 type Feed<out T> = Feed { supply: T } | Dry
@@ -235,7 +326,10 @@ Validation, non-destructive update (`record { field: value }`), and full field-a
 ## Expressions
 
 ```ebnf
-expression          ::= logicalOrExpression
+expression          ::= ternaryExpression
+ternaryExpression   ::= logicalOrExpression "{" pattern "}" "?" expression ":" ternaryExpression
+                      | logicalOrExpression "?:" ternaryExpression
+                      | logicalOrExpression                             (* right-assoc *)
 logicalOrExpression ::= logicalAndExpression ("||" logicalAndExpression)*
 logicalAndExpression::= comparisonExpression ("&&" comparisonExpression)*
 comparisonExpression::= additiveExpression (("==" | "!=" | "<" | ">" | "<=" | ">=") additiveExpression)*
@@ -251,11 +345,39 @@ callExpression      ::= primaryExpression (
                       )*
 primaryExpression   ::= literal | ID | "(" expression ")"
                       | lambdaExpression | blockExpression | matchExpression
+lambdaExpression    ::= "|" paramList "|" "=>" expression        (* one or more params *)
+                      | "fn" "(" paramList? ")" ("->" type)? "=>" expression
 
 argumentList        ::= namedArgument ("," namedArgument)+
                       | expression ("," expression)*
 namedArgument       ::= ID ":" expression
 ```
+
+The two lambda spellings are interchangeable and lower to the same
+`Expr::Lambda`; the ML flavor writes it `\x y => e`
+([FLAVOR-ML-CURRY](0024-MLFlavorSyntax.md#functions-and-currying)). The pipe form
+takes **at least one** parameter: `||` lexes as logical-or under maximal munch
+([Lexical Structure](0002-LexicalStructure.md#operators)), so a zero-argument
+lambda is written `fn() => e`.
+
+`[PARAM-WILDCARD]` A parameter may be written `_` to declare an argument the
+body ignores. It lowers to a `Parameter` carrying a generated, unspellable
+name, so repeated `_`s never collide and none is referenceable. This is shared
+core, not ML sugar — without it ML's `\acc _ => …` has no Default twin and the
+pair breaks [FLAVOR-IR-EQUIV](0023-LanguageFlavors.md#cross-flavor-equivalence-tests).
+
+```osprey
+let total = fold(xs, 0, |acc, _| => acc + 1)
+```
+
+```osprey-ml
+total = fold xs 0 (\acc _ => acc + 1)
+```
+
+Because a `_` parameter has no name to supply at the call site, it is usable in
+a `fn` head only where the call is positional — arity one, or a lambda invoked
+by a built-in ([Function Calls](0005-FunctionCalls.md#rules)). Status:
+specified; not yet implemented.
 
 Precedence, highest to lowest:
 
@@ -265,6 +387,11 @@ Precedence, highest to lowest:
 4. Comparison `==`, `!=`, `<`, `>`, `<=`, `>=`
 5. Logical AND `&&`
 6. Logical OR `||`
+7. Ternary match `{ … } ? … : …` and Result default `?:` (right-associative)
+
+Both ternary forms bind below every operator above, so `a + b ?: 0` parses as
+`(a + b) ?: 0`. Their semantics and desugaring are in
+[Ternary Match](0007-PatternMatching.md#ternary-match-syntactic-sugar).
 
 Block expressions and their scoping are defined in [Block Expressions](0008-BlockExpressions.md). Pattern-matching for booleans (the only conditional construct) is in [Boolean Operations](0009-BooleanOperations.md).
 
@@ -335,12 +462,13 @@ matchExpr   ::= "match" expr "{" matchArm+ "}"
 matchArm    ::= pattern "=>" expr
 pattern     ::= unaryExpr                              (* literals incl. -1, +42 *)
               | ID ("{" fieldPattern "}")?             (* constructor / destructure *)
-              | ID "(" pattern ("," pattern)* ")"      (* positional constructor *)
+              | ID "(" binder ("," binder)* ")"         (* positional constructor *)
               | ID ":" type                            (* type annotation *)
               | ID ":" "{" fieldPattern "}"            (* named structural *)
               | "{" fieldPattern "}"                   (* anonymous structural *)
               | "_"                                    (* wildcard *)
 fieldPattern::= ID ("," ID)*
+binder      ::= ID | "_"
 ```
 
 ```osprey
@@ -369,7 +497,17 @@ label =
 
 Pattern semantics, exhaustiveness, and the two-arm shorthands — the ternary
 and the Default-flavor `if`/`else if`/`else` expression ([GRAMMAR-IF-ELSE]) —
-are in [Pattern Matching](0007-PatternMatching.md).
+are in [Pattern Matching](0007-PatternMatching.md). There is no grouped pattern
+`(P)` in this flavor: braces already delimit every arm, so grouping would be
+redundant. It exists only in the ML flavor, where whitespace application makes
+`check Node l r` ambiguous
+([FLAVOR-ML-PATTERN-GROUP](0024-MLFlavorSyntax.md#match)), and it erases at
+parse time, so no AST node distinguishes the flavors. A positional
+constructor pattern is legal only against a positionally-declared variant — a
+named-field variant keeps its by-name binding, which is load-bearing because
+codegen resolves each binder against the layout by name — and its arguments are
+binders or `_` only: nested constructor patterns such as `Node (Node a b) c` are
+not yet permitted. Status: specified; not yet implemented.
 
 ## Variable Binding
 

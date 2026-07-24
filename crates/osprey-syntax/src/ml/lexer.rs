@@ -401,6 +401,10 @@ fn two_char_operator(c: char, next: Option<char>) -> Option<TokKind> {
         ('&', '&') => TokKind::Op("&&".to_owned()),
         ('|', '|') => TokKind::Op("||".to_owned()),
         ('|', '>') => TokKind::Op("|>".to_owned()),
+        // Matched here, ahead of the bare `:` of a type signature, so `?:`
+        // keeps maximal munch ([PATTERN-RESULT-DEFAULT]). A lone `?` still has
+        // no ML meaning and stays a lexical error.
+        ('?', ':') => TokKind::Op(super::parser::ELVIS_OP.to_owned()),
         _ => return None,
     };
     Some(kind)
@@ -418,6 +422,9 @@ fn single_char_operator(c: char) -> Option<TokKind> {
         ']' => TokKind::RBracket,
         ',' => TokKind::Comma,
         '.' => TokKind::Dot,
+        // Reached only after `two_char_operator` has declined, so `||` and `|>`
+        // keep maximal munch ([FLAVOR-ML-UNION-INLINE]).
+        '|' => TokKind::Pipe,
         '+' | '-' | '*' | '/' | '%' | '<' | '>' | '!' => TokKind::Op(c.to_string()),
         _ => return None,
     };

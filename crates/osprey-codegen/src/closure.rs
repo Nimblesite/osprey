@@ -65,16 +65,69 @@ pub(crate) fn emit_closure(
     body: &Expr,
     sig: &FnSig,
 ) -> Result<Value> {
+    emit_closure_keyed(cg, parameters, body, sig, None)
+}
+
+/// [`emit_closure`] with an optional **emit-once key** naming a (function, ABI)
+/// pair whose lowering is identical every time — a generic function specialised
+/// into the same slot ABI at several call sites. The first use emits the body
+/// and its cell; later ones re-point at that cell, so the module carries one
+/// body per instantiation instead of one per call site. Implements
+/// [TYPE-GENERICS-FN].
+///
+/// Only a **capture-free** cell is shareable, and the caller's captures are
+/// recomputed here rather than assumed: a capturing cell snapshots the values
+/// live at *its* evaluation, so two evaluations are two different closures.
+pub(crate) fn emit_closure_keyed(
+    cg: &mut Codegen,
+    parameters: &[Parameter],
+    body: &Expr,
+    sig: &FnSig,
+    key: Option<String>,
+) -> Result<Value> {
     let caps = capture_list(cg, parameters, body);
-    let id = cg.next_lambda_id();
-    let fn_name = format!("__closure_fn_{id}");
-    let cell_ty = cell_struct_ty(&caps);
-    emit_closure_fn(cg, &fn_name, &cell_ty, &caps, parameters, body, sig)?;
-    let v = cell_value(cg, id, &fn_name, &cell_ty, &caps, sig);
+    let key = key.filter(|_| caps.is_empty());
+    let v = match key.as_deref().and_then(|k| cg.fnval_cells.get(k).cloned()) {
+        Some(cell) => Value::new(
+            cg.emit_reg(format!("bitcast {{ i8* }}* {cell} to i8*")),
+            LType::Ptr,
+        ),
+        None => emit_fresh_closure(cg, &caps, parameters, body, sig, key)?,
+    };
     // The cell is a fresh +1 producer here; a spawn's cell instead transfers
     // to the fiber runtime (fiber.rs calls `cell_value` directly).
     crate::arc::own(cg, &v);
     Ok(v)
+}
+
+/// Lower a brand-new closure body and cell, registering the cell under `key`
+/// when one was supplied so the next same-ABI use can share it.
+fn emit_fresh_closure(
+    cg: &mut Codegen,
+    caps: &[Capture],
+    parameters: &[Parameter],
+    body: &Expr,
+    sig: &FnSig,
+    key: Option<String>,
+) -> Result<Value> {
+    let id = cg.next_lambda_id();
+    let fn_name = format!("__closure_fn_{id}");
+    let cell_ty = cell_struct_ty(caps);
+    emit_closure_fn(cg, &fn_name, &cell_ty, caps, parameters, body, sig)?;
+    if let Some(k) = key {
+        let _ = cg.fnval_cells.insert(k, format!("@__closure_cell_{id}"));
+    }
+    Ok(cell_value(cg, id, &fn_name, &cell_ty, caps, sig))
+}
+
+/// The emit-once key of `target` specialised at `sig`: two uses share a body
+/// only when both the function AND the whole ABI spelling match. The `|`
+/// separator cannot occur in a function name, so a specialisation key can never
+/// collide with the bare name [`emit_forwarder`] registers for a monomorphic
+/// forwarder in the same map.
+pub(crate) fn specialisation_key(target: &str, sig: &FnSig) -> String {
+    let (ret, plist) = spelling_with_env(sig);
+    format!("{target}|{ret}({plist})")
 }
 
 /// The free identifiers of `body` (minus the lambda's own parameters) that are
@@ -129,9 +182,10 @@ fn bind_params(
     param_tys: &[LType],
 ) -> Vec<(LType, String)> {
     let mut out = Vec::with_capacity(parameters.len());
-    for (p, pty) in parameters.iter().zip(param_tys) {
-        cg.bind(p.name.clone(), Value::new(format!("%{}", p.name), *pty));
-        out.push((*pty, p.name.clone()));
+    for (i, (p, pty)) in parameters.iter().zip(param_tys).enumerate() {
+        let reg = crate::llty::param_register(i);
+        cg.bind(p.name.clone(), Value::new(format!("%{reg}"), *pty));
+        out.push((*pty, reg));
     }
     out
 }

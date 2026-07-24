@@ -139,5 +139,10 @@ keys+xs len=
 
 apple=2
 mango missing rejected
+
+bare map len g5=5 prices=3
+
+bare map empty e=true g5=false
+
 [map done]
 

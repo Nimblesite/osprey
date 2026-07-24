@@ -6,7 +6,13 @@
 - [Operators](#operators)
 - [Delimiters](#delimiters)
 
-> **Flavor layer — surface (CST).**  Lexing is a flavor-internal, below-the-AST concern: tokens are a CST artifact that never reach the shared core, which sees only the canonical `osprey_ast::Program` after lowering, so the semantics are flavor-blind at the [FLAVOR-BOUNDARY]. This chapter shows BOTH flavors: the Default (`.osp`) spelling — whose lexical grammar is owned by `crates/osprey-syntax/src/default/` — and, where the surface differs, the ML (`.ospml`) twin shown inline alongside it (`osprey-ml` blocks). The ML flavor has its OWN offside-rule layout lexer (`crates/osprey-syntax/src/ml/lexer.rs`) that derives `INDENT`/`DEDENT`/`NEWLINE` from an explicit indent stack ([FLAVOR-ML-LAYOUT] in [ML Flavor Syntax](0024-MLFlavorSyntax.md)). Lexical structure differs per flavor; both feed lowering into the one shared core. See [Language Flavors](0023-LanguageFlavors.md).
+> **Flavor layer — surface (CST).** Default lexing is owned by
+> `crates/osprey-syntax/src/default/`. The ML lexer
+> (`crates/osprey-syntax/src/ml/lexer.rs`) derives `INDENT`, `DEDENT`, and
+> `NEWLINE` from an indent stack ([FLAVOR-ML-LAYOUT] in
+> [ML Flavor Syntax](0024-MLFlavorSyntax.md)). This chapter shows both surfaces;
+> their tokens remain below the canonical AST boundary defined in
+> [Language Flavors](0023-LanguageFlavors.md).
 
 ## Identifiers
 
@@ -107,7 +113,7 @@ pair    = [x, y]
 
 ### Arithmetic Operators
 
-`+`, `-`, `*`, `/`, `%`. All arithmetic returns `Result`; full signatures and semantics are in [Error Handling](0013-ErrorHandling.md).
+`+`, `-`, `*`, `/`, `%`. Under [ARITH-PLAIN] `+`, `-`, `*` return plain scalars (`int`, or `float` with any float operand) while `/` and `%` return `Result<_, MathError>`; today all five still return `Result` (specified; not yet implemented). Full signatures and the per-operand-type table are in [Error Handling](0013-ErrorHandling.md).
 
 ### Comparison Operators
 - `==` Equality
@@ -128,8 +134,14 @@ pair    = [x, y]
 ### Other Operators
 - `->` Function return type
 - `=>` Lambda body and match arm
-- `|` Union type separator
+- `|` Union variant separator — a declaration separator only, never an infix
+  expression operator
 - `|>` Pipe
+- `?:` Result default — `e ?: d` yields `e`'s `Success` payload, else `d`
+  ([Ternary Match](0007-PatternMatching.md#ternary-match-syntactic-sugar));
+  the ML lexer does not yet accept it (specified, not yet implemented)
+- `?` `:` Structural ternary match, as `expr { pattern } ? expr : expr`
+  ([Ternary Match](0007-PatternMatching.md#ternary-match-syntactic-sugar))
 - `!` Effect-set marker on a function type
 
 ## Delimiters

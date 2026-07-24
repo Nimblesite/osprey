@@ -1,0 +1,14 @@
+// ML-flavor twin of binarytrees.osp — allocate + traverse many short-lived
+// binary trees (allocation/memory stress). The inline union, equational
+// clauses, grouped patterns and plain `+ -` all lower to the same canonical AST
+// as the Default flavor's braces ([FLAVOR-IR-EQUIV]).
+
+type Tree = Leaf | Node Tree Tree
+
+make 0 = Node Leaf Leaf
+make d = Node (make (d - 1)) (make (d - 1))
+
+check Leaf = 0
+check (Node l r) = 1 + check l + check r
+
+print "${range 0 1200 |> fold 0 (\(acc, _) => acc + check (make 13))}"

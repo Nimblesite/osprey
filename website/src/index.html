@@ -2,6 +2,9 @@
 layout: layouts/base.njk
 title: "Functional Language, Two Flavors, One Core"
 description: "Osprey is one functional language fronted by two first-class syntaxes: an accessible brace-style Default flavor that reads like Kotlin, Swift, or Go, and an uncompromising offside-rule ML flavor for FP devotees. One type checker, one effect system, one runtime."
+# Read from git history, not the filesystem: a fresh CI checkout gives every
+# file a birthtime of "now", which would put a fake date in the sitemap.
+date: "git Last Modified"
 ---
 
 <section class="hero">

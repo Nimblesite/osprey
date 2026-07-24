@@ -1,0 +1,2 @@
+examples/failscompilation/ml_match_arm_thin_arrow.ospo:12:10: expected '=>' in match arm
+examples/failscompilation/ml_match_arm_thin_arrow.ospo:12:10: unexpected token Arrow in expression

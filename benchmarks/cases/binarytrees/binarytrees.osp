@@ -1,17 +1,13 @@
 // Allocate + traverse many short-lived binary trees — allocation/memory stress.
-type Tree = Leaf | Node { left: Tree, right: Tree }
+type Tree = Leaf | Node(Tree, Tree)
 
-fn add(a: int, b: int) -> int = a + b
-fn sub(a: int, b: int) -> int = a - b
-
-fn make(d: int) -> Tree = match d {
-    0 => Node { left: Leaf, right: Leaf }
-    _ => Node { left: make(sub(d, 1)), right: make(sub(d, 1)) }
+fn make(d) = match d {
+    0 => Node(Leaf, Leaf)
+    _ => Node(make(d - 1), make(d - 1))
 }
-fn check(t: Tree) -> int = match t {
-    Leaf => 0
-    Node { left, right } => add(1, add(check(left), check(right)))
+fn check(t) = match t {
+    Leaf       => 0
+    Node(l, r) => 1 + check(l) + check(r)
 }
-fn build(acc: int, i: int) -> int = add(acc, check(make(13)))
 
-print("${range(0, 1200) |> fold(0, build)}")
+print("${range(0, 1200) |> fold(0, |acc, _| => acc + check(make(13)))}")

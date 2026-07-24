@@ -10,7 +10,11 @@
  * Vanilla-C suite for list_runtime.c — the immutable bitmapped vector trie
  * behind List<T>. assert()-driven: any failure aborts with a non-zero exit.
  *
- * Covers [TYPE-LIST], [TYPE-LIST-OPS] and the container node/element
+ * Covers the runtime half of the list builtins [BUILTIN-LIST],
+ * [BUILTIN-LIST-GET], [BUILTIN-LIST-APPEND], [BUILTIN-LIST-PREPEND],
+ * [BUILTIN-LIST-CONCAT], [BUILTIN-LIST-REVERSE], [BUILTIN-COLLECTION-LENGTH]
+ * (docs/specs/0012-Built-InFunctions.md), plus
+ * [TYPE-LIST], [TYPE-LIST-OPS] and the container node/element
  * refcounting of [MEM-BACKENDS] / [MEM-BACKENDS-ELEMENTS]
  * (docs/specs/0018-MemoryManagement.md):
  *   - persistence: every source is re-verified in full after every derived op

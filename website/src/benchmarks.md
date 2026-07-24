@@ -2,7 +2,7 @@
 layout: page.njk
 title: Benchmarks
 description: How Osprey's CPU time and peak memory compare to Rust, C, OCaml, and Haskell on classic compute benchmarks.
-date: 2026-06-27
+date: "git Last Modified"
 tags: ["benchmarks", "performance"]
 author: "Christian Findlay"
 ---
@@ -56,10 +56,17 @@ compiled to a native binary, checked for correct output, then timed.
   every language — no memoization, closed forms, SIMD, or parallelism. We measure
   the language/compiler/runtime, not who is cleverest. Ranges match Osprey's
   half-open `range(a, b)` = `[a, b)` exactly.
-- **Osprey does checked arithmetic** on every `+ - * %` (each returns
-  `Result<int, MathError>`, overflow-checked). The others do not by default — we
-  even pass `-C overflow-checks=off` to Rust to match its release profile. Part of
-  any Osprey gap is the cost of that safety, a real language semantic.
+- **Osprey wraps every `+ - * %` in a `Result`,** and that wrapper — not a safety
+  check — is a real part of any Osprey gap. Each operation emits its `add i64`
+  and then heap-allocates a `{ payload, discriminant, errmsg }` struct which the
+  consumer immediately unwraps. No overflow check is performed today: `MAX + 1`
+  wraps silently and `10 % 0` is undefined. So the cost is allocation overhead
+  for a guarantee that is not yet enforced, and comparing it against Rust's
+  `-C overflow-checks=off` is not a safety-versus-speed trade. [ARITH-PLAIN]
+  ([plan 0019](https://github.com/Nimblesite/osprey/blob/main/docs/plans/0019-ml-elegance.md))
+  removes the wrapper from `+ - *` and makes the overflow guarantee real and
+  opt-in via `checkedAdd`/`checkedSub`/`checkedMul`; these numbers should be
+  re-measured after it lands.
 - **Osprey loops via `range |> fold`,** not deep linear recursion, because it has
   no tail-call optimization yet (a 1e6-deep recursion overflows the stack). The
   work is identical; only the iteration mechanism differs.

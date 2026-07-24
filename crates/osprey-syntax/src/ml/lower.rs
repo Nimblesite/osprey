@@ -35,7 +35,7 @@ use osprey_ast::{
     TypeVariant, Variance,
 };
 use std::cell::RefCell;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 thread_local! {
     /// Names BOUND (as a function or value) in the program currently being
@@ -58,6 +58,9 @@ pub(crate) fn lower(items: Vec<MlItem>) -> Program {
         set.clear();
         collect_bound_names(&items, &mut set);
     });
+    let mut ctors = HashMap::new();
+    collect_positional_ctors(&items, &mut ctors);
+    crate::positional::install(ctors.into_iter());
     Program {
         statements: lower_items(items),
     }
@@ -85,6 +88,45 @@ fn collect_bound_names(items: &[MlItem], out: &mut HashSet<String>) {
             _ => {}
         }
     }
+}
+
+/// Record every constructor this unit declares with a positional payload, and
+/// how many slots it takes ([TYPE-UNION-POSITIONAL]). Recurses into the
+/// declaration containers so a module-local type is seen too.
+fn collect_positional_ctors(items: &[MlItem], out: &mut HashMap<String, usize>) {
+    for item in items {
+        match item {
+            MlItem::Type { variants, .. } => {
+                for variant in variants {
+                    if crate::positional::declares_slots(
+                        variant.fields.iter().map(|f| f.name.as_str()),
+                    ) {
+                        let _ = out.insert(variant.name.clone(), variant.fields.len());
+                    }
+                }
+            }
+            MlItem::Namespace {
+                body: Some(body), ..
+            }
+            | MlItem::Module { body, .. } => collect_positional_ctors(body, out),
+            MlItem::Export { item, .. } | MlItem::Opaque { item, .. } => {
+                collect_positional_ctors(std::slice::from_ref(item.as_ref()), out);
+            }
+            _ => {}
+        }
+    }
+}
+
+/// A saturated whitespace application of a positionally-declared constructor,
+/// folded to the construction node ([TYPE-UNION-POSITIONAL]).
+fn positional_construction(head: &MlExpr, args: &[MlExpr]) -> Option<Expr> {
+    let MlExpr::Ident(name) = head else {
+        return None;
+    };
+    crate::positional::construct(
+        name,
+        args.iter().cloned().map(lower_expr).collect::<Vec<_>>(),
+    )
 }
 
 /// Walk an expression for nested binding names (a block's items, and the bodies
@@ -678,17 +720,7 @@ fn build_function_flat(
     let parameters = params
         .into_iter()
         .enumerate()
-        .filter_map(|(i, p)| match p {
-            MlParam::Named(name) => Some(Parameter {
-                name,
-                ty: spine.get(i).and_then(type_expr),
-            }),
-            MlParam::Typed(name, ty) => Some(Parameter {
-                name,
-                ty: type_expr(&ty),
-            }),
-            MlParam::Unit => None,
-        })
+        .filter_map(|(i, p)| lower_param(p, i, spine.get(i)))
         .collect();
     (
         parameters,
@@ -769,18 +801,11 @@ fn build_function(
     let spine = sig.map(arrow_spine).unwrap_or_default();
     let mut rest = params.into_iter();
     let first = rest.next();
-    let parameters = match first {
-        Some(MlParam::Named(name)) => vec![Parameter {
-            name,
-            ty: spine.first().and_then(type_expr),
-        }],
-        Some(MlParam::Typed(name, ty)) => vec![Parameter {
-            name,
-            ty: type_expr(&ty),
-        }],
-        // `()` (unit marker) or no parameter binds nothing.
-        _ => Vec::new(),
-    };
+    // `()` (unit marker) or no parameter binds nothing.
+    let parameters = first
+        .and_then(|p| lower_param(p, 0, spine.first()))
+        .into_iter()
+        .collect();
     let tail_spine = spine.get(1..).unwrap_or(&[]);
     let body = curry_params(rest.collect(), body, tail_spine, pos);
     (parameters, body, arrow_of(tail_spine))
@@ -796,7 +821,7 @@ fn curry_params(params: Vec<MlParam>, body: Expr, spine: &[MlType], pos: Positio
     let mut acc = body;
     for (i, param) in params.into_iter().enumerate().rev() {
         acc = Expr::Lambda {
-            parameters: curry_parameter(param, spine.get(i)),
+            parameters: curry_parameter(param, i, spine.get(i)),
             return_type: arrow_of(spine.get(i + 1..).unwrap_or(&[])),
             body: Box::new(acc),
             position: Some(curry_position(pos, i)),
@@ -805,18 +830,34 @@ fn curry_params(params: Vec<MlParam>, body: Expr, spine: &[MlType], pos: Positio
     acc
 }
 
-fn curry_parameter(param: MlParam, inferred: Option<&MlType>) -> Vec<Parameter> {
-    match param {
-        MlParam::Named(name) => vec![Parameter {
-            name,
-            ty: inferred.and_then(type_expr),
-        }],
-        MlParam::Typed(name, ty) => vec![Parameter {
-            name,
-            ty: type_expr(&ty),
-        }],
-        MlParam::Unit => Vec::new(),
-    }
+fn curry_parameter(param: MlParam, index: usize, inferred: Option<&MlType>) -> Vec<Parameter> {
+    lower_param(param, index, inferred).into_iter().collect()
+}
+
+/// The surface spelling of an ignored parameter ([PARAM-WILDCARD]).
+const WILDCARD: &str = "_";
+
+/// One surface parameter as a canonical [`Parameter`], or `None` for the unit
+/// marker `()`, which binds nothing. `_` takes the generated ignored-parameter
+/// name for its slot ([PARAM-WILDCARD]) so repeated `_`s in one head cannot
+/// collide and none of them is referenceable from the body. This is the single
+/// definition of the mapping; every head form routes through it.
+fn lower_param(param: MlParam, index: usize, inferred: Option<&MlType>) -> Option<Parameter> {
+    let (name, ty) = match param {
+        MlParam::Named(name) => (name, inferred.and_then(type_expr)),
+        MlParam::Typed(name, ty) => (name, type_expr(&ty)),
+        MlParam::Unit => return None,
+        // [`super::clauses::merge`] rewrites every clause set before lowering,
+        // so a surviving head pattern is one the merge already diagnosed;
+        // bind it to an unreferenceable name and let that error stand.
+        MlParam::Pattern(_) => (osprey_ast::clause_param_name(index), None),
+    };
+    let name = if name == WILDCARD {
+        osprey_ast::wildcard_param_name(index)
+    } else {
+        name
+    };
+    Some(Parameter { name, ty })
 }
 
 /// Give every synthesized curry lambda its own `ProgramTypes::lambdas` key;
@@ -839,14 +880,8 @@ fn curry_position(pos: Position, index: usize) -> Position {
 fn flat_params(params: Vec<MlParam>) -> Vec<Parameter> {
     params
         .into_iter()
-        .filter_map(|p| match p {
-            MlParam::Named(name) => Some(Parameter { name, ty: None }),
-            MlParam::Typed(name, ty) => Some(Parameter {
-                name,
-                ty: type_expr(&ty),
-            }),
-            MlParam::Unit => None,
-        })
+        .enumerate()
+        .filter_map(|(i, p)| lower_param(p, i, None))
         .collect()
 }
 
@@ -952,10 +987,14 @@ fn lower_expr(expr: MlExpr) -> Expr {
         // `func (a, b, …)` — the uncurried saturated call lowers to one flat
         // multi-argument `Call`, byte-identical to the Default `func(a, b, …)`
         // ([FLAVOR-ML-CALL]).
-        MlExpr::AppMulti { func, args } => call(
-            lower_expr(*func),
-            args.into_iter().map(lower_expr).collect(),
-        ),
+        MlExpr::AppMulti { func, args } => {
+            positional_construction(&func, &args).unwrap_or_else(|| {
+                call(
+                    lower_expr(*func),
+                    args.into_iter().map(lower_expr).collect(),
+                )
+            })
+        }
         MlExpr::UnitApp { func } => call(lower_expr(*func), Vec::new()),
         MlExpr::List(items) => Expr::List(items.into_iter().map(lower_expr).collect()),
         MlExpr::Map(entries) => Expr::Map(entries.into_iter().map(lower_map_entry).collect()),
@@ -1067,6 +1106,9 @@ fn lower_binary(op: &str, left: MlExpr, right: MlExpr) -> Expr {
     if op == "|>" {
         return pipe_into(left, right);
     }
+    if op == super::parser::ELVIS_OP {
+        return result_default(left, right);
+    }
     Expr::Binary {
         op: op.to_owned(),
         left: Box::new(left),
@@ -1083,6 +1125,27 @@ fn lower_block(items: Vec<MlItem>, value: Option<Box<MlExpr>>) -> Expr {
     match (statements.is_empty(), value) {
         (true, Some(value)) => *value,
         (_, value) => Expr::Block { statements, value },
+    }
+}
+
+/// `e ?: d` — the Result default ([PATTERN-RESULT-DEFAULT]). Emits the shape
+/// the Default flavor's `lower_ternary` emits: the scrutinee reused as the
+/// `then` branch of a two-arm `Expr::Match` over boolean literal patterns. A
+/// `Success`/`Wildcard` pair would be a different node and would break
+/// [FLAVOR-IR-EQUIV] against the Default twin.
+fn result_default(scrutinee: Expr, fallback: Expr) -> Expr {
+    Expr::Match {
+        value: Box::new(scrutinee.clone()),
+        arms: vec![
+            MatchArm {
+                pattern: Pattern::Literal(Box::new(Expr::Bool(true))),
+                body: scrutinee,
+            },
+            MatchArm {
+                pattern: Pattern::Literal(Box::new(Expr::Bool(false))),
+                body: fallback,
+            },
+        ],
     }
 }
 
@@ -1175,6 +1238,9 @@ fn lower_application(func: MlExpr, arg: MlExpr) -> Expr {
         head = *func;
     }
     args.reverse();
+    if let Some(built) = positional_construction(&head, &args) {
+        return built;
+    }
     let curried = match &head {
         MlExpr::Ident(name) => BOUND_NAMES.with(|s| s.borrow().contains(name)),
         // Qualified and higher-order callables preserve ML's curry-by-default

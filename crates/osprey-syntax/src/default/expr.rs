@@ -242,6 +242,17 @@ impl Lowerer<'_> {
                     named_arguments,
                 }
             }
+            // A saturated call of a positionally-declared constructor is a
+            // construction, not a call ([TYPE-UNION-POSITIONAL]) — the one
+            // call-shaped expression exempt from the named-argument rule,
+            // because a positional payload has no field names to supply.
+            Expr::Identifier(name) if named_arguments.is_empty() => {
+                crate::positional::construct(&name, arguments.clone()).unwrap_or(Expr::Call {
+                    function: Box::new(Expr::Identifier(name)),
+                    arguments,
+                    named_arguments,
+                })
+            }
             other => Expr::Call {
                 function: Box::new(other),
                 arguments,

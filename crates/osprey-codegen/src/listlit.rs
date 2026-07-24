@@ -4,6 +4,10 @@
 //! `OspreyList` handle (the two share only their leading `i64 length`, which is
 //! why `listLength` reads both). Index access bounds-checks and returns a
 //! `Result<T, IndexError>`.
+//!
+//! Implements the indexing spellings of [BUILTIN-LIST-GET] (`list[index]`, the
+//! `get(list, index)` equivalent) and [BUILTIN-MAP-GET] (`map[key]`, which
+//! delegates to the map runtime) — docs/specs/0012-Built-InFunctions.md.
 
 use crate::builder::Codegen;
 use crate::cast::coerce_to;

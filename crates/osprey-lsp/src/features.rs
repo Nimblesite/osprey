@@ -12,8 +12,19 @@ use osprey_ast::Program;
 use crate::analysis::{
     builtin_hover, collect_all_symbols, collect_symbols, SymbolInfo, SymbolKind,
 };
+use crate::keywords::keyword_items;
+use crate::mlrender;
 use crate::model::{CompletionItem, CompletionKind, Location, SignatureInfo, Span};
 use crate::text::{occurrences, path_at, prefix_to, Occurrence};
+use osprey_syntax::Flavor;
+
+/// The flavor a document is authored in, by the full [FLAVOR-SELECT] precedence
+/// (marker > extension > Default) — the same chain the CLI and the diagnostics
+/// bus use, so one file is never read two ways. A conflict is reported as a
+/// diagnostic, so the features here fall back rather than refusing to answer.
+fn flavor_of(path: &str, text: &str) -> Flavor {
+    osprey_syntax::resolve_flavor(None, path, text).unwrap_or(Flavor::Default)
+}
 
 /// Hover markdown for the identifier at `(line, character)`: the symbol's
 /// signature, or `name: type` for a binding — inferring an unannotated `let`'s
@@ -29,20 +40,28 @@ pub fn hover(
     enc: PositionEncoding,
 ) -> Option<String> {
     let word = word_under(text, line, character, enc)?;
-    let parsed = osprey_syntax::parse_program_for_path(path, text);
+    let flavor = flavor_of(path, text);
+    let parsed = osprey_syntax::parse_program_with_flavor(text, flavor);
     let symbols = collect_all_symbols(&parsed.program);
     // A `[Symbol]` intra-doc link under the cursor resolves to the referenced
     // element's own hover — the whole dotted target (`Effect.op`), not just the
     // sub-word the cursor happens to sit on ([DOC-LINK]).
     if let Some(target) = doc_link_target(text, line, character) {
-        if let Some(hov) = resolve_link(&symbols, &target, &parsed.program) {
+        if let Some(hov) = resolve_link(&symbols, &target, &parsed.program, flavor) {
             return Some(hov);
         }
     }
     match best_match(&symbols, &word, line) {
-        Some(sym) => Some(symbol_hover(sym, &parsed.program)),
-        None => builtin_hover(word.rsplit("::").next().unwrap_or(&word)),
+        Some(sym) => Some(symbol_hover(sym, &parsed.program, flavor)),
+        None => builtin_doc(word.rsplit("::").next().unwrap_or(&word), flavor),
     }
+}
+
+/// A built-in's reference hover, re-fenced and respelled for `flavor`. The docs
+/// themselves live once in `osprey_types` and stay flavor-blind — one reference,
+/// two presentations. Implements [LSP-FLAVOR-RENDER].
+fn builtin_doc(name: &str, flavor: Flavor) -> Option<String> {
+    builtin_hover(name).map(|md| mlrender::hover_markdown(flavor, &md))
 }
 
 /// The `[Symbol]` link the cursor sits inside on `line`, if any: the bracketed
@@ -72,7 +91,12 @@ fn doc_link_target(text: &str, line: u32, character: u32) -> Option<String> {
 /// Resolve a `[Symbol]` link target to its hover: a bare name resolves to its
 /// declaration or a builtin; a dotted `Effect.op` / `Type.variant` resolves to
 /// the owner declaration's hover. Implements [DOC-LINK].
-fn resolve_link(symbols: &[SymbolInfo], target: &str, program: &Program) -> Option<String> {
+fn resolve_link(
+    symbols: &[SymbolInfo],
+    target: &str,
+    program: &Program,
+    flavor: Flavor,
+) -> Option<String> {
     let head = target
         .split(['.', ':'])
         .find(|segment| !segment.is_empty())
@@ -80,8 +104,8 @@ fn resolve_link(symbols: &[SymbolInfo], target: &str, program: &Program) -> Opti
     symbols
         .iter()
         .find(|symbol| symbol_matches(symbol, head))
-        .map(|s| symbol_hover(s, program))
-        .or_else(|| builtin_hover(head))
+        .map(|s| symbol_hover(s, program, flavor))
+        .or_else(|| builtin_doc(head, flavor))
 }
 
 /// The declaration of `word` in scope at `line` (0-based): the binding declared
@@ -107,7 +131,10 @@ fn symbol_matches(symbol: &SymbolInfo, query: &str) -> bool {
 }
 
 /// Render `s` as hover markdown: a code-fenced signature/type, then its docs.
-fn symbol_hover(s: &SymbolInfo, program: &Program) -> String {
+/// Both the fence language and the signature are re-spelled in the document's
+/// **authoring** flavor ([`mlrender`]) — an ML author never wrote `fn f(x: int)`
+/// and should not be shown it. Implements [LSP-FLAVOR-RENDER], [FLAVOR-ML-FN].
+fn symbol_hover(s: &SymbolInfo, program: &Program, flavor: Flavor) -> String {
     let code = match (s.kind, &s.signature) {
         (_, Some(sig)) => sig.clone(),
         (SymbolKind::Namespace | SymbolKind::Module | SymbolKind::Signature, None) => {
@@ -115,7 +142,8 @@ fn symbol_hover(s: &SymbolInfo, program: &Program) -> String {
         }
         (_, None) => format!("{}: {}", s.name, displayed_type(s, program)),
     };
-    let mut out = format!("```osprey\n{code}\n```");
+    let code = mlrender::signature(flavor, &code);
+    let mut out = format!("```{}\n{code}\n```", mlrender::fence(flavor));
     if let Some(doc) = &s.doc {
         out.push_str("\n\n");
         out.push_str(doc);
@@ -203,26 +231,34 @@ pub fn signature_help(
 ) -> Option<SignatureInfo> {
     let line_str = nth_line(text, line)?;
     let (name, active) = enclosing_call(prefix_to(line_str, character, enc))?;
-    let parsed = osprey_syntax::parse_program_for_path(path, text);
+    let flavor = flavor_of(path, text);
+    let parsed = osprey_syntax::parse_program_with_flavor(text, flavor);
     let sym = collect_symbols(&parsed.program)
         .into_iter()
         .find(|s| symbol_matches(s, &name) && s.kind == SymbolKind::Function)?;
     let params: Vec<String> = sym.parameters.iter().map(param_label).collect();
     let last = u32::try_from(params.len().saturating_sub(1)).unwrap_or(0);
     Some(SignatureInfo {
-        label: sym.signature.unwrap_or(sym.name),
+        label: mlrender::signature(flavor, &sym.signature.unwrap_or(sym.name)),
         parameters: params,
         active_parameter: active.min(last),
     })
 }
 
-/// Completion items: keywords plus the document's own declarations.
+/// Completion items: keywords plus the document's own declarations, every one
+/// spelled in the document's authoring flavor — a snippet the ML frontend
+/// rejects is worse than no snippet. Implements [LSP-FLAVOR-RENDER].
 #[must_use]
 pub fn completion(text: &str, path: &str) -> Vec<CompletionItem> {
-    let parsed = osprey_syntax::parse_program_for_path(path, text);
-    keyword_items(path)
+    let flavor = flavor_of(path, text);
+    let parsed = osprey_syntax::parse_program_with_flavor(text, flavor);
+    keyword_items(flavor)
         .into_iter()
-        .chain(collect_symbols(&parsed.program).iter().map(symbol_item))
+        .chain(
+            collect_symbols(&parsed.program)
+                .iter()
+                .map(|s| symbol_item(s, flavor)),
+        )
         .collect()
 }
 
@@ -285,7 +321,7 @@ fn param_label((name, ty): &(String, String)) -> String {
     }
 }
 
-fn symbol_item(s: &SymbolInfo) -> CompletionItem {
+fn symbol_item(s: &SymbolInfo, flavor: Flavor) -> CompletionItem {
     let kind = match s.kind {
         SymbolKind::Function => CompletionKind::Function,
         SymbolKind::Variable => CompletionKind::Variable,
@@ -296,120 +332,9 @@ fn symbol_item(s: &SymbolInfo) -> CompletionItem {
     CompletionItem {
         label: s.name.clone(),
         kind,
-        detail: Some(s.ty.clone()),
+        detail: Some(mlrender::signature(flavor, &s.ty)),
         insert_text: None,
     }
-}
-
-/// The fixed keyword/snippet completions (superset of the old TS server's six).
-fn keyword_items(path: &str) -> Vec<CompletionItem> {
-    const BASE: [(&str, &str, &str); 7] = [
-        (
-            "if",
-            "Conditional expression [GRAMMAR-IF-ELSE]",
-            "if ${1:condition} { ${2:then} } else { ${3:else} }",
-        ),
-        (
-            "fn",
-            "Function declaration",
-            "fn ${1:name}(${2:params}) = ${3:body}",
-        ),
-        ("let", "Variable declaration", "let ${1:name} = ${2:value}"),
-        (
-            "mut",
-            "Mutable variable declaration",
-            "mut ${1:name} = ${2:value}",
-        ),
-        (
-            "match",
-            "Pattern matching",
-            "match ${1:expr} {\n\t${2:pattern} => ${3:result}\n}",
-        ),
-        (
-            "type",
-            "Type declaration",
-            "type ${1:Name} = ${2:Variant} | ${3:Variant}",
-        ),
-        (
-            "effect",
-            "Effect declaration",
-            "effect ${1:Name} {\n\t${2:op}: ${3:fn() -> Unit}\n}",
-        ),
-    ];
-    let ml = std::path::Path::new(path)
-        .extension()
-        .is_some_and(|extension| extension.eq_ignore_ascii_case("ospml"));
-    let modules = module_keyword_specs(ml);
-    BASE.iter()
-        .chain(modules.iter())
-        .map(|(label, detail, snippet)| CompletionItem {
-            label: (*label).to_owned(),
-            kind: CompletionKind::Keyword,
-            detail: Some((*detail).to_owned()),
-            insert_text: Some((*snippet).to_owned()),
-        })
-        .collect()
-}
-
-fn module_keyword_specs(ml: bool) -> [(&'static str, &'static str, &'static str); 8] {
-    [
-        (
-            "namespace",
-            "Logical namespace [MODULES-NAMESPACE]",
-            if ml {
-                "namespace ${1:name}"
-            } else {
-                "namespace ${1:name};"
-            },
-        ),
-        (
-            "import",
-            "Namespace/module import [MODULES-IMPORT]",
-            "import ${1:namespace}::${2:Module}",
-        ),
-        (
-            "module",
-            "Closed module boundary [MODULES-MODULE]",
-            if ml {
-                "module ${1:Name}\n\t${0}"
-            } else {
-                "module ${1:Name} {\n\t${0}\n}"
-            },
-        ),
-        (
-            "signature",
-            "Explicit module interface [MODULES-SIGNATURE]",
-            if ml {
-                "signature ${1:Name}\n\t${0}"
-            } else {
-                "signature ${1:Name} {\n\t${0}\n}"
-            },
-        ),
-        (
-            "export",
-            "Export a module declaration [MODULES-EXPORTS]",
-            if ml {
-                "export ${1:name} = ${2:value}"
-            } else {
-                "export fn ${1:name}(${2:params}) = ${3:body}"
-            },
-        ),
-        (
-            "state",
-            "Durable state owner [MODULES-STATE-MODULE]",
-            if ml {
-                "state ${1:Name}\n\t${0}"
-            } else {
-                "state module ${1:Name} {\n\t${0}\n}"
-            },
-        ),
-        (
-            "opaque",
-            "Opaque exported type [MODULES-OPAQUE-TYPES]",
-            "opaque type ${1:Name}",
-        ),
-        ("as", "Import alias [MODULES-IMPORT]", "as ${1:Alias}"),
-    ]
 }
 
 /// Parse `before` (the line text up to the cursor) and return the name of the
@@ -528,6 +453,56 @@ mod tests {
         assert!(items
             .iter()
             .any(|i| i.label == "add" && i.kind == CompletionKind::Function));
+    }
+
+    #[test]
+    fn an_ml_document_is_answered_in_the_ml_flavor_end_to_end() {
+        // [FLAVOR-BOUNDARY] erases the authoring surface at the AST, so every
+        // editor answer used to come back in Default spelling: an ML author
+        // hovering `inc` read `fn inc(x: int) -> int` — syntax their frontend
+        // rejects — inside an `osprey`-fenced block the ML TextMate grammar
+        // does not highlight. Re-apply the flavor at the presentation edge.
+        let ml = "inc : int -> int\ninc x = x + 1\n";
+        let hov = hover(ml, "file:///tour.ospml", 1, 0, U16).expect("hover");
+        assert!(hov.contains("```osprey-ml"), "{hov}");
+        assert!(hov.contains("inc : int -> int"), "{hov}");
+        assert!(!hov.contains("fn inc("), "{hov}");
+        // The identical program under a `.osp` path keeps the Default spelling,
+        // proving the flavor — not the content — drives the rendering.
+        let default_src = "fn inc(x: int) -> int = x + 1\n";
+        let plain = hover(default_src, "file:///a.osp", 0, 3, U16).expect("hover");
+        assert!(plain.contains("```osprey\n"), "{plain}");
+        assert!(plain.contains("fn inc(x: int) -> int"), "{plain}");
+    }
+
+    #[test]
+    fn ml_completions_never_offer_a_keyword_the_ml_frontend_does_not_have() {
+        // `fn`, `let` and `if` are absent from `ml::token::keyword_or_ident`:
+        // ML defines by bare clause and branches with `match` on true/false.
+        // Completing them inserts plain identifiers and a guaranteed parse
+        // error, and every brace snippet is rejected outright by the layout
+        // parser. A `.ospml` document must be offered ML spellings only.
+        let items = completion("inc x = x + 1\n", "file:///tour.ospml");
+        let labelled = |name: &str| items.iter().find(|i| i.label == name);
+        for absent in ["fn", "let", "if"] {
+            assert!(labelled(absent).is_none(), "ML has no `{absent}` keyword");
+        }
+        // The kept keywords must expand to LAYOUT, never braces. `${1:expr}` is
+        // a snippet placeholder, so the tell is the Default block spelling
+        // (` {` opening a body, ` | ` separating inline variants), not `{`.
+        for (name, forbidden) in [("match", " {\n"), ("type", " | "), ("effect", " {\n")] {
+            let snippet = labelled(name)
+                .and_then(|i| i.insert_text.clone())
+                .unwrap_or_else(|| panic!("ML keeps `{name}`"));
+            assert!(!snippet.contains(forbidden), "{name}: {snippet}");
+        }
+        // A marker still outranks the extension here, exactly as it does for
+        // the CLI and diagnostics — flavor resolution is one chain, not three.
+        let marked = completion("// osprey: flavor=ml\ninc x = x + 1\n", "file:///a.txt");
+        assert!(
+            marked.iter().all(|i| i.label != "fn"),
+            "marker outranks ext"
+        );
     }
 
     #[test]

@@ -15,6 +15,7 @@ use osprey_ast::{Position, Program};
 mod default;
 mod docparse;
 mod ml;
+mod positional;
 mod strings;
 
 pub use default::{parse_tree, Lowerer};

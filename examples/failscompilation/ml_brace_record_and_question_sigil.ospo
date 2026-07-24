@@ -1,0 +1,16 @@
+// osprey: flavor=ml
+// ML-flavor must-reject. Pins [FLAVOR-BOUNDARY] (docs/specs/0023) via
+// [FLAVOR-ML-RECORD] and the `?` note in the status section of docs/specs/0024.
+//
+// A flavor is a whole surface, not a dialect you may mix: Default-flavor
+// spellings are not silently accepted by the ML frontend. Two of them appear
+// here — the brace record literal `{ x = 1 }` (ML builds records from the
+// declaration form, not braces) and the `?` sigil of the Default Result-default
+// operator `e ?: d`, which has no ML spelling today and which the ML lexer
+// rejects outright. Neither `{` nor `?` is an ML lexeme at all.
+
+point = { x = 1, y = 2 }
+
+safe v = v ?: 0
+
+print "unreachable"

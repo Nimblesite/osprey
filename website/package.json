@@ -4,10 +4,12 @@
   "description": "Official website for the Osprey Programming Language",
   "main": "index.js",
   "scripts": {
-    "start": "npm run update-playground && npm run copy-spec && npm run generate-docs && eleventy --serve",
-    "dev": "npm run update-playground && npm run copy-spec && npm run generate-docs && eleventy --serve --watch",
-    "build": "npm run update-playground && npm run copy-spec && npm run generate-docs && eleventy",
+    "prepare-site": "npm run update-playground && npm run copy-spec && npm run copy-mermaid && npm run generate-docs",
+    "start": "npm run prepare-site && eleventy --serve",
+    "dev": "npm run prepare-site && eleventy --serve --watch",
+    "build": "npm run prepare-site && eleventy",
     "copy-spec": "node scripts/copy-spec.js",
+    "copy-mermaid": "node scripts/copy-mermaid.js",
     "generate-docs": "bash scripts/generate-docs.sh && npm run add-ml-twins",
     "add-ml-twins": "python3 scripts/add-ml-twins.py",
     "update-playground": "node scripts/update-playground.js",
@@ -32,7 +34,9 @@
     "@playwright/test": "^1.61.0",
     "luxon": "^3.6.1",
     "markdown-it": "^14.1.0",
-    "markdown-it-anchor": "^9.2.0"
+    "markdown-it-anchor": "^9.2.0",
+    "mermaid": "^11.16.0",
+    "typediagram-core": "^0.13.0"
   },
   "dependencies": {
     "eleventy-plugin-techdoc": "^0.2.0"

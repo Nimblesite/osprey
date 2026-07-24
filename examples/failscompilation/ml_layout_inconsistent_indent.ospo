@@ -1,0 +1,18 @@
+// osprey: flavor=ml
+// ML-flavor must-reject. Pins [FLAVOR-ML-LAYOUT] (docs/specs/0024).
+//
+// The offside rule admits exactly three transitions per logical line: deeper
+// than the top of the indent stack (open a block), equal to it (a separator),
+// or back down to a column already on the stack (close blocks). The third arm
+// below lands at column 6 — shallower than the arms at column 8, so it dedents,
+// but deeper than the enclosing `match` at column 4, so it matches no column
+// left on the stack after that dedent — it belongs to no enclosing block and the
+// layout lexer must reject it.
+
+classify n =
+    match n
+        0 => "zero"
+        1 => "one"
+      _ => "many"
+
+print (classify 0)

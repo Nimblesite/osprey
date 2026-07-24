@@ -3,7 +3,6 @@ layout: page.njk
 title: "Osprey Flavors: One Core, Two Flavors, Zero Compromise"
 excerpt: "Braces or layout — pick your tribe and go all in. The ML flavor isn't braces-optional and the Default flavor isn't deprecated. It's the same language underneath."
 description: "Compare Osprey’s brace-style and ML-style flavors, how both lower to one canonical AST, and which shared compiler features and limitations apply today."
-date: 2026-06-30
 modified: 2026-07-23
 tags: ["blog", "language-design", "flavors", "functional-programming", "ml-syntax"]
 author: "Christian Findlay"

@@ -8,10 +8,12 @@ counterparts (including effects, `handle … in`, and `resume`); cross-flavor
 AST- and IR-equivalence tests pass
 (`crates/osprey-cli/tests/cross_flavor_{equiv,ir_equiv}.rs`); the VSIX ships
 full ML support (`osprey-ml` language, TextMate grammar, layout config,
-snippets); and specs 0023/0024 mirror to the website. **Three items remain:**
-first-class handler *values* (Phase 0 — `handler E {}` / `handle a b do body`
-still error as reserved words), ML must-reject cases, and the optional
-`osprey convert` transliterator. See
+snippets); specs 0023/0024 mirror to the website; **five ML must-reject
+fixtures** golden-guard the frontend's rejection paths; and the **LSP now
+answers in the authoring flavor** (`[LSP-FLAVOR-RENDER]`, spec 0020) with one
+shared `[FLAVOR-SELECT]` precedence chain. **Two items remain:** first-class
+handler *values* (Phase 0 — `handler E {}` / `handle a b do body` still error
+as reserved words) and the optional `osprey convert` transliterator. See
 [§What is left](#what-is-left-detailed).
 
 ## Summary
@@ -116,10 +118,11 @@ The frontend is done. Three concrete gaps remain, each with a failing repro:
    `Expr::Install` nodes (§Phase 0 TODO below), a `Handler E` type, and
    Default + ML surfaces. Flavor-neutral; tracked jointly with
    [plan 0016](0016-algebraic-effects-and-handlers.md).
-2. **ML must-reject cases** — `examples/failscompilation/` has **zero**
-   `.ospml` or `flavor=ml`-marked programs, so no ML rejection path is
-   golden-tested (§Phase 5 TODO). The extension/marker convention for ML
-   negatives is also undecided.
+2. **ML must-reject cases** — ✅ **done.** Five `.ospo` + `// osprey: flavor=ml`
+   fixtures now pin the handler-value gap, layout indentation, unterminated
+   `(**`, the `->`/`=>` match-arm confusion, and the brace/`?` lexemes ML
+   deliberately omits; the in-process corpus test was fixed to parse them
+   under the ML frontend rather than the brace grammar. See §Phase 5.
 3. **`osprey convert` transliterator** — optional Default ⇄ ML source
    conversion (§Phase 6 TODO). Nice-to-have, no dependency.
 
@@ -243,9 +246,20 @@ TODO:
       and resolves flavor by extension; existing `.osp` discovery unchanged.
 - [ ] Optional `osprey.toml` `flavor` key (deferred; not in the current
       precedence chain).
-- [ ] LSP resolves the same precedence per document.
+- [x] LSP resolves the same precedence per document — **done**. Every
+      document-scoped feature routes through one `flavor_of` helper wrapping
+      `osprey_syntax::resolve_flavor` (`osprey-lsp/src/features.rs`), so a
+      `// osprey: flavor=ml` marker outranks the extension in hover, completion
+      and signature help exactly as it does for the CLI. `completion` had been
+      sniffing `Path::extension` directly and ignoring the marker. A
+      marker/extension **conflict** is now a `flavor-error` diagnostic on the
+      marker line instead of a silent `unwrap_or(Default)` that reported the
+      file as green while the CLI refused to build it
+      (`diagnostics::compute`). Pinned by
+      `a_flavor_marker_that_fights_the_extension_is_reported_not_guessed` and
+      `ml_completions_never_offer_a_keyword_the_ml_frontend_does_not_have`.
 
-## Phase 5 — Tests, examples, equivalence — ✅ DONE (except ML must-reject)
+## Phase 5 — Tests, examples, equivalence — ✅ DONE
 
 TODO:
 
@@ -257,11 +271,37 @@ TODO:
       still passes byte-for-byte.
 - [x] **Cross-flavor equivalence tests** (`cross_flavor_equiv.rs` AST-level,
       `cross_flavor_ir_equiv.rs` byte-identical LLVM IR, in Rust).
-- [ ] **ML must-reject cases** under `examples/failscompilation/` — **none
-      exist**; add `.ospml`/marker-resolved negatives and keep the
-      `FC_EXPECTED_ESCAPES` ratchet honest.
-- [ ] Decide the ML negative-case extension story (`.ospml` + marker vs a
-      dedicated extension); document in `examples/README.md`.
+- [x] **ML must-reject cases** under `examples/failscompilation/` — five
+      fixtures, each pinning a distinct ML rejection path: `handler` at item
+      position ([FLAVOR-ML-HANDLER], the deferred Phase 0 gap), inconsistent
+      layout indentation ([FLAVOR-ML-LAYOUT]), an unterminated `(**` doc
+      comment ([FLAVOR-ML-COMMENTS]/[DOC-SIGIL-ML]), a `->` where a match arm
+      needs `=>` ([FLAVOR-ML-MATCH]), and the brace-record + `?` sigil that ML
+      deliberately does not lex ([FLAVOR-BOUNDARY]). Ratchet stays honest:
+      `FC_REJECT` 68 → 73, `FC_ESCAPE` unchanged at 11 =
+      `FC_EXPECTED_ESCAPES`. Each was cross-checked so the marker path and
+      `--flavor ml` emit byte-identical diagnostics, while `--flavor default`
+      emits a completely different tree-sitter error — proving the rejection
+      comes from the ML frontend, not from ML source merely being invalid
+      Default syntax.
+- [x] Decide the ML negative-case extension story — **`.ospo` + a leading
+      `// osprey: flavor=ml` marker**, documented in `examples/README.md`
+      §Must-reject fixtures. `.ospo` is already discovered by both harnesses
+      and is excluded from every *source* harness, and
+      `flavor_from_extension` returns `None` for it, so `resolve_flavor`'s
+      marker branch selects ML with no extension/marker conflict. A bare
+      `.ospml` in `failscompilation/` would be **invisible** to
+      `crates/diff_examples.sh` (`find … -name '*.ospo'`). Zero harness edits
+      were needed.
+- [x] Make the in-process corpus test flavor-honest — `compile()` in
+      `crates/osprey-cli/tests/examples_compile.rs` called
+      `parse_program(source)`, hardwired to `Flavor::Default`, so an ML
+      fixture would have been graded by the brace grammar and "rejected" for
+      the wrong reason. It now threads the path through
+      `parse_program_for_path`. New test
+      `ml_flavor_negative_cases_are_rejected_by_the_ml_frontend` asserts not
+      merely rejection but that the diagnostic carries the ML-specific
+      fragment.
 - [x] WASM harness runs portable examples with the feature-gap SKIP
       classification.
 
@@ -289,10 +329,25 @@ TODO:
       wiring — see the VSIX section above).
 - [x] Formatter formats within a flavor (`osprey-fmt` is flavor-neutral, text
       based; the corpus round-trips both flavors).
-- [ ] LSP: hover/completion/signature help rendered in the **authoring**
-      flavor; completion around effect operations and handler arms;
-      curried-function signature help. (Diagnostics and symbols already work
-      per-flavor; flavor-*rendered* hover/completion is the gap.)
+- [x] LSP: hover/completion/signature help rendered in the **authoring**
+      flavor — **done**, specified as `[LSP-FLAVOR-RENDER]` (spec 0020) and
+      implemented in `osprey-lsp/src/mlrender.rs` (pure, total string
+      functions) applied across `symbol_hover`, `signature_help` and
+      `completion`. Hover fences as `osprey-ml` (its own TextMate grammar) and
+      respells `fn inc(x: int) -> int` as `inc : int -> int`; declaration
+      binders juxtapose (`type Box T`) while function binders stay bracketed
+      (`pick<T> : T -> T -> T`); function-typed parameters keep balanced arrows
+      (`map : (int -> int) -> int -> int`). Keyword completion is now
+      flavor-partitioned: ML genuinely has **no `fn`, `let` or `if`**
+      (`ml/token.rs` `keyword_or_ident`), so those are no longer offered — they
+      lexed as plain identifiers — and every remaining snippet expands to
+      layout, not braces. Pinned by
+      `an_ml_document_is_answered_in_the_ml_flavor_end_to_end`,
+      `ml_completions_never_offer_a_keyword_the_ml_frontend_does_not_have`, and
+      the `mlrender` unit tests.
+      Still open, deliberately: completion *around* effect operations and
+      handler arms is position-insensitive (the list is whole-document), and
+      signature help does not yet show partial application for curried calls.
 - [ ] Optional `osprey convert` to transliterate Default ⇄ ML (separate from
       the formatter). Not started; nice-to-have.
 

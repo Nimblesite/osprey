@@ -684,6 +684,9 @@ impl Checker {
         let l = self.ctx.prune(lt);
         let r = self.ctx.prune(rt);
         match op {
+            // `/` and `%` can be handed a value with no representable result,
+            // so they keep the `Result` error channel ([ARITH-PLAIN]).
+            "%" if l.is_named(names::FLOAT) || r.is_named(names::FLOAT) => res_math(Type::float()),
             "%" => {
                 self.push_assign(&Type::int(), lt);
                 self.push_assign(&Type::int(), rt);
@@ -696,7 +699,7 @@ impl Checker {
                     self.push_assign(&Type::string(), rt);
                     Type::string()
                 } else if l.is_named(names::FLOAT) || r.is_named(names::FLOAT) {
-                    res_math(Type::float())
+                    Type::float()
                 } else if l.is_named(names::LIST) {
                     let _ = unify(&mut self.ctx, lt, rt);
                     l
@@ -717,7 +720,7 @@ impl Checker {
                     let _ = unify(&mut self.ctx, lt, rt);
                     self.ctx.fresh()
                 } else {
-                    self.int_arithmetic_result(lt, rt)
+                    self.int_arithmetic(lt, rt)
                 }
             }
             // "-" and "*": unlike "+", these have no string/list overload, so
@@ -727,18 +730,21 @@ impl Checker {
                 if l.is_named(names::FLOAT) || r.is_named(names::FLOAT) {
                     res_math(Type::float())
                 } else {
-                    self.int_arithmetic_result(lt, rt)
+                    self.int_arithmetic(lt, rt)
                 }
             }
         }
     }
 
-    /// Constrain both operands to integers and preserve arithmetic's Result
-    /// error channel.
-    fn int_arithmetic_result(&mut self, left: &Type, right: &Type) -> Type {
+    /// Constrain both operands to integers and yield the plain `int`. `+ - *`
+    /// fail only by overflow, which wraps two's complement — every wrapped
+    /// result is representable, so there is nothing to report and no `Result`
+    /// to unwrap ([ARITH-PLAIN]). `checkedAdd`/`checkedSub`/`checkedMul` are
+    /// the opt-in guarded siblings.
+    fn int_arithmetic(&mut self, left: &Type, right: &Type) -> Type {
         self.push_assign(&Type::int(), left);
         self.push_assign(&Type::int(), right);
-        res_math(Type::int())
+        Type::int()
     }
 }
 

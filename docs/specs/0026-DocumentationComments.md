@@ -11,7 +11,6 @@ byte-identical doc model and byte-identical rendered output.
 This chapter is the authoritative contract for that system: the sigils, the body
 markup, the recognised sections, executable examples, and the shared model.
 
-- [Design Rationale](#design-rationale)
 - [The Shared Doc Model](#the-shared-doc-model)
 - [Default-Flavor Sigil](#default-flavor-sigil)
 - [ML-Flavor Sigil](#ml-flavor-sigil)
@@ -23,43 +22,6 @@ markup, the recognised sections, executable examples, and the shared model.
 - [Worked Example — One Function, Both Flavors](#worked-example--one-function-both-flavors)
 - [Status](#status)
 - [References](#references)
-
-## Design Rationale
-
-The design is not arbitrary — each decision traces to the literature on
-documentation systems and program comprehension (full citations in
-[References](#references)).
-
-- **Documentation is written for humans first, co-located with the code.** This
-  is Knuth's founding thesis of *literate programming* [Knuth 1984]: "let us
-  concentrate rather on explaining to *human beings* what we want a computer to
-  do." Doc comments live at the definition site and are authored as prose, not
-  as machine instructions.
-- **Keep the mechanism simple and language-agnostic.** Ramsey's *noweb*
-  [Ramsey 1994] showed that a documentation tool should be minimal and not bound
-  to one language's quirks. Osprey applies this *across flavors*: one body
-  language, one model, two thin sigils — the flavor is a below-the-model detail.
-- **Structure must reflect what developers actually need.** Empirical studies of
-  API learning [Robillard 2009; Robillard & DeLine 2011] find that the dominant
-  obstacle is missing *usage examples* and missing *intent/rationale*, not
-  missing type signatures (the compiler already has those). Osprey therefore
-  gives examples and prose first-class, recognised sections.
-- **Prevent the known documentation failure modes.** Uddin & Robillard's
-  taxonomy of how API documentation fails [Uddin & Robillard 2015] enumerates
-  incompleteness, ambiguity, incorrectness, **obsolescence**, and fragmentation.
-  Osprey's structured sections attack incompleteness and fragmentation; its
-  **executable examples** attack obsolescence directly — a rotted example fails
-  the build.
-- **Examples should be executable, not inert.** Documentation that the machine
-  runs and checks measurably aids comprehension [Wrenn & Krishnamurthi 2019] and
-  cannot silently drift from the code — the design principle behind Scribble's
-  binding-aware prose [Flatt, Barzilay & Findler 2009]. Osprey doctests are
-  extracted into the existing golden-output example harness.
-- **Comments carry real comprehension weight.** That documentation *causally*
-  improves program comprehension is established experimentally
-  [Woodfield, Dunsmore & Shen 1981; Tenny 1988], and quality is measurable
-  [Steidl, Hummel & Jürgens 2013] — motivation for defining a precise model
-  rather than leaving "good docs" to taste.
 
 ## The Shared Doc Model
 
@@ -118,9 +80,7 @@ doc-body parser stays flavor- and symbol-table-agnostic.
 
 `[DOC-SIGIL-DEFAULT]` The Default flavor uses **`///`** for an *outer* doc
 comment (documents the declaration that follows) and **`//!`** for an *inner*
-doc comment (documents the enclosing module or file). This is the
-modern-family consensus — Rust, Swift, C#, and F# all spell outer docs `///` —
-so it reads native to the languages the Default flavor emulates.
+doc comment (documents the enclosing module or file).
 
 ```osprey
 /// Doubles its argument.
@@ -137,11 +97,8 @@ paragraph break in the body.
 ## ML-Flavor Sigil
 
 `[DOC-SIGIL-ML]` The ML flavor uses **`(** … *)`** — the OCaml/odoc convention,
-where the doc sigil is a *specialisation* of the ordinary `(* … *)` block
-comment (double star). It is instantly legible to any OCaml, F#, or SML reader,
-and — being a block form — is layout-friendly: its content is one contiguous
-region the offside-rule lexer skips wholesale, without forcing a per-line
-prefix that would fight indentation.
+where the doc sigil is a specialisation of the ordinary `(* … *)` block
+comment.
 
 ```osprey
 (** Doubles its argument. *)
@@ -177,12 +134,6 @@ Two additions on top of plain CommonMark, both shared by both flavors:
 - **Example fences** — a ` ```osprey ` fenced block is an executable example
   (see [Doctests](#executable-examples-doctests)); an optional following
   ` ```output ` fence is its expected stdout.
-
-Markdown is chosen deliberately over the bespoke markups of ocamldoc (`{b }`,
-`{[ ]}`) and Haddock (`/em/`, `` @code@ ``): Markdown is the lingua franca of
-every modern best-in-class system (rustdoc, KDoc, DocC, TSDoc), and the bespoke
-ML markups are the least-loved parts of those systems. ML programmers gain
-Markdown; they lose nothing they valued.
 
 ## Recognised Sections
 

@@ -1,0 +1,4 @@
+{
+  "_comment": "Reference docs carry no `date:` front matter. Their date is the real commit date of the page, read from git history by Eleventy, so /docs/ sitemap lastmod and JSON-LD reflect when the docs actually changed - not when the site was built.",
+  "date": "git Last Modified"
+}

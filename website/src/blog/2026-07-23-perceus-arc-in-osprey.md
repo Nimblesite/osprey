@@ -3,7 +3,6 @@ layout: page.njk
 title: "Perceus ARC in Osprey: Functional Memory Management"
 excerpt: "Osprey ships opt-in Perceus automatic reference counting. The compiler inserts ownership operations, and the runtime reclaims values as owner counts reach zero."
 description: "Osprey ships opt-in Perceus automatic reference counting. The compiler inserts ownership operations, and the runtime reclaims values as owner counts reach zero."
-date: 2026-07-23
 tags: ["blog", "perceus", "automatic-reference-counting", "memory-management", "functional-programming", "compiler"]
 author: "Christian Findlay"
 readingTime: 10

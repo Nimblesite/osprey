@@ -21,7 +21,24 @@ const SOURCE: &str = "osprey";
 /// parse is then type-checked.
 #[must_use]
 pub fn compute(source: &str, path: &str, encoding: PositionEncoding) -> Vec<Diagnostic> {
-    let parsed = osprey_syntax::parse_program_for_path(path, source);
+    // [FLAVOR-SELECT] makes a marker/extension disagreement a hard error, and
+    // the CLI refuses to build such a file. Resolve FIRST and report the
+    // conflict as the document's only finding: guessing a flavor would parse
+    // the file with the wrong frontend and bury the real fault under a cascade
+    // of phantom syntax and type errors.
+    let flavor = match osprey_syntax::resolve_flavor(None, path, source) {
+        Ok(flavor) => flavor,
+        Err(message) => {
+            return vec![diagnostic(
+                source,
+                marker_position(source),
+                &message,
+                "flavor-error",
+                encoding,
+            )]
+        }
+    };
+    let parsed = osprey_syntax::parse_program_with_flavor(source, flavor);
     if !parsed.errors.is_empty() {
         return parsed
             .errors
@@ -32,10 +49,23 @@ pub fn compute(source: &str, path: &str, encoding: PositionEncoding) -> Vec<Diag
     if let Some(diagnostics) = project_diagnostics(source, path, &parsed.program, encoding) {
         return diagnostics;
     }
-    if let Some(diagnostics) = standalone_diagnostics(source, path, &parsed.program, encoding) {
-        return diagnostics;
+    if let Some(d) = standalone_diagnostics(source, path, flavor, &parsed.program, encoding) {
+        return d;
     }
     type_diagnostics(source, &parsed.program, encoding)
+}
+
+/// Where to underline a flavor conflict: the `// osprey: flavor=` marker line
+/// itself (1-based), since that is the half of the disagreement the author can
+/// edit in this buffer. Falls back to line 1 when no marker is present — which
+/// `resolve_flavor` only errors without if the marker names an unknown flavor.
+fn marker_position(source: &str) -> Position {
+    let line = source
+        .lines()
+        .position(|l| l.trim_start().starts_with("//") && l.contains("osprey: flavor="))
+        .and_then(|i| u32::try_from(i + 1).ok())
+        .unwrap_or(1);
+    Position { line, column: 0 }
 }
 
 fn type_diagnostics(
@@ -60,6 +90,7 @@ fn type_diagnostics(
 fn standalone_diagnostics(
     source: &str,
     uri: &str,
+    flavor: osprey_syntax::Flavor,
     program: &Program,
     encoding: PositionEncoding,
 ) -> Option<Vec<Diagnostic>> {
@@ -67,8 +98,6 @@ fn standalone_diagnostics(
         return None;
     }
     let file = file_path(uri).unwrap_or_else(|| PathBuf::from(uri));
-    let flavor =
-        osprey_syntax::resolve_flavor(None, uri, source).unwrap_or(osprey_syntax::Flavor::Default);
     let source_file = osprey_project::SourceFile {
         path: file.clone(),
         flavor,
@@ -307,6 +336,26 @@ mod tests {
             !as_default.is_empty(),
             "ML source is not valid Default syntax"
         );
+    }
+
+    #[test]
+    fn a_flavor_marker_that_fights_the_extension_is_reported_not_guessed() {
+        // [FLAVOR-SELECT] makes a marker/extension disagreement a HARD error so
+        // the editor and the CLI never read one file two ways. The CLI refuses
+        // to build it; the editor used to fall back to Default and show the
+        // file as green, so a `.ospml` mislabelled `flavor=default` looked fine
+        // right up until the build failed. Report it instead of guessing.
+        let src = "// osprey: flavor=default\ninc x = x + 1\n";
+        let diags = compute(src, "file:///tour.ospml", U16);
+        let first = diags.first().expect("the disagreement must be reported");
+        assert_eq!(first.code.as_deref(), Some("flavor-error"), "{diags:?}");
+        assert!(first.message.contains("disagree"), "{}", first.message);
+        // The conflict is the ONLY finding: parsing under a guessed flavor
+        // would bury it under a cascade of phantom syntax errors.
+        assert_eq!(diags.len(), 1, "{diags:?}");
+        // An agreeing marker stays silent and still selects the ML frontend.
+        let agree = "// osprey: flavor=ml\ninc x = x + 1\n";
+        assert!(compute(agree, "file:///tour.ospml", U16).is_empty());
     }
 
     #[test]

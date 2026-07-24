@@ -201,12 +201,17 @@ fn gen_function(
         cg.bind_fn_local(&n, t);
     }
     let mut params = Vec::new();
-    for (p, (pty, owner)) in parameters.iter().zip(param_sig.iter()) {
-        let v = Value::new(format!("%{}", p.name), *pty).with_owner(owner.clone());
+    for (i, (p, (pty, owner))) in parameters.iter().zip(param_sig.iter()).enumerate() {
+        let reg = crate::llty::param_register(i);
+        let v = Value::new(format!("%{reg}"), *pty).with_owner(owner.clone());
         cg.emit_debug_param(&p.name, &v);
         cg.bind(p.name.clone(), v);
-        params.push((*pty, p.name.clone()));
+        params.push((*pty, reg));
     }
+    // A `-> Unit` function discards its body's value, so a body that is a
+    // `match` over side-effecting arms needs no common arm type
+    // ([`crate::pattern::finish_phi`]).
+    cg.value_discarded = cg.fn_ret_is_unit(name);
     cg.cell_vars = crate::effects::captured_mut_vars(body);
     // The definition line counts as covered when the body executes
     // [TESTING-COVERAGE-CODEGEN].
@@ -301,9 +306,15 @@ fn gen_stmt_kind(cg: &mut Codegen, stmt: &Stmt) -> Result<()> {
             value,
             position,
         } => with_stmt_debug(cg, *position, |cg| gen_bind(cg, name, value, true)),
+        // A statement's value is discarded, so a `match` used purely for its
+        // side effects is allowed arms of differing LLVM type — there is no
+        // `phi` to type. Everywhere else that disagreement is a hard error
+        // ([`crate::pattern::finish_phi`]).
         Stmt::Expr { value, position } => with_stmt_debug(cg, *position, |cg| {
-            let _ = gen_expr(cg, value)?;
-            Ok(())
+            let outer = std::mem::replace(&mut cg.value_discarded, true);
+            let generated = gen_expr(cg, value);
+            cg.value_discarded = outer;
+            generated.map(|_| ())
         }),
         _ => Err(CodegenError::unsupported("statement in block/main")),
     }
