@@ -169,12 +169,7 @@ pub(crate) fn gen_index(cg: &mut Codegen, target: &Expr, index: &Expr) -> Result
     cg.emit(format!("br label %{cont}"));
 
     cg.start_block(&cont);
-    let zero = match elem {
-        LType::Str | LType::Ptr => "null",
-        LType::Double => "0.0",
-        LType::I1 => "false",
-        _ => "0",
-    };
+    let zero = crate::llty::zero_literal(elem);
     let phi = cg.fresh_reg();
     cg.emit(format!(
         "{phi} = phi {} [ {val}, %{load_bb} ], [ {zero}, %{oob_bb} ]",

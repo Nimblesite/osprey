@@ -8,42 +8,70 @@
 //! [LSP-FLAVOR-RENDER], [FLAVOR-ML-FN], [FLAVOR-ML-MATCH], [FLAVOR-ML-RECORD],
 //! [FLAVOR-ML-EFFECT], [FLAVOR-ML-HANDLER], [MODULES-FLAVOR-PROJECTION].
 
+use crate::context::Cursor;
 use crate::model::{CompletionItem, CompletionKind};
 use osprey_syntax::Flavor;
 
+/// Where a keyword may be written. A declaration keyword completed into an
+/// argument slot expands to source the parser rejects, so the two sets are kept
+/// apart rather than filtered by hand at each call site.
+/// Implements [LSP-COMPLETION-CONTEXT].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Scope {
+    /// Declaration/statement position only (`fn`, `type`, `namespace`, …).
+    Decl,
+    /// Also legal where a value is expected (`match`, `if`, `handle`).
+    Expr,
+}
+
+/// One completion's fixed spelling: label, detail, snippet, and where it is
+/// legal.
+type Spec = (&'static str, &'static str, &'static str, Scope);
+
 /// Core keyword/snippet completions, **Default** flavor (superset of the old TS
 /// server's six).
-const DEFAULT_CORE: [(&str, &str, &str); 7] = [
+const DEFAULT_CORE: [Spec; 7] = [
     (
         "if",
         "Conditional expression [GRAMMAR-IF-ELSE]",
         "if ${1:condition} { ${2:then} } else { ${3:else} }",
+        Scope::Expr,
     ),
     (
         "fn",
         "Function declaration",
         "fn ${1:name}(${2:params}) = ${3:body}",
+        Scope::Decl,
     ),
-    ("let", "Variable declaration", "let ${1:name} = ${2:value}"),
+    (
+        "let",
+        "Variable declaration",
+        "let ${1:name} = ${2:value}",
+        Scope::Decl,
+    ),
     (
         "mut",
         "Mutable variable declaration",
         "mut ${1:name} = ${2:value}",
+        Scope::Decl,
     ),
     (
         "match",
         "Pattern matching",
         "match ${1:expr} {\n\t${2:pattern} => ${3:result}\n}",
+        Scope::Expr,
     ),
     (
         "type",
         "Type declaration",
         "type ${1:Name} = ${2:Variant} | ${3:Variant}",
+        Scope::Decl,
     ),
     (
         "effect",
         "Effect declaration",
         "effect ${1:Name} {\n\t${2:op}: ${3:fn() -> Unit}\n}",
+        Scope::Decl,
     ),
 ];
 
@@ -58,42 +86,54 @@ const DEFAULT_CORE: [(&str, &str, &str); 7] = [
 /// the ML frontend rejects outright. Implements [FLAVOR-ML-FN],
 /// [FLAVOR-ML-MATCH], [FLAVOR-ML-RECORD], [FLAVOR-ML-EFFECT],
 /// [FLAVOR-ML-HANDLER], [LSP-FLAVOR-RENDER].
-const ML_CORE: [(&str, &str, &str); 5] = [
+const ML_CORE: [Spec; 5] = [
     (
         "mut",
         "Mutable binding (a plain binding needs no keyword)",
         "mut ${1:name} = ${2:value}",
+        Scope::Decl,
     ),
     (
         "match",
         "Pattern matching — layout arms, no braces",
         "match ${1:expr}\n\t${2:pattern} => ${3:result}",
+        Scope::Expr,
     ),
     (
         "type",
         "Type declaration — layout variants",
         "type ${1:Name} =\n\t${2:Variant}\n\t${3:Variant}",
+        Scope::Decl,
     ),
     (
         "effect",
         "Effect declaration — operations use `=>`",
         "effect ${1:Name}\n\t${2:op} : Unit => Unit",
+        Scope::Decl,
     ),
     (
         "handle",
         "Install a handler over a body [FLAVOR-ML-HANDLER]",
         "handle ${1:Effect}\n\t${2:op} ${3:arg} => ${4:result}\nin\n\t${0}",
+        Scope::Expr,
     ),
 ];
 
-/// The fixed keyword/snippet completions for a document's authoring flavor.
-pub(crate) fn keyword_items(flavor: Flavor) -> Vec<CompletionItem> {
+/// The keyword/snippet completions legal at `cursor` in a document of
+/// `flavor`. A type annotation, a field access and a fresh binder take no
+/// keyword at all; a value position takes only the expression forms.
+/// Implements [LSP-COMPLETION-CONTEXT], [LSP-FLAVOR-RENDER].
+pub(crate) fn keyword_items(flavor: Flavor, cursor: &Cursor) -> Vec<CompletionItem> {
+    let Some(allowed) = scope_at(cursor) else {
+        return Vec::new();
+    };
     let ml = flavor == Flavor::Ml;
-    let core: &[(&str, &str, &str)] = if ml { &ML_CORE } else { &DEFAULT_CORE };
+    let core: &[Spec] = if ml { &ML_CORE } else { &DEFAULT_CORE };
     let modules = module_keyword_specs(ml);
     core.iter()
         .chain(modules.iter())
-        .map(|(label, detail, snippet)| CompletionItem {
+        .filter(|(_, _, _, scope)| allowed == Scope::Decl || *scope == Scope::Expr)
+        .map(|(label, detail, snippet, _)| CompletionItem {
             label: (*label).to_owned(),
             kind: CompletionKind::Keyword,
             detail: Some((*detail).to_owned()),
@@ -102,7 +142,18 @@ pub(crate) fn keyword_items(flavor: Flavor) -> Vec<CompletionItem> {
         .collect()
 }
 
-fn module_keyword_specs(ml: bool) -> [(&'static str, &'static str, &'static str); 8] {
+/// The widest keyword scope `cursor` admits, or `None` where no keyword is
+/// legal — a written type, a `receiver.` field, a match pattern, or the name of
+/// a parameter being invented.
+const fn scope_at(cursor: &Cursor) -> Option<Scope> {
+    match cursor {
+        Cursor::Declaration => Some(Scope::Decl),
+        Cursor::Value => Some(Scope::Expr),
+        Cursor::Type | Cursor::Member(_) | Cursor::Pattern | Cursor::Binder => None,
+    }
+}
+
+fn module_keyword_specs(ml: bool) -> [Spec; 8] {
     [
         (
             "namespace",
@@ -112,11 +163,13 @@ fn module_keyword_specs(ml: bool) -> [(&'static str, &'static str, &'static str)
             } else {
                 "namespace ${1:name};"
             },
+            Scope::Decl,
         ),
         (
             "import",
             "Namespace/module import [MODULES-IMPORT]",
             "import ${1:namespace}::${2:Module}",
+            Scope::Decl,
         ),
         (
             "module",
@@ -126,6 +179,7 @@ fn module_keyword_specs(ml: bool) -> [(&'static str, &'static str, &'static str)
             } else {
                 "module ${1:Name} {\n\t${0}\n}"
             },
+            Scope::Decl,
         ),
         (
             "signature",
@@ -135,6 +189,7 @@ fn module_keyword_specs(ml: bool) -> [(&'static str, &'static str, &'static str)
             } else {
                 "signature ${1:Name} {\n\t${0}\n}"
             },
+            Scope::Decl,
         ),
         (
             "export",
@@ -144,6 +199,7 @@ fn module_keyword_specs(ml: bool) -> [(&'static str, &'static str, &'static str)
             } else {
                 "export fn ${1:name}(${2:params}) = ${3:body}"
             },
+            Scope::Decl,
         ),
         (
             "state",
@@ -153,12 +209,19 @@ fn module_keyword_specs(ml: bool) -> [(&'static str, &'static str, &'static str)
             } else {
                 "state module ${1:Name} {\n\t${0}\n}"
             },
+            Scope::Decl,
         ),
         (
             "opaque",
             "Opaque exported type [MODULES-OPAQUE-TYPES]",
             "opaque type ${1:Name}",
+            Scope::Decl,
         ),
-        ("as", "Import alias [MODULES-IMPORT]", "as ${1:Alias}"),
+        (
+            "as",
+            "Import alias [MODULES-IMPORT]",
+            "as ${1:Alias}",
+            Scope::Decl,
+        ),
     ]
 }

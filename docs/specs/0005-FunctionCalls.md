@@ -68,7 +68,7 @@ let sum = add(10, y: 20)  // Compilation error
 2. One parameter: positional or named.
 3. Two or more parameters: every argument must be named. Mixing positional and named arguments is a compilation error.
 4. **Built-in functions** ([Built-in Functions](0012-Built-InFunctions.md)) are exempt: they take positional arguments in subject-first order — `split("a,b,c", ",")`, `fold(xs, 0, add)` — so the pipe can supply the subject as the first argument: `xs |> fold(0, add)`.
-5. **Positional constructors** ([TYPE-UNION-POSITIONAL](0003-Syntax.md#type-declarations)) are exempt: a variant declared `Node(Tree, Tree)` is built `Node(left, right)` in slot order, because a positional payload has no field names to supply. The same variant declared with named fields keeps rule 3. Status: specified; not yet implemented.
+5. **Positional constructors** ([TYPE-UNION-POSITIONAL](0003-Syntax.md#type-declarations)) are exempt: a variant declared `Node(Tree, Tree)` is built `Node(left, right)` in slot order, because a positional payload has no field names to supply. The same variant declared with named fields keeps rule 3.
 
 Argument order at the call site is independent of declaration order; the compiler reorders by name.
 

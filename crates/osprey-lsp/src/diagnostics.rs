@@ -12,6 +12,10 @@ use osprey_ast::{Position, Program};
 use osprey_project::{AssembledProject, ProjectError};
 use std::path::{Path, PathBuf};
 
+// URI/path resolution and project discovery live once, in `workspace`: the
+// editor's idea of which files form a program must be the compiler's.
+use crate::workspace::{file_path, project_root, same_path};
+
 const SOURCE: &str = "osprey";
 
 /// Compute diagnostics for `source`. The document `path` selects the flavor
@@ -211,58 +215,6 @@ fn project_errors(
             diagnostic(source, position, &error.message, "project-error", encoding)
         })
         .collect()
-}
-
-fn project_root(file: &Path) -> Option<PathBuf> {
-    file.parent()?
-        .ancestors()
-        .find(|directory| directory.join("osprey.toml").is_file())
-        .map(Path::to_path_buf)
-}
-
-fn same_path(left: &Path, right: &Path) -> bool {
-    let normalize =
-        |path: &Path| std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
-    normalize(left) == normalize(right)
-}
-
-fn file_path(uri: &str) -> Option<PathBuf> {
-    let encoded = uri.strip_prefix("file://")?;
-    let decoded = percent_decode(encoded)?;
-    #[cfg(windows)]
-    let decoded = decoded
-        .strip_prefix('/')
-        .filter(|path| path.as_bytes().get(1) == Some(&b':'))
-        .unwrap_or(&decoded)
-        .to_string();
-    Some(PathBuf::from(decoded))
-}
-
-fn percent_decode(encoded: &str) -> Option<String> {
-    let bytes = encoded.as_bytes();
-    let mut decoded = Vec::with_capacity(bytes.len());
-    let mut index = 0;
-    while let Some(&byte) = bytes.get(index) {
-        if byte == b'%' {
-            let high = hex(*bytes.get(index.saturating_add(1))?)?;
-            let low = hex(*bytes.get(index.saturating_add(2))?)?;
-            decoded.push((high << 4) | low);
-            index = index.saturating_add(3);
-        } else {
-            decoded.push(byte);
-            index = index.saturating_add(1);
-        }
-    }
-    String::from_utf8(decoded).ok()
-}
-
-const fn hex(byte: u8) -> Option<u8> {
-    match byte {
-        b'0'..=b'9' => Some(byte - b'0'),
-        b'a'..=b'f' => Some(byte - b'a' + 10),
-        b'A'..=b'F' => Some(byte - b'A' + 10),
-        _ => None,
-    }
 }
 
 /// Build one error diagnostic spanning the offending line from `pos` onward.

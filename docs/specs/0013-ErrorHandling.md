@@ -12,10 +12,11 @@ dedicated `i8* errmsg` slot, `Error { message }` binds the real reason, and
 (`Result<T, StringError>`) remain deferred behind recursive-union payload
 support.
 
-[ARITH-PLAIN] is **specified, not implemented**: `+ - *` still return
-`Result<int, MathError>` today, `%` emits an unchecked `srem`, and
-`checkedAdd`/`checkedSub`/`checkedMul` do not exist. Sequencing and the corpus
-migration are in [plan 0019](../plans/0019-ml-elegance.md).
+[ARITH-PLAIN] conforms: `+ - *` return plain scalars, `%` is zero-checked, and
+`checkedAdd`/`checkedSub`/`checkedMul` exist in both flavors. The later
+[ARITH-EFFECT] phase — moving the overflow guarantee to an algebraic effect —
+is **specified, not implemented**, deferred behind effect-row inference in
+[plan 0019](../plans/0019-ml-elegance.md).
 
 ## The Result Type
 
@@ -56,7 +57,6 @@ An operator whose only failure mode is overflow returns the plain type, because 
 
 `/` always yields `float`. There is no implicit `int`/`float` conversion outside this table; use `toFloat` and `toInt` for explicit conversion. The builtins `checkedAdd`, `checkedSub`, and `checkedMul` (both flavors, following the `intDiv` precedent) return `Result<int, MathError>` via `llvm.s{add,sub,mul}.with.overflow`, making the overflow guarantee explicit and opt-in at the call site. A later [ARITH-EFFECT] phase MAY instead have these operators perform overflow as an algebraic effect; the surface syntax is identical either way, so nothing specified here changes.
 
-Status: specified; not yet implemented. Today `+ - *` are still `Result`-wrapped, `%` emits a bare `srem` with no zero check (`10 % 0` is undefined), and `checkedAdd`/`checkedSub`/`checkedMul` do not exist.
 
 ```osprey
 let sum       = 1 + 3      // int
@@ -64,7 +64,7 @@ let quotient  = 10 / 3     // Result<float, MathError>
 let remainder = 10 % 3     // Result<int,   MathError>
 let mixed     = 10 + 5.5   // float
 let checked   = checkedAdd(a: 1, b: 3)   // Result<int, MathError>
-let divZero   = 10 / 0     // Error(DivisionByZero)
+let divZero   = 10 / 0     // Error(division by zero)
 ```
 
 ```osprey-ml
@@ -73,14 +73,12 @@ quotient  = 10 / 3     // Result<float, MathError>
 remainder = 10 % 3     // Result<int,   MathError>
 mixed     = 10 + 5.5   // float
 checked   = checkedAdd (1, 3)   // Result<int, MathError>
-divZero   = 10 / 0     // Error(DivisionByZero)
+divZero   = 10 / 0     // Error(division by zero)
 ```
 
 #### Chaining Arithmetic
 
-`(10 + 5) * 2` is plain `int`: there is no wrapper to nest and nothing to match. Where `/` or `%` appears, the `Result` **propagates**: the enclosing arithmetic expression is a single `Result<float, MathError>`, flattened rather than nested, an erroring operand makes the whole expression `Error`, and only the final value is matched. Arithmetic is deliberately not an auto-unwrap context ([Result Auto-Unwrapping](0004-TypeSystem.md#result-auto-unwrapping)) — unwrapping an operand would discard its error.
-
-> **Defect, not yet fixed.** The implementation unwraps instead of propagating, and fabricates a success payload on the error path: `toString((10 / 0) + 1.0)` evaluates to `Success(1.0)` rather than `Error(division by zero)`. Tracked in [plan 0019](../plans/0019-ml-elegance.md).
+`(10 + 5) * 2` is plain `int`: there is no wrapper to nest and nothing to match. Where `/` or `%` appears, the `Result` **propagates**: the enclosing arithmetic expression is a single `Result<T, MathError>` whose payload is the type the table above gives for that operator, flattened rather than nested, an erroring operand makes the whole expression `Error`, and only the final value is matched. Arithmetic is deliberately not an auto-unwrap context ([Result Auto-Unwrapping](0004-TypeSystem.md#result-auto-unwrapping)) — unwrapping an operand would discard its error.
 
 ```osprey
 match (10 + 5) / 2 {

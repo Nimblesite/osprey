@@ -27,15 +27,17 @@ generic "modules planned" status.
   ordinary scripts still bypass assembly unchanged.
 - LSP diagnostics assemble the saved mixed-flavor project graph and overlay the
   current document buffer; formatter/navigation understand module syntax within
-  a document. Incremental cross-file indexing remains part of plan 0009.
+  a document. Cross-file resolution itself has since shipped — see
+  `[LSP-WORKSPACE]` in spec 0020; what remains is making the index
+  *incremental* rather than reloading the manifest's file set per request.
 - Opaque record/union boundaries retain nominal structure. Opaque manifest
   aliases are rejected loudly because the flat checker cannot yet expose their
   representation only to the owner without leaking its ABI to clients.
 - `docs/specs/0011-LightweightFibersAndConcurrency.md` has an older
   fiber-isolated module sketch. Spec 0025 supersedes it.
-- Cross-file LSP is already planned in
-  [plan 0009](0009-lsp-context-and-cross-file.md), but it needs the module graph
-  from this plan.
+- Cross-file LSP has shipped on this plan's module graph: hover, definition,
+  references, completion and signature help all resolve through
+  `osprey_project::load` (spec 0020 `[LSP-WORKSPACE]`; plan 0009, retired).
 
 ## Non-Goals
 

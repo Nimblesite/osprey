@@ -304,7 +304,7 @@ fn parse_strict(
     let s = arg(cg, args, 0, LType::Str)?;
     let slot = cg.fresh_reg();
     cg.emit(format!("{slot} = alloca {inner}"));
-    let zero = if inner == LType::Double { "0.0" } else { "0" };
+    let zero = crate::llty::zero_literal(inner);
     cg.emit(format!("store {inner} {zero}, {inner}* {slot}"));
     let rc = cg.call(
         "i64",

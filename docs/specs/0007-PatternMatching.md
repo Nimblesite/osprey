@@ -122,7 +122,7 @@ match result {
 `Result<T, E>` is matched the same way as any other union. See [Error Handling](0013-ErrorHandling.md) for the type and arithmetic semantics.
 
 ```osprey
-let calculation = 1 + 3 + (300 / 5)  // Result<float, MathError>
+let calculation = 1.0 + 3.0 + (300 / 5)  // Result<float, MathError>
 
 match calculation {
     Success { value }   => print("Result: ${value}")
@@ -131,14 +131,14 @@ match calculation {
 ```
 
 ```osprey-ml
-calculation = 1 + 3 + (300 / 5)  // Result<float, MathError>
+calculation = 1.0 + 3.0 + (300 / 5)  // Result<float, MathError>
 
 match calculation
     Success value   => print "Result: ${value}"
     Error   message => print "Math error: ${message}"
 ```
 
-Only `/` and `%` produce a `Result` ([ARITH-PLAIN](0013-ErrorHandling.md#arithmetic-and-result--arith-plain), specified but not yet implemented — `+ - *` still wrap today): `1 + 3` is plain `int` and there is nothing to match. An expression containing `/` or `%` yields a single `Result`, not nested `Result`s — the wrapper propagates outward through the chain rather than being unwrapped at each operator, so an erroring operand errors the whole expression and only the final value is matched ([Chaining Arithmetic](0013-ErrorHandling.md#chaining-arithmetic)).
+Only `/` and `%` produce a `Result` ([ARITH-PLAIN](0013-ErrorHandling.md#arithmetic-and-result--arith-plain)): `1 + 3` is plain `int` and there is nothing to match. An expression containing `/` or `%` yields a single `Result`, not nested `Result`s — the wrapper propagates outward through the chain rather than being unwrapped at each operator, so an erroring operand errors the whole expression and only the final value is matched ([Chaining Arithmetic](0013-ErrorHandling.md#chaining-arithmetic)).
 
 ## Ternary Match (Syntactic Sugar)
 
@@ -199,10 +199,9 @@ same shape**, not a `Success`/`Wildcard` pair, or ML and Default twins diverge
 and [FLAVOR-IR-EQUIV](0023-LanguageFlavors.md#cross-flavor-equivalence-tests)
 fails.
 
-The spelling is `?:` in **both** flavors. The Default flavor implements it
-today; the ML flavor does not — its lexer rejects `?` — so every ML `?:` in
-this chapter is specified, not yet implemented. ML authors currently have no
-spelling for the operation and write the two-arm match by hand.
+The spelling is `?:` in **both** flavors. The ML lexer takes `?:` as a single
+two-character operator, ahead of the bare `:` of a type signature, so maximal
+munch keeps the two apart.
 
 ```osprey
 let safeValue = intDiv(a: 10, b: 2) ?: -1   // 5

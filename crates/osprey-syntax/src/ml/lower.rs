@@ -60,7 +60,7 @@ pub(crate) fn lower(items: Vec<MlItem>) -> Program {
     });
     let mut ctors = HashMap::new();
     collect_positional_ctors(&items, &mut ctors);
-    crate::positional::install(ctors.into_iter());
+    let _positional = crate::positional::install(ctors.into_iter());
     Program {
         statements: lower_items(items),
     }
@@ -1134,19 +1134,7 @@ fn lower_block(items: Vec<MlItem>, value: Option<Box<MlExpr>>) -> Expr {
 /// `Success`/`Wildcard` pair would be a different node and would break
 /// [FLAVOR-IR-EQUIV] against the Default twin.
 fn result_default(scrutinee: Expr, fallback: Expr) -> Expr {
-    Expr::Match {
-        value: Box::new(scrutinee.clone()),
-        arms: vec![
-            MatchArm {
-                pattern: Pattern::Literal(Box::new(Expr::Bool(true))),
-                body: scrutinee,
-            },
-            MatchArm {
-                pattern: Pattern::Literal(Box::new(Expr::Bool(false))),
-                body: fallback,
-            },
-        ],
-    }
+    crate::desugar::bool_match(scrutinee.clone(), scrutinee, fallback)
 }
 
 fn lower_arm(arm: MlArm) -> MatchArm {

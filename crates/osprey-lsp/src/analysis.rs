@@ -694,6 +694,9 @@ mod tests {
              extern fn puts(s: string) -> int\n\
              let limit: int = 10\n\
              fn multiply(a: int, b: int) -> int = a * b\n\
+             type Box<T> = { item: T }\n\
+             effect Feed<out T> { next: fn() -> T }\n\
+             fn pick<T, out U>(a: T, b: U) -> T = a\n\
              fn main() -> Unit = print(multiply(a: limit, b: 2))\n",
         );
         assert!(parsed.errors.is_empty(), "{:?}", parsed.errors);
@@ -708,7 +711,12 @@ mod tests {
             "\"signature\":\"fn multiply(a: int, b: int) -> int\"",
             "\"parameters\":[{\"name\":\"a\",\"type\":\"int\"},{\"name\":\"b\",\"type\":\"int\"}]",
             "\"returnType\":\"int\"",
-            "\"name\":\"main\",\"kind\":\"function\",\"type\":\"fn main() -> Unit\",\"line\":6",
+            // A declared type-parameter binder reaches the outline, variance
+            // markers included ([TYPE-GENERICS-DECL]).
+            "\"signature\":\"type Box<T>\"",
+            "\"signature\":\"effect Feed<out T>\"",
+            "\"signature\":\"fn pick<T, out U>(a: T, b: U) -> T\"",
+            "\"name\":\"main\",\"kind\":\"function\",\"type\":\"fn main() -> Unit\",\"line\":9",
         ] {
             assert!(json.contains(frag), "missing {frag} in {json}");
         }

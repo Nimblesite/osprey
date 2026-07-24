@@ -470,7 +470,7 @@ in
 
 ## Worked Example
 
-The `*` operator returns a plain `int` and cannot fail ([ARITH-PLAIN](0013-ErrorHandling.md#arithmetic-and-result--arith-plain)); its overflow-checked sibling `checkedMul(x, 2)` returns `Result<int, MathError>` ([BUILTIN-CHECKED-ARITH](0012-Built-InFunctions.md#checkedadd--checkedsub--checkedmul--builtin-checked-arith), specified; not yet implemented). The function below matches that `Result`, performing `Exception` on overflow and `State` to record the success.
+The `*` operator returns a plain `int` and cannot fail ([ARITH-PLAIN](0013-ErrorHandling.md#arithmetic-and-result--arith-plain)); its overflow-checked sibling `checkedMul(x, 2)` returns `Result<int, MathError>` ([BUILTIN-CHECKED-ARITH](0012-Built-InFunctions.md#checkedadd--checkedsub--checkedmul--builtin-checked-arith)). The function below matches that `Result`, performing `Exception` on overflow and `State` to record the success.
 
 ```osprey
 effect Exception { raise: fn(string) -> unit }

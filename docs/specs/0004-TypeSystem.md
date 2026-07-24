@@ -45,9 +45,9 @@ compose (f, g)   = \x => f (g x)             // <A,B,C>((B)->C,(A)->B) -> (A)->C
 ```
 
 `add`'s inferred `(int, int) -> int` follows [ARITH-PLAIN]
-([Error Handling](0013-ErrorHandling.md#arithmetic-and-result--arith-plain)),
-which is specified but not yet implemented: `+ - *` still return `Result` today.
-The same qualifier applies to every mention of [ARITH-PLAIN] in this section.
+([Error Handling](0013-ErrorHandling.md#arithmetic-and-result--arith-plain)):
+`+ - *` return plain scalars — `int` for two `int` operands, `float` when either
+operand is `float`.
 
 `[TYPE-NO-REDUNDANT-ANNOTATION]` **Optional is not the whole rule: an annotation
 the checker can infer is *redundant*, and redundant symbols are forbidden.**
@@ -234,23 +234,25 @@ All primitive types are lowercase.
 
 `int` and `float` do not implicitly convert. Use `toFloat(int)` and `toInt(float)`.
 
-Arithmetic returns plain scalars except `/` and `%`, which return `Result<_, MathError>` ([ARITH-PLAIN]; specified, not yet implemented). The full operator-by-operand table, status, and chaining rules are in [Error Handling](0013-ErrorHandling.md#arithmetic-and-result--arith-plain).
+Arithmetic returns plain scalars except `/` and `%`, which return `Result<_, MathError>` ([ARITH-PLAIN]). The full operator-by-operand table, status, and chaining rules are in [Error Handling](0013-ErrorHandling.md#arithmetic-and-result--arith-plain).
 
 ## Result Auto-Unwrapping
 
-A fallible call has type `Result<T, E>`; among the operators only `/` and `%` produce one, since `+ - *` yield plain scalars ([ARITH-PLAIN]; specified, not yet implemented — `+ - *` still produce a `Result` today, and this section's rules apply to it unchanged). The compiler auto-unwraps the inner `Result` in four contexts so authors do not write nested `match` chains:
+A fallible call has type `Result<T, E>`; among the operators only `/` and `%` produce one, since `+ - *` yield plain scalars ([ARITH-PLAIN]). The compiler auto-unwraps the inner `Result` in six contexts so authors do not write nested `match` chains:
 
 1. **User function arguments.** Passing a `Result`-typed expression to a function that expects the underlying type unwraps it. `double(intDiv(a: 10, b: 2))` is well-typed when `intDiv` returns `Result<int, MathError>` and `double` expects `int`.
 2. **Fiber operations.** `spawn`, `await`, `send`, and `recv` unwrap `Result` arguments before storing them.
 3. **Function-value calls.** A `Result` returned through a function value unwraps at the call site ([TYPE-FN-CLOSURE]).
 4. **String interpolation.** `${expr}` renders the success payload (see [String Interpolation](0006-StringInterpolation.md)).
+5. **Comparison.** A `Result` operand of a comparison unwraps: `intDiv(a: 7, b: 2) == 3` is `true`.
+6. **A declared non-`Result` return type.** `fn half(n) -> int = intDiv(a: n, b: 2)` returns `int` — this is the *load-bearing* annotation of [TYPE-NO-REDUNDANT-ANNOTATION](#type-annotation-requirements), and the one case where writing a return type changes meaning rather than restating it. Without the annotation the body's `Result` is the return type.
 
 Arithmetic is **not** one of these contexts. A `Result`-typed operand *propagates*: an arithmetic expression containing one has type `Result<T, MathError>`, flattened rather than nested, and an erroring operand makes the whole expression `Error` ([Chaining Arithmetic](0013-ErrorHandling.md#chaining-arithmetic)). Unwrapping an operand here would discard the error.
 
 Auto-unwrap does **not** apply to:
 
 - `toString`. `toString(intDiv(a: 10, b: 2))` produces `"Success(5)"`, never `"5"`. Use `toString` to inspect the `Result` itself.
-- A function's declared return type. `fn half(x) = x / 2` returns `Result<float, MathError>`; `fn compute() -> int = 5` returns `int`.
+- An *un*annotated function body. `fn half(x) = x / 2` returns `Result<float, MathError>`; only a declared non-`Result` return type unwraps it (context 6 above).
 
 The top-level value of a `Result`-producing expression must still be either matched, stored as a `Result`, or defaulted with `?:` ([Ternary Match](0007-PatternMatching.md#ternary-match-syntactic-sugar)).
 
@@ -467,7 +469,7 @@ companyCity = company.address.city
 
 ## Union Types
 
-A union type (also "sum type", "tagged union", "discriminated union") declares a closed set of named variants. Each variant is either nullary (no payload) or carries a record-style payload. Grammar in [Syntax](0003-Syntax.md#type-declarations); pattern-matching rules in [Pattern Matching](0007-PatternMatching.md).
+A union type (also "sum type", "tagged union", "discriminated union") declares a closed set of named variants. Each variant is nullary (no payload), carries a record-style named payload, or carries a positional payload ([TYPE-UNION-POSITIONAL](0003-Syntax.md#type-declarations)). Grammar in [Syntax](0003-Syntax.md#type-declarations); pattern-matching rules in [Pattern Matching](0007-PatternMatching.md).
 
 ```osprey
 type Color  = Red | Green | Blue
@@ -619,7 +621,7 @@ let combined = numbers + [6, 7, 8]                       // concatenation produc
 numbers |> forEach(fn(x) => print(toString(x)))
 ```
 
-The `+` operator is defined on `(List<T>, List<T>) -> List<T>` and returns a new list. Chains of `map`/`filter` terminated by `forEach`/`fold` are fused per [Stream Fusion](0010-LoopConstructsAndFunctionalIterators.md#stream-fusion); no intermediate list is materialised.
+The `+` operator is defined on `(List<T>, List<T>) -> List<T>` and returns a new list. Chains of `map`/`filter` terminated by `forEach`/`fold` are fused per [Stream Fusion](0010-LoopConstructsAndFunctionalIterators.md#stream-fusion--builtin-iter-fusion); no intermediate list is materialised.
 
 #### Patterns — [TYPE-LIST-PATTERNS]
 

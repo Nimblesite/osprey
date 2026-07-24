@@ -224,7 +224,7 @@ pub(crate) fn cell_value(
     let fnptr = fnptr_const(fn_name, sig);
     if caps.is_empty() {
         let g = format!("@__closure_cell_{id}");
-        cg.add_global_def(format!(
+        cg.add_global(format!(
             "{g} = private unnamed_addr constant {{ i8* }} {{ i8* {fnptr} }}"
         ));
         let reg = cg.emit_reg(format!("bitcast {{ i8* }}* {g} to i8*"));
@@ -386,8 +386,9 @@ fn emit_forwarder(cg: &mut Codegen, name: &str) -> Result<String> {
     let mut params = vec![(LType::Ptr, String::from("__env"))];
     let mut typed = Vec::new();
     for (i, t) in sig.0.iter().enumerate() {
-        params.push((*t, format!("p{i}")));
-        typed.push(format!("{t} %p{i}"));
+        let reg = crate::llty::param_register(i);
+        typed.push(format!("{t} %{reg}"));
+        params.push((*t, reg));
     }
     let r = cg.emit_reg(format!("call {real_ret} @{name}({})", typed.join(", ")));
     let rv = match real_inner {
@@ -402,7 +403,7 @@ fn emit_forwarder(cg: &mut Codegen, name: &str) -> Result<String> {
     emitted?;
     let g = format!("@__fnval_cell_{name}");
     let fnptr = fnptr_const(&fwd, &sig);
-    cg.add_global_def(format!(
+    cg.add_global(format!(
         "{g} = private unnamed_addr constant {{ i8* }} {{ i8* {fnptr} }}"
     ));
     let _ = cg.fnval_cells.insert(name.to_string(), g.clone());

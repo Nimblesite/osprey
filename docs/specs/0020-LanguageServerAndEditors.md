@@ -17,6 +17,8 @@
 | Language server (`osprey lsp`, Rust on `lspkit`) | **Shipped** — replaced the TypeScript server ([#137](https://github.com/Nimblesite/osprey/pull/137)).                                                           |
 | VS Code extension (`nimblesite.osprey`)          | **Shipped** — per-platform VSIX bundling a version-matched compiler.                                                                                            |
 | Flavor-aware answers (`[LSP-FLAVOR-RENDER]`)     | **Shipped** — hover, completion and signature help resolve and present in the document's authoring flavor; a marker/extension conflict is a `flavor-error` diagnostic. |
+| Context-aware completion (`[LSP-COMPLETION-CONTEXT]`) | **Shipped** — the list is filtered by cursor position: type annotation, `receiver.` member, `match` pattern, parameter binder, value, declaration. |
+| Cross-file resolution (`[LSP-WORKSPACE]`)        | **Shipped** — hover, definition, references, completion and signature help reach every sibling file of the project through the compiler's own loader. |
 | Debugger (`osprey --debug` + DAP)                | Planned / in progress — source-level native debugging via DWARF + LLDB-DAP; see [Debugger](0021-Debugger.md) and [Plan 0012](../plans/0012-osprey-debugger.md). |
 | Open VSX                                         | Planned.                                                                                                                                                        |
 | Neovim                                           | Planned. The server is editor-agnostic; only a client recipe is missing.                                                                                        |
@@ -122,8 +124,8 @@ The server advertises and implements:
 | Go to definition | `textDocument/definition`         | AST-driven, anchored on the identifier.                                                                                                                                                     |
 | Find references  | `textDocument/references`         | Whole-word scan; `includeDeclaration` honored.                                                                                                                                              |
 | Document symbols | `textDocument/documentSymbol`     | Flat `DocumentSymbol`s; range on the **name**, not the `fn`/`let`/`type` keyword.                                                                                                           |
-| Signature help   | `textDocument/signatureHelp`      | Active-parameter tracking; ignores `,`/`(`/`)` inside strings and `//` comments.                                                                                                            |
-| Completion       | `textDocument/completion`         | Keywords/snippets + the document's own declarations.                                                                                                                                        |
+| Signature help   | `textDocument/signatureHelp`      | Active-parameter tracking; ignores `,`/`(`/`)` inside strings and `//` comments. Triggers on the **callee name** as well as inside its parentheses. `[LSP-WORKSPACE]`                       |
+| Completion       | `textDocument/completion`         | Position-filtered keywords/snippets + project declarations. `[LSP-COMPLETION-CONTEXT]`, `[LSP-WORKSPACE]`                                                                                    |
 
 ## Hover `[LSP-HOVER]`
 
@@ -139,6 +141,9 @@ Resolution order for the symbol under the cursor:
 1. A built-in (`print`, `map`, …) → its reference signature.
 2. A user **function** → its `fn name(params) -> ret` signature.
 3. A **`let`/`mut` binding** → `[LSP-HOVER-VARIABLES]`.
+4. A **written name that declares nothing** — a parameter, a built-in type
+   name → `[LSP-HOVER-WRITTEN]`.
+5. A symbol declared in a **sibling file** of the project → `[LSP-WORKSPACE]`.
 
 ### Variable hover `[LSP-HOVER-VARIABLES]`
 
@@ -159,6 +164,27 @@ Every binding is hoverable:
   it. Implemented across
   [`osprey-types`](../../crates/osprey-types/src/check.rs) (`let_tys`) and
   [`osprey-types/src/info.rs`](../../crates/osprey-types/src/info.rs).
+
+### Written names `[LSP-HOVER-WRITTEN]`
+
+Not every hoverable name is a declaration. Two are written without ever being
+bound by `let`, and both are among the most-hovered tokens in any typed body:
+
+- **A parameter, inside its own function's body.** Its type is its annotation
+  when it has one and otherwise the type the checker resolved for that argument
+  position (`ProgramTypes::param_types`), so `fn twice(n) = n * 2` hovers `n`
+  as `n: int`. Scope is the enclosing declaration: the nearest function
+  declared at or above the cursor. A parameter must not answer for a name in a
+  *later* declaration.
+- **A built-in type name in an annotation** (`int`, `string`, `Result`, …). No
+  source file declares these, so there is nothing to navigate to; hover carries
+  a one-line summary instead. A **declared** type resolves to its declaration
+  and never reaches this table.
+
+Still out of scope: the type of an arbitrary *sub-expression* (the `a + b` in a
+body, a call's result). That needs an expression-keyed type table in
+`osprey-types` alongside the existing `lets`/`lambdas` maps; the position-keyed
+mechanism exists, the expression map does not.
 
 ### Documentation comments `[LSP-HOVER-DOCS]`
 
@@ -218,6 +244,67 @@ Rendering lives in
 [`osprey-lsp/src/mlrender.rs`](../../crates/osprey-lsp/src/mlrender.rs) — pure,
 total string functions over the closed set of spellings the analyzer emits — and
 is applied in [`features.rs`](../../crates/osprey-lsp/src/features.rs).
+
+## Completion is position-filtered `[LSP-COMPLETION-CONTEXT]`
+
+A completion list that ignores the cursor is not merely noisy — it is wrong.
+The `fn` snippet expands to a whole function declaration; offered inside a type
+annotation it inserts source no flavor parses. Completion therefore classifies
+the cursor before answering
+([`osprey-lsp/src/context.rs`](../../crates/osprey-lsp/src/context.rs)) and
+offers only what is legal there:
+
+| Cursor              | Offered                                                     |
+| ------------------- | ----------------------------------------------------------- |
+| Declaration/statement | Every keyword of the flavor, plus every visible symbol.    |
+| Value (after `=`, `(`, `,`, an operator) | Expression keywords only (`match`, `if`, `handle`) plus every visible symbol. `fn`, `let`, `type`, `namespace` and the rest are declaration forms and are withheld. |
+| Written type (after `:` or `->`) | Declared types and effects, plus the built-in type names. No keywords, no bindings, no functions. |
+| `receiver.` | Only that record's fields — `[LSP-COMPLETION-MEMBER]`.                 |
+| `match` arm pattern | Constructors and `_`.                                       |
+| A declaration's parameter name | **Nothing.** The author is inventing a name; every suggestion is noise. |
+
+Classification is **lexical, not semantic**: it reads the scrubbed prefix
+before the cursor, because a buffer being edited is usually not parsable. String
+literals and comments are blanked first, so a `:` inside a string is not an
+ascription and a `.` inside a comment is not a field access. Indentation carries
+`match`-arm nesting, since Default's braces are optional and ML has none. Every
+rule falls back to the *unfiltered* declaration list rather than to silence — a
+misclassification must never hide a valid completion.
+
+### Member completion `[LSP-COMPLETION-MEMBER]`
+
+After `receiver.`, the list is exactly the fields of the record the receiver
+holds — its annotation when written, else its inferred type, read
+**structurally** from the checker (a record renders as `{ x: int, y: int }`,
+which names no type, so a rendered string cannot be parsed back into a lookup
+key). An unresolved receiver yields **nothing**: `origin.` is a promise that
+only `origin`'s fields follow, and falling back to the whole symbol table breaks
+that promise.
+
+## The project is the unit of analysis `[LSP-WORKSPACE]`
+
+A file is not a program. When the open document belongs to a project — the
+nearest ancestor directory holding an `osprey.toml` — hover, go-to-definition,
+find-references, completion and signature help resolve against **every** source
+file the manifest links, not just the buffer in front of the cursor.
+
+Sibling files are loaded through `osprey_project::load`, the same loader the CLI
+and `[LSP-DIAGNOSTICS]` already use: the editor's idea of which files form a
+program must not be able to drift from the compiler's. URI/path resolution and
+project discovery live once, in
+[`osprey-lsp/src/workspace.rs`](../../crates/osprey-lsp/src/workspace.rs).
+
+Normative requirements:
+
+- **The open buffer is searched first.** A local declaration shadows an
+  imported one, and the open buffer's *unsaved* text is authoritative for
+  itself.
+- **A standalone script costs nothing.** No `osprey.toml` means no siblings, no
+  load, and no answers invented from files that are part of no program.
+- **Find-references reaches the declaration wherever it lives.** A declaring
+  file spells the name unqualified (`openSql`) while its callers write the
+  qualified path (`Ledger::openSql`), so a whole-word scan alone never arrives;
+  the sibling scan adds declaration sites by symbol identity.
 
 ## Position encoding `[LSP-ENCODING]`
 
@@ -370,7 +457,14 @@ A change to this spec is conformant only if:
 5. No source file hard-codes a version (`[EDITOR-VERSIONING]`).
 6. Code implementing a section references its ID in a comment
    (e.g. `// Implements [LSP-CAPABILITIES]`), enforced by `spec-check`.
-7. Every document-scoped feature resolves its flavor through the single
+7. Completion answers are filtered by cursor position
+   (`[LSP-COMPLETION-CONTEXT]`). A completion that cannot appear at the cursor —
+   the `fn` snippet inside a type annotation, `namespace` inside a call
+   argument, any symbol after an unresolved `receiver.` — is non-conformant.
+8. Features resolve against the whole project when the document belongs to one
+   (`[LSP-WORKSPACE]`), through `osprey_project::load` and no other file
+   discovery. A feature that walks the filesystem itself is non-conformant.
+9. Every document-scoped feature resolves its flavor through the single
    `osprey_syntax::resolve_flavor` chain and presents its answer in that flavor
    (`[LSP-FLAVOR-RENDER]`). A feature that sniffs the file extension itself, or
    that answers a `.ospml` document in Default spelling, is non-conformant.

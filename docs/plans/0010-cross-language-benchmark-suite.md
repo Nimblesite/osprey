@@ -16,6 +16,11 @@ flags, not the default**, the headline `osprey` column in the published tables
 still shows the 633 MB figure. Feature-blocked classics (arrays, float) pending
 **Spec ID:** `[BENCH-SUITE]`
 
+**Update — the backend oracles are now enforced.** `make test` runs the
+differential harness three times (default, `--memory=gc`, `--memory=arc`) and
+the ARC pass fails unless every example ends with `ARC_LEAKY=0`. What remains on
+this plan is documentation freshness and the two feature-blocked case families.
+
 ## Summary
 
 An **accurate, reproducible** way to see where Osprey sits on CPU time and peak
@@ -168,28 +173,27 @@ codegen/runtime path is half-built.
       (`memory_arc_tests` + `memory_gc_tests`) and `parse_memory` flag tests.
       **Still opt-in** — the default backend, and therefore the headline
       benchmark column, is unchanged.
-- [ ] **Wire the per-backend conformance oracles into CI.** `_conformance-gc` and
-      `_conformance-arc` (Makefile) re-run the whole differential harness under
-      `--memory=gc` / `--memory=arc` and assert byte-identical output, but
-      **neither is a prerequisite of `test:` or `ci:`, and `.github/workflows/ci.yml`
-      never invokes them** (`ci: lint test bank-test bank-e2e build`; `test:` runs
-      `_test_rust`, `_coverage_check_rust`, `_test_c_runtime`, `_test_differential`,
-      `_test_profiler`, `_test_vscode_extension`, `_coverage_check_vscode_extension`).
-      What CI actually enforces for the backends today is the C unit suites plus
-      the `parse_memory` unit tests — not end-to-end backend equivalence. Add both
-      targets to the CI job (or to `test:`) so a backend that silently diverges
-      fails the build.
-- [ ] **Make the ARC zero-leak bar actually enforced.** `crates/diff_examples.sh`
-      only computes and prints `ARC_LEAKY` when `OSPREY_ARC_DEBUG` is set
-      (`if [[ -n "${OSPREY_ARC_DEBUG:-}" ]]`), **no make target sets that variable**,
-      and `_test_differential` greps only for `FAIL=0`, `NOEXP=0` and `FC_OK` — so
-      even with the variable set nothing asserts `ARC_LEAKY=0`. The leak bar is
-      therefore doubly opt-in, which contradicts
-      [docs/specs/0018-MemoryManagement.md](../specs/0018-MemoryManagement.md)
-      (“enforced on every run by the harness (`ARC_LEAKY` must be 0)” … “machine-checked
-      on every run”). Fix by exporting `OSPREY_ARC_DEBUG=1` in `_conformance-arc`
-      and adding an `ARC_LEAKY=0` grep, then correcting spec 0018 if the scope
-      differs.
+- [x] **Wire the per-backend conformance oracles into CI.** `_conformance-gc`
+      and `_conformance-arc` are now prerequisites of `test:` (Makefile), which
+      `ci:` already depends on — so every CI run replays the whole differential
+      harness twice more, once under `--memory=gc` and once under
+      `--memory=arc`, and fails if either diverges byte-for-byte from the
+      default. Both targets dropped their `build` prerequisite to match every
+      other private `_test_*` target: `test:` already depends on `build`, and a
+      sub-make prerequisite re-ran the entire workspace + VSIX build twice.
+      Verified locally: `PASS=148 FAIL=0` under default, `--memory=gc`, and
+      `--memory=arc` alike.
+- [x] **Make the ARC zero-leak bar actually enforced.** `_conformance-arc` now
+      exports `OSPREY_ARC_DEBUG=1` — which is what makes `memory_arc.c` report
+      its live-object count at exit, and what makes `diff_examples.sh` print
+      `ARC_LEAKY` at all — and greps for `ARC_LEAKY=0`, failing the build
+      otherwise. The bar was doubly opt-in before: no target set the variable
+      and nothing asserted the count, so [GC-ARC-PERCEUS]'s "zero leaked
+      language values" was documented but unchecked. The grep fails closed: if
+      the line is missing entirely (a lost env var) the target fails rather than
+      passing silently. Spec 0018 corrected to say **where** the bar is
+      enforced (`make test` via `_conformance-arc`) rather than implying every
+      bare harness run checks it.
 - [ ] **Refresh the stale ARC figure in `benchmarks/README.md`** — it quotes
       binarytrees ARC peak RSS as “~4.9 MB”, but the committed measurement in
       `benchmarks/results/results.json` is 2 965 504 B ≈ **2.97 MB**. (The same

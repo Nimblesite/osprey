@@ -60,6 +60,24 @@ Returns the number of bytes in the string's UTF-8 encoding.
 
 Labeled equality assertion in Alcotest argument order (expected before actual). Behaves exactly like expect, with the label in the failure diagnostic.
 
+## [checkedAdd](checkedadd/)
+
+**Signature:** `checkedAdd(a: int, b: int) -> Result<int, Error>`
+
+Integer addition that reports overflow instead of wrapping. The `+` operator returns plain int because a wrapped result is still representable; this returns Result<int, MathError>.
+
+## [checkedMul](checkedmul/)
+
+**Signature:** `checkedMul(a: int, b: int) -> Result<int, Error>`
+
+Integer multiplication that reports overflow instead of wrapping, returning Result<int, MathError>. The guarded sibling of `*`.
+
+## [checkedSub](checkedsub/)
+
+**Signature:** `checkedSub(a: int, b: int) -> Result<int, Error>`
+
+Integer subtraction that reports overflow instead of wrapping, returning Result<int, MathError>. The guarded sibling of `-`.
+
 ## [cleanupProcess](cleanupprocess/)
 
 **Signature:** `cleanupProcess(handle: int) -> Unit`

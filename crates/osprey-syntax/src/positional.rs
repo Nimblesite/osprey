@@ -11,20 +11,52 @@
 //! is never silently mis-lowered.
 
 use osprey_ast::{Expr, FieldAssignment};
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 
 thread_local! {
     static POSITIONAL_CTORS: RefCell<HashMap<String, usize>> = RefCell::new(HashMap::new());
+    static DEPTH: Cell<usize> = const { Cell::new(0) };
 }
 
-/// Replace the table with the constructors of the unit about to be lowered.
-pub(crate) fn install(entries: impl Iterator<Item = (String, usize)>) {
-    POSITIONAL_CTORS.with(|s| {
-        let mut table = s.borrow_mut();
-        table.clear();
-        table.extend(entries);
+/// Holds the table alive for one program lowering and tears it down after, so
+/// a later unrelated unit never folds against a stale constructor.
+pub(crate) struct Scope {
+    outermost: bool,
+}
+
+impl Drop for Scope {
+    fn drop(&mut self) {
+        DEPTH.with(|d| d.set(d.get().saturating_sub(1)));
+        if self.outermost {
+            POSITIONAL_CTORS.with(|s| s.borrow_mut().clear());
+        }
+    }
+}
+
+/// Install the constructors of the unit about to be lowered, for as long as the
+/// returned [`Scope`] lives.
+///
+/// Only the *outermost* lowering installs; a nested one inherits the table it
+/// finds. Lowering re-enters itself: a Default interpolation fragment is
+/// re-parsed as a whole mini-program mid-lowering (`parse_fragment`), and that
+/// fragment declares no types — so letting it install would clear the table the
+/// enclosing program is still being lowered against, and `"${Node(l, r)}"`
+/// would fold differently from the identical expression outside the string.
+pub(crate) fn install(entries: impl Iterator<Item = (String, usize)>) -> Scope {
+    let outermost = DEPTH.with(|d| {
+        let depth = d.get();
+        d.set(depth.saturating_add(1));
+        depth == 0
     });
+    if outermost {
+        POSITIONAL_CTORS.with(|s| {
+            let mut table = s.borrow_mut();
+            table.clear();
+            table.extend(entries);
+        });
+    }
+    Scope { outermost }
 }
 
 /// Whether a declared variant's fields came from a positional payload, given

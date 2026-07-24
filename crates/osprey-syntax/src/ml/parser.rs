@@ -691,9 +691,10 @@ impl Parser<'_> {
         let pos = self.pos();
         let name = self.ident()?;
         let type_params = self.signature_type_params();
-        if !self.eat(&TokKind::Colon) {
-            self.error("expected ':' in signature");
-        }
+        // Both dispatch paths — a bare `name :` and `at_generic_signature`'s
+        // `name<T, U> :` — have already seen the colon, so it is here by
+        // construction and needs no diagnostic of its own.
+        let _ = self.eat(&TokKind::Colon);
         let ty = self.ty();
         let effects = self.effect_row();
         Some(MlItem::ValueSignature {

@@ -30,9 +30,12 @@ a dead version of a list or map reclaims exactly the spine it stopped sharing.
 
 All three backends are byte-identical on the whole differential harness, and
 under `OSPREY_ARC_DEBUG=1` every example reports **zero live language values at
-exit** — the [MEM-BACKENDS] leak bar, enforced on every run by the harness
-(`ARC_LEAKY` must be 0). The C runtime's memory and container units are covered
-by assertion-dense unit suites run from `make test`.
+exit** — the [MEM-BACKENDS] leak bar. Both properties are enforced by `make
+test`, which runs the harness a second and third time through
+`_conformance-gc` / `_conformance-arc`; the ARC pass exports
+`OSPREY_ARC_DEBUG=1` and fails unless the harness reports `ARC_LEAKY=0`. The C
+runtime's memory and container units are covered by assertion-dense unit suites
+run from the same target.
 
 Still open, tracked as future work rather than a correctness gap: the precise
 Cheney copying collector that would act as a second conformance oracle, the
@@ -223,9 +226,9 @@ driver does not yet select ARC, however: it always links the default
 A reclamation backend is conforming iff every differential-harness example
 produces byte-identical output and reports zero leaked language values under
 it. Both shipped reclaiming backends meet that bar today; the ARC half of it is
-machine-checked on every run (`OSPREY_ARC_DEBUG=1` makes the harness fail on a
-nonzero `ARC_LEAKY`), because stdout comparison alone can see neither a leak nor
-a premature free.
+machine-checked by every `make test` (the `_conformance-arc` target exports
+`OSPREY_ARC_DEBUG=1` and fails on a nonzero `ARC_LEAKY`), because stdout
+comparison alone can see neither a leak nor a premature free.
 
 **Which backend is the shipped default.** ARC stays *opt-in* (`--memory=arc`)
 until the precise copying collector exists to cross-check it. Byte-identical

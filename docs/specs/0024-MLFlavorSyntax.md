@@ -49,7 +49,7 @@ subordinate to that contract. Implementation is tracked in
   ([`crates/diff_examples.sh`](../../crates/diff_examples.sh)) discovers
   `.ospml` fixtures **additively**, leaving every existing `.osp` example
   untouched.
-- **Phases 2–3 — ML lexer/parser/lowerer: in active development.** The frontend
+- **Phases 2–3 — ML lexer/parser/lowerer: implemented and green.** The frontend
   is a hand-written Rust layout lexer + recursive-descent (Pratt /
   precedence-climbing) parser in
   [`crates/osprey-syntax/src/ml/`](../../crates/osprey-syntax/src/ml/) (see
@@ -61,17 +61,21 @@ subordinate to that contract. Implementation is tracked in
 - **First-class handler values: deferred.** ML effect declarations,
   `perform`, and the existing fused `handle ... in ...` form are implemented;
   only reusable handler values/installers await the shared-core feature.
-- **Elegance forms: specified, not implemented.** Inline `|` unions
-  ([`[FLAVOR-ML-UNION-INLINE]`](#type-declarations)), equational clauses
-  ([`[FLAVOR-ML-CLAUSES]`](#functions-and-currying)), grouped patterns
-  ([`[FLAVOR-ML-PATTERN-GROUP]`](#match)), positional construction and
+- **Elegance forms: implemented and green.** Inline `|` unions
+  ([`[FLAVOR-ML-UNION-INLINE]`](#type-declarations)) — `|` is a real ML token,
+  lexed after the two-character operators so `||` and `|>` keep maximal munch —
+  equational clauses ([`[FLAVOR-ML-CLAUSES]`](#functions-and-currying)), grouped
+  patterns ([`[FLAVOR-ML-PATTERN-GROUP]`](#match)), positional construction and
   destructuring ([`[FLAVOR-ML-CTOR-POSITIONAL]`](#records)), and `_` parameters
   ([`[PARAM-WILDCARD]`](0003-Syntax.md#expressions), shared core — both flavors)
-  are normative here and rejected by the current frontend. Separately, the Default flavor's Result
-  default `e ?: d` ([Pattern Matching](0007-PatternMatching.md)) has no ML
-  spelling today — the ML lexer rejects `?` outright — and gains one; the
-  operator itself is unchanged. Sequencing is in
-  [plan 0019](../plans/0019-ml-elegance.md); `|` does not yet lex at all.
+  all parse, lower, and run. The Default flavor's Result default `e ?: d`
+  ([Pattern Matching](0007-PatternMatching.md)) lexes and parses in the ML
+  flavor too, spelled identically; the operator itself is unchanged. Of
+  [plan 0019](../plans/0019-ml-elegance.md) there remain open: phase 4
+  `[ARITH-EFFECT]` (deferred, blocked on effect-row inference), the corpus
+  sweep for silently-shadowed same-name bindings and the unreachable-clause
+  diagnostic that should replace today's silent first-wins, and the
+  `osprey-fmt` round-trip audit of these forms.
 
 The parsing techniques and the offside rule are cited in the
 [References](#references) section.
@@ -235,7 +239,7 @@ flavor spells it `|acc, _| => …`. ML additionally admits it in a clause head,
 where Default has no clause form.
 
 ```osprey-ml
-range 0 1200 |> fold 0 (\acc _ => acc + check (make 13))
+range 0 1200 |> fold 0 (\(acc, _) => acc + check (make 13))
 ```
 
 `[FLAVOR-ML-CURRY]` ML **curries by default**. A multi-parameter binding
@@ -874,7 +878,13 @@ test "createTask stores the task and logs" =
   meaningful (`serveForever ()`).
 - **Lambdas:** anonymous functions are written `\param* => body` (lowering to
   `Expr::Lambda`), keeping `=>` as the clause/yield arrow and `->` as the type
-  arrow.
+  arrow. The parameter list follows the same split as application
+  ([FLAVOR-ML-CURRY](#functions-and-currying)): whitespace parameters curry, so
+  `\x y => e` is a one-parameter lambda returning a one-parameter lambda, while
+  a parenthesised comma list `\(x, y) => e` is the flat two-parameter lambda —
+  argument grouping, not a tuple. Only the flat form twins Default's
+  `|x, y| => e`, which is why a callback taking a flat function, such as
+  `fold`'s, is written `fold 0 (\(acc, _) => …)`.
 - **Effect annotations on signatures:** the effect row follows the result type,
   as in the Default flavor (`saveTask : string -> int ![Store, Log]`).
 - **Or-patterns and guards:** omitted. `Pattern` has no `Or` and `MatchArm` has
@@ -884,7 +894,7 @@ test "createTask stores the task and logs" =
 - **Trailing lambdas without parentheses:** rejected. `\x => body` has no
   closing delimiter, so `xs |> map \x => x + 1 |> length` would silently bind
   the pipeline into the lambda body and compute the wrong answer with the
-  flavor's most-used operator. The parentheses in `fold 0 (\acc _ => …)` stay.
+  flavor's most-used operator. The parentheses in `fold 0 (\(acc, _) => …)` stay.
 - **Operator sections (`(+)`, `(1 +)`):** rejected. They need lookahead in the
   parenthesised-expression path, `(-)` is ambiguous with prefix negation, and
   they are a second spelling for `\a b => a + b`.

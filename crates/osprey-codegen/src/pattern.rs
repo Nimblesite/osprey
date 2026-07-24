@@ -51,12 +51,7 @@ fn gen_list_match(cg: &mut Codegen, disc: &Value, arms: &[MatchArm]) -> Result<V
                 let n = elements.len();
                 let op = if rest.is_some() { "sge" } else { "eq" };
                 let cond = cg.emit_reg(format!("icmp {op} i64 {len}, {n}"));
-                let body_lbl = cg.fresh_label();
-                let next_lbl = cg.fresh_label();
-                cg.emit(format!(
-                    "br i1 {cond}, label %{body_lbl}, label %{next_lbl}"
-                ));
-                cg.start_block(&body_lbl);
+                let next_lbl = open_guarded_arm(cg, &cond);
                 bind_list_arm(cg, &list_val, elements, rest.as_deref(), n);
                 finish_guarded_arm(cg, arm, &mut phi_in, &end, &next_lbl, i == last)?;
             }
@@ -324,23 +319,14 @@ fn gen_union_match(
             let vtag = i64::try_from(vpos).unwrap_or(0);
             let cond = cg.fresh_reg();
             cg.emit(format!("{cond} = icmp eq i64 {tag}, {vtag}"));
-            let body_lbl = cg.fresh_label();
-            let next_lbl = cg.fresh_label();
-            cg.emit(format!(
-                "br i1 {cond}, label %{body_lbl}, label %{next_lbl}"
-            ));
-            cg.start_block(&body_lbl);
+            let next_lbl = open_guarded_arm(cg, &cond);
             bind_variant_fields(cg, disc, &name, &fields);
             emit_arm_body(cg, arm, &mut phi_in, &end)?;
             cg.start_block(&next_lbl);
         } else {
             match &arm.pattern {
                 Pattern::Wildcard | Pattern::Binding(_) | Pattern::TypeAnnotated { .. } => {
-                    if let Pattern::Binding(n) | Pattern::TypeAnnotated { name: n, .. } =
-                        &arm.pattern
-                    {
-                        cg.bind(n.clone(), disc.clone());
-                    }
+                    bind_catch_all(cg, &arm.pattern, disc);
                     emit_arm_body(cg, arm, &mut phi_in, &end)?;
                     break;
                 }
@@ -413,12 +399,7 @@ fn gen_literal_match(cg: &mut Codegen, disc: &Value, arms: &[MatchArm]) -> Resul
             }
             Pattern::Literal(lit) => {
                 let cond = gen_eq(cg, disc, lit)?;
-                let body_lbl = cg.fresh_label();
-                let next_lbl = cg.fresh_label();
-                cg.emit(format!(
-                    "br i1 {cond}, label %{body_lbl}, label %{next_lbl}"
-                ));
-                cg.start_block(&body_lbl);
+                let next_lbl = open_guarded_arm(cg, &cond);
                 finish_guarded_arm(cg, arm, &mut phi_in, &end, &next_lbl, i == last)?;
             }
             _ => return Err(CodegenError::unsupported("destructuring match arm")),
@@ -455,6 +436,18 @@ fn emit_arm_body(
     push_arm(cg, &arm.body, phi_in)?;
     cg.emit(format!("br label %{end}"));
     Ok(())
+}
+
+/// Open a guarded arm: branch on `cond` into a fresh body block, make that
+/// block current, and hand back the fall-through label the next arm starts at.
+fn open_guarded_arm(cg: &mut Codegen, cond: &str) -> String {
+    let body_lbl = cg.fresh_label();
+    let next_lbl = cg.fresh_label();
+    cg.emit(format!(
+        "br i1 {cond}, label %{body_lbl}, label %{next_lbl}"
+    ));
+    cg.start_block(&body_lbl);
+    next_lbl
 }
 
 /// Complete a guarded arm after its shape-specific bindings have been emitted.
@@ -553,25 +546,5 @@ fn bind_catch_all(cg: &mut Codegen, pattern: &Pattern, disc: &Value) {
 /// operand.
 fn gen_eq(cg: &mut Codegen, disc: &Value, lit: &Expr) -> Result<String> {
     let pat = gen_expr(cg, lit)?;
-    let reg = cg.fresh_reg();
-    let is_str = |t: LType| t == LType::Str || t == LType::Ptr;
-    if is_str(disc.ty) && is_str(pat.ty) {
-        cg.add_extern("declare i32 @strcmp(i8*, i8*)");
-        let c = cg.fresh_reg();
-        cg.emit(format!(
-            "{c} = call i32 @strcmp(i8* {}, i8* {})",
-            disc.operand, pat.operand
-        ));
-        cg.emit(format!("{reg} = icmp eq i32 {c}, 0"));
-    } else if disc.ty == LType::Double || pat.ty == LType::Double {
-        cg.emit(format!(
-            "{reg} = fcmp oeq double {}, {}",
-            disc.operand, pat.operand
-        ));
-    } else {
-        let d = as_i64(cg, disc.clone())?;
-        let p = as_i64(cg, pat)?;
-        cg.emit(format!("{reg} = icmp eq i64 {}, {}", d.operand, p.operand));
-    }
-    Ok(reg)
+    Ok(crate::expr::gen_comparison(cg, "==", disc.clone(), pat)?.operand)
 }

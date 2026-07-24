@@ -71,7 +71,8 @@ fully specified in [ML Flavor Syntax](0024-MLFlavorSyntax.md).
 > `Expr::Call{function, arguments, named_arguments}`; `match` → `Expr::Match` +
 > `MatchArm`; blocks → `Expr::Block{statements, value}`; field access →
 > `Expr::FieldAccess`; indexing → `Expr::Index`; patterns → `Pattern::*`.
-> Positional variants use `TypeVariant` with `TypeField::positional`
+> Positional variants use `TypeVariant` whose `TypeField` names are decimal
+> slot indices (`osprey_ast::positional_field_name`)
 > ([TYPE-UNION-POSITIONAL](#type-declarations)); `e ?: d` uses the ternary
 > `Expr::Match` with boolean-literal arms.
 
@@ -265,8 +266,10 @@ parenthesised, slot-ordered spelling — `Node(left, right)` — and destructure
 the matching pattern form ([Match Expressions](#match-expressions)). It is the
 one call-shaped expression exempt from the named-argument rule for two or more
 arguments ([Function Calls](0005-FunctionCalls.md#rules)), because a positional
-payload has no field names to supply. Status: specified; not yet implemented (it
-requires the `positional` discrimination on `osprey_ast::TypeField`).
+payload has no field names to supply. A slot is recorded as a field whose
+declared name is its decimal index (`0`, `1`) — not a spellable `_0` — so no
+source can reach a slot by name and no generated slot name can collide with a
+user-written field.
 
 ```osprey
 type Color = Red | Green | Blue
@@ -363,7 +366,7 @@ lambda is written `fn() => e`.
 `[PARAM-WILDCARD]` A parameter may be written `_` to declare an argument the
 body ignores. It lowers to a `Parameter` carrying a generated, unspellable
 name, so repeated `_`s never collide and none is referenceable. This is shared
-core, not ML sugar — without it ML's `\acc _ => …` has no Default twin and the
+core, not ML sugar — without it ML's `\(acc, _) => …` has no Default twin and the
 pair breaks [FLAVOR-IR-EQUIV](0023-LanguageFlavors.md#cross-flavor-equivalence-tests).
 
 ```osprey
@@ -371,13 +374,12 @@ let total = fold(xs, 0, |acc, _| => acc + 1)
 ```
 
 ```osprey-ml
-total = fold xs 0 (\acc _ => acc + 1)
+total = fold xs 0 (\(acc, _) => acc + 1)
 ```
 
 Because a `_` parameter has no name to supply at the call site, it is usable in
 a `fn` head only where the call is positional — arity one, or a lambda invoked
-by a built-in ([Function Calls](0005-FunctionCalls.md#rules)). Status:
-specified; not yet implemented.
+by a built-in ([Function Calls](0005-FunctionCalls.md#rules)).
 
 Precedence, highest to lowest:
 
@@ -507,7 +509,7 @@ constructor pattern is legal only against a positionally-declared variant — a
 named-field variant keeps its by-name binding, which is load-bearing because
 codegen resolves each binder against the layout by name — and its arguments are
 binders or `_` only: nested constructor patterns such as `Node (Node a b) c` are
-not yet permitted. Status: specified; not yet implemented.
+rejected with a diagnostic.
 
 ## Variable Binding
 

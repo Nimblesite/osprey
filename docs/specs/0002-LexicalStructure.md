@@ -113,7 +113,7 @@ pair    = [x, y]
 
 ### Arithmetic Operators
 
-`+`, `-`, `*`, `/`, `%`. Under [ARITH-PLAIN] `+`, `-`, `*` return plain scalars (`int`, or `float` with any float operand) while `/` and `%` return `Result<_, MathError>`; today all five still return `Result` (specified; not yet implemented). Full signatures and the per-operand-type table are in [Error Handling](0013-ErrorHandling.md).
+`+`, `-`, `*`, `/`, `%`. Under [ARITH-PLAIN] `+`, `-`, `*` return plain scalars (`int`, or `float` with any float operand) while `/` and `%` return `Result<_, MathError>` and are zero-checked. Full signatures and the per-operand-type table are in [Error Handling](0013-ErrorHandling.md).
 
 ### Comparison Operators
 - `==` Equality
@@ -138,8 +138,9 @@ pair    = [x, y]
   expression operator
 - `|>` Pipe
 - `?:` Result default — `e ?: d` yields `e`'s `Success` payload, else `d`
-  ([Ternary Match](0007-PatternMatching.md#ternary-match-syntactic-sugar));
-  the ML lexer does not yet accept it (specified, not yet implemented)
+  ([Ternary Match](0007-PatternMatching.md#ternary-match-syntactic-sugar)).
+  Spelled identically in both flavors; lexed ahead of the bare `:` of a type
+  signature so it keeps maximal munch
 - `?` `:` Structural ternary match, as `expr { pattern } ? expr : expr`
   ([Ternary Match](0007-PatternMatching.md#ternary-match-syntactic-sugar))
 - `!` Effect-set marker on a function type

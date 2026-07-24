@@ -203,7 +203,7 @@ fn gen_arith_propagating(cg: &mut Codegen, op: &str, l: Value, r: Value) -> Resu
     let okb = cg.snapshot_to(&end);
 
     cg.start_block(&bad_bb);
-    let zero = Value::new(zero_literal(inner), inner);
+    let zero = Value::new(crate::llty::zero_literal(inner), inner);
     let err = crate::result::make_result(cg, zero, inner, "1", &msg)?;
     let errb = cg.snapshot_to(&end);
 
@@ -247,14 +247,6 @@ fn result_failed(cg: &mut Codegen, v: &Value) -> String {
 }
 
 /// The typed zero literal for the unread payload slot of an `Error` block.
-fn zero_literal(ty: LType) -> &'static str {
-    match ty {
-        LType::Double => "0.0",
-        LType::Str | LType::Ptr => "null",
-        _ => "0",
-    }
-}
-
 /// Arithmetic. Float if either operand is a float (the other is promoted),
 /// otherwise integer. Division ALWAYS returns float (the Osprey spec); modulo
 /// stays integer. The Result<…, `MathError`> wrapper the type system tracks is
@@ -526,7 +518,7 @@ fn cmp_code(op: &str, float: bool) -> &'static str {
     }
 }
 
-fn gen_comparison(cg: &mut Codegen, op: &str, l: Value, r: Value) -> Result<Value> {
+pub(crate) fn gen_comparison(cg: &mut Codegen, op: &str, l: Value, r: Value) -> Result<Value> {
     let reg = cg.fresh_reg();
     let is_str = |t: LType| t == LType::Str || t == LType::Ptr;
     if is_str(l.ty) && is_str(r.ty) {

@@ -644,11 +644,6 @@ impl Codegen {
         id
     }
 
-    /// Append a module-level global definition (e.g. the fiber-result table).
-    pub(crate) fn add_global_def(&mut self, def: impl Into<String>) {
-        self.globals.push(def.into());
-    }
-
     /// Suspend the in-progress function and start a fresh one (a handler function
     /// emitted while lowering its enclosing `handle`). Returns the saved state to
     /// hand back to [`Codegen::exit_nested_fn`]. The new function gets its own
@@ -1019,7 +1014,8 @@ impl Codegen {
         let _ = self.externs.insert(decl.into());
     }
 
-    /// Append a module-level global definition (counter globals, tables).
+    /// Append a module-level global definition: closure cells, counter
+    /// globals, the fiber-result table.
     pub(crate) fn add_global(&mut self, def: impl Into<String>) {
         self.globals.push(def.into());
     }

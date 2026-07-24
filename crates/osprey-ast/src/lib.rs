@@ -840,4 +840,33 @@ mod tests {
         assert_eq!(t.name, "Ptr");
         assert!(!t.is_function);
     }
+
+    #[test]
+    fn symbol_paths_report_emptiness() {
+        assert!(SymbolPath::new(Vec::<String>::new()).is_empty());
+        assert!(!SymbolPath::single("Bank").is_empty());
+    }
+
+    /// [TYPE-UNION-POSITIONAL]: slot names round-trip through their inverse and
+    /// can never be confused with a user-written field name.
+    #[test]
+    fn positional_slot_names_round_trip() {
+        assert_eq!(positional_field_name(0), "0");
+        assert_eq!(positional_field_name(12), "12");
+        assert!(is_positional_field(&positional_field_name(7)));
+        assert!(!is_positional_field(""));
+        assert!(!is_positional_field("left"));
+        assert!(!is_positional_field("0a"));
+    }
+
+    /// [PARAM-WILDCARD], [FLAVOR-ML-CLAUSES]: generated binders are unspellable
+    /// in source and separated by role, so two generators never collide.
+    #[test]
+    fn generated_names_are_unspellable_and_role_separated() {
+        assert_eq!(generated_name("tmp", 3), "$tmp3");
+        assert_eq!(wildcard_param_name(1), "$wild1");
+        assert_eq!(clause_param_name(1), "$arg1");
+        assert_ne!(wildcard_param_name(0), clause_param_name(0));
+        assert!(!is_positional_field(&clause_param_name(0)));
+    }
 }

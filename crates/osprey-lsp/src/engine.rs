@@ -74,14 +74,18 @@ impl OspreyEngine {
                 include_declaration,
             } => Report::Locations(self.locate(&at, false, include_declaration)),
             Query::SignatureHelp(at) => Report::Signature(self.signature(&at)),
-            Query::Completion(uri) => {
-                Report::Completion(features::completion(&self.text(&uri), uri.as_str()))
-            }
+            Query::Completion(at) => Report::Completion(crate::complete::completion(
+                &self.text(&at.uri),
+                at.uri.as_str(),
+                at.line,
+                at.character,
+                enc,
+            )),
         }
     }
 
     fn hover(&self, at: &At) -> Option<String> {
-        features::hover(
+        crate::hover::hover(
             &self.text(&at.uri),
             at.uri.as_str(),
             at.line,
@@ -262,7 +266,7 @@ mod tests {
             other => panic!("expected signature, got {other:?}"),
         }
         // Completion lists keywords plus the document's own declarations.
-        match report(Query::Completion(uri.clone())).await {
+        match report(Query::Completion(at(2, 0))).await {
             Report::Completion(items) => {
                 assert!(items.iter().any(|i| i.label == "fn"));
                 assert!(items.iter().any(|i| i.label == "add"));

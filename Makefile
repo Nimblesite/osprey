@@ -141,6 +141,8 @@ test: build
 	$(MAKE) _coverage_check_rust
 	$(MAKE) _test_c_runtime
 	$(MAKE) _test_differential
+	$(MAKE) _conformance-gc
+	$(MAKE) _conformance-arc
 	$(MAKE) _test_profiler
 	$(MAKE) _test_vscode_extension
 	$(MAKE) _coverage_check_vscode_extension
@@ -477,18 +479,21 @@ _test_differential:
 
 # _conformance-gc: run every tested example under the tracing GC backend; output
 # must be byte-identical to the default ([MEM-BACKENDS] oracle, docs/plans/0011).
-_conformance-gc: build
+_conformance-gc:
 	@echo "==> [conformance] differential harness under --memory=gc..."
 	@out=$$(OSPREY_RUN_FLAGS=--memory=gc zsh crates/diff_examples.sh); echo "$$out"; \
 	  echo "$$out" | grep -Eq 'FAIL=0 ' || { echo 'FAIL: GC backend output diverged'; exit 1; }
 
 # _conformance-arc: run every tested example under the Perceus ARC backend;
-# output must be byte-identical to the default ([MEM-BACKENDS] / [GC-ARC-PERCEUS],
-# docs/plans/0011 phase 2).
-_conformance-arc: build
+# output must be byte-identical to the default ([MEM-BACKENDS] / [GC-ARC-PERCEUS]),
+# AND every example must end with zero live ARC objects. OSPREY_ARC_DEBUG=1 makes
+# memory_arc.c report its live count at exit, which is the only automatic check
+# for the [GC-ARC-PERCEUS] zero-leak bar: comparing stdout cannot see a leak.
+_conformance-arc:
 	@echo "==> [conformance] differential harness under --memory=arc..."
-	@out=$$(OSPREY_RUN_FLAGS=--memory=arc zsh crates/diff_examples.sh); echo "$$out"; \
-	  echo "$$out" | grep -Eq 'FAIL=0 ' || { echo 'FAIL: ARC backend output diverged'; exit 1; }
+	@out=$$(OSPREY_ARC_DEBUG=1 OSPREY_RUN_FLAGS=--memory=arc zsh crates/diff_examples.sh); echo "$$out"; \
+	  echo "$$out" | grep -Eq 'FAIL=0 '   || { echo 'FAIL: ARC backend output diverged'; exit 1; }; \
+	  echo "$$out" | grep -Eq 'ARC_LEAKY=0 ' || { echo 'FAIL: ARC leaked language values'; exit 1; }
 
 # --- vscode-extension -------------------------------------------------------
 # The extension's LSP server spawns the `osprey` binary at runtime, so the

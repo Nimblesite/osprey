@@ -268,7 +268,7 @@ See [Currying Canonicalisation](#currying-canonicalisation).
 | Ordinary function | `fn f(x, y) = e` | `f x y = e`† | `Stmt::Function` / curried `Lambda` chain† |
 | Equational clauses | *(none — writes the `match`)* | `f 0 = a` / `f n = b`† | `Stmt::Function` over `Expr::Match`† |
 | Lambda | `fn(y) => e` / `\|y\| => e` | `\y => e` | `Expr::Lambda` |
-| Ignored parameter | `\|acc, _\| => e` | `\acc _ => e` | `Parameter`, generated name |
+| Ignored parameter | `\|acc, _\| => e` | `\(acc, _) => e` | `Parameter`, generated name |
 | Call | `f(x: a, y: b)` | `f a b`† | `Expr::Call` (`named_arguments` vs nested single-arg `Call`)† |
 | Block | `{ s; …; e }` | layout block | `Expr::Block { statements, value }` |
 | Match | `match v { P => e }` | `match v` + indented arms | `Expr::Match` + `MatchArm` |
@@ -296,16 +296,23 @@ value. ML's twin for the flat Default forms is the uncurried `f (x, y)` /
 for a `Stmt::Function` whose body is the `Expr::Match` a Default author writes by
 hand, so the row pairs a *concept*, not two spellings.
 
-The **Equational clauses**, **Union declaration**, **Positional construction**
-and **Ignored parameter** rows are **specified, not yet implemented** —
-positional payloads per [TYPE-UNION-POSITIONAL], which needs a new `positional`
-discrimination on `osprey_ast::TypeField`, and `_` parameters per
-[PARAM-WILDCARD](0003-Syntax.md#expressions), which both flavors gain together
-or the pair loses its IR-equivalent twin. The **Result default** row is live in the Default
-flavor ([Pattern Matching](0007-PatternMatching.md), ternary `?:`) and missing
-only from the ML lexer/parser, so it is an ML-frontend gap, not a shared-core
-addition. Sequencing is in [plan 0019](../plans/0019-ml-elegance.md). Every
-other row is live today.
+Every row in the table is live. Positional payloads
+([TYPE-UNION-POSITIONAL]) are a **shared-core** feature exposed in both flavors,
+never ML-only sugar: a payload slot is an `osprey_ast::TypeField` whose declared
+name is its decimal index (`"0"`, `"1"`), and a decimal string is not a valid
+identifier in either flavor, so a slot is unreachable by name and can never
+collide with a user-written field
+(`osprey_ast::{positional_field_name, is_positional_field}` are the single
+definition and its inverse). `_` parameters
+([PARAM-WILDCARD](0003-Syntax.md#expressions)) are legal in both flavors, each
+occurrence lowering to a distinct generated name no source can spell, so the pair
+keeps its IR-equivalent twin. **Equational clauses** are rewritten CST-to-CST
+into the parameter-list-over-`match` form before lowering
+(`crates/osprey-syntax/src/ml/clauses.rs`), so the shared core never sees a
+clause set and the emitted node is exactly the Default twin's; exactly one
+refutable column is supported, and selecting on two is a diagnostic. The
+**Result default** row uses the identical `?:` spelling in both flavors. Design
+and sequencing are in [plan 0019](../plans/0019-ml-elegance.md).
 
 Anything in that table is a **flavor concern**: the lowerer erases the spelling
 difference and nothing downstream can tell which surface was used. Constructs
@@ -534,9 +541,9 @@ module top level and inside a layout block, and the bound value's IR is
 byte-identical to the Default `let`.
 
 **Assumptions recorded by this layer.** (1) Integer arithmetic returns **plain
-scalars** in *both* flavors — **specified, not yet implemented**
-([ARITH-PLAIN], [Error Handling](0013-ErrorHandling.md)): `+ - *` on
-`(int, int)` yield `int`, so a raw `y = x + 1` then `toString y` will print `42`
+scalars** in *both* flavors ([ARITH-PLAIN],
+[Error Handling](0013-ErrorHandling.md)): `+ - *` on
+`(int, int)` yield `int`, so a raw `y = x + 1` then `toString y` prints `42`
 in ML *and* Default alike, with no wrapper and no auto-unwrap involved. Only `/`
 and `%` stay wrapped, because zero has no representable result; their result
 types are in 0013's table. Those reach the usual function-boundary auto-unwrap,
@@ -581,8 +588,8 @@ The design drafts left these open; this spec settles them.
 - **Result-default spelling:** ML adopts the Default flavor's existing `?:`
   ([Pattern Matching](0007-PatternMatching.md)) rather than gaining a second
   spelling of the same operator — one operator, one spelling, in both flavors.
-  The work is confined to the ML lexer and parser; there is no new AST node and
-  no Default-flavor change. A second, ML-exclusive spelling would leave every
+  It is implemented in the ML lexer and parser alone; there is no new AST node
+  and no Default-flavor change. A second, ML-exclusive spelling would leave every
   file using it with no Default twin, and therefore no
   [`[FLAVOR-IR-EQUIV]`](#cross-flavor-equivalence-tests) pair.
 - **Formatter conversion between flavors:** the formatter formats *within* a

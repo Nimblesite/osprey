@@ -265,9 +265,8 @@ fn build_dispatcher(engine: &OspreyEngine) -> Dispatcher {
         engine,
         "textDocument/completion",
         |e, p, c| async move {
-            let uri = DocumentUri::new(wire::doc_uri(&p)?);
             Some(result(completion_value(
-                answer(&e, Query::Completion(uri), c).await,
+                answer(&e, Query::Completion(at(&p)?), c).await,
             )))
         },
     );
@@ -724,8 +723,11 @@ mod tests {
         assert_at(add, "/kind", 12);
         assert_at(add, "/selectionRange/start/character", 3);
 
+        // Completion is positional: line 2 is the empty line after both
+        // declarations, i.e. declaration position, where every keyword is
+        // legal. Implements [LSP-COMPLETION-CONTEXT].
         let completion = h
-            .request(21, "textDocument/completion", text_doc(URI))
+            .request(21, "textDocument/completion", position_params(URI, 2, 0))
             .await;
         let items = array_result(&completion, "completion");
         let labels = field_values(&items, "/label");
@@ -746,6 +748,39 @@ mod tests {
         let sig_result = sig.result.expect("signature result");
         assert_at(&sig_result, "/activeParameter", 1);
         assert_at(&sig_result, "/signatures/0/parameters/0/label", "a: int");
+        // ...and the same server, over a multi-declaration document, withholds
+        // the declaration keywords mid-expression. This pins the wire path, not
+        // just `context::classify`: the VSCode suite's equivalent assertion has
+        // failed only when run after its siblings, which points at the client
+        // rather than here. [LSP-COMPLETION-CONTEXT]
+        let rich = "type Shape = Circle | Square\n\
+                    fn area(r) = r * r\n\
+                    fn perimeter(r) = r + r + r + r\n\
+                    let radius = 5\n\
+                    let m = print(radius)\n";
+        h.notify(
+            "textDocument/didChange",
+            json!({
+                "textDocument": { "uri": URI, "version": 2 },
+                "contentChanges": [{ "text": rich }]
+            }),
+        )
+        .await;
+        let _changed = h.read_message().await;
+        // Line 4 is `let m = print(radius)`; character 8 sits just after `= `.
+        let mid = h
+            .request(23, "textDocument/completion", position_params(URI, 4, 8))
+            .await;
+        let mid_items = array_result(&mid, "completion");
+        let mid_labels = field_values(&mid_items, "/label");
+        for keyword in ["fn", "let", "type", "namespace"] {
+            assert!(
+                !mid_labels.contains(&keyword),
+                "`{keyword}` offered in a value position: {mid_labels:?}"
+            );
+        }
+        assert!(mid_labels.contains(&"match"), "{mid_labels:?}");
+        assert!(mid_labels.contains(&"perimeter"), "{mid_labels:?}");
         h.shutdown_and_exit().await;
     }
 

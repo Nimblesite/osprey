@@ -88,10 +88,10 @@ Truncating integer division (rounds toward zero), divide-by-zero checked. The
 `/` operator is **float-only** by the [Type System](0004-TypeSystem.md) spec
 (`int / int` promotes to `float`); `intDiv` is its integer sibling. A zero
 divisor returns `Error(MathError)`; otherwise `Success(quotient)`. Like the
-`/` and `%` operators, the `Success` payload auto-unwraps at value sites
-(interpolation, comparison, arguments, `Result`-typed function returns);
+`/` and `%` operators, the `Success` payload auto-unwraps in the contexts
+listed under [Result Auto-Unwrapping](0004-TypeSystem.md#result-auto-unwrapping);
 under [ARITH-PLAIN](0013-ErrorHandling.md#arithmetic-and-result--arith-plain)
-`+ - *` will produce no `Result` to unwrap (specified, not yet implemented).
+`+ - *` return plain scalars, so there is no `Result` to unwrap.
 
 ```osprey
 intDiv(7, 2)        // Success(3)
@@ -123,8 +123,7 @@ integer addition, subtraction, and multiplication, lowering to
 guarantee that the `+ - *` operators do not: those return plain scalars and wrap
 two's complement
 ([ARITH-PLAIN](0013-ErrorHandling.md#arithmetic-and-result--arith-plain)).
-Like `intDiv`, the `Success` payload auto-unwraps at value sites. **Specified;
-not yet implemented.**
+Like `intDiv`, the `Success` payload auto-unwraps at value sites.
 
 ```osprey
 checkedAdd(2, 3)                      // Success(5)
@@ -224,7 +223,7 @@ toLowerCase (trim "  Hello  ")
 
 All three desugar to the same call. Rules:
 
-- **Pipe (`x |> f`)** rewrites to `f(x)`. With extra args, `x |> f(a, b)` becomes `f(x, a, b)`. A bare identifier on the right (`x |> f`) is auto-promoted to a call — no parens needed for single-arg functions. See [Iterators](0010-LoopConstructsAndFunctionalIterators.md#pipe-operator).
+- **Pipe (`x |> f`)** rewrites to `f(x)`. With extra args, `x |> f(a, b)` becomes `f(x, a, b)`. A bare identifier on the right (`x |> f`) is auto-promoted to a call — no parens needed for single-arg functions. See [Iterators](0010-LoopConstructsAndFunctionalIterators.md#pipe-operator--builtin-iter-pipe).
 - **UFCS (`x.f(args)`)** rewrites to `f(x, args)`. **Parens are required** to disambiguate from field access — `x.f` always means field access, never a method call. If a record has a field named `f`, field access wins; UFCS is the fallback.
 - **Direct call** is plain function application; nothing magic.
 

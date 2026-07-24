@@ -98,7 +98,7 @@ impl<'a> Lowerer<'a> {
     /// Lowers the root `source_file` node into a full program AST.
     #[must_use]
     pub fn lower_program(&self, root: Node<'_>) -> Program {
-        crate::positional::install(
+        let _positional = crate::positional::install(
             self.descendants_of_kind(root, "variant")
                 .into_iter()
                 .filter_map(|v| self.positional_ctor(v)),
@@ -544,19 +544,9 @@ impl<'a> Lowerer<'a> {
                 // or a bare binding. Inspect siblings of the name field.
                 let name = self.text(inner);
                 if let Some(fp) = self.first_child_of_kind(pat, "field_pattern") {
-                    let fields = self.field_pattern_names(fp);
-                    if pat.child_by_field_name("type").is_some()
-                        || Self::has_colon_before_brace(pat)
-                    {
-                        return Pattern::Constructor {
-                            name,
-                            fields,
-                            sub_patterns: vec![],
-                        };
-                    }
                     return Pattern::Constructor {
                         name,
-                        fields,
+                        fields: self.field_pattern_names(fp),
                         sub_patterns: vec![],
                     };
                 }
@@ -578,10 +568,6 @@ impl<'a> Lowerer<'a> {
             }
             _ => Pattern::Wildcard,
         }
-    }
-
-    fn has_colon_before_brace(_node: Node<'_>) -> bool {
-        false
     }
 
     fn field_pattern_names(&self, fp: Node<'_>) -> Vec<String> {
@@ -715,6 +701,19 @@ mod tests {
                 assert_eq!(variants[0].fields[0].name, "x");
             }
             s => panic!("expected record type, got {s:?}"),
+        }
+        // A positional payload carries generated slot names, so this Default
+        // declaration lowers to the same variants as the ML twin
+        // `type Tree = Leaf | Node Tree Tree` ([TYPE-UNION-POSITIONAL]).
+        match one("type Tree = Leaf | Node(Tree, Tree)\n") {
+            Stmt::Type { variants, .. } => {
+                assert_eq!(variants.len(), 2);
+                assert!(variants[0].fields.is_empty());
+                let slots: Vec<&str> = variants[1].fields.iter().map(|f| f.name.as_str()).collect();
+                assert_eq!(slots, ["0", "1"]);
+                assert_eq!(variants[1].fields[0].ty, "Tree");
+            }
+            s => panic!("expected a union type, got {s:?}"),
         }
         // array_type `Item[int]` (lower_type array_type arm + descendants_type_in),
         // a function type, and a generic type — all in one signature.

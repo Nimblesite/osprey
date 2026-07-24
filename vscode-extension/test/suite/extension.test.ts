@@ -810,10 +810,20 @@ suite("Osprey Language Features Tests", () => {
       "the first parameter is active",
     );
 
-    // --- COMPLETION: user symbols AND keywords are offered ---
+    // --- COMPLETION: user symbols always, keywords only where they parse ---
+    // Line 9 is `let m = print(a)` and the cursor sits after `let m = `, a
+    // VALUE position. A declaration keyword completed there expands to source
+    // no flavor parses (`let m = fn name(params) = body`), so the declaration
+    // forms are withheld while symbols and the expression forms stay.
+    // [LSP-COMPLETION-CONTEXT]
+    // Poll until the server has answered *for this document* — a non-empty list
+    // is not enough, because before `didOpen` is processed the request is
+    // answered from an empty prefix, which classifies as a declaration position
+    // and legitimately offers `fn`. Waiting on a symbol only this document
+    // declares is what proves the answer belongs to it.
     const list = await pollFor(
       () => completionAt(doc.uri, 9, 9),
-      (l) => !!l && Array.isArray(l.items) && l.items.length > 0,
+      (l) => !!l && Array.isArray(l.items) && labelsOf(l).includes("perimeter"),
     );
     const labels = labelsOf(list);
     for (const sym of ["Shape", "area", "perimeter", "radius", "count"]) {
@@ -822,8 +832,31 @@ suite("Osprey Language Features Tests", () => {
         `completion offers the user symbol ${sym}`,
       );
     }
+    for (const kw of ["match", "if"]) {
+      assert.ok(
+        labels.includes(kw),
+        `a value position keeps the expression keyword ${kw}`,
+      );
+    }
+    for (const kw of ["fn", "let", "type"]) {
+      assert.ok(
+        !labels.includes(kw),
+        `a value position withholds the declaration keyword ${kw}: ${JSON.stringify(labels)}`,
+      );
+    }
+
+    // Line 10 is the empty line past the program — declaration position, where
+    // every keyword the flavor has is legal again.
+    const atTopLevel = await pollFor(
+      () => completionAt(doc.uri, 10, 0),
+      (l) => !!l && Array.isArray(l.items) && l.items.length > 0,
+    );
+    const topLevelLabels = labelsOf(atTopLevel);
     for (const kw of ["fn", "let", "match", "type"]) {
-      assert.ok(labels.includes(kw), `completion offers the keyword ${kw}`);
+      assert.ok(
+        topLevelLabels.includes(kw),
+        `declaration position offers the keyword ${kw}`,
+      );
     }
   });
 

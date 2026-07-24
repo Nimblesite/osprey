@@ -298,5 +298,16 @@ mod tests {
         for input in ["namespace app", "module Tax", "signature TaxApi", "fn ("] {
             assert_eq!(signature(Flavor::Ml, input), input);
         }
+        // A binder-free declaration, and one whose `<` never closes, keep their
+        // written spelling rather than being half-juxtaposed.
+        assert_eq!(signature(Flavor::Ml, "type Box"), "type Box");
+        assert_eq!(signature(Flavor::Ml, "type Box<T"), "type Box<T");
+        // Bare `fn`, and a name that merely starts with `fn`, are not function
+        // types — neither is rewritten into an arrow chain.
+        assert_eq!(signature(Flavor::Ml, "fn f(x: fn) -> int"), "f : fn -> int");
+        assert_eq!(
+            signature(Flavor::Ml, "fn f() -> fnord(int)"),
+            "f : Unit -> fnord(int)"
+        );
     }
 }
