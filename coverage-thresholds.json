@@ -3,7 +3,7 @@
   "_doc": "Per-project coverage thresholds — single source of truth ([COVERAGE-THRESHOLDS-JSON]). Each entry is a project; `make test` measures it and fails hard below its threshold. Rust entries (language=rust) are individual crates under crates/<name>/, each measured separately from lcov.info; the vscode-extension entry is measured from its V8 coverage summary. FLOOR: every crate is gated at >=95%. RATCHET: thresholds are monotonically increasing — when a crate's coverage improves, bump its threshold to max(95, measured - 1) in the same PR so it can never regress.",
   "projects": {
     "osprey-ast": {
-      "threshold": 96,
+      "threshold": 97,
       "language": "rust"
     },
     "osprey-cli": {

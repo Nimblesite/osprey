@@ -153,8 +153,11 @@ mod tests {
         // A monomorphic (annotated) function is emitted as a real definition and
         // called directly; a generic one would instead inline at its call sites.
         let ir = module("fn add(a: int, b: int) -> int = a + b\nlet r = add(2, 3)\n");
-        assert!(ir.contains("define i64 @add(i64 %a, i64 %b)"));
-        assert!(ir.contains("add i64 %a, %b"));
+        // Parameters are named positionally, not after their source
+        // identifier, so an ML/Default twin pair stays byte-identical
+        // ([FLAVOR-IR-EQUIV]).
+        assert!(ir.contains("define i64 @add(i64 %$p0, i64 %$p1)"));
+        assert!(ir.contains("add i64 %$p0, %$p1"));
         assert!(ir.contains("call i64 @add(i64 2, i64 3)"));
     }
 
@@ -269,6 +272,50 @@ mod tests {
     }
 
     #[test]
+    fn generic_function_as_an_iterator_callback_inlines_not_calls_a_missing_symbol() {
+        // [BUILTIN-ITER-CALLBACK] A reducer with unannotated params is generic,
+        // so it has NO `@name` definition. Passed to `fold` it must be
+        // beta-reduced per element (inlined), not lowered to `call @add` — a
+        // call to a symbol that was never emitted (invalid IR).
+        let ir = module(
+            "fn add(a, b) -> int = a + b\n\
+             let t = range(1, 4) |> fold(0, add)\n\
+             print(\"t=${t}\")\n",
+        );
+        assert!(
+            !ir.contains("@add"),
+            "generic reducer must inline, not call @add:\n{ir}"
+        );
+        assert!(
+            ir.contains("add i64"),
+            "the reducer body must be emitted inline"
+        );
+    }
+
+    #[test]
+    fn fold_with_a_record_accumulator_lowers_and_recovers_the_pointer() {
+        // [MEM-BACKENDS] A record-typed fold accumulator lives in the uniform
+        // i64 slot; the combine (inlined) must see it as a tagged pointer so its
+        // record update type-checks, and the result must be `inttoptr`'d back so
+        // the following field access reads a real pointer. Before the fix this
+        // panicked in codegen ("`p` is not a record").
+        let ir = module(
+            "type Box = { n: int }\n\
+             fn bump(b, s) = b { n: b.n }\n\
+             let r = range(1, 3) |> fold(Box { n: 7 }, bump)\n\
+             print(\"n=${r.n}\")\n",
+        );
+        assert!(
+            ir.contains("inttoptr i64"),
+            "record fold result must be unboxed to a pointer:\n{ir}"
+        );
+        assert!(
+            !ir.contains("@bump"),
+            "generic combine must inline, not call @bump"
+        );
+    }
+
+    #[test]
     fn spawn_lowers_to_a_per_instance_closure_cell() {
         // `spawn` lowers its expression as a zero-parameter closure: the thunk
         // takes its heap cell as env (so two in-flight spawns from one site
@@ -299,7 +346,7 @@ mod tests {
              let r = apply(value: 10, f: fn(x: int) => x + 1)\n\
              print(\"r=${r}\")\n",
         );
-        assert!(ir.contains("define i64 @__closure_fn_0(i8* %__env, i64 %x)"));
+        assert!(ir.contains("define i64 @__closure_fn_0(i8* %__env, i64 %$p0)"));
         assert!(ir.contains("@__closure_cell_0 = private unnamed_addr constant { i8* }"));
         assert!(ir.contains("call i64 %"));
     }
@@ -317,7 +364,7 @@ mod tests {
                print(\"r=${add5(3)}\")\n\
              }\n",
         );
-        assert!(ir.contains("define i8* @makeAdder(i64 %n)"));
+        assert!(ir.contains("define i8* @makeAdder(i64 %$p0)"));
         assert!(ir.contains("bitcast i8* %__env to { i8*, i64 }*"));
         assert!(ir.contains("call i8* @osp_alloc"));
     }
@@ -681,6 +728,44 @@ mod tests {
     }
 
     #[test]
+    fn bare_length_and_is_empty_dispatch_on_the_receiver_type() {
+        // [BUILTIN-COLLECTION-LENGTH], [BUILTIN-COLLECTION-ISEMPTY]: the bare
+        // spec names are receiver-directed. Routing a List/Map handle into the
+        // string runtime reads an `i8*` heap pointer as a NUL-terminated string
+        // — a wrong answer AND an out-of-bounds read.
+        let ir = module(
+            "fn main() -> Unit = {\n\
+               let xs = listAppend(listAppend(List(), 1), 2)\n\
+               let m = mapSet(Map(), \"a\", 1)\n\
+               print(\"${length(xs)} ${isEmpty(xs)} ${length(m)} ${isEmpty(m)} ${length(\"ab\")}\")\n\
+             }\n",
+        );
+        assert!(
+            ir.contains("osprey_list_length"),
+            "List length must use the list runtime"
+        );
+        assert!(
+            ir.contains("osprey_map_length"),
+            "Map length must use the map runtime"
+        );
+        assert!(
+            ir.contains("osp_strlen"),
+            "string length must still use the string runtime"
+        );
+        // Exactly one `osp_strlen` call site: the sole string receiver.
+        assert_eq!(
+            ir.matches("call i64 @osp_strlen").count(),
+            1,
+            "only the string receiver may reach osp_strlen"
+        );
+        assert_eq!(
+            ir.matches("@osp_string_is_empty").count(),
+            0,
+            "no collection receiver may reach the string isEmpty"
+        );
+    }
+
+    #[test]
     fn list_get_and_contains_runtime_calls() {
         // listGet (bounds-checked Result) and listContains (linear scan with
         // both the int and string equality paths).
@@ -892,6 +977,37 @@ card doc index selected =
              fn main() -> Unit = print(\"${apply(identity, 3)}\")\n",
         );
         assert!(ir.contains("__closure_fn_"));
+    }
+
+    #[test]
+    fn one_generic_function_at_one_abi_is_emitted_exactly_once() {
+        // [TYPE-GENERICS-FN]: specialisation is keyed by (function, slot ABI),
+        // so N uses at the SAME ABI share one emitted body and one constant
+        // cell. Without the cache each use emitted a byte-identical
+        // `__closure_fn_K` twin — pure module bloat that scales with call
+        // sites. Two DISTINCT ABIs must still get their own body: that is the
+        // whole point of specialising.
+        let ir = module(
+            "fn identity(x) = x\n\
+             fn applyInt(f: (int) -> int, v: int) -> int = f(v)\n\
+             fn applyStr(f: (string) -> string, v: string) -> string = f(v)\n\
+             fn main() -> Unit = {\n\
+               let a = applyInt(identity, 3)\n\
+               let b = applyInt(identity, 4)\n\
+               let c = applyInt(identity, 5)\n\
+               print(\"${a}${b}${c}${applyStr(identity, \"z\")}\")\n\
+             }\n",
+        );
+        let bodies = ir.matches("define ").filter(|_| true).count();
+        assert!(bodies > 0, "sanity: the module defines functions");
+        // int and string are two ABIs ⇒ exactly two specialised bodies, not the
+        // four the three int uses plus one string use would otherwise emit.
+        assert_eq!(
+            ir.matches("define i64 @__closure_fn_").count()
+                + ir.matches("define i8* @__closure_fn_").count(),
+            2,
+            "one body per (function, ABI) pair:\n{ir}"
+        );
     }
 
     #[test]

@@ -87,6 +87,12 @@ fn core(e: &mut TypeEnv) {
     // The `/` operator is float-only (Osprey spec); this is its integer sibling.
     // Implements [BUILTIN-INTDIV].
     mono(e, "intDiv", vec![i(), i()], res(i()));
+    // The opt-in overflow guarantee. `+ - *` return plain `int` because overflow
+    // wraps and every wrapped result is representable ([ARITH-PLAIN]); these
+    // report it instead, via `llvm.s{add,sub,mul}.with.overflow`.
+    for checked in ["checkedAdd", "checkedSub", "checkedMul"] {
+        mono(e, checked, vec![i(), i()], res(i()));
+    }
     // Cryptographically-secure randomness (random_runtime.c). `random` yields a
     // uniform non-negative int; `randomBelow(n)` an unbiased int in [0, n),
     // Error when n <= 0. Implements [BUILTIN-RANDOM], [BUILTIN-RANDOM-BELOW].

@@ -1,0 +1,17 @@
+// osprey: flavor=ml
+// ML-flavor must-reject. Pins [FLAVOR-ML-HANDLER] (docs/specs/0024).
+//
+// First-class handler values (`handler E` + indented arms, yielding a value of
+// type `Handler E`) are the deferred shared-core feature
+// ([FLAVOR-HANDLER-VALUE], docs/specs/0023). The ML lexer classifies `handler`
+// and `do` as reserved words so the parser reports a precise "not yet
+// supported" diagnostic instead of a generic syntax error. `handler` sits at
+// item position (column 0) — that is where the precise diagnostic is emitted.
+
+effect Log
+    write : string => Unit
+
+handler Log
+    write msg => print msg
+
+print "unreachable"

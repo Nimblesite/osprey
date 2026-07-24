@@ -30,8 +30,8 @@ recursive modules, ranked import suggestions, incremental cross-file LSP
 indexing, module reference-page generation, and source-name restoration in
 native debugger/stack frames remain planned and are unchecked in
 [plan 0014](../plans/0014-modules-and-namespaces.md). This chapter remains the
-normative contract for those pieces and supersedes the fiber-isolated module
-sketch in [Fibers and Concurrency](0011-LightweightFibersAndConcurrency.md#fiber-isolated-modules-planned).
+normative contract for those pieces and supersedes the earlier fiber-isolated
+module design.
 
 ## Research Basis `[MODULES-RESEARCH]`
 
@@ -89,32 +89,6 @@ Osprey norm.
 These are not ornamental citations. They drive the rules below: names are
 logical, interfaces are explicit, abstract state does not leak, and mutable state
 has one owner.
-
-## Comparative Practice `[MODULES-COMPARATIVE-PRACTICE]`
-
-The survey above yields concrete rules:
-
-- **Use namespaces for logical grouping, not architecture.** .NET/F# names are a
-  useful precedent for path-independent grouping, but Osprey does not copy the
-  deep enterprise naming convention as the default shape.
-- **Use modules for boundaries.** OCaml/F#/ML practice puts abstraction,
-  signatures, and implementation hiding at the module boundary; Osprey follows
-  that instead of making namespaces carry privacy or state.
-- **Make import surface area visible.** Haskell, Elm, and Clojure all make
-  import/export choices visible in source. Osprey therefore supports explicit
-  member imports and aliases, and treats wildcard imports as a script/test
-  convenience.
-- **Separate module paths from member access.** Rust's `::` keeps item paths
-  visually distinct from record field access; Osprey uses `::` for namespace,
-  module, and exported-member paths, leaving `.` for value/member operations.
-- **Allow slash names only as labels.** Racket and Go show precedent for
-  slash-like module/import paths, but in Osprey a quoted slash namespace is one
-  opaque label. It does not imply folder mirroring, parent namespaces, or load
-  order.
-- **Reserve reverse-DNS/deep names for distribution.** Java's reverse-domain
-  convention solves global package collision, not local application design.
-  Osprey may use similar labels for published libraries later, but app code
-  should usually stay flat.
 
 ## Design Goals `[MODULES-GOALS]`
 
@@ -197,12 +171,6 @@ normative layer.
 | Signature | `Signature { items }` | `signature StoreSig { ... }` | `signature StoreSig` + indented items |
 | Export | exported item metadata | explicit `export fn f(...)` when unascribed | one `export` on a signature or inferred binding when unascribed; an ascribed module uses its signature |
 | Symbol path | `SymbolId { namespace, path }` | `billing::Tax::addTax` | same path; application remains whitespace |
-
-Default deliberately keeps braces, parentheses, explicit `fn`, named arguments,
-and visible export markers: a C, C#, Java, Kotlin, or Dart programmer can read
-the boundary without learning layout rules. ML deliberately removes structural
-punctuation that layout and signatures already express. These are surface
-choices only; both lower to the same graph.
 
 ## Namespaces `[MODULES-NAMESPACE]`
 

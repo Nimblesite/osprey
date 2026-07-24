@@ -2,7 +2,10 @@
 
 Fibers are lightweight concurrent computations. They are constructed as values of `Fiber<T>` and communicate through `Channel<T>`. There are no OS threads exposed to user code; the runtime schedules fibers cooperatively. Values cross fiber boundaries — `spawn` captures and channel `send` — by move or copy, never by sharing ([MEM-FIBER-ISOLATION] in [Memory Management](0018-MemoryManagement.md)).
 
-> **Flavor layer — shared core (AST and above).**  Concurrency is a shared-core concern. The constructs here lower to canonical `osprey_ast` nodes — `Expr::Spawn`, `Expr::Yield`, `Expr::Await`, `Expr::Send`, `Expr::Recv`, and `Expr::Select` — and the runtime scheduler operates on those nodes alone ([FLAVOR-BOUNDARY] in [Language Flavors](0023-LanguageFlavors.md)). The semantics, the cooperative scheduling, and the channel runtime are one across every flavor; only the surface spelling differs. The Default (`.osp`) spelling is shown below; the ML (`.ospml`) counterpart is described in [ML Flavor Syntax](0024-MLFlavorSyntax.md). No phase below the AST can tell which flavor produced a fiber, send, or select.
+> **Flavor layer — shared core.** Concurrency lowers to `Expr::Spawn`,
+> `Expr::Yield`, `Expr::Await`, `Expr::Send`, `Expr::Recv`, and `Expr::Select`.
+> Scheduling and channel semantics are shared; ML spellings are in
+> [ML Flavor Syntax](0024-MLFlavorSyntax.md).
 
 ## Status
 
@@ -13,8 +16,7 @@ operand unchanged. Under the deterministic execution mode used by the test
 harness, fibers run sequentially to completion, so `yield` forwards its value
 without re-ordering; true cross-fiber interleaving under deterministic mode would
 require stackful context switching and is not yet implemented. The `select`
-expression and the fiber-isolated module system below are planned and not yet
-wired through code generation.
+expression is planned and not yet wired through code generation.
 
 ## Core Types
 
@@ -132,31 +134,3 @@ select {
 > `select` is planned and not yet implemented in either flavor; the ML surface
 > syntax for the channel-`select` arm form is unspecified. Use the Default flavor
 > illustration above.
-
-## Fiber-Isolated Modules (planned)
-
-> **Superseded design note.** This section records the older sketch that existed
-> before the multi-file module design. The normative module/state model is now
-> [Modules and Namespaces](0025-ModulesAndNamespaces.md), especially
-> `[MODULES-STATE]` and `[MODULES-STATE-MODULE]`.
-
-Each fiber that touches a `module` receives its own private instance. There is no shared mutable state across fibers; communication is via channels.
-
-```osprey
-module Counter {
-    mut count = 0
-    fn increment() = { count = count + 1; count }
-    fn get()       = count
-}
-
-let f1 = spawn Counter.increment()   // 1
-let f2 = spawn Counter.increment()   // 1, not 2 — separate instance
-
-await(f1)
-await(f2)
-```
-
-> This superseded `module` sketch has no ML-flavor surface syntax. See
-> [Modules and Namespaces](0025-ModulesAndNamespaces.md) for the normative model.
-
-A fiber's module instance is initialised on first access (copy-on-first-access) and is destroyed with the fiber.

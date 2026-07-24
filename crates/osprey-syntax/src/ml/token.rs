@@ -115,6 +115,10 @@ pub(crate) enum TokKind {
     RBracket,
     /// `,`.
     Comma,
+    /// `|` — the union-variant separator of an inline `type` declaration
+    /// ([FLAVOR-ML-UNION-INLINE]). Never an infix expression operator, and
+    /// meaningless in pattern position: ML has no or-patterns.
+    Pipe,
     /// `.`.
     Dot,
     /// A binary/unary operator spelled exactly as it lowers (`+`, `==`, `&&`, …).

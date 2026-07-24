@@ -41,21 +41,18 @@ still work without Node or a WASI SDK. Demo targets (`make bank` and
 
 ## Browser architecture
 
-```text
-browser event / HTTP response
-            │ flat JSON + opaque model
-            ▼
- Osprey WebAssembly application
- model · update · routing · validation · view · commands
-            │ one declarative JSON tree per render
-            ▼
- generic React renderer + browser command host
-            │ fetch only; no storage capability
-            ▼
-       Osprey JSON API
-            │ Ledger::Store algebraic effect
-            ▼
-       SQLite ledger
+```mermaid
+flowchart TD
+    event["browser event / HTTP response"]
+    app["Osprey WebAssembly application<br/>model · update · routing · validation · view · commands"]
+    host["generic React renderer + browser command host"]
+    api["Osprey JSON API"]
+    db["SQLite ledger"]
+
+    event -->|"flat JSON + opaque model"| app
+    app -->|"one declarative JSON tree per render"| host
+    host -->|"fetch only; no storage capability"| api
+    api -->|"Ledger::Store algebraic effect"| db
 ```
 
 The bridge is deliberately coarse. Osprey produces a complete render envelope,

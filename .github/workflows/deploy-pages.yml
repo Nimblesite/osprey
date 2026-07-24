@@ -31,8 +31,13 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
 
     steps:
+      # Full history: spec/docs page dates come from `git log` (Eleventy's
+      # "git Last Modified"), so a shallow clone would stamp every page with
+      # the single fetched commit's date instead of when it actually changed.
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Setup Node.js
         uses: actions/setup-node@v4

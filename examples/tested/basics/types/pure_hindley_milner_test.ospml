@@ -32,11 +32,7 @@ boolId = identity true
 print "identity(42) = ${intId}, identity(\"test\") = ${stringId}, identity(true) = ${toString boolId}"
 
 // Test arithmetic inference
-addResult = add (10, 20)
-addValue =
-    match addResult
-        true => addResult
-        false => 0
+addValue = add (10, 20)
 concatResult = concat ("hello", "world")
 negateResult = negate false
 

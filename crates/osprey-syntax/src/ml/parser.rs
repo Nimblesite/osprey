@@ -67,12 +67,19 @@ pub(crate) fn parse(source: &str) -> (Vec<MlItem>, Vec<SyntaxError>) {
 /// into a negated integer literal).
 const MINUS_OP: &str = "-";
 
+/// The Result-default operator, spelled the same in both flavors
+/// ([PATTERN-RESULT-DEFAULT]). Right-associative and binding below everything
+/// else, so `1 + 2 ?: 0` groups as `(1 + 2) ?: 0`.
+pub(super) const ELVIS_OP: &str = "?:";
+
 /// Binding powers, mirroring the Default grammar's precedence table so equal
 /// programs in either flavor produce the same canonical AST (higher binds
-/// tighter): or < and < compare < add < mul < pipe. Application (whitespace)
-/// and prefix unary bind tighter still and are handled structurally.
+/// tighter): default < or < and < compare < add < mul < pipe. Application
+/// (whitespace) and prefix unary bind tighter still and are handled
+/// structurally.
 fn infix_bp(op: &str) -> Option<u8> {
     let bp = match op {
+        ELVIS_OP => 1,
         "||" => 2,
         "&&" => 3,
         "==" | "!=" | "<" | ">" | "<=" | ">=" => 4,
@@ -277,6 +284,10 @@ impl Parser<'_> {
         let (variants, alias) = match self.peek() {
             TokKind::Indent => (self.type_body(&name), None),
             TokKind::Newline | TokKind::Dedent | TokKind::Eof => (Vec::new(), None),
+            // An uppercase head commits to the inline union form; a lowercase
+            // one stays a manifest alias (`type UserId = int`)
+            // ([FLAVOR-ML-UNION-INLINE]).
+            TokKind::Ident(head) if is_constructor(head) => (self.inline_union(), None),
             _ => (Vec::new(), Some(self.ty())),
         };
         Some(MlItem::Type {
@@ -399,19 +410,104 @@ impl Parser<'_> {
                 break;
             }
             let before = self.i;
-            match self.ident() {
-                Some(name) => {
-                    if !self.eat(&TokKind::Colon) {
-                        self.error("expected ':' in type field");
-                    }
-                    let ty = self.ty();
-                    fields.push(MlTypeField { name, ty });
-                }
+            match self.type_field() {
+                Some(field) => fields.push(field),
                 None => self.recover(),
             }
             if self.i == before {
                 self.recover();
             }
+        }
+        fields
+    }
+
+    /// One `field : type` declaration, shared by the layout block and the
+    /// inline parenthesised payload so neither restates the rule.
+    fn type_field(&mut self) -> Option<MlTypeField> {
+        let name = self.ident()?;
+        if !self.eat(&TokKind::Colon) {
+            self.error("expected ':' in type field");
+        }
+        Some(MlTypeField {
+            name,
+            ty: self.ty(),
+        })
+    }
+
+    /// `variant ("|" variant)*` written on the declaration line — the inline
+    /// union form ([FLAVOR-ML-UNION-INLINE]). The layout form remains available
+    /// for declarations too wide to read on one line.
+    fn inline_union(&mut self) -> Vec<MlVariant> {
+        let mut variants = Vec::new();
+        loop {
+            let before = self.i;
+            match self.inline_variant() {
+                Some(variant) => variants.push(variant),
+                None => self.recover(),
+            }
+            if self.i == before {
+                self.recover();
+                break;
+            }
+            if !self.eat(&TokKind::Pipe) {
+                break;
+            }
+        }
+        variants
+    }
+
+    /// One inline variant: `Ctor` alone, `Ctor typeAtom*` (positional payload),
+    /// or `Ctor(field : type, …)` (named payload).
+    fn inline_variant(&mut self) -> Option<MlVariant> {
+        let name = self.ident()?;
+        if !is_constructor(&name) {
+            self.error(format!(
+                "union variant '{name}' must start with an uppercase letter"
+            ));
+            return None;
+        }
+        let fields = if self.at_named_payload() {
+            self.named_payload()
+        } else {
+            self.positional_payload()
+        };
+        Some(MlVariant { name, fields })
+    }
+
+    /// Whether the `(` here opens a named payload `(field : type, …)` rather
+    /// than a parenthesised positional payload type such as `(List int)`.
+    fn at_named_payload(&self) -> bool {
+        matches!(self.peek(), TokKind::LParen)
+            && matches!(self.peek_at(1), TokKind::Ident(field) if !is_constructor(field))
+            && matches!(self.peek_at(2), TokKind::Colon)
+    }
+
+    /// `( field : type (, field : type)* )` — the inline named payload.
+    fn named_payload(&mut self) -> Vec<MlTypeField> {
+        self.advance(); // `(`
+        let mut fields = Vec::new();
+        while let Some(field) = self.type_field() {
+            fields.push(field);
+            if !self.eat(&TokKind::Comma) {
+                break;
+            }
+        }
+        if !self.eat(&TokKind::RParen) {
+            self.error("expected ')'");
+        }
+        fields
+    }
+
+    /// `typeAtom*` after a variant name — a positional payload. Slots carry
+    /// generated index names because they have no source spelling
+    /// ([TYPE-UNION-POSITIONAL]).
+    fn positional_payload(&mut self) -> Vec<MlTypeField> {
+        let mut fields = Vec::new();
+        while self.starts_ty_atom() {
+            fields.push(MlTypeField {
+                name: osprey_ast::positional_field_name(fields.len()),
+                ty: self.ty_atom(),
+            });
         }
         fields
     }
@@ -595,9 +691,10 @@ impl Parser<'_> {
         let pos = self.pos();
         let name = self.ident()?;
         let type_params = self.signature_type_params();
-        if !self.eat(&TokKind::Colon) {
-            self.error("expected ':' in signature");
-        }
+        // Both dispatch paths — a bare `name :` and `at_generic_signature`'s
+        // `name<T, U> :` — have already seen the colon, so it is here by
+        // construction and needs no diagnostic of its own.
+        let _ = self.eat(&TokKind::Colon);
         let ty = self.ty();
         let effects = self.effect_row();
         Some(MlItem::ValueSignature {
@@ -787,16 +884,41 @@ impl Parser<'_> {
         let mut out = Vec::new();
         loop {
             match self.peek() {
+                // An uppercase head in parameter position is a nullary
+                // constructor pattern, not a binder ([FLAVOR-ML-CLAUSES]).
+                TokKind::Ident(name) if is_constructor(name) => {
+                    out.push(MlParam::Pattern(self.pattern()));
+                }
                 TokKind::Ident(name) => {
                     let name = name.clone();
                     self.advance();
                     out.push(MlParam::Named(name));
                 }
+                TokKind::LParen if self.at_pattern_param() => {
+                    out.push(MlParam::Pattern(self.pattern()));
+                }
                 TokKind::LParen => out.push(self.paren_param()),
+                TokKind::Int(_) | TokKind::Str(_) | TokKind::KwTrue | TokKind::KwFalse => {
+                    out.push(MlParam::Pattern(self.pattern()));
+                }
+                TokKind::Op(op) if op == MINUS_OP && matches!(self.peek_at(1), TokKind::Int(_)) => {
+                    out.push(MlParam::Pattern(self.pattern()));
+                }
                 _ => break,
             }
         }
         out
+    }
+
+    /// Whether the `(` here opens a grouped clause pattern (`(Node l r)`,
+    /// `(-1)`) rather than a parameter binder (`(x)`, `(x : int)`, `()`).
+    fn at_pattern_param(&self) -> bool {
+        match self.peek_at(1) {
+            TokKind::Ident(name) => is_constructor(name),
+            TokKind::Int(_) | TokKind::Str(_) | TokKind::KwTrue | TokKind::KwFalse => true,
+            TokKind::Op(op) => op == MINUS_OP,
+            _ => false,
+        }
     }
 
     /// `( p ( , p )* )` — the parenthesised comma-list parameters of the
@@ -874,26 +996,42 @@ impl Parser<'_> {
     }
 
     /// Lookahead (non-consuming): does the run from the current identifier end
-    /// in `=` on this logical line (`Ident paramAtom* =`)?
+    /// in `=` on this logical line (`Ident headAtom* =`)? A head atom is a
+    /// binder, a literal, or a bracketed group — the clause forms
+    /// ([FLAVOR-ML-CLAUSES]). Operators are deliberately absent, so `f 1 == 2`
+    /// stays an expression.
     fn is_binding_head(&self) -> bool {
         let mut j = self.i + 1; // past the leading identifier
         loop {
             match self.toks.get(j).map(|t| &t.kind) {
-                Some(TokKind::Ident(_)) => j += 1,
-                Some(TokKind::LParen) => {
-                    j += 1;
-                    while !matches!(
-                        self.toks.get(j).map(|t| &t.kind),
-                        Some(TokKind::RParen | TokKind::Eof) | None
-                    ) {
-                        j += 1;
-                    }
-                    j += 1; // past `)`
-                }
+                Some(
+                    TokKind::Ident(_)
+                    | TokKind::Int(_)
+                    | TokKind::Str(_)
+                    | TokKind::KwTrue
+                    | TokKind::KwFalse,
+                ) => j += 1,
+                Some(TokKind::Op(op)) if op == MINUS_OP => j += 1,
+                Some(TokKind::LParen) => j = Self::past_group(self.toks, j, &TokKind::RParen),
+                Some(TokKind::LBracket) => j = Self::past_group(self.toks, j, &TokKind::RBracket),
                 Some(TokKind::Eq) => return true,
                 _ => return false,
             }
         }
+    }
+
+    /// Index just past the bracketed group opening at `open`, scanning to its
+    /// `close` token. Nesting is not tracked: a head atom's group holds a
+    /// pattern, which cannot itself contain a bracket in this flavor.
+    fn past_group(toks: &[Token], open: usize, close: &TokKind) -> usize {
+        let mut j = open + 1;
+        while !matches!(toks.get(j).map(|t| &t.kind), Some(TokKind::Eof) | None) {
+            if toks.get(j).map(|t| &t.kind) == Some(close) {
+                return j + 1;
+            }
+            j += 1;
+        }
+        j
     }
 
     // --- expressions (Pratt) ---------------------------------------------
@@ -909,7 +1047,9 @@ impl Parser<'_> {
                 break;
             }
             self.advance();
-            let right = self.expr(bp + 1);
+            // `?:` is right-associative — recurse at its own binding power so
+            // `f x ?: 0 ?: 1` groups as `f x ?: (0 ?: 1)`.
+            let right = self.expr(if op == ELVIS_OP { bp } else { bp + 1 });
             left = MlExpr::Binary {
                 op,
                 left: Box::new(left),
@@ -1245,6 +1385,14 @@ impl Parser<'_> {
         let pos = self.pos();
         self.advance(); // `\`
         let (params, uncurried) = self.head_params();
+        // Clause heads are a *definition* form; a lambda has nowhere to put the
+        // alternative arms ([FLAVOR-ML-CLAUSES]).
+        if params.iter().any(|p| matches!(p, MlParam::Pattern(_))) {
+            self.error_at(
+                pos,
+                "a lambda head takes plain parameters; use 'match' to select on a pattern",
+            );
+        }
         if !self.eat(&TokKind::FatArrow) {
             self.error("expected '=>' in lambda");
         }
@@ -1455,8 +1603,40 @@ impl Parser<'_> {
         MlArm { pattern, body }
     }
 
-    /// A match pattern: `_`, a literal, `Ctor field…`, or a bare binding.
+    /// A match pattern, plus the diagnostic for the or-pattern users reach for
+    /// once `|` lexes: `|` separates union *variants*, never patterns
+    /// ([FLAVOR-ML-UNION-INLINE]).
     fn pattern(&mut self) -> MlPattern {
+        let pat = self.pattern_atom();
+        if matches!(self.peek(), TokKind::Pipe) {
+            self.error("or-patterns are not supported; write one arm per alternative");
+            while self.eat(&TokKind::Pipe) {
+                let _ = self.pattern_atom();
+            }
+        }
+        pat
+    }
+
+    /// `( p )` — grouping only, erased at parse time
+    /// ([FLAVOR-ML-PATTERN-GROUP]); it is what lets a clause head write
+    /// `check (Node l r)`. A comma inside is not a tuple — Osprey has no tuple
+    /// patterns.
+    fn group_pattern(&mut self) -> MlPattern {
+        self.advance(); // `(`
+        let inner = self.pattern();
+        while self.eat(&TokKind::Comma) {
+            self.error("'(' groups a single pattern; Osprey has no tuple patterns");
+            let _ = self.pattern();
+        }
+        if !self.eat(&TokKind::RParen) {
+            self.error("expected ')'");
+        }
+        inner
+    }
+
+    /// A match pattern: `_`, a literal, `Ctor field…`, `( p )`, or a bare
+    /// binding.
+    fn pattern_atom(&mut self) -> MlPattern {
         match self.peek().clone() {
             // `-N` — a negative integer literal pattern. The lexer splits this
             // into `-` then the magnitude, so fold the sign into the literal so
@@ -1492,6 +1672,7 @@ impl Parser<'_> {
                 self.ident_pattern(name)
             }
             TokKind::LBracket => self.list_pattern(),
+            TokKind::LParen => self.group_pattern(),
             other => {
                 self.error(format!("unexpected token {other:?} in pattern"));
                 MlPattern::Wildcard
@@ -1555,6 +1736,12 @@ impl Parser<'_> {
             while let TokKind::Ident(field) = self.peek() {
                 fields.push(field.clone());
                 self.advance();
+            }
+            if matches!(self.peek(), TokKind::LParen) {
+                self.error(
+                    "nested constructor patterns are not supported; \
+                     bind the payload and match it in a second expression",
+                );
             }
             return MlPattern::Ctor { name, fields };
         }

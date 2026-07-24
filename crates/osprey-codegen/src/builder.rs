@@ -111,6 +111,12 @@ pub struct Codegen {
     pub(crate) cell_slots: HashMap<String, CellSlot>,
     /// Continuation lowering context while emitting a resuming handler arm.
     pub(crate) resume_ctx: Option<ResumeCodegenContext>,
+    /// Whether the expression currently being lowered sits in statement
+    /// position, where its value is discarded. A `match` used purely for its
+    /// side effects may then have arms of differing LLVM type — there is no
+    /// `phi` to type. In value position that disagreement is a hard error
+    /// ([`crate::pattern::finish_phi`]).
+    pub(crate) value_discarded: bool,
     /// Whether any testing built-in was lowered — makes `main` return the TAP
     /// epilogue's exit status [TESTING-EXIT].
     pub(crate) testing_used: bool,
@@ -434,6 +440,7 @@ impl Codegen {
             label_count: 0,
             cur_lines: Vec::new(),
             cur_block: String::from("entry"),
+            value_discarded: false,
             scopes: Vec::new(),
             fn_params: HashMap::new(),
             extern_ret_types: BTreeSet::new(),
@@ -637,11 +644,6 @@ impl Codegen {
         id
     }
 
-    /// Append a module-level global definition (e.g. the fiber-result table).
-    pub(crate) fn add_global_def(&mut self, def: impl Into<String>) {
-        self.globals.push(def.into());
-    }
-
     /// Suspend the in-progress function and start a fresh one (a handler function
     /// emitted while lowering its enclosing `handle`). Returns the saved state to
     /// hand back to [`Codegen::exit_nested_fn`]. The new function gets its own
@@ -724,6 +726,14 @@ impl Codegen {
     /// The LLVM return type of a user/runtime function, from inference.
     pub(crate) fn fn_ret_ltype(&self, name: &str) -> Option<LType> {
         self.prog.return_type(name).map(ltype_of)
+    }
+
+    /// Whether a user function is inferred to return `Unit` — i.e. its body's
+    /// value is discarded.
+    pub(crate) fn fn_ret_is_unit(&self, name: &str) -> bool {
+        self.prog
+            .return_type(name)
+            .is_some_and(|t| *t == osprey_types::Type::unit())
     }
 
     /// The LLVM parameter types of a user function, from inference.
@@ -1004,7 +1014,8 @@ impl Codegen {
         let _ = self.externs.insert(decl.into());
     }
 
-    /// Append a module-level global definition (counter globals, tables).
+    /// Append a module-level global definition: closure cells, counter
+    /// globals, the fiber-result table.
     pub(crate) fn add_global(&mut self, def: impl Into<String>) {
         self.globals.push(def.into());
     }

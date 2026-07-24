@@ -4,7 +4,12 @@
 `crates/osprey-lsp` + `crates/osprey-cli` + `crates/diff_examples.sh`
 **Status:** Phases 1–2 done (structured model, both flavors capture docs on all
 six declaration forms, hover renders them, `[Symbol]` links hover). Phase 3
-(doctest execution + user-declaration `--docs` export) remains.
+(doctest execution, user-declaration `--docs` export, `//!` attachment) remains
+— and is **not** a small remainder: each of its three items is gated on new
+surface that does not exist yet (a doctest extraction mode on the CLI, a
+generalised page renderer, and `doc` fields on `Program`/`Stmt::Namespace` plus
+a manual tree-sitter regeneration). See
+[§Phase 3](#phase-3-is-not-a-small-remainder--each-item-needs-new-surface-first).
 **Spec:** [0026-DocumentationComments.md](../specs/0026-DocumentationComments.md)
 (`[DOC-*]`); LSP hover [0020](../specs/0020-LanguageServerAndEditors.md)
 `[LSP-HOVER-DOCS]`; lowering contract [0023](../specs/0023-LanguageFlavors.md)
@@ -93,6 +98,53 @@ through the existing golden harness. Today only a fragment exists.
     `BuiltinDocView` page shape.
 12. `//!` inner/module docs in the Default grammar (mirror the `prec(1)` trick).
 
+#### Phase 3 is *not* a small remainder — each item needs new surface first
+
+Phases 1–2 shipped the model; Phase 3 is blocked on three things that do not
+exist yet, each verified against the tree:
+
+**3a — doctest execution.** Four blockers:
+
+- **No CLI can emit a `DocExample`.** `docparse::parse_doc` is `pub(crate)`
+  (`crates/osprey-syntax/src/docparse.rs`; `lib.rs` re-exports only
+  `doc_links`), and there is no `--doctests` mode, so a shell pre-pass in
+  `diff_examples.sh` has nothing to call. An extract-and-emit compiler mode
+  must land first (model it on `--list-tests`).
+- **Generated examples must not land under `examples/tested/`.**
+  `crates/osprey-cli/src/main.rs` asserts the discovered example set equals the
+  hardcoded `REGISTERED_EXAMPLES` list, so every generated file would fail it.
+  Emit to `target/doctests/` (build-artifact territory) instead.
+- **Compile-only examples have no golden.** `DocExample.run == false` produces
+  no `.expectedoutput`, and the Makefile fails unless the harness reports
+  `NOEXP=0`. They need a separate `--check` path, not the golden loop.
+- **`DocExample.code` is a snippet, not a program**, and the doc model carries
+  **no flavor field**. The program-synthesis rule (prepend the enclosing
+  source? just the documented declaration?) is an unspecified design decision,
+  and the extractor must re-derive the flavor via `resolve_flavor`.
+
+**3b — user-declaration export.** The most tractable of the three, but two
+mismatches remain: `BuiltinDocView` has typed params and a single `example`
+string, while `DocComment` has untyped params, a `Vec<DocExample>`, and
+`raises`/`see_also`/`since`/`deprecated` with no slot in the builtin page
+shape — so `page()` must generalise (spec 0026 requires the two look uniform).
+And `docs.rs` `prune` deletes every unrecognised `*.md` in its output tree, so
+user pages need their own subdirectory (`<docs-dir>/api/`) and prune set or
+they will delete website content.
+
+**3c — `//!` attachment.** Three blockers:
+
+- **Nowhere to put it.** `Program` has no `doc` field and neither does
+  `Stmt::Namespace`, so the AST must change before the grammar is useful.
+  (`Stmt::Namespace` also *silently drops* the `optional($.doc_comment)` the
+  grammar already accepts — fixing that is the same edit.)
+- **It is a source-compatibility break.** `//!` is a harmless `line_comment`
+  today; adding it as `token(prec(1, …))` makes every `//!` outside an accepted
+  attachment point a hard syntax error (a stray `///` already errors this way).
+- **`tree-sitter-osprey/src/parser.c` is committed and regenerated only by a
+  manual `npm run generate`** — the Makefile never invokes tree-sitter, so a
+  grammar edit is inert until the generated parser is regenerated and
+  committed.
+
 ## Testing
 
 - Unit: the ML lexer retains `(** *)` and rejects unterminated; the shared body
@@ -127,11 +179,28 @@ through the existing golden harness. Today only a fragment exists.
       docs).
 - [x] `[Symbol]` intra-doc links hover to the referenced element (bare +
       dotted); the doc-link extractor (`docparse::doc_links`).
-- [ ] Phase 3a: doctest **execution** — wire extracted `DocExample`s into the
-      `diff_examples.sh` golden harness (compiled under the file's flavor,
-      output byte-checked).
+Phase 3 remains — ordered by cost, cheapest first. Each is gated on new
+surface (see [§Phase 3 is *not* a small remainder](#phase-3-is-not-a-small-remainder--each-item-needs-new-surface-first)):
+
 - [ ] Phase 3b: `osprey --docs` exports **user** declarations from
-      `DocComment` (builtins already export from `BuiltinDocView`).
-- [ ] Phase 3c: `//!` inner/module-scope grammar attachment in the tree-sitter
-      grammar (lexer + lowerer already recognise `//!`).
+      `DocComment` (builtins already export from `BuiltinDocView`). Needs a
+      `source()` arg reader in `docs.rs`, a walk over the seven doc-bearing
+      `Stmt` variants (recursing into `Module`/`Namespace` bodies), a
+      generalised `page()` that renders from either view, and its own
+      `<docs-dir>/api/` output tree so `prune` cannot delete website content.
+      Reference `[DOC-EXPORT]` from `docs.rs` — that id has no code reference
+      today.
+- [ ] Phase 3c: `//!` inner/module-scope grammar attachment. Needs, in order:
+      `doc` fields on `Program` and `Stmt::Namespace`; the
+      `inner_doc_comment` rule in `tree-sitter-osprey/grammar.js`; a **manual
+      `npm run generate`** plus committed `src/parser.c`/`grammar.json`; an
+      `inner_doc` reader in the Default lowerer. This finally covers the
+      `DocScope::Inner` arm, which is unreachable today.
+- [ ] Phase 3a: doctest **execution**. Needs a doctest extraction mode on the
+      CLI (`docparse::parse_doc` is `pub(crate)`), a `target/doctests/` output
+      root (never `examples/tested/`, which is registry-asserted), a
+      `--check`-only path for `run == false` examples so they never reach the
+      `NOEXP` counter, and a decision on the snippet→program synthesis rule.
+      Reference `[DOC-DOCTEST-HARNESS]` from the extractor and
+      `diff_examples.sh`.
 - [x] `make ci` green (Phases 1–2).

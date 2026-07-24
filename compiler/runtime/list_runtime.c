@@ -20,6 +20,14 @@
  *   node. Conventions: collection_runtime.h. [GC-ARC-PERCEUS] plan 0011 M4b.
  *
  * Implements [TYPE-LIST], [TYPE-LIST-OPS] from docs/specs/0004-TypeSystem.md.
+ *
+ * Backs the list builtins of docs/specs/0012-Built-InFunctions.md — [BUILTIN-LIST],
+ * [BUILTIN-LIST-GET], [BUILTIN-LIST-APPEND], [BUILTIN-LIST-PREPEND],
+ * [BUILTIN-LIST-CONCAT], [BUILTIN-LIST-REVERSE] and [BUILTIN-COLLECTION-LENGTH]
+ * — which ship under their `listXxx` spellings, not the bare spec names. The
+ * iterator at the bottom of this file also carries the linear scan codegen
+ * emits for [BUILTIN-LIST-CONTAINS]. [BUILTIN-LIST-HEAD], [BUILTIN-LIST-TAIL]
+ * and [BUILTIN-LIST-INDEXOF] have no implementation here or anywhere.
  */
 
 typedef struct OspreyListNode {

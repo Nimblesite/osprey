@@ -1,0 +1,7 @@
+# Build ignores. Separate from .gitignore on purpose: generated-but-gitignored
+# input (src/spec/*.md, src/assets/vendor/) MUST still be built, so
+# eleventy.config.mjs turns off Eleventy's .gitignore handling.
+node_modules
+_site
+test-results
+playwright-report

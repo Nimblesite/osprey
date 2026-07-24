@@ -1,39 +1,15 @@
 # Testing Framework
 
-Osprey's built-in testing harness: three built-in functions (`test`, `expect`,
-`check`), a TAP text protocol emitted by compiled test binaries, an
-`osprey test` CLI runner, a `--list-tests` discovery mode, and a VS Code Test
-Explorer integration shipped in the extension. The framework is deliberately
-ultra-minimal: no test DSL, no new syntax, no registration step — a test file
-is an ordinary Osprey program whose top-level `test(...)` calls run in source
-order.
+A test file is an ordinary program whose top-level `test(...)` calls run in
+source order; testing adds no DSL, syntax, or registration step.
 
-> **Flavor layer — shared core (AST and above).** The testing built-ins are
-> shared core exactly like every other built-in ([0012](0012-Built-InFunctions.md)):
-> the same functions exist in every flavor and lower to the same canonical
-> `Expr::Call` nodes. Only the spelling is a flavor concern. The Default
-> surface reads like Jest (`test("adds", fn() => expect(add(2, 3), 5))`) and
-> stays imperative — a `fn() -> Unit` case firing soft assertions. The ML
-> surface keeps the Alcotest-style spelling but adopts a *pure, value-based*
-> model: a case is a pure function returning a three-state `Verdict`
-> (`Pass | Fail | Skip`), and `test` reports it. See
+> **Flavor layer — shared core (AST and above).** In every flavor the built-ins
+> lower to the same canonical `Expr::Call` nodes ([0012](0012-Built-InFunctions.md)).
+> Default cases are `fn() -> Unit` functions using soft assertions; ML cases are
+> pure functions returning `Verdict` (`Pass | Fail | Skip`) for `test` to report.
+> See
 > [the Verdict model](#the-pure-ml-flavor-verdict-model) and
 > [Language Flavors](0023-LanguageFlavors.md).
-
-- [Status](#status)
-- [The built-ins](#the-built-ins)
-- [Equality semantics](#equality-semantics)
-- [The pure ML-flavor Verdict model](#the-pure-ml-flavor-verdict-model)
-- [TAP output protocol](#tap-output-protocol)
-- [Exit code](#exit-code)
-- [Test filtering](#test-filtering)
-- [File naming convention](#file-naming-convention)
-- [CLI](#cli)
-- [VS Code Test Explorer](#vs-code-test-explorer)
-- [Runtime](#runtime)
-- [Decision record and assumptions](#decision-record-and-assumptions)
-- [Risks](#risks)
-- [Cross-references](#cross-references)
 
 ## Status
 
@@ -43,10 +19,9 @@ links, but the wasm runner path is not exercised by the harness.
 
 ## The built-ins
 
-**`[TESTING-BUILTINS]`** Three built-in functions form the whole framework.
-They are ordinary built-ins: declared in the type checker's base environment,
-lowered by codegen, backed by the C runtime. No new grammar, keywords, or AST
-nodes exist for testing.
+**`[TESTING-BUILTINS]`** The three functions are declared in the type checker's
+base environment, lowered by codegen, and backed by the C runtime. Testing adds
+no grammar, keywords, or AST nodes.
 
 ### `test(name: string, body: fn() -> a) -> Unit` — `[TESTING-BUILTIN-TEST]`
 
@@ -90,16 +65,15 @@ test "addition works" (\() =>
 
 ### `expect(actual: any, expected: any) -> Unit` — `[TESTING-BUILTIN-EXPECT]`
 
-The Default-flavor-familiar assertion (Jest argument order: actual first).
-Compares the two values (see [Equality semantics](#equality-semantics)); on
+Compares the values with actual first (see
+[Equality semantics](#equality-semantics)); on
 mismatch, records a failure against the enclosing test case (or the whole run
 when used outside `test`) and prints a `#` diagnostic line.
 
 ### `check(label: string, expected: any, actual: any) -> Unit` — `[TESTING-BUILTIN-CHECK]`
 
-The ML-flavor-familiar assertion, modeled on Alcotest's
-`check testable msg expected actual`: a short label, then **expected before
-actual**. Behavior is otherwise identical to `expect`.
+Takes a short label, then **expected before actual**. Its behavior otherwise
+matches `expect`.
 
 Both assertions are valid anywhere an expression is — inside `test` bodies,
 in helper functions called from tests, or at the top level of a script.
@@ -128,12 +102,8 @@ the test actually computes.
 
 ## The pure ML-flavor Verdict model
 
-**`[TESTING-VERDICT]`** The Default flavor keeps the imperative, soft-assertion
-style familiar from Jest/Alcotest: a case is a `fn() -> Unit` that fires
-`expect`/`check` for their side effect. The ML flavor gets a *pure, value-based*
-surface instead, in the spirit of QuickCheck's three-state result — a test case
-is a pure function returning a **`Verdict`** value, and `test` is the sole
-effect boundary that reports it.
+**`[TESTING-VERDICT]`** An ML test case is a pure function returning
+**`Verdict`**; `test` is its sole reporting boundary.
 
 `Verdict` is an ordinary user-declared union with three states — no compiler
 magic beyond the report primitives below:
@@ -303,11 +273,8 @@ process start; then an exit-time hook writes
 one `<line> <hits>` row per registered line, ascending, zero-hit rows
 included — a reader needs no other line universe.
 
-Lines are those of the compiled unit: a test suite compiles standalone, so
-they are the suite file's own 1-based lines. Coverage measures the suite
-file it instruments — the framework's suites embed the logic they exercise
-(the `[TESTING-CLI-RUN]` isolation model), so the rate is the honest "did my
-tests execute my code" number.
+Lines are the compiled suite's own 1-based lines. Each suite compiles standalone
+and coverage measures that file (`[TESTING-CLI-RUN]`).
 
 ## VS Code Test Explorer
 
@@ -363,51 +330,12 @@ body's inline `expect`/`check` already recorded via `osp_test_assert`.
 `osp_test_assert`. Any use sets a per-module flag that makes `main` return
 `osp_test_finalize()` instead of `0`.
 
-## Decision record and assumptions
-
-**2026-07-12 — built-ins over syntax.** A `test "name" = expr` declaration
-form was rejected: it would touch the tree-sitter grammar, the ML parser, the
-AST, and project assembly for zero expressive gain. Built-in calls need no
-grammar change, work identically in both flavors, and keep discovery trivial
-(`Expr::Call` walk).
-
-**2026-07-12 — canonical-string equality.** Codegen's `==` is shallow
-(handles compare as `i64` for lists/records). Rather than build deep
-structural equality into the backend for v1, assertions compare `toString`
-renderings — the same canonical form the golden-example harness asserts on.
-Revisit if/when deep `==` lands in codegen; the TAP surface won't change.
-
-**2026-07-12 — soft assertions.** A failing assertion does not abort the
-case (Osprey has no exceptions; an abort would need effect machinery for a
-feature the golden harness doesn't need). Alcotest aborts on first failure;
-this framework reports all mismatches in a case. Divergence noted in the
-docs.
-
-**2026-07-12 — filtering by exact name via environment.** An env var needs
-no argv plumbing through the compiled binary and works identically for
-`osprey test --filter`, bare `--run` invocations, and the Test Explorer.
-Exact match keeps "run this one test" unambiguous.
-
 ## Risks
 
 - **`[TESTING-RISK-FIBERS]`** The run state is plain (non-atomic) C globals;
   assertions performed inside spawned fibers may interleave TAP lines or
   miscount. Tests should assert on the main fiber (await fiber results, then
   assert).
-- Canonical-string equality conflates values with identical renderings
-  across types (`5` vs `"5"`). Accepted for v1; documented in
-  `[TESTING-EQUALITY]`.
 - Test names are matched by exact string in filtering and in the Test
   Explorer TAP mapping; duplicate names within one file resolve to the last
   matching item.
-
-## Cross-references
-
-- [0012 Built-In Functions](0012-Built-InFunctions.md) — the built-in
-  reference (testing built-ins listed there, normative rules here).
-- [0023 Language Flavors](0023-LanguageFlavors.md) — flavor selection and
-  the shared-core boundary the built-ins sit above.
-- [0024 ML Flavor Syntax](0024-MLFlavorSyntax.md) — the ML surface used in
-  ML-flavor test files.
-- `crates/diff_examples.sh` — the golden harness that runs
-  `examples/tested/testing/` (the framework's own executable examples).

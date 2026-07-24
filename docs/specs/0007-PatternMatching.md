@@ -28,7 +28,7 @@ result =
 
 ## Union Type Patterns
 
-A union pattern names the variant. Variants with fields are destructured using `{ field, ... }`; variants without fields are matched by name alone. Both forms lower to `Pattern::Constructor`; the brace destructuring shown here is the Default surface, spelled `Success value` in the ML flavor ([`[FLAVOR-ML-MATCH]`](0024-MLFlavorSyntax.md#match)).
+A union pattern names the variant. A **named-field** payload is destructured with `{ field, ... }`, a **positional** payload ([TYPE-UNION-POSITIONAL](0003-Syntax.md#type-declarations)) with `(a, b)` binding by slot, and a payload-free variant is matched by name alone. All three lower to `Pattern::Constructor`; the spellings shown here are the Default surface — the ML flavor drops the delimiters (`Success value`, `Node l r`) per [`[FLAVOR-ML-MATCH]`](0024-MLFlavorSyntax.md#match).
 
 ```osprey
 type Option = Some { value: int } | None
@@ -122,7 +122,7 @@ match result {
 `Result<T, E>` is matched the same way as any other union. See [Error Handling](0013-ErrorHandling.md) for the type and arithmetic semantics.
 
 ```osprey
-let calculation = 1 + 3 + (300 / 5)  // Result<int, MathError>
+let calculation = 1.0 + 3.0 + (300 / 5)  // Result<float, MathError>
 
 match calculation {
     Success { value }   => print("Result: ${value}")
@@ -131,14 +131,14 @@ match calculation {
 ```
 
 ```osprey-ml
-calculation = 1 + 3 + (300 / 5)  // Result<int, MathError>
+calculation = 1.0 + 3.0 + (300 / 5)  // Result<float, MathError>
 
 match calculation
     Success value   => print "Result: ${value}"
     Error   message => print "Math error: ${message}"
 ```
 
-Compound arithmetic expressions yield a single `Result`, not nested `Result`s; the compiler unwraps intermediate values inside the chain. Only the final value needs to be matched.
+Only `/` and `%` produce a `Result` ([ARITH-PLAIN](0013-ErrorHandling.md#arithmetic-and-result--arith-plain)): `1 + 3` is plain `int` and there is nothing to match. An expression containing `/` or `%` yields a single `Result`, not nested `Result`s — the wrapper propagates outward through the chain rather than being unwrapped at each operator, so an erroring operand errors the whole expression and only the final value is matched ([Chaining Arithmetic](0013-ErrorHandling.md#chaining-arithmetic)).
 
 ## Ternary Match (Syntactic Sugar)
 
@@ -152,51 +152,70 @@ ternary ::= expr "{" pattern "}" "?" expr ":" expr   (* structural form *)
 Structural form — pick out a field, fall back if the pattern fails:
 
 ```osprey
-let calculation = 10 + 5
-let value = calculation { value } ? value : -1   // 15
+let calculation = intDiv(a: 10, b: 5)   // Result<int, MathError> — [BUILTIN-INTDIV]
+let value = calculation { value } ? value : -1   // 2
 ```
 
+The structural form has no ML surface; the ML flavor writes the `match`.
+
 ```osprey-ml
-calculation = 10 + 5
+calculation = intDiv (10, 5)
 value =
     match calculation
         Success value => value
-        Error _       => -1   // 15
+        _             => -1
 ```
 
-Desugars to:
+The Default form desugars to a block that binds each named field from the
+scrutinee and evaluates the `then` expression — a record always carries its
+declared fields, so the structural test cannot fail and the `else` expression is
+unreachable by construction:
 
 ```osprey
-match calculation {
-    { value } => value
-    _         => -1
-}
+{ let value = calculation.value; value }
+```
+
+### Result Default `?:` — [PATTERN-RESULT-DEFAULT]
+
+`?:` is **the** `Result`-default operator, and this section is its normative
+home; other chapters cross-reference [PATTERN-RESULT-DEFAULT] rather than
+restate it. `e ?: d` evaluates to `e`'s `Success` payload, otherwise to `d`. It
+is right-associative and binds below every other operator
+([Syntax](0003-Syntax.md#expressions)), so `1 + 2 ?: 0` parses as `(1 + 2) ?: 0`
+and `f(x) ?: 0 ?: 1` as `f(x) ?: (0 ?: 1)`.
+
+The scrutinee must be a `Result` or a `bool` — a consequence of the boolean-arm
+lowering below, not a separate rule. `e` of any other type is a type error
+(`5 ?: -1` reports `cannot unify int with bool`), so `?:` cannot be written
+against a total value. A `bool` scrutinee is degenerate but legal:
+`true ?: false` is `true`.
+
+Lowering: `e ?: d` reuses the scrutinee as the `then` branch of the ternary's
+two-arm `Expr::Match` — literally `match e { true => e  false => d }`, with
+`Pattern::Literal(Bool)` arms, so `?:` needs no `Result`-specific node or
+runtime. A `Result` scrutinee selects the arms by discriminant, which is what
+makes `intDiv(a: 10, b: 0) ?: -1` yield `-1`. **The ML lowering must emit this
+same shape**, not a `Success`/`Wildcard` pair, or ML and Default twins diverge
+and [FLAVOR-IR-EQUIV](0023-LanguageFlavors.md#cross-flavor-equivalence-tests)
+fails.
+
+The spelling is `?:` in **both** flavors. The ML lexer takes `?:` as a single
+two-character operator, ahead of the bare `:` of a type signature, so maximal
+munch keeps the two apart.
+
+```osprey
+let safeValue = intDiv(a: 10, b: 2) ?: -1   // 5
+let errorVal  = intDiv(a: 10, b: 0) ?: -1   // -1
 ```
 
 ```osprey-ml
-match calculation
-    Success value => value
-    Error _       => -1
+safeValue = intDiv (10, 2) ?: -1   // 5
+errorVal  = intDiv (10, 0) ?: -1   // -1
 ```
 
-Result-default form — extract `Success { value }` or use the default on `Error`:
+### Boolean Ternary
 
-```osprey
-let safeValue = divide(a: 10, b: 2) ?: -1   // 5
-let errorVal  = divide(a: 10, b: 0) ?: -1   // -1
-```
-
-```osprey-ml
-orDefault r =
-    match r
-        Success value => value
-        Error _       => -1
-
-safeValue = orDefault (divide (10, 2))   // 5
-errorVal  = orDefault (divide (10, 0))   // -1
-```
-
-A boolean expression with `?:` works because `true`/`false` desugar to the same match:
+A boolean discriminant uses the `? :` ternary, because `true`/`false` desugar to the same match:
 
 ```osprey
 let status = isActive ? "Active" : "Inactive"

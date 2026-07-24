@@ -23,7 +23,7 @@ Type annotations are optional everywhere they can be inferred:
 
 ```osprey
 fn identity(x)         = x                       // <T>(T) -> T
-fn add(a, b)           = a + b                   // (int, int) -> Result<int, MathError>
+fn add(a, b)           = a + b                   // (int, int) -> int
 fn greet(name)         = "Hello, " + name        // (string) -> string
 fn makeUser(n, a)      = User { name: n, age: a }  // (string, int) -> User
 fn getName(u)          = u.name                  // (User) -> string
@@ -33,7 +33,7 @@ fn compose(f, g)       = fn(x) => f(g(x))        // <A,B,C>((B)->C,(A)->B) -> (A
 
 ```osprey-ml
 identity x       = x                        // <T>(T) -> T
-add (a, b)       = a + b                     // (int, int) -> Result<int, MathError>
+add (a, b)       = a + b                     // (int, int) -> int
 greet name       = "Hello, " + name          // (string) -> string
 makeUser (n, a)  =
     User
@@ -43,6 +43,11 @@ getName u        = u.name                    // (User) -> string
 twice (f, x)     = f (f x)                   // <T>((T) -> T, T) -> T
 compose (f, g)   = \x => f (g x)             // <A,B,C>((B)->C,(A)->B) -> (A)->C
 ```
+
+`add`'s inferred `(int, int) -> int` follows [ARITH-PLAIN]
+([Error Handling](0013-ErrorHandling.md#arithmetic-and-result--arith-plain)):
+`+ - *` return plain scalars — `int` for two `int` operands, `float` when either
+operand is `float`.
 
 `[TYPE-NO-REDUNDANT-ANNOTATION]` **Optional is not the whole rule: an annotation
 the checker can infer is *redundant*, and redundant symbols are forbidden.**
@@ -61,11 +66,13 @@ is just as redundant when the body fixes the type, and must be dropped too.
 
 Keep an annotation **only** when the checker genuinely cannot infer it — the
 narrow, load-bearing set: an empty literal with no context
-(`let xs: List<int> = []`, [TYPE-LIST](#list-t--type-list)); the ambiguous empty
-map (`{}` at an ambiguous position, [TYPE-MAP](#map-k-v--type-map)); an `extern`
+(`let xs: List<int> = []`, [TYPE-LIST](#listt--type-list)); the ambiguous empty
+map (`{}` at an ambiguous position, [TYPE-MAP](#mapk-v--type-map)); an `extern`
 boundary; an unconstrained polymorphic variable a caller must pin; or a return
-type that is *load-bearing* because it forces `Result<T, E>` to auto-unwrap to
-`T` at the function boundary ([Result Auto-Unwrapping](#result-auto-unwrapping)).
+type that is *load-bearing* because it forces a fallible call's `Result<T, E>`
+to auto-unwrap to `T` at the function boundary
+([Result Auto-Unwrapping](#result-auto-unwrapping)) — arithmetic no longer
+creates that case, since `+ - *` return plain scalars ([ARITH-PLAIN]).
 Declared type-parameter binders (`fn pick<T>(…)`, `type Source<out T>`,
 `effect State<T>`) are **declaration sites, not inference sites** — a binder
 introduces the parameter the annotations refer to (and carries its variance),
@@ -201,7 +208,7 @@ emits only at direct value sites; admitting it inside a payload would accept
 values whose stored representation is wrong. Function-typed payloads keep
 their flexibility representation-safely: unification itself normalizes
 function returns through `Result` (the function-value ABI strips the
-wrapper), so a `Feed<(int) -> Result<int, MathError>>` matches a
+wrapper), so a `Feed<(int) -> Result<int, IndexError>>` matches a
 `Feed<(int) -> int)` slot.
 
 Built-in constructors' declared variance: `Result<out T, out E>`,
@@ -227,24 +234,27 @@ All primitive types are lowercase.
 
 `int` and `float` do not implicitly convert. Use `toFloat(int)` and `toInt(float)`.
 
-Arithmetic returns `Result<T, MathError>`. The full operator-by-operand table and chaining rules are in [Error Handling](0013-ErrorHandling.md#arithmetic-returns-result).
+Arithmetic returns plain scalars except `/` and `%`, which return `Result<_, MathError>` ([ARITH-PLAIN]). The full operator-by-operand table, status, and chaining rules are in [Error Handling](0013-ErrorHandling.md#arithmetic-and-result--arith-plain).
 
 ## Result Auto-Unwrapping
 
-A bare arithmetic expression has type `Result<T, MathError>`. The compiler auto-unwraps the inner `Result` in five contexts so authors do not write nested `match` chains:
+A fallible call has type `Result<T, E>`; among the operators only `/` and `%` produce one, since `+ - *` yield plain scalars ([ARITH-PLAIN]). The compiler auto-unwraps the inner `Result` in six contexts so authors do not write nested `match` chains:
 
-1. **Nested arithmetic.** `(10 + 5) * 2` has type `Result<int, MathError>`, not `Result<Result<int, MathError>, MathError>`. If any sub-expression errors, the chain errors.
-2. **User function arguments.** Passing a `Result`-typed expression to a function that expects the underlying type unwraps it. `double(add(a: 5, b: 3))` is well-typed when `add` returns `Result<int, MathError>` and `double` expects `int`.
-3. **Fiber operations.** `spawn`, `await`, `send`, and `recv` unwrap `Result` arguments before storing them.
-4. **Function-value calls.** A `Result` returned through a function value unwraps at the call site ([TYPE-FN-CLOSURE]).
-5. **String interpolation.** `${expr}` renders the success payload (see [String Interpolation](0006-StringInterpolation.md)).
+1. **User function arguments.** Passing a `Result`-typed expression to a function that expects the underlying type unwraps it. `double(intDiv(a: 10, b: 2))` is well-typed when `intDiv` returns `Result<int, MathError>` and `double` expects `int`.
+2. **Fiber operations.** `spawn`, `await`, `send`, and `recv` unwrap `Result` arguments before storing them.
+3. **Function-value calls.** A `Result` returned through a function value unwraps at the call site ([TYPE-FN-CLOSURE]).
+4. **String interpolation.** `${expr}` renders the success payload (see [String Interpolation](0006-StringInterpolation.md)).
+5. **Comparison.** A `Result` operand of a comparison unwraps: `intDiv(a: 7, b: 2) == 3` is `true`.
+6. **A declared non-`Result` return type.** `fn half(n) -> int = intDiv(a: n, b: 2)` returns `int` — this is the *load-bearing* annotation of [TYPE-NO-REDUNDANT-ANNOTATION](#type-annotation-requirements), and the one case where writing a return type changes meaning rather than restating it. Without the annotation the body's `Result` is the return type.
+
+Arithmetic is **not** one of these contexts. A `Result`-typed operand *propagates*: an arithmetic expression containing one has type `Result<T, MathError>`, flattened rather than nested, and an erroring operand makes the whole expression `Error` ([Chaining Arithmetic](0013-ErrorHandling.md#chaining-arithmetic)). Unwrapping an operand here would discard the error.
 
 Auto-unwrap does **not** apply to:
 
-- `toString`. `toString(add(a: 5, b: 3))` produces `"Success(8)"`, never `"8"`. Use `toString` to inspect the `Result` itself.
-- A function's declared return type. `fn add(x, y) = x + y` returns `Result<int, MathError>`; `fn compute() -> int = 5` returns `int`.
+- `toString`. `toString(intDiv(a: 10, b: 2))` produces `"Success(5)"`, never `"5"`. Use `toString` to inspect the `Result` itself.
+- An *un*annotated function body. `fn half(x) = x / 2` returns `Result<float, MathError>`; only a declared non-`Result` return type unwraps it (context 6 above).
 
-The top-level value of an arithmetic expression must still be either matched or stored as a `Result`.
+The top-level value of a `Result`-producing expression must still be either matched, stored as a `Result`, or defaulted with `?:` ([Ternary Match](0007-PatternMatching.md#ternary-match-syntactic-sugar)).
 
 ## Function Types
 
@@ -311,7 +321,7 @@ greet   = \(name : string) => prefix + name     // captures prefix
 print (greet "world")                                         // "hello world"
 ```
 
-Closures and named functions are interchangeable wherever a function type is expected, including as higher-order arguments (`map`, `filter`, `fold`, `forEach`) and as the function field of records. A closure that captures no free variables is equivalent to a top-level function and the implementation SHOULD lower it to one. A `Result<T, E>` returned through a function-value call auto-unwraps to `T` (context 4 of [Result Auto-Unwrapping](#result-auto-unwrapping)).
+Closures and named functions are interchangeable wherever a function type is expected, including as higher-order arguments (`map`, `filter`, `fold`, `forEach`) and as the function field of records. A closure that captures no free variables is equivalent to a top-level function and the implementation SHOULD lower it to one. A `Result<T, E>` returned through a function-value call auto-unwraps to `T` (context 3 of [Result Auto-Unwrapping](#result-auto-unwrapping)).
 
 ## Record Types
 
@@ -412,7 +422,7 @@ area =
 > The `any` structural-narrowing arm (`p: { name } => p.name`) has no ML-flavor
 > surface syntax; use the Default flavor for structural matching on `any`.
 
-The compiler implementation must look up fields by name; positional access is forbidden in code generation.
+Codegen resolves a **named-field** payload by name, never by declaration order, so reordering fields in a `type` cannot silently rebind a pattern. A **positionally-declared** variant ([TYPE-UNION-POSITIONAL](0003-Syntax.md#type-declarations)) has no field names to resolve against and is the one case resolved by index — the binder in column *i* binds payload slot *i*.
 
 ### Immutability and Non-Destructive Update
 
@@ -459,7 +469,7 @@ companyCity = company.address.city
 
 ## Union Types
 
-A union type (also "sum type", "tagged union", "discriminated union") declares a closed set of named variants. Each variant is either nullary (no payload) or carries a record-style payload. Grammar in [Syntax](0003-Syntax.md#type-declarations); pattern-matching rules in [Pattern Matching](0007-PatternMatching.md).
+A union type (also "sum type", "tagged union", "discriminated union") declares a closed set of named variants. Each variant is nullary (no payload), carries a record-style named payload, or carries a positional payload ([TYPE-UNION-POSITIONAL](0003-Syntax.md#type-declarations)). Grammar in [Syntax](0003-Syntax.md#type-declarations); pattern-matching rules in [Pattern Matching](0007-PatternMatching.md).
 
 ```osprey
 type Color  = Red | Green | Blue
@@ -585,7 +595,7 @@ Builtin signatures referenced below are specified in [Built-in Functions](0012-B
 
 ### `List<T>` — [TYPE-LIST]
 
-`List<T>` is an immutable, homogeneous, indexed sequence with structural sharing. The implementation MUST provide the asymptotic bounds listed under [Performance](#performance-type-list-perf); a bitmapped vector trie (branching factor 32) is the recommended baseline, with an upgrade path to an RRB-tree for O(log n) concatenation. Index access is bounds-checked and returns `Result<T, IndexError>`.
+`List<T>` is an immutable, homogeneous, indexed sequence with structural sharing. The implementation MUST provide the asymptotic bounds listed under [Performance](#performance--type-collection-perf); a bitmapped vector trie (branching factor 32) is the recommended baseline, with an upgrade path to an RRB-tree for O(log n) concatenation. Index access is bounds-checked and returns `Result<T, IndexError>`.
 
 ```osprey
 let numbers = [1, 2, 3, 4, 5]            // List<int>
@@ -611,7 +621,7 @@ let combined = numbers + [6, 7, 8]                       // concatenation produc
 numbers |> forEach(fn(x) => print(toString(x)))
 ```
 
-The `+` operator is defined on `(List<T>, List<T>) -> List<T>` and returns a new list. Chains of `map`/`filter` terminated by `forEach`/`fold` are fused per [Stream Fusion](0010-LoopConstructsAndFunctionalIterators.md#stream-fusion); no intermediate list is materialised.
+The `+` operator is defined on `(List<T>, List<T>) -> List<T>` and returns a new list. Chains of `map`/`filter` terminated by `forEach`/`fold` are fused per [Stream Fusion](0010-LoopConstructsAndFunctionalIterators.md#stream-fusion--builtin-iter-fusion); no intermediate list is materialised.
 
 #### Patterns — [TYPE-LIST-PATTERNS]
 
@@ -638,7 +648,7 @@ Comprehensions desugar to `map` + `filter` over the source iterator and are subj
 
 ### `Map<K, V>` — [TYPE-MAP]
 
-`Map<K, V>` is an immutable, persistent associative collection keyed by `K`. The implementation MUST provide the asymptotic bounds listed under [Performance](#performance-type-map-perf); a hash array mapped trie (HAMT, branching factor 32) per Bagwell (2000) is the recommended baseline. Iteration order is **unspecified** and MUST NOT be relied upon; programs that need a deterministic order MUST sort the result of `keys(map)` or `entries(map)`.
+`Map<K, V>` is an immutable, persistent associative collection keyed by `K`. The implementation MUST provide the asymptotic bounds listed under [Performance](#performance--type-collection-perf); a hash array mapped trie (HAMT, branching factor 32) per Bagwell (2000) is the recommended baseline. Iteration order is **unspecified** and MUST NOT be relied upon; programs that need a deterministic order MUST sort the result of `keys(map)` or `entries(map)`.
 
 Keys MUST be of a type for which the runtime provides a total hash and equality. The set of permitted key types in this revision is `int`, `string`, and `bool`; structurally-compared records and unions are reserved for a later revision and will fail type-checking until then.
 
@@ -718,7 +728,7 @@ let byGrade  = groupBy(students, fn(s) => s.grade)         // Map<string, List<S
 
 `zipToMap` returns a `Result` because mismatched lengths are an error. `groupBy` preserves the relative order of items within each bucket.
 
-### Performance
+### Performance — [TYPE-COLLECTION-PERF]
 
 | Operation             | `List<T>` (bitmapped trie) | `Map<K, V>` (HAMT)                                |
 | --------------------- | -------------------------- | ------------------------------------------------- |
@@ -736,7 +746,7 @@ A future revision MAY upgrade `List<T>` to an RRB-tree (Bagwell & Rompf 2011; St
 
 | Type          | Used by                                              |
 | ------------- | ---------------------------------------------------- |
-| `MathError`   | Arithmetic (`DivisionByZero`, `Overflow`, `Underflow`)|
+| `MathError`   | `/` and `%` (`DivisionByZero`); `intDiv`, `randomBelow`; `checkedAdd`/`checkedSub`/`checkedMul` (`Overflow`, `Underflow`) |
 | `ParseError`  | String parsing                                       |
 | `IndexError`  | List and string indexing (`OutOfBounds`)             |
 | `StringError` | String operations that can fail (`length`, `substring`, `contains`) |

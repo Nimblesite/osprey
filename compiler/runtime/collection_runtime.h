@@ -11,6 +11,14 @@
  *
  * Implements [TYPE-LIST], [TYPE-MAP], [TYPE-MAP-LOOKUP], [TYPE-MAP-OPS].
  *
+ * This ABI is what the builtin collection surface of
+ * docs/specs/0012-Built-InFunctions.md lowers to: [BUILTIN-COLLECTIONS],
+ * [BUILTIN-COLLECTION-COMMON], [BUILTIN-LIST], [BUILTIN-MAP]. The two
+ * `*_length` entry points back both [BUILTIN-COLLECTION-LENGTH] and
+ * [BUILTIN-COLLECTION-ISEMPTY] (`isEmpty` is `length == 0`, folded at codegen).
+ * The spec's bare spellings (`append`, `get`, `set`, …) are NOT the names that
+ * ship today — see the implementation-status note in that spec section.
+ *
  * Every element is stored as an int64_t. Pointers (strings, nested
  * collections, records) are cast to int64_t at storage time. Codegen on the
  * Go side is responsible for boxing/unboxing.

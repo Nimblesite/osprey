@@ -434,7 +434,7 @@ Local Osprey context:
 - [Algebraic Effects spec](../specs/0017-AlgebraicEffects.md)
 - [Fibers and Concurrency spec](../specs/0011-LightweightFibersAndConcurrency.md)
 - [WebAssembly target spec](../specs/0022-WebAssemblyTarget.md)
-- [Effect `resume` plan](../plans/0008-algebraic-effects-resume.md)
+- [Algebraic effects roadmap](../plans/0016-algebraic-effects-and-handlers.md)
 - [`crates/osprey-codegen/src/effects.rs`](../../crates/osprey-codegen/src/effects.rs)
 - [`crates/osprey-codegen/src/fiber.rs`](../../crates/osprey-codegen/src/fiber.rs)
 - [`compiler/runtime/effects_runtime.c`](../../compiler/runtime/effects_runtime.c)

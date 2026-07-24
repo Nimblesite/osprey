@@ -143,7 +143,9 @@ mod tests {
         // `r ?: fallback` desugars to `match r { true => r  false => fallback }`;
         // over a `Result` that is a discriminant test whose value is the
         // unwrapped payload — it must not unify the payload with `bool`.
-        ok("let okCalc = 10 + 5\n\
+        // `+ - *` are plain `int` now ([ARITH-PLAIN]), so the scrutinee has to
+        // come from an operation that still carries the error channel.
+        ok("let okCalc = intDiv(a: 10, b: 5)\n\
             let okElvis = okCalc ?: -1\n\
             fn keep(x: int) -> int = x + okElvis\n");
     }

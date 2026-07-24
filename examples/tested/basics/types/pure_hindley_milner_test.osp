@@ -13,7 +13,7 @@ print("=== HINDLEY-MILNER TEST ===")
 print("Test 1: Function type inference from usage")
 // These functions have NO explicit types - all inferred!
 fn identity(x) = x              // HM infers type from usage context
-fn add(a, b) = a + b           // HM infers (int, int) -> Result<int, MathError>
+fn add(a, b) = a + b            // HM infers (int, int) -> int [ARITH-PLAIN]
 fn concat(s1, s2) = s1 + s2     // HM infers (string, string) -> string
 fn negate(x) = !x              // HM infers (bool) -> bool
 
@@ -25,8 +25,7 @@ let boolId = identity(true)     // identity<bool>
 print("identity(42) = ${intId}, identity(\"test\") = ${stringId}, identity(true) = ${toString(boolId)}")
 
 // Test arithmetic inference
-let addResult = add(a: 10, b: 20)
-let addValue = addResult ?: 0
+let addValue = add(a: 10, b: 20)
 let concatResult = concat(s1: "hello", s2: "world")
 let negateResult = negate(false)
 

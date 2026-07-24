@@ -2,7 +2,10 @@
 
 A block expression groups statements and returns the value of its final expression. Each block introduces a new lexical scope.
 
-> **Flavor layer — mixed.**  Every block lowers to one canonical `Expr::Block{statements, value}` node, so the scoping and value-of-last-expression rules below are shared-core semantics that run identically no matter which flavor produced the program. Only the *delimiting* differs by surface: the Default flavor shown here brackets blocks with `{ ... }` braces, while the ML flavor delimits them by layout/offside ([FLAVOR-ML-BLOCK] in [ML Flavor Syntax](0024-MLFlavorSyntax.md)). The brace grammar below is the Default surface spelling; both flavors meet at the same AST node. See [Language Flavors](0023-LanguageFlavors.md).
+> **Flavor layer — mixed.** Default braces and ML offside layout
+> ([FLAVOR-ML-BLOCK] in [ML Flavor Syntax](0024-MLFlavorSyntax.md)) both lower
+> to `Expr::Block{statements, value}`. Scoping and final-value semantics are
+> shared.
 
 ```ebnf
 blockExpression ::= "{" statement* expression? "}"

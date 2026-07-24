@@ -2,7 +2,10 @@
 //! wrappers over the C string runtime declared in `runtime/string_runtime.h`
 //! and linked from `libfiber_runtime`, whose symbols fix each builtin's
 //! signature. Total operations return their bare value; fallible ones return
-//! the uniform `{ value, i8 }*` Result block. Implements [BUILTIN-STRING-*].
+//! the uniform `{ value, i8 }*` Result block. Implements
+//! [BUILTIN-STRING-INSPECTION], [BUILTIN-STRING-SEARCH], [BUILTIN-STRING-CURSOR],
+//! [BUILTIN-STRING-SUBSTRINGS], [BUILTIN-STRING-LIST], [BUILTIN-STRING-TRANSFORM],
+//! [BUILTIN-STRING-PARSING], and [BUILTIN-STRING-ERROR].
 
 use crate::builder::Codegen;
 use crate::error::{CodegenError, Result};
@@ -19,10 +22,6 @@ pub(crate) fn gen(
     named: &[NamedArgument],
 ) -> Result<Option<Value>> {
     let v = match name {
-        // `osp_strlen` (not libc `strlen`) returns `i64` on every target; libc
-        // `strlen` returns `size_t`, 32-bit on wasm32, breaking the IR's width.
-        "length" => unary_i64(cg, "osp_strlen", args, named)?,
-        "isEmpty" => bool_from_i64(cg, "osp_string_is_empty", &[(0, LType::Str)], args, named)?,
         "contains" => contains(cg, args, named)?,
         "startsWith" => bool_from_i64(
             cg,
@@ -114,6 +113,28 @@ pub(crate) fn gen(
         _ => return Ok(None),
     };
     Ok(Some(v))
+}
+
+/// `length`/`isEmpty` on a **string** receiver the receiver-directed dispatcher
+/// ([`crate::collections::gen_receiver_directed`]) has already lowered. The
+/// receiver arrives as a value rather than an expression because these names are
+/// shared with `List<T>`/`Map<K, V>`: lowering the argument again per candidate
+/// would duplicate its side effects. Implements [BUILTIN-STRING-LENGTH],
+/// [BUILTIN-STRING-ISEMPTY].
+pub(crate) fn gen_size(cg: &mut Codegen, name: &str, recv: Value) -> Result<Value> {
+    let s = crate::cast::coerce_to(cg, recv, LType::Str)?;
+    if name == "length" {
+        // `osp_strlen` (not libc `strlen`) returns `i64` on every target; libc
+        // `strlen` returns `size_t`, 32-bit on wasm32, breaking the IR's width.
+        return Ok(Value::new(
+            cg.call("i64", "osp_strlen", "i8*", &[&s.operand]),
+            LType::I64,
+        ));
+    }
+    let raw = cg.call("i64", "osp_string_is_empty", "i8*", &[&s.operand]);
+    let r = cg.fresh_reg();
+    cg.emit(format!("{r} = icmp ne i64 {raw}, 0"));
+    Ok(Value::new(r, LType::I1))
 }
 
 /// The `i`-th positional argument, evaluated and coerced to `want`.
@@ -283,7 +304,7 @@ fn parse_strict(
     let s = arg(cg, args, 0, LType::Str)?;
     let slot = cg.fresh_reg();
     cg.emit(format!("{slot} = alloca {inner}"));
-    let zero = if inner == LType::Double { "0.0" } else { "0" };
+    let zero = crate::llty::zero_literal(inner);
     cg.emit(format!("store {inner} {zero}, {inner}* {slot}"));
     let rc = cg.call(
         "i64",

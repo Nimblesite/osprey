@@ -139,19 +139,11 @@ impl Lowerer<'_> {
     /// `if_expression` in the `alternative` field, so it recurses naturally into
     /// the `false` arm.
     fn lower_if(&self, node: Node<'_>) -> Expr {
-        Expr::Match {
-            value: Box::new(self.lower_expr_field(node, "condition")),
-            arms: vec![
-                MatchArm {
-                    pattern: Pattern::Literal(Box::new(Expr::Bool(true))),
-                    body: self.lower_expr_field(node, "consequence"),
-                },
-                MatchArm {
-                    pattern: Pattern::Literal(Box::new(Expr::Bool(false))),
-                    body: self.lower_expr_field(node, "alternative"),
-                },
-            ],
-        }
+        crate::desugar::bool_match(
+            self.lower_expr_field(node, "condition"),
+            self.lower_expr_field(node, "consequence"),
+            self.lower_expr_field(node, "alternative"),
+        )
     }
 
     /// `cond ? then : else` desugars to `match cond { true => then  false => else }`
@@ -193,19 +185,7 @@ impl Lowerer<'_> {
             Some(n) => self.lower_expr(n),
             None => condition.clone(), // Elvis `?:`
         };
-        Expr::Match {
-            value: Box::new(condition),
-            arms: vec![
-                MatchArm {
-                    pattern: Pattern::Literal(Box::new(Expr::Bool(true))),
-                    body: then_expr,
-                },
-                MatchArm {
-                    pattern: Pattern::Literal(Box::new(Expr::Bool(false))),
-                    body: else_expr,
-                },
-            ],
-        }
+        crate::desugar::bool_match(condition, then_expr, else_expr)
     }
 
     fn lower_inner_expr(&self, node: Node<'_>) -> Expr {
@@ -241,6 +221,17 @@ impl Lowerer<'_> {
                     arguments,
                     named_arguments,
                 }
+            }
+            // A saturated call of a positionally-declared constructor is a
+            // construction, not a call ([TYPE-UNION-POSITIONAL]) — the one
+            // call-shaped expression exempt from the named-argument rule,
+            // because a positional payload has no field names to supply.
+            Expr::Identifier(name) if named_arguments.is_empty() => {
+                crate::positional::construct(&name, arguments.clone()).unwrap_or(Expr::Call {
+                    function: Box::new(Expr::Identifier(name)),
+                    arguments,
+                    named_arguments,
+                })
             }
             other => Expr::Call {
                 function: Box::new(other),
@@ -632,6 +623,22 @@ mod tests {
         assert!(matches!(
             let_value("let r = rec { a } ? a : 0\n"),
             Expr::Block { .. }
+        ));
+        // `if c { a } else { b }` reuses the ternary's boolean match, and an
+        // `else if` nests into the `false` arm ([GRAMMAR-IF-ELSE]).
+        match let_value("let r = if c { 1 } else if d { 2 } else { 3 }\n") {
+            Expr::Match { arms, .. } => {
+                assert_eq!(arms.len(), 2);
+                assert_eq!(arms[0].body, Expr::Integer(1));
+                assert!(matches!(arms[1].body, Expr::Match { .. }));
+            }
+            other => panic!("expected a boolean match, got {other:?}"),
+        }
+        // `name { … }` is a construction whatever the receiver's case — the
+        // grammar's dynamic precedence resolves the ambiguity that way.
+        assert!(matches!(
+            let_value("let r = p { x: 1 }\n"),
+            Expr::TypeConstructor { .. }
         ));
     }
 

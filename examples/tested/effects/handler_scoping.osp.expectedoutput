@@ -2,7 +2,7 @@
 [OUTER-LOG] before nested
 [OUTER-LOG] deep op exec
 [OUTER-LOG] complex starting
-[OUTER-LOG] complex intermediate: Success(42)
+[OUTER-LOG] complex intermediate: 42
 [OUTER-LOG] after nested
 forward chain result: 42
 [OUTER-LOG] before inner handler

@@ -25,6 +25,7 @@
 
 use crate::{Flavor, Parsed};
 
+mod clauses;
 mod cst;
 mod lexer;
 mod lower;
@@ -37,7 +38,10 @@ mod token;
 /// Parse ML-flavor source into the canonical [`Program`](osprey_ast::Program):
 /// lex → parse to CST → lower to AST. Best-effort, carrying any syntax errors.
 pub(crate) fn parse_ml(source: &str) -> Parsed {
-    let (items, errors) = parser::parse(source);
+    let (items, mut errors) = parser::parse(source);
+    // Clause sets collapse to `match` before lowering, so the shared core only
+    // ever sees the plain definition form ([FLAVOR-ML-CLAUSES]).
+    let items = clauses::merge(items, &mut errors);
     Parsed {
         program: lower::lower(items),
         errors,

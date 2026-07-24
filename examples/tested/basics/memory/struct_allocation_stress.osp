@@ -1,0 +1,41 @@
+// Struct-allocation stress across the swappable memory backends. A lazy range
+// drives creation of a LARGE number of transient records; the default backend,
+// the tracing GC (--memory=gc) and Perceus ARC (--memory=arc) must all print
+// the SAME totals ([MEM-BACKENDS] oracle), and under ARC every record must be
+// freed by exit — zero live objects ([GC-ARC-PERCEUS]).
+//
+// There is no per-file backend selector, by design: the memory strategy is a
+// runtime choice orthogonal to the source, so the `--memory=` CLI flag IS the
+// mechanism. The differential harness replays this file under all three
+// backends (OSPREY_RUN_FLAGS=--memory=gc|arc, driven by the _conformance-gc /
+// _conformance-arc make targets), so simply living in examples/tested exercises
+// every backend on every `make test`.
+
+type Particle = { id: int, mass: int, spin: int }
+
+let COUNT = 100000
+
+fn forge(i) = Particle { id: i, mass: i * 3, spin: i % 5 }
+// `add` stays a named function (not inlined into `energy`) because it is also
+// passed by value to `fold`; the return type is inferred, so both flavors emit
+// identical IR ([FLAVOR-IR-EQUIV]).
+fn add(a, b) = a + b
+fn energy(p) = add(p.mass, p.spin)
+fn heavy(p) = p.mass > 150000
+
+// 1. Bulk allocation — build COUNT records, read each once, fold to a scalar.
+//    Nothing survives the fold: every record is transient.
+let total = range(1, COUNT) |> map(forge) |> map(energy) |> fold(0, add)
+print("particles=${COUNT} totalEnergy=${total}")
+
+// 2. Filter drops most records mid-stream — allocate COUNT, keep the heavy
+//    tail. ARC must free each record the filter rejects.
+let heavyTotal = range(1, COUNT) |> map(forge) |> filter(heavy) |> map(energy) |> fold(0, add)
+print("heavyEnergy=${heavyTotal}")
+
+// 3. Non-destructive update in the hot path — every step COPIES a record, so a
+//    record-typed fold accumulator is born COUNT-1 times and all but the last
+//    die immediately. Exercises the pointer-accumulator fold path end to end.
+fn bump(p, step) = p { mass: add(p.mass, 1) }
+let bumped = range(1, COUNT) |> fold(forge(1), bump)
+print("bumpedMass=${bumped.mass}")

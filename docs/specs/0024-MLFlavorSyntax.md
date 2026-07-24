@@ -22,6 +22,7 @@ subordinate to that contract. Implementation is tracked in
 - [Modules and Namespaces](#modules-and-namespaces)
 - [Effects](#effects)
 - [Handlers](#handlers)
+- [Type Declarations](#type-declarations)
 - [Match](#match)
 - [Records](#records)
 - [Blocks](#blocks)
@@ -48,7 +49,7 @@ subordinate to that contract. Implementation is tracked in
   ([`crates/diff_examples.sh`](../../crates/diff_examples.sh)) discovers
   `.ospml` fixtures **additively**, leaving every existing `.osp` example
   untouched.
-- **Phases 2–3 — ML lexer/parser/lowerer: in active development.** The frontend
+- **Phases 2–3 — ML lexer/parser/lowerer: implemented and green.** The frontend
   is a hand-written Rust layout lexer + recursive-descent (Pratt /
   precedence-climbing) parser in
   [`crates/osprey-syntax/src/ml/`](../../crates/osprey-syntax/src/ml/) (see
@@ -60,6 +61,21 @@ subordinate to that contract. Implementation is tracked in
 - **First-class handler values: deferred.** ML effect declarations,
   `perform`, and the existing fused `handle ... in ...` form are implemented;
   only reusable handler values/installers await the shared-core feature.
+- **Elegance forms: implemented and green.** Inline `|` unions
+  ([`[FLAVOR-ML-UNION-INLINE]`](#type-declarations)) — `|` is a real ML token,
+  lexed after the two-character operators so `||` and `|>` keep maximal munch —
+  equational clauses ([`[FLAVOR-ML-CLAUSES]`](#functions-and-currying)), grouped
+  patterns ([`[FLAVOR-ML-PATTERN-GROUP]`](#match)), positional construction and
+  destructuring ([`[FLAVOR-ML-CTOR-POSITIONAL]`](#records)), and `_` parameters
+  ([`[PARAM-WILDCARD]`](0003-Syntax.md#expressions), shared core — both flavors)
+  all parse, lower, and run. The Default flavor's Result default `e ?: d`
+  ([Pattern Matching](0007-PatternMatching.md)) lexes and parses in the ML
+  flavor too, spelled identically; the operator itself is unchanged. Of
+  [plan 0019](../plans/0019-ml-elegance.md) there remain open: phase 4
+  `[ARITH-EFFECT]` (deferred, blocked on effect-row inference), the corpus
+  sweep for silently-shadowed same-name bindings and the unreachable-clause
+  diagnostic that should replace today's silent first-wins, and the
+  `osprey-fmt` round-trip audit of these forms.
 
 The parsing techniques and the offside rule are cited in the
 [References](#references) section.
@@ -169,16 +185,19 @@ reassignment respectively — only the spelling differs.
 
 ## Functions and Currying
 
-`[FLAVOR-ML-FN]` A function definition is a binding whose head has one or more
-parameter patterns. The optional signature line above it uses ML arrows.
+`[FLAVOR-ML-FN]` A function definition is one or more **clauses**: bindings
+whose head carries parameter patterns. The optional signature line above the
+first clause uses ML arrows.
 
 ```ebnf
-signature ::= ID ":" type
-funDef    ::= ID paramPattern+ "=" blockOrExpr                 (* curried: one arg per pattern *)
-            | ID "(" param ("," param)* ")" "=" blockOrExpr    (* uncurried: one flat arg list *)
-type      ::= type "->" type            (* right-associative: a -> b -> c = a -> (b -> c) *)
-            | "(" type ("," type)* ")" "->" type   (* uncurried multi-argument *)
-            | typeAtom
+signature   ::= ID ":" type
+funDef      ::= clause+                                          (* consecutive, same name, same arity *)
+clause      ::= ID paramPattern+ "=" blockOrExpr                 (* curried: one arg per pattern *)
+              | ID "(" param ("," param)* ")" "=" blockOrExpr    (* uncurried: one flat arg list *)
+paramPattern ::= ID | "_" | literal | "(" pattern ")"   (* `pattern` is defined under Match *)
+type        ::= type "->" type          (* right-associative: a -> b -> c = a -> (b -> c) *)
+              | "(" type ("," type)* ")" "->" type   (* uncurried multi-argument *)
+              | typeAtom
 ```
 
 ```osprey-ml
@@ -187,6 +206,40 @@ inc x = x + 1
 
 add : int -> int -> int
 add x y = x + y
+```
+
+`[FLAVOR-ML-CLAUSES]` A parameter position holding a **refutable** pattern — a
+literal, a constructor, or `_` — makes the clause a case, and **consecutive**
+clauses of the same name and arity define one function by cases. A clause set
+lowers to the `match` it means.
+
+```osprey-ml
+make 0 = Node Leaf Leaf
+make d = Node (make (d - 1)) (make (d - 1))
+```
+
+Lowering: the clause set becomes **one** `Stmt::Function` whose body is
+`Expr::Match` over the scrutinee parameter — byte-identical to the twin written
+`make d = match d` with the arms in clause order, and to the Default
+`fn make(d) = match d { … }`. The parameter takes its name from the first clause
+with a bare-identifier head, else a generated one. Exhaustiveness and
+redundant-arm checking are the shared-core checks, unchanged, so a clause set
+that misses a case is rejected exactly as the equivalent `match` is.
+
+Three restrictions are normative. **At most one refutable column**: a clause set
+that refutes in two positions (`f 0 y = …` / `f x 0 = …`) has no joint scrutinee
+— `Expr` has no tuple — and is a diagnostic, not a nested desugaring. **Clauses
+must be adjacent**: same-name bindings separated by another declaration are a
+duplicate-definition error, never a merge. **One signature**, attached above the
+first clause; a signature between clauses is an error.
+
+`_` in a parameter position declares an ignored argument
+([PARAM-WILDCARD](0003-Syntax.md#expressions)) — shared core, so the Default
+flavor spells it `|acc, _| => …`. ML additionally admits it in a clause head,
+where Default has no clause form.
+
+```osprey-ml
+range 0 1200 |> fold 0 (\(acc, _) => acc + check (make 13))
 ```
 
 `[FLAVOR-ML-CURRY]` ML **curries by default**. A multi-parameter binding
@@ -541,16 +594,54 @@ lower to `Expr::HandlerValue` and `Expr::Install`; `handle a b c do body`
 desugars to nested installs. The Default flavor gains the same feature in brace
 spelling.
 
+## Type Declarations
+
+`[FLAVOR-ML-UNION-INLINE]` A union is written on one line, variants separated by
+`|`. A variant's payload is **positional** — types juxtaposed after the variant
+name — or **named**, in an inline parenthesised list. The layout form remains
+available for declarations too wide to read on one line.
+
+```ebnf
+typeDecl  ::= "type" ID typeParam* "=" (unionBody | type)
+unionBody ::= variant ("|" variant)*
+            | INDENT variant+ DEDENT                      (* layout form, unchanged *)
+variant   ::= ID typeAtom*                                (* positional payload *)
+            | ID "(" fieldDecl ("," fieldDecl)* ")"       (* named payload *)
+            | ID INDENT fieldDecl+ DEDENT                 (* layout form, unchanged *)
+fieldDecl ::= ID ":" type
+```
+
+```osprey-ml
+type Tree = Leaf | Node Tree Tree
+type Shape = Circle float | Rect(w : float, h : float)
+```
+
+`|` is a declaration separator, never an infix expression operator, and is
+matched only after the two-character operators so `||` and `|>` keep maximal
+munch. A `type T = …` whose right side starts with a lowercase identifier is a
+manifest alias, not a single-variant union. Or-patterns are **not** part of this
+flavor: `|` is meaningless in pattern position.
+
+Lowering: `Stmt::Type` + `TypeVariant`, identical to the layout form. Positional
+payloads are a shared-core capability, not ML sugar — the Default flavor spells
+the same declaration `type Tree = Leaf | Node(Tree, Tree)`
+([TYPE-UNION-POSITIONAL](0003-Syntax.md#type-declarations)).
+
 ## Match
 
 `[FLAVOR-ML-MATCH]` `match` uses the same clause style as handlers: the
 scrutinee follows `match`, and each indented arm is `Pattern => body`. A
 one-payload constructor binds its payload directly — `Success value`, not
-`Success { value }`.
+`Success { value }`. Most single-argument case analyses are better written as
+equational clauses ([FLAVOR-ML-CLAUSES](#functions-and-currying)); `match` is
+the explicit form they mean, and the form to reach for when the scrutinee is not
+a parameter.
 
 ```ebnf
 matchExpr ::= "match" expr INDENT matchArm+ DEDENT
 matchArm  ::= pattern "=>" blockOrExpr
+pattern   ::= "_" | literal | ID binder* | "(" pattern ")"
+binder    ::= ID | "_"
 ```
 
 ```osprey-ml
@@ -560,19 +651,32 @@ diskBytes =
         Error message => -1
 ```
 
+`[FLAVOR-ML-PATTERN-GROUP]` Parentheses around a pattern **group only** and
+erase at parse time — they exist so a constructor pattern can sit in a clause
+head, where `check Node l r` would otherwise read as a three-parameter head.
+`(a, b)` is not a tuple pattern: Osprey has no tuple type, and the comma form is
+an error in pattern position. A constructor pattern's arguments are binders or
+`_`, so nested constructor patterns (`Node (Node a b) c`) are reserved — the
+grammar above admits only binders, matching [Syntax](0003-Syntax.md#match-expressions).
+
 Lowering: `Expr::Match` + `MatchArm`; `Success value` →
 `Pattern::Constructor { name: "Success", fields: ["value"] }` — the same node the
-Default `Success { value }` produces. Wildcard `_` → `Pattern::Wildcard`.
+Default `Success { value }` produces. Wildcard `_` → `Pattern::Wildcard`;
+grouping produces no node. The Result default `e ?: d`
+([Pattern Matching](0007-PatternMatching.md)) lowers to this same `Expr::Match`.
 
 ## Records
 
-`[FLAVOR-ML-RECORD]` Record construction is a layout block headed by the
-constructor name, with `field = value` lines. Inside a record literal the left
-of `=` is a field name, not a new binding; the indentation under a constructor
-makes that unambiguous.
+`[FLAVOR-ML-RECORD]` Construction follows the declaration. A **named-payload**
+variant is built from a layout block headed by the constructor name with
+`field = value` lines, or from an inline parenthesised list. Inside a record
+literal the left of `=` is a field name, not a new binding; the indentation
+under a constructor makes that unambiguous.
 
 ```ebnf
 recordExpr ::= ID INDENT fieldInit+ DEDENT
+             | ID "(" fieldInit ("," fieldInit)* ")"
+             | ID atom+                                  (* positional, saturated *)
 fieldInit  ::= ID "=" expr
 ```
 
@@ -587,8 +691,27 @@ textResp status bodyText =
         partialBody = bodyText
 ```
 
-Lowering: `Expr::TypeConstructor { name, fields }`; record update lowers to
-`Expr::Update`.
+`[FLAVOR-ML-CTOR-POSITIONAL]` A **positionally-declared** variant is built and
+destructured by juxtaposition, with no field names at either end.
+
+```osprey-ml
+check Leaf = 0
+check (Node l r) = 1 + check l + check r
+```
+
+Two rules are normative in
+[TYPE-UNION-POSITIONAL](0003-Syntax.md#type-declarations) and bite hardest in
+this flavor, where whitespace application makes both mistakes look well-formed.
+**Constructors do not curry** — `Node Leaf` is an arity error
+(`constructor 'Node' expects 2 payloads, given 1`), the one deliberate exception
+to [FLAVOR-ML-CURRY](#functions-and-currying). **Positional patterns bind
+positionally only against positionally-declared variants** — against a
+named-payload variant a bare `C a b` keeps its existing by-name meaning, so no
+`.ospml` written today changes meaning.
+
+Lowering: `Expr::TypeConstructor { name, fields }` for every form — the
+positional form resolves each argument to its declared field by index; record
+update lowers to `Expr::Update`.
 
 ## Blocks
 
@@ -622,6 +745,8 @@ is in [FLAVOR-LAYER](0023-LanguageFlavors.md#flavor-concern-vs-shared-core-conce
 | `x := e` | `Stmt::Assignment` |
 | `f x y = e` (curried) | one-param `Stmt::Function` returning a `Lambda` chain |
 | `f (x, y) = e` (uncurried) | flat multi-param `Stmt::Function` |
+| `f 0 = a` / `f n = b` (clauses) | one `Stmt::Function` over `Expr::Match` |
+| `_` in a parameter position | `Parameter` with a generated, unspellable name |
 | `\x y => e` | curried `Expr::Lambda` chain |
 | `f a b` | nested one-arg `Expr::Call` — `Call(Call(f,[a]),[b])` |
 | `f (a, b)` (saturated) | single multi-arg `Expr::Call` — `Call(f, [a, b])` |
@@ -632,11 +757,15 @@ is in [FLAVOR-LAYER](0023-LanguageFlavors.md#flavor-concern-vs-shared-core-conce
 | layout member import | `Stmt::Import` + explicit `ImportSelection` |
 | `A::B::value` | `Expr::Path(SymbolPath)` |
 | `type T =` + variant/field layout | `Stmt::Type` + `TypeVariant` |
+| `type T = A \| B X Y` (inline union) | `Stmt::Type` + `TypeVariant` (positional payload) |
 | `[a, b, c]` / `xs[i]` | `Expr::List` / `Expr::Index` |
 | layout block | `Expr::Block` |
 | `match v` + arms | `Expr::Match` + `MatchArm` |
 | `Success value` | `Pattern::Constructor { fields: ["value"] }` |
-| `T` + `f = v` lines | `Expr::TypeConstructor` |
+| `(P)` | grouping only — no node |
+| `e ?: d` | `Expr::Match` — boolean-literal arms, see [0007](0007-PatternMatching.md) |
+| `T` + `f = v` lines / `T(f = v)` | `Expr::TypeConstructor` |
+| `B x y` (positional, saturated) | `Expr::TypeConstructor` — arguments by index |
 | `effect E` + `op : P => R` | `Stmt::Effect` + `EffectOperation` |
 | `perform E.op a` | `Expr::Perform` |
 | `handler E` + arms | `Expr::HandlerValue` *(shared-core addition)* |
@@ -692,7 +821,7 @@ memoryDb () =
 silentLog : Unit -> Handler Log
 silentLog () =
     handler Log
-        info m => ()
+        info _ => ()
 
 createTask : string -> HttpResponse
 createTask body =
@@ -749,9 +878,28 @@ test "createTask stores the task and logs" =
   meaningful (`serveForever ()`).
 - **Lambdas:** anonymous functions are written `\param* => body` (lowering to
   `Expr::Lambda`), keeping `=>` as the clause/yield arrow and `->` as the type
-  arrow.
+  arrow. The parameter list follows the same split as application
+  ([FLAVOR-ML-CURRY](#functions-and-currying)): whitespace parameters curry, so
+  `\x y => e` is a one-parameter lambda returning a one-parameter lambda, while
+  a parenthesised comma list `\(x, y) => e` is the flat two-parameter lambda —
+  argument grouping, not a tuple. Only the flat form twins Default's
+  `|x, y| => e`, which is why a callback taking a flat function, such as
+  `fold`'s, is written `fold 0 (\(acc, _) => …)`.
 - **Effect annotations on signatures:** the effect row follows the result type,
   as in the Default flavor (`saveTask : string -> int ![Store, Log]`).
+- **Or-patterns and guards:** omitted. `Pattern` has no `Or` and `MatchArm` has
+  no guard field; a guard desugared into an arm body cannot fall through to
+  later arms, so it would not be faithful sugar. Both are shared-core additions
+  if they are ever wanted, never ML-only spellings.
+- **Trailing lambdas without parentheses:** rejected. `\x => body` has no
+  closing delimiter, so `xs |> map \x => x + 1 |> length` would silently bind
+  the pipeline into the lambda body and compute the wrong answer with the
+  flavor's most-used operator. The parentheses in `fold 0 (\(acc, _) => …)` stay.
+- **Operator sections (`(+)`, `(1 +)`):** rejected. They need lookahead in the
+  parenthesised-expression path, `(-)` is ambiguous with prefix negation, and
+  they are a second spelling for `\a b => a + b`.
+- **Constructor currying:** rejected — see
+  [FLAVOR-ML-CTOR-POSITIONAL](#records). Constructors saturate or error.
 
 ## References
 

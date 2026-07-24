@@ -2,7 +2,12 @@
 // remove, merge (right-biased, via mapMerge + `+`), keys/values lists,
 // map literal index returning Result<T,E>, cross-mutation isolation
 // with List<T>.
-// Spec: [TYPE-MAP], [BUILTIN-MAP-*], [TYPE-MAP-OPS], [TYPE-MAP-CONV]
+// Spec: [TYPE-MAP], [TYPE-MAP-OPS], [TYPE-MAP-CONV]. Builtins exercised, under
+// the `mapXxx` spellings that ship: [BUILTIN-MAP], [BUILTIN-COLLECTION-LENGTH],
+// [BUILTIN-MAP-SET], [BUILTIN-MAP-CONTAINS], [BUILTIN-MAP-REMOVE],
+// [BUILTIN-MAP-MERGE], the accessors [BUILTIN-MAP-KEYS] / [BUILTIN-MAP-VALUES],
+// [BUILTIN-MAP-GET] via the `prices["apple"]` index form, plus
+// [BUILTIN-LIST-APPEND] and [BUILTIN-LIST-CONCAT] on the coexisting list.
 
 print("[map]\n")
 
@@ -150,5 +155,11 @@ match prices["mango"] {
     Success { value } => print("mango ok??")
     Error   { message } => print("mango missing rejected")
 }
+
+// --- bare receiver-directed size: [BUILTIN-COLLECTION-LENGTH],
+// [BUILTIN-COLLECTION-ISEMPTY]. The same spelling the list and string sides
+// use; the Map handle must reach `osprey_map_length`, never the string runtime.
+print("\nbare map len g5=${length(g5)} prices=${length(prices)}")
+print("\nbare map empty e=${isEmpty(e)} g5=${isEmpty(g5)}\n")
 
 print("[map done]\n")

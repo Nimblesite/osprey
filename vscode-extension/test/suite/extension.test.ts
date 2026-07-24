@@ -810,10 +810,20 @@ suite("Osprey Language Features Tests", () => {
       "the first parameter is active",
     );
 
-    // --- COMPLETION: user symbols AND keywords are offered ---
+    // --- COMPLETION: user symbols always, keywords only where they parse ---
+    // Line 9 is `let m = print(a)` and the cursor sits after `let m = `, a
+    // VALUE position. A declaration keyword completed there expands to source
+    // no flavor parses (`let m = fn name(params) = body`), so the declaration
+    // forms are withheld while symbols and the expression forms stay.
+    // [LSP-COMPLETION-CONTEXT]
+    // Poll until the server has answered *for this document* — a non-empty list
+    // is not enough, because before `didOpen` is processed the request is
+    // answered from an empty prefix, which classifies as a declaration position
+    // and legitimately offers `fn`. Waiting on a symbol only this document
+    // declares is what proves the answer belongs to it.
     const list = await pollFor(
       () => completionAt(doc.uri, 9, 9),
-      (l) => !!l && Array.isArray(l.items) && l.items.length > 0,
+      (l) => !!l && Array.isArray(l.items) && labelsOf(l).includes("perimeter"),
     );
     const labels = labelsOf(list);
     for (const sym of ["Shape", "area", "perimeter", "radius", "count"]) {
@@ -822,8 +832,31 @@ suite("Osprey Language Features Tests", () => {
         `completion offers the user symbol ${sym}`,
       );
     }
+    for (const kw of ["match", "if"]) {
+      assert.ok(
+        labels.includes(kw),
+        `a value position keeps the expression keyword ${kw}`,
+      );
+    }
+    for (const kw of ["fn", "let", "type"]) {
+      assert.ok(
+        !labels.includes(kw),
+        `a value position withholds the declaration keyword ${kw}: ${JSON.stringify(labels)}`,
+      );
+    }
+
+    // Line 10 is the empty line past the program — declaration position, where
+    // every keyword the flavor has is legal again.
+    const atTopLevel = await pollFor(
+      () => completionAt(doc.uri, 10, 0),
+      (l) => !!l && Array.isArray(l.items) && l.items.length > 0,
+    );
+    const topLevelLabels = labelsOf(atTopLevel);
     for (const kw of ["fn", "let", "match", "type"]) {
-      assert.ok(labels.includes(kw), `completion offers the keyword ${kw}`);
+      assert.ok(
+        topLevelLabels.includes(kw),
+        `declaration position offers the keyword ${kw}`,
+      );
     }
   });
 
@@ -1064,9 +1097,24 @@ suite("Osprey Language Features Tests", () => {
     const doc = await vscode.workspace.openTextDocument(reported);
     await vscode.window.showTextDocument(doc);
 
-    // `print(listLength(e))` on line 13 (0-based 12): hover the builtin.
+    // Locate the probes by CONTENT, not by a hardcoded line number: this is a
+    // living example that gains coverage over time, and a fixed offset silently
+    // starts hovering a comment the moment a line is inserted above it.
+    const at = (needle: string, token: string): vscode.Position => {
+      const line = doc
+        .getText()
+        .split("\n")
+        .findIndex((l) => l.includes(needle));
+      assert.ok(line >= 0, `example still contains \`${needle}\``);
+      const col = doc.lineAt(line).text.indexOf(token) + 1;
+      assert.ok(col > 0, `line ${line} still contains \`${token}\``);
+      return new vscode.Position(line, col);
+    };
+
+    // Hover the `listLength` builtin at its first call site.
+    const lenAt = at("print(listLength(e))", "listLength");
     const lenHover = await pollFor(
-      () => hoverAt(doc.uri, 12, 8),
+      () => hoverAt(doc.uri, lenAt.line, lenAt.character),
       (h) => nonEmptyHover(h) && hoverText(h[0]).includes("listLength"),
       80,
       250,
@@ -1080,9 +1128,10 @@ suite("Osprey Language Features Tests", () => {
       "listLength hover shows it returns int",
     );
 
-    // `fn classify(xs)` on line 153 (0-based 152): hover the user function.
+    // Hover the user-defined `classify` function at its declaration.
+    const classifyAt = at("fn classify(xs)", "classify");
     const classifyHover = await pollFor(
-      () => hoverAt(doc.uri, 152, 5),
+      () => hoverAt(doc.uri, classifyAt.line, classifyAt.character),
       (h) => nonEmptyHover(h) && hoverText(h[0]).includes("classify"),
     );
     assert.ok(

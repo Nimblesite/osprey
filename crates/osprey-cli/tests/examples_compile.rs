@@ -41,10 +41,16 @@ fn collect(dir: &Path, ext: &str, out: &mut Vec<PathBuf>) {
     }
 }
 
-/// Compile one source the way `osprey --run` does: parse, gate on type errors,
-/// then lower to IR. `Ok(ir_len)` on success, else the failing stage + reason.
-fn compile(source: &str) -> Result<usize, String> {
-    let parsed = osprey_syntax::parse_program(source);
+/// Compile one source the way `osprey --run` does: resolve the flavor from the
+/// path and any `// osprey: flavor=…` marker, parse, gate on type errors, then
+/// lower to IR. `Ok(ir_len)` on success, else the failing stage + reason.
+///
+/// The flavor must come from the path, not a hardwired `Flavor::Default`:
+/// `failscompilation/ml_*.ospo` are ML-flavor negatives selected by a leading
+/// marker, and grading them with the brace grammar would pin the wrong
+/// rejection path. Implements [FLAVOR-SELECT] (docs/specs/0023).
+fn compile(path: &Path, source: &str) -> Result<usize, String> {
+    let parsed = osprey_syntax::parse_program_for_path(&path.to_string_lossy(), source);
     if let Some(first) = parsed.errors.first() {
         return Err(format!("parse: {}", first.message));
     }
@@ -70,7 +76,7 @@ fn every_tested_example_compiles_to_ir() {
     let mut total_ir = 0usize;
     for path in &files {
         let source = fs::read_to_string(path).expect("read example");
-        match compile(&source) {
+        match compile(path, &source) {
             Ok(ir_len) => {
                 let rel = path.strip_prefix(&dir).unwrap_or(path);
                 assert!(ir_len > 0, "{}: produced empty IR", rel.display());
@@ -97,9 +103,10 @@ fn list_pattern_negative_cases_are_rejected() {
         "list_pattern_middle_rest.ospo",
         "list_pattern_double_rest.ospo",
     ] {
-        let source = fs::read_to_string(dir.join(name)).expect("read ospo");
+        let path = dir.join(name);
+        let source = fs::read_to_string(&path).expect("read ospo");
         assert!(
-            compile(&source).is_err(),
+            compile(&path, &source).is_err(),
             "{name} must be rejected (rest binder only at the tail; one rest max)"
         );
     }
@@ -119,10 +126,56 @@ fn generics_and_variance_negative_cases_are_rejected() {
         "generic_effect_arg_mismatch.ospo",
         "generic_effect_variance_position.ospo",
     ] {
-        let source = fs::read_to_string(dir.join(name)).expect("read ospo");
+        let path = dir.join(name);
+        let source = fs::read_to_string(&path).expect("read ospo");
         assert!(
-            compile(&source).is_err(),
+            compile(&path, &source).is_err(),
             "{name} must be rejected (variance/generic-effect misuse)"
+        );
+    }
+}
+
+/// The ML-flavor must-reject fixtures, each paired with the ML-specific fragment
+/// of the diagnostic it pins. Naming the fragment is what makes the assertion
+/// meaningful: a fixture that started failing for a *Default*-grammar reason
+/// would still be "rejected", and only the message catches that.
+/// Implements [FLAVOR-ML-HANDLER], [FLAVOR-ML-LAYOUT], [FLAVOR-ML-COMMENTS],
+/// [FLAVOR-ML-MATCH], [FLAVOR-BOUNDARY].
+const ML_NEGATIVES: [(&str, &str); 5] = [
+    (
+        "ml_handler_value_not_supported.ospo",
+        "ML construct 'handler' is not yet supported",
+    ),
+    (
+        "ml_layout_inconsistent_indent.ospo",
+        "inconsistent indentation does not match any enclosing block",
+    ),
+    (
+        "ml_unterminated_doc_comment.ospo",
+        "unterminated `(** … *)` doc comment",
+    ),
+    ("ml_match_arm_thin_arrow.ospo", "expected '=>' in match arm"),
+    (
+        "ml_brace_record_and_question_sigil.ospo",
+        "unexpected character '{'",
+    ),
+];
+
+#[test]
+fn ml_flavor_negative_cases_are_rejected_by_the_ml_frontend() {
+    // ML negatives are `.ospo` (the must-reject extension, which no source
+    // harness compiles) plus a leading `// osprey: flavor=ml` marker — the
+    // marker alone selects the ML frontend, since `.ospo` implies no flavor.
+    let dir = repo_root().join("examples/failscompilation");
+    for (name, expected) in ML_NEGATIVES {
+        let path = dir.join(name);
+        let source = fs::read_to_string(&path).expect("read ospo");
+        let Err(reason) = compile(&path, &source) else {
+            panic!("{name} must be rejected by the ML frontend");
+        };
+        assert!(
+            reason.contains(expected),
+            "{name}: expected an ML diagnostic containing {expected:?}, got {reason:?}"
         );
     }
 }
@@ -138,7 +191,7 @@ fn failscompilation_corpus_drives_rejection_paths() {
     assert!(!files.is_empty(), "expected a must-reject corpus");
     let rejected = files
         .iter()
-        .filter(|p| compile(&fs::read_to_string(p).unwrap_or_default()).is_err())
+        .filter(|p| compile(p.as_path(), &fs::read_to_string(p).unwrap_or_default()).is_err())
         .count();
     assert!(
         rejected * 2 >= files.len(),

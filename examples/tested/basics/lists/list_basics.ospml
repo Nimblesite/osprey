@@ -1,7 +1,11 @@
 // Persistent List<T>: empty, append, prepend, reverse, concat (both via
 // listConcat and `+`), contains, persistence across versions, branching,
 // crossing the 32-element tail boundary, forEachList iteration order.
-// Spec: [TYPE-LIST], [BUILTIN-LIST-*]
+// Spec: [TYPE-LIST], [TYPE-LIST-PATTERNS]. Builtins exercised, under the
+// `listXxx` spellings that ship: [BUILTIN-LIST], [BUILTIN-COLLECTION-LENGTH],
+// [BUILTIN-LIST-APPEND], [BUILTIN-LIST-PREPEND], [BUILTIN-LIST-CONCAT],
+// [BUILTIN-LIST-REVERSE], [BUILTIN-LIST-CONTAINS], and [BUILTIN-LIST-GET] via
+// the `commands[0]` index form.
 
 print "[list]\n"
 
@@ -170,4 +174,11 @@ print "\nrestLen a="
 print (restLen a)
 print "\nrestLen short="
 print (restLen (listAppend (List ()) 9))
+
+// --- bare receiver-directed size: [BUILTIN-COLLECTION-LENGTH],
+// [BUILTIN-COLLECTION-ISEMPTY]. One spelling over `string` and `List<T>`; the
+// receiver's type — not the name — picks the runtime. A List handle reaching
+// the string runtime would `strlen` a heap pointer: wrong answer, OOB read.
+print "\nbare len a=${length a} t4=${length t4} str=${length "abcd"}"
+print "\nbare empty e=${isEmpty e} a=${isEmpty a} str=${isEmpty ""}"
 print "\n[list done]\n"

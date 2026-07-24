@@ -1,0 +1,15 @@
+// osprey: flavor=ml
+// ML-flavor must-reject. Pins [FLAVOR-ML-MATCH] (docs/specs/0024).
+//
+// ML keeps the two arrows disjoint: `->` is the TYPE arrow (`int -> int`) and
+// `=>` separates a clause's pattern from its body. A match arm written with the
+// thin arrow is therefore not a near-miss the parser should forgive — the
+// second arm below uses `->` and must be rejected.
+
+classify n =
+    match n
+        0 => "zero"
+        1 -> "one"
+        _ => "many"
+
+print (classify 1)

@@ -78,6 +78,38 @@ multi-parameter function. So each twin matches its original form-for-form:
 whitespace `f a b` ↔ Default explicit-curry, parens `f (a, b)` ↔ Default
 multi-parameter — both emitting byte-identical IR.
 
+## Must-reject fixtures (`failscompilation/`)
+
+Every file here is an ill-formed program the language defines as a compile error.
+The must-reject suite in
+[`../crates/diff_examples.sh`](../crates/diff_examples.sh) runs each one and
+requires a nonzero exit; the count still accepted is held down by the
+`FC_EXPECTED_ESCAPES` ratchet, so an added fixture that the compiler *accepts*
+breaks CI. Never add one without confirming it is actually rejected.
+
+- **Negatives use `.ospo`.** That extension is not a source extension anywhere in
+  the toolchain — no harness, build, or editor path compiles it — so a broken
+  program can sit next to working examples without any suite trying to run it.
+  `find … -name '*.ospo'` is exactly how both harnesses discover this corpus.
+- **An ML negative is `.ospo` plus a leading `// osprey: flavor=ml` marker** —
+  never a bare `.ospml`, which no harness discovers. `.ospo` implies no flavor
+  (`flavor_from_extension` has no opinion on it), so the marker alone selects the
+  ML frontend with no extension/marker conflict, and the marker path and
+  `--flavor ml` produce byte-identical diagnostics. The `ml_*.ospo` fixtures pin
+  the ML-specific rejection paths: reserved `handler`/`do`
+  ([`[FLAVOR-ML-HANDLER]`](../docs/specs/0024-MLFlavorSyntax.md)), offside-rule
+  violations `[FLAVOR-ML-LAYOUT]`, unterminated `(** … *)`
+  `[FLAVOR-ML-COMMENTS]`, `->` where a clause needs `=>` `[FLAVOR-ML-MATCH]`, and
+  Default-flavor spellings (`{ … }` records, the `?` sigil) that the ML lexer
+  refuses outright `[FLAVOR-BOUNDARY]`.
+- **Each fixture pairs with `<name>.ospo.expectedoutput`** holding the compiler's
+  real stderr, captured verbatim — documentation of the exact diagnostic, never
+  hand-written prose.
+- **A case the compiler cannot reject yet is parked with `.notimplemented`** (for
+  example `infinite_handler_recursion.notimplemented`). The extension keeps it
+  out of discovery so it neither passes nor inflates the ratchet; rename it back
+  to `.ospo` when the validation lands.
+
 ## Running an example
 
 ```bash

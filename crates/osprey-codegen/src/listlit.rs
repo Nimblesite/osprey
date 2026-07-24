@@ -4,6 +4,10 @@
 //! `OspreyList` handle (the two share only their leading `i64 length`, which is
 //! why `listLength` reads both). Index access bounds-checks and returns a
 //! `Result<T, IndexError>`.
+//!
+//! Implements the indexing spellings of [BUILTIN-LIST-GET] (`list[index]`, the
+//! `get(list, index)` equivalent) and [BUILTIN-MAP-GET] (`map[key]`, which
+//! delegates to the map runtime) — docs/specs/0012-Built-InFunctions.md.
 
 use crate::builder::Codegen;
 use crate::cast::coerce_to;
@@ -165,12 +169,7 @@ pub(crate) fn gen_index(cg: &mut Codegen, target: &Expr, index: &Expr) -> Result
     cg.emit(format!("br label %{cont}"));
 
     cg.start_block(&cont);
-    let zero = match elem {
-        LType::Str | LType::Ptr => "null",
-        LType::Double => "0.0",
-        LType::I1 => "false",
-        _ => "0",
-    };
+    let zero = crate::llty::zero_literal(elem);
     let phi = cg.fresh_reg();
     cg.emit(format!(
         "{phi} = phi {} [ {val}, %{load_bb} ], [ {zero}, %{oob_bb} ]",

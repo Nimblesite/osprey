@@ -10,6 +10,16 @@
  *
  * Implements [TYPE-MAP], [TYPE-MAP-LOOKUP], [TYPE-MAP-OPS] from
  * docs/specs/0004-TypeSystem.md.
+ *
+ * Backs the map builtins of docs/specs/0012-Built-InFunctions.md — [BUILTIN-MAP],
+ * [BUILTIN-MAP-GET], [BUILTIN-MAP-SET], [BUILTIN-MAP-REMOVE],
+ * [BUILTIN-MAP-MERGE], [BUILTIN-MAP-CONTAINS] and [BUILTIN-COLLECTION-LENGTH]
+ * — under their `mapXxx` spellings, not the bare spec names. The iterator
+ * below is what codegen walks for the accessors [BUILTIN-MAP-KEYS] and
+ * [BUILTIN-MAP-VALUES]; note those two accessors are what the SHIPPED
+ * `mapKeys` / `mapValues` builtins do, while the spec gives the same two
+ * spellings to the unimplemented transformers [BUILTIN-MAP-MAPKEYS] /
+ * [BUILTIN-MAP-MAPVALUES].
  */
 
 /* ============ Public API ============ */

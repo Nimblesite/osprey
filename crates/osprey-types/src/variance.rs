@@ -276,6 +276,19 @@ mod tests {
         assert!(errs
             .iter()
             .any(|e| e.message.contains("invariant position")));
+        // A contravariant constructor argument flips the polarity, so an `out T`
+        // inside a `Sink` lands in input position after all.
+        ctx.set_variance("Sink", vec![Variance::Contravariant]);
+        let errs = validate_type_decl(&ctx, "Bad2", &co, &[variant(&[("s", "Sink<T>")])]);
+        assert!(
+            errs.iter().any(|e| e.message.contains("input position")),
+            "{errs:?}"
+        );
+        // An invariant parameter carries no constraint, so every position suits
+        // it — including the one that rejected `out T` above.
+        let inv = [tp("T", Variance::Invariant)];
+        let ok = validate_type_decl(&ctx, "Cell", &inv, &[variant(&[("s", "Sink<T>")])]);
+        assert!(ok.is_empty(), "unexpected: {ok:?}");
     }
 
     #[test]

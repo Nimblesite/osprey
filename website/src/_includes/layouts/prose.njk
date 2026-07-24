@@ -23,7 +23,10 @@ layout: layouts/base.njk
 {% if author and not authorInContent %}
     <p class="prose-meta">
       <span>By {{ author }}</span>
-      {% if date %}<time datetime="{{ date | htmlDateString }}">{{ date | readableDate }}</time>{% endif %}
+      {# `page.date` is the resolved Date. Front matter `date` may be one of
+         Eleventy's directives (e.g. "git Last Modified"), which is still a raw
+         string here — only `page.date` has been turned into a real date. #}
+      {% if page.date %}<time datetime="{{ page.date | htmlDateString }}">{{ page.date | readableDate }}</time>{% endif %}
       {% if readingTime %}<span>{{ readingTime }} min read</span>{% endif %}
     </p>
 {% endif %}

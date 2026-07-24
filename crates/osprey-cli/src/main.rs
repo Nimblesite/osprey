@@ -1228,6 +1228,8 @@ mod tests {
         "examples/tested/basics/lists/map_basics.ospml",
         "examples/tested/basics/math/comprehensive_math.osp",
         "examples/tested/basics/math/comprehensive_math.ospml",
+        "examples/tested/basics/memory/struct_allocation_stress.osp",
+        "examples/tested/basics/memory/struct_allocation_stress.ospml",
         "examples/tested/basics/operators/boolean_consolidated.osp",
         "examples/tested/basics/operators/boolean_consolidated.ospml",
         "examples/tested/basics/osprey_mega_showcase.osp",
@@ -1548,6 +1550,16 @@ mod tests {
     #[test]
     fn basics_math_comprehensive_math_ospml() {
         assert_example_matches("examples/tested/basics/math/comprehensive_math.ospml");
+    }
+
+    #[test]
+    fn basics_memory_struct_allocation_stress_osp() {
+        assert_example_matches("examples/tested/basics/memory/struct_allocation_stress.osp");
+    }
+
+    #[test]
+    fn basics_memory_struct_allocation_stress_ospml() {
+        assert_example_matches("examples/tested/basics/memory/struct_allocation_stress.ospml");
     }
 
     #[test]

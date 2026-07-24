@@ -193,8 +193,14 @@ module.exports = grammar({
     extern_parameter: ($) => seq(field('name', $.identifier), ':', field('type', $._type)),
 
     parameter_list: ($) => sep1(',', $.parameter),
+    // `_` declares an argument the body ignores. Shared core, not ML sugar:
+    // without it ML's `\(acc, _) => …` has no `|acc, _| => …` twin and the pair
+    // breaks [FLAVOR-IR-EQUIV]. Implements [PARAM-WILDCARD].
     parameter: ($) =>
-      seq(field('name', $.identifier), optional(seq(':', field('type', $._type)))),
+      seq(
+        field('name', choice($.identifier, '_')),
+        optional(seq(':', field('type', $._type))),
+      ),
 
     type_declaration: ($) =>
       seq(
@@ -217,8 +223,24 @@ module.exports = grammar({
 
     union_type: ($) => prec.right(sep1('|', $.variant)),
     type_alias: ($) => prec.dynamic(-1, $._type),
+    // A variant's payload is named (`Node { l: Tree }`) or POSITIONAL
+    // (`Node(Tree, Tree)`), the latter having no field names to supply and so
+    // resolved by slot. Implements [TYPE-UNION-POSITIONAL].
     variant: ($) =>
-      prec.right(1, seq(field('name', choice($.qualified_path, $.identifier)), optional(seq('{', $.field_declarations, '}')))),
+      prec.right(
+        1,
+        seq(
+          field('name', choice($.qualified_path, $.identifier)),
+          optional(
+            choice(
+              seq('{', $.field_declarations, '}'),
+              seq('(', field('positional', $.positional_payload), ')'),
+            ),
+          ),
+        ),
+      ),
+
+    positional_payload: ($) => sep1(',', $._type),
 
     record_type: ($) => seq('{', $.field_declarations, '}'),
 

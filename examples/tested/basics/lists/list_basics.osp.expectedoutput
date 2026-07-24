@@ -149,5 +149,9 @@ restLen a=
 restLen short=
 0
 
+bare len a=3 t4=35 str=4
+
+bare empty e=true a=false str=true
+
 [list done]
 

@@ -50,6 +50,51 @@ pub(crate) fn gen(
     Ok(Some(v))
 }
 
+/// The bare spec spellings whose meaning is fixed by the **receiver**, not by
+/// the name: [BUILTIN-COLLECTION-LENGTH] and [BUILTIN-COLLECTION-ISEMPTY] give
+/// `length` and `isEmpty` one spelling across `string`, `List<T>` and
+/// `Map<K, V>`.
+const RECEIVER_DIRECTED: [&str; 2] = ["length", "isEmpty"];
+
+/// Dispatch a receiver-directed bare builtin, or `None` if `name` is not one.
+///
+/// The receiver is lowered EXACTLY ONCE and handed to the chosen runtime —
+/// re-lowering it per candidate would duplicate its side effects. The
+/// collection arms exist because sending a `List`/`Map` handle to the string
+/// runtime reads an `i8*` heap pointer as a NUL-terminated string: a wrong
+/// answer and an out-of-bounds read.
+pub(crate) fn gen_receiver_directed(
+    cg: &mut Codegen,
+    name: &str,
+    args: &[Expr],
+    named: &[NamedArgument],
+) -> Result<Option<Value>> {
+    if !RECEIVER_DIRECTED.contains(&name) {
+        return Ok(None);
+    }
+    let e = crate::expr::first_arg(args, named)
+        .ok_or_else(|| CodegenError::invalid(format!("{name} needs one argument")))?;
+    let lowered = gen_expr(cg, e)?;
+    let recv = crate::result::unwrap(cg, lowered);
+    let count = match recv.osp_ty.as_deref() {
+        Some(LIST_OWNER) => handle_i64(cg, &recv, "osprey_list_length"),
+        Some(MAP_OWNER) => handle_i64(cg, &recv, "osprey_map_length"),
+        _ => return crate::strings::gen_size(cg, name, recv).map(Some),
+    };
+    Ok(Some(if name == "isEmpty" {
+        let r = cg.fresh_reg();
+        cg.emit(format!("{r} = icmp eq i64 {}, 0", count.operand));
+        Value::new(r, LType::I1)
+    } else {
+        count
+    }))
+}
+
+/// `f(handle) -> i64` over an already-lowered collection handle.
+fn handle_i64(cg: &mut Codegen, recv: &Value, cname: &str) -> Value {
+    Value::new(cg.call("i64", cname, "i8*", &[&recv.operand]), LType::I64)
+}
+
 /// The `i`-th positional argument as an opaque `i8*` collection handle.
 fn handle_arg(cg: &mut Codegen, args: &[Expr], i: usize) -> Result<Value> {
     let e = args

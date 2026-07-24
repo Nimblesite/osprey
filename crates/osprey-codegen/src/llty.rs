@@ -24,6 +24,35 @@ pub enum LType {
     Ptr,
 }
 
+/// The generator role of a parameter register, in the shared role table of
+/// [`osprey_ast::generated_name`].
+const PARAM_ROLE: &str = "p";
+
+/// The LLVM register name of parameter `index`. Parameters are named
+/// POSITIONALLY, never after their source identifier: that is what makes an
+/// ML/Default twin pair byte-identical when the two authors spell a parameter
+/// differently — including the generated scrutinee of an equational clause set,
+/// which has no source spelling at all ([FLAVOR-IR-EQUIV], [FLAVOR-ML-CLAUSES]).
+/// The `$` sigil that keeps the name from colliding with a local comes from
+/// [`osprey_ast::generated_name`], the one definition of the scheme; the source
+/// name survives in DWARF via `emit_debug_param`.
+#[must_use]
+pub(crate) fn param_register(index: usize) -> String {
+    osprey_ast::generated_name(PARAM_ROLE, index)
+}
+
+/// The LLVM literal that zero-initialises `ty` — the payload of an `Error`
+/// block, an unfilled list slot, an uninitialised accumulator. One table, so a
+/// new [`LType`] cannot acquire a different zero in each caller.
+pub(crate) const fn zero_literal(ty: LType) -> &'static str {
+    match ty {
+        LType::Double => "0.0",
+        LType::Str | LType::Ptr => "null",
+        LType::I1 => "false",
+        LType::I64 | LType::I32 => "0",
+    }
+}
+
 impl LType {
     /// The textual LLVM spelling.
     #[must_use]
@@ -173,10 +202,7 @@ impl Value {
     /// pointer for a Result, else the plain [`LType`].
     #[must_use]
     pub fn llvm_ty(&self) -> String {
-        match self.result_inner {
-            Some(inner) => format!("{}*", result_struct_ty(inner)),
-            None => self.ty.to_string(),
-        }
+        ret_spelling(self.ty, self.result_inner)
     }
 
     /// The Result block struct spelling (no pointer), or `None` for a non-Result.

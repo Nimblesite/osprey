@@ -8,6 +8,7 @@
 import techdoc from "eleventy-plugin-techdoc";
 import Prism from "prismjs";
 import { DateTime } from "luxon";
+import { renderToString as renderTypeDiagram } from "typediagram-core";
 
 // Osprey Prism grammar — shared by the syntaxhighlight plugin and the transform.
 const ospreyGrammar = {
@@ -44,7 +45,26 @@ function ensureOsprey() {
   if (!Prism.languages["osprey-ml"]) Prism.languages["osprey-ml"] = ospreyMlGrammar;
 }
 
+// Recover the original source text from already-rendered markup. Every
+// transform below re-parses code the markdown pipeline has escaped (and
+// sometimes tokenised), so both steps live here once. `&amp;` MUST decode last
+// or `&amp;lt;` — a literal `&lt;` in the source — would decode twice into `<`.
+const stripTags = (html) => html.replace(/<\/?[^>]+(>|$)/g, "");
+const decodeEntities = (html) =>
+  html
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&amp;/g, "&");
+
 export default function (eleventyConfig) {
+  // Eleventy treats .gitignore entries as build ignores. That is wrong here:
+  // the spec pages and the vendored mermaid runtime are GENERATED into src/
+  // on every build and deliberately gitignored, and honouring .gitignore would
+  // drop them from the site. Ignores come from .eleventyignore instead.
+  eleventyConfig.setUseGitIgnore(false);
+
   eleventyConfig.addPlugin(techdoc, {
     site: {
       name: "Osprey",
@@ -72,14 +92,7 @@ export default function (eleventyConfig) {
     return content.replace(
       /<pre class="language-(osprey(?:-ml)?)"><code class="language-\1">([\s\S]*?)<\/code><\/pre>/g,
       (_m, lang, code) => {
-        const decoded = code
-          .replace(/&lt;/g, "<")
-          .replace(/&gt;/g, ">")
-          .replace(/&amp;/g, "&")
-          .replace(/&quot;/g, '"')
-          .replace(/&#39;/g, "'")
-          .replace(/<\/?[^>]+(>|$)/g, "")
-          .trim();
+        const decoded = stripTags(decodeEntities(code)).trim();
         const html = Prism.highlight(decoded, Prism.languages[lang], lang);
         return `<pre class="language-${lang}" tabindex="0" data-language="${lang}"><code class="language-${lang}">${html}</code></pre>`;
       }
@@ -100,6 +113,63 @@ export default function (eleventyConfig) {
       /<pre ((?:[^>]*?\s)?)data-language="(osprey(?:-ml)?)"/g,
       (_m, pre, lang) =>
         `<pre ${pre}data-language="${FLAVOR_LABEL[lang]}" data-flavor="${FLAVOR_KEY[lang]}"`
+    );
+  });
+
+  // Diagrams. Prose across docs, specs and blog uses exactly two diagram
+  // languages — never ASCII art, which is unreadable to screen readers, breaks
+  // on reflow, and cannot be restyled for dark mode:
+  //   ```mermaid      — flow, sequence, state, architecture (client-rendered)
+  //   ```typediagram  — data types: records and tagged unions (SSR'd to SVG)
+  // Prism knows neither language, so the markdown highlighter emits a plain
+  // escaped <pre class="language-…"> for both, which these transforms claim.
+  const DIAGRAM_FENCE = (lang) =>
+    new RegExp(
+      `<pre class="language-${lang}"[^>]*><code class="language-${lang}">([\\s\\S]*?)</code></pre>`,
+      "gi"
+    );
+
+  // Mermaid keeps its source as text for the client to render. Prism DOES have
+  // a mermaid grammar, so the highlighter wraps the source in `<span class=
+  // "token …">`; those must go, or the diagram source mermaid reads is markup
+  // rather than a diagram. Entities stay escaped — diagrams.js reads
+  // `textContent`, which the browser has already decoded.
+  const DIAGRAM_SCRIPT = `<script type="module" src="/js/diagrams.js"></script>`;
+  eleventyConfig.addTransform("mermaid-render", function (content, outputPath) {
+    if (!outputPath || !outputPath.endsWith(".html")) return content;
+    if (!content.includes('class="language-mermaid"')) return content;
+    const rendered = content.replace(
+      DIAGRAM_FENCE("mermaid"),
+      (_m, source) => `<figure class="diagram"><pre class="mermaid">${stripTags(source)}</pre></figure>`
+    );
+    return rendered.replace("</body>", `${DIAGRAM_SCRIPT}</body>`);
+  });
+
+  // typeDiagram renders at BUILD time to inline SVG — zero client JavaScript,
+  // and a diagram that fails to parse fails the build rather than shipping an
+  // empty box. Entities are decoded first because the DSL uses `<` and `>` for
+  // generics (`List<Role>`), which the highlighter escaped. The `dark` theme is
+  // fixed, not detected: this site renders dark-only (`.theme-toggle` is
+  // hidden), and the SVG is baked at build time so it cannot follow a toggle.
+  eleventyConfig.addTransform("typediagram-render", async function (content, outputPath) {
+    if (!outputPath || !outputPath.endsWith(".html")) return content;
+    if (!/class="language-typediagram"/i.test(content)) return content;
+
+    const sources = [...content.matchAll(DIAGRAM_FENCE("typediagram"))];
+    const svgs = [];
+    for (const [, source] of sources) {
+      const result = await renderTypeDiagram(decodeEntities(source), { theme: "dark" });
+      if (!result.ok) {
+        const detail = result.error.map((d) => d.message).join("; ");
+        throw new Error(`typeDiagram block in ${outputPath} failed to render: ${detail}`);
+      }
+      svgs.push(result.value);
+    }
+
+    let index = 0;
+    return content.replace(
+      DIAGRAM_FENCE("typediagram"),
+      () => `<figure class="diagram diagram-type">${svgs[index++]}</figure>`
     );
   });
 

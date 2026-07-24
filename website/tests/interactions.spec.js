@@ -221,3 +221,37 @@ test.describe("mobile interactions", () => {
     await expect(page.locator(".toc-aside")).toBeHidden();
   });
 });
+
+// Diagrams. Prose uses ```mermaid (rendered in the browser from the vendored
+// runtime) and ```typediagram (rendered to inline SVG at build time) — never
+// ASCII art. A silently-unrendered diagram still LOOKS like a code block, so
+// these assert the SVG actually exists.
+test.describe("diagrams", () => {
+  test("mermaid blocks render to SVG in dark theme", async ({ page }) => {
+    await page.goto("/spec/0023-languageflavors/", { waitUntil: "networkidle" });
+    const blocks = page.locator("figure.diagram pre.mermaid");
+    await expect(blocks.first().locator("svg")).toBeVisible();
+    expect(await blocks.count()).toBe(await page.locator("pre.mermaid svg").count());
+    // Mermaid's own dark palette, not the light default on a dark page.
+    const fill = await page
+      .locator("pre.mermaid svg .node rect, pre.mermaid svg rect.actor")
+      .first()
+      .evaluate((el) => getComputedStyle(el).fill);
+    const [r, g, b] = fill.match(/[\d.]+/g).map(Number);
+    expect(0.299 * r + 0.587 * g + 0.114 * b, `node fill was ${fill}`).toBeLessThan(128);
+  });
+
+  // `domcontentloaded`, deliberately: the SVG is in the served HTML, so it must
+  // be there before any script runs.
+  test("typediagram blocks are inline SVG with no client JS", async ({ page }) => {
+    await page.goto("/spec/0003-syntax/", { waitUntil: "domcontentloaded" });
+    await expect(page.locator("figure.diagram-type > svg").first()).toBeVisible();
+  });
+
+  test("no diagram ships as an unrendered code block", async ({ page }) => {
+    for (const path of ["/spec/0023-languageflavors/", "/docs/web-apps/"]) {
+      await page.goto(path, { waitUntil: "networkidle" });
+      await expect(page.locator("pre.language-mermaid, pre.language-typediagram")).toHaveCount(0);
+    }
+  });
+});

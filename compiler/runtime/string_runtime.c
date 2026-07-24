@@ -1,5 +1,7 @@
 /*
- * Implements [BUILTIN-STRING-*]
+ * Implements [BUILTIN-STRING-INSPECTION], [BUILTIN-STRING-SEARCH],
+ * [BUILTIN-STRING-CURSOR], [BUILTIN-STRING-SUBSTRINGS],
+ * [BUILTIN-STRING-TRANSFORM], and [BUILTIN-STRING-PARSING].
  * Scalar (string -> string / bool / int) helpers exposed to Osprey IR.
  * List-returning helpers live in string_runtime_list.c.
  *

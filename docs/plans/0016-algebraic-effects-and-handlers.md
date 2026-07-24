@@ -8,7 +8,7 @@
 ([FLAVOR-HANDLER-VALUE])
 **Status:** Effects are usable and compile-time safe today for the common
 cases; this plan is the roadmap from there to a **complete** effect system.
-It supersedes the narrower [plan 0008](0008-algebraic-effects-resume.md)
+It supersedes the narrower single-shot-`resume` plan (0008, retired)
 (single-shot resume, which landed) as the umbrella tracker, and absorbs the
 handler-value work sketched in [plan 0013](0013-ml-flavor-frontend.md) Phase 0
 and the effect-row-polymorphism gap flagged in

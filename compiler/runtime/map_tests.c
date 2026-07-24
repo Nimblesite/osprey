@@ -10,7 +10,12 @@
  *   cc -O2 -D_FORTIFY_SOURCE=2 -fstack-protector-strong -Werror -Wall -Wextra \
  *      -ftrapv -std=c11 -D_GNU_SOURCE -o map_tests \
  *      map_tests.c map_runtime.c map_runtime_hamt.c memory_runtime.c
- * Covers [TYPE-MAP] / [TYPE-MAP-LOOKUP] / [TYPE-MAP-OPS] and the node refcount
+ * Covers the runtime half of the map builtins [BUILTIN-MAP], [BUILTIN-MAP-GET],
+ * [BUILTIN-MAP-SET], [BUILTIN-MAP-REMOVE], [BUILTIN-MAP-MERGE],
+ * [BUILTIN-MAP-CONTAINS], [BUILTIN-COLLECTION-LENGTH] and the iteration behind
+ * [BUILTIN-MAP-KEYS] / [BUILTIN-MAP-VALUES]
+ * (docs/specs/0012-Built-InFunctions.md), plus
+ * [TYPE-MAP] / [TYPE-MAP-LOOKUP] / [TYPE-MAP-OPS] and the node refcount
  * skeleton of [GC-ARC-PERCEUS] (plan 0011 M4b) for INT / STRING / BOOL keys:
  * persistence of every source map, pointer-identical alias returns, all three
  * node kinds asserted structurally, every collision / internal-node branch,

@@ -111,7 +111,15 @@ public
 .yarn/install-state.gz
 .pnp.*
 
-# Generated/copied files 
+# Generated/copied files
+# Spec pages are generated from docs/specs by scripts/copy-spec.js on every
+# build — never commit them, never edit them by hand. spec.11tydata.json is
+# hand-written config and stays tracked (this pattern only matches .md).
+src/spec/*.md
+
+# Mermaid runtime, vendored from node_modules by scripts/copy-mermaid.js.
+src/assets/vendor/
+
 # Playwright
 test-results/
 playwright-report/

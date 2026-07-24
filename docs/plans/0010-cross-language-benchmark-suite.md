@@ -2,19 +2,37 @@
 
 **Subsystem:** `benchmarks/` (harness + cases), `Makefile` (`make bench`),
 `.devcontainer` (comparison toolchains)
-**Status:** Suite shipped (22 cases × 5 languages); `intDiv` added; **native codegen now optimized (`-O2`) and allocation routed through a swappable backend** — Osprey is fastest of all five on 7 cases and at parity on most others; only `binarytrees` (escaping allocations) still lags. Feature-blocked classics (arrays, float) pending
+**Status:** Suite shipped (22 cases × 7 languages — Osprey, Rust, C, C#, Dart,
+OCaml, Haskell — plus `osprey-wasm`/`rust-wasm` and the `osprey-arc`/`osprey-gc`
+backend columns); `intDiv` added; **native codegen optimized (`-O2`) and
+allocation routed through a swappable `@osp_alloc` backend, with two reclaiming
+backends shipped**. Osprey is at parity or faster than C/Rust on most cases.
+`binarytrees` now lags **only under the DEFAULT (non-reclaiming) backend**
+(633 MB peak RSS): with the opt-in `--memory=arc` it peaks at **2.97 MB** — 213×
+less than the default, 1.30× Rust's 2.28 MB and 1.71× C's 1.74 MB — and it is
+*faster* than the default (0.216 s vs 0.249 s);
+`--memory=gc` peaks at 18.5 MB. Because both reclaiming backends are **opt-in
+flags, not the default**, the headline `osprey` column in the published tables
+still shows the 633 MB figure. Feature-blocked classics (arrays, float) pending
 **Spec ID:** `[BENCH-SUITE]`
+
+**Update — the backend oracles are now enforced.** `make test` runs the
+differential harness three times (default, `--memory=gc`, `--memory=arc`) and
+the ARC pass fails unless every example ends with `ARC_LEAKY=0`. What remains on
+this plan is documentation freshness and the two feature-blocked case families.
 
 ## Summary
 
 An **accurate, reproducible** way to see where Osprey sits on CPU time and peak
-memory against **Rust, C, OCaml, and Haskell**. Every benchmark is implemented
-in all five languages with the *same naive algorithm and parameters*, compiled
-to a native binary, checked byte-for-byte against an integer oracle
-(`expected.txt`), then timed with `hyperfine` (CPU) and `/usr/bin/time` (peak
-RSS). All source lives **in-tree and version-controlled** under
-`benchmarks/cases/<name>/` — `<name>.{osp,rs,c,ml,hs}` + `expected.txt` +
-`bench.json`. Only build/run *output* (`benchmarks/results/`) is gitignored.
+memory against **Rust, C, C#, Dart, OCaml, and Haskell**. Every benchmark is
+implemented in all seven languages with the *same naive algorithm and
+parameters*, compiled to a native binary, checked byte-for-byte against an
+integer oracle (`expected.txt`), then timed with `hyperfine` (CPU) and
+`/usr/bin/time` (peak RSS). All source lives **in-tree and version-controlled**
+under `benchmarks/cases/<name>/` — `<name>.{osp,rs,c,cs,dart,ml,hs}` +
+`expected.txt` + `bench.json`. Only build/run *output* (`benchmarks/results/`)
+is gitignored. `results.json` additionally carries the `osprey-arc`,
+`osprey-gc`, `osprey-wasm` and `rust-wasm` columns.
 
 ## What works today (22 cases)
 
@@ -39,7 +57,7 @@ The suite's first run exposed a catastrophe: Osprey was 12–89× slower and use
 handed its LLVM IR to `clang` with **no optimization flag (`-O0`)**. Every
 per-operation `Result` block stayed a live `malloc`.
 
-Two changes closed almost the entire gap:
+Three changes closed the gap:
 
 1. **Optimize the native build (`-O2`, overridable via `OSPREY_OPT`)** —
    [crates/osprey-cli/src/main.rs](../../crates/osprey-cli/src/main.rs)
@@ -52,17 +70,42 @@ Two changes closed almost the entire gap:
 
 2. **Swappable allocation backend** — all codegen heap allocation now funnels
    through one `@osp_alloc` hook ([builder.rs](../../crates/osprey-codegen/src/builder.rs)
-   `heap_alloc` / `OSP_ALLOC_DECL`), implemented by
-   [compiler/runtime/memory_runtime.c](../../compiler/runtime/memory_runtime.c)
-   (default = `malloc` passthrough). The IR names no allocator, so ARC / tracing
-   GC / arena swap in at link time per [MEM-BACKENDS]. Allocator attributes keep
-   the `-O2` elimination intact.
+   `heap_alloc` / `OSP_ALLOC_DECL`; the layout-carrying twins
+   `OSP_ALLOC_TAGGED_DECL` / `OSP_ALLOC_TAGGED_NOINIT_DECL` follow the same
+   shape). The IR names no allocator, so the backend swaps in **at link time**
+   per [MEM-BACKENDS]. Allocator attributes keep the `-O2` elimination intact.
 
-The one remaining gap is `binarytrees` (905 MB): its tree nodes genuinely
-*escape*, so the optimizer cannot statically free them and the default backend
-does not reclaim. That is the case a real reclaiming backend (now unblocked by
-the `@osp_alloc` boundary) must fix. See
-[spec 0018 — Memory Management](../specs/0018-MemoryManagement.md).
+3. **Three backends behind that one hook**, selected by `--memory=` and resolved
+   by swapping `libfiber_runtime{,_gc,_arc}.a` at link time
+   ([`parse_memory` in crates/osprey-cli/src/main.rs](../../crates/osprey-cli/src/main.rs),
+   accepting `default | gc | arc`):
+   [memory_runtime.c](../../compiler/runtime/memory_runtime.c) (`malloc`
+   passthrough, the default), [memory_gc.c](../../compiler/runtime/memory_gc.c)
+   (conservative mark & sweep), [memory_arc.c](../../compiler/runtime/memory_arc.c)
+   (Perceus reference counting).
+
+`binarytrees` is the one case where the *default* backend still trails: its tree
+nodes genuinely *escape*, so `-O2` cannot statically free them and a `malloc`
+passthrough never reclaims. Both reclaiming backends fix it outright — measured
+in [benchmarks/results/results.json](../../benchmarks/results/results.json) and
+reproducible with `./target/release/osprey benchmarks/cases/binarytrees/binarytrees.osp --run --memory=arc`:
+
+| backend | peak RSS | mean wall | checksum |
+|---------|----------|-----------|----------|
+| default (`malloc`) | 633 MB | 0.249 s | 19659600 (correct) |
+| `--memory=arc` | **2.97 MB** (213× less) | **0.216 s** (faster than default) | 19659600 (correct) |
+| `--memory=gc` | 18.5 MB | 1.331 s | 19659600 (correct) |
+
+For reference C peaks at 1.74 MB and Rust at 2.28 MB on this case, so ARC sits at
+1.71× C and 1.30× Rust — and beats every managed runtime measured (C# 16.8 MB,
+Haskell 11.6 MB, OCaml 5.37 MB, Dart 23.6 MB). `OSPREY_ARC_DEBUG=1` on the same run reports
+`[osp-arc] exit: 0 live objects, 0 KiB (+0 immortal)` — zero leaked language
+values. See [spec 0018 — Memory Management](../specs/0018-MemoryManagement.md).
+
+The caveat is exposure, not correctness: ARC/GC are **opt-in flags**, so the
+default `osprey` column of the published benchmark tables is still the 633 MB
+one. Making a reclaiming backend the default is a spec-0018 decision, not a
+benchmark-suite one.
 
 ## Blocked classics — need Osprey language features (not faked)
 
@@ -99,7 +142,8 @@ codegen/runtime path is half-built.
 - [x] Harness: build-once, correctness oracle, CPU (hyperfine) + peak RSS.
 - [x] `report.py`: CPU + peak-memory tables, geomean-vs-each-language summary cards,
       fastest-cell badging + Osprey-win stars.
-- [x] 22 cases × 5 languages, all source version-controlled under `cases/`.
+- [x] 22 cases × 7 languages (`.osp/.rs/.c/.cs/.dart/.ml/.hs`), all source
+      version-controlled under `cases/`.
 - [x] `make bench` target + `BENCH_FILTER`; `.gitignore` tracks source, ignores `results/`.
 - [x] Dev container: `ghc`, `ocaml`, `time`, hyperfine.
 - [x] README documents methodology, fairness caveats, the memory finding.
@@ -116,8 +160,44 @@ codegen/runtime path is half-built.
 - [x] **Swappable allocation backend** — codegen emits `@osp_alloc` (attributed
       so `-O2` still elides non-escaping allocs); default backend
       `memory_runtime.c` = `malloc`. Implements [MEM-BACKENDS]; not tied to malloc.
-- [ ] (Next) a reclaiming backend behind `@osp_alloc` (ARC / arena / tracing GC
-      per spec 0018) so **escaping** allocations are freed → fixes `binarytrees`,
-      the last benchmark where Osprey trails.
+- [x] **Reclaiming backends behind `@osp_alloc`** — two of them ship, selected by
+      `--memory=` (`parse_memory` accepts `default | gc | arc`) and linked by
+      archive swap (`libfiber_runtime{,_gc,_arc}.a`): `memory_gc.c` (conservative
+      mark & sweep) and `memory_arc.c` (Perceus refcounting), per
+      [spec 0018 — Memory Management](../specs/0018-MemoryManagement.md)
+      ([MEM-BACKENDS], [GC-ARC-PERCEUS]). `binarytrees` is fixed: 633 MB →
+      **2.97 MB** under `--memory=arc` (213× less, and *faster* than the default:
+      0.216 s vs 0.249 s) and 18.5 MB under `--memory=gc`, checksum `19659600`
+      identical on all three. `OSPREY_ARC_DEBUG=1` reports **0 live objects** at
+      exit. Unit-tested in `make test` via `_test_c_runtime`
+      (`memory_arc_tests` + `memory_gc_tests`) and `parse_memory` flag tests.
+      **Still opt-in** — the default backend, and therefore the headline
+      benchmark column, is unchanged.
+- [x] **Wire the per-backend conformance oracles into CI.** `_conformance-gc`
+      and `_conformance-arc` are now prerequisites of `test:` (Makefile), which
+      `ci:` already depends on — so every CI run replays the whole differential
+      harness twice more, once under `--memory=gc` and once under
+      `--memory=arc`, and fails if either diverges byte-for-byte from the
+      default. Both targets dropped their `build` prerequisite to match every
+      other private `_test_*` target: `test:` already depends on `build`, and a
+      sub-make prerequisite re-ran the entire workspace + VSIX build twice.
+      Verified locally: `PASS=148 FAIL=0` under default, `--memory=gc`, and
+      `--memory=arc` alike.
+- [x] **Make the ARC zero-leak bar actually enforced.** `_conformance-arc` now
+      exports `OSPREY_ARC_DEBUG=1` — which is what makes `memory_arc.c` report
+      its live-object count at exit, and what makes `diff_examples.sh` print
+      `ARC_LEAKY` at all — and greps for `ARC_LEAKY=0`, failing the build
+      otherwise. The bar was doubly opt-in before: no target set the variable
+      and nothing asserted the count, so [GC-ARC-PERCEUS]'s "zero leaked
+      language values" was documented but unchecked. The grep fails closed: if
+      the line is missing entirely (a lost env var) the target fails rather than
+      passing silently. Spec 0018 corrected to say **where** the bar is
+      enforced (`make test` via `_conformance-arc`) rather than implying every
+      bare harness run checks it.
+- [ ] **Refresh the stale ARC figure in `benchmarks/README.md`** — it quotes
+      binarytrees ARC peak RSS as “~4.9 MB”, but the committed measurement in
+      `benchmarks/results/results.json` is 2 965 504 B ≈ **2.97 MB**. (The same
+      README's “905 MB” default figure is likewise ahead of the committed 633 MB.)
+      Regenerate rather than hand-edit.
 - [ ] (Later) mutable arrays → sieve, matrix-multiply, sort/fannkuch/n-queens.
 - [ ] (Later) `int`↔`float` + `sqrt` → mandelbrot, n-body, spectral-norm.

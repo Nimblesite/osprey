@@ -396,6 +396,11 @@ pub(crate) enum MlParam {
     Typed(String, MlType),
     /// The unit marker `()` — a zero-argument function boundary, not a value.
     Unit,
+    /// A refutable head pattern: the column of an equational clause that
+    /// selects on a literal or a constructor ([FLAVOR-ML-CLAUSES]). Never
+    /// reaches the lowerer — [`super::clauses::merge`] rewrites every clause
+    /// set into a plain parameter list over a `match`.
+    Pattern(MlPattern),
 }
 
 /// An ML expression, recorded exactly as written.

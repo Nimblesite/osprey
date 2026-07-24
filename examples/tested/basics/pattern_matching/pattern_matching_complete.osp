@@ -94,8 +94,10 @@ print(flag.a ? "true" : "false")
 let env  = { value: "It worked" }
 print(env { value } ? value : "fallback")
 
-// --- Result<T,E> from arithmetic: Elvis on Success / Error ---
-let okCalc  = 10 + 5
+// --- Result<T,E> from division: Elvis on Success / Error ---
+// `+ - *` are plain int [ARITH-PLAIN]; only `/` and `%` carry the error
+// channel, so only they have anything for `?:` to default.
+let okCalc  = intDiv(a: 10, b: 5)
 let okElvis = okCalc ?: -1
 print("ok elvis = ${toString(okElvis)}")
 

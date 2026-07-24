@@ -9,6 +9,9 @@ use osprey_ast::{
 };
 use tree_sitter::Node;
 
+/// The surface spelling of an ignored parameter ([PARAM-WILDCARD]).
+const WILDCARD_PARAM: &str = "_";
+
 /// Strip one doc-comment line's leading whitespace, its `///`/`//!` marker, and
 /// one optional following space — leaving the prose. Implements
 /// [DOC-SIGIL-DEFAULT].
@@ -95,6 +98,11 @@ impl<'a> Lowerer<'a> {
     /// Lowers the root `source_file` node into a full program AST.
     #[must_use]
     pub fn lower_program(&self, root: Node<'_>) -> Program {
+        let _positional = crate::positional::install(
+            self.descendants_of_kind(root, "variant")
+                .into_iter()
+                .filter_map(|v| self.positional_ctor(v)),
+        );
         let mut statements = Vec::new();
         let mut cursor = root.walk();
         let source_statements: Vec<Node<'_>> = root
@@ -280,14 +288,43 @@ impl<'a> Lowerer<'a> {
     }
 
     fn lower_variant(&self, node: Node<'_>) -> TypeVariant {
-        TypeVariant {
-            name: self.field_text(node, "name"),
-            fields: node
+        let fields = match node.child_by_field_name("positional") {
+            Some(payload) => self.lower_positional_payload(payload),
+            None => node
                 .child(node.child_count().saturating_sub(1))
                 .filter(|_| node.child_count() > 1)
                 .map(|_| self.lower_field_decls(node))
                 .unwrap_or_default(),
+        };
+        TypeVariant {
+            name: self.field_text(node, "name"),
+            fields,
         }
+    }
+
+    /// A variant declared with a positional payload, as `(name, slot count)`
+    /// for the shared construction table ([TYPE-UNION-POSITIONAL]).
+    fn positional_ctor(&self, variant: Node<'_>) -> Option<(String, usize)> {
+        let payload = variant.child_by_field_name("positional")?;
+        Some((
+            self.field_text(variant, "name"),
+            payload.named_child_count(),
+        ))
+    }
+
+    /// `Node(Tree, Tree)` — a positional payload, whose slots carry generated
+    /// index names because they have no source spelling
+    /// ([TYPE-UNION-POSITIONAL]).
+    fn lower_positional_payload(&self, node: Node<'_>) -> Vec<TypeField> {
+        (0..node.named_child_count())
+            .filter_map(|i| node.named_child(i))
+            .enumerate()
+            .map(|(slot, ty)| TypeField {
+                name: osprey_ast::positional_field_name(slot),
+                ty: self.text(ty),
+                constraint: None,
+            })
+            .collect()
     }
 
     fn lower_field_decls(&self, node: Node<'_>) -> Vec<TypeField> {
@@ -327,8 +364,15 @@ impl<'a> Lowerer<'a> {
         let Some(list) = list else { return Vec::new() };
         self.named_of_kind(list, "parameter")
             .iter()
-            .map(|p| Parameter {
-                name: self.field_text(*p, "name"),
+            .enumerate()
+            .map(|(slot, p)| Parameter {
+                // `_` takes the generated ignored-parameter name for its slot,
+                // the same name the ML lowerer emits, so `|acc, _| => …` and
+                // `\(acc, _) => …` stay IR-equivalent twins ([PARAM-WILDCARD]).
+                name: match self.field_text(*p, "name") {
+                    name if name == WILDCARD_PARAM => osprey_ast::wildcard_param_name(slot),
+                    name => name,
+                },
                 ty: p.child_by_field_name("type").map(|n| self.lower_type(n)),
             })
             .collect()
@@ -500,19 +544,9 @@ impl<'a> Lowerer<'a> {
                 // or a bare binding. Inspect siblings of the name field.
                 let name = self.text(inner);
                 if let Some(fp) = self.first_child_of_kind(pat, "field_pattern") {
-                    let fields = self.field_pattern_names(fp);
-                    if pat.child_by_field_name("type").is_some()
-                        || Self::has_colon_before_brace(pat)
-                    {
-                        return Pattern::Constructor {
-                            name,
-                            fields,
-                            sub_patterns: vec![],
-                        };
-                    }
                     return Pattern::Constructor {
                         name,
-                        fields,
+                        fields: self.field_pattern_names(fp),
                         sub_patterns: vec![],
                     };
                 }
@@ -534,10 +568,6 @@ impl<'a> Lowerer<'a> {
             }
             _ => Pattern::Wildcard,
         }
-    }
-
-    fn has_colon_before_brace(_node: Node<'_>) -> bool {
-        false
     }
 
     fn field_pattern_names(&self, fp: Node<'_>) -> Vec<String> {
@@ -671,6 +701,19 @@ mod tests {
                 assert_eq!(variants[0].fields[0].name, "x");
             }
             s => panic!("expected record type, got {s:?}"),
+        }
+        // A positional payload carries generated slot names, so this Default
+        // declaration lowers to the same variants as the ML twin
+        // `type Tree = Leaf | Node Tree Tree` ([TYPE-UNION-POSITIONAL]).
+        match one("type Tree = Leaf | Node(Tree, Tree)\n") {
+            Stmt::Type { variants, .. } => {
+                assert_eq!(variants.len(), 2);
+                assert!(variants[0].fields.is_empty());
+                let slots: Vec<&str> = variants[1].fields.iter().map(|f| f.name.as_str()).collect();
+                assert_eq!(slots, ["0", "1"]);
+                assert_eq!(variants[1].fields[0].ty, "Tree");
+            }
+            s => panic!("expected a union type, got {s:?}"),
         }
         // array_type `Item[int]` (lower_type array_type arm + descendants_type_in),
         // a function type, and a generic type — all in one signature.

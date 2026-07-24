@@ -9,7 +9,7 @@ Osprey has built-in algebraic effects. An effect declares typed operations, effe
 Effect declarations, `perform` expressions, source-level effect annotations, operation type checking, lexical handlers, and native single-shot continuations are implemented. Effect annotations currently guide checking inside a function body but are not retained in `Type::Fun` or propagated through calls. Missing handlers and missing row annotations can therefore reach code generation; runtime lookup then aborts with `unhandled effect: <Effect>.<operation>`. A handler arm may resume the performer in two ways:
 
 - **Implicit tail-resume.** An arm whose body is an ordinary expression returns that value to the `perform` site, which continues. This is the cheap default and handlers may own mutable state with it (see [Handler-Owned State]).
-- **Explicit `resume`.** An arm whose body contains a `resume` expression captures the performer's *delimited continuation*: `resume(v)` runs the rest of the handled computation with `v` as the operation's result and yields its answer back to the arm, so the arm can run code **after** the performer continues. Single-shot (each continuation is resumed at most once) and **deep** (the handler stays installed for the resumed computation). See [Resuming Handlers]. **Status: executable for single-shot deep continuations via the thread-as-continuation runtime in [plan 0008](../plans/0008-algebraic-effects-resume.md).**
+- **Explicit `resume`.** An arm whose body contains a `resume` expression captures the performer's *delimited continuation*: `resume(v)` runs the rest of the handled computation with `v` as the operation's result and yields its answer back to the arm, so the arm can run code **after** the performer continues. Single-shot (each continuation is resumed at most once) and **deep** (the handler stays installed for the resumed computation). See [Resuming Handlers]. **Status: executable for single-shot deep continuations via the thread-as-continuation runtime; multi-shot is refused loudly at runtime.**
 
 Multi-shot resume (resuming one continuation more than once) is **rejected at
 runtime** with a clear fatal message rather than silently returning a wrong
@@ -374,7 +374,7 @@ total=3
 ### Runtime model
 
 `resume` is implemented as **thread-as-continuation**
-(single-shot, deep) ([plan 0008](../plans/0008-algebraic-effects-resume.md)): a
+(single-shot, deep): a
 `handle` region whose arms mention `resume` runs its `in` body on a spawned body
 thread while the host thread runs the arms; `perform` suspends the body thread and
 yields the operation to the host, and `resume` switches back, delivering the
@@ -383,7 +383,7 @@ single-shot (a live stack cannot be cloned). Regions with no `resume` keep the
 zero-overhead function-call path. The body thread inherits the host's handler
 stack via the existing snapshot/restore (`__osprey_handler_snapshot`), so a
 `perform` deep inside the continuation still resolves outer handlers. See
-[plan 0008](../plans/0008-algebraic-effects-resume.md).
+[plan 0016](../plans/0016-algebraic-effects-and-handlers.md).
 
 ## Effect Inference Design
 
@@ -470,13 +470,13 @@ in
 
 ## Worked Example
 
-`x * 2` returns `Result<int, MathError>`; the function below performs `Exception` on overflow and `State` to record the success.
+The `*` operator returns a plain `int` and cannot fail ([ARITH-PLAIN](0013-ErrorHandling.md#arithmetic-and-result--arith-plain)); its overflow-checked sibling `checkedMul(x, 2)` returns `Result<int, MathError>` ([BUILTIN-CHECKED-ARITH](0012-Built-InFunctions.md#checkedadd--checkedsub--checkedmul--builtin-checked-arith)). The function below matches that `Result`, performing `Exception` on overflow and `State` to record the success.
 
 ```osprey
 effect Exception { raise: fn(string) -> unit }
 effect State     { get: fn() -> int, set: fn(int) -> unit }
 
-fn doubleAndStore(x) -> int ![Exception, State] = match x * 2 {
+fn doubleAndStore(x) -> int ![Exception, State] = match checkedMul(x, 2) {
     Success { value }   => {
         perform State.set(value)
         value

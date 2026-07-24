@@ -37,6 +37,23 @@ This directory holds **all spec documents** for the project:
     lowering to one structured `DocComment`, a shared Markdown body, recognised
     sections, executable examples wired into the golden harness, and export —
     grounded in the literate-programming and API-documentation literature.
+  - [`0027-TestingFramework.md`](0027-TestingFramework.md) — native test
+    discovery, TAP reporting, coverage, editor integration, and the pure
+    ML-flavor `Verdict` model.
+  - [`0028-Profiler.md`](0028-Profiler.md) — the sampling CPU profiler, native
+    collection backends, offline symbolization, export formats, and editor UX.
+  - [`0029-PackageManagement.md`](0029-PackageManagement.md) — package identity,
+    compatibility epochs, manifests, exact locks, deterministic MaxSAT
+    resolution, local/published switching, CLI/API contracts, and Supabase boundary.
+  - [`0030-PackageRegistryTrustAndDiscovery.md`](0030-PackageRegistryTrustAndDiscovery.md)
+    — source-derived publication, TUF/provenance/transparency, hermetic builds,
+    AI review gates, maintenance evidence, and popularity-resistant discovery.
+  - [`0031-PackageDomainModel.md`](0031-PackageDomainModel.md) — the canonical
+    typeDiagram contract for releases, local overlays, exact release locks,
+    development roots, evidence, and assessments.
+  - [`0032-PackageEvidenceAndDiscovery.md`](0032-PackageEvidenceAndDiscovery.md)
+    — reproducible maintenance/confidence arithmetic and exact popularity-free
+    intent, merit, exposure, exploration, privacy, and ranking rules.
 
 ## Spec ID convention
 

@@ -2,13 +2,22 @@
 // application (`startsWith ""`), pipe chains, and a layout-block `main` body
 // lower to the SAME canonical AST as the Default braces/parens form —
 // byte-identical IR ([FLAVOR-IR-EQUIV]).
-// Implements [BUILTIN-STRING-*] edge-case verification.
-// Every error path and boundary documented in
-// spec/0012-Built-InFunctions.md is exercised here. The integration test
-// runner compares the full stdout to the expected output verbatim, so
+// Edge-case verification for the string builtins: every error path and
+// boundary documented in spec/0012-Built-InFunctions.md. The integration
+// test runner compares the full stdout to the expected output verbatim, so
 // any regression in a builtin's behaviour causes an exact-mismatch failure.
-// Also covers the O(1) string cursor (BUILTIN-STRING-CURSOR) and real error
-// payloads threaded through Result<T, E> ([ERR-PAYLOAD]).
+// Builtins exercised: [BUILTIN-STRING-ISEMPTY], [BUILTIN-STRING-STARTSWITH],
+// [BUILTIN-STRING-ENDSWITH], [BUILTIN-STRING-TAKE], [BUILTIN-STRING-DROP],
+// [BUILTIN-STRING-TRIM], [BUILTIN-STRING-SUBSTRING],
+// [BUILTIN-STRING-INDEXOF], [BUILTIN-STRING-REPLACE],
+// [BUILTIN-STRING-REPEAT], [BUILTIN-STRING-PADSTART],
+// [BUILTIN-STRING-PADEND], [BUILTIN-STRING-PARSEINT],
+// [BUILTIN-STRING-PARSEFLOAT], plus the O(1) cursor [BUILTIN-STRING-CURSOR]
+// — [BUILTIN-STRING-BYTELENGTH], [BUILTIN-STRING-BYTEAT],
+// [BUILTIN-STRING-CODEPOINTAT], [BUILTIN-STRING-CODEPOINTWIDTH],
+// [BUILTIN-STRING-FROMCODEPOINT].
+// Failure payloads are [BUILTIN-STRING-ERROR] values threaded through
+// Result<T, E> per [ERR-PAYLOAD].
 
 // A user-declared fallible function: its Error message must reach the arm.
 failWith : string -> Result int string
@@ -111,7 +120,7 @@ match parseInt " 42"
     Success value   => print "pi-leading-space unexpected\n"
     Error   message => print "pi-leading-space rejected\n"
 
-// ---- O(1) byte / codepoint cursor (BUILTIN-STRING-CURSOR) ----
+// ---- O(1) byte / codepoint cursor [BUILTIN-STRING-CURSOR] ----
 // "héllo": é is U+00E9 (bytes 0xC3 0xA9), so byteLength is 6, not 5.
 print "byteLen=${byteLength("héllo")}\n"
 match byteAt "héllo" 1

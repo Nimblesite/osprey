@@ -1,5 +1,6 @@
 /*
- * Implements [BUILTIN-STRING-*]
+ * Implements [BUILTIN-STRING-LIST]: [BUILTIN-STRING-SPLIT],
+ * [BUILTIN-STRING-LINES], [BUILTIN-STRING-WORDS], and [BUILTIN-STRING-JOIN].
  * List-returning string helpers (split, lines, words, join).
  * Scalars live in string_runtime.c.
  */

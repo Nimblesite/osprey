@@ -44,8 +44,11 @@ pub enum Query {
     },
     /// Signature help for the enclosing call at a position.
     SignatureHelp(At),
-    /// Completion items for a document.
-    Completion(DocumentUri),
+    /// Completion items at a position. Position-bearing because the answer
+    /// depends on where the cursor is: a type annotation, a `receiver.` field
+    /// and a declaration head admit entirely different lists.
+    /// Implements [LSP-COMPLETION-CONTEXT].
+    Completion(At),
 }
 
 /// A located span within a document.

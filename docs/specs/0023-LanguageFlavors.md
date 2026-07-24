@@ -9,7 +9,7 @@ surface syntax is specified in [ML Flavor Syntax](0024-MLFlavorSyntax.md); the
 implementation work is tracked in
 [plan 0013](../plans/0013-ml-flavor-frontend.md).
 
-- [The One Law](#the-one-law-flavor-boundary)
+- [The One Law](#the-one-law)
 - [Flavors That Exist](#flavors-that-exist)
 - [The Pipeline](#the-pipeline)
 - [Flavor Frontend](#flavor-frontend)
@@ -115,19 +115,13 @@ AST.
 
 ## The Pipeline
 
-```text
-Default source (.osp)   ── parse default ──▶ Default CST ┐
-                                                         ├─ lower ─▶ osprey_ast::Program ─▶ infer ─▶ effect-check ─▶ IR ─▶ codegen
-ML source (.ospml)      ── parse ML ───────▶ ML CST ─────┘                 (one shared core, flavor-blind)
-```
-
 ```mermaid
 flowchart LR
     DSrc[".osp<br/>Default source"] --> DParse["parse_default → Default CST"]
     MSrc[".ospml<br/>ML source"] --> MParse["parse_ml → ML CST"]
     DParse --> DLower["Default lowerer"]
     MParse --> MLower["ML lowerer"]
-    DLower --> AST["osprey_ast::Program<br/>(canonical AST — the meeting point)"]
+    DLower --> AST["osprey_ast::Program<br/>canonical AST"]
     MLower --> AST
     AST --> Infer["infer_program (HM)"]
     Infer --> Eff["unhandled-effect check"]
@@ -260,10 +254,11 @@ flavor. Cross-flavor *projects* are supported through normal imports (see
 `[FLAVOR-LAYER]` This is the heart of the contract: the exact line between what
 a flavor normalises away and what the shared core defines. Most rows lower both
 flavors to the **same** canonical AST node (grounded in
-`crates/osprey-ast/src/lib.rs`); the **Ordinary function** and **Call** rows
-(marked †) pair by *concept* only and deliberately lower to different shapes —
-Default flat multi-parameter vs ML curried/nested chain. See
-[Currying Canonicalisation](#currying-canonicalisation).
+`crates/osprey-ast/src/lib.rs`); the **Ordinary function**, **Equational
+clauses** and **Call** rows (marked †) pair by *concept* only and deliberately
+lower to different shapes — Default flat multi-parameter vs ML curried/nested
+chain, and an ML-only clause sugar whose Default twin is the explicit `match`.
+See [Currying Canonicalisation](#currying-canonicalisation).
 
 | Concept | Default flavor | ML flavor | Canonical AST node |
 | --- | --- | --- | --- |
@@ -271,11 +266,16 @@ Default flat multi-parameter vs ML curried/nested chain. See
 | Mutable binding | `mut x = e` | `mut x = e` | `Stmt::Let { mutable: true }` |
 | Mutation | `x = e` | `x := e` | `Stmt::Assignment` |
 | Ordinary function | `fn f(x, y) = e` | `f x y = e`† | `Stmt::Function` / curried `Lambda` chain† |
-| Lambda | `fn(y) => e` | `\y => e` | `Expr::Lambda` |
+| Equational clauses | *(none — writes the `match`)* | `f 0 = a` / `f n = b`† | `Stmt::Function` over `Expr::Match`† |
+| Lambda | `fn(y) => e` / `\|y\| => e` | `\y => e` | `Expr::Lambda` |
+| Ignored parameter | `\|acc, _\| => e` | `\(acc, _) => e` | `Parameter`, generated name |
 | Call | `f(x: a, y: b)` | `f a b`† | `Expr::Call` (`named_arguments` vs nested single-arg `Call`)† |
 | Block | `{ s; …; e }` | layout block | `Expr::Block { statements, value }` |
 | Match | `match v { P => e }` | `match v` + indented arms | `Expr::Match` + `MatchArm` |
+| Result default | `e ?: d` | `e ?: d` | `Expr::Match` |
 | One-field pattern | `Success { value }` | `Success value` | `Pattern::Constructor { fields: ["value"] }` |
+| Union declaration | `type T = A \| B(X, Y)` | `type T = A \| B X Y` | `Stmt::Type` + `TypeVariant` |
+| Positional construction | `B(x, y)` | `B x y` | `Expr::TypeConstructor` |
 | Record construction | `T { f: v }` | `T` + indented `f = v` | `Expr::TypeConstructor` |
 | Record update | `r { f: v }` | layout update | `Expr::Update` |
 | Effect declaration | `effect E { op: fn(T)->U }` | `effect E` + `op : T => U` | `Stmt::Effect` + `EffectOperation` |
@@ -292,6 +292,27 @@ multi-arg `Call`; ML `f x y` / `f a b` is a curried chain and nested single-arg
 `Call`s. They share the AST *vocabulary* but are deliberately **not** the same
 value. ML's twin for the flat Default forms is the uncurried `f (x, y)` /
 `f (a, b)` (parens = argument grouping, not a tuple — Osprey has no tuple type).
+**Equational clauses** have no Default spelling at all: they are ML surface sugar
+for a `Stmt::Function` whose body is the `Expr::Match` a Default author writes by
+hand, so the row pairs a *concept*, not two spellings.
+
+Every row in the table is live. Positional payloads
+([TYPE-UNION-POSITIONAL]) are a **shared-core** feature exposed in both flavors,
+never ML-only sugar: a payload slot is an `osprey_ast::TypeField` whose declared
+name is its decimal index (`"0"`, `"1"`), and a decimal string is not a valid
+identifier in either flavor, so a slot is unreachable by name and can never
+collide with a user-written field
+(`osprey_ast::{positional_field_name, is_positional_field}` are the single
+definition and its inverse). `_` parameters
+([PARAM-WILDCARD](0003-Syntax.md#expressions)) are legal in both flavors, each
+occurrence lowering to a distinct generated name no source can spell, so the pair
+keeps its IR-equivalent twin. **Equational clauses** are rewritten CST-to-CST
+into the parameter-list-over-`match` form before lowering
+(`crates/osprey-syntax/src/ml/clauses.rs`), so the shared core never sees a
+clause set and the emitted node is exactly the Default twin's; exactly one
+refutable column is supported, and selecting on two is a diagnostic. The
+**Result default** row uses the identical `?:` spelling in both flavors. Design
+and sequencing are in [plan 0019](../plans/0019-ml-elegance.md).
 
 Anything in that table is a **flavor concern**: the lowerer erases the spelling
 difference and nothing downstream can tell which surface was used. Constructs
@@ -519,11 +540,14 @@ node Default produces for `let name = expr`. The type is always inferred
 module top level and inside a layout block, and the bound value's IR is
 byte-identical to the Default `let`.
 
-**Assumptions recorded by this layer.** (1) Arithmetic stays
-`Result`-wrapped in *both* flavors — overflow-checked `+` yields
-`Result<int, MathError>`, so a raw `y = x + 1` then `toString y` prints
-`Success(42)` in ML *and* Default alike; clean `int` output comes from the usual
-function-boundary auto-unwrap, not from any flavor-specific rule. (2) First-class
+**Assumptions recorded by this layer.** (1) Integer arithmetic returns **plain
+scalars** in *both* flavors ([ARITH-PLAIN],
+[Error Handling](0013-ErrorHandling.md)): `+ - *` on
+`(int, int)` yield `int`, so a raw `y = x + 1` then `toString y` prints `42`
+in ML *and* Default alike, with no wrapper and no auto-unwrap involved. Only `/`
+and `%` stay wrapped, because zero has no representable result; their result
+types are in 0013's table. Those reach the usual function-boundary auto-unwrap,
+not any flavor-specific rule. (2) First-class
 handler values remain deferred (Phase 0, [`[FLAVOR-HANDLER-VALUE]`](#shared-core-additions));
 lexical effect forms lower through the shared AST today. (3) The Default
 twin is authored to match the ML AST (ML is the flavor under test, Default the
@@ -546,6 +570,28 @@ The design drafts left these open; this spec settles them.
 - **ML calling Default multi-parameter functions with whitespace application:**
   only as a saturated call; partial application requires a generated curried
   wrapper. The canonical export stays multi-parameter.
+- **Positional variant payloads:** promoted to **shared core** and exposed in
+  both flavors (`Node(Tree, Tree)` / `Node Tree Tree`), not lowered as ML-only
+  sugar. Per [`[FLAVOR-LOWER-CONTRACT]`](#the-lowering-contract) *Refuse
+  flavor-only semantic hacks* the sugar route would force the Default twin to
+  spell `Node { _0: Tree, _1: Tree }`, putting synthesized identifiers into
+  checked-in fixtures and every type-error message. Constructor arity rules,
+  including the absence of currying, are normative in
+  [TYPE-UNION-POSITIONAL](0003-Syntax.md#type-declarations).
+- **Equational clauses in the Default flavor:** rejected. In a layout flavor a
+  clause set removes a `match` line *and* an indent level per function; in a
+  brace flavor it removes one line and collides with the named-argument rule
+  ([Function Calls](0005-FunctionCalls.md#rules) rule 3), which has no spelling
+  for an argument matched against a literal. The Default author writes
+  `fn f(d) = match d { … }` — already the exact node a clause set lowers to, so
+  nothing is lost but the sugar.
+- **Result-default spelling:** ML adopts the Default flavor's existing `?:`
+  ([Pattern Matching](0007-PatternMatching.md)) rather than gaining a second
+  spelling of the same operator — one operator, one spelling, in both flavors.
+  It is implemented in the ML lexer and parser alone; there is no new AST node
+  and no Default-flavor change. A second, ML-exclusive spelling would leave every
+  file using it with no Default twin, and therefore no
+  [`[FLAVOR-IR-EQUIV]`](#cross-flavor-equivalence-tests) pair.
 - **Formatter conversion between flavors:** the formatter formats *within* a
   flavor. A separate, optional `osprey convert` tool may transliterate one
   flavor to the other; it is not part of the formatter.
@@ -572,10 +618,13 @@ syntaxes. Neither surface is the diluted one.
   convenience is pure surface — it desugars at lowering, never adding AST.
 - **ML flavor (`.ospml`)** — the **uncompromising** surface. Offside-rule
   layout, curry-by-default, whitespace application `f a b`, `\x => e` lambdas,
-  `:=` mutation. It takes the most elegant constructs the ML family ever
-  produced and goes all the way: no braces, no C-isms, no concession to
-  mainstream familiarity. Populist sugar (e.g. `if`/`else`) is deliberately
-  **omitted** here — ML writes the `match` directly.
+  `:=` mutation, juxtaposed variant payloads `type Tree = Leaf | Node Tree Tree`,
+  and equational clauses `f 0 = a` / `f n = b`. It takes the most elegant
+  constructs the ML family ever produced and goes all the way: no braces, no
+  C-isms, no concession to mainstream familiarity — a function *is* its
+  equations, and a union *is* its juxtaposed payloads. Populist sugar (e.g.
+  `if`/`else`) is deliberately **omitted** here — ML writes the `match` directly,
+  or lets the clauses write it.
 
 **Strategy (2026-07, supersedes earlier "walk the line" framing).** The Default
 flavor no longer balances adoption against ML purity — the two-flavor

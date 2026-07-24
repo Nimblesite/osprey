@@ -262,10 +262,28 @@ impl Checker {
         }
         // Positional destructure: `Ctor(p0, p1)`.
         for (i, sub) in sub_patterns.iter().enumerate() {
+            self.reject_nested_pattern(sub);
             let field_ty = declared.get(i).map(|(_, t)| t.clone());
             let target = field_ty.unwrap_or_else(|| self.ctx.fresh());
             self.bind_pattern(sub, &target, local);
         }
+    }
+
+    /// A positional slot destructures to a binder or `_` and nothing else.
+    /// Codegen binds a slot by index and has no register to match a deeper
+    /// pattern against, so an unsupported sub-pattern would be silently
+    /// discarded and the arm would behave as `Ctor(_, _)`. The ML flavor
+    /// rejects the same shape in its parser ([FLAVOR-ML-PATTERN-GROUP]); this
+    /// is the Default flavor's half of that rule.
+    fn reject_nested_pattern(&mut self, sub: &Pattern) {
+        if matches!(sub, Pattern::Binding(_) | Pattern::Wildcard) {
+            return;
+        }
+        self.errors.push(TypeError::new(
+            "nested constructor patterns are not supported; \
+             bind the payload and match it in a second expression"
+                .to_owned(),
+        ));
     }
 
     /// Bind the built-in `Result` pattern fields against `disc`: `value` is the
@@ -443,6 +461,21 @@ mod tests {
             fn unwrap(w: Wrap) -> int = match w {\n\
               Wrap(v) => v\n\
             }\n");
+        // A payload slot binds one level deep. A constructor nested inside it
+        // has no fall-through spelling, so the Default flavor refuses it here
+        // exactly as the ML parser refuses it ([FLAVOR-ML-PATTERN-GROUP]).
+        let errs = check(
+            "type Wrap = Wrap { value: int }\n\
+            type Box = Box { item: Wrap }\n\
+            fn deep(b: Box) -> int = match b {\n\
+              Box(Wrap(v)) => v\n\
+            }\n",
+        );
+        assert!(
+            errs.iter()
+                .any(|e| e.message.contains("nested constructor patterns")),
+            "{errs:?}"
+        );
     }
 
     #[test]
