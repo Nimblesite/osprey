@@ -9,7 +9,7 @@
 //! [BUILTIN-ITER-FUSION].
 
 use crate::builder::{Codegen, FnSig};
-use crate::conv::{as_i64, box_to_i64};
+use crate::conv::{as_i64, box_to_i64, unbox_from_i64};
 use crate::error::{CodegenError, Result};
 use crate::expr::{apply_lambda_values, call_with_values, gen_expr};
 use crate::llty::{LType, Value};
@@ -51,13 +51,22 @@ fn callback_of(cg: &mut Codegen, e: &Expr) -> Result<Callback> {
         Expr::Lambda {
             parameters, body, ..
         } => Ok(Callback::Lambda(parameters.clone(), (**body).clone())),
-        Expr::Identifier(n) => match cg.fn_ptr_locals.get(n) {
-            Some(sig) => Ok(Callback::Local(n.clone(), sig.clone())),
-            None => match cg.lambdas.get(n) {
-                Some((params, body)) => Ok(Callback::Lambda(params.clone(), body.clone())),
-                None => Ok(Callback::Named(n.clone())),
-            },
-        },
+        Expr::Identifier(n) => {
+            if let Some(sig) = cg.fn_ptr_locals.get(n) {
+                Ok(Callback::Local(n.clone(), sig.clone()))
+            } else if let Some((params, body)) = cg.lambdas.get(n) {
+                Ok(Callback::Lambda(params.clone(), body.clone()))
+            } else if let Some((params, body)) = cg.fn_defs.get(n) {
+                // A generic (unannotated) user function has NO emitted `@name`
+                // symbol — it is specialised by inlining at each call site
+                // (lower.rs). As an iterator callback it must be beta-reduced
+                // per element the same way, not dispatched through a
+                // `call @name` that was never defined. [BUILTIN-ITER-CALLBACK]
+                Ok(Callback::Lambda(params.clone(), body.clone()))
+            } else {
+                Ok(Callback::Named(n.clone()))
+            }
+        }
         _ => {
             let sig = cg
                 .callee_fn_type(e)
@@ -191,25 +200,50 @@ fn for_each(cg: &mut Codegen, args: &[Expr]) -> Result<Value> {
 }
 
 /// An `i64` accumulator slot seeded with a `fold` builtin's `initial` (the 2nd
-/// argument), evaluated, unwrapped and boxed.
-fn acc_init(cg: &mut Codegen, args: &[Expr]) -> Result<String> {
+/// argument), evaluated, unwrapped and boxed. Returns the slot together with a
+/// TYPE TEMPLATE — the seed value, whose `ty`/`osp_ty`/… tags are reused by
+/// [`rebuild_acc`] to recover the accumulator from the uniform `i64` slot. The
+/// operand of the template is stale; only its type tags are read [MEM-BACKENDS].
+fn acc_init(cg: &mut Codegen, args: &[Expr]) -> Result<(String, Value)> {
     let initial = gen_expr(cg, nth(args, 1)?)?;
     let initial = crate::result::unwrap(cg, initial);
     // A pointer accumulator escapes into the loop-carried slot: dup it so the
     // per-iteration region drop cannot free it [GC-ARC-PERCEUS].
     crate::arc::escape_retain(cg, &initial);
-    let initial = box_to_i64(cg, initial);
+    let tmpl = initial.clone();
+    let boxed = box_to_i64(cg, initial);
     let acc = cg.fresh_reg();
     cg.emit(format!("{acc} = alloca i64"));
-    cg.emit(format!("store i64 {}, i64* {acc}", initial.operand));
-    Ok(acc)
+    cg.emit(format!("store i64 {}, i64* {acc}", boxed.operand));
+    Ok((acc, tmpl))
 }
 
-/// One fold step: load the accumulator, apply `combine(acc, elem)`, box the
-/// result back into the slot.
-fn acc_step(cg: &mut Codegen, acc: &str, combine: &Callback, elem: Value) -> Result<()> {
+/// Recover the loop-carried accumulator (stored as a uniform `i64`) as a value
+/// of its real type, restoring the owner/Result/fiber tags from the seed. A
+/// record accumulator comes back as a tagged pointer handle, so an inlined
+/// combine can field-access or record-update it — and the final result carries
+/// a usable layout — instead of a bare `i64` [MEM-BACKENDS].
+fn rebuild_acc(cg: &mut Codegen, raw: &str, tmpl: &Value) -> Value {
+    let mut v = unbox_from_i64(cg, raw, tmpl.ty);
+    v.osp_ty.clone_from(&tmpl.osp_ty);
+    v.result_inner = tmpl.result_inner;
+    v.payload_owner.clone_from(&tmpl.payload_owner);
+    v.fiber_elem = tmpl.fiber_elem;
+    v
+}
+
+/// One fold step: load the accumulator (recovering its real type), apply
+/// `combine(acc, elem)`, box the result back into the slot.
+fn acc_step(
+    cg: &mut Codegen,
+    acc: &str,
+    tmpl: &Value,
+    combine: &Callback,
+    elem: Value,
+) -> Result<()> {
     let a = cg.emit_reg(format!("load i64, i64* {acc}"));
-    let new = invoke(cg, combine, vec![Value::new(a.clone(), LType::I64), elem])?;
+    let acc_val = rebuild_acc(cg, &a, tmpl);
+    let new = invoke(cg, combine, vec![acc_val, elem])?;
     let new = crate::result::unwrap(cg, new);
     // Loop-carried slot rebind for a pointer accumulator: dup the incoming
     // value BEFORE dropping the outgoing one (a combine returning `acc`
@@ -225,26 +259,36 @@ fn acc_step(cg: &mut Codegen, acc: &str, combine: &Callback, elem: Value) -> Res
     Ok(())
 }
 
-/// Read the final accumulator value as an `i64`.
-fn acc_result(cg: &mut Codegen, acc: &str) -> Value {
-    Value::new(cg.emit_reg(format!("load i64, i64* {acc}")), LType::I64)
+/// Read the final accumulator value back at its real type: a pointer (record)
+/// or `double` accumulator is recovered from the uniform `i64` slot, not
+/// returned as raw bits — a downstream field access would otherwise `bitcast`
+/// an `i64` as if it were already a pointer (invalid IR) [MEM-BACKENDS].
+fn acc_result(cg: &mut Codegen, acc: &str, tmpl: &Value) -> Value {
+    let raw = cg.emit_reg(format!("load i64, i64* {acc}"));
+    let v = rebuild_acc(cg, &raw, tmpl);
+    // The escaped accumulator carries the loop's surviving +1 (the last
+    // `escape_retain`); hand that ownership to the enclosing region so a pointer
+    // (record) result is released when its binding dies rather than leaking. A
+    // no-op for an integer accumulator (`own` skips non-pointers) [GC-ARC-PERCEUS].
+    crate::arc::own(cg, &v);
+    v
 }
 
 /// `fold(iterator, initial, fn)` — counted loop accumulating `fn(acc, elem)`.
 fn fold(cg: &mut Codegen, args: &[Expr]) -> Result<Value> {
     let range = gen_expr(cg, nth(args, 0)?)?;
-    let acc = acc_init(cg, args)?;
+    let (acc, tmpl) = acc_init(cg, args)?;
     let combine = callback_of(cg, nth(args, 2)?)?;
     let (start, end) = bounds(cg, &range);
 
     let lp = open_range_loop(cg, &start, &end);
     crate::arc::push_frame(cg);
     let elem = replay(cg, Value::new(lp.i.clone(), LType::I64), &lp.incr)?;
-    acc_step(cg, &acc, &combine, elem)?;
+    acc_step(cg, &acc, &tmpl, &combine, elem)?;
     crate::arc::pop_frame(cg);
     close_range_loop(cg, &lp);
 
-    Ok(acc_result(cg, &acc))
+    Ok(acc_result(cg, &acc, &tmpl))
 }
 
 /// The `i`-th positional argument as a list handle.
@@ -314,12 +358,18 @@ fn list_builder(cg: &mut Codegen, args: &[Expr], filter: bool) -> Result<Value> 
 /// `foldList(list, initial, fn)` — reduce a list with `fn(acc, elem)`.
 fn fold_list(cg: &mut Codegen, args: &[Expr]) -> Result<Value> {
     let l = list_arg(cg, args, 0)?;
-    let acc = acc_init(cg, args)?;
+    let (acc, tmpl) = acc_init(cg, args)?;
     let combine = callback_of(cg, nth(args, 2)?)?;
     let lp = open_list_loop(cg, &l.operand);
     crate::arc::push_frame(cg);
-    acc_step(cg, &acc, &combine, Value::new(lp.elem.clone(), LType::I64))?;
+    acc_step(
+        cg,
+        &acc,
+        &tmpl,
+        &combine,
+        Value::new(lp.elem.clone(), LType::I64),
+    )?;
     crate::arc::pop_frame(cg);
     close_list_loop(cg, &lp);
-    Ok(acc_result(cg, &acc))
+    Ok(acc_result(cg, &acc, &tmpl))
 }

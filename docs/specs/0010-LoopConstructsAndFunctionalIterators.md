@@ -68,6 +68,35 @@ range(1, 5) |> fold(0, add)   // 0+1+2+3+4 = 10
 range (1, 5) |> fold (0, add)   // 0+1+2+3+4 = 10
 ```
 
+## Callbacks and Accumulators — [BUILTIN-ITER-CALLBACK]
+
+The function argument to `forEach`/`map`/`filter`/`fold` may be a lambda **or a
+function name** — and a named function is accepted whether it is monomorphic or
+generic. A generic (unannotated-parameter) function has no emitted symbol; it is
+specialised per element by inlining its body, exactly as a direct call would
+specialise it. Passing one is therefore an ordinary composition, not a link
+error:
+
+```osprey
+fn energy(p) = p.mass + p.spin      // generic: inferred, no annotations
+range(1, n) |> map(forge) |> map(energy) |> fold(0, add)
+```
+
+A `fold` accumulator may be **any type**, including a record. The accumulator
+travels through the fused loop in the uniform element representation and is
+recovered at its real type at each use, so the reducer can field-access or
+record-update it and the final result carries a usable layout:
+
+```osprey
+fn bump(p, step) = p { mass: p.mass + 1 }
+range(1, n) |> fold(Particle { id: 0, mass: 0, spin: 0 }, bump)   // -> Particle
+```
+
+Both hold identically under every memory backend ([MEM-BACKENDS]): a record
+accumulator is allocated, copied and — under ARC — freed with zero leaked
+values. Exercised at scale by
+`examples/tested/basics/memory/struct_allocation_stress.{osp,ospml}`.
+
 ## Pipe Operator — [BUILTIN-ITER-PIPE]
 
 `|>` passes its left operand as the first argument to the function on its right.

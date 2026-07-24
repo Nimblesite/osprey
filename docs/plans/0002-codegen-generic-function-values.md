@@ -35,6 +35,17 @@ bail rather than risk treating a `string`/`float` instantiation as `i64`.
   so the inlined body's `f(x)` dispatches through the closure cell. Previously
   this emitted a call to a nonexistent symbol — a **link error** — for
   `fn also(x, f) = f(x)` applied to a lambda (the Kotlin-`let` idiom).
+- **Generic function as a *builtin* iterator callback** — `map`/`filter`/
+  `fold`/`forEach` are lowered specially in
+  [iter.rs](../../crates/osprey-codegen/src/iter.rs) (fused loop), not via
+  `try_inline`, so their callback resolution had the same link-error gap: a
+  generic reducer like `fn add(a, b) -> int = a + b` passed to `fold(0, add)`
+  fell through to `call @add`, a symbol that generics never emit. `callback_of`
+  now resolves a name found in `fn_defs` to an inlined lambda, beta-reducing it
+  per element. Implements [BUILTIN-ITER-CALLBACK]; pinned by
+  `generic_function_as_an_iterator_callback_inlines_not_calls_a_missing_symbol`
+  (codegen lib.rs) and
+  `examples/tested/basics/memory/struct_allocation_stress.{osp,ospml}`.
 - **The `-> T` generalization poisoning is fixed at the root**: builtin schemes
   hand-write `Var(0)`/`Var(1)` as quantified binders, and the checker's fresh
   supply used to hand out those same ids to live inference variables; once a
@@ -101,6 +112,16 @@ functions as values are untested territory.
 - [ ] Materialize a still-generic *returned* lambda against its call-site
       instantiations (per-instantiation cache) — replaces the last
       `lambda_value` bail.
+- [x] Generic function as a **builtin iterator callback** (`map`/`filter`/
+      `fold`/`forEach`) — the fused-loop path in `iter.rs` had the same
+      link-error gap as user HOFs did before `bind_inline_arg`. `callback_of`
+      now inlines a name found in `fn_defs` instead of emitting `call @name`.
+      A record-typed `fold` accumulator is carried through the uniform slot and
+      recovered at its real type (`rebuild_acc`), then owned by the enclosing
+      region so ARC frees it (zero leaks). Implements [BUILTIN-ITER-CALLBACK];
+      pinned by two codegen unit tests and
+      `examples/tested/basics/memory/struct_allocation_stress.{osp,ospml}`
+      (green under default/GC/ARC, `ARC_LEAKY=0`).
 - [x] Emit-once dedupe cache for repeated same-slot specializations — **done**.
       `emit_closure_keyed` (`closure.rs`) takes a `(function, slot ABI)` key
       built by `specialisation_key`, so N call sites at the SAME ABI share one

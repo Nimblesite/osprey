@@ -1,0 +1,37 @@
+// ML-flavor twin of struct_allocation_stress.osp. Layout record blocks,
+// whitespace application (`range 1 COUNT`, `map forge`), tuple-parameter
+// functions (`add (a, b)`) and `p(mass = …)` updates lower to the SAME
+// canonical AST as the Default braces/parens form — byte-identical IR and
+// output ([FLAVOR-IR-EQUIV]) — so both flavors share one golden and are
+// replayed under every memory backend by the conformance harness.
+
+type Particle =
+    id : int
+    mass : int
+    spin : int
+
+COUNT = 100000
+
+forge i = Particle(id = i, mass = i * 3, spin = i % 5)
+
+// `-> int` is load-bearing: it auto-unwraps the overflow-checked `+`
+// (Result<int, MathError>) back to int, so `energy` and the fold stay int.
+add : int -> int -> int
+add (a, b) = a + b
+
+energy p = add (p.mass, p.spin)
+heavy p = p.mass > 150000
+
+// 1. Bulk allocation — build COUNT records, read each once, fold to a scalar.
+total = range 1 COUNT |> map forge |> map energy |> fold 0 add
+print "particles=${COUNT} totalEnergy=${total}"
+
+// 2. Filter drops most records mid-stream — allocate COUNT, keep the heavy tail.
+heavyTotal = range 1 COUNT |> map forge |> filter heavy |> map energy |> fold 0 add
+print "heavyEnergy=${heavyTotal}"
+
+// 3. Non-destructive update in the hot path — a record-typed fold accumulator is
+//    born COUNT-1 times and all but the last die at once.
+bump (p, step) = p(mass = add (p.mass, 1))
+bumped = range 1 COUNT |> fold (forge 1) bump
+print "bumpedMass=${bumped.mass}"

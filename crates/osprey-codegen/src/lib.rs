@@ -272,6 +272,50 @@ mod tests {
     }
 
     #[test]
+    fn generic_function_as_an_iterator_callback_inlines_not_calls_a_missing_symbol() {
+        // [BUILTIN-ITER-CALLBACK] A reducer with unannotated params is generic,
+        // so it has NO `@name` definition. Passed to `fold` it must be
+        // beta-reduced per element (inlined), not lowered to `call @add` — a
+        // call to a symbol that was never emitted (invalid IR).
+        let ir = module(
+            "fn add(a, b) -> int = a + b\n\
+             let t = range(1, 4) |> fold(0, add)\n\
+             print(\"t=${t}\")\n",
+        );
+        assert!(
+            !ir.contains("@add"),
+            "generic reducer must inline, not call @add:\n{ir}"
+        );
+        assert!(
+            ir.contains("add i64"),
+            "the reducer body must be emitted inline"
+        );
+    }
+
+    #[test]
+    fn fold_with_a_record_accumulator_lowers_and_recovers_the_pointer() {
+        // [MEM-BACKENDS] A record-typed fold accumulator lives in the uniform
+        // i64 slot; the combine (inlined) must see it as a tagged pointer so its
+        // record update type-checks, and the result must be `inttoptr`'d back so
+        // the following field access reads a real pointer. Before the fix this
+        // panicked in codegen ("`p` is not a record").
+        let ir = module(
+            "type Box = { n: int }\n\
+             fn bump(b, s) = b { n: b.n }\n\
+             let r = range(1, 3) |> fold(Box { n: 7 }, bump)\n\
+             print(\"n=${r.n}\")\n",
+        );
+        assert!(
+            ir.contains("inttoptr i64"),
+            "record fold result must be unboxed to a pointer:\n{ir}"
+        );
+        assert!(
+            !ir.contains("@bump"),
+            "generic combine must inline, not call @bump"
+        );
+    }
+
+    #[test]
     fn spawn_lowers_to_a_per_instance_closure_cell() {
         // `spawn` lowers its expression as a zero-parameter closure: the thunk
         // takes its heap cell as env (so two in-flight spawns from one site
