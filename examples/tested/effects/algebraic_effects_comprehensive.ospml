@@ -183,7 +183,7 @@ in
 
 // --- Generic effects: one declaration, many instantiations ---
 // Implements [EFFECTS-GENERIC-DECL], [EFFECTS-GENERIC-INSTANTIATION],
-// [EFFECTS-GENERIC-ROWS], [FLAVOR-ML-GENERICS]
+// [EFFECTS-GENERIC-ROWS], [EFFECTS-GENERIC-RUNTIME], [FLAVOR-ML-GENERICS]
 effect Stash T
     put : T => Unit
     take : Unit => T

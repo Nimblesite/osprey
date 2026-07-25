@@ -1,33 +1,17 @@
-// SUPERPOWER: report EVERY validation error in a single pass — not just the first.
-//
-// A thrown exception is a one-shot ejector seat: the very first `throw` unwinds
-// the stack, so a form with five bad fields surfaces ONE message and the user
-// fixes-then-resubmits to discover the next. You cannot "keep going after the
-// throw" — the frames that would run the remaining checks are already gone.
-//
-// A tail-resuming Unit effect inverts this. `perform Invalid.report(msg)` is NOT
-// a jump: the handler substitutes its arm value at the perform site and the
-// validator ALWAYS CONTINUES to the next field. The handler owns a mutable
-// counter + accumulator, so when the pass ends it holds the COMPLETE list of
-// failures. Same handler, same validator: a clean record simply reports zero.
-//
-// PURE TAIL-RESUME mode — the word `resume` appears nowhere below. Every arm
-// tail-substitutes; the computation is never abandoned partway through.
+// Invalid.report returns Unit through a direct-substitution handler, allowing
+// every field check to run while the handler accumulates messages.
 
 effect Invalid {
     report: fn(string) -> Unit
 }
 
-// One field check. On failure it performs; on success it yields Unit and moves
-// on. Neither branch aborts — after `perform` returns, control flows to the NEXT
-// check. That "flows to the next" is precisely what a `throw` can never allow.
+// Both branches return Unit, so validation continues after a report.
 fn flag(broken, msg) !Invalid = match broken {
     true  => perform Invalid.report(msg)
     false => {}
 }
 
-// Six INDEPENDENT fields checked back-to-back. Under exceptions the first bad
-// field ends the story; here all six are visited on every single call.
+// All six checks run on every call.
 fn validate(name, age, score, email) !Invalid = {
     flag(name == "",                    "name is empty")
     flag(age < 0,                       "age is negative (${toString(age)})")
@@ -38,10 +22,7 @@ fn validate(name, age, score, email) !Invalid = {
     "validation pass finished"
 }
 
-// Run ONE validation pass under a fresh accumulating handler and return the
-// rendered verdict. `count` and `errs` are handler-owned mutable state; the
-// downstream decision — accept iff count == 0 — is derived purely from the
-// final count, the thing a first-throw model can never know.
+// `count` and `errs` are handler-owned mutable state.
 fn audit(name, age, score, email) = {
     mut count = 0
     mut errs  = ""

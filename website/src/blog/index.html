@@ -17,7 +17,11 @@ description: Osprey language design and implementation notes
           <article class="card">
             {% if post.data.image %}
               <a class="card-media" href="{{ post.url }}" aria-hidden="true" tabindex="-1">
+                {% if post.data.imageWebp %}<picture>
+                  <source srcset="{{ post.data.imageWebp }}" type="image/webp">
+                {% endif %}
                 <img src="{{ post.data.image }}" alt="" loading="lazy" width="1600" height="840">
+                {% if post.data.imageWebp %}</picture>{% endif %}
               </a>
             {% endif %}
             <div class="card-content">

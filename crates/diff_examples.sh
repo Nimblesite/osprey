@@ -96,16 +96,12 @@ if [[ -n "${OSPREY_ARC_DEBUG:-}" ]]; then
   for x in $ARC_LEAKS; do echo "  leak: $x"; done
 fi
 
-# ---- must-REJECT suite: examples/failscompilation -------------------------
-# Every .ospo is an ill-formed program the language defines as a compile error.
-# The compiler must refuse it (nonzero exit, nothing executed). FC_EXPECTED_ESCAPES
-# is a RATCHET: it counts the ill-formed programs osprey still accepts
-# (validations not yet ported — effects safety, `any` rules, named-arg checks,
-# print-on-record). Port a validation -> decrease the number. An INCREASE is a
-# regression and fails CI. Target: 0.
-# 12 -> 11: perform-argument unification ([EFFECTS-GENERIC-INSTANTIATION]) now
-# rejects effect-parameter type mismatches at compile time.
-FC_EXPECTED_ESCAPES=11
+# ---- must-fail suite: examples/failscompilation ---------------------------
+# Each .ospo must exit nonzero. Most are compile errors; the corpus also locks
+# explicit runtime refusals such as unhandled effects and multi-shot resume.
+# FC_EXPECTED_ESCAPES ratchets the remaining programs that still exit zero.
+# [EFFECTS-OP-TYPING] and [CONCURRENCY-SELECT-REJECT] reduced it to two.
+FC_EXPECTED_ESCAPES=2
 FCDIR=$ROOT/examples/failscompilation
 fc_rej=0; fc_esc=0
 typeset -a FC_ESCAPED

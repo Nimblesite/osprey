@@ -7,7 +7,6 @@
 - [Function Types](#function-types)
 - [Record Types](#record-types)
 - [Union Types](#union-types)
-- [Validated Records (`where`)](#validated-records-where)
 - [Collection Types](#collection-types)
 - [Built-in Error Types](#built-in-error-types)
 - [The `any` Type](#the-any-type)
@@ -189,6 +188,7 @@ Primitive spellings are case-sensitive.
 | `Result<T, E>`   | Error-handling sum type (see [Error Handling](0013-ErrorHandling.md)) |
 | `List<T>`        | Immutable sequential collection                                    |
 | `Map<K, V>`      | Immutable key/value collection                                     |
+| `Iterator<T>`    | Opaque range pipeline (see [Iterators](0010-LoopConstructsAndFunctionalIterators.md)) |
 
 Mixed numeric arithmetic promotes `int` to `float`. Arithmetic returns plain
 scalars except `/` and `%`, which return `Result<_, MathError>`
@@ -502,55 +502,6 @@ type JsonValue =
 ```
 
 A recursive union is laid out indirectly — variant payloads referencing the same type, or containing a `List<Self>` / `Map<K, Self>`, MUST be stored behind a pointer so the type's size is finite. This requirement is invisible to the user: construction, pattern-matching, and field access read the same as for any other variant. Mutually recursive unions follow the same rule.
-
-## Validated Records (`where`)
-
-A `where` clause attaches a validation function to a record type. The constructor of a validated type returns `Result<T, string>` instead of `T`, and the validation function runs at construction time.
-
-```osprey
-type Product = {
-    name:  string,
-    price: int
-} where validateProduct
-
-fn validateProduct(p: Product) -> Result<Product, string> = match p.name {
-    ""  => Error   { message: "name cannot be empty" }
-    _   => match p.price {
-        0 => Error   { message: "price must be positive" }
-        _ => Success { value:   p }
-    }
-}
-
-// Construction returns Result<Product, string>
-let r = Product { name: "Widget", price: 100 }
-match r {
-    Success { value }   => print("ok: ${value.name}")
-    Error   { message } => print("validation failed: ${message}")
-}
-```
-
-```osprey-ml
-type Product =
-    name : string
-    price : int
-
-validateProduct : Product -> Result<Product, string>
-validateProduct p =
-    match p.name
-        "" => Error(message = "name cannot be empty")
-        _ =>
-            match p.price
-                0 => Error(message = "price must be positive")
-                _ => Success(value = p)
-
-// Construction returns Result<Product, string>
-r = Product(name = "Widget", price = 100)
-match r
-    Success value => print "ok: ${value.name}"
-    Error message => print "validation failed: ${message}"
-```
-
-Field access on a validated value is only legal after matching on the `Result`.
 
 ## Collection Types
 

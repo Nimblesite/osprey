@@ -1,13 +1,10 @@
-// Validation: match-based predicates returning bool, Result<bool, MathError>
-// from arithmetic comparison, WHERE-constraint syntax on records (currently
-// always succeeds — both branches kept here as a future-proof smoke test).
+// Match-based validation predicates.
 
 notEmpty s =
     match s
         "" => false
         _ => true
 
-isPositive : int -> Result bool MathError
 isPositive n = n > 0
 
 isValidAge age =
@@ -22,42 +19,17 @@ isValidEmail email =
         "invalid" => false
         _ => true
 
-// Type-level WHERE constraint syntax (validator is forward-referenced)
-validatePerson person =
-    match person.age
-        0 => false
-        _ => true
-
-type Person =
-    name : string
-    age : int
-
 print "Testing validation functions:"
 print (toString (notEmpty ""))
 print (toString (notEmpty "test"))
 
-match isPositive 0
-    Success value => print (toString value)
-    Error message => print "err"
-match isPositive 10
-    Success value => print (toString value)
-    Error message => print "err"
+print (toString (isPositive 0))
+print (toString (isPositive 10))
 print (toString (isValidAge 25))
 print (toString (isValidAge 200))
 print (toString (isValidEmail ""))
 print (toString (isValidEmail "alice@example.com"))
 
-// Result<bool> toString
 print (toString (isPositive 5))
 print (toString (isPositive (-5)))
 print (toString (isPositive 0))
-
-// WHERE-constrained construction (both Success+Error branches handled)
-alice = Person(name = "Alice", age = 25)
-match alice
-    Success value => print "alice ok"
-    Error message => print "alice rejected"
-zero = Person(name = "Bob", age = 0)
-match zero
-    Success value => print "zero person allowed (constraint TODO)"
-    Error message => print "zero rejected"

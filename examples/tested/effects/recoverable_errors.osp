@@ -1,105 +1,62 @@
-// ============================================================================
-// RESUMABLE RECOVERY -- the flagship superpower of algebraic effects.
-//
-// An EXCEPTION unwinds the stack: `throw` destroys every frame between the
-// raise and the catch, so ONE bad order aborts the whole batch -- every order
-// after the failure is dead code that never runs. There is no way to hand a
-// value back and keep going from the spot that broke.
-//
-// An algebraic EFFECT does the opposite. `perform` SUSPENDS the computation,
-// the handler substitutes a recovery value, and the business function CONTINUES
-// from the exact point of failure with that value in hand. The batch runs to
-// completion. Below, the SAME `fulfill` business logic runs under two different
-// tail-resume handlers: the recovery POLICY lives entirely in the handler, and
-// the business code never changes and never even mentions recovery.
-//
-// Tail-resume mode: NO `resume` keyword anywhere. Each arm's value is
-// substituted at the perform site and the computation ALWAYS continues.
-// ============================================================================
-
+// One effectful order function runs under two recovery policies. Neither
+// handler uses `resume`, so each arm value replaces the operation result and
+// `fulfill` continues with the next order. [EFFECTS-HANDLER-STATE]
 effect Recover {
     overdraw: fn(int, int) -> int
 }
 
-// --- Business logic. Draws `requested` units from `available` stock. When the
-// order exceeds stock it does NOT throw -- it PERFORMS overdraw and trusts the
-// recovered quantity handed back. It has no idea what the recovery policy is.
 fn drawOrder(requested, available) !Recover = match requested > available {
-    true  => perform Recover.overdraw(requested, available)
+    true => perform Recover.overdraw(requested, available)
     false => requested
 }
 
-// --- Recurse over the whole batch, threading remaining stock. Returns the
-// stock left at the end; units fulfilled = start - end. Later orders always
-// process, even ones sitting after a recovered failure.
 fn fulfill(orders, stock) !Recover = match orders {
-    []              => stock
-    [req, ...rest]  => {
-        let drawn     = drawOrder(req, stock)
+    [] => stock
+    [requested, ...rest] => {
+        let drawn = drawOrder(requested, stock)
         let remaining = stock - drawn
-        print("  order ${toString(req)}: from ${toString(stock)} in stock -> took ${toString(drawn)}, ${toString(remaining)} left")
+        print("  order ${requested}: from ${stock} in stock -> took ${drawn}, ${remaining} left")
         fulfill(rest, remaining)
     }
 }
 
 let start = 20
-// batch of 5 orders; two of them (30 and 40) exceed the stock available when
-// they are reached -- the over-draws.
 let batch = listAppend(listAppend(listAppend(listAppend(listAppend(List(), 6), 30), 5), 8), 40)
 
-// ---------------------------------------------------------------------------
-// POLICY A: SKIP. Substitute 0 -> draw nothing, leave the stock untouched, and
-// let the following orders keep drawing. Handler owns mut state that counts the
-// recoveries and accumulates a human-readable reason log.
-// ---------------------------------------------------------------------------
-mut skipCount  = 0
+mut skipCount = 0
 mut skipReason = ""
 print("=== POLICY A: SKIP (substitute 0, preserve stock) ===")
 let skipFinal = handle Recover
     overdraw requested available => {
-        skipCount  = skipCount + 1
-        skipReason = skipReason + "skipped ${toString(requested)} (only ${toString(available)} left); "
+        skipCount = skipCount + 1
+        skipReason = skipReason + "skipped ${requested} (only ${available} left); "
         0
     }
 in fulfill(batch, start)
 let skipFilled = start - skipFinal
-print("SKIP done: recovered ${toString(skipCount)} orders, fulfilled ${toString(skipFilled)} units, ${toString(skipFinal)} left in stock\nSKIP log: [${skipReason}]")
+print("SKIP done: recovered ${skipCount} orders, fulfilled ${skipFilled} units, ${skipFinal} left in stock\nSKIP log: [${skipReason}]")
 
-// ---------------------------------------------------------------------------
-// POLICY B: CAP. Substitute `available` -> fill the order up to whatever stock
-// remains. SAME business function, only the handler changed. Because a cap
-// drains the stock to empty, later orders over-draw too and are recovered as
-// well -- the handler alone decides both the values AND how many recoveries
-// occur. The batch STILL completes; nothing aborts.
-// ---------------------------------------------------------------------------
-mut capCount  = 0
+mut capCount = 0
 mut capReason = ""
 print("=== POLICY B: CAP (substitute available, drain to fit) ===")
 let capFinal = handle Recover
     overdraw requested available => {
-        capCount  = capCount + 1
-        capReason = capReason + "capped ${toString(requested)} to ${toString(available)}; "
+        capCount = capCount + 1
+        capReason = capReason + "capped ${requested} to ${available}; "
         available
     }
 in fulfill(batch, start)
 let capFilled = start - capFinal
-print("CAP done: recovered ${toString(capCount)} orders, fulfilled ${toString(capFilled)} units, ${toString(capFinal)} left in stock\nCAP log: [${capReason}]")
+print("CAP done: recovered ${capCount} orders, fulfilled ${capFilled} units, ${capFinal} left in stock\nCAP log: [${capReason}]")
 
-// ---------------------------------------------------------------------------
-// HAPPY PATH: same SKIP handler, a batch that never over-draws. The handler
-// arm never fires, the counter stays 0, the reason log stays empty -- proof the
-// recovery machinery is free when nothing goes wrong.
-// ---------------------------------------------------------------------------
-mut happyCount  = 0
-mut happyReason = ""
+mut happyCount = 0
 let happyBatch = listAppend(listAppend(listAppend(listAppend(List(), 3), 5), 2), 4)
 print("=== HAPPY PATH: SKIP handler, no over-draws ===")
 let happyFinal = handle Recover
     overdraw requested available => {
-        happyCount  = happyCount + 1
-        happyReason = happyReason + "skipped ${toString(requested)}; "
+        happyCount = happyCount + 1
         0
     }
 in fulfill(happyBatch, start)
 let happyFilled = start - happyFinal
-print("HAPPY done: recovered ${toString(happyCount)} orders, fulfilled ${toString(happyFilled)} units, ${toString(happyFinal)} left in stock\n=== all three batches completed; an exception would have aborted at the first over-draw ===")
+print("HAPPY done: recovered ${happyCount} orders, fulfilled ${happyFilled} units, ${happyFinal} left in stock\n=== all three batches completed ===")

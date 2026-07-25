@@ -244,7 +244,7 @@ in {
 
 // --- Generic effects: one declaration, many instantiations ---
 // Implements [EFFECTS-GENERIC-DECL], [EFFECTS-GENERIC-INSTANTIATION],
-// [EFFECTS-GENERIC-ROWS]
+// [EFFECTS-GENERIC-ROWS], [EFFECTS-GENERIC-RUNTIME]
 effect Stash<T> {
     put: fn(T) -> Unit
     take: fn() -> T

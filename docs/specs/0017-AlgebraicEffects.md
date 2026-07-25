@@ -1,23 +1,19 @@
 # Algebraic Effects
 
-Osprey has built-in algebraic effects. An effect declares typed operations, effect annotations document expected operations, and lexical handlers give those operations meaning. Operation typing and handler execution are implemented; complete compile-time effect-row propagation and missing-handler rejection are not yet implemented.
+An effect declares typed operations. `perform` invokes the innermost matching
+lexical handler, which supplies the operation result. Default and ML syntax
+lower to the same effect, perform, handler, and resume AST nodes; their runtime
+semantics are identical.
 
-> **Flavor layer — shared core (AST and above).** Effect semantics live entirely at and above the canonical AST and are flavor-blind: an effect declaration is `Stmt::Effect` (carrying `EffectOperation`s), `perform IDENT.op(...)` lowers to `Expr::Perform`, a `handle` region lowers to `Expr::Handler{effect, arms, body}` (arms are `HandlerArm`), and `resume(v)` lowers to `Expr::Resume`. The `handle ... in expr` spelling below is the Default-flavor (`.osp`) surface; the ML flavor lowers its spelling to the same nodes, so type inference and code generation do not know which flavor produced the program ([FLAVOR-BOUNDARY] in [Language Flavors](0023-LanguageFlavors.md)). First-class handler values, a `Handler E` type, and multi-install remain deferred shared-core additions ([FLAVOR-HANDLER-VALUE] in 0023); lexical handlers work in both flavors.
-
-## Status
-
-Effect declarations, `perform` expressions, source-level effect annotations, operation type checking, lexical handlers, and native single-shot continuations are implemented. Effect annotations currently guide checking inside a function body but are not retained in `Type::Fun` or propagated through calls. Missing handlers and missing row annotations can therefore reach code generation; runtime lookup then aborts with `unhandled effect: <Effect>.<operation>`. A handler arm may resume the performer in two ways:
-
-- **Implicit tail-resume.** An arm whose body is an ordinary expression returns that value to the `perform` site, which continues. This is the cheap default and handlers may own mutable state with it (see [Handler-Owned State]).
-- **Explicit `resume`.** An arm whose body contains a `resume` expression captures the performer's *delimited continuation*: `resume(v)` runs the rest of the handled computation with `v` as the operation's result and yields its answer back to the arm, so the arm can run code **after** the performer continues. Single-shot (each continuation is resumed at most once) and **deep** (the handler stays installed for the resumed computation). See [Resuming Handlers]. **Status: executable for single-shot deep continuations via the thread-as-continuation runtime; multi-shot is refused loudly at runtime.**
-
-Multi-shot resume (resuming one continuation more than once) is **rejected at
-runtime** with a clear fatal message rather than silently returning a wrong
-answer; a multi-shot-capable runtime remains a follow-up ([plan 0016](../plans/0016-algebraic-effects-and-handlers.md) §Phase A).
+The checker validates declared operations and their value types. Effect rows
+currently constrain operations inside the annotated function body, but are not
+stored in function types or propagated through calls. A missing handler can
+therefore compile; the generated program aborts with
+`unhandled effect: <Effect>.<operation>` when lookup fails.
 
 ## Keywords
 
-```
+```text
 effect perform handle in resume
 ```
 
@@ -28,118 +24,67 @@ effectDecl ::= docComment? "effect" IDENT ("<" typeParamList ">")? "{" opDecl* "
 opDecl     ::= IDENT ":" fnType
 ```
 
-`typeParamList` is the shared production from [Syntax](0003-Syntax.md#type-declarations)
-— effects accept type parameters (with variance) exactly as type declarations do.
+`[EFFECTS-OP-TYPING]` Every operation named by `perform` or a handler arm must
+belong to the declared effect. Positional argument count and value types must
+match the operation signature. Named arguments are not supported on `perform`.
 
 ```osprey
 effect State {
-    get : fn() -> int
-    set : fn(int) -> unit
+    get: fn() -> int
+    set: fn(int) -> Unit
 }
 ```
 
 ```osprey-ml
 effect State
     get : Unit => int
-    set : int => unit
+    set : int => Unit
 ```
 
-### Generic Effects
+## Generic Effects
 
-`[EFFECTS-GENERIC-DECL]` **Effects accept type arguments for full
-polymorphism.** `effect State<T>` binds `T` across every operation signature;
-one declaration serves every instantiation. Type parameters may carry variance
-(`effect Ask<out T>`, `effect Emit<in T>`), position-checked against the
-operation signatures: operation parameters are input positions, operation
-results output positions ([TYPE-VARIANCE-POSITIONS](0004-TypeSystem.md#generics-and-variance)).
+`[EFFECTS-GENERIC-DECL]` An effect may declare type parameters, including
+`in` and `out` variance. The checker validates operation parameters as input
+positions and operation results as output positions.
 
 ```osprey
 effect Stash<T> {
-    put  : fn(T) -> Unit
-    take : fn() -> T
+    put: fn(T) -> Unit
+    take: fn() -> T
 }
 ```
 
-```osprey-ml
-effect Stash T
-    put : T => Unit
-    take : Unit => T
-```
-
-`[EFFECTS-GENERIC-INSTANTIATION]` **Each `handle` site and each effect-row
-entry instantiates the effect independently.** A handler's arms pin its
-instantiation: a non-resuming arm's value substitutes for the operation's
-result, so `take => "stash-words"` pins `Stash<string>` (an arm handling a
-`Unit`-resulted operation may yield anything — the value is discarded). Inside
-the handled body, `perform` sites resolve against the innermost enclosing
-instantiation of their effect, matching the runtime's innermost-wins handler
-stack; inside a function, the declared effect row provides the instantiation.
-Two instantiations of one effect coexist in one program:
+`[EFFECTS-GENERIC-INSTANTIATION]` Each handler site instantiates a generic
+effect independently. Handler arm values and performs in the handled body must
+agree on that instantiation. For example, this handler is `Stash<string>`:
 
 ```osprey
-let words = handle Stash
-    take => "stash-words"
-    put v => print("put: ${v}")
-in relabel()
-let count = handle Stash
-    take => 41
-    put v => print("put: ${v}")
-in bumped()
+let word = handle Stash
+    put value => print(value)
+    take => "ready"
+in perform Stash.take()
 ```
 
-`[EFFECTS-GENERIC-ROWS]` **Effect rows carry type arguments.** A row entry
-`!State<int>` (or `![State<int>, Log]`) pins the instantiation the function's
-`perform` sites check against; performing an operation with arguments that
-contradict the row is a compile error. A bare row entry on a generic effect
-leaves the instantiation to inference. The row is the function's declared
-interface to its dynamically-scoped handler: the checker verifies each side
-against its declared instantiation independently (it does not globally prove
-that every runtime handler matches every performer's row) — the runtime's
-instantiation-keyed dispatch ([EFFECTS-GENERIC-RUNTIME]) is what turns a
-handler/row mismatch into a loud unhandled-effect abort instead of undefined
-behaviour.
-
-```osprey
-fn bumped() -> int !Stash<int> = {
-    let n = perform Stash.take()
-    n + 1
-}
-```
-
-```osprey-ml
-bumped : Unit -> int ! Stash<int>
-bumped () =
-    n = perform Stash.take ()
-    n + 1
-```
-
-`[EFFECTS-GENERIC-RUNTIME]` **Instantiations are erased in the ABI and keyed
-in dispatch.** A generic effect's operations keep ONE ABI program-wide: every
-type-parameter-mentioning slot travels as a uniform boxed machine word, boxed
-at `perform` sites and unboxed at handler-arm entry (and inversely for
-results) against the signature inference resolved per site. Handlers
-register on the runtime stack under their RESOLVED instantiation
-(`Stash$int`), and `perform` sites look up under theirs — so a handler only
-satisfies performs of the same instantiation, and the innermost
-same-instantiation handler wins. A mismatch (or an instantiation the checker
-could not resolve at a site) misses the lookup and aborts loudly with
-`unhandled effect: …`, never confusing values of different types.
-Monomorphic effects keep their bare names — their programs compile
-byte-identically to before. The C runtime treats keys as opaque strings and
-needs no changes.
+`[EFFECTS-GENERIC-RUNTIME]` Generic operation payloads use an erased machine-word
+ABI. Code generation boxes and unboxes values using the type inferred at each
+site. Runtime handler keys include the resolved instantiation, such as
+`Stash$string`, so a mismatched instantiation misses lookup and aborts instead
+of calling a handler with the wrong representation. Monomorphic effects use
+their declared name as the key.
 
 ## Effectful Function Types
 
-A function declares the effects it may perform with `!E` after its return type. `E` is either a single effect reference or a bracketed set; each reference may apply type arguments to a generic effect (`!State<int>`, `![State<int>, Log]` — [EFFECTS-GENERIC-ROWS](#generic-effects)).
+An effect row follows the return type. It contains one effect reference or a
+bracketed list; generic references may include type arguments.
 
 ```ebnf
-effectSet  ::= "!" effectRef | "!" "[" effectRef ("," effectRef)* "]"
-effectRef  ::= IDENT ("<" typeList ">")?
+effectSet ::= "!" effectRef | "!" "[" effectRef ("," effectRef)* "]"
+effectRef ::= IDENT ("<" typeList ">")?
 ```
 
 ```osprey
 fn read() -> string !IO = perform IO.readLine()
-fn fetch(url: string) -> string ![IO, Net] = ...
+fn fetch(url) -> string ![IO, Net] = perform Net.get(url)
 ```
 
 ```osprey-ml
@@ -150,7 +95,13 @@ fetch : string -> string ![IO, Net]
 fetch url = perform Net.get url
 ```
 
-The intended model is that a function with no `!E` is pure and that calling an effectful function from a pure context is a compilation error. The current checker does not yet propagate effect rows through function types or calls, so annotations are documentation and local operation-instantiation constraints rather than complete capabilities.
+`[EFFECTS-GENERIC-ROWS]` A row entry such as `!Stash<int>` pins the generic
+effect instantiation used by performs in that function body. A bare generic
+entry leaves its arguments to inference.
+
+Rows do not yet form part of `Type::Fun`. The checker does not propagate them
+through calls, prove that a caller installs every required handler, or require
+an unannotated function to be pure.
 
 ## Performing Operations
 
@@ -159,341 +110,165 @@ performExpr ::= "perform" IDENT "." IDENT "(" args? ")"
 ```
 
 ```osprey
-fn incrementTwice() -> int !State = {
+fn increment() -> int !State = {
     let current = perform State.get()
     perform State.set(current + 1)
     perform State.get()
 }
 ```
 
-```osprey-ml
-incrementTwice : Unit -> int !State
-incrementTwice () =
-    current = perform State.get
-    perform State.set (current + 1)
-    perform State.get
-```
-
-If no enclosing handler covers an effect, the current generated program aborts during runtime lookup. Compile-time rejection is the designed behavior and remains roadmap work.
+The operation result is the value returned by its active handler arm. If no
+handler exists for that effect and operation, runtime lookup prints the
+unhandled-effect message and exits nonzero.
 
 ## Handlers
 
 ```ebnf
 handlerExpr ::= "handle" IDENT handlerArm+ "in" expr
-handlerArm  ::= IDENT paramList? "=>" expr
+handlerArm  ::= IDENT IDENT* "=>" expr
 ```
+
+A handler with no `resume` expression uses direct value substitution: the arm
+returns the operation result and execution continues after `perform`.
 
 ```osprey
-handle State
-    get        => 42
-    set newVal => print("set to " + toString(newVal))
-in
-    incrementTwice()
+let result = handle State
+    get => 41
+    set value => print("set ${value}")
+in increment()
 ```
 
-```osprey-ml
-handle State
-    get => 42
-    set newVal => print ("set to " + toString newVal)
-in
-    incrementTwice ()
-```
-
-The innermost matching handler wins for each effect. Handlers may be nested freely:
+Lookup is per effect and operation. Nested handlers may override selected
+operations; the innermost matching arm wins and an outer arm remains available
+for operations not handled by the inner region.
 
 ```osprey
 handle Logger
-    log msg => print("[OUTER] " + msg)
-in
-    handle Logger
-        log msg => print("[INNER] " + msg)
-    in
-        perform Logger.log("test")    // prints "[INNER] test"
-```
-
-```osprey-ml
-handle Logger
-    log msg => print ("[OUTER] " + msg)
-in
-    handle Logger
-        log msg => print ("[INNER] " + msg)
-    in
-        perform Logger.log "test"    // prints "[INNER] test"
+    log message => print("outer: ${message}")
+in handle Logger
+    log message => print("inner: ${message}")
+in perform Logger.log("test")
 ```
 
 ## Handler-Owned State
 
-`[EFFECTS-HANDLER-STATE]` A handler arm may read and update a mutable binding
-from the enclosing scope. Any `mut` an arm captures is promoted to a shared
-heap cell that the whole `handle` region — every arm and the code after `in` —
-sees as one location. This makes the `State` effect *real*: the effectful code
-stays abstract over the state implementation (it only `perform`s), and the handler is the single place the state
-lives.
+`[EFFECTS-HANDLER-STATE]` A handler arm may capture a mutable binding. Code
+generation promotes the captured binding to a shared heap cell, so every arm,
+the handled body, and code after the region observe the same location.
 
 ```osprey
-effect State { get: fn() -> int  set: fn(int) -> Unit }
-
-fn bump() -> int !State = {
-    let a = perform State.get()
-    perform State.set(a + 1)
-    perform State.get()
-}
-
 mut cell = 0
-let r = handle State
-    get        => cell           // reads the shared cell
-    set newVal => { cell = newVal }   // writes the shared cell
-in bump()
-print("r=${toString(r)} cell=${toString(cell)}")   // r=1 cell=1
+let result = handle State
+    get => cell
+    set value => { cell = value }
+in increment()
+print("result=${result} cell=${cell}")
 ```
 
-```osprey-ml
-effect State
-    get : Unit => int
-    set : int => Unit
-
-bump : Unit -> int !State
-bump () =
-    a = perform State.get
-    perform State.set (a + 1)
-    perform State.get
-
-mut cell = 0
-r = handle State
-    get => cell                      // reads the shared cell
-    set newVal =>
-        cell := newVal               // writes the shared cell
-in
-    bump ()
-print "r=${toString r} cell=${toString cell}"   // r=1 cell=1
-```
-
-The cell is shared across the C HTTP-callback boundary (a request handler's
-`perform` resolves to the active handler) and across fiber boundaries (an effect
-performed inside a `spawn`ed fiber is handled in the spawner), so one effect
-handler can own the state for a whole running server. See
-`examples/tested/effects/http_state_levels.osp` and
-`examples/statefulhttp/`.
+Handler state is also preserved when a perform crosses a spawned-fiber or HTTP
+callback boundary. The native conformance cases are
+`examples/tested/effects/fiber_effects.osp` and
+`examples/tested/effects/http_state_levels.osp`.
 
 ## Resuming Handlers
 
-> **Status — executable for single-shot deep continuations.** Explicit `resume`
-> is parsed, type-checked, and lowered through a thread-as-continuation runtime.
-> The worked example below is covered by the CLI regression test
-> `explicit_resume_runs_the_performer_continuation`.
-
-`[EFFECTS-RESUME]` A handler arm may name the performer's continuation with
-`resume`. `resume(v)` resumes the suspended `perform` with `v` as the operation's
-result, runs the rest of the handled computation, and evaluates to **that
-computation's answer** — so the arm can run code *after* the performer has moved
-on. `resume()` with no argument resumes with `Unit`.
+`[EFFECTS-RESUME]` `resume(value)` supplies the current operation result and
+runs the rest of the handled computation. It evaluates to that computation's
+answer, so the arm may execute code after the resumed computation returns.
+`resume()` supplies `Unit`.
 
 ```ebnf
 resumeExpr ::= "resume" "(" expr? ")"
 ```
 
-Semantics:
-
-- **Deep.** The handler stays installed for the resumed computation: if the
-  continuation performs the effect again, the same arm runs again.
-- **Single-shot.** Each continuation is resumed at most once. Resuming an
-  already-consumed continuation (multi-shot) is **rejected at runtime** with
-  `fatal: continuation already resumed (multi-shot resume is not supported)`
-  and a nonzero exit — the thread-as-continuation model cannot re-run a
-  completed stack, and a loud abort beats silently returning the stale first
-  result. A multi-shot-capable runtime remains a follow-up
-  ([plan 0016](../plans/0016-algebraic-effects-and-handlers.md) §Phase A).
-- **Abort.** An arm that returns *without* resuming discards the continuation;
-  its value becomes the result of the whole `handle … in` — the basis for
-  exceptions and early exit.
-- An arm whose body is a plain value (no `resume`) is the implicit tail-resume of
-  [Handler-Owned State]; the two styles coexist per effect.
-- **Serialized concurrent performs [EFFECTS-FIBER-PERFORM].** Fibers spawned
-  inside the handled body may perform into the same resuming handler
-  concurrently; each perform claims the handler's operation channel
-  exclusively for its full suspend→resume round-trip, and queued performs are
-  dispatched in turn. Answers are therefore deterministic per performer —
-  never interleaved or cross-delivered.
-- **`resume` is lexical to the arm.** A lambda written inside an arm runs when
-  *called*, not where it is written, so the arm's continuation is not live
-  inside it: `resume` inside a lambda body is a **type error** (`` `resume` is
-  only valid inside a handler arm ``), exactly as at top level.
-
 ```osprey
-effect Audit { step: fn(string) -> int }
+effect Ask { value: fn() -> int }
 
-fn pipeline() -> int !Audit = {
-    let a = perform Audit.step("load")     // suspends here
-    let b = perform Audit.step("parse")    // …and here
-    a + b
-}
-
-mut n = 0
-let total = handle Audit
-    step label => {
-        n = n + 1
-        let answer = resume(n)          // performer continues with n
-        print("after ${label}: answer=${toString(answer)}")
-        answer                          // code AFTER resume — impossible with tail-resume
+let answer = handle Ask
+    value => {
+        let completed = resume(21)
+        print("completed=${completed}")
+        completed
     }
-in pipeline()
-print("total=${toString(total)}")
+in perform Ask.value() * 2
 ```
 
-```osprey-ml
-effect Audit
-    step : string => int
+Resuming handlers have these rules:
 
-pipeline : Unit -> int !Audit
-pipeline () =
-    a = perform Audit.step "load"     // suspends here
-    b = perform Audit.step "parse"    // …and here
-    a + b
+- They are deep: the same handler remains installed while the continuation
+  runs.
+- They are single-shot. A second resume of one continuation aborts with
+  `fatal: continuation already resumed (multi-shot resume is not supported)`.
+- Handler mode is selected per region. If any arm contains `resume`, an arm
+  that returns without resuming aborts the suspended computation and its value
+  becomes the result of the whole handler. This per-region selection is a
+  **known deviation** from the per-clause rule of the literature: adding `resume`
+  to one arm silently changes how a *sibling* arm's non-resuming return is treated
+  (recover-and-continue versus abort). It is tracked as
+  [issue #177](https://github.com/Nimblesite/osprey/issues/177) — see
+  [Relationship to the Literature](#relationship-to-the-literature). Until it is
+  resolved, keep each handler in a single mode: either no arm resumes, or every
+  control-flow arm does.
+- `resume` is lexical to the arm. It is rejected at top level and inside a
+  lambda declared in an arm, because that lambda has no live arm continuation.
+- Explicit resume is native-only. WebAssembly supports direct value-substitution
+  handlers but not the pthread-backed continuation runtime.
 
-mut n = 0
-total = handle Audit
-    step label =>
-        n := n + 1
-        answer = resume n               // performer continues with n
-        print "after ${label}: answer=${toString answer}"
-        answer                          // code AFTER resume — impossible with tail-resume
-in
-    pipeline ()
-print "total=${toString total}"
-```
+Native resume uses one suspended pthread stack as the continuation. Regions
+whose arms contain no `resume` stay on the direct handler-call path.
 
-Output — the "after" lines unwind **LIFO** as each continuation completes, the
-signature of a real delimited continuation:
+`[EFFECTS-FIBER-PERFORM]` Concurrent performs into one resuming handler are
+serialized for the full suspend-to-resume round trip. This prevents arguments
+or results from being delivered to the wrong performer.
 
-```
-after parse: answer=3
-after load: answer=3
-total=3
-```
+## Relationship to the Literature
 
-### Runtime model
+Osprey's handlers follow the algebraic-effects tradition of Plotkin and Pretnar,
+in which an effect is a set of typed operations and a handler interprets each one
+by supplying its result — optionally with access to the delimited continuation of
+the `perform`. Osprey's two handler modes are the two standard clause shapes:
 
-`resume` is implemented as **thread-as-continuation**
-(single-shot, deep): a
-`handle` region whose arms mention `resume` runs its `in` body on a spawned body
-thread while the host thread runs the arms; `perform` suspends the body thread and
-yields the operation to the host, and `resume` switches back, delivering the
-value. The suspended thread *is* the captured continuation, which is why it is
-single-shot (a live stack cannot be cloned). Regions with no `resume` keep the
-zero-overhead function-call path. The body thread inherits the host's handler
-stack via the existing snapshot/restore (`__osprey_handler_snapshot`), so a
-`perform` deep inside the continuation still resolves outer handlers. See
-[plan 0016](../plans/0016-algebraic-effects-and-handlers.md).
+- **Tail-resume mode** is a *tail-resumptive* clause: the arm returns a value that
+  is substituted at the operation site and the computation continues. This is
+  Koka's `fun` / `val` operation clause — the common case that needs no
+  continuation capture and pays no runtime cost for it.
+- **Explicit `resume`** is a general clause with access to the continuation `k`:
+  `resume(v)` is `k v`. Running code *after* `resume`, and the LIFO unwinding of
+  nested continuations, are the observable signature of a genuine delimited
+  continuation.
+- **Abort** — an explicit-mode arm that never resumes — *discards* the
+  continuation, which is exactly how Plotkin–Pretnar and Eff give exceptions and
+  early exit: a clause aborts precisely by not invoking `k`.
+- **Deep, single-shot handlers.** The handler stays installed for the resumed
+  computation (Plotkin–Pretnar deep handlers; OCaml 5 `continue`). Continuations
+  are single-shot — one suspended native stack each, the same default restriction
+  OCaml 5 imposes — and multi-shot resumption is refused loudly rather than
+  emulated with a stale result.
 
-## Effect Inference Design
+Osprey keeps the *surface* lighter than these systems: tail-resume needs no
+keyword, and `resume` is an expression rather than a continuation variable bound
+per clause. The *intended* meaning of a single arm still matches the references
+exactly — tail-resume when the arm names no `resume`, explicit-or-abort when it
+does, decided **per arm**. The implementation currently decides the mode **per
+handler** by scanning every arm for the `resume` token, so a sibling arm can flip
+another arm's control flow; that is the one substantive departure from the
+references below, tracked as a defect rather than a design choice
+([issue #177](https://github.com/Nimblesite/osprey/issues/177)). None of the
+systems below infer a clause's resumption mode from its siblings: Eff and OCaml 5
+bind the continuation explicitly per clause, and Koka declares the mode per clause
+with a keyword.
 
-The design calls for the compiler to infer the minimal effect set of every expression, require unannotated functions to be pure, and permit polymorphism over an effect set. That whole-program inference is not implemented today; current annotations scope generic effect instantiation within the annotated function body.
+References:
 
-```osprey
-fn loggedCalculation<E>(x) -> int !E = {
-    perform Logger.log("calculating")     // E must include Logger
-    x * 2
-}
-```
-
-```osprey-ml
-loggedCalculation : int -> int !E
-loggedCalculation x =
-    perform Logger.log "calculating"      // E must include Logger
-    x * 2
-```
-
-## Designed Static Safety Checks
-
-The language design requires the following checks before code generation. They describe the target state, not current enforcement.
-
-| Check                              | Failure mode in other languages |
-| ---------------------------------- | ------------------------------- |
-| Every `perform` has a handler      | Runtime crash / unhandled exn   |
-| No circular effect dependency      | Stack overflow                  |
-| No handler that performs the same effect it handles | Infinite loop |
-
-> **Current status.** A missing runtime handler is guarded by an explicit abort (`unhandled effect: <Effect>.<op>`, nonzero exit). Missing or undeclared rows, circular dependencies, and a handler performing its own effect are not all statically rejected; recursive cases may instead recurse until failure. The compile-time checks require retaining and propagating rows on function types — [plan 0016 §Phase C](../plans/0016-algebraic-effects-and-handlers.md).
-
-### Circular Dependency Example
-
-```osprey
-effect StateA { getFromB: fn() -> int }
-effect StateB { getFromA: fn() -> int }
-
-fn circularA() -> int !StateA = perform StateA.getFromB()
-fn circularB() -> int !StateB = perform StateB.getFromA()
-
-handle StateA
-    getFromB => circularB()       // ❌ circular dependency
-in
-    handle StateB
-        getFromA => circularA()   // ❌ circular dependency
-    in
-        circularA()
-```
-
-```osprey-ml
-effect StateA
-    getFromB : Unit => int
-
-effect StateB
-    getFromA : Unit => int
-
-circularA : Unit -> int !StateA
-circularA () = perform StateA.getFromB
-
-circularB : Unit -> int !StateB
-circularB () = perform StateB.getFromA
-
-handle StateA
-    getFromB => circularB ()       // ❌ circular dependency
-in
-    handle StateB
-        getFromA => circularA ()   // ❌ circular dependency
-    in
-        circularA ()
-```
-
-### Handler-Self-Recursion Example
-
-```osprey
-effect Counter { increment: fn(int) -> int }
-
-fn performIncrement(n: int) -> int !Counter = perform Counter.increment(n)
-
-handle Counter
-    increment n => performIncrement(n + 1)   // ❌ handler performs the effect it handles
-in
-    performIncrement(5)
-```
-
-## Worked Example
-
-The `*` operator returns a plain `int` and cannot fail ([ARITH-PLAIN](0013-ErrorHandling.md#arithmetic-and-result--arith-plain)); its overflow-checked sibling `checkedMul(x, 2)` returns `Result<int, MathError>` ([BUILTIN-CHECKED-ARITH](0012-Built-InFunctions.md#checkedadd--checkedsub--checkedmul--builtin-checked-arith)). The function below matches that `Result`, performing `Exception` on overflow and `State` to record the success.
-
-```osprey
-effect Exception { raise: fn(string) -> unit }
-effect State     { get: fn() -> int, set: fn(int) -> unit }
-
-fn doubleAndStore(x) -> int ![Exception, State] = match checkedMul(x, 2) {
-    Success { value }   => {
-        perform State.set(value)
-        value
-    }
-    Error   { message } => {
-        perform Exception.raise(message)
-        0
-    }
-}
-
-handle Exception
-    raise msg => { print("error: " + msg); -1 }
-in
-    handle State
-        get        => 0
-        set newVal => print("state: " + toString(newVal))
-    in
-        let result = doubleAndStore(21)
-        print("result: " + toString(result))
-```
+- Gordon Plotkin and Matija Pretnar. *Handling Algebraic Effects.* Logical Methods
+  in Computer Science 9(4), 2013. <https://lmcs.episciences.org/705>
+- Andrej Bauer and Matija Pretnar. *Programming with Algebraic Effects and
+  Handlers* (the Eff language). Journal of Logical and Algebraic Methods in
+  Programming 84(1), 2015. <https://arxiv.org/abs/1203.1539>
+- Daan Leijen. *Algebraic Effects for Functional Programming* — Koka's per-clause
+  `fun` / `ctl` / `final ctl` resumption modes. Microsoft Research technical
+  report MSR-TR-2016-29, 2016.
+  <https://www.microsoft.com/en-us/research/publication/algebraic-effects-for-functional-programming/>
+- KC Sivaramakrishnan, Stephen Dolan, Leo White, Tom Kelly, Sadiq Jaffer, and
+  Anil Madhavapeddy. *Retrofitting Effect Handlers onto OCaml* — OCaml 5's
+  explicit, single-shot `continue k`. PLDI 2021. <https://arxiv.org/abs/2104.00250>

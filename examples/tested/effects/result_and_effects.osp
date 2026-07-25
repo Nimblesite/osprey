@@ -1,33 +1,13 @@
-// SUPERPOWER: Result and effects COMPOSE — and that composition beats try/catch.
-//
-// A `Result<T, E>` says only "this value might be absent, here's why." It does
-// NOT decide what to do next — that recovery POLICY belongs somewhere else.
-// The bridge: when a helper's arithmetic yields `Error { message }`, it does not
-// abort — it `perform`s `Rescue.onErr(message)`, handing the ORIGINAL error text
-// up to a single handler. The handler is a PURE TAIL-RESUME handler: no arm ever
-// writes `resume`, so every arm's value is substituted right back at the perform
-// site and the pipeline ALWAYS CONTINUES to the very next line.
-//
-// Why try/catch cannot do this: a `catch` unwinds the stack, so the failed
-// expression is DEAD — you cannot patch that one value and resume where you were.
-// To keep going you must wrap every single operation in its own try/catch, and
-// the recovery constant is then scattered across all those catch blocks. Here the
-// FIVE-STEP pipeline divides by zero TWICE and overflows a checked-add ONCE, yet
-// every healthy step still lands in the final total, because each failure is
-// patched IN PLACE. The policy — the substituted default and the running count —
-// lives in ONE tail-resume handler that owns its own mutable state.
+// Convert arithmetic Results into one typed Rescue effect. Its direct
+// value-substitution handler supplies defaults and counts recoveries.
 
 effect Rescue {
     onErr: fn(string) -> int
 }
 
-// When recovery fires, we substitute this named default and keep computing.
 let RESCUED_DEFAULT = 100
 
-// --- Result-producing helpers. Each MATCHES on Success/Error; on Error it hands
-// --- the message string to the handler and uses whatever int comes back. ---
-
-// intDiv gives Result<int, MathError>; 10/0 => Error(division by zero).
+// intDiv gives Result<int, Error>; the handler chooses the fallback value.
 fn divRescue(a, b) !Rescue = match intDiv(a: a, b: b) {
     Success { value } => value
     Error { message } => perform Rescue.onErr(message)
@@ -45,7 +25,7 @@ fn addRescue(a, b) !Rescue = match checkedAdd(a: a, b: b) {
     Error { message } => perform Rescue.onErr(message)
 }
 
-// The pipeline runs straight through. Some steps fail; NONE of them abort it.
+// Every failed step receives a replacement value, so later steps still run.
 fn pipeline() -> int !Rescue = {
     let a = divRescue(a: 10, b: 0)
     print("  step a  intDiv 10 / 0   -> ${toString(a)}")
@@ -64,8 +44,8 @@ fn pipeline() -> int !Rescue = {
 
 print("=== Result -> effect rescue pipeline ===")
 
-// PURE TAIL-RESUME handler owning mutable state: no `resume` anywhere, so each
-// failed step is substituted with RESCUED_DEFAULT and the performer continues.
+// [EFFECTS-HANDLER-STATE] The handler owns its rescue count; each arm value is
+// substituted at the perform site because this region contains no `resume`.
 mut rescues = 0
 let total = handle Rescue
     onErr message => {
@@ -77,13 +57,11 @@ in pipeline()
 
 print("rescued ${toString(rescues)} failing step(s); healthy + rescued total = ${toString(total)}")
 
-// --- Contrast: the `?:` Result-default operator is the LOCAL, policy-free tool.
-// --- No handler, no continuation, no counting — just a fixed fallback right here.
-// --- Same error channel, but the decision cannot be centralized or observed. ---
+// `?:` supplies a local fallback without invoking the Rescue policy.
 let localOk  = (10 % 3) ?: -1
 let localBad = (10 % 0) ?: -1
 print("local ?: default  10 % 3 -> ${toString(localOk)}   10 % 0 -> ${toString(localBad)}")
 
-// And the raw float `/` divide-by-zero Result, shown as a value (no rescue).
+// The raw float division Result remains a value.
 print("raw 10 / 0 as a value = ${toString(10 / 0)}")
 print("=== pipeline complete ===")

@@ -1,19 +1,5 @@
-// SUPERPOWER: three TYPED, independent error channels — each with its own
-// resumable recovery policy — instead of one untyped Exception base class.
-//
-// With try/catch you get ONE escape hatch: throw and the stack unwinds, the
-// computation is DEAD, and `catch (Exception e)` can't tell a parse failure
-// from a missing field from an out-of-range value without downcasting. You
-// also can't RESUME — once you've unwound past the throw site, that work is
-// gone forever.
-//
-// Algebraic effects make the failure SET part of the type: the row
-// ![Parse, Missing, Range] on loadConfig proves at compile time exactly which
-// three ways it can fail. Each channel is handled by its own policy, each
-// recovers DIFFERENTLY (Parse -> substitute 0, Missing -> fill a default,
-// Range -> clamp to a bound), and after every recovery the computation
-// CONTINUES at the exact point it stumbled. One run trips all three and still
-// returns a combined result — impossible with exceptions.
+// Three typed operations use independent direct-substitution policies: parse
+// supplies 0, missing supplies a default, and range clamps to a bound.
 
 // --- three distinct, independent typed error channels ---
 effect Parse {
@@ -26,7 +12,7 @@ effect Range {
     clamp: fn(int, int) -> int
 }
 
-// The effect ROW is the honest signature: these are the only failures possible.
+// The row scopes these performs; rows are not yet propagated through calls.
 fn loadConfig() ![Parse, Missing, Range] = {
     let port    = perform Parse.bad("=80=")       // Parse channel: not a number
     let timeout = perform Missing.fill("timeout") // Missing channel: key absent
@@ -35,13 +21,10 @@ fn loadConfig() ![Parse, Missing, Range] = {
     port + timeout + retries
 }
 
-// A single-channel helper — its row admits ONLY Range, so the type system
-// forbids it from ever raising Parse or Missing.
+// This helper declares and performs only Range.
 fn loadRetries(raw, hi) !Range = perform Range.clamp(raw, hi)
 
-// Three NESTED handlers, each channel its own single-mode (tail-resume) policy.
-// None of these arms mention `resume`: every arm's value is substituted at the
-// perform site and the computation always continues.
+// No arm uses resume, so each arm value replaces its operation result.
 let combined = handle Parse
     bad raw => {
         print("[Parse]    cannot parse '${raw}' -> substitute 0")
@@ -73,8 +56,7 @@ in {
     let total = loadConfig()
     print("combined config total = ${toString(total)}")
 
-    // Inner handler SHADOWING + restore: a stricter Range policy overrides the
-    // outer one for just this call, then the outer policy is restored.
+    // The inner Range handler overrides the outer handler for one call.
     let strict = handle Range
         clamp v hi => {
             print("[Range*]   STRICT override: force ${toString(v)} -> 1")
@@ -83,7 +65,7 @@ in {
     in loadRetries(500, 10)
     print("strict retries (inner handler)  = ${toString(strict)}")
 
-    // Outer Range handler is back in effect here — same call, relaxed policy.
+    // Leaving the inner region restores the outer Range handler.
     let relaxed = loadRetries(500, 10)
     print("relaxed retries (outer handler) = ${toString(relaxed)}")
 

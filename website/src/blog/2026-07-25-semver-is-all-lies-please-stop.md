@@ -8,12 +8,13 @@ author: "Christian Findlay"
 modified: 2026-07-25
 readingTime: 9
 image: /assets/images/blog/semver-is-all-lies-please-stop.png
+imageWebp: /assets/images/blog/semver-is-all-lies-please-stop.webp
 imageAlt: "Three translucent release panels appear orderly while a cyan wireframe osprey scan reveals fractures in the dependency network behind them"
 ---
 
 SemVer cannot prove whether a release contains breaking changes.
 
-Semantic Versioning (SemVer) takes a maintainer's opinion about compatibility, compresses it into three integers, and invites package managers to treat the result as truth. A patch release is safe. A minor release is safe. A major release is dangerous. Put a caret in front of the number and let the resolver decide.
+Semantic Versioning (SemVer) takes a maintainer's opinion about compatibility, compresses it into three integers, and invites package managers to treat the result as truth. A patch release claims backward-compatible bug fixes. A minor release claims backward-compatible functionality. A major release may contain incompatible public-API changes. In ecosystems that use caret ranges, the resolver may then admit updates based on those claims.
 
 Except the number has not proved any of that. It records what somebody hoped, intended, or believed about a change. Sometimes they are right. Sometimes they have not even identified the public contract that their users depend on.
 
@@ -41,9 +42,9 @@ That study did not ask people which SemVer digit they would increment. It tested
 
 The ecosystem evidence reaches the same conclusion from a different direction.
 
-An early Maven study found that [around one-third of releases introduced at least one breaking change](https://doi.org/10.1109/SCAM.2014.30). A later, larger replication corrected limitations in that work and found a much more encouraging **83.4%** overall SemVer-compliance rate across 119,879 upgrades. But the same study found that [20.1% of non-major releases still contained a breaking change](https://doi.org/10.1007/s10664-021-10052-y). That is a useful statistical signal. It is nowhere near a compatibility guarantee.
+An early Maven study found that [**30.0%** of 80,589 analyzed release pairs contained at least one binary API breaking change](https://doi.org/10.1109/SCAM.2014.30). A later, larger replication addressed limitations in that protocol and found an **83.4%** SemVer-compliance rate across 119,879 statically analyzed upgrades. Even so, [**20.1%** of the 98,591 non-major upgrades contained a detected API breaking change](https://doi.org/10.1007/s10664-021-10052-y). That is a useful statistical signal. It is nowhere near a compatibility guarantee.
 
-The failure becomes more concrete when we look at clients instead of signatures. Researchers running real npm client test suites found that dependency-induced breaks during non-major updates affected [11.7% of sampled dependent packages and 13.9% of their releases](https://doi.org/10.1145/3576037). Minor and patch labels did not prevent those failures. Transitive dependencies caused most of the manually examined cases, so the package that broke the application was often not even the dependency its developer chose directly.
+The failure becomes more concrete when we look at clients instead of signatures. Researchers running real npm client test suites found that dependency-induced breaks during non-major updates affected [45 of 384 sampled dependent packages (**11.7%**) and 450 of 3,230 tested releases (**13.9%**)](https://doi.org/10.1145/3576037). Minor and patch labels did not prevent those failures. Of 64 manually analyzed cases, 37 (**57.8%**) originated in an indirect provider, so the package that broke the application was often not one its developer chose directly.
 
 SemVer is better than random numbering. That is an extraordinarily low bar. It remains a maintainer assertion presented in a form that encourages automated trust.
 
@@ -53,7 +54,7 @@ A version number is an assertion. A downstream test is evidence.
 
 One failing unchanged client test can prove a specific observed incompatibility: this consumer, under these inputs and this environment, no longer behaves as expected. A green suite proves something narrower: the behavior covered by those tests survived. It cannot prove that every untested consumer, target, call path, or assumption is safe.
 
-That distinction matters because ordinary testing is nowhere near enough. Hejderup and Gousios studied 521 well-tested Java projects and found that their suites covered only 58% of direct dependency calls and 20% of transitive calls. Across more than 1.1 million artificial faulty updates, tests detected only [47% of direct faults and 35% of indirect faults on average](https://doi.org/10.1016/j.jss.2021.111097).
+That distinction matters because ordinary testing is nowhere near enough. Hejderup and Gousios studied 521 well-tested Java projects and found median test coverage of **58%** for direct-dependency calls and **21%** for call paths to transitive dependencies. In a 262-project subset, they generated 1,122,420 artificial updates with simple faults; tests detected a mean [**47%** of direct-dependency faults and **35%** of transitive-dependency faults](https://doi.org/10.1016/j.jss.2021.111097).
 
 So by **extreme testing**, I do not mean “run the package's unit tests and hope harder.” I mean collecting independent evidence from every practical angle:
 
@@ -64,7 +65,7 @@ So by **extreme testing**, I do not mean “run the package's unit tests and hop
 - substitute the candidate into affected clients while keeping the rest of their dependency graph pinned;
 - record failures, timeouts, exclusions, sample sizes, tool versions, and confidence instead of collapsing everything into a green tick.
 
-Research on [using dependent projects' tests](https://doi.org/10.1145/3379597.3387476) and [cross-project compatibility testing](https://doi.org/10.1145/3377811.3380436) shows why this is valuable: library-owned tests cannot exercise all the ways other people use a library. The client supplies information the library author does not possess.
+Research on [using dependent projects' tests](https://doi.org/10.1145/3379597.3387476) detected six of ten selected breakage-inducing npm versions. [Cross-project compatibility testing](https://doi.org/10.1145/3377811.3380436) also found JDK incompatibilities that the JDK regression suite missed. Client tests therefore contribute real usage scenarios and expected behavior that library-owned tests may not cover.
 
 Extreme testing is not a proof that nothing broke. It is the only honest way to accumulate evidence about what did.
 
@@ -72,15 +73,15 @@ Extreme testing is not a proof that nothing broke. It is the only honest way to 
 
 Flutter offers one of the best real-world examples of this attitude.
 
-Its [Customer Test Registry](https://github.com/flutter/tests/blob/main/README.md) contains references to tests maintained by people outside the Flutter team as part of real applications and libraries. Flutter runs them with every commit to give the team visibility into how framework changes affect actual developers. The public registry is only part of the picture: Flutter's breaking-change process says Google also permits the team to run [several tens of thousands of proprietary tests on each commit](https://github.com/flutter/flutter/blob/main/docs/contributing/Tree-hygiene.md#handling-breaking-changes).
+Its [Customer Test Registry](https://github.com/flutter/tests/blob/main/README.md) contains references to tests for applications and libraries that are typically maintained by people outside the Flutter team. Flutter runs those tests with every commit to give the team visibility into how Flutter changes affect real-world developers. The public registry is only part of the picture: Flutter's breaking-change process says Google allows the team to run [several tens of thousands of proprietary tests on each commit](https://github.com/flutter/flutter/blob/main/docs/contributing/Tree-hygiene.md#handling-breaking-changes).
 
-The workflow is refreshingly empirical. Implement the proposed Flutter change, then run the existing client tests **without changing them first**. If they fail, the team has evidence that a real consumer requires a change.
+The workflow is refreshingly empirical. Implement the proposed Flutter change, then run the existing contributed tests **without changing them first**. If one requires changes, Flutter classifies the proposal as a breaking change.
 
-This does not mean Flutter forbids breaking changes. Its [compatibility policy](https://docs.flutter.dev/release/compatibility-policy) says the team works with affected test owners to decide whether the change is valuable enough and to provide fixes. If the break is justified, the team stages it, migrates clients, writes a migration guide, announces it, and records it in the release notes.
+This does not mean Flutter forbids breaking changes. Its [compatibility policy](https://docs.flutter.dev/release/compatibility-policy) says Flutter works with the developers of affected tests to judge whether a change is sufficiently valuable and to provide fixes so those tests continue to pass. For a breaking change governed by that process and judged valuable enough, the team stages the change, migrates participating clients, publishes a migration guide, announces the change, and includes it in the release notes.
 
-The tests are an instrument panel, not a constitutional ban on change. They turn an invisible cost into information that people can rationalize. The team can preserve compatibility, redesign the change, or accept the break with a concrete understanding of whom it affects and how to communicate it.
+The tests are an instrument panel, not a constitutional ban on change. They turn an invisible cost into information that people can rationalize. The team can preserve compatibility, redesign the change, or accept the break with concrete evidence about which contributed tests and participating clients require migration and how the change will be communicated.
 
-[Flutter still uses SemVer in its package ecosystem](https://docs.flutter.dev/packages-and-plugins/dependency-management). I am pointing to its compatibility-detection practice, not claiming Flutter has rejected version numbers. In fact, the practice exposes why SemVer is inadequate: when compatibility matters, the team does not stare harder at a proposed version. It runs consumers.
+[Flutter's dependency-management documentation](https://docs.flutter.dev/packages-and-plugins/dependency-management) states that Dart packages use Semantic Versioning (SemVer). I am pointing to Flutter's compatibility-detection practice, not claiming that Flutter has rejected version numbers. That practice illustrates my argument: Flutter's compatibility policy is based on whether submitted tests fail, so the team runs contributed application and library tests rather than inferring compatibility from a version number.
 
 ## Osprey's package-manager plan separates identity, order, and compatibility
 
@@ -88,9 +89,9 @@ This is why the [Osprey package-manager plan](https://github.com/Nimblesite/ospr
 
 | Concern | Osprey mechanism | What it actually says |
 | --- | --- | --- |
-| Identity | Immutable content digest | These are the exact release bytes. |
-| Order | Registry-assigned ordinal | This release was published after that one. |
-| Compatibility | Checked epoch | These releases claim one compatible contract lineage. |
+| Identity | Immutable release digest | This identifies the exact package key, epoch, source, manifest, and build plan. |
+| Order | Registry-assigned ordinal | This is the release's package-wide sequence position. |
+| Compatibility | Registry-checked epoch | These releases claim one contract lineage, subject to registry checks. |
 
 The epoch keeps the one defensible idea behind a major version: sometimes a package deliberately opens a new incompatible lineage. It discards the false precision of author-selected minor and patch numbers.
 
@@ -106,7 +107,7 @@ Breaking changes are sometimes correct. A bad API should not be immortal. A secu
 
 The job of dependency management is not to pretend those decisions disappeared because somebody typed `PATCH` instead of `MAJOR`. Its job is to identify exact inputs, expose observed consequences, preserve reproducibility, and make compatibility decisions explicit.
 
-A digest can tell me what I received. An ordinal can tell me what came later. An epoch can tell me where a known compatibility boundary lies. Tests, contracts, analysis, and real client runs can tell me what we actually observed.
+A digest can verify the exact release envelope. An ordinal can identify its package-wide sequence position. An epoch can record an explicit compatibility boundary. Tests, contracts, analysis, and real client runs can tell me what we actually observed.
 
 `1.4.7` cannot tell me any of that.
 

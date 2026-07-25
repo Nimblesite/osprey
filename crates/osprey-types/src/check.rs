@@ -285,9 +285,20 @@ impl Checker {
                     name,
                     type_params,
                     variants,
+                    validation_func,
                     position,
                     ..
-                } => self.collect_type(name, type_params, variants, *position),
+                } => {
+                    if validation_func.is_some() {
+                        self.record_err(
+                            TypeError::new(
+                                "validated record `where` is not supported".to_string(),
+                            ),
+                            *position,
+                        );
+                    }
+                    self.collect_type(name, type_params, variants, *position);
+                }
                 Stmt::Effect {
                     name,
                     type_params,
@@ -991,6 +1002,17 @@ mod tests {
         // An extern with no declared return type defaults to Unit.
         ok("extern fn c_log(msg: string)\n\
             fn use_log() -> Unit = c_log(\"x\")\n");
+    }
+
+    #[test]
+    fn unimplemented_validated_record_syntax_is_rejected() {
+        let errs = check(
+            "fn validate(value) = true\n\
+             type Item = { value: int } where validate\n",
+        );
+        assert!(errs
+            .iter()
+            .any(|e| e.message.contains("validated record `where` is not supported")));
     }
 
     #[test]

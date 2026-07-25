@@ -20,4 +20,4 @@ CAP log: [capped 30 to 14; capped 5 to 0; capped 8 to 0; capped 40 to 0; ]
   order 2: from 12 in stock -> took 2, 10 left
   order 4: from 10 in stock -> took 4, 6 left
 HAPPY done: recovered 0 orders, fulfilled 14 units, 6 left in stock
-=== all three batches completed; an exception would have aborted at the first over-draw ===
+=== all three batches completed ===

@@ -1,24 +1,11 @@
-// SUPERPOWER: RETRY is a HANDLER POLICY, not tangled into business logic.
-//
-// With try/catch, the retry loop must physically wrap the throwing call: the
-// caller owns the for-loop, the attempt counter, the backoff, the give-up
-// condition — retry policy and business rules are welded together in one place.
-//
-// Here the business function `readPositive` is TOTALLY UNAWARE that retrying
-// exists. It just asks (`perform Prompt.ask`), validates, and if the answer is
-// bad it recurses to ask AGAIN — an ordinary self-call, a DIFFERENT logical
-// ask each time (NOT a re-perform inside a handler arm, so it is safe). The
-// HANDLER owns the mutable attempt counter and the scripted answers, and it
-// alone decides: resume with the next value, or give up. Swap the handler and
-// the same untouched business function retries differently. Exceptions cannot
-// hand the retry decision to an outside policy like this.
+// `readPositive` validates values supplied by Prompt. One handler keeps
+// resuming with scripted values; another returns without resume to stop.
 
 effect Prompt {
     ask: fn(string) -> int
 }
 
-// Business rule ONLY. No loop, no counter, no give-up logic. Recurses on a bad
-// answer — each recursion is a fresh, separate ask the handler answers anew.
+// Each invalid value causes a fresh Prompt.ask operation.
 fn readPositive(label) -> int !Prompt = {
     let value = perform Prompt.ask(label)
     match value > 0 {
@@ -30,9 +17,7 @@ fn readPositive(label) -> int !Prompt = {
     }
 }
 
-// SCENARIO 1 — succeed on the 3rd try. Scripted answers: -3, 0, 7.
-// Handler owns `attempt`; it resumes every ask, so the computation continues
-// until the business rule finally accepts 7.
+// Resume with -3, 0, then 7.
 mut attempt = 0
 let accepted = handle Prompt
     ask label => {
@@ -48,12 +33,7 @@ let accepted = handle Prompt
 in readPositive("age")
 print("SCENARIO 1 accepted=${toString(accepted)} after ${toString(attempt)} attempts")
 
-// SCENARIO 2 — SAME business function, DIFFERENT handler policy: give up.
-// Scripted answers -1, -2, -3 are all invalid; after 3 bad answers the ask arm
-// takes the branch that returns a sentinel WITHOUT calling resume. That ABORTS
-// the suspended business computation (exception-like early exit) and the
-// sentinel becomes the whole `handle ... in` result — the retry loop stops
-// without the business function ever knowing a limit existed.
+// After three invalid values, return a sentinel without resuming.
 mut tries = 0
 let outcome = handle Prompt
     ask label => {

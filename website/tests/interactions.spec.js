@@ -233,6 +233,10 @@ test.describe("blog search and social metadata", () => {
       "content",
       "https://www.christianfindlay.com/"
     );
+    const renderedImage = await page
+      .locator(".prose-hero")
+      .evaluate((element) => new URL(element.currentSrc).pathname);
+    expect(renderedImage).toBe("/assets/images/blog/semver-is-all-lies-please-stop.webp");
 
     const data = JSON.parse(await page.locator('script[type="application/ld+json"]').textContent());
     const post = data["@graph"].find((item) => item["@type"] === "BlogPosting");

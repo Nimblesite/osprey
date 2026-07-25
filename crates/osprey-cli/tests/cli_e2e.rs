@@ -447,6 +447,7 @@ fn run_compiles_links_and_executes() {
 
 #[test]
 fn explicit_resume_runs_the_performer_continuation() {
+    // [EFFECTS-RESUME]
     let prog = temp_osp("resume_effect", RESUME_EFFECT);
     let o = run_file(&prog, &["--run"]);
     assert_eq!(o.code, Some(0), "stderr={}", o.stderr);

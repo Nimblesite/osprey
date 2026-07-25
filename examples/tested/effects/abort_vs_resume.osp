@@ -1,29 +1,11 @@
-// SUPERPOWER: one effect, BOTH control shapes, chosen at the edge (the handler)
-// instead of at the throw site.
-//
-// With exceptions the control shape is welded into `throw`: once you throw, the
-// throwing computation is DEAD — the catch site can never say "actually, resume
-// where you left off and carry on". So a pipeline that wants "recover and keep
-// going" and a pipeline that wants "abort and unwind" must be written as two
-// DIFFERENT programs.
-//
-// Here ONE `pipeline()` performs the SAME `Step.run` effect. We hand it to two
-// handlers, unchanged:
-//   (1) a RECOVERING handler that resumes every step -> the pipeline runs to
-//       completion, and each arm's post-resume audit line fires as the
-//       continuations unwind in LIFO order (that is finally/cleanup that still
-//       runs WHILE the continuation completes).
-//   (2) an ABORTING handler (still explicit-resume mode) that resumes normal
-//       steps but, for a poison step, returns a sentinel WITHOUT calling resume.
-//       That discards the rest of the pipeline (classic exception throw) YET the
-//       earlier steps' post-resume cleanup lines STILL fire during the unwind.
+// Run one effectful pipeline under a handler that always resumes, then under a
+// handler that aborts by returning without resume. [EFFECTS-RESUME]
 
 effect Step {
     run: fn(int) -> int
 }
 
-// Performs three steps; each has a post-step observation printed inline. When a
-// handler aborts mid-pipeline, every observation past the poison step vanishes.
+// An aborted continuation omits observations after the poison step.
 fn pipeline() -> int !Step = {
     let a = perform Step.run(1)
     print("pipeline saw step1 -> " + toString(a))
@@ -36,9 +18,7 @@ fn pipeline() -> int !Step = {
 
 let sentinel = 0 - 99
 
-// (1) RECOVERING handler — explicit-resume mode, every arm resumes.
-// stepNo is captured locally per invocation so each unwinding audit line names
-// its own step even though counter is shared handler-owned mutable state.
+// Every arm resumes; audit lines run as continuations unwind.
 print("=== recovering handler: resume every step, drive to completion ===")
 mut counter = 0
 let recovered = handle Step
@@ -52,7 +32,7 @@ let recovered = handle Step
 in pipeline()
 print("recovered result=" + toString(recovered))
 
-// (2) ABORTING handler — still explicit-resume mode.
+// Returning at step 2 aborts the suspended computation.
 print("=== aborting handler: poison step 2 throws, earlier cleanup still runs ===")
 mut counter2 = 0
 let aborted = handle Step
@@ -61,9 +41,7 @@ let aborted = handle Step
         counter2 = stepNo
         match x == 2 {
             true => {
-                // This arm ABORTS: in explicit-resume mode, returning WITHOUT
-                // calling resume discards the suspended continuation — steps 2
-                // and 3 of the pipeline never run. Classic exception throw.
+                // No resume: discard the rest of the pipeline.
                 print("poison at step " + toString(stepNo) + " (input " + toString(x) + ") -> abort, discard the rest")
                 sentinel
             }
