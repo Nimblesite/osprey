@@ -403,9 +403,9 @@ fn expression_only_top_level_item_is_a_bare_expr_statement() {
 
 #[test]
 fn reserved_words_each_report_not_yet_supported() {
-    // The remaining Phase-0 words (first-class handler values) must error loudly
-    // rather than misparse. `effect`/`handle`/`perform`/`resume` are now supported
-    // and lower to the canonical effect AST ([FLAVOR-ML-EFFECT]).
+    // First-class handler values must error loudly rather than misparse
+    // ([FLAVOR-HANDLER-VALUE]). `effect`/`handle`/`perform`/`resume` lower to the
+    // canonical effect AST ([FLAVOR-ML-EFFECT]).
     for word in ["handler", "do"] {
         let parsed = ml_err(&format!("{word} Foo\n"));
         assert!(
@@ -422,7 +422,8 @@ fn reserved_words_each_report_not_yet_supported() {
 #[test]
 fn block_with_leading_statement_then_trailing_value() {
     // A block whose first line is a binding and whose last line is a bare
-    // expression: the binding is an item, the expression the block value.
+    // expression: the binding is an item, the expression the block value
+    // ([FLAVOR-ML-BLOCK]).
     let src = "f x =\n    y = x + 1\n    y\n";
     match ml_one(src) {
         Stmt::Function {
@@ -538,9 +539,9 @@ fn interpolation_with_application_fragment_lowers_to_a_call() {
 
 #[test]
 fn three_parameter_function_is_curried_nested_lambda() {
-    // `f a b c = a` curries by default ([FLAVOR-ML-CURRY]): a single ONE-parameter
-    // function over `a` whose body is a nested one-parameter lambda chain over `b`
-    // then `c` — byte-identical to the Default *explicit-curry*
+    // `f a b c = a` curries by default ([FLAVOR-ML-FN], [FLAVOR-ML-CURRY]): a
+    // single ONE-parameter function over `a` whose body is a nested one-parameter
+    // lambda chain over `b` then `c` — byte-identical to the Default *explicit-curry*
     // `fn f(a) = fn(b) => fn(c) => a`, deliberately NOT the flat `fn f(a, b, c)`.
     match ml_one("f a b c = a\n") {
         Stmt::Function {
@@ -649,6 +650,7 @@ fn typed_curried_params_thread_into_function_and_lambda_tail() {
 
 #[test]
 fn tuple_type_and_effect_payload_rendering_are_canonical() {
+    // [FLAVOR-ML-TYPE]
     match ml_one("type TupleBox =\n    pair : (int, string)\n") {
         Stmt::Type { variants, .. } => {
             assert_eq!(variants[0].fields[0].ty, "(int, string)");
@@ -719,6 +721,7 @@ fn extern_without_return_type_uses_none() {
 
 #[test]
 fn concurrency_forms_and_uncurried_calls_lower_to_ast_nodes() {
+    // [FLAVOR-ML-SPAWN], [FLAVOR-ML-CONCURRENCY], [FLAVOR-ML-CALL]
     assert!(matches!(
         let_value("r = await (spawn task 1)\n"),
         Expr::Await(_)
@@ -774,7 +777,8 @@ fn match_with_blank_separator_lines_between_arms() {
 
 #[test]
 fn record_with_blank_separator_lines_between_fields() {
-    // Blank lines between record fields exercise the record-field separator path.
+    // Blank lines between record fields exercise the record-field separator path
+    // ([FLAVOR-ML-RECORD]).
     let src = "p =\n    Point\n        x = 1\n\n        y = 2\n";
     match let_value(src) {
         Expr::TypeConstructor { name, fields, .. } => {

@@ -1,4 +1,5 @@
-// Exercises the pthread transition used by [MEM-FIBER-ISOLATION].
+// Exercises [CONCURRENCY-SPAWN-AWAIT], [CONCURRENCY-CHANNEL],
+// [CONCURRENCY-YIELD], and the pthread transition in [MEM-FIBER-ISOLATION].
 #include <assert.h>
 #include <pthread.h>
 #include <stdbool.h>
@@ -100,6 +101,20 @@ void test_fiber_bounds_checking(void) {
   printf("✅ PASS: Bounds checking prevents segfaults\n");
 }
 
+// A zero-capacity buffer cannot rendezvous in this runtime: both send and recv
+// would wait on an empty buffer. Reject it at construction instead of creating
+// a channel that can only deadlock. [CONCURRENCY-CHANNEL]
+void test_invalid_channel_capacity(void) {
+  printf("Testing invalid channel capacities...\n");
+
+  assert(channel_create(0) == -1 &&
+         "FAIL: zero-capacity channels must be rejected");
+  assert(channel_create(-1) == -1 &&
+         "FAIL: negative-capacity channels must be rejected");
+
+  printf("✅ PASS: Invalid channel capacities are rejected\n");
+}
+
 // Test fiber sleep function
 void test_fiber_sleep(void) {
   printf("Testing fiber sleep function...\n");
@@ -187,6 +202,7 @@ void run_all_fiber_tests(void) {
   test_valid_fiber_spawn();
   test_multiple_fibers();
   test_fiber_bounds_checking();
+  test_invalid_channel_capacity();
   test_fiber_sleep();
   test_fiber_done();
   test_concurrent_execution();

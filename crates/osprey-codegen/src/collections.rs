@@ -415,7 +415,7 @@ fn map_to_list(cg: &mut Codegen, args: &[Expr], take_key: bool) -> Result<Value>
     Ok(list_builder_seal(cg, &bld))
 }
 
-/// `{ k: v, … }` — build a runtime map (string keys) via the map builder.
+/// `{ k: v, … }` — build a runtime string-key map [TYPE-MAP-LITERAL].
 pub(crate) fn gen_map_literal(cg: &mut Codegen, entries: &[osprey_ast::MapEntry]) -> Result<Value> {
     // OSPREY_KEY_STRING = 1.
     let bld = cg.call("i8*", "osprey_map_builder_new", "i32", &["1"]);

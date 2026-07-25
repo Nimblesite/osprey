@@ -5,6 +5,7 @@ excerpt: "Semantic versioning records maintainer intent, not compatibility proof
 description: "Why semantic versioning cannot prove backward compatibility, what breaking-change research shows, and how Osprey's package manager will test dependency updates."
 tags: ["blog", "package-management", "semantic-versioning", "breaking-changes", "compatibility", "testing"]
 author: "Christian Findlay"
+modified: 2026-07-25
 readingTime: 9
 image: /assets/images/blog/semver-is-all-lies-please-stop.png
 imageAlt: "Three translucent release panels appear orderly while a cyan wireframe osprey scan reveals fractures in the dependency network behind them"

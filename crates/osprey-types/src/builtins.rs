@@ -240,18 +240,20 @@ fn lists(e: &mut TypeEnv) {
 }
 
 fn maps(e: &mut TypeEnv) {
-    let k = || Type::Var(0);
-    let v = || Type::Var(1);
-    let m = || Type::map(k(), v());
-    poly(e, "Map", vec![0, 1], vec![], m());
-    poly(e, "mapSet", vec![0, 1], vec![m(), k(), v()], m());
-    poly(e, "mapGet", vec![0, 1], vec![m(), k()], res(v()));
-    poly(e, "mapRemove", vec![0, 1], vec![m(), k()], m());
-    poly(e, "mapMerge", vec![0, 1], vec![m(), m()], m());
-    poly(e, "mapContains", vec![0, 1], vec![m(), k()], b());
-    poly(e, "mapLength", vec![0, 1], vec![m()], i());
-    poly(e, "mapKeys", vec![0, 1], vec![m()], Type::list(k()));
-    poly(e, "mapValues", vec![0, 1], vec![m()], Type::list(v()));
+    // Public map construction uses OSPREY_KEY_STRING in the runtime. Keeping
+    // the key concrete prevents an int/bool value from being interpreted as a
+    // string pointer by the erased map ABI [TYPE-MAP], [TYPE-MAP-LITERAL].
+    let v = || Type::Var(0);
+    let m = || Type::map(s(), v());
+    poly(e, "Map", vec![0], vec![], m());
+    poly(e, "mapSet", vec![0], vec![m(), s(), v()], m());
+    poly(e, "mapGet", vec![0], vec![m(), s()], res(v()));
+    poly(e, "mapRemove", vec![0], vec![m(), s()], m());
+    poly(e, "mapMerge", vec![0], vec![m(), m()], m());
+    poly(e, "mapContains", vec![0], vec![m(), s()], b());
+    poly(e, "mapLength", vec![0], vec![m()], i());
+    poly(e, "mapKeys", vec![0], vec![m()], Type::list(s()));
+    poly(e, "mapValues", vec![0], vec![m()], Type::list(v()));
 }
 
 fn files(e: &mut TypeEnv) {
@@ -289,6 +291,7 @@ fn json(e: &mut TypeEnv) {
 
 fn concurrency(e: &mut TypeEnv) {
     let t = || Type::Var(0);
+    // Fiber operations [CONCURRENCY-SPAWN-AWAIT], [CONCURRENCY-YIELD].
     // await : (Fiber<t>) -> t
     poly(
         e,
@@ -297,7 +300,13 @@ fn concurrency(e: &mut TypeEnv) {
         vec![Type::con("Fiber", vec![t()])],
         t(),
     );
-    mono(e, "fiberDone", vec![any()], i());
+    poly(
+        e,
+        "fiberDone",
+        vec![0],
+        vec![Type::con("Fiber", vec![t()])],
+        i(),
+    );
     mono(e, "yield", vec![], u());
     mono(e, "fiber_yield", vec![i()], i());
     // Channel<t>: create with a buffer size, send/recv values.
@@ -367,6 +376,10 @@ mod tests {
         assert!(e.get("print").is_some());
         assert_eq!(e.get("map").unwrap().vars.len(), 2);
         assert_eq!(e.get("await").unwrap().vars.len(), 1);
+        assert_eq!(
+            builtin_signature("fiberDone").as_deref(),
+            Some("fiberDone : (Fiber<t0>) -> int")
+        );
     }
 
     #[test]
@@ -413,6 +426,54 @@ mod tests {
             ("httpStopServer", "httpStopServer : (int) -> int"),
             ("websocketClose", "websocketClose : (int) -> int"),
             ("jsonFree", "jsonFree : (int) -> Result<int, Error>"),
+        ];
+        for (name, signature) in expected {
+            assert_eq!(builtin_signature(name).as_deref(), Some(signature), "{name}");
+        }
+    }
+
+    #[test]
+    fn public_maps_use_the_runtime_string_key_abi() {
+        let expected = [
+            ("Map", "Map : () -> Map<string, t0>"),
+            (
+                "mapSet",
+                "mapSet : (Map<string, t0>, string, t0) -> Map<string, t0>",
+            ),
+            (
+                "mapGet",
+                "mapGet : (Map<string, t0>, string) -> Result<t0, Error>",
+            ),
+            (
+                "mapKeys",
+                "mapKeys : (Map<string, t0>) -> List<string>",
+            ),
+        ];
+        for (name, signature) in expected {
+            assert_eq!(builtin_signature(name).as_deref(), Some(signature), "{name}");
+        }
+    }
+
+    #[test]
+    fn iterator_builtins_do_not_advertise_runtime_lists() {
+        let expected = [
+            ("range", "range : (int, int) -> Iterator<int>"),
+            (
+                "map",
+                "map : (Iterator<t0>, (t0) -> t1) -> Iterator<t1>",
+            ),
+            (
+                "filter",
+                "filter : (Iterator<t0>, (t0) -> bool) -> Iterator<t0>",
+            ),
+            (
+                "forEach",
+                "forEach : (Iterator<t0>, (t0) -> Unit) -> Unit",
+            ),
+            (
+                "fold",
+                "fold : (Iterator<t0>, t1, (t1, t0) -> t1) -> t1",
+            ),
         ];
         for (name, signature) in expected {
             assert_eq!(builtin_signature(name).as_deref(), Some(signature), "{name}");

@@ -606,7 +606,7 @@ mod tests {
             }
             other => panic!("expected constructor, got {other:?}"),
         }
-        // list + map literals.
+        // List and string-key map literals [TYPE-MAP-LITERAL].
         assert!(matches!(let_value("let r = [1, 2, 3]\n"), Expr::List(v) if v.len() == 3));
         assert!(
             matches!(let_value("let r = { \"a\": 1, \"b\": 2 }\n"), Expr::Map(m) if m.len() == 2)

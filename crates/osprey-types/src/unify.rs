@@ -26,6 +26,7 @@ pub fn unify(ctx: &mut InferCtx, a: &Type, b: &Type) -> Result<(), TypeError> {
         (_, Type::Var(y)) => bind_var(ctx, *y, &a),
 
         // `any` is the universal wildcard.
+        // `any` is the erased compatibility wildcard [TYPE-ANY].
         _ if a.is_named(names::ANY) || b.is_named(names::ANY) => Ok(()),
 
         (Type::Con { name: n1, args: a1 }, Type::Con { name: n2, args: a2 }) => {

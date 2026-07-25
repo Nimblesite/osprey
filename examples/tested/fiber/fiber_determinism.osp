@@ -1,4 +1,5 @@
 // Fiber execution order remains deterministic when awaited in spawn order.
+// [CONCURRENCY-DETERMINISTIC]
 
 extern fn fiber_set_deterministic_mode(enabled: bool) -> int
 

@@ -271,7 +271,8 @@ fn a_lambda_head_takes_plain_parameters_only() {
 // ─── containers and the Result default ──────────────────────────────────────
 
 /// An indented `namespace` owns exactly its block; a bare one owns every
-/// declaration that follows it in the file ([MODULES-NAMESPACE]).
+/// declaration that follows it in the file ([MODULES-NAMESPACE],
+/// [MODULES-FILE-SCOPED-NAMESPACE]).
 #[test]
 fn a_namespace_owns_a_block_or_the_rest_of_the_file() {
     let blocked = ml_ok("namespace Ledger\n    balance = 1\n\ntotal = 2\n");

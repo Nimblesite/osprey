@@ -14,7 +14,7 @@ use support::{ast, config, contains, error_messages, function, import, item, par
 #[test]
 fn mixed_flavors_resolve_by_namespace_not_file_path() {
     // Implements [FLAVOR-INTEROP], [MODULES-FLAVOR-PROJECTION],
-    // [MODULES-PATH-INDEPENDENCE], [MODULES-IMPORT].
+    // [MODULES-PATH-INDEPENDENCE], [MODULES-IMPORT], [MODULES-ABI].
     let library = parsed(
         "src/completely/unrelated/location.ospml",
         Flavor::Ml,

@@ -91,7 +91,7 @@ function extractHeroMetadata(html) {
   };
 }
 
-function updateBlogSocialCards(html, hero) {
+function updateBlogSocialCards(html, hero, modified) {
   const values = [
     ["property", "og:image", hero.url],
     ["property", "og:image:width", hero.width],
@@ -104,6 +104,21 @@ function updateBlogSocialCards(html, hero) {
   if (published) {
     updated = insertMetaAfter(updated, "property", "og:type", "article:published_time", published);
     updated = insertMetaAfter(updated, "property", "article:published_time", "article:author", AUTHOR_URL);
+    const lastModified = modified || published;
+    updated = insertMetaAfter(
+      updated,
+      "property",
+      "article:author",
+      "article:modified_time",
+      lastModified
+    );
+    updated = insertMetaAfter(
+      updated,
+      "property",
+      "article:modified_time",
+      "og:updated_time",
+      lastModified
+    );
   }
   return insertMetaAfter(updated, "name", "twitter:image", "twitter:image:alt", hero.alt);
 }
@@ -119,14 +134,13 @@ function enrichBlogPost(post, hero, modified) {
   post.mainEntityOfPage = { "@type": "WebPage", "@id": post.url };
   post.publisher = { "@id": `${SITE_URL}/#organization` };
   if (post.author?.name === "Christian Findlay") post.author.url = AUTHOR_URL;
-  if (modified) post.dateModified = modified;
+  if (post.datePublished) post.dateModified = modified || post.datePublished;
 }
 
-function enrichBlogBreadcrumb(graph, post) {
+function enrichBlogBreadcrumb(graph) {
   const breadcrumb = graph.find((item) => item["@type"] === "BreadcrumbList");
   const items = breadcrumb?.itemListElement;
   if (!items) return;
-  post.breadcrumb = { "@id": breadcrumb["@id"] };
   if (items.some((item) => item.item === `${SITE_URL}/blog/`)) return;
   items.at(-1).position = 3;
   items.splice(1, 0, {
@@ -156,7 +170,7 @@ function updateBlogStructuredData(html, hero, modified) {
     const post = graph?.find((item) => item["@type"] === "BlogPosting");
     if (!post) return element;
     enrichBlogPost(post, hero, modified);
-    enrichBlogBreadcrumb(graph, post);
+    enrichBlogBreadcrumb(graph);
     enrichBlogOrganization(graph);
     const json = JSON.stringify(data, null, 2).replace(/</g, "\\u003c");
     return `<script type="application/ld+json">\n${json}\n  </script>`;
@@ -298,7 +312,7 @@ export default function (eleventyConfig) {
     const hero = extractHeroMetadata(content);
     if (!hero) return content;
     const modified = content.match(/\bdata-date-modified="([^"]+)"/)?.[1];
-    return updateBlogStructuredData(updateBlogSocialCards(content, hero), hero, modified);
+    return updateBlogStructuredData(updateBlogSocialCards(content, hero, modified), hero, modified);
   });
 
   // Google Analytics (gtag.js) — injected into every generated HTML page's

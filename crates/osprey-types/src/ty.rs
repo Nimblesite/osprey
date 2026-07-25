@@ -26,7 +26,7 @@ pub mod names {
     pub const STRING: &str = "string";
     /// The boolean primitive.
     pub const BOOL: &str = "bool";
-    /// The top type that matches any value.
+    /// The erased compatibility type that unifies with every value [TYPE-ANY].
     pub const ANY: &str = "any";
     /// The unit type, returned by expressions with no meaningful value.
     pub const UNIT: &str = "Unit";

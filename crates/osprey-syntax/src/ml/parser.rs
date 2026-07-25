@@ -202,10 +202,7 @@ impl Parser<'_> {
             TokKind::KwOpaque => self.opaque_decl(),
             TokKind::Reserved(word) => {
                 let word = word.clone();
-                self.error(format!(
-                    "ML construct '{word}' is not yet supported (plan 0013); \
-                     use the Default flavor for now"
-                ));
+                self.error(format!("ML construct '{word}' is not yet supported"));
                 None
             }
             TokKind::Ident(_) => self.ident_item(),

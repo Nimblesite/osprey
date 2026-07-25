@@ -110,6 +110,8 @@ impl Checker {
             Expr::Await(inner) => self.infer_unwrap_con(inner, names::FIBER, env),
             Expr::Recv(channel) => self.infer_unwrap_con(channel, names::CHANNEL, env),
             Expr::Send { channel, value } => {
+                // A channel and its sent value share one element type.
+                // Implements [CONCURRENCY-CHANNEL].
                 let channel_ty = self.infer_expr(channel, env);
                 let value_ty = self.infer_expr(value, env);
                 let element_ty = self.ctx.fresh();
@@ -120,6 +122,8 @@ impl Checker {
                 self.push_assign(&element_ty, &value_ty);
                 Type::unit()
             }
+            // Valued yield forwards its type; bare yield is Unit.
+            // Implements [CONCURRENCY-YIELD].
             Expr::Yield(inner) => match inner {
                 Some(inner) => self.infer_expr(inner, env),
                 None => Type::unit(),
@@ -185,16 +189,17 @@ impl Checker {
         }
     }
 
-    /// Infer a map literal: unify all keys to one type and all values to another.
+    /// Infer a runtime map literal. Its builder uses the string-key ABI
+    /// [TYPE-MAP-LITERAL], so every key must be a string.
     fn infer_map(&mut self, entries: &[osprey_ast::MapEntry], env: &TypeEnv) -> Type {
-        let (k, v) = (self.ctx.fresh(), self.ctx.fresh());
+        let v = self.ctx.fresh();
         for entry in entries {
             let kt = self.infer_expr(&entry.key, env);
             let vt = self.infer_expr(&entry.value, env);
-            self.push_unify(&k, &kt);
+            self.push_unify(&Type::string(), &kt);
             self.push_unify(&v, &vt);
         }
-        Type::map(k, v)
+        Type::map(Type::string(), v)
     }
 
     /// Infer an anonymous object literal as an unnamed record of its fields.
@@ -223,7 +228,7 @@ impl Checker {
     /// fresh instantiation of the declaration), unify the arguments against
     /// the instantiated parameters, and yield the instantiated result type.
     /// The resolved signature is published per site for the code generator.
-    /// Implements [EFFECTS-GENERIC-INSTANTIATION].
+    /// Implements [EFFECTS-GENERIC-INSTANTIATION] and [EFFECTS-OP-TYPING].
     fn infer_perform(
         &mut self,
         effect: &str,
@@ -237,6 +242,11 @@ impl Checker {
         for na in named_arguments {
             let _ = self.infer_expr(&na.value, env);
         }
+        if !named_arguments.is_empty() {
+            self.errors.push(TypeError::new(format!(
+                "perform `{effect}.{operation}` does not support named arguments"
+            )));
+        }
         let scope = self
             .handler_scopes
             .iter()
@@ -245,15 +255,29 @@ impl Checker {
             .map(|s| (s.args.clone(), s.ops.clone()))
             .or_else(|| self.effect_instance_ops(effect));
         let Some((eff_args, ops)) = scope else {
+            self.errors
+                .push(TypeError::new(format!("unknown effect `{effect}`")));
             return self.ctx.fresh();
         };
         let Some(op) = ops.get(operation).cloned() else {
+            self.errors.push(TypeError::new(format!(
+                "effect `{effect}` has no operation `{operation}`"
+            )));
             return self.ctx.fresh();
         };
-        if op.params.len() == arg_tys.len() {
+        if !named_arguments.is_empty() {
+            // Named arguments have already produced their specific diagnostic;
+            // do not add a misleading positional-arity error.
+        } else if op.params.len() == arg_tys.len() {
             for (p, a) in op.params.iter().zip(&arg_tys) {
                 self.push_assign(p, a);
             }
+        } else {
+            self.errors.push(TypeError::new(format!(
+                "effect operation `{effect}.{operation}` expects {} argument(s), got {}",
+                op.params.len(),
+                arg_tys.len()
+            )));
         }
         if let Some(pos) = position {
             self.perform_tys.push((
@@ -287,17 +311,44 @@ impl Checker {
         position: Option<osprey_ast::Position>,
         env: &TypeEnv,
     ) -> Type {
-        let (eff_args, inst_ops) = self.effect_instance_ops(effect).unwrap_or_default();
+        let (eff_args, inst_ops, effect_known) = match self.effect_instance_ops(effect) {
+            Some((args, ops)) => (args, ops, true),
+            None => {
+                self.errors
+                    .push(TypeError::new(format!("unknown effect `{effect}`")));
+                (Vec::new(), HashMap::new(), false)
+            }
+        };
         let answer = self.ctx.fresh();
         for arm in arms {
             let (params, op_ret) = match inst_ops.get(&arm.operation) {
                 Some(op) if op.params.len() == arm.params.len() => {
                     (op.params.clone(), op.ret.clone())
                 }
-                _ => (
-                    (0..arm.params.len()).map(|_| self.ctx.fresh()).collect(),
-                    self.ctx.fresh(),
-                ),
+                Some(op) => {
+                    self.errors.push(TypeError::new(format!(
+                        "handler operation `{effect}.{}` expects {} parameter(s), got {}",
+                        arm.operation,
+                        op.params.len(),
+                        arm.params.len()
+                    )));
+                    (
+                        (0..arm.params.len()).map(|_| self.ctx.fresh()).collect(),
+                        op.ret.clone(),
+                    )
+                }
+                None => {
+                    if effect_known {
+                        self.errors.push(TypeError::new(format!(
+                            "effect `{effect}` has no operation `{}`",
+                            arm.operation
+                        )));
+                    }
+                    (
+                        (0..arm.params.len()).map(|_| self.ctx.fresh()).collect(),
+                        self.ctx.fresh(),
+                    )
+                }
             };
             let mut local = env.child();
             for (p, pty) in arm.params.iter().zip(params) {
@@ -791,6 +842,15 @@ mod tests {
     }
 
     #[test]
+    fn fused_iterator_functions_reject_materialized_lists() {
+        ok("range(0, 3) |> map(fn(x) => x + 1) |> forEach(print)\n");
+        let errs = bad("[1, 2, 3] |> map(fn(x) => x + 1) |> forEach(print)\n");
+        assert!(errs
+            .iter()
+            .any(|e| e.message.contains("Iterator") && e.message.contains("List")));
+    }
+
+    #[test]
     fn covers_every_simple_expression_form() {
         // The parser only emits many `Expr` arms from real source, so one program
         // mixes float/string/bool/interpolation/list/map/object/unary/field-access/
@@ -836,6 +896,7 @@ mod tests {
 
     #[test]
     fn yield_forwards_its_value_type_and_send_checks_the_channel_element() {
+        // Implements [CONCURRENCY-YIELD] and [CONCURRENCY-CHANNEL].
         ok("fn hand_off(value: int) -> int = yield value\n");
         let errs = bad(
             "fn wrong(ch: Channel<int>) -> Unit = send(ch, \"wrong\")\n",
@@ -864,6 +925,36 @@ mod tests {
               let a = perform Guard.check(5)\n\
               a + 1\n\
             }\n");
+    }
+
+    #[test]
+    fn effect_operations_must_exist_and_match_their_declared_arity() {
+        // [EFFECTS-OP-TYPING]
+        let missing = bad(
+            "effect Logger { log: fn(string) -> Unit }\n\
+             fn run() -> Unit !Logger = perform Logger.missing(\"hi\")\n",
+        );
+        assert!(missing
+            .iter()
+            .any(|e| e.message.contains("has no operation `missing`")));
+
+        let wrong_arity = bad(
+            "effect Logger { log: fn(string) -> Unit }\n\
+             fn run() -> Unit !Logger = perform Logger.log()\n",
+        );
+        assert!(wrong_arity
+            .iter()
+            .any(|e| e.message.contains("expects 1 argument(s), got 0")));
+
+        let bad_arm = bad(
+            "effect Logger { log: fn(string) -> Unit }\n\
+             let result = handle Logger\n\
+               missing msg => {}\n\
+             in {}\n",
+        );
+        assert!(bad_arm
+            .iter()
+            .any(|e| e.message.contains("has no operation `missing`")));
     }
 
     #[test]
@@ -1032,6 +1123,15 @@ mod tests {
     }
 
     #[test]
+    fn map_literals_and_public_operations_reject_non_string_keys() {
+        let literal_errors = bad("let m = { 1: \"one\" }\n");
+        assert!(!literal_errors.is_empty());
+
+        let operation_errors = bad("let m = mapSet(Map(), 1, \"one\")\n");
+        assert!(!operation_errors.is_empty());
+    }
+
+    #[test]
     fn non_dividing_float_arithmetic_is_plain() {
         let parsed = parse_program(
             "fn add(a: float, b: float) = a + b\n\
@@ -1046,13 +1146,11 @@ mod tests {
     }
 
     #[test]
-    fn perform_with_named_arguments() {
-        // A perform whose operation takes a named argument drives the named-arg
-        // loop; `perform` named args are built directly (the parser emits only
-        // positional perform args).
+    fn perform_named_arguments_are_rejected_before_codegen() {
+        // The source grammars emit positional perform arguments. Reject a
+        // hand-built named argument rather than letting codegen ignore it.
+        // [EFFECTS-OP-TYPING]
         use osprey_ast::{Expr, NamedArgument, Program, Stmt};
-        ok("effect Logger { log: fn(string) -> Unit }\n\
-            fn shout(msg: string) -> Unit !Logger = perform Logger.log(msg)\n");
         let perform = Stmt::Expr {
             value: Expr::Perform {
                 effect: "Logger".into(),
@@ -1069,7 +1167,9 @@ mod tests {
         let errs = check_program(&Program {
             statements: vec![perform],
         });
-        assert!(errs.is_empty(), "unexpected errors: {errs:?}");
+        assert!(errs
+            .iter()
+            .any(|e| e.message.contains("does not support named arguments")));
     }
 
     #[test]

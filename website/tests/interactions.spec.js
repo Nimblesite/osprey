@@ -231,6 +231,10 @@ test.describe("blog search and social metadata", () => {
     await expect(page).toHaveTitle("SemVer Is All Lies. Please Stop");
     await expect(page.locator('meta[property="og:image"]')).toHaveAttribute("content", image);
     await expect(page.locator('meta[name="twitter:image"]')).toHaveAttribute("content", image);
+    await expect(page.locator('meta[property="article:author"]')).toHaveAttribute(
+      "content",
+      "https://www.christianfindlay.com/"
+    );
 
     const data = JSON.parse(await page.locator('script[type="application/ld+json"]').textContent());
     const post = data["@graph"].find((item) => item["@type"] === "BlogPosting");
@@ -239,8 +243,17 @@ test.describe("blog search and social metadata", () => {
       image: { url: image, width: 1600, height: 840 },
       mainEntityOfPage: { "@type": "WebPage", "@id": `https://www.ospreylang.dev${path}` },
       publisher: { "@id": "https://www.ospreylang.dev/#organization" },
+      author: { name: "Christian Findlay", url: "https://www.christianfindlay.com/" },
     });
+    expect(post.description).toContain("Osprey's package manager");
     expect(post.dateModified).toBe(post.datePublished);
+
+    const breadcrumb = data["@graph"].find((item) => item["@type"] === "BreadcrumbList");
+    expect(breadcrumb.itemListElement.map((item) => item.name)).toEqual([
+      "Home",
+      "Blog",
+      "SemVer Is All Lies. Please Stop",
+    ]);
   });
 });
 

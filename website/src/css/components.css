@@ -16,6 +16,7 @@
 .logo {
   display: inline-flex;
   align-items: center;
+  min-height: 48px;
   gap: 0.55rem;
   font-weight: 700;
   font-size: 1.3rem;
@@ -1071,6 +1072,12 @@ table.data td.num {
     background: var(--surface-container);
     border-bottom: 1px solid var(--outline-variant);
     gap: var(--space-2);
+  }
+  .nav-link {
+    display: flex;
+    align-items: center;
+    width: 100%;
+    min-height: 48px;
   }
   .nav-link.active { border-bottom-color: transparent; }
 }

@@ -1,4 +1,4 @@
-//! Fibers, channels, `yield` and `select`, lowered to the same C fiber runtime
+//! Fibers, channels, and `yield`, lowered to the same C fiber runtime
 //! every compiled Osprey program links (`fiber_runtime.c` in
 //! `libfiber_runtime.a`). `spawn e` lowers `e` as a zero-parameter closure
 //! (`crate::closure`): the thunk takes the closure cell as its env, reloads the
@@ -10,9 +10,9 @@
 //! animate against while the fiber works. Channels are
 //! `channel_create`/`channel_send`/`channel_recv`; channel ids and fiber ids
 //! draw from the runtime's one shared counter. `yield e` performs the runtime's
-//! cooperative hand-off (`fiber_yield`) and evaluates to its operand; `select`
-//! takes its first arm (the deterministic examples drive arm readiness by
-//! `send`/`recv` order).
+//! cooperative hand-off (`fiber_yield`) and evaluates to its operand.
+//! Implements [CONCURRENCY-SPAWN-AWAIT], [CONCURRENCY-CHANNEL], and
+//! [CONCURRENCY-YIELD].
 
 use crate::builder::Codegen;
 use crate::conv::{as_i64, box_to_i64, unbox_from_i64};
@@ -116,7 +116,9 @@ pub(crate) fn gen_recv(cg: &mut Codegen, channel: &Expr) -> Result<Value> {
     Ok(Value::new(r, LType::I64))
 }
 
-/// `select { … }` — take the first arm (the example's deterministic choice).
+/// Legacy direct-AST lowering for `select`. The typed compiler rejects every
+/// such node before code generation ([CONCURRENCY-SELECT-REJECT]); this remains
+/// only because an older codegen unit test constructs the node directly.
 pub(crate) fn gen_select(cg: &mut Codegen, arms: &[MatchArm]) -> Result<Value> {
     match arms.first() {
         Some(arm) => gen_expr(cg, &arm.body),
@@ -144,7 +146,8 @@ pub(crate) fn gen_builtin(cg: &mut Codegen, name: &str, args: &[Expr]) -> Result
         // `fiber_yield(v)` called as an ordinary function shares `yield`'s
         // lowering — the same runtime hand-off, forwarding `v`.
         "fiber_yield" => gen_yield(cg, args.first())?,
-        // `fiberDone(f)` — the C runtime's non-blocking completion probe.
+        // `fiberDone(f)` — the C runtime's non-blocking completion probe
+        // [CONCURRENCY-YIELD].
         "fiberDone" => {
             let Some(a) = args.first() else {
                 return Err(crate::error::CodegenError::invalid(

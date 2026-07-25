@@ -1,6 +1,0 @@
-// This should fail - passing any to function expecting specific type
-let x: any = 42
-
-fn add(a: int, b: int) = a + b
-
-let result = add(a: x, b: 1) 

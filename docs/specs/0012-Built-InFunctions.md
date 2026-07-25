@@ -465,17 +465,16 @@ Releases process resources.
 
 ## Collection Functions — [BUILTIN-COLLECTIONS]
 
-`List<T>` and `Map<K, V>` are persistent: operations return new collections
-without changing their inputs. Except for `length` and `isEmpty`, public names
-are prefixed with `list` or `map`.
+Collection operations return new values without changing their inputs. Except
+for `length` and `isEmpty`, public names are prefixed with `list` or `map`.
 
 ### Common (`List` and `Map`) — [BUILTIN-COLLECTION-COMMON]
 
-#### `length(list: List<T>) -> int` &nbsp; / &nbsp; `length(map: Map<K, V>) -> int` — [BUILTIN-COLLECTION-LENGTH]
+#### `length(list: List<T>) -> int` &nbsp; / &nbsp; `length(map: Map<string, V>) -> int` — [BUILTIN-COLLECTION-LENGTH]
 Returns the element count. `listLength` and `mapLength` are equivalent
 type-specific spellings.
 
-#### `isEmpty(list: List<T>) -> bool` &nbsp; / &nbsp; `isEmpty(map: Map<K, V>) -> bool` — [BUILTIN-COLLECTION-ISEMPTY]
+#### `isEmpty(list: List<T>) -> bool` &nbsp; / &nbsp; `isEmpty(map: Map<string, V>) -> bool` — [BUILTIN-COLLECTION-ISEMPTY]
 Returns whether the element count is zero. The receiver type selects string,
 list, or map behavior for both common functions.
 
@@ -504,29 +503,30 @@ Returns whether an element is structurally equal to `value`.
 #### `forEachList(list: List<T>, function: fn(T) -> Unit) -> Unit` — [BUILTIN-LIST-FOREACH]
 Calls `function` once per element in index order.
 
-### `Map<K, V>` — [BUILTIN-MAP]
+### `Map<string, V>` — [BUILTIN-MAP]
 
-`Map()` creates an empty persistent map. Map iteration order is unspecified.
+`Map()` and map literals create string-keyed maps. Map iteration order is
+unspecified.
 
-#### `mapGet(map: Map<K, V>, key: K) -> Result<V, Error>` — [BUILTIN-MAP-GET]
+#### `mapGet(map: Map<string, V>, key: string) -> Result<V, Error>` — [BUILTIN-MAP-GET]
 Equivalent to `map[key]`. A missing key returns `Error`.
 
-#### `mapContains(map: Map<K, V>, key: K) -> bool` — [BUILTIN-MAP-CONTAINS]
+#### `mapContains(map: Map<string, V>, key: string) -> bool` — [BUILTIN-MAP-CONTAINS]
 Returns whether `key` is present.
 
-#### `mapSet(map: Map<K, V>, key: K, value: V) -> Map<K, V>` — [BUILTIN-MAP-SET]
+#### `mapSet(map: Map<string, V>, key: string, value: V) -> Map<string, V>` — [BUILTIN-MAP-SET]
 Returns a map with `key` bound to `value`, replacing any prior binding.
 
-#### `mapRemove(map: Map<K, V>, key: K) -> Map<K, V>` — [BUILTIN-MAP-REMOVE]
+#### `mapRemove(map: Map<string, V>, key: string) -> Map<string, V>` — [BUILTIN-MAP-REMOVE]
 Returns a map without `key`. A missing key leaves the map unchanged.
 
-#### `mapMerge(left: Map<K, V>, right: Map<K, V>) -> Map<K, V>` — [BUILTIN-MAP-MERGE]
+#### `mapMerge(left: Map<string, V>, right: Map<string, V>) -> Map<string, V>` — [BUILTIN-MAP-MERGE]
 Returns the right-biased union. `left + right` is equivalent.
 
-#### `mapKeys(map: Map<K, V>) -> List<K>` — [BUILTIN-MAP-KEYS]
+#### `mapKeys(map: Map<string, V>) -> List<string>` — [BUILTIN-MAP-KEYS]
 Returns all keys in unspecified order.
 
-#### `mapValues(map: Map<K, V>) -> List<V>` — [BUILTIN-MAP-VALUES]
+#### `mapValues(map: Map<string, V>) -> List<V>` — [BUILTIN-MAP-VALUES]
 Returns all values in the same traversal order as `mapKeys`.
 
 ## Iterators and Pipe

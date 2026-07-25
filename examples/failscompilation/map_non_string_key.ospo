@@ -1,0 +1,5 @@
+// Public maps use string keys [TYPE-MAP].
+fn main() -> int {
+  let m = mapSet(Map(), 1, "one")
+  0
+}

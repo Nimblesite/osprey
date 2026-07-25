@@ -1,6 +1,0 @@
-// Test that triggers getNamedArgumentPosition for any type error
-fn testFunc(x: int, y: string) -> int = x + 1
-
-// This should cause an any type error and trigger getNamedArgumentPosition
-let anyVal: any = 42
-let result = testFunc(x: anyVal, y: "hello")

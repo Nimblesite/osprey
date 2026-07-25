@@ -1,8 +1,0 @@
-// This should fail compilation: Map() defaults to string keys, so int keys
-// would SIGSEGV at runtime when hash_string dereferences the int-bit-pattern
-// as a char*. Until typed Map constructors land, mapSet must reject non-string keys.
-
-fn main() -> int {
-  let m = mapSet(Map(), 1, "one")
-  0
-}

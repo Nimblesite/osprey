@@ -403,7 +403,7 @@ Block expressions and their scoping are defined in [Block Expressions](0008-Bloc
 listAccess ::= expression "[" expression "]"
 ```
 
-Indexing returns `Result<T, IndexError>`:
+Indexing returns `Result<T, Error>`:
 
 ```osprey
 let numbers = [1, 2, 3, 4]

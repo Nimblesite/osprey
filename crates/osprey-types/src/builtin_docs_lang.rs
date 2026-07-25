@@ -404,7 +404,7 @@ pub(crate) static LISTS: &[BuiltinDoc] = &[
     ),
     builtin_doc!(
         "forEachList",
-        "Apply function to every element of list. Phase 7 of collections plan.",
+        "Applies function to every list element in index order.",
         ["list" => "The list", "function" => "Function applied per element"],
         "forEachList(xs, print)",
     ),
@@ -422,7 +422,7 @@ pub(crate) static LISTS: &[BuiltinDoc] = &[
 pub(crate) static MAPS: &[BuiltinDoc] = &[
     builtin_doc!(
         "Map",
-        "Creates a new, empty persistent map.",
+        "Creates a new empty string-keyed map.",
         [],
         "let m = Map()",
     ),
@@ -466,7 +466,7 @@ pub(crate) static MAPS: &[BuiltinDoc] = &[
         "mapKeys",
         "All keys of the map as a list. Order unspecified.",
         ["map" => "The map"],
-        "mapKeys(m)  // List<K>",
+        "mapKeys(m)  // List<string>",
     ),
     builtin_doc!(
         "mapValues",

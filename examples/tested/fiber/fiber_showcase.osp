@@ -1,4 +1,5 @@
-// Fiber + channel + yield + lambda showcase.
+// Fiber + channel + yield + lambda coverage. [CONCURRENCY-SPAWN-AWAIT]
+// [CONCURRENCY-CHANNEL] [CONCURRENCY-YIELD]
 // Combines what fiber_concurrency_proof, fiber_isolation_test, fiber_test,
 // fiber_final, fiber_advanced, simple_fiber were all proving piecemeal:
 // — spawn/await produce real fiber IDs and out-of-order await works
