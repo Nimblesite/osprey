@@ -7,8 +7,9 @@ It activates only when the environment variable `OSPREY_PROFILE=<path>` is set
 at process start; the raw profile is written to `<path>` at normal exit.
 `OSPREY_PROFILE_HZ=<n>` overrides the sampling rate (clamped to 10..10000,
 default 997 — a non-round rate so sampling never phase-locks with 100/1000 Hz
-periodic activity). Because activation is environment-only, any Osprey binary —
-including production `--compile` output — can be profiled after the fact.
+periodic activity). Because activation is environment-only, any native POSIX
+Osprey binary — including production `--compile` output — can be profiled after
+the fact. Windows and Wasm builds carry inactive profiler stubs.
 
 ## [PROF-COLLECT-SAMPLER] Collection
 
@@ -71,19 +72,20 @@ symbol names, files, and lines are resolved offline):
  "images":[{"path":"/path/bin","base":0,"slide":0}],
  "threads":[{"fiber":0,"label":"main"}],
  "stacks":[[4301231,4301100]],
- "samples":[[12345,0,0,0]]}
+ "samples":[[12345,0,0,0]],
+ "dropped":0}
 ```
 
 `stacks` are leaf-first raw return addresses. `samples` rows are
 `[t_rel_ns, thread_index, stack_index, state]` with state `0` = on-CPU,
-`1` = waiting. A single top-level `dropped` counter reports the samples the
-runtime dropped (ring overflow).
+`1` = waiting. A single top-level `dropped` counter reports samples the runtime
+could not retain (sampler-ring overflow or allocation/interning failure).
 
 ## [PROF-SYMBOLIZE-OFFLINE] Symbolization
 
 The `osprey-profiler` crate maps each pc to its image, computes the unslid
-address, and batch-symbolizes via `llvm-symbolizer` (file/line/column plus
-inline expansion), falling back to `atos` on macOS and raw hex names when no
+address, and batch-symbolizes via `llvm-symbolizer` (file/line plus inline
+expansion), falling back to `atos` on macOS and raw hex names when no
 symbolizer is present. Return addresses (every frame except the leaf) are
 adjusted by −1 so samples attribute to the call line, not the next line.
 Osprey symbols are unmangled, so names map 1:1 to source functions.
@@ -106,7 +108,8 @@ mode is given): compile with [PROF-BUILD-MODE], execute with `OSPREY_PROFILE`
 pointing at a scratch raw file, then post-process:
 
 1. Write `<stem>.speedscope.json` — primary export, one sampled profile per
-   fiber sharing an interned frame table (root-first sample stacks).
+   fiber that produced samples, sharing an interned frame table (root-first
+   sample stacks).
 2. Write `<stem>.cpuprofile` — V8 format (µs timeDeltas, node call tree,
    0-based lines); opens natively in VS Code's built-in profile viewer.
 3. Write `<stem>.folded` — Brendan Gregg collapsed stacks with the fiber as a
@@ -141,8 +144,8 @@ self/total hot-function table — plus after-line heat decorations
 
 - C unit test (`profiler_runtime_tests.c`): registers threads, runs a busy
   loop under a high-rate sampler, asserts samples were captured, stacks are
-  non-empty and bounds-valid, and the raw JSON parses.
-- Rust: `osprey-profiler` unit tests cover raw parsing, aggregation
+  non-empty and bounds-valid, and checks the raw JSON shape.
+- Rust: `osprey-profiler` unit tests cover full raw parsing, aggregation
   (self/total, hot lines, fiber split), every exporter's schema shape, and the
   report formatter; the symbolizer is a trait so transforms are tested pure.
 - `make test` end-to-end: run one tested example under `--profile` and assert

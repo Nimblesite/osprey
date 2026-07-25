@@ -1,54 +1,125 @@
 # Osprey — Messaging Kit
 
-Copy blocks for the site, README, socials and ads. Two audience tracks: **systems programmers** (Default flavor) and **FP devotees** (ML flavor). Effects are pitched as *plumbing you no longer have to write*, never as category theory.
+Copy blocks for the site, README, socials and ads. Lead with the shared product story:
+**safety, performance and elegance**. Then translate it for two audiences:
+mainstream systems developers and functional programmers.
 
 ---
 
 ## 1. Positioning statement (the one paragraph everything else compresses)
 
-> Osprey is a statically typed functional language that compiles through LLVM to a native binary — and it ships the thing every other language is slowly, painfully retrofitting: a complete, typed algebraic effect system with real continuations. Effects are how you do dependency injection, logging, storage, retries, mocking and concurrency, without a framework, without `async` infecting your signatures, and without a monad transformer stack. Hindley-Milner infers your types. Fibers run your concurrency. Memory management is a link-time choice — Perceus-style ARC, tracing GC, or nothing at all — and none of it appears in your source. Pick braces or pick the offside rule; it's the same language, the same checker, the same binary.
+> Osprey is a statically typed functional language for building fast, reliable
+> software without giving up readable code. It compiles through LLVM to native
+> binaries, isolates concurrent work with fibers, and makes failure and effects
+> explicit in the type system. Hindley-Milner inference, algebraic data types and
+> algebraic effects keep the code direct and composable. Choose familiar braces
+> or a true ML syntax; both use the same type checker, optimiser and runtime.
 
 ---
 
 ## 2. Hero lines
 
 **Primary (site):**
-> **Algebraic effects, with a day job.**
-> One functional language. Two first-class syntaxes. Native speed, typed effects, and no `async` in sight.
+> **Safe systems programming. Functional elegance.**
+> Native binaries, typed effects and isolated concurrency in one language with
+> two first-class syntaxes.
 
 **Alternates:**
 - *Direct-style code. Typed effects. No colored functions, no monad stack, no runtime lock-in.*
-- *async/await is an effect system with one hardcoded effect. Osprey shipped the general case.*
-- *Haskell-grade elegance. C-grade output. Neither one is a bit you have to accept.*
+- *The safety you expect from a modern systems language, with the composition you expect from ML.*
+- *Familiar when you want it. Functional all the way down.*
+- *One language for native performance, explicit effects and readable code.*
 - *Swap the handler, not the code.*
 
 **Subhead:**
-> Osprey compiles to LLVM. Effects are declared in the type, handled at the edge, and cost you a function call. Fibers give you concurrency without coloring your functions. Memory is a compiler flag: `--memory=arc`, `--memory=gc`, or `--static-memory` for zero runtime memory management at all.
+> Osprey combines checked arithmetic, algebraic data types and isolated fibers
+> with LLVM-native code generation. Typed effects replace much of the plumbing
+> around dependency injection, mocking and async code. Memory management is a
+> build choice: precise ARC, tracing GC, or a checked static-memory subset.
 
 ---
 
-## 3. Two flavors, two tribes
+## 3. Osprey in 30 seconds
 
-### Default flavor — for systems programmers
+### Safety
+
+- **Failures are values.** No null, exceptions or panics as routine control flow;
+  use `Option`, `Result` and exhaustive pattern matching.
+- **Arithmetic does not silently wrap.** Checked operations return a typed error.
+- **Effects have typed contracts.** Operations declare their argument and result
+  types, and effect-bearing signatures document required capabilities. Complete
+  effect-row propagation and missing-handler rejection are still in progress.
+- **Concurrency is isolated.** Fibers communicate by moving or copying values
+  over channels, avoiding shared mutable state and its data races.
+- **Memory is safe by construction in Osprey code.** The C FFI is an explicit
+  boundary that remains yours to audit.
+
+### Performance
+
+- **Native code through LLVM.** No VM and no JIT warm-up.
+- **Lightweight fibers.** Run large numbers of concurrent tasks without an OS
+  thread per task.
+- **Persistent collections with structural sharing.** Immutable lists and maps
+  retain practical asymptotics without copying whole structures.
+- **Choose memory management at build time.** Use precise ARC, native tracing GC,
+  or `--static-memory`, which rejects programs that require runtime reference
+  counting.
+- **A direct C FFI.** Link existing native libraries through typed declarations
+  and opaque pointers.
+
+### Elegance
+
+- **One general effect system.** Logging, storage, retries, testing and
+  concurrency use the same composable mechanism instead of separate frameworks.
+- **Direct-style concurrent code.** No `async fn`, future types or `.await`
+  threaded through every intermediate call.
+- **Hindley-Milner inference.** Types stay precise without turning every function
+  into an annotation exercise.
+- **Functional data modelling.** Algebraic data types, immutable values and
+  exhaustive matching make domain logic compact and explicit.
+- **Two first-class syntaxes.** Use familiar braces or layout-sensitive,
+  curry-by-default ML syntax. Both lower to the same canonical AST.
+
+### The same features, in each audience's language
+
+| Osprey feature | For C#, Go, Rust and Java developers | For ML and FP developers |
+| --- | --- | --- |
+| Typed algebraic effects | DI, mocks, ambient context and retry policies without framework plumbing | Named effects and lexical handlers without transformer stacks or `lift` |
+| Isolated fibers | Lightweight concurrency without shared-state locking or colored functions | Direct-style concurrency built on the same continuation machinery as other effects |
+| Algebraic data types | Explicit domain models with exhaustive handling of every case | Familiar sums, products and pattern matching with HM inference |
+| Pluggable memory | Choose ARC, GC or a checked zero-runtime-memory subset at build time | Pure source semantics remain independent of reclamation strategy |
+| Two syntax flavors | Braces, `fn`, named arguments and familiar control flow | Offside layout, currying, whitespace application and partial application |
+| LLVM code generation | Native binaries and straightforward C interop | High-level functional composition without giving up native output |
+
+---
+
+## 4. Two flavors, one language
+
+### Default flavor — familiar to mainstream developers
 
 **Headline:** *If you can read Go, you can read Osprey.*
 
-Braces, `fn`, `if`/`else`, named arguments, `match`. It reads like Kotlin or Swift and compiles like C. You get:
+Braces, `fn`, `if`/`else`, named arguments and `match`. It is designed to be
+readable on first contact for developers coming from C#, Go, Rust, Java, Kotlin
+or Swift. This is a syntax choice, not a reduced version of the language.
 
 - **Native binaries via LLVM.** No VM, no JIT warmup, no shipping a runtime.
 - **C FFI that actually works.** `// @link: sqlite3`, `extern fn`, typed signatures, opaque `Ptr` handles with no arithmetic and no dereference. The SQLite integration in the repo is driven entirely through it.
 - **Memory management you choose at link time.** Perceus-style precise ARC (non-atomic — fibers share nothing, so no atomics anywhere) or a tracing GC. Or `--static-memory`, which *fails the build* on any construct that would need a refcount — Rust-class output, no borrow checker to fight, and byte-identical behaviour to the default mode.
-- **Arithmetic that can't silently wrap.** Every `+ - * %` returns `Result<int, MathError>`.
+- **Arithmetic that can't silently wrap.** Checked operations return `Result<int, MathError>`.
 - **No null. No exceptions. No panics as control flow.** Option and Result, exhaustively matched.
 - **Fibers instead of threads.** Spawn thousands, await out of order, message-pass over channels, and never reach for a mutex.
 
 > **Pull quote:** *You wanted Rust's output without Rust's ceremony. `--static-memory` compiles to zero runtime memory operations and tells you exactly which value defeated it and why.*
 
-### ML flavor — for FP devotees
+### ML flavor — native to functional programmers
 
 **Headline:** *Offside rule. Curry by default. Effects instead of transformers.*
 
-Layout-sensitive, whitespace application `f a b`, `=>` clauses, and partial application that falls straight out of currying. Not a dialect and not the lesser twin — both flavors lower to the **same canonical AST** before type checking, proven byte-for-byte in the test suite. After lowering, nothing downstream can tell which one you wrote.
+Layout-sensitive, with whitespace application `f a b`, `=>` clauses and partial
+application that falls naturally out of currying. It is not a compatibility
+dialect: both flavors lower to the **same canonical AST** before type checking.
+After lowering, nothing downstream can tell which one you wrote.
 
 - **Hindley-Milner inference.** Annotate when you want documentation, not when the compiler is stuck.
 - **No `IO` at the top of every signature.** An effect row is a set of named operations, not a monolith. `!Logger` means logging, not "anything at all."
@@ -61,7 +132,7 @@ Layout-sensitive, whitespace application `f a b`, `=>` clauses, and partial appl
 
 ---
 
-## 4. Algebraic effects — the practical pitch
+## 5. Algebraic effects — the practical pitch
 
 **Headline:** *It's dependency injection that the type checker enforces.*
 
@@ -105,7 +176,7 @@ handle Logger log msg => 0 in greet("Bob")
 
 ---
 
-## 5. Fibers vs async/await — the section that does the work
+## 6. Fibers vs async/await — the section that does the work
 
 **Headline:** *async/await is an effect system with exactly one effect, hardcoded into your type signatures.*
 
@@ -139,7 +210,7 @@ print("got ${recv(ch)}")
 
 ---
 
-## 6. Memory — pluggable, invisible, provably interchangeable
+## 7. Memory — pluggable, invisible, provably interchangeable
 
 **Headline:** *Memory management is a link-time decision, not a language you have to learn.*
 
@@ -154,7 +225,7 @@ print("got ${recv(ch)}")
 
 ---
 
-## 7. Web: Wasm + React
+## 8. Web: Wasm + React
 
 **Headline:** *Your application logic in Wasm. React as a dumb renderer.*
 
@@ -169,7 +240,7 @@ Be straight about status: the host is a reference implementation to fork, not a 
 
 ---
 
-## 8. Performance
+## 9. Performance
 
 **Headline:** *It's a functional language. It's also a native binary.*
 
@@ -177,11 +248,11 @@ Compiles through LLVM with stream fusion and structural sharing, benchmarked hea
 
 And say the hard part out loud, because it's a *feature*: **Osprey does checked arithmetic on every operation.** Rust is benchmarked with `-C overflow-checks=off` to match its release profile. Part of any gap is the cost of a real safety guarantee the others aren't paying for.
 
-> ⚠️ **See §10 before shipping any perf claim.**
+> ⚠️ **See §11 before shipping any perf claim.**
 
 ---
 
-## 9. Channel-specific copy
+## 10. Channel-specific copy
 
 **README one-liner:**
 > A statically typed functional language with a complete algebraic effect system, fibers instead of async/await, pluggable memory (ARC/GC/none), and two first-class syntaxes — compiled to native code through LLVM.
@@ -212,7 +283,7 @@ And say the hard part out loud, because it's a *feature*: **Osprey does checked 
 
 ---
 
-## 10. Claims audit — fix these before the messaging goes out
+## 11. Claims audit — fix these before the messaging goes out
 
 Your audience clicks through. Three live inconsistencies will get you shredded on HN/Lobsters, and all three are cheap to fix:
 

@@ -1,12 +1,14 @@
 # Testing Framework
 
-A test file is an ordinary program whose top-level `test(...)` calls run in
-source order; testing adds no DSL, syntax, or registration step.
+A test file is an ordinary program whose evaluated `test(...)` calls run in
+evaluation order (top level is the convention); testing adds no DSL, syntax, or
+registration step.
 
 > **Flavor layer — shared core (AST and above).** In every flavor the built-ins
 > lower to the same canonical `Expr::Call` nodes ([0012](0012-Built-InFunctions.md)).
-> Default cases are `fn() -> Unit` functions using soft assertions; ML cases are
-> pure functions returning `Verdict` (`Pass | Fail | Skip`) for `test` to report.
+> Cases in either flavor may be `fn() -> Unit` functions using soft assertions;
+> ML also supports pure functions returning `Verdict` (`Pass | Fail | Skip`) for
+> `test` to report.
 > See
 > [the Verdict model](#the-pure-ml-flavor-verdict-model) and
 > [Language Flavors](0023-LanguageFlavors.md).
@@ -26,7 +28,7 @@ no grammar, keywords, or AST nodes.
 ### `test(name: string, body: fn() -> a) -> Unit` — `[TESTING-BUILTIN-TEST]`
 
 Runs `body` as one named test case and prints exactly one TAP result line for
-it. Test cases execute inline, in source order, wherever the `test` call is
+it. Test cases execute inline, in evaluation order, wherever the `test` call is
 evaluated (top level is the convention). A test passes when no assertion
 inside its body fails; assertions are soft — a failing `expect`/`check` marks
 the case failed and execution continues, so one case can report several
@@ -102,7 +104,7 @@ the test actually computes.
 
 ## The pure ML-flavor Verdict model
 
-**`[TESTING-VERDICT]`** An ML test case is a pure function returning
+**`[TESTING-VERDICT]`** In the pure ML style, a test case is a function returning
 **`Verdict`**; `test` is its sole reporting boundary.
 
 `Verdict` is an ordinary user-declared union with three states — no compiler
@@ -144,7 +146,7 @@ depositClears () =
     andThen (check ("balance", 425000, ledgerBalance))
         (check ("count", 1, txnCount))
 
-overdraftRefused () = assume (not enoughFunds)   // Skip when the guard holds
+overdraftRefused () = assume (not enoughFunds)   // Skip when the precondition is false
 
 test "a cleared deposit updates the balance" depositClears
 test "an overdraft is refused" overdraftRefused
@@ -175,8 +177,10 @@ ok 3 - overflow guard # SKIP precondition not met
   `# check 'label' failed: expected E, got A`, or `# fail: <reason>` for a
   reported `Verdict` `Fail`. Diagnostics for a case therefore appear
   immediately *before* its result line.
-- A failing assertion outside any test prints its diagnostic and counts
-  toward the run's failure total without producing a result line.
+- A failing assertion outside any test prints its diagnostic and marks the run
+  failed without producing a result line. The summary's `failed` count remains
+  the number of failed named cases; the out-of-case failure is reflected in the
+  exit code.
 - After the program's last statement, the runtime epilogue prints the plan
   `1..N` (N = cases executed) and a `# tests=N passed=P failed=F skipped=S`
   summary — including `1..0` when zero cases executed, so a filter that matched

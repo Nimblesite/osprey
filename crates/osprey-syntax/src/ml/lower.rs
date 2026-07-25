@@ -1283,7 +1283,7 @@ mod tests {
         let mut s = stmts(src);
         assert_eq!(s.len(), 1, "expected exactly one statement: {s:?}");
         // `remove(0)` is panic-free given the length assertion above and avoids
-        // the forbidden `unwrap()` ([USER-MANDATE-NO-PANIC-IN-TESTS]).
+        // the repository-forbidden `unwrap()`.
         s.remove(0)
     }
 

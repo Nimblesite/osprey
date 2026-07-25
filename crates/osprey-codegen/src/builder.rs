@@ -502,7 +502,8 @@ impl Codegen {
     /// position — `None` when it is not (statically) a function value. Powers
     /// higher-order calls through arbitrary callee expressions: a chained
     /// application (`add3(1)(2)(3)`), a function held in a record field
-    /// (`cfg.processor`), or a function-typed local.
+    /// (`cfg.processor`), or a function-typed local. Implements
+    /// [TYPE-FN-HIGHER-ORDER].
     pub(crate) fn callee_fn_type(&self, expr: &Expr) -> Option<Type> {
         match expr {
             Expr::Identifier(name) => self.identifier_fn_type(name),

@@ -6,7 +6,8 @@
 //! A named function passed as a callback (`spawnProcess` / `httpListen` handler)
 //! is lowered to a raw code pointer here in `eval_args`. Implements
 //! [BUILTIN-FILE], [BUILTIN-PROCESS], [BUILTIN-HTTP], [BUILTIN-JSON],
-//! [BUILTIN-TERM].
+//! [BUILTIN-TERM]. Database APIs deliberately stay ordinary extern calls
+//! [FFI-NO-DB-BUILTINS].
 
 use crate::builder::Codegen;
 use crate::error::Result;

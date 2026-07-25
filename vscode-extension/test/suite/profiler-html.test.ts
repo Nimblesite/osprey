@@ -1,3 +1,4 @@
+// [PROF-VSCODE-FLAME] Flame webview markup and interaction-helper coverage.
 import * as assert from "assert";
 import {
   buildFlameHtml,

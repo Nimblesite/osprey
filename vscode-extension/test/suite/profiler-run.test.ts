@@ -1,3 +1,4 @@
+// [PROF-VSCODE-FLAME] Profile command orchestration and artifact coverage.
 import * as assert from "assert";
 import * as fs from "fs";
 import * as os from "os";

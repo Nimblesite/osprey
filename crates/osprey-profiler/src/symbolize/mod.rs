@@ -13,10 +13,10 @@ use crate::ProfileError;
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 
-/// Whether a frame belongs to user `.osp` code or the C runtime / system.
+/// Whether a frame belongs to user Osprey code or the C runtime / system.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub(crate) enum FrameKind {
-    /// The frame's file is an `.osp` source file.
+    /// The frame's file is an `.osp` or `.ospml` source file.
     User,
     /// Runtime/system frames (C runtime, libsystem, unresolved hex names).
     #[default]
@@ -42,16 +42,16 @@ pub(crate) struct SymFrame {
     pub file: String,
     /// 1-based source line; 0 when unknown.
     pub line: u32,
-    /// User (`.osp`) vs runtime classification, derived from `file`.
+    /// User (`.osp`/`.ospml`) vs runtime classification, derived from `file`.
     pub kind: FrameKind,
 }
 
 impl SymFrame {
     /// Build a frame, classifying it from the file extension.
     pub(crate) fn new(name: &str, file: &str, line: u32) -> Self {
-        let user = Path::new(file)
-            .extension()
-            .is_some_and(|ext| ext.eq_ignore_ascii_case("osp"));
+        let user = Path::new(file).extension().is_some_and(|ext| {
+            ext.eq_ignore_ascii_case("osp") || ext.eq_ignore_ascii_case("ospml")
+        });
         let kind = if user {
             FrameKind::User
         } else {
@@ -220,6 +220,10 @@ mod tests {
         );
         assert_eq!(
             SymFrame::new("fib", "/src/FIB.OSP", 3).kind,
+            FrameKind::User
+        );
+        assert_eq!(
+            SymFrame::new("fib", "/src/fib.ospml", 3).kind,
             FrameKind::User
         );
         assert_eq!(

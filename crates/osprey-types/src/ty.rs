@@ -131,7 +131,7 @@ impl Type {
     pub fn any() -> Type {
         Type::prim(names::ANY)
     }
-    /// The `Ptr` foreign-pointer type.
+    /// The opaque foreign-pointer type [FFI-PTR].
     #[must_use]
     pub fn ptr() -> Type {
         Type::prim(names::PTR)

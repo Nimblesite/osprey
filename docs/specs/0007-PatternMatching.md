@@ -117,6 +117,12 @@ match result {
 > Constructor-payload matching (`Success value`, `Error message`) works in both
 > flavors — see the `Result` example below.
 
+## Exhaustiveness and unreachable arms [TYPE-MATCH-EXHAUSTIVE]
+
+A match over `bool` or a known union must cover every value, either explicitly
+or with an irrefutable catch-all. A duplicate variant arm is unreachable, as is
+every arm after a catch-all; both are compile-time errors.
+
 ## Result Patterns
 
 `Result<T, E>` is matched the same way as any other union. See [Error Handling](0013-ErrorHandling.md) for the type and arithmetic semantics.

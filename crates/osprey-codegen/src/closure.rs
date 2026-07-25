@@ -261,7 +261,7 @@ pub(crate) fn cell_value(
 /// env-free top-level function and return its RAW `i8*` code pointer — C
 /// calls it through a plain function-pointer cast, so a closure cell would be
 /// jumped into as code. Captures cannot cross that boundary: a capturing
-/// lambda is rejected loudly.
+/// lambda is rejected loudly. Implements [FFI-CALLBACKS].
 pub(crate) fn raw_callback_lambda(
     cg: &mut Codegen,
     parameters: &[Parameter],

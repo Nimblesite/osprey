@@ -2,7 +2,8 @@
 
 Reference for built-in functions available in every Osprey program. Operations that can fail return `Result`; see [Error Handling](0013-ErrorHandling.md).
 
-> **Flavor layer — shared core (AST and above).**  The built-in function set is shared core: the *same* functions exist in every flavor, and a call to any of them lowers to the canonical `Expr::Call` node regardless of source surface. Only the call *spelling* is a flavor concern — the Default surface writes `toString(x)`, the ML flavor uses whitespace application `toString x` — and that difference is erased at lowering, so nothing here depends on which flavor produced the program. The Default spelling is shown throughout; see [Language Flavors](0023-LanguageFlavors.md) and [ML Flavor Syntax](0024-MLFlavorSyntax.md) for the surface mapping.
+Built-ins are shared by both language flavors. Examples use the Default
+surface unless an ML example clarifies different call syntax.
 
 ## Basic I/O Functions
 
@@ -52,17 +53,24 @@ filtering, discovery, the `osprey test` runner, and the VS Code Test Explorer
 — live in [Testing Framework](0027-TestingFramework.md); the three functions
 are listed here for completeness.
 
-### `test(name: string, body: fn() -> Unit) -> Unit` — [TESTING-BUILTIN-TEST]
-Runs `body` as one named test case and prints a TAP result line. A program
+### `test(name: string, body: fn() -> Unit) -> Unit` — &#91;TESTING-BUILTIN-TEST&#93;
+The normative contract is
+[defined in Testing Framework](0027-TestingFramework.md#testname-string-body-fn---a---unit--testing-builtin-test).
+It runs `body` as one named test case and prints a TAP result line. A program
 that uses any testing built-in exits non-zero when a case failed.
 
-### `expect(actual: any, expected: any) -> Unit` — [TESTING-BUILTIN-EXPECT]
-Equality assertion, Jest argument order. Canonical-string equality with
-`Result` auto-unwrap; a mismatch marks the enclosing case failed and prints a
-diagnostic without aborting the case.
+### `expect(actual: any, expected: any) -> Unit` — &#91;TESTING-BUILTIN-EXPECT&#93;
+The normative contract is
+[defined in Testing Framework](0027-TestingFramework.md#expectactual-any-expected-any---unit--testing-builtin-expect).
+It is an equality assertion in Jest argument order. Canonical-string equality
+with `Result` auto-unwrap; a mismatch marks the enclosing case failed and
+prints a diagnostic without aborting the case.
 
-### `check(label: string, expected: any, actual: any) -> Unit` — [TESTING-BUILTIN-CHECK]
-Labeled equality assertion, Alcotest argument order (expected before actual).
+### `check(label: string, expected: any, actual: any) -> Unit` — &#91;TESTING-BUILTIN-CHECK&#93;
+The normative contract is
+[defined in Testing Framework](0027-TestingFramework.md#checklabel-string-expected-any-actual-any---unit--testing-builtin-check).
+It is a labeled equality assertion in Alcotest argument order (expected before
+actual).
 
 ```osprey
 fn add(a, b) = a + b
@@ -183,17 +191,15 @@ match randomBelow 0
 
 ## String Functions
 
-Strings are immutable UTF-8 sequences. Every function listed here is **pure**: it returns a new value and never mutates its arguments.
+Strings are immutable, NUL-terminated UTF-8 byte sequences. String operations
+return new values and do not mutate their arguments.
 
 ### Design Principles — [BUILTIN-STRING-DESIGN]
 
-These rules govern the entire string API. They are drawn from idiomatic FP string libraries — primarily Elm's `String` module and Haskell's `Data.Text` — and adapted to Osprey's `Result`-only error model (Osprey has no `Maybe`/`Option`; see [Error Handling](0013-ErrorHandling.md)).
-
-1. **Total functions return plain values.** Operations that cannot fail on any well-formed UTF-8 input (e.g. `length`, `toUpperCase`, `trim`, `contains`) return their result directly. They do **not** wrap in `Result`. This matches Elm (`String.length : String -> Int`) and Haskell (`Data.Text.length :: Text -> Int`).
-2. **Partial functions return `Result<T, StringError>`.** Operations with inputs that can be invalid (`substring` with out-of-range indices, `parseInt` on non-numeric input, `split` with an empty separator) return `Result`.
-3. **Subject-first argument order.** The string being operated on is the first parameter, enabling `myString |> trim |> toLowerCase` with the pipe operator (see [Iterators](0010-LoopConstructsAndFunctionalIterators.md)).
-4. **No silent Unicode surprises (target behaviour).** Case conversion follows Unicode simple case mapping; lengths and indices are codepoint counts, not byte counts. This matches Haskell `Data.Text` and Elm `String`. **Implementation status:** the v1 runtime counts bytes (`strlen`-based) and uses ASCII-only `tolower`/`toupper`. UTF-8-aware rewrites build on the cursor primitives in [Cursor Access](#cursor-access-total-o1--builtin-string-cursor) ([BUILTIN-STRING-CURSOR]), which have shipped.
-5. **No character (`Char`) type yet.** Higher-order operations over individual characters (`map`, `filter`, `foldl`, `any`, `all`) are intentionally **deferred** until Osprey introduces a `Char` type.
+Total operations return plain values; invalid indices, arguments, or parses
+return `Result`. The subject is the first argument so calls compose with `|>`.
+Except for the explicit UTF-8 cursor functions, lengths and indices are byte
+based. Case conversion and whitespace handling cover ASCII.
 
 ### Calling Style — [BUILTIN-STRING-UFCS]
 
@@ -242,7 +248,7 @@ type StringError =
 ### Inspection (total) — [BUILTIN-STRING-INSPECTION]
 
 #### `length(s: string) -> int` — [BUILTIN-STRING-LENGTH]
-Returns the number of Unicode codepoints. `length("héllo") == 5`.
+Returns the number of bytes. It is equivalent to `byteLength` for strings.
 
 #### `isEmpty(s: string) -> bool` — [BUILTIN-STRING-ISEMPTY]
 True iff `length(s) == 0`. Equivalent to `length(s) == 0` but constant-time.
@@ -276,14 +282,15 @@ contains ("hello", "")             // true
 ```
 
 #### `indexOf(s: string, needle: string) -> Result<int, StringError>` — [BUILTIN-STRING-INDEXOF]
-Returns the codepoint index of the first occurrence of `needle`, or `Error(NotFound)` if absent. An empty `needle` returns `Success { value: 0 }`.
+Returns the byte index of the first occurrence of `needle`, or
+`Error(NotFound)` if absent. An empty `needle` returns `Success { value: 0 }`.
 
 ### Cursor Access (total, O(1)) — [BUILTIN-STRING-CURSOR]
 
 These primitives expose `string` as a random-access byte/codepoint buffer without allocating. They exist so user-written parsers (JSON, query strings, CSV, log formats) can run in linear time instead of the O(n²) imposed by chaining `substring`/`take`/`drop`. They are the lowest-level string operations in the language; everything above is implementable in pure Osprey on top of them.
 
 #### `byteLength(s: string) -> int` — [BUILTIN-STRING-BYTELENGTH]
-Byte length of the underlying UTF-8 storage. Equal to `length(s)` only for ASCII strings. O(1).
+Byte length of the underlying UTF-8 storage. Equivalent to `length(s)`. O(1).
 
 #### `byteAt(s: string, i: int) -> Result<int, StringError>` — [BUILTIN-STRING-BYTEAT]
 Returns the UTF-8 byte at index `i` as an `int` in `[0, 255]`, or `Error(IndexOutOfRange)` if `i < 0` or `i >= byteLength(s)`. O(1). Does **not** allocate.
@@ -326,13 +333,16 @@ Builds a single-codepoint `string`. Inverse of `codePointAt`. `Error(InvalidArgu
 ### Substrings — [BUILTIN-STRING-SUBSTRINGS]
 
 #### `substring(s: string, start: int, end: int) -> Result<string, StringError>` — [BUILTIN-STRING-SUBSTRING]
-Extracts codepoints in `[start, end)`. Returns `Error(IndexOutOfRange)` if `start < 0`, `end > length(s)`, or `start > end`.
+Extracts bytes in `[start, end)`. Returns `Error(IndexOutOfRange)` if
+`start < 0`, `end > length(s)`, or `start > end`.
 
 #### `take(s: string, n: int) -> string` — [BUILTIN-STRING-TAKE]
-Returns at most the first `n` codepoints. If `n <= 0`, returns `""`; if `n >= length(s)`, returns `s`. **Never fails** — clamping mirrors Elm `String.left`.
+Returns at most the first `n` bytes. If `n <= 0`, returns `""`; if
+`n >= length(s)`, returns `s`.
 
 #### `drop(s: string, n: int) -> string` — [BUILTIN-STRING-DROP]
-Returns `s` without its first `n` codepoints, with the same clamping rules as `take`. Mirrors Elm `String.dropLeft`.
+Returns `s` without its first `n` bytes, with the same clamping rules as
+`take`.
 
 ### Splitting and Joining — [BUILTIN-STRING-LIST]
 
@@ -359,18 +369,18 @@ Concatenates `parts` with `separator` between each pair. Returns `""` if `parts`
 Splits on `"\n"`. A trailing newline does not produce an empty final element (matches Haskell `Data.Text.lines`).
 
 #### `words(s: string) -> List<string>` — [BUILTIN-STRING-WORDS]
-Splits on runs of Unicode whitespace, dropping empty results.
+Splits on runs of ASCII whitespace, dropping empty results.
 
 ### Transformation (total) — [BUILTIN-STRING-TRANSFORM]
 
 #### `toUpperCase(s: string) -> string` — [BUILTIN-STRING-TOUPPERCASE]
 #### `toLowerCase(s: string) -> string` — [BUILTIN-STRING-TOLOWERCASE]
-Unicode simple case mapping. May change codepoint length (e.g. German `ß` → `SS`); this is intentional and matches Haskell `Data.Text.toUpper`/`toLower`.
+ASCII case conversion. Other bytes are copied unchanged.
 
 #### `trim(s: string) -> string` — [BUILTIN-STRING-TRIM]
 #### `trimStart(s: string) -> string` — [BUILTIN-STRING-TRIMSTART]
 #### `trimEnd(s: string) -> string` — [BUILTIN-STRING-TRIMEND]
-Remove leading/trailing/both runs of Unicode whitespace (per the Unicode `White_Space` property, matching Rust's `str::trim`).
+Remove leading, trailing, or both runs of ASCII whitespace.
 
 #### `replace(s: string, needle: string, replacement: string) -> Result<string, StringError>` — [BUILTIN-STRING-REPLACE]
 Replaces **every** occurrence of `needle` with `replacement`. Returns `Error(InvalidArgument)` if `needle` is empty (same reasoning as `split`).
@@ -379,11 +389,13 @@ Replaces **every** occurrence of `needle` with `replacement`. Returns `Error(Inv
 Concatenates `s` with itself `n` times. Returns `Error(InvalidArgument)` if `n < 0`. `repeat(s, 0) == ""`.
 
 #### `reverse(s: string) -> string` — [BUILTIN-STRING-REVERSE]
-Reverses codepoint order. (Note: grapheme-cluster reversal is a future addition.)
+Reverses byte order.
 
 #### `padStart(s: string, targetLength: int, fill: string) -> Result<string, StringError>` — [BUILTIN-STRING-PADSTART]
 #### `padEnd(s: string, targetLength: int, fill: string) -> Result<string, StringError>` — [BUILTIN-STRING-PADEND]
-Pads `s` on the left/right with copies of `fill` until it reaches `targetLength` codepoints. Returns `s` unchanged if already long enough. Returns `Error(InvalidArgument)` if `fill` is empty.
+Pads `s` on the left or right with repeated bytes from `fill` until it reaches
+`targetLength` bytes. Returns `s` unchanged if already long enough and
+`Error(InvalidArgument)` if `fill` is empty.
 
 ### Parsing — [BUILTIN-STRING-PARSING]
 

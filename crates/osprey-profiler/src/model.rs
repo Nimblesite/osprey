@@ -213,7 +213,7 @@ fn merge_meta(entry: &mut FuncAcc, frame: &SymFrame) {
     entry.kind = frame.kind;
 }
 
-/// Hot lines: leaf frames of on-CPU samples, `.osp` files with known lines.
+/// Hot lines: leaf frames of on-CPU samples, Osprey files with known lines.
 fn line_stats(profile: &Profile, sym_stacks: &[Vec<SymFrame>]) -> Vec<LineStat> {
     let mut acc: BTreeMap<(String, u32), u64> = BTreeMap::new();
     for sample in profile.samples.iter().filter(|s| s.on_cpu) {

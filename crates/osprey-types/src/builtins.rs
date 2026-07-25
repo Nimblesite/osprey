@@ -366,4 +366,20 @@ mod tests {
         assert_eq!(e.get("map").unwrap().vars.len(), 2);
         assert_eq!(e.get("await").unwrap().vars.len(), 1);
     }
+
+    #[test]
+    fn process_builtins_match_the_result_returning_runtime() {
+        assert_eq!(
+            builtin_signature("spawnProcess").as_deref(),
+            Some("spawnProcess : (string, any) -> Result<int, Error>")
+        );
+        assert_eq!(
+            builtin_signature("awaitProcess").as_deref(),
+            Some("awaitProcess : (int) -> int")
+        );
+        assert_eq!(
+            builtin_signature("cleanupProcess").as_deref(),
+            Some("cleanupProcess : (int) -> Unit")
+        );
+    }
 }

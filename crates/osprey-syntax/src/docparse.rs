@@ -274,6 +274,7 @@ mod tests {
 
     #[test]
     fn summary_and_body_split_on_blank_line() {
+        // [DOC-BODY-MARKDOWN] both flavors share this summary/body split.
         let d = parse_doc(
             "Doubles its argument.\n\nA longer note here.",
             DocScope::Outer,
@@ -284,6 +285,7 @@ mod tests {
 
     #[test]
     fn recognised_sections_lower_into_fields() {
+        // [DOC-SECTIONS] recognised headings populate the structured fields.
         let raw = "Divides two numbers.\n\n\
                    # Parameters\n\
                    - numerator: the top\n\
@@ -312,6 +314,7 @@ mod tests {
 
     #[test]
     fn at_tag_aliases_fold_into_fields() {
+        // [DOC-SECTIONS] tag aliases lower to the same fields as headings.
         let raw = "Summary.\n\n@param x the input\n@return the output\n@since 1.0";
         let d = parse_doc(raw, DocScope::Outer);
         assert_eq!(d.params, vec![("x".to_string(), "the input".to_string())]);
@@ -322,6 +325,7 @@ mod tests {
 
     #[test]
     fn doctest_fences_extract_with_expected_output() {
+        // [DOC-DOCTEST-HARNESS] the model retains code, output, and run mode.
         let raw = "Doubles.\n\n# Examples\n```osprey\nprint(double(21))\n```\n```output\n42\n```";
         let d = parse_doc(raw, DocScope::Outer);
         assert_eq!(d.examples.len(), 1);
@@ -332,6 +336,7 @@ mod tests {
 
     #[test]
     fn symbol_links_are_found_and_markdown_links_ignored() {
+        // [DOC-LINK] bare/dotted symbols are links; ordinary Markdown is not.
         let links = doc_links("See [safeDivide] and [Console.emit], not [text](http://x).");
         assert_eq!(
             links,

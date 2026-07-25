@@ -360,7 +360,8 @@ impl Checker {
     /// Flag arms that can never run: any arm after an irrefutable (catch-all)
     /// arm, and a repeated constructor/variant arm. A catch-all stays legal — it
     /// suppresses the missing-variant error — but dead arms after it (or duplicate
-    /// variants) are genuine mistakes, so report them.
+    /// variants) are genuine mistakes, so report them. Implements
+    /// [TYPE-MATCH-EXHAUSTIVE].
     fn check_redundant_arms(&mut self, arms: &[MatchArm]) {
         let mut covered_all = false;
         let mut seen: HashSet<String> = HashSet::new();

@@ -1,5 +1,6 @@
 #!/bin/bash
-# [PROF-TEST] End-to-end profiler check (docs/specs/0028-Profiler.md):
+# [PROF-TEST] [PROF-ACTIVATE-ENV] [PROF-CLI-RUN] [PROF-CLI-REPORT]
+# End-to-end profiler check (docs/specs/0028-Profiler.md):
 # `osprey <file> --profile` must run the program, write all four exports, and
 # print a terminal report attributing samples to the hot Osprey function.
 set -euo pipefail

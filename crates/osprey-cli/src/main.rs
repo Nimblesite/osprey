@@ -801,6 +801,7 @@ pub(crate) fn child_exit_code(status: std::process::ExitStatus) -> u8 {
 /// libc: the prebuilt C runtime static library (the HTTP superset when the
 /// program touches HTTP/WebSocket, else the fiber runtime), OpenSSL for HTTP,
 /// and any `// @link:` / `// @linkdir:` FFI directives (e.g. `-lsqlite3`).
+/// Implements [FFI-LINK-DIRECTIVES].
 fn link_args(ir: &str, source: &str, memory: &str) -> Vec<String> {
     let mut args: Vec<String> = Vec::new();
     let uses_http = ir.contains("@http") || ir.contains("@websocket");
@@ -2245,6 +2246,7 @@ mod tests {
 
     #[test]
     fn directive_parses_both_spellings_and_ignores_others() {
+        // [FFI-LINK-DIRECTIVES]
         assert_eq!(directive("// @link: sqlite3", "link"), Some("sqlite3"));
         assert_eq!(
             directive("//@linkdir: /opt/lib ", "linkdir"),

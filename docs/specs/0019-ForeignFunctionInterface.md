@@ -13,7 +13,10 @@ A source comment directive links a system library at compile time:
 // @linkdir: /opt/lib    → clang -L/opt/lib
 ```
 
-Directives are read from the source file and passed to the linker by both `--run` and `--compile`. Library names and paths are validated; shell injection through a directive is a compile-time error.
+Directives are read from the source file and passed to the compiler driver by
+both `--run` and `--compile`. Each value is one process argument; no shell parses
+it. Invalid library names or paths therefore fail in the compiler driver rather
+than executing as commands.
 
 ## The `Ptr` Type [FFI-PTR]
 

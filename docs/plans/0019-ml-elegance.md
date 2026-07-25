@@ -205,9 +205,11 @@ is not yet emitted — both remain open. Non-adjacent same-name bindings must be
 hard duplicate-definition error, never a merge: a function whose definition is
 scattered through a file is worse than the ceremony it removes.
 
-## Phase 2 — `[ARITH-PLAIN]`
+## Phase 2 — &#91;ARITH-PLAIN&#93;
 
-Type system only; still no AST change.
+The normative arithmetic contract is
+[defined in Error Handling](../specs/0013-ErrorHandling.md#arithmetic-and-result--arith-plain).
+This phase records its type-system implementation; it required no AST change.
 
 - `int_arithmetic` (`crates/osprey-types/src/expr.rs`) returns `int` for two int
   operands and `float` when either operand is float, for `+ - *`; `gen_arith`

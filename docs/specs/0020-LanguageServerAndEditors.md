@@ -15,31 +15,23 @@
 | Surface                                          | State                                                                                                                                                           |
 | ------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Language server (`osprey lsp`, Rust on `lspkit`) | **Shipped** — replaced the TypeScript server ([#137](https://github.com/Nimblesite/osprey/pull/137)).                                                           |
-| VS Code extension (`nimblesite.osprey`)          | **Shipped** — per-platform VSIX bundling a version-matched compiler.                                                                                            |
+| VS Code extension (`nimblesite.osprey`)          | **Shipped** — per-platform VSIX bundling a version-matched compiler; release automation publishes to Visual Studio Marketplace and Open VSX.                    |
 | Flavor-aware answers (`[LSP-FLAVOR-RENDER]`)     | **Shipped** — hover, completion and signature help resolve and present in the document's authoring flavor; a marker/extension conflict is a `flavor-error` diagnostic. |
 | Context-aware completion (`[LSP-COMPLETION-CONTEXT]`) | **Shipped** — the list is filtered by cursor position: type annotation, `receiver.` member, `match` pattern, parameter binder, value, declaration. |
 | Cross-file resolution (`[LSP-WORKSPACE]`)        | **Shipped** — hover, definition, references, completion and signature help reach every sibling file of the project through the compiler's own loader. |
-| Debugger (`osprey --debug` + DAP)                | Planned / in progress — source-level native debugging via DWARF + LLDB-DAP; see [Debugger](0021-Debugger.md) and [Plan 0012](../plans/0012-osprey-debugger.md). |
-| Open VSX                                         | Planned.                                                                                                                                                        |
-| Neovim                                           | Planned. The server is editor-agnostic; only a client recipe is missing.                                                                                        |
-| Zed                                              | Planned (`shipwright-zed`).                                                                                                                                     |
-| MCP surface (`lspkit-mcp`)                       | Future — the same `EngineApi` vended as MCP tools.                                                                                                              |
+| Native debugger (`osprey --debug` + DAP)         | **Shipped** — VS Code launches `lldb-dap`; variable presentation remains partial. See [Debugger](0021-Debugger.md).                                             |
 
-## Architecture: one engine, two surfaces `[LSP-ENGINE]`
+## Architecture: one engine behind LSP `[LSP-ENGINE]`
 
 The server uses the published [`lspkit`](https://github.com/Nimblesite/lspkit)
-crates. One `EngineApi` implementation backs LSP and, later, MCP, sharing live
-analysis state.
+crates. One `EngineApi` implementation owns the open-document state and answers
+every request exposed by the stdio LSP server.
 
 ```mermaid
 flowchart LR
   vscode[VS Code]
-  neovim[Neovim]
-  zed[Zed]
 
   vscode -->|LSP over stdio<br/>JSON-RPC| lsp
-  neovim -->|LSP over stdio<br/>JSON-RPC| lsp
-  zed -->|LSP over stdio<br/>JSON-RPC| lsp
 
   subgraph server["crates/osprey-lsp"]
     lsp["osprey lsp"]
@@ -57,13 +49,6 @@ flowchart LR
   end
 ```
 
-### Debugger Integration `[DEBUGGER-EDITOR]`
-
-LSP owns diagnostics, symbols, hover, definition, completion, and source
-identity. DAP owns breakpoints, stepping, stack frames, scopes, and variables.
-Both use the same version-matched `osprey` compiler and must agree on file
-identity, line/column encoding, and generated debug metadata.
-
 The server **does not shell out** to `osprey` or scrape stderr. It calls the
 compiler front-end directly
 ([`crates/osprey-lsp/src/diagnostics.rs`](../../crates/osprey-lsp/src/diagnostics.rs)),
@@ -75,16 +60,14 @@ Consumed crates:
 | --------------- | ------------------------------------------------------------------------------------------------ |
 | `lspkit`        | `EngineApi` trait + neutral types.                                                               |
 | `lspkit-server` | JSON-RPC framing, `Dispatcher`, `Capabilities`, `DiagnosticsBus`/`DiagnosticsSink`, URI helpers. |
-| `lspkit-vfs`    | Open-document store, rope incremental edits, `PositionEncoding` negotiation.                     |
+| `lspkit-vfs`    | Open-document store, rope incremental edits, position measurement.                              |
 | `lspkit-live`   | `Session` generation counter + broadcast.                                                        |
 
 ### Reuse lspkit maximally `[LSP-REUSE-LSPKIT]`
 
 Editor-neutral functionality MUST NOT be re-implemented in `osprey-lsp`; it
-comes from `lspkit-*`. If a language-agnostic primitive is missing, use a thin
-local shim and file an upstream issue; remove the shim when `lspkit` ships it.
-Word-at-position, occurrence, and position re-measurement use the shim tracked as
-[`lspkit#2`](https://github.com/Nimblesite/lspkit/issues/2); the shim lives in
+comes from `lspkit-*`. The remaining word-at-position, occurrence, and position
+measurement helpers are isolated in
 [`crates/osprey-lsp/src/text.rs`](../../crates/osprey-lsp/src/text.rs).
 
 ## Transport `[LSP-TRANSPORT]`
@@ -105,7 +88,8 @@ implemented in [`crates/osprey-cli/src/main.rs`](../../crates/osprey-cli/src/mai
 Standard LSP handshake and document sync:
 
 - `initialize` → advertise capabilities (`[LSP-CAPABILITIES]`); `initialized`.
-- `shutdown` → `exit`. After `shutdown`, requests fail with `EngineError::ShuttingDown`.
+- `shutdown` returns `null`; the following `exit` notification terminates the
+  stdio loop.
 - Document sync (incremental, `textDocumentSync: 2`): `didOpen`, `didChange`,
   `didClose`. A `didChange` applies **either** a full replacement **or** a set
   of incremental edits — never an open+change at the same version (which silently
@@ -126,24 +110,35 @@ The server advertises and implements:
 | Document symbols | `textDocument/documentSymbol`     | Flat `DocumentSymbol`s; range on the **name**, not the `fn`/`let`/`type` keyword.                                                                                                           |
 | Signature help   | `textDocument/signatureHelp`      | Active-parameter tracking; ignores `,`/`(`/`)` inside strings and `//` comments. Triggers on the **callee name** as well as inside its parentheses. `[LSP-WORKSPACE]`                       |
 | Completion       | `textDocument/completion`         | Position-filtered keywords/snippets + project declarations. `[LSP-COMPLETION-CONTEXT]`, `[LSP-WORKSPACE]`                                                                                    |
+| Formatting       | `textDocument/formatting`         | Returns one whole-document edit when formatting changes the buffer, otherwise no edits.                                                                                                    |
+
+## Diagnostics `[LSP-DIAGNOSTICS]`
+
+Opening or changing a document publishes compiler diagnostics for that buffer.
+Flavor conflicts are reported alone as `flavor-error`; otherwise syntax errors
+short-circuit type checking. A clean parse is assembled and type-checked through
+`osprey_project` when the file belongs to a project, while standalone files use
+the same single-source assembly path as the CLI. Closing the document removes it
+from the live VFS.
 
 ## Hover `[LSP-HOVER]`
 
 `textDocument/hover` locates the word through `[LSP-REUSE-LSPKIT]`, walks the
 AST for its declaration, and returns Markdown: a fenced signature or
 `name: type`, followed by documentation when present. Implemented in
-[`crates/osprey-lsp/src/features.rs`](../../crates/osprey-lsp/src/features.rs)
-(`hover`) over [`analysis.rs`](../../crates/osprey-lsp/src/analysis.rs)
+[`crates/osprey-lsp/src/hover.rs`](../../crates/osprey-lsp/src/hover.rs)
+over [`analysis.rs`](../../crates/osprey-lsp/src/analysis.rs)
 (`collect_all_symbols`).
 
 Resolution order for the symbol under the cursor:
 
-1. A built-in (`print`, `map`, …) → its reference signature.
-2. A user **function** → its `fn name(params) -> ret` signature.
-3. A **`let`/`mut` binding** → `[LSP-HOVER-VARIABLES]`.
-4. A **written name that declares nothing** — a parameter, a built-in type
+1. A declaration in the open document — including user functions and
+   **`let`/`mut` bindings** — with nearest-binding shadowing
+   (`[LSP-HOVER-VARIABLES]`).
+2. A built-in (`print`, `map`, …) → its reference signature.
+3. A **written name that declares nothing** — a parameter or built-in type
    name → `[LSP-HOVER-WRITTEN]`.
-5. A symbol declared in a **sibling file** of the project → `[LSP-WORKSPACE]`.
+4. A symbol declared in a **sibling file** of the project → `[LSP-WORKSPACE]`.
 
 ### Variable hover `[LSP-HOVER-VARIABLES]`
 
@@ -241,9 +236,8 @@ Normative requirements:
   real fault under phantom errors.
 
 Rendering lives in
-[`osprey-lsp/src/mlrender.rs`](../../crates/osprey-lsp/src/mlrender.rs) — pure,
-total string functions over the closed set of spellings the analyzer emits — and
-is applied in [`features.rs`](../../crates/osprey-lsp/src/features.rs).
+[`osprey-lsp/src/mlrender.rs`](../../crates/osprey-lsp/src/mlrender.rs) and is
+applied at the feature boundary.
 
 ## Completion is position-filtered `[LSP-COMPLETION-CONTEXT]`
 
@@ -257,7 +251,7 @@ offers only what is legal there:
 | Cursor              | Offered                                                     |
 | ------------------- | ----------------------------------------------------------- |
 | Declaration/statement | Every keyword of the flavor, plus every visible symbol.    |
-| Value (after `=`, `(`, `,`, an operator) | Expression keywords only (`match`, `if`, `handle`) plus every visible symbol. `fn`, `let`, `type`, `namespace` and the rest are declaration forms and are withheld. |
+| Value (after `=`, `(`, `,`, an operator) | Expression keywords of the active flavor plus every visible symbol: Default offers `if`/`match`; ML offers `match`/`handle`. Declaration forms are withheld. |
 | Written type (after `:` or `->`) | Declared types and effects, plus the built-in type names. No keywords, no bindings, no functions. |
 | `receiver.` | Only that record's fields — `[LSP-COMPLETION-MEMBER]`.                 |
 | `match` arm pattern | Constructors and `_`.                                       |
@@ -267,9 +261,9 @@ Classification is **lexical, not semantic**: it reads the scrubbed prefix
 before the cursor, because a buffer being edited is usually not parsable. String
 literals and comments are blanked first, so a `:` inside a string is not an
 ascription and a `.` inside a comment is not a field access. Indentation carries
-`match`-arm nesting, since Default's braces are optional and ML has none. Every
-rule falls back to the *unfiltered* declaration list rather than to silence — a
-misclassification must never hide a valid completion.
+`match`-arm nesting, since Default's braces are optional and ML has none.
+Unrecognised contexts fall back to declaration completions; binder and unresolved
+member contexts deliberately return no suggestions.
 
 ### Member completion `[LSP-COMPLETION-MEMBER]`
 
@@ -308,118 +302,40 @@ Normative requirements:
 
 ## Position encoding `[LSP-ENCODING]`
 
-The server negotiates `positionEncoding` at `initialize` (default **UTF-16**).
-Tree-sitter reports columns as **byte** offsets, so every position crossing the
-wire is re-measured into the negotiated encoding
+The server advertises and uses **UTF-16** `positionEncoding`. Tree-sitter
+reports columns as **byte** offsets, so every position crossing the wire is
+re-measured into UTF-16 units
 ([`crates/osprey-lsp/src/text.rs`](../../crates/osprey-lsp/src/text.rs),
-`byte_col_to_encoding`). A client that negotiates UTF-8 must receive UTF-8
-offsets; this is not optional.
-
-## Analyzer Lints `[LSP-ANALYZER]`
-
-The server runs style lints over `osprey_ast::Program` and inferred types. Lints
-are **flavor-blind** ([FLAVOR-BOUNDARY](0023-LanguageFlavors.md#the-one-law)) and
-must fire identically for `.osp` and `.ospml` twins. Each MUST provide a
-text-rewriting autofix code action. CI runs the analyzer in deny mode.
-**Status: specified; the redundant-symbol rule is first.**
-
-### Redundant symbols `[ANALYZER-REDUNDANT-SYMBOL]`
-
-This lint flags, and its autofix deletes, every redundant type annotation: any annotation
-whose type the Hindley-Milner checker already infers
-([TYPE-NO-REDUNDANT-ANNOTATION](0004-TypeSystem.md#hindley-milner-inference)).
-
-| Redundant form | Autofix result |
-| --- | --- |
-| `fn add(a: int, b: int) = a + b` | `fn add(a, b) = a + b` |
-| `fn isEven(x) -> bool = (x % 2) == 0` | `fn isEven(x) = (x % 2) == 0` |
-| `let n: int = 0` | `let n = 0` |
-| `\|x: int\| => x * 2` | `\|x\| => x * 2` |
-| ML `add : int -> int` over an inferable `add x = …` | delete the signature line |
-| needless `fn main()` / ML `main () =` wrapping a script | unwrap to bare top-level statements |
-
-**Decision procedure.** The annotation is redundant ⇔ re-running inference with
-it removed yields the *same* principal type **and** the same lowered AST/IR. The
-lint checks the written annotation against the inferred type; if they match and
-the annotation is not load-bearing, it reports a `quickfix` that removes the
-symbol (and, for a needless `main`, dedents the body — `main` is synthesised from
-trailing top-level statements, so the script runs unchanged).
-
-**Never flagged (load-bearing).** The lint must not touch an annotation the
-checker cannot infer: an empty literal (`let xs: List<int> = []`), the ambiguous
-empty map `{}`, an `extern` boundary, an unconstrained polymorphic variable a
-caller must pin, or a return type that *forces* `Result<T, E>` auto-unwrap to `T`
-([Result Auto-Unwrapping](0004-TypeSystem.md#result-auto-unwrapping)). Removing
-one of these changes the program, so it is not redundant. A `main` that takes
-arguments or returns a real exit code is likewise kept.
-
-This lint enforces
-[TYPE-NO-REDUNDANT-ANNOTATION](0004-TypeSystem.md#hindley-milner-inference);
-the two specs must change together.
+`byte_col_to_encoding`). The internal helpers remain encoding-parameterized so
+conversion behavior can be unit-tested independently of the fixed wire choice.
 
 ## Editor integrations
 
-Every integration is a thin client over `[LSP-TRANSPORT]`. They differ only in
-packaging and in how the version-matched binary is sourced (`[EDITOR-VERSIONING]`).
+The shipped VS Code integration is a thin client over `[LSP-TRANSPORT]`.
 
 ### VS Code `[EDITOR-VSCODE]`
 
 - Extension id `nimblesite.osprey`; client in
   [`vscode-extension/client/src/extension.ts`](../../vscode-extension/client/src/extension.ts)
   spawns `osprey lsp` over stdio.
-- Shipped as a **per-platform VSIX** (`darwin-arm64`, `darwin-x64`, `linux-x64`,
+- Shipped as a **per-platform VSIX** (`darwin-arm64`, `linux-x64`,
   `win32-x64`). Each VSIX **bundles** a version-matched `osprey` binary + runtime
   libs + a stamped `shipwright.json`, verified present inside the package at build
   time.
 - Client resolves the server command in priority order: user setting
   (`osprey.server.compilerPath`) → bundled binary → `PATH` (per the Shipwright
   `sources` list in [`shipwright.json`](../../shipwright.json)).
-- The debugger contribution is part of the same extension but is not an LSP
-  request. It uses the LSP/editor context to resolve the current `.osp` program,
-  invokes the version-matched compiler as `osprey --debug --compile`, and starts
-  a DAP session (initially `lldb-dap`) against the resulting native binary.
-- Pressing F5 MUST start a real debug session. It MUST NOT cancel the debug
-  session and shell out to `osprey --run`; that path belongs only to the
-  `osprey.run` command.
+- The extension's native DAP integration is specified in
+  [Debugger](0021-Debugger.md); it is separate from the LSP request path.
 - Marketplace publication uses **OIDC** (no PAT) — see `[EDITOR-VERSIONING]` and
-  the release plan.
-
-### Open VSX `[EDITOR-OPENVSX]`
-
-The same per-platform VSIX is published to [Open VSX](https://open-vsx.org) for
-VSCodium, Cursor, Windsurf, and Gitpod users. Open VSX has **no** OIDC support
-(as of 2026); it uses a separate long-lived `OVSX_PAT`. The Open VSX job MUST be
-independent of the Marketplace job so neither gates the other.
-
-### Neovim `[EDITOR-NEOVIM]`
-
-No VSIX. Neovim runs `osprey lsp` directly via `vim.lsp` / `nvim-lspconfig`:
-
-```lua
-vim.lsp.config('osprey', {
-  cmd = { 'osprey', 'lsp' },
-  filetypes = { 'osprey' },
-  root_markers = { '.git', 'osprey.toml' },
-})
-```
-
-The binary is sourced from the user's `PATH` (Homebrew/Scoop/GitHub release).
-Versioning is the installed binary's own version (`[EDITOR-VERSIONING]`); there
-is no bundling step.
-
-### Zed `[EDITOR-ZED]`
-
-A Zed extension (Rust compiled to WASM) registers Osprey as a language and
-declares its language server command (`osprey lsp`), published to the Zed
-extension registry. Version-matching and binary acquisition follow
-[`shipwright-zed`](https://github.com/Nimblesite/Shipwright). Like Neovim, the
-binary comes from `PATH` or package managers.
+  the release workflow. Open VSX publication uses the same VSIX artifacts and
+  an independent optional-token job, so either registry can succeed alone.
 
 ## Versioning & supply chain `[EDITOR-VERSIONING]`
 
-All editor integrations obey the
-[Shipwright](https://github.com/Nimblesite/Shipwright) version contract — the
-extension and the binary it launches MUST be version-matched.
+The VS Code distributions obey the
+[Shipwright](https://github.com/Nimblesite/Shipwright) version contract: the
+extension and bundled binary MUST be version-matched.
 
 - The binary is the source of truth: `osprey --version` → `osprey X.Y.Z`;
   `osprey --version --json` → the version manifest (`[SWR-VERSION-CLI-OUTPUT]`).
@@ -437,34 +353,5 @@ extension and the binary it launches MUST be version-matched.
   prompts to reinstall on mismatch (`hosts.vscode.onMismatch`). PATH/registry
   sources are verified at startup (`verifyStartup`).
 - Marketplace publishing uses GitHub OIDC → Microsoft Entra workload-identity
-  federation, with no stored PAT (`[SWR-VSIX-PUBLISH]`, `[SWR-SEC-OIDC-PUBLISH]`).
-  Concrete tenant/app identifiers live in the private
-  `Nimblesite/NimblesiteDeployment` ops repo; the release wiring is in the plan.
-
-## Conformance
-
-A change to this spec is conformant only if:
-
-1. Every editor still launches the **same** `osprey lsp` stdio server
-   (`[LSP-TRANSPORT]`) — no editor-specific analysis logic.
-2. New capabilities update both `initialize_result` and the `[LSP-CAPABILITIES]`
-   table.
-3. Debugger integration keeps static analysis in LSP and runtime control in DAP;
-   both must use the same source identity and position model
-   (`[DEBUGGER-EDITOR]`, `[LSP-ENCODING]`).
-4. VS Code F5 starts a real DAP debug session; it does not proxy to
-   `osprey --run` (`[EDITOR-VSCODE]`).
-5. No source file hard-codes a version (`[EDITOR-VERSIONING]`).
-6. Code implementing a section references its ID in a comment
-   (e.g. `// Implements [LSP-CAPABILITIES]`), enforced by `spec-check`.
-7. Completion answers are filtered by cursor position
-   (`[LSP-COMPLETION-CONTEXT]`). A completion that cannot appear at the cursor —
-   the `fn` snippet inside a type annotation, `namespace` inside a call
-   argument, any symbol after an unresolved `receiver.` — is non-conformant.
-8. Features resolve against the whole project when the document belongs to one
-   (`[LSP-WORKSPACE]`), through `osprey_project::load` and no other file
-   discovery. A feature that walks the filesystem itself is non-conformant.
-9. Every document-scoped feature resolves its flavor through the single
-   `osprey_syntax::resolve_flavor` chain and presents its answer in that flavor
-   (`[LSP-FLAVOR-RENDER]`). A feature that sniffs the file extension itself, or
-   that answers a `.ospml` document in Default spelling, is non-conformant.
+  federation, with no stored PAT (`[SWR-VSIX-PUBLISH]`,
+  `[SWR-SEC-OIDC-PUBLISH]`).

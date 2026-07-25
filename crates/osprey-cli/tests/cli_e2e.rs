@@ -536,7 +536,9 @@ fn write_in(dir: &Path, name: &str, body: &str) -> PathBuf {
     path
 }
 
-// [TESTING-TAP][TESTING-EXIT] a test binary reports TAP and exits by outcome.
+// [TESTING-BUILTIN-TEST][TESTING-BUILTIN-EXPECT][TESTING-BUILTIN-CHECK]
+// [TESTING-RUNTIME][TESTING-TAP][TESTING-EXIT] a test binary reports TAP and
+// exits by outcome.
 #[test]
 fn test_builtins_emit_tap_and_exit_status() {
     let pass = temp_osp("tap_pass", PASSING_TESTS);
@@ -603,8 +605,9 @@ fn list_tests_reports_literal_cases_as_json() {
     assert_eq!(o.stdout.trim(), "[]");
 }
 
-// [TESTING-CLI-RUN] the runner discovers *.test.osp{,ml} under a directory,
-// streams TAP under headers, and aggregates the exit status.
+// [TESTING-CLI-RUN][TESTING-FILE-CONVENTION] the runner discovers
+// *.test.osp{,ml} under a directory, streams TAP under headers, and aggregates
+// the exit status.
 #[test]
 fn test_subcommand_runs_directories_and_files() {
     let dir = temp_dir("suite");

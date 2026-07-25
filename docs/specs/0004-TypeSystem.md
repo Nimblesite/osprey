@@ -323,6 +323,13 @@ print (greet "world")                                         // "hello world"
 
 Closures and named functions are interchangeable wherever a function type is expected, including as higher-order arguments (`map`, `filter`, `fold`, `forEach`) and as the function field of records. A closure that captures no free variables is equivalent to a top-level function and the implementation SHOULD lower it to one. A `Result<T, E>` returned through a function-value call auto-unwraps to `T` (context 3 of [Result Auto-Unwrapping](#result-auto-unwrapping)).
 
+### Higher-order calls — [TYPE-FN-HIGHER-ORDER]
+
+Any expression with a function type is callable. The callee may be a local,
+record field, returned closure, or another call expression; it need not be a
+top-level function name. Chained application evaluates one function result per
+call, so `makeAdder(1)(2)` calls the closure returned by `makeAdder(1)`.
+
 ## Record Types
 
 ```ebnf

@@ -1,3 +1,4 @@
+// [PROF-VSCODE-FLAME] Flame panel messaging and source-navigation coverage.
 import * as assert from "assert";
 import * as fs from "fs";
 import * as os from "os";

@@ -33,7 +33,7 @@ replaces the earlier free-text `doc: Option<String>` field.
 /// (`///` / `//!` in Default, `(** … *)` in ML) lower into this one model;
 /// the body markup is identical across flavors — only the sigil differs.
 pub struct DocComment {
-    /// First sentence / first paragraph — the one-line summary.
+    /// First paragraph, normalised to a one-line summary.
     pub summary: String,
     /// Full Markdown body EXCLUDING the recognised structured sections.
     /// `[Symbol]` intra-doc links are left unresolved here (a later pass
@@ -131,9 +131,9 @@ Two additions on top of plain CommonMark, both shared by both flavors:
   `[text](url)` Markdown link is left alone. In the editor, hovering a
   `[Symbol]` link shows the referenced element's own hover. Inline code that is
   *not* a link uses backticks.
-- **Example fences** — a ` ```osprey ` fenced block is an executable example
-  (see [Doctests](#executable-examples-doctests)); an optional following
-  ` ```output ` fence is its expected stdout.
+- **Example fences** — within `# Examples`, a ` ```osprey ` fenced block is an
+  executable example (see [Doctests](#executable-examples-doctests)); an
+  optional following ` ```output ` fence is its expected stdout.
 
 ## Recognised Sections
 
@@ -153,23 +153,23 @@ sigil, and degrades gracefully — an unrecognised heading is just prose.
 | `# Deprecated` | `deprecated` | reason prose |
 
 As a concession to ML muscle memory, the ocamldoc/Javadoc block tags
-`@param name`, `@return`, `@raise Name`, `@see`, `@since`, and `@deprecated` are
-accepted as **aliases** that lower into the same fields. The heading convention
-is the canonical, documented form; the tags exist so an OCaml/F# author is never
-surprised.
+`@param name`, `@return`, `@raise Name`, `@see`, `@since`, `@deprecated`, and
+`@author` are accepted as **aliases** that lower into the same fields. The
+heading convention is the canonical, documented form; the tags exist so an
+OCaml/F# author is never surprised.
 
 ## Executable Examples (Doctests)
 
-`[DOC-DOCTEST-HARNESS]` A ` ```osprey ` fenced block in a doc comment is an
-**executable example**. An optional ` ```output ` fence immediately after it is
-the example's expected stdout.
+`[DOC-DOCTEST-HARNESS]` A ` ```osprey ` fenced block in a doc comment's
+recognised `# Examples` section is an **executable example**. An optional
+` ```output ` fence immediately after it is the example's expected stdout.
 
-Doctests are extracted into the **existing differential golden harness**
-([crates/diff_examples.sh](../../crates/diff_examples.sh)) — there is no second
-test runner. The extractor emits each example as a synthetic `.osp`/`.ospml`
-program (compiled under the enclosing file's flavor) plus a `.expectedoutput`
-from the `output` fence, and the harness compiles, runs, and byte-compares as it
-does for every `examples/tested/` program. A doc example whose output drifts
+Doctests are required to be extracted into the **existing differential golden
+harness** ([crates/diff_examples.sh](../../crates/diff_examples.sh)) — there is
+no second test runner. The extractor will emit each example as a synthetic
+`.osp`/`.ospml` program (compiled under the enclosing file's flavor) plus a
+`.expectedoutput` from the `output` fence, and the harness compiles, runs, and
+byte-compares as it does for every `examples/tested/` program. A doc example whose output drifts
 fails CI, which is exactly the obsolescence defense the design calls for
 [Uddin & Robillard 2015; Wrenn & Krishnamurthi 2019].
 
@@ -185,7 +185,7 @@ creates "which declaration owns this?" ambiguity. Every documentable
 declaration is covered:
 
 - functions, `let`/`mut` bindings, `type` declarations, `effect` declarations,
-  `extern` declarations, and modules;
+  `extern` declarations, modules, and signatures;
 - and, granularly, type variants, record fields, effect operations, and
   function parameters (the last also expressible via `# Parameters`).
 
@@ -201,13 +201,13 @@ doc comment with no following declaration is a warning (a dangling doc).
   `[LSP-HOVER-DOCS]`).
 - **`osprey --docs --docs-dir <dir>`** exports Markdown-with-front-matter pages.
   This already exports built-in functions from the same render model
-  (`BuiltinDocView`); the user-declaration path emits the same page shape from
-  `DocComment`, so built-in and user docs are visually uniform.
+  (`BuiltinDocView`); the user-declaration path is required to emit the same
+  page shape from `DocComment`, so built-in and user docs are visually uniform.
 - **The website `generate-docs` pipeline** consumes that Markdown unchanged.
 
-Built-in documentation and user documentation therefore share one render model
-and one exporter — the `BuiltinDocView` shape and `DocComment` converge on the
-same rendered page.
+Built-in documentation and user documentation therefore converge on one render
+model and exporter — the `BuiltinDocView` shape and `DocComment` produce the
+same rendered page once user-declaration export is wired.
 
 ## Worked Example — One Function, Both Flavors
 
@@ -287,7 +287,7 @@ DocComment {
     returns: Some("The integer quotient."),
     raises: [("DivByZero", "When `denominator` is `0`.")],
     examples: [DocExample { code: "print(divide(7, 2))",
-                            expected_output: Some("3\n"), run: true }],
+                            expected_output: Some("3"), run: true }],
     since: Some("0.4.0"),
     ..
 }
@@ -299,22 +299,25 @@ and the lowered model is the same.
 
 ## Status
 
-**Implemented — capture, model, hover, and links are live; doctest-harness
-wiring and user-declaration `--docs` export remain.**
+**Partially implemented — declaration-level capture, the shared model, hover,
+and links are live; complete attachment, doctest execution, inner docs, and
+user-declaration `--docs` export remain.**
 
 Shipped and tested:
 
 - The structured `DocComment` / `DocExample` / `DocScope` model
   ([crates/osprey-ast/src/doc.rs](../../crates/osprey-ast/src/doc.rs)), on the
-  `doc` field of **every** declaration form (`fn`, `let`/`mut`, `type`,
-  `effect`, `extern`, `module`).
+  `doc` field of all seven declaration-level forms (`fn`, `let`/`mut`, `type`,
+  `effect`, `extern`, `module`, and `signature`).
 - The **shared flavor-neutral body parser**
   ([crates/osprey-syntax/src/docparse.rs](../../crates/osprey-syntax/src/docparse.rs)):
   summary/body split, recognised `#` sections, `@tag` aliases, `[Symbol]` link
   extraction, and ```osprey```/```output``` doctest extraction. One parser,
   both flavors.
-- **Default `///` + `//!`** lowering for all six declaration forms
-  ([default/lower.rs](../../crates/osprey-syntax/src/default/lower.rs)).
+- **Default `///`** lowering for all seven declaration-level forms
+  ([default/lower.rs](../../crates/osprey-syntax/src/default/lower.rs)); the
+  lowerer also recognises `//!` when supplied a doc node, while its grammar
+  attachment point remains below.
 - **ML `(** … *)`** lexing (nesting, banner/empty disambiguation), CST/parser
   threading, and lowering
   ([ml/lexer.rs](../../crates/osprey-syntax/src/ml/lexer.rs),
@@ -329,10 +332,15 @@ Shipped and tested:
   under the cursor hovers to the referenced element** — bare (`[helper]`) and
   dotted (`[Console.emit]`) ([crates/osprey-lsp/src/features.rs](../../crates/osprey-lsp/src/features.rs)).
 
-Remaining (tracked in [plan 0018](../plans/0018-documentation-comments.md)
-Phase 3):
+Remaining:
 
-- Doctest **execution**: the extractor populates `DocExample`s; wiring them into
+- Complete `[DOC-ATTACH]` for type variants, record fields, effect operations,
+  and function parameters, and emit the specified dangling-doc warning.
+
+The following three items are tracked in
+[plan 0018](../plans/0018-documentation-comments.md) Phase 3:
+
+- Doctest **execution**: the parser populates `DocExample`s; wiring them into
   the golden harness so their output is byte-checked is not yet done.
 - `osprey --docs` exporting **user** declarations (it exports builtins today).
 - `//!` module-scope grammar in the Default tree-sitter grammar (the lexer and
