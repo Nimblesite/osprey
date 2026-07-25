@@ -1,6 +1,8 @@
 # Error Handling
 
-Osprey has no exceptions, panics, or null. Any function that can fail returns a `Result`.
+Osprey has no language-level exceptions. Structured failures use `Result`;
+low-level native APIs may instead declare an integer status convention in their
+own specification.
 
 The two language flavors share these semantics. Examples show both surfaces
 where their syntax differs.

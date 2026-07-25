@@ -41,7 +41,7 @@ static int64_t run_fiber_fn(Fiber *fiber) {
     int64_t result = fiber->env_function(fiber->env);
     // The spawn transferred the capture cell (+1) to the runtime; the thunk
     // has fully consumed it once it returns. No-op outside the ARC backend
-    // [GC-ARC-PERCEUS], plan 0011 M5.
+    // [GC-ARC-PERCEUS] [MEM-FIBER-ISOLATION].
     osp_release(fiber->env);
     fiber->env = NULL;
     return result;

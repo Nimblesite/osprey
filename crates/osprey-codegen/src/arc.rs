@@ -1,5 +1,6 @@
 //! Perceus dup/drop insertion — the ownership ledger threaded through the
-//! AST walk. Implements [GC-ARC-PERCEUS] (docs/plans/0011 phase 2, M3):
+//! AST walk. Implements [MEM-OWNERSHIP] and [GC-ARC-PERCEUS]
+//! (docs/specs/0018-MemoryManagement.md):
 //! every producer owns (+1), stores dup, owners drop at region end, returns
 //! transfer (+1). The reference algorithm is Reinking, Xie, de Moura & Leijen,
 //! *Perceus: Garbage Free Reference Counting with Reuse*, MSR-TR-2020-42.
@@ -10,7 +11,7 @@
 //! every block and untaken paths leave them null (release(null) is a no-op),
 //! drops are correct across match arms, guard diamonds and loops with no
 //! dominance analysis. The default/GC backends define `osp_retain`/
-//! `osp_release` as no-ops (plan 0011 M0), so one IR serves every backend.
+//! `osp_release` as no-ops, so one IR serves every backend.
 
 use crate::builder::Codegen;
 use crate::llty::{LType, Value};

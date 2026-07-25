@@ -4,77 +4,21 @@ Osprey supports more than one **source syntax** over **one language core**. A
 *flavor* is a parser-and-lowering profile, not a separate language: every
 flavor converges on the same canonical AST before any semantic analysis runs.
 
-This chapter is the authoritative contract for that boundary. The concrete ML
-surface syntax is specified in [ML Flavor Syntax](0024-MLFlavorSyntax.md); the
-implementation work is tracked in
-[plan 0013](../plans/0013-ml-flavor-frontend.md).
-
-- [The One Law](#the-one-law)
-- [Flavors That Exist](#flavors-that-exist)
-- [The Pipeline](#the-pipeline)
-- [Flavor Frontend](#flavor-frontend)
-- [Flavor Selection](#flavor-selection)
-- [The Lowering Contract](#the-lowering-contract)
-- [Flavor Concern vs Shared-Core Concern](#flavor-concern-vs-shared-core-concern)
-- [Currying Canonicalisation](#currying-canonicalisation)
-- [Shared-Core Additions](#shared-core-additions)
-- [Cross-Flavor Interop](#cross-flavor-interop)
-- [Flavor-Aware Diagnostics](#flavor-aware-diagnostics)
-- [Cross-Flavor Equivalence Tests](#cross-flavor-equivalence-tests)
-- [Positioning and Messaging](#positioning-and-messaging)
-- [Resolved Open Questions](#resolved-open-questions)
+The ML surface syntax is specified in
+[ML Flavor Syntax](0024-MLFlavorSyntax.md).
 
 ## Status
 
-The **Default flavor** is fully implemented — it is the language defined by
-specs `0001`–`0022`. The Default frontend lives in its own folder
-[`crates/osprey-syntax/src/default/`](../../crates/osprey-syntax/src/default/):
-it parses a tree-sitter CST and lowers it through
-[`Lowerer`](../../crates/osprey-syntax/src/default/lower.rs) into
-`osprey_ast::Program`. The flavor-agnostic entry
-[`parse_program`](../../crates/osprey-syntax/src/lib.rs) dispatches to it.
+Both frontends are implemented in `crates/osprey-syntax/src/default/` and
+`crates/osprey-syntax/src/ml/`. Default uses tree-sitter; ML uses a hand-written
+layout lexer, recursive-descent parser, and separate CST-to-AST lowerer. Both
+produce `osprey_ast::Program` before type checking or code generation.
 
-**Implemented and green.** The flavor seam is live. **Phase 1** (flavor
-frontend seam) ships the `Flavor` enum, `Parsed.flavor`, and
-`parse_program_with_flavor`, with the unchanged `parse_program` kept as the
-`Flavor::Default` specialisation so every existing caller is unaffected.
-**Phase 4** (flavor selection) ships the CLI `--flavor default|ml` flag, the
-`.ospml` extension, and the `// osprey: flavor=ml` marker, resolved by the
-precedence flag > marker > extension > Default with a hard error when extension
-and marker disagree. The differential harness
-([`crates/diff_examples.sh`](../../crates/diff_examples.sh)) now discovers
-`.ospml` fixtures **additively**, leaving every existing `.osp` example
-untouched.
-
-**Implementation decision — hand-written Rust layout frontend.** The ML
-frontend (Phases 2–3) is implemented as a **hand-written Rust layout lexer +
-recursive-descent (Pratt / precedence-climbing) parser** in
-[`crates/osprey-syntax/src/ml/`](../../crates/osprey-syntax/src/ml/)
-(`token.rs`, `lexer.rs`, `cst.rs`, `parser.rs`, `lower.rs`, `mod.rs`). The parser
-produces an ML **concrete syntax tree (CST)**; a separate lowerer (`lower.rs`)
-converts that CST to canonical `osprey_ast::Program` — a clean **CST→AST
-separation**, symmetric with the Default flavor's tree-sitter CST → lower → AST. The lexer derives layout markers
-(`Indent`/`Dedent`/`Newline`) from the **offside rule** (Landin 1966) via an
-explicit indentation stack, with bracket depth suppressing layout inside
-parentheses. This **supersedes** the earlier plan of a `tree-sitter-osprey-ml`
-grammar with an external C scanner. Rationale: the offside rule is naturally
-expressed with an explicit indent stack in safe Rust; it stays panic-free /
-`Result`-returning and unit-testable (project rules), with no `unsafe` C and no
-codegen-tool build dependency. Per [`[FLAVOR-BOUNDARY]`](#the-one-law) the
-parser **mechanism** is a below-the-AST, flavor-internal concern, so this swap
-does not change the architecture (many CSTs, one AST). The ML parser and its
-lexical `effect`/`perform`/`handle`/`resume` forms are implemented. First-class
-handler values and multi-install remain deferred shared-core additions.
-
-The decisive fact that makes the whole scheme cheap is already true: the type
-checker ([`check_program`](../../crates/osprey-types/src/check.rs),
-`crates/osprey-types/src/check.rs:480`) and code generator
-([`compile_program`](../../crates/osprey-codegen/src/lower.rs),
-`crates/osprey-codegen/src/lower.rs:20`) consume **only** `osprey_ast::Program`
-and the inferred type tables. Neither imports `osprey_syntax` or `tree_sitter`.
-Adding a flavor is adding a frontend, not a compiler. The parsing techniques
-behind the hand-written frontend are cited in
-[spec 0024 References](0024-MLFlavorSyntax.md#references).
+`Flavor`, `Parsed.flavor`, `parse_program_with_flavor`, the CLI
+`--flavor default|ml` flag, `.ospml`, and the leading
+`// osprey: flavor=ml` marker are shipped. First-class handler values and the
+`handler`/`do` keywords are not part of the shipped language and are rejected;
+both flavors support lexical `handle Effect ... in body` expressions.
 
 ## The One Law
 
@@ -131,10 +75,9 @@ flowchart LR
 
 ## Flavor Frontend
 
-`[FLAVOR-FRONTEND]` A flavor is a small frontend object. It owns a parser (its
-own CST) and a lowerer (CST → canonical AST), and nothing else. The public entry
-point dispatches by flavor; the existing `parse_program` becomes the Default
-specialisation so every current caller is unaffected.
+`[FLAVOR-FRONTEND]` Each flavor owns its parser, CST, and lowerer. The public
+entry point dispatches by `Flavor`; `parse_program` remains the Default
+specialisation.
 
 ```rust
 // crates/osprey-syntax/src/lib.rs
@@ -149,17 +92,10 @@ pub struct Parsed {
     pub flavor: Flavor,          // carried for diagnostic rendering only
 }
 
-pub trait FlavorFrontend {
-    type Cst;
-    fn parse_tree(source: &str) -> Option<Self::Cst>;
-    fn lower(source: &str, cst: &Self::Cst) -> Program;
-    fn collect_errors(source: &str, cst: &Self::Cst) -> Vec<SyntaxError>;
-}
-
 pub fn parse_program_with_flavor(source: &str, flavor: Flavor) -> Parsed {
     match flavor {
-        Flavor::Default => default_frontend::parse_program(source),
-        Flavor::Ml => ml_frontend::parse_program(source),
+        Flavor::Default => default::parse(source),
+        Flavor::Ml => ml::parse_ml(source),
     }
 }
 
@@ -169,13 +105,10 @@ pub fn parse_program(source: &str) -> Parsed {
 }
 ```
 
-The seam is exactly `parse_program` (`crates/osprey-syntax/src/lib.rs`). Default
-lowering (`crates/osprey-syntax/src/default/lower.rs`,
-`crates/osprey-syntax/src/default/expr.rs`) consumes generic tree-sitter CST
-nodes by `kind()` and field name; the ML frontend is a *parallel* parser and
-lowerer under `src/ml/`, and does not touch the Default one. String-interpolation
-re-entry (`default/expr.rs` `parse_fragment`, which recurses into `parse_program`)
-threads the active flavor through the recursion.
+The dispatch is implemented in `crates/osprey-syntax/src/lib.rs`. Default
+lowering consumes tree-sitter nodes; ML parsing and lowering are contained in
+`src/ml/`. Shared interpolation helpers accept a flavor-specific fragment
+parser, so interpolation uses the surrounding source flavor.
 
 `[FLAVOR-FRONTEND-FS]` **The flavor split is physical, not just logical.** Each
 flavor — which is exactly a *(CST, parser, lowerer)* triple — owns its own folder
@@ -194,12 +127,9 @@ crates/osprey-syntax/src/
     mod.rs lexer.rs token.rs parser.rs cst.rs lower.rs
 ```
 
-Nothing flavor-specific lives at the crate root: `lib.rs` is purely the
-selector and dispatcher. Shared, flavor-neutral text handling (`${…}` scanning,
-backslash escapes) lives in `strings.rs` and is *called* by each flavor with its
-own fragment parser — never reached out of the other flavor's folder. This makes
-[`[FLAVOR-BOUNDARY]`](#the-one-law) visible in the directory tree: a flavor is
-the folder, and below the AST there is nothing else.
+`lib.rs` contains selection and dispatch. Flavor-neutral interpolation and
+escape handling lives in `strings.rs`; each flavor supplies its own fragment
+parser.
 
 ## Flavor Selection
 
@@ -208,11 +138,9 @@ parsing, by this precedence (first match wins):
 
 1. **CLI flag** — `osprey app.osp --flavor ml` (or `--flavor default`).
 2. **File-level marker** — a leading line comment `// osprey: flavor=ml`
-   (parsed like the existing `// @link:` directives,
-   `crates/osprey-cli/src/main.rs:521`).
+   before code.
 3. **Extension** — `.ospml` ⇒ ML, `.osp` ⇒ Default.
-4. **Project config** — an `osprey.toml` `flavor = "…"` key (when present).
-5. **Default flavor.**
+4. **Default flavor.**
 
 The marker-and-extension precedence lives in **one** place,
 `osprey_syntax::resolve_flavor(flag, path, source)`
@@ -222,11 +150,9 @@ top (`parse_args`/`run`, `crates/osprey-cli/src/main.rs`) and passes the result
 to `parse_program_with_flavor`. The LSP resolves the same precedence per open
 document through `osprey_syntax::parse_program_for_path(uri, text)`, which every
 analysis (diagnostics, symbols, hover, completion, signature help, navigation)
-routes through — so a `.ospml` file is parsed by the ML frontend in the editor
-exactly as on the command line, instead of being misreported as broken Default
-syntax. A file whose extension and marker disagree is a hard error in the CLI; in
-the editor the conflict degrades to Default (it surfaces as ordinary
-diagnostics) rather than refusing to open the document.
+routes through. A marker/extension conflict is a hard CLI error and a
+`flavor-error` LSP diagnostic; the editor does not parse the document under a
+guessed flavor for that diagnostic pass.
 
 **One flavor per compilation unit.** A single `.osp`/`.ospml` file is wholly one
 flavor. Cross-flavor *projects* are supported through normal imports (see
@@ -244,10 +170,8 @@ flavor. Cross-flavor *projects* are supported through normal imports (see
 - **Preserve documentation comments** (`doc` fields) and **parameter names**.
 - **Normalise syntax-only differences** (see the table below) so equivalent
   programs in different flavors produce structurally identical ASTs.
-- **Refuse flavor-only semantic hacks.** If a surface construct cannot lower to
-  an existing canonical node, the missing capability is a **shared-core language
-  feature** (added to the AST and exposed to *both* flavors), never a node that
-  only one flavor emits. See [Shared-Core Additions](#shared-core-additions).
+- **Reject unsupported constructs.** A flavor must not invent an AST node or
+  silently approximate semantics that the shared core cannot represent.
 
 ## Flavor Concern vs Shared-Core Concern
 
@@ -388,48 +312,11 @@ forbid. The sanctioned way to get a flat multi-parameter `Function` in ML is to
 
 ## Shared-Core Additions
 
-`[FLAVOR-HANDLER-VALUE]` The ML design needs one capability the canonical AST
-cannot yet express, so it is added to the **shared core** and exposed in **both**
-flavors — never as an ML-only node.
-
-Today `Expr::Handler { effect, arms, body }`
-(`crates/osprey-ast/src/lib.rs:451`) fuses three things — *which effect*, *the
-arms*, and *the handled body* — into one expression, matching the Default
-surface `handle E op => … in body`. There is **no** first-class handler value
-(`Handler E` type), and installing N effects requires N nested `handle … in`
-expressions. The ML design wants handler **values** that can be named, returned,
-parameterised, and passed to tests, and one `handle h1 h2 do body` that installs
-several at once.
-
-That is a genuine language feature, not syntax. The shared core gains:
-
-- **AST:** split installation from construction.
-  - `Expr::HandlerValue { effect, arms }` — an expression that *evaluates to* a
-    handler value of type `Handler E`.
-  - `Expr::Install { handlers: Vec<Expr>, body }` — installs a list of handler
-    values around a computation.
-  - The existing `Expr::Handler { effect, arms, body }` becomes sugar for
-    `Install { [HandlerValue { effect, arms }], body }`, so all current Default
-    programs keep working unchanged.
-- **Types:** a `Handler E` type constructor; coverage checking that an arm set
-  satisfies the effect's operations; `handler`-owned `mut` state (already
-  modelled, per [Algebraic Effects](0017-AlgebraicEffects.md)) attached to the
-  value.
-- **Codegen:** a runtime handler-value representation and an install-a-list
-  lowering (`handle h1 h2 … in/do body` lowers to nested installs internally).
-
-Both flavors then expose it in their own spelling:
-
-| | Construct a handler value | Install one or more |
-| --- | --- | --- |
-| **Default** | `let db = handler Db { add t => … }` | `handle db log in { body }` |
-| **ML** | `db = handler Db` + indented arms | `handle db log do body` |
-
-This is the model case for the contract's last rule: a flavor may make a feature
-*pleasant*, but the feature itself lives in the shared core with one semantics.
-First-class handlers, `Handler E`, and multi-install are tracked as Phase 0 of
-[plan 0013](../plans/0013-ml-flavor-frontend.md) — they land flavor-neutrally
-**before** the ML frontend, because the ML examples depend on them.
+`[FLAVOR-HANDLER-VALUE]` First-class handler values, a `Handler E` type, and
+multi-handler `do` installation are not in the canonical AST or type system.
+The ML lexer reserves `handler` and `do`, and the parser rejects them with a
+`not yet supported` diagnostic. The shipped handler form in both flavors is the
+lexical `Expr::Handler { effect, arms, body }` form.
 
 ## Cross-Flavor Interop
 
@@ -439,44 +326,15 @@ parameter names and order. The ABI rule is deliberately honest about the
 currying split:
 
 - A **Default** multi-parameter function exports as an ordinary multi-parameter
-  function. An ML caller may call it only as a **saturated** application; partial
-  application of a non-curried import is a type error unless a curried wrapper is
-  generated.
+  function. An ML caller uses the uncurried `f (a, b)` form; whitespace
+  `f a b` is a nested curried call and does not change the imported function's
+  arity.
 - An **ML** curried function exports as a curried function value (a Default
   caller applies it through ordinary function-value calls); an **ML** uncurried
   function `f (x, y)` exports as an ordinary multi-parameter function, identical
   to Default `fn f(x, y)`.
-- Handler values, records, unions, `Result`, and effects have one canonical type
-  identity regardless of source flavor.
-
-The compiler **may** generate convenience wrappers (a curried view of a
-multi-parameter export, or a saturated view of a curried export), but the
-canonical declaration stays honest — the core never pretends a multi-parameter
-function and a curried function are the same value.
-
-## Flavor-Aware Diagnostics
-
-`[FLAVOR-DIAG]` The semantic diagnostic — its code and span — is produced by the
-flavor-blind checker. Only the *suggested-fix wording* is rendered in the
-authoring flavor, using the `flavor` carried on `Parsed`.
-
-| Semantic error | Default-flavor fix | ML-flavor fix |
-| --- | --- | --- |
-| write to an immutable binding | "declare it `mut` and assign with `=`" | "declare it `mut` and mutate with `:=`" |
-| same-scope rebinding | "use a new name or `mut` + `=`" | "use `:=` if you meant to mutate" |
-| unhandled effect | identical semantic message; example uses `handle … in` | identical semantic message; example uses `handle … do` |
-
-```mermaid
-sequenceDiagram
-    participant P as Flavor parser
-    participant L as Flavor lowerer
-    participant C as Shared checker
-    participant D as Diagnostic renderer
-    P->>L: CST + syntax errors
-    L->>C: canonical AST + spans + flavor
-    C->>D: semantic code + span (flavor-blind)
-    D-->>P: message + fix rendered in source flavor
-```
+- Records, unions, `Result`, and effects have one canonical type identity
+  regardless of source flavor.
 
 ## Cross-Flavor Equivalence Tests
 
@@ -486,12 +344,11 @@ generated identifiers, and compare canonical ASTs. The harness keys flavor off
 extension (`.osp` ⇒ Default, `.ospml` ⇒ ML), reusing the differential machinery
 in `crates/diff_examples.sh`.
 
-Two buckets, both asserted:
+Two buckets are asserted:
 
 - **Equivalent** — e.g. Default explicit-curried function vs ML curried `f x y`;
-  Default multi-parameter `fn f(x, y)` vs ML uncurried `f (x, y)`; Default
-  `handle h1 h2 in body` vs ML `handle h1 h2 do body`. Canonical ASTs must be
-  equal.
+  Default multi-parameter `fn f(x, y)` vs ML uncurried `f (x, y)`. Canonical
+  ASTs must be equal.
 - **Not equivalent** — e.g. Default multi-parameter function vs ML *curried*
   `f x y`. Canonical ASTs must differ.
 
@@ -504,16 +361,9 @@ flowchart LR
     N --> A{"assert equal / assert not-equal<br/>per declared bucket"}
 ```
 
-`[FLAVOR-IR-EQUIV]` Canonical-AST equality is necessary but not sufficient on its
-own to convince a reader the backend is flavor-blind. We therefore add a
-**stronger, end-to-end layer**: a Default twin (`.osp`) and its ML counterpart
-(`.ospml`) must emit **byte-identical LLVM IR**. Because lowering meets at one
-AST and `[FLAVOR-BOUNDARY]` forbids anything below it from inspecting the flavor,
-`osprey_codegen::compile_program` is a pure function of the canonical AST — so
-identical AST ⇒ identical IR text, with **no normalisation required** (verified:
-the IR diff for a paired fixture is empty). This is enforced in-process (no built
-binary needed) by `crates/osprey-cli/tests/cross_flavor_ir_equiv.rs`, which runs
-in the `rust` CI job under `cargo test --workspace`.
+`[FLAVOR-IR-EQUIV]` A Default twin (`.osp`) and its ML counterpart (`.ospml`)
+must emit byte-identical LLVM IR. This is enforced by
+`crates/osprey-cli/tests/cross_flavor_ir_equiv.rs`.
 
 **Paired-example convention.** Equivalence fixtures live as real, runnable
 examples under `examples/tested/ml/`. Each concept is a triple sharing one stem:
@@ -540,21 +390,9 @@ node Default produces for `let name = expr`. The type is always inferred
 module top level and inside a layout block, and the bound value's IR is
 byte-identical to the Default `let`.
 
-**Assumptions recorded by this layer.** (1) Integer arithmetic returns **plain
-scalars** in *both* flavors ([ARITH-PLAIN],
-[Error Handling](0013-ErrorHandling.md)): `+ - *` on
-`(int, int)` yield `int`, so a raw `y = x + 1` then `toString y` prints `42`
-in ML *and* Default alike, with no wrapper and no auto-unwrap involved. Only `/`
-and `%` stay wrapped, because zero has no representable result; their result
-types are in 0013's table. Those reach the usual function-boundary auto-unwrap,
-not any flavor-specific rule. (2) First-class
-handler values remain deferred (Phase 0, [`[FLAVOR-HANDLER-VALUE]`](#shared-core-additions));
-lexical effect forms lower through the shared AST today. (3) The Default
-twin is authored to match the ML AST (ML is the flavor under test, Default the
-oracle), matching currying **form-for-form**: curried originals pair with ML
-whitespace `f x y`, uncurried multi-parameter originals with ML parens
-`f (x, y)`. Neither side needs a backend currying fold to stay IR-identical, and
-neither wraps the script in `main` (it is synthesised).
+Twins match currying form-for-form: Default explicit curry pairs with ML
+whitespace parameters, and Default flat multi-parameter functions pair with ML
+parenthesised parameter lists.
 
 ## Resolved Open Questions
 

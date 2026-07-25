@@ -99,6 +99,7 @@ char *osp_string_substring(const char *s, int64_t start, int64_t end) {
 
 /* ---------- transformation (total) ---------- */
 
+/* ASCII case conversion [BUILTIN-STRING-TOUPPERCASE]. */
 char *osp_string_to_upper(const char *s) {
     if (!s) return osp_string_empty_internal();
     size_t len = strlen(s);
@@ -119,12 +120,14 @@ char *osp_string_to_lower(const char *s) {
     return out;
 }
 
+/* One-sided ASCII trimming [BUILTIN-STRING-TRIMSTART]. */
 char *osp_string_trim_start(const char *s) {
     if (!s) return osp_string_empty_internal();
     while (*s && osp_is_ws_internal((unsigned char)*s)) s++;
     return osp_string_dup_internal(s, strlen(s));
 }
 
+/* One-sided ASCII trimming [BUILTIN-STRING-TRIMEND]. */
 char *osp_string_trim_end(const char *s) {
     if (!s) return osp_string_empty_internal();
     size_t len = strlen(s);

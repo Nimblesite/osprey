@@ -1,7 +1,7 @@
 // Struct-allocation stress across the swappable memory backends. A lazy range
 // drives creation of a LARGE number of transient records; the default backend,
 // the tracing GC (--memory=gc) and Perceus ARC (--memory=arc) must all print
-// the SAME totals ([MEM-BACKENDS] oracle), and under ARC every record must be
+// the SAME totals ([MEM-BACKENDS] [MEM-OWNERSHIP] oracle), and under ARC every record must be
 // freed by exit — zero live objects ([GC-ARC-PERCEUS]).
 //
 // There is no per-file backend selector, by design: the memory strategy is a

@@ -390,7 +390,8 @@ fn gen_zero_checked(
 const DIVIDE_BY_ZERO: &str = "division by zero";
 
 /// `checkedAdd` / `checkedSub` / `checkedMul` — the opt-in overflow guarantee
-/// ([ARITH-PLAIN]). `llvm.s{add,sub,mul}.with.overflow.i64` returns the wrapped
+/// ([ARITH-PLAIN], [BUILTIN-CHECKED-ARITH]).
+/// `llvm.s{add,sub,mul}.with.overflow.i64` returns the wrapped
 /// value paired with an overflow bit; the bit selects `Error`, so the guarantee
 /// `+ - *` cannot give (a wrapped result is still representable) is real here.
 fn gen_checked_arith(cg: &mut Codegen, intrinsic: &str, l: Value, r: Value) -> Result<Value> {

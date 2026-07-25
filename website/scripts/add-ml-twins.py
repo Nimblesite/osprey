@@ -95,34 +95,21 @@ HAND_TWINS = {
     "functions/replace.md": 'replace ("a-b-c", "-", "_")  // Success { value: "a_b_c" }',
     "functions/substring.md": 'substring ("hello", 1, 4)  // Success { value: "ell" }',
     "functions/lines.md": 'lines "a\\\nb\\\nc"  // ["a","b","c"]',
-    # WebSocket builtins: Default uses named args; ML has no named-arg surface, so
-    # the equivalent call is positional whitespace application (as real .ospml does).
+    # WebSocket builtins return raw handles/statuses; ML uses whitespace application.
     "functions/websocketclose.md": (
-        'closeResult = websocketClose wsId\n'
-        'match closeResult\n    Success _ => print "Connection closed"\n'
-        '    Err message => print "Failed to close: ${message}"'
+        'status = websocketClose wsId\nprint status'
     ),
     "functions/websocketcreateserver.md": (
-        'serverResult = websocketCreateServer 8080 "127.0.0.1" "/chat"\n'
-        'match serverResult\n'
-        '    Success serverId => print "WebSocket server created with ID: ${serverId}"\n'
-        '    Err message => print "Failed to create server: ${message}"'
+        'serverId = websocketCreateServer 8080 "127.0.0.1" "/chat"\nprint serverId'
     ),
     "functions/websocketsend.md": (
-        'sendResult = websocketSend wsId "Hello, WebSocket!"\n'
-        'match sendResult\n    Success _ => print "Message sent successfully"\n'
-        '    Err message => print "Failed to send: ${message}"'
+        'status = websocketSend wsId "Hello, WebSocket!"\nprint status'
     ),
     "functions/websocketserverbroadcast.md": (
-        'broadcastResult = websocketServerBroadcast serverId "Welcome to Osprey Chat!"\n'
-        'match broadcastResult\n    Success _ => print "Message broadcasted to all clients"\n'
-        '    Err message => print "Failed to broadcast: ${message}"'
+        'sent = websocketServerBroadcast serverId "Welcome!"\nprint sent'
     ),
     "functions/websocketserverlisten.md": (
-        'listenResult = websocketServerListen serverId\n'
-        'match listenResult\n'
-        '    Success _ => print "Server listening on ws://127.0.0.1:8080/chat"\n'
-        '    Err message => print "Failed to start listening: ${message}"'
+        'status = websocketServerListen serverId\nprint status'
     ),
     # map-literal pages: generator emits `["k" => v]` ([FLAVOR-ML-MAP]); no hand twin.
     # parsefloat/parseint/split: generator comment-preserve handles them; no hand twin.

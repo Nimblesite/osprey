@@ -96,7 +96,7 @@ pub(crate) fn gen_send(cg: &mut Codegen, channel: &Expr, value: &Expr) -> Result
     let id = as_i64(cg, ch)?;
     let v = gen_expr(cg, value)?;
     // The sent value escapes boxed into the channel buffer: the receiver's
-    // side owns +1 [GC-ARC-PERCEUS], plan 0011 M5.
+    // side owns +1 [GC-ARC-PERCEUS] [MEM-FIBER-ISOLATION].
     crate::arc::escape_retain(cg, &v);
     let v = box_to_i64(cg, v);
     let r = cg.call(

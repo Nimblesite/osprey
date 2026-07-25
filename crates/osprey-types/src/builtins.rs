@@ -384,4 +384,33 @@ mod tests {
             Some("cleanupProcess : (int) -> Unit")
         );
     }
+
+    #[test]
+    fn network_builtins_match_the_runtime_status_abi() {
+        let expected = [
+            ("httpCloseClient", "httpCloseClient : (int) -> int"),
+            ("httpGet", "httpGet : (int, string, string) -> int"),
+            (
+                "httpResponseFree",
+                "httpResponseFree : (int) -> Result<int, Error>",
+            ),
+            (
+                "httpPost",
+                "httpPost : (int, string, string, string) -> int",
+            ),
+            (
+                "httpPut",
+                "httpPut : (int, string, string, string) -> int",
+            ),
+            (
+                "httpDelete",
+                "httpDelete : (int, string, string) -> int",
+            ),
+            ("httpStopServer", "httpStopServer : (int) -> int"),
+            ("websocketClose", "websocketClose : (int) -> int"),
+        ];
+        for (name, signature) in expected {
+            assert_eq!(builtin_signature(name).as_deref(), Some(signature), "{name}");
+        }
+    }
 }

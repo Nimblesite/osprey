@@ -12,7 +12,7 @@ imageAlt: "Three translucent release panels appear orderly while a cyan wirefram
 
 The title is rude on purpose.
 
-Semantic Versioning takes a maintainer's opinion about compatibility, compresses it into three integers, and invites package managers to treat the result as truth. A patch release is safe. A minor release is safe. A major release is dangerous. Put a caret in front of the number and let the resolver decide.
+Semantic Versioning (SemVer) takes a maintainer's opinion about compatibility, compresses it into three integers, and invites package managers to treat the result as truth. A patch release is safe. A minor release is safe. A major release is dangerous. Put a caret in front of the number and let the resolver decide.
 
 Except the number has not proved any of that. It records what somebody hoped, intended, or believed about a change. Sometimes they are right. Sometimes they have not even identified the public contract that their users depend on.
 

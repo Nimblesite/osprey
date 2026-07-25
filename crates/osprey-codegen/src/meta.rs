@@ -1,6 +1,6 @@
 //! Per-allocation layout metadata for `@osp_alloc_tagged` — the kind + word
 //! bitmask the ARC backend stores in the object header. Implements
-//! [GC-ARC-PERCEUS] (docs/plans/0011 phase 2, Amendment 1): codegen knows the
+//! [GC-ARC-PERCEUS] (docs/specs/0018-MemoryManagement.md): codegen knows the
 //! exact layout at each alloc site, so it passes the layout down instead of
 //! relying on a pointers-first `scan_fsize` convention the existing ABIs
 //! (tag-first records, `Result`'s trailing errmsg, `HttpResponse`'s C layout)

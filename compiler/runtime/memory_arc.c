@@ -1,6 +1,6 @@
 // Perceus ARC backend for Osprey — the swappable `@osp_alloc` implementation
 // selected at link time by `osprey --memory=arc`. Implements [MEM-BACKENDS]
-// (docs/specs/0018) and [GC-ARC-PERCEUS] (docs/plans/0011, phase 2).
+// and [GC-ARC-PERCEUS] (docs/specs/0018-MemoryManagement.md).
 //
 // Algorithm: precise reference counting after Reinking, Xie, de Moura & Leijen,
 // "Perceus: Garbage Free Reference Counting with Reuse", MSR-TR-2020-42
@@ -24,9 +24,9 @@
 // "not ours" and is a safe no-op. No IR special-casing, no FFI annotations —
 // non-ARC pointers are unmanaged by construction.
 //
-// Concurrency scope (v1): every operation holds one mutex, exactly the
-// memory_gc.c discipline — sound across fiber pthreads, slow but conforming.
-// The non-atomic fast path keyed on [MEM-FIBER-ISOLATION] is milestone M5.
+// Concurrency scope: operations use a lock-free fast path until the fiber
+// runtime announces its first pthread, then use one mutex across fiber threads
+// [MEM-FIBER-ISOLATION].
 
 #include "memory_hooks.h"
 #include "memory_pool.h"

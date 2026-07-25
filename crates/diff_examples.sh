@@ -23,7 +23,7 @@ typeset -a FAILED
 # ARC leak audit: with OSPREY_ARC_DEBUG=1 the Perceus backend prints
 # "[osp-arc] exit: N live objects" to stderr at exit (memory_arc.c). Counting
 # the examples that end with N>0 is the only automatic check for the
-# [GC-ARC-PERCEUS] "zero leaked language values" bar — stdout comparison alone
+# [MEM-BACKENDS] [GC-ARC-PERCEUS] zero-live-values bar — stdout comparison alone
 # cannot see a leak (nor a premature free). Off unless the env var is set.
 arc_leaky=0
 typeset -a ARC_LEAKS

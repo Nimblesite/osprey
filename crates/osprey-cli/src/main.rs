@@ -52,9 +52,9 @@ pub(crate) struct Cli {
     mode: String,
     quiet: bool,
     policy: Policy,
-    /// The reclaiming memory backend linked behind `@osp_alloc` — `default`
-    /// (malloc passthrough) or `gc` (tracing collector). Link-time only; the IR
-    /// is identical [MEM-BACKENDS]. (`arc` is reserved, docs/plans/0011.)
+    /// The memory backend linked behind `@osp_alloc`: `default` (malloc
+    /// passthrough), `gc` (tracing collector), or `arc` (reference counting).
+    /// Link-time only; native IR is identical [MEM-BACKENDS].
     memory: String,
     /// Codegen/link target: `native` (host executable via clang) or `wasm32`
     /// (browser-ready WebAssembly via wasm-ld; wasm32-wasip1). [WASM-TARGET]
@@ -302,8 +302,8 @@ fn parse_target(value: &str) -> Result<String, String> {
 }
 
 /// Validate the `--memory=` value: the malloc passthrough (`default`), the
-/// tracing collector (`gc`), or Perceus reference counting (`arc`) —
-/// docs/plans/0011 [MEM-BACKENDS].
+/// tracing collector (`gc`), or Perceus reference counting (`arc`).
+/// Implements [MEM-BACKENDS].
 fn parse_memory(value: &str) -> Result<String, String> {
     match value {
         "default" | "gc" | "arc" => Ok(value.to_string()),
@@ -2275,7 +2275,7 @@ mod tests {
 
     #[test]
     fn link_args_selects_gc_archive_and_validates_backend() {
-        // The `gc`/`arc` backends swap in their archive sets; `default` does not.
+        // [MEM-BACKENDS] `gc`/`arc` swap archives; `default` does not.
         let gc = link_args("call void @osprey_list_empty()", "", "gc");
         assert!(
             gc.iter().any(|a| a.contains("_gc.a")) || gc.is_empty(),

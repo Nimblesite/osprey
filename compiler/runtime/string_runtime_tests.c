@@ -1,7 +1,9 @@
 /*
  * Verifies [BUILTIN-STRING-INSPECTION], [BUILTIN-STRING-SEARCH],
  * [BUILTIN-STRING-CURSOR], [BUILTIN-STRING-SUBSTRINGS], [BUILTIN-STRING-LIST],
- * [BUILTIN-STRING-TRANSFORM], and [BUILTIN-STRING-PARSING].
+ * [BUILTIN-STRING-TRANSFORM], [BUILTIN-STRING-TOUPPERCASE],
+ * [BUILTIN-STRING-TRIMSTART], [BUILTIN-STRING-TRIMEND], and
+ * [BUILTIN-STRING-PARSING].
  *
  * Strict assertion-driven tests for every helper in string_runtime.c and
  * string_runtime_list.c. Each test exercises both the happy path AND

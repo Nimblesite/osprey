@@ -1211,7 +1211,7 @@ impl Codegen {
     /// [`heap_alloc`] carrying the per-site layout word (kind + managed-pointer
     /// mask, see [`crate::meta`]): the ARC backend stores it in the object
     /// header so `osp_release` can drop children precisely; other backends
-    /// ignore it. Implements [GC-ARC-PERCEUS], docs/plans/0011 phase 2.
+    /// ignore it. Implements [GC-ARC-PERCEUS].
     pub(crate) fn heap_alloc_tagged(&mut self, size: &str, meta: i64) -> String {
         if meta == crate::meta::KIND_RAW {
             return self.heap_alloc(size);

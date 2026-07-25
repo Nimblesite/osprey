@@ -1,7 +1,8 @@
 //! WebAssembly (`wasm32-wasip1`) backend driver. [WASM-TARGET]
 //!
-//! Osprey codegen already emits target-agnostic textual LLVM IR (no triple or
-//! datalayout; `int` is `i64`; pointers round-trip through `i64`, which is safe
+//! Osprey codegen already emits target-agnostic textual LLVM IR
+//! [WASM-TARGET-IR] (no triple or datalayout; `int` is `i64`; pointers
+//! round-trip through `i64`, which is safe
 //! on wasm32 since addresses fit in 32 bits). This module turns that IR into a
 //! browser-ready `.wasm`:
 //!
@@ -26,8 +27,10 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode};
 
 /// The canonical wasm target triple (the modern spelling of `wasm32-wasi`).
+/// Implements [WASM-TARGET-TRIPLE].
 const TRIPLE: &str = "wasm32-wasip1";
-/// The browser-portable C-runtime archive, built by `make wasm`.
+/// The browser-portable default-memory C runtime, built by `make wasm`.
+/// Implements [WASM-TARGET-RUNTIME] and [WASM-TARGET-MEMORY].
 const RUNTIME_LIB: &str = "libosprey_runtime_wasm.a";
 /// Candidate multiarch lib subdir names inside a WASI sysroot, newest first.
 const LIB_SUBDIRS: [&str; 2] = ["wasm32-wasip1", "wasm32-wasi"];
@@ -78,7 +81,8 @@ fn with_entry_thunk(ir: &str) -> String {
     format!("{ir}\ndefine i32 @__main_void() {{\n  %r = call i32 @main()\n  ret i32 %r\n}}\n")
 }
 
-/// Lower the IR text to a wasm object with clang (`-c`, no link).
+/// Lower target-neutral IR to a wasm object with clang (`-c`, no link).
+/// Implements [WASM-TARGET-IR] and the compile half of [WASM-TARGET-LINK].
 fn compile_object(stem: &str, ir: &str) -> Result<PathBuf, ExitCode> {
     let ll = std::env::temp_dir().join(format!("{stem}.wasm.ll"));
     let obj = std::env::temp_dir().join(format!("{stem}.wasm.o"));
@@ -90,6 +94,7 @@ fn compile_object(stem: &str, ir: &str) -> Result<PathBuf, ExitCode> {
 }
 
 /// Link the wasm object + runtime archive + libc into a command module.
+/// Implements [WASM-TARGET-LINK].
 fn link(
     obj: &Path,
     archive: &str,
@@ -317,6 +322,7 @@ mod tests {
 
     #[test]
     fn entry_thunk_wraps_main_for_the_wasi_start_path() {
+        // [WASM-ENTRY]
         let out = with_entry_thunk("define i32 @main() {\n  ret i32 0\n}\n");
         assert!(out.contains("define i32 @main()"), "original main kept");
         assert!(out.contains("define i32 @__main_void()"), "thunk added");
@@ -325,6 +331,7 @@ mod tests {
 
     #[test]
     fn web_dispatch_thunk_stabilizes_a_project_mangled_symbol() {
+        // [WASM-WEB-ABI]
         let mangled = format!("__osp_3x617070{WEB_DISPATCH_MANGLED_SUFFIX}");
         let out = with_web_dispatch_thunk("; module", Some(&mangled));
         assert!(out.contains("define i64 @osprey_web_dispatch(i8* %message)"));
@@ -346,6 +353,7 @@ mod tests {
 
     #[test]
     fn clang_argv_targets_wasm_and_compiles_only() {
+        // [WASM-TARGET-TRIPLE] [WASM-TARGET-LINK]
         let argv = clang_argv(Path::new("/tmp/p.ll"), Path::new("/tmp/p.o"));
         assert!(argv.iter().any(|a| a == "--target=wasm32-wasip1"));
         assert!(argv.iter().any(|a| a == "-c"), "no link step");
@@ -357,6 +365,7 @@ mod tests {
 
     #[test]
     fn link_argv_uses_crt1_runtime_archive_and_libc() {
+        // [WASM-TARGET-LINK] [WASM-TARGET-RUNTIME] [WASM-TARGET-MEMORY]
         let argv = link_argv(
             Path::new("/tmp/p.o"),
             "/lib/libosprey_runtime_wasm.a",
@@ -376,6 +385,7 @@ mod tests {
 
     #[test]
     fn link_argv_exports_the_discovered_web_dispatch_symbol() {
+        // [WASM-WEB-ABI]
         let mangled = format!("__osp_3x617070{WEB_DISPATCH_MANGLED_SUFFIX}");
         let argv = link_argv(
             Path::new("/tmp/p.o"),
@@ -390,6 +400,7 @@ mod tests {
 
     #[test]
     fn finds_source_and_project_mangled_web_dispatch_functions() {
+        // [WASM-WEB-ABI]
         let source =
             osprey_syntax::parse_program("fn osprey_web_dispatch(message: string) -> int = 0\n")
                 .program;
@@ -465,6 +476,7 @@ mod tests {
 
     #[test]
     fn compile_object_lowers_textual_ir_with_clang() {
+        // [WASM-TARGET-IR] [WASM-TARGET-LINK]
         // Requires clang (present wherever `make test` runs); a tiny valid module
         // exercises the write-IR + `clang -c` lowering path end to end.
         if Command::new(tool("OSPREY_WASM_CC", "clang"))
@@ -568,6 +580,7 @@ mod tests {
     /// the CI `wasm` job.
     #[test]
     fn build_and_run_drive_the_full_driver_with_stub_tools() {
+        // [WASM-TARGET] [WASM-TARGET-RUNTIME]
         let _g = lock_env();
         let prev = [
             (

@@ -1,6 +1,8 @@
 # Built-in Functions
 
-Reference for built-in functions available in every Osprey program. Operations that can fail return `Result`; see [Error Handling](0013-ErrorHandling.md).
+Reference for built-in functions available in every Osprey program. Structured
+fallible operations use `Result`; low-level handle and status APIs document
+their integer returns explicitly. See [Error Handling](0013-ErrorHandling.md).
 
 Built-ins are shared by both language flavors. Examples use the Default
 surface unless an ML example clarifies different call syntax.
@@ -194,7 +196,7 @@ match randomBelow 0
 Strings are immutable, NUL-terminated UTF-8 byte sequences. String operations
 return new values and do not mutate their arguments.
 
-### Design Principles — [BUILTIN-STRING-DESIGN]
+### Rules
 
 Total operations return plain values; invalid indices, arguments, or parses
 return `Result`. The subject is the first argument so calls compose with `|>`.

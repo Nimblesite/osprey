@@ -1,27 +1,13 @@
-// Math: int + float arithmetic, modulo, interpolation arithmetic,
-// recursion, Result<int,MathError> auto-unwrap via match, division-by-zero
-// error path, classification via wildcard pattern.
-
-type MathError =
-    DivisionByZero
-    Overflow
+// Math: plain int/float arithmetic, checked integer arithmetic
+// [BUILTIN-CHECKED-ARITH], division/remainder Results, and recursion.
 
 power (base, exp) =
     match exp
         0 => 1
         1 => base
-        2 =>
-            match base * base
-                Success value => value
-                Error message => 0
-        3 =>
-            match base * base * base
-                Success value => value
-                Error message => 0
-        _ =>
-            match base * base * base * base
-                Success value => value
-                Error message => 0
+        2 => base * base
+        3 => base * base * base
+        _ => base * base * base * base
 
 factorial n =
     match n
@@ -43,10 +29,7 @@ fibonacci n =
         5 => 5
         _ => 8
 
-complex (a, b) =
-    match (a * 2) + (b * 3) - 1
-        Success value => value
-        Error message => 0
+complex (a, b) = (a * 2) + (b * 3) - 1
 
 isEven x = (x % 2) == 0
 
@@ -73,7 +56,7 @@ showDiv (a, b) =
 
 print "=== Math Showcase ==="
 
-// Arithmetic in interpolation (Result auto-unwrapped)
+// Plain arithmetic in interpolation.
 age = 25
 print "Next year: ${age + 1}"
 print "Last year: ${age - 1}"
@@ -91,6 +74,11 @@ print "intDiv(25,2) = ${intDiv 25 2}, intDiv(100,7) = ${intDiv 100 7}"
 match intDiv 5 0
     Success value => print "intDiv(5,0) = ${value}"
     Error message => print "intDiv(5,0): ${message}"
+
+print "checked add=${toString (checkedAdd (2, 3))}, sub=${toString (checkedSub (2, 3))}, mul=${toString (checkedMul (6, 7))}"
+print "checked overflow add=${toString (checkedAdd (9223372036854775807, 1))}"
+print "checked overflow sub=${toString (checkedSub (-9223372036854775807, 2))}"
+print "checked overflow mul=${toString (checkedMul (4294967296, 4294967296))}"
 
 // Power, factorial, fibonacci
 n = 5

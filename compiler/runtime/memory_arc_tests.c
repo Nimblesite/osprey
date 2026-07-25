@@ -1,5 +1,5 @@
 // Vanilla-C tests for runtime/memory_arc.c — the Perceus ARC backend
-// ([GC-ARC-PERCEUS]; [MEM-BACKENDS], docs/specs/0018). Built by the Makefile's
+// ([GC-ARC-PERCEUS], [MEM-OWNERSHIP], [MEM-BACKENDS], docs/specs/0018). Built by the Makefile's
 // _test_c_runtime; never with osp_arc_shim.h (the foreign-pointer fixtures need
 // real libc malloc/free). memory_arc.c exports no live-count symbol, so
 // liveness is asserted structurally: the {int64 meta; int32 rc; uint32 size}
