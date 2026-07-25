@@ -1,7 +1,7 @@
 ---
 layout: layouts/base.njk
-title: "Functional Language, Two Flavors, One Core"
-description: "Osprey is one functional language fronted by two first-class syntaxes: an accessible brace-style Default flavor that reads like Kotlin, Swift, or Go, and an uncompromising offside-rule ML flavor for FP devotees. One type checker, one effect system, one runtime."
+title: "Osprey — Safe, Fast Functional Programming"
+description: "Osprey is a practical functional language for safe, fast native programs: strong inferred types, first-class effects, lightweight concurrency and clean, readable code."
 # Read from git history, not the filesystem: a fresh CI checkout gives every
 # file a birthtime of "now", which would put a fake date in the sitemap.
 date: "git Last Modified"
@@ -11,636 +11,276 @@ date: "git Last Modified"
   <div class="container">
     <div class="hero-content">
       <h1 class="hero-title animate-on-scroll">
-        <span class="accent">Osprey</span>
-        — one core, two flavors, zero compromise.
+        <span class="accent">Osprey</span> — safe, fast functional programming without the clutter.
       </h1>
       <p class="hero-subtitle animate-on-scroll">
-        Osprey is <strong>one</strong> functional language fronted by <strong>two</strong> first-class flavors:
-        an accessible brace-style <strong>Default</strong> flavor that reads like the languages you already know,
-        and an uncompromising offside-rule <strong>ML</strong> flavor for FP devotees. One Hindley-Milner type
-        checker, one effect system, one fiber runtime, one LLVM backend — pick your tribe, go all in.
+        A practical language with strong inferred types, explicit errors, first-class effects and
+        lightweight concurrency. Osprey compiles through LLVM to native programs, with no VM or JIT warm-up.
       </p>
       <div class="hero-actions animate-on-scroll">
-        <a href="/playground/" class="btn btn-primary btn-lg">
-          Try Osprey Online
-        </a>
-        <a href="/wasm/" class="btn btn-secondary btn-lg">
-          WebAssembly Demo
-        </a>
+        <a href="/playground/" class="btn btn-primary btn-lg">Try Osprey Online</a>
+        <a href="/docs/" class="btn btn-secondary btn-lg">Read the Docs</a>
       </div>
     </div>
 
     <div class="hero-code animate-on-scroll">
-      <p class="hero-code-caption">The same program — algebraic effects handled over fibers — in both flavors.</p>
-      <div class="flavor-split">
+      <p class="hero-code-caption">Strong types and explicit failure, without noisy annotations.</p>
+      <div class="code-example">
+        <pre class="language-osprey"><code class="language-osprey">type Lookup = Found { value: int } | Missing
+
+fn doubleFound(result) = match result {
+  Found { value } => Success(value * 2)
+  Missing => Error("value not found")
+}
+
+match doubleFound(Found { value: 21 }) {
+  Success(value) => print("result: ${value}")
+  Error(message) => print("error: ${message}")
+}</code></pre>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="section section-alt">
+  <div class="container">
+    <h2 class="section-title">Built for real programs</h2>
+    <p class="section-subtitle">
+      Osprey combines functional clarity with systems-oriented deployment. The features fit together
+      around four priorities: practical code, safety, performance and elegance.
+    </p>
+    <div class="philosophy-grid">
+      <div class="card">
+        <h3>Practical by design</h3>
+        <p>Write direct code, call existing C libraries and compile native binaries or WebAssembly. Useful abstractions should remove work, not create ceremony.</p>
+      </div>
+      <div class="card">
+        <h3>Safe where it matters</h3>
+        <p>Expected failures use results, pattern matching checks every case, arithmetic does not silently wrap and fibers avoid shared mutable state.</p>
+      </div>
+      <div class="card">
+        <h3>Native performance</h3>
+        <p>LLVM compilation, lightweight fibers, persistent collections and selectable memory management give high-level code a systems-oriented runtime.</p>
+      </div>
+      <div class="card">
+        <h3>Functional elegance</h3>
+        <p>Type inference, immutable data, direct-style concurrency and first-class effects keep the important parts visible and the plumbing out of the way.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="section">
+  <div class="container">
+    <h2 class="section-title">Safety without busywork</h2>
+    <div class="two-column">
+      <div class="content">
+        <h3>Make invalid states and hidden failure harder to write</h3>
+        <p>
+          Osprey uses inferred static types, explicit result values and exhaustive pattern matching.
+          You get strong checks without repeating obvious type information throughout the program.
+        </p>
+        <ul>
+          <li>Errors are values instead of hidden exceptions or nulls</li>
+          <li>Pattern matching checks that every data case is handled</li>
+          <li>Checked arithmetic reports overflow instead of silently wrapping</li>
+          <li>Osprey-managed memory is safe; calls into C cross that safety boundary</li>
+        </ul>
+      </div>
+      <div class="visual">
         <div class="code-example">
-          <div class="flavor-tag">Default <span>.osp</span></div>
+          <pre class="language-osprey"><code class="language-osprey">type Payment = Approved { receipt: string }
+             | Declined { reason: string }
+
+fn describe(payment) = match payment {
+  Approved { receipt } => "paid: ${receipt}"
+  Declined { reason } => "declined: ${reason}"
+}</code></pre>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="section section-alt">
+  <div class="container">
+    <h2 class="section-title">Effects without dependency plumbing</h2>
+    <div class="two-column">
+      <div class="visual">
+        <div class="code-example">
           <pre class="language-osprey"><code class="language-osprey">effect Logger {
   log: fn(string) -> Unit
 }
 
-fn runJob(weight) !Logger = {
-  perform Logger.log("weight ${weight}")
-  weight * weight
+fn process(orderId) !Logger = {
+  perform Logger.log("processing ${orderId}")
+  orderId * 2
 }
 
 handle Logger
-  log msg => print("[LOG] ${msg}")
-in {
-  let fast = spawn runJob(9)
-  let slow = spawn runJob(5)
-  print("scores ${await(fast)} / ${await(slow)}")
-}</code></pre>
+  log message => print(message)
+in process(21)</code></pre>
         </div>
+      </div>
+      <div class="content">
+        <h3>Ask for work where it is needed; decide how it happens at the edge</h3>
+        <p>
+          Code can log, store data or retry work without passing service objects through every intermediate
+          function. Swap a handler in a test without changing the code under test.
+        </p>
+        <p>
+          Effect inputs and outputs are type-checked. Complete compile-time checking for missing effect setup
+          is still in progress; a missing handler currently produces a runtime diagnostic.
+        </p>
+      </div>
+    </div>
+  </div>
+</section>
 
+<section class="section">
+  <div class="container">
+    <h2 class="section-title">Concurrency that stays direct</h2>
+    <div class="two-column">
+      <div class="content">
+        <h3>Lightweight fibers, message passing and no function colouring</h3>
+        <p>
+          Spawn concurrent work without turning every function in the call chain into a special async kind.
+          Fibers communicate by moving or copying values through channels rather than sharing mutable state.
+        </p>
+        <ul>
+          <li>Lightweight tasks instead of one operating-system thread per job</li>
+          <li>Channels for isolated communication</li>
+          <li>Ordinary direct-style functions and results</li>
+        </ul>
+      </div>
+      <div class="visual">
         <div class="code-example">
-          <div class="flavor-tag">ML <span>.ospml</span></div>
-          <pre class="language-osprey"><code class="language-osprey">effect Logger
-  log : string => Unit
+          <pre class="language-osprey"><code class="language-osprey">fn work(n) = n * n
 
-runJob weight =
-  perform Logger.log "weight ${weight}"
-  weight * weight
+let first = spawn work(6)
+let second = spawn work(7)
 
-handle Logger
-  log msg => print "[LOG] ${msg}"
-in
-  fast = spawn (runJob 9)
-  slow = spawn (runJob 5)
-  print "scores ${await fast} / ${await slow}"</code></pre>
+print("${await(first)}, ${await(second)}")
+
+let messages = Channel(1)
+send(messages, "done")
+print(recv(messages))</code></pre>
         </div>
       </div>
     </div>
+  </div>
+</section>
+
+<section class="section section-alt">
+  <div class="container">
+    <h2 class="section-title">Fast programs, deliberate trade-offs</h2>
+    <p class="section-subtitle">
+      Osprey compiles through LLVM with no VM or JIT warm-up. Choose the memory strategy that fits the build,
+      and use the same language semantics across those choices.
+    </p>
+    <div class="philosophy-grid">
+      <div class="card">
+        <h3>Native and WebAssembly</h3>
+        <p>Build native binaries for systems-oriented deployment or target WebAssembly for the browser.</p>
+      </div>
+      <div class="card">
+        <h3>Selectable memory</h3>
+        <p>Choose reference counting, garbage collection or a strict mode that rejects code needing runtime memory tracking.</p>
+      </div>
+      <div class="card">
+        <h3>Persistent collections</h3>
+        <p>Immutable lists and maps reuse unchanged structure, so an update does not copy the entire collection.</p>
+      </div>
+      <div class="card">
+        <h3>Direct C interop</h3>
+        <p>Declare and link the C functions you need. C code remains outside Osprey's memory-safety guarantee.</p>
+      </div>
+    </div>
+    <p class="comparison-cta">
+      Performance claims belong with measurements. See the reproducible
+      <a href="/benchmarks/">cross-language benchmarks →</a>
+    </p>
+  </div>
+</section>
+
+<section class="section">
+  <div class="container">
+    <h2 class="section-title">Two flavors, one language</h2>
+    <p class="section-subtitle">
+      Choose familiar braces and calls or clean ML-style layout and currying. Both flavors use the same type
+      system, effects, runtime and backends; neither is a reduced or secondary form of Osprey.
+    </p>
+    <div class="two-column">
+      <div class="content">
+        <h3>Default <code>.osp</code></h3>
+        <p>Braces, <code>fn</code> and familiar function calls for developers coming from C#, Go, Rust, Java, Kotlin or Swift.</p>
+        <div class="code-example">
+          <pre class="language-osprey"><code class="language-osprey">fn greet(name) = {
+  let message = "Hello, ${name}"
+  print(message)
+}
+
+greet("Ada")</code></pre>
+        </div>
+      </div>
+      <div class="visual">
+        <h3>ML <code>.ospml</code></h3>
+        <p>Layout-sensitive syntax, currying and whitespace application for developers at home in ML, OCaml, F# or Haskell.</p>
+        <div class="code-example">
+          <pre class="language-osprey"><code class="language-osprey">greet name =
+  message = "Hello, ${name}"
+  print message
+
+greet "Ada"</code></pre>
+        </div>
+      </div>
+    </div>
+    <p class="section-subtitle">
+      Files choose a flavor independently. Cross-flavor multi-file integration is the design direction and is
+      not yet described as complete. <a href="/blog/2026-06-30-osprey-flavors/">Read about the two flavors →</a>
+    </p>
   </div>
 </section>
 
 <section class="blue-box-installation">
   <div class="container">
-    <h2 class="section-title animate-on-scroll">Get Osprey Now</h2>
-    <p class="banner warn animate-on-scroll">
-      <strong>Prerequisite:</strong> Osprey compiles through LLVM, so it needs
-      <code>clang</code> (LLVM 15+) on your <code>PATH</code> — the installers do
-      <em>not</em> bundle it. On macOS run <code>xcode-select --install</code> or
-      <code>brew install llvm</code>; on Linux <code>sudo apt-get install clang llvm lld</code>;
-      on Windows <code>scoop install llvm gcc</code>. Full per-platform steps and
-      troubleshooting: <a href="/docs/installation/">Installation guide</a>.
-    </p>
+    <h2 class="section-title animate-on-scroll">Try Osprey</h2>
+    <p class="section-subtitle">Use the browser playground, or install the compiler and build a native program.</p>
     <div class="install-grid">
+      <div class="install-card animate-on-scroll">
+        <h3>Browser playground</h3>
+        <p>Compile and run Osprey without installing anything.</p>
+        <a href="/playground/" class="btn btn-primary">Open Playground</a>
+      </div>
       <div class="install-card primary animate-on-scroll">
-        <h3>🍎 macOS / 🐧 Linux</h3>
+        <h3>macOS / Linux</h3>
         <div class="install-code">
           <pre class="language-bash"><code class="language-bash">brew install nimblesite/tap/osprey</code></pre>
         </div>
       </div>
-
       <div class="install-card primary animate-on-scroll">
-        <h3>🪟 Windows</h3>
+        <h3>Windows</h3>
         <div class="install-code">
           <pre class="language-bash"><code class="language-bash">scoop bucket add nimblesite https://github.com/Nimblesite/scoop-bucket
 scoop install osprey</code></pre>
         </div>
       </div>
-
-      <div class="install-card animate-on-scroll">
-        <h3>🌐 Try Web Compiler</h3>
-        <p>No installation needed! Compile and run Osprey code in your browser.</p>
-        <a href="/playground/" class="btn btn-primary">Open Playground</a>
-      </div>
-
-      <div class="install-card animate-on-scroll">
-        <h3>WebAssembly Data Studio</h3>
-        <p>Run Osprey compiled to wasm in the site, backed by a live in-browser SQLite engine.</p>
-        <a href="/wasm/" class="btn btn-secondary">Open WASM Demo</a>
-      </div>
-
-      <div class="install-card animate-on-scroll">
-        <h3>🧩 VS Code Extension</h3>
-        <p>Syntax highlighting, diagnostics, and a bundled compiler.</p>
-        <a href="https://marketplace.visualstudio.com/items?itemName=nimblesite.osprey" class="btn btn-secondary">Get the Extension</a>
-      </div>
-
-      <div class="install-card animate-on-scroll">
-        <h3>🔨 Build from Source</h3>
-        <p>Want the latest features? Build the compiler locally from GitHub.</p>
-        <a href="https://github.com/Nimblesite/osprey" class="btn btn-secondary">View on GitHub</a>
-      </div>
     </div>
-  </div>
-</section>
-
-<section class="section section-alt">
-  <div class="container">
-    <h2 class="section-title">Two Flavors, One Core</h2>
-    <p class="section-subtitle">
-      Neither flavor is the watered-down one. <strong>Both are fully implemented today</strong> — the same programs
-      run in either syntax, proven byte-for-byte in the test suite. Both lower to the
-      <strong>same canonical AST</strong>, so after lowering nothing (type checker, effect checker, optimiser,
-      codegen) can tell which flavor you wrote.
+    <p class="banner warn animate-on-scroll">
+      Native compilation requires <code>clang</code> (LLVM 15+) on your <code>PATH</code>; installers do not bundle it.
+      See the <a href="/docs/installation/">installation guide</a> for platform steps and troubleshooting.
     </p>
-
-    <div class="two-column">
-      <div class="content">
-        <h3>Default flavor — accessible by design</h3>
-        <p>C-style braces, <code>fn</code>, <code>if</code>/<code>else</code>, and <code>f(x: a, y: b)</code> calls
-          with named arguments. Reads like the Kotlin, Swift, or Go you already know. Fully implemented today.</p>
-        <div class="code-example">
-          <pre class="language-osprey"><code class="language-osprey">// Default flavor (.osp) — braces, fn, if/else, named args
-fn double(n) = n * 2
-
-fn analyzeNumber(n) = if n == 0 { "Zero" } else if n == 42 { "The answer!" } else { "Something else" }
-
-print("double 21 = ${double(21)}")
-print(analyzeNumber(42))</code></pre>
-        </div>
-      </div>
-      <div class="visual">
-        <h3>ML flavor — for FP devotees</h3>
-        <p>Offside-rule layout (indentation, no braces), curry-by-default, whitespace application
-          <code>f a b</code>, and <code>=&gt;</code> clauses. Terse, expression-first, ML/Haskell-shaped.
-          Fully implemented today.</p>
-        <div class="code-example">
-          <pre class="language-osprey"><code class="language-osprey">// ML flavor (.ospml) — layout, currying — RUNS TODAY
-inc : int -&gt; int
-inc x = x + 1
-
-adder : int -&gt; int -&gt; int
-adder a b = a + b
-
-// partial application falls straight out of currying:
-addTen = adder 10
-print "addTen32=${toString (addTen 32)}"</code></pre>
-        </div>
-      </div>
-    </div>
-
-    <p class="section-subtitle">
-      <strong>It's the same language underneath.</strong> Here is the same program in both flavors — the
-      currying twin lowers to a machine-checked <em>identical</em> canonical AST.
-    </p>
-
-    <div class="two-column">
-      <div class="content">
-        <h3>Default flavor</h3>
-        <div class="code-example">
-          <pre class="language-osprey"><code class="language-osprey">// Default flavor (.osp): explicit curry
-fn add(x) = fn(y) =&gt; x + y</code></pre>
-        </div>
-      </div>
-      <div class="visual">
-        <h3>ML flavor</h3>
-        <div class="code-example">
-          <pre class="language-osprey"><code class="language-osprey">// ML flavor (.ospml) — identical canonical AST:
-add x y = x + y</code></pre>
-        </div>
-      </div>
-    </div>
-    <p class="section-subtitle">
-      Currying is the one honest difference: ML <code>add x y</code> ≡ Default explicit-curry
-      <code>fn add(x) = fn(y) =&gt; …</code> at the AST. A Default <em>multi-param</em> <code>fn add(x, y)</code>
-      is deliberately a different value.
-    </p>
-
-    <div class="two-column">
-      <div class="content">
-        <h3>Mix flavors in one folder</h3>
-        <p>Because every flavor lowers to the same canonical AST <em>before</em> type checking, you pick the flavor
-          <strong>per file</strong> — the team is never forced into one tribe. Exports are canonical signatures with
-          stable names and order, so a Default module and an ML module are designed to sit in one folder and compile
-          into one program.</p>
-        <p>Select the ML surface three ways (precedence: flag &gt; marker &gt; extension &gt; Default):</p>
-        <ul>
-          <li>The <code>.ospml</code> file extension</li>
-          <li>The <code>--flavor ml</code> CLI flag</li>
-          <li>A leading <code>// osprey: flavor=ml</code> marker</li>
-        </ul>
-        <p>Per-file flavor selection ships today; cross-flavor multi-file imports are the design direction this model points at.</p>
-      </div>
-      <div class="visual">
-        <div class="code-example">
-          <pre class="language-osprey"><code class="language-osprey">// One project folder, two flavors, one program:
-//   project/
-//     math.ospml     # ML flavor — curry-by-default module
-//     app.osp        # Default flavor — braces; imports math
-//
-// Each file is wholly one flavor (chosen by
-// extension / marker / --flavor). Both lower to the
-// SAME canonical AST, so they share one type checker
-// and one binary. Exports are canonical signatures,
-// so a Default module and an ML module import each
-// other normally.</code></pre>
-        </div>
-      </div>
-    </div>
-  </div>
-</section>
-
-<section class="section">
-  <div class="container">
-    <div class="two-column">
-      <div class="content">
-        <h2>The Vision</h2>
-        <p>
-          Osprey was born from the belief that elegance <strong>is</strong> the best defence against bugs. Too many
-          hours are wasted debugging null pointer exceptions, handling unexpected panics, and tracking down race
-          conditions. Osprey is different.
-        </p>
-        <p>
-          Osprey's type system aims to prevent entire classes of bugs at compile time, make concurrency safe by
-          default, and keep your code maintainable for years to come.
-        </p>
-      </div>
-      <div class="visual">
-        <div class="code-example">
-          <pre class="language-osprey"><code class="language-osprey">// Effects in the type, handlers at the edge
-effect Logger { log: fn(string) -> Unit }
-
-fn greet(name: string) -> Unit !Logger =
-  perform Logger.log("Hello, ${name}!")
-
-handle Logger
-  log msg => print(msg)
-in greet("Alice")</code></pre>
-        </div>
-      </div>
-    </div>
-  </div>
-</section>
-
-<section class="section">
-  <div class="container">
-    <h2 class="section-title">Language Features</h2>
-
-    <div class="two-column">
-      <div class="content">
-        <h3>Type-Safe & Expressive</h3>
-        <p>Strong static typing prevents runtime errors while keeping syntax clean and readable. Expression-bodied
-          functions eliminate boilerplate.</p>
-        <ul>
-          <li>Explicit type annotations</li>
-          <li>Compile-time error checking</li>
-          <li>Self-documenting code</li>
-          <li>Expression-bodied functions</li>
-        </ul>
-      </div>
-      <div class="visual">
-        <div class="code-example">
-          <pre class="language-osprey"><code class="language-osprey">fn analyzeNumber(n: int) -> string = match n {
-  0 => "Zero"
-  42 => "The answer!"
-  _ => "Something else"
-}
-
-fn double(x: int) -> int = x * 2
-fn square(x: int) -> int = x * x
-
-// Test the functions
-print("Testing functions:")
-print(analyzeNumber(0))
-print(analyzeNumber(42))</code></pre>
-        </div>
-      </div>
-    </div>
-
-    <div class="two-column">
-      <div class="visual">
-        <div class="code-example">
-          <pre class="language-osprey"><code class="language-osprey">fn getGrade(score: int) -> string = match score {
-  100 => "Perfect!"
-  95 => "Excellent"
-  85 => "Very Good"
-  75 => "Good"
-  _ => "Needs Improvement"
-}
-
-// Test the function
-print("Grade for 100: ${getGrade(100)}")
-print("Grade for 95: ${getGrade(95)}")</code></pre>
-        </div>
-      </div>
-      <div class="content">
-        <h3>Pattern Matching</h3>
-        <p>Elegant pattern matching with exhaustiveness checking ensures you handle all cases safely.</p>
-        <ul>
-          <li>Exhaustive pattern checking</li>
-          <li>Safe value destructuring</li>
-          <li>Clear conditional logic</li>
-          <li>No forgotten edge cases</li>
-        </ul>
-      </div>
-    </div>
-
-    <div class="two-column">
-      <div class="content">
-        <h3>String Interpolation</h3>
-        <p>Built-in string interpolation with full expression support makes output formatting clean and readable.</p>
-        <ul>
-          <li>Expression interpolation</li>
-          <li>Type-safe formatting</li>
-          <li>Readable string templates</li>
-          <li>No manual concatenation</li>
-        </ul>
-      </div>
-      <div class="visual">
-        <div class="code-example">
-          <pre class="language-osprey"><code class="language-osprey">// String interpolation example
-let name = "Alice"
-let age = 25
-let score = 95
-
-print("Hello ${name}!")
-print("Next year you'll be ${age + 1}")
-print("Double score: ${score * 2}")
-print("${name} (${age}) scored ${score}/100")</code></pre>
-        </div>
-      </div>
-    </div>
-
-    <div class="two-column">
-      <div class="visual">
-        <div class="code-example">
-          <pre class="language-osprey"><code class="language-osprey">// Functional Programming Example
-fn double(x: int) -> int = x * 2
-fn square(x: int) -> int = x * x
-
-// Clean data transformations
-5 |> double |> square |> print
-
-// Range operations with forEach
-print("Range operations:")
-range(1, 10) |> forEach(print)</code></pre>
-        </div>
-      </div>
-      <div class="content">
-        <h3>Functional Programming</h3>
-        <p>Pipe operators and functional iterators create elegant data processing pipelines.</p>
-        <ul>
-          <li>Pipe operator for data flow</li>
-          <li>Functional iterators</li>
-          <li>Immutable by default</li>
-          <li>Clean transformation chains</li>
-        </ul>
-      </div>
-    </div>
-  </div>
-</section>
-
-<section class="section section-alt">
-  <div class="container">
-    <h2 class="section-title">Algebraic Effects</h2>
-    <p class="section-subtitle">
-      Osprey has <strong>typed algebraic effects</strong>: declare operations, perform them in reusable logic,
-      and give them meaning with lexical handlers. Complete compile-time coverage checking is still in progress.
-    </p>
-
-    <div class="two-column">
-      <div class="content">
-        <h3>Effects in the type, handlers at the edge</h3>
-        <p>Declare an effect, <code>perform</code> its operations, then swap behaviour by changing the
-          <code>handle … in</code> block — no globals, no dependency injection framework. The same logic runs
-          against a production handler, a test double, or a silent one.</p>
-        <ul>
-          <li>Operation arguments and results are type-checked</li>
-          <li>Lexical handlers compose and nest</li>
-          <li>Nested handlers override outer ones</li>
-          <li>A missing handler currently fails with a runtime diagnostic</li>
-          <li>Pairs naturally with fibers, HTTP, and TUIs</li>
-        </ul>
-      </div>
-      <div class="visual">
-        <div class="code-example">
-          <pre class="language-osprey"><code class="language-osprey">effect Logger {
-  log: fn(string) -> Unit
-}
-
-fn greet(name: string) -> Unit !Logger =
-  perform Logger.log("Hello, ${name}!")
-
-// Production: write to stdout
-handle Logger
-  log msg => print(msg)
-in greet("Alice")
-
-// Test: stay silent — same code, new handler
-handle Logger
-  log msg => 0
-in greet("Bob")</code></pre>
-        </div>
-      </div>
-    </div>
-  </div>
-</section>
-
-<section class="section">
-  <div class="container">
-    <h2 class="section-title">Persistent Collections</h2>
-
-    <div class="two-column">
-      <div class="visual">
-        <div class="code-example">
-          <pre class="language-osprey"><code class="language-osprey">// List&lt;T&gt; — 32-way bitmapped vector trie
-let xs = listAppend(listAppend(List(), 10), 20)
-let ys = listAppend(xs, 99)
-
-listLength(xs)              // 2  — xs untouched
-listLength(ys)              // 3
-xs + ys                     // O(n+m) concat
-
-// Map&lt;K,V&gt; — Hash Array Mapped Trie (HAMT)
-let m = mapSet(Map(), "alice", 25)
-let m2 = mapSet(m, "bob", 30)
-
-mapContains(m,  "bob")      // false
-mapContains(m2, "bob")      // true
-m + m2                      // right-biased union</code></pre>
-        </div>
-      </div>
-      <div class="content">
-        <h3>Built on FP foundations</h3>
-        <p>Immutable <code>List&lt;T&gt;</code> and <code>Map&lt;K, V&gt;</code> backed by structural sharing, so "modifying" a collection never copies the whole thing — old versions stay valid in O(1) extra space relative to the change.</p>
-        <ul>
-          <li><strong>List</strong>: 32-way bitmapped vector trie (<a href="https://lampwww.epfl.ch/papers/idealhashtrees.pdf" rel="noopener">Bagwell 2000</a>; Clojure's PersistentVector). O(log₃₂ n) point ops.</li>
-          <li><strong>Map</strong>: Hash Array Mapped Trie with bitmap-packed children. O(log₃₂ n) expected for lookup, insert and remove.</li>
-          <li><strong><code>+</code> operator</strong> dispatches to <code>listConcat</code> for lists and <code>mapMerge</code> (right-biased) for maps.</li>
-          <li>Backed by 33 C-level assertions and 12 byte-exact end-to-end test programs.</li>
-        </ul>
-      </div>
-    </div>
-  </div>
-</section>
-
-<section class="blue-box">
-  <div class="container">
-    <div class="grid">
-      <div class="card">
-        <h3>Typed Algebraic Effects</h3>
-        <p>Effect operations have checked signatures and lexical handlers; complete static coverage checking is on the roadmap.</p>
-      </div>
-      <div class="card">
-        <h3>Memory Safe</h3>
-        <p>Static typing and immutable application data reduce invalid states; native FFI and runtime boundaries still require care.</p>
-      </div>
-      <div class="card">
-        <h3>Compiles to LLVM</h3>
-        <p>Stream fusion and structural sharing lower high-level code to efficient native binaries.</p>
-      </div>
-    </div>
-  </div>
-</section>
-
-<section class="section section-alt">
-  <div class="container">
-    <h2 class="section-title">Real-World Examples</h2>
-
-    <div class="showcase-grid">
-      <div class="card-code animate-on-scroll">
-        <h3>Fiber Concurrency</h3>
-        <div class="code-example">
-          <pre class="language-osprey"><code class="language-osprey">fn work(n: int) -> int = n * n
-
-// Spawn lightweight fibers, await out of order
-let a = spawn work(6)
-let b = spawn work(7)
-
-let rb = await(b)
-let ra = await(a)
-print("a=${ra}, b=${rb}")
-
-// Message passing over a channel
-let ch = Channel(1)
-send(ch, 42)
-print("got ${recv(ch)}")</code></pre>
-        </div>
-      </div>
-
-      <div class="card-code animate-on-scroll">
-        <h3>C Interop &amp; SQLite</h3>
-        <div class="code-example">
-          <pre class="language-osprey"><code class="language-osprey">// @link: sqlite3
-
-// Bind C functions with typed signatures
-extern fn sqlite3_open(path: string, ppDb: Ptr) -> int
-extern fn osprey_ffi_cell() -> Ptr
-extern fn osprey_ffi_deref(cell: Ptr) -> Ptr
-
-// Ptr carries the opaque C handle — no
-// arithmetic, no dereference, handles only
-let cell = osprey_ffi_cell()
-let rc = sqlite3_open("app.db", cell)
-let db = osprey_ffi_deref(cell)
-print("sqlite open rc = ${rc}")</code></pre>
-        </div>
-      </div>
-
-      <div class="card-code animate-on-scroll">
-        <h3>HTTPS Client</h3>
-        <div class="code-example">
-          <pre class="language-osprey"><code class="language-osprey">// TLS via OpenSSL — https just works
-let client = httpCreateClient("https://httpbin.org", 5000)
-
-let status = httpGet(client, "/get", "")
-print("status: ${status}")
-
-let closed = httpCloseClient(client)
-print("client closed")</code></pre>
-        </div>
-      </div>
-    </div>
-  </div>
-</section>
-
-<section class="section">
-  <div class="container">
-    <h2 class="section-title">Core Philosophy</h2>
-    <div class="philosophy-grid">
-      <div class="card">
-        <h3>Referential Transparency</h3>
-        <p>Functions return the same output for the same input. Algebraic operations are explicit and described with effect annotations.</p>
-      </div>
-      <div class="card">
-        <h3>Immutability by Default</h3>
-        <p>Data is immutable unless explicitly marked mutable, making it safe to share across fibers.</p>
-      </div>
-      <div class="card">
-        <h3>Explicit Error Values</h3>
-        <p>Fallible library operations use Result values for ordinary recovery; unrecoverable runtime diagnostics remain explicit.</p>
-      </div>
-      <div class="card">
-        <h3>Optimized Abstractions</h3>
-        <p>Effects, iterators, and persistent collections lower through LLVM and are covered by compiler and runtime tests.</p>
-      </div>
-    </div>
-  </div>
-</section>
-
-<section class="section section-alt">
-  <div class="container">
-    <h2 class="section-title">How Osprey Is Different</h2>
-    <div class="comparison-table">
-      <table>
-        <thead>
-          <tr>
-            <th>Feature</th>
-            <th>Traditional</th>
-            <th>Osprey</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr>
-            <td>Side Effects</td>
-            <td>Untracked, implicit</td>
-            <td>Typed operations and lexical handlers; static coverage is in progress</td>
-          </tr>
-          <tr>
-            <td>Error Handling</td>
-            <td>Exceptions, panics</td>
-            <td>Result types</td>
-          </tr>
-          <tr>
-            <td>Null Safety</td>
-            <td>Null pointer exceptions</td>
-            <td>Option types only</td>
-          </tr>
-          <tr>
-            <td>Concurrency</td>
-            <td>Shared mutable state</td>
-            <td>Fiber-isolated, message-passing</td>
-          </tr>
-          <tr>
-            <td>Type Safety</td>
-            <td>Runtime type errors possible</td>
-            <td>Compile-time prevention via Hindley-Milner inference</td>
-          </tr>
-          <tr>
-            <td>Memory Management</td>
-            <td>Manual memory or garbage collection</td>
-            <td>Memory-safe, no GC pauses</td>
-          </tr>
-          <tr>
-            <td>Syntax</td>
-            <td>One syntax, take it or leave it</td>
-            <td>Two flavors — braces or layout — sharing one core; mix them per file in one folder</td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
-    <p class="comparison-cta">…and it performs: Osprey matches C and Rust on CPU,
-      uses C-level memory, and beats OCaml and Haskell across an
-      <a href="/benchmarks/">18-case cross-language benchmark suite →</a></p>
   </div>
 </section>
 
 <section class="blue-box">
   <div class="container">
     <div class="blue-box-content animate-on-scroll">
-      <h2>Help Build the Future of Programming</h2>
-      <p><strong>Anyone can contribute.</strong> AI assistants like Claude + Cursor make compiler development accessible to regular developers. No CS degree required.</p>
+      <h2>Build something practical</h2>
+      <p>Start in the playground, follow the documentation or explore the compiler on GitHub.</p>
       <div class="blue-box-actions">
-        <a href="https://github.com/Nimblesite/osprey/blob/main/CONTRIBUTING.md" class="btn btn-primary btn-lg">
-          Start Contributing
-        </a>
-        <a href="/playground/" class="btn btn-secondary btn-lg">
-          Try Osprey Now
-        </a>
+        <a href="/playground/" class="btn btn-primary btn-lg">Try Osprey</a>
+        <a href="https://github.com/Nimblesite/osprey" class="btn btn-secondary btn-lg">View on GitHub</a>
       </div>
     </div>
   </div>

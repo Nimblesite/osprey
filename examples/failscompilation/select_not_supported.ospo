@@ -1,0 +1,9 @@
+// Reserved syntax must fail before the backend: channel selection has no
+// runtime semantics yet, so compiling an arm as an unconditional first choice
+// would be incorrect. [CONCURRENCY-SELECT-REJECT]
+
+let chosen = select {
+    1 => 100
+    2 => 200
+}
+print(chosen)

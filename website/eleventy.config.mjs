@@ -11,6 +11,7 @@ import { DateTime } from "luxon";
 import { renderToString as renderTypeDiagram } from "typediagram-core";
 
 const SITE_URL = "https://www.ospreylang.dev";
+const AUTHOR_URL = "https://www.christianfindlay.com/";
 
 // Osprey Prism grammar — shared by the syntaxhighlight plugin and the transform.
 const ospreyGrammar = {
@@ -99,7 +100,50 @@ function updateBlogSocialCards(html, hero) {
   ];
   let updated = values.reduce((result, item) => replaceMeta(result, ...item), html);
   updated = insertMetaAfter(updated, "property", "og:image:height", "og:image:alt", hero.alt);
+  const published = html.match(/"datePublished":\s*"([^"]+)"/)?.[1];
+  if (published) {
+    updated = insertMetaAfter(updated, "property", "og:type", "article:published_time", published);
+    updated = insertMetaAfter(updated, "property", "article:published_time", "article:author", AUTHOR_URL);
+  }
   return insertMetaAfter(updated, "name", "twitter:image", "twitter:image:alt", hero.alt);
+}
+
+function enrichBlogPost(post, hero, modified) {
+  post.headline = post.name;
+  post.image = {
+    "@type": "ImageObject",
+    url: hero.url,
+    width: hero.width,
+    height: hero.height,
+  };
+  post.mainEntityOfPage = { "@type": "WebPage", "@id": post.url };
+  post.publisher = { "@id": `${SITE_URL}/#organization` };
+  if (post.author?.name === "Christian Findlay") post.author.url = AUTHOR_URL;
+  if (modified) post.dateModified = modified;
+}
+
+function enrichBlogBreadcrumb(graph, post) {
+  const breadcrumb = graph.find((item) => item["@type"] === "BreadcrumbList");
+  const items = breadcrumb?.itemListElement;
+  if (!items) return;
+  post.breadcrumb = { "@id": breadcrumb["@id"] };
+  if (items.some((item) => item.item === `${SITE_URL}/blog/`)) return;
+  items.at(-1).position = 3;
+  items.splice(1, 0, {
+    "@type": "ListItem",
+    position: 2,
+    name: "Blog",
+    item: `${SITE_URL}/blog/`,
+  });
+}
+
+function enrichBlogOrganization(graph) {
+  const website = graph.find((item) => item["@type"] === "WebSite");
+  const organization = graph.find((item) => item["@type"] === "Organization");
+  if (!organization) return;
+  organization.alternateName = "Osprey";
+  if (website?.description) organization.description = website.description;
+  if (website) website.publisher = { "@id": organization["@id"] };
 }
 
 function updateBlogStructuredData(html, hero, modified) {
@@ -108,13 +152,12 @@ function updateBlogStructuredData(html, hero, modified) {
     const data = JSON.parse(rawJson, (_key, value) =>
       typeof value === "string" ? decodeEntities(value) : value
     );
-    const post = data["@graph"]?.find((item) => item["@type"] === "BlogPosting");
+    const graph = data["@graph"];
+    const post = graph?.find((item) => item["@type"] === "BlogPosting");
     if (!post) return element;
-    post.headline = post.name;
-    post.image = { "@type": "ImageObject", url: hero.url, width: hero.width, height: hero.height };
-    post.mainEntityOfPage = { "@type": "WebPage", "@id": post.url };
-    post.publisher = { "@type": "Organization", name: "Osprey", url: SITE_URL };
-    if (post.datePublished) post.dateModified = modified || post.datePublished;
+    enrichBlogPost(post, hero, modified);
+    enrichBlogBreadcrumb(graph, post);
+    enrichBlogOrganization(graph);
     const json = JSON.stringify(data, null, 2).replace(/</g, "\\u003c");
     return `<script type="application/ld+json">\n${json}\n  </script>`;
   });

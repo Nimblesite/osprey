@@ -14,6 +14,12 @@ what exists today from what is still being built.
 Osprey is a functional programming language for developers who want safe code,
 fast programs and less clutter.
 
+Osprey is deliberately practical. It takes useful ideas from functional and
+systems programming and makes them work together without ceremony. Describe the
+language in terms of code people can understand, programs they can ship and
+problems the compiler or runtime helps them avoid. The tone should be
+no-nonsense: clear, confident and specific, without hype or invented conflict.
+
 It speaks to two communities:
 
 - Mainstream developers coming from C#, Go, Rust, Java, Kotlin or Swift should
@@ -29,9 +35,10 @@ the same way.
 
 ## The short description
 
-> Osprey is a functional programming language that compiles to fast native
-> programs. It gives you first-class effects, safe lightweight concurrency and
-> a choice of familiar brace syntax or clean ML syntax.
+> Osprey is a practical functional language for building safe, fast native
+> programs without the usual clutter. It combines strong inferred types,
+> first-class effects and lightweight concurrency with a choice of familiar
+> brace syntax or clean ML syntax.
 
 When less space is available:
 
@@ -39,8 +46,19 @@ When less space is available:
 
 ## What matters most
 
-Describe Osprey through three connected values. Features are evidence for these
+Describe Osprey through four connected values. Features are evidence for these
 values, not an unrelated checklist.
+
+### Practicality
+
+- **Useful ideas without ceremony.** Strong types are inferred, effects remove
+  plumbing and concurrent functions do not need a separate colour.
+- **Failures are ordinary data.** Results make expected failure visible and let
+  the caller decide what to do.
+- **Deployment is direct.** Compile native binaries or WebAssembly and call
+  existing C libraries when needed.
+- **Choices remain local.** Select syntax per file and memory management per
+  build instead of reshaping the whole application.
 
 ### Safety
 
@@ -162,6 +180,9 @@ project is dividing people rather than giving them a readable surface.
 ## Writing rules for contributors and agents
 
 - Lead with what Osprey enables, then name the mechanism.
+- Keep the overall picture balanced: practicality, safety, performance and
+  elegance should define the language. Syntax flavors are an important feature,
+  not the whole identity.
 - Connect features to safety, performance or elegance.
 - Write for technically literate developers. Be direct, specific and calm.
 - Prefer concrete behavior over superlatives such as “revolutionary,” “complete,”

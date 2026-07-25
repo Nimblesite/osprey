@@ -79,8 +79,7 @@ Identifier labels and quoted labels are distinct. A quoted label such as
 
 Default `namespace name;` and an ML namespace header without an indented body
 apply to the declarations that follow. A namespace with a brace/layout body is
-one block-scoped contribution. One file cannot mix a file-scoped declaration
-with block-scoped namespace declarations.
+one block-scoped contribution.
 
 ### Path Independence `[MODULES-PATH-INDEPENDENCE]`
 

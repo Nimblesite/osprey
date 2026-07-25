@@ -130,6 +130,8 @@ The handler arm returns `8080`, so that value becomes the result of `perform` an
 
 This is the convenience people reach for exceptions to obtain: direct-style code with policy elsewhere. But the operation has a name, its input and output are typed, the function advertises `!InvalidPort`, and the handler is visible around the computation it governs.
 
+The runnable [recoverable_errors.osp](https://github.com/Nimblesite/osprey/blob/main/examples/tested/effects/recoverable_errors.osp) expands this pattern into a batch workflow with two interchangeable recovery policies: skip an impossible order or cap it to available stock, then continue from the exact failure point. [retry_until_valid.osp](https://github.com/Nimblesite/osprey/blob/main/examples/tested/effects/retry_until_valid.osp) demonstrates the same resumable control over repeated validation.
+
 ### Algebraic effect exception example: resume or abort
 
 Algebraic handlers can also implement a real exception-style early exit. `resume(value)` continues the suspended function and makes `value` the result of `perform`. Returning from a resuming handler arm without calling `resume` discards that continuation, so the arm's value becomes the result of the whole `handle … in` expression.
@@ -186,6 +188,8 @@ match lookup {
 ```
 
 In production, the `Accounts` handler could call a database. In a test, it could return a fixture. Either way, the effect chooses *where the capability comes from*, while `Result` preserves the ordinary success-or-failure contract of the lookup. This is a cleaner separation than throwing a database exception through every abstraction between storage and presentation.
+
+The tested suite also includes [result_and_effects.osp](https://github.com/Nimblesite/osprey/blob/main/examples/tested/effects/result_and_effects.osp), [typed_error_channels.osp](https://github.com/Nimblesite/osprey/blob/main/examples/tested/effects/typed_error_channels.osp) and [collect_all_errors.osp](https://github.com/Nimblesite/osprey/blob/main/examples/tested/effects/collect_all_errors.osp). They show explicit results under handlers, separate named error channels, and accumulation of multiple validation failures instead of stopping at the first one.
 
 ## Result type or algebraic effect?
 

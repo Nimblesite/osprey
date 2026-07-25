@@ -135,6 +135,23 @@ fn generics_and_variance_negative_cases_are_rejected() {
     }
 }
 
+#[test]
+fn unsupported_select_is_rejected_before_codegen() {
+    // The parser reserves `select`, but the checker must stop it before the
+    // backend's incomplete arm lowering can silently choose a value.
+    // Implements [CONCURRENCY-SELECT-REJECT].
+    let dir = repo_root().join("examples/failscompilation");
+    let path = dir.join("select_not_supported.ospo");
+    let source = fs::read_to_string(&path).expect("read ospo");
+    let Err(reason) = compile(&path, &source) else {
+        panic!("select_not_supported.ospo must be rejected")
+    };
+    assert!(
+        reason.contains("`select` is not supported"),
+        "unexpected rejection: {reason}"
+    );
+}
+
 /// The ML-flavor must-reject fixtures, each paired with the ML-specific fragment
 /// of the diagnostic it pins. Naming the fragment is what makes the assertion
 /// meaningful: a fixture that started failing for a *Default*-grammar reason

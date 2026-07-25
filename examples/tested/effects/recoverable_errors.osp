@@ -63,8 +63,7 @@ let skipFinal = handle Recover
     }
 in fulfill(batch, start)
 let skipFilled = start - skipFinal
-print("SKIP done: recovered ${toString(skipCount)} orders, fulfilled ${toString(skipFilled)} units, ${toString(skipFinal)} left in stock")
-print("SKIP log: [${skipReason}]")
+print("SKIP done: recovered ${toString(skipCount)} orders, fulfilled ${toString(skipFilled)} units, ${toString(skipFinal)} left in stock\nSKIP log: [${skipReason}]")
 
 // ---------------------------------------------------------------------------
 // POLICY B: CAP. Substitute `available` -> fill the order up to whatever stock
@@ -84,8 +83,7 @@ let capFinal = handle Recover
     }
 in fulfill(batch, start)
 let capFilled = start - capFinal
-print("CAP done: recovered ${toString(capCount)} orders, fulfilled ${toString(capFilled)} units, ${toString(capFinal)} left in stock")
-print("CAP log: [${capReason}]")
+print("CAP done: recovered ${toString(capCount)} orders, fulfilled ${toString(capFilled)} units, ${toString(capFinal)} left in stock\nCAP log: [${capReason}]")
 
 // ---------------------------------------------------------------------------
 // HAPPY PATH: same SKIP handler, a batch that never over-draws. The handler
@@ -104,6 +102,4 @@ let happyFinal = handle Recover
     }
 in fulfill(happyBatch, start)
 let happyFilled = start - happyFinal
-print("HAPPY done: recovered ${toString(happyCount)} orders, fulfilled ${toString(happyFilled)} units, ${toString(happyFinal)} left in stock")
-
-print("=== all three batches completed; an exception would have aborted at the first over-draw ===")
+print("HAPPY done: recovered ${toString(happyCount)} orders, fulfilled ${toString(happyFilled)} units, ${toString(happyFinal)} left in stock\n=== all three batches completed; an exception would have aborted at the first over-draw ===")

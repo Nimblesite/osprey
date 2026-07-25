@@ -89,20 +89,6 @@ impl Checker {
         }
     }
 
-    /// `select { pattern => body ... }` — same arm-typing as match without a
-    /// concrete discriminant.
-    pub(crate) fn infer_arm_bodies(&mut self, arms: &[MatchArm], env: &TypeEnv) -> Type {
-        let result = self.ctx.fresh();
-        for arm in arms {
-            let mut local = env.child();
-            let disc = self.ctx.fresh();
-            self.bind_pattern(&arm.pattern, &disc, &mut local);
-            let body_ty = self.infer_expr(&arm.body, &local);
-            self.push_unify(&result, &body_ty);
-        }
-        result
-    }
-
     fn bind_pattern(&mut self, pattern: &Pattern, disc: &Type, local: &mut TypeEnv) {
         match pattern {
             Pattern::Wildcard => {}

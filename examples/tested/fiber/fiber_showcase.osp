@@ -1,10 +1,9 @@
-// Fiber + channel + select + yield + lambda showcase.
+// Fiber + channel + yield + lambda showcase.
 // Combines what fiber_concurrency_proof, fiber_isolation_test, fiber_test,
 // fiber_final, fiber_advanced, simple_fiber were all proving piecemeal:
 // — spawn/await produce real fiber IDs and out-of-order await works
 // — yield returns the value passed back
 // — Channel<T>+send/recv round-trip
-// — select chooses a branch
 // — fibers compose into a pipeline
 // — lambdas work inside the program
 
@@ -74,14 +73,6 @@ send(ch1, 42)
 print("recv ch1 = ${recv(ch1)}")
 send(ch2, 123)
 print("recv ch2 = ${recv(ch2)}")
-
-// --- select ---
-let priority = select {
-    1 => 1000
-    2 => 500
-    3 => 100
-}
-print("select = ${priority}")
 
 // --- Lambdas inline ---
 let dbl   = fn(x) => x * 2

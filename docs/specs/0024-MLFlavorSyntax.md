@@ -210,8 +210,8 @@ a `not yet supported` syntax error
 
 ## Generics ([FLAVOR-ML-GENERICS])
 
-`[FLAVOR-ML-GENERICS]` Generic declarations lower to the same variance-carrying
-`TypeParam` and `EffectRef` nodes as Default syntax.
+Generic declarations lower to the same variance-carrying `TypeParam` and
+`EffectRef` nodes as Default syntax.
 
 - Types use juxtaposed binders: `type Box T`, `type Feed out T`,
   `type Sink in T`.

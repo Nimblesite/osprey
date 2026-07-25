@@ -11,7 +11,7 @@
 - [Collection Types](#collection-types)
 - [Built-in Error Types](#built-in-error-types)
 - [The `any` Type](#the-any-type)
-- [Type Annotation Requirements](#type-annotation-requirements)
+- [Type Annotations](#type-annotations)
 
 ## Hindley-Milner Inference
 
@@ -49,9 +49,9 @@ compose (f, g)   = \x => f (g x)             // <A,B,C>((B)->C,(A)->B) -> (A)->C
 `+ - *` return plain scalars — `int` for two `int` operands, `float` when either
 operand is `float`.
 
-Annotations are optional where inference has enough context. They remain part
-of declarations and foreign boundaries, and resolve ambiguous expressions as
-described in [Type Annotation Requirements](#type-annotation-requirements).
+Annotations are optional where inference has enough context. Record fields and
+foreign declarations include types as part of their syntax; annotations on
+bindings and functions constrain the inferred type.
 
 A polymorphic function is monomorphised independently at each call site:
 
@@ -166,7 +166,7 @@ emits only at direct value sites; admitting it inside a payload would accept
 values whose stored representation is wrong. Function-typed payloads keep
 their flexibility representation-safely: unification itself normalizes
 function returns through `Result` (the function-value ABI strips the
-wrapper), so a `Feed<(int) -> Result<int, IndexError>>` matches a
+wrapper), so a `Feed<(int) -> Result<int, Error>>` matches a
 `Feed<(int) -> int)` slot.
 
 Built-in constructors' declared variance: `Result<out T, out E>`,
@@ -554,13 +554,14 @@ Field access on a validated value is only legal after matching on the `Result`.
 
 ## Collection Types
 
-`List<T>` and `Map<K, V>` are the two built-in collection types. Both are **immutable persistent** structures: every operation that would mutate returns a new collection that shares structure with the original. There is no mutable variant. `Set<T>` is reserved for a future revision and is **not** part of this spec; use `Map<K, unit>` if a set-like semantic is required in the meantime.
-
-Builtin signatures referenced below are specified in [Built-in Functions](0012-Built-InFunctions.md) under "Collection Functions". Iterator operations (`map`, `filter`, `fold`, `forEach`) are specified in [Iterators and Iteration](0010-LoopConstructsAndFunctionalIterators.md) and work uniformly on lists, maps, and ranges via the implicit `Iterable` constraint.
+`List<T>` and `Map<K, V>` are immutable runtime collections. Collection
+operations return a new value and leave their inputs unchanged. Their builtin
+signatures are listed in [Built-in Functions](0012-Built-InFunctions.md#collection-functions--builtin-collections).
 
 ### `List<T>` — [TYPE-LIST]
 
-`List<T>` is an immutable, homogeneous, indexed sequence with structural sharing. The implementation MUST provide the asymptotic bounds listed under [Performance](#performance--type-collection-perf); a bitmapped vector trie (branching factor 32) is the recommended baseline, with an upgrade path to an RRB-tree for O(log n) concatenation. Index access is bounds-checked and returns `Result<T, IndexError>`.
+`List<T>` is a homogeneous indexed sequence. Index access is bounds-checked
+and returns `Result<T, Error>`.
 
 ```osprey
 let numbers = [1, 2, 3, 4, 5]            // List<int>
@@ -579,14 +580,14 @@ match numbers[0] {
 #### Operations — [TYPE-LIST-OPS]
 
 ```osprey
-let doubled  = numbers |> map(fn(x) => x * 2)
-let evens    = numbers |> filter(fn(x) => x % 2 == 0)
-let total    = numbers |> fold(0, fn(acc, x) => acc + x)
-let combined = numbers + [6, 7, 8]                       // concatenation produces a new list
-numbers |> forEach(fn(x) => print(toString(x)))
+let withSix  = listAppend(numbers, 6)
+let reversed = listReverse(numbers)
+let combined = numbers + [6, 7, 8]
+forEachList(numbers, fn(x) => print(toString(x)))
 ```
 
-The `+` operator is defined on `(List<T>, List<T>) -> List<T>` and returns a new list. Chains of `map`/`filter` terminated by `forEach`/`fold` are fused per [Stream Fusion](0010-LoopConstructsAndFunctionalIterators.md#stream-fusion--builtin-iter-fusion); no intermediate list is materialised.
+`+` is equivalent to `listConcat`. `listAppend`, `listPrepend`,
+`listReverse`, and concatenation return new lists.
 
 #### Patterns — [TYPE-LIST-PATTERNS]
 
@@ -599,23 +600,14 @@ fn classify(xs: List<int>) -> string = match xs {
 }
 ```
 
-A list pattern matches a list of exactly the listed length unless the final element is a rest binder (`...name`). The rest binder is itself a `List<T>` and is `[]` when the underlying list has exactly the prefix length.
-
-#### Comprehensions — [TYPE-LIST-COMP]
-
-```osprey
-let squares  = [x * x for x in range(1, 6)]               // [1, 4, 9, 16, 25]
-let filtered = [x for x in numbers if x > 3]
-let [head, ...tail] = numbers
-```
-
-Comprehensions desugar to `map` + `filter` over the source iterator and are subject to the same stream-fusion rules.
+A list pattern matches exactly the listed length unless its final element is a
+rest binder (`...name`). The rest binder receives the remaining `List<T>`.
 
 ### `Map<K, V>` — [TYPE-MAP]
 
-`Map<K, V>` is an immutable, persistent associative collection keyed by `K`. The implementation MUST provide the asymptotic bounds listed under [Performance](#performance--type-collection-perf); a hash array mapped trie (HAMT, branching factor 32) per Bagwell (2000) is the recommended baseline. Iteration order is **unspecified** and MUST NOT be relied upon; programs that need a deterministic order MUST sort the result of `keys(map)` or `entries(map)`.
-
-Keys MUST be of a type for which the runtime provides a total hash and equality. The set of permitted key types in this revision is `int`, `string`, and `bool`; structurally-compared records and unions are reserved for a later revision and will fail type-checking until then.
+`Map<K, V>` is an associative collection. The shipped constructors and map
+literals create string-keyed maps, so their concrete public type is
+`Map<string, V>`. Iteration order is unspecified.
 
 #### Literals — [TYPE-MAP-LITERAL]
 
@@ -627,18 +619,19 @@ let ages = {
 }                                                 // Map<string, int>
 ```
 
-The empty map literal `{}` is parsed as a `Map<K, V>` literal **only** at expression positions where a block expression is disallowed (e.g. RHS of `=` in a `let`, function argument). At ambiguous positions an explicit type annotation is required:
+The ML spelling is `["Alice" => 25, "Bob" => 30]`. Use `Map()` in Default
+syntax or `[=>]` in ML syntax for an empty map.
 
 ```osprey
-let scores: Map<string, int> = {}                 // ok: typed empty map
-let always_a_block          = { 1 }               // block expression returning 1
+let scores = Map()
 ```
 
-Duplicate keys in a literal are a **compile-time error**.
+Entries are inserted left to right; the last value wins when a literal repeats
+a key.
 
 #### Lookup — [TYPE-MAP-LOOKUP]
 
-Index lookup returns `Result<V, IndexError>`:
+Index lookup returns `Result<V, Error>`:
 
 ```osprey
 match ages["Alice"] {
@@ -652,150 +645,48 @@ match ages["Alice"] {
 All operations return a new map and never mutate the receiver.
 
 ```osprey
-let bumped     = ages |> mapValues(fn(age) => age + 1)
-let upper      = ages |> mapKeys(fn(name) => toUpperCase(name))
-let thirties   = ages |> filterEntries(fn(k, v) => v >= 30)
-let totalAge   = ages |> foldEntries(0, fn(acc, k, v) => acc + v)
-let merged     = ages + { "Dave": 28 }                      // right-biased union
-let updated    = set(ages, "Alice", 26)                     // single-key update
-let withoutBob = remove(ages, "Bob")
+let updated    = mapSet(ages, "Alice", 26)
+let withoutBob = mapRemove(ages, "Bob")
+let merged     = ages + { "Dave": 28 }
+let names      = mapKeys(ages)
+let values     = mapValues(ages)
 ```
 
-Map-specific iterator forms (`filterEntries`, `foldEntries`, `mapValues`, `mapKeys`) take the key and value as separate arguments rather than as one packed value, mirroring Elm's `Dict.foldl : (comparable -> v -> b -> b) -> b -> Dict comparable v -> b`. Plain `map`/`filter`/`fold` from the iterator module operate on `entries(map)` and receive a single `Entry<K, V>` record (`{ key, value }`, defined with the Map builtins in [Built-In Functions](0012-Built-InFunctions.md)) per element — Osprey has no tuple type.
-
-The `+` operator on `(Map<K, V>, Map<K, V>) -> Map<K, V>` is **right-biased** (the right-hand side wins on conflicting keys).
-
-#### Patterns — [TYPE-MAP-PATTERNS]
-
-A map pattern is **subset-matching**: it matches any map whose entries are a superset of the listed entries. Map patterns are distinguished from record patterns by the presence of string-literal (or int-literal) keys; record patterns use bare identifiers.
-
-```osprey
-fn analyze(p: Map<string, int>) -> string = match p {
-    p when length(p) == 0                    => "none"
-    { "Alice": age }                         => "only Alice (${age}) or Alice + others"
-    { "Alice": _, "Bob": _ }                 => "contains both Alice and Bob"
-    p when length(p) > 5                     => "large"
-    _                                        => "other"
-}
-```
-
-The literal `{}` is disallowed as a pattern (it would match every map). Match emptiness explicitly with a guard: `p when length(p) == 0`.
-
-#### Conversions — [TYPE-MAP-CONV]
-
-```osprey
-let names    = keys(ages)                                  // List<string>, order unspecified
-let agesList = values(ages)                                // List<int>,    order unspecified
-let pairs    = entries(ages)                               // List<Entry<string, int>>
-let m        = zipToMap(names, agesList)                   // Result<Map<K,V>, IndexError> if lengths differ
-let byGrade  = groupBy(students, fn(s) => s.grade)         // Map<string, List<Student>>
-```
-
-`zipToMap` returns a `Result` because mismatched lengths are an error. `groupBy` preserves the relative order of items within each bucket.
-
-### Performance — [TYPE-COLLECTION-PERF]
-
-| Operation             | `List<T>` (bitmapped trie) | `Map<K, V>` (HAMT)                                |
-| --------------------- | -------------------------- | ------------------------------------------------- |
-| Index / lookup        | O(log₃₂ n)                 | O(log₃₂ n) expected, O(n) worst case under collisions |
-| Insert / update       | O(log₃₂ n)                 | O(log₃₂ n) expected                               |
-| Remove                | O(log₃₂ n)                 | O(log₃₂ n) expected                               |
-| Concatenation (`+`)   | O(n + m)                   | O(min(n, m) · log₃₂ max(n, m))                    |
-| `map` / `filter`      | O(n) (fused, no intermediate) | O(n) (fused, no intermediate)                  |
-| `length`              | O(1)                       | O(1)                                              |
-| Iteration             | O(n)                       | O(n), order unspecified                           |
-
-A future revision MAY upgrade `List<T>` to an RRB-tree (Bagwell & Rompf 2011; Stucki & Rompf 2015) to bring concatenation to O(log n) without changing the API. Both collections use structural sharing — `O(log₃₂ n)` path-copying per update — so old versions remain valid in O(1) space relative to a modification.
+`mapMerge` and map `+` are right-biased: the right map wins on duplicate keys.
 
 ## Built-in Error Types
 
-| Type          | Used by                                              |
-| ------------- | ---------------------------------------------------- |
-| `MathError`   | `/` and `%` (`DivisionByZero`); `intDiv`, `randomBelow`; `checkedAdd`/`checkedSub`/`checkedMul` (`Overflow`, `Underflow`) |
-| `ParseError`  | String parsing                                       |
-| `IndexError`  | List and string indexing (`OutOfBounds`)             |
-| `StringError` | String operations that can fail (`length`, `substring`, `contains`) |
-| `ChannelError`| Channel send/recv                                    |
+| Type        | Used by |
+| ----------- | ------- |
+| `MathError` | The `/` and `%` operators |
+| `Error`     | Fallible builtins, including parsing, checked arithmetic, collection lookup, files, and processes |
 
 `Success` and `Error` are the constructors of `Result<T, E>` (see [Error Handling](0013-ErrorHandling.md)).
 
-## The `any` Type
+## The `any` Type — [TYPE-ANY]
 
-`any` is an erased type. It exists so a function may receive a value whose type is not known statically — for example, parsed JSON or a foreign-function return value. Direct use of an `any` value is forbidden; the value must be narrowed by `match` first.
-
-### Forbidden Operations
-
-```osprey
-fn processAny(v: any) -> int = v + 1                       // ❌ direct arithmetic
-fn getLength(v: any) -> int = v.length                     // ❌ direct field access
-let n: int = someAnyFunction()                             // ❌ implicit conversion
-fn callIt(v: any) = someFunction(v)                        // ❌ pass to typed parameter
-let s = toString(v)              // where v: any            // ❌ implicit conversion
-```
-
-Each of these produces a compilation error.
-
-### Required Form
+`any` is an erased compatibility type. It unifies with every other type, so an
+`any` parameter accepts values of different static types:
 
 ```osprey
-fn process(v: any) -> int = match v {
-    n: int    => n + 1
-    s: string => length(s)
-    _         => 0
-}
+fn ignore(value: any) -> string = "ignored"
+
+let a = ignore(42)
+let b = ignore("text")
 ```
 
-Pattern syntax (`name: Type`, `name: { fields }`, `{ fields }`, `_`) is defined in [Pattern Matching](0007-PatternMatching.md).
+`any` does not carry a runtime type tag and does not provide dynamic type tests.
+Code that consumes its representation must already know what was passed. It is
+used mainly at heterogeneous builtin and foreign-function boundaries.
 
-### Exhaustiveness
+## Type Annotations
 
-A `match` on `any` must either cover every type the value may take or include a wildcard `_`:
-
-```osprey
-match v {
-    n: int    => processInt(n)
-    s: string => processString(s)
-    _         => handleOther()
-}
-```
-
-A wildcard arm that returns the matched value preserves the `any` type; to escape `any`, every arm (including the wildcard) must return the same concrete type.
-
-### Compiler Errors
-
-The compiler emits the following message strings on `any`-type misuse:
-
-```
-cannot use 'any' type directly in arithmetic operation - pattern matching required
-cannot access field on 'any' type without pattern matching
-cannot assign 'any' to 'TYPE' without pattern matching
-cannot pass 'any' type to function expecting 'TYPE' - pattern matching required
-cannot implicitly convert 'any' to 'TYPE' - use pattern matching to extract specific type
-cannot access variable of type 'any' directly - pattern matching required
-pattern matching on 'any' type must handle all possible types or include wildcard
-```
-
-### Documented Type Sets
-
-When the compiler has information about which types an `any`-returning function may produce — for example, from an `extern` declaration or annotation — it rejects patterns that match impossible types and unreachable patterns:
-
-```
-pattern 'TYPE' is not a possible type for expression of documented types [TYPE1, TYPE2, ...]
-unreachable pattern: 'TYPE' cannot occur based on context analysis
-pattern matching includes impossible type 'TYPE' - check function documentation
-```
-
-## Type Annotation Requirements
-
-Annotations are required when the compiler cannot infer a type:
-
-- An empty literal (`[]`, `{}`) with no contextual type.
-- A function whose return type is ambiguous (for example, a value returned from an `extern`).
-- A polymorphic function whose type variables are not constrained by any argument.
+An annotation constrains inference and is checked against the expression:
 
 ```osprey
 let xs: List<int> = []
-fn parseValue<T>(input: string) -> Result<T, ParseError> = ...
+fn half(n: int) -> int = intDiv(n, 2)
 ```
 
-The compiler emits an error in each case where inference is ambiguous; explicit annotations resolve them.
+The second annotation also selects the direct `Result<int, Error>` auto-unwrap
+described in [Result Auto-Unwrapping](#result-auto-unwrapping).

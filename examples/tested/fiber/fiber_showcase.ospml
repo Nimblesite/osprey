@@ -58,12 +58,6 @@ print "recv ch1 = ${recv ch1}"
 send ch2 123
 print "recv ch2 = ${recv ch2}"
 
-priority = select
-    1 => 1000
-    2 => 500
-    3 => 100
-print "select = ${priority}"
-
 dbl   = \x => x * 2
 tri   = \x => x * 3
 addF  = \(a, b) => a + b
