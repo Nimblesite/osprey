@@ -6,12 +6,12 @@ description: "Why exceptions and panics create hidden control flow, what softwar
 tags: ["blog", "error-handling", "exceptions", "panics", "algebraic-effects", "result-types", "ocaml", "koka", "eff", "language-design"]
 author: "Christian Findlay"
 modified: 2026-07-25
-readingTime: 14
+readingTime: 17
 image: /assets/images/blog/exceptions-and-panics-were-a-mistake.png
 imageAlt: "A cyan wireframe osprey above branching error-handling paths while one hidden exception path fractures below"
 ---
 
-Here is the claim: **recoverable failure should never be a secret exit from a function**.
+Exceptions and panics are not inevitable aspects of programming languages. They only make software more error prone and make code harder to reason about. **Recoverable failure should never be a secret exit from a function**. This post is about how Osprey allows you to handle errors in a better way.
 
 If a function's type says it returns `B`, it should return `B`. It should not also be able to jump over an unknown number of stack frames, skip the code after the call, arrive at a handler that may or may not exist, or terminate the process. Both unchecked exceptions and panics can skip ordinary returns, unwind frames and terminate when they are not intercepted. Neither puts routine recoverable failure in the function's ordinary return type.
 

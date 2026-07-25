@@ -80,8 +80,8 @@ fn core(e: &mut TypeEnv) {
     mono(e, "toString", vec![any()], s());
     mono(e, "length", vec![any()], i());
     mono(e, "sleep", vec![i()], u());
-    // range(start, end) -> List<int>
-    mono(e, "range", vec![i(), i()], Type::list(i()));
+    // A range is a fused iterator handle, not a materialized List [BUILTIN-ITER].
+    mono(e, "range", vec![i(), i()], Type::iterator(i()));
     mono(e, "abs", vec![i()], i());
     // Truncating integer division, divide-by-zero-checked → Result<int, Error>.
     // The `/` operator is float-only (Osprey spec); this is its integer sibling.
@@ -163,36 +163,36 @@ fn strings(e: &mut TypeEnv) {
 fn functional(e: &mut TypeEnv) {
     let t = || Type::Var(0);
     let v = || Type::Var(1);
-    // forEach : (List<t>, (t) -> Unit) -> Unit
+    let iter_t = || Type::iterator(t());
+    let iter_v = || Type::iterator(v());
+    // Fused iterator surface [BUILTIN-ITER]. Runtime lists use the explicitly
+    // list-named traversal functions below.
     poly(
         e,
         "forEach",
         vec![0],
-        vec![Type::list(t()), Type::fun(vec![t()], u())],
+        vec![iter_t(), Type::fun(vec![t()], u())],
         u(),
     );
-    // map : (List<t>, (t) -> v) -> List<v>
     poly(
         e,
         "map",
         vec![0, 1],
-        vec![Type::list(t()), Type::fun(vec![t()], v())],
-        Type::list(v()),
+        vec![iter_t(), Type::fun(vec![t()], v())],
+        iter_v(),
     );
-    // filter : (List<t>, (t) -> bool) -> List<t>
     poly(
         e,
         "filter",
         vec![0],
-        vec![Type::list(t()), Type::fun(vec![t()], b())],
-        Type::list(t()),
+        vec![iter_t(), Type::fun(vec![t()], b())],
+        iter_t(),
     );
-    // fold : (List<t>, v, (v, t) -> v) -> v
     poly(
         e,
         "fold",
         vec![0, 1],
-        vec![Type::list(t()), v(), Type::fun(vec![v(), t()], v())],
+        vec![iter_t(), v(), Type::fun(vec![v(), t()], v())],
         v(),
     );
 }

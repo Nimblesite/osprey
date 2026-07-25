@@ -1,1 +1,0 @@
-line 15:17: unhandled effect: Unhandled effect 'Network.request' - all effects must be explicitly handled or forwarded in function signatures. Add a handler or declare the effect in the function signature with !Network 

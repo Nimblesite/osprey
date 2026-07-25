@@ -1,9 +1,1 @@
-line 15:7 no viable alternative at input 'handleLoggerlog('
-line 15:7 no viable alternative at input '('
-line 15:13 extraneous input '=>' expecting {<EOF>, 'match', 'select', 'fn', 'extern', 'import', 'type', 'module', 'let', 'mut', 'effect', 'perform', 'handle', 'spawn', 'yield', 'await', 'send', 'recv', 'true', 'false', '!', '|', '(', '{', '[', '+', '-', FLOAT, INT, INTERPOLATED_STRING, STRING, ID, DOC_COMMENT}
-line 16:9 no viable alternative at input '('
-line 16:15 extraneous input '=>' expecting {<EOF>, 'match', 'select', 'fn', 'extern', 'import', 'type', 'module', 'let', 'mut', 'effect', 'perform', 'handle', 'spawn', 'yield', 'await', 'send', 'recv', 'true', 'false', '!', '|', '(', '{', '[', '+', '-', FLOAT, INT, INTERPOLATED_STRING, STRING, ID, DOC_COMMENT}
-line 18:9 no viable alternative at input '('
-line 18:15 extraneous input '=>' expecting {<EOF>, 'match', 'select', 'fn', 'extern', 'import', 'type', 'module', 'let', 'mut', 'effect', 'perform', 'handle', 'spawn', 'yield', 'await', 'send', 'recv', 'true', 'false', '!', '|', '(', '{', '[', '+', '-', FLOAT, INT, INTERPOLATED_STRING, STRING, ID, DOC_COMMENT}
-line 18:23 no viable alternative at input '('
-line 19:0 extraneous input 'in' expecting {<EOF>, 'match', 'select', 'fn', 'extern', 'import', 'type', 'module', 'let', 'mut', 'effect', 'perform', 'handle', 'spawn', 'yield', 'await', 'send', 'recv', 'true', 'false', '!', '|', '(', '{', '[', '+', '-', FLOAT, INT, INTERPOLATED_STRING, STRING, ID, DOC_COMMENT} 
+effect `Logger` has no operation `missing`

@@ -56,6 +56,7 @@ pub fn owner_name(ty: &Type) -> Option<String> {
             | names::RESULT
             | names::LIST
             | names::MAP
+            | names::ITERATOR
             | names::FIBER
             | names::CHANNEL
             | names::PTR => None,

@@ -17,7 +17,7 @@ Osprey is a statically-typed functional language in the ML family. It compiles t
 - `Result<T, E>` for structured failures; low-level native APIs document any
   integer status convention explicitly.
 - In the Default flavor, named arguments are required for functions of two or more parameters (`f(x: a, y: b)`); the ML flavor uses whitespace application (`f a b`) or the uncurried grouping (`f (x, y)`) instead.
-- Lightweight fibers and channel-based concurrency.
+- Native pthread-backed fibers and buffered channels.
 - Swappable memory backends with a non-reclaiming default plus opt-in tracing GC and Perceus ARC; the `--static-memory` subset remains a design target.
 - Built-in HTTP and WebSocket support.
 

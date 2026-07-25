@@ -142,12 +142,10 @@ test.describe("desktop interactions", () => {
     expect(runBody.code).toContain("fn account()");
   });
 
-  test("real-world example code is not clipped", async ({ page }) => {
+  test("homepage example code is not clipped", async ({ page }) => {
     await page.goto("/");
     const clips = await page.evaluate(() =>
-      [...document.querySelectorAll(".showcase-grid .card-code pre")].map(
-        (pre) => pre.scrollWidth - pre.clientWidth
-      )
+      [...document.querySelectorAll(".hero-code pre")].map((pre) => pre.scrollWidth - pre.clientWidth)
     );
     expect(clips.length).toBeGreaterThan(0);
     for (const c of clips) expect(c, "code block horizontal clip (px)").toBeLessThanOrEqual(2);
@@ -263,7 +261,7 @@ test.describe("blog search and social metadata", () => {
 // these assert the SVG actually exists.
 test.describe("diagrams", () => {
   test("mermaid blocks render to SVG in dark theme", async ({ page }) => {
-    await page.goto("/spec/0023-languageflavors/", { waitUntil: "networkidle" });
+    await page.goto("/spec/0029-packagemanagement/", { waitUntil: "networkidle" });
     const blocks = page.locator("figure.diagram pre.mermaid");
     await expect(blocks.first().locator("svg")).toBeVisible();
     expect(await blocks.count()).toBe(await page.locator("pre.mermaid svg").count());
@@ -284,7 +282,7 @@ test.describe("diagrams", () => {
   });
 
   test("no diagram ships as an unrendered code block", async ({ page }) => {
-    for (const path of ["/spec/0023-languageflavors/", "/docs/web-apps/"]) {
+    for (const path of ["/spec/0029-packagemanagement/", "/docs/web-apps/"]) {
       await page.goto(path, { waitUntil: "networkidle" });
       await expect(page.locator("pre.language-mermaid, pre.language-typediagram")).toHaveCount(0);
     }

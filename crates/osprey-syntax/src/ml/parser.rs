@@ -1242,6 +1242,11 @@ impl Parser<'_> {
                 self.advance();
                 self.ident_atom(name)
             }
+            TokKind::Reserved(word) => {
+                self.error(format!("ML construct '{word}' is not yet supported"));
+                self.advance();
+                MlExpr::Bool(false)
+            }
             other => {
                 self.error(format!("unexpected token {other:?} in expression"));
                 self.advance();

@@ -510,7 +510,8 @@ mod tests {
 
     #[test]
     fn lowers_common_expression_forms() {
-        // Pipe desugars `x |> f(2)` to a call with x prepended.
+        // Pipe desugars `x |> f(2)` to a call with x prepended
+        // [BUILTIN-ITER-PIPE].
         match let_value("let r = x |> f(2)\n") {
             Expr::Call { arguments, .. } => assert_eq!(arguments.len(), 2),
             other => panic!("expected call, got {other:?}"),

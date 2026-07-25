@@ -1,16 +1,7 @@
-// A `perform` with NO enclosing handler anywhere on the path must be
-// rejected. Enforcement today is the runtime unhandled-effect abort — a
-// nonzero exit the must-reject suite counts; the compile-time diagnostic is
-// tracked in plan 0016 (effect rows). This file must never gain a handler
-// for Logger.
+// Missing handlers abort at runtime; row propagation does not reject this yet.
 effect Logger {
     log: fn(string) -> Unit
 }
 
-fn testLogging() -> Unit !Logger = perform Logger.log("Testing perform expression!")
-
-fn main() -> Unit = {
-    print("Testing perform without a handler...")
-    testLogging()
-    print("unreachable: the unhandled perform above must abort")
-}
+fn log() -> Unit !Logger = perform Logger.log("message")
+log()

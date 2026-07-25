@@ -407,15 +407,17 @@ fn reserved_words_each_report_not_yet_supported() {
     // ([FLAVOR-HANDLER-VALUE]). `effect`/`handle`/`perform`/`resume` lower to the
     // canonical effect AST ([FLAVOR-ML-EFFECT]).
     for word in ["handler", "do"] {
-        let parsed = ml_err(&format!("{word} Foo\n"));
-        assert!(
-            parsed
-                .errors
-                .iter()
-                .any(|e| e.message.contains("not yet supported")),
-            "word {word:?} expected a not-yet-supported error, got {:?}",
-            parsed.errors
-        );
+        for source in [format!("{word} Foo\n"), format!("value = {word} Foo\n")] {
+            let parsed = ml_err(&source);
+            assert!(
+                parsed
+                    .errors
+                    .iter()
+                    .any(|e| e.message.contains("not yet supported")),
+                "word {word:?} expected a not-yet-supported error, got {:?}",
+                parsed.errors
+            );
+        }
     }
 }
 

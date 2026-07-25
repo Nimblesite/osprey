@@ -1593,7 +1593,8 @@ mod tests {
                 assert!(matches!(*inner, Expr::Binary { ref op, .. } if op == "+"));
             }
         }
-        // `x |> f` becomes `f(x)` — no Pipe node survives, matching Default.
+        // `x |> f` becomes `f(x)` — no Pipe node survives, matching Default
+        // [BUILTIN-ITER-PIPE].
         let piped = one("r = x |> f\n");
         assert!(
             matches!(

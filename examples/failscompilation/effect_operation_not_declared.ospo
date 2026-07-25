@@ -1,18 +1,6 @@
-// 🚨 EFFECT OPERATION NOT DECLARED TEST - SHOULD FAIL COMPILATION! 🚨
-// This proves the compiler validates that all performed operations are declared
-
+// [EFFECTS-OP-TYPING] A perform names an operation declared by its effect.
 effect Logger {
     log: fn(string) -> Unit
-    debug: fn(string) -> Unit
 }
 
-// This function tries to perform an operation that doesn't exist
-fn brokenFunction() -> Unit !Logger = {
-    perform Logger.log("This is valid")
-    perform Logger.error("This operation does NOT exist in Logger effect!")  // ❌ SHOULD FAIL
-    perform Logger.debug("This is also valid")
-}
-
-fn main() -> Unit = {
-    print("This should never run - compilation should fail!")
-} 
+fn broken() -> Unit !Logger = perform Logger.missing("message")

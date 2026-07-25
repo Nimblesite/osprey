@@ -290,8 +290,8 @@ pub(crate) static TERMINAL: &[BuiltinDoc] = &[
     ),
     builtin_doc!(
         "spawnProcess",
-        "Spawns an external async process with MANDATORY callback for stdout/stderr capture. The callback function receives (processID: int, eventType: int, data: string) and is called for stdout (1), stderr (2), and exit (3) events. Returns a handle for the running process. CALLBACK IS REQUIRED - NO FUNCTION OVERLOADING!",
-        ["command" => "The command to execute", "callback" => "MANDATORY callback function for process events (processID, eventType, data)"],
+        "Spawns a process and reports stdout, stderr and exit events through the required callback. Returns a handle for the running process.",
+        ["command" => "The command to execute", "callback" => "Required callback receiving (processID, eventType, data); event types are stdout (1), stderr (2) and exit (3)"],
         "fn processEventHandler(processID: int, eventType: int, data: string) -> Unit = {\n    match eventType {\n        1 => print(\"STDOUT: ${data}\")\n        2 => print(\"STDERR: ${data}\")\n        3 => print(\"EXIT: ${data}\")\n        _ => print(\"Unknown event\")\n    }\n}\nlet result = spawnProcess(\"echo hello\", processEventHandler)\nmatch result {\n    Success { value } => {\n        let exitCode = awaitProcess(value)\n        cleanupProcess(value)\n    }\n    Error { message } => print(\"Failed\")\n}",
     ),
     builtin_doc!(

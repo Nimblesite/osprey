@@ -42,6 +42,8 @@ pub mod names {
     pub const LIST: &str = "List";
     /// The `Map<key, value>` collection type.
     pub const MAP: &str = "Map";
+    /// A fused range pipeline, materialized only while lowering iterator calls.
+    pub const ITERATOR: &str = "Iterator";
     /// The lightweight concurrent execution context type.
     pub const FIBER: &str = "Fiber";
     /// The inter-fiber message-passing channel type.
@@ -158,6 +160,11 @@ impl Type {
     #[must_use]
     pub fn map(key: Type, value: Type) -> Type {
         Type::con(names::MAP, vec![key, value])
+    }
+    /// `Iterator<elem>` used by range/map/filter/fold pipelines.
+    #[must_use]
+    pub fn iterator(elem: Type) -> Type {
+        Type::con(names::ITERATOR, vec![elem])
     }
 
     /// True if this is a nullary-or-applied constructor with the given name.

@@ -76,7 +76,7 @@ Osprey's iterator family (`map`, `filter`, `fold`, `forEach`) already does compi
 xs |> filter(isEven) |> map(double) |> forEach(print)
 ```
 
-compiles to a single loop with no intermediate list materialised — the same zero-cost abstraction we already had for ranges, now applied to user-built collections.
+compiles to a single loop with no intermediate list materialised, as range pipelines do.
 
 ## What's tested
 

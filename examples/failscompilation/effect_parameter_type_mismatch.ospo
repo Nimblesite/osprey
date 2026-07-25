@@ -1,22 +1,8 @@
-// 🚨 EFFECT PARAMETER TYPE MISMATCH TEST - SHOULD FAIL COMPILATION! 🚨
-// This proves the compiler validates parameter types in perform expressions
-
+// [EFFECTS-OP-TYPING] Perform arguments match the declared operation types.
 effect Calculator {
     add: fn(int, int) -> int
-    multiply: fn(int, int) -> int
-    display: fn(string) -> Unit
 }
 
-// This function passes wrong parameter types
 fn brokenCalculation() -> int !Calculator = {
-    let x = perform Calculator.add(5, 10)  // ✅ Valid: int, int
-    perform Calculator.display("Result: " + toString(x))  // ✅ Valid: string
-    
-    // ❌ SHOULD FAIL: passing string where int expected
-    let y = perform Calculator.add("invalid", 20)
-    y
+    perform Calculator.add("invalid", 20)
 }
-
-fn main() -> Unit = {
-    print("This should never run - compilation should fail!")
-} 

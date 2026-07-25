@@ -1,10 +1,12 @@
 ---
 layout: page
 title: "Any (Type)"
-description: "A type that can represent any value. Useful for generic programming but should be used carefully as it bypasses type checking."
+description: "An explicitly dynamic value that must be type-matched before concrete operations"
 ---
 
-**Description:** A type that can represent any value. Useful for generic programming but should be used carefully as it bypasses type checking.
+**Description:** An explicitly dynamic value. Match on its runtime type before
+using it as a concrete value; direct arithmetic, calls and field access are
+rejected.
 
 ## Example
 
