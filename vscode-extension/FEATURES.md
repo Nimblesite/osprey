@@ -84,6 +84,7 @@ Intelligent autocompletion for:
 - **Type information**: Hover over variables to see their types
 - **Function signatures**: Detailed parameter and return type info
 - **Documentation**: Built-in function documentation
+- **Keyword meanings**: Hover any reserved keyword (`match`, `handle`, `in`, …) for a one-line explanation
 - **Pipe operator help**: Comprehensive `|>` operator documentation
 
 ### Signature Help

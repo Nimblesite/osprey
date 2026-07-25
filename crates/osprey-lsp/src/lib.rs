@@ -17,6 +17,7 @@ pub mod hover;
 pub mod keywords;
 pub mod mlrender;
 pub mod model;
+pub mod reference_docs;
 pub mod server;
 pub mod testing;
 pub mod text;

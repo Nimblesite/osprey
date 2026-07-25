@@ -21,7 +21,7 @@
 # offenders are the `builtin_docs_*` documentation TABLES (repeated data rows,
 # not logic — see the [category=data] note deslop prints) and structural-only
 # CST-walk shapes that don't factor without obscuring intent.
-max_duplication_percent = 6.1
+max_duplication_percent = 5
 
 [defaults]
 exclude = [
@@ -46,4 +46,11 @@ exclude = [
   # compiler product code the gate exists to guard. Their per-case scaffolding
   # is intrinsic to a code generator, not a refactorable product clone.
   "website/scripts/**",
+  # Vendored, minified third-party JS (mermaid + katex ESM chunks) copied in by
+  # `npm run build`. This dir is gitignored build output, NOT hand-written
+  # product code — but deslop does NOT read .gitignore (only these explicit
+  # patterns are honored), so without this line the minified chunk-*.mjs /
+  # *Diagram-*.mjs bundles dominate the report as near-100% self-duplication and
+  # blow past the ceiling. They duplicate by design and we don't own them.
+  "website/src/assets/vendor/**",
 ]

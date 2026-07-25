@@ -1,10 +1,13 @@
 #!/usr/bin/env bash
-# Install the pinned `deslop` duplication-gate CLI.
+# Install the `deslop` duplication-gate CLI at the LATEST published release.
 #
-# Single source of truth for the deslop version AND the platform→asset mapping.
-# Shared by `make setup` (local dev) and .github/workflows/ci.yml so the version
-# is pinned in exactly one place. Downloads the release tarball, verifies its
-# SHA-256, and installs the `deslop` binary onto PATH.
+# Local / devcontainer installer for the gate binary. Tracks the newest release
+# by default so a fresh checkout always runs the current deslop; export
+# DESLOP_VERSION=X.Y.Z to pin a specific release (e.g. to dodge a bad one). CI
+# installs the same gate independently via the Homebrew tap
+# (`brew install nimblesite/tap/deslop`), which is likewise unpinned — so local
+# and CI stay on the same current version. Downloads the release tarball,
+# verifies its SHA-256, and installs the `deslop` binary onto PATH.
 #
 # Usage:
 #   scripts/install-deslop.sh [INSTALL_DIR]
@@ -14,13 +17,22 @@
 # so subsequent workflow steps (e.g. `make lint`) can find the binary.
 set -euo pipefail
 
-DESLOP_VERSION="${DESLOP_VERSION:-0.5.1}"
-BASE_URL="https://github.com/Nimblesite/Deslop/releases/download/v${DESLOP_VERSION}"
-
 RED='\033[0;31m'; GREEN='\033[0;32m'; CYAN='\033[0;36m'; BOLD='\033[1m'; RESET='\033[0m'
 say()  { echo -e "${CYAN}${BOLD}▶ $*${RESET}"; }
 ok()   { echo -e "${GREEN}✓ $*${RESET}"; }
 fail() { echo -e "${RED}✗ $*${RESET}" >&2; exit 1; }
+
+# Which release to install. Empty ⇒ resolve the latest published release from
+# the GitHub API so the gate never drifts stale; export DESLOP_VERSION=X.Y.Z to
+# pin a specific one instead.
+DESLOP_VERSION="${DESLOP_VERSION:-}"
+if [[ -z "$DESLOP_VERSION" ]]; then
+    say "Resolving latest deslop release"
+    DESLOP_VERSION="$(curl -sSfL https://api.github.com/repos/Nimblesite/Deslop/releases/latest \
+        | grep -m1 '"tag_name"' | sed -E 's/.*"v?([^"]+)".*/\1/')"
+    [[ -n "$DESLOP_VERSION" ]] || fail "could not resolve latest deslop release from the GitHub API"
+fi
+BASE_URL="https://github.com/Nimblesite/Deslop/releases/download/v${DESLOP_VERSION}"
 
 # Already at the pinned version? Nothing to do (keeps `make setup` idempotent).
 if command -v deslop &>/dev/null && deslop --version 2>/dev/null | grep -q "${DESLOP_VERSION}"; then

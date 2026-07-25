@@ -87,7 +87,7 @@ The server exposes:
 | Capability       | Method                            | Notes                                                                                                                                                                                       |
 | ---------------- | --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Diagnostics      | `textDocument/publishDiagnostics` | Push, via `DiagnosticsBus`. `[LSP-DIAGNOSTICS]`                                                                                                                                             |
-| Hover            | `textDocument/hover`              | Markdown. Functions/builtins → signature; **`let`/`mut` bindings (local _and_ top-level) → their declared or inferred type**; any declaration's `///` docs rendered as prose. `[LSP-HOVER]` |
+| Hover            | `textDocument/hover`              | Markdown. Functions/builtins → signature; **`let`/`mut` bindings (local _and_ top-level) → their declared or inferred type**; **reserved keywords (`match`, `handle`, `in`, …) → a one-line meaning**; any declaration's `///` docs rendered as prose. `[LSP-HOVER]` |
 | Go to definition | `textDocument/definition`         | AST-driven, anchored on the identifier; built-ins resolve to their own use. `[LSP-DEFINITION-BUILTIN]`                                                                                       |
 | Find references  | `textDocument/references`         | Whole-word scan; `includeDeclaration` honored.                                                                                                                                              |
 | Document symbols | `textDocument/documentSymbol`     | Flat `DocumentSymbol`s; range on the **name**, not the `fn`/`let`/`type` keyword.                                                                                                           |
@@ -122,6 +122,8 @@ Resolution order for the symbol under the cursor:
 3. A **written name that declares nothing** — a parameter or built-in type
    name → `[LSP-HOVER-WRITTEN]`.
 4. A symbol declared in a **sibling file** of the project → `[LSP-WORKSPACE]`.
+5. A **reserved keyword** (`match`, `handle`, `in`, …) → `[LSP-HOVER-KEYWORD]`.
+   Checked last, since a keyword can never be any of the above.
 
 ### Variable hover `[LSP-HOVER-VARIABLES]`
 
@@ -158,6 +160,21 @@ declarations:
   source file declares these, so there is nothing to navigate to; hover carries
   a one-line summary instead. A **declared** type resolves to its declaration
   and never reaches this table.
+
+### Keywords `[LSP-HOVER-KEYWORD]`
+
+Every reserved keyword hovers to a one-line meaning — `match`, `handle`, `in`,
+`fn`, `let`, `effect`, `perform`, `resume`, `spawn`, and the rest. A keyword is
+reserved, so it can never be a declared symbol, a built-in, a parameter or a
+written type; it reaches hover as an ordinary word that no declaration-driven
+path can answer, and previously returned nothing — even though the highlighter
+colours a keyword exactly like the built-in types that *do* hover, so an author
+expects the same. The fixed reference table (shared with the built-in type
+summaries in
+[`osprey-lsp/src/reference_docs.rs`](../../crates/osprey-lsp/src/reference_docs.rs))
+is flavor-blind — the reserved set is common to both surfaces even where a
+Default keyword such as `fn` has no ML spelling — and the summary is fenced in
+the **document's** flavor like every other hover.
 
 ### Documentation comments `[LSP-HOVER-DOCS]`
 

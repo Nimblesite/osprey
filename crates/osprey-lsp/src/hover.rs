@@ -18,6 +18,7 @@ use osprey_syntax::Flavor;
 use crate::analysis::{builtin_hover, collect_all_symbols, SymbolInfo, SymbolKind};
 use crate::features::{best_match, flavor_of, nth_line, symbol_matches, word_under};
 use crate::mlrender;
+use crate::reference_docs::{keyword_hover, type_hover};
 use crate::workspace;
 
 /// Hover markdown for the identifier at `(line, character)`: the symbol's
@@ -49,7 +50,8 @@ pub fn hover(
         Some(sym) => Some(symbol_hover(sym, &parsed.program, flavor)),
         None => builtin_doc(word.rsplit("::").next().unwrap_or(&word), flavor)
             .or_else(|| written_hover(&symbols, &word, line, &parsed.program, flavor))
-            .or_else(|| project_hover(path, &word, flavor)),
+            .or_else(|| project_hover(path, &word, flavor))
+            .or_else(|| keyword_hover(&word, flavor)),
     }
 }
 
@@ -186,7 +188,7 @@ fn parameter_hover(
     } else {
         written.clone()
     };
-    Some(fenced(flavor, &format!("{name}: {ty}")))
+    Some(mlrender::fenced(flavor, &format!("{name}: {ty}")))
 }
 
 /// The declared function whose body contains `line` — the nearest declaration
@@ -206,49 +208,6 @@ fn inferred_parameter(program: &Program, function: &str, index: usize) -> Option
         .param_types(function)?
         .get(index)
         .map(ToString::to_string)
-}
-
-/// A type name written in an annotation. A declared type is already a symbol
-/// and never reaches here; this covers the built-in constructors, which have no
-/// declaration site to navigate to.
-fn type_hover(word: &str, flavor: Flavor) -> Option<String> {
-    BUILTIN_TYPE_DOCS
-        .iter()
-        .find(|(name, _)| *name == word)
-        .map(|(name, summary)| format!("{}\n\n{summary}", fenced(flavor, name)))
-}
-
-/// One-line summaries for the type names no source file declares.
-const BUILTIN_TYPE_DOCS: [(&str, &str); 8] = [
-    (osprey_types::names::INT, "The 64-bit integer primitive."),
-    (osprey_types::names::FLOAT, "The floating-point primitive."),
-    (osprey_types::names::STRING, "The string primitive."),
-    (osprey_types::names::BOOL, "The boolean primitive."),
-    (
-        osprey_types::names::UNIT,
-        "The type of an expression with no meaningful value.",
-    ),
-    (
-        osprey_types::names::RESULT,
-        "`Result<ok, err>` — `Success { value }` or `Error { message }`.",
-    ),
-    (
-        osprey_types::names::LIST,
-        "`List<elem>` — a persistent list.",
-    ),
-    (
-        osprey_types::names::MAP,
-        "`Map<key, value>` — a persistent map.",
-    ),
-];
-
-/// `code` in a fence labelled for `flavor`. Implements [LSP-FLAVOR-RENDER].
-fn fenced(flavor: Flavor, code: &str) -> String {
-    format!(
-        "```{}\n{}\n```",
-        mlrender::fence(flavor),
-        mlrender::signature(flavor, code)
-    )
 }
 
 #[cfg(test)]
@@ -380,6 +339,24 @@ mod tests {
         let declared = "type Shade = Light | Dark\nfn pick(s: Shade) = s\n";
         let hovered = hover(declared, "file:///a.osp", 1, 12, U16).expect("hover over `Shade`");
         assert!(hovered.contains("Shade"), "{hovered}");
+    }
+
+    #[test]
+    fn hover_on_a_keyword_explains_it() {
+        // Pure syntactic keywords — `match`, `handle`, `in` — had no hover at
+        // all, while the type/constructor tokens the highlighter colours the
+        // same way (`Unit`, `Result`, `Some`) did. Every keyword must hover.
+        // Implements [LSP-HOVER-KEYWORD].
+        let src = "fn main() =\n\
+                   handle Log { emit msg => resume msg }\n\
+                   in match 1 { _ => 0 }\n";
+        for (line, kw) in [(1usize, "handle"), (2, "in"), (2, "match")] {
+            let col = col_of(src, line, kw);
+            let row = u32::try_from(line).expect("line fits");
+            let md = hover(src, "file:///a.osp", row, col, U16)
+                .unwrap_or_else(|| panic!("no hover for keyword `{kw}`"));
+            assert!(md.contains(kw), "hover for `{kw}` names it: {md}");
+        }
     }
 
     /// The 0-based column just inside the first occurrence of `needle` on
