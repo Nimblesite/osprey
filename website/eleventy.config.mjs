@@ -92,7 +92,10 @@ export default function (eleventyConfig) {
     return content.replace(
       /<pre class="language-(osprey(?:-ml)?)"><code class="language-\1">([\s\S]*?)<\/code><\/pre>/g,
       (_m, lang, code) => {
-        const decoded = stripTags(decodeEntities(code)).trim();
+        // Strip Prism's token spans while `<` is still escaped as `&lt;`.
+        // Decoding first makes generic types such as `Result<string, string>`
+        // look like HTML tags and silently removes their opening type argument.
+        const decoded = decodeEntities(stripTags(code)).trim();
         const html = Prism.highlight(decoded, Prism.languages[lang], lang);
         return `<pre class="language-${lang}" tabindex="0" data-language="${lang}"><code class="language-${lang}">${html}</code></pre>`;
       }

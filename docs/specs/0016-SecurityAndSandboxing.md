@@ -1,4 +1,6 @@
-# Security and Sandboxing [SECURITY-CAPABILITY-GATES]
+# Security and Sandboxing
+
+## Enforcement [SECURITY-CAPABILITY-GATES]
 
 Capability flags reject restricted source before type checking and code
 generation. A violation is a compile error naming the builtin and the flag

@@ -1937,6 +1937,6 @@ impl Parser<'_> {
 
 /// An uppercase initial marks a constructor/type name; lowercase marks a value
 /// binding or variable, mirroring the Default flavor's lexical convention.
-fn is_constructor(name: &str) -> bool {
+pub(super) fn is_constructor(name: &str) -> bool {
     name.chars().next().is_some_and(char::is_uppercase)
 }

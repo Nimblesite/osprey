@@ -1,12 +1,12 @@
 ---
 layout: page
 title: "intDiv (Function)"
-description: "Truncating integer division (rounds toward zero), divide-by-zero checked. The `/` operator is float-only; this is its integer sibling, returning Result<int, MathError>."
+description: "Truncating integer division (rounds toward zero), divide-by-zero checked. The `/` operator is float-only; this is its integer sibling, returning Result<int, Error>."
 ---
 
 **Signature:** `intDiv(a: int, b: int) -> Result<int, Error>`
 
-**Description:** Truncating integer division (rounds toward zero), divide-by-zero checked. The `/` operator is float-only; this is its integer sibling, returning Result<int, MathError>.
+**Description:** Truncating integer division (rounds toward zero), divide-by-zero checked. The `/` operator is float-only; this is its integer sibling, returning Result<int, Error>.
 
 ## Parameters
 

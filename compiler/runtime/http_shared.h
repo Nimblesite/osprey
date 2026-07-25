@@ -107,6 +107,7 @@ typedef struct {
   char *path; // WebSocket endpoint path (e.g., "/chat")
   int socket_fd;
   bool is_listening;
+  bool thread_started;
   pthread_t server_thread;
   pthread_mutex_t mutex;
   WebSocket *connections[MAX_CONNECTIONS_PER_SERVER];

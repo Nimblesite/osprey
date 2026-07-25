@@ -1,12 +1,12 @@
 ---
 layout: page
 title: "websocketSend (Function)"
-description: "Sends a message through the WebSocket connection. *(Implementation note: currently returns an integer status code; the `Result`-typed API shown in the signature is planned.)*"
+description: "Sends one text frame and returns 0 or a negative runtime error."
 ---
 
 **Signature:** `websocketSend(wsID: int, message: string) -> int`
 
-**Description:** Sends a message through the WebSocket connection. *(Implementation note: currently returns an integer status code; the `Result`-typed API shown in the signature is planned.)*
+**Description:** Sends one text frame and returns 0 or a negative runtime error.
 
 ## Parameters
 
@@ -18,16 +18,11 @@ description: "Sends a message through the WebSocket connection. *(Implementation
 ## Example
 
 ```osprey
-let sendResult = websocketSend(wsID: wsId, message: "Hello, WebSocket!")
-match sendResult {
-    Success _ => print("Message sent successfully")
-    Err message => print("Failed to send: ${message}")
-}
+let status = websocketSend(wsId, "Hello, WebSocket!")
+print(status)
 ```
 
 ```osprey-ml
-sendResult = websocketSend wsId "Hello, WebSocket!"
-match sendResult
-    Success _ => print "Message sent successfully"
-    Err message => print "Failed to send: ${message}"
+status = websocketSend wsId "Hello, WebSocket!"
+print status
 ```

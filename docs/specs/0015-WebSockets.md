@@ -1,4 +1,6 @@
-# WebSockets [BUILTIN-WEBSOCKET]
+# WebSockets
+
+## Runtime surface [BUILTIN-WEBSOCKET]
 
 The native runtime exposes a text-frame WebSocket transport. Handles and
 operation results are `int`; negative values report failure.

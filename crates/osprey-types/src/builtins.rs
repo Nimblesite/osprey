@@ -257,26 +257,26 @@ fn maps(e: &mut TypeEnv) {
 fn files(e: &mut TypeEnv) {
     // Shipped file surface [BUILTIN-FILE].
     mono(e, "readFile", vec![s()], res(s()));
-    mono(e, "writeFile", vec![s(), s()], res(u()));
+    mono(e, "writeFile", vec![s(), s()], res(i()));
 }
 
 fn http(e: &mut TypeEnv) {
     mono(e, "httpCreateClient", vec![s(), i()], i());
-    mono(e, "httpCloseClient", vec![i()], u());
-    mono(e, "httpGet", vec![i(), s(), s()], res(s()));
+    mono(e, "httpCloseClient", vec![i()], i());
+    mono(e, "httpGet", vec![i(), s(), s()], i());
     mono(e, "httpGetResponse", vec![i(), s(), s()], res(i()));
     mono(e, "httpResponseBody", vec![i()], res(s()));
-    mono(e, "httpResponseFree", vec![i()], u());
+    mono(e, "httpResponseFree", vec![i()], res(i()));
     mono(e, "httpResponseStatus", vec![i()], i());
     mono(e, "httpResponseHeader", vec![i(), s()], res(s()));
     // (clientId, path, body, headers) for POST/PUT; (clientId, path, headers) for DELETE.
-    mono(e, "httpPost", vec![i(), s(), s(), s()], res(s()));
-    mono(e, "httpPut", vec![i(), s(), s(), s()], res(s()));
-    mono(e, "httpDelete", vec![i(), s(), s()], res(s()));
+    mono(e, "httpPost", vec![i(), s(), s(), s()], i());
+    mono(e, "httpPut", vec![i(), s(), s(), s()], i());
+    mono(e, "httpDelete", vec![i(), s(), s()], i());
     mono(e, "httpCreateServer", vec![i(), s()], i());
     // httpListen takes the server id and a request-handler function.
     mono(e, "httpListen", vec![i(), any()], i());
-    mono(e, "httpStopServer", vec![i()], u());
+    mono(e, "httpStopServer", vec![i()], i());
 }
 
 fn json(e: &mut TypeEnv) {
@@ -284,7 +284,7 @@ fn json(e: &mut TypeEnv) {
     mono(e, "jsonParse", vec![s()], res(i()));
     mono(e, "jsonGet", vec![i(), s()], res(s()));
     mono(e, "jsonLength", vec![i(), s()], i());
-    mono(e, "jsonFree", vec![i()], u());
+    mono(e, "jsonFree", vec![i()], res(i()));
 }
 
 fn concurrency(e: &mut TypeEnv) {
@@ -331,7 +331,7 @@ fn websocket(e: &mut TypeEnv) {
     mono(e, "websocketKeepAlive", vec![], u());
     mono(e, "websocketConnect", vec![s()], i());
     mono(e, "websocketSend", vec![i(), s()], i());
-    mono(e, "websocketClose", vec![i()], u());
+    mono(e, "websocketClose", vec![i()], i());
 }
 
 /// The rendered signature of a built-in (`name : type`), for editor hover.
@@ -388,6 +388,10 @@ mod tests {
     #[test]
     fn network_builtins_match_the_runtime_status_abi() {
         let expected = [
+            (
+                "writeFile",
+                "writeFile : (string, string) -> Result<int, Error>",
+            ),
             ("httpCloseClient", "httpCloseClient : (int) -> int"),
             ("httpGet", "httpGet : (int, string, string) -> int"),
             (
@@ -408,6 +412,7 @@ mod tests {
             ),
             ("httpStopServer", "httpStopServer : (int) -> int"),
             ("websocketClose", "websocketClose : (int) -> int"),
+            ("jsonFree", "jsonFree : (int) -> Result<int, Error>"),
         ];
         for (name, signature) in expected {
             assert_eq!(builtin_signature(name).as_deref(), Some(signature), "{name}");

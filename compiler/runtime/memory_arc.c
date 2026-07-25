@@ -14,11 +14,10 @@
 // `meta` is the layout word codegen passes to osp_alloc_tagged: low 8 bits a
 // kind, upper 56 a word bitmask (bit i => the 8-byte word at body offset 8*i
 // is a managed pointer). `rc` is SIGNED: rc >= 1 counts owners; rc < 0 marks
-// immortal/persistent objects that dup/drop skip (the cross-fiber atomic path
-// of plan 0011 M5 also lives below zero).
+// immortal/persistent objects that dup/drop skip.
 //
-// Provenance (plan 0011 phase 2, Amendment 2): pointer slots at runtime also
-// carry rodata literals, static C strings, foreign malloc/strdup memory,
+// Pointer slots at runtime also carry rodata literals, static C strings,
+// foreign malloc/strdup memory,
 // borrowed FFI pointers, and NULL. osp_retain/osp_release therefore probe an
 // open-addressing registry of live ARC allocations FIRST; a probe miss means
 // "not ours" and is a safe no-op. No IR special-casing, no FFI annotations —

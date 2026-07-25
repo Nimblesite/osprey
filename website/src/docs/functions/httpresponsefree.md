@@ -1,25 +1,30 @@
 ---
 layout: page
 title: "httpResponseFree (Function)"
-description: "Releases a response handle obtained from httpGetResponse."
+description: "Releases a response handle; an invalid handle or double free returns Error."
 ---
 
-**Signature:** `httpResponseFree(responseID: int) -> Unit`
+**Signature:** `httpResponseFree(responseID: int) -> Result<int, Error>`
 
-**Description:** Releases a response handle obtained from httpGetResponse.
+**Description:** Releases a response handle; an invalid handle or double free returns Error.
 
 ## Parameters
 
 - **responseID** (int): Handle returned by httpGetResponse
 
-**Returns:** Unit
+**Returns:** Result<int, Error>
 
 ## Example
 
 ```osprey
-httpResponseFree(response)
+match httpResponseFree(response) {
+  Success { value } => print("released")
+  Error { message } => print(message)
+}
 ```
 
 ```osprey-ml
-httpResponseFree response
+match httpResponseFree response
+    Success value => print "released"
+    Error message => print message
 ```

@@ -1,0 +1,92 @@
+// SUPERPOWER: three TYPED, independent error channels — each with its own
+// resumable recovery policy — instead of one untyped Exception base class.
+//
+// With try/catch you get ONE escape hatch: throw and the stack unwinds, the
+// computation is DEAD, and `catch (Exception e)` can't tell a parse failure
+// from a missing field from an out-of-range value without downcasting. You
+// also can't RESUME — once you've unwound past the throw site, that work is
+// gone forever.
+//
+// Algebraic effects make the failure SET part of the type: the row
+// ![Parse, Missing, Range] on loadConfig proves at compile time exactly which
+// three ways it can fail. Each channel is handled by its own policy, each
+// recovers DIFFERENTLY (Parse -> substitute 0, Missing -> fill a default,
+// Range -> clamp to a bound), and after every recovery the computation
+// CONTINUES at the exact point it stumbled. One run trips all three and still
+// returns a combined result — impossible with exceptions.
+
+// --- three distinct, independent typed error channels ---
+effect Parse {
+    bad: fn(string) -> int
+}
+effect Missing {
+    fill: fn(string) -> int
+}
+effect Range {
+    clamp: fn(int, int) -> int
+}
+
+// The effect ROW is the honest signature: these are the only failures possible.
+fn loadConfig() ![Parse, Missing, Range] = {
+    let port    = perform Parse.bad("=80=")       // Parse channel: not a number
+    let timeout = perform Missing.fill("timeout") // Missing channel: key absent
+    let retries = perform Range.clamp(250, 10)    // Range channel: over the max
+    print("assembled  -> port=${toString(port)} timeout=${toString(timeout)} retries=${toString(retries)}")
+    port + timeout + retries
+}
+
+// A single-channel helper — its row admits ONLY Range, so the type system
+// forbids it from ever raising Parse or Missing.
+fn loadRetries(raw, hi) !Range = perform Range.clamp(raw, hi)
+
+// Three NESTED handlers, each channel its own single-mode (tail-resume) policy.
+// None of these arms mention `resume`: every arm's value is substituted at the
+// perform site and the computation always continues.
+let combined = handle Parse
+    bad raw => {
+        print("[Parse]    cannot parse '${raw}' -> substitute 0")
+        0
+    }
+in handle Missing
+    fill key => match key {
+        "timeout" => {
+            print("[Missing]  key '${key}' absent -> default 30")
+            30
+        }
+        _ => {
+            print("[Missing]  key '${key}' absent -> default 1")
+            1
+        }
+    }
+in handle Range
+    clamp v hi => match v > hi {
+        true => {
+            print("[Range]    ${toString(v)} exceeds max ${toString(hi)} -> clamp to ${toString(hi)}")
+            hi
+        }
+        false => {
+            print("[Range]    ${toString(v)} within max ${toString(hi)} -> keep")
+            v
+        }
+    }
+in {
+    let total = loadConfig()
+    print("combined config total = ${toString(total)}")
+
+    // Inner handler SHADOWING + restore: a stricter Range policy overrides the
+    // outer one for just this call, then the outer policy is restored.
+    let strict = handle Range
+        clamp v hi => {
+            print("[Range*]   STRICT override: force ${toString(v)} -> 1")
+            1
+        }
+    in loadRetries(500, 10)
+    print("strict retries (inner handler)  = ${toString(strict)}")
+
+    // Outer Range handler is back in effect here — same call, relaxed policy.
+    let relaxed = loadRetries(500, 10)
+    print("relaxed retries (outer handler) = ${toString(relaxed)}")
+
+    total
+}
+print("final combined result = ${toString(combined)}")

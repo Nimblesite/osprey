@@ -1,12 +1,12 @@
 ---
 layout: page
 title: "randomBelow (Function)"
-description: "A cryptographically-secure uniform random integer in [0, n), unbiased by rejection sampling. Returns Result<int, MathError> — Error when n <= 0."
+description: "A cryptographically-secure uniform random integer in [0, n), unbiased by rejection sampling. Returns Result<int, Error> when n is positive and Error otherwise."
 ---
 
 **Signature:** `randomBelow(n: int) -> Result<int, Error>`
 
-**Description:** A cryptographically-secure uniform random integer in [0, n), unbiased by rejection sampling. Returns Result<int, MathError> — Error when n <= 0.
+**Description:** A cryptographically-secure uniform random integer in [0, n), unbiased by rejection sampling. Returns Result<int, Error> when n is positive and Error otherwise.
 
 ## Parameters
 

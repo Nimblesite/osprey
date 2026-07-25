@@ -1,18 +1,18 @@
 ---
 layout: page
 title: "httpStopServer (Function)"
-description: "Stops the HTTP server and closes all connections."
+description: "Stops the HTTP server and returns the runtime status."
 ---
 
-**Signature:** `httpStopServer(serverID: int) -> Unit`
+**Signature:** `httpStopServer(serverID: int) -> int`
 
-**Description:** Stops the HTTP server and closes all connections.
+**Description:** Stops the HTTP server and returns the runtime status.
 
 ## Parameters
 
 - **serverID** (int): Server identifier to stop
 
-**Returns:** Unit
+**Returns:** int
 
 ## Example
 

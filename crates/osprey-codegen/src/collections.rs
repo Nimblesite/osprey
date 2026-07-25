@@ -144,7 +144,7 @@ fn stored_boxed_arg(cg: &mut Codegen, args: &[Expr], i: usize) -> Result<(Value,
 
 /// Own a fresh runtime container handle: every `osprey_list_*`/`osprey_map_*`
 /// producer returns +1 (fresh allocations; alias returns retain-on-return and
-/// the empty singletons are immortal — `memory_arc.c`, plan 0011 M4).
+/// the empty singletons are immortal (`memory_arc.c`, [GC-ARC-PERCEUS]).
 fn own_handle(cg: &mut Codegen, v: Value) -> Value {
     crate::arc::own(cg, &v);
     v

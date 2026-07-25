@@ -1,12 +1,12 @@
 ---
 layout: page
 title: "httpDelete (Function)"
-description: "Makes an HTTP DELETE request to the specified path."
+description: "Makes an HTTP DELETE request and returns its status code, or a negative transport error."
 ---
 
-**Signature:** `httpDelete(clientID: int, path: string, headers: string) -> Result<string, Error>`
+**Signature:** `httpDelete(clientID: int, path: string, headers: string) -> int`
 
-**Description:** Makes an HTTP DELETE request to the specified path.
+**Description:** Makes an HTTP DELETE request and returns its status code, or a negative transport error.
 
 ## Parameters
 
@@ -14,7 +14,7 @@ description: "Makes an HTTP DELETE request to the specified path."
 - **path** (string): Request path
 - **headers** (string): Additional headers
 
-**Returns:** Result<string, Error>
+**Returns:** int
 
 ## Example
 

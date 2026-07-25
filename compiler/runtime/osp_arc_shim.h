@@ -4,7 +4,7 @@
 // strings and container nodes the 16-byte Perceus header and a registry entry,
 // so codegen-emitted osp_release calls on them are precise instead of foreign
 // probe-misses. Implements the shimmed-unit half of [GC-ARC-PERCEUS]
-// (docs/plans/0011, phase 2 milestone M1).
+// (docs/specs/0018-MemoryManagement.md).
 //
 // Only the value-producing units (list/map/hamt/string/string-list/json) are
 // built with this; the default and gc archives never see it.

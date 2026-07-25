@@ -434,8 +434,8 @@ match split("name=alice&age=30", "&") {
 
 ## File System Functions — [BUILTIN-FILE]
 
-### `writeFile(path: string, content: string) -> Result<Unit, Error>`
-Writes or replaces a file.
+### `writeFile(path: string, content: string) -> Result<int, Error>`
+Writes or replaces a file and returns the number of bytes written.
 
 ### `readFile(path: string) -> Result<string, Error>`
 Reads a complete file.

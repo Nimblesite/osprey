@@ -1,12 +1,12 @@
 ---
 layout: page
 title: "httpListen (Function)"
-description: "Starts the HTTP server listening for requests with a handler function."
+description: "Starts the HTTP server with a request handler and returns 0 or a negative runtime error."
 ---
 
 **Signature:** `httpListen(serverID: int, handler: any) -> int`
 
-**Description:** Starts the HTTP server listening for requests with a handler function.
+**Description:** Starts the HTTP server with a request handler and returns 0 or a negative runtime error.
 
 ## Parameters
 

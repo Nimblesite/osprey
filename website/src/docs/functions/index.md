@@ -64,19 +64,19 @@ Labeled equality assertion in Alcotest argument order (expected before actual). 
 
 **Signature:** `checkedAdd(a: int, b: int) -> Result<int, Error>`
 
-Integer addition that reports overflow instead of wrapping. The `+` operator returns plain int because a wrapped result is still representable; this returns Result<int, MathError>.
+Integer addition that reports overflow instead of wrapping. The `+` operator returns plain int because a wrapped result is still representable; this returns Result<int, Error>.
 
 ## [checkedMul](checkedmul/)
 
 **Signature:** `checkedMul(a: int, b: int) -> Result<int, Error>`
 
-Integer multiplication that reports overflow instead of wrapping, returning Result<int, MathError>. The guarded sibling of `*`.
+Integer multiplication that reports overflow instead of wrapping, returning Result<int, Error>. The guarded sibling of `*`.
 
 ## [checkedSub](checkedsub/)
 
 **Signature:** `checkedSub(a: int, b: int) -> Result<int, Error>`
 
-Integer subtraction that reports overflow instead of wrapping, returning Result<int, MathError>. The guarded sibling of `-`.
+Integer subtraction that reports overflow instead of wrapping, returning Result<int, Error>. The guarded sibling of `-`.
 
 ## [cleanupProcess](cleanupprocess/)
 
@@ -101,12 +101,6 @@ Returns how many bytes the given Unicode code point occupies in UTF-8 (1-4).
 **Signature:** `contains(s: string, needle: string) -> bool`
 
 True if needle appears anywhere in s. Empty needle returns true.
-
-## [deleteFile](deletefile/)
-
-**Signature:** `deleteFile(path: string) -> Result<Unit, Error>`
-
-Deletes the file at the given path, returning Unit on success or an error.
 
 ## [drop](drop/)
 
@@ -170,15 +164,15 @@ Returns the single-character string for a Unicode code point, or an error if it 
 
 ## [httpCloseClient](httpcloseclient/)
 
-**Signature:** `httpCloseClient(clientID: int) -> Unit`
+**Signature:** `httpCloseClient(clientID: int) -> int`
 
-Closes the HTTP client and cleans up resources.
+Closes the HTTP client and returns the runtime status.
 
 ## [httpCreateClient](httpcreateclient/)
 
 **Signature:** `httpCreateClient(base_url: string, timeout: int) -> int`
 
-Creates an HTTP client for making requests to a base URL.
+Creates an HTTP client and returns its handle, or a negative runtime error.
 
 ## [httpCreateServer](httpcreateserver/)
 
@@ -188,15 +182,15 @@ Creates an HTTP server bound to the specified port and address.
 
 ## [httpDelete](httpdelete/)
 
-**Signature:** `httpDelete(clientID: int, path: string, headers: string) -> Result<string, Error>`
+**Signature:** `httpDelete(clientID: int, path: string, headers: string) -> int`
 
-Makes an HTTP DELETE request to the specified path.
+Makes an HTTP DELETE request and returns its status code, or a negative transport error.
 
 ## [httpGet](httpget/)
 
-**Signature:** `httpGet(clientID: int, path: string, headers: string) -> Result<string, Error>`
+**Signature:** `httpGet(clientID: int, path: string, headers: string) -> int`
 
-Makes an HTTP GET request to the specified path.
+Makes an HTTP GET request and returns its status code, or a negative transport error.
 
 ## [httpGetResponse](httpgetresponse/)
 
@@ -208,19 +202,19 @@ Sends an HTTP GET request and returns a response handle for inspecting the statu
 
 **Signature:** `httpListen(serverID: int, handler: any) -> int`
 
-Starts the HTTP server listening for requests with a handler function.
+Starts the HTTP server with a request handler and returns 0 or a negative runtime error.
 
 ## [httpPost](httppost/)
 
-**Signature:** `httpPost(clientID: int, path: string, body: string, headers: string) -> Result<string, Error>`
+**Signature:** `httpPost(clientID: int, path: string, body: string, headers: string) -> int`
 
-Makes an HTTP POST request with a request body.
+Makes an HTTP POST request and returns its status code, or a negative transport error.
 
 ## [httpPut](httpput/)
 
-**Signature:** `httpPut(clientID: int, path: string, body: string, headers: string) -> Result<string, Error>`
+**Signature:** `httpPut(clientID: int, path: string, body: string, headers: string) -> int`
 
-Makes an HTTP PUT request with a request body.
+Makes an HTTP PUT request and returns its status code, or a negative transport error.
 
 ## [httpResponseBody](httpresponsebody/)
 
@@ -230,9 +224,9 @@ Returns the body of a response handle as a string.
 
 ## [httpResponseFree](httpresponsefree/)
 
-**Signature:** `httpResponseFree(responseID: int) -> Unit`
+**Signature:** `httpResponseFree(responseID: int) -> Result<int, Error>`
 
-Releases a response handle obtained from httpGetResponse.
+Releases a response handle; an invalid handle or double free returns Error.
 
 ## [httpResponseHeader](httpresponseheader/)
 
@@ -248,9 +242,9 @@ Returns the HTTP status code of a response handle.
 
 ## [httpStopServer](httpstopserver/)
 
-**Signature:** `httpStopServer(serverID: int) -> Unit`
+**Signature:** `httpStopServer(serverID: int) -> int`
 
-Stops the HTTP server and closes all connections.
+Stops the HTTP server and returns the runtime status.
 
 ## [indexOf](indexof/)
 
@@ -268,7 +262,7 @@ Reads a string from the user's input.
 
 **Signature:** `intDiv(a: int, b: int) -> Result<int, Error>`
 
-Truncating integer division (rounds toward zero), divide-by-zero checked. The `/` operator is float-only; this is its integer sibling, returning Result<int, MathError>.
+Truncating integer division (rounds toward zero), divide-by-zero checked. The `/` operator is float-only; this is its integer sibling, returning Result<int, Error>.
 
 ## [isEmpty](isempty/)
 
@@ -284,7 +278,7 @@ Concatenates parts with separator between each pair.
 
 ## [jsonFree](jsonfree/)
 
-**Signature:** `jsonFree(document: int) -> Unit`
+**Signature:** `jsonFree(document: int) -> Result<int, Error>`
 
 Releases a parsed JSON document handle obtained from jsonParse.
 
@@ -460,7 +454,7 @@ A cryptographically-secure uniform random non-negative integer (0 .. 2^63-1), dr
 
 **Signature:** `randomBelow(n: int) -> Result<int, Error>`
 
-A cryptographically-secure uniform random integer in [0, n), unbiased by rejection sampling. Returns Result<int, MathError> — Error when n <= 0.
+A cryptographically-secure uniform random integer in [0, n), unbiased by rejection sampling. Returns Result<int, Error> when n is positive and Error otherwise.
 
 ## [range](range/)
 
@@ -512,7 +506,7 @@ Pauses execution for the specified number of milliseconds.
 
 ## [spawnProcess](spawnprocess/)
 
-**Signature:** `spawnProcess(command: string, callback: any) -> int`
+**Signature:** `spawnProcess(command: string, callback: any) -> Result<int, Error>`
 
 Spawns an external async process with MANDATORY callback for stdout/stderr capture. The callback function receives (processID: int, eventType: int, data: string) and is called for stdout (1), stderr (2), and exit (3) events. Returns a handle for the running process. CALLBACK IS REQUIRED - NO FUNCTION OVERLOADING!
 
@@ -632,9 +626,9 @@ Removes leading whitespace.
 
 ## [websocketClose](websocketclose/)
 
-**Signature:** `websocketClose(wsID: int) -> Unit`
+**Signature:** `websocketClose(wsID: int) -> int`
 
-Closes the WebSocket connection and cleans up resources. *(Implementation note: currently returns an integer status code; the `Result`-typed API shown in the signature is planned.)*
+Closes the WebSocket connection and returns the runtime status.
 
 ## [websocketConnect](websocketconnect/)
 
@@ -646,31 +640,31 @@ Connects to a WebSocket server at the given URL and returns a connection id.
 
 **Signature:** `websocketCreateServer(port: int, address: string, path: string) -> int`
 
-Creates a WebSocket server bound to the specified port, address, and path. *(Implementation note: currently returns an integer status code; the `Result`-typed API shown in the signature is planned.)*
+Creates a WebSocket server and returns its handle, or a negative runtime error.
 
 ## [websocketKeepAlive](websocketkeepalive/)
 
 **Signature:** `websocketKeepAlive() -> Unit`
 
-Keeps the WebSocket server running indefinitely until interrupted (blocking operation). *(Implementation note: currently returns an integer status code; the `Result`-typed API shown in the signature is planned.)*
+Blocks until SIGINT or SIGTERM so server threads remain alive.
 
 ## [websocketSend](websocketsend/)
 
 **Signature:** `websocketSend(wsID: int, message: string) -> int`
 
-Sends a message through the WebSocket connection. *(Implementation note: currently returns an integer status code; the `Result`-typed API shown in the signature is planned.)*
+Sends one text frame and returns 0 or a negative runtime error.
 
 ## [websocketServerBroadcast](websocketserverbroadcast/)
 
 **Signature:** `websocketServerBroadcast(serverID: int, message: string) -> int`
 
-Broadcasts a message to all connected WebSocket clients. *(Implementation note: currently returns an integer status code; the `Result`-typed API shown in the signature is planned.)*
+Broadcasts one text frame and returns the number of connections written.
 
 ## [websocketServerListen](websocketserverlisten/)
 
 **Signature:** `websocketServerListen(serverID: int) -> int`
 
-Starts the WebSocket server listening for connections. *(Implementation note: currently returns an integer status code; the `Result`-typed API shown in the signature is planned.)*
+Starts the WebSocket server and returns 0 or a negative runtime error.
 
 ## [words](words/)
 
@@ -680,7 +674,7 @@ Splits on runs of whitespace; empty results dropped.
 
 ## [writeFile](writefile/)
 
-**Signature:** `writeFile(filename: string, content: string) -> Result<Unit, Error>`
+**Signature:** `writeFile(filename: string, content: string) -> Result<int, Error>`
 
 Writes content to a file. Creates the file if it doesn't exist. Returns number of bytes written.
 

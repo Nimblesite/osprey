@@ -1,18 +1,18 @@
 ---
 layout: page
 title: "httpCloseClient (Function)"
-description: "Closes the HTTP client and cleans up resources."
+description: "Closes the HTTP client and returns the runtime status."
 ---
 
-**Signature:** `httpCloseClient(clientID: int) -> Unit`
+**Signature:** `httpCloseClient(clientID: int) -> int`
 
-**Description:** Closes the HTTP client and cleans up resources.
+**Description:** Closes the HTTP client and returns the runtime status.
 
 ## Parameters
 
 - **clientID** (int): Client identifier to close
 
-**Returns:** Unit
+**Returns:** int
 
 ## Example
 

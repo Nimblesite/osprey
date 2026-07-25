@@ -2,7 +2,8 @@
 // of a runtime unit's own headers so its malloc/calloc/realloc/free route into
 // the Osprey collector's managed heap (memory_gc.c) — making the boxed Osprey
 // values those units store conservatively reachable. Implements the managed
-// value-container half of [GC-TRACE-CONSERVATIVE] (docs/plans/0011).
+// value-container half of [GC-TRACE-CONSERVATIVE]
+// (docs/specs/0018-MemoryManagement.md).
 //
 // Only the value-container units (list/map) are built with this; the default
 // archive never sees it, so the default backend is byte-for-byte unchanged.

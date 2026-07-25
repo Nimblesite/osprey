@@ -83,14 +83,14 @@ HTTP_OBJ ?= bin/http_shared.o bin/http_client_runtime.o bin/http_server_request.
 # GC backend archives (osprey --memory=gc): the tracing collector replaces
 # memory_runtime.o, and the value-container units are rebuilt with the malloc
 # redirect (osp_gc_shim.h) so their nodes live in the managed heap. Everything
-# else is the same object. Implements [GC-TRACE-CONSERVATIVE], docs/plans/0011.
+# else is the same object. Implements [GC-TRACE-CONSERVATIVE], spec 0018.
 FIB_OBJ_GC  ?= bin/memory_gc.o bin/fiber_runtime.o bin/system_runtime.o bin/effects_runtime.o bin/string_runtime.o bin/string_runtime_list.o bin/gc/list_runtime.o bin/gc/map_runtime.o bin/gc/map_runtime_hamt.o bin/json_runtime.o bin/ffi_runtime.o bin/term_runtime.o bin/random_runtime.o bin/test_runtime.o bin/coverage_runtime.o bin/profiler_runtime.o bin/profiler_sampler.o
 HTTP_OBJ_GC ?= bin/http_shared.o bin/http_client_runtime.o bin/http_server_request.o bin/http_server_response.o bin/http_server_runtime.o bin/websocket_client_runtime.o bin/websocket_server_runtime.o $(FIB_OBJ_GC)
 # ARC backend archives (osprey --memory=arc): Perceus reference counting
 # replaces memory_runtime.o, and the value-producing units (containers +
 # strings + JSON) are rebuilt with the allocation redirect (osp_arc_shim.h) so
 # their nodes/buffers carry the 16-byte header and registry entry. Implements
-# [GC-ARC-PERCEUS], docs/plans/0011 phase 2 (milestone M1).
+# [GC-ARC-PERCEUS], spec 0018.
 FIB_OBJ_ARC  ?= bin/memory_arc.o bin/fiber_runtime.o bin/system_runtime.o bin/effects_runtime.o bin/arc/string_runtime.o bin/arc/string_runtime_list.o bin/arc/list_runtime.o bin/arc/map_runtime.o bin/arc/map_runtime_hamt.o bin/arc/json_runtime.o bin/ffi_runtime.o bin/term_runtime.o bin/random_runtime.o bin/test_runtime.o bin/coverage_runtime.o bin/profiler_runtime.o bin/profiler_sampler.o
 HTTP_OBJ_ARC ?= bin/http_shared.o bin/http_client_runtime.o bin/http_server_request.o bin/http_server_response.o bin/http_server_runtime.o bin/websocket_client_runtime.o bin/websocket_server_runtime.o $(FIB_OBJ_ARC)
 
@@ -402,7 +402,7 @@ _coverage_check_rust:
 # Hardened C runtime unit tests (assertion-driven; a failed assert aborts the
 # binary). Covers the string cursor (BUILTIN-STRING-CURSOR), the error-message
 # contract ([ERR-PAYLOAD]), complete HTTP reads/writes, the fiber/channel and
-# websocket surface, and — since plan 0011 phase 2 — the reclaiming memory
+# websocket surface and the reclaiming memory
 # backend and both persistent containers: memory_arc.c (header, registry,
 # retain/release, every layout kind's drop walk, the shim allocators) and
 # list_runtime.c / map_runtime.c / map_runtime_hamt.c (trie + HAMT persistence,
@@ -478,7 +478,7 @@ _test_differential:
 	  echo "$$out" | grep -q  'FC_OK'    || { echo 'FAIL: must-reject ratchet exceeded'; exit 1; }
 
 # _conformance-gc: run every tested example under the tracing GC backend; output
-# must be byte-identical to the default ([MEM-BACKENDS] oracle, docs/plans/0011).
+# must be byte-identical to the default ([MEM-BACKENDS] oracle, spec 0018).
 _conformance-gc:
 	@echo "==> [conformance] differential harness under --memory=gc..."
 	@out=$$(OSPREY_RUN_FLAGS=--memory=gc zsh crates/diff_examples.sh); echo "$$out"; \

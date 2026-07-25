@@ -1,32 +1,27 @@
 ---
 layout: page
 title: "websocketClose (Function)"
-description: "Closes the WebSocket connection and cleans up resources. *(Implementation note: currently returns an integer status code; the `Result`-typed API shown in the signature is planned.)*"
+description: "Closes the WebSocket connection and returns the runtime status."
 ---
 
-**Signature:** `websocketClose(wsID: int) -> Unit`
+**Signature:** `websocketClose(wsID: int) -> int`
 
-**Description:** Closes the WebSocket connection and cleans up resources. *(Implementation note: currently returns an integer status code; the `Result`-typed API shown in the signature is planned.)*
+**Description:** Closes the WebSocket connection and returns the runtime status.
 
 ## Parameters
 
 - **wsID** (int): WebSocket identifier to close
 
-**Returns:** Unit
+**Returns:** int
 
 ## Example
 
 ```osprey
-let closeResult = websocketClose(wsID: wsId)
-match closeResult {
-    Success _ => print("Connection closed")
-    Err message => print("Failed to close: ${message}")
-}
+let status = websocketClose(wsId)
+print(status)
 ```
 
 ```osprey-ml
-closeResult = websocketClose wsId
-match closeResult
-    Success _ => print "Connection closed"
-    Err message => print "Failed to close: ${message}"
+status = websocketClose wsId
+print status
 ```

@@ -444,7 +444,7 @@ pub(crate) fn gen_handler(
         cg.emit(format!("{r} = call i32 @__osprey_handler_pop()"));
     }
     // The popped region's env reached its structural end: drop it (its mask
-    // releases the captured values) [GC-ARC-PERCEUS], plan 0011 M5.
+    // releases the captured values) [GC-ARC-PERCEUS].
     if env != "null" {
         crate::arc::release_operand(cg, &env);
     }
@@ -709,7 +709,7 @@ fn gen_resuming_handler(
     }
     cg.call_void("__osprey_coro_free", "i8*", &[&coro]);
     // The coro region ended: drop its env (mask releases the captures)
-    // [GC-ARC-PERCEUS], plan 0011 M5.
+    // [GC-ARC-PERCEUS].
     if env != "null" {
         crate::arc::release_operand(cg, &env);
     }
@@ -776,7 +776,7 @@ fn emit_suspend_fn(cg: &mut Codegen, name: &str, op_id: usize, sig: &OpSig) {
     let ret = unbox_coro_value(cg, &raw, sig.ret, sig.ret_result_inner);
     // `resume(v)` DUPs v into the coro's result mailbox (box_codegen_value),
     // so the value arrives here owned: register it, or the performer's side of
-    // every resuming operation leaks it. [GC-ARC-PERCEUS] plan 0011 M5b.
+    // every resuming operation leaks it. [GC-ARC-PERCEUS].
     crate::arc::own(cg, &ret);
     ret_and_exit(cg, saved, sig, name, &params, &ret);
 }

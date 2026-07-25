@@ -17,7 +17,7 @@
  *   so a dead list reclaims its skeleton and drops the elements it owned while
  *   every version still sharing a node keeps it alive; a no-op under the
  *   default/tracing backends. Path-copying still never mutates a published
- *   node. Conventions: collection_runtime.h. [GC-ARC-PERCEUS] plan 0011 M4b.
+ *   node. Conventions: collection_runtime.h. [GC-ARC-PERCEUS].
  *
  * Implements [TYPE-LIST], [TYPE-LIST-OPS] from docs/specs/0004-TypeSystem.md.
  *
@@ -147,7 +147,7 @@ static OspreyList *singleton_empty = NULL;
 OspreyList *osprey_list_empty(void) {
   if (singleton_empty == NULL) {
     /* Returned from many sites and owned by many callers at once: under ARC
-     * it must never be freed by any of them [GC-ARC-PERCEUS] plan 0011 M4. */
+     * it must never be freed by any of them [GC-ARC-PERCEUS]. */
     singleton_empty = alloc_list(0, 0, 0, NULL, NULL, 0, 0);
     osp_mem_immortal(singleton_empty);
   }
@@ -355,7 +355,7 @@ OspreyList *osprey_list_prepend(OspreyList *l, int64_t v) {
 
 OspreyList *osprey_list_concat(OspreyList *a, OspreyList *b) {
   /* Alias returns carry a fresh +1 (retain-on-return): the caller owns every
-   * returned handle, aliased or not [GC-ARC-PERCEUS], plan 0011 M4. */
+   * returned handle, aliased or not [GC-ARC-PERCEUS]. */
   if (a == NULL || a->length == 0) {
     if (b == NULL) {
       return osprey_list_empty();

@@ -27,7 +27,7 @@
  * three). Structural sharing is achieved via path-copying; a shared node
  * outlives every version that still points at it.
  *
- * Element ownership [GC-ARC-PERCEUS] (docs/plans/0011 M4b). A container OWNS
+ * Element ownership [GC-ARC-PERCEUS] [MEM-BACKENDS-ELEMENTS]. A container OWNS
  * its elements, so its death releases them — but element slots are type-blind
  * int64, and releasing an integer whose bits collide with a live heap address
  * would be a use-after-free. Every container therefore carries an

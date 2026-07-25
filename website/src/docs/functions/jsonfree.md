@@ -4,7 +4,7 @@ title: "jsonFree (Function)"
 description: "Releases a parsed JSON document handle obtained from jsonParse."
 ---
 
-**Signature:** `jsonFree(document: int) -> Unit`
+**Signature:** `jsonFree(document: int) -> Result<int, Error>`
 
 **Description:** Releases a parsed JSON document handle obtained from jsonParse.
 
@@ -12,7 +12,7 @@ description: "Releases a parsed JSON document handle obtained from jsonParse."
 
 - **document** (int): Handle returned by jsonParse
 
-**Returns:** Unit
+**Returns:** Result<int, Error>
 
 ## Example
 

@@ -2,7 +2,7 @@
 layout: page.njk
 title: "SemVer Is All Lies. Please Stop"
 excerpt: "Semantic versions encode a maintainer's intent, not evidence that a release is compatible. Osprey's package plan replaces that guess with exact identity, compatibility epochs, and aggressive downstream testing."
-description: "Why SemVer cannot prove compatibility, what research says developers miss, and how Osprey will use evidence and downstream tests instead."
+description: "Why semantic versioning cannot prove backward compatibility, what breaking-change research shows, and how Osprey's package manager will test dependency updates."
 tags: ["blog", "package-management", "semantic-versioning", "compatibility", "testing"]
 author: "Christian Findlay"
 readingTime: 9
@@ -18,7 +18,7 @@ Except the number has not proved any of that. It records what somebody hoped, in
 
 I do not think maintainers are dishonest. The lie is the certainty. `1.4.7` looks precise enough for a machine to trust, while concealing how little we actually know about whether a particular consumer will survive the upgrade.
 
-## A release is not breaking in isolation
+## Why semantic versioning cannot prove backward compatibility
 
 [The SemVer specification](https://semver.org/) sounds wonderfully crisp: increment MAJOR for incompatible API changes, MINOR for backward-compatible functionality, and PATCH for backward-compatible bug fixes.
 
@@ -81,7 +81,7 @@ The tests are an instrument panel, not a constitutional ban on change. They turn
 
 [Flutter still uses SemVer in its package ecosystem](https://docs.flutter.dev/packages-and-plugins/dependency-management). I am pointing to its compatibility-detection practice, not claiming Flutter has rejected version numbers. In fact, the practice exposes why SemVer is inadequate: when compatibility matters, the team does not stare harder at a proposed version. It runs consumers.
 
-## Osprey will separate identity, order, and compatibility
+## Osprey's package manager will separate identity, order, and compatibility
 
 This is why the [Osprey package-manager plan](https://github.com/Nimblesite/osprey/blob/main/docs/plans/0020-package-manager.md) and [package specification](/spec/0029-packagemanagement/) reject SemVer fields and version ranges. The design is specified, not implemented yet, and it gives the three jobs hidden inside a semantic version to three different mechanisms:
 

@@ -184,6 +184,7 @@ int64_t websocket_create_server(int64_t port, char *address, char *path) {
   server->path = strdup(path);
   server->socket_fd = -1;
   server->is_listening = false;
+  server->thread_started = false;
   server->connection_count = 0;
   pthread_mutex_init(&server->mutex, NULL);
 
@@ -253,37 +254,9 @@ int64_t websocket_server_listen(int64_t server_id) {
     server->is_listening = false;
     return -6;
   }
+  server->thread_started = true;
 
   return 0;
-}
-
-// Send message to specific WebSocket connection - returns 0 on success
-int64_t websocket_server_send(int64_t server_id, int64_t connection_id,
-                              char *message) {
-  if (!message) {
-    return -1;
-  }
-
-  pthread_mutex_lock(&runtime_mutex);
-  WebSocketServer *server = websocket_servers[server_id];
-  pthread_mutex_unlock(&runtime_mutex);
-
-  if (!server) {
-    return -2;
-  }
-
-  pthread_mutex_lock(&server->mutex);
-  for (int i = 0; i < server->connection_count; i++) {
-    WebSocket *ws = server->connections[i];
-    if (ws && ws->id == connection_id && ws->is_connected) {
-      int result = send_websocket_frame(ws->socket_fd, message);
-      pthread_mutex_unlock(&server->mutex);
-      return result > 0 ? 0 : -3;
-    }
-  }
-  pthread_mutex_unlock(&server->mutex);
-
-  return -4; // Connection not found
 }
 
 // Broadcast message to all connections - returns number of connections sent to
@@ -322,6 +295,7 @@ int64_t websocket_stop_server(int64_t server_id) {
   if (server) {
     websocket_servers[server_id] = NULL;
     server->is_listening = false;
+    bool thread_started = server->thread_started;
 
     // Close all connections
     pthread_mutex_lock(&server->mutex);
@@ -343,7 +317,9 @@ int64_t websocket_stop_server(int64_t server_id) {
     }
 
     // Wait for server thread to finish
-    pthread_join(server->server_thread, NULL);
+    if (thread_started) {
+      pthread_join(server->server_thread, NULL);
+    }
 
     free(server->address);
     free(server->path);
@@ -371,11 +347,7 @@ void websocket_keep_alive(void) {
   printf("🛑 Shutting down all WebSocket servers...\n");
 
   // Stop all servers
-  pthread_mutex_lock(&runtime_mutex);
   for (int i = 0; i < MAX_WEBSOCKET_SERVERS; i++) {
-    if (websocket_servers[i]) {
-      websocket_stop_server(i);
-    }
+    websocket_stop_server(i);
   }
-  pthread_mutex_unlock(&runtime_mutex);
 }

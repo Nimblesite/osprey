@@ -724,11 +724,11 @@ impl Checker {
                 }
             }
             // "-" and "*": unlike "+", these have no string/list overload, so
-            // unconstrained operands default to int — `fn square(v) = v * v`
-            // infers `(int) -> Result<int, MathError>`.
+            // unconstrained operands default to int. Neither operation is
+            // fallible; checked integer variants are explicit builtins.
             _ => {
                 if l.is_named(names::FLOAT) || r.is_named(names::FLOAT) {
-                    res_math(Type::float())
+                    Type::float()
                 } else {
                     self.int_arithmetic(lt, rt)
                 }
@@ -766,6 +766,8 @@ fn classify(op: &str) -> OpKind {
 mod tests {
     use crate::check::check_program;
     use crate::testutil::{check, ok};
+    use crate::{infer_program, Type};
+    use osprey_syntax::parse_program;
 
     #[test]
     fn pipe_into_call_and_bare_function() {
@@ -820,11 +822,9 @@ mod tests {
             fn run() -> int = handle Logger\n\
               log msg => 0\n\
             in 42\n");
-        // `resume(v + 1000)` feeds arithmetic — a `Result<int, MathError>` —
-        // into the `int` operation-result slot, and the handled body ends in
-        // `a + 1`, another `Result`, flowing into the `int` answer pinned by the
-        // `false => 0` arm. Both are assignment sites that auto-unwrap; a plain
-        // unify would wrongly reject them. Guards the [EFFECTS-RESUME] fix.
+        // `resume(v + 1000)` feeds the operation-result slot and the handled
+        // body ends in `a + 1`; both must retain the handler's answer type.
+        // Guards the [EFFECTS-RESUME] fix.
         ok("effect Guard { check: fn(int) -> int }\n\
             fn guarded() -> int = handle Guard\n\
               check v => match v < 100 {\n\
@@ -997,10 +997,23 @@ mod tests {
 
     #[test]
     fn arith_list_map_concat_and_float_subtraction() {
-        // `+` over lists and maps unifies operands; `-` over floats yields a
-        // float Result.
+        // `+` over lists and maps unifies operands.
         ok("let xs = [1, 2] + [3, 4]\n\
-            fn fsub(a: float, b: float) -> Result<float, MathError> = a - b\n");
+            fn fsub(a: float, b: float) -> float = a - b\n");
+    }
+
+    #[test]
+    fn non_dividing_float_arithmetic_is_plain() {
+        let parsed = parse_program(
+            "fn add(a: float, b: float) = a + b\n\
+             fn sub(a: float, b: float) = a - b\n\
+             fn mul(a: float, b: float) = a * b\n",
+        );
+        assert!(parsed.errors.is_empty(), "syntax errors: {:?}", parsed.errors);
+        let types = infer_program(&parsed.program);
+        for name in ["add", "sub", "mul"] {
+            assert_eq!(types.return_type(name), Some(&Type::float()), "{name}");
+        }
     }
 
     #[test]
@@ -1043,8 +1056,8 @@ mod tests {
         ok("fn lt(a: int, b: int) -> bool = a < b\n\
             fn md(a: int, b: int) -> Result<int, MathError> = a % b\n\
             fn dv(a: int, b: int) -> Result<float, MathError> = a / b\n\
-            fn fadd(a: float, b: float) -> Result<float, MathError> = a + b\n\
-            fn fmul(a: float, b: float) -> Result<float, MathError> = a * b\n");
+            fn fadd(a: float, b: float) -> float = a + b\n\
+            fn fmul(a: float, b: float) -> float = a * b\n");
     }
 
     #[test]

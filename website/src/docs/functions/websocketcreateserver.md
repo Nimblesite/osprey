@@ -1,12 +1,12 @@
 ---
 layout: page
 title: "websocketCreateServer (Function)"
-description: "Creates a WebSocket server bound to the specified port, address, and path. *(Implementation note: currently returns an integer status code; the `Result`-typed API shown in the signature is planned.)*"
+description: "Creates a WebSocket server and returns its handle, or a negative runtime error."
 ---
 
 **Signature:** `websocketCreateServer(port: int, address: string, path: string) -> int`
 
-**Description:** Creates a WebSocket server bound to the specified port, address, and path. *(Implementation note: currently returns an integer status code; the `Result`-typed API shown in the signature is planned.)*
+**Description:** Creates a WebSocket server and returns its handle, or a negative runtime error.
 
 ## Parameters
 
@@ -19,16 +19,11 @@ description: "Creates a WebSocket server bound to the specified port, address, a
 ## Example
 
 ```osprey
-let serverResult = websocketCreateServer(port: 8080, address: "127.0.0.1", path: "/chat")
-match serverResult {
-    Success serverId => print("WebSocket server created with ID: ${serverId}")
-    Err message => print("Failed to create server: ${message}")
-}
+let serverId = websocketCreateServer(8080, "127.0.0.1", "/chat")
+print(serverId)
 ```
 
 ```osprey-ml
-serverResult = websocketCreateServer 8080 "127.0.0.1" "/chat"
-match serverResult
-    Success serverId => print "WebSocket server created with ID: ${serverId}"
-    Err message => print "Failed to create server: ${message}"
+serverId = websocketCreateServer 8080 "127.0.0.1" "/chat"
+print serverId
 ```

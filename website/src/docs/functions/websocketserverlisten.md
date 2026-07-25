@@ -1,12 +1,12 @@
 ---
 layout: page
 title: "websocketServerListen (Function)"
-description: "Starts the WebSocket server listening for connections. *(Implementation note: currently returns an integer status code; the `Result`-typed API shown in the signature is planned.)*"
+description: "Starts the WebSocket server and returns 0 or a negative runtime error."
 ---
 
 **Signature:** `websocketServerListen(serverID: int) -> int`
 
-**Description:** Starts the WebSocket server listening for connections. *(Implementation note: currently returns an integer status code; the `Result`-typed API shown in the signature is planned.)*
+**Description:** Starts the WebSocket server and returns 0 or a negative runtime error.
 
 ## Parameters
 
@@ -17,16 +17,11 @@ description: "Starts the WebSocket server listening for connections. *(Implement
 ## Example
 
 ```osprey
-let listenResult = websocketServerListen(serverID: serverId)
-match listenResult {
-    Success _ => print("Server listening on ws://127.0.0.1:8080/chat")
-    Err message => print("Failed to start listening: ${message}")
-}
+let status = websocketServerListen(serverId)
+print(status)
 ```
 
 ```osprey-ml
-listenResult = websocketServerListen serverId
-match listenResult
-    Success _ => print "Server listening on ws://127.0.0.1:8080/chat"
-    Err message => print "Failed to start listening: ${message}"
+status = websocketServerListen serverId
+print status
 ```

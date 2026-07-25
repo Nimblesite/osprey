@@ -1,12 +1,12 @@
 ---
 layout: page
 title: "checkedSub (Function)"
-description: "Integer subtraction that reports overflow instead of wrapping, returning Result<int, MathError>. The guarded sibling of `-`."
+description: "Integer subtraction that reports overflow instead of wrapping, returning Result<int, Error>. The guarded sibling of `-`."
 ---
 
 **Signature:** `checkedSub(a: int, b: int) -> Result<int, Error>`
 
-**Description:** Integer subtraction that reports overflow instead of wrapping, returning Result<int, MathError>. The guarded sibling of `-`.
+**Description:** Integer subtraction that reports overflow instead of wrapping, returning Result<int, Error>. The guarded sibling of `-`.
 
 ## Parameters
 

@@ -1,12 +1,12 @@
 ---
 layout: page
 title: "httpCreateClient (Function)"
-description: "Creates an HTTP client for making requests to a base URL."
+description: "Creates an HTTP client and returns its handle, or a negative runtime error."
 ---
 
 **Signature:** `httpCreateClient(base_url: string, timeout: int) -> int`
 
-**Description:** Creates an HTTP client for making requests to a base URL.
+**Description:** Creates an HTTP client and returns its handle, or a negative runtime error.
 
 ## Parameters
 

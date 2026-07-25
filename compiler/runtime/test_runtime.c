@@ -21,7 +21,7 @@ static int64_t case_skipped = 0;    /* current case reported Skip */
 /* Why the current case was skipped. COPIED, never aliased: the caller's
    string is an Osprey-owned value whose region may end before the verdict is
    printed, so holding the pointer would read freed memory under a reclaiming
-   backend ([MEM-BACKENDS], plan 0011 M5b). Truncation is harmless — the reason
+   backend ([MEM-BACKENDS]). Truncation is harmless — the reason
    is diagnostic text. */
 #define SKIP_REASON_MAX 256
 static char skip_reason[SKIP_REASON_MAX] = "";

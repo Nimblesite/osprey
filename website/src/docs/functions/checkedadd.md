@@ -1,12 +1,12 @@
 ---
 layout: page
 title: "checkedAdd (Function)"
-description: "Integer addition that reports overflow instead of wrapping. The `+` operator returns plain int because a wrapped result is still representable; this returns Result<int, MathError>."
+description: "Integer addition that reports overflow instead of wrapping. The `+` operator returns plain int because a wrapped result is still representable; this returns Result<int, Error>."
 ---
 
 **Signature:** `checkedAdd(a: int, b: int) -> Result<int, Error>`
 
-**Description:** Integer addition that reports overflow instead of wrapping. The `+` operator returns plain int because a wrapped result is still representable; this returns Result<int, MathError>.
+**Description:** Integer addition that reports overflow instead of wrapping. The `+` operator returns plain int because a wrapped result is still representable; this returns Result<int, Error>.
 
 ## Parameters
 

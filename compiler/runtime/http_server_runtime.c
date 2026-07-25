@@ -62,7 +62,7 @@ static void serve_request(int client_fd, HttpServer *server,
   /* The Osprey handler transferred +1 on its HttpResponse across the C
    * callback boundary; the response (and the header/body strings its layout
    * word marks) dies here, once the bytes are on the wire and logged.
-   * [GC-ARC-PERCEUS] plan 0011 M5b. No-op off ARC. */
+   * [GC-ARC-PERCEUS]. No-op off ARC. */
   osp_release(response);
 }
 

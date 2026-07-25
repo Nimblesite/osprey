@@ -18,8 +18,9 @@
 //!   saturated curried call may be folded back to a multi-argument call by the
 //!   backend, but the lowered AST is always the curried form.
 //! - **Pipes**: `x |> f` desugars to a call, exactly as the Default lowerer does.
-//! - **Records / blocks / interpolation**: surface nodes map to
-//!   [`Expr::TypeConstructor`], [`Expr::Block`], and [`Expr::InterpolatedStr`].
+//! - **Records / blocks / interpolation**: constructors map to
+//!   [`Expr::TypeConstructor`], lowercase record updates to [`Expr::Update`],
+//!   and layout blocks/interpolation to their canonical expression nodes.
 
 use super::cst::{
     MlArm, MlEffectOp, MlEffectRef, MlExpr, MlExternParam, MlField, MlHandleArm, MlImport,
@@ -1025,17 +1026,29 @@ fn lower_expr(expr: MlExpr) -> Expr {
             name,
             type_args,
             fields,
-        } => Expr::TypeConstructor {
-            name,
-            // Thread explicit construction-site type arguments through the
-            // shared `type_expr` path — byte-identical to the Default
-            // flavor's `Ctor<t> { … }`. Implements [FLAVOR-ML-GENERICS].
-            type_args: type_args
-                .iter()
-                .map(|a| type_expr(a).unwrap_or_else(|| TypeExpr::named(render_type(a))))
-                .collect(),
-            fields: fields.into_iter().map(lower_field).collect(),
-        },
+        } => {
+            let fields = fields.into_iter().map(lower_field).collect();
+            if super::parser::is_constructor(&name) {
+                Expr::TypeConstructor {
+                    name,
+                    // Thread explicit construction-site type arguments through the
+                    // shared `type_expr` path — byte-identical to the Default
+                    // flavor's `Ctor<t> { … }`. Implements [FLAVOR-ML-GENERICS].
+                    type_args: type_args
+                        .iter()
+                        .map(|a| {
+                            type_expr(a).unwrap_or_else(|| TypeExpr::named(render_type(a)))
+                        })
+                        .collect(),
+                    fields,
+                }
+            } else {
+                Expr::Update {
+                    record: name,
+                    fields,
+                }
+            }
+        }
         MlExpr::Block { items, value } => lower_block(items, value),
         MlExpr::Spawn(body) => Expr::Spawn(Box::new(lower_expr(*body))),
         MlExpr::Perform {
@@ -1659,27 +1672,27 @@ mod tests {
     }
 
     #[test]
-    fn lowercase_inline_record_lowers_to_update_type_constructor() {
+    fn lowercase_inline_record_lowers_to_update() {
         // `receiver(field = v)` with a LOWERCASE head is a non-destructive record
-        // update; it lowers to the SAME `Expr::TypeConstructor { name: receiver }`
-        // the Default `receiver { field: v }` produces ([FLAVOR-ML-RECORD]).
+        // update; it lowers to the SAME `Expr::Update` the Default
+        // `receiver { field: v }` produces ([FLAVOR-ML-RECORD]).
         let s = one("p2 = point1(x = 30)\n");
         assert!(
             matches!(
                 s,
                 Stmt::Let {
-                    value: Expr::TypeConstructor { .. },
+                    value: Expr::Update { .. },
                     ..
                 }
             ),
-            "expected update type constructor, got {s:?}"
+            "expected record update, got {s:?}"
         );
         if let Stmt::Let {
-            value: Expr::TypeConstructor { name, fields, .. },
+            value: Expr::Update { record, fields },
             ..
         } = s
         {
-            assert_eq!(name, "point1");
+            assert_eq!(record, "point1");
             assert_eq!(fields.len(), 1);
             assert_eq!(fields[0].name, "x");
             assert_eq!(fields[0].value, Expr::Integer(30));

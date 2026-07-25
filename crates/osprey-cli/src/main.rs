@@ -809,7 +809,6 @@ fn link_args(ir: &str, source: &str, memory: &str) -> Vec<String> {
     // The reclaiming backend is a link-time archive swap — the IR is identical
     // [MEM-BACKENDS]. `gc` links the tracing-collector archive set, `arc` the
     // Perceus reference-counting set, `default` the malloc-passthrough set.
-    // (docs/plans/0011)
     let suffix = match memory {
         "gc" => "_gc",
         "arc" => "_arc",

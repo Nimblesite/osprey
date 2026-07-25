@@ -1,12 +1,12 @@
 ---
 layout: page
 title: "httpPost (Function)"
-description: "Makes an HTTP POST request with a request body."
+description: "Makes an HTTP POST request and returns its status code, or a negative transport error."
 ---
 
-**Signature:** `httpPost(clientID: int, path: string, body: string, headers: string) -> Result<string, Error>`
+**Signature:** `httpPost(clientID: int, path: string, body: string, headers: string) -> int`
 
-**Description:** Makes an HTTP POST request with a request body.
+**Description:** Makes an HTTP POST request and returns its status code, or a negative transport error.
 
 ## Parameters
 
@@ -15,7 +15,7 @@ description: "Makes an HTTP POST request with a request body."
 - **body** (string): Request body data
 - **headers** (string): Additional headers
 
-**Returns:** Result<string, Error>
+**Returns:** int
 
 ## Example
 

@@ -1,3 +1,4 @@
+// Exercises the pthread transition used by [MEM-FIBER-ISOLATION].
 #include <assert.h>
 #include <pthread.h>
 #include <stdbool.h>

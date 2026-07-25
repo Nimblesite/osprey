@@ -1,12 +1,12 @@
 ---
 layout: page
 title: "httpGet (Function)"
-description: "Makes an HTTP GET request to the specified path."
+description: "Makes an HTTP GET request and returns its status code, or a negative transport error."
 ---
 
-**Signature:** `httpGet(clientID: int, path: string, headers: string) -> Result<string, Error>`
+**Signature:** `httpGet(clientID: int, path: string, headers: string) -> int`
 
-**Description:** Makes an HTTP GET request to the specified path.
+**Description:** Makes an HTTP GET request and returns its status code, or a negative transport error.
 
 ## Parameters
 
@@ -14,7 +14,7 @@ description: "Makes an HTTP GET request to the specified path."
 - **path** (string): Request path (e.g., "/api/users")
 - **headers** (string): Additional headers (e.g., "Authorization: Bearer token")
 
-**Returns:** Result<string, Error>
+**Returns:** int
 
 ## Example
 

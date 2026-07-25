@@ -3,8 +3,6 @@
 
 // Include all runtime modules
 extern int64_t http_create_client(char *base_url, int64_t timeout);
-extern int64_t http_request(int64_t client_id, int64_t method, char *path,
-                            char *headers, char *body);
 extern int64_t http_close_client(int64_t client_id);
 extern int64_t http_get(int64_t client_id, char *path, char *headers);
 extern int64_t http_post(int64_t client_id, char *path, char *body,
@@ -23,8 +21,6 @@ extern int64_t websocket_close(int64_t ws_id);
 
 extern int64_t websocket_create_server(int64_t port, char *address, char *path);
 extern int64_t websocket_server_listen(int64_t server_id);
-extern int64_t websocket_server_send(int64_t server_id, int64_t connection_id,
-                                     char *message);
 extern int64_t websocket_server_broadcast(int64_t server_id, char *message);
 extern int64_t websocket_stop_server(int64_t server_id);
 

@@ -37,7 +37,7 @@ const MASK_MAX_WORD: u64 = 55;
 pub(crate) enum MetaField {
     /// 8-byte scalar (`i64` / `double`). Never marked — a boxed pointer in an
     /// `i64` slot stays unmarked (leak-safe): a false release could corrupt,
-    /// a missed one only leaks. See plan 0011 phase 2 cross-cutting risks.
+    /// while a missed release can only leak.
     Word,
     /// 8-byte managed pointer — the drop walk releases it.
     PtrManaged,

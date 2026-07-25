@@ -65,7 +65,8 @@ for f in $(find $EXDIR \( -name '*.osp' -o -name '*.ospml' \) | sort); do
   expected=$(cat "$exp")
   # OSPREY_RUN_FLAGS (default empty) selects a backend for conformance, e.g.
   # `OSPREY_RUN_FLAGS=--memory=gc` runs every example under the tracing GC — the
-  # [MEM-BACKENDS] oracle: output must stay byte-identical. No effect when unset.
+  # [MEM-BACKENDS] [MEM-OPAQUE] oracle: output must stay byte-identical.
+  # No effect when unset.
   actual=$($BIN "$f" --run ${=OSPREY_RUN_FLAGS:-} 2>/tmp/osprey_rs_err.txt)
   rc=$?
   live=$(sed -n 's/^\[osp-arc\] exit: \([0-9]*\) live objects.*/\1/p' /tmp/osprey_rs_err.txt | tail -1)

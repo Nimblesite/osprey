@@ -1,24 +1,25 @@
 ---
 layout: page.njk
-title: "Exceptions and Panics Were a Mistake"
-excerpt: "Exceptions and panics turn ordinary control flow into hidden exits. Osprey makes expected failure explicit with Result values and typed algebraic effects."
-description: "Why exceptions and panics create invisible control flow, what programming-language research says about the cost, and how Osprey uses Result and algebraic effects instead."
-tags: ["blog", "error-handling", "exceptions", "algebraic-effects", "result-types", "language-design"]
+title: "Exceptions and Panics Were a Mistake: Better Error Handling"
+excerpt: "Exceptions and panics turn ordinary control flow into hidden exits. Osprey makes expected failure explicit with Result types and algebraic effect handlers."
+description: "Why exceptions and panics create hidden control flow, what software research found, and how Osprey handles errors with Result types and algebraic effects."
+tags: ["blog", "error-handling", "exceptions", "panics", "algebraic-effects", "result-types", "language-design"]
 author: "Christian Findlay"
+modified: 2026-07-25
 readingTime: 14
 image: /assets/images/blog/exceptions-and-panics-were-a-mistake.png
-imageAlt: "A cyan wireframe osprey above exhaustive control-flow branches while one hidden path fractures below it"
+imageAlt: "A cyan wireframe osprey above branching error-handling paths while one hidden exception path fractures below"
 ---
 
 Here is the claim: **recoverable failure should never be a secret exit from a function**.
 
-If a function's type says it returns `B`, it should return `B`. It should not also be able to jump over an unknown number of stack frames, skip the code after the call, arrive at a handler that may or may not exist, or terminate the process. A conventional unchecked exception adds the first three hidden outcomes. A panic adds the fourth.
+If a function's type says it returns `B`, it should return `B`. It should not also be able to jump over an unknown number of stack frames, skip the code after the call, arrive at a handler that may or may not exist, or terminate the process. A conventional unchecked exception adds the first three hidden outcomes. A panic adds an implicit unwind-or-terminate path.
 
 That is what I mean by “exceptions” in the title: privileged, unchecked, non-local exits whose possibility is absent from the function type. I do not mean that a runtime can never stop after memory corruption, a failed invariant or an external kill. Those are boundaries of execution. I mean that file-not-found, invalid input, a missing database row and every other expected failure do not deserve a secret control-flow channel.
 
 Osprey has no built-in `throw`, `try`, `catch` or `panic` keywords. It represents ordinary failure as `Result<T, E>`, or it declares a typed algebraic effect and gives that effect a lexical handler. Algebraic effects can express exception-style early exit, so this is not a claim that non-local control flow is impossible. It is a claim that non-local control flow should stop lying about itself.
 
-## Exceptions compensate for incomplete contracts
+## Why exceptions are bad error handling
 
 The usual type of a fallible function is dishonest:
 
@@ -43,7 +44,7 @@ Some programmers genuinely like exceptions. What they like is real: direct-style
 
 Once a language can express every outcome and reject incomplete branching, the old exception escape hatch is redundant. This is the no-brainer at the centre of the argument.
 
-## Hidden exits have a measurable cost
+## What research says about exception-handling defects
 
 This is not just aesthetic disgust at `try` and `catch`.
 
@@ -53,7 +54,7 @@ Kirsten Bradley and Michael Godfrey studied **2,721 open-source C++ systems** in
 
 Bruno Cabral and Paulo Marques examined **32 Java and .NET applications**, 3.41 million lines of code and 18,589 `try` blocks and handlers in [*Exception Handling: A Field Study in Java and .NET*](https://eden.dei.uc.pt/~bcabral/ExceptionHandling_A_Field_Study_camready.pdf). They found handlers commonly logging, notifying the user or terminating instead of performing specialised recovery. The grand abstraction that was supposed to separate recovery frequently ends at “print something and die.”
 
-Panics do not fix this. They make the hidden policy non-negotiable.
+Panics do not fix this. They replace domain-level recovery with a runtime unwind-or-abort policy.
 
 Boqin Qin and colleagues manually studied **110 unexpected panic issues** in Rust for their 2024 IEEE Transactions on Software Engineering paper, [*Understanding and Detecting Real-World Safety Issues in Rust*](https://songlh.github.io/paper/rust-tse.pdf). **107 of 110** occurred in safe code. **39** came from missing `Result` or `Option` handling—27 through `unwrap()` and 12 through `expect()`—while the rest included arithmetic, assertion and bounds failures. The paper notes that unexpected panics reduce reliability and may enable denial of service.
 
@@ -61,7 +62,7 @@ Rust's `Result` is not the problem there. The escape hatch that converts an expl
 
 Even the C++ standards work acknowledges the visibility problem. The WG21 proposal for [`std::expected<T, E>`](https://www.open-std.org/jtc1/sc22/wg21/docs/papers/2022/p0323r12.html) contrasts invisible exceptions with a return type whose failure case is visible and must be confronted to retrieve the value. Herb Sutter's exception-friendly proposal [P0709R4](https://www.open-std.org/jtc1/sc22/wg21/docs/papers/2019/p0709r4.pdf) starts from the long-standing unresolved problems that have split C++ projects into exception and no-exception dialects. You do not have to be anti-exception to see the design wound.
 
-## Checked exceptions prove the point, then implement it badly
+## Why checked exceptions do not solve the problem
 
 Java is the obvious objection. The [Java Language Specification](https://docs.oracle.com/javase/specs/jls/se25/html/jls-11.html) makes checked exceptions part of a method's contract and requires them to be caught or declared. That is better than an invisible exit. It also proves the premise: failure belongs in the static contract.
 
@@ -69,9 +70,9 @@ The problem is not that Java checks too much. It is that its checked-exception s
 
 Donna Malayeri and Jonathan Aldrich measured that decay in [*Practical Exception Specifications*](https://www.cs.cmu.edu/~aldrich/papers/ecoop05exnjava.pdf). Across six open-source Java programs, between **16% and 81%** of exception types in `throws` declarations were imprecise, with a **46% average**. Their module-oriented inference cut programmer-written annotations by 50–93%. The lesson is not “give up on static error contracts.” It is “infer and compose them at the right abstraction boundary.” That is effect-system territory.
 
-## `Result<T, E>`: failure as ordinary data
+## Result types vs exceptions: failure as ordinary data
 
-Osprey's first answer is deliberately boring:
+Osprey's **Result pattern**—also called **errors as values**—is deliberately boring:
 
 ```osprey
 fn describePort(text) = match parseInt(text) {
@@ -84,11 +85,11 @@ print(describePort("8080"))
 
 `parseInt` returns a `Result`. `Success` and `Error` are both ordinary constructors. For a known `Result`, Osprey's [exhaustiveness checker](/spec/0007-patternmatching/) rejects a match that forgets either case. Direct access to the success payload is also rejected unless code matches it, selects an explicit `?:` fallback, or enters one of the currently permitted auto-unwrapping contexts described in the [error-handling specification](/spec/0013-errorhandling/).
 
-This changes failure from a control-flow ambush into a value that can be stored, returned, transformed, tested and inspected. The function's caller owns the policy because the caller has the whole value in hand. Adding a new result variant changes the data shape and makes an incomplete match fail at compile time instead of quietly changing a distant call graph.
+This changes failure from a control-flow ambush into a value that can be stored, returned, transformed, tested and inspected. The function's caller owns the policy because the caller has the whole value in hand. Adding a new variant to a domain-specific outcome union changes the data shape and makes an incomplete match fail at compile time instead of quietly changing a distant call graph.
 
 Use `Result<T, E>` when failure is part of the value-level API: parsing, validation, lookup, checked arithmetic, file access, HTTP and similar operations where a caller naturally chooses among outcomes. The repository's runnable [validation pipeline](https://github.com/Nimblesite/osprey/blob/main/examples/tested/basics/errors/validation_pipeline.osp) constructs `Result<int, string>`, propagates specific messages and exhaustively matches every outcome.
 
-## Algebraic effects: direct style without the lie
+## Algebraic effects vs exceptions: direct style without the lie
 
 `Result` is not always the most readable way to express a policy that spans many layers. Logging, dependency injection, retry, cancellation and exception-style early exit all benefit from handling code outside the function that requests the operation. Osprey uses algebraic effects for that.
 
@@ -100,7 +101,7 @@ Osprey separates three things that conventional exceptions fuse together:
 - `perform` requests one of those operations.
 - A lexical `handle … in` region supplies the policy.
 
-### Recover by substituting a value
+### Algebraic effect example: recover by substituting a value
 
 Here is a typed recovery effect. The parser reports why it failed; the outer policy decides that this application should use port 8080:
 
@@ -123,7 +124,7 @@ The handler arm returns `8080`, so that value becomes the result of `perform` an
 
 This is the convenience people reach for exceptions to obtain: direct-style code with policy elsewhere. But the operation has a name, its input and output are typed, the function advertises `!InvalidPort`, and the handler is visible around the computation it governs.
 
-### Resume on success, abort on failure
+### Algebraic effect exception example: resume or abort
 
 Algebraic handlers can also implement a real exception-style early exit. `resume(value)` continues the suspended function and makes `value` the result of `perform`. Returning from a resuming handler arm without calling `resume` discards that continuation, so the arm's value becomes the result of the whole `handle … in` expression.
 
@@ -153,7 +154,7 @@ On success, `resume(value)` returns to `boot`, prints the startup message and pr
 
 The repository's native regression case [resume_abort_early_exit.osp](https://github.com/Nimblesite/osprey/blob/main/examples/tested/effects/resume_abort_early_exit.osp) exercises both branches and verifies the exact output. The broader [algebraic effects suite](https://github.com/Nimblesite/osprey/tree/main/examples/tested/effects) covers nested handlers, handler scoping, state, fibers and code that runs after `resume` returns.
 
-### Interpret an effect with `Result`
+### Combine algebraic effects with `Result`
 
 Effects and results are not rival camps. A handler can implement an effect operation by returning an explicit `Result`, leaving the caller to handle the domain failure as data:
 
@@ -180,7 +181,7 @@ match lookup {
 
 In production, the `Accounts` handler could call a database. In a test, it could return a fixture. Either way, the effect chooses *where the capability comes from*, while `Result` preserves the ordinary success-or-failure contract of the lookup. This is a cleaner separation than throwing a database exception through every abstraction between storage and presentation.
 
-## Why this is better
+## Result type or algebraic effect?
 
 The two Osprey mechanisms solve different problems without creating an untyped escape hatch:
 
@@ -196,11 +197,13 @@ Conventional exceptions hard-code detection plus stack search plus unwinding int
 
 The result is not less error handling. It is less *accidentally missing* error handling.
 
-## Where Osprey stands today
+## Does Osprey enforce error handling today?
 
 Osprey is alpha software, and the honest status matters more than the slogan.
 
 The shipped compiler checks effect operation arguments and results, runs lexical handlers, supports native single-shot deep continuations, requires exhaustive matches for known `Result` values, and rejects direct payload access. The three examples above were compiled and run with the current compiler, and the linked files under `examples/tested` are regression-tested programs rather than aspirational pseudocode.
+
+The `Result<T, E>` surface is generic, but the current runtime's conforming `Error` payload is a string. Richer discriminated-union error payloads remain deferred, which is why user-defined results here use `Result<T, string>` and built-in results only bind their string message.
 
 Two static-safety gaps remain.
 

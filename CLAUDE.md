@@ -164,8 +164,8 @@ npm install && npm start         # Start web-based compiler service
 - **Runtime**: C libraries (`compiler/runtime/`) for fiber concurrency, HTTP/WebSocket, system operations
 
 **Language Features:**
-- **Algebraic Effects**: Typed effect operations and lexical handlers; complete
-  effect-row propagation and missing-handler rejection are in progress
+- **Algebraic Effects**: First-class effects for replacing plumbing such as
+  dependency injection, test doubles and retry wrappers
 - **Fiber Concurrency**: Lightweight isolated execution contexts
 - **Pattern Matching**: Union types with exhaustiveness checking
 - **Functional Programming**: Immutable data, pipe operators, iterators
@@ -179,8 +179,8 @@ npm install && npm start         # Start web-based compiler service
 
 **Key Technical Patterns:**
 - Effects are declared with `effect` keyword and handled with `handle...in` expressions
-- Effect operation arguments and results are checked statically; an unhandled
-  effect currently produces a runtime diagnostic
+- The compiler checks values passed into and returned from effects, but does not
+  yet catch every missing effect setup before the program runs
 - Pattern matching is mandatory for `any` types and union types
 - All HTTP/WebSocket operations return `Result<T, String>` for error handling
 - Fiber isolation prevents shared memory bugs through message passing
@@ -210,7 +210,8 @@ npm install && npm start         # Start web-based compiler service
 - The codebase follows clear patterns that AI can recognize and extend
 - Use VS Code Dev Container for consistent development environment
 
-This is a functional programming language compiler with algebraic effects, fiber-based concurrency, and strong compile-time safety guarantees.
+This is a functional programming language compiler with first-class effects,
+fiber-based concurrency and strong static typing.
 
 ## Standard Build Commands
 

@@ -20,7 +20,7 @@ static osp_string_list *osp_list_new(int64_t capacity) {
      * the live prefix is walked, which is why the (malloc'd, uninitialised)
      * capacity slack past `length` is harmless. Codegen owns these handles and
      * drops them at region end — osp_string_list_free is the C-test path only.
-     * No-op off ARC. [GC-ARC-PERCEUS] plan 0011 M4b. */
+     * No-op off ARC. [GC-ARC-PERCEUS] [MEM-BACKENDS-ELEMENTS]. */
     osp_mem_set_layout(list, OSP_MEM_LIST_HDR_PTR);
     list->length = 0;
     if (capacity <= 0) {
