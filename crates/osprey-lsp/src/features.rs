@@ -409,9 +409,15 @@ mod tests {
         let src = "let batch = listAppend(List(), 6)\n";
         let col = col_of(src, 0, "listAppend");
         let defs = definition(src, "file:///a.osp", 0, col, U16);
-        let first = defs.first().expect("built-in resolves to its own identifier");
+        let first = defs
+            .first()
+            .expect("built-in resolves to its own identifier");
         assert_eq!(first.span.0, 0, "on the same line: {defs:?}");
-        assert_eq!(first.span.1, col - 1, "anchored at the identifier: {defs:?}");
+        assert_eq!(
+            first.span.1,
+            col - 1,
+            "anchored at the identifier: {defs:?}"
+        );
     }
 
     #[test]

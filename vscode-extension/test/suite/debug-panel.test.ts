@@ -73,7 +73,10 @@ suite("debug-panel builders", () => {
 
   test("profiling nodes link to the shipped CPU profiler", () => {
     const nodes = buildProfilingNodes();
-    assert.deepStrictEqual(nodes.map((n) => n.label), ["Performance Profiling"]);
+    assert.deepStrictEqual(
+      nodes.map((n) => n.label),
+      ["Performance Profiling"],
+    );
     assert.ok(nodes.every((n) => (n.children?.length ?? 0) > 0));
   });
 
