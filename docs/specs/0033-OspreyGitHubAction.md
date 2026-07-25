@@ -61,7 +61,7 @@ sequenceDiagram
   A-->>W: appended to $GITHUB_OUTPUT
 ```
 
-```typediagram
+```typeDiagram
 typeDiagram
 alias JsonLine = String
 type Payload { json: JsonLine }
