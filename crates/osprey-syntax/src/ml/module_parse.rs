@@ -1,6 +1,7 @@
 //! Layout-native ML parsing for namespaces, modules, signatures, exports, and
 //! imports. Kept outside the expression parser to isolate module syntax.
-//! Implements [MODULES-NAMESPACE], [MODULES-FILE-SCOPED-NAMESPACE],
+//! Implements [FLAVOR-ML-MODULES], [MODULES-NAMESPACE],
+//! [MODULES-FILE-SCOPED-NAMESPACE],
 //! [MODULES-MODULE], [MODULES-STATE-MODULE], [MODULES-SIGNATURE],
 //! [MODULES-EXPORTS], [MODULES-OPAQUE-TYPES], and [MODULES-IMPORT].
 

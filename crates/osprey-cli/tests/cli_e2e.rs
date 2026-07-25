@@ -472,10 +472,59 @@ fn compile_writes_executable_to_cwd() {
 
 #[test]
 fn sandbox_blocks_filesystem_capability() {
+    // [SECURITY-CAPABILITY-GATES]
     let prog = temp_osp("fs", "let c = readFile(\"x.txt\")\n");
     let o = run_file(&prog, &["--llvm", "--no-fs"]);
     assert_ne!(o.code, Some(0), "stdout={}", o.stdout);
-    assert!(!o.stderr.is_empty());
+    assert!(
+        o.stderr
+            .contains("security: `readFile` is disabled by --no-fs"),
+        "{}",
+        o.stderr
+    );
+}
+
+#[test]
+fn network_gates_run_before_type_checking() {
+    // [SECURITY-CAPABILITY-GATES] Both calls have the wrong arity. The security
+    // diagnostic wins because policy enforcement precedes type checking.
+    for (name, source, flag, expected) in [
+        (
+            "blocked_http",
+            "let r = httpGet()\n",
+            "--no-http",
+            "security: `httpGet` is disabled by --no-http",
+        ),
+        (
+            "blocked_websocket",
+            "let r = websocketConnect()\n",
+            "--no-websocket",
+            "security: `websocketConnect` is disabled by --no-websocket",
+        ),
+    ] {
+        let prog = temp_osp(name, source);
+        let o = run_file(&prog, &["--llvm", flag]);
+        assert_ne!(o.code, Some(0), "stdout={}", o.stdout);
+        assert!(o.stderr.contains(expected), "{}", o.stderr);
+        assert!(!o.stderr.contains("expects exactly"), "{}", o.stderr);
+    }
+}
+
+#[test]
+fn no_ffi_rejects_foreign_declarations() {
+    // [SECURITY-FFI-GATE]
+    let prog = temp_osp(
+        "blocked_ffi",
+        "extern fn foreignCall(value: int) -> int\nlet value = foreignCall(1)\n",
+    );
+    let o = run_file(&prog, &["--check", "--no-ffi"]);
+    assert_ne!(o.code, Some(0), "stdout={}", o.stdout);
+    assert!(
+        o.stderr
+            .contains("security: extern function `foreignCall` is disabled by --no-ffi"),
+        "{}",
+        o.stderr
+    );
 }
 
 #[test]

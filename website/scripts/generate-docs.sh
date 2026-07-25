@@ -2,11 +2,15 @@
 
 # Generate reference documentation from the Osprey compiler (`osprey --docs`).
 #
-# The committed docs in src/docs/ are the source of truth for the website
-# build. When a Rust compiler binary (target/release/osprey) is present AND
-# supports the --docs flag, this script regenerates them; otherwise it keeps
-# the committed docs and exits successfully so `npm run build` never requires
-# a Rust toolchain.
+# src/docs/functions/ and src/docs/stdlib.md are GENERATED build output — they
+# are gitignored, never committed. When a Rust compiler binary
+# (target/release/osprey) with --docs support is present, this script
+# regenerates them; otherwise it no-ops and exits successfully, so a
+# compiler-free `npm run build` still succeeds (just without the per-function
+# reference pages). CI and the GitHub Pages deploy both build the compiler
+# before `npm run build`, so the live site always ships freshly generated docs.
+# (types/, operators/ and keywords/ are hand-maintained — the current compiler
+# does not emit them — so they remain tracked in src/docs/.)
 
 set -e
 
@@ -25,8 +29,9 @@ if [ ! -x "$OSPREY_BIN" ]; then
     exit 0
 fi
 
-# The Rust compiler does not implement --docs yet; detect support at runtime
-# so this script starts regenerating automatically once the flag lands.
+# Older compilers predate the --docs flag; detect support at runtime so this
+# script degrades gracefully (leaves any existing docs in place) instead of
+# failing the build.
 if ! "$OSPREY_BIN" --help 2>&1 | grep -q -- '--docs'; then
     echo "NOTE: osprey does not support --docs yet; using committed docs in $DOCS_DIR"
     exit 0

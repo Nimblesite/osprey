@@ -1,4 +1,4 @@
-//! ML module-surface coverage for [MODULES-NAMESPACE], [MODULES-MODULE],
+//! ML module-surface coverage for [FLAVOR-ML-MODULES], [MODULES-NAMESPACE], [MODULES-MODULE],
 //! [MODULES-SIGNATURE], [MODULES-EXPORTS], and [MODULES-IMPORT].
 #![expect(
     clippy::indexing_slicing,

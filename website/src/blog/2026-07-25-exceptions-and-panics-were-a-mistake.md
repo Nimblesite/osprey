@@ -3,7 +3,7 @@ layout: page.njk
 title: "Exceptions and Panics Were a Mistake: Better Error Handling"
 excerpt: "Exceptions and panics turn ordinary control flow into hidden exits. Osprey makes expected failure explicit with Result types and algebraic effect handlers."
 description: "Why exceptions and panics create hidden control flow, what software research found, and how Osprey handles errors with Result types and algebraic effects."
-tags: ["blog", "error-handling", "exceptions", "panics", "algebraic-effects", "result-types", "language-design"]
+tags: ["blog", "error-handling", "exceptions", "panics", "algebraic-effects", "result-types", "ocaml", "koka", "eff", "language-design"]
 author: "Christian Findlay"
 modified: 2026-07-25
 readingTime: 14
@@ -13,7 +13,7 @@ imageAlt: "A cyan wireframe osprey above branching error-handling paths while on
 
 Here is the claim: **recoverable failure should never be a secret exit from a function**.
 
-If a function's type says it returns `B`, it should return `B`. It should not also be able to jump over an unknown number of stack frames, skip the code after the call, arrive at a handler that may or may not exist, or terminate the process. A conventional unchecked exception adds the first three hidden outcomes. A panic adds an implicit unwind-or-terminate path.
+If a function's type says it returns `B`, it should return `B`. It should not also be able to jump over an unknown number of stack frames, skip the code after the call, arrive at a handler that may or may not exist, or terminate the process. Both unchecked exceptions and panics can skip ordinary returns, unwind frames and terminate when they are not intercepted. Neither puts routine recoverable failure in the function's ordinary return type.
 
 That is what I mean by “exceptions” in the title: privileged, unchecked, non-local exits whose possibility is absent from the function type. I do not mean that a runtime can never stop after memory corruption, a failed invariant or an external kill. Those are boundaries of execution. I mean that file-not-found, invalid input, a missing database row and every other expected failure do not deserve a secret control-flow channel.
 
@@ -34,7 +34,7 @@ A -> Result<B, E>
 A -> B !E
 ```
 
-The first says that failure is one of the returned values. The second says that evaluation may perform a named effect. Either form gives the compiler and the reader the missing edge.
+The first says that failure is one of the returned values. The second says that evaluation may perform a named effect. Either form is designed to give the compiler and the reader the missing edge.
 
 Exceptions became attractive because error codes were awful. A caller could ignore `-1`, confuse it with a valid value, or forget to inspect a global error slot. Automatic propagation and separated recovery code felt like an escape from that mess. The foundational papers were trying to make programs more reliable, not less: John Goodenough's 1975 [*Exception Handling: Issues and a Proposed Notation*](https://doi.org/10.1145/361227.361230) and Barbara Liskov and Alan Snyder's 1979 [*Exception Handling in CLU*](https://doi.org/10.1109/TSE.1979.230191) both treated exceptional outcomes as part of an operation's defined behaviour.
 
@@ -42,33 +42,33 @@ But mainstream unchecked exceptions kept the convenient propagation and lost the
 
 Some programmers genuinely like exceptions. What they like is real: direct-style code, automatic propagation and a recovery policy separated from the operation that detects the problem. What they are mistaking is that syntax for a necessary semantic feature. It is not necessary. Sum types give us explicit outcomes; exhaustive pattern matching forces us to cover them; algebraic effects give us direct style and non-local policy without hard-coding one invisible unwinding mechanism.
 
-Once a language can express every outcome and reject incomplete branching, the old exception escape hatch is redundant. This is the no-brainer at the centre of the argument.
+Once a language can express every outcome and reject incomplete branching, the old unchecked-exception escape hatch is redundant. This is the no-brainer at the centre of the argument.
 
 ## What research says about exception-handling defects
 
 This is not just aesthetic disgust at `try` and `catch`.
 
-Westley Weimer and George Necula's ACM TOPLAS paper [*Exceptional Situations and Program Reliability*](https://web.eecs.umich.edu/~weimerw/p/weimer-toplas2008.pdf) used path-sensitive analysis on more than five million lines of Java and found over **1,300 exception-handling defects** involving unreleased resources or broken cleanup obligations. Their analysis reported no false positives in the experiment, although it could miss defects. Exceptions made “run this on every path” difficult enough to justify a new analysis and language mechanism.
+Westley Weimer and George Necula's ACM TOPLAS paper [*Exceptional Situations and Program Reliability*](https://web.eecs.umich.edu/~weimerw/p/weimer-toplas2008.pdf) used path-sensitive analysis on more than five million lines of Java and found over **1,300 exception-handling defects** involving unreleased resources or broken cleanup obligations. After post-processing heuristics, the final reports had no observed false positives; the authors estimated that those filters could hide 5–10% of real defects. Their fault model covered declared checked exceptions, so this is evidence about the cleanup complexity of visible exception flow, not specifically unchecked exceptions.
 
-Kirsten Bradley and Michael Godfrey studied **2,721 open-source C++ systems** in [*A Study on the Effects of Exception Usage in Open-Source C++ Systems*](https://plg2.cs.uwaterloo.ca/~migod/papers/2019/scam19.pdf). Adding exception-flow edges increased call-graph edges by an average of **22%**. Roughly **eight out of nine** functions that might throw did not originate the exception; they merely inherited the hidden edge from below. That study is exploratory rather than proof that every extra edge becomes a bug, but it quantifies exactly what an unchecked function signature conceals.
+Kirsten Bradley and Michael Godfrey studied **2,721 open-source C++ systems** in [*A Study on the Effects of Exception Usage in Open-Source C++ Systems*](https://plg2.cs.uwaterloo.ca/~migod/papers/2019/scam19.pdf). For the user-defined exception flows their tool modelled, adding exception edges increased call-graph edges by an average of **22.1%**, though the median increase was **5.1%**. Roughly **eight out of nine** functions that might throw did not originate the exception; they merely inherited the hidden edge from below. That study is exploratory rather than proof that every extra edge becomes a bug, but it quantifies exactly what an unchecked function signature conceals.
 
-Bruno Cabral and Paulo Marques examined **32 Java and .NET applications**, 3.41 million lines of code and 18,589 `try` blocks and handlers in [*Exception Handling: A Field Study in Java and .NET*](https://eden.dei.uc.pt/~bcabral/ExceptionHandling_A_Field_Study_camready.pdf). They found handlers commonly logging, notifying the user or terminating instead of performing specialised recovery. The grand abstraction that was supposed to separate recovery frequently ends at “print something and die.”
+Bruno Cabral and Paulo Marques examined **32 Java and .NET applications**, 3.41 million lines of code and 18,589 `try` blocks and handlers in [*Exception Handling: A Field Study in Java and .NET*](https://eden.dei.uc.pt/~bcabral/ExceptionHandling_A_Field_Study_camready.pdf). They found handlers commonly logging, notifying, rethrowing, returning or terminating rather than performing specialised recovery. The mechanism separates the handler from the failure site; the field evidence does not show that the separated code usually recovers.
 
-Panics do not fix this. They replace domain-level recovery with a runtime unwind-or-abort policy.
+Panics do not fix expected failure. A panic may unwind and be intercepted, or it may abort, but it moves a domain-level outcome onto an abrupt runtime path.
 
-Boqin Qin and colleagues manually studied **110 unexpected panic issues** in Rust for their 2024 IEEE Transactions on Software Engineering paper, [*Understanding and Detecting Real-World Safety Issues in Rust*](https://songlh.github.io/paper/rust-tse.pdf). **107 of 110** occurred in safe code. **39** came from missing `Result` or `Option` handling—27 through `unwrap()` and 12 through `expect()`—while the rest included arithmetic, assertion and bounds failures. The paper notes that unexpected panics reduce reliability and may enable denial of service.
+Boqin Qin and colleagues manually studied a selected corpus of **110 unexpected panic issues** in Rust for their 2024 IEEE Transactions on Software Engineering paper, [*Understanding and Detecting Real-World Safety Issues in Rust*](https://doi.org/10.1109/TSE.2024.3380393). **107 of 110** occurred in safe code. In that corpus, **39** came from missing `Result` or `Option` handling—27 through `unwrap()` and 12 through `expect()`—while the rest included arithmetic, assertion and bounds failures. This is a taxonomy of selected issues, not an estimate of how prevalent each cause is across all Rust code.
 
-Rust's `Result` is not the problem there. The escape hatch that converts an explicit result back into an implicit panic is the problem. If a language introduces a truthful error value and then makes it effortless to pretend the error case cannot happen, it has rebuilt exceptions one `unwrap` at a time.
+Rust's `Result` is not the problem there. The escape hatch that converts an explicit `Err` alternative into an abrupt panic path is the problem. If a language introduces a truthful error value and then makes it effortless to pretend the error case cannot happen, it has rebuilt the same hidden control-flow problem one `unwrap` at a time.
 
 Even the C++ standards work acknowledges the visibility problem. The WG21 proposal for [`std::expected<T, E>`](https://www.open-std.org/jtc1/sc22/wg21/docs/papers/2022/p0323r12.html) contrasts invisible exceptions with a return type whose failure case is visible and must be confronted to retrieve the value. Herb Sutter's exception-friendly proposal [P0709R4](https://www.open-std.org/jtc1/sc22/wg21/docs/papers/2019/p0709r4.pdf) starts from the long-standing unresolved problems that have split C++ projects into exception and no-exception dialects. You do not have to be anti-exception to see the design wound.
 
-## Why checked exceptions do not solve the problem
+## Why checked exceptions are not the whole answer
 
 Java is the obvious objection. The [Java Language Specification](https://docs.oracle.com/javase/specs/jls/se25/html/jls-11.html) makes checked exceptions part of a method's contract and requires them to be caught or declared. That is better than an invisible exit. It also proves the premise: failure belongs in the static contract.
 
-The problem is not that Java checks too much. It is that its checked-exception system is a crude, nominal effect system with a permanently open unchecked side door. Declarations ripple through intermediate methods, broad supertypes erase useful precision, and `RuntimeException` remains outside the requirement.
+The problem is not that Java checks too much. It is that its checked-exception system is a crude, nominal effect system with a permanently open unchecked side door. Declarations ripple through intermediate methods, broad supertypes erase useful precision, and `RuntimeException` remains outside the requirement. Static visibility still helps: Maria Kechagia and colleagues' Android study [*The Exception Handling Riddle*](https://doi.org/10.1016/j.jss.2018.04.034) analysed 3,539 applications and 901,274 crashes, and its controlled trial found that making exceptions checked improved stability more effectively than documentation alone. That supports the narrower thesis here—put failure in the static contract—without proving that Java chose the best contract.
 
-Donna Malayeri and Jonathan Aldrich measured that decay in [*Practical Exception Specifications*](https://www.cs.cmu.edu/~aldrich/papers/ecoop05exnjava.pdf). Across six open-source Java programs, between **16% and 81%** of exception types in `throws` declarations were imprecise, with a **46% average**. Their module-oriented inference cut programmer-written annotations by 50–93%. The lesson is not “give up on static error contracts.” It is “infer and compose them at the right abstraction boundary.” That is effect-system territory.
+Donna Malayeri and Jonathan Aldrich measured declaration imprecision in [*Practical Exception Specifications*](https://doi.org/10.1007/11818502_11). Across six open-source Java programs, between **16% and 81%** of exception types in `throws` declarations were imprecise, with a **46% average**. In their simulated package/module setup, module-oriented inference reduced programmer-written declarations by 50–93%. The lesson is not “give up on static error contracts.” It is “infer and compose them at the right abstraction boundary.” That is effect-system territory.
 
 ## Result types vs exceptions: failure as ordinary data
 
@@ -83,7 +83,7 @@ fn describePort(text) = match parseInt(text) {
 print(describePort("8080"))
 ```
 
-`parseInt` returns a `Result`. `Success` and `Error` are both ordinary constructors. For a known `Result`, Osprey's [exhaustiveness checker](/spec/0007-patternmatching/) rejects a match that forgets either case. Direct access to the success payload is also rejected unless code matches it, selects an explicit `?:` fallback, or enters one of the currently permitted auto-unwrapping contexts described in the [error-handling specification](/spec/0013-errorhandling/).
+`parseInt` returns a `Result`. `Success` and `Error` are Osprey's built-in result variants. For a known `Result`, Osprey's [exhaustiveness checker](/spec/0007-patternmatching/) rejects a match that forgets either case. Direct access to the success payload is also rejected unless code matches it, selects an explicit `?:` fallback, or enters one of the currently permitted auto-unwrapping contexts described in the [error-handling specification](/spec/0013-errorhandling/).
 
 This changes failure from a control-flow ambush into a value that can be stored, returned, transformed, tested and inspected. The function's caller owns the policy because the caller has the whole value in hand. Adding a new variant to a domain-specific outcome union changes the data shape and makes an incomplete match fail at compile time instead of quietly changing a distant call graph.
 
@@ -100,6 +100,12 @@ Osprey separates three things that conventional exceptions fuse together:
 - An `effect` declares the available operations and their argument and result types.
 - `perform` requests one of those operations.
 - A lexical `handle … in` region supplies the policy.
+
+### Osprey vs OCaml 5, Koka, Eff and Unison
+
+People searching for an **algebraic effects programming language** will repeatedly meet four useful reference points. The **Eff programming language** is an ML-style language built around first-class algebraic effects and handlers; Bauer and Pretnar's [effect system for core Eff](https://lmcs.episciences.org/1153) statically tracks them. The **Koka programming language** infers row-polymorphic effect types, making effects central to its function contracts. **OCaml 5 effect handlers** provide native control primitives, but the [OCaml manual](https://ocaml.org/manual/effects.html) is explicit that, unlike Eff and Koka, OCaml does not statically ensure that every performed effect is handled. **Unison abilities** are its name for algebraic effects, and [Unison's language reference](https://www.unison-lang.org/docs/language-reference/abilities-and-ability-handlers/) puts ability requirements directly in function types.
+
+Osprey pairs the two error-handling forms in one language: `Result<T, E>` for ordinary errors as values, and named effect operations for direct-style, handler-controlled policy. Its intended static destination is therefore closer to Koka, Eff and Unison than to OCaml's currently untracked handlers. Its surface is different: Osprey exposes C-style and ML-style syntax for the same semantics, uses lexical `handle … in` regions, and compiles the examples below as ordinary Osprey programs. The important alpha disclaimer is that complete effect-row propagation is still a target, not a guarantee of every current build.
 
 ### Algebraic effect example: recover by substituting a value
 
@@ -183,7 +189,7 @@ In production, the `Accounts` handler could call a database. In a test, it could
 
 ## Result type or algebraic effect?
 
-The two Osprey mechanisms solve different problems without creating an untyped escape hatch:
+The two Osprey mechanisms are designed to solve different problems without creating an untyped escape hatch:
 
 | Mechanism | Put failure here when… | The caller handles it with… |
 | --- | --- | --- |
@@ -191,11 +197,11 @@ The two Osprey mechanisms solve different problems without creating an untyped e
 | Algebraic effect | the policy or capability belongs outside the function and direct style matters | a lexical handler that may substitute, resume or abort |
 | Runtime termination | execution cannot safely continue because the runtime or process boundary has failed | a diagnostic and process boundary, not a routine API |
 
-Conventional exceptions hard-code detection plus stack search plus unwinding into a privileged feature. Algebraic effects expose the useful part—the non-local interaction—and make the handler choose the continuation policy. The same mechanism can recover, retry, substitute, redirect, resume or abort. Exception-style behaviour becomes one interpretation of a typed operation, not a hole punched through the language.
+Conventional exceptions hard-code signalling, handler search and stack unwinding into a privileged feature. Algebraic effects expose the useful part—the non-local interaction—and make the handler choose the continuation policy. The same mechanism can recover, retry, substitute, redirect, resume or abort. Exception-style behaviour becomes one interpretation of a typed operation, not a hole punched through the language.
 
-`Result` provides the complementary guarantee. Luc Maranget's [*Warnings for Pattern Matching*](https://www.cambridge.org/core/services/aop-cambridge-core/content/view/3165B75113781E2431E3856972940347/S0956796807006223a.pdf/warnings-for-pattern-matching.pdf) formalises the exhaustiveness analysis used by the ML family of languages. The compiler can ask the question humans routinely forget: is there a value that no arm handles? Once failure is a constructor, that same analysis audits error handling.
+`Result` provides the complementary design. Luc Maranget's [*Warnings for Pattern Matching*](https://www.cambridge.org/core/services/aop-cambridge-core/content/view/3165B75113781E2431E3856972940347/S0956796807006223a.pdf/warnings-for-pattern-matching.pdf) formalises one such exhaustiveness analysis for ML-style patterns. A compiler can ask the question humans routinely forget: is there a value that no arm handles? Once failure is a variant, that same class of analysis can audit error handling.
 
-The result is not less error handling. It is less *accidentally missing* error handling.
+The target is not less error handling. It is less *accidentally missing* error handling.
 
 ## Does Osprey enforce error handling today?
 
@@ -203,23 +209,23 @@ Osprey is alpha software, and the honest status matters more than the slogan.
 
 The shipped compiler checks effect operation arguments and results, runs lexical handlers, supports native single-shot deep continuations, requires exhaustive matches for known `Result` values, and rejects direct payload access. The three examples above were compiled and run with the current compiler, and the linked files under `examples/tested` are regression-tested programs rather than aspirational pseudocode.
 
-The `Result<T, E>` surface is generic, but the current runtime's conforming `Error` payload is a string. Richer discriminated-union error payloads remain deferred, which is why user-defined results here use `Result<T, string>` and built-in results only bind their string message.
+The `Result<T, E>` surface is generic, but the current compiler's conforming `Error` payload is string-backed; arbitrary values of `E` are not yet accepted as the `message`. Today, `E` therefore acts more like an error-category parameter around a built-in string payload than a fully generic payload sum. Richer discriminated-union error payloads remain deferred, which is why the examples here use `Result<T, string>`.
 
 Two static-safety gaps remain.
 
 First, Osprey does not yet retain and propagate complete effect rows through every function type and call. A missing handler can therefore reach runtime and abort with an `unhandled effect` diagnostic. Full compile-time rejection is tracked in the [algebraic-effects specification](/spec/0017-algebraiceffects/) and on the [implementation status page](/status/). Resuming handlers are currently native-only while their continuation runtime is completed for WebAssembly.
 
-Second, Osprey currently permits `Result` auto-unwrapping in a small set of convenience contexts. That means the compiler does **not** yet force explicit handling of every `Result` on every path. Given the Rust evidence around `unwrap` and `expect`, those contexts deserve suspicion. They are alpha-era gaps to close, not exceptions to the design principle.
+Second, Osprey currently permits `Result` auto-unwrapping in six convenience context classes. In those contexts the current code generator reads the success slot without branching on the discriminant, so an `Error` can be silently discarded and a zero/default payload observed. The compiler therefore does **not** yet force explicit handling of every `Result` on every path. Given the Rust evidence around `unwrap` and `expect`, those contexts deserve suspicion. They are alpha-era defects to close, not exceptions to the design principle.
 
 So this post is the design bar, not a premature victory lap: operation rows must become complete static capabilities, and a represented error must never be silently discarded. Osprey already has the right primitives and executable semantics. The remaining job is to make the checker as uncompromising as the language's thesis.
 
 ## Stop hiding the second return channel
 
-Exceptions made sense as an escape from sentinel values in languages whose ordinary types and branches could not tell the whole truth. Panics made sense as an escape from handling the explicit error values those languages later added. Neither is necessary.
+Exceptions were an understandable escape from sentinel values in languages whose ordinary types and branches could not tell the whole truth. Panics remain appropriate for violated invariants or states in which continuing is unsafe. Using either mechanism for expected, recoverable failures is the mistake argued here.
 
 If an operation can recoverably fail, put the failure in `Result<T, E>` or in a typed effect contract. If the caller receives a sum, make it cover every constructor. If policy belongs higher in the program, install a handler and explicitly decide whether to resume or abort. Keep truly fatal runtime failure at the process boundary.
 
-Automatic propagation is useful. Invisible propagation is not. Separation of policy is useful. An untyped second control-flow graph is not. People who defend exceptions are usually defending the first thing in each pair as though it requires the second.
+Automatic propagation is useful. Invisible propagation is not. Separation of policy is useful. An untyped second control-flow graph is not. The strongest case for exceptions is a case for automatic propagation and separated policy; neither benefit requires an untyped, invisible path.
 
 It does not.
 
@@ -230,10 +236,15 @@ Exceptions and panics were a mistake. The better answer is simple: make failure 
 - John B. Goodenough, [*Exception Handling: Issues and a Proposed Notation*](https://doi.org/10.1145/361227.361230), Communications of the ACM, 1975.
 - Barbara H. Liskov and Alan Snyder, [*Exception Handling in CLU*](https://doi.org/10.1109/TSE.1979.230191), IEEE Transactions on Software Engineering, 1979.
 - Westley Weimer and George C. Necula, [*Exceptional Situations and Program Reliability*](https://web.eecs.umich.edu/~weimerw/p/weimer-toplas2008.pdf), ACM TOPLAS, 2008.
-- Donna Malayeri and Jonathan Aldrich, [*Practical Exception Specifications*](https://www.cs.cmu.edu/~aldrich/papers/ecoop05exnjava.pdf), ECOOP Workshop, 2005.
+- Donna Malayeri and Jonathan Aldrich, [*Practical Exception Specifications*](https://doi.org/10.1007/11818502_11), Advanced Topics in Exception Handling Techniques, LNCS 4119, 2006.
 - Bruno Cabral and Paulo Marques, [*Exception Handling: A Field Study in Java and .NET*](https://eden.dei.uc.pt/~bcabral/ExceptionHandling_A_Field_Study_camready.pdf), ECOOP, 2007.
+- Maria Kechagia et al., [*The Exception Handling Riddle: An Empirical Study on the Android API*](https://doi.org/10.1016/j.jss.2018.04.034), Journal of Systems and Software, 2018.
 - Kirsten Bradley and Michael W. Godfrey, [*A Study on the Effects of Exception Usage in Open-Source C++ Systems*](https://plg2.cs.uwaterloo.ca/~migod/papers/2019/scam19.pdf), SCAM, 2019.
-- Boqin Qin et al., [*Understanding and Detecting Real-World Safety Issues in Rust*](https://songlh.github.io/paper/rust-tse.pdf), IEEE Transactions on Software Engineering, 2024.
+- Boqin Qin et al., [*Understanding and Detecting Real-World Safety Issues in Rust*](https://doi.org/10.1109/TSE.2024.3380393), IEEE Transactions on Software Engineering, 2024.
 - Gordon D. Plotkin and Matija Pretnar, [*Handling Algebraic Effects*](https://lmcs.episciences.org/705), Logical Methods in Computer Science, 2013.
+- Andrej Bauer and Matija Pretnar, [*An Effect System for Algebraic Effects and Handlers*](https://lmcs.episciences.org/1153), Logical Methods in Computer Science, 2014.
 - Daan Leijen, [*Koka: Programming with Row-Polymorphic Effect Types*](https://www.microsoft.com/en-us/research/wp-content/uploads/2016/02/koka-effects-2013.pdf), Microsoft Research, 2013.
 - Luc Maranget, [*Warnings for Pattern Matching*](https://www.cambridge.org/core/services/aop-cambridge-core/content/view/3165B75113781E2431E3856972940347/S0956796807006223a.pdf/warnings-for-pattern-matching.pdf), Journal of Functional Programming, 2007.
+- Oracle, [*The Java Language Specification, Chapter 11: Exceptions*](https://docs.oracle.com/javase/specs/jls/se25/html/jls-11.html).
+- C++ Working Group, [*P0323R12: `std::expected`*](https://www.open-std.org/jtc1/sc22/wg21/docs/papers/2022/p0323r12.html), 2022.
+- Herb Sutter, [*P0709R4: Zero-overhead deterministic exceptions*](https://www.open-std.org/jtc1/sc22/wg21/docs/papers/2019/p0709r4.pdf), 2019.

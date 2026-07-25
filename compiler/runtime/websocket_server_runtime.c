@@ -2,8 +2,14 @@
 #include "memory_hooks.h"
 #include <signal.h>
 
+// Native text-frame server transport [BUILTIN-WEBSOCKET].
+
 // Global variable for runtime lifecycle
 static volatile int keep_runtime_running = 1;
+
+static bool valid_websocket_server_id(int64_t server_id) {
+  return server_id >= 0 && server_id < MAX_WEBSOCKET_SERVERS;
+}
 
 // Signal handler for graceful shutdown
 void handle_shutdown_signal(int sig) {
@@ -173,6 +179,9 @@ int64_t websocket_create_server(int64_t port, char *address, char *path) {
   }
 
   int64_t id = get_next_id();
+  if (!valid_websocket_server_id(id) || id == 0) {
+    return -3;
+  }
   WebSocketServer *server = malloc(sizeof(WebSocketServer));
   if (!server) {
     return -3;
@@ -202,6 +211,9 @@ int64_t websocket_create_server(int64_t port, char *address, char *path) {
 
 // Start WebSocket server listening - returns 0 on success
 int64_t websocket_server_listen(int64_t server_id) {
+  if (!valid_websocket_server_id(server_id)) {
+    return -1;
+  }
   pthread_mutex_lock(&runtime_mutex);
   WebSocketServer *server = websocket_servers[server_id];
   pthread_mutex_unlock(&runtime_mutex);
@@ -264,6 +276,9 @@ int64_t websocket_server_broadcast(int64_t server_id, char *message) {
   if (!message) {
     return -1;
   }
+  if (!valid_websocket_server_id(server_id)) {
+    return -2;
+  }
 
   pthread_mutex_lock(&runtime_mutex);
   WebSocketServer *server = websocket_servers[server_id];
@@ -290,6 +305,9 @@ int64_t websocket_server_broadcast(int64_t server_id, char *message) {
 
 // Stop WebSocket server - returns 0 on success
 int64_t websocket_stop_server(int64_t server_id) {
+  if (!valid_websocket_server_id(server_id)) {
+    return -1;
+  }
   pthread_mutex_lock(&runtime_mutex);
   WebSocketServer *server = websocket_servers[server_id];
   if (server) {

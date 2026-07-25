@@ -1,5 +1,5 @@
 // web/pages — the native Osprey host for the browser application.
-// [MODULES-NAMESPACE] [MODULES-IMPORT] [WASM-REACT-HOST]
+// [MODULES-NAMESPACE] [MODULES-IMPORT] [WASM-WEB-ABI]
 //
 // The browser app is written in Osprey and compiled to WebAssembly. React is
 // its rendering capability: the wasm program emits a typed JSON element tree,

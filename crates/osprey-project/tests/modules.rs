@@ -1,4 +1,5 @@
-//! Project resolver coverage for module graph, imports, signatures, and entry rules.
+//! Project resolver coverage for [MODULES-MODEL], [MODULES-DIAG], imports,
+//! signatures, ABI names, and [MODULES-ENTRYPOINT].
 
 mod support;
 
@@ -12,7 +13,8 @@ use support::{ast, config, contains, error_messages, function, import, item, par
 
 #[test]
 fn mixed_flavors_resolve_by_namespace_not_file_path() {
-    // Implements [MODULES-FLAVOR-PROJECTION], [MODULES-PATH-INDEPENDENCE], [MODULES-IMPORT].
+    // Implements [FLAVOR-INTEROP], [MODULES-FLAVOR-PROJECTION],
+    // [MODULES-PATH-INDEPENDENCE], [MODULES-IMPORT].
     let library = parsed(
         "src/completely/unrelated/location.ospml",
         Flavor::Ml,
@@ -295,7 +297,7 @@ fn unknown_and_quoted_unaliased_imports_are_rejected() {
 
 #[test]
 fn non_entry_main_and_top_level_execution_are_rejected() {
-    // Implements [MODULES-PROJECT].
+    // Implements [MODULES-PROJECT], [MODULES-ENTRYPOINT].
     let entry = ast("entry.osp", vec![function("main", Expr::Integer(0))]);
     let other = ast(
         "other.osp",

@@ -78,7 +78,7 @@ jobs:
       - name: Build website WebAssembly demo
         run: make wasm-site
 
-      - name: Build website (uses committed reference docs)
+      - name: Build website (regenerates reference docs from the compiler)
         working-directory: ./website
         run: npm run build
 

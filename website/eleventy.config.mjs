@@ -10,6 +10,8 @@ import Prism from "prismjs";
 import { DateTime } from "luxon";
 import { renderToString as renderTypeDiagram } from "typediagram-core";
 
+const SITE_URL = "https://www.ospreylang.dev";
+
 // Osprey Prism grammar — shared by the syntaxhighlight plugin and the transform.
 const ospreyGrammar = {
   comment: [
@@ -58,6 +60,66 @@ const decodeEntities = (html) =>
     .replace(/&#39;/g, "'")
     .replace(/&amp;/g, "&");
 
+const escapeRegex = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+function replaceMeta(html, attribute, name, value) {
+  const pattern = new RegExp(
+    `<meta ${attribute}="${escapeRegex(name)}" content="[^"]*">`
+  );
+  return html.replace(pattern, `<meta ${attribute}="${name}" content="${value}">`);
+}
+
+function insertMetaAfter(html, attribute, anchor, name, value) {
+  if (html.includes(`${attribute}="${name}"`)) return replaceMeta(html, attribute, name, value);
+  const pattern = new RegExp(
+    `(<meta ${attribute}="${escapeRegex(anchor)}" content="[^"]*">)`
+  );
+  return html.replace(pattern, `$1\n  <meta ${attribute}="${name}" content="${value}">`);
+}
+
+function extractHeroMetadata(html) {
+  const hero = html.match(
+    /<img class="prose-hero" src="([^"]+)" alt="([^"]*)" width="(\d+)" height="(\d+)"/
+  );
+  if (!hero) return null;
+  return {
+    url: new URL(hero[1], SITE_URL).href,
+    alt: hero[2],
+    width: Number(hero[3]),
+    height: Number(hero[4]),
+  };
+}
+
+function updateBlogSocialCards(html, hero) {
+  const values = [
+    ["property", "og:image", hero.url],
+    ["property", "og:image:width", hero.width],
+    ["property", "og:image:height", hero.height],
+    ["name", "twitter:image", hero.url],
+  ];
+  let updated = values.reduce((result, item) => replaceMeta(result, ...item), html);
+  updated = insertMetaAfter(updated, "property", "og:image:height", "og:image:alt", hero.alt);
+  return insertMetaAfter(updated, "name", "twitter:image", "twitter:image:alt", hero.alt);
+}
+
+function updateBlogStructuredData(html, hero, modified) {
+  const pattern = /<script type="application\/ld\+json">([\s\S]*?)<\/script>/;
+  return html.replace(pattern, (element, rawJson) => {
+    const data = JSON.parse(rawJson, (_key, value) =>
+      typeof value === "string" ? decodeEntities(value) : value
+    );
+    const post = data["@graph"]?.find((item) => item["@type"] === "BlogPosting");
+    if (!post) return element;
+    post.headline = post.name;
+    post.image = { "@type": "ImageObject", url: hero.url, width: hero.width, height: hero.height };
+    post.mainEntityOfPage = { "@type": "WebPage", "@id": post.url };
+    post.publisher = { "@type": "Organization", name: "Osprey", url: SITE_URL };
+    if (post.datePublished) post.dateModified = modified || post.datePublished;
+    const json = JSON.stringify(data, null, 2).replace(/</g, "\\u003c");
+    return `<script type="application/ld+json">\n${json}\n  </script>`;
+  });
+}
+
 export default function (eleventyConfig) {
   // Eleventy treats .gitignore entries as build ignores. That is wrong here:
   // the spec pages and the vendored mermaid runtime are GENERATED into src/
@@ -68,7 +130,7 @@ export default function (eleventyConfig) {
   eleventyConfig.addPlugin(techdoc, {
     site: {
       name: "Osprey",
-      url: "https://www.ospreylang.dev",
+      url: SITE_URL,
       description:
         "A modern functional language with typed algebraic effects, lightweight fiber concurrency, and immutable persistent collections.",
     },
@@ -182,6 +244,18 @@ export default function (eleventyConfig) {
   eleventyConfig.addTransform("robots-allow-rendering-assets", function (content, outputPath) {
     if (!outputPath || !outputPath.endsWith("robots.txt")) return content;
     return content.replace("Disallow: /assets/\n", "");
+  });
+
+  // Blog posts use their own editorial artwork in search and social previews.
+  // The virtual theme only knows the site-wide default image, so enrich its
+  // rendered metadata here without copying or patching the dependency layout.
+  eleventyConfig.addTransform("blog-metadata", function (content, outputPath) {
+    if (!outputPath || !outputPath.endsWith(".html")) return content;
+    if (!content.includes('"@type": "BlogPosting"')) return content;
+    const hero = extractHeroMetadata(content);
+    if (!hero) return content;
+    const modified = content.match(/\bdata-date-modified="([^"]+)"/)?.[1];
+    return updateBlogStructuredData(updateBlogSocialCards(content, hero), hero, modified);
   });
 
   // Google Analytics (gtag.js) — injected into every generated HTML page's

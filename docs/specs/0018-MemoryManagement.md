@@ -26,7 +26,6 @@ its `--memory` value is not forwarded to the wasm linker. See
 
 Osprey has no finalizers or destructors. Source code cannot inspect addresses,
 collector state, reference counts, collection order, or collection timing.
-Structural equality is the only language-level value identity.
 
 External resources such as files, sockets, processes, and foreign handles must
 therefore be closed through their explicit APIs; losing the Osprey value does
@@ -63,7 +62,7 @@ the runtime. The fiber releases the cell after its thunk returns. A managed
 result returned through `await`, or a managed value boxed into a channel, is
 retained for the receiving side.
 
-The runtime may therefore co-own immutable allocations across fiber threads.
+The runtime may therefore co-own managed allocations across fiber threads.
 Before creating the first pthread-backed fiber it calls
 `osp_mem_notify_multithreaded`: ARC switches from its single-threaded fast path
 to synchronized retain/release operations, while the conservative GC disables
@@ -72,8 +71,8 @@ runs the same ownership protocol without creating a thread.
 
 ## Backend Selection [MEM-BACKENDS]
 
-All heap allocation sites use the same IR symbols, so native backend selection
-only changes the runtime archive passed to the linker:
+All code-generated heap allocation sites use the same IR symbols, so native
+backend selection only changes the runtime archive passed to the linker:
 
 - `default` uses `compiler/runtime/memory_runtime.c`.
 - `gc` uses `compiler/runtime/memory_gc.c`.

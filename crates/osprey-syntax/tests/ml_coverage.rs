@@ -80,6 +80,7 @@ fn flavor_display_and_from_str_round_trip() {
 
 #[test]
 fn parse_program_with_flavor_dispatches_both_frontends() {
+    // [FLAVOR-FRONTEND]
     // Default flavor reaches the tree-sitter frontend and carries its flavor.
     let def = parse_program_with_flavor("let x = 1\n", Flavor::Default);
     assert!(def.errors.is_empty(), "default errors: {:?}", def.errors);
@@ -573,6 +574,7 @@ fn three_parameter_function_is_curried_nested_lambda() {
 
 #[test]
 fn mut_binding_and_reassignment_lower_distinctly() {
+    // [FLAVOR-ML-BIND]
     let s = ml_ok("mut total = 0\ntotal := total + 1\n");
     assert!(matches!(s[0], Stmt::Let { mutable: true, .. }));
     assert!(matches!(s[1], Stmt::Assignment { ref name, .. } if name == "total"));
@@ -701,6 +703,7 @@ fn unit_tail_params_and_empty_type_bodies_parse() {
 
 #[test]
 fn extern_without_return_type_uses_none() {
+    // [FLAVOR-ML-EXTERN]
     match ml_one("extern log (message : string)\n") {
         Stmt::Extern {
             parameters,

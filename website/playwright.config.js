@@ -1,6 +1,7 @@
 // Playwright config for the Osprey website end-to-end tests.
-// The webServer builds the site (compiler-free; uses committed reference docs)
-// and serves _site over a tiny static server, then the tests run against it.
+// The webServer runs `npm run build` (which regenerates the reference docs from
+// the compiler that CI builds first) and serves _site over a tiny static
+// server, then the tests run against it.
 const { defineConfig, devices } = require("@playwright/test");
 
 const PORT = Number(process.env.PW_PORT) || 8099;

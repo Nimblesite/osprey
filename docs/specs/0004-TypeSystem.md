@@ -15,9 +15,9 @@
 
 ## Hindley-Milner Inference
 
-Osprey uses Hindley-Milner inference. Every well-typed expression has a unique most general type, inference always terminates, and a successful type-check guarantees no runtime type errors.
-
-> **Flavor layer — shared core (AST and above).**  Type inference runs on the canonical `osprey_ast::Program` *after* lowering, so it is entirely flavor-blind ([FLAVOR-BOUNDARY], [FLAVOR-LAYER]). Nothing in this chapter inspects which surface produced a program: the type checker (`osprey-types`) consumes only the canonical AST. The samples below use the Default surface (`.osp`), but the ML flavor (`.ospml`, see [ML Flavor Syntax](0024-MLFlavorSyntax.md)) lowers to identical ASTs and obeys these inference rules unchanged. See [Language Flavors](0023-LanguageFlavors.md).
+Osprey uses Hindley-Milner inference over the canonical AST produced by either
+surface syntax ([FLAVOR-BOUNDARY]). Examples show both surfaces where their
+spellings differ.
 
 Type annotations are optional everywhere they can be inferred:
 
@@ -49,47 +49,9 @@ compose (f, g)   = \x => f (g x)             // <A,B,C>((B)->C,(A)->B) -> (A)->C
 `+ - *` return plain scalars — `int` for two `int` operands, `float` when either
 operand is `float`.
 
-`[TYPE-NO-REDUNDANT-ANNOTATION]` **Optional is not the whole rule: an annotation
-the checker can infer is *redundant*, and redundant symbols are forbidden.**
-Osprey is terse — **neither flavor is verbose** — so any type symbol the compiler
-would derive anyway MUST be omitted. This is normative style, not taste:
-
-- **Never** annotate a function parameter whose type is inferable from the body
-  or a call site (`fn add(a, b) = a + b`, never `fn add(a: int, b: int)`).
-- **Never** write a function return type the checker can infer
-  (`fn isEven(x) = (x % 2) == 0`, never `… -> bool`).
-- **Never** annotate a `let`/lambda binding the checker can infer
-  (`let n = 0`; `|x| => x * 2`).
-
-The rule is identical in both flavors: an ML signature line (`add : int -> int`)
-is just as redundant when the body fixes the type, and must be dropped too.
-
-Keep an annotation **only** when the checker genuinely cannot infer it — the
-narrow, load-bearing set: an empty literal with no context
-(`let xs: List<int> = []`, [TYPE-LIST](#listt--type-list)); the ambiguous empty
-map (`{}` at an ambiguous position, [TYPE-MAP](#mapk-v--type-map)); an `extern`
-boundary; an unconstrained polymorphic variable a caller must pin; or a return
-type that is *load-bearing* because it forces a fallible call's `Result<T, E>`
-to auto-unwrap to `T` at the function boundary
-([Result Auto-Unwrapping](#result-auto-unwrapping)) — arithmetic no longer
-creates that case, since `+ - *` return plain scalars ([ARITH-PLAIN]).
-Declared type-parameter binders (`fn pick<T>(…)`, `type Source<out T>`,
-`effect State<T>`) are **declaration sites, not inference sites** — a binder
-introduces the parameter the annotations refer to (and carries its variance),
-so it is never redundant where the parameter is actually used
-([Generics and Variance](#generics-and-variance)); a binder whose parameter
-appears nowhere in the signature IS redundant and must go.
-Record and union field declarations (`type Point = { x: int, y: int }`,
-`Circle { radius: int }`) are **definition sites, not inference sites** — their
-`field: Type` annotations *define* the type and are always required, never
-redundant; the rule above never touches them. The same holds for `extern`
-parameter signatures, which the FFI boundary requires
-([Foreign Function Interface](0019-ForeignFunctionInterface.md)).
-If deleting an annotation still type-checks and produces identical IR, it was
-redundant — delete it.
-
-This is currently a source-style contract; the compiler and language server do
-not report or autofix redundant annotations.
+Annotations are optional where inference has enough context. They remain part
+of declarations and foreign boundaries, and resolve ambiguous expressions as
+described in [Type Annotation Requirements](#type-annotation-requirements).
 
 A polymorphic function is monomorphised independently at each call site:
 
@@ -128,9 +90,7 @@ may pin them explicitly.** `type Pair<T, U> = …` binds `T`/`U` across every
 variant field. A construction site may apply explicit type arguments —
 `Pair<int, string> { first: 1, second: "a" }` — which unify with the
 instantiation the fields would otherwise infer; an argument that contradicts a
-field is a type error. Explicit construction arguments follow
-[TYPE-NO-REDUNDANT-ANNOTATION]: write them only when the fields alone cannot
-pin the instantiation.
+field is a type error.
 
 `[TYPE-GENERICS-FN]` **Functions bind type parameters with `fn name<T, …>`.**
 A binder makes every use of `T` in the signature the SAME inference variable;
@@ -216,7 +176,7 @@ parameters and covariant in returns, as before.
 
 ## Built-in Types
 
-All primitive types are lowercase.
+Primitive spellings are case-sensitive.
 
 | Type             | Description                                                        |
 | ---------------- | ------------------------------------------------------------------ |
@@ -224,26 +184,26 @@ All primitive types are lowercase.
 | `float`          | 64-bit IEEE 754 (LLVM `double`)                                    |
 | `string`         | UTF-8 encoded                                                      |
 | `bool`           | `true` \| `false`                                                  |
-| `unit`           | The single value `()`; the return type of a function with no result|
+| `Unit`           | The single value `()`; the return type of a function with no result|
 | `any`            | Erased value; access requires pattern matching                     |
 | `Result<T, E>`   | Error-handling sum type (see [Error Handling](0013-ErrorHandling.md)) |
 | `List<T>`        | Immutable sequential collection                                    |
 | `Map<K, V>`      | Immutable key/value collection                                     |
 
-`int` and `float` do not implicitly convert. Use `toFloat(int)` and `toInt(float)`.
-
-Arithmetic returns plain scalars except `/` and `%`, which return `Result<_, MathError>` ([ARITH-PLAIN]). The full operator-by-operand table, status, and chaining rules are in [Error Handling](0013-ErrorHandling.md#arithmetic-and-result--arith-plain).
+Mixed numeric arithmetic promotes `int` to `float`. Arithmetic returns plain
+scalars except `/` and `%`, which return `Result<_, MathError>`
+([ARITH-PLAIN]).
 
 ## Result Auto-Unwrapping
 
 A fallible call has type `Result<T, E>`; among the operators only `/` and `%` produce one, since `+ - *` yield plain scalars ([ARITH-PLAIN]). The compiler auto-unwraps the inner `Result` in six contexts so authors do not write nested `match` chains:
 
-1. **User function arguments.** Passing a `Result`-typed expression to a function that expects the underlying type unwraps it. `double(intDiv(a: 10, b: 2))` is well-typed when `intDiv` returns `Result<int, MathError>` and `double` expects `int`.
+1. **User function arguments.** Passing a `Result`-typed expression to a function that expects the underlying type unwraps it. `double(intDiv(a: 10, b: 2))` is well-typed when `intDiv` returns `Result<int, Error>` and `double` expects `int`.
 2. **Fiber operations.** `spawn`, `await`, `send`, and `recv` unwrap `Result` arguments before storing them.
 3. **Function-value calls.** A `Result` returned through a function value unwraps at the call site ([TYPE-FN-CLOSURE]).
 4. **String interpolation.** `${expr}` renders the success payload (see [String Interpolation](0006-StringInterpolation.md)).
 5. **Comparison.** A `Result` operand of a comparison unwraps: `intDiv(a: 7, b: 2) == 3` is `true`.
-6. **A declared non-`Result` return type.** `fn half(n) -> int = intDiv(a: n, b: 2)` returns `int` — this is the *load-bearing* annotation of [TYPE-NO-REDUNDANT-ANNOTATION](#type-annotation-requirements), and the one case where writing a return type changes meaning rather than restating it. Without the annotation the body's `Result` is the return type.
+6. **A declared non-`Result` return type.** `fn half(n) -> int = intDiv(a: n, b: 2)` returns `int`; without the annotation the body's `Result` is the return type.
 
 Arithmetic is **not** one of these contexts. A `Result`-typed operand *propagates*: an arithmetic expression containing one has type `Result<T, MathError>`, flattened rather than nested, and an erroring operand makes the whole expression `Error` ([Chaining Arithmetic](0013-ErrorHandling.md#chaining-arithmetic)). Unwrapping an operand here would discard the error.
 

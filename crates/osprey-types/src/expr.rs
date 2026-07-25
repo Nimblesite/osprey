@@ -110,17 +110,29 @@ impl Checker {
             Expr::Await(inner) => self.infer_unwrap_con(inner, names::FIBER, env),
             Expr::Recv(channel) => self.infer_unwrap_con(channel, names::CHANNEL, env),
             Expr::Send { channel, value } => {
-                let _ = self.infer_expr(channel, env);
-                let _ = self.infer_expr(value, env);
+                let channel_ty = self.infer_expr(channel, env);
+                let value_ty = self.infer_expr(value, env);
+                let element_ty = self.ctx.fresh();
+                self.push_unify(
+                    &channel_ty,
+                    &Type::con(names::CHANNEL, vec![element_ty.clone()]),
+                );
+                self.push_assign(&element_ty, &value_ty);
                 Type::unit()
             }
-            Expr::Yield(inner) => {
-                if let Some(inner) = inner {
-                    let _ = self.infer_expr(inner, env);
-                }
-                Type::unit()
+            Expr::Yield(inner) => match inner {
+                Some(inner) => self.infer_expr(inner, env),
+                None => Type::unit(),
+            },
+            Expr::Select { .. } => {
+                // Parsing remains reserved, but accepting the node would reach
+                // a backend that cannot perform channel selection.
+                // Implements [CONCURRENCY-SELECT-REJECT].
+                self.errors.push(TypeError::new(
+                    "`select` is not supported; use explicit `send`, `recv`, and `await`",
+                ));
+                self.ctx.fresh()
             }
-            Expr::Select { arms } => self.infer_arm_bodies(arms, env),
             Expr::Perform { .. } | Expr::Handler { .. } => self.infer_effect_expr(e, env),
             Expr::Resume(value) => self.infer_resume(value.as_deref(), env),
         }
@@ -765,7 +777,7 @@ fn classify(op: &str) -> OpKind {
 #[cfg(test)]
 mod tests {
     use crate::check::check_program;
-    use crate::testutil::{check, ok};
+    use crate::testutil::{bad, check, ok};
     use crate::{infer_program, Type};
     use osprey_syntax::parse_program;
 
@@ -812,12 +824,29 @@ mod tests {
     }
 
     #[test]
-    fn select_and_handler_expressions() {
-        // `select { ... }` and `handle E op => .. in body` both type their arms.
-        ok("fn pick() -> int = select {\n\
+    fn select_is_rejected_until_channel_selection_has_runtime_semantics() {
+        let errs = bad("fn pick() -> int = select {\n\
               x => x\n\
               _ => 0\n\
             }\n");
+        assert!(errs
+            .iter()
+            .any(|e| e.message.contains("`select` is not supported")));
+    }
+
+    #[test]
+    fn yield_forwards_its_value_type_and_send_checks_the_channel_element() {
+        ok("fn hand_off(value: int) -> int = yield value\n");
+        let errs = bad(
+            "fn wrong(ch: Channel<int>) -> Unit = send(ch, \"wrong\")\n",
+        );
+        assert!(errs
+            .iter()
+            .any(|e| e.message.contains("cannot unify int with string")));
+    }
+
+    #[test]
+    fn handler_expressions_type_their_arms() {
         ok("effect Logger { log: fn(string) -> Unit }\n\
             fn run() -> int = handle Logger\n\
               log msg => 0\n\

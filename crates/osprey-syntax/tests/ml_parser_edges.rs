@@ -158,6 +158,7 @@ fn a_type_block_recovers_line_by_line() {
 
 #[test]
 fn list_literals_span_empty_populated_and_trailing_comma() {
+    // [FLAVOR-ML-LIST]
     assert_eq!(value("xs = []\n"), Expr::List(vec![]));
     assert_eq!(
         value("xs = [1, 2, 3]\n"),
@@ -180,7 +181,7 @@ fn map_literals_span_empty_and_populated() {
 }
 
 /// A bracket glued to its receiver indexes it; a bracket after whitespace
-/// starts a fresh list argument.
+/// starts a fresh list argument ([FLAVOR-ML-INDEX]).
 #[test]
 fn a_glued_bracket_indexes_its_receiver() {
     assert!(

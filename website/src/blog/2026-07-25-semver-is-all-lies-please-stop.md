@@ -1,16 +1,16 @@
 ---
 layout: page.njk
 title: "SemVer Is All Lies. Please Stop"
-excerpt: "Semantic versions encode a maintainer's intent, not evidence that a release is compatible. Osprey's package plan replaces that guess with exact identity, compatibility epochs, and aggressive downstream testing."
+excerpt: "Semantic versioning records maintainer intent, not compatibility proof. Osprey's package plan proposes exact identity, compatibility epochs, and downstream testing."
 description: "Why semantic versioning cannot prove backward compatibility, what breaking-change research shows, and how Osprey's package manager will test dependency updates."
-tags: ["blog", "package-management", "semantic-versioning", "compatibility", "testing"]
+tags: ["blog", "package-management", "semantic-versioning", "breaking-changes", "compatibility", "testing"]
 author: "Christian Findlay"
 readingTime: 9
 image: /assets/images/blog/semver-is-all-lies-please-stop.png
 imageAlt: "Three translucent release panels appear orderly while a cyan wireframe osprey scan reveals fractures in the dependency network behind them"
 ---
 
-The title is rude on purpose.
+SemVer cannot prove whether a release contains breaking changes.
 
 Semantic Versioning (SemVer) takes a maintainer's opinion about compatibility, compresses it into three integers, and invites package managers to treat the result as truth. A patch release is safe. A minor release is safe. A major release is dangerous. Put a caret in front of the number and let the resolver decide.
 
@@ -81,7 +81,7 @@ The tests are an instrument panel, not a constitutional ban on change. They turn
 
 [Flutter still uses SemVer in its package ecosystem](https://docs.flutter.dev/packages-and-plugins/dependency-management). I am pointing to its compatibility-detection practice, not claiming Flutter has rejected version numbers. In fact, the practice exposes why SemVer is inadequate: when compatibility matters, the team does not stare harder at a proposed version. It runs consumers.
 
-## Osprey's package manager will separate identity, order, and compatibility
+## Osprey's package-manager plan separates identity, order, and compatibility
 
 This is why the [Osprey package-manager plan](https://github.com/Nimblesite/osprey/blob/main/docs/plans/0020-package-manager.md) and [package specification](/spec/0029-packagemanagement/) reject SemVer fields and version ranges. The design is specified, not implemented yet, and it gives the three jobs hidden inside a semantic version to three different mechanisms:
 
@@ -103,7 +103,7 @@ If evidence reveals a break, the right outcome is not automatically “stop.” 
 
 Breaking changes are sometimes correct. A bad API should not be immortal. A security repair may require disruption. A behavior that users accidentally relied on may be too damaging to preserve.
 
-The job of package infrastructure is not to pretend those decisions disappeared because somebody typed `PATCH` instead of `MAJOR`. Its job is to identify exact inputs, expose observed consequences, preserve reproducibility, and make compatibility decisions explicit.
+The job of dependency management is not to pretend those decisions disappeared because somebody typed `PATCH` instead of `MAJOR`. Its job is to identify exact inputs, expose observed consequences, preserve reproducibility, and make compatibility decisions explicit.
 
 A digest can tell me what I received. An ordinal can tell me what came later. An epoch can tell me where a known compatibility boundary lies. Tests, contracts, analysis, and real client runs can tell me what we actually observed.
 

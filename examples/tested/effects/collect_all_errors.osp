@@ -1,0 +1,67 @@
+// SUPERPOWER: report EVERY validation error in a single pass — not just the first.
+//
+// A thrown exception is a one-shot ejector seat: the very first `throw` unwinds
+// the stack, so a form with five bad fields surfaces ONE message and the user
+// fixes-then-resubmits to discover the next. You cannot "keep going after the
+// throw" — the frames that would run the remaining checks are already gone.
+//
+// A tail-resuming Unit effect inverts this. `perform Invalid.report(msg)` is NOT
+// a jump: the handler substitutes its arm value at the perform site and the
+// validator ALWAYS CONTINUES to the next field. The handler owns a mutable
+// counter + accumulator, so when the pass ends it holds the COMPLETE list of
+// failures. Same handler, same validator: a clean record simply reports zero.
+//
+// PURE TAIL-RESUME mode — the word `resume` appears nowhere below. Every arm
+// tail-substitutes; the computation is never abandoned partway through.
+
+effect Invalid {
+    report: fn(string) -> Unit
+}
+
+// One field check. On failure it performs; on success it yields Unit and moves
+// on. Neither branch aborts — after `perform` returns, control flows to the NEXT
+// check. That "flows to the next" is precisely what a `throw` can never allow.
+fn flag(broken, msg) !Invalid = match broken {
+    true  => perform Invalid.report(msg)
+    false => {}
+}
+
+// Six INDEPENDENT fields checked back-to-back. Under exceptions the first bad
+// field ends the story; here all six are visited on every single call.
+fn validate(name, age, score, email) !Invalid = {
+    flag(name == "",                    "name is empty")
+    flag(age < 0,                       "age is negative (${toString(age)})")
+    flag(score < 0,                     "score below 0 (${toString(score)})")
+    flag(score > 100,                   "score above 100 (${toString(score)})")
+    flag(email == "",                   "email is empty")
+    flag(email.contains("@") == false,  "email is missing '@' (${email})")
+    "validation pass finished"
+}
+
+// Run ONE validation pass under a fresh accumulating handler and return the
+// rendered verdict. `count` and `errs` are handler-owned mutable state; the
+// downstream decision — accept iff count == 0 — is derived purely from the
+// final count, the thing a first-throw model can never know.
+fn audit(name, age, score, email) = {
+    mut count = 0
+    mut errs  = ""
+    handle Invalid
+        report m => {
+            count = count + 1
+            errs  = errs + "\n    #${toString(count)} ${m}"
+        }
+    in validate(name, age, score, email)
+    match count == 0 {
+        true  => " — clean\n    => ACCEPTED (0 errors)"
+        false => "${errs}\n    => REJECTED (${toString(count)} errors collected in ONE pass)"
+    }
+}
+
+// (a) MULTIPLE simultaneous failures — every one reported, in field order.
+print("── signup: Nadia ──" + audit("", -3, 250, "nadia_at_example.com"))
+
+// (b) The SAME handler shape over a fully-valid record — zero errors, happy path.
+print("── signup: Owen ──" + audit("Owen", 34, 88, "owen@example.com"))
+
+// (c) A partial failure — proves the count is exact, not all-or-nothing.
+print("── signup: blank ──" + audit("", 40, 60, ""))

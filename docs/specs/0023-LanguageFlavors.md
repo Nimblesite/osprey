@@ -83,7 +83,8 @@ helpers.
 `[FLAVOR-SELECT]` `osprey_syntax::resolve_flavor(flag, path, source)` applies
 this precedence:
 
-1. explicit `--flavor default|ml`;
+1. an explicit resolver override (`--flavor default|ml` for single-file CLI
+   use, or `[project].flavor` while loading a project);
 2. a leading `// osprey: flavor=default|ml` marker;
 3. `.osp` or `.ospml` extension;
 4. Default.

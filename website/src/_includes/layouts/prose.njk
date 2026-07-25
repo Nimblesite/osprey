@@ -11,7 +11,7 @@ layout: layouts/base.njk
       <p class="toc-title">Contents</p>
     </nav>
   </aside>
-  <article class="prose">
+  <article class="prose"{% if modified %} data-date-modified="{{ modified | isoDate }}"{% endif %}>
 {% if image %}
     <img class="prose-hero" src="{{ image }}" alt="{{ imageAlt | default(title) }}" width="1600" height="840" loading="eager">
 {% endif %}

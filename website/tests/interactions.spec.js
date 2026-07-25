@@ -222,6 +222,28 @@ test.describe("mobile interactions", () => {
   });
 });
 
+test.describe("blog search and social metadata", () => {
+  const path = "/blog/2026-07-25-semver-is-all-lies-please-stop/";
+  const image = "https://www.ospreylang.dev/assets/images/blog/semver-is-all-lies-please-stop.png";
+
+  test("SemVer article exposes its editorial image and complete BlogPosting data", async ({ page }) => {
+    await page.goto(path, { waitUntil: "networkidle" });
+    await expect(page).toHaveTitle("SemVer Is All Lies. Please Stop");
+    await expect(page.locator('meta[property="og:image"]')).toHaveAttribute("content", image);
+    await expect(page.locator('meta[name="twitter:image"]')).toHaveAttribute("content", image);
+
+    const data = JSON.parse(await page.locator('script[type="application/ld+json"]').textContent());
+    const post = data["@graph"].find((item) => item["@type"] === "BlogPosting");
+    expect(post).toMatchObject({
+      headline: "SemVer Is All Lies. Please Stop",
+      image: { url: image, width: 1600, height: 840 },
+      mainEntityOfPage: { "@type": "WebPage", "@id": `https://www.ospreylang.dev${path}` },
+      publisher: { "@id": "https://www.ospreylang.dev/#organization" },
+    });
+    expect(post.dateModified).toBe(post.datePublished);
+  });
+});
+
 // Diagrams. Prose uses ```mermaid (rendered in the browser from the vendored
 // runtime) and ```typediagram (rendered to inline SVG at build time) — never
 // ASCII art. A silently-unrendered diagram still LOOKS like a code block, so

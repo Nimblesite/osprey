@@ -180,6 +180,10 @@ void test_websocket_create_server(void) {
   assert(addr_server < 0);
   printf("✅ Correctly rejected NULL address\n");
 
+  assert(websocket_server_listen(-1) < 0);
+  assert(websocket_server_broadcast(-1, "message") < 0);
+  assert(websocket_stop_server(-1) < 0);
+
   // Clean up
   websocket_stop_server(server_id);
   printf("✅ websocket_create_server tests passed!\n\n");
@@ -190,6 +194,8 @@ void test_websocket_client(void) {
 
   assert(websocket_connect(NULL) == -1);
   assert(websocket_connect("wss://example.com/chat") == -2);
+  assert(websocket_send(-1, "message") < 0);
+  assert(websocket_close(-1) < 0);
 
   // Test WebSocket connection creation (will fail without server, but tests
   // function)

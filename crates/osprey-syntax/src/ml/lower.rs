@@ -2,7 +2,7 @@
 //! This is the *only* place ML surface syntax is normalised into the shared
 //! core, and it is where the boundary law is enforced — the output is canonical
 //! AST that no later phase can distinguish from Default-flavor output
-//! ([FLAVOR-BOUNDARY], [FLAVOR-LOWER-CONTRACT], docs/specs/0023).
+//! ([FLAVOR-BOUNDARY], [FLAVOR-LAYER], [FLAVOR-LOWER-CONTRACT], docs/specs/0023).
 //!
 //! What this module canonicalises (and the parser deliberately does not):
 //! - **Curry-by-default** ([FLAVOR-ML-CURRY]): ML *curries by default*. A
@@ -119,7 +119,8 @@ fn collect_positional_ctors(items: &[MlItem], out: &mut HashMap<String, usize>) 
 }
 
 /// A saturated whitespace application of a positionally-declared constructor,
-/// folded to the construction node ([TYPE-UNION-POSITIONAL]).
+/// folded to the construction node ([FLAVOR-ML-CTOR-POSITIONAL],
+/// [TYPE-UNION-POSITIONAL]).
 fn positional_construction(head: &MlExpr, args: &[MlExpr]) -> Option<Expr> {
     let MlExpr::Ident(name) = head else {
         return None;
@@ -600,8 +601,9 @@ fn render_tuple(parts: &[MlType]) -> String {
     format!("({rendered})")
 }
 
-/// A binding with no parameters is a `let` (its signature becomes the binding's
-/// type); one with parameters is a function. The `uncurried` flag selects the
+/// A binding with no parameters is a `let` ([FLAVOR-ML-BIND]; its signature
+/// becomes the binding's type); one with parameters is a function. The
+/// `uncurried` flag selects the
 /// surface form: `f (x, y) = …` (uncurried) builds one FLAT multi-parameter
 /// `Function` (twinning Default `fn f(x, y)`); `f x y = …` (curried) builds a
 /// one-parameter `Function` returning a `Lambda` chain ([FLAVOR-ML-CURRY]). The
@@ -1026,29 +1028,7 @@ fn lower_expr(expr: MlExpr) -> Expr {
             name,
             type_args,
             fields,
-        } => {
-            let fields = fields.into_iter().map(lower_field).collect();
-            if super::parser::is_constructor(&name) {
-                Expr::TypeConstructor {
-                    name,
-                    // Thread explicit construction-site type arguments through the
-                    // shared `type_expr` path — byte-identical to the Default
-                    // flavor's `Ctor<t> { … }`. Implements [FLAVOR-ML-GENERICS].
-                    type_args: type_args
-                        .iter()
-                        .map(|a| {
-                            type_expr(a).unwrap_or_else(|| TypeExpr::named(render_type(a)))
-                        })
-                        .collect(),
-                    fields,
-                }
-            } else {
-                Expr::Update {
-                    record: name,
-                    fields,
-                }
-            }
-        }
+        } => lower_record(name, &type_args, fields),
         MlExpr::Block { items, value } => lower_block(items, value),
         MlExpr::Spawn(body) => Expr::Spawn(Box::new(lower_expr(*body))),
         MlExpr::Perform {
@@ -1085,6 +1065,28 @@ fn lower_expr(expr: MlExpr) -> Expr {
         MlExpr::Select(arms) => Expr::Select {
             arms: arms.into_iter().map(lower_arm).collect(),
         },
+    }
+}
+
+/// Uppercase heads construct a type; lowercase heads update a bound record.
+/// This mirrors the Default flavor's distinct `TypeConstructor`/`Update` nodes.
+fn lower_record(name: String, type_args: &[MlType], fields: Vec<MlField>) -> Expr {
+    let fields = fields.into_iter().map(lower_field).collect();
+    if !super::parser::is_constructor(&name) {
+        return Expr::Update {
+            record: name,
+            fields,
+        };
+    }
+    Expr::TypeConstructor {
+        name,
+        // Explicit type arguments follow the same path as Default construction.
+        // Implements [FLAVOR-ML-GENERICS].
+        type_args: type_args
+            .iter()
+            .map(|arg| type_expr(arg).unwrap_or_else(|| TypeExpr::named(render_type(arg))))
+            .collect(),
+        fields,
     }
 }
 

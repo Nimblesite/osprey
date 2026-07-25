@@ -1,17 +1,18 @@
-# WebAssembly Target
+# WebAssembly Target [WASM-TARGET]
 
 `osprey --target=wasm32 --compile` emits a `wasm32-wasip1` command module.
 The backend reuses Osprey's LLVM IR, compiles it with clang, and links it with
-`wasm-ld`, wasi-libc, and the portable Osprey runtime archive. [WASM-TARGET]
+`wasm-ld`, wasi-libc, and the portable Osprey runtime archive.
 
 ## Status
 
 The portable language core runs under a WASI host. CI compiles and validates the
 hello fixture, runs it through Node's WASI host and the browser shim, then runs
 `crates/diff_wasm_examples.sh`. The golden harness compiles every Default-flavor
-`.osp` example with an expected-output file; portable examples must match it,
-while link errors for deliberately excluded runtime symbols are reported as
-`SKIP`. CI requires `FAIL=0` and `NOEXP=0` rather than a fixed example count.
+`.osp` example with an expected-output file; portable examples must match it.
+The harness classifies an `undefined symbol` compile error as `SKIP`; every
+other build or runtime error fails. CI requires `FAIL=0` and `NOEXP=0` rather
+than a fixed example count.
 
 The wasm runtime includes strings, persistent collections, JSON, test and
 coverage hooks, the effect-handler stack, profiler stubs, and the browser host
