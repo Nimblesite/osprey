@@ -1,9 +1,18 @@
 #include "http_shared.h"
 
-// Connect to WebSocket server - returns websocket_id or negative error
-int64_t websocket_connect(char* url, char* message_handler) {
-    if (!url || !message_handler) {
+static bool valid_websocket_id(int64_t ws_id) {
+    return ws_id >= 0 && ws_id < MAX_WEBSOCKETS;
+}
+
+// Connect to WebSocket server - returns websocket_id or negative error.
+// The language has no receive callback; incoming client frames are not exposed.
+// [BUILTIN-WEBSOCKET]
+int64_t websocket_connect(char *url) {
+    if (!url) {
         return -1;
+    }
+    if (strncmp(url, "ws://", 5) != 0) {
+        return -2;
     }
     
     // Parse WebSocket URL (ws://host:port/path)
@@ -78,6 +87,13 @@ int64_t websocket_connect(char* url, char* message_handler) {
     
     // Create WebSocket structure
     int64_t id = get_next_id();
+    if (!valid_websocket_id(id)) {
+        close(sock);
+        free(host);
+        free(path);
+        free(ws_key);
+        return -10;
+    }
     WebSocket* ws = malloc(sizeof(WebSocket));
     if (!ws) {
         close(sock);
@@ -89,7 +105,6 @@ int64_t websocket_connect(char* url, char* message_handler) {
     
     ws->id = id;
     ws->url = strdup(url);
-    ws->message_handler = strdup(message_handler);
     ws->socket_fd = sock;
     ws->is_connected = true;
     pthread_mutex_init(&ws->mutex, NULL);
@@ -110,6 +125,9 @@ int64_t websocket_send(int64_t ws_id, char* message) {
     if (!message) {
         return -1;
     }
+    if (!valid_websocket_id(ws_id)) {
+        return -2;
+    }
     
     pthread_mutex_lock(&runtime_mutex);
     WebSocket* ws = websockets[ws_id];
@@ -128,6 +146,9 @@ int64_t websocket_send(int64_t ws_id, char* message) {
 
 // Close WebSocket connection - returns 0 on success
 int64_t websocket_close(int64_t ws_id) {
+    if (!valid_websocket_id(ws_id)) {
+        return -1;
+    }
     pthread_mutex_lock(&runtime_mutex);
     WebSocket* ws = websockets[ws_id];
     if (ws) {
@@ -139,7 +160,6 @@ int64_t websocket_close(int64_t ws_id) {
         }
         
         free(ws->url);
-        free(ws->message_handler);
         pthread_mutex_destroy(&ws->mutex);
         free(ws);
     }

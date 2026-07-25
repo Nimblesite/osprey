@@ -103,6 +103,10 @@ function specGitDate(filename) {
 // Helper function to create front matter for spec pages
 function createSpecFrontMatter(title, slug, description = '', date = null) {
   const dateLine = date ? `date: "${date}"\n` : '';
+  // Render spec bodies as pure Markdown, NOT through Nunjucks. Specs are
+  // documentation, not templates: a code sample containing `{{ ... }}` (e.g. a
+  // GitHub Actions `${{ toJSON(inputs) }}` expression) would otherwise be parsed
+  // as a Nunjucks tag and fail the build. The `page` layout is still Nunjucks.
   return `---
 layout: page
 title: "${title}"
@@ -110,6 +114,7 @@ description: "${description}"
 ${dateLine}tags: ["specification", "reference", "documentation"]
 author: "Christian Findlay"
 permalink: "/spec/${slug}/"
+templateEngineOverride: md
 ---
 
 `;

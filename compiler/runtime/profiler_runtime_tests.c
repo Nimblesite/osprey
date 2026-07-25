@@ -76,7 +76,8 @@ static void test_walk_rejects_invalid_fp(void) {
                        OSP_PROF_MAX_FRAMES) == 2);
 }
 
-// ---- registry & end-to-end [PROF-COLLECT-REGISTRY] [PROF-RAW-FORMAT] ---------
+// ---- registry & end-to-end -------------------------------------------------
+// [PROF-COLLECT-REGISTRY] [PROF-COLLECT-SAMPLER] [PROF-RAW-FORMAT]
 
 // Hooks must be safe no-ops while the profiler is inactive.
 static void test_hooks_inactive_noop(void) {

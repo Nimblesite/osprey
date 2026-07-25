@@ -13,6 +13,10 @@ program output byte-for-byte after trimming outer whitespace.
 - `fiber_effects.osp` covers effects across spawned fibers.
 - `http_state_levels.osp` covers handler-owned state across HTTP callback and
   fiber boundaries.
+- `recoverable_errors.osp`, `result_and_effects.osp`, and
+  `collect_all_errors.osp` cover direct value substitution with handler-owned
+  state.
+- `typed_error_channels.osp` covers nested handlers for independent operations.
 
 ## Explicit Resume Examples
 
@@ -24,6 +28,8 @@ program output byte-for-byte after trimming outer whitespace.
   installed.
 - `resume_value_rewrite.osp` shows the handler choosing operation results and
   observing the final answer after each continuation returns.
+- `abort_vs_resume.osp` and `retry_until_valid.osp` compare resuming and
+  non-resuming branches in one continuation-mode handler.
 
 ## Running
 

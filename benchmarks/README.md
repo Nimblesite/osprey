@@ -191,10 +191,10 @@ deterministic constant-seed run.
 
 ## Reading the numbers fairly
 
-- **Osprey does checked arithmetic on every `+ - * %`** (each returns
-  `Result<int, MathError>`, overflow-checked). The others do not by default — we
-  even pass `-C overflow-checks=off` to Rust to match its release profile. Part
-  of Osprey's CPU gap is the cost of that safety, a real language semantic.
+- **Arithmetic semantics differ.** Osprey's integer `+ - *` return plain
+  wrapping values; `%` returns `Result<int, MathError>` and rejects a zero
+  divisor. Rust is compiled with `-C overflow-checks=off` for its release
+  profile.
 - **Same algorithm everywhere.** Identical *naive* algorithm and parameters in
   every language — no memoization, closed forms, SIMD, or parallelism. We measure
   the language/compiler/runtime, not who is cleverest. Ranges match Osprey's

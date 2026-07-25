@@ -1,5 +1,5 @@
-// 🌐 Comprehensive HTTP API Test - All Methods
-// Tests real client-server communication with GET, POST, PUT, DELETE
+// Local server callback plus status-only GET, POST, PUT, and DELETE requests.
+// [BUILTIN-HTTP] [HTTP-SERVER] [HTTP-STATUS-CLIENT]
 
 print("=== Comprehensive HTTP API Test ===")
 

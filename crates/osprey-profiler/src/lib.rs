@@ -83,7 +83,7 @@ pub struct ProfileOptions {
     pub raw_path: PathBuf,
     /// The executable that produced the profile (used for symbolization).
     pub binary_path: PathBuf,
-    /// The `.osp` source path, shown in the report and summary export.
+    /// The `.osp` or `.ospml` source path, shown in the report and summary export.
     pub source_path: String,
     /// Directory the export files are written into (created if missing).
     pub out_dir: PathBuf,

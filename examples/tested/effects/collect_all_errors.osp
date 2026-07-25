@@ -1,0 +1,48 @@
+// Invalid.report returns Unit through a direct-substitution handler, allowing
+// every field check to run while the handler accumulates messages.
+
+effect Invalid {
+    report: fn(string) -> Unit
+}
+
+// Both branches return Unit, so validation continues after a report.
+fn flag(broken, msg) !Invalid = match broken {
+    true  => perform Invalid.report(msg)
+    false => {}
+}
+
+// All six checks run on every call.
+fn validate(name, age, score, email) !Invalid = {
+    flag(name == "",                    "name is empty")
+    flag(age < 0,                       "age is negative (${toString(age)})")
+    flag(score < 0,                     "score below 0 (${toString(score)})")
+    flag(score > 100,                   "score above 100 (${toString(score)})")
+    flag(email == "",                   "email is empty")
+    flag(email.contains("@") == false,  "email is missing '@' (${email})")
+    "validation pass finished"
+}
+
+// `count` and `errs` are handler-owned mutable state.
+fn audit(name, age, score, email) = {
+    mut count = 0
+    mut errs  = ""
+    handle Invalid
+        report m => {
+            count = count + 1
+            errs  = errs + "\n    #${toString(count)} ${m}"
+        }
+    in validate(name, age, score, email)
+    match count == 0 {
+        true  => " — clean\n    => ACCEPTED (0 errors)"
+        false => "${errs}\n    => REJECTED (${toString(count)} errors collected in ONE pass)"
+    }
+}
+
+// (a) MULTIPLE simultaneous failures — every one reported, in field order.
+print("── signup: Nadia ──" + audit("", -3, 250, "nadia_at_example.com"))
+
+// (b) The SAME handler shape over a fully-valid record — zero errors, happy path.
+print("── signup: Owen ──" + audit("Owen", 34, 88, "owen@example.com"))
+
+// (c) A partial failure — proves the count is exact, not all-or-nothing.
+print("── signup: blank ──" + audit("", 40, 60, ""))

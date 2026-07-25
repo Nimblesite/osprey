@@ -1,7 +1,7 @@
 // Default-flavor twin of mutation.ospml. ML `mut name = e` lowers to
 // `Stmt::Let { mutable: true }` and `name := e` to `Stmt::Assignment` — the same
-// nodes Default emits for `mut` and reassignment. Arithmetic auto-unwraps into
-// the int cell, so the IR is byte-identical.
+// nodes Default emits for `mut` and reassignment. Plain integer addition stores
+// directly in the integer cell, so the IR is byte-identical.
 
 mut counter = 0
 counter = counter + 1

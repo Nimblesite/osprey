@@ -61,7 +61,8 @@ for f in $(find $EXDIR -name '*.osp' | sort); do
     # The portable wasm runtime links every portable symbol, so an `undefined
     # symbol` link error means the program uses a feature that is intentionally
     # not ported (fibers, HTTP/WebSocket, SQLite/FFI, processes, file I/O,
-    # random). Classify those as SKIP — a documented limitation, not a failure.
+    # random, or resumable continuations [WASM-TARGET-EFFECTS]). Classify those
+    # as SKIP — a documented limitation, not a failure.
     # Any other build error is a real FAIL.
     sym=$(grep -m1 -oE 'undefined symbol: [A-Za-z0-9_]+' "$compile_err" | head -1)
     if [[ -n "$sym" ]]; then

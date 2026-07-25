@@ -2,7 +2,7 @@
 // remove, merge (right-biased, via mapMerge + `+`), keys/values lists,
 // map literal index returning Result<T,E>, cross-mutation isolation
 // with List<T>.
-// Spec: [TYPE-MAP], [TYPE-MAP-OPS], [TYPE-MAP-CONV]. Builtins exercised, under
+// Spec: [TYPE-MAP], [TYPE-MAP-OPS], [TYPE-MAP-LITERAL], [TYPE-MAP-LOOKUP]. Builtins exercised, under
 // the `mapXxx` spellings that ship: [BUILTIN-MAP], [BUILTIN-COLLECTION-LENGTH],
 // [BUILTIN-MAP-SET], [BUILTIN-MAP-CONTAINS], [BUILTIN-MAP-REMOVE],
 // [BUILTIN-MAP-MERGE], the accessors [BUILTIN-MAP-KEYS] / [BUILTIN-MAP-VALUES],
@@ -145,7 +145,7 @@ print("\nkeys+xs len=")
 print(listLength(mapKeys(g3) + xs))
 print("\n")
 
-// --- Map literal + index returning Result<V, IndexError> ---
+// --- Map literal + index returning Result<V, Error> ---
 let prices = { "apple": 2, "banana": 3, "cherry": 5 }
 match prices["apple"] {
     Success { value } => print("apple=${toString(value)}")
@@ -154,6 +154,11 @@ match prices["apple"] {
 match prices["mango"] {
     Success { value } => print("mango ok??")
     Error   { message } => print("mango missing rejected")
+}
+let duplicate = { "key": 1, "key": 2 }
+match duplicate["key"] {
+    Success { value } => print("duplicate=${toString(value)}")
+    Error   { message } => print("duplicate missing")
 }
 
 // --- bare receiver-directed size: [BUILTIN-COLLECTION-LENGTH],

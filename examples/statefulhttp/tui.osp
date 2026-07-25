@@ -40,8 +40,7 @@ fn bold(s: string) -> string = "\e[1m${s}\e[0m"
 fn invert(s: string) -> string = "\e[7m${s}\e[0m"
 fn rule() -> string = dim("  ------------------------------------------")
 
-// Plain-int arithmetic helpers: an `int`-typed function body unwraps Osprey's
-// checked `Result<int, MathError>`, so these stay usable in argument position.
+// Plain integer arithmetic helpers used in argument position.
 fn inc(x: int) -> int = x + 1
 fn dec(x: int) -> int = x - 1
 fn shift(a: int, b: int) -> int = a + b

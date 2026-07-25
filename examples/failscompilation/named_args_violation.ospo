@@ -1,7 +1,0 @@
-// This should fail compilation: Multi-parameter function called with positional arguments
-// Error: function 'add' has 2 parameters and requires named arguments. Use: add(x: value, y: value)
-
-fn add(x, y) = x + y
-
-let result = add(10, 20)  // Should require named arguments
-print(result) 

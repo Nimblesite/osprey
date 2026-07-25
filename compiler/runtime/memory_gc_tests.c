@@ -1,4 +1,4 @@
-// [MEM-BACKENDS] conformance for the tracing GC backend (memory_gc.c).
+// [MEM-BACKENDS] [GC-TRACE-CONSERVATIVE] conformance for memory_gc.c.
 //
 // Mirrors memory_arc_tests.c: this program is LINKED directly against
 // memory_gc.c (see the Makefile _test_c_runtime recipe) and drives the backend

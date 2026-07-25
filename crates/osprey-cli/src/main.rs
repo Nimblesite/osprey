@@ -52,9 +52,9 @@ pub(crate) struct Cli {
     mode: String,
     quiet: bool,
     policy: Policy,
-    /// The reclaiming memory backend linked behind `@osp_alloc` — `default`
-    /// (malloc passthrough) or `gc` (tracing collector). Link-time only; the IR
-    /// is identical [MEM-BACKENDS]. (`arc` is reserved, docs/plans/0011.)
+    /// The memory backend linked behind `@osp_alloc`: `default` (malloc
+    /// passthrough), `gc` (tracing collector), or `arc` (reference counting).
+    /// Link-time only; native IR is identical [MEM-BACKENDS].
     memory: String,
     /// Codegen/link target: `native` (host executable via clang) or `wasm32`
     /// (browser-ready WebAssembly via wasm-ld; wasm32-wasip1). [WASM-TARGET]
@@ -302,8 +302,8 @@ fn parse_target(value: &str) -> Result<String, String> {
 }
 
 /// Validate the `--memory=` value: the malloc passthrough (`default`), the
-/// tracing collector (`gc`), or Perceus reference counting (`arc`) —
-/// docs/plans/0011 [MEM-BACKENDS].
+/// tracing collector (`gc`), or Perceus reference counting (`arc`).
+/// Implements [MEM-BACKENDS].
 fn parse_memory(value: &str) -> Result<String, String> {
     match value {
         "default" | "gc" | "arc" => Ok(value.to_string()),
@@ -716,13 +716,9 @@ fn run_build_step(mut cmd: Command, input: &Path) -> Result<(), ExitCode> {
 
 /// The LLVM optimization level handed to clang when lowering the emitted IR.
 /// Defaults to `-O2`; `OSPREY_OPT` overrides it (e.g. `-O0` for fast debug
-/// builds, `-O3` to match Rust/OCaml release flags). This is load-bearing twice
-/// over: it is the difference between competitive and 30–100× slower native
-/// code, and — because codegen currently has no reclamation backend [MEM-OPAQUE,
-/// docs/specs/0018] — it IS the default memory strategy. At `-O2` LLVM proves
-/// per-operation `Result` allocations non-escaping and removes them entirely
-/// (heap → registers), the [MEM-OWNERSHIP] "free at last use" ideal achieved
-/// statically; without it those allocations leak for the whole run.
+/// builds, `-O3` for a more aggressive release build). At `-O2`, LLVM can
+/// eliminate non-escaping per-operation `Result` allocations. Allocation
+/// reclamation is selected independently by `--memory` ([MEM-BACKENDS]).
 fn compile_ir(
     path: &str,
     program: &osprey_ast::Program,
@@ -801,6 +797,7 @@ pub(crate) fn child_exit_code(status: std::process::ExitStatus) -> u8 {
 /// libc: the prebuilt C runtime static library (the HTTP superset when the
 /// program touches HTTP/WebSocket, else the fiber runtime), OpenSSL for HTTP,
 /// and any `// @link:` / `// @linkdir:` FFI directives (e.g. `-lsqlite3`).
+/// Implements [FFI-LINK-DIRECTIVES].
 fn link_args(ir: &str, source: &str, memory: &str) -> Vec<String> {
     let mut args: Vec<String> = Vec::new();
     let uses_http = ir.contains("@http") || ir.contains("@websocket");
@@ -808,7 +805,6 @@ fn link_args(ir: &str, source: &str, memory: &str) -> Vec<String> {
     // The reclaiming backend is a link-time archive swap — the IR is identical
     // [MEM-BACKENDS]. `gc` links the tracing-collector archive set, `arc` the
     // Perceus reference-counting set, `default` the malloc-passthrough set.
-    // (docs/plans/0011)
     let suffix = match memory {
         "gc" => "_gc",
         "arc" => "_arc",
@@ -1263,14 +1259,18 @@ mod tests {
         "examples/tested/db/database_effect.ospml",
         "examples/tested/db/sqlite_basics.osp",
         "examples/tested/db/sqlite_basics.ospml",
+        "examples/tested/effects/abort_vs_resume.osp",
         "examples/tested/effects/algebraic_effects_comprehensive.osp",
         "examples/tested/effects/algebraic_effects_comprehensive.ospml",
+        "examples/tested/effects/collect_all_errors.osp",
         "examples/tested/effects/fiber_effects.osp",
         "examples/tested/effects/fiber_effects.ospml",
         "examples/tested/effects/handler_scoping.osp",
         "examples/tested/effects/handler_scoping.ospml",
         "examples/tested/effects/http_state_levels.osp",
         "examples/tested/effects/http_state_levels.ospml",
+        "examples/tested/effects/recoverable_errors.osp",
+        "examples/tested/effects/result_and_effects.osp",
         "examples/tested/effects/resume_abort_early_exit.osp",
         "examples/tested/effects/resume_abort_early_exit.ospml",
         "examples/tested/effects/resume_lifo_audit.osp",
@@ -1281,6 +1281,8 @@ mod tests {
         "examples/tested/effects/resume_unit_markers.ospml",
         "examples/tested/effects/resume_value_rewrite.osp",
         "examples/tested/effects/resume_value_rewrite.ospml",
+        "examples/tested/effects/retry_until_valid.osp",
+        "examples/tested/effects/typed_error_channels.osp",
         "examples/tested/fiber/cpu_profiling_demo.osp",
         "examples/tested/fiber/fiber_determinism.osp",
         "examples/tested/fiber/fiber_exact_replica.osp",
@@ -1730,6 +1732,11 @@ mod tests {
     }
 
     #[test]
+    fn effects_abort_vs_resume_osp() {
+        assert_example_matches("examples/tested/effects/abort_vs_resume.osp");
+    }
+
+    #[test]
     fn effects_algebraic_effects_comprehensive_osp() {
         assert_example_matches("examples/tested/effects/algebraic_effects_comprehensive.osp");
     }
@@ -1737,6 +1744,11 @@ mod tests {
     #[test]
     fn effects_algebraic_effects_comprehensive_ospml() {
         assert_example_matches("examples/tested/effects/algebraic_effects_comprehensive.ospml");
+    }
+
+    #[test]
+    fn effects_collect_all_errors_osp() {
+        assert_example_matches("examples/tested/effects/collect_all_errors.osp");
     }
 
     #[test]
@@ -1767,6 +1779,16 @@ mod tests {
     #[test]
     fn effects_http_state_levels_ospml() {
         assert_example_matches("examples/tested/effects/http_state_levels.ospml");
+    }
+
+    #[test]
+    fn effects_recoverable_errors_osp() {
+        assert_example_matches("examples/tested/effects/recoverable_errors.osp");
+    }
+
+    #[test]
+    fn effects_result_and_effects_osp() {
+        assert_example_matches("examples/tested/effects/result_and_effects.osp");
     }
 
     #[test]
@@ -1817,6 +1839,16 @@ mod tests {
     #[test]
     fn effects_resume_value_rewrite_ospml() {
         assert_example_matches("examples/tested/effects/resume_value_rewrite.ospml");
+    }
+
+    #[test]
+    fn effects_retry_until_valid_osp() {
+        assert_example_matches("examples/tested/effects/retry_until_valid.osp");
+    }
+
+    #[test]
+    fn effects_typed_error_channels_osp() {
+        assert_example_matches("examples/tested/effects/typed_error_channels.osp");
     }
 
     #[test]
@@ -2245,6 +2277,7 @@ mod tests {
 
     #[test]
     fn directive_parses_both_spellings_and_ignores_others() {
+        // [FFI-LINK-DIRECTIVES]
         assert_eq!(directive("// @link: sqlite3", "link"), Some("sqlite3"));
         assert_eq!(
             directive("//@linkdir: /opt/lib ", "linkdir"),
@@ -2273,7 +2306,7 @@ mod tests {
 
     #[test]
     fn link_args_selects_gc_archive_and_validates_backend() {
-        // The `gc`/`arc` backends swap in their archive sets; `default` does not.
+        // [MEM-BACKENDS] `gc`/`arc` swap archives; `default` does not.
         let gc = link_args("call void @osprey_list_empty()", "", "gc");
         assert!(
             gc.iter().any(|a| a.contains("_gc.a")) || gc.is_empty(),

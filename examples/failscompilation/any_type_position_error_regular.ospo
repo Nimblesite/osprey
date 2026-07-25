@@ -1,6 +1,0 @@
-// Test that triggers getRegularArgumentPosition for any type error
-fn testFunc(x: int) -> int = x + 1
-
-// This should cause an any type error and trigger getRegularArgumentPosition
-let anyVal: any = 42
-let result = testFunc(anyVal)

@@ -1,7 +1,7 @@
 // Tracing garbage collector backend for Osprey — the swappable `@osp_alloc`
 // implementation selected at link time by `osprey --memory=gc`. Implements
-// [MEM-BACKENDS] (docs/specs/0018) and [GC-TRACE-CONSERVATIVE]
-// (docs/specs/0018-MemoryManagement.md [MEM-BACKENDS]).
+// [MEM-BACKENDS] and [GC-TRACE-CONSERVATIVE]
+// (docs/specs/0018-MemoryManagement.md).
 //
 // Algorithm: a CONSERVATIVE, NON-MOVING mark & sweep over the managed heap
 // reachable from the C stack, the machine registers, and the program's data/BSS
@@ -14,13 +14,11 @@
 // merely looks like a pointer keeps an object alive (sound — a reachable object
 // is never freed) but can never corrupt it (the collector never moves objects).
 //
-// Soundness scope (v1): collection runs ONLY while the process is effectively
-// single-threaded (the main thread is the sole allocator). The first allocation
-// from any other thread permanently disables collection — a fiber's heap is
-// isolated [MEM-FIBER-ISOLATION] and a precise per-fiber collector is future
-// work (the precise per-fiber collector of [MEM-BACKENDS]). Every allocation and
-// the whole collection run
-// hold one mutex, so disabling and the heap table are race-free.
+// Soundness scope: collection runs ONLY while the initial thread is the sole
+// allocator. The first allocation from another thread permanently disables
+// collection [MEM-FIBER-ISOLATION]. Every allocation and collection holds the
+// heap lock after the runtime announces multithreaded execution, so disabling
+// and the heap table remain race-free.
 
 #include <pthread.h>
 #include <setjmp.h>

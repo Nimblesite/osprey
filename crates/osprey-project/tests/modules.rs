@@ -1,4 +1,5 @@
-//! Project resolver coverage for module graph, imports, signatures, and entry rules.
+//! Project resolver coverage for [MODULES-MODEL], [MODULES-DIAG], imports,
+//! signatures, ABI names, and [MODULES-ENTRYPOINT].
 
 mod support;
 
@@ -12,7 +13,8 @@ use support::{ast, config, contains, error_messages, function, import, item, par
 
 #[test]
 fn mixed_flavors_resolve_by_namespace_not_file_path() {
-    // Implements [MODULES-FLAVOR-PROJECTION], [MODULES-PATH-INDEPENDENCE], [MODULES-IMPORT].
+    // Implements [FLAVOR-INTEROP], [MODULES-FLAVOR-PROJECTION],
+    // [MODULES-PATH-INDEPENDENCE], [MODULES-IMPORT], [MODULES-ABI].
     let library = parsed(
         "src/completely/unrelated/location.ospml",
         Flavor::Ml,
@@ -295,7 +297,7 @@ fn unknown_and_quoted_unaliased_imports_are_rejected() {
 
 #[test]
 fn non_entry_main_and_top_level_execution_are_rejected() {
-    // Implements [MODULES-PROJECT].
+    // Implements [MODULES-PROJECT], [MODULES-ENTRYPOINT].
     let entry = ast("entry.osp", vec![function("main", Expr::Integer(0))]);
     let other = ast(
         "other.osp",
@@ -345,7 +347,7 @@ fn member_alias_resolves_to_exported_declaration() {
 }
 
 #[test]
-fn constant_initializer_cycles_fail_before_codegen() {
+fn initializer_and_type_alias_cycles_fail_before_codegen() {
     // Implements [MODULES-CYCLES], [MODULES-INIT].
     let binding = |name: &str, target: &str| Stmt::Let {
         name: name.to_string(),
@@ -368,6 +370,14 @@ fn constant_initializer_cycles_fail_before_codegen() {
         contains(&messages, "constant initializer cycle"),
         "{messages:?}"
     );
+
+    let aliases = parsed(
+        "main.osp",
+        Flavor::Default,
+        "type First = List<Second>\ntype Second = List<First>\nfn main() = 0\n",
+    );
+    let messages = error_messages(&config("main.osp"), &[aliases]);
+    assert!(contains(&messages, "type alias cycle"), "{messages:?}");
 }
 
 fn ascribed_module(signature: &str, body: Vec<ModuleItem>) -> Stmt {

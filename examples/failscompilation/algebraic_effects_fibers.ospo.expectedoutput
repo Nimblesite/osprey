@@ -1,9 +1,0 @@
-line 6:4 mismatched input 'yield' expecting {'}', ID}
-line 6:9 extraneous input ':' expecting {<EOF>, 'match', 'select', 'fn', 'extern', 'import', 'type', 'module', 'let', 'mut', 'effect', 'perform', 'handle', 'spawn', 'yield', 'await', 'send', 'recv', 'true', 'false', '!', '|', '(', '{', '[', '+', '-', FLOAT, INT, INTERPOLATED_STRING, STRING, ID, DOC_COMMENT}
-line 7:10 extraneous input ':' expecting {<EOF>, 'match', 'select', 'fn', 'extern', 'import', 'type', 'module', 'let', 'mut', 'effect', 'perform', 'handle', 'spawn', 'yield', 'await', 'send', 'recv', 'true', 'false', '!', '|', '(', '{', '[', '+', '-', FLOAT, INT, INTERPOLATED_STRING, STRING, ID, DOC_COMMENT}
-line 7:23 extraneous input '->' expecting {<EOF>, 'match', 'select', 'fn', 'extern', 'import', 'type', 'module', 'let', 'mut', 'effect', 'perform', 'handle', 'spawn', 'yield', 'await', 'send', 'recv', 'true', 'false', '!', '|', '(', '{', '[', '+', '-', FLOAT, INT, INTERPOLATED_STRING, STRING, ID, DOC_COMMENT}
-line 8:0 extraneous input '}' expecting {<EOF>, 'match', 'select', 'fn', 'extern', 'import', 'type', 'module', 'let', 'mut', 'effect', 'perform', 'handle', 'spawn', 'yield', 'await', 'send', 'recv', 'true', 'false', '!', '|', '(', '{', '[', '+', '-', FLOAT, INT, INTERPOLATED_STRING, STRING, ID, DOC_COMMENT}
-line 19:30 no viable alternative at input '{performFiberCoordination.notify("Task "+toString(taskId)+" starting")performFiberCoordination.yield'
-line 19:30 no viable alternative at input 'performFiberCoordination.yield'
-line 21:30 no viable alternative at input 'performFiberCoordination.yield'
-line 23:0 extraneous input '}' expecting {<EOF>, 'match', 'select', 'fn', 'extern', 'import', 'type', 'module', 'let', 'mut', 'effect', 'perform', 'handle', 'spawn', 'yield', 'await', 'send', 'recv', 'true', 'false', '!', '|', '(', '{', '[', '+', '-', FLOAT, INT, INTERPOLATED_STRING, STRING, ID, DOC_COMMENT}

@@ -1,5 +1,5 @@
-// Terminal control runtime - raw mode, key reading, ANSI helpers and cell-width
-// measurement for building TUIs. Implements [BUILTIN-TERM].
+// Terminal control runtime - raw mode, key reading, and ANSI helpers.
+// Implements [BUILTIN-TERM].
 //
 // POSIX builds use termios + ioctl. The original terminal state is saved on the
 // first raw-mode enable and an atexit handler restores cooked mode and shows the
@@ -227,32 +227,3 @@ int64_t term_move_cursor(int64_t row, int64_t col) {
 }
 
 #endif
-
-// string_cell_width returns the visible width of a string: ANSI CSI escape
-// sequences (\x1b[...<final>) are skipped and UTF-8 continuation bytes are not
-// counted, so padEnd of a coloured string aligns visibly. Implements
-// [BUILTIN-TERM-CELLWIDTH]. Portable; built on every platform.
-int64_t string_cell_width(char *s) {
-  if (!s) {
-    return 0;
-  }
-  int64_t width = 0;
-  const unsigned char *p = (const unsigned char *)s;
-  while (*p) {
-    if (*p == 0x1b && p[1] == '[') {
-      p += 2;
-      while (*p && !(*p >= 0x40 && *p <= 0x7e)) {
-        p++;
-      }
-      if (*p) {
-        p++; // skip the final byte of the CSI sequence
-      }
-      continue;
-    }
-    if ((*p & 0xc0) != 0x80) {
-      width++; // count only UTF-8 lead/single bytes
-    }
-    p++;
-  }
-  return width;
-}

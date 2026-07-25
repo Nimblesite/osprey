@@ -144,7 +144,7 @@ rowCase () =
 
 bs = "\\"
 
-// --- MOCKING VIA ALGEBRAIC EFFECTS [TESTING-EFFECT-MOCKS] ---
+// --- MOCKING VIA ALGEBRAIC EFFECTS ---
 //
 // `Vault` is the same capability shape main.ospml wires to SQLite via
 // Ledger::Store. Business logic performs against the EFFECT; each test

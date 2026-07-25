@@ -1,11 +1,10 @@
 // The Osprey Debug panel: an activity-bar TreeView that, during a debug
 // session, surfaces what is happening inside the Osprey program — the call
-// stack, the current frame's locals, the program/binary under debug — and
-// leaves first-class room for the planned CPU and memory profiling views.
+// stack, the current frame's locals, and the program/binary under debug.
 //
 // The data model and tree-building are PURE functions (no `vscode`), so they
 // unit-test directly; only `registerOspreyDebugPanel` and the TreeDataProvider
-// touch the editor. The DAP reads mirror @nimblesite/lspkit-debug's client.
+// touch the editor.
 
 import {
   debug,
@@ -151,10 +150,7 @@ export function buildVariableNodes(variables: VarInfo[]): DebugNode[] {
 }
 
 /**
- * Profiling sections — intentional placeholders that reserve the CPU and memory
- * profiling surfaces ([DEBUGGER-RUNTIME]). They map onto the LspKit profiling
- * launch flags (profileOnLaunch / memoryTrackOnLaunch) and become live views
- * once the runtime emits sampling/allocation streams.
+ * Entry point to the shipped CPU profiler from the debugger panel.
  */
 export function buildProfilingNodes(): DebugNode[] {
   return [
@@ -168,19 +164,6 @@ export function buildProfilingNodes(): DebugNode[] {
           label: "CPU sampling",
           description: "run ⌘⇧P → Osprey: Profile Current File",
           icon: "watch",
-        },
-      ],
-    },
-    {
-      kind: "section",
-      label: "Memory",
-      icon: "server",
-      children: [
-        {
-          kind: "placeholder",
-          label: "Heap / allocations",
-          description: "planned — memoryTrackOnLaunch",
-          icon: "database",
         },
       ],
     },

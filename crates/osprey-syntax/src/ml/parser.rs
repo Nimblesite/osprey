@@ -202,10 +202,7 @@ impl Parser<'_> {
             TokKind::KwOpaque => self.opaque_decl(),
             TokKind::Reserved(word) => {
                 let word = word.clone();
-                self.error(format!(
-                    "ML construct '{word}' is not yet supported (plan 0013); \
-                     use the Default flavor for now"
-                ));
+                self.error(format!("ML construct '{word}' is not yet supported"));
                 None
             }
             TokKind::Ident(_) => self.ident_item(),
@@ -1245,6 +1242,11 @@ impl Parser<'_> {
                 self.advance();
                 self.ident_atom(name)
             }
+            TokKind::Reserved(word) => {
+                self.error(format!("ML construct '{word}' is not yet supported"));
+                self.advance();
+                MlExpr::Bool(false)
+            }
             other => {
                 self.error(format!("unexpected token {other:?} in expression"));
                 self.advance();
@@ -1937,6 +1939,6 @@ impl Parser<'_> {
 
 /// An uppercase initial marks a constructor/type name; lowercase marks a value
 /// binding or variable, mirroring the Default flavor's lexical convention.
-fn is_constructor(name: &str) -> bool {
+pub(super) fn is_constructor(name: &str) -> bool {
     name.chars().next().is_some_and(char::is_uppercase)
 }

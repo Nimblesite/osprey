@@ -502,7 +502,8 @@ impl Codegen {
     /// position — `None` when it is not (statically) a function value. Powers
     /// higher-order calls through arbitrary callee expressions: a chained
     /// application (`add3(1)(2)(3)`), a function held in a record field
-    /// (`cfg.processor`), or a function-typed local.
+    /// (`cfg.processor`), or a function-typed local. Implements
+    /// [TYPE-FN-HIGHER-ORDER].
     pub(crate) fn callee_fn_type(&self, expr: &Expr) -> Option<Type> {
         match expr {
             Expr::Identifier(name) => self.identifier_fn_type(name),
@@ -1210,7 +1211,7 @@ impl Codegen {
     /// [`heap_alloc`] carrying the per-site layout word (kind + managed-pointer
     /// mask, see [`crate::meta`]): the ARC backend stores it in the object
     /// header so `osp_release` can drop children precisely; other backends
-    /// ignore it. Implements [GC-ARC-PERCEUS], docs/plans/0011 phase 2.
+    /// ignore it. Implements [GC-ARC-PERCEUS].
     pub(crate) fn heap_alloc_tagged(&mut self, size: &str, meta: i64) -> String {
         if meta == crate::meta::KIND_RAW {
             return self.heap_alloc(size);
@@ -1286,7 +1287,8 @@ impl Codegen {
         name
     }
 
-    /// Set the current debug source position, returning the previous position.
+    /// Set the current debug source position [DEBUGGER-SOURCE-MAP], returning
+    /// the previous position.
     pub(crate) fn set_debug_position(&mut self, position: Option<Position>) -> Option<Position> {
         self.debug
             .as_mut()

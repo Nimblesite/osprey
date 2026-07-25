@@ -1,1 +1,1 @@
-line 7:13: function requires named arguments 'add' has 2 parameters and requires named arguments. Use: add(x: value, y: value)
+call arity mismatch: expected 2 argument(s), got 1

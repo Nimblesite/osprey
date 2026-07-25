@@ -55,6 +55,9 @@ int64_t osp_string_byte_length(const char *s);
 const char *osp_string_byte_at(const char *s, int64_t i, int64_t *out);
 const char *osp_string_codepoint_at(const char *s, int64_t byte_index, int64_t *out);
 const char *osp_string_codepoint_width(int64_t cp, int64_t *out);
+/* Returns NULL for U+0000 as well as non-scalars: NUL-terminated runtime
+ * strings cannot distinguish its encoding from the empty-string terminator.
+ * [BUILTIN-STRING-FROMCODEPOINT] */
 char *osp_string_from_codepoint(int64_t cp);
 
 /* String-interpolation formatting, two-pass: measure, then write into an
@@ -62,7 +65,7 @@ char *osp_string_from_codepoint(int64_t cp);
    because the emitted IR is target-neutral and `size_t` is not: it is 32-bit on
    wasm32 and 64-bit natively, so a literal size type in the IR mismatches
    wasi-libc's snprintf signature at wasm-ld time. `int64_t` is the same
-   everywhere. [BUILTIN-STRING-INTERP] */
+   everywhere. [STRING-INTERPOLATION] */
 int64_t osp_format_size(const char *fmt, ...);
 void osp_format_into(char *buf, int64_t cap, const char *fmt, ...);
 

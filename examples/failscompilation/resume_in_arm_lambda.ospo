@@ -1,7 +1,4 @@
-// `resume` captures the CURRENT arm's continuation; a lambda body runs when
-// called, not where it is written, so the continuation is not live inside it.
-// The checker rejects this ([EFFECTS-RESUME]) — same hard error as a top-level
-// `resume` — keeping the type checker and codegen in agreement.
+// [EFFECTS-RESUME] A lambda inside an arm cannot capture its continuation.
 effect E {
     op: fn() -> int
 }

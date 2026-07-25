@@ -10,8 +10,8 @@
 // matching, Hindley-Milner inference (no annotations), functional pipelines,
 // persistent List/Map, recursion, string interpolation. Everything here links
 // the portable wasm32 runtime subset (strings, lists, maps, effects) -- no
-// fibers, sockets, or syscalls. The finale pins the two width fixes that make
-// the wasm port correct: `length`/concat route through osp_strlen (i64 on every
+// fibers, sockets, or syscalls. The finale pins [WASM-TARGET-WIDTH]:
+// `length`/concat route through osp_strlen (i64 on every
 // target) and the large product formats via %lld (a plain %ld truncates on
 // wasm32, where `long` is 32-bit).
 

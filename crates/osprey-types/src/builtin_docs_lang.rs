@@ -29,7 +29,7 @@ pub(crate) use builtin_doc;
 pub(crate) static CORE: &[BuiltinDoc] = &[
     builtin_doc!(
         "print",
-        "Prints a value to the console. Automatically converts the value to a string representation.",
+        "Writes a supported scalar or Result representation followed by a newline. Unit renders as 0.",
         ["value" => "The value to print"],
         "print(\"Hello, World!\")  // Prints: Hello, World!\nprint(42)             // Prints: 42\nprint(true)           // Prints: true",
     ),
@@ -41,14 +41,14 @@ pub(crate) static CORE: &[BuiltinDoc] = &[
     ),
     builtin_doc!(
         "toString",
-        "Converts a value to its string representation.",
+        "Formats the same scalar and Result values accepted by print without writing output. Unit renders as 0.",
         ["value" => "The value to convert to string"],
         "let str = toString(42)\nprint(str)  // Prints: 42",
     ),
     builtin_doc!(
         "length",
-        "Returns the byte length of a string. Total — never fails.",
-        ["s" => "The string to measure"],
+        "Returns a string's byte length or a List/Map element count.",
+        ["s" => "The string, List, or Map to measure"],
         "let len = length(\"hello\")  // 5",
     ),
     builtin_doc!(
@@ -65,31 +65,31 @@ pub(crate) static CORE: &[BuiltinDoc] = &[
     ),
     builtin_doc!(
         "abs",
-        "Returns the absolute value of an integer.",
+        "Returns the absolute value of an i64 integer. INT64_MIN remains unchanged because its positive magnitude is not representable.",
         ["value" => "The integer whose magnitude to take"],
         "let d = abs(0 - 5)  // 5",
     ),
     builtin_doc!(
         "intDiv",
-        "Truncating integer division (rounds toward zero), divide-by-zero checked. The `/` operator is float-only; this is its integer sibling, returning Result<int, MathError>.",
-        ["a" => "The dividend", "b" => "The divisor (zero yields Error)"],
-        "fn half(n) = intDiv(n, 2)  // intDiv(7, 2) == 3",
+        "Truncating integer division. Zero returns Error(division by zero); INT64_MIN / -1 returns Error(integer overflow).",
+        ["a" => "The dividend", "b" => "The divisor"],
+        "fn half(n) -> int = intDiv(n, 2)  // half(7) == 3",
     ),
     builtin_doc!(
         "checkedAdd",
-        "Integer addition that reports overflow instead of wrapping. The `+` operator returns plain int because a wrapped result is still representable; this returns Result<int, MathError>.",
+        "Integer addition that reports overflow instead of wrapping. The `+` operator returns plain int because a wrapped result is still representable; this returns Result<int, Error>.",
         ["a" => "The first addend", "b" => "The second addend"],
         "let t = checkedAdd(a: 9223372036854775807, b: 1) ?: 0  // 0 — overflow reported",
     ),
     builtin_doc!(
         "checkedSub",
-        "Integer subtraction that reports overflow instead of wrapping, returning Result<int, MathError>. The guarded sibling of `-`.",
+        "Integer subtraction that reports overflow instead of wrapping, returning Result<int, Error>. The guarded sibling of `-`.",
         ["a" => "The minuend", "b" => "The subtrahend"],
         "let d = checkedSub(a: 10, b: 4) ?: 0  // 6",
     ),
     builtin_doc!(
         "checkedMul",
-        "Integer multiplication that reports overflow instead of wrapping, returning Result<int, MathError>. The guarded sibling of `*`.",
+        "Integer multiplication that reports overflow instead of wrapping, returning Result<int, Error>. The guarded sibling of `*`.",
         ["a" => "The first factor", "b" => "The second factor"],
         "let p = checkedMul(a: 6, b: 7) ?: 0  // 42",
     ),
@@ -101,15 +101,9 @@ pub(crate) static CORE: &[BuiltinDoc] = &[
     ),
     builtin_doc!(
         "randomBelow",
-        "A cryptographically-secure uniform random integer in [0, n), unbiased by rejection sampling. Returns Result<int, MathError> — Error when n <= 0.",
+        "A cryptographically-secure uniform random integer in [0, n), unbiased by rejection sampling. Returns Result<int, Error> when n is positive and Error otherwise.",
         ["n" => "Exclusive upper bound; must be positive"],
         "let d = randomBelow(6) ?: 0  // a fair die face 0..5",
-    ),
-    builtin_doc!(
-        "not",
-        "Returns the logical negation of a boolean.",
-        ["value" => "The boolean to negate"],
-        "let off = not(true)  // false",
     ),
 ];
 
@@ -131,7 +125,7 @@ pub(crate) static TESTING: &[BuiltinDoc] = &[
     ),
     builtin_doc!(
         "check",
-        "Labeled equality assertion in Alcotest argument order (expected before actual). Behaves exactly like expect, with the label in the failure diagnostic.",
+        "Asserts expected equals actual and includes label in a mismatch diagnostic. Execution continues after a mismatch.",
         ["label" => "A short description of what is being checked", "expected" => "The value the actual must equal", "actual" => "The computed value"],
         "test(\"doubling\", fn() => check(\"double\", 42, 21 * 2))",
     ),
@@ -160,13 +154,13 @@ pub(crate) static STRINGS: &[BuiltinDoc] = &[
     ),
     builtin_doc!(
         "indexOf",
-        "Returns byte-index of first occurrence of needle, or Error(NotFound).",
+        "Returns the byte index of needle's first occurrence, or Error with 'indexOf: substring not found'.",
         ["s" => "The string to search in", "needle" => "The substring to locate"],
         "match indexOf(\"foo=bar\", \"=\") { Success { value } => print(value) ... }",
     ),
     builtin_doc!(
         "split",
-        "Splits s on separator. Error(InvalidArgument) on empty separator.",
+        "Splits s on separator. An empty separator returns Error.",
         ["s" => "The string to split", "separator" => "Non-empty separator"],
         "split(\"a,b,c\", \",\")  // Success { value: [\"a\",\"b\",\"c\"] }",
     ),
@@ -196,19 +190,19 @@ pub(crate) static STRINGS: &[BuiltinDoc] = &[
     ),
     builtin_doc!(
         "replace",
-        "Replaces every occurrence of needle. Error(InvalidArgument) on empty needle.",
+        "Replaces every occurrence of needle. An empty needle returns Error.",
         ["s" => "The source string", "needle" => "The substring to find", "replacement" => "The replacement string"],
         "replace(\"a-b-c\", \"-\", \"_\")  // Success { value: \"a_b_c\" }",
     ),
     builtin_doc!(
         "repeat",
-        "Concatenates s with itself n times. Error(InvalidArgument) on negative n.",
+        "Concatenates s with itself n times. A negative n returns Error.",
         ["s" => "The string to repeat", "n" => "Repeat count, must be >= 0"],
         "repeat(\"ab\", 3)  // Success { value: \"ababab\" }",
     ),
     builtin_doc!(
         "substring",
-        "Extracts s[start, end). Returns Error(IndexOutOfRange) if start<0, end>len, or start>end.",
+        "Extracts s[start, end). Invalid or inverted bounds return Error.",
         ["s" => "The source string", "start" => "Starting index (inclusive)", "end" => "Ending index (exclusive)"],
         "substring(\"hello\", 1, 4)  // Success { value: \"ell\" }",
     ),
@@ -226,13 +220,13 @@ pub(crate) static STRINGS: &[BuiltinDoc] = &[
     ),
     builtin_doc!(
         "isEmpty",
-        "True if string has zero length.",
-        ["s" => "The string to test"],
+        "True if a string has zero bytes or a List/Map has zero elements.",
+        ["s" => "The string, List, or Map to test"],
         "let blank = isEmpty(\"\")  // true",
     ),
     builtin_doc!(
         "parseFloat",
-        "Strict base-10 floating-point parser. No whitespace tolerance.",
+        "Strict finite base-10 floating-point parser. Rejects surrounding whitespace, NaN/infinity spellings, and hexadecimal floats.",
         ["s" => "The string to parse"],
         "parseFloat(\"3.14\")  // Success { value: 3.14 }",
     ),
@@ -274,13 +268,13 @@ pub(crate) static STRINGS: &[BuiltinDoc] = &[
     ),
     builtin_doc!(
         "fromCodePoint",
-        "Returns the single-character string for a Unicode code point, or an error if it is not a valid scalar value.",
-        ["codePoint" => "The Unicode scalar value to encode"],
+        "Returns the single-character string for a nonzero Unicode scalar, or an error for U+0000 and non-scalars.",
+        ["codePoint" => "The nonzero Unicode scalar value to encode"],
         "match fromCodePoint(233) {\n  Success { value } => print(value)  // é\n  Error { message } => print(message)\n}",
     ),
     builtin_doc!(
         "toUpperCase",
-        "ASCII-aware uppercase. Unicode simple case mapping is a future addition.",
+        "Converts ASCII letters to uppercase; other bytes are unchanged.",
         ["s" => "The string to transform"],
         "toUpperCase(\"hello\")  // \"HELLO\"",
     ),
@@ -310,7 +304,7 @@ pub(crate) static STRINGS: &[BuiltinDoc] = &[
     ),
     builtin_doc!(
         "reverse",
-        "Reverses byte order. Grapheme-cluster reversal is future work.",
+        "Reverses byte order.",
         ["s" => "The string to reverse"],
         "reverse(\"abc\")  // \"cba\"",
     ),
@@ -348,13 +342,11 @@ pub(crate) static FUNCTIONAL: &[BuiltinDoc] = &[
 /// `lists` built-in documentation. Prose only — types come from the
 /// authoritative scheme in `builtins.rs`, joined by name.
 ///
-/// These `listXxx` names are the spellings that actually ship for the bare list
-/// surface of docs/specs/0012-Built-InFunctions.md: [BUILTIN-LIST],
+/// List surface from docs/specs/0012-Built-InFunctions.md:
+/// [BUILTIN-LIST],
 /// [BUILTIN-LIST-GET], [BUILTIN-LIST-APPEND], [BUILTIN-LIST-PREPEND],
 /// [BUILTIN-LIST-CONCAT], [BUILTIN-LIST-REVERSE], [BUILTIN-LIST-CONTAINS] and
-/// [BUILTIN-COLLECTION-LENGTH]. The spec's [BUILTIN-LIST-HEAD],
-/// [BUILTIN-LIST-TAIL] and [BUILTIN-LIST-INDEXOF] have no entry because they
-/// have no implementation.
+/// [BUILTIN-COLLECTION-LENGTH].
 pub(crate) static LISTS: &[BuiltinDoc] = &[
     builtin_doc!(
         "List",
@@ -364,7 +356,7 @@ pub(crate) static LISTS: &[BuiltinDoc] = &[
     ),
     builtin_doc!(
         "listAppend",
-        "Returns a new list with value at the end. O(log32 n) amortised.",
+        "Returns a new list with value at the end. Amortized O(1).",
         ["list" => "The list", "value" => "Value to append"],
         "listAppend([1, 2], 3)  // [1, 2, 3]",
     ),
@@ -400,13 +392,13 @@ pub(crate) static LISTS: &[BuiltinDoc] = &[
     ),
     builtin_doc!(
         "listContains",
-        "True iff some element equals value. O(n).",
+        "Linear search. Strings compare by content, scalars by value, and managed handles by identity.",
         ["list" => "The list", "value" => "Value to find"],
         "listContains([1, 2, 3], 2)  // true",
     ),
     builtin_doc!(
         "forEachList",
-        "Apply function to every element of list. Phase 7 of collections plan.",
+        "Applies function to every list element in index order.",
         ["list" => "The list", "function" => "Function applied per element"],
         "forEachList(xs, print)",
     ),
@@ -415,20 +407,16 @@ pub(crate) static LISTS: &[BuiltinDoc] = &[
 /// `maps` built-in documentation. Prose only — types come from the
 /// authoritative scheme in `builtins.rs`, joined by name.
 ///
-/// These `mapXxx` names are the spellings that actually ship for the bare map
-/// surface of docs/specs/0012-Built-InFunctions.md: [BUILTIN-MAP],
+/// Map surface from docs/specs/0012-Built-InFunctions.md:
+/// [BUILTIN-MAP],
 /// [BUILTIN-MAP-GET], [BUILTIN-MAP-SET], [BUILTIN-MAP-REMOVE],
 /// [BUILTIN-MAP-MERGE], [BUILTIN-MAP-CONTAINS] and [BUILTIN-COLLECTION-LENGTH].
 /// The `mapKeys` / `mapValues` entries below are the arity-1 accessors
-/// [BUILTIN-MAP-KEYS] / [BUILTIN-MAP-VALUES] — NOT the arity-2 transformers the
-/// spec gives the same two names ([BUILTIN-MAP-MAPKEYS] /
-/// [BUILTIN-MAP-MAPVALUES]), which are unimplemented, as are
-/// [BUILTIN-MAP-UPDATE], [BUILTIN-MAP-ENTRIES], [BUILTIN-MAP-FILTERENTRIES],
-/// [BUILTIN-MAP-FOLDENTRIES], [BUILTIN-MAP-ZIPTOMAP] and [BUILTIN-MAP-GROUPBY].
+/// [BUILTIN-MAP-KEYS] / [BUILTIN-MAP-VALUES].
 pub(crate) static MAPS: &[BuiltinDoc] = &[
     builtin_doc!(
         "Map",
-        "Creates a new, empty persistent map.",
+        "Creates a new empty string-keyed map.",
         [],
         "let m = Map()",
     ),
@@ -472,7 +460,7 @@ pub(crate) static MAPS: &[BuiltinDoc] = &[
         "mapKeys",
         "All keys of the map as a list. Order unspecified.",
         ["map" => "The map"],
-        "mapKeys(m)  // List<K>",
+        "mapKeys(m)  // List<string>",
     ),
     builtin_doc!(
         "mapValues",

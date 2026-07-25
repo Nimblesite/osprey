@@ -3,9 +3,10 @@
 //! `Var(1)` as their quantified variables; `instantiate` renames them per use,
 //! so the concrete ids only need to be self-consistent within one scheme.
 //!
-//! Signatures favour `any` where the runtime accepts heterogeneous input
-//! (`print`, `toString`, `length`) and stay precise where a wrong type is a
-//! genuine bug. Result-returning builtins return `Result<T, Error>` — the
+//! Signatures use `any` only where one Hindley-Milner type cannot express the
+//! runtime's supported alternatives (`print`, `toString`, `length`,
+//! `isEmpty`); `builtin_constraints` checks their concrete call-site types.
+//! Result-returning builtins return `Result<T, Error>` — the
 //! shape the C runtime actually returns — so the match/auto-unwrap paths agree
 //! with the expected outputs in `examples/tested`.
 
@@ -79,11 +80,12 @@ fn core(e: &mut TypeEnv) {
     mono(e, "input", vec![], s());
     mono(e, "toString", vec![any()], s());
     mono(e, "length", vec![any()], i());
+    // [CONCURRENCY-SLEEP] The native status is not part of the Unit surface.
     mono(e, "sleep", vec![i()], u());
-    // range(start, end) -> List<int>
-    mono(e, "range", vec![i(), i()], Type::list(i()));
+    // A range is a fused iterator handle, not a materialized List [BUILTIN-ITER].
+    mono(e, "range", vec![i(), i()], Type::iterator(i()));
     mono(e, "abs", vec![i()], i());
-    // Truncating integer division, divide-by-zero-checked → Result<int, MathError>.
+    // Truncating integer division, divide-by-zero-checked → Result<int, Error>.
     // The `/` operator is float-only (Osprey spec); this is its integer sibling.
     // Implements [BUILTIN-INTDIV].
     mono(e, "intDiv", vec![i(), i()], res(i()));
@@ -98,7 +100,6 @@ fn core(e: &mut TypeEnv) {
     // Error when n <= 0. Implements [BUILTIN-RANDOM], [BUILTIN-RANDOM-BELOW].
     mono(e, "random", vec![], i());
     mono(e, "randomBelow", vec![i()], res(i()));
-    mono(e, "not", vec![b()], b());
 }
 
 /// The testing framework's built-ins. Implements [TESTING-BUILTINS]
@@ -115,9 +116,9 @@ fn testing(e: &mut TypeEnv) {
         vec![s(), Type::fun(vec![], Type::Var(0))],
         u(),
     );
-    // expect(actual, expected): Jest argument order. [TESTING-BUILTIN-EXPECT]
+    // expect(actual, expected). [TESTING-BUILTIN-EXPECT]
     mono(e, "expect", vec![any(), any()], u());
-    // check(label, expected, actual): Alcotest argument order. [TESTING-BUILTIN-CHECK]
+    // check(label, expected, actual). [TESTING-BUILTIN-CHECK]
     mono(e, "check", vec![s(), any(), any()], u());
 }
 
@@ -163,36 +164,36 @@ fn strings(e: &mut TypeEnv) {
 fn functional(e: &mut TypeEnv) {
     let t = || Type::Var(0);
     let v = || Type::Var(1);
-    // forEach : (List<t>, (t) -> Unit) -> Unit
+    let iter_t = || Type::iterator(t());
+    let iter_v = || Type::iterator(v());
+    // Fused iterator surface [BUILTIN-ITER]. Runtime lists use the explicitly
+    // list-named traversal functions below.
     poly(
         e,
         "forEach",
         vec![0],
-        vec![Type::list(t()), Type::fun(vec![t()], u())],
+        vec![iter_t(), Type::fun(vec![t()], u())],
         u(),
     );
-    // map : (List<t>, (t) -> v) -> List<v>
     poly(
         e,
         "map",
         vec![0, 1],
-        vec![Type::list(t()), Type::fun(vec![t()], v())],
-        Type::list(v()),
+        vec![iter_t(), Type::fun(vec![t()], v())],
+        iter_v(),
     );
-    // filter : (List<t>, (t) -> bool) -> List<t>
     poly(
         e,
         "filter",
         vec![0],
-        vec![Type::list(t()), Type::fun(vec![t()], b())],
-        Type::list(t()),
+        vec![iter_t(), Type::fun(vec![t()], b())],
+        iter_t(),
     );
-    // fold : (List<t>, v, (v, t) -> v) -> v
     poly(
         e,
         "fold",
         vec![0, 1],
-        vec![Type::list(t()), v(), Type::fun(vec![v(), t()], v())],
+        vec![iter_t(), v(), Type::fun(vec![v(), t()], v())],
         v(),
     );
 }
@@ -228,6 +229,7 @@ fn lists(e: &mut TypeEnv) {
     poly(e, "listLength", vec![0], vec![Type::list(t())], i());
     poly(e, "listGet", vec![0], vec![Type::list(t()), i()], res(t()));
     poly(e, "listContains", vec![0], vec![Type::list(t()), t()], b());
+    // Eager list traversal [BUILTIN-LIST-FOREACH].
     poly(
         e,
         "forEachList",
@@ -239,43 +241,54 @@ fn lists(e: &mut TypeEnv) {
 }
 
 fn maps(e: &mut TypeEnv) {
-    let k = || Type::Var(0);
-    let v = || Type::Var(1);
-    let m = || Type::map(k(), v());
-    poly(e, "Map", vec![0, 1], vec![], m());
-    poly(e, "mapSet", vec![0, 1], vec![m(), k(), v()], m());
-    poly(e, "mapGet", vec![0, 1], vec![m(), k()], res(v()));
-    poly(e, "mapRemove", vec![0, 1], vec![m(), k()], m());
-    poly(e, "mapMerge", vec![0, 1], vec![m(), m()], m());
-    poly(e, "mapContains", vec![0, 1], vec![m(), k()], b());
-    poly(e, "mapLength", vec![0, 1], vec![m()], i());
-    poly(e, "mapKeys", vec![0, 1], vec![m()], Type::list(k()));
-    poly(e, "mapValues", vec![0, 1], vec![m()], Type::list(v()));
+    // Public map construction uses OSPREY_KEY_STRING in the runtime. Keeping
+    // the key concrete prevents an int/bool value from being interpreted as a
+    // string pointer by the erased map ABI [TYPE-MAP], [TYPE-MAP-LITERAL].
+    let v = || Type::Var(0);
+    let m = || Type::map(s(), v());
+    poly(e, "Map", vec![0], vec![], m());
+    poly(e, "mapSet", vec![0], vec![m(), s(), v()], m());
+    poly(e, "mapGet", vec![0], vec![m(), s()], res(v()));
+    poly(e, "mapRemove", vec![0], vec![m(), s()], m());
+    poly(e, "mapMerge", vec![0], vec![m(), m()], m());
+    poly(e, "mapContains", vec![0], vec![m(), s()], b());
+    poly(e, "mapLength", vec![0], vec![m()], i());
+    poly(e, "mapKeys", vec![0], vec![m()], Type::list(s()));
+    poly(e, "mapValues", vec![0], vec![m()], Type::list(v()));
 }
 
 fn files(e: &mut TypeEnv) {
+    // File surface [BUILTIN-FILE].
     mono(e, "readFile", vec![s()], res(s()));
-    mono(e, "writeFile", vec![s(), s()], res(u()));
-    mono(e, "deleteFile", vec![s()], res(u()));
+    mono(e, "writeFile", vec![s(), s()], res(i()));
 }
 
 fn http(e: &mut TypeEnv) {
     mono(e, "httpCreateClient", vec![s(), i()], i());
-    mono(e, "httpCloseClient", vec![i()], u());
-    mono(e, "httpGet", vec![i(), s(), s()], res(s()));
+    mono(e, "httpCloseClient", vec![i()], i());
+    mono(e, "httpGet", vec![i(), s(), s()], i());
     mono(e, "httpGetResponse", vec![i(), s(), s()], res(i()));
     mono(e, "httpResponseBody", vec![i()], res(s()));
-    mono(e, "httpResponseFree", vec![i()], u());
+    mono(e, "httpResponseFree", vec![i()], res(i()));
     mono(e, "httpResponseStatus", vec![i()], i());
     mono(e, "httpResponseHeader", vec![i(), s()], res(s()));
     // (clientId, path, body, headers) for POST/PUT; (clientId, path, headers) for DELETE.
-    mono(e, "httpPost", vec![i(), s(), s(), s()], res(s()));
-    mono(e, "httpPut", vec![i(), s(), s(), s()], res(s()));
-    mono(e, "httpDelete", vec![i(), s(), s()], res(s()));
+    mono(e, "httpPost", vec![i(), s(), s(), s()], i());
+    mono(e, "httpPut", vec![i(), s(), s(), s()], i());
+    mono(e, "httpDelete", vec![i(), s(), s()], i());
     mono(e, "httpCreateServer", vec![i(), s()], i());
-    // httpListen takes the server id and a request-handler function.
-    mono(e, "httpListen", vec![i(), any()], i());
-    mono(e, "httpStopServer", vec![i()], u());
+    // The C runtime calls this handler with the four request strings and reads
+    // the returned record using the built-in HttpResponse layout.
+    mono(
+        e,
+        "httpListen",
+        vec![
+            i(),
+            Type::fun(vec![s(), s(), s(), s()], Type::prim("HttpResponse")),
+        ],
+        i(),
+    );
+    mono(e, "httpStopServer", vec![i()], i());
 }
 
 fn json(e: &mut TypeEnv) {
@@ -283,11 +296,12 @@ fn json(e: &mut TypeEnv) {
     mono(e, "jsonParse", vec![s()], res(i()));
     mono(e, "jsonGet", vec![i(), s()], res(s()));
     mono(e, "jsonLength", vec![i(), s()], i());
-    mono(e, "jsonFree", vec![i()], u());
+    mono(e, "jsonFree", vec![i()], res(i()));
 }
 
 fn concurrency(e: &mut TypeEnv) {
     let t = || Type::Var(0);
+    // Fiber operations [CONCURRENCY-SPAWN-AWAIT], [CONCURRENCY-YIELD].
     // await : (Fiber<t>) -> t
     poly(
         e,
@@ -296,7 +310,13 @@ fn concurrency(e: &mut TypeEnv) {
         vec![Type::con("Fiber", vec![t()])],
         t(),
     );
-    mono(e, "fiberDone", vec![any()], i());
+    poly(
+        e,
+        "fiberDone",
+        vec![0],
+        vec![Type::con("Fiber", vec![t()])],
+        i(),
+    );
     mono(e, "yield", vec![], u());
     mono(e, "fiber_yield", vec![i()], i());
     // Channel<t>: create with a buffer size, send/recv values.
@@ -330,14 +350,23 @@ fn websocket(e: &mut TypeEnv) {
     mono(e, "websocketKeepAlive", vec![], u());
     mono(e, "websocketConnect", vec![s()], i());
     mono(e, "websocketSend", vec![i(), s()], i());
-    mono(e, "websocketClose", vec![i()], u());
+    mono(e, "websocketClose", vec![i()], i());
 }
 
 /// The rendered signature of a built-in (`name : type`), for editor hover.
 /// `None` when `name` is not a built-in.
 #[must_use]
 pub fn builtin_signature(name: &str) -> Option<String> {
-    base_env().get(name).map(|s| format!("{name} : {}", s.ty))
+    let scheme = base_env().get(name)?.clone();
+    if let (Some(display), Type::Fun { params, ret }) = (
+        crate::builtin_constraints::display_param_type(name, 0),
+        &scheme.ty,
+    ) {
+        if params.len() == 1 {
+            return Some(format!("{name} : ({display}) -> {ret}"));
+        }
+    }
+    Some(format!("{name} : {}", scheme.ty))
 }
 
 fn terminal(e: &mut TypeEnv) {
@@ -349,8 +378,14 @@ fn terminal(e: &mut TypeEnv) {
     mono(e, "termMoveCursor", vec![i(), i()], i());
     mono(e, "termHideCursor", vec![], i());
     mono(e, "termShowCursor", vec![], i());
-    // External process control: spawn with an event callback, await exit, clean up.
-    mono(e, "spawnProcess", vec![s(), any()], i());
+    // External process control [BUILTIN-PROCESS]: spawning can fail before a
+    // handle exists; await and cleanup operate on a successful handle.
+    mono(
+        e,
+        "spawnProcess",
+        vec![s(), Type::fun(vec![i(), i(), s()], u())],
+        res(i()),
+    );
     mono(e, "awaitProcess", vec![i()], i());
     mono(e, "cleanupProcess", vec![i()], u());
 }
@@ -365,5 +400,105 @@ mod tests {
         assert!(e.get("print").is_some());
         assert_eq!(e.get("map").unwrap().vars.len(), 2);
         assert_eq!(e.get("await").unwrap().vars.len(), 1);
+        assert_eq!(
+            builtin_signature("fiberDone").as_deref(),
+            Some("fiberDone : (Fiber<t0>) -> int")
+        );
+    }
+
+    #[test]
+    fn process_builtins_match_the_result_returning_runtime() {
+        assert_eq!(
+            builtin_signature("spawnProcess").as_deref(),
+            Some("spawnProcess : (string, (int, int, string) -> Unit) -> Result<int, Error>")
+        );
+        assert_eq!(
+            builtin_signature("awaitProcess").as_deref(),
+            Some("awaitProcess : (int) -> int")
+        );
+        assert_eq!(
+            builtin_signature("cleanupProcess").as_deref(),
+            Some("cleanupProcess : (int) -> Unit")
+        );
+    }
+
+    #[test]
+    fn network_builtins_match_the_runtime_status_abi() {
+        let expected = [
+            (
+                "writeFile",
+                "writeFile : (string, string) -> Result<int, Error>",
+            ),
+            ("httpCloseClient", "httpCloseClient : (int) -> int"),
+            ("httpGet", "httpGet : (int, string, string) -> int"),
+            (
+                "httpResponseFree",
+                "httpResponseFree : (int) -> Result<int, Error>",
+            ),
+            (
+                "httpPost",
+                "httpPost : (int, string, string, string) -> int",
+            ),
+            ("httpPut", "httpPut : (int, string, string, string) -> int"),
+            ("httpDelete", "httpDelete : (int, string, string) -> int"),
+            (
+                "httpListen",
+                "httpListen : (int, (string, string, string, string) -> HttpResponse) -> int",
+            ),
+            ("httpStopServer", "httpStopServer : (int) -> int"),
+            ("websocketClose", "websocketClose : (int) -> int"),
+            ("jsonFree", "jsonFree : (int) -> Result<int, Error>"),
+        ];
+        for (name, signature) in expected {
+            assert_eq!(
+                builtin_signature(name).as_deref(),
+                Some(signature),
+                "{name}"
+            );
+        }
+    }
+
+    #[test]
+    fn public_maps_use_the_runtime_string_key_abi() {
+        let expected = [
+            ("Map", "Map : () -> Map<string, t0>"),
+            (
+                "mapSet",
+                "mapSet : (Map<string, t0>, string, t0) -> Map<string, t0>",
+            ),
+            (
+                "mapGet",
+                "mapGet : (Map<string, t0>, string) -> Result<t0, Error>",
+            ),
+            ("mapKeys", "mapKeys : (Map<string, t0>) -> List<string>"),
+        ];
+        for (name, signature) in expected {
+            assert_eq!(
+                builtin_signature(name).as_deref(),
+                Some(signature),
+                "{name}"
+            );
+        }
+    }
+
+    #[test]
+    fn iterator_builtins_do_not_advertise_runtime_lists() {
+        let expected = [
+            ("range", "range : (int, int) -> Iterator<int>"),
+            ("map", "map : (Iterator<t0>, (t0) -> t1) -> Iterator<t1>"),
+            (
+                "filter",
+                "filter : (Iterator<t0>, (t0) -> bool) -> Iterator<t0>",
+            ),
+            ("forEach", "forEach : (Iterator<t0>, (t0) -> Unit) -> Unit"),
+            ("fold", "fold : (Iterator<t0>, t1, (t1, t0) -> t1) -> t1"),
+        ];
+        for (name, signature) in expected {
+            assert_eq!(
+                builtin_signature(name).as_deref(),
+                Some(signature),
+                "{name}"
+            );
+        }
     }
 }

@@ -1,4 +1,4 @@
-//! Generic debugger support primitives.
+//! Generic debugger support primitives [DEBUGGER-BUILD] [DEBUGGER-REUSE].
 //!
 //! This crate intentionally avoids Osprey parser, type-checker, codegen, and
 //! editor APIs. It holds small debugger concepts that are candidates to move to

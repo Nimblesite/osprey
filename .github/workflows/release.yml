@@ -13,7 +13,7 @@ name: Release
 # Version stamping ([SWR-VERSION-BUILD-STAMPING]): the version is derived from
 # the tag and stamped into every artifact. Source stays at 0.0.0-dev.
 #
-# Cost gate ([SWR-REL-CHANGES-*]): the `scope` job diffs this tag against the
+# Cost gate: the `scope` job diffs this tag against the
 # previous one and gates the rest, so a website/benchmark-only tag deploys the
 # site without rebuilding the macOS/Windows binary matrix or republishing
 # brew/scoop/VSIX/Marketplace. Ruleset: .github/release-scope.json.
@@ -39,7 +39,7 @@ jobs:
   # Release scope (COST GATE) — diff this tag against the previous release tag and
   # decide which surfaces must publish, so the expensive macOS/Windows build matrix
   # only runs when the artifact it produces actually changed. Ruleset lives in
-  # .github/release-scope.json. Implements [SWR-REL-CHANGES-*]:
+  # .github/release-scope.json:
   #   binary changed    -> full release (build matrix + every channel)
   #   vsix changed       -> still build the matrix (the VSIX bundles a binary at the
   #                         new tag version), publish the VSIX, skip the other channels
@@ -51,7 +51,7 @@ jobs:
     permissions:
       contents: read
     with:
-      # Pinned Shipwright commit the classifier is installed from [SWR-SEC-ACTION-PINNING].
+      # Pinned Shipwright commit from which the classifier is installed.
       shipwright_rev: 78f1455f27e8bfefc96e757a3eab23289be0e3f7
 
   # --------------------------------------------------------------------------
@@ -77,7 +77,7 @@ jobs:
           version="${GITHUB_REF_NAME#v}"
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "Releasing osprey $version"
-          # [SWR-VERSION-MANIFEST] validate shipwright.json before building anything.
+          # [EDITOR-VERSIONING] Validate shipwright.json before building anything.
           npm run test:shipwright --prefix vscode-extension
 
   # --------------------------------------------------------------------------
@@ -86,7 +86,7 @@ jobs:
     needs: [version, scope]
     # The expensive native matrix runs only when an artifact that bundles a binary
     # changed — a full release, or a vsix/jetbrains change (which must rebuild the
-    # binary at the new tag version). A website-only tag skips it. [SWR-REL-CHANGES-MATRIX]
+    # binary at the new tag version). A website-only tag skips it.
     if: ${{ needs.scope.outputs.build_matrix == 'true' }}
     runs-on: ${{ matrix.os }}
     # Windows is the newest, least-proven target — keep a win32 hiccup from
@@ -181,7 +181,7 @@ jobs:
     name: Publish GitHub Release
     needs: [version, build, scope]
     # The standalone binary GitHub Release (and the brew/scoop jobs that depend on
-    # it) only ship on a full release. [SWR-REL-CHANGES-CASCADE]
+    # it) only ship on a full release.
     if: ${{ needs.scope.outputs.full == 'true' }}
     runs-on: ubuntu-latest
     steps:
@@ -289,7 +289,7 @@ jobs:
   # --------------------------------------------------------------------------
   # Scoop bucket — shape from templates/gh-actions/publish-scoop-bucket.yml.
   # Windows install depends on llvm + gcc (MinGW) since osprey shells out to
-  # llc/clang/gcc at compile time. [WINDOWS-PORT]
+  # llc/clang/gcc at compile time.
   scoop:
     name: Publish Scoop manifest
     needs: [version, github-release, preflight]
@@ -357,7 +357,7 @@ jobs:
     needs: [version, build, scope]
     # Package the per-platform VSIX only when the extension changed (or a full
     # release). build_matrix is guaranteed true here, so the bundled binary is
-    # rebuilt at the new tag version. [SWR-REL-CHANGES-MATRIX]
+    # rebuilt at the new tag version.
     if: ${{ needs.scope.outputs.vsix == 'true' }}
     runs-on: ${{ matrix.os }}
     # Match the build job: a win32 VSIX hiccup must not block the mac/linux
@@ -390,7 +390,7 @@ jobs:
           mkdir -p "$dest"
           cp -r "dist/osprey-${VERSION}-${{ matrix.target }}/." "$dest/"
           # Stamp + bundle shipwright.json so the extension can version-check the
-          # bundled binary at activation. [SWR-VERSION-MANIFEST]
+          # bundled binary at activation. [EDITOR-VERSIONING]
           node -e '
             const fs=require("fs"); const v=process.env.VERSION;
             const m=JSON.parse(fs.readFileSync("shipwright.json","utf8"));
@@ -490,7 +490,7 @@ jobs:
   # Open VSX publish — serves the VS Code forks (Cursor, Windsurf, …). Open VSX
   # has no OIDC trusted-publishing path today, so this uses an Open VSX token
   # scoped to the protected `release` environment. Independent of the Marketplace
-  # publish so one registry hiccup never blocks the other.
+  # publish so one registry hiccup never blocks the other. [EDITOR-VSCODE]
   publish-openvsx:
     name: Publish VSIX to Open VSX
     needs: [version, vsix, preflight]
@@ -538,7 +538,7 @@ jobs:
   # Website deploy — the live site updates ONLY as part of a release (never on a
   # push to main). Decoupled from the binary release: it deploys whenever the
   # website surface changed (full release, or a website-only tag), so benchmark /
-  # docs updates ship without rebuilding the whole binary matrix. [SWR-REL-CHANGES]
+  # docs updates ship without rebuilding the whole binary matrix.
   # Stable tags only: a SemVer prerelease tag (v1.2.3-rc.1) contains a hyphen and
   # is skipped, so a prerelease never overwrites the live site.
   deploy-site:

@@ -11,7 +11,6 @@ yield 25 50 75
 fiber_yield = 200
 recv ch1 = 42
 recv ch2 = 123
-select = 1000
 lam dbl=20 tri=21 add=13
 stream 1024 2048 4096
 req=16 db=123000

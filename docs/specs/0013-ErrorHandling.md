@@ -1,22 +1,11 @@
 # Error Handling
 
-Osprey has no exceptions, panics, or null. Any function that can fail returns a `Result`.
+Osprey has no language-level exceptions. Structured failures use `Result`;
+low-level native APIs may instead declare an integer status convention in their
+own specification.
 
-> **Flavor layer — shared core (AST and above).** Error semantics are flavor-blind after lowering to `osprey_ast::Program`; no later phase may inspect the source flavor ([FLAVOR-BOUNDARY]). [ARITH-PLAIN] applies identically to both flavors. Examples use the Default surface; see [ML Flavor Syntax](0024-MLFlavorSyntax.md) for ML spelling.
-
-## Status
-
-[ERR-PAYLOAD] conforms for `E = string`: the runtime Result block carries a
-dedicated `i8* errmsg` slot, `Error { message }` binds the real reason, and
-`toString` renders `Error(<reason>)`. Discriminated-union error payloads
-(`Result<T, StringError>`) remain deferred behind recursive-union payload
-support.
-
-[ARITH-PLAIN] conforms: `+ - *` return plain scalars, `%` is zero-checked, and
-`checkedAdd`/`checkedSub`/`checkedMul` exist in both flavors. The later
-[ARITH-EFFECT] phase — moving the overflow guarantee to an algebraic effect —
-is **specified, not implemented**, deferred behind effect-row inference in
-[plan 0019](../plans/0019-ml-elegance.md).
+The two language flavors share these semantics. Examples show both surfaces
+where their syntax differs.
 
 ## The Result Type
 
@@ -47,38 +36,46 @@ match result
 
 ## Arithmetic and Result — [ARITH-PLAIN]
 
-An operator whose only failure mode is overflow returns the plain type, because overflow wraps two's complement and every wrapped result is representable; an operator that can be handed a value with **no** representable result — `/` and `%` by zero — keeps `Result<_, MathError>`.
+An operator whose only failure mode is overflow returns the plain type, because
+overflow wraps two's complement. Division and remainder retain `Result<_,
+MathError>` so they can report a zero divisor.
 
 | Operator    | int, int                   | float, float               | int, float / float, int                   |
 | ----------- | -------------------------- | -------------------------- | ----------------------------------------- |
 | `+ - *`     | `int`                      | `float`                    | `float` (int promoted)                    |
 | `/`         | `Result<float, MathError>` | `Result<float, MathError>` | `Result<float, MathError>`                |
-| `%`         | `Result<int,   MathError>` | `Result<float, MathError>` | `Result<float, MathError>` (int promoted) |
+| `%`         | `Result<int, MathError>`   | `Result<float, MathError>` | `Result<float, MathError>` (int promoted) |
 
-`/` always yields `float`. There is no implicit `int`/`float` conversion outside this table; use `toFloat` and `toInt` for explicit conversion. The builtins `checkedAdd`, `checkedSub`, and `checkedMul` (both flavors, following the `intDiv` precedent) return `Result<int, MathError>` via `llvm.s{add,sub,mul}.with.overflow`, making the overflow guarantee explicit and opt-in at the call site. A later [ARITH-EFFECT] phase MAY instead have these operators perform overflow as an algebraic effect; the surface syntax is identical either way, so nothing specified here changes.
+`/` always yields `float`. The builtins `checkedAdd`, `checkedSub`, and
+`checkedMul` return `Result<int, Error>` and make overflow checking explicit.
+Integer `-9223372036854775808 % -1` returns `Success(0)`; the representable
+remainder is produced without executing LLVM's overflowing `srem` case.
 
 
 ```osprey
 let sum       = 1 + 3      // int
 let quotient  = 10 / 3     // Result<float, MathError>
-let remainder = 10 % 3     // Result<int,   MathError>
+let remainder = 10 % 3     // Result<int, MathError>
 let mixed     = 10 + 5.5   // float
-let checked   = checkedAdd(a: 1, b: 3)   // Result<int, MathError>
+let checked   = checkedAdd(a: 1, b: 3)   // Result<int, Error>
 let divZero   = 10 / 0     // Error(division by zero)
 ```
 
 ```osprey-ml
 sum       = 1 + 3      // int
 quotient  = 10 / 3     // Result<float, MathError>
-remainder = 10 % 3     // Result<int,   MathError>
+remainder = 10 % 3     // Result<int, MathError>
 mixed     = 10 + 5.5   // float
-checked   = checkedAdd (1, 3)   // Result<int, MathError>
+checked   = checkedAdd (1, 3)   // Result<int, Error>
 divZero   = 10 / 0     // Error(division by zero)
 ```
 
-#### Chaining Arithmetic
+### Chaining Arithmetic
 
-`(10 + 5) * 2` is plain `int`: there is no wrapper to nest and nothing to match. Where `/` or `%` appears, the `Result` **propagates**: the enclosing arithmetic expression is a single `Result<T, MathError>` whose payload is the type the table above gives for that operator, flattened rather than nested, an erroring operand makes the whole expression `Error`, and only the final value is matched. Arithmetic is deliberately not an auto-unwrap context ([Result Auto-Unwrapping](0004-TypeSystem.md#result-auto-unwrapping)) — unwrapping an operand would discard its error.
+`(10 + 5) * 2` is plain `int`. Where `/` or `%` appears, the enclosing
+expression has one flattened `Result<T, MathError>`; an erroring operand makes the
+whole expression `Error`. Arithmetic is not an auto-unwrap context ([Result
+Auto-Unwrapping](0004-TypeSystem.md#result-auto-unwrapping)).
 
 ```osprey
 match (10 + 5) / 2 {
@@ -113,17 +110,16 @@ When a function produces `Error { message: E }`, the value bound to `message` in
 
 ```osprey
 match split("abc", "") {
-    Success { value }   => forEach(value, print)
-    Error   { message } => print(message)   // MUST print "separator is empty",
-                                            // not "Error occurred"
+    Success { value }   => forEachList(value, print)
+    Error   { message } => print(message)   // "split: separator must not be empty"
 }
 ```
 
 ```osprey-ml
 match split ("abc", "")
-    Success value   => forEach (value, print)
-    Error   message => print message   // MUST print "separator is empty",
-                                       // not "Error occurred"
+    Success value   => forEachList value print
+    Error   message => print message   // "split: separator must not be empty"
 ```
 
-This requirement applies uniformly across arithmetic, string, list, map, file-I/O, HTTP, and user-defined fallible functions, and to nested `Result` chains (auto-unwrap MUST preserve the original error payload). Implementations that lose the payload — for example by binding the pattern variable to a static global — are non-conforming.
+This requirement applies to every `Result`-returning operator, builtin, and
+user function, including nested auto-unwrap chains.

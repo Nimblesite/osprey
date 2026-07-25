@@ -1,4 +1,5 @@
-//! Cross-flavor equivalence ([FLAVOR-TEST] / [FLAVOR-CURRY],
+//! Cross-flavor equivalence ([FLAVOR-CURRY], [FLAVOR-LAYER],
+//! [FLAVOR-LOWER-CONTRACT],
 //! docs/specs/0023-LanguageFlavors.md). ML **curries by default** and offers a
 //! second *uncurried* surface, so it mirrors BOTH Default function forms at the
 //! canonical AST (modulo source positions). Three buckets pin the boundary:
@@ -47,7 +48,9 @@ fn scrub_positions(debug: &str) -> String {
 fn doc_comments_lower_identically_across_flavors() {
     // A `///`-documented Default function and its `(** … *)` ML twin lower to
     // the SAME DocComment on the canonical AST — the doc body markup is
-    // flavor-neutral, only the sigil differs ([DOC-MODEL], [FLAVOR-BOUNDARY]).
+    // flavor-neutral, only the sigil differs ([DOC-MODEL], [DOC-ATTACH],
+    // [DOC-BODY-MARKDOWN], [DOC-SECTIONS], [DOC-SIGIL-DEFAULT],
+    // [DOC-SIGIL-ML], [FLAVOR-BOUNDARY]).
     // Both are curried single-param functions so the whole AST (doc included)
     // matches, not just the doc field.
     let default_doc = "/// Doubles `x`.\n\

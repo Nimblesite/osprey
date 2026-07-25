@@ -348,6 +348,7 @@ mod tests {
 
     #[test]
     fn only_test_suffixed_files_are_recognized() {
+        // [TESTING-FILE-CONVENTION] both flavor suffixes are exact.
         assert!(is_test_file(Path::new("money.test.osp")));
         assert!(is_test_file(Path::new("json.test.ospml")));
         assert!(!is_test_file(Path::new("money.osp")));

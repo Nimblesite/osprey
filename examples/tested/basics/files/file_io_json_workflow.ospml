@@ -1,4 +1,5 @@
-// ML-flavor twin of file_io_json_workflow.osp. Layout match arms, whitespace
+// ML-flavor twin of file_io_json_workflow.osp. File builtins [BUILTIN-FILE].
+// Layout match arms, whitespace
 // application (`writeFile filename content`), and `x = e` bindings lower to the
 // SAME canonical AST as the Default braces/parens form — byte-identical IR
 // ([FLAVOR-IR-EQUIV]).

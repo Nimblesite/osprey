@@ -8,6 +8,14 @@ isEven(8) = true
 isEven(7) = false
 intDiv(25,2) = 12, intDiv(100,7) = 14
 intDiv(5,0): division by zero
+checked add=Success(5), sub=Success(-1), mul=Success(42)
+checked overflow add=Error(integer overflow)
+checked overflow sub=Error(integer overflow)
+checked overflow mul=Error(integer overflow)
+abs(-5000000000) = 5000000000
+abs(INT64_MIN) = -9223372036854775808
+intDiv(INT64_MIN,-1): integer overflow
+INT64_MIN % -1 = 0
 pow(5,2)   = 25
 pow(5,3)   = 125
 fact(5)    = 120

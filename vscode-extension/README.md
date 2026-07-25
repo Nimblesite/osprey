@@ -4,36 +4,20 @@
 
 # Osprey for VS Code
 
-> **Preview.** Osprey is pre-production and evolving fast. Expect rough edges.
+> **Preview.** Osprey is an alpha language and the extension follows the
+> compiler's current feature set.
 
 Language support for [Osprey](https://ospreylang.dev) — a functional programming
-language with algebraic effects, fiber-based concurrency, pattern matching, and
-strong compile-time safety.
+language with inferred types, algebraic effects, fiber-based concurrency and
+pattern matching.
 
-**One core. Two surfaces. Zero compromise.** Osprey is one language — one
-Hindley-Milner type checker, one effect system, one runtime, one standard
-library, one LLVM/wasm backend — fronted by two first-class **flavors**:
+Osprey has two source flavors. Default (`.osp`) uses braces, `fn` and familiar
+function calls. ML (`.ospml`) uses layout, currying and whitespace application.
+Both lower to the same AST before type checking and compilation.
 
-- **Default flavor (`.osp`)** — the accessible surface: C-style braces, `fn`,
-  `f(x: a, y: b)` calls with named arguments, `if`/`else if`/`else`. Borrows
-  the shapes of Kotlin, Swift, Go, Dart, C#, and Java so it reads like home.
-  **Fully implemented today.**
-- **ML flavor (`.ospml`)** — the uncompromising surface: offside-rule layout
-  (indentation, no braces), curry-by-default, whitespace application `f a b`,
-  `\x => e` lambdas, `:=` mutation. The best of the ML family, all the way —
-  no C-isms, no concessions. **In active development.**
-
-Neither flavor is the watered-down one: the surface goes all the way in your
-direction. Mainstream developers get a surface that reads like the languages
-they already know; FP devotees get real layout and real currying. Pick your
-tribe and go all in — nobody is forced into the other camp's spelling.
-
-Select the flavor _per file_ (the `.ospml` extension, a leading
-`// osprey: flavor=ml` marker, or the `--flavor ml` CLI flag — all shipping
-today). Because both flavors lower to the same canonical AST before any type
-checking, the design lets a `.osp` file and a `.ospml` file live in one folder
-and compile into a single program, sharing one type checker, one effect system,
-and one binary.
+Select a flavor per file with its extension or a leading
+`// osprey: flavor=ml` marker. The compiler also accepts `--flavor ml` for a
+single-file build. Multi-file cross-flavor imports remain under development.
 
 Powered by a Rust language server (`osprey lsp`, built on
 [lspkit](https://github.com/Nimblesite/lspkit)) that runs the compiler front-end
@@ -43,10 +27,9 @@ in-process — the same engine targeted at Neovim and Zed next.
 
 - **Syntax highlighting** — keywords, types, string interpolation
   (`"Hello ${name}!"`), operators, and comments. Default (`.osp`) is fully
-  supported today; ML (`.ospml`) support is rolling out alongside the flavor.
+  supported; ML (`.ospml`) support follows the compiler's current ML parser.
 - **Live diagnostics** — errors and warnings from the Osprey compiler as you
-  type, inline in the editor (full for Default `.osp`; ML `.ospml` diagnostics
-  track the in-development ML front-end).
+  type, inline in the editor.
 - **Hover, go-to-definition, find-references, document symbols, signature help,
   and completion** — driven by the compiler's own parser and type checker.
 - **Compile & run** from the editor:
@@ -57,12 +40,13 @@ in-process — the same engine targeted at Neovim and Zed next.
 ## Requirements
 
 The extension bundles a version-matched Osprey compiler for your platform and
-verifies it at startup, so syntax checking works out of the box.
+verifies it at startup. Syntax checking does not require a separate compiler
+installation.
 
 To **compile and run** programs, Osprey invokes LLVM and a C toolchain, so install:
 
-- **LLVM** (provides `llc`) — `brew install llvm` / `scoop install llvm`
-- A C compiler — `clang` (macOS/Linux) or MinGW `gcc` (`scoop install gcc`)
+- **LLVM/clang** — `brew install llvm` / `scoop install llvm`
+- MinGW `gcc` on Windows for runtime linking (`scoop install gcc`)
 
 Or install the full toolchain via a package manager (this also puts `osprey` on
 your `PATH`):

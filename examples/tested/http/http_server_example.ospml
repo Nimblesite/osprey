@@ -1,3 +1,4 @@
+// [BUILTIN-HTTP] [HTTP-SERVER] [HTTP-STATUS-CLIENT]
 // ML twin of http_server_example.osp. Top-level statements are the program body;
 // the HTTP builtins are ordinary calls. The handler's `-> HttpResponse` return is
 // load-bearing (mirrored by an ML signature); its body is a layout `match` over

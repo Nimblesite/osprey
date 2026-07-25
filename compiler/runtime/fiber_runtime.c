@@ -41,7 +41,7 @@ static int64_t run_fiber_fn(Fiber *fiber) {
     int64_t result = fiber->env_function(fiber->env);
     // The spawn transferred the capture cell (+1) to the runtime; the thunk
     // has fully consumed it once it returns. No-op outside the ARC backend
-    // [GC-ARC-PERCEUS], plan 0011 M5.
+    // [GC-ARC-PERCEUS] [MEM-FIBER-ISOLATION].
     osp_release(fiber->env);
     fiber->env = NULL;
     return result;
@@ -67,7 +67,7 @@ static Channel *channels[1000];
 static int64_t next_id = 1;
 static pthread_mutex_t runtime_mutex = PTHREAD_MUTEX_INITIALIZER;
 
-// Deterministic execution mode
+// Sequential execution mode [CONCURRENCY-DETERMINISTIC].
 static bool deterministic_mode = false;
 static int64_t execution_queue[1000];
 static int64_t queue_size = 0;
@@ -121,6 +121,7 @@ static void *fiber_thread_func(void *arg) {
 }
 
 // Create and schedule a fiber (shared by both spawn ABIs).
+// [CONCURRENCY-SPAWN-AWAIT]
 static int64_t fiber_spawn_internal(int64_t (*fn)(void),
                                     int64_t (*env_fn)(void *), void *env) {
   pthread_mutex_lock(&runtime_mutex);
@@ -200,7 +201,7 @@ int64_t fiber_spawn_env(int64_t (*fn)(void *), void *env) {
   return fiber_spawn_internal(NULL, fn, env);
 }
 
-// Wait for fiber completion
+// Wait for fiber completion [CONCURRENCY-SPAWN-AWAIT].
 int64_t fiber_await(int64_t fiber_id) {
   // Check bounds first to prevent buffer overflow
   if (fiber_id < 1 || fiber_id >= 1000) {
@@ -249,7 +250,8 @@ int64_t fiber_await(int64_t fiber_id) {
   }
 }
 
-// Cooperative hand-off. In concurrent (threaded) mode, donate the rest of this
+// Cooperative hand-off [CONCURRENCY-YIELD]. In concurrent (threaded) mode,
+// donate the rest of this
 // fiber's time slice to the scheduler so a peer fiber can run, then resume and
 // forward `value`. In deterministic mode fibers run sequentially to completion
 // while `fiber_await` holds `runtime_mutex`, so there is no peer to switch to
@@ -265,15 +267,36 @@ int64_t fiber_yield(int64_t value) {
   return value;
 }
 
-// Create a channel
+// Create a positive-capacity buffered channel. Capacity zero is not a
+// rendezvous channel in this runtime; accepting it would leave both send and
+// recv waiting forever on an empty buffer. [CONCURRENCY-CHANNEL]
 int64_t channel_create(int64_t capacity) {
+  if (capacity <= 0 || capacity > INT32_MAX ||
+      (uint64_t)capacity > SIZE_MAX / sizeof(int64_t)) {
+    return -1;
+  }
+
+  Channel *channel = malloc(sizeof(Channel));
+  if (!channel) {
+    return -2;
+  }
+  channel->buffer = malloc((size_t)capacity * sizeof(int64_t));
+  if (!channel->buffer) {
+    free(channel);
+    return -2;
+  }
+
   pthread_mutex_lock(&runtime_mutex);
+  if (next_id >= 1000) {
+    pthread_mutex_unlock(&runtime_mutex);
+    free(channel->buffer);
+    free(channel);
+    return -4;
+  }
 
   int64_t id = next_id++;
-  Channel *channel = malloc(sizeof(Channel));
   channel->id = id;
   channel->capacity = (int)capacity;
-  channel->buffer = malloc((size_t)capacity * sizeof(int64_t));
   channel->head = 0;
   channel->tail = 0;
   channel->count = 0;
@@ -361,6 +384,9 @@ int64_t channel_recv(int64_t channel_id) {
 // so sleep to an absolute deadline and re-arm on EINTR — the wait stays exact
 // whether or not sampling is active [PROF-COLLECT-SAMPLER].
 int64_t fiber_sleep(int64_t milliseconds) {
+  if (milliseconds <= 0) {
+    return 0;
+  }
 #if defined(__linux__)
   struct timespec until;
   if (clock_gettime(CLOCK_MONOTONIC, &until) != 0) {

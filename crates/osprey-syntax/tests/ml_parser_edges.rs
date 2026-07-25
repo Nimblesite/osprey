@@ -158,6 +158,7 @@ fn a_type_block_recovers_line_by_line() {
 
 #[test]
 fn list_literals_span_empty_populated_and_trailing_comma() {
+    // [FLAVOR-ML-LIST]
     assert_eq!(value("xs = []\n"), Expr::List(vec![]));
     assert_eq!(
         value("xs = [1, 2, 3]\n"),
@@ -180,7 +181,7 @@ fn map_literals_span_empty_and_populated() {
 }
 
 /// A bracket glued to its receiver indexes it; a bracket after whitespace
-/// starts a fresh list argument.
+/// starts a fresh list argument ([FLAVOR-ML-INDEX]).
 #[test]
 fn a_glued_bracket_indexes_its_receiver() {
     assert!(
@@ -270,7 +271,8 @@ fn a_lambda_head_takes_plain_parameters_only() {
 // ─── containers and the Result default ──────────────────────────────────────
 
 /// An indented `namespace` owns exactly its block; a bare one owns every
-/// declaration that follows it in the file ([MODULES-NAMESPACE]).
+/// declaration that follows it in the file ([MODULES-NAMESPACE],
+/// [MODULES-FILE-SCOPED-NAMESPACE]).
 #[test]
 fn a_namespace_owns_a_block_or_the_rest_of_the_file() {
     let blocked = ml_ok("namespace Ledger\n    balance = 1\n\ntotal = 2\n");
@@ -297,7 +299,7 @@ fn a_namespace_owns_a_block_or_the_rest_of_the_file() {
     }
 }
 
-/// `e ?: d` lowers to the same two-arm boolean `match` the Default flavor's
+/// [PATTERN-RESULT-DEFAULT]: `e ?: d` lowers to the same two-arm boolean `match` the Default flavor's
 /// ternary emits — a different node here would break [FLAVOR-IR-EQUIV].
 #[test]
 fn the_result_default_lowers_to_a_boolean_match() {

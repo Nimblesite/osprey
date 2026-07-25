@@ -1,14 +1,14 @@
 ---
 layout: base.njk
 title: Blog
-description: Thoughts and insights on Osprey and modern programming language design
+description: Osprey language design and implementation notes
 ---
 
 <div class="blog-index">
   <div class="container">
     <header>
       <h1 class="section-title">Osprey Blog</h1>
-      <p class="section-subtitle">Language design, implementation notes, and practical functional programming.</p>
+      <p class="section-subtitle">Language design and implementation notes.</p>
     </header>
 
     <div class="blog-posts">
@@ -17,7 +17,11 @@ description: Thoughts and insights on Osprey and modern programming language des
           <article class="card">
             {% if post.data.image %}
               <a class="card-media" href="{{ post.url }}" aria-hidden="true" tabindex="-1">
+                {% if post.data.imageWebp %}<picture>
+                  <source srcset="{{ post.data.imageWebp }}" type="image/webp">
+                {% endif %}
                 <img src="{{ post.data.image }}" alt="" loading="lazy" width="1600" height="840">
+                {% if post.data.imageWebp %}</picture>{% endif %}
               </a>
             {% endif %}
             <div class="card-content">
@@ -56,7 +60,7 @@ description: Thoughts and insights on Osprey and modern programming language des
       {% else %}
         <div class="empty-state">
           <h3>No posts yet</h3>
-          <p>Check back soon for insights on Osprey and functional programming!</p>
+          <p>No posts are published.</p>
         </div>
       {% endif %}
     </div>

@@ -1,8 +1,5 @@
-// TUI rendering pipeline over HTTP: fetch a JSON body from a local server,
-// parse it, and render a colored, column-aligned table. Proves the
-// "call an API and render the response" pitch end to end. Each handle op lives
-// in its own helper so a handle is never reused across a nested match.
-// Implements [HTTP-RESPONSE-HANDLE], [BUILTIN-JSON], [BUILTIN-TERM].
+// HTTP response-handle and JSON document integration. Each handle operation
+// uses its own helper. Implements [HTTP-RESPONSE-HANDLE] and [BUILTIN-JSON].
 
 fn handleRequest(method: string, path: string, headers: string, body: string) -> HttpResponse = HttpResponse {
     status: 200,

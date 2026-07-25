@@ -1,3 +1,4 @@
+// [PROF-VSCODE-HEAT] Heat decoration rendering and editor lifecycle coverage.
 import * as assert from "assert";
 import * as fs from "fs";
 import * as os from "os";

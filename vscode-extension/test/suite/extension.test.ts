@@ -82,9 +82,8 @@ let manifestWasStaged = false;
 
 // The DAP test harness (breakpoints, session-lifecycle waiters, stackTrace /
 // scopes / variables, waitForStop) and the osprey/lldb-dap binary resolution
-// now live in ./dap-harness and ./osprey-test-env — the single shared copy that
-// mirrors @nimblesite/lspkit-debug. They are imported above; nothing is
-// re-derived here. [DEBUGGER-REUSE]
+// live in ./dap-harness and ./osprey-test-env. They are imported above; nothing
+// is re-derived here. [DEBUGGER-REUSE]
 
 suite("Osprey Shipwright Activation Coverage", () => {
   const settle = (ms: number) =>
@@ -128,6 +127,7 @@ suite("Osprey Shipwright Activation Coverage", () => {
   });
 
   test("extension activates with a shipwright manifest present", async () => {
+    // The activation-time version handshake implements [EDITOR-VERSIONING].
     const ext = vscode.extensions.getExtension(extensionId);
     assert.ok(ext, "extension must be discoverable");
 
@@ -395,6 +395,7 @@ fn broken syntax here {
   });
 
   test("Language server should start successfully", async () => {
+    // End-to-end client launch coverage for [EDITOR-VSCODE].
     // Basic test that language server starts without crashing
     const ospreyCode = `fn test() = 42`;
     fs.writeFileSync(testFile, ospreyCode);
@@ -1168,7 +1169,7 @@ suite("Osprey Language Features Tests", () => {
     // real .ospml buffer so a regression that broke ML editor UX (e.g. the
     // selector losing "osprey-ml", or the ML frontend not reaching the LSP) fails
     // loudly. ML flavor: `name args = body`, whitespace application, offside
-    // blocks, `name = value` bindings (no `let`/`fn`). [LSP-ML-FLAVOR]
+    // blocks, `name = value` bindings (no `let`/`fn`). [LSP-FLAVOR-RENDER]
     const ML =
       [
         "double x = x * 2", // 0  curried unary fn
@@ -1973,6 +1974,8 @@ suite("Osprey VSIX Debugger E2E", () => {
     }
   });
 
+  // [DEBUGGER-PROTOCOLS] F5 and the command resolve to a DAP debugger
+  // contribution; the separate run command is not used as a debug adapter.
   test("package manifest exposes a real debugger contribution", () => {
     const pkg = JSON.parse(
       fs.readFileSync(path.join(extensionRoot, "package.json"), "utf8"),
@@ -2035,7 +2038,7 @@ suite("Osprey VSIX Debugger E2E", () => {
     // (Step Over) EXECUTES the call without descending into it — the regression
     // guard for "step over behaved like step in". bump is monomorphic (annotated
     // `-> int`), so it is a real call frame the debugger could wrongly enter.
-    // [DEBUGGER-STEP-OVER]
+    // [DEBUGGER-EDITOR-LAUNCH]
     fs.writeFileSync(
       source,
       [
@@ -2104,7 +2107,7 @@ suite("Osprey VSIX Debugger E2E", () => {
     // F10 / Step Over on `let y = bump(x)`: execute the call to bump and land
     // on the NEXT line of main, WITHOUT descending into bump. A debugger that
     // stepped *into* bump would report the top frame as bump on line 1, and
-    // bump would appear on the stack. [DEBUGGER-STEP-OVER]
+    // bump would appear on the stack. [DEBUGGER-EDITOR-LAUNCH]
     await session.customRequest("next", { threadId: stopped.threadId });
     const stepped = await waitForStop(session, 45000);
     const steppedFrame = stepped.stack.stackFrames[0];
@@ -2486,6 +2489,8 @@ suite("Osprey Binary Resolution Unit Tests", () => {
   });
 
   test("resolveServerCommand falls back to bundled then PATH", async () => {
+    // Resolution priority required by [EDITOR-VSCODE] and
+    // [EDITOR-VERSIONING].
     // No user path: with a bundled binary present it returns that; without one
     // it falls back to the bare `osprey` PATH lookup.
     const [config, originalCompiler, originalPath] = savedServerSettings();

@@ -7,12 +7,12 @@ order), `crates/osprey-codegen` (dispatch), `crates/osprey-types/src/builtin_doc
 `length`/`isEmpty` is FIXED and shipped**. The rest of the bare-name surface
 (`contains`, `get`, `reverse`, `indexOf` on List/Map) is **blocked on a type-system
 change**, not on a dispatch tweak: `TypeEnv` is one-scheme-per-name and the callee
-scheme is instantiated *before* any argument is inferred, so simply registering a
-List `contains` **destroys** the string `contains`. Delivering it needs an overload
+scheme is instantiated *before* any argument is inferred, so registering a List
+`contains` **replaces** the string `contains`. Delivering it needs an overload
 candidate registry, an inference reordering, a deferred-resolution store, and an
-honest loss of HM principality (see §Principality)
-**Scope:** **High** (was recorded as “Low–Medium”; that estimate was wrong — it
-assumed dispatch was the only problem)
+explicit loss of HM principality (see §Principality)
+**Scope:** **High** (the earlier “Low–Medium” estimate considered dispatch but
+not the required type-inference changes)
 **Spec:** [0012-Built-InFunctions.md](../specs/0012-Built-InFunctions.md)
 
 ## Summary
@@ -97,8 +97,8 @@ Spec uses bare names ([0012 §Lists/§Maps](../specs/0012-Built-InFunctions.md))
 
 The previous revision of this plan said “Osprey has no ad-hoc overloading today,
 so dispatch must be receiver-type-directed at codegen time”, and left the choice
-as an under-specified “decision needed”. That framing is wrong: **codegen is the
-easy half.** The type checker is the blocker, for three verified reasons.
+as an under-specified “decision needed”. Codegen dispatch alone is insufficient;
+the type checker requires three changes.
 
 1. **`TypeEnv` holds exactly one scheme per name and `insert` silently
    overwrites.** [env.rs](../../crates/osprey-types/src/env.rs):
@@ -106,7 +106,7 @@ easy half.** The type checker is the blocker, for three verified reasons.
    `let _ = self.vars.insert(name, scheme);` — the discarded return value *is*
    the previous scheme. Registering a `List` `contains` therefore **destroys** the
    string `contains`, turning every existing string call site into a type error
-   while codegen happily keeps emitting the string runtime call.
+   while codegen keeps emitting the string runtime call.
 2. **The callee scheme is instantiated before any argument is inferred.**
    [expr.rs](../../crates/osprey-types/src/expr.rs) `lookup_ident` does
    `env.get(name)` → `instantiate(...)`, and `infer_call` unifies that
@@ -116,18 +116,18 @@ easy half.** The type checker is the blocker, for three verified reasons.
    `contains` is `(string, string) -> bool`, `indexOf` is
    `(string, string) -> Result<int, …>`, `reverse` is `(string) -> string`,
    `listGet` is `(List<t>, int) -> Result<t, …>`, `mapGet` is
-   `(Map<k,v>, k) -> Result<v, …>`. Widening them to `any` to paper over the
-   collision would delete real type checking on the string surface — the exact
-   hole that produced the `length` miscompile above. Not an option.
+   `(Map<k,v>, k) -> Result<v, …>`. Widening them to `any` would remove type
+   checking on the string surface — the same hole that produced the `length`
+   miscompile above.
 
-Approach **B** (keep prefixed names, change the spec) stays rejected — the spec is
-the contract. But it should be recorded that B is *cheap* and A is *expensive*,
-which the old plan did not.
+Approach **B** (keep prefixed names and change the spec) remains rejected because
+the spec defines the contract. It has lower implementation scope than the
+overload mechanism described below.
 
 ## Implementation — the minimal sound mechanism
 
-Four pieces, in this order. Nothing here is optional; skipping (3) reintroduces
-silent wrong-runtime dispatch.
+Four pieces are required in this order; omitting step 3 reintroduces silent
+wrong-runtime dispatch.
 
 1. **Separate overload candidate registry.** Keep `TypeEnv` one-scheme-per-name
    (assignment, shadowing, `mut`, and `bound_names()` redefinition detection all
@@ -158,7 +158,7 @@ silent wrong-runtime dispatch.
    available collide across string-interpolation fragments, which desugar several
    sub-expressions onto one source span.
 
-### Principality — the honest consequence
+### Principality consequence
 
 **HM principal types do not survive this as specified.** `fn f(xs) = contains(xs, 1)`
 has no principal type under the scheme above: `Scheme`
@@ -213,7 +213,7 @@ Plus the non-owned prose/generated surfaces that list the name:
 The `.osp`/`.ospml` twins must stay byte-equivalent per [FLAVOR-IR-EQUIV], so each
 pair migrates together against one shared `.expectedoutput`.
 
-### Two hard constraints on any new bare name
+### Compatibility constraints on new bare names
 
 - **Builtin names are non-redefinable and therefore source-breaking.**
   [check.rs](../../crates/osprey-types/src/check.rs) rejects a user `fn` whose
@@ -222,8 +222,8 @@ pair migrates together against one shared `.expectedoutput`.
   ([builtins.rs](../../crates/osprey-types/src/builtins.rs)). Every bare name this
   plan registers (`append`, `get`, `keys`, `head`, `tail`, …) is a **permanent
   reservation** that breaks any program already defining a function by that name.
-  `head`/`tail` in particular are extremely likely user identifiers. Land the
-  reservations in one batch, and note them in the spec's compatibility section.
+  Land the reservations in one batch, and note them in the spec's compatibility
+  section.
 - **Every new builtin needs a doc entry or the build fails.**
   [builtin_docs.rs](../../crates/osprey-types/src/builtin_docs.rs) carries the test
   `every_builtin_is_documented_with_matching_arity`, which asserts the documented
@@ -233,11 +233,10 @@ pair migrates together against one shared `.expectedoutput`.
 
 ## Remaining implementation work
 
-1. **Cheap first — collision-free bare names.** `append`, `prepend`, `concat`
+1. **Collision-free bare names.** `append`, `prepend`, `concat`
    (list) and `set`, `remove`, `merge` (map) collide with nothing. Register them
-   as additional schemes pointing at the existing lowering, add doc entries, and
-   ship — no overload machinery needed. This retires a third of the gap table for
-   a fraction of the cost.
+   as additional schemes pointing at the existing lowering and add doc entries;
+   no overload machinery is required.
 2. **Overload machinery** (steps 1–4 above) for `get`, `contains`, `reverse`,
    `indexOf`.
 3. **`head` / `tail`.** `head` returns `Result<T, IndexError>`; `tail` is total
@@ -256,9 +255,9 @@ pair migrates together against one shared `.expectedoutput`.
   names and the new ops; refresh the shared `.expectedoutput`.
 - Cover `head([])`/`tail([])` edge cases and `zipToMap` length-mismatch error.
 - Add a **must-reject** case under `examples/failscompilation/` for the
-  ambiguity error from step (3) — an unresolved receiver must fail loudly, and
-  that is exactly the behaviour a future qualified-types plan would change, so it
-  needs a pinned test.
+  ambiguity error from step (3). An unresolved receiver must return the explicit
+  error; a future qualified-types plan would change that behavior, so pin it in a
+  test.
 - Add a codegen regression per newly-overloaded name in the shape of
   `bare_length_and_is_empty_dispatch_on_the_receiver_type`: one module exercising
   string + List + Map receivers, asserting each hits its own runtime and counting
@@ -267,8 +266,8 @@ pair migrates together against one shared `.expectedoutput`.
 ## Risks / considerations
 
 - Receiver-directed dispatch must produce a clear diagnostic when the receiver
-  type is unknown, rather than defaulting to one collection kind. The `length`
-  miscompile is the standing proof of what the silent default costs.
+  type is unknown rather than defaulting to one collection kind; the `length`
+  miscompile demonstrates the failure mode.
 - `head`/`tail` are *functions*, distinct from the `[head, ...tail]` list
   *pattern* already shipped — do not conflate.
 - Every bare name is a source-breaking reservation (see above).
@@ -282,9 +281,9 @@ pair migrates together against one shared `.expectedoutput`.
       vs `LType::Str`; ordered ahead of the name-keyed `strings::gen`.
       [BUILTIN-COLLECTION-LENGTH], [BUILTIN-COLLECTION-ISEMPTY]. Regression test
       `bare_length_and_is_empty_dispatch_on_the_receiver_type`.
-- [x] Define the collection spec anchors in 0012 — `[BUILTIN-COLLECTIONS]`,
-      `[BUILTIN-LIST]`, `[BUILTIN-MAP]`, `[BUILTIN-COLLECTION-COMMON]`,
-      `[BUILTIN-COLLECTION-LENGTH]`, `[BUILTIN-COLLECTION-ISEMPTY]` and the
+- [x] Define the collection spec anchors in 0012 — `[BUILTIN-LIST]`,
+      `[BUILTIN-MAP]`, `[BUILTIN-COLLECTION-LENGTH]`,
+      `[BUILTIN-COLLECTION-ISEMPTY]` and the
       per-function ids (`[BUILTIN-LIST-APPEND]`, `[BUILTIN-MAP-SET]`, …) — so
       the code and example citations resolve, and the wildcard references in
       the list/map examples are expanded to concrete ids.

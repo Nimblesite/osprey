@@ -1,3 +1,4 @@
+// [PROF-VSCODE-FLAME] Flame model, layout, filtering, and search coverage.
 import * as assert from "assert";
 import {
   buildFlameModel,

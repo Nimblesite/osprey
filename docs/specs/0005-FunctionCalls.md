@@ -1,77 +1,47 @@
 # Function Calls
 
-> **Flavor layer — surface (CST) only.** Arity, naming, and saturation are
-> checked on the shared `Expr::Call`. Default `f()`, `f(x)`, and
-> `f(x: a, y: b)` each lower to one call node. ML whitespace application
-> `f a b` curries by default and lowers to nested calls; uncurried `f (a, b)`
-> lowers to one multi-argument call, matching Default `f(x: a, y: b)`. The
-> parenthesised comma-list groups arguments; it is not a tuple. See
-> [FLAVOR-CURRY](0023-LanguageFlavors.md#currying-canonicalisation) and
-> [FLAVOR-ML-CALL](0024-MLFlavorSyntax.md).
+Default calls lower to one `Expr::Call`. ML whitespace application and
+uncurried grouping lower to the same node shapes as described in
+[FLAVOR-CURRY](0023-LanguageFlavors.md#currying-canonicalisation) and
+[FLAVOR-ML-CALL](0024-MLFlavorSyntax.md).
 
-## Named Arguments Requirement
+## Argument forms [CALL-ARGUMENTS]
 
-Functions with more than one parameter must be called with named arguments.
-
-### Valid Function Calls
+Default accepts positional calls at every arity:
 
 ```osprey
-// Zero parameters
-fn getValue() = 42
-let value = getValue()
-
-// Single parameter - positional allowed
+fn now() = 42
 fn double(x) = x * 2
-let result = double(5)
-
-// Multiple parameters - named arguments required
 fn add(x, y) = x + y
-let sum = add(x: 10, y: 20)
 
-// Order doesn't matter with named arguments
-let sum2 = add(y: 20, x: 10)
-
+let a = now()
+let b = double(5)
+let c = add(10, 20)
 ```
+
+A call may instead name every supplied argument:
+
+```osprey
+let c = add(y: 20, x: 10)
+```
+
+For a known function or extern, named values are reordered to the declaration's
+parameter order. The grammar does not permit positional and named arguments in
+one argument list. Unknown and duplicate argument names are not rejected
+consistently; a named call must use each declared name exactly once.
+
+The ML equivalent of the flat two-parameter function is uncurried application:
 
 ```osprey-ml
-// Zero parameters
-getValue () = 42
-value = getValue ()
-
-// Single parameter - positional allowed
-double x = x * 2
-result = double 5
-
-// Multiple parameters - uncurried call
 add (x, y) = x + y
-sum = add (10, 20)
-
-// Order is positional in the uncurried form
-sum2 = add (10, 20)
-
+c = add (10, 20)
 ```
 
-### Invalid Function Calls
+`add(10)(20)` is not partial application of a flat Default function. A curried
+Default function must explicitly return a function; ML whitespace application
+is curry-by-default.
 
-```osprey
-// ERROR: Multi-parameter function with positional arguments
-fn add(x, y) = x + y
-let sum = add(10, 20)  // Compilation error
-
-// ERROR: Mixed positional and named arguments
-let sum = add(10, y: 20)  // Compilation error
-```
-
-## Rules
-
-1. Zero parameters: empty parentheses, `f()`.
-2. One parameter: positional or named.
-3. Two or more parameters: every argument must be named. Mixing positional and named arguments is a compilation error.
-4. **Built-in functions** ([Built-in Functions](0012-Built-InFunctions.md)) are exempt: they take positional arguments in subject-first order — `split("a,b,c", ",")`, `fold(xs, 0, add)` — so the pipe can supply the subject as the first argument: `xs |> fold(0, add)`.
-5. **Positional constructors** ([TYPE-UNION-POSITIONAL](0003-Syntax.md#type-declarations)) are exempt: a variant declared `Node(Tree, Tree)` is built `Node(left, right)` in slot order, because a positional payload has no field names to supply. The same variant declared with named fields keeps rule 3.
-
-Argument order at the call site is independent of declaration order; the compiler reorders by name.
-
-Default `add(x: 10, y: 20)` and ML `add (10, 20)` lower alike. Default
-explicit curry `add(10)(20)` corresponds to ML whitespace `add 10 20`; each
-pair has the same call shape and IR.
+Built-ins use the positional order in their signatures. A positional union
+variant such as `Node(Tree, Tree)` is also constructed in slot order. Named
+record and union payloads use field construction (`Point { x: 1, y: 2 }`), not
+call arguments.

@@ -57,7 +57,8 @@ pub(crate) struct Sample {
 pub(crate) struct Profile {
     /// Nominal sampling rate in Hz.
     pub rate_hz: u64,
-    /// Samples the runtime dropped (ring overflow).
+    /// Samples the runtime could not retain due to sampler-ring overflow or
+    /// allocation/interning failure.
     pub dropped: u64,
     /// Loaded images, sorted by ascending `base`.
     pub images: Vec<Image>,

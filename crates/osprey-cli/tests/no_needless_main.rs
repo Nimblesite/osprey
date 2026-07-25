@@ -11,8 +11,7 @@
 //! non-zero exit code. A `main` that takes parameters is never flagged (it is
 //! consuming `argv`); a zero-argument `main` kept for its exit code must opt out
 //! explicitly with a `// osprey: keep-main <reason>` marker, which both
-//! documents the intent and silences the gate. Implements
-//! [ANALYZER-NEEDLESS-MAIN] (docs/specs/0024-MLFlavorSyntax.md).
+//! documents the intent and silences the gate.
 
 use std::path::{Path, PathBuf};
 

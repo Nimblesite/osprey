@@ -797,12 +797,15 @@ mod tests {
 
     #[test]
     fn hover_renders_builtin_signature_and_rejects_unknowns() {
+        // [BUILTIN-PRINT] Hover uses the constrained public signature, not the
+        // internal `any` scheme used to implement receiver dispatch.
         let md = builtin_hover("print");
         // The rich hover carries the call signature and the description, not just
         // a bare `name : type` line.
         assert!(
-            md.as_deref()
-                .is_some_and(|m| m.contains("print(value: any) -> Unit") && m.contains("Prints")),
+            md.as_deref().is_some_and(|m| m.contains(
+                "print(value: int | float | bool | string | Unit | any | Result<printable, printable>) -> Unit"
+            ) && m.contains("supported scalar or Result")),
             "{md:?}"
         );
         assert!(builtin_hover("notARealBuiltin").is_none());

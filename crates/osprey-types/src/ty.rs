@@ -26,7 +26,7 @@ pub mod names {
     pub const STRING: &str = "string";
     /// The boolean primitive.
     pub const BOOL: &str = "bool";
-    /// The top type that matches any value.
+    /// The erased compatibility type that unifies with every value [TYPE-ANY].
     pub const ANY: &str = "any";
     /// The unit type, returned by expressions with no meaningful value.
     pub const UNIT: &str = "Unit";
@@ -42,6 +42,8 @@ pub mod names {
     pub const LIST: &str = "List";
     /// The `Map<key, value>` collection type.
     pub const MAP: &str = "Map";
+    /// A fused range pipeline, materialized only while lowering iterator calls.
+    pub const ITERATOR: &str = "Iterator";
     /// The lightweight concurrent execution context type.
     pub const FIBER: &str = "Fiber";
     /// The inter-fiber message-passing channel type.
@@ -131,7 +133,7 @@ impl Type {
     pub fn any() -> Type {
         Type::prim(names::ANY)
     }
-    /// The `Ptr` foreign-pointer type.
+    /// The opaque foreign-pointer type [FFI-PTR].
     #[must_use]
     pub fn ptr() -> Type {
         Type::prim(names::PTR)
@@ -158,6 +160,11 @@ impl Type {
     #[must_use]
     pub fn map(key: Type, value: Type) -> Type {
         Type::con(names::MAP, vec![key, value])
+    }
+    /// `Iterator<elem>` used by range/map/filter/fold pipelines.
+    #[must_use]
+    pub fn iterator(elem: Type) -> Type {
+        Type::con(names::ITERATOR, vec![elem])
     }
 
     /// True if this is a nullary-or-applied constructor with the given name.

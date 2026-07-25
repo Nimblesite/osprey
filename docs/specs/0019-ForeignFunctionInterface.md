@@ -1,8 +1,13 @@
 # Foreign Function Interface
 
-Osprey calls C (and any C-ABI library) through `extern fn` declarations. There are no per-library compiler builtins — SQLite, libpq, compression, crypto all bind through this one mechanism. Declaration grammar and the type ABI table are in [Syntax](0003-Syntax.md#extern-declarations); sandbox gating (`--no-ffi`, `--sandbox`) is in [Security and Sandboxing](0016-SecurityAndSandboxing.md).
+Osprey calls C-ABI functions through `extern fn` declarations. Declaration
+grammar and ABI types are specified in [Syntax](0003-Syntax.md#extern-declarations);
+`--no-ffi` and `--sandbox` are specified in
+[Security and Sandboxing](0016-SecurityAndSandboxing.md).
 
-> **Flavor layer — mixed.** Each surface has its own `extern fn` spelling, but both lower to `Stmt::Extern`; ABI mapping, `Ptr`, link directives, and linking are flavor-blind after that boundary ([FLAVOR-BOUNDARY]). Examples use Default spelling; see [ML Flavor Syntax](0024-MLFlavorSyntax.md) and [Language Flavors](0023-LanguageFlavors.md).
+Each flavor has its own declaration spelling; both lower to `Stmt::Extern`.
+ABI mapping, link directives, and linking are shared after that boundary
+([FLAVOR-BOUNDARY]).
 
 ## Link Directives [FFI-LINK-DIRECTIVES]
 
@@ -13,11 +18,15 @@ A source comment directive links a system library at compile time:
 // @linkdir: /opt/lib    → clang -L/opt/lib
 ```
 
-Directives are read from the source file and passed to the linker by both `--run` and `--compile`. Library names and paths are validated; shell injection through a directive is a compile-time error.
+Directives are read from the source file and passed to the compiler driver by
+both `--run` and `--compile`. Each value is one process argument; no shell parses
+it. Invalid library names or paths therefore fail in the compiler driver rather
+than executing as commands.
 
 ## The `Ptr` Type [FFI-PTR]
 
-`Ptr` is an opaque C pointer (`i8*`). It may appear in `extern fn` and user function signatures, may be stored and passed, and supports no operations — no arithmetic, no dereference, no field access. It exists solely to carry C handles (a `sqlite3*`, a `FILE*`) through Osprey code.
+`Ptr` is an opaque C pointer (`i8*`). It may appear in signatures and may be
+stored or passed. It supports no arithmetic, dereference, or field access.
 
 C out-parameters (`sqlite3_open(path, &db)`) use the runtime's **pointer cells** — themselves plain `extern fn` declarations against the bundled runtime archive, not builtins:
 
@@ -41,4 +50,5 @@ A named top-level function passed where an `extern fn` expects a function parame
 
 ## Databases Are Libraries [FFI-NO-DB-BUILTINS]
 
-Database access is not compiler surface. SQLite binds via `extern fn` declarations against `libsqlite3` (golden-tested in `examples/tested/db/`); an Osprey-level `Database` algebraic effect wraps the bindings (capability-gated `!Database`, swappable handlers). Postgres binds identically via `libpq`. A driver is an Osprey library, never compiler code.
+Database access is not compiler surface. Database drivers use `extern fn`
+declarations; the SQLite example is tested in `examples/tested/db/`.

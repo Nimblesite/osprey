@@ -2,8 +2,8 @@
 // Every memory backend (memory_runtime.c, memory_gc.c, memory_arc.c) defines
 // all of them, so a unit compiled once links against whichever backend the
 // program selected — the default/gc definitions are no-ops. Implements the
-// C-runtime half of [GC-ARC-PERCEUS] (docs/plans/0011 phase 2, M4/M5) under
-// the [MEM-BACKENDS] ABI (docs/specs/0018).
+// C-runtime half of [GC-ARC-PERCEUS] under the [MEM-BACKENDS] ABI
+// (docs/specs/0018-MemoryManagement.md).
 #ifndef OSPREY_MEMORY_HOOKS_H
 #define OSPREY_MEMORY_HOOKS_H
 

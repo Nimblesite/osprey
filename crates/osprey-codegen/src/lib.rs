@@ -583,6 +583,25 @@ mod tests {
     }
 
     #[test]
+    fn single_variant_record_destructures_in_match() {
+        // A single-variant type whose sole variant shares the type's name is
+        // classified as a record, so it never lands in `union_variants`.
+        // Matching it with a constructor pattern must still destructure its
+        // fields: the `{ i64 tag, fields… }` block is identical to a union
+        // variant's, carrying tag 0. Regression for #175 — this routed to
+        // `gen_literal_match`, which rejected the constructor arm
+        // ("unsupported construct: destructuring match arm").
+        let ir = module(
+            "type V = V { a: int, b: int }\n\
+             fn first(v) = match v { V { a, b } => a }\n\
+             print(\"r=${first(V { a: 10, b: 20 })}\")\n",
+        );
+        // The field bind loads slot 1 of the block, reached via the tag compare.
+        assert!(ir.contains("load i64, i64*"));
+        assert!(ir.contains("icmp eq i64"));
+    }
+
+    #[test]
     fn list_pattern_match_binds_head_tail_and_fixed_lengths() {
         // List-pattern match: length guards (eq / sge), prefix + rest binding,
         // wildcard element, trailing catch-all (pattern.rs gen_list_match,

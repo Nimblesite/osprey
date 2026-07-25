@@ -227,8 +227,9 @@ pub(crate) fn repack_to_inner(cg: &mut Codegen, v: Value, inner: LType) -> Resul
     make_result(cg, value, inner, &disc, &errmsg.operand)
 }
 
-/// Auto-unwrap a Result at a value site (arithmetic, `print`, an argument),
-/// yielding its success payload; a non-Result value passes through.
+/// Auto-unwrap a Result at a value site (`print`, an argument, or the successful
+/// branch of arithmetic error propagation), yielding its success payload; a
+/// non-Result value passes through.
 pub(crate) fn unwrap(cg: &mut Codegen, v: Value) -> Value {
     if v.result_inner.is_some() {
         let out = load_value(cg, &v);

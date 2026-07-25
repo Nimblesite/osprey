@@ -66,12 +66,42 @@ pub fn definition(
         .into_iter()
         .map(|o| located(uri, (o.line, o.start, o.line, o.end)))
         .collect();
-    if local.is_empty() {
-        // Nothing in this buffer declares it, so the declaration is either in a
-        // sibling file or nowhere. Implements [LSP-WORKSPACE].
-        return project_locations(uri, &word, enc, Scan::Declarations);
+    if !local.is_empty() {
+        return local;
     }
-    local
+    // Nothing in this buffer declares it, so the declaration is either in a
+    // sibling file or nowhere. Implements [LSP-WORKSPACE].
+    let project = project_locations(uri, &word, enc, Scan::Declarations);
+    if !project.is_empty() {
+        return project;
+    }
+    // A documented built-in has no source declaration to navigate to. Anchor it
+    // on the identifier under the cursor — a graceful self-definition — so the
+    // editor keeps a real, hoverable function navigable instead of reporting
+    // "No definition found". Implements [LSP-DEFINITION-BUILTIN].
+    builtin_definition(text, uri, line, character, enc, &word)
+}
+
+/// The identifier under the cursor as its own definition, when `word` names a
+/// documented built-in. Built-ins live in the runtime, not in any `.osp` file,
+/// so there is nowhere else to send the editor. Implements
+/// [LSP-DEFINITION-BUILTIN].
+fn builtin_definition(
+    text: &str,
+    uri: &str,
+    line: u32,
+    character: u32,
+    enc: PositionEncoding,
+    word: &str,
+) -> Vec<Location> {
+    let leaf = word.rsplit("::").next().unwrap_or(word);
+    if crate::analysis::builtin_hover(leaf).is_none() {
+        return Vec::new();
+    }
+    match path_at(nth_line(text, line).unwrap_or_default(), character, enc) {
+        Some(span) => vec![located(uri, (line, span.start, line, span.end))],
+        None => Vec::new(),
+    }
 }
 
 /// Which occurrences of a name a cross-file scan reports.
@@ -367,6 +397,27 @@ mod tests {
         let defs = definition(SRC, "file:///a.osp", 1, 12, U16);
         let first = defs.first().expect("definition");
         assert_eq!(first.span.0, 0, "{defs:?}");
+    }
+
+    #[test]
+    fn definition_of_a_builtin_anchors_on_the_identifier() {
+        // A documented built-in has no source declaration, so go-to-definition
+        // returned nothing and the editor reported "No definition found for
+        // 'listAppend'" over a real, hoverable function. Resolve a built-in to
+        // the identifier under the cursor instead. Implements
+        // [LSP-DEFINITION-BUILTIN].
+        let src = "let batch = listAppend(List(), 6)\n";
+        let col = col_of(src, 0, "listAppend");
+        let defs = definition(src, "file:///a.osp", 0, col, U16);
+        let first = defs
+            .first()
+            .expect("built-in resolves to its own identifier");
+        assert_eq!(first.span.0, 0, "on the same line: {defs:?}");
+        assert_eq!(
+            first.span.1,
+            col - 1,
+            "anchored at the identifier: {defs:?}"
+        );
     }
 
     #[test]

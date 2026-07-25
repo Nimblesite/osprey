@@ -651,7 +651,7 @@ pub enum Expr {
     },
     /// A unary operation.
     Unary {
-        /// Operator spelling (`-`, `!`, `not`).
+        /// Operator spelling (`-`, `!`).
         op: String,
         /// The operand.
         operand: Box<Expr>,

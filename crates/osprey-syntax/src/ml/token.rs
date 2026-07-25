@@ -86,9 +86,8 @@ pub(crate) enum TokKind {
     KwState,
     /// `as` — introduces an import alias ([MODULES-IMPORT]).
     KwAs,
-    /// A reserved word reserved for a not-yet-implemented construct (`handler`,
-    /// `do`). Carries its spelling so the parser can report a precise
-    /// "not yet supported" diagnostic.
+    /// A keyword reserved for unsupported first-class handler syntax (`handler`,
+    /// `do`) ([FLAVOR-HANDLER-VALUE]). Carries its spelling for diagnostics.
     Reserved(String),
     /// `=`.
     Eq,

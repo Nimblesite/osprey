@@ -4,7 +4,8 @@
 // Spec: [TYPE-LIST], [TYPE-LIST-PATTERNS]. Builtins exercised, under the
 // `listXxx` spellings that ship: [BUILTIN-LIST], [BUILTIN-COLLECTION-LENGTH],
 // [BUILTIN-LIST-APPEND], [BUILTIN-LIST-PREPEND], [BUILTIN-LIST-CONCAT],
-// [BUILTIN-LIST-REVERSE], [BUILTIN-LIST-CONTAINS], and [BUILTIN-LIST-GET] via
+// [BUILTIN-LIST-REVERSE], [BUILTIN-LIST-CONTAINS], [BUILTIN-LIST-FOREACH],
+// and [BUILTIN-LIST-GET] via
 // the `commands[0]` index form.
 
 print("[list]\n")
@@ -160,14 +161,10 @@ fn classify(xs) = match xs {
     [first, second] => "two(${first},${second})"
     [head, ...tail] => "many head=${head} rest=${listLength(tail)}"
 }
-// Recursive descent over the tail — the proof that the pattern drives recursion.
-// `+` is overflow-checked (`Result<int, MathError>`), so the step unwraps it.
+// Recursive descent over the tail.
 fn sumList(xs) = match xs {
     []              => 0
-    [head, ...tail] => match head + sumList(tail) {
-        Success { value }   => value
-        Error   { message } => 0
-    }
+    [head, ...tail] => head + sumList(tail)
 }
 // Prefix + rest, with a `_` element position that binds nothing; `rest` is the
 // suffix past the two fixed positions.

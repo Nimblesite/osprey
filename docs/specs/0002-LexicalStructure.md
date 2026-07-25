@@ -1,156 +1,95 @@
 # Lexical Structure
 
-- [Identifiers](#identifiers)
-- [Keywords](#keywords)
-- [Literals](#literals)
-- [Operators](#operators)
-- [Delimiters](#delimiters)
-
-> **Flavor layer — surface (CST).** Default lexing is owned by
-> `crates/osprey-syntax/src/default/`. The ML lexer
-> (`crates/osprey-syntax/src/ml/lexer.rs`) derives `INDENT`, `DEDENT`, and
-> `NEWLINE` from an indent stack ([FLAVOR-ML-LAYOUT] in
-> [ML Flavor Syntax](0024-MLFlavorSyntax.md)). This chapter shows both surfaces;
-> their tokens remain below the canonical AST boundary defined in
-> [Language Flavors](0023-LanguageFlavors.md).
+Default source is tokenized by `tree-sitter-osprey`; ML source uses the lexer in
+`crates/osprey-syntax/src/ml/lexer.rs`, which also inserts `INDENT`, `DEDENT`,
+and `NEWLINE` tokens. Both frontends share string unescaping and interpolation
+scanning.
 
 ## Identifiers
 
-Start with letter or underscore, followed by letters, digits, or underscores.
+Default identifiers use ASCII letters and underscores:
+
+```ebnf
+identifier ::= [a-zA-Z_][a-zA-Z0-9_]*
 ```
-ID := [a-zA-Z_][a-zA-Z0-9_]*
-```
+
+The ML lexer accepts Unicode alphabetic characters in the same leading and
+continuation positions, plus `_`; digits remain continuation-only.
 
 ## Keywords
 
-```
-fn let mut type match extern import module where
-effect perform handle in resume
-spawn await yield select
-```
+The Default grammar reserves the words used by its declarations and
+expressions, including `let`, `mut`, `fn`, `extern`, `type`, `where`, `effect`,
+`perform`, `handle`, `in`, `resume`, `spawn`, `await`, `yield`, `send`, `recv`,
+`select`, `match`, `if`, `else`, `import`, `namespace`, `module`, `signature`,
+`export`, `opaque`, `state`, `as`, `true`, and `false`.
 
-**Contextual keywords.** `out` and `in` mark variance inside a
-type-parameter list only (`type Source<out T>`, `effect Emit<in T>` —
-[TYPE-VARIANCE-DECL](0004-TypeSystem.md#generics-and-variance)). `out` is an
-ordinary identifier everywhere else; `in` remains the hard keyword of
-`handle … in` and is merely *accepted* in type-parameter position.
+ML reserves the corresponding words its surface uses. It deliberately does not
+reserve Default-only `let`, `fn`, `if`, or `else`. `handler` and `do` are
+reserved in ML solely so the frontend can reject the unsupported first-class
+handler syntax with a specific diagnostic.
+
+`in` and `out` are variance markers inside type-parameter declarations
+([TYPE-VARIANCE-DECL](0004-TypeSystem.md#generics-and-variance)). Outside that
+position, `out` is an identifier; `in` also separates a handler from its body.
 
 ## Literals
 
-### Integer Literals
-```
-INTEGER := [0-9]+
+### Numbers
+
+```ebnf
+integer ::= [0-9]+
+float   ::= [0-9]+ "." [0-9]+
 ```
 
-**Examples:**
-```osprey
-let count = 42
-let negative = -17
-let zero = 0
+Negative values apply unary `-`; the sign is not part of the token. Integer
+literals infer as `int` and decimal literals as `float`. Exponent notation,
+numeric separators, and non-decimal bases are not accepted.
+
+### Booleans and strings
+
+Boolean literals are `true` and `false`. Strings are double-quoted. Shared
+unescaping recognizes `\n`, `\r`, `\t`, `\e`, `\0`, `\"`, and `\\`; an
+unknown escape is preserved verbatim. Default strings may contain a source
+newline. The ML lexer rejects a source newline in string text, but permits one
+inside an interpolation expression.
+
+`${ expression }` introduces interpolation in either flavor. See
+[String Interpolation](0006-StringInterpolation.md).
+
+### Lists
+
+```ebnf
+list ::= "[" (expression ("," expression)*)? "]"
 ```
 
-```osprey-ml
-count = 42
-negative = -17
-zero = 0
-```
-
-### Float Literals
-```
-FLOAT := [0-9]+ '.' [0-9]+ ([eE] [+-]? [0-9]+)?
-       | [0-9]+ [eE] [+-]? [0-9]+
-```
-
-**Examples:**
-```osprey
-let pi = 3.14159
-let temperature = -273.15
-let scientific = 6.022e23
-let small = 1.5e-10
-```
-
-```osprey-ml
-pi = 3.14159
-temperature = -273.15
-scientific = 6.022e23
-small = 1.5e-10
-```
-
-**Type Inference:**
-- Integer literals without decimal point infer to `int`
-- Literals with decimal point or scientific notation infer to `float`
-
-### String Literals
-```
-STRING := '"' (CHAR | ESCAPE_SEQUENCE)* '"'
-ESCAPE_SEQUENCE := '\n' | '\t' | '\r' | '\\' | '\"'
-```
-
-### Interpolated String Literals
-```
-INTERPOLATED_STRING := '"' (CHAR | INTERPOLATION)* '"'
-INTERPOLATION := '${' EXPRESSION '}'
-```
-
-### List Literals
-```
-LIST := '[' (expression (',' expression)*)? ']'
-```
-
-```osprey
-let numbers = [1, 2, 3, 4]
-let names   = ["Alice", "Bob", "Charlie"]
-let pair    = [x, y]
-```
-
-```osprey-ml
-numbers = [1, 2, 3, 4]
-names   = ["Alice", "Bob", "Charlie"]
-pair    = [x, y]
-```
+The list elements must unify to one element type. Map and record literal forms
+are defined in [Type System](0004-TypeSystem.md).
 
 ## Operators
 
-### Arithmetic Operators
+- Arithmetic: `+`, `-`, `*`, `/`, `%`. `+`, `-`, and `*` return plain numbers;
+  `/` and `%` return a `Result` and reject a zero divisor ([ARITH-PLAIN]).
+- Comparison: `==`, `!=`, `<`, `>`, `<=`, `>=`.
+- Boolean: `&&`, `||`, `!`. `&&` and `||` short-circuit.
+- Calls and data access: `()`, `.`, `[]`.
+- Flow and matching: `|>`, `=>`, `? :`, `?:`.
+- Types and effects: `:`, `->`, `< >`, and `!` on an effect set.
+- Namespace qualification: `::`.
 
-`+`, `-`, `*`, `/`, `%`. Under [ARITH-PLAIN] `+`, `-`, `*` return plain scalars (`int`, or `float` with any float operand) while `/` and `%` return `Result<_, MathError>` and are zero-checked. Full signatures and the per-operand-type table are in [Error Handling](0013-ErrorHandling.md).
+Default uses `=` both to initialize a `let`/`mut` declaration and to reassign a
+previously declared `mut` binding. ML uses `=` for a binding and `:=` for
+reassignment. A `mut` binding is a cell for **handler-owned effect state**, not a
+general imperative variable; where its reassignment is valid is defined in
+[Bindings](0003-Syntax.md#bindings), and the checker does not yet enforce that
+effect-scoped restriction
+([issue #180](https://github.com/Nimblesite/osprey/issues/180)).
 
-### Comparison Operators
-- `==` Equality
-- `!=` Inequality  
-- `<` Less than
-- `>` Greater than
-- `<=` Less than or equal
-- `>=` Greater than or equal
+`?:` is a single token and is matched before bare `?` or `:`. Its semantics are
+defined by [PATTERN-RESULT-DEFAULT](0007-PatternMatching.md#result-default--pattern-result-default).
 
-### Logical Operators
-- `&&` Logical AND (short-circuit evaluation)
-- `||` Logical OR (short-circuit evaluation)
-- `!` Logical NOT
+## Comments
 
-### Assignment Operator
-- `=` Assignment
-
-### Other Operators
-- `->` Function return type
-- `=>` Lambda body and match arm
-- `|` Union variant separator — a declaration separator only, never an infix
-  expression operator
-- `|>` Pipe
-- `?:` Result default — `e ?: d` yields `e`'s `Success` payload, else `d`
-  ([Ternary Match](0007-PatternMatching.md#ternary-match-syntactic-sugar)).
-  Spelled identically in both flavors; lexed ahead of the bare `:` of a type
-  signature so it keeps maximal munch
-- `?` `:` Structural ternary match, as `expr { pattern } ? expr : expr`
-  ([Ternary Match](0007-PatternMatching.md#ternary-match-syntactic-sugar))
-- `!` Effect-set marker on a function type
-
-## Delimiters
-
-- `(` `)` Parentheses
-- `{` `}` Braces
-- `[` `]` Brackets
-- `,` Comma
-- `:` Colon
-- `;` Semicolon
-- `.` Dot
+Default uses `//` line comments and `///` documentation comments. ML accepts
+`//` line comments, nested `(* ... *)` block comments, and `(** ... *)`
+documentation comments.

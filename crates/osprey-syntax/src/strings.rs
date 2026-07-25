@@ -3,14 +3,14 @@
 //! single flavor — both the Default (brace) and ML (layout) frontends call them
 //! with their own fragment parser, so the scanning and escape rules live here in
 //! exactly one place rather than being reached out of either flavor's folder
-//! ([FLAVOR-FRONTEND], docs/specs/0023-LanguageFlavors.md).
+//! ([FLAVOR-FRONTEND], [STRING-INTERPOLATION]).
 
 use osprey_ast::{Expr, InterpolatedPart};
 
 /// Split a `"text ${expr} more"` literal into [`InterpolatedPart`]s, parsing
 /// each embedded expression with `parse_frag` (the active flavor's fragment
 /// parser). Shared by the Default and ML frontends so the `${…}`-scanning and
-/// escape handling exist in exactly one place.
+/// escape handling exist in exactly one place. [STRING-INTERPOLATION]
 pub(crate) fn lower_interpolation(
     raw: &str,
     parse_frag: impl Fn(&str) -> Expr,

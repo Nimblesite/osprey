@@ -21,7 +21,8 @@ use crate::engine::OspreyEngine;
 use crate::model::{At, Query, Report};
 use crate::wire;
 
-/// The position encoding the server negotiates and uses throughout.
+/// The fixed wire position encoding advertised and used throughout.
+/// Implements [LSP-ENCODING].
 const ENCODING: PositionEncoding = PositionEncoding::Utf16;
 /// JSON-RPC "method not found".
 const METHOD_NOT_FOUND: i32 = -32601;
@@ -48,6 +49,7 @@ pub enum ServerError {
 
 /// Run the language server over stdin/stdout until the client disconnects or
 /// sends `exit`.
+/// Implements [LSP-TRANSPORT].
 ///
 /// # Errors
 /// Returns [`ServerError::Framing`] on an unrecoverable transport failure.
@@ -71,6 +73,7 @@ async fn serve_on(reader: BoxedReader, writer: &SharedWriter) -> Result<(), Serv
 }
 
 /// The main read/route loop. Returns `Ok` on a clean disconnect or `exit`.
+/// Implements [LSP-LIFECYCLE].
 async fn serve(
     reader: &mut BufReader<BoxedReader>,
     writer: &SharedWriter,
@@ -190,6 +193,7 @@ fn apply_changes(vfs: &Vfs, doc: &DocumentUri, params: &Value) {
 }
 
 /// Compute and broadcast diagnostics for `doc`.
+/// Implements [LSP-DIAGNOSTICS].
 async fn publish(engine: &OspreyEngine, bus: &lspkit_server::DiagnosticsBus, doc: DocumentUri) {
     let snapshot = engine
         .report(Query::Diagnostics(doc.clone()), CancellationToken::new())
@@ -203,6 +207,7 @@ async fn publish(engine: &OspreyEngine, bus: &lspkit_server::DiagnosticsBus, doc
 }
 
 /// Register the feature request handlers, each capturing a clone of the engine.
+/// Implements [LSP-CAPABILITIES].
 fn build_dispatcher(engine: &OspreyEngine) -> Dispatcher {
     let dispatcher = Dispatcher::new();
     register(
@@ -567,6 +572,9 @@ mod tests {
 
     #[tokio::test]
     async fn initialize_and_shutdown_round_trip_with_capabilities() {
+        // Pins the framed request path in [LSP-TRANSPORT], [LSP-LIFECYCLE],
+        // [LSP-CAPABILITIES], and the fixed UTF-16 wire choice in
+        // [LSP-ENCODING].
         let mut h = Harness::start();
         let init = h.request(1, "initialize", json!({})).await;
         assert_eq!(init.id, Some(RequestId::Number(1)));
@@ -583,6 +591,8 @@ mod tests {
 
     #[tokio::test]
     async fn did_open_publishes_clean_diagnostics_then_errors_on_change() {
+        // Document synchronization drives compiler diagnostics.
+        // [LSP-LIFECYCLE], [LSP-DIAGNOSTICS]
         let mut h = Harness::start();
         let clean = h.open(SRC).await;
         assert_eq!(
@@ -627,6 +637,7 @@ mod tests {
 
     #[tokio::test]
     async fn incremental_change_and_close_update_the_vfs() {
+        // Incremental sync and close semantics from [LSP-LIFECYCLE].
         let mut h = Harness::start();
         let _open = h.open("let x = 1\n").await;
 
@@ -865,6 +876,7 @@ mod tests {
 
     #[tokio::test]
     async fn cancel_request_is_accepted_without_a_reply() {
+        // Cancellation notification handling from [LSP-LIFECYCLE].
         let mut h = Harness::start();
         // A cancel for an unknown id is a harmless no-op; the loop keeps serving.
         h.notify("$/cancelRequest", json!({ "id": 999 })).await;

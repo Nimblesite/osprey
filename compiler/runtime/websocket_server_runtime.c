@@ -2,8 +2,14 @@
 #include "memory_hooks.h"
 #include <signal.h>
 
+// Native text-frame server transport [BUILTIN-WEBSOCKET].
+
 // Global variable for runtime lifecycle
 static volatile int keep_runtime_running = 1;
+
+static bool valid_websocket_server_id(int64_t server_id) {
+  return server_id >= 0 && server_id < MAX_WEBSOCKET_SERVERS;
+}
 
 // Signal handler for graceful shutdown
 void handle_shutdown_signal(int sig) {
@@ -53,11 +59,10 @@ void *handle_websocket_connection(void *arg) {
           // Create WebSocket connection
           int64_t ws_id = get_next_id();
           WebSocket *ws = malloc(sizeof(WebSocket));
-          if (ws) {
-            ws->id = ws_id;
-            ws->url = strdup("server-connection");
-            ws->message_handler = strdup("server-handler");
-            ws->socket_fd = client_fd;
+            if (ws) {
+              ws->id = ws_id;
+              ws->url = strdup("server-connection");
+              ws->socket_fd = client_fd;
             ws->is_connected = true;
             pthread_mutex_init(&ws->mutex, NULL);
 
@@ -174,6 +179,9 @@ int64_t websocket_create_server(int64_t port, char *address, char *path) {
   }
 
   int64_t id = get_next_id();
+  if (!valid_websocket_server_id(id) || id == 0) {
+    return -3;
+  }
   WebSocketServer *server = malloc(sizeof(WebSocketServer));
   if (!server) {
     return -3;
@@ -185,6 +193,7 @@ int64_t websocket_create_server(int64_t port, char *address, char *path) {
   server->path = strdup(path);
   server->socket_fd = -1;
   server->is_listening = false;
+  server->thread_started = false;
   server->connection_count = 0;
   pthread_mutex_init(&server->mutex, NULL);
 
@@ -202,6 +211,9 @@ int64_t websocket_create_server(int64_t port, char *address, char *path) {
 
 // Start WebSocket server listening - returns 0 on success
 int64_t websocket_server_listen(int64_t server_id) {
+  if (!valid_websocket_server_id(server_id)) {
+    return -1;
+  }
   pthread_mutex_lock(&runtime_mutex);
   WebSocketServer *server = websocket_servers[server_id];
   pthread_mutex_unlock(&runtime_mutex);
@@ -218,7 +230,7 @@ int64_t websocket_server_listen(int64_t server_id) {
 
   // Set socket options
   int opt = 1;
-  // optval is `const char *` on Winsock, `const void *` on POSIX. [WINDOWS-PORT-PHASE2]
+  // optval is `const char *` on Winsock, `const void *` on POSIX.
   if (setsockopt(server->socket_fd, SOL_SOCKET, SO_REUSEADDR, (const char *)&opt,
                  sizeof(opt)) < 0) {
     close(server->socket_fd);
@@ -254,43 +266,18 @@ int64_t websocket_server_listen(int64_t server_id) {
     server->is_listening = false;
     return -6;
   }
+  server->thread_started = true;
 
   return 0;
-}
-
-// Send message to specific WebSocket connection - returns 0 on success
-int64_t websocket_server_send(int64_t server_id, int64_t connection_id,
-                              char *message) {
-  if (!message) {
-    return -1;
-  }
-
-  pthread_mutex_lock(&runtime_mutex);
-  WebSocketServer *server = websocket_servers[server_id];
-  pthread_mutex_unlock(&runtime_mutex);
-
-  if (!server) {
-    return -2;
-  }
-
-  pthread_mutex_lock(&server->mutex);
-  for (int i = 0; i < server->connection_count; i++) {
-    WebSocket *ws = server->connections[i];
-    if (ws && ws->id == connection_id && ws->is_connected) {
-      int result = send_websocket_frame(ws->socket_fd, message);
-      pthread_mutex_unlock(&server->mutex);
-      return result > 0 ? 0 : -3;
-    }
-  }
-  pthread_mutex_unlock(&server->mutex);
-
-  return -4; // Connection not found
 }
 
 // Broadcast message to all connections - returns number of connections sent to
 int64_t websocket_server_broadcast(int64_t server_id, char *message) {
   if (!message) {
     return -1;
+  }
+  if (!valid_websocket_server_id(server_id)) {
+    return -2;
   }
 
   pthread_mutex_lock(&runtime_mutex);
@@ -318,11 +305,15 @@ int64_t websocket_server_broadcast(int64_t server_id, char *message) {
 
 // Stop WebSocket server - returns 0 on success
 int64_t websocket_stop_server(int64_t server_id) {
+  if (!valid_websocket_server_id(server_id)) {
+    return -1;
+  }
   pthread_mutex_lock(&runtime_mutex);
   WebSocketServer *server = websocket_servers[server_id];
   if (server) {
     websocket_servers[server_id] = NULL;
     server->is_listening = false;
+    bool thread_started = server->thread_started;
 
     // Close all connections
     pthread_mutex_lock(&server->mutex);
@@ -332,7 +323,6 @@ int64_t websocket_stop_server(int64_t server_id) {
         ws->is_connected = false;
         close(ws->socket_fd);
         free(ws->url);
-        free(ws->message_handler);
         pthread_mutex_destroy(&ws->mutex);
         free(ws);
       }
@@ -345,7 +335,9 @@ int64_t websocket_stop_server(int64_t server_id) {
     }
 
     // Wait for server thread to finish
-    pthread_join(server->server_thread, NULL);
+    if (thread_started) {
+      pthread_join(server->server_thread, NULL);
+    }
 
     free(server->address);
     free(server->path);
@@ -373,11 +365,7 @@ void websocket_keep_alive(void) {
   printf("🛑 Shutting down all WebSocket servers...\n");
 
   // Stop all servers
-  pthread_mutex_lock(&runtime_mutex);
   for (int i = 0; i < MAX_WEBSOCKET_SERVERS; i++) {
-    if (websocket_servers[i]) {
-      websocket_stop_server(i);
-    }
+    websocket_stop_server(i);
   }
-  pthread_mutex_unlock(&runtime_mutex);
 }

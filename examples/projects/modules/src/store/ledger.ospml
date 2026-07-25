@@ -84,7 +84,7 @@ module Ledger
     // Both sides of a transfer and their journal rows commit as one SQLite
     // transaction. The API validates both account ids before invoking this
     // capability, so a successful debit can never disappear into a missing
-    // destination account. [MODULES-TRANSFER-ATOMIC]
+    // destination account.
     export transferSql : Ptr -> int -> int -> int -> string -> Outcome
     transferSql db fromId toId cents note =
         before = balanceSql db fromId

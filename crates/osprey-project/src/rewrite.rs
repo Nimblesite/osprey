@@ -16,6 +16,8 @@ fn locals_with_type_parameters(type_params: &[TypeParam]) -> Locals {
 }
 
 impl Resolver<'_> {
+    /// Resolves a constant initializer and rejects active-path recursion.
+    /// Implements the constant half of [MODULES-CYCLES].
     pub fn constant_value(&mut self, key: &SymbolKey) -> Option<Expr> {
         if let Some(value) = self.constant_cache.get(key) {
             return Some(value.clone());

@@ -3,6 +3,7 @@
 //! Enforcement is a pre-codegen pass over the parsed program: a gated builtin
 //! referenced anywhere (or an `extern` declaration under `--no-ffi`) is a
 //! compile error, so untrusted code is rejected before any IR exists.
+//! Implements [SECURITY-CAPABILITY-GATES] and [SECURITY-FFI-GATE].
 
 use osprey_ast::{Program, Stmt};
 
@@ -66,9 +67,8 @@ const WEBSOCKET_FNS: &[&str] = &[
     "websocketKeepAlive",
     "websocketClose",
     "websocketCreateServer",
-    "websocketListen",
+    "websocketServerListen",
     "websocketServerBroadcast",
-    "websocketStopServer",
 ];
 const FS_FNS: &[&str] = &["readFile", "writeFile"];
 const PROCESS_FNS: &[&str] = &["spawnProcess", "awaitProcess", "cleanupProcess"];
@@ -99,6 +99,7 @@ pub(crate) fn violations(program: &Program, policy: Policy) -> Vec<String> {
 }
 
 /// `--no-ffi`: any `extern` declaration (including inside modules) is rejected.
+/// [SECURITY-FFI-GATE]
 fn extern_violations(statements: &[Stmt], out: &mut Vec<String>) {
     for s in statements {
         match s {
@@ -117,15 +118,20 @@ fn extern_violations(statements: &[Stmt], out: &mut Vec<String>) {
 }
 
 #[cfg(test)]
-#[expect(
-    clippy::indexing_slicing,
-    reason = "test assertions: an out-of-bounds index is a test failure, not a production panic"
-)]
 mod tests {
     use super::*;
 
     fn prog(src: &str) -> Program {
         osprey_syntax::parse_program(src).program
+    }
+
+    fn refs(names: &[&str]) -> Program {
+        use std::fmt::Write as _;
+        let mut source = String::new();
+        for (index, name) in names.iter().enumerate() {
+            let _ = writeln!(source, "let gated{index} = {name}");
+        }
+        prog(&source)
     }
 
     #[test]
@@ -163,19 +169,25 @@ mod tests {
 
     #[test]
     fn no_http_and_no_websocket_are_independent() {
+        // [SECURITY-CAPABILITY-GATES] Every network builtin belongs to
+        // exactly its own independently controlled capability group.
         let mut http_off = Policy::allow_all();
         http_off.http = false;
-        let v = violations(&prog("let s = httpListen(8080, h)\n"), http_off);
-        assert_eq!(v.len(), 1);
-        assert!(v[0].contains("httpListen") && v[0].contains("--no-http"));
+        let v = violations(&refs(HTTP_FNS), http_off);
+        assert_eq!(v.len(), HTTP_FNS.len());
+        assert!(HTTP_FNS.iter().all(|name| v
+            .iter()
+            .any(|message| message == &format!("security: `{name}` is disabled by --no-http"))));
         // websocket builtin is NOT gated when only http is off.
         assert!(violations(&prog("let c = websocketConnect(\"ws://x\")\n"), http_off).is_empty());
 
         let mut ws_off = Policy::allow_all();
         ws_off.websocket = false;
-        let v = violations(&prog("let c = websocketConnect(\"ws://x\")\n"), ws_off);
-        assert_eq!(v.len(), 1);
-        assert!(v[0].contains("websocketConnect") && v[0].contains("--no-websocket"));
+        let v = violations(&refs(WEBSOCKET_FNS), ws_off);
+        assert_eq!(v.len(), WEBSOCKET_FNS.len());
+        assert!(WEBSOCKET_FNS.iter().all(|name| v.iter().any(
+            |message| message == &format!("security: `{name}` is disabled by --no-websocket")
+        )));
     }
 
     #[test]
@@ -191,6 +203,7 @@ mod tests {
 
     #[test]
     fn no_ffi_rejects_extern_declarations_including_in_modules() {
+        // [SECURITY-FFI-GATE]
         let mut policy = Policy::allow_all();
         policy.ffi = false;
         let src = "extern fn sqlite3_open(filename: string, ppDb: Ptr) -> int\n\

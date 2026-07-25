@@ -1,6 +1,5 @@
 // Default-flavor twin of matchint.ospml. Layout `match` over int literals + `_`
-// lowers to the same nodes as this braced `match`; the function returns a string
-// so no auto-unwrap annotation is needed — byte-identical IR.
+// lowers to the same nodes as this braced `match` — byte-identical IR.
 
 fn label(n) = match n {
     0 => "none"

@@ -132,7 +132,8 @@ fn inline_named_payload_wants_a_closing_paren() {
 // ─── [TYPE-UNION-POSITIONAL] ────────────────────────────────────────────────
 
 /// A saturated application of a positionally-declared constructor folds into
-/// the construction node, with arguments landing in slot order.
+/// the construction node, with arguments landing in slot order
+/// ([FLAVOR-ML-CTOR-POSITIONAL]).
 #[test]
 fn saturated_positional_application_becomes_a_construction() {
     let (_, body) = function_body("type Pair = Both int int\nmk a b = Both a b\n", "mk");
@@ -318,7 +319,8 @@ fn or_patterns_are_rejected() {
     assert!(ml_errors(src).contains("or-patterns are not supported"));
 }
 
-/// `(` groups exactly one pattern — Osprey has no tuple patterns.
+/// `(` groups exactly one pattern — Osprey has no tuple patterns
+/// ([FLAVOR-ML-PATTERN-GROUP]).
 #[test]
 fn a_grouped_pattern_holds_one_pattern() {
     let src = "type Pair = Both int int\nfst p = match p\n    (Both a, b) => a\n";

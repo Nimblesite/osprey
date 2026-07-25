@@ -58,3 +58,6 @@ let lr2 = 5 |> (fn(x) => x + 100) |> (fn(x) => x * 2)
 print("5|>+100|>*2 = ${toString(lr2)}")
 
 print("=== Showcase Complete ===")
+// Exercises [BUILTIN-ITER], [BUILTIN-ITER-RANGE], [BUILTIN-ITER-MAP],
+// [BUILTIN-ITER-FILTER], [BUILTIN-ITER-FOREACH], [BUILTIN-ITER-FOLD],
+// [BUILTIN-ITER-CALLBACK], [BUILTIN-ITER-PIPE], and [BUILTIN-ITER-FUSION].

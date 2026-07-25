@@ -41,7 +41,6 @@ endif
 # lists `:=` assignments as if they were targets; `?=` keeps the panel clean.
 # ---------------------------------------------------------------------------
 # Coverage — single source of truth is coverage-thresholds.json.
-# See REPO-STANDARDS-SPEC [COVERAGE-THRESHOLDS-JSON].
 COVERAGE_THRESHOLDS_FILE ?= coverage-thresholds.json
 
 # Toolchain / paths. BIN: the built CLI. RTB: C-runtime archive output dir
@@ -83,14 +82,14 @@ HTTP_OBJ ?= bin/http_shared.o bin/http_client_runtime.o bin/http_server_request.
 # GC backend archives (osprey --memory=gc): the tracing collector replaces
 # memory_runtime.o, and the value-container units are rebuilt with the malloc
 # redirect (osp_gc_shim.h) so their nodes live in the managed heap. Everything
-# else is the same object. Implements [GC-TRACE-CONSERVATIVE], docs/plans/0011.
+# else is the same object. Implements [GC-TRACE-CONSERVATIVE], spec 0018.
 FIB_OBJ_GC  ?= bin/memory_gc.o bin/fiber_runtime.o bin/system_runtime.o bin/effects_runtime.o bin/string_runtime.o bin/string_runtime_list.o bin/gc/list_runtime.o bin/gc/map_runtime.o bin/gc/map_runtime_hamt.o bin/json_runtime.o bin/ffi_runtime.o bin/term_runtime.o bin/random_runtime.o bin/test_runtime.o bin/coverage_runtime.o bin/profiler_runtime.o bin/profiler_sampler.o
 HTTP_OBJ_GC ?= bin/http_shared.o bin/http_client_runtime.o bin/http_server_request.o bin/http_server_response.o bin/http_server_runtime.o bin/websocket_client_runtime.o bin/websocket_server_runtime.o $(FIB_OBJ_GC)
 # ARC backend archives (osprey --memory=arc): Perceus reference counting
 # replaces memory_runtime.o, and the value-producing units (containers +
 # strings + JSON) are rebuilt with the allocation redirect (osp_arc_shim.h) so
 # their nodes/buffers carry the 16-byte header and registry entry. Implements
-# [GC-ARC-PERCEUS], docs/plans/0011 phase 2 (milestone M1).
+# [GC-ARC-PERCEUS], spec 0018.
 FIB_OBJ_ARC  ?= bin/memory_arc.o bin/fiber_runtime.o bin/system_runtime.o bin/effects_runtime.o bin/arc/string_runtime.o bin/arc/string_runtime_list.o bin/arc/list_runtime.o bin/arc/map_runtime.o bin/arc/map_runtime_hamt.o bin/arc/json_runtime.o bin/ffi_runtime.o bin/term_runtime.o bin/random_runtime.o bin/test_runtime.o bin/coverage_runtime.o bin/profiler_runtime.o bin/profiler_sampler.o
 HTTP_OBJ_ARC ?= bin/http_shared.o bin/http_client_runtime.o bin/http_server_request.o bin/http_server_response.o bin/http_server_runtime.o bin/websocket_client_runtime.o bin/websocket_server_runtime.o $(FIB_OBJ_ARC)
 
@@ -133,7 +132,6 @@ build: _runtime
 	cd $(EXT_DIR) && npm run compile
 
 ## test: Fail-fast tests + coverage + per-project threshold enforcement.
-##       See REPO-STANDARDS-SPEC [TEST-RULES] and [COVERAGE-THRESHOLDS-JSON].
 ##       Projects listed in coverage-thresholds.json are each tested + checked.
 test: build
 	@echo "==> Testing (fail-fast + coverage + per-project thresholds)..."
@@ -189,7 +187,7 @@ lint: deslop
 	cargo clippy --workspace --all-targets -- -D warnings
 	cd $(EXT_DIR) && npm run lint
 
-## deslop: Code-duplication gate [CI-DESLOP]. Fails the build when measured
+## deslop: Code-duplication gate. Fails the build when measured
 ## duplication exceeds the ceiling in .deslop.toml (exit 3). Exclusions and the
 ## threshold live in that committed config — the single source of truth. When
 ## the `deslop` binary is absent the gate is skipped with a loud warning so a
@@ -366,14 +364,14 @@ _runtime_wasm:
 	  cp bin/libosprey_runtime_wasm.a lib/
 
 # --- rust (crates/) ---------------------------------------------------------
-# Implements [TEST-RULES] — cargo test is fail-fast at the binary level by
+# cargo test is fail-fast at the binary level by
 # default (a failing test binary aborts the run); coverage via cargo-llvm-cov.
 # `--profile ci` is the workspace's fast-compile profile (see root Cargo.toml).
 _test_rust:
 	@echo "==> [rust] running tests with coverage..."
 	set -o pipefail && cargo llvm-cov --workspace --profile ci --lcov --output-path lcov.info 2>&1 | tee test.log
 
-# Per-crate enforcement ([COVERAGE-THRESHOLDS-JSON]): every rust crate is gated
+# Per-crate enforcement: every rust crate is gated
 # independently against its own threshold (floor 95% + monotonic ratchet). lcov
 # SF records are grouped by their crates/<name>/ path; a single crate below its
 # gate fails the whole target. Aggregating the workspace into one number would
@@ -402,7 +400,7 @@ _coverage_check_rust:
 # Hardened C runtime unit tests (assertion-driven; a failed assert aborts the
 # binary). Covers the string cursor (BUILTIN-STRING-CURSOR), the error-message
 # contract ([ERR-PAYLOAD]), complete HTTP reads/writes, the fiber/channel and
-# websocket surface, and — since plan 0011 phase 2 — the reclaiming memory
+# websocket surface and the reclaiming memory
 # backend and both persistent containers: memory_arc.c (header, registry,
 # retain/release, every layout kind's drop walk, the shim allocators) and
 # list_runtime.c / map_runtime.c / map_runtime_hamt.c (trie + HAMT persistence,
@@ -478,7 +476,7 @@ _test_differential:
 	  echo "$$out" | grep -q  'FC_OK'    || { echo 'FAIL: must-reject ratchet exceeded'; exit 1; }
 
 # _conformance-gc: run every tested example under the tracing GC backend; output
-# must be byte-identical to the default ([MEM-BACKENDS] oracle, docs/plans/0011).
+# must be byte-identical to the default ([MEM-BACKENDS] oracle, spec 0018).
 _conformance-gc:
 	@echo "==> [conformance] differential harness under --memory=gc..."
 	@out=$$(OSPREY_RUN_FLAGS=--memory=gc zsh crates/diff_examples.sh); echo "$$out"; \
@@ -576,7 +574,6 @@ bench: build
 ##      never another extension, never another VSCode profile. macOS only.
 ##      ONE `code` invocation (install --force, no separate uninstall) so the
 ##      running VSCode reconciles its extension host exactly once, not twice.
-##      See [MAKE-IDE-EXT].
 vsix-rebuild-reinstall: _vsix_clean build _vsix_build _vsix_bundle _vsix_package _vsix_install
 
 # _rebuild-install-vsix: deprecated private alias of `vsix-rebuild-reinstall`.

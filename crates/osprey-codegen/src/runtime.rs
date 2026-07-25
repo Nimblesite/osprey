@@ -9,9 +9,10 @@ use crate::conv::as_i64;
 use crate::error::Result;
 use crate::llty::{LType, Value};
 
-/// Convert any value to its `i8*` string form (`toString` / interpolation /
-/// `print`). Strings pass through; the rest go through libc `sprintf` or the
-/// float runtime. A `Result` formats as `Success(value)` / `Error(message)`.
+/// Convert a supported value to its `i8*` string form (`toString` /
+/// interpolation / `print`). Strings pass through; the rest go through libc
+/// `sprintf` or the float runtime. A `Result` formats as `Success(value)` /
+/// `Error(message)`. Implements [BUILTIN-TOSTRING].
 pub(crate) fn to_string_value(cg: &mut Codegen, v: Value) -> Result<Value> {
     if v.result_inner.is_some() {
         return result_to_string(cg, &v);
@@ -98,7 +99,7 @@ fn sprintf_wrap(cg: &mut Codegen, fmt: &str, arg: &str) -> String {
     buf
 }
 
-/// `print(x)` → `puts(toString(x))`; yields Unit.
+/// `print(x)` → `puts(toString(x))`; yields Unit. [BUILTIN-PRINT]
 pub(crate) fn gen_print(cg: &mut Codegen, v: Value) -> Result<Value> {
     let s = to_string_value(cg, v)?;
     cg.add_extern("declare i32 @puts(i8*)");

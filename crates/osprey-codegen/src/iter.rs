@@ -6,7 +6,7 @@
 //! replaying those stages, so no intermediate collection is ever materialised.
 //! Implements [BUILTIN-ITER], [BUILTIN-ITER-RANGE], [BUILTIN-ITER-MAP],
 //! [BUILTIN-ITER-FILTER], [BUILTIN-ITER-FOREACH], [BUILTIN-ITER-FOLD], and
-//! [BUILTIN-ITER-FUSION].
+//! [BUILTIN-ITER-FUSION] and [BUILTIN-LIST-FOREACH].
 
 use crate::builder::{Codegen, FnSig};
 use crate::conv::{as_i64, box_to_i64, unbox_from_i64};
@@ -196,7 +196,7 @@ fn for_each(cg: &mut Codegen, args: &[Expr]) -> Result<Value> {
     let _ = invoke(cg, &consumer, vec![elem])?;
     crate::arc::pop_frame(cg);
     close_range_loop(cg, &lp);
-    Ok(range)
+    Ok(Value::new("0", LType::I64))
 }
 
 /// An `i64` accumulator slot seeded with a `fold` builtin's `initial` (the 2nd
@@ -297,7 +297,8 @@ fn list_arg(cg: &mut Codegen, args: &[Expr], i: usize) -> Result<Value> {
     crate::cast::coerce_to(cg, v, LType::Ptr)
 }
 
-/// `forEachList(list, fn)` — call `fn` on each element in order.
+/// `forEachList(list, fn)` — call `fn` on each element in order
+/// [BUILTIN-LIST-FOREACH].
 fn for_each_list(cg: &mut Codegen, args: &[Expr]) -> Result<Value> {
     let l = list_arg(cg, args, 0)?;
     let consumer = callback_of(cg, nth(args, 1)?)?;
@@ -306,7 +307,7 @@ fn for_each_list(cg: &mut Codegen, args: &[Expr]) -> Result<Value> {
     let _ = invoke(cg, &consumer, vec![Value::new(lp.elem.clone(), LType::I64)])?;
     crate::arc::pop_frame(cg);
     close_list_loop(cg, &lp);
-    Ok(l)
+    Ok(Value::new("0", LType::I64))
 }
 
 /// `mapList`/`filterList` — build a new list via the runtime list builder.

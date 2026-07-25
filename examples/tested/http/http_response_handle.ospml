@@ -1,3 +1,4 @@
+// [BUILTIN-HTTP] [HTTP-RESPONSE-HANDLE]
 // ML twin of http_response_handle.osp. The HTTP builtins are ordinary calls; named
 // args (`bodyLine(h: value)`) become positional (`bodyLine value`). The handler's
 // `-> HttpResponse` return is load-bearing, mirrored by an ML signature; the record

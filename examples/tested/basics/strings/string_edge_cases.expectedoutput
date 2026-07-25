@@ -56,6 +56,14 @@ pf-empty rejected
 
 pf-trailing rejected
 
+pf-space rejected
+
+pf-nan rejected
+
+pf-hex rejected
+
+pf-infinite rejected
+
 pi-overflow rejected
 
 pi-min=-9223372036854775808
@@ -80,6 +88,8 @@ fromCp=😀
 
 fromCp-bad=fromCodePoint: invalid code point
 
+fromCp-nul=fromCodePoint: invalid code point
+
 roundtrip=233
 
 pi-msg=parseInt: invalid integer
@@ -89,4 +99,3 @@ div-msg=division by zero
 user-msg=custom boom
 
 === Edge Cases Complete ===
-

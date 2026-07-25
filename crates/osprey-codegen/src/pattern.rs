@@ -196,12 +196,19 @@ fn binder_name(p: &Pattern) -> String {
     }
 }
 
-/// If any arm is a user-union variant constructor, the union's owner name.
+/// The owner type name a constructor arm destructures, if any. That owner is
+/// either a multi-variant union (present in `union_variants`) or a single-variant
+/// record: the record shorthand `type V = V { … }` is classified as a record, so
+/// it never enters `union_variants`, yet its heap block is the same
+/// `{ i64 tag, fields… }` shape carrying tag `0` — so `gen_union_match` binds its
+/// fields identically. Without the record arm here such a match falls through to
+/// `gen_literal_match`, which rejects the constructor pattern (#175). Result
+/// (`Success`/`Error`) arms are dispatched earlier and never reach this.
 fn union_owner(cg: &Codegen, arms: &[MatchArm]) -> Option<String> {
     for a in arms {
         if let Some((name, _)) = pattern_ctor(cg, &a.pattern) {
             if let Some(view) = cg.ctor_layout(name) {
-                if !view.owner_is_record && cg.union_variants(&view.owner).is_some() {
+                if view.owner_is_record || cg.union_variants(&view.owner).is_some() {
                     return Some(view.owner);
                 }
             }

@@ -9,7 +9,7 @@
 //
 // Two request surfaces share one transport helper (http_perform):
 //   * Status-only API  (http_get/post/put/delete, http_request) returns the
-//     numeric status code, preserving the original behaviour.
+//     numeric status code [HTTP-STATUS-CLIENT].
 //   * Response-handle API (http_*_response + http_response_*) retains the full
 //     response body and headers in a heap slot and returns an opaque handle so
 //     Osprey can read the body. Implements [HTTP-RESPONSE-HANDLE].
@@ -292,9 +292,9 @@ static int64_t parse_status_line(const char *raw) {
   return -8;
 }
 
-// Make HTTP request - returns HTTP status code or negative error
-int64_t http_request(int64_t client_id, int64_t method, char *path,
-                     char *headers, char *body) {
+// Shared status-only request implementation.
+static int64_t http_request(int64_t client_id, int64_t method, char *path,
+                            char *headers, char *body) {
   char *raw = NULL;
   size_t len = 0;
   int64_t rc = http_perform(client_id, method, path, headers, body, &raw, &len);
@@ -360,8 +360,8 @@ static bool valid_response_handle(int64_t handle) {
 
 // http_request_capture performs the request, retains status/body/headers in a
 // heap slot, and returns a 1-based handle (>=1) or a negative error code.
-int64_t http_request_capture(int64_t client_id, int64_t method, char *path,
-                             char *headers, char *body) {
+static int64_t http_request_capture(int64_t client_id, int64_t method,
+                                    char *path, char *headers, char *body) {
   char *raw = NULL;
   size_t len = 0;
   int64_t rc = http_perform(client_id, method, path, headers, body, &raw, &len);
@@ -424,11 +424,6 @@ int64_t http_request_capture(int64_t client_id, int64_t method, char *path,
 
 int64_t http_get_response(int64_t client_id, char *path, char *headers) {
   return http_request_capture(client_id, HTTP_GET, path, headers, NULL);
-}
-
-int64_t http_post_response(int64_t client_id, char *path, char *body,
-                           char *headers) {
-  return http_request_capture(client_id, HTTP_POST, path, headers, body);
 }
 
 int64_t http_response_status(int64_t handle) {

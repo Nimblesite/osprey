@@ -296,6 +296,7 @@ mod tests {
 
     #[test]
     fn a_field_access_offers_only_that_records_fields() {
+        // [LSP-COMPLETION-MEMBER]
         // Completing after `origin.` used to dump the entire symbol table.
         let src = "type Point = { x: int, y: int }\n\
                    let origin = Point { x: 1, y: 2 }\n\
@@ -327,6 +328,7 @@ mod tests {
 
     #[test]
     fn ml_completions_never_offer_a_keyword_the_ml_frontend_does_not_have() {
+        // Completion presentation for [LSP-FLAVOR-RENDER].
         // `fn`, `let` and `if` are absent from `ml::token::keyword_or_ident`:
         // ML defines by bare clause and branches with `match` on true/false.
         // Completing them inserts plain identifiers and a guaranteed parse

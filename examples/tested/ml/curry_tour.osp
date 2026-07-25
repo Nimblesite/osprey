@@ -3,9 +3,8 @@
 // binding `add (x, y)` — both lower to one flat two-parameter function. A
 // function that returns a lambda (`makeScaler(k) = fn(v) => v * k`) is the
 // closure idiom, mirroring ML `makeScaler k = \v => v * k`. Inferable signatures
-// are stripped; the arithmetic `-> int` returns are load-bearing — they force
-// `Result<int, MathError>` to auto-unwrap to `int` — and `makeScaler`'s signature
-// keeps its returned closure concrete. Same canonical AST, byte-identical IR.
+// are stripped; `makeScaler` keeps an explicit signature so its returned closure
+// is concrete. Same canonical AST, byte-identical IR.
 
 fn inc(x: int) -> int = x + 1
 

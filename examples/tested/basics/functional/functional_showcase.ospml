@@ -2,8 +2,7 @@
 // application (`range 1 6`), and `\x => …` lambdas lower to the SAME canonical
 // AST as the Default braces/parens/`fn(x) =>` form — byte-identical IR
 // ([FLAVOR-IR-EQUIV]). The `sq`/`add` signatures mirror the Default `-> int`
-// returns so `Result` auto-unwrap lands identically; the unannotated helpers
-// stay unannotated in both flavors.
+// returns; the unannotated helpers stay unannotated in both flavors.
 
 dbl x = x * 2
 
@@ -67,3 +66,6 @@ lr2 = 5 |> (\x => x + 100) |> (\x => x * 2)
 print "5|>+100|>*2 = ${toString lr2}"
 
 print "=== Showcase Complete ==="
+// Exercises [BUILTIN-ITER], [BUILTIN-ITER-RANGE], [BUILTIN-ITER-MAP],
+// [BUILTIN-ITER-FILTER], [BUILTIN-ITER-FOREACH], [BUILTIN-ITER-FOLD],
+// [BUILTIN-ITER-CALLBACK], [BUILTIN-ITER-PIPE], and [BUILTIN-ITER-FUSION].

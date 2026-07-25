@@ -1,4 +1,6 @@
-Here's a complete design system for a modern programming language website based on the colors from your logo. The colors are extracted from the osprey illustration and structured to guide you across UI elements.
+# Osprey website design system
+
+This document defines the website colors and their use in interface elements.
 
 ---
 

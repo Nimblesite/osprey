@@ -1,14 +1,14 @@
 ---
 layout: page
 title: "API Reference"
-description: "Complete reference documentation for the Osprey programming language"
+description: "Reference documentation for implemented Osprey language features"
 ---
 
 ## Flavors
 
-Osprey is **one language** you can write **two different ways**. Both compile to the exact
-same program and run identically — only the way you type the code differs. Pick whichever
-you prefer, per file, by extension.
+Osprey is one language with two source flavors. Both lower to the same program
+representation before type checking and compilation. Select a flavor per file by
+extension or source marker; `--flavor` applies to single-file builds.
 
 - **Default** (`.osp`) — C-style braces. `fn f(a, b) = …`, `let x = v`, `f(x)` calls,
   `{ }` blocks. Familiar from C, Rust, Swift, or TypeScript.
@@ -16,8 +16,8 @@ you prefer, per file, by extension.
   whitespace application (`f x`), `\x => e` lambdas, `:=` for mutation. Reads like
   OCaml, F#, or Haskell.
 
-The same program, both flavors — a union type, a function that matches on it, a
-binding, and interpolated output. Both compile to identical IR:
+The following examples show corresponding syntax for a union type, pattern
+matching, a binding and interpolated output:
 
 ```osprey
 type Shape = Circle | Square
@@ -47,6 +47,7 @@ print "total: ${total}"
 
 ## Quick Navigation
 
+- [Installation](installation/) - Install the compiler and its required LLVM/clang toolchain on macOS, Linux, and Windows
 - [Web Apps](web-apps/) - Build React-rendered browser apps with an Osprey WebAssembly model/update core
 - [Functions](functions/) - Built-in functions for I/O, iteration, and data transformation
 - [Types](types/) - Built-in data types (Int, String, Bool, Any)
@@ -112,7 +113,7 @@ print "total: ${total}"
 | [reverse](functions/reverse/) | Reverses byte order. Grapheme-cluster reversal is future work. |
 | [send](functions/send/) | Sends a value to a channel. Returns 1 for success, 0 for failure. |
 | [sleep](functions/sleep/) | Pauses execution for the specified number of milliseconds. |
-| [spawnProcess](functions/spawnprocess/) | Spawns an external async process with MANDATORY callback for stdout/stderr capture. The callback function receives (processID: int, eventType: int, data: string) and is called for stdout (1), stderr (2), and exit (3) events. Returns a handle for the running process. CALLBACK IS REQUIRED - NO FUNCTION OVERLOADING! |
+| [spawnProcess](functions/spawnprocess/) | Spawns a process and reports stdout, stderr and exit events through the required callback. Returns a process handle. |
 | [split](functions/split/) | Splits s on separator. Error(InvalidArgument) on empty separator. |
 | [startsWith](functions/startswith/) | True if s begins with prefix. |
 | [substring](functions/substring/) | Extracts s[start, end). Returns Error(IndexOutOfRange) if start<0, end>len, or start>end. |
@@ -137,7 +138,7 @@ print "total: ${total}"
 
 | Type | Description |
 |------|-------------|
-| [Any](types/any/) | A type that can represent any value. Useful for generic programming but should be used carefully as it bypasses type checking. |
+| [Any](types/any/) | An explicitly dynamic value that must be type-matched before concrete operations. |
 | [Bool](types/bool/) | A boolean type that can be either true or false. Used for logical operations and conditionals. |
 | [HttpResponse](types/httpresponse/) | A built-in type representing an HTTP response with status code, headers, content type, body, and streaming capabilities. Used by HTTP server handlers to return structured responses to clients. |
 | [Int](types/int/) | A 64-bit signed integer type. Can represent whole numbers from -9,223,372,036,854,775,808 to 9,223,372,036,854,775,807. |

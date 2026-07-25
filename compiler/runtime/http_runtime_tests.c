@@ -3,8 +3,6 @@
 
 // Include all runtime modules
 extern int64_t http_create_client(char *base_url, int64_t timeout);
-extern int64_t http_request(int64_t client_id, int64_t method, char *path,
-                            char *headers, char *body);
 extern int64_t http_close_client(int64_t client_id);
 extern int64_t http_get(int64_t client_id, char *path, char *headers);
 extern int64_t http_post(int64_t client_id, char *path, char *body,
@@ -17,14 +15,12 @@ extern int64_t http_create_server(int64_t port, char *address);
 extern int64_t http_listen(int64_t server_id, int64_t handler);
 extern int64_t http_stop_server(int64_t server_id);
 
-extern int64_t websocket_connect(char *url, char *message_handler);
+extern int64_t websocket_connect(char *url);
 extern int64_t websocket_send(int64_t ws_id, char *message);
 extern int64_t websocket_close(int64_t ws_id);
 
 extern int64_t websocket_create_server(int64_t port, char *address, char *path);
 extern int64_t websocket_server_listen(int64_t server_id);
-extern int64_t websocket_server_send(int64_t server_id, int64_t connection_id,
-                                     char *message);
 extern int64_t websocket_server_broadcast(int64_t server_id, char *message);
 extern int64_t websocket_stop_server(int64_t server_id);
 
@@ -166,6 +162,7 @@ void test_http_client_request_mock(void) {
 }
 
 void test_websocket_create_server(void) {
+  // [BUILTIN-WEBSOCKET] Runtime handle creation and validation.
   printf("Testing websocket_create_server...\n");
 
   // Test valid WebSocket server creation
@@ -183,6 +180,10 @@ void test_websocket_create_server(void) {
   assert(addr_server < 0);
   printf("✅ Correctly rejected NULL address\n");
 
+  assert(websocket_server_listen(-1) < 0);
+  assert(websocket_server_broadcast(-1, "message") < 0);
+  assert(websocket_stop_server(-1) < 0);
+
   // Clean up
   websocket_stop_server(server_id);
   printf("✅ websocket_create_server tests passed!\n\n");
@@ -191,9 +192,14 @@ void test_websocket_create_server(void) {
 void test_websocket_client(void) {
   printf("Testing WebSocket client functions...\n");
 
+  assert(websocket_connect(NULL) == -1);
+  assert(websocket_connect("wss://example.com/chat") == -2);
+  assert(websocket_send(-1, "message") < 0);
+  assert(websocket_close(-1) < 0);
+
   // Test WebSocket connection creation (will fail without server, but tests
   // function)
-  int64_t ws_id = websocket_connect("ws://echo.websocket.org", "test_handler");
+  int64_t ws_id = websocket_connect("ws://echo.websocket.org");
   if (ws_id > 0) {
     printf("✅ WebSocket connection created with ID: %" PRId64 "\n", ws_id);
 
@@ -228,24 +234,6 @@ void run_all_http_tests(void) {
 
   printf("🎉 All HTTP runtime tests passed!\n");
   printf("=====================================\n");
-  printf("The HTTP runtime is working correctly.\n");
-  printf("You can now use these functions from Osprey code:\n");
-  printf("  - httpCreateServer(port: Int, address: String) -> Int\n");
-  printf("  - httpListen(serverID: Int, handler: Int) -> Int\n");
-  printf("  - httpStopServer(serverID: Int) -> Int\n");
-  printf("  - httpCreateClient(baseUrl: String, timeout: Int) -> Int\n");
-  printf("  - httpRequest(clientID: Int, method: Int, path: String, headers: "
-         "String, body: String) -> Int\n");
-  printf("  - httpCloseClient(clientID: Int) -> Int\n");
-  printf("  - websocketCreateServer(port: Int, address: String, path: String) "
-         "-> Int\n");
-  printf("  - websocketServerListen(serverID: Int) -> Int\n");
-  printf(
-      "  - websocketServerBroadcast(serverID: Int, message: String) -> Int\n");
-  printf("  - websocketStopServer(serverID: Int) -> Int\n");
-  printf("  - websocketConnect(url: String, handler: String) -> Int\n");
-  printf("  - websocketSend(wsID: Int, message: String) -> Int\n");
-  printf("  - websocketClose(wsID: Int) -> Int\n");
 }
 
 int main(void) {

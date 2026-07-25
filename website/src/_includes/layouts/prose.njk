@@ -11,9 +11,14 @@ layout: layouts/base.njk
       <p class="toc-title">Contents</p>
     </nav>
   </aside>
-  <article class="prose">
+  <article class="prose"{% if modified %} data-date-modified="{{ modified | isoDate }}"{% endif %}>
 {% if image %}
+{% if imageWebp %}    <picture class="prose-picture">
+      <source srcset="{{ imageWebp }}" type="image/webp">
+{% endif %}
     <img class="prose-hero" src="{{ image }}" alt="{{ imageAlt | default(title) }}" width="1600" height="840" loading="eager">
+{% if imageWebp %}    </picture>
+{% endif %}
 {% endif %}
 {% set titleInContent = "<h1" in content %}
 {% set authorInContent = author and (("By " ~ author) in content) %}

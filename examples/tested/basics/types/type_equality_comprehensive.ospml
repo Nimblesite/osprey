@@ -33,8 +33,8 @@ print "T<I,S,I>: ${tIBI.first}/${tIBI.second}/${tIBI.third}"
 print ""
 
 // --- Function type equality via HOFs ---
-// `-> int` is load-bearing: it auto-unwraps the arithmetic `Result<int, …>` to
-// plain `int`, matching the Default flavor's annotated helpers.
+// Explicit signatures keep the function values concrete and match the Default
+// flavor's annotated helpers.
 addOne : int -> int
 addOne x = x + 1
 timesTwo : int -> int

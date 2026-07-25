@@ -4,7 +4,8 @@
 //! It parses mixed `.osp`/`.ospml` inputs, assembles logical namespace
 //! contributions, resolves module imports, and emits one flavor-neutral
 //! canonical program for checking and code generation. Implements
-//! [MODULES-MODEL], [MODULES-PATH-INDEPENDENCE], and [MODULES-PROJECT].
+//! [MODULES-MODEL], [MODULES-PATH-INDEPENDENCE], [MODULES-PROJECT], and
+//! [FLAVOR-INTEROP].
 
 mod annotation;
 mod assemble;
@@ -47,6 +48,7 @@ pub struct SourceFile {
 }
 
 /// A project-level failure tied to a source or manifest location when known.
+/// Implements the source attribution required by [MODULES-DIAG].
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ProjectError {
     /// Human-readable diagnostic.

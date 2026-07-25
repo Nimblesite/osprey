@@ -1,15 +1,15 @@
 # Plan 0013 — ML Flavor Frontend
 
-**Status:** The ML frontend is **implemented and green**. The layout lexer,
+**Status:** The ML frontend is implemented and passing its tests. The layout lexer,
 recursive-descent parser, CST, and lowerer are complete
 (`crates/osprey-syntax/src/ml/`); flavor selection (flag > marker > extension)
 works; **68 `.ospml` tested twins** run byte-identically to their `.osp`
 counterparts (including effects, `handle … in`, and `resume`); cross-flavor
 AST- and IR-equivalence tests pass
-(`crates/osprey-cli/tests/cross_flavor_{equiv,ir_equiv}.rs`); the VSIX ships
-full ML support (`osprey-ml` language, TextMate grammar, layout config,
+(`crates/osprey-cli/tests/cross_flavor_{equiv,ir_equiv}.rs`); the VSIX ships ML
+support (`osprey-ml` language, TextMate grammar, layout config,
 snippets); specs 0023/0024 mirror to the website; **five ML must-reject
-fixtures** golden-guard the frontend's rejection paths; and the **LSP now
+fixtures** cover the frontend's rejection paths; and the **LSP now
 answers in the authoring flavor** (`[LSP-FLAVOR-RENDER]`, spec 0020) with one
 shared `[FLAVOR-SELECT]` precedence chain. **Two items remain:** first-class
 handler *values* (Phase 0 — `handler E {}` / `handle a b do body` still error
@@ -37,31 +37,29 @@ recursive-descent (Pratt / precedence-climbing) parser** in
 `crates/osprey-syntax/src/ml/` (`token.rs`, `lexer.rs`, `cst.rs`, `parser.rs`,
 `lower.rs`, `mod.rs`). The parser produces an ML **concrete syntax tree (CST)**;
 a separate lowerer (`lower.rs`) converts it to canonical `osprey_ast::Program`
-(clean **CST→AST separation**). The lexer derives
+(a separate **CST→AST** step). The lexer derives
 layout markers (`Indent`/`Dedent`/`Newline`) from the **offside rule**
 (Landin 1966) via an explicit indentation stack, with bracket depth suppressing
 layout inside parentheses. This **supersedes** the earlier plan of a
 `tree-sitter-osprey-ml` grammar with an external C scanner. Rationale: the
-offside rule is naturally expressed with an explicit indent stack in safe Rust;
-it stays panic-free / `Result`-returning and unit-testable (project rules), with
+offside rule uses an explicit indent stack in safe Rust; the implementation is
+panic-free / `Result`-returning and unit-testable (project rules), with
 no `unsafe` C and no codegen-tool build dependency. Per
 [`[FLAVOR-BOUNDARY]`](../specs/0023-LanguageFlavors.md#the-one-law) the parser
 **mechanism** is a below-the-AST, flavor-internal concern, so this swap does not
 change the architecture (many CSTs, one AST). The tree-sitter + `scanner.c`
-approach is retained as a documented **fallback (escape hatch)** in Phase 2. The
-parsing techniques are cited in
-[spec 0024 References](../specs/0024-MLFlavorSyntax.md#references).
+approach is retained as a documented fallback in Phase 2.
 
-**Current state.** Phases 1–4 (flavor seam, ML lexer/parser/lowerer, flavor
-selection) are **implemented and green**; 68 `.ospml` twins pass under the diff
-harness. Phase 5 is largely done (twins + equivalence tests) **except** ML
-must-reject cases. Phase 6/7 tooling and docs are done **except** the optional
-`osprey convert` transliterator. **Phase 0 — first-class handler *values* —
-remains the one real feature gap:** `perform` and `handle … in` work, but the
-`handler E { … }` value form and `handle a b do body` multi-install still error
-loudly (`handler`/`do` are `Reserved` tokens, `crates/osprey-syntax/src/ml/token.rs:128`),
-because the shared-core `Expr::HandlerValue`/`Expr::Install` nodes do not exist
-yet. This is a flavor-neutral shared-core addition, not ML-specific parser work.
+**Current state.** Phases 1–5 (flavor seam, frontend, selection, and tests) are
+implemented; 68 `.ospml` twins pass under the diff harness and five ML
+must-reject fixtures cover rejection paths. Phase 6/7 tooling and docs are done
+except for the optional `osprey convert` transliterator. **Phase 0 — first-class
+handler *values* — remains the shared-core feature gap:** `perform` and
+`handle … in` work, but the `handler E { … }` value form and `handle a b do
+body` multi-install still produce a reserved-token error (`handler`/`do` are
+`Reserved` tokens, `crates/osprey-syntax/src/ml/token.rs:128`) because the
+shared-core `Expr::HandlerValue`/`Expr::Install` nodes do not exist yet. This is
+a flavor-neutral shared-core addition, not ML-specific parser work.
 
 > **Note.** The original plan sequenced Phase 0 *before* the ML frontend. In
 > practice the frontend shipped first using the existing fused
@@ -70,7 +68,7 @@ yet. This is a flavor-neutral shared-core addition, not ML-specific parser work.
 > follow-up, tracked jointly with the effects roadmap
 > ([plan 0016](0016-algebraic-effects-and-handlers.md)).
 
-## Why this is cheap (and where it is not)
+## Implementation scope
 
 The post-AST pipeline is already flavor-agnostic by construction:
 
@@ -88,7 +86,7 @@ The post-AST pipeline is already flavor-agnostic by construction:
   (lambdas-as-values: [plan 0002](0002-codegen-generic-function-values.md)). The
   ML lowerer does the currying desugar; the checker and codegen are untouched.
 
-The genuinely new work is two things: **(a)** a layout-sensitive parser — a
+The new work consists of **(a)** a layout-sensitive parser — a
 hand-written Rust layout lexer + recursive-descent (Pratt /
 precedence-climbing) parser in `crates/osprey-syntax/src/ml/`, deriving layout
 from the offside rule via an explicit indentation stack — and **(b)** one
@@ -97,7 +95,7 @@ shared-core feature — **first-class handler values + multi-install** — becau
 construction and installation and cannot express `db = handler Db …; handle db
 log do body`. That feature is flavor-neutral and lands first.
 
-## Architecture (grounded)
+## Architecture
 
 | Stage | Today | After |
 | --- | --- | --- |
@@ -109,22 +107,17 @@ log do body`. That feature is flavor-neutral and lands first.
 
 ## What is left (detailed)
 
-The frontend is done. Three concrete gaps remain, each with a failing repro:
+The frontend is done. Two items remain:
 
-1. **First-class handler values (Phase 0) — the one real feature gap.**
+1. **First-class handler values (Phase 0).**
    `handler Log { info m => … }` bound to a name, and multi-install
    `handle a b do body`, both error today (`unexpected token
    Reserved("handler")`). Needs the shared-core `Expr::HandlerValue` /
    `Expr::Install` nodes (§Phase 0 TODO below), a `Handler E` type, and
    Default + ML surfaces. Flavor-neutral; tracked jointly with
    [plan 0016](0016-algebraic-effects-and-handlers.md).
-2. **ML must-reject cases** — ✅ **done.** Five `.ospo` + `// osprey: flavor=ml`
-   fixtures now pin the handler-value gap, layout indentation, unterminated
-   `(**`, the `->`/`=>` match-arm confusion, and the brace/`?` lexemes ML
-   deliberately omits; the in-process corpus test was fixed to parse them
-   under the ML frontend rather than the brace grammar. See §Phase 5.
-3. **`osprey convert` transliterator** — optional Default ⇄ ML source
-   conversion (§Phase 6 TODO). Nice-to-have, no dependency.
+2. **`osprey convert` transliterator** — optional Default ⇄ ML source
+   conversion (§Phase 6 TODO); no other item depends on it.
 
 Everything else in the phase TODOs below is checked.
 
@@ -132,7 +125,7 @@ Everything else in the phase TODOs below is checked.
 
 Flavor-neutral. Originally sequenced first; in practice the ML frontend
 shipped without it (using the fused `Expr::Handler`), so this is now a
-follow-up — the **last** ML feature gap. See
+follow-up. See
 [FLAVOR-HANDLER-VALUE](../specs/0023-LanguageFlavors.md#shared-core-additions)
 and [plan 0016](0016-algebraic-effects-and-handlers.md), which owns the effect
 runtime this builds on.
@@ -177,9 +170,9 @@ TODO:
 
 Hand-written Rust frontend in `crates/osprey-syntax/src/ml/` (`token.rs`,
 `lexer.rs`, `cst.rs`, `parser.rs`, `lower.rs`, `mod.rs`): the parser builds an ML
-**concrete syntax tree (CST)** and a separate `lower.rs` converts the CST to
-canonical `osprey_ast::Program` (clean **CST→AST separation**). The tree-sitter + `scanner.c` approach is the
-documented **fallback (escape hatch)** below, not the primary path.
+**concrete syntax tree (CST)**; `lower.rs` converts it to canonical
+`osprey_ast::Program` in a separate **CST→AST** step. The tree-sitter/scanner
+alternative remains the documented fallback below.
 
 TODO:
 
@@ -195,9 +188,8 @@ TODO:
 - [x] Rust unit tests for indentation, match/handler arms, and edge cases.
 - [x] Module wiring: `mod ml`; no external build step, no `unsafe`.
 
-> **Escape hatch (documented fallback, not the primary path).** If the
-> hand-written layout frontend becomes onerous or accrues parsing bugs we cannot
-> tame, we fall back to a `tree-sitter-osprey-ml` grammar with an external
+> **Fallback.** If the hand-written layout frontend cannot maintain the required
+> parser behavior, use a `tree-sitter-osprey-ml` grammar with an external
 > `INDENT`/`DEDENT`/`NEWLINE` `scanner.c` (an indentation-stack scanner the brace
 > grammar has never needed — `tree-sitter-osprey/` ships no `scanner.c` today),
 > a tree-sitter grammar for the ML rules, a tree-sitter corpus test suite, and a
@@ -222,7 +214,7 @@ TODO:
 - [x] Effects: `op : P => R` → `EffectOperation`; `handle … in`/`… do` →
       `Expr::Handler`; `perform E.op a` → `Expr::Perform`.
 - [ ] **Handler values**: `handler E` → `HandlerValue`; `handle a b do body`
-      → `Install` (blocked on Phase 0's shared-core nodes — the ONE lowering
+      → `Install` (blocked on Phase 0's shared-core nodes — the one lowering
       arm still missing; `handler`/`do` remain `Reserved` tokens).
 - [x] Match: layout arms → `Match`/`MatchArm`; `Success value` →
       `Constructor { fields:["value"] }`.
@@ -231,7 +223,7 @@ TODO:
 
 ## Phase 4 — Flavor selection wiring
 
-**Implemented and green.**
+Implemented.
 
 TODO:
 
@@ -240,8 +232,8 @@ TODO:
 - [x] File marker `// osprey: flavor=ml` via the `directive` parser (`:521`),
       read in `run` (`:200`) before parsing.
 - [x] Extension detection: `.ospml` ⇒ ML, `.osp` ⇒ Default (`Path::extension`).
-- [x] Precedence flag > marker > extension > Default; **error** (hard, not a
-      silent guess) when extension and marker disagree.
+- [x] Precedence flag > marker > extension > Default; report an error rather
+      than selecting a flavor when extension and marker disagree.
 - [x] Diff harness (`crates/diff_examples.sh`) discovers `.ospml` **additively**
       and resolves flavor by extension; existing `.osp` discovery unchanged.
 - [ ] Optional `osprey.toml` `flavor` key (deferred; not in the current
@@ -277,8 +269,8 @@ TODO:
       layout indentation ([FLAVOR-ML-LAYOUT]), an unterminated `(**` doc
       comment ([FLAVOR-ML-COMMENTS]/[DOC-SIGIL-ML]), a `->` where a match arm
       needs `=>` ([FLAVOR-ML-MATCH]), and the brace-record + `?` sigil that ML
-      deliberately does not lex ([FLAVOR-BOUNDARY]). Ratchet stays honest:
-      `FC_REJECT` 68 → 73, `FC_ESCAPE` unchanged at 11 =
+      deliberately does not lex ([FLAVOR-BOUNDARY]). Harness counts are
+      `FC_REJECT` 68 → 73 and `FC_ESCAPE` unchanged at 11 =
       `FC_EXPECTED_ESCAPES`. Each was cross-checked so the marker path and
       `--flavor ml` emit byte-identical diagnostics, while `--flavor default`
       emits a completely different tree-sitter error — proving the rejection
@@ -293,21 +285,20 @@ TODO:
       `.ospml` in `failscompilation/` would be **invisible** to
       `crates/diff_examples.sh` (`find … -name '*.ospo'`). Zero harness edits
       were needed.
-- [x] Make the in-process corpus test flavor-honest — `compile()` in
+- [x] Make the in-process corpus test use the selected flavor — `compile()` in
       `crates/osprey-cli/tests/examples_compile.rs` called
       `parse_program(source)`, hardwired to `Flavor::Default`, so an ML
       fixture would have been graded by the brace grammar and "rejected" for
       the wrong reason. It now threads the path through
       `parse_program_for_path`. New test
-      `ml_flavor_negative_cases_are_rejected_by_the_ml_frontend` asserts not
-      merely rejection but that the diagnostic carries the ML-specific
-      fragment.
+      `ml_flavor_negative_cases_are_rejected_by_the_ml_frontend` asserts that
+      the diagnostic carries the ML-specific fragment.
 - [x] WASM harness runs portable examples with the feature-gap SKIP
       classification.
 
-## VS Code extension (VSIX) — hard requirement — ✅ DONE
+## VS Code extension (VSIX) — ✅ DONE
 
-The built/published VSIX (`nimblesite.osprey`) ships full ML flavor support
+The built/published VSIX (`nimblesite.osprey`) ships ML flavor support
 (`vscode-extension/package.json`).
 
 - [x] **ML language registered** — `osprey-ml` id, `.ospml` extension,
@@ -349,7 +340,7 @@ TODO:
       handler arms is position-insensitive (the list is whole-document), and
       signature help does not yet show partial application for curried calls.
 - [ ] Optional `osprey convert` to transliterate Default ⇄ ML (separate from
-      the formatter). Not started; nice-to-have.
+      the formatter). Not started; no other item depends on it.
 
 ## Phase 7 — Docs — ✅ DONE
 
@@ -370,8 +361,8 @@ TODO:
   arms on unknown kinds would silently corrupt the AST). (frontend-parse map)
 - **Layout-lexer correctness.** Indentation tracking across tabs/spaces, blank
   lines, comments, trailing newlines, and bracket-suppressed layout is the
-  hardest single piece; budget for it and cover the hand-written lexer with Rust
-  unit tests. (frontend-parse map)
+  main parser-specific risk; cover the hand-written lexer with Rust unit tests.
+  (frontend-parse map)
 - **Currying conflation.** Default multi-param and ML curried functions must stay
   distinct in the AST; the golden non-equivalent bucket guards this. (types map)
 - **Diagnostic hardcoding.** Existing fix messages assume Default spelling; ML
@@ -391,10 +382,3 @@ TODO:
 - The non-equivalent-bucket golden tests prove Default multi-param ≢ ML curry.
 - `grep` finds no flavor inspection in `osprey-types` or `osprey-codegen`.
 - Every existing Default `.osp` example still passes unchanged.
-
-## References
-
-The parsing techniques behind the hand-written ML frontend — recursive-descent /
-predictive parsing, the Pratt (precedence-climbing) expression layer, and the
-offside-rule layout lexer — are cited with verified sources in
-[spec 0024 References](../specs/0024-MLFlavorSyntax.md#references).

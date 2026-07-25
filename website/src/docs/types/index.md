@@ -8,7 +8,7 @@ All built-in types available in Osprey.
 
 ## [Any](any/)
 
-A type that can represent any value. Useful for generic programming but should be used carefully as it bypasses type checking.
+An explicitly dynamic value that must be type-matched before concrete operations.
 
 ## [Bool](bool/)
 
@@ -29,4 +29,3 @@ A handle to a spawned async process. Contains the process ID and allows waiting 
 ## [String](string/)
 
 A sequence of characters representing text. Supports string interpolation and escape sequences.
-

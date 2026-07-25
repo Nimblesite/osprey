@@ -23,32 +23,26 @@ pub(crate) static FILES: &[BuiltinDoc] = &[
         ["filename" => "Path to the file to write", "content" => "Content to write to the file"],
         "let result = writeFile(\"output.txt\", \"Hello, World!\")\nprint(\"File written\")",
     ),
-    builtin_doc!(
-        "deleteFile",
-        "Deletes the file at the given path, returning Unit on success or an error.",
-        ["path" => "Filesystem path of the file to delete"],
-        "match deleteFile(\"temp.txt\") {\n  Success { value } => print(\"deleted\")\n  Error { message } => print(message)\n}",
-    ),
 ];
 
-/// `http` built-in documentation. Prose only — types come from the
-/// authoritative scheme in `builtins.rs`, joined by name.
+/// HTTP built-in documentation [BUILTIN-HTTP] [HTTP-RESPONSE-HANDLE]. Prose
+/// only — types come from the authoritative scheme in `builtins.rs`.
 pub(crate) static HTTP: &[BuiltinDoc] = &[
     builtin_doc!(
         "httpCreateClient",
-        "Creates an HTTP client for making requests to a base URL.",
+        "Creates an HTTP client and returns its handle, or a negative runtime error.",
         ["base_url" => "Base URL for requests (e.g., \"http://api.example.com\")", "timeout" => "Request timeout in milliseconds"],
         "let clientId = httpCreateClient(\"http://httpbin.org\", 5000)\nprint(\"Client created\")",
     ),
     builtin_doc!(
         "httpCloseClient",
-        "Closes the HTTP client and cleans up resources.",
+        "Closes the HTTP client and returns the runtime status.",
         ["clientID" => "Client identifier to close"],
         "let result = httpCloseClient(clientId)\nprint(\"Client closed\")",
     ),
     builtin_doc!(
         "httpGet",
-        "Makes an HTTP GET request to the specified path.",
+        "Makes an HTTP GET request and returns its status code, or a negative transport error.",
         ["clientID" => "Client identifier from httpCreateClient", "path" => "Request path (e.g., \"/api/users\")", "headers" => "Additional headers (e.g., \"Authorization: Bearer token\")"],
         "let status = httpGet(clientId, \"/get\", \"\")\nprint(\"GET request status: ${status}\")",
     ),
@@ -66,9 +60,9 @@ pub(crate) static HTTP: &[BuiltinDoc] = &[
     ),
     builtin_doc!(
         "httpResponseFree",
-        "Releases a response handle obtained from httpGetResponse.",
+        "Releases a response handle; an invalid handle or double free returns Error.",
         ["responseID" => "Handle returned by httpGetResponse"],
-        "httpResponseFree(response)",
+        "match httpResponseFree(response) {\n  Success { value } => print(\"released\")\n  Error { message } => print(message)\n}",
     ),
     builtin_doc!(
         "httpResponseStatus",
@@ -84,19 +78,19 @@ pub(crate) static HTTP: &[BuiltinDoc] = &[
     ),
     builtin_doc!(
         "httpPost",
-        "Makes an HTTP POST request with a request body.",
+        "Makes an HTTP POST request and returns its status code, or a negative transport error.",
         ["clientID" => "Client identifier from httpCreateClient", "path" => "Request path", "body" => "Request body data", "headers" => "Additional headers"],
         "let status = httpPost(clientId, \"/post\", \"{\\\"key\\\":\\\"value\\\"}\", \"Content-Type: application/json\")\nprint(\"POST status: ${status}\")",
     ),
     builtin_doc!(
         "httpPut",
-        "Makes an HTTP PUT request with a request body.",
+        "Makes an HTTP PUT request and returns its status code, or a negative transport error.",
         ["clientID" => "Client identifier from httpCreateClient", "path" => "Request path", "body" => "Request body data", "headers" => "Additional headers"],
         "let status = httpPut(clientId, \"/put\", \"{\\\"updated\\\":\\\"data\\\"}\", \"Content-Type: application/json\")\nprint(\"PUT status: ${status}\")",
     ),
     builtin_doc!(
         "httpDelete",
-        "Makes an HTTP DELETE request to the specified path.",
+        "Makes an HTTP DELETE request and returns its status code, or a negative transport error.",
         ["clientID" => "Client identifier from httpCreateClient", "path" => "Request path", "headers" => "Additional headers"],
         "let status = httpDelete(clientId, \"/delete\", \"\")\nprint(\"DELETE status: ${status}\")",
     ),
@@ -108,13 +102,13 @@ pub(crate) static HTTP: &[BuiltinDoc] = &[
     ),
     builtin_doc!(
         "httpListen",
-        "Starts the HTTP server listening for requests with a handler function.",
+        "Starts the HTTP server with a request handler and returns 0 or a negative runtime error.",
         ["serverID" => "Server identifier from httpCreateServer", "handler" => "Request handler function"],
         "let result = httpListen(serverId, requestHandler)\nprint(\"Server listening\")",
     ),
     builtin_doc!(
         "httpStopServer",
-        "Stops the HTTP server and closes all connections.",
+        "Stops the HTTP server and returns the runtime status.",
         ["serverID" => "Server identifier to stop"],
         "let result = httpStopServer(serverId)\nprint(\"Server stopped\")",
     ),
@@ -131,14 +125,14 @@ pub(crate) static JSON: &[BuiltinDoc] = &[
     ),
     builtin_doc!(
         "jsonGet",
-        "Returns the string value at the given path within a parsed JSON document.",
-        ["document" => "Handle returned by jsonParse", "path" => "Dotted path to the value, e.g. \"user.name\""],
+        "Returns a JSON scalar at the given path as a string. Arrays, objects, invalid paths, and invalid handles return Error.",
+        ["document" => "Handle returned by jsonParse", "path" => "Dotted keys and bracketed indices, e.g. \"user.items[0].name\""],
         "match jsonGet(doc, \"name\") {\n  Success { value } => print(value)\n  Error { message } => print(message)\n}",
     ),
     builtin_doc!(
         "jsonLength",
-        "Returns the number of elements in the JSON array at the given path.",
-        ["document" => "Handle returned by jsonParse", "path" => "Dotted path to the array"],
+        "Returns an array length or object member count at the given path, or -1 for an invalid path, handle, or scalar.",
+        ["document" => "Handle returned by jsonParse", "path" => "Path to an array or object; empty means the root"],
         "let n = jsonLength(doc, \"items\")",
     ),
     builtin_doc!(
@@ -172,54 +166,54 @@ pub(crate) static CONCURRENCY: &[BuiltinDoc] = &[
     ),
     builtin_doc!(
         "fiber_yield",
-        "Yields control to the fiber scheduler with an optional value.",
+        "Yields control to the fiber scheduler and returns its integer value.",
         ["value" => "The value to yield"],
         "let result = fiber_yield(42)",
     ),
     builtin_doc!(
         "Channel",
-        "Creates a new channel with the specified capacity.",
-        ["capacity" => "The capacity of the channel"],
+        "Creates a buffered channel with a positive capacity.",
+        ["capacity" => "Positive number of buffered values"],
         "let ch = Channel(10)",
     ),
     builtin_doc!(
         "send",
-        "Sends a value to a channel. Returns 1 for success, 0 for failure.",
+        "Blocks while the channel is full, then sends a value and returns Unit.",
         ["channel" => "The channel to send to", "value" => "The value to send"],
-        "let success = send(ch, 42)",
+        "send(ch, 42)",
     ),
     builtin_doc!(
         "recv",
-        "Receives a value from a channel.",
+        "Blocks while the channel is empty, then receives its oldest value.",
         ["channel" => "The channel to receive from"],
         "let value = recv(ch)",
     ),
 ];
 
-/// `websocket` built-in documentation. Prose only — types come from the
-/// authoritative scheme in `builtins.rs`, joined by name.
+/// WebSocket built-in documentation [BUILTIN-WEBSOCKET]. Prose only — types
+/// come from the authoritative scheme in `builtins.rs`, joined by name.
 pub(crate) static WEBSOCKET: &[BuiltinDoc] = &[
     builtin_doc!(
         "websocketCreateServer",
-        "Creates a WebSocket server bound to the specified port, address, and path. *(Implementation note: currently returns an integer status code; the `Result`-typed API shown in the signature is planned.)*",
+        "Creates a WebSocket server and returns its handle, or a negative runtime error.",
         ["port" => "Port number to bind to (1-65535)", "address" => "IP address to bind to (e.g., \"127.0.0.1\", \"0.0.0.0\")", "path" => "WebSocket endpoint path (e.g., \"/chat\", \"/live\")"],
-        "let serverResult = websocketCreateServer(port: 8080, address: \"127.0.0.1\", path: \"/chat\")\nmatch serverResult {\n    Success serverId => print(\"WebSocket server created with ID: ${serverId}\")\n    Err message => print(\"Failed to create server: ${message}\")\n}",
+        "let serverId = websocketCreateServer(8080, \"127.0.0.1\", \"/chat\")\nprint(serverId)",
     ),
     builtin_doc!(
         "websocketServerListen",
-        "Starts the WebSocket server listening for connections. *(Implementation note: currently returns an integer status code; the `Result`-typed API shown in the signature is planned.)*",
+        "Starts the WebSocket server and returns 0 or a negative runtime error.",
         ["serverID" => "Server identifier from websocketCreateServer"],
-        "let listenResult = websocketServerListen(serverID: serverId)\nmatch listenResult {\n    Success _ => print(\"Server listening on ws://127.0.0.1:8080/chat\")\n    Err message => print(\"Failed to start listening: ${message}\")\n}",
+        "let status = websocketServerListen(serverId)\nprint(status)",
     ),
     builtin_doc!(
         "websocketServerBroadcast",
-        "Broadcasts a message to all connected WebSocket clients. *(Implementation note: currently returns an integer status code; the `Result`-typed API shown in the signature is planned.)*",
+        "Broadcasts one text frame and returns the number of connections written.",
         ["serverID" => "Server identifier", "message" => "Message to broadcast to all clients"],
-        "let broadcastResult = websocketServerBroadcast(serverID: serverId, message: \"Welcome to Osprey Chat!\")\nmatch broadcastResult {\n    Success _ => print(\"Message broadcasted to all clients\")\n    Err message => print(\"Failed to broadcast: ${message}\")\n}",
+        "let sent = websocketServerBroadcast(serverId, \"Welcome!\")\nprint(sent)",
     ),
     builtin_doc!(
         "websocketKeepAlive",
-        "Keeps the WebSocket server running indefinitely until interrupted (blocking operation). *(Implementation note: currently returns an integer status code; the `Result`-typed API shown in the signature is planned.)*",
+        "Blocks until SIGINT or SIGTERM so server threads remain alive.",
         [],
         "websocketKeepAlive()  // Blocks until Ctrl+C",
     ),
@@ -231,15 +225,15 @@ pub(crate) static WEBSOCKET: &[BuiltinDoc] = &[
     ),
     builtin_doc!(
         "websocketSend",
-        "Sends a message through the WebSocket connection. *(Implementation note: currently returns an integer status code; the `Result`-typed API shown in the signature is planned.)*",
+        "Sends one text frame and returns 0 or a negative runtime error.",
         ["wsID" => "WebSocket identifier from websocketConnect", "message" => "Message to send"],
-        "let sendResult = websocketSend(wsID: wsId, message: \"Hello, WebSocket!\")\nmatch sendResult {\n    Success _ => print(\"Message sent successfully\")\n    Err message => print(\"Failed to send: ${message}\")\n}",
+        "let status = websocketSend(wsId, \"Hello, WebSocket!\")\nprint(status)",
     ),
     builtin_doc!(
         "websocketClose",
-        "Closes the WebSocket connection and cleans up resources. *(Implementation note: currently returns an integer status code; the `Result`-typed API shown in the signature is planned.)*",
+        "Closes the WebSocket connection and returns the runtime status.",
         ["wsID" => "WebSocket identifier to close"],
-        "let closeResult = websocketClose(wsID: wsId)\nmatch closeResult {\n    Success _ => print(\"Connection closed\")\n    Err message => print(\"Failed to close: ${message}\")\n}",
+        "let status = websocketClose(wsId)\nprint(status)",
     ),
 ];
 
@@ -296,8 +290,8 @@ pub(crate) static TERMINAL: &[BuiltinDoc] = &[
     ),
     builtin_doc!(
         "spawnProcess",
-        "Spawns an external async process with MANDATORY callback for stdout/stderr capture. The callback function receives (processID: int, eventType: int, data: string) and is called for stdout (1), stderr (2), and exit (3) events. Returns a handle for the running process. CALLBACK IS REQUIRED - NO FUNCTION OVERLOADING!",
-        ["command" => "The command to execute", "callback" => "MANDATORY callback function for process events (processID, eventType, data)"],
+        "Spawns a process and reports stdout, stderr and exit events through the required callback. Returns a handle for the running process.",
+        ["command" => "The command to execute", "callback" => "Required callback receiving (processID, eventType, data); event types are stdout (1), stderr (2) and exit (3)"],
         "fn processEventHandler(processID: int, eventType: int, data: string) -> Unit = {\n    match eventType {\n        1 => print(\"STDOUT: ${data}\")\n        2 => print(\"STDERR: ${data}\")\n        3 => print(\"EXIT: ${data}\")\n        _ => print(\"Unknown event\")\n    }\n}\nlet result = spawnProcess(\"echo hello\", processEventHandler)\nmatch result {\n    Success { value } => {\n        let exitCode = awaitProcess(value)\n        cleanupProcess(value)\n    }\n    Error { message } => print(\"Failed\")\n}",
     ),
     builtin_doc!(

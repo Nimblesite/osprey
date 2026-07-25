@@ -1,22 +1,8 @@
-// 🚨 HANDLER OPERATION MISMATCH TEST - SHOULD FAIL COMPILATION! 🚨
-// This proves the compiler validates that handlers only provide declared operations
-
+// [EFFECTS-OP-TYPING] A handler arm names an operation declared by its effect.
 effect Logger {
     log: fn(string) -> Unit
-    debug: fn(string) -> Unit
 }
 
-fn testFunction() -> Unit !Logger = {
-    perform Logger.log("This should work")
-    perform Logger.debug("This should also work")
-}
-
-fn main() -> Unit = handle Logger
-    log(msg) => print("[LOG] " + msg)
-    debug(msg) => print("[DEBUG] " + msg)
-    // ❌ SHOULD FAIL: 'error' is not declared in Logger effect
-    error(msg) => print("[ERROR] " + msg)  
-in {
-    testFunction()
-    print("Handler test complete")
-} 
+let result = handle Logger
+    missing msg => print(msg)
+in {}

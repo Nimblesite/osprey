@@ -13,13 +13,8 @@
  *
  * Backs the map builtins of docs/specs/0012-Built-InFunctions.md — [BUILTIN-MAP],
  * [BUILTIN-MAP-GET], [BUILTIN-MAP-SET], [BUILTIN-MAP-REMOVE],
- * [BUILTIN-MAP-MERGE], [BUILTIN-MAP-CONTAINS] and [BUILTIN-COLLECTION-LENGTH]
- * — under their `mapXxx` spellings, not the bare spec names. The iterator
- * below is what codegen walks for the accessors [BUILTIN-MAP-KEYS] and
- * [BUILTIN-MAP-VALUES]; note those two accessors are what the SHIPPED
- * `mapKeys` / `mapValues` builtins do, while the spec gives the same two
- * spellings to the unimplemented transformers [BUILTIN-MAP-MAPKEYS] /
- * [BUILTIN-MAP-MAPVALUES].
+ * [BUILTIN-MAP-MERGE], [BUILTIN-MAP-CONTAINS] and [BUILTIN-COLLECTION-LENGTH].
+ * The iterator below backs [BUILTIN-MAP-KEYS] and [BUILTIN-MAP-VALUES].
  */
 
 /* ============ Public API ============ */
@@ -27,7 +22,7 @@
 /* Every returned header owns its root spine: MAP_HDR_LAYOUT makes releasing a
  * dead persistent version release the nodes it stopped sharing, and node RC in
  * map_runtime_hamt.c keeps the versions that still share them alive.
- * [GC-ARC-PERCEUS] plan 0011 M4b. */
+ * [GC-ARC-PERCEUS] [MEM-BACKENDS-ELEMENTS]. */
 static OspreyMap *alloc_map(OspreyKeyType key_type, int64_t length,
                             OspreyMapNode *root, int value_managed) {
   OspreyMap *m = (OspreyMap *)calloc(1, sizeof(OspreyMap));
@@ -98,7 +93,7 @@ OspreyMap *osprey_map_set(OspreyMap *m, int64_t key, int64_t value) {
 
 OspreyMap *osprey_map_remove(OspreyMap *m, int64_t key) {
   /* Alias returns carry a fresh +1 (retain-on-return) so every returned
-   * handle is caller-owned [GC-ARC-PERCEUS], plan 0011 M4. */
+   * handle is caller-owned [GC-ARC-PERCEUS]. */
   if (m == NULL || m->root == NULL) {
     osp_retain(m);
     return m;
@@ -200,7 +195,7 @@ OspreyMap *osprey_map_merge(OspreyMap *a, OspreyMap *b) {
     }
     OspreyMap *next = osprey_map_set_of(out, k, v, vm);
     /* Intermediate headers are unaliased transients: drop each precisely
-     * (no-op under default/gc) [GC-ARC-PERCEUS], plan 0011 M4. */
+     * (no-op under default/gc) [GC-ARC-PERCEUS]. */
     if (out != a) {
       osp_release(out);
     }

@@ -55,7 +55,7 @@ impl Checker {
             Expr::Binary { op, left, right } => self.infer_binary(op, left, right, env),
             Expr::Unary { op, operand } => {
                 let t = self.infer_expr(operand, env);
-                if op == "!" || op == "not" {
+                if op == "!" {
                     self.push_assign(&Type::bool(), &t);
                     Type::bool()
                 } else {
@@ -69,17 +69,7 @@ impl Checker {
                 named_arguments,
             } => self.infer_call(function, arguments, named_arguments, env),
             Expr::Pipe { left, right } => self.infer_pipe(left, right, env),
-            Expr::FieldAccess { target, field } => {
-                let tt = self.infer_expr(target, env);
-                let tp = self.ctx.prune(&tt);
-                match &tp {
-                    Type::Record { fields, .. } => fields
-                        .get(field)
-                        .cloned()
-                        .unwrap_or_else(|| self.ctx.fresh()),
-                    _ => self.ctx.fresh(),
-                }
-            }
+            Expr::FieldAccess { target, field } => self.infer_field_access(target, field, env),
             Expr::MethodCall {
                 target,
                 method,
@@ -109,18 +99,22 @@ impl Checker {
             }
             Expr::Await(inner) => self.infer_unwrap_con(inner, names::FIBER, env),
             Expr::Recv(channel) => self.infer_unwrap_con(channel, names::CHANNEL, env),
-            Expr::Send { channel, value } => {
-                let _ = self.infer_expr(channel, env);
-                let _ = self.infer_expr(value, env);
-                Type::unit()
+            Expr::Send { channel, value } => self.infer_send(channel, value, env),
+            // Valued yield forwards its type; bare yield is Unit.
+            // Implements [CONCURRENCY-YIELD].
+            Expr::Yield(inner) => match inner {
+                Some(inner) => self.infer_expr(inner, env),
+                None => Type::unit(),
+            },
+            Expr::Select { .. } => {
+                // Parsing remains reserved, but accepting the node would reach
+                // a backend that cannot perform channel selection.
+                // Implements [CONCURRENCY-SELECT-REJECT].
+                self.errors.push(TypeError::new(
+                    "`select` is not supported; use explicit `send`, `recv`, and `await`",
+                ));
+                self.ctx.fresh()
             }
-            Expr::Yield(inner) => {
-                if let Some(inner) = inner {
-                    let _ = self.infer_expr(inner, env);
-                }
-                Type::unit()
-            }
-            Expr::Select { arms } => self.infer_arm_bodies(arms, env),
             Expr::Perform { .. } | Expr::Handler { .. } => self.infer_effect_expr(e, env),
             Expr::Resume(value) => self.infer_resume(value.as_deref(), env),
         }
@@ -154,6 +148,33 @@ impl Checker {
         }
     }
 
+    /// Field access yields the record field's declared type, or a fresh var when
+    /// the target is not a known record (split out of [`Self::infer_expr`]).
+    fn infer_field_access(&mut self, target: &Expr, field: &str, env: &TypeEnv) -> Type {
+        let tt = self.infer_expr(target, env);
+        match &self.ctx.prune(&tt) {
+            Type::Record { fields, .. } => fields
+                .get(field)
+                .cloned()
+                .unwrap_or_else(|| self.ctx.fresh()),
+            _ => self.ctx.fresh(),
+        }
+    }
+
+    /// A channel and its sent value share one element type; the send is `Unit`.
+    /// Implements [CONCURRENCY-CHANNEL] (split out of [`Self::infer_expr`]).
+    fn infer_send(&mut self, channel: &Expr, value: &Expr, env: &TypeEnv) -> Type {
+        let channel_ty = self.infer_expr(channel, env);
+        let value_ty = self.infer_expr(value, env);
+        let element_ty = self.ctx.fresh();
+        self.push_unify(
+            &channel_ty,
+            &Type::con(names::CHANNEL, vec![element_ty.clone()]),
+        );
+        self.push_assign(&element_ty, &value_ty);
+        Type::unit()
+    }
+
     /// Infer `resume(v)`: its argument is delivered as the operation's result, so
     /// it lands in the op-result slot at an assignment site — a bare
     /// `Result<T, E>` (e.g. from arithmetic) auto-unwraps into a concrete `T`,
@@ -173,16 +194,17 @@ impl Checker {
         }
     }
 
-    /// Infer a map literal: unify all keys to one type and all values to another.
+    /// Infer a runtime map literal. Its builder uses the string-key ABI
+    /// [TYPE-MAP-LITERAL], so every key must be a string.
     fn infer_map(&mut self, entries: &[osprey_ast::MapEntry], env: &TypeEnv) -> Type {
-        let (k, v) = (self.ctx.fresh(), self.ctx.fresh());
+        let v = self.ctx.fresh();
         for entry in entries {
             let kt = self.infer_expr(&entry.key, env);
             let vt = self.infer_expr(&entry.value, env);
-            self.push_unify(&k, &kt);
+            self.push_unify(&Type::string(), &kt);
             self.push_unify(&v, &vt);
         }
-        Type::map(k, v)
+        Type::map(Type::string(), v)
     }
 
     /// Infer an anonymous object literal as an unnamed record of its fields.
@@ -211,7 +233,7 @@ impl Checker {
     /// fresh instantiation of the declaration), unify the arguments against
     /// the instantiated parameters, and yield the instantiated result type.
     /// The resolved signature is published per site for the code generator.
-    /// Implements [EFFECTS-GENERIC-INSTANTIATION].
+    /// Implements [EFFECTS-GENERIC-INSTANTIATION] and [EFFECTS-OP-TYPING].
     fn infer_perform(
         &mut self,
         effect: &str,
@@ -225,6 +247,11 @@ impl Checker {
         for na in named_arguments {
             let _ = self.infer_expr(&na.value, env);
         }
+        if !named_arguments.is_empty() {
+            self.errors.push(TypeError::new(format!(
+                "perform `{effect}.{operation}` does not support named arguments"
+            )));
+        }
         let scope = self
             .handler_scopes
             .iter()
@@ -233,15 +260,29 @@ impl Checker {
             .map(|s| (s.args.clone(), s.ops.clone()))
             .or_else(|| self.effect_instance_ops(effect));
         let Some((eff_args, ops)) = scope else {
+            self.errors
+                .push(TypeError::new(format!("unknown effect `{effect}`")));
             return self.ctx.fresh();
         };
         let Some(op) = ops.get(operation).cloned() else {
+            self.errors.push(TypeError::new(format!(
+                "effect `{effect}` has no operation `{operation}`"
+            )));
             return self.ctx.fresh();
         };
-        if op.params.len() == arg_tys.len() {
+        if !named_arguments.is_empty() {
+            // Named arguments have already produced their specific diagnostic;
+            // do not add a misleading positional-arity error.
+        } else if op.params.len() == arg_tys.len() {
             for (p, a) in op.params.iter().zip(&arg_tys) {
                 self.push_assign(p, a);
             }
+        } else {
+            self.errors.push(TypeError::new(format!(
+                "effect operation `{effect}.{operation}` expects {} argument(s), got {}",
+                op.params.len(),
+                arg_tys.len()
+            )));
         }
         if let Some(pos) = position {
             self.perform_tys.push((
@@ -265,8 +306,8 @@ impl Checker {
     /// The handled body, the arms, and the whole expression all share one
     /// answer type; the body lands in the answer slot at an assignment site,
     /// so a bare `Result<T, E>` body auto-unwraps into a concrete answer just
-    /// as function returns do. Implements [EFFECTS-RESUME] and
-    /// [EFFECTS-GENERIC-INSTANTIATION].
+    /// as function returns do. Implements [EFFECTS-RESUME],
+    /// [EFFECTS-GENERIC-INSTANTIATION], and [EFFECTS-OP-TYPING].
     fn infer_handler(
         &mut self,
         effect: &str,
@@ -275,17 +316,44 @@ impl Checker {
         position: Option<osprey_ast::Position>,
         env: &TypeEnv,
     ) -> Type {
-        let (eff_args, inst_ops) = self.effect_instance_ops(effect).unwrap_or_default();
+        let (eff_args, inst_ops, effect_known) =
+            if let Some((args, ops)) = self.effect_instance_ops(effect) {
+                (args, ops, true)
+            } else {
+                self.errors
+                    .push(TypeError::new(format!("unknown effect `{effect}`")));
+                (Vec::new(), HashMap::new(), false)
+            };
         let answer = self.ctx.fresh();
         for arm in arms {
             let (params, op_ret) = match inst_ops.get(&arm.operation) {
                 Some(op) if op.params.len() == arm.params.len() => {
                     (op.params.clone(), op.ret.clone())
                 }
-                _ => (
-                    (0..arm.params.len()).map(|_| self.ctx.fresh()).collect(),
-                    self.ctx.fresh(),
-                ),
+                Some(op) => {
+                    self.errors.push(TypeError::new(format!(
+                        "handler operation `{effect}.{}` expects {} parameter(s), got {}",
+                        arm.operation,
+                        op.params.len(),
+                        arm.params.len()
+                    )));
+                    (
+                        (0..arm.params.len()).map(|_| self.ctx.fresh()).collect(),
+                        op.ret.clone(),
+                    )
+                }
+                None => {
+                    if effect_known {
+                        self.errors.push(TypeError::new(format!(
+                            "effect `{effect}` has no operation `{}`",
+                            arm.operation
+                        )));
+                    }
+                    (
+                        (0..arm.params.len()).map(|_| self.ctx.fresh()).collect(),
+                        self.ctx.fresh(),
+                    )
+                }
             };
             let mut local = env.child();
             for (p, pty) in arm.params.iter().zip(params) {
@@ -349,16 +417,21 @@ impl Checker {
         named: &[NamedArgument],
         env: &TypeEnv,
     ) -> Type {
-        let (fname, ft) = match function {
-            Expr::Identifier(n) => (Some(n.clone()), self.lookup_ident(n, env)),
+        let (fname, ft) = self.infer_callee(function, env);
+        let args = self.ordered_arg_types(fname.as_deref(), arguments, named, env);
+        self.apply_named_fn(fname.as_deref(), &ft, args)
+    }
+
+    fn infer_callee(&mut self, function: &Expr, env: &TypeEnv) -> (Option<String>, Type) {
+        match function {
+            Expr::Identifier(name) => (Some(name.clone()), self.lookup_ident(name, env)),
             Expr::Path(path) => {
                 let name = path.to_string();
-                (Some(name.clone()), self.lookup_ident(&name, env))
+                let ty = self.lookup_ident(&name, env);
+                (Some(name), ty)
             }
             other => (None, self.infer_expr(other, env)),
-        };
-        let args = self.ordered_arg_types(fname.as_deref(), arguments, named, env);
-        self.apply_fn(&ft, args)
+        }
     }
 
     fn infer_method_call(
@@ -378,11 +451,12 @@ impl Checker {
         for na in named {
             args.push(self.infer_expr(&na.value, env));
         }
-        self.apply_fn(&ft, args)
+        self.apply_named_fn(Some(method), &ft, args)
     }
 
     /// Resolve call arguments to types, reordering named arguments to the
-    /// declared parameter order when the callee is a known function.
+    /// declared parameter order when the callee is a known function
+    /// ([CALL-ARGUMENTS]).
     fn ordered_arg_types(
         &mut self,
         fname: Option<&str>,
@@ -410,7 +484,7 @@ impl Checker {
         arguments.iter().map(|a| self.infer_expr(a, env)).collect()
     }
 
-    fn apply_fn(&mut self, ft: &Type, args: Vec<Type>) -> Type {
+    fn apply_fn(&mut self, ft: &Type, args: Vec<Type>, defer_any_binding: bool) -> Type {
         match self.ctx.prune(ft) {
             Type::Fun { params, ret } => {
                 if params.len() != args.len() {
@@ -422,7 +496,9 @@ impl Checker {
                     return *ret;
                 }
                 for (p, a) in params.iter().zip(&args) {
-                    self.push_assign(p, a);
+                    if !(defer_any_binding && p.is_named(names::ANY)) {
+                        self.push_assign(p, a);
+                    }
                 }
                 *ret
             }
@@ -439,6 +515,18 @@ impl Checker {
                 self.ctx.fresh()
             }
         }
+    }
+
+    fn apply_named_fn(&mut self, name: Option<&str>, ft: &Type, args: Vec<Type>) -> Type {
+        let constrained_builtin = matches!(name, Some("length" | "isEmpty" | "print" | "toString"));
+        if let (Some(name), Some(receiver)) = (name, args.first()) {
+            if constrained_builtin {
+                self.builtin_uses.push((name.to_string(), receiver.clone()));
+            }
+        }
+        // Preserve unresolved argument variables until the surrounding expression
+        // can refine them; the recorded constraint validates the final type.
+        self.apply_fn(ft, args, constrained_builtin)
     }
 
     fn infer_pipe(&mut self, left: &Expr, right: &Expr, env: &TypeEnv) -> Type {
@@ -458,9 +546,9 @@ impl Checker {
             };
             self.infer_expr(&call, env)
         } else {
-            let ft = self.infer_expr(right, env);
+            let (name, ft) = self.infer_callee(right, env);
             let lt = self.infer_expr(left, env);
-            self.apply_fn(&ft, vec![lt])
+            self.apply_named_fn(name.as_deref(), &ft, vec![lt])
         }
     }
 
@@ -724,11 +812,11 @@ impl Checker {
                 }
             }
             // "-" and "*": unlike "+", these have no string/list overload, so
-            // unconstrained operands default to int — `fn square(v) = v * v`
-            // infers `(int) -> Result<int, MathError>`.
+            // unconstrained operands default to int. Neither operation is
+            // fallible; checked integer variants are explicit builtins.
             _ => {
                 if l.is_named(names::FLOAT) || r.is_named(names::FLOAT) {
-                    res_math(Type::float())
+                    Type::float()
                 } else {
                     self.int_arithmetic(lt, rt)
                 }
@@ -765,7 +853,9 @@ fn classify(op: &str) -> OpKind {
 #[cfg(test)]
 mod tests {
     use crate::check::check_program;
-    use crate::testutil::{check, ok};
+    use crate::testutil::{bad, check, ok};
+    use crate::{infer_program, Type};
+    use osprey_syntax::parse_program;
 
     #[test]
     fn pipe_into_call_and_bare_function() {
@@ -774,6 +864,15 @@ mod tests {
             fn inc(n: int) -> int = n + 1\n\
             let r = 10 |> add(5)\n\
             let s = 10 |> inc\n");
+    }
+
+    #[test]
+    fn fused_iterator_functions_reject_materialized_lists() {
+        ok("range(0, 3) |> map(fn(x) => x + 1) |> forEach(print)\n");
+        let errs = bad("[1, 2, 3] |> map(fn(x) => x + 1) |> forEach(print)\n");
+        assert!(errs
+            .iter()
+            .any(|e| e.message.contains("Iterator") && e.message.contains("List")));
     }
 
     #[test]
@@ -810,21 +909,35 @@ mod tests {
     }
 
     #[test]
-    fn select_and_handler_expressions() {
-        // `select { ... }` and `handle E op => .. in body` both type their arms.
-        ok("fn pick() -> int = select {\n\
+    fn select_is_rejected_until_channel_selection_has_runtime_semantics() {
+        let errs = bad("fn pick() -> int = select {\n\
               x => x\n\
               _ => 0\n\
             }\n");
+        assert!(errs
+            .iter()
+            .any(|e| e.message.contains("`select` is not supported")));
+    }
+
+    #[test]
+    fn yield_forwards_its_value_type_and_send_checks_the_channel_element() {
+        // Implements [CONCURRENCY-YIELD] and [CONCURRENCY-CHANNEL].
+        ok("fn hand_off(value: int) -> int = yield value\n");
+        let errs = bad("fn wrong(ch: Channel<int>) -> Unit = send(ch, \"wrong\")\n");
+        assert!(errs
+            .iter()
+            .any(|e| e.message.contains("cannot unify int with string")));
+    }
+
+    #[test]
+    fn handler_expressions_type_their_arms() {
         ok("effect Logger { log: fn(string) -> Unit }\n\
             fn run() -> int = handle Logger\n\
               log msg => 0\n\
             in 42\n");
-        // `resume(v + 1000)` feeds arithmetic — a `Result<int, MathError>` —
-        // into the `int` operation-result slot, and the handled body ends in
-        // `a + 1`, another `Result`, flowing into the `int` answer pinned by the
-        // `false => 0` arm. Both are assignment sites that auto-unwrap; a plain
-        // unify would wrongly reject them. Guards the [EFFECTS-RESUME] fix.
+        // `resume(v + 1000)` feeds the operation-result slot and the handled
+        // body ends in `a + 1`; both must retain the handler's answer type.
+        // Guards the [EFFECTS-RESUME] fix.
         ok("effect Guard { check: fn(int) -> int }\n\
             fn guarded() -> int = handle Guard\n\
               check v => match v < 100 {\n\
@@ -835,6 +948,55 @@ mod tests {
               let a = perform Guard.check(5)\n\
               a + 1\n\
             }\n");
+    }
+
+    #[test]
+    fn performed_effect_operation_must_be_declared() {
+        // [EFFECTS-OP-TYPING]
+        let missing = bad("effect Logger { log: fn(string) -> Unit }\n\
+             fn run() -> Unit !Logger = perform Logger.missing(\"hi\")\n");
+        assert!(missing
+            .iter()
+            .any(|e| e.message.contains("has no operation `missing`")));
+    }
+
+    #[test]
+    fn performed_effect_must_be_declared() {
+        let errors = bad("fn run() -> Unit !Missing = perform Missing.log(\"hi\")\n");
+        assert!(errors
+            .iter()
+            .any(|e| e.message.contains("unknown effect `Missing`")));
+    }
+
+    #[test]
+    fn performed_effect_operation_must_match_declared_arity() {
+        let wrong_arity = bad("effect Logger { log: fn(string) -> Unit }\n\
+             fn run() -> Unit !Logger = perform Logger.log()\n");
+        assert!(wrong_arity
+            .iter()
+            .any(|e| e.message.contains("expects 1 argument(s), got 0")));
+    }
+
+    #[test]
+    fn handler_arm_operation_must_be_declared() {
+        let bad_arm = bad("effect Logger { log: fn(string) -> Unit }\n\
+             let result = handle Logger\n\
+               missing msg => {}\n\
+             in {}\n");
+        assert!(bad_arm
+            .iter()
+            .any(|e| e.message.contains("has no operation `missing`")));
+    }
+
+    #[test]
+    fn handler_arm_operation_must_match_declared_arity() {
+        let errors = bad("effect Logger { log: fn(string) -> Unit }\n\
+             let result = handle Logger\n\
+               log => {}\n\
+             in {}\n");
+        assert!(errors
+            .iter()
+            .any(|e| e.message.contains("expects 1 parameter(s), got 0")));
     }
 
     #[test]
@@ -997,37 +1159,48 @@ mod tests {
 
     #[test]
     fn arith_list_map_concat_and_float_subtraction() {
-        // `+` over lists and maps unifies operands; `-` over floats yields a
-        // float Result.
+        // `+` over lists and maps unifies operands.
         ok("let xs = [1, 2] + [3, 4]\n\
-            fn fsub(a: float, b: float) -> Result<float, MathError> = a - b\n");
+            fn fsub(a: float, b: float) -> float = a - b\n");
     }
 
     #[test]
-    fn perform_with_named_arguments() {
-        // A perform whose operation takes a named argument drives the named-arg
-        // loop; `perform` named args are built directly (the parser emits only
-        // positional perform args).
-        use osprey_ast::{Expr, NamedArgument, Program, Stmt};
-        ok("effect Logger { log: fn(string) -> Unit }\n\
-            fn shout(msg: string) -> Unit !Logger = perform Logger.log(msg)\n");
-        let perform = Stmt::Expr {
-            value: Expr::Perform {
-                effect: "Logger".into(),
-                operation: "log".into(),
-                arguments: Vec::new(),
-                named_arguments: vec![NamedArgument {
-                    name: "msg".into(),
-                    value: Expr::Str("hi".into()),
-                }],
-                position: None,
-            },
-            position: None,
-        };
-        let errs = check_program(&Program {
-            statements: vec![perform],
-        });
-        assert!(errs.is_empty(), "unexpected errors: {errs:?}");
+    fn map_literals_and_public_operations_reject_non_string_keys() {
+        let literal_errors = bad("let m = { 1: \"one\" }\n");
+        assert!(!literal_errors.is_empty());
+
+        let operation_errors = bad("let m = mapSet(Map(), 1, \"one\")\n");
+        assert!(!operation_errors.is_empty());
+    }
+
+    #[test]
+    fn non_dividing_float_arithmetic_is_plain() {
+        let parsed = parse_program(
+            "fn add(a: float, b: float) = a + b\n\
+             fn sub(a: float, b: float) = a - b\n\
+             fn mul(a: float, b: float) = a * b\n",
+        );
+        assert!(
+            parsed.errors.is_empty(),
+            "syntax errors: {:?}",
+            parsed.errors
+        );
+        let types = infer_program(&parsed.program);
+        for name in ["add", "sub", "mul"] {
+            assert_eq!(types.return_type(name), Some(&Type::float()), "{name}");
+        }
+    }
+
+    #[test]
+    fn perform_named_arguments_are_rejected_before_codegen() {
+        // Codegen has no named-operation argument mapping; reject this source
+        // form instead of silently dropping its value.
+        // [EFFECTS-OP-TYPING]
+        let errs = bad("effect Logger { log: fn(string) -> Unit }\n\
+             fn run() -> Unit !Logger = perform Logger.log(msg: \"hi\")\n");
+        assert!(errs
+            .iter()
+            .any(|e| e.message.contains("does not support named arguments")));
     }
 
     #[test]
@@ -1043,8 +1216,8 @@ mod tests {
         ok("fn lt(a: int, b: int) -> bool = a < b\n\
             fn md(a: int, b: int) -> Result<int, MathError> = a % b\n\
             fn dv(a: int, b: int) -> Result<float, MathError> = a / b\n\
-            fn fadd(a: float, b: float) -> Result<float, MathError> = a + b\n\
-            fn fmul(a: float, b: float) -> Result<float, MathError> = a * b\n");
+            fn fadd(a: float, b: float) -> float = a + b\n\
+            fn fmul(a: float, b: float) -> float = a * b\n");
     }
 
     #[test]

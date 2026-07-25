@@ -1,6 +1,6 @@
 //! Per-allocation layout metadata for `@osp_alloc_tagged` — the kind + word
 //! bitmask the ARC backend stores in the object header. Implements
-//! [GC-ARC-PERCEUS] (docs/plans/0011 phase 2, Amendment 1): codegen knows the
+//! [GC-ARC-PERCEUS] (docs/specs/0018-MemoryManagement.md): codegen knows the
 //! exact layout at each alloc site, so it passes the layout down instead of
 //! relying on a pointers-first `scan_fsize` convention the existing ABIs
 //! (tag-first records, `Result`'s trailing errmsg, `HttpResponse`'s C layout)
@@ -37,7 +37,7 @@ const MASK_MAX_WORD: u64 = 55;
 pub(crate) enum MetaField {
     /// 8-byte scalar (`i64` / `double`). Never marked — a boxed pointer in an
     /// `i64` slot stays unmarked (leak-safe): a false release could corrupt,
-    /// a missed one only leaks. See plan 0011 phase 2 cross-cutting risks.
+    /// while a missed release can only leak.
     Word,
     /// 8-byte managed pointer — the drop walk releases it.
     PtrManaged,

@@ -2,10 +2,11 @@
 //! This is the *only* place ML surface syntax is normalised into the shared
 //! core, and it is where the boundary law is enforced — the output is canonical
 //! AST that no later phase can distinguish from Default-flavor output
-//! ([FLAVOR-BOUNDARY], [FLAVOR-LOWER-CONTRACT], docs/specs/0023).
+//! ([FLAVOR-BOUNDARY], [FLAVOR-LAYER], [FLAVOR-LOWER-CONTRACT], docs/specs/0023).
 //!
 //! What this module canonicalises (and the parser deliberately does not):
-//! - **Curry-by-default** ([FLAVOR-ML-CURRY]): ML *curries by default*. A
+//! - **Curry-by-default** ([FLAVOR-ML-CURRY], [FLAVOR-CURRY]): ML curries by
+//!   default. A
 //!   multi-parameter binding `f a b = …` lowers to a one-parameter
 //!   [`Stmt::Function`] whose body is a one-parameter [`Expr::Lambda`] chain,
 //!   whitespace application `f a b` to nested single-argument calls
@@ -18,8 +19,9 @@
 //!   saturated curried call may be folded back to a multi-argument call by the
 //!   backend, but the lowered AST is always the curried form.
 //! - **Pipes**: `x |> f` desugars to a call, exactly as the Default lowerer does.
-//! - **Records / blocks / interpolation**: surface nodes map to
-//!   [`Expr::TypeConstructor`], [`Expr::Block`], and [`Expr::InterpolatedStr`].
+//! - **Records / blocks / interpolation**: constructors map to
+//!   [`Expr::TypeConstructor`], lowercase record updates to [`Expr::Update`],
+//!   and layout blocks/interpolation to their canonical expression nodes.
 
 use super::cst::{
     MlArm, MlEffectOp, MlEffectRef, MlExpr, MlExternParam, MlField, MlHandleArm, MlImport,
@@ -118,7 +120,8 @@ fn collect_positional_ctors(items: &[MlItem], out: &mut HashMap<String, usize>) 
 }
 
 /// A saturated whitespace application of a positionally-declared constructor,
-/// folded to the construction node ([TYPE-UNION-POSITIONAL]).
+/// folded to the construction node ([FLAVOR-ML-CTOR-POSITIONAL],
+/// [TYPE-UNION-POSITIONAL]).
 fn positional_construction(head: &MlExpr, args: &[MlExpr]) -> Option<Expr> {
     let MlExpr::Ident(name) = head else {
         return None;
@@ -599,8 +602,9 @@ fn render_tuple(parts: &[MlType]) -> String {
     format!("({rendered})")
 }
 
-/// A binding with no parameters is a `let` (its signature becomes the binding's
-/// type); one with parameters is a function. The `uncurried` flag selects the
+/// A binding with no parameters is a `let` ([FLAVOR-ML-BIND]; its signature
+/// becomes the binding's type); one with parameters is a function. The
+/// `uncurried` flag selects the
 /// surface form: `f (x, y) = …` (uncurried) builds one FLAT multi-parameter
 /// `Function` (twinning Default `fn f(x, y)`); `f x y = …` (curried) builds a
 /// one-parameter `Function` returning a `Lambda` chain ([FLAVOR-ML-CURRY]). The
@@ -1025,17 +1029,7 @@ fn lower_expr(expr: MlExpr) -> Expr {
             name,
             type_args,
             fields,
-        } => Expr::TypeConstructor {
-            name,
-            // Thread explicit construction-site type arguments through the
-            // shared `type_expr` path — byte-identical to the Default
-            // flavor's `Ctor<t> { … }`. Implements [FLAVOR-ML-GENERICS].
-            type_args: type_args
-                .iter()
-                .map(|a| type_expr(a).unwrap_or_else(|| TypeExpr::named(render_type(a))))
-                .collect(),
-            fields: fields.into_iter().map(lower_field).collect(),
-        },
+        } => lower_record(name, &type_args, fields),
         MlExpr::Block { items, value } => lower_block(items, value),
         MlExpr::Spawn(body) => Expr::Spawn(Box::new(lower_expr(*body))),
         MlExpr::Perform {
@@ -1072,6 +1066,28 @@ fn lower_expr(expr: MlExpr) -> Expr {
         MlExpr::Select(arms) => Expr::Select {
             arms: arms.into_iter().map(lower_arm).collect(),
         },
+    }
+}
+
+/// Uppercase heads construct a type; lowercase heads update a bound record.
+/// This mirrors the Default flavor's distinct `TypeConstructor`/`Update` nodes.
+fn lower_record(name: String, type_args: &[MlType], fields: Vec<MlField>) -> Expr {
+    let fields = fields.into_iter().map(lower_field).collect();
+    if !super::parser::is_constructor(&name) {
+        return Expr::Update {
+            record: name,
+            fields,
+        };
+    }
+    Expr::TypeConstructor {
+        name,
+        // Explicit type arguments follow the same path as Default construction.
+        // Implements [FLAVOR-ML-GENERICS].
+        type_args: type_args
+            .iter()
+            .map(|arg| type_expr(arg).unwrap_or_else(|| TypeExpr::named(render_type(arg))))
+            .collect(),
+        fields,
     }
 }
 
@@ -1181,6 +1197,7 @@ fn lower_map_entry((key, value): (MlExpr, MlExpr)) -> MapEntry {
 
 /// `x |> f a` → `f x a`: prepend the piped value as the first argument of the
 /// right-hand call, or wrap a bare callee in a one-argument call.
+/// Implements [BUILTIN-ITER-PIPE].
 fn pipe_into(left: Expr, right: Expr) -> Expr {
     match right {
         Expr::Call {
@@ -1283,7 +1300,7 @@ mod tests {
         let mut s = stmts(src);
         assert_eq!(s.len(), 1, "expected exactly one statement: {s:?}");
         // `remove(0)` is panic-free given the length assertion above and avoids
-        // the forbidden `unwrap()` ([USER-MANDATE-NO-PANIC-IN-TESTS]).
+        // the repository-forbidden `unwrap()`.
         s.remove(0)
     }
 
@@ -1578,7 +1595,8 @@ mod tests {
                 assert!(matches!(*inner, Expr::Binary { ref op, .. } if op == "+"));
             }
         }
-        // `x |> f` becomes `f(x)` — no Pipe node survives, matching Default.
+        // `x |> f` becomes `f(x)` — no Pipe node survives, matching Default
+        // [BUILTIN-ITER-PIPE].
         let piped = one("r = x |> f\n");
         assert!(
             matches!(
@@ -1659,27 +1677,27 @@ mod tests {
     }
 
     #[test]
-    fn lowercase_inline_record_lowers_to_update_type_constructor() {
+    fn lowercase_inline_record_lowers_to_update() {
         // `receiver(field = v)` with a LOWERCASE head is a non-destructive record
-        // update; it lowers to the SAME `Expr::TypeConstructor { name: receiver }`
-        // the Default `receiver { field: v }` produces ([FLAVOR-ML-RECORD]).
+        // update; it lowers to the SAME `Expr::Update` the Default
+        // `receiver { field: v }` produces ([FLAVOR-ML-RECORD]).
         let s = one("p2 = point1(x = 30)\n");
         assert!(
             matches!(
                 s,
                 Stmt::Let {
-                    value: Expr::TypeConstructor { .. },
+                    value: Expr::Update { .. },
                     ..
                 }
             ),
-            "expected update type constructor, got {s:?}"
+            "expected record update, got {s:?}"
         );
         if let Stmt::Let {
-            value: Expr::TypeConstructor { name, fields, .. },
+            value: Expr::Update { record, fields },
             ..
         } = s
         {
-            assert_eq!(name, "point1");
+            assert_eq!(record, "point1");
             assert_eq!(fields.len(), 1);
             assert_eq!(fields[0].name, "x");
             assert_eq!(fields[0].value, Expr::Integer(30));

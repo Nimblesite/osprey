@@ -1,1 +1,0 @@
-line 6:25: cannot pass 'any' type to function expecting specific type - pattern matching required: function 'testFunc' expecting 'a'

@@ -1,1 +1,1 @@
-line 12:12: unhandled effect: Unhandled effect 'Calculator.add' - all effects must be explicitly handled or forwarded in function signatures. Add a handler or declare the effect in the function signature with !Calculator 
+type mismatch: cannot unify int with string

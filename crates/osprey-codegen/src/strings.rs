@@ -5,7 +5,20 @@
 //! the uniform `{ value, i8 }*` Result block. Implements
 //! [BUILTIN-STRING-INSPECTION], [BUILTIN-STRING-SEARCH], [BUILTIN-STRING-CURSOR],
 //! [BUILTIN-STRING-SUBSTRINGS], [BUILTIN-STRING-LIST], [BUILTIN-STRING-TRANSFORM],
-//! [BUILTIN-STRING-PARSING], and [BUILTIN-STRING-ERROR].
+//! [BUILTIN-STRING-PARSING], [BUILTIN-STRING-JOIN],
+//! [BUILTIN-STRING-TOUPPERCASE], [BUILTIN-STRING-TRIMSTART], and
+//! [BUILTIN-STRING-TRIMEND]. Dispatch entries implement
+//! [BUILTIN-STRING-CONTAINS], [BUILTIN-STRING-STARTSWITH],
+//! [BUILTIN-STRING-ENDSWITH], [BUILTIN-STRING-INDEXOF],
+//! [BUILTIN-STRING-BYTELENGTH], [BUILTIN-STRING-BYTEAT],
+//! [BUILTIN-STRING-CODEPOINTAT], [BUILTIN-STRING-CODEPOINTWIDTH],
+//! [BUILTIN-STRING-FROMCODEPOINT], [BUILTIN-STRING-SUBSTRING],
+//! [BUILTIN-STRING-TAKE], [BUILTIN-STRING-DROP],
+//! [BUILTIN-STRING-TOLOWERCASE], [BUILTIN-STRING-TRIM],
+//! [BUILTIN-STRING-REPLACE], [BUILTIN-STRING-REPEAT],
+//! [BUILTIN-STRING-REVERSE], [BUILTIN-STRING-PADSTART],
+//! [BUILTIN-STRING-PADEND], [BUILTIN-STRING-PARSEINT], and
+//! [BUILTIN-STRING-PARSEFLOAT].
 
 use crate::builder::Codegen;
 use crate::error::{CodegenError, Result};
@@ -388,8 +401,10 @@ fn typed_args_for_types(
     typed_args(cg, &signature, args)
 }
 
-/// `fromCodePoint(cp: int) -> Result<string, _>` — the C encoder returns NULL on
-/// an invalid scalar value (surrogate / out of range), wrapped as Error.
+/// `fromCodePoint(cp: int) -> Result<string, _>`
+/// ([BUILTIN-STRING-FROMCODEPOINT]) — the C encoder returns NULL for U+0000 or
+/// a non-scalar because the runtime's NUL-terminated string ABI cannot
+/// represent an embedded NUL; NULL becomes Error.
 fn from_codepoint(cg: &mut Codegen, args: &[Expr]) -> Result<Value> {
     let cp = arg(cg, args, 0, LType::I64)?;
     let ptr = cg.call("i8*", "osp_string_from_codepoint", "i64", &[&cp.operand]);

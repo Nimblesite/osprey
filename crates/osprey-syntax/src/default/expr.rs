@@ -209,7 +209,8 @@ impl Lowerer<'_> {
                 index: Box::new(self.lower_expr(index)),
             };
         }
-        // function/method call. UFCS: `x.f(a, …)` is sugar for `f(x, a, …)`, so a
+        // function/method call. UFCS [BUILTIN-STRING-UFCS]: `x.f(a, …)` is
+        // sugar for `f(x, a, …)`, so a
         // field-access callee lowers to an ordinary call with the receiver as the
         // first positional argument — keeping method calls invisible downstream.
         let (mut arguments, named_arguments) = self.lower_arg_list(node);
@@ -241,7 +242,8 @@ impl Lowerer<'_> {
         }
     }
 
-    /// Collect positional + named args from an `argument_list` child. Named
+    /// Collect positional or all-named args from an `argument_list` child
+    /// ([CALL-ARGUMENTS]). Named
     /// arguments live in a single direct `named_argument_list` child; a *direct*
     /// lookup is essential — descending would steal the named arguments of a
     /// nested call (`print(cc(c1: .., c2: ..))` must not hoist c1/c2 onto print).
@@ -396,6 +398,7 @@ fn parse_fragment(frag: &str) -> Expr {
 /// `f(x, a, …)` (the piped value is prepended as the first positional
 /// argument). A bare callee `x |> f` becomes `f(x)`. Producing a plain
 /// [`Expr::Call`] keeps pipes invisible to every later stage.
+/// Implements [BUILTIN-ITER-PIPE].
 fn pipe_into(left: Expr, right: Expr) -> Expr {
     match right {
         Expr::Call {
@@ -510,7 +513,8 @@ mod tests {
 
     #[test]
     fn lowers_common_expression_forms() {
-        // Pipe desugars `x |> f(2)` to a call with x prepended.
+        // Pipe desugars `x |> f(2)` to a call with x prepended
+        // [BUILTIN-ITER-PIPE].
         match let_value("let r = x |> f(2)\n") {
             Expr::Call { arguments, .. } => assert_eq!(arguments.len(), 2),
             other => panic!("expected call, got {other:?}"),
@@ -540,7 +544,8 @@ mod tests {
             } => assert_eq!(named_arguments.len(), 2),
             other => panic!("expected call, got {other:?}"),
         }
-        // Ternary and Elvis desugar to a boolean match.
+        // Ternary and Elvis desugar to a boolean match
+        // [PATTERN-RESULT-DEFAULT].
         assert!(matches!(
             let_value("let r = c ? 1 : 2\n"),
             Expr::Match { .. }
@@ -606,7 +611,7 @@ mod tests {
             }
             other => panic!("expected constructor, got {other:?}"),
         }
-        // list + map literals.
+        // List and string-key map literals [TYPE-MAP-LITERAL].
         assert!(matches!(let_value("let r = [1, 2, 3]\n"), Expr::List(v) if v.len() == 3));
         assert!(
             matches!(let_value("let r = { \"a\": 1, \"b\": 2 }\n"), Expr::Map(m) if m.len() == 2)

@@ -43,7 +43,7 @@ runs:
       # differential harness. lldb-dap backs the VS Code debugger end-to-end
       # tests (osprey --debug -> lldb-dap).
       #
-      # [DEBUGGER-LLDB-DAP-VERSION] The distro lldb on ubuntu-latest is lldb 18,
+      # The distro lldb on ubuntu-latest is lldb 18,
       # whose lldb-dap *DAP server* (NOT the DWARF reader — liblldb reads the
       # osprey-emitted debug info correctly) is buggy on x86_64: it reports a
       # stopped frame's source path as "." and ignores breakpoint conditions,

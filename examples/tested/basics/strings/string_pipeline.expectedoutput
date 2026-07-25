@@ -18,6 +18,14 @@ normalized="get /api/users?name=alice&age=30"
 
 isGetRequest=true
 
+upper="HELLO"
+
+trimStart="hi  "
+
+trimEnd="  hi"
+
+join="a-b-c"
+
 chain="get /"
 
 query starts at 16
@@ -65,4 +73,3 @@ split empty rejected
 405 method-not-allowed
 
 === Pipeline Complete ===
-

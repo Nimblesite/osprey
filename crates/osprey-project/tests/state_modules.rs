@@ -1,4 +1,5 @@
-//! State-module ownership and initializer regression coverage.
+//! State-module ownership and initializer regression coverage for
+//! [MODULES-STATE], [MODULES-EFFECTS], and the specific state-module contracts.
 
 mod support;
 

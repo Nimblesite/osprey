@@ -1,0 +1,14 @@
+attempt 1: handler feeds -3
+  business: rejected -3 for age, asking again
+attempt 2: handler feeds 0
+  business: rejected 0 for age, asking again
+attempt 3: handler feeds 7
+SCENARIO 1 accepted=7 after 3 attempts
+attempt 1: handler feeds -1
+  business: rejected -1 for quota, asking again
+attempt 2: handler feeds -2
+  business: rejected -2 for quota, asking again
+attempt 3: handler feeds -3
+  business: rejected -3 for quota, asking again
+attempt 4: handler GIVES UP, aborting with sentinel
+SCENARIO 2 outcome: gave up (sentinel -999) after 3 bad answers

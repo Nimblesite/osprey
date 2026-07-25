@@ -11,8 +11,9 @@ specialisation cache landed; one scoped remainder (a still-generic lambda
 Function values work when their type is fully concrete, **and a generic
 function now specialises wherever a consuming slot fixes its ABI**. The only
 remaining refusal is a function value whose type is *nowhere* concrete — a
-still-generic lambda returned from a generic function — which keeps its loud
-bail rather than risk treating a `string`/`float` instantiation as `i64`.
+still-generic lambda returned from a generic function. It remains a codegen
+error because treating a `string`/`float` instantiation as `i64` would be
+incorrect.
 
 ## What works today
 
@@ -46,7 +47,7 @@ bail rather than risk treating a `string`/`float` instantiation as `i64`.
   `generic_function_as_an_iterator_callback_inlines_not_calls_a_missing_symbol`
   (codegen lib.rs) and
   `examples/tested/basics/memory/struct_allocation_stress.{osp,ospml}`.
-- **The `-> T` generalization poisoning is fixed at the root**: builtin schemes
+- **The `-> T` generalization poisoning is fixed**: builtin schemes
   hand-write `Var(0)`/`Var(1)` as quantified binders, and the checker's fresh
   supply used to hand out those same ids to live inference variables; once a
   var-var unification routed through a colliding id, `TypeEnv::free_vars`
@@ -80,7 +81,7 @@ copies" strategy, now needed only for this last shape.
 Known hazard (pre-existing, unchanged): a *recursive* generic function
 specialised by inlining falls back to a direct call to a symbol that is never
 emitted (the `inlining` re-entry guard's fallback). Recursive generic
-functions as values are untested territory.
+functions as values are not covered by tests.
 
 - The FFI-callback case is a deliberate, permanent restriction (captures cannot
   cross the C ABI): now pinned by
@@ -96,7 +97,7 @@ functions as values are untested territory.
   (codegen lib.rs) — the latter pins the emit-once cache: same ABI shares a
   body, different ABI does not.
 - `examples/failscompilation/ffi_capturing_callback.ospo` — capturing lambda
-  across the C boundary still rejected loudly.
+  across the C boundary remains rejected.
 
 ## TODO
 

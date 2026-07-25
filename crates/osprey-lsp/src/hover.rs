@@ -259,6 +259,7 @@ mod tests {
 
     #[test]
     fn hover_uses_signature_for_functions_and_builtins() {
+        // Function and built-in signature rendering from [LSP-HOVER].
         assert!(hover(SRC, "file:///a.osp", 1, 12, U16)
             .is_some_and(|m| m.contains("fn add(a: int, b: int) -> int")));
         assert!(hover("fn main() = print(1)\n", "file:///a.osp", 0, 13, U16)
@@ -267,6 +268,7 @@ mod tests {
 
     #[test]
     fn an_ml_document_is_answered_in_the_ml_flavor_end_to_end() {
+        // [LSP-FLAVOR-RENDER]
         // [FLAVOR-BOUNDARY] erases the authoring surface at the AST, so every
         // editor answer used to come back in Default spelling: an ML author
         // hovering `inc` read `fn inc(x: int) -> int` — syntax their frontend

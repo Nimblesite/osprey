@@ -23,7 +23,7 @@ typeset -a FAILED
 # ARC leak audit: with OSPREY_ARC_DEBUG=1 the Perceus backend prints
 # "[osp-arc] exit: N live objects" to stderr at exit (memory_arc.c). Counting
 # the examples that end with N>0 is the only automatic check for the
-# [GC-ARC-PERCEUS] "zero leaked language values" bar — stdout comparison alone
+# [MEM-BACKENDS] [GC-ARC-PERCEUS] zero-live-values bar — stdout comparison alone
 # cannot see a leak (nor a premature free). Off unless the env var is set.
 arc_leaky=0
 typeset -a ARC_LEAKS
@@ -65,7 +65,8 @@ for f in $(find $EXDIR \( -name '*.osp' -o -name '*.ospml' \) | sort); do
   expected=$(cat "$exp")
   # OSPREY_RUN_FLAGS (default empty) selects a backend for conformance, e.g.
   # `OSPREY_RUN_FLAGS=--memory=gc` runs every example under the tracing GC — the
-  # [MEM-BACKENDS] oracle: output must stay byte-identical. No effect when unset.
+  # [MEM-BACKENDS] [MEM-OPAQUE] oracle: output must stay byte-identical.
+  # No effect when unset.
   actual=$($BIN "$f" --run ${=OSPREY_RUN_FLAGS:-} 2>/tmp/osprey_rs_err.txt)
   rc=$?
   live=$(sed -n 's/^\[osp-arc\] exit: \([0-9]*\) live objects.*/\1/p' /tmp/osprey_rs_err.txt | tail -1)
@@ -95,16 +96,11 @@ if [[ -n "${OSPREY_ARC_DEBUG:-}" ]]; then
   for x in $ARC_LEAKS; do echo "  leak: $x"; done
 fi
 
-# ---- must-REJECT suite: examples/failscompilation -------------------------
-# Every .ospo is an ill-formed program the language defines as a compile error.
-# The compiler must refuse it (nonzero exit, nothing executed). FC_EXPECTED_ESCAPES
-# is a RATCHET: it counts the ill-formed programs osprey still accepts
-# (validations not yet ported — effects safety, `any` rules, named-arg checks,
-# print-on-record). Port a validation -> decrease the number. An INCREASE is a
-# regression and fails CI. Target: 0.
-# 12 -> 11: perform-argument unification ([EFFECTS-GENERIC-INSTANTIATION]) now
-# rejects effect-parameter type mismatches at compile time.
-FC_EXPECTED_ESCAPES=11
+# ---- must-fail suite: examples/failscompilation ---------------------------
+# Each .ospo must exit nonzero. Most are compile errors; the corpus also locks
+# explicit runtime refusals such as unhandled effects and multi-shot resume.
+# FC_EXPECTED_ESCAPES ratchets the remaining programs that still exit zero.
+FC_EXPECTED_ESCAPES=0
 FCDIR=$ROOT/examples/failscompilation
 fc_rej=0; fc_esc=0
 typeset -a FC_ESCAPED

@@ -5,7 +5,7 @@
 //! `tests/examples_compile.rs`) can never reach. Spawning the built binary does
 //! reach them, and because `cargo llvm-cov` instruments `CARGO_BIN_EXE_osprey`
 //! too, each child's coverage is merged back into the report — so these tests
-//! count toward the per-crate gate. [TEST-RULES][COVERAGE-THRESHOLDS-JSON]
+//! count toward the per-crate gate.
 
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
@@ -176,12 +176,17 @@ fn main() = {
 
 #[test]
 fn version_plain_and_json() {
+    // [SWR-VERSION-BUILD-STAMPING] [SWR-VERSION-CLI-OUTPUT]
     let plain = run_args(&["--version"]);
     assert_eq!(plain.code, Some(0));
-    assert!(plain.stdout.contains("osprey"), "{}", plain.stdout);
+    assert_eq!(plain.stdout, "osprey 0.0.0-dev\n");
+
     let json = run_args(&["--version", "--json"]);
     assert_eq!(json.code, Some(0));
-    assert!(json.stdout.contains("\"kind\":\"cli\""), "{}", json.stdout);
+    assert_eq!(
+        json.stdout,
+        "{\"manifestVersion\":1,\"name\":\"osprey\",\"version\":\"0.0.0-dev\",\"kind\":\"cli\",\"product\":\"osprey\"}\n"
+    );
 }
 
 #[test]
@@ -442,6 +447,7 @@ fn run_compiles_links_and_executes() {
 
 #[test]
 fn explicit_resume_runs_the_performer_continuation() {
+    // [EFFECTS-RESUME]
     let prog = temp_osp("resume_effect", RESUME_EFFECT);
     let o = run_file(&prog, &["--run"]);
     assert_eq!(o.code, Some(0), "stderr={}", o.stderr);
@@ -467,10 +473,73 @@ fn compile_writes_executable_to_cwd() {
 
 #[test]
 fn sandbox_blocks_filesystem_capability() {
+    // [SECURITY-CAPABILITY-GATES]
     let prog = temp_osp("fs", "let c = readFile(\"x.txt\")\n");
     let o = run_file(&prog, &["--llvm", "--no-fs"]);
     assert_ne!(o.code, Some(0), "stdout={}", o.stdout);
-    assert!(!o.stderr.is_empty());
+    assert!(
+        o.stderr
+            .contains("security: `readFile` is disabled by --no-fs"),
+        "{}",
+        o.stderr
+    );
+}
+
+#[test]
+fn network_gates_run_before_type_checking() {
+    // [SECURITY-CAPABILITY-GATES] Both calls have the wrong arity. The security
+    // diagnostic wins because policy enforcement precedes type checking.
+    for (name, source, flag, expected) in [
+        (
+            "blocked_http",
+            "let r = httpGet()\n",
+            "--no-http",
+            "security: `httpGet` is disabled by --no-http",
+        ),
+        (
+            "blocked_websocket",
+            "let r = websocketConnect()\n",
+            "--no-websocket",
+            "security: `websocketConnect` is disabled by --no-websocket",
+        ),
+    ] {
+        let prog = temp_osp(name, source);
+        let o = run_file(&prog, &["--llvm", flag]);
+        assert_ne!(o.code, Some(0), "stdout={}", o.stdout);
+        assert!(o.stderr.contains(expected), "{}", o.stderr);
+        assert!(!o.stderr.contains("expects exactly"), "{}", o.stderr);
+    }
+}
+
+#[test]
+fn no_ffi_rejects_foreign_declarations() {
+    // [SECURITY-FFI-GATE]
+    let prog = temp_osp(
+        "blocked_ffi",
+        "extern fn foreignCall(value: int) -> int\nlet value = foreignCall(1)\n",
+    );
+    let o = run_file(&prog, &["--check", "--no-ffi"]);
+    assert_ne!(o.code, Some(0), "stdout={}", o.stdout);
+    assert!(
+        o.stderr
+            .contains("security: extern function `foreignCall` is disabled by --no-ffi"),
+        "{}",
+        o.stderr
+    );
+}
+
+#[test]
+fn websocket_language_surface_links_to_runtime() {
+    // [BUILTIN-WEBSOCKET] This crosses the language/codegen/archive boundary;
+    // an accidental camel-case external symbol fails at link time.
+    let prog = temp_osp(
+        "websocket_runtime",
+        "let server = websocketCreateServer(19093, \"127.0.0.1\", \"/chat\")\n\
+         print(server > 0)\n",
+    );
+    let o = run_file(&prog, &["--run"]);
+    assert_eq!(o.code, Some(0), "stderr={}", o.stderr);
+    assert_eq!(o.stdout, "true\n");
 }
 
 #[test]
@@ -531,7 +600,9 @@ fn write_in(dir: &Path, name: &str, body: &str) -> PathBuf {
     path
 }
 
-// [TESTING-TAP][TESTING-EXIT] a test binary reports TAP and exits by outcome.
+// [TESTING-BUILTIN-TEST][TESTING-BUILTIN-EXPECT][TESTING-BUILTIN-CHECK]
+// [TESTING-RUNTIME][TESTING-TAP][TESTING-EXIT] a test binary reports TAP and
+// exits by outcome.
 #[test]
 fn test_builtins_emit_tap_and_exit_status() {
     let pass = temp_osp("tap_pass", PASSING_TESTS);
@@ -598,8 +669,9 @@ fn list_tests_reports_literal_cases_as_json() {
     assert_eq!(o.stdout.trim(), "[]");
 }
 
-// [TESTING-CLI-RUN] the runner discovers *.test.osp{,ml} under a directory,
-// streams TAP under headers, and aggregates the exit status.
+// [TESTING-CLI-RUN][TESTING-FILE-CONVENTION] the runner discovers
+// *.test.osp{,ml} under a directory, streams TAP under headers, and aggregates
+// the exit status.
 #[test]
 fn test_subcommand_runs_directories_and_files() {
     let dir = temp_dir("suite");

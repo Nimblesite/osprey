@@ -10,6 +10,9 @@ import Prism from "prismjs";
 import { DateTime } from "luxon";
 import { renderToString as renderTypeDiagram } from "typediagram-core";
 
+const SITE_URL = "https://www.ospreylang.dev";
+const AUTHOR_URL = "https://www.christianfindlay.com/";
+
 // Osprey Prism grammar — shared by the syntaxhighlight plugin and the transform.
 const ospreyGrammar = {
   comment: [
@@ -58,6 +61,122 @@ const decodeEntities = (html) =>
     .replace(/&#39;/g, "'")
     .replace(/&amp;/g, "&");
 
+const escapeRegex = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+function replaceMeta(html, attribute, name, value) {
+  const pattern = new RegExp(
+    `<meta ${attribute}="${escapeRegex(name)}" content="[^"]*">`
+  );
+  return html.replace(pattern, `<meta ${attribute}="${name}" content="${value}">`);
+}
+
+function insertMetaAfter(html, attribute, anchor, name, value) {
+  if (html.includes(`${attribute}="${name}"`)) return replaceMeta(html, attribute, name, value);
+  const pattern = new RegExp(
+    `(<meta ${attribute}="${escapeRegex(anchor)}" content="[^"]*">)`
+  );
+  return html.replace(pattern, `$1\n  <meta ${attribute}="${name}" content="${value}">`);
+}
+
+function extractHeroMetadata(html) {
+  const hero = html.match(
+    /<img class="prose-hero" src="([^"]+)" alt="([^"]*)" width="(\d+)" height="(\d+)"/
+  );
+  if (!hero) return null;
+  return {
+    url: new URL(hero[1], SITE_URL).href,
+    alt: hero[2],
+    width: Number(hero[3]),
+    height: Number(hero[4]),
+  };
+}
+
+function updateBlogSocialCards(html, hero, modified) {
+  const values = [
+    ["property", "og:image", hero.url],
+    ["property", "og:image:width", hero.width],
+    ["property", "og:image:height", hero.height],
+    ["name", "twitter:image", hero.url],
+  ];
+  let updated = values.reduce((result, item) => replaceMeta(result, ...item), html);
+  updated = insertMetaAfter(updated, "property", "og:image:height", "og:image:alt", hero.alt);
+  const published = html.match(/"datePublished":\s*"([^"]+)"/)?.[1];
+  if (published) {
+    updated = insertMetaAfter(updated, "property", "og:type", "article:published_time", published);
+    updated = insertMetaAfter(updated, "property", "article:published_time", "article:author", AUTHOR_URL);
+    const lastModified = modified || published;
+    updated = insertMetaAfter(
+      updated,
+      "property",
+      "article:author",
+      "article:modified_time",
+      lastModified
+    );
+    updated = insertMetaAfter(
+      updated,
+      "property",
+      "article:modified_time",
+      "og:updated_time",
+      lastModified
+    );
+  }
+  return insertMetaAfter(updated, "name", "twitter:image", "twitter:image:alt", hero.alt);
+}
+
+function enrichBlogPost(post, hero, modified) {
+  post.headline = post.name;
+  post.image = {
+    "@type": "ImageObject",
+    url: hero.url,
+    width: hero.width,
+    height: hero.height,
+  };
+  post.mainEntityOfPage = { "@type": "WebPage", "@id": post.url };
+  post.publisher = { "@id": `${SITE_URL}/#organization` };
+  if (post.author?.name === "Christian Findlay") post.author.url = AUTHOR_URL;
+  if (post.datePublished) post.dateModified = modified || post.datePublished;
+}
+
+function enrichBlogBreadcrumb(graph) {
+  const breadcrumb = graph.find((item) => item["@type"] === "BreadcrumbList");
+  const items = breadcrumb?.itemListElement;
+  if (!items) return;
+  if (items.some((item) => item.item === `${SITE_URL}/blog/`)) return;
+  items.at(-1).position = 3;
+  items.splice(1, 0, {
+    "@type": "ListItem",
+    position: 2,
+    name: "Blog",
+    item: `${SITE_URL}/blog/`,
+  });
+}
+
+function enrichBlogOrganization(graph) {
+  const website = graph.find((item) => item["@type"] === "WebSite");
+  const organization = graph.find((item) => item["@type"] === "Organization");
+  if (!organization) return;
+  organization.alternateName = "Osprey";
+  if (website?.description) organization.description = website.description;
+  if (website) website.publisher = { "@id": organization["@id"] };
+}
+
+function updateBlogStructuredData(html, hero, modified) {
+  const pattern = /<script type="application\/ld\+json">([\s\S]*?)<\/script>/;
+  return html.replace(pattern, (element, rawJson) => {
+    const data = JSON.parse(rawJson, (_key, value) =>
+      typeof value === "string" ? decodeEntities(value) : value
+    );
+    const graph = data["@graph"];
+    const post = graph?.find((item) => item["@type"] === "BlogPosting");
+    if (!post) return element;
+    enrichBlogPost(post, hero, modified);
+    enrichBlogBreadcrumb(graph);
+    enrichBlogOrganization(graph);
+    const json = JSON.stringify(data, null, 2).replace(/</g, "\\u003c");
+    return `<script type="application/ld+json">\n${json}\n  </script>`;
+  });
+}
+
 export default function (eleventyConfig) {
   // Eleventy treats .gitignore entries as build ignores. That is wrong here:
   // the spec pages and the vendored mermaid runtime are GENERATED into src/
@@ -68,7 +187,7 @@ export default function (eleventyConfig) {
   eleventyConfig.addPlugin(techdoc, {
     site: {
       name: "Osprey",
-      url: "https://www.ospreylang.dev",
+      url: SITE_URL,
       description:
         "A modern functional language with typed algebraic effects, lightweight fiber concurrency, and immutable persistent collections.",
     },
@@ -92,7 +211,10 @@ export default function (eleventyConfig) {
     return content.replace(
       /<pre class="language-(osprey(?:-ml)?)"><code class="language-\1">([\s\S]*?)<\/code><\/pre>/g,
       (_m, lang, code) => {
-        const decoded = stripTags(decodeEntities(code)).trim();
+        // Strip Prism's token spans while `<` is still escaped as `&lt;`.
+        // Decoding first makes generic types such as `Result<string, string>`
+        // look like HTML tags and silently removes their opening type argument.
+        const decoded = decodeEntities(stripTags(code)).trim();
         const html = Prism.highlight(decoded, Prism.languages[lang], lang);
         return `<pre class="language-${lang}" tabindex="0" data-language="${lang}"><code class="language-${lang}">${html}</code></pre>`;
       }
@@ -179,6 +301,18 @@ export default function (eleventyConfig) {
   eleventyConfig.addTransform("robots-allow-rendering-assets", function (content, outputPath) {
     if (!outputPath || !outputPath.endsWith("robots.txt")) return content;
     return content.replace("Disallow: /assets/\n", "");
+  });
+
+  // Blog posts use their own editorial artwork in search and social previews.
+  // The virtual theme only knows the site-wide default image, so enrich its
+  // rendered metadata here without copying or patching the dependency layout.
+  eleventyConfig.addTransform("blog-metadata", function (content, outputPath) {
+    if (!outputPath || !outputPath.endsWith(".html")) return content;
+    if (!content.includes('"@type": "BlogPosting"')) return content;
+    const hero = extractHeroMetadata(content);
+    if (!hero) return content;
+    const modified = content.match(/\bdata-date-modified="([^"]+)"/)?.[1];
+    return updateBlogStructuredData(updateBlogSocialCards(content, hero, modified), hero, modified);
   });
 
   // Google Analytics (gtag.js) — injected into every generated HTML page's

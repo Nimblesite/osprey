@@ -1,5 +1,4 @@
-// Comprehensive Any Type Test - includes functionality from removed tests
-// Tests explicit any return types and storing any values without auto-conversion
+// Erased compatibility values [TYPE-ANY].
 
 fn getDynamicValue() -> any = 42
 

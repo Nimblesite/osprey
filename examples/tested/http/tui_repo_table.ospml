@@ -1,8 +1,5 @@
-// ML twin of tui_repo_table.osp. HTTP/JSON/term builtins are ordinary calls; named
-// args (`field(doc: doc, path: …)`) become positional (`field doc …`). The handler's
-// `-> HttpResponse` return is load-bearing (ML signature); the record literal becomes
-// the inline call form. `match i < n` keeps the comparison scrutinee; multi-line arm
-// bodies become indented layout blocks. Escape sequences in strings are identical.
+// ML twin of tui_repo_table.osp. Exercises [HTTP-RESPONSE-HANDLE] and
+// [BUILTIN-JSON] with positional ML calls and layout blocks.
 
 handleRequest : string -> string -> string -> string -> HttpResponse
 handleRequest (method, path, headers, body) = HttpResponse(

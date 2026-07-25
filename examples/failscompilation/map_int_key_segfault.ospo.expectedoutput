@@ -1,1 +1,0 @@
-mapSet: mapSet/mapGet/mapContains/mapRemove require string keys (Map() defaults to string keys); int/bool/float keys would SIGSEGV at runtime

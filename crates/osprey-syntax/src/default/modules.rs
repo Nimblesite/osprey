@@ -412,6 +412,7 @@ mod tests {
 
     #[test]
     fn exported_docs_attach_to_every_declaration_and_repair_uppercase_opaque_aliases() {
+        // [DOC-ATTACH] Default docs reach all seven declaration-level forms.
         let statements = parse(
             "module Documented {\n\
                /// value docs\n\

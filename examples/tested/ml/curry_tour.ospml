@@ -3,9 +3,9 @@
 // interpolation. The plain multi-argument `add (x, y)` uses ML's uncurried tuple
 // form (mirroring Default `fn add(x, y)`), while `makeScaler k = \v => …` is a
 // real closure-returning function. Bare top-level statements (no `main`) and
-// inferable signatures stripped; the arithmetic `-> int` returns are load-bearing
-// (they auto-unwrap `Result<int, MathError>` to `int`). Lowers to the same
-// canonical AST as the Default twin — byte-identical IR (docs/specs/0023).
+// inferable signatures lower to the same canonical AST as the Default twin;
+// `makeScaler`'s signature keeps its returned closure concrete
+// (docs/specs/0023).
 
 inc : int -> int
 inc x = x + 1

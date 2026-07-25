@@ -169,6 +169,7 @@ mod tests {
 
     #[test]
     fn summary_only_leaves_every_section_empty() {
+        // [DOC-MODEL] a summary-only comment has the canonical empty-field shape.
         let doc = DocComment::summary_only("Adds two ints.");
         assert_eq!(doc.summary, "Adds two ints.");
         assert!(doc.body.is_empty());
@@ -180,6 +181,7 @@ mod tests {
 
     #[test]
     fn render_markdown_emits_every_populated_section_in_order() {
+        // [DOC-EXPORT] the shared model renders every populated section once.
         let mut doc = DocComment::new("Divide.", "Long form.", DocScope::Outer);
         doc.deprecated = Some("use `div` instead".to_owned());
         doc.params = vec![("a".to_owned(), "numerator".to_owned())];

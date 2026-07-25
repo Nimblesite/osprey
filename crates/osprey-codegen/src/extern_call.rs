@@ -5,8 +5,9 @@
 //! are the contract: each table entry below must match its C signature exactly.
 //! A named function passed as a callback (`spawnProcess` / `httpListen` handler)
 //! is lowered to a raw code pointer here in `eval_args`. Implements
-//! [BUILTIN-FILE], [BUILTIN-PROCESS], [BUILTIN-HTTP], [BUILTIN-JSON],
-//! [BUILTIN-TERM].
+//! [BUILTIN-FILE], [BUILTIN-PROCESS], [BUILTIN-HTTP], [BUILTIN-WEBSOCKET],
+//! [BUILTIN-JSON], [BUILTIN-TERM]. Database APIs deliberately stay ordinary extern calls
+//! [FFI-NO-DB-BUILTINS].
 
 use crate::builder::Codegen;
 use crate::error::Result;
@@ -24,6 +25,8 @@ enum Ret {
     Str,
     /// `void` — yields Unit.
     Unit,
+    /// C `i64` status discarded by a language-level Unit function.
+    StatusUnit,
     /// `Result<int, _>`: the C `i64` is the success value; `< 0` ⇒ Error.
     ResultInt,
     /// `Result<string, _>`: the C `i8*` is the success value; `null` ⇒ Error.
@@ -55,16 +58,16 @@ fn lookup(name: &str) -> Option<Sig> {
         "random" => sig("osp_random", &[], Ret::Int),
         "randomBelow" => sig("osp_random_below", &[I64], Ret::ResultInt),
         "input" => sig("osp_input", &[], Ret::Str),
-        // --- file I/O (system_runtime.c) ---
+        // --- file I/O [BUILTIN-FILE] (system_runtime.c) ---
         "readFile" => sig("read_file", &[Str], Ret::ResultStr(Some("File read error"))),
         "writeFile" => sig("write_file", &[Str, Str], Ret::ResultInt),
-        // --- processes (system_runtime.c); 2nd arg of spawn is the callback ---
+        // --- processes [BUILTIN-PROCESS] (system_runtime.c); arg 2 is callback ---
         "spawnProcess" => sig("spawn_process_with_handler", &[Str, Ptr], Ret::ResultInt),
         "awaitProcess" => sig("fiber_await_process", &[I64], Ret::Int),
         "cleanupProcess" => sig("fiber_cleanup_process", &[I64], Ret::Unit),
-        // `sleep(ms)` is MILLISECONDS via the fiber runtime — NOT libc
-        // `sleep(seconds)`, which an unmapped fall-through would link.
-        "sleep" => sig("fiber_sleep", &[I64], Ret::Int),
+        // `sleep(ms)` is milliseconds via the fiber runtime. Its native status
+        // is discarded by the Unit language surface [CONCURRENCY-SLEEP].
+        "sleep" => sig("fiber_sleep", &[I64], Ret::StatusUnit),
         // --- HTTP server/client (http_*_runtime.c); httpListen arg1 is the handler ---
         "httpCreateServer" => sig("http_create_server", &[I64, Str], Ret::Int),
         "httpListen" => sig("http_listen", &[I64, Ptr], Ret::Int),
@@ -80,13 +83,21 @@ fn lookup(name: &str) -> Option<Sig> {
         "httpResponseBody" => sig("http_response_body", &[I64], Ret::ResultStr(None)),
         "httpResponseHeader" => sig("http_response_header", &[I64, Str], Ret::ResultStr(None)),
         "httpResponseFree" => sig("http_response_free", &[I64], Ret::ResultInt),
+        // --- WebSocket text transport (websocket_*_runtime.c) [BUILTIN-WEBSOCKET] ---
+        "websocketCreateServer" => sig("websocket_create_server", &[I64, Str, Str], Ret::Int),
+        "websocketServerListen" => sig("websocket_server_listen", &[I64], Ret::Int),
+        "websocketServerBroadcast" => sig("websocket_server_broadcast", &[I64, Str], Ret::Int),
+        "websocketKeepAlive" => sig("websocket_keep_alive", &[], Ret::Unit),
+        "websocketConnect" => sig("websocket_connect", &[Str], Ret::Int),
+        "websocketSend" => sig("websocket_send", &[I64, Str], Ret::Int),
+        "websocketClose" => sig("websocket_close", &[I64], Ret::Int),
         // --- JSON document handles (json_runtime.c) ---
         "jsonParse" => sig("json_parse", &[Str], Ret::ResultInt),
         "jsonGet" => sig("json_get", &[I64, Str], Ret::ResultStr(None)),
         "jsonLength" => sig("json_length", &[I64, Str], Ret::Int),
         "jsonFree" => sig("json_free", &[I64], Ret::ResultInt),
         // --- terminal control (term_runtime.c) [BUILTIN-TERM] ---
-        "termRawMode" => sig("term_raw_mode", &[I64], Ret::Int),
+        "termRawMode" => sig("term_raw_mode", &[I64], Ret::StatusUnit),
         "termCols" => sig("term_cols", &[], Ret::Int),
         "termRows" => sig("term_rows", &[], Ret::Int),
         "termReadKey" => sig("term_read_key", &[], Ret::ResultStr(None)),
@@ -156,6 +167,10 @@ fn emit(cg: &mut Codegen, sig: &Sig, ops: &[String]) -> Result<Value> {
             cg.call_void(sig.cname, &params, &op_refs);
             Ok(Value::unit())
         }
+        Ret::StatusUnit => {
+            let _status = cg.call("i64", sig.cname, &params, &op_refs);
+            Ok(Value::unit())
+        }
         Ret::Int => Ok(Value::new(
             cg.call("i64", sig.cname, &params, &op_refs),
             LType::I64,
@@ -179,5 +194,68 @@ fn emit(cg: &mut Codegen, sig: &Sig, ops: &[String]) -> Result<Value> {
             crate::arc::own(cg, &Value::new(&r, LType::Str));
             result_from_nullable(cg, &r, err)
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn unit_builtins_discard_native_status_values() {
+        // The C functions report status, but their language contracts are Unit:
+        // [BUILTIN-TERM] and [CONCURRENCY-SLEEP].
+        let parsed = osprey_syntax::parse_program(
+            "fn configure() -> Unit = termRawMode(0)\n\
+             fn nap() -> Unit = sleep(0)\n\
+             let configured = configure()\n\
+             let slept = nap()\n",
+        );
+        assert!(
+            parsed.errors.is_empty(),
+            "syntax errors: {:?}",
+            parsed.errors
+        );
+        let ir = crate::compile_program(&parsed.program).expect("terminal codegen");
+        for (function, callee) in [("configure", "term_raw_mode"), ("nap", "fiber_sleep")] {
+            let marker = format!("define i64 @{function}(");
+            let start = ir
+                .find(&marker)
+                .unwrap_or_else(|| panic!("missing {function}"));
+            let body = &ir[start..ir[start..].find("\n}").map_or(ir.len(), |n| start + n)];
+            assert!(body.contains(&format!("call i64 @{callee}")), "{body}");
+            assert!(body.contains("ret i64 0"), "Unit must return zero: {body}");
+        }
+    }
+
+    #[test]
+    fn websocket_builtins_lower_to_the_c_runtime_abi() {
+        // [BUILTIN-WEBSOCKET] Camel-case language names must not escape into
+        // LLVM: the archive exports snake-case C symbols.
+        let parsed = osprey_syntax::parse_program(
+            "let s = websocketCreateServer(8080, \"127.0.0.1\", \"/chat\")\n\
+             let listening = websocketServerListen(s)\n\
+             let sent = websocketServerBroadcast(s, \"hello\")\n\
+             let c = websocketConnect(\"ws://127.0.0.1:8080/chat\")\n\
+             let wrote = websocketSend(c, \"hello\")\n\
+             let closed = websocketClose(c)\n\
+             websocketKeepAlive()\n",
+        );
+        assert!(
+            parsed.errors.is_empty(),
+            "syntax errors: {:?}",
+            parsed.errors
+        );
+        let ir = crate::compile_program(&parsed.program).expect("WebSocket codegen");
+        for symbol in [
+            "websocket_create_server",
+            "websocket_server_listen",
+            "websocket_server_broadcast",
+            "websocket_connect",
+            "websocket_send",
+            "websocket_close",
+            "websocket_keep_alive",
+        ] {
+            assert!(ir.contains(&format!("@{symbol}")), "missing {symbol}: {ir}");
+        }
+        assert!(!ir.contains("@websocketCreateServer"), "{ir}");
     }
 }

@@ -15,8 +15,8 @@
  * [BUILTIN-MAP-CONTAINS], [BUILTIN-COLLECTION-LENGTH] and the iteration behind
  * [BUILTIN-MAP-KEYS] / [BUILTIN-MAP-VALUES]
  * (docs/specs/0012-Built-InFunctions.md), plus
- * [TYPE-MAP] / [TYPE-MAP-LOOKUP] / [TYPE-MAP-OPS] and the node refcount
- * skeleton of [GC-ARC-PERCEUS] (plan 0011 M4b) for INT / STRING / BOOL keys:
+ * [TYPE-MAP] / [TYPE-MAP-LOOKUP] / [TYPE-MAP-OPS] and container ownership
+ * [MEM-BACKENDS-ELEMENTS] / [GC-ARC-PERCEUS] for INT / STRING / BOOL keys:
  * persistence of every source map, pointer-identical alias returns, all three
  * node kinds asserted structurally, every collision / internal-node branch,
  * iteration, the builder, and a 20k-key scale pass.

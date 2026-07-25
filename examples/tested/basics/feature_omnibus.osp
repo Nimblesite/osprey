@@ -31,7 +31,7 @@ print(priWeight(Med))
 print(priWeight(Low))
 print(colorName(Green))
 
-// --- Float printing + auto-unwrap arithmetic in interpolation ---
+// --- Plain addition + division Result auto-unwrap in interpolation ---
 let age = 25
 print("next ${age + 1} half ${age / 2}")
 let f = 1.5
@@ -61,7 +61,7 @@ print(toString(r))
 let single = 7 |> fn(x) => x * 3
 print(toString(single))
 
-// --- mut auto-unwrap counter ---
+// --- Mutable integer counter ---
 mut counter = 0
 counter = counter + 1
 counter = counter + 1

@@ -1,6 +1,6 @@
 // Perceus ARC backend for Osprey — the swappable `@osp_alloc` implementation
 // selected at link time by `osprey --memory=arc`. Implements [MEM-BACKENDS]
-// (docs/specs/0018) and [GC-ARC-PERCEUS] (docs/plans/0011, phase 2).
+// and [GC-ARC-PERCEUS] (docs/specs/0018-MemoryManagement.md).
 //
 // Algorithm: precise reference counting after Reinking, Xie, de Moura & Leijen,
 // "Perceus: Garbage Free Reference Counting with Reuse", MSR-TR-2020-42
@@ -14,19 +14,18 @@
 // `meta` is the layout word codegen passes to osp_alloc_tagged: low 8 bits a
 // kind, upper 56 a word bitmask (bit i => the 8-byte word at body offset 8*i
 // is a managed pointer). `rc` is SIGNED: rc >= 1 counts owners; rc < 0 marks
-// immortal/persistent objects that dup/drop skip (the cross-fiber atomic path
-// of plan 0011 M5 also lives below zero).
+// immortal/persistent objects that dup/drop skip.
 //
-// Provenance (plan 0011 phase 2, Amendment 2): pointer slots at runtime also
-// carry rodata literals, static C strings, foreign malloc/strdup memory,
+// Pointer slots at runtime also carry rodata literals, static C strings,
+// foreign malloc/strdup memory,
 // borrowed FFI pointers, and NULL. osp_retain/osp_release therefore probe an
 // open-addressing registry of live ARC allocations FIRST; a probe miss means
 // "not ours" and is a safe no-op. No IR special-casing, no FFI annotations —
 // non-ARC pointers are unmanaged by construction.
 //
-// Concurrency scope (v1): every operation holds one mutex, exactly the
-// memory_gc.c discipline — sound across fiber pthreads, slow but conforming.
-// The non-atomic fast path keyed on [MEM-FIBER-ISOLATION] is milestone M5.
+// Concurrency scope: operations use a lock-free fast path until the fiber
+// runtime announces its first pthread, then use one mutex across fiber threads
+// [MEM-FIBER-ISOLATION].
 
 #include "memory_hooks.h"
 #include "memory_pool.h"

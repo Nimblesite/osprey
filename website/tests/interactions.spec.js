@@ -142,12 +142,10 @@ test.describe("desktop interactions", () => {
     expect(runBody.code).toContain("fn account()");
   });
 
-  test("real-world example code is not clipped", async ({ page }) => {
+  test("homepage example code is not clipped", async ({ page }) => {
     await page.goto("/");
     const clips = await page.evaluate(() =>
-      [...document.querySelectorAll(".showcase-grid .card-code pre")].map(
-        (pre) => pre.scrollWidth - pre.clientWidth
-      )
+      [...document.querySelectorAll(".hero-code pre")].map((pre) => pre.scrollWidth - pre.clientWidth)
     );
     expect(clips.length).toBeGreaterThan(0);
     for (const c of clips) expect(c, "code block horizontal clip (px)").toBeLessThanOrEqual(2);
@@ -222,13 +220,52 @@ test.describe("mobile interactions", () => {
   });
 });
 
+test.describe("blog search and social metadata", () => {
+  const path = "/blog/2026-07-25-semver-is-all-lies-please-stop/";
+  const image = "https://www.ospreylang.dev/assets/images/blog/semver-is-all-lies-please-stop.png";
+
+  test("SemVer article exposes its editorial image and complete BlogPosting data", async ({ page }) => {
+    await page.goto(path, { waitUntil: "networkidle" });
+    await expect(page).toHaveTitle("SemVer Is All Lies. Please Stop");
+    await expect(page.locator('meta[property="og:image"]')).toHaveAttribute("content", image);
+    await expect(page.locator('meta[name="twitter:image"]')).toHaveAttribute("content", image);
+    await expect(page.locator('meta[property="article:author"]')).toHaveAttribute(
+      "content",
+      "https://www.christianfindlay.com/"
+    );
+    const renderedImage = await page
+      .locator(".prose-hero")
+      .evaluate((element) => new URL(element.currentSrc).pathname);
+    expect(renderedImage).toBe("/assets/images/blog/semver-is-all-lies-please-stop.webp");
+
+    const data = JSON.parse(await page.locator('script[type="application/ld+json"]').textContent());
+    const post = data["@graph"].find((item) => item["@type"] === "BlogPosting");
+    expect(post).toMatchObject({
+      headline: "SemVer Is All Lies. Please Stop",
+      image: { url: image, width: 1600, height: 840 },
+      mainEntityOfPage: { "@type": "WebPage", "@id": `https://www.ospreylang.dev${path}` },
+      publisher: { "@id": "https://www.ospreylang.dev/#organization" },
+      author: { name: "Christian Findlay", url: "https://www.christianfindlay.com/" },
+    });
+    expect(post.description).toContain("Osprey's package manager");
+    expect(post.dateModified).toBe(post.datePublished);
+
+    const breadcrumb = data["@graph"].find((item) => item["@type"] === "BreadcrumbList");
+    expect(breadcrumb.itemListElement.map((item) => item.name)).toEqual([
+      "Home",
+      "Blog",
+      "SemVer Is All Lies. Please Stop",
+    ]);
+  });
+});
+
 // Diagrams. Prose uses ```mermaid (rendered in the browser from the vendored
 // runtime) and ```typediagram (rendered to inline SVG at build time) — never
 // ASCII art. A silently-unrendered diagram still LOOKS like a code block, so
 // these assert the SVG actually exists.
 test.describe("diagrams", () => {
   test("mermaid blocks render to SVG in dark theme", async ({ page }) => {
-    await page.goto("/spec/0023-languageflavors/", { waitUntil: "networkidle" });
+    await page.goto("/spec/0029-packagemanagement/", { waitUntil: "networkidle" });
     const blocks = page.locator("figure.diagram pre.mermaid");
     await expect(blocks.first().locator("svg")).toBeVisible();
     expect(await blocks.count()).toBe(await page.locator("pre.mermaid svg").count());
@@ -249,7 +286,7 @@ test.describe("diagrams", () => {
   });
 
   test("no diagram ships as an unrendered code block", async ({ page }) => {
-    for (const path of ["/spec/0023-languageflavors/", "/docs/web-apps/"]) {
+    for (const path of ["/spec/0029-packagemanagement/", "/docs/web-apps/"]) {
       await page.goto(path, { waitUntil: "networkidle" });
       await expect(page.locator("pre.language-mermaid, pre.language-typediagram")).toHaveCount(0);
     }

@@ -58,15 +58,17 @@ fn invert(s: string) -> string = "\e[7m${s}\e[0m"
 
 fn rule() -> string = dim("  ==================================================")
 
-// ---- tiny int helpers (int context makes +/- yield a plain int) -------------
+// ---- tiny integer helpers ---------------------------------------------------
 fn inc(x: int) -> int = x + 1
 fn dec(x: int) -> int = x - 1
 fn min(a: int, b: int) -> int = match a < b { true => a false => b }
 fn gap(a: int, b: int) -> int = match a < b { true => b - a false => a - b }
-// Plain (unchecked) modulo: in `int` context `%` yields an int, so the result
-// can be pattern-matched against integer literals (a bare `match x % n` would
-// otherwise infer Result<int, MathError> and never match a literal arm).
-fn modv(a: int, b: int) -> int = a % b
+// `%` returns `Result<int, MathError>`; the UI uses positive constant divisors
+// and falls back to zero if that invariant is broken.
+fn modv(a: int, b: int) -> int = match a % b {
+    Success { value } => value
+    Error { message } => 0
+}
 
 // ---- Result-unwrapping helpers (one expression each) ------------------------
 fn pad(s: string, n: int) -> string = match padEnd(s, n, " ") {
@@ -107,9 +109,9 @@ fn dots(frame: int) -> string = match modv(a: frame, b: 4) {
 
 // Knight-rider wave: a bright cell sweeps a 36-wide bar, bouncing at the ends.
 fn waveWidth() -> int = 36
-fn wavePos(frame: int) -> int = match (frame % 70) < waveWidth() {
-    true  => frame % 70
-    false => 70 - (frame % 70)
+fn wavePos(frame: int) -> int = match modv(a: frame, b: 70) < waveWidth() {
+    true  => modv(a: frame, b: 70)
+    false => 70 - modv(a: frame, b: 70)
 }
 fn waveCell(i: int, pos: int, frame: int) -> string = match gap(a: i, b: pos) {
     0 => hue(frame) + "█\e[0m"

@@ -16,8 +16,7 @@
 // — [BUILTIN-STRING-BYTELENGTH], [BUILTIN-STRING-BYTEAT],
 // [BUILTIN-STRING-CODEPOINTAT], [BUILTIN-STRING-CODEPOINTWIDTH],
 // [BUILTIN-STRING-FROMCODEPOINT].
-// Failure payloads are [BUILTIN-STRING-ERROR] values threaded through
-// Result<T, E> per [ERR-PAYLOAD].
+// Failure payloads are threaded through Result<T, E> per [ERR-PAYLOAD].
 
 // A user-declared fallible function: its Error message must reach the arm.
 failWith : string -> Result int string
@@ -108,6 +107,18 @@ match parseFloat ""
 match parseFloat "3.14x"
     Success value   => print "pf-trailing unexpected\n"
     Error   message => print "pf-trailing rejected\n"
+match parseFloat " 3.14"
+    Success value   => print "pf-space unexpected\n"
+    Error   message => print "pf-space rejected\n"
+match parseFloat "nan"
+    Success value   => print "pf-nan unexpected\n"
+    Error   message => print "pf-nan rejected\n"
+match parseFloat "0x1p2"
+    Success value   => print "pf-hex unexpected\n"
+    Error   message => print "pf-hex rejected\n"
+match parseFloat "1e9999"
+    Success value   => print "pf-infinite unexpected\n"
+    Error   message => print "pf-infinite rejected\n"
 
 // ---- parseInt overflow ----
 match parseInt "99999999999999999999"
@@ -147,6 +158,11 @@ match fromCodePoint 128512
 match fromCodePoint 2000000
     Success value   => print "fromCp-bad unexpected\n"
     Error   message => print "fromCp-bad=${message}\n"
+// U+0000 is a scalar, but cannot inhabit the runtime's NUL-terminated
+// [BUILTIN-STRING-FROMCODEPOINT] representation.
+match fromCodePoint 0
+    Success value   => print "fromCp-nul unexpected\n"
+    Error   message => print "fromCp-nul=${message}\n"
 // Round-trip: encode U+00E9 then decode byte 0 back to the same scalar.
 match fromCodePoint 233
     Success value   =>

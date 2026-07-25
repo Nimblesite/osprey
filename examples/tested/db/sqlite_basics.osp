@@ -4,6 +4,7 @@
 // (sqlite3 **, sqlite3_stmt **) are handled with the generic FFI pointer cells
 // (osprey_ffi_cell / osprey_ffi_deref). Values are always BOUND (?, ?), never
 // interpolated — injection is structurally impossible.
+// [FFI-LINK-DIRECTIVES] [FFI-PTR] [FFI-NO-DB-BUILTINS]
 //
 // Plan: docs/plans/ffi-sqlite.md. Authority: https://sqlite.org/cintro.html
 //

@@ -115,6 +115,7 @@ fn range_of(range: &Value) -> Option<Range> {
 }
 
 /// The `initialize` result advertising the server's capabilities.
+/// Implements [LSP-CAPABILITIES] and [LSP-ENCODING].
 #[must_use]
 pub fn initialize_result(encoding: &str) -> Value {
     json!({
@@ -280,6 +281,7 @@ fn insert_opt(obj: &mut Value, key: &str, value: Option<Value>) {
 }
 
 /// `textDocument/publishDiagnostics` params for `uri`.
+/// Implements [LSP-DIAGNOSTICS].
 #[must_use]
 pub fn publish_diagnostics(uri: &str, diagnostics: &[Diagnostic]) -> Value {
     json!({
@@ -357,6 +359,7 @@ mod tests {
 
     #[test]
     fn hover_and_diagnostics_render_expected_shape() {
+        // The push payload shape is part of [LSP-DIAGNOSTICS].
         assert_eq!(hover_result(None), Value::Null);
         let hov = hover_result(Some("**x**".to_owned()));
         assert_at(&hov, "/contents/kind", "markdown");
@@ -554,6 +557,7 @@ mod tests {
 
     #[test]
     fn initialize_result_advertises_the_full_capability_set() {
+        // [LSP-CAPABILITIES], [LSP-ENCODING]
         let value = initialize_result("utf-16");
         assert_at(&value, "/capabilities/positionEncoding", "utf-16");
         assert_at(&value, "/capabilities/textDocumentSync", 2);

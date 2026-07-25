@@ -89,20 +89,6 @@ impl Checker {
         }
     }
 
-    /// `select { pattern => body ... }` — same arm-typing as match without a
-    /// concrete discriminant.
-    pub(crate) fn infer_arm_bodies(&mut self, arms: &[MatchArm], env: &TypeEnv) -> Type {
-        let result = self.ctx.fresh();
-        for arm in arms {
-            let mut local = env.child();
-            let disc = self.ctx.fresh();
-            self.bind_pattern(&arm.pattern, &disc, &mut local);
-            let body_ty = self.infer_expr(&arm.body, &local);
-            self.push_unify(&result, &body_ty);
-        }
-        result
-    }
-
     fn bind_pattern(&mut self, pattern: &Pattern, disc: &Type, local: &mut TypeEnv) {
         match pattern {
             Pattern::Wildcard => {}
@@ -360,7 +346,8 @@ impl Checker {
     /// Flag arms that can never run: any arm after an irrefutable (catch-all)
     /// arm, and a repeated constructor/variant arm. A catch-all stays legal — it
     /// suppresses the missing-variant error — but dead arms after it (or duplicate
-    /// variants) are genuine mistakes, so report them.
+    /// variants) are genuine mistakes, so report them. Implements
+    /// [TYPE-MATCH-EXHAUSTIVE].
     fn check_redundant_arms(&mut self, arms: &[MatchArm]) {
         let mut covered_all = false;
         let mut seen: HashSet<String> = HashSet::new();

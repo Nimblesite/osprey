@@ -1,7 +1,9 @@
 /*
  * Verifies [BUILTIN-STRING-INSPECTION], [BUILTIN-STRING-SEARCH],
  * [BUILTIN-STRING-CURSOR], [BUILTIN-STRING-SUBSTRINGS], [BUILTIN-STRING-LIST],
- * [BUILTIN-STRING-TRANSFORM], and [BUILTIN-STRING-PARSING].
+ * [BUILTIN-STRING-TRANSFORM], [BUILTIN-STRING-TOUPPERCASE],
+ * [BUILTIN-STRING-TRIMSTART], [BUILTIN-STRING-TRIMEND], and
+ * [BUILTIN-STRING-PARSING].
  *
  * Strict assertion-driven tests for every helper in string_runtime.c and
  * string_runtime_list.c. Each test exercises both the happy path AND
@@ -234,12 +236,28 @@ static void test_parse_float(void) {
     assert(osp_parse_float_strict("0", &out) == 0);      assert(out == 0.0);
     assert(osp_parse_float_strict("-2.5", &out) == 0);   assert(out > -2.51 && out < -2.49);
     assert(osp_parse_float_strict("1e3", &out) == 0);    assert(out > 999.9 && out < 1000.1);
+    assert(osp_parse_float_strict(".5", &out) == 0);     assert(out == 0.5);
+    assert(osp_parse_float_strict("5.", &out) == 0);     assert(out == 5.0);
+    assert(osp_parse_float_strict("+1.25E-2", &out) == 0);
+    assert(out > 0.0124 && out < 0.0126);
 
     /* rejections */
-    assert(osp_parse_float_strict("",      &out) != 0);
-    assert(osp_parse_float_strict("abc",   &out) != 0);
-    assert(osp_parse_float_strict("3.14x", &out) != 0); /* trailing junk */
-    assert(osp_parse_float_strict(NULL,    &out) != 0);
+    assert(osp_parse_float_strict("",        &out) != 0);
+    assert(osp_parse_float_strict("abc",     &out) != 0);
+    assert(osp_parse_float_strict("3.14x",   &out) != 0); /* trailing junk */
+    assert(osp_parse_float_strict(" 3.14",   &out) != 0); /* surrounding whitespace */
+    assert(osp_parse_float_strict("3.14 ",   &out) != 0);
+    assert(osp_parse_float_strict("nan",     &out) != 0); /* non-decimal spellings */
+    assert(osp_parse_float_strict("NaN",     &out) != 0);
+    assert(osp_parse_float_strict("inf",     &out) != 0);
+    assert(osp_parse_float_strict("-Infinity", &out) != 0);
+    assert(osp_parse_float_strict("0x1p2",   &out) != 0); /* hexadecimal float */
+    assert(osp_parse_float_strict("1e9999",  &out) != 0); /* non-finite result */
+    assert(osp_parse_float_strict(".",       &out) != 0);
+    assert(osp_parse_float_strict("1e",      &out) != 0);
+    assert(osp_parse_float_strict("1e+",     &out) != 0);
+    assert(osp_parse_float_strict(NULL,       &out) != 0);
+    assert(osp_parse_float_strict("1.0",     NULL) != 0);
     printf("  ok  parse_float_strict\n");
 }
 
@@ -468,9 +486,8 @@ static void test_round_trips(void) {
 }
 
 static void test_unicode_bytes(void) {
-    /* The runtime is byte-oriented today — assert that documented byte
-     * behaviour holds end-to-end. UTF-8 codepoint awareness is a future
-     * workstream (see plan). */
+    /* The general string operations are byte-oriented; the separate cursor
+     * operations validate and decode UTF-8 codepoints. */
     const char *utf8 = "héllo";  /* h=1 byte, é=2 bytes, l,l,o each 1 */
     /* length = 6 bytes (5 codepoints) */
     osp_string_list *parts = osp_string_split(utf8, "l");
@@ -686,6 +703,13 @@ static void test_cursor_codepoint_at(void) {
     assert(osp_string_codepoint_at("\xc3\x20", 0, &out) != NULL); /* bad continuation */
     assert(osp_string_codepoint_at("\xff", 0, &out) != NULL);  /* invalid lead 0xFF */
     assert(osp_string_codepoint_at("\x80", 0, &out) != NULL);  /* lone continuation */
+    /* structurally complete but non-canonical / non-scalar UTF-8 */
+    assert(osp_string_codepoint_at("\xc0\x80", 0, &out) != NULL); /* overlong NUL */
+    assert(osp_string_codepoint_at("\xe0\x80\x80", 0, &out) != NULL); /* overlong */
+    assert(osp_string_codepoint_at("\xf0\x80\x80\x80", 0, &out) != NULL); /* overlong */
+    assert(osp_string_codepoint_at("\xed\xa0\x80", 0, &out) != NULL); /* surrogate */
+    assert(osp_string_codepoint_at("\xf4\x90\x80\x80", 0, &out) != NULL); /* > U+10FFFF */
+    assert(osp_string_codepoint_at("\xf5\x80\x80\x80", 0, &out) != NULL); /* bad lead */
     printf("  ok  cursor.codePointAt\n");
 }
 
@@ -728,6 +752,7 @@ static void test_cursor_from_codepoint(void) {
            (unsigned char)e[2] == 0x98 && (unsigned char)e[3] == 0x80 &&
            osp_string_byte_length(e) == 4); free(e);
     /* invalid scalars rejected */
+    assert(osp_string_from_codepoint(0) == NULL); /* C-string ABI cannot represent U+0000 */
     assert(osp_string_from_codepoint(0x110000) == NULL);
     assert(osp_string_from_codepoint(0xD800) == NULL);
     assert(osp_string_from_codepoint(0xDFFF) == NULL);
@@ -749,6 +774,8 @@ static void test_cursor_error_messages(void) {
                   "codePointAt: truncated codepoint") == 0);
     assert(strcmp(osp_string_codepoint_at("\xc3\x20", 0, &out),
                   "codePointAt: invalid continuation byte") == 0);
+    assert(strcmp(osp_string_codepoint_at("\xc0\x80", 0, &out),
+                  "codePointAt: invalid UTF-8 sequence") == 0);
     assert(strcmp(osp_string_codepoint_width(0x110000, &out),
                   "codePointWidth: code point out of range") == 0);
     assert(strcmp(osp_string_codepoint_width(0xD800, &out),

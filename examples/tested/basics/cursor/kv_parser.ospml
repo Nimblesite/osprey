@@ -1,10 +1,8 @@
-// ML-flavor twin of kv_parser.osp. A real-world "k=v;k=v;k=v" config parser
-// built on the shipped O(1) string cursor primitives (BUILTIN-STRING-CURSOR)
-// plus Result<T,E> error payloads ([ERR-PAYLOAD]). There is no loop construct
-// in Osprey, so iteration is recursion: processAll peels off one ';'-delimited
-// entry at a time with indexOf + drop, and findEq scans each entry byte-by-byte
-// with byteAt looking for '=' (ASCII 61). A malformed entry (no '=') surfaces a
-// Result Error with a clear message instead of crashing.
+// ML twin of kv_parser.osp. Parses "k=v;k=v;k=v" with the O(1) string cursor
+// primitives ([BUILTIN-STRING-CURSOR]) and Result error payloads
+// ([ERR-PAYLOAD]). With no loop expression, processAll recurses over
+// ';'-delimited entries; findEq uses byteAt to find '=' (ASCII 61). A missing
+// '=' returns Error.
 //
 // Uncurried whitespace application, layout `match`, positional
 // `Success value` / `Error message` patterns, and layout-record constructor

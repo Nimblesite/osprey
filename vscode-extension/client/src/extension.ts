@@ -1,3 +1,5 @@
+// Real DAP launch and LSP/DAP separation [DEBUGGER-EDITOR-LAUNCH]
+// [DEBUGGER-PROTOCOLS].
 import * as path from "path";
 import {
   workspace,
@@ -46,7 +48,7 @@ export function shipwrightPlatform(): string {
 // resolveBundledCompiler returns the absolute path to the version-matched
 // osprey binary bundled in this VSIX for the current platform, or undefined
 // when running unbundled (e.g. a local dev install). The release pipeline
-// stages it at bin/<platform>/osprey[.exe]. [SWR-VERSION-MANIFEST] Exported so
+// stages it at bin/<platform>/osprey[.exe]. [EDITOR-VERSIONING] Exported so
 // both the bundled-present and unbundled branches can be unit tested.
 export function resolveBundledCompiler(
   context: ExtensionContext,
@@ -74,7 +76,8 @@ export function looksLikePath(value: string): boolean {
 // diagnostics, go-to-definition. Rather than die, fall back to the bundled/PATH
 // compiler and warn. `warn` is injectable so the fallback branch is unit
 // testable; it defaults to a no-op. Exported so each branch is unit tested
-// independently of a single live activation.
+// independently of a single live activation. [EDITOR-VSCODE],
+// [EDITOR-VERSIONING]
 export function resolveServerCommand(
   context: ExtensionContext,
   warn: (message: string) => void = () => undefined,
@@ -377,7 +380,8 @@ export function activate(context: ExtensionContext) {
   // Shipwright: verify the bundled osprey compiler matches the version this
   // extension expects before we launch it for diagnostics. On mismatch the
   // host surfaces a prompt-reinstall message (hosts.vscode.onMismatch).
-  // [SWR-VERSION-HANDSHAKE] Best-effort: never block activation on it.
+  // [EDITOR-VERSIONING]. Best-effort: never block
+  // activation on it.
   const manifestPath = context.asAbsolutePath("shipwright.json");
   if (fs.existsSync(manifestPath)) {
     // Adapter normalizing VS Code's Thenable-returning API to the Promise-typed
@@ -419,7 +423,7 @@ export function activate(context: ExtensionContext) {
   // The language server is the Rust `osprey lsp` subcommand (the osprey-lsp
   // crate, built on the published lspkit crates), spoken over stdio. Resolve
   // the binary: explicit user setting first, then the version-matched bundled
-  // compiler, then `osprey` on PATH.
+  // compiler, then `osprey` on PATH. [EDITOR-VSCODE], [LSP-TRANSPORT]
   const ospreyCommand = resolveServerCommand(context, (m) => {
     outputChannel.appendLine(m);
     window.showWarningMessage(m);
