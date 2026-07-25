@@ -29,7 +29,7 @@ pub(crate) struct CoverageState {
 /// All coverable lines in `program`: function definitions plus positioned
 /// statements, recursing through nested blocks, lambdas, match/handler arms,
 /// and module/namespace bodies.
-pub(crate) fn coverable_lines(program: &Program) -> BTreeSet<u32> {
+fn coverable_lines(program: &Program) -> BTreeSet<u32> {
     let mut lines = BTreeSet::new();
     collect_stmts(&program.statements, &mut lines);
     lines

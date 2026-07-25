@@ -39,7 +39,7 @@ const WILDCARD: &str = "_";
 
 /// Completion items for the cursor at `(line, character)`.
 #[must_use]
-pub fn completion(
+pub(crate) fn completion(
     text: &str,
     path: &str,
     line: u32,

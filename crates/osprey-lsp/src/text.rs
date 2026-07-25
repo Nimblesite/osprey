@@ -15,22 +15,22 @@ use lspkit_vfs::PositionEncoding;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WordSpan {
     /// The identifier text.
-    pub word: String,
+    pub(crate) word: String,
     /// Start character offset within the line (selected encoding).
-    pub start: u32,
+    pub(crate) start: u32,
     /// End character offset within the line (selected encoding).
-    pub end: u32,
+    pub(crate) end: u32,
 }
 
 /// A whole-word occurrence of an identifier within a document.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Occurrence {
     /// Zero-based line.
-    pub line: u32,
+    pub(crate) line: u32,
     /// Start character offset within the line (selected encoding).
-    pub start: u32,
+    pub(crate) start: u32,
     /// End character offset within the line (selected encoding).
-    pub end: u32,
+    pub(crate) end: u32,
 }
 
 fn is_ident(c: char) -> bool {
@@ -39,7 +39,7 @@ fn is_ident(c: char) -> bool {
 
 /// Width of `c` in `encoding`'s character units.
 #[must_use]
-pub fn char_width(c: char, encoding: PositionEncoding) -> u32 {
+pub(crate) fn char_width(c: char, encoding: PositionEncoding) -> u32 {
     match encoding {
         PositionEncoding::Utf8 => u32::try_from(c.len_utf8()).unwrap_or(1),
         PositionEncoding::Utf16 => u32::try_from(c.len_utf16()).unwrap_or(1),
@@ -51,13 +51,13 @@ pub fn char_width(c: char, encoding: PositionEncoding) -> u32 {
 
 /// Length of `s` in `encoding`'s character units.
 #[must_use]
-pub fn measure(s: &str, encoding: PositionEncoding) -> u32 {
+pub(crate) fn measure(s: &str, encoding: PositionEncoding) -> u32 {
     s.chars().map(|c| char_width(c, encoding)).sum()
 }
 
 /// The prefix of `line` up to (but excluding) character offset `character`.
 #[must_use]
-pub fn prefix_to(line: &str, character: u32, encoding: PositionEncoding) -> &str {
+pub(crate) fn prefix_to(line: &str, character: u32, encoding: PositionEncoding) -> &str {
     let mut offset = 0u32;
     for (idx, c) in line.char_indices() {
         if offset >= character {
@@ -98,7 +98,7 @@ pub fn word_at(line: &str, character: u32, encoding: PositionEncoding) -> Option
 /// paired separators join path segments, so `.` continues to mean value field
 /// access. [MODULES-FLAVOR-PROJECTION]
 #[must_use]
-pub fn path_at(line: &str, character: u32, encoding: PositionEncoding) -> Option<WordSpan> {
+pub(crate) fn path_at(line: &str, character: u32, encoding: PositionEncoding) -> Option<WordSpan> {
     line_paths(line, encoding)
         .into_iter()
         .find(|span| character >= span.start && character <= span.end)
@@ -163,7 +163,7 @@ fn take_if_covers(run: &str, start: u32, end: u32, character: u32) -> Option<Wor
 
 /// Every whole-word occurrence of `name` across `text`.
 #[must_use]
-pub fn occurrences(text: &str, name: &str, encoding: PositionEncoding) -> Vec<Occurrence> {
+pub(crate) fn occurrences(text: &str, name: &str, encoding: PositionEncoding) -> Vec<Occurrence> {
     if name.contains("::") {
         return text
             .lines()

@@ -52,7 +52,7 @@ pub(crate) fn symbol_matches(symbol: &SymbolInfo, query: &str) -> bool {
 
 /// Definition location(s) for the identifier at `(line, character)`.
 #[must_use]
-pub fn definition(
+pub(crate) fn definition(
     text: &str,
     uri: &str,
     line: u32,
@@ -163,7 +163,7 @@ fn sibling_declarations(
 
 /// All references to the identifier at `(line, character)`.
 #[must_use]
-pub fn references(
+pub(crate) fn references(
     text: &str,
     uri: &str,
     line: u32,
@@ -210,7 +210,7 @@ pub fn references(
 
 /// Signature help for the call enclosing `(line, character)`.
 #[must_use]
-pub fn signature_help(
+pub(crate) fn signature_help(
     text: &str,
     path: &str,
     line: u32,

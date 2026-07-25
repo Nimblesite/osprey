@@ -888,7 +888,7 @@ fn emit_user_call(
     cg.emit_reg(format!("call {rty} @{name}({typed})"))
 }
 
-pub(crate) fn ordered_args(
+fn ordered_args(
     cg: &mut Codegen,
     name: &str,
     arguments: &[Expr],
@@ -1047,7 +1047,7 @@ pub(crate) fn arg_exprs<'a>(args: &'a [Expr], named: &'a [NamedArgument]) -> Vec
     }
 }
 
-pub(crate) fn describe(expr: &Expr) -> String {
+fn describe(expr: &Expr) -> String {
     let kind = match expr {
         Expr::List(_) => "list literal",
         Expr::Map(_) => "map literal",

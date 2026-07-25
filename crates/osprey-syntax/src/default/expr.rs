@@ -338,7 +338,7 @@ impl Lowerer<'_> {
         Expr::Block { statements, value }
     }
 
-    pub(crate) fn lower_literal(&self, node: Node<'_>) -> Expr {
+    fn lower_literal(&self, node: Node<'_>) -> Expr {
         let Some(inner) = self.first_named(node) else {
             return Expr::Bool(false);
         };

@@ -14,9 +14,9 @@ use osprey_ast::{Expr, Position, Program, Stmt};
 #[derive(Debug)]
 pub struct TestCase {
     /// The test's literal name (the first argument to `test`).
-    pub name: String,
+    pub(crate) name: String,
     /// 1-based line / 0-based column of the enclosing statement.
-    pub position: Option<Position>,
+    pub(crate) position: Option<Position>,
 }
 
 /// The `--list-tests` JSON array: `[{"name":…,"line":…,"column":…}, …]`.
@@ -39,7 +39,7 @@ fn case_json(case: &TestCase) -> String {
 
 /// Collect every statically-visible test case, in source order.
 #[must_use]
-pub fn collect_tests(program: &Program) -> Vec<TestCase> {
+pub(crate) fn collect_tests(program: &Program) -> Vec<TestCase> {
     let mut out = Vec::new();
     walk_stmts(&program.statements, None, &mut out);
     out

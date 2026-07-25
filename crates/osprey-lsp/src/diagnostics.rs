@@ -25,7 +25,7 @@ const SOURCE: &str = "osprey";
 /// alone (an unparsable file is not type-checked, matching the CLI gate); a clean
 /// parse is then type-checked.
 #[must_use]
-pub fn compute(source: &str, path: &str, encoding: PositionEncoding) -> Vec<Diagnostic> {
+pub(crate) fn compute(source: &str, path: &str, encoding: PositionEncoding) -> Vec<Diagnostic> {
     // [FLAVOR-SELECT] makes a marker/extension disagreement a hard error, and
     // the CLI refuses to build such a file. Resolve FIRST and report the
     // conflict as the document's only finding: guessing a flavor would parse

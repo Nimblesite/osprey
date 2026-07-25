@@ -15,7 +15,7 @@ pub struct TypeError {
 
 impl TypeError {
     /// Create an error with a message but no associated position.
-    pub fn new(message: impl Into<String>) -> TypeError {
+    pub(crate) fn new(message: impl Into<String>) -> TypeError {
         TypeError {
             message: message.into(),
             position: None,
@@ -32,7 +32,7 @@ impl TypeError {
 
     /// Attach a position if one is known and none is set yet.
     #[must_use]
-    pub fn with_pos(mut self, position: Option<Position>) -> TypeError {
+    pub(crate) fn with_pos(mut self, position: Option<Position>) -> TypeError {
         if self.position.is_none() {
             self.position = position;
         }
@@ -41,13 +41,13 @@ impl TypeError {
 
     /// Build an error for two types that fail to unify.
     #[must_use]
-    pub fn mismatch(a: &Type, b: &Type) -> TypeError {
+    pub(crate) fn mismatch(a: &Type, b: &Type) -> TypeError {
         TypeError::new(format!("type mismatch: cannot unify {a} with {b}"))
     }
 
     /// Build an error for a type that recursively contains itself (occurs check).
     #[must_use]
-    pub fn recursive(a: &Type, b: &Type) -> TypeError {
+    pub(crate) fn recursive(a: &Type, b: &Type) -> TypeError {
         TypeError::new(format!("recursive type: {a} occurs in {b}"))
     }
 }

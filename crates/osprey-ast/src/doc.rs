@@ -60,7 +60,7 @@ pub struct DocComment {
     /// `//!` module authorship, optional.
     pub author: Option<String>,
     /// Outer (declaration) vs inner (module) scope.
-    pub scope: DocScope,
+    pub(crate) scope: DocScope,
 }
 
 impl DocComment {

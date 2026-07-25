@@ -51,11 +51,11 @@ pub struct ProgramTypes {
     pub effects: HashMap<String, HashMap<String, OpType>>,
     /// Lambda source position `(line, column)` → its resolved function type,
     /// so the backend lowers every lambda from inferred types, not guesses.
-    pub lambdas: HashMap<(u32, u32), Type>,
+    pub(crate) lambdas: HashMap<(u32, u32), Type>,
     /// `let` binding source position `(line, column)` → its resolved type, so
     /// editor hover can show the type of an unannotated binding.
     /// Implements [LSP-HOVER-VARIABLES]
-    pub lets: HashMap<(u32, u32), Type>,
+    pub(crate) lets: HashMap<(u32, u32), Type>,
     /// `perform` site position `(line, column)` → the operation signature and
     /// effect type arguments instantiated at that site, so the backend can
     /// box/unbox erased generic operation slots against the site's concrete

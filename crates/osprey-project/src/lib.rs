@@ -115,7 +115,7 @@ pub struct SourceMetadata {
 impl SourceMetadata {
     /// Map a flattened global line back to this source's one-based local line.
     #[must_use]
-    pub fn local_line(&self, global: u32) -> Option<u32> {
+    pub(crate) fn local_line(&self, global: u32) -> Option<u32> {
         (self.global_line_start..=self.global_line_end)
             .contains(&global)
             .then(|| {

@@ -18,7 +18,7 @@ mod expr;
 mod lower;
 mod modules;
 
-pub use lower::Lowerer;
+pub(crate) use lower::Lowerer;
 
 /// The Default (brace) frontend: tree-sitter CST + [`Lowerer`] → [`Program`].
 pub(crate) fn parse(source: &str) -> Parsed {

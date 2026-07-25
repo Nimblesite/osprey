@@ -36,7 +36,7 @@ fn nested<'a>(params: &'a Value, outer: &str, inner: &str) -> Option<&'a Value> 
 
 /// The document URI of a request's `textDocument`, if present.
 #[must_use]
-pub fn doc_uri(params: &Value) -> Option<String> {
+pub(crate) fn doc_uri(params: &Value) -> Option<String> {
     nested(params, "textDocument", "uri")
         .and_then(Value::as_str)
         .map(str::to_owned)
@@ -44,14 +44,14 @@ pub fn doc_uri(params: &Value) -> Option<String> {
 
 /// The `(line, character)` of a request's `position`, if present.
 #[must_use]
-pub fn position(params: &Value) -> Option<(u32, u32)> {
+pub(crate) fn position(params: &Value) -> Option<(u32, u32)> {
     let pos = params.get("position")?;
     Some((field_u32(pos, "line"), field_u32(pos, "character")))
 }
 
 /// Whether a references request asks to include the declaration.
 #[must_use]
-pub fn include_declaration(params: &Value) -> bool {
+pub(crate) fn include_declaration(params: &Value) -> bool {
     nested(params, "context", "includeDeclaration")
         .and_then(Value::as_bool)
         .unwrap_or(false)
@@ -67,7 +67,7 @@ fn field_u32(value: &Value, key: &str) -> u32 {
 
 /// The full text of a `textDocument/didOpen`.
 #[must_use]
-pub fn open_text(params: &Value) -> Option<String> {
+pub(crate) fn open_text(params: &Value) -> Option<String> {
     nested(params, "textDocument", "text")
         .and_then(Value::as_str)
         .map(str::to_owned)
@@ -75,7 +75,7 @@ pub fn open_text(params: &Value) -> Option<String> {
 
 /// The document version of a `didOpen`/`didChange`, defaulting to 0.
 #[must_use]
-pub fn version(params: &Value) -> i32 {
+pub(crate) fn version(params: &Value) -> i32 {
     nested(params, "textDocument", "version")
         .and_then(Value::as_i64)
         .and_then(|n| i32::try_from(n).ok())
@@ -85,7 +85,7 @@ pub fn version(params: &Value) -> i32 {
 /// A `didChange` content change: either an incremental edit (`Ok`) or a
 /// whole-document replacement (`Err(full_text)`).
 #[must_use]
-pub fn content_changes(params: &Value) -> Vec<Result<TextEdit, String>> {
+pub(crate) fn content_changes(params: &Value) -> Vec<Result<TextEdit, String>> {
     params
         .get("contentChanges")
         .and_then(Value::as_array)
@@ -117,7 +117,7 @@ fn range_of(range: &Value) -> Option<Range> {
 /// The `initialize` result advertising the server's capabilities.
 /// Implements [LSP-CAPABILITIES] and [LSP-ENCODING].
 #[must_use]
-pub fn initialize_result(encoding: &str) -> Value {
+pub(crate) fn initialize_result(encoding: &str) -> Value {
     json!({
         "capabilities": {
             "positionEncoding": encoding,
@@ -139,7 +139,7 @@ pub fn initialize_result(encoding: &str) -> Value {
 
 /// `textDocument/hover` result, or JSON `null`.
 #[must_use]
-pub fn hover_result(markdown: Option<String>) -> Value {
+pub(crate) fn hover_result(markdown: Option<String>) -> Value {
     markdown.map_or(
         Value::Null,
         |value| json!({ "contents": { "kind": "markdown", "value": value } }),
@@ -157,7 +157,7 @@ fn location_json(loc: &Location) -> Value {
 
 /// `textDocument/definition` / `references` result: an array of locations.
 #[must_use]
-pub fn locations_result(locations: &[Location]) -> Value {
+pub(crate) fn locations_result(locations: &[Location]) -> Value {
     Value::Array(locations.iter().map(location_json).collect())
 }
 
@@ -165,7 +165,11 @@ pub fn locations_result(locations: &[Location]) -> Value {
 /// formatter changed anything, or an empty array when the buffer is already
 /// formatted (so the editor records no change).
 #[must_use]
-pub fn formatting_result(formatted: &str, original: &str, encoding: PositionEncoding) -> Value {
+pub(crate) fn formatting_result(
+    formatted: &str,
+    original: &str,
+    encoding: PositionEncoding,
+) -> Value {
     if formatted == original {
         return Value::Array(Vec::new());
     }
@@ -185,7 +189,11 @@ fn full_range(text: &str, encoding: PositionEncoding) -> Value {
 
 /// `textDocument/documentSymbol` result: a flat list of `DocumentSymbol`s.
 #[must_use]
-pub fn symbols_result(symbols: &[SymbolInfo], text: &str, encoding: PositionEncoding) -> Value {
+pub(crate) fn symbols_result(
+    symbols: &[SymbolInfo],
+    text: &str,
+    encoding: PositionEncoding,
+) -> Value {
     Value::Array(
         symbols
             .iter()
@@ -237,7 +245,7 @@ fn identifier_span(s: &SymbolInfo, text: &str, encoding: PositionEncoding) -> Sp
 
 /// `textDocument/signatureHelp` result, or JSON `null`.
 #[must_use]
-pub fn signature_result(info: Option<SignatureInfo>) -> Value {
+pub(crate) fn signature_result(info: Option<SignatureInfo>) -> Value {
     info.map_or(Value::Null, |s| {
         let params: Vec<Value> = s.parameters.iter().map(|p| json!({ "label": p })).collect();
         json!({
@@ -250,7 +258,7 @@ pub fn signature_result(info: Option<SignatureInfo>) -> Value {
 
 /// `textDocument/completion` result: an array of completion items.
 #[must_use]
-pub fn completion_result(items: &[CompletionItem]) -> Value {
+pub(crate) fn completion_result(items: &[CompletionItem]) -> Value {
     Value::Array(items.iter().map(completion_json).collect())
 }
 
@@ -283,7 +291,7 @@ fn insert_opt(obj: &mut Value, key: &str, value: Option<Value>) {
 /// `textDocument/publishDiagnostics` params for `uri`.
 /// Implements [LSP-DIAGNOSTICS].
 #[must_use]
-pub fn publish_diagnostics(uri: &str, diagnostics: &[Diagnostic]) -> Value {
+pub(crate) fn publish_diagnostics(uri: &str, diagnostics: &[Diagnostic]) -> Value {
     json!({
         "uri": uri,
         "diagnostics": diagnostics.iter().map(diagnostic_json).collect::<Vec<_>>()

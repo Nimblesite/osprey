@@ -7,7 +7,7 @@ use crate::symbolize::SymFrame;
 use std::path::PathBuf;
 
 /// Sampling rate every fixture profile uses (1 sample = 1 ms).
-pub(crate) const TEST_RATE_HZ: u64 = 1000;
+const TEST_RATE_HZ: u64 = 1000;
 
 /// A thread row.
 pub(crate) fn thread(fiber: i64, label: &str) -> Thread {

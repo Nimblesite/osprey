@@ -103,7 +103,7 @@ impl BuildKind {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct DebugBuild {
     /// Whether source-level debug information is requested.
-    pub enabled: bool,
+    pub(crate) enabled: bool,
 }
 
 impl DebugBuild {

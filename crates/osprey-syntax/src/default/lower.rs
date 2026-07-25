@@ -33,7 +33,7 @@ pub struct Lowerer<'a> {
 impl<'a> Lowerer<'a> {
     /// Creates a lowerer over the given source bytes.
     #[must_use]
-    pub fn new(src: &'a [u8]) -> Self {
+    pub(crate) fn new(src: &'a [u8]) -> Self {
         Lowerer { src }
     }
 
@@ -52,7 +52,7 @@ impl<'a> Lowerer<'a> {
     /// Position of `node`'s named `field`, or `node`'s own start when absent. A
     /// leading `///` doc comment shifts `node.start` onto the comment, so a
     /// declaration keeps a stable position by anchoring on its keyword/name.
-    pub(crate) fn field_pos(&self, node: Node<'_>, field: &str) -> Position {
+    fn field_pos(&self, node: Node<'_>, field: &str) -> Position {
         self.pos(node.child_by_field_name(field).unwrap_or(node))
     }
 
@@ -97,7 +97,7 @@ impl<'a> Lowerer<'a> {
 
     /// Lowers the root `source_file` node into a full program AST.
     #[must_use]
-    pub fn lower_program(&self, root: Node<'_>) -> Program {
+    pub(crate) fn lower_program(&self, root: Node<'_>) -> Program {
         let _positional = crate::positional::install(
             self.descendants_of_kind(root, "variant")
                 .into_iter()
@@ -608,7 +608,7 @@ impl<'a> Lowerer<'a> {
     /// Map every named child of `node` of the given `kind` through `f` — the
     /// shared "collect the children of a kind, lower each" step behind the
     /// per-kind accessors below and the variant/pattern lowering sites.
-    pub(crate) fn map_of_kind<T>(
+    fn map_of_kind<T>(
         &self,
         node: Node<'_>,
         kind: &str,

@@ -66,7 +66,7 @@ impl SymFrame {
     }
 
     /// The no-symbolizer fallback: a bare hex name, runtime kind.
-    pub(crate) fn hex(addr: u64) -> Self {
+    fn hex(addr: u64) -> Self {
         Self {
             name: format!("{addr:#x}"),
             file: String::new(),
@@ -96,7 +96,7 @@ pub(crate) trait Symbolize {
 #[derive(Debug, Default)]
 pub(crate) struct FixedSymbolizer {
     /// unslid address → innermost-first frame chain.
-    pub map: BTreeMap<u64, Vec<SymFrame>>,
+    pub(crate) map: BTreeMap<u64, Vec<SymFrame>>,
 }
 
 #[cfg(test)]
@@ -121,7 +121,7 @@ impl Symbolize for FixedSymbolizer {
 /// Return-address adjustment [PROF-SYMBOLIZE-OFFLINE]: frame 0 is the precise
 /// interrupted pc (`pc - slide`); every deeper frame is a RETURN address and
 /// must attribute to the call site (`pc - 1 - slide`).
-pub(crate) fn adjusted_unslid(pc: u64, frame_index: usize, slide: u64) -> u64 {
+fn adjusted_unslid(pc: u64, frame_index: usize, slide: u64) -> u64 {
     pc.saturating_sub(u64::from(frame_index > 0))
         .saturating_sub(slide)
 }

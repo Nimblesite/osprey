@@ -19,7 +19,7 @@ mod ml;
 mod positional;
 mod strings;
 
-pub use default::{parse_tree, Lowerer};
+pub use default::parse_tree;
 pub use docparse::doc_links;
 
 /// A syntax error located in the source (an ERROR/MISSING node from tree-sitter).
@@ -121,7 +121,7 @@ fn flavor_marker(source: &str) -> Option<&str> {
 /// The flavor implied by a path's extension: `.ospml` ⇒ ML, `.osp` ⇒ Default.
 /// Any other extension yields `None` (no opinion). [FLAVOR-SELECT]
 #[must_use]
-pub fn flavor_from_extension(path: &str) -> Option<Flavor> {
+pub(crate) fn flavor_from_extension(path: &str) -> Option<Flavor> {
     match std::path::Path::new(path)
         .extension()
         .and_then(|e| e.to_str())

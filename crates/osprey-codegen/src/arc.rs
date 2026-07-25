@@ -343,7 +343,7 @@ pub(crate) fn release_operand(cg: &mut Codegen, operand: &str) {
 }
 
 /// Emit `osp_retain` on a candidate value (dup).
-pub(crate) fn retain_val(cg: &mut Codegen, v: &Value) {
+fn retain_val(cg: &mut Codegen, v: &Value) {
     if !managed(cg, v) {
         return;
     }

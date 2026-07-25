@@ -112,11 +112,7 @@ pub(crate) fn gen_object(cg: &mut Codegen, fields: &[FieldAssignment]) -> Result
     for (i, (_, v)) in vals.iter().enumerate() {
         store_field(cg, &struct_ty, obj.as_str(), i + 1, v.ty, &v.operand);
     }
-    let handle = cg.fresh_reg();
-    cg.emit(format!("{handle} = bitcast {struct_ty}* {obj} to i8*"));
-    let v = Value::handle(handle, owner);
-    crate::arc::own(cg, &v);
-    Ok(v)
+    Ok(own_struct_handle(cg, &struct_ty, &obj, owner))
 }
 
 /// The layout word for an ANONYMOUS-object block `{ i64 tag, fields… }`
@@ -133,6 +129,22 @@ fn tagged_fields_meta(fields: &[(String, LType)]) -> i64 {
             .map(|(_, t)| crate::meta::MetaField::of_lty(*t)),
     );
     crate::meta::struct_meta(&mf)
+}
+
+/// Bitcast a freshly-built struct block to the `i8*` handle callers receive,
+/// tag it with its Osprey `owner` type, and register it with ARC — the shared
+/// tail every record/object constructor ends on.
+fn own_struct_handle(
+    cg: &mut Codegen,
+    struct_ty: &str,
+    obj: &str,
+    owner: impl Into<String>,
+) -> Value {
+    let handle = cg.fresh_reg();
+    cg.emit(format!("{handle} = bitcast {struct_ty}* {obj} to i8*"));
+    let v = Value::handle(handle, owner);
+    crate::arc::own(cg, &v);
+    v
 }
 
 /// The built-in HTTP response record name.
@@ -256,11 +268,7 @@ pub(crate) fn gen_update(
         store_field(cg, &struct_ty, obj.as_str(), i + 1, *fty, &val);
     }
 
-    let handle = cg.fresh_reg();
-    cg.emit(format!("{handle} = bitcast {struct_ty}* {obj} to i8*"));
-    let v = Value::handle(handle, owner);
-    crate::arc::own(cg, &v);
-    Ok(v)
+    Ok(own_struct_handle(cg, &struct_ty, &obj, owner))
 }
 
 /// `obj.field` — recover the record layout from the handle's owner type and

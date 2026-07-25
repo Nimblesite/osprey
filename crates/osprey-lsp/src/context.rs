@@ -36,7 +36,7 @@ pub enum Cursor {
 
 /// Classify the cursor at `(line, character)` in `text`.
 #[must_use]
-pub fn at(text: &str, line: u32, character: u32, encoding: PositionEncoding) -> Cursor {
+pub(crate) fn at(text: &str, line: u32, character: u32, encoding: PositionEncoding) -> Cursor {
     classify(&scrub(&document_prefix(text, line, character, encoding)))
 }
 

@@ -76,21 +76,21 @@ pub struct Checker {
     pub(crate) errors: Vec<TypeError>,
     pub(crate) ctors: HashMap<String, CtorInfo>,
     /// Effect name -> its generic declaration (type params + raw op sigs).
-    pub(crate) effects: HashMap<String, EffectInfo>,
+    effects: HashMap<String, EffectInfo>,
     /// Union/Result type name -> its variant constructor names (exhaustiveness).
     pub(crate) union_variants: HashMap<String, Vec<String>>,
     /// Function/extern name -> declared parameter names (for named arguments).
     pub(crate) fn_params: HashMap<String, Vec<String>>,
     /// Function name -> the exact (params, ret) types created in pass one, so
     /// body inference reuses the very same variables the signature exported.
-    pub(crate) fn_sigs: HashMap<String, (Vec<Type>, Type)>,
+    fn_sigs: HashMap<String, (Vec<Type>, Type)>,
     /// Every lambda's inferred function type, keyed by its source position —
     /// resolved and published to the backend by [`infer_program`].
     pub(crate) lambda_tys: Vec<(Position, Type)>,
     /// Every `let` binding's inferred type, keyed by its source position, so
     /// editor hover can show the type of an unannotated binding. Resolved and
     /// published by [`infer_program`]. Implements [LSP-HOVER-VARIABLES]
-    pub(crate) let_tys: Vec<(Position, Type)>,
+    let_tys: Vec<(Position, Type)>,
     /// Concrete arguments passed to representation-sensitive built-ins. These
     /// are validated after inference so a variable constrained later in the
     /// same body is checked at its final type.
@@ -117,7 +117,7 @@ pub struct Checker {
     pub(crate) handler_tys: Vec<(Position, Vec<Type>, HashMap<String, crate::info::OpType>)>,
     /// Function name → its declared type parameters bound to fresh inference
     /// variables (empty for undeclared). Implements [TYPE-GENERICS-FN].
-    pub(crate) fn_typarams: HashMap<String, HashMap<String, Type>>,
+    fn_typarams: HashMap<String, HashMap<String, Type>>,
     /// The type parameters of the function whose body is currently being
     /// inferred, so annotations inside the body (explicit construction-site
     /// type arguments) resolve the binder's variables, not nominal names.

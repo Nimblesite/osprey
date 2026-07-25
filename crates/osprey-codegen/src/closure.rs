@@ -411,7 +411,7 @@ fn emit_forwarder(cg: &mut Codegen, name: &str) -> Result<String> {
 }
 
 /// The canonical value-ABI [`FnSig`] of a named top-level function.
-pub(crate) fn named_fn_sig(cg: &Codegen, name: &str) -> Option<FnSig> {
+fn named_fn_sig(cg: &Codegen, name: &str) -> Option<FnSig> {
     let (params, ret) = cg.prog.functions.get(name)?;
     Codegen::fn_value_sig(&osprey_types::Type::fun(params.clone(), ret.clone()))
 }
@@ -419,7 +419,7 @@ pub(crate) fn named_fn_sig(cg: &Codegen, name: &str) -> Option<FnSig> {
 /// The LLVM return-type and parameter-list spellings of a function value's
 /// signature (no env): the return is a Result block `{ T, i8 }*` when it
 /// returns `Result<T, _>`, else the plain scalar.
-pub(crate) fn spelling(sig: &FnSig) -> (String, String) {
+fn spelling(sig: &FnSig) -> (String, String) {
     let (param_tys, ret_ty, ret_inner) = sig;
     let ret = crate::llty::ret_spelling(*ret_ty, *ret_inner);
     (ret, crate::llty::comma_join(param_tys, LType::to_string))

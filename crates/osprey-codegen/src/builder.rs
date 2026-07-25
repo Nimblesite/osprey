@@ -44,13 +44,13 @@ pub struct Codegen {
     /// return type expression, conservatively). A foreign pointer typed as a
     /// union would break the `KIND_MASK_DIRECT` all-children-are-ARC-bodies
     /// proof, so these unions stay on the probing `KIND_MASK`. [GC-ARC-PERCEUS]
-    pub(crate) extern_ret_types: BTreeSet<String>,
+    extern_ret_types: BTreeSet<String>,
     /// Nullary union variant name → the module-constant handle every use of it
     /// shares. A payload-free variant (`Leaf`, `None`) is one immutable
     /// immortal value, so it is interned as a single `private global` with a
     /// baked ARC header (rc = -1) instead of a fresh heap block per occurrence —
     /// binarytrees alone stops allocating ~19.6M `Leaf`s. [GC-ARC-PERCEUS]
-    pub(crate) nullary_singletons: HashMap<String, String>,
+    nullary_singletons: HashMap<String, String>,
     /// Resolved signatures, constructor layouts and union tags from inference.
     pub(crate) prog: ProgramTypes,
     /// Stream-fusion pipeline: pending `map`/`filter` stages recorded by those
@@ -67,18 +67,18 @@ pub struct Codegen {
     pub(crate) fnval_cells: HashMap<String, String>,
     /// Whether the fiber-result global table has been emitted yet.
     /// Parsed `effect` operation signatures, keyed `"Effect.operation"`.
-    pub(crate) effect_ops: HashMap<String, crate::effects::OpSig>,
+    effect_ops: HashMap<String, crate::effects::OpSig>,
     /// Monotonic id giving each emitted handler function a unique name.
-    pub(crate) handler_count: usize,
+    handler_count: usize,
     /// Monotonic id giving each lambda lifted to a top-level function (a lambda
     /// used as a value, e.g. passed to a function-typed parameter) a unique name.
-    pub(crate) lambda_count: usize,
+    lambda_count: usize,
     /// Synthetic layouts of anonymous object literals (`{ a: 1, b: "x" }`),
     /// keyed by the generated owner name carried on the handle, so field access
     /// can recover the ordered `(field, LType)` slots.
-    pub(crate) obj_layouts: HashMap<String, Vec<(String, LType)>>,
+    obj_layouts: HashMap<String, Vec<(String, LType)>>,
     /// Monotonic id giving each object literal a unique synthetic owner name.
-    pub(crate) obj_count: usize,
+    obj_count: usize,
     /// User function `(parameters, body)` defs, for inlining a *generic*
     /// function at each call site so its type variables monomorphize to the
     /// concrete argument types there (specialisation by inlining rather than by
@@ -1212,7 +1212,7 @@ impl Codegen {
     /// mask, see [`crate::meta`]): the ARC backend stores it in the object
     /// header so `osp_release` can drop children precisely; other backends
     /// ignore it. Implements [GC-ARC-PERCEUS].
-    pub(crate) fn heap_alloc_tagged(&mut self, size: &str, meta: i64) -> String {
+    fn heap_alloc_tagged(&mut self, size: &str, meta: i64) -> String {
         if meta == crate::meta::KIND_RAW {
             return self.heap_alloc(size);
         }
@@ -1226,7 +1226,7 @@ impl Codegen {
     /// can drop (every masked word stored): the ARC backend skips its
     /// drop-safety pre-zero. A `KIND_RAW` block is never zeroed anyway, so it
     /// shares the plain allocator. [GC-ARC-PERCEUS]
-    pub(crate) fn heap_alloc_tagged_noinit(&mut self, size: &str, meta: i64) -> String {
+    fn heap_alloc_tagged_noinit(&mut self, size: &str, meta: i64) -> String {
         if meta == crate::meta::KIND_RAW {
             return self.heap_alloc(size);
         }
@@ -1308,24 +1308,24 @@ impl Codegen {
 /// async frame-pointer chain walk is valid from any sample point. Implements
 /// [PROF-CODEGEN-FP], docs/specs/0028-Profiler.md; cost is ~1% (arm64 reserves
 /// x29 for the frame chain by ABI anyway).
-pub(crate) const FRAME_POINTER_ATTRS: &str = "attributes #0 = { \"frame-pointer\"=\"all\" }";
+const FRAME_POINTER_ATTRS: &str = "attributes #0 = { \"frame-pointer\"=\"all\" }";
 
 /// The swappable allocation hook declaration. `noalias` + the allocator
 /// attributes (`allocsize`/`allockind`/`alloc-family`) make LLVM treat
 /// `@osp_alloc` as an allocation function for dead-allocation elimination, while
 /// a custom `alloc-family` ("osprey", not "malloc") stops LLVM rewriting it to
 /// libc `calloc`/`realloc` and bypassing the backend. Implements [MEM-BACKENDS].
-pub(crate) const OSP_ALLOC_DECL: &str = "declare noalias i8* @osp_alloc(i64) allocsize(0) allockind(\"alloc,uninitialized\") mustprogress nounwind willreturn \"alloc-family\"=\"osprey\"";
+const OSP_ALLOC_DECL: &str = "declare noalias i8* @osp_alloc(i64) allocsize(0) allockind(\"alloc,uninitialized\") mustprogress nounwind willreturn \"alloc-family\"=\"osprey\"";
 
 /// The layout-carrying twin of [`OSP_ALLOC_DECL`]: same allocator attributes
 /// (so `-O2` dead-allocation elimination still applies), plus the meta word the
 /// ARC backend stores in the object header. Implements [GC-ARC-PERCEUS].
-pub(crate) const OSP_ALLOC_TAGGED_DECL: &str = "declare noalias i8* @osp_alloc_tagged(i64, i64) allocsize(0) allockind(\"alloc,uninitialized\") mustprogress nounwind willreturn \"alloc-family\"=\"osprey\"";
+const OSP_ALLOC_TAGGED_DECL: &str = "declare noalias i8* @osp_alloc_tagged(i64, i64) allocsize(0) allockind(\"alloc,uninitialized\") mustprogress nounwind willreturn \"alloc-family\"=\"osprey\"";
 
 /// The non-pre-zeroing twin of [`OSP_ALLOC_TAGGED_DECL`] for caller-fully-
 /// initialized blocks (`allockind` is already `uninitialized`; the difference
 /// is only that the ARC backend skips its drop-safety memset). [GC-ARC-PERCEUS]
-pub(crate) const OSP_ALLOC_TAGGED_NOINIT_DECL: &str = "declare noalias i8* @osp_alloc_tagged_noinit(i64, i64) allocsize(0) allockind(\"alloc,uninitialized\") mustprogress nounwind willreturn \"alloc-family\"=\"osprey\"";
+const OSP_ALLOC_TAGGED_NOINIT_DECL: &str = "declare noalias i8* @osp_alloc_tagged_noinit(i64, i64) allocsize(0) allockind(\"alloc,uninitialized\") mustprogress nounwind willreturn \"alloc-family\"=\"osprey\"";
 
 /// The resolved heap layout of a constructor.
 pub(crate) struct CtorView {

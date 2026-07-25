@@ -27,7 +27,7 @@ use crate::workspace;
 /// back to their reference docs. Implements [LSP-HOVER], [LSP-HOVER-VARIABLES],
 /// [LSP-HOVER-DOCS]
 #[must_use]
-pub fn hover(
+pub(crate) fn hover(
     text: &str,
     path: &str,
     line: u32,

@@ -33,11 +33,11 @@ pub mod names {
     /// The `Result<ok, err>` sum type.
     pub const RESULT: &str = "Result";
     /// `Result`'s ok-variant constructor (`Success { value }`).
-    pub const SUCCESS: &str = "Success";
+    pub(crate) const SUCCESS: &str = "Success";
     /// `Result`'s error-variant constructor (`Error { message }`).
-    pub const ERROR: &str = "Error";
+    pub(crate) const ERROR: &str = "Error";
     /// The error type produced by failing arithmetic operations.
-    pub const MATH_ERROR: &str = "MathError";
+    pub(crate) const MATH_ERROR: &str = "MathError";
     /// The `List<elem>` collection type.
     pub const LIST: &str = "List";
     /// The `Map<key, value>` collection type.
@@ -93,34 +93,34 @@ pub enum Type {
 
 impl Type {
     /// A constructor application, e.g. `Type::con("List", vec![Type::int()])`.
-    pub fn con(name: impl Into<String>, args: Vec<Type>) -> Type {
+    pub(crate) fn con(name: impl Into<String>, args: Vec<Type>) -> Type {
         Type::Con {
             name: name.into(),
             args,
         }
     }
     /// A nullary named type (`int`, `Unit`, a bare user type).
-    pub fn prim(name: impl Into<String>) -> Type {
+    pub(crate) fn prim(name: impl Into<String>) -> Type {
         Type::con(name, Vec::new())
     }
     /// The `int` primitive type.
     #[must_use]
-    pub fn int() -> Type {
+    pub(crate) fn int() -> Type {
         Type::prim(names::INT)
     }
     /// The `float` primitive type.
     #[must_use]
-    pub fn float() -> Type {
+    pub(crate) fn float() -> Type {
         Type::prim(names::FLOAT)
     }
     /// The `string` primitive type.
     #[must_use]
-    pub fn string() -> Type {
+    pub(crate) fn string() -> Type {
         Type::prim(names::STRING)
     }
     /// The `bool` primitive type.
     #[must_use]
-    pub fn bool() -> Type {
+    pub(crate) fn bool() -> Type {
         Type::prim(names::BOOL)
     }
     /// The `Unit` primitive type.
@@ -130,7 +130,7 @@ impl Type {
     }
     /// The `any` top type.
     #[must_use]
-    pub fn any() -> Type {
+    pub(crate) fn any() -> Type {
         Type::prim(names::ANY)
     }
     /// The opaque foreign-pointer type [FFI-PTR].
@@ -148,28 +148,28 @@ impl Type {
     }
     /// `Result<ok, err>`.
     #[must_use]
-    pub fn result(ok: Type, err: Type) -> Type {
+    pub(crate) fn result(ok: Type, err: Type) -> Type {
         Type::con(names::RESULT, vec![ok, err])
     }
     /// `List<elem>`.
     #[must_use]
-    pub fn list(elem: Type) -> Type {
+    pub(crate) fn list(elem: Type) -> Type {
         Type::con(names::LIST, vec![elem])
     }
     /// `Map<key, value>`.
     #[must_use]
-    pub fn map(key: Type, value: Type) -> Type {
+    pub(crate) fn map(key: Type, value: Type) -> Type {
         Type::con(names::MAP, vec![key, value])
     }
     /// `Iterator<elem>` used by range/map/filter/fold pipelines.
     #[must_use]
-    pub fn iterator(elem: Type) -> Type {
+    pub(crate) fn iterator(elem: Type) -> Type {
         Type::con(names::ITERATOR, vec![elem])
     }
 
     /// True if this is a nullary-or-applied constructor with the given name.
     #[must_use]
-    pub fn is_named(&self, n: &str) -> bool {
+    pub(crate) fn is_named(&self, n: &str) -> bool {
         matches!(self, Type::Con { name, .. } if name == n)
     }
 }
@@ -192,15 +192,15 @@ pub fn has_type_var(ty: &Type) -> bool {
 #[derive(Debug, Clone, PartialEq)]
 pub struct Scheme {
     /// The universally quantified type variables.
-    pub vars: Vec<VarId>,
+    pub(crate) vars: Vec<VarId>,
     /// The quantified type body.
-    pub ty: Type,
+    pub(crate) ty: Type,
 }
 
 impl Scheme {
     /// A monomorphic scheme — no quantified variables.
     #[must_use]
-    pub fn mono(ty: Type) -> Scheme {
+    pub(crate) fn mono(ty: Type) -> Scheme {
         Scheme {
             vars: Vec::new(),
             ty,
@@ -208,7 +208,7 @@ impl Scheme {
     }
     /// A polymorphic scheme over the given variables.
     #[must_use]
-    pub fn poly(vars: Vec<VarId>, ty: Type) -> Scheme {
+    pub(crate) fn poly(vars: Vec<VarId>, ty: Type) -> Scheme {
         Scheme { vars, ty }
     }
 }

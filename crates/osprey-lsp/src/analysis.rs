@@ -31,7 +31,7 @@ pub enum SymbolKind {
 impl SymbolKind {
     /// The wire string used in the `--symbols` JSON and LSP detail.
     #[must_use]
-    pub const fn as_str(self) -> &'static str {
+    pub(crate) const fn as_str(self) -> &'static str {
         match self {
             Self::Namespace => "namespace",
             Self::Module => "module",
@@ -49,23 +49,23 @@ pub struct SymbolInfo {
     /// Collision-safe qualified source name (`billing::Tax::addTax`).
     pub name: String,
     /// Name as written on the declaration line (`addTax` / `Tax`).
-    pub source_name: String,
+    pub(crate) source_name: String,
     /// What sort of declaration this is.
-    pub kind: SymbolKind,
+    pub(crate) kind: SymbolKind,
     /// Rendered type/category text (signature for functions, annotation for
     /// `let`, `"type"`/`"effect"` for declarations).
-    pub ty: String,
+    pub(crate) ty: String,
     /// Source position, when the parser recorded one (1-based line, 0-based col).
     pub position: Option<Position>,
     /// Full rendered signature for functions.
-    pub signature: Option<String>,
+    pub(crate) signature: Option<String>,
     /// `(name, rendered type)` parameter pairs for functions.
-    pub parameters: Vec<(String, String)>,
+    pub(crate) parameters: Vec<(String, String)>,
     /// Rendered return type for functions.
-    pub return_type: Option<String>,
+    pub(crate) return_type: Option<String>,
     /// The declaration's documentation rendered to hover Markdown, when it
     /// carries a doc comment (either flavor). Implements [LSP-HOVER-DOCS].
-    pub doc: Option<String>,
+    pub(crate) doc: Option<String>,
 }
 
 /// Collect every top-level declaration (recursing into modules) into outline
@@ -173,7 +173,7 @@ fn container_sym(
 /// resolves local variables, not only top-level names. Source order.
 /// Implements [LSP-HOVER-VARIABLES]
 #[must_use]
-pub fn collect_all_symbols(program: &Program) -> Vec<SymbolInfo> {
+pub(crate) fn collect_all_symbols(program: &Program) -> Vec<SymbolInfo> {
     let mut out = Vec::new();
     walk_stmts(&program.statements, &[], &mut out);
     out
@@ -591,7 +591,7 @@ fn extern_pairs(params: &[ExternParameter]) -> Vec<(String, String)> {
 
 /// Render a written type expression back to source-ish text.
 #[must_use]
-pub fn render_type(t: &TypeExpr) -> String {
+pub(crate) fn render_type(t: &TypeExpr) -> String {
     if t.is_function {
         let ps: Vec<String> = t.parameter_types.iter().map(render_type).collect();
         let ret = t

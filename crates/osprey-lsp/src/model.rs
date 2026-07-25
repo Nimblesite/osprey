@@ -17,11 +17,11 @@ pub type Span = (u32, u32, u32, u32);
 #[derive(Debug, Clone)]
 pub struct At {
     /// Target document.
-    pub uri: DocumentUri,
+    pub(crate) uri: DocumentUri,
     /// Zero-based line.
-    pub line: u32,
+    pub(crate) line: u32,
     /// Zero-based character offset (selected encoding).
-    pub character: u32,
+    pub(crate) character: u32,
 }
 
 /// An analysis request answered by [`crate::engine::OspreyEngine`].
@@ -55,20 +55,20 @@ pub enum Query {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Location {
     /// The document URI as a string.
-    pub uri: String,
+    pub(crate) uri: String,
     /// The span within the document.
-    pub span: Span,
+    pub(crate) span: Span,
 }
 
 /// Rendered signature help for one call.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SignatureInfo {
     /// Full signature label, e.g. `fn add(a: int, b: int) -> int`.
-    pub label: String,
+    pub(crate) label: String,
     /// Per-parameter labels, e.g. `a: int`.
-    pub parameters: Vec<String>,
+    pub(crate) parameters: Vec<String>,
     /// Zero-based index of the active parameter.
-    pub active_parameter: u32,
+    pub(crate) active_parameter: u32,
 }
 
 /// What sort of thing a completion item inserts.
@@ -88,13 +88,13 @@ pub enum CompletionKind {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CompletionItem {
     /// Insert/display label.
-    pub label: String,
+    pub(crate) label: String,
     /// Item category.
-    pub kind: CompletionKind,
+    pub(crate) kind: CompletionKind,
     /// Short detail line.
-    pub detail: Option<String>,
+    pub(crate) detail: Option<String>,
     /// Snippet to insert (when richer than `label`).
-    pub insert_text: Option<String>,
+    pub(crate) insert_text: Option<String>,
 }
 
 /// The payload produced for a [`Query`].

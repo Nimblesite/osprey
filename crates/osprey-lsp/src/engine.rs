@@ -34,7 +34,7 @@ pub struct OspreyEngine {
 impl OspreyEngine {
     /// New engine over `vfs`, starting at [`Generation::ZERO`].
     #[must_use]
-    pub fn new(vfs: Vfs) -> Self {
+    pub(crate) fn new(vfs: Vfs) -> Self {
         Self {
             vfs,
             session: Session::new(),
@@ -44,7 +44,7 @@ impl OspreyEngine {
 
     /// The shared open-document store.
     #[must_use]
-    pub fn vfs(&self) -> &Vfs {
+    pub(crate) fn vfs(&self) -> &Vfs {
         &self.vfs
     }
 
