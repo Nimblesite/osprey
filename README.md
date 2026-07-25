@@ -78,17 +78,38 @@ design direction; per-file flavor selection is implemented and green today.
 
 ## Installation
 
+**Prerequisite — LLVM/clang.** Osprey compiles to textual LLVM IR and shells out
+to **`clang`** (LLVM 15+) to build and link the native binary; the `osprey`
+binary does **not** bundle LLVM. Install the toolchain *before* the compiler —
+without a `clang` on your `PATH`, compiling any program fails with
+`clang: command not found`.
+
+```bash
+# macOS — Apple's clang is enough; or `brew install llvm` for a current LLVM.
+xcode-select --install
+
+# Linux (Debian/Ubuntu) — add `lld` for the WebAssembly target.
+sudo apt-get install -y clang llvm lld
+
+# Windows — needs LLVM (clang) plus MinGW gcc to link the C runtime.
+scoop install llvm gcc
+```
+
+Then install the compiler:
+
 ```bash
 # macOS / Linux (Homebrew)
 brew install nimblesite/tap/osprey
 
-# Windows (Scoop)
+# Windows (Scoop) — installs `llvm` + `gcc` as dependencies automatically
 scoop bucket add nimblesite https://github.com/Nimblesite/scoop-bucket
 scoop install osprey
 ```
 
-Osprey shells out to LLVM (`llc`) and a C compiler at compile time; the package
-managers pull those in as dependencies (`llvm` for brew; `llvm` + `gcc` for scoop).
+Homebrew's `llvm` is keg-only (its `clang` stays off `PATH`); if compiling fails
+after a brew install, add `$(brew --prefix llvm)/bin` to `PATH` or set
+`OSPREY_CC=$(brew --prefix llvm)/bin/clang`. Full per-platform steps,
+verification, and troubleshooting: **[Installation guide](https://www.ospreylang.dev/docs/installation/)**.
 
 The [VS Code extension](https://marketplace.visualstudio.com/items?itemName=nimblesite.osprey)
 (`nimblesite.osprey`) bundles a version-matched compiler and a Rust language

@@ -176,12 +176,17 @@ fn main() = {
 
 #[test]
 fn version_plain_and_json() {
+    // [SWR-VERSION-BUILD-STAMPING] [SWR-VERSION-CLI-OUTPUT]
     let plain = run_args(&["--version"]);
     assert_eq!(plain.code, Some(0));
-    assert!(plain.stdout.contains("osprey"), "{}", plain.stdout);
+    assert_eq!(plain.stdout, "osprey 0.0.0-dev\n");
+
     let json = run_args(&["--version", "--json"]);
     assert_eq!(json.code, Some(0));
-    assert!(json.stdout.contains("\"kind\":\"cli\""), "{}", json.stdout);
+    assert_eq!(
+        json.stdout,
+        "{\"manifestVersion\":1,\"name\":\"osprey\",\"version\":\"0.0.0-dev\",\"kind\":\"cli\",\"product\":\"osprey\"}\n"
+    );
 }
 
 #[test]

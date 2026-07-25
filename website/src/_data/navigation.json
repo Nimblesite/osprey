@@ -1,5 +1,6 @@
 {
   "main": [
+    { "text": "Install", "url": "/docs/installation/" },
     { "text": "Status", "url": "/status/" },
     { "text": "Spec", "url": "/spec/" },
     { "text": "Playground", "url": "/playground/" },
@@ -13,6 +14,7 @@
     {
       "title": "Language",
       "items": [
+        { "text": "Installation", "url": "/docs/installation/" },
         { "text": "Try Online", "url": "/playground/" },
         { "text": "WebAssembly Demo", "url": "/wasm/" },
         { "text": "Web Apps Guide", "url": "/docs/web-apps/" },

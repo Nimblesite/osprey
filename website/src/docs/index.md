@@ -47,6 +47,7 @@ print "total: ${total}"
 
 ## Quick Navigation
 
+- [Installation](installation/) - Install the compiler and its required LLVM/clang toolchain on macOS, Linux, and Windows
 - [Web Apps](web-apps/) - Build React-rendered browser apps with an Osprey WebAssembly model/update core
 - [Functions](functions/) - Built-in functions for I/O, iteration, and data transformation
 - [Types](types/) - Built-in data types (Int, String, Bool, Any)

@@ -77,6 +77,14 @@ in
 <section class="blue-box-installation">
   <div class="container">
     <h2 class="section-title animate-on-scroll">Get Osprey Now</h2>
+    <p class="banner warn animate-on-scroll">
+      <strong>Prerequisite:</strong> Osprey compiles through LLVM, so it needs
+      <code>clang</code> (LLVM 15+) on your <code>PATH</code> — the installers do
+      <em>not</em> bundle it. On macOS run <code>xcode-select --install</code> or
+      <code>brew install llvm</code>; on Linux <code>sudo apt-get install clang llvm lld</code>;
+      on Windows <code>scoop install llvm gcc</code>. Full per-platform steps and
+      troubleshooting: <a href="/docs/installation/">Installation guide</a>.
+    </p>
     <div class="install-grid">
       <div class="install-card primary animate-on-scroll">
         <h3>🍎 macOS / 🐧 Linux</h3>
