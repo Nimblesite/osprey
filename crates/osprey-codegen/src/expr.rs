@@ -168,6 +168,22 @@ fn gen_binary(cg: &mut Codegen, op: &str, left: &Expr, right: &Expr) -> Result<V
 
 fn gen_short_circuit(cg: &mut Codegen, op: &str, left: &Expr, right: &Expr) -> Result<Value> {
     // Branch before lowering the right operand [BOOL-SHORT-CIRCUIT].
+    let (left, short, end) = open_short_circuit(cg, op, left)?;
+    let right_value = gen_expr(cg, right)?;
+    let right = as_i1(cg, right_value)?;
+    let instruction = if op == "&&" { "and" } else { "or" };
+    let combined = cg.emit_reg(format!("{instruction} i1 {left}, {}", right.operand));
+    let right_block = cg.cur_block().to_string();
+    cg.emit(format!("br label %{end}"));
+    cg.start_block(&end);
+    let short_value = if op == "&&" { "0" } else { "1" };
+    let value = cg.emit_reg(format!(
+        "phi i1 [ {short_value}, %{short} ], [ {combined}, %{right_block} ]"
+    ));
+    Ok(Value::new(value, LType::I1))
+}
+
+fn open_short_circuit(cg: &mut Codegen, op: &str, left: &Expr) -> Result<(String, String, String)> {
     let left_value = gen_expr(cg, left)?;
     let left = as_i1(cg, left_value)?;
     let (rhs, short, end) = (cg.fresh_label(), cg.fresh_label(), cg.fresh_label());
@@ -183,21 +199,7 @@ fn gen_short_circuit(cg: &mut Codegen, op: &str, left: &Expr, right: &Expr) -> R
     cg.start_block(&short);
     cg.emit(format!("br label %{end}"));
     cg.start_block(&rhs);
-    let right_value = gen_expr(cg, right)?;
-    let right = as_i1(cg, right_value)?;
-    let instruction = if op == "&&" { "and" } else { "or" };
-    let combined = cg.emit_reg(format!(
-        "{instruction} i1 {}, {}",
-        left.operand, right.operand
-    ));
-    let right_block = cg.cur_block().to_string();
-    cg.emit(format!("br label %{end}"));
-    cg.start_block(&end);
-    let short_value = if op == "&&" { "0" } else { "1" };
-    let value = cg.emit_reg(format!(
-        "phi i1 [ {short_value}, %{short} ], [ {combined}, %{right_block} ]"
-    ));
-    Ok(Value::new(value, LType::I1))
+    Ok((left.operand, short, end))
 }
 
 /// Arithmetic whose operands may themselves carry an error channel. The
@@ -287,7 +289,7 @@ fn gen_arith(cg: &mut Codegen, op: &str, l: Value, r: Value) -> Result<Value> {
         return Ok(crate::collections::merge_handles(cg, &l, &r));
     }
     // `+` with a string operand is concatenation: osp_strlen/strcpy/strcat
-    // into a fresh malloc'd buffer.
+    // into a fresh malloc'd buffer. [BUILTIN-STRING-CONCAT]
     if op == "+" && (l.ty == LType::Str || r.ty == LType::Str) {
         return gen_str_concat(cg, l, r);
     }
@@ -362,15 +364,21 @@ fn gen_remainder(cg: &mut Codegen, l: Value, r: Value) -> Result<Value> {
     }
     let li = as_i64(cg, l)?;
     let ri = as_i64(cg, r)?;
-    gen_zero_checked(
-        cg,
-        &li.operand,
-        &ri.operand,
-        LType::I64,
-        "srem i64",
-        "icmp eq i64",
-        "0",
-    )
+    let div_zero = cg.emit_reg(format!("icmp eq i64 {}, 0", ri.operand));
+    // LLVM `srem INT64_MIN, -1` is poison even though the mathematical
+    // remainder is representable as zero. Substitute divisor 1 for that pair;
+    // both remainders are zero, preserving [ARITH-PLAIN] without executing UB.
+    let lhs_min = cg.emit_reg(format!("icmp eq i64 {}, -9223372036854775808", li.operand));
+    let rhs_neg_one = cg.emit_reg(format!("icmp eq i64 {}, -1", ri.operand));
+    let overflow_pair = cg.emit_reg(format!("and i1 {lhs_min}, {rhs_neg_one}"));
+    let safe_divisor = cg.emit_reg(format!(
+        "select i1 {overflow_pair}, i64 1, i64 {}",
+        ri.operand
+    ));
+    let remainder = format!("srem i64 {}, {safe_divisor}", li.operand);
+    gen_guarded(cg, &div_zero, LType::I64, "0", DIVIDE_BY_ZERO, |cg| {
+        cg.emit_reg(remainder)
+    })
 }
 
 /// The `intDiv(a, b)` builtin — truncating integer division, divide-by-zero
@@ -379,15 +387,37 @@ fn gen_remainder(cg: &mut Codegen, l: Value, r: Value) -> Result<Value> {
 fn gen_int_division(cg: &mut Codegen, l: Value, r: Value) -> Result<Value> {
     let li = as_i64(cg, l)?;
     let ri = as_i64(cg, r)?;
-    gen_zero_checked(
-        cg,
-        &li.operand,
-        &ri.operand,
-        LType::I64,
-        "sdiv i64",
-        "icmp eq i64",
-        "0",
-    )
+    let div_zero = cg.emit_reg(format!("icmp eq i64 {}, 0", ri.operand));
+    let lhs_min = cg.emit_reg(format!("icmp eq i64 {}, -9223372036854775808", li.operand));
+    let rhs_neg_one = cg.emit_reg(format!("icmp eq i64 {}, -1", ri.operand));
+    let overflow = cg.emit_reg(format!("and i1 {lhs_min}, {rhs_neg_one}"));
+    let invalid = cg.emit_reg(format!("or i1 {div_zero}, {overflow}"));
+    let zero_message = cg.string_constant(DIVIDE_BY_ZERO);
+    let overflow_message = cg.string_constant("integer overflow");
+    let message = cg.emit_reg(format!(
+        "select i1 {div_zero}, i8* {}, i8* {}",
+        zero_message.operand, overflow_message.operand
+    ));
+    gen_guarded_with_message(cg, &invalid, LType::I64, "0", &message, |cg| {
+        cg.emit_reg(format!("sdiv i64 {}, {}", li.operand, ri.operand))
+    })
+}
+
+/// `abs(n: int) -> int`, lowered in the language's i64 ABI instead of falling
+/// through to libc's `int abs(int)`. Negation is deliberately plain wrapping
+/// arithmetic: the unrepresentable magnitude of `INT64_MIN` remains `INT64_MIN`,
+/// matching Osprey's plain integer operators. [BUILTIN-ABS]
+fn gen_abs(cg: &mut Codegen, argument: &Expr) -> Result<Value> {
+    let value = gen_expr(cg, argument)?;
+    let value = crate::result::unwrap(cg, value);
+    let value = as_i64(cg, value)?;
+    let negative = cg.emit_reg(format!("icmp slt i64 {}, 0", value.operand));
+    let negated = cg.emit_reg(format!("sub i64 0, {}", value.operand));
+    let magnitude = cg.emit_reg(format!(
+        "select i1 {negative}, i64 {negated}, i64 {}",
+        value.operand
+    ));
+    Ok(Value::new(magnitude, LType::I64))
 }
 
 /// Shared zero-divisor skeleton for `/`, `%` and `intDiv`: a zero divisor
@@ -479,6 +509,21 @@ fn gen_guarded(
     message: &str,
     ok_value: impl FnOnce(&mut Codegen) -> String,
 ) -> Result<Value> {
+    let msg = cg.string_constant(message);
+    gen_guarded_with_message(cg, bad, inner, zero, &msg.operand, ok_value)
+}
+
+/// [`gen_guarded`] with a precomputed error-message operand. This lets a
+/// guarded operation select a precise reason before branching (notably
+/// [BUILTIN-INTDIV]'s zero-divisor and signed-overflow cases).
+fn gen_guarded_with_message(
+    cg: &mut Codegen,
+    bad: &str,
+    inner: LType,
+    zero: &str,
+    message: &str,
+    ok_value: impl FnOnce(&mut Codegen) -> String,
+) -> Result<Value> {
     use crate::result::{make_result, NO_MSG};
     let (bad_bb, good_bb, end) = (cg.fresh_label(), cg.fresh_label(), cg.fresh_label());
     cg.emit(format!("br i1 {bad}, label %{bad_bb}, label %{good_bb}"));
@@ -489,8 +534,7 @@ fn gen_guarded(
     let okb = cg.snapshot_to(&end);
 
     cg.start_block(&bad_bb);
-    let msg = cg.string_constant(message);
-    let err = make_result(cg, Value::new(zero, inner), inner, "1", &msg.operand)?;
+    let err = make_result(cg, Value::new(zero, inner), inner, "1", message)?;
     let errb = cg.snapshot_to(&end);
 
     cg.start_block(&end);
@@ -586,7 +630,7 @@ fn gen_unary(cg: &mut Codegen, op: &str, operand: &Expr) -> Result<Value> {
                 LType::I64,
             ))
         }
-        "!" | "not" => {
+        "!" => {
             let b = as_i1(cg, v)?;
             Ok(Value::new(
                 cg.emit_reg(format!("xor i1 {}, true", b.operand)),
@@ -674,6 +718,11 @@ fn gen_call(
                 .ok_or_else(|| CodegenError::invalid("toString needs one argument"))?;
             let v = gen_expr(cg, arg)?;
             to_string_value(cg, v)
+        }
+        "abs" => {
+            let arg = first_arg(arguments, named)
+                .ok_or_else(|| CodegenError::invalid("abs needs one argument"))?;
+            gen_abs(cg, arg)
         }
         "intDiv" => {
             let (l, r) = two_int_args(cg, name, arguments, named)?;
@@ -963,7 +1012,7 @@ fn gen_interpolation(cg: &mut Codegen, parts: &[InterpolatedPart]) -> Result<Val
     // rather than `snprintf` directly because this IR is target-neutral and
     // `size_t` is not: it is 32-bit on wasm32 and 64-bit natively, so a literal
     // size type here mismatches wasi-libc at wasm-ld time. See
-    // string_runtime.h. [BUILTIN-STRING-INTERP]
+    // string_runtime.h. [STRING-INTERPOLATION]
     let len = cg.fresh_reg();
     cg.emit(format!(
         "{len} = call i64 (i8*, ...) @osp_format_size(i8* {}{extra})",

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Install the pinned `deslop` duplication-gate CLI ([CI-DESLOP]).
+# Install the pinned `deslop` duplication-gate CLI.
 #
 # Single source of truth for the deslop version AND the platform→asset mapping.
 # Shared by `make setup` (local dev) and .github/workflows/ci.yml so the version

@@ -13,7 +13,6 @@
 #include <string.h>
 
 // Sockets: Winsock2 on Windows (via the compat header), BSD sockets elsewhere.
-// [WINDOWS-PORT-PHASE2]
 #ifdef _WIN32
 #include "osprey_win_compat.h"
 #else

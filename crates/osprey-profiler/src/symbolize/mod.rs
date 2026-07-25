@@ -329,6 +329,8 @@ mod tests {
 
     #[test]
     fn stacks_resolve_through_per_image_batches_with_dedup() {
+        // Image mapping, unsliding, return-address adjustment, batching, and
+        // hex fallback from [PROF-SYMBOLIZE-OFFLINE].
         let profile = two_image_profile();
         let sym = RecordingSymbolizer::default();
         let stacks = symbolize_stacks(&profile, &sym).unwrap();

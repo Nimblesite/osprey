@@ -299,7 +299,7 @@ fn a_namespace_owns_a_block_or_the_rest_of_the_file() {
     }
 }
 
-/// `e ?: d` lowers to the same two-arm boolean `match` the Default flavor's
+/// [PATTERN-RESULT-DEFAULT]: `e ?: d` lowers to the same two-arm boolean `match` the Default flavor's
 /// ternary emits — a different node here would break [FLAVOR-IR-EQUIV].
 #[test]
 fn the_result_default_lowers_to_a_boolean_match() {

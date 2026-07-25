@@ -89,7 +89,7 @@ pub fn builtin_doc_view(name: &str) -> Option<BuiltinDocView> {
     let env = base_env();
     let scheme = env.get(name)?;
     let (param_types, ret) = split_fun(&scheme.ty);
-    let params = join_params(doc.params, &param_types);
+    let params = join_params(name, doc.params, &param_types);
     let signature = render_signature(name, &params, &ret);
     Some(BuiltinDocView {
         name: name.to_string(),
@@ -130,12 +130,15 @@ fn split_fun(ty: &Type) -> (Vec<Type>, Type) {
     }
 }
 
-fn join_params(docs: &[ParamDoc], types: &[Type]) -> Vec<BuiltinParam> {
+fn join_params(name: &str, docs: &[ParamDoc], types: &[Type]) -> Vec<BuiltinParam> {
     docs.iter()
         .enumerate()
         .map(|(i, p)| BuiltinParam {
             name: p.name.to_string(),
-            ty: types.get(i).map(Type::to_string).unwrap_or_default(),
+            ty: crate::builtin_constraints::display_param_type(name, i)
+                .map(str::to_string)
+                .or_else(|| types.get(i).map(Type::to_string))
+                .unwrap_or_default(),
             description: p.description.to_string(),
         })
         .collect()
@@ -206,6 +209,17 @@ mod tests {
         assert!(md.contains("**Returns** `Unit`"), "{md}");
         assert!(md.contains("**Example**"), "{md}");
         assert!(builtin_hover_markdown("notARealBuiltin").is_none());
+    }
+
+    #[test]
+    fn hover_shows_constrained_builtin_receiver_types() {
+        let length = builtin_hover_markdown("length").expect("length is documented");
+        assert!(
+            length.contains("length(s: string | List<T> | Map<string, V>) -> int"),
+            "{length}"
+        );
+        let print = builtin_hover_markdown("print").expect("print is documented");
+        assert!(print.contains("Result<printable, printable>"), "{print}");
     }
 
     #[test]

@@ -118,10 +118,6 @@ fn extern_violations(statements: &[Stmt], out: &mut Vec<String>) {
 }
 
 #[cfg(test)]
-#[expect(
-    clippy::indexing_slicing,
-    reason = "test assertions: an out-of-bounds index is a test failure, not a production panic"
-)]
 mod tests {
     use super::*;
 
@@ -130,11 +126,11 @@ mod tests {
     }
 
     fn refs(names: &[&str]) -> Program {
-        let source: String = names
-            .iter()
-            .enumerate()
-            .map(|(index, name)| format!("let gated{index} = {name}\n"))
-            .collect();
+        use std::fmt::Write as _;
+        let mut source = String::new();
+        for (index, name) in names.iter().enumerate() {
+            let _ = writeln!(source, "let gated{index} = {name}");
+        }
         prog(&source)
     }
 
@@ -173,7 +169,7 @@ mod tests {
 
     #[test]
     fn no_http_and_no_websocket_are_independent() {
-        // [SECURITY-CAPABILITY-GATES] Every shipped network builtin belongs to
+        // [SECURITY-CAPABILITY-GATES] Every network builtin belongs to
         // exactly its own independently controlled capability group.
         let mut http_off = Policy::allow_all();
         http_off.http = false;

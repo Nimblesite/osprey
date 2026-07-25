@@ -1,7 +1,7 @@
 // Default-flavor twin of mixed.ospml. ML curry `scale k = \v => v * k` lowers to
 // `fn scale(k) = fn(v) => v * k`; the layout `match`, `|>` pipe, value bindings
-// (`let`), and `${...}` interpolation all lower identically. The annotations
-// mirror the ML signatures and auto-unwrap arithmetic Results — byte-identical IR.
+// (`let`), `${...}` interpolation, and plain arithmetic all lower identically.
+// The annotations mirror the ML signatures — byte-identical IR.
 
 fn scale(k: int) -> (int) -> int = fn(v) => v * k
 

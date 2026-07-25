@@ -2,9 +2,8 @@
 // the ML uncurried tuple binding `apply (f, x)` mirrors the Default
 // multi-parameter `fn apply(f, x)` form-for-form — both lower to one flat
 // two-parameter function, byte-identical IR. The function-typed parameter
-// signatures and the `-> int` returns are load-bearing: they keep each function
-// value concrete (codegen rejects a generic function value) and auto-unwrap
-// arithmetic Results.
+// signatures are load-bearing: they keep each function value concrete (codegen
+// rejects a generic function value).
 
 fn apply(f: (int) -> int, x: int) -> int = f(x)
 

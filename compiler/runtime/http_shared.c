@@ -8,7 +8,7 @@
 // OpenSSL 3.5.0+ modern API includes
 #include <openssl/buffer.h>
 
-// Winsock initialisation — [WINDOWS-PORT-PHASE2]. Runs once before main() via a
+// Winsock initialisation runs once before main() via a
 // constructor so every socket call is preceded by WSAStartup. No-op elsewhere.
 #ifdef _WIN32
 static void osprey_wsa_init_impl(void) {
@@ -187,7 +187,7 @@ int send_websocket_frame(int socket_fd, const char *payload) {
 
   // `frame` is unsigned char; Winsock's send() takes `const char *` (POSIX
   // takes `const void *`). Cast at the call site — portable both ways, mirrors
-  // the setsockopt/accept/bind casts. [WINDOWS-PORT-PHASE2]
+  // the setsockopt/accept/bind casts.
   return send(socket_fd, (const char *)frame, frame_len, 0);
 }
 

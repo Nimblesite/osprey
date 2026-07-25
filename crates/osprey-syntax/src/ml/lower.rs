@@ -5,7 +5,8 @@
 //! ([FLAVOR-BOUNDARY], [FLAVOR-LAYER], [FLAVOR-LOWER-CONTRACT], docs/specs/0023).
 //!
 //! What this module canonicalises (and the parser deliberately does not):
-//! - **Curry-by-default** ([FLAVOR-ML-CURRY]): ML *curries by default*. A
+//! - **Curry-by-default** ([FLAVOR-ML-CURRY], [FLAVOR-CURRY]): ML curries by
+//!   default. A
 //!   multi-parameter binding `f a b = …` lowers to a one-parameter
 //!   [`Stmt::Function`] whose body is a one-parameter [`Expr::Lambda`] chain,
 //!   whitespace application `f a b` to nested single-argument calls
@@ -1196,6 +1197,7 @@ fn lower_map_entry((key, value): (MlExpr, MlExpr)) -> MapEntry {
 
 /// `x |> f a` → `f x a`: prepend the piped value as the first argument of the
 /// right-hand call, or wrap a bare callee in a one-argument call.
+/// Implements [BUILTIN-ITER-PIPE].
 fn pipe_into(left: Expr, right: Expr) -> Expr {
     match right {
         Expr::Call {

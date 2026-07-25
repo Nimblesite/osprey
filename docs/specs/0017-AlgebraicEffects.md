@@ -6,7 +6,7 @@ lower to the same effect, perform, handler, and resume AST nodes; their runtime
 semantics are identical.
 
 The checker validates declared operations and their value types. Effect rows
-currently provide generic-instantiation scope inside the annotated function
+provide generic-instantiation scope inside the annotated function
 body, but are not stored in function types or propagated through calls. A
 missing handler can therefore compile; the generated program aborts with
 `unhandled effect: <Effect>.<operation>` when lookup fails.
@@ -57,7 +57,7 @@ effect Stash<T> {
 
 `[EFFECTS-GENERIC-INSTANTIATION]` Each handler site instantiates a generic
 effect independently. Handler arm values and performs in the handled body must
-agree on that instantiation. For example, this handler is `Stash<string>`:
+agree on that instantiation. This handler instantiates `Stash<string>`:
 
 ```osprey
 let word = handle Stash
@@ -100,7 +100,7 @@ fetch url = perform Net.get url
 effect instantiation used by performs in that function body. A bare generic
 entry leaves its arguments to inference.
 
-Rows do not yet form part of `Type::Fun`. The checker does not propagate them
+Rows do not form part of `Type::Fun`. The checker does not propagate them
 through calls, prove that a caller installs every required handler, or require
 an unannotated function to be pure.
 
@@ -202,7 +202,13 @@ Resuming handlers have these rules:
   `fatal: continuation already resumed (multi-shot resume is not supported)`.
 - Handler mode is selected per region. If any arm contains `resume`, an arm
   that returns without resuming aborts the suspended computation and its value
-  becomes the result of the whole handler.
+  becomes the result of the whole handler. This per-region selection is a
+  known deviation from the intended per-arm rule: adding `resume` to one arm
+  changes how a sibling arm's non-resuming return is treated
+  (recover-and-continue versus abort). It is tracked as
+  [issue #177](https://github.com/Nimblesite/osprey/issues/177). Keep each
+  handler in a single mode: either no arm resumes, or every control-flow arm
+  does.
 - `resume` is lexical to the arm. It is rejected at top level and inside a
   lambda declared in an arm, because that lambda has no live arm continuation.
 - Explicit resume is native-only. WebAssembly supports direct value-substitution

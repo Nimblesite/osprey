@@ -313,6 +313,7 @@ fn map_contains(cg: &mut Codegen, args: &[Expr]) -> Result<Value> {
 }
 
 /// `mapGet(m, k) -> Result<V, _>` gated on `osprey_map_contains`.
+/// Implements [TYPE-MAP-LOOKUP] and [BUILTIN-MAP-GET].
 fn map_get(cg: &mut Codegen, args: &[Expr]) -> Result<Value> {
     let m = handle_arg(cg, args, 0)?;
     let k = boxed_arg(cg, args, 1)?;

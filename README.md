@@ -4,42 +4,36 @@
 
 # Osprey Programming Language
 
-Osprey is a practical functional language for building safe, fast native
-programs without the usual clutter. It combines strong inferred types,
-first-class effects and lightweight concurrency with a choice of familiar
-brace syntax or clean ML syntax.
+Osprey is a functional language with inferred types, algebraic effects, fiber
+concurrency, and a choice of brace or ML layout syntax.
 
 Osprey compiles through LLVM to native binaries and can also target
-WebAssembly. The project is in alpha and some specified features remain under
-development.
+WebAssembly. Osprey is alpha software.
 
 ## Language features
 
-- **One language, two first-class flavors** — Default (`.osp`) uses braces,
-  `fn` and familiar calls; ML (`.ospml`) uses layout, currying and whitespace
+- **One language, two flavors** — Default (`.osp`) uses braces, `fn`, and
+  parenthesized calls; ML (`.ospml`) uses layout, currying, and whitespace
   application. Both lower to the same program representation before type
   checking and code generation.
-- **Strong inferred types** — algebraic data types and pattern matching make
-  valid states and expected failures explicit without requiring obvious type
-  annotations everywhere.
-- **First-class effects** — typed operations and lexical handlers separate a
-  request for work from the code that performs it.
-- **Isolated fiber concurrency** — lightweight tasks communicate through
-  channels without a separate `async fn` kind.
+- **Inferred types** — algebraic data types and pattern matching express state
+  and failure without requiring every type annotation.
+- **Algebraic effects** — typed operations and lexical handlers separate an
+  operation from its implementation.
+- **Isolated fiber concurrency** — fibers communicate through typed channels
+  without a separate `async fn` kind.
 - **Selectable memory management** — native builds support the default
   non-reclaiming allocator, tracing garbage collection (`--memory=gc`) and
   Perceus reference counting (`--memory=arc`).
 - **Native and WebAssembly output** — native builds can call C through the FFI;
   C code remains outside Osprey's memory-safety guarantee.
 
-Effect operation inputs and outputs are checked statically. The compiler does
-not yet reject every missing handler or undeclared effect row, so an unhandled
-effect can still produce a runtime diagnostic. Resuming effects are currently
-native-only.
+Effect operation inputs and outputs are checked statically. Missing-handler and
+undeclared-row checks are incomplete, so an unhandled effect can produce a
+runtime diagnostic. Effect resumption is native-only.
 
-Each file selects its flavor by extension, a source marker or `--flavor` for a
-single-file build. Multi-file cross-flavor imports remain a design direction;
-do not rely on them as a complete feature.
+Each file selects its flavor by extension, a source marker, or `--flavor` for a
+single-file build. Multi-file cross-flavor imports are unsupported.
 
 ## Example
 
@@ -131,4 +125,4 @@ See the [WebAssembly specification](docs/specs/0022-WebAssemblyTarget.md) and
 
 The specifications define intended behavior. Individual chapters identify
 implementation gaps. The [feature status page](website/src/status.md) summarizes
-the most important current limits.
+implementation limits.

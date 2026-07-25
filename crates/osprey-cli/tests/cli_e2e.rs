@@ -5,7 +5,7 @@
 //! `tests/examples_compile.rs`) can never reach. Spawning the built binary does
 //! reach them, and because `cargo llvm-cov` instruments `CARGO_BIN_EXE_osprey`
 //! too, each child's coverage is merged back into the report — so these tests
-//! count toward the per-crate gate. [TEST-RULES][COVERAGE-THRESHOLDS-JSON]
+//! count toward the per-crate gate.
 
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};

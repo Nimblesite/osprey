@@ -91,6 +91,10 @@ pub struct Checker {
     /// editor hover can show the type of an unannotated binding. Resolved and
     /// published by [`infer_program`]. Implements [LSP-HOVER-VARIABLES]
     pub(crate) let_tys: Vec<(Position, Type)>,
+    /// Concrete arguments passed to representation-sensitive built-ins. These
+    /// are validated after inference so a variable constrained later in the
+    /// same body is checked at its final type.
+    pub(crate) builtin_uses: Vec<(String, Type)>,
     /// The built-in function names — user code may not redefine these.
     builtins: HashSet<String>,
     /// Stack of `(operation result type, handler answer type)` for the handler
@@ -132,6 +136,7 @@ impl Checker {
             fn_sigs: HashMap::new(),
             lambda_tys: Vec::new(),
             let_tys: Vec::new(),
+            builtin_uses: Vec::new(),
             builtins: HashSet::new(),
             resume_ctx: Vec::new(),
             handler_scopes: Vec::new(),
@@ -328,6 +333,8 @@ impl Checker {
         }
     }
 
+    /// Registers constructor fields before body inference, including fields
+    /// that refer to their own or another declared union [TYPE-UNION-REC].
     fn collect_type(
         &mut self,
         name: &str,
@@ -682,6 +689,20 @@ impl Checker {
         }
     }
 
+    /// Reject concrete receiver/value types that their built-in runtime cannot
+    /// interpret. Unresolved generalized variables remain the one inference
+    /// limitation: Osprey has no type-class constraint to preserve the
+    /// obligation in a polymorphic scheme.
+    fn validate_builtin_uses(&mut self) {
+        let uses = std::mem::take(&mut self.builtin_uses);
+        for (name, ty) in uses {
+            let resolved = self.ctx.apply(&ty);
+            if let Some(message) = crate::builtin_constraints::invalid_use(&name, &resolved) {
+                self.errors.push(TypeError::new(message));
+            }
+        }
+    }
+
     /// Build the instantiated field types of a constructor against fresh type
     /// arguments. Returns (per-type-param fresh var, declared field map).
     pub(crate) fn ctor_instance(&mut self, name: &str) -> Option<CtorInstance> {
@@ -816,6 +837,7 @@ fn checked_program(program: &Program) -> Checker {
     let mut env = base_env();
     checker.collect(program, &mut env);
     checker.check(program, &mut env);
+    checker.validate_builtin_uses();
     checker
 }
 
@@ -936,6 +958,86 @@ mod tests {
         assert!(errs
             .iter()
             .any(|e| e.message.contains("cannot redefine built-in")));
+    }
+
+    #[test]
+    fn receiver_directed_size_builtins_reject_unsupported_types() {
+        // [BUILTIN-COLLECTION-LENGTH] [BUILTIN-COLLECTION-ISEMPTY]
+        ok("let xs = [1, 2]\n\
+            let scores = { \"alice\": 1 }\n\
+            let a = length(\"abc\")\n\
+            let b = xs.length()\n\
+            let c = scores |> isEmpty\n");
+        ok("fn has_bytes(source) = length(source) > 0 && byteLength(source) > 0\n");
+        for source in [
+            "let n = length(42)\n",
+            "let n = isEmpty(false)\n",
+            "type R = { value: int }\nlet n = length(R { value: 1 })\n",
+            "let n = isEmpty(fn(x) => x)\n",
+        ] {
+            let errs = check(source);
+            assert!(
+                errs.iter().any(|e| e
+                    .message
+                    .contains("supports only string, List<T>, or Map<string, V>")),
+                "expected receiver rejection for {source:?}, got {errs:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn string_conversion_builtins_reject_runtime_handles() {
+        // [BUILTIN-PRINT] [BUILTIN-TOSTRING]
+        ok("fn noop() -> Unit = sleep(0)\n\
+            let a = print(1)\n\
+            let b = print(1.5)\n\
+            let c = print(true)\n\
+            let d = print(\"text\")\n\
+            let e = print(noop())\n\
+            let f = toString(intDiv(4, 2))\n\
+            extern fn textResult() -> Result<string, string>\n\
+            let g = print(textResult())\n");
+        for source in [
+            "type R = { value: int }\nlet s = toString(R { value: 1 })\n",
+            "let s = print([1, 2])\n",
+            "let m = { \"one\": 1 }\nlet s = toString(m)\n",
+            "let s = print(fn(x) => x)\n",
+            "let s = toString(range(0, 2))\n",
+            "let s = print(spawn 1)\n",
+            "let c = Channel(1)\nlet s = toString(c)\n",
+            "extern fn raw() -> Ptr\nlet s = print(raw())\n",
+            "extern fn bad() -> Result<List<int>, Error>\nlet s = toString(bad())\n",
+            "type R = { value: int }\nextern fn bad() -> Result<int, R>\nlet s = print(bad())\n",
+        ] {
+            let errs = check(source);
+            assert!(
+                errs.iter()
+                    .any(|e| e.message.contains("cannot convert value")),
+                "expected string-conversion rejection for {source:?}, got {errs:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn runtime_callbacks_use_their_exact_function_types() {
+        ok("fn event(pid: int, kind: int, data: string) -> Unit = print(data)\n\
+            let process = spawnProcess(\"echo ok\", event)\n\
+            fn request(method: string, path: string, headers: string, body: string) -> HttpResponse = HttpResponse { status: 200, headers: headers, contentType: \"text/plain\", streamFd: -1, isComplete: true, partialBody: body }\n\
+            let listening = httpListen(1, request)\n");
+        let process_errs = check(
+            "fn wrong(pid: int) -> Unit = print(pid)\n\
+             let process = spawnProcess(\"echo no\", wrong)\n",
+        );
+        assert!(process_errs
+            .iter()
+            .any(|e| e.message.contains("function arity mismatch")));
+        let http_errs = check(
+            "fn wrong(method: string, path: string, headers: string, body: string) = body\n\
+             let listening = httpListen(1, wrong)\n",
+        );
+        assert!(http_errs
+            .iter()
+            .any(|e| e.message.contains("type mismatch")));
     }
 
     #[test]

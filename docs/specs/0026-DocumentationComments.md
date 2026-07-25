@@ -77,8 +77,8 @@ Unrecognized Markdown remains text in its current region.
 
 ## Example extraction `[DOC-DOCTEST-HARNESS]`
 
-Inside a recognized examples section, each ` ```osprey ` fence becomes a
-`DocExample`. An immediately following ` ```output ` fence supplies
+Inside a recognized examples section, each fenced block labeled `osprey`
+becomes a `DocExample`. An immediately following fence labeled `output` supplies
 `expected_output` and sets `run` to `true`; without one, `expected_output` is
 absent and `run` is `false`. This contract covers extraction into the model,
 not execution by the example harness.
@@ -87,8 +87,8 @@ not execution by the example harness.
 
 A documentation comment attaches to the following declaration. Both flavors
 attach docs to functions, `let`/`mut` bindings, types, effects, externs,
-modules, and signatures, including declarations inside modules. Comments
-before non-documentable statements such as imports are discarded.
+modules, and signatures, including declarations inside modules. Only these
+declaration forms receive a documentation field.
 
 Docs do not attach separately to variants, fields, effect operations, or
 parameters.

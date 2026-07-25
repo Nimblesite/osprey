@@ -9,10 +9,17 @@ surface unless an ML example clarifies different call syntax.
 
 ## Basic I/O Functions
 
-```osprey
-print(value: any) -> Unit
-```
-Prints values to standard output with automatic type conversion.
+### `print(value: printable) -> Unit` — [BUILTIN-PRINT]
+
+`printable` is documentation shorthand, not a user-declared type. It includes
+`int`, `float`, `bool`, `string`, `Unit`, explicitly erased `any`, and
+`Result<T, E>` when both payloads are printable (with `Error` and `MathError`
+accepted as error payloads). Concrete records, collections, functions,
+iterators, fibers, channels, and pointers are rejected. Results render as
+`Success(value)` or `Error(message)`; `Unit` renders as `0`; `print` appends a
+newline. An explicitly erased `any` value is a compatibility exception, not a
+dynamic formatter: if it hides an aggregate, the raw pointer-sized value is
+rendered rather than the aggregate's contents.
 
 ```osprey
 print("Hello World")
@@ -45,68 +52,39 @@ n =
         Error _       => 0
 ```
 
-### `toString(value: any) -> string`
-Converts any value to its string representation.
+### `toString(value: printable) -> string` — [BUILTIN-TOSTRING]
+Uses the same accepted types and formatting as `print`, without writing output.
 
-## Testing Functions — [TESTING-BUILTINS]
-
-The built-in testing framework. Normative rules — TAP output, exit codes,
-filtering, discovery, the `osprey test` runner, and the VS Code Test Explorer
-— live in [Testing Framework](0027-TestingFramework.md); the three functions
-are listed here for completeness.
-
-### `test(name: string, body: fn() -> Unit) -> Unit` — &#91;TESTING-BUILTIN-TEST&#93;
-The normative contract is
-[defined in Testing Framework](0027-TestingFramework.md#testname-string-body-fn---a---unit--testing-builtin-test).
-It runs `body` as one named test case and prints a TAP result line. A program
-that uses any testing built-in exits non-zero when a case failed.
-
-### `expect(actual: any, expected: any) -> Unit` — &#91;TESTING-BUILTIN-EXPECT&#93;
-The normative contract is
-[defined in Testing Framework](0027-TestingFramework.md#expectactual-any-expected-any---unit--testing-builtin-expect).
-It is an equality assertion in Jest argument order. Canonical-string equality
-with `Result` auto-unwrap; a mismatch marks the enclosing case failed and
-prints a diagnostic without aborting the case.
-
-### `check(label: string, expected: any, actual: any) -> Unit` — &#91;TESTING-BUILTIN-CHECK&#93;
-The normative contract is
-[defined in Testing Framework](0027-TestingFramework.md#checklabel-string-expected-any-actual-any---unit--testing-builtin-check).
-It is a labeled equality assertion in Alcotest argument order (expected before
-actual).
+## Testing Functions
 
 ```osprey
-fn add(a, b) = a + b
-test("addition works", fn() => expect(add(2, 3), 5))
+test(name: string, body: fn() -> a) -> Unit
+expect(actual: any, expected: any) -> Unit
+check(label: string, expected: any, actual: any) -> Unit
 ```
 
-```osprey-ml
-add (a, b) = a + b
-test "addition works" (\() => check "sum" 5 (add (2, 3)))
-```
-
-Unlike other built-ins, these three names are shadowable: a user-defined
-`test`/`expect`/`check` function replaces the built-in
-([TESTING-SHADOWING]).
+Their behavior, shadowing rule, TAP output, filtering, discovery, coverage, and
+editor integration are specified in [Testing Framework](0027-TestingFramework.md).
 
 ## Numeric Functions
 
-### `abs(n: int) -> int`
-Absolute value of an integer.
+### `abs(n: int) -> int` — [BUILTIN-ABS]
+Returns the absolute value using the language's signed 64-bit wrapping
+arithmetic. Because `2^63` is not representable, `abs(-9223372036854775808)`
+returns `-9223372036854775808`.
 
 ### `intDiv(a: int, b: int) -> Result<int, Error>` — [BUILTIN-INTDIV]
-Truncating integer division (rounds toward zero), divide-by-zero checked. The
-`/` operator is **float-only** by the [Type System](0004-TypeSystem.md) spec
-(`int / int` promotes to `float`); `intDiv` is its integer sibling. A zero
-divisor returns `Error`; otherwise it returns `Success(quotient)`. Like the
-`/` and `%` operators, the `Success` payload auto-unwraps in the contexts
-listed under [Result Auto-Unwrapping](0004-TypeSystem.md#result-auto-unwrapping);
-under [ARITH-PLAIN](0013-ErrorHandling.md#arithmetic-and-result--arith-plain)
-`+ - *` return plain scalars, so there is no `Result` to unwrap.
+Truncates toward zero. A zero divisor returns `Error("division by zero")`;
+`intDiv(-9223372036854775808, -1)` returns `Error("integer overflow")`;
+all other inputs return `Success(quotient)`. The `/` operator instead returns
+`float`. The `Success` payload auto-unwraps only in the contexts listed under
+[Result Auto-Unwrapping](0004-TypeSystem.md#result-auto-unwrapping).
 
 ```osprey
 intDiv(7, 2)        // Success(3)
 intDiv(255643, 10)  // Success(25564)
 intDiv(5, 0)        // Error — "division by zero"
+intDiv(-9223372036854775808, -1) // Error — "integer overflow"
 fn half(n) -> int = intDiv(n, 2)   // 3 — the declared return unwraps the Result
 ```
 
@@ -114,15 +92,14 @@ fn half(n) -> int = intDiv(n, 2)   // 3 — the declared return unwraps the Resu
 intDiv (7, 2)        // Success(3)
 intDiv (255643, 10)  // Success(25564)
 intDiv (5, 0)        // Error — "division by zero"
+intDiv (-9223372036854775808, -1) // Error — "integer overflow"
 
 half : int -> int                  // signature is load-bearing: it unwraps
 half n = intDiv (n, 2)             // 3
 ```
 
-The return type is required for the unwrap. Without it — `fn half(n) = intDiv(n, 2)` — the
-function infers `Result<int, Error>` and `half(7)` renders `Success(3)`; the
-declared type is what makes the boundary an auto-unwrap context ([Result
-Auto-Unwrapping](0004-TypeSystem.md#result-auto-unwrapping)).
+Without the declared return type, `half` infers `Result<int, Error>` and
+`half(7)` renders `Success(3)`.
 
 ### `checkedAdd` / `checkedSub` / `checkedMul` — [BUILTIN-CHECKED-ARITH]
 Each has signature `(a: int, b: int) -> Result<int, Error>`. Overflow-checked
@@ -153,8 +130,7 @@ twice n = checkedMul (n, 2)
 A cryptographically-secure uniform random non-negative integer in `[0, 2^63-1]`,
 drawn fresh from the operating system's CSPRNG (`arc4random_buf` on macOS/BSD,
 `getrandom(2)` on Linux, falling back to `/dev/urandom`). It carries no userspace
-seed or state, so the stream is unpredictable and never reproducible — suitable
-for security-sensitive use as well as randomized inputs.
+seed or state, so calls are not reproducible.
 
 ```osprey
 let token = random()        // e.g. 7240982340198 (varies every call)
@@ -233,7 +209,7 @@ All three desugar to the same call. Rules:
 
 - **Pipe (`x |> f`)** rewrites to `f(x)`. With extra args, `x |> f(a, b)` becomes `f(x, a, b)`. A bare identifier on the right (`x |> f`) is auto-promoted to a call — no parens needed for single-arg functions. See [Iterators](0010-LoopConstructsAndFunctionalIterators.md#pipe-operator--builtin-iter-pipe).
 - **UFCS (`x.f(args)`)** rewrites to `f(x, args)`. **Parens are required** to disambiguate from field access — `x.f` always means field access, never a method call. If a record has a field named `f`, field access wins; UFCS is the fallback.
-- **Direct call** is plain function application; nothing magic.
+- **Direct call** is ordinary function application.
 
 Multi-argument functions in this spec are documented subject-first (e.g. `split(s: string, separator: string)`) so all three forms work uniformly.
 
@@ -244,6 +220,9 @@ Returns the number of bytes. It is equivalent to `byteLength` for strings.
 
 #### `isEmpty(s: string) -> bool` — [BUILTIN-STRING-ISEMPTY]
 True iff `length(s) == 0`. Equivalent to `length(s) == 0` but constant-time.
+The same names accept `List<T>` and `Map<string, V>` as described under
+[Collection Functions](#collection-functions); no other receiver type is
+accepted.
 
 ### Search (total) — [BUILTIN-STRING-SEARCH]
 
@@ -275,7 +254,8 @@ contains ("hello", "")             // true
 
 #### `indexOf(s: string, needle: string) -> Result<int, Error>` — [BUILTIN-STRING-INDEXOF]
 Returns the byte index of the first occurrence of `needle`, or
-`Error(NotFound)` if absent. An empty `needle` returns `Success { value: 0 }`.
+`Error` with `"indexOf: substring not found"` if absent. An empty `needle`
+returns `Success { value: 0 }`.
 
 ### Cursor Access (total, O(1)) — [BUILTIN-STRING-CURSOR]
 
@@ -285,10 +265,15 @@ These primitives provide non-allocating access to UTF-8 bytes and codepoints.
 Byte length of the underlying UTF-8 storage. Equivalent to `length(s)`. O(1).
 
 #### `byteAt(s: string, i: int) -> Result<int, Error>` — [BUILTIN-STRING-BYTEAT]
-Returns the UTF-8 byte at index `i` as an `int` in `[0, 255]`, or `Error(IndexOutOfRange)` if `i < 0` or `i >= byteLength(s)`. O(1). Does **not** allocate.
+Returns the UTF-8 byte at index `i` as an `int` in `[0, 255]`, or `Error` if
+`i < 0` or `i >= byteLength(s)`. O(1). Does **not** allocate.
 
 #### `codePointAt(s: string, byteIndex: int) -> Result<int, Error>` — [BUILTIN-STRING-CODEPOINTAT]
-Decodes the UTF-8 codepoint starting at `byteIndex` and returns it as an `int`. Returns `Error(IndexOutOfRange)` if `byteIndex` is out of range, or `Error(InvalidArgument)` if it does not land on a codepoint boundary or the bytes are malformed. O(1) (at most 4 bytes read). Pair with `codePointWidth` to advance:
+Decodes the UTF-8 codepoint starting at `byteIndex` and returns it as an `int`.
+Returns `Error` if the index is out of range, does not land on a codepoint
+boundary, or begins a truncated, overlong, surrogate, out-of-range, or otherwise
+malformed UTF-8 sequence. O(1) (at most 4 bytes read). Pair with
+`codePointWidth` to advance:
 
 ```osprey
 type CharStep = { codePoint: int, nextIndex: int }
@@ -317,15 +302,18 @@ nextChar (s, i) =
 ```
 
 #### `codePointWidth(codepoint: int) -> Result<int, Error>` — [BUILTIN-STRING-CODEPOINTWIDTH]
-Returns the number of UTF-8 bytes the codepoint encodes to (1–4), or `Error(InvalidArgument)` if `codepoint` is not a valid Unicode scalar value.
+Returns the number of UTF-8 bytes the codepoint encodes to (1–4), or `Error`
+if `codepoint` is not a valid Unicode scalar value.
 
 #### `fromCodePoint(codepoint: int) -> Result<string, Error>` — [BUILTIN-STRING-FROMCODEPOINT]
-Builds a single-codepoint `string`. Inverse of `codePointAt`. `Error(InvalidArgument)` for invalid scalar values.
+Builds a single-codepoint `string`. Inverse of `codePointAt`. Returns `Error`
+for surrogates, values outside `0..0x10FFFF`, and U+0000, which the
+NUL-terminated string ABI cannot represent.
 
 ### Substrings — [BUILTIN-STRING-SUBSTRINGS]
 
 #### `substring(s: string, start: int, end: int) -> Result<string, Error>` — [BUILTIN-STRING-SUBSTRING]
-Extracts bytes in `[start, end)`. Returns `Error(IndexOutOfRange)` if
+Extracts bytes in `[start, end)`. Returns `Error` if
 `start < 0`, `end > length(s)`, or `start > end`.
 
 #### `take(s: string, n: int) -> string` — [BUILTIN-STRING-TAKE]
@@ -339,8 +327,8 @@ Returns `s` without its first `n` bytes, with the same clamping rules as
 ### Splitting and Joining — [BUILTIN-STRING-LIST]
 
 #### `split(s: string, separator: string) -> Result<List<string>, Error>` — [BUILTIN-STRING-SPLIT]
-Splits `s` on every occurrence of `separator`. Returns
-`Error(InvalidArgument)` if `separator` is empty.
+Splits `s` on every occurrence of `separator`. Returns `Error` with
+`"split: separator must not be empty"` if `separator` is empty.
 
 ```osprey
 match split("a,b,c", ",") {
@@ -376,10 +364,12 @@ ASCII case conversion. Other bytes are copied unchanged.
 Remove leading, trailing, or both runs of ASCII whitespace.
 
 #### `replace(s: string, needle: string, replacement: string) -> Result<string, Error>` — [BUILTIN-STRING-REPLACE]
-Replaces **every** occurrence of `needle` with `replacement`. Returns `Error(InvalidArgument)` if `needle` is empty (same reasoning as `split`).
+Replaces every occurrence of `needle` with `replacement`. Returns `Error` if
+`needle` is empty.
 
 #### `repeat(s: string, n: int) -> Result<string, Error>` — [BUILTIN-STRING-REPEAT]
-Concatenates `s` with itself `n` times. Returns `Error(InvalidArgument)` if `n < 0`. `repeat(s, 0) == ""`.
+Concatenates `s` with itself `n` times. Returns `Error` if `n < 0`.
+`repeat(s, 0) == ""`.
 
 #### `reverse(s: string) -> string` — [BUILTIN-STRING-REVERSE]
 Reverses byte order.
@@ -387,17 +377,20 @@ Reverses byte order.
 #### `padStart(s: string, targetLength: int, fill: string) -> Result<string, Error>` — [BUILTIN-STRING-PADSTART]
 #### `padEnd(s: string, targetLength: int, fill: string) -> Result<string, Error>` — [BUILTIN-STRING-PADEND]
 Pads `s` on the left or right with repeated bytes from `fill` until it reaches
-`targetLength` bytes. Returns `s` unchanged if already long enough and
-`Error(InvalidArgument)` if `fill` is empty.
+`targetLength` bytes. Returns `s` unchanged if already long enough and `Error`
+if `fill` is empty.
 
 ### Parsing — [BUILTIN-STRING-PARSING]
 
 #### `parseInt(s: string) -> Result<int, Error>` — [BUILTIN-STRING-PARSEINT]
 Parses a base-10 signed integer. Leading/trailing whitespace is rejected;
-callers must `trim` first. Returns `Error(ParseFailed)` on non-numeric input.
+callers must `trim` first. Returns `Error` on invalid or out-of-range input.
 
 #### `parseFloat(s: string) -> Result<float, Error>` — [BUILTIN-STRING-PARSEFLOAT]
-Parses a base-10 floating-point number. Same strictness as `parseInt`.
+Parses a finite base-10 number with an optional sign, decimal point, and
+decimal exponent. At least one digit is required; surrounding whitespace,
+NaN, infinity, hexadecimal floats, malformed exponents, and non-finite results
+return `Error`.
 
 ### Concatenation Operator — [BUILTIN-STRING-CONCAT]
 
@@ -437,17 +430,58 @@ let result = spawnProcess("echo 'Hello'", processEventHandler)
 ```
 
 ### `awaitProcess(processId: int) -> int`
-Waits for process completion and returns the exit code.
+Waits for process completion and returns the exit code, or `-1` if the handle
+is outside the valid range or has no process.
 
 ### `cleanupProcess(processId: int) -> Unit`
 Releases process resources.
 
-## Collection Functions — [BUILTIN-COLLECTIONS]
+## JSON Document Functions — [BUILTIN-JSON]
+
+```osprey
+jsonParse(text: string) -> Result<int, Error>
+jsonGet(document: int, path: string) -> Result<string, Error>
+jsonLength(document: int, path: string) -> int
+jsonFree(document: int) -> Result<int, Error>
+```
+
+`jsonParse` returns a positive opaque document handle. Paths use dotted object
+keys and bracketed array indices, such as `user.items[0].name`; `""` addresses
+the root. `jsonGet` converts a string, number, boolean, or null scalar to a
+string and returns `Error` for an invalid path, handle, array, or object.
+`jsonLength` returns an array length or object member count and returns `-1`
+for an invalid path, handle, or scalar. A successful handle must be released
+once with `jsonFree`; an invalid handle or double free returns `Error`.
+
+## Terminal Functions — [BUILTIN-TERM]
+
+```osprey
+termReadKey() -> Result<string, Error>
+termRawMode(enabled: int) -> Unit
+termCols() -> int
+termRows() -> int
+termClear() -> int
+termMoveCursor(row: int, column: int) -> int
+termHideCursor() -> int
+termShowCursor() -> int
+```
+
+On POSIX terminals, `termRawMode(1)` disables canonical input and echo and
+enters the alternate screen; `termRawMode(0)` restores the saved mode and
+screen. Its native status is not exposed. `termReadKey` returns normalized key
+names such as `Enter`, `Up`, or `Ctrl-C`, or the literal input byte.
+`termCols` and `termRows` return `-1` when the terminal size is unavailable.
+The remaining functions write ANSI control sequences and return `0`; cursor
+coordinates below `1` are clamped to `1`. Windows implementations return
+`Error` from `termReadKey`, do nothing for raw mode, and return `-1` from the
+integer functions.
+
+## Collection Functions
 
 Collection operations return new values without changing their inputs. Except
 for `length` and `isEmpty`, public names are prefixed with `list` or `map`.
 
-### Common (`List` and `Map`) — [BUILTIN-COLLECTION-COMMON]
+### Common (`List` and `Map`)
 
 #### `length(list: List<T>) -> int` &nbsp; / &nbsp; `length(map: Map<string, V>) -> int` — [BUILTIN-COLLECTION-LENGTH]
 Returns the element count. `listLength` and `mapLength` are equivalent
@@ -477,7 +511,8 @@ Concatenates two lists. `left + right` is equivalent.
 Returns the elements in reverse order.
 
 #### `listContains(list: List<T>, value: T) -> bool` — [BUILTIN-LIST-CONTAINS]
-Returns whether an element is structurally equal to `value`.
+Strings compare by content. Scalar values compare by value; managed handles
+such as nested lists and records compare by identity.
 
 #### `forEachList(list: List<T>, function: fn(T) -> Unit) -> Unit` — [BUILTIN-LIST-FOREACH]
 Calls `function` once per element in index order.

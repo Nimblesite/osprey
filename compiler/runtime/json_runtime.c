@@ -3,15 +3,11 @@
 //
 // Surface (all handle-based; handles are 1-based ints):
 //   json_parse(s)            -> handle (>=1) or negative error
-//   json_type(h, path)       -> "null"/"bool"/"number"/"string"/"array"/"object" or NULL
 //   json_get(h, path)        -> scalar value as a string, or NULL if not a scalar
 //   json_length(h, path)     -> element count for arrays/objects, or -1
-//   json_keys(h, path)       -> comma-separated object keys, or NULL
 //   json_free(h)             -> 0 on success, -1 on invalid/double free
 //
 // Path syntax: "a.b[0].c". Keys containing '.' or '[' are not addressable in v1.
-// This C builtin is slated for replacement by the Osprey-native parser
-// (see docs/plans/production-primitives.md).
 
 #include <pthread.h>
 #include <stdbool.h>
@@ -519,25 +515,6 @@ int64_t json_parse(char *s) {
   return handle;
 }
 
-char *json_type(int64_t handle, char *path) {
-  pthread_mutex_lock(&g_json_mutex);
-  const JVal *v = lookup(handle, path ? path : "");
-  const char *t = NULL;
-  if (v) {
-    switch (v->type) {
-    case J_NULL: t = "null"; break;
-    case J_BOOL: t = "bool"; break;
-    case J_NUM: t = "number"; break;
-    case J_STR: t = "string"; break;
-    case J_ARR: t = "array"; break;
-    case J_OBJ: t = "object"; break;
-    }
-  }
-  char *out = t ? strdup(t) : NULL;
-  pthread_mutex_unlock(&g_json_mutex);
-  return out;
-}
-
 char *json_get(int64_t handle, char *path) {
   pthread_mutex_lock(&g_json_mutex);
   const JVal *v = lookup(handle, path ? path : "");
@@ -576,30 +553,6 @@ int64_t json_length(int64_t handle, char *path) {
   }
   pthread_mutex_unlock(&g_json_mutex);
   return len;
-}
-
-char *json_keys(int64_t handle, char *path) {
-  pthread_mutex_lock(&g_json_mutex);
-  const JVal *v = lookup(handle, path ? path : "");
-  char *out = NULL;
-  if (v && v->type == J_OBJ) {
-    size_t total = 1; // NUL
-    for (size_t i = 0; i < v->nmemb; i++) {
-      total += strlen(v->keys[i]) + 1; // key + comma
-    }
-    out = malloc(total);
-    if (out) {
-      out[0] = '\0';
-      for (size_t i = 0; i < v->nmemb; i++) {
-        if (i > 0) {
-          strcat(out, ",");
-        }
-        strcat(out, v->keys[i]);
-      }
-    }
-  }
-  pthread_mutex_unlock(&g_json_mutex);
-  return out;
 }
 
 int64_t json_free(int64_t handle) {

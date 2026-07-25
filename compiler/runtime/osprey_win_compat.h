@@ -1,7 +1,7 @@
 /*
  * osprey_win_compat.h — Windows (MinGW-w64 / MSYS2 UCRT64) compatibility shims.
  *
- * Implements [WINDOWS-PORT]. Included only on Windows (`_WIN32`). The POSIX
+ * Included only on Windows (`_WIN32`). The POSIX
  * build never sees this header. Kept deliberately small:
  *
  *   Phase 1 (core language): just <windows.h>. The process runtime is stubbed
@@ -10,7 +10,7 @@
  *   Phase 3 (process):        the system runtime uses the Win32 process APIs
  *           that <windows.h> already provides.
  *
- * winpthreads (shipped by MSYS2 UCRT64) provides <pthread.h> and -lpthread
+ * winpthreads from MSYS2 UCRT64 provides <pthread.h> and -lpthread
  * unchanged, so fiber/effects code needs no shim here.
  */
 #ifndef OSPREY_WIN_COMPAT_H
@@ -23,7 +23,7 @@
 #endif
 
 /* winsock2.h + ws2tcpip.h MUST come before windows.h, otherwise windows.h pulls
- * in the legacy winsock.h and the two conflict. [WINDOWS-PORT-PHASE2] */
+ * in the legacy winsock.h and the two conflict. */
 #include <winsock2.h>
 #include <ws2tcpip.h>
 #include <windows.h>

@@ -107,7 +107,7 @@ fn verdict_arm(ctor: &str, fields: &[&str], report_fn: &str, arg: Option<&str>) 
     }
 }
 
-/// `expect(actual, expected)` — Jest argument order, no label.
+/// `expect(actual, expected)` — computed value before expected value, no label.
 fn gen_expect(cg: &mut Codegen, args: &[&Expr]) -> Result<Value> {
     let [actual, expected] = args else {
         return Err(CodegenError::invalid(
@@ -119,7 +119,7 @@ fn gen_expect(cg: &mut Codegen, args: &[&Expr]) -> Result<Value> {
     Ok(emit_assert(cg, "null", &e, &a))
 }
 
-/// `check(label, expected, actual)` — Alcotest argument order.
+/// `check(label, expected, actual)` — expected value before computed value.
 fn gen_check(cg: &mut Codegen, args: &[&Expr]) -> Result<Value> {
     let [label, expected, actual] = args else {
         return Err(CodegenError::invalid(

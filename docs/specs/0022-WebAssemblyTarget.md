@@ -4,8 +4,6 @@
 The backend reuses Osprey's LLVM IR, compiles it with clang, and links it with
 `wasm-ld`, wasi-libc, and the portable Osprey runtime archive.
 
-## Status
-
 The portable language core runs under a WASI host. CI compiles and validates the
 hello fixture, runs it through Node's WASI host and the browser shim, then runs
 `crates/diff_wasm_examples.sh`. The golden harness compiles every Default-flavor
@@ -63,8 +61,8 @@ The driver:
    `libosprey_runtime_wasm.a`, and wasi-libc.
 
 `OSPREY_WASM_CC`, `OSPREY_WASM_LD`, and `OSPREY_WASM_RUN` override the clang,
-linker, and runtime commands. Linking directly avoids an unnecessary dependency
-on clang's wasm compiler-rt archive.
+linker, and runtime commands. Direct linking does not require clang's wasm
+compiler-rt archive.
 
 ## Portable Runtime Archive [WASM-TARGET-RUNTIME]
 
@@ -112,7 +110,7 @@ link. The golden harness classifies that known undefined-symbol case as `SKIP`.
 The wasm archive contains `memory_runtime.c`, the same non-reclaiming
 `osp_alloc` implementation used by native `--memory=default`. The wasm driver
 does not receive the parsed `--memory` value, so `--memory=gc` and
-`--memory=arc` currently still link this default archive.
+`--memory=arc` also link this default archive.
 
 The native conservative collector is not in `WASM_RT_SRC`: it depends on native
 stack/register/data-segment scanning, `setjmp`, and pthread synchronization.

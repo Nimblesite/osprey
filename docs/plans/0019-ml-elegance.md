@@ -1,7 +1,7 @@
 # Plan 0019 — ML Flavor Elegance
 
-**Status:** **Phases 1.1–1.5, 2 and 3 are implemented and verified**, together
-with both recorded defects and two more found during implementation. `+ - *` return plain scalars, `%` is zero-checked,
+**Status:** **Phases 1.1–1.5, 2 and 3 are implemented and verified.** `+ - *`
+return plain scalars, `%` is zero-checked,
 `checkedAdd` / `checkedSub` / `checkedMul` exist in both flavors, `_` is a legal
 parameter in both flavors, positional variant payloads are shared core, and ML
 inline unions, clause sets, grouped patterns and `?:` all work.
@@ -11,21 +11,15 @@ byte-identical LLVM IR to its Default twin. Specs
 [0013 — Error Handling](../specs/0013-ErrorHandling.md),
 [0004 — Type System](../specs/0004-TypeSystem.md) and
 [0003 — Syntax](../specs/0003-Syntax.md) carry the shipped surface as normative
-text. **Phase 4 `[ARITH-EFFECT]` remains specified, not implemented**, deferred
-behind effect-row inference; the corpus sweep for silently-shadowed same-name
-bindings, the `make bench` re-run, and the `osprey-fmt` round-trip audit are
-still open. See [§What is left](#what-is-left).
+text. The corpus sweep for silently-shadowed same-name bindings and the
+`osprey-fmt` round-trip audit are still open. See
+[§What is left](#what-is-left).
 
 ## Summary
 
-The ML flavor was more verbose than the language it takes its name from.
-`benchmarks/cases/binarytrees/binarytrees.ospml` was 22 code lines; its Haskell
-twin is 9, of which 3 are optional signatures. Five of Osprey's decisions
-accounted for the gap, and the largest of them defended nothing.
-
-This plan removes the ceremony in four phases, ordered so that every phase ships
-independently and the two cheapest phases carry the whole line-count win. The
-target:
+`benchmarks/cases/binarytrees/binarytrees.ospml` was 22 code lines. Five syntax
+and type-system constraints accounted for the removable lines. The work was
+split into independently shippable phases. The target was:
 
 ```osprey-ml
 type Tree = Leaf | Node Tree Tree
@@ -40,11 +34,8 @@ print "${range 0 1200 |> fold 0 (\(acc, _) => acc + check (make 13))}"
 ```
 
 `fold`'s callback is flat, not curried, so the lambda takes a pair pattern.
-6 code lines / ~73 tokens, against signature-free Haskell's 6 / ~79 — and Osprey
-pays for none of `main`, `IO ()`, `import`, `show`, or the `:: Int` defaulting
-pin, while keeping enforced exhaustiveness and a checked `/`. That is what
-shipped: 22 code lines down to 6, emitting LLVM IR byte-identical to the Default
-twin `binarytrees.osp`.
+The shipped file is 6 code lines / ~73 tokens, down from 22 lines, and emits LLVM
+IR byte-identical to the Default twin `binarytrees.osp`.
 
 ## Evidence
 
@@ -62,7 +53,7 @@ is now fixed.
 | `(` is a parse error in pattern position | `crates/osprey-syntax/src/ml/parser.rs:1459` | blocks the fix above |
 | ML has no `?:` | `crates/osprey-syntax/src/ml/lexer.rs` rejects `?` outright, though Default's `?:` works | 207 `Success v => v` / `Error m => fallback` blocks in 38 files, ~620 LOC (15–20% of all hand-written ML) |
 
-### The arithmetic wrapper is a fiction
+### Arithmetic result wrappers
 
 `gen_arith` (`crates/osprey-codegen/src/expr.rs`) emitted a bare
 `add i64` / `sub i64` / `mul i64` / `srem i64` and unconditionally `make_ok`ed
@@ -75,14 +66,14 @@ print("modzero: ${10 % 0}")     // garbage — undefined `srem` by zero
 ```
 
 `MathError::Overflow` was unreachable and `%`-by-zero was undefined behaviour;
-the corpus paid 11 wrapper functions and 112 signature lines for a guarantee
-that never existed. `%` is now zero-checked — `10 % 0` yields
-`Error(division by zero)` — and the overflow guarantee is real wherever it is
-asked for, through `checkedAdd` / `checkedSub` / `checkedMul`. Bare `+` still
-wraps; overflow checking is opt-in at the call site.
+the corpus paid 11 wrapper functions and 112 signature lines although codegen
+performed no overflow check. `%` is now zero-checked — `10 % 0` yields
+`Error(division by zero)` — and `checkedAdd` / `checkedSub` / `checkedMul`
+detect overflow. Bare `+` still wraps; overflow checking is opt-in at the call
+site.
 
-**And it was not only a source-level cost — it was a heap allocation per
-arithmetic operation.** `make_ok` → `make_result`
+The wrapper also caused one heap allocation per arithmetic operation.
+`make_ok` → `make_result`
 (`crates/osprey-codegen/src/result.rs:22-40`) calls `malloc_struct`, so
 `fn addup(a: int, b: int) -> int = a + b` emitted:
 
@@ -95,14 +86,10 @@ store i8 0, i8* %r6                                    ; store discriminant
 ```
 
 — one `add`, one runtime allocation, three stores, then an immediate unwrap back
-to `i64`. Every `+`, `-`, `*` and `%` in every Osprey program paid this. That
-made `[ARITH-PLAIN]` the largest single performance change available in the
-compiler, not merely a syntax cleanup: the arithmetic-dominated benchmark cases
-(`fib`, `ackermann`, `nestedloop`, `collatz`, `binarytrees`) allocated once per
-operation. `+ - *` now allocate nothing; only `/` and `%` still build a
-`Result`. `website/src/benchmarks.md` previously attributed the resulting gap to
-"the cost of that safety"; it has been corrected, and the suite still awaits
-re-measurement.
+to `i64`. Every `+`, `-`, `*` and `%` paid this cost. The arithmetic-dominated
+benchmark cases (`fib`, `ackermann`, `nestedloop`, `collatz`, `binarytrees`)
+allocated once per operation. `+ - *` now allocate nothing; only `/` and `%`
+still build a `Result`.
 
 ### Defects fixed along the way
 
@@ -203,7 +190,7 @@ all-irrefutable duplicates flips that to first-wins, silently, which is why the
 sweep was deliberately **not** done and the preferred unreachable-clause error
 is not yet emitted — both remain open. Non-adjacent same-name bindings must be a
 hard duplicate-definition error, never a merge: a function whose definition is
-scattered through a file is worse than the ceremony it removes.
+scattered through a file would otherwise have order-dependent clause grouping.
 
 ## Phase 2 — &#91;ARITH-PLAIN&#93;
 
@@ -222,27 +209,25 @@ This phase records its type-system implementation; it required no AST change.
   registered in `crates/osprey-types/src/builtins.rs` and documented in
   `builtin_docs_lang.rs`, signature `(a: int, b: int) -> Result<int, MathError>`,
   lowered through `llvm.s{add,sub,mul}.with.overflow.i64`, following the existing
-  `intDiv` precedent. The overflow guarantee is real for the first time; it is
-  opt-in at the call site that wants it.
+  `intDiv` precedent. These builtins report overflow; checking is opt-in at the
+  call site.
 - Specs 0004 and 0013 reflect this. Auto-unwrap context 1 ("nested arithmetic")
   ceases to exist — five contexts become four.
-- Churn, now absorbed: every `.expectedoutput` showing `Success(n)` from
-  `toString` over an arithmetic expression. Large but mechanical.
+- Every `.expectedoutput` showing `Success(n)` from `toString` over an
+  arithmetic expression was regenerated.
 
-The line to defend in review: operators whose only failure mode is overflow
+Contract: operators whose only failure mode is overflow
 return the plain type — overflow wraps, and already does so today; operators
 that can fail on a value with no representable result (`/` and `%` by zero) keep
 `Result`.
 
-**Result: binarytrees 14 → 6 lines.** Corpus-wide, 11 operator wrappers deleted
-and 112 signature lines become removable. Separately and more importantly, one
-heap allocation per arithmetic operation is gone — `make bench` and
-`website/src/benchmarks.md` still owe the new numbers.
+**Result: binarytrees 14 → 6 lines.** Corpus-wide, 11 operator wrappers were
+deleted, 112 signature lines became removable, and one heap allocation per
+arithmetic operation was eliminated.
 
 ### Rejected: the match-arm `Result` join
 
-Making match arms join `Result<T, E>` with `T` looks like the smaller fix and is
-not. Three independent reasons:
+Joining match arms of `Result<T, E>` with `T` was rejected for three reasons:
 
 1. **Non-principal.** The checker is an eager unifier with no deferred
    constraints. When an arm's pruned type is still `Type::Var` the join must
@@ -300,42 +285,6 @@ diagnosed, never silently mis-lowered as a curried call.
 **Result: the 6-line target at ~73 tokens, IR-identical to its Default twin.**
 Corpus-wide, 298 `field = value` pairs become deletable as the corpus migrates.
 
-## Phase 4 — `[ARITH-EFFECT]`
-
-The end state, and the thing no comparable language can do: `+ - *` return `int`
-and *perform* `Arith.overflow`; `/` and `%` perform `Arith.divideByZero`. The
-operation result type is `int`, so a handler may `resume` with a saturating,
-wrapping, or sentinel value, and the *same* expression is trapping, saturating,
-or wrapping depending on an enclosing handler.
-
-```osprey-ml
-handle Arith
-    overflow op => resume 9223372036854775807     // saturate
-in
-    check (make 13)
-```
-
-**Blocker:** `crates/osprey-types/src/check.rs:582-592` takes effect rows from
-declarations only. There is no effect-row inference, so the options today are
-`! Arith` on every arithmetic-bearing signature — resurrecting the 112 signature
-lines this plan exists to delete — or exempting `Arith` from the unhandled-effect
-check.
-
-**Reject the exemption.** An effect that can never appear in a row and is never
-reported unhandled is not typed by the effect system; it is an abort with
-handler syntax attached. It punches a permanent hole in the guarantee Osprey
-markets as world-first, and the moment there is a second ambient effect the claim
-becomes "compile-time effect safety, except…".
-
-Therefore: build effect-row inference first — the natural completion of the
-effect system, owed anyway (see
-[plan 0016](0016-algebraic-effects-and-handlers.md)) — then land
-`[ARITH-EFFECT]` with a genuinely inferred row. `[ARITH-PLAIN]` is
-forward-compatible: the surface syntax is identical either way, so nothing
-written in phases 1–3 changes. Only the row and the codegen path do. Measure the
-branch cost of the overflow intrinsics before merge and keep the unchecked
-lowering behind a release flag if it shows.
-
 ## Compatibility budget
 
 **Constraint: slight breaking changes are acceptable; a reassembly of the flavor
@@ -389,8 +338,6 @@ Phases 1.1–1.5, 2 and 3 and both defects are implemented and verified: 148/148
 differential examples pass and the cross-flavor IR-equivalence test passes.
 What remains:
 
-- **Phase 4 `[ARITH-EFFECT]`** — deferred, blocked on effect-row inference. The
-  specs describe it and mark it unimplemented.
 - **The phase 1.x corpus sweep** for silently-shadowed same-name bindings, with
   the unreachable-clause diagnostic it wants.
 - **`osprey-fmt` round-tripping** of the new ML forms, unaudited, together with
@@ -412,5 +359,4 @@ What remains:
 - [x] Defect — arithmetic propagates a `Result` operand's error instead of unwrapping it and fabricating `Success` (`(10 / 0) + 1.0` → `Error(division by zero)`)
 - [x] Defect — a Default interpolation fragment is re-parsed as a nested program mid-lowering, which cleared the positional-constructor table; `positional::install` now scopes to the outermost lowering, so `"${Node(l, r)}"` folds like the same expression outside a string
 - [x] Defect — a Default nested constructor sub-pattern (`Node(Node(a, b), c)`) was silently discarded and the arm behaved as `Node(_, _)`; it is now rejected with the ML flavor's diagnostic
-- [ ] Phase 4 — effect-row inference, then `[ARITH-EFFECT]`
 - [ ] Migrate the `.ospml` corpus per phase; `osprey-fmt` must round-trip every new form and never convert between clauses and `match`

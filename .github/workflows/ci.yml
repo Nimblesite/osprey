@@ -81,7 +81,7 @@ jobs:
           sudo apt-get install -y jq xvfb
           cargo install cargo-llvm-cov --locked || true
 
-      # [CI-DESLOP] The duplication gate. `make lint` runs the `deslop` target,
+      # `make lint` runs the `deslop` duplication gate,
       # which enforces the ceiling in .deslop.toml (deslop exits 3 when over).
       # Installed from the Nimblesite Homebrew tap so the gate is ENFORCED here;
       # the Makefile only skips it when the binary is entirely absent.
@@ -90,7 +90,7 @@ jobs:
       - name: Install deslop
         run: brew install nimblesite/tap/deslop
 
-      # [SWR-VERSION-MANIFEST] keep shipwright.json valid against the in-repo
+      # [EDITOR-VERSIONING] Keep shipwright.json valid against the in-repo
       # Shipwright schema. Do not use @nimblesite/shipwright-validate-manifest:
       # published versions currently ship without their bundled schemas.
       - name: Validate deployment manifest
@@ -101,8 +101,8 @@ jobs:
         run: make lint
 
       # make test = fail-fast + per-project coverage + threshold enforcement +
-      # the differential golden suite. Thresholds live in coverage-thresholds.json
-      # ([COVERAGE-THRESHOLDS-JSON]). Xvfb is needed because vscode-extension
+      # the differential golden suite. Thresholds live in coverage-thresholds.json.
+      # Xvfb is needed because vscode-extension
       # tests spawn a real VS Code Electron build.
       - name: Test
         run: xvfb-run -a make test

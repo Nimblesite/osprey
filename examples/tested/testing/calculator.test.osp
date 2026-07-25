@@ -1,5 +1,5 @@
 // The testing framework's own executable example [TESTING-BUILTINS]:
-// Jest-style test/expect in the Default flavor, twinned with the ML file.
+// Default-flavor test/expect twin of calculator.test.ospml.
 fn add(a, b) = a + b
 fn double(x) = x * 2
 fn parity(n) = match n % 2 == 0 {

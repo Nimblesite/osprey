@@ -275,7 +275,7 @@ def _lam_head(params):
 
 
 # Channel builtins are curried in ML (whitespace application, no tuple parens):
-#   send(ch, v) -> send ch v ; recv(ch) -> recv ch . [FLAVOR-ML] verified oracle.
+#   send(ch, v) -> send ch v ; recv(ch) -> recv ch . [FLAVOR-ML-CALL]
 CURRIED_BUILTINS = {"send", "recv"}
 
 

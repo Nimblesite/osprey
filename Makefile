@@ -41,7 +41,6 @@ endif
 # lists `:=` assignments as if they were targets; `?=` keeps the panel clean.
 # ---------------------------------------------------------------------------
 # Coverage — single source of truth is coverage-thresholds.json.
-# See REPO-STANDARDS-SPEC [COVERAGE-THRESHOLDS-JSON].
 COVERAGE_THRESHOLDS_FILE ?= coverage-thresholds.json
 
 # Toolchain / paths. BIN: the built CLI. RTB: C-runtime archive output dir
@@ -133,7 +132,6 @@ build: _runtime
 	cd $(EXT_DIR) && npm run compile
 
 ## test: Fail-fast tests + coverage + per-project threshold enforcement.
-##       See REPO-STANDARDS-SPEC [TEST-RULES] and [COVERAGE-THRESHOLDS-JSON].
 ##       Projects listed in coverage-thresholds.json are each tested + checked.
 test: build
 	@echo "==> Testing (fail-fast + coverage + per-project thresholds)..."
@@ -189,7 +187,7 @@ lint: deslop
 	cargo clippy --workspace --all-targets -- -D warnings
 	cd $(EXT_DIR) && npm run lint
 
-## deslop: Code-duplication gate [CI-DESLOP]. Fails the build when measured
+## deslop: Code-duplication gate. Fails the build when measured
 ## duplication exceeds the ceiling in .deslop.toml (exit 3). Exclusions and the
 ## threshold live in that committed config — the single source of truth. When
 ## the `deslop` binary is absent the gate is skipped with a loud warning so a
@@ -366,14 +364,14 @@ _runtime_wasm:
 	  cp bin/libosprey_runtime_wasm.a lib/
 
 # --- rust (crates/) ---------------------------------------------------------
-# Implements [TEST-RULES] — cargo test is fail-fast at the binary level by
+# cargo test is fail-fast at the binary level by
 # default (a failing test binary aborts the run); coverage via cargo-llvm-cov.
 # `--profile ci` is the workspace's fast-compile profile (see root Cargo.toml).
 _test_rust:
 	@echo "==> [rust] running tests with coverage..."
 	set -o pipefail && cargo llvm-cov --workspace --profile ci --lcov --output-path lcov.info 2>&1 | tee test.log
 
-# Per-crate enforcement ([COVERAGE-THRESHOLDS-JSON]): every rust crate is gated
+# Per-crate enforcement: every rust crate is gated
 # independently against its own threshold (floor 95% + monotonic ratchet). lcov
 # SF records are grouped by their crates/<name>/ path; a single crate below its
 # gate fails the whole target. Aggregating the workspace into one number would
@@ -576,7 +574,6 @@ bench: build
 ##      never another extension, never another VSCode profile. macOS only.
 ##      ONE `code` invocation (install --force, no separate uninstall) so the
 ##      running VSCode reconciles its extension host exactly once, not twice.
-##      See [MAKE-IDE-EXT].
 vsix-rebuild-reinstall: _vsix_clean build _vsix_build _vsix_bundle _vsix_package _vsix_install
 
 # _rebuild-install-vsix: deprecated private alias of `vsix-rebuild-reinstall`.

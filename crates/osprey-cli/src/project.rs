@@ -341,6 +341,16 @@ mod tests {
     }
 
     #[test]
+    fn assembled_client_preserves_string_results_for_length() {
+        let root =
+            Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples/projects/modules/client");
+        let input = CompilationInput::load_project(root.to_string_lossy().as_ref())
+            .expect("client project assembles");
+        let errors = osprey_types::check_program(input.program());
+        assert!(errors.is_empty(), "unexpected type errors: {errors:?}");
+    }
+
+    #[test]
     fn source_output_defaults_match_the_existing_cli() {
         let program = osprey_syntax::parse_program("let answer = 42\n").program;
         let input = CompilationInput::script("nested/main.osp", String::new(), program);

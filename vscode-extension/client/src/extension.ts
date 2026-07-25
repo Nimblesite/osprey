@@ -48,7 +48,7 @@ export function shipwrightPlatform(): string {
 // resolveBundledCompiler returns the absolute path to the version-matched
 // osprey binary bundled in this VSIX for the current platform, or undefined
 // when running unbundled (e.g. a local dev install). The release pipeline
-// stages it at bin/<platform>/osprey[.exe]. [SWR-VERSION-MANIFEST] Exported so
+// stages it at bin/<platform>/osprey[.exe]. [EDITOR-VERSIONING] Exported so
 // both the bundled-present and unbundled branches can be unit tested.
 export function resolveBundledCompiler(
   context: ExtensionContext,
@@ -380,7 +380,7 @@ export function activate(context: ExtensionContext) {
   // Shipwright: verify the bundled osprey compiler matches the version this
   // extension expects before we launch it for diagnostics. On mismatch the
   // host surfaces a prompt-reinstall message (hosts.vscode.onMismatch).
-  // [SWR-VERSION-HANDSHAKE], [EDITOR-VERSIONING]. Best-effort: never block
+  // [EDITOR-VERSIONING]. Best-effort: never block
   // activation on it.
   const manifestPath = context.asAbsolutePath("shipwright.json");
   if (fs.existsSync(manifestPath)) {

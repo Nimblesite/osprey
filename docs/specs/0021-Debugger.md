@@ -23,7 +23,7 @@ debugging.
 - Non-debug builds keep their release-oriented defaults.
 - `--debug --target=wasm32` is rejected.
 - Debug metadata uses DWARF 4 on macOS and DWARF 5 elsewhere.
-- The compile unit currently uses `DW_LANG_C` as its debugger language code.
+- The compile unit uses `DW_LANG_C` as its debugger language code.
 
 Minimum emitted metadata:
 
@@ -63,7 +63,7 @@ For VS Code:
    osprey <source.osp> --debug --compile -o <debug-binary>
    ```
 
-4. The provider launches a real DAP adapter, initially `lldb-dap`, against the
+4. The provider launches a DAP adapter, initially `lldb-dap`, against the
    compiled native binary.
 5. DAP handles breakpoints, stepping, stack, scopes, and variables.
 

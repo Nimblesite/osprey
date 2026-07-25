@@ -3,9 +3,10 @@
 //! `Var(1)` as their quantified variables; `instantiate` renames them per use,
 //! so the concrete ids only need to be self-consistent within one scheme.
 //!
-//! Signatures favour `any` where the runtime accepts heterogeneous input
-//! (`print`, `toString`, `length`) and stay precise where a wrong type is a
-//! genuine bug. Result-returning builtins return `Result<T, Error>` — the
+//! Signatures use `any` only where one Hindley-Milner type cannot express the
+//! runtime's supported alternatives (`print`, `toString`, `length`,
+//! `isEmpty`); `builtin_constraints` checks their concrete call-site types.
+//! Result-returning builtins return `Result<T, Error>` — the
 //! shape the C runtime actually returns — so the match/auto-unwrap paths agree
 //! with the expected outputs in `examples/tested`.
 
@@ -79,6 +80,7 @@ fn core(e: &mut TypeEnv) {
     mono(e, "input", vec![], s());
     mono(e, "toString", vec![any()], s());
     mono(e, "length", vec![any()], i());
+    // [CONCURRENCY-SLEEP] The native status is not part of the Unit surface.
     mono(e, "sleep", vec![i()], u());
     // A range is a fused iterator handle, not a materialized List [BUILTIN-ITER].
     mono(e, "range", vec![i(), i()], Type::iterator(i()));
@@ -98,7 +100,6 @@ fn core(e: &mut TypeEnv) {
     // Error when n <= 0. Implements [BUILTIN-RANDOM], [BUILTIN-RANDOM-BELOW].
     mono(e, "random", vec![], i());
     mono(e, "randomBelow", vec![i()], res(i()));
-    mono(e, "not", vec![b()], b());
 }
 
 /// The testing framework's built-ins. Implements [TESTING-BUILTINS]
@@ -115,9 +116,9 @@ fn testing(e: &mut TypeEnv) {
         vec![s(), Type::fun(vec![], Type::Var(0))],
         u(),
     );
-    // expect(actual, expected): Jest argument order. [TESTING-BUILTIN-EXPECT]
+    // expect(actual, expected). [TESTING-BUILTIN-EXPECT]
     mono(e, "expect", vec![any(), any()], u());
-    // check(label, expected, actual): Alcotest argument order. [TESTING-BUILTIN-CHECK]
+    // check(label, expected, actual). [TESTING-BUILTIN-CHECK]
     mono(e, "check", vec![s(), any(), any()], u());
 }
 
@@ -228,7 +229,7 @@ fn lists(e: &mut TypeEnv) {
     poly(e, "listLength", vec![0], vec![Type::list(t())], i());
     poly(e, "listGet", vec![0], vec![Type::list(t()), i()], res(t()));
     poly(e, "listContains", vec![0], vec![Type::list(t()), t()], b());
-    // Shipped eager list traversal [BUILTIN-LIST-FOREACH].
+    // Eager list traversal [BUILTIN-LIST-FOREACH].
     poly(
         e,
         "forEachList",
@@ -257,7 +258,7 @@ fn maps(e: &mut TypeEnv) {
 }
 
 fn files(e: &mut TypeEnv) {
-    // Shipped file surface [BUILTIN-FILE].
+    // File surface [BUILTIN-FILE].
     mono(e, "readFile", vec![s()], res(s()));
     mono(e, "writeFile", vec![s(), s()], res(i()));
 }
@@ -276,8 +277,17 @@ fn http(e: &mut TypeEnv) {
     mono(e, "httpPut", vec![i(), s(), s(), s()], i());
     mono(e, "httpDelete", vec![i(), s(), s()], i());
     mono(e, "httpCreateServer", vec![i(), s()], i());
-    // httpListen takes the server id and a request-handler function.
-    mono(e, "httpListen", vec![i(), any()], i());
+    // The C runtime calls this handler with the four request strings and reads
+    // the returned record using the built-in HttpResponse layout.
+    mono(
+        e,
+        "httpListen",
+        vec![
+            i(),
+            Type::fun(vec![s(), s(), s(), s()], Type::prim("HttpResponse")),
+        ],
+        i(),
+    );
     mono(e, "httpStopServer", vec![i()], i());
 }
 
@@ -347,7 +357,16 @@ fn websocket(e: &mut TypeEnv) {
 /// `None` when `name` is not a built-in.
 #[must_use]
 pub fn builtin_signature(name: &str) -> Option<String> {
-    base_env().get(name).map(|s| format!("{name} : {}", s.ty))
+    let scheme = base_env().get(name)?.clone();
+    if let (Some(display), Type::Fun { params, ret }) = (
+        crate::builtin_constraints::display_param_type(name, 0),
+        &scheme.ty,
+    ) {
+        if params.len() == 1 {
+            return Some(format!("{name} : ({display}) -> {ret}"));
+        }
+    }
+    Some(format!("{name} : {}", scheme.ty))
 }
 
 fn terminal(e: &mut TypeEnv) {
@@ -361,7 +380,12 @@ fn terminal(e: &mut TypeEnv) {
     mono(e, "termShowCursor", vec![], i());
     // External process control [BUILTIN-PROCESS]: spawning can fail before a
     // handle exists; await and cleanup operate on a successful handle.
-    mono(e, "spawnProcess", vec![s(), any()], res(i()));
+    mono(
+        e,
+        "spawnProcess",
+        vec![s(), Type::fun(vec![i(), i(), s()], u())],
+        res(i()),
+    );
     mono(e, "awaitProcess", vec![i()], i());
     mono(e, "cleanupProcess", vec![i()], u());
 }
@@ -386,7 +410,7 @@ mod tests {
     fn process_builtins_match_the_result_returning_runtime() {
         assert_eq!(
             builtin_signature("spawnProcess").as_deref(),
-            Some("spawnProcess : (string, any) -> Result<int, Error>")
+            Some("spawnProcess : (string, (int, int, string) -> Unit) -> Result<int, Error>")
         );
         assert_eq!(
             builtin_signature("awaitProcess").as_deref(),
@@ -417,6 +441,10 @@ mod tests {
             ),
             ("httpPut", "httpPut : (int, string, string, string) -> int"),
             ("httpDelete", "httpDelete : (int, string, string) -> int"),
+            (
+                "httpListen",
+                "httpListen : (int, (string, string, string, string) -> HttpResponse) -> int",
+            ),
             ("httpStopServer", "httpStopServer : (int) -> int"),
             ("websocketClose", "websocketClose : (int) -> int"),
             ("jsonFree", "jsonFree : (int) -> Result<int, Error>"),

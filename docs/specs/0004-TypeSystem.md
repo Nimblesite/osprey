@@ -98,7 +98,7 @@ load-bearing exactly when a parameter must relate two or more positions
 (`fn pick<T>(first: T, second: T)` pins both arguments to one type) or when a
 caller must pin an otherwise-unconstrained variable. HM inference is
 unchanged: unannotated functions stay implicitly polymorphic, and a
-polymorphic function is still monomorphised independently at each call site.
+polymorphic function is monomorphised independently at each call site.
 Variance markers are **not** permitted on function binders (variance is
 declaration-site on types and effects only — [TYPE-VARIANCE-DECL]).
 
@@ -171,7 +171,7 @@ wrapper), so a `Feed<(int) -> Result<int, Error>>` matches a
 Built-in constructors' declared variance: `Result<out T, out E>`,
 `List<out T>`, `Fiber<out T>`, `Map<K, out V>` (keys invariant); `Channel<T>`
 and `Ptr` are invariant. Function types are structurally contravariant in
-parameters and covariant in returns, as before.
+parameters and covariant in returns.
 
 ## Built-in Types
 
@@ -184,7 +184,7 @@ Primitive spellings are case-sensitive.
 | `string`         | UTF-8 encoded                                                      |
 | `bool`           | `true` \| `false`                                                  |
 | `Unit`           | The single value `()`; the return type of a function with no result|
-| `any`            | Erased value; access requires pattern matching                     |
+| `any`            | Erased compatibility value; no runtime type tests                  |
 | `Result<T, E>`   | Error-handling sum type (see [Error Handling](0013-ErrorHandling.md)) |
 | `List<T>`        | Immutable sequential collection                                    |
 | `Map<K, V>`      | Immutable key/value collection                                     |
@@ -196,7 +196,7 @@ scalars except `/` and `%`, which return `Result<_, MathError>`
 
 ## Result Auto-Unwrapping
 
-A fallible call has type `Result<T, E>`; among the operators only `/` and `%` produce one, since `+ - *` yield plain scalars ([ARITH-PLAIN]). The compiler auto-unwraps the inner `Result` in six contexts so authors do not write nested `match` chains:
+A fallible call has type `Result<T, E>`; among the operators only `/` and `%` produce one, since `+ - *` yield plain scalars ([ARITH-PLAIN]). The compiler auto-unwraps the inner `Result` in six contexts:
 
 1. **User function arguments.** Passing a `Result`-typed expression to a function that expects the underlying type unwraps it. `double(intDiv(a: 10, b: 2))` is well-typed when `intDiv` returns `Result<int, Error>` and `double` expects `int`.
 2. **Fiber operations.** `spawn`, `await`, `send`, and `recv` unwrap `Result` arguments before storing them.
@@ -346,16 +346,12 @@ All fields are required. Missing or unknown fields, or type mismatches, are comp
 
 ### Field Access
 
-Direct field access is permitted only on a record value. Field access on `any`, `Result`, or any union type requires `match` to narrow the value first.
+Direct field access is permitted only on a record value. A `Result` or union
+must be matched to a concrete payload before field access. Because `any` has no
+runtime type tag, it cannot be narrowed for field access.
 
 ```osprey
 let n = person.name        // ok
-
-// any: pattern-match
-fn nameOf(v: any) -> string = match v {
-    p: { name } => p.name
-    _           => "unknown"
-}
 
 // Result: match before access
 match personResult {
@@ -384,9 +380,6 @@ area =
         Circle radius => 3.14 * radius * radius
         Rectangle width height => width * height
 ```
-
-> The `any` structural-narrowing arm (`p: { name } => p.name`) has no ML-flavor
-> surface syntax; use the Default flavor for structural matching on `any`.
 
 Codegen resolves a **named-field** payload by name, never by declaration order, so reordering fields in a `type` cannot silently rebind a pattern. A **positionally-declared** variant ([TYPE-UNION-POSITIONAL](0003-Syntax.md#type-declarations)) has no field names to resolve against and is the one case resolved by index — the binder in column *i* binds payload slot *i*.
 
@@ -466,7 +459,7 @@ A union value carries a runtime discriminant identifying its variant; the compil
 
 ### Recursive Variants — [TYPE-UNION-REC]
 
-A variant's payload MAY reference the union type itself, either directly or through a built-in collection. This is the foundation of every tree-shaped data structure (AST, file tree, scene graph, parsed JSON).
+A variant's payload MAY reference the union type itself, either directly or through a built-in collection. Recursive payloads represent trees such as ASTs, file trees, scene graphs, and parsed JSON.
 
 ```osprey
 type Tree = Leaf | Node { value: int, left: Tree, right: Tree }
@@ -502,13 +495,13 @@ type JsonValue =
         entries : Map<string, JsonValue>
 ```
 
-A recursive union is laid out indirectly — variant payloads referencing the same type, or containing a `List<Self>` / `Map<K, Self>`, MUST be stored behind a pointer so the type's size is finite. This requirement is invisible to the user: construction, pattern-matching, and field access read the same as for any other variant. Mutually recursive unions follow the same rule.
+A recursive union is laid out indirectly — variant payloads referencing the same type, or containing a `List<Self>` / `Map<K, Self>`, MUST be stored behind a pointer so the type's size is finite. Construction, pattern-matching, and field access use the same syntax as other variants. Mutually recursive unions follow the same rule.
 
 ## Collection Types
 
 `List<T>` and `Map<K, V>` are immutable runtime collections. Collection
 operations return a new value and leave their inputs unchanged. Their builtin
-signatures are listed in [Built-in Functions](0012-Built-InFunctions.md#collection-functions--builtin-collections).
+signatures are listed in [Built-in Functions](0012-Built-InFunctions.md#collection-functions).
 
 ### `List<T>` — [TYPE-LIST]
 
@@ -557,7 +550,7 @@ rest binder (`...name`). The rest binder receives the remaining `List<T>`.
 
 ### `Map<K, V>` — [TYPE-MAP]
 
-`Map<K, V>` is an associative collection. The shipped constructors and map
+`Map<K, V>` is an associative collection. The constructors and map
 literals create string-keyed maps, so their concrete public type is
 `Map<string, V>`. Iteration order is unspecified.
 
@@ -629,7 +622,9 @@ let b = ignore("text")
 
 `any` does not carry a runtime type tag and does not provide dynamic type tests.
 Code that consumes its representation must already know what was passed. It is
-used mainly at heterogeneous builtin and foreign-function boundaries.
+used mainly at heterogeneous builtin and foreign-function boundaries. In
+particular, `print` and `toString` cannot recover an aggregate hidden behind
+`any`; they render its raw pointer-sized representation rather than its fields.
 
 ## Type Annotations
 

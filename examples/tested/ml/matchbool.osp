@@ -1,6 +1,5 @@
 // Default-flavor twin of matchbool.ospml. Matching over a boolean comparison
-// expression lowers identically; the functions return strings, so no auto-unwrap
-// annotation is needed — byte-identical IR.
+// expression lowers identically — byte-identical IR.
 
 fn grade(n) = match n >= 50 {
     true => "pass"

@@ -209,7 +209,8 @@ impl Lowerer<'_> {
                 index: Box::new(self.lower_expr(index)),
             };
         }
-        // function/method call. UFCS: `x.f(a, …)` is sugar for `f(x, a, …)`, so a
+        // function/method call. UFCS [BUILTIN-STRING-UFCS]: `x.f(a, …)` is
+        // sugar for `f(x, a, …)`, so a
         // field-access callee lowers to an ordinary call with the receiver as the
         // first positional argument — keeping method calls invisible downstream.
         let (mut arguments, named_arguments) = self.lower_arg_list(node);
@@ -397,6 +398,7 @@ fn parse_fragment(frag: &str) -> Expr {
 /// `f(x, a, …)` (the piped value is prepended as the first positional
 /// argument). A bare callee `x |> f` becomes `f(x)`. Producing a plain
 /// [`Expr::Call`] keeps pipes invisible to every later stage.
+/// Implements [BUILTIN-ITER-PIPE].
 fn pipe_into(left: Expr, right: Expr) -> Expr {
     match right {
         Expr::Call {
@@ -542,7 +544,8 @@ mod tests {
             } => assert_eq!(named_arguments.len(), 2),
             other => panic!("expected call, got {other:?}"),
         }
-        // Ternary and Elvis desugar to a boolean match.
+        // Ternary and Elvis desugar to a boolean match
+        // [PATTERN-RESULT-DEFAULT].
         assert!(matches!(
             let_value("let r = c ? 1 : 2\n"),
             Expr::Match { .. }

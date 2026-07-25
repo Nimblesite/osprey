@@ -1,6 +1,7 @@
 //! The ML-flavor lexer: a hand-written scanner that turns source text into a
 //! flat [`Token`] stream, then derives the layout markers (`Indent`, `Dedent`,
-//! `Newline`) from the offside rule ([FLAVOR-ML-LAYOUT]).
+//! `Newline`) from the offside rule ([FLAVOR-ML-LAYOUT]). Line and nested block
+//! comment handling implements [FLAVOR-ML-COMMENTS].
 //!
 //! Two phases keep each piece small and testable: [`scan`] produces content
 //! tokens with positions (no layout), and [`insert_layout`] walks those tokens
@@ -547,8 +548,8 @@ mod tests {
         let h = k.iter().position(|t| *t == TokKind::Ident("h".to_owned()));
         assert!(dedent.is_some(), "expected a Dedent token");
         assert!(h.is_some(), "expected the `h` binding token");
-        // Both positions are asserted present above, so this guard always binds;
-        // it avoids the forbidden `unwrap()` ([USER-MANDATE-NO-PANIC-IN-TESTS]).
+        // Both positions are asserted present above, so this guard always binds
+        // without an `unwrap()`.
         if let (Some(dedent), Some(h)) = (dedent, h) {
             assert!(dedent < h);
         }

@@ -4,12 +4,10 @@
 `crates/osprey-lsp` + `crates/osprey-cli` + `crates/diff_examples.sh`
 **Status:** Phases 1–2 done (structured model, both flavors capture docs on all
 six declaration forms, hover renders them, `[Symbol]` links hover). Phase 3
-(doctest execution, user-declaration `--docs` export, `//!` attachment) remains
-— and is **not** a small remainder: each of its three items is gated on new
-surface that does not exist yet (a doctest extraction mode on the CLI, a
-generalised page renderer, and `doc` fields on `Program`/`Stmt::Namespace` plus
-a manual tree-sitter regeneration). See
-[§Phase 3](#phase-3-is-not-a-small-remainder--each-item-needs-new-surface-first).
+(doctest execution, user-declaration `--docs` export, `//!` attachment) remains.
+Its dependencies are a CLI doctest extraction mode, a generalised page renderer,
+and `doc` fields on `Program`/`Stmt::Namespace` plus a manual tree-sitter
+regeneration. See [§Phase 3 dependencies](#phase-3-dependencies).
 **Spec:** [0026-DocumentationComments.md](../specs/0026-DocumentationComments.md)
 (`[DOC-*]`); LSP hover [0020](../specs/0020-LanguageServerAndEditors.md)
 `[LSP-HOVER-DOCS]`; lowering contract [0023](../specs/0023-LanguageFlavors.md)
@@ -17,12 +15,13 @@ a manual tree-sitter regeneration). See
 
 ## Summary
 
-Osprey has one documentation system with two idiomatic sigils — `///` (Default)
-and `(** … *)` (ML) — lowering to one structured `DocComment` on the canonical
-AST, rendered by the LSP, exported by `--docs`, and with executable examples run
-through the existing golden harness. Today only a fragment exists.
+Osprey has one documentation system with two sigils — `///` (Default) and
+`(** … *)` (ML) — lowering to one structured `DocComment` on the canonical AST.
+Phases 1–2 implement capture on all declaration forms, LSP rendering, and symbol
+links. Phase 3 covers user-declaration export, doctest execution, and `//!`
+module documentation.
 
-## What works today
+## Baseline before this plan
 
 - **Default `///` lexing**: `tree-sitter-osprey/grammar.js` `doc_comment` /
   `_doc_comment_line` (`token(prec(1, seq('///', …)))`) attaches to all six
@@ -40,18 +39,17 @@ through the existing golden harness. Today only a fragment exists.
   — signature + summary + typed params + return + example — is the shape
   `DocComment` rendering converges on.
 
-## Where it stops
+## Gaps and status
 
-1. **No structured model.** `doc` is free text; there are no params/returns/
-   raises/examples/since fields, so nothing machine-extracts "what does param
-   `x` mean" or runs an example.
-2. **Default drops docs on four declaration forms.** `doc_text` is only called
-   for `fn`/`let`; a `///` above a `type`/`effect`/`extern`/`module` parses and
-   is then silently discarded at lowering (and the AST has nowhere to put it).
-3. **The ML flavor captures no docs at all.** The ML lexer treats every comment
-   (`//`, `(* *)`) as trivia; `ml/lower.rs` hardcodes `doc: None`. This
-   **violates** `[FLAVOR-LOWER-CONTRACT]`'s "preserve documentation comments"
-   requirement.
+1. ~~**No structured model.**~~ **Resolved in Phase 1.** The original `doc` was
+   free text with no params/returns/raises/examples/since fields.
+2. ~~**Default drops docs on four declaration forms.**~~ **Resolved in Phase
+   1.** `doc_text` was only called
+   for `fn`/`let`; a `///` above a `type`/`effect`/`extern`/`module` parsed and
+   was discarded at lowering.
+3. ~~**The ML flavor captures no docs.**~~ **Resolved in Phase 2.** The ML lexer
+   previously treated every comment (`//`, `(* *)`) as trivia and `ml/lower.rs`
+   hardcoded `doc: None`, violating `[FLAVOR-LOWER-CONTRACT]`.
 4. **No doctests.** Doc examples are inert; nothing compiles or runs them.
 5. **`--docs` exports no user declarations** and takes no source file.
 
@@ -98,18 +96,17 @@ through the existing golden harness. Today only a fragment exists.
     `BuiltinDocView` page shape.
 12. `//!` inner/module docs in the Default grammar (mirror the `prec(1)` trick).
 
-#### Phase 3 is *not* a small remainder — each item needs new surface first
+#### Phase 3 dependencies
 
-Phases 1–2 shipped the model; Phase 3 is blocked on three things that do not
-exist yet, each verified against the tree:
+Phases 1–2 shipped the model. Phase 3 requires the following additions:
 
 **3a — doctest execution.** Four blockers:
 
 - **No CLI can emit a `DocExample`.** `docparse::parse_doc` is `pub(crate)`
   (`crates/osprey-syntax/src/docparse.rs`; `lib.rs` re-exports only
-  `doc_links`), and there is no `--doctests` mode, so a shell pre-pass in
-  `diff_examples.sh` has nothing to call. An extract-and-emit compiler mode
-  must land first (model it on `--list-tests`).
+  `doc_links`), and there is no `--doctests` mode. Add an extract-and-emit
+  compiler mode before the `diff_examples.sh` pre-pass (model it on
+  `--list-tests`).
 - **Generated examples must not land under `examples/tested/`.**
   `crates/osprey-cli/src/main.rs` asserts the discovered example set equals the
   hardcoded `REGISTERED_EXAMPLES` list, so every generated file would fail it.
@@ -118,12 +115,12 @@ exist yet, each verified against the tree:
   no `.expectedoutput`, and the Makefile fails unless the harness reports
   `NOEXP=0`. They need a separate `--check` path, not the golden loop.
 - **`DocExample.code` is a snippet, not a program**, and the doc model carries
-  **no flavor field**. The program-synthesis rule (prepend the enclosing
-  source? just the documented declaration?) is an unspecified design decision,
-  and the extractor must re-derive the flavor via `resolve_flavor`.
+  **no flavor field**. The program-synthesis scope—enclosing source or only the
+  documented declaration—is unspecified, and the extractor must re-derive the
+  flavor via `resolve_flavor`.
 
-**3b — user-declaration export.** The most tractable of the three, but two
-mismatches remain: `BuiltinDocView` has typed params and a single `example`
+**3b — user-declaration export.** Two model mismatches remain: `BuiltinDocView`
+has typed params and a single `example`
 string, while `DocComment` has untyped params, a `Vec<DocExample>`, and
 `raises`/`see_also`/`since`/`deprecated` with no slot in the builtin page
 shape — so `page()` must generalise (spec 0026 requires the two look uniform).
@@ -131,13 +128,13 @@ And `docs.rs` `prune` deletes every unrecognised `*.md` in its output tree, so
 user pages need their own subdirectory (`<docs-dir>/api/`) and prune set or
 they will delete website content.
 
-**3c — `//!` attachment.** Three blockers:
+**3c — `//!` attachment.** Three dependencies:
 
-- **Nowhere to put it.** `Program` has no `doc` field and neither does
-  `Stmt::Namespace`, so the AST must change before the grammar is useful.
+- **Missing AST attachment.** `Program` has no `doc` field and neither does
+  `Stmt::Namespace`, so the AST must change before the grammar rule.
   (`Stmt::Namespace` also *silently drops* the `optional($.doc_comment)` the
   grammar already accepts — fixing that is the same edit.)
-- **It is a source-compatibility break.** `//!` is a harmless `line_comment`
+- **It is a source-compatibility break.** `//!` is parsed as a `line_comment`
   today; adding it as `token(prec(1, …))` makes every `//!` outside an accepted
   attachment point a hard syntax error (a stray `///` already errors this way).
 - **`tree-sitter-osprey/src/parser.c` is committed and regenerated only by a
@@ -164,8 +161,8 @@ they will delete website content.
   don't become docs — pin with lexer tests.
 - **Doctest flavor inheritance**: a snippet compiles under the enclosing file's
   flavor (`// osprey: flavor=` / extension) — the extractor must carry it.
-- Keep one body parser for both flavors — duplicating it would reintroduce the
-  boundary-law violation the whole design avoids.
+- Keep one body parser for both flavors; duplicating it would violate the
+  flavor boundary law.
 
 ## TODO
 
@@ -179,8 +176,8 @@ they will delete website content.
       docs).
 - [x] `[Symbol]` intra-doc links hover to the referenced element (bare +
       dotted); the doc-link extractor (`docparse::doc_links`).
-Phase 3 remains — ordered by cost, cheapest first. Each is gated on new
-surface (see [§Phase 3 is *not* a small remainder](#phase-3-is-not-a-small-remainder--each-item-needs-new-surface-first)):
+Phase 3 remains, ordered by cost. Each item requires new surface (see
+[§Phase 3 dependencies](#phase-3-dependencies)):
 
 - [ ] Phase 3b: `osprey --docs` exports **user** declarations from
       `DocComment` (builtins already export from `BuiltinDocView`). Needs a
@@ -194,7 +191,7 @@ surface (see [§Phase 3 is *not* a small remainder](#phase-3-is-not-a-small-rema
       `doc` fields on `Program` and `Stmt::Namespace`; the
       `inner_doc_comment` rule in `tree-sitter-osprey/grammar.js`; a **manual
       `npm run generate`** plus committed `src/parser.c`/`grammar.json`; an
-      `inner_doc` reader in the Default lowerer. This finally covers the
+      `inner_doc` reader in the Default lowerer. This covers the
       `DocScope::Inner` arm, which is unreachable today.
 - [ ] Phase 3a: doctest **execution**. Needs a doctest extraction mode on the
       CLI (`docparse::parse_doc` is `pub(crate)`), a `target/doctests/` output

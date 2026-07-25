@@ -7,9 +7,15 @@ sent through a channel may be co-owned across threads as specified by
 [fiber boundary ownership](0018-MemoryManagement.md#fiber-boundary-ownership-mem-fiber-isolation).
 The WebAssembly target excludes this pthread runtime.
 
-Default and ML syntax lower the shipped forms to the same `Expr::Spawn`,
+Default and ML syntax lower these forms to the same `Expr::Spawn`,
 `Expr::Await`, `Expr::Yield`, `Expr::Send`, and `Expr::Recv` nodes. See
 [ML Flavor Syntax](0024-MLFlavorSyntax.md#fibers-and-channels) for ML parsing.
+
+## Sleep [CONCURRENCY-SLEEP]
+
+`sleep(milliseconds: int) -> Unit` blocks the current native thread for the
+given number of milliseconds. A duration less than or equal to zero returns
+immediately. The runtime's integer status is not exposed.
 
 ## Spawn and await [CONCURRENCY-SPAWN-AWAIT]
 

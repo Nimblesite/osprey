@@ -1,4 +1,4 @@
-//! Cross-flavor equivalence ([FLAVOR-TEST], [FLAVOR-CURRY], [FLAVOR-LAYER],
+//! Cross-flavor equivalence ([FLAVOR-CURRY], [FLAVOR-LAYER],
 //! [FLAVOR-LOWER-CONTRACT],
 //! docs/specs/0023-LanguageFlavors.md). ML **curries by default** and offers a
 //! second *uncurried* surface, so it mirrors BOTH Default function forms at the

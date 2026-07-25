@@ -55,7 +55,7 @@ impl Checker {
             Expr::Binary { op, left, right } => self.infer_binary(op, left, right, env),
             Expr::Unary { op, operand } => {
                 let t = self.infer_expr(operand, env);
-                if op == "!" || op == "not" {
+                if op == "!" {
                     self.push_assign(&Type::bool(), &t);
                     Type::bool()
                 } else {
@@ -417,16 +417,21 @@ impl Checker {
         named: &[NamedArgument],
         env: &TypeEnv,
     ) -> Type {
-        let (fname, ft) = match function {
-            Expr::Identifier(n) => (Some(n.clone()), self.lookup_ident(n, env)),
+        let (fname, ft) = self.infer_callee(function, env);
+        let args = self.ordered_arg_types(fname.as_deref(), arguments, named, env);
+        self.apply_named_fn(fname.as_deref(), &ft, args)
+    }
+
+    fn infer_callee(&mut self, function: &Expr, env: &TypeEnv) -> (Option<String>, Type) {
+        match function {
+            Expr::Identifier(name) => (Some(name.clone()), self.lookup_ident(name, env)),
             Expr::Path(path) => {
                 let name = path.to_string();
-                (Some(name.clone()), self.lookup_ident(&name, env))
+                let ty = self.lookup_ident(&name, env);
+                (Some(name), ty)
             }
             other => (None, self.infer_expr(other, env)),
-        };
-        let args = self.ordered_arg_types(fname.as_deref(), arguments, named, env);
-        self.apply_fn(&ft, args)
+        }
     }
 
     fn infer_method_call(
@@ -446,7 +451,7 @@ impl Checker {
         for na in named {
             args.push(self.infer_expr(&na.value, env));
         }
-        self.apply_fn(&ft, args)
+        self.apply_named_fn(Some(method), &ft, args)
     }
 
     /// Resolve call arguments to types, reordering named arguments to the
@@ -479,7 +484,7 @@ impl Checker {
         arguments.iter().map(|a| self.infer_expr(a, env)).collect()
     }
 
-    fn apply_fn(&mut self, ft: &Type, args: Vec<Type>) -> Type {
+    fn apply_fn(&mut self, ft: &Type, args: Vec<Type>, defer_any_binding: bool) -> Type {
         match self.ctx.prune(ft) {
             Type::Fun { params, ret } => {
                 if params.len() != args.len() {
@@ -491,7 +496,9 @@ impl Checker {
                     return *ret;
                 }
                 for (p, a) in params.iter().zip(&args) {
-                    self.push_assign(p, a);
+                    if !(defer_any_binding && p.is_named(names::ANY)) {
+                        self.push_assign(p, a);
+                    }
                 }
                 *ret
             }
@@ -508,6 +515,18 @@ impl Checker {
                 self.ctx.fresh()
             }
         }
+    }
+
+    fn apply_named_fn(&mut self, name: Option<&str>, ft: &Type, args: Vec<Type>) -> Type {
+        let constrained_builtin = matches!(name, Some("length" | "isEmpty" | "print" | "toString"));
+        if let (Some(name), Some(receiver)) = (name, args.first()) {
+            if constrained_builtin {
+                self.builtin_uses.push((name.to_string(), receiver.clone()));
+            }
+        }
+        // Preserve unresolved argument variables until the surrounding expression
+        // can refine them; the recorded constraint validates the final type.
+        self.apply_fn(ft, args, constrained_builtin)
     }
 
     fn infer_pipe(&mut self, left: &Expr, right: &Expr, env: &TypeEnv) -> Type {
@@ -527,9 +546,9 @@ impl Checker {
             };
             self.infer_expr(&call, env)
         } else {
-            let ft = self.infer_expr(right, env);
+            let (name, ft) = self.infer_callee(right, env);
             let lt = self.infer_expr(left, env);
-            self.apply_fn(&ft, vec![lt])
+            self.apply_named_fn(name.as_deref(), &ft, vec![lt])
         }
     }
 

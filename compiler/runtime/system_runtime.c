@@ -12,7 +12,6 @@
 // fork/exec/pipe/select; Windows uses the Win32 process APIs from <windows.h>
 // (via the compat header). pthreads work on both (winpthreads on Windows).
 // The file/JSON/string helpers at the bottom are portable and built everywhere.
-// [WINDOWS-PORT-PHASE3]
 #ifdef _WIN32
 #include "osprey_win_compat.h"
 #else
@@ -344,7 +343,7 @@ char *spawn_process(char *command) {
   return output;
 }
 
-#else // _WIN32 — [WINDOWS-PORT-PHASE3] Win32 process runtime
+#else // _WIN32 — Win32 process runtime
 
 // Windows process result: same shape as the POSIX one but with Win32 handles
 // instead of pipe fds + pid. The monitor thread (winpthreads) reads the child's

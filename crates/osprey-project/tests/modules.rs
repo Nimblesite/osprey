@@ -347,7 +347,7 @@ fn member_alias_resolves_to_exported_declaration() {
 }
 
 #[test]
-fn constant_initializer_cycles_fail_before_codegen() {
+fn initializer_and_type_alias_cycles_fail_before_codegen() {
     // Implements [MODULES-CYCLES], [MODULES-INIT].
     let binding = |name: &str, target: &str| Stmt::Let {
         name: name.to_string(),
@@ -370,6 +370,14 @@ fn constant_initializer_cycles_fail_before_codegen() {
         contains(&messages, "constant initializer cycle"),
         "{messages:?}"
     );
+
+    let aliases = parsed(
+        "main.osp",
+        Flavor::Default,
+        "type First = List<Second>\ntype Second = List<First>\nfn main() = 0\n",
+    );
+    let messages = error_messages(&config("main.osp"), &[aliases]);
+    assert!(contains(&messages, "type alias cycle"), "{messages:?}");
 }
 
 fn ascribed_module(signature: &str, body: Vec<ModuleItem>) -> Stmt {

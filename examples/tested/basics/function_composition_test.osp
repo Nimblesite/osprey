@@ -39,12 +39,12 @@ print("Function composition working correctly!")
 let exclaim = fn(s) => s + "!"
 print(exclaim("hi"))
 
-// Nested lambda - inner lambda calls outer lambda (auto-unwrapped Result body)
+// Nested lambda: the inner lambda calls the outer lambda, then adds one.
 let outerLam = fn(x) => x * 2
 let innerLam = fn(y) => outerLam(y) + 1
 print(toString(innerLam(5)))
 
-// Higher-order: inline lambda flows into (int)->int slot; body returns Result auto-unwrap
+// Higher-order: an inline integer lambda flows into an `(int) -> int` slot.
 let inlineApplied = applyFunction(value: 10, func: fn(x) => x + 100)
 print(toString(inlineApplied))
 
@@ -73,7 +73,7 @@ match zStr < aStr {
     false => print("strLt2=ok")
 }
 
-// mut + auto-unwrap: counter is int, RHS is Result<int,MathError>; spec says auto-unwrap
+// Reassignment with plain integer addition.
 mut counter = 0
 counter = counter + 1
 counter = counter + 1

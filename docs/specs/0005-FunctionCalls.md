@@ -27,8 +27,8 @@ let c = add(y: 20, x: 10)
 
 For a known function or extern, named values are reordered to the declaration's
 parameter order. The grammar does not permit positional and named arguments in
-one argument list. Unknown and duplicate argument names are not yet diagnosed
-consistently, so portable code must use each declared name exactly once.
+one argument list. Unknown and duplicate argument names are not rejected
+consistently; a named call must use each declared name exactly once.
 
 The ML equivalent of the flat two-parameter function is uncurried application:
 

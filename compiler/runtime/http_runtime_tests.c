@@ -234,25 +234,6 @@ void run_all_http_tests(void) {
 
   printf("🎉 All HTTP runtime tests passed!\n");
   printf("=====================================\n");
-  printf("The HTTP runtime is working correctly.\n");
-  printf("You can now use these functions from Osprey code:\n");
-  printf("  - httpCreateServer(port: Int, address: String) -> Int\n");
-  printf("  - httpListen(serverID: Int, handler: Int) -> Int\n");
-  printf("  - httpStopServer(serverID: Int) -> Int\n");
-  printf("  - httpCreateClient(baseUrl: String, timeout: Int) -> Int\n");
-  printf("  - httpGet/httpPost/httpPut/httpDelete(...) -> Int\n");
-  printf("  - httpGetResponse(...) -> Result<Int, String>\n");
-  printf("  - httpResponseStatus/Body/Header/Free(responseID: Int)\n");
-  printf("  - httpCloseClient(clientID: Int) -> Int\n");
-  printf("  - websocketCreateServer(port: Int, address: String, path: String) "
-         "-> Int\n");
-  printf("  - websocketServerListen(serverID: Int) -> Int\n");
-  printf(
-      "  - websocketServerBroadcast(serverID: Int, message: String) -> Int\n");
-  printf("  - websocketKeepAlive() -> Unit\n");
-  printf("  - websocketConnect(url: String) -> Int\n");
-  printf("  - websocketSend(wsID: Int, message: String) -> Int\n");
-  printf("  - websocketClose(wsID: Int) -> Int\n");
 }
 
 int main(void) {

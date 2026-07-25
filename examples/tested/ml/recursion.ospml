@@ -1,18 +1,10 @@
-// A recursive sum-to-n. Integer arithmetic yields `Result<int, MathError>`, so
-// each step matches the `Success value` / `Error message` payload before
-// recursing. The signature's `int` return auto-unwraps the final value.
+// A recursive sum-to-n using plain integer addition/subtraction.
 
 sumTo : int -> int
 sumTo n =
     match n
         0 => 0
-        _ =>
-            match n - 1
-                Success value =>
-                    match n + sumTo value
-                        Success value => value
-                        Error message => 0
-                Error message => 0
+        _ => n + sumTo (n - 1)
 
 print "sum5=${sumTo 5} sum10=${sumTo 10} sum1=${sumTo 1}"
 0

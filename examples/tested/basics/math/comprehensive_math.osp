@@ -72,6 +72,7 @@ print("isEven(7) = ${toString(isEven(7))}")
 
 // Integer division: intDiv truncates toward zero (contrast Half = 12.5 above);
 // divide-by-zero yields a Result Error, matched on Success/Error.
+// Truncation and zero-divisor behavior [BUILTIN-INTDIV].
 print("intDiv(25,2) = ${intDiv(25, 2)}, intDiv(100,7) = ${intDiv(100, 7)}")
 match intDiv(5, 0) {
     Success { value } => print("intDiv(5,0) = ${value}")
@@ -82,6 +83,22 @@ print("checked add=${toString(checkedAdd(2, 3))}, sub=${toString(checkedSub(2, 3
 print("checked overflow add=${toString(checkedAdd(9223372036854775807, 1))}")
 print("checked overflow sub=${toString(checkedSub(-9223372036854775807, 2))}")
 print("checked overflow mul=${toString(checkedMul(4294967296, 4294967296))}")
+
+// [BUILTIN-ABS] uses the language's i64 ABI, including values outside libc `int`.
+// Its only unrepresentable magnitude wraps to INT64_MIN, like plain `0 - n`.
+print("abs(-5000000000) = ${abs(0 - 5000000000)}")
+print("abs(INT64_MIN) = ${abs((0 - 9223372036854775807) - 1)}")
+
+// [BUILTIN-INTDIV] rejects the one non-zero divisor pair whose signed
+// quotient cannot be represented, rather than emitting LLVM `sdiv` poison.
+match intDiv((0 - 9223372036854775807) - 1, 0 - 1) {
+    Success { value } => print("intDiv(INT64_MIN,-1) unexpected ${value}")
+    Error { message } => print("intDiv(INT64_MIN,-1): ${message}")
+}
+match ((0 - 9223372036854775807) - 1) % (0 - 1) {
+    Success { value } => print("INT64_MIN % -1 = ${value}")
+    Error { message } => print("INT64_MIN % -1 unexpected: ${message}")
+}
 
 // Power, factorial, fibonacci
 let n    = 5

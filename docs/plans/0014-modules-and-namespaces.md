@@ -12,8 +12,7 @@ The compiler now has one shared module AST, both surface projections, a
 compiler-facing project resolver, deterministic flattening into the existing
 checker/backend, project CLI commands, project-aware editor diagnostics, and
 module-aware same-document navigation.
-The remaining work is listed explicitly below rather than hidden behind a
-generic "modules planned" status.
+The remaining work is listed below.
 
 ## Current State
 
@@ -31,7 +30,7 @@ generic "modules planned" status.
   `[LSP-WORKSPACE]` in spec 0020; what remains is making the index
   *incremental* rather than reloading the manifest's file set per request.
 - Opaque record/union boundaries retain nominal structure. Opaque manifest
-  aliases are rejected loudly because the flat checker cannot yet expose their
+  aliases are rejected because the flat checker cannot yet expose their
   representation only to the owner without leaking its ABI to clients.
 - `docs/specs/0011-LightweightFibersAndConcurrency.md` has an older
   fiber-isolated module sketch. Spec 0025 supersedes it.
@@ -79,8 +78,8 @@ TODO:
       wildcard.
 - [x] Add `Visibility::{Private, Exported}` on module items.
 - [x] Add opaque/manifest type export metadata.
-- [x] Add `ModuleKind::{Plain, State}`. There is deliberately no annotation
-      escape hatch in the initial module system.
+- [x] Add `ModuleKind::{Plain, State}`. The initial module system has no
+      annotation-based exception.
 - [x] Preserve source positions on every new declaration and rebase positions
       into collision-free per-project ranges for diagnostics and LSP.
 
@@ -161,8 +160,8 @@ TODO:
 - [x] Require every state owner with cells to export its owned algebraic effect
       and a fused handler installer; ordinary functions are never a state access
       path.
-- [x] Enforce one `state module` per namespace with no initial-stage annotation
-      escape hatch.
+- [x] Enforce one `state module` per namespace with no annotation-based
+      exception.
 - [x] Instantiate fresh private cells inside each handler installer rather than
       emitting module-global storage.
 - [ ] Add LSP warnings and docs metadata that list all project state boundaries.
@@ -216,7 +215,7 @@ TODO:
 
 TODO:
 
-- [x] Add `examples/projects/modules/` as a real multi-file build/run project
+- [x] Add `examples/projects/modules/` as a multi-file build/run project
       (the single-file differential harness cannot represent project manifests).
 - [x] Include path-independent namespaces where file paths intentionally do not
       match namespace names.
@@ -226,8 +225,8 @@ TODO:
 - [x] Include explicit import lists and aliases in the runnable project, plus
       ambiguous-import and wildcard-policy failures in project tests.
 - [ ] Include signatures with opaque and manifest types.
-- [x] Include a state module that exposes an effect handler and a pure fake for
-      tests.
+- [x] Include a state module that exposes an effect handler and a pure test
+      implementation.
 - [x] Add compile-fail project tests for namespace/plain-module/exported `mut`,
       duplicate/private boundaries, state scatter, and initializer failures.
 - [x] Add LSP regressions proving the runnable mixed-flavor project has no false
@@ -243,7 +242,7 @@ TODO:
 4. Exports/signatures/opaque types.
 5. State rules.
 6. Codegen for multi-file project mode.
-7. LSP and formatter polish.
+7. LSP and formatter integration.
 8. Parameterised modules after the basic module system is stable.
 
 ## Risks

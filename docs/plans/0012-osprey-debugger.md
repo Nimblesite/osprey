@@ -2,8 +2,7 @@
 
 ## Summary
 
-Osprey needs a real debugger, not a run button hidden behind VS Code's
-debugger UI. The debugger must support source breakpoints, stepping, stack
+The debugger scope includes source breakpoints, stepping, stack
 inspection, variables, Osprey value rendering, expression evaluation, fibers,
 effects, replay, and machine-checkable debug-info quality. It should integrate
 with existing debugger infrastructure first, then add Osprey-specific semantics
@@ -19,50 +18,16 @@ The architecture is layered:
 5. Add deterministic replay/time-travel after the runtime can record the needed
    events.
 
-The first implementation slice is intentionally small: line tables,
-`--debug`, and VS Code launch through LLDB-DAP. This plan is not small. It is
-the complete target system.
+The initial shipped slices cover line tables, `--debug`, and VS Code launch
+through LLDB-DAP.
 
 The watch window is also the memory-profiler entry point. A user must be able
 to select any heap-backed variable or watch expression and open an object graph
 that shows outgoing children, incoming retainers, paths to roots, retained
-size, allocation site, owning fiber, and snapshot diffs. The visualizer is not
-a decorative graph; it is the debugger answer to "what is this connected to?"
-and "what is still holding this alive?"
+size, allocation site, owning fiber, and snapshot diffs. It must expose both
+outgoing references and the roots or retainers keeping an object alive.
 
-## Research basis
-
-Only authoritative sources are accepted here: official standards/docs, ACM
-published papers, and author/publisher paper pages. Short quotes are included
-as anchors; the implementation decisions below are paraphrased requirements,
-not copied text.
-
-| Source                                                                                                                                                               | Authority               | Relevant anchor                             |
-| -------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------- | ------------------------------------------- |
-| DWARF v5 standard, DWARF Committee, 2017 - https://dwarfstd.org/doc/DWARF5.pdf                                                                                       | Debug-info standard     | "accurate picture of the source program"    |
-| LLVM Source Level Debugging docs - https://llvm.org/docs/SourceLevelDebugging.html                                                                                   | LLVM producer docs      | "source-language's AST map onto LLVM code"  |
-| Debug Adapter Protocol - https://microsoft.github.io/debug-adapter-protocol/                                                                                         | DAP spec                | "defines the abstract protocol"             |
-| VS Code debugger extension guide - https://code.visualstudio.com/api/extension-guides/debugger-extension                                                             | VS Code API docs        | "debug adapter which is a separate process" |
-| LLDB-DAP docs - https://lldb.llvm.org/use/lldbdap.html                                                                                                               | LLDB project docs       | "`lldb-dap` exposes LLDB's functionality"   |
-| Kell and Stinnett, Onward! 2024, "Source-Level Debugging of Compiler-Optimised Code: Ill-Posed, but Not Impossible" - https://dl.acm.org/doi/10.1145/3689492.3690047 | ACM peer-reviewed paper | "loss of state"                             |
-| Huang, Liang, Su, Zhang, PLDI 2025, "Robustifying Debug Information Updates in LLVM via Control-Flow Conformance Analysis" - https://dl.acm.org/doi/10.1145/3729267  | ACM peer-reviewed paper | "debug location updates"                    |
-| Stinnett and Kell, OOPSLA 2026, "Debugging Debugging Information using Dynamic Call Trees" - https://dl.acm.org/doi/10.1145/3798213                                  | ACM peer-reviewed paper | "observing a running source program"        |
-| Lu, Liu, Wang, Zhang, FSE 2024, "DTD: Comprehensive and Scalable Testing for Debuggers" - https://dl.acm.org/doi/10.1145/3643779                                     | ACM peer-reviewed paper | debugger conformance testing                |
-| Printezis and Jones, OOPSLA 2002, "GCspy: An Adaptable Heap Visualisation Framework" - https://dl.acm.org/doi/10.1145/583854.582451                                  | ACM peer-reviewed paper | heap visualisation framework                |
-| Jump and McKinley, POPL 2007, "Cork: Dynamic Memory Leak Detection for Garbage-Collected Languages" - https://dl.acm.org/doi/10.1145/1190215.1190224                  | ACM peer-reviewed paper | points-from graph summaries                 |
-| Rayside et al., ASE 2007, "Object Ownership Profiling: A Technique for Finding and Fixing Memory Leaks" - https://dl.acm.org/doi/10.1145/1321631.1321661             | ACM peer-reviewed paper | object ownership profiling                  |
-| Reiss, VISSOFT 2009, "Visualizing the Java Heap to Detect Memory Problems" - https://ieeexplore.ieee.org/document/5336418/                                          | IEEE peer-reviewed paper | heap visualization for memory problems      |
-| Weninger et al., ICPE 2019, "AntTracks TrendViz: Configurable Heap Memory Visualization Over Time" - https://dl.acm.org/doi/10.1145/3302541.3313100                  | ACM/SPEC paper          | heap evolution over time                    |
-| Vilk and Berger, PLDI 2018, "BLeak: Automatically Debugging Memory Leaks in Web Applications" - https://dl.acm.org/doi/10.1145/3192366.3192386                       | ACM peer-reviewed paper | growth-path leak debugging                  |
-| Lengauer and Tarjan, TOPLAS 1979, "A Fast Algorithm for Finding Dominators in a Flowgraph" - https://dl.acm.org/doi/10.1145/357062.357071                            | ACM algorithm paper     | dominator tree construction                 |
-| Herman, Melancon, and Marshall, TVCG 2000, "Graph Visualization and Navigation in Information Visualization" - https://dl.acm.org/doi/abs/10.1109/2945.841119        | IEEE survey paper       | graph navigation survey                     |
-| Holten, TVCG/InfoVis 2006, "Hierarchical Edge Bundles" - https://dl.acm.org/doi/10.1109/TVCG.2006.147                                                               | IEEE visualization paper | bundled adjacency relations                 |
-| Munzner, IEEE InfoVis 1997, "H3: Laying Out Large Directed Graphs in 3D Hyperbolic Space" - https://dl.acm.org/doi/10.5555/857188.857627                             | IEEE visualization paper | focus+context large graphs                  |
-| Chrome DevTools memory docs - https://developer.chrome.com/docs/devtools/memory-problems/memory-101/                                                                | Browser tooling docs    | shallow/retained size vocabulary            |
-| Eclipse Memory Analyzer dominator tree docs - https://help.eclipse.org/latest/topic/org.eclipse.mat.ui.help/concepts/dominatortree.html                             | Production profiler docs | dominators and retained heap                |
-| Debug Adapter Protocol variables/readMemory docs - https://microsoft.github.io/debug-adapter-protocol/specification                                                   | DAP spec                | variables and memory references             |
-
-Implications for Osprey:
+## Design constraints
 
 - Use DWARF as the native interchange format on Unix-like platforms. It is the
   standard consumer contract for LLDB/GDB and already models source languages,
@@ -71,7 +36,7 @@ Implications for Osprey:
   lag on v5), DWARF 5 elsewhere.
 - Emit debug metadata through LLVM IR metadata, not a sidecar map that only our
   extension understands. Osprey's backend already emits textual LLVM IR, so the
-  right boundary is `!DICompileUnit`, `!DISubprogram`, `!DILocation`,
+  metadata boundary is `!DICompileUnit`, `!DISubprogram`, `!DILocation`,
   `!DILocalVariable`, and value-location records. The long-term target is
   LLVM's `#dbg_value` / `#dbg_declare` **debug records**; the current textual IR
   backend may emit the older `@llvm.dbg.*` intrinsic compatibility form only
@@ -79,52 +44,36 @@ Implications for Osprey:
 - Use DAP for IDEs, but do not define a new DAP dialect unless required.
   Reuse `lldb-dap` first; add Osprey-only requests only behind the standard
   adapter boundary.
-- Optimized-code debugging is **ill-posed, not impossible** (Kell & Stinnett,
-  Onward! 2024): there is no single faithful source view of optimized state, so
-  the answer is an explicit choice of view plus residual state/computation on
-  demand — not "give up" and not `-Og`-style de-optimization. Pragmatically,
-  debug builds start at `-O0`; the correctness criterion for emitted local/line
-  info is the paper's **per-variable history oracle** (every local's observed
-  value-change history matches the source program's, each change at the correct
-  file and line; invariant under DCE/CSE/code motion). Never fabricate a value:
-  report it unavailable, and do not conflate "optimized out" with a debug-info
-  emission bug.
+- Debug builds start at `-O0`. Optimized modes require a per-variable history
+  oracle: every local's observed value-change history must match the source
+  program at the correct file and line under DCE, CSE, and code motion. Report
+  unavailable values rather than fabricating them.
 - When Osprey gains its own IR transforms, debug-location updates must obey the
-  **control-flow conformance** invariant (Huang et al., PLDI 2025): an optimized
-  path's location set must be a _subset_ of the corresponding source path's. Per
+  **control-flow conformance** invariant: an optimized path's location set must
+  be a _subset_ of the corresponding source path's. Per
   moved/cloned/merged instruction choose Preserve / Merge / Drop accordingly;
   never attach a source location to a path that did not already carry it, and
-  prefer Drop over a guessed location. (Today Osprey optimizes at the clang
-  level, so this binds clang/LLVM; it binds us the moment we add passes.)
+  prefer Drop over a guessed location. Osprey currently optimizes at the clang
+  level; this constraint applies when Osprey adds IR passes.
 - Validate stack/scope correctness against the **source-level dynamic call
-  tree**, comparing an optimized run to its unoptimized reference (Stinnett &
-  Kell, OOPSLA 2026). This is strictly stronger than the weak "backtrace
-  invariant," which reversed or empty backtraces can satisfy. Classify each
-  divergence as a compiler bug vs a debug-info _format_ limitation, use DWARF
+  tree**, comparing an optimized run to its unoptimized reference. Classify
+  each divergence as a compiler bug or a debug-info format limitation, use DWARF
   `inlined_subroutine` records and location views, and mark synthesized frames
   artificial so debuggers can hide them.
-- Test the debugger itself by **cross-debugger differential testing** over the
-  _same_ binary (DTD; Lu et al., FSE 2024): drive two independent adapters,
-  instruction-step, and diff full program state including registers, treating
-  optimized-out / error / not-found as _distinct_ states. Manual "looks OK in
-  VS Code" is not acceptance.
+- Use **cross-debugger differential testing** over the same binary: drive two
+  independent adapters, instruction-step, and diff full program state including
+  registers, treating optimized-out, error, and not-found as distinct states.
 - Treat the object graph as a rooted directed graph of Osprey heap values and
-  runtime roots. Outgoing edges answer "what does this value reference?";
-  incoming reverse edges and root paths answer "what keeps this alive?". The
-  UI must show both, because a variables tree alone hides aliasing, sharing,
+  runtime roots. Outgoing edges represent references; incoming reverse edges
+  and root paths identify retainers. The UI must show both because a variables
+  tree alone hides aliasing, sharing,
   captured closures, retained channels, and effect resumptions.
 - Compute retained size from a dominator tree when the snapshot has a complete
-  enough root set and edge set. Use a standard dominator algorithm
-  (Lengauer-Tarjan is the baseline authority); when conservative roots or
-  custom managers make the graph incomplete, label retained size as approximate
-  or unavailable rather than inventing precision.
-- Lift the best profiler ideas into Osprey's watch window: GCspy's separable
-  telemetry/replay model, Cork's points-from summaries for leak localization,
-  ownership profiling's grouping by owner/allocation context, AntTracks'
-  timeline snapshots, BLeak's growth-path focus, and production profilers'
-  shallow/retained size, dominator, and path-to-root vocabulary.
-- Avoid graph hairballs. The first object graph view is the selected variable's
-  focused neighborhood, with lazy inbound/outbound expansion. Whole-heap views
+  enough root set and edge set. Use the Lengauer-Tarjan dominator algorithm;
+  when conservative roots or custom managers make the graph incomplete, label
+  retained size as approximate or unavailable.
+- The first object graph view is the selected variable's focused neighborhood,
+  with lazy inbound/outbound expansion. Whole-heap views
   start as dominator trees, allocation-site/type/fiber aggregates, treemaps, or
   timelines. Apply focus+context navigation, stable incremental layout, hidden
   edge counts, filtering, search, pinning, and edge bundling before drawing
@@ -159,9 +108,8 @@ The finished debugger must support these workflows:
   sites, owning fibers, and runtime roots.
 - Ask "why is this still alive?" and get shortest/key retention paths from
   stack/global/fiber/channel/effect/runtime roots to the selected object.
-- Inspect dominator/retained-size views for snapshots, with approximation
-  clearly labelled when the memory backend cannot provide complete edge/root
-  data.
+- Inspect dominator/retained-size views for snapshots, labelled `approximate`
+  when the memory backend cannot provide complete edge/root data.
 - Capture and compare memory snapshots during breakpoints or replay to see
   object-count, byte-size, retention-path, and allocation-site changes.
 - Evaluate Osprey expressions in the current frame, with side-effect controls.
@@ -228,10 +176,10 @@ Required module metadata:
   `DW_AT_language`, so claiming C imports C semantics that the Osprey-aware
   evaluator (Layer 6) must then override. `DW_LANG_lo_user`..`hi_user` is honest
   but unrecognized by every debugger (and ≥ `0x8000` forces `DW_FORM_data2`).
-  The correct long-term path is to register `DW_LNAME_Osprey` with dwarfstd.org
-  and emit the DWARF 6 `DW_AT_language_name` + `DW_AT_language_version` pair
+  The target is to register `DW_LNAME_Osprey` with dwarfstd.org and emit the
+  DWARF 6 `DW_AT_language_name` + `DW_AT_language_version` pair
   (permitted from a DWARF 5 producer) while dual-emitting legacy `DW_AT_language`
-  for older consumers — the same path Rust and Swift took rather than reusing C.
+  for older consumers.
 
 Required function metadata:
 

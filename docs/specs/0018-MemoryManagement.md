@@ -4,24 +4,6 @@ Memory reclamation is an implementation detail. Osprey source cannot select
 allocation sites, release values, or observe when a value is reclaimed. Native
 builds provide three link-time backends: `default`, `gc`, and `arc`.
 
-## Status
-
-`--memory=default` links a `malloc`-passthrough allocator. It does not reclaim
-escaping language values during the run. `--memory=gc` links the native
-conservative mark-and-sweep collector. `--memory=arc` links the Perceus-style
-reference-counting runtime.
-
-Code generation is backend-neutral: heap allocations call `osp_alloc` or
-`osp_alloc_tagged`, and ownership operations call the shared retain/release
-hooks. The selected runtime archive supplies those symbols. `make test` runs the
-differential corpus under all three backends and requires identical stdout. The
-ARC pass also sets `OSPREY_ARC_DEBUG=1` and requires `ARC_LEAKY=0` for every
-tested example.
-
-The current WebAssembly driver always links the default wasm runtime archive;
-its `--memory` value is not forwarded to the wasm linker. See
-[WebAssembly Target](0022-WebAssemblyTarget.md) [WASM-TARGET-MEMORY].
-
 ## Collection Is Unobservable [MEM-OPAQUE]
 
 Osprey has no finalizers or destructors. Source code cannot inspect addresses,
@@ -105,7 +87,7 @@ The layout word identifies raw blocks, pointer masks, list headers, and pointer
 arrays. Releases walk managed child slots non-recursively. Persistent list and
 map nodes retain shared structure and release the portion no longer referenced
 by any live version. ARC operations start lock-free and become mutex-protected
-before a real fiber thread is spawned.
+before a pthread-backed fiber is spawned.
 
 ### Container Element Ownership [MEM-BACKENDS-ELEMENTS]
 
@@ -122,8 +104,8 @@ separate managed-value flag. Codegen supplies these flags from static types.
 
 ### Backend Hook ABI [MEM-BACKENDS-CUSTOM]
 
-The shipped runtime archives implement the same internal C hooks: allocation,
+The runtime archives implement the same internal C hooks: allocation,
 tagged allocation, retain, release, proved-unique release, layout stamping,
 multithread notification, and collection. Backends that do not use a hook
-implement it as a no-op. This common ABI is what keeps emitted IR independent of
+implement it as a no-op. This ABI keeps emitted IR independent of
 the selected native backend.

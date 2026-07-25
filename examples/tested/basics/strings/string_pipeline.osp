@@ -7,7 +7,9 @@
 // [BUILTIN-STRING-CONTAINS], [BUILTIN-STRING-STARTSWITH],
 // [BUILTIN-STRING-ENDSWITH], [BUILTIN-STRING-INDEXOF],
 // [BUILTIN-STRING-SUBSTRING], [BUILTIN-STRING-TAKE], [BUILTIN-STRING-DROP],
-// [BUILTIN-STRING-TRIM], [BUILTIN-STRING-TOLOWERCASE],
+// [BUILTIN-STRING-TRIM], [BUILTIN-STRING-TRIMSTART],
+// [BUILTIN-STRING-TRIMEND], [BUILTIN-STRING-TOLOWERCASE],
+// [BUILTIN-STRING-TOUPPERCASE], [BUILTIN-STRING-JOIN],
 // [BUILTIN-STRING-REPLACE], [BUILTIN-STRING-REPEAT],
 // [BUILTIN-STRING-REVERSE], [BUILTIN-STRING-PADSTART],
 // [BUILTIN-STRING-PADEND], [BUILTIN-STRING-PARSEINT],
@@ -57,6 +59,10 @@ print("ctns pipe=${raw |> contains("GET")}  ufcs=${raw.contains("GET")}  direct=
 let normalized = raw |> trim |> toLowerCase
 print("normalized=\"${normalized}\"\n")
 print("isGetRequest=${normalized |> startsWith("get ")}\n")
+print("upper=\"${toUpperCase("hello")}\"\n")
+print("trimStart=\"${trimStart("  hi  ")}\"\n")
+print("trimEnd=\"${trimEnd("  hi  ")}\"\n")
+print("join=\"${join(["a", "b", "c"], "-")}\"\n")
 
 // UFCS chain
 print("chain=\"${raw.trim().toLowerCase().take(5)}\"\n")

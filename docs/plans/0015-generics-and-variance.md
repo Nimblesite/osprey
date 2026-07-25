@@ -2,7 +2,8 @@
 
 **Subsystem:** tree-sitter-osprey, crates/osprey-syntax (both flavors), osprey-ast,
 osprey-types, osprey-codegen, osprey-lsp
-**Status:** Core landed and green. Declared type parameters (fn/type/effect),
+**Status:** The core is implemented and passing tests. Declared type parameters
+(fn/type/effect),
 declaration-site `in`/`out` variance with position checking and
 variance-directed assignability, generic effects with per-site instantiation,
 and explicit construction-site type arguments all work in BOTH flavors. Three
@@ -30,13 +31,13 @@ plain HM unification is untouched, so principal types survive.
 - HM let-polymorphism: implicit generalization of top-level fns
   (check.rs `check_function`, env.rs `generalize`/`instantiate`).
 - The assignability relation `unify_assignable` (unify.rs:102) already models
-  Result auto-unwrap/wrap and function param-contra/ret-co — the natural
-  attachment point for declared variance.
+  Result auto-unwrap/wrap and function param-contra/ret-co; declared variance
+  uses this relation.
 - Codegen specializes generic fns by inlining (genfn.rs), erases `Type::Var`
   to `i64` (types.rs:19), and effects run on a name-keyed handler stack
   (effects_runtime.c) — fully type-erased.
 
-## Where it bailed / stopped
+## Previous gaps
 
 - No syntax: fn type params, effect type params, effect-row type args,
   variance keywords (`ERROR` nodes in both flavors).
@@ -81,15 +82,15 @@ plain HM unification is untouched, so principal types survive.
      against instantiated op parameters.
    - Inference publishes per-position resolved op signatures
      (`ProgramTypes::performs`, `ProgramTypes::handler_ops`).
-4. **Codegen**: generic effect ops keep ONE erased ABI program-wide (every
+4. **Codegen**: generic effect ops keep one erased ABI program-wide (every
    type-var-mentioning slot is a boxed `i64`), so the C runtime is untouched.
    Perform sites box erased arguments (bitcast for floats — never `fptosi`)
    and unbox erased results to the site-resolved type; handler arms unbox
    erased params at entry and box erased returns/resumes. Handlers register
    and performs look up under instantiation-mangled keys (`Stash$int`), so a
    handler/row instantiation mismatch — which the checker cannot rule out
-   across the dynamic-scoping seam — misses the lookup and aborts loudly
-   (`unhandled effect: …`) via a null-guard at every perform site, never
+   across the dynamic-scoping seam — misses the lookup and aborts with
+   `unhandled effect: …` via a null-guard at every perform site, without
    type-confusing values. Monomorphic effects keep bare names and identical
    behavior.
 5. **Runtime**: zero C changes (keys are opaque strings).
@@ -152,8 +153,8 @@ generic HOFs dispatch indirectly (`fn also(x, f) = f(x)` applied at two
 instantiations works). The enabling checker fix: builtin scheme binder ids
 (`Var(0)`/`Var(1)`) no longer collide with live inference variables
 (`RESERVED_SCHEME_VARS`), which had been silently blocking let-generalization
-of `-> T`-annotated functions. Remaining in plan 0002: only the still-generic
-lambda *returned* from a generic function (loud bail).
+of `-> T`-annotated functions. Plan 0002 still rejects a generic lambda returned
+from a generic function.
 
 ### 3. Static proof of the handler/row instantiation seam
 
@@ -163,22 +164,22 @@ lambda *returned* from a generic function (loud bail).
 unify the handler's instantiation with the callee's row. Today the runtime
 closes the hole: handlers register and performs look up under
 instantiation-mangled keys (`Stash$int`), so a mismatch misses and aborts
-loudly (`unhandled effect: Stash$int.take`) — sound, but a **runtime**
+with `unhandled effect: Stash$int.take` — sound, but a **runtime**
 failure where the effect system's promise is **compile-time** safety.
 
 **Scope:** effect rows must flow through function types (an effect-row
 component on `Type::Fun`, or a row-polymorphism variable `!E`) so a `handle`
 site unifies its instantiation with the rows of functions invoked in the
-handled body. This is effect-row polymorphism — larger than generics, and
-the natural home is the effects roadmap ([plan 0016](0016-algebraic-effects-and-handlers.md)),
-not this plan. Documented in `[EFFECTS-GENERIC-ROWS]` as a known limitation.
+handled body. This effect-row-polymorphism work is tracked by the effects roadmap
+([plan 0016](0016-algebraic-effects-and-handlers.md)), not this plan. It is
+documented in `[EFFECTS-GENERIC-ROWS]` as a known limitation.
 
-### 4. Nice-to-haves (unspecified, no work planned)
+### 4. Unspecified extensions (no work planned)
 
-- **Bounded polymorphism** (`fn f<T: Ord>`): the spec name-drops an implicit
+- **Bounded polymorphism** (`fn f<T: Ord>`): the spec mentions an implicit
   `Iterable` constraint once ([0004] §Collection Types) but defines no
   constraint syntax; `TypeParam` has no `bounds` field. Out of scope until a
-  concrete need lands.
+  concrete use case is specified.
 - **Higher-kinded type parameters** (`F<_>`): not represented, not planned.
 
 ## TODO
@@ -192,7 +193,7 @@ Core (done):
       effects, per-site publishing, ctor type-arg resolution against the
       enclosing fn binder, arity errors
 - [x] Codegen: erased-slot box/unbox at perform/handler boundaries;
-      instantiation-mangled runtime keys + null-guard loud-abort;
+      instantiation-mangled runtime keys + null-guard diagnostic;
       `has_type_var`-based erasure (nested `Result<T,…>` slots); Result-slot
       resume boxing
 - [x] LSP symbol/hover rendering of type params

@@ -5,13 +5,6 @@ blocks, whitespace applies curried functions, and all forms lower to the shared
 `osprey_ast::Program` described by
 [Language Flavors](0023-LanguageFlavors.md).
 
-## Status
-
-The lexer, parser, lowerer, CLI selection, editor selection, examples, and
-cross-flavor equivalence tests are shipped. Every positive form in this chapter
-is implemented. `handler` values and `do` installation are reserved but rejected;
-the shipped effect form is lexical `handle Effect ... in body`.
-
 Select ML with `--flavor ml`, a `.ospml` extension, or a leading
 `// osprey: flavor=ml` marker.
 
@@ -189,7 +182,7 @@ handler arm.
 
 ## Handlers
 
-`[FLAVOR-ML-HANDLER]` The shipped handler is lexical: it names an effect,
+`[FLAVOR-ML-HANDLER]` A handler is lexical: it names an effect,
 declares its arms, and handles one body after `in`.
 
 ```osprey-ml
@@ -236,8 +229,7 @@ type Point =
 type UserId = int
 ```
 
-Function-typed fields parenthesise the input list, for example
-`check : (int) -> bool`.
+Function-typed fields parenthesise the input list: `check : (int) -> bool`.
 
 `[FLAVOR-ML-UNION-INLINE]` Inline union variants are separated by `|`.
 Payloads may be positional or named:
@@ -309,7 +301,7 @@ only to positionally-declared payloads.
 `[FLAVOR-ML-SPAWN]` `spawn expression` or `spawn` followed by an indented block
 lowers to `Expr::Spawn`.
 
-`[FLAVOR-ML-CONCURRENCY]` The remaining shipped forms are `await fiber`, bare or
+`[FLAVOR-ML-CONCURRENCY]` The remaining forms are `await fiber`, bare or
 valued `yield`, `send channel value`, and `recv channel`. Compound operands are
 parenthesised. They lower to the corresponding shared AST nodes.
 
@@ -342,21 +334,3 @@ lines are statements. It lowers to `Expr::Block { statements, value }`.
 | uppercase record head / lowercase update head | `Expr::TypeConstructor` / `Expr::Update` |
 | `effect`, `perform`, lexical `handle`, `resume` | shared effect AST nodes |
 | `spawn`, `await`, `yield`, `send`, `recv` | shared concurrency AST nodes |
-
-## References
-
-- Peter J. Landin, *The Next 700 Programming Languages* (1966): the offside
-  rule.
-- Vaughan R. Pratt, *Top Down Operator Precedence* (1973): expression parsing
-  by binding power.
-- Haskell 2010 Language Report, sections 2.7 and 10.3: a concrete layout
-  algorithm.
-
-## Cross-references
-
-- [Language Flavors](0023-LanguageFlavors.md)
-- [Syntax](0003-Syntax.md)
-- [Type System](0004-TypeSystem.md)
-- [Pattern Matching](0007-PatternMatching.md)
-- [Algebraic Effects](0017-AlgebraicEffects.md)
-- [Modules and Namespaces](0025-ModulesAndNamespaces.md)

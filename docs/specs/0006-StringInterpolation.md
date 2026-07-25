@@ -1,4 +1,4 @@
-# String Interpolation
+# String Interpolation [STRING-INTERPOLATION]
 
 Both flavors use `${...}` inside a double-quoted string. Shared code splits the
 literal into text and expression parts; the active flavor parses each embedded
@@ -30,7 +30,7 @@ Strings are inserted unchanged. Integers, floats, and booleans use their normal
 scalar rendering.
 
 A `Result` is auto-unwrapped at an interpolation hole. `Success` renders its
-payload without the wrapper. An `Error` currently renders the payload type's
+payload without the wrapper. An `Error` renders the payload type's
 zero value rather than its message; use `toString(result)` when the distinction
 must remain visible:
 

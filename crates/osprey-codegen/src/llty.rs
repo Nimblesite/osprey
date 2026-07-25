@@ -1,7 +1,7 @@
 //! The small slice of the LLVM type system the code generator emits. Osprey
 //! primitives map to `i64` (int), `i1` (bool) and `i8*` (string); `i32` is the
-//! C `main` return and `puts`/`sprintf` result. Records, unions and effect
-//! closures are not yet lowered — those callers fail loudly rather than guess.
+//! C `main` return and `puts`/`sprintf` result. Records, unions, collections,
+//! fibers, and effect closures use opaque pointer values.
 
 use std::fmt;
 

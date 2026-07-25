@@ -4,8 +4,7 @@
 // (crates/osprey-codegen/src/testing.rs); dependency-free C11 so the unit
 // compiles unchanged into the native, GC, and wasm runtime archives.
 //
-// State is plain (non-atomic) globals: test execution is single-fiber by
-// contract [TESTING-RISK-FIBERS].
+// State is plain (non-atomic) globals: test execution is single-fiber.
 
 #include <stdint.h>
 #include <stdio.h>

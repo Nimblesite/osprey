@@ -1,7 +1,7 @@
 # Iterators and Iteration
 
 Osprey has no `for`, `while`, or `loop` construct. Range pipelines provide the
-shipped iteration surface in both language flavors.
+iteration surface in both language flavors.
 
 ## Core Iterator Functions — [BUILTIN-ITER]
 
@@ -99,7 +99,7 @@ range (0, 20) |> filter isEven |> map double |> forEach print
 ## Stream Fusion — [BUILTIN-ITER-FUSION]
 
 Chains of `map` and `filter` over a range are emitted as one loop when consumed
-by `forEach` or `fold`; no intermediate collection is created. For example:
+by `forEach` or `fold`; no intermediate collection is created:
 
 ```osprey
 range(1, 5) |> map(double) |> filter(isEven) |> forEach(print)

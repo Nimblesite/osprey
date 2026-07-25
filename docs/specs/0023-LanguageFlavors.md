@@ -6,18 +6,9 @@ generation are shared.
 
 The ML surface is specified in [ML Flavor Syntax](0024-MLFlavorSyntax.md).
 
-## Status
+<a id="the-one-law"></a>
 
-Both frontends are shipped. Default (`.osp`) uses tree-sitter. ML (`.ospml`)
-uses a hand-written layout lexer, recursive-descent parser, and CST-to-AST
-lowerer. Both produce `osprey_ast::Program`.
-
-The CLI flag, source marker, extension selection, mixed-flavor projects, and
-cross-flavor AST/IR equivalence tests are active. First-class handler values and
-multi-handler `do` installation are not part of the language; their reserved ML
-keywords are rejected.
-
-## The One Law
+## Canonical AST Boundary
 
 `[FLAVOR-BOUNDARY]` Everything below the canonical AST is flavor-specific.
 Everything at or above `osprey_ast::Program` is shared.
@@ -26,7 +17,7 @@ Type inference, effect checking, project resolution, and code generation must
 not branch on `Flavor`. `Parsed.flavor` is retained for frontend and editor
 presentation only.
 
-## Flavors That Exist
+## Supported Flavors
 
 | Flavor | Blocks | Calls | Function default | Extension |
 | --- | --- | --- | --- | --- |
@@ -36,7 +27,7 @@ presentation only.
 Default remains the default API and source flavor. One file uses one flavor;
 projects may contain both extensions.
 
-## The Pipeline
+## Lowering Pipeline
 
 ```text
 .osp   -> Default CST -> Default lowerer --+
@@ -102,9 +93,9 @@ error. The CLI exits with that error. The language server reports one
 - erase spelling-only differences before semantic analysis; and
 - reject a construct when the canonical AST cannot represent its semantics.
 
-## Flavor Concern vs Shared-Core Concern
+## Flavor and Shared-Core Concerns
 
-`[FLAVOR-LAYER]` The following shipped forms use the same canonical vocabulary.
+`[FLAVOR-LAYER]` The following forms use the same canonical vocabulary.
 Curried and flat functions intentionally have different canonical shapes, as
 specified in [Currying Canonicalisation](#currying-canonicalisation).
 
@@ -148,15 +139,15 @@ function types and lambda/call nodes.
 - ML `f a b` is `Call(Call(f, [a]), [b])`; ML `f (a, b)` is
   `Call(f, [a, b])`.
 
-The AST-equivalence tests assert three buckets: the curried twins are equal,
-the flat twins are equal, and ML curried is not equal to Default flat.
+The AST-equivalence tests assert three cases: the curried twins are equal, the
+flat twins are equal, and ML curried is not equal to Default flat.
 
 ## Shared-Core Additions
 
 `[FLAVOR-HANDLER-VALUE]` First-class handler values, a `Handler E` type, and
 multi-handler `do` installation are absent from the canonical AST and type
 system. The ML lexer reserves `handler` and `do`; the parser reports
-`not yet supported`. Both flavors currently use lexical
+`not yet supported`. Both flavors use lexical
 `Expr::Handler { effect, arms, body }`.
 
 ## Cross-Flavor Interop
@@ -171,19 +162,11 @@ canonical identity across flavors.
 
 ## Cross-Flavor Equivalence Tests
 
-`[FLAVOR-TEST]` `crates/osprey-cli/tests/cross_flavor_equiv.rs` compares
+`crates/osprey-cli/tests/cross_flavor_equiv.rs` compares
 canonical ASTs after removing source positions. It covers equal curried twins,
-equal flat twins, and the deliberately unequal curried/flat pair.
+equal flat twins, and the expected unequal curried/flat pair.
 
 `[FLAVOR-IR-EQUIV]` `crates/osprey-cli/tests/cross_flavor_ir_equiv.rs` compiles
 paired `.osp` and `.ospml` examples and requires byte-identical LLVM IR. Each ML
 example has a Default twin and shares its expected-output file, except for the
-small explicit ML-only allowlist in that test.
-
-## Cross-references
-
-- [ML Flavor Syntax](0024-MLFlavorSyntax.md)
-- [Syntax](0003-Syntax.md)
-- [Type System](0004-TypeSystem.md)
-- [Algebraic Effects](0017-AlgebraicEffects.md)
-- [Modules and Namespaces](0025-ModulesAndNamespaces.md)
+explicit ML-only allowlist in that test.

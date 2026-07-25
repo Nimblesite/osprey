@@ -716,13 +716,9 @@ fn run_build_step(mut cmd: Command, input: &Path) -> Result<(), ExitCode> {
 
 /// The LLVM optimization level handed to clang when lowering the emitted IR.
 /// Defaults to `-O2`; `OSPREY_OPT` overrides it (e.g. `-O0` for fast debug
-/// builds, `-O3` to match Rust/OCaml release flags). This is load-bearing twice
-/// over: it is the difference between competitive and 30–100× slower native
-/// code, and — because codegen currently has no reclamation backend [MEM-OPAQUE,
-/// docs/specs/0018] — it IS the default memory strategy. At `-O2` LLVM proves
-/// per-operation `Result` allocations non-escaping and removes them entirely
-/// (heap → registers), the [MEM-OWNERSHIP] "free at last use" ideal achieved
-/// statically; without it those allocations leak for the whole run.
+/// builds, `-O3` for a more aggressive release build). At `-O2`, LLVM can
+/// eliminate non-escaping per-operation `Result` allocations. Allocation
+/// reclamation is selected independently by `--memory` ([MEM-BACKENDS]).
 fn compile_ir(
     path: &str,
     program: &osprey_ast::Program,
@@ -1263,14 +1259,18 @@ mod tests {
         "examples/tested/db/database_effect.ospml",
         "examples/tested/db/sqlite_basics.osp",
         "examples/tested/db/sqlite_basics.ospml",
+        "examples/tested/effects/abort_vs_resume.osp",
         "examples/tested/effects/algebraic_effects_comprehensive.osp",
         "examples/tested/effects/algebraic_effects_comprehensive.ospml",
+        "examples/tested/effects/collect_all_errors.osp",
         "examples/tested/effects/fiber_effects.osp",
         "examples/tested/effects/fiber_effects.ospml",
         "examples/tested/effects/handler_scoping.osp",
         "examples/tested/effects/handler_scoping.ospml",
         "examples/tested/effects/http_state_levels.osp",
         "examples/tested/effects/http_state_levels.ospml",
+        "examples/tested/effects/recoverable_errors.osp",
+        "examples/tested/effects/result_and_effects.osp",
         "examples/tested/effects/resume_abort_early_exit.osp",
         "examples/tested/effects/resume_abort_early_exit.ospml",
         "examples/tested/effects/resume_lifo_audit.osp",
@@ -1281,6 +1281,8 @@ mod tests {
         "examples/tested/effects/resume_unit_markers.ospml",
         "examples/tested/effects/resume_value_rewrite.osp",
         "examples/tested/effects/resume_value_rewrite.ospml",
+        "examples/tested/effects/retry_until_valid.osp",
+        "examples/tested/effects/typed_error_channels.osp",
         "examples/tested/fiber/cpu_profiling_demo.osp",
         "examples/tested/fiber/fiber_determinism.osp",
         "examples/tested/fiber/fiber_exact_replica.osp",
@@ -1730,6 +1732,11 @@ mod tests {
     }
 
     #[test]
+    fn effects_abort_vs_resume_osp() {
+        assert_example_matches("examples/tested/effects/abort_vs_resume.osp");
+    }
+
+    #[test]
     fn effects_algebraic_effects_comprehensive_osp() {
         assert_example_matches("examples/tested/effects/algebraic_effects_comprehensive.osp");
     }
@@ -1737,6 +1744,11 @@ mod tests {
     #[test]
     fn effects_algebraic_effects_comprehensive_ospml() {
         assert_example_matches("examples/tested/effects/algebraic_effects_comprehensive.ospml");
+    }
+
+    #[test]
+    fn effects_collect_all_errors_osp() {
+        assert_example_matches("examples/tested/effects/collect_all_errors.osp");
     }
 
     #[test]
@@ -1767,6 +1779,16 @@ mod tests {
     #[test]
     fn effects_http_state_levels_ospml() {
         assert_example_matches("examples/tested/effects/http_state_levels.ospml");
+    }
+
+    #[test]
+    fn effects_recoverable_errors_osp() {
+        assert_example_matches("examples/tested/effects/recoverable_errors.osp");
+    }
+
+    #[test]
+    fn effects_result_and_effects_osp() {
+        assert_example_matches("examples/tested/effects/result_and_effects.osp");
     }
 
     #[test]
@@ -1817,6 +1839,16 @@ mod tests {
     #[test]
     fn effects_resume_value_rewrite_ospml() {
         assert_example_matches("examples/tested/effects/resume_value_rewrite.ospml");
+    }
+
+    #[test]
+    fn effects_retry_until_valid_osp() {
+        assert_example_matches("examples/tested/effects/retry_until_valid.osp");
+    }
+
+    #[test]
+    fn effects_typed_error_channels_osp() {
+        assert_example_matches("examples/tested/effects/typed_error_channels.osp");
     }
 
     #[test]

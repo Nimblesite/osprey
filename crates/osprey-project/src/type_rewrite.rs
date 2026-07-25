@@ -139,6 +139,8 @@ impl Resolver<'_> {
         }
     }
 
+    /// Expands an alias and rejects a repeated alias on the active path.
+    /// Implements the type-alias half of [MODULES-CYCLES].
     fn expand_alias(
         &mut self,
         target: &mut TypeExpr,

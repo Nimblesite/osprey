@@ -3,23 +3,20 @@
 # COST CONTROL. Diff the pushed release tag against the previous release tag and
 # decide which surfaces must publish, so the expensive macOS/Windows build matrix
 # only runs when the artifact it produces actually changed.
-# Implements docs/specs/release-change-detection.md [SWR-REL-CHANGES-*]
-# (the Shipwright realisation of the Deslop SWR-REL-CHANGES proposal):
-#   - binary changed     -> full release: build matrix + every channel  [SWR-REL-CHANGES-CASCADE]
+# Rules:
+#   - binary changed     -> full release: build matrix + every channel
 #   - vsix / jetbrains    -> still build the matrix (the artifact bundles a binary at the
-#                            new tag version), publish that surface, skip the rest  [SWR-REL-CHANGES-MATRIX]
+#                            new tag version), publish that surface, skip the rest
 #   - website only        -> deploy the site, skip the whole matrix
-#   - unclassified path   -> full release, fail-safe                     [SWR-REL-CHANGES-FAILSAFE]
+#   - unclassified path   -> full release, fail-safe
 #   - first release / nothing matched -> full release
 #
 # Single-version contract: a tag stamps one version and host activation-verify is
 # onMismatch:error, so a published VSIX/JetBrains plugin MUST bundle binaries built
 # at the new version. Reusing a prior release's binary is therefore NOT done here.
 #
-# Supply chain (docs/specs/supply-chain-security.md):
-#   - SWR-SEC-ACTION-PINNING  every `uses:` is a full 40-char commit SHA.
-#   - SWR-SEC-TOKEN-PRIVILEGE read-only token; no write/id-token needed here.
-#   - the classifier is installed from a PINNED Shipwright commit (`shipwright_rev`).
+# The classifier is installed from a pinned Shipwright commit and needs only a
+# read-only token.
 
 name: release-change-detection
 

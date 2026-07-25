@@ -1,4 +1,4 @@
-// Alcotest-style check(label, expected, actual) in the ML flavor
+// ML-flavor check(label, expected, actual) assertions.
 // [TESTING-BUILTIN-CHECK], twinned with the Default file.
 sub (a, b) = a - b
 classify n =

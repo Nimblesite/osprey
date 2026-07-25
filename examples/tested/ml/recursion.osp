@@ -1,17 +1,9 @@
-// Default-flavor twin of recursion.ospml. ML positional `Success m` / `Error e`
-// patterns lower to the same nodes as Default `Success { value }` / `Error { message }`
-// (the bound name matches the payload field); the `-> int` return auto-unwraps
-// the final value — byte-identical IR.
+// Default-flavor twin of recursion.ospml. Both flavors use plain integer
+// addition/subtraction and lower to byte-identical IR.
 
 fn sumTo(n: int) -> int = match n {
     0 => 0
-    _ => match n - 1 {
-        Success { value } => match n + sumTo(value) {
-            Success { value } => value
-            Error { message } => 0
-        }
-        Error { message } => 0
-    }
+    _ => n + sumTo(n - 1)
 }
 
 print("sum5=${sumTo(5)} sum10=${sumTo(10)} sum1=${sumTo(1)}")

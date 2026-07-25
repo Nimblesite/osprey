@@ -25,6 +25,8 @@ enum Ret {
     Str,
     /// `void` — yields Unit.
     Unit,
+    /// C `i64` status discarded by a language-level Unit function.
+    StatusUnit,
     /// `Result<int, _>`: the C `i64` is the success value; `< 0` ⇒ Error.
     ResultInt,
     /// `Result<string, _>`: the C `i8*` is the success value; `null` ⇒ Error.
@@ -63,9 +65,9 @@ fn lookup(name: &str) -> Option<Sig> {
         "spawnProcess" => sig("spawn_process_with_handler", &[Str, Ptr], Ret::ResultInt),
         "awaitProcess" => sig("fiber_await_process", &[I64], Ret::Int),
         "cleanupProcess" => sig("fiber_cleanup_process", &[I64], Ret::Unit),
-        // `sleep(ms)` is MILLISECONDS via the fiber runtime — NOT libc
-        // `sleep(seconds)`, which an unmapped fall-through would link.
-        "sleep" => sig("fiber_sleep", &[I64], Ret::Int),
+        // `sleep(ms)` is milliseconds via the fiber runtime. Its native status
+        // is discarded by the Unit language surface [CONCURRENCY-SLEEP].
+        "sleep" => sig("fiber_sleep", &[I64], Ret::StatusUnit),
         // --- HTTP server/client (http_*_runtime.c); httpListen arg1 is the handler ---
         "httpCreateServer" => sig("http_create_server", &[I64, Str], Ret::Int),
         "httpListen" => sig("http_listen", &[I64, Ptr], Ret::Int),
@@ -95,7 +97,7 @@ fn lookup(name: &str) -> Option<Sig> {
         "jsonLength" => sig("json_length", &[I64, Str], Ret::Int),
         "jsonFree" => sig("json_free", &[I64], Ret::ResultInt),
         // --- terminal control (term_runtime.c) [BUILTIN-TERM] ---
-        "termRawMode" => sig("term_raw_mode", &[I64], Ret::Int),
+        "termRawMode" => sig("term_raw_mode", &[I64], Ret::StatusUnit),
         "termCols" => sig("term_cols", &[], Ret::Int),
         "termRows" => sig("term_rows", &[], Ret::Int),
         "termReadKey" => sig("term_read_key", &[], Ret::ResultStr(None)),
@@ -165,6 +167,10 @@ fn emit(cg: &mut Codegen, sig: &Sig, ops: &[String]) -> Result<Value> {
             cg.call_void(sig.cname, &params, &op_refs);
             Ok(Value::unit())
         }
+        Ret::StatusUnit => {
+            let _status = cg.call("i64", sig.cname, &params, &op_refs);
+            Ok(Value::unit())
+        }
         Ret::Int => Ok(Value::new(
             cg.call("i64", sig.cname, &params, &op_refs),
             LType::I64,
@@ -193,6 +199,33 @@ fn emit(cg: &mut Codegen, sig: &Sig, ops: &[String]) -> Result<Value> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn unit_builtins_discard_native_status_values() {
+        // The C functions report status, but their language contracts are Unit:
+        // [BUILTIN-TERM] and [CONCURRENCY-SLEEP].
+        let parsed = osprey_syntax::parse_program(
+            "fn configure() -> Unit = termRawMode(0)\n\
+             fn nap() -> Unit = sleep(0)\n\
+             let configured = configure()\n\
+             let slept = nap()\n",
+        );
+        assert!(
+            parsed.errors.is_empty(),
+            "syntax errors: {:?}",
+            parsed.errors
+        );
+        let ir = crate::compile_program(&parsed.program).expect("terminal codegen");
+        for (function, callee) in [("configure", "term_raw_mode"), ("nap", "fiber_sleep")] {
+            let marker = format!("define i64 @{function}(");
+            let start = ir
+                .find(&marker)
+                .unwrap_or_else(|| panic!("missing {function}"));
+            let body = &ir[start..ir[start..].find("\n}").map_or(ir.len(), |n| start + n)];
+            assert!(body.contains(&format!("call i64 @{callee}")), "{body}");
+            assert!(body.contains("ret i64 0"), "Unit must return zero: {body}");
+        }
+    }
+
     #[test]
     fn websocket_builtins_lower_to_the_c_runtime_abi() {
         // [BUILTIN-WEBSOCKET] Camel-case language names must not escape into

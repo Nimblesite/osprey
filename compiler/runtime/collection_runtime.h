@@ -7,19 +7,16 @@
  * Shared types and ABI for List<T> and Map<K,V>.
  *
  * Spec: docs/specs/0004-TypeSystem.md#collection-types
- * Plan: docs/plans/collections.md
- *
  * Implements [TYPE-LIST], [TYPE-MAP], [TYPE-MAP-LOOKUP], [TYPE-MAP-OPS].
  *
  * This ABI is what the builtin collection surface of
- * docs/specs/0012-Built-InFunctions.md lowers to: [BUILTIN-COLLECTIONS],
- * [BUILTIN-COLLECTION-COMMON], [BUILTIN-LIST], [BUILTIN-MAP]. The
- * `*_length` entry points back both [BUILTIN-COLLECTION-LENGTH] and
+ * docs/specs/0012-Built-InFunctions.md lowers to: [BUILTIN-LIST] and
+ * [BUILTIN-MAP]. The `*_length` entry points back both [BUILTIN-COLLECTION-LENGTH] and
  * [BUILTIN-COLLECTION-ISEMPTY] (`isEmpty` is `length == 0`, folded at codegen).
  *
  * Every element is stored as an int64_t. Pointers (strings, nested
  * collections, records) are cast to int64_t at storage time. Codegen on the
- * Go side is responsible for boxing/unboxing.
+ * Codegen is responsible for boxing and unboxing.
  *
  * Memory model: refcounted per node/header under the ARC backend, leak-semantic
  * under the default and tracing backends (the osp_retain / osp_release /

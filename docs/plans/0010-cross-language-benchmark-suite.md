@@ -6,25 +6,26 @@
 OCaml, Haskell — plus `osprey-wasm`/`rust-wasm` and the `osprey-arc`/`osprey-gc`
 backend columns); `intDiv` added; **native codegen optimized (`-O2`) and
 allocation routed through a swappable `@osp_alloc` backend, with two reclaiming
-backends shipped**. Osprey is at parity or faster than C/Rust on most cases.
-`binarytrees` now lags **only under the DEFAULT (non-reclaiming) backend**
-(633 MB peak RSS): with the opt-in `--memory=arc` it peaks at **2.97 MB** — 213×
+backends shipped**. `binarytrees` remains memory-heavy under the **DEFAULT
+(non-reclaiming) backend** (633 MB peak RSS): with the opt-in `--memory=arc` it
+peaks at **2.97 MB** — 213×
 less than the default, 1.30× Rust's 2.28 MB and 1.71× C's 1.74 MB — and it is
 *faster* than the default (0.216 s vs 0.249 s);
 `--memory=gc` peaks at 18.5 MB. Because both reclaiming backends are **opt-in
 flags, not the default**, the headline `osprey` column in the published tables
-still shows the 633 MB figure. Feature-blocked classics (arrays, float) pending
-**Spec ID:** `[BENCH-SUITE]`
+still shows the 633 MB figure. Feature-blocked array and floating-point cases
+remain pending, as does arbitrary-precision `pidigits`; recursive List
+`filter`+concat currently blocks quicksort and mergesort in codegen.
 
 **Update — the backend oracles are now enforced.** `make test` runs the
 differential harness three times (default, `--memory=gc`, `--memory=arc`) and
 the ARC pass fails unless every example ends with `ARC_LEAKY=0`. What remains on
-this plan is documentation freshness and the two feature-blocked case families.
+this plan is documentation freshness and the blocked cases below.
 
 ## Summary
 
-An **accurate, reproducible** way to see where Osprey sits on CPU time and peak
-memory against **Rust, C, C#, Dart, OCaml, and Haskell**. Every benchmark is
+The suite measures Osprey CPU time and peak memory against **Rust, C, C#, Dart,
+OCaml, and Haskell**. Every benchmark is
 implemented in all seven languages with the *same naive algorithm and
 parameters*, compiled to a native binary, checked byte-for-byte against an
 integer oracle (`expected.txt`), then timed with `hyperfine` (CPU) and
@@ -49,24 +50,22 @@ table, peak-memory table, geomean Osprey-slowdown). `make bench` /
 `BENCH_FILTER=<name> make bench`. Dev container installs `ghc ocaml time` +
 hyperfine.
 
-## Key finding — and the fix
+## Initial performance finding and fix
 
-The suite's first run exposed a catastrophe: Osprey was 12–89× slower and used
-120–2244× more peak RSS, with memory scaling by **operation count** (`fib(35)` ≈
-1.4 GB). Root cause was **not** the language — it was the build pipeline: codegen
-handed its LLVM IR to `clang` with **no optimization flag (`-O0`)**. Every
+The initial run measured Osprey at 12–89× slower and 120–2244× more peak RSS,
+with memory scaling by **operation count** (`fib(35)` ≈ 1.4 GB). The build
+pipeline handed codegen's LLVM IR to `clang` with **no optimization flag
+(`-O0`)**. Every
 per-operation `Result` block stayed a live `malloc`.
 
-Three changes closed the gap:
+Three changes addressed these measurements:
 
 1. **Optimize the native build (`-O2`, overridable via `OSPREY_OPT`)** —
    [crates/osprey-cli/src/main.rs](../../crates/osprey-cli/src/main.rs)
    `opt_flag()`. LLVM proves the per-operation `Result` allocations non-escaping
    and removes them entirely (heap → registers) — the [MEM-OWNERSHIP] static
    free-at-last-use, done by the optimizer. fib(35): **0.52 s → 0.01 s** and
-   **1.37 GB → 1.4 MB**. Across the suite Osprey went from ~12–19× slower to
-   **parity with C/Rust and faster than OCaml/Haskell**, winning outright on
-   `digitsum`, `mutual`, `josephus`, `pascal`, `primes`, `gcdsum`, `tak`.
+   **1.37 GB → 1.4 MB**.
 
 2. **Swappable allocation backend** — all codegen heap allocation now funnels
    through one `@osp_alloc` hook ([builder.rs](../../crates/osprey-codegen/src/builder.rs)
@@ -84,11 +83,11 @@ Three changes closed the gap:
    (conservative mark & sweep), [memory_arc.c](../../compiler/runtime/memory_arc.c)
    (Perceus reference counting).
 
-`binarytrees` is the one case where the *default* backend still trails: its tree
+`binarytrees` remains memory-heavy under the *default* backend: its tree
 nodes genuinely *escape*, so `-O2` cannot statically free them and a `malloc`
-passthrough never reclaims. Both reclaiming backends fix it outright — measured
-in [benchmarks/results/results.json](../../benchmarks/results/results.json) and
-reproducible with `./target/release/osprey benchmarks/cases/binarytrees/binarytrees.osp --run --memory=arc`:
+passthrough never reclaims them. Measurements for all three backends are in
+[benchmarks/results/results.json](../../benchmarks/results/results.json) and can
+be reproduced with `./target/release/osprey benchmarks/cases/binarytrees/binarytrees.osp --run --memory=arc`:
 
 | backend | peak RSS | mean wall | checksum |
 |---------|----------|-----------|----------|
@@ -96,46 +95,26 @@ reproducible with `./target/release/osprey benchmarks/cases/binarytrees/binarytr
 | `--memory=arc` | **2.97 MB** (213× less) | **0.216 s** (faster than default) | 19659600 (correct) |
 | `--memory=gc` | 18.5 MB | 1.331 s | 19659600 (correct) |
 
-For reference C peaks at 1.74 MB and Rust at 2.28 MB on this case, so ARC sits at
-1.71× C and 1.30× Rust — and beats every managed runtime measured (C# 16.8 MB,
-Haskell 11.6 MB, OCaml 5.37 MB, Dart 23.6 MB). `OSPREY_ARC_DEBUG=1` on the same run reports
+The same run measured C at 1.74 MB, Rust at 2.28 MB, C# at 16.8 MB, Haskell at
+11.6 MB, OCaml at 5.37 MB, and Dart at 23.6 MB. `OSPREY_ARC_DEBUG=1` reports
 `[osp-arc] exit: 0 live objects, 0 KiB (+0 immortal)` — zero leaked language
 values. See [spec 0018 — Memory Management](../specs/0018-MemoryManagement.md).
 
-The caveat is exposure, not correctness: ARC/GC are **opt-in flags**, so the
-default `osprey` column of the published benchmark tables is still the 633 MB
-one. Making a reclaiming backend the default is a spec-0018 decision, not a
-benchmark-suite one.
+ARC and GC are **opt-in flags**, so the default `osprey` column of the published
+benchmark tables is still the 633 MB result. Making a reclaiming backend the
+default is a spec-0018 decision, not a benchmark-suite one.
 
-## Blocked classics — need Osprey language features (not faked)
+## Blocked benchmark families
 
-Each row is a benchmark we *cannot* express today. Ordered by leverage: the
-feature that unblocks the most classics, with the least scope, first.
+Each row records benchmarks that cannot be expressed with the current language
+surface.
 
 | Missing feature | Unblocks | Scope |
 |-----------------|----------|-------|
-| **Integer division `/` (+ already-present `%`)** | collatz, digit-sum, integer-sqrt, sieve-of-eratosthenes (index math), radix benchmarks | **Low** — new typed op, no new types |
-| Mutable arrays / fixed-size buffers | sieve, matrix-multiply, quicksort, mergesort, fannkuch, n-queens | High — new aggregate type + codegen |
+| Mutable arrays / fixed-size buffers | sieve, matrix-multiply, n-sieve, fannkuch, n-queens | High — new aggregate type + codegen |
 | `int`↔`float` conversion + `sqrt`/trig stdlib | mandelbrot, n-body, spectral-norm | Medium — math runtime + exact float oracle |
-| List literals / cons / list pattern-matching ops | list-heavy classics already partly covered by `[h, ...t]` | Medium |
-| Arbitrary-precision integers | pidigits, big-factorial (exact) | High |
-
-**Decision:** integer division is the next feature to add — lowest scope,
-unblocks the most classic integer benchmarks, and `%` already exists so the
-codegen/runtime path is half-built.
-
-## Implementation plan (next feature: integer division)
-
-1. Find how `%` is lowered (`crates/osprey-codegen`) and the float `/` path; add
-   integer `/` as a typed, overflow/zero-checked op returning
-   `Result<int, MathError>` (divide-by-zero → `MathError`), mirroring `%`.
-2. Type rule in `crates/osprey-types`: `int / int -> Result<int, MathError>`;
-   keep `float / float -> float` unchanged (type-directed dispatch).
-3. Whole-body arithmetic helpers already auto-unwrap `Result` — confirm `/`
-   composes (e.g. `fn idiv(a: int, b: int) -> int = a / b`).
-4. `find-similar` before adding any runtime helper; reuse the `%` path.
-5. Add `collatz`, `digit-sum`, `integer-sqrt` benchmark cases (all 5 languages).
-6. `make ci` green; refresh `benchmarks/results/`.
+| Recursive persistent-List `filter`+concat codegen defect | quicksort, mergesort | Compiler correctness fix |
+| Arbitrary-precision integers | pidigits | High — new numeric representation |
 
 ## TODO
 
@@ -153,10 +132,10 @@ codegen/runtime path is half-built.
       methodology; `results.md` retired. Generated mechanically — never hand-edited.
 - [x] **Add integer division** as the `intDiv` builtin (`/` stays float-only per
       spec) — codegen + types + `[BUILTIN-INTDIV]` spec + tested example.
-- [x] Add `collatz`, `digitsum`, `isqrt` cases (all 5 languages, verified vs C oracle).
+- [x] Add `collatz`, `digitsum`, `isqrt` cases (all 7 languages, verified vs C oracle).
 - [x] **Optimize the native build** (`-O2` via `opt_flag()`, `OSPREY_OPT`
-      override) — the single change that took Osprey from 12–89× slower to
-      parity/winning, and collapsed per-operation RSS (fib 1.37 GB → 1.4 MB).
+      override) — reduced fib RSS from 1.37 GB to 1.4 MB and runtime from
+      0.52 s to 0.01 s.
 - [x] **Swappable allocation backend** — codegen emits `@osp_alloc` (attributed
       so `-O2` still elides non-escaping allocs); default backend
       `memory_runtime.c` = `malloc`. Implements [MEM-BACKENDS]; not tied to malloc.
@@ -199,5 +178,8 @@ codegen/runtime path is half-built.
       `benchmarks/results/results.json` is 2 965 504 B ≈ **2.97 MB**. (The same
       README's “905 MB” default figure is likewise ahead of the committed 633 MB.)
       Regenerate rather than hand-edit.
-- [ ] (Later) mutable arrays → sieve, matrix-multiply, sort/fannkuch/n-queens.
+- [ ] (Later) mutable arrays → sieve, matrix-multiply, n-sieve, fannkuch,
+      n-queens.
 - [ ] (Later) `int`↔`float` + `sqrt` → mandelbrot, n-body, spectral-norm.
+- [ ] Fix recursive List `filter`+concat codegen → quicksort, mergesort.
+- [ ] (Later) arbitrary-precision integers → pidigits.

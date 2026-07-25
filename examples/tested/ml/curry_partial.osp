@@ -1,7 +1,7 @@
 // Default-flavor twin of curry_partial.ospml. ML curry-by-default `add a b = ...`
 // lowers to explicit-curry `fn add(a) = fn(b) => ...`; partial application
-// `add(5)` yields the inner closure. The `-> (int) -> int` annotation mirrors the
-// ML signature and auto-unwraps the arithmetic Result — byte-identical IR.
+// `add(5)` yields the inner closure. The `-> (int) -> int` annotation keeps that
+// closure concrete and mirrors the ML signature — byte-identical IR.
 
 fn add(a: int) -> (int) -> int = fn(b) => a + b
 

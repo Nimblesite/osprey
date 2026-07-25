@@ -29,7 +29,7 @@ websocketKeepAlive() -> Unit
 The server accepts upgrade requests, sends a welcome text frame, and echoes
 received text payloads. `websocketServerBroadcast` returns the number of
 connections written. `websocketKeepAlive` blocks until `SIGINT` or `SIGTERM`.
-The `path` argument is stored with the server but is not currently used to
+The `path` argument is stored with the server but is not used to
 filter upgrade requests.
 
 ## Framing limits

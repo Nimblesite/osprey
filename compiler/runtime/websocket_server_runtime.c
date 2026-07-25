@@ -230,7 +230,7 @@ int64_t websocket_server_listen(int64_t server_id) {
 
   // Set socket options
   int opt = 1;
-  // optval is `const char *` on Winsock, `const void *` on POSIX. [WINDOWS-PORT-PHASE2]
+  // optval is `const char *` on Winsock, `const void *` on POSIX.
   if (setsockopt(server->socket_fd, SOL_SOCKET, SO_REUSEADDR, (const char *)&opt,
                  sizeof(opt)) < 0) {
     close(server->socket_fd);

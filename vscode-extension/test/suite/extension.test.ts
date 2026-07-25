@@ -1169,7 +1169,7 @@ suite("Osprey Language Features Tests", () => {
     // real .ospml buffer so a regression that broke ML editor UX (e.g. the
     // selector losing "osprey-ml", or the ML frontend not reaching the LSP) fails
     // loudly. ML flavor: `name args = body`, whitespace application, offside
-    // blocks, `name = value` bindings (no `let`/`fn`). [LSP-ML-FLAVOR]
+    // blocks, `name = value` bindings (no `let`/`fn`). [LSP-FLAVOR-RENDER]
     const ML =
       [
         "double x = x * 2", // 0  curried unary fn

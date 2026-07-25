@@ -4,7 +4,8 @@
 //! It parses mixed `.osp`/`.ospml` inputs, assembles logical namespace
 //! contributions, resolves module imports, and emits one flavor-neutral
 //! canonical program for checking and code generation. Implements
-//! [MODULES-MODEL], [MODULES-PATH-INDEPENDENCE], and [MODULES-PROJECT].
+//! [MODULES-MODEL], [MODULES-PATH-INDEPENDENCE], [MODULES-PROJECT], and
+//! [FLAVOR-INTEROP].
 
 mod annotation;
 mod assemble;

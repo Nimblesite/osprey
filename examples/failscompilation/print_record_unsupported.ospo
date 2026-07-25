@@ -1,7 +1,4 @@
-// print() on a record currently has no toString implementation. The error
-// must pin the offending print call's line/column and name the type so the
-// user can find and fix it; without positional info the bare "cannot
-// convert value for printing" was unactionable.
+// Records have no string formatter and must be rejected before code generation.
 
 type Pt = { x: int, y: int }
 

@@ -10,6 +10,7 @@
  */
 
 #include <ctype.h>
+#include <float.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -281,11 +282,49 @@ int64_t osp_parse_int_strict(const char *s, int64_t *out) {
     return 0;
 }
 
+/* [BUILTIN-STRING-PARSEFLOAT] decimal grammar:
+ *   sign? (digits ('.' digits?)? | '.' digits) exponent?
+ * where exponent is [eE] sign? digits. Validate before strtod so its
+ * whitespace, infinity/NaN, and hexadecimal extensions are not exposed. */
+static int osp_is_decimal_float(const char *s) {
+    const unsigned char *p = (const unsigned char *)s;
+    if (*p == '+' || *p == '-') p++;
+
+    int whole_digits = 0;
+    while (*p >= '0' && *p <= '9') {
+        whole_digits++;
+        p++;
+    }
+
+    int fractional_digits = 0;
+    if (*p == '.') {
+        p++;
+        while (*p >= '0' && *p <= '9') {
+            fractional_digits++;
+            p++;
+        }
+    }
+    if (whole_digits == 0 && fractional_digits == 0) return 0;
+
+    if (*p == 'e' || *p == 'E') {
+        p++;
+        if (*p == '+' || *p == '-') p++;
+        int exponent_digits = 0;
+        while (*p >= '0' && *p <= '9') {
+            exponent_digits++;
+            p++;
+        }
+        if (exponent_digits == 0) return 0;
+    }
+    return *p == '\0';
+}
+
 int64_t osp_parse_float_strict(const char *s, double *out) {
-    if (!s || s[0] == '\0' || !out) return 1;
+    if (!s || s[0] == '\0' || !out || !osp_is_decimal_float(s)) return 1;
     char *endp = NULL;
     double v = strtod(s, &endp);
     if (!endp || *endp != '\0' || endp == s) return 1;
+    if (v != v || v > DBL_MAX || v < -DBL_MAX) return 1;
     *out = v;
     return 0;
 }
@@ -361,6 +400,10 @@ const char *osp_string_codepoint_at(const char *s, int64_t byte_index, int64_t *
         cp = (cp << 6) | (int64_t)(p[k] & 0x3F);
     }
     if (width == 1) cp = p[0];
+    const int64_t minimum = width == 1 ? 0 : width == 2 ? 0x80 : width == 3 ? 0x800 : 0x10000;
+    if (cp < minimum || cp > 0x10FFFF || (cp >= 0xD800 && cp <= 0xDFFF)) {
+        return "codePointAt: invalid UTF-8 sequence";
+    }
     *out = cp;
     return NULL;
 }
@@ -374,7 +417,9 @@ const char *osp_string_codepoint_width(int64_t cp, int64_t *out) {
 }
 
 char *osp_string_from_codepoint(int64_t cp) {
-    if (cp < 0 || cp > 0x10FFFF) return NULL;
+    /* [BUILTIN-STRING-FROMCODEPOINT] U+0000 cannot inhabit this runtime's
+     * NUL-terminated string ABI: returning "\0" would be the empty string. */
+    if (cp <= 0 || cp > 0x10FFFF) return NULL;
     if (cp >= 0xD800 && cp <= 0xDFFF) return NULL;
     char buf[5];
     int n;

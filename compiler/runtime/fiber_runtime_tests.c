@@ -80,6 +80,9 @@ void test_invalid_channel_capacity(void) {
 }
 
 void test_fiber_sleep(void) {
+  // [CONCURRENCY-SLEEP] Non-positive durations return immediately.
+  assert(fiber_sleep(0) == 0);
+  assert(fiber_sleep(-1) == 0);
   int64_t result = fiber_sleep(10);
   assert(result == 0 && "fiber_sleep should return 0 on success");
 }

@@ -11,13 +11,13 @@ use soft assertions and return `Unit`; an ML case may instead return `Verdict`
 ## The built-ins
 
 **`[TESTING-BUILTINS]`** The type environment, code generator, and C runtime
-provide three functions. Testing adds no grammar or AST nodes.
+provide three functions.
 
 ### `test(name: string, body: fn() -> a) -> Unit` — `[TESTING-BUILTIN-TEST]`
 
 Runs `body` as one named test case and prints exactly one TAP result line for
 it. Test cases execute inline, in evaluation order, wherever the `test` call is
-evaluated (top level is the convention). A test passes when no assertion
+evaluated. A test passes when no assertion
 inside its body fails; assertions are soft — a failing `expect`/`check` marks
 the case failed and execution continues, so one case can report several
 mismatches.
@@ -133,8 +133,8 @@ ok 3 - overflow guard # SKIP precondition not met
   exit code.
 - After the program's last statement, the runtime epilogue prints the plan
   `1..N` (N = cases executed) and a `# tests=N passed=P failed=F skipped=S`
-  summary — including `1..0` when zero cases executed, so a filter that matched
-  nothing stays visible. The epilogue is emitted only for programs that use a
+  summary, including `1..0` when zero cases execute. The epilogue is emitted
+  only for programs that use a
   testing built-in; ordinary programs are unaffected.
 
 ## Exit code
@@ -190,7 +190,7 @@ block statements, lambda/handler/match bodies, namespaces, modules):
 statement — the call's own line in the conventional top-level layout; for a
 test that is a function or lambda body, the enclosing declaration's line.
 Dynamically named tests (non-literal first argument) still run and report via
-TAP; they are simply not listed statically.
+TAP; they are not listed statically.
 
 ## Line coverage
 
@@ -224,71 +224,40 @@ Coverage builds keep release optimization and emit no DWARF.
 process start; then an exit-time hook writes
 **`[TESTING-COVERAGE-DUMP]`**: a `# osprey-coverage v1` header followed by
 one `<line> <hits>` row per registered line, ascending, zero-hit rows
-included — a reader needs no other line universe.
+included.
 
 Lines are the compiled suite's own 1-based lines. Each suite compiles standalone
 and coverage measures that file (`[TESTING-CLI-RUN]`).
 
 ## VS Code Test Explorer
 
-**`[TESTING-VSCODE]`** The extension ships a native Testing-API integration
-(`vscode.tests.createTestController`) in `client/src/test-explorer.ts`,
-registered from `activate()` and packaged in the VSIX:
+**`[TESTING-VSCODE]`** The extension's Testing API integration:
 
-- **Discovery**: a file-system watcher plus initial scan over
-  `**/*.test.{osp,ospml}` creates one file-level item per test file; each
-  file's children come from `osprey <file> --list-tests` (real parse — never
-  regex), re-resolved on file change. The compiler binary is resolved with
-  the same chain as the LSP (`osprey.server.compilerPath` setting → bundled
-  `bin/<platform>/osprey` → `osprey` on PATH).
-- **Run**: the run profile executes `osprey <file> --run` per requested file
-  (cwd = the file's directory), with `OSPREY_TEST_FILTER=<name>` when a
-  single case is requested, parses the TAP stream, and maps `ok`/`not ok`
-  lines back to test items by name. `#` diagnostic lines preceding a
-  `not ok` line become the failure message. A `# SKIP` directive on an `ok`
-  line marks that case skipped in the Explorer (`[TESTING-VERDICT]`); the name
-  matched against `--list-tests` is the text before the directive. Cases absent
-  from the output are also marked skipped; a non-TAP failure (e.g. compile
-  error) marks the file item errored with the compiler's stderr.
-- **Coverage** (**`[TESTING-COVERAGE-VSCODE]`**): a second run profile
-  (`TestRunProfileKind.Coverage`) executes
-  `osprey test <file> --coverage-json <tmp> --quiet` per requested file
-  (`--filter <name>` for a single case), maps the same TAP stream, then
-  parses the `[TESTING-COVERAGE-JSON]` report into `FileCoverage` +
-  per-line `StatementCoverage` — VS Code shows the percentage in the Test
-  Coverage view and hit counts in the editor gutter.
+- watches `**/*.test.{osp,ospml}` and obtains each file's child cases from
+  `osprey <file> --list-tests`;
+- resolves the compiler from `osprey.server.compilerPath`, then the bundled
+  platform binary, then `PATH`;
+- runs requested files with `osprey <file> --run`, using
+  `OSPREY_TEST_FILTER=<name>` for a single case; and
+- maps TAP results, diagnostics, skips, and non-TAP process failures to test
+  items.
+
+**`[TESTING-COVERAGE-VSCODE]`** Its coverage profile runs
+`osprey test <file> --coverage-json <tmp> --quiet`, adding `--filter <name>` for
+a single case. It maps `[TESTING-COVERAGE-JSON]` lines to VS Code
+`FileCoverage` and per-line `StatementCoverage` entries.
 
 ## Runtime
 
-**`[TESTING-RUNTIME]`** `compiler/runtime/test_runtime.c` holds the run
-state (cases executed/failed/skipped, in-case failure and skip flags) and the
-symbols emitted by codegen: `osp_test_begin(name)` (returns whether the case
-runs, applying `[TESTING-FILTER]`), `osp_test_assert(label, ok, expected,
-actual)` (label is NULL for `expect`), the `Verdict` report primitives
-`osp_test_pass()` / `osp_test_fail(reason)` / `osp_test_skip(why)`
-(`[TESTING-VERDICT]`), `osp_test_end(name)` (prints the TAP result line, with a
-`# SKIP` directive when the case reported `Skip`), and `osp_test_finalize()`
-(prints plan + summary including `skipped=S`, returns the exit code). The unit
-is dependency-free C11, compiled into `libfiber_runtime.a` (and its
-`_gc`/HTTP/wasm siblings), and assumes single-fiber test execution
-(`[TESTING-RISK-FIBERS]`).
+**`[TESTING-RUNTIME]`** The runtime owns case state, filtering, TAP output, and
+the final exit code. It exposes begin, assert, Verdict report, end, and finalize
+operations to generated code.
 
-**`[TESTING-CODEGEN]`** Codegen lowers the built-ins in
-`crates/osprey-codegen/src/testing.rs`: `test` evaluates its name, calls
-`osp_test_begin`, branches around the inlined body, and calls `osp_test_end`;
-when the body's inferred type is `Verdict` it pattern-matches the result and
-reports it through `osp_test_pass`/`fail`/`skip` (`[TESTING-VERDICT]`), else the
-body's inline `expect`/`check` already recorded via `osp_test_assert`.
-`expect`/`check` unwrap + stringify both values, `strcmp`-compare, and call
-`osp_test_assert`. Any use sets a per-module flag that makes `main` return
-`osp_test_finalize()` instead of `0`.
+**`[TESTING-CODEGEN]`** Code generation calls those runtime operations, skips a
+filtered body's branch, reports `Verdict` values, and makes `main` return the
+runtime's final status whenever a testing built-in is used.
 
-## Risks
-
-- **`[TESTING-RISK-FIBERS]`** The run state is plain (non-atomic) C globals;
-  assertions performed inside spawned fibers may interleave TAP lines or
-  miscount. Tests should assert on the main fiber (await fiber results, then
-  assert).
-- Test names are matched by exact string in filtering and in the Test
-  Explorer TAP mapping; duplicate names within one file resolve to the last
-  matching item.
+**Fiber constraint.** Test state uses non-atomic process globals. Assertions in
+spawned fibers can
+interleave TAP lines or miscount; make assertions on the main fiber after
+awaiting fiber results.

@@ -1,4 +1,4 @@
-// Convert arithmetic Results into one typed Rescue effect. Its direct
+// Convert fallible division/remainder Results into one typed Rescue effect. Its direct
 // value-substitution handler supplies defaults and counts recoveries.
 
 effect Rescue {

@@ -125,14 +125,14 @@ pub(crate) static JSON: &[BuiltinDoc] = &[
     ),
     builtin_doc!(
         "jsonGet",
-        "Returns the string value at the given path within a parsed JSON document.",
-        ["document" => "Handle returned by jsonParse", "path" => "Dotted path to the value, e.g. \"user.name\""],
+        "Returns a JSON scalar at the given path as a string. Arrays, objects, invalid paths, and invalid handles return Error.",
+        ["document" => "Handle returned by jsonParse", "path" => "Dotted keys and bracketed indices, e.g. \"user.items[0].name\""],
         "match jsonGet(doc, \"name\") {\n  Success { value } => print(value)\n  Error { message } => print(message)\n}",
     ),
     builtin_doc!(
         "jsonLength",
-        "Returns the number of elements in the JSON array at the given path.",
-        ["document" => "Handle returned by jsonParse", "path" => "Dotted path to the array"],
+        "Returns an array length or object member count at the given path, or -1 for an invalid path, handle, or scalar.",
+        ["document" => "Handle returned by jsonParse", "path" => "Path to an array or object; empty means the root"],
         "let n = jsonLength(doc, \"items\")",
     ),
     builtin_doc!(

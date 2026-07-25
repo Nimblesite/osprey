@@ -7,18 +7,6 @@ Both source flavors lower module syntax to the same AST before project
 assembly. The project layer then resolves imports, validates boundaries, and
 flattens the graph into one canonical program.
 
-## Status
-
-The module system is shipped in both flavors. Source discovery, namespace
-merging, modules, imports, visibility, signatures, state ownership, project
-entry selection, deterministic linkage names, CLI build/run/check, and project
-diagnostics are implemented and tested.
-
-Opaque manifest aliases are deliberately rejected during assembly because the
-flat checker cannot yet preserve owner-transparent/client-nominal identity.
-Parameterised modules, recursive modules, and separate importer checking are
-not specified here and are not part of the shipped language.
-
 ## Canonical Project Model `[MODULES-MODEL]`
 
 `osprey_project::SourceFile` contains a physical path, selected flavor, source
@@ -229,13 +217,13 @@ assembler removes cell declarations from module scope and injects fresh cells
 into each qualifying installer function.
 
 Only the handler arms may read or write those cells. Ordinary functions,
-nested modules, lambdas, and spawned bodies do not acquire ownership merely by
+nested modules, lambdas, and spawned bodies do not acquire ownership by
 containing a handler. Qualified aliases cannot bypass this check.
 
 Each namespace may contain at most one state module. Importing a state module
 allocates no cells; calling an installer creates a fresh instance.
 
-### Single Source of Truth `[MODULES-STATE-SOURCE-OF-TRUTH]`
+### Cross-Module State Access `[MODULES-STATE-SOURCE-OF-TRUTH]`
 
 All cross-module state access is mediated by the exported effect operations.
 Direct reads and writes, including alias-qualified paths, are rejected outside
@@ -301,7 +289,7 @@ top-level statements are rejected outside the selected entry source. Project
 
 ## Cycles `[MODULES-CYCLES]`
 
-The shipped cycle checks reject immutable constant-initializer cycles and type
+The cycle checks reject immutable constant-initializer cycles and type
 alias cycles. No parameterised or recursive module semantics are implied.
 
 ## Name Mangling and ABI `[MODULES-ABI]`
@@ -329,9 +317,3 @@ end-to-end project fixture. `crates/osprey-cli/tests/project_e2e.rs` checks
 directory/manifest inputs, AST flattening, LLVM output, source-name restoration,
 and byte-exact execution. `crates/osprey-project/tests/` covers graph,
 visibility, signature, state, entry, cycle, and opaque-boundary behavior.
-
-## Cross-references
-
-- [Language Flavors](0023-LanguageFlavors.md)
-- [ML Flavor Syntax](0024-MLFlavorSyntax.md)
-- [Algebraic Effects](0017-AlgebraicEffects.md)

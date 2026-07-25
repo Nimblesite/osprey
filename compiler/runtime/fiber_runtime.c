@@ -384,6 +384,9 @@ int64_t channel_recv(int64_t channel_id) {
 // so sleep to an absolute deadline and re-arm on EINTR — the wait stays exact
 // whether or not sampling is active [PROF-COLLECT-SAMPLER].
 int64_t fiber_sleep(int64_t milliseconds) {
+  if (milliseconds <= 0) {
+    return 0;
+  }
 #if defined(__linux__)
   struct timespec until;
   if (clock_gettime(CLOCK_MONOTONIC, &until) != 0) {

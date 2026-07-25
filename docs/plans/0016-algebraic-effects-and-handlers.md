@@ -6,36 +6,39 @@
 ([EFFECTS-RESUME], [EFFECTS-HANDLER-STATE], [EFFECTS-GENERIC-*]),
 [0023 — Language Flavors](../specs/0023-LanguageFlavors.md)
 ([FLAVOR-HANDLER-VALUE])
-**Status:** Effects are usable and compile-time safe today for the common
-cases; this plan is the roadmap from there to a **complete** effect system.
-It supersedes the narrower single-shot-`resume` plan (0008, retired)
-(single-shot resume, which landed) as the umbrella tracker, and absorbs the
-handler-value work sketched in [plan 0013](0013-ml-flavor-frontend.md) Phase 0
+**Status:** Shipped: effect declarations, `perform`, lexical handlers,
+handler-owned mutable state, generic effects, single-shot deep `resume`, and
+runtime rejection of a second resume. Missing: static effect-row checks,
+including unhandled-effect enforcement; first-class handler values; resuming
+effects on wasm; and a multi-shot-capable runtime. This plan supersedes retired
+plan 0008 and absorbs the handler-value work sketched in
+[plan 0013](0013-ml-flavor-frontend.md) Phase 0
 and the effect-row-polymorphism gap flagged in
 [plan 0015](0015-generics-and-variance.md).
 
 ## Summary
 
-Osprey's effects work: `effect` declarations, `perform`, `handle … in`
-(Default) / `handle … in`/`… do` (ML), effect annotations, compile-time
-unhandled-effect rejection, handler-owned `mut` state, **generic effects**
+Osprey supports `effect` declarations, `perform`, `handle … in`
+(Default) / `handle … in`/`… do` (ML), effect annotations, handler-owned `mut`
+state, **generic effects**
 (`effect State<T>` with per-site instantiation), and **single-shot deep
 `resume`** (thread-as-continuation), and **multi-shot rejection** (a second
-resume on a consumed continuation now aborts loudly — Phase A, done). What is
-NOT complete: a **multi-shot-capable runtime**, **first-class handler values**
+resume on a consumed continuation now aborts — Phase A, done). Not implemented:
+a **multi-shot-capable runtime**, **first-class handler values**
 (`handler E { … }` and multi-install `handle a b do body`), **static effect
 safety across the handler/row instantiation seam** (currently a runtime
 abort, not a compile error), and **effects on the wasm target** (the
-continuation runtime is native-only). This plan sequences those to done.
+continuation runtime is native-only).
 
 ## What works today (file:line evidence)
 
 - Declarations, `perform X.op(args)`, `handle X arm… in body`, effect
-  annotations, unhandled-effect checking —
-  `crates/osprey-types/src/check.rs`, `crates/osprey-codegen/src/effects.rs`,
-  `compiler/runtime/effects_runtime.c`.
+  annotations, and operation signature checking —
+  `crates/osprey-types/src/check.rs`. Missing-handler enforcement is the
+  runtime null-lookup guard emitted by `crates/osprey-codegen/src/effects.rs`
+  and implemented in `compiler/runtime/effects_runtime.c`.
 - **Tail-resume** by value substitution: a non-resuming arm's value becomes
-  the `perform`'s result — the cheap default; handlers may own `mut` state
+  the `perform`'s result; handlers may own `mut` state
   ([EFFECTS-HANDLER-STATE], `capture_list`/`build_env`/`reload_env` in
   `effects.rs`). Reference: `examples/tested/effects/http_state_levels.osp`.
 - **Single-shot deep `resume`**: an arm that mentions `resume` runs the body
@@ -112,17 +115,17 @@ continuation runtime is native-only). This plan sequences those to done.
 
 Closed the silent-incorrectness hole. The thread-as-continuation model is
 inherently single-shot (a live pthread stack cannot be cloned), so the
-near-term behavior is a **loud rejection**, not a wrong answer.
+second resume aborts with a diagnostic.
 
 - [x] Detect a second `resume` on the same continuation. `__osprey_coro_resume`
       now aborts with `fatal: continuation already resumed (multi-shot resume
       is not supported)` and a nonzero exit when the coro is already done (the
-      continuation was consumed). Runtime-side, always correct — the legitimate
-      drive→resume→drive re-entry leaves the coro *suspended*, not done, so it
-      never trips the guard. (`compiler/runtime/effects_runtime.c`.)
+      continuation was consumed). The legitimate drive→resume→drive re-entry
+      leaves the coro *suspended*, not done, so it does not trip the guard.
+      (`compiler/runtime/effects_runtime.c`.)
 - [ ] *(Optional, deferred.)* A **compile-time** diagnostic where statically
       obvious — an arm that `resume`s on two always-executed control-flow paths
-      — would beat the runtime guard for those cases. Not implemented: the
+      — could report the error before runtime. Not implemented: the
       runtime guard is sound and total, and the static analysis (distinguishing
       always-both from mutually-exclusive match arms) is a nontrivial follow-up.
 - [x] `examples/failscompilation/multishot_resume_rejected.ospo`: a
@@ -131,10 +134,10 @@ near-term behavior is a **loud rejection**, not a wrong answer.
 - [x] Flipped plan 0008's open TODO `Reject multi-shot resume with a clear
       diagnostic`.
 
-### Phase B — First-class handler values + multi-install — ⬜ (the big feature)
+### Phase B — First-class handler values + multi-install — ⬜
 
-The [FLAVOR-HANDLER-VALUE] shared-core addition. Flavor-neutral; unblocks the
-last ML gap (plan 0013 Phase 0) and the richer Default surface.
+The [FLAVOR-HANDLER-VALUE] shared-core addition is flavor-neutral and unblocks
+plan 0013 Phase 0.
 
 - [ ] **AST**: add `Expr::HandlerValue { effect, arms }` and
       `Expr::Install { handlers: Vec<Expr>, body }`. Make the existing
@@ -164,8 +167,8 @@ last ML gap (plan 0013 Phase 0) and the richer Default surface.
 
 ### Phase C — Static effect safety across the handler/row seam — ⬜ (effect-row polymorphism)
 
-Turns the plan-0015 §3 runtime abort into a compile error. This is
-effect-row polymorphism — the largest type-system piece.
+Turns the plan-0015 §3 runtime abort into a compile error through effect-row
+polymorphism.
 
 > **Scope is wider than the seam (2026-07 audit).** The Rust compiler
 > currently has **no compile-time unhandled-effect checking at all** — every
@@ -196,7 +199,7 @@ effect-row polymorphism — the largest type-system piece.
       HM discipline generics use).
 - [ ] **Downgrade the runtime guard**: once the seam is statically proven,
       the instantiation-mangled-key null-guard abort ([EFFECTS-GENERIC-RUNTIME])
-      becomes a belt-and-braces backstop rather than the primary safety net;
+      becomes a defensive backstop rather than the primary safety mechanism;
       keep it, but no correct program should reach it.
 - [ ] **Tests**: failscompilation cases for the cross-function instantiation
       mismatch (currently a runtime abort); positive cases for row-polymorphic
@@ -212,7 +215,7 @@ effect-row polymorphism — the largest type-system piece.
 - [ ] Un-SKIP the resuming effect examples in `diff_wasm_examples.sh` once the
       path exists; byte-identical output to native.
 
-### Phase E — Ergonomics & polish — ⬜ (nice-to-haves)
+### Phase E — Ergonomics and diagnostics — ⬜
 
 - [ ] Better unhandled-effect diagnostics: name the missing effect + operation
       + the nearest enclosing `handle` and what it does handle.
@@ -228,29 +231,26 @@ A (reject multi-shot)      ✅ DONE — closed the silent-correctness bug
 B (handler values)         independent of A; unblocks plan 0013 Phase 0
 C (effect-row polymorphism) independent of A/B; closes plan 0015 §3
 D (wasm effects)           independent; target parity
-E (polish)                 after B (handler values change diagnostics surface)
+E (ergonomics)             after B (handler values change diagnostics surface)
 ```
 
-A is done (it removed a silent-correctness footgun for a few lines of runtime
-code). B is now the highest-value remaining work: it unlocks a whole class of
-programs and finishes the ML flavor. C is the deepest (a type-system feature)
-but the least user-visible (the runtime already fails safe).
+A is done. B enables handler values and completes plan 0013 Phase 0. C replaces
+runtime-abort enforcement with static effect checking.
 
 ## Risks
 
-- **Multi-shot is not a "later flag" — it is a different runtime model.**
-  Thread-as-continuation cannot be multi-shot; genuine multi-shot needs
+- **Multi-shot requires a different runtime model.** Thread-as-continuation
+  cannot be multi-shot; genuine multi-shot needs
   stack copying or a CPS/segmented-stack rewrite. Phase A commits to
-  rejecting it cleanly; do not promise multi-shot semantics without that
-  rewrite (which is out of scope here).
+  rejecting it cleanly; multi-shot semantics require that rewrite, which is out
+  of scope here.
 - **Handler values × the C boundaries.** The HTTP callback and fiber
   snapshot/restore paths assume the current push/pop discipline; a heap
   handler value that outlives a `handle` region must not dangle its captured
   env. Cover with state-isolation tests across those boundaries.
 - **Effect-row polymorphism × principal types.** Adding rows to `Type::Fun`
-  must not break HM principality; follow a published row-typing discipline
-  (e.g. Leijen's scoped labels / Koka's row polymorphism) rather than an
-  ad-hoc scheme.
+  must not break HM principality. Specify the row-unification discipline and
+  lock principality with inference tests.
 - **Byte-exact backstop.** Every phase must keep all existing effect examples
   byte-identical across both flavors (cross-flavor IR equivalence + shared
   goldens), and the `FC_EXPECTED_ESCAPES` ratchet honest.
@@ -274,11 +274,3 @@ but the least user-visible (the runtime already fails safe).
 - [ ] **Phase D** — resuming effects on wasm (CPS or stack-switching).
 - [ ] **Phase E** — diagnostics, LSP effect completion, optional handler
       return clauses.
-
-## References
-
-- Plotkin, Pretnar. *Handling Algebraic Effects.* LMCS 2013.
-- Leijen. *Type Directed Compilation of Row-Typed Algebraic Effects.* POPL 2017.
-- Leijen. *Extensible Records with Scoped Labels.* TFP 2005 (row typing).
-- Kiselyov, Sivaramakrishnan. *Eff Directly in OCaml.* ML Workshop 2016
-  (one-shot continuations via threads — the model in use today).

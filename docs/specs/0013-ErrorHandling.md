@@ -48,6 +48,8 @@ MathError>` so they can report a zero divisor.
 
 `/` always yields `float`. The builtins `checkedAdd`, `checkedSub`, and
 `checkedMul` return `Result<int, Error>` and make overflow checking explicit.
+Integer `-9223372036854775808 % -1` returns `Success(0)`; the representable
+remainder is produced without executing LLVM's overflowing `srem` case.
 
 
 ```osprey
@@ -109,16 +111,14 @@ When a function produces `Error { message: E }`, the value bound to `message` in
 ```osprey
 match split("abc", "") {
     Success { value }   => forEachList(value, print)
-    Error   { message } => print(message)   // MUST print "separator is empty",
-                                            // not "Error occurred"
+    Error   { message } => print(message)   // "split: separator must not be empty"
 }
 ```
 
 ```osprey-ml
 match split ("abc", "")
     Success value   => forEachList value print
-    Error   message => print message   // MUST print "separator is empty",
-                                       // not "Error occurred"
+    Error   message => print message   // "split: separator must not be empty"
 ```
 
 This requirement applies to every `Result`-returning operator, builtin, and
