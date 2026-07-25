@@ -129,6 +129,15 @@ type Color = Red | Green | Blue
 Type parameters and variance are defined in
 [Type System](0004-TypeSystem.md#generics-and-variance).
 
+The `Shape` union declared above has this shape:
+
+```typediagram
+union Shape {
+  Circle { radius: Int }
+  Rectangle { width: Int, height: Int }
+}
+```
+
 ### Positional variants [TYPE-UNION-POSITIONAL]
 
 A positional payload is declared, constructed, and matched in slot order:

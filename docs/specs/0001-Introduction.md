@@ -16,6 +16,9 @@ checking and code generation. Their precise boundary is defined in
   operation inputs and outputs but does not reject every missing handler.
 - `Result<T, E>` values for structured failures; native APIs that return integer
   status codes document that convention explicitly.
+
+## Runtime and platforms
+
 - Fibers and typed channel communication.
 - Default, tracing-GC, and Perceus ARC memory backends. The default backend does
   not reclaim every allocation; static-memory checking is not implemented.
