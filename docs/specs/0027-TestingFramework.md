@@ -4,26 +4,14 @@ A test file is an ordinary program whose evaluated `test(...)` calls run in
 evaluation order (top level is the convention); testing adds no DSL, syntax, or
 registration step.
 
-> **Flavor layer — shared core (AST and above).** In every flavor the built-ins
-> lower to the same canonical `Expr::Call` nodes ([0012](0012-Built-InFunctions.md)).
-> Cases in either flavor may be `fn() -> Unit` functions using soft assertions;
-> ML also supports pure functions returning `Verdict` (`Pass | Fail | Skip`) for
-> `test` to report.
-> See
-> [the Verdict model](#the-pure-ml-flavor-verdict-model) and
-> [Language Flavors](0023-LanguageFlavors.md).
-
-## Status
-
-Implemented for both flavors (Default and ML) on the native target. The C
-test-runtime unit is also compiled into the wasm archive so `--target=wasm32`
-links, but the wasm runner path is not exercised by the harness.
+Both flavors lower these calls to the same AST and runtime behavior. A case may
+use soft assertions and return `Unit`; an ML case may instead return `Verdict`
+(`Pass | Fail | Skip`).
 
 ## The built-ins
 
-**`[TESTING-BUILTINS]`** The three functions are declared in the type checker's
-base environment, lowered by codegen, and backed by the C runtime. Testing adds
-no grammar, keywords, or AST nodes.
+**`[TESTING-BUILTINS]`** The type environment, code generator, and C runtime
+provide three functions. Testing adds no grammar or AST nodes.
 
 ### `test(name: string, body: fn() -> a) -> Unit` — `[TESTING-BUILTIN-TEST]`
 
@@ -34,15 +22,11 @@ inside its body fails; assertions are soft — a failing `expect`/`check` marks
 the case failed and execution continues, so one case can report several
 mismatches.
 
-The body's return type is polymorphic (`fn() -> a`), which is what lets one
-`test` built-in drive both surfaces:
+The body's return type is polymorphic (`fn() -> a`):
 
-- **Imperative (Unit) body** — the Default-flavor style. The body runs
-  `expect`/`check` for their side effect and returns `Unit`; `test` records
-  nothing extra, the inline assertions having already reported.
-- **Verdict body** — the pure ML-flavor style (`[TESTING-VERDICT]`). The body
-  returns a `Verdict` value; `test` pattern-matches it and reports the single
-  outcome. No exceptions, no side-effecting assertions.
+- A `Unit` body reports through its `expect` and `check` calls.
+- A `Verdict` body (`[TESTING-VERDICT]`) supplies one outcome for `test` to
+  report.
 
 The `body` argument must be a zero-parameter function: an inline lambda
 (Default `fn() => …`, ML `\() => …`) or the name of a zero-parameter function.
@@ -51,19 +35,7 @@ Any other expression is a compile-time codegen error.
 Test cases must not nest: a `test` call evaluated while another case is
 running does not run its body — it prints a
 `# nested test '<name>' skipped …` diagnostic and fails the enclosing case,
-so the mistake is loud rather than silently reshuffling the run's counters.
-
-```osprey
-test("addition works", fn() => {
-    expect(add(2, 3), 5)
-    expect(add(0, 0), 0)
-})
-```
-
-```osprey-ml
-test "addition works" (\() =>
-    check "sum" 5 (add (2, 3)))
-```
+without advancing nested-case counters.
 
 ### `expect(actual: any, expected: any) -> Unit` — `[TESTING-BUILTIN-EXPECT]`
 
@@ -83,32 +55,27 @@ in helper functions called from tests, or at the top level of a script.
 **`[TESTING-SHADOWING]`** Unlike other runtime built-ins, `test`, `expect`,
 and `check` do NOT reserve their names: a user-defined function or `extern`
 declaration with the same name shadows the built-in in both the type
-environment and codegen dispatch. This keeps pre-existing programs (e.g. a
-`fn check(t: Tree)` helper or an `extern fn check(...)`) compiling unchanged.
+environment and codegen dispatch. Ordinary declarations may therefore use
+these names.
 
 ## Equality semantics
 
-**`[TESTING-EQUALITY]`** Assertion equality is *canonical-string equality*
+**`[TESTING-EQUALITY]`** Assertion equality is canonical-string equality
 over values with a canonical string rendering: ints, bools, floats, strings,
 and `Result`s of those. Both sides render with the same `toString` lowering
 used by string interpolation and compare with `strcmp`; the diagnostic shows
 exactly the two rendered strings that were compared. A `Result` operand
-renders discriminant-aware: a `Success` as its bare payload (so
-`expect(intDiv(4, 2), 2)` passes), an `Error` as `Error(<message>)` (so
-asserting against a failed computation is a visible mismatch, never a blind
-payload read). Lists, maps, and records have no canonical rendering yet, so
-an assertion operand of those types is a compile-time codegen error rather
-than a silent pointer comparison. Corollary: values of different types that
-render identically (e.g. `5` and `"5"`) compare equal; assert on the value
-the test actually computes.
+renders a `Success` as its bare payload and an `Error` as `Error(<message>)`.
+Lists, maps, and records are rejected as assertion operands at code generation.
+Values of different types that render identically, such as `5` and `"5"`,
+compare equal.
 
-## The pure ML-flavor Verdict model
+## ML Verdict model
 
-**`[TESTING-VERDICT]`** In the pure ML style, a test case is a function returning
-**`Verdict`**; `test` is its sole reporting boundary.
+**`[TESTING-VERDICT]`** An ML test case may return `Verdict`; `test` is its
+reporting boundary.
 
-`Verdict` is an ordinary user-declared union with three states — no compiler
-magic beyond the report primitives below:
+`Verdict` is a user-declared union with three states:
 
 ```osprey-ml
 type Verdict =
@@ -119,39 +86,21 @@ type Verdict =
         why : string
 ```
 
-The surface is built from ordinary pure functions over that type. Because a
-curried, generic, union-returning function currently defeats monomorphization,
-the equality assertions take a **tuple** argument (which the shared-core lowering
-accepts in both flavors):
+Verdict helpers use these contracts:
 
 - `check (label, expected, actual) -> Verdict` — `Pass` on equality, else
   `Fail` carrying the labeled mismatch. Polymorphic over the compared type
   (int, string, bool) via the same canonical-string equality as the imperative
   built-in.
-- `assume cond -> Verdict` — QuickCheck's `==>`: a false precondition yields
-  `Skip`, not `Fail`, so an unmet assumption is a distinct third outcome rather
-  than a spurious failure.
+- `assume cond -> Verdict` — a false condition yields `Skip`; a true condition
+  yields `Pass`.
 - `andThen first rest -> Verdict` — combines two verdicts; `Pass` yields `rest`,
-  while a first `Fail` or `Skip` is retained. Arguments still evaluate normally
-  before the call, so this is verdict propagation rather than lazy evaluation.
+  while a first `Fail` or `Skip` is retained. Both arguments are evaluated
+  before the call.
 
-`test` recognizes a `Verdict`-typed body by its inferred type, pattern-matches
-it, and calls exactly one report primitive. These primitives are internal
-codegen targets (like the TAP runtime's `osp_test_assert`), not user-facing
-built-ins: `reportPass()`, `reportFail(reason)`, `reportSkip(why)`. A `Pass`
-records nothing; a `Fail` fails the case and prints its reason; a `Skip` emits
-the TAP `# SKIP` directive.
-
-```osprey-ml
-depositClears () =
-    andThen (check ("balance", 425000, ledgerBalance))
-        (check ("count", 1, txnCount))
-
-overdraftRefused () = assume (not enoughFunds)   // Skip when the precondition is false
-
-test "a cleared deposit updates the balance" depositClears
-test "an overdraft is refused" overdraftRefused
-```
+`test` recognizes the inferred `Verdict` return type and reports exactly one
+outcome. `Pass` records no failure, `Fail` fails the case and prints its reason,
+and `Skip` emits the TAP `# SKIP` directive.
 
 ## TAP output protocol
 
@@ -217,14 +166,13 @@ gate — any Osprey program may call the testing built-ins.
 
 Runs test files and aggregates results. `path` (default `.`) is either a
 single file (run as-is, regardless of naming) or a directory searched
-recursively for `[TESTING-FILE-CONVENTION]` files (sorted, deterministic
-order; hidden/`target`/`node_modules` dirs skipped; symlinks not followed). Each file is compiled and executed like
-`osprey <file> --run`; its TAP output streams through unmodified under a
-`# file: <path>` header line. `--filter` sets `OSPREY_TEST_FILTER` for the
-child processes. After all files, the runner prints
-`# suites: X passed, Y failed` and exits `1` if any suite failed (test
-failures or compile errors), else `0`. An empty discovery set is a failure
-(`no test files found`).
+recursively for `[TESTING-FILE-CONVENTION]` files in sorted order. Hidden,
+`target`, and `node_modules` directories are skipped; symlinks are not followed.
+Each file runs like `osprey <file> --run`, with its TAP output under a
+`# file: <path>` header. `--filter` sets `OSPREY_TEST_FILTER` for child
+processes. The runner prints `# suites: X passed, Y failed` and exits `1` if a
+suite fails to compile or run, otherwise `0`. An empty discovery set fails with
+`no test files found`.
 
 ### `osprey <file> --list-tests` — `[TESTING-LIST]`
 

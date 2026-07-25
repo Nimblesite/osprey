@@ -1,26 +1,25 @@
 # Introduction
 
-Osprey is a statically-typed functional language in the ML family. It compiles to native code via LLVM.
+Osprey is a statically typed functional language that compiles through LLVM to
+native code or WebAssembly. Default (`.osp`) and ML (`.ospml`) are surface
+flavors of the same language; both lower to `osprey_ast::Program` before type
+checking and code generation. Their precise boundary is defined in
+[Language Flavors](0023-LanguageFlavors.md).
 
-> **Flavor layer — mixed.** Default (`.osp`, specs 0001–0022) and ML
-> (`.ospml`, [ML Flavor Syntax](0024-MLFlavorSyntax.md)) lower to the canonical
-> `osprey_ast::Program` before semantic analysis. Type inference, effect
-> checking, and codegen are flavor-blind. See
-> [Language Flavors](0023-LanguageFlavors.md) for the surface/core boundary.
+## Implemented language shape
 
-## Core Features
+- Hindley-Milner inference with optional, constraining type annotations.
+- Immutable bindings and explicit mutable bindings.
+- Expression-oriented branching through `match`, ternaries, and the Default
+  flavor's `if`/`else` expression.
+- Typed algebraic-effect operations and lexical handlers. The compiler checks
+  operation inputs and outputs, but does not yet reject every missing handler.
+- `Result<T, E>` values for structured failures; native APIs that return integer
+  status codes document that convention explicitly.
+- Lightweight fibers and channel communication.
+- Default, tracing-GC, and Perceus ARC memory backends. The default backend does
+  not reclaim every allocation; static-memory checking is not implemented.
+- Native C interoperability and built-in HTTP and WebSocket runtimes.
 
-- Hindley-Milner type inference; explicit annotations are optional.
-- Pattern matching as the only conditional construct (no `if`/`else`).
-- Immutable bindings by default; `mut` opts in to mutability.
-- Typed algebraic-effect operations with lexical handlers; complete static handler/row coverage remains in progress.
-- `Result<T, E>` for structured failures; low-level native APIs document any
-  integer status convention explicitly.
-- In the Default flavor, named arguments are required for functions of two or more parameters (`f(x: a, y: b)`); the ML flavor uses whitespace application (`f a b`) or the uncurried grouping (`f (x, y)`) instead.
-- Native pthread-backed fibers and buffered channels.
-- Swappable memory backends with a non-reclaiming default plus opt-in tracing GC and Perceus ARC; the `--static-memory` subset remains a design target.
-- Built-in HTTP and WebSocket support.
-
-## Status
-
-This specification is the authoritative source for Osprey syntax and behaviour. The language and compiler are under active development; implementation status is called out per chapter where it diverges from the specification.
+Each later chapter states narrower availability or platform limits beside the
+feature it specifies.

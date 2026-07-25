@@ -212,8 +212,6 @@ Auto-unwrap does **not** apply to:
 - `toString`. `toString(intDiv(a: 10, b: 2))` produces `"Success(5)"`, never `"5"`. Use `toString` to inspect the `Result` itself.
 - An *un*annotated function body. `fn half(x) = x / 2` returns `Result<float, MathError>`; only a declared non-`Result` return type unwraps it (context 6 above).
 
-The top-level value of a `Result`-producing expression must still be either matched, stored as a `Result`, or defaulted with `?:` ([Ternary Match](0007-PatternMatching.md#ternary-match-syntactic-sugar)).
-
 ## Function Types
 
 ```ebnf
@@ -279,7 +277,10 @@ greet   = \(name : string) => prefix + name     // captures prefix
 print (greet "world")                                         // "hello world"
 ```
 
-Closures and named functions are interchangeable wherever a function type is expected, including as higher-order arguments (`map`, `filter`, `fold`, `forEach`) and as the function field of records. A closure that captures no free variables is equivalent to a top-level function and the implementation SHOULD lower it to one. A `Result<T, E>` returned through a function-value call auto-unwraps to `T` (context 3 of [Result Auto-Unwrapping](#result-auto-unwrapping)).
+Closures and named functions are interchangeable wherever a function type is
+expected, including iterator callbacks and record fields. A `Result<T, E>`
+returned through a function-value call auto-unwraps to `T` (context 3 of
+[Result Auto-Unwrapping](#result-auto-unwrapping)).
 
 ### Higher-order calls — [TYPE-FN-HIGHER-ORDER]
 

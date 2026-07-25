@@ -241,7 +241,8 @@ impl Lowerer<'_> {
         }
     }
 
-    /// Collect positional + named args from an `argument_list` child. Named
+    /// Collect positional or all-named args from an `argument_list` child
+    /// ([CALL-ARGUMENTS]). Named
     /// arguments live in a single direct `named_argument_list` child; a *direct*
     /// lookup is essential — descending would steal the named arguments of a
     /// nested call (`print(cc(c1: .., c2: ..))` must not hoist c1/c2 onto print).

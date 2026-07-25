@@ -1,105 +1,51 @@
 # Block Expressions
 
-A block expression groups statements and returns the value of its final expression. Each block introduces a new lexical scope.
-
-> **Flavor layer — mixed.** Default braces and ML offside layout
-> ([FLAVOR-ML-BLOCK] in [ML Flavor Syntax](0024-MLFlavorSyntax.md)) both lower
-> to `Expr::Block{statements, value}`. Scoping and final-value semantics are
-> shared.
+A block evaluates local bindings and expressions in order, then yields its
+trailing expression. Default delimits a block with braces; ML uses an indented
+layout block. Both lower to `Expr::Block { statements, value }`.
 
 ```ebnf
-blockExpression ::= "{" statement* expression? "}"
+block ::= "{" statement* expression? "}"
 ```
 
-**Examples:**
 ```osprey
-// Simple block with local variables
 let result = {
     let x = 10
     let y = 20
     x + y
 }
-print("Result: ${result}")  // prints "Result: 30"
-
-// Nested blocks
-let complex = {
-    let outer = 100
-    let inner_result = {
-        let inner = 50
-        outer + inner
-    }
-    inner_result * 2
-}
-print("Complex: ${complex}")  // prints "Complex: 300"
-
-// Block with function calls
-fn multiply(a, b) = a * b
-let calc = {
-    let a = 5
-    let b = 6
-    multiply(a: a, b: b)
-}
-print("Calculation: ${calc}")  // prints "Calculation: 30"
 ```
 
 ```osprey-ml
-// Simple block with local variables
 result =
     x = 10
     y = 20
     x + y
-print "Result: ${result}"  // prints "Result: 30"
-
-// Nested blocks
-complex =
-    outer = 100
-    inner_result =
-        inner = 50
-        outer + inner
-    inner_result * 2
-print "Complex: ${complex}"  // prints "Complex: 300"
-
-// Block with function calls
-multiply (a, b) = a * b
-calc =
-    a = 5
-    b = 6
-    multiply (a, b)
-print "Calculation: ${calc}"  // prints "Calculation: 30"
 ```
 
-## Block Scoping Rules
+## Evaluation and scope [BLOCK-SCOPE]
 
-Block expressions create a new lexical scope:
-- Variables declared inside a block are only visible within that block
-- Variables from outer scopes can be accessed (lexical scoping)
-- Variables declared in a block shadow outer variables with the same name
-- Variables go out of scope when the block ends
+- Statements run from top to bottom.
+- The trailing expression can use bindings introduced earlier in the block.
+- Each block has a child lexical scope. An inner binding may shadow an outer
+  binding; leaving the inner block restores the outer binding.
+- A binding introduced in a block is not visible after that block ends.
+- An outer binding remains readable inside nested blocks.
 
-**Scoping Examples:**
 ```osprey
 let x = 100
 let result = {
-    let x = 50        // Shadows outer x
-    let y = 25        // Only visible in this block
-    x + y             // Uses inner x (50)
+    let x = 50
+    let inner = {
+        let x = 25
+        x
+    }
+    x + inner
 }
-print("Result: ${result}")  // 75
-print("Outer x: ${x}")      // 100 (unchanged)
-// print("${y}")            // ERROR: y not in scope
+// result is 75; the outer x remains 100
 ```
 
-```osprey-ml
-x = 100
-result =
-    x = 50            // Shadows outer x
-    y = 25            // Only visible in this block
-    x + y             // Uses inner x (50)
-print "Result: ${result}"  // 75
-print "Outer x: ${x}"      // 100 (unchanged)
-// print "${y}"            // ERROR: y not in scope
-```
+## Result value
 
-## Block Return Values
-
-A block ending with an expression returns that expression's value and adopts its type. A block ending with a statement returns `unit`.
+A block with a trailing expression has that expression's type and value. A
+block without one yields `Unit`.

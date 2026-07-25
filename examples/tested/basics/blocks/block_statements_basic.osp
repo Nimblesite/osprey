@@ -1,3 +1,4 @@
+// [BLOCK-SCOPE] covers nested shadowing and restoration of the outer binding.
 // Block statements as expressions: list & map access via Result-unwrap,
 // multi-statement blocks, nested blocks with shadowing, blocks inside
 // function bodies, nested collections (2D list), conditional logic

@@ -415,20 +415,18 @@ mod tests {
                 "httpPost",
                 "httpPost : (int, string, string, string) -> int",
             ),
-            (
-                "httpPut",
-                "httpPut : (int, string, string, string) -> int",
-            ),
-            (
-                "httpDelete",
-                "httpDelete : (int, string, string) -> int",
-            ),
+            ("httpPut", "httpPut : (int, string, string, string) -> int"),
+            ("httpDelete", "httpDelete : (int, string, string) -> int"),
             ("httpStopServer", "httpStopServer : (int) -> int"),
             ("websocketClose", "websocketClose : (int) -> int"),
             ("jsonFree", "jsonFree : (int) -> Result<int, Error>"),
         ];
         for (name, signature) in expected {
-            assert_eq!(builtin_signature(name).as_deref(), Some(signature), "{name}");
+            assert_eq!(
+                builtin_signature(name).as_deref(),
+                Some(signature),
+                "{name}"
+            );
         }
     }
 
@@ -444,13 +442,14 @@ mod tests {
                 "mapGet",
                 "mapGet : (Map<string, t0>, string) -> Result<t0, Error>",
             ),
-            (
-                "mapKeys",
-                "mapKeys : (Map<string, t0>) -> List<string>",
-            ),
+            ("mapKeys", "mapKeys : (Map<string, t0>) -> List<string>"),
         ];
         for (name, signature) in expected {
-            assert_eq!(builtin_signature(name).as_deref(), Some(signature), "{name}");
+            assert_eq!(
+                builtin_signature(name).as_deref(),
+                Some(signature),
+                "{name}"
+            );
         }
     }
 
@@ -458,26 +457,20 @@ mod tests {
     fn iterator_builtins_do_not_advertise_runtime_lists() {
         let expected = [
             ("range", "range : (int, int) -> Iterator<int>"),
-            (
-                "map",
-                "map : (Iterator<t0>, (t0) -> t1) -> Iterator<t1>",
-            ),
+            ("map", "map : (Iterator<t0>, (t0) -> t1) -> Iterator<t1>"),
             (
                 "filter",
                 "filter : (Iterator<t0>, (t0) -> bool) -> Iterator<t0>",
             ),
-            (
-                "forEach",
-                "forEach : (Iterator<t0>, (t0) -> Unit) -> Unit",
-            ),
-            (
-                "fold",
-                "fold : (Iterator<t0>, t1, (t1, t0) -> t1) -> t1",
-            ),
+            ("forEach", "forEach : (Iterator<t0>, (t0) -> Unit) -> Unit"),
+            ("fold", "fold : (Iterator<t0>, t1, (t1, t0) -> t1) -> t1"),
         ];
         for (name, signature) in expected {
-            assert_eq!(builtin_signature(name).as_deref(), Some(signature), "{name}");
+            assert_eq!(
+                builtin_signature(name).as_deref(),
+                Some(signature),
+                "{name}"
+            );
         }
     }
-
 }

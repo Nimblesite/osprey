@@ -6,12 +6,14 @@ description: "Why exceptions and panics create hidden control flow, what softwar
 tags: ["blog", "error-handling", "exceptions", "panics", "algebraic-effects", "result-types", "ocaml", "koka", "eff", "language-design"]
 author: "Christian Findlay"
 modified: 2026-07-25
-readingTime: 17
+readingTime: 20
 image: /assets/images/blog/exceptions-and-panics-were-a-mistake.png
 imageAlt: "A cyan wireframe osprey above branching error-handling paths while one hidden exception path fractures below"
 ---
 
 Exceptions and panics are not inevitable aspects of programming languages. They only make software more error prone and make code harder to reason about. **Recoverable failure should never be a secret exit from a function**. This post is about how Osprey allows you to handle errors in a better way.
+
+That is the polemical thesis. The empirical claim underneath it is narrower, testable and still damning: abrupt, non-local failure adds hidden paths; those paths contain measured cleanup and crash defects; exception-flow characteristics can carry a statistically significant relationship with post-release defects even after conventional code metrics are considered; and languages with explicit result and effect contracts prove that a privileged exception channel is optional. No study can establish that every exception causes a bug in every program. The studies below establish the mechanism, measure its complexity and document the failures it produces in real systems.
 
 If a function's type says it returns `B`, it should return `B`. It should not also be able to jump over an unknown number of stack frames, skip the code after the call, arrive at a handler that may or may not exist, or terminate the process. Both unchecked exceptions and panics can skip ordinary returns, unwind frames and terminate when they are not intercepted. Neither puts routine recoverable failure in the function's ordinary return type.
 
@@ -48,27 +50,63 @@ Once a language can express every outcome and reject incomplete branching, the o
 
 This is not just aesthetic disgust at `try` and `catch`.
 
-Westley Weimer and George Necula's ACM TOPLAS paper [*Exceptional Situations and Program Reliability*](https://web.eecs.umich.edu/~weimerw/p/weimer-toplas2008.pdf) used path-sensitive analysis on more than five million lines of Java and found over **1,300 exception-handling defects** involving unreleased resources or broken cleanup obligations. After post-processing heuristics, the final reports had no observed false positives; the authors estimated that those filters could hide 5–10% of real defects. Their fault model covered declared checked exceptions, so this is evidence about the cleanup complexity of visible exception flow, not specifically unchecked exceptions.
+Westley Weimer and George Necula state the reasoning problem directly in their ACM TOPLAS paper [*Exceptional Situations and Program Reliability*](https://web.eecs.umich.edu/~weimerw/p/weimer-toplas2008.pdf):
+
+> “exceptions create hidden control-flow paths that are difficult for programmers to reason about”
+
+Their path-sensitive analysis of 27 Java programs—more than five million lines—found over **1,300 exception-handling defects** involving unreleased resources or broken cleanup obligations. More than half of the reported defect paths passed through a `catch` and still leaked the resource. After post-processing heuristics, the final reports had no observed false positives; the authors estimated that those filters could hide 5–10% of real defects. Their fault model covered declared checked exceptions and did not measure runtime frequency, so this is strong evidence about cleanup complexity along exceptional paths, not a causal comparison with every alternative.
+
+Guilherme de Pádua and Weiyi Shang reconstructed more than **77,000 exception flows** through over 10,000 handlers in 16 Java and C# projects for [*Revisiting Exception Handling Practices with Exception Flow Analysis*](https://guipadua.github.io/resources/scam2017-revisiting-eh_cr.pdf). A single `try` block could propagate up to 12 potentially recoverable exceptions; one exception type could be traced to as many as 34 possible origin methods. Their conclusion was concise:
+
+> “Such results highlight the additional challenge of composing quality exception handling code.”
+
+Their follow-up study, [*Studying the Relationship between Exception Handling Practices and Post-release Defects*](https://guipadua.github.io/resources/eh-model-defects2018_cr.pdf), put exception-flow characteristics into logistic-regression defect models alongside traditional product and process metrics. The characteristics significantly improved the models for Hadoop and Hibernate, though not for the C# system Umbraco:
+
+> “exception flow characteristics in Java projects have a significant relationship with post-release defects.”
+
+That is an association in two Java systems, not proof that exception handling caused the defects. It matters precisely because the signal remained after the conventional metrics were considered.
 
 Kirsten Bradley and Michael Godfrey studied **2,721 open-source C++ systems** in [*A Study on the Effects of Exception Usage in Open-Source C++ Systems*](https://plg2.cs.uwaterloo.ca/~migod/papers/2019/scam19.pdf). For the user-defined exception flows their tool modelled, adding exception edges increased call-graph edges by an average of **22.1%**, though the median increase was **5.1%**. Roughly **eight out of nine** functions that might throw did not originate the exception; they merely inherited the hidden edge from below. That study is exploratory rather than proof that every extra edge becomes a bug, but it quantifies exactly what an unchecked function signature conceals.
 
+> “the use of C++ EH can add subtle complexity to the design of the system”
+
+Roy Maxion and Robert Olszewski supplied controlled human evidence in [*Eliminating Exception Handling Errors with Dependability Cases*](https://doi.org/10.1109/32.877848). In an experiment with 119 participants, a structured dependability-case technique increased the robustness of exception handling by **34%** (`p < .01`). Their analysis identified:
+
+> “cognitive factors that impede the mental generation (or recollection) of exception cases”
+
+That experiment compared unaided work with a structured reasoning aid, not exceptions with `Result` or algebraic effects. It nevertheless establishes the human failure mode: exceptional cases are missed, and making the cases systematic improves the result.
+
 Bruno Cabral and Paulo Marques examined **32 Java and .NET applications**, 3.41 million lines of code and 18,589 `try` blocks and handlers in [*Exception Handling: A Field Study in Java and .NET*](https://eden.dei.uc.pt/~bcabral/ExceptionHandling_A_Field_Study_camready.pdf). They found handlers commonly logging, notifying, rethrowing, returning or terminating rather than performing specialised recovery. The mechanism separates the handler from the failure site; the field evidence does not show that the separated code usually recovers.
+
+> “exceptions are not being correctly used as an error recovery mechanism”
 
 Panics do not fix expected failure. A panic may unwind and be intercepted, or it may abort, but it moves a domain-level outcome onto an abrupt runtime path.
 
 Boqin Qin and colleagues manually studied a selected corpus of **110 unexpected panic issues** in Rust for their 2024 IEEE Transactions on Software Engineering paper, [*Understanding and Detecting Real-World Safety Issues in Rust*](https://doi.org/10.1109/TSE.2024.3380393). **107 of 110** occurred in safe code. In that corpus, **39** came from missing `Result` or `Option` handling—27 through `unwrap()` and 12 through `expect()`—while the rest included arithmetic, assertion and bounds failures. This is a taxonomy of selected issues, not an estimate of how prevalent each cause is across all Rust code.
 
+> “they can abruptly halt programs, resulting in reduced reliability”
+
 Rust's `Result` is not the problem there. The escape hatch that converts an explicit `Err` alternative into an abrupt panic path is the problem. If a language introduces a truthful error value and then makes it effortless to pretend the error case cannot happen, it has rebuilt the same hidden control-flow problem one `unwrap` at a time.
 
 Even the C++ standards work acknowledges the visibility problem. The WG21 proposal for [`std::expected<T, E>`](https://www.open-std.org/jtc1/sc22/wg21/docs/papers/2022/p0323r12.html) contrasts invisible exceptions with a return type whose failure case is visible and must be confronted to retrieve the value. Herb Sutter's exception-friendly proposal [P0709R4](https://www.open-std.org/jtc1/sc22/wg21/docs/papers/2019/p0709r4.pdf) starts from the long-standing unresolved problems that have split C++ projects into exception and no-exception dialects. You do not have to be anti-exception to see the design wound.
+
+These methods differ—static analysis, repository mining, regression models, a controlled experiment and manual bug classification—and their limitations differ too. They do not prove that exception syntax alone caused every observed defect. Their convergence is the point: hidden failure flow enlarges program graphs, obscures provenance, defeats cleanup, is missed by humans, carries an independent defect signal in some systems and appears in real Rust reliability failures. “Harder to reason about” is not hand-waving. It is the engineering interpretation of those measured paths and mistakes.
 
 ## Why checked exceptions are not the whole answer
 
 Java is the obvious objection. The [Java Language Specification](https://docs.oracle.com/javase/specs/jls/se25/html/jls-11.html) makes checked exceptions part of a method's contract and requires them to be caught or declared. That is better than an invisible exit. It also proves the premise: failure belongs in the static contract.
 
-The problem is not that Java checks too much. It is that its checked-exception system is a crude, nominal effect system with a permanently open unchecked side door. Declarations ripple through intermediate methods, broad supertypes erase useful precision, and `RuntimeException` remains outside the requirement. Static visibility still helps: Maria Kechagia and colleagues' Android study [*The Exception Handling Riddle*](https://doi.org/10.1016/j.jss.2018.04.034) analysed 3,539 applications and 901,274 crashes, and its controlled trial found that making exceptions checked improved stability more effectively than documentation alone. That supports the narrower thesis here—put failure in the static contract—without proving that Java chose the best contract.
+The problem is not that Java checks too much. It is that its checked-exception system is a crude, nominal effect system with a permanently open unchecked side door. Declarations ripple through intermediate methods, broad supertypes erase useful precision, and `RuntimeException` remains outside the requirement.
+
+Static visibility still helps, but the evidence must not be oversold. Maria Kechagia and colleagues' Android study [*The Exception Handling Riddle*](https://doi.org/10.1016/j.jss.2018.04.034) analysed 3,539 applications and 901,274 crash traces. Undocumented exception/API pairs appeared in real crashes, and the authors concluded that:
+
+> “exceptions that demonstrably lead to crashes should become checked”
+
+Their controlled trial had only 25 participants and found no statistically significant difference among its treatments (`p = .14`). It supports the field evidence against undocumented unchecked failure, not a universal experimental advantage for Java checked exceptions.
 
 Donna Malayeri and Jonathan Aldrich measured declaration imprecision in [*Practical Exception Specifications*](https://doi.org/10.1007/11818502_11). Across six open-source Java programs, between **16% and 81%** of exception types in `throws` declarations were imprecise, with a **46% average**. In their simulated package/module setup, module-oriented inference reduced programmer-written declarations by 50–93%. The lesson is not “give up on static error contracts.” It is “infer and compose them at the right abstraction boundary.” That is effect-system territory.
+
+> “introduce implicit control flow, complicating the task of understanding, maintaining, and debugging programs.”
 
 ## Result types vs exceptions: failure as ordinary data
 
@@ -93,7 +131,21 @@ Use `Result<T, E>` when failure is part of the value-level API: parsing, validat
 
 `Result` is not always the most readable way to express a policy that spans many layers. Logging, dependency injection, retry, cancellation and exception-style early exit all benefit from handling code outside the function that requests the operation. Osprey uses algebraic effects for that.
 
-The theoretical foundation is Gordon Plotkin and Matija Pretnar's [*Handling Algebraic Effects*](https://lmcs.episciences.org/705), which generalises exception handlers to operations for effects such as state, nondeterminism and I/O. Daan Leijen's [Koka effect-system paper](https://www.microsoft.com/en-us/research/wp-content/uploads/2016/02/koka-effects-2013.pdf) shows the static destination: infer row-polymorphic effects in function types so an expression without the exception effect cannot produce an unhandled exception.
+The theoretical foundation is Gordon Plotkin and Matija Pretnar's [*Handling Algebraic Effects*](https://lmcs.episciences.org/705). Their construction starts from a decisive observation:
+
+> “We further generalise exception handlers to arbitrary algebraic effects.”
+
+That cuts through the inevitability claim. Exception handling is one instance of a more general operation-and-handler mechanism. Andrej Bauer and Matija Pretnar make the encoding concrete in [*Programming with Algebraic Effects and Handlers*](https://doi.org/10.1016/j.jlamp.2014.02.001):
+
+> “An exception is an effect with a single operation raise with an empty result type.”
+
+In other words, a language does not need to privilege `throw` as a second, invisible return convention. It can express exception-style abortion as one typed interpretation of one declared effect. Another handler can translate the same operation into an optional value, a `Result`, a recovery value or a test policy.
+
+Daan Leijen's [Koka effect-system paper](https://www.microsoft.com/en-us/research/wp-content/uploads/2016/02/koka-effects-2013.pdf) provides the static result:
+
+> “if an expression can be typed without an exn effect, then it will never throw an unhandled exception.”
+
+This is not empirical evidence about bug rates; it is a formal safety theorem and an existence proof. Expected failure can be explicit data, exception-style control can be an ordinary typed effect, and a compiler can prove from the type that no exception escapes. Exceptions as a privileged unchecked language mechanism are therefore a design choice, not an inevitable property of programming.
 
 Osprey separates three things that conventional exceptions fuse together:
 
@@ -240,12 +292,16 @@ Exceptions and panics were a mistake. The better answer is simple: make failure 
 - John B. Goodenough, [*Exception Handling: Issues and a Proposed Notation*](https://doi.org/10.1145/361227.361230), Communications of the ACM, 1975.
 - Barbara H. Liskov and Alan Snyder, [*Exception Handling in CLU*](https://doi.org/10.1109/TSE.1979.230191), IEEE Transactions on Software Engineering, 1979.
 - Westley Weimer and George C. Necula, [*Exceptional Situations and Program Reliability*](https://web.eecs.umich.edu/~weimerw/p/weimer-toplas2008.pdf), ACM TOPLAS, 2008.
+- Roy A. Maxion and Robert T. Olszewski, [*Eliminating Exception Handling Errors with Dependability Cases: A Comparative, Empirical Study*](https://doi.org/10.1109/32.877848), IEEE Transactions on Software Engineering, 2000.
 - Donna Malayeri and Jonathan Aldrich, [*Practical Exception Specifications*](https://doi.org/10.1007/11818502_11), Advanced Topics in Exception Handling Techniques, LNCS 4119, 2006.
 - Bruno Cabral and Paulo Marques, [*Exception Handling: A Field Study in Java and .NET*](https://eden.dei.uc.pt/~bcabral/ExceptionHandling_A_Field_Study_camready.pdf), ECOOP, 2007.
+- Guilherme B. de Pádua and Weiyi Shang, [*Revisiting Exception Handling Practices with Exception Flow Analysis*](https://guipadua.github.io/resources/scam2017-revisiting-eh_cr.pdf), SCAM, 2017 ([DOI](https://doi.org/10.1109/SCAM.2017.16)).
+- Guilherme B. de Pádua and Weiyi Shang, [*Studying the Relationship between Exception Handling Practices and Post-release Defects*](https://guipadua.github.io/resources/eh-model-defects2018_cr.pdf), MSR, 2018 ([DOI](https://doi.org/10.1145/3196398.3196435)).
 - Maria Kechagia et al., [*The Exception Handling Riddle: An Empirical Study on the Android API*](https://doi.org/10.1016/j.jss.2018.04.034), Journal of Systems and Software, 2018.
 - Kirsten Bradley and Michael W. Godfrey, [*A Study on the Effects of Exception Usage in Open-Source C++ Systems*](https://plg2.cs.uwaterloo.ca/~migod/papers/2019/scam19.pdf), SCAM, 2019.
 - Boqin Qin et al., [*Understanding and Detecting Real-World Safety Issues in Rust*](https://doi.org/10.1109/TSE.2024.3380393), IEEE Transactions on Software Engineering, 2024.
 - Gordon D. Plotkin and Matija Pretnar, [*Handling Algebraic Effects*](https://lmcs.episciences.org/705), Logical Methods in Computer Science, 2013.
+- Andrej Bauer and Matija Pretnar, [*Programming with Algebraic Effects and Handlers*](https://doi.org/10.1016/j.jlamp.2014.02.001), Journal of Logical and Algebraic Methods in Programming, 2015.
 - Andrej Bauer and Matija Pretnar, [*An Effect System for Algebraic Effects and Handlers*](https://lmcs.episciences.org/1153), Logical Methods in Computer Science, 2014.
 - Daan Leijen, [*Koka: Programming with Row-Polymorphic Effect Types*](https://www.microsoft.com/en-us/research/wp-content/uploads/2016/02/koka-effects-2013.pdf), Microsoft Research, 2013.
 - Luc Maranget, [*Warnings for Pattern Matching*](https://www.cambridge.org/core/services/aop-cambridge-core/content/view/3165B75113781E2431E3856972940347/S0956796807006223a.pdf/warnings-for-pattern-matching.pdf), Journal of Functional Programming, 2007.

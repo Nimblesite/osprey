@@ -62,5 +62,5 @@ Spec IDs are hierarchical descriptive slugs in the format `[GROUP-TOPIC]` or
 project's [`CLAUDE.md`](../../CLAUDE.md) for the full convention.
 
 Code implementing a spec section MUST reference its ID in a comment, e.g.
-`// Implements [PARSER-EFFECTS-HANDLE]`. The `spec-check` skill enforces this
+`// Implements [BUILTIN-ITER-PIPE]`. The `spec-check` skill enforces this
 by grep.

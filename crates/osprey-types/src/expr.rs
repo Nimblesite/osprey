@@ -69,17 +69,7 @@ impl Checker {
                 named_arguments,
             } => self.infer_call(function, arguments, named_arguments, env),
             Expr::Pipe { left, right } => self.infer_pipe(left, right, env),
-            Expr::FieldAccess { target, field } => {
-                let tt = self.infer_expr(target, env);
-                let tp = self.ctx.prune(&tt);
-                match &tp {
-                    Type::Record { fields, .. } => fields
-                        .get(field)
-                        .cloned()
-                        .unwrap_or_else(|| self.ctx.fresh()),
-                    _ => self.ctx.fresh(),
-                }
-            }
+            Expr::FieldAccess { target, field } => self.infer_field_access(target, field, env),
             Expr::MethodCall {
                 target,
                 method,
@@ -109,19 +99,7 @@ impl Checker {
             }
             Expr::Await(inner) => self.infer_unwrap_con(inner, names::FIBER, env),
             Expr::Recv(channel) => self.infer_unwrap_con(channel, names::CHANNEL, env),
-            Expr::Send { channel, value } => {
-                // A channel and its sent value share one element type.
-                // Implements [CONCURRENCY-CHANNEL].
-                let channel_ty = self.infer_expr(channel, env);
-                let value_ty = self.infer_expr(value, env);
-                let element_ty = self.ctx.fresh();
-                self.push_unify(
-                    &channel_ty,
-                    &Type::con(names::CHANNEL, vec![element_ty.clone()]),
-                );
-                self.push_assign(&element_ty, &value_ty);
-                Type::unit()
-            }
+            Expr::Send { channel, value } => self.infer_send(channel, value, env),
             // Valued yield forwards its type; bare yield is Unit.
             // Implements [CONCURRENCY-YIELD].
             Expr::Yield(inner) => match inner {
@@ -168,6 +146,33 @@ impl Checker {
             } => self.infer_handler(effect, arms, body, *position, env),
             other => self.infer_expr(other, env),
         }
+    }
+
+    /// Field access yields the record field's declared type, or a fresh var when
+    /// the target is not a known record (split out of [`Self::infer_expr`]).
+    fn infer_field_access(&mut self, target: &Expr, field: &str, env: &TypeEnv) -> Type {
+        let tt = self.infer_expr(target, env);
+        match &self.ctx.prune(&tt) {
+            Type::Record { fields, .. } => fields
+                .get(field)
+                .cloned()
+                .unwrap_or_else(|| self.ctx.fresh()),
+            _ => self.ctx.fresh(),
+        }
+    }
+
+    /// A channel and its sent value share one element type; the send is `Unit`.
+    /// Implements [CONCURRENCY-CHANNEL] (split out of [`Self::infer_expr`]).
+    fn infer_send(&mut self, channel: &Expr, value: &Expr, env: &TypeEnv) -> Type {
+        let channel_ty = self.infer_expr(channel, env);
+        let value_ty = self.infer_expr(value, env);
+        let element_ty = self.ctx.fresh();
+        self.push_unify(
+            &channel_ty,
+            &Type::con(names::CHANNEL, vec![element_ty.clone()]),
+        );
+        self.push_assign(&element_ty, &value_ty);
+        Type::unit()
     }
 
     /// Infer `resume(v)`: its argument is delivered as the operation's result, so
@@ -301,8 +306,8 @@ impl Checker {
     /// The handled body, the arms, and the whole expression all share one
     /// answer type; the body lands in the answer slot at an assignment site,
     /// so a bare `Result<T, E>` body auto-unwraps into a concrete answer just
-    /// as function returns do. Implements [EFFECTS-RESUME] and
-    /// [EFFECTS-GENERIC-INSTANTIATION].
+    /// as function returns do. Implements [EFFECTS-RESUME],
+    /// [EFFECTS-GENERIC-INSTANTIATION], and [EFFECTS-OP-TYPING].
     fn infer_handler(
         &mut self,
         effect: &str,
@@ -311,14 +316,14 @@ impl Checker {
         position: Option<osprey_ast::Position>,
         env: &TypeEnv,
     ) -> Type {
-        let (eff_args, inst_ops, effect_known) = match self.effect_instance_ops(effect) {
-            Some((args, ops)) => (args, ops, true),
-            None => {
+        let (eff_args, inst_ops, effect_known) =
+            if let Some((args, ops)) = self.effect_instance_ops(effect) {
+                (args, ops, true)
+            } else {
                 self.errors
                     .push(TypeError::new(format!("unknown effect `{effect}`")));
                 (Vec::new(), HashMap::new(), false)
-            }
-        };
+            };
         let answer = self.ctx.fresh();
         for arm in arms {
             let (params, op_ret) = match inst_ops.get(&arm.operation) {
@@ -445,7 +450,8 @@ impl Checker {
     }
 
     /// Resolve call arguments to types, reordering named arguments to the
-    /// declared parameter order when the callee is a known function.
+    /// declared parameter order when the callee is a known function
+    /// ([CALL-ARGUMENTS]).
     fn ordered_arg_types(
         &mut self,
         fname: Option<&str>,
@@ -898,9 +904,7 @@ mod tests {
     fn yield_forwards_its_value_type_and_send_checks_the_channel_element() {
         // Implements [CONCURRENCY-YIELD] and [CONCURRENCY-CHANNEL].
         ok("fn hand_off(value: int) -> int = yield value\n");
-        let errs = bad(
-            "fn wrong(ch: Channel<int>) -> Unit = send(ch, \"wrong\")\n",
-        );
+        let errs = bad("fn wrong(ch: Channel<int>) -> Unit = send(ch, \"wrong\")\n");
         assert!(errs
             .iter()
             .any(|e| e.message.contains("cannot unify int with string")));
@@ -928,33 +932,52 @@ mod tests {
     }
 
     #[test]
-    fn effect_operations_must_exist_and_match_their_declared_arity() {
+    fn performed_effect_operation_must_be_declared() {
         // [EFFECTS-OP-TYPING]
-        let missing = bad(
-            "effect Logger { log: fn(string) -> Unit }\n\
-             fn run() -> Unit !Logger = perform Logger.missing(\"hi\")\n",
-        );
+        let missing = bad("effect Logger { log: fn(string) -> Unit }\n\
+             fn run() -> Unit !Logger = perform Logger.missing(\"hi\")\n");
         assert!(missing
             .iter()
             .any(|e| e.message.contains("has no operation `missing`")));
+    }
 
-        let wrong_arity = bad(
-            "effect Logger { log: fn(string) -> Unit }\n\
-             fn run() -> Unit !Logger = perform Logger.log()\n",
-        );
+    #[test]
+    fn performed_effect_must_be_declared() {
+        let errors = bad("fn run() -> Unit !Missing = perform Missing.log(\"hi\")\n");
+        assert!(errors
+            .iter()
+            .any(|e| e.message.contains("unknown effect `Missing`")));
+    }
+
+    #[test]
+    fn performed_effect_operation_must_match_declared_arity() {
+        let wrong_arity = bad("effect Logger { log: fn(string) -> Unit }\n\
+             fn run() -> Unit !Logger = perform Logger.log()\n");
         assert!(wrong_arity
             .iter()
             .any(|e| e.message.contains("expects 1 argument(s), got 0")));
+    }
 
-        let bad_arm = bad(
-            "effect Logger { log: fn(string) -> Unit }\n\
+    #[test]
+    fn handler_arm_operation_must_be_declared() {
+        let bad_arm = bad("effect Logger { log: fn(string) -> Unit }\n\
              let result = handle Logger\n\
                missing msg => {}\n\
-             in {}\n",
-        );
+             in {}\n");
         assert!(bad_arm
             .iter()
             .any(|e| e.message.contains("has no operation `missing`")));
+    }
+
+    #[test]
+    fn handler_arm_operation_must_match_declared_arity() {
+        let errors = bad("effect Logger { log: fn(string) -> Unit }\n\
+             let result = handle Logger\n\
+               log => {}\n\
+             in {}\n");
+        assert!(errors
+            .iter()
+            .any(|e| e.message.contains("expects 1 parameter(s), got 0")));
     }
 
     #[test]
@@ -1138,7 +1161,11 @@ mod tests {
              fn sub(a: float, b: float) = a - b\n\
              fn mul(a: float, b: float) = a * b\n",
         );
-        assert!(parsed.errors.is_empty(), "syntax errors: {:?}", parsed.errors);
+        assert!(
+            parsed.errors.is_empty(),
+            "syntax errors: {:?}",
+            parsed.errors
+        );
         let types = infer_program(&parsed.program);
         for name in ["add", "sub", "mul"] {
             assert_eq!(types.return_type(name), Some(&Type::float()), "{name}");
@@ -1147,26 +1174,11 @@ mod tests {
 
     #[test]
     fn perform_named_arguments_are_rejected_before_codegen() {
-        // The source grammars emit positional perform arguments. Reject a
-        // hand-built named argument rather than letting codegen ignore it.
+        // Codegen has no named-operation argument mapping; reject this source
+        // form instead of silently dropping its value.
         // [EFFECTS-OP-TYPING]
-        use osprey_ast::{Expr, NamedArgument, Program, Stmt};
-        let perform = Stmt::Expr {
-            value: Expr::Perform {
-                effect: "Logger".into(),
-                operation: "log".into(),
-                arguments: Vec::new(),
-                named_arguments: vec![NamedArgument {
-                    name: "msg".into(),
-                    value: Expr::Str("hi".into()),
-                }],
-                position: None,
-            },
-            position: None,
-        };
-        let errs = check_program(&Program {
-            statements: vec![perform],
-        });
+        let errs = bad("effect Logger { log: fn(string) -> Unit }\n\
+             fn run() -> Unit !Logger = perform Logger.log(msg: \"hi\")\n");
         assert!(errs
             .iter()
             .any(|e| e.message.contains("does not support named arguments")));

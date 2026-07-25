@@ -1974,6 +1974,8 @@ suite("Osprey VSIX Debugger E2E", () => {
     }
   });
 
+  // [DEBUGGER-PROTOCOLS] F5 and the command resolve to a DAP debugger
+  // contribution; the separate run command is not used as a debug adapter.
   test("package manifest exposes a real debugger contribution", () => {
     const pkg = JSON.parse(
       fs.readFileSync(path.join(extensionRoot, "package.json"), "utf8"),

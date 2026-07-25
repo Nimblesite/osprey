@@ -100,8 +100,7 @@ fi
 # Each .ospo must exit nonzero. Most are compile errors; the corpus also locks
 # explicit runtime refusals such as unhandled effects and multi-shot resume.
 # FC_EXPECTED_ESCAPES ratchets the remaining programs that still exit zero.
-# [EFFECTS-OP-TYPING] and [CONCURRENCY-SELECT-REJECT] reduced it to two.
-FC_EXPECTED_ESCAPES=2
+FC_EXPECTED_ESCAPES=1
 FCDIR=$ROOT/examples/failscompilation
 fc_rej=0; fc_esc=0
 typeset -a FC_ESCAPED

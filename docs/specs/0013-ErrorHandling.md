@@ -38,13 +38,13 @@ match result
 
 An operator whose only failure mode is overflow returns the plain type, because
 overflow wraps two's complement. Division and remainder retain `Result<_,
-Error>` so they can report a zero divisor.
+MathError>` so they can report a zero divisor.
 
 | Operator    | int, int                   | float, float               | int, float / float, int                   |
 | ----------- | -------------------------- | -------------------------- | ----------------------------------------- |
 | `+ - *`     | `int`                      | `float`                    | `float` (int promoted)                    |
-| `/`         | `Result<float, Error>` | `Result<float, Error>` | `Result<float, Error>`                |
-| `%`         | `Result<int, Error>`   | `Result<float, Error>` | `Result<float, Error>` (int promoted) |
+| `/`         | `Result<float, MathError>` | `Result<float, MathError>` | `Result<float, MathError>`                |
+| `%`         | `Result<int, MathError>`   | `Result<float, MathError>` | `Result<float, MathError>` (int promoted) |
 
 `/` always yields `float`. The builtins `checkedAdd`, `checkedSub`, and
 `checkedMul` return `Result<int, Error>` and make overflow checking explicit.
@@ -52,8 +52,8 @@ Error>` so they can report a zero divisor.
 
 ```osprey
 let sum       = 1 + 3      // int
-let quotient  = 10 / 3     // Result<float, Error>
-let remainder = 10 % 3     // Result<int, Error>
+let quotient  = 10 / 3     // Result<float, MathError>
+let remainder = 10 % 3     // Result<int, MathError>
 let mixed     = 10 + 5.5   // float
 let checked   = checkedAdd(a: 1, b: 3)   // Result<int, Error>
 let divZero   = 10 / 0     // Error(division by zero)
@@ -61,17 +61,17 @@ let divZero   = 10 / 0     // Error(division by zero)
 
 ```osprey-ml
 sum       = 1 + 3      // int
-quotient  = 10 / 3     // Result<float, Error>
-remainder = 10 % 3     // Result<int, Error>
+quotient  = 10 / 3     // Result<float, MathError>
+remainder = 10 % 3     // Result<int, MathError>
 mixed     = 10 + 5.5   // float
 checked   = checkedAdd (1, 3)   // Result<int, Error>
 divZero   = 10 / 0     // Error(division by zero)
 ```
 
-#### Chaining Arithmetic
+### Chaining Arithmetic
 
 `(10 + 5) * 2` is plain `int`. Where `/` or `%` appears, the enclosing
-expression has one flattened `Result<T, Error>`; an erroring operand makes the
+expression has one flattened `Result<T, MathError>`; an erroring operand makes the
 whole expression `Error`. Arithmetic is not an auto-unwrap context ([Result
 Auto-Unwrapping](0004-TypeSystem.md#result-auto-unwrapping)).
 
@@ -108,7 +108,7 @@ When a function produces `Error { message: E }`, the value bound to `message` in
 
 ```osprey
 match split("abc", "") {
-    Success { value }   => forEach(value, print)
+    Success { value }   => forEachList(value, print)
     Error   { message } => print(message)   // MUST print "separator is empty",
                                             // not "Error occurred"
 }
@@ -116,9 +116,10 @@ match split("abc", "") {
 
 ```osprey-ml
 match split ("abc", "")
-    Success value   => forEach (value, print)
+    Success value   => forEachList value print
     Error   message => print message   // MUST print "separator is empty",
                                        // not "Error occurred"
 ```
 
-This requirement applies uniformly across arithmetic, string, list, map, file-I/O, HTTP, and user-defined fallible functions, and to nested `Result` chains (auto-unwrap MUST preserve the original error payload). Implementations that lose the payload — for example by binding the pattern variable to a static global — are non-conforming.
+This requirement applies to every `Result`-returning operator, builtin, and
+user function, including nested auto-unwrap chains.

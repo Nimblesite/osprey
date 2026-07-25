@@ -6,9 +6,9 @@ lower to the same effect, perform, handler, and resume AST nodes; their runtime
 semantics are identical.
 
 The checker validates declared operations and their value types. Effect rows
-currently constrain operations inside the annotated function body, but are not
-stored in function types or propagated through calls. A missing handler can
-therefore compile; the generated program aborts with
+currently provide generic-instantiation scope inside the annotated function
+body, but are not stored in function types or propagated through calls. A
+missing handler can therefore compile; the generated program aborts with
 `unhandled effect: <Effect>.<operation>` when lookup fails.
 
 ## Keywords
@@ -25,8 +25,9 @@ opDecl     ::= IDENT ":" fnType
 ```
 
 `[EFFECTS-OP-TYPING]` Every operation named by `perform` or a handler arm must
-belong to the declared effect. Positional argument count and value types must
-match the operation signature. Named arguments are not supported on `perform`.
+belong to the declared effect. Perform arguments and handler parameters must
+match the operation's positional arity; performed values must also match its
+types. Named arguments are not supported on `perform`.
 
 ```osprey
 effect State {
@@ -201,14 +202,7 @@ Resuming handlers have these rules:
   `fatal: continuation already resumed (multi-shot resume is not supported)`.
 - Handler mode is selected per region. If any arm contains `resume`, an arm
   that returns without resuming aborts the suspended computation and its value
-  becomes the result of the whole handler. This per-region selection is a
-  **known deviation** from the per-clause rule of the literature: adding `resume`
-  to one arm silently changes how a *sibling* arm's non-resuming return is treated
-  (recover-and-continue versus abort). It is tracked as
-  [issue #177](https://github.com/Nimblesite/osprey/issues/177) — see
-  [Relationship to the Literature](#relationship-to-the-literature). Until it is
-  resolved, keep each handler in a single mode: either no arm resumes, or every
-  control-flow arm does.
+  becomes the result of the whole handler.
 - `resume` is lexical to the arm. It is rejected at top level and inside a
   lambda declared in an arm, because that lambda has no live arm continuation.
 - Explicit resume is native-only. WebAssembly supports direct value-substitution
@@ -220,55 +214,3 @@ whose arms contain no `resume` stay on the direct handler-call path.
 `[EFFECTS-FIBER-PERFORM]` Concurrent performs into one resuming handler are
 serialized for the full suspend-to-resume round trip. This prevents arguments
 or results from being delivered to the wrong performer.
-
-## Relationship to the Literature
-
-Osprey's handlers follow the algebraic-effects tradition of Plotkin and Pretnar,
-in which an effect is a set of typed operations and a handler interprets each one
-by supplying its result — optionally with access to the delimited continuation of
-the `perform`. Osprey's two handler modes are the two standard clause shapes:
-
-- **Tail-resume mode** is a *tail-resumptive* clause: the arm returns a value that
-  is substituted at the operation site and the computation continues. This is
-  Koka's `fun` / `val` operation clause — the common case that needs no
-  continuation capture and pays no runtime cost for it.
-- **Explicit `resume`** is a general clause with access to the continuation `k`:
-  `resume(v)` is `k v`. Running code *after* `resume`, and the LIFO unwinding of
-  nested continuations, are the observable signature of a genuine delimited
-  continuation.
-- **Abort** — an explicit-mode arm that never resumes — *discards* the
-  continuation, which is exactly how Plotkin–Pretnar and Eff give exceptions and
-  early exit: a clause aborts precisely by not invoking `k`.
-- **Deep, single-shot handlers.** The handler stays installed for the resumed
-  computation (Plotkin–Pretnar deep handlers; OCaml 5 `continue`). Continuations
-  are single-shot — one suspended native stack each, the same default restriction
-  OCaml 5 imposes — and multi-shot resumption is refused loudly rather than
-  emulated with a stale result.
-
-Osprey keeps the *surface* lighter than these systems: tail-resume needs no
-keyword, and `resume` is an expression rather than a continuation variable bound
-per clause. The *intended* meaning of a single arm still matches the references
-exactly — tail-resume when the arm names no `resume`, explicit-or-abort when it
-does, decided **per arm**. The implementation currently decides the mode **per
-handler** by scanning every arm for the `resume` token, so a sibling arm can flip
-another arm's control flow; that is the one substantive departure from the
-references below, tracked as a defect rather than a design choice
-([issue #177](https://github.com/Nimblesite/osprey/issues/177)). None of the
-systems below infer a clause's resumption mode from its siblings: Eff and OCaml 5
-bind the continuation explicitly per clause, and Koka declares the mode per clause
-with a keyword.
-
-References:
-
-- Gordon Plotkin and Matija Pretnar. *Handling Algebraic Effects.* Logical Methods
-  in Computer Science 9(4), 2013. <https://lmcs.episciences.org/705>
-- Andrej Bauer and Matija Pretnar. *Programming with Algebraic Effects and
-  Handlers* (the Eff language). Journal of Logical and Algebraic Methods in
-  Programming 84(1), 2015. <https://arxiv.org/abs/1203.1539>
-- Daan Leijen. *Algebraic Effects for Functional Programming* — Koka's per-clause
-  `fun` / `ctl` / `final ctl` resumption modes. Microsoft Research technical
-  report MSR-TR-2016-29, 2016.
-  <https://www.microsoft.com/en-us/research/publication/algebraic-effects-for-functional-programming/>
-- KC Sivaramakrishnan, Stephen Dolan, Leo White, Tom Kelly, Sadiq Jaffer, and
-  Anil Madhavapeddy. *Retrofitting Effect Handlers onto OCaml* — OCaml 5's
-  explicit, single-shot `continue k`. PLDI 2021. <https://arxiv.org/abs/2104.00250>

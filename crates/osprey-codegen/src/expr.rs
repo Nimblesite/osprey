@@ -129,34 +129,24 @@ fn fmt_double(f: f64) -> String {
 }
 
 fn gen_block(cg: &mut Codegen, statements: &[Stmt], value: Option<&Expr>) -> Result<Value> {
-    // A block does NOT open a new scope: locals live in a flat per-function
-    // symbol table, so a nested `let` rebinds (and leaks) the name in the
-    // enclosing scope. The goldens in `examples/tested` rely on this — e.g.
-    // block_statements' inner `let outer` is visible to the outer `outer + inner`.
-    for (i, s) in statements.iter().enumerate() {
-        crate::lower::gen_local_stmt(cg, s)?;
-        // Last-use drops: names the continuation no longer references die
-        // here, not at function end [GC-ARC-PERCEUS].
-        crate::arc::release_dead_after(cg, statements.get(i + 1..).unwrap_or(&[]), value);
-    }
-    match value {
-        Some(e) => gen_expr(cg, e),
-        None => Ok(Value::unit()),
-    }
+    // A child scope preserves outer bindings across nested blocks [BLOCK-SCOPE].
+    cg.push_scope();
+    let result = (|| {
+        for (i, s) in statements.iter().enumerate() {
+            crate::lower::gen_local_stmt(cg, s)?;
+            // Last-use drops: names the continuation no longer references die
+            // here, not at function end [GC-ARC-PERCEUS].
+            crate::arc::release_dead_after(cg, statements.get(i + 1..).unwrap_or(&[]), value);
+        }
+        value.map_or_else(|| Ok(Value::unit()), |e| gen_expr(cg, e))
+    })();
+    cg.pop_scope();
+    result
 }
 
 fn gen_binary(cg: &mut Codegen, op: &str, left: &Expr, right: &Expr) -> Result<Value> {
-    // Logical operators are control flow over booleans; keep them lazy-safe by
-    // evaluating both sides (the lowered programs have pure operands).
     if op == "&&" || op == "||" {
-        let l = gen_expr(cg, left)?;
-        let r = gen_expr(cg, right)?;
-        let lb = as_i1(cg, l)?;
-        let rb = as_i1(cg, r)?;
-        let opc = if op == "&&" { "and" } else { "or" };
-        let reg = cg.fresh_reg();
-        cg.emit(format!("{reg} = {opc} i1 {}, {}", lb.operand, rb.operand));
-        return Ok(Value::new(reg, LType::I1));
+        return gen_short_circuit(cg, op, left, right);
     }
 
     let l = gen_expr(cg, left)?;
@@ -174,6 +164,40 @@ fn gen_binary(cg: &mut Codegen, op: &str, left: &Expr, right: &Expr) -> Result<V
             "binary operator `{other}`"
         ))),
     }
+}
+
+fn gen_short_circuit(cg: &mut Codegen, op: &str, left: &Expr, right: &Expr) -> Result<Value> {
+    // Branch before lowering the right operand [BOOL-SHORT-CIRCUIT].
+    let left_value = gen_expr(cg, left)?;
+    let left = as_i1(cg, left_value)?;
+    let (rhs, short, end) = (cg.fresh_label(), cg.fresh_label(), cg.fresh_label());
+    let targets = if op == "&&" {
+        (&rhs, &short)
+    } else {
+        (&short, &rhs)
+    };
+    cg.emit(format!(
+        "br i1 {}, label %{}, label %{}",
+        left.operand, targets.0, targets.1
+    ));
+    cg.start_block(&short);
+    cg.emit(format!("br label %{end}"));
+    cg.start_block(&rhs);
+    let right_value = gen_expr(cg, right)?;
+    let right = as_i1(cg, right_value)?;
+    let instruction = if op == "&&" { "and" } else { "or" };
+    let combined = cg.emit_reg(format!(
+        "{instruction} i1 {}, {}",
+        left.operand, right.operand
+    ));
+    let right_block = cg.cur_block().to_string();
+    cg.emit(format!("br label %{end}"));
+    cg.start_block(&end);
+    let short_value = if op == "&&" { "0" } else { "1" };
+    let value = cg.emit_reg(format!(
+        "phi i1 [ {short_value}, %{short} ], [ {combined}, %{right_block} ]"
+    ));
+    Ok(Value::new(value, LType::I1))
 }
 
 /// Arithmetic whose operands may themselves carry an error channel. The

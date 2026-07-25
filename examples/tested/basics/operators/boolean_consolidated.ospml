@@ -5,6 +5,9 @@
 
 getTrue () = true
 getFalse () = false
+reportTrue () =
+    print "unexpected right side"
+    true
 isEqual (x, y) = x == y
 xor (a, b) = (a || b) && !(a && b)
 
@@ -37,9 +40,10 @@ c = (5 > 3) && (10 == 10)
 d = (5 < 3) || (10 != 5)
 print "&& ${toString a}  || ${toString b}  comp&& ${toString c}  comp|| ${toString d}"
 
-// Short-circuit (false && X / true || X never evaluates X)
-print (false && true)
-print (true || false)
+// The right side must not run in either expression. A broken eager lowering
+// would print the sentinel labels and fail the golden output.
+print (false && reportTrue ())
+print (true || reportTrue ())
 
 // Negation + de Morgan: !(p && q) == (!p || !q)
 p = true

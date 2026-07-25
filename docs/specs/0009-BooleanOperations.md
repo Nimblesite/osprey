@@ -1,75 +1,43 @@
 # Boolean Operations
 
-Osprey has no `if`/`else` statement. Conditional logic is written as a `match` on a boolean (which forces both arms to be considered) or as the ternary shorthand `cond ? then : else`, which desugars to the same `match`. The ternary is defined in [Pattern Matching](0007-PatternMatching.md#ternary-match-syntactic-sugar).
-
-> **Flavor layer — shared core.** `&&`, `||`, and comparisons lower to
-> `Expr::Binary`; `!` lowers to `Expr::Unary`; conditionals lower to
-> `Expr::Match`. Default braces and the
-> [ML offside form](0024-MLFlavorSyntax.md) share these semantics.
+Boolean expressions use `true`, `false`, comparisons, `&&`, `||`, and `!`.
+Conditionals are expressions: both flavors support `match`, Default also
+supports `cond ? then : else` and `if ... else`, and each form lowers to a
+two-arm `Expr::Match`.
 
 ```osprey
 let status = match isValid {
-    true  => "Success"
-    false => "Failure"
+    true  => "valid"
+    false => "invalid"
 }
 
-let max = match a > b {
-    true  => a
-    false => b
-}
+let maximum = a > b ? a : b
+let label = if enabled { "on" } else { "off" }
 ```
 
 ```osprey-ml
 status = match isValid
-    true  => "Success"
-    false => "Failure"
+    true  => "valid"
+    false => "invalid"
 
-max = match a > b
+maximum = match a > b
     true  => a
     false => b
 ```
 
-Nested matches handle compound conditions:
+The branch expressions must unify to one result type. Default `if` requires an
+`else` branch. See [Pattern Matching](0007-PatternMatching.md) for the lowering
+and exhaustiveness rules.
+
+## Operators [BOOL-SHORT-CIRCUIT]
+
+- `&&` evaluates its right operand only when the left operand is `true`.
+- `||` evaluates its right operand only when the left operand is `false`.
+- `!` negates a boolean.
+- `==`, `!=`, `<`, `>`, `<=`, and `>=` return a boolean.
 
 ```osprey
-let category = match score >= 90 {
-    true  => match score == 100 {
-        true  => "Perfect"
-        false => "Excellent"
-    }
-    false => match score >= 70 {
-        true  => "Good"
-        false => "Needs Improvement"
-    }
-}
-```
-
-```osprey-ml
-category = match score >= 90
-    true  => match score == 100
-        true  => "Perfect"
-        false => "Excellent"
-    false => match score >= 70
-        true  => "Good"
-        false => "Needs Improvement"
-```
-
-## Boolean Operators
-
-`&&`, `||`, and `!` are short-circuiting; `==`, `!=`, `<`, `>`, `<=`, `>=` produce booleans. See [Lexical Structure](0002-LexicalStructure.md) for the full operator list.
-
-```osprey
-let isAdult       = age >= 18
-let hasPermission = isAdult && isAuthorized
-let canAccess     = hasPermission || isAdmin
-let isBlocked     = !isActive
-let validUser     = !isBanned && (isVerified || hasInvite)
-```
-
-```osprey-ml
-isAdult       = age >= 18
-hasPermission = isAdult && isAuthorized
-canAccess     = hasPermission || isAdmin
-isBlocked     = !isActive
-validUser     = !isBanned && (isVerified || hasInvite)
+let valid = age >= 18 && isAuthorized
+let fallback = isAdmin || hasInvite
+let blocked = !isActive
 ```

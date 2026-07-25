@@ -10,7 +10,7 @@ surface unless an ML example clarifies different call syntax.
 ## Basic I/O Functions
 
 ```osprey
-print(value: int | string | bool) -> int
+print(value: any) -> Unit
 ```
 Prints values to standard output with automatic type conversion.
 
@@ -45,7 +45,7 @@ n =
         Error _       => 0
 ```
 
-### `toString(value: int | string | bool) -> string`
+### `toString(value: any) -> string`
 Converts any value to its string representation.
 
 ## Testing Functions — [TESTING-BUILTINS]
@@ -205,13 +205,13 @@ based. Case conversion and whitespace handling cover ASCII.
 
 ### Calling Style — [BUILTIN-STRING-UFCS]
 
-String functions can be called three ways. **Pipe (`|>`) is the preferred form** and the one used throughout this document.
+String functions support pipe, direct-call, and Default-flavor method syntax.
 
 ```osprey
-// Preferred — pipe chain, reads top-to-bottom
+// Pipe chain
 "  Hello, World  " |> trim |> toLowerCase |> split(", ")
 
-// Direct call — fine for single operations
+// Direct call
 toLowerCase(trim("  Hello  "))
 
 // Method-call (UFCS) — sugar, equivalent to the direct form
@@ -219,10 +219,10 @@ toLowerCase(trim("  Hello  "))
 ```
 
 ```osprey-ml
-// Preferred — pipe chain, reads top-to-bottom
+// Pipe chain
 "  Hello, World  " |> trim |> toLowerCase |> split ", "
 
-// Direct call — fine for single operations
+// Direct call
 toLowerCase (trim "  Hello  ")
 
 // Chained UFCS (`.trim().toLowerCase()`) has no ML surface; use the pipe form:
@@ -248,7 +248,7 @@ True iff `length(s) == 0`. Equivalent to `length(s) == 0` but constant-time.
 ### Search (total) — [BUILTIN-STRING-SEARCH]
 
 #### `contains(s: string, needle: string) -> bool` — [BUILTIN-STRING-CONTAINS]
-True if `needle` occurs anywhere in `s`. An empty `needle` returns `true` (matches every position; consistent with Elm and Java).
+True if `needle` occurs anywhere in `s`. An empty `needle` returns `true`.
 
 ```osprey
 contains("hello world", "world")  // true
@@ -279,7 +279,7 @@ Returns the byte index of the first occurrence of `needle`, or
 
 ### Cursor Access (total, O(1)) — [BUILTIN-STRING-CURSOR]
 
-These primitives expose `string` as a random-access byte/codepoint buffer without allocating. They exist so user-written parsers (JSON, query strings, CSV, log formats) can run in linear time instead of the O(n²) imposed by chaining `substring`/`take`/`drop`. They are the lowest-level string operations in the language; everything above is implementable in pure Osprey on top of them.
+These primitives provide non-allocating access to UTF-8 bytes and codepoints.
 
 #### `byteLength(s: string) -> int` — [BUILTIN-STRING-BYTELENGTH]
 Byte length of the underlying UTF-8 storage. Equivalent to `length(s)`. O(1).
@@ -339,18 +339,19 @@ Returns `s` without its first `n` bytes, with the same clamping rules as
 ### Splitting and Joining — [BUILTIN-STRING-LIST]
 
 #### `split(s: string, separator: string) -> Result<List<string>, Error>` — [BUILTIN-STRING-SPLIT]
-Splits `s` on every occurrence of `separator`. Returns `Error(InvalidArgument)` if `separator` is empty — matching Haskell `Data.Text.splitOn`, which rejects empty separators because the result would be ambiguous.
+Splits `s` on every occurrence of `separator`. Returns
+`Error(InvalidArgument)` if `separator` is empty.
 
 ```osprey
 match split("a,b,c", ",") {
-    Success { value }   => forEach(value, print)   // "a" "b" "c"
+    Success { value }   => forEachList(value, print)   // "a" "b" "c"
     Error   { message } => print("split error")
 }
 ```
 
 ```osprey-ml
 match split ("a,b,c", ",")
-    Success value   => forEach (value, print)   // "a" "b" "c"
+    Success value   => forEachList (value, print)   // "a" "b" "c"
     Error message   => print "split error"
 ```
 
@@ -358,7 +359,7 @@ match split ("a,b,c", ",")
 Concatenates `parts` with `separator` between each pair. Returns `""` if `parts` is empty.
 
 #### `lines(s: string) -> List<string>` — [BUILTIN-STRING-LINES]
-Splits on `"\n"`. A trailing newline does not produce an empty final element (matches Haskell `Data.Text.lines`).
+Splits on `"\n"`. A trailing newline does not produce an empty final element.
 
 #### `words(s: string) -> List<string>` — [BUILTIN-STRING-WORDS]
 Splits on runs of ASCII whitespace, dropping empty results.
@@ -392,7 +393,8 @@ Pads `s` on the left or right with repeated bytes from `fill` until it reaches
 ### Parsing — [BUILTIN-STRING-PARSING]
 
 #### `parseInt(s: string) -> Result<int, Error>` — [BUILTIN-STRING-PARSEINT]
-Parses a base-10 signed integer. Leading/trailing whitespace is rejected — callers must `trim` first. Returns `Error(ParseFailed)` on any non-numeric input (no silent zero-on-error like C's `atoi`).
+Parses a base-10 signed integer. Leading/trailing whitespace is rejected;
+callers must `trim` first. Returns `Error(ParseFailed)` on non-numeric input.
 
 #### `parseFloat(s: string) -> Result<float, Error>` — [BUILTIN-STRING-PARSEFLOAT]
 Parses a base-10 floating-point number. Same strictness as `parseInt`.
@@ -407,29 +409,6 @@ let greeting = "Hello, " + name + "!"
 
 ```osprey-ml
 greeting = "Hello, " + name + "!"
-```
-
-### Example: parsing a query string
-
-```osprey
-type KeyValue = { key: string, value: string }
-
-fn parsePair(pair) =
-    match indexOf(pair, "=") {
-        Success { value: i } => match substring(pair, 0, i) {
-            Success { value: k } => match substring(pair, i + 1, length(pair)) {
-                Success { value: v } => Success { value: KeyValue { key: k, value: v } }
-                Error   { message }  => Error { message }
-            }
-            Error { message } => Error { message }
-        }
-        Error { message } => Error { message }
-    }
-
-match split("name=alice&age=30", "&") {
-    Success { value: pairs } => forEach(pairs, fn(p) => parsePair(p) |> print)
-    Error   { message }      => print("bad query")
-}
 ```
 
 ## File System Functions — [BUILTIN-FILE]

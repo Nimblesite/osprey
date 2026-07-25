@@ -153,6 +153,10 @@ match prices["apple"]
 match prices["mango"]
     Success value => print "mango ok??"
     Error message => print "mango missing rejected"
+duplicate = ["key" => 1, "key" => 2]
+match duplicate["key"]
+    Success value => print "duplicate=${toString value}"
+    Error message => print "duplicate missing"
 
 // --- bare receiver-directed size: [BUILTIN-COLLECTION-LENGTH],
 // [BUILTIN-COLLECTION-ISEMPTY]. The same spelling the list and string sides

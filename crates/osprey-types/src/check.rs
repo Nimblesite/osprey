@@ -291,9 +291,7 @@ impl Checker {
                 } => {
                     if validation_func.is_some() {
                         self.record_err(
-                            TypeError::new(
-                                "validated record `where` is not supported".to_string(),
-                            ),
+                            TypeError::new("validated record `where` is not supported".to_string()),
                             *position,
                         );
                     }
@@ -1010,9 +1008,9 @@ mod tests {
             "fn validate(value) = true\n\
              type Item = { value: int } where validate\n",
         );
-        assert!(errs
-            .iter()
-            .any(|e| e.message.contains("validated record `where` is not supported")));
+        assert!(errs.iter().any(|e| e
+            .message
+            .contains("validated record `where` is not supported")));
     }
 
     #[test]
