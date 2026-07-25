@@ -51,6 +51,11 @@ This directory holds **all spec documents** for the project:
   - [`0032-PackageEvidenceAndDiscovery.md`](0032-PackageEvidenceAndDiscovery.md)
     — reproducible maintenance/confidence arithmetic and exact popularity-free
     intent, merit, exposure, exploration, privacy, and ranking rules.
+  - [`0033-OspreyGitHubAction.md`](0033-OspreyGitHubAction.md) — a marketplace
+    GitHub Action that is a thin wrapper over a co-located `.osp` program: the
+    stdin-only input ferry (one JSON line via `input`), the `key=value` →
+    `$GITHUB_OUTPUT` contract, Docker vs composite packaging, and why the native
+    target is forced (wasm omits `input`) with the deferred wasm path.
 
 ## Spec ID convention
 

@@ -155,7 +155,12 @@ in perform Logger.log("test")
 
 `[EFFECTS-HANDLER-STATE]` A handler arm may capture a mutable binding. Code
 generation promotes the captured binding to a shared heap cell, so every arm,
-the handled body, and code after the region observe the same location.
+the handled body, and code after the region observe the same location. This is
+the **sanctioned form of mutation** in Osprey: a `mut` cell is meant to change
+*through* an effect handler like the one below, not by free imperative
+reassignment in ordinary statement position (see
+[Bindings](0003-Syntax.md#bindings) and
+[issue #180](https://github.com/Nimblesite/osprey/issues/180)).
 
 ```osprey
 mut cell = 0

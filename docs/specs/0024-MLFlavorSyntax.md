@@ -33,18 +33,30 @@ comments are ordinary comments, not documentation.
 ## Bindings and Mutation
 
 `[FLAVOR-ML-BIND]` `name = expression` introduces an immutable binding.
-`mut name = expression` introduces a mutable binding, and `name := expression`
-assigns to it.
+`mut name = expression` introduces a **mutable cell**, and `name := expression`
+assigns to it. As in the Default flavor ([Bindings](0003-Syntax.md#bindings)),
+`mut` is **not** a general imperative variable: a `mut` cell exists to back
+**handler-owned state for algebraic effects**
+([EFFECTS-HANDLER-STATE](0017-AlgebraicEffects.md#handler-owned-state)), mutated
+*through* an effect handler rather than by free procedural `:=` reassignment.
 
 ```osprey-ml
 answer = 42
+
 mut requests = 0
-requests := requests + 1
+total = handle Counter
+    tick => requests := requests + 1
+in run ()
 ```
 
 These lower to `Stmt::Let { mutable: false }`,
 `Stmt::Let { mutable: true }`, and `Stmt::Assignment` respectively. Assignment
 to an immutable binding is a type error.
+
+> **Intended rule vs. current checker.** The checker does not yet enforce the
+> effect-scoped restriction — a bare `requests := requests + 1` with no handler
+> still compiles. The gap is tracked in
+> [issue #180](https://github.com/Nimblesite/osprey/issues/180).
 
 ## Functions and Currying
 

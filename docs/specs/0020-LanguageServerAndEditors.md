@@ -88,7 +88,7 @@ The server exposes:
 | ---------------- | --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Diagnostics      | `textDocument/publishDiagnostics` | Push, via `DiagnosticsBus`. `[LSP-DIAGNOSTICS]`                                                                                                                                             |
 | Hover            | `textDocument/hover`              | Markdown. Functions/builtins → signature; **`let`/`mut` bindings (local _and_ top-level) → their declared or inferred type**; any declaration's `///` docs rendered as prose. `[LSP-HOVER]` |
-| Go to definition | `textDocument/definition`         | AST-driven, anchored on the identifier.                                                                                                                                                     |
+| Go to definition | `textDocument/definition`         | AST-driven, anchored on the identifier; built-ins resolve to their own use. `[LSP-DEFINITION-BUILTIN]`                                                                                       |
 | Find references  | `textDocument/references`         | Whole-word scan; `includeDeclaration` honored.                                                                                                                                              |
 | Document symbols | `textDocument/documentSymbol`     | Flat `DocumentSymbol`s; range on the **name**, not the `fn`/`let`/`type` keyword.                                                                                                           |
 | Signature help   | `textDocument/signatureHelp`      | Active-parameter tracking; ignores `,`/`(`/`)` inside strings and `//` comments. Triggers on the **callee name** as well as inside its parentheses. `[LSP-WORKSPACE]`                       |
@@ -176,6 +176,18 @@ in [`osprey-lsp/src/hover.rs`](../../crates/osprey-lsp/src/hover.rs)
 (`doc_link_target` / `resolve_link`); doc capture lives in
 [`osprey-syntax/src/docparse.rs`](../../crates/osprey-syntax/src/docparse.rs)
 and each flavor's lowerer.
+
+## Go to definition `[LSP-DEFINITION-BUILTIN]`
+
+`textDocument/definition` resolves the identifier under the cursor to its
+declaration: first in the open buffer, then across the project's sibling files
+(`[LSP-WORKSPACE]`). A **built-in** (`listAppend`, `print`, `map`, …) declares
+nothing in any `.osp` file, so neither scan finds it. Rather than return an
+empty result — which editors surface as "No definition found" over a function
+that hovers perfectly well — the built-in resolves to the identifier the cursor
+sits on, a graceful self-definition. Implemented in
+[`osprey-lsp/src/features.rs`](../../crates/osprey-lsp/src/features.rs)
+(`builtin_definition`), reusing the same built-in table as `[LSP-HOVER]`.
 
 ## Answering in the authoring flavor `[LSP-FLAVOR-RENDER]`
 

@@ -26,22 +26,45 @@ forms are specified in [Algebraic Effects](0017-AlgebraicEffects.md).
 
 ## Bindings
 
-Default uses `let` for an immutable binding and `mut` for a rebindable binding.
+Default uses `let` for an immutable binding and `mut` for a **mutable cell**.
 Reassignment uses `=` and is rejected for an immutable or undeclared name.
+
+`mut` is **not** a general-purpose imperative variable. Osprey is
+expression-oriented and immutable-first; a `mut` binding exists to back
+**handler-owned state for algebraic effects** — a cell an effect handler reads
+and writes as it interprets operations
+([EFFECTS-HANDLER-STATE](0017-AlgebraicEffects.md#handler-owned-state)). The
+intended model is that a `mut` cell changes *through* an effect handler, not as a
+free procedural `x = x + 1` sequence in ordinary statement position.
 
 ```osprey
 let name = "Alice"
+
+// A `mut` cell owned by a handler: it changes only as the effect is performed
+// and this arm interprets it — the sanctioned form of mutation.
 mut count = 0
-count = count + 1
+let total = handle Counter
+    tick => { count = count + 1  count }
+in run()
 ```
 
-ML omits `let`; its reassignment operator is `:=`.
+ML omits `let`; its reassignment operator is `:=` and follows the same rule.
 
 ```osprey-ml
 name = "Alice"
+
 mut count = 0
-count := count + 1
+total = handle Counter
+    tick => count := count + 1
+in run ()
 ```
+
+> **Intended rule vs. current checker.** The checker does **not** yet enforce the
+> effect-scoped restriction — today it accepts any reassignment of a `mut` name,
+> including a bare top-level `count = count + 1` with no handler in sight. That
+> gap (and the examples that still rely on it) is tracked in
+> [issue #180](https://github.com/Nimblesite/osprey/issues/180); prefer the
+> handler-owned form in new code.
 
 A binding may include a type annotation after `:`. The annotation constrains
 inference; it is not required when inference already fixes the type.
