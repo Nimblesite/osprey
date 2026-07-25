@@ -1,7 +1,7 @@
 //! Position-aware text helpers shared by hover, definition and references.
 //!
 //! LSP positions are `(line, character)` with `character` counted in the
-//! negotiated [`PositionEncoding`]. Osprey identifiers are ASCII, but these
+//! selected [`PositionEncoding`]. Osprey identifiers are ASCII, but these
 //! helpers honour the encoding so multi-byte text still lines up.
 //!
 //! These primitives (word-at-position, whole-word occurrences, encoding-aware
@@ -16,9 +16,9 @@ use lspkit_vfs::PositionEncoding;
 pub struct WordSpan {
     /// The identifier text.
     pub word: String,
-    /// Start character offset within the line (negotiated encoding).
+    /// Start character offset within the line (selected encoding).
     pub start: u32,
-    /// End character offset within the line (negotiated encoding).
+    /// End character offset within the line (selected encoding).
     pub end: u32,
 }
 
@@ -27,9 +27,9 @@ pub struct WordSpan {
 pub struct Occurrence {
     /// Zero-based line.
     pub line: u32,
-    /// Start character offset within the line (negotiated encoding).
+    /// Start character offset within the line (selected encoding).
     pub start: u32,
-    /// End character offset within the line (negotiated encoding).
+    /// End character offset within the line (selected encoding).
     pub end: u32,
 }
 
@@ -256,7 +256,9 @@ mod tests {
     }
 
     #[test]
-    fn char_width_and_measure_follow_the_negotiated_encoding() {
+    fn char_width_and_measure_follow_the_selected_encoding() {
+        // The wire currently selects UTF-16; keeping both conversions correct
+        // isolates the measurement contract in [LSP-ENCODING].
         // An emoji is one UTF-16 surrogate pair (2 units) but four UTF-8 bytes.
         let rocket = '🚀';
         assert_eq!(char_width(rocket, PositionEncoding::Utf16), 2);

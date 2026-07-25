@@ -1,0 +1,55 @@
+// ═══════════════════════════════════════════════════════════════════════════
+// EFFECTS AS RESUMABLE EXCEPTIONS — the one thing try/catch can NEVER do.
+//
+// A thrown exception unwinds the stack: everything after the throw is dead, and
+// the catch block cannot send a value BACK to where the failure happened. An
+// algebraic effect suspends instead of unwinding. The handler inspects the
+// failure, then `resume(v)` drops a recovery value back at the exact `perform`
+// site and the computation keeps going — later work still runs.
+//
+// Here four orders draw from stock. Two over-draw and "fail". Under exceptions
+// the first over-draw aborts the batch and orders 3 and 4 never ship. Here the
+// handler recovers each bad order with 0 and the batch completes.
+// ═══════════════════════════════════════════════════════════════════════════
+
+effect Fail {
+    raise: fn(string) -> int
+}
+
+// Business logic is written as if failure simply cannot happen: it `raise`s and
+// trusts a recovery value to come back. It has NO idea what the policy is.
+fn draw(stock, qty) !Fail = match qty > stock {
+    true  => perform Fail.raise("order ${toString(qty)} exceeds stock ${toString(stock)}")
+    false => qty
+}
+
+fn fulfill() -> int !Fail = {
+    let a = draw(10, 3)
+    let b = draw(10, 50)   // over-draw → raised → recovered, batch continues
+    let c = draw(10, 4)
+    let d = draw(10, 99)   // over-draw → raised → recovered, batch continues
+    a + b + c + d
+}
+
+// The handler owns the recovery POLICY: skip the bad order (resume with 0) and
+// keep a running count. `resume` is what makes this impossible with exceptions.
+mut skipped = 0
+let shipped = handle Fail
+    raise reason => {
+        skipped = skipped + 1
+        print("⚠️  recovered: ${reason}")
+        resume(0)
+    }
+in fulfill()
+print("shipped=${shipped} units after skipping ${skipped} bad orders")
+
+// The SAME business function, a DIFFERENT policy — no change to `fulfill`/`draw`.
+// This handler ABORTS on the first failure (return without resume), exactly the
+// throw/catch behaviour — proving effects can express BOTH, chosen at the edge.
+let strict = handle Fail
+    raise reason => {
+        print("✋ aborted at: ${reason}")
+        -1
+    }
+in fulfill()
+print("strict result=${strict}")

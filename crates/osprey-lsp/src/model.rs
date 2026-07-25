@@ -10,7 +10,7 @@ use lspkit_vfs::DocumentUri;
 use crate::analysis::SymbolInfo;
 
 /// A zero-based, half-open `(start_line, start_char, end_line, end_char)` span
-/// in the negotiated position encoding.
+/// in the selected position encoding.
 pub type Span = (u32, u32, u32, u32);
 
 /// A position inside a document, as supplied by the editor.
@@ -20,7 +20,7 @@ pub struct At {
     pub uri: DocumentUri,
     /// Zero-based line.
     pub line: u32,
-    /// Zero-based character offset (negotiated encoding).
+    /// Zero-based character offset (selected encoding).
     pub character: u32,
 }
 

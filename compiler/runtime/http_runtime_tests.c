@@ -17,7 +17,7 @@ extern int64_t http_create_server(int64_t port, char *address);
 extern int64_t http_listen(int64_t server_id, int64_t handler);
 extern int64_t http_stop_server(int64_t server_id);
 
-extern int64_t websocket_connect(char *url, char *message_handler);
+extern int64_t websocket_connect(char *url);
 extern int64_t websocket_send(int64_t ws_id, char *message);
 extern int64_t websocket_close(int64_t ws_id);
 
@@ -166,6 +166,7 @@ void test_http_client_request_mock(void) {
 }
 
 void test_websocket_create_server(void) {
+  // [BUILTIN-WEBSOCKET] Runtime handle creation and validation.
   printf("Testing websocket_create_server...\n");
 
   // Test valid WebSocket server creation
@@ -191,9 +192,12 @@ void test_websocket_create_server(void) {
 void test_websocket_client(void) {
   printf("Testing WebSocket client functions...\n");
 
+  assert(websocket_connect(NULL) == -1);
+  assert(websocket_connect("wss://example.com/chat") == -2);
+
   // Test WebSocket connection creation (will fail without server, but tests
   // function)
-  int64_t ws_id = websocket_connect("ws://echo.websocket.org", "test_handler");
+  int64_t ws_id = websocket_connect("ws://echo.websocket.org");
   if (ws_id > 0) {
     printf("✅ WebSocket connection created with ID: %" PRId64 "\n", ws_id);
 
@@ -234,16 +238,17 @@ void run_all_http_tests(void) {
   printf("  - httpListen(serverID: Int, handler: Int) -> Int\n");
   printf("  - httpStopServer(serverID: Int) -> Int\n");
   printf("  - httpCreateClient(baseUrl: String, timeout: Int) -> Int\n");
-  printf("  - httpRequest(clientID: Int, method: Int, path: String, headers: "
-         "String, body: String) -> Int\n");
+  printf("  - httpGet/httpPost/httpPut/httpDelete(...) -> Int\n");
+  printf("  - httpGetResponse(...) -> Result<Int, String>\n");
+  printf("  - httpResponseStatus/Body/Header/Free(responseID: Int)\n");
   printf("  - httpCloseClient(clientID: Int) -> Int\n");
   printf("  - websocketCreateServer(port: Int, address: String, path: String) "
          "-> Int\n");
   printf("  - websocketServerListen(serverID: Int) -> Int\n");
   printf(
       "  - websocketServerBroadcast(serverID: Int, message: String) -> Int\n");
-  printf("  - websocketStopServer(serverID: Int) -> Int\n");
-  printf("  - websocketConnect(url: String, handler: String) -> Int\n");
+  printf("  - websocketKeepAlive() -> Unit\n");
+  printf("  - websocketConnect(url: String) -> Int\n");
   printf("  - websocketSend(wsID: Int, message: String) -> Int\n");
   printf("  - websocketClose(wsID: Int) -> Int\n");
 }

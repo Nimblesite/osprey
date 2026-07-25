@@ -1,6 +1,8 @@
 #include "http_server_internal.h"
 #include "memory_hooks.h"
 
+// Native listener and callback bridge [HTTP-SERVER].
+
 extern int64_t fiber_await(int64_t fiber_id);
 extern int64_t fiber_spawn_env(int64_t (*fn)(void *), void *environment);
 

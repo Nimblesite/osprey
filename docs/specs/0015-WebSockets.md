@@ -1,87 +1,37 @@
-# WebSockets
+# WebSockets [BUILTIN-WEBSOCKET]
 
-Bidirectional WebSocket communication over RFC 6455. Every operation that can fail returns `Result`; see [Error Handling](0013-ErrorHandling.md).
+The native runtime exposes a text-frame WebSocket transport. Handles and
+operation results are `int`; negative values report failure.
 
-> **Flavor layer — shared core (AST and above).** WebSocket semantics are flavor-blind after lowering to `osprey_ast::Program`; no later phase inspects the source flavor. Examples use Default named-argument calls; see [ML Flavor Syntax](0024-MLFlavorSyntax.md) and [Language Flavors](0023-LanguageFlavors.md).
-
-## Status
-
-Function signatures below are the specified interface. The current C runtime returns raw `int64_t` for several of these functions; the type system expects `Result<T, string>` and the bridge is being aligned. WebSocket server `listen` currently fails to bind in some environments.
-
-## Types
+## Client
 
 ```osprey
-type WebSocketID = int
-type ServerID    = int
-
-type WebSocketMessage = {
-    type:      string,
-    data:      string,
-    timestamp: int
-}
-
-type WebSocketConnection = {
-    id:          WebSocketID,
-    url:         string,
-    isConnected: bool
-}
+websocketConnect(url: string) -> int
+websocketSend(wsID: int, message: string) -> int
+websocketClose(wsID: int) -> int
 ```
 
-## Client Functions
+`websocketConnect` accepts a `ws://` URL and returns a connection handle.
+`websocketSend` returns `0` on success. The language surface does not expose a
+receive callback or incoming-frame iterator.
+
+## Server
 
 ```osprey
-websocketConnect(
-    url: string,
-    messageHandler: fn(string) -> Result<unit, string>
-) -> Result<WebSocketID, string>
-
-websocketSend(wsID: WebSocketID, message: string) -> Result<unit, string>
-websocketClose(wsID: WebSocketID)                  -> Result<unit, string>
+websocketCreateServer(port: int, address: string, path: string) -> int
+websocketServerListen(serverID: int) -> int
+websocketServerBroadcast(serverID: int, message: string) -> int
+websocketKeepAlive() -> Unit
 ```
 
-`messageHandler` is invoked once per incoming frame with the frame payload.
+The server accepts upgrade requests, sends a welcome text frame, and echoes
+received text payloads. `websocketServerBroadcast` returns the number of
+connections written. `websocketKeepAlive` blocks until `SIGINT` or `SIGTERM`.
+The `path` argument is stored with the server but is not currently used to
+filter upgrade requests.
 
-```osprey
-fn handleMessage(msg) -> Result<unit, string> = {
-    print("received: ${msg}")
-    Success { value: () }
-}
+## Framing limits
 
-match websocketConnect(url: "ws://localhost:8080/chat", messageHandler: handleMessage) {
-    Success { value: wsID } => {
-        websocketSend(wsID: wsID, message: "hello")
-        websocketClose(wsID: wsID)
-    }
-    Error { message } => print("connect failed: ${message}")
-}
-```
-
-## Server Functions
-
-```osprey
-websocketCreateServer(
-    port: int, address: string, path: string
-) -> Result<ServerID, string>
-
-websocketServerListen(serverID: ServerID)                         -> Result<unit, string>
-websocketServerSend(serverID: ServerID, wsID: WebSocketID,
-                    message: string)                              -> Result<unit, string>
-websocketServerBroadcast(serverID: ServerID, message: string)     -> Result<unit, string>
-websocketStopServer(serverID: ServerID)                           -> Result<unit, string>
-```
-
-## Server Example
-
-```osprey
-match websocketCreateServer(port: 8080, address: "127.0.0.1", path: "/chat") {
-    Success { value: serverID } => match websocketServerListen(serverID: serverID) {
-        Success { value: _ } => {
-            websocketServerBroadcast(serverID: serverID, message: "Welcome!")
-            sleep(10000)
-            websocketStopServer(serverID: serverID)
-        }
-        Error { message } => print("listen failed: ${message}")
-    }
-    Error { message } => print("create failed: ${message}")
-}
-```
+The runtime handles single text frames only. It does not implement fragmented,
+binary, close, ping, or pong frames, and outbound payloads are limited to 4096
+bytes. Client frames are not masked, and the client transport rejects `wss://`.

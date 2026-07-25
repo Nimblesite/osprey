@@ -71,25 +71,25 @@ pub(crate) static CORE: &[BuiltinDoc] = &[
     ),
     builtin_doc!(
         "intDiv",
-        "Truncating integer division (rounds toward zero), divide-by-zero checked. The `/` operator is float-only; this is its integer sibling, returning Result<int, MathError>.",
+        "Truncating integer division (rounds toward zero), divide-by-zero checked. The `/` operator is float-only; this is its integer sibling, returning Result<int, Error>.",
         ["a" => "The dividend", "b" => "The divisor (zero yields Error)"],
         "fn half(n) = intDiv(n, 2)  // intDiv(7, 2) == 3",
     ),
     builtin_doc!(
         "checkedAdd",
-        "Integer addition that reports overflow instead of wrapping. The `+` operator returns plain int because a wrapped result is still representable; this returns Result<int, MathError>.",
+        "Integer addition that reports overflow instead of wrapping. The `+` operator returns plain int because a wrapped result is still representable; this returns Result<int, Error>.",
         ["a" => "The first addend", "b" => "The second addend"],
         "let t = checkedAdd(a: 9223372036854775807, b: 1) ?: 0  // 0 — overflow reported",
     ),
     builtin_doc!(
         "checkedSub",
-        "Integer subtraction that reports overflow instead of wrapping, returning Result<int, MathError>. The guarded sibling of `-`.",
+        "Integer subtraction that reports overflow instead of wrapping, returning Result<int, Error>. The guarded sibling of `-`.",
         ["a" => "The minuend", "b" => "The subtrahend"],
         "let d = checkedSub(a: 10, b: 4) ?: 0  // 6",
     ),
     builtin_doc!(
         "checkedMul",
-        "Integer multiplication that reports overflow instead of wrapping, returning Result<int, MathError>. The guarded sibling of `*`.",
+        "Integer multiplication that reports overflow instead of wrapping, returning Result<int, Error>. The guarded sibling of `*`.",
         ["a" => "The first factor", "b" => "The second factor"],
         "let p = checkedMul(a: 6, b: 7) ?: 0  // 42",
     ),
@@ -101,7 +101,7 @@ pub(crate) static CORE: &[BuiltinDoc] = &[
     ),
     builtin_doc!(
         "randomBelow",
-        "A cryptographically-secure uniform random integer in [0, n), unbiased by rejection sampling. Returns Result<int, MathError> — Error when n <= 0.",
+        "A cryptographically-secure uniform random integer in [0, n), unbiased by rejection sampling. Returns Result<int, Error> when n is positive and Error otherwise.",
         ["n" => "Exclusive upper bound; must be positive"],
         "let d = randomBelow(6) ?: 0  // a fair die face 0..5",
     ),
@@ -348,13 +348,11 @@ pub(crate) static FUNCTIONAL: &[BuiltinDoc] = &[
 /// `lists` built-in documentation. Prose only — types come from the
 /// authoritative scheme in `builtins.rs`, joined by name.
 ///
-/// These `listXxx` names are the spellings that actually ship for the bare list
-/// surface of docs/specs/0012-Built-InFunctions.md: [BUILTIN-LIST],
+/// Shipped list surface from docs/specs/0012-Built-InFunctions.md:
+/// [BUILTIN-LIST],
 /// [BUILTIN-LIST-GET], [BUILTIN-LIST-APPEND], [BUILTIN-LIST-PREPEND],
 /// [BUILTIN-LIST-CONCAT], [BUILTIN-LIST-REVERSE], [BUILTIN-LIST-CONTAINS] and
-/// [BUILTIN-COLLECTION-LENGTH]. The spec's [BUILTIN-LIST-HEAD],
-/// [BUILTIN-LIST-TAIL] and [BUILTIN-LIST-INDEXOF] have no entry because they
-/// have no implementation.
+/// [BUILTIN-COLLECTION-LENGTH].
 pub(crate) static LISTS: &[BuiltinDoc] = &[
     builtin_doc!(
         "List",
@@ -415,16 +413,12 @@ pub(crate) static LISTS: &[BuiltinDoc] = &[
 /// `maps` built-in documentation. Prose only — types come from the
 /// authoritative scheme in `builtins.rs`, joined by name.
 ///
-/// These `mapXxx` names are the spellings that actually ship for the bare map
-/// surface of docs/specs/0012-Built-InFunctions.md: [BUILTIN-MAP],
+/// Shipped map surface from docs/specs/0012-Built-InFunctions.md:
+/// [BUILTIN-MAP],
 /// [BUILTIN-MAP-GET], [BUILTIN-MAP-SET], [BUILTIN-MAP-REMOVE],
 /// [BUILTIN-MAP-MERGE], [BUILTIN-MAP-CONTAINS] and [BUILTIN-COLLECTION-LENGTH].
 /// The `mapKeys` / `mapValues` entries below are the arity-1 accessors
-/// [BUILTIN-MAP-KEYS] / [BUILTIN-MAP-VALUES] — NOT the arity-2 transformers the
-/// spec gives the same two names ([BUILTIN-MAP-MAPKEYS] /
-/// [BUILTIN-MAP-MAPVALUES]), which are unimplemented, as are
-/// [BUILTIN-MAP-UPDATE], [BUILTIN-MAP-ENTRIES], [BUILTIN-MAP-FILTERENTRIES],
-/// [BUILTIN-MAP-FOLDENTRIES], [BUILTIN-MAP-ZIPTOMAP] and [BUILTIN-MAP-GROUPBY].
+/// [BUILTIN-MAP-KEYS] / [BUILTIN-MAP-VALUES].
 pub(crate) static MAPS: &[BuiltinDoc] = &[
     builtin_doc!(
         "Map",

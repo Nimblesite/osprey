@@ -211,8 +211,9 @@ same rendered page once user-declaration export is wired.
 
 ## Worked Example — One Function, Both Flavors
 
-The same function, documented in each flavor, lowering to the **identical**
-`DocComment`.
+The same function documented idiomatically in each flavor. Both versions
+populate the same structured fields, while preserving their authored Markdown
+and flavor-specific example code.
 
 **Default flavor (`.osp`):**
 
@@ -276,7 +277,7 @@ fn divide(numerator, denominator) = intDiv(numerator, denominator)
 divide numerator denominator = intDiv (numerator, denominator)
 ```
 
-Both lower to:
+The Default form lowers to:
 
 ```rust
 DocComment {
@@ -293,9 +294,10 @@ DocComment {
 }
 ```
 
-The two surfaces differ only in the sigil (`///` per line vs one `(** … *)`
-block) and in idiomatic inline-code habit — each reads native to its family,
-and the lowered model is the same.
+The ML form has the same field shape, but retains its `[link]` markup and ML
+example text. These two idiomatic examples are therefore not byte-identical;
+byte identity applies when the stripped comment bodies match, as checked by the
+cross-flavor equivalence test.
 
 ## Status
 

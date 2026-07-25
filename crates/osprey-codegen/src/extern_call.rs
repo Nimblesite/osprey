@@ -5,8 +5,8 @@
 //! are the contract: each table entry below must match its C signature exactly.
 //! A named function passed as a callback (`spawnProcess` / `httpListen` handler)
 //! is lowered to a raw code pointer here in `eval_args`. Implements
-//! [BUILTIN-FILE], [BUILTIN-PROCESS], [BUILTIN-HTTP], [BUILTIN-JSON],
-//! [BUILTIN-TERM]. Database APIs deliberately stay ordinary extern calls
+//! [BUILTIN-FILE], [BUILTIN-PROCESS], [BUILTIN-HTTP], [BUILTIN-WEBSOCKET],
+//! [BUILTIN-JSON], [BUILTIN-TERM]. Database APIs deliberately stay ordinary extern calls
 //! [FFI-NO-DB-BUILTINS].
 
 use crate::builder::Codegen;
@@ -56,10 +56,10 @@ fn lookup(name: &str) -> Option<Sig> {
         "random" => sig("osp_random", &[], Ret::Int),
         "randomBelow" => sig("osp_random_below", &[I64], Ret::ResultInt),
         "input" => sig("osp_input", &[], Ret::Str),
-        // --- file I/O (system_runtime.c) ---
+        // --- file I/O [BUILTIN-FILE] (system_runtime.c) ---
         "readFile" => sig("read_file", &[Str], Ret::ResultStr(Some("File read error"))),
         "writeFile" => sig("write_file", &[Str, Str], Ret::ResultInt),
-        // --- processes (system_runtime.c); 2nd arg of spawn is the callback ---
+        // --- processes [BUILTIN-PROCESS] (system_runtime.c); arg 2 is callback ---
         "spawnProcess" => sig("spawn_process_with_handler", &[Str, Ptr], Ret::ResultInt),
         "awaitProcess" => sig("fiber_await_process", &[I64], Ret::Int),
         "cleanupProcess" => sig("fiber_cleanup_process", &[I64], Ret::Unit),
@@ -81,6 +81,14 @@ fn lookup(name: &str) -> Option<Sig> {
         "httpResponseBody" => sig("http_response_body", &[I64], Ret::ResultStr(None)),
         "httpResponseHeader" => sig("http_response_header", &[I64, Str], Ret::ResultStr(None)),
         "httpResponseFree" => sig("http_response_free", &[I64], Ret::ResultInt),
+        // --- WebSocket text transport (websocket_*_runtime.c) [BUILTIN-WEBSOCKET] ---
+        "websocketCreateServer" => sig("websocket_create_server", &[I64, Str, Str], Ret::Int),
+        "websocketServerListen" => sig("websocket_server_listen", &[I64], Ret::Int),
+        "websocketServerBroadcast" => sig("websocket_server_broadcast", &[I64, Str], Ret::Int),
+        "websocketKeepAlive" => sig("websocket_keep_alive", &[], Ret::Unit),
+        "websocketConnect" => sig("websocket_connect", &[Str], Ret::Int),
+        "websocketSend" => sig("websocket_send", &[I64, Str], Ret::Int),
+        "websocketClose" => sig("websocket_close", &[I64], Ret::Int),
         // --- JSON document handles (json_runtime.c) ---
         "jsonParse" => sig("json_parse", &[Str], Ret::ResultInt),
         "jsonGet" => sig("json_get", &[I64, Str], Ret::ResultStr(None)),
@@ -180,5 +188,41 @@ fn emit(cg: &mut Codegen, sig: &Sig, ops: &[String]) -> Result<Value> {
             crate::arc::own(cg, &Value::new(&r, LType::Str));
             result_from_nullable(cg, &r, err)
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn websocket_builtins_lower_to_the_c_runtime_abi() {
+        // [BUILTIN-WEBSOCKET] Camel-case language names must not escape into
+        // LLVM: the archive exports snake-case C symbols.
+        let parsed = osprey_syntax::parse_program(
+            "let s = websocketCreateServer(8080, \"127.0.0.1\", \"/chat\")\n\
+             let listening = websocketServerListen(s)\n\
+             let sent = websocketServerBroadcast(s, \"hello\")\n\
+             let c = websocketConnect(\"ws://127.0.0.1:8080/chat\")\n\
+             let wrote = websocketSend(c, \"hello\")\n\
+             let closed = websocketClose(c)\n\
+             websocketKeepAlive()\n",
+        );
+        assert!(
+            parsed.errors.is_empty(),
+            "syntax errors: {:?}",
+            parsed.errors
+        );
+        let ir = crate::compile_program(&parsed.program).expect("WebSocket codegen");
+        for symbol in [
+            "websocket_create_server",
+            "websocket_server_listen",
+            "websocket_server_broadcast",
+            "websocket_connect",
+            "websocket_send",
+            "websocket_close",
+            "websocket_keep_alive",
+        ] {
+            assert!(ir.contains(&format!("@{symbol}")), "missing {symbol}: {ir}");
+        }
+        assert!(!ir.contains("@websocketCreateServer"), "{ir}");
     }
 }

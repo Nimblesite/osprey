@@ -1,4 +1,4 @@
-// Demonstrates basic Result pattern matching (simplified)
+// File builtins [BUILTIN-FILE] with Result pattern matching.
 print("=== File I/O Workflow Test ===")
 
 let content = "Hello, Osprey file I/O!"
@@ -26,4 +26,4 @@ print("Read Result toString: ${toString(readResult)}")    // Tests Result<string
 let errorResult = readFile("nonexistent_file_xyz123.txt")
 print("Error Result toString: ${toString(errorResult)}")  // Should print "Error"
 
-print("=== Test Complete ===") 
+print("=== Test Complete ===")

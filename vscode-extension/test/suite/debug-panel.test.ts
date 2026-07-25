@@ -71,23 +71,19 @@ suite("debug-panel builders", () => {
     assert.strictEqual(nodes[1].description, "0");
   });
 
-  test("profiling nodes reserve the CPU and memory surfaces", () => {
+  test("profiling nodes link to the shipped CPU profiler", () => {
     const nodes = buildProfilingNodes();
-    assert.deepStrictEqual(
-      nodes.map((n) => n.label),
-      ["Performance Profiling", "Memory"],
-    );
+    assert.deepStrictEqual(nodes.map((n) => n.label), ["Performance Profiling"]);
     assert.ok(nodes.every((n) => (n.children?.length ?? 0) > 0));
   });
 
-  test("buildTree assembles the five top-level sections", () => {
+  test("buildTree assembles the four top-level sections", () => {
     const sections = buildTree(stoppedSnapshot).map((n) => n.label);
     assert.deepStrictEqual(sections, [
       "Program",
       "Call Stack",
       "Variables",
       "Performance Profiling",
-      "Memory",
     ]);
   });
 });
@@ -110,7 +106,7 @@ suite("OspreyDebugTreeProvider", () => {
     const provider = new OspreyDebugTreeProvider();
     provider.update(stoppedSnapshot);
     const sections = provider.getChildren();
-    assert.strictEqual(sections.length, 5);
+    assert.strictEqual(sections.length, 4);
     const stack = sections.find((n) => n.label === "Call Stack");
     assert.ok(stack);
     assert.deepStrictEqual(

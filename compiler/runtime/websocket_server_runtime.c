@@ -53,11 +53,10 @@ void *handle_websocket_connection(void *arg) {
           // Create WebSocket connection
           int64_t ws_id = get_next_id();
           WebSocket *ws = malloc(sizeof(WebSocket));
-          if (ws) {
-            ws->id = ws_id;
-            ws->url = strdup("server-connection");
-            ws->message_handler = strdup("server-handler");
-            ws->socket_fd = client_fd;
+            if (ws) {
+              ws->id = ws_id;
+              ws->url = strdup("server-connection");
+              ws->socket_fd = client_fd;
             ws->is_connected = true;
             pthread_mutex_init(&ws->mutex, NULL);
 
@@ -332,7 +331,6 @@ int64_t websocket_stop_server(int64_t server_id) {
         ws->is_connected = false;
         close(ws->socket_fd);
         free(ws->url);
-        free(ws->message_handler);
         pthread_mutex_destroy(&ws->mutex);
         free(ws);
       }

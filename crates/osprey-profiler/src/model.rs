@@ -1,6 +1,6 @@
 //! Aggregation of symbolized samples into the profile model every exporter
 //! and the terminal report consume: interned frames, per-function self/total
-//! stats (on-CPU only, recursion-deduplicated), hot `.osp` lines, and the
+//! stats (on-CPU only, recursion-deduplicated), hot Osprey source lines, and the
 //! per-fiber on-CPU/waiting split.
 
 use crate::raw::{Profile, Sample, Thread};
@@ -26,7 +26,7 @@ pub(crate) struct FuncStat {
     pub total_samples: u64,
 }
 
-/// One hot source line: leaf frames of on-CPU samples, `.osp` files only.
+/// One hot source line: leaf frames of on-CPU samples, Osprey source files only.
 #[derive(Debug)]
 pub(crate) struct LineStat {
     /// Source file path.
@@ -408,7 +408,7 @@ mod tests {
     }
 
     #[test]
-    fn hot_lines_keep_only_osp_leaves_with_known_lines() {
+    fn hot_lines_keep_only_osprey_leaves_with_known_lines() {
         let prof = profile(
             vec![thread(0, "main")],
             vec![vec![100], vec![200], vec![300]],

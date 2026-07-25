@@ -131,8 +131,9 @@ accepts in both flavors):
 - `assume cond -> Verdict` — QuickCheck's `==>`: a false precondition yields
   `Skip`, not `Fail`, so an unmet assumption is a distinct third outcome rather
   than a spurious failure.
-- `andThen first rest -> Verdict` — sequences two verdicts; the first `Fail`
-  or `Skip` short-circuits, so a case is a single `andThen` chain of checks.
+- `andThen first rest -> Verdict` — combines two verdicts; `Pass` yields `rest`,
+  while a first `Fail` or `Skip` is retained. Arguments still evaluate normally
+  before the call, so this is verdict propagation rather than lazy evaluation.
 
 `test` recognizes a `Verdict`-typed body by its inferred type, pattern-matches
 it, and calls exactly one report primitive. These primitives are internal

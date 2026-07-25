@@ -88,10 +88,8 @@ parameter signatures, which the FFI boundary requires
 If deleting an annotation still type-checks and produces identical IR, it was
 redundant — delete it.
 
-This rule is **machine-enforced** by the analyzer's first lint,
-[`[ANALYZER-REDUNDANT-SYMBOL]`](0020-LanguageServerAndEditors.md#redundant-symbols-analyzer-redundant-symbol),
-which flags every redundant annotation and offers a one-keystroke autofix that
-deletes it.
+This is currently a source-style contract; the compiler and language server do
+not report or autofix redundant annotations.
 
 A polymorphic function is monomorphised independently at each call site:
 

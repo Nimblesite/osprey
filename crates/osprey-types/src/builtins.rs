@@ -83,7 +83,7 @@ fn core(e: &mut TypeEnv) {
     // range(start, end) -> List<int>
     mono(e, "range", vec![i(), i()], Type::list(i()));
     mono(e, "abs", vec![i()], i());
-    // Truncating integer division, divide-by-zero-checked → Result<int, MathError>.
+    // Truncating integer division, divide-by-zero-checked → Result<int, Error>.
     // The `/` operator is float-only (Osprey spec); this is its integer sibling.
     // Implements [BUILTIN-INTDIV].
     mono(e, "intDiv", vec![i(), i()], res(i()));
@@ -228,6 +228,7 @@ fn lists(e: &mut TypeEnv) {
     poly(e, "listLength", vec![0], vec![Type::list(t())], i());
     poly(e, "listGet", vec![0], vec![Type::list(t()), i()], res(t()));
     poly(e, "listContains", vec![0], vec![Type::list(t()), t()], b());
+    // Shipped eager list traversal [BUILTIN-LIST-FOREACH].
     poly(
         e,
         "forEachList",
@@ -254,9 +255,9 @@ fn maps(e: &mut TypeEnv) {
 }
 
 fn files(e: &mut TypeEnv) {
+    // Shipped file surface [BUILTIN-FILE].
     mono(e, "readFile", vec![s()], res(s()));
     mono(e, "writeFile", vec![s(), s()], res(u()));
-    mono(e, "deleteFile", vec![s()], res(u()));
 }
 
 fn http(e: &mut TypeEnv) {
@@ -349,8 +350,9 @@ fn terminal(e: &mut TypeEnv) {
     mono(e, "termMoveCursor", vec![i(), i()], i());
     mono(e, "termHideCursor", vec![], i());
     mono(e, "termShowCursor", vec![], i());
-    // External process control: spawn with an event callback, await exit, clean up.
-    mono(e, "spawnProcess", vec![s(), any()], i());
+    // External process control [BUILTIN-PROCESS]: spawning can fail before a
+    // handle exists; await and cleanup operate on a successful handle.
+    mono(e, "spawnProcess", vec![s(), any()], res(i()));
     mono(e, "awaitProcess", vec![i()], i());
     mono(e, "cleanupProcess", vec![i()], u());
 }

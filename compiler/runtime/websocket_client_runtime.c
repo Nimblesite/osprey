@@ -1,9 +1,14 @@
 #include "http_shared.h"
 
-// Connect to WebSocket server - returns websocket_id or negative error
-int64_t websocket_connect(char* url, char* message_handler) {
-    if (!url || !message_handler) {
+// Connect to WebSocket server - returns websocket_id or negative error.
+// The language has no receive callback; incoming client frames are not exposed.
+// [BUILTIN-WEBSOCKET]
+int64_t websocket_connect(char *url) {
+    if (!url) {
         return -1;
+    }
+    if (strncmp(url, "ws://", 5) != 0) {
+        return -2;
     }
     
     // Parse WebSocket URL (ws://host:port/path)
@@ -89,7 +94,6 @@ int64_t websocket_connect(char* url, char* message_handler) {
     
     ws->id = id;
     ws->url = strdup(url);
-    ws->message_handler = strdup(message_handler);
     ws->socket_fd = sock;
     ws->is_connected = true;
     pthread_mutex_init(&ws->mutex, NULL);
@@ -139,7 +143,6 @@ int64_t websocket_close(int64_t ws_id) {
         }
         
         free(ws->url);
-        free(ws->message_handler);
         pthread_mutex_destroy(&ws->mutex);
         free(ws);
     }

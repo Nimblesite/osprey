@@ -23,11 +23,9 @@
  *
  * Backs the list builtins of docs/specs/0012-Built-InFunctions.md — [BUILTIN-LIST],
  * [BUILTIN-LIST-GET], [BUILTIN-LIST-APPEND], [BUILTIN-LIST-PREPEND],
- * [BUILTIN-LIST-CONCAT], [BUILTIN-LIST-REVERSE] and [BUILTIN-COLLECTION-LENGTH]
- * — which ship under their `listXxx` spellings, not the bare spec names. The
- * iterator at the bottom of this file also carries the linear scan codegen
- * emits for [BUILTIN-LIST-CONTAINS]. [BUILTIN-LIST-HEAD], [BUILTIN-LIST-TAIL]
- * and [BUILTIN-LIST-INDEXOF] have no implementation here or anywhere.
+ * [BUILTIN-LIST-CONCAT], [BUILTIN-LIST-REVERSE] and [BUILTIN-COLLECTION-LENGTH].
+ * The iterator at the bottom also carries the linear scan emitted for
+ * [BUILTIN-LIST-CONTAINS] and [BUILTIN-LIST-FOREACH].
  */
 
 typedef struct OspreyListNode {

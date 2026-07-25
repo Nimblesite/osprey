@@ -9,7 +9,7 @@
 //
 // Two request surfaces share one transport helper (http_perform):
 //   * Status-only API  (http_get/post/put/delete, http_request) returns the
-//     numeric status code, preserving the original behaviour.
+//     numeric status code [HTTP-STATUS-CLIENT].
 //   * Response-handle API (http_*_response + http_response_*) retains the full
 //     response body and headers in a heap slot and returns an opaque handle so
 //     Osprey can read the body. Implements [HTTP-RESPONSE-HANDLE].

@@ -1287,7 +1287,8 @@ impl Codegen {
         name
     }
 
-    /// Set the current debug source position, returning the previous position.
+    /// Set the current debug source position [DEBUGGER-SOURCE-MAP], returning
+    /// the previous position.
     pub(crate) fn set_debug_position(&mut self, position: Option<Position>) -> Option<Position> {
         self.debug
             .as_mut()

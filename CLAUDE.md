@@ -9,6 +9,20 @@ This file provides guidance for agents when working with code in this repository
 ⚠️ PRACTICE TOKEN ECONOMICS ⚠️
 ⚠️ ZERO DUPLICATE CODE ⚠️
 
+## Project Messaging and Philosophy
+
+Before writing or changing the README, website, specifications, documentation,
+examples, release notes or user-facing code comments, read
+[`docs/messaging.md`](docs/messaging.md). It is the repository-wide source of
+truth for Osprey's philosophy, feature priorities, audience vocabulary and
+current claim qualifications.
+
+- Preserve its emphasis on safety, performance and elegance.
+- Present Default and ML as two first-class surfaces of one language.
+- Keep implementation limitations beside the claims they qualify.
+- If documentation, this file or the implementation contradicts the messaging
+  document, investigate the current behavior and correct the stale source.
+
 ## Core Development Principles
 
 - **NO PLACEHOLDERS** - Fix existing placeholders or fail with error
@@ -150,7 +164,8 @@ npm install && npm start         # Start web-based compiler service
 - **Runtime**: C libraries (`compiler/runtime/`) for fiber concurrency, HTTP/WebSocket, system operations
 
 **Language Features:**
-- **Algebraic Effects**: First-class effects system with compile-time safety
+- **Algebraic Effects**: Typed effect operations and lexical handlers; complete
+  effect-row propagation and missing-handler rejection are in progress
 - **Fiber Concurrency**: Lightweight isolated execution contexts
 - **Pattern Matching**: Union types with exhaustiveness checking
 - **Functional Programming**: Immutable data, pipe operators, iterators
@@ -164,7 +179,8 @@ npm install && npm start         # Start web-based compiler service
 
 **Key Technical Patterns:**
 - Effects are declared with `effect` keyword and handled with `handle...in` expressions
-- Unhandled effects cause compilation errors (world-first compile-time effect safety)
+- Effect operation arguments and results are checked statically; an unhandled
+  effect currently produces a runtime diagnostic
 - Pattern matching is mandatory for `any` types and union types
 - All HTTP/WebSocket operations return `Result<T, String>` for error handling
 - Fiber isolation prevents shared memory bugs through message passing

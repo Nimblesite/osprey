@@ -4,7 +4,7 @@
 > reference. One Rust analysis engine serves every editor over LSP.
 
 > **Flavor layer — shared core (AST and above).** The server selects each
-> document's flavor through `osprey_syntax::parse_program_for_path(uri, text)`,
+> document's flavor through `osprey_syntax::resolve_flavor`,
 > using its `.osp`/`.ospml` extension and leading `// osprey: flavor=` marker
 > (`[FLAVOR-SELECT]` in [Language Flavors](0023-LanguageFlavors.md)). Parsing
 > lowers both surfaces to `osprey_ast::Program`; diagnostics, hover, completion,
@@ -24,8 +24,8 @@
 ## Architecture: one engine behind LSP `[LSP-ENGINE]`
 
 The server uses the published [`lspkit`](https://github.com/Nimblesite/lspkit)
-crates. One `EngineApi` implementation owns the open-document state and answers
-every request exposed by the stdio LSP server.
+crates. One `EngineApi` implementation owns the open-document state and supplies
+the analysis queries consumed by the stdio LSP server.
 
 ```mermaid
 flowchart LR
@@ -59,7 +59,7 @@ Consumed crates:
 | Crate           | Used for                                                                                         |
 | --------------- | ------------------------------------------------------------------------------------------------ |
 | `lspkit`        | `EngineApi` trait + neutral types.                                                               |
-| `lspkit-server` | JSON-RPC framing, `Dispatcher`, `Capabilities`, `DiagnosticsBus`/`DiagnosticsSink`, URI helpers. |
+| `lspkit-server` | JSON-RPC framing, `Dispatcher`, and `DiagnosticsBus`/`DiagnosticsSink`.                         |
 | `lspkit-vfs`    | Open-document store, rope incremental edits, position measurement.                              |
 | `lspkit-live`   | `Session` generation counter + broadcast.                                                        |
 
@@ -99,7 +99,7 @@ Standard LSP handshake and document sync:
 
 ## Capabilities `[LSP-CAPABILITIES]`
 
-The server advertises and implements:
+The server exposes:
 
 | Capability       | Method                            | Notes                                                                                                                                                                                       |
 | ---------------- | --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -194,7 +194,7 @@ for the full model, sigils, sections, and body markup.
 **Doc-link hover `[DOC-LINK]`.** A `[Symbol]` intra-doc link inside a doc
 comment is itself hoverable: putting the cursor on `[helper]` or
 `[Console.emit]` shows the referenced declaration's own hover. Rendering lives
-in [`osprey-lsp/src/features.rs`](../../crates/osprey-lsp/src/features.rs)
+in [`osprey-lsp/src/hover.rs`](../../crates/osprey-lsp/src/hover.rs)
 (`doc_link_target` / `resolve_link`); doc capture lives in
 [`osprey-syntax/src/docparse.rs`](../../crates/osprey-syntax/src/docparse.rs)
 and each flavor's lowerer.
@@ -328,8 +328,9 @@ The shipped VS Code integration is a thin client over `[LSP-TRANSPORT]`.
 - The extension's native DAP integration is specified in
   [Debugger](0021-Debugger.md); it is separate from the LSP request path.
 - Marketplace publication uses **OIDC** (no PAT) — see `[EDITOR-VERSIONING]` and
-  the release workflow. Open VSX publication uses the same VSIX artifacts and
-  an independent optional-token job, so either registry can succeed alone.
+  the [release workflow](../../.github/workflows/release.yml). Open VSX
+  publication uses the same VSIX artifacts and an independent optional-token
+  job, so either registry can succeed alone.
 
 ## Versioning & supply chain `[EDITOR-VERSIONING]`
 

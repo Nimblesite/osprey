@@ -5,6 +5,7 @@
 //! compiler front-end is called directly: [`osprey_syntax::parse_program`] for
 //! syntax errors and [`osprey_types::check_program`] for type errors, mapped to
 //! the [`lspkit_server::Diagnostic`] the diagnostics bus fans out.
+//! Implements [LSP-DIAGNOSTICS].
 
 use lspkit_server::{Diagnostic, Severity};
 use lspkit_vfs::PositionEncoding;
@@ -227,8 +228,8 @@ fn diagnostic(
 ) -> Diagnostic {
     let line = pos.line.saturating_sub(1);
     let line_text = nth_line(source, line);
-    // `pos.column` is a tree-sitter byte offset; the wire range is in the
-    // negotiated encoding, so re-measure the line prefix in those units.
+    // `pos.column` is a tree-sitter byte offset; re-measure the line prefix in
+    // the selected encoding before it crosses the wire. [LSP-ENCODING]
     let start = byte_col_to_encoding(line_text, pos.column, encoding);
     let end = line_text
         .map_or(0, |l| crate::text::measure(l, encoding))
@@ -344,7 +345,8 @@ mod tests {
     }
 
     #[test]
-    fn diagnostic_columns_are_remeasured_in_the_negotiated_encoding() {
+    fn diagnostic_columns_are_remeasured_in_the_selected_encoding() {
+        // [LSP-DIAGNOSTICS], [LSP-ENCODING]
         // A multi-byte identifier shifts the byte column; the wire range must be
         // re-measured so the same program reports a wider start under UTF-8 than
         // under UTF-16 when the error sits past a multi-byte char.

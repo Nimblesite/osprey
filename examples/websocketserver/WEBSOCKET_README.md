@@ -1,46 +1,15 @@
-# Osprey WebSocket Implementation
+# WebSocket server demo
 
-WebSocket implementation for Osprey with browser testing tools.
-
-## Quick Start
+Build the compiler and runtime, then start the Osprey server:
 
 ```bash
-# Install dependencies
-npm install
-
-# Start WebSocket test server
-node websocket_server.js
-
-# Open browser test interface
-# Visit http://localhost:8080
-
-# Test Osprey client
-./bin/osprey examples/tested/websocket_example.osp --run
+make build
+target/release/osprey examples/websocketserver/osprey_websocket_server.osp --run
 ```
 
-## Files
+Open `examples/websocketserver/websocket_test.html` in a browser. It connects to
+`ws://127.0.0.1:54321/chat`, displays the runtime's welcome frame, and can send
+text messages to the echo loop. Stop the server with Ctrl-C.
 
-- `websocket_server.js` - Node.js WebSocket server
-- `websocket_test.html` - Browser test interface
-- `examples/tested/websocket_*.osp` - Osprey WebSocket examples
-- `runtime/http_runtime.c` - C implementation
-
-## WebSocket Functions
-
-```osprey
-websocketConnect(url: String, messageHandler: String) -> Int
-websocketSend(wsId: Int, message: String) -> Int
-websocketClose(wsId: Int) -> Int
-```
-
-## Return Codes
-
-- Positive: Success (WebSocket ID for connect, 0 for operations)
-- -1: Invalid parameters
-- -2: Connection not established
-- -3 to -9: Various connection/handshake errors
-
-## Status
-
-✅ **Working**: Browser client, Node.js server, basic Osprey connectivity
-⚠️ **Limited**: URL parsing, error handling, no SSL support 
+The language API and framing limits are specified in
+[`docs/specs/0015-WebSockets.md`](../../docs/specs/0015-WebSockets.md).

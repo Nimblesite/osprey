@@ -1,4 +1,4 @@
-// 🚀 Async Process Management Example
+// Process builtins [BUILTIN-PROCESS].
 // Demonstrates async process spawning with ProcessHandle type,
 // real-time callback-based stdout/stderr collection, and proper resource management
 
@@ -66,4 +66,4 @@ match result4 {
 }
 
 print("=== Async Process Management Demo Complete ===")
-print("Note: Process output appears via C runtime callbacks during execution") 
+print("Note: Process output appears via C runtime callbacks during execution")

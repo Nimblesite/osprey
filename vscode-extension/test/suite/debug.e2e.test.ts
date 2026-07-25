@@ -1,3 +1,6 @@
+// Native debugger launch, source mapping, and primitive locals:
+// [DEBUGGER-BUILD] [DEBUGGER-SOURCE-MAP] [DEBUGGER-EDITOR-LAUNCH]
+// [DEBUGGER-DBG-DECLARE].
 import * as assert from "assert";
 import * as fs from "fs";
 import * as path from "path";

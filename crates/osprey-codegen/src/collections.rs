@@ -3,7 +3,7 @@
 //! Element values cross the boundary as a uniform `i64`; pointers are
 //! `ptrtoint`-boxed. List/Map handles are `i8*` tagged with their owner so the
 //! `+` operator and `toString` can tell them from records. Implements
-//! [TYPE-LIST-OPS], [TYPE-MAP-OPS].
+//! [TYPE-LIST-OPS], [TYPE-MAP-OPS], [BUILTIN-LIST], and [BUILTIN-MAP].
 
 use crate::builder::Codegen;
 use crate::cast::coerce_to;
@@ -31,7 +31,6 @@ pub(crate) fn gen(
         "listLength" => one_list_i64(cg, "osprey_list_length", args)?,
         "listAppend" => list_insert(cg, "osprey_list_append_of", args)?,
         "listPrepend" => list_insert(cg, "osprey_list_prepend_of", args)?,
-        "listDrop" => list_drop(cg, args)?,
         "listConcat" => binary_handle_op(cg, args, "osprey_list_concat", LIST_OWNER)?,
         "listReverse" => one_list_handle(cg, "osprey_list_reverse", args)?,
         "listGet" => list_get(cg, args)?,
@@ -186,20 +185,6 @@ fn list_insert(cg: &mut Codegen, cname: &str, args: &[Expr]) -> Result<Value> {
         cname,
         "i8*, i64, i32",
         &[&h.operand, &x.operand, managed],
-    );
-    Ok(own_handle(cg, Value::handle(r, LIST_OWNER)))
-}
-
-/// `listDrop(l, n) -> handle`. `n` is a count, never stored: no dup, and the
-/// view inherits `l`'s element kind.
-fn list_drop(cg: &mut Codegen, args: &[Expr]) -> Result<Value> {
-    let h = handle_arg(cg, args, 0)?;
-    let n = boxed_arg(cg, args, 1)?;
-    let r = cg.call(
-        "i8*",
-        "osprey_list_drop",
-        "i8*, i64",
-        &[&h.operand, &n.operand],
     );
     Ok(own_handle(cg, Value::handle(r, LIST_OWNER)))
 }

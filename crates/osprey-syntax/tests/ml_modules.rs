@@ -326,6 +326,7 @@ fn signature_values_effects_and_nested_modules_lower_completely() {
 
 #[test]
 fn module_declaration_docs_attach_to_every_supported_declaration() {
+    // [DOC-ATTACH] ML docs reach the same seven declaration-level forms.
     let statements = ok(concat!(
         "module Documented\n",
         "    (** value docs *)\n",

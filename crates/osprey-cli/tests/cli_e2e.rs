@@ -479,6 +479,20 @@ fn sandbox_blocks_filesystem_capability() {
 }
 
 #[test]
+fn websocket_language_surface_links_to_runtime() {
+    // [BUILTIN-WEBSOCKET] This crosses the language/codegen/archive boundary;
+    // an accidental camel-case external symbol fails at link time.
+    let prog = temp_osp(
+        "websocket_runtime",
+        "let server = websocketCreateServer(19093, \"127.0.0.1\", \"/chat\")\n\
+         print(server > 0)\n",
+    );
+    let o = run_file(&prog, &["--run"]);
+    assert_eq!(o.code, Some(0), "stderr={}", o.stderr);
+    assert_eq!(o.stdout, "true\n");
+}
+
+#[test]
 fn quiet_suppresses_the_ok_line() {
     let prog = temp_osp("quiet", HELLO);
     let o = run_file(&prog, &["--check", "--quiet"]);

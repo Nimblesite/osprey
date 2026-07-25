@@ -3,7 +3,7 @@
 //! State is the open-document [`Vfs`] plus a [`Session`] (from `lspkit-live`)
 //! that owns the monotonic generation counter and broadcasts change events.
 //! Every analysis is recomputed from current document text via [`crate::model`]
-//! queries, so the same engine can later back an MCP surface unchanged.
+//! queries. Implements [LSP-ENGINE] and [LSP-REUSE-LSPKIT].
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -194,6 +194,8 @@ mod tests {
 
     #[tokio::test]
     async fn report_answers_symbols_and_advances_on_rescan() {
+        // The VFS and live generation session are owned by the one EngineApi
+        // implementation. [LSP-ENGINE], [LSP-REUSE-LSPKIT]
         let (engine, uri) = engine_with("fn main() -> Unit = print(\"hi\")\n");
         let snap = engine
             .report(Query::Symbols(uri), CancellationToken::new())

@@ -490,7 +490,7 @@ jobs:
   # Open VSX publish — serves the VS Code forks (Cursor, Windsurf, …). Open VSX
   # has no OIDC trusted-publishing path today, so this uses an Open VSX token
   # scoped to the protected `release` environment. Independent of the Marketplace
-  # publish so one registry hiccup never blocks the other.
+  # publish so one registry hiccup never blocks the other. [EDITOR-VSCODE]
   publish-openvsx:
     name: Publish VSIX to Open VSX
     needs: [version, vsix, preflight]

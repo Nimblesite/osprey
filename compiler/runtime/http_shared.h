@@ -94,10 +94,8 @@ typedef struct {
 typedef struct {
   int64_t id;
   char *url;
-  char *message_handler;
   int socket_fd;
   bool is_connected;
-  pthread_t receiver_thread;
   pthread_mutex_t mutex;
 } WebSocket;
 

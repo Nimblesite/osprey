@@ -213,6 +213,7 @@ mod tests {
 
     #[test]
     fn a_default_signature_is_respelled_as_an_ml_signature_line() {
+        // Signature-help presentation for [LSP-FLAVOR-RENDER].
         // [FLAVOR-ML-FN]: parameter names live on the clause head, types on the
         // signature line, right-associated. A niladic function takes `Unit`.
         assert_eq!(

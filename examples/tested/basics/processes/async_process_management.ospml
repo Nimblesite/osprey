@@ -1,4 +1,5 @@
-// ML twin of async_process_management.osp. spawnProcess/awaitProcess/cleanupProcess
+// ML twin of async_process_management.osp. [BUILTIN-PROCESS]
+// spawnProcess/awaitProcess/cleanupProcess
 // are ordinary builtin calls (whitespace application); `match` arms with multi-line
 // bodies become indented layout blocks, and `Success { value }` / `Error { message }`
 // constructor patterns become positional `Success value` / `Error message`. Lowers to

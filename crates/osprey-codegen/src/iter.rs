@@ -6,7 +6,7 @@
 //! replaying those stages, so no intermediate collection is ever materialised.
 //! Implements [BUILTIN-ITER], [BUILTIN-ITER-RANGE], [BUILTIN-ITER-MAP],
 //! [BUILTIN-ITER-FILTER], [BUILTIN-ITER-FOREACH], [BUILTIN-ITER-FOLD], and
-//! [BUILTIN-ITER-FUSION].
+//! [BUILTIN-ITER-FUSION] and [BUILTIN-LIST-FOREACH].
 
 use crate::builder::{Codegen, FnSig};
 use crate::conv::{as_i64, box_to_i64, unbox_from_i64};
@@ -297,7 +297,8 @@ fn list_arg(cg: &mut Codegen, args: &[Expr], i: usize) -> Result<Value> {
     crate::cast::coerce_to(cg, v, LType::Ptr)
 }
 
-/// `forEachList(list, fn)` — call `fn` on each element in order.
+/// `forEachList(list, fn)` — call `fn` on each element in order
+/// [BUILTIN-LIST-FOREACH].
 fn for_each_list(cg: &mut Codegen, args: &[Expr]) -> Result<Value> {
     let l = list_arg(cg, args, 0)?;
     let consumer = callback_of(cg, nth(args, 1)?)?;

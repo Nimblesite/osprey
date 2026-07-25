@@ -1,7 +1,8 @@
 // Exercises the HTTP response-handle lifecycle against a local server: status,
 // body, header lookup, missing-header error, free, and a double-free that must
 // report Error (not crash). Each Result-returning op lives in its own helper so
-// the handle is never reused across a nested match. Implements [HTTP-RESPONSE-HANDLE].
+// the handle is never reused across a nested match. [BUILTIN-HTTP]
+// [HTTP-RESPONSE-HANDLE]
 
 fn handleRequest(method: string, path: string, headers: string, body: string) -> HttpResponse = HttpResponse {
     status: 200,
