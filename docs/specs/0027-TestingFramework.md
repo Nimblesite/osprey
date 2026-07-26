@@ -52,11 +52,11 @@ matches `expect`.
 Both assertions are valid anywhere an expression is — inside `test` bodies,
 in helper functions called from tests, or at the top level of a script.
 
-**`[TESTING-SHADOWING]`** Unlike other runtime built-ins, `test`, `expect`,
-and `check` do NOT reserve their names: a user-defined function or `extern`
+**`[TESTING-SHADOWING]`** Unlike other runtime built-ins, the testing names
+(`test`, `expect`, `expectTrue`, `expectFalse`, `check`, `checkTrue`, and
+`checkFalse`) are not reserved: a user-defined function or `extern`
 declaration with the same name shadows the built-in in both the type
-environment and codegen dispatch. Ordinary declarations may therefore use
-these names.
+environment and codegen dispatch.
 
 ## Equality semantics
 

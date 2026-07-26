@@ -30,12 +30,12 @@ Default uses `let` for an immutable binding and `mut` for a **mutable cell**.
 Reassignment uses `=` and is rejected for an immutable or undeclared name.
 
 `mut` is **not** a general-purpose imperative variable. Osprey is
-expression-oriented and immutable-first; a `mut` binding exists to back
+expression-oriented and immutable-first; a `mut` binding exists only to back
 **handler-owned state for algebraic effects** — a cell an effect handler reads
 and writes as it interprets operations
 ([EFFECTS-HANDLER-STATE](0017-AlgebraicEffects.md#handler-owned-state)). The
-intended model is that a `mut` cell changes *through* an effect handler, not as a
-free procedural `x = x + 1` sequence in ordinary statement position.
+checker therefore permits reassignment only in an effect handler arm. A free
+procedural `x = x + 1` in ordinary statement position is a type error.
 
 ```osprey
 let name = "Alice"
@@ -59,12 +59,10 @@ total = handle Counter
 in run ()
 ```
 
-> **Intended rule vs. current checker.** The checker does **not** yet enforce the
-> effect-scoped restriction — today it accepts any reassignment of a `mut` name,
-> including a bare top-level `count = count + 1` with no handler in sight. That
-> gap (and the examples that still rely on it) is tracked in
-> [issue #180](https://github.com/Nimblesite/osprey/issues/180); prefer the
-> handler-owned form in new code.
+The mutable cell may be declared in an enclosing lexical scope so the handler
+can capture it, but every assignment must occur in an arm that interprets an
+effect operation. The handled `in` body is client code, not a handler arm, and
+does not gain mutation authority.
 
 A binding may include a type annotation after `:`. The annotation constrains
 inference; it is not required when inference already fixes the type.

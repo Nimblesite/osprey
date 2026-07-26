@@ -174,7 +174,15 @@ fn walk_block<S: std::borrow::Borrow<Stmt>>(
                 walk(value, bound, out);
                 bound.push(name.clone());
             }
-            Stmt::Assignment { value, .. } | Stmt::Expr { value, .. } => walk(value, bound, out),
+            Stmt::Assignment { name, value, .. } => {
+                // An assignment writes the existing binding; its target is a
+                // free use just as surely as an identifier on the RHS. Handler
+                // arms need this to capture `cell` in `cell = replacement`
+                // even when the replacement expression never reads `cell`.
+                note(name, bound, out);
+                walk(value, bound, out);
+            }
+            Stmt::Expr { value, .. } => walk(value, bound, out),
             _ => {}
         }
     }

@@ -19,9 +19,8 @@ fn bump(x) = x + 10
 
 fn adder(a: int) -> (int) -> int = fn(b) => a + b
 
-mut total = 0
 let rem = safeMod(17, 5)
-total = rem
+let total = rem
 print("rem17_5=${toString(total)} rem20_7=${toString(safeMod(20, 7))}")
 print("twiceBump5=${toString(twice(bump, 5))}")
 let addTen = adder(10)

@@ -73,11 +73,20 @@ match zStr < aStr {
     false => print("strLt2=ok")
 }
 
-// Reassignment with plain integer addition.
+// Reassignment with plain integer addition. The client can only request a
+// state transition; the handler owns the actual mutation.
+effect CounterState {
+    increment: fn() -> Unit
+}
+
 mut counter = 0
-counter = counter + 1
-counter = counter + 1
-counter = counter + 1
+handle CounterState
+    increment => { counter = counter + 1 }
+in {
+    perform CounterState.increment()
+    perform CounterState.increment()
+    perform CounterState.increment()
+}
 print(toString(counter))
 
 // Generic union variant payload was rendering as "<T>" because toString hit the
@@ -132,8 +141,17 @@ print("wrapped: ${mw(20)} nested: ${nest(10)(20)}")
 // body); a named-function alias is a first-class value; a Result-returning
 // lambda auto-unwraps through a scalar-returning slot (value-site rule).
 fn mkR(x: int) -> Result<int, string> = Success { value: x }
+effect ClosureSlot {
+    rebindAdder: fn(int) -> Unit
+}
 mut rb = fn(x) => x + 1
-rb = makeAdder(40)
+handle ClosureSlot
+    rebindAdder offset => {
+        rb = makeAdder(offset)
+    }
+in {
+    perform ClosureSlot.rebindAdder(40)
+}
 let dblAlias = double
 let unwrapped = fn(x) => mkR(x)
 print("pins: ${rb(2)} ${applyFunction(value: 21, func: dblAlias)} ${applyFunction(value: 9, func: unwrapped)}")

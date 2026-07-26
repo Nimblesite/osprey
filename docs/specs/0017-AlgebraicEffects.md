@@ -159,8 +159,8 @@ the handled body, and code after the region observe the same location. This is
 the **sanctioned form of mutation** in Osprey: a `mut` cell is meant to change
 *through* an effect handler like the one below, not by free imperative
 reassignment in ordinary statement position (see
-[Bindings](0003-Syntax.md#bindings) and
-[issue #180](https://github.com/Nimblesite/osprey/issues/180)).
+[Bindings](0003-Syntax.md#bindings)). The checker enforces this boundary:
+assignment to a mutable binding outside a handler arm is a type error.
 
 ```osprey
 mut cell = 0

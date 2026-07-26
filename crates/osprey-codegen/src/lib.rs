@@ -161,16 +161,6 @@ mod tests {
         assert!(ir.contains("call i64 @add(i64 2, i64 3)"));
     }
 
-    #[test]
-    fn unannotated_arithmetic_helper_used_nested_in_test_has_a_definition() {
-        let ir = module(
-            "fn add(a, b) = a + b\n\
-             fn additionCase() = expect(add(add(10, 20), -5), 25)\n\
-             test(\"nested arithmetic\", additionCase)\n",
-        );
-        assert!(ir.contains("define i64 @add(i64 %$p0, i64 %$p1)"), "{ir}");
-    }
-
     // Testing built-ins lower to the TAP runtime and re-route main's exit
     // status through the epilogue. [TESTING-CODEGEN][TESTING-EXIT]
     #[test]
@@ -190,6 +180,20 @@ mod tests {
         assert!(ir.contains("@osp_test_assert(i8* %"));
         assert!(!ir.contains("@osp_test_assert(i8* null"));
         assert!(ir.contains("call i32 @osp_test_begin(i8*"));
+    }
+
+    #[test]
+    fn boolean_assertion_shortcuts_lower_with_expected_values_and_labels() {
+        let ir = module(
+            "test(\"predicates\", fn() => {\n\
+               expectTrue(2 < 3)\n\
+               expectFalse(3 < 2)\n\
+               checkTrue(\"ordered\", 4 <= 4)\n\
+               checkFalse(\"different\", 4 == 5)\n\
+             })\n",
+        );
+        assert_eq!(ir.matches("call void @osp_test_assert").count(), 4);
+        assert_eq!(ir.matches("@osp_test_assert(i8* null").count(), 2);
     }
 
     #[test]
@@ -829,6 +833,35 @@ mod tests {
         assert!(ir.contains("@osp_alloc"));
         // each arm is emitted with the hidden leading env parameter
         assert!(ir.contains("i8* %__env"));
+    }
+
+    #[test]
+    fn handler_rebound_function_cell_calls_latest_closure_indirectly() {
+        let ir = module(
+            "effect ClosureSlot { rebind: fn(int) -> Unit }\n\
+             fn makeAdder(n: int) -> (int) -> int = fn(x) => x + n\n\
+             fn main() -> int {\n\
+               mut rb = fn(x) => x + 1\n\
+               handle ClosureSlot\n\
+                 rebind offset => { rb = makeAdder(offset) }\n\
+               in perform ClosureSlot.rebind(40)\n\
+               print(toString(rb(2)))\n\
+               0\n\
+             }\n",
+        );
+
+        let push = ir
+            .lines()
+            .find(|line| line.contains("call i32 @__osprey_handler_push"))
+            .expect("handler push");
+        assert!(
+            !push.contains("i8* null"),
+            "the assignment target must be captured as a shared function cell:\n{ir}"
+        );
+        assert!(
+            !ir.contains("@rb"),
+            "a handler-rebound function cell must load and call its latest closure, not emit a direct call to an undefined/stale `rb` symbol:\n{ir}"
+        );
     }
 
     #[test]

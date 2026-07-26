@@ -81,9 +81,8 @@ A plain module is a closed, stateless declaration boundary. It may contain
 immutable values, functions, types, effects, external declarations, and nested
 plain modules. Direct module-level `mut` is rejected. A `mut` cell inside a
 function is intended for handler-owned effect state
-([Bindings](0003-Syntax.md#bindings)); the checker does not yet restrict such
-local reassignment to that form
-([issue #180](https://github.com/Nimblesite/osprey/issues/180)).
+([Bindings](0003-Syntax.md#bindings)); the checker restricts every local
+reassignment to an effect handler arm.
 
 ```osprey
 namespace billing;

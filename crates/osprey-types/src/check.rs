@@ -678,6 +678,18 @@ impl Checker {
                         TypeError::new(format!("cannot assign to immutable variable `{name}`")),
                         pos,
                     );
+                } else if self.resume_ctx.is_empty() {
+                    // Handler arms are the language's mutation boundary. The
+                    // resume context is present only while an arm body is
+                    // being checked and is deliberately cleared across lambda
+                    // boundaries, matching where handler-owned state may be
+                    // changed at runtime.
+                    self.record_err(
+                        TypeError::new(
+                            "state mutation is only allowed inside an effect handler arm",
+                        ),
+                        pos,
+                    );
                 }
                 let existing = crate::env::instantiate(&mut self.ctx, &scheme);
                 self.unify_or_err(
@@ -933,13 +945,23 @@ mod tests {
 
     #[test]
     fn testing_builtins_typecheck_and_reject_bad_arity() {
-        // [TESTING-BUILTINS] the three schemes accept the documented shapes.
+        // [TESTING-BUILTINS] all assertion schemes accept the documented shapes.
         let errs = check(
             "test(\"adds\", fn() => expect(1 + 1, 2))\n\
-             test(\"labeled\", fn() => check(\"sum\", 4, 2 + 2))\n",
+             test(\"labeled\", fn() => check(\"sum\", 4, 2 + 2))\n\
+             test(\"predicates\", fn() => {\n\
+               expectTrue(2 < 3)\n\
+               expectFalse(3 < 2)\n\
+               checkTrue(\"ordered\", 4 <= 4)\n\
+               checkFalse(\"different\", 4 == 5)\n\
+             })\n",
         );
         assert!(errs.is_empty(), "unexpected type errors: {errs:?}");
         let errs = check("expect(1)\n");
+        assert!(errs.iter().any(|e| e.message.contains("arity")));
+        let errs = check("expectTrue(1)\n");
+        assert!(errs.iter().any(|e| e.message.contains("type mismatch")));
+        let errs = check("checkFalse(true)\n");
         assert!(errs.iter().any(|e| e.message.contains("arity")));
         let errs = check("test(42, fn() => expect(1, 1))\n");
         assert!(

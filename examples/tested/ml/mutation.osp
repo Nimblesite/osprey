@@ -1,9 +1,17 @@
-// Default-flavor twin of mutation.ospml. ML `mut name = e` lowers to
-// `Stmt::Let { mutable: true }` and `name := e` to `Stmt::Assignment` — the same
-// nodes Default emits for `mut` and reassignment. Plain integer addition stores
-// directly in the integer cell, so the IR is byte-identical.
+// Default-flavor twin of mutation.ospml. The mutable counter is owned by the
+// Counter handler: callers can change it only by performing `add`. ML
+// `name := e` and Default `name = e` lower to the same assignment node, so the
+// handler-owned mutation remains byte-identical across flavors.
+
+effect Counter { add: fn(int) -> Unit }
 
 mut counter = 0
-counter = counter + 1
-counter = counter + 41
-print("counter = ${counter}")
+handle Counter
+    add amount => {
+        counter = counter + amount
+    }
+in {
+    perform Counter.add(1)
+    perform Counter.add(41)
+    print("counter = ${counter}")
+}

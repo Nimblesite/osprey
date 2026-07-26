@@ -64,7 +64,7 @@ Each exercises a distinct ML-surface feature and runs today:
 | `hello.ospml` | layout basics: top-level bindings, `print`, `${...}` interpolation |
 | `curry_tour.ospml` | curry-by-default + partial application (`add 10`) |
 | `match_tour.ospml` | offside-rule `match` with `=>` clauses |
-| `mutation.ospml` | `mut` bindings and `:=` mutation vs. `=` binding |
+| `mutation.ospml` | handler-owned `mut` state and `:=` mutation vs. `=` binding |
 | `results_state_hof.ospml` | higher-order functions + `Result` payload matching |
 
 Currying is the one honest difference between the flavors. ML `add x y = x + y`

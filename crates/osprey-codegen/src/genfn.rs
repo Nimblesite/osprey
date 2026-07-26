@@ -115,7 +115,7 @@ pub(crate) fn try_indirect(
     let Some(sig) = cg.fn_ptr_locals.get(name).cloned() else {
         return Ok(None);
     };
-    let Some(handle) = cg.lookup(name) else {
+    let Some(handle) = cg.cell_read(name).or_else(|| cg.lookup(name)) else {
         return Ok(None);
     };
     let exprs = crate::expr::arg_exprs(args, named);

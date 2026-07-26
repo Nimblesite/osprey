@@ -61,11 +61,16 @@ print(toString(r))
 let single = 7 |> fn(x) => x * 3
 print(toString(single))
 
-// --- Mutable integer counter ---
+// --- Handler-owned mutable integer counter ---
+effect Counter { increment: fn() -> Unit }
 mut counter = 0
-counter = counter + 1
-counter = counter + 1
-counter = counter + 1
+handle Counter
+    increment => { counter = counter + 1 }
+in {
+    perform Counter.increment()
+    perform Counter.increment()
+    perform Counter.increment()
+}
 print("counter ${toString(counter)}")
 
 // --- Persistent List<T> + Map<K,V> ---

@@ -349,6 +349,7 @@ fn with_stmt_debug(
 fn gen_cell_define(cg: &mut Codegen, name: &str, value: &Expr) -> Result<()> {
     let raw = gen_expr(cg, value)?;
     let v = crate::result::unwrap(cg, raw);
+    let fn_ty = fn_result_type(cg, value);
     let pointee = v.ty;
     let ty = pointee.as_str();
     let meta = crate::meta::struct_meta(&[crate::meta::MetaField::of_lty(pointee)]);
@@ -377,6 +378,9 @@ fn gen_cell_define(cg: &mut Codegen, name: &str, value: &Expr) -> Result<()> {
             osp_ty: v.osp_ty,
         },
     );
+    if let Some(ty) = fn_ty {
+        cg.bind_fn_local(name, ty);
+    }
     Ok(())
 }
 

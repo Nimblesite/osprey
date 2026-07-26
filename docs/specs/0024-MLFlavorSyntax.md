@@ -39,6 +39,7 @@ assigns to it. As in the Default flavor ([Bindings](0003-Syntax.md#bindings)),
 **handler-owned state for algebraic effects**
 ([EFFECTS-HANDLER-STATE](0017-AlgebraicEffects.md#handler-owned-state)), mutated
 *through* an effect handler rather than by free procedural `:=` reassignment.
+The checker rejects every `:=` outside an effect handler arm.
 
 ```osprey-ml
 answer = 42
@@ -52,11 +53,8 @@ in run ()
 These lower to `Stmt::Let { mutable: false }`,
 `Stmt::Let { mutable: true }`, and `Stmt::Assignment` respectively. Assignment
 to an immutable binding is a type error.
-
-> **Intended rule vs. current checker.** The checker does not yet enforce the
-> effect-scoped restriction — a bare `requests := requests + 1` with no handler
-> still compiles. The gap is tracked in
-> [issue #180](https://github.com/Nimblesite/osprey/issues/180).
+Assignment to a mutable binding is also a type error unless it occurs in an
+effect handler arm; the handled `in` body remains ordinary client code.
 
 ## Functions and Currying
 

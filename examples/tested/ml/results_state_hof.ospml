@@ -1,6 +1,6 @@
 // ML flavor: constructor patterns over the built-in `Result` (the `Success v` /
-// `Error e` payload-binding form), mutable bindings with `:=`, higher-order
-// functions, and a genuinely curried function for partial application. The
+// `Error e` payload-binding form), higher-order functions, and a genuinely
+// curried function for partial application. The
 // plain multi-argument helpers `safeMod` / `twice` use the uncurried tuple form
 // `safeMod (a, b)` (mirroring Default `fn safeMod(a, b)`), while `adder` stays
 // curried — `adder a = \b => …` — so `adder 10` partially applies. Bare
@@ -22,9 +22,8 @@ bump x = x + 10
 adder : int -> int -> int
 adder a = \b => a + b
 
-mut total = 0
 rem = safeMod (17, 5)
-total := rem
+total = rem
 print "rem17_5=${toString total} rem20_7=${toString (safeMod (20, 7))}"
 print "twiceBump5=${toString (twice (bump, 5))}"
 addTen = adder 10

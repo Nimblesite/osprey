@@ -45,8 +45,8 @@ pub use ty::{has_type_var, names, Scheme, Type, VarId};
     reason = "tests drive checking for its side effects and discard the returned diagnostics"
 )]
 mod tests {
-    use crate::testutil::{bad, ok};
     use crate::check_program;
+    use crate::testutil::{bad, ok};
     use osprey_syntax::{parse_program_with_flavor, Flavor};
 
     #[test]
@@ -57,10 +57,16 @@ mod tests {
     #[test]
     fn non_adjacent_ml_functions_with_one_name_are_duplicates() {
         let parsed = parse_program_with_flavor("f 0 = 1\ng x = x\nf n = n\n", Flavor::Ml);
-        assert!(parsed.errors.is_empty(), "syntax errors: {:?}", parsed.errors);
+        assert!(
+            parsed.errors.is_empty(),
+            "syntax errors: {:?}",
+            parsed.errors
+        );
         let errors = check_program(&parsed.program);
         assert!(
-            errors.iter().any(|e| e.message.contains("duplicate definition `f`")),
+            errors
+                .iter()
+                .any(|e| e.message.contains("duplicate definition `f`")),
             "expected duplicate-definition error, got: {errors:?}"
         );
     }
@@ -148,8 +154,6 @@ mod tests {
         assert!(errs
             .iter()
             .any(|e| e.message.contains("immutable variable `x`")));
-        // `mut` bindings stay assignable.
-        ok("fn main() -> Unit = {\n  mut y = 1\n  y = 2\n}\n");
     }
 
     #[test]
@@ -167,6 +171,36 @@ mod tests {
                 set value => { cell = value }\n\
               in { perform State.set(1) }\n\
             }\n");
+    }
+
+    #[test]
+    fn handled_client_body_does_not_gain_mutation_authority() {
+        let errs = bad("effect State { set: fn(int) -> Unit }\n\
+            fn main() -> Unit = {\n\
+              mut cell = 0\n\
+              handle State\n\
+                set value => { cell = value }\n\
+              in { cell = 1 }\n\
+            }\n");
+        assert!(errs.iter().any(|e| {
+            e.message
+                .contains("state mutation is only allowed inside an effect handler arm")
+        }));
+    }
+
+    #[test]
+    fn ml_mutable_assignment_requires_an_effect_handler_arm() {
+        let parsed = parse_program_with_flavor("mut cell = 0\ncell := 1\n", Flavor::Ml);
+        assert!(
+            parsed.errors.is_empty(),
+            "syntax errors: {:?}",
+            parsed.errors
+        );
+        let errors = check_program(&parsed.program);
+        assert!(errors.iter().any(|e| {
+            e.message
+                .contains("state mutation is only allowed inside an effect handler arm")
+        }));
     }
 
     #[test]

@@ -1,0 +1,55 @@
+// ML twin of the real-world order workflow.
+itemAt (index, fallback) = match ["coffee", "bread", "fruit"][index]
+    Success value => value
+    Error message => fallback
+
+unitPrice item = match ["coffee" => 12, "bread" => 5, "fruit" => 7][item]
+    Success value => value
+    Error message => 0
+
+loyaltyDiscount (level, subtotal) = match level
+    "gold" => intDiv (subtotal * 20, 100) ?: 0
+    "silver" => intDiv (subtotal * 10, 100) ?: 0
+    _ => 0
+
+total (level, item, quantity) =
+    subtotal = unitPrice item * quantity
+    subtotal - loyaltyDiscount (level, subtotal)
+
+receipt (customer, level, item, quantity) =
+    normalized = toUpperCase (trim customer)
+    "${normalized}:${item}:${quantity}:${total (level, item, quantity)}"
+
+catalogueInteraction () =
+    check "first item" "coffee" (itemAt (0, "missing"))
+    check "last item" "fruit" (itemAt (2, "missing"))
+    check "out of bounds fallback" "missing" (itemAt (8, "missing"))
+    check "coffee price" 12 (unitPrice (itemAt (0, "missing")))
+    check "bread price" 5 (unitPrice (itemAt (1, "missing")))
+    check "unknown price" 0 (unitPrice "tea")
+    check "catalogue size" 3 (listLength ["coffee", "bread", "fruit"])
+    checkFalse "fallback is not a product" (itemAt (9, "missing") == itemAt (0, "missing"))
+
+pricingInteraction () =
+    check "gold coffee order" 48 (total ("gold", "coffee", 5))
+    check "silver bread order" 18 (total ("silver", "bread", 4))
+    check "guest fruit order" 21 (total ("guest", "fruit", 3))
+    check "unknown item stays zero" 0 (total ("gold", "tea", 10))
+    check "gold discount" 12 (loyaltyDiscount ("gold", 60))
+    check "silver discount" 6 (loyaltyDiscount ("silver", 60))
+    check "guest discount" 0 (loyaltyDiscount ("guest", 60))
+    checkTrue "gold beats guest" (total ("gold", "coffee", 5) < total ("guest", "coffee", 5))
+
+receiptInteraction () =
+    check "normalizes and totals" "ADA:coffee:5:48" (receipt ("  Ada ", "gold", "coffee", 5))
+    check "fallback item flows through" "LIN:tea:2:0" (receipt ("Lin", "guest", "tea", 2))
+    checkTrue "receipt carries item" (contains (receipt ("Ada", "gold", "bread", 2), ":bread:"))
+    checkTrue "receipt starts normalized" (startsWith (receipt ("  jo ", "guest", "fruit", 1), "JO:"))
+    checkTrue "receipt carries derived total" (endsWith (receipt ("Ada", "silver", "coffee", 2), ":22"))
+    checkFalse "raw whitespace removed" (contains (receipt (" Ada ", "guest", "fruit", 1), " "))
+    check "pipeline post-processing" "ADA:FRUIT:2:14" (receipt ("Ada", "guest", "fruit", 2) |> toUpperCase)
+    check "composed quantity" "KAI:bread:4:18" (receipt ("Kai", "silver", itemAt (1, "missing"), 2 * 2))
+
+test "catalogue lookup drives prices and fallbacks" catalogueInteraction
+test "pricing combines maps, matches, Results and arithmetic" pricingInteraction
+test "receipts compose normalization, totals and pipelines" receiptInteraction
