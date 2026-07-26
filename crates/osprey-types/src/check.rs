@@ -508,6 +508,11 @@ impl Checker {
             )));
             return;
         }
+        if self.fn_sigs.contains_key(name) {
+            self.errors
+                .push(TypeError::new(format!("duplicate definition `{name}`")));
+            return;
+        }
         // Declared type parameters (`fn map<T, U>`) bind to fresh inference
         // variables so every `T` in the signature is the SAME variable —
         // without a binder, `T` would be a nominal type named "T".

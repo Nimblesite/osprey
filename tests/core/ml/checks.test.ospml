@@ -1,0 +1,35 @@
+sub (a, b) = a - b
+classify n =
+    match n
+        0 => "zero"
+        1 => "one"
+        _ => "many"
+
+arithmeticCase () =
+    check "difference" 4 (sub (7, 3))
+    check "product" 42 (6 * 7)
+    check "nested arithmetic" 12 (sub (20, 2 * 4))
+    check "comparison" true (sub (8, 3) > 4)
+    checkTrue "positive difference" (sub (100, 1) > 0)
+    checkFalse "subtraction is not commutative" (sub (9, 4) == sub (4, 9))
+
+classifyCase () =
+    check "zero" "zero" (classify 0)
+    check "one" "one" (classify 1)
+    check "many" "many" (classify 9)
+    check "computed input" "one" (classify (sub (4, 3)))
+    checkTrue "classification text" (startsWith (classify 20, "m"))
+    checkFalse "many is not zero" (classify 99 == classify 0)
+
+stringsAndListsCase () =
+    check "contains" true (contains ("talon bank", "bank"))
+    check "repeat unwraps Result" "ababab" (repeat ("ab", 3))
+    check "trim" "Osprey" (trim "  Osprey  ")
+    check "case conversion" "OSPREY" (toUpperCase "Osprey")
+    checkTrue "prefix" (startsWith ("osprey language", "osprey"))
+    checkFalse "wrong suffix" (endsWith ("osprey language", "compiler"))
+    check "list length" 3 (listLength [10, 20, 30])
+
+test "arithmetic checks share derived values" arithmeticCase
+test "classification checks include computed inputs" classifyCase
+test "strings and lists mix with matching" stringsAndListsCase

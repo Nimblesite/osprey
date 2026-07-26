@@ -239,6 +239,26 @@ fn clause_set_generates_a_scrutinee_when_no_clause_binds_it() {
     }
 }
 
+/// An irrefutable arm consumes every value, so accepting a later clause would
+/// silently make source order change program meaning.
+#[test]
+fn clause_after_irrefutable_arm_is_rejected_as_unreachable() {
+    let errors = ml_errors("choose 0 = 0\nchoose n = n\nchoose _ = 2\n");
+    assert!(
+        errors.contains("unreachable clause"),
+        "expected an unreachable-clause diagnostic, got: {errors}"
+    );
+}
+
+#[test]
+fn repeated_irrefutable_clauses_are_rejected_as_unreachable() {
+    let errors = ml_errors("choose n = n\nchoose other = other\n");
+    assert!(
+        errors.contains("unreachable clause"),
+        "expected an unreachable-clause diagnostic, got: {errors}"
+    );
+}
+
 /// A clause that spells a non-selected column differently keeps its own
 /// vocabulary: the arm body opens with `itsName = mergedName`.
 #[test]

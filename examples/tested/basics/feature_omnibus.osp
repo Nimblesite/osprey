@@ -1,9 +1,7 @@
 // Feature omnibus — most of the basics in one file:
-// let/mut, script-style top-level + main(), unions + records, pattern
-// matching across literals/wildcards, string interpolation with arithmetic,
-// generics, lambdas + pipe, forward function references, Result auto-unwrap,
-// list/map literals + access, persistent List<T>/Map<K,V> builtins,
-// string builtins (trim/upper/length/parseInt).
+// let/mut, script-style top-level, positional unions, pattern matching,
+// string interpolation, generics, lambdas + pipe, forward references, `?:`,
+// list/map literals, persistent List<T>/Map<K,V>, and string builtins.
 
 type Pri = Low | Med | High
 
@@ -20,8 +18,12 @@ fn colorName(c) = match c {
     Blue  => "blue"
 }
 
+type Wrapped = Wrapped(int)
+let wrapped = Wrapped(42)
+let wrappedValue = match wrapped { Wrapped(n) => n }
+
 // Forward reference: callerOfLater is defined here, calleeLater below.
-fn callerOfLater() = calleeLater(10)
+fn callerOfLater(_) = calleeLater(10)
 
 print("=== omnibus ===")
 
@@ -29,7 +31,7 @@ print("=== omnibus ===")
 print(priWeight(High))
 print(priWeight(Med))
 print(priWeight(Low))
-print(colorName(Green))
+print("${colorName(Green)} wrapped ${wrappedValue}")
 
 // --- Plain addition + division Result auto-unwrap in interpolation ---
 let age = 25
@@ -42,10 +44,8 @@ match parseInt("oops") {
     Success { value }   => print("got ${value}")
     Error   { message } => print("parseInt rejected oops")
 }
-match parseInt("123") {
-    Success { value }   => print("parsed ${value}")
-    Error   { message } => print("bad parse")
-}
+let parsed = parseInt("123") ?: 0
+print("parsed ${parsed}")
 
 // --- Bools from comparison + string concat ---
 print(5 == 5)
@@ -53,7 +53,7 @@ print(5 == 6)
 print("hi" + " " + "world")
 
 // --- Forward function call ---
-print("forward call -> ${callerOfLater()}")
+print("forward call -> ${callerOfLater(0)}")
 
 // --- Lambda + pipe + chained pipe ---
 let r = 5 |> (fn(x) => x + 100) |> (fn(x) => x * 2)

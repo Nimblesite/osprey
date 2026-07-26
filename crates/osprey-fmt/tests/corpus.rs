@@ -4,8 +4,8 @@
 //! through the formatter and held to the two guarantees the formatter promises:
 //! formatting is **idempotent** (a second pass changes nothing) and
 //! **meaning-preserving** (the formatted text reparses to the very same AST).
-//! Files that do not currently parse are skipped rather than failed, so the test
-//! stays green while the language frontends are mid-flight.
+//! Every corpus file must parse: silently skipping one would leave a formatter
+//! regression outside this audit.
 #![expect(
     clippy::panic,
     reason = "test assertions: a read or re-format failure here is a test failure, not a production panic"
@@ -48,7 +48,7 @@ fn collect(dir: &Path, ext: &str, out: &mut Vec<PathBuf>) {
 }
 
 /// Format every example of one extension, asserting idempotency and a clean
-/// reparse on each that currently parses. Returns `(processed, changed)`.
+/// reparse. Returns `(processed, changed)`.
 fn check_extension(ext: &str) -> (usize, usize) {
     let mut processed = 0;
     let mut changed = 0;
@@ -56,10 +56,8 @@ fn check_extension(ext: &str) -> (usize, usize) {
         let display = path.display();
         let src = fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {display}: {e}"));
         let key = path.to_string_lossy();
-        // Skip files that do not parse today (mid-flight frontend work).
-        let Ok(once) = format_for_path(&key, &src) else {
-            continue;
-        };
+        let once = format_for_path(&key, &src)
+            .unwrap_or_else(|errors| panic!("format {display}: {errors:?}"));
         processed += 1;
         if once != src {
             changed += 1;
@@ -81,4 +79,19 @@ fn default_examples_format_idempotently() {
 fn ml_examples_format_idempotently() {
     let (processed, _changed) = check_extension("ospml");
     assert!(processed > 0, "no .ospml examples were processed");
+}
+
+#[test]
+fn ml_clause_and_match_surface_forms_are_preserved() {
+    let src = concat!(
+        "type Choice = None | Some int\n",
+        "value (Some n) = n\n",
+        "value None = 0\n",
+        "explicit x = match x\n",
+        "    Some n => n\n",
+        "    None => 0\n",
+    );
+    let out = format_for_path("forms.ospml", src).unwrap_or_else(|e| panic!("{e:?}"));
+    assert!(out.contains("value (Some n) = n"), "clause changed: {out}");
+    assert!(out.contains("explicit x = match x"), "match changed: {out}");
 }

@@ -1,0 +1,40 @@
+// Default-flavor test/expect twin of the ML calculator suite.
+fn add(a, b) = a + b
+fn double(x) = x * 2
+fn parity(n) = match n % 2 == 0 {
+    true => "even"
+    false => "odd"
+}
+
+fn additionCase() = {
+    expect(add(2, 3), 5)
+    expect(add(-1, 1), 0)
+    let subtotal = add(10, 20)
+    expect(add(subtotal, -5), 25)
+    expect(add(0, 0), 0)
+    expect(add(1000, -250), 750)
+    expectTrue(add(4, 5) > add(2, 3))
+    expectFalse(add(-2, 1) > 0)
+}
+
+fn pipelineCase() = {
+    expect(10 |> double |> double, 40)
+    expect(5 |> fn(x) => x + 100, 105)
+    expect(3 |> double |> fn(x) => add(x, 4), 10)
+    expect(-2 |> double |> double, -8)
+    check("pipe into comparison", true, 6 |> double |> fn(x) => x == 12)
+    checkTrue("pipeline remains positive", 1 |> double |> double > 0)
+}
+
+fn patternCase() = {
+    expect(parity(4), "even")
+    expect(parity(7), "odd")
+    expect(parity(add(5, 5)), "even")
+    expect("${parity(3)}:${double(3)}", "odd:6")
+    checkTrue("even result is stable", parity(double(9)) == "even")
+    checkFalse("odd and even labels differ", parity(3) == parity(4))
+}
+
+test("arithmetic composes across calls", additionCase)
+test("pipes and lambdas compose", pipelineCase)
+test("matching, interpolation and calls interact", patternCase)

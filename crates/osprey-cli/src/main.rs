@@ -1332,11 +1332,6 @@ mod tests {
         "examples/tested/ml/results_state_hof.ospml",
         "examples/tested/ml/strings.osp",
         "examples/tested/ml/strings.ospml",
-        "examples/tested/testing/calculator.test.osp",
-        "examples/tested/testing/calculator.test.ospml",
-        "examples/tested/testing/mlcheck.test.osp",
-        "examples/tested/testing/mlcheck.test.ospml",
-        "examples/tested/testing/verdict.test.ospml",
     ];
 
     #[test]
@@ -2079,31 +2074,6 @@ mod tests {
     #[test]
     fn ml_strings_ospml() {
         assert_example_matches("examples/tested/ml/strings.ospml");
-    }
-
-    #[test]
-    fn testing_calculator_test_osp() {
-        assert_example_matches("examples/tested/testing/calculator.test.osp");
-    }
-
-    #[test]
-    fn testing_calculator_test_ospml() {
-        assert_example_matches("examples/tested/testing/calculator.test.ospml");
-    }
-
-    #[test]
-    fn testing_mlcheck_test_osp() {
-        assert_example_matches("examples/tested/testing/mlcheck.test.osp");
-    }
-
-    #[test]
-    fn testing_mlcheck_test_ospml() {
-        assert_example_matches("examples/tested/testing/mlcheck.test.ospml");
-    }
-
-    #[test]
-    fn testing_verdict_test_ospml() {
-        assert_example_matches("examples/tested/testing/verdict.test.ospml");
     }
 
     fn args(list: &[&str]) -> Vec<String> {

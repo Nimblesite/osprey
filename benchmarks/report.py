@@ -10,6 +10,7 @@ exports in <out>/hf/<case>.json (per case/lang: timing), then renders:
   website/src/_includes/benchmarks-tables.html — the same tables as a fragment,
       "baked" into the website so the /benchmarks page renders without the
       (gitignored) results present.
+  benchmarks/README.md — measured binarytrees figures between generated markers.
 
 The tables (CPU time, peak memory) use the website's own `.comparison-table`
 classes; the fastest cell per row is badged and Osprey's outright wins starred.
@@ -177,6 +178,34 @@ def bake_website_fragment(fragment: str) -> Optional[Path]:
     return path
 
 
+def measured_mb(cell: Cell) -> str:
+    """Decimal MB, matching the README's human-readable benchmark figures."""
+    return f"{float(cell['rss']) / 1_000_000:.3g}"
+
+
+def update_readme(data: Data) -> Path:
+    """Refresh measured prose without making the whole hand-written README generated."""
+    path = REPO / "benchmarks" / "README.md"
+    start = "> <!-- binarytrees-results:start -->"
+    end = "> <!-- binarytrees-results:end -->"
+    before, marked, after = path.read_text().partition(start)
+    _, found, after = after.partition(end)
+    if not marked or not found:
+        raise ValueError("benchmarks README is missing binarytrees result markers")
+    cells = data["binarytrees"]
+    default = measured_mb(cells["osprey"])
+    arc = measured_mb(cells["osprey-arc"])
+    gc = measured_mb(cells["osprey-gc"])
+    generated = (
+        f"{start}\n"
+        f"> Current measured peaks: default **{default} MB**, "
+        f"`--memory=arc` **{arc} MB**, and `--memory=gc` **{gc} MB**.\n"
+        f"{end}"
+    )
+    path.write_text(before + generated + after)
+    return path
+
+
 def render(out: Path) -> None:
     data = load(out)
     langs, cases = present_langs(data), sorted(data)
@@ -185,7 +214,9 @@ def render(out: Path) -> None:
     (out / "results.json").write_text(json.dumps({"languages": langs, "cases": data}, indent=2))
     (out / "results.md").unlink(missing_ok=True)  # superseded by the HTML report
     baked = bake_website_fragment(fragment)
-    print(f"wrote {out / 'results.html'}" + (f" and baked {baked}" if baked else ""))
+    readme = update_readme(data)
+    print(f"wrote {out / 'results.html'}" + (f" and baked {baked}" if baked else "")
+          + f" and refreshed {readme}")
 
 
 STANDALONE = """<!doctype html>

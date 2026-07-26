@@ -161,6 +161,16 @@ mod tests {
         assert!(ir.contains("call i64 @add(i64 2, i64 3)"));
     }
 
+    #[test]
+    fn unannotated_arithmetic_helper_used_nested_in_test_has_a_definition() {
+        let ir = module(
+            "fn add(a, b) = a + b\n\
+             fn additionCase() = expect(add(add(10, 20), -5), 25)\n\
+             test(\"nested arithmetic\", additionCase)\n",
+        );
+        assert!(ir.contains("define i64 @add(i64 %$p0, i64 %$p1)"), "{ir}");
+    }
+
     // Testing built-ins lower to the TAP runtime and re-route main's exit
     // status through the epilogue. [TESTING-CODEGEN][TESTING-EXIT]
     #[test]

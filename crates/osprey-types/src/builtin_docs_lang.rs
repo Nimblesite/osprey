@@ -124,10 +124,34 @@ pub(crate) static TESTING: &[BuiltinDoc] = &[
         "test(\"doubling\", fn() => expect(21 * 2, 42))",
     ),
     builtin_doc!(
+        "expectTrue",
+        "Asserts that a boolean expression is true.",
+        ["actual" => "The boolean condition being asserted"],
+        "expectTrue(total > 0)",
+    ),
+    builtin_doc!(
+        "expectFalse",
+        "Asserts that a boolean expression is false.",
+        ["actual" => "The boolean condition being asserted"],
+        "expectFalse(isEmpty(items))",
+    ),
+    builtin_doc!(
         "check",
         "Asserts expected equals actual and includes label in a mismatch diagnostic. Execution continues after a mismatch.",
         ["label" => "A short description of what is being checked", "expected" => "The value the actual must equal", "actual" => "The computed value"],
         "test(\"doubling\", fn() => check(\"double\", 42, 21 * 2))",
+    ),
+    builtin_doc!(
+        "checkTrue",
+        "Labeled assertion that a boolean expression is true.",
+        ["label" => "A short description", "actual" => "The boolean condition being asserted"],
+        "checkTrue(\"positive total\", total > 0)",
+    ),
+    builtin_doc!(
+        "checkFalse",
+        "Labeled assertion that a boolean expression is false.",
+        ["label" => "A short description", "actual" => "The boolean condition being asserted"],
+        "checkFalse(\"cart is empty\", isEmpty(items))",
     ),
 ];
 

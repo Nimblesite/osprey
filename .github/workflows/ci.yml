@@ -101,7 +101,8 @@ jobs:
         run: make lint
 
       # make test = fail-fast + per-project coverage + threshold enforcement +
-      # the differential golden suite. Thresholds live in coverage-thresholds.json.
+      # differential goldens + the Default/ML assertion corpus under tests/.
+      # Thresholds live in coverage-thresholds.json.
       # Xvfb is needed because vscode-extension
       # tests spawn a real VS Code Electron build.
       - name: Test
@@ -243,8 +244,8 @@ jobs:
         run: cargo test --workspace
 
       - name: Differential golden tests (osprey --run vs .expectedoutput)
-        # Must be 41/41 with zero examples lacking an expected output, and the
-        # must-reject ratchet must hold.
+      # Every remaining golden example must pass with zero missing outputs, and
+      # the must-reject ratchet must hold. Assertion suites live under tests/.
         run: |
           out=$(zsh crates/diff_examples.sh)
           echo "$out"

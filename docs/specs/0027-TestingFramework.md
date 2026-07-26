@@ -11,7 +11,7 @@ use soft assertions and return `Unit`; an ML case may instead return `Verdict`
 ## The built-ins
 
 **`[TESTING-BUILTINS]`** The type environment, code generator, and C runtime
-provide three functions.
+provide seven functions.
 
 ### `test(name: string, body: fn() -> a) -> Unit` — `[TESTING-BUILTIN-TEST]`
 
@@ -69,6 +69,13 @@ renders a `Success` as its bare payload and an `Error` as `Error(<message>)`.
 Lists, maps, and records are rejected as assertion operands at code generation.
 Values of different types that render identically, such as `5` and `"5"`,
 compare equal.
+
+### Boolean assertion shortcuts
+
+`expectTrue(actual)` and `expectFalse(actual)` are compact forms of
+`expect(actual, true)` and `expect(actual, false)`. `checkTrue(label, actual)`
+and `checkFalse(label, actual)` provide the corresponding labeled forms. They
+are soft assertions with the same case state, diagnostics, and exit behavior.
 
 ## ML Verdict model
 

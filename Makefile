@@ -7,7 +7,7 @@
 # --run`) and TypeScript sub-projects (vscode-extension, webcompiler, website).
 # =============================================================================
 
-.PHONY: build test lint fmt clean ci setup run install bench wasm wasm-site wasm-serve vsix-rebuild-reinstall bank bank-web bank-test bank-e2e hawk
+.PHONY: build test language-test lint fmt clean ci setup run install bench wasm wasm-site wasm-serve vsix-rebuild-reinstall bank bank-web bank-test bank-e2e hawk
 
 # ---------------------------------------------------------------------------
 # OS Detection
@@ -139,6 +139,7 @@ test: build
 	$(MAKE) _coverage_check_rust
 	$(MAKE) _test_c_runtime
 	$(MAKE) _test_differential
+	$(MAKE) _test_language_corpus
 	$(MAKE) _conformance-gc
 	$(MAKE) _conformance-arc
 	$(MAKE) _test_profiler
@@ -173,6 +174,10 @@ bank-web: build _runtime_wasm
 bank-test: build
 	@echo "==> Bank native tests (osprey test)..."
 	./$(BIN) test examples/projects/modules/test
+
+## language-test: Run the assertion-driven Default + ML core language corpus.
+language-test: build
+	$(MAKE) _test_language_corpus
 
 ## bank-e2e: Browser end-to-end tests for the Talon Bank modules showcase
 ##           (examples/projects/modules) — real Chromium via Playwright drives
@@ -492,6 +497,12 @@ _test_differential:
 	  echo "$$out" | grep -Eq 'FAIL=0 '  || { echo 'FAIL: differential mismatch'; exit 1; }; \
 	  echo "$$out" | grep -Eq 'NOEXP=0 ' || { echo 'FAIL: example missing .expectedoutput'; exit 1; }; \
 	  echo "$$out" | grep -q  'FC_OK'    || { echo 'FAIL: must-reject ratchet exceeded'; exit 1; }
+
+# Assertion-driven language corpus: recursively runs both *.test.osp and
+# *.test.ospml suites. These inspect internal values rather than stdout goldens.
+_test_language_corpus:
+	@echo "==> [language] Default + ML assertion corpus..."
+	@./$(BIN) test tests
 
 # _conformance-gc: run every tested example under the tracing GC backend; output
 # must be byte-identical to the default ([MEM-BACKENDS] oracle, spec 0018).

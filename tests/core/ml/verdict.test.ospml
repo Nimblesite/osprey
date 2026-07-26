@@ -1,0 +1,33 @@
+// The pure Verdict model's Pass and Skip states end to end.
+type Verdict =
+    Pass
+    Fail
+        reason : string
+    Skip
+        why : string
+
+checkVerdict (label, expected, actual) = match expected == actual
+    true => Pass
+    false => Fail(reason = "${label}: expected ${expected}, got ${actual}")
+
+assume cond = match cond
+    true => Pass
+    false => Skip(why = "precondition not met")
+
+andThen first rest = match first
+    Pass => rest
+    Fail reason => Fail(reason = reason)
+    Skip why => Skip(why = why)
+
+add (a, b) = a + b
+
+passingCase () =
+    arithmetic = andThen (checkVerdict ("sum", 5, add (2, 3))) (checkVerdict ("difference", 2, add (5, -3)))
+    text = andThen (checkVerdict ("interpolation", "total=8", "total=${add (3, 5)}")) (checkVerdict ("bool", true, 3 < 5))
+    andThen arithmetic text
+
+skippedCase () =
+    andThen (assume (2 > 3)) (checkVerdict ("ignored after skip", 0, 1))
+
+test "pass folds several good interactions" passingCase
+test "skip preserves an unmet precondition" skippedCase

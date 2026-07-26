@@ -56,7 +56,15 @@ fn poly(env: &mut TypeEnv, name: &str, vars: Vec<u32>, params: Vec<Type>, ret: T
 /// Built-ins a user function may redefine: the testing names are common
 /// identifiers, so a same-named user function shadows the built-in instead of
 /// erroring. Implements [TESTING-SHADOWING] (docs/specs/0027-TestingFramework.md).
-pub const SHADOWABLE_BUILTINS: &[&str] = &["test", "expect", "check"];
+pub const SHADOWABLE_BUILTINS: &[&str] = &[
+    "test",
+    "expect",
+    "expectTrue",
+    "expectFalse",
+    "check",
+    "checkTrue",
+    "checkFalse",
+];
 
 /// Install every built-in into a base environment.
 pub fn base_env() -> TypeEnv {
@@ -118,8 +126,12 @@ fn testing(e: &mut TypeEnv) {
     );
     // expect(actual, expected). [TESTING-BUILTIN-EXPECT]
     mono(e, "expect", vec![any(), any()], u());
+    mono(e, "expectTrue", vec![b()], u());
+    mono(e, "expectFalse", vec![b()], u());
     // check(label, expected, actual). [TESTING-BUILTIN-CHECK]
     mono(e, "check", vec![s(), any(), any()], u());
+    mono(e, "checkTrue", vec![s(), b()], u());
+    mono(e, "checkFalse", vec![s(), b()], u());
 }
 
 fn strings(e: &mut TypeEnv) {

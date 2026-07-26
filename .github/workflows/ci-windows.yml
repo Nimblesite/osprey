@@ -106,3 +106,11 @@ jobs:
           set -euo pipefail
           ./target/release/osprey.exe examples/tested/basics/feature_omnibus.osp --run --quiet > omni.txt
           cat omni.txt
+
+      # The root corpus recursively exercises both Default and ML programs with
+      # internal assertions, including cross-feature interaction scenarios.
+      - name: Core language assertion corpus (Default + ML)
+        shell: msys2 {0}
+        run: |
+          set -euo pipefail
+          ./target/release/osprey.exe test tests

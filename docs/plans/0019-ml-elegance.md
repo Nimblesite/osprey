@@ -351,7 +351,10 @@ What remains:
 - [x] Phase 1.3 — `[PARAM-WILDCARD]`: `_` param with generated name, both flavors; positional LLVM parameter naming
 - [x] Phase 1.4 — `[FLAVOR-ML-CLAUSES]`: pattern heads, CST change, `ml/clauses.rs` CST-to-CST clause-merge pre-pass, per-clause spans
 - [x] Phase 1.5 — ML `?:`: lex and parse the Result default the Default flavor already implements
-- [ ] Phase 1.x — corpus sweep for silently-shadowed same-name bindings
+- [x] Phase 1.x — corpus sweep completed. Adjacent clauses after a binder or
+      wildcard now report `unreachable clause`; adjacent all-irrefutable heads
+      report the same; non-adjacent same-name functions report
+      `duplicate definition`. The full formatter corpus parses cleanly.
 - [x] Phase 2 — `[ARITH-PLAIN]`: `int_arithmetic`, `gen_arith`, `%` zero check, `checked*` builtins, `.expectedoutput` regeneration
 - [x] Phase 2 — re-ran `make bench` and rewrote `website/src/benchmarks.md`: the per-operation `osp_alloc_tagged` is gone from `+ - *`, and the six `+ - *`-only cases now sit at C's ~1.5 MB
 - [x] Phase 3 — `[TYPE-UNION-POSITIONAL]`: decimal-index field names, `grammar.js` variant rule, shared `positional.rs` construction table, `sub_patterns`-by-slot fix
@@ -359,4 +362,9 @@ What remains:
 - [x] Defect — arithmetic propagates a `Result` operand's error instead of unwrapping it and fabricating `Success` (`(10 / 0) + 1.0` → `Error(division by zero)`)
 - [x] Defect — a Default interpolation fragment is re-parsed as a nested program mid-lowering, which cleared the positional-constructor table; `positional::install` now scopes to the outermost lowering, so `"${Node(l, r)}"` folds like the same expression outside a string
 - [x] Defect — a Default nested constructor sub-pattern (`Node(Node(a, b), c)`) was silently discarded and the arm behaved as `Node(_, _)`; it is now rejected with the ML flavor's diagnostic
-- [ ] Migrate the `.ospml` corpus per phase; `osprey-fmt` must round-trip every new form and never convert between clauses and `match`
+- [x] Migrate the `.ospml` corpus per phase — `feature_omnibus.ospml` now mixes
+      grouped positional patterns, inline unions, `_` parameters, equational
+      clauses, `?:`, plain arithmetic, and positional construction. The
+      whole-corpus formatter test requires every `.ospml` to parse and
+      round-trip idempotently, with an explicit clause-vs-`match` surface-form
+      regression; the Default twin remains byte-identical at LLVM IR.

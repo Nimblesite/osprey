@@ -141,10 +141,24 @@ fn continues(run: &[Clause], next: &Clause) -> bool {
 /// otherwise the merged `match` form.
 fn flush(run: &mut Vec<Clause>, out: &mut Vec<MlItem>, errors: &mut Vec<SyntaxError>) {
     let clauses = std::mem::take(run);
-    match refutable_column(&clauses, errors) {
-        Some(column) => out.extend(merge_run(clauses, column)),
-        None => out.extend(clauses.into_iter().map(Clause::into_item)),
+    if let Some(column) = refutable_column(&clauses, errors) {
+        out.extend(merge_run(clauses, column));
+    } else {
+        reject_repeated_irrefutable(&clauses, errors);
+        out.extend(clauses.into_iter().map(Clause::into_item));
     }
+}
+
+/// Two adjacent plain heads are not alternatives: the first catches every
+/// input, so report the later spelling instead of silently choosing one body.
+fn reject_repeated_irrefutable(clauses: &[Clause], errors: &mut Vec<SyntaxError>) {
+    if clauses.iter().any(|clause| clause.params.iter().any(|p| is_refutable(Some(p)))) {
+        return;
+    }
+    errors.extend(clauses.iter().skip(1).map(|clause| SyntaxError {
+        message: "unreachable clause after an irrefutable clause".to_owned(),
+        position: clause.pos,
+    }));
 }
 
 /// The one column a clause set selects on, or `None` when it selects on
@@ -170,7 +184,26 @@ fn refutable_column(clauses: &[Clause], errors: &mut Vec<SyntaxError>) -> Option
         }
         found = Some(column);
     }
+    if let Some(column) = found {
+        reject_clauses_after_irrefutable(clauses, column, errors);
+    }
     found
+}
+
+/// Once a binder or wildcard catches the selected value, every later arm is
+/// unreachable and accepting it would make clause order silently change meaning.
+fn reject_clauses_after_irrefutable(
+    clauses: &[Clause],
+    column: usize,
+    errors: &mut Vec<SyntaxError>,
+) {
+    let Some(catch_all) = clauses.iter().position(|c| !is_refutable(c.params.get(column))) else {
+        return;
+    };
+    errors.extend(clauses.iter().skip(catch_all + 1).map(|clause| SyntaxError {
+        message: "unreachable clause after an irrefutable clause".to_owned(),
+        position: clause.pos,
+    }));
 }
 
 /// Whether a head column selects rather than binds. A missing column (a short

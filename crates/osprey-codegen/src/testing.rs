@@ -30,7 +30,11 @@ pub(crate) fn gen(
     match name {
         "test" => gen_test(cg, &args).map(Some),
         "expect" => gen_expect(cg, &args).map(Some),
+        "expectTrue" => gen_bool_expect(cg, &args, true, None).map(Some),
+        "expectFalse" => gen_bool_expect(cg, &args, false, None).map(Some),
         "check" => gen_check(cg, &args).map(Some),
+        "checkTrue" => gen_bool_expect(cg, &args, true, Some("checkTrue")).map(Some),
+        "checkFalse" => gen_bool_expect(cg, &args, false, Some("checkFalse")).map(Some),
         "reportPass" => gen_report(cg, "osp_test_pass", None).map(Some),
         "reportFail" => gen_report(cg, "osp_test_fail", args.first().copied()).map(Some),
         "reportSkip" => gen_report(cg, "osp_test_skip", args.first().copied()).map(Some),
@@ -130,6 +134,39 @@ fn gen_check(cg: &mut Codegen, args: &[&Expr]) -> Result<Value> {
     let e = eval_to_string(cg, expected)?;
     let a = eval_to_string(cg, actual)?;
     Ok(emit_assert(cg, &l.operand, &e, &a))
+}
+
+/// Compact boolean assertions: `expectTrue(actual)` / `expectFalse(actual)`,
+/// plus labeled `checkTrue(label, actual)` / `checkFalse(label, actual)`.
+fn gen_bool_expect(
+    cg: &mut Codegen,
+    args: &[&Expr],
+    expected: bool,
+    labeled_name: Option<&str>,
+) -> Result<Value> {
+    let (label, actual) = match (labeled_name, args) {
+        (None, [actual]) => (None, *actual),
+        (Some(_), [label, actual]) => (Some(*label), *actual),
+        (None, _) => {
+            return Err(CodegenError::invalid(
+                "expectTrue/expectFalse needs one boolean argument",
+            ));
+        }
+        (Some(name), _) => {
+            return Err(CodegenError::invalid(format!(
+                "{name} needs (label, actual) arguments"
+            )));
+        }
+    };
+    let label_value = label.map(|expr| eval_to_string(cg, expr)).transpose()?;
+    let expected_value = eval_to_string(cg, &Expr::Bool(expected))?;
+    let actual_value = eval_to_string(cg, actual)?;
+    Ok(emit_assert(
+        cg,
+        label_value.as_ref().map_or("null", |value| &value.operand),
+        &expected_value,
+        &actual_value,
+    ))
 }
 
 /// `reportPass()` / `reportFail(reason)` / `reportSkip(reason)`: the effect

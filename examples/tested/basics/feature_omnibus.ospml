@@ -1,40 +1,35 @@
 // Feature omnibus — ML-flavor twin. Same canonical AST as the Default flavor,
-// so byte-identical LLVM IR: enums + records, layout `match` across
-// literals/wildcards/constructors, string interpolation with arithmetic,
-// generics, lambdas + pipe, forward function references, Result auto-unwrap,
-// list/map literals + access, persistent List<T>/Map<K,V> + string builtins.
+// so byte-identical LLVM IR: inline unions, equational clauses, positional
+// payloads, `_` parameters, `?:`, layout `match`, interpolation, generics,
+// lambdas + pipe, collections, and string builtins.
 
-type Pri =
-    Low
-    Med
-    High
+type Pri = Low | Med | High
 
-priWeight p =
-    match p
-        Low => 1
-        Med => 5
-        High => 9
+priWeight Low = 1
+priWeight Med = 5
+priWeight High = 9
 
-type Color =
-    Red
-    Green
-    Blue
+type Color = Red | Green | Blue
 
-colorName c =
-    match c
-        Red => "red"
-        Green => "green"
-        Blue => "blue"
+colorName Red = "red"
+colorName Green = "green"
+colorName Blue = "blue"
+
+type Wrapped = Wrapped int
+
+wrapped = Wrapped 42
+wrappedValue = match wrapped
+    (Wrapped n) => n
 
 // Forward reference: callerOfLater is defined here, calleeLater below.
-callerOfLater () = calleeLater 10
+callerOfLater _ = calleeLater 10
 print "=== omnibus ==="
 
 // --- Union pattern match ---
 print (priWeight High)
 print (priWeight Med)
 print (priWeight Low)
-print (colorName Green)
+print "${colorName Green} wrapped ${wrappedValue}"
 
 // --- Plain addition + division Result auto-unwrap in interpolation ---
 age = 25
@@ -46,9 +41,8 @@ print f
 match parseInt "oops"
     Success value => print "got ${value}"
     Error message => print "parseInt rejected oops"
-match parseInt "123"
-    Success value => print "parsed ${value}"
-    Error message => print "bad parse"
+parsed = parseInt "123" ?: 0
+print "parsed ${parsed}"
 
 // --- Bools from comparison + string concat ---
 print (5 == 5)
@@ -56,7 +50,7 @@ print (5 == 6)
 print ("hi" + " " + "world")
 
 // --- Forward function call ---
-print "forward call -> ${callerOfLater ()}"
+print "forward call -> ${callerOfLater 0}"
 
 // --- Lambda + pipe + chained pipe ---
 r = 5 |> (\x => x + 100) |> (\x => x * 2)
