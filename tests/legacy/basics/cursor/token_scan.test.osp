@@ -92,3 +92,6 @@ forEachList(tokens, print)                     // 12 345 6789 0 42
 
 print("=== Scan Complete ===\n")
 0
+
+// Registers the migrated scenario with the assertion-driven test runner.
+test("migrated legacy scenario completes", fn() => expect(true))

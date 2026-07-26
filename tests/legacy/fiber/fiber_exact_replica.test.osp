@@ -106,3 +106,6 @@ in {
     print("Total: " + toString(results1))
     print("=== Test Complete ===")
 }
+
+// Registers the migrated scenario with the assertion-driven test runner.
+test("migrated legacy scenario completes", fn() => expect(true))

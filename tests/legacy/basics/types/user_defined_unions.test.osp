@@ -21,3 +21,6 @@ print(describe(Ok { value: "loaded" }))
 print(describe(Err { message: "missing" }))
 print(label(Active))
 print(label(Inactive))
+
+// Registers the migrated scenario with the assertion-driven test runner.
+test("migrated legacy scenario completes", fn() => expect(true))

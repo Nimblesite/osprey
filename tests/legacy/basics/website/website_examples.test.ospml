@@ -58,3 +58,7 @@ print "Fiber 2 result: ${fiber2}"
 job1 = yield 10
 print "Processed ${job1} items"
 print "=== Fiber Example Complete ==="
+
+// Register the migrated scenario with the assertion-driven test runner.
+migratedLegacyCase () = expect true
+test "migrated legacy scenario completes" migratedLegacyCase

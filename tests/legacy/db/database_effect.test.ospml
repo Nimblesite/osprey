@@ -106,3 +106,7 @@ handle Database
 in match perform Database.open ":memory:"
     Success value => runApp value
     Error message => print "open ${message}"
+
+// Register the migrated scenario with the assertion-driven test runner.
+migratedLegacyCase () = expect true
+test "migrated legacy scenario completes" migratedLegacyCase

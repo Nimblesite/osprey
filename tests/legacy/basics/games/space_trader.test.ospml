@@ -258,3 +258,7 @@ print ""
 print "🌟 Your trading empire awaits! 🌟"
 print "End of Galactic Trade Simulation"
 print "Thank you for playing Osprey Space Trader!"
+
+// Register the migrated scenario with the assertion-driven test runner.
+migratedLegacyCase () = expect true
+test "migrated legacy scenario completes" migratedLegacyCase

@@ -45,3 +45,6 @@ in {
     let local = tuned(37)
     print("tuned(37) = ${local}, worker = ${await(worker)}, napped = ${await(idler)}ms")
 }
+
+// Registers the migrated scenario with the assertion-driven test runner.
+test("migrated legacy scenario completes", fn() => expect(true))

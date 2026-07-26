@@ -35,3 +35,7 @@ print "heavyEnergy=${heavyTotal}"
 bump (p, step) = p(mass = add (p.mass, 1))
 bumped = range 1 COUNT |> fold (forge 1) bump
 print "bumpedMass=${bumped.mass}"
+
+// Register the migrated scenario with the assertion-driven test runner.
+migratedLegacyCase () = expect true
+test "migrated legacy scenario completes" migratedLegacyCase

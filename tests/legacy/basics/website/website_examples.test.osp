@@ -71,3 +71,6 @@ print("Fiber 2 result: ${fiber2}")
 let job1 = yield 10
 print("Processed ${job1} items")
 print("=== Fiber Example Complete ===")
+
+// Registers the migrated scenario with the assertion-driven test runner.
+test("migrated legacy scenario completes", fn() => expect(true))

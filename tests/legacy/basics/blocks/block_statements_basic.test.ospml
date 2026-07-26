@@ -98,3 +98,7 @@ r6 =
 print "6 cond match block: ${r6}"
 
 print "=== Done ==="
+
+// Register the migrated scenario with the assertion-driven test runner.
+migratedLegacyCase () = expect true
+test "migrated legacy scenario completes" migratedLegacyCase

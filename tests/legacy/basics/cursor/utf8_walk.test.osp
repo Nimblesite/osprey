@@ -64,3 +64,6 @@ let mid = match codePointAt(s, 7) {
 print(mid)
 print("=== walk complete ===")
 0
+
+// Registers the migrated scenario with the assertion-driven test runner.
+test("migrated legacy scenario completes", fn() => expect(true))

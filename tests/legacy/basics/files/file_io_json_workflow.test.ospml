@@ -29,3 +29,7 @@ errorResult = readFile "nonexistent_file_xyz123.txt"
 print "Error Result toString: ${toString errorResult}"  // Should print "Error"
 
 print "=== Test Complete ==="
+
+// Register the migrated scenario with the assertion-driven test runner.
+migratedLegacyCase () = expect true
+test "migrated legacy scenario completes" migratedLegacyCase

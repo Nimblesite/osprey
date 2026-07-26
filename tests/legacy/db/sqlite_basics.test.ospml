@@ -79,3 +79,7 @@ qfin = sqlite3_finalize q
 cleanup = osprey_ffi_free dbCell
 closed = sqlite3_close db
 print "closed ${okText closed}"
+
+// Register the migrated scenario with the assertion-driven test runner.
+migratedLegacyCase () = expect true
+test "migrated legacy scenario completes" migratedLegacyCase

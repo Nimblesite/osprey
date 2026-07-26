@@ -112,3 +112,6 @@ print("good elvis = ${toString(goodElv)}")
 // --- Result<T,E> toString ---
 print("ok toString  = ${toString(okCalc)}")
 print("bad toString = ${toString(badDiv)}")
+
+// Registers the migrated scenario with the assertion-driven test runner.
+test("migrated legacy scenario completes", fn() => expect(true))

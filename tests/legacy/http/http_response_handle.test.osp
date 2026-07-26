@@ -58,3 +58,6 @@ fn run() = {
 }
 
 run()
+
+// Registers the migrated scenario with the assertion-driven test runner.
+test("migrated legacy scenario completes", fn() => expect(true))

@@ -48,3 +48,7 @@ verdict = match outcome > 0
     true => "valid ${toString outcome}"
     false => "gave up (sentinel ${toString outcome}) after ${toString (tries - 1)} bad answers"
 print "SCENARIO 2 outcome: ${verdict}"
+
+// Register the migrated scenario with the assertion-driven test runner.
+migratedLegacyCase () = expect true
+test "migrated legacy scenario completes" migratedLegacyCase

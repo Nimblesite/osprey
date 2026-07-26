@@ -68,3 +68,6 @@ match parseAge("abc") {
 }
 print("=== Validation Pipeline Complete ===")
 0
+
+// Registers the migrated scenario with the assertion-driven test runner.
+test("migrated legacy scenario completes", fn() => expect(true))

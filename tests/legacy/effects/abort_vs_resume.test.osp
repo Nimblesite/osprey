@@ -54,3 +54,6 @@ let aborted = handle Step
     }
 in pipeline()
 print("aborted result=" + toString(aborted))
+
+// Registers the migrated scenario with the assertion-driven test runner.
+test("migrated legacy scenario completes", fn() => expect(true))

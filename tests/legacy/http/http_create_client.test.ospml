@@ -6,3 +6,7 @@ print "Creating client"
 // Simple function call test (like print, spawn, etc.)
 result = httpCreateClient "https://httpbin.org" 5000
 print result
+
+// Register the migrated scenario with the assertion-driven test runner.
+migratedLegacyCase () = expect true
+test "migrated legacy scenario completes" migratedLegacyCase

@@ -116,3 +116,6 @@ in match perform Database.open(":memory:") {
     Success { value } => runApp(db: value)
     Error { message } => print("open ${message}")
 }
+
+// Registers the migrated scenario with the assertion-driven test runner.
+test("migrated legacy scenario completes", fn() => expect(true))

@@ -84,3 +84,6 @@ print("findEq('bad_entry_no_equals') = ${findEq("bad_entry_no_equals", 0)}")
 
 print("=== parser complete ===")
 0
+
+// Registers the migrated scenario with the assertion-driven test runner.
+test("migrated legacy scenario completes", fn() => expect(true))

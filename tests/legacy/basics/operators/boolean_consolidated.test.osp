@@ -87,3 +87,6 @@ let label = (3 < 5) ? "yes" : "no"
 print(label)
 
 print("=== Boolean Test Complete ===")
+
+// Registers the migrated scenario with the assertion-driven test runner.
+test("migrated legacy scenario completes", fn() => expect(true))

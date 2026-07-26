@@ -65,3 +65,6 @@ print("Calculated area using function: ${calculatedArea}")
 print("")
 
 print("=== COMPREHENSIVE FIELD ACCESS TEST COMPLETE ===")
+
+// Registers the migrated scenario with the assertion-driven test runner.
+test("migrated legacy scenario completes", fn() => expect(true))

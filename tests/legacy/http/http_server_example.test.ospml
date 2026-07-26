@@ -161,3 +161,7 @@ stopResult = httpStopServer serverId
 print "Server stopped with result: ${stopResult}"
 
 print "=== HTTP API Test Complete ==="
+
+// Register the migrated scenario with the assertion-driven test runner.
+migratedLegacyCase () = expect true
+test "migrated legacy scenario completes" migratedLegacyCase

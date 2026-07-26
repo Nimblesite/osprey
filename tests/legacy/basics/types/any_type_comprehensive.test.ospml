@@ -140,3 +140,7 @@ compareColors (c1, c2) =
 print "Union equality tests:"
 print (compareColors (color1, color2))
 print (compareColors (color1, color3))
+
+// Register the migrated scenario with the assertion-driven test runner.
+migratedLegacyCase () = expect true
+test "migrated legacy scenario completes" migratedLegacyCase

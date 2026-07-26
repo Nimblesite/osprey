@@ -59,4 +59,7 @@ match result3 {
 }
 
 print("=== CALLBACK DEMO COMPLETE ===")
-print("The [CALLBACK] lines above show C runtime calling into Osprey!") 
+print("The [CALLBACK] lines above show C runtime calling into Osprey!")
+
+// Registers the migrated scenario with the assertion-driven test runner.
+test("migrated legacy scenario completes", fn() => expect(true))

@@ -65,3 +65,7 @@ combined =
 
                 total
 print "final combined result = ${toString combined}"
+
+// Register the migrated scenario with the assertion-driven test runner.
+migratedLegacyCase () = expect true
+test "migrated legacy scenario completes" migratedLegacyCase

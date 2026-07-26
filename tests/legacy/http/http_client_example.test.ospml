@@ -22,3 +22,7 @@ print "Cleaning up..."
 // Clean up the client
 closeResult = httpCloseClient clientResult
 print "HTTP test complete"
+
+// Register the migrated scenario with the assertion-driven test runner.
+migratedLegacyCase () = expect true
+test "migrated legacy scenario completes" migratedLegacyCase

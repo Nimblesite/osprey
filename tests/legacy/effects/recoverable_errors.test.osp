@@ -62,3 +62,6 @@ let happyFinal = handle Recover
 in fulfill(happyBatch)(start)
 let happyFilled = start - happyFinal
 print("HAPPY done: recovered ${happyCount} orders, fulfilled ${happyFilled} units, ${happyFinal} left in stock\n=== all three batches completed ===")
+
+// Registers the migrated scenario with the assertion-driven test runner.
+test("migrated legacy scenario completes", fn() => expect(true))

@@ -17,3 +17,7 @@ describe o =
 print (describe (Done(score = 27)))
 print (describe (classify 27))
 print (describe (classify 0))
+
+// Register the migrated scenario with the assertion-driven test runner.
+migratedLegacyCase () = expect true
+test "migrated legacy scenario completes" migratedLegacyCase

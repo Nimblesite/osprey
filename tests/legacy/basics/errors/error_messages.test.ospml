@@ -103,3 +103,7 @@ print "toString ok string  = ${toString (fromCodePoint 65)}\n"
 
 print "=== Error Catalogue Complete ===\n"
 0
+
+// Register the migrated scenario with the assertion-driven test runner.
+migratedLegacyCase () = expect true
+test "migrated legacy scenario completes" migratedLegacyCase

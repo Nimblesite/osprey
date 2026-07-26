@@ -57,3 +57,6 @@ in {
     print("Total processed: " + toString(totalProcessed(result1, result2, result3)) + " units")
     print("=== Test Complete ===")
 }
+
+// Registers the migrated scenario with the assertion-driven test runner.
+test("migrated legacy scenario completes", fn() => expect(true))

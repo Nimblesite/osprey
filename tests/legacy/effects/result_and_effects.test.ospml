@@ -63,3 +63,7 @@ print "local ?: default  10 % 3 -> ${toString localOk}   10 % 0 -> ${toString lo
 // The raw float division Result remains a value.
 print "raw 10 / 0 as a value = ${toString (10 / 0)}"
 print "=== pipeline complete ==="
+
+// Register the migrated scenario with the assertion-driven test runner.
+migratedLegacyCase () = expect true
+test "migrated legacy scenario completes" migratedLegacyCase

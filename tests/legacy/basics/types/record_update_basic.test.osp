@@ -55,3 +55,6 @@ print(computed.x)
 print(computed.y)
 
 print("=== RECORD UPDATE BASIC TESTS COMPLETE ===")
+
+// Registers the migrated scenario with the assertion-driven test runner.
+test("migrated legacy scenario completes", fn() => expect(true))

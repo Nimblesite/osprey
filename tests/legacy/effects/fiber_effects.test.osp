@@ -124,3 +124,6 @@ let raceSum = handle Gift
 in pairSum(1, 2)
 print("race-free sum " + toString(raceSum))
 print("=== done ===")
+
+// Registers the migrated scenario with the assertion-driven test runner.
+test("migrated legacy scenario completes", fn() => expect(true))

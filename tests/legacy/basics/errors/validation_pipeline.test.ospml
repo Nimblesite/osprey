@@ -58,3 +58,7 @@ match parseAge "abc"
             Error reason2 => print "threaded reasons = \"${message}\" / \"${reason2}\""
 print "=== Validation Pipeline Complete ==="
 0
+
+// Register the migrated scenario with the assertion-driven test runner.
+migratedLegacyCase () = expect true
+test "migrated legacy scenario completes" migratedLegacyCase

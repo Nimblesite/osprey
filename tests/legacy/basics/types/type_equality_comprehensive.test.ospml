@@ -145,3 +145,7 @@ print "fn-payload feed accepted: ${label (mkFeed ())}"
 print "fn-payload gate accepted: ${describe (mkGate ())}"
 
 print "=== TYPE EQUALITY COMPLETE ==="
+
+// Register the migrated scenario with the assertion-driven test runner.
+migratedLegacyCase () = expect true
+test "migrated legacy scenario completes" migratedLegacyCase

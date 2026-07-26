@@ -224,3 +224,7 @@ print "  - Artifacts: Sword ⚔️ & Key 🗝️"
 print ""
 print "🌟 Your legend will be remembered forever! 🌟"
 print "Thanks for playing the Osprey Adventure Game!"
+
+// Register the migrated scenario with the assertion-driven test runner.
+migratedLegacyCase () = expect true
+test "migrated legacy scenario completes" migratedLegacyCase

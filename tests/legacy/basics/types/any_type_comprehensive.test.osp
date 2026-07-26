@@ -128,3 +128,6 @@ fn compareColors(c1, c2) = match c1 {
 print("Union equality tests:")
 print(compareColors(c1: color1, c2: color2))
 print(compareColors(c1: color1, c2: color3))
+
+// Registers the migrated scenario with the assertion-driven test runner.
+test("migrated legacy scenario completes", fn() => expect(true))

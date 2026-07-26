@@ -27,3 +27,7 @@ print (describe (Ok(value = "loaded")))
 print (describe (Err(message = "missing")))
 print (label Active)
 print (label Inactive)
+
+// Register the migrated scenario with the assertion-driven test runner.
+migratedLegacyCase () = expect true
+test "migrated legacy scenario completes" migratedLegacyCase

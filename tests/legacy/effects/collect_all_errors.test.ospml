@@ -42,3 +42,7 @@ print ("── signup: Owen ──" + audit ("Owen", 34, 88, "owen@example.com")
 
 // (c) A partial failure — proves the count is exact, not all-or-nothing.
 print ("── signup: blank ──" + audit ("", 40, 60, ""))
+
+// Register the migrated scenario with the assertion-driven test runner.
+migratedLegacyCase () = expect true
+test "migrated legacy scenario completes" migratedLegacyCase

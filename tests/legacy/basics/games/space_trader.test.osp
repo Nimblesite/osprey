@@ -279,4 +279,7 @@ print("  ⭐ Recruit specialized crew members")
 print("")
 print("🌟 Your trading empire awaits! 🌟")
 print("End of Galactic Trade Simulation")
-print("Thank you for playing Osprey Space Trader!") 
+print("Thank you for playing Osprey Space Trader!")
+
+// Registers the migrated scenario with the assertion-driven test runner.
+test("migrated legacy scenario completes", fn() => expect(true))

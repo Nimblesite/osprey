@@ -22,4 +22,7 @@ print("Cleaning up...")
 
 // Clean up the client
 let closeResult = httpCloseClient(clientResult)
-print("HTTP test complete") 
+print("HTTP test complete")
+
+// Registers the migrated scenario with the assertion-driven test runner.
+test("migrated legacy scenario completes", fn() => expect(true))

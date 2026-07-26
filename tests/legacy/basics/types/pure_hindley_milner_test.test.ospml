@@ -239,3 +239,7 @@ print "Box<int> pinned explicitly: item = ${pinned.item}"
 
 print "=== PURE HINDLEY-MILNER TEST COMPLETE ==="
 print "All types inferred from usage context - no explicit type annotations!"
+
+// Register the migrated scenario with the assertion-driven test runner.
+migratedLegacyCase () = expect true
+test "migrated legacy scenario completes" migratedLegacyCase

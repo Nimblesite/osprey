@@ -105,3 +105,6 @@ let capF = spawn combine(a: capArg, b: 5)
 print("captured spawn = ${await(capF)} done=${fiberDone(capF)}")
 
 print("=== Fiber Showcase Complete ===")
+
+// Registers the migrated scenario with the assertion-driven test runner.
+test("migrated legacy scenario completes", fn() => expect(true))

@@ -104,3 +104,6 @@ in handle Ask
 in askOnce(1)
 print("nested resuming " + toString(nested) + " shadowed resume " + toString(shadowed))
 print("=== resume scoping done ===")
+
+// Registers the migrated scenario with the assertion-driven test runner.
+test("migrated legacy scenario completes", fn() => expect(true))

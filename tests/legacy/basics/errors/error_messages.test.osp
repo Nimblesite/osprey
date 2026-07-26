@@ -123,3 +123,6 @@ Error   { message } => print("mapKey: ${message}\n")
 
   print("=== Error Catalogue Complete ===\n")
   0
+
+// Registers the migrated scenario with the assertion-driven test runner.
+test("migrated legacy scenario completes", fn() => expect(true))

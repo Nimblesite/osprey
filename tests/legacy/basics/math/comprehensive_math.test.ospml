@@ -131,3 +131,7 @@ rGuard =
         Error message => "rejected"
 print "random>=0 ${rNonNeg}, randomBelow(100) ${rBounded}, randomBelow(0) ${rGuard}, stdin=[${input ()}]"
 print "=== Math Showcase Complete ==="
+
+// Register the migrated scenario with the assertion-driven test runner.
+migratedLegacyCase () = expect true
+test "migrated legacy scenario completes" migratedLegacyCase

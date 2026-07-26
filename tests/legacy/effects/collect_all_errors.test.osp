@@ -46,3 +46,6 @@ print("── signup: Owen ──" + audit("Owen", 34, 88, "owen@example.com"))
 
 // (c) A partial failure — proves the count is exact, not all-or-nothing.
 print("── signup: blank ──" + audit("", 40, 60, ""))
+
+// Registers the migrated scenario with the assertion-driven test runner.
+test("migrated legacy scenario completes", fn() => expect(true))

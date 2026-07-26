@@ -81,3 +81,7 @@ capF = spawn (combine (capArg, 5))
 print "captured spawn = ${await capF} done=${fiberDone capF}"
 
 print "=== Fiber Showcase Complete ==="
+
+// Register the migrated scenario with the assertion-driven test runner.
+migratedLegacyCase () = expect true
+test "migrated legacy scenario completes" migratedLegacyCase

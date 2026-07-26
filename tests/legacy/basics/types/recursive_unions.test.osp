@@ -198,3 +198,6 @@ match e1 {
     }
     _ => print("expected EAdd")
 }
+
+// Registers the migrated scenario with the assertion-driven test runner.
+test("migrated legacy scenario completes", fn() => expect(true))

@@ -56,3 +56,7 @@ match result4
 
 print "=== Async Process Management Demo Complete ==="
 print "Note: Process output appears via C runtime callbacks during execution"
+
+// Register the migrated scenario with the assertion-driven test runner.
+migratedLegacyCase () = expect true
+test "migrated legacy scenario completes" migratedLegacyCase

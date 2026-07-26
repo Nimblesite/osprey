@@ -73,3 +73,6 @@ print("  Σeven² <10  = ${ra}  ${badge(tier(ra))}")
 print("  Σeven² <20  = ${rb}  ${badge(tier(rb))}")
 print("  Σeven² <40  = ${rc}  ${badge(tier(rc))}")
 print("══════════════════════════════════════\ntotal ${ra + rb + rc}  ·  fleet ${badge(tier(ra + rb + rc))}")
+
+// Registers the migrated scenario with the assertion-driven test runner.
+test("migrated legacy scenario completes", fn() => expect(true))

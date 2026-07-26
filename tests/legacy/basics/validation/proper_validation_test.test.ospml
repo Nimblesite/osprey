@@ -33,3 +33,7 @@ print (toString (isValidEmail "alice@example.com"))
 print (toString (isPositive 5))
 print (toString (isPositive (-5)))
 print (toString (isPositive 0))
+
+// Register the migrated scenario with the assertion-driven test runner.
+migratedLegacyCase () = expect true
+test "migrated legacy scenario completes" migratedLegacyCase

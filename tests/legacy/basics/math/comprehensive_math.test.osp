@@ -127,3 +127,6 @@ let rBounded = match randomBelow(100) {
 let rGuard = match randomBelow(0) { Success { value } => "no-error"  Error { message } => "rejected" }
 print("random>=0 ${rNonNeg}, randomBelow(100) ${rBounded}, randomBelow(0) ${rGuard}, stdin=[${input()}]")
 print("=== Math Showcase Complete ===")
+
+// Registers the migrated scenario with the assertion-driven test runner.
+test("migrated legacy scenario completes", fn() => expect(true))

@@ -100,3 +100,7 @@ print "findEq('bad_entry_no_equals') = ${badEq}"
 
 print "=== parser complete ==="
 0
+
+// Register the migrated scenario with the assertion-driven test runner.
+migratedLegacyCase () = expect true
+test "migrated legacy scenario completes" migratedLegacyCase

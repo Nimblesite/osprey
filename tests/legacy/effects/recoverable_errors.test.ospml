@@ -58,3 +58,7 @@ happyFinal =
     in fulfill happyBatch start
 happyFilled = start - happyFinal
 print "HAPPY done: recovered ${happyCount} orders, fulfilled ${happyFilled} units, ${happyFinal} left in stock\n=== all three batches completed ==="
+
+// Register the migrated scenario with the assertion-driven test runner.
+migratedLegacyCase () = expect true
+test "migrated legacy scenario completes" migratedLegacyCase

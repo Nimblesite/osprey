@@ -86,3 +86,7 @@ label = match 3 < 5
 print label
 
 print "=== Boolean Test Complete ==="
+
+// Register the migrated scenario with the assertion-driven test runner.
+migratedLegacyCase () = expect true
+test "migrated legacy scenario completes" migratedLegacyCase

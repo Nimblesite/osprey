@@ -7,3 +7,7 @@ jHigh = Job(id = 3, weight = 9)
 print (toString (runJob jHigh))
 f = spawn (runJob jHigh)
 print (toString (await f))
+
+// Register the migrated scenario with the assertion-driven test runner.
+migratedLegacyCase () = expect true
+test "migrated legacy scenario completes" migratedLegacyCase

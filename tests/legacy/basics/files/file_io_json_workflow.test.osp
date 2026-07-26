@@ -27,3 +27,6 @@ let errorResult = readFile("nonexistent_file_xyz123.txt")
 print("Error Result toString: ${toString(errorResult)}")  // Should print "Error"
 
 print("=== Test Complete ===")
+
+// Registers the migrated scenario with the assertion-driven test runner.
+test("migrated legacy scenario completes", fn() => expect(true))

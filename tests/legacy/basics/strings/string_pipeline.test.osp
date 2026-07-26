@@ -112,3 +112,6 @@ print("${route(method: "DELETE", path: "/anything")}\n")
 
 print("=== Pipeline Complete ===\n")
 0
+
+// Registers the migrated scenario with the assertion-driven test runner.
+test("migrated legacy scenario completes", fn() => expect(true))

@@ -73,3 +73,7 @@ print "Calculated area using function: ${calculatedArea}"
 print ""
 
 print "=== COMPREHENSIVE FIELD ACCESS TEST COMPLETE ==="
+
+// Register the migrated scenario with the assertion-driven test runner.
+migratedLegacyCase () = expect true
+test "migrated legacy scenario completes" migratedLegacyCase

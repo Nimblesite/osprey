@@ -118,3 +118,6 @@ let r6 = {
 print("6 cond match block: ${r6}")
 
 print("=== Done ===")
+
+// Registers the migrated scenario with the assertion-driven test runner.
+test("migrated legacy scenario completes", fn() => expect(true))

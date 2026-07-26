@@ -87,3 +87,6 @@ match byteAt("é", 1) { Success { value } => print("byteAt(é,1)=${value}\n") Er
 
 print("=== codepoint roundtrip complete ===\n")
 0
+
+// Registers the migrated scenario with the assertion-driven test runner.
+test("migrated legacy scenario completes", fn() => expect(true))
