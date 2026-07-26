@@ -594,6 +594,7 @@ impl Parser<'_> {
 
     /// One `op : payload => result` operation line.
     fn effect_op(&mut self) -> Option<MlEffectOp> {
+        let pos = self.pos();
         let name = self.ident()?;
         if !self.eat(&TokKind::Colon) {
             self.error("expected ':' in effect operation");
@@ -607,6 +608,7 @@ impl Parser<'_> {
             name,
             payload,
             result,
+            pos,
         })
     }
 
@@ -1487,6 +1489,7 @@ impl Parser<'_> {
 
     /// One `op param* => body` arm of a `handle` expression.
     fn handle_arm(&mut self) -> MlHandleArm {
+        let pos = self.pos();
         let operation = self.ident().unwrap_or_default();
         let mut params = Vec::new();
         while let TokKind::Ident(name) = self.peek() {
@@ -1501,6 +1504,7 @@ impl Parser<'_> {
             operation,
             params,
             body,
+            pos,
         }
     }
 

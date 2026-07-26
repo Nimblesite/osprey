@@ -567,7 +567,7 @@ date: "git Last Modified"
     // Switch the editor contents with the flavor toggle in the header.
     let currentFlavor = 'osp';
     const SAMPLES = {
-        // @generated:osp — filled from examples/tested/basics/osprey_mega_showcase.osp by scripts/update-playground.js
+        // @generated:osp — filled from tests/regressions/basics/osprey_mega_showcase.test.osp by scripts/update-playground.js
         osp: `// 🦅 Osprey in one screen — algebraic effects, fibers, unions, HM inference.
 // The SAME account() runs in two worlds; only the installed handler differs.
 effect Console { emit: fn(string) -> Unit }
@@ -644,7 +644,7 @@ print("  Σeven² <20  = \${rb}  \${badge(tier(rb))}")
 print("  Σeven² <40  = \${rc}  \${badge(tier(rc))}")
 print("══════════════════════════════════════\\ntotal \${ra + rb + rc}  ·  fleet \${badge(tier(ra + rb + rc))}")
 `,
-        // @generated:ospml — filled from examples/tested/basics/osprey_mega_showcase.ospml by scripts/update-playground.js
+        // @generated:ospml — filled from tests/regressions/basics/osprey_mega_showcase.test.ospml by scripts/update-playground.js
         ospml: `(* ═══════════════════════════════════════════════════════════════════════
    Osprey feature tour, ML flavor. Comments use the ML-family forms:
      (*  … *)  ordinary block comment (nests)

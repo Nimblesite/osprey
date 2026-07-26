@@ -173,8 +173,8 @@ print("result=${result} cell=${cell}")
 
 Handler state is also preserved when a perform crosses a spawned-fiber or HTTP
 callback boundary. The native conformance cases are
-`examples/tested/effects/fiber_effects.osp` and
-`examples/tested/effects/http_state_levels.osp`.
+`tests/regressions/effects/fiber_effects.test.osp` and
+`tests/regressions/effects/http_state_levels.test.osp`.
 
 ## Resuming Handlers
 

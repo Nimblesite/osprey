@@ -46,6 +46,11 @@ pub(crate) fn hover(
             return Some(hov);
         }
     }
+    if let Some(hov) =
+        crate::effects::operation_hover(&parsed.program, text, path, line, character, enc, flavor)
+    {
+        return Some(hov);
+    }
     match best_match(&symbols, &word, line) {
         Some(sym) => Some(symbol_hover(sym, &parsed.program, flavor)),
         None => builtin_doc(word.rsplit("::").next().unwrap_or(&word), flavor)
@@ -278,11 +283,17 @@ mod tests {
 
     #[test]
     fn hover_on_performed_effect_operation_shows_type_and_effect_docs() {
-        let src = "(** Records trace markers. *)\n\
-                   effect Trace\n\
-                       mark : string => Unit\n\
-                   traced : Unit -> Unit ! Trace\n\
-                   traced () = perform Trace.mark \"one\"\n";
+        let src = concat!(
+            "(** Records trace markers. *)\n",
+            "effect Trace\n",
+            "    mark : string => Unit\n",
+            "traced : Unit -> Unit ! Trace\n",
+            "traced () = perform Trace.mark \"one\"\n",
+            "handled () =\n",
+            "    handle Trace\n",
+            "        mark label => resume\n",
+            "    in traced ()\n",
+        );
         let col = col_of(src, 4, "mark");
         let md = hover(src, "file:///trace.ospml", 4, col, U16)
             .expect("hover over performed effect operation");
@@ -295,6 +306,28 @@ mod tests {
         assert!(
             md.contains("Records trace markers."),
             "owning effect docs: {md}"
+        );
+        for line in [2usize, 7] {
+            let col = col_of(src, line, "mark");
+            let row = u32::try_from(line).expect("line fits");
+            let site = hover(src, "file:///trace.ospml", row, col, U16)
+                .unwrap_or_else(|| panic!("hover over effect-operation site on line {line}"));
+            assert!(site.contains("Trace.mark : string => Unit"), "{site}");
+            assert!(site.contains("Records trace markers."), "{site}");
+        }
+    }
+
+    #[test]
+    fn ml_pipeline_hover_shows_its_native_documentation() {
+        let src = include_str!("../../../tests/effects/resume/resume_lifo_audit.test.ospml");
+        let col = col_of(src, 5, "pipeline");
+        let md = hover(src, "file:///resume_lifo_audit.test.ospml", 5, col, U16)
+            .expect("hover over documented ML pipeline");
+
+        assert!(md.contains("pipeline : Unit -> int"), "ML signature: {md}");
+        assert!(
+            md.contains("Perform two ordered steps and combine their supplied values."),
+            "ML documentation: {md}"
         );
     }
 

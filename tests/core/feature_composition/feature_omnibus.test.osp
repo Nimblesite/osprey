@@ -1,4 +1,4 @@
-// Converted from examples/tested/basics/feature_omnibus. Every dynamic golden
+// Converted from tests/regressions/basics/feature_omnibus. Every dynamic golden
 // value is asserted, then combined paths assert intermediate state as well.
 // Priority is a payload-free union used to document exhaustive matching.
 type Pri = Low | Med | High

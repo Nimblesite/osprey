@@ -144,6 +144,6 @@ OSPREY_ARC_DEBUG=1 zsh crates/run_test_corpus.sh arc
 ```
 
 The first command runs internal assertions. The golden harness checks the
-documented programs in `examples/tested/effects`. The final two commands repeat
+documented programs in `tests/regressions/effects`. The final two commands repeat
 the assertion corpus under tracing GC and ARC; ARC also requires zero live
 objects at exit.

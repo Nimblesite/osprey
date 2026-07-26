@@ -230,6 +230,18 @@ fn build_dispatcher(engine: &OspreyEngine) -> Dispatcher {
             )))
         },
     );
+    // Standard implementation-provider routing makes VS Code expose its native
+    // context-menu action. [LSP-IMPLEMENTATIONS-EFFECT-HANDLERS]
+    register(
+        &dispatcher,
+        engine,
+        "textDocument/implementation",
+        |e, p, c| async move {
+            Some(result(locations_value(
+                answer(&e, Query::Implementation(at(&p)?), c).await,
+            )))
+        },
+    );
     register(
         &dispatcher,
         engine,
@@ -399,6 +411,7 @@ mod tests {
     use tokio::io::{duplex, DuplexStream};
 
     const URI: &str = "file:///a.osp";
+    const ML_URI: &str = "file:///a.ospml";
 
     /// A full source program exercising functions, a `let`, a type, and calls.
     const SRC: &str = "fn add(a: int, b: int) -> int = a + b\n\
@@ -469,9 +482,13 @@ mod tests {
         /// Open a `version: 1` document at [`URI`] with `text` and return the
         /// first published message (the diagnostics for the freshly-opened doc).
         async fn open(&mut self, text: &str) -> Message {
+            self.open_at(URI, text).await
+        }
+
+        async fn open_at(&mut self, uri: &str, text: &str) -> Message {
             self.notify(
                 "textDocument/didOpen",
-                json!({ "textDocument": { "uri": URI, "version": 1, "text": text } }),
+                json!({ "textDocument": { "uri": uri, "version": 1, "text": text } }),
             )
             .await;
             self.read_message().await
@@ -719,32 +736,34 @@ mod tests {
 
     #[tokio::test]
     async fn effect_operation_implementation_request_returns_matching_handler_arms() {
-        let src = "// osprey: flavor=ml\n\
-                   effect Trace\n\
-                       mark : string => Unit\n\
-                   effect Other\n\
-                       mark : string => Unit\n\
-                   traced () = perform Trace.mark \"one\"\n\
-                   first =\n\
-                       handle Trace\n\
-                           mark label => print label\n\
-                       in traced ()\n\
-                   wrong =\n\
-                       handle Other\n\
-                           mark label => print label\n\
-                       in perform Other.mark \"other\"\n\
-                   second =\n\
-                       handle Trace\n\
-                           mark label => print label\n\
-                       in traced ()\n";
+        let src = concat!(
+            "// osprey: flavor=ml\n",
+            "effect Trace\n",
+            "    mark : string => Unit\n",
+            "effect Other\n",
+            "    mark : string => Unit\n",
+            "traced () = perform Trace.mark \"one\"\n",
+            "first =\n",
+            "    handle Trace\n",
+            "        mark label => print label\n",
+            "    in traced ()\n",
+            "wrong =\n",
+            "    handle Other\n",
+            "        mark label => print label\n",
+            "    in perform Other.mark \"other\"\n",
+            "second =\n",
+            "    handle Trace\n",
+            "        mark label => print label\n",
+            "    in traced ()\n",
+        );
         let mut h = Harness::start();
-        let _diags = h.open(src).await;
+        let _diags = h.open_at(ML_URI, src).await;
 
         let response = h
             .request(
                 13,
                 "textDocument/implementation",
-                position_params(URI, 5, 27),
+                position_params(ML_URI, 5, 27),
             )
             .await;
         assert!(

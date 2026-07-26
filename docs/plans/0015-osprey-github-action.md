@@ -33,7 +33,7 @@ them.
 
 Prove the mechanism before wrapping any YAML around it.
 
-- Add one `examples/tested/` program that calls `input()` once, parses the JSON
+- Add one `tests/regressions/` program that calls `input()` once, parses the JSON
   line with the string builtins ([BUILTIN-STRING-*]), computes a result, and
   prints `key=value` lines as a single interpolated string.
 - Provide `.expectedoutput`; register the twin so `crates/diff_examples.sh`

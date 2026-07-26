@@ -63,7 +63,7 @@ addTen = adder 10
 answer = addTen 32
 ```
 
-Runnable examples live in [`examples/tested/`](examples/tested/).
+Executable language tests live in [`tests/`](tests/).
 
 ## Installation
 

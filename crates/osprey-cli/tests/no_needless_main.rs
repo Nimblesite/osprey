@@ -1,10 +1,10 @@
-//! CI gate — examples must not wrap a trivial program in a needless `main`.
+//! CI gate — language tests must not wrap a trivial program in a needless `main`.
 //!
 //! Both flavors synthesize `main` from bare top-level statements and lower them
 //! to byte-identical IR ([FLAVOR-IR-EQUIV], docs/specs/0023, 0024), so a
 //! zero-argument `fn main()` (Default) or `main ()` / `main :` (ML) is pure
 //! boilerplate: the program reads exactly the same written as bare top-level
-//! statements. This gate fails if any tested example carries that boilerplate,
+//! statements. This gate fails if any language test carries that boilerplate,
 //! so the rule is enforced forever instead of by review.
 //!
 //! The *only* sanctioned exception is a program that genuinely needs `argv` or a
@@ -15,10 +15,10 @@
 
 use std::path::{Path, PathBuf};
 
-/// `examples/tested`, resolved from the crate manifest so the gate runs the same
+/// `tests`, resolved from the crate manifest so the gate runs the same
 /// on a dev box and in CI.
 fn tested_dir() -> PathBuf {
-    let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples/tested");
+    let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests");
     dir.canonicalize().unwrap_or(dir)
 }
 

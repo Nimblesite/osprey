@@ -3,12 +3,10 @@
 const fs = require('fs');
 const path = require('path');
 
-// The playground editor is seeded from the SAME tested showcase the differential
-// harness runs, in BOTH flavors — so what visitors read is byte-for-byte what the
-// compiler is proven against. The .osp and .ospml twins produce identical output.
+// The playground editor is seeded from the same migrated assertion suite in both flavors.
 const SHOWCASES = {
-    osp: path.join(__dirname, '../../examples/tested/basics/osprey_mega_showcase.osp'),
-    ospml: path.join(__dirname, '../../examples/tested/basics/osprey_mega_showcase.ospml'),
+    osp: path.join(__dirname, '../../tests/regressions/basics/osprey_mega_showcase.test.osp'),
+    ospml: path.join(__dirname, '../../tests/regressions/basics/osprey_mega_showcase.test.ospml'),
 };
 const PLAYGROUND_PATH = path.join(__dirname, '../src/playground/index.md');
 

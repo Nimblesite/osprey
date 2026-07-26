@@ -35,6 +35,9 @@ pub enum Query {
     Hover(At),
     /// Definition location(s) for the identifier at a position.
     Definition(At),
+    /// Handler arms implementing the effect operation at a position.
+    /// Implements [LSP-IMPLEMENTATIONS-EFFECT-HANDLERS].
+    Implementation(At),
     /// All references to the identifier at a position.
     References {
         /// Where the cursor is.
@@ -106,7 +109,7 @@ pub enum Report {
     Symbols(Vec<SymbolInfo>),
     /// Result of [`Query::Hover`] — markdown, or `None`.
     Hover(Option<String>),
-    /// Result of [`Query::Definition`] / [`Query::References`].
+    /// Result of definition, implementation, and references queries.
     Locations(Vec<Location>),
     /// Result of [`Query::SignatureHelp`].
     Signature(Option<SignatureInfo>),

@@ -288,6 +288,7 @@ impl Lowerer<'_> {
                     .map(|hp| self.texts_of_kind(hp, "identifier"))
                     .unwrap_or_default(),
                 body: self.lower_expr_field(*arm, "body"),
+                position: Some(self.pos(*arm)),
             })
             .collect()
     }

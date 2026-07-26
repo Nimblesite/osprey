@@ -4,7 +4,7 @@
 //! links against libc and the prebuilt C runtime archives in `compiler/bin/`
 //! (`libfiber_runtime.a` / `libhttp_runtime.a`). Two anchors define correct
 //! output: the C runtime ABI (those archives' symbols and conventions) and the
-//! golden outputs in `examples/tested`, exercised end-to-end by
+//! golden outputs in `tests/regressions`, exercised end-to-end by
 //! `crates/diff_examples.sh`. Constructs the backend does not lower return
 //! [`CodegenError::Unsupported`] — it never emits a placeholder.
 //!

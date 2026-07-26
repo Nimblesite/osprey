@@ -157,7 +157,7 @@ Until one lands, all packaging is native.
 
 ## Verification
 
-- An `examples/tested/` program that reads one JSON line via `input()`, parses
+- An `tests/regressions/` program that reads one JSON line via `input()`, parses
   it with the string builtins, and prints `key=value` lines — the ferry +
   parse + emit round-trip, checked byte-for-byte by the differential harness
   (`crates/diff_examples.sh`).

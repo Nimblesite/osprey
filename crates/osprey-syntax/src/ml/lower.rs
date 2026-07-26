@@ -761,6 +761,7 @@ pub(super) fn lower_effect_op(op: MlEffectOp) -> EffectOperation {
         name: op.name,
         parameters: Vec::new(),
         return_type: String::new(),
+        position: Some(op.pos),
     }
 }
 
@@ -1111,6 +1112,7 @@ fn lower_handle_arm(arm: MlHandleArm) -> HandlerArm {
         operation: arm.operation,
         params: arm.params,
         body: lower_expr(arm.body),
+        position: Some(arm.pos),
     }
 }
 

@@ -51,7 +51,7 @@ make test
 
 1. **Understand the pattern** - Ask your AI: "How does pattern matching work in this codebase?"
 2. **Implement incrementally** - Start with parsing, then AST, then codegen
-3. **Test everything** - Add examples to `examples/tested/`
+3. **Test everything** - Add assertion suites to `tests/`
 4. **Fix edge cases** - Let the AI help debug LLVM IR issues
 
 Example prompts:

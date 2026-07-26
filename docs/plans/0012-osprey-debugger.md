@@ -891,7 +891,7 @@ The Osprey debugger is complete when:
 - A user can debug normal Osprey programs from VS Code and from a headless DAP
   test runner.
 - Breakpoints, stepping, stacks, scopes, variables, and expression evaluation
-  work for the language constructs in `examples/tested`.
+  work for the language constructs in `tests/regressions`.
 - Osprey runtime values render as language values, not raw implementation
   pointers.
 - The watch/variables UI can open an object graph for heap-backed values, show

@@ -255,7 +255,7 @@ TODO:
 
 TODO:
 
-- [x] **68 `.ospml` tested twins** under `examples/tested/**` with shared
+- [x] **68 `.ospml` tested twins** under `tests/regressions/**` with shared
       `.expectedoutput` goldens, covering currying/partial application, `=>`
       effect operations, `handle … in`, `resume`, layout match/records,
       bindings/mutation, and interpolation.

@@ -92,7 +92,7 @@ clip. Diagram rendering is guarded by `website/tests/interactions.spec.js`.
     load-bearing return type that forces `Result<T, MathError>` to
     auto-unwrap to `T`. If removing an annotation still compiles and produces
     identical output, it was redundant — remove it.
-  - This applies to ALL `.osp` you write or touch — `examples/tested/`,
+  - This applies to ALL `.osp` you write or touch — `tests/regressions/`,
     `benchmarks/`, docs, and website snippets alike.
 - **NO CONSECUTIVE PRINT CALLS IN OSP** - Use string interpolation! Consolidate consecutive prints into singular interpolated strings!!!
 
@@ -187,7 +187,7 @@ npm install && npm start         # Start web-based compiler service
 
 **Testing Strategy:**
 - Unit tests live inside each crate in `crates/`
-- `examples/tested/` - Working examples run via the differential harness (`crates/diff_examples.sh`); output must match `.expectedoutput` byte-for-byte
+- `tests/regressions/` - Working examples run via the differential harness (`crates/diff_examples.sh`); output must match `.expectedoutput` byte-for-byte
 - `examples/failscompilation/` - Error cases the compiler must reject
 - Coverage thresholds enforced per-project via `coverage-thresholds.json`
 
@@ -200,7 +200,7 @@ npm install && npm start         # Start web-based compiler service
 **Development Workflow:**
 1. **Grammar Changes**: Edit the tree-sitter grammar in `tree-sitter-osprey/`
 2. **Language Features**: Implement in `osprey-syntax`/`osprey-ast`, then `osprey-codegen`
-3. **Testing**: Add examples to `examples/tested/` and error cases to `examples/failscompilation/`
+3. **Testing**: Add examples to `tests/regressions/` and error cases to `examples/failscompilation/`
 4. **Type System**: Extend `crates/osprey-types` for new type rules
 5. **Runtime**: Add C functions in `compiler/runtime/` for system operations
 

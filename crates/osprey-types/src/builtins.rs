@@ -8,7 +8,7 @@
 //! `isEmpty`); `builtin_constraints` checks their concrete call-site types.
 //! Result-returning builtins return `Result<T, Error>` — the
 //! shape the C runtime actually returns — so the match/auto-unwrap paths agree
-//! with the expected outputs in `examples/tested`.
+//! with the expected outputs in `tests/regressions`.
 
 use crate::env::TypeEnv;
 use crate::ty::{Scheme, Type};

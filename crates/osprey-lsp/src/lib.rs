@@ -11,6 +11,7 @@ pub mod analysis;
 pub(crate) mod complete;
 pub mod context;
 pub(crate) mod diagnostics;
+pub(crate) mod effects;
 pub mod engine;
 pub(crate) mod features;
 pub(crate) mod hover;

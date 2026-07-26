@@ -356,6 +356,7 @@ impl<'a> Lowerer<'a> {
                     .unwrap_or_default(),
                 parameters: Vec::new(),
                 return_type: String::new(),
+                position: Some(self.pos(*op)),
             })
             .collect()
     }

@@ -51,4 +51,4 @@ A named top-level function passed where an `extern fn` expects a function parame
 ## Databases Are Libraries [FFI-NO-DB-BUILTINS]
 
 Database access is not compiler surface. Database drivers use `extern fn`
-declarations; the SQLite example is tested in `examples/tested/db/`.
+declarations; the SQLite example is tested in `tests/regressions/db/`.

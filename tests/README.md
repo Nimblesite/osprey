@@ -1,8 +1,7 @@
 # Osprey language test corpus
 
 This directory contains executable, assertion-driven tests for core Osprey
-language behavior. Unlike `examples/tested`, these files are not stdout golden
-examples: `osprey test` runs every `*.test.osp` and `*.test.ospml` file and the
+language behavior. `osprey test` runs every `*.test.osp` and `*.test.ospml` file and the
 assertions inspect values produced inside the program.
 
 - `core/` groups foundational arithmetic, collections, strings, types, and

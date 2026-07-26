@@ -82,6 +82,9 @@ fn ml_signature(sig: &str) -> String {
     if let Some(rest) = sig.strip_prefix("fn ") {
         return ml_function(rest);
     }
+    if let Some(operation) = ml_effect_operation(sig) {
+        return operation;
+    }
     for keyword in ["type ", "effect "] {
         if let Some(rest) = sig.strip_prefix(keyword) {
             return format!("{keyword}{}", ml_binder(rest));
@@ -94,6 +97,37 @@ fn ml_signature(sig: &str) -> String {
             format!("{name} : {}", ml_type(ty))
         }
         _ => sig.to_owned(),
+    }
+}
+
+/// `Trace.mark: fn(string) -> Unit` ⇒ `Trace.mark : string => Unit`.
+/// Effect operations use their own ML arrow rather than a value-function type.
+/// Implements [LSP-HOVER-EFFECT-OPERATIONS], [FLAVOR-ML-EFFECT].
+fn ml_effect_operation(sig: &str) -> Option<String> {
+    let (name, ty) = sig.split_once(": ")?;
+    let rest = name.contains('.').then(|| ty.strip_prefix("fn"))??;
+    let (head, params, tail) = split_params(rest)?;
+    if !head.trim().is_empty() {
+        return None;
+    }
+    let result_type = tail.trim().strip_prefix("->").map(str::trim)?;
+    Some(format!(
+        "{name} : {} => {}",
+        ml_effect_payload(&params),
+        ml_type(result_type)
+    ))
+}
+
+fn ml_effect_payload(params: &str) -> String {
+    match split_top(params)
+        .iter()
+        .map(|param| ml_type(param))
+        .collect::<Vec<_>>()
+        .as_slice()
+    {
+        [] => String::from("Unit"),
+        [only] => only.clone(),
+        many => format!("({})", many.join(", ")),
     }
 }
 
@@ -249,6 +283,14 @@ mod tests {
         );
         // A binding ascription gains ML's spaced colon.
         assert_eq!(signature(Flavor::Ml, "total: int"), "total : int");
+        assert_eq!(
+            signature(Flavor::Ml, "Trace.mark: fn(string) -> Unit"),
+            "Trace.mark : string => Unit"
+        );
+        assert_eq!(
+            signature(Flavor::Ml, "Clock.now: fn() -> int"),
+            "Clock.now : Unit => int"
+        );
         // Default documents are never rewritten.
         assert_eq!(
             signature(Flavor::Default, "fn inc(x: int) -> int"),

@@ -64,8 +64,8 @@ fn compile(path: &Path, source: &str) -> Result<usize, String> {
 }
 
 #[test]
-fn every_tested_example_compiles_to_ir() {
-    let dir = repo_root().join("examples/tested");
+fn every_language_test_compiles_to_ir() {
+    let dir = repo_root().join("tests");
     let files = sources(&dir, "osp");
     assert!(
         files.len() >= 40,

@@ -1,15 +1,15 @@
-// Audit supplies numbered values and records unwind order.
+(** Audit supplies numbered values and records unwind order. *)
 effect Audit
     step : string => int
 
-// Perform two ordered steps and combine their supplied values.
+(** Perform two ordered steps and combine their supplied values. *)
 pipeline : Unit -> int ! Audit
 pipeline () =
     a = perform Audit.step "load"
     b = perform Audit.step "parse"
     a + b
 
-// Verify FIFO operations and LIFO post-resume work.
+(** Verify FIFO operations and LIFO post-resume work. *)
 resumeLifoAuditCase () =
     mut n = 0
     mut issued = ""
@@ -28,7 +28,7 @@ resumeLifoAuditCase () =
         in pipeline ()
     legacyTranscript = "${transcript}total=${toString total}\n"
 
-    // Preserve the three-line unwind transcript.
+    (* Preserve the three-line unwind transcript. *)
     checkAll "LIFO legacy observations" [
         legacyTranscript == "after parse: answer=3\nafter load: answer=3\ntotal=3\n",
         startsWith legacyTranscript "after parse: answer=3\n",
@@ -36,7 +36,7 @@ resumeLifoAuditCase () =
         endsWith legacyTranscript "total=3\n"
     ]
 
-    // Check FIFO issue, LIFO settlement, and the combined answer.
+    (* Check FIFO issue, LIFO settlement, and the combined answer. *)
     checkAll "LIFO internal state" [
         total == 3,
         n == 2,

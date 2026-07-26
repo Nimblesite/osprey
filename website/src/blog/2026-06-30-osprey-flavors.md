@@ -50,5 +50,5 @@ Effect inputs and outputs are checked, but complete effect-row propagation and
 missing-handler rejection are not implemented. Resuming handlers are
 native-only.
 
-See the [tested examples](https://github.com/Nimblesite/osprey/tree/main/examples/tested)
+See the [tested examples](https://github.com/Nimblesite/osprey/tree/main/tests/regressions)
 and [language-flavor specification](/spec/0023-languageflavors/).

@@ -48,7 +48,7 @@ WebAssembly).
 - **Direct value substitution**: a non-resuming arm's value becomes
   the `perform`'s result; handlers may own `mut` state
   ([EFFECTS-HANDLER-STATE], `capture_list`/`build_env`/`reload_env` in
-  `effects.rs`). Reference: `examples/tested/effects/http_state_levels.osp`.
+  `effects.rs`). Reference: `tests/regressions/effects/http_state_levels.test.osp`.
 - **Single-shot deep `resume`**: an arm that mentions `resume` runs the body
   on a pthread (`__osprey_coro_*`, `effects_runtime.c`), suspends at each
   `perform`, and `resume(v)` drives it to completion or the next operation.
@@ -83,7 +83,7 @@ WebAssembly).
    exclusively for its full ping-pong (`in_flight` in
    `compiler/runtime/effects_runtime.c` `__osprey_coro_suspend`); queued
    performs are dispatched by the existing drive-loop re-entry. Locked by
-   `examples/tested/effects/fiber_effects.{osp,ospml}` §(3) — deterministic
+   `tests/regressions/effects/fiber_effects.{osp,ospml}` §(3) — deterministic
    `race-free sum 30`.
 
 1c. ~~**`resume` inside a lambda in an arm: checker accepted, codegen

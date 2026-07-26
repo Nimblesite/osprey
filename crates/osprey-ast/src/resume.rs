@@ -249,6 +249,7 @@ mod tests {
                 operation: "op".into(),
                 params: Vec::new(),
                 body: Expr::Resume(None),
+                position: None,
             }],
             body: Box::new(Expr::Integer(1)),
             position: None,

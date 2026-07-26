@@ -84,7 +84,7 @@ Every behaviour above is locked in by tests at two levels:
 
 - **C runtime**: 33 vanilla-C unit tests with `assert()` in [`compiler/runtime/list_tests.c`](https://github.com/Nimblesite/osprey/tree/main/compiler/runtime/list_tests.c) and [`compiler/runtime/map_tests.c`](https://github.com/Nimblesite/osprey/tree/main/compiler/runtime/map_tests.c). These cover empty edges, trie-level transitions at 32 / 33 / 1024 / 1025 elements, a 10 000-element stress, hash collisions, structural-sharing invariants ("mutate one version, the others stay intact"), and equivalence between builder construction and incremental `append`.
 
-- **End-to-end Osprey programs**: 12 `.osp` files in [`examples/tested/basics/lists/`](https://github.com/Nimblesite/osprey/tree/main/examples/tested/basics/lists). Each one actually runs through the JIT and its `stdout` is byte-compared against a checked-in `.expectedoutput`. Any regression in length, value, iteration order or persistence breaks the build.
+- **End-to-end Osprey programs**: 12 `.osp` files in [`tests/regressions/basics/lists/`](https://github.com/Nimblesite/osprey/tree/main/tests/regressions/basics/lists). Each one actually runs through the JIT and its `stdout` is byte-compared against a checked-in `.expectedoutput`. Any regression in length, value, iteration order or persistence breaks the build.
 
 ## What's deferred
 

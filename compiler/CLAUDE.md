@@ -14,7 +14,7 @@ migration:
   `libfiber_runtime.a` / `libhttp_runtime.a`.
 
 Example programs and golden tests live at the top-level
-[`../examples/`](../examples/): `examples/tested/` (each `.osp` matches its
+[`../examples/`](../examples/): `tests/regressions/` (each `.osp` matches its
 `.expectedoutput` in the differential harness `crates/diff_examples.sh`, run by
 `make test`) and `examples/failscompilation/` (programs the compiler must reject).
 

@@ -10,7 +10,7 @@ that compiled programs link against:
   `--compile`/`--run` time.
 
 Example programs and the golden test suites live at the top-level
-[examples/](../examples/) directory: [examples/tested/](../examples/tested/)
+[examples/](../examples/) directory: [tests/regressions/](../tests/regressions/)
 (golden examples run in CI against `.expectedoutput` via
 [crates/diff_examples.sh](../crates/diff_examples.sh)),
 [examples/failscompilation/](../examples/failscompilation/) (the must-reject

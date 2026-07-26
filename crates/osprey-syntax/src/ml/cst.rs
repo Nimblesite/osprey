@@ -341,6 +341,8 @@ pub(crate) struct MlEffectOp {
     pub payload: MlType,
     /// The operation's result type.
     pub result: MlType,
+    /// Source position of the operation name.
+    pub pos: Position,
 }
 
 /// One variant of a `type` declaration: a constructor name and its payload
@@ -581,6 +583,8 @@ pub(crate) struct MlHandleArm {
     pub params: Vec<String>,
     /// The arm body.
     pub body: MlExpr,
+    /// Source position of the operation name.
+    pub pos: Position,
 }
 
 /// One `pattern => body` arm of a `match`.

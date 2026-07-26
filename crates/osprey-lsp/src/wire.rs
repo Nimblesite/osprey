@@ -124,6 +124,7 @@ pub(crate) fn initialize_result(encoding: &str) -> Value {
             "textDocumentSync": 2,
             "hoverProvider": true,
             "definitionProvider": true,
+            "implementationProvider": true,
             "referencesProvider": true,
             "documentSymbolProvider": true,
             "documentFormattingProvider": true,

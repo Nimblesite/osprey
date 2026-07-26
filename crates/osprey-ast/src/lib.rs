@@ -12,7 +12,7 @@ mod visit;
 pub use doc::{DocComment, DocExample, DocScope};
 pub use generics::{EffectRef, TypeParam, Variance};
 pub use resume::contains_resume;
-pub use visit::walk_each;
+pub use visit::{walk_each, walk_program, AstVisitor};
 
 /// A source position: 1-based line, 0-based column.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -302,6 +302,9 @@ pub struct EffectOperation {
     pub parameters: Vec<Parameter>,
     /// The operation's return type as written.
     pub return_type: String,
+    /// Source position of the operation name. Implements
+    /// [LSP-HOVER-EFFECT-OPERATIONS].
+    pub position: Option<Position>,
 }
 
 /// Whether a signature type is abstract or exposes a manifest representation.
@@ -802,6 +805,9 @@ pub struct HandlerArm {
     pub params: Vec<String>,
     /// The arm body.
     pub body: Expr,
+    /// Source position of the operation name. Implements
+    /// [LSP-IMPLEMENTATIONS-EFFECT-HANDLERS].
+    pub position: Option<Position>,
 }
 
 #[cfg(test)]

@@ -1012,6 +1012,7 @@ mod tests {
                     operation: "op".into(),
                     params: Vec::new(),
                     body: blk("handlerarm"),
+                    position: None,
                 }],
                 body: b("handlerbody"),
                 position: None,

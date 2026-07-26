@@ -107,7 +107,7 @@ Phases 1–2 shipped the model. Phase 3 requires the following additions:
   `doc_links`), and there is no `--doctests` mode. Add an extract-and-emit
   compiler mode before the `diff_examples.sh` pre-pass (model it on
   `--list-tests`).
-- **Generated examples must not land under `examples/tested/`.**
+- **Generated examples must not land under `tests/regressions/`.**
   `crates/osprey-cli/src/main.rs` asserts the discovered example set equals the
   hardcoded `REGISTERED_EXAMPLES` list, so every generated file would fail it.
   Emit to `target/doctests/` (build-artifact territory) instead.
@@ -195,7 +195,7 @@ Phase 3 remains, ordered by cost. Each item requires new surface (see
       `DocScope::Inner` arm, which is unreachable today.
 - [ ] Phase 3a: doctest **execution**. Needs a doctest extraction mode on the
       CLI (`docparse::parse_doc` is `pub(crate)`), a `target/doctests/` output
-      root (never `examples/tested/`, which is registry-asserted), a
+      root (never `tests/regressions/`, which is registry-asserted), a
       `--check`-only path for `run == false` examples so they never reach the
       `NOEXP` counter, and a decision on the snippet→program synthesis rule.
       Reference `[DOC-DOCTEST-HARNESS]` from the extractor and

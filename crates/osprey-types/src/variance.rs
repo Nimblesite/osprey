@@ -300,6 +300,7 @@ mod tests {
             ty: ty.into(),
             parameters: Vec::new(),
             return_type: String::new(),
+            position: None,
         };
         // `out T` in result position: legal.
         assert!(validate_effect_decl(&ctx, "Ask", &out_t, &[op("fn() -> T")]).is_empty());

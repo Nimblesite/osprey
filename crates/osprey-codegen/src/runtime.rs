@@ -2,7 +2,7 @@
 //! `toString` per type, `print`, and the numeric→string conversions. Float
 //! formatting is delegated to `osp_float_to_string` (linked from
 //! `libfiber_runtime`) so whole-valued floats keep their visible `.0`, exactly
-//! as the golden outputs in `examples/tested` expect.
+//! as the golden outputs in `tests/regressions` expect.
 
 use crate::builder::Codegen;
 use crate::conv::as_i64;

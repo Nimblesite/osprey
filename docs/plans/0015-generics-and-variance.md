@@ -97,7 +97,7 @@ plain HM unification is untouched, so principal types survive.
 
 ## Testing
 
-- Expand `examples/tested/basics/types/pure_hindley_milner_test.{osp,ospml}`
+- Expand `tests/regressions/basics/types/pure_hindley_milner_test.{osp,ospml}`
   (fn type params), `type_equality_comprehensive.{osp,ospml}` (variance
   assignability), `effects/algebraic_effects_comprehensive.{osp,ospml}`
   (generic effect, two instantiations, rows with args) — shared goldens,

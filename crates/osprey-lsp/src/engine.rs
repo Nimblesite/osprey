@@ -69,6 +69,13 @@ impl OspreyEngine {
             }
             Query::Hover(at) => Report::Hover(self.hover(&at)),
             Query::Definition(at) => Report::Locations(self.locate(&at, true, false)),
+            Query::Implementation(at) => Report::Locations(crate::effects::implementations(
+                &self.text(&at.uri),
+                at.uri.as_str(),
+                at.line,
+                at.character,
+                enc,
+            )),
             Query::References {
                 at,
                 include_declaration,

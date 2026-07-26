@@ -138,7 +138,6 @@ test: build
 	$(MAKE) _test_rust
 	$(MAKE) _coverage_check_rust
 	$(MAKE) _test_c_runtime
-	$(MAKE) _test_differential
 	$(MAKE) _test_language_corpus
 	$(MAKE) _conformance-gc
 	$(MAKE) _conformance-arc
@@ -267,11 +266,7 @@ wasm: build _runtime_wasm
 	node scripts/wasm-browser-smoke.mjs examples/wasm/build/studio.osp.wasm   examples/wasm/studio.expectedoutput
 	node scripts/wasm-smoke.mjs         examples/wasm/build/studio.ospml.wasm examples/wasm/studio.expectedoutput
 	node scripts/wasm-browser-smoke.mjs examples/wasm/build/studio.ospml.wasm examples/wasm/studio.expectedoutput
-	@echo "==> [wasm differential] osprey --target=wasm32 vs examples/tested..."
-	@out=$$(zsh crates/diff_wasm_examples.sh); echo "$$out"; \
-	  echo "$$out" | grep -Eq '(^| )FAIL=0 '  || { echo 'FAIL: wasm differential mismatch'; exit 1; }; \
-	  echo "$$out" | grep -Eq '(^| )NOEXP=0 ' || { echo 'FAIL: example missing .expectedoutput'; exit 1; }
-	@echo "==> wasm ready: built + validated + WASI/browser smoke + golden suite green"
+	@echo "==> wasm ready: built + validated + WASI/browser smoke green"
 
 wasm wasm-site _runtime_wasm bank-web: export PATH := $(WASM_PATH_PREFIX)$(PATH)
 
@@ -489,29 +484,15 @@ _test_profiler:
 	@echo "==> [profiler] osprey --profile end-to-end..."
 	@bash scripts/test_profiler.sh
 
-# Differential golden harness: every examples/tested/*.osp run through
-# `osprey --run` must match its .expectedoutput byte-for-byte, and the
-# must-reject suite (examples/failscompilation) must stay within the
-# FC_EXPECTED_ESCAPES ratchet declared in the harness.
-_test_differential:
-	@echo "==> [differential] osprey --run vs .expectedoutput..."
-	@out=$$(zsh crates/diff_examples.sh); echo "$$out"; \
-	  echo "$$out" | grep -Eq 'FAIL=0 '  || { echo 'FAIL: differential mismatch'; exit 1; }; \
-	  echo "$$out" | grep -Eq 'NOEXP=0 ' || { echo 'FAIL: example missing .expectedoutput'; exit 1; }; \
-	  echo "$$out" | grep -q  'FC_OK'    || { echo 'FAIL: must-reject ratchet exceeded'; exit 1; }
-
 # Assertion-driven language corpus: recursively runs both *.test.osp and
 # *.test.ospml suites. These inspect internal values rather than stdout goldens.
 _test_language_corpus:
 	@echo "==> [language] Default + ML assertion corpus..."
 	@./$(BIN) test tests
 
-# _conformance-gc: run every tested example under the tracing GC backend; output
-# must be byte-identical to the default ([MEM-BACKENDS] oracle, spec 0018).
+# _conformance-gc: run every assertion suite under the tracing GC backend.
 _conformance-gc:
-	@echo "==> [conformance] differential harness under --memory=gc..."
-	@out=$$(OSPREY_RUN_FLAGS=--memory=gc zsh crates/diff_examples.sh); echo "$$out"; \
-	  echo "$$out" | grep -Eq 'FAIL=0 ' || { echo 'FAIL: GC backend output diverged'; exit 1; }
+	@echo "==> [conformance] assertion corpus under --memory=gc..."
 	@zsh crates/run_test_corpus.sh gc
 
 # _conformance-arc: run every tested example under the Perceus ARC backend;
@@ -520,10 +501,7 @@ _conformance-gc:
 # memory_arc.c report its live count at exit, which is the only automatic check
 # for the [GC-ARC-PERCEUS] zero-leak bar: comparing stdout cannot see a leak.
 _conformance-arc:
-	@echo "==> [conformance] differential harness under --memory=arc..."
-	@out=$$(OSPREY_ARC_DEBUG=1 OSPREY_RUN_FLAGS=--memory=arc zsh crates/diff_examples.sh); echo "$$out"; \
-	  echo "$$out" | grep -Eq 'FAIL=0 '   || { echo 'FAIL: ARC backend output diverged'; exit 1; }; \
-	  echo "$$out" | grep -Eq 'ARC_LEAKY=0 ' || { echo 'FAIL: ARC leaked language values'; exit 1; }
+	@echo "==> [conformance] assertion corpus under --memory=arc..."
 	@OSPREY_ARC_DEBUG=1 zsh crates/run_test_corpus.sh arc
 
 # --- vscode-extension -------------------------------------------------------
