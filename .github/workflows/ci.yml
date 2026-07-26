@@ -81,15 +81,6 @@ jobs:
           sudo apt-get install -y jq xvfb
           cargo install cargo-llvm-cov --locked || true
 
-      # `make lint` runs the `deslop` duplication gate,
-      # which enforces the ceiling in .deslop.toml (deslop exits 3 when over).
-      # Installed from the Nimblesite Homebrew tap so the gate is ENFORCED here;
-      # the Makefile only skips it when the binary is entirely absent.
-      - name: Install deslop (duplication gate)
-        uses: Homebrew/actions/setup-homebrew@master
-      - name: Install deslop
-        run: brew install nimblesite/tap/deslop
-
       # [EDITOR-VERSIONING] Keep shipwright.json valid against the in-repo
       # Shipwright schema. Do not use @nimblesite/shipwright-validate-manifest:
       # published versions currently ship without their bundled schemas.
@@ -98,7 +89,9 @@ jobs:
         working-directory: ./vscode-extension
 
       - name: Lint
-        run: make lint
+        # The official Deslop action runs in ci-windows.yml; this internal target
+        # runs the remaining linters without invoking the local CLI integration.
+        run: make _lint
 
       # make test = fail-fast + per-project coverage + threshold enforcement +
       # differential goldens + the Default/ML assertion corpus under tests/.

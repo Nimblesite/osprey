@@ -1,13 +1,13 @@
 # Deslop duplication gate
 # Single source of truth for this repo's code-duplication budget. Committed,
 # PR-reviewed, ratcheted DOWN only — never up without a written justification.
-# CI runs `deslop .`, which reads this file and exits non-zero — FAILING THE
-# BUILD — when measured duplication exceeds the ceiling below. Deslop parses
+# The official Deslop action in Windows CI reads this file and exits non-zero —
+# FAILING THE BUILD — when measured duplication exceeds the ceiling below. Deslop parses
 # Rust/C#/Python/Dart, so this gates the Rust workspace (the C runtime is out
 # of scope here).
 # Docs: https://deslop.live/docs/for-ai/
-# Wired into `make ci` via the `deslop` target; CI fails when
-# measured duplication exceeds the ceiling below (deslop exits 3).
+# Local `make ci` uses the `deslop` target; hosted CI uses the official action.
+# Both fail when measured duplication exceeds the ceiling below (deslop exits 3).
 [threshold]
 # Ceiling = 6.1% (2026-07-12). Measured product-code duplication is ~6.10%
 # after a round of genuine dedup: the three AST expression visitors

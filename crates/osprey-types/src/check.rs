@@ -954,6 +954,8 @@ mod tests {
                expectFalse(3 < 2)\n\
                checkTrue(\"ordered\", 4 <= 4)\n\
                checkFalse(\"different\", 4 == 5)\n\
+               expectAll([true, 2 < 3, 4 == 4])\n\
+               checkAll(\"batch\", [true, 5 != 6])\n\
              })\n",
         );
         assert!(errs.is_empty(), "unexpected type errors: {errs:?}");
@@ -963,6 +965,10 @@ mod tests {
         assert!(errs.iter().any(|e| e.message.contains("type mismatch")));
         let errs = check("checkFalse(true)\n");
         assert!(errs.iter().any(|e| e.message.contains("arity")));
+        let errs = check("expectAll([true, 1])\n");
+        assert!(errs.iter().any(|e| e.message.contains("type mismatch")));
+        let errs = check("checkAll(\"batch\", [true])\n");
+        assert!(errs.is_empty(), "unexpected type errors: {errs:?}");
         let errs = check("test(42, fn() => expect(1, 1))\n");
         assert!(
             !errs.is_empty(),

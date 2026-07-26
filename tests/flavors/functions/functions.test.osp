@@ -1,0 +1,126 @@
+// Assertion-driven move of the closure, partial application, higher-order,
+// nested-call, and recursion Default-flavor examples.
+
+fn closureAdder(n: int) -> (int) -> int = fn(x) => x + n
+
+fn closuresCase() = {
+    let add10 = closureAdder(10)
+    let add100 = closureAdder(100)
+
+    checkAll("closures legacy rendered lines", [
+        "a=${add10(5)} b=${add100(5)} c=${closureAdder(3)(4)}" == "a=15 b=105 c=7"
+    ])
+    checkAll("closures legacy constituent values", [
+        add10(5) == 15,
+        add100(5) == 105,
+        closureAdder(3)(4) == 7
+    ])
+    checkAll("closures capture edge cases", [
+        add10(0 - 10) == 0,
+        add100(0) == 100,
+        closureAdder(0)(9) == 9,
+        (add10(5) == add100(5)) == false
+    ])
+}
+
+fn partialAdd(a: int) -> (int) -> int = fn(b) => a + b
+
+fn curryPartialCase() = {
+    let add5 = partialAdd(5)
+    let add100 = partialAdd(100)
+
+    checkAll("partial application legacy rendered lines", [
+        "a=${add5(10)} b=${add5(0)} c=${add100(23)} full=${partialAdd(7)(8)}" ==
+            "a=15 b=5 c=123 full=15"
+    ])
+    checkAll("partial application legacy constituent values", [
+        add5(10) == 15,
+        add5(0) == 5,
+        add100(23) == 123,
+        partialAdd(7)(8) == 15
+    ])
+    checkAll("partial application edge cases", [
+        add5(0 - 5) == 0,
+        add100(0) == 100,
+        partialAdd(0)(9) == 9,
+        partialAdd(5)(5) == partialAdd(8)(2)
+    ])
+}
+
+fn hofApply(f: (int) -> int, x: int) -> int = f(x)
+fn hofTwice(f: (int) -> int, x: int) -> int = f(f(x))
+fn hofDouble(n: int) -> int = n + n
+fn hofInc(n: int) -> int = n + 1
+
+fn higherOrderCase() = {
+    checkAll("higher-order legacy rendered lines", [
+        "a=${hofApply(hofDouble, 5)} b=${hofApply(hofInc, 9)} t=${hofTwice(hofDouble, 3)} ti=${hofTwice(hofInc, 40)}" ==
+            "a=10 b=10 t=12 ti=42"
+    ])
+    checkAll("higher-order legacy constituent values", [
+        hofApply(hofDouble, 5) == 10,
+        hofApply(hofInc, 9) == 10,
+        hofTwice(hofDouble, 3) == 12,
+        hofTwice(hofInc, 40) == 42
+    ])
+    checkAll("higher-order edge cases", [
+        hofApply(hofDouble, 0) == 0,
+        hofTwice(hofInc, 0) == 2,
+        hofTwice(hofDouble, 1) == 4,
+        hofApply(hofInc, hofApply(hofDouble, 3)) == 7
+    ])
+}
+
+fn nestedInc(x: int) -> int = x + 1
+fn nestedDouble(x: int) -> int = x + x
+fn nestedNeg(x: int) -> int = 0 - x
+
+fn nestedCallsCase() = {
+    let deep = nestedInc(nestedDouble(nestedInc(nestedDouble(3))))
+
+    checkAll("nested calls legacy rendered lines", [
+        "deep=${deep} mix=${nestedNeg(nestedInc(nestedDouble(5)))} two=${nestedDouble(nestedDouble(4))}" ==
+            "deep=15 mix=-11 two=16"
+    ])
+    checkAll("nested calls legacy constituent values", [
+        deep == 15,
+        nestedNeg(nestedInc(nestedDouble(5))) == -11,
+        nestedDouble(nestedDouble(4)) == 16
+    ])
+    checkAll("nested calls edge cases", [
+        nestedInc(0) == 1,
+        nestedDouble(0) == 0,
+        nestedNeg(0) == 0,
+        nestedInc(nestedDouble(2)) == 5,
+        nestedNeg(nestedInc(nestedDouble(0))) == -1
+    ])
+}
+
+fn recursiveSumTo(n: int) -> int = match n {
+    0 => 0
+    _ => n + recursiveSumTo(n - 1)
+}
+
+fn recursionCase() = {
+    checkAll("recursion legacy rendered lines", [
+        "sum5=${recursiveSumTo(5)} sum10=${recursiveSumTo(10)} sum1=${recursiveSumTo(1)}" ==
+            "sum5=15 sum10=55 sum1=1"
+    ])
+    checkAll("recursion legacy constituent values", [
+        recursiveSumTo(5) == 15,
+        recursiveSumTo(10) == 55,
+        recursiveSumTo(1) == 1
+    ])
+    checkAll("recursion edge cases", [
+        recursiveSumTo(0) == 0,
+        recursiveSumTo(2) == 3,
+        recursiveSumTo(6) == 21,
+        recursiveSumTo(6) == recursiveSumTo(5) + 6
+    ])
+}
+
+test("closures retain independent captured state", closuresCase)
+test("partial application retains every curried golden", curryPartialCase)
+test("higher-order functions retain every application golden", higherOrderCase)
+test("nested calls retain evaluation structure", nestedCallsCase)
+test("recursion retains base and recursive branches", recursionCase)

@@ -197,6 +197,24 @@ mod tests {
     }
 
     #[test]
+    fn grouped_assertions_emit_one_soft_assertion_per_condition() {
+        let ir = module(
+            "test(\"batch\", fn() => {\n\
+               expectAll([1 == 1, 2 < 3, true])\n\
+               checkAll(\"state\", [4 == 4, 5 != 6])\n\
+             })\n",
+        );
+        assert_eq!(ir.matches("call void @osp_test_assert").count(), 5);
+        assert_eq!(ir.matches("@osp_test_assert(i8* null").count(), 3);
+        assert!(compile_err("let checks = [true]\nexpectAll(checks)\n")
+            .to_string()
+            .contains("must be a list literal"));
+        assert!(compile_err("expectAll([])\n")
+            .to_string()
+            .contains("at least one condition"));
+    }
+
+    #[test]
     fn programs_without_tests_keep_the_plain_exit_path() {
         let ir = module("print(\"hi\")\n");
         assert!(!ir.contains("osp_test_finalize"));

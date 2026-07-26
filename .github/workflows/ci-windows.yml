@@ -25,6 +25,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Official duplication gate. The committed .deslop.toml remains the
+      # threshold source; reports remain ephemeral instead of consuming Actions
+      # artifact storage. `version` is explicit because the action is pinned to
+      # the immutable commit for v0.27.0 rather than its tag.
+      - name: Deslop duplication gate
+        uses: Nimblesite/Deslop@f1915e6328165f23a4bd1c6cd4262a64dd7d9033 # v0.27.0
+        with:
+          version: "0.27.0"
+          upload-artifact: "false"
+
       - name: Install Rust (stable)
         uses: dtolnay/rust-toolchain@stable
 

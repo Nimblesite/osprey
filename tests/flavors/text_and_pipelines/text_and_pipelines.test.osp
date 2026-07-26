@@ -1,0 +1,54 @@
+// Assertion-driven move of examples/tested/ml/{pipechain,strings}.osp.
+
+fn pipeInc(x: int) -> int = x + 1
+fn pipeDouble(x: int) -> int = x + x
+fn pipeSquare(x: int) -> int = x * x
+
+fn pipeChainCase() = {
+    let p1 = 5 |> pipeInc |> pipeDouble
+    let p2 = 3 |> pipeDouble |> pipeSquare |> pipeInc
+    let p3 = 10 |> pipeInc |> pipeInc |> pipeDouble
+
+    checkAll("pipe chain legacy rendered lines", [
+        "p1=${p1} p2=${p2} p3=${p3}" == "p1=12 p2=37 p3=24"
+    ])
+    checkAll("pipe chain legacy constituent values", [
+        p1 == 12,
+        p2 == 37,
+        p3 == 24
+    ])
+    checkAll("pipe chain composition edges", [
+        (5 |> pipeInc) == 6,
+        p1 == pipeDouble(pipeInc(5)),
+        (0 |> pipeInc |> pipeDouble) == 2,
+        (3 |> pipeSquare |> pipeDouble) == 18
+    ])
+}
+
+fn stringShout(s) = s + "!"
+fn stringGreet(who) = "Hi " + who
+
+fn stringsCase() = {
+    let name = "Ada"
+    let hello = stringGreet(name)
+
+    checkAll("strings legacy rendered lines", [
+        "plain=${hello} loud=${stringShout(hello)} both=${stringShout(stringGreet(name))} concat=${hello + name}" ==
+            "plain=Hi Ada loud=Hi Ada! both=Hi Ada! concat=Hi AdaAda"
+    ])
+    checkAll("strings legacy constituent values", [
+        hello == "Hi Ada",
+        stringShout(hello) == "Hi Ada!",
+        stringShout(stringGreet(name)) == "Hi Ada!",
+        hello + name == "Hi AdaAda"
+    ])
+    checkAll("strings composition edges", [
+        stringGreet("") == "Hi ",
+        stringShout("") == "!",
+        stringShout(hello) == stringShout(stringGreet(name)),
+        name + hello == "AdaHi Ada"
+    ])
+}
+
+test("pipelines retain each stage and complete chain", pipeChainCase)
+test("string calls retain interpolation and concatenation", stringsCase)

@@ -11,7 +11,7 @@ use soft assertions and return `Unit`; an ML case may instead return `Verdict`
 ## The built-ins
 
 **`[TESTING-BUILTINS]`** The type environment, code generator, and C runtime
-provide seven functions.
+provide nine functions.
 
 ### `test(name: string, body: fn() -> a) -> Unit` — `[TESTING-BUILTIN-TEST]`
 
@@ -53,8 +53,8 @@ Both assertions are valid anywhere an expression is — inside `test` bodies,
 in helper functions called from tests, or at the top level of a script.
 
 **`[TESTING-SHADOWING]`** Unlike other runtime built-ins, the testing names
-(`test`, `expect`, `expectTrue`, `expectFalse`, `check`, `checkTrue`, and
-`checkFalse`) are not reserved: a user-defined function or `extern`
+(`test`, `expect`, `expectAll`, `expectTrue`, `expectFalse`, `check`, `checkAll`,
+`checkTrue`, and `checkFalse`) are not reserved: a user-defined function or `extern`
 declaration with the same name shadows the built-in in both the type
 environment and codegen dispatch.
 
@@ -76,6 +76,14 @@ compare equal.
 `expect(actual, true)` and `expect(actual, false)`. `checkTrue(label, actual)`
 and `checkFalse(label, actual)` provide the corresponding labeled forms. They
 are soft assertions with the same case state, diagnostics, and exit behavior.
+
+### Grouped assertions
+
+`expectAll([condition, ...])` and `checkAll(label, [condition, ...])` accept a
+non-empty boolean list literal and record every element as an independent soft
+assertion. Evaluation continues through the entire list after failures. The
+literal-only form keeps dense test tables allocation-free while preserving one
+runtime assertion result per condition.
 
 ## ML Verdict model
 

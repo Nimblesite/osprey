@@ -1,0 +1,105 @@
+// ML twin of the converted feature omnibus assertion suite.
+type Pri = Low | Med | High
+type Color = Red | Green | Blue
+type Wrapped = Wrapped int
+
+priWeight Low = 1
+priWeight Med = 5
+priWeight High = 9
+colorName Red = "red"
+colorName Green = "green"
+colorName Blue = "blue"
+callerOfLater _ = calleeLater 10
+calleeLater n = n * 4
+
+parseOr (text, fallback) = parseInt text ?: fallback
+parseStatus text = match parseInt text
+    Success value => "parsed ${value}"
+    Error message => "parseInt rejected ${text}"
+
+effect Counter
+    increment : int => Unit
+
+unionsResultsAndScalars () =
+    wrapped = Wrapped 42
+    wrappedValue = match wrapped
+        Wrapped n => n
+    checkAll "union/result/scalar state" [
+        priWeight High == 9,
+        priWeight Med == 5,
+        priWeight Low == 1,
+        "${colorName Green} wrapped ${wrappedValue}" == "green wrapped 42",
+        "next ${25 + 1} half ${25 / 2}" == "next 26 half 12.5",
+        1.5 == 1.5,
+        parseStatus "oops" == "parseInt rejected oops",
+        parseStatus "123" == "parsed 123",
+        parseOr ("oops", 77) == 77,
+        parseOr ("123", 77) == 123,
+        priWeight High > priWeight Med && priWeight Med > priWeight Low,
+        colorName Red != colorName Blue
+    ]
+
+functionsPipesAndBooleans () =
+    chained = 5 |> (\x => x + 100) |> (\x => x * 2)
+    single = 7 |> \x => x * 3
+    checkAll "function/pipe/boolean state" [
+        5 == 5,
+        5 != 6,
+        "hi" + " " + "world" == "hi world",
+        "forward call -> ${callerOfLater 0}" == "forward call -> 40",
+        chained == 210,
+        single == 21,
+        (5 |> \x => x + 100) == 105,
+        callerOfLater 999 == callerOfLater (0 - 1),
+        chained > single,
+        single + priWeight Med == 26
+    ]
+
+effectsAndCollections () =
+    mut counter = 0
+    checkAll "effect precondition" [counter == 0]
+    handle Counter
+        increment amount =>
+            counter := counter + amount
+    in
+        perform Counter.increment 1
+        perform Counter.increment 1
+        perform Counter.increment 1
+    xs = listAppend (listAppend (listAppend (List ()) 10) 20) 30
+    ys = listAppend (List ()) 99
+    combined = xs + ys
+    m = mapSet (mapSet (Map ()) "a" 1) "b" 2
+    checkAll "effect/collection state" [
+        "counter ${counter}" == "counter 3",
+        counter == 3,
+        "list len ${listLength combined}" == "list len 4",
+        listContains xs 20,
+        listLength xs == 3,
+        listLength ys == 1,
+        listLength combined == 4,
+        "map len ${mapLength m}" == "map len 2",
+        mapContains m "a",
+        !(mapContains m "missing"),
+        ([85, 92, 78][1] ?: (0 - 1)) == 92,
+        (["apple" => 2, "banana" => 3]["banana"] ?: (0 - 1)) == 3,
+        ([85, 92, 78][9] ?: (0 - 1)) == (0 - 1),
+        (["apple" => 2]["pear"] ?: (0 - 1)) == (0 - 1)
+    ]
+
+stringInteractions () =
+    s = "  Hello  "
+    checkAll "string/composed state" [
+        trim s == "Hello",
+        toUpperCase s == "  HELLO  ",
+        length s == 9,
+        toUpperCase (trim s) == "HELLO",
+        startsWith (s, "  "),
+        !(startsWith (trim s, " ")),
+        "${toUpperCase (colorName Green)}:${toUpperCase (trim s)}:${parseOr ("42", 0)}" == "GREEN:HELLO:42",
+        "=== omnibus done ===" == "=== omnibus done ==="
+    ]
+
+test "unions, Results and scalar operations compose" unionsResultsAndScalars
+test "functions, forward calls, booleans and pipes compose" functionsPipesAndBooleans
+test "effects mutate handled state beside persistent collections" effectsAndCollections
+test "string transformations consume values from other features" stringInteractions

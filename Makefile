@@ -187,7 +187,9 @@ bank-e2e: bank-web
 	cd examples/projects/modules/e2e && npm ci && npx playwright install chromium && npx playwright test
 
 ## lint: Run all linters/analyzers (read-only). Does NOT format.
-lint: deslop
+lint: deslop _lint
+
+_lint:
 	@echo "==> Linting..."
 	cargo clippy --workspace --all-targets -- -D warnings
 	cd $(EXT_DIR) && npm run lint
@@ -196,7 +198,7 @@ lint: deslop
 ## duplication exceeds the ceiling in .deslop.toml (exit 3). Exclusions and the
 ## threshold live in that committed config — the single source of truth. When
 ## the `deslop` binary is absent the gate is skipped with a loud warning so a
-## fresh checkout still builds; CI installs it, so the gate is enforced there.
+## fresh checkout still builds; CI enforces the gate through the official action.
 deslop:
 	@echo "==> Duplication gate (deslop)..."
 	@if command -v deslop >/dev/null 2>&1; then \

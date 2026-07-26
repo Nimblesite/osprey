@@ -1,0 +1,50 @@
+// ML twin of the assertion-driven arithmetic and boolean operator suite.
+
+arithmeticOperatorsCase () =
+    a = 2 + 3 * 4
+    b = (2 + 3) * 4
+    c = 20 - 6 * 2
+    d = 2 * 3 + 4 * 5
+
+    checkAll "arithmetic legacy rendered lines" [
+        "a=${a} b=${b} c=${c} d=${d}" == "a=14 b=20 c=8 d=26"
+    ]
+    checkAll "arithmetic legacy constituent values" [
+        a == 14,
+        b == 20,
+        c == 8,
+        d == 26
+    ]
+    checkAll "arithmetic precedence edge cases" [
+        20 - 6 - 2 == 12,
+        20 - (6 - 2) == 16,
+        7 + 9 * 0 == 7,
+        0 - 5 * 2 == -10
+    ]
+
+booleanOperatorsCase () =
+    t = true
+    f = false
+
+    checkAll "boolean legacy rendered lines" [
+        "and=${t && f} or=${t || f} not=${!t} lt=${3 < 5} ge=${5 >= 5} eq=${4 == 4} chain=${(3 < 5) && !(2 > 9)}" ==
+            "and=false or=true not=false lt=true ge=true eq=true chain=true"
+    ]
+    checkAll "boolean legacy constituent values" [
+        (t && f) == false,
+        (t || f) == true,
+        !t == false,
+        (3 < 5) == true,
+        (5 >= 5) == true,
+        (4 == 4) == true,
+        ((3 < 5) && !(2 > 9)) == true
+    ]
+    checkAll "boolean composition edge cases" [
+        !f == true,
+        (5 < 3) == false,
+        (4 == 5) == false,
+        (t && !f) == true
+    ]
+
+test "operator precedence retains every arithmetic golden" arithmeticOperatorsCase
+test "boolean composition retains every logical golden" booleanOperatorsCase

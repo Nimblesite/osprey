@@ -124,6 +124,12 @@ pub(crate) static TESTING: &[BuiltinDoc] = &[
         "test(\"doubling\", fn() => expect(21 * 2, 42))",
     ),
     builtin_doc!(
+        "expectAll",
+        "Runs every boolean in a list literal as an independent soft assertion. All conditions run even when an earlier one fails.",
+        ["conditions" => "A non-empty list literal of boolean conditions"],
+        "expectAll([total == 42, name == \"Ada\", ready])",
+    ),
+    builtin_doc!(
         "expectTrue",
         "Asserts that a boolean expression is true.",
         ["actual" => "The boolean condition being asserted"],
@@ -140,6 +146,12 @@ pub(crate) static TESTING: &[BuiltinDoc] = &[
         "Asserts expected equals actual and includes label in a mismatch diagnostic. Execution continues after a mismatch.",
         ["label" => "A short description of what is being checked", "expected" => "The value the actual must equal", "actual" => "The computed value"],
         "test(\"doubling\", fn() => check(\"double\", 42, 21 * 2))",
+    ),
+    builtin_doc!(
+        "checkAll",
+        "Runs every boolean in a list literal as an independent labeled soft assertion. All conditions run even when an earlier one fails.",
+        ["label" => "A short label shared by the group", "conditions" => "A non-empty list literal of boolean conditions"],
+        "checkAll(\"order state\", [total == 42, itemCount == 3, paid])",
     ),
     builtin_doc!(
         "checkTrue",
