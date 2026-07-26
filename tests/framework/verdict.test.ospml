@@ -11,7 +11,7 @@ assume true = Pass
 assume false = Skip(why = "precondition not met")
 
 // Keep the first failure or skip, otherwise return the next Verdict.
-andThen Pass rest = rest
+andThen (Pass) rest = rest
 andThen (Fail reason) _ = Fail(reason = reason)
 andThen (Skip why) _ = Skip(why = why)
 

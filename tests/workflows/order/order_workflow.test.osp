@@ -1,24 +1,26 @@
 // Returns a catalog item or a caller-supplied fallback after Result matching.
-fn itemAt(index) = fn(fallback) => ["coffee", "bread", "fruit"][index] ?: fallback
+fn itemAt(index: int) -> (string) -> string =
+    fn(fallback) => ["coffee", "bread", "fruit"][index] ?: fallback
 
 // Looks up an item's integer price and turns a missing-key Result into zero.
-fn unitPrice(item) = { "coffee": 12, "bread": 5, "fruit": 7 }[item] ?: 0
+fn unitPrice(item: string) -> int = { "coffee": 12, "bread": 5, "fruit": 7 }[item] ?: 0
 
 // Applies the membership tier's percentage discount using safe integer division.
-fn loyaltyDiscount(level) = fn(subtotal) => match level {
+fn loyaltyDiscount(level: string) -> (int) -> int = fn(subtotal) => match level {
     "gold" => intDiv(subtotal * 20, 100) ?: 0
     "silver" => intDiv(subtotal * 10, 100) ?: 0
     _ => 0
 }
 
 // Composes price lookup, quantity arithmetic, and the loyalty policy.
-fn total(level) = fn(item) => fn(quantity) => {
+fn total(level: string) -> (string) -> (int) -> int = fn(item) => fn(quantity) => {
     let subtotal = unitPrice(item) * quantity
     subtotal - loyaltyDiscount(level)(subtotal)
 }
 
 // Normalizes customer text and renders the complete derived order state.
-fn receipt(customer) = fn(level) => fn(item) => fn(quantity) => {
+fn receipt(customer: string) -> (string) -> (string) -> (int) -> string =
+    fn(level) => fn(item) => fn(quantity) => {
     let normalized = customer.trim().toUpperCase()
     "${normalized}:${item}:${quantity}:${total(level)(item)(quantity)}"
 }

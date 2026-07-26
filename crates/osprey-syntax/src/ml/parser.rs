@@ -894,6 +894,7 @@ impl Parser<'_> {
                 TokKind::LParen if self.at_pattern_param() => {
                     out.push(MlParam::Pattern(self.pattern()));
                 }
+                TokKind::LBracket => out.push(MlParam::Pattern(self.pattern())),
                 TokKind::LParen => out.push(self.paren_param()),
                 TokKind::Int(_) | TokKind::Str(_) | TokKind::KwTrue | TokKind::KwFalse => {
                     out.push(MlParam::Pattern(self.pattern()));

@@ -239,6 +239,24 @@ fn clause_set_generates_a_scrutinee_when_no_clause_binds_it() {
     }
 }
 
+/// List patterns are valid match patterns and the binding-head lookahead
+/// already accepts bracketed atoms, so they must also parse as equation clauses.
+#[test]
+fn list_patterns_are_accepted_in_clause_heads() {
+    let src = "size [] = 0\n\
+               size [_, ...tail] = 1 + size tail\n";
+    let (params, body) = function_body(src, "size");
+    assert_eq!(params.len(), 1);
+    match body {
+        Expr::Match { arms, .. } => {
+            assert_eq!(arms.len(), 2);
+            assert!(matches!(arms[0].pattern, Pattern::List { .. }));
+            assert!(matches!(arms[1].pattern, Pattern::List { .. }));
+        }
+        other => panic!("expected a match body, got {other:?}"),
+    }
+}
+
 /// An irrefutable arm consumes every value, so accepting a later clause would
 /// silently make source order change program meaning.
 #[test]

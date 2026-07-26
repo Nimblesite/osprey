@@ -1,20 +1,25 @@
 // Return a catalog item or the caller's fallback.
+itemAt : int -> string -> string
 itemAt index fallback = ["coffee", "bread", "fruit"][index] ?: fallback
 
 // Return an item's price or zero when it is absent.
+unitPrice : string -> int
 unitPrice item = ["coffee" => 12, "bread" => 5, "fruit" => 7][item] ?: 0
 
 // Apply the membership tier's percentage discount.
+loyaltyDiscount : string -> int -> int
 loyaltyDiscount "gold" subtotal = intDiv (subtotal * 20) 100 ?: 0
 loyaltyDiscount "silver" subtotal = intDiv (subtotal * 10) 100 ?: 0
 loyaltyDiscount _ _ = 0
 
 // Compose price lookup, quantity, and loyalty policy.
+total : string -> string -> int -> int
 total level item quantity =
     subtotal = unitPrice item * quantity
     subtotal - loyaltyDiscount level subtotal
 
 // Normalize the customer and render the receipt.
+receipt : string -> string -> string -> int -> string
 receipt customer level item quantity =
     normalized = toUpperCase (trim customer)
     "${normalized}:${item}:${quantity}:${total level item quantity}"

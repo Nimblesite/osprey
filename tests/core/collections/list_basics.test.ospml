@@ -11,23 +11,20 @@ appendThrough (xs, next, last) = match next > last
 
 // Classify empty, singleton, pair, and head-tail list patterns.
 classify : List int -> string
-classify xs = match xs
-    [] => "empty"
-    [single] => "one(${single})"
-    [first, second] => "two(${first},${second})"
-    [head, ...tail] => "many head=${head} rest=${listLength tail}"
+classify [] = "empty"
+classify [single] = "one(${single})"
+classify [first, second] = "two(${first},${second})"
+classify [head, ...tail] = "many head=${head} rest=${listLength tail}"
 
 // Sum a list through recursive head-tail destructuring.
 sumList : List int -> int
-sumList xs = match xs
-    [] => 0
-    [head, ...tail] => head + sumList tail
+sumList [] = 0
+sumList [head, ...tail] = head + sumList tail
 
 // Measure a tail after two fixed prefix elements.
 restLen : List int -> int
-restLen xs = match xs
-    [_, second, ...rest] => listLength rest
-    _ => 0
+restLen [_, second, ...rest] = listLength rest
+restLen _ = 0
 
 // Encode callback order as a base-100 integer through an effect.
 encodeIteration : List int -> int
