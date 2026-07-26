@@ -1,6 +1,0 @@
-status=200
-body=hello body
-hdr=hi
-missing-ok
-free-ok
-free-err-double

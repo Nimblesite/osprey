@@ -1,8 +1,0 @@
-=== Block Statements ===
-1 list head: 42
-2 map factor*base: 20
-3 shadowed inner+outer: 85
-4 fn block: 30
-5 2D matrix[0][1]*10: 20
-6 cond match block: 94
-=== Done ===
