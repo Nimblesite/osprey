@@ -1,7 +1,0 @@
-// ML flavor smoke test: layout (no braces), `=` binds, whitespace is
-// application, and `${...}` interpolation works exactly as in the Default
-// flavor. Lowers to the same canonical AST.
-
-greeting = "Hello from the ML flavor"
-print greeting
-print "2 + 3 = ${2 + 3}"

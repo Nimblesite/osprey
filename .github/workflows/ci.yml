@@ -163,7 +163,7 @@ jobs:
       - name: Test example compilation and execution
         run: |
           target/release/osprey examples/tested/basics/math/comprehensive_math.osp --run
-          target/release/osprey examples/tested/basics/feature_omnibus.osp --run
+          target/release/osprey tests/core/feature_composition/feature_omnibus.test.osp --run
 
       - name: Test Web Compiler
         run: |

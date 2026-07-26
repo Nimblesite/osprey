@@ -1,9 +1,0 @@
-// String concatenation with `+`, interpolation with multiple holes, and nested
-// function calls inside a single `${...}`. String values are passed via bindings
-// so the holes hold identifiers/calls rather than nested string literals.
-
-shout s = s + "!"
-greet who = "Hi " + who
-name = "Ada"
-hello = greet name
-print "plain=${hello} loud=${shout hello} both=${shout (greet name)} concat=${hello + name}"

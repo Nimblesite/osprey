@@ -1,0 +1,80 @@
+// A stopped continuation returns the handler arm value and omits later work.
+effect Stop {
+    check: fn(int) -> int
+}
+
+// Observation records performer-side events without relying on stdout.
+effect Observation {
+    line: fn(string) -> Unit
+}
+
+// This helper routes one legacy output observation through the outer handler.
+fn observe(message) !Observation = perform Observation.line(message)
+
+// This helper reaches a successful check before the zero check aborts it.
+fn guarded() -> int ![Stop, Observation] = {
+    observe("before first check")
+    let a = perform Stop.check(1)
+    observe("after first check: " + toString(a))
+    let b = perform Stop.check(0)
+    observe("after second check: " + toString(b))
+    99
+}
+
+// This case verifies resume, abort, unwind, and the discarded continuation.
+fn resumeAbortEarlyExitCase() = {
+    mut transcript = ""
+    mut checks = 0
+    mut resumed = 0
+    mut aborted = 0
+
+    let result = handle Observation
+        line message => { transcript = "${transcript}${message}\n" }
+    in handle Stop
+        check n => {
+            checks = checks + 1
+            match n {
+                0 => {
+                    aborted = aborted + 1
+                    observe("stopping at zero")
+                    999
+                }
+                _ => {
+                    resumed = resumed + 1
+                    let supplied = match n * 10 {
+                        Success { value } => value
+                        Error { message } => 0
+                    }
+                    let answer = resume(supplied)
+                    observe("continued check " + toString(n) + ": answer=" + toString(answer))
+                    answer
+                }
+            }
+        }
+    in guarded()
+    let legacyTranscript = "${transcript}result=${toString(result)}\n"
+
+    // Preserve the complete five-line golden transcript and every visible line.
+    checkAll("early-exit legacy observations", [
+        legacyTranscript == "before first check\nafter first check: 10\nstopping at zero\ncontinued check 1: answer=999\nresult=999\n",
+        contains(legacyTranscript, "before first check\n"),
+        contains(legacyTranscript, "after first check: 10\n"),
+        contains(legacyTranscript, "stopping at zero\n"),
+        contains(legacyTranscript, "continued check 1: answer=999\n"),
+        contains(legacyTranscript, "result=999\n"),
+        !contains(legacyTranscript, "after second check"),
+        !contains(legacyTranscript, "result=99\n")
+    ])
+
+    // Assert the internal branch counts and the arm value that replaced the body.
+    checkAll("early-exit internal state", [
+        result == 999,
+        checks == 2,
+        resumed == 1,
+        aborted == 1,
+        checks == resumed + aborted
+    ])
+}
+
+// Register the explicit-resume early-exit regression.
+test("returning without resume aborts the suspended continuation", resumeAbortEarlyExitCase)

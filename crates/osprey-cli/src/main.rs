@@ -1195,8 +1195,6 @@ mod tests {
         "examples/tested/basics/errors/error_messages.ospml",
         "examples/tested/basics/errors/validation_pipeline.osp",
         "examples/tested/basics/errors/validation_pipeline.ospml",
-        "examples/tested/basics/feature_omnibus.osp",
-        "examples/tested/basics/feature_omnibus.ospml",
         "examples/tested/basics/field_access_comprehensive.osp",
         "examples/tested/basics/field_access_comprehensive.ospml",
         "examples/tested/basics/files/file_io_json_workflow.osp",
@@ -1218,10 +1216,6 @@ mod tests {
         "examples/tested/basics/knownbugs/bug3_map_built_index.ospml",
         "examples/tested/basics/knownbugs/bug4_union_return_arg.osp",
         "examples/tested/basics/knownbugs/bug4_union_return_arg.ospml",
-        "examples/tested/basics/lists/list_basics.osp",
-        "examples/tested/basics/lists/list_basics.ospml",
-        "examples/tested/basics/lists/map_basics.osp",
-        "examples/tested/basics/lists/map_basics.ospml",
         "examples/tested/basics/math/comprehensive_math.osp",
         "examples/tested/basics/math/comprehensive_math.ospml",
         "examples/tested/basics/memory/struct_allocation_stress.osp",
@@ -1271,16 +1265,6 @@ mod tests {
         "examples/tested/effects/http_state_levels.ospml",
         "examples/tested/effects/recoverable_errors.osp",
         "examples/tested/effects/result_and_effects.osp",
-        "examples/tested/effects/resume_abort_early_exit.osp",
-        "examples/tested/effects/resume_abort_early_exit.ospml",
-        "examples/tested/effects/resume_lifo_audit.osp",
-        "examples/tested/effects/resume_lifo_audit.ospml",
-        "examples/tested/effects/resume_outer_handler_bridge.osp",
-        "examples/tested/effects/resume_outer_handler_bridge.ospml",
-        "examples/tested/effects/resume_unit_markers.osp",
-        "examples/tested/effects/resume_unit_markers.ospml",
-        "examples/tested/effects/resume_value_rewrite.osp",
-        "examples/tested/effects/resume_value_rewrite.ospml",
         "examples/tested/effects/retry_until_valid.osp",
         "examples/tested/effects/typed_error_channels.osp",
         "examples/tested/fiber/cpu_profiling_demo.osp",
@@ -1298,40 +1282,6 @@ mod tests {
         "examples/tested/http/http_server_example.ospml",
         "examples/tested/http/tui_repo_table.osp",
         "examples/tested/http/tui_repo_table.ospml",
-        "examples/tested/ml/arith.osp",
-        "examples/tested/ml/arith.ospml",
-        "examples/tested/ml/booleans.osp",
-        "examples/tested/ml/booleans.ospml",
-        "examples/tested/ml/closures.osp",
-        "examples/tested/ml/closures.ospml",
-        "examples/tested/ml/curry_partial.osp",
-        "examples/tested/ml/curry_partial.ospml",
-        "examples/tested/ml/curry_tour.osp",
-        "examples/tested/ml/curry_tour.ospml",
-        "examples/tested/ml/hello.osp",
-        "examples/tested/ml/hello.ospml",
-        "examples/tested/ml/hof.osp",
-        "examples/tested/ml/hof.ospml",
-        "examples/tested/ml/match_tour.osp",
-        "examples/tested/ml/match_tour.ospml",
-        "examples/tested/ml/matchbool.osp",
-        "examples/tested/ml/matchbool.ospml",
-        "examples/tested/ml/matchint.osp",
-        "examples/tested/ml/matchint.ospml",
-        "examples/tested/ml/mixed.osp",
-        "examples/tested/ml/mixed.ospml",
-        "examples/tested/ml/mutation.osp",
-        "examples/tested/ml/mutation.ospml",
-        "examples/tested/ml/nested_calls.osp",
-        "examples/tested/ml/nested_calls.ospml",
-        "examples/tested/ml/pipechain.osp",
-        "examples/tested/ml/pipechain.ospml",
-        "examples/tested/ml/recursion.osp",
-        "examples/tested/ml/recursion.ospml",
-        "examples/tested/ml/results_state_hof.osp",
-        "examples/tested/ml/results_state_hof.ospml",
-        "examples/tested/ml/strings.osp",
-        "examples/tested/ml/strings.ospml",
     ];
 
     #[test]
@@ -1402,16 +1352,6 @@ mod tests {
     #[test]
     fn basics_errors_validation_pipeline_ospml() {
         assert_example_matches("examples/tested/basics/errors/validation_pipeline.ospml");
-    }
-
-    #[test]
-    fn basics_feature_omnibus_osp() {
-        assert_example_matches("examples/tested/basics/feature_omnibus.osp");
-    }
-
-    #[test]
-    fn basics_feature_omnibus_ospml() {
-        assert_example_matches("examples/tested/basics/feature_omnibus.ospml");
     }
 
     #[test]
@@ -1517,26 +1457,6 @@ mod tests {
     #[test]
     fn basics_knownbugs_bug4_union_return_arg_ospml() {
         assert_example_matches("examples/tested/basics/knownbugs/bug4_union_return_arg.ospml");
-    }
-
-    #[test]
-    fn basics_lists_list_basics_osp() {
-        assert_example_matches("examples/tested/basics/lists/list_basics.osp");
-    }
-
-    #[test]
-    fn basics_lists_list_basics_ospml() {
-        assert_example_matches("examples/tested/basics/lists/list_basics.ospml");
-    }
-
-    #[test]
-    fn basics_lists_map_basics_osp() {
-        assert_example_matches("examples/tested/basics/lists/map_basics.osp");
-    }
-
-    #[test]
-    fn basics_lists_map_basics_ospml() {
-        assert_example_matches("examples/tested/basics/lists/map_basics.ospml");
     }
 
     #[test]
@@ -1787,56 +1707,6 @@ mod tests {
     }
 
     #[test]
-    fn effects_resume_abort_early_exit_osp() {
-        assert_example_matches("examples/tested/effects/resume_abort_early_exit.osp");
-    }
-
-    #[test]
-    fn effects_resume_abort_early_exit_ospml() {
-        assert_example_matches("examples/tested/effects/resume_abort_early_exit.ospml");
-    }
-
-    #[test]
-    fn effects_resume_lifo_audit_osp() {
-        assert_example_matches("examples/tested/effects/resume_lifo_audit.osp");
-    }
-
-    #[test]
-    fn effects_resume_lifo_audit_ospml() {
-        assert_example_matches("examples/tested/effects/resume_lifo_audit.ospml");
-    }
-
-    #[test]
-    fn effects_resume_outer_handler_bridge_osp() {
-        assert_example_matches("examples/tested/effects/resume_outer_handler_bridge.osp");
-    }
-
-    #[test]
-    fn effects_resume_outer_handler_bridge_ospml() {
-        assert_example_matches("examples/tested/effects/resume_outer_handler_bridge.ospml");
-    }
-
-    #[test]
-    fn effects_resume_unit_markers_osp() {
-        assert_example_matches("examples/tested/effects/resume_unit_markers.osp");
-    }
-
-    #[test]
-    fn effects_resume_unit_markers_ospml() {
-        assert_example_matches("examples/tested/effects/resume_unit_markers.ospml");
-    }
-
-    #[test]
-    fn effects_resume_value_rewrite_osp() {
-        assert_example_matches("examples/tested/effects/resume_value_rewrite.osp");
-    }
-
-    #[test]
-    fn effects_resume_value_rewrite_ospml() {
-        assert_example_matches("examples/tested/effects/resume_value_rewrite.ospml");
-    }
-
-    #[test]
     fn effects_retry_until_valid_osp() {
         assert_example_matches("examples/tested/effects/retry_until_valid.osp");
     }
@@ -1904,176 +1774,6 @@ mod tests {
     #[test]
     fn http_tui_repo_table_ospml() {
         assert_example_matches("examples/tested/http/tui_repo_table.ospml");
-    }
-
-    #[test]
-    fn ml_arith_osp() {
-        assert_example_matches("examples/tested/ml/arith.osp");
-    }
-
-    #[test]
-    fn ml_arith_ospml() {
-        assert_example_matches("examples/tested/ml/arith.ospml");
-    }
-
-    #[test]
-    fn ml_booleans_osp() {
-        assert_example_matches("examples/tested/ml/booleans.osp");
-    }
-
-    #[test]
-    fn ml_booleans_ospml() {
-        assert_example_matches("examples/tested/ml/booleans.ospml");
-    }
-
-    #[test]
-    fn ml_closures_osp() {
-        assert_example_matches("examples/tested/ml/closures.osp");
-    }
-
-    #[test]
-    fn ml_closures_ospml() {
-        assert_example_matches("examples/tested/ml/closures.ospml");
-    }
-
-    #[test]
-    fn ml_curry_partial_osp() {
-        assert_example_matches("examples/tested/ml/curry_partial.osp");
-    }
-
-    #[test]
-    fn ml_curry_partial_ospml() {
-        assert_example_matches("examples/tested/ml/curry_partial.ospml");
-    }
-
-    #[test]
-    fn ml_curry_tour_osp() {
-        assert_example_matches("examples/tested/ml/curry_tour.osp");
-    }
-
-    #[test]
-    fn ml_curry_tour_ospml() {
-        assert_example_matches("examples/tested/ml/curry_tour.ospml");
-    }
-
-    #[test]
-    fn ml_hello_osp() {
-        assert_example_matches("examples/tested/ml/hello.osp");
-    }
-
-    #[test]
-    fn ml_hello_ospml() {
-        assert_example_matches("examples/tested/ml/hello.ospml");
-    }
-
-    #[test]
-    fn ml_hof_osp() {
-        assert_example_matches("examples/tested/ml/hof.osp");
-    }
-
-    #[test]
-    fn ml_hof_ospml() {
-        assert_example_matches("examples/tested/ml/hof.ospml");
-    }
-
-    #[test]
-    fn ml_match_tour_osp() {
-        assert_example_matches("examples/tested/ml/match_tour.osp");
-    }
-
-    #[test]
-    fn ml_match_tour_ospml() {
-        assert_example_matches("examples/tested/ml/match_tour.ospml");
-    }
-
-    #[test]
-    fn ml_matchbool_osp() {
-        assert_example_matches("examples/tested/ml/matchbool.osp");
-    }
-
-    #[test]
-    fn ml_matchbool_ospml() {
-        assert_example_matches("examples/tested/ml/matchbool.ospml");
-    }
-
-    #[test]
-    fn ml_matchint_osp() {
-        assert_example_matches("examples/tested/ml/matchint.osp");
-    }
-
-    #[test]
-    fn ml_matchint_ospml() {
-        assert_example_matches("examples/tested/ml/matchint.ospml");
-    }
-
-    #[test]
-    fn ml_mixed_osp() {
-        assert_example_matches("examples/tested/ml/mixed.osp");
-    }
-
-    #[test]
-    fn ml_mixed_ospml() {
-        assert_example_matches("examples/tested/ml/mixed.ospml");
-    }
-
-    #[test]
-    fn ml_mutation_osp() {
-        assert_example_matches("examples/tested/ml/mutation.osp");
-    }
-
-    #[test]
-    fn ml_mutation_ospml() {
-        assert_example_matches("examples/tested/ml/mutation.ospml");
-    }
-
-    #[test]
-    fn ml_nested_calls_osp() {
-        assert_example_matches("examples/tested/ml/nested_calls.osp");
-    }
-
-    #[test]
-    fn ml_nested_calls_ospml() {
-        assert_example_matches("examples/tested/ml/nested_calls.ospml");
-    }
-
-    #[test]
-    fn ml_pipechain_osp() {
-        assert_example_matches("examples/tested/ml/pipechain.osp");
-    }
-
-    #[test]
-    fn ml_pipechain_ospml() {
-        assert_example_matches("examples/tested/ml/pipechain.ospml");
-    }
-
-    #[test]
-    fn ml_recursion_osp() {
-        assert_example_matches("examples/tested/ml/recursion.osp");
-    }
-
-    #[test]
-    fn ml_recursion_ospml() {
-        assert_example_matches("examples/tested/ml/recursion.ospml");
-    }
-
-    #[test]
-    fn ml_results_state_hof_osp() {
-        assert_example_matches("examples/tested/ml/results_state_hof.osp");
-    }
-
-    #[test]
-    fn ml_results_state_hof_ospml() {
-        assert_example_matches("examples/tested/ml/results_state_hof.ospml");
-    }
-
-    #[test]
-    fn ml_strings_osp() {
-        assert_example_matches("examples/tested/ml/strings.osp");
-    }
-
-    #[test]
-    fn ml_strings_ospml() {
-        assert_example_matches("examples/tested/ml/strings.ospml");
     }
 
     fn args(list: &[&str]) -> Vec<String> {

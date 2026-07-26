@@ -44,9 +44,8 @@ continuation runtime is native-only).
 - **Single-shot deep `resume`**: an arm that mentions `resume` runs the body
   on a pthread (`__osprey_coro_*`, `effects_runtime.c`), suspends at each
   `perform`, and `resume(v)` drives it to completion or the next operation.
-  Reference: `examples/tested/effects/resume_value_rewrite.osp` and the
-  `resume_*` family (LIFO audit, early-exit abort, outer-handler bridge,
-  unit markers).
+  Reference: `tests/effects/resume/`, whose paired assertion suites cover value
+  rewrite, LIFO audit, early-exit abort, outer-handler bridge, and unit markers.
 - **Generic effects**: one declaration, many instantiations, boxed erased
   ABI, instantiation-mangled runtime keys ([EFFECTS-GENERIC-*], plan 0015).
 

@@ -1,7 +1,0 @@
-// Boolean literals, the `&&` / `||` / `!` operators, and comparisons feeding a
-// single interpolated print. Comparison and logical operators are shared by both
-// flavors.
-
-t = true
-f = false
-print "and=${t && f} or=${t || f} not=${!t} lt=${3 < 5} ge=${5 >= 5} eq=${4 == 4} chain=${(3 < 5) && !(2 > 9)}"

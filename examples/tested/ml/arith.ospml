@@ -1,9 +1,0 @@
-// Integer arithmetic: operator precedence (`*` and `/` bind tighter than `+`
-// and `-`) and explicit parentheses overriding it. A bare ML script of value
-// bindings + one interpolated print.
-
-a = 2 + 3 * 4
-b = (2 + 3) * 4
-c = 20 - 6 * 2
-d = 2 * 3 + 4 * 5
-print "a=${a} b=${b} c=${c} d=${d}"

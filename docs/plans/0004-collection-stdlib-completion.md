@@ -199,8 +199,8 @@ transformers under `mapKeys`/`mapValues`. Call sites to migrate (grep
 
 | File | Lines |
 |------|-------|
-| `examples/tested/basics/lists/map_basics.osp` | 122, 123, 129, 145 |
-| `examples/tested/basics/lists/map_basics.ospml` | 122, 123, 129, 145 |
+| `tests/core/collections/map_basics.test.osp` | map view assertion batches |
+| `tests/core/collections/map_basics.test.ospml` | map view assertion batches |
 | `examples/tested/basics/types/recursive_unions.osp` | 75, 79, 83 |
 | `examples/tested/basics/types/recursive_unions.ospml` | 80, 84, 89 |
 | `examples/tested/basics/json/json_document_query.osp` | 26 |

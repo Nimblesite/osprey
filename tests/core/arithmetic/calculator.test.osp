@@ -1,40 +1,58 @@
-// Default-flavor test/expect twin of the ML calculator suite.
+// Adds two integers so arithmetic can compose through calls and pipelines.
 fn add(a, b) = a + b
+// Doubles an integer for reusable pipeline stages.
 fn double(x) = x * 2
+// Classifies an integer through modulo Result unwrapping and boolean matching.
 fn parity(n) = match n % 2 == 0 {
     true => "even"
     false => "odd"
 }
 
+// Checks positive, negative, nested, boundary, and relational arithmetic together.
 fn additionCase() = {
-    expect(add(2, 3), 5)
-    expect(add(-1, 1), 0)
     let subtotal = add(10, 20)
-    expect(add(subtotal, -5), 25)
-    expect(add(0, 0), 0)
-    expect(add(1000, -250), 750)
-    expectTrue(add(4, 5) > add(2, 3))
-    expectFalse(add(-2, 1) > 0)
+    // One batch keeps seven independent arithmetic assertions compact.
+    checkAll("addition state", [
+        add(2, 3) == 5,
+        add(-1, 1) == 0,
+        add(subtotal, -5) == 25,
+        add(0, 0) == 0,
+        add(1000, -250) == 750,
+        add(4, 5) > add(2, 3),
+        !(add(-2, 1) > 0)
+    ])
 }
 
+// Checks chained functions, inline lambdas, negatives, and derived predicates.
 fn pipelineCase() = {
-    expect(10 |> double |> double, 40)
-    expect(5 |> fn(x) => x + 100, 105)
-    expect(3 |> double |> fn(x) => add(x, 4), 10)
-    expect(-2 |> double |> double, -8)
-    check("pipe into comparison", true, 6 |> double |> fn(x) => x == 12)
-    checkTrue("pipeline remains positive", 1 |> double |> double > 0)
+    let six = 3 |> double
+    // Every condition is reported separately even though the syntax is grouped.
+    checkAll("pipeline state", [
+        (10 |> double |> double) == 40,
+        (5 |> fn(x) => x + 100) == 105,
+        (six |> fn(x) => add(x, 4)) == 10,
+        ((0 - 2) |> double |> double) == (0 - 8),
+        (6 |> double |> fn(x) => x == 12),
+        (1 |> double |> double) > 0
+    ])
 }
 
+// Checks pattern branches alongside computed inputs and interpolation.
 fn patternCase() = {
-    expect(parity(4), "even")
-    expect(parity(7), "odd")
-    expect(parity(add(5, 5)), "even")
-    expect("${parity(3)}:${double(3)}", "odd:6")
-    checkTrue("even result is stable", parity(double(9)) == "even")
-    checkFalse("odd and even labels differ", parity(3) == parity(4))
+    // The batch covers both branches and several cross-feature compositions.
+    checkAll("pattern state", [
+        parity(4) == "even",
+        parity(7) == "odd",
+        parity(add(5, 5)) == "even",
+        "${parity(3)}:${double(3)}" == "odd:6",
+        parity(double(9)) == "even",
+        parity(3) != parity(4)
+    ])
 }
 
+// Register the mixed arithmetic interaction.
 test("arithmetic composes across calls", additionCase)
+// Register the multi-stage pipeline interaction.
 test("pipes and lambdas compose", pipelineCase)
+// Register the matching and rendering interaction.
 test("matching, interpolation and calls interact", patternCase)

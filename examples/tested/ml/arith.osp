@@ -1,9 +1,0 @@
-// Default-flavor twin of arith.ospml. ML `name = expr` lowers to `let`, the bare
-// script to `fn main() = { ... }`, and the arithmetic precedence/parentheses are
-// shared by both flavors — same canonical AST, byte-identical IR.
-
-let a = 2 + 3 * 4
-let b = (2 + 3) * 4
-let c = 20 - 6 * 2
-let d = 2 * 3 + 4 * 5
-print("a=${a} b=${b} c=${c} d=${d}")

@@ -1,38 +1,55 @@
+// Subtracts integers to exercise ordering and nested expressions.
 fn sub(a, b) = a - b
+// Classifies exact integer cases and a wildcard branch.
 fn classify(n) = match n {
     0 => "zero"
     1 => "one"
     _ => "many"
 }
 
+// Verifies arithmetic values and relational properties in one documented batch.
 fn arithmeticCase() = {
-    check("difference", 4, sub(7, 3))
-    check("product", 42, 6 * 7)
-    check("nested arithmetic", 12, sub(20, 2 * 4))
-    check("comparison", true, sub(8, 3) > 4)
-    checkTrue("positive difference", sub(100, 1) > 0)
-    checkFalse("subtraction is not commutative", sub(9, 4) == sub(4, 9))
+    // Six independent soft assertions cover results and algebraic behavior.
+    checkAll("arithmetic foundations", [
+        sub(7, 3) == 4,
+        6 * 7 == 42,
+        sub(20, 2 * 4) == 12,
+        sub(8, 3) > 4,
+        sub(100, 1) > 0,
+        sub(9, 4) != sub(4, 9)
+    ])
 }
 
+// Verifies every match branch using literal and computed inputs.
 fn classifyCase() = {
-    check("zero", "zero", classify(0))
-    check("one", "one", classify(1))
-    check("many", "many", classify(9))
-    check("computed input", "one", classify(sub(4, 3)))
-    checkTrue("classification text", startsWith(classify(20), "m"))
-    checkFalse("many is not zero", classify(99) == classify(0))
+    // The conditions cover exact arms, wildcard behavior, and string consumers.
+    checkAll("classification foundations", [
+        classify(0) == "zero",
+        classify(1) == "one",
+        classify(9) == "many",
+        classify(sub(4, 3)) == "one",
+        startsWith(classify(20), "m"),
+        classify(99) != classify(0)
+    ])
 }
 
+// Verifies strings, fallible operations, and list state in one interaction.
 fn stringsAndListsCase() = {
-    check("contains", true, contains("talon bank", "bank"))
-    check("repeat unwraps Result", "ababab", repeat("ab", 3))
-    check("trim", "Osprey", trim("  Osprey  "))
-    check("case conversion", "OSPREY", toUpperCase("Osprey"))
-    checkTrue("prefix", startsWith("osprey language", "osprey"))
-    checkFalse("wrong suffix", endsWith("osprey language", "compiler"))
-    check("list length", 3, listLength([10, 20, 30]))
+    // Seven separately reported conditions document the combined standard-library behavior.
+    checkAll("string and list foundations", [
+        contains("talon bank", "bank"),
+        (repeat("ab", 3) ?: "") == "ababab",
+        trim("  Osprey  ") == "Osprey",
+        toUpperCase("Osprey") == "OSPREY",
+        startsWith("osprey language", "osprey"),
+        !endsWith("osprey language", "compiler"),
+        listLength([10, 20, 30]) == 3
+    ])
 }
 
+// Register the arithmetic foundation interaction.
 test("arithmetic checks share derived values", arithmeticCase)
+// Register the classification interaction.
 test("classification checks include computed inputs", classifyCase)
+// Register the standard-library composition interaction.
 test("strings and lists mix with matching", stringsAndListsCase)

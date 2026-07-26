@@ -1,5 +1,0 @@
-[log] form start
-ask name
-[log] got Ada
-after ask: Ada
-result=Ada

@@ -173,9 +173,7 @@ fn gen_all(cg: &mut Codegen, args: &[&Expr], labeled: bool) -> Result<Value> {
         let actual = eval_to_string(cg, condition)?;
         let _ = emit_assert(
             cg,
-            label_value
-                .as_ref()
-                .map_or("null", |value| &value.operand),
+            label_value.as_ref().map_or("null", |value| &value.operand),
             &expected,
             &actual,
         );

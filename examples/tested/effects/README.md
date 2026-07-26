@@ -18,18 +18,16 @@ program output byte-for-byte after trimming outer whitespace.
   state.
 - `typed_error_channels.osp` covers nested handlers for independent operations.
 
-## Explicit Resume Examples
+## Explicit Resume Coverage
 
-- `resume_lifo_audit.osp` shows post-`resume` code unwinding in LIFO order.
-- `resume_unit_markers.osp` shows `resume()` for a `Unit` operation.
-- `resume_abort_early_exit.osp` shows an arm returning without `resume`, which
-  aborts the suspended continuation and becomes the whole handler result.
-- `resume_outer_handler_bridge.osp` shows a resumed body keeping outer handlers
-  installed.
-- `resume_value_rewrite.osp` shows the handler choosing operation results and
-  observing the final answer after each continuation returns.
-- `abort_vs_resume.osp` and `retry_until_valid.osp` compare resuming and
-  non-resuming branches in one continuation-mode handler.
+The paired Default/ML assertion suites under `tests/effects/resume/` cover
+LIFO unwinding, Unit operations, aborting without resume, outer-handler
+bridging, value rewriting, whole-Result resume values, and generic effect
+instantiations. Each suite retains its former stdout transcript as an internal
+oracle and adds handler-state assertions.
+
+The remaining `abort_vs_resume.osp` and `retry_until_valid.osp` golden examples
+compare resuming and non-resuming branches in one continuation-mode handler.
 
 ## Running
 
@@ -37,5 +35,5 @@ From the repo root:
 
 ```sh
 zsh crates/diff_examples.sh effects
-zsh crates/diff_examples.sh resume_
+target/release/osprey test tests/effects/resume
 ```

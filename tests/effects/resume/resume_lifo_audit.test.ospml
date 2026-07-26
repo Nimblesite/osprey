@@ -1,0 +1,54 @@
+// Audit supplies numbered values and observes continuation unwind order.
+effect Audit
+    step : string => int
+
+// This helper performs two ordered steps and combines their supplied values.
+pipeline : Unit -> int ! Audit
+pipeline () =
+    a = perform Audit.step "load"
+    b = perform Audit.step "parse"
+    match a + b
+        Success value => value
+        Error message => 0
+
+// This case proves operations enter FIFO and post-resume code exits LIFO.
+resumeLifoAuditCase () =
+    mut n = 0
+    mut issued = ""
+    mut settled = ""
+    mut transcript = ""
+
+    total =
+        handle Audit
+            step label =>
+                n := match n + 1
+                    Success value => value
+                    Error message => n
+                issued := "${issued}${label}:${toString n}|"
+                answer = resume n
+                settled := "${settled}${label}:${toString answer}|"
+                transcript := "${transcript}after ${label}: answer=${toString answer}\n"
+                answer
+        in pipeline ()
+    legacyTranscript = "${transcript}total=${toString total}\n"
+
+    // Preserve all three legacy lines and their exact unwind ordering.
+    checkAll "LIFO legacy observations" [
+        legacyTranscript == "after parse: answer=3\nafter load: answer=3\ntotal=3\n",
+        startsWith (legacyTranscript, "after parse: answer=3\n"),
+        contains (legacyTranscript, "after load: answer=3\n"),
+        endsWith (legacyTranscript, "total=3\n")
+    ]
+
+    // Assert issue order, settle order, operation count, and combined answer.
+    checkAll "LIFO internal state" [
+        total == 3,
+        n == 2,
+        issued == "load:1|parse:2|",
+        settled == "parse:3|load:3|",
+        issued != settled,
+        total == 1 + 2
+    ]
+
+// Register the post-resume LIFO regression.
+test "post-resume code unwinds in reverse operation order" resumeLifoAuditCase

@@ -600,6 +600,40 @@ fn write_in(dir: &Path, name: &str, body: &str) -> PathBuf {
     path
 }
 
+#[cfg(unix)]
+fn concurrency_probe_driver(dir: &Path) -> PathBuf {
+    use std::os::unix::fs::PermissionsExt;
+
+    let driver = write_in(
+        dir,
+        "probe-cc.sh",
+        "#!/bin/sh\nmarker=\"$OSPREY_PARALLEL_PROBE/worker-$$\"\n\
+         : > \"$marker\"\n\
+         count=$(find \"$OSPREY_PARALLEL_PROBE\" -name 'worker-*' | wc -l)\n\
+         if [ \"$count\" -gt 1 ]; then : > \"$OSPREY_PARALLEL_PROBE/overlap\"; fi\n\
+         sleep 1\nrm -f \"$marker\"\nexit 1\n",
+    );
+    if let Ok(metadata) = std::fs::metadata(&driver) {
+        let mut permissions = metadata.permissions();
+        permissions.set_mode(0o755);
+        let _ = std::fs::set_permissions(&driver, permissions);
+    }
+    driver
+}
+
+#[cfg(unix)]
+fn run_concurrency_probe(dir: &Path, driver: &Path, jobs: Option<&str>) -> Out {
+    let mut cmd = osprey();
+    let _ = cmd
+        .args(["test", dir.to_string_lossy().as_ref(), "--quiet"])
+        .env("OSPREY_CC", driver)
+        .env("OSPREY_PARALLEL_PROBE", dir.join("probe"));
+    if let Some(value) = jobs {
+        let _ = cmd.env("OSPREY_TEST_JOBS", value);
+    }
+    finish(cmd)
+}
+
 // [TESTING-BUILTIN-TEST][TESTING-BUILTIN-EXPECT][TESTING-BUILTIN-CHECK]
 // [TESTING-RUNTIME][TESTING-TAP][TESTING-EXIT] a test binary reports TAP and
 // exits by outcome.
@@ -718,6 +752,29 @@ fn test_subcommand_runs_directories_and_files() {
         o.stdout
     );
     assert!(!o.stdout.contains("# file:"), "--quiet drops headers");
+}
+
+// Independent suites compile concurrently by default, while configuration can
+// force deterministic serial execution for constrained or diagnostic runs.
+#[cfg(unix)]
+#[test]
+fn test_subcommand_parallel_default_has_serial_escape_hatch() {
+    let dir = temp_dir("suite_parallel");
+    let _ = write_in(&dir, "one.test.osp", PASSING_TESTS);
+    let _ = write_in(&dir, "two.test.osp", PASSING_TESTS);
+    let probe = dir.join("probe");
+    let _ = std::fs::create_dir_all(&probe);
+    let driver = concurrency_probe_driver(&dir);
+
+    let parallel = run_concurrency_probe(&dir, &driver, None);
+    assert_eq!(parallel.code, Some(1), "{}", parallel.stderr);
+    let overlap = probe.join("overlap");
+    assert!(overlap.exists(), "test suites compiled serially by default");
+
+    let _ = std::fs::remove_file(&overlap);
+    let serial = run_concurrency_probe(&dir, &driver, Some("1"));
+    assert_eq!(serial.code, Some(1), "{}", serial.stderr);
+    assert!(!overlap.exists(), "OSPREY_TEST_JOBS=1 was not serial");
 }
 
 // A compile-error suite fails the run; an empty discovery set is loud.

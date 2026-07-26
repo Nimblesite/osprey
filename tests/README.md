@@ -5,14 +5,33 @@ language behavior. Unlike `examples/tested`, these files are not stdout golden
 examples: `osprey test` runs every `*.test.osp` and `*.test.ospml` file and the
 assertions inspect values produced inside the program.
 
-- `core/default/` exercises the Default flavor.
-- `core/ml/` exercises the ML flavor and its pure `Verdict` surface.
-- `interactions/` contains paired, real-world scenarios that deliberately mix
-  records, unions, results, collections, lambdas, pipes, matching, mutation,
-  and string operations.
+- `core/` groups foundational arithmetic, collections, strings, types, and
+  mixed-feature behavior by language concept.
+- `flavors/` keeps Default/ML twins side by side and proves both spellings over
+  the same dense behavior tables.
+- `effects/` groups handler, resume, and cross-effect interactions.
+- `workflows/` contains real-world scenarios that deliberately combine several
+  language features.
+- `framework/` exercises the test framework's own special behavior.
 
 Each named test should model several interactions and make several assertions.
 Prefer asserting derived state and behavior over adding one-feature smoke tests.
+Every type, effect, helper, case, and assertion batch must have a one-line
+description: this corpus is executable language documentation.
+
+Use grouped assertions to keep dense suites readable while retaining one soft
+assertion result per condition:
+
+```osprey
+checkAll("order state", [
+    total == 42,
+    itemCount == 3,
+    paid
+])
+```
+
+`expectAll([condition, ...])` is the unlabeled equivalent. Both require a
+non-empty list literal, evaluate every condition, and continue after failures.
 
 Run the complete corpus with:
 
@@ -21,3 +40,6 @@ make language-test
 # or, after building the compiler:
 target/release/osprey test tests
 ```
+
+CI also runs every suite under the tracing GC and ARC memory backends, so moving
+a golden example here does not reduce its backend-conformance coverage.

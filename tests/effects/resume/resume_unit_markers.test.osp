@@ -1,0 +1,56 @@
+// Trace exposes a Unit-returning operation to an explicit-resume handler.
+effect Trace {
+    mark: fn(string) -> Unit
+}
+
+// This helper performs two Unit markers before returning its final value.
+fn traced() -> int !Trace = {
+    perform Trace.mark("one")
+    perform Trace.mark("two")
+    7
+}
+
+// This case verifies Unit resume syntax and reverse post-resume ordering.
+fn resumeUnitMarkersCase() = {
+    mut transcript = ""
+    mut markCount = 0
+    mut beforeLabels = ""
+    mut afterLabels = ""
+    mut finalValues = ""
+
+    let result = handle Trace
+        mark label => {
+            markCount = markCount + 1
+            beforeLabels = "${beforeLabels}${label}|"
+            transcript = "${transcript}before ${label}\n"
+            let final = resume()
+            afterLabels = "${afterLabels}${label}|"
+            finalValues = "${finalValues}${toString(final)}|"
+            transcript = "${transcript}after ${label}: final=${toString(final)}\n"
+            final
+        }
+    in traced()
+    let legacyTranscript = "${transcript}result=${toString(result)}\n"
+
+    // Preserve all five legacy lines including the reversed after-marker order.
+    checkAll("Unit-resume legacy observations", [
+        legacyTranscript == "before one\nbefore two\nafter two: final=7\nafter one: final=7\nresult=7\n",
+        startsWith(legacyTranscript, "before one\nbefore two\n"),
+        contains(legacyTranscript, "after two: final=7\n"),
+        contains(legacyTranscript, "after one: final=7\n"),
+        endsWith(legacyTranscript, "result=7\n")
+    ])
+
+    // Assert Unit operation count, entry order, unwind order, and final values.
+    checkAll("Unit-resume internal state", [
+        result == 7,
+        markCount == 2,
+        beforeLabels == "one|two|",
+        afterLabels == "two|one|",
+        finalValues == "7|7|",
+        beforeLabels != afterLabels
+    ])
+}
+
+// Register the Unit-returning explicit-resume regression.
+test("Unit operations resume and unwind in LIFO order", resumeUnitMarkersCase)

@@ -512,6 +512,7 @@ _conformance-gc:
 	@echo "==> [conformance] differential harness under --memory=gc..."
 	@out=$$(OSPREY_RUN_FLAGS=--memory=gc zsh crates/diff_examples.sh); echo "$$out"; \
 	  echo "$$out" | grep -Eq 'FAIL=0 ' || { echo 'FAIL: GC backend output diverged'; exit 1; }
+	@zsh crates/run_test_corpus.sh gc
 
 # _conformance-arc: run every tested example under the Perceus ARC backend;
 # output must be byte-identical to the default ([MEM-BACKENDS] / [GC-ARC-PERCEUS]),
@@ -523,6 +524,7 @@ _conformance-arc:
 	@out=$$(OSPREY_ARC_DEBUG=1 OSPREY_RUN_FLAGS=--memory=arc zsh crates/diff_examples.sh); echo "$$out"; \
 	  echo "$$out" | grep -Eq 'FAIL=0 '   || { echo 'FAIL: ARC backend output diverged'; exit 1; }; \
 	  echo "$$out" | grep -Eq 'ARC_LEAKY=0 ' || { echo 'FAIL: ARC leaked language values'; exit 1; }
+	@OSPREY_ARC_DEBUG=1 zsh crates/run_test_corpus.sh arc
 
 # --- vscode-extension -------------------------------------------------------
 # The extension's LSP server spawns the `osprey` binary at runtime, so the

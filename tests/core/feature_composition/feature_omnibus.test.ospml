@@ -1,30 +1,43 @@
 // ML twin of the converted feature omnibus assertion suite.
+// Priority is a payload-free union used to document exhaustive matching.
 type Pri = Low | Med | High
+// Color supplies a second union so independent matches can compose.
 type Color = Red | Green | Blue
+// Wrapped demonstrates extracting a positional union payload.
 type Wrapped = Wrapped int
 
+// Converts every priority constructor into its business weight.
 priWeight Low = 1
 priWeight Med = 5
 priWeight High = 9
+// Converts every color constructor into a stable display label.
 colorName Red = "red"
 colorName Green = "green"
 colorName Blue = "blue"
+// Exercises a call to a function declared later in the source file.
 callerOfLater _ = calleeLater 10
+// Supplies the forward-referenced arithmetic implementation.
 calleeLater n = n * 4
 
+// Unwraps a parsed integer or returns the caller's fallback.
 parseOr (text, fallback) = parseInt text ?: fallback
+// Converts both Result branches into user-facing status text.
 parseStatus text = match parseInt text
     Success value => "parsed ${value}"
     Error message => "parseInt rejected ${text}"
 
+// Counter models a handled state-changing capability with an integer payload.
 effect Counter
     increment : int => Unit
 
+// Verifies unions, Results, interpolation, arithmetic, and ordering together.
 unionsResultsAndScalars () =
     wrapped = Wrapped 42
     wrappedValue = match wrapped
         Wrapped n => n
+    // One grouped call records every former golden value plus new branch state.
     checkAll "union/result/scalar state" [
+        "=== omnibus ===" == "=== omnibus ===",
         priWeight High == 9,
         priWeight Med == 5,
         priWeight Low == 1,
@@ -39,9 +52,11 @@ unionsResultsAndScalars () =
         colorName Red != colorName Blue
     ]
 
+// Verifies forward calls, lambdas, pipelines, booleans, and union-derived data.
 functionsPipesAndBooleans () =
     chained = 5 |> (\x => x + 100) |> (\x => x * 2)
     single = 7 |> \x => x * 3
+    // The batch preserves each legacy result and asserts intermediate pipeline state.
     checkAll "function/pipe/boolean state" [
         5 == 5,
         5 != 6,
@@ -55,8 +70,10 @@ functionsPipesAndBooleans () =
         single + priWeight Med == 26
     ]
 
+// Verifies handled mutation alongside persistent lists, maps, and Result lookup.
 effectsAndCollections () =
     mut counter = 0
+    // Establishes the state precondition before any handled interaction occurs.
     checkAll "effect precondition" [counter == 0]
     handle Counter
         increment amount =>
@@ -69,25 +86,34 @@ effectsAndCollections () =
     ys = listAppend (List ()) 99
     combined = xs + ys
     m = mapSet (mapSet (Map ()) "a" 1) "b" 2
+    scoreAtOne = [85, 92, 78][1] ?: (0 - 1)
+    bananaPrice = ["apple" => 2, "banana" => 3]["banana"] ?: (0 - 1)
+    // Checks every post-handler and collection invariant without repetitive calls.
     checkAll "effect/collection state" [
         "counter ${counter}" == "counter 3",
         counter == 3,
         "list len ${listLength combined}" == "list len 4",
+        "contains 20 ${listContains xs 20}" == "contains 20 true",
         listContains xs 20,
         listLength xs == 3,
         listLength ys == 1,
         listLength combined == 4,
         "map len ${mapLength m}" == "map len 2",
+        "map has a ${mapContains m "a"}" == "map has a true",
         mapContains m "a",
         !(mapContains m "missing"),
-        ([85, 92, 78][1] ?: (0 - 1)) == 92,
-        (["apple" => 2, "banana" => 3]["banana"] ?: (0 - 1)) == 3,
+        "scores[1] ${scoreAtOne}" == "scores[1] 92",
+        scoreAtOne == 92,
+        "banana ${bananaPrice}" == "banana 3",
+        bananaPrice == 3,
         ([85, 92, 78][9] ?: (0 - 1)) == (0 - 1),
         (["apple" => 2]["pear"] ?: (0 - 1)) == (0 - 1)
     ]
 
+// Verifies string transforms while consuming values produced by other features.
 stringInteractions () =
     s = "  Hello  "
+    // Preserves all former string outputs and adds composition invariants.
     checkAll "string/composed state" [
         trim s == "Hello",
         toUpperCase s == "  HELLO  ",
@@ -99,7 +125,11 @@ stringInteractions () =
         "=== omnibus done ===" == "=== omnibus done ==="
     ]
 
+// Register the union, Result, and scalar interaction.
 test "unions, Results and scalar operations compose" unionsResultsAndScalars
+// Register the function, boolean, and pipeline interaction.
 test "functions, forward calls, booleans and pipes compose" functionsPipesAndBooleans
+// Register the effect and persistent-collection interaction.
 test "effects mutate handled state beside persistent collections" effectsAndCollections
+// Register the cross-feature string interaction.
 test "string transformations consume values from other features" stringInteractions

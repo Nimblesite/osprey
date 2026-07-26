@@ -1,0 +1,157 @@
+// High-density interaction suite moved from curry_tour, mixed, and
+// results_state_hof. It deliberately keeps cross-feature behavior together.
+
+// Increment an integer in direct calls and pipelines.
+fn tourInc(x: int) -> int = x + 1
+// Add two integers using the uncurried flavor-paired form.
+fn tourAdd(x: int, y: int) -> int = x + y
+// Square an integer in direct calls and pipelines.
+fn tourSquare(n: int) -> int = n * n
+// Capture a scale factor in a concrete returned closure.
+fn tourMakeScaler(k: int) -> (int) -> int = fn(v) => v * k
+
+// Name two integer literals and stringify the wildcard branch.
+fn tourName(n) = match n {
+    0 => "zero"
+    1 => "one"
+    _ => toString(n)
+}
+
+// Classify parity by matching a modulo-derived boolean.
+fn tourParity(n) = match n % 2 == 0 {
+    true => "even"
+    false => "odd"
+}
+
+// This case integrates arithmetic, closures, matches, pipes, and rendering.
+fn curryTourCase() = {
+    let base = tourAdd(40, 2)
+    let scaled = tourMakeScaler(3)
+
+    // Preserve all five complete curry-tour output lines byte-for-byte.
+    checkAll("curry tour legacy rendered lines", [
+        "base=${toString(base)} inc=${toString(tourInc(base))} sq=${toString(tourSquare(9))}" ==
+            "base=42 inc=43 sq=81",
+        "scaled7=${toString(scaled(7))} curry=${toString(tourAdd(5, 6))}" ==
+            "scaled7=21 curry=11",
+        "name0=${tourName(0)} name1=${tourName(1)} name9=${tourName(9)}" ==
+            "name0=zero name1=one name9=9",
+        "parity7=${tourParity(7)} parity8=${tourParity(8)}" ==
+            "parity7=odd parity8=even",
+        "pipe=${toString(10 |> tourInc |> tourSquare)}" == "pipe=121"
+    ])
+    // Split all eleven dynamic values from the five legacy lines.
+    checkAll("curry tour legacy constituent values", [
+        base == 42,
+        tourInc(base) == 43,
+        tourSquare(9) == 81,
+        scaled(7) == 21,
+        tourAdd(5, 6) == 11,
+        tourName(0) == "zero",
+        tourName(1) == "one",
+        tourName(9) == "9",
+        tourParity(7) == "odd",
+        tourParity(8) == "even",
+        (10 |> tourInc |> tourSquare) == 121
+    ])
+    // Extend zero, wildcard, closure, parity, and intermediate-pipe coverage.
+    checkAll("curry tour cross-feature edges", [
+        tourInc(0) == 1,
+        tourSquare(0) == 0,
+        tourMakeScaler(0)(9) == 0,
+        tourName(2) == "2",
+        tourParity(0) == "even",
+        (10 |> tourInc) == 11
+    ])
+}
+
+// Capture a multiplier for the concise mixed-feature workflow.
+fn mixedScale(k: int) -> (int) -> int = fn(v) => v * k
+// Advance an integer by one for direct and piped calls.
+fn mixedStep(x: int) -> int = x + 1
+
+// Classify zero and positive values separately from negative values.
+fn mixedSign(n: int) -> string = match n >= 0 {
+    true => "pos"
+    false => "neg"
+}
+
+// This case composes a closure, pipeline, match, binding, and interpolation.
+fn mixedFeaturesCase() = {
+    let base = 7
+    let triple = mixedScale(3)
+    let piped = base |> mixedStep |> mixedStep
+
+    // Preserve the complete mixed-feature golden line.
+    checkAll("mixed features legacy rendered lines", [
+        "triple=${triple(base)} piped=${piped} sign=${mixedSign(base)} mix=${triple(mixedStep(base))}" ==
+            "triple=21 piped=9 sign=pos mix=24"
+    ])
+    // Split all four dynamic values from the combined line.
+    checkAll("mixed features legacy constituent values", [
+        triple(base) == 21,
+        piped == 9,
+        mixedSign(base) == "pos",
+        triple(mixedStep(base)) == 24
+    ])
+    // Extend sign boundaries, closure factors, and intermediate pipeline state.
+    checkAll("mixed features interaction edges", [
+        mixedSign(0) == "pos",
+        mixedSign(0 - 1) == "neg",
+        mixedScale(0)(99) == 0,
+        (base |> mixedStep) == 8,
+        mixedScale(2)(5) == 10
+    ])
+}
+
+// Unwrap a successful modulo Result and map errors to the legacy sentinel.
+fn resultSafeMod(a, b) = match a % b {
+    Success { value } => value
+    Error { message } => -1
+}
+
+// Apply a concrete integer function twice.
+fn resultTwice(f: (int) -> int, x: int) = f(f(x))
+// Add ten as the first-class function passed to resultTwice.
+fn resultBump(x) = x + 10
+// Capture one operand in a genuinely curried addition closure.
+fn resultAdder(a: int) -> (int) -> int = fn(b) => a + b
+
+// This case composes Result matching, bindings, HOFs, and partial application.
+fn resultsStateHigherOrderCase() = {
+    let rem = resultSafeMod(17, 5)
+    let total = rem
+    let addTen = resultAdder(10)
+
+    // Preserve all three complete Result/HOF output lines.
+    checkAll("Result and higher-order legacy rendered lines", [
+        "rem17_5=${toString(total)} rem20_7=${toString(resultSafeMod(20, 7))}" ==
+            "rem17_5=2 rem20_7=6",
+        "twiceBump5=${toString(resultTwice(resultBump, 5))}" == "twiceBump5=25",
+        "addTen32=${toString(addTen(32))} direct=${toString(resultAdder(7)(8))}" ==
+            "addTen32=42 direct=15"
+    ])
+    // Split the five dynamic values from those legacy lines.
+    checkAll("Result and higher-order legacy constituent values", [
+        total == 2,
+        resultSafeMod(20, 7) == 6,
+        resultTwice(resultBump, 5) == 25,
+        addTen(32) == 42,
+        resultAdder(7)(8) == 15
+    ])
+    // Exercise the error branch, zero remainder, repeated calls, and captures.
+    checkAll("Result and higher-order branch edges", [
+        resultSafeMod(5, 0) == -1,
+        resultSafeMod(20, 5) == 0,
+        resultTwice(resultBump, 0) == 20,
+        resultAdder(0)(9) == 9,
+        resultAdder(0 - 5)(5) == 0
+    ])
+}
+
+// Register the broad curry-tour interaction scenario.
+test("curry tour retains all closure match and pipe outputs", curryTourCase)
+// Register the concise mixed-feature interaction scenario.
+test("mixed workflow composes closure match pipe and interpolation", mixedFeaturesCase)
+// Register the Result and higher-order interaction scenario.
+test("Result workflow covers success error HOF and partial application", resultsStateHigherOrderCase)

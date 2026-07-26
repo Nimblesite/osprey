@@ -1,0 +1,323 @@
+// Assertion-driven migration of the persistent List golden example.
+
+// IterationProbe records callback values so forEachList order is testable without stdout.
+effect IterationProbe { observe: fn(int) -> Unit }
+
+// appendThrough builds inclusive integer ranges while preserving every prior list version.
+fn appendThrough(xs: List<int>, next: int, last: int) -> List<int> = match next > last {
+    true => xs
+    false => appendThrough(listAppend(xs, next), next + 1, last)
+}
+
+// classify exercises exact-length, singleton, pair, and head-tail list patterns.
+fn classify(xs: List<int>) -> string = match xs {
+    [] => "empty"
+    [single] => "one(${single})"
+    [first, second] => "two(${first},${second})"
+    [head, ...tail] => "many head=${head} rest=${listLength(tail)}"
+}
+
+// sumList proves recursive head-tail destructuring retains every element.
+fn sumList(xs: List<int>) -> int = match xs {
+    [] => 0
+    [head, ...tail] => head + sumList(tail)
+}
+
+// restLen exercises a wildcard prefix followed by a captured list tail.
+fn restLen(xs: List<int>) -> int = match xs {
+    [_, second, ...rest] => listLength(rest)
+    _ => 0
+}
+
+// encodeIteration folds callback order into a base-100 integer through a handled effect.
+fn encodeIteration(xs: List<int>) -> int = {
+    mut encoded = 0
+    handle IterationProbe
+        observe value => { encoded = encoded * 100 + value }
+    in {
+        forEachList(xs, fn(value) => perform IterationProbe.observe(value))
+    }
+    encoded
+}
+
+// constructionAndIdentityCase preserves all legacy construction, identity, reverse, prepend, and contains observations.
+fn constructionAndIdentityCase() = {
+    let empty = List()
+    let a = listAppend(listAppend(listAppend(List(), 1), 2), 3)
+    let b = listAppend(listAppend(List(), 10), 20)
+    let reversed = listReverse(a)
+    let restored = listReverse(reversed)
+    let prepended = listPrepend(a, 0)
+    let concatenated = listConcat(a, b)
+    let emptyPlusA = empty + a
+    let aPlusEmpty = a + empty
+    let doubledA = a + a
+    let abPlusA = a + b + a
+
+    // Every legacy length observation remains an independent assertion.
+    checkAll("legacy construction and operation lengths", [
+        listLength(empty) == 0,
+        listLength(a) == 3,
+        listLength(b) == 2,
+        listLength(reversed) == 3,
+        listLength(restored) == 3,
+        listLength(concatenated) == 5,
+        listLength(listConcat(empty, a)) == 3,
+        listLength(listConcat(a, empty)) == 3,
+        listLength(a + a) == 6,
+        listLength(a + b + a) == 8,
+        listLength(prepended) == 4,
+        listLength(a) == 3
+    ])
+
+    // Constituent checks ensure the old length-only observations cannot hide corrupt contents.
+    checkAll("construction and reverse contents", [
+        (listGet(a, 0) ?: (0 - 999)) == 1,
+        (listGet(a, 1) ?: (0 - 999)) == 2,
+        (listGet(a, 2) ?: (0 - 999)) == 3,
+        (listGet(b, 0) ?: (0 - 999)) == 10,
+        (listGet(b, 1) ?: (0 - 999)) == 20,
+        (listGet(reversed, 0) ?: (0 - 999)) == 3,
+        (listGet(reversed, 1) ?: (0 - 999)) == 2,
+        (listGet(reversed, 2) ?: (0 - 999)) == 1,
+        (listGet(restored, 0) ?: (0 - 999)) == 1,
+        (listGet(restored, 1) ?: (0 - 999)) == 2,
+        (listGet(restored, 2) ?: (0 - 999)) == 3,
+        (listGet(prepended, 0) ?: (0 - 999)) == 0,
+        (listGet(prepended, 1) ?: (0 - 999)) == 1,
+        (listGet(prepended, 2) ?: (0 - 999)) == 2,
+        (listGet(prepended, 3) ?: (0 - 999)) == 3
+    ])
+
+    // Concatenation identities and the operator alias are checked at their seams and endpoints.
+    checkAll("concat identities and boundaries", [
+        (listGet(concatenated, 0) ?: (0 - 999)) == 1,
+        (listGet(concatenated, 2) ?: (0 - 999)) == 3,
+        (listGet(concatenated, 3) ?: (0 - 999)) == 10,
+        (listGet(concatenated, 4) ?: (0 - 999)) == 20,
+        (listGet(emptyPlusA, 0) ?: (0 - 999)) == 1,
+        (listGet(aPlusEmpty, 2) ?: (0 - 999)) == 3,
+        (listGet(doubledA, 3) ?: (0 - 999)) == 1,
+        (listGet(abPlusA, 5) ?: (0 - 999)) == 1,
+        (listGet(abPlusA, 7) ?: (0 - 999)) == 3
+    ])
+
+    // All three legacy contains results survive alongside additional positive and endpoint checks.
+    checkAll("contains behavior", [
+        listContains(a, 2),
+        !listContains(a, 99),
+        !listContains(List(), 1),
+        listContains(a, 1),
+        listContains(a, 3),
+        listContains(concatenated, 10),
+        listContains(concatenated, 20),
+        !listContains(prepended, 99)
+    ])
+}
+
+// iterationAndPersistenceCase preserves callback order plus every generation and branch observation.
+fn iterationAndPersistenceCase() = {
+    let a = listAppend(listAppend(listAppend(List(), 1), 2), 3)
+    let reversed = listReverse(a)
+    let b = listAppend(listAppend(List(), 10), 20)
+    let combined = a + b
+    let g0 = List()
+    let g1 = listAppend(g0, 10)
+    let g2 = listAppend(g1, 20)
+    let g3 = listAppend(g2, 30)
+    let g4 = listAppend(g3, 40)
+    let g5 = listAppend(g4, 50)
+    let x = listAppend(g3, 999)
+    let y = listAppend(g3, 888)
+    let y2 = listAppend(y, 777)
+
+    // Callback encodings preserve every legacy forEachList sequence and its exact order.
+    checkAll("forEachList iteration order", [
+        encodeIteration(a) == 10203,
+        encodeIteration(reversed) == 30201,
+        encodeIteration(combined) == 102031020
+    ])
+
+    // One condition per formerly printed iteration value keeps the golden observations explicit.
+    checkAll("iteration constituent values", [
+        (listGet(a, 0) ?: (0 - 999)) == 1,
+        (listGet(a, 1) ?: (0 - 999)) == 2,
+        (listGet(a, 2) ?: (0 - 999)) == 3,
+        (listGet(reversed, 0) ?: (0 - 999)) == 3,
+        (listGet(reversed, 1) ?: (0 - 999)) == 2,
+        (listGet(reversed, 2) ?: (0 - 999)) == 1,
+        (listGet(combined, 0) ?: (0 - 999)) == 1,
+        (listGet(combined, 1) ?: (0 - 999)) == 2,
+        (listGet(combined, 2) ?: (0 - 999)) == 3,
+        (listGet(combined, 3) ?: (0 - 999)) == 10,
+        (listGet(combined, 4) ?: (0 - 999)) == 20
+    ])
+
+    // The six generation lengths, retained g2 length, and all branch lengths mirror the old golden.
+    checkAll("persistent generation and branch lengths", [
+        listLength(g0) == 0,
+        listLength(g1) == 1,
+        listLength(g2) == 2,
+        listLength(g3) == 3,
+        listLength(g4) == 4,
+        listLength(g5) == 5,
+        listLength(g2) == 2,
+        listLength(x) == 4,
+        listLength(y) == 4,
+        listLength(y2) == 5,
+        listLength(g3) == 3
+    ])
+
+    // Added content checks prove later generations and sibling branches do not mutate their ancestors.
+    checkAll("persistent generation and branch contents", [
+        !listContains(g0, 10),
+        listContains(g1, 10),
+        !listContains(g1, 20),
+        listContains(g2, 10),
+        listContains(g2, 20),
+        !listContains(g2, 30),
+        listContains(g5, 10),
+        listContains(g5, 50),
+        !listContains(g2, 50),
+        listContains(x, 999),
+        !listContains(x, 888),
+        listContains(y, 888),
+        !listContains(y, 999),
+        listContains(y2, 777),
+        !listContains(y, 777),
+        !listContains(g3, 999),
+        !listContains(g3, 888),
+        !listContains(g3, 777),
+        (listGet(g5, 4) ?: (0 - 999)) == 50,
+        (listGet(y2, 3) ?: (0 - 999)) == 888,
+        (listGet(y2, 4) ?: (0 - 999)) == 777
+    ])
+}
+
+// tailBoundaryCase retains the 10/20/30/35 generations and probes both sides of the 32-element tail boundary.
+fn tailBoundaryCase() = {
+    let t = appendThrough(List(), 1, 10)
+    let t2 = appendThrough(t, 11, 20)
+    let t3 = appendThrough(t2, 21, 30)
+    let t4 = appendThrough(t3, 31, 35)
+    let reversed = listReverse(t4)
+    let doubled = listConcat(t4, t4)
+
+    // All six legacy tail-boundary length observations remain independent.
+    checkAll("tail boundary legacy lengths", [
+        listLength(t) == 10,
+        listLength(t2) == 20,
+        listLength(t3) == 30,
+        listLength(t4) == 35,
+        listLength(reversed) == 35,
+        listLength(doubled) == 70
+    ])
+
+    // Boundary indices assert actual content before, at, and after the 32-element trie tail split.
+    checkAll("tail boundary contents", [
+        (listGet(t, 0) ?: (0 - 999)) == 1,
+        (listGet(t, 9) ?: (0 - 999)) == 10,
+        (listGet(t2, 10) ?: (0 - 999)) == 11,
+        (listGet(t2, 19) ?: (0 - 999)) == 20,
+        (listGet(t3, 29) ?: (0 - 999)) == 30,
+        (listGet(t4, 30) ?: (0 - 999)) == 31,
+        (listGet(t4, 31) ?: (0 - 999)) == 32,
+        (listGet(t4, 32) ?: (0 - 999)) == 33,
+        (listGet(t4, 34) ?: (0 - 999)) == 35,
+        (listGet(reversed, 0) ?: (0 - 999)) == 35,
+        (listGet(reversed, 2) ?: (0 - 999)) == 33,
+        (listGet(reversed, 3) ?: (0 - 999)) == 32,
+        (listGet(reversed, 34) ?: (0 - 999)) == 1,
+        (listGet(doubled, 34) ?: (0 - 999)) == 35,
+        (listGet(doubled, 35) ?: (0 - 999)) == 1,
+        (listGet(doubled, 69) ?: (0 - 999)) == 35,
+        listLength(t3) == 30,
+        !listContains(t3, 31),
+        sumList(t) == 55,
+        sumList(t4) == 630
+    ])
+}
+
+// indexingPatternsAndDispatchCase preserves Result indexing, list patterns, recursion, and receiver-directed builtins.
+fn indexingPatternsAndDispatchCase() = {
+    let commands = ["echo hello", "echo world", "echo test"]
+    let empty: List<string> = []
+    let a = listAppend(listAppend(listAppend(List(), 1), 2), 3)
+    let b = listAppend(listAppend(List(), 10), 20)
+    let singleton = listAppend(List(), 7)
+    let short = listAppend(List(), 9)
+    let pair = listAppend(short, 8)
+    let four = listAppend(listAppend(pair, 7), 6)
+    let patternFour = listAppend(listAppend(listAppend(listAppend(List(), 4), 5), 6), 7)
+    let t = appendThrough(List(), 1, 10)
+    let dispatchFive = listAppend(listAppend(listAppend(listAppend(listAppend(List(), 1), 2), 3), 4), 5)
+    let dispatchTen = listConcat(dispatchFive, dispatchFive)
+    let dispatchTwenty = listConcat(dispatchTen, dispatchTen)
+    let dispatchThirty = listConcat(dispatchTwenty, dispatchTen)
+    let dispatchThirtyFive = listConcat(dispatchThirty, dispatchFive)
+    let commandOob = match commands[5] {
+        Success { value } => false
+        Error { message } => message == "index out of bounds"
+    }
+    let emptyOob = match empty[0] {
+        Success { value } => false
+        Error { message } => message == "index out of bounds"
+    }
+
+    // Successful and failing index paths retain all four legacy observations and exact failure reasons.
+    checkAll("list index Result behavior", [
+        (commands[0] ?: "missing") == "echo hello",
+        (commands[2] ?: "missing") == "echo test",
+        commandOob,
+        emptyOob,
+        (commands[1] ?: "missing") == "echo world",
+        listLength(commands) == 3,
+        listLength(empty) == 0
+    ])
+
+    // Every legacy classify, recursive sum, and wildcard-rest result remains directly asserted.
+    checkAll("list pattern and recursion results", [
+        classify(List()) == "empty",
+        classify(b) == "two(10,20)",
+        classify(a) == "many head=1 rest=2",
+        classify(singleton) == "one(7)",
+        sumList(a) == 6,
+        sumList(t) == 55,
+        restLen(a) == 1,
+        restLen(short) == 0,
+        restLen(pair) == 0,
+        restLen(four) == 2,
+        classify(patternFour) == "many head=4 rest=3"
+    ])
+
+    // The old composite bare-length row is split into one condition per receiver.
+    checkAll("receiver-directed length dispatch", [
+        length(a) == 3,
+        length(dispatchThirtyFive) == 35,
+        length("abcd") == 4,
+        length(empty) == 0,
+        length("") == 0
+    ])
+
+    // The old composite bare-isEmpty row is split and extended across derived lists.
+    checkAll("receiver-directed isEmpty dispatch", [
+        isEmpty(empty),
+        !isEmpty(a),
+        isEmpty(""),
+        !isEmpty("abcd"),
+        !isEmpty(listReverse(a)),
+        isEmpty(listConcat(empty, empty))
+    ])
+}
+
+// Register the construction, identity, and content scenario.
+test("lists construct, reverse, prepend, concatenate, and retain contents", constructionAndIdentityCase)
+
+// Register the traversal, persistence, and branching scenario.
+test("list iteration and persistent branches retain order and isolation", iterationAndPersistenceCase)
+
+// Register the 32-element structural boundary scenario.
+test("lists preserve content across the 32-element tail boundary", tailBoundaryCase)
+
+// Register Result indexing, patterns, recursion, and builtin dispatch together.
+test("list indexing, patterns, recursion, and receiver dispatch compose", indexingPatternsAndDispatchCase)

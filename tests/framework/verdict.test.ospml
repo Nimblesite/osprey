@@ -1,4 +1,4 @@
-// The pure Verdict model's Pass and Skip states end to end.
+// Verdict represents pure pass, failure, and precondition-skip outcomes.
 type Verdict =
     Pass
     Fail
@@ -6,28 +6,36 @@ type Verdict =
     Skip
         why : string
 
+// Builds a Verdict from a labeled equality comparison.
 checkVerdict (label, expected, actual) = match expected == actual
     true => Pass
     false => Fail(reason = "${label}: expected ${expected}, got ${actual}")
 
+// Turns a precondition into either permission to proceed or a skip.
 assume cond = match cond
     true => Pass
     false => Skip(why = "precondition not met")
 
+// Retains the first failure/skip or advances from Pass to the next result.
 andThen first rest = match first
     Pass => rest
     Fail reason => Fail(reason = reason)
     Skip why => Skip(why = why)
 
+// Adds two integers for the composed Verdict examples.
 add (a, b) = a + b
 
+// Folds arithmetic, interpolation, and boolean checks into one passing Verdict.
 passingCase () =
     arithmetic = andThen (checkVerdict ("sum", 5, add (2, 3))) (checkVerdict ("difference", 2, add (5, -3)))
     text = andThen (checkVerdict ("interpolation", "total=8", "total=${add (3, 5)}")) (checkVerdict ("bool", true, 3 < 5))
     andThen arithmetic text
 
+// Proves an unmet precondition survives later eager evaluation as Skip.
 skippedCase () =
     andThen (assume (2 > 3)) (checkVerdict ("ignored after skip", 0, 1))
 
+// Register the all-pass Verdict composition.
 test "pass folds several good interactions" passingCase
+// Register the precondition-skip behavior.
 test "skip preserves an unmet precondition" skippedCase

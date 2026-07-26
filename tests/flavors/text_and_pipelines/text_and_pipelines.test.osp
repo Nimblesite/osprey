@@ -1,22 +1,29 @@
-// Assertion-driven move of examples/tested/ml/{pipechain,strings}.osp.
+// Assertion-driven replacement for the former pipeline and string goldens.
 
+// Increment a pipeline value by one.
 fn pipeInc(x: int) -> int = x + 1
+// Double a pipeline value.
 fn pipeDouble(x: int) -> int = x + x
+// Square a pipeline value.
 fn pipeSquare(x: int) -> int = x * x
 
+// This case documents left-to-right pipe threading and nested-call equivalence.
 fn pipeChainCase() = {
     let p1 = 5 |> pipeInc |> pipeDouble
     let p2 = 3 |> pipeDouble |> pipeSquare |> pipeInc
     let p3 = 10 |> pipeInc |> pipeInc |> pipeDouble
 
+    // Preserve the complete three-pipeline golden line.
     checkAll("pipe chain legacy rendered lines", [
         "p1=${p1} p2=${p2} p3=${p3}" == "p1=12 p2=37 p3=24"
     ])
+    // Split the three final pipeline values into independent assertions.
     checkAll("pipe chain legacy constituent values", [
         p1 == 12,
         p2 == 37,
         p3 == 24
     ])
+    // Exercise intermediate stages, zero input, and a different stage order.
     checkAll("pipe chain composition edges", [
         (5 |> pipeInc) == 6,
         p1 == pipeDouble(pipeInc(5)),
@@ -25,23 +32,29 @@ fn pipeChainCase() = {
     ])
 }
 
+// Append an exclamation mark to a string.
 fn stringShout(s) = s + "!"
+// Prefix a name with the legacy greeting.
 fn stringGreet(who) = "Hi " + who
 
+// This case documents bindings, nested calls, concatenation, and interpolation.
 fn stringsCase() = {
     let name = "Ada"
     let hello = stringGreet(name)
 
+    // Preserve the complete strings golden line byte-for-byte.
     checkAll("strings legacy rendered lines", [
         "plain=${hello} loud=${stringShout(hello)} both=${stringShout(stringGreet(name))} concat=${hello + name}" ==
             "plain=Hi Ada loud=Hi Ada! both=Hi Ada! concat=Hi AdaAda"
     ])
+    // Split all four dynamic string values into independent assertions.
     checkAll("strings legacy constituent values", [
         hello == "Hi Ada",
         stringShout(hello) == "Hi Ada!",
         stringShout(stringGreet(name)) == "Hi Ada!",
         hello + name == "Hi AdaAda"
     ])
+    // Exercise empty inputs, equivalent nested calls, and reversed concatenation.
     checkAll("strings composition edges", [
         stringGreet("") == "Hi ",
         stringShout("") == "!",
@@ -50,5 +63,7 @@ fn stringsCase() = {
     ])
 }
 
+// Register the pipeline composition scenario.
 test("pipelines retain each stage and complete chain", pipeChainCase)
+// Register the string composition scenario.
 test("string calls retain interpolation and concatenation", stringsCase)

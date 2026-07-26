@@ -1077,19 +1077,18 @@ suite("Osprey Language Features Tests", () => {
     );
   });
 
-  test("CHUNKY: hover + symbols work on the ACTUAL reported list_basics.osp file", async function () {
+  test("CHUNKY: hover + symbols work on the actual list corpus file", async function () {
     this.timeout(60000);
     // Open the very file the user reported ("Hover doesnt work!") straight from
     // the repository and prove the language features answer over it. extensionRoot
-    // is <repo>/vscode-extension; the example lives under examples.
+    // is <repo>/vscode-extension; the assertion corpus lives under tests.
     const reported = path.resolve(
       extensionRoot,
       "..",
-      "examples",
-      "tested",
-      "basics",
-      "lists",
-      "list_basics.osp",
+      "tests",
+      "core",
+      "collections",
+      "list_basics.test.osp",
     );
     assert.ok(
       fs.existsSync(reported),

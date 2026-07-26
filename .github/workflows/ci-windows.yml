@@ -97,7 +97,7 @@ jobs:
           echo "OSPREY_CC=$CC_PATH" >> "$GITHUB_ENV"
 
       # fiber_showcase exercises spawn/await/yield/channels/select — i.e. the
-      # winpthreads-backed fiber runtime. feature_omnibus covers lists/maps/
+      # winpthreads-backed fiber runtime. The feature omnibus covers lists/maps/
       # strings/pattern-matching. Neither uses HTTP, so both are valid core
       # Windows smoke tests; clang resolves to the MSYS2 LLVM inside this shell.
       - name: Smoke test — fiber showcase
@@ -110,11 +110,11 @@ jobs:
           grep -Fq "map-reduce total = 1400" out.txt
           grep -Fq "pipeline = 200" out.txt
 
-      - name: Smoke test — feature omnibus
+      - name: Smoke test — feature omnibus assertion suite
         shell: msys2 {0}
         run: |
           set -euo pipefail
-          ./target/release/osprey.exe examples/tested/basics/feature_omnibus.osp --run --quiet > omni.txt
+          ./target/release/osprey.exe tests/core/feature_composition/feature_omnibus.test.osp --run --quiet > omni.txt
           cat omni.txt
 
       # The root corpus recursively exercises both Default and ML programs with

@@ -1,22 +1,26 @@
-// Assertion-driven move of examples/tested/ml/{arith,booleans}.osp.
+// Assertion-driven replacement for the former arithmetic and boolean goldens.
 // Each case keeps the complete legacy output line, checks every value embedded
 // in it, and then extends the behavioral boundary.
 
+// This case documents precedence, grouping, and the four migrated expressions.
 fn arithmeticOperatorsCase() = {
     let a = 2 + 3 * 4
     let b = (2 + 3) * 4
     let c = 20 - 6 * 2
     let d = 2 * 3 + 4 * 5
 
+    // Preserve the complete arithmetic output line as one exact value.
     checkAll("arithmetic legacy rendered lines", [
         "a=${a} b=${b} c=${c} d=${d}" == "a=14 b=20 c=8 d=26"
     ])
+    // Check every number that was embedded in the old output line separately.
     checkAll("arithmetic legacy constituent values", [
         a == 14,
         b == 20,
         c == 8,
         d == 26
     ])
+    // Extend coverage across associativity, grouping, zero, and negative results.
     checkAll("arithmetic precedence edge cases", [
         20 - 6 - 2 == 12,
         20 - (6 - 2) == 16,
@@ -25,14 +29,17 @@ fn arithmeticOperatorsCase() = {
     ])
 }
 
+// This case documents literals, logical operators, comparisons, and composition.
 fn booleanOperatorsCase() = {
     let t = true
     let f = false
 
+    // Preserve the complete boolean output line with its original formatting.
     checkAll("boolean legacy rendered lines", [
         "and=${t && f} or=${t || f} not=${!t} lt=${3 < 5} ge=${5 >= 5} eq=${4 == 4} chain=${(3 < 5) && !(2 > 9)}" ==
             "and=false or=true not=false lt=true ge=true eq=true chain=true"
     ])
+    // Check all seven boolean results that the golden line previously combined.
     checkAll("boolean legacy constituent values", [
         (t && f) == false,
         (t || f) == true,
@@ -42,6 +49,7 @@ fn booleanOperatorsCase() = {
         (4 == 4) == true,
         ((3 < 5) && !(2 > 9)) == true
     ])
+    // Exercise complementary truth values and a composed true expression.
     checkAll("boolean composition edge cases", [
         !f == true,
         (5 < 3) == false,
@@ -50,5 +58,7 @@ fn booleanOperatorsCase() = {
     ])
 }
 
+// Register the arithmetic documentation scenario.
 test("operator precedence retains every arithmetic golden", arithmeticOperatorsCase)
+// Register the boolean documentation scenario.
 test("boolean composition retains every logical golden", booleanOperatorsCase)
