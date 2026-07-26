@@ -26,7 +26,7 @@ fetch client path =
             body = match httpResponseBody value
                 Success text => text
                 Error message => "(no body)"
-            freed = httpResponseFree value
+            freed = httpResponseFree value ?: 0
             body
         Error message => "GET ${path} failed"
 
@@ -69,7 +69,8 @@ table id count = match id > count
     false =>
         account = Account(id = id, owner = perform Ledger::Store.owner id, balance = perform Ledger::Store.balance id)
         print (Accounts::row account)
-        table (id + 1) count
+        next = (id + 1) ?: count
+        table next count
 
 serve : Ptr -> int ! [Ledger::Store, Metrics::MetricsFx]
 serve db =

@@ -8,6 +8,7 @@
 use crate::builder::Codegen;
 use crate::conv::box_to_i64;
 use crate::effects::unbox_coro_value;
+use crate::error::{CodegenError, Result};
 use crate::llty::{LType, Value};
 use crate::types::{ltype_of, owner_name, result_inner};
 use osprey_ast::Position;
@@ -41,31 +42,35 @@ pub(crate) fn runtime_effect_key(effect: &str, args: &[Type]) -> String {
     format!("{effect}${}", rendered.join("$"))
 }
 
-/// Box a value crossing an erased operation slot, losslessly: floats bitcast
-/// (never `fptosi`), pointers/strings `ptrtoint`, and a `Result` value whose
-/// resolved slot type is the unwrapped payload auto-unwraps first (the same
-/// value-site rule assignability applied during checking).
-pub(crate) fn box_erased(cg: &mut Codegen, value: Value, resolved: Option<&Type>) -> Value {
-    let slot_is_result = resolved.is_some_and(|t| result_inner(t).is_some());
-    let value = if value.result_inner.is_some() && !slot_is_result {
-        crate::result::unwrap(cg, value)
-    } else {
-        value
-    };
-    box_raw_value(cg, value)
+/// Adapt a value to an erased operation slot's resolved semantic type without
+/// boxing it yet. Keeping this separate lets escaping handler returns retain the
+/// adapted value itself, including a newly-created `Success` block.
+pub(crate) fn adapt_erased(
+    cg: &mut Codegen,
+    value: Value,
+    resolved: Option<&Type>,
+) -> Result<Value> {
+    let expected_inner = resolved.and_then(result_inner);
+    match (value.result_inner, expected_inner) {
+        (Some(_), None) if resolved.is_some() => Err(CodegenError::invalid(
+            "cannot pass an unhandled Result through a plain effect slot",
+        )),
+        (Some(_), Some(inner)) => crate::result::repack_to_inner(cg, value, inner),
+        (None, Some(inner)) => crate::result::make_ok(cg, value, inner),
+        _ => Ok(value),
+    }
 }
 
-/// Box a codegen value without applying any Result auto-unwrap coercion.
-/// Callers that require the value-site coercion do that before entering here.
+/// Box a value crossing an erased operation slot without losing a `Result`.
+/// Floats bitcast (never `fptosi`) and pointers/strings use `ptrtoint`.
+pub(crate) fn box_erased(cg: &mut Codegen, value: Value, resolved: Option<&Type>) -> Result<Value> {
+    let value = adapt_erased(cg, value, resolved)?;
+    Ok(box_raw_value(cg, value))
+}
+
+/// Box a codegen value exactly as represented, including the complete Result
+/// block when present.
 pub(crate) fn box_raw_value(cg: &mut Codegen, value: Value) -> Value {
-    if value.result_inner.is_some() {
-        let ptr = cg.emit_reg(format!(
-            "bitcast {} {} to i8*",
-            value.llvm_ty(),
-            value.operand
-        ));
-        return box_to_i64(cg, Value::new(ptr, LType::Ptr));
-    }
     box_to_i64(cg, value)
 }
 

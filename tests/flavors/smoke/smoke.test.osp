@@ -7,12 +7,12 @@ fn helloSmokeCase() = {
     // Reconstruct both complete legacy lines byte-for-byte as string values.
     checkAll("hello legacy rendered lines", [
             greeting == "Hello from the ML flavor",
-            "2 + 3 = ${2 + 3}" == "2 + 3 = 5"
+            "2 + 3 = ${2 + 3}" == "2 + 3 = Success(5)"
     ])
     // Split the two dynamic constituents from their rendered presentation.
     checkAll("hello legacy constituent values", [
             greeting == "Hello from the ML flavor",
-            2 + 3 == 5
+            (2 + 3 ?: 0) == 5
     ])
     // Confirm useful boundaries of the greeting rather than only whole equality.
     checkAll("hello greeting edge cases", [

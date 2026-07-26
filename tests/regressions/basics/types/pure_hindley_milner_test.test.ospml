@@ -20,8 +20,8 @@ print "=== HINDLEY-MILNER TEST ==="
 print "Test 1: Function type inference from usage"
 (** These functions have NO explicit types - all inferred! *)
 identity x = x
-add (a, b) = a + b
-concat (s1, s2) = s1 + s2
+add (a, b) = a + b ?: 0
+concat (s1, s2) = join [s1, s2] ""
 negate x = !x
 
 (** Usage drives monomorphization *)
@@ -77,8 +77,8 @@ print ""
 
 // Test 5: Complex HM inference with field access
 print "Test 5: Complex field access inference"
-distance p = p.x * p.x + p.y * p.y
-combine c = c.value + c.label
+distance p = p.x * p.x + p.y * p.y ?: 0
+combine c = join [c.value, c.label] ""
 
 numPoint = Point(x = 3, y = 4)
 textContainer = Container(value = "hello", label = "world")
@@ -209,8 +209,8 @@ print ""
 print "Test 11: Type equality and String methods"
 
 (** This will exercise the String() and Equals() methods on various types *)
-typeTest1 x = x * 2
-typeTest2 s = s + s
+typeTest1 x = x * 2 ?: 0
+typeTest2 s = join [s, s] ""
 typeTest3 b = !b
 
 typeResult1 = typeTest1 21

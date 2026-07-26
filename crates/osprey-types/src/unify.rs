@@ -6,8 +6,8 @@
 //!     `Fiber`, `Channel`) unifies with any parameterization of itself
 //!     (`List<T>`);
 //!   * structural record unification by field name+type;
-//!   * Result auto-unwrap at assignment sites (spec 0004), via
-//!     [`unify_assignable`].
+//!   * directional assignability, including safe implicit `Success` wrapping,
+//!     via [`unify_assignable`].
 
 use crate::ctx::InferCtx;
 use crate::error::TypeError;
@@ -78,29 +78,6 @@ pub fn unify(ctx: &mut InferCtx, a: &Type, b: &Type) -> Result<(), TypeError> {
     }
 }
 
-/// Osprey's Result auto-unwrap rule: a `Result<T, E>` value is assignable where
-/// a concrete (non-Result) `T` is expected. Used at call arguments, return
-/// positions and annotated lets, never inside plain `unify`.
-/// The Result auto-unwrap step: when `concrete` is a non-Result, non-var type
-/// and `candidate` is a `Result<inner, _>`, unify `concrete` with `inner` and
-/// return `Some(outcome)`; otherwise `None` so the caller keeps going.
-fn try_unwrap_result(
-    ctx: &mut InferCtx,
-    concrete: &Type,
-    candidate: &Type,
-) -> Option<Result<(), TypeError>> {
-    if !matches!(concrete, Type::Var(_)) && !concrete.is_named(names::RESULT) {
-        if let Type::Con { name, args } = candidate {
-            if name == names::RESULT {
-                if let Some(inner) = args.first() {
-                    return Some(unify(ctx, concrete, inner));
-                }
-            }
-        }
-    }
-    None
-}
-
 pub fn unify_assignable(
     ctx: &mut InferCtx,
     expected: &Type,
@@ -108,11 +85,7 @@ pub fn unify_assignable(
 ) -> Result<(), TypeError> {
     let expected = ctx.prune(expected);
     let actual = ctx.prune(actual);
-    // Unwrap: a `Result<T, E>` value satisfies a concrete `T`.
-    if let Some(r) = try_unwrap_result(ctx, &expected, &actual) {
-        return r;
-    }
-    // Wrap: a bare `T` value satisfies a `Result<T, E>` return (implicit
+    // A bare `T` value satisfies a `Result<T, E>` slot (implicit
     // `Success`), e.g. `fn f() -> Result<bool, E> = x > 0`.
     if let Type::Con { name, args } = &expected {
         if name == names::RESULT
@@ -124,13 +97,10 @@ pub fn unify_assignable(
             }
         }
     }
-    // Function values unify assignably in both positions: the return is
-    // covariant (a lambda inferring `(int) -> Result<int, MathError>`
-    // satisfies a slot declared `(int) -> int`, the same auto-unwrap a named
-    // function's body enjoys) and parameters match assignably with the roles
-    // flipped (the slot's parameter is the value the callee will receive, so
-    // a `(int) -> _` lambda accepts a slot passing `Result<int, MathError>`
-    // elements — they travel unwrapped at value sites).
+    // Function values unify assignably in both positions: returns are
+    // covariant and parameters match assignably with the roles flipped. The
+    // recursive calls retain the one safe coercion above (bare T -> Success),
+    // while Result -> T is rejected in every direction.
     if let (
         Type::Fun {
             params: ep,
@@ -161,12 +131,9 @@ pub fn unify_assignable(
 }
 
 /// Match a constructor's expected/actual argument lists under the declared
-/// per-parameter variance. The leaves use EXACT unification, never the
-/// coercive assignability rules: Result auto-unwrap is a representation-
-/// changing coercion codegen emits only at direct value sites, so admitting
-/// it under a container would accept values whose stored representation is
-/// wrong. Directional recursion continues only through variance-declared
-/// constructors. Implements [TYPE-VARIANCE-ASSIGN].
+/// per-parameter variance. The leaves use EXACT unification; the directional
+/// bare-to-Result Success coercion is representation-changing and therefore
+/// applies only at direct value sites. Implements [TYPE-VARIANCE-ASSIGN].
 fn unify_args_with_variance(
     ctx: &mut InferCtx,
     expected: &[Type],
@@ -289,28 +256,7 @@ fn unify_fun(
     for (x, y) in p1.iter().zip(p2) {
         unify(ctx, x, y)?;
     }
-    unify_fn_return(ctx, r1, r2)
-}
-
-/// Function return positions inherit the Result auto-unwrap rule symmetrically:
-/// a lambda whose body is `Result<int, E>` satisfies a `(..) -> int` slot, and
-/// vice-versa.
-fn unify_fn_return(ctx: &mut InferCtx, r1: &Type, r2: &Type) -> Result<(), TypeError> {
-    let p1 = ctx.prune(r1);
-    let p2 = ctx.prune(r2);
-    if let Some(r) = try_unwrap_result(ctx, &p1, &p2) {
-        return r;
-    }
-    if !matches!(p2, Type::Var(_)) && !p2.is_named(names::RESULT) {
-        if let Type::Con { name, args } = &p1 {
-            if name == names::RESULT {
-                if let Some(inner) = args.first() {
-                    return unify(ctx, inner, &p2);
-                }
-            }
-        }
-    }
-    unify(ctx, &p1, &p2)
+    unify(ctx, r1, r2)
 }
 
 fn unify_record(
@@ -393,11 +339,10 @@ mod tests {
     }
 
     #[test]
-    fn result_auto_unwraps_at_assignment() {
+    fn result_is_not_assignable_to_its_payload() {
         let mut c = InferCtx::new();
         let r = Type::result(Type::int(), Type::prim("MathError"));
-        unify_assignable(&mut c, &Type::int(), &r).unwrap();
-        // But a bare unify keeps them distinct.
+        assert!(unify_assignable(&mut c, &Type::int(), &r).is_err());
         assert!(unify(&mut c, &Type::int(), &r).is_err());
     }
 
@@ -457,15 +402,14 @@ mod tests {
     }
 
     #[test]
-    fn assignable_function_return_is_covariant_through_result() {
+    fn assignable_function_return_cannot_erase_result() {
         let mut c = InferCtx::new();
-        // `(int) -> Result<int, MathError>` is assignable to a `(int) -> int` slot.
         let slot = Type::fun(vec![Type::int()], Type::int());
         let lambda = Type::fun(
             vec![Type::int()],
             Type::result(Type::int(), Type::prim("MathError")),
         );
-        unify_assignable(&mut c, &slot, &lambda).unwrap();
+        assert!(unify_assignable(&mut c, &slot, &lambda).is_err());
     }
 
     #[test]
@@ -527,18 +471,15 @@ mod tests {
     }
 
     #[test]
-    fn assignable_function_params_and_unwrapped_return_match() {
+    fn assignable_functions_reject_result_erasure_but_allow_success_wrapping() {
         let mut c = InferCtx::new();
-        // Param contravariance + return unwrap in one call exercises the
-        // function arm of `unify_assignable` to completion.
         let slot = Type::fun(vec![Type::int()], Type::int());
         let value = Type::fun(
             vec![Type::int()],
             Type::result(Type::int(), Type::prim("MathError")),
         );
-        unify_assignable(&mut c, &slot, &value).unwrap();
-        // And the wrap direction: a `(int) -> int` slot accepting a value whose
-        // return must be wrapped into a Result.
+        assert!(unify_assignable(&mut c, &slot, &value).is_err());
+        // The safe direction remains: a bare return is implicitly Success.
         let result_slot = Type::fun(
             vec![Type::int()],
             Type::result(Type::int(), Type::prim("E")),
@@ -548,23 +489,21 @@ mod tests {
     }
 
     #[test]
-    fn plain_unify_of_functions_auto_unwraps_returns_both_ways() {
+    fn plain_unify_of_functions_keeps_result_returns_distinct() {
         let mut c = InferCtx::new();
         let res = |ok: Type| Type::result(ok, Type::prim("MathError"));
-        // r1 concrete, r2 Result: `unify_fn_return` unwraps r2.
-        unify(
+        assert!(unify(
             &mut c,
             &Type::fun(vec![Type::int()], Type::int()),
             &Type::fun(vec![Type::int()], res(Type::int())),
         )
-        .unwrap();
-        // r1 Result, r2 concrete: the wrap branch unifies inner with r2.
-        unify(
+        .is_err());
+        assert!(unify(
             &mut c,
             &Type::fun(vec![Type::int()], res(Type::int())),
             &Type::fun(vec![Type::int()], Type::int()),
         )
-        .unwrap();
+        .is_err());
     }
 
     #[test]
@@ -593,12 +532,10 @@ mod tests {
     }
 
     #[test]
-    fn assignable_unwraps_a_result_value_into_a_concrete_slot() {
+    fn assignable_rejects_a_result_value_in_a_concrete_slot() {
         let mut c = InferCtx::new();
-        // expected concrete `int`, actual `Result<int, E>`: the unwrap branch
-        // unifies `int` with the Result's inner payload.
         let r = Type::result(Type::int(), Type::prim("E"));
-        unify_assignable(&mut c, &Type::int(), &r).unwrap();
+        assert!(unify_assignable(&mut c, &Type::int(), &r).is_err());
     }
 
     #[test]
@@ -615,16 +552,13 @@ mod tests {
         let res = Type::result(Type::int(), Type::prim("MathError"));
         assert!(unify_assignable(&mut c, &feed(Type::int()), &feed(res.clone())).is_err());
         assert!(unify_assignable(&mut c, &gate(res.clone()), &gate(Type::int())).is_err());
-        // Function payloads stay flexible representation-safely: plain unify
-        // normalizes fn returns through Result (the closure ABI strips the
-        // wrapper), so a Result-returning fn payload matches an int-returning
-        // slot under a covariant (or any) parameter.
+        // Function returns likewise remain exact beneath containers.
         let fnres = Type::fun(vec![Type::int()], res.clone());
         let fnint = Type::fun(vec![Type::int()], Type::int());
-        unify_assignable(&mut c, &feed(fnint.clone()), &feed(fnres.clone())).unwrap();
+        assert!(unify_assignable(&mut c, &feed(fnint.clone()), &feed(fnres.clone())).is_err());
         // Directional recursion continues through nested variance-declared
         // constructors and still bottoms out exactly.
-        unify_assignable(&mut c, &feed(feed(fnint)), &feed(feed(fnres))).unwrap();
+        assert!(unify_assignable(&mut c, &feed(feed(fnint)), &feed(feed(fnres))).is_err());
         assert!(unify_assignable(&mut c, &feed(feed(Type::int())), &feed(feed(res))).is_err());
     }
 

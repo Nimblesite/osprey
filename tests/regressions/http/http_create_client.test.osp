@@ -1,11 +1,9 @@
-// 🌐 Minimal HTTP Test - No Pattern Matching
-// Just test if httpCreateClient works as a built-in function
+// Client construction is local and must never depend on public DNS or network.
 
-print("Creating client")
+fn createsLocalClient() = {
+    let client = httpCreateClient("http://127.0.0.1:1", 100)
+    let closed = httpCloseClient(client)
+    checkAll("local HTTP client lifecycle", [client > 0, closed == 0])
+}
 
-/// Simple function call test (like print, spawn, etc.)
-let result = httpCreateClient("https://httpbin.org", 5000)
-print(result)
-
-// Registers the regression scenario with the assertion-driven test runner.
-test("regression scenario completes", fn() => checkAll("legacy execution", [true]))
+test("HTTP client creation is offline", createsLocalClient)

@@ -6,10 +6,9 @@ lower to the same effect, perform, handler, and resume AST nodes; their runtime
 semantics are identical.
 
 The checker validates declared operations and their value types. Effect rows
-provide generic-instantiation scope inside the annotated function
-body, but are not stored in function types or propagated through calls. A
-missing handler can therefore compile; the generated program aborts with
-`unhandled effect: <Effect>.<operation>` when lookup fails.
+are part of function types and propagate through calls. A handler discharges
+its handled effect from the row; every effect must be discharged before program
+entry. A missing handler is therefore a compile error, never a runtime abort.
 
 ## Keywords
 
@@ -100,9 +99,10 @@ fetch url = perform Net.get url
 effect instantiation used by performs in that function body. A bare generic
 entry leaves its arguments to inference.
 
-Rows do not form part of `Type::Fun`. The checker does not propagate them
-through calls, prove that a caller installs every required handler, or require
-an unannotated function to be pure.
+Rows form part of the function type and are propagated through calls. An
+unannotated function infers the effects performed by its body. The checker
+requires the program entry expression to have an empty row, proving that every
+performed operation has a statically known handler.
 
 ## Performing Operations
 
@@ -113,14 +113,14 @@ performExpr ::= "perform" IDENT "." IDENT "(" args? ")"
 ```osprey
 fn increment() -> int !State = {
     let current = perform State.get()
-    perform State.set(current + 1)
+    perform State.set((current + 1) ?: current)
     perform State.get()
 }
 ```
 
-The operation result is the value returned by its active handler arm. If no
-handler exists for that effect and operation, runtime lookup prints the
-unhandled-effect message and exits nonzero.
+The operation result is the value returned by its active handler arm. The
+static effect-row check guarantees that a matching handler exists on every
+execution path.
 
 ## Handlers
 

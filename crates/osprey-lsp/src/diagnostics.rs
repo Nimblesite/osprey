@@ -275,7 +275,7 @@ mod tests {
         // (bare `:` signature, `\` lambda, whitespace application) must parse
         // cleanly under the ML frontend rather than be flagged as broken Default
         // syntax. Selecting the flavor by the document path is what fixes it.
-        let ml = "inc : int -> int\ninc x = x + 1\nmain () =\n    print \"v=${toString (inc 41)}\"\n    0\n";
+        let ml = "inc : int -> int\ninc x = (x + 1) ?: 0\nmain () =\n    print \"v=${toString (inc 41)}\"\n    0\n";
         let clean = compute(ml, "file:///tour.ospml", U16);
         assert!(
             clean.is_empty(),

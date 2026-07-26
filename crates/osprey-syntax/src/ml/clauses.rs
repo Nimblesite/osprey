@@ -152,7 +152,10 @@ fn flush(run: &mut Vec<Clause>, out: &mut Vec<MlItem>, errors: &mut Vec<SyntaxEr
 /// Two adjacent plain heads are not alternatives: the first catches every
 /// input, so report the later spelling instead of silently choosing one body.
 fn reject_repeated_irrefutable(clauses: &[Clause], errors: &mut Vec<SyntaxError>) {
-    if clauses.iter().any(|clause| clause.params.iter().any(|p| is_refutable(Some(p)))) {
+    if clauses
+        .iter()
+        .any(|clause| clause.params.iter().any(|p| is_refutable(Some(p))))
+    {
         return;
     }
     errors.extend(clauses.iter().skip(1).map(|clause| SyntaxError {
@@ -197,13 +200,21 @@ fn reject_clauses_after_irrefutable(
     column: usize,
     errors: &mut Vec<SyntaxError>,
 ) {
-    let Some(catch_all) = clauses.iter().position(|c| !is_refutable(c.params.get(column))) else {
+    let Some(catch_all) = clauses
+        .iter()
+        .position(|c| !is_refutable(c.params.get(column)))
+    else {
         return;
     };
-    errors.extend(clauses.iter().skip(catch_all + 1).map(|clause| SyntaxError {
-        message: "unreachable clause after an irrefutable clause".to_owned(),
-        position: clause.pos,
-    }));
+    errors.extend(
+        clauses
+            .iter()
+            .skip(catch_all + 1)
+            .map(|clause| SyntaxError {
+                message: "unreachable clause after an irrefutable clause".to_owned(),
+                position: clause.pos,
+            }),
+    );
 }
 
 /// Whether a head column selects rather than binds. A missing column (a short

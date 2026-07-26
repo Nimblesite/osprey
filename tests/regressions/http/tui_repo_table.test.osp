@@ -5,7 +5,7 @@ fn handleRequest(method: string, path: string, headers: string, body: string) ->
     status: 200,
     headers: "Content-Type: application/json",
     contentType: "application/json",
-    streamFd: -1,
+    streamFd: (0 - 1) ?: 0,
     isComplete: true,
     partialBody: "[{\"name\":\"osprey\",\"stars\":1200,\"lang\":\"Go\"},{\"name\":\"llvm\",\"stars\":9001,\"lang\":\"C++\"},{\"name\":\"antlr\",\"stars\":4200,\"lang\":\"Java\"}]"
 }
@@ -44,7 +44,7 @@ fn renderRow(doc, i, n) = {
             let starsCol = yellow("* ${pad(s: stars, n: 5)}")
             let langCol = dim(lang)
             print("  ${bullet} ${nameCol} ${starsCol} ${langCol}")
-            renderRow(doc: doc, i: i + 1, n: n)
+            renderRow(doc: doc, i: (i + 1) ?: i, n: n)
         }
         false => print("")
     }

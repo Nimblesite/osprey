@@ -39,7 +39,7 @@ fn pipeline() -> int !Rescue = {
     print("  step e  MAX + 1         -> ${toString(e)}")
     let f = addRescue(100)(23)
     print("  step f  100 + 23        -> ${toString(f)}")
-    a + b + c + d + e + f
+    a + b + c + d + e + f ?: 0
 }
 
 print("=== Result -> effect rescue pipeline ===")
@@ -49,7 +49,7 @@ print("=== Result -> effect rescue pipeline ===")
 mut rescues = 0
 let total = handle Rescue
     onErr message => {
-        rescues = rescues + 1
+        rescues = rescues + 1 ?: rescues
         print("  RESCUE #${toString(rescues)}: original error \"${message}\" -> using ${toString(RESCUED_DEFAULT)}")
         RESCUED_DEFAULT
     }
@@ -58,8 +58,8 @@ in pipeline()
 print("rescued ${toString(rescues)} failing step(s); healthy + rescued total = ${toString(total)}")
 
 /// `?:` supplies a local fallback without invoking the Rescue policy.
-let localOk  = (10 % 3) ?: -1
-let localBad = (10 % 0) ?: -1
+let localOk  = (10 % 3) ?: ((0 - 1) ?: 0)
+let localBad = (10 % 0) ?: ((0 - 1) ?: 0)
 print("local ?: default  10 % 3 -> ${toString(localOk)}   10 % 0 -> ${toString(localBad)}")
 
 // The raw float division Result remains a value.

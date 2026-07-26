@@ -22,7 +22,7 @@ matchTourCase () =
     // Exercise adjacent, negative, and large wildcard inputs.
     checkAll "match tour wildcard edge cases" [
         tourClassify 2 == "many",
-        tourClassify (0 - 1) == "many",
+        tourClassify ((0 - 1) ?: 0) == "many",
         tourClassify 100 == "many",
         (tourClassify 0 == tourClassify 1) == false
     ]
@@ -35,7 +35,7 @@ matchGrade n =
 
 (** Convert parity to an even-or-odd label. *)
 matchEven n =
-    match n % 2 == 0
+    match (n % 2 ?: 1) == 0
         true => "even"
         false => "odd"
 
@@ -84,7 +84,7 @@ matchIntegerCase () =
     // Exercise adjacent, negative, and large wildcard inputs.
     checkAll "integer match wildcard boundaries" [
         matchLabel 3 == "many",
-        matchLabel (0 - 1) == "many",
+        matchLabel ((0 - 1) ?: 0) == "many",
         matchLabel 100 == "many"
     ]
 

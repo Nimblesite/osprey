@@ -19,11 +19,15 @@ use osprey_ast::{walk_program, AstVisitor, Position, Stmt};
 use osprey_syntax::Flavor;
 use std::path::{Path, PathBuf};
 
-/// `tests`, resolved from the crate manifest so the gate runs the same
-/// on a dev box and in CI.
+fn repository_root() -> PathBuf {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    root.canonicalize().unwrap_or(root)
+}
+
+/// `tests`, resolved from the crate manifest so the gate runs the same on a
+/// development machine and in CI.
 fn tested_dir() -> PathBuf {
-    let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests");
-    dir.canonicalize().unwrap_or(dir)
+    repository_root().join("tests")
 }
 
 /// The opt-out marker: a zero-argument `main` kept on purpose (a meaningful
@@ -37,6 +41,19 @@ fn example_files(dir: &Path) -> Vec<PathBuf> {
     collect(dir, &mut out);
     out.sort();
     out
+}
+
+fn documentation_files(root: &Path) -> Vec<PathBuf> {
+    let mut files = [
+        root.join("tests"),
+        root.join("examples/projects/modules/test"),
+        root.join("vscode-extension/test"),
+    ]
+    .iter()
+    .flat_map(|directory| example_files(directory))
+    .collect::<Vec<_>>();
+    files.sort();
+    files
 }
 
 /// Recurse into `dir`, pushing every Osprey source file into `out`.
@@ -224,11 +241,11 @@ fn documentation_offenders(path: &Path, source: &str) -> Vec<(usize, String)> {
 
 #[test]
 fn declaration_comments_use_flavor_documentation_syntax() {
-    let dir = tested_dir();
+    let root = repository_root();
     let mut offenders = Vec::new();
-    for path in example_files(&dir) {
+    for path in documentation_files(&root) {
         let source = std::fs::read_to_string(&path).expect("read example source");
-        let relative = path.strip_prefix(&dir).unwrap_or(&path);
+        let relative = path.strip_prefix(&root).unwrap_or(&path);
         offenders.extend(
             documentation_offenders(&path, &source)
                 .into_iter()
@@ -271,6 +288,28 @@ fn no_example_wraps_a_trivial_program_in_main() {
          identical IR). If a zero-arg `main` is kept for argv/exit-code, mark it \
          `// {KEEP_MARKER} <reason>`:\n  {}",
         offenders.len(),
+        offenders.join("\n  ")
+    );
+}
+
+#[test]
+fn test_corpus_does_not_call_public_http_services() {
+    let dir = tested_dir();
+    let offenders = example_files(&dir)
+        .into_iter()
+        .filter(|path| {
+            std::fs::read_to_string(path).is_ok_and(|source| source.contains("httpbin.org"))
+        })
+        .map(|path| {
+            path.strip_prefix(&dir)
+                .unwrap_or(&path)
+                .display()
+                .to_string()
+        })
+        .collect::<Vec<_>>();
+    assert!(
+        offenders.is_empty(),
+        "test corpus depends on the public network:\n  {}",
         offenders.join("\n  ")
     );
 }

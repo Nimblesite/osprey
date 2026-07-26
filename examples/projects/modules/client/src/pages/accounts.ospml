@@ -8,13 +8,13 @@ import talon::ActivityView
 module AccountsPage
     detail : AppModel -> string
     detail model =
-        doc = jsonParse model.accounts
+        doc = jsonParse model.accounts ?: 0
         index = BankData::accountIndex doc model.selected
         id = BankData::value doc "[${index}].id" "—"
         owner = BankData::value doc "[${index}].owner" "No account selected"
         balance = BankData::value doc "[${index}].balance" "$0.00"
         cents = BankData::integer doc "[${index}].cents"
-        freed = jsonFree doc
+        freed = jsonFree doc ?: 0
         available = match cents > 0
             true => "Ready to move"
             false => "Waiting for first deposit"

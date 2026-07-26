@@ -92,6 +92,10 @@ HTTP_OBJ_GC ?= bin/http_shared.o bin/http_client_runtime.o bin/http_server_reque
 # [GC-ARC-PERCEUS], spec 0018.
 FIB_OBJ_ARC  ?= bin/memory_arc.o bin/fiber_runtime.o bin/system_runtime.o bin/effects_runtime.o bin/arc/string_runtime.o bin/arc/string_runtime_list.o bin/arc/list_runtime.o bin/arc/map_runtime.o bin/arc/map_runtime_hamt.o bin/arc/json_runtime.o bin/ffi_runtime.o bin/term_runtime.o bin/random_runtime.o bin/test_runtime.o bin/coverage_runtime.o bin/profiler_runtime.o bin/profiler_sampler.o
 HTTP_OBJ_ARC ?= bin/http_shared.o bin/http_client_runtime.o bin/http_server_request.o bin/http_server_response.o bin/http_server_runtime.o bin/websocket_client_runtime.o bin/websocket_server_runtime.o $(FIB_OBJ_ARC)
+NATIVE_RUNTIME_CONFIG ?= compiler/bin/.native-runtime-config
+NATIVE_RUNTIME_STAMP ?= compiler/bin/.native-runtime.stamp
+NATIVE_RUNTIME_INPUTS ?= $(filter-out compiler/runtime/%_tests.c compiler/runtime/test_http_length_validation.c compiler/runtime/test_openssl.c compiler/runtime/test_system_runtime.c compiler/runtime/web_runtime.c,$(wildcard compiler/runtime/*.c)) $(wildcard compiler/runtime/*.h)
+NATIVE_RUNTIME_ARCHIVES ?= compiler/bin/libfiber_runtime.a compiler/bin/libhttp_runtime.a compiler/bin/libfiber_runtime_gc.a compiler/bin/libhttp_runtime_gc.a compiler/bin/libfiber_runtime_arc.a compiler/bin/libhttp_runtime_arc.a compiler/lib/libfiber_runtime.a compiler/lib/libhttp_runtime.a compiler/lib/libfiber_runtime_gc.a compiler/lib/libhttp_runtime_gc.a compiler/lib/libfiber_runtime_arc.a compiler/lib/libhttp_runtime_arc.a
 
 # WebAssembly (wasm32-wasip1) cross-build toolchain — opt-in via `make wasm`.
 # Compiles the portable C-runtime subset (no pthreads/sockets/OpenSSL/syscalls)
@@ -135,6 +139,7 @@ build: _runtime
 ##       Projects listed in coverage-thresholds.json are each tested + checked.
 test: build
 	@echo "==> Testing (fail-fast + coverage + per-project thresholds)..."
+	$(MAKE) _test_runtime_incremental
 	$(MAKE) _test_rust
 	$(MAKE) _coverage_check_rust
 	$(MAKE) _test_c_runtime
@@ -316,7 +321,42 @@ setup:
 
 # Build the pure-C runtime archives osprey links at `--run` time. One shell
 # so `cd` persists; faithful port of the original hardened C recipes.
+_test_runtime_incremental: _runtime
+	@runtime_mtime() { stat -c %Y "$$1" 2>/dev/null || stat -f %m "$$1"; }; \
+	  before="$$(runtime_mtime $(RTB)/libfiber_runtime.a)"; \
+	  $(MAKE) _runtime >/dev/null; \
+	  after="$$(runtime_mtime $(RTB)/libfiber_runtime.a)"; \
+	  if [ "$$before" != "$$after" ]; then \
+	    echo "ERROR: unchanged native runtime rebuilt and invalidated the test cache"; \
+	    exit 1; \
+	  fi
+
 _runtime:
+	@$(MKDIR) $(RTB)
+	@set -e; config_tmp="$(NATIVE_RUNTIME_CONFIG).$$$$"; \
+	  { printf '%s\n' \
+	      "CC=$(CC)" "AR=$(AR)" "A=$(A)" "B=$(B)" "WARN_MAX=$(WARN_MAX)" \
+	      "OSSL=$(OSSL)" "FIB_OBJ=$(FIB_OBJ)" "HTTP_OBJ=$(HTTP_OBJ)" \
+	      "FIB_OBJ_GC=$(FIB_OBJ_GC)" "HTTP_OBJ_GC=$(HTTP_OBJ_GC)" \
+	      "FIB_OBJ_ARC=$(FIB_OBJ_ARC)" "HTTP_OBJ_ARC=$(HTTP_OBJ_ARC)"; \
+	    command -v "$(firstword $(CC))" 2>/dev/null || true; \
+	    $(CC) --version 2>&1 | sed -n '1p' || true; \
+	    command -v "$(firstword $(AR))" 2>/dev/null || true; \
+	    $(AR) --version 2>&1 | sed -n '1p' || true; \
+	    pkg-config --cflags openssl 2>/dev/null || true; \
+	    pkg-config --modversion openssl 2>/dev/null || true; \
+	  } >"$$config_tmp"; \
+	  if cmp -s "$$config_tmp" "$(NATIVE_RUNTIME_CONFIG)"; then \
+	    rm -f "$$config_tmp"; \
+	  else \
+	    mv "$$config_tmp" "$(NATIVE_RUNTIME_CONFIG)"; \
+	  fi; \
+	  for archive in $(NATIVE_RUNTIME_ARCHIVES); do \
+	    if [ ! -s "$$archive" ]; then rm -f "$(NATIVE_RUNTIME_STAMP)"; break; fi; \
+	  done
+	@$(MAKE) --no-print-directory -s $(NATIVE_RUNTIME_STAMP)
+
+$(NATIVE_RUNTIME_STAMP): $(NATIVE_RUNTIME_INPUTS) $(NATIVE_RUNTIME_CONFIG) Makefile
 	@echo "==> building C runtime archives ($(RTB)/lib*_runtime.a)"
 	@cd compiler && set -e && $(MKDIR) bin lib bin/gc bin/arc && \
 	  $(CC) $(B) runtime/memory_runtime.c       -o bin/memory_runtime.o && \
@@ -366,6 +406,7 @@ _runtime:
 	  $(AR) rcs bin/libfiber_runtime_arc.a $(FIB_OBJ_ARC) && \
 	  $(AR) rcs bin/libhttp_runtime_arc.a  $(HTTP_OBJ_ARC) && \
 	  cp bin/libfiber_runtime.a bin/libhttp_runtime.a bin/libfiber_runtime_gc.a bin/libhttp_runtime_gc.a bin/libfiber_runtime_arc.a bin/libhttp_runtime_arc.a lib/
+	@touch $@
 
 # Cross-compile the portable C-runtime subset to a wasm32-wasip1 archive that
 # osprey links for `--target=wasm32`. One shell so `cd` persists. Fails loudly

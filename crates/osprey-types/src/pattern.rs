@@ -15,16 +15,6 @@ use crate::ty::{names, Scheme, Type};
 use osprey_ast::{Expr, MatchArm, Pattern};
 use std::collections::{BTreeMap, HashMap, HashSet};
 
-fn unwrap_result(t: &Type) -> Type {
-    match t {
-        Type::Con { name, args } if name == names::RESULT => match args.first() {
-            Some(first) => first.clone(),
-            None => t.clone(),
-        },
-        _ => t.clone(),
-    }
-}
-
 fn is_result(t: &Type) -> bool {
     matches!(t, Type::Con { name, .. } if name == names::RESULT)
 }
@@ -43,50 +33,25 @@ fn starts_uppercase(name: &str) -> bool {
     name.chars().next().is_some_and(char::is_uppercase)
 }
 
-/// Whether every arm is a `true`/`false` literal pattern — the shape the
-/// ternary/Elvis desugar produces.
-fn all_bool_literal_arms(arms: &[MatchArm]) -> bool {
-    !arms.is_empty()
-        && arms.iter().all(
-            |a| matches!(&a.pattern, Pattern::Literal(e) if matches!(e.as_ref(), Expr::Bool(_))),
-        )
-}
-
 impl Checker {
     pub(crate) fn infer_match(&mut self, value: &Expr, arms: &[MatchArm], env: &TypeEnv) -> Type {
         let disc = self.infer_expr(value, env);
-        // Truthiness test: `true`/`false` arms over a `Result` (the ternary and
-        // Elvis desugar) test the discriminant, the arms cover Success/Error,
-        // and the match yields the *unwrapped* success payload.
-        let truthy = is_result(&self.ctx.prune(&disc)) && all_bool_literal_arms(arms);
         let result = self.ctx.fresh();
         for arm in arms {
-            let body_ty = self.infer_arm(arm, &disc, truthy, env);
+            let body_ty = self.infer_arm(arm, &disc, env);
             self.push_unify(&result, &body_ty);
         }
-        if truthy {
-            self.check_bool_exhaustive(arms);
-        } else {
-            self.check_exhaustive(&disc, arms);
-        }
+        self.check_exhaustive(&disc, arms);
         self.check_redundant_arms(arms);
         result
     }
 
-    /// Infer one arm's body type — binding its pattern against the discriminant
-    /// unless this is a truthiness match, whose arms bind nothing and merge as
-    /// the unwrapped success payload.
-    fn infer_arm(&mut self, arm: &MatchArm, disc: &Type, truthy: bool, env: &TypeEnv) -> Type {
+    /// Infer one arm's body type after binding its pattern against the exact
+    /// discriminant type.
+    fn infer_arm(&mut self, arm: &MatchArm, disc: &Type, env: &TypeEnv) -> Type {
         let mut local = env.child();
-        if !truthy {
-            self.bind_pattern(&arm.pattern, disc, &mut local);
-        }
-        let body_ty = self.infer_expr(&arm.body, &local);
-        if truthy {
-            unwrap_result(&self.ctx.prune(&body_ty))
-        } else {
-            body_ty
-        }
+        self.bind_pattern(&arm.pattern, disc, &mut local);
+        self.infer_expr(&arm.body, &local)
     }
 
     fn bind_pattern(&mut self, pattern: &Pattern, disc: &Type, local: &mut TypeEnv) {
@@ -95,8 +60,7 @@ impl Checker {
             Pattern::Binding(name) => self.bind_binding(name, disc, local),
             Pattern::Literal(expr) => {
                 let lt = self.infer_expr(expr, local);
-                let du = unwrap_result(&self.ctx.prune(disc));
-                self.push_unify(&du, &lt);
+                self.push_unify(disc, &lt);
             }
             Pattern::TypeAnnotated { name, ty } => {
                 let t = type_expr_to_type(ty, &HashMap::new());
@@ -434,7 +398,7 @@ mod tests {
     fn structural_pattern_binds_record_fields() {
         ok("type Point = { x: int, y: int }\n\
             fn getx(p: Point) -> int = match p {\n\
-              { x, y } => x + y\n\
+              { x, y } => (x + y) ?: 0\n\
             }\n");
         // A structural pattern over a non-record discriminant binds fresh vars.
         ok("fn any(v) = match v {\n\
@@ -565,7 +529,7 @@ mod tests {
         // field's declared type.
         ok("type Point = { x: int, y: int }\n\
             fn sum() -> int = match Point { x: 1, y: 2 } {\n\
-              { x, y } => x + y\n\
+              { x, y } => (x + y) ?: 0\n\
             }\n");
     }
 
@@ -599,18 +563,20 @@ mod tests {
     }
 
     #[test]
-    fn bool_truthy_match_needs_both_branches() {
-        // A `true`/`false` (truthiness) match missing a branch is non-exhaustive.
-        let errs = check("let r = (10 + 5) ? 1 : 2\nlet x = match r > 0 { true => 1 }\n");
+    fn result_is_not_a_boolean_condition_and_bool_matches_stay_exhaustive() {
+        let condition_errors = check("fn f(r: Result<int, Error>) -> int = r ? 1 : 0\n");
+        assert!(condition_errors
+            .iter()
+            .any(|e| e.message.contains("Result") && e.message.contains("bool")));
+
+        let errs = check("let x = match true { true => 1 }\n");
         assert!(errs.iter().any(|e| e.message.contains("non-exhaustive")));
     }
 
     #[test]
     fn bare_result_annotation_uses_the_no_args_unwrap_fallback() {
         // A bare `Result` annotation (no type args) is still a Result; matching a
-        // literal against it runs `unwrap_result`'s no-args fallback (the empty
-        // Result cannot equal the int literal, so a mismatch is reported — the
-        // point is that the fallback branch is executed without panicking).
+        // A literal cannot directly match a Result wrapper.
         let errs = check(
             "fn f(r: Result) -> int = match r {\n\
                0 => 0\n\

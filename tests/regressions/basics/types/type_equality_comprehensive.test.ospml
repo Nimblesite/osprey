@@ -36,18 +36,18 @@ print ""
     Explicit signatures keep the function values concrete and match the Default
     flavor's annotated helpers. *)
 addOne : int -> int
-addOne x = x + 1
+addOne x = x + 1 ?: 0
 timesTwo : int -> int
-timesTwo x = x * 2
+timesTwo x = x * 2 ?: 0
 minusOne : int -> int
-minusOne x = x - 1
+minusOne x = x - 1 ?: 0
 excl s = s + "!"
 ques s = s + "?"
 intToString x = toString x
 twoArgAdd : int -> int -> int
-twoArgAdd (a, b) = a + b
+twoArgAdd (a, b) = a + b ?: 0
 threeArgAdd : int -> int -> int -> int
-threeArgAdd (a, b, c) = a + b + c
+threeArgAdd (a, b, c) = a + b + c ?: 0
 
 applyInt (f, x) = f x
 applyStr (f, s) = f s
@@ -115,8 +115,8 @@ print "sameRB=${toString (sameColor (c1, c3))}"
     Variance is position-checked: `out T` may appear only where the payload
     flows out, `in T` only where it flows in (function parameters flip the
     polarity). Payload instantiations match exactly at the leaves; function
-    payloads stay flexible through the representation-safe fn-return
-    normalization. Implements [TYPE-VARIANCE-DECL], [TYPE-VARIANCE-ASSIGN],
+    payload function signatures retain their exact, explicit Result channels.
+    Implements [TYPE-VARIANCE-DECL], [TYPE-VARIANCE-ASSIGN],
     [FLAVOR-ML-GENERICS] *)
 type Feed out T =
     Feed
@@ -127,7 +127,7 @@ type Gate in T =
         admit : T -> bool
     Open
 
-label : Feed<(int) -> int> -> string
+label : Feed<(int) -> Result<int, MathError>> -> string
 label f = match f
     Feed supply => "supplied"
     Dry => "dry"
@@ -138,7 +138,7 @@ describe : Gate<(int) -> Result<int, MathError>> -> string
 describe g = match g
     Gate admit => "guarded"
     Open => "open"
-mkGate : Unit -> Gate<(int) -> int>
+mkGate : Unit -> Gate<(int) -> Result<int, MathError>>
 mkGate () = Gate(admit = \f => true)
 
 print "fn-payload feed accepted: ${label (mkFeed ())}"

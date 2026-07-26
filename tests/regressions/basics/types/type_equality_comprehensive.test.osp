@@ -29,14 +29,14 @@ print("T<I,S,I>: ${tIBI.first}/${tIBI.second}/${tIBI.third}")
 print("")
 
 /// --- Function type equality via HOFs ---
-fn addOne(x)        -> int    = x + 1
-fn timesTwo(x)      -> int    = x * 2
-fn minusOne(x)      -> int    = x - 1
+fn addOne(x)        -> int    = x + 1 ?: 0
+fn timesTwo(x)      -> int    = x * 2 ?: 0
+fn minusOne(x)      -> int    = x - 1 ?: 0
 fn excl(s)       = s + "!"
 fn ques(s)       = s + "?"
 fn intToString(x)   = toString(x)
-fn twoArgAdd(a: int, b: int) -> int = a + b
-fn threeArgAdd(a: int, b: int, c: int) -> int = a + b + c
+fn twoArgAdd(a: int, b: int) -> int = a + b ?: 0
+fn threeArgAdd(a: int, b: int, c: int) -> int = a + b + c ?: 0
 
 fn applyInt(f, x)    = f(x)
 fn applyStr(f, s) = f(s)
@@ -90,12 +90,13 @@ print("sameRB=${toString(sameColor(a: c1, b: c3))}")
 /// Variance is position-checked: `out T` may appear only where the payload
 /// flows out, `in T` only where it flows in (function parameters flip the
 /// polarity). Payload instantiations match exactly at the leaves; function
-/// payloads stay flexible through the representation-safe fn-return
-/// normalization. Implements [TYPE-VARIANCE-DECL], [TYPE-VARIANCE-ASSIGN]
+/// payload function signatures retain their exact, explicit Result channels.
+/// Implements [TYPE-VARIANCE-DECL],
+/// [TYPE-VARIANCE-ASSIGN]
 type Feed<out T> = Feed { supply: T } | Dry
 type Gate<in T> = Gate { admit: (T) -> bool } | Open
 
-fn label(f: Feed<(int) -> int>) = match f {
+fn label(f: Feed<(int) -> Result<int, MathError>>) = match f {
     Feed { supply } => "supplied"
     Dry => "dry"
 }
@@ -105,7 +106,7 @@ fn describe(g: Gate<(int) -> Result<int, MathError>>) = match g {
     Gate { admit } => "guarded"
     Open => "open"
 }
-fn mkGate() -> Gate<(int) -> int> = Gate { admit: |f| => true }
+fn mkGate() -> Gate<(int) -> Result<int, MathError>> = Gate { admit: |f| => true }
 
 print("fn-payload feed accepted: ${label(mkFeed())}")
 print("fn-payload gate accepted: ${describe(mkGate())}")

@@ -61,7 +61,14 @@ pub struct Codegen {
     /// (`let f = fn(x) => …` then `f(y)`) — a beta-reduction fast path. The
     /// same lambda is also materialized as a closure cell (`crate::closure`)
     /// so the name works as a first-class value.
-    pub(crate) lambdas: HashMap<String, (Vec<osprey_ast::Parameter>, osprey_ast::Expr)>,
+    pub(crate) lambdas: HashMap<
+        String,
+        (
+            Vec<osprey_ast::Parameter>,
+            osprey_ast::Expr,
+            Option<osprey_ast::Position>,
+        ),
+    >,
     /// Top-level functions already wrapped as closure cells (name → the cell's
     /// constant global), so the forwarder is emitted once per module.
     pub(crate) fnval_cells: HashMap<String, String>,
@@ -120,6 +127,10 @@ pub struct Codegen {
     /// Whether any testing built-in was lowered — makes `main` return the TAP
     /// epilogue's exit status [TESTING-EXIT].
     pub(crate) testing_used: bool,
+    /// Whether any fiber was spawned. Completed fiber results keep one runtime
+    /// owner so repeated `await` calls can each receive a live value; `main`
+    /// releases those runtime owners during its final cleanup.
+    pub(crate) fibers_used: bool,
     /// LLVM/DWARF debug metadata state, when `--debug` was requested.
     debug: Option<DebugState>,
     /// Coverage instrumentation state, when coverage was requested
@@ -155,17 +166,81 @@ pub(crate) struct ResumeCodegenContext {
     pub coro: String,
     pub drive_fn: String,
     pub answer_ty: LType,
-    /// Whether the resumed operation's result type (at this handle site's
-    /// instantiation) is a `Result` — a resume value then boxes the WHOLE
-    /// Result block, never its unwrapped payload, because the perform site
-    /// unboxes the slot as a Result pointer. Implements
-    /// [EFFECTS-GENERIC-RUNTIME].
-    pub op_ret_is_result: bool,
+    pub answer_result_inner: Option<LType>,
+    pub answer_owner: Option<String>,
+    pub answer_payload_owner: Option<String>,
+    /// Concrete operation-result shape at this handler site. A plain resume
+    /// value may be promoted to Success for a Result slot; the inverse is
+    /// forbidden and rejected by codegen as well as by the checker.
+    pub op_ret_ty: LType,
+    pub op_ret_result_inner: Option<LType>,
 }
 
-/// A function value's lowered signature: parameter [`LType`]s, the return
-/// [`LType`], and (when it returns `Result<T, _>`) the success inner type.
-pub(crate) type FnSig = (Vec<LType>, LType, Option<LType>);
+/// One function-parameter ABI slot. Result parameters travel as opaque `i8*`
+/// arguments plus the success-layout metadata needed to reconstruct their
+/// discriminant-bearing block inside the callee.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct FiberSig {
+    pub(crate) elem: LType,
+    pub(crate) result_inner: Option<LType>,
+}
+
+impl FiberSig {
+    fn of(ty: &Type) -> Option<Self> {
+        let Type::Con { name, args } = ty else {
+            return None;
+        };
+        if name != osprey_types::names::FIBER {
+            return None;
+        }
+        let elem = args.first()?;
+        let result_inner = crate::types::result_inner(elem);
+        Some(Self {
+            elem: if result_inner.is_some() {
+                LType::Ptr
+            } else {
+                ltype_of(elem)
+            },
+            result_inner,
+        })
+    }
+
+    pub(crate) fn restore(self, mut value: Value) -> Value {
+        value.fiber_elem = Some(self.elem);
+        value.fiber_elem_result_inner = self.result_inner;
+        value
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct ParamSig {
+    pub(crate) ty: LType,
+    pub(crate) result_inner: Option<LType>,
+    pub(crate) fiber: Option<FiberSig>,
+}
+
+impl ParamSig {
+    pub(crate) fn of(ty: &Type) -> Self {
+        let fiber = FiberSig::of(ty);
+        match crate::types::result_inner(ty) {
+            Some(inner) => Self {
+                ty: LType::Ptr,
+                result_inner: Some(inner),
+                fiber,
+            },
+            None => Self {
+                ty: ltype_of(ty),
+                result_inner: None,
+                fiber,
+            },
+        }
+    }
+}
+
+/// A function value's lowered signature: parameter ABI slots, the return
+/// [`LType`], (when it returns `Result<T, _>`) the success inner type, and any
+/// Fiber element shape that must survive the erased integer ABI.
+pub(crate) type FnSig = (Vec<ParamSig>, LType, Option<LType>, Option<FiberSig>);
 
 /// Saved emission state of a suspended function (see [`Codegen::enter_nested_fn`]).
 pub(crate) struct SavedFn {
@@ -463,6 +538,7 @@ impl Codegen {
             cell_slots: HashMap::new(),
             resume_ctx: None,
             testing_used: false,
+            fibers_used: false,
             debug: options.debug_source.map(DebugState::new),
             coverage: options
                 .coverage
@@ -592,20 +668,16 @@ impl Codegen {
     }
 
     /// The lowered [`FnSig`] of a function-typed value `ty`, for the closure
-    /// ABI — `None` if `ty` is not a function. The return is normalized via
-    /// [`crate::types::normalize_fn_ret`] so maker and consumer derive the
-    /// same ABI even when the assignable-unwrap rule let their types differ by
-    /// a Result wrapper.
+    /// ABI — `None` if `ty` is not a function. Result returns retain their
+    /// discriminant-bearing ABI; function values must never erase failure.
     pub(crate) fn fn_value_sig(ty: &Type) -> Option<FnSig> {
         match ty {
-            Type::Fun { params, ret } => {
-                let ret = crate::types::normalize_fn_ret(ret);
-                Some((
-                    params.iter().map(ltype_of).collect(),
-                    ltype_of(ret),
-                    crate::types::result_inner(ret),
-                ))
-            }
+            Type::Fun { params, ret } => Some((
+                params.iter().map(ParamSig::of).collect(),
+                ltype_of(ret),
+                crate::types::result_inner(ret),
+                FiberSig::of(ret),
+            )),
             _ => None,
         }
     }
@@ -741,15 +813,22 @@ impl Codegen {
     pub(crate) fn fn_param_ltypes(&self, name: &str) -> Option<Vec<LType>> {
         self.prog
             .param_types(name)
-            .map(|ps| ps.iter().map(ltype_of).collect())
+            .map(|ps| ps.iter().map(|t| ParamSig::of(t).ty).collect())
+    }
+
+    /// Full parameter ABI slots, including Result layout metadata.
+    pub(crate) fn fn_param_abis(&self, name: &str) -> Option<Vec<ParamSig>> {
+        self.prog
+            .param_types(name)
+            .map(|ps| ps.iter().map(ParamSig::of).collect())
     }
 
     /// The `(LType, owner)` parameter signature — `owner` tags record/union
     /// parameters so their fields are reachable inside the body.
-    pub(crate) fn fn_param_sig(&self, name: &str) -> Option<Vec<(LType, Option<String>)>> {
+    pub(crate) fn fn_param_sig(&self, name: &str) -> Option<Vec<(ParamSig, Option<String>)>> {
         self.prog.param_types(name).map(|ps| {
             ps.iter()
-                .map(|t| (ltype_of(t), crate::types::owner_name(t)))
+                .map(|t| (ParamSig::of(t), crate::types::owner_name(t)))
                 .collect()
         })
     }
@@ -766,6 +845,11 @@ impl Codegen {
     /// `{ T, i8 }*` Result block rather than a bare `T`.
     pub(crate) fn fn_ret_result_inner(&self, name: &str) -> Option<LType> {
         crate::types::result_inner(self.prog.return_type(name)?)
+    }
+
+    /// Fiber element shape carried by a function's erased `i64` return slot.
+    pub(crate) fn fn_ret_fiber_sig(&self, name: &str) -> Option<FiberSig> {
+        FiberSig::of(self.prog.return_type(name)?)
     }
 
     /// The LLVM spelling of `name`'s emitted return slot (Result block or
@@ -900,6 +984,20 @@ impl Codegen {
         } else {
             None
         }
+    }
+
+    /// The success payload layout when a declared aggregate field is a
+    /// `Result<T, E>`. Aggregate slots currently carry only an [`LType`], so
+    /// callers use this to reject a field before its discriminant could be
+    /// erased.
+    pub(crate) fn ctor_field_result_inner(&self, owner: &str, field: &str) -> Option<LType> {
+        self.prog
+            .ctors
+            .get(owner)?
+            .fields
+            .iter()
+            .find(|(name, _)| name == field)
+            .and_then(|(_, ty)| crate::types::result_inner(ty))
     }
 
     /// The variant constructor names of a union owner, in tag order.

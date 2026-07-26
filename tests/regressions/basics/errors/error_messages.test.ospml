@@ -23,13 +23,13 @@ match split "a" ""
 match indexOf "abc" "z"
     Success value => print "indexOf: unexpected ${value}\n"
     Error message => print "indexOf: ${message}\n"
-match substring "hi" (-1) 5
+match substring "hi" ((0 - 1) ?: 0) 5
     Success value => print "substring: unexpected ${value}\n"
     Error message => print "substring: ${message}\n"
 match replace "h" "" ""
     Success value => print "replace: unexpected ${value}\n"
     Error message => print "replace: ${message}\n"
-match repeat "a" (-1)
+match repeat "a" ((0 - 1) ?: 0)
     Success value => print "repeat: unexpected ${value}\n"
     Error message => print "repeat: ${message}\n"
 match padStart "x" 5 ""

@@ -15,7 +15,7 @@ fn mutationCase() = {
 
     handle FlavorCounter
         tick amount => {
-            flavorCounter = flavorCounter + amount
+            flavorCounter = flavorCounter + amount ?: flavorCounter
         }
     in {
         perform FlavorCounter.tick(1)

@@ -693,7 +693,7 @@ mod tests {
              effect Log { info: fn(string) -> Unit }\n\
              extern fn puts(s: string) -> int\n\
              let limit: int = 10\n\
-             fn multiply(a: int, b: int) -> int = a * b\n\
+             fn multiply(a: int, b: int) -> int = (a * b) ?: 0\n\
              type Box<T> = { item: T }\n\
              effect Feed<out T> { next: fn() -> T }\n\
              fn pick<T, out U>(a: T, b: U) -> T = a\n\

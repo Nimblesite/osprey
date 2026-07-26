@@ -530,11 +530,21 @@ impl<'a> Lowerer<'a> {
             // into the literal so `-5` matches `-5`, not `5`. Scalar literals now
             // appear unwrapped (no `literal` node) so `[…]` stays a list_pattern.
             "integer" | "float" | "boolean" | "string" | "interpolated_string" => {
-                let lit = self.lower_literal_node(inner);
                 let negated = pat
                     .child_by_field_name("operator")
                     .is_some_and(|op| self.text(op) == "-");
-                Pattern::Literal(Box::new(if negated { negate_literal(lit) } else { lit }))
+                let minimum = negated
+                    && inner.kind() == "integer"
+                    && super::is_i64_min_magnitude_text(&self.text(inner));
+                let lit = self.lower_literal_node(inner);
+                let signed = if minimum {
+                    Expr::Integer(i64::MIN)
+                } else if negated {
+                    negate_literal(lit)
+                } else {
+                    lit
+                };
+                Pattern::Literal(Box::new(signed))
             }
             "list_pattern" => self.lower_list_pattern(inner),
             "field_pattern" => Pattern::Structural {

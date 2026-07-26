@@ -59,7 +59,7 @@ fn execReal(db, sql) =
 
 fn prepareReal(db, sql) = {
     let cell = osprey_ffi_cell()
-    let rc = sqlite3_prepare_v2(db: db, sql: sql, nByte: 0 - 1, ppStmt: cell, tail: osprey_ffi_null())
+    let rc = sqlite3_prepare_v2(db: db, sql: sql, nByte: (0 - 1) ?: 0, ppStmt: cell, tail: osprey_ffi_null())
     let stmt = osprey_ffi_deref(cell: cell)
     let freed = osprey_ffi_free(cell: cell)
     stmt
@@ -106,7 +106,7 @@ handle Database
     exec db sql => execReal(db: db, sql: sql)
     prepare db sql => prepareReal(db: db, sql: sql)
     bindInt stmt idx val => sqlite3_bind_int(stmt: stmt, idx: idx, val: val)
-    bindText stmt idx val => sqlite3_bind_text(stmt: stmt, idx: idx, val: val, nByte: 0 - 1, destructor: osprey_ffi_transient())
+    bindText stmt idx val => sqlite3_bind_text(stmt: stmt, idx: idx, val: val, nByte: (0 - 1) ?: 0, destructor: osprey_ffi_transient())
     step stmt => sqlite3_step(stmt: stmt)
     columnInt stmt col => sqlite3_column_int(stmt: stmt, col: col)
     columnText stmt col => sqlite3_column_text(stmt: stmt, col: col)

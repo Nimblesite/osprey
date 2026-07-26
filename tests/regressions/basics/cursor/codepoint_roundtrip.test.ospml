@@ -67,7 +67,7 @@ print "=== invalid scalars are rejected ===\n"
 _s0 = rejectInvalid 55296
 _s1 = rejectInvalid 57343
 _s2 = rejectInvalid 1114112
-_s3 = rejectInvalid (0 - 1)
+_s3 = rejectInvalid ((0 - 1) ?: 0)
 
 // Direct codePointWidth band classification, one assertion per width band.
 print "=== codePointWidth band boundaries ===\n"

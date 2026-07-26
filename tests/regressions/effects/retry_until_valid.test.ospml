@@ -19,9 +19,9 @@ mut attempt = 0
 accepted =
     handle Prompt
         ask label =>
-            attempt := attempt + 1
+            attempt := attempt + 1 ?: attempt
             value = match attempt
-                1 => 0 - 3
+                1 => (0 - 3) ?: 0
                 2 => 0
                 _ => 7
             print "attempt ${toString attempt}: handler feeds ${toString value}"
@@ -34,13 +34,13 @@ mut tries = 0
 outcome =
     handle Prompt
         ask label =>
-            tries := tries + 1
+            tries := tries + 1 ?: tries
             match tries > 3
                 true =>
                     print "attempt ${toString tries}: handler GIVES UP, aborting with sentinel"
-                    0 - 999
+                    (0 - 999) ?: 0
                 false =>
-                    value = 0 - tries
+                    value = (0 - tries) ?: 0
                     print "attempt ${toString tries}: handler feeds ${toString value}"
                     resume value
     in readPositive "quota"

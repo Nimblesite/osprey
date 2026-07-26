@@ -40,7 +40,7 @@ incorrect.
   `fold`/`forEach` are lowered specially in
   [iter.rs](../../crates/osprey-codegen/src/iter.rs) (fused loop), not via
   `try_inline`, so their callback resolution had the same link-error gap: a
-  generic reducer like `fn add(a, b) -> int = a + b` passed to `fold(0, add)`
+  generic reducer like `fn add(a, b) -> int = (a + b) ?: a` passed to `fold(0, add)`
   fell through to `call @add`, a symbol that generics never emit. `callback_of`
   now resolves a name found in `fn_defs` to an inlined lambda, beta-reducing it
   per element. Implements [BUILTIN-ITER-CALLBACK]; pinned by

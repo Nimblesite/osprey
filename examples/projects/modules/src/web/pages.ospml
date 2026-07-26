@@ -16,7 +16,7 @@ namespace "bank/web"
 module Pages
     response status contentType body =
         headers = "Content-Type: ${contentType}\r\nCache-Control: no-store\r\nX-Content-Type-Options: nosniff\r\n"
-        HttpResponse(status = status, headers = headers, contentType = contentType, streamFd = -1, isComplete = true, partialBody = body)
+        HttpResponse(status = status, headers = headers, contentType = contentType, streamFd = (0 - 1) ?: 0, isComplete = true, partialBody = body)
 
     html body = response 200 "text/html; charset=utf-8" body
 

@@ -7,7 +7,7 @@
 /// idiomatic Osprey form for a shared constant is a zero-argument function.
 fn semi()    = ";"   // entry separator
 fn eqByte()  = 61    // ASCII code point for '='
-fn notFound() = -1    // findEq sentinel: no '=' in the entry
+fn notFound() = (0 - 1) ?: 0    // findEq sentinel: no '=' in the entry
 
 /// --- Cursor scan: walk the entry one byte at a time with byteAt, returning the
 ///     index of the first '=' or the notFound sentinel. O(1) per byteAt, O(n)
@@ -18,7 +18,7 @@ fn findEq(seg, i) = match byteAt(seg, i) {
 }
 fn stepEq(seg, i, b) = match b == eqByte() {
     true  => i
-    false => findEq(seg, i + 1)
+    false => findEq(seg, (i + 1) ?: i)
 }
 
 /// --- Parse one entry into a "key=value" report. The cursor scan locates '=';
@@ -32,7 +32,7 @@ fn buildPair(seg, eq) = match substring(seg, 0, eq) {
     Error   { message } => Error { message: message }
 }
 fn buildValue(k, seg, eq) =
-    match substring(seg, eq + 1, length(seg)) {
+    match substring(seg, (eq + 1) ?: eq, length(seg)) {
         Success { value } => Success { value: "key='${k}' value='${value}'" }
         Error   { message } => Error { message: message }
     }
@@ -59,7 +59,7 @@ fn peel(rest, sep) = match substring(rest, 0, sep) {
 }
 fn advance(seg, rest, sep) = {
     let done = report(seg)
-    processAll(drop(rest, sep + 1))
+    processAll(drop(rest, (sep + 1) ?: sep))
 }
 
 print("=== key=value config parser ===")

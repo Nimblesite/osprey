@@ -3,7 +3,7 @@
 fn getDynamicValue() -> any = 42
 
 /// This should also pass - explicit any with parameter
-fn processAnyValue(input) -> any = input + 10
+fn processAnyValue(input) -> any = input + 10 ?: 0
 
 print("Explicit any return type works")
 print("getDynamicValue() = ${getDynamicValue()}")

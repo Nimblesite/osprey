@@ -1,28 +1,29 @@
-// HTTP Client Test - Testing basic HTTP client functionality
-// Testing HTTP built-in functions
+// Deterministic loopback coverage for the status-only HTTP client.
 
-print("=== HTTP Client Test ===")
-
-/// Test HTTP client creation
-let clientResult = httpCreateClient("http://httpbin.org", 5000)
-print("Testing HTTP client creation...")
-
-// Simple check - we'll do one match only
-match clientResult {
-    0 => print("FAILED: Client creation failed")
-    _ => print("SUCCESS: Client created, making HTTP request...")
+fn localResponse(method: string, path: string, headers: string, body: string) -> HttpResponse = HttpResponse {
+    status: 200,
+    headers: "Content-Type: text/plain",
+    contentType: "text/plain",
+    streamFd: 0,
+    isComplete: true,
+    partialBody: "ok"
 }
 
-/// Make an actual HTTP GET request (outside match to avoid IR issues)
-let getResult = httpGet(clientResult, "/get", "")
+fn localHttpRoundTrip() = {
+    let server = httpCreateServer(18107, "127.0.0.1")
+    let listening = httpListen(server, localResponse)
+    let client = httpCreateClient("http://127.0.0.1:18107", 1000)
+    let status = httpGet(client, "/health", "")
+    let closed = httpCloseClient(client)
+    let stopped = httpStopServer(server)
+    checkAll("loopback HTTP round trip", [
+        server != 0,
+        listening == 0,
+        client != 0,
+        status == 200,
+        closed == 0,
+        stopped == 0
+    ])
+}
 
-// Print result info
-print("HTTP GET request completed")
-print("Cleaning up...")
-
-/// Clean up the client
-let closeResult = httpCloseClient(clientResult)
-print("HTTP test complete")
-
-// Registers the regression scenario with the assertion-driven test runner.
-test("regression scenario completes", fn() => checkAll("legacy execution", [true]))
+test("status-only HTTP client uses a local server", localHttpRoundTrip)

@@ -7,7 +7,7 @@ pipeline : Unit -> int ! Audit
 pipeline () =
     a = perform Audit.step "load"
     b = perform Audit.step "parse"
-    a + b
+    a + b ?: 0
 
 (** Verify FIFO operations and LIFO post-resume work. *)
 resumeLifoAuditCase () =
@@ -19,7 +19,7 @@ resumeLifoAuditCase () =
     total =
         handle Audit
             step label =>
-                n := n + 1
+                n := n + 1 ?: n
                 issued := "${issued}${label}:${toString n}|"
                 answer = resume n
                 settled := "${settled}${label}:${toString answer}|"
@@ -43,7 +43,7 @@ resumeLifoAuditCase () =
         issued == "load:1|parse:2|",
         settled == "parse:3|load:3|",
         issued != settled,
-        total == 1 + 2
+        total == (1 + 2 ?: 0)
     ]
 
 test "post-resume code unwinds in reverse operation order" resumeLifoAuditCase

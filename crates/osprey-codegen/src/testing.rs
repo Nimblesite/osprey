@@ -1,6 +1,7 @@
 //! Codegen for the testing built-ins `test` / `expect` / `check`: lowers each
 //! call to the TAP-emitting C runtime (`compiler/runtime/test_runtime.c`).
-//! Assertion equality is canonical-string equality after Result auto-unwrap
+//! Assertion equality is canonical-string equality; a successful Result uses
+//! its payload string while an Error stays visible as `Error(<message>)`
 //! [TESTING-EQUALITY]. Implements [TESTING-CODEGEN], [TESTING-BUILTIN-TEST],
 //! [TESTING-BUILTIN-EXPECT], [TESTING-BUILTIN-CHECK]
 //! (docs/specs/0027-TestingFramework.md).

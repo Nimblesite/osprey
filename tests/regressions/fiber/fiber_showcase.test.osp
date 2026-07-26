@@ -8,26 +8,26 @@
 // — fibers compose into a pipeline
 // — lambdas work inside the program
 
-fn simpleTask(value) = value * 100
+fn simpleTask(value) = value * 100 ?: 0
 fn handleRequest(id) = id
-fn queryDatabase(userId) = userId * 1000
+fn queryDatabase(userId) = userId * 1000 ?: 0
 
-fn mapPhase(d) = d * d
-fn fetchUserData(id) = id * 1000 + 123
-fn fetchOrderData(id) = id * 100  + 45
+fn mapPhase(d) = d * d ?: 0
+fn fetchUserData(id) = id * 1000 + 123 ?: 0
+fn fetchOrderData(id) = id * 100  + 45 ?: 0
 
 fn authService(uid) = match uid {
     0 => 401
     _ => 200
 }
-fn inventoryService(pid) = pid * 50
-fn paymentService(amt) = amt + 25
-fn streamProcessor(b) = b * 8
+fn inventoryService(pid) = pid * 50 ?: 0
+fn paymentService(amt) = amt + 25 ?: 0
+fn streamProcessor(b) = b * 8 ?: 0
 
-fn stage1(x) = x + 100
-fn stage2(x) = x * 2
-fn stage3(x) = x - 50
-fn combine(a, b) = a * 100 + b
+fn stage1(x) = x + 100 ?: 0
+fn stage2(x) = x * 2 ?: 0
+fn stage3(x) = x - 50 ?: 0
+fn combine(a, b) = a * 100 + b ?: 0
 
 print("=== Fiber Showcase ===")
 
@@ -46,7 +46,7 @@ print("await f2 = ${await(f2)}")
 let m1 = spawn mapPhase(10)
 let m2 = spawn mapPhase(20)
 let m3 = spawn mapPhase(30)
-let mappedTotal = await(m1) + await(m2) + await(m3)
+let mappedTotal = await(m1) + await(m2) + await(m3) ?: 0
 print("map-reduce total = ${mappedTotal}")
 
 /// --- Microservices fan-out ---
@@ -76,9 +76,9 @@ send(ch2, 123)
 print("recv ch2 = ${recv(ch2)}")
 
 /// --- Lambdas inline ---
-let dbl   = fn(x) => x * 2
-let tri   = fn(x) => x * 3
-let addF  = fn(a, b) => a + b
+let dbl   = fn(x) => x * 2 ?: 0
+let tri   = fn(x) => x * 3 ?: 0
+let addF  = fn(a, b) => a + b ?: 0
 print("lam dbl=${dbl(10)} tri=${tri(7)} add=${addF(5, 8)}")
 
 /// --- Stream processing via yield ---

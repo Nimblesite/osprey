@@ -39,7 +39,7 @@ okText rc =
 (** Prepare a statement and hand back the live stmt pointer (out-param via a cell). *)
 prepare (db, sql) =
     cell = osprey_ffi_cell ()
-    rc = sqlite3_prepare_v2 db sql (0 - 1) cell (osprey_ffi_null ())
+    rc = sqlite3_prepare_v2 db sql ((0 - 1) ?: 0) cell (osprey_ffi_null ())
     stmt = osprey_ffi_deref cell
     freed = osprey_ffi_free cell
     stmt
@@ -48,7 +48,7 @@ prepare (db, sql) =
 insertUser (db, uid, uname) =
     stmt = prepare (db, "INSERT INTO users(id, name) VALUES (?, ?)")
     b1 = sqlite3_bind_int stmt 1 uid
-    b2 = sqlite3_bind_text stmt 2 uname (0 - 1) (osprey_ffi_transient ())
+    b2 = sqlite3_bind_text stmt 2 uname ((0 - 1) ?: 0) (osprey_ffi_transient ())
     rc = sqlite3_step stmt
     fin = sqlite3_finalize stmt
     rc

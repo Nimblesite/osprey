@@ -37,7 +37,7 @@ module Sqlite
     prepare : Ptr -> string -> Ptr
     prepare db sql =
         cell = osprey_ffi_cell ()
-        rc = sqlite3_prepare_v2 db sql (0 - 1) cell (osprey_ffi_null ())
+        rc = sqlite3_prepare_v2 db sql ((0 - 1) ?: 0) cell (osprey_ffi_null ())
         stmt = osprey_ffi_deref cell
         freed = osprey_ffi_free cell
         stmt
@@ -47,7 +47,7 @@ module Sqlite
     runBound db sql i t =
         stmt = prepare db sql
         b1 = sqlite3_bind_int stmt 1 i
-        b2 = sqlite3_bind_text stmt 2 t (0 - 1) (osprey_ffi_transient ())
+        b2 = sqlite3_bind_text stmt 2 t ((0 - 1) ?: 0) (osprey_ffi_transient ())
         rc = sqlite3_step stmt
         fin = sqlite3_finalize stmt
         rc
@@ -122,7 +122,7 @@ module Sqlite
     bindIntAt cursor idx val = sqlite3_bind_int cursor idx val
 
     export bindTextAt : Ptr -> int -> string -> int
-    bindTextAt cursor idx val = sqlite3_bind_text cursor idx val (0 - 1) (osprey_ffi_transient ())
+    bindTextAt cursor idx val = sqlite3_bind_text cursor idx val ((0 - 1) ?: 0) (osprey_ffi_transient ())
 
     export step : Ptr -> int
     step cursor = sqlite3_step cursor

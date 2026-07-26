@@ -621,8 +621,20 @@ const CONCURRENCY_PROBE_SCRIPT: &str = "#!/bin/sh\nmarker=\"$OSPREY_PARALLEL_PRO
          sleep 1\nrm -f \"$marker\"\nexit 1\n";
 
 #[cfg(unix)]
-fn concurrency_probe_driver(dir: &Path) -> PathBuf {
-    executable_script(dir, "probe-cc.sh", CONCURRENCY_PROBE_SCRIPT)
+fn parallel_probe_fixture(
+    root: &Path,
+    tests: &Path,
+    bin: &Path,
+    driver_name: &str,
+) -> (PathBuf, PathBuf) {
+    let probe = root.join("probe");
+    for dir in [tests, bin, &probe] {
+        let _ = std::fs::create_dir_all(dir);
+    }
+    let _ = write_in(tests, "one.test.osp", PASSING_TESTS);
+    let _ = write_in(tests, "two.test.osp", PASSING_TESTS);
+    let driver = executable_script(bin, driver_name, CONCURRENCY_PROBE_SCRIPT);
+    (probe, driver)
 }
 
 #[cfg(unix)]
@@ -651,6 +663,22 @@ fn run_conformance_probe(root: &Path, jobs: Option<&str>) -> Out {
         let _ = cmd.env("OSPREY_TEST_JOBS", value);
     }
     finish(cmd)
+}
+
+#[cfg(unix)]
+fn assert_parallel_default_has_serial_escape(
+    probe: &Path,
+    mut run: impl FnMut(Option<&str>) -> Out,
+    failure: &str,
+) {
+    let parallel = run(None);
+    assert_eq!(parallel.code, Some(1), "{}", parallel.stderr);
+    let overlap = probe.join("overlap");
+    assert!(overlap.exists(), "{failure}");
+    let _ = std::fs::remove_file(&overlap);
+    let serial = run(Some("1"));
+    assert_eq!(serial.code, Some(1), "{}", serial.stderr);
+    assert!(!overlap.exists(), "OSPREY_TEST_JOBS=1 was not serial");
 }
 
 #[cfg(unix)]
@@ -790,21 +818,12 @@ fn test_subcommand_runs_directories_and_files() {
 #[test]
 fn test_subcommand_parallel_default_has_serial_escape_hatch() {
     let dir = temp_dir("suite_parallel");
-    let _ = write_in(&dir, "one.test.osp", PASSING_TESTS);
-    let _ = write_in(&dir, "two.test.osp", PASSING_TESTS);
-    let probe = dir.join("probe");
-    let _ = std::fs::create_dir_all(&probe);
-    let driver = concurrency_probe_driver(&dir);
-
-    let parallel = run_concurrency_probe(&dir, &driver, None);
-    assert_eq!(parallel.code, Some(1), "{}", parallel.stderr);
-    let overlap = probe.join("overlap");
-    assert!(overlap.exists(), "test suites compiled serially by default");
-
-    let _ = std::fs::remove_file(&overlap);
-    let serial = run_concurrency_probe(&dir, &driver, Some("1"));
-    assert_eq!(serial.code, Some(1), "{}", serial.stderr);
-    assert!(!overlap.exists(), "OSPREY_TEST_JOBS=1 was not serial");
+    let (probe, driver) = parallel_probe_fixture(&dir, &dir, &dir, "probe-cc.sh");
+    assert_parallel_default_has_serial_escape(
+        &probe,
+        |jobs| run_concurrency_probe(&dir, &driver, jobs),
+        "test suites compiled serially by default",
+    );
 }
 
 #[cfg(unix)]
@@ -813,26 +832,12 @@ fn conformance_corpus_parallel_default_has_serial_escape_hatch() {
     let root = temp_dir("conformance_parallel");
     let tests = root.join("tests");
     let bin = root.join("target/release");
-    let probe = root.join("probe");
-    for dir in [&tests, &bin, &probe] {
-        let _ = std::fs::create_dir_all(dir);
-    }
-    let _ = write_in(&tests, "one.test.osp", PASSING_TESTS);
-    let _ = write_in(&tests, "two.test.osp", PASSING_TESTS);
-    let _ = executable_script(&bin, "osprey", CONCURRENCY_PROBE_SCRIPT);
-
-    let parallel = run_conformance_probe(&root, None);
-    assert_eq!(parallel.code, Some(1), "{}", parallel.stderr);
-    let overlap = probe.join("overlap");
-    assert!(
-        overlap.exists(),
-        "conformance suites ran serially by default"
+    let (probe, _) = parallel_probe_fixture(&root, &tests, &bin, "osprey");
+    assert_parallel_default_has_serial_escape(
+        &probe,
+        |jobs| run_conformance_probe(&root, jobs),
+        "conformance suites ran serially by default",
     );
-
-    let _ = std::fs::remove_file(&overlap);
-    let serial = run_conformance_probe(&root, Some("1"));
-    assert_eq!(serial.code, Some(1), "{}", serial.stderr);
-    assert!(!overlap.exists(), "OSPREY_TEST_JOBS=1 was not serial");
 }
 
 #[cfg(unix)]
@@ -841,6 +846,17 @@ fn test_subcommand_reuses_unchanged_compiled_suites() {
     // [TESTING-NATIVE-CACHE] the second identical run never invokes clang.
     let dir = temp_dir("suite_cache");
     let _ = write_in(&dir, "cached.test.osp", PASSING_TESTS);
+    let _ = write_in(
+        &dir,
+        "cached_http.test.osp",
+        "let client = httpCreateClient(\"http://127.0.0.1:1\", 1)\n\
+         let closed = httpCloseClient(client)\n\
+         test(\"http client\", fn() => expect(closed, 0))\n",
+    );
+    let linked = format!("// @link: m\n{PASSING_TESTS}");
+    let _ = write_in(&dir, "cached_link.test.osp", &linked);
+    let custom_search = format!("// @linkdir: {}\n{PASSING_TESTS}", dir.display());
+    let _ = write_in(&dir, "uncached_linkdir.test.osp", &custom_search);
     let driver = executable_script(
         &dir,
         "counting-cc.sh",
@@ -851,7 +867,30 @@ fn test_subcommand_reuses_unchanged_compiled_suites() {
     assert_eq!(first.code, Some(0), "{}", first.stderr);
     let second = run_cache_probe(&dir, &driver);
     assert_eq!(second.code, Some(0), "{}", second.stderr);
-    assert_eq!(read_text(&dir.join("cc-count")), "x");
+    assert_eq!(read_text(&dir.join("cc-count")), "xxxxx");
+}
+
+#[cfg(unix)]
+#[test]
+fn run_removes_temporary_native_artifacts() {
+    let dir = temp_dir("native_cleanup");
+    let scratch = dir.join("scratch");
+    let _ = std::fs::create_dir_all(&scratch);
+    let suite = write_in(&dir, "cleanup.test.osp", PASSING_TESTS);
+    let mut cmd = osprey();
+    let _ = cmd
+        .args([suite.to_string_lossy().as_ref(), "--run", "--quiet"])
+        .env("TMPDIR", &scratch)
+        .env_remove("OSPREY_TEST_CACHE_DIR");
+    let output = finish(cmd);
+    assert_eq!(output.code, Some(0), "{}", output.stderr);
+    let leaked = std::fs::read_dir(&scratch)
+        .into_iter()
+        .flatten()
+        .flatten()
+        .map(|entry| entry.path())
+        .collect::<Vec<_>>();
+    assert!(leaked.is_empty(), "temporary artifacts leaked: {leaked:?}");
 }
 
 // A compile-error suite fails the run; an empty discovery set is loud.

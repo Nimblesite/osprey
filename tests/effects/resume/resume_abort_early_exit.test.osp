@@ -32,16 +32,16 @@ fn resumeAbortEarlyExitCase() = {
         line message => { transcript = "${transcript}${message}\n" }
     in handle Stop
         check n => {
-            checks = checks + 1
+            checks = checks + 1 ?: checks
             match n {
                 0 => {
-                    aborted = aborted + 1
+                    aborted = aborted + 1 ?: aborted
                     observe("stopping at zero")
                     999
                 }
                 _ => {
-                    resumed = resumed + 1
-                    let supplied = n * 10
+                    resumed = resumed + 1 ?: resumed
+                    let supplied = n * 10 ?: 0
                     let answer = resume(supplied)
                     observe("continued check " + toString(n) + ": answer=" + toString(answer))
                     answer
@@ -69,7 +69,7 @@ fn resumeAbortEarlyExitCase() = {
         checks == 2,
         resumed == 1,
         aborted == 1,
-        checks == resumed + aborted
+        checks == (resumed + aborted ?: 0)
     ])
 }
 

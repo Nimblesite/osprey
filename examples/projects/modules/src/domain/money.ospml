@@ -17,9 +17,11 @@ module Money : MoneyApi
     // dollars are thousands-grouped by recursion. `/` is float division in
     // Osprey, so all of this runs on `intDiv`.
     pennies : int -> string
-    pennies c = match c % 100 < 10
-        true => "0${c % 100}"
-        false => "${c % 100}"
+    pennies c =
+        remainder = (c % 100) ?: 0
+        match remainder < 10
+            true => "0${remainder}"
+            false => "${remainder}"
 
     triple : int -> string
     triple n = match n < 10
@@ -31,10 +33,13 @@ module Money : MoneyApi
     group : int -> string
     group dollars = match dollars < 1000
         true => "${dollars}"
-        false => "${group (intDiv dollars 1000)},${triple (dollars % 1000)}"
+        false =>
+            next = intDiv dollars 1000 ?: 0
+            remainder = (dollars % 1000) ?: 0
+            "${group next},${triple remainder}"
 
     show : int -> string
-    show cents = "$${group (intDiv cents 100)}.${pennies cents}"
+    show cents = "$${group (intDiv cents 100 ?: 0)}.${pennies cents}"
 
     positive : int -> bool
     positive cents = cents > 0

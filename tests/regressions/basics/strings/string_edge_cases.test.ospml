@@ -33,9 +33,9 @@ print "starts-long=${"hi"  |> startsWith("hello")}\n"
 print "ends-long=${"hi"    |> endsWith("hello")}\n"
 
 // ---- take / drop clamping ----
-print "take-neg=\"${"hi" |> take(-5)}\"\n"
+print "take-neg=\"${"hi" |> take((0 - 5) ?: 0)}\"\n"
 print "take-big=\"${"hi" |> take(99)}\"\n"
-print "drop-neg=\"${"hi" |> drop(-5)}\"\n"
+print "drop-neg=\"${"hi" |> drop((0 - 5) ?: 0)}\"\n"
 print "drop-big=\"${"hi" |> drop(99)}\"\n"
 
 // ---- trim on all-whitespace ----
@@ -49,7 +49,7 @@ match substring "hi" 0 0
 match substring "hi" 0 2
     Success value   => print "sub-full=\"${value}\"\n"
     Error   message => print "sub-full FAILED\n"
-match substring "hi" (-1) 2
+match substring "hi" ((0 - 1) ?: 0) 2
     Success value   => print "sub-neg unexpected\n"
     Error   message => print "sub-neg rejected\n"
 match substring "hi" 0 99
@@ -80,7 +80,7 @@ match replace "hello" "l" ""
 match repeat "ab" 0
     Success value   => print "rep0=\"${value}\"\n"
     Error   message => print "rep0 FAILED\n"
-match repeat "ab" (-1)
+match repeat "ab" ((0 - 1) ?: 0)
     Success value   => print "rep-neg unexpected\n"
     Error   message => print "rep-neg rejected\n"
 

@@ -37,7 +37,7 @@ fn textResp(status, bodyText) = HttpResponse {
     status: status,
     headers: "Content-Type: text/plain",
     contentType: "text/plain",
-    streamFd: -1,
+    streamFd: (0 - 1) ?: 0,
     isComplete: true,
     partialBody: bodyText
 }
@@ -125,17 +125,17 @@ handle Persist
         let saved = writeFile("/tmp/osprey_tasks.db", snap)
         diskBytes = match saved {
             Success { value } => length(snap)
-            Error { message } => -1
+            Error { message } => (0 - 1) ?: 0
         }
         diskBytes
     }
     bytes => diskBytes
 in handle Metrics
-    hit p      => { requests = requests + 1 }
+    hit p      => { requests = requests + 1 ?: requests }
     served     => requests
 in handle Db
     add t => {
-        taskCount = taskCount + 1
+        taskCount = taskCount + 1 ?: taskCount
         tasks = "${tasks}#${toString(taskCount)} ${t}\n"
         taskCount
     }

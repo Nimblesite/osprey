@@ -16,7 +16,7 @@ colorName Blue = "blue"
 (** Call a function declared later in the file. *)
 callerOfLater _ = calleeLater 10
 (** Supply the forward-referenced arithmetic implementation. *)
-calleeLater n = n * 4
+calleeLater n = n * 4 ?: 0
 
 (** Parse an integer or use the caller's fallback. *)
 parseOr : string -> int -> int
@@ -42,7 +42,7 @@ unionsResultsAndScalars () =
         priWeight Med == 5,
         priWeight Low == 1,
         "${colorName Green} wrapped ${wrappedValue}" == "green wrapped 42",
-        "next ${25 + 1} half ${25 / 2}" == "next 26 half 12.5",
+        "next ${25 + 1} half ${25 / 2}" == "next Success(26) half Success(12.5)",
         1.5 == 1.5,
         parseStatus "oops" == "parseInt rejected oops",
         parseStatus "123" == "parsed 123",
@@ -54,8 +54,8 @@ unionsResultsAndScalars () =
 
 (** Exercise forward calls, lambdas, pipelines, and union-derived data. *)
 functionsPipesAndBooleans () =
-    chained = 5 |> (\x => x + 100) |> (\x => x * 2)
-    single = 7 |> \x => x * 3
+    chained = 5 |> (\x => x + 100 ?: 0) |> (\x => x * 2 ?: 0)
+    single = 7 |> \x => x * 3 ?: 0
     // Check function, pipeline, and boolean state.
     checkAll "function/pipe/boolean state" [
         5 == 5,
@@ -64,10 +64,10 @@ functionsPipesAndBooleans () =
         "forward call -> ${callerOfLater 0}" == "forward call -> 40",
         chained == 210,
         single == 21,
-        (5 |> \x => x + 100) == 105,
-        callerOfLater 999 == callerOfLater (0 - 1),
+        (5 |> \x => x + 100 ?: 0) == 105,
+        callerOfLater 999 == callerOfLater ((0 - 1) ?: 0),
         chained > single,
-        single + priWeight Med == 26
+        (single + priWeight Med ?: 0) == 26
     ]
 
 (** Exercise handled mutation beside persistent collections and lookup. *)
@@ -77,7 +77,7 @@ effectsAndCollections () =
     checkAll "effect precondition" [counter == 0]
     handle Counter
         increment amount =>
-            counter := counter + amount
+            counter := counter + amount ?: counter
     in
         perform Counter.increment 1
         perform Counter.increment 1
@@ -86,8 +86,8 @@ effectsAndCollections () =
     ys = listAppend (List ()) 99
     combined = xs + ys
     m = mapSet (mapSet (Map ()) "a" 1) "b" 2
-    scoreAtOne = [85, 92, 78][1] ?: (0 - 1)
-    bananaPrice = ["apple" => 2, "banana" => 3]["banana"] ?: (0 - 1)
+    scoreAtOne = [85, 92, 78][1] ?: ((0 - 1) ?: 0)
+    bananaPrice = ["apple" => 2, "banana" => 3]["banana"] ?: ((0 - 1) ?: 0)
     // Check post-handler and collection state.
     checkAll "effect/collection state" [
         "counter ${counter}" == "counter 3",
@@ -106,8 +106,8 @@ effectsAndCollections () =
         scoreAtOne == 92,
         "banana ${bananaPrice}" == "banana 3",
         bananaPrice == 3,
-        ([85, 92, 78][9] ?: (0 - 1)) == (0 - 1),
-        (["apple" => 2]["pear"] ?: (0 - 1)) == (0 - 1)
+        ([85, 92, 78][9] ?: ((0 - 1) ?: 0)) == ((0 - 1) ?: 0),
+        (["apple" => 2]["pear"] ?: ((0 - 1) ?: 0)) == ((0 - 1) ?: 0)
     ]
 
 (** Exercise string transforms over values from other features. *)

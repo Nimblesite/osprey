@@ -20,16 +20,16 @@ fn calculateComplexity(priority) = match priority {
     Low => 75
 }
 
-fn calculateTime(complexity: int) -> int = intDiv(complexity, 10) + 7
+fn calculateTime(complexity: int) -> int = (intDiv(complexity, 10) ?: 0) + 7 ?: 0
 
 fn calculateEfficiency(duration) = match duration < 100 {
     true => 100
     false => 50
 }
 
-fn preprocessData(rawData) = rawData * 2 + 100
+fn preprocessData(rawData) = rawData * 2 + 100 ?: 0
 fn validateData(data) = data > 50
-fn transformData(data) = data * 3
+fn transformData(data) = data * 3 ?: 0
 
 type TaskResult = Success | Warning | Failed
 
@@ -75,7 +75,7 @@ fn processTaskForBatch(taskId: string, dataSize: int, priority: TaskPriority) ->
 fn processAlphaTask1() = processTaskForBatch(taskId: "task-alpha-1", dataSize: 150, priority: High)
 fn processAlphaTask2() = processTaskForBatch(taskId: "task-alpha-2", dataSize: 200, priority: Medium) 
 fn processAlphaTask3() = processTaskForBatch(taskId: "task-alpha-3", dataSize: 75, priority: Urgent)
-fn sumBatchResults(first: int, second: int, third: int) -> int = first + second + third
+fn sumBatchResults(first: int, second: int, third: int) -> int = first + second + third ?: 0
 
 fn processAlphaBatch() -> int ![Logger, Metrics] = {
     perform Logger.info("Processing batch: alpha")

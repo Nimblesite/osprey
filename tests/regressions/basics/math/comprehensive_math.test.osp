@@ -1,9 +1,9 @@
-// Math: plain int/float arithmetic, checked integer arithmetic
+// Math: checked integer arithmetic, plain IEEE-754 float arithmetic,
 // [BUILTIN-CHECKED-ARITH], division/remainder Results, and recursion.
 
 fn power(base, exp) = match exp {
-    0 => 1
-    1 => base
+    0 => Success { value: 1 }
+    1 => Success { value: base }
     2 => base * base
     3 => base * base * base
     _ => base * base * base * base
@@ -31,7 +31,7 @@ fn fibonacci(n) = match n {
 
 fn complex(a, b) = (a * 2) + (b * 3) - 1
 
-fn isEven(x) = (x % 2) == 0
+fn isEven(x) = (x % 2 ?: 1) == 0
 
 fn classify(n) = match n {
     0 => "Zero"
@@ -58,7 +58,7 @@ fn showDiv(a, b) = {
 
 print("=== Math Showcase ===")
 
-/// Plain arithmetic in interpolation.
+/// Result-preserving checked arithmetic in interpolation.
 let age = 25
 print("Next year: ${age + 1}")
 print("Last year: ${age - 1}")
@@ -81,21 +81,21 @@ match intDiv(5, 0) {
 
 print("checked add=${toString(checkedAdd(2, 3))}, sub=${toString(checkedSub(2, 3))}, mul=${toString(checkedMul(6, 7))}")
 print("checked overflow add=${toString(checkedAdd(9223372036854775807, 1))}")
-print("checked overflow sub=${toString(checkedSub(-9223372036854775807, 2))}")
+print("checked overflow sub=${toString(checkedSub((0 - 9223372036854775807) ?: 0, 2))}")
 print("checked overflow mul=${toString(checkedMul(4294967296, 4294967296))}")
 
 // [BUILTIN-ABS] uses the language's i64 ABI, including values outside libc `int`.
-// Its only unrepresentable magnitude wraps to INT64_MIN, like plain `0 - n`.
-print("abs(-5000000000) = ${abs(0 - 5000000000)}")
-print("abs(INT64_MIN) = ${abs((0 - 9223372036854775807) - 1)}")
+// Its only unrepresentable magnitude returns Error instead of overflowing.
+print("abs(-5000000000) = ${abs((0 - 5000000000) ?: 0)}")
+print("abs(INT64_MIN) = ${abs(((0 - 9223372036854775807) - 1) ?: 0)}")
 
 // [BUILTIN-INTDIV] rejects the one non-zero divisor pair whose signed
 // quotient cannot be represented, rather than emitting LLVM `sdiv` poison.
-match intDiv((0 - 9223372036854775807) - 1, 0 - 1) {
+match intDiv(((0 - 9223372036854775807) - 1) ?: 0, (0 - 1) ?: 0) {
     Success { value } => print("intDiv(INT64_MIN,-1) unexpected ${value}")
     Error { message } => print("intDiv(INT64_MIN,-1): ${message}")
 }
-match ((0 - 9223372036854775807) - 1) % (0 - 1) {
+match (((0 - 9223372036854775807) - 1) ?: 0) % ((0 - 1) ?: 0) {
     Success { value } => print("INT64_MIN % -1 = ${value}")
     Error { message } => print("INT64_MIN % -1 unexpected: ${message}")
 }

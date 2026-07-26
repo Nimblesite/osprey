@@ -215,7 +215,7 @@ pub(crate) enum MlItem {
     /// `name : type` — a standalone type signature, paired with the binding of
     /// the same name that follows it. Kept in the CST so the lowerer can apply
     /// concrete parameter/return types (which the type checker and codegen rely
-    /// on for curried closures and `Result` auto-unwrap).
+    /// on for curried closures and exact `Result` preservation).
     ValueSignature {
         /// The signed name.
         name: String,

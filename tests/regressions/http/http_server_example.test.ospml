@@ -20,7 +20,7 @@ handleHttpRequest (method, path, headers, body) =
                     status = 200,
                     headers = "Content-Type: application/json",
                     contentType = "application/json",
-                    streamFd = -1,
+                    streamFd = (0 - 1) ?: 0,
                     isComplete = true,
                     partialBody = "{\"users\": [{\"id\": 1, \"name\": \"Alice\"}, {\"id\": 2, \"name\": \"Bob\"}]}"
                 )
@@ -28,7 +28,7 @@ handleHttpRequest (method, path, headers, body) =
                     status = 200,
                     headers = "Content-Type: application/json",
                     contentType = "application/json",
-                    streamFd = -1,
+                    streamFd = (0 - 1) ?: 0,
                     isComplete = true,
                     partialBody = "{\"status\": \"ok\", \"timestamp\": \"2025-01-15T10:30:00Z\"}"
                 )
@@ -36,7 +36,7 @@ handleHttpRequest (method, path, headers, body) =
                     status = 404,
                     headers = "Content-Type: application/json",
                     contentType = "application/json",
-                    streamFd = -1,
+                    streamFd = (0 - 1) ?: 0,
                     isComplete = true,
                     partialBody = "{\"error\": \"Not found\"}"
                 )
@@ -46,7 +46,7 @@ handleHttpRequest (method, path, headers, body) =
                     status = 201,
                     headers = "Content-Type: application/json",
                     contentType = "application/json",
-                    streamFd = -1,
+                    streamFd = (0 - 1) ?: 0,
                     isComplete = true,
                     partialBody = "{\"id\": 3, \"name\": \"New User\", \"message\": \"User created successfully\"}"
                 )
@@ -54,7 +54,7 @@ handleHttpRequest (method, path, headers, body) =
                     status = 200,
                     headers = "Content-Type: application/json",
                     contentType = "application/json",
-                    streamFd = -1,
+                    streamFd = (0 - 1) ?: 0,
                     isComplete = true,
                     partialBody = "{\"token\": \"abc123xyz\", \"expires\": \"2025-01-16T10:30:00Z\"}"
                 )
@@ -62,7 +62,7 @@ handleHttpRequest (method, path, headers, body) =
                     status = 404,
                     headers = "Content-Type: application/json",
                     contentType = "application/json",
-                    streamFd = -1,
+                    streamFd = (0 - 1) ?: 0,
                     isComplete = true,
                     partialBody = "{\"error\": \"Not found\"}"
                 )
@@ -72,7 +72,7 @@ handleHttpRequest (method, path, headers, body) =
                     status = 200,
                     headers = "Content-Type: application/json",
                     contentType = "application/json",
-                    streamFd = -1,
+                    streamFd = (0 - 1) ?: 0,
                     isComplete = true,
                     partialBody = "{\"id\": 1, \"name\": \"Alice Updated\", \"message\": \"User updated successfully\"}"
                 )
@@ -80,7 +80,7 @@ handleHttpRequest (method, path, headers, body) =
                     status = 404,
                     headers = "Content-Type: application/json",
                     contentType = "application/json",
-                    streamFd = -1,
+                    streamFd = (0 - 1) ?: 0,
                     isComplete = true,
                     partialBody = "{\"error\": \"Not found\"}"
                 )
@@ -90,7 +90,7 @@ handleHttpRequest (method, path, headers, body) =
                     status = 200,
                     headers = "Content-Type: application/json",
                     contentType = "application/json",
-                    streamFd = -1,
+                    streamFd = (0 - 1) ?: 0,
                     isComplete = true,
                     partialBody = "{\"message\": \"User deleted successfully\"}"
                 )
@@ -98,7 +98,7 @@ handleHttpRequest (method, path, headers, body) =
                     status = 404,
                     headers = "Content-Type: application/json",
                     contentType = "application/json",
-                    streamFd = -1,
+                    streamFd = (0 - 1) ?: 0,
                     isComplete = true,
                     partialBody = "{\"error\": \"Not found\"}"
                 )
@@ -106,7 +106,7 @@ handleHttpRequest (method, path, headers, body) =
             status = 405,
             headers = "Content-Type: application/json",
             contentType = "application/json",
-            streamFd = -1,
+            streamFd = (0 - 1) ?: 0,
             isComplete = true,
             partialBody = "{\"error\": \"Method not allowed\"}"
         )

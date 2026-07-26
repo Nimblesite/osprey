@@ -56,27 +56,36 @@ range (1, 10) |> filter isEven
 Reduces an iterator to a single value.
 
 ```osprey
+fn add(total: int, value: int) -> int = (total + value) ?: total
 range(1, 5) |> fold(0, add)   // 0+1+2+3+4 = 10
 ```
 
 ```osprey-ml
+add : (int, int) -> int
+add (total, value) = (total + value) ?: total
+
 range (1, 5) |> fold (0, add)   // 0+1+2+3+4 = 10
 ```
 
 ## Callbacks and Accumulators — [BUILTIN-ITER-CALLBACK]
 
 Callbacks may be lambdas, named functions, or function values. Generic named
-functions are specialized at the call site.
+functions are specialized at the call site. Iterator combinators preserve a
+callback's complete return type, including `Result<T, E>`; they never unwrap a
+failure channel. A callback used where a plain accumulator or record field is
+required must handle checked integer arithmetic explicitly
+([ARITH-CHECKED](0013-ErrorHandling.md#arithmetic-and-result--arith-checked)).
 
 ```osprey
-fn energy(p) = p.mass + p.spin      // generic: inferred, no annotations
-range(1, n) |> map(forge) |> map(energy) |> fold(0, add)
+fn energy(p) = (p.mass + p.spin) ?: 0      // generic: inferred, no annotations
+fn addEnergy(total: int, value: int) -> int = (total + value) ?: total
+range(1, n) |> map(forge) |> map(energy) |> fold(0, addEnergy)
 ```
 
 A `fold` accumulator may be any inferred type, including a record:
 
 ```osprey
-fn bump(p, step) = p { mass: p.mass + 1 }
+fn bump(p, step) = p { mass: (p.mass + 1) ?: p.mass }
 range(1, n) |> fold(Particle { id: 0, mass: 0, spin: 0 }, bump)   // -> Particle
 ```
 

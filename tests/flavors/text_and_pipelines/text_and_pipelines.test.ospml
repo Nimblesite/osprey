@@ -2,15 +2,15 @@
 
 (** Increment a pipeline value. *)
 pipeInc : int -> int
-pipeInc x = x + 1
+pipeInc x = x + 1 ?: 0
 
 (** Double a pipeline value. *)
 pipeDouble : int -> int
-pipeDouble x = x + x
+pipeDouble x = x + x ?: 0
 
 (** Square a pipeline value. *)
 pipeSquare : int -> int
-pipeSquare x = x * x
+pipeSquare x = x * x ?: 0
 
 (** Verify left-to-right pipeline composition. *)
 pipeChainCase () =

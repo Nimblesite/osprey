@@ -14,7 +14,7 @@ fn colorName(c) = match c { Red => "red" Green => "green" Blue => "blue" }
 /// Exercises a call to a function declared later in the source file.
 fn callerOfLater(_) = calleeLater(10)
 /// Supplies the forward-referenced arithmetic implementation.
-fn calleeLater(n) = n * 4
+fn calleeLater(n) = n * 4 ?: 0
 
 /// Unwraps a parsed integer or returns the caller's fallback through currying.
 fn parseOr(text: string) -> (int) -> int = fn(fallback) => parseInt(text) ?: fallback
@@ -38,7 +38,7 @@ fn unionsResultsAndScalars() = {
         priWeight(Med) == 5,
         priWeight(Low) == 1,
         "${colorName(Green)} wrapped ${wrappedValue}" == "green wrapped 42",
-        "next ${25 + 1} half ${25 / 2}" == "next 26 half 12.5",
+        "next ${25 + 1} half ${25 / 2}" == "next Success(26) half Success(12.5)",
         1.5 == 1.5,
         parseStatus("oops") == "parseInt rejected oops",
         parseStatus("123") == "parsed 123",
@@ -51,8 +51,8 @@ fn unionsResultsAndScalars() = {
 
 /// Verifies forward calls, lambdas, pipelines, booleans, and union-derived data.
 fn functionsPipesAndBooleans() = {
-    let chained = 5 |> (fn(x) => x + 100) |> (fn(x) => x * 2)
-    let single = 7 |> fn(x) => x * 3
+    let chained = 5 |> (fn(x) => x + 100 ?: 0) |> (fn(x) => x * 2 ?: 0)
+    let single = 7 |> fn(x) => x * 3 ?: 0
     // The batch preserves each legacy result and asserts intermediate pipeline state.
     checkAll("function/pipe/boolean state", [
         5 == 5,
@@ -61,10 +61,10 @@ fn functionsPipesAndBooleans() = {
         "forward call -> ${callerOfLater(0)}" == "forward call -> 40",
         chained == 210,
         single == 21,
-        (5 |> fn(x) => x + 100) == 105,
-        callerOfLater(999) == callerOfLater(-1),
+        (5 |> fn(x) => x + 100 ?: 0) == 105,
+        callerOfLater(999) == callerOfLater((0 - 1) ?: 0),
         chained > single,
-        single + priWeight(Med) == 26
+        (single + priWeight(Med) ?: 0) == 26
     ])
 }
 
@@ -74,7 +74,7 @@ fn effectsAndCollections() = {
     // Establishes the state precondition before any handled interaction occurs.
     checkAll("effect precondition", [counter == 0])
     handle Counter
-        increment amount => { counter = counter + amount }
+        increment amount => { counter = counter + amount ?: counter }
     in {
         perform Counter.increment(1)
         perform Counter.increment(1)
@@ -84,8 +84,8 @@ fn effectsAndCollections() = {
     let ys = listAppend(List(), 99)
     let combined = xs + ys
     let m = mapSet(mapSet(Map(), "a", 1), "b", 2)
-    let scoreAtOne = [85, 92, 78][1] ?: -1
-    let bananaPrice = { "apple": 2, "banana": 3 }["banana"] ?: -1
+    let scoreAtOne = [85, 92, 78][1] ?: ((0 - 1) ?: 0)
+    let bananaPrice = { "apple": 2, "banana": 3 }["banana"] ?: ((0 - 1) ?: 0)
     // Checks every post-handler and collection invariant without repetitive calls.
     checkAll("effect/collection state", [
         "counter ${counter}" == "counter 3",
@@ -104,8 +104,8 @@ fn effectsAndCollections() = {
         scoreAtOne == 92,
         "banana ${bananaPrice}" == "banana 3",
         bananaPrice == 3,
-        ([85, 92, 78][9] ?: -1) == -1,
-        ({ "apple": 2 }["pear"] ?: -1) == -1
+        ([85, 92, 78][9] ?: ((0 - 1) ?: 0)) == ((0 - 1) ?: 0),
+        ({ "apple": 2 }["pear"] ?: ((0 - 1) ?: 0)) == ((0 - 1) ?: 0)
     ])
 }
 

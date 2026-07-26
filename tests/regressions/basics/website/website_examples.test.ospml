@@ -1,4 +1,4 @@
-double n = n * 2
+double n = n * 2 ?: 0
 
 x = 42
 name = "Alice"
@@ -7,22 +7,22 @@ print "name = ${name}"
 
 result = match x
     42 => "The answer!"
-    0  => "Zero"
-    _  => "Something else"
+    0 => "Zero"
+    _ => "Something else"
 print "Result: ${result}"
 
-age   = 25
+age = 25
 score = 95
 print "Hello ${name}!"
-print "Next year you'll be ${age + 1}"
-print "Double score: ${score * 2}"
+print "Next year you'll be ${(age + 1) ?: 0}"
+print "Double score: ${(score * 2) ?: 0}"
 print "${name} (${age}) scored ${score}/100"
 
 analyzeNumber n = match n
-    0  => "Zero"
+    0 => "Zero"
     42 => "The answer!"
-    _  => "Something else"
-square v = v * v
+    _ => "Something else"
+square v = v * v ?: 0
 print "Testing functions:"
 print (analyzeNumber 0)
 print (analyzeNumber 42)
@@ -36,10 +36,10 @@ print "${doubled} squared is ${squared}"
 
 getGrade s = match s
     100 => "Perfect!"
-    95  => "Excellent"
-    85  => "Very Good"
-    75  => "Good"
-    _   => "Needs Improvement"
+    95 => "Excellent"
+    85 => "Very Good"
+    75 => "Good"
+    _ => "Needs Improvement"
 print "Grade for 100: ${getGrade 100}"
 print "Grade for 95: ${getGrade 95}"
 print "Grade for 85: ${getGrade 85}"
@@ -50,7 +50,7 @@ print "Grade for 50: ${getGrade 50}"
 print "Range operations:"
 range 1 10 |> forEach print
 
-compute value = value * 2
+compute value = value * 2 ?: 0
 fiber1 = spawn (compute 5)
 fiber2 = spawn (compute 10)
 print "Fiber 1 result: ${fiber1}"

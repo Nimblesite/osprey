@@ -390,7 +390,7 @@ mod tests {
     use super::*;
     use crate::hover::hover;
     const U16: PositionEncoding = PositionEncoding::Utf16;
-    const SRC: &str = "fn add(a: int, b: int) -> int = a + b\nlet total = add(1, 2)\n";
+    const SRC: &str = "fn add(a: int, b: int) -> int = (a + b) ?: 0\nlet total = add(1, 2)\n";
 
     #[test]
     fn definition_points_at_the_declaration() {
@@ -505,7 +505,7 @@ mod tests {
         // The inner `add(1, 2)` call is closed before the cursor, so the active
         // call is the still-open outer `print(...)`. This exercises the `)` arm
         // that pops the call/comma stacks.
-        let src = "fn add(a: int, b: int) -> int = a + b\nlet r = add(add(1, 2), 3)\n";
+        let src = "fn add(a: int, b: int) -> int = (a + b) ?: 0\nlet r = add(add(1, 2), 3)\n";
         let sig = signature_help(src, "file:///a.osp", 1, 24, U16).expect("sig");
         assert_eq!(sig.label, "fn add(a: int, b: int) -> int");
         // After the inner call closed, the cursor is over the outer second arg.
@@ -516,7 +516,7 @@ mod tests {
     fn signature_help_triggers_on_the_function_name_not_only_inside_the_parens() {
         // Editors ask the moment the callee is typed. Answering only between
         // the parentheses shows the signature just after it stopped helping.
-        let src = "fn add(a: int, b: int) -> int = a + b\nlet total = add\n";
+        let src = "fn add(a: int, b: int) -> int = (a + b) ?: 0\nlet total = add\n";
         let sig = signature_help(src, "file:///a.osp", 1, 13, U16).expect("sig on the name");
         assert_eq!(sig.label, "fn add(a: int, b: int) -> int");
         assert_eq!(sig.active_parameter, 0, "{sig:?}");

@@ -530,8 +530,12 @@ pub(crate) fn execute_native(
     memory: &str,
     kind: osprey_debug::BuildKind,
 ) -> Result<u8, ExitCode> {
-    let exe = native_executable(input, memory, kind)?;
-    match Command::new(&exe).status() {
+    let (exe, temporary) = native_executable(input, memory, kind)?;
+    let status = Command::new(&exe).status();
+    if temporary {
+        let _ = std::fs::remove_file(&exe);
+    }
+    match status {
         Ok(s) => Ok(child_exit_code(s)),
         Err(e) => {
             eprintln!("error: could not run {}: {e}", exe.display());
@@ -544,10 +548,10 @@ fn native_executable(
     input: &CompilationInput,
     memory: &str,
     kind: osprey_debug::BuildKind,
-) -> Result<PathBuf, ExitCode> {
+) -> Result<(PathBuf, bool), ExitCode> {
     if let Some(cached) = test_cache_path(input, memory, kind) {
         ensure_cached_executable(input, memory, kind, &cached)?;
-        return Ok(cached);
+        return Ok((cached, false));
     }
     let exe = std::env::temp_dir().join(format!("{}.out", scratch_stem(input.display_path())));
     build_executable(
@@ -558,7 +562,7 @@ fn native_executable(
         memory,
         kind,
     )?;
-    Ok(exe)
+    Ok((exe, true))
 }
 
 fn test_cache_path(
@@ -582,11 +586,9 @@ fn test_cache_path(
 }
 
 fn cacheable_test_source(source: &str) -> bool {
-    !source.contains("http")
-        && !source.contains("websocket")
-        && !source
-            .lines()
-            .any(|line| directive(line, "link").is_some() || directive(line, "linkdir").is_some())
+    !source
+        .lines()
+        .any(|line| directive(line, "linkdir").is_some())
 }
 
 fn directory_is_safe(path: &Path) -> bool {
@@ -635,8 +637,10 @@ fn hash_runtime_identity<H: std::hash::Hasher>(memory: &str, state: &mut H) {
         "arc" => "_arc",
         _ => "",
     };
-    let runtime = find_runtime_lib(&format!("libfiber_runtime{suffix}.a")).map(PathBuf::from);
-    hash_file_identity(runtime.as_deref(), state);
+    for prefix in ["libfiber_runtime", "libhttp_runtime"] {
+        let runtime = find_runtime_lib(&format!("{prefix}{suffix}.a")).map(PathBuf::from);
+        hash_file_identity(runtime.as_deref(), state);
+    }
 }
 
 fn hash_file_identity<H: std::hash::Hasher>(path: Option<&Path>, state: &mut H) {
@@ -783,19 +787,22 @@ fn build_executable(
         eprintln!("error: cannot write IR to {}: {e}", ll.display());
         return Err(ExitCode::FAILURE);
     }
-    if kind == osprey_debug::BuildKind::Profile {
-        return build_profile_executable(&ll, &ir, source, exe, memory);
-    }
-    let mut cmd = Command::new(c_compiler());
-    let _ = cmd
-        .arg(&ll)
-        .arg("-o")
-        .arg(exe)
-        .arg("-Wno-override-module")
-        .arg(opt_flag(kind))
-        .args(kind.native_driver_flags())
-        .args(link_args(&ir, source, memory));
-    run_build_step(cmd, &ll)
+    let result = if kind == osprey_debug::BuildKind::Profile {
+        build_profile_executable(&ll, &ir, source, exe, memory)
+    } else {
+        let mut cmd = Command::new(c_compiler());
+        let _ = cmd
+            .arg(&ll)
+            .arg("-o")
+            .arg(exe)
+            .arg("-Wno-override-module")
+            .arg(opt_flag(kind))
+            .args(kind.native_driver_flags())
+            .args(link_args(&ir, source, memory));
+        run_build_step(cmd, &ll)
+    };
+    let _ = std::fs::remove_file(&ll);
+    result
 }
 
 /// Profile builds go `.ll -> .o -> link -> dsymutil` [PROF-BUILD-MODE]: the
@@ -819,7 +826,10 @@ fn build_profile_executable(
         .arg("-Wno-override-module")
         .arg(opt_flag(kind))
         .args(kind.native_driver_flags());
-    run_build_step(compile, ll)?;
+    if let Err(code) = run_build_step(compile, ll) {
+        let _ = std::fs::remove_file(&obj);
+        return Err(code);
+    }
     let mut link = Command::new(c_compiler());
     let _ = link
         .arg(&obj)
@@ -827,13 +837,14 @@ fn build_profile_executable(
         .arg(exe)
         .args(kind.native_driver_flags())
         .args(link_args(ir, source, memory));
-    run_build_step(link, &obj)?;
-    if cfg!(target_os = "macos") {
+    let result = run_build_step(link, &obj);
+    if result.is_ok() && cfg!(target_os = "macos") {
         // Best-effort: without a dSYM the profile still symbolizes to function
         // names from the symbol table, just without file:line detail.
         let _ = Command::new("dsymutil").arg(exe).status();
     }
-    Ok(())
+    let _ = std::fs::remove_file(&obj);
+    result
 }
 
 /// Run one compiler/linker step, mapping failure onto the CLI exit contract.
@@ -1448,7 +1459,7 @@ mod tests {
     fn profile_run_writes_exports_where_output_points() {
         let path = temp_source(
             "prof_e2e",
-            "fn dec(n: int) -> int = n - 1\n\
+            "fn dec(n: int) -> int = (n - 1) ?: 0\n\
              fn count(n: int) -> int = match n {\n    0 => 0\n    _ => count(dec(n))\n}\n\
              print(\"${count(500)}\")\n",
         );

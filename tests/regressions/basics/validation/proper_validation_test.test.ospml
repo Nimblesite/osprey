@@ -31,7 +31,7 @@ print (toString (isValidEmail ""))
 print (toString (isValidEmail "alice@example.com"))
 
 print (toString (isPositive 5))
-print (toString (isPositive (-5)))
+print (toString (isPositive ((0 - 5) ?: 0)))
 print (toString (isPositive 0))
 
 (** Register the regression scenario with the assertion-driven test runner. *)

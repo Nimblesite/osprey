@@ -38,7 +38,7 @@ pipeline () =
     print "  step e  MAX + 1         -> ${toString e}"
     f = addRescue 100 23
     print "  step f  100 + 23        -> ${toString f}"
-    a + b + c + d + e + f
+    a + b + c + d + e + f ?: 0
 
 print "=== Result -> effect rescue pipeline ==="
 
@@ -48,7 +48,7 @@ mut rescues = 0
 total =
     handle Rescue
         onErr message =>
-            rescues := rescues + 1
+            rescues := rescues + 1 ?: rescues
             print "  RESCUE #${toString rescues}: original error \"${message}\" -> using ${toString RESCUED_DEFAULT}"
             RESCUED_DEFAULT
     in pipeline ()
@@ -56,8 +56,8 @@ total =
 print "rescued ${toString rescues} failing step(s); healthy + rescued total = ${toString total}"
 
 (** `?:` supplies a local fallback without invoking the Rescue policy. *)
-localOk = (10 % 3) ?: -1
-localBad = (10 % 0) ?: -1
+localOk = (10 % 3) ?: ((0 - 1) ?: 0)
+localBad = (10 % 0) ?: ((0 - 1) ?: 0)
 print "local ?: default  10 % 3 -> ${toString localOk}   10 % 0 -> ${toString localBad}"
 
 // The raw float division Result remains a value.

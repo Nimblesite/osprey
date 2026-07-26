@@ -2,13 +2,13 @@
 // results_state_hof. It deliberately keeps cross-feature behavior together.
 
 /// Increment an integer in direct calls and pipelines.
-fn tourInc(x: int) -> int = x + 1
+fn tourInc(x: int) -> int = x + 1 ?: 0
 /// Add two integers through curried application.
-fn tourAdd(x: int) -> (int) -> int = fn(y) => x + y
+fn tourAdd(x: int) -> (int) -> int = fn(y) => x + y ?: 0
 /// Square an integer in direct calls and pipelines.
-fn tourSquare(n: int) -> int = n * n
+fn tourSquare(n: int) -> int = n * n ?: 0
 /// Capture a scale factor in a concrete returned closure.
-fn tourMakeScaler(k: int) -> (int) -> int = fn(v) => v * k
+fn tourMakeScaler(k: int) -> (int) -> int = fn(v) => v * k ?: 0
 
 /// Name two integer literals and stringify the wildcard branch.
 fn tourName(n) = match n {
@@ -18,7 +18,7 @@ fn tourName(n) = match n {
 }
 
 /// Classify parity by matching a modulo-derived boolean.
-fn tourParity(n) = match n % 2 == 0 {
+fn tourParity(n) = match (n % 2 ?: 1) == 0 {
     true => "even"
     false => "odd"
 }
@@ -66,9 +66,9 @@ fn curryTourCase() = {
 }
 
 /// Capture a multiplier for the concise mixed-feature workflow.
-fn mixedScale(k: int) -> (int) -> int = fn(v) => v * k
+fn mixedScale(k: int) -> (int) -> int = fn(v) => v * k ?: 0
 /// Advance an integer by one for direct and piped calls.
-fn mixedStep(x: int) -> int = x + 1
+fn mixedStep(x: int) -> int = x + 1 ?: 0
 
 /// Classify zero and positive values separately from negative values.
 fn mixedSign(n: int) -> string = match n >= 0 {
@@ -97,7 +97,7 @@ fn mixedFeaturesCase() = {
     // Extend sign boundaries, closure factors, and intermediate pipeline state.
     checkAll("mixed features interaction edges", [
             mixedSign(0) == "pos",
-            mixedSign(0 - 1) == "neg",
+            mixedSign((0 - 1) ?: 0) == "neg",
             mixedScale(0)(99) == 0,
             (base |> mixedStep) == 8,
             mixedScale(2)(5) == 10
@@ -105,14 +105,14 @@ fn mixedFeaturesCase() = {
 }
 
 /// Unwrap a successful modulo Result and map errors to the legacy sentinel.
-fn resultSafeMod(a: int) -> (int) -> int = fn(b) => a % b ?: -1
+fn resultSafeMod(a: int) -> (int) -> int = fn(b) => a % b ?: ((0 - 1) ?: 0)
 
 /// Apply a concrete integer function twice.
 fn resultTwice(f: (int) -> int) -> (int) -> int = fn(x) => f(f(x))
 /// Add ten as the first-class function passed to resultTwice.
-fn resultBump(x) = x + 10
+fn resultBump(x) = x + 10 ?: 0
 /// Capture one operand in a genuinely curried addition closure.
-fn resultAdder(a: int) -> (int) -> int = fn(b) => a + b
+fn resultAdder(a: int) -> (int) -> int = fn(b) => a + b ?: 0
 
 /// This case composes Result matching, bindings, HOFs, and partial application.
 fn resultsStateHigherOrderCase() = {
@@ -138,11 +138,11 @@ fn resultsStateHigherOrderCase() = {
     ])
     // Exercise the error branch, zero remainder, repeated calls, and captures.
     checkAll("Result and higher-order branch edges", [
-            resultSafeMod(5)(0) == -1,
+            resultSafeMod(5)(0) == ((0 - 1) ?: 0),
             resultSafeMod(20)(5) == 0,
             resultTwice(resultBump)(0) == 20,
             resultAdder(0)(9) == 9,
-            resultAdder(0 - 5)(5) == 0
+            resultAdder((0 - 5) ?: 0)(5) == 0
     ])
 }
 

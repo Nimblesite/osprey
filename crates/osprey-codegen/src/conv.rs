@@ -38,6 +38,15 @@ pub(crate) fn as_i1(cg: &mut Codegen, v: Value) -> Result<Value> {
 /// Widen any value to the uniform `i64` collection-element ABI: pointers
 /// `ptrtoint`, narrow ints `zext`, `double` `bitcast`.
 pub(crate) fn box_to_i64(cg: &mut Codegen, v: Value) -> Value {
+    // A Result's operand has a precise `{ payload, disc, errmsg }*` LLVM type
+    // even though its broad `LType` is Ptr. Normalize that pointer to i8*
+    // before the erased machine-word ABI; spelling it directly as `i8*` would
+    // generate invalid IR and, more importantly, must never load the payload.
+    if v.result_inner.is_some() {
+        let ptr = cg.emit_reg(format!("bitcast {} {} to i8*", v.llvm_ty(), v.operand));
+        let reg = cg.emit_reg(format!("ptrtoint i8* {ptr} to i64"));
+        return Value::new(reg, LType::I64);
+    }
     let reg = match v.ty {
         LType::I64 => return v,
         LType::Str | LType::Ptr => cg.emit_reg(format!("ptrtoint {} {} to i64", v.ty, v.operand)),

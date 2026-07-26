@@ -236,7 +236,7 @@ mod tests {
     #[tokio::test]
     async fn report_answers_every_positional_query_kind() {
         use crate::model::{At, Report};
-        let src = "fn add(a: int, b: int) -> int = a + b\nlet total = add(1, 2)\n";
+        let src = "fn add(a: int, b: int) -> int = (a + b) ?: 0\nlet total = add(1, 2)\n";
         let (engine, uri) = engine_with(src);
         let at = |line, character| At {
             uri: uri.clone(),

@@ -1,7 +1,16 @@
 # Plan 0019 — ML Flavor Elegance
 
-**Status:** **Complete.** Phases 1.1–1.5, 2 and 3 are implemented and verified. `+ - *`
-return plain scalars, `%` is zero-checked,
+> **Superseded safety decision (2026-07-26).** Phase 2's shipped
+> `[ARITH-PLAIN]` decision is retained below only as implementation history. It
+> is no longer a language contract. The normative replacement is
+> [ARITH-CHECKED](../specs/0013-ErrorHandling.md#arithmetic-and-result--arith-checked):
+> integer `+`, `-`, `*`, unary negation, and `abs` are checked `Result`
+> operations, and no context may implicitly erase a `Result`. Any implementation
+> or corpus state described below that silently wraps is a known violation to be
+> migrated, not permitted behavior.
+
+**Status:** **Complete.** Phases 1.1–1.5, 2 and 3 are implemented and verified.
+Integer `+ - *` return checked `Result` values, `%` is zero-checked,
 `checkedAdd` / `checkedSub` / `checkedMul` exist in both flavors, `_` is a legal
 parameter in both flavors, positional variant payloads are shared core, and ML
 inline unions, clause sets, grouped patterns and `?:` all work.
@@ -193,11 +202,11 @@ bindings remain separate through parsing and the type checker reports
 `duplicate definition`, so a scattered function can never acquire
 order-dependent clause grouping.
 
-## Phase 2 — &#91;ARITH-PLAIN&#93;
+## Phase 2 — &#91;ARITH-PLAIN&#93; (historical, superseded)
 
-The normative arithmetic contract is
-[defined in Error Handling](../specs/0013-ErrorHandling.md#arithmetic-and-result--arith-plain).
-This phase records its type-system implementation; it required no AST change.
+This section records the former type-system implementation; it required no AST
+change. Its contract is superseded by
+[ARITH-CHECKED](../specs/0013-ErrorHandling.md#arithmetic-and-result--arith-checked).
 
 - `int_arithmetic` (`crates/osprey-types/src/expr.rs`) returns `int` for two int
   operands and `float` when either operand is float, for `+ - *`; `gen_arith`

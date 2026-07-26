@@ -25,22 +25,33 @@ that computation finishes and returns its `T` value. `Fiber<T>` has no public
 record constructor; `spawn` is the construction operation.
 
 ```osprey
-fn work(value: int) -> int = value + 1
+fn work(value: int) -> Result<int, MathError> = value + 1
 
 let task = spawn work(41)
-let answer = await(task)
+let answer = await(task) ?: 0
 ```
 
 ```osprey-ml
-work : int -> int
+work : int -> Result<int, MathError>
 work value = value + 1
 
 task = spawn (work 41)
-answer = await task
+answer = (await task) ?: 0
 ```
 
-Each spawn site allocates a distinct capture cell. `await` unboxes the result
-back to its source type, including pointer and floating-point values.
+Under [ARITH-CHECKED](0013-ErrorHandling.md#arithmetic-and-result--arith-checked),
+`task` is a `Fiber<Result<int, MathError>>`: `await` returns that complete source
+type and `?: 0` explicitly selects the example's overflow policy. It never
+erases a `Result` channel. Each spawn site allocates a distinct capture cell.
+Pointer and floating-point values likewise return with their source type.
+
+A `Fiber<T>` handle is reusable: awaiting the same completed fiber more than
+once MUST return the same `T` value on every call. For a managed `T`, every
+`await` produces an independently owned reference. One caller releasing its
+value MUST NOT invalidate a later await. Once every spawned computation is
+quiescent, normal program teardown MUST release the runtime's completed-result
+roots after language-owned values have dropped; it MUST NOT release a cached
+result while another fiber can still await it.
 
 ## Buffered channels [CONCURRENCY-CHANNEL]
 
@@ -55,7 +66,10 @@ runtime does not implement rendezvous channels.
 | `recv(channel)` | `Channel<T> -> T` | Block while the buffer is empty, then remove its oldest value. |
 
 `send` is not a `Result`: its native status is internal to the runtime call and
-the language expression evaluates to `Unit`. `recv` directly returns `T`.
+the language expression evaluates to `Unit`. `recv` directly returns `T`. A
+backend MUST preserve a `Result<U, E>` element as a complete value; a backend
+without a shape-aware channel ABI MUST reject `Channel<Result<U, E>>` at
+compilation. It must never unwrap or reinterpret the channel element.
 
 ```osprey
 let channel = Channel(3)

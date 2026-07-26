@@ -5,7 +5,7 @@
 //! The pipeline is the textbook one: a [`ty::Type`] language, an index-addressed
 //! union-find substitution ([`ctx::InferCtx`]), [`unify`](unify::unify)
 //! with the Osprey-specific rules (`any`, bare-collection generics, structural
-//! records, Result auto-unwrap), let-polymorphism ([`env`]), and a two-pass
+//! records, directional Result Success wrapping), let-polymorphism ([`env`]), and a two-pass
 //! [`check::check_program`] driver over the AST.
 //!
 //! Public surface: [`check_program`] takes a parsed [`osprey_ast::Program`] and
@@ -51,7 +51,7 @@ mod tests {
 
     #[test]
     fn checks_arithmetic_and_let() {
-        ok("fn inc(x: int) -> int = x + 1\nlet y = inc(41)\n");
+        ok("fn inc(x: int) -> Result<int, MathError> = x + 1\nlet y = inc(41)\n");
     }
 
     #[test]
@@ -204,15 +204,12 @@ mod tests {
     }
 
     #[test]
-    fn elvis_on_result_is_a_truth_test_yielding_the_payload() {
-        // `r ?: fallback` desugars to `match r { true => r  false => fallback }`;
-        // over a `Result` that is a discriminant test whose value is the
-        // unwrapped payload — it must not unify the payload with `bool`.
-        // `+ - *` are plain `int` now ([ARITH-PLAIN]), so the scrutinee has to
-        // come from an operation that still carries the error channel.
+    fn elvis_on_result_defaults_error_and_yields_success_payload() {
+        // `r ?: fallback` desugars to an explicit exhaustive Result match:
+        // Success yields its payload and Error yields the fallback.
         ok("let okCalc = intDiv(a: 10, b: 5)\n\
             let okElvis = okCalc ?: -1\n\
-            fn keep(x: int) -> int = x + okElvis\n");
+            fn keep(x: int) -> int = (x + okElvis) ?: 0\n");
     }
 
     #[test]
@@ -229,7 +226,7 @@ mod tests {
     fn higher_order_function_application() {
         ok(
             "fn applyFn(value: int, func: (int) -> int) -> int = func(value)\n\
-            fn double(x: int) -> int = x * 2\n\
+            fn double(x: int) -> int = (x * 2) ?: 0\n\
             let r = applyFn(value: 10, func: double)\n",
         );
     }

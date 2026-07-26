@@ -49,7 +49,7 @@ fn inputAt(i) = match ["30", "-4", "999", "abc"][i] {
 fn runAll(i, n) = match i < n {
     false => 0
     true  => match validate(inputAt(i)) {
-        _ => runAll(i + 1, n)
+        _ => runAll((i + 1) ?: i, n)
     }
 }
 

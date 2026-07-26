@@ -1,28 +1,29 @@
-// HTTP Client Test - Testing basic HTTP client functionality
-// Testing HTTP built-in functions
+// Deterministic loopback coverage for the status-only HTTP client.
 
-print "=== HTTP Client Test ==="
+localResponse : string -> string -> string -> string -> HttpResponse
+localResponse (method, path, headers, body) = HttpResponse(
+    status = 200,
+    headers = "Content-Type: text/plain",
+    contentType = "text/plain",
+    streamFd = 0,
+    isComplete = true,
+    partialBody = "ok"
+)
 
-(** Test HTTP client creation *)
-clientResult = httpCreateClient "http://httpbin.org" 5000
-print "Testing HTTP client creation..."
+localHttpRoundTrip () =
+    server = httpCreateServer 18108 "127.0.0.1"
+    listening = httpListen server localResponse
+    client = httpCreateClient "http://127.0.0.1:18108" 1000
+    status = httpGet client "/health" ""
+    closed = httpCloseClient client
+    stopped = httpStopServer server
+    checkAll "loopback HTTP round trip" [
+        server != 0,
+        listening == 0,
+        client != 0,
+        status == 200,
+        closed == 0,
+        stopped == 0
+    ]
 
-// Simple check - we'll do one match only
-match clientResult
-    0 => print "FAILED: Client creation failed"
-    _ => print "SUCCESS: Client created, making HTTP request..."
-
-(** Make an actual HTTP GET request (outside match to avoid IR issues) *)
-getResult = httpGet clientResult "/get" ""
-
-// Print result info
-print "HTTP GET request completed"
-print "Cleaning up..."
-
-(** Clean up the client *)
-closeResult = httpCloseClient clientResult
-print "HTTP test complete"
-
-(** Register the regression scenario with the assertion-driven test runner. *)
-migratedLegacyCase () = checkAll "legacy execution" [true]
-test "regression scenario completes" migratedLegacyCase
+test "status-only HTTP client uses a local server" localHttpRoundTrip

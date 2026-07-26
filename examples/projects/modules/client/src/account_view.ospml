@@ -39,7 +39,7 @@ module AccountView
 
     export cards : string -> int -> string -> string
     cards source limit selected =
-        doc = jsonParse source
+        doc = jsonParse source ?: 0
         rendered = cardsFrom doc 0 limit selected
-        freed = jsonFree doc
+        freed = jsonFree doc ?: 0
         rendered

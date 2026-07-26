@@ -30,9 +30,9 @@ plain HM unification is untouched, so principal types survive.
   (grammar.js:135-146, ml/parser.rs:230, check.rs `collect_type`).
 - HM let-polymorphism: implicit generalization of top-level fns
   (check.rs `check_function`, env.rs `generalize`/`instantiate`).
-- The assignability relation `unify_assignable` (unify.rs:102) already models
-  Result auto-unwrap/wrap and function param-contra/ret-co; declared variance
-  uses this relation.
+- The assignability relation `unify_assignable` models the safe one-way
+  promotion `T -> Result<T, E>` plus function param-contra/ret-co. The inverse
+  `Result<T, E> -> T` is forbidden; declared variance uses this relation.
 - Codegen specializes generic fns by inlining (genfn.rs), erases `Type::Var`
   to `i64` (types.rs:19), and effects run on a name-keyed handler stack
   (effects_runtime.c) — fully type-erased.
@@ -67,9 +67,9 @@ plain HM unification is untouched, so principal types survive.
    - `InferCtx` carries a constructor→variance table; `unify_assignable`
      matches same-name `Con` args variance-directed (co: expected←actual,
      contra: flipped, invariant: plain `unify`), with EXACT unification at
-     the leaves — the coercive Result unwrap never applies under a container
-     (it is representation-changing and codegen coerces only at direct value
-     sites). Builtins: `Result<out, out>`, `List<out>`, `Fiber<out>`,
+     the leaves. A `Result<T, E>` never coerces to `T`, under a container or at
+     a direct value site, because that would erase failure and change the
+     representation. Builtins: `Result<out, out>`, `List<out>`, `Fiber<out>`,
      `Map<inv, out>`.
    - Declaration-site position validation walks variant-field and
      effect-op types with a polarity that function parameters flip and

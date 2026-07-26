@@ -2,7 +2,7 @@
 
 (** Capture an offset through partial application. *)
 closureAdder : int -> int -> int
-closureAdder n x = x + n
+closureAdder n x = x + n ?: 0
 
 (** Verify independent closures and direct application. *)
 closuresCase () =
@@ -21,7 +21,7 @@ closuresCase () =
     ]
     // Exercise identity, cancellation, and capture independence.
     checkAll "closures capture edge cases" [
-        add10 (0 - 10) == 0,
+        add10 ((0 - 10) ?: 0) == 0,
         add100 0 == 100,
         closureAdder 0 9 == 9,
         (add10 5 == add100 5) == false
@@ -29,7 +29,7 @@ closuresCase () =
 
 (** Add two values through partial or full application. *)
 partialAdd : int -> int -> int
-partialAdd a b = a + b
+partialAdd a b = a + b ?: 0
 
 (** Verify partially and fully applied addition. *)
 curryPartialCase () =
@@ -50,7 +50,7 @@ curryPartialCase () =
     ]
     // Exercise identity, cancellation, and equivalent sums.
     checkAll "partial application edge cases" [
-        add5 (0 - 5) == 0,
+        add5 ((0 - 5) ?: 0) == 0,
         add100 0 == 100,
         partialAdd 0 9 == 9,
         partialAdd 5 5 == partialAdd 8 2
@@ -66,11 +66,11 @@ hofTwice f x = f (f x)
 
 (** Double an integer as a first-class function. *)
 hofDouble : int -> int
-hofDouble n = n + n
+hofDouble n = n + n ?: 0
 
 (** Increment an integer as a first-class function. *)
 hofInc : int -> int
-hofInc n = n + 1
+hofInc n = n + 1 ?: 0
 
 (** Verify higher-order application and composition. *)
 higherOrderCase () =
@@ -96,15 +96,15 @@ higherOrderCase () =
 
 (** Increment values in nested call expressions. *)
 nestedInc : int -> int
-nestedInc x = x + 1
+nestedInc x = x + 1 ?: 0
 
 (** Double values in nested call expressions. *)
 nestedDouble : int -> int
-nestedDouble x = x + x
+nestedDouble x = x + x ?: 0
 
 (** Negate values in nested call expressions. *)
 nestedNeg : int -> int
-nestedNeg x = 0 - x
+nestedNeg x = 0 - x ?: 0
 
 (** Verify evaluation through nested unary calls. *)
 nestedCallsCase () =
@@ -118,7 +118,7 @@ nestedCallsCase () =
     // Check each nested result independently.
     checkAll "nested calls legacy constituent values" [
         deep == 15,
-        nestedNeg (nestedInc (nestedDouble 5)) == -11,
+        nestedNeg (nestedInc (nestedDouble 5)) == ((0 - 11) ?: 0),
         nestedDouble (nestedDouble 4) == 16
     ]
     // Exercise each helper and additional zero paths.
@@ -127,13 +127,13 @@ nestedCallsCase () =
         nestedDouble 0 == 0,
         nestedNeg 0 == 0,
         nestedInc (nestedDouble 2) == 5,
-        nestedNeg (nestedInc (nestedDouble 0)) == -1
+        nestedNeg (nestedInc (nestedDouble 0)) == ((0 - 1) ?: 0)
     ]
 
 (** Sum positive integers with adjacent pattern clauses. *)
 recursiveSumTo : int -> int
 recursiveSumTo 0 = 0
-recursiveSumTo n = n + recursiveSumTo (n - 1)
+recursiveSumTo n = n + recursiveSumTo ((n - 1) ?: 0) ?: 0
 
 (** Verify the base and recursive paths. *)
 recursionCase () =
@@ -153,7 +153,7 @@ recursionCase () =
         recursiveSumTo 0 == 0,
         recursiveSumTo 2 == 3,
         recursiveSumTo 6 == 21,
-        recursiveSumTo 6 == recursiveSumTo 5 + 6
+        recursiveSumTo 6 == (recursiveSumTo 5 + 6 ?: 0)
     ]
 
 test "closures retain independent captured state" closuresCase

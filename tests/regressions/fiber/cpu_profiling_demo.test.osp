@@ -16,8 +16,8 @@ effect Tuning {
     baseline: fn(int) -> int
 }
 
-fn add(a: int, b: int) -> int = a + b
-fn sub(a: int, b: int) -> int = a - b
+fn add(a: int, b: int) -> int = a + b ?: 0
+fn sub(a: int, b: int) -> int = a - b ?: 0
 
 /// The hot tower: naive double recursion keeps the sampler busy, and its
 /// self-time dominates the flame graph.

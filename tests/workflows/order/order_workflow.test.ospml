@@ -8,15 +8,15 @@ unitPrice item = ["coffee" => 12, "bread" => 5, "fruit" => 7][item] ?: 0
 
 (** Apply the membership tier's percentage discount. *)
 loyaltyDiscount : string -> int -> int
-loyaltyDiscount "gold" subtotal = intDiv (subtotal * 20) 100 ?: 0
-loyaltyDiscount "silver" subtotal = intDiv (subtotal * 10) 100 ?: 0
+loyaltyDiscount "gold" subtotal = intDiv ((subtotal * 20) ?: 0) 100 ?: 0
+loyaltyDiscount "silver" subtotal = intDiv ((subtotal * 10) ?: 0) 100 ?: 0
 loyaltyDiscount _ _ = 0
 
 (** Compose price lookup, quantity, and loyalty policy. *)
 total : string -> string -> int -> int
 total level item quantity =
-    subtotal = unitPrice item * quantity
-    subtotal - loyaltyDiscount level subtotal
+    subtotal = unitPrice item * quantity ?: 0
+    subtotal - loyaltyDiscount level subtotal ?: 0
 
 (** Normalize the customer and render the receipt. *)
 receipt : string -> string -> string -> int -> string
@@ -63,7 +63,7 @@ receiptInteraction () =
         endsWith (receipt "Ada" "silver" "coffee" 2) ":22",
         !(contains (receipt " Ada " "guest" "fruit" 1) " "),
         (receipt "Ada" "guest" "fruit" 2 |> toUpperCase) == "ADA:FRUIT:2:14",
-        receipt "Kai" "silver" (itemAt 1 "missing") (2 * 2) == "KAI:bread:4:18"
+        receipt "Kai" "silver" (itemAt 1 "missing") ((2 * 2) ?: 0) == "KAI:bread:4:18"
     ]
 
 test "catalogue lookup drives prices and fallbacks" catalogueInteraction

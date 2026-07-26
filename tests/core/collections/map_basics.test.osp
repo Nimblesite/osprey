@@ -29,18 +29,18 @@ fn constructionAndOverwriteCase() = {
 
     // Added value checks ensure correct bindings and persistence rather than length-only success.
     checkAll("map construction values and isolation", [
-            (mapGet(m1, "alice") ?: (0 - 999)) == 25,
+            (mapGet(m1, "alice") ?: ((0 - 999) ?: 0)) == 25,
             !mapContains(m1, "bob"),
-            (mapGet(m2, "alice") ?: (0 - 999)) == 25,
-            (mapGet(m2, "bob") ?: (0 - 999)) == 30,
+            (mapGet(m2, "alice") ?: ((0 - 999) ?: 0)) == 25,
+            (mapGet(m2, "bob") ?: ((0 - 999) ?: 0)) == 30,
             !mapContains(m2, "charlie"),
-            (mapGet(m3, "alice") ?: (0 - 999)) == 25,
-            (mapGet(m3, "bob") ?: (0 - 999)) == 30,
-            (mapGet(m3, "charlie") ?: (0 - 999)) == 35,
-            (mapGet(m4, "alice") ?: (0 - 999)) == 99,
-            (mapGet(m4, "bob") ?: (0 - 999)) == 30,
-            (mapGet(m4, "charlie") ?: (0 - 999)) == 35,
-            (mapGet(m3, "alice") ?: (0 - 999)) == 25,
+            (mapGet(m3, "alice") ?: ((0 - 999) ?: 0)) == 25,
+            (mapGet(m3, "bob") ?: ((0 - 999) ?: 0)) == 30,
+            (mapGet(m3, "charlie") ?: ((0 - 999) ?: 0)) == 35,
+            (mapGet(m4, "alice") ?: ((0 - 999) ?: 0)) == 99,
+            (mapGet(m4, "bob") ?: ((0 - 999) ?: 0)) == 30,
+            (mapGet(m4, "charlie") ?: ((0 - 999) ?: 0)) == 35,
+            (mapGet(m3, "alice") ?: ((0 - 999) ?: 0)) == 25,
             m4Missing
     ])
 }
@@ -76,27 +76,27 @@ fn generationsAndBranchesCase() = {
     // Value-level checks prove old generations retain bindings after descendant creation.
     checkAll("persistent map generation values", [
             !mapContains(g0, "k1"),
-            (mapGet(g1, "k1") ?: (0 - 999)) == 1,
+            (mapGet(g1, "k1") ?: ((0 - 999) ?: 0)) == 1,
             !mapContains(g1, "k2"),
-            (mapGet(g2, "k1") ?: (0 - 999)) == 1,
-            (mapGet(g2, "k2") ?: (0 - 999)) == 2,
+            (mapGet(g2, "k1") ?: ((0 - 999) ?: 0)) == 1,
+            (mapGet(g2, "k2") ?: ((0 - 999) ?: 0)) == 2,
             !mapContains(g2, "k3"),
-            (mapGet(g3, "k3") ?: (0 - 999)) == 3,
+            (mapGet(g3, "k3") ?: ((0 - 999) ?: 0)) == 3,
             !mapContains(g3, "k4"),
-            (mapGet(g4, "k4") ?: (0 - 999)) == 4,
+            (mapGet(g4, "k4") ?: ((0 - 999) ?: 0)) == 4,
             !mapContains(g4, "k5"),
-            (mapGet(g5, "k1") ?: (0 - 999)) == 1,
-            (mapGet(g5, "k5") ?: (0 - 999)) == 5,
+            (mapGet(g5, "k1") ?: ((0 - 999) ?: 0)) == 1,
+            (mapGet(g5, "k5") ?: ((0 - 999) ?: 0)) == 5,
             mapLength(g2) == 2,
             mapLength(g3) == 3
     ])
 
     // Branch-specific values and absences catch aliasing between siblings and their parent.
     checkAll("persistent map branch values and isolation", [
-            (mapGet(xa, "X") ?: (0 - 999)) == 100,
-            (mapGet(xb, "Y") ?: (0 - 999)) == 200,
-            (mapGet(xa, "k1") ?: (0 - 999)) == 1,
-            (mapGet(xb, "k3") ?: (0 - 999)) == 3,
+            (mapGet(xa, "X") ?: ((0 - 999) ?: 0)) == 100,
+            (mapGet(xb, "Y") ?: ((0 - 999) ?: 0)) == 200,
+            (mapGet(xa, "k1") ?: ((0 - 999) ?: 0)) == 1,
+            (mapGet(xb, "k3") ?: ((0 - 999) ?: 0)) == 3,
             !mapContains(xa, "Y"),
             !mapContains(xb, "X"),
             !mapContains(g3, "X"),
@@ -136,14 +136,14 @@ fn removalAndMergeCase() = {
 
     // Added removal checks validate retained values, exact failure, original preservation, and absent-key identity behavior.
     checkAll("persistent removal values and isolation", [
-            (mapGet(removed, "k1") ?: (0 - 999)) == 1,
-            (mapGet(removed, "k2") ?: (0 - 999)) == 2,
-            (mapGet(removed, "k4") ?: (0 - 999)) == 4,
-            (mapGet(removed, "k5") ?: (0 - 999)) == 5,
+            (mapGet(removed, "k1") ?: ((0 - 999) ?: 0)) == 1,
+            (mapGet(removed, "k2") ?: ((0 - 999) ?: 0)) == 2,
+            (mapGet(removed, "k4") ?: ((0 - 999) ?: 0)) == 4,
+            (mapGet(removed, "k5") ?: ((0 - 999) ?: 0)) == 5,
             removedMissing,
-            (mapGet(g5, "k3") ?: (0 - 999)) == 3,
-            (mapGet(absentRemoved, "k1") ?: (0 - 999)) == 1,
-            (mapGet(absentRemoved, "k5") ?: (0 - 999)) == 5,
+            (mapGet(g5, "k3") ?: ((0 - 999) ?: 0)) == 3,
+            (mapGet(absentRemoved, "k1") ?: ((0 - 999) ?: 0)) == 1,
+            (mapGet(absentRemoved, "k5") ?: ((0 - 999) ?: 0)) == 5,
             mapContains(absentRemoved, "k3"),
             !mapContains(g4, "k5")
     ])
@@ -160,20 +160,20 @@ fn removalAndMergeCase() = {
 
     // Exact lookups pin right-biased merge semantics in both directions and through the plus alias.
     checkAll("map merge right-biased values", [
-            (mapGet(mergedAB, "x") ?: (0 - 999)) == 1,
-            (mapGet(mergedAB, "y") ?: (0 - 999)) == 20,
-            (mapGet(mergedAB, "z") ?: (0 - 999)) == 30,
-            (mapGet(mergedAB, "w") ?: (0 - 999)) == 40,
-            (mapGet(mergedBA, "x") ?: (0 - 999)) == 1,
-            (mapGet(mergedBA, "y") ?: (0 - 999)) == 2,
-            (mapGet(mergedBA, "z") ?: (0 - 999)) == 3,
-            (mapGet(mergedBA, "w") ?: (0 - 999)) == 40,
-            (mapGet(mergedPlus, "x") ?: (0 - 999)) == 1,
-            (mapGet(mergedPlus, "y") ?: (0 - 999)) == 20,
-            (mapGet(mergedPlus, "z") ?: (0 - 999)) == 30,
-            (mapGet(mergedPlus, "w") ?: (0 - 999)) == 40,
-            (mapGet(a, "y") ?: (0 - 999)) == 2,
-            (mapGet(b, "y") ?: (0 - 999)) == 20
+            (mapGet(mergedAB, "x") ?: ((0 - 999) ?: 0)) == 1,
+            (mapGet(mergedAB, "y") ?: ((0 - 999) ?: 0)) == 20,
+            (mapGet(mergedAB, "z") ?: ((0 - 999) ?: 0)) == 30,
+            (mapGet(mergedAB, "w") ?: ((0 - 999) ?: 0)) == 40,
+            (mapGet(mergedBA, "x") ?: ((0 - 999) ?: 0)) == 1,
+            (mapGet(mergedBA, "y") ?: ((0 - 999) ?: 0)) == 2,
+            (mapGet(mergedBA, "z") ?: ((0 - 999) ?: 0)) == 3,
+            (mapGet(mergedBA, "w") ?: ((0 - 999) ?: 0)) == 40,
+            (mapGet(mergedPlus, "x") ?: ((0 - 999) ?: 0)) == 1,
+            (mapGet(mergedPlus, "y") ?: ((0 - 999) ?: 0)) == 20,
+            (mapGet(mergedPlus, "z") ?: ((0 - 999) ?: 0)) == 30,
+            (mapGet(mergedPlus, "w") ?: ((0 - 999) ?: 0)) == 40,
+            (mapGet(a, "y") ?: ((0 - 999) ?: 0)) == 2,
+            (mapGet(b, "y") ?: ((0 - 999) ?: 0)) == 20
     ])
 }
 
@@ -221,14 +221,14 @@ fn viewsAndCrossCollectionCase() = {
 
     // Added cross-collection checks prove list and map descendants remain isolated from both source structures.
     checkAll("list and map cross-collection isolation", [
-            (listGet(xs, 0) ?: (0 - 999)) == 100,
-            (listGet(xs, 2) ?: (0 - 999)) == 300,
-            (listGet(xs2, 3) ?: (0 - 999)) == 400,
+            (listGet(xs, 0) ?: ((0 - 999) ?: 0)) == 100,
+            (listGet(xs, 2) ?: ((0 - 999) ?: 0)) == 300,
+            (listGet(xs2, 3) ?: ((0 - 999) ?: 0)) == 400,
             !listContains(xs, 400),
-            (mapGet(mm2, "d") ?: (0 - 999)) == 4,
+            (mapGet(mm2, "d") ?: ((0 - 999) ?: 0)) == 4,
             !mapContains(g3, "d"),
-            (mapGet(g3, "k3") ?: (0 - 999)) == 3,
-            (mapGet(g5, "k5") ?: (0 - 999)) == 5,
+            (mapGet(g3, "k3") ?: ((0 - 999) ?: 0)) == 3,
+            (mapGet(g5, "k5") ?: ((0 - 999) ?: 0)) == 5,
             mapLength(g5) == listLength(keys),
             mapLength(g5) == listLength(values)
     ])
@@ -246,13 +246,13 @@ fn literalsAndDispatchCase() = {
 
     // All three legacy literal lookup outcomes remain asserted with exact missing-key behavior.
     checkAll("map literal lookup behavior", [
-            (mapGet(prices, "apple") ?: (0 - 999)) == 2,
+            (mapGet(prices, "apple") ?: ((0 - 999) ?: 0)) == 2,
             priceMissing,
-            (mapGet(duplicate, "key") ?: (0 - 999)) == 2,
-            (mapGet(prices, "banana") ?: (0 - 999)) == 3,
-            (mapGet(prices, "cherry") ?: (0 - 999)) == 5,
-            ({ "apple": 2, "banana": 3 }["apple"] ?: (0 - 999)) == 2,
-            ({ "key": 1, "key": 2 }["key"] ?: (0 - 999)) == 2,
+            (mapGet(duplicate, "key") ?: ((0 - 999) ?: 0)) == 2,
+            (mapGet(prices, "banana") ?: ((0 - 999) ?: 0)) == 3,
+            (mapGet(prices, "cherry") ?: ((0 - 999) ?: 0)) == 5,
+            ({ "apple": 2, "banana": 3 }["apple"] ?: ((0 - 999) ?: 0)) == 2,
+            ({ "key": 1, "key": 2 }["key"] ?: ((0 - 999) ?: 0)) == 2,
             mapLength(prices) == 3,
             mapLength(duplicate) == 1,
             mapContains(duplicate, "key")

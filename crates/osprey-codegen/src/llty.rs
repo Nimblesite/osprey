@@ -114,10 +114,15 @@ pub struct Value {
     pub(crate) osp_ty: Option<String>,
     /// When `Some(inner)`, this value is a `Result<inner, _>` carried as a
     /// pointer to a heap block `{ inner, i8 disc }` (disc 0 = Success). Match,
-    /// `toString` and value-site coercion read this to branch on the
-    /// discriminant or auto-unwrap the success payload — every fallible
-    /// producer in the backend builds exactly this block shape.
+    /// `?:`, failure-preserving arithmetic, and Result rendering read this to
+    /// branch on the discriminant; ordinary value sites preserve the whole
+    /// block. Every fallible producer in the backend builds this exact shape.
     pub(crate) result_inner: Option<LType>,
+    /// Whether `result_inner` is only the physical placeholder layout chosen
+    /// by a bare `Error { message }` constructor.  An Error has no success
+    /// payload from which to discover `T`, so joins and contextual boundaries
+    /// must re-layout it to a concrete Success arm before the Result escapes.
+    pub(crate) result_inner_is_placeholder: bool,
     /// The Osprey owner type to tag the success payload with when this Result is
     /// unwrapped — e.g. a `Result<List<int>, _>` from indexing a list-of-lists
     /// carries `[]i64` so the unwrapped element is itself indexable. `None` for
@@ -128,6 +133,13 @@ pub struct Value {
     /// (a string fiber result is a pointer, not an integer). `None` for
     /// non-fiber values (then `await` keeps the legacy `i64` result).
     pub(crate) fiber_elem: Option<LType>,
+    /// Aggregate owner metadata for the element carried by a Fiber.
+    pub(crate) fiber_elem_owner: Option<String>,
+    /// Result layout metadata for a `Fiber<Result<T, E>>`; `await` restores the
+    /// whole Result block rather than treating its pointer as the payload.
+    pub(crate) fiber_elem_result_inner: Option<LType>,
+    /// Aggregate owner metadata for the Success payload of a fiber Result.
+    pub(crate) fiber_elem_payload_owner: Option<String>,
 }
 
 impl Value {
@@ -138,8 +150,12 @@ impl Value {
             ty,
             osp_ty: None,
             result_inner: None,
+            result_inner_is_placeholder: false,
             payload_owner: None,
             fiber_elem: None,
+            fiber_elem_owner: None,
+            fiber_elem_result_inner: None,
+            fiber_elem_payload_owner: None,
         }
     }
 
@@ -150,8 +166,12 @@ impl Value {
             ty: LType::Ptr,
             osp_ty: Some(owner.into()),
             result_inner: None,
+            result_inner_is_placeholder: false,
             payload_owner: None,
             fiber_elem: None,
+            fiber_elem_owner: None,
+            fiber_elem_result_inner: None,
+            fiber_elem_payload_owner: None,
         }
     }
 
@@ -163,16 +183,24 @@ impl Value {
             ty: LType::Ptr,
             osp_ty: Some("Result".to_string()),
             result_inner: Some(inner),
+            result_inner_is_placeholder: false,
             payload_owner: None,
             fiber_elem: None,
+            fiber_elem_owner: None,
+            fiber_elem_result_inner: None,
+            fiber_elem_payload_owner: None,
         }
     }
 
     /// Tag this fiber handle with its element type so `await` can unbox the
     /// boxed `i64` result back to it.
     #[must_use]
-    pub(crate) fn with_fiber_elem(mut self, elem: LType) -> Value {
-        self.fiber_elem = Some(elem);
+    pub(crate) fn with_fiber_elem(mut self, elem: &Value) -> Value {
+        self.fiber_elem = Some(elem.ty);
+        self.fiber_elem_owner.clone_from(&elem.osp_ty);
+        self.fiber_elem_result_inner = elem.result_inner;
+        self.fiber_elem_payload_owner
+            .clone_from(&elem.payload_owner);
         self
     }
 
@@ -188,6 +216,14 @@ impl Value {
     #[must_use]
     pub(crate) fn with_payload_owner(mut self, owner: Option<String>) -> Value {
         self.payload_owner = owner;
+        self
+    }
+
+    /// Mark this Result's success-slot layout as the unconstrained placeholder
+    /// carried by a bare Error constructor.
+    #[must_use]
+    pub(crate) fn with_result_inner_placeholder(mut self) -> Value {
+        self.result_inner_is_placeholder = true;
         self
     }
 

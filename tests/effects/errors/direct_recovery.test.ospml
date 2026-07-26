@@ -34,7 +34,7 @@ requirePositive value =
 
 (** Continue ordinary arithmetic after a handler substitutes a missing integer. *)
 continuedValue : int -> int ! RecoveryError
-continuedValue value = requirePositive value + 2
+continuedValue value = requirePositive value + 2 ?: 0
 
 (** Request three replacements so handler state and substitution order are visible. *)
 recoverThree : Unit -> int ! RecoveryError
@@ -42,7 +42,7 @@ recoverThree () =
     first = perform RecoveryError.missingInt "first"
     second = perform RecoveryError.missingInt "second"
     third = perform RecoveryError.missingInt "third"
-    first + second + third
+    first + second + third ?: 0
 
 (** Report one broken rule while returning Unit so later checks still execute. *)
 reportIf : bool -> string -> Unit ! RecoveryError
@@ -77,14 +77,14 @@ allocate requested available =
 
 (** Add fixed packaging work after the shared allocation function recovers. *)
 shipmentTotal : Unit -> int ! StockError
-shipmentTotal () = allocate 9 5 + 2
+shipmentTotal () = allocate 9 5 + 2 ?: 0
 
 (** Recover an integer, audit both sides of the perform, and then keep computing. *)
 auditedRecovery : Unit -> int ! [RecoveryError, AuditError]
 auditedRecovery () =
     value = perform RecoveryError.missingInt "token"
     perform AuditError.note "body saw ${toString value}"
-    value + 1
+    value + 1 ?: 0
 
 (** Perform the deeply nested failure at the bottom of the helper chain. *)
 bottomValue : Unit -> int ! RecoveryError
@@ -93,15 +93,15 @@ bottomValue () = perform RecoveryError.missingInt "bottom"
 (** Carry one recovered value back through every recursive caller. *)
 descend : int -> int ! RecoveryError
 descend 0 = bottomValue ()
-descend depth = 1 + descend (depth - 1)
+descend depth = 1 + descend ((depth - 1) ?: 0) ?: 0
 
 (** Default the complete Result returned by the effect operation. *)
 lookupValue : string -> int ! LookupError
-lookupValue key = perform LookupError.find key ?: (0 - 1)
+lookupValue key = perform LookupError.find key ?: ((0 - 1) ?: 0)
 
 (** Combine both Result branches after one handler supplies their whole values. *)
 combineLookups : Unit -> int ! LookupError
-combineLookups () = lookupValue "known" * 10 + lookupValue "missing"
+combineLookups () = lookupValue "known" * 10 + lookupValue "missing" ?: 0
 
 (** Verify that successful code never enters an installed recovery arm. *)
 happyPathBypassCase () =
@@ -109,7 +109,7 @@ happyPathBypassCase () =
     value =
         handle RecoveryError
             missingInt reason =>
-                recoveries := recoveries + 1
+                recoveries := recoveries + 1 ?: recoveries
                 99
         in requirePositive 7
 
@@ -141,9 +141,9 @@ repeatedRecoveryStateCase () =
     total =
         handle RecoveryError
             missingInt reason =>
-                recoveries := recoveries + 1
+                recoveries := recoveries + 1 ?: recoveries
                 reasons := "${reasons}${reason}|"
-                recoveries * 10
+                recoveries * 10 ?: 0
         in recoverThree ()
 
     // Each call observes the updated handler-owned counter.
@@ -151,7 +151,7 @@ repeatedRecoveryStateCase () =
         total == 60,
         recoveries == 3,
         reasons == "first|second|third|",
-        total == 10 + 20 + 30
+        total == (10 + 20 + 30 ?: 0)
     ]
 
 (** Verify Unit-valued reports collect every error without stopping validation. *)
@@ -161,9 +161,9 @@ collectAllReportsCase () =
     result =
         handle RecoveryError
             report field =>
-                reports := reports + 1
+                reports := reports + 1 ?: reports
                 fields := "${fields}${field}|"
-        in validateRecord "" (0 - 3) ""
+        in validateRecord "" ((0 - 3) ?: 0) ""
 
     // Validation reaches its final value after all four broken rules report.
     checkAll "collect all reports" [
@@ -205,7 +205,7 @@ twoPoliciesCase () =
         skipped == 2,
         capped == 7,
         capped > skipped,
-        capped - skipped == 5
+        (capped - skipped ?: 0) == 5
     ]
 
 (** Verify an inner same-effect arm overrides one operation and then disappears. *)
@@ -240,7 +240,7 @@ outerEffectCompositionCase () =
     result =
         handle AuditError
             note message =>
-                noteCount := noteCount + 1
+                noteCount := noteCount + 1 ?: noteCount
                 notes := "${notes}${message}|"
         in
             handle RecoveryError
@@ -263,7 +263,7 @@ deepRecursionCase () =
     value =
         handle RecoveryError
             missingInt reason =>
-                recoveries := recoveries + 1
+                recoveries := recoveries + 1 ?: recoveries
                 8
         in descend 4
 
@@ -271,7 +271,7 @@ deepRecursionCase () =
     checkAll "deep helper recursion" [
         value == 12,
         recoveries == 1,
-        value - 8 == 4
+        (value - 8 ?: 0) == 4
     ]
 
 (** Drive the known whole-Result corruption and pass automatically once it is fixed. *)
@@ -280,7 +280,7 @@ wholeResultOperationCase () =
     combined =
         handle LookupError
             find key =>
-                lookups := lookups + 1
+                lookups := lookups + 1 ?: lookups
                 match key
                     "known" => Success(value = 4)
                     _ => Error(message = "absent")

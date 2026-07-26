@@ -66,20 +66,20 @@ askBoth n =
 
 nested =
     handle Ask
-        ask v => resume (v + 1)
+        ask v => resume ((v + 1) ?: v)
     in
         handle Tell
-            tell v => resume (v * 2)
+            tell v => resume ((v * 2) ?: v)
         in askBoth 4
 
 askOnce n = perform Ask.ask n
 
 shadowed =
     handle Ask
-        ask v => resume (v + 100)
+        ask v => resume ((v + 100) ?: v)
     in
         handle Ask
-            ask v => resume (v + 1)
+            ask v => resume ((v + 1) ?: v)
         in askOnce 1
 print ("nested resuming " + toString nested + " shadowed resume " + toString shadowed)
 print "=== resume scoping done ==="

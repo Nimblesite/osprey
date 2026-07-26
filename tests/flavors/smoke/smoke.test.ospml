@@ -7,12 +7,12 @@ helloSmokeCase () =
     // Preserve both complete rendered lines.
     checkAll "hello legacy rendered lines" [
         greeting == "Hello from the ML flavor",
-        "2 + 3 = ${2 + 3}" == "2 + 3 = 5"
+        "2 + 3 = ${2 + 3}" == "2 + 3 = Success(5)"
     ]
     // Check the dynamic values independently.
     checkAll "hello legacy constituent values" [
         greeting == "Hello from the ML flavor",
-        2 + 3 == 5
+        (2 + 3 ?: 0) == 5
     ]
     // Exercise useful greeting boundaries.
     checkAll "hello greeting edge cases" [

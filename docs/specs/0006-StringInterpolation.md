@@ -29,14 +29,13 @@ let message = "value=${double(5)}, point=${point.x}, next=${match flag { true =>
 Strings are inserted unchanged. Integers, floats, and booleans use their normal
 scalar rendering.
 
-A `Result` is auto-unwrapped at an interpolation hole. `Success` renders its
-payload without the wrapper. An `Error` renders the payload type's
-zero value rather than its message; use `toString(result)` when the distinction
-must remain visible:
+A `Result` is never unwrapped at an interpolation hole. It renders as the
+complete `Success(value)` or `Error(message)` value, preserving its failure
+channel exactly as `toString` does:
 
 ```osprey
 let result = intDiv(10, 5)
-print("value=${result}")       // value=2
+print("value=${result}")       // value=Success(2)
 print(toString(result))       // Success(2)
 ```
 

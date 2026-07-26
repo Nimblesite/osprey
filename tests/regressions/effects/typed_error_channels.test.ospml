@@ -16,7 +16,7 @@ loadConfig () =
     timeout = perform Missing.fill "timeout" // Missing channel: key absent
     retries = perform Range.clamp 250 10 // Range channel: over the max
     print "assembled  -> port=${toString port} timeout=${toString timeout} retries=${toString retries}"
-    port + timeout + retries
+    port + timeout + retries ?: 0
 
 (** This helper declares and performs only Range. *)
 loadRetries : int -> int -> int ! Range

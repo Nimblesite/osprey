@@ -2,19 +2,19 @@
 
 (** Increment an integer in direct calls and pipelines. *)
 tourInc : int -> int
-tourInc x = x + 1
+tourInc x = x + 1 ?: 0
 
 (** Add two integers through curried application. *)
 tourAdd : int -> int -> int
-tourAdd x y = x + y
+tourAdd x y = x + y ?: 0
 
 (** Square an integer in direct calls and pipelines. *)
 tourSquare : int -> int
-tourSquare n = n * n
+tourSquare n = n * n ?: 0
 
 (** Capture a scale factor through partial application. *)
 tourMakeScaler : int -> int -> int
-tourMakeScaler k v = v * k
+tourMakeScaler k v = v * k ?: 0
 
 (** Name integer literals through adjacent pattern clauses. *)
 tourName 0 = "zero"
@@ -23,7 +23,7 @@ tourName n = toString n
 
 (** Classify parity by matching a derived boolean. *)
 tourParity n =
-    match n % 2 == 0
+    match (n % 2 ?: 1) == 0
         true => "even"
         false => "odd"
 
@@ -70,11 +70,11 @@ curryTourCase () =
 
 (** Capture a multiplier through partial application. *)
 mixedScale : int -> int -> int
-mixedScale k v = v * k
+mixedScale k v = v * k ?: 0
 
 (** Advance an integer for direct and piped calls. *)
 mixedStep : int -> int
-mixedStep x = x + 1
+mixedStep x = x + 1 ?: 0
 
 (** Classify non-negative and negative integers. *)
 mixedSign : int -> string
@@ -104,7 +104,7 @@ mixedFeaturesCase () =
     // Exercise sign boundaries, closure factors, and intermediate pipes.
     checkAll "mixed features interaction edges" [
         mixedSign 0 == "pos",
-        mixedSign (0 - 1) == "neg",
+        mixedSign ((0 - 1) ?: 0) == "neg",
         mixedScale 0 99 == 0,
         (base |> mixedStep) == 8,
         mixedScale 2 5 == 10
@@ -112,18 +112,18 @@ mixedFeaturesCase () =
 
 (** Unwrap modulo success or use the legacy sentinel on error. *)
 resultSafeMod : int -> int -> int
-resultSafeMod a b = a % b ?: -1
+resultSafeMod a b = a % b ?: ((0 - 1) ?: 0)
 
 (** Apply a concrete integer function twice. *)
 resultTwice : (int -> int) -> int -> int
 resultTwice f x = f (f x)
 
 (** Add ten as a first-class function. *)
-resultBump x = x + 10
+resultBump x = x + 10 ?: 0
 
 (** Capture one addition operand through partial application. *)
 resultAdder : int -> int -> int
-resultAdder a b = a + b
+resultAdder a b = a + b ?: 0
 
 (** Verify Result fallback, HOFs, and partial application together. *)
 resultsStateHigherOrderCase () =
@@ -149,11 +149,11 @@ resultsStateHigherOrderCase () =
     ]
     // Exercise error fallback, zero remainder, repetition, and captures.
     checkAll "Result and higher-order branch edges" [
-        resultSafeMod 5 0 == -1,
+        resultSafeMod 5 0 == ((0 - 1) ?: 0),
         resultSafeMod 20 5 == 0,
         resultTwice resultBump 0 == 20,
         resultAdder 0 9 == 9,
-        resultAdder (0 - 5) 5 == 0
+        resultAdder ((0 - 5) ?: 0) 5 == 0
     ]
 
 test "curry tour retains all closure match and pipe outputs" curryTourCase

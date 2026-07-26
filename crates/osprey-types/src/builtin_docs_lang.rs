@@ -65,7 +65,7 @@ pub(crate) static CORE: &[BuiltinDoc] = &[
     ),
     builtin_doc!(
         "abs",
-        "Returns the absolute value of an i64 integer. INT64_MIN remains unchanged because its positive magnitude is not representable.",
+        "Returns Result<int, MathError>. INT64_MIN yields Error because its positive magnitude is not representable.",
         ["value" => "The integer whose magnitude to take"],
         "let d = abs(0 - 5)  // 5",
     ),
@@ -77,19 +77,19 @@ pub(crate) static CORE: &[BuiltinDoc] = &[
     ),
     builtin_doc!(
         "checkedAdd",
-        "Integer addition that reports overflow instead of wrapping. The `+` operator returns plain int because a wrapped result is still representable; this returns Result<int, Error>.",
+        "Named overflow-checked integer addition, returning Result<int, Error>.",
         ["a" => "The first addend", "b" => "The second addend"],
         "let t = checkedAdd(a: 9223372036854775807, b: 1) ?: 0  // 0 — overflow reported",
     ),
     builtin_doc!(
         "checkedSub",
-        "Integer subtraction that reports overflow instead of wrapping, returning Result<int, Error>. The guarded sibling of `-`.",
+        "Named overflow-checked integer subtraction, returning Result<int, Error>.",
         ["a" => "The minuend", "b" => "The subtrahend"],
         "let d = checkedSub(a: 10, b: 4) ?: 0  // 6",
     ),
     builtin_doc!(
         "checkedMul",
-        "Integer multiplication that reports overflow instead of wrapping, returning Result<int, Error>. The guarded sibling of `*`.",
+        "Named overflow-checked integer multiplication, returning Result<int, Error>.",
         ["a" => "The first factor", "b" => "The second factor"],
         "let p = checkedMul(a: 6, b: 7) ?: 0  // 42",
     ),
@@ -119,7 +119,7 @@ pub(crate) static TESTING: &[BuiltinDoc] = &[
     ),
     builtin_doc!(
         "expect",
-        "Asserts two values are equal (canonical-string equality, Results auto-unwrapped). On mismatch, marks the enclosing test failed and prints a diagnostic; execution continues.",
+        "Asserts two values are equal by canonical rendering. Success payloads compare by value; Errors remain visible as Error(message). On mismatch, marks the enclosing test failed and prints a diagnostic; execution continues.",
         ["actual" => "The computed value", "expected" => "The value it should equal"],
         "test(\"doubling\", fn() => expect(21 * 2, 42))",
     ),

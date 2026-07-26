@@ -7,15 +7,15 @@ fn unitPrice(item: string) -> int = { "coffee": 12, "bread": 5, "fruit": 7 }[ite
 
 /// Applies the membership tier's percentage discount using safe integer division.
 fn loyaltyDiscount(level: string) -> (int) -> int = fn(subtotal) => match level {
-    "gold" => intDiv(subtotal * 20, 100) ?: 0
-    "silver" => intDiv(subtotal * 10, 100) ?: 0
+    "gold" => intDiv((subtotal * 20) ?: 0, 100) ?: 0
+    "silver" => intDiv((subtotal * 10) ?: 0, 100) ?: 0
     _ => 0
 }
 
 /// Composes price lookup, quantity arithmetic, and the loyalty policy.
 fn total(level: string) -> (string) -> (int) -> int = fn(item) => fn(quantity) => {
-    let subtotal = unitPrice(item) * quantity
-    subtotal - loyaltyDiscount(level)(subtotal)
+    let subtotal = unitPrice(item) * quantity ?: 0
+    subtotal - loyaltyDiscount(level)(subtotal) ?: 0
 }
 
 /// Normalizes customer text and renders the complete derived order state.
@@ -66,7 +66,7 @@ fn receiptInteraction() = {
         endsWith(receipt("Ada")("silver")("coffee")(2), ":22"),
         !contains(receipt(" Ada ")("guest")("fruit")(1), " "),
         (receipt("Ada")("guest")("fruit")(2) |> fn(text) => text.toUpperCase()) == "ADA:FRUIT:2:14",
-        receipt("Kai")("silver")(itemAt(1)("missing"))(2 * 2) == "KAI:bread:4:18"
+        receipt("Kai")("silver")(itemAt(1)("missing"))((2 * 2) ?: 0) == "KAI:bread:4:18"
     ])
 }
 

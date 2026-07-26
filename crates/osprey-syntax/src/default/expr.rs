@@ -29,10 +29,7 @@ impl Lowerer<'_> {
                 left: Box::new(self.lower_expr_field(node, "left")),
                 right: Box::new(self.lower_expr_field(node, "right")),
             },
-            "unary_expression" => Expr::Unary {
-                op: self.field_text(node, "operator"),
-                operand: Box::new(self.lower_expr_field(node, "operand")),
-            },
+            "unary_expression" => self.lower_unary(node),
             // `x |> f` desugars to `f(x)` and `x |> f(a, …)` to `f(x, a, …)` —
             // the piped value becomes the callee's first positional argument, so
             // both the type checker and codegen see an ordinary call.
@@ -146,9 +143,8 @@ impl Lowerer<'_> {
         )
     }
 
-    /// `cond ? then : else` desugars to `match cond { true => then  false => else }`
-    /// (and the Elvis form `cond ?: else` reuses the condition as the `then`),
-    /// so the existing boolean-match lowering carries the runtime semantics.
+    /// `cond ? then : else` desugars to a boolean match. The Elvis spelling
+    /// `result ?: fallback` instead becomes an explicit Success/Error match.
     fn lower_ternary(&self, node: Node<'_>) -> Expr {
         let condition = self.lower_expr_field(node, "condition");
         // Structural form `cond { f1, f2 } ? then : else`: bind each field from
@@ -181,11 +177,10 @@ impl Lowerer<'_> {
             };
         }
         let else_expr = self.lower_expr_field(node, "else");
-        let then_expr = match node.child_by_field_name("then") {
-            Some(n) => self.lower_expr(n),
-            None => condition.clone(), // Elvis `?:`
-        };
-        crate::desugar::bool_match(condition, then_expr, else_expr)
+        match node.child_by_field_name("then") {
+            Some(n) => crate::desugar::bool_match(condition, self.lower_expr(n), else_expr),
+            None => crate::desugar::result_default(condition, else_expr),
+        }
     }
 
     fn lower_inner_expr(&self, node: Node<'_>) -> Expr {
@@ -344,6 +339,21 @@ impl Lowerer<'_> {
             return Expr::Bool(false);
         };
         self.lower_literal_node(inner)
+    }
+
+    fn lower_unary(&self, node: Node<'_>) -> Expr {
+        let op = self.field_text(node, "operator");
+        let operand = node.child_by_field_name("operand");
+        // The magnitude of i64::MIN is one larger than i64::MAX. Accept that
+        // one spelling only under unary minus and lower it directly; every
+        // larger magnitude is reported by the frontend's numeric validator.
+        if op == "-" && operand.is_some_and(|n| super::is_i64_min_magnitude_text(&self.text(n))) {
+            return Expr::Integer(i64::MIN);
+        }
+        Expr::Unary {
+            op,
+            operand: Box::new(self.lower_expr_field(node, "operand")),
+        }
     }
 
     /// Lower an already-unwrapped literal node (`integer`/`string`/… directly,
@@ -545,8 +555,8 @@ mod tests {
             } => assert_eq!(named_arguments.len(), 2),
             other => panic!("expected call, got {other:?}"),
         }
-        // Ternary and Elvis desugar to a boolean match
-        // [PATTERN-RESULT-DEFAULT].
+        // Ternary desugars to a boolean match; Elvis desugars to an exhaustive
+        // Success/Error match [PATTERN-RESULT-DEFAULT].
         assert!(matches!(
             let_value("let r = c ? 1 : 2\n"),
             Expr::Match { .. }

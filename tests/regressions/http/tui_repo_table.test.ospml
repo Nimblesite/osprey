@@ -6,7 +6,7 @@ handleRequest (method, path, headers, body) = HttpResponse(
     status = 200,
     headers = "Content-Type: application/json",
     contentType = "application/json",
-    streamFd = -1,
+    streamFd = (0 - 1) ?: 0,
     isComplete = true,
     partialBody = "[{\"name\":\"osprey\",\"stars\":1200,\"lang\":\"Go\"},{\"name\":\"llvm\",\"stars\":9001,\"lang\":\"C++\"},{\"name\":\"antlr\",\"stars\":4200,\"lang\":\"Java\"}]"
 )
@@ -40,7 +40,7 @@ renderRow (doc, i, n) =
             starsCol = yellow "* ${pad (stars, 5)}"
             langCol = dim lang
             print "  ${bullet} ${nameCol} ${starsCol} ${langCol}"
-            renderRow (doc, i + 1, n)
+            renderRow (doc, (i + 1) ?: i, n)
         false => print ""
 
 renderTable doc =

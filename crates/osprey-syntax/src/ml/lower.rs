@@ -1146,13 +1146,10 @@ fn lower_block(items: Vec<MlItem>, value: Option<Box<MlExpr>>) -> Expr {
     }
 }
 
-/// `e ?: d` — the Result default ([PATTERN-RESULT-DEFAULT]). Emits the shape
-/// the Default flavor's `lower_ternary` emits: the scrutinee reused as the
-/// `then` branch of a two-arm `Expr::Match` over boolean literal patterns. A
-/// `Success`/`Wildcard` pair would be a different node and would break
-/// [FLAVOR-IR-EQUIV] against the Default twin.
+/// `e ?: d` — the explicit Result default ([PATTERN-RESULT-DEFAULT]). Both
+/// flavors emit the same exhaustive Success/Error match.
 fn result_default(scrutinee: Expr, fallback: Expr) -> Expr {
-    crate::desugar::bool_match(scrutinee.clone(), scrutinee, fallback)
+    crate::desugar::result_default(scrutinee, fallback)
 }
 
 fn lower_arm(arm: MlArm) -> MatchArm {

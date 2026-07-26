@@ -23,9 +23,9 @@ walk (s, byteIndex, count) =
                         Success value =>
                             width = value
                             print "cp[${toString count}] @byte ${toString byteIndex} = ${toString cp} (${toString width} bytes)"
-                            walk (s, byteIndex + width, count + 1)
-                        Error message => -1
-                Error message => -1
+                            walk (s, (byteIndex + width) ?: byteIndex, (count + 1) ?: count)
+                        Error message => (0 - 1) ?: 0
+                Error message => (0 - 1) ?: 0
 
 s = sample ()
 bytes = byteLength s

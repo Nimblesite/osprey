@@ -201,10 +201,12 @@ argument validation with exit code `2`.
 **`[TESTING-NATIVE-CACHE]`** Native test runs reuse a content-addressed
 executable when the suite sources, compiler binary, runtime archive, memory
 mode, build kind, compiler command, and optimization setting are unchanged.
-Sources with HTTP, WebSocket, or explicit FFI link directives bypass this cache
-because their external link inputs cannot be validated from source alone. A
-cache miss builds to a process-unique staging path and publishes atomically, so
-concurrent runners never execute a partial artifact.
+The cache key includes both native runtime archives, so built-in HTTP and
+WebSocket suites remain cacheable. Named system-library `@link` directives are
+part of the source key and remain cacheable. Sources with custom `@linkdir`
+search paths bypass the cache because those external inputs cannot be validated
+from source alone. A cache miss builds to a process-unique staging path and
+publishes atomically, so concurrent runners never execute a partial artifact.
 
 ### `osprey <file> --list-tests` — `[TESTING-LIST]`
 

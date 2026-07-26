@@ -33,15 +33,15 @@ resumeAbortEarlyExitCase () =
         in
             handle Stop
                 check n =>
-                    checks := checks + 1
+                    checks := checks + 1 ?: checks
                     match n
                         0 =>
-                            aborted := aborted + 1
+                            aborted := aborted + 1 ?: aborted
                             observe "stopping at zero"
                             999
                         _ =>
-                            resumed := resumed + 1
-                            supplied = n * 10
+                            resumed := resumed + 1 ?: resumed
+                            supplied = n * 10 ?: 0
                             answer = resume supplied
                             observe ("continued check " + toString n + ": answer=" + toString answer)
                             answer
@@ -66,7 +66,7 @@ resumeAbortEarlyExitCase () =
         checks == 2,
         resumed == 1,
         aborted == 1,
-        checks == resumed + aborted
+        checks == (resumed + aborted ?: 0)
     ]
 
 test "returning without resume aborts the suspended continuation" resumeAbortEarlyExitCase

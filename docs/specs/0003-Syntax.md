@@ -44,7 +44,7 @@ let name = "Alice"
 // and this arm interprets it — the sanctioned form of mutation.
 mut count = 0
 let total = handle Counter
-    tick => { count = count + 1  count }
+    tick => { count = (count + 1) ?: count  count }
 in run()
 ```
 
@@ -55,7 +55,7 @@ name = "Alice"
 
 mut count = 0
 total = handle Counter
-    tick => count := count + 1
+    tick => count := (count + 1) ?: count
 in run ()
 ```
 
@@ -91,7 +91,7 @@ distinct unspellable internal name, so repeated ignored parameters do not
 collide.
 
 ```osprey
-let count = range(0, 10) |> fold(0, |acc, _| => acc + 1)
+let count = range(0, 10) |> fold(0, |acc, _| => (acc + 1) ?: acc)
 ```
 
 A named function can use `_` only where its caller supplies arguments
@@ -144,8 +144,8 @@ A positional payload is declared, constructed, and matched in slot order:
 type Tree = Leaf | Node(Tree, Tree)
 let tree = Node(Node(Leaf, Leaf), Leaf)
 
-fn size(tree) = match tree {
-    Leaf          => 1
+fn size(tree) -> Result<int, MathError> = match tree {
+    Leaf          => Success { value: 1 }
     Node(left, _) => 1 + size(left)
 }
 ```

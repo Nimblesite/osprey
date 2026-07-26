@@ -41,8 +41,12 @@ attributes, allowing `-O2` to remove a non-escaping allocation and release.
 
 `spawn` allocates a capture cell for that spawn and transfers one reference to
 the runtime. The fiber releases the cell after its thunk returns. A managed
-result returned through `await`, or a managed value boxed into a channel, is
-retained for the receiving side.
+result is retained as a runtime root after the thunk returns. Every `await`
+retains a separate reference for that receiving side, so repeated awaits are
+safe. Once all spawned computations are quiescent, normal program teardown
+releases runtime roots after language-owned values have dropped; teardown does
+not invalidate cached results while another fiber can still await them. A
+managed value boxed into a channel is likewise retained for the receiving side.
 
 The runtime may therefore co-own managed allocations across fiber threads.
 Before creating the first pthread-backed fiber it calls

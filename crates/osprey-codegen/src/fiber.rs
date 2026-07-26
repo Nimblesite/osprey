@@ -2,8 +2,8 @@
 //! every compiled Osprey program links (`fiber_runtime.c` in
 //! `libfiber_runtime.a`). `spawn e` lowers `e` as a zero-parameter closure
 //! (`crate::closure`): the thunk takes the closure cell as its env, reloads the
-//! captures `e` closes over, and is handed to `fiber_spawn_env` together with
-//! its per-spawn heap cell — so two in-flight spawns from one site never share
+//! captures `e` closes over, and is handed to `fiber_spawn_env_owned` together
+//! with its per-spawn heap cell — so two in-flight spawns from one site never share
 //! capture state (the runtime restores the spawner's effect-handler snapshot
 //! inside the fiber, so `perform` works there). `await`/`fiberDone` map to
 //! `fiber_await`/`fiber_done`, the non-blocking probe a foreground loop can
@@ -15,7 +15,7 @@
 //! [CONCURRENCY-YIELD].
 
 use crate::builder::Codegen;
-use crate::conv::{as_i64, box_to_i64, unbox_from_i64};
+use crate::conv::{as_i64, box_to_i64};
 use crate::error::Result;
 use crate::expr::gen_expr;
 use crate::llty::{LType, Value};
@@ -26,8 +26,9 @@ use osprey_ast::{Expr, MatchArm};
 const THUNK_SIG: (LType, Option<LType>) = (LType::I64, None);
 
 /// `spawn e` — lower `e` as a zero-parameter closure and start it on a real
-/// fiber via `fiber_spawn_env(thunk, cell)`.
+/// fiber via `fiber_spawn_env_owned(thunk, cell, result_managed)`.
 pub(crate) fn gen_spawn(cg: &mut Codegen, e: &Expr) -> Result<Value> {
+    cg.fibers_used = true;
     let id = cg.next_lambda_id();
     let thunk = format!("__fiber_thunk_{id}");
     let caps = crate::closure::capture_list(cg, &[], e);
@@ -37,27 +38,28 @@ pub(crate) fn gen_spawn(cg: &mut Codegen, e: &Expr) -> Result<Value> {
     let elem = thunk_body(cg, e);
     cg.exit_nested_fn(saved, "i64", &thunk, &[(LType::Ptr, String::from("__env"))]);
     let elem = elem?;
-    let sig = (Vec::new(), THUNK_SIG.0, THUNK_SIG.1);
+    let sig = (Vec::new(), THUNK_SIG.0, THUNK_SIG.1, None);
     let cell = crate::closure::cell_value(cg, id, &thunk, &cell_ty, &caps, &sig);
+    let result_managed = i64::from(matches!(elem.ty, LType::Str | LType::Ptr)).to_string();
     let r = cg.call(
         "i64",
-        "fiber_spawn_env",
-        "i64 (i8*)*, i8*",
-        &[&format!("@{thunk}"), &cell.operand],
+        "fiber_spawn_env_owned",
+        "i64 (i8*)*, i8*, i64",
+        &[&format!("@{thunk}"), &cell.operand, &result_managed],
     );
     // Tag the handle with the fiber's element type so `await` recovers it.
-    Ok(Value::new(r, LType::I64).with_fiber_elem(elem))
+    Ok(Value::new(r, LType::I64).with_fiber_elem(&elem))
 }
 
 /// Lower the spawned expression into the thunk and box its result to the
 /// uniform `i64` fiber-result ABI; returns the element type so the spawn site
 /// can tag the handle for `await` to unbox.
-fn thunk_body(cg: &mut Codegen, e: &Expr) -> Result<LType> {
+fn thunk_body(cg: &mut Codegen, e: &Expr) -> Result<Value> {
     let v = gen_expr(cg, e)?;
-    let v = crate::result::unwrap(cg, v);
-    let elem = v.ty;
+    let elem = v.clone();
     // The result escapes boxed across the fiber boundary: dup it before the
-    // thunk's owners drop, so `await`'s side holds +1 [GC-ARC-PERCEUS].
+    // thunk's owners drop, so the runtime's completed-result slot holds +1
+    // until main's fiber cleanup [GC-ARC-PERCEUS].
     crate::arc::escape_retain(cg, &v);
     let b = box_to_i64(cg, v);
     crate::arc::epilogue(cg, None);
@@ -71,9 +73,19 @@ fn thunk_body(cg: &mut Codegen, e: &Expr) -> Result<LType> {
 pub(crate) fn gen_await(cg: &mut Codegen, e: &Expr) -> Result<Value> {
     let f = gen_expr(cg, e)?;
     let elem = f.fiber_elem.unwrap_or(LType::I64);
+    let owner = f.fiber_elem_owner.clone();
+    let result_inner = f.fiber_elem_result_inner;
+    let payload_owner = f.fiber_elem_payload_owner.clone();
     let id = as_i64(cg, f)?;
     let r = cg.call("i64", "fiber_await", "i64", &[&id.operand]);
-    Ok(unbox_from_i64(cg, &r, elem))
+    let mut out = crate::effects::unbox_coro_value(cg, &r, elem, result_inner).with_owner(owner);
+    out.payload_owner = payload_owner;
+    // The runtime retains a fresh caller reference on every await. Register
+    // that +1 in this ARC region just like an ordinary function return; the
+    // runtime keeps and later drops its separate completed-result root.
+    // [GC-ARC-PERCEUS] [MEM-FIBER-ISOLATION]
+    crate::arc::own(cg, &out);
+    Ok(out)
 }
 
 /// `yield e` / `yield` — drive the runtime's cooperative hand-off, then evaluate
@@ -95,6 +107,11 @@ pub(crate) fn gen_send(cg: &mut Codegen, channel: &Expr, value: &Expr) -> Result
     let ch = gen_expr(cg, channel)?;
     let id = as_i64(cg, ch)?;
     let v = gen_expr(cg, value)?;
+    if v.result_inner.is_some() {
+        return Err(crate::error::CodegenError::unsupported(
+            "Result-valued channels are not yet represented losslessly; handle the Result before sending",
+        ));
+    }
     // The sent value escapes boxed into the channel buffer: the receiver's
     // side owns +1 [GC-ARC-PERCEUS] [MEM-FIBER-ISOLATION].
     crate::arc::escape_retain(cg, &v);

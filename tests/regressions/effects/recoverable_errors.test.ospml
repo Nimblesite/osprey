@@ -14,7 +14,7 @@ fulfill orders stock = match orders
     [] => stock
     [requested, ...rest] =>
         drawn = drawOrder requested stock
-        remaining = stock - drawn
+        remaining = stock - drawn ?: stock
         print "  order ${requested}: from ${stock} in stock -> took ${drawn}, ${remaining} left"
         fulfill rest remaining
 
@@ -27,7 +27,7 @@ print "=== POLICY A: SKIP (substitute 0, preserve stock) ==="
 skipFinal =
     handle Recover
         overdraw requested available =>
-            skipCount := skipCount + 1
+            skipCount := skipCount + 1 ?: skipCount
             skipReason := skipReason + "skipped ${requested} (only ${available} left); "
             0
     in fulfill batch start
@@ -40,7 +40,7 @@ print "=== POLICY B: CAP (substitute available, drain to fit) ==="
 capFinal =
     handle Recover
         overdraw requested available =>
-            capCount := capCount + 1
+            capCount := capCount + 1 ?: capCount
             capReason := capReason + "capped ${requested} to ${available}; "
             available
     in fulfill batch start
@@ -53,7 +53,7 @@ print "=== HAPPY PATH: SKIP handler, no over-draws ==="
 happyFinal =
     handle Recover
         overdraw requested available =>
-            happyCount := happyCount + 1
+            happyCount := happyCount + 1 ?: happyCount
             0
     in fulfill happyBatch start
 happyFilled = start - happyFinal

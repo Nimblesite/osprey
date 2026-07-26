@@ -3,7 +3,7 @@
 //! inference), then synthesize `main` from either a user `main` or the trailing
 //! top-level statements.
 
-use crate::builder::{Codegen, CodegenOptions};
+use crate::builder::{Codegen, CodegenOptions, ParamSig};
 use crate::error::{CodegenError, Result};
 use crate::expr::gen_expr;
 use crate::llty::{LType, Value};
@@ -160,6 +160,13 @@ fn compile_program_with_options(program: &Program, options: CodegenOptions) -> R
     // A program that used the testing built-ins exits with the TAP epilogue's
     // status (plan + summary printed by the runtime) [TESTING-EXIT].
     crate::arc::epilogue(&mut cg, None);
+    if cg.fibers_used {
+        // A completed fiber keeps one runtime owner so every `await` can return
+        // its own retained reference. Main's language owners are gone now, so
+        // release those runtime roots before process-exit leak accounting.
+        cg.add_extern("declare void @fiber_cleanup_results()");
+        cg.emit("call void @fiber_cleanup_results()");
+    }
     if cg.testing_used {
         let code = cg.call("i32", "osp_test_finalize", "", &[]);
         cg.emit(format!("ret i32 {code}"));
@@ -178,9 +185,19 @@ fn gen_function(
     body: &Expr,
     position: Option<Position>,
 ) -> Result<()> {
-    let param_sig = cg
-        .fn_param_sig(name)
-        .unwrap_or_else(|| vec![(LType::I64, None); parameters.len()]);
+    let param_sig = cg.fn_param_sig(name).unwrap_or_else(|| {
+        vec![
+            (
+                ParamSig {
+                    ty: LType::I64,
+                    result_inner: None,
+                    fiber: None,
+                },
+                None,
+            );
+            parameters.len()
+        ]
+    });
 
     cg.begin_function(name, position);
     // Record any function-typed parameters so a call through one lowers to an
@@ -203,10 +220,10 @@ fn gen_function(
     let mut params = Vec::new();
     for (i, (p, (pty, owner))) in parameters.iter().zip(param_sig.iter()).enumerate() {
         let reg = crate::llty::param_register(i);
-        let v = Value::new(format!("%{reg}"), *pty).with_owner(owner.clone());
+        let v = crate::cast::incoming_param(cg, format!("%{reg}"), *pty, owner.clone());
         cg.emit_debug_param(&p.name, &v);
         cg.bind(p.name.clone(), v);
-        params.push((*pty, reg));
+        params.push((pty.ty, reg));
     }
     // A `-> Unit` function discards its body's value, so a body that is a
     // `match` over side-effecting arms needs no common arm type
@@ -292,20 +309,19 @@ fn gen_stmt_kind(cg: &mut Codegen, stmt: &Stmt) -> Result<()> {
         } if cg.cell_slots.contains_key(name) => {
             with_stmt_debug(cg, *position, |cg| gen_cell_store(cg, name, value))
         }
-        // An immutable `let` keeps a Result wrapper (so `let v = 21 * 2;
-        // toString(v)` shows `Success(42)`); a `mut` reassignment auto-unwraps it
-        // (the `mut` auto-unwrap rule: the cell holds the success payload).
+        // Bindings preserve their inferred representation. A Result can never
+        // be silently reduced to its payload at an assignment boundary.
         Stmt::Let {
             name,
             value,
             position,
             ..
-        } => with_stmt_debug(cg, *position, |cg| gen_bind(cg, name, value, false)),
+        } => with_stmt_debug(cg, *position, |cg| gen_bind(cg, name, value, *position)),
         Stmt::Assignment {
             name,
             value,
             position,
-        } => with_stmt_debug(cg, *position, |cg| gen_bind(cg, name, value, true)),
+        } => with_stmt_debug(cg, *position, |cg| gen_bind(cg, name, value, *position)),
         // A statement's value is discarded, so a `match` used purely for its
         // side effects is allowed arms of differing LLVM type — there is no
         // `phi` to type. Everywhere else that disagreement is a hard error
@@ -343,12 +359,16 @@ fn with_stmt_debug(
     result
 }
 
-/// Declare a handler-captured `mut` as a heap cell: evaluate + unwrap the
-/// initializer, `malloc` a one-slot cell of its type, store the initial value,
-/// and record the slot so reads `load` and reassignments `store` it.
+/// Declare a handler-captured plain-value `mut` as a heap cell. Result-backed
+/// cells require a discriminant-bearing slot and are rejected instead of being
+/// silently unwrapped.
 fn gen_cell_define(cg: &mut Codegen, name: &str, value: &Expr) -> Result<()> {
-    let raw = gen_expr(cg, value)?;
-    let v = crate::result::unwrap(cg, raw);
+    let v = gen_expr(cg, value)?;
+    if v.result_inner.is_some() {
+        return Err(CodegenError::invalid(
+            "mutable Result state must be handled before storage",
+        ));
+    }
     let fn_ty = fn_result_type(cg, value);
     let pointee = v.ty;
     let ty = pointee.as_str();
@@ -384,16 +404,15 @@ fn gen_cell_define(cg: &mut Codegen, name: &str, value: &Expr) -> Result<()> {
     Ok(())
 }
 
-/// Reassign a cell-backed `mut`: evaluate + unwrap, coerce to the cell's type,
-/// and `store` into the shared slot.
+/// Reassign a cell-backed `mut`: the checker requires the exact plain cell type,
+/// then codegen coerces only within that representation and stores it.
 fn gen_cell_store(cg: &mut Codegen, name: &str, value: &Expr) -> Result<()> {
     let Some(slot) = cg.cell_slots.get(name).cloned() else {
         return Err(CodegenError::unsupported(
             "reassignment of an unpromoted cell",
         ));
     };
-    let raw = gen_expr(cg, value)?;
-    let v = crate::result::unwrap(cg, raw);
+    let v = gen_expr(cg, value)?;
     let v = crate::cast::coerce_to(cg, v, slot.pointee)?;
     let ty = slot.pointee.as_str();
     // Rebind order: dup the incoming value BEFORE dropping the old one, so a
@@ -409,10 +428,13 @@ fn gen_cell_store(cg: &mut Codegen, name: &str, value: &Expr) -> Result<()> {
 
 /// Bind `name` to `value`. A lambda is recorded for inline application at its
 /// direct call sites (a beta-reduction fast path) AND materialized as a closure
-/// cell so the name is a first-class value. When `unwrap` is set (a mutable
-/// assignment), a Result value is unwrapped to its success payload before
-/// binding.
-fn gen_bind(cg: &mut Codegen, name: &str, value: &Expr, unwrap: bool) -> Result<()> {
+/// cell so the name is a first-class value.
+fn gen_bind(cg: &mut Codegen, name: &str, value: &Expr, position: Option<Position>) -> Result<()> {
+    let expected_result_inner = cg
+        .prog
+        .let_type(position)
+        .and_then(crate::types::result_inner)
+        .or_else(|| cg.lookup(name).and_then(|bound| bound.result_inner));
     if let Expr::Lambda {
         parameters,
         body,
@@ -420,9 +442,10 @@ fn gen_bind(cg: &mut Codegen, name: &str, value: &Expr, unwrap: bool) -> Result<
         ..
     } = value
     {
-        let _ = cg
-            .lambdas
-            .insert(name.to_string(), (parameters.clone(), (**body).clone()));
+        let _ = cg.lambdas.insert(
+            name.to_string(),
+            (parameters.clone(), (**body).clone(), *position),
+        );
         // Materialize the closure value when its type resolved concretely; a
         // still-generic lambda stays inline-only (its cell ABI would lose the
         // per-instantiation types).
@@ -452,10 +475,10 @@ fn gen_bind(cg: &mut Codegen, name: &str, value: &Expr, unwrap: bool) -> Result<
         }
     }
     let v = gen_expr(cg, value)?;
-    let v = if unwrap {
-        crate::result::unwrap(cg, v)
-    } else {
-        v
+    let v = match expected_result_inner {
+        Some(inner) if v.result_inner.is_some() => crate::result::repack_to_inner(cg, v, inner)?,
+        Some(inner) => crate::result::make_ok(cg, v, inner)?,
+        None => v,
     };
     // A non-lambda (re)binding invalidates any stale beta-reduction entry or
     // call alias for the name — `mut f = fn(x) => …; f = makeAdder(10)` must

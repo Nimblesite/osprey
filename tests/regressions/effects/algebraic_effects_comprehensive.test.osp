@@ -35,10 +35,7 @@ fn doubleValue(x) = match x * 2 {
     Error { message } => 0
 }
 
-fn concatenateStrings(a, b) = match a + b {
-    Success { value } => value
-    Error { message } => ""
-}
+fn concatenateStrings(a: string, b: string) -> string = a + b
 
 /// Functions with single effects
 fn loggedIncrement(message) ![Logger, Counter] = {
@@ -108,24 +105,26 @@ fn calculation(x) ![Logger, State] = {
 
 /// Error handling with pattern matching
 fn errorProne(value) !Logger = match value {
-    -5 => {
-        perform Logger.error("Negative value detected: ${toString(value)}")
-        0
-    }
     0 => {
         perform Logger.error("Zero value not allowed")
         1
     }
-    _ => match value > 100 {
+    _ => match value < 0 {
         true => {
-            perform Logger.error("Value too large: ${toString(value)}")
-            100
+            perform Logger.error("Negative value detected: ${toString(value)}")
+            0
         }
-        false => {
-            perform Logger.log("Processing valid value: ${toString(value)}")
-            match value * 2 {
-                Success { value } => value
-                Error { message } => 0
+        false => match value > 100 {
+            true => {
+                perform Logger.error("Value too large: ${toString(value)}")
+                100
+            }
+            false => {
+                perform Logger.log("Processing valid value: ${toString(value)}")
+                match value * 2 {
+                    Success { value } => value
+                    Error { message } => 0
+                }
             }
         }
     }
@@ -229,7 +228,7 @@ in {
     let processResult = processItems(3)
     
     /// Test error handling patterns
-    let errorResult1 = errorProne(-5)
+    let errorResult1 = errorProne((0 - 5) ?: 0)
     let errorResult2 = errorProne(150)
     let errorResult3 = errorProne(25)
     
@@ -258,7 +257,7 @@ fn relabel() -> string !Stash<string> = {
 
 fn bumped() -> int !Stash<int> = {
     let n = perform Stash.take()
-    n + 1
+    n + 1 ?: 0
 }
 
 let words = handle Stash

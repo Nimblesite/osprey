@@ -21,12 +21,12 @@ type Outcome =
         code : int
 
 classify score = match score
-    0 => Failed(code = 0 - 1)
+    0 => Failed(code = (0 - 1) ?: 0)
     _ => Done(score = score)
 
 runJob weight =
     perform Logger.log ("weight " + toString weight)
-    weight * weight
+    weight * weight ?: 0
 
 report xs = perform Logger.log ("collected " + toString (listLength xs))
 
@@ -91,11 +91,11 @@ ask tag = perform Gift.get tag
 pairSum (a, b) =
     f1 = spawn (ask a)
     f2 = spawn (ask b)
-    (await f1) + (await f2)
+    (await f1) + (await f2) ?: 0
 
 raceSum =
     handle Gift
-        get tag => resume (tag * 10)
+        get tag => resume ((tag * 10) ?: 0)
     in pairSum (1, 2)
 print ("race-free sum " + toString raceSum)
 print "=== done ==="

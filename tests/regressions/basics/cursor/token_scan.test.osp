@@ -29,7 +29,7 @@ fn isDigitAt(s, i) = match byteAt(s, i) {
 /// non-digit byte OR at end-of-input, returning the accumulated integer.
 fn scanInt(s, i, acc) = match byteAt(s, i) {
     Success { value } => match value >= zero() && value <= nine() {
-        true  => scanInt(s, i + 1, (acc * 10) + (value - zero()))
+        true  => scanInt(s, (i + 1) ?: i, (acc * 10 + value - zero()) ?: acc)
         false => acc
     }
     Error { message } => acc
@@ -38,7 +38,7 @@ fn scanInt(s, i, acc) = match byteAt(s, i) {
 /// Index of the first byte at or after i that is NOT a digit (where the token
 /// ends). Recurses while digits continue; returns i at the first non-digit/EOI.
 fn scanEnd(s, i) = match isDigitAt(s, i) {
-    true  => scanEnd(s, i + 1)
+    true  => scanEnd(s, (i + 1) ?: i)
     false => i
 }
 
@@ -49,7 +49,7 @@ fn nextDigit(s, i) = match i >= byteLength(s) {
     true  => i
     false => match isDigitAt(s, i) {
         true  => i
-        false => nextDigit(s, i + 1)
+        false => nextDigit(s, (i + 1) ?: i)
     }
 }
 

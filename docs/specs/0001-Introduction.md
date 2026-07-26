@@ -12,10 +12,30 @@ checking and code generation. Their precise boundary is defined in
 - Immutable bindings and explicit mutable bindings.
 - Expression-oriented branching through `match`, ternaries, and the Default
   flavor's `if`/`else` expression.
-- Typed algebraic-effect operations and lexical handlers. The compiler checks
-  operation inputs and outputs but does not reject every missing handler.
-- `Result<T, E>` values for structured failures; native APIs that return integer
-  status codes document that convention explicitly.
+- Typed algebraic-effect operations and lexical handlers. An effect that can
+  escape a function is present in its function type, and every effect must be
+  discharged by a statically known handler before program entry.
+- `Result<T, E>` values for structured failures.
+
+## Failure safety — [FAILURE-EXPLICIT]
+
+Every operation that can fail MUST expose that possibility in its static type,
+either as `Result<T, E>` or as an algebraic effect that is discharged by a
+statically known handler. A language operation MUST NOT panic, silently wrap,
+substitute a zero value, or erase an error in order to produce a plain `T`.
+
+There is no implicit conversion from `Result<T, E>` to `T`. In particular,
+bindings and assignments, function arguments (including concurrency
+operations), comparisons, interpolation, function-value calls, and declared
+scalar returns preserve the `Result` wrapper or are rejected. A caller obtains
+a `T` only by exhaustively matching the `Result` or by supplying an explicit
+fallback with `?:`. Failure-preserving arithmetic chaining may flatten
+`Result<Result<T, MathError>, MathError>` to one `Result<T, MathError>`; this is
+propagation, not implicit handling, and preserves the first `Error` unchanged.
+
+Raw foreign declarations may expose a C integer status as ABI data. Safe
+Osprey-facing APIs MUST translate a failing status into `Result` or a typed
+effect before returning it to ordinary language code.
 
 ## Runtime and platforms
 

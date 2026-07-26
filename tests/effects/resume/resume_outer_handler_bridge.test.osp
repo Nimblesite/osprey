@@ -27,17 +27,17 @@ fn resumeOuterHandlerBridgeCase() = {
 
     let result = handle Log
         line message => {
-            logCalls = logCalls + 1
+            logCalls = logCalls + 1 ?: logCalls
             logMessages = "${logMessages}${message}|"
             transcript = "${transcript}[log] ${message}\n"
         }
     in {
         let answer = handle Prompt
             ask field => {
-                promptCalls = promptCalls + 1
+                promptCalls = promptCalls + 1 ?: promptCalls
                 transcript = "${transcript}ask ${field}\n"
                 let resumedAnswer = resume("Ada")
-                promptSettled = promptSettled + 1
+                promptSettled = promptSettled + 1 ?: promptSettled
                 settledAnswer = resumedAnswer
                 transcript = "${transcript}after ask: ${resumedAnswer}\n"
                 resumedAnswer

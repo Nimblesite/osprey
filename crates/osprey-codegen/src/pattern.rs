@@ -15,12 +15,6 @@ use osprey_ast::{Expr, MatchArm, Pattern};
 
 pub(crate) fn gen_match(cg: &mut Codegen, value: &Expr, arms: &[MatchArm]) -> Result<Value> {
     let disc = gen_expr(cg, value)?;
-    // `result ?: default` lowers to `match result { true => result  false => default }`.
-    // A Result discriminant matched against bool literals is only ever this Elvis
-    // form, so dispatch it to unwrap-or-default.
-    if disc.result_inner.is_some() && is_bool_elvis(arms) {
-        return gen_result_elvis(cg, &disc, arms);
-    }
     if arms.iter().any(|a| is_result_arm(&a.pattern)) {
         return gen_result_match(cg, disc, arms);
     }
@@ -53,18 +47,17 @@ fn gen_list_match(cg: &mut Codegen, disc: &Value, arms: &[MatchArm]) -> Result<V
                 let cond = cg.emit_reg(format!("icmp {op} i64 {len}, {n}"));
                 let next_lbl = open_guarded_arm(cg, &cond);
                 bind_list_arm(cg, &list_val, elements, rest.as_deref(), n);
-                finish_guarded_arm(cg, arm, &mut phi_in, &end, &next_lbl, i == last)?;
+                finish_guarded_arm(cg, arm, &mut phi_in, &next_lbl, i == last)?;
             }
             Pattern::Wildcard | Pattern::Binding(_) | Pattern::TypeAnnotated { .. } => {
                 bind_catch_all(cg, &arm.pattern, &list_val);
-                emit_arm_body(cg, arm, &mut phi_in, &end)?;
+                emit_arm_body(cg, arm, &mut phi_in)?;
                 break;
             }
             _ => return Err(CodegenError::unsupported("non-list arm in list match")),
         }
     }
-    cg.start_block(&end);
-    finish_phi(cg, &phi_in, mark)
+    finish_phi(cg, &phi_in, &end, mark)
 }
 
 /// Bind a matched list arm's prefix elements (`osprey_list_get(l, i)`) and its
@@ -117,49 +110,15 @@ fn bind_list_arm(
     }
 }
 
-/// Whether the arms are the bool-ternary shape (`true => …  false => …`) the
-/// Elvis operator desugars to.
-fn is_bool_elvis(arms: &[MatchArm]) -> bool {
-    arms.len() == 2
-        && arms
-            .iter()
-            .all(|a| matches!(&a.pattern, Pattern::Literal(e) if matches!(**e, Expr::Bool(_))))
-}
-
-/// `result ?: default` — branch on the Result discriminant, yielding the
-/// unwrapped success payload or evaluating the `false` (default) arm.
-fn gen_result_elvis(cg: &mut Codegen, disc: &Value, arms: &[MatchArm]) -> Result<Value> {
-    let inner = disc.result_inner.unwrap_or(LType::I64);
-    let default_arm = arms
-        .iter()
-        .find(|a| matches!(&a.pattern, Pattern::Literal(e) if matches!(**e, Expr::Bool(false))));
-    let (_sl, el, end) = crate::result::open_result_branch(cg, disc);
-    let succ = crate::result::load_value(cg, disc);
-    let sb = cg.snapshot_to(&end);
-
-    cg.start_block(&el);
-    let def = match default_arm {
-        Some(a) => gen_expr(cg, &a.body)?,
-        None => Value::unit(),
-    };
-    let def = crate::cast::coerce_to(cg, def, inner)?;
-    let eb = cg.snapshot_to(&end);
-
-    cg.start_block(&end);
-    let reg = cg.fresh_reg();
-    cg.emit(format!(
-        "{reg} = phi {inner} [ {}, %{sb} ], [ {}, %{eb} ]",
-        succ.operand, def.operand
-    ));
-    Ok(Value::new(reg, inner))
-}
-
-/// Evaluate a matched arm's body in the current block and record its
-/// `(value, block)` for the closing `phi` — the step every arm shape ends with.
+/// Evaluate a matched arm's body, then branch to a deferred exit block.  The
+/// exit is emitted only after every arm has revealed its physical value shape,
+/// allowing [`finish_phi`] to re-layout placeholder Error Results before they
+/// meet at the closing `phi`.
 fn push_arm(cg: &mut Codegen, body: &Expr, phi_in: &mut Vec<(Value, String)>) -> Result<()> {
     let v = gen_expr(cg, body)?;
-    let blk = cg.cur_block().to_string();
-    phi_in.push((v, blk));
+    let exit = cg.fresh_label();
+    cg.emit(format!("br label %{exit}"));
+    phi_in.push((v, exit));
     Ok(())
 }
 
@@ -272,8 +231,7 @@ fn gen_result_match(cg: &mut Codegen, disc: Value, arms: &[MatchArm]) -> Result<
     emit_result_arm(cg, &sl, success, succ_val, &end, &mut phi_in)?;
     emit_result_arm(cg, &el, error, err_val, &end, &mut phi_in)?;
 
-    cg.start_block(&end);
-    finish_phi(cg, &phi_in, mark)
+    finish_phi(cg, &phi_in, &end, mark)
 }
 
 /// Emit one Result arm: open `label`, bind the constructor's payload field (if
@@ -295,8 +253,9 @@ fn emit_result_arm(
             }
         }
         push_arm(cg, &arm.body, phi_in)?;
+    } else {
+        cg.emit(format!("br label %{end}"));
     }
-    cg.emit(format!("br label %{end}"));
     Ok(())
 }
 
@@ -328,13 +287,13 @@ fn gen_union_match(
             cg.emit(format!("{cond} = icmp eq i64 {tag}, {vtag}"));
             let next_lbl = open_guarded_arm(cg, &cond);
             bind_variant_fields(cg, disc, &name, &fields);
-            emit_arm_body(cg, arm, &mut phi_in, &end)?;
+            emit_arm_body(cg, arm, &mut phi_in)?;
             cg.start_block(&next_lbl);
         } else {
             match &arm.pattern {
                 Pattern::Wildcard | Pattern::Binding(_) | Pattern::TypeAnnotated { .. } => {
                     bind_catch_all(cg, &arm.pattern, disc);
-                    emit_arm_body(cg, arm, &mut phi_in, &end)?;
+                    emit_arm_body(cg, arm, &mut phi_in)?;
                     break;
                 }
                 _ => return Err(CodegenError::unsupported("structural union arm")),
@@ -343,8 +302,7 @@ fn gen_union_match(
     }
     // A non-exhaustive fall-through is unreachable by construction.
     cg.emit("unreachable");
-    cg.start_block(&end);
-    finish_phi(cg, &phi_in, mark)
+    finish_phi(cg, &phi_in, &end, mark)
 }
 
 /// Bind a matched variant's fields (in declared order) from the heap block.
@@ -401,20 +359,19 @@ fn gen_literal_match(cg: &mut Codegen, disc: &Value, arms: &[MatchArm]) -> Resul
         match &arm.pattern {
             Pattern::Wildcard | Pattern::Binding(_) | Pattern::TypeAnnotated { .. } => {
                 bind_catch_all(cg, &arm.pattern, disc);
-                emit_arm_body(cg, arm, &mut phi_in, &end)?;
+                emit_arm_body(cg, arm, &mut phi_in)?;
                 break;
             }
             Pattern::Literal(lit) => {
                 let cond = gen_eq(cg, disc, lit)?;
                 let next_lbl = open_guarded_arm(cg, &cond);
-                finish_guarded_arm(cg, arm, &mut phi_in, &end, &next_lbl, i == last)?;
+                finish_guarded_arm(cg, arm, &mut phi_in, &next_lbl, i == last)?;
             }
             _ => return Err(CodegenError::unsupported("destructuring match arm")),
         }
     }
 
-    cg.start_block(&end);
-    finish_phi(cg, &phi_in, mark)
+    finish_phi(cg, &phi_in, &end, mark)
 }
 
 /// Allocate the join state for a match chain: the end label, the phi inputs,
@@ -438,11 +395,8 @@ fn emit_arm_body(
     cg: &mut Codegen,
     arm: &MatchArm,
     phi_in: &mut Vec<(Value, String)>,
-    end: &str,
 ) -> Result<()> {
-    push_arm(cg, &arm.body, phi_in)?;
-    cg.emit(format!("br label %{end}"));
-    Ok(())
+    push_arm(cg, &arm.body, phi_in)
 }
 
 /// Open a guarded arm: branch on `cond` into a fresh body block, make that
@@ -462,11 +416,10 @@ fn finish_guarded_arm(
     cg: &mut Codegen,
     arm: &MatchArm,
     phi_in: &mut Vec<(Value, String)>,
-    end: &str,
     next: &str,
     is_last: bool,
 ) -> Result<()> {
-    emit_arm_body(cg, arm, phi_in, end)?;
+    emit_arm_body(cg, arm, phi_in)?;
     cg.start_block(next);
     if is_last {
         cg.emit("unreachable");
@@ -482,62 +435,110 @@ fn finish_guarded_arm(
 /// Arms that disagree on LLVM type are a hard error, not a silent Unit: a `phi`
 /// over them would be ill-typed, and yielding Unit instead converted a class of
 /// type-system mistakes into an expression that quietly evaluated to nothing.
-fn finish_phi(cg: &mut Codegen, phi_in: &[(Value, String)], mark: usize) -> Result<Value> {
-    let Some((first_val, _)) = phi_in.first() else {
+fn finish_phi(
+    cg: &mut Codegen,
+    phi_in: &[(Value, String)],
+    end: &str,
+    mark: usize,
+) -> Result<Value> {
+    let target_result_inner = result_join_inner(phi_in)?;
+    let mut incoming_values = Vec::with_capacity(phi_in.len());
+    for (value, exit) in phi_in {
+        cg.start_block(exit);
+        let adapted = match target_result_inner {
+            Some(inner) => crate::result::repack_to_inner(cg, value.clone(), inner)?,
+            None => value.clone(),
+        };
+        let pred = cg.snapshot_to(end);
+        incoming_values.push((adapted, pred));
+    }
+    cg.start_block(end);
+
+    let Some((first_val, _)) = incoming_values.first() else {
         return Ok(Value::unit());
     };
     let ty = first_val.ty;
-    if let Some((odd, _)) = phi_in.iter().find(|(v, _)| v.ty.as_str() != ty.as_str()) {
+    let llvm_ty = first_val.llvm_ty();
+    if let Some((odd, _)) = incoming_values.iter().find(|(v, _)| v.llvm_ty() != llvm_ty) {
         if !cg.value_discarded {
             return Err(CodegenError::invalid(format!(
                 "match arms disagree on type: `{}` and `{}`",
-                ty.as_str(),
-                odd.ty.as_str()
+                llvm_ty,
+                odd.llvm_ty()
             )));
         }
         return Ok(Value::unit());
     }
-    let incoming = phi_in
+    let incoming = incoming_values
         .iter()
         .map(|(v, blk)| format!("[ {}, %{blk} ]", v.operand))
         .collect::<Vec<_>>()
         .join(", ");
     let reg = cg.fresh_reg();
-    cg.emit(format!("{reg} = phi {ty} {incoming}"));
+    cg.emit(format!("{reg} = phi {llvm_ty} {incoming}"));
     let common = |sel: fn(&Value) -> Option<String>| {
         let first = sel(first_val);
-        phi_in
+        incoming_values
             .iter()
             .all(|(v, _)| sel(v) == first)
             .then_some(first)
             .flatten()
     };
-    // Preserve Result identity across the merge: when every arm is a Result of
-    // the same block layout (Success `{Ptr,i8}` / Error `{Str,i8}` are both
-    // `{i8*,i8}`), the phi *is* a Result, so carry the success arm's inner type.
-    // Without this a `match … { Success … Error … }` looks like a bare handle and
-    // a `-> Result` function body gets wrapped a second time.
+    // Preserve Result identity across the merge only when every arm has the
+    // exact same block layout. The LLVM-type check above rejects mixed Result
+    // payload layouts rather than emitting a broad pointer phi that discards
+    // the discriminant-bearing type.
     let result_inner = first_val.result_inner.filter(|first| {
-        phi_in.iter().all(|(v, _)| {
+        incoming_values.iter().all(|(v, _)| {
             v.result_inner
                 .is_some_and(|ri| ri.as_str() == first.as_str())
         })
     });
-    let mut out = Value::new(reg, ty)
-        .with_owner(common(|v| v.osp_ty.clone()))
-        .with_payload_owner(common(|v| v.payload_owner.clone()));
-    out.result_inner = result_inner;
+    let mut out = match result_inner {
+        Some(inner) => Value::result(reg, inner),
+        None => Value::new(reg, ty).with_owner(common(|v| v.osp_ty.clone())),
+    };
+    out.result_inner_is_placeholder = result_inner.is_some()
+        && incoming_values
+            .iter()
+            .all(|(v, _)| v.result_inner_is_placeholder);
+    out.payload_owner = common(|v| v.payload_owner.clone());
     // Perceus join transfer: if every arm produced a fresh owner AFTER `mark`
     // (i.e. inside its own arm — never the scrutinee, which predates the mark
     // and lives on every path), the phi owns the merged value directly — the
     // arm entries move into it, no dup, no per-arm drop. Ledger bookkeeping
     // only; the repositioned dup/drop calls are no-ops off ARC.
-    let incoming_ops = phi_in
+    let incoming_ops = incoming_values
         .iter()
         .map(|(v, _)| v.operand.clone())
         .collect::<Vec<_>>();
     crate::arc::move_phi_owners(cg, &incoming_ops, &out, mark);
     Ok(out)
+}
+
+/// Resolve the concrete success-slot layout for a Result-valued match.  A bare
+/// Error constructor contributes only a placeholder layout; any real producer
+/// fixes the contextual `T`.  Multiple concrete layouts remain a hard backend
+/// error (the type checker should already have rejected such arms).
+fn result_join_inner(phi_in: &[(Value, String)]) -> Result<Option<LType>> {
+    if phi_in.is_empty() || phi_in.iter().any(|(v, _)| v.result_inner.is_none()) {
+        return Ok(None);
+    }
+    let mut concrete = phi_in
+        .iter()
+        .filter(|(v, _)| !v.result_inner_is_placeholder)
+        .filter_map(|(v, _)| v.result_inner);
+    let target = concrete
+        .next()
+        .or_else(|| phi_in.first().and_then(|(v, _)| v.result_inner));
+    if let Some(target_inner) = target {
+        if let Some(other) = concrete.find(|inner| *inner != target_inner) {
+            return Err(CodegenError::invalid(format!(
+                "match Result arms disagree on success type: `{target_inner}` and `{other}`"
+            )));
+        }
+    }
+    Ok(target)
 }
 
 fn bind_catch_all(cg: &mut Codegen, pattern: &Pattern, disc: &Value) {

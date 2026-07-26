@@ -232,7 +232,8 @@ impl Checker {
         }
     }
 
-    /// Assignment-site unification (Result auto-unwrap), recording failures.
+    /// Directional assignment-site unification, recording failures. This may
+    /// wrap a bare value in Success but never erase a Result error channel.
     pub(crate) fn push_assign(&mut self, expected: &Type, actual: &Type) {
         if let Err(e) = unify_assignable(&mut self.ctx, expected, actual) {
             self.errors.push(e);
@@ -256,8 +257,16 @@ impl Checker {
                 value,
                 position,
             } => self.check_assignment(name, value, env, *position),
-            Stmt::Expr { value, .. } => {
-                let _ = self.infer_expr(value, env);
+            Stmt::Expr { value, position } => {
+                let inferred = self.infer_expr(value, env);
+                if self.ctx.prune(&inferred).is_named(names::RESULT) {
+                    self.record_err(
+                        TypeError::new(
+                            "an unhandled `Result` cannot be discarded; use `match` or `?:`",
+                        ),
+                        *position,
+                    );
+                }
             }
             _ => {}
         }
@@ -637,17 +646,20 @@ impl Checker {
         pos: Option<Position>,
     ) {
         let value_ty = self.infer_expr(value, env);
-        if let Some(te) = ty {
+        let binding_ty = if let Some(te) = ty {
             let annotated = type_expr_to_type(te, &HashMap::new());
             self.unify_or_err(&annotated, &value_ty, &format!("let `{name}`"), pos);
-        }
+            annotated
+        } else {
+            value_ty.clone()
+        };
         // Publish the binding's inferred type for editor hover, keyed by source
         // position (resolved against the final substitution in `infer_program`).
         // Implements [LSP-HOVER-VARIABLES]
         if let Some(p) = pos {
-            self.let_tys.push((p, value_ty.clone()));
+            self.let_tys.push((p, binding_ty.clone()));
         }
-        let scheme = generalize(&mut self.ctx, env, &value_ty);
+        let scheme = generalize(&mut self.ctx, env, &binding_ty);
         if mutable {
             env.insert_mutable(name, scheme);
         } else {
@@ -922,7 +934,7 @@ mod tests {
     fn module_bodies_are_checked_in_a_child_scope() {
         let errs = check(
             "module Math {\n\
-               fn square(x: int) -> int = x * x\n\
+               fn square(x: int) -> int = (x * x) ?: 0\n\
              }\n",
         );
         assert!(errs.is_empty(), "unexpected type errors: {errs:?}");
@@ -981,7 +993,7 @@ mod tests {
         // [TESTING-SHADOWING] a user test/expect/check replaces the built-in;
         // every other built-in still rejects redefinition.
         let errs = check(
-            "fn check(t: int) -> int = t + 1\n\
+            "fn check(t: int) -> int = (t + 1) ?: 0\n\
              fn expect(a: int) -> int = a\n\
              fn test(x: int) -> int = x\n\
              let r = check(expect(test(1)))\n",
@@ -1055,7 +1067,7 @@ mod tests {
     fn runtime_callbacks_use_their_exact_function_types() {
         ok("fn event(pid: int, kind: int, data: string) -> Unit = print(data)\n\
             let process = spawnProcess(\"echo ok\", event)\n\
-            fn request(method: string, path: string, headers: string, body: string) -> HttpResponse = HttpResponse { status: 200, headers: headers, contentType: \"text/plain\", streamFd: -1, isComplete: true, partialBody: body }\n\
+            fn request(method: string, path: string, headers: string, body: string) -> HttpResponse = HttpResponse { status: 200, headers: headers, contentType: \"text/plain\", streamFd: (-1) ?: 0, isComplete: true, partialBody: body }\n\
             let listening = httpListen(1, request)\n");
         let process_errs = check(
             "fn wrong(pid: int) -> Unit = print(pid)\n\

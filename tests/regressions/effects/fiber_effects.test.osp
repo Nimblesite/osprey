@@ -29,14 +29,14 @@ type Outcome =
     | Failed { code: int }
 
 fn classify(score) = match score {
-    0 => Failed { code: 0 - 1 }
+    0 => Failed { code: (0 - 1) ?: 0 }
     _ => Done   { score: score }
 }
 
 /// (1) Effect inside a fiber-run worker.
 fn runJob(weight) !Logger = {
     perform Logger.log("weight " + toString(weight))
-    weight * weight
+    weight * weight ?: 0
 }
 
 /// (1') Effect inside a list-processing helper.
@@ -116,11 +116,11 @@ fn ask(tag) !Gift = perform Gift.get(tag)
 fn pairSum(a, b) !Gift = {
     let f1 = spawn ask(a)
     let f2 = spawn ask(b)
-    await(f1) + await(f2)
+    await(f1) + await(f2) ?: 0
 }
 
 let raceSum = handle Gift
-    get tag => resume(tag * 10)
+    get tag => resume((tag * 10) ?: 0)
 in pairSum(1, 2)
 print("race-free sum " + toString(raceSum))
 print("=== done ===")

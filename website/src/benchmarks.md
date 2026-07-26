@@ -58,24 +58,17 @@ compiled to a native binary, checked for correct output, then timed.
   every language — no memoization, closed forms, SIMD, or parallelism. We measure
   the language/compiler/runtime, not who is cleverest. Ranges match Osprey's
   half-open `range(a, b)` = `[a, b)` exactly.
-- **`+ - *` no longer allocate; `/` and `%` still do.** Osprey used to wrap
-  every arithmetic operator in a `Result`, heap-allocating a
-  `{ payload, discriminant, errmsg }` struct per operation that the consumer
-  immediately unwrapped — overhead for a guarantee that was never enforced.
-  [ARITH-PLAIN](/spec/0013-errorhandling/) has since landed
-  ([plan 0019](https://github.com/Nimblesite/osprey/blob/main/docs/plans/0019-ml-elegance.md)):
-  `+ - *` return plain scalars, and the overflow guarantee is now real and
-  opt-in through `checkedAdd`/`checkedSub`/`checkedMul`. `/` and `%` keep
-  `Result` because zero has no representable quotient, and `%` gained the zero
-  check it never had — `10 % 0` is an `Error`, not undefined.
-  This is legible straight down the memory column: every case whose inner loop
-  is `+ - *` only — `fib`, `pascal`, `hanoi`, `tak`, `coins`, `ackermann` —
-  now sits at C's ~1.5 MB. Every case still far above it either builds real
-  heap data or runs `/`, `%`, or `intDiv` in its hot loop, which is one
-  allocation per operation.
-- **Comparing against Rust's `-C overflow-checks=off` is not a
-  safety-versus-speed trade.** Neither side is checking overflow; Osprey's
-  checked operators are opt-in and are not what these cases call.
+- **Integer arithmetic is checked.** Osprey's integer `+ - *`, unary `-`, and
+  `abs` return `Result<int, MathError>` and report overflow; they never silently
+  wrap or panic. `/` and `%` likewise preserve their failure channel. Programs
+  must handle the Result with `match`/`?:`, or propagate it through arithmetic.
+  `checkedAdd`/`checkedSub`/`checkedMul` remain safe compatibility aliases, not
+  an opt-in safety tier. See [ARITH-CHECKED](/spec/0013-errorhandling/).
+- **The Rust command disables Rust's overflow checks.** The comparison is
+  deliberately asymmetric: Osprey enforces its checked arithmetic contract
+  while this Rust configuration measures wrapping release arithmetic. Numbers
+  collected during Osprey's superseded plain-arithmetic experiment are
+  historical and must be regenerated before supporting current claims.
 - **Osprey loops via `range |> fold`,** not deep linear recursion, because it has
   no tail-call optimization yet (a 1e6-deep recursion overflows the stack). The
   work is identical; only the iteration mechanism differs.
@@ -87,18 +80,11 @@ compiled to a native binary, checked for correct output, then timed.
 
 ## Where the gap remains
 
-Both axes tell the same story, and it is an allocation story.
-
-**CPU.** Osprey is at parity with C on every case whose inner loop is `+ - *`
-and calls — `coins`, `fib`, `hanoi`, `pascal`, `tak`, `ackermann`, `mutual` —
-and beats C on `binarytrees`. It is behind everywhere a `/`, `%`, `intDiv`, or a
-real heap structure dominates the loop, because each of those is an allocation
-C does not make.
-
-**Memory.** On the default backend the peak tracks that same allocation count:
-the `+ - *` cases sit at C's ~1.5 MB, and the rest climb with the number of
-`Result` nodes they build and never free. The default allocator does not reclaim
-during a run.
+The checked-arithmetic change invalidates the old attribution of CPU and memory
+gaps to `/` and `%` alone. Integer `+ - *` now produce the same explicit Result
+shape, so arithmetic-heavy rows include that safety cost too. Re-run
+`make bench` before drawing current per-case conclusions from this historical
+table.
 
 **That is a backend choice, not a language one.** Allocation funnels through the
 one swappable boundary of the

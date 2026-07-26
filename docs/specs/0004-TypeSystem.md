@@ -3,7 +3,7 @@
 - [Hindley-Milner Inference](#hindley-milner-inference)
 - [Generics and Variance](#generics-and-variance)
 - [Built-in Types](#built-in-types)
-- [Result Auto-Unwrapping](#result-auto-unwrapping)
+- [Result Preservation](#result-preservation)
 - [Function Types](#function-types)
 - [Record Types](#record-types)
 - [Union Types](#union-types)
@@ -22,7 +22,7 @@ Type annotations are optional everywhere they can be inferred:
 
 ```osprey
 fn identity(x)         = x                       // <T>(T) -> T
-fn add(a, b)           = a + b                   // (int, int) -> int
+fn add(a, b)           = a + b                   // (int, int) -> Result<int, MathError>
 fn greet(name)         = "Hello, " + name        // (string) -> string
 fn makeUser(n, a)      = User { name: n, age: a }  // (string, int) -> User
 fn getName(u)          = u.name                  // (User) -> string
@@ -32,7 +32,7 @@ fn compose(f, g)       = fn(x) => f(g(x))        // <A,B,C>((B)->C,(A)->B) -> (A
 
 ```osprey-ml
 identity x       = x                        // <T>(T) -> T
-add (a, b)       = a + b                     // (int, int) -> int
+add (a, b)       = a + b                     // (int, int) -> Result<int, MathError>
 greet name       = "Hello, " + name          // (string) -> string
 makeUser (n, a)  =
     User
@@ -43,10 +43,10 @@ twice (f, x)     = f (f x)                   // <T>((T) -> T, T) -> T
 compose (f, g)   = \x => f (g x)             // <A,B,C>((B)->C,(A)->B) -> (A)->C
 ```
 
-`add`'s inferred `(int, int) -> int` follows [ARITH-PLAIN]
-([Error Handling](0013-ErrorHandling.md#arithmetic-and-result--arith-plain)):
-`+ - *` return plain scalars — `int` for two `int` operands, `float` when either
-operand is `float`.
+`add` follows [ARITH-CHECKED]
+([Error Handling](0013-ErrorHandling.md#arithmetic-and-result--arith-checked)):
+integer `+ - *` return `Result<int, MathError>`. With a `float` operand, the
+integer is promoted and the IEEE-754 operation returns plain `float`.
 
 Annotations are optional where inference has enough context. Record fields and
 foreign declarations include types as part of their syntax; annotations on
@@ -158,15 +158,11 @@ constructor's arguments are matched directionally: covariant (`out`)
 arguments recurse expected-accepts-actual, contravariant (`in`) arguments
 recurse with the roles flipped, invariant arguments unify exactly. The
 recursion continues only through variance-declared constructors and bottoms
-out in **exact unification** — the coercive
-[Result auto-unwrap](#result-auto-unwrapping) never applies under a
-container, because it is a representation-changing coercion the compiler
-emits only at direct value sites; admitting it inside a payload would accept
-values whose stored representation is wrong. Function-typed payloads keep
-their flexibility representation-safely: unification itself normalizes
-function returns through `Result` (the function-value ABI strips the
-wrapper), so a `Feed<(int) -> Result<int, Error>>` matches a
-`Feed<(int) -> int)` slot.
+out in **exact unification**. There is no `Result<T, E>`-to-`T` coercion at any
+depth or direct value site: it would erase a failure and accept a value with
+the wrong representation. Function returns also match exactly, so a
+`Feed<(int) -> Result<int, Error>>` does not match a
+`Feed<(int) -> int>` slot.
 
 Built-in constructors' declared variance: `Result<out T, out E>`,
 `List<out T>`, `Fiber<out T>`, `Map<K, out V>` (keys invariant); `Channel<T>`
@@ -190,27 +186,26 @@ Primitive spellings are case-sensitive.
 | `Map<K, V>`      | Immutable key/value collection                                     |
 | `Iterator<T>`    | Opaque range pipeline (see [Iterators](0010-LoopConstructsAndFunctionalIterators.md)) |
 
-Mixed numeric arithmetic promotes `int` to `float`. Arithmetic returns plain
-scalars except `/` and `%`, which return `Result<_, MathError>`
-([ARITH-PLAIN]).
+Mixed numeric arithmetic promotes `int` to `float`. Integer `+`, `-`, `*`, and
+unary `-` return `Result<int, MathError>`; `/` and `%` return
+`Result<_, MathError>`. Floating-point `+`, `-`, `*`, and unary `-` return plain
+`float` ([ARITH-CHECKED](0013-ErrorHandling.md#arithmetic-and-result--arith-checked)).
 
-## Result Auto-Unwrapping
+## Result Preservation
 
-A fallible call has type `Result<T, E>`; among the operators only `/` and `%` produce one, since `+ - *` yield plain scalars ([ARITH-PLAIN]). The compiler auto-unwraps the inner `Result` in six contexts:
+A fallible expression has type `Result<T, E>`, and the compiler never
+implicitly erases that wrapper. Passing it to a function or concurrency
+operation that expects `T`, assigning it to a plain `T` cell or annotation,
+returning it from a function declared to return `T`, comparing it with a `T`,
+or using it through a function value is a type error. Interpolation and
+formatting preserve and display the complete `Success` or `Error` value.
 
-1. **User function arguments.** Passing a `Result`-typed expression to a function that expects the underlying type unwraps it. `double(intDiv(a: 10, b: 2))` is well-typed when `intDiv` returns `Result<int, Error>` and `double` expects `int`.
-2. **Fiber operations.** `spawn`, `await`, `send`, and `recv` unwrap `Result` arguments before storing them.
-3. **Function-value calls.** A `Result` returned through a function value unwraps at the call site ([TYPE-FN-CLOSURE]).
-4. **String interpolation.** `${expr}` renders the success payload (see [String Interpolation](0006-StringInterpolation.md)).
-5. **Comparison.** A `Result` operand of a comparison unwraps: `intDiv(a: 7, b: 2) == 3` is `true`.
-6. **A declared non-`Result` return type.** `fn half(n) -> int = intDiv(a: n, b: 2)` returns `int`; without the annotation the body's `Result` is the return type.
-
-Arithmetic is **not** one of these contexts. A `Result`-typed operand *propagates*: an arithmetic expression containing one has type `Result<T, MathError>`, flattened rather than nested, and an erroring operand makes the whole expression `Error` ([Chaining Arithmetic](0013-ErrorHandling.md#chaining-arithmetic)). Unwrapping an operand here would discard the error.
-
-Auto-unwrap does **not** apply to:
-
-- `toString`. `toString(intDiv(a: 10, b: 2))` produces `"Success(5)"`, never `"5"`. Use `toString` to inspect the `Result` itself.
-- An *un*annotated function body. `fn half(x) = x / 2` returns `Result<float, MathError>`; only a declared non-`Result` return type unwraps it (context 6 above).
+Callers obtain the success payload only through an exhaustive `match` or an
+explicit `?:` fallback. The sole compositional exception is
+failure-preserving arithmetic chaining: compatible numeric `Result<T, MathError>`
+operands propagate the first error and flatten the chain to one
+`Result<T, MathError>` ([Chaining Arithmetic](0013-ErrorHandling.md#chaining-arithmetic)).
+It never turns the chain into a plain number.
 
 ## Function Types
 
@@ -228,19 +223,19 @@ functionType ::= "(" (type ("," type)*)? ")" "->" type
 ```osprey
 fn applyFunction(value: int, transform: (int) -> int) -> int = transform(value)
 
-let doubler: (int) -> int = fn(x: int) => x * 2
+let doubler: (int) -> Result<int, MathError> = fn(x: int) => x * 2
 
-fn createAdder(n: int) -> (int) -> int = fn(x: int) => x + n
+fn createAdder(n: int) -> (int) -> Result<int, MathError> = fn(x: int) => x + n
 ```
 
 ```osprey-ml
 applyFunction : (int, (int) -> int) -> int
 applyFunction (value, transform) = transform value
 
-doubler : (int) -> int
+doubler : int -> Result<int, MathError>
 doubler = \x => x * 2
 
-createAdder : int -> (int) -> int
+createAdder : int -> int -> Result<int, MathError>
 createAdder n = \x => x + n
 ```
 
@@ -251,12 +246,12 @@ Multi-argument call syntax (named arguments are required for two or more paramet
 A lambda (`fn(...) => expr` or `|x| => expr`) captures every free identifier from its enclosing lexical scope by reference to its value at capture time. Captured bindings are immutable, so by-reference and by-value capture are observationally identical and the implementation MAY choose either. A captured binding outlives the surrounding stack frame: a closure returned from a function remains callable and continues to read the captured values.
 
 ```osprey
-fn makeAdder(n: int) -> (int) -> int = fn(x: int) => x + n   // captures n
+fn makeAdder(n: int) -> (int) -> Result<int, MathError> = fn(x: int) => x + n
 
 let add5    = makeAdder(5)
 let add10   = makeAdder(10)
-print(add5(3))     // 8
-print(add10(3))    // 13
+print(add5(3))     // Success(8)
+print(add10(3))    // Success(13)
 
 let prefix  = "hello "
 let greet   = fn(name: string) => prefix + name              // captures prefix
@@ -264,23 +259,23 @@ print(greet("world"))                                         // "hello world"
 ```
 
 ```osprey-ml
-makeAdder : int -> (int) -> int
+makeAdder : int -> (int) -> Result<int, MathError>
 makeAdder n = \(x : int) => x + n               // captures n
 
 add5    = makeAdder 5
 add10   = makeAdder 10
-print (add5 3)     // 8
-print (add10 3)    // 13
+print (add5 3)     // Success(8)
+print (add10 3)    // Success(13)
 
 prefix  = "hello "
 greet   = \(name : string) => prefix + name     // captures prefix
 print (greet "world")                                         // "hello world"
 ```
 
-Closures and named functions are interchangeable wherever a function type is
-expected, including iterator callbacks and record fields. A `Result<T, E>`
-returned through a function-value call auto-unwraps to `T` (context 3 of
-[Result Auto-Unwrapping](#result-auto-unwrapping)).
+Closures and named functions are interchangeable wherever their complete
+function types match, including iterator callbacks and record fields. A
+`Result<T, E>` returned through a function-value call remains a `Result<T, E>`
+and must be handled explicitly ([Result Preservation](#result-preservation)).
 
 ### Higher-order calls — [TYPE-FN-HIGHER-ORDER]
 
@@ -362,7 +357,7 @@ match personResult {
 // Union: discriminate first
 let area = match shape {
     Circle    { radius }         => 3.14 * radius * radius
-    Rectangle { width, height }  => width * height
+    Rectangle { width, height }  => (width * height) ?: 0
 }
 ```
 
@@ -378,7 +373,7 @@ match personResult
 area =
     match shape
         Circle radius => 3.14 * radius * radius
-        Rectangle width height => width * height
+        Rectangle width height => (width * height) ?: 0
 ```
 
 Codegen resolves a **named-field** payload by name, never by declaration order, so reordering fields in a `type` cannot silently rebind a pattern. A **positionally-declared** variant ([TYPE-UNION-POSITIONAL](0003-Syntax.md#type-declarations)) has no field names to resolve against and is the one case resolved by index — the binder in column *i* binds payload slot *i*.
@@ -603,7 +598,7 @@ let values     = mapValues(ages)
 
 | Type        | Used by |
 | ----------- | ------- |
-| `MathError` | The `/` and `%` operators |
+| `MathError` | Checked numeric operators and `abs` |
 | `Error`     | Fallible builtins, including parsing, checked arithmetic, collection lookup, files, and processes |
 
 `Success` and `Error` are the constructors of `Result<T, E>` (see [Error Handling](0013-ErrorHandling.md)).
@@ -632,8 +627,8 @@ An annotation constrains inference and is checked against the expression:
 
 ```osprey
 let xs: List<int> = []
-fn half(n: int) -> int = intDiv(n, 2)
+fn half(n: int) -> Result<int, Error> = intDiv(n, 2)
 ```
 
-The second annotation also selects the direct `Result<int, Error>` auto-unwrap
-described in [Result Auto-Unwrapping](#result-auto-unwrapping).
+Writing `-> int` for `half` would be a type error; a return annotation cannot
+erase the body's `Result` ([Result Preservation](#result-preservation)).

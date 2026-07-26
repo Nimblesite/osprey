@@ -40,10 +40,10 @@ fn bold(s: string) -> string = "\e[1m${s}\e[0m"
 fn invert(s: string) -> string = "\e[7m${s}\e[0m"
 fn rule() -> string = dim("  ------------------------------------------")
 
-// Plain integer arithmetic helpers used in argument position.
-fn inc(x: int) -> int = x + 1
-fn dec(x: int) -> int = x - 1
-fn shift(a: int, b: int) -> int = a + b
+// UI counters explicitly keep their previous value on arithmetic overflow.
+fn inc(x: int) -> int = (x + 1) ?: x
+fn dec(x: int) -> int = (x - 1) ?: x
+fn shift(a: int, b: int) -> int = (a + b) ?: a
 
 // ---- list helpers (the cached text is split into rows for rendering) --------
 fn rows(text: string) -> List<string> = match split(text, "\n") {
@@ -198,7 +198,7 @@ fn main() -> Unit = {
         moveSel d   => { cursor = clamp(shift(cursor, d), rowCount(cache)) }
         flash       => status
         setFlash m  => { status = m }
-        nextSeq     => { seq = seq + 1  seq }
+        nextSeq     => { seq = (seq + 1) ?: seq  seq }
     in handle Net
         fetch    => httpFetch()
         push t   => httpPush(t)

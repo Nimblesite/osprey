@@ -21,12 +21,12 @@ fn walk(s, byteIndex, count) = match byteIndex >= byteLength(s) {
                 Success { value } => {
                     let width = value
                     print("cp[${count}] @byte ${byteIndex} = ${cp} (${width} bytes)")
-                    walk(s, byteIndex + width, count + 1)
+                    walk(s, (byteIndex + width) ?: byteIndex, (count + 1) ?: count)
                 }
-                Error { message } => -1
+                Error { message } => (0 - 1) ?: 0
             }
         }
-        Error { message } => -1
+        Error { message } => (0 - 1) ?: 0
     }
 }
 

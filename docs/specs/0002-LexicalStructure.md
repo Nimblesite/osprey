@@ -68,8 +68,10 @@ are defined in [Type System](0004-TypeSystem.md).
 
 ## Operators
 
-- Arithmetic: `+`, `-`, `*`, `/`, `%`. `+`, `-`, and `*` return plain numbers;
-  `/` and `%` return a `Result` and reject a zero divisor ([ARITH-PLAIN]).
+- Arithmetic: `+`, `-`, `*`, `/`, `%`. Integer `+`, `-`, and `*`, integer
+  unary `-`, and `/` and `%` return a checked `Result`; floating-point `+`,
+  `-`, `*`, and unary `-` remain plain IEEE-754 operations
+  ([ARITH-CHECKED](0013-ErrorHandling.md#arithmetic-and-result--arith-checked)).
 - Comparison: `==`, `!=`, `<`, `>`, `<=`, `>=`.
 - Boolean: `&&`, `||`, `!`. `&&` and `||` short-circuit.
 - Calls and data access: `()`, `.`, `[]`.

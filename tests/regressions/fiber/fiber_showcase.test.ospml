@@ -1,22 +1,22 @@
-simpleTask value = value * 100
+simpleTask value = value * 100 ?: 0
 handleRequest id = id
-queryDatabase userId = userId * 1000
+queryDatabase userId = userId * 1000 ?: 0
 
-mapPhase d = d * d
-fetchUserData id = id * 1000 + 123
-fetchOrderData id = id * 100  + 45
+mapPhase d = d * d ?: 0
+fetchUserData id = id * 1000 + 123 ?: 0
+fetchOrderData id = id * 100  + 45 ?: 0
 
 authService uid = match uid
     0 => 401
     _ => 200
-inventoryService pid = pid * 50
-paymentService amt = amt + 25
-streamProcessor b = b * 8
+inventoryService pid = pid * 50 ?: 0
+paymentService amt = amt + 25 ?: 0
+streamProcessor b = b * 8 ?: 0
 
-stage1 x = x + 100
-stage2 x = x * 2
-stage3 x = x - 50
-combine (a, b) = a * 100 + b
+stage1 x = x + 100 ?: 0
+stage2 x = x * 2 ?: 0
+stage3 x = x - 50 ?: 0
+combine (a, b) = a * 100 + b ?: 0
 
 print "=== Fiber Showcase ==="
 
@@ -33,7 +33,7 @@ print "await f2 = ${await f2}"
 m1 = spawn (mapPhase 10)
 m2 = spawn (mapPhase 20)
 m3 = spawn (mapPhase 30)
-mappedTotal = await m1 + await m2 + await m3
+mappedTotal = await m1 + await m2 + await m3 ?: 0
 print "map-reduce total = ${mappedTotal}"
 
 auth = spawn (authService 123)
@@ -58,9 +58,9 @@ print "recv ch1 = ${recv ch1}"
 send ch2 123
 print "recv ch2 = ${recv ch2}"
 
-dbl   = \x => x * 2
-tri   = \x => x * 3
-addF  = \(a, b) => a + b
+dbl   = \x => x * 2 ?: 0
+tri   = \x => x * 3 ?: 0
+addF  = \(a, b) => a + b ?: 0
 print "lam dbl=${dbl 10} tri=${tri 7} add=${addF (5, 8)}"
 
 b1 = yield (streamProcessor 128)

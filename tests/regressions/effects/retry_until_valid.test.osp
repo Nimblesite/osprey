@@ -21,9 +21,9 @@ fn readPositive(label) -> int !Prompt = {
 mut attempt = 0
 let accepted = handle Prompt
     ask label => {
-        attempt = attempt + 1
+        attempt = attempt + 1 ?: attempt
         let value = match attempt {
-            1 => 0 - 3
+            1 => (0 - 3) ?: 0
             2 => 0
             _ => 7
         }
@@ -37,14 +37,15 @@ print("SCENARIO 1 accepted=${toString(accepted)} after ${toString(attempt)} atte
 mut tries = 0
 let outcome = handle Prompt
     ask label => {
-        tries = tries + 1
+        tries = tries + 1 ?: tries
         match tries > 3 {
             true => {
                 print("attempt ${toString(tries)}: handler GIVES UP, aborting with sentinel")
-                0 - 999
+                let sentinel = (0 - 999) ?: 0
+                sentinel
             }
             false => {
-                let value = 0 - tries
+                let value = (0 - tries) ?: 0
                 print("attempt ${toString(tries)}: handler feeds ${toString(value)}")
                 resume(value)
             }

@@ -13,8 +13,8 @@ print("=== HINDLEY-MILNER TEST ===")
 print("Test 1: Function type inference from usage")
 /// These functions have NO explicit types - all inferred!
 fn identity(x) = x              // HM infers type from usage context
-fn add(a, b) = a + b            // HM infers (int, int) -> int [ARITH-PLAIN]
-fn concat(s1, s2) = s1 + s2     // HM infers (string, string) -> string
+fn add(a, b) = a + b ?: 0       // HM infers checked int addition; Error is handled here
+fn concat(s1, s2) = join([s1, s2], "") // join constrains both inferred parameters to string
 fn negate(x) = !x              // HM infers (bool) -> bool
 
 /// Usage drives monomorphization
@@ -70,8 +70,8 @@ print("")
 
 // Test 5: Complex HM inference with field access
 print("Test 5: Complex field access inference")
-fn distance(p) = p.x * p.x + p.y * p.y    // HM infers: Point<int, int> -> int
-fn combine(c) = c.value + c.label          // HM infers: Container<string, string> -> string
+fn distance(p) = p.x * p.x + p.y * p.y ?: 0 // Checked arithmetic is explicitly handled
+fn combine(c) = join([c.value, c.label], "") // HM infers Container -> string
 
 let numPoint = Point { x: 3, y: 4 }
 let textContainer = Container { value: "hello", label: "world" }
@@ -198,8 +198,8 @@ print("")
 print("Test 11: Type equality and String methods")
 
 /// This will exercise the String() and Equals() methods on various types
-fn typeTest1(x) = x * 2
-fn typeTest2(s) = s + s
+fn typeTest1(x) = x * 2 ?: 0
+fn typeTest2(s) = join([s, s], "")
 fn typeTest3(b) = !b
 
 let typeResult1 = typeTest1(21)

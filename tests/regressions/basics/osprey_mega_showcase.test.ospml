@@ -30,7 +30,7 @@ account () =
     perform Console.emit "deposit 100  → balance ${afterDeposit}"
     afterMore = perform Ledger.post 250
     perform Console.emit "deposit 250  → balance ${afterMore}"
-    afterDraw = perform Ledger.post (0 - 90)
+    afterDraw = perform Ledger.post ((0 - 90) ?: 0)
     perform Console.emit "withdraw 90  → balance ${afterDraw}"
     afterMore
 
@@ -44,7 +44,7 @@ realWorld () =
     in handle Ledger
         (* the resuming arm updates state, then hands the balance back *)
         post amount =>
-            balance := balance + amount
+            balance := balance + amount ?: balance
             balance
     in account ()
 
@@ -59,15 +59,15 @@ dryRun () =
     in account ()
 
 (** [true] when [x] is even. *)
-even x = (x % 2) == 0
+even x = (x % 2 ?: 1) == 0
 
 (** The square of [x]. *)
-sq x   = x * x
+sq x   = x * x ?: 0
 
 (** Σ of the squares of the even numbers in [1, n).
     A pure pipeline: no loops, no mutation — [range] feeds [filter], [map],
     then [fold]. *)
-crunch n = range 1 n |> filter even |> map sq |> fold 0 (\(a, b) => a + b)
+crunch n = range 1 n |> filter even |> map sq |> fold 0 (\(a, b) => a + b ?: 0)
 
 (** A performance tier a score falls into. Exhaustive: dropping a variant is a
     compile error at every [match] over it. *)
@@ -112,7 +112,7 @@ rc = await fc
 print "  Σeven² <10  = ${ra}  ${badge (tier ra)}"
 print "  Σeven² <20  = ${rb}  ${badge (tier rb)}"
 print "  Σeven² <40  = ${rc}  ${badge (tier rc)}"
-print "══════════════════════════════════════\ntotal ${ra + rb + rc}  ·  fleet ${badge (tier (ra + rb + rc))}"
+print "══════════════════════════════════════\ntotal ${ra + rb + rc}  ·  fleet ${badge (tier ((ra + rb + rc) ?: 0))}"
 
 (** Register the regression scenario with the assertion-driven test runner. *)
 migratedLegacyCase () = checkAll "legacy execution" [true]

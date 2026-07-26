@@ -8,7 +8,7 @@ effect IterationProbe
 appendThrough : List int -> int -> int -> List int
 appendThrough xs next last = match next > last
     true => xs
-    false => appendThrough (listAppend xs next) (next + 1) last
+    false => appendThrough (listAppend xs next) (next + 1 ?: next) last
 
 (** Classify empty, singleton, pair, and head-tail list patterns. *)
 classify : List int -> string
@@ -20,7 +20,7 @@ classify [head, ...tail] = "many head=${head} rest=${listLength tail}"
 (** Sum a list through recursive head-tail destructuring. *)
 sumList : List int -> int
 sumList [] = 0
-sumList [head, ...tail] = head + sumList tail
+sumList [head, ...tail] = head + sumList tail ?: 0
 
 (** Measure a tail after two fixed prefix elements. *)
 restLen : List int -> int
@@ -33,7 +33,7 @@ encodeIteration xs =
     mut encoded = 0
     handle IterationProbe
         observe value =>
-            encoded := encoded * 100 + value
+            encoded := encoded * 100 + value ?: encoded
     in
         forEachList xs (\value => perform IterationProbe.observe value)
     encoded
@@ -70,34 +70,34 @@ constructionAndIdentityCase () =
 
     // Check construction and reversal contents.
     checkAll "construction and reverse contents" [
-        (listGet a 0 ?: (0 - 999)) == 1,
-        (listGet a 1 ?: (0 - 999)) == 2,
-        (listGet a 2 ?: (0 - 999)) == 3,
-        (listGet b 0 ?: (0 - 999)) == 10,
-        (listGet b 1 ?: (0 - 999)) == 20,
-        (listGet reversed 0 ?: (0 - 999)) == 3,
-        (listGet reversed 1 ?: (0 - 999)) == 2,
-        (listGet reversed 2 ?: (0 - 999)) == 1,
-        (listGet restored 0 ?: (0 - 999)) == 1,
-        (listGet restored 1 ?: (0 - 999)) == 2,
-        (listGet restored 2 ?: (0 - 999)) == 3,
-        (listGet prepended 0 ?: (0 - 999)) == 0,
-        (listGet prepended 1 ?: (0 - 999)) == 1,
-        (listGet prepended 2 ?: (0 - 999)) == 2,
-        (listGet prepended 3 ?: (0 - 999)) == 3
+        (listGet a 0 ?: ((0 - 999) ?: 0)) == 1,
+        (listGet a 1 ?: ((0 - 999) ?: 0)) == 2,
+        (listGet a 2 ?: ((0 - 999) ?: 0)) == 3,
+        (listGet b 0 ?: ((0 - 999) ?: 0)) == 10,
+        (listGet b 1 ?: ((0 - 999) ?: 0)) == 20,
+        (listGet reversed 0 ?: ((0 - 999) ?: 0)) == 3,
+        (listGet reversed 1 ?: ((0 - 999) ?: 0)) == 2,
+        (listGet reversed 2 ?: ((0 - 999) ?: 0)) == 1,
+        (listGet restored 0 ?: ((0 - 999) ?: 0)) == 1,
+        (listGet restored 1 ?: ((0 - 999) ?: 0)) == 2,
+        (listGet restored 2 ?: ((0 - 999) ?: 0)) == 3,
+        (listGet prepended 0 ?: ((0 - 999) ?: 0)) == 0,
+        (listGet prepended 1 ?: ((0 - 999) ?: 0)) == 1,
+        (listGet prepended 2 ?: ((0 - 999) ?: 0)) == 2,
+        (listGet prepended 3 ?: ((0 - 999) ?: 0)) == 3
     ]
 
     // Check concatenation seams, endpoints, identities, and the + alias.
     checkAll "concat identities and boundaries" [
-        (listGet concatenated 0 ?: (0 - 999)) == 1,
-        (listGet concatenated 2 ?: (0 - 999)) == 3,
-        (listGet concatenated 3 ?: (0 - 999)) == 10,
-        (listGet concatenated 4 ?: (0 - 999)) == 20,
-        (listGet emptyPlusA 0 ?: (0 - 999)) == 1,
-        (listGet aPlusEmpty 2 ?: (0 - 999)) == 3,
-        (listGet doubledA 3 ?: (0 - 999)) == 1,
-        (listGet abPlusA 5 ?: (0 - 999)) == 1,
-        (listGet abPlusA 7 ?: (0 - 999)) == 3
+        (listGet concatenated 0 ?: ((0 - 999) ?: 0)) == 1,
+        (listGet concatenated 2 ?: ((0 - 999) ?: 0)) == 3,
+        (listGet concatenated 3 ?: ((0 - 999) ?: 0)) == 10,
+        (listGet concatenated 4 ?: ((0 - 999) ?: 0)) == 20,
+        (listGet emptyPlusA 0 ?: ((0 - 999) ?: 0)) == 1,
+        (listGet aPlusEmpty 2 ?: ((0 - 999) ?: 0)) == 3,
+        (listGet doubledA 3 ?: ((0 - 999) ?: 0)) == 1,
+        (listGet abPlusA 5 ?: ((0 - 999) ?: 0)) == 1,
+        (listGet abPlusA 7 ?: ((0 - 999) ?: 0)) == 3
     ]
 
     // Check membership at present, absent, and endpoint values.
@@ -137,17 +137,17 @@ iterationAndPersistenceCase () =
 
     // Check each iterated constituent value.
     checkAll "iteration constituent values" [
-        (listGet a 0 ?: (0 - 999)) == 1,
-        (listGet a 1 ?: (0 - 999)) == 2,
-        (listGet a 2 ?: (0 - 999)) == 3,
-        (listGet reversed 0 ?: (0 - 999)) == 3,
-        (listGet reversed 1 ?: (0 - 999)) == 2,
-        (listGet reversed 2 ?: (0 - 999)) == 1,
-        (listGet combined 0 ?: (0 - 999)) == 1,
-        (listGet combined 1 ?: (0 - 999)) == 2,
-        (listGet combined 2 ?: (0 - 999)) == 3,
-        (listGet combined 3 ?: (0 - 999)) == 10,
-        (listGet combined 4 ?: (0 - 999)) == 20
+        (listGet a 0 ?: ((0 - 999) ?: 0)) == 1,
+        (listGet a 1 ?: ((0 - 999) ?: 0)) == 2,
+        (listGet a 2 ?: ((0 - 999) ?: 0)) == 3,
+        (listGet reversed 0 ?: ((0 - 999) ?: 0)) == 3,
+        (listGet reversed 1 ?: ((0 - 999) ?: 0)) == 2,
+        (listGet reversed 2 ?: ((0 - 999) ?: 0)) == 1,
+        (listGet combined 0 ?: ((0 - 999) ?: 0)) == 1,
+        (listGet combined 1 ?: ((0 - 999) ?: 0)) == 2,
+        (listGet combined 2 ?: ((0 - 999) ?: 0)) == 3,
+        (listGet combined 3 ?: ((0 - 999) ?: 0)) == 10,
+        (listGet combined 4 ?: ((0 - 999) ?: 0)) == 20
     ]
 
     // Check generation and sibling-branch lengths.
@@ -185,9 +185,9 @@ iterationAndPersistenceCase () =
         !(listContains g3 999),
         !(listContains g3 888),
         !(listContains g3 777),
-        (listGet g5 4 ?: (0 - 999)) == 50,
-        (listGet y2 3 ?: (0 - 999)) == 888,
-        (listGet y2 4 ?: (0 - 999)) == 777
+        (listGet g5 4 ?: ((0 - 999) ?: 0)) == 50,
+        (listGet y2 3 ?: ((0 - 999) ?: 0)) == 888,
+        (listGet y2 4 ?: ((0 - 999) ?: 0)) == 777
     ]
 
 (** Exercise both sides of the 32-element structural tail boundary. *)
@@ -211,22 +211,22 @@ tailBoundaryCase () =
 
     // Check contents before, at, and after the tail split.
     checkAll "tail boundary contents" [
-        (listGet t 0 ?: (0 - 999)) == 1,
-        (listGet t 9 ?: (0 - 999)) == 10,
-        (listGet t2 10 ?: (0 - 999)) == 11,
-        (listGet t2 19 ?: (0 - 999)) == 20,
-        (listGet t3 29 ?: (0 - 999)) == 30,
-        (listGet t4 30 ?: (0 - 999)) == 31,
-        (listGet t4 31 ?: (0 - 999)) == 32,
-        (listGet t4 32 ?: (0 - 999)) == 33,
-        (listGet t4 34 ?: (0 - 999)) == 35,
-        (listGet reversed 0 ?: (0 - 999)) == 35,
-        (listGet reversed 2 ?: (0 - 999)) == 33,
-        (listGet reversed 3 ?: (0 - 999)) == 32,
-        (listGet reversed 34 ?: (0 - 999)) == 1,
-        (listGet doubled 34 ?: (0 - 999)) == 35,
-        (listGet doubled 35 ?: (0 - 999)) == 1,
-        (listGet doubled 69 ?: (0 - 999)) == 35,
+        (listGet t 0 ?: ((0 - 999) ?: 0)) == 1,
+        (listGet t 9 ?: ((0 - 999) ?: 0)) == 10,
+        (listGet t2 10 ?: ((0 - 999) ?: 0)) == 11,
+        (listGet t2 19 ?: ((0 - 999) ?: 0)) == 20,
+        (listGet t3 29 ?: ((0 - 999) ?: 0)) == 30,
+        (listGet t4 30 ?: ((0 - 999) ?: 0)) == 31,
+        (listGet t4 31 ?: ((0 - 999) ?: 0)) == 32,
+        (listGet t4 32 ?: ((0 - 999) ?: 0)) == 33,
+        (listGet t4 34 ?: ((0 - 999) ?: 0)) == 35,
+        (listGet reversed 0 ?: ((0 - 999) ?: 0)) == 35,
+        (listGet reversed 2 ?: ((0 - 999) ?: 0)) == 33,
+        (listGet reversed 3 ?: ((0 - 999) ?: 0)) == 32,
+        (listGet reversed 34 ?: ((0 - 999) ?: 0)) == 1,
+        (listGet doubled 34 ?: ((0 - 999) ?: 0)) == 35,
+        (listGet doubled 35 ?: ((0 - 999) ?: 0)) == 1,
+        (listGet doubled 69 ?: ((0 - 999) ?: 0)) == 35,
         listLength t3 == 30,
         !(listContains t3 31),
         sumList t == 55,

@@ -31,8 +31,9 @@ checkAll "order state" [
 
 ML twins use the current compact surface: whitespace currying, adjacent
 equation clauses for parameter matches, inline unions and positional payloads,
-and `?:` for simple `Result` fallbacks. Do not reintroduce `Success`/`Error`
-wrappers around plain `+`, `-`, or `*` arithmetic.
+and `?:` for simple `Result` fallbacks. Integer `+`, `-`, and `*` return checked
+`Result` values; preserve that channel or handle it explicitly with `?:` or a
+`match` before a plain value is required.
 
 `expectAll([condition, ...])` is the unlabeled equivalent. Both require a
 non-empty list literal, evaluate every condition, and continue after failures.

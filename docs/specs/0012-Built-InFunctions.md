@@ -1,8 +1,9 @@
 # Built-in Functions
 
-Reference for built-in functions available in every Osprey program. Structured
-fallible operations use `Result`; low-level handle and status APIs document
-their integer returns explicitly. See [Error Handling](0013-ErrorHandling.md).
+Reference for built-in functions available in every Osprey program. Fallible
+language operations use `Result` or a statically handled effect. Raw foreign
+status values must be translated at a safe Osprey boundary. See
+[Error Handling](0013-ErrorHandling.md).
 
 Built-ins are shared by both language flavors. Examples use the Default
 surface unless an ML example clarifies different call syntax.
@@ -68,24 +69,24 @@ editor integration are specified in [Testing Framework](0027-TestingFramework.md
 
 ## Numeric Functions
 
-### `abs(n: int) -> int` — [BUILTIN-ABS]
-Returns the absolute value using the language's signed 64-bit wrapping
-arithmetic. Because `2^63` is not representable, `abs(-9223372036854775808)`
-returns `-9223372036854775808`.
+### `abs(n: int) -> Result<int, MathError>` — [BUILTIN-ABS]
+Returns `Success` containing the absolute value. Because `2^63` is not
+representable, the minimum signed 64-bit input returns
+`Error("integer overflow")`; it never wraps or panics.
 
 ### `intDiv(a: int, b: int) -> Result<int, Error>` — [BUILTIN-INTDIV]
 Truncates toward zero. A zero divisor returns `Error("division by zero")`;
 `intDiv(-9223372036854775808, -1)` returns `Error("integer overflow")`;
 all other inputs return `Success(quotient)`. The `/` operator instead returns
-`float`. The `Success` payload auto-unwraps only in the contexts listed under
-[Result Auto-Unwrapping](0004-TypeSystem.md#result-auto-unwrapping).
+`Result<float, MathError>`. A caller must handle either result explicitly
+([Result Preservation](0004-TypeSystem.md#result-preservation)).
 
 ```osprey
 intDiv(7, 2)        // Success(3)
 intDiv(255643, 10)  // Success(25564)
 intDiv(5, 0)        // Error — "division by zero"
 intDiv(-9223372036854775808, -1) // Error — "integer overflow"
-fn half(n) -> int = intDiv(n, 2)   // 3 — the declared return unwraps the Result
+fn half(n) -> Result<int, Error> = intDiv(n, 2)
 ```
 
 ```osprey-ml
@@ -94,35 +95,35 @@ intDiv (255643, 10)  // Success(25564)
 intDiv (5, 0)        // Error — "division by zero"
 intDiv (-9223372036854775808, -1) // Error — "integer overflow"
 
-half : int -> int                  // signature is load-bearing: it unwraps
-half n = intDiv (n, 2)             // 3
+half : int -> Result<int, Error>
+half n = intDiv (n, 2)
 ```
 
-Without the declared return type, `half` infers `Result<int, Error>` and
-`half(7)` renders `Success(3)`.
+Without the declared return type, `half` also infers `Result<int, Error>`.
+A declared `-> int` is rejected rather than erasing failure.
 
 ### `checkedAdd` / `checkedSub` / `checkedMul` — [BUILTIN-CHECKED-ARITH]
 Each has signature `(a: int, b: int) -> Result<int, Error>`. Overflow-checked
 integer addition, subtraction, and multiplication, lowering to
 `llvm.sadd.with.overflow`, `llvm.ssub.with.overflow`, and
 `llvm.smul.with.overflow` respectively. An overflowing operation returns
-`Error`; otherwise `Success(result)`. These carry the overflow
-guarantee that the `+ - *` operators do not: those return plain scalars and wrap
-two's complement
-([ARITH-PLAIN](0013-ErrorHandling.md#arithmetic-and-result--arith-plain)).
-Like `intDiv`, the `Success` payload auto-unwraps at value sites.
+`Error`; otherwise `Success(result)`. They are legacy named equivalents of the
+checked integer `+ - *` operators, but retain `Error` rather than `MathError`
+as their error payload for compatibility
+([ARITH-CHECKED](0013-ErrorHandling.md#arithmetic-and-result--arith-checked)).
+Their `Success` payload is never implicitly unwrapped.
 
 ```osprey
 checkedAdd(2, 3)                      // Success(5)
 checkedMul(4294967296, 4294967296)    // Error — "integer overflow"
-fn twice(n) -> int = checkedMul(n, 2)   // declared return unwraps, as for intDiv
+fn twice(n) -> Result<int, Error> = checkedMul(n, 2)
 ```
 
 ```osprey-ml
 checkedAdd (2, 3)                      // Success(5)
 checkedMul (4294967296, 4294967296)    // Error — "integer overflow"
 
-twice : int -> int
+twice : int -> Result<int, Error>
 twice n = checkedMul (n, 2)
 ```
 
@@ -280,7 +281,7 @@ type CharStep = { codePoint: int, nextIndex: int }
 
 fn nextChar(s, i) = match codePointAt(s, i) {
     Success { value: cp } => match codePointWidth(cp) {
-        Success { value: w } => Success { value: CharStep { codePoint: cp, nextIndex: i + w } }
+        Success { value: w } => Success { value: CharStep { codePoint: cp, nextIndex: (i + w) ?: i } }
         Error   { message }  => Error { message }
     }
     Error { message } => Error { message }
@@ -296,7 +297,7 @@ nextChar (s, i) =
     match codePointAt (s, i)
         Success cp =>
             match codePointWidth cp
-                Success w => Success(value = CharStep(codePoint = cp, nextIndex = i + w))
+                Success w => Success(value = CharStep(codePoint = cp, nextIndex = (i + w) ?: i))
                 Error message => Error(message = message)
         Error message => Error(message = message)
 ```

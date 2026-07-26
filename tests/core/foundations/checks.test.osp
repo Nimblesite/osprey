@@ -1,5 +1,5 @@
 /// Subtracts integers through curried application.
-fn sub(a: int) -> (int) -> int = fn(b) => a - b
+fn sub(a: int) -> (int) -> int = fn(b) => a - b ?: 0
 /// Classifies exact integer cases and a wildcard branch.
 fn classify(n) = match n {
     0 => "zero"
@@ -12,8 +12,8 @@ fn arithmeticCase() = {
     // Six independent soft assertions cover results and algebraic behavior.
     checkAll("arithmetic foundations", [
             sub(7)(3) == 4,
-            6 * 7 == 42,
-            sub(20)(2 * 4) == 12,
+            (6 * 7 ?: 0) == 42,
+            sub(20)(2 * 4 ?: 0) == 12,
             sub(8)(3) > 4,
             sub(100)(1) > 0,
             sub(9)(4) != sub(4)(9)

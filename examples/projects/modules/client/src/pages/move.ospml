@@ -46,12 +46,12 @@ module MovePage
 
     export view : AppModel -> string
     view model =
-        doc = jsonParse model.accounts
+        doc = jsonParse model.accounts ?: 0
         form = match model.moveMode
             "deposit" => deposit model doc
             "withdraw" => withdraw model doc
             _ => transfer model doc
-        freed = jsonFree doc
+        freed = jsonFree doc ?: 0
         depositActive = model.moveMode == "deposit"
         withdrawActive = model.moveMode == "withdraw"
         transferActive = model.moveMode == "transfer"

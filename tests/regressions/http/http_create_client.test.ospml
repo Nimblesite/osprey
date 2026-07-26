@@ -1,12 +1,8 @@
-// 🌐 Minimal HTTP Test - No Pattern Matching
-// Just test if httpCreateClient works as a built-in function
+// Client construction is local and must never depend on public DNS or network.
 
-print "Creating client"
+createsLocalClient () =
+    client = httpCreateClient "http://127.0.0.1:1" 100
+    closed = httpCloseClient client
+    checkAll "local HTTP client lifecycle" [client > 0, closed == 0]
 
-(** Simple function call test (like print, spawn, etc.) *)
-result = httpCreateClient "https://httpbin.org" 5000
-print result
-
-(** Register the regression scenario with the assertion-driven test runner. *)
-migratedLegacyCase () = checkAll "legacy execution" [true]
-test "regression scenario completes" migratedLegacyCase
+test "HTTP client creation is offline" createsLocalClient

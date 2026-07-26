@@ -25,9 +25,8 @@ doubleValue x = match x * 2
     Success value => value
     Error message => 0
 
-concatenateStrings a b = match a + b
-    Success value => value
-    Error message => ""
+concatenateStrings : string -> string -> string
+concatenateStrings a b = a + b
 
 loggedIncrement message =
     perform Logger.log "Incrementing: ${message}"
@@ -79,21 +78,22 @@ calculation x =
     result
 
 errorProne value = match value
-    -5 =>
-        perform Logger.error "Negative value detected: ${toString value}"
-        0
     0 =>
         perform Logger.error "Zero value not allowed"
         1
-    _ => match value > 100
+    _ => match value < 0
         true =>
-            perform Logger.error "Value too large: ${toString value}"
-            100
-        false =>
-            perform Logger.log "Processing valid value: ${toString value}"
-            match value * 2
-                Success value => value
-                Error message => 0
+            perform Logger.error "Negative value detected: ${toString value}"
+            0
+        false => match value > 100
+            true =>
+                perform Logger.error "Value too large: ${toString value}"
+                100
+            false =>
+                perform Logger.log "Processing valid value: ${toString value}"
+                match value * 2
+                    Success value => value
+                    Error message => 0
 
 writeConfigFile (configName, data) =
     filename = match "config_" + configName + ".txt"
@@ -171,7 +171,7 @@ in
 
     processResult = processItems 3
 
-    errorResult1 = errorProne (-5)
+    errorResult1 = errorProne ((0 - 5) ?: 0)
     errorResult2 = errorProne 150
     errorResult3 = errorProne 25
 
@@ -197,7 +197,7 @@ relabel () =
 bumped : Unit -> int ! Stash<int>
 bumped () =
     n = perform Stash.take ()
-    n + 1
+    n + 1 ?: 0
 
 words =
     handle Stash

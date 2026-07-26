@@ -18,6 +18,14 @@ mod expr;
 mod lower;
 mod modules;
 
+const I64_MIN_MAGNITUDE: &str = "9223372036854775808";
+
+fn is_i64_min_magnitude_text(text: &str) -> bool {
+    text.chars()
+        .filter(|c| !c.is_whitespace() && *c != '(' && *c != ')')
+        .eq(I64_MIN_MAGNITUDE.chars())
+}
+
 pub(crate) use lower::Lowerer;
 
 /// The Default (brace) frontend: tree-sitter CST + [`Lowerer`] → [`Program`].
@@ -81,11 +89,53 @@ fn collect_errors(node: Node<'_>, src: &[u8], out: &mut Vec<SyntaxError>) {
             message: format!("`{word}` is reserved for the module system"),
             position: position_from_point(p),
         });
+    } else if node.kind() == "integer" {
+        let text = node.utf8_text(src).unwrap_or_default();
+        let valid = text.parse::<i64>().is_ok()
+            || (text == I64_MIN_MAGNITUDE && is_negative_numeric(node, src));
+        if !valid {
+            out.push(SyntaxError {
+                message: format!("integer literal `{text}` is outside the signed 64-bit range"),
+                position: position_from_point(node.start_position()),
+            });
+        }
+    } else if node.kind() == "float" {
+        let text = node.utf8_text(src).unwrap_or_default();
+        if !text.parse::<f64>().is_ok_and(f64::is_finite) {
+            out.push(SyntaxError {
+                message: format!("float literal `{text}` is outside the finite 64-bit range"),
+                position: position_from_point(node.start_position()),
+            });
+        }
     }
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
         collect_errors(child, src, out);
     }
+}
+
+fn is_negative_numeric(node: Node<'_>, src: &[u8]) -> bool {
+    let mut ancestor = node.parent();
+    while let Some(parent) = ancestor {
+        let is_negative = parent
+            .child_by_field_name("operator")
+            .and_then(|op| op.utf8_text(src).ok())
+            == Some("-");
+        if parent.kind() == "unary_expression" && is_negative {
+            return parent
+                .child_by_field_name("operand")
+                .and_then(|operand| operand.utf8_text(src).ok())
+                .is_some_and(is_i64_min_magnitude_text);
+        }
+        if parent.kind() == "pattern" && is_negative {
+            return true;
+        }
+        if matches!(parent.kind(), "statement" | "source_file") {
+            break;
+        }
+        ancestor = parent.parent();
+    }
+    false
 }
 
 /// Tree-sitter keywords are contextual at identifier-only parse states. The
@@ -283,5 +333,24 @@ mod tests {
         );
         // The error carries a 1-based line.
         assert!(parsed.errors[0].position.line >= 1);
+    }
+
+    #[test]
+    fn rejects_out_of_range_integer_literals_without_substituting_zero() {
+        let too_large = parse_program("let n = 9223372036854775808\n");
+        assert!(too_large
+            .errors
+            .iter()
+            .any(|e| e.message.contains("outside the signed 64-bit range")));
+
+        let minimum = parse_program("let n = -9223372036854775808\n");
+        assert!(minimum.errors.is_empty(), "errors: {:?}", minimum.errors);
+        assert!(matches!(
+            minimum.program.statements.first(),
+            Some(Stmt::Let {
+                value: Expr::Integer(i64::MIN),
+                ..
+            })
+        ));
     }
 }

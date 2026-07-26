@@ -15,11 +15,11 @@ type Particle = { id: int, mass: int, spin: int }
 
 let COUNT = 100000
 
-fn forge(i) = Particle { id: i, mass: i * 3, spin: i % 5 }
+fn forge(i) = Particle { id: i, mass: (i * 3) ?: 0, spin: (i % 5) ?: 0 }
 /// `add` stays a named function (not inlined into `energy`) because it is also
 /// passed by value to `fold`; the return type is inferred, so both flavors emit
 /// identical IR ([FLAVOR-IR-EQUIV]).
-fn add(a, b) = a + b
+fn add(a, b) = a + b ?: 0
 fn energy(p) = add(p.mass, p.spin)
 fn heavy(p) = p.mass > 150000
 

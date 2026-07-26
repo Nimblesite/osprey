@@ -19,6 +19,42 @@ pub(crate) fn format(src: &str) -> String {
     finalize(&out)
 }
 
+/// Recover from a block suffix that was accidentally dedented by Format
+/// Document's caller. Each syntax-error line is tried as the start of the
+/// suffix; a repair is accepted only when adding one layout level makes the
+/// complete document parse again.
+pub(crate) fn repair_dedented_suffix(
+    src: &str,
+    errors: &[osprey_syntax::SyntaxError],
+) -> Option<String> {
+    let lines: Vec<&str> = src.split('\n').collect();
+    for start in errors.iter().filter_map(|error| {
+        error
+            .position
+            .line
+            .checked_sub(1)
+            .and_then(|line| usize::try_from(line).ok())
+    }) {
+        let repaired = lines
+            .iter()
+            .enumerate()
+            .map(|(idx, line)| {
+                if idx >= start && !line.is_empty() {
+                    format!("{}{}", " ".repeat(crate::INDENT_WIDTH), line)
+                } else {
+                    (*line).to_owned()
+                }
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+        let parsed = osprey_syntax::parse_program_with_flavor(&repaired, crate::Flavor::Ml);
+        if parsed.errors.is_empty() {
+            return Some(repaired);
+        }
+    }
+    None
+}
+
 /// Map every code line to its nesting depth by walking a stack of the indent
 /// columns seen so far; blank and comment lines get `None` (resolved later).
 fn code_depths(lines: &[Line]) -> Vec<Option<i32>> {

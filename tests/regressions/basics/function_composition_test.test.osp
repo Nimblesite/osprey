@@ -4,14 +4,14 @@
 print("=== Function Composition Test ===")
 
 /// Define some simple functions
-fn double(x) = x * 2
-fn triple(x) = x * 3
-fn add5(x) = x + 5
+fn double(x) = x * 2 ?: 0
+fn triple(x) = x * 3 ?: 0
+fn add5(x) = x + 5 ?: 0
 
 // Function composition test showing higher-order functions with strong typing
 print("Testing function composition...")
 
-fn square(x) = x * x
+fn square(x) = x * x ?: 0
 
 /// Higher-order function with proper function typing instead of 'any'
 fn applyFunction(value, func: (int) -> int) = func(value)
@@ -45,7 +45,7 @@ let innerLam = fn(y) => outerLam(y) + 1
 print(toString(innerLam(5)))
 
 /// Higher-order: an inline integer lambda flows into an `(int) -> int` slot.
-let inlineApplied = applyFunction(value: 10, func: fn(x) => x + 100)
+let inlineApplied = applyFunction(value: 10, func: fn(x) => x + 100 ?: 0)
 print(toString(inlineApplied))
 
 /// String equality must compare contents (strcmp), not the i8* pointer
@@ -73,15 +73,15 @@ match zStr < aStr {
     false => print("strLt2=ok")
 }
 
-/// Reassignment with plain integer addition. The client can only request a
-/// state transition; the handler owns the actual mutation.
+/// Reassignment after explicitly handling checked integer addition. The client
+/// can only request a state transition; the handler owns the actual mutation.
 effect CounterState {
     increment: fn() -> Unit
 }
 
 mut counter = 0
 handle CounterState
-    increment => { counter = counter + 1 }
+    increment => { counter = counter + 1 ?: counter }
 in {
     perform CounterState.increment()
     perform CounterState.increment()
@@ -119,7 +119,7 @@ print(toString(nf))
 /// === Closures: escaping capture [TYPE-FN-CLOSURE] ===
 /// A returned lambda keeps its maker's state alive (heap closure cell); each
 /// instance owns its own cell, and an annotated or inferred maker works alike.
-fn makeAdder(n: int) -> (int) -> int = fn(x) => x + n
+fn makeAdder(n: int) -> (int) -> int = fn(x) => x + n ?: 0
 fn makeScaler(k) = fn(v) => v * k
 let plus5 = makeAdder(5)
 let plus10 = makeAdder(10)
@@ -129,9 +129,9 @@ print("direct: ${makeAdder(7)(3)} inferred: ${makeScaler(3)(7)}")
 /// A capturing let-bound lambda is a first-class value, curried composition
 /// (the middleware shape) works, and nested closures capture level by level.
 let offset = 100
-let addOffset = fn(x) => x + offset
+let addOffset = fn(x) => x + offset ?: 0
 print("passed: ${applyFunction(value: 11, func: addOffset)}")
-fn wrap(h: fn(int) -> int) -> (int) -> int = fn(b) => h(b) + 1
+fn wrap(h: fn(int) -> int) -> (int) -> int = fn(b) => h(b) + 1 ?: 0
 let mw = wrap(double)
 let base = 3
 let nest = fn(x: int) => fn(y: int) => x + y + base
@@ -139,12 +139,12 @@ print("wrapped: ${mw(20)} nested: ${nest(10)(20)}")
 
 /// Regression pins: a rebound mut calls the NEW closure (not a stale inline
 /// body); a named-function alias is a first-class value; a Result-returning
-/// lambda auto-unwraps through a scalar-returning slot (value-site rule).
+/// call is explicitly defaulted before entering a scalar-returning slot.
 fn mkR(x: int) -> Result<int, string> = Success { value: x }
 effect ClosureSlot {
     rebindAdder: fn(int) -> Unit
 }
-mut rb = fn(x) => x + 1
+mut rb = fn(x) => x + 1 ?: 0
 handle ClosureSlot
     rebindAdder offset => {
         rb = makeAdder(offset)
@@ -153,7 +153,7 @@ in {
     perform ClosureSlot.rebindAdder(40)
 }
 let dblAlias = double
-let unwrapped = fn(x) => mkR(x)
+let unwrapped = fn(x) => mkR(x) ?: 0
 print("pins: ${rb(2)} ${applyFunction(value: 21, func: dblAlias)} ${applyFunction(value: 9, func: unwrapped)}")
 
 /// A function-typed record field holds a capturing closure (read it via `let`;
@@ -166,8 +166,8 @@ print("field: ${chk(50)} ${chk(5)}")
 
 /// Capturing lambdas as iterator callbacks: fused range pipeline and list walk.
 let factor2 = 3
-forEach(map(range(1, 4), fn(x) => x * 10 + factor2), fn(v) => print("mapped: ${v}"))
-let evensum = fold(filter(range(1, 10), fn(x) => x % 2 == 0), 0, fn(a, b) => a + b)
+forEach(map(range(1, 4), fn(x) => x * 10 + factor2 ?: 0), fn(v) => print("mapped: ${v}"))
+let evensum = fold(filter(range(1, 10), fn(x) => (x % 2 ?: 1) == 0), 0, fn(a, b) => a + b ?: 0)
 let pair = listAppend(listAppend(List(), 4), 5)
 print("evensum: ${evensum}")
 forEachList(pair, fn(x) => print("elem: ${x * factor2}"))
@@ -177,8 +177,8 @@ forEachList(pair, fn(x) => print("elem: ${x * factor2}"))
 /// callback that is a computed call result (`makeAdder(10)`), and a filter keyed
 /// on a function read from a record field (`vchk.check`).
 let tri3 = fn(a: int) => fn(b: int) => fn(c: int) => a + b + c
-let computed = fold(map(range(1, 4), makeAdder(10)), 0, fn(a, b) => a + b)
-let fieldcb = fold(filter(range(8, 13), vchk.check), 0, fn(a, b) => a + b)
+let computed = fold(map(range(1, 4), makeAdder(10)), 0, fn(a, b) => a + b ?: 0)
+let fieldcb = fold(filter(range(8, 13), vchk.check), 0, fn(a, b) => a + b ?: 0)
 print("chain3: ${tri3(1)(2)(3)} computed: ${computed} fieldcb: ${fieldcb}")
 
 /// === Generic functions as first-class values [TYPE-GENERICS-FN] ===

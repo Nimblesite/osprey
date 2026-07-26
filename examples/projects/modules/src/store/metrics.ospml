@@ -28,7 +28,7 @@ state Metrics : MetricsApi
     track body =
         handle MetricsFx
             hit path =>
-                served := served + 1
+                served := (served + 1) ?: served
                 served
             total => served
         in body ()

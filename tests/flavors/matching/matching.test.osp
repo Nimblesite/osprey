@@ -24,7 +24,7 @@ fn matchTourCase() = {
     // Extend wildcard coverage across adjacent, negative, and large integers.
     checkAll("match tour wildcard edge cases", [
             tourClassify(2) == "many",
-            tourClassify(0 - 1) == "many",
+            tourClassify((0 - 1) ?: 0) == "many",
             tourClassify(100) == "many",
             (tourClassify(0) == tourClassify(1)) == false
     ])
@@ -37,7 +37,7 @@ fn matchGrade(n) = match n >= 50 {
 }
 
 /// Convert a modulo comparison into an even-or-odd label.
-fn matchEven(n) = match n % 2 == 0 {
+fn matchEven(n) = match (n % 2 ?: 1) == 0 {
     true => "even"
     false => "odd"
 }
@@ -90,7 +90,7 @@ fn matchIntegerCase() = {
     // Extend the wildcard across adjacent, negative, and large integers.
     checkAll("integer match wildcard boundaries", [
             matchLabel(3) == "many",
-            matchLabel(0 - 1) == "many",
+            matchLabel((0 - 1) ?: 0) == "many",
             matchLabel(100) == "many"
     ])
 }

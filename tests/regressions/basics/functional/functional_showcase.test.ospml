@@ -4,20 +4,20 @@
 // ([FLAVOR-IR-EQUIV]). The `sq`/`add` signatures mirror the Default `-> int`
 // returns; the unannotated helpers stay unannotated in both flavors.
 
-dbl x = x * 2
+dbl x = x * 2 ?: 0
 
 sq : int -> int
-sq x = x * x
+sq x = x * x ?: 0
 
-inc x = x + 1
+inc x = x + 1 ?: 0
 gt4 x = x > 4
 lt3 x = x < 3
-even x = (x % 2) == 0
+even x = (x % 2 ?: 1) == 0
 
 add : int -> int -> int
-add (a, b) = a + b
+add (a, b) = a + b ?: 0
 
-mul (a, b) = a * b
+mul (a, b) = a * b ?: 0
 
 print "=== Functional Showcase ==="
 
@@ -27,7 +27,7 @@ range 1 6 |> forEach print
 
 // 2. negative + empty ranges
 print "range -2..3 forEach print:"
-range (-2) 3 |> forEach print
+range ((0 - 2) ?: 0) 3 |> forEach print
 print "range 5..5 (empty):"
 range 5 5 |> forEach print
 
@@ -58,11 +58,11 @@ r = 3 |> inc |> dbl |> sq
 print "3|>inc|>dbl|>sq = ${toString r}"
 
 (** 9. inline lambda in pipeline *)
-lr = 10 |> \x => x + 5
+lr = 10 |> \x => x + 5 ?: 0
 print "10|>(x+5) = ${toString lr}"
 
 (** 10. lambda chained twice (parens around each so the chain doesn't get swallowed) *)
-lr2 = 5 |> (\x => x + 100) |> (\x => x * 2)
+lr2 = 5 |> (\x => x + 100 ?: 0) |> (\x => x * 2 ?: 0)
 print "5|>+100|>*2 = ${toString lr2}"
 
 print "=== Showcase Complete ==="

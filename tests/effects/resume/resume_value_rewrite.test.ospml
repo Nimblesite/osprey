@@ -8,7 +8,7 @@ total () =
     first = perform Supply.next "first"
     second = perform Supply.next "second"
     third = perform Supply.next "third"
-    first + second + third
+    first + second + third ?: 0
 
 (** Relay is exercised at two concrete result types. *)
 effect Relay T
@@ -41,8 +41,8 @@ resumeValueRewriteCase () =
     result =
         handle Supply
             next label =>
-                supplyCalls := supplyCalls + 1
-                seed := seed + 5
+                supplyCalls := supplyCalls + 1 ?: supplyCalls
+                seed := seed + 5 ?: seed
                 supplied := "${supplied}${label}:${toString seed}|"
                 supplyTranscript := "${supplyTranscript}supply ${label}=${toString seed}\n"
                 answer = resume seed
@@ -57,7 +57,7 @@ resumeValueRewriteCase () =
     word =
         handle Relay
             ask =>
-                wordRelayCalls := wordRelayCalls + 1
+                wordRelayCalls := wordRelayCalls + 1 ?: wordRelayCalls
                 answer = resume "carried"
                 wordSettled := answer
                 relayTranscript := "${relayTranscript}relay answered: ${answer}\n"
@@ -68,7 +68,7 @@ resumeValueRewriteCase () =
     checked =
         handle Checked
             half n =>
-                checkedCalls := checkedCalls + 1
+                checkedCalls := checkedCalls + 1 ?: checkedCalls
                 resume (Success(value = n))
         in runChecked ()
 
@@ -76,7 +76,7 @@ resumeValueRewriteCase () =
     num =
         handle Relay
             ask =>
-                numRelayCalls := numRelayCalls + 1
+                numRelayCalls := numRelayCalls + 1 ?: numRelayCalls
                 resume 41
         in echoNum ()
     legacyTranscript = "${supplyTranscript}result=${toString result}\n${relayTranscript}word=${word}\nchecked=${toString checked} num=${toString num}\n"
@@ -103,7 +103,7 @@ resumeValueRewriteCase () =
         supplyCalls == 3,
         supplied == "first:105|second:110|third:115|",
         settled == "third:330|second:330|first:330|",
-        result == 105 + 110 + 115,
+        result == (105 + 110 + 115 ?: 0),
         word == "carried",
         wordRelayCalls == 1,
         wordSettled == "carried",

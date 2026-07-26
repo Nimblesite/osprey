@@ -94,11 +94,11 @@ print(flag.a ? "true" : "false")
 let env  = { value: "It worked" }
 print(env { value } ? value : "fallback")
 
-/// --- Result<T,E> from division: Elvis on Success / Error ---
-/// `+ - *` are plain int [ARITH-PLAIN]; only `/` and `%` carry the error
-/// channel, so only they have anything for `?:` to default.
+/// --- Result<T,E> from checked arithmetic: Elvis on Success / Error ---
+/// Every fallible integer operator carries an explicit error channel. Even the
+/// negative fallback is formed with checked subtraction and handled locally.
 let okCalc  = intDiv(a: 10, b: 5)
-let okElvis = okCalc ?: -1
+let okElvis = okCalc ?: ((0 - 1) ?: 0)
 print("ok elvis = ${toString(okElvis)}")
 
 fn divide(a, b) = a / b

@@ -1,6 +1,6 @@
 (** Subtract two integers through a curried call. *)
 sub : int -> int -> int
-sub a b = a - b
+sub a b = a - b ?: 0
 (** Classify exact integers before the wildcard case. *)
 classify 0 = "zero"
 classify 1 = "one"
@@ -11,8 +11,8 @@ arithmeticCase () =
     // Check results and ordering independently.
     checkAll "arithmetic foundations" [
         sub 7 3 == 4,
-        6 * 7 == 42,
-        sub 20 (2 * 4) == 12,
+        (6 * 7 ?: 0) == 42,
+        sub 20 (2 * 4 ?: 0) == 12,
         sub 8 3 > 4,
         sub 100 1 > 0,
         sub 9 4 != sub 4 9

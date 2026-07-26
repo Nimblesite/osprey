@@ -243,7 +243,7 @@ mod tests {
         names.iter().any(|name| name == label)
     }
 
-    const SRC: &str = "fn add(a: int, b: int) -> int = a + b\nlet total = add(1, 2)\n";
+    const SRC: &str = "fn add(a: int, b: int) -> int = (a + b) ?: 0\nlet total = add(1, 2)\n";
 
     #[test]
     fn completion_includes_keywords_and_declarations_at_declaration_position() {

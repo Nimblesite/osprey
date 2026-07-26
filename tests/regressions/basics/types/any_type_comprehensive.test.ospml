@@ -5,7 +5,7 @@ getDynamicValue () = 42
 
 (** This should also pass - explicit any with parameter *)
 processAnyValue : any -> any
-processAnyValue input = input + 10
+processAnyValue input = input + 10 ?: 0
 
 print "Explicit any return type works"
 print "getDynamicValue() = ${getDynamicValue ()}"

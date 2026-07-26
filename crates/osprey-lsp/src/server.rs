@@ -414,7 +414,7 @@ mod tests {
     const ML_URI: &str = "file:///a.ospml";
 
     /// A full source program exercising functions, a `let`, a type, and calls.
-    const SRC: &str = "fn add(a: int, b: int) -> int = a + b\n\
+    const SRC: &str = "fn add(a: int, b: int) -> int = (a + b) ?: 0\n\
                        let total = add(1, 2)\n";
 
     /// An in-process LSP client driving [`serve`] over two duplex pipes: one for

@@ -13,7 +13,7 @@
     idiomatic Osprey form for a shared constant is a zero-argument function. *)
 semi ()    = ";"   // entry separator
 eqByte ()  = 61    // ASCII code point for '='
-notFound () = -1    // findEq sentinel: no '=' in the entry
+notFound () = (0 - 1) ?: 0    // findEq sentinel: no '=' in the entry
 
 (** --- Cursor scan: walk the entry one byte at a time with byteAt, returning the
         index of the first '=' or the notFound sentinel. O(1) per byteAt, O(n)
@@ -25,7 +25,7 @@ findEq (seg, i) =
 stepEq (seg, i, b) =
     match b == eqByte ()
         true  => i
-        false => findEq (seg, (i + 1))
+        false => findEq (seg, ((i + 1) ?: i))
 
 (** --- Parse one entry into a "key=value" report. The cursor scan locates '=';
         a missing '=' becomes a Result Error carrying which entry was malformed. *)
@@ -42,7 +42,7 @@ buildPair (seg, eq) =
             Error
                 message = message
 buildValue (k, seg, eq) =
-    match substring seg (eq + 1) (length seg)
+    match substring seg ((eq + 1) ?: eq) (length seg)
         Success value =>
             Success
                 value = "key='${k}' value='${value}'"
@@ -71,7 +71,7 @@ peel (rest, sep) =
         Error message => emit "  ERROR: ${message}"
 advance (seg, rest, sep) =
     done = report seg
-    processAll (drop rest (sep + 1))
+    processAll (drop rest ((sep + 1) ?: sep))
 
 print "=== key=value config parser ==="
 

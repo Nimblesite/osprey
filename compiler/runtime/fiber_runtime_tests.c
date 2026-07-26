@@ -47,6 +47,16 @@ void test_valid_fiber_spawn(void) {
   assert(result == 42 && "fiber should return its function's value");
 }
 
+void test_repeated_fiber_await(void) {
+  int64_t fiber_id = fiber_spawn(test_function_1);
+  assert(fiber_id > 0 && "fiber should spawn for repeated await");
+
+  int64_t first = fiber_await(fiber_id);
+  int64_t second = fiber_await(fiber_id);
+  assert(first == 42 && second == 42 &&
+         "a reusable fiber should return the same result on every await");
+}
+
 void test_multiple_fibers(void) {
   int64_t fiber1 = fiber_spawn(test_function_1);
   int64_t fiber2 = fiber_spawn(test_function_2);
@@ -133,6 +143,7 @@ void run_all_fiber_tests(void) {
   test_null_function_pointer();
   test_invalid_fiber_await();
   test_valid_fiber_spawn();
+  test_repeated_fiber_await();
   test_multiple_fibers();
   test_fiber_bounds_checking();
   test_invalid_channel_capacity();

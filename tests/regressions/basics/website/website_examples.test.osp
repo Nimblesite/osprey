@@ -3,7 +3,7 @@
 // breaks. Sections preserved verbatim (apart from being concatenated).
 
 /// --- Hero ---
-fn double(n) = n * 2
+fn double(n) = n * 2 ?: 0
 
 let x = 42
 let name = "Alice"
@@ -12,26 +12,26 @@ print("name = ${name}")
 
 let result = match x {
     42 => "The answer!"
-    0  => "Zero"
-    _  => "Something else"
+    0 => "Zero"
+    _ => "Something else"
 }
 print("Result: ${result}")
 
 /// --- String interpolation ---
-let age   = 25
+let age = 25
 let score = 95
 print("Hello ${name}!")
-print("Next year you'll be ${age + 1}")
-print("Double score: ${score * 2}")
+print("Next year you'll be ${(age + 1) ?: 0}")
+print("Double score: ${(score * 2) ?: 0}")
 print("${name} (${age}) scored ${score}/100")
 
 /// --- Type-safe pattern matching ---
 fn analyzeNumber(n) = match n {
-    0  => "Zero"
+    0 => "Zero"
     42 => "The answer!"
-    _  => "Something else"
+    _ => "Something else"
 }
-fn square(v) = v * v
+fn square(v) = v * v ?: 0
 print("Testing functions:")
 print(analyzeNumber(0))
 print(analyzeNumber(42))
@@ -46,10 +46,10 @@ print("${doubled} squared is ${squared}")
 /// --- Grade pattern matching ---
 fn getGrade(s) = match s {
     100 => "Perfect!"
-    95  => "Excellent"
-    85  => "Very Good"
-    75  => "Good"
-    _   => "Needs Improvement"
+    95 => "Excellent"
+    85 => "Very Good"
+    75 => "Good"
+    _ => "Needs Improvement"
 }
 print("Grade for 100: ${getGrade(100)}")
 print("Grade for 95: ${getGrade(95)}")
@@ -63,7 +63,7 @@ print("Range operations:")
 range(1, 10) |> forEach(print)
 
 /// --- Fibers ---
-fn compute(value) = value * 2
+fn compute(value) = value * 2 ?: 0
 let fiber1 = spawn compute(5)
 let fiber2 = spawn compute(10)
 print("Fiber 1 result: ${fiber1}")

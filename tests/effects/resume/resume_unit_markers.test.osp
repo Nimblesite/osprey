@@ -20,7 +20,7 @@ fn resumeUnitMarkersCase() = {
 
     let result = handle Trace
         mark label => {
-            markCount = markCount + 1
+            markCount = markCount + 1 ?: markCount
             beforeLabels = "${beforeLabels}${label}|"
             transcript = "${transcript}before ${label}\n"
             let final = resume()

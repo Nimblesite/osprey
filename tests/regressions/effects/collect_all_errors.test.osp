@@ -28,7 +28,7 @@ fn audit(name, age, score, email) = {
     mut errs  = ""
     handle Invalid
         report m => {
-            count = count + 1
+            count = count + 1 ?: count
             errs  = errs + "\n    #${toString(count)} ${m}"
         }
     in validate(name, age, score, email)
@@ -39,7 +39,7 @@ fn audit(name, age, score, email) = {
 }
 
 // (a) MULTIPLE simultaneous failures — every one reported, in field order.
-print("── signup: Nadia ──" + audit("", -3, 250, "nadia_at_example.com"))
+print("── signup: Nadia ──" + audit("", (0 - 3) ?: 0, 250, "nadia_at_example.com"))
 
 // (b) The SAME handler shape over a fully-valid record — zero errors, happy path.
 print("── signup: Owen ──" + audit("Owen", 34, 88, "owen@example.com"))

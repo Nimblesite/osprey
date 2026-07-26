@@ -8,9 +8,10 @@
 //!
 //! * **Meaning-preserving.** After reformatting, the candidate text is reparsed
 //!   and its AST is compared to the original's. If they differ in any way (or the
-//!   candidate fails to parse), the original source is returned untouched. The
-//!   formatter therefore can never change what a program does — at worst it makes
-//!   no change.
+//!   candidate fails to parse), the original source is returned untouched. ML
+//!   input also has one constrained recovery for an accidentally dedented suffix:
+//!   it is accepted only when indenting from a reported error restores a complete
+//!   parse.
 //! * **Idempotent.** Formatting already-formatted text is a no-op.
 //!
 //! The same function backs both the `osprey fmt` CLI command and the language
@@ -31,20 +32,27 @@ const INDENT_WIDTH: usize = 4;
 ///
 /// # Errors
 /// Returns the source's syntax errors (as `line:col: message` strings) when the
-/// input does not parse; an unparseable file is never reformatted.
+/// input does not parse, except for a recoverable dedented ML suffix.
 pub fn format_source(src: &str, flavor: Flavor) -> Result<String, Vec<String>> {
-    let parsed = osprey_syntax::parse_program_with_flavor(src, flavor);
+    let mut source = src.to_owned();
+    let mut parsed = osprey_syntax::parse_program_with_flavor(&source, flavor);
+    if !parsed.errors.is_empty() && flavor == Flavor::Ml {
+        if let Some(repaired) = layout::repair_dedented_suffix(&source, &parsed.errors) {
+            source = repaired;
+            parsed = osprey_syntax::parse_program_with_flavor(&source, flavor);
+        }
+    }
     if !parsed.errors.is_empty() {
         return Err(parsed.errors.iter().map(error_line).collect());
     }
     let candidate = match flavor {
-        Flavor::Default => brace::format(src),
-        Flavor::Ml => layout::format(src),
+        Flavor::Default => brace::format(&source),
+        Flavor::Ml => layout::format(&source),
     };
     if preserves_meaning(&parsed.program, &candidate, flavor) {
         Ok(candidate)
     } else {
-        Ok(src.to_string())
+        Ok(source)
     }
 }
 
@@ -128,6 +136,42 @@ mod tests {
         let src = "main () =\n  print 1\n";
         let out = format_source(src, Flavor::Ml).expect("formats");
         assert_eq!(out, "main () =\n    print 1\n");
+    }
+
+    #[test]
+    fn ml_format_repairs_dedented_handle_in_clause() {
+        let src = concat!(
+            "bridge () =\n",
+            "    result =\n",
+            "        handle Log\n",
+            "            line message =>\n",
+            "                transcript := message\n",
+            "    in\n",
+            "        answer =\n",
+            "            handle Prompt\n",
+            "                ask field =>\n",
+            "                    answer := field\n",
+            "            in form ()\n",
+            "        answer\n",
+            "legacyTranscript = transcript\n",
+        );
+        let want = concat!(
+            "bridge () =\n",
+            "    result =\n",
+            "        handle Log\n",
+            "            line message =>\n",
+            "                transcript := message\n",
+            "        in\n",
+            "            answer =\n",
+            "                handle Prompt\n",
+            "                    ask field =>\n",
+            "                        answer := field\n",
+            "                in form ()\n",
+            "            answer\n",
+            "    legacyTranscript = transcript\n",
+        );
+
+        assert_eq!(format_source(src, Flavor::Ml), Ok(want.to_owned()));
     }
 
     #[test]

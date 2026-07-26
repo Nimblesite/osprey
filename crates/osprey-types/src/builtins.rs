@@ -6,12 +6,11 @@
 //! Signatures use `any` only where one Hindley-Milner type cannot express the
 //! runtime's supported alternatives (`print`, `toString`, `length`,
 //! `isEmpty`); `builtin_constraints` checks their concrete call-site types.
-//! Result-returning builtins return `Result<T, Error>` — the
-//! shape the C runtime actually returns — so the match/auto-unwrap paths agree
-//! with the expected outputs in `tests/regressions`.
+//! Result-returning runtime builtins return `Result<T, Error>` — the shape the C
+//! runtime actually returns — while arithmetic operators use `MathError`.
 
 use crate::env::TypeEnv;
-use crate::ty::{Scheme, Type};
+use crate::ty::{names, Scheme, Type};
 
 fn s() -> Type {
     Type::string()
@@ -94,14 +93,18 @@ fn core(e: &mut TypeEnv) {
     mono(e, "sleep", vec![i()], u());
     // A range is a fused iterator handle, not a materialized List [BUILTIN-ITER].
     mono(e, "range", vec![i(), i()], Type::iterator(i()));
-    mono(e, "abs", vec![i()], i());
+    mono(
+        e,
+        "abs",
+        vec![i()],
+        Type::result(i(), Type::prim(names::MATH_ERROR)),
+    );
     // Truncating integer division, divide-by-zero-checked → Result<int, Error>.
     // The `/` operator is float-only (Osprey spec); this is its integer sibling.
     // Implements [BUILTIN-INTDIV].
     mono(e, "intDiv", vec![i(), i()], res(i()));
-    // The opt-in overflow guarantee. `+ - *` return plain `int` because overflow
-    // wraps and every wrapped result is representable ([ARITH-PLAIN]); these
-    // report it instead, via `llvm.s{add,sub,mul}.with.overflow`.
+    // Named equivalents of the overflow-checked integer operators. These retain
+    // the runtime builtins' generic Error channel for compatibility.
     for checked in ["checkedAdd", "checkedSub", "checkedMul"] {
         mono(e, checked, vec![i(), i()], res(i()));
     }
@@ -419,6 +422,10 @@ mod tests {
         assert_eq!(
             builtin_signature("fiberDone").as_deref(),
             Some("fiberDone : (Fiber<t0>) -> int")
+        );
+        assert_eq!(
+            builtin_signature("abs").as_deref(),
+            Some("abs : (int) -> Result<int, MathError>")
         );
     }
 
