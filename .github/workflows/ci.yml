@@ -252,6 +252,17 @@ jobs:
           echo "$out" | grep -Eq 'NOEXP=0 ' || { echo '::error::an example has no .expectedoutput'; exit 1; }
           echo "$out" | grep -q  'FC_OK'    || { echo '::error::must-reject ratchet exceeded (ill-formed programs accepted)'; exit 1; }
 
+      # Dead-code gate: fail if any `pub` declaration is unreachable from the
+      # osprey binary (hawk::dead_public). Scoped to dead_public only — see the
+      # `hawk` target in the Makefile. cargo-hawk's prebuilt driver is pinned to
+      # the stable toolchain this job installs (1.97.1); bump them together.
+      - name: Install cargo-hawk (dead-code gate)
+        run: |
+          curl --proto '=https' --tlsv1.2 -LsSf \
+            https://github.com/astral-sh/hawk/releases/latest/download/cargo-hawk-installer.sh | sh
+      - name: Dead-code gate (hawk)
+        run: make hawk
+
   # ─── WebAssembly target ─────────────────────────────────────────────────────
   # Compiles a sample Osprey program to wasm32-wasip1 with `osprey --target=wasm32`
   # and gates on the artifact being well-formed (`wasm-validate`) and producing

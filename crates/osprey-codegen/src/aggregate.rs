@@ -82,11 +82,7 @@ pub(crate) fn gen_constructor(
         store_field(cg, &struct_ty, obj.as_str(), i + 1, *fty, &v.operand);
     }
 
-    let handle = cg.fresh_reg();
-    cg.emit(format!("{handle} = bitcast {struct_ty}* {obj} to i8*"));
-    let v = Value::handle(handle, view.owner);
-    crate::arc::own(cg, &v);
-    Ok(v)
+    Ok(own_struct_handle(cg, &struct_ty, &obj, view.owner))
 }
 
 /// `{ field: value, … }` — an anonymous object literal: the same `{ i64 tag,

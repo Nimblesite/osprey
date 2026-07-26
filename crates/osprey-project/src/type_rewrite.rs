@@ -213,6 +213,12 @@ fn substitute(ty: &mut TypeExpr, substitutions: &BTreeMap<String, TypeExpr>) {
     }
 }
 
+/// Render a comma-separated list of types — the shared shape of a function
+/// type's parameter list and a generic type's argument list.
+fn render_joined(types: &[TypeExpr]) -> String {
+    types.iter().map(render_type).collect::<Vec<_>>().join(", ")
+}
+
 fn render_type(ty: &TypeExpr) -> String {
     if ty.is_array {
         return ty.array_element.as_deref().map_or_else(
@@ -221,12 +227,7 @@ fn render_type(ty: &TypeExpr) -> String {
         );
     }
     if ty.is_function {
-        let parameters = ty
-            .parameter_types
-            .iter()
-            .map(render_type)
-            .collect::<Vec<_>>()
-            .join(", ");
+        let parameters = render_joined(&ty.parameter_types);
         let result = ty
             .return_type
             .as_deref()
@@ -236,12 +237,7 @@ fn render_type(ty: &TypeExpr) -> String {
     if ty.generic_params.is_empty() {
         ty.name.clone()
     } else {
-        let parameters = ty
-            .generic_params
-            .iter()
-            .map(render_type)
-            .collect::<Vec<_>>()
-            .join(", ");
+        let parameters = render_joined(&ty.generic_params);
         format!("{}<{parameters}>", ty.name)
     }
 }

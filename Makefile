@@ -7,7 +7,7 @@
 # --run`) and TypeScript sub-projects (vscode-extension, webcompiler, website).
 # =============================================================================
 
-.PHONY: build test lint fmt clean ci setup run install bench wasm wasm-site wasm-serve vsix-rebuild-reinstall bank bank-web bank-test bank-e2e
+.PHONY: build test lint fmt clean ci setup run install bench wasm wasm-site wasm-serve vsix-rebuild-reinstall bank bank-web bank-test bank-e2e hawk
 
 # ---------------------------------------------------------------------------
 # OS Detection
@@ -200,6 +200,24 @@ deslop:
 		echo "WARNING: deslop not installed — skipping duplication gate. Install: https://deslop.live"; \
 	fi
 
+## hawk: Dead-code gate (astral-sh/hawk). Fails the build when any `pub`
+## declaration is unreachable from the osprey binary (hawk::dead_public). Scoped
+## to dead_public ONLY — unnecessary_public / restricted-visibility findings are
+## over-exposure, not dead code, and several are irreducibly public for the
+## integration tests under this workspace's `dead_code = "deny"` policy, so they
+## must NOT fail the gate. hawk needs rustc_private (RUSTC_BOOTSTRAP=1) and its
+## prebuilt driver is pinned to the workspace toolchain (1.97.1) — bump the
+## installer and the CI toolchain together. When cargo-hawk is absent the gate is
+## skipped with a loud warning so a fresh checkout still builds; CI installs it,
+## so the gate is enforced there. Install: https://github.com/astral-sh/hawk
+hawk:
+	@echo "==> Dead-code gate (hawk)..."
+	@if command -v cargo-hawk >/dev/null 2>&1; then \
+		RUSTC_BOOTSTRAP=1 cargo hawk check --only dead-public -D hawk::dead_public --target-dir $(CURDIR)/target/hawk; \
+	else \
+		echo "WARNING: cargo-hawk not installed — skipping dead-code gate. Install: https://github.com/astral-sh/hawk"; \
+	fi
+
 ## fmt: Format all code in-place. Pass CHECK=1 for read-only check (CI use).
 fmt:
 	@echo "==> Formatting$(if $(CHECK), (check mode),)..."
@@ -213,8 +231,8 @@ clean:
 	$(RM) $(RTB) compiler/lib outputs lcov.info test.log
 	cd $(EXT_DIR) && $(RM) out dist coverage test.log
 
-## ci: lint + test + bank-test + bank-e2e + build (full CI simulation)
-ci: lint test bank-test bank-e2e build
+## ci: lint + hawk + test + bank-test + bank-e2e + build (full CI simulation)
+ci: lint hawk test bank-test bank-e2e build
 
 ## wasm: Build everything for the WebAssembly target, ready to go — the wasm
 ## runtime archive (compiler/bin/libosprey_runtime_wasm.a), the hello example,

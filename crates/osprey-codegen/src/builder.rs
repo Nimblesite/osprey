@@ -1213,13 +1213,7 @@ impl Codegen {
     /// header so `osp_release` can drop children precisely; other backends
     /// ignore it. Implements [GC-ARC-PERCEUS].
     fn heap_alloc_tagged(&mut self, size: &str, meta: i64) -> String {
-        if meta == crate::meta::KIND_RAW {
-            return self.heap_alloc(size);
-        }
-        self.add_extern(OSP_ALLOC_TAGGED_DECL);
-        self.emit_reg(format!(
-            "call i8* @osp_alloc_tagged(i64 {size}, i64 {meta})"
-        ))
+        self.heap_alloc_tagged_via(size, meta, OSP_ALLOC_TAGGED_DECL, "osp_alloc_tagged")
     }
 
     /// [`heap_alloc_tagged`] for a block the caller fully initializes before it
@@ -1227,13 +1221,23 @@ impl Codegen {
     /// drop-safety pre-zero. A `KIND_RAW` block is never zeroed anyway, so it
     /// shares the plain allocator. [GC-ARC-PERCEUS]
     fn heap_alloc_tagged_noinit(&mut self, size: &str, meta: i64) -> String {
+        self.heap_alloc_tagged_via(
+            size,
+            meta,
+            OSP_ALLOC_TAGGED_NOINIT_DECL,
+            "osp_alloc_tagged_noinit",
+        )
+    }
+
+    /// Shared body of the tagged allocators: a `KIND_RAW` block has nothing to
+    /// mark so it falls back to the plain allocator; otherwise declare `decl` and
+    /// emit `call i8* @{func}(i64 size, i64 meta)`.
+    fn heap_alloc_tagged_via(&mut self, size: &str, meta: i64, decl: &str, func: &str) -> String {
         if meta == crate::meta::KIND_RAW {
             return self.heap_alloc(size);
         }
-        self.add_extern(OSP_ALLOC_TAGGED_NOINIT_DECL);
-        self.emit_reg(format!(
-            "call i8* @osp_alloc_tagged_noinit(i64 {size}, i64 {meta})"
-        ))
+        self.add_extern(decl);
+        self.emit_reg(format!("call i8* @{func}(i64 {size}, i64 {meta})"))
     }
 
     /// Allocate a heap block sized for the LLVM struct type `struct_ty`, via the

@@ -362,15 +362,10 @@ fn gen_remainder(cg: &mut Codegen, l: Value, r: Value) -> Result<Value> {
             "0.0",
         );
     }
-    let li = as_i64(cg, l)?;
-    let ri = as_i64(cg, r)?;
-    let div_zero = cg.emit_reg(format!("icmp eq i64 {}, 0", ri.operand));
     // LLVM `srem INT64_MIN, -1` is poison even though the mathematical
     // remainder is representable as zero. Substitute divisor 1 for that pair;
     // both remainders are zero, preserving [ARITH-PLAIN] without executing UB.
-    let lhs_min = cg.emit_reg(format!("icmp eq i64 {}, -9223372036854775808", li.operand));
-    let rhs_neg_one = cg.emit_reg(format!("icmp eq i64 {}, -1", ri.operand));
-    let overflow_pair = cg.emit_reg(format!("and i1 {lhs_min}, {rhs_neg_one}"));
+    let (li, ri, div_zero, overflow_pair) = i64_div_guards(cg, l, r)?;
     let safe_divisor = cg.emit_reg(format!(
         "select i1 {overflow_pair}, i64 1, i64 {}",
         ri.operand
@@ -385,12 +380,7 @@ fn gen_remainder(cg: &mut Codegen, l: Value, r: Value) -> Result<Value> {
 /// checked. The integer sibling of `/` (which the spec fixes to float).
 /// Implements [BUILTIN-INTDIV].
 fn gen_int_division(cg: &mut Codegen, l: Value, r: Value) -> Result<Value> {
-    let li = as_i64(cg, l)?;
-    let ri = as_i64(cg, r)?;
-    let div_zero = cg.emit_reg(format!("icmp eq i64 {}, 0", ri.operand));
-    let lhs_min = cg.emit_reg(format!("icmp eq i64 {}, -9223372036854775808", li.operand));
-    let rhs_neg_one = cg.emit_reg(format!("icmp eq i64 {}, -1", ri.operand));
-    let overflow = cg.emit_reg(format!("and i1 {lhs_min}, {rhs_neg_one}"));
+    let (li, ri, div_zero, overflow) = i64_div_guards(cg, l, r)?;
     let invalid = cg.emit_reg(format!("or i1 {div_zero}, {overflow}"));
     let zero_message = cg.string_constant(DIVIDE_BY_ZERO);
     let overflow_message = cg.string_constant("integer overflow");
@@ -401,6 +391,24 @@ fn gen_int_division(cg: &mut Codegen, l: Value, r: Value) -> Result<Value> {
     gen_guarded_with_message(cg, &invalid, LType::I64, "0", &message, |cg| {
         cg.emit_reg(format!("sdiv i64 {}, {}", li.operand, ri.operand))
     })
+}
+
+/// Load both operands as `i64` and emit the two guards every checked integer
+/// division shares: `div_zero` (`ri == 0`) and `overflow` (the `INT64_MIN ÷ -1`
+/// pair whose `sdiv`/`srem` is LLVM poison). Emit order matches the sequence
+/// `%` and intDiv both hand-wrote, so register numbering is unchanged.
+fn i64_div_guards(
+    cg: &mut Codegen,
+    l: Value,
+    r: Value,
+) -> Result<(Value, Value, String, String)> {
+    let li = as_i64(cg, l)?;
+    let ri = as_i64(cg, r)?;
+    let div_zero = cg.emit_reg(format!("icmp eq i64 {}, 0", ri.operand));
+    let lhs_min = cg.emit_reg(format!("icmp eq i64 {}, -9223372036854775808", li.operand));
+    let rhs_neg_one = cg.emit_reg(format!("icmp eq i64 {}, -1", ri.operand));
+    let overflow = cg.emit_reg(format!("and i1 {lhs_min}, {rhs_neg_one}"));
+    Ok((li, ri, div_zero, overflow))
 }
 
 /// `abs(n: int) -> int`, lowered in the language's i64 ABI instead of falling

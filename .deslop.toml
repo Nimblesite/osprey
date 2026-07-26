@@ -53,4 +53,14 @@ exclude = [
   # *Diagram-*.mjs bundles dominate the report as near-100% self-duplication and
   # blow past the ceiling. They duplicate by design and we don't own them.
   "website/src/assets/vendor/**",
+  # Built-in documentation DATA tables: `builtin_doc!(name, description,
+  # [params], example)` rows — one per builtin — fill these two files. deslop
+  # counts them as Type-1 clones because every row is the same macro shape, but
+  # the repetition is DATA enumeration, not duplicated logic: each row is unique
+  # doc content in an identical container, and the macro is already the DRY
+  # mechanism — there is nothing left to factor. This gate guards hand-written
+  # logic, so scope the data tables out, the same call already made for the
+  # benchmark baselines and generator scripts above.
+  "**/builtin_docs_sys.rs",
+  "**/builtin_docs_lang.rs",
 ]
