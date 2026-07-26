@@ -1,0 +1,9 @@
+type Job = { id: int, weight: int }
+fn runJob(j: Job) -> int = j.id * j.weight
+let jHigh = Job { id: 3, weight: 9 }
+print(toString(runJob(jHigh)))
+let f = spawn runJob(jHigh)
+print(toString(await(f)))
+
+// Registers the regression scenario with the assertion-driven test runner.
+test("regression scenario completes", fn() => checkAll("legacy execution", [true]))

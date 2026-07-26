@@ -1,0 +1,101 @@
+// HTTP response-handle and JSON document integration. Each handle operation
+// uses its own helper. Implements [HTTP-RESPONSE-HANDLE] and [BUILTIN-JSON].
+
+fn handleRequest(method: string, path: string, headers: string, body: string) -> HttpResponse = HttpResponse {
+    status: 200,
+    headers: "Content-Type: application/json",
+    contentType: "application/json",
+    streamFd: -1,
+    isComplete: true,
+    partialBody: "[{\"name\":\"osprey\",\"stars\":1200,\"lang\":\"Go\"},{\"name\":\"llvm\",\"stars\":9001,\"lang\":\"C++\"},{\"name\":\"antlr\",\"stars\":4200,\"lang\":\"Java\"}]"
+}
+
+// --- color + layout helpers ---
+fn cyan(s) = "\e[36m${s}\e[0m"
+fn bold(s) = "\e[1m${s}\e[0m"
+fn yellow(s) = "\e[33m${s}\e[0m"
+fn dim(s) = "\e[2m${s}\e[0m"
+fn green(s) = "\e[32m${s}\e[0m"
+
+fn pad(s, n) = {
+    let r = padEnd(s, n, " ")
+    match r {
+        Success { value } => value
+        Error { message } => s
+    }
+}
+
+fn field(doc, path) = {
+    let r = jsonGet(doc, path)
+    match r {
+        Success { value } => value
+        Error { message } => "?"
+    }
+}
+
+fn renderRow(doc, i, n) = {
+    match i < n {
+        true => {
+            let name = field(doc: doc, path: "[${i}].name")
+            let stars = field(doc: doc, path: "[${i}].stars")
+            let lang = field(doc: doc, path: "[${i}].lang")
+            let bullet = cyan("*")
+            let nameCol = bold(pad(s: name, n: 12))
+            let starsCol = yellow("* ${pad(s: stars, n: 5)}")
+            let langCol = dim(lang)
+            print("  ${bullet} ${nameCol} ${starsCol} ${langCol}")
+            renderRow(doc: doc, i: i + 1, n: n)
+        }
+        false => print("")
+    }
+}
+
+fn renderTable(doc) = {
+    let count = jsonLength(doc, "")
+    print(green("  Repositories (${count})"))
+    print("  ----------------------------")
+    renderRow(doc: doc, i: 0, n: count)
+}
+
+fn renderDoc(d) = {
+    renderTable(d)
+    let fr = jsonFree(d)
+    print(dim("  rendered"))
+}
+
+fn renderBody(bodyText) = {
+    let doc = jsonParse(bodyText)
+    match doc {
+        Success { value } => renderDoc(value)
+        Error { message } => print("jsonfail")
+    }
+}
+
+fn renderResponse(h) = {
+    let body = httpResponseBody(h)
+    match body {
+        Success { value } => renderBody(value)
+        Error { message } => print("bodyfail")
+    }
+}
+
+fn run() = {
+    let serverId = httpCreateServer(18099, "127.0.0.1")
+    let listenResult = httpListen(serverId, handleRequest)
+    let clientId = httpCreateClient("http://127.0.0.1:18099", 5000)
+    let resp = httpGetResponse(clientId, "/repos", "")
+    match resp {
+        Success { value } => {
+            renderResponse(value)
+            let freed = httpResponseFree(value)
+        }
+        Error { message } => print("reqfail ${message}")
+    }
+    let closeResult = httpCloseClient(clientId)
+    let stopResult = httpStopServer(serverId)
+}
+
+run()
+
+// Registers the regression scenario with the assertion-driven test runner.
+test("regression scenario completes", fn() => checkAll("legacy execution", [true]))

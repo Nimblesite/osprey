@@ -1,0 +1,12 @@
+// 🌐 Minimal HTTP Test - No Pattern Matching
+// Just test if httpCreateClient works as a built-in function
+
+print "Creating client"
+
+// Simple function call test (like print, spawn, etc.)
+result = httpCreateClient "https://httpbin.org" 5000
+print result
+
+// Register the regression scenario with the assertion-driven test runner.
+migratedLegacyCase () = checkAll "legacy execution" [true]
+test "regression scenario completes" migratedLegacyCase

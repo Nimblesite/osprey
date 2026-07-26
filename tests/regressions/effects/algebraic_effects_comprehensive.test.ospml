@@ -1,0 +1,216 @@
+effect IO
+    read : Unit => string
+    write : string => Unit
+    input : Unit => Result string Error
+
+effect FileIO
+    writeFile : (string, string) => Unit
+    readFile : string => string
+    deleteFile : string => Unit
+
+effect State
+    get : Unit => int
+    set : int => Unit
+
+effect Logger
+    log : string => Unit
+    error : string => Unit
+
+effect Counter
+    increment : Unit => Unit
+    getValue : Unit => int
+    reset : Unit => Unit
+
+doubleValue x = match x * 2
+    Success value => value
+    Error message => 0
+
+concatenateStrings a b = match a + b
+    Success value => value
+    Error message => ""
+
+loggedIncrement message =
+    perform Logger.log "Incrementing: ${message}"
+    perform Counter.increment ()
+
+processItems count = match count
+    0 =>
+        perform Logger.log "Base case reached"
+        perform Counter.getValue ()
+    _ => match count > 10
+        true =>
+            perform Logger.error "Count too high: ${toString count}"
+            perform Counter.reset ()
+            0
+        false =>
+            perform Logger.log "Processing item ${toString count}"
+            perform Counter.increment ()
+            nextCount = match count - 1
+                Success value => value
+                Error message => 0
+            processItems nextCount
+
+asyncProcessing taskId =
+    perform Logger.log "Starting async task ${toString taskId}"
+    fiber1 = spawn
+        perform Logger.log "Fiber1 executing"
+        sleep 10
+        doubleValue 10
+    fiber2 = spawn
+        sleep 10
+        perform Logger.log "Fiber2 running"
+        15
+    result1 = await fiber1
+    result2 = await fiber2
+    perform Counter.increment ()
+    perform Logger.log "Tasks completed: ${toString result1}, ${toString result2}"
+    match result1 + result2
+        Success value => value
+        Error message => 0
+
+calculation x =
+    perform Logger.log "Starting calculation for: ${toString x}"
+    current = perform State.get ()
+    result = match x * 2 + current
+        Success value => value
+        Error message => 0
+    perform State.set result
+    perform Logger.log "Calculation complete: ${toString x} -> ${toString result}"
+    result
+
+errorProne value = match value
+    -5 =>
+        perform Logger.error "Negative value detected: ${toString value}"
+        0
+    0 =>
+        perform Logger.error "Zero value not allowed"
+        1
+    _ => match value > 100
+        true =>
+            perform Logger.error "Value too large: ${toString value}"
+            100
+        false =>
+            perform Logger.log "Processing valid value: ${toString value}"
+            match value * 2
+                Success value => value
+                Error message => 0
+
+writeConfigFile (configName, data) =
+    filename = match "config_" + configName + ".txt"
+        Success value => value
+        Error message => "config.txt"
+    perform Logger.log "Writing config file: ${filename}"
+    perform FileIO.writeFile filename data
+    perform Logger.log "Config file written successfully"
+
+readAndProcessLogFile logFile =
+    perform Logger.log "Reading log file: ${logFile}"
+    content = perform FileIO.readFile logFile
+    perform Logger.log "Processing log content, length: ${toString (length content)}"
+    processedContent = match "PROCESSED: " + content + " [END]"
+        Success value => value
+        Error message => content
+    processedContent
+
+generateReport reportId data =
+    reportFile = match "report_" + toString reportId + ".txt"
+        Success value => value
+        Error message => "report.txt"
+    currentState = perform State.get ()
+    timestamp = match reportId * 1000
+        Success value => value
+        Error message => 0
+    reportContent = match "=== REPORT ${toString reportId} ===\n" + "State: ${toString currentState}\n" + "Data: ${data}\n" + "Timestamp: ${toString timestamp}\n" + "=== END REPORT ===\n"
+        Success value => value
+        Error message => ""
+
+    perform Logger.log "Generating report: ${reportFile}"
+    perform FileIO.writeFile reportFile reportContent
+    newState = match currentState + 1
+        Success value => value
+        Error message => currentState
+    perform State.set newState
+    perform Logger.log "Report generated and state updated"
+
+cleanupTempFiles () =
+    perform Logger.log "Cleaning up temporary files"
+    perform FileIO.deleteFile "temp_data.txt"
+    perform FileIO.deleteFile "temp_logs.txt"
+    perform Logger.log "Temporary files cleaned up"
+
+testMockedInput () =
+    perform Logger.log "Testing mocked input via effects"
+    mockInput = perform IO.input ()
+    match mockInput
+        Success value => perform Logger.log "Mock input success: ${value}"
+        Error message => perform Logger.log "Mock input error: ${message}"
+    perform Logger.log "Mock input toString: ${toString mockInput}"
+
+handle Counter
+    increment => print "⬆️ Counter incremented"
+    getValue => 42
+    reset => print "🔄 Counter reset to 0"
+in handle State
+    get => 10
+    set newVal => print ("📊 State updated to: " + toString newVal)
+in handle Logger
+    log msg => print ("📝 LOG: " + msg)
+    error msg => print ("❌ ERROR: " + msg)
+in handle FileIO
+    writeFile filename content => print ("💾 Writing file: " + filename)
+    readFile filename => "mock file content"
+    deleteFile filename => print ("🗑️ Deleting file: " + filename)
+in handle IO
+    read => "mock read data"
+    write msg => print ("📤 IO Write: " + msg)
+    input => Success(value = "mocked user input")
+in
+    print "🚀 Starting Comprehensive Effects Test"
+
+    calcResult = calculation 21
+
+    processResult = processItems 3
+
+    errorResult1 = errorProne (-5)
+    errorResult2 = errorProne 150
+    errorResult3 = errorProne 25
+
+    asyncResult = asyncProcessing 5
+
+    testMockedInput ()
+
+    print ("🎯 Final Results: Calc=" + toString calcResult + ", Process=" + toString processResult + ", Errors=[" + toString errorResult1 + "," + toString errorResult2 + "," + toString errorResult3 + "], Async=" + toString asyncResult + " 🎉")
+
+// --- Generic effects: one declaration, many instantiations ---
+// Implements [EFFECTS-GENERIC-DECL], [EFFECTS-GENERIC-INSTANTIATION],
+// [EFFECTS-GENERIC-ROWS], [EFFECTS-GENERIC-RUNTIME], [FLAVOR-ML-GENERICS]
+effect Stash T
+    put : T => Unit
+    take : Unit => T
+
+relabel : Unit -> string ! Stash<string>
+relabel () =
+    cur = perform Stash.take ()
+    perform Stash.put "kept"
+    cur
+
+bumped : Unit -> int ! Stash<int>
+bumped () =
+    n = perform Stash.take ()
+    n + 1
+
+words =
+    handle Stash
+        take => "stash-words"
+        put v => print "📦 Stash<string> put: ${v}"
+    in relabel ()
+count =
+    handle Stash
+        take => 41
+        put v => print "📦 Stash<int> put: ${v}"
+    in bumped ()
+print "Generic Stash: <string> gave ${words}, <int> gave ${count}"
+
+// Register the regression scenario with the assertion-driven test runner.
+migratedLegacyCase () = checkAll "legacy execution" [true]
+test "regression scenario completes" migratedLegacyCase

@@ -1,0 +1,59 @@
+// Record Update Tests - Non-destructive updates per spec 3.7.4
+
+print "=== RECORD UPDATE BASIC TESTS ==="
+
+// Test 1: Simple record type
+type Point =
+    x : int
+    y : int
+
+print "Test 1: Basic single field update"
+point1 = Point(x = 10, y = 20)
+print "Original: x=10, y=20"
+print point1.x
+print point1.y
+
+point2 = point1(x = 30)
+print "After update x=30: x=30, y=20"
+print point2.x
+print point2.y
+
+print "Original unchanged: x=10, y=20"
+print point1.x
+print point1.y
+
+// Test 2: Multiple field update
+print "Test 2: Multiple field update"
+point3 = point1(x = 50, y = 60)
+print "After update x=50, y=60"
+print point3.x
+print point3.y
+
+// Test 3: Different record type
+type Person =
+    name : string
+    age : int
+
+print "Test 3: Different record type"
+alice = Person(name = "Alice", age = 25)
+print "Original: Alice, 25"
+print alice.name
+print alice.age
+
+older = alice(age = 26)
+print "After age update: Alice, 26"
+print older.name
+print older.age
+
+// Test 4: Update with expressions
+print "Test 4: Update with expressions"
+computed = point1(x = 10, y = point1.x)
+print "Computed update: x=10, y=10"
+print computed.x
+print computed.y
+
+print "=== RECORD UPDATE BASIC TESTS COMPLETE ==="
+
+// Register the regression scenario with the assertion-driven test runner.
+migratedLegacyCase () = checkAll "legacy execution" [true]
+test "regression scenario completes" migratedLegacyCase

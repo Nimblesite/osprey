@@ -1,0 +1,229 @@
+// 🎮 Epic Text Adventure Game Engine (Fixed)
+// Showcasing Osprey's pattern matching, safe arithmetic, and storytelling capabilities
+
+print("🏰 Welcome to the Mystical Castle Adventure! 🏰")
+print("You stand before an ancient castle shrouded in mystery...")
+print("")
+
+// Game state and inventory system
+let playerHealth = 100
+let hasKey = 0  // 0 = false, 1 = true
+let hasSword = 0
+let goldCoins = 50
+let monstersDefeated = 0
+
+// Character stats and progression
+fn calculatePlayerLevel(defeats) = match defeats {
+    0 => 1
+    1 => 2
+    2 => 3
+    3 => 4
+    _ => 5
+}
+
+fn getPlayerTitle(level) = match level {
+    1 => "Novice Adventurer"
+    2 => "Brave Explorer"
+    3 => "Seasoned Warrior"
+    4 => "Legendary Hero"
+    _ => "Master of the Realm"
+}
+
+// Combat system with separate functions (avoiding nested matches)
+fn calculateWeaponDamage(enemyType) = match enemyType {
+    1 => 25  // Goblin with sword
+    2 => 40  // Orc with sword
+    3 => 60  // Dragon with sword
+    _ => 15  // Unknown enemy with sword
+}
+
+fn calculateBarehandDamage(enemyType) = match enemyType {
+    1 => 10  // Goblin barehanded
+    2 => 15  // Orc barehanded
+    3 => 20  // Dragon barehanded (barely a scratch!)
+    _ => 5   // Unknown enemy barehanded
+}
+
+fn getEnemyName(enemyType) = match enemyType {
+    1 => "Sneaky Goblin"
+    2 => "Fierce Orc"
+    3 => "Ancient Dragon"
+    _ => "Mysterious Shadow"
+}
+
+fn getEnemyHealth(enemyType) = match enemyType {
+    1 => 30  // Goblin
+    2 => 60  // Orc
+    3 => 120 // Dragon
+    _ => 25  // Unknown
+}
+
+// Room exploration system
+fn exploreRoom(roomNumber) = match roomNumber {
+    1 => "the Grand Entrance Hall with marble columns"
+    2 => "a dusty Library filled with ancient tomes"
+    3 => "the Armory containing gleaming weapons"
+    4 => "the Treasure Chamber sparkling with gold"
+    5 => "the Throne Room where shadows dance"
+    _ => "a mysterious room filled with swirling mist"
+}
+
+fn getRoomTreasure(roomNumber) = match roomNumber {
+    1 => 10  // Small coin purse
+    2 => 25  // Valuable book
+    3 => 0   // Weapon instead of gold
+    4 => 100 // Treasure chest
+    5 => 50  // Royal coins
+    _ => 5   // Mysterious trinket
+}
+
+fn hasRoomWeapon(roomNumber) = match roomNumber {
+    3 => 1  // Armory has sword
+    _ => 0  // No weapon in other rooms
+}
+
+fn hasRoomKey(roomNumber) = match roomNumber {
+    2 => 1  // Library has key
+    _ => 0  // No key in other rooms
+}
+
+// Game progression and storytelling
+print("⚔️  Your Quest Begins! ⚔️")
+print("")
+
+let currentLevel = calculatePlayerLevel(monstersDefeated)
+let playerTitle = getPlayerTitle(currentLevel)
+print("You are ${playerTitle} (Level ${currentLevel})")
+print("Health: ${playerHealth} ❤️  | Gold: ${goldCoins} 💰")
+print("")
+
+// Explore multiple rooms
+print("🚪 Room 1: You enter ${exploreRoom(1)}")
+let room1Gold = getRoomTreasure(1)
+let newGold1 = match goldCoins + room1Gold {
+    Success { value } => value
+    Error { message } => goldCoins
+}
+print("You find ${room1Gold} gold coins! Total: ${newGold1} 💰")
+print("")
+
+print("📚 Room 2: You discover ${exploreRoom(2)}")
+let room2Gold = getRoomTreasure(2)
+let newGold2 = match newGold1 + room2Gold {
+    Success { value } => value
+    Error { message } => newGold1
+}
+let foundKey = hasRoomKey(2)
+print("You find ${room2Gold} gold coins and acquire a mysterious key! 🗝️")
+print("Total gold: ${newGold2} 💰")
+print("")
+
+print("⚔️  Room 3: You enter ${exploreRoom(3)}")
+let foundSword = hasRoomWeapon(3)
+print("You acquire a gleaming sword! ⚔️")
+print("Your combat prowess has increased dramatically!")
+print("")
+
+// Epic battle sequence
+print("🐉 BOSS BATTLE: Ancient Dragon Appears! 🐉")
+print("The ground trembles as a massive dragon blocks your path!")
+print("")
+
+let enemyType = 3  // Dragon
+let enemyName = getEnemyName(enemyType)
+let enemyHealth = getEnemyHealth(enemyType)
+
+// Calculate damage based on weapon status (avoiding nested match)
+let weaponDamage = calculateWeaponDamage(enemyType)
+let barehandDamage = calculateBarehandDamage(enemyType)
+let playerDamage = match foundSword {
+    1 => weaponDamage
+    _ => barehandDamage
+}
+
+print("Enemy: ${enemyName}")
+print("Enemy Health: ${enemyHealth} ❤️")
+print("Your attack power: ${playerDamage} ⚔️")
+print("")
+
+// Battle calculation
+let totalDamageNeeded = enemyHealth
+let attacksNeeded = totalDamageNeeded / playerDamage
+
+print("⚡ BATTLE COMMENCES! ⚡")
+print("You need ${attacksNeeded} successful attacks to defeat the ${enemyName}!")
+print("")
+
+// Simulate battle rounds
+print("🥊 Round 1: You strike for ${playerDamage} damage!")
+let remainingHealth1 = match enemyHealth - playerDamage {
+    Success { value } => value
+    Error { message } => enemyHealth
+}
+print("Dragon health remaining: ${remainingHealth1}")
+print("")
+
+print("🥊 Round 2: Another powerful blow for ${playerDamage} damage!")
+let remainingHealth2 = match remainingHealth1 - playerDamage {
+    Success { value } => value
+    Error { message } => remainingHealth1
+}
+print("Dragon health remaining: ${remainingHealth2}")
+print("")
+
+print("🥊 FINAL ROUND: You deliver the finishing blow!")
+let finalDamage = remainingHealth2
+print("Critical hit for ${finalDamage} damage!")
+print("")
+
+// Victory and level progression
+let newMonstersDefeated = match monstersDefeated + 1 {
+    Success { value } => value
+    Error { message } => monstersDefeated
+}
+let newLevel = calculatePlayerLevel(newMonstersDefeated)
+let newTitle = getPlayerTitle(newLevel)
+let victoryGold = 200
+let finalGold = match newGold2 + victoryGold {
+    Success { value } => value
+    Error { message } => newGold2
+}
+
+print("🎉 VICTORY! 🎉")
+print("The ${enemyName} has been defeated!")
+print("You gain ${victoryGold} gold coins as reward!")
+print("Total gold: ${finalGold} 💰")
+print("")
+
+print("📈 LEVEL UP! 📈")
+print("Previous: ${playerTitle} (Level ${currentLevel})")
+print("New: ${newTitle} (Level ${newLevel})")
+print("")
+
+// Final treasure room
+print("🏆 Room 4: You enter ${exploreRoom(4)}")
+let treasureGold = getRoomTreasure(4)
+let ultimateGold = match finalGold + treasureGold {
+    Success { value } => value
+    Error { message } => finalGold
+}
+print("You discover the legendary treasure chest!")
+print("Inside: ${treasureGold} gold coins! 💎")
+print("Your final wealth: ${ultimateGold} 💰")
+print("")
+
+// Epic conclusion
+print("🎭 QUEST COMPLETE! 🎭")
+print("Congratulations, ${newTitle}!")
+print("You have conquered the Mystical Castle!")
+print("Final Stats:")
+print("  - Level: ${newLevel}")
+print("  - Monsters Defeated: ${newMonstersDefeated}")
+print("  - Gold Collected: ${ultimateGold} 💰")
+print("  - Artifacts: Sword ⚔️ & Key 🗝️")
+print("")
+print("🌟 Your legend will be remembered forever! 🌟")
+print("Thanks for playing the Osprey Adventure Game!")
+
+// Registers the regression scenario with the assertion-driven test runner.
+test("regression scenario completes", fn() => checkAll("legacy execution", [true]))

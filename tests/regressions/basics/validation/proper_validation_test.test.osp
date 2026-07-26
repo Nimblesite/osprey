@@ -1,0 +1,38 @@
+// Match-based validation predicates.
+
+fn notEmpty(s) = match s {
+    ""  => false
+    _   => true
+}
+
+fn isPositive(n) = n > 0
+
+fn isValidAge(age) = match age {
+    0   => false
+    200 => false
+    _   => true
+}
+
+fn isValidEmail(email) = match email {
+    ""        => false
+    "invalid" => false
+    _         => true
+}
+
+print("Testing validation functions:")
+print(toString(notEmpty("")))
+print(toString(notEmpty("test")))
+
+print(toString(isPositive(0)))
+print(toString(isPositive(10)))
+print(toString(isValidAge(25)))
+print(toString(isValidAge(200)))
+print(toString(isValidEmail("")))
+print(toString(isValidEmail("alice@example.com")))
+
+print(toString(isPositive(5)))
+print(toString(isPositive(-5)))
+print(toString(isPositive(0)))
+
+// Registers the regression scenario with the assertion-driven test runner.
+test("regression scenario completes", fn() => checkAll("legacy execution", [true]))

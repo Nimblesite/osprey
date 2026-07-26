@@ -1,0 +1,53 @@
+// ML twin of callback_stdout_demo.osp. spawnProcess/awaitProcess/cleanupProcess are
+// ordinary builtin calls; the callback's annotated params (`data : string`) are
+// load-bearing, so the ML signature mirrors them with a `-> Unit` return (the match
+// arms each return `print …`). `match` arms with multi-line bodies become indented
+// layout blocks; `Success { value }` / `Error { message }` become positional patterns.
+
+print "=== CALLBACK-BASED STDOUT COLLECTION DEMO ==="
+
+processEventHandler : int -> int -> string -> Unit
+processEventHandler (processID, eventType, data) =
+    match eventType
+        1 => print "[CALLBACK] Process ${toString processID} STDOUT: ${data}"
+        2 => print "[CALLBACK] Process ${toString processID} STDERR: ${data}"
+        3 => print "[CALLBACK] Process ${toString processID} EXIT: ${data}"
+        _ => print "[CALLBACK] Process ${toString processID} UNKNOWN EVENT ${toString eventType}: ${data}"
+
+print "--- Test 1: Basic Stdout Callback ---"
+result1 = spawnProcess "echo 'Hello from callback!'" processEventHandler
+match result1
+    Success value =>
+        print "✓ Process spawned with ID: ${toString value}"
+        exitCode = awaitProcess value
+        print "✓ Process finished with exit code: ${toString exitCode}"
+        cleanupProcess value
+        print "✓ Process cleaned up"
+    Error message => print "✗ Failed to spawn process"
+
+print "--- Test 2: Multiple Lines Callback ---"
+result2 = spawnProcess "printf 'Line 1\\nLine 2\\nLine 3\\n'" processEventHandler
+match result2
+    Success value =>
+        print "✓ Multi-line process spawned with ID: ${toString value}"
+        exitCode = awaitProcess value
+        print "✓ Multi-line process finished"
+        cleanupProcess value
+    Error message => print "✗ Failed to spawn multi-line process"
+
+print "--- Test 3: Error Process Callback ---"
+result3 = spawnProcess "ls /nonexistent/directory" processEventHandler
+match result3
+    Success value =>
+        print "✓ Error process spawned with ID: ${toString value}"
+        exitCode = awaitProcess value
+        print "✓ Error process finished with exit code: ${toString exitCode}"
+        cleanupProcess value
+    Error message => print "✗ Failed to spawn error process"
+
+print "=== CALLBACK DEMO COMPLETE ==="
+print "The [CALLBACK] lines above show C runtime calling into Osprey!"
+
+// Register the regression scenario with the assertion-driven test runner.
+migratedLegacyCase () = checkAll "legacy execution" [true]
+test "regression scenario completes" migratedLegacyCase

@@ -1,0 +1,28 @@
+// HTTP Client Test - Testing basic HTTP client functionality
+// Testing HTTP built-in functions
+
+print("=== HTTP Client Test ===")
+
+// Test HTTP client creation
+let clientResult = httpCreateClient("http://httpbin.org", 5000)
+print("Testing HTTP client creation...")
+
+// Simple check - we'll do one match only
+match clientResult {
+    0 => print("FAILED: Client creation failed")
+    _ => print("SUCCESS: Client created, making HTTP request...")
+}
+
+// Make an actual HTTP GET request (outside match to avoid IR issues)
+let getResult = httpGet(clientResult, "/get", "")
+
+// Print result info
+print("HTTP GET request completed")
+print("Cleaning up...")
+
+// Clean up the client
+let closeResult = httpCloseClient(clientResult)
+print("HTTP test complete")
+
+// Registers the regression scenario with the assertion-driven test runner.
+test("regression scenario completes", fn() => checkAll("legacy execution", [true]))

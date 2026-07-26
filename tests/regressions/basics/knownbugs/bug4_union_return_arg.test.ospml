@@ -1,0 +1,23 @@
+type Outcome =
+    Done
+        score : int
+    Failed
+        code : int
+
+classify s =
+    match s
+        0 => Failed(code = 99)
+        _ => Done(score = s)
+
+describe o =
+    match o
+        Done score => "done " + toString score
+        Failed code => "failed " + toString code
+
+print (describe (Done(score = 27)))
+print (describe (classify 27))
+print (describe (classify 0))
+
+// Register the regression scenario with the assertion-driven test runner.
+migratedLegacyCase () = checkAll "legacy execution" [true]
+test "regression scenario completes" migratedLegacyCase

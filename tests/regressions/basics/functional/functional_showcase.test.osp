@@ -1,0 +1,66 @@
+// Functional pipeline showcase: range, forEach, map, filter, fold, pipe,
+// stream-fusion ordering (map-then-filter vs filter-then-map), negative
+// ranges, empty ranges, lambdas in the pipeline.
+
+fn dbl(x)   = x * 2
+fn sq(x: int)    -> int  = x * x
+fn inc(x)   = x + 1
+fn gt4(x)   = x > 4
+fn lt3(x)   = x < 3
+fn even(x)  = (x % 2) == 0
+fn add(a: int, b: int) -> int = a + b
+fn mul(a, b) = a * b
+
+print("=== Functional Showcase ===")
+
+// 1. forEach over a range
+print("range 1..6 forEach print:")
+range(1, 6) |> forEach(print)
+
+// 2. negative + empty ranges
+print("range -2..3 forEach print:")
+range(-2, 3) |> forEach(print)
+print("range 5..5 (empty):")
+range(5, 5) |> forEach(print)
+
+// 3. map + forEach
+print("map dbl over 1..5:")
+range(1, 5) |> map(dbl) |> forEach(print)
+
+// 4. filter + forEach
+print("filter even over 1..7:")
+range(1, 7) |> filter(even) |> forEach(print)
+
+// 5. map-then-filter — filter sees mapped value
+print("map dbl |> filter gt4 over 1..5:")
+range(1, 5) |> map(dbl) |> filter(gt4) |> forEach(print)
+
+// 6. filter-then-map — map applied after filtering raw values
+print("filter lt3 |> map dbl over 1..6:")
+range(1, 6) |> filter(lt3) |> map(dbl) |> forEach(print)
+
+// 7. fold (sum, product)
+let s = range(1, 6) |> fold(0, add)
+print("sum 1..5 = ${toString(s)}")
+let p = range(1, 5) |> fold(1, mul)
+print("prod 1..4 = ${toString(p)}")
+
+// 8. chained pipes on a single value
+let r = 3 |> inc |> dbl |> sq
+print("3|>inc|>dbl|>sq = ${toString(r)}")
+
+// 9. inline lambda in pipeline
+let lr = 10 |> fn(x) => x + 5
+print("10|>(x+5) = ${toString(lr)}")
+
+// 10. lambda chained twice (parens around each so the chain doesn't get swallowed)
+let lr2 = 5 |> (fn(x) => x + 100) |> (fn(x) => x * 2)
+print("5|>+100|>*2 = ${toString(lr2)}")
+
+print("=== Showcase Complete ===")
+// Exercises [BUILTIN-ITER], [BUILTIN-ITER-RANGE], [BUILTIN-ITER-MAP],
+// [BUILTIN-ITER-FILTER], [BUILTIN-ITER-FOREACH], [BUILTIN-ITER-FOLD],
+// [BUILTIN-ITER-CALLBACK], [BUILTIN-ITER-PIPE], and [BUILTIN-ITER-FUSION].
+
+// Registers the regression scenario with the assertion-driven test runner.
+test("regression scenario completes", fn() => checkAll("legacy execution", [true]))

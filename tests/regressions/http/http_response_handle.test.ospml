@@ -1,0 +1,57 @@
+// [BUILTIN-HTTP] [HTTP-RESPONSE-HANDLE]
+// ML twin of http_response_handle.osp. The HTTP builtins are ordinary calls; named
+// args (`bodyLine(h: value)`) become positional (`bodyLine value`). The handler's
+// `-> HttpResponse` return is load-bearing, mirrored by an ML signature; the record
+// literal `HttpResponse { status: 200, … }` becomes the inline call form
+// `HttpResponse(status = 200, …)`. Multi-line blocks become indented layout blocks.
+
+handleRequest : string -> string -> string -> string -> HttpResponse
+handleRequest (method, path, headers, body) = HttpResponse(
+    status = 200,
+    headers = "X-Demo: hi\r\n",
+    contentType = "text/plain",
+    streamFd = -1,
+    isComplete = true,
+    partialBody = "hello body"
+)
+
+bodyLine h =
+    r = httpResponseBody h
+    match r
+        Success value => "body=${value}"
+        Error message => "nobody"
+
+headerLine (h, name) =
+    r = httpResponseHeader h name
+    match r
+        Success value => "hdr=${value}"
+        Error message => "missing-ok"
+
+freeLine h =
+    r = httpResponseFree h
+    match r
+        Success value => "free-ok"
+        Error message => "free-err-double"
+
+run () =
+    serverId = httpCreateServer 18095 "127.0.0.1"
+    listenResult = httpListen serverId handleRequest
+    clientId = httpCreateClient "http://127.0.0.1:18095" 5000
+    resp = httpGetResponse clientId "/" ""
+    match resp
+        Success value =>
+            print "status=${httpResponseStatus value}"
+            print (bodyLine value)
+            print (headerLine (value, "X-Demo"))
+            print (headerLine (value, "Nope"))
+            print (freeLine value)
+            print (freeLine value)
+        Error message => print "reqfail ${message}"
+    closeResult = httpCloseClient clientId
+    stopResult = httpStopServer serverId
+
+run ()
+
+// Register the regression scenario with the assertion-driven test runner.
+migratedLegacyCase () = checkAll "legacy execution" [true]
+test "regression scenario completes" migratedLegacyCase

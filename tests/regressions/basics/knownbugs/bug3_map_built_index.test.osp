@@ -1,0 +1,7 @@
+let ra = 9
+let m = mapSet(mapSet(Map(), "a", ra), "b", 16)
+match m["a"] { Success { value } => print("a=" + toString(value)) Error { message } => print("miss") }
+print("len " + toString(mapLength(m)))
+
+// Registers the regression scenario with the assertion-driven test runner.
+test("regression scenario completes", fn() => checkAll("legacy execution", [true]))

@@ -1,0 +1,62 @@
+// ML twin of async_process_management.osp. [BUILTIN-PROCESS]
+// spawnProcess/awaitProcess/cleanupProcess
+// are ordinary builtin calls (whitespace application); `match` arms with multi-line
+// bodies become indented layout blocks, and `Success { value }` / `Error { message }`
+// constructor patterns become positional `Success value` / `Error message`. Lowers to
+// the same canonical AST as the Default flavor — byte-identical IR.
+
+print "=== Async Process Management Demo ==="
+
+processEventHandler : int -> int -> string -> Unit
+processEventHandler (processID, eventType, data) =
+    match eventType
+        1 => print "[STDOUT] Process ${toString processID}: ${data}"
+        2 => print "[STDERR] Process ${toString processID}: ${data}"
+        3 => print "[EXIT] Process ${toString processID} exited with code: ${data}"
+        _ => print "[UNKNOWN] Process ${toString processID} event ${toString eventType}: ${data}"
+
+print "--- Test 1: Basic Process Spawning ---"
+result1 = spawnProcess "echo 'Hello from async process!'" processEventHandler
+match result1
+    Success value =>
+        print "✓ Process spawned successfully"
+        exitCode = awaitProcess value
+        print "✓ Process completed successfully"
+        cleanupProcess value
+        print "✓ Process resources cleaned up"
+    Error message => print "✗ Process spawn failed"
+
+print "--- Test 2: Another Process ---"
+result2 = spawnProcess "echo 'Process 2 output'" processEventHandler
+match result2
+    Success value =>
+        print "Process 2 spawned successfully"
+        exitCode2 = awaitProcess value
+        print "Process 2 finished"
+        cleanupProcess value
+    Error message => print "Process 2 failed"
+
+print "--- Test 3: Error Handling ---"
+result3 = spawnProcess "false" processEventHandler
+match result3
+    Success value =>
+        exitCode3 = awaitProcess value
+        print "Error process returned non-zero exit code"
+        cleanupProcess value
+    Error message => print "✗ Process spawn unexpectedly failed"
+
+print "--- Test 4: ProcessHandle Result toString ---"
+result4 = spawnProcess "echo 'Testing toString'" processEventHandler
+print "ProcessHandle Result toString: ${toString result4}"
+match result4
+    Success value =>
+        awaitProcess value
+        cleanupProcess value
+    Error message => print "Process 4 failed"
+
+print "=== Async Process Management Demo Complete ==="
+print "Note: Process output appears via C runtime callbacks during execution"
+
+// Register the regression scenario with the assertion-driven test runner.
+migratedLegacyCase () = checkAll "legacy execution" [true]
+test "regression scenario completes" migratedLegacyCase

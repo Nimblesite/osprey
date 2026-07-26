@@ -1,0 +1,111 @@
+// A multi-step fiber batch preserves spawn order when each worker is awaited.
+
+extern fn fiber_set_deterministic_mode(enabled: bool) -> int
+
+effect Logger {
+    info: fn(string) -> Unit
+}
+
+effect Metrics {
+    recordSuccess: fn(string, int) -> Unit
+}
+
+// Match the exact complexity calculations from mega_showcase
+type TaskPriority = Urgent | High | Medium | Low
+
+fn calculateComplexity(priority) = match priority {
+    Urgent => 750
+    High => 450    
+    Medium => 600
+    Low => 75
+}
+
+fn calculateTime(complexity: int) -> int = intDiv(complexity, 10) + 7
+
+fn calculateEfficiency(duration) = match duration < 100 {
+    true => 100
+    false => 50
+}
+
+fn preprocessData(rawData) = rawData * 2 + 100
+fn validateData(data) = data > 50
+fn transformData(data) = data * 3
+
+type TaskResult = Success | Warning | Failed
+
+fn processTask(taskId: string, dataSize: int, priority: TaskPriority) -> TaskResult ![Logger, Metrics] = {
+    perform Logger.info("Starting task: " + taskId + " with data size: " + toString(dataSize))
+    
+    let complexity = calculateComplexity(priority)
+    let actualTime = calculateTime(complexity)
+    
+    let preprocessed = preprocessData(dataSize)
+    let isValid = validateData(preprocessed)
+    
+    match isValid {
+        true => {
+            let processed = transformData(preprocessed)
+            let efficiency = calculateEfficiency(actualTime)
+            
+            perform Metrics.recordSuccess(taskId, processed)
+            perform Logger.info("Task " + taskId + " completed successfully in " + toString(actualTime) + "ms")
+            
+            match efficiency > 80 {
+                true => Success
+                false => Warning
+            }
+        }
+        false => {
+            perform Logger.info("Task " + taskId + " failed validation")
+            Failed
+        }
+    }
+}
+
+fn processTaskForBatch(taskId: string, dataSize: int, priority: TaskPriority) -> int ![Logger, Metrics] = {
+    let result = processTask(taskId: taskId, dataSize: dataSize, priority: priority)
+    match result {
+        Success => 900
+        Warning => 600  
+        Failed => 0
+    }
+}
+
+// Exact same task functions as mega_showcase
+fn processAlphaTask1() = processTaskForBatch(taskId: "task-alpha-1", dataSize: 150, priority: High)
+fn processAlphaTask2() = processTaskForBatch(taskId: "task-alpha-2", dataSize: 200, priority: Medium) 
+fn processAlphaTask3() = processTaskForBatch(taskId: "task-alpha-3", dataSize: 75, priority: Urgent)
+fn sumBatchResults(first: int, second: int, third: int) -> int = first + second + third
+
+fn processAlphaBatch() -> int ![Logger, Metrics] = {
+    perform Logger.info("Processing batch: alpha")
+    
+    let worker1 = spawn processAlphaTask1()
+    let worker2 = spawn processAlphaTask2()
+    let worker3 = spawn processAlphaTask3()
+    
+    let result1 = await(worker1)
+    let result2 = await(worker2)
+    let result3 = await(worker3)
+    
+    let batchTotal = sumBatchResults(result1, result2, result3)
+    
+    perform Logger.info("Batch alpha processed: " + toString(batchTotal) + " total data units")
+    
+    batchTotal
+}
+
+fiber_set_deterministic_mode(enabled: true)
+handle Metrics
+    recordSuccess taskId processed => print("✅ " + taskId + " succeeded: " + toString(processed) + " units")
+in handle Logger
+    info msg => print("ℹ️  " + msg)
+in {
+    print("=== Fiber Execution Order Test ===")
+    let results1 = processAlphaBatch()
+    print("Total: " + toString(results1))
+    print("=== Test Complete ===")
+}
+
+// Registers the regression scenario with the assertion-driven test runner.
+test("regression scenario completes", fn() => checkAll("legacy execution", [true]))

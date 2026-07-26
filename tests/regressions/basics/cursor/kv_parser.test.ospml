@@ -1,0 +1,106 @@
+// ML twin of kv_parser.osp. Parses "k=v;k=v;k=v" with the O(1) string cursor
+// primitives ([BUILTIN-STRING-CURSOR]) and Result error payloads
+// ([ERR-PAYLOAD]). With no loop expression, processAll recurses over
+// ';'-delimited entries; findEq uses byteAt to find '=' (ASCII 61). A missing
+// '=' returns Error.
+//
+// Uncurried whitespace application, layout `match`, positional
+// `Success value` / `Error message` patterns, and layout-record constructor
+// construction lower to the same nodes as the braced Default flavor —
+// byte-identical IR ([FLAVOR-IR-EQUIV]).
+
+// Named constants. Top-level bindings are not visible inside fn bodies, so the
+// idiomatic Osprey form for a shared constant is a zero-argument function.
+semi ()    = ";"   // entry separator
+eqByte ()  = 61    // ASCII code point for '='
+notFound () = -1    // findEq sentinel: no '=' in the entry
+
+// --- Cursor scan: walk the entry one byte at a time with byteAt, returning the
+//     index of the first '=' or the notFound sentinel. O(1) per byteAt, O(n)
+//     total, no allocation.
+findEq (seg, i) =
+    match byteAt seg i
+        Success value => stepEq (seg, i, value)
+        Error message => notFound ()
+stepEq (seg, i, b) =
+    match b == eqByte ()
+        true  => i
+        false => findEq (seg, (i + 1))
+
+// --- Parse one entry into a "key=value" report. The cursor scan locates '=';
+//     a missing '=' becomes a Result Error carrying which entry was malformed.
+parsePair seg =
+    match findEq (seg, 0) == notFound ()
+        true  =>
+            Error
+                message = "no '=' in entry '${seg}'"
+        false => buildPair (seg, (findEq (seg, 0)))
+buildPair (seg, eq) =
+    match substring seg 0 eq
+        Success value => buildValue (value, seg, eq)
+        Error message =>
+            Error
+                message = message
+buildValue (k, seg, eq) =
+    match substring seg (eq + 1) (length seg)
+        Success value =>
+            Success
+                value = "key='${k}' value='${value}'"
+        Error message =>
+            Error
+                message = message
+
+// --- Report a single parsed entry, exercising both Result arms.
+report seg =
+    match parsePair seg
+        Success value => emit "  ${value}"
+        Error message => emit "  ERROR: ${message}"
+emit line =
+    print line
+    0
+
+// --- Drive the parse recursively: split the config on ';' by hand using
+//     indexOf to locate the next separator and drop to advance the cursor.
+processAll rest =
+    match indexOf rest (semi ())
+        Success value => peel (rest, value)
+        Error message => report rest
+peel (rest, sep) =
+    match substring rest 0 sep
+        Success value => advance (value, rest, sep)
+        Error message => emit "  ERROR: ${message}"
+advance (seg, rest, sep) =
+    done = report seg
+    processAll (drop rest (sep + 1))
+
+print "=== key=value config parser ==="
+
+print "Parsing well-formed 'host=localhost;port=8080;tls=true':"
+good = processAll "host=localhost;port=8080;tls=true"
+
+print "Parsing with a malformed entry 'a=1;bad_entry_no_equals;c=3':"
+mixed = processAll "a=1;bad_entry_no_equals;c=3"
+
+// Direct error-path proof: a lone malformed entry yields an Error payload.
+print "Direct parsePair on 'bad_entry_no_equals':"
+match parsePair "bad_entry_no_equals"
+    Success value => print "  unexpected ${value}"
+    Error message => print "  rejected: ${message}"
+
+// Cursor proof: findEq returns the byte index of '=' for a good entry,
+// and the sentinel for a malformed one. ML's interpolation lexer can't
+// carry a nested string literal inside a `${…}` span, so each findEq call
+// whose argument is a string literal is hoisted into a binding first; the
+// temp collapses in codegen to the same IR the Default flavor emits for the
+// inline `${findEq("port=8080", 0)}` form.
+portEq = findEq ("port=8080", 0)
+print "findEq('port=8080') = ${portEq}"
+badEq = findEq ("bad_entry_no_equals", 0)
+print "findEq('bad_entry_no_equals') = ${badEq}"
+
+print "=== parser complete ==="
+0
+
+// Register the regression scenario with the assertion-driven test runner.
+migratedLegacyCase () = checkAll "legacy execution" [true]
+test "regression scenario completes" migratedLegacyCase
