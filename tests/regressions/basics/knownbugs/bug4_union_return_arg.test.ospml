@@ -18,6 +18,6 @@ print (describe (Done(score = 27)))
 print (describe (classify 27))
 print (describe (classify 0))
 
-// Register the regression scenario with the assertion-driven test runner.
+(** Register the regression scenario with the assertion-driven test runner. *)
 migratedLegacyCase () = checkAll "legacy execution" [true]
 test "regression scenario completes" migratedLegacyCase

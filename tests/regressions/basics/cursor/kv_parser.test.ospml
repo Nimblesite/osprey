@@ -9,15 +9,15 @@
 // construction lower to the same nodes as the braced Default flavor —
 // byte-identical IR ([FLAVOR-IR-EQUIV]).
 
-// Named constants. Top-level bindings are not visible inside fn bodies, so the
-// idiomatic Osprey form for a shared constant is a zero-argument function.
+(** Named constants. Top-level bindings are not visible inside fn bodies, so the
+    idiomatic Osprey form for a shared constant is a zero-argument function. *)
 semi ()    = ";"   // entry separator
 eqByte ()  = 61    // ASCII code point for '='
 notFound () = -1    // findEq sentinel: no '=' in the entry
 
-// --- Cursor scan: walk the entry one byte at a time with byteAt, returning the
-//     index of the first '=' or the notFound sentinel. O(1) per byteAt, O(n)
-//     total, no allocation.
+(** --- Cursor scan: walk the entry one byte at a time with byteAt, returning the
+        index of the first '=' or the notFound sentinel. O(1) per byteAt, O(n)
+        total, no allocation. *)
 findEq (seg, i) =
     match byteAt seg i
         Success value => stepEq (seg, i, value)
@@ -27,8 +27,8 @@ stepEq (seg, i, b) =
         true  => i
         false => findEq (seg, (i + 1))
 
-// --- Parse one entry into a "key=value" report. The cursor scan locates '=';
-//     a missing '=' becomes a Result Error carrying which entry was malformed.
+(** --- Parse one entry into a "key=value" report. The cursor scan locates '=';
+        a missing '=' becomes a Result Error carrying which entry was malformed. *)
 parsePair seg =
     match findEq (seg, 0) == notFound ()
         true  =>
@@ -50,7 +50,7 @@ buildValue (k, seg, eq) =
             Error
                 message = message
 
-// --- Report a single parsed entry, exercising both Result arms.
+(** --- Report a single parsed entry, exercising both Result arms. *)
 report seg =
     match parsePair seg
         Success value => emit "  ${value}"
@@ -59,8 +59,8 @@ emit line =
     print line
     0
 
-// --- Drive the parse recursively: split the config on ';' by hand using
-//     indexOf to locate the next separator and drop to advance the cursor.
+(** --- Drive the parse recursively: split the config on ';' by hand using
+        indexOf to locate the next separator and drop to advance the cursor. *)
 processAll rest =
     match indexOf rest (semi ())
         Success value => peel (rest, value)
@@ -87,12 +87,12 @@ match parsePair "bad_entry_no_equals"
     Success value => print "  unexpected ${value}"
     Error message => print "  rejected: ${message}"
 
-// Cursor proof: findEq returns the byte index of '=' for a good entry,
-// and the sentinel for a malformed one. ML's interpolation lexer can't
-// carry a nested string literal inside a `${…}` span, so each findEq call
-// whose argument is a string literal is hoisted into a binding first; the
-// temp collapses in codegen to the same IR the Default flavor emits for the
-// inline `${findEq("port=8080", 0)}` form.
+(** Cursor proof: findEq returns the byte index of '=' for a good entry,
+    and the sentinel for a malformed one. ML's interpolation lexer can't
+    carry a nested string literal inside a `${…}` span, so each findEq call
+    whose argument is a string literal is hoisted into a binding first; the
+    temp collapses in codegen to the same IR the Default flavor emits for the
+    inline `${findEq("port=8080", 0)}` form. *)
 portEq = findEq ("port=8080", 0)
 print "findEq('port=8080') = ${portEq}"
 badEq = findEq ("bad_entry_no_equals", 0)
@@ -101,6 +101,6 @@ print "findEq('bad_entry_no_equals') = ${badEq}"
 print "=== parser complete ==="
 0
 
-// Register the regression scenario with the assertion-driven test runner.
+(** Register the regression scenario with the assertion-driven test runner. *)
 migratedLegacyCase () = checkAll "legacy execution" [true]
 test "regression scenario completes" migratedLegacyCase

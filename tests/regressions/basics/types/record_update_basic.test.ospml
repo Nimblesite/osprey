@@ -2,7 +2,7 @@
 
 print "=== RECORD UPDATE BASIC TESTS ==="
 
-// Test 1: Simple record type
+(** Test 1: Simple record type *)
 type Point =
     x : int
     y : int
@@ -29,7 +29,7 @@ print "After update x=50, y=60"
 print point3.x
 print point3.y
 
-// Test 3: Different record type
+(** Test 3: Different record type *)
 type Person =
     name : string
     age : int
@@ -54,6 +54,6 @@ print computed.y
 
 print "=== RECORD UPDATE BASIC TESTS COMPLETE ==="
 
-// Register the regression scenario with the assertion-driven test runner.
+(** Register the regression scenario with the assertion-driven test runner. *)
 migratedLegacyCase () = checkAll "legacy execution" [true]
 test "regression scenario completes" migratedLegacyCase

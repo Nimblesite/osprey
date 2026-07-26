@@ -1,7 +1,7 @@
 // Comprehensive Field Access Test
 // This tests various aspects of field access with different scenarios
 
-// Define record types
+/// Define record types
 type Point = { x: int, y: int }
 type User = { id: int, active: bool }
 type Rectangle = { width: int, height: int }

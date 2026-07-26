@@ -4,7 +4,7 @@
 effect Step
     run : int => int
 
-// An aborted continuation omits observations after the poison step.
+(** An aborted continuation omits observations after the poison step. *)
 pipeline : Unit -> int ! Step
 pipeline () =
     a = perform Step.run 1
@@ -51,6 +51,6 @@ aborted =
     in pipeline ()
 print ("aborted result=" + toString aborted)
 
-// Register the regression scenario with the assertion-driven test runner.
+(** Register the regression scenario with the assertion-driven test runner. *)
 migratedLegacyCase () = checkAll "legacy execution" [true]
 test "regression scenario completes" migratedLegacyCase

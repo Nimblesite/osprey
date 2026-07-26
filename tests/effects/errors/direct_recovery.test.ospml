@@ -1,42 +1,42 @@
-// RecoveryError models expected failures whose handlers supply ordinary values.
+(** RecoveryError models expected failures whose handlers supply ordinary values. *)
 effect RecoveryError
     missingInt : string => int
     missingText : string => string
     denied : string => bool
     report : string => Unit
 
-// StockError lets callers choose what an over-sized request receives.
+(** StockError lets callers choose what an over-sized request receives. *)
 effect StockError
     shortage : (int, int) => int
 
-// PolicyError exposes two operations so a nested handler can override only one.
+(** PolicyError exposes two operations so a nested handler can override only one. *)
 effect PolicyError
     score : string => int
     label : string => string
 
-// AuditError records recovery decisions without changing the recovered value.
+(** AuditError records recovery decisions without changing the recovered value. *)
 effect AuditError
     note : string => Unit
 
-// LookupError returns a complete Result so the handler chooses success or failure.
+(** LookupError returns a complete Result so the handler chooses success or failure. *)
 effect LookupError
     find : string => Result<int, string>
 
-// Verdict lets the known Result-ABI failure remain visible without breaking CI.
+(** Verdict lets the known Result-ABI failure remain visible without breaking CI. *)
 type Verdict = Pass | Fail string | Skip string
 
-// Return positive input unchanged and ask for a replacement only at zero.
+(** Return positive input unchanged and ask for a replacement only at zero. *)
 requirePositive : int -> int ! RecoveryError
 requirePositive value =
     match value > 0
         true => value
         false => perform RecoveryError.missingInt "positive value required"
 
-// Continue ordinary arithmetic after a handler substitutes a missing integer.
+(** Continue ordinary arithmetic after a handler substitutes a missing integer. *)
 continuedValue : int -> int ! RecoveryError
 continuedValue value = requirePositive value + 2
 
-// Request three replacements so handler state and substitution order are visible.
+(** Request three replacements so handler state and substitution order are visible. *)
 recoverThree : Unit -> int ! RecoveryError
 recoverThree () =
     first = perform RecoveryError.missingInt "first"
@@ -44,14 +44,14 @@ recoverThree () =
     third = perform RecoveryError.missingInt "third"
     first + second + third
 
-// Report one broken rule while returning Unit so later checks still execute.
+(** Report one broken rule while returning Unit so later checks still execute. *)
 reportIf : bool -> string -> Unit ! RecoveryError
 reportIf true message = perform RecoveryError.report message
 reportIf false _ =
-    // A binding-only clause evaluates to Unit.
+    (** A binding-only clause evaluates to Unit. *)
     unchanged = false
 
-// Run every validation rule and return only after all reports have been handled.
+(** Run every validation rule and return only after all reports have been handled. *)
 validateRecord : string -> int -> string -> string ! RecoveryError
 validateRecord name age email =
     reportIf (name == "") "name"
@@ -60,7 +60,7 @@ validateRecord name age email =
     reportIf (!(contains email "@")) "at-sign"
     "finished"
 
-// Consume integer, string, and boolean results supplied by one handler region.
+(** Consume integer, string, and boolean results supplied by one handler region. *)
 mixedRecovery : Unit -> string ! RecoveryError
 mixedRecovery () =
     number = perform RecoveryError.missingInt "number"
@@ -68,42 +68,42 @@ mixedRecovery () =
     allowed = perform RecoveryError.denied "permission"
     "${toString number}|${text}|${toString allowed}"
 
-// Ask the active stock policy how much can be allocated after a shortage.
+(** Ask the active stock policy how much can be allocated after a shortage. *)
 allocate : int -> int -> int ! StockError
 allocate requested available =
     match requested > available
         true => perform StockError.shortage requested available
         false => requested
 
-// Add fixed packaging work after the shared allocation function recovers.
+(** Add fixed packaging work after the shared allocation function recovers. *)
 shipmentTotal : Unit -> int ! StockError
 shipmentTotal () = allocate 9 5 + 2
 
-// Recover an integer, audit both sides of the perform, and then keep computing.
+(** Recover an integer, audit both sides of the perform, and then keep computing. *)
 auditedRecovery : Unit -> int ! [RecoveryError, AuditError]
 auditedRecovery () =
     value = perform RecoveryError.missingInt "token"
     perform AuditError.note "body saw ${toString value}"
     value + 1
 
-// Perform the deeply nested failure at the bottom of the helper chain.
+(** Perform the deeply nested failure at the bottom of the helper chain. *)
 bottomValue : Unit -> int ! RecoveryError
 bottomValue () = perform RecoveryError.missingInt "bottom"
 
-// Carry one recovered value back through every recursive caller.
+(** Carry one recovered value back through every recursive caller. *)
 descend : int -> int ! RecoveryError
 descend 0 = bottomValue ()
 descend depth = 1 + descend (depth - 1)
 
-// Default the complete Result returned by the effect operation.
+(** Default the complete Result returned by the effect operation. *)
 lookupValue : string -> int ! LookupError
 lookupValue key = perform LookupError.find key ?: (0 - 1)
 
-// Combine both Result branches after one handler supplies their whole values.
+(** Combine both Result branches after one handler supplies their whole values. *)
 combineLookups : Unit -> int ! LookupError
 combineLookups () = lookupValue "known" * 10 + lookupValue "missing"
 
-// Verify that successful code never enters an installed recovery arm.
+(** Verify that successful code never enters an installed recovery arm. *)
 happyPathBypassCase () =
     mut recoveries = 0
     value =
@@ -120,7 +120,7 @@ happyPathBypassCase () =
         value != 99
     ]
 
-// Verify that a direct arm substitutes a value and the caller keeps running.
+(** Verify that a direct arm substitutes a value and the caller keeps running. *)
 fallbackContinuationCase () =
     value =
         handle RecoveryError
@@ -134,7 +134,7 @@ fallbackContinuationCase () =
         value != 40
     ]
 
-// Verify repeated recoveries share state and return distinct replacements.
+(** Verify repeated recoveries share state and return distinct replacements. *)
 repeatedRecoveryStateCase () =
     mut recoveries = 0
     mut reasons = ""
@@ -154,7 +154,7 @@ repeatedRecoveryStateCase () =
         total == 10 + 20 + 30
     ]
 
-// Verify Unit-valued reports collect every error without stopping validation.
+(** Verify Unit-valued reports collect every error without stopping validation. *)
 collectAllReportsCase () =
     mut reports = 0
     mut fields = ""
@@ -173,7 +173,7 @@ collectAllReportsCase () =
         contains fields "age|"
     ]
 
-// Verify one direct handler supplies several declared operation result types.
+(** Verify one direct handler supplies several declared operation result types. *)
 multipleResultTypesCase () =
     rendered =
         handle RecoveryError
@@ -189,7 +189,7 @@ multipleResultTypesCase () =
         endsWith rendered "|true"
     ]
 
-// Verify the same effectful function can run under two local recovery policies.
+(** Verify the same effectful function can run under two local recovery policies. *)
 twoPoliciesCase () =
     skipped =
         handle StockError
@@ -208,7 +208,7 @@ twoPoliciesCase () =
         capped - skipped == 5
     ]
 
-// Verify an inner same-effect arm overrides one operation and then disappears.
+(** Verify an inner same-effect arm overrides one operation and then disappears. *)
 nestedOverrideCase () =
     rendered =
         handle PolicyError
@@ -233,7 +233,7 @@ nestedOverrideCase () =
         endsWith rendered "|10"
     ]
 
-// Verify a recovery arm and the continued body can both reach an outer effect.
+(** Verify a recovery arm and the continued body can both reach an outer effect. *)
 outerEffectCompositionCase () =
     mut notes = ""
     mut noteCount = 0
@@ -257,7 +257,7 @@ outerEffectCompositionCase () =
         contains notes "body saw 41"
     ]
 
-// Verify dynamic handling reaches through helpers and recursive calls.
+(** Verify dynamic handling reaches through helpers and recursive calls. *)
 deepRecursionCase () =
     mut recoveries = 0
     value =
@@ -274,7 +274,7 @@ deepRecursionCase () =
         value - 8 == 4
     ]
 
-// Drive the known whole-Result corruption and pass automatically once it is fixed.
+(** Drive the known whole-Result corruption and pass automatically once it is fixed. *)
 wholeResultOperationCase () =
     mut lookups = 0
     combined =

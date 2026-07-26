@@ -5,14 +5,14 @@ print "🏰 Welcome to the Mystical Castle Adventure! 🏰"
 print "You stand before an ancient castle shrouded in mystery..."
 print ""
 
-// Game state and inventory system
+(** Game state and inventory system *)
 playerHealth = 100
 hasKey = 0  // 0 = false, 1 = true
 hasSword = 0
 goldCoins = 50
 monstersDefeated = 0
 
-// Character stats and progression
+(** Character stats and progression *)
 calculatePlayerLevel defeats =
     match defeats
         0 => 1
@@ -29,7 +29,7 @@ getPlayerTitle level =
         4 => "Legendary Hero"
         _ => "Master of the Realm"
 
-// Combat system with separate functions (avoiding nested matches)
+(** Combat system with separate functions (avoiding nested matches) *)
 calculateWeaponDamage enemyType =
     match enemyType
         1 => 25  // Goblin with sword
@@ -58,7 +58,7 @@ getEnemyHealth enemyType =
         3 => 120 // Dragon
         _ => 25  // Unknown
 
-// Room exploration system
+(** Room exploration system *)
 exploreRoom roomNumber =
     match roomNumber
         1 => "the Grand Entrance Hall with marble columns"
@@ -133,7 +133,7 @@ enemyType = 3  // Dragon
 enemyName = getEnemyName enemyType
 enemyHealth = getEnemyHealth enemyType
 
-// Calculate damage based on weapon status (avoiding nested match)
+(** Calculate damage based on weapon status (avoiding nested match) *)
 weaponDamage = calculateWeaponDamage enemyType
 barehandDamage = calculateBarehandDamage enemyType
 playerDamage =
@@ -146,7 +146,7 @@ print "Enemy Health: ${enemyHealth} ❤️"
 print "Your attack power: ${playerDamage} ⚔️"
 print ""
 
-// Battle calculation
+(** Battle calculation *)
 totalDamageNeeded = enemyHealth
 attacksNeeded = totalDamageNeeded / playerDamage
 
@@ -176,7 +176,7 @@ finalDamage = remainingHealth2
 print "Critical hit for ${finalDamage} damage!"
 print ""
 
-// Victory and level progression
+(** Victory and level progression *)
 newMonstersDefeated =
     match monstersDefeated + 1
         Success value => value
@@ -225,6 +225,6 @@ print ""
 print "🌟 Your legend will be remembered forever! 🌟"
 print "Thanks for playing the Osprey Adventure Game!"
 
-// Register the regression scenario with the assertion-driven test runner.
+(** Register the regression scenario with the assertion-driven test runner. *)
 migratedLegacyCase () = checkAll "legacy execution" [true]
 test "regression scenario completes" migratedLegacyCase

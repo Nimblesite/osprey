@@ -5,19 +5,19 @@
 // the threaded rejection reason. Iteration is recursion (Osprey has no loops).
 // Spec: docs/specs/0012-Built-InFunctions.md [ERR-PAYLOAD]
 
-// Plausible-age bounds as named constants (zero-arg fns are in scope
-// everywhere; top-level `let`s are not visible inside fn bodies).
+/// Plausible-age bounds as named constants (zero-arg fns are in scope
+/// everywhere; top-level `let`s are not visible inside fn bodies).
 fn minAge() = 0
 fn maxAge() = 150
 
-// User-constructed Result variants, one per validation outcome. Each carries a
-// specific, human-readable Error message that must survive to the match arm.
+/// User-constructed Result variants, one per validation outcome. Each carries a
+/// specific, human-readable Error message that must survive to the match arm.
 fn rejectNonNumber()   -> Result<int, string> = Error { message: "not a number" }
 fn rejectNegative()    -> Result<int, string> = Error { message: "age must be non-negative" }
 fn rejectTooLarge()    -> Result<int, string> = Error { message: "age unrealistically large" }
 fn acceptAge(n)   -> Result<int, string> = Success { value: n }
 
-// Range-check an already-parsed integer, returning a SPECIFIC Error per mode.
+/// Range-check an already-parsed integer, returning a SPECIFIC Error per mode.
 fn checkAgeRange(n) -> Result<int, string> = match n < minAge() {
     true  => rejectNegative()
     false => match n > maxAge() {
@@ -26,26 +26,26 @@ fn checkAgeRange(n) -> Result<int, string> = match n < minAge() {
     }
 }
 
-// Parse a string to an int (nested match on parseInt's Result), then
-// range-check it. parseInt's failure becomes our own "not a number" reason.
+/// Parse a string to an int (nested match on parseInt's Result), then
+/// range-check it. parseInt's failure becomes our own "not a number" reason.
 fn parseAge(s) -> Result<int, string> = match parseInt(s) {
     Success { value }   => checkAgeRange(value)
     Error   { message } => rejectNonNumber()
 }
 
-// Validate one input: print either the accepted value or the threaded reason.
+/// Validate one input: print either the accepted value or the threaded reason.
 fn validate(s) = match parseAge(s) {
     Success { value }   => print("input \"${s}\" -> accepted age ${value}")
     Error   { message } => print("input \"${s}\" -> rejected: ${message}")
 }
 
-// The inputs to drive the validator over, indexed by position.
+/// The inputs to drive the validator over, indexed by position.
 fn inputAt(i) = match ["30", "-4", "999", "abc"][i] {
     Success { value }   => value
     Error   { message } => ""
 }
 
-// No loop construct: walk the inputs by index via tail recursion.
+/// No loop construct: walk the inputs by index via tail recursion.
 fn runAll(i, n) = match i < n {
     false => 0
     true  => match validate(inputAt(i)) {

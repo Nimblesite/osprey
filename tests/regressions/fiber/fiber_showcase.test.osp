@@ -31,7 +31,7 @@ fn combine(a, b) = a * 100 + b
 
 print("=== Fiber Showcase ===")
 
-// --- Out-of-order await proves fiber independence ---
+/// --- Out-of-order await proves fiber independence ---
 let f1 = spawn simpleTask(1)
 let f2 = spawn simpleTask(2)
 let f3 = spawn simpleTask(3)
@@ -42,24 +42,24 @@ print("await f1 = ${await(f1)}")
 print("await f4 = ${await(f4)}")
 print("await f2 = ${await(f2)}")
 
-// --- Map-Reduce ---
+/// --- Map-Reduce ---
 let m1 = spawn mapPhase(10)
 let m2 = spawn mapPhase(20)
 let m3 = spawn mapPhase(30)
 let mappedTotal = await(m1) + await(m2) + await(m3)
 print("map-reduce total = ${mappedTotal}")
 
-// --- Microservices fan-out ---
+/// --- Microservices fan-out ---
 let auth = spawn authService(123)
 let inv  = spawn inventoryService(456)
 let pay  = spawn paymentService(1000)
 print("auth=${await(auth)} inv=${await(inv)} pay=${await(pay)}")
 
-// --- Pipeline (each stage = its own fiber) ---
+/// --- Pipeline (each stage = its own fiber) ---
 let p = await(spawn stage3(await(spawn stage2(await(spawn stage1(25))))))
 print("pipeline = ${p}")
 
-// --- Yield ---
+/// --- Yield ---
 let y1 = yield 25
 let y2 = yield 50
 let y3 = yield 75
@@ -67,7 +67,7 @@ print("yield ${y1} ${y2} ${y3}")
 let advYield = fiber_yield(200)
 print("fiber_yield = ${advYield}")
 
-// --- Channel send/recv ---
+/// --- Channel send/recv ---
 let ch1 = Channel(1)
 let ch2 = Channel(1)
 send(ch1, 42)
@@ -75,31 +75,31 @@ print("recv ch1 = ${recv(ch1)}")
 send(ch2, 123)
 print("recv ch2 = ${recv(ch2)}")
 
-// --- Lambdas inline ---
+/// --- Lambdas inline ---
 let dbl   = fn(x) => x * 2
 let tri   = fn(x) => x * 3
 let addF  = fn(a, b) => a + b
 print("lam dbl=${dbl(10)} tri=${tri(7)} add=${addF(5, 8)}")
 
-// --- Stream processing via yield ---
+/// --- Stream processing via yield ---
 let b1 = yield streamProcessor(128)
 let b2 = yield streamProcessor(256)
 let b3 = yield streamProcessor(512)
 print("stream ${b1} ${b2} ${b3}")
 
-// --- Simple request/db ---
+/// --- Simple request/db ---
 let req = spawn handleRequest(1)
 let db  = spawn queryDatabase(123)
 print("req=${req} db=${await(db)}")
 
-// --- API parallel calls ---
+/// --- API parallel calls ---
 let u = spawn fetchUserData(5)
 let o = spawn fetchOrderData(5)
 print("user=${await(u)} order=${await(o)}")
 
-// --- Captured-variable spawn + non-blocking completion probe ---
-// `capArg` is a local captured into the spawned closure through a NAMED
-// argument; fiberDone reports completion without blocking.
+/// --- Captured-variable spawn + non-blocking completion probe ---
+/// `capArg` is a local captured into the spawned closure through a NAMED
+/// argument; fiberDone reports completion without blocking.
 let capArg = 7
 let capF = spawn combine(a: capArg, b: 5)
 print("captured spawn = ${await(capF)} done=${fiberDone(capF)}")

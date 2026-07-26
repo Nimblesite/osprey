@@ -57,6 +57,6 @@ match result4
 print "=== Async Process Management Demo Complete ==="
 print "Note: Process output appears via C runtime callbacks during execution"
 
-// Register the regression scenario with the assertion-driven test runner.
+(** Register the regression scenario with the assertion-driven test runner. *)
 migratedLegacyCase () = checkAll "legacy execution" [true]
 test "regression scenario completes" migratedLegacyCase

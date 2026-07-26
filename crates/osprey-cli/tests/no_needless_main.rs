@@ -117,19 +117,19 @@ impl DeclarationCollector {
 
 fn declaration(statement: &Stmt) -> Option<(&str, Option<Position>, bool, bool)> {
     match statement {
-        Stmt::Let {
-            name,
-            position,
-            doc,
-            ..
-        } => Some((name, *position, doc.is_none(), false)),
         Stmt::Function {
             name,
             position,
             doc,
             ..
         } => Some((name, *position, doc.is_none(), true)),
-        Stmt::Extern {
+        Stmt::Let {
+            name,
+            position,
+            doc,
+            ..
+        }
+        | Stmt::Extern {
             name,
             position,
             doc,

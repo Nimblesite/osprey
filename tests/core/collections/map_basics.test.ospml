@@ -1,6 +1,6 @@
 // Persistent Map behavior across construction, branching, and merging.
 
-// Exercise construction, overwrite, membership, and source isolation.
+(** Exercise construction, overwrite, membership, and source isolation. *)
 constructionAndOverwriteCase () =
     empty = Map ()
     m1 = mapSet empty "alice" 25
@@ -43,7 +43,7 @@ constructionAndOverwriteCase () =
         m4Missing
     ]
 
-// Exercise a five-generation chain and sibling branch isolation.
+(** Exercise a five-generation chain and sibling branch isolation. *)
 generationsAndBranchesCase () =
     g0 = Map ()
     g1 = mapSet g0 "k1" 1
@@ -103,7 +103,7 @@ generationsAndBranchesCase () =
         mapLength xb == 4
     ]
 
-// Exercise persistent removal and right-biased merge.
+(** Exercise persistent removal and right-biased merge. *)
 removalAndMergeCase () =
     g0 = Map ()
     g1 = mapSet g0 "k1" 1
@@ -172,7 +172,7 @@ removalAndMergeCase () =
         (mapGet b "y" ?: (0 - 999)) == 20
     ]
 
-// Exercise key/value views beside persistent lists.
+(** Exercise key/value views beside persistent lists. *)
 viewsAndCrossCollectionCase () =
     g0 = Map ()
     g1 = mapSet g0 "k1" 1
@@ -228,7 +228,7 @@ viewsAndCrossCollectionCase () =
         mapLength g5 == listLength values
     ]
 
-// Exercise map literals, duplicate keys, and builtin dispatch.
+(** Exercise map literals, duplicate keys, and builtin dispatch. *)
 literalsAndDispatchCase () =
     empty = Map ()
     prices = ["apple" => 2, "banana" => 3, "cherry" => 5]

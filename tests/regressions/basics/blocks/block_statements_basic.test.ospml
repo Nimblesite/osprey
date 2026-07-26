@@ -6,7 +6,7 @@
 
 print "=== Block Statements ==="
 
-// --- 1. Block with list access (single statement) ---
+(** --- 1. Block with list access (single statement) --- *)
 r1 =
     nums = [42, 84, 126]
     match nums[0]
@@ -14,7 +14,7 @@ r1 =
         Error message => 0
 print "1 list head: ${r1}"
 
-// --- 2. Block with map access + multiplication ---
+(** --- 2. Block with map access + multiplication --- *)
 r2 =
     config = ["factor" => 2, "base" => 10]
     x = match config["base"]
@@ -29,7 +29,7 @@ r2 =
         Error message => 0
 print "2 map factor*base: ${r2}"
 
-// --- 3. Nested blocks with shadowing ---
+(** --- 3. Nested blocks with shadowing --- *)
 outer = 100
 r3 =
     config = ["multiplier" => 2, "offset" => 25]
@@ -51,7 +51,7 @@ r3 =
         Error message => 0
 print "3 shadowed inner+outer: ${r3}"
 
-// --- 4. Block inside a function ---
+(** --- 4. Block inside a function --- *)
 compute () =
     numbers = [5, 10, 15]
     base = match numbers[1]
@@ -64,7 +64,7 @@ compute () =
         Error message => 0
 print "4 fn block: ${compute ()}"
 
-// --- 5. 2D list inside a block ---
+(** --- 5. 2D list inside a block --- *)
 r5 =
     matrix = [[1, 2], [3, 4]]
     firstRow = match matrix[0]
@@ -79,7 +79,7 @@ r5 =
         Error message => 0
 print "5 2D matrix[0][1]*10: ${r5}"
 
-// --- 6. Conditional logic via nested match producing a block result ---
+(** --- 6. Conditional logic via nested match producing a block result --- *)
 value = 42
 r6 =
     scoreMap = ["test1" => 84, "test2" => 90]
@@ -99,6 +99,6 @@ print "6 cond match block: ${r6}"
 
 print "=== Done ==="
 
-// Register the regression scenario with the assertion-driven test runner.
+(** Register the regression scenario with the assertion-driven test runner. *)
 migratedLegacyCase () = checkAll "legacy execution" [true]
 test "regression scenario completes" migratedLegacyCase

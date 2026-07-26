@@ -8,7 +8,7 @@
 //
 // Spec: 0004-TypeSystem.md [TYPE-UNION-REC]
 
-// ---------- 1+2: JSON-style union with List<Self> + Map<string, Self> ----------
+(** ---------- 1+2: JSON-style union with List<Self> + Map<string, Self> ---------- *)
 type JsonValue =
     JNull
     JBool
@@ -33,7 +33,7 @@ describe j =
 
 announce j = print (describe j)
 
-// --- List<Self> payload ---
+(** --- List<Self> payload --- *)
 jNum = JNum(v = 42)
 jStr = JStr(v = "hi")
 jBool = JBool(v = true)
@@ -62,7 +62,7 @@ match arr
             false => print "lostBool"
     _ => print "not arr"
 
-// --- Map<string, Self> payload ---
+(** --- Map<string, Self> payload --- *)
 nameVal = JStr(v = "alice")
 ageVal = JNum(v = 30)
 obj = JObj(entries = Map() |> mapSet "name" nameVal |> mapSet "age" ageVal)
@@ -89,7 +89,7 @@ match obj
     JObj entries => print (toString (listLength (mapKeys entries)))
     _ => print "not obj"
 
-// ---------- 3: Plain self-recursive (Tree) ----------
+(** ---------- 3: Plain self-recursive (Tree) ---------- *)
 type Tree =
     Leaf
     Node
@@ -122,11 +122,11 @@ leftRightVal t =
         Leaf => 0
         Node value left right => rightRootVal left
 
-//             4
-//           /   \
-//         2       6
-//        / \     / \
-//       1   3   5   7
+(**             4
+              /   \
+            2       6
+           / \     / \
+          1   3   5   7 *)
 n1 = Node(value = 1, left = Leaf, right = Leaf)
 n3 = Node(value = 3, left = Leaf, right = Leaf)
 n5 = Node(value = 5, left = Leaf, right = Leaf)
@@ -144,7 +144,7 @@ print (toString (rightRootVal root))
 print (toString (rightRightVal root))
 print (toString (leftRightVal root))
 
-// ---------- 4: Mutually recursive (Expr <-> Stmt) ----------
+(** ---------- 4: Mutually recursive (Expr <-> Stmt) ---------- *)
 type Expr =
     ENum
         v : int
@@ -213,6 +213,6 @@ match e1
         forEachList args announceNum
     _ => print "expected EAdd"
 
-// Register the regression scenario with the assertion-driven test runner.
+(** Register the regression scenario with the assertion-driven test runner. *)
 migratedLegacyCase () = checkAll "legacy execution" [true]
 test "regression scenario completes" migratedLegacyCase

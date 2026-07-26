@@ -10,7 +10,7 @@ fn handleRequest(method: string, path: string, headers: string, body: string) ->
     partialBody: "[{\"name\":\"osprey\",\"stars\":1200,\"lang\":\"Go\"},{\"name\":\"llvm\",\"stars\":9001,\"lang\":\"C++\"},{\"name\":\"antlr\",\"stars\":4200,\"lang\":\"Java\"}]"
 }
 
-// --- color + layout helpers ---
+/// --- color + layout helpers ---
 fn cyan(s) = "\e[36m${s}\e[0m"
 fn bold(s) = "\e[1m${s}\e[0m"
 fn yellow(s) = "\e[33m${s}\e[0m"

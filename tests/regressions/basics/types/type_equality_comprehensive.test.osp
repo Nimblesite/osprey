@@ -6,7 +6,7 @@
 
 print("=== TYPE EQUALITY ===")
 
-// --- Generic type equality ---
+/// --- Generic type equality ---
 type Container<T> = { value: T }
 type Pair<T, U> = { first: T, second: U }
 type Triple<T, U, V> = { first: T, second: U, third: V }
@@ -28,7 +28,7 @@ print("P<I,S>:  ${pairIS1.first}/${pairIS1.second} | ${pairIS2.first}/${pairIS2.
 print("T<I,S,I>: ${tIBI.first}/${tIBI.second}/${tIBI.third}")
 print("")
 
-// --- Function type equality via HOFs ---
+/// --- Function type equality via HOFs ---
 fn addOne(x)        -> int    = x + 1
 fn timesTwo(x)      -> int    = x * 2
 fn minusOne(x)      -> int    = x - 1
@@ -59,7 +59,7 @@ print(toString(applyTwo(f: twoArgAdd, a: 5, b: 7)))
 print(toString(applyThree(f: threeArgAdd, a: 1, b: 2, c: 3)))
 print("")
 
-// --- Generic monomorphization via identity-like functions ---
+/// --- Generic monomorphization via identity-like functions ---
 fn identity(x) = x
 fn duplicate(x) = x
 print(toString(identity(42)))
@@ -67,7 +67,7 @@ print(toString(duplicate(99)))
 print(identity("a"))
 print(duplicate("b"))
 
-// --- Union type equality (same tag = same, different tag = different) ---
+/// --- Union type equality (same tag = same, different tag = different) ---
 type Color = Red | Green | Blue
 fn colorName(c) = match c {
     Red   => "red"
@@ -86,12 +86,12 @@ print("color1=${colorName(c1)} color3=${colorName(c3)}")
 print("sameRR=${toString(sameColor(a: c1, b: c2))}")
 print("sameRB=${toString(sameColor(a: c1, b: c3))}")
 
-// --- Declaration-site variance: out T (covariant) / in T (contravariant) ---
-// Variance is position-checked: `out T` may appear only where the payload
-// flows out, `in T` only where it flows in (function parameters flip the
-// polarity). Payload instantiations match exactly at the leaves; function
-// payloads stay flexible through the representation-safe fn-return
-// normalization. Implements [TYPE-VARIANCE-DECL], [TYPE-VARIANCE-ASSIGN]
+/// --- Declaration-site variance: out T (covariant) / in T (contravariant) ---
+/// Variance is position-checked: `out T` may appear only where the payload
+/// flows out, `in T` only where it flows in (function parameters flip the
+/// polarity). Payload instantiations match exactly at the leaves; function
+/// payloads stay flexible through the representation-safe fn-return
+/// normalization. Implements [TYPE-VARIANCE-DECL], [TYPE-VARIANCE-ASSIGN]
 type Feed<out T> = Feed { supply: T } | Dry
 type Gate<in T> = Gate { admit: (T) -> bool } | Open
 

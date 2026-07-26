@@ -1,10 +1,10 @@
 // ML function twin covering currying, higher-order calls, and recursion.
 
-// Capture an offset through partial application.
+(** Capture an offset through partial application. *)
 closureAdder : int -> int -> int
 closureAdder n x = x + n
 
-// Verify independent closures and direct application.
+(** Verify independent closures and direct application. *)
 closuresCase () =
     add10 = closureAdder 10
     add100 = closureAdder 100
@@ -27,11 +27,11 @@ closuresCase () =
         (add10 5 == add100 5) == false
     ]
 
-// Add two values through partial or full application.
+(** Add two values through partial or full application. *)
 partialAdd : int -> int -> int
 partialAdd a b = a + b
 
-// Verify partially and fully applied addition.
+(** Verify partially and fully applied addition. *)
 curryPartialCase () =
     add5 = partialAdd 5
     add100 = partialAdd 100
@@ -56,23 +56,23 @@ curryPartialCase () =
         partialAdd 5 5 == partialAdd 8 2
     ]
 
-// Apply a supplied function once.
+(** Apply a supplied function once. *)
 hofApply : (int -> int) -> int -> int
 hofApply f x = f x
 
-// Apply a supplied function twice.
+(** Apply a supplied function twice. *)
 hofTwice : (int -> int) -> int -> int
 hofTwice f x = f (f x)
 
-// Double an integer as a first-class function.
+(** Double an integer as a first-class function. *)
 hofDouble : int -> int
 hofDouble n = n + n
 
-// Increment an integer as a first-class function.
+(** Increment an integer as a first-class function. *)
 hofInc : int -> int
 hofInc n = n + 1
 
-// Verify higher-order application and composition.
+(** Verify higher-order application and composition. *)
 higherOrderCase () =
     // Preserve the complete rendered result.
     checkAll "higher-order legacy rendered lines" [
@@ -94,19 +94,19 @@ higherOrderCase () =
         hofApply hofInc (hofApply hofDouble 3) == 7
     ]
 
-// Increment values in nested call expressions.
+(** Increment values in nested call expressions. *)
 nestedInc : int -> int
 nestedInc x = x + 1
 
-// Double values in nested call expressions.
+(** Double values in nested call expressions. *)
 nestedDouble : int -> int
 nestedDouble x = x + x
 
-// Negate values in nested call expressions.
+(** Negate values in nested call expressions. *)
 nestedNeg : int -> int
 nestedNeg x = 0 - x
 
-// Verify evaluation through nested unary calls.
+(** Verify evaluation through nested unary calls. *)
 nestedCallsCase () =
     deep = nestedInc (nestedDouble (nestedInc (nestedDouble 3)))
 
@@ -130,12 +130,12 @@ nestedCallsCase () =
         nestedNeg (nestedInc (nestedDouble 0)) == -1
     ]
 
-// Sum positive integers with adjacent pattern clauses.
+(** Sum positive integers with adjacent pattern clauses. *)
 recursiveSumTo : int -> int
 recursiveSumTo 0 = 0
 recursiveSumTo n = n + recursiveSumTo (n - 1)
 
-// Verify the base and recursive paths.
+(** Verify the base and recursive paths. *)
 recursionCase () =
     // Preserve the complete rendered result.
     checkAll "recursion legacy rendered lines" [

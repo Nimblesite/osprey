@@ -3,7 +3,7 @@
 getDynamicValue : Unit -> any
 getDynamicValue () = 42
 
-// This should also pass - explicit any with parameter
+(** This should also pass - explicit any with parameter *)
 processAnyValue : any -> any
 processAnyValue input = input + 10
 
@@ -11,12 +11,12 @@ print "Explicit any return type works"
 print "getDynamicValue() = ${getDynamicValue ()}"
 print "processAnyValue(5) = ${processAnyValue 5}"
 
-// Test storing any values without auto-conversion
+(** Test storing any values without auto-conversion *)
 result1 = getDynamicValue ()
 result2 = processAnyValue 5
 print "Any values stored without auto-conversion"
 
-// Test getRegularArgumentPosition coverage
+(** Test getRegularArgumentPosition coverage *)
 testArgs (a, b, c) =
     match a > 0
         true => b + " positive"
@@ -25,7 +25,7 @@ testArgs (a, b, c) =
 argResult = testArgs (5, "value", true)
 print "testArgs result: ${argResult}"
 
-// Test type inference edge cases with any
+(** Test type inference edge cases with any *)
 processAny : any -> string
 processAny x = "Processed any"
 
@@ -37,7 +37,7 @@ print "processAny(42): Processed any"
 print "processAny(\"hello\"): Processed any"
 print "processAny(true): Processed any"
 
-// Test String() and Category() methods coverage with various types
+(** Test String() and Category() methods coverage with various types *)
 type TestType =
     value : string
 
@@ -45,7 +45,7 @@ testObj = TestType(value = "test data")
 testObj2 = TestType(value = "123")
 testObj3 = TestType(value = "false")
 
-// Test field access on any types to trigger more coverage
+(** Test field access on any types to trigger more coverage *)
 getAnyField obj =
     obj.value
 
@@ -58,7 +58,7 @@ print "test data"
 print "123"
 print "false"
 
-// Test type comparison workaround since any comparison is complex
+(** Test type comparison workaround since any comparison is complex *)
 compareTypes : any -> any -> string
 compareTypes (a, b) = "Type comparison tested"
 
@@ -71,7 +71,7 @@ print "Type comparison tested"
 print "Type comparison tested"
 print "Type comparison tested"
 
-// Test union type basic functionality
+(** Test union type basic functionality *)
 type Status =
     Active
     Inactive
@@ -91,7 +91,7 @@ print "Status types:"
 print "${statusStr1}"
 print "${statusStr2}"
 
-// Test basic union types for coverage - exercises NewUnionType, String(), Category(), Equals()
+(** Test basic union types for coverage - exercises NewUnionType, String(), Category(), Equals() *)
 type SimpleUnion =
     A
     B
@@ -103,7 +103,7 @@ processSimple u =
         B => "Got B"
         C => "Got C"
 
-// Test SimpleUnion
+(** Test SimpleUnion *)
 simple1 = A
 simple2 = B
 simple3 = C
@@ -112,7 +112,7 @@ print (processSimple simple1)
 print (processSimple simple2)
 print (processSimple simple3)
 
-// Test union type equality
+(** Test union type equality *)
 type Color =
     Red
     Green
@@ -141,6 +141,6 @@ print "Union equality tests:"
 print (compareColors (color1, color2))
 print (compareColors (color1, color3))
 
-// Register the regression scenario with the assertion-driven test runner.
+(** Register the regression scenario with the assertion-driven test runner. *)
 migratedLegacyCase () = checkAll "legacy execution" [true]
 test "regression scenario completes" migratedLegacyCase

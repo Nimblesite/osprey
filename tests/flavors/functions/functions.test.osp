@@ -1,10 +1,10 @@
 // Assertion-driven move of the closure, partial application, higher-order,
 // nested-call, and recursion Default-flavor examples.
 
-// Build a concrete closure that captures one integer offset.
+/// Build a concrete closure that captures one integer offset.
 fn closureAdder(n: int) -> (int) -> int = fn(x) => x + n
 
-// This case proves closure capture, independence, and direct invocation.
+/// This case proves closure capture, independence, and direct invocation.
 fn closuresCase() = {
     let add10 = closureAdder(10)
     let add100 = closureAdder(100)
@@ -28,10 +28,10 @@ fn closuresCase() = {
     ])
 }
 
-// Return an explicitly curried addition closure for partial application.
+/// Return an explicitly curried addition closure for partial application.
 fn partialAdd(a: int) -> (int) -> int = fn(b) => a + b
 
-// This case documents partial and fully applied addition paths.
+/// This case documents partial and fully applied addition paths.
 fn curryPartialCase() = {
     let add5 = partialAdd(5)
     let add100 = partialAdd(100)
@@ -57,16 +57,16 @@ fn curryPartialCase() = {
     ])
 }
 
-// Apply a supplied unary integer function exactly once.
+/// Apply a supplied unary integer function exactly once.
 fn hofApply(f: (int) -> int) -> (int) -> int = fn(x) => f(x)
-// Apply a supplied unary integer function twice in sequence.
+/// Apply a supplied unary integer function twice in sequence.
 fn hofTwice(f: (int) -> int) -> (int) -> int = fn(x) => f(f(x))
-// Double an integer for use as a first-class function value.
+/// Double an integer for use as a first-class function value.
 fn hofDouble(n: int) -> int = n + n
-// Increment an integer for use as a first-class function value.
+/// Increment an integer for use as a first-class function value.
 fn hofInc(n: int) -> int = n + 1
 
-// This case documents function arguments, nested application, and composition.
+/// This case documents function arguments, nested application, and composition.
 fn higherOrderCase() = {
     // Preserve the complete higher-order golden line.
     checkAll("higher-order legacy rendered lines", [
@@ -89,14 +89,14 @@ fn higherOrderCase() = {
     ])
 }
 
-// Increment a value used in deeply nested call expressions.
+/// Increment a value used in deeply nested call expressions.
 fn nestedInc(x: int) -> int = x + 1
-// Double a value used in deeply nested call expressions.
+/// Double a value used in deeply nested call expressions.
 fn nestedDouble(x: int) -> int = x + x
-// Negate a value without relying on a standalone unary helper.
+/// Negate a value without relying on a standalone unary helper.
 fn nestedNeg(x: int) -> int = 0 - x
 
-// This case documents evaluation through multiple nested unary calls.
+/// This case documents evaluation through multiple nested unary calls.
 fn nestedCallsCase() = {
     let deep = nestedInc(nestedDouble(nestedInc(nestedDouble(3))))
 
@@ -121,13 +121,13 @@ fn nestedCallsCase() = {
     ])
 }
 
-// Sum positive integers recursively with an explicit zero base case.
+/// Sum positive integers recursively with an explicit zero base case.
 fn recursiveSumTo(n: int) -> int = match n {
     0 => 0
     _ => n + recursiveSumTo(n - 1)
 }
 
-// This case documents both the recursive branch and its terminating base.
+/// This case documents both the recursive branch and its terminating base.
 fn recursionCase() = {
     // Preserve the complete recursive-sum golden line.
     checkAll("recursion legacy rendered lines", [

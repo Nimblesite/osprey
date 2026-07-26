@@ -5,13 +5,13 @@
 // byte index that stops at byteLength.
 // Spec: [BUILTIN-STRING-CURSOR]
 
-// The sample mixes four scripts whose codepoints encode to 1, 2, 3 and 4 bytes:
-//   'A'=65 (1B)  'é'=233 (2B)  '世'=19990 (3B)  '😀'=128512 (4B)  then ASCII.
+(** The sample mixes four scripts whose codepoints encode to 1, 2, 3 and 4 bytes:
+      'A'=65 (1B)  'é'=233 (2B)  '世'=19990 (3B)  '😀'=128512 (4B)  then ASCII. *)
 sample () = "Aé世😀, hello!"
 
-// Decode the codepoint at byteIndex, print its scalar value, and recurse to the
-// next codepoint boundary (byteIndex + width). Returns the running codepoint
-// count. Stops exactly when the cursor reaches byteLength — total O(n).
+(** Decode the codepoint at byteIndex, print its scalar value, and recurse to the
+    next codepoint boundary (byteIndex + width). Returns the running codepoint
+    count. Stops exactly when the cursor reaches byteLength — total O(n). *)
 walk (s, byteIndex, count) =
     match byteIndex >= byteLength s
         true => count
@@ -52,6 +52,6 @@ print mid
 print "=== walk complete ==="
 0
 
-// Register the regression scenario with the assertion-driven test runner.
+(** Register the regression scenario with the assertion-driven test runner. *)
 migratedLegacyCase () = checkAll "legacy execution" [true]
 test "regression scenario completes" migratedLegacyCase

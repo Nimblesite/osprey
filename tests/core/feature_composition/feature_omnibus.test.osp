@@ -1,33 +1,33 @@
-// Converted from tests/regressions/basics/feature_omnibus. Every dynamic golden
-// value is asserted, then combined paths assert intermediate state as well.
-// Priority is a payload-free union used to document exhaustive matching.
+/// Converted from tests/regressions/basics/feature_omnibus. Every dynamic golden
+/// value is asserted, then combined paths assert intermediate state as well.
+/// Priority is a payload-free union used to document exhaustive matching.
 type Pri = Low | Med | High
-// Color supplies a second union so independent matches can compose.
+/// Color supplies a second union so independent matches can compose.
 type Color = Red | Green | Blue
-// Wrapped demonstrates extracting a positional union payload.
+/// Wrapped demonstrates extracting a positional union payload.
 type Wrapped = Wrapped(int)
 
-// Converts every priority constructor into its business weight.
+/// Converts every priority constructor into its business weight.
 fn priWeight(p) = match p { Low => 1 Med => 5 High => 9 }
-// Converts every color constructor into a stable display label.
+/// Converts every color constructor into a stable display label.
 fn colorName(c) = match c { Red => "red" Green => "green" Blue => "blue" }
-// Exercises a call to a function declared later in the source file.
+/// Exercises a call to a function declared later in the source file.
 fn callerOfLater(_) = calleeLater(10)
-// Supplies the forward-referenced arithmetic implementation.
+/// Supplies the forward-referenced arithmetic implementation.
 fn calleeLater(n) = n * 4
 
-// Unwraps a parsed integer or returns the caller's fallback through currying.
+/// Unwraps a parsed integer or returns the caller's fallback through currying.
 fn parseOr(text: string) -> (int) -> int = fn(fallback) => parseInt(text) ?: fallback
-// Converts both Result branches into user-facing status text.
+/// Converts both Result branches into user-facing status text.
 fn parseStatus(text) = match parseInt(text) {
     Success { value } => "parsed ${value}"
     Error { message } => "parseInt rejected ${text}"
 }
 
-// Counter models a handled state-changing capability with an integer payload.
+/// Counter models a handled state-changing capability with an integer payload.
 effect Counter { increment: fn(int) -> Unit }
 
-// Verifies unions, Results, interpolation, arithmetic, and ordering together.
+/// Verifies unions, Results, interpolation, arithmetic, and ordering together.
 fn unionsResultsAndScalars() = {
     let wrapped = Wrapped(42)
     let wrappedValue = match wrapped { Wrapped(n) => n }
@@ -49,7 +49,7 @@ fn unionsResultsAndScalars() = {
     ])
 }
 
-// Verifies forward calls, lambdas, pipelines, booleans, and union-derived data.
+/// Verifies forward calls, lambdas, pipelines, booleans, and union-derived data.
 fn functionsPipesAndBooleans() = {
     let chained = 5 |> (fn(x) => x + 100) |> (fn(x) => x * 2)
     let single = 7 |> fn(x) => x * 3
@@ -68,7 +68,7 @@ fn functionsPipesAndBooleans() = {
     ])
 }
 
-// Verifies handled mutation alongside persistent lists, maps, and Result lookup.
+/// Verifies handled mutation alongside persistent lists, maps, and Result lookup.
 fn effectsAndCollections() = {
     mut counter = 0
     // Establishes the state precondition before any handled interaction occurs.
@@ -109,7 +109,7 @@ fn effectsAndCollections() = {
     ])
 }
 
-// Verifies string transforms while consuming values produced by other features.
+/// Verifies string transforms while consuming values produced by other features.
 fn stringInteractions() = {
     let s = "  Hello  "
     // Preserves all former string outputs and adds composition invariants.

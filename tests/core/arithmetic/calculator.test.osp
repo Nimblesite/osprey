@@ -1,14 +1,14 @@
-// Adds two integers through curried application.
+/// Adds two integers through curried application.
 fn add(a: int) -> (int) -> int = fn(b) => a + b
-// Doubles an integer for reusable pipeline stages.
+/// Doubles an integer for reusable pipeline stages.
 fn double(x) = x * 2
-// Classifies an integer through modulo Result unwrapping and boolean matching.
+/// Classifies an integer through modulo Result unwrapping and boolean matching.
 fn parity(n) = match n % 2 == 0 {
     true => "even"
     false => "odd"
 }
 
-// Checks positive, negative, nested, boundary, and relational arithmetic together.
+/// Checks positive, negative, nested, boundary, and relational arithmetic together.
 fn additionCase() = {
     let subtotal = add(10)(20)
     // One batch keeps seven independent arithmetic assertions compact.
@@ -23,7 +23,7 @@ fn additionCase() = {
     ])
 }
 
-// Checks chained functions, inline lambdas, negatives, and derived predicates.
+/// Checks chained functions, inline lambdas, negatives, and derived predicates.
 fn pipelineCase() = {
     let six = 3 |> double
     // Every condition is reported separately even though the syntax is grouped.
@@ -37,7 +37,7 @@ fn pipelineCase() = {
     ])
 }
 
-// Checks pattern branches alongside computed inputs and interpolation.
+/// Checks pattern branches alongside computed inputs and interpolation.
 fn patternCase() = {
     // The batch covers both branches and several cross-feature compositions.
     checkAll("pattern state", [

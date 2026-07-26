@@ -4,7 +4,7 @@
 effect Prompt
     ask : string => int
 
-// Each invalid value causes a fresh Prompt.ask operation.
+(** Each invalid value causes a fresh Prompt.ask operation. *)
 readPositive : string -> int ! Prompt
 readPositive label =
     value = perform Prompt.ask label
@@ -14,7 +14,7 @@ readPositive label =
             print "  business: rejected ${toString value} for ${label}, asking again"
             readPositive label
 
-// Resume with -3, 0, then 7.
+(** Resume with -3, 0, then 7. *)
 mut attempt = 0
 accepted =
     handle Prompt
@@ -29,7 +29,7 @@ accepted =
     in readPositive "age"
 print "SCENARIO 1 accepted=${toString accepted} after ${toString attempt} attempts"
 
-// After three invalid values, return a sentinel without resuming.
+(** After three invalid values, return a sentinel without resuming. *)
 mut tries = 0
 outcome =
     handle Prompt
@@ -49,6 +49,6 @@ verdict = match outcome > 0
     false => "gave up (sentinel ${toString outcome}) after ${toString (tries - 1)} bad answers"
 print "SCENARIO 2 outcome: ${verdict}"
 
-// Register the regression scenario with the assertion-driven test runner.
+(** Register the regression scenario with the assertion-driven test runner. *)
 migratedLegacyCase () = checkAll "legacy execution" [true]
 test "regression scenario completes" migratedLegacyCase

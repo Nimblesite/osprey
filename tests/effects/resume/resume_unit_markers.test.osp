@@ -1,16 +1,16 @@
-// Trace exposes a Unit-returning operation to an explicit-resume handler.
+/// Trace exposes a Unit-returning operation to an explicit-resume handler.
 effect Trace {
     mark: fn(string) -> Unit
 }
 
-// This helper performs two Unit markers before returning its final value.
+/// This helper performs two Unit markers before returning its final value.
 fn traced() -> int !Trace = {
     perform Trace.mark("one")
     perform Trace.mark("two")
     7
 }
 
-// This case verifies Unit resume syntax and reverse post-resume ordering.
+/// This case verifies Unit resume syntax and reverse post-resume ordering.
 fn resumeUnitMarkersCase() = {
     mut transcript = ""
     mut markCount = 0

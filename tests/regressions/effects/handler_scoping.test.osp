@@ -10,7 +10,7 @@ effect Logger {
     debug: fn(string) -> Unit
 }
 
-// ---- nested override helpers ----
+/// ---- nested override helpers ----
 fn innerOp() !Logger = {
     perform Logger.log("inner exec")
     perform Logger.debug("debug inner")
@@ -43,9 +43,9 @@ handle Logger
     debug msg => print("[OUTER-DEBUG] " + msg)
 in {
     print("=== handler scoping ===")
-    // (1) forward-reference: nestedCall + deepNestedOp + performComplex are
-    // all defined AFTER main; every perform inside their chain must still
-    // reach this outer handle/in block.
+    /// (1) forward-reference: nestedCall + deepNestedOp + performComplex are
+    /// all defined AFTER main; every perform inside their chain must still
+    /// reach this outer handle/in block.
     let r = nestedCall()
     print("forward chain result: " + toString(r))
 
@@ -54,7 +54,7 @@ in {
     print("=== done ===")
 }
 
-// helpers defined AFTER main — exercises the forward-ref pre-pass
+/// helpers defined AFTER main — exercises the forward-ref pre-pass
 fn performComplex() !Logger = {
     perform Logger.log("complex starting")
     let v = 21 * 2
@@ -74,9 +74,9 @@ fn nestedCall() !Logger = {
     r
 }
 
-// (3) RESUME under scoping — regression locks:
-//     nested RESUMING handlers for different effects compose, and the
-//     innermost handler of a shadowed effect wins for `resume` too.
+/// (3) RESUME under scoping — regression locks:
+///     nested RESUMING handlers for different effects compose, and the
+///     innermost handler of a shadowed effect wins for `resume` too.
 effect Ask {
     ask: fn(int) -> int
 }

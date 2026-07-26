@@ -1,8 +1,8 @@
-// Supply lets the handler choose each observed integer.
+(** Supply lets the handler choose each observed integer. *)
 effect Supply
     next : string => int
 
-// Sum three values supplied by explicit resumes.
+(** Sum three values supplied by explicit resumes. *)
 total : Unit -> int ! Supply
 total () =
     first = perform Supply.next "first"
@@ -10,27 +10,27 @@ total () =
     third = perform Supply.next "third"
     first + second + third
 
-// Relay is exercised at two concrete result types.
+(** Relay is exercised at two concrete result types. *)
 effect Relay T
     ask : Unit => T
 
-// Receive a string from Relay<string>.
+(** Receive a string from Relay<string>. *)
 echoWord : Unit -> string ! Relay<string>
 echoWord () = perform Relay.ask ()
 
-// Checked returns a Result as the operation value.
+(** Checked returns a Result as the operation value. *)
 effect Checked
     half : int => Result<int, string>
 
-// Default the Result returned by Checked.
+(** Default the Result returned by Checked. *)
 runChecked : Unit -> int ! Checked
 runChecked () = perform Checked.half 10 ?: 0
 
-// Receive an integer from Relay<int>.
+(** Receive an integer from Relay<int>. *)
 echoNum : Unit -> int ! Relay<int>
 echoNum () = perform Relay.ask ()
 
-// Verify rewritten values, unwind answers, Results, and generics.
+(** Verify rewritten values, unwind answers, Results, and generics. *)
 resumeValueRewriteCase () =
     mut supplyTranscript = ""
     mut seed = 100

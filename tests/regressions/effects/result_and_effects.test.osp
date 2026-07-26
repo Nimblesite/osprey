@@ -7,25 +7,25 @@ effect Rescue {
 
 let RESCUED_DEFAULT = 100
 
-// intDiv gives Result<int, Error>; the handler chooses the fallback value.
+/// intDiv gives Result<int, Error>; the handler chooses the fallback value.
 fn divRescue(a: int) -> (int) -> int !Rescue = fn(b) => match intDiv(a: a, b: b) {
         Success { value } => value
         Error { message } => perform Rescue.onErr(message)
     }
 
-// % is the zero-checked remainder: 7 % 0 => Error(division by zero).
+/// % is the zero-checked remainder: 7 % 0 => Error(division by zero).
 fn modRescue(a: int) -> (int) -> int !Rescue = fn(b) => match a % b {
         Success { value } => value
         Error { message } => perform Rescue.onErr(message)
     }
 
-// checkedAdd is overflow-checked: MAX_INT + 1 => Error(integer overflow).
+/// checkedAdd is overflow-checked: MAX_INT + 1 => Error(integer overflow).
 fn addRescue(a: int) -> (int) -> int !Rescue = fn(b) => match checkedAdd(a: a, b: b) {
         Success { value } => value
         Error { message } => perform Rescue.onErr(message)
     }
 
-// Every failed step receives a replacement value, so later steps still run.
+/// Every failed step receives a replacement value, so later steps still run.
 fn pipeline() -> int !Rescue = {
     let a = divRescue(10)(0)
     print("  step a  intDiv 10 / 0   -> ${toString(a)}")
@@ -44,8 +44,8 @@ fn pipeline() -> int !Rescue = {
 
 print("=== Result -> effect rescue pipeline ===")
 
-// [EFFECTS-HANDLER-STATE] The handler owns its rescue count; each arm value is
-// substituted at the perform site because this region contains no `resume`.
+/// [EFFECTS-HANDLER-STATE] The handler owns its rescue count; each arm value is
+/// substituted at the perform site because this region contains no `resume`.
 mut rescues = 0
 let total = handle Rescue
     onErr message => {
@@ -57,7 +57,7 @@ in pipeline()
 
 print("rescued ${toString(rescues)} failing step(s); healthy + rescued total = ${toString(total)}")
 
-// `?:` supplies a local fallback without invoking the Rescue policy.
+/// `?:` supplies a local fallback without invoking the Rescue policy.
 let localOk  = (10 % 3) ?: -1
 let localBad = (10 % 0) ?: -1
 print("local ?: default  10 % 3 -> ${toString(localOk)}   10 % 0 -> ${toString(localBad)}")

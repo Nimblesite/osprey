@@ -1,6 +1,6 @@
 // Assertion-driven migration of the persistent Map golden example.
 
-// constructionAndOverwriteCase preserves empty, set, contains, overwrite, and source-isolation observations.
+/// constructionAndOverwriteCase preserves empty, set, contains, overwrite, and source-isolation observations.
 fn constructionAndOverwriteCase() = {
     let empty = Map()
     let m1 = mapSet(empty, "alice", 25)
@@ -45,7 +45,7 @@ fn constructionAndOverwriteCase() = {
     ])
 }
 
-// generationsAndBranchesCase preserves the five-generation chain and validates sibling branch isolation.
+/// generationsAndBranchesCase preserves the five-generation chain and validates sibling branch isolation.
 fn generationsAndBranchesCase() = {
     let g0 = Map()
     let g1 = mapSet(g0, "k1", 1)
@@ -106,7 +106,7 @@ fn generationsAndBranchesCase() = {
     ])
 }
 
-// removalAndMergeCase preserves removal and merge lengths while adding exact right-biased value checks.
+/// removalAndMergeCase preserves removal and merge lengths while adding exact right-biased value checks.
 fn removalAndMergeCase() = {
     let g0 = Map()
     let g1 = mapSet(g0, "k1", 1)
@@ -177,7 +177,7 @@ fn removalAndMergeCase() = {
     ])
 }
 
-// viewsAndCrossCollectionCase preserves keys, values, and list/map coexistence observations.
+/// viewsAndCrossCollectionCase preserves keys, values, and list/map coexistence observations.
 fn viewsAndCrossCollectionCase() = {
     let g0 = Map()
     let g1 = mapSet(g0, "k1", 1)
@@ -234,7 +234,7 @@ fn viewsAndCrossCollectionCase() = {
     ])
 }
 
-// literalsAndDispatchCase preserves literal lookup, duplicate-key, and receiver-directed builtin behavior.
+/// literalsAndDispatchCase preserves literal lookup, duplicate-key, and receiver-directed builtin behavior.
 fn literalsAndDispatchCase() = {
     let empty = Map()
     let prices = { "apple": 2, "banana": 3, "cherry": 5 }

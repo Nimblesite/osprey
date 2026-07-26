@@ -5,7 +5,7 @@ effect Prompt {
     ask: fn(string) -> int
 }
 
-// Each invalid value causes a fresh Prompt.ask operation.
+/// Each invalid value causes a fresh Prompt.ask operation.
 fn readPositive(label) -> int !Prompt = {
     let value = perform Prompt.ask(label)
     match value > 0 {
@@ -17,7 +17,7 @@ fn readPositive(label) -> int !Prompt = {
     }
 }
 
-// Resume with -3, 0, then 7.
+/// Resume with -3, 0, then 7.
 mut attempt = 0
 let accepted = handle Prompt
     ask label => {
@@ -33,7 +33,7 @@ let accepted = handle Prompt
 in readPositive("age")
 print("SCENARIO 1 accepted=${toString(accepted)} after ${toString(attempt)} attempts")
 
-// After three invalid values, return a sentinel without resuming.
+/// After three invalid values, return a sentinel without resuming.
 mut tries = 0
 let outcome = handle Prompt
     ask label => {

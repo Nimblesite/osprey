@@ -18,7 +18,7 @@
 // [BUILTIN-STRING-FROMCODEPOINT].
 // Failure payloads are threaded through Result<T, E> per [ERR-PAYLOAD].
 
-// A user-declared fallible function: its Error message must reach the arm.
+(** A user-declared fallible function: its Error message must reach the arm. *)
 failWith : string -> Result int string
 failWith reason = Error(message = reason)
 // ---- isEmpty edges ----
@@ -185,6 +185,6 @@ match failWith "custom boom"
 print "=== Edge Cases Complete ===\n"
 0
 
-// Register the regression scenario with the assertion-driven test runner.
+(** Register the regression scenario with the assertion-driven test runner. *)
 migratedLegacyCase () = checkAll "legacy execution" [true]
 test "regression scenario completes" migratedLegacyCase

@@ -20,10 +20,10 @@ fn priWeight(p) = match p {
     High => 9
 }
 
-// Record built from fiber results; fields read back in interpolation.
+/// Record built from fiber results; fields read back in interpolation.
 type Job = { id: int, score: int }
 
-// Union with int payloads; both variants exercised + matched.
+/// Union with int payloads; both variants exercised + matched.
 type Outcome =
     Done     { score: int }
     | Failed { code: int }
@@ -33,13 +33,13 @@ fn classify(score) = match score {
     _ => Done   { score: score }
 }
 
-// (1) Effect inside a fiber-run worker.
+/// (1) Effect inside a fiber-run worker.
 fn runJob(weight) !Logger = {
     perform Logger.log("weight " + toString(weight))
     weight * weight
 }
 
-// (1') Effect inside a list-processing helper.
+/// (1') Effect inside a list-processing helper.
 fn report(xs) !Logger = perform Logger.log("collected " + toString(listLength(xs)))
 
 fn show(x) = print("  " + toString(x))
@@ -49,7 +49,7 @@ print("=== mixup: fibers + effects + records ===")
 handle Logger
     log msg => print("[LOG] " + msg)
 in {
-    // priorities -> effectful fibers
+    /// priorities -> effectful fibers
     let fHigh = spawn runJob(priWeight(High))
     let sHigh = await(fHigh)
 
@@ -59,11 +59,11 @@ in {
     let fLow  = spawn runJob(priWeight(Low))
     let sLow  = await(fLow)
 
-    // record from a fiber result, fields read back
+    /// record from a fiber result, fields read back
     let top = Job { id: 1, score: sHigh }
     print("job " + toString(top.id) + " score " + toString(top.score))
 
-    // classify a fiber result into a union, then pattern-match it inline
+    /// classify a fiber result into a union, then pattern-match it inline
     let oTop = classify(sHigh)
     match oTop {
         Done   { score } => print("outcome done " + toString(score))
@@ -75,21 +75,21 @@ in {
         Failed { code }  => print("outcome failed " + toString(code))
     }
 
-    // results into a persistent list, walked with functional builtins
+    /// results into a persistent list, walked with functional builtins
     let scores = listAppend(listAppend(listAppend(List(), sHigh), sMed), sLow)
     print("list len " + toString(listLength(scores)))
     print("has 81 " + toString(listContains(scores, 81)))
     forEachList(scores, show)
     report(scores)
 
-    // results into a map keyed by name, walked the same way
+    /// results into a map keyed by name, walked the same way
     let m = mapSet(mapSet(mapSet(Map(), "high", sHigh), "med", sMed), "low", sLow)
     print("map len " + toString(mapLength(m)))
     print("has high " + toString(mapContains(m, "high")))
     forEachList(mapValues(m), show)
 }
 
-// region-level isolation: same effect, different impl per region.
+/// region-level isolation: same effect, different impl per region.
 let prodR = handle Logger
     log msg => print("[PROD] " + msg)
 in {
@@ -104,9 +104,9 @@ in {
 }
 print("regions prod=" + toString(prodR) + " silent=" + toString(silentR))
 
-// (3) Two fibers perform concurrently into ONE resuming handler: each perform
-// claims the op channel exclusively, so the answers stay deterministic — this
-// locks the fiber-perform race fix ([EFFECTS-FIBER-PERFORM]).
+/// (3) Two fibers perform concurrently into ONE resuming handler: each perform
+/// claims the op channel exclusively, so the answers stay deterministic — this
+/// locks the fiber-perform race fix ([EFFECTS-FIBER-PERFORM]).
 effect Gift {
     get: fn(int) -> int
 }

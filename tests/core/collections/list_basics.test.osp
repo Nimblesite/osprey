@@ -1,16 +1,16 @@
 // Assertion-driven migration of the persistent List golden example.
 
-// IterationProbe records callback values so forEachList order is testable without stdout.
+/// IterationProbe records callback values so forEachList order is testable without stdout.
 effect IterationProbe { observe: fn(int) -> Unit }
 
-// appendThrough builds inclusive integer ranges while preserving every prior list version.
+/// appendThrough builds inclusive integer ranges while preserving every prior list version.
 fn appendThrough(xs: List<int>) -> (int) -> (int) -> List<int> =
     fn(next) => fn(last) => match next > last {
         true => xs
         false => appendThrough(listAppend(xs, next))(next + 1)(last)
     }
 
-// classify exercises exact-length, singleton, pair, and head-tail list patterns.
+/// classify exercises exact-length, singleton, pair, and head-tail list patterns.
 fn classify(xs: List<int>) -> string = match xs {
     [] => "empty"
     [single] => "one(${single})"
@@ -18,19 +18,19 @@ fn classify(xs: List<int>) -> string = match xs {
     [head, ...tail] => "many head=${head} rest=${listLength(tail)}"
 }
 
-// sumList proves recursive head-tail destructuring retains every element.
+/// sumList proves recursive head-tail destructuring retains every element.
 fn sumList(xs: List<int>) -> int = match xs {
     [] => 0
     [head, ...tail] => head + sumList(tail)
 }
 
-// restLen exercises a wildcard prefix followed by a captured list tail.
+/// restLen exercises a wildcard prefix followed by a captured list tail.
 fn restLen(xs: List<int>) -> int = match xs {
     [_, second, ...rest] => listLength(rest)
     _ => 0
 }
 
-// encodeIteration folds callback order into a base-100 integer through a handled effect.
+/// encodeIteration folds callback order into a base-100 integer through a handled effect.
 fn encodeIteration(xs: List<int>) -> int = {
     mut encoded = 0
     handle IterationProbe
@@ -41,7 +41,7 @@ fn encodeIteration(xs: List<int>) -> int = {
     encoded
 }
 
-// constructionAndIdentityCase preserves all legacy construction, identity, reverse, prepend, and contains observations.
+/// constructionAndIdentityCase preserves all legacy construction, identity, reverse, prepend, and contains observations.
 fn constructionAndIdentityCase() = {
     let empty = List()
     let a = listAppend(listAppend(listAppend(List(), 1), 2), 3)
@@ -116,7 +116,7 @@ fn constructionAndIdentityCase() = {
     ])
 }
 
-// iterationAndPersistenceCase preserves callback order plus every generation and branch observation.
+/// iterationAndPersistenceCase preserves callback order plus every generation and branch observation.
 fn iterationAndPersistenceCase() = {
     let a = listAppend(listAppend(listAppend(List(), 1), 2), 3)
     let reversed = listReverse(a)
@@ -195,7 +195,7 @@ fn iterationAndPersistenceCase() = {
     ])
 }
 
-// tailBoundaryCase retains the 10/20/30/35 generations and probes both sides of the 32-element tail boundary.
+/// tailBoundaryCase retains the 10/20/30/35 generations and probes both sides of the 32-element tail boundary.
 fn tailBoundaryCase() = {
     let t = appendThrough(List())(1)(10)
     let t2 = appendThrough(t)(11)(20)
@@ -239,7 +239,7 @@ fn tailBoundaryCase() = {
     ])
 }
 
-// indexingPatternsAndDispatchCase preserves Result indexing, list patterns, recursion, and receiver-directed builtins.
+/// indexingPatternsAndDispatchCase preserves Result indexing, list patterns, recursion, and receiver-directed builtins.
 fn indexingPatternsAndDispatchCase() = {
     let commands = ["echo hello", "echo world", "echo test"]
     let empty: List<string> = []

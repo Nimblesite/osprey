@@ -1,17 +1,17 @@
-// A stopped continuation returns the handler arm value and omits later work.
+/// A stopped continuation returns the handler arm value and omits later work.
 effect Stop {
     check: fn(int) -> int
 }
 
-// Observation records performer-side events without relying on stdout.
+/// Observation records performer-side events without relying on stdout.
 effect Observation {
     line: fn(string) -> Unit
 }
 
-// This helper routes one legacy output observation through the outer handler.
+/// This helper routes one legacy output observation through the outer handler.
 fn observe(message) !Observation = perform Observation.line(message)
 
-// This helper reaches a successful check before the zero check aborts it.
+/// This helper reaches a successful check before the zero check aborts it.
 fn guarded() -> int ![Stop, Observation] = {
     observe("before first check")
     let a = perform Stop.check(1)
@@ -21,7 +21,7 @@ fn guarded() -> int ![Stop, Observation] = {
     99
 }
 
-// This case verifies resume, abort, unwind, and the discarded continuation.
+/// This case verifies resume, abort, unwind, and the discarded continuation.
 fn resumeAbortEarlyExitCase() = {
     mut transcript = ""
     mut checks = 0

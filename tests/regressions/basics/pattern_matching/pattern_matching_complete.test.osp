@@ -4,7 +4,7 @@
 // returned from a function, structural ternary, Elvis ?: on Result,
 // bool ternary, and Result<T,E> toString.
 
-// --- ADT shapes ---
+/// --- ADT shapes ---
 type Person = PersonData { name: string, age: int }
 type Shape  = Circle { radius: int }
             | Square { x: int, y: int }
@@ -73,14 +73,14 @@ print("Nested 0,3: ${nested(x: 0, y: 3)}")
 print("Nested 4,0: ${nested(x: 4, y: 0)}")
 print("Nested 4,5: ${nested(x: 4, y: 5)}")
 
-// --- ADT field destructuring (both orders + type annotation pattern) ---
+/// --- ADT field destructuring (both orders + type annotation pattern) ---
 let alice = PersonData { name: "Alice", age: 30 }
 let bob   = PersonData { name: "Bob",   age: 25 }
 print(match alice { PersonData { name, age } => "Person: ${name} is ${toString(age)}" })
 print(match bob   { PersonData { age, name } => "Reordered: ${name}/${toString(age)}" })
 print(match alice { p: PersonData => "Got PersonData type" _ => "Other" })
 
-// --- Multi-variant + dynamic via function return ---
+/// --- Multi-variant + dynamic via function return ---
 let c = Circle { radius: 5 }
 let s = Square { x: 3, y: 7 }
 print(describe(c))
@@ -88,15 +88,15 @@ print(describe(s))
 print(shapeKind(c))
 print(shapeKind(s))
 
-// --- Bool ternary + structural ternary on anonymous record ---
+/// --- Bool ternary + structural ternary on anonymous record ---
 let flag = { a: true }
 print(flag.a ? "true" : "false")
 let env  = { value: "It worked" }
 print(env { value } ? value : "fallback")
 
-// --- Result<T,E> from division: Elvis on Success / Error ---
-// `+ - *` are plain int [ARITH-PLAIN]; only `/` and `%` carry the error
-// channel, so only they have anything for `?:` to default.
+/// --- Result<T,E> from division: Elvis on Success / Error ---
+/// `+ - *` are plain int [ARITH-PLAIN]; only `/` and `%` carry the error
+/// channel, so only they have anything for `?:` to default.
 let okCalc  = intDiv(a: 10, b: 5)
 let okElvis = okCalc ?: -1
 print("ok elvis = ${toString(okElvis)}")

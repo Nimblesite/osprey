@@ -35,7 +35,7 @@ match isEqual(x: 5, y: 5) {
     false => print("Not Equal")
 }
 
-// Logical operators
+/// Logical operators
 let a = true && false
 let b = true || false
 let c = (5 > 3) && (10 == 10)
@@ -47,7 +47,7 @@ print("&& ${toString(a)}  || ${toString(b)}  comp&& ${toString(c)}  comp|| ${toS
 print(false && reportTrue())
 print(true  || reportTrue())
 
-// Negation + de Morgan: !(p && q) == (!p || !q)
+/// Negation + de Morgan: !(p && q) == (!p || !q)
 let p = true
 let q = false
 let lhs = !(p && q)
@@ -62,7 +62,7 @@ print("xor T T ${toString(xor(a: true,  b: true))}")
 print("xor T F ${toString(xor(a: true,  b: false))}")
 print("xor F F ${toString(xor(a: false, b: false))}")
 
-// Bool from match expression
+/// Bool from match expression
 let parity = match 4 {
     0 => true
     2 => true
@@ -71,7 +71,7 @@ let parity = match 4 {
 }
 print("parity ${toString(parity)}")
 
-// Float comparison
+/// Float comparison
 let f1 = 1.5
 let f2 = 2.5
 print(f1 < f2)
@@ -82,7 +82,7 @@ print("apple" < "banana")
 print("hi"    == "hi")
 print("hi"    != "bye")
 
-// Ternary on bool
+/// Ternary on bool
 let label = (3 < 5) ? "yes" : "no"
 print(label)
 

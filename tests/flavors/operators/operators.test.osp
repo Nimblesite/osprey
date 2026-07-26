@@ -2,7 +2,7 @@
 // Each case keeps the complete legacy output line, checks every value embedded
 // in it, and then extends the behavioral boundary.
 
-// This case documents precedence, grouping, and the four migrated expressions.
+/// This case documents precedence, grouping, and the four migrated expressions.
 fn arithmeticOperatorsCase() = {
     let a = 2 + 3 * 4
     let b = (2 + 3) * 4
@@ -29,7 +29,7 @@ fn arithmeticOperatorsCase() = {
     ])
 }
 
-// This case documents literals, logical operators, comparisons, and composition.
+/// This case documents literals, logical operators, comparisons, and composition.
 fn booleanOperatorsCase() = {
     let t = true
     let f = false

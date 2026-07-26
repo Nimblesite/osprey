@@ -1,11 +1,11 @@
 // ML matching twin covering literals, booleans, and wildcards.
 
-// Classify literals through adjacent pattern clauses.
+(** Classify literals through adjacent pattern clauses. *)
 tourClassify 0 = "zero"
 tourClassify 1 = "one"
 tourClassify _ = "many"
 
-// Verify every literal and wildcard branch.
+(** Verify every literal and wildcard branch. *)
 matchTourCase () =
     // Preserve each rendered branch result.
     checkAll "match tour legacy rendered lines" [
@@ -27,19 +27,19 @@ matchTourCase () =
         (tourClassify 0 == tourClassify 1) == false
     ]
 
-// Convert a threshold comparison to a grade label.
+(** Convert a threshold comparison to a grade label. *)
 matchGrade n =
     match n >= 50
         true => "pass"
         false => "fail"
 
-// Convert parity to an even-or-odd label.
+(** Convert parity to an even-or-odd label. *)
 matchEven n =
     match n % 2 == 0
         true => "even"
         false => "odd"
 
-// Verify boolean scrutinees for grading and parity.
+(** Verify boolean scrutinees for grading and parity. *)
 matchBooleanCase () =
     // Preserve the complete rendered result.
     checkAll "boolean match legacy rendered lines" [
@@ -61,13 +61,13 @@ matchBooleanCase () =
         matchEven 9 == "odd"
     ]
 
-// Label integer literals through adjacent pattern clauses.
+(** Label integer literals through adjacent pattern clauses. *)
 matchLabel 0 = "none"
 matchLabel 1 = "single"
 matchLabel 2 = "pair"
 matchLabel _ = "many"
 
-// Verify literal and wildcard integer matching.
+(** Verify literal and wildcard integer matching. *)
 matchIntegerCase () =
     // Preserve the complete rendered result.
     checkAll "integer match legacy rendered lines" [

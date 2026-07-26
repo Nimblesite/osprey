@@ -1,13 +1,13 @@
-// Subtracts integers through curried application.
+/// Subtracts integers through curried application.
 fn sub(a: int) -> (int) -> int = fn(b) => a - b
-// Classifies exact integer cases and a wildcard branch.
+/// Classifies exact integer cases and a wildcard branch.
 fn classify(n) = match n {
     0 => "zero"
     1 => "one"
     _ => "many"
 }
 
-// Verifies arithmetic values and relational properties in one documented batch.
+/// Verifies arithmetic values and relational properties in one documented batch.
 fn arithmeticCase() = {
     // Six independent soft assertions cover results and algebraic behavior.
     checkAll("arithmetic foundations", [
@@ -20,7 +20,7 @@ fn arithmeticCase() = {
     ])
 }
 
-// Verifies every match branch using literal and computed inputs.
+/// Verifies every match branch using literal and computed inputs.
 fn classifyCase() = {
     // The conditions cover exact arms, wildcard behavior, and string consumers.
     checkAll("classification foundations", [
@@ -33,7 +33,7 @@ fn classifyCase() = {
     ])
 }
 
-// Verifies strings, fallible operations, and list state in one interaction.
+/// Verifies strings, fallible operations, and list state in one interaction.
 fn stringsAndListsCase() = {
     // Seven separately reported conditions document the combined standard-library behavior.
     checkAll("string and list foundations", [

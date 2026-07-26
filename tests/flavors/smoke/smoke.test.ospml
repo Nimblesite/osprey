@@ -1,6 +1,6 @@
 // ML smoke twin covering bindings and interpolation.
 
-// Verify greeting text and arithmetic interpolation.
+(** Verify greeting text and arithmetic interpolation. *)
 helloSmokeCase () =
     greeting = "Hello from the ML flavor"
 

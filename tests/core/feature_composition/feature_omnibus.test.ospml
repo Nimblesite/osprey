@@ -1,36 +1,36 @@
-// Model three exhaustive priority levels.
+(** Model three exhaustive priority levels. *)
 type Pri = Low | Med | High
-// Model three colors for independent clause groups.
+(** Model three colors for independent clause groups. *)
 type Color = Red | Green | Blue
-// Carry one positional integer payload.
+(** Carry one positional integer payload. *)
 type Wrapped = Wrapped int
 
-// Convert each priority to its weight.
+(** Convert each priority to its weight. *)
 priWeight Low = 1
 priWeight Med = 5
 priWeight High = 9
-// Convert each color to its display name.
+(** Convert each color to its display name. *)
 colorName Red = "red"
 colorName Green = "green"
 colorName Blue = "blue"
-// Call a function declared later in the file.
+(** Call a function declared later in the file. *)
 callerOfLater _ = calleeLater 10
-// Supply the forward-referenced arithmetic implementation.
+(** Supply the forward-referenced arithmetic implementation. *)
 calleeLater n = n * 4
 
-// Parse an integer or use the caller's fallback.
+(** Parse an integer or use the caller's fallback. *)
 parseOr : string -> int -> int
 parseOr text fallback = parseInt text ?: fallback
-// Render both parse Result branches.
+(** Render both parse Result branches. *)
 parseStatus text = match parseInt text
     Success value => "parsed ${value}"
     Error message => "parseInt rejected ${text}"
 
-// Add an integer through handled state.
+(** Add an integer through handled state. *)
 effect Counter
     increment : int => Unit
 
-// Exercise unions, Results, interpolation, arithmetic, and ordering.
+(** Exercise unions, Results, interpolation, arithmetic, and ordering. *)
 unionsResultsAndScalars () =
     wrapped = Wrapped 42
     wrappedValue = match wrapped
@@ -52,7 +52,7 @@ unionsResultsAndScalars () =
         colorName Red != colorName Blue
     ]
 
-// Exercise forward calls, lambdas, pipelines, and union-derived data.
+(** Exercise forward calls, lambdas, pipelines, and union-derived data. *)
 functionsPipesAndBooleans () =
     chained = 5 |> (\x => x + 100) |> (\x => x * 2)
     single = 7 |> \x => x * 3
@@ -70,7 +70,7 @@ functionsPipesAndBooleans () =
         single + priWeight Med == 26
     ]
 
-// Exercise handled mutation beside persistent collections and lookup.
+(** Exercise handled mutation beside persistent collections and lookup. *)
 effectsAndCollections () =
     mut counter = 0
     // Check state before handling effects.
@@ -110,7 +110,7 @@ effectsAndCollections () =
         (["apple" => 2]["pear"] ?: (0 - 1)) == (0 - 1)
     ]
 
-// Exercise string transforms over values from other features.
+(** Exercise string transforms over values from other features. *)
 stringInteractions () =
     s = "  Hello  "
     // Check string and cross-feature composition.

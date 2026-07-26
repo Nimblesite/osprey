@@ -1,9 +1,9 @@
-// 🦅 Osprey in one screen — algebraic effects, fibers, unions, HM inference.
-// The SAME account() runs in two worlds; only the installed handler differs.
+/// 🦅 Osprey in one screen — algebraic effects, fibers, unions, HM inference.
+/// The SAME account() runs in two worlds; only the installed handler differs.
 effect Console { emit: fn(string) -> Unit }
 effect Ledger  { post: fn(int) -> int }
 
-// account() only performs effects — it never learns whether the ledger is real.
+/// account() only performs effects — it never learns whether the ledger is real.
 fn account() ![Console, Ledger] = {
     perform Console.emit("open account")
     let afterDeposit = perform Ledger.post(100)
@@ -15,7 +15,7 @@ fn account() ![Console, Ledger] = {
     afterMore
 }
 
-// World A: a real, stateful ledger — the handler owns a `mut` it threads through.
+/// World A: a real, stateful ledger — the handler owns a `mut` it threads through.
 fn realWorld() = {
     mut balance = 0
     handle Console
@@ -25,7 +25,7 @@ fn realWorld() = {
     in account()
 }
 
-// World B: same code, a frozen compliance mock — every post is a no-op.
+/// World B: same code, a frozen compliance mock — every post is a no-op.
 fn dryRun() =
     handle Console
         emit line => print("  🧪 [dry-run] ${line}")
@@ -33,16 +33,16 @@ fn dryRun() =
         post amount => 0
     in account()
 
-// Pure pipeline: Σ of squares of the evens in [1, n) — no loops, no mutation.
+/// Pure pipeline: Σ of squares of the evens in [1, n) — no loops, no mutation.
 fn even(x) = (x % 2) == 0
 fn sq(x)   = x * x
 fn crunch(n) = range(1, n) |> filter(even) |> map(sq) |> fold(0, fn(a, b) => a + b)
 
-// Exhaustive match over a union — drop a case and it won't compile.
+/// Exhaustive match over a union — drop a case and it won't compile.
 type Tier = Epic | Solid | Starter
 
-// `if`/`else if` desugars to the same boolean match the ML twin writes
-// explicitly — byte-identical IR across flavors ([FLAVOR-IR-EQUIV]).
+/// `if`/`else if` desugars to the same boolean match the ML twin writes
+/// explicitly — byte-identical IR across flavors ([FLAVOR-IR-EQUIV]).
 fn tier(score) = if score >= 2000 { Epic } else if score >= 500 { Solid } else { Starter }
 
 fn badge(t) = match t {
@@ -61,7 +61,7 @@ print("  ↳ dryRun()   returned ${mock}")
 
 print("══════════════════════════════════════\nACT 2 · fibers compute functional pipelines in parallel")
 
-// Each crunch() runs in its own fiber; await in order for a deterministic report.
+/// Each crunch() runs in its own fiber; await in order for a deterministic report.
 let fa = spawn crunch(10)
 let fb = spawn crunch(20)
 let fc = spawn crunch(40)

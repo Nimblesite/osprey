@@ -8,8 +8,8 @@ print("Creating HTTP server on port 8080...")
 let serverId = httpCreateServer(8080, "127.0.0.1")
 print("Server created with ID: ${serverId}")
 
-// Define HTTP request handler function - RESTORED TO ORIGINAL GLORY!
-// This function receives HTTP requests from the C runtime and returns HttpResponse
+/// Define HTTP request handler function - RESTORED TO ORIGINAL GLORY!
+/// This function receives HTTP requests from the C runtime and returns HttpResponse
 fn handleHttpRequest(method: string, path: string, headers: string, body: string) -> HttpResponse = match method {
     "GET" => match path {
         "/api/users" => HttpResponse {
@@ -163,7 +163,7 @@ print("=== Server Shutdown Test ===")
 print("✅ All HTTP operations completed successfully")
 print("🛑 Initiating immediate graceful server shutdown...")
 
-// Clean up server resources
+/// Clean up server resources
 let stopResult = httpStopServer(serverId)
 print("Server stopped with result: ${stopResult}")
 

@@ -16,7 +16,7 @@
 //  and the same server logic runs against a mock — nothing else changes.
 // ============================================================================
 
-// ---- the three state layers, one effect each (+ logging) -------------------
+/// ---- the three state layers, one effect each (+ logging) -------------------
 effect Db {
     add:   fn(string) -> int      // append a task, returns its id
     list:  fn() -> string         // the rendered task table
@@ -32,7 +32,7 @@ effect Persist {
 }
 effect Log { info: fn(string) -> Unit }
 
-// ---- HTTP plumbing helpers (pure) ------------------------------------------
+/// ---- HTTP plumbing helpers (pure) ------------------------------------------
 fn textResp(status, bodyText) = HttpResponse {
     status: status,
     headers: "Content-Type: text/plain",
@@ -42,10 +42,10 @@ fn textResp(status, bodyText) = HttpResponse {
     partialBody: bodyText
 }
 
-// ---- the request handler: PURE orchestration, only `perform` --------------
-// Adding a task touches every layer: Db records it, Persist writes the new
-// snapshot to disk, and the reply reports both — yet not one socket, file
-// descriptor or mutable field appears here.
+/// ---- the request handler: PURE orchestration, only `perform` --------------
+/// Adding a task touches every layer: Db records it, Persist writes the new
+/// snapshot to disk, and the reply reports both — yet not one socket, file
+/// descriptor or mutable field appears here.
 fn onPost(body) = {
     let id = perform Db.add(body)
     let snap = perform Db.list()
@@ -66,7 +66,7 @@ fn handleReq(method: string, path: string, headers: string, body: string) -> Htt
     }
 }
 
-// ---- client side: read a response body and release the handle --------------
+/// ---- client side: read a response body and release the handle --------------
 fn bodyOf(h) = match httpResponseBody(h) {
     Success { value } => value
     Error { message } => "(no body)"
@@ -83,19 +83,19 @@ fn fetch(clientId, path) = match httpGetResponse(clientId, path, "") {
     Error { message } => "GET failed"
 }
 
-// Post a task over HTTP. The reply reports the server's status code; the `Log`
-// effect (handled in `main`) traces the call.
+/// Post a task over HTTP. The reply reports the server's status code; the `Log`
+/// effect (handled in `main`) traces the call.
 fn postTask(clientId, text) = {
     perform Log.info("POST /tasks <- ${text}")
     print("  server replied ${toString(httpPost(clientId, "/tasks", text, ""))}")
 }
 
-// Seed one task from a BACKGROUND FIBER. `Db.add` is performed inside the
-// fiber yet handled back in `main` — handler-owned state mutated across the
-// fiber boundary — and the new id (an int) rides back through `await`.
+/// Seed one task from a BACKGROUND FIBER. `Db.add` is performed inside the
+/// fiber yet handled back in `main` — handler-owned state mutated across the
+/// fiber boundary — and the new id (an int) rides back through `await`.
 fn seedTask(text) = perform Db.add(text)
 
-// ---- the demo driver: a tiny scripted client over the live server ----------
+/// ---- the demo driver: a tiny scripted client over the live server ----------
 fn runDemo() = {
     let serverId = httpCreateServer(18280, "127.0.0.1")
     let listening = httpListen(serverId, handleReq)
@@ -112,9 +112,9 @@ fn runDemo() = {
     print("STATE @ shutdown — db: ${toString(perform Db.count())} tasks | server: ${toString(perform Metrics.served())} requests | disk: ${toString(perform Persist.bytes())} bytes")
 }
 
-// ---- main installs the handlers — the ONLY place state lives ---------------
-// The `mut` cells below are owned by their handlers: the arms read and write
-// them, and the running server mutates them through every request.
+/// ---- main installs the handlers — the ONLY place state lives ---------------
+/// The `mut` cells below are owned by their handlers: the arms read and write
+/// them, and the running server mutates them through every request.
 mut diskBytes = 0     // Persist layer  (infrastructure)
 mut requests = 0      // Metrics layer  (server runtime)
 mut tasks = ""        // Db layer       (application data)

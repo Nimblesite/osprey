@@ -59,6 +59,6 @@ match parseAge "abc"
 print "=== Validation Pipeline Complete ==="
 0
 
-// Register the regression scenario with the assertion-driven test runner.
+(** Register the regression scenario with the assertion-driven test runner. *)
 migratedLegacyCase () = checkAll "legacy execution" [true]
 test "regression scenario completes" migratedLegacyCase

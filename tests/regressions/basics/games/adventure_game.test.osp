@@ -5,14 +5,14 @@ print("🏰 Welcome to the Mystical Castle Adventure! 🏰")
 print("You stand before an ancient castle shrouded in mystery...")
 print("")
 
-// Game state and inventory system
+/// Game state and inventory system
 let playerHealth = 100
 let hasKey = 0  // 0 = false, 1 = true
 let hasSword = 0
 let goldCoins = 50
 let monstersDefeated = 0
 
-// Character stats and progression
+/// Character stats and progression
 fn calculatePlayerLevel(defeats) = match defeats {
     0 => 1
     1 => 2
@@ -29,7 +29,7 @@ fn getPlayerTitle(level) = match level {
     _ => "Master of the Realm"
 }
 
-// Combat system with separate functions (avoiding nested matches)
+/// Combat system with separate functions (avoiding nested matches)
 fn calculateWeaponDamage(enemyType) = match enemyType {
     1 => 25  // Goblin with sword
     2 => 40  // Orc with sword
@@ -58,7 +58,7 @@ fn getEnemyHealth(enemyType) = match enemyType {
     _ => 25  // Unknown
 }
 
-// Room exploration system
+/// Room exploration system
 fn exploreRoom(roomNumber) = match roomNumber {
     1 => "the Grand Entrance Hall with marble columns"
     2 => "a dusty Library filled with ancient tomes"
@@ -133,7 +133,7 @@ let enemyType = 3  // Dragon
 let enemyName = getEnemyName(enemyType)
 let enemyHealth = getEnemyHealth(enemyType)
 
-// Calculate damage based on weapon status (avoiding nested match)
+/// Calculate damage based on weapon status (avoiding nested match)
 let weaponDamage = calculateWeaponDamage(enemyType)
 let barehandDamage = calculateBarehandDamage(enemyType)
 let playerDamage = match foundSword {
@@ -146,7 +146,7 @@ print("Enemy Health: ${enemyHealth} ❤️")
 print("Your attack power: ${playerDamage} ⚔️")
 print("")
 
-// Battle calculation
+/// Battle calculation
 let totalDamageNeeded = enemyHealth
 let attacksNeeded = totalDamageNeeded / playerDamage
 
@@ -176,7 +176,7 @@ let finalDamage = remainingHealth2
 print("Critical hit for ${finalDamage} damage!")
 print("")
 
-// Victory and level progression
+/// Victory and level progression
 let newMonstersDefeated = match monstersDefeated + 1 {
     Success { value } => value
     Error { message } => monstersDefeated

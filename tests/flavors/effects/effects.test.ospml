@@ -1,10 +1,10 @@
 // ML effect-handling twin of the counter mutation suite.
 
-// Counter mutation is available only through this handled operation.
+(** Counter mutation is available only through this handled operation. *)
 effect FlavorCounter
     tick : int => Unit
 
-// Verify state before, during, and after the handler.
+(** Verify state before, during, and after the handler. *)
 mutationCase () =
     mut flavorCounter = 0
 

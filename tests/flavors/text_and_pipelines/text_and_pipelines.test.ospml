@@ -1,18 +1,18 @@
 // ML text-and-pipeline twin covering composition and interpolation.
 
-// Increment a pipeline value.
+(** Increment a pipeline value. *)
 pipeInc : int -> int
 pipeInc x = x + 1
 
-// Double a pipeline value.
+(** Double a pipeline value. *)
 pipeDouble : int -> int
 pipeDouble x = x + x
 
-// Square a pipeline value.
+(** Square a pipeline value. *)
 pipeSquare : int -> int
 pipeSquare x = x * x
 
-// Verify left-to-right pipeline composition.
+(** Verify left-to-right pipeline composition. *)
 pipeChainCase () =
     p1 = 5 |> pipeInc |> pipeDouble
     p2 = 3 |> pipeDouble |> pipeSquare |> pipeInc
@@ -36,13 +36,13 @@ pipeChainCase () =
         (3 |> pipeSquare |> pipeDouble) == 18
     ]
 
-// Append an exclamation mark.
+(** Append an exclamation mark. *)
 stringShout s = s + "!"
 
-// Prefix a name with a greeting.
+(** Prefix a name with a greeting. *)
 stringGreet who = "Hi " + who
 
-// Verify string calls, concatenation, and interpolation.
+(** Verify string calls, concatenation, and interpolation. *)
 stringsCase () =
     name = "Ada"
     hello = stringGreet name

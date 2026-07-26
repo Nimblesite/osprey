@@ -1,4 +1,4 @@
-// RecoveryError models expected failures whose handlers supply ordinary values.
+/// RecoveryError models expected failures whose handlers supply ordinary values.
 effect RecoveryError {
     missingInt: fn(string) -> int
     missingText: fn(string) -> string
@@ -6,40 +6,40 @@ effect RecoveryError {
     report: fn(string) -> Unit
 }
 
-// StockError lets callers choose what an over-sized request receives.
+/// StockError lets callers choose what an over-sized request receives.
 effect StockError {
     shortage: fn(int, int) -> int
 }
 
-// PolicyError exposes two operations so a nested handler can override only one.
+/// PolicyError exposes two operations so a nested handler can override only one.
 effect PolicyError {
     score: fn(string) -> int
     label: fn(string) -> string
 }
 
-// AuditError records recovery decisions without changing the recovered value.
+/// AuditError records recovery decisions without changing the recovered value.
 effect AuditError {
     note: fn(string) -> Unit
 }
 
-// LookupError returns a complete Result so the handler chooses success or failure.
+/// LookupError returns a complete Result so the handler chooses success or failure.
 effect LookupError {
     find: fn(string) -> Result<int, string>
 }
 
-// Verdict lets the known Result-ABI failure remain visible without breaking CI.
+/// Verdict lets the known Result-ABI failure remain visible without breaking CI.
 type Verdict = Pass | Fail { reason: string } | Skip { why: string }
 
-// Return positive input unchanged and ask for a replacement only at zero.
+/// Return positive input unchanged and ask for a replacement only at zero.
 fn requirePositive(value) !RecoveryError = match value > 0 {
     true => value
     false => perform RecoveryError.missingInt("positive value required")
 }
 
-// Continue ordinary arithmetic after a handler substitutes a missing integer.
+/// Continue ordinary arithmetic after a handler substitutes a missing integer.
 fn continuedValue(value) !RecoveryError = requirePositive(value) + 2
 
-// Request three replacements so handler state and substitution order are visible.
+/// Request three replacements so handler state and substitution order are visible.
 fn recoverThree() !RecoveryError = {
     let first = perform RecoveryError.missingInt("first")
     let second = perform RecoveryError.missingInt("second")
@@ -47,13 +47,13 @@ fn recoverThree() !RecoveryError = {
     first + second + third
 }
 
-// Report one broken rule while returning Unit so later checks still execute.
+/// Report one broken rule while returning Unit so later checks still execute.
 fn reportIf(broken: bool) -> (string) -> Unit !RecoveryError = fn(message) => match broken {
         true => perform RecoveryError.report(message)
         false => {}
     }
 
-// Run every validation rule and return only after all reports have been handled.
+/// Run every validation rule and return only after all reports have been handled.
 fn validateRecord(name: string) -> (int) -> (string) -> string !RecoveryError =
     fn(age) => fn(email) => {
         reportIf(name == "")("name")
@@ -63,7 +63,7 @@ fn validateRecord(name: string) -> (int) -> (string) -> string !RecoveryError =
         "finished"
     }
 
-// Consume integer, string, and boolean results supplied by one handler region.
+/// Consume integer, string, and boolean results supplied by one handler region.
 fn mixedRecovery() !RecoveryError = {
     let number = perform RecoveryError.missingInt("number")
     let text = perform RecoveryError.missingText("text")
@@ -71,38 +71,38 @@ fn mixedRecovery() !RecoveryError = {
     "${toString(number)}|${text}|${toString(allowed)}"
 }
 
-// Ask the active stock policy how much can be allocated after a shortage.
+/// Ask the active stock policy how much can be allocated after a shortage.
 fn allocate(requested: int) -> (int) -> int !StockError = fn(available) => match requested > available {
         true => perform StockError.shortage(requested, available)
         false => requested
     }
 
-// Add fixed packaging work after the shared allocation function recovers.
+/// Add fixed packaging work after the shared allocation function recovers.
 fn shipmentTotal() !StockError = allocate(9)(5) + 2
 
-// Recover an integer, audit both sides of the perform, and then keep computing.
+/// Recover an integer, audit both sides of the perform, and then keep computing.
 fn auditedRecovery() ![RecoveryError, AuditError] = {
     let value = perform RecoveryError.missingInt("token")
     perform AuditError.note("body saw ${toString(value)}")
     value + 1
 }
 
-// Perform the deeply nested failure at the bottom of the helper chain.
+/// Perform the deeply nested failure at the bottom of the helper chain.
 fn bottomValue() !RecoveryError = perform RecoveryError.missingInt("bottom")
 
-// Carry one recovered value back through every recursive caller.
+/// Carry one recovered value back through every recursive caller.
 fn descend(depth) !RecoveryError = match depth {
     0 => bottomValue()
     _ => 1 + descend(depth - 1)
 }
 
-// Default the complete Result returned by the effect operation.
+/// Default the complete Result returned by the effect operation.
 fn lookupValue(key) !LookupError = perform LookupError.find(key) ?: (0 - 1)
 
-// Combine both Result branches after one handler supplies their whole values.
+/// Combine both Result branches after one handler supplies their whole values.
 fn combineLookups() !LookupError = lookupValue("known") * 10 + lookupValue("missing")
 
-// Verify that successful code never enters an installed recovery arm.
+/// Verify that successful code never enters an installed recovery arm.
 fn happyPathBypassCase() = {
     mut recoveries = 0
     let value = handle RecoveryError
@@ -120,7 +120,7 @@ fn happyPathBypassCase() = {
     ])
 }
 
-// Verify that a direct arm substitutes a value and the caller keeps running.
+/// Verify that a direct arm substitutes a value and the caller keeps running.
 fn fallbackContinuationCase() = {
     let value = handle RecoveryError
         missingInt reason => 40
@@ -134,7 +134,7 @@ fn fallbackContinuationCase() = {
     ])
 }
 
-// Verify repeated recoveries share state and return distinct replacements.
+/// Verify repeated recoveries share state and return distinct replacements.
 fn repeatedRecoveryStateCase() = {
     mut recoveries = 0
     mut reasons = ""
@@ -155,7 +155,7 @@ fn repeatedRecoveryStateCase() = {
     ])
 }
 
-// Verify Unit-valued reports collect every error without stopping validation.
+/// Verify Unit-valued reports collect every error without stopping validation.
 fn collectAllReportsCase() = {
     mut reports = 0
     mut fields = ""
@@ -175,7 +175,7 @@ fn collectAllReportsCase() = {
     ])
 }
 
-// Verify one direct handler supplies several declared operation result types.
+/// Verify one direct handler supplies several declared operation result types.
 fn multipleResultTypesCase() = {
     let rendered = handle RecoveryError
         missingInt reason => 7
@@ -191,7 +191,7 @@ fn multipleResultTypesCase() = {
     ])
 }
 
-// Verify the same effectful function can run under two local recovery policies.
+/// Verify the same effectful function can run under two local recovery policies.
 fn twoPoliciesCase() = {
     let skipped = handle StockError
         shortage requested available => 0
@@ -209,7 +209,7 @@ fn twoPoliciesCase() = {
     ])
 }
 
-// Verify an inner same-effect arm overrides one operation and then disappears.
+/// Verify an inner same-effect arm overrides one operation and then disappears.
 fn nestedOverrideCase() = {
     let rendered = handle PolicyError
         score key => 10
@@ -235,7 +235,7 @@ fn nestedOverrideCase() = {
     ])
 }
 
-// Verify a recovery arm and the continued body can both reach an outer effect.
+/// Verify a recovery arm and the continued body can both reach an outer effect.
 fn outerEffectCompositionCase() = {
     mut notes = ""
     mut noteCount = 0
@@ -260,7 +260,7 @@ fn outerEffectCompositionCase() = {
     ])
 }
 
-// Verify dynamic handling reaches through helpers and recursive calls.
+/// Verify dynamic handling reaches through helpers and recursive calls.
 fn deepRecursionCase() = {
     mut recoveries = 0
     let value = handle RecoveryError
@@ -278,7 +278,7 @@ fn deepRecursionCase() = {
     ])
 }
 
-// Drive the known whole-Result corruption and pass automatically once it is fixed.
+/// Drive the known whole-Result corruption and pass automatically once it is fixed.
 fn wholeResultOperationCase() = {
     mut lookups = 0
     let combined = handle LookupError

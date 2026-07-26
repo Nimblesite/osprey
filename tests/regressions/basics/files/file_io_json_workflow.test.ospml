@@ -24,12 +24,12 @@ print "-- Step 3: Testing Result<string> toString --"
 print "Write Result toString: ${toString writeResult}"  // Tests Result<Unit> toString
 print "Read Result toString: ${toString readResult}"    // Tests Result<string> toString
 
-// Test error case for Result<string>
+(** Test error case for Result<string> *)
 errorResult = readFile "nonexistent_file_xyz123.txt"
 print "Error Result toString: ${toString errorResult}"  // Should print "Error"
 
 print "=== Test Complete ==="
 
-// Register the regression scenario with the assertion-driven test runner.
+(** Register the regression scenario with the assertion-driven test runner. *)
 migratedLegacyCase () = checkAll "legacy execution" [true]
 test "regression scenario completes" migratedLegacyCase

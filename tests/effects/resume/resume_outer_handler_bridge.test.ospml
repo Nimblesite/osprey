@@ -1,12 +1,12 @@
-// Prompt suspends a form until its handler supplies a value.
+(** Prompt suspends a form until its handler supplies a value. *)
 effect Prompt
     ask : string => string
 
-// Log observes both sides of the resumed prompt.
+(** Log observes both sides of the resumed prompt. *)
 effect Log
     line : string => Unit
 
-// Log on both sides of the prompt.
+(** Log on both sides of the prompt. *)
 form : Unit -> string ! [Prompt, Log]
 form () =
     perform Log.line "form start"
@@ -14,7 +14,7 @@ form () =
     perform Log.line ("got " + name)
     name
 
-// Verify outer-handler reachability across resume.
+(** Verify outer-handler reachability across resume. *)
 resumeOuterHandlerBridgeCase () =
     mut transcript = ""
     mut logMessages = ""

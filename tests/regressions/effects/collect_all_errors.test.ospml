@@ -4,14 +4,14 @@
 effect Invalid
     report : string => Unit
 
-// Both branches return Unit, so validation continues after a report.
+(** Both branches return Unit, so validation continues after a report. *)
 flag (broken, msg) = match broken
     true => perform Invalid.report msg
     false =>
-        // A binding-only layout block evaluates to Unit in ML flavor.
+        (** A binding-only layout block evaluates to Unit in ML flavor. *)
         unchanged = broken
 
-// All six checks run on every call.
+(** All six checks run on every call. *)
 validate (name, age, score, email) =
     flag (name == "", "name is empty")
     flag (age < 0, "age is negative (${toString age})")
@@ -21,7 +21,7 @@ validate (name, age, score, email) =
     flag (contains email "@" == false, "email is missing '@' (${email})")
     "validation pass finished"
 
-// `count` and `errs` are handler-owned mutable state.
+(** `count` and `errs` are handler-owned mutable state. *)
 audit (name, age, score, email) =
     mut count = 0
     mut errs = ""
@@ -43,6 +43,6 @@ print ("── signup: Owen ──" + audit ("Owen", 34, 88, "owen@example.com")
 // (c) A partial failure — proves the count is exact, not all-or-nothing.
 print ("── signup: blank ──" + audit ("", 40, 60, ""))
 
-// Register the regression scenario with the assertion-driven test runner.
+(** Register the regression scenario with the assertion-driven test runner. *)
 migratedLegacyCase () = checkAll "legacy execution" [true]
 test "regression scenario completes" migratedLegacyCase

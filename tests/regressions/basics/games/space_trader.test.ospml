@@ -6,7 +6,7 @@ print "You are Captain Alex, commander of the starship Osprey-7"
 print "Your mission: Build a trading empire across the galaxy!"
 print ""
 
-// Initial ship status and cargo
+(** Initial ship status and cargo *)
 shipFuel = 100
 credits = 1000
 cargoSpace = 50
@@ -14,7 +14,7 @@ cargoUsed = 0
 reputation = 0
 planetsVisited = 0
 
-// Market prices and trading system
+(** Market prices and trading system *)
 getResourcePrice resourceType = match resourceType
     1 => 50   // Quantum Crystals
     2 => 25   // Space Metal
@@ -62,7 +62,7 @@ getReputationTitle rep = match rep
     4 => "Trade Baron"
     _ => "Galactic Legend"
 
-// Ship and crew management
+(** Ship and crew management *)
 calculateCargoValue (amount, price) = match amount * price
     Success value => value
     Error message => 0
@@ -87,7 +87,7 @@ print ""
 print "🌍 GALACTIC TRADING SIMULATION 🌍"
 print ""
 
-// Planet 1: Nebula Prime
+(** Planet 1: Nebula Prime *)
 planet1 = 1
 planet1Name = getPlanetName planet1
 specialty1 = getPlanetSpecialty planet1
@@ -117,7 +117,7 @@ print "Remaining credits: ${newCredits1} 💰"
 print "Cargo: ${newCargoUsed1}/${cargoSpace} 📦"
 print ""
 
-// Planet 2: Crystal Moon
+(** Planet 2: Crystal Moon *)
 planet2 = 2
 planet2Name = getPlanetName planet2
 print "🚀 Traveling to ${planet2Name}..."
@@ -133,7 +133,7 @@ print "📍 Arrived at ${planet2Name}"
 print "Local specialty: ${resource2Name}"
 print "Market price: ${resource2Price} credits per unit"
 
-// Sell previous cargo at premium
+(** Sell previous cargo at premium *)
 sellPrice1 = match resource1Price + 25
     Success value => value
     Error message => resource1Price
@@ -153,7 +153,7 @@ print "New balance: ${newCredits2} credits"
 print "Cargo space freed: ${newCargoUsed2}/${cargoSpace} 📦"
 print ""
 
-// Buy local specialty
+(** Buy local specialty *)
 purchaseAmount2 = 15
 totalCost2 = calculateCargoValue (purchaseAmount2, resource2Price)
 newCredits3 = match newCredits2 - totalCost2
@@ -168,7 +168,7 @@ print "Cost: ${totalCost2} credits"
 print "Remaining credits: ${newCredits3} 💰"
 print ""
 
-// Planet 3: Trade Station Alpha (Major Hub)
+(** Planet 3: Trade Station Alpha (Major Hub) *)
 planet3 = 3
 planet3Name = getPlanetName planet3
 travelCost2 = calculateTravelCost 3
@@ -184,7 +184,7 @@ print ""
 print "📍 Docking at ${planet3Name}"
 print "This is the galaxy's premier trading hub!"
 
-// Major trade at hub
+(** Major trade at hub *)
 sellPrice2 = match resource2Price + 30
     Success value => value
     Error message => resource2Price
@@ -203,7 +203,7 @@ print "Major revenue: ${revenue2} credits! 💰"
 print "New balance: ${newCredits4} credits"
 print ""
 
-// Calculate profit and reputation
+(** Calculate profit and reputation *)
 totalProfit = match newCredits4 - credits
     Success value => value
     Error message => 0
@@ -223,7 +223,7 @@ print "Planets visited: ${newPlanetsVisited}"
 print "New reputation: ${newReputationTitle}"
 print ""
 
-// Ship status report
+(** Ship status report *)
 finalShipStatus = getShipStatus newFuel2
 print "🛸 SHIP STATUS REPORT 🛸"
 print "Fuel level: ${newFuel2}% (${finalShipStatus})"
@@ -231,7 +231,7 @@ print "Cargo bay: ${newCargoUsed4}/${cargoSpace} units"
 print "Ship condition: Operational"
 print ""
 
-// Advanced calculations and projections
+(** Advanced calculations and projections *)
 fuelEfficiency = newFuel2 / newPlanetsVisited
 profitPerPlanet = totalProfit / newPlanetsVisited
 projectedWealth = match newCredits4 * 2
@@ -259,6 +259,6 @@ print "🌟 Your trading empire awaits! 🌟"
 print "End of Galactic Trade Simulation"
 print "Thank you for playing Osprey Space Trader!"
 
-// Register the regression scenario with the assertion-driven test runner.
+(** Register the regression scenario with the assertion-driven test runner. *)
 migratedLegacyCase () = checkAll "legacy execution" [true]
 test "regression scenario completes" migratedLegacyCase

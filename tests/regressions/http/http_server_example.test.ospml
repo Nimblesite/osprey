@@ -162,6 +162,6 @@ print "Server stopped with result: ${stopResult}"
 
 print "=== HTTP API Test Complete ==="
 
-// Register the regression scenario with the assertion-driven test runner.
+(** Register the regression scenario with the assertion-driven test runner. *)
 migratedLegacyCase () = checkAll "legacy execution" [true]
 test "regression scenario completes" migratedLegacyCase

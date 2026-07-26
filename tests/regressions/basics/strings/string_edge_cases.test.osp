@@ -15,7 +15,7 @@
 // [BUILTIN-STRING-FROMCODEPOINT].
 // Failure payloads are threaded through Result<T, E> per [ERR-PAYLOAD].
 
-// A user-declared fallible function: its Error message must reach the arm.
+/// A user-declared fallible function: its Error message must reach the arm.
 fn failWith(reason) -> Result<int, string> = Error { message: reason }
 
   // ---- isEmpty edges ----

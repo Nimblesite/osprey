@@ -2,7 +2,7 @@
 // to keep them honest. If a copy/paste snippet stops compiling, this
 // breaks. Sections preserved verbatim (apart from being concatenated).
 
-// --- Hero ---
+/// --- Hero ---
 fn double(n) = n * 2
 
 let x = 42
@@ -17,7 +17,7 @@ let result = match x {
 }
 print("Result: ${result}")
 
-// --- String interpolation ---
+/// --- String interpolation ---
 let age   = 25
 let score = 95
 print("Hello ${name}!")
@@ -25,7 +25,7 @@ print("Next year you'll be ${age + 1}")
 print("Double score: ${score * 2}")
 print("${name} (${age}) scored ${score}/100")
 
-// --- Type-safe pattern matching ---
+/// --- Type-safe pattern matching ---
 fn analyzeNumber(n) = match n {
     0  => "Zero"
     42 => "The answer!"
@@ -43,7 +43,7 @@ let squared = square(doubled)
 print("${xx} doubled is ${doubled}")
 print("${doubled} squared is ${squared}")
 
-// --- Grade pattern matching ---
+/// --- Grade pattern matching ---
 fn getGrade(s) = match s {
     100 => "Perfect!"
     95  => "Excellent"
@@ -62,7 +62,7 @@ print("Grade for 50: ${getGrade(50)}")
 print("Range operations:")
 range(1, 10) |> forEach(print)
 
-// --- Fibers ---
+/// --- Fibers ---
 fn compute(value) = value * 2
 let fiber1 = spawn compute(5)
 let fiber2 = spawn compute(10)

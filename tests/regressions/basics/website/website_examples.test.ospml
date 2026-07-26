@@ -59,6 +59,6 @@ job1 = yield 10
 print "Processed ${job1} items"
 print "=== Fiber Example Complete ==="
 
-// Register the regression scenario with the assertion-driven test runner.
+(** Register the regression scenario with the assertion-driven test runner. *)
 migratedLegacyCase () = checkAll "legacy execution" [true]
 test "regression scenario completes" migratedLegacyCase

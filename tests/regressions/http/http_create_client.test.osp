@@ -3,7 +3,7 @@
 
 print("Creating client")
 
-// Simple function call test (like print, spawn, etc.)
+/// Simple function call test (like print, spawn, etc.)
 let result = httpCreateClient("https://httpbin.org", 5000)
 print(result)
 

@@ -47,21 +47,21 @@ range 1 5 |> map dbl |> filter gt4 |> forEach print
 print "filter lt3 |> map dbl over 1..6:"
 range 1 6 |> filter lt3 |> map dbl |> forEach print
 
-// 7. fold (sum, product)
+(** 7. fold (sum, product) *)
 s = range 1 6 |> fold 0 add
 print "sum 1..5 = ${toString s}"
 p = range 1 5 |> fold 1 mul
 print "prod 1..4 = ${toString p}"
 
-// 8. chained pipes on a single value
+(** 8. chained pipes on a single value *)
 r = 3 |> inc |> dbl |> sq
 print "3|>inc|>dbl|>sq = ${toString r}"
 
-// 9. inline lambda in pipeline
+(** 9. inline lambda in pipeline *)
 lr = 10 |> \x => x + 5
 print "10|>(x+5) = ${toString lr}"
 
-// 10. lambda chained twice (parens around each so the chain doesn't get swallowed)
+(** 10. lambda chained twice (parens around each so the chain doesn't get swallowed) *)
 lr2 = 5 |> (\x => x + 100) |> (\x => x * 2)
 print "5|>+100|>*2 = ${toString lr2}"
 
@@ -70,6 +70,6 @@ print "=== Showcase Complete ==="
 // [BUILTIN-ITER-FILTER], [BUILTIN-ITER-FOREACH], [BUILTIN-ITER-FOLD],
 // [BUILTIN-ITER-CALLBACK], [BUILTIN-ITER-PIPE], and [BUILTIN-ITER-FUSION].
 
-// Register the regression scenario with the assertion-driven test runner.
+(** Register the regression scenario with the assertion-driven test runner. *)
 migratedLegacyCase () = checkAll "legacy execution" [true]
 test "regression scenario completes" migratedLegacyCase

@@ -2,7 +2,7 @@
 // Tests what HM inference CAN do in the current implementation
 // Function types and return values inferred from usage context
 
-// Type definitions needed for the test
+/// Type definitions needed for the test
 type Pair = { first: int, second: int }
 type Point = { x: int, y: int }
 type Container = { value: string, label: string }
@@ -11,20 +11,20 @@ print("=== HINDLEY-MILNER TEST ===")
 
 // Test 1: Function parameter and return type inference
 print("Test 1: Function type inference from usage")
-// These functions have NO explicit types - all inferred!
+/// These functions have NO explicit types - all inferred!
 fn identity(x) = x              // HM infers type from usage context
 fn add(a, b) = a + b            // HM infers (int, int) -> int [ARITH-PLAIN]
 fn concat(s1, s2) = s1 + s2     // HM infers (string, string) -> string
 fn negate(x) = !x              // HM infers (bool) -> bool
 
-// Usage drives monomorphization
+/// Usage drives monomorphization
 let intId = identity(42)        // identity<int>
 let stringId = identity("test") // identity<string>
 let boolId = identity(true)     // identity<bool>
 
 print("identity(42) = ${intId}, identity(\"test\") = ${stringId}, identity(true) = ${toString(boolId)}")
 
-// Test arithmetic inference
+/// Test arithmetic inference
 let addValue = add(a: 10, b: 20)
 let concatResult = concat(s1: "hello", s2: "world")
 let negateResult = negate(false)
@@ -55,7 +55,7 @@ print("Test 4: Polymorphic function inference")
 fn identityP(x) = x              // HM infers: <T>(T) -> T
 fn makePoint(a, b) = Point { x: a, y: b }  // int -> Point
 
-// Each usage gets monomorphized
+/// Each usage gets monomorphized
 let id1 = identityP(42)          // int -> int
 let id2 = identityP("test")      // string -> string
 let id3 = identityP(true)        // bool -> bool
@@ -93,7 +93,7 @@ fn apply(f, x) = f(x)           // HM infers: <A, B>((A) -> B, A) -> B
 let intPoint = Point { x: 1, y: 2 }
 let stringContainer = Container { value: "hello", label: "world" }
 
-// Direct field access works perfectly with HM
+/// Direct field access works perfectly with HM
 let pointX = intPoint.x         // int inferred
 let pointY = intPoint.y         // int inferred  
 let pairFirst = intPair.first   // int inferred
@@ -117,11 +117,11 @@ print("")
 // Test 7: Generic type equality testing (for GenericType.Equals coverage)
 print("Test 7: Generic type equality comparison")
 
-// Create generic types that will exercise the Equals method
+/// Create generic types that will exercise the Equals method
 type Generic<T> = { data: T }
 type AnotherGeneric<T, U> = { first: T, second: U }
 
-// Functions that return generic types - this will exercise type comparison during unification
+/// Functions that return generic types - this will exercise type comparison during unification
 fn makeGenericInt(value) = Generic { data: value }         // Returns Generic<int>
 fn makeGenericString(value) = Generic { data: value }      // Returns Generic<string>
 fn makeAnotherGeneric(a, b) = AnotherGeneric { first: a, second: b }  // Returns AnotherGeneric<T, U>
@@ -132,7 +132,7 @@ let gen3 = makeGenericString("test")        // Generic<string> - different type
 let gen4 = makeAnotherGeneric(a: 1, b: "two")     // AnotherGeneric<int, string>
 let gen5 = makeAnotherGeneric(a: 3, b: "four")    // AnotherGeneric<int, string> - same type as gen4
 
-// Access fields to force type unification and comparison
+/// Access fields to force type unification and comparison
 let val1 = gen1.data         // int from Generic<int>
 let val2 = gen2.data         // int from Generic<int> - same type
 let val3 = gen3.data         // string from Generic<string>
@@ -152,14 +152,14 @@ print("Test 9: Method call type inference")
 
 type StringWrapper = { content: string }
 
-// Add a method-like function that takes self
+/// Add a method-like function that takes self
 fn getLength(self) = 42
 
 fn uppercase(self) = self.content + "_UPPER"
 
 let wrapper = StringWrapper { content: "hello" }
 
-// These aren't real method calls in OSP, but test the pattern
+/// These aren't real method calls in OSP, but test the pattern
 let wrapperLen = getLength(wrapper)
 let wrapperUpper = uppercase(wrapper)
 
@@ -176,13 +176,13 @@ type Pair2<A, B> = { left: A, right: B }
 fn makeBox(val) = Box { item: val }
 fn makePair2(a, b) = Pair2 { left: a, right: b }
 
-// Force generic type unification through usage
+/// Force generic type unification through usage
 let box1 = makeBox(100)              // Box<int>
 let box2 = makeBox("test")           // Box<string>
 let pair2_1 = makePair2(a: 5, b: "five")    // Pair2<int, string>
 let pair2_2 = makePair2(a: true, b: 314)   // Pair2<bool, int>
 
-// Access to force unification
+/// Access to force unification
 let boxVal1 = box1.item
 let boxVal2 = box2.item  
 let pairLeft = pair2_1.left
@@ -197,7 +197,7 @@ print("Pair2<int, string>.right = ${pairRight}")
 print("")
 print("Test 11: Type equality and String methods")
 
-// This will exercise the String() and Equals() methods on various types
+/// This will exercise the String() and Equals() methods on various types
 fn typeTest1(x) = x * 2
 fn typeTest2(s) = s + s
 fn typeTest3(b) = !b
@@ -215,8 +215,8 @@ print("typeTest3(false) = ${toString(typeResult3)}")
 print("")
 print("Test 12: Declared type parameters")
 
-// The binder is load-bearing: without <T>, the two `T` annotations would name
-// a nominal type instead of pinning both parameters to ONE inferred type.
+/// The binder is load-bearing: without <T>, the two `T` annotations would name
+/// a nominal type instead of pinning both parameters to ONE inferred type.
 fn pick<T>(first: T, second: T) = first
 
 let picked = pick(10, 20)

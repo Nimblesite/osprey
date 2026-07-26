@@ -1,16 +1,16 @@
-// Audit supplies numbered values and observes continuation unwind order.
+/// Audit supplies numbered values and observes continuation unwind order.
 effect Audit {
     step: fn(string) -> int
 }
 
-// This helper performs two ordered steps and combines their supplied values.
+/// This helper performs two ordered steps and combines their supplied values.
 fn pipeline() -> int !Audit = {
     let a = perform Audit.step("load")
     let b = perform Audit.step("parse")
     a + b
 }
 
-// This case proves operations enter FIFO and post-resume code exits LIFO.
+/// This case proves operations enter FIFO and post-resume code exits LIFO.
 fn resumeLifoAuditCase() = {
     mut n = 0
     mut issued = ""

@@ -1,9 +1,9 @@
-// Prompt suspends a form until its handler supplies a field value.
+/// Prompt suspends a form until its handler supplies a field value.
 effect Prompt {
     ask: fn(string) -> string
 }
 
-// Log proves the outer handler remains installed across a resumed body.
+/// Log proves the outer handler remains installed across a resumed body.
 effect Log {
     line: fn(string) -> Unit
 }

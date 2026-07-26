@@ -1,15 +1,15 @@
-// Returning from an arm stops the suspended continuation.
+(** Returning from an arm stops the suspended continuation. *)
 effect Stop
     check : int => int
 
-// Observation records performer-side events without stdout.
+(** Observation records performer-side events without stdout. *)
 effect Observation
     line : string => Unit
 
-// Route one observation through the outer handler.
+(** Route one observation through the outer handler. *)
 observe message = perform Observation.line message
 
-// The zero check prevents the final observation and return value.
+(** The zero check prevents the final observation and return value. *)
 guarded : Unit -> int ! [Stop, Observation]
 guarded () =
     observe "before first check"
@@ -19,7 +19,7 @@ guarded () =
     observe ("after second check: " + toString b)
     99
 
-// Verify resume, abort, unwind, and discarded work.
+(** Verify resume, abort, unwind, and discarded work. *)
 resumeAbortEarlyExitCase () =
     mut transcript = ""
     mut checks = 0

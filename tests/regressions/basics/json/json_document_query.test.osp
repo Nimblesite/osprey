@@ -19,9 +19,9 @@ fn describe(value: JsonValue) -> string = match value {
     JsonObject { fields } => "object"
 }
 
-// This is a recursive JSON walk: match the object/array container, then pass
-// each nested JsonValue to the same matcher. The document below has one root
-// field, making the path and its output deterministic.
+/// This is a recursive JSON walk: match the object/array container, then pass
+/// each nested JsonValue to the same matcher. The document below has one root
+/// field, making the path and its output deterministic.
 fn reportDeepString(value: JsonValue) -> Unit = match value {
     JsonObject { fields } => forEachList(mapValues(fields), reportDeepString)
     JsonArray { values } => forEachList(values, reportDeepString)

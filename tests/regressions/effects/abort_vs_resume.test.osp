@@ -5,7 +5,7 @@ effect Step {
     run: fn(int) -> int
 }
 
-// An aborted continuation omits observations after the poison step.
+/// An aborted continuation omits observations after the poison step.
 fn pipeline() -> int !Step = {
     let a = perform Step.run(1)
     print("pipeline saw step1 -> " + toString(a))

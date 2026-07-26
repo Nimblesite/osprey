@@ -3,7 +3,7 @@
 
 print("=== HTTP Client Test ===")
 
-// Test HTTP client creation
+/// Test HTTP client creation
 let clientResult = httpCreateClient("http://httpbin.org", 5000)
 print("Testing HTTP client creation...")
 
@@ -13,14 +13,14 @@ match clientResult {
     _ => print("SUCCESS: Client created, making HTTP request...")
 }
 
-// Make an actual HTTP GET request (outside match to avoid IR issues)
+/// Make an actual HTTP GET request (outside match to avoid IR issues)
 let getResult = httpGet(clientResult, "/get", "")
 
 // Print result info
 print("HTTP GET request completed")
 print("Cleaning up...")
 
-// Clean up the client
+/// Clean up the client
 let closeResult = httpCloseClient(clientResult)
 print("HTTP test complete")
 

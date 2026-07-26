@@ -1,7 +1,7 @@
 // Three typed operations use independent direct-substitution policies: parse
 // supplies 0, missing supplies a default, and range clamps to a bound.
 
-// --- three distinct, independent typed error channels ---
+/// --- three distinct, independent typed error channels ---
 effect Parse {
     bad: fn(string) -> int
 }
@@ -12,7 +12,7 @@ effect Range {
     clamp: fn(int, int) -> int
 }
 
-// The row scopes these performs; rows are not yet propagated through calls.
+/// The row scopes these performs; rows are not yet propagated through calls.
 fn loadConfig() ![Parse, Missing, Range] = {
     let port    = perform Parse.bad("=80=")       // Parse channel: not a number
     let timeout = perform Missing.fill("timeout") // Missing channel: key absent
@@ -21,11 +21,11 @@ fn loadConfig() ![Parse, Missing, Range] = {
     port + timeout + retries
 }
 
-// This helper declares and performs only Range.
+/// This helper declares and performs only Range.
 fn loadRetries(raw: int) -> (int) -> int !Range =
     fn(hi) => perform Range.clamp(raw, hi)
 
-// No arm uses resume, so each arm value replaces its operation result.
+/// No arm uses resume, so each arm value replaces its operation result.
 let combined = handle Parse
     bad raw => {
         print("[Parse]    cannot parse '${raw}' -> substitute 0")
@@ -57,7 +57,7 @@ in {
     let total = loadConfig()
     print("combined config total = ${toString(total)}")
 
-    // The inner Range handler overrides the outer handler for one call.
+    /// The inner Range handler overrides the outer handler for one call.
     let strict = handle Range
         clamp v hi => {
             print("[Range*]   STRICT override: force ${toString(v)} -> 1")
@@ -66,7 +66,7 @@ in {
     in loadRetries(500)(10)
     print("strict retries (inner handler)  = ${toString(strict)}")
 
-    // Leaving the inner region restores the outer Range handler.
+    /// Leaving the inner region restores the outer Range handler.
     let relaxed = loadRetries(500)(10)
     print("relaxed retries (outer handler) = ${toString(relaxed)}")
 

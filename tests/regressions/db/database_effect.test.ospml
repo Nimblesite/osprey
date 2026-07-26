@@ -27,8 +27,8 @@ extern osprey_ffi_free (cell : Ptr) -> int
 extern osprey_ffi_null -> Ptr
 extern osprey_ffi_transient -> Ptr
 
-// The capability. Connection/statement handles are passed explicitly so handler
-// arms stay free of captured state.
+(** The capability. Connection/statement handles are passed explicitly so handler
+    arms stay free of captured state. *)
 effect Database
     open : string => Result<Ptr, Error>
     exec : (Ptr, string) => int
@@ -41,7 +41,7 @@ effect Database
     finalize : Ptr => int
     close : Ptr => int
 
-// --- real SQLite handler implementations (top-level, no captures) ---
+(** --- real SQLite handler implementations (top-level, no captures) --- *)
 openReal path =
     cell = osprey_ffi_cell ()
     rc = sqlite3_open path cell
@@ -61,7 +61,7 @@ prepareReal (db, sql) =
     freed = osprey_ffi_free cell
     stmt
 
-// --- application logic: effect-typed, knows nothing about SQLite or FFI ---
+(** --- application logic: effect-typed, knows nothing about SQLite or FFI --- *)
 seedUser (db, uid, uname) =
     stmt = perform Database.prepare db "INSERT INTO users(id, name) VALUES (?, ?)"
     b1 = perform Database.bindInt stmt 1 uid
@@ -107,6 +107,6 @@ in match perform Database.open ":memory:"
     Success value => runApp value
     Error message => print "open ${message}"
 
-// Register the regression scenario with the assertion-driven test runner.
+(** Register the regression scenario with the assertion-driven test runner. *)
 migratedLegacyCase () = checkAll "legacy execution" [true]
 test "regression scenario completes" migratedLegacyCase

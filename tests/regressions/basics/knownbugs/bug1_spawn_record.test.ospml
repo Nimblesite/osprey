@@ -8,6 +8,6 @@ print (toString (runJob jHigh))
 f = spawn (runJob jHigh)
 print (toString (await f))
 
-// Register the regression scenario with the assertion-driven test runner.
+(** Register the regression scenario with the assertion-driven test runner. *)
 migratedLegacyCase () = checkAll "legacy execution" [true]
 test "regression scenario completes" migratedLegacyCase

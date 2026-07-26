@@ -2,19 +2,19 @@
 
 fn getDynamicValue() -> any = 42
 
-// This should also pass - explicit any with parameter
+/// This should also pass - explicit any with parameter
 fn processAnyValue(input) -> any = input + 10
 
 print("Explicit any return type works")
 print("getDynamicValue() = ${getDynamicValue()}")
 print("processAnyValue(5) = ${processAnyValue(5)}")
 
-// Test storing any values without auto-conversion
+/// Test storing any values without auto-conversion
 let result1 = getDynamicValue()
 let result2 = processAnyValue(5)
 print("Any values stored without auto-conversion")
 
-// Test getRegularArgumentPosition coverage
+/// Test getRegularArgumentPosition coverage
 fn testArgs(a, b, c) = match a > 0 {
     true => b + " positive"
     false => b + " zero or negative " + toString(c)
@@ -23,7 +23,7 @@ fn testArgs(a, b, c) = match a > 0 {
 let argResult = testArgs(a: 5, b: "value", c: true)
 print("testArgs result: ${argResult}")
 
-// Test type inference edge cases with any
+/// Test type inference edge cases with any
 fn processAny(x: any) -> string = "Processed any"
 
 let anyProcessed1 = processAny(42)
@@ -34,14 +34,14 @@ print("processAny(42): Processed any")
 print("processAny(\"hello\"): Processed any")
 print("processAny(true): Processed any")
 
-// Test String() and Category() methods coverage with various types
+/// Test String() and Category() methods coverage with various types
 type TestType = { value: string }
 
 let testObj = TestType { value: "test data" }
 let testObj2 = TestType { value: "123" }
 let testObj3 = TestType { value: "false" }
 
-// Test field access on any types to trigger more coverage
+/// Test field access on any types to trigger more coverage
 fn getAnyField(obj) = {
     obj.value
 }
@@ -55,7 +55,7 @@ print("test data")
 print("123")
 print("false")
 
-// Test type comparison workaround since any comparison is complex
+/// Test type comparison workaround since any comparison is complex
 fn compareTypes(a: any, b: any) = "Type comparison tested"
 
 let comp1 = compareTypes(a: 42, b: 42)
@@ -67,7 +67,7 @@ print("Type comparison tested")
 print("Type comparison tested")
 print("Type comparison tested")
 
-// Test union type basic functionality
+/// Test union type basic functionality
 type Status = Active | Inactive
 
 let status1 = Active
@@ -85,7 +85,7 @@ print("Status types:")
 print("${statusStr1}")
 print("${statusStr2}")
 
-// Test basic union types for coverage - exercises NewUnionType, String(), Category(), Equals()
+/// Test basic union types for coverage - exercises NewUnionType, String(), Category(), Equals()
 type SimpleUnion = A | B | C
 
 fn processSimple(u) = match u {
@@ -94,7 +94,7 @@ fn processSimple(u) = match u {
     C => "Got C"
 }
 
-// Test SimpleUnion
+/// Test SimpleUnion
 let simple1 = A
 let simple2 = B
 let simple3 = C
@@ -103,7 +103,7 @@ print(processSimple(simple1))
 print(processSimple(simple2))
 print(processSimple(simple3))
 
-// Test union type equality
+/// Test union type equality
 type Color = Red | Green | Blue
 
 let color1 = Red

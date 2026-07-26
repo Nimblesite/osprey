@@ -1,13 +1,13 @@
 // Assertion-driven replacement for the former pipeline and string goldens.
 
-// Increment a pipeline value by one.
+/// Increment a pipeline value by one.
 fn pipeInc(x: int) -> int = x + 1
-// Double a pipeline value.
+/// Double a pipeline value.
 fn pipeDouble(x: int) -> int = x + x
-// Square a pipeline value.
+/// Square a pipeline value.
 fn pipeSquare(x: int) -> int = x * x
 
-// This case documents left-to-right pipe threading and nested-call equivalence.
+/// This case documents left-to-right pipe threading and nested-call equivalence.
 fn pipeChainCase() = {
     let p1 = 5 |> pipeInc |> pipeDouble
     let p2 = 3 |> pipeDouble |> pipeSquare |> pipeInc
@@ -32,12 +32,12 @@ fn pipeChainCase() = {
     ])
 }
 
-// Append an exclamation mark to a string.
+/// Append an exclamation mark to a string.
 fn stringShout(s) = s + "!"
-// Prefix a name with the legacy greeting.
+/// Prefix a name with the legacy greeting.
 fn stringGreet(who) = "Hi " + who
 
-// This case documents bindings, nested calls, concatenation, and interpolation.
+/// This case documents bindings, nested calls, concatenation, and interpolation.
 fn stringsCase() = {
     let name = "Ada"
     let hello = stringGreet(name)

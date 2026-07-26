@@ -40,7 +40,7 @@ route (method, path) =
         _      => "405 method-not-allowed"
 print "=== String Pipeline ===\n"
 
-// ----- Inspection / search (total, no Result wrap) -----
+(** ----- Inspection / search (total, no Result wrap) ----- *)
 raw = "  GET /api/users?name=alice&age=30  "
 print "raw=\"${raw}\" len=${raw |> length}\n"
 print "isEmpty=${raw |> isEmpty}\n"
@@ -52,7 +52,7 @@ print "endsWith '  '=${raw |> endsWith "  "}\n"
 print "len pipe=${raw |> length}  ufcs=${length raw}  direct=${length raw}\n"
 print "ctns pipe=${raw |> contains "GET"}  ufcs=${contains raw "GET"}  direct=${contains raw "GET"}\n"
 
-// ----- Transformation chain via pipe -----
+(** ----- Transformation chain via pipe ----- *)
 normalized = raw |> trim |> toLowerCase
 print "normalized=\"${normalized}\"\n"
 print "isGetRequest=${normalized |> startsWith "get "}\n"
@@ -86,7 +86,7 @@ match padEnd "42" 5 "0"
     Success value => print "padE=\"${value}\"\n"
     Error message => print "padE err\n"
 
-// ----- take/drop/reverse (UFCS form) -----
+(** ----- take/drop/reverse (UFCS form) ----- *)
 hello = "hello"
 print "take ufcs=\"${take hello 3}\"\n"
 print "drop ufcs=\"${drop hello 3}\"\n"
@@ -103,7 +103,7 @@ match parseFloat "3.14"
     Success value => print "parseFloat=${value}\n"
     Error message => print "pf err\n"
 
-// ----- Split/lines/words → List<string> -----
+(** ----- Split/lines/words → List<string> ----- *)
 multi  = "a\nb\nc"
 spaced = "  hello   world  "
 print "lines count=${listLength (lines multi)}\n"
@@ -126,6 +126,6 @@ print "${route ("DELETE", "/anything")}\n"
 print "=== Pipeline Complete ===\n"
 0
 
-// Register the regression scenario with the assertion-driven test runner.
+(** Register the regression scenario with the assertion-driven test runner. *)
 migratedLegacyCase () = checkAll "legacy execution" [true]
 test "regression scenario completes" migratedLegacyCase

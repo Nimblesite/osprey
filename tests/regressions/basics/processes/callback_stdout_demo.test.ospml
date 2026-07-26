@@ -48,6 +48,6 @@ match result3
 print "=== CALLBACK DEMO COMPLETE ==="
 print "The [CALLBACK] lines above show C runtime calling into Osprey!"
 
-// Register the regression scenario with the assertion-driven test runner.
+(** Register the regression scenario with the assertion-driven test runner. *)
 migratedLegacyCase () = checkAll "legacy execution" [true]
 test "regression scenario completes" migratedLegacyCase

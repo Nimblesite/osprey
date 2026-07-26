@@ -1,6 +1,6 @@
 // ML operator twin covering precedence, grouping, and boolean composition.
 
-// Verify arithmetic precedence and grouping.
+(** Verify arithmetic precedence and grouping. *)
 arithmeticOperatorsCase () =
     a = 2 + 3 * 4
     b = (2 + 3) * 4
@@ -26,7 +26,7 @@ arithmeticOperatorsCase () =
         0 - 5 * 2 == -10
     ]
 
-// Verify logical operators, comparisons, and composition.
+(** Verify logical operators, comparisons, and composition. *)
 booleanOperatorsCase () =
     t = true
     f = false

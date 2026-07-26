@@ -56,7 +56,7 @@ showDiv (a, b) =
 
 print "=== Math Showcase ==="
 
-// Plain arithmetic in interpolation.
+(** Plain arithmetic in interpolation. *)
 age = 25
 print "Next year: ${age + 1}"
 print "Last year: ${age - 1}"
@@ -95,7 +95,7 @@ match ((0 - 9223372036854775807) - 1) % (0 - 1)
     Success value => print "INT64_MIN % -1 = ${value}"
     Error message => print "INT64_MIN % -1 unexpected: ${message}"
 
-// Power, factorial, fibonacci
+(** Power, factorial, fibonacci *)
 n = 5
 m = 3
 print "pow(5,2)   = ${power (n, 2)}"
@@ -111,9 +111,9 @@ showDiv (20, 4)
 
 print "classify ${classify 0} / ${classify 1} / ${classify n}"
 
-// Cryptographic RNG + stdin reader. The drawn values vary every run, so only
-// the invariants are deterministic — assert those. stdin is empty under the
-// harness. Implements [BUILTIN-RANDOM], [BUILTIN-RANDOM-BELOW], [BUILTIN-INPUT].
+(** Cryptographic RNG + stdin reader. The drawn values vary every run, so only
+    the invariants are deterministic — assert those. stdin is empty under the
+    harness. Implements [BUILTIN-RANDOM], [BUILTIN-RANDOM-BELOW], [BUILTIN-INPUT]. *)
 rNonNeg =
     match random () >= 0
         true => "yes"
@@ -132,6 +132,6 @@ rGuard =
 print "random>=0 ${rNonNeg}, randomBelow(100) ${rBounded}, randomBelow(0) ${rGuard}, stdin=[${input ()}]"
 print "=== Math Showcase Complete ==="
 
-// Register the regression scenario with the assertion-driven test runner.
+(** Register the regression scenario with the assertion-driven test runner. *)
 migratedLegacyCase () = checkAll "legacy execution" [true]
 test "regression scenario completes" migratedLegacyCase

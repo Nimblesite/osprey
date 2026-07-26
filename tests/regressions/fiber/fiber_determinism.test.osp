@@ -46,7 +46,7 @@ in {
     print("The deterministic run scheduler preserves that order")
     print("")
 
-    // Spawn all three fibers, then await in spawn order.
+    /// Spawn all three fibers, then await in spawn order.
     let fiber1 = spawn processTask1()
     let fiber2 = spawn processTask2()
     let fiber3 = spawn processTask3()

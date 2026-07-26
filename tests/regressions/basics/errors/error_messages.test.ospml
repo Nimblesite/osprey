@@ -5,7 +5,7 @@
 // [ERR-PAYLOAD]: toString(Result) renders the real reason as Error(<reason>).
 // Spec: [BUILTIN-STRING-CURSOR], [ERR-PAYLOAD], [TYPE-LIST], [TYPE-MAP].
 
-// A user-declared fallible function — its Error reason must render in toString.
+(** A user-declared fallible function — its Error reason must render in toString. *)
 boom : Unit -> Result<int, string>
 boom () = Error(message = "user boom")
 // ---- numeric parsing ----
@@ -80,13 +80,13 @@ match 7 / 2
     Success value => print "divide-ok: ${value}\n"
     Error message => print "divide-ok: unexpected ${message}\n"
 
-// ---- out-of-bounds list index ----
+(** ---- out-of-bounds list index ---- *)
 xs = [1, 2, 3]
 match xs[9]
     Success value => print "listIndex: unexpected ${value}\n"
     Error message => print "listIndex: ${message}\n"
 
-// ---- missing map key ----
+(** ---- missing map key ---- *)
 prices = ["apple" => 2, "banana" => 3]
 match prices["mango"]
     Success value => print "mapKey: unexpected ${value}\n"
@@ -104,6 +104,6 @@ print "toString ok string  = ${toString (fromCodePoint 65)}\n"
 print "=== Error Catalogue Complete ===\n"
 0
 
-// Register the regression scenario with the assertion-driven test runner.
+(** Register the regression scenario with the assertion-driven test runner. *)
 migratedLegacyCase () = checkAll "legacy execution" [true]
 test "regression scenario completes" migratedLegacyCase

@@ -1,6 +1,6 @@
 // 🚀 COMPREHENSIVE ALGEBRAIC EFFECTS - ALL SYNTAX FEATURES! 🔥
 
-// Multiple effect declarations
+/// Multiple effect declarations
 effect IO {
     read: fn() -> string
     write: fn(string) -> Unit
@@ -29,7 +29,7 @@ effect Counter {
     reset: fn() -> Unit
 }
 
-// Pure functions work fine
+/// Pure functions work fine
 fn doubleValue(x) = match x * 2 {
     Success { value } => value
     Error { message } => 0
@@ -40,13 +40,13 @@ fn concatenateStrings(a, b) = match a + b {
     Error { message } => ""
 }
 
-// Functions with single effects
+/// Functions with single effects
 fn loggedIncrement(message) ![Logger, Counter] = {
     perform Logger.log("Incrementing: ${message}")
     perform Counter.increment()
 }
 
-// Pattern matching with effects
+/// Pattern matching with effects
 fn processItems(count) ![Logger, Counter] = match count {
     0 => {
         perform Logger.log("Base case reached")
@@ -70,7 +70,7 @@ fn processItems(count) ![Logger, Counter] = match count {
     }
 }
 
-// Fiber integration with effects
+/// Fiber integration with effects
 fn asyncProcessing(taskId) ![Logger, Counter] = {
     perform Logger.log("Starting async task ${toString(taskId)}")
     let fiber1 = spawn {
@@ -93,7 +93,7 @@ fn asyncProcessing(taskId) ![Logger, Counter] = {
     }
 }
 
-// Complex calculation with multiple effects
+/// Complex calculation with multiple effects
 fn calculation(x) ![Logger, State] = {
     perform Logger.log("Starting calculation for: ${toString(x)}")
     let current = perform State.get()
@@ -106,7 +106,7 @@ fn calculation(x) ![Logger, State] = {
     result
 }
 
-// Error handling with pattern matching
+/// Error handling with pattern matching
 fn errorProne(value) !Logger = match value {
     -5 => {
         perform Logger.error("Negative value detected: ${toString(value)}")
@@ -131,7 +131,7 @@ fn errorProne(value) !Logger = match value {
     }
 }
 
-// File I/O operations with effects
+/// File I/O operations with effects
 fn writeConfigFile(configName, data) ![FileIO, Logger] = {
     let filename = match "config_" + configName + ".txt" {
         Success { value } => value
@@ -189,7 +189,7 @@ fn cleanupTempFiles() ![FileIO, Logger] = {
     perform Logger.log("Temporary files cleaned up")
 }
 
-// Test mocked input via effects - NO real input() call!
+/// Test mocked input via effects - NO real input() call!
 fn testMockedInput() ![IO, Logger] = {
     perform Logger.log("Testing mocked input via effects")
     let mockInput = perform IO.input()
@@ -222,18 +222,18 @@ in handle IO
 in {
     print("🚀 Starting Comprehensive Effects Test")
     
-    // Test basic calculation
+    /// Test basic calculation
     let calcResult = calculation(21)
     
-    // Test pattern matching with effects
+    /// Test pattern matching with effects
     let processResult = processItems(3)
     
-    // Test error handling patterns
+    /// Test error handling patterns
     let errorResult1 = errorProne(-5)
     let errorResult2 = errorProne(150)
     let errorResult3 = errorProne(25)
     
-    // Test async processing with fibers
+    /// Test async processing with fibers
     let asyncResult = asyncProcessing(5)
     
     // Test mocked input functionality
@@ -242,9 +242,9 @@ in {
     print("🎯 Final Results: Calc=" + toString(calcResult) + ", Process=" + toString(processResult) + ", Errors=[" + toString(errorResult1) + "," + toString(errorResult2) + "," + toString(errorResult3) + "], Async=" + toString(asyncResult) + " 🎉")
 }
 
-// --- Generic effects: one declaration, many instantiations ---
-// Implements [EFFECTS-GENERIC-DECL], [EFFECTS-GENERIC-INSTANTIATION],
-// [EFFECTS-GENERIC-ROWS], [EFFECTS-GENERIC-RUNTIME]
+/// --- Generic effects: one declaration, many instantiations ---
+/// Implements [EFFECTS-GENERIC-DECL], [EFFECTS-GENERIC-INSTANTIATION],
+/// [EFFECTS-GENERIC-ROWS], [EFFECTS-GENERIC-RUNTIME]
 effect Stash<T> {
     put: fn(T) -> Unit
     take: fn() -> T

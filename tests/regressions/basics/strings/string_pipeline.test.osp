@@ -43,7 +43,7 @@ fn route(method, path) =
 
 print("=== String Pipeline ===\n")
 
-// ----- Inspection / search (total, no Result wrap) -----
+/// ----- Inspection / search (total, no Result wrap) -----
 let raw = "  GET /api/users?name=alice&age=30  "
 print("raw=\"${raw}\" len=${raw |> length}\n")
 print("isEmpty=${raw |> isEmpty}\n")
@@ -55,7 +55,7 @@ print("endsWith '  '=${raw |> endsWith("  ")}\n")
 print("len pipe=${raw |> length}  ufcs=${raw.length()}  direct=${length(raw)}\n")
 print("ctns pipe=${raw |> contains("GET")}  ufcs=${raw.contains("GET")}  direct=${contains(raw, "GET")}\n")
 
-// ----- Transformation chain via pipe -----
+/// ----- Transformation chain via pipe -----
 let normalized = raw |> trim |> toLowerCase
 print("normalized=\"${normalized}\"\n")
 print("isGetRequest=${normalized |> startsWith("get ")}\n")
@@ -83,7 +83,7 @@ match repeat ("ab", 4)             { Success { value } => print("repeat=\"${valu
 match padStart("42", 5, "0")       { Success { value } => print("padS=\"${value}\"\n")    Error { message } => print("padS err\n")    }
 match padEnd  ("42", 5, "0")       { Success { value } => print("padE=\"${value}\"\n")    Error { message } => print("padE err\n")    }
 
-// ----- take/drop/reverse (UFCS form) -----
+/// ----- take/drop/reverse (UFCS form) -----
 let hello = "hello"
 print("take ufcs=\"${hello.take(3)}\"\n")
 print("drop ufcs=\"${hello.drop(3)}\"\n")
@@ -94,7 +94,7 @@ match parseInt("123")  { Success { value } => print("parseInt=${value}\n")    Er
 match parseInt("oops") { Success { value } => print("oops=${value}\n")        Error { message } => print("parseInt strict: rejects 'oops'\n") }
 match parseFloat("3.14") { Success { value } => print("parseFloat=${value}\n") Error { message } => print("pf err\n") }
 
-// ----- Split/lines/words → List<string> -----
+/// ----- Split/lines/words → List<string> -----
 let multi  = "a\nb\nc"
 let spaced = "  hello   world  "
 print("lines count=${listLength(lines(multi))}\n")

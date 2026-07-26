@@ -27,8 +27,8 @@ extern fn osprey_ffi_free(cell: Ptr) -> int
 extern fn osprey_ffi_null() -> Ptr
 extern fn osprey_ffi_transient() -> Ptr
 
-// The capability. Connection/statement handles are passed explicitly so handler
-// arms stay free of captured state.
+/// The capability. Connection/statement handles are passed explicitly so handler
+/// arms stay free of captured state.
 effect Database {
     open: fn(string) -> Result<Ptr, Error>
     exec: fn(Ptr, string) -> int
@@ -42,7 +42,7 @@ effect Database {
     close: fn(Ptr) -> int
 }
 
-// --- real SQLite handler implementations (top-level, no captures) ---
+/// --- real SQLite handler implementations (top-level, no captures) ---
 fn openReal(path) = {
     let cell = osprey_ffi_cell()
     let rc = sqlite3_open(filename: path, ppDb: cell)
@@ -65,7 +65,7 @@ fn prepareReal(db, sql) = {
     stmt
 }
 
-// --- application logic: effect-typed, knows nothing about SQLite or FFI ---
+/// --- application logic: effect-typed, knows nothing about SQLite or FFI ---
 fn seedUser(db, uid, uname) !Database = {
     let stmt = perform Database.prepare(db, "INSERT INTO users(id, name) VALUES (?, ?)")
     let b1 = perform Database.bindInt(stmt, 1, uid)

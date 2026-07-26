@@ -1,6 +1,6 @@
 // Assertion-driven replacement for the former paired hello golden.
 
-// This case retains both smoke-test output lines and probes the bound greeting.
+/// This case retains both smoke-test output lines and probes the bound greeting.
 fn helloSmokeCase() = {
     let greeting = "Hello from the ML flavor"
 

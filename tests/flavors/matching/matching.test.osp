@@ -1,13 +1,13 @@
 // Assertion-driven replacement for the former matching flavor goldens.
 
-// Classify two integer literals and route every other value to a wildcard.
+/// Classify two integer literals and route every other value to a wildcard.
 fn tourClassify(n) = match n {
     0 => "zero"
     1 => "one"
     _ => "many"
 }
 
-// This case documents the three formerly printed match-tour branches.
+/// This case documents the three formerly printed match-tour branches.
 fn matchTourCase() = {
     // Preserve each complete one-word output line independently.
     checkAll("match tour legacy rendered lines", [
@@ -30,19 +30,19 @@ fn matchTourCase() = {
     ])
 }
 
-// Convert a threshold comparison into a pass-or-fail label.
+/// Convert a threshold comparison into a pass-or-fail label.
 fn matchGrade(n) = match n >= 50 {
     true => "pass"
     false => "fail"
 }
 
-// Convert a modulo comparison into an even-or-odd label.
+/// Convert a modulo comparison into an even-or-odd label.
 fn matchEven(n) = match n % 2 == 0 {
     true => "even"
     false => "odd"
 }
 
-// This case documents boolean scrutinees for grading and parity.
+/// This case documents boolean scrutinees for grading and parity.
 fn matchBooleanCase() = {
     // Preserve the complete combined boolean-match output line.
     checkAll("boolean match legacy rendered lines", [
@@ -65,7 +65,7 @@ fn matchBooleanCase() = {
     ])
 }
 
-// Label zero, one, and two explicitly before the integer wildcard.
+/// Label zero, one, and two explicitly before the integer wildcard.
 fn matchLabel(n) = match n {
     0 => "none"
     1 => "single"
@@ -73,7 +73,7 @@ fn matchLabel(n) = match n {
     _ => "many"
 }
 
-// This case documents literal and wildcard matching over integers.
+/// This case documents literal and wildcard matching over integers.
 fn matchIntegerCase() = {
     // Preserve the complete combined integer-match output line.
     checkAll("integer match legacy rendered lines", [

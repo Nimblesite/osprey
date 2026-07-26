@@ -4,7 +4,7 @@
 
 print "=== TYPE EQUALITY ==="
 
-// --- Generic type equality ---
+(** --- Generic type equality --- *)
 type Container T =
     value : T
 type Pair T U =
@@ -32,9 +32,9 @@ print "P<I,S>:  ${pairIS1.first}/${pairIS1.second} | ${pairIS2.first}/${pairIS2.
 print "T<I,S,I>: ${tIBI.first}/${tIBI.second}/${tIBI.third}"
 print ""
 
-// --- Function type equality via HOFs ---
-// Explicit signatures keep the function values concrete and match the Default
-// flavor's annotated helpers.
+(** --- Function type equality via HOFs ---
+    Explicit signatures keep the function values concrete and match the Default
+    flavor's annotated helpers. *)
 addOne : int -> int
 addOne x = x + 1
 timesTwo : int -> int
@@ -72,7 +72,7 @@ print (toString (applyTwo (twoArgAdd, 5, 7)))
 print (toString (applyThree (threeArgAdd, 1, 2, 3)))
 print ""
 
-// --- Generic monomorphization via identity-like functions ---
+(** --- Generic monomorphization via identity-like functions --- *)
 identity x = x
 duplicate x = x
 print (toString (identity 42))
@@ -80,7 +80,7 @@ print (toString (duplicate 99))
 print (identity "a")
 print (duplicate "b")
 
-// --- Union type equality (same tag = same, different tag = different) ---
+(** --- Union type equality (same tag = same, different tag = different) --- *)
 type Color =
     Red
     Green
@@ -111,13 +111,13 @@ print "color1=${colorName c1} color3=${colorName c3}"
 print "sameRR=${toString (sameColor (c1, c2))}"
 print "sameRB=${toString (sameColor (c1, c3))}"
 
-// --- Declaration-site variance: out T (covariant) / in T (contravariant) ---
-// Variance is position-checked: `out T` may appear only where the payload
-// flows out, `in T` only where it flows in (function parameters flip the
-// polarity). Payload instantiations match exactly at the leaves; function
-// payloads stay flexible through the representation-safe fn-return
-// normalization. Implements [TYPE-VARIANCE-DECL], [TYPE-VARIANCE-ASSIGN],
-// [FLAVOR-ML-GENERICS]
+(** --- Declaration-site variance: out T (covariant) / in T (contravariant) ---
+    Variance is position-checked: `out T` may appear only where the payload
+    flows out, `in T` only where it flows in (function parameters flip the
+    polarity). Payload instantiations match exactly at the leaves; function
+    payloads stay flexible through the representation-safe fn-return
+    normalization. Implements [TYPE-VARIANCE-DECL], [TYPE-VARIANCE-ASSIGN],
+    [FLAVOR-ML-GENERICS] *)
 type Feed out T =
     Feed
         supply : T
@@ -146,6 +146,6 @@ print "fn-payload gate accepted: ${describe (mkGate ())}"
 
 print "=== TYPE EQUALITY COMPLETE ==="
 
-// Register the regression scenario with the assertion-driven test runner.
+(** Register the regression scenario with the assertion-driven test runner. *)
 migratedLegacyCase () = checkAll "legacy execution" [true]
 test "regression scenario completes" migratedLegacyCase

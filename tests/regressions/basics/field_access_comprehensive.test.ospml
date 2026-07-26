@@ -1,7 +1,7 @@
 // Comprehensive Field Access Test
 // This tests various aspects of field access with different scenarios
 
-// Define record types
+(** Define record types *)
 type Point =
     x : int
     y : int
@@ -74,6 +74,6 @@ print ""
 
 print "=== COMPREHENSIVE FIELD ACCESS TEST COMPLETE ==="
 
-// Register the regression scenario with the assertion-driven test runner.
+(** Register the regression scenario with the assertion-driven test runner. *)
 migratedLegacyCase () = checkAll "legacy execution" [true]
 test "regression scenario completes" migratedLegacyCase

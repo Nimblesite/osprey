@@ -10,7 +10,7 @@ effect Metrics {
     recordSuccess: fn(string, int) -> Unit
 }
 
-// Match the exact complexity calculations from mega_showcase
+/// Match the exact complexity calculations from mega_showcase
 type TaskPriority = Urgent | High | Medium | Low
 
 fn calculateComplexity(priority) = match priority {
@@ -71,7 +71,7 @@ fn processTaskForBatch(taskId: string, dataSize: int, priority: TaskPriority) ->
     }
 }
 
-// Exact same task functions as mega_showcase
+/// Exact same task functions as mega_showcase
 fn processAlphaTask1() = processTaskForBatch(taskId: "task-alpha-1", dataSize: 150, priority: High)
 fn processAlphaTask2() = processTaskForBatch(taskId: "task-alpha-2", dataSize: 200, priority: Medium) 
 fn processAlphaTask3() = processTaskForBatch(taskId: "task-alpha-3", dataSize: 75, priority: Urgent)

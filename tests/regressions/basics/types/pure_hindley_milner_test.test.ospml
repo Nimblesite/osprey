@@ -3,7 +3,7 @@
 // the LLVM IR is byte-identical. No explicit type annotations — every type is
 // inferred from usage context exactly as in the Default twin.
 
-// Type definitions needed for the test
+(** Type definitions needed for the test *)
 type Pair =
     first : int
     second : int
@@ -18,20 +18,20 @@ print "=== HINDLEY-MILNER TEST ==="
 
 // Test 1: Function parameter and return type inference
 print "Test 1: Function type inference from usage"
-// These functions have NO explicit types - all inferred!
+(** These functions have NO explicit types - all inferred! *)
 identity x = x
 add (a, b) = a + b
 concat (s1, s2) = s1 + s2
 negate x = !x
 
-// Usage drives monomorphization
+(** Usage drives monomorphization *)
 intId = identity 42
 stringId = identity "test"
 boolId = identity true
 
 print "identity(42) = ${intId}, identity(\"test\") = ${stringId}, identity(true) = ${toString boolId}"
 
-// Test arithmetic inference
+(** Test arithmetic inference *)
 addValue = add (10, 20)
 concatResult = concat ("hello", "world")
 negateResult = negate false
@@ -62,7 +62,7 @@ print "Test 4: Polymorphic function inference"
 identityP x = x
 makePoint (a, b) = Point(x = a, y = b)
 
-// Each usage gets monomorphized
+(** Each usage gets monomorphized *)
 id1 = identityP 42
 id2 = identityP "test"
 id3 = identityP true
@@ -97,7 +97,7 @@ apply (f, x) = f x
 intPoint = Point(x = 1, y = 2)
 stringContainer = Container(value = "hello", label = "world")
 
-// Direct field access works perfectly with HM
+(** Direct field access works perfectly with HM *)
 pointX = intPoint.x
 pointY = intPoint.y
 pairFirst = intPair.first
@@ -121,14 +121,14 @@ print ""
 // Test 7: Generic type equality testing (for GenericType.Equals coverage)
 print "Test 7: Generic type equality comparison"
 
-// Create generic types that will exercise the Equals method
+(** Create generic types that will exercise the Equals method *)
 type Generic T =
     data : T
 type AnotherGeneric T U =
     first : T
     second : U
 
-// Functions that return generic types - this will exercise type comparison during unification
+(** Functions that return generic types - this will exercise type comparison during unification *)
 makeGenericInt value = Generic(data = value)
 makeGenericString value = Generic(data = value)
 makeAnotherGeneric (a, b) = AnotherGeneric(first = a, second = b)
@@ -139,7 +139,7 @@ gen3 = makeGenericString "test"
 gen4 = makeAnotherGeneric (1, "two")
 gen5 = makeAnotherGeneric (3, "four")
 
-// Access fields to force type unification and comparison
+(** Access fields to force type unification and comparison *)
 val1 = gen1.data
 val2 = gen2.data
 val3 = gen3.data
@@ -160,14 +160,14 @@ print "Test 9: Method call type inference"
 type StringWrapper =
     content : string
 
-// Add a method-like function that takes self
+(** Add a method-like function that takes self *)
 getLength self = 42
 
 uppercase self = self.content + "_UPPER"
 
 wrapper = StringWrapper(content = "hello")
 
-// These aren't real method calls in OSP, but test the pattern
+(** These aren't real method calls in OSP, but test the pattern *)
 wrapperLen = getLength wrapper
 wrapperUpper = uppercase wrapper
 
@@ -187,13 +187,13 @@ type Pair2 A B =
 makeBox val = Box(item = val)
 makePair2 (a, b) = Pair2(left = a, right = b)
 
-// Force generic type unification through usage
+(** Force generic type unification through usage *)
 box1 = makeBox 100
 box2 = makeBox "test"
 pair2_1 = makePair2 (5, "five")
 pair2_2 = makePair2 (true, 314)
 
-// Access to force unification
+(** Access to force unification *)
 boxVal1 = box1.item
 boxVal2 = box2.item
 pairLeft = pair2_1.left
@@ -208,7 +208,7 @@ print "Pair2<int, string>.right = ${pairRight}"
 print ""
 print "Test 11: Type equality and String methods"
 
-// This will exercise the String() and Equals() methods on various types
+(** This will exercise the String() and Equals() methods on various types *)
 typeTest1 x = x * 2
 typeTest2 s = s + s
 typeTest3 b = !b
@@ -240,6 +240,6 @@ print "Box<int> pinned explicitly: item = ${pinned.item}"
 print "=== PURE HINDLEY-MILNER TEST COMPLETE ==="
 print "All types inferred from usage context - no explicit type annotations!"
 
-// Register the regression scenario with the assertion-driven test runner.
+(** Register the regression scenario with the assertion-driven test runner. *)
 migratedLegacyCase () = checkAll "legacy execution" [true]
 test "regression scenario completes" migratedLegacyCase
