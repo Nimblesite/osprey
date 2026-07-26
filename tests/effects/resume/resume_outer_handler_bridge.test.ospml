@@ -1,12 +1,12 @@
-// Prompt suspends a form until its handler supplies a field value.
+// Prompt suspends a form until its handler supplies a value.
 effect Prompt
     ask : string => string
 
-// Log proves the outer handler remains installed across a resumed body.
+// Log observes both sides of the resumed prompt.
 effect Log
     line : string => Unit
 
-// This helper logs on both sides of the prompt operation.
+// Log on both sides of the prompt.
 form : Unit -> string ! [Prompt, Log]
 form () =
     perform Log.line "form start"
@@ -14,7 +14,7 @@ form () =
     perform Log.line ("got " + name)
     name
 
-// This case verifies outer-handler reachability before and after resume.
+// Verify outer-handler reachability across resume.
 resumeOuterHandlerBridgeCase () =
     mut transcript = ""
     mut logMessages = ""
@@ -44,17 +44,17 @@ resumeOuterHandlerBridgeCase () =
             answer
     legacyTranscript = "${transcript}result=${result}\n"
 
-    // Preserve the complete bridge transcript and each legacy observation.
+    // Preserve the complete bridge transcript.
     checkAll "outer-handler legacy observations" [
         legacyTranscript == "[log] form start\nask name\n[log] got Ada\nafter ask: Ada\nresult=Ada\n",
-        contains (legacyTranscript, "[log] form start\n"),
-        contains (legacyTranscript, "ask name\n"),
-        contains (legacyTranscript, "[log] got Ada\n"),
-        contains (legacyTranscript, "after ask: Ada\n"),
-        endsWith (legacyTranscript, "result=Ada\n")
+        contains legacyTranscript "[log] form start\n",
+        contains legacyTranscript "ask name\n",
+        contains legacyTranscript "[log] got Ada\n",
+        contains legacyTranscript "after ask: Ada\n",
+        endsWith legacyTranscript "result=Ada\n"
     ]
 
-    // Assert both outer logs crossed the prompt and the prompt settled once.
+    // Both logs cross the prompt, which settles once.
     checkAll "outer-handler internal state" [
         result == "Ada",
         settledAnswer == "Ada",
@@ -64,5 +64,4 @@ resumeOuterHandlerBridgeCase () =
         logMessages == "form start|got Ada|"
     ]
 
-// Register the resumed-body outer-handler regression.
 test "a resumed body retains its outer handlers" resumeOuterHandlerBridgeCase

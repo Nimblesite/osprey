@@ -8,10 +8,7 @@ fn total() -> int !Supply = {
     let first = perform Supply.next("first")
     let second = perform Supply.next("second")
     let third = perform Supply.next("third")
-    match first + second + third {
-        Success { value } => value
-        Error { message } => 0
-    }
+    first + second + third
 }
 
 // Relay proves generic operation values unbox at two distinct instantiations.
@@ -27,14 +24,8 @@ effect Checked {
     half: fn(int) -> Result<int, string>
 }
 
-// This helper pattern-matches the Result returned by a handled operation.
-fn runChecked() -> int !Checked = {
-    let result = perform Checked.half(10)
-    match result {
-        Success { value } => value
-        Error { message } => 0
-    }
-}
+// This helper defaults the Result returned by a handled operation.
+fn runChecked() -> int !Checked = perform Checked.half(10) ?: 0
 
 // This helper receives an integer from Relay<int>.
 fn echoNum() -> int !Relay<int> = perform Relay.ask()
@@ -50,10 +41,7 @@ fn resumeValueRewriteCase() = {
     let result = handle Supply
         next label => {
             supplyCalls = supplyCalls + 1
-            seed = match seed + 5 {
-                Success { value } => value
-                Error { message } => seed
-            }
+            seed = seed + 5
             supplied = "${supplied}${label}:${toString(seed)}|"
             supplyTranscript = "${supplyTranscript}supply ${label}=${toString(seed)}\n"
             let answer = resume(seed)

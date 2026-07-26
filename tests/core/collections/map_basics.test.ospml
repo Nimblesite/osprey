@@ -1,6 +1,6 @@
-// ML twin of the assertion-driven persistent Map migration.
+// Persistent Map behavior across construction, branching, and merging.
 
-// constructionAndOverwriteCase preserves empty, set, contains, overwrite, and source-isolation observations.
+// Exercise construction, overwrite, membership, and source isolation.
 constructionAndOverwriteCase () =
     empty = Map ()
     m1 = mapSet empty "alice" 25
@@ -11,7 +11,7 @@ constructionAndOverwriteCase () =
         Success value => false
         Error message => message == "mapGet: key not found"
 
-    // Every legacy empty, growth, contains, and overwrite-length observation remains independent.
+    // Check empty, growth, membership, and overwrite state.
     checkAll "legacy map construction observations" [
         mapLength empty == 0,
         !(mapContains empty "missing"),
@@ -26,7 +26,7 @@ constructionAndOverwriteCase () =
         mapLength m3 == 3
     ]
 
-    // Added value checks ensure correct bindings and persistence rather than length-only success.
+    // Check exact values and source isolation.
     checkAll "map construction values and isolation" [
         (mapGet m1 "alice" ?: (0 - 999)) == 25,
         !(mapContains m1 "bob"),
@@ -43,7 +43,7 @@ constructionAndOverwriteCase () =
         m4Missing
     ]
 
-// generationsAndBranchesCase preserves the five-generation chain and validates sibling branch isolation.
+// Exercise a five-generation chain and sibling branch isolation.
 generationsAndBranchesCase () =
     g0 = Map ()
     g1 = mapSet g0 "k1" 1
@@ -54,7 +54,7 @@ generationsAndBranchesCase () =
     xa = mapSet g3 "X" 100
     xb = mapSet g3 "Y" 200
 
-    // The six generation lengths and every legacy branch-membership result remain asserted.
+    // Check generation lengths and branch membership.
     checkAll "persistent map generation and branch observations" [
         mapLength g0 == 0,
         mapLength g1 == 1,
@@ -71,7 +71,7 @@ generationsAndBranchesCase () =
         mapLength g3 == 3
     ]
 
-    // Value-level checks prove old generations retain bindings after descendant creation.
+    // Check that earlier generations retain their values.
     checkAll "persistent map generation values" [
         !(mapContains g0 "k1"),
         (mapGet g1 "k1" ?: (0 - 999)) == 1,
@@ -89,7 +89,7 @@ generationsAndBranchesCase () =
         mapLength g3 == 3
     ]
 
-    // Branch-specific values and absences catch aliasing between siblings and their parent.
+    // Check sibling values, absences, and parent isolation.
     checkAll "persistent map branch values and isolation" [
         (mapGet xa "X" ?: (0 - 999)) == 100,
         (mapGet xb "Y" ?: (0 - 999)) == 200,
@@ -103,7 +103,7 @@ generationsAndBranchesCase () =
         mapLength xb == 4
     ]
 
-// removalAndMergeCase preserves removal and merge lengths while adding exact right-biased value checks.
+// Exercise persistent removal and right-biased merge.
 removalAndMergeCase () =
     g0 = Map ()
     g1 = mapSet g0 "k1" 1
@@ -122,7 +122,7 @@ removalAndMergeCase () =
         Success value => false
         Error message => message == "mapGet: key not found"
 
-    // All four legacy removal observations remain direct predicates.
+    // Check removal lengths and membership.
     checkAll "persistent removal legacy observations" [
         mapLength removed == 4,
         !(mapContains removed "k3"),
@@ -130,7 +130,7 @@ removalAndMergeCase () =
         mapLength absentRemoved == 5
     ]
 
-    // Added removal checks validate retained values, exact failure, original preservation, and absent-key identity behavior.
+    // Check retained values, exact failure, and source preservation.
     checkAll "persistent removal values and isolation" [
         (mapGet removed "k1" ?: (0 - 999)) == 1,
         (mapGet removed "k2" ?: (0 - 999)) == 2,
@@ -144,7 +144,7 @@ removalAndMergeCase () =
         !(mapContains g4 "k5")
     ]
 
-    // Every legacy merge length, operator-alias, membership, and identity observation remains asserted.
+    // Check merge lengths, membership, identities, and the + alias.
     checkAll "map merge legacy observations" [
         mapLength mergedAB == 4,
         mapLength mergedBA == 4,
@@ -154,7 +154,7 @@ removalAndMergeCase () =
         mapLength (mapMerge a a) == 3
     ]
 
-    // Exact lookups pin right-biased merge semantics in both directions and through the plus alias.
+    // Check exact right-biased values in both directions.
     checkAll "map merge right-biased values" [
         (mapGet mergedAB "x" ?: (0 - 999)) == 1,
         (mapGet mergedAB "y" ?: (0 - 999)) == 20,
@@ -172,7 +172,7 @@ removalAndMergeCase () =
         (mapGet b "y" ?: (0 - 999)) == 20
     ]
 
-// viewsAndCrossCollectionCase preserves keys, values, and list/map coexistence observations.
+// Exercise key/value views beside persistent lists.
 viewsAndCrossCollectionCase () =
     g0 = Map ()
     g1 = mapSet g0 "k1" 1
@@ -186,7 +186,7 @@ viewsAndCrossCollectionCase () =
     xs2 = listAppend xs 400
     mm2 = mapSet g3 "d" 4
 
-    // The three legacy view lengths and five cross-collection lengths remain independent.
+    // Check view and cross-collection lengths.
     checkAll "map views and cross-collection legacy lengths" [
         listLength keys == 5,
         listLength values == 5,
@@ -198,7 +198,7 @@ viewsAndCrossCollectionCase () =
         listLength (mapKeys g3 + xs) == 6
     ]
 
-    // Key and value membership checks validate view content without assuming hash iteration order.
+    // Check view contents without assuming iteration order.
     checkAll "map key and value view contents" [
         listContains keys "k1",
         listContains keys "k2",
@@ -214,7 +214,7 @@ viewsAndCrossCollectionCase () =
         !(listContains values 99)
     ]
 
-    // Added cross-collection checks prove list and map descendants remain isolated from both source structures.
+    // Check isolation across List and Map descendants.
     checkAll "list and map cross-collection isolation" [
         (listGet xs 0 ?: (0 - 999)) == 100,
         (listGet xs 2 ?: (0 - 999)) == 300,
@@ -228,7 +228,7 @@ viewsAndCrossCollectionCase () =
         mapLength g5 == listLength values
     ]
 
-// literalsAndDispatchCase preserves literal lookup, duplicate-key, and receiver-directed builtin behavior.
+// Exercise map literals, duplicate keys, and builtin dispatch.
 literalsAndDispatchCase () =
     empty = Map ()
     prices = ["apple" => 2, "banana" => 3, "cherry" => 5]
@@ -237,7 +237,7 @@ literalsAndDispatchCase () =
         Success value => false
         Error message => message == "mapGet: key not found"
 
-    // All three legacy literal lookup outcomes remain asserted with exact missing-key behavior.
+    // Check literal lookup, duplicates, and exact missing-key behavior.
     checkAll "map literal lookup behavior" [
         (mapGet prices "apple" ?: (0 - 999)) == 2,
         priceMissing,
@@ -251,14 +251,14 @@ literalsAndDispatchCase () =
         mapContains duplicate "key"
     ]
 
-    // The old composite bare-length row is split into constituent map assertions.
+    // Check receiver-directed length dispatch.
     checkAll "receiver-directed map length dispatch" [
         length prices == 3,
         length duplicate == 1,
         length empty == 0
     ]
 
-    // The old composite bare-isEmpty row is split and extended across literal and derived maps.
+    // Check receiver-directed isEmpty dispatch.
     checkAll "receiver-directed map isEmpty dispatch" [
         isEmpty empty,
         !(isEmpty prices),
@@ -266,17 +266,12 @@ literalsAndDispatchCase () =
         isEmpty (mapRemove duplicate "key")
     ]
 
-// Register empty, set, overwrite, and source-isolation behavior.
 test "maps construct, overwrite, and retain source bindings" constructionAndOverwriteCase
 
-// Register generation-chain and sibling-branch persistence behavior.
 test "map generations and sibling branches remain isolated" generationsAndBranchesCase
 
-// Register persistent removal and right-biased merge behavior.
 test "map removal and merge preserve values and bias" removalAndMergeCase
 
-// Register key/value views beside independent persistent lists.
 test "map views and list interactions preserve both collections" viewsAndCrossCollectionCase
 
-// Register literal lookup, duplicate keys, and receiver-directed dispatch.
 test "map literals and receiver dispatch preserve lookup semantics" literalsAndDispatchCase

@@ -1,44 +1,42 @@
-// ML twin of the high-density cross-feature workflow suite.
+// ML workflow twin combining currying, matches, pipes, and Results.
 
 // Increment an integer in direct calls and pipelines.
 tourInc : int -> int
 tourInc x = x + 1
 
-// Add two integers using the uncurried flavor-paired form.
+// Add two integers through curried application.
 tourAdd : int -> int -> int
-tourAdd (x, y) = x + y
+tourAdd x y = x + y
 
 // Square an integer in direct calls and pipelines.
 tourSquare : int -> int
 tourSquare n = n * n
 
-// Capture a scale factor in a concrete returned closure.
-tourMakeScaler : int -> (int) -> int
-tourMakeScaler k = \v => v * k
+// Capture a scale factor through partial application.
+tourMakeScaler : int -> int -> int
+tourMakeScaler k v = v * k
 
-// Name two integer literals and stringify the wildcard branch.
-tourName n =
-    match n
-        0 => "zero"
-        1 => "one"
-        _ => toString n
+// Name integer literals through adjacent pattern clauses.
+tourName 0 = "zero"
+tourName 1 = "one"
+tourName n = toString n
 
-// Classify parity by matching a modulo-derived boolean.
+// Classify parity by matching a derived boolean.
 tourParity n =
     match n % 2 == 0
         true => "even"
         false => "odd"
 
-// This case integrates arithmetic, closures, matches, pipes, and rendering.
+// Verify arithmetic, closures, matches, pipes, and rendering together.
 curryTourCase () =
-    base = tourAdd (40, 2)
+    base = tourAdd 40 2
     scaled = tourMakeScaler 3
 
-    // Preserve all five complete curry-tour output lines byte-for-byte.
+    // Preserve all five rendered results.
     checkAll "curry tour legacy rendered lines" [
         "base=${toString base} inc=${toString (tourInc base)} sq=${toString (tourSquare 9)}" ==
             "base=42 inc=43 sq=81",
-        "scaled7=${toString (scaled 7)} curry=${toString (tourAdd (5, 6))}" ==
+        "scaled7=${toString (scaled 7)} curry=${toString (tourAdd 5 6)}" ==
             "scaled7=21 curry=11",
         "name0=${tourName 0} name1=${tourName 1} name9=${tourName 9}" ==
             "name0=zero name1=one name9=9",
@@ -46,13 +44,13 @@ curryTourCase () =
             "parity7=odd parity8=even",
         "pipe=${toString (10 |> tourInc |> tourSquare)}" == "pipe=121"
     ]
-    // Split all eleven dynamic values from the five legacy lines.
+    // Check all dynamic values independently.
     checkAll "curry tour legacy constituent values" [
         base == 42,
         tourInc base == 43,
         tourSquare 9 == 81,
         scaled 7 == 21,
-        tourAdd (5, 6) == 11,
+        tourAdd 5 6 == 11,
         tourName 0 == "zero",
         tourName 1 == "one",
         tourName 9 == "9",
@@ -60,109 +58,104 @@ curryTourCase () =
         tourParity 8 == "even",
         (10 |> tourInc |> tourSquare) == 121
     ]
-    // Extend zero, wildcard, closure, parity, and intermediate-pipe coverage.
+    // Exercise zero, wildcard, closure, parity, and intermediate pipes.
     checkAll "curry tour cross-feature edges" [
         tourInc 0 == 1,
         tourSquare 0 == 0,
-        (tourMakeScaler 0) 9 == 0,
+        tourMakeScaler 0 9 == 0,
         tourName 2 == "2",
         tourParity 0 == "even",
         (10 |> tourInc) == 11
     ]
 
-// Capture a multiplier for the concise mixed-feature workflow.
-mixedScale : int -> (int) -> int
-mixedScale k = \v => v * k
+// Capture a multiplier through partial application.
+mixedScale : int -> int -> int
+mixedScale k v = v * k
 
-// Advance an integer by one for direct and piped calls.
+// Advance an integer for direct and piped calls.
 mixedStep : int -> int
 mixedStep x = x + 1
 
-// Classify zero and positive values separately from negative values.
+// Classify non-negative and negative integers.
 mixedSign : int -> string
 mixedSign n =
     match n >= 0
         true => "pos"
         false => "neg"
 
-// This case composes a closure, pipeline, match, binding, and interpolation.
+// Verify closure, pipeline, match, binding, and interpolation composition.
 mixedFeaturesCase () =
     base = 7
     triple = mixedScale 3
     piped = base |> mixedStep |> mixedStep
 
-    // Preserve the complete mixed-feature golden line.
+    // Preserve the complete rendered result.
     checkAll "mixed features legacy rendered lines" [
         "triple=${triple base} piped=${piped} sign=${mixedSign base} mix=${triple (mixedStep base)}" ==
             "triple=21 piped=9 sign=pos mix=24"
     ]
-    // Split all four dynamic values from the combined line.
+    // Check each dynamic value independently.
     checkAll "mixed features legacy constituent values" [
         triple base == 21,
         piped == 9,
         mixedSign base == "pos",
         triple (mixedStep base) == 24
     ]
-    // Extend sign boundaries, closure factors, and intermediate pipeline state.
+    // Exercise sign boundaries, closure factors, and intermediate pipes.
     checkAll "mixed features interaction edges" [
         mixedSign 0 == "pos",
         mixedSign (0 - 1) == "neg",
-        (mixedScale 0) 99 == 0,
+        mixedScale 0 99 == 0,
         (base |> mixedStep) == 8,
-        (mixedScale 2) 5 == 10
+        mixedScale 2 5 == 10
     ]
 
-// Unwrap a successful modulo Result and map errors to the legacy sentinel.
-resultSafeMod (a, b) =
-    match a % b
-        Success value => value
-        Error e => -1
+// Unwrap modulo success or use the legacy sentinel on error.
+resultSafeMod : int -> int -> int
+resultSafeMod a b = a % b ?: -1
 
 // Apply a concrete integer function twice.
 resultTwice : (int -> int) -> int -> int
-resultTwice (f, x) = f (f x)
+resultTwice f x = f (f x)
 
-// Add ten as the first-class function passed to resultTwice.
+// Add ten as a first-class function.
 resultBump x = x + 10
 
-// Capture one operand in a genuinely curried addition closure.
+// Capture one addition operand through partial application.
 resultAdder : int -> int -> int
-resultAdder a = \b => a + b
+resultAdder a b = a + b
 
-// This case composes Result matching, bindings, HOFs, and partial application.
+// Verify Result fallback, HOFs, and partial application together.
 resultsStateHigherOrderCase () =
-    rem = resultSafeMod (17, 5)
+    rem = resultSafeMod 17 5
     total = rem
     addTen = resultAdder 10
 
-    // Preserve all three complete Result/HOF output lines.
+    // Preserve all three rendered results.
     checkAll "Result and higher-order legacy rendered lines" [
-        "rem17_5=${toString total} rem20_7=${toString (resultSafeMod (20, 7))}" ==
+        "rem17_5=${toString total} rem20_7=${toString (resultSafeMod 20 7)}" ==
             "rem17_5=2 rem20_7=6",
-        "twiceBump5=${toString (resultTwice (resultBump, 5))}" == "twiceBump5=25",
-        "addTen32=${toString (addTen 32)} direct=${toString ((resultAdder 7) 8)}" ==
+        "twiceBump5=${toString (resultTwice resultBump 5)}" == "twiceBump5=25",
+        "addTen32=${toString (addTen 32)} direct=${toString (resultAdder 7 8)}" ==
             "addTen32=42 direct=15"
     ]
-    // Split the five dynamic values from those legacy lines.
+    // Check each dynamic value independently.
     checkAll "Result and higher-order legacy constituent values" [
         total == 2,
-        resultSafeMod (20, 7) == 6,
-        resultTwice (resultBump, 5) == 25,
+        resultSafeMod 20 7 == 6,
+        resultTwice resultBump 5 == 25,
         addTen 32 == 42,
-        (resultAdder 7) 8 == 15
+        resultAdder 7 8 == 15
     ]
-    // Exercise the error branch, zero remainder, repeated calls, and captures.
+    // Exercise error fallback, zero remainder, repetition, and captures.
     checkAll "Result and higher-order branch edges" [
-        resultSafeMod (5, 0) == -1,
-        resultSafeMod (20, 5) == 0,
-        resultTwice (resultBump, 0) == 20,
-        (resultAdder 0) 9 == 9,
-        (resultAdder (0 - 5)) 5 == 0
+        resultSafeMod 5 0 == -1,
+        resultSafeMod 20 5 == 0,
+        resultTwice resultBump 0 == 20,
+        resultAdder 0 9 == 9,
+        resultAdder (0 - 5) 5 == 0
     ]
 
-// Register the broad curry-tour interaction scenario.
 test "curry tour retains all closure match and pipe outputs" curryTourCase
-// Register the concise mixed-feature interaction scenario.
 test "mixed workflow composes closure match pipe and interpolation" mixedFeaturesCase
-// Register the Result and higher-order interaction scenario.
 test "Result workflow covers success error HOF and partial application" resultsStateHigherOrderCase

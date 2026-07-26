@@ -1,15 +1,14 @@
-// ML twin of the assertion-driven mutation suite.
+// ML effect-handling twin of the counter mutation suite.
 
-// Counter exposes mutation only through its handled tick operation.
+// Counter mutation is available only through this handled operation.
 effect FlavorCounter
     tick : int => Unit
 
-// This case proves the initial, intermediate, final, and rendered counter state.
+// Verify state before, during, and after the handler.
 mutationCase () =
-    // Keep mutable state local so each execution starts independently at zero.
     mut flavorCounter = 0
 
-    // The migrated test starts from the same zero-valued state as the example.
+    // The counter starts at zero for each test run.
     checkAll "counter initial state" [
         flavorCounter == 0
     ]
@@ -20,23 +19,22 @@ mutationCase () =
     in
         perform FlavorCounter.tick 1
 
-        // The first effect is observable independently instead of only in the sum.
+        // The first operation is independently observable.
         checkAll "counter first transition" [
             flavorCounter == 1
         ]
 
         perform FlavorCounter.tick 41
 
-        // The second effect reaches the legacy final value inside the handler.
+        // The second operation reaches the expected total.
         checkAll "counter second transition" [
             flavorCounter == 42
         ]
 
-    // The final value and exact old output line both survive handler exit.
+    // State and rendering survive handler exit.
     checkAll "counter legacy final state and rendering" [
         flavorCounter == 42,
         "counter = ${flavorCounter}" == "counter = 42"
     ]
 
-// Run the complete state-transition scenario as one named test.
 test "handled mutation retains every counter transition" mutationCase

@@ -1,25 +1,24 @@
-// ML twin of the assertion-driven hello smoke suite.
+// ML smoke twin covering bindings and interpolation.
 
-// This case retains both smoke-test output lines and probes the bound greeting.
+// Verify greeting text and arithmetic interpolation.
 helloSmokeCase () =
     greeting = "Hello from the ML flavor"
 
-    // Reconstruct both complete legacy lines byte-for-byte as string values.
+    // Preserve both complete rendered lines.
     checkAll "hello legacy rendered lines" [
         greeting == "Hello from the ML flavor",
         "2 + 3 = ${2 + 3}" == "2 + 3 = 5"
     ]
-    // Split the two dynamic constituents from their rendered presentation.
+    // Check the dynamic values independently.
     checkAll "hello legacy constituent values" [
         greeting == "Hello from the ML flavor",
         2 + 3 == 5
     ]
-    // Confirm useful boundaries of the greeting rather than only whole equality.
+    // Exercise useful greeting boundaries.
     checkAll "hello greeting edge cases" [
         startsWith (greeting, "Hello"),
         contains (greeting, "ML flavor"),
         (greeting == "") == false
     ]
 
-// Run the paired flavor and interpolation smoke test.
 test "top-level binding and interpolation retain both hello lines" helloSmokeCase

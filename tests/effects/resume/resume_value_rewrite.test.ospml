@@ -1,42 +1,36 @@
-// Supply lets a handler choose each integer observed by the performer.
+// Supply lets the handler choose each observed integer.
 effect Supply
     next : string => int
 
-// This helper sums three values supplied through explicit resume calls.
+// Sum three values supplied by explicit resumes.
 total : Unit -> int ! Supply
 total () =
     first = perform Supply.next "first"
     second = perform Supply.next "second"
     third = perform Supply.next "third"
-    match first + second + third
-        Success value => value
-        Error message => 0
+    first + second + third
 
-// Relay proves generic operation values unbox at two distinct instantiations.
+// Relay is exercised at two concrete result types.
 effect Relay T
     ask : Unit => T
 
-// This helper receives a string from Relay<string>.
+// Receive a string from Relay<string>.
 echoWord : Unit -> string ! Relay<string>
 echoWord () = perform Relay.ask ()
 
-// Checked proves resume supplies a whole Result rather than its payload.
+// Checked returns a Result as the operation value.
 effect Checked
     half : int => Result<int, string>
 
-// This helper pattern-matches the Result returned by a handled operation.
+// Default the Result returned by Checked.
 runChecked : Unit -> int ! Checked
-runChecked () =
-    result = perform Checked.half 10
-    match result
-        Success value => value
-        Error message => 0
+runChecked () = perform Checked.half 10 ?: 0
 
-// This helper receives an integer from Relay<int>.
+// Receive an integer from Relay<int>.
 echoNum : Unit -> int ! Relay<int>
 echoNum () = perform Relay.ask ()
 
-// This case verifies rewritten values, unwind answers, Results, and generics.
+// Verify rewritten values, unwind answers, Results, and generics.
 resumeValueRewriteCase () =
     mut supplyTranscript = ""
     mut seed = 100
@@ -48,9 +42,7 @@ resumeValueRewriteCase () =
         handle Supply
             next label =>
                 supplyCalls := supplyCalls + 1
-                seed := match seed + 5
-                    Success value => value
-                    Error message => seed
+                seed := seed + 5
                 supplied := "${supplied}${label}:${toString seed}|"
                 supplyTranscript := "${supplyTranscript}supply ${label}=${toString seed}\n"
                 answer = resume seed
@@ -89,22 +81,22 @@ resumeValueRewriteCase () =
         in echoNum ()
     legacyTranscript = "${supplyTranscript}result=${toString result}\n${relayTranscript}word=${word}\nchecked=${toString checked} num=${toString num}\n"
 
-    // Preserve the complete ten-line golden transcript and every output phase.
+    // Preserve the complete ten-line transcript.
     checkAll "value-rewrite legacy observations" [
         legacyTranscript == "supply first=105\nsupply second=110\nsupply third=115\nseen after third: 330\nseen after second: 330\nseen after first: 330\nresult=330\nrelay answered: carried\nword=carried\nchecked=10 num=41\n",
-        contains (legacyTranscript, "supply first=105\n"),
-        contains (legacyTranscript, "supply second=110\n"),
-        contains (legacyTranscript, "supply third=115\n"),
-        contains (legacyTranscript, "seen after third: 330\n"),
-        contains (legacyTranscript, "seen after second: 330\n"),
-        contains (legacyTranscript, "seen after first: 330\n"),
-        contains (legacyTranscript, "result=330\n"),
-        contains (legacyTranscript, "relay answered: carried\n"),
-        contains (legacyTranscript, "word=carried\n"),
-        endsWith (legacyTranscript, "checked=10 num=41\n")
+        contains legacyTranscript "supply first=105\n",
+        contains legacyTranscript "supply second=110\n",
+        contains legacyTranscript "supply third=115\n",
+        contains legacyTranscript "seen after third: 330\n",
+        contains legacyTranscript "seen after second: 330\n",
+        contains legacyTranscript "seen after first: 330\n",
+        contains legacyTranscript "result=330\n",
+        contains legacyTranscript "relay answered: carried\n",
+        contains legacyTranscript "word=carried\n",
+        endsWith legacyTranscript "checked=10 num=41\n"
     ]
 
-    // Assert supplied values, LIFO settlement, Result shape, and both Relay types.
+    // Check supplied values, LIFO settlement, Result shape, and Relay types.
     checkAll "value-rewrite internal state" [
         result == 330,
         seed == 115,
@@ -122,5 +114,4 @@ resumeValueRewriteCase () =
         checked != num
     ]
 
-// Register the value-rewriting and generic-resume regression.
 test "resume rewrites values across scalar, Result, and generic effects" resumeValueRewriteCase

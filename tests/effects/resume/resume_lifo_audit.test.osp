@@ -7,10 +7,7 @@ effect Audit {
 fn pipeline() -> int !Audit = {
     let a = perform Audit.step("load")
     let b = perform Audit.step("parse")
-    match a + b {
-        Success { value } => value
-        Error { message } => 0
-    }
+    a + b
 }
 
 // This case proves operations enter FIFO and post-resume code exits LIFO.
@@ -22,10 +19,7 @@ fn resumeLifoAuditCase() = {
 
     let total = handle Audit
         step label => {
-            n = match n + 1 {
-                Success { value } => value
-                Error { message } => n
-            }
+            n = n + 1
             issued = "${issued}${label}:${toString(n)}|"
             let answer = resume(n)
             settled = "${settled}${label}:${toString(answer)}|"

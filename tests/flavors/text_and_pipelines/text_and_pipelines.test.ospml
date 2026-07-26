@@ -1,6 +1,6 @@
-// ML twin of the assertion-driven text and pipelines suite.
+// ML text-and-pipeline twin covering composition and interpolation.
 
-// Increment a pipeline value by one.
+// Increment a pipeline value.
 pipeInc : int -> int
 pipeInc x = x + 1
 
@@ -12,23 +12,23 @@ pipeDouble x = x + x
 pipeSquare : int -> int
 pipeSquare x = x * x
 
-// This case documents left-to-right pipe threading and nested-call equivalence.
+// Verify left-to-right pipeline composition.
 pipeChainCase () =
     p1 = 5 |> pipeInc |> pipeDouble
     p2 = 3 |> pipeDouble |> pipeSquare |> pipeInc
     p3 = 10 |> pipeInc |> pipeInc |> pipeDouble
 
-    // Preserve the complete three-pipeline golden line.
+    // Preserve the complete rendered result.
     checkAll "pipe chain legacy rendered lines" [
         "p1=${p1} p2=${p2} p3=${p3}" == "p1=12 p2=37 p3=24"
     ]
-    // Split the three final pipeline values into independent assertions.
+    // Check each pipeline result independently.
     checkAll "pipe chain legacy constituent values" [
         p1 == 12,
         p2 == 37,
         p3 == 24
     ]
-    // Exercise intermediate stages, zero input, and a different stage order.
+    // Exercise intermediate, zero, and reordered stages.
     checkAll "pipe chain composition edges" [
         (5 |> pipeInc) == 6,
         p1 == pipeDouble (pipeInc 5),
@@ -36,29 +36,30 @@ pipeChainCase () =
         (3 |> pipeSquare |> pipeDouble) == 18
     ]
 
-// Append an exclamation mark to a string.
+// Append an exclamation mark.
 stringShout s = s + "!"
-// Prefix a name with the legacy greeting.
+
+// Prefix a name with a greeting.
 stringGreet who = "Hi " + who
 
-// This case documents bindings, nested calls, concatenation, and interpolation.
+// Verify string calls, concatenation, and interpolation.
 stringsCase () =
     name = "Ada"
     hello = stringGreet name
 
-    // Preserve the complete strings golden line byte-for-byte.
+    // Preserve the complete rendered result.
     checkAll "strings legacy rendered lines" [
         "plain=${hello} loud=${stringShout hello} both=${stringShout (stringGreet name)} concat=${hello + name}" ==
             "plain=Hi Ada loud=Hi Ada! both=Hi Ada! concat=Hi AdaAda"
     ]
-    // Split all four dynamic string values into independent assertions.
+    // Check each dynamic string independently.
     checkAll "strings legacy constituent values" [
         hello == "Hi Ada",
         stringShout hello == "Hi Ada!",
         stringShout (stringGreet name) == "Hi Ada!",
         hello + name == "Hi AdaAda"
     ]
-    // Exercise empty inputs, equivalent nested calls, and reversed concatenation.
+    // Exercise empty inputs, nested calls, and reversed concatenation.
     checkAll "strings composition edges" [
         stringGreet "" == "Hi ",
         stringShout "" == "!",
@@ -66,7 +67,5 @@ stringsCase () =
         name + hello == "AdaHi Ada"
     ]
 
-// Register the pipeline composition scenario.
 test "pipelines retain each stage and complete chain" pipeChainCase
-// Register the string composition scenario.
 test "string calls retain interpolation and concatenation" stringsCase

@@ -1,15 +1,15 @@
-// Trace exposes a Unit-returning operation to an explicit-resume handler.
+// Trace exposes a Unit-returning operation.
 effect Trace
     mark : string => Unit
 
-// This helper performs two Unit markers before returning its final value.
+// Perform two markers before returning the final value.
 traced : Unit -> int ! Trace
 traced () =
     perform Trace.mark "one"
     perform Trace.mark "two"
     7
 
-// This case verifies Unit resume syntax and reverse post-resume ordering.
+// Verify Unit resume syntax and reverse unwind order.
 resumeUnitMarkersCase () =
     mut transcript = ""
     mut markCount = 0
@@ -31,16 +31,16 @@ resumeUnitMarkersCase () =
         in traced ()
     legacyTranscript = "${transcript}result=${toString result}\n"
 
-    // Preserve all five legacy lines including the reversed after-marker order.
+    // Preserve the five-line LIFO transcript.
     checkAll "Unit-resume legacy observations" [
         legacyTranscript == "before one\nbefore two\nafter two: final=7\nafter one: final=7\nresult=7\n",
-        startsWith (legacyTranscript, "before one\nbefore two\n"),
-        contains (legacyTranscript, "after two: final=7\n"),
-        contains (legacyTranscript, "after one: final=7\n"),
-        endsWith (legacyTranscript, "result=7\n")
+        startsWith legacyTranscript "before one\nbefore two\n",
+        contains legacyTranscript "after two: final=7\n",
+        contains legacyTranscript "after one: final=7\n",
+        endsWith legacyTranscript "result=7\n"
     ]
 
-    // Assert Unit operation count, entry order, unwind order, and final values.
+    // Check marker count, entry order, unwind order, and values.
     checkAll "Unit-resume internal state" [
         result == 7,
         markCount == 2,
@@ -50,5 +50,4 @@ resumeUnitMarkersCase () =
         beforeLabels != afterLabels
     ]
 
-// Register the Unit-returning explicit-resume regression.
 test "Unit operations resume and unwind in LIFO order" resumeUnitMarkersCase

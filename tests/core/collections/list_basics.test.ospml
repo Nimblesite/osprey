@@ -1,15 +1,15 @@
-// ML twin of the assertion-driven persistent List migration.
+// Persistent List behavior across construction, traversal, and branching.
 
-// IterationProbe records callback values so forEachList order is testable without stdout.
+// Record callback values without using stdout.
 effect IterationProbe
     observe : int => Unit
 
-// appendThrough builds inclusive integer ranges while preserving every prior list version.
+// Append an inclusive integer range without mutating earlier lists.
 appendThrough (xs, next, last) = match next > last
     true => xs
     false => appendThrough (listAppend xs next, next + 1, last)
 
-// classify exercises exact-length, singleton, pair, and head-tail list patterns.
+// Classify empty, singleton, pair, and head-tail list patterns.
 classify : List int -> string
 classify xs = match xs
     [] => "empty"
@@ -17,19 +17,19 @@ classify xs = match xs
     [first, second] => "two(${first},${second})"
     [head, ...tail] => "many head=${head} rest=${listLength tail}"
 
-// sumList proves recursive head-tail destructuring retains every element.
+// Sum a list through recursive head-tail destructuring.
 sumList : List int -> int
 sumList xs = match xs
     [] => 0
     [head, ...tail] => head + sumList tail
 
-// restLen exercises a wildcard prefix followed by a captured list tail.
+// Measure a tail after two fixed prefix elements.
 restLen : List int -> int
 restLen xs = match xs
     [_, second, ...rest] => listLength rest
     _ => 0
 
-// encodeIteration folds callback order into a base-100 integer through a handled effect.
+// Encode callback order as a base-100 integer through an effect.
 encodeIteration : List int -> int
 encodeIteration xs =
     mut encoded = 0
@@ -40,7 +40,7 @@ encodeIteration xs =
         forEachList xs (\value => perform IterationProbe.observe value)
     encoded
 
-// constructionAndIdentityCase preserves all legacy construction, identity, reverse, prepend, and contains observations.
+// Exercise construction, reversal, prepend, concatenation, and identity.
 constructionAndIdentityCase () =
     empty = List ()
     a = listAppend (listAppend (listAppend (List ()) 1) 2) 3
@@ -54,7 +54,7 @@ constructionAndIdentityCase () =
     doubledA = a + a
     abPlusA = a + b + a
 
-    // Every legacy length observation remains an independent assertion.
+    // Check lengths across construction and concatenation.
     checkAll "legacy construction and operation lengths" [
         listLength empty == 0,
         listLength a == 3,
@@ -70,7 +70,7 @@ constructionAndIdentityCase () =
         listLength a == 3
     ]
 
-    // Constituent checks ensure the old length-only observations cannot hide corrupt contents.
+    // Check construction and reversal contents.
     checkAll "construction and reverse contents" [
         (listGet a 0 ?: (0 - 999)) == 1,
         (listGet a 1 ?: (0 - 999)) == 2,
@@ -89,7 +89,7 @@ constructionAndIdentityCase () =
         (listGet prepended 3 ?: (0 - 999)) == 3
     ]
 
-    // Concatenation identities and the operator alias are checked at their seams and endpoints.
+    // Check concatenation seams, endpoints, identities, and the + alias.
     checkAll "concat identities and boundaries" [
         (listGet concatenated 0 ?: (0 - 999)) == 1,
         (listGet concatenated 2 ?: (0 - 999)) == 3,
@@ -102,7 +102,7 @@ constructionAndIdentityCase () =
         (listGet abPlusA 7 ?: (0 - 999)) == 3
     ]
 
-    // All three legacy contains results survive alongside additional positive and endpoint checks.
+    // Check membership at present, absent, and endpoint values.
     checkAll "contains behavior" [
         listContains a 2,
         !(listContains a 99),
@@ -114,7 +114,7 @@ constructionAndIdentityCase () =
         !(listContains prepended 99)
     ]
 
-// iterationAndPersistenceCase preserves callback order plus every generation and branch observation.
+// Exercise callback order and persistent generation branches.
 iterationAndPersistenceCase () =
     a = listAppend (listAppend (listAppend (List ()) 1) 2) 3
     reversed = listReverse a
@@ -130,14 +130,14 @@ iterationAndPersistenceCase () =
     y = listAppend g3 888
     y2 = listAppend y 777
 
-    // Callback encodings preserve every legacy forEachList sequence and its exact order.
+    // Check exact forEachList callback order.
     checkAll "forEachList iteration order" [
         encodeIteration a == 10203,
         encodeIteration reversed == 30201,
         encodeIteration combined == 102031020
     ]
 
-    // One condition per formerly printed iteration value keeps the golden observations explicit.
+    // Check each iterated constituent value.
     checkAll "iteration constituent values" [
         (listGet a 0 ?: (0 - 999)) == 1,
         (listGet a 1 ?: (0 - 999)) == 2,
@@ -152,7 +152,7 @@ iterationAndPersistenceCase () =
         (listGet combined 4 ?: (0 - 999)) == 20
     ]
 
-    // The six generation lengths, retained g2 length, and all branch lengths mirror the old golden.
+    // Check generation and sibling-branch lengths.
     checkAll "persistent generation and branch lengths" [
         listLength g0 == 0,
         listLength g1 == 1,
@@ -167,7 +167,7 @@ iterationAndPersistenceCase () =
         listLength g3 == 3
     ]
 
-    // Added content checks prove later generations and sibling branches do not mutate their ancestors.
+    // Check that descendants and siblings do not mutate ancestors.
     checkAll "persistent generation and branch contents" [
         !(listContains g0 10),
         listContains g1 10,
@@ -192,7 +192,7 @@ iterationAndPersistenceCase () =
         (listGet y2 4 ?: (0 - 999)) == 777
     ]
 
-// tailBoundaryCase retains the 10/20/30/35 generations and probes both sides of the 32-element tail boundary.
+// Exercise both sides of the 32-element structural tail boundary.
 tailBoundaryCase () =
     t = appendThrough (List (), 1, 10)
     t2 = appendThrough (t, 11, 20)
@@ -201,7 +201,7 @@ tailBoundaryCase () =
     reversed = listReverse t4
     doubled = listConcat t4 t4
 
-    // All six legacy tail-boundary length observations remain independent.
+    // Check lengths around the tail boundary.
     checkAll "tail boundary legacy lengths" [
         listLength t == 10,
         listLength t2 == 20,
@@ -211,7 +211,7 @@ tailBoundaryCase () =
         listLength doubled == 70
     ]
 
-    // Boundary indices assert actual content before, at, and after the 32-element trie tail split.
+    // Check contents before, at, and after the tail split.
     checkAll "tail boundary contents" [
         (listGet t 0 ?: (0 - 999)) == 1,
         (listGet t 9 ?: (0 - 999)) == 10,
@@ -235,7 +235,7 @@ tailBoundaryCase () =
         sumList t4 == 630
     ]
 
-// indexingPatternsAndDispatchCase preserves Result indexing, list patterns, recursion, and receiver-directed builtins.
+// Exercise Result indexing, list patterns, recursion, and builtin dispatch.
 indexingPatternsAndDispatchCase () =
     commands = ["echo hello", "echo world", "echo test"]
     empty : List<string>
@@ -260,7 +260,7 @@ indexingPatternsAndDispatchCase () =
         Success value => false
         Error message => message == "index out of bounds"
 
-    // Successful and failing index paths retain all four legacy observations and exact failure reasons.
+    // Check successful indexing and exact out-of-bounds errors.
     checkAll "list index Result behavior" [
         (commands[0] ?: "missing") == "echo hello",
         (commands[2] ?: "missing") == "echo test",
@@ -271,7 +271,7 @@ indexingPatternsAndDispatchCase () =
         listLength empty == 0
     ]
 
-    // Every legacy classify, recursive sum, and wildcard-rest result remains directly asserted.
+    // Check list patterns, recursive sums, and wildcard tails.
     checkAll "list pattern and recursion results" [
         classify (List ()) == "empty",
         classify b == "two(10,20)",
@@ -286,7 +286,7 @@ indexingPatternsAndDispatchCase () =
         classify patternFour == "many head=4 rest=3"
     ]
 
-    // The old composite bare-length row is split into one condition per receiver.
+    // Check receiver-directed length dispatch.
     checkAll "receiver-directed length dispatch" [
         length a == 3,
         length dispatchThirtyFive == 35,
@@ -295,7 +295,7 @@ indexingPatternsAndDispatchCase () =
         length "" == 0
     ]
 
-    // The old composite bare-isEmpty row is split and extended across derived lists.
+    // Check receiver-directed isEmpty dispatch.
     checkAll "receiver-directed isEmpty dispatch" [
         isEmpty empty,
         !(isEmpty a),
@@ -305,14 +305,10 @@ indexingPatternsAndDispatchCase () =
         isEmpty (listConcat empty empty)
     ]
 
-// Register the construction, identity, and content scenario.
 test "lists construct, reverse, prepend, concatenate, and retain contents" constructionAndIdentityCase
 
-// Register the traversal, persistence, and branching scenario.
 test "list iteration and persistent branches retain order and isolation" iterationAndPersistenceCase
 
-// Register the 32-element structural boundary scenario.
 test "lists preserve content across the 32-element tail boundary" tailBoundaryCase
 
-// Register Result indexing, patterns, recursion, and builtin dispatch together.
 test "list indexing, patterns, recursion, and receiver dispatch compose" indexingPatternsAndDispatchCase

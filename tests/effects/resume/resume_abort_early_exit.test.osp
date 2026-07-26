@@ -41,10 +41,7 @@ fn resumeAbortEarlyExitCase() = {
                 }
                 _ => {
                     resumed = resumed + 1
-                    let supplied = match n * 10 {
-                        Success { value } => value
-                        Error { message } => 0
-                    }
+                    let supplied = n * 10
                     let answer = resume(supplied)
                     observe("continued check " + toString(n) + ": answer=" + toString(answer))
                     answer

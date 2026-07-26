@@ -1,27 +1,25 @@
-// ML twin of the assertion-driven matching suite.
+// ML matching twin covering literals, booleans, and wildcards.
 
-// Classify two integer literals and route every other value to a wildcard.
-tourClassify n =
-    match n
-        0 => "zero"
-        1 => "one"
-        _ => "many"
+// Classify literals through adjacent pattern clauses.
+tourClassify 0 = "zero"
+tourClassify 1 = "one"
+tourClassify _ = "many"
 
-// This case documents the three formerly printed match-tour branches.
+// Verify every literal and wildcard branch.
 matchTourCase () =
-    // Preserve each complete one-word output line independently.
+    // Preserve each rendered branch result.
     checkAll "match tour legacy rendered lines" [
         tourClassify 0 == "zero",
         tourClassify 1 == "one",
         tourClassify 9 == "many"
     ]
-    // Repeat the dynamic branch results as explicit constituent assertions.
+    // Check each dynamic result independently.
     checkAll "match tour legacy constituent values" [
         tourClassify 0 == "zero",
         tourClassify 1 == "one",
         tourClassify 9 == "many"
     ]
-    // Extend wildcard coverage across adjacent, negative, and large integers.
+    // Exercise adjacent, negative, and large wildcard inputs.
     checkAll "match tour wildcard edge cases" [
         tourClassify 2 == "many",
         tourClassify (0 - 1) == "many",
@@ -29,33 +27,33 @@ matchTourCase () =
         (tourClassify 0 == tourClassify 1) == false
     ]
 
-// Convert a threshold comparison into a pass-or-fail label.
+// Convert a threshold comparison to a grade label.
 matchGrade n =
     match n >= 50
         true => "pass"
         false => "fail"
 
-// Convert a modulo comparison into an even-or-odd label.
+// Convert parity to an even-or-odd label.
 matchEven n =
     match n % 2 == 0
         true => "even"
         false => "odd"
 
-// This case documents boolean scrutinees for grading and parity.
+// Verify boolean scrutinees for grading and parity.
 matchBooleanCase () =
-    // Preserve the complete combined boolean-match output line.
+    // Preserve the complete rendered result.
     checkAll "boolean match legacy rendered lines" [
         "g80=${matchGrade 80} g20=${matchGrade 20} e4=${matchEven 4} e7=${matchEven 7}" ==
             "g80=pass g20=fail e4=even e7=odd"
     ]
-    // Split all four matched labels into independent assertions.
+    // Check each label independently.
     checkAll "boolean match legacy constituent values" [
         matchGrade 80 == "pass",
         matchGrade 20 == "fail",
         matchEven 4 == "even",
         matchEven 7 == "odd"
     ]
-    // Exercise the grade threshold and parity boundary values.
+    // Exercise threshold and parity boundaries.
     checkAll "boolean match boundaries" [
         matchGrade 50 == "pass",
         matchGrade 49 == "fail",
@@ -63,38 +61,33 @@ matchBooleanCase () =
         matchEven 9 == "odd"
     ]
 
-// Label zero, one, and two explicitly before the integer wildcard.
-matchLabel n =
-    match n
-        0 => "none"
-        1 => "single"
-        2 => "pair"
-        _ => "many"
+// Label integer literals through adjacent pattern clauses.
+matchLabel 0 = "none"
+matchLabel 1 = "single"
+matchLabel 2 = "pair"
+matchLabel _ = "many"
 
-// This case documents literal and wildcard matching over integers.
+// Verify literal and wildcard integer matching.
 matchIntegerCase () =
-    // Preserve the complete combined integer-match output line.
+    // Preserve the complete rendered result.
     checkAll "integer match legacy rendered lines" [
         "a=${matchLabel 0} b=${matchLabel 1} c=${matchLabel 2} d=${matchLabel 7}" ==
             "a=none b=single c=pair d=many"
     ]
-    // Split all four matched labels into independent assertions.
+    // Check each label independently.
     checkAll "integer match legacy constituent values" [
         matchLabel 0 == "none",
         matchLabel 1 == "single",
         matchLabel 2 == "pair",
         matchLabel 7 == "many"
     ]
-    // Extend the wildcard across adjacent, negative, and large integers.
+    // Exercise adjacent, negative, and large wildcard inputs.
     checkAll "integer match wildcard boundaries" [
         matchLabel 3 == "many",
         matchLabel (0 - 1) == "many",
         matchLabel 100 == "many"
     ]
 
-// Register the literal-match tour scenario.
 test "literal matching retains every printed arm" matchTourCase
-// Register the boolean-scrutinee scenario.
 test "boolean matching covers thresholds and parity" matchBooleanCase
-// Register the integer literal-and-wildcard scenario.
 test "integer matching covers literals and wildcard" matchIntegerCase

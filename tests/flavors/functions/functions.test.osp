@@ -58,9 +58,9 @@ fn curryPartialCase() = {
 }
 
 // Apply a supplied unary integer function exactly once.
-fn hofApply(f: (int) -> int, x: int) -> int = f(x)
+fn hofApply(f: (int) -> int) -> (int) -> int = fn(x) => f(x)
 // Apply a supplied unary integer function twice in sequence.
-fn hofTwice(f: (int) -> int, x: int) -> int = f(f(x))
+fn hofTwice(f: (int) -> int) -> (int) -> int = fn(x) => f(f(x))
 // Double an integer for use as a first-class function value.
 fn hofDouble(n: int) -> int = n + n
 // Increment an integer for use as a first-class function value.
@@ -70,22 +70,22 @@ fn hofInc(n: int) -> int = n + 1
 fn higherOrderCase() = {
     // Preserve the complete higher-order golden line.
     checkAll("higher-order legacy rendered lines", [
-        "a=${hofApply(hofDouble, 5)} b=${hofApply(hofInc, 9)} t=${hofTwice(hofDouble, 3)} ti=${hofTwice(hofInc, 40)}" ==
+        "a=${hofApply(hofDouble)(5)} b=${hofApply(hofInc)(9)} t=${hofTwice(hofDouble)(3)} ti=${hofTwice(hofInc)(40)}" ==
             "a=10 b=10 t=12 ti=42"
     ])
     // Check all four application results that were formerly combined.
     checkAll("higher-order legacy constituent values", [
-        hofApply(hofDouble, 5) == 10,
-        hofApply(hofInc, 9) == 10,
-        hofTwice(hofDouble, 3) == 12,
-        hofTwice(hofInc, 40) == 42
+        hofApply(hofDouble)(5) == 10,
+        hofApply(hofInc)(9) == 10,
+        hofTwice(hofDouble)(3) == 12,
+        hofTwice(hofInc)(40) == 42
     ])
     // Exercise zero inputs, repeated application, and composed function values.
     checkAll("higher-order edge cases", [
-        hofApply(hofDouble, 0) == 0,
-        hofTwice(hofInc, 0) == 2,
-        hofTwice(hofDouble, 1) == 4,
-        hofApply(hofInc, hofApply(hofDouble, 3)) == 7
+        hofApply(hofDouble)(0) == 0,
+        hofTwice(hofInc)(0) == 2,
+        hofTwice(hofDouble)(1) == 4,
+        hofApply(hofInc)(hofApply(hofDouble)(3)) == 7
     ])
 }
 

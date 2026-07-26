@@ -1,17 +1,15 @@
-// Audit supplies numbered values and observes continuation unwind order.
+// Audit supplies numbered values and records unwind order.
 effect Audit
     step : string => int
 
-// This helper performs two ordered steps and combines their supplied values.
+// Perform two ordered steps and combine their supplied values.
 pipeline : Unit -> int ! Audit
 pipeline () =
     a = perform Audit.step "load"
     b = perform Audit.step "parse"
-    match a + b
-        Success value => value
-        Error message => 0
+    a + b
 
-// This case proves operations enter FIFO and post-resume code exits LIFO.
+// Verify FIFO operations and LIFO post-resume work.
 resumeLifoAuditCase () =
     mut n = 0
     mut issued = ""
@@ -21,9 +19,7 @@ resumeLifoAuditCase () =
     total =
         handle Audit
             step label =>
-                n := match n + 1
-                    Success value => value
-                    Error message => n
+                n := n + 1
                 issued := "${issued}${label}:${toString n}|"
                 answer = resume n
                 settled := "${settled}${label}:${toString answer}|"
@@ -32,15 +28,15 @@ resumeLifoAuditCase () =
         in pipeline ()
     legacyTranscript = "${transcript}total=${toString total}\n"
 
-    // Preserve all three legacy lines and their exact unwind ordering.
+    // Preserve the three-line unwind transcript.
     checkAll "LIFO legacy observations" [
         legacyTranscript == "after parse: answer=3\nafter load: answer=3\ntotal=3\n",
-        startsWith (legacyTranscript, "after parse: answer=3\n"),
-        contains (legacyTranscript, "after load: answer=3\n"),
-        endsWith (legacyTranscript, "total=3\n")
+        startsWith legacyTranscript "after parse: answer=3\n",
+        contains legacyTranscript "after load: answer=3\n",
+        endsWith legacyTranscript "total=3\n"
     ]
 
-    // Assert issue order, settle order, operation count, and combined answer.
+    // Check FIFO issue, LIFO settlement, and the combined answer.
     checkAll "LIFO internal state" [
         total == 3,
         n == 2,
@@ -50,5 +46,4 @@ resumeLifoAuditCase () =
         total == 1 + 2
     ]
 
-// Register the post-resume LIFO regression.
 test "post-resume code unwinds in reverse operation order" resumeLifoAuditCase

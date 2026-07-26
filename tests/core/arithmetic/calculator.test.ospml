@@ -1,17 +1,17 @@
-// Adds two integers so arithmetic can compose through calls and pipelines.
+// Add two integers through a flat call.
 add (a, b) = a + b
-// Doubles an integer for reusable pipeline stages.
+// Double an integer for pipeline stages.
 double x = x * 2
-// Classifies an integer through modulo Result unwrapping and boolean matching.
+// Classify an integer through checked modulo and boolean matching.
 parity n =
     match n % 2 == 0
         true => "even"
         false => "odd"
 
-// Checks positive, negative, nested, boundary, and relational arithmetic together.
+// Exercise positive, negative, nested, and relational arithmetic.
 additionCase () =
     subtotal = add (10, 20)
-    // One batch keeps seven independent arithmetic assertions compact.
+    // Check arithmetic values and ordering.
     checkAll "addition state" [
         add (2, 3) == 5,
         add ((0 - 1), 1) == 0,
@@ -22,10 +22,10 @@ additionCase () =
         !(add ((0 - 2), 1) > 0)
     ]
 
-// Checks chained functions, inline lambdas, negatives, and derived predicates.
+// Exercise pipelines, lambdas, negatives, and derived predicates.
 pipelineCase () =
     six = 3 |> double
-    // Every condition is reported separately even though the syntax is grouped.
+    // Check every pipeline stage independently.
     checkAll "pipeline state" [
         (10 |> double |> double) == 40,
         (5 |> \x => x + 100) == 105,
@@ -35,9 +35,9 @@ pipelineCase () =
         (1 |> double |> double) > 0
     ]
 
-// Checks pattern branches alongside computed inputs and interpolation.
+// Exercise both parity branches with calls and interpolation.
 patternCase () =
-    // The batch covers both branches and several cross-feature compositions.
+    // Check branch selection and composed results.
     checkAll "pattern state" [
         parity 4 == "even",
         parity 7 == "odd",
@@ -47,9 +47,6 @@ patternCase () =
         parity 3 != parity 4
     ]
 
-// Register the mixed arithmetic interaction.
 test "arithmetic composes across calls" additionCase
-// Register the multi-stage pipeline interaction.
 test "pipes and lambdas compose" pipelineCase
-// Register the matching and rendering interaction.
 test "matching, interpolation and calls interact" patternCase
