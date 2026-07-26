@@ -1,0 +1,8 @@
+// [EFFECTS-OP-TYPING] A performed operation must receive every declared argument.
+effect ParseFailure {
+    raise: fn(string) -> int
+}
+
+let recovered = handle ParseFailure
+    raise message => 0
+in perform ParseFailure.raise()

@@ -16,8 +16,8 @@ helloSmokeCase () =
     ]
     // Exercise useful greeting boundaries.
     checkAll "hello greeting edge cases" [
-        startsWith (greeting, "Hello"),
-        contains (greeting, "ML flavor"),
+        startsWith greeting "Hello",
+        contains greeting "ML flavor",
         (greeting == "") == false
     ]
 

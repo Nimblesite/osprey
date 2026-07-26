@@ -45,6 +45,11 @@ pub(crate) const USAGE: &str =
        osprey --docs --docs-dir <dir>\n\
        osprey lsp";
 
+/// Internal child-process switch used by the parallel test runner.
+pub(crate) const TEST_COVERAGE_BUILD_ENV: &str = "OSPREY_TEST_COVERAGE_BUILD";
+/// Internal content-addressed executable cache used by the test runner.
+pub(crate) const TEST_CACHE_DIR_ENV: &str = "OSPREY_TEST_CACHE_DIR";
+
 /// The parsed invocation: source path, mode flag, and behaviour switches.
 #[derive(Debug)]
 pub(crate) struct Cli {
@@ -71,25 +76,6 @@ pub(crate) struct Cli {
     /// resolution falls through to the marker/extension precedence
     /// ([FLAVOR-SELECT], docs/specs/0023-LanguageFlavors.md).
     flavor: Option<Flavor>,
-}
-
-impl Cli {
-    /// A `--run`-mode invocation for `path` with default switches — the
-    /// `osprey test` runner's per-file configuration [TESTING-CLI-RUN].
-    pub(crate) fn run_native(path: String) -> Cli {
-        Cli {
-            path,
-            mode: String::from("--run"),
-            quiet: true,
-            policy: Policy::allow_all(),
-            memory: String::from("default"),
-            target: String::from("native"),
-            output: None,
-            debug: false,
-            profile: false,
-            flavor: None,
-        }
-    }
 }
 
 fn main() -> ExitCode {
@@ -468,6 +454,8 @@ fn build_kind(cli: &Cli) -> osprey_debug::BuildKind {
         osprey_debug::BuildKind::Debug
     } else if cli.profile {
         osprey_debug::BuildKind::Profile
+    } else if std::env::var_os(TEST_COVERAGE_BUILD_ENV).is_some() {
+        osprey_debug::BuildKind::Coverage
     } else {
         osprey_debug::BuildKind::Release
     }
@@ -542,6 +530,25 @@ pub(crate) fn execute_native(
     memory: &str,
     kind: osprey_debug::BuildKind,
 ) -> Result<u8, ExitCode> {
+    let exe = native_executable(input, memory, kind)?;
+    match Command::new(&exe).status() {
+        Ok(s) => Ok(child_exit_code(s)),
+        Err(e) => {
+            eprintln!("error: could not run {}: {e}", exe.display());
+            Err(ExitCode::FAILURE)
+        }
+    }
+}
+
+fn native_executable(
+    input: &CompilationInput,
+    memory: &str,
+    kind: osprey_debug::BuildKind,
+) -> Result<PathBuf, ExitCode> {
+    if let Some(cached) = test_cache_path(input, memory, kind) {
+        ensure_cached_executable(input, memory, kind, &cached)?;
+        return Ok(cached);
+    }
     let exe = std::env::temp_dir().join(format!("{}.out", scratch_stem(input.display_path())));
     build_executable(
         input.debug_path(),
@@ -551,10 +558,141 @@ pub(crate) fn execute_native(
         memory,
         kind,
     )?;
-    match Command::new(&exe).status() {
-        Ok(s) => Ok(child_exit_code(s)),
-        Err(e) => {
-            eprintln!("error: could not run {}: {e}", exe.display());
+    Ok(exe)
+}
+
+fn test_cache_path(
+    input: &CompilationInput,
+    memory: &str,
+    kind: osprey_debug::BuildKind,
+) -> Option<PathBuf> {
+    // [TESTING-NATIVE-CACHE] every input affecting the native artifact is
+    // represented by the cache key; untracked external links bypass caching.
+    let dir = std::env::var_os(TEST_CACHE_DIR_ENV).map(PathBuf::from)?;
+    if dir.as_os_str().is_empty() || !cacheable_test_source(input.source()) {
+        return None;
+    }
+    if std::fs::create_dir_all(&dir).is_err() || !directory_is_safe(&dir) {
+        return None;
+    }
+    Some(dir.join(format!(
+        "suite-{:016x}.out",
+        test_cache_key(input, memory, kind)
+    )))
+}
+
+fn cacheable_test_source(source: &str) -> bool {
+    !source.contains("http")
+        && !source.contains("websocket")
+        && !source
+            .lines()
+            .any(|line| directive(line, "link").is_some() || directive(line, "linkdir").is_some())
+}
+
+fn directory_is_safe(path: &Path) -> bool {
+    let Ok(metadata) = std::fs::symlink_metadata(path) else {
+        return false;
+    };
+    if !metadata.file_type().is_dir() {
+        return false;
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mut permissions = metadata.permissions();
+        permissions.set_mode(0o700);
+        if std::fs::set_permissions(path, permissions).is_err() {
+            return false;
+        }
+    }
+    true
+}
+
+fn test_cache_key(input: &CompilationInput, memory: &str, kind: osprey_debug::BuildKind) -> u64 {
+    use std::collections::hash_map::DefaultHasher;
+    use std::hash::{Hash, Hasher};
+
+    let mut state = DefaultHasher::new();
+    "osprey-test-cache-v1".hash(&mut state);
+    input.source().hash(&mut state);
+    input.debug_path().hash(&mut state);
+    memory.hash(&mut state);
+    std::mem::discriminant(&kind).hash(&mut state);
+    opt_flag(kind).hash(&mut state);
+    let compiler = c_compiler();
+    compiler.hash(&mut state);
+    hash_file_identity(Some(Path::new(&compiler)), &mut state);
+    std::env::var_os("PATH").hash(&mut state);
+    let executable = std::env::current_exe().ok();
+    hash_file_identity(executable.as_deref(), &mut state);
+    hash_runtime_identity(memory, &mut state);
+    state.finish()
+}
+
+fn hash_runtime_identity<H: std::hash::Hasher>(memory: &str, state: &mut H) {
+    let suffix = match memory {
+        "gc" => "_gc",
+        "arc" => "_arc",
+        _ => "",
+    };
+    let runtime = find_runtime_lib(&format!("libfiber_runtime{suffix}.a")).map(PathBuf::from);
+    hash_file_identity(runtime.as_deref(), state);
+}
+
+fn hash_file_identity<H: std::hash::Hasher>(path: Option<&Path>, state: &mut H) {
+    use std::hash::Hash;
+
+    path.hash(state);
+    let Some(metadata) = path.and_then(|file| std::fs::metadata(file).ok()) else {
+        return;
+    };
+    metadata.len().hash(state);
+    metadata.modified().ok().hash(state);
+}
+
+fn ensure_cached_executable(
+    input: &CompilationInput,
+    memory: &str,
+    kind: osprey_debug::BuildKind,
+    cached: &Path,
+) -> Result<(), ExitCode> {
+    if is_nonempty_file(cached) {
+        return Ok(());
+    }
+    let staging = cached.with_extension(format!("{}.tmp", std::process::id()));
+    let build = build_executable(
+        input.debug_path(),
+        input.program(),
+        input.source(),
+        &staging,
+        memory,
+        kind,
+    );
+    if let Err(code) = build {
+        let _ = std::fs::remove_file(&staging);
+        return Err(code);
+    }
+    publish_cached_executable(&staging, cached)
+}
+
+fn is_nonempty_file(path: &Path) -> bool {
+    std::fs::symlink_metadata(path)
+        .is_ok_and(|metadata| metadata.file_type().is_file() && metadata.len() > 0)
+}
+
+fn publish_cached_executable(staging: &Path, cached: &Path) -> Result<(), ExitCode> {
+    match std::fs::rename(staging, cached) {
+        Ok(()) => Ok(()),
+        Err(_) if is_nonempty_file(cached) => {
+            let _ = std::fs::remove_file(staging);
+            Ok(())
+        }
+        Err(error) => {
+            eprintln!(
+                "error: cannot publish test executable {}: {error}",
+                cached.display()
+            );
+            let _ = std::fs::remove_file(staging);
             Err(ExitCode::FAILURE)
         }
     }
@@ -1254,9 +1392,11 @@ mod tests {
         "examples/tested/db/sqlite_basics.osp",
         "examples/tested/db/sqlite_basics.ospml",
         "examples/tested/effects/abort_vs_resume.osp",
+        "examples/tested/effects/abort_vs_resume.ospml",
         "examples/tested/effects/algebraic_effects_comprehensive.osp",
         "examples/tested/effects/algebraic_effects_comprehensive.ospml",
         "examples/tested/effects/collect_all_errors.osp",
+        "examples/tested/effects/collect_all_errors.ospml",
         "examples/tested/effects/fiber_effects.osp",
         "examples/tested/effects/fiber_effects.ospml",
         "examples/tested/effects/handler_scoping.osp",
@@ -1264,9 +1404,13 @@ mod tests {
         "examples/tested/effects/http_state_levels.osp",
         "examples/tested/effects/http_state_levels.ospml",
         "examples/tested/effects/recoverable_errors.osp",
+        "examples/tested/effects/recoverable_errors.ospml",
         "examples/tested/effects/result_and_effects.osp",
+        "examples/tested/effects/result_and_effects.ospml",
         "examples/tested/effects/retry_until_valid.osp",
+        "examples/tested/effects/retry_until_valid.ospml",
         "examples/tested/effects/typed_error_channels.osp",
+        "examples/tested/effects/typed_error_channels.ospml",
         "examples/tested/fiber/cpu_profiling_demo.osp",
         "examples/tested/fiber/fiber_determinism.osp",
         "examples/tested/fiber/fiber_exact_replica.osp",
@@ -1652,6 +1796,11 @@ mod tests {
     }
 
     #[test]
+    fn effects_abort_vs_resume_ospml() {
+        assert_example_matches("examples/tested/effects/abort_vs_resume.ospml");
+    }
+
+    #[test]
     fn effects_algebraic_effects_comprehensive_osp() {
         assert_example_matches("examples/tested/effects/algebraic_effects_comprehensive.osp");
     }
@@ -1664,6 +1813,11 @@ mod tests {
     #[test]
     fn effects_collect_all_errors_osp() {
         assert_example_matches("examples/tested/effects/collect_all_errors.osp");
+    }
+
+    #[test]
+    fn effects_collect_all_errors_ospml() {
+        assert_example_matches("examples/tested/effects/collect_all_errors.ospml");
     }
 
     #[test]
@@ -1702,8 +1856,18 @@ mod tests {
     }
 
     #[test]
+    fn effects_recoverable_errors_ospml() {
+        assert_example_matches("examples/tested/effects/recoverable_errors.ospml");
+    }
+
+    #[test]
     fn effects_result_and_effects_osp() {
         assert_example_matches("examples/tested/effects/result_and_effects.osp");
+    }
+
+    #[test]
+    fn effects_result_and_effects_ospml() {
+        assert_example_matches("examples/tested/effects/result_and_effects.ospml");
     }
 
     #[test]
@@ -1712,8 +1876,18 @@ mod tests {
     }
 
     #[test]
+    fn effects_retry_until_valid_ospml() {
+        assert_example_matches("examples/tested/effects/retry_until_valid.ospml");
+    }
+
+    #[test]
     fn effects_typed_error_channels_osp() {
         assert_example_matches("examples/tested/effects/typed_error_channels.osp");
+    }
+
+    #[test]
+    fn effects_typed_error_channels_ospml() {
+        assert_example_matches("examples/tested/effects/typed_error_channels.ospml");
     }
 
     #[test]

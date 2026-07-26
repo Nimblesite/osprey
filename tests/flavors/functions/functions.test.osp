@@ -11,20 +11,20 @@ fn closuresCase() = {
 
     // Preserve the full closures golden line as an interpolated string.
     checkAll("closures legacy rendered lines", [
-        "a=${add10(5)} b=${add100(5)} c=${closureAdder(3)(4)}" == "a=15 b=105 c=7"
+            "a=${add10(5)} b=${add100(5)} c=${closureAdder(3)(4)}" == "a=15 b=105 c=7"
     ])
     // Split all three captured-call results into independent assertions.
     checkAll("closures legacy constituent values", [
-        add10(5) == 15,
-        add100(5) == 105,
-        closureAdder(3)(4) == 7
+            add10(5) == 15,
+            add100(5) == 105,
+            closureAdder(3)(4) == 7
     ])
     // Exercise zero, cancellation, identity, and independent captures.
     checkAll("closures capture edge cases", [
-        add10(0 - 10) == 0,
-        add100(0) == 100,
-        closureAdder(0)(9) == 9,
-        (add10(5) == add100(5)) == false
+            add10(0 - 10) == 0,
+            add100(0) == 100,
+            closureAdder(0)(9) == 9,
+            (add10(5) == add100(5)) == false
     ])
 }
 
@@ -38,22 +38,22 @@ fn curryPartialCase() = {
 
     // Preserve the complete partial-application golden line.
     checkAll("partial application legacy rendered lines", [
-        "a=${add5(10)} b=${add5(0)} c=${add100(23)} full=${partialAdd(7)(8)}" ==
+            "a=${add5(10)} b=${add5(0)} c=${add100(23)} full=${partialAdd(7)(8)}" ==
             "a=15 b=5 c=123 full=15"
     ])
     // Check each of the four formerly interpolated results separately.
     checkAll("partial application legacy constituent values", [
-        add5(10) == 15,
-        add5(0) == 5,
-        add100(23) == 123,
-        partialAdd(7)(8) == 15
+            add5(10) == 15,
+            add5(0) == 5,
+            add100(23) == 123,
+            partialAdd(7)(8) == 15
     ])
     // Extend partial application across zero, cancellation, and equivalence.
     checkAll("partial application edge cases", [
-        add5(0 - 5) == 0,
-        add100(0) == 100,
-        partialAdd(0)(9) == 9,
-        partialAdd(5)(5) == partialAdd(8)(2)
+            add5(0 - 5) == 0,
+            add100(0) == 100,
+            partialAdd(0)(9) == 9,
+            partialAdd(5)(5) == partialAdd(8)(2)
     ])
 }
 
@@ -70,22 +70,22 @@ fn hofInc(n: int) -> int = n + 1
 fn higherOrderCase() = {
     // Preserve the complete higher-order golden line.
     checkAll("higher-order legacy rendered lines", [
-        "a=${hofApply(hofDouble)(5)} b=${hofApply(hofInc)(9)} t=${hofTwice(hofDouble)(3)} ti=${hofTwice(hofInc)(40)}" ==
+            "a=${hofApply(hofDouble)(5)} b=${hofApply(hofInc)(9)} t=${hofTwice(hofDouble)(3)} ti=${hofTwice(hofInc)(40)}" ==
             "a=10 b=10 t=12 ti=42"
     ])
     // Check all four application results that were formerly combined.
     checkAll("higher-order legacy constituent values", [
-        hofApply(hofDouble)(5) == 10,
-        hofApply(hofInc)(9) == 10,
-        hofTwice(hofDouble)(3) == 12,
-        hofTwice(hofInc)(40) == 42
+            hofApply(hofDouble)(5) == 10,
+            hofApply(hofInc)(9) == 10,
+            hofTwice(hofDouble)(3) == 12,
+            hofTwice(hofInc)(40) == 42
     ])
     // Exercise zero inputs, repeated application, and composed function values.
     checkAll("higher-order edge cases", [
-        hofApply(hofDouble)(0) == 0,
-        hofTwice(hofInc)(0) == 2,
-        hofTwice(hofDouble)(1) == 4,
-        hofApply(hofInc)(hofApply(hofDouble)(3)) == 7
+            hofApply(hofDouble)(0) == 0,
+            hofTwice(hofInc)(0) == 2,
+            hofTwice(hofDouble)(1) == 4,
+            hofApply(hofInc)(hofApply(hofDouble)(3)) == 7
     ])
 }
 
@@ -102,22 +102,22 @@ fn nestedCallsCase() = {
 
     // Preserve the complete nested-call golden line.
     checkAll("nested calls legacy rendered lines", [
-        "deep=${deep} mix=${nestedNeg(nestedInc(nestedDouble(5)))} two=${nestedDouble(nestedDouble(4))}" ==
+            "deep=${deep} mix=${nestedNeg(nestedInc(nestedDouble(5)))} two=${nestedDouble(nestedDouble(4))}" ==
             "deep=15 mix=-11 two=16"
     ])
     // Check each deeply derived integer independently.
     checkAll("nested calls legacy constituent values", [
-        deep == 15,
-        nestedNeg(nestedInc(nestedDouble(5))) == -11,
-        nestedDouble(nestedDouble(4)) == 16
+            deep == 15,
+            nestedNeg(nestedInc(nestedDouble(5))) == -11,
+            nestedDouble(nestedDouble(4)) == 16
     ])
     // Exercise each primitive and additional nested paths around zero.
     checkAll("nested calls edge cases", [
-        nestedInc(0) == 1,
-        nestedDouble(0) == 0,
-        nestedNeg(0) == 0,
-        nestedInc(nestedDouble(2)) == 5,
-        nestedNeg(nestedInc(nestedDouble(0))) == -1
+            nestedInc(0) == 1,
+            nestedDouble(0) == 0,
+            nestedNeg(0) == 0,
+            nestedInc(nestedDouble(2)) == 5,
+            nestedNeg(nestedInc(nestedDouble(0))) == -1
     ])
 }
 
@@ -131,21 +131,21 @@ fn recursiveSumTo(n: int) -> int = match n {
 fn recursionCase() = {
     // Preserve the complete recursive-sum golden line.
     checkAll("recursion legacy rendered lines", [
-        "sum5=${recursiveSumTo(5)} sum10=${recursiveSumTo(10)} sum1=${recursiveSumTo(1)}" ==
+            "sum5=${recursiveSumTo(5)} sum10=${recursiveSumTo(10)} sum1=${recursiveSumTo(1)}" ==
             "sum5=15 sum10=55 sum1=1"
     ])
     // Check all three sums that were formerly interpolated together.
     checkAll("recursion legacy constituent values", [
-        recursiveSumTo(5) == 15,
-        recursiveSumTo(10) == 55,
-        recursiveSumTo(1) == 1
+            recursiveSumTo(5) == 15,
+            recursiveSumTo(10) == 55,
+            recursiveSumTo(1) == 1
     ])
     // Add base, short, longer, and recurrence-relation assertions.
     checkAll("recursion edge cases", [
-        recursiveSumTo(0) == 0,
-        recursiveSumTo(2) == 3,
-        recursiveSumTo(6) == 21,
-        recursiveSumTo(6) == recursiveSumTo(5) + 6
+            recursiveSumTo(0) == 0,
+            recursiveSumTo(2) == 3,
+            recursiveSumTo(6) == 21,
+            recursiveSumTo(6) == recursiveSumTo(5) + 6
     ])
 }
 

@@ -570,6 +570,7 @@ mod tests {
         assert_at(&value, "/capabilities/positionEncoding", "utf-16");
         assert_at(&value, "/capabilities/textDocumentSync", 2);
         assert_at(&value, "/capabilities/referencesProvider", true);
+        assert_at(&value, "/capabilities/implementationProvider", true);
         assert_at(&value, "/capabilities/documentSymbolProvider", true);
         assert_at(&value, "/capabilities/documentFormattingProvider", true);
         assert_at(

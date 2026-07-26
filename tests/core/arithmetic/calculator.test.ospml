@@ -1,5 +1,6 @@
-// Add two integers through a flat call.
-add (a, b) = a + b
+// Add two integers through a curried call.
+add : int -> int -> int
+add a b = a + b
 // Double an integer for pipeline stages.
 double x = x * 2
 // Classify an integer through checked modulo and boolean matching.
@@ -10,16 +11,16 @@ parity n =
 
 // Exercise positive, negative, nested, and relational arithmetic.
 additionCase () =
-    subtotal = add (10, 20)
+    subtotal = add 10 20
     // Check arithmetic values and ordering.
     checkAll "addition state" [
-        add (2, 3) == 5,
-        add ((0 - 1), 1) == 0,
-        add (subtotal, (0 - 5)) == 25,
-        add (0, 0) == 0,
-        add (1000, (0 - 250)) == 750,
-        add (4, 5) > add (2, 3),
-        !(add ((0 - 2), 1) > 0)
+        add 2 3 == 5,
+        add (0 - 1) 1 == 0,
+        add subtotal (0 - 5) == 25,
+        add 0 0 == 0,
+        add 1000 (0 - 250) == 750,
+        add 4 5 > add 2 3,
+        !(add (0 - 2) 1 > 0)
     ]
 
 // Exercise pipelines, lambdas, negatives, and derived predicates.
@@ -29,7 +30,7 @@ pipelineCase () =
     checkAll "pipeline state" [
         (10 |> double |> double) == 40,
         (5 |> \x => x + 100) == 105,
-        (six |> \x => add (x, 4)) == 10,
+        (six |> \x => add x 4) == 10,
         ((0 - 2) |> double |> double) == (0 - 8),
         (6 |> double |> \x => x == 12),
         (1 |> double |> double) > 0
@@ -41,7 +42,7 @@ patternCase () =
     checkAll "pattern state" [
         parity 4 == "even",
         parity 7 == "odd",
-        parity (add (5, 5)) == "even",
+        parity (add 5 5) == "even",
         "${parity 3}:${double 3}" == "odd:6",
         parity (double 9) == "even",
         parity 3 != parity 4

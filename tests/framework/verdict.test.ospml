@@ -1,32 +1,35 @@
 // Represent pure pass, failure, and precondition-skip outcomes.
-type Verdict = Pass | Fail(reason : string) | Skip(why : string)
+type Verdict = Pass | Fail string | Skip string
 
-// Build a Verdict from a labeled equality comparison.
-checkVerdict (label, expected, actual) = match expected == actual
+// Build a Verdict from a labeled canonical-text comparison.
+checkVerdict : string -> string -> string -> Verdict
+checkVerdict label expected actual = match expected == actual
     true => Pass
-    false => Fail(reason = "${label}: expected ${expected}, got ${actual}")
+    false => Fail "${label}: expected ${expected}, got ${actual}"
 
 // Turn a boolean precondition into Pass or Skip.
 assume true = Pass
-assume false = Skip(why = "precondition not met")
+assume false = Skip "precondition not met"
 
 // Keep the first failure or skip, otherwise return the next Verdict.
+andThen : Verdict -> Verdict -> Verdict
 andThen (Pass) rest = rest
-andThen (Fail reason) _ = Fail(reason = reason)
-andThen (Skip why) _ = Skip(why = why)
+andThen (Fail reason) _ = Fail reason
+andThen (Skip why) _ = Skip why
 
 // Add two integers for the composed Verdicts.
-add (a, b) = a + b
+add : int -> int -> int
+add a b = a + b
 
 // Fold arithmetic, interpolation, and booleans into a passing Verdict.
 passingCase () =
-    arithmetic = andThen (checkVerdict ("sum", 5, add (2, 3))) (checkVerdict ("difference", 2, add (5, -3)))
-    text = andThen (checkVerdict ("interpolation", "total=8", "total=${add (3, 5)}")) (checkVerdict ("bool", true, 3 < 5))
+    arithmetic = andThen (checkVerdict "sum" "5" (toString (add 2 3))) (checkVerdict "difference" "2" (toString (add 5 (-3))))
+    text = andThen (checkVerdict "interpolation" "total=8" "total=${add 3 5}") (checkVerdict "bool" "true" (toString (3 < 5)))
     andThen arithmetic text
 
 // Preserve an unmet precondition as Skip after eager argument evaluation.
 skippedCase () =
-    andThen (assume (2 > 3)) (checkVerdict ("ignored after skip", 0, 1))
+    andThen (assume (2 > 3)) (checkVerdict "ignored after skip" "0" "1")
 
 test "pass folds several good interactions" passingCase
 test "skip preserves an unmet precondition" skippedCase

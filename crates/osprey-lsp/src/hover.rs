@@ -277,6 +277,28 @@ mod tests {
     }
 
     #[test]
+    fn hover_on_performed_effect_operation_shows_type_and_effect_docs() {
+        let src = "(** Records trace markers. *)\n\
+                   effect Trace\n\
+                       mark : string => Unit\n\
+                   traced : Unit -> Unit ! Trace\n\
+                   traced () = perform Trace.mark \"one\"\n";
+        let col = col_of(src, 4, "mark");
+        let md = hover(src, "file:///trace.ospml", 4, col, U16)
+            .expect("hover over performed effect operation");
+
+        assert!(md.contains("Trace.mark"), "qualified operation: {md}");
+        assert!(
+            md.contains("string") && md.contains("Unit"),
+            "operation type: {md}"
+        );
+        assert!(
+            md.contains("Records trace markers."),
+            "owning effect docs: {md}"
+        );
+    }
+
+    #[test]
     fn hover_on_a_doc_link_resolves_to_the_referenced_element() {
         // A `[Symbol]` intra-doc link in a comment hovers to that symbol's own
         // docs ([DOC-LINK]) — here `[helper]` on the doc line of `main`.

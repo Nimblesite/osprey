@@ -102,7 +102,6 @@ fn every_ml_example_has_a_default_twin() {
     let missing: Vec<String> = flavor_roots()
         .iter()
         .flat_map(|dir| ml_stems(dir))
-        .into_iter()
         .filter(|p| !is_ml_only(p) && !p.with_extension("osp").exists())
         .map(|p| {
             p.file_name()

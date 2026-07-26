@@ -1,6 +1,6 @@
 # Plan 0019 — ML Flavor Elegance
 
-**Status:** **Phases 1.1–1.5, 2 and 3 are implemented and verified.** `+ - *`
+**Status:** **Complete.** Phases 1.1–1.5, 2 and 3 are implemented and verified. `+ - *`
 return plain scalars, `%` is zero-checked,
 `checkedAdd` / `checkedSub` / `checkedMul` exist in both flavors, `_` is a legal
 parameter in both flavors, positional variant payloads are shared core, and ML
@@ -11,9 +11,10 @@ byte-identical LLVM IR to its Default twin. Specs
 [0013 — Error Handling](../specs/0013-ErrorHandling.md),
 [0004 — Type System](../specs/0004-TypeSystem.md) and
 [0003 — Syntax](../specs/0003-Syntax.md) carry the shipped surface as normative
-text. The corpus sweep for silently-shadowed same-name bindings and the
-`osprey-fmt` round-trip audit are still open. See
-[§What is left](#what-is-left).
+text. The same-name binding sweep and whole-corpus `osprey-fmt` audit are also
+complete: unreachable adjacent clauses and non-adjacent duplicate definitions
+are diagnosed, and every hand-written source under `examples`, `benchmarks`,
+and `tests` must parse and format idempotently.
 
 ## Summary
 
@@ -182,15 +183,15 @@ independently mergeable, in this order.
 **Result: binarytrees 22 → 14 lines**, and ~620 LOC removable corpus-wide by
 `?:` alone once the corpus migrates.
 
-### Corpus sweep still owed by phase 1
+### Phase 1 corpus sweep
 
 Two same-name bindings compiled clean and last-wins silently before the merge:
-`f x = 1` / `f x = 2` printed `2` with no diagnostic. Merging adjacent
-all-irrefutable duplicates flips that to first-wins, silently, which is why the
-sweep was deliberately **not** done and the preferred unreachable-clause error
-is not yet emitted — both remain open. Non-adjacent same-name bindings must be a
-hard duplicate-definition error, never a merge: a function whose definition is
-scattered through a file would otherwise have order-dependent clause grouping.
+`f x = 1` / `f x = 2` printed `2` with no diagnostic. The completed sweep now
+rejects every clause after an irrefutable binder or wildcard, including adjacent
+all-irrefutable duplicates, with `unreachable clause`. Non-adjacent same-name
+bindings remain separate through parsing and the type checker reports
+`duplicate definition`, so a scattered function can never acquire
+order-dependent clause grouping.
 
 ## Phase 2 — &#91;ARITH-PLAIN&#93;
 
@@ -323,26 +324,28 @@ No logic changes; each site loses a wrapper. 8 `.expectedoutput` files carried
 corpus was untouched.
 
 **Phase 1.4 is the one behavioural change to watch.** Two same-name bindings
-compiled clean and last-wins silently (`f x = 1` / `f x = 2` printed `2`); after
-the merge the first clause wins, silently. The unreachable-clause diagnostic that
-should replace that silence, and the corpus sweep, are still open;
-non-adjacent same-name bindings must stay a hard duplicate-definition error.
+formerly compiled clean and last-wins silently (`f x = 1` / `f x = 2` printed
+`2`). They are now rejected: an adjacent binding after an irrefutable clause
+reports `unreachable clause`, while a non-adjacent same-name binding reports
+`duplicate definition`.
 
 Nothing in phases 1–3 removes an existing form. The ML layout union, layout
 record construction, named-field payloads, and the explicit `match` all remain
 normative and valid; the new forms sit beside them.
 
-## What is left
+## Completion
 
-Phases 1.1–1.5, 2 and 3 and both defects are implemented and verified: 148/148
-differential examples pass and the cross-flavor IR-equivalence test passes.
-What remains:
+No implementation or migration items remain. Phases 1.1–1.5, 2 and 3 and the
+defect fixes are implemented and verified. The completion audit enforces:
 
-- **The phase 1.x corpus sweep** for silently-shadowed same-name bindings, with
-  the unreachable-clause diagnostic it wants.
-- **`osprey-fmt` round-tripping** of the new ML forms, unaudited, together with
-  the rest of the `.ospml` corpus migration: the corpus still compiles on the
-  older forms, which stay valid, and migrates per phase.
+- unreachable adjacent clauses and non-adjacent duplicate definitions;
+- parse-clean, meaning-preserving, idempotent formatting across every
+  hand-written `.osp` and `.ospml` source under `examples`, `benchmarks`, and
+  `tests`;
+- preservation of inline unions, positional construction, grouped and list
+  equation clauses, `_`, `?:`, plain arithmetic, and explicit `match` through
+  formatting; and
+- byte-identical LLVM IR for every Default/ML twin in the paired corpus.
 
 ## TODO
 
@@ -362,7 +365,8 @@ What remains:
 - [x] Defect — arithmetic propagates a `Result` operand's error instead of unwrapping it and fabricating `Success` (`(10 / 0) + 1.0` → `Error(division by zero)`)
 - [x] Defect — a Default interpolation fragment is re-parsed as a nested program mid-lowering, which cleared the positional-constructor table; `positional::install` now scopes to the outermost lowering, so `"${Node(l, r)}"` folds like the same expression outside a string
 - [x] Defect — a Default nested constructor sub-pattern (`Node(Node(a, b), c)`) was silently discarded and the arm behaved as `Node(_, _)`; it is now rejected with the ML flavor's diagnostic
-- [x] Migrate the `.ospml` corpus per phase — `feature_omnibus.ospml` now mixes
+- [x] Defect — binding lookahead accepted list-pattern clauses while the parameter parser rejected them; `size [] = 0` and sibling list clauses now parse, merge, format, and execute
+- [x] Migrate the `.ospml` corpus per phase — `tests/core/feature_composition/feature_omnibus.test.ospml` now mixes
       grouped positional patterns, inline unions, `_` parameters, equational
       clauses, `?:`, plain arithmetic, and positional construction. The
       whole-corpus formatter test requires every `.ospml` to parse and

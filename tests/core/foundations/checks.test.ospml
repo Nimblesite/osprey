@@ -1,5 +1,6 @@
-// Subtract two integers through a flat call.
-sub (a, b) = a - b
+// Subtract two integers through a curried call.
+sub : int -> int -> int
+sub a b = a - b
 // Classify exact integers before the wildcard case.
 classify 0 = "zero"
 classify 1 = "one"
@@ -9,12 +10,12 @@ classify _ = "many"
 arithmeticCase () =
     // Check results and ordering independently.
     checkAll "arithmetic foundations" [
-        sub (7, 3) == 4,
+        sub 7 3 == 4,
         6 * 7 == 42,
-        sub (20, 2 * 4) == 12,
-        sub (8, 3) > 4,
-        sub (100, 1) > 0,
-        sub (9, 4) != sub (4, 9)
+        sub 20 (2 * 4) == 12,
+        sub 8 3 > 4,
+        sub 100 1 > 0,
+        sub 9 4 != sub 4 9
     ]
 
 // Exercise every classification clause with literal and computed inputs.
@@ -24,8 +25,8 @@ classifyCase () =
         classify 0 == "zero",
         classify 1 == "one",
         classify 9 == "many",
-        classify (sub (4, 3)) == "one",
-        startsWith (classify 20, "m"),
+        classify (sub 4 3) == "one",
+        startsWith (classify 20) "m",
         classify 99 != classify 0
     ]
 
@@ -33,12 +34,12 @@ classifyCase () =
 stringsAndListsCase () =
     // Check the combined standard-library behavior.
     checkAll "string and list foundations" [
-        contains ("talon bank", "bank"),
-        (repeat ("ab", 3) ?: "") == "ababab",
+        contains "talon bank" "bank",
+        (repeat "ab" 3 ?: "") == "ababab",
         trim "  Osprey  " == "Osprey",
         toUpperCase "Osprey" == "OSPREY",
-        startsWith ("osprey language", "osprey"),
-        !(endsWith ("osprey language", "compiler")),
+        startsWith "osprey language" "osprey",
+        !(endsWith "osprey language" "compiler"),
         listLength [10, 20, 30] == 3
     ]
 

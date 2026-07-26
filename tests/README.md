@@ -22,13 +22,18 @@ description: this corpus is executable language documentation.
 Use grouped assertions to keep dense suites readable while retaining one soft
 assertion result per condition:
 
-```osprey
-checkAll("order state", [
+```osprey-ml
+checkAll "order state" [
     total == 42,
     itemCount == 3,
     paid
-])
+]
 ```
+
+ML twins use the current compact surface: whitespace currying, adjacent
+equation clauses for parameter matches, inline unions and positional payloads,
+and `?:` for simple `Result` fallbacks. Do not reintroduce `Success`/`Error`
+wrappers around plain `+`, `-`, or `*` arithmetic.
 
 `expectAll([condition, ...])` is the unlabeled equivalent. Both require a
 non-empty list literal, evaluate every condition, and continue after failures.
@@ -39,6 +44,14 @@ Run the complete corpus with:
 make language-test
 # or, after building the compiler:
 target/release/osprey test tests
+```
+
+Suites run concurrently by default, while their TAP output is replayed in
+sorted file order. Set `OSPREY_TEST_JOBS` to a positive worker limit, or use
+`OSPREY_TEST_JOBS=1` when a constrained or diagnostic run must be serial:
+
+```sh
+OSPREY_TEST_JOBS=1 target/release/osprey test tests
 ```
 
 CI also runs every suite under the tracing GC and ARC memory backends, so moving

@@ -19,7 +19,8 @@ callerOfLater _ = calleeLater 10
 calleeLater n = n * 4
 
 // Parse an integer or use the caller's fallback.
-parseOr (text, fallback) = parseInt text ?: fallback
+parseOr : string -> int -> int
+parseOr text fallback = parseInt text ?: fallback
 // Render both parse Result branches.
 parseStatus text = match parseInt text
     Success value => "parsed ${value}"
@@ -45,8 +46,8 @@ unionsResultsAndScalars () =
         1.5 == 1.5,
         parseStatus "oops" == "parseInt rejected oops",
         parseStatus "123" == "parsed 123",
-        parseOr ("oops", 77) == 77,
-        parseOr ("123", 77) == 123,
+        parseOr "oops" 77 == 77,
+        parseOr "123" 77 == 123,
         priWeight High > priWeight Med && priWeight Med > priWeight Low,
         colorName Red != colorName Blue
     ]
@@ -118,9 +119,9 @@ stringInteractions () =
         toUpperCase s == "  HELLO  ",
         length s == 9,
         toUpperCase (trim s) == "HELLO",
-        startsWith (s, "  "),
-        !(startsWith (trim s, " ")),
-        "${toUpperCase (colorName Green)}:${toUpperCase (trim s)}:${parseOr ("42", 0)}" == "GREEN:HELLO:42",
+        startsWith s "  ",
+        !(startsWith (trim s) " "),
+        "${toUpperCase (colorName Green)}:${toUpperCase (trim s)}:${parseOr "42" 0}" == "GREEN:HELLO:42",
         "=== omnibus done ===" == "=== omnibus done ==="
     ]
 

@@ -74,6 +74,13 @@ one-parameter `Stmt::Function` whose body is a one-parameter `Expr::Lambda`.
 `add 1 2` lowers to nested one-argument calls. `add 1` therefore returns the
 remaining function.
 
+[Critical issue #184](https://github.com/Nimblesite/osprey/issues/184) currently
+qualifies this rule for effects: an unannotated four-argument curried ML
+function can silently skip operations performed through its body. The
+equivalent flat parameter form works. Until the lowering bug is fixed, write
+effectful functions of that shape with parenthesised comma-separated
+parameters.
+
 Parenthesised comma-separated parameters are explicitly flat:
 
 ```osprey-ml

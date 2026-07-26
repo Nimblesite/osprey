@@ -11,22 +11,22 @@ fn tourClassify(n) = match n {
 fn matchTourCase() = {
     // Preserve each complete one-word output line independently.
     checkAll("match tour legacy rendered lines", [
-        tourClassify(0) == "zero",
-        tourClassify(1) == "one",
-        tourClassify(9) == "many"
+            tourClassify(0) == "zero",
+            tourClassify(1) == "one",
+            tourClassify(9) == "many"
     ])
     // Repeat the dynamic branch results as explicit constituent assertions.
     checkAll("match tour legacy constituent values", [
-        tourClassify(0) == "zero",
-        tourClassify(1) == "one",
-        tourClassify(9) == "many"
+            tourClassify(0) == "zero",
+            tourClassify(1) == "one",
+            tourClassify(9) == "many"
     ])
     // Extend wildcard coverage across adjacent, negative, and large integers.
     checkAll("match tour wildcard edge cases", [
-        tourClassify(2) == "many",
-        tourClassify(0 - 1) == "many",
-        tourClassify(100) == "many",
-        (tourClassify(0) == tourClassify(1)) == false
+            tourClassify(2) == "many",
+            tourClassify(0 - 1) == "many",
+            tourClassify(100) == "many",
+            (tourClassify(0) == tourClassify(1)) == false
     ])
 }
 
@@ -46,22 +46,22 @@ fn matchEven(n) = match n % 2 == 0 {
 fn matchBooleanCase() = {
     // Preserve the complete combined boolean-match output line.
     checkAll("boolean match legacy rendered lines", [
-        "g80=${matchGrade(80)} g20=${matchGrade(20)} e4=${matchEven(4)} e7=${matchEven(7)}" ==
+            "g80=${matchGrade(80)} g20=${matchGrade(20)} e4=${matchEven(4)} e7=${matchEven(7)}" ==
             "g80=pass g20=fail e4=even e7=odd"
     ])
     // Split all four matched labels into independent assertions.
     checkAll("boolean match legacy constituent values", [
-        matchGrade(80) == "pass",
-        matchGrade(20) == "fail",
-        matchEven(4) == "even",
-        matchEven(7) == "odd"
+            matchGrade(80) == "pass",
+            matchGrade(20) == "fail",
+            matchEven(4) == "even",
+            matchEven(7) == "odd"
     ])
     // Exercise the grade threshold and parity boundary values.
     checkAll("boolean match boundaries", [
-        matchGrade(50) == "pass",
-        matchGrade(49) == "fail",
-        matchEven(0) == "even",
-        matchEven(9) == "odd"
+            matchGrade(50) == "pass",
+            matchGrade(49) == "fail",
+            matchEven(0) == "even",
+            matchEven(9) == "odd"
     ])
 }
 
@@ -77,21 +77,21 @@ fn matchLabel(n) = match n {
 fn matchIntegerCase() = {
     // Preserve the complete combined integer-match output line.
     checkAll("integer match legacy rendered lines", [
-        "a=${matchLabel(0)} b=${matchLabel(1)} c=${matchLabel(2)} d=${matchLabel(7)}" ==
+            "a=${matchLabel(0)} b=${matchLabel(1)} c=${matchLabel(2)} d=${matchLabel(7)}" ==
             "a=none b=single c=pair d=many"
     ])
     // Split all four matched labels into independent assertions.
     checkAll("integer match legacy constituent values", [
-        matchLabel(0) == "none",
-        matchLabel(1) == "single",
-        matchLabel(2) == "pair",
-        matchLabel(7) == "many"
+            matchLabel(0) == "none",
+            matchLabel(1) == "single",
+            matchLabel(2) == "pair",
+            matchLabel(7) == "many"
     ])
     // Extend the wildcard across adjacent, negative, and large integers.
     checkAll("integer match wildcard boundaries", [
-        matchLabel(3) == "many",
-        matchLabel(0 - 1) == "many",
-        matchLabel(100) == "many"
+            matchLabel(3) == "many",
+            matchLabel(0 - 1) == "many",
+            matchLabel(100) == "many"
     ])
 }
 

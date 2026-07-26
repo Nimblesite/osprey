@@ -718,6 +718,49 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn effect_operation_implementation_request_returns_matching_handler_arms() {
+        let src = "// osprey: flavor=ml\n\
+                   effect Trace\n\
+                       mark : string => Unit\n\
+                   effect Other\n\
+                       mark : string => Unit\n\
+                   traced () = perform Trace.mark \"one\"\n\
+                   first =\n\
+                       handle Trace\n\
+                           mark label => print label\n\
+                       in traced ()\n\
+                   wrong =\n\
+                       handle Other\n\
+                           mark label => print label\n\
+                       in perform Other.mark \"other\"\n\
+                   second =\n\
+                       handle Trace\n\
+                           mark label => print label\n\
+                       in traced ()\n";
+        let mut h = Harness::start();
+        let _diags = h.open(src).await;
+
+        let response = h
+            .request(
+                13,
+                "textDocument/implementation",
+                position_params(URI, 5, 27),
+            )
+            .await;
+        assert!(
+            response.error.is_none(),
+            "implementation request must be registered: {response:?}"
+        );
+        let locations = array_result(&response, "implementation");
+        let lines: Vec<u64> = locations
+            .iter()
+            .filter_map(|location| location.pointer("/range/start/line")?.as_u64())
+            .collect();
+        assert_eq!(lines, [8, 16], "only Trace.mark handlers: {locations:?}");
+        h.shutdown_and_exit().await;
+    }
+
+    #[tokio::test]
     async fn symbols_completion_and_signature_help() {
         let mut h = Harness::start();
         let _diags = h.open(SRC).await;

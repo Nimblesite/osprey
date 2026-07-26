@@ -1,0 +1,8 @@
+// [EFFECTS-OP-TYPING] A direct handler arm must return its operation's declared result type.
+effect ParseFailure {
+    raise: fn(string) -> int
+}
+
+let recovered = handle ParseFailure
+    raise message => "not an integer"
+in perform ParseFailure.raise("invalid number")

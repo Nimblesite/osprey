@@ -106,6 +106,16 @@ fn path_and_resolve_select_ml_frontend() {
     );
 }
 
+#[test]
+fn typed_function_accepts_equational_list_pattern_clauses() {
+    let statements = ml_ok(
+        "classify : List int -> string\n\
+         classify [] = \"empty\"\n\
+         classify [head, ...tail] = \"many\"\n",
+    );
+    assert_eq!(statements.len(), 1, "expected the clauses to merge");
+}
+
 // --- lexer.rs ----------------------------------------------------------------
 
 #[test]

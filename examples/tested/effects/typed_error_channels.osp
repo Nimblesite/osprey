@@ -22,7 +22,8 @@ fn loadConfig() ![Parse, Missing, Range] = {
 }
 
 // This helper declares and performs only Range.
-fn loadRetries(raw, hi) !Range = perform Range.clamp(raw, hi)
+fn loadRetries(raw: int) -> (int) -> int !Range =
+    fn(hi) => perform Range.clamp(raw, hi)
 
 // No arm uses resume, so each arm value replaces its operation result.
 let combined = handle Parse
@@ -62,11 +63,11 @@ in {
             print("[Range*]   STRICT override: force ${toString(v)} -> 1")
             1
         }
-    in loadRetries(500, 10)
+    in loadRetries(500)(10)
     print("strict retries (inner handler)  = ${toString(strict)}")
 
     // Leaving the inner region restores the outer Range handler.
-    let relaxed = loadRetries(500, 10)
+    let relaxed = loadRetries(500)(10)
     print("relaxed retries (outer handler) = ${toString(relaxed)}")
 
     total

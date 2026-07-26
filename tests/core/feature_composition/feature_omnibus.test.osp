@@ -16,8 +16,8 @@ fn callerOfLater(_) = calleeLater(10)
 // Supplies the forward-referenced arithmetic implementation.
 fn calleeLater(n) = n * 4
 
-// Unwraps a parsed integer or returns the caller's fallback.
-fn parseOr(text, fallback) = parseInt(text) ?: fallback
+// Unwraps a parsed integer or returns the caller's fallback through currying.
+fn parseOr(text: string) -> (int) -> int = fn(fallback) => parseInt(text) ?: fallback
 // Converts both Result branches into user-facing status text.
 fn parseStatus(text) = match parseInt(text) {
     Success { value } => "parsed ${value}"
@@ -42,8 +42,8 @@ fn unionsResultsAndScalars() = {
         1.5 == 1.5,
         parseStatus("oops") == "parseInt rejected oops",
         parseStatus("123") == "parsed 123",
-        parseOr("oops", 77) == 77,
-        parseOr("123", 77) == 123,
+        parseOr("oops")(77) == 77,
+        parseOr("123")(77) == 123,
         priWeight(High) > priWeight(Med) && priWeight(Med) > priWeight(Low),
         colorName(Red) != colorName(Blue)
     ])
@@ -120,7 +120,7 @@ fn stringInteractions() = {
         s.trim().toUpperCase() == "HELLO",
         startsWith(s, "  "),
         !startsWith(s.trim(), " "),
-        "${colorName(Green).toUpperCase()}:${s.trim().toUpperCase()}:${parseOr("42", 0)}" == "GREEN:HELLO:42",
+        "${colorName(Green).toUpperCase()}:${s.trim().toUpperCase()}:${parseOr("42")(0)}" == "GREEN:HELLO:42",
         "=== omnibus done ===" == "=== omnibus done ==="
     ])
 }

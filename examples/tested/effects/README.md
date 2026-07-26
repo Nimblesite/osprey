@@ -1,39 +1,72 @@
-# Algebraic Effects Examples
+# Algebraic effects examples
 
-This directory is part of the golden example suite. Every runnable `.osp` file
-has a sibling `.expectedoutput` file, and `crates/diff_examples.sh` compares the
-program output byte-for-byte after trimming outer whitespace.
+Every example in this directory has a Default (`.osp`) and ML (`.ospml`) form.
+Each pair is one program written in Osprey's two first-class syntax flavors. The
+golden harness runs both and compares them with the same `.osp.expectedoutput`
+file after trimming only the outer whitespace.
 
-## Coverage
+## Start with the two handler behaviors
 
-- `algebraic_effects_comprehensive.osp` covers multiple effects, effect sets,
-  handlers, handler-owned state, mock IO, files, logging, and fibers.
-- `handler_scoping.osp` covers nested handler override and forward-referenced
-  functions that perform effects.
-- `fiber_effects.osp` covers effects across spawned fibers.
-- `http_state_levels.osp` covers handler-owned state across HTTP callback and
-  fiber boundaries.
-- `recoverable_errors.osp`, `result_and_effects.osp`, and
-  `collect_all_errors.osp` cover direct value substitution with handler-owned
-  state.
-- `typed_error_channels.osp` covers nested handlers for independent operations.
+A handler region with no `resume` uses direct substitution: the arm's value
+becomes the current `perform` result and the caller continues. Start with
+[recoverable_errors.osp](recoverable_errors.osp) or its
+[ML twin](recoverable_errors.ospml) to see one order workflow run under two
+fallback policies.
 
-## Explicit Resume Coverage
+A handler region containing `resume` runs as a suspended continuation.
+`resume(value)` continues from `perform`; returning from the selected branch
+without `resume` stops the remaining computation. See
+[abort_vs_resume.osp](abort_vs_resume.osp) and
+[abort_vs_resume.ospml](abort_vs_resume.ospml), then the retry examples.
 
-The paired Default/ML assertion suites under `tests/effects/resume/` cover
-LIFO unwinding, Unit operations, aborting without resume, outer-handler
-bridging, value rewriting, whole-Result resume values, and generic effect
-instantiations. Each suite retains its former stdout transcript as an internal
-oracle and adds handler-state assertions.
+Mode is currently selected for the whole handler region. A resuming operation
+can therefore change how a non-resuming sibling operation behaves. This is
+tracked by [issue #177](https://github.com/Nimblesite/osprey/issues/177). The
+examples keep sibling operations in one mode and use resume-or-stop branches
+inside one operation arm when they need exception-style early exit.
 
-The remaining `abort_vs_resume.osp` and `retry_until_valid.osp` golden examples
-compare resuming and non-resuming branches in one continuation-mode handler.
+## Learning path
 
-## Running
+| Behavior | Default | ML | Handler path |
+| --- | --- | --- | --- |
+| Supply different defaults for one workflow | [recoverable errors](recoverable_errors.osp) | [recoverable errors](recoverable_errors.ospml) | Direct |
+| Turn local `Result` failures into a surrounding recovery policy | [Result and effects](result_and_effects.osp) | [Result and effects](result_and_effects.ospml) | Direct |
+| Report every validation failure in one pass | [collect all errors](collect_all_errors.osp) | [collect all errors](collect_all_errors.ospml) | Direct |
+| Keep parse, missing and range failures in separate typed channels | [typed error channels](typed_error_channels.osp) | [typed error channels](typed_error_channels.ospml) | Direct |
+| Compare continuing with stopping | [abort vs resume](abort_vs_resume.osp) | [abort vs resume](abort_vs_resume.ospml) | Explicit resume |
+| Retry until valid, then stop after a budget | [retry until valid](retry_until_valid.osp) | [retry until valid](retry_until_valid.ospml) | Explicit resume |
+| Override and restore nested handlers | [handler scoping](handler_scoping.osp) | [handler scoping](handler_scoping.ospml) | Direct and explicit resume |
+| Preserve handlers across spawned fibers | [fiber effects](fiber_effects.osp) | [fiber effects](fiber_effects.ospml) | Direct and explicit resume |
+| Preserve handler-owned state through HTTP callbacks and fibers | [HTTP state levels](http_state_levels.osp) | [HTTP state levels](http_state_levels.ospml) | Direct |
+| Combine effects, state, mock IO, files, logging and fibers | [comprehensive](algebraic_effects_comprehensive.osp) | [comprehensive](algebraic_effects_comprehensive.ospml) | Direct |
 
-From the repo root:
+## Important limits
+
+- The compiler checks operation inputs and outputs, but does not yet catch every
+  missing handler before execution. A missing setup can stop at runtime.
+- Explicit resume is deep, single-shot and native-only. Direct substitution
+  handlers do not need the continuation runtime and are supported on
+  WebAssembly.
+- A second resume of one completed continuation is rejected.
+- `resume` cannot be captured by a lambda declared inside a handler arm.
+- First-class handler values are not implemented yet.
+- Direct handlers currently corrupt whole `Result<T, E>` operation values;
+  [critical issue #183](https://github.com/Nimblesite/osprey/issues/183) tracks
+  that boundary. `result_and_effects` safely matches a local `Result` first and
+  asks its effect for a plain replacement value.
+- A resuming handler whose completed continuation answer is a dynamic string
+  currently leaks under ARC. The paired assertion suite keeps this visible as
+  [critical issue #185](https://github.com/Nimblesite/osprey/issues/185).
+
+The paired assertion suites in [tests/effects](../../../tests/effects/README.md)
+cover internal values, counts and ordering that stdout cannot prove. Their
+known-failure skips also link the current critical argument and `Result` bugs.
+
+## Run everything in this area
+
+From the repository root:
 
 ```sh
 zsh crates/diff_examples.sh effects
-target/release/osprey test tests/effects/resume
+target/release/osprey test tests/effects
 ```

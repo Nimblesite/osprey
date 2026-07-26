@@ -5,20 +5,22 @@ effect Recover {
     overdraw: fn(int, int) -> int
 }
 
-fn drawOrder(requested, available) !Recover = match requested > available {
-    true => perform Recover.overdraw(requested, available)
-    false => requested
-}
-
-fn fulfill(orders, stock) !Recover = match orders {
-    [] => stock
-    [requested, ...rest] => {
-        let drawn = drawOrder(requested, stock)
-        let remaining = stock - drawn
-        print("  order ${requested}: from ${stock} in stock -> took ${drawn}, ${remaining} left")
-        fulfill(rest, remaining)
+fn drawOrder(requested: int) -> (int) -> int !Recover =
+    fn(available) => match requested > available {
+        true => perform Recover.overdraw(requested, available)
+        false => requested
     }
-}
+
+fn fulfill(orders: List<int>) -> (int) -> int !Recover =
+    fn(stock) => match orders {
+        [] => stock
+        [requested, ...rest] => {
+            let drawn = drawOrder(requested)(stock)
+            let remaining = stock - drawn
+            print("  order ${requested}: from ${stock} in stock -> took ${drawn}, ${remaining} left")
+            fulfill(rest)(remaining)
+        }
+    }
 
 let start = 20
 let batch = listAppend(listAppend(listAppend(listAppend(listAppend(List(), 6), 30), 5), 8), 40)
@@ -32,7 +34,7 @@ let skipFinal = handle Recover
         skipReason = skipReason + "skipped ${requested} (only ${available} left); "
         0
     }
-in fulfill(batch, start)
+in fulfill(batch)(start)
 let skipFilled = start - skipFinal
 print("SKIP done: recovered ${skipCount} orders, fulfilled ${skipFilled} units, ${skipFinal} left in stock\nSKIP log: [${skipReason}]")
 
@@ -45,7 +47,7 @@ let capFinal = handle Recover
         capReason = capReason + "capped ${requested} to ${available}; "
         available
     }
-in fulfill(batch, start)
+in fulfill(batch)(start)
 let capFilled = start - capFinal
 print("CAP done: recovered ${capCount} orders, fulfilled ${capFilled} units, ${capFinal} left in stock\nCAP log: [${capReason}]")
 
@@ -57,6 +59,6 @@ let happyFinal = handle Recover
         happyCount = happyCount + 1
         0
     }
-in fulfill(happyBatch, start)
+in fulfill(happyBatch)(start)
 let happyFilled = start - happyFinal
 print("HAPPY done: recovered ${happyCount} orders, fulfilled ${happyFilled} units, ${happyFinal} left in stock\n=== all three batches completed ===")

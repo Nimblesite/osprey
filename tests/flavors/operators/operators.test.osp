@@ -11,21 +11,21 @@ fn arithmeticOperatorsCase() = {
 
     // Preserve the complete arithmetic output line as one exact value.
     checkAll("arithmetic legacy rendered lines", [
-        "a=${a} b=${b} c=${c} d=${d}" == "a=14 b=20 c=8 d=26"
+            "a=${a} b=${b} c=${c} d=${d}" == "a=14 b=20 c=8 d=26"
     ])
     // Check every number that was embedded in the old output line separately.
     checkAll("arithmetic legacy constituent values", [
-        a == 14,
-        b == 20,
-        c == 8,
-        d == 26
+            a == 14,
+            b == 20,
+            c == 8,
+            d == 26
     ])
     // Extend coverage across associativity, grouping, zero, and negative results.
     checkAll("arithmetic precedence edge cases", [
-        20 - 6 - 2 == 12,
-        20 - (6 - 2) == 16,
-        7 + 9 * 0 == 7,
-        0 - 5 * 2 == -10
+            20 - 6 - 2 == 12,
+            20 - (6 - 2) == 16,
+            7 + 9 * 0 == 7,
+            0 - 5 * 2 == -10
     ])
 }
 
@@ -36,25 +36,25 @@ fn booleanOperatorsCase() = {
 
     // Preserve the complete boolean output line with its original formatting.
     checkAll("boolean legacy rendered lines", [
-        "and=${t && f} or=${t || f} not=${!t} lt=${3 < 5} ge=${5 >= 5} eq=${4 == 4} chain=${(3 < 5) && !(2 > 9)}" ==
+            "and=${t && f} or=${t || f} not=${!t} lt=${3 < 5} ge=${5 >= 5} eq=${4 == 4} chain=${(3 < 5) && !(2 > 9)}" ==
             "and=false or=true not=false lt=true ge=true eq=true chain=true"
     ])
     // Check all seven boolean results that the golden line previously combined.
     checkAll("boolean legacy constituent values", [
-        (t && f) == false,
-        (t || f) == true,
-        !t == false,
-        (3 < 5) == true,
-        (5 >= 5) == true,
-        (4 == 4) == true,
-        ((3 < 5) && !(2 > 9)) == true
+            (t && f) == false,
+            (t || f) == true,
+            !t == false,
+            (3 < 5) == true,
+            (5 >= 5) == true,
+            (4 == 4) == true,
+            ((3 < 5) && !(2 > 9)) == true
     ])
     // Exercise complementary truth values and a composed true expression.
     checkAll("boolean composition edge cases", [
-        !f == true,
-        (5 < 3) == false,
-        (4 == 5) == false,
-        (t && !f) == true
+            !f == true,
+            (5 < 3) == false,
+            (4 == 5) == false,
+            (t && !f) == true
     ])
 }
 

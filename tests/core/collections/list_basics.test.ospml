@@ -5,9 +5,10 @@ effect IterationProbe
     observe : int => Unit
 
 // Append an inclusive integer range without mutating earlier lists.
-appendThrough (xs, next, last) = match next > last
+appendThrough : List int -> int -> int -> List int
+appendThrough xs next last = match next > last
     true => xs
-    false => appendThrough (listAppend xs next, next + 1, last)
+    false => appendThrough (listAppend xs next) (next + 1) last
 
 // Classify empty, singleton, pair, and head-tail list patterns.
 classify : List int -> string
@@ -191,10 +192,10 @@ iterationAndPersistenceCase () =
 
 // Exercise both sides of the 32-element structural tail boundary.
 tailBoundaryCase () =
-    t = appendThrough (List (), 1, 10)
-    t2 = appendThrough (t, 11, 20)
-    t3 = appendThrough (t2, 21, 30)
-    t4 = appendThrough (t3, 31, 35)
+    t = appendThrough (List ()) 1 10
+    t2 = appendThrough t 11 20
+    t3 = appendThrough t2 21 30
+    t4 = appendThrough t3 31 35
     reversed = listReverse t4
     doubled = listConcat t4 t4
 
@@ -244,7 +245,7 @@ indexingPatternsAndDispatchCase () =
     pair = listAppend short 8
     four = listAppend (listAppend pair 7) 6
     patternFour = listAppend (listAppend (listAppend (listAppend (List ()) 4) 5) 6) 7
-    t = appendThrough (List (), 1, 10)
+    t = appendThrough (List ()) 1 10
     dispatchFive = listAppend (listAppend (listAppend (listAppend (listAppend (List ()) 1) 2) 3) 4) 5
     dispatchTen = listConcat dispatchFive dispatchFive
     dispatchTwenty = listConcat dispatchTen dispatchTen

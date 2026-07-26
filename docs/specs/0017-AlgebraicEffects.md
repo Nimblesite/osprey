@@ -205,15 +205,17 @@ Resuming handlers have these rules:
   runs.
 - They are single-shot. A second resume of one continuation aborts with
   `fatal: continuation already resumed (multi-shot resume is not supported)`.
-- Handler mode is selected per region. If any arm contains `resume`, an arm
-  that returns without resuming aborts the suspended computation and its value
-  becomes the result of the whole handler. This per-region selection is a
-  known deviation from the intended per-arm rule: adding `resume` to one arm
-  changes how a sibling arm's non-resuming return is treated
-  (recover-and-continue versus abort). It is tracked as
-  [issue #177](https://github.com/Nimblesite/osprey/issues/177). Keep each
-  handler in a single mode: either no arm resumes, or every control-flow arm
-  does.
+- Handler mode is selected per region. With no `resume` in any arm, every arm
+  directly supplies its operation result and the caller continues. If any arm
+  contains `resume`, returning from the selected branch without resuming stops
+  the suspended computation and its value becomes the result of the whole
+  handler. A single operation arm may intentionally resume its success branch
+  and return from its error branch; that is the exception-style early-exit
+  pattern. The known deviation is across sibling operations: adding `resume`
+  to one arm also changes a non-resuming sibling from substitution to early
+  exit. This region-wide behavior is tracked as
+  [issue #177](https://github.com/Nimblesite/osprey/issues/177). Until it is
+  fixed, keep sibling operations in the same mode.
 - `resume` is lexical to the arm. It is rejected at top level and inside a
   lambda declared in an arm, because that lambda has no live arm continuation.
 - Explicit resume is native-only. WebAssembly supports direct value-substitution
@@ -221,6 +223,20 @@ Resuming handlers have these rules:
 
 Native resume uses one suspended pthread stack as the continuation. Regions
 whose arms contain no `resume` stay on the direct handler-call path.
+
+Two critical implementation defects currently limit operation values:
+
+- [issue #182](https://github.com/Nimblesite/osprey/issues/182): the native
+  resumable-operation mailbox transports 16 arguments. The compiler accepts a
+  17th argument, but the runtime silently delivers zero for it.
+- [issue #183](https://github.com/Nimblesite/osprey/issues/183): a direct
+  handler corrupts an operation result whose type is `Result<T, E>`. Resuming
+  handlers have separate passing coverage for complete `Result` values.
+- [issue #185](https://github.com/Nimblesite/osprey/issues/185): under ARC, a
+  resuming handler leaks one managed object when its completed continuation
+  answer is a dynamic string.
+
+Both defects have paired Default/ML known-failure cases under `tests/effects`.
 
 `[EFFECTS-FIBER-PERFORM]` Concurrent performs into one resuming handler are
 serialized for the full suspend-to-resume round trip. This prevents arguments

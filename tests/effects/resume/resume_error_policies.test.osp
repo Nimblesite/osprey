@@ -1,0 +1,398 @@
+// Exception-style handlers either resume with a recovery value or stop the rest of the computation.
+
+// ResumeFallback lets a policy replace one failed integer and continue the caller.
+effect ResumeFallback { recover: fn(string, int) -> int }
+
+// This workflow proves that work on both sides of a recovered operation still runs.
+fn recoveredSum() !ResumeFallback = {
+    let before = 10
+    let replacement = perform ResumeFallback.recover("missing score", 20)
+    let after = 12
+    before + replacement + after
+}
+
+// A resuming recovery supplies the missing value and observes the completed answer.
+fn resumeRecoveryContinuesCase() = {
+    mut calls = 0
+    mut completed = 0
+    let result = handle ResumeFallback
+        recover message fallback => {
+            calls = calls + 1
+            let answer = resume(fallback)
+            completed = answer
+            answer
+        }
+    in recoveredSum()
+    checkAll("resuming recovery continues", [
+        result == 42, completed == 42, calls == 1
+    ])
+}
+
+// FatalExit models one operation whose recoverable branch resumes and fatal branch stops.
+effect FatalExit { raise: fn(string) -> int }
+
+// ExitTrace records which parts of a deep call chain were reached.
+effect ExitTrace { mark: fn(string) -> Unit }
+
+// The deepest helper requests a fatal exit instead of returning an ordinary value.
+fn deepestFailure() ![FatalExit, ExitTrace] = {
+    perform ExitTrace.mark("deepest")
+    perform FatalExit.raise("fatal")
+}
+
+// The middle helper contains work that must disappear when the continuation stops.
+fn middleFailure() ![FatalExit, ExitTrace] = {
+    perform ExitTrace.mark("middle-before")
+    let value = deepestFailure()
+    perform ExitTrace.mark("middle-after")
+    value + 1
+}
+
+// Returning without resume skips every expression after the failed perform.
+fn fatalExitStopsDeepCallCase() = {
+    mut trace = ""
+    mut failures = 0
+    let result = handle ExitTrace
+        mark label => { trace = "${trace}${label}|" }
+    in handle FatalExit
+        raise message => match message {
+            "fatal" => {
+                failures = failures + 1
+                503
+            }
+            _ => resume(0)
+        }
+    in middleFailure()
+    checkAll("fatal exit stops deep call", [
+        result == 503, failures == 1,
+        trace == "middle-before|deepest|",
+        !contains(trace, "middle-after")
+    ])
+}
+
+// RetryInput supplies successive candidates to a validation loop.
+effect RetryInput { next: fn(int) -> int }
+
+// Invalid candidates recursively ask again under the same deep handler.
+fn requirePositive(attempt) !RetryInput = {
+    let candidate = perform RetryInput.next(attempt)
+    match candidate > 0 {
+        true => candidate
+        false => requirePositive(attempt + 1)
+    }
+}
+
+// Deep handlers remain installed when resumed code performs the same operation again.
+fn recursiveRetryCase() = {
+    mut calls = 0
+    mut supplied = ""
+    let accepted = handle RetryInput
+        next attempt => {
+            calls = calls + 1
+            let candidate = match attempt { 1 => -3 2 => 0 _ => 9 }
+            supplied = "${supplied}${toString(candidate)}|"
+            resume(candidate)
+        }
+    in requirePositive(1)
+    checkAll("recursive retry remains handled", [
+        accepted == 9, calls == 3, supplied == "-3|0|9|"
+    ])
+}
+
+// ParseRecovery supplies an integer while LookupRecovery supplies a string.
+effect ParseRecovery { parse: fn(string) -> int }
+effect LookupRecovery { missing: fn(string) -> string }
+
+// This configuration consumes two independently typed recovery channels.
+fn recoveredConfig() ![ParseRecovery, LookupRecovery] = {
+    let port = perform ParseRecovery.parse("bad-port")
+    let host = perform LookupRecovery.missing("host")
+    port + length(host)
+}
+
+// Nested resuming handlers stay active and settle from inner to outer.
+fn nestedRecoveryChannelsCase() = {
+    mut entered = ""
+    mut settled = ""
+    let score = handle ParseRecovery
+        parse raw => {
+            entered = "${entered}parse|"
+            let answer = resume(8080)
+            settled = "${settled}parse|"
+            answer
+        }
+    in handle LookupRecovery
+        missing key => {
+            entered = "${entered}lookup|"
+            let answer = resume("localhost")
+            settled = "${settled}lookup|"
+            answer
+        }
+    in recoveredConfig()
+    checkAll("nested typed recoveries compose", [
+        score == 8089,
+        entered == "parse|lookup|", settled == "lookup|parse|"
+    ])
+}
+
+// ScopedRecovery demonstrates nearest-handler lookup for a resuming effect.
+effect ScopedRecovery { value: fn(int) -> int }
+
+// This helper keeps handler lookup visible across ordinary function calls.
+fn scopedValue(seed) !ScopedRecovery = perform ScopedRecovery.value(seed)
+
+// An inner handler overrides the outer one only for its lexical region.
+fn resumingHandlerShadowCase() = {
+    mut outerCalls = 0
+    mut innerCalls = 0
+    let total = handle ScopedRecovery
+        value seed => {
+            outerCalls = outerCalls + 1
+            resume(seed + 100)
+        }
+    in {
+        let before = scopedValue(1)
+        let inside = handle ScopedRecovery
+            value seed => {
+                innerCalls = innerCalls + 1
+                resume(seed + 10)
+            }
+        in scopedValue(2)
+        let after = scopedValue(3)
+        before + inside + after
+    }
+    checkAll("resuming handler shadow and restore", [
+        total == 216, outerCalls == 2, innerCalls == 1
+    ])
+}
+
+// WrapAnswer exposes how post-resume code can transform the completed answer.
+effect WrapAnswer { number: fn() -> int }
+
+// The performer adds one to the value supplied by its handler.
+fn wrappedBody() !WrapAnswer = perform WrapAnswer.number() + 1
+
+// Code after resume sees the body's answer and may return a different handler answer.
+fn postResumeTransformsAnswerCase() = {
+    mut bodyAnswer = 0
+    let result = handle WrapAnswer
+        number => {
+            let answer = resume(10)
+            bodyAnswer = answer
+            answer * 2
+        }
+    in wrappedBody()
+    checkAll("post-resume code transforms answer", [
+        bodyAnswer == 11, result == 22, result == bodyAnswer * 2
+    ])
+}
+
+// ResultRecovery returns the complete Result value through a continuation.
+effect ResultRecovery { fetch: fn(string) -> Result<int, string> }
+
+// The caller, not the handler, decides how Success and Error become integers.
+fn resultValue(key) !ResultRecovery = match perform ResultRecovery.fetch(key) {
+    Success { value } => value
+    Error { message } => length(message)
+}
+
+// Resume preserves both Result constructors and their payloads.
+fn resumeWholeResultCase() = {
+    mut calls = 0
+    mut settled = 0
+    let total = handle ResultRecovery
+        fetch key => {
+            calls = calls + 1
+            let answer = match key {
+                "ready" => resume(Success { value: 7 })
+                _ => resume(Error { message: "missing" })
+            }
+            settled = settled + 1
+            answer
+        }
+    in resultValue("ready") + resultValue("absent")
+    checkAll("resume carries whole Result values", [
+        total == 14, calls == 2, settled == 2, length("missing") == 7
+    ])
+}
+
+// RecoveryChoice is a domain-specific value supplied by a handler.
+type RecoveryChoice = Use { value: int } | Reject { code: int }
+
+// ChoiceRecovery returns a tagged choice rather than an untyped sentinel.
+effect ChoiceRecovery { decide: fn(string) -> RecoveryChoice }
+
+// Exhaustive matching makes both recovery choices visible to the caller.
+fn choiceValue(label) !ChoiceRecovery = match perform ChoiceRecovery.decide(label) {
+    Use { value } => value
+    Reject { code } => 0 - code
+}
+
+// Resume transports tagged values without losing constructor or payload information.
+fn resumeTaggedChoiceCase() = {
+    mut calls = 0
+    let total = handle ChoiceRecovery
+        decide label => {
+            calls = calls + 1
+            match label {
+                "cache" => resume(Use { value: 30 })
+                _ => resume(Reject { code: 12 })
+            }
+        }
+    in choiceValue("cache") + choiceValue("network")
+    checkAll("resume carries tagged recovery choices", [
+        total == 18, calls == 2, total == 30 - 12
+    ])
+}
+
+// DeepRecovery drives many sequential suspensions through one handler.
+effect DeepRecovery { checkpoint: fn(int) -> int }
+
+// Each recursive level performs once before descending to the next level.
+fn deepSum(depth) !DeepRecovery = match depth {
+    0 => 0
+    _ => perform DeepRecovery.checkpoint(depth) + deepSum(depth - 1)
+}
+
+// Thirty-two resumptions stress deep installation, delivery, and LIFO settlement.
+fn deepResumeStressCase() = {
+    mut entered = 0
+    mut settled = 0
+    let total = handle DeepRecovery
+        checkpoint depth => {
+            entered = entered + 1
+            let answer = resume(depth)
+            settled = settled + 1
+            answer
+        }
+    in deepSum(32)
+    checkAll("deep resume stress", [
+        total == 528, entered == 32, settled == 32, entered == settled
+    ])
+}
+
+// TypedRecovery combines integer, string, boolean, and Unit operations in one region.
+effect TypedRecovery {
+    number: fn(string) -> int
+    text: fn(string) -> string
+    allow: fn(string) -> bool
+    note: fn(string) -> Unit
+}
+
+// The workflow consumes every operation result type after its continuation resumes.
+fn typedRecoveryBody() !TypedRecovery = {
+    let n = perform TypedRecovery.number("retries")
+    let s = perform TypedRecovery.text("host")
+    let ok = perform TypedRecovery.allow("deploy")
+    perform TypedRecovery.note("assembled")
+    n + length(s) + match ok { true => 1 false => 0 }
+}
+
+// Every arm resumes with the exact type declared by its operation.
+fn heterogeneousResumeCase() = {
+    mut calls = 0
+    let result = handle TypedRecovery
+        number key => {
+            calls = calls + 1
+            resume(3)
+        }
+        text key => {
+            calls = calls + 1
+            resume("osprey.local")
+        }
+        allow key => {
+            calls = calls + 1
+            resume(true)
+        }
+        note message => {
+            calls = calls + 1
+            resume()
+        }
+    in typedRecoveryBody()
+    checkAll("heterogeneous operation resumes", [
+        result == 16, calls == 4,
+        length("osprey.local") == 12
+    ])
+}
+
+// StringAnswerRecovery reproduces the ARC leak for a managed continuation answer.
+effect StringAnswerRecovery { get: fn() -> string }
+
+// This exact shape returns a dynamic string after resuming with another string.
+fn stringAnswerBody() -> string !StringAnswerRecovery = {
+    let value = perform StringAnswerRecovery.get()
+    value + "!"
+}
+
+// Keep the leaking ARC path visible until critical issue #185 is fixed.
+fn stringAnswerArcKnownFailureCase() =
+    Skip { why: "CRITICAL #185: resuming handlers leak string continuation answers under ARC" }
+
+// SixteenArgumentRecovery locks the largest operation payload the current runtime transports.
+effect SixteenArgumentRecovery {
+    recover: fn(int, int, int, int, int, int, int, int, int, int, int, int, int, int, int, int) -> int
+}
+
+// The operation sends sixteen distinct values so no mailbox position can hide behind equality.
+fn sixteenArgumentBody() !SixteenArgumentRecovery =
+    perform SixteenArgumentRecovery.recover(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16) + 100
+
+// The supported boundary preserves every argument and resumes from the final one.
+fn sixteenArgumentBoundaryCase() = {
+    mut calls = 0
+    mut observed = ""
+    let result = handle SixteenArgumentRecovery
+        recover a1 a2 a3 a4 a5 a6 a7 a8 a9 a10 a11 a12 a13 a14 a15 a16 => {
+            calls = calls + 1
+            observed = "${a1}|${a2}|${a3}|${a4}|${a5}|${a6}|${a7}|${a8}|${a9}|${a10}|${a11}|${a12}|${a13}|${a14}|${a15}|${a16}"
+            resume(a16)
+        }
+    in sixteenArgumentBody()
+    checkAll("sixteen-argument resume boundary", [
+        result == 116, calls == 1,
+        observed == "1|2|3|4|5|6|7|8|9|10|11|12|13|14|15|16"
+    ])
+}
+
+// Verdict lets a known critical runtime failure remain visible without making unrelated CI red.
+type Verdict = Pass | Fail { reason: string } | Skip { why: string }
+
+// SeventeenArgumentRecovery is accepted today but runtime argument 17 becomes zero.
+effect SeventeenArgumentRecovery {
+    recover: fn(int, int, int, int, int, int, int, int, int, int, int, int, int, int, int, int, int) -> int
+}
+
+// This is the exact operation shape tracked by critical issue #182.
+fn seventeenArgumentBody() !SeventeenArgumentRecovery =
+    perform SeventeenArgumentRecovery.recover(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17)
+
+// Keep the unsafe boundary named in TAP until #182 makes it safe to execute.
+fn seventeenArgumentKnownFailureCase() =
+    Skip { why: "CRITICAL #182: resumable operation argument 17 is silently replaced with zero" }
+
+// Register recovery that resumes the caller with a fallback.
+test("resuming recovery continues after the failed operation", resumeRecoveryContinuesCase)
+// Register exception-style abort across a deep helper chain.
+test("returning without resume stops a deep failed computation", fatalExitStopsDeepCallCase)
+// Register recursive retry under one deep handler.
+test("resumed validation can perform the same effect again", recursiveRetryCase)
+// Register independently typed nested recovery channels.
+test("nested resuming error channels enter FIFO and settle LIFO", nestedRecoveryChannelsCase)
+// Register nearest-handler shadowing and restoration.
+test("an inner resuming handler shadows then restores its outer handler", resumingHandlerShadowCase)
+// Register post-resume transformation of the completed answer.
+test("a handler can transform the completed continuation answer", postResumeTransformsAnswerCase)
+// Register complete Result transport through resume.
+test("resume preserves Success and Error values", resumeWholeResultCase)
+// Register tagged domain recovery values through resume.
+test("resume preserves tagged recovery choices", resumeTaggedChoiceCase)
+// Register repeated deep suspension and settlement.
+test("thirty-two sequential recoveries settle exactly once", deepResumeStressCase)
+// Register multiple operation result types in one resuming handler.
+test("one handler resumes integer string boolean and Unit operations", heterogeneousResumeCase)
+// Register the managed continuation-answer ARC leak as a known failure.
+test("string continuation answers must release under ARC", stringAnswerArcKnownFailureCase)
+// Register the current safe operation-argument boundary.
+test("sixteen resumable operation arguments arrive intact", sixteenArgumentBoundaryCase)
+// Register the next boundary as an explicit critical known failure.
+test("seventeen resumable operation arguments must not be truncated", seventeenArgumentKnownFailureCase)

@@ -189,6 +189,23 @@ processes. The runner prints `# suites: X passed, Y failed` and exits `1` if a
 suite fails to compile or run, otherwise `0`. An empty discovery set fails with
 `no test files found`.
 
+**`[TESTING-PARALLEL]`** Independent suites compile and run concurrently by
+default. Their captured stdout and stderr are replayed in sorted suite order,
+so parallel scheduling does not scramble TAP output. The positive-integer
+environment setting `OSPREY_TEST_JOBS` limits worker concurrency;
+`OSPREY_TEST_JOBS=1` is the serial escape hatch for constrained or diagnostic
+runs. An unset value uses the host's available parallelism, with at least two
+workers when the corpus contains multiple suites. Invalid or zero values fail
+argument validation with exit code `2`.
+
+**`[TESTING-NATIVE-CACHE]`** Native test runs reuse a content-addressed
+executable when the suite sources, compiler binary, runtime archive, memory
+mode, build kind, compiler command, and optimization setting are unchanged.
+Sources with HTTP, WebSocket, or explicit FFI link directives bypass this cache
+because their external link inputs cannot be validated from source alone. A
+cache miss builds to a process-unique staging path and publishes atomically, so
+concurrent runners never execute a partial artifact.
+
 ### `osprey <file> --list-tests` — `[TESTING-LIST]`
 
 Static test discovery for editors. Parses the file (skipping the type gate,

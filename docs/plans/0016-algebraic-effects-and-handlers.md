@@ -14,12 +14,19 @@ effects on wasm; and a multi-shot-capable runtime. This plan supersedes retired
 plan 0008 and absorbs the handler-value work sketched in
 [plan 0013](0013-ml-flavor-frontend.md) Phase 0
 and the effect-row-polymorphism gap flagged in
-[plan 0015](0015-generics-and-variance.md).
+[plan 0015](0015-generics-and-variance.md). Open critical correctness defects:
+resumable argument transport after position 16
+([#182](https://github.com/Nimblesite/osprey/issues/182)), direct-handler
+`Result` transport ([#183](https://github.com/Nimblesite/osprey/issues/183)),
+and effect loss through one curried ML lowering path
+([#184](https://github.com/Nimblesite/osprey/issues/184)), plus managed string
+continuation answers leaking under ARC
+([#185](https://github.com/Nimblesite/osprey/issues/185)).
 
 ## Summary
 
-Osprey supports `effect` declarations, `perform`, `handle … in`
-(Default) / `handle … in`/`… do` (ML), effect annotations, handler-owned `mut`
+Osprey supports `effect` declarations, `perform`, and `handle … in` in both
+Default and ML syntax, plus effect annotations and handler-owned `mut`
 state, **generic effects**
 (`effect State<T>` with per-site instantiation), and **single-shot deep
 `resume`** (thread-as-continuation), and **multi-shot rejection** (a second
@@ -27,8 +34,9 @@ resume on a consumed continuation now aborts — Phase A, done). Not implemented
 a **multi-shot-capable runtime**, **first-class handler values**
 (`handler E { … }` and multi-install `handle a b do body`), **static effect
 safety across the handler/row instantiation seam** (currently a runtime
-abort, not a compile error), and **effects on the wasm target** (the
-continuation runtime is native-only).
+abort, not a compile error), and **resuming effects on the wasm target** (the
+continuation runtime is native-only; direct substitution handlers work on
+WebAssembly).
 
 ## What works today (file:line evidence)
 
@@ -37,7 +45,7 @@ continuation runtime is native-only).
   `crates/osprey-types/src/check.rs`. Missing-handler enforcement is the
   runtime null-lookup guard emitted by `crates/osprey-codegen/src/effects.rs`
   and implemented in `compiler/runtime/effects_runtime.c`.
-- **Tail-resume** by value substitution: a non-resuming arm's value becomes
+- **Direct value substitution**: a non-resuming arm's value becomes
   the `perform`'s result; handlers may own `mut` state
   ([EFFECTS-HANDLER-STATE], `capture_list`/`build_env`/`reload_env` in
   `effects.rs`). Reference: `examples/tested/effects/http_state_levels.osp`.
@@ -85,6 +93,36 @@ continuation runtime is native-only).
    inside it. Now a type error (`` `resume` is only valid inside a handler
    arm ``); pinned by `examples/failscompilation/resume_in_arm_lambda.ospo`.
 
+1d. **Resuming operation arguments after position 16 become zero.** The
+   compiler accepts the operation, but the native continuation mailbox copies
+   only 16 arguments and `__osprey_coro_arg` returns zero for later positions.
+   The process exits successfully with corrupted data. Tracked as critical
+   [issue #182](https://github.com/Nimblesite/osprey/issues/182); the paired
+   `resume_error_policies.test.{osp,ospml}` suites prove positions 1–16 and keep
+   position 17 as an explicit known-failure skip.
+
+1e. **Direct handlers corrupt whole `Result<T, E>` operation values.** Both
+   `Success` and `Error` values reach the caller as pointer-like integers that
+   vary between runs, with exit 0. Explicit-resume transport is a separate path
+   and passes. Tracked as critical
+   [issue #183](https://github.com/Nimblesite/osprey/issues/183) by paired
+   conditional regressions in `tests/effects/errors/`.
+
+1f. **One curried ML lowering path silently drops performed effects.** An
+   unannotated four-argument curried function can run under a handler without
+   delivering its operations; the equivalent flat parameter form works.
+   Tracked as critical
+   [issue #184](https://github.com/Nimblesite/osprey/issues/184). Paired golden
+   examples use the verified flat form until the curried path is repaired.
+
+1g. **A dynamic string continuation answer leaks under ARC.** A one-operation
+   handler that resumes with a string and returns a computed string produces
+   correct output but leaves one managed object live at exit. Repetition and
+   both syntax flavors reproduce it. Tracked as critical
+   [issue #185](https://github.com/Nimblesite/osprey/issues/185); paired tests
+   keep the unsafe shape as a known-failure skip while other string operation
+   paths still run under every memory mode.
+
 2. **First-class handler values do not parse.**
    ```osprey-ml
    db = handler Log
@@ -104,9 +142,10 @@ continuation runtime is native-only).
    runtime with `unhandled effect: Stash$int.take`. Sound, but the effect
    system's promise is *compile-time* safety. (Flagged in plan 0015 §3.)
 
-4. **No effects on wasm.** `__osprey_coro_*` is native-only
+4. **No explicit resume on wasm.** `__osprey_coro_*` is native-only
    ([WASM-TARGET-EFFECTS]); resuming effects link-fail and are SKIP-classed
-   by `diff_wasm_examples.sh`.
+   by `diff_wasm_examples.sh`. Direct value-substitution handlers compile to
+   WebAssembly because they do not use the continuation runtime.
 
 ## Phasing
 
@@ -209,7 +248,7 @@ polymorphism.
 - [ ] A wasm-viable continuation strategy for resuming handlers: either
       compile resuming handlers via a CPS transform (no native stack switch),
       or adopt the wasm stack-switching proposal when toolchain support lands.
-      Tail-resume already works on wasm (no coro); only the resuming path is
+      Direct substitution already works on wasm (no coroutine); only the resuming path is
       native-only.
 - [ ] Un-SKIP the resuming effect examples in `diff_wasm_examples.sh` once the
       path exists; byte-identical output to native.
@@ -266,6 +305,14 @@ runtime-abort enforcement with static effect checking.
 - [x] **Phase A** — reject multi-shot resume (runtime guard +
       failscompilation + 0017 §Status). *Done.* (Optional static-detection
       refinement deferred; the runtime guard is sound and total.)
+- [ ] **Critical #182** — preserve every accepted resumable operation argument
+      or reject arities above a documented limit before code generation.
+- [ ] **Critical #183** — preserve complete `Result<T, E>` values through the
+      direct handler ABI in both flavors and all memory modes.
+- [ ] **Critical #184** — keep effectful curried ML functions behaviorally
+      equivalent to their flat parameter form.
+- [ ] **Critical #185** — release managed continuation answers exactly once
+      under ARC, including nested and repeated string-valued resumptions.
 - [ ] **Phase B** — first-class handler values + multi-install (AST, types,
       state, codegen, both surfaces, tests). *Unblocks plan 0013 Phase 0.*
 - [ ] **Phase C** — effect-row polymorphism on `Type::Fun`; static seam

@@ -601,10 +601,21 @@ fn write_in(dir: &Path, name: &str, body: &str) -> PathBuf {
 }
 
 #[cfg(unix)]
-fn concurrency_probe_driver(dir: &Path) -> PathBuf {
+fn executable_script(dir: &Path, name: &str, body: &str) -> PathBuf {
     use std::os::unix::fs::PermissionsExt;
 
-    let driver = write_in(
+    let script = write_in(dir, name, body);
+    if let Ok(metadata) = std::fs::metadata(&script) {
+        let mut permissions = metadata.permissions();
+        permissions.set_mode(0o755);
+        let _ = std::fs::set_permissions(&script, permissions);
+    }
+    script
+}
+
+#[cfg(unix)]
+fn concurrency_probe_driver(dir: &Path) -> PathBuf {
+    executable_script(
         dir,
         "probe-cc.sh",
         "#!/bin/sh\nmarker=\"$OSPREY_PARALLEL_PROBE/worker-$$\"\n\
@@ -612,13 +623,7 @@ fn concurrency_probe_driver(dir: &Path) -> PathBuf {
          count=$(find \"$OSPREY_PARALLEL_PROBE\" -name 'worker-*' | wc -l)\n\
          if [ \"$count\" -gt 1 ]; then : > \"$OSPREY_PARALLEL_PROBE/overlap\"; fi\n\
          sleep 1\nrm -f \"$marker\"\nexit 1\n",
-    );
-    if let Ok(metadata) = std::fs::metadata(&driver) {
-        let mut permissions = metadata.permissions();
-        permissions.set_mode(0o755);
-        let _ = std::fs::set_permissions(&driver, permissions);
-    }
-    driver
+    )
 }
 
 #[cfg(unix)]
@@ -631,6 +636,17 @@ fn run_concurrency_probe(dir: &Path, driver: &Path, jobs: Option<&str>) -> Out {
     if let Some(value) = jobs {
         let _ = cmd.env("OSPREY_TEST_JOBS", value);
     }
+    finish(cmd)
+}
+
+#[cfg(unix)]
+fn run_cache_probe(dir: &Path, driver: &Path) -> Out {
+    let mut cmd = osprey();
+    let _ = cmd
+        .args(["test", dir.to_string_lossy().as_ref(), "--quiet"])
+        .env("OSPREY_CC", driver)
+        .env("OSPREY_CC_COUNT", dir.join("cc-count"))
+        .env("OSPREY_TEST_CACHE_DIR", dir.join("cache"));
     finish(cmd)
 }
 
@@ -754,8 +770,8 @@ fn test_subcommand_runs_directories_and_files() {
     assert!(!o.stdout.contains("# file:"), "--quiet drops headers");
 }
 
-// Independent suites compile concurrently by default, while configuration can
-// force deterministic serial execution for constrained or diagnostic runs.
+// [TESTING-PARALLEL] Independent suites compile concurrently by default, while
+// configuration can force serial execution for constrained or diagnostic runs.
 #[cfg(unix)]
 #[test]
 fn test_subcommand_parallel_default_has_serial_escape_hatch() {
@@ -775,6 +791,25 @@ fn test_subcommand_parallel_default_has_serial_escape_hatch() {
     let serial = run_concurrency_probe(&dir, &driver, Some("1"));
     assert_eq!(serial.code, Some(1), "{}", serial.stderr);
     assert!(!overlap.exists(), "OSPREY_TEST_JOBS=1 was not serial");
+}
+
+#[cfg(unix)]
+#[test]
+fn test_subcommand_reuses_unchanged_compiled_suites() {
+    // [TESTING-NATIVE-CACHE] the second identical run never invokes clang.
+    let dir = temp_dir("suite_cache");
+    let _ = write_in(&dir, "cached.test.osp", PASSING_TESTS);
+    let driver = executable_script(
+        &dir,
+        "counting-cc.sh",
+        "#!/bin/sh\nprintf x >> \"$OSPREY_CC_COUNT\"\nexec clang \"$@\"\n",
+    );
+
+    let first = run_cache_probe(&dir, &driver);
+    assert_eq!(first.code, Some(0), "{}", first.stderr);
+    let second = run_cache_probe(&dir, &driver);
+    assert_eq!(second.code, Some(0), "{}", second.stderr);
+    assert_eq!(read_text(&dir.join("cc-count")), "x");
 }
 
 // A compile-error suite fails the run; an empty discovery set is loud.

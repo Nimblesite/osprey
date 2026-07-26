@@ -4,10 +4,11 @@
 effect IterationProbe { observe: fn(int) -> Unit }
 
 // appendThrough builds inclusive integer ranges while preserving every prior list version.
-fn appendThrough(xs: List<int>, next: int, last: int) -> List<int> = match next > last {
-    true => xs
-    false => appendThrough(listAppend(xs, next), next + 1, last)
-}
+fn appendThrough(xs: List<int>) -> (int) -> (int) -> List<int> =
+    fn(next) => fn(last) => match next > last {
+        true => xs
+        false => appendThrough(listAppend(xs, next))(next + 1)(last)
+    }
 
 // classify exercises exact-length, singleton, pair, and head-tail list patterns.
 fn classify(xs: List<int>) -> string = match xs {
@@ -196,10 +197,10 @@ fn iterationAndPersistenceCase() = {
 
 // tailBoundaryCase retains the 10/20/30/35 generations and probes both sides of the 32-element tail boundary.
 fn tailBoundaryCase() = {
-    let t = appendThrough(List(), 1, 10)
-    let t2 = appendThrough(t, 11, 20)
-    let t3 = appendThrough(t2, 21, 30)
-    let t4 = appendThrough(t3, 31, 35)
+    let t = appendThrough(List())(1)(10)
+    let t2 = appendThrough(t)(11)(20)
+    let t3 = appendThrough(t2)(21)(30)
+    let t4 = appendThrough(t3)(31)(35)
     let reversed = listReverse(t4)
     let doubled = listConcat(t4, t4)
 
@@ -249,7 +250,7 @@ fn indexingPatternsAndDispatchCase() = {
     let pair = listAppend(short, 8)
     let four = listAppend(listAppend(pair, 7), 6)
     let patternFour = listAppend(listAppend(listAppend(listAppend(List(), 4), 5), 6), 7)
-    let t = appendThrough(List(), 1, 10)
+    let t = appendThrough(List())(1)(10)
     let dispatchFive = listAppend(listAppend(listAppend(listAppend(listAppend(List(), 1), 2), 3), 4), 5)
     let dispatchTen = listConcat(dispatchFive, dispatchFive)
     let dispatchTwenty = listConcat(dispatchTen, dispatchTen)

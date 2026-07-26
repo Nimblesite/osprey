@@ -33,7 +33,7 @@ in pipeline()
 print("recovered result=" + toString(recovered))
 
 // Returning at step 2 aborts the suspended computation.
-print("=== aborting handler: poison step 2 throws, earlier cleanup still runs ===")
+print("=== stopping handler: step 2 stops the pipeline, then step 1 handler finishes ===")
 mut counter2 = 0
 let aborted = handle Step
     run x => {

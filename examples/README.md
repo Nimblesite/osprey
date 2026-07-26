@@ -105,8 +105,9 @@ breaks CI. Never add one without confirming it is actually rejected.
   Default-flavor spellings (`{ … }` records, the `?` sigil) that the ML lexer
   refuses outright `[FLAVOR-BOUNDARY]`.
 - **Each fixture pairs with `<name>.ospo.expectedoutput`** holding the compiler's
-  real stderr, captured verbatim — documentation of the exact diagnostic, never
-  hand-written prose.
+  real stderr, captured verbatim. The file documents the intended diagnostic.
+  The shell ratchet checks only for a nonzero exit, so diagnostic-focused work
+  must compare stderr with this file explicitly.
 - **A case the compiler cannot reject yet is parked with `.notimplemented`** (for
   example `infinite_handler_recursion.notimplemented`). The extension keeps it
   out of discovery so it neither passes nor inflates the ratchet; rename it back
