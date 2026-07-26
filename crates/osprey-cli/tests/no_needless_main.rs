@@ -1,4 +1,4 @@
-//! CI gate — language tests must not wrap a trivial program in a needless `main`.
+//! CI source-style gates for the complete Default and ML language-test corpus.
 //!
 //! Both flavors synthesize `main` from bare top-level statements and lower them
 //! to byte-identical IR ([FLAVOR-IR-EQUIV], docs/specs/0023, 0024), so a
@@ -11,8 +11,12 @@
 //! non-zero exit code. A `main` that takes parameters is never flagged (it is
 //! consuming `argv`); a zero-argument `main` kept for its exit code must opt out
 //! explicitly with a `// osprey: keep-main <reason>` marker, which both
-//! documents the intent and silences the gate.
+//! documents the intent and silences the gate. Declaration-leading prose must
+//! likewise use the flavor's documentation sigil so editor hover can surface it
+//! ([DOC-SIGIL-DEFAULT], [DOC-SIGIL-ML], [DOC-ATTACH]).
 
+use osprey_ast::{walk_program, AstVisitor, Position, Stmt};
+use osprey_syntax::Flavor;
 use std::path::{Path, PathBuf};
 
 /// `tests`, resolved from the crate manifest so the gate runs the same
@@ -73,6 +77,171 @@ fn declares_needless_main(line: &str) -> bool {
         return true;
     }
     main_param_text(line).is_some_and(|params| params.trim().is_empty())
+}
+
+#[derive(Debug)]
+struct Declaration {
+    name: String,
+    line: usize,
+    function: bool,
+}
+
+#[derive(Default)]
+struct DeclarationCollector(Vec<Declaration>);
+
+impl AstVisitor for DeclarationCollector {
+    fn statement(&mut self, statement: &Stmt) {
+        let Some((name, position, undocumented, function)) = declaration(statement) else {
+            return;
+        };
+        if let (true, Some(position)) = (undocumented, position) {
+            self.push(name, position, function);
+        }
+    }
+}
+
+impl DeclarationCollector {
+    fn push(&mut self, name: &str, position: Position, function: bool) {
+        if let Some(line) = usize::try_from(position.line)
+            .ok()
+            .and_then(|line| line.checked_sub(1))
+        {
+            self.0.push(Declaration {
+                name: name.to_owned(),
+                line,
+                function,
+            });
+        }
+    }
+}
+
+fn declaration(statement: &Stmt) -> Option<(&str, Option<Position>, bool, bool)> {
+    match statement {
+        Stmt::Let {
+            name,
+            position,
+            doc,
+            ..
+        } => Some((name, *position, doc.is_none(), false)),
+        Stmt::Function {
+            name,
+            position,
+            doc,
+            ..
+        } => Some((name, *position, doc.is_none(), true)),
+        Stmt::Extern {
+            name,
+            position,
+            doc,
+            ..
+        }
+        | Stmt::Type {
+            name,
+            position,
+            doc,
+            ..
+        }
+        | Stmt::Effect {
+            name,
+            position,
+            doc,
+            ..
+        }
+        | Stmt::Signature {
+            name,
+            position,
+            doc,
+            ..
+        } => Some((name, *position, doc.is_none(), false)),
+        Stmt::Module {
+            path,
+            position,
+            doc,
+            ..
+        } => Some((
+            path.last().unwrap_or("module"),
+            *position,
+            doc.is_none(),
+            false,
+        )),
+        _ => None,
+    }
+}
+
+fn signature_line(lines: &[&str], declaration: &Declaration, flavor: Flavor) -> usize {
+    let previous = declaration.line.checked_sub(1);
+    if flavor == Flavor::Ml
+        && declaration.function
+        && previous.is_some_and(|line| is_signature(lines.get(line).copied(), &declaration.name))
+    {
+        previous.unwrap_or(declaration.line)
+    } else {
+        declaration.line
+    }
+}
+
+fn is_signature(line: Option<&str>, name: &str) -> bool {
+    line.and_then(|line| line.trim_start().strip_prefix(name))
+        .is_some_and(|rest| rest.trim_start().starts_with(':'))
+}
+
+fn leading_width(line: &str) -> usize {
+    line.bytes()
+        .take_while(|byte| matches!(byte, b' ' | b'\t'))
+        .count()
+}
+
+fn ordinary_doc_candidate(line: &str, flavor: Flavor) -> bool {
+    let trimmed = line.trim_start();
+    trimmed.starts_with("//")
+        && (flavor == Flavor::Ml || (!trimmed.starts_with("///") && !trimmed.starts_with("//!")))
+}
+
+fn offender_line(lines: &[&str], declaration: &Declaration, flavor: Flavor) -> Option<usize> {
+    let lead = signature_line(lines, declaration, flavor);
+    let previous = lead.checked_sub(1)?;
+    let comment = *lines.get(previous)?;
+    let declaration_line = *lines.get(lead)?;
+    (leading_width(comment) == leading_width(declaration_line)
+        && ordinary_doc_candidate(comment, flavor))
+    .then_some(previous)
+}
+
+fn documentation_offenders(path: &Path, source: &str) -> Vec<(usize, String)> {
+    let parsed = osprey_syntax::parse_program_for_path(&path.to_string_lossy(), source);
+    let mut declarations = DeclarationCollector::default();
+    walk_program(&parsed.program, &mut declarations);
+    let lines: Vec<_> = source.lines().collect();
+    declarations
+        .0
+        .into_iter()
+        .filter_map(|declaration| {
+            offender_line(&lines, &declaration, parsed.flavor)
+                .map(|line| (line + 1, declaration.name))
+        })
+        .collect()
+}
+
+#[test]
+fn declaration_comments_use_flavor_documentation_syntax() {
+    let dir = tested_dir();
+    let mut offenders = Vec::new();
+    for path in example_files(&dir) {
+        let source = std::fs::read_to_string(&path).expect("read example source");
+        let relative = path.strip_prefix(&dir).unwrap_or(&path);
+        offenders.extend(
+            documentation_offenders(&path, &source)
+                .into_iter()
+                .map(|(line, name)| format!("{}:{line}: {name}", relative.display())),
+        );
+    }
+    let preview = offenders.iter().take(80).cloned().collect::<Vec<_>>();
+    assert!(
+        offenders.is_empty(),
+        "{} declarations use ordinary comments where hover documentation requires `///` in Default or `(** ... *)` in ML:\n  {}",
+        offenders.len(),
+        preview.join("\n  ")
+    );
 }
 
 #[test]

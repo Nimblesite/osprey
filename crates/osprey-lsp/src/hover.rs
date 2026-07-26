@@ -272,13 +272,29 @@ mod tests {
     }
 
     #[test]
-    fn hover_on_a_documented_function_renders_its_docs() {
+    fn hover_on_a_documented_default_function_renders_its_docs() {
         // A `///` block above a function surfaces under its signature.
         // Implements [LSP-HOVER-DOCS]
         let src = "/// Doubles `x`.\nfn dbl(x: int) -> int = x * 2\n";
         let md = hover(src, "file:///a.osp", 1, 4, U16).expect("hover over `dbl`");
         assert!(md.contains("fn dbl(x: int) -> int"), "signature: {md}");
         assert!(md.contains("Doubles `x`."), "docs: {md}");
+
+        let src =
+            include_str!("../../../tests/effects/resume/resume_outer_handler_bridge.test.osp");
+        let col = col_of(src, 19, "resumeOuterHandlerBridgeCase");
+        let md = hover(
+            src,
+            "file:///resume_outer_handler_bridge.test.osp",
+            19,
+            col,
+            U16,
+        )
+        .expect("hover over documented bridge regression");
+        assert!(
+            md.contains("This case verifies outer-handler reachability before and after resume."),
+            "real function documentation: {md}"
+        );
     }
 
     #[test]

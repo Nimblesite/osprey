@@ -614,16 +614,15 @@ fn executable_script(dir: &Path, name: &str, body: &str) -> PathBuf {
 }
 
 #[cfg(unix)]
-fn concurrency_probe_driver(dir: &Path) -> PathBuf {
-    executable_script(
-        dir,
-        "probe-cc.sh",
-        "#!/bin/sh\nmarker=\"$OSPREY_PARALLEL_PROBE/worker-$$\"\n\
+const CONCURRENCY_PROBE_SCRIPT: &str = "#!/bin/sh\nmarker=\"$OSPREY_PARALLEL_PROBE/worker-$$\"\n\
          : > \"$marker\"\n\
          count=$(find \"$OSPREY_PARALLEL_PROBE\" -name 'worker-*' | wc -l)\n\
          if [ \"$count\" -gt 1 ]; then : > \"$OSPREY_PARALLEL_PROBE/overlap\"; fi\n\
-         sleep 1\nrm -f \"$marker\"\nexit 1\n",
-    )
+         sleep 1\nrm -f \"$marker\"\nexit 1\n";
+
+#[cfg(unix)]
+fn concurrency_probe_driver(dir: &Path) -> PathBuf {
+    executable_script(dir, "probe-cc.sh", CONCURRENCY_PROBE_SCRIPT)
 }
 
 #[cfg(unix)]
@@ -633,6 +632,21 @@ fn run_concurrency_probe(dir: &Path, driver: &Path, jobs: Option<&str>) -> Out {
         .args(["test", dir.to_string_lossy().as_ref(), "--quiet"])
         .env("OSPREY_CC", driver)
         .env("OSPREY_PARALLEL_PROBE", dir.join("probe"));
+    if let Some(value) = jobs {
+        let _ = cmd.env("OSPREY_TEST_JOBS", value);
+    }
+    finish(cmd)
+}
+
+#[cfg(unix)]
+fn run_conformance_probe(root: &Path, jobs: Option<&str>) -> Out {
+    let mut cmd = Command::new("zsh");
+    let _ = cmd
+        .arg(repo_root().join("crates/run_test_corpus.sh"))
+        .arg("default")
+        .current_dir(repo_root())
+        .env("OSPREY_ROOT", root)
+        .env("OSPREY_PARALLEL_PROBE", root.join("probe"));
     if let Some(value) = jobs {
         let _ = cmd.env("OSPREY_TEST_JOBS", value);
     }
@@ -789,6 +803,34 @@ fn test_subcommand_parallel_default_has_serial_escape_hatch() {
 
     let _ = std::fs::remove_file(&overlap);
     let serial = run_concurrency_probe(&dir, &driver, Some("1"));
+    assert_eq!(serial.code, Some(1), "{}", serial.stderr);
+    assert!(!overlap.exists(), "OSPREY_TEST_JOBS=1 was not serial");
+}
+
+#[cfg(unix)]
+#[test]
+fn conformance_corpus_parallel_default_has_serial_escape_hatch() {
+    let root = temp_dir("conformance_parallel");
+    let tests = root.join("tests");
+    let bin = root.join("target/release");
+    let probe = root.join("probe");
+    for dir in [&tests, &bin, &probe] {
+        let _ = std::fs::create_dir_all(dir);
+    }
+    let _ = write_in(&tests, "one.test.osp", PASSING_TESTS);
+    let _ = write_in(&tests, "two.test.osp", PASSING_TESTS);
+    let _ = executable_script(&bin, "osprey", CONCURRENCY_PROBE_SCRIPT);
+
+    let parallel = run_conformance_probe(&root, None);
+    assert_eq!(parallel.code, Some(1), "{}", parallel.stderr);
+    let overlap = probe.join("overlap");
+    assert!(
+        overlap.exists(),
+        "conformance suites ran serially by default"
+    );
+
+    let _ = std::fs::remove_file(&overlap);
+    let serial = run_conformance_probe(&root, Some("1"));
     assert_eq!(serial.code, Some(1), "{}", serial.stderr);
     assert!(!overlap.exists(), "OSPREY_TEST_JOBS=1 was not serial");
 }

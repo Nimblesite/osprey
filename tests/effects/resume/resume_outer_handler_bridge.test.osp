@@ -8,7 +8,7 @@ effect Log {
     line: fn(string) -> Unit
 }
 
-// This helper logs on both sides of the prompt operation.
+/// This helper logs on both sides of the prompt operation.
 fn form() -> string ![Prompt, Log] = {
     perform Log.line("form start")
     let name = perform Prompt.ask("name")
@@ -16,7 +16,7 @@ fn form() -> string ![Prompt, Log] = {
     name
 }
 
-// This case verifies outer-handler reachability before and after resume.
+/// This case verifies outer-handler reachability before and after resume.
 fn resumeOuterHandlerBridgeCase() = {
     mut transcript = ""
     mut logMessages = ""

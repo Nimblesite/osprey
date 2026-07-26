@@ -64,6 +64,30 @@ fn compile(path: &Path, source: &str) -> Result<usize, String> {
 }
 
 #[test]
+fn unhandled_integer_overflow_in_mutation_is_rejected() {
+    let source = r#"
+effect Audit
+    step : string => int
+
+pipeline : Unit -> int ! Audit
+pipeline () = perform Audit.step "tick"
+
+unhandledOverflow () =
+    mut n = 0
+    handle Audit
+        step label =>
+            n := n + 1
+            resume n
+    in pipeline ()
+"#;
+    let result = compile(Path::new("unhandled_integer_overflow.test.ospml"), source);
+    assert!(
+        matches!(&result, Err(reason) if reason.starts_with("typecheck:")),
+        "potentially overflowing `n := n + 1` must be rejected at type checking unless its failure is handled; got {result:?}"
+    );
+}
+
+#[test]
 fn every_language_test_compiles_to_ir() {
     let dir = repo_root().join("tests");
     let files = sources(&dir, "osp");
