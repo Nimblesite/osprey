@@ -105,5 +105,16 @@ in askOnce(1)
 print("nested resuming " + toString(nested) + " shadowed resume " + toString(shadowed))
 print("=== resume scoping done ===")
 
-// Registers the regression scenario with the assertion-driven test runner.
-test("regression scenario completes", fn() => checkAll("legacy execution", [true]))
+/// Runs the forward-referenced chain under a quiet handler.
+fn forwardResultForTest() = handle Logger
+    log msg => 0
+    debug msg => 0
+in nestedCall()
+
+// Re-enters the forward call chain and checks nested handler restoration.
+test("nested handlers override locally and restore outer scope", fn() => checkAll("handler scope results", [
+        (forwardResultForTest() ?: 0) == 42,
+        nested == 10,
+        shadowed == 2,
+        nested != shadowed
+]))

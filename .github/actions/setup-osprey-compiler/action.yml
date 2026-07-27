@@ -39,8 +39,8 @@ runs:
       if: runner.os == 'Linux'
       shell: bash
       # clang links the osprey-emitted IR; libssl-dev/libsqlite3-dev satisfy the
-      # HTTP and FFI-database runtimes the examples link; zsh runs the
-      # differential harness. lldb-dap backs the VS Code debugger end-to-end
+      # HTTP and FFI-database runtimes the assertion corpus links; zsh runs the
+      # memory-backend harness. lldb-dap backs the VS Code debugger end-to-end
       # tests (osprey --debug -> lldb-dap).
       #
       # The distro lldb on ubuntu-latest is lldb 18,

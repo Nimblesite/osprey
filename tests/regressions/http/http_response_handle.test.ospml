@@ -38,20 +38,26 @@ run () =
     listenResult = httpListen serverId handleRequest
     clientId = httpCreateClient "http://127.0.0.1:18095" 5000
     resp = httpGetResponse clientId "/" ""
-    match resp
+    summary = match resp
         Success value =>
-            print "status=${httpResponseStatus value}"
-            print (bodyLine value)
-            print (headerLine (value, "X-Demo"))
-            print (headerLine (value, "Nope"))
-            print (freeLine value)
-            print (freeLine value)
-        Error message => print "reqfail ${message}"
+            status = httpResponseStatus value
+            body = bodyLine value
+            header = headerLine (value, "X-Demo")
+            missing = headerLine (value, "Nope")
+            freed = freeLine value
+            doubleFreed = freeLine value
+            "${status}|${body}|${header}|${missing}|${freed}|${doubleFreed}"
+        Error message => "request-error:${message}"
     closeResult = httpCloseClient clientId
     stopResult = httpStopServer serverId
+    summary
 
-run ()
-
-(** Register the regression scenario with the assertion-driven test runner. *)
-migratedLegacyCase () = checkAll "legacy execution" [true]
-test "regression scenario completes" migratedLegacyCase
+(** Run the complete response-handle lifecycle and verify every transition. *)
+responseHandleCase () =
+    summary = run ()
+    checkAll "response handle lifecycle" [
+        summary == "200|body=hello body|hdr=hi|missing-ok|free-ok|free-err-double",
+        startsWith summary "200|body=hello body",
+        endsWith summary "free-err-double"
+    ]
+test "HTTP response handles expose data and reject double free" responseHandleCase

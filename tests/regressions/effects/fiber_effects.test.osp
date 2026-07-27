@@ -125,5 +125,18 @@ in pairSum(1, 2)
 print("race-free sum " + toString(raceSum))
 print("=== done ===")
 
-// Registers the regression scenario with the assertion-driven test runner.
-test("regression scenario completes", fn() => checkAll("legacy execution", [true]))
+/// Runs one logged job under a silent handler for assertion use.
+fn highScoreForTest() = handle Logger log msg => 0 in await(spawn runJob(priWeight(High)))
+
+/// Repeats the two-fiber resuming interaction for assertion use.
+fn pairedScoreForTest() = handle Gift get tag => resume((tag * 10) ?: 0) in pairSum(1, 2)
+
+// Re-executes effectful fiber work and checks deterministic results on the main fiber.
+test("fiber results remain deterministic across effect handlers", fn() => checkAll("fiber and effect results", [
+        highScoreForTest() == 81,
+        pairedScoreForTest() == 30,
+        prodR == 10,
+        silentR == 0,
+        raceSum == 30,
+        priWeight(Low) == 1
+]))

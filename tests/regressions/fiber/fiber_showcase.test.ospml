@@ -82,6 +82,22 @@ print "captured spawn = ${await capF} done=${fiberDone capF}"
 
 print "=== Fiber Showcase Complete ==="
 
-(** Register the regression scenario with the assertion-driven test runner. *)
-migratedLegacyCase () = checkAll "legacy execution" [true]
-test "regression scenario completes" migratedLegacyCase
+// Verify each composed fiber/yield/lambda result instead of merely printing it.
+test "fiber primitives compose into deterministic values" (\() => checkAll "fiber showcase results" [
+    mappedTotal == 1400,
+    p == 200,
+    y1 == 25,
+    y2 == 50,
+    y3 == 75,
+    advYield == 200,
+    dbl 10 == 20,
+    tri 7 == 21,
+    addF (5, 8) == 13,
+    b1 == 1024,
+    b2 == 2048,
+    b3 == 4096,
+    await (spawn (fetchUserData 5)) == 5123,
+    await (spawn (fetchOrderData 5)) == 545,
+    combine (capArg, 5) == 705,
+    fiberDone capF == 1
+])

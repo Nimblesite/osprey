@@ -59,6 +59,26 @@ match parseAge "abc"
 print "=== Validation Pipeline Complete ==="
 0
 
-(** Register the regression scenario with the assertion-driven test runner. *)
-migratedLegacyCase () = checkAll "legacy execution" [true]
-test "regression scenario completes" migratedLegacyCase
+(** Check the accepted payload of a validated age. *)
+accepts (s, expected) =
+    match parseAge s
+        Success value => value == expected
+        Error message => false
+
+(** Check the exact rejection reason threaded through the pipeline. *)
+rejects (s, expected) =
+    match parseAge s
+        Success value => false
+        Error message => message == expected
+
+(** Exercise parsing, both range branches, boundaries, and recursive driving. *)
+validationPipelineCase () =
+    checkAll "age validation pipeline" [
+        accepts ("30", 30), accepts ("0", 0), accepts ("150", 150),
+        rejects ("abc", "not a number"),
+        rejects ("-4", "age must be non-negative"),
+        rejects ("999", "age unrealistically large"),
+        inputAt 0 == "30", inputAt 3 == "abc", inputAt 9 == "",
+        runAll (0, 4) == 0
+    ]
+test "age validation preserves values and rejection reasons" validationPipelineCase

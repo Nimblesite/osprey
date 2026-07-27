@@ -70,6 +70,27 @@ print "=== Showcase Complete ==="
 // [BUILTIN-ITER-FILTER], [BUILTIN-ITER-FOREACH], [BUILTIN-ITER-FOLD],
 // [BUILTIN-ITER-CALLBACK], [BUILTIN-ITER-PIPE], and [BUILTIN-ITER-FUSION].
 
-(** Register the regression scenario with the assertion-driven test runner. *)
-migratedLegacyCase () = checkAll "legacy execution" [true]
-test "regression scenario completes" migratedLegacyCase
+(** Verify direct helpers and every scalar pipe from the showcase. *)
+scalarPipelineCase () =
+    checkAll "functional scalar pipelines" [
+        dbl 7 == 14, sq 5 == 25, inc 9 == 10,
+        gt4 5, !gt4 4, lt3 2, !lt3 3,
+        even 2, !even 3, add (7, 8) == 15, mul (6, 7) == 42,
+        (3 |> inc |> dbl |> sq) == 64,
+        (10 |> \x => x + 5 ?: 0) == 15,
+        (5 |> (\x => x + 100 ?: 0) |> (\x => x * 2 ?: 0)) == 210
+    ]
+
+(** Verify range boundaries and both map/filter orderings through folds. *)
+iteratorPipelineCase () =
+    checkAll "functional iterator pipelines" [
+        (range 1 6 |> fold 0 add) == 15,
+        (range 1 5 |> fold 1 mul) == 24,
+        (range 5 5 |> fold 9 add) == 9,
+        (range ((0 - 2) ?: 0) 3 |> fold 0 add) == 0,
+        (range 1 5 |> map dbl |> filter gt4 |> fold 0 add) == 14,
+        (range 1 6 |> filter lt3 |> map dbl |> fold 0 add) == 6
+    ]
+
+test "scalar pipes preserve helper composition" scalarPipelineCase
+test "iterator pipes preserve order and boundaries" iteratorPipelineCase

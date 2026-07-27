@@ -11,5 +11,12 @@ print(describe(Done { score: 27 }))
 print(describe(classify(27)))
 print(describe(classify(0)))
 
-// Registers the regression scenario with the assertion-driven test runner.
-test("regression scenario completes", fn() => checkAll("legacy execution", [true]))
+/// Verifies returned union values can immediately flow into another function.
+fn unionReturnArgumentCase() = checkAll("union return and argument flow", [
+    describe(Done { score: 27 }) == "done 27",
+    describe(classify(27)) == "done 27",
+    describe(classify(0)) == "failed 99",
+    describe(classify((0 - 3) ?: 0)) == "done -3",
+    describe(Failed { code: 7 }) == "failed 7"
+])
+test("union returns remain valid call arguments", unionReturnArgumentCase)

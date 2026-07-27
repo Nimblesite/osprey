@@ -17,6 +17,12 @@ describe o =
 print (describe (classify 27))
 print (describe (classify 0))
 
-(** Register the regression scenario with the assertion-driven test runner. *)
-migratedLegacyCase () = checkAll "legacy execution" [true]
-test "regression scenario completes" migratedLegacyCase
+(** Verify both union variants retain their string and integer payloads. *)
+stringUnionPayloadCase () = checkAll "union payload rendering" [
+    describe (classify 27) == "done 27",
+    describe (classify 0) == "failed empty",
+    describe (classify ((0 - 4) ?: 0)) == "done -4",
+    describe (Done(score = 9)) == "done 9",
+    describe (Failed(reason = "blocked")) == "failed blocked"
+]
+test "string union payloads survive matching" stringUnionPayloadCase

@@ -137,13 +137,11 @@ message with that documented output.
 ## Run the tests
 
 ```sh
-target/release/osprey test tests/effects
-zsh crates/diff_examples.sh effects
+target/release/osprey test tests/regressions/effects
 zsh crates/run_test_corpus.sh gc
 OSPREY_ARC_DEBUG=1 zsh crates/run_test_corpus.sh arc
 ```
 
-The first command runs internal assertions. The golden harness checks the
-documented programs in `tests/regressions/effects`. The final two commands repeat
-the assertion corpus under tracing GC and ARC; ARC also requires zero live
+The first command runs internal assertions. The final two commands repeat the
+complete assertion corpus under tracing GC and ARC; ARC also requires zero live
 objects at exit.

@@ -7,11 +7,12 @@
 //! browser-ready `.wasm`:
 //!
 //!   1. append a `__main_void` entry thunk (see [`with_entry_thunk`]);
-//!   2. clang lowers the IR to a wasm object — `-c` only, so clang never pulls
-//!      in the `libclang_rt.builtins-wasm32.a` that a stock Homebrew/apt LLVM
-//!      doesn't ship (a basic program needs no compiler-rt builtins);
+//!   2. clang lowers the IR to a wasm object — `-c` only, because stock
+//!      Homebrew/apt LLVM does not ship a wasm compiler-rt archive;
 //!   3. `wasm-ld` links `crt1-command.o` + that object + the portable wasm
-//!      runtime archive (`libosprey_runtime_wasm.a`, `make wasm`) + libc.
+//!      runtime archive (`libosprey_runtime_wasm.a`, `make wasm`) + libc. The
+//!      runtime supplies the standard `__multi3` helper used when LLVM lowers
+//!      checked i64 multiplication through a widened intermediate.
 //!
 //! Driving `wasm-ld` directly — rather than the clang link driver — is what lets
 //! step 3 control the exact link line and sidestep the missing builtins archive.
@@ -640,13 +641,42 @@ mod tests {
             eprintln!("skipping wasm e2e: toolchain or runtime archive absent");
             return;
         }
-        let src = "let n = 21\nprint(\"answer=${n + n}\")\n";
+        let src = "let factor = parseInt(\"2\") ?: 0\n\
+                   let large = parseInt(\"4294967296\") ?: 0\n\
+                   let product = match 21 * factor {\n\
+                     Success { value } => value\n\
+                     Error { message } => 0\n\
+                   }\n\
+                   let overflow = match large * large {\n\
+                     Success { value } => false\n\
+                     Error { message } => message == \"integer overflow\"\n\
+                   }\n\
+                   print(\"product=${product}, overflow=${overflow}\")\n";
         let program = osprey_syntax::parse_program(src).program;
         let out = std::env::temp_dir().join(format!("osprey_wasm_e2e_{}.wasm", std::process::id()));
         build("e2e.osp", &program, &out).expect("wasm build");
         let bytes = std::fs::read(&out).expect("read wasm");
         assert!(bytes.starts_with(b"\0asm"), "wasm magic header");
+        assert_wasm_stdout("wasm-smoke.mjs", &out, "product=42, overflow=true");
+        assert_wasm_stdout("wasm-browser-smoke.mjs", &out, "product=42, overflow=true");
         build_web_abi_fixture();
+    }
+
+    fn assert_wasm_stdout(script: &str, wasm: &Path, expected: &str) {
+        let runner = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../scripts")
+            .join(script);
+        let output = Command::new("node")
+            .arg(runner)
+            .arg(wasm)
+            .output()
+            .expect("run wasm smoke script");
+        assert!(
+            output.status.success(),
+            "{script}: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert_eq!(String::from_utf8_lossy(&output.stdout).trim(), expected);
     }
 
     fn build_web_abi_fixture() {

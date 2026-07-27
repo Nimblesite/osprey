@@ -34,6 +34,8 @@ const RELEASE_UNIQUE_DECL: &str = "declare void @osp_release_unique(i8* allocptr
 struct Entry {
     operand: String,
     name: Option<String>,
+    /// Unique lexical scope that introduced `name`; absent for temporaries.
+    binding_scope: Option<usize>,
     slot: String,
     pure_scalar: bool,
 }
@@ -111,6 +113,7 @@ fn register(cg: &mut Codegen, v: &Value, beyond_stmt: bool) {
     let entry = Entry {
         operand: v.operand.clone(),
         name: None,
+        binding_scope: None,
         slot,
         pure_scalar: false,
     };
@@ -283,6 +286,7 @@ pub(crate) fn bind_owned(cg: &mut Codegen, name: &str, v: &Value) {
     }
     if let Some(mut e) = take_entry(cg, &v.operand) {
         e.name = Some(name.to_string());
+        e.binding_scope = cg.scope_id();
         push_parent(cg, e);
         return;
     }
@@ -295,6 +299,7 @@ pub(crate) fn bind_owned(cg: &mut Codegen, name: &str, v: &Value) {
         Entry {
             operand: v.operand.clone(),
             name: Some(name.to_string()),
+            binding_scope: cg.scope_id(),
             slot,
             pure_scalar: false,
         },
@@ -393,13 +398,12 @@ pub(crate) fn escape_retain(cg: &mut Codegen, v: &Value) {
     retain_val(cg, v);
 }
 
-/// Drop the owners of `let` names the continuation of the current block no
-/// longer references (M6 last-use precision, TR Fig. 6). Runs ONLY at
-/// function level (ledger depth 1): a nested block / loop / statement region
-/// computes liveness for its own continuation, which says nothing about
-/// later uses in the enclosing scope — releasing function-frame names from
-/// there would be a use-after-free. A tail-position block IS the enclosing
-/// continuation, so the depth gate composes through nested tail blocks.
+/// Drop owners introduced in the current lexical scope when that scope's
+/// continuation no longer references them (M6 last-use precision, TR Fig. 6).
+/// Runs only at function ledger depth: statement/loop frames cannot establish
+/// enclosing liveness. The lexical gate is equally important: a block inside
+/// one match arm must not remove an outer owner from the global ledger, because
+/// sibling arms bypass that path-local drop.
 pub(crate) fn release_dead_after<S: std::borrow::Borrow<Stmt>>(
     cg: &mut Codegen,
     rest: &[S],
@@ -415,15 +419,64 @@ pub(crate) fn release_dead_after<S: std::borrow::Borrow<Stmt>>(
 
 fn release_dead(cg: &mut Codegen, live: &std::collections::BTreeSet<String>) {
     let mut dead = Vec::new();
+    let scope = cg.scope_id();
     if let Some(frame) = cg.arc.frames.first_mut() {
         let mut kept = Vec::new();
         for e in frame.drain(..) {
             match &e.name {
-                Some(n) if !live.contains(n) => dead.push(e),
+                Some(n) if e.binding_scope == scope && !live.contains(n) => dead.push(e),
                 _ => kept.push(e),
             }
         }
         *frame = kept;
     }
     release_entries(cg, &dead);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn owner_names(cg: &Codegen) -> Vec<&str> {
+        cg.arc
+            .frames
+            .first()
+            .into_iter()
+            .flatten()
+            .filter_map(|entry| entry.name.as_deref())
+            .collect()
+    }
+
+    fn bind_owner(cg: &mut Codegen, name: &str) {
+        let owner = Value::new(format!("%{name}"), LType::Ptr);
+        own(cg, &owner);
+        bind_owned(cg, name, &owner);
+    }
+
+    #[test]
+    fn last_use_only_drains_the_current_lexical_scope() {
+        let mut cg = Codegen::new();
+        cg.begin_function("scope_arc", None);
+        bind_owner(&mut cg, "outer");
+        cg.push_scope();
+        bind_owner(&mut cg, "inner");
+
+        release_dead(&mut cg, &std::collections::BTreeSet::new());
+
+        assert_eq!(owner_names(&cg), ["outer"]);
+    }
+
+    #[test]
+    fn sibling_scope_cannot_drain_another_arms_owner() {
+        let mut cg = Codegen::new();
+        cg.begin_function("branch_arc", None);
+        cg.push_scope();
+        bind_owner(&mut cg, "arm_owner");
+        cg.pop_scope();
+        cg.push_scope();
+
+        release_dead(&mut cg, &std::collections::BTreeSet::new());
+
+        assert_eq!(owner_names(&cg), ["arm_owner"]);
+    }
 }

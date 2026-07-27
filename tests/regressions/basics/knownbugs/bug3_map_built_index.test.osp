@@ -3,5 +3,19 @@ let m = mapSet(mapSet(Map(), "a", ra), "b", 16)
 match m["a"] { Success { value } => print("a=" + toString(value)) Error { message } => print("miss") }
 print("len " + toString(mapLength(m)))
 
-// Registers the regression scenario with the assertion-driven test runner.
-test("regression scenario completes", fn() => checkAll("legacy execution", [true]))
+/// Verifies indexing a built map returns the stored values and a real miss.
+fn builtMapIndexCase() = {
+    let built = mapSet(mapSet(Map(), "a", 9), "b", 16)
+    let missing = match built["missing"] {
+        Success { value } => false
+        Error { message } => message != ""
+    }
+    checkAll("built map index state", [
+        (built["a"] ?: ((0 - 1) ?: 0)) == 9,
+        (built["b"] ?: ((0 - 1) ?: 0)) == 16,
+        mapLength(built) == 2,
+        mapContains(built, "a"),
+        missing
+    ])
+}
+test("built maps support indexed lookup", builtMapIndexCase)

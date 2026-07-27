@@ -240,6 +240,35 @@ print "Box<int> pinned explicitly: item = ${pinned.item}"
 print "=== PURE HINDLEY-MILNER TEST COMPLETE ==="
 print "All types inferred from usage context - no explicit type annotations!"
 
-(** Register the regression scenario with the assertion-driven test runner. *)
-migratedLegacyCase () = checkAll "legacy execution" [true]
-test "regression scenario completes" migratedLegacyCase
+(** Verify inferred helpers remain polymorphic across values, records, and HOFs. *)
+inferredBehaviorCase () =
+    inferredPair = Pair(first = 11, second = 12)
+    inferredPoint = makePoint (6, 8)
+    inferredContainer = Container(value = "type", label = "safe")
+    inferredBox = makeBox "boxed"
+    inferredGeneric = makeAnotherGeneric (4, "four")
+    checkAll "Hindley-Milner inferred behavior" [
+        identity 7 == 7,
+        identity "hm" == "hm",
+        identity true,
+        add (12, 30) == 42,
+        concat ("type", "safe") == "typesafe",
+        negate false,
+        getFirst inferredPair == 11,
+        getSecond inferredPair == 12,
+        getValue inferredContainer == "type",
+        inferredPoint.x == 6,
+        inferredPoint.y == 8,
+        distance inferredPoint == 100,
+        combine inferredContainer == "typesafe",
+        apply (identityP, 99) == 99,
+        apply (toString, 123) == "123",
+        inferredBox.item == "boxed",
+        inferredGeneric.first == 4,
+        inferredGeneric.second == "four",
+        typeTest1 21 == 42,
+        typeTest2 "ha" == "haha",
+        typeTest3 false,
+        pick ("left", "right") == "left"
+    ]
+test "inference preserves polymorphism and derived values" inferredBehaviorCase

@@ -74,5 +74,35 @@ print("  Σeven² <20  = ${rb}  ${badge(tier(rb))}")
 print("  Σeven² <40  = ${rc}  ${badge(tier(rc))}")
 print("══════════════════════════════════════\ntotal ${ra + rb + rc}  ·  fleet ${badge(tier((ra + rb + rc) ?: 0))}")
 
-// Registers the regression scenario with the assertion-driven test runner.
-test("regression scenario completes", fn() => checkAll("legacy execution", [true]))
+/// Replays both effect worlds and the fiber-backed scoring pipeline.
+fn megaShowcaseCase() = {
+    let realResult = realWorld()
+    let mockResult = dryRun()
+    let future = spawn crunch(12)
+    let fiberResult = await(future)
+    let scoreA = crunch(10)
+    let scoreB = crunch(20)
+    let scoreC = crunch(40)
+    let fleetScore = (scoreA + scoreB + scoreC) ?: 0
+    checkAll("effect worlds and functional scoring state", [
+        realResult == 350,
+        mockResult == 0,
+        even(2),
+        !even(3),
+        sq(9) == 81,
+        crunch(1) == 0,
+        scoreA == 120,
+        scoreB == 1140,
+        scoreC == 9880,
+        fiberResult == 220,
+        fleetScore == 11140,
+        badge(tier(499)) == "🟢 STARTER",
+        badge(tier(500)) == "🔵 SOLID",
+        badge(tier(1999)) == "🔵 SOLID",
+        badge(tier(2000)) == "🟣 EPIC",
+        badge(Starter) == "🟢 STARTER",
+        badge(Solid) == "🔵 SOLID",
+        badge(Epic) == "🟣 EPIC"
+    ])
+}
+test("mega showcase preserves effect, fiber, and tier state", megaShowcaseCase)

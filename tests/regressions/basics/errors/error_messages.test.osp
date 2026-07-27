@@ -124,5 +124,68 @@ Error   { message } => print("mapKey: ${message}\n")
   print("=== Error Catalogue Complete ===\n")
   0
 
-// Registers the regression scenario with the assertion-driven test runner.
-test("regression scenario completes", fn() => checkAll("legacy execution", [true]))
+/// Every failing Result must carry a usable diagnostic payload.
+fn hasDiagnostic(result) = match result {
+    Success { value } => false
+    Error { message } => length(toString(message)) > 0
+}
+
+/// Verifies parsing, arithmetic, and user-created Result failures.
+fn numericErrorCase() = {
+    let userFailure = match boom() {
+        Success { value } => false
+        Error { message } => message == "user boom"
+    }
+    checkAll("numeric Result diagnostics", [
+        hasDiagnostic(parseInt("nope")),
+        hasDiagnostic(parseFloat("x")),
+        hasDiagnostic(10 / 0),
+        userFailure
+    ])
+}
+
+/// Verifies every fallible string operation used by the catalogue.
+fn stringErrorCase() = checkAll("string Result diagnostics", [
+    hasDiagnostic(split("a", "")),
+    hasDiagnostic(indexOf("abc", "z")),
+    hasDiagnostic(substring("hi", (0 - 1) ?: 0, 5)),
+    hasDiagnostic(replace("h", "", "")),
+    hasDiagnostic(repeat("a", (0 - 1) ?: 0)),
+    hasDiagnostic(padStart("x", 5, "")),
+    hasDiagnostic(padEnd("x", 5, ""))
+])
+
+/// Verifies cursor bounds, invalid scalars, and malformed UTF-8 diagnostics.
+fn cursorErrorCase() = checkAll("cursor Result diagnostics", [
+    hasDiagnostic(byteAt("a", 9)),
+    hasDiagnostic(codePointAt("a", 9)),
+    hasDiagnostic(codePointAt("é", 1)),
+    hasDiagnostic(codePointWidth(55296)),
+    hasDiagnostic(codePointWidth(1114112)),
+    hasDiagnostic(fromCodePoint(1114112)),
+    hasDiagnostic(codePointAt(take("é", 1), 0)),
+    hasDiagnostic(codePointAt(take("é", 1) + "x", 0))
+])
+
+/// Verifies collection errors alongside the successful counterparts.
+fn collectionAndSuccessCase() = {
+    let xs = [1, 2, 3]
+    let prices = { "apple": 2, "banana": 3 }
+    let divisionWorks = match 7 / 2 {
+        Success { value } => value == 3.5
+        Error { message } => false
+    }
+    checkAll("collection errors and successful Results", [
+        hasDiagnostic(xs[9]),
+        hasDiagnostic(prices["mango"]),
+        (parseInt("42") ?: 0) == 42,
+        (fromCodePoint(65) ?: "") == "A",
+        divisionWorks,
+        toString(boom()) == "Error(user boom)"
+    ])
+}
+
+test("numeric failures retain their reasons", numericErrorCase)
+test("string failures retain their reasons", stringErrorCase)
+test("cursor failures retain their reasons", cursorErrorCase)
+test("collections fail safely and valid Results succeed", collectionAndSuccessCase)

@@ -45,5 +45,41 @@ reportDeepString(document)
 print("types: ${describe(JsonNull)}, ${describe(JsonBoolean { value: true })}, ${describe(JsonNumber { value: 17 })}, ${describe(deepestValue)}, ${describe(outerArray)}, ${describe(document)}")
 print("=== JSON value union complete ===")
 
-// Registers the regression scenario with the assertion-driven test runner.
-test("regression scenario completes", fn() => checkAll("legacy execution", [true]))
+/// Recursively follows the single object/array path to its string leaf.
+fn deepString(value: JsonValue) -> string = match value {
+    JsonObject { fields } => match mapGet(fields, "workspace") {
+        Success { value } => deepString(value)
+        Error { message } => ""
+    }
+    JsonArray { values } => match listGet(values, 0) {
+        Success { value } => deepString(value)
+        Error { message } => ""
+    }
+    JsonString { value } => value
+    _ => ""
+}
+
+/// Counts object fields while returning zero for non-object values.
+fn objectFieldCount(value: JsonValue) -> int = match value {
+    JsonObject { fields } => mapLength(fields)
+    _ => 0
+}
+
+/// Rebuilds and traverses the recursive document under the test runner.
+fn jsonDocumentCase() = {
+    let deepest = JsonString { value: "devon@osprey.dev" }
+    let inner = JsonArray { values: List() |> listAppend(deepest) }
+    let outer = JsonArray { values: List() |> listAppend(inner) }
+    let root = JsonObject { fields: Map() |> mapSet("workspace", outer) }
+    reportDeepString(root)
+    checkAll("recursive JSON document", [
+        describe(JsonNull) == "null",
+        describe(JsonBoolean { value: true }) == "boolean",
+        describe(JsonNumber { value: 17 }) == "number",
+        describe(deepest) == "string", describe(outer) == "array",
+        describe(root) == "object", objectFieldCount(root) == 1,
+        deepString(root) == "devon@osprey.dev",
+        deepString(JsonNull) == ""
+    ])
+}
+test("recursive JSON traversal preserves the nested value", jsonDocumentCase)

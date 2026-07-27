@@ -120,7 +120,7 @@ WASM_CFLAGS  ?= --target=$(WASM_TARGET) --sysroot=$(WASI_SYSROOT) -O2 -std=c11 -
 # (termios) and ffi (dlopen).
 # profiler_runtime compiles to inert stubs on wasm32 (no pthreads/signals) but
 # must be present: codegen anchors `osp_prof_boot` into every main [PROF-ACTIVATE-ENV].
-WASM_RT_SRC  ?= memory_runtime string_runtime string_runtime_list list_runtime map_runtime map_runtime_hamt json_runtime effects_runtime test_runtime coverage_runtime web_runtime profiler_runtime
+WASM_RT_SRC  ?= memory_runtime string_runtime string_runtime_list list_runtime map_runtime map_runtime_hamt json_runtime effects_runtime test_runtime coverage_runtime web_runtime profiler_runtime wasm_builtins_runtime
 # `make wasm-serve` static-host dir + port for the in-browser example.
 WASM_SERVE_DIR  ?= examples/wasm
 WASM_SERVE_PORT ?= 8080
@@ -250,7 +250,8 @@ ci: lint hawk test bank-test bank-e2e build
 ## and Osprey Data Studio in BOTH flavors (studio.{osp,ospml} -> one byte-
 ## identical manifest that drives the SQLite dashboard in examples/wasm/
 ## index.html) — then validate them and smoke-run under Node's WASI, the browser
-## WASI shim, and the full golden suite. Requires clang (wasm32 backend),
+## WASI shim, with committed expected output for hello and both Studio flavors.
+## Requires clang (wasm32 backend),
 ## wasm-ld and a WASI sysroot —
 ## `brew install lld wasi-libc` (macOS) or the wasi-sdk. See
 ## docs/specs/0022-WebAssemblyTarget.md.
@@ -527,23 +528,24 @@ _test_profiler:
 
 # Assertion-driven language corpus: recursively runs both *.test.osp and
 # *.test.ospml suites. These inspect internal values rather than stdout goldens.
+# Some loopback integration twins intentionally use the same fixed port so their
+# Default and ML sources lower to identical IR; one worker prevents port races.
 _test_language_corpus:
 	@echo "==> [language] Default + ML assertion corpus..."
-	@./$(BIN) test tests
+	@OSPREY_TEST_JOBS=1 ./$(BIN) test tests
 
 # _conformance-gc: run every assertion suite under the tracing GC backend.
 _conformance-gc:
 	@echo "==> [conformance] assertion corpus under --memory=gc..."
-	@zsh crates/run_test_corpus.sh gc
+	@OSPREY_TEST_JOBS=1 zsh crates/run_test_corpus.sh gc
 
-# _conformance-arc: run every tested example under the Perceus ARC backend;
-# output must be byte-identical to the default ([MEM-BACKENDS] / [GC-ARC-PERCEUS]),
-# AND every example must end with zero live ARC objects. OSPREY_ARC_DEBUG=1 makes
+# _conformance-arc: run every assertion suite under the Perceus ARC backend;
+# every suite must pass and end with zero live ARC objects. OSPREY_ARC_DEBUG=1 makes
 # memory_arc.c report its live count at exit, which is the only automatic check
-# for the [GC-ARC-PERCEUS] zero-leak bar: comparing stdout cannot see a leak.
+# for the [GC-ARC-PERCEUS] zero-leak bar.
 _conformance-arc:
 	@echo "==> [conformance] assertion corpus under --memory=arc..."
-	@OSPREY_ARC_DEBUG=1 zsh crates/run_test_corpus.sh arc
+	@OSPREY_ARC_DEBUG=1 OSPREY_TEST_JOBS=1 zsh crates/run_test_corpus.sh arc
 
 # --- vscode-extension -------------------------------------------------------
 # The extension's LSP server spawns the `osprey` binary at runtime, so the

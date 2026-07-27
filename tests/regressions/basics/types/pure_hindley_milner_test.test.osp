@@ -228,5 +228,36 @@ print("Box<int> pinned explicitly: item = ${pinned.item}")
 print("=== PURE HINDLEY-MILNER TEST COMPLETE ===")
 print("All types inferred from usage context - no explicit type annotations!")
 
-// Registers the regression scenario with the assertion-driven test runner.
-test("regression scenario completes", fn() => checkAll("legacy execution", [true]))
+/// Verifies inferred helpers remain polymorphic across values, records, and HOFs.
+fn inferredBehaviorCase() = {
+    let inferredPair = Pair { first: 11, second: 12 }
+    let inferredPoint = makePoint(a: 6, b: 8)
+    let inferredContainer = Container { value: "type", label: "safe" }
+    let inferredBox = makeBox("boxed")
+    let inferredGeneric = makeAnotherGeneric(a: 4, b: "four")
+    checkAll("Hindley-Milner inferred behavior", [
+        identity(7) == 7,
+        identity("hm") == "hm",
+        identity(true),
+        add(a: 12, b: 30) == 42,
+        concat(s1: "type", s2: "safe") == "typesafe",
+        negate(false),
+        getFirst(inferredPair) == 11,
+        getSecond(inferredPair) == 12,
+        getValue(inferredContainer) == "type",
+        inferredPoint.x == 6,
+        inferredPoint.y == 8,
+        distance(inferredPoint) == 100,
+        combine(inferredContainer) == "typesafe",
+        apply(f: identityP, x: 99) == 99,
+        apply(f: toString, x: 123) == "123",
+        inferredBox.item == "boxed",
+        inferredGeneric.first == 4,
+        inferredGeneric.second == "four",
+        typeTest1(21) == 42,
+        typeTest2("ha") == "haha",
+        typeTest3(false),
+        pick("left", "right") == "left"
+    ])
+}
+test("inference preserves polymorphism and derived values", inferredBehaviorCase)

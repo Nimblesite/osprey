@@ -51,6 +51,42 @@ reportDeepString document
 print "types: ${describe JsonNull}, ${describe (JsonBoolean(value = true))}, ${describe (JsonNumber(value = 17))}, ${describe deepestValue}, ${describe outerArray}, ${describe document}"
 print "=== JSON value union complete ==="
 
-(** Register the regression scenario with the assertion-driven test runner. *)
-migratedLegacyCase () = checkAll "legacy execution" [true]
-test "regression scenario completes" migratedLegacyCase
+(** Recursively follow the single object/array path to its string leaf. *)
+deepString : JsonValue -> string
+deepString value =
+    match value
+        JsonObject fields =>
+            match mapGet fields "workspace"
+                Success value => deepString value
+                Error message => ""
+        JsonArray values =>
+            match listGet values 0
+                Success value => deepString value
+                Error message => ""
+        JsonString value => value
+        _ => ""
+
+(** Count object fields while returning zero for non-object values. *)
+objectFieldCount : JsonValue -> int
+objectFieldCount value =
+    match value
+        JsonObject fields => mapLength fields
+        _ => 0
+
+(** Rebuild and traverse the recursive document under the test runner. *)
+jsonDocumentCase () =
+    deepest = JsonString(value = "devon@osprey.dev")
+    inner = JsonArray(values = List() |> listAppend deepest)
+    outer = JsonArray(values = List() |> listAppend inner)
+    root = JsonObject(fields = Map() |> mapSet "workspace" outer)
+    reportDeepString root
+    checkAll "recursive JSON document" [
+        describe JsonNull == "null",
+        describe (JsonBoolean(value = true)) == "boolean",
+        describe (JsonNumber(value = 17)) == "number",
+        describe deepest == "string", describe outer == "array",
+        describe root == "object", objectFieldCount root == 1,
+        deepString root == "devon@osprey.dev",
+        deepString JsonNull == ""
+    ]
+test "recursive JSON traversal preserves the nested value" jsonDocumentCase

@@ -30,6 +30,24 @@ print "Error Result toString: ${toString errorResult}"  // Should print "Error"
 
 print "=== Test Complete ==="
 
-(** Register the regression scenario with the assertion-driven test runner. *)
-migratedLegacyCase () = checkAll "legacy execution" [true]
-test "regression scenario completes" migratedLegacyCase
+(** Repeat the real write/read workflow and verify both Result payloads. *)
+fileWorkflowCase () =
+    expected = "Hello, Osprey file I/O!"
+    written = writeFile "test_output.txt" expected
+    readBack = readFile "test_output.txt"
+    missing = readFile "nonexistent_file_xyz123.txt"
+    writeMatches = match written
+        Success value => value == byteLength expected
+        Error message => false
+    readMatches = match readBack
+        Success value => value == expected
+        Error message => false
+    missingFails = match missing
+        Success value => false
+        Error message => length message > 0
+    checkAll "file write/read Results" [
+        writeMatches,
+        readMatches,
+        missingFails
+    ]
+test "file workflow persists content and reports missing files" fileWorkflowCase

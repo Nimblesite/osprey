@@ -63,24 +63,38 @@ renderBody bodyText =
 renderResponse h =
     body = httpResponseBody h
     match body
-        Success value => renderBody value
-        Error message => print "bodyfail"
+        Success value =>
+            renderBody value
+            value
+        Error message =>
+            print "bodyfail"
+            ""
 
 run () =
     serverId = httpCreateServer 18099 "127.0.0.1"
     listenResult = httpListen serverId handleRequest
     clientId = httpCreateClient "http://127.0.0.1:18099" 5000
     resp = httpGetResponse clientId "/repos" ""
-    match resp
+    bodyText = match resp
         Success value =>
-            renderResponse value
+            rendered = renderResponse value
             freed = httpResponseFree value
-        Error message => print "reqfail ${message}"
+            rendered
+        Error message =>
+            print "reqfail ${message}"
+            ""
     closeResult = httpCloseClient clientId
     stopResult = httpStopServer serverId
+    bodyText
 
-run ()
-
-(** Register the regression scenario with the assertion-driven test runner. *)
-migratedLegacyCase () = checkAll "legacy execution" [true]
-test "regression scenario completes" migratedLegacyCase
+(** Fetch, render, and validate the repository document over loopback HTTP. *)
+repoTableCase () =
+    bodyText = run ()
+    checkAll "repository table data" [
+        contains bodyText "\"name\":\"osprey\"",
+        contains bodyText "\"stars\":9001",
+        contains bodyText "\"lang\":\"Java\"",
+        pad ("Go", 4) == "Go  ",
+        startsWith (cyan "*") "\e[36m"
+    ]
+test "repository JSON renders after an HTTP response round trip" repoTableCase

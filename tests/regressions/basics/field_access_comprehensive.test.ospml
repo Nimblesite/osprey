@@ -74,6 +74,32 @@ print ""
 
 print "=== COMPREHENSIVE FIELD ACCESS TEST COMPLETE ==="
 
-(** Register the regression scenario with the assertion-driven test runner. *)
-migratedLegacyCase () = checkAll "legacy execution" [true]
-test "regression scenario completes" migratedLegacyCase
+(** Derive the same conditional label from a record field. *)
+userStatus : User -> string
+userStatus value =
+    match value.active
+        true => "Active User"
+        false => "Inactive User"
+
+(** Verify reads, arithmetic consumers, branching, and persistent updates. *)
+fieldAccessCase () =
+    point = Point(x = 15, y = 25)
+    user = User(id = 42, active = true)
+    inactive = user(active = false)
+    rect = Rectangle(width = 10, height = 5)
+    counter = Counter(count = 0)
+    incremented = counter(count = counter.count)
+    moved = point(x = 100, y = 200)
+    checkAll "record field behavior" [
+        point.x == 15, point.y == 25,
+        user.id == 42, user.active, !inactive.active,
+        (calculateArea rect ?: 0) == 50,
+        (rect.width + rect.height ?: 0) == 15,
+        (point.x + point.y ?: 0) == 40,
+        userStatus user == "Active User",
+        userStatus inactive == "Inactive User",
+        counter.count == 0, incremented.count == 0,
+        moved.x == 100, moved.y == 200,
+        point.x == 15, point.y == 25
+    ]
+test "field access feeds expressions without mutating records" fieldAccessCase

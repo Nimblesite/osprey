@@ -40,5 +40,23 @@ fn bump(p, step) = p { mass: add(p.mass, 1) }
 let bumped = range(1, COUNT) |> fold(forge(1), bump)
 print("bumpedMass=${bumped.mass}")
 
-// Registers the regression scenario with the assertion-driven test runner.
-test("regression scenario completes", fn() => checkAll("legacy execution", [true]))
+/// Verifies the aggregate outputs and record transformations used by the stress run.
+fn structAllocationCase() = {
+    let testTotal = range(1, 100000) |> map(forge) |> map(energy) |> fold(0, add)
+    let testHeavyTotal = range(1, 100000) |> map(forge) |> filter(heavy) |> map(energy) |> fold(0, add)
+    let testBumped = range(1, 100000) |> fold(forge(1), bump)
+    let sample = forge(4)
+    let bumpedOnce = bump(sample, 99)
+    checkAll("struct allocation and aggregate state", [
+        testTotal == 15000050000,
+        testHeavyTotal == 11249875000,
+        testBumped.mass == 100002,
+        sample.id == 4,
+        sample.mass == 12,
+        energy(sample) == 16,
+        bumpedOnce.mass == 13,
+        !heavy(forge(50000)),
+        heavy(forge(50001))
+    ])
+}
+test("record allocation preserves aggregate values", structAllocationCase)

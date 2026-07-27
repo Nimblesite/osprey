@@ -129,5 +129,25 @@ print("Union equality tests:")
 print(compareColors(c1: color1, c2: color2))
 print(compareColors(c1: color1, c2: color3))
 
-// Registers the regression scenario with the assertion-driven test runner.
-test("regression scenario completes", fn() => checkAll("legacy execution", [true]))
+/// Verifies erased values still flow through fields, arguments, and union matches.
+fn anyTypeBehaviorCase() = {
+    let object = TestType { value: "payload" }
+    checkAll("any values and inferred union behavior", [
+        toString(getDynamicValue()) == "42",
+        toString(processAnyValue(5)) == "15",
+        processAny(42) == "Processed any",
+        processAny("hello") == "Processed any",
+        processAny(true) == "Processed any",
+        getAnyField(object) == "payload",
+        testArgs(a: 3, b: "value", c: false) == "value positive",
+        testArgs(a: 0, b: "value", c: true) == "value zero or negative true",
+        getStatusString(Active) == "active",
+        getStatusString(Inactive) == "inactive",
+        processSimple(A) == "Got A",
+        processSimple(B) == "Got B",
+        processSimple(C) == "Got C",
+        compareColors(c1: Red, c2: Red) == "Both red",
+        compareColors(c1: Red, c2: Blue) == "Different colors"
+    ])
+}
+test("any values retain usable behavior across typed boundaries", anyTypeBehaviorCase)

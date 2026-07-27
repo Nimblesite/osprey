@@ -213,6 +213,46 @@ match e1
         forEachList args announceNum
     _ => print "expected EAdd"
 
-(** Register the regression scenario with the assertion-driven test runner. *)
-migratedLegacyCase () = checkAll "legacy execution" [true]
-test "regression scenario completes" migratedLegacyCase
+(** Verify recursive list, map, tree, and mutually-recursive payloads survive unwrapping. *)
+recursiveUnionCase () =
+    arrayNumber = JNum(v = 7)
+    arrayText = JStr(v = "seven")
+    recursiveArray = JArr(items = List() |> listAppend arrayNumber |> listAppend arrayText)
+    arrayLength = match recursiveArray
+        JArr items => listLength items
+        _ => 0
+    arrayHasNumber = match recursiveArray
+        JArr items => listContains items arrayNumber
+        _ => false
+    recursiveObject = JObj(entries = Map() |> mapSet "answer" arrayNumber |> mapSet "word" arrayText)
+    objectLength = match recursiveObject
+        JObj entries => mapLength entries
+        _ => 0
+    objectHasWord = match recursiveObject
+        JObj entries => mapContains entries "word"
+        _ => false
+    leftChild = Node(value = 2, left = Leaf, right = Node(value = 3, left = Leaf, right = Leaf))
+    rightChild = Node(value = 6, left = Leaf, right = Node(value = 7, left = Leaf, right = Leaf))
+    recursiveTree = Node(value = 4, left = leftChild, right = rightChild)
+    expressionArgs = List() |> listAppend (ENum(v = 2)) |> listAppend (ENum(v = 3))
+    recursiveExpression = EBlk(body = SRet(value = EAdd(args = expressionArgs)))
+    unwrappedExpression = unwrapRet (unwrapBlk recursiveExpression)
+    checkAll "recursive union payloads" [
+        describe recursiveArray == "arr",
+        arrayLength == 2,
+        arrayHasNumber,
+        describe recursiveObject == "obj",
+        objectLength == 2,
+        objectHasWord,
+        label recursiveTree == "node",
+        rootVal recursiveTree == 4,
+        leftLabel recursiveTree == "node",
+        leftRightVal recursiveTree == 3,
+        rightRootVal recursiveTree == 6,
+        rightRightVal recursiveTree == 7,
+        descExpr recursiveExpression == "blk",
+        descStmt (unwrapBlk recursiveExpression) == "ret",
+        descExpr unwrappedExpression == "add",
+        unwrapAddLen unwrappedExpression == 2
+    ]
+test "recursive union payloads retain nested tags and values" recursiveUnionCase

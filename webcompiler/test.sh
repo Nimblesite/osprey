@@ -47,9 +47,11 @@ else
     exit 1
 fi
 
-# Require the migrated suite's TAP assertion to pass.
-if echo "$PROGRAM_OUTPUT" | grep -q 'ok 1 - regression scenario completes'; then
-    echo "✅ Test PASSED: Regression assertion suite passed"
+# Require the showcase's named assertion, TAP plan, and zero-failure summary.
+if echo "$PROGRAM_OUTPUT" | grep -Fq 'ok 1 - mega showcase preserves effect, fiber, and tier state' \
+    && echo "$PROGRAM_OUTPUT" | grep -Fq '1..1' \
+    && echo "$PROGRAM_OUTPUT" | grep -Fq '# tests=1 passed=1 failed=0 skipped=0'; then
+    echo "✅ Test PASSED: Mega showcase assertion suite passed"
     exit 0
 else
     echo "❌ Test FAILED: Regression assertion result was not present"

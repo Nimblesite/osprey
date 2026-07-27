@@ -1,6 +1,6 @@
 #!/usr/bin/env zsh
 # Run every assertion suite under one memory backend; used by conformance CI so
-# moving a golden example into tests never drops its GC or ARC coverage.
+# moving an assertion suite within tests never drops its GC or ARC coverage.
 set -u
 
 ROOT=${OSPREY_ROOT:-${0:A:h}/..}

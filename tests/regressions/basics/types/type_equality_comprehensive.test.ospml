@@ -146,6 +146,30 @@ print "fn-payload gate accepted: ${describe (mkGate ())}"
 
 print "=== TYPE EQUALITY COMPLETE ==="
 
-(** Register the regression scenario with the assertion-driven test runner. *)
-migratedLegacyCase () = checkAll "legacy execution" [true]
-test "regression scenario completes" migratedLegacyCase
+(** Verify generic records, function shapes, union tags, and variant payload types. *)
+typeEqualityCase () =
+    container = makeContainer 7
+    pair = makePair (8, "eight")
+    triple = makeTriple (9, "nine", 10)
+    checkAll "generic, function, and union type behavior" [
+        container.value == 7,
+        pair.first == 8,
+        pair.second == "eight",
+        triple.first == 9,
+        triple.second == "nine",
+        triple.third == 10,
+        applyInt (addOne, 9) == 10,
+        applyInt (timesTwo, 9) == 18,
+        applyInt (minusOne, 9) == 8,
+        applyStr (excl, "hi") == "hi!",
+        applyStr (ques, "hi") == "hi?",
+        applyToStr (intToString, 42) == "42",
+        applyTwo (twoArgAdd, 5, 7) == 12,
+        applyThree (threeArgAdd, 1, 2, 3) == 6,
+        sameColor (Red, Red),
+        !(sameColor (Red, Blue)),
+        colorName Green == "green",
+        label (mkFeed ()) == "supplied",
+        describe (mkGate ()) == "guarded"
+    ]
+test "equivalent type shapes compose while union tags remain distinct" typeEqualityCase

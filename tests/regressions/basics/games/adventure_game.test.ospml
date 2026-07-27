@@ -225,6 +225,72 @@ print ""
 print "🌟 Your legend will be remembered forever! 🌟"
 print "Thanks for playing the Osprey Adventure Game!"
 
-(** Register the regression scenario with the assertion-driven test runner. *)
-migratedLegacyCase () = checkAll "legacy execution" [true]
-test "regression scenario completes" migratedLegacyCase
+(** Replay the quest calculations and check every helper's branch table. *)
+adventureGameCase () =
+    afterRoomOne = (50 + getRoomTreasure 1) ?: 50
+    afterRoomTwo = (afterRoomOne + getRoomTreasure 2) ?: afterRoomOne
+    damage = calculateWeaponDamage 3
+    healthAfterOne = (getEnemyHealth 3 - damage) ?: getEnemyHealth 3
+    healthAfterTwo = (healthAfterOne - damage) ?: healthAfterOne
+    defeated = (0 + 1) ?: 0
+    rewardBalance = (afterRoomTwo + 200) ?: afterRoomTwo
+    questBalance = (rewardBalance + getRoomTreasure 4) ?: rewardBalance
+
+    checkAll "adventure branch tables" [
+        calculatePlayerLevel 0 == 1,
+        calculatePlayerLevel 1 == 2,
+        calculatePlayerLevel 2 == 3,
+        calculatePlayerLevel 3 == 4,
+        calculatePlayerLevel 9 == 5,
+        getPlayerTitle 1 == "Novice Adventurer",
+        getPlayerTitle 2 == "Brave Explorer",
+        getPlayerTitle 3 == "Seasoned Warrior",
+        getPlayerTitle 4 == "Legendary Hero",
+        getPlayerTitle 5 == "Master of the Realm",
+        calculateWeaponDamage 1 == 25,
+        calculateWeaponDamage 2 == 40,
+        calculateWeaponDamage 3 == 60,
+        calculateWeaponDamage 9 == 15,
+        calculateBarehandDamage 1 == 10,
+        calculateBarehandDamage 2 == 15,
+        calculateBarehandDamage 3 == 20,
+        calculateBarehandDamage 9 == 5,
+        getEnemyName 1 == "Sneaky Goblin",
+        getEnemyName 2 == "Fierce Orc",
+        getEnemyName 3 == "Ancient Dragon",
+        getEnemyName 9 == "Mysterious Shadow",
+        getEnemyHealth 1 == 30,
+        getEnemyHealth 2 == 60,
+        getEnemyHealth 3 == 120,
+        getEnemyHealth 9 == 25
+    ]
+    checkAll "adventure room and quest state" [
+        exploreRoom 1 == "the Grand Entrance Hall with marble columns",
+        exploreRoom 2 == "a dusty Library filled with ancient tomes",
+        exploreRoom 3 == "the Armory containing gleaming weapons",
+        exploreRoom 4 == "the Treasure Chamber sparkling with gold",
+        exploreRoom 5 == "the Throne Room where shadows dance",
+        exploreRoom 9 == "a mysterious room filled with swirling mist",
+        getRoomTreasure 1 == 10,
+        getRoomTreasure 2 == 25,
+        getRoomTreasure 3 == 0,
+        getRoomTreasure 4 == 100,
+        getRoomTreasure 5 == 50,
+        getRoomTreasure 9 == 5,
+        hasRoomWeapon 3 == 1,
+        hasRoomWeapon 2 == 0,
+        hasRoomKey 2 == 1,
+        hasRoomKey 3 == 0,
+        afterRoomOne == 60,
+        afterRoomTwo == 85,
+        damage == 60,
+        (getEnemyHealth 3 / damage ?: 0.0) == 2.0,
+        healthAfterOne == 60,
+        healthAfterTwo == 0,
+        defeated == 1,
+        calculatePlayerLevel defeated == 2,
+        getPlayerTitle (calculatePlayerLevel defeated) == "Brave Explorer",
+        rewardBalance == 285,
+        questBalance == 385
+    ]
+test "adventure game preserves branch and progression state" adventureGameCase

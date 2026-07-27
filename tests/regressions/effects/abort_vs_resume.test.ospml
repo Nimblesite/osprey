@@ -51,6 +51,11 @@ aborted =
     in pipeline ()
 print ("aborted result=" + toString aborted)
 
-(** Register the regression scenario with the assertion-driven test runner. *)
-migratedLegacyCase () = checkAll "legacy execution" [true]
-test "regression scenario completes" migratedLegacyCase
+// Verify both continuation policies and their exact operation counts.
+test "resuming completes while returning aborts the pipeline" (\() => checkAll "abort versus resume state" [
+    recovered == 60,
+    counter == 3,
+    aborted == sentinel,
+    counter2 == 2,
+    recovered != aborted
+])

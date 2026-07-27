@@ -55,4 +55,4 @@ OSPREY_TEST_JOBS=1 target/release/osprey test tests
 ```
 
 CI also runs every suite under the tracing GC and ARC memory backends, so moving
-a golden example here does not reduce its backend-conformance coverage.
+an assertion suite here does not reduce its backend-conformance coverage.

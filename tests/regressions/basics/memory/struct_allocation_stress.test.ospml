@@ -36,6 +36,22 @@ bump (p, step) = p(mass = add (p.mass, 1))
 bumped = range 1 COUNT |> fold (forge 1) bump
 print "bumpedMass=${bumped.mass}"
 
-(** Register the regression scenario with the assertion-driven test runner. *)
-migratedLegacyCase () = checkAll "legacy execution" [true]
-test "regression scenario completes" migratedLegacyCase
+(** Verify the aggregate outputs and record transformations used by the stress run. *)
+structAllocationCase () =
+    testTotal = range 1 100000 |> map forge |> map energy |> fold 0 add
+    testHeavyTotal = range 1 100000 |> map forge |> filter heavy |> map energy |> fold 0 add
+    testBumped = range 1 100000 |> fold (forge 1) bump
+    sample = forge 4
+    bumpedOnce = bump (sample, 99)
+    checkAll "struct allocation and aggregate state" [
+        testTotal == 15000050000,
+        testHeavyTotal == 11249875000,
+        testBumped.mass == 100002,
+        sample.id == 4,
+        sample.mass == 12,
+        energy sample == 16,
+        bumpedOnce.mass == 13,
+        !(heavy (forge 50000)),
+        heavy (forge 50001)
+    ]
+test "record allocation preserves aggregate values" structAllocationCase

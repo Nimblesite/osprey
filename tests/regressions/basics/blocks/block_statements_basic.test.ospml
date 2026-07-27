@@ -7,15 +7,16 @@
 print "=== Block Statements ==="
 
 (** --- 1. Block with list access (single statement) --- *)
-r1 =
+listHeadBlock () =
     nums = [42, 84, 126]
     match nums[0]
         Success value => value
         Error message => 0
+r1 = listHeadBlock ()
 print "1 list head: ${r1}"
 
 (** --- 2. Block with map access + multiplication --- *)
-r2 =
+mapProductBlock () =
     config = ["factor" => 2, "base" => 10]
     x = match config["base"]
         Success value => value
@@ -27,11 +28,12 @@ r2 =
     match m
         Success value => value
         Error message => 0
+r2 = mapProductBlock ()
 print "2 map factor*base: ${r2}"
 
 (** --- 3. Nested blocks with shadowing --- *)
 outer = 100
-r3 =
+shadowedBlock () =
     config = ["multiplier" => 2, "offset" => 25]
     outer = match config["offset"]
         Success value => value
@@ -49,6 +51,7 @@ r3 =
     match s
         Success value => value
         Error message => 0
+r3 = shadowedBlock ()
 print "3 shadowed inner+outer: ${r3}"
 
 (** --- 4. Block inside a function --- *)
@@ -65,7 +68,7 @@ compute () =
 print "4 fn block: ${compute ()}"
 
 (** --- 5. 2D list inside a block --- *)
-r5 =
+matrixBlock () =
     matrix = [[1, 2], [3, 4]]
     firstRow = match matrix[0]
         Success value => value
@@ -77,11 +80,12 @@ r5 =
                 Success result => result
                 Error message => 0
         Error message => 0
+r5 = matrixBlock ()
 print "5 2D matrix[0][1]*10: ${r5}"
 
 (** --- 6. Conditional logic via nested match producing a block result --- *)
 value = 42
-r6 =
+conditionalBlock value =
     scoreMap = ["test1" => 84, "test2" => 90]
     doubled = value * 2
     match doubled
@@ -95,10 +99,20 @@ r6 =
                 Error message => 0
             _ => 0
         Error message => 0
+r6 = conditionalBlock value
 print "6 cond match block: ${r6}"
 
 print "=== Done ==="
 
-(** Register the regression scenario with the assertion-driven test runner. *)
-migratedLegacyCase () = checkAll "legacy execution" [true]
-test "regression scenario completes" migratedLegacyCase
+(** Verify every block result, including shadowing and the wildcard branch. *)
+blockStatementsCase () =
+    checkAll "block statement values" [
+        listHeadBlock () == 42,
+        mapProductBlock () == 20,
+        shadowedBlock () == 85,
+        compute () == 30,
+        matrixBlock () == 20,
+        conditionalBlock 42 == 94,
+        conditionalBlock 10 == 0
+    ]
+test "blocks preserve values and lexical scope" blockStatementsCase

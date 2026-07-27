@@ -11,9 +11,9 @@ localResponse (method, path, headers, body) = HttpResponse(
 )
 
 localHttpRoundTrip () =
-    server = httpCreateServer 18108 "127.0.0.1"
+    server = httpCreateServer 18107 "127.0.0.1"
     listening = httpListen server localResponse
-    client = httpCreateClient "http://127.0.0.1:18108" 1000
+    client = httpCreateClient "http://127.0.0.1:18107" 1000
     status = httpGet client "/health" ""
     closed = httpCloseClient client
     stopped = httpStopServer server

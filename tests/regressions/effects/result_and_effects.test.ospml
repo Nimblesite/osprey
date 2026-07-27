@@ -64,6 +64,11 @@ print "local ?: default  10 % 3 -> ${toString localOk}   10 % 0 -> ${toString lo
 print "raw 10 / 0 as a value = ${toString (10 / 0)}"
 print "=== pipeline complete ==="
 
-(** Register the regression scenario with the assertion-driven test runner. *)
-migratedLegacyCase () = checkAll "legacy execution" [true]
-test "regression scenario completes" migratedLegacyCase
+// Verify rescued failures beside healthy Result and local-fallback paths.
+test "fallible arithmetic is recovered without masking healthy results" (\() => checkAll "Result and effect outcomes" [
+    rescues == 3,
+    total == 430,
+    localOk == 1,
+    localBad == ((0 - 1) ?: 0),
+    toString (10 / 0) == "Error(division by zero)"
+])

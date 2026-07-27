@@ -141,6 +141,24 @@ print "Union equality tests:"
 print (compareColors (color1, color2))
 print (compareColors (color1, color3))
 
-(** Register the regression scenario with the assertion-driven test runner. *)
-migratedLegacyCase () = checkAll "legacy execution" [true]
-test "regression scenario completes" migratedLegacyCase
+(** Verify erased values still flow through fields, arguments, and union matches. *)
+anyTypeBehaviorCase () =
+    object = TestType(value = "payload")
+    checkAll "any values and inferred union behavior" [
+        toString (getDynamicValue ()) == "42",
+        toString (processAnyValue 5) == "15",
+        processAny 42 == "Processed any",
+        processAny "hello" == "Processed any",
+        processAny true == "Processed any",
+        getAnyField object == "payload",
+        testArgs (3, "value", false) == "value positive",
+        testArgs (0, "value", true) == "value zero or negative true",
+        getStatusString Active == "active",
+        getStatusString Inactive == "inactive",
+        processSimple A == "Got A",
+        processSimple B == "Got B",
+        processSimple C == "Got C",
+        compareColors (Red, Red) == "Both red",
+        compareColors (Red, Blue) == "Different colors"
+    ]
+test "any values retain usable behavior across typed boundaries" anyTypeBehaviorCase

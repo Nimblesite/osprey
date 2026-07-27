@@ -73,7 +73,7 @@ mut taskCount = 0
 
 handle Persist
     flush snap =>
-        saved = writeFile "/tmp/osprey_tasks.db" snap
+        saved = writeFile "target/osprey_http_state_levels.db" snap
         diskBytes := match saved
             Success value => length snap
             Error message => (0 - 1) ?: 0
@@ -96,6 +96,11 @@ in
     runDemo ()
     0
 
-(** Register the regression scenario with the assertion-driven test runner. *)
-migratedLegacyCase () = checkAll "legacy execution" [true]
-test "regression scenario completes" migratedLegacyCase
+// Verify state mutated through the live server, client, and background fiber.
+test "HTTP requests update every handled state layer" (\() => checkAll "HTTP state levels" [
+    taskCount == 3,
+    requests == 4,
+    diskBytes == 60,
+    contains tasks "#1 welcome to osprey",
+    contains tasks "#3 land the effects PR"
+])

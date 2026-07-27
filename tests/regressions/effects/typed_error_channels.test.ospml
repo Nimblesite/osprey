@@ -66,6 +66,22 @@ combined =
                 total
 print "final combined result = ${toString combined}"
 
-(** Register the regression scenario with the assertion-driven test runner. *)
-migratedLegacyCase () = checkAll "legacy execution" [true]
-test "regression scenario completes" migratedLegacyCase
+(** Apply the strict inner Range policy in isolation. *)
+strictRangeForTest () =
+    handle Range
+        clamp v hi => 1
+    in loadRetries 500 10
+
+(** Apply the ordinary clamping Range policy in isolation. *)
+relaxedRangeForTest () =
+    handle Range
+        clamp v hi => hi
+    in loadRetries 500 10
+
+// Replay Range under two policies and check the composed channel result.
+test "typed error channels compose and restore shadowed handlers" (\() => checkAll "typed channel results" [
+        combined == 40,
+        strictRangeForTest () == 1,
+        relaxedRangeForTest () == 10,
+        strictRangeForTest () != relaxedRangeForTest ()
+])

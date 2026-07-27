@@ -4,8 +4,8 @@
 print("=== Comprehensive HTTP API Test ===")
 
 // Test HTTP server creation
-print("Creating HTTP server on port 8080...")
-let serverId = httpCreateServer(8080, "127.0.0.1")
+print("Creating HTTP server on port 18080...")
+let serverId = httpCreateServer(18080, "127.0.0.1")
 print("Server created with ID: ${serverId}")
 
 /// Define HTTP request handler function - RESTORED TO ORIGINAL GLORY!
@@ -112,11 +112,11 @@ fn handleHttpRequest(method: string, path: string, headers: string, body: string
 // Start the server listening with our comprehensive handler
 print("Starting server listener with callback handler...")
 let listenResult = httpListen(serverId, handleHttpRequest)
-print("Server listening on http://127.0.0.1:8080")
+print("Server listening on http://127.0.0.1:18080")
 
 // Create HTTP client to connect to OUR Osprey server
 print("Creating HTTP client...")
-let clientId = httpCreateClient("http://127.0.0.1:8080", 5000)
+let clientId = httpCreateClient("http://127.0.0.1:18080", 5000)
 print("Client created with ID: ${clientId}")
 
 // Test HTTP methods against our REAL Osprey server
@@ -169,5 +169,16 @@ print("Server stopped with result: ${stopResult}")
 
 print("=== HTTP API Test Complete ===")
 
-// Registers the regression scenario with the assertion-driven test runner.
-test("regression scenario completes", fn() => checkAll("legacy execution", [true]))
+// Verifies every routed method, the error route, and graceful shutdown.
+test("local HTTP API routes every method and status", fn() => checkAll("HTTP API statuses", [
+    serverId > 0,
+    clientId > 0,
+    getUsersResult == 200,
+    getHealthResult == 200,
+    postResult == 201,
+    loginResult == 200,
+    putResult == 200,
+    deleteResult == 200,
+    notFoundResult == 404,
+    stopResult == 0
+]))

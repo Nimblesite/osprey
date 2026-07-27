@@ -107,6 +107,79 @@ in match perform Database.open ":memory:"
     Success value => runApp value
     Error message => print "open ${message}"
 
-(** Register the regression scenario with the assertion-driven test runner. *)
-migratedLegacyCase () = checkAll "legacy execution" [true]
-test "regression scenario completes" migratedLegacyCase
+(** Capture every externally visible result of one handled database interaction. *)
+type DatabaseObservation =
+    createStatus : int
+    insertStatus : int
+    rowStatus : int
+    selectedId : int
+    selectedName : string
+    doneStatus : int
+    finalizeStatus : int
+    closeStatus : int
+
+(** Run application helpers through Database and return immutable evidence. *)
+observeDatabase db =
+    createStatus = perform Database.exec db "CREATE TABLE users(id INTEGER PRIMARY KEY, name TEXT)"
+    insertStatus = seedUser (db, 7, "Grace")
+    query = perform Database.prepare db "SELECT id, name FROM users WHERE id = 7"
+    rowStatus = perform Database.step query
+    selectedId = perform Database.columnInt query 0
+    selectedName = "${perform Database.columnText query 1}"
+    doneStatus = perform Database.step query
+    finalizeStatus = perform Database.finalize query
+    closeStatus = perform Database.close db
+    DatabaseObservation(
+        createStatus = createStatus,
+        insertStatus = insertStatus,
+        rowStatus = rowStatus,
+        selectedId = selectedId,
+        selectedName = selectedName,
+        doneStatus = doneStatus,
+        finalizeStatus = finalizeStatus,
+        closeStatus = closeStatus
+    )
+
+(** Install the real handler and preserve an open failure in the Result channel. *)
+runDatabaseProbe () =
+    handle Database
+        open path => openReal path
+        exec db sql => execReal (db, sql)
+        prepare db sql => prepareReal (db, sql)
+        bindInt stmt idx val => sqlite3_bind_int stmt idx val
+        bindText stmt idx val => sqlite3_bind_text stmt idx val ((0 - 1) ?: 0) (osprey_ffi_transient ())
+        step stmt => sqlite3_step stmt
+        columnInt stmt col => sqlite3_column_int stmt col
+        columnText stmt col => sqlite3_column_text stmt col
+        finalize stmt => sqlite3_finalize stmt
+        close db => sqlite3_close db
+    in match perform Database.open ":memory:"
+        Success value => Success(value = observeDatabase value)
+        Error message => Error(message = message)
+
+(** Report whether the real handler produced an observation instead of an error. *)
+databaseOpened result =
+    match result
+        Success value => true
+        Error message => false
+
+(** Verify the Database capability performs a complete typed SQLite round trip. *)
+databaseEffectCase () =
+    result = runDatabaseProbe ()
+    match result
+        Success value => checkAll "Database effect round trip" [
+            databaseOpened result,
+            value.createStatus == 0,
+            value.insertStatus == 101,
+            value.rowStatus == 100,
+            value.selectedId == 7,
+            value.selectedName == "Grace",
+            value.doneStatus == 101,
+            value.finalizeStatus == 0,
+            value.closeStatus == 0
+        ]
+        Error message => checkAll "Database effect open result" [
+            databaseOpened result,
+            message == ""
+        ]
+test "Database capability binds, queries, and closes through its handler" databaseEffectCase

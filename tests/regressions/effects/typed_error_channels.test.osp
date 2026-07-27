@@ -13,12 +13,12 @@ effect Range {
 }
 
 /// The row scopes these performs; rows are not yet propagated through calls.
-fn loadConfig() ![Parse, Missing, Range] = {
+fn loadConfig() -> int ![Parse, Missing, Range] = {
     let port    = perform Parse.bad("=80=")       // Parse channel: not a number
     let timeout = perform Missing.fill("timeout") // Missing channel: key absent
     let retries = perform Range.clamp(250, 10)    // Range channel: over the max
     print("assembled  -> port=${toString(port)} timeout=${toString(timeout)} retries=${toString(retries)}")
-    port + timeout + retries
+    port + timeout + retries ?: 0
 }
 
 /// This helper declares and performs only Range.
@@ -74,5 +74,16 @@ in {
 }
 print("final combined result = ${toString(combined)}")
 
-// Registers the regression scenario with the assertion-driven test runner.
-test("regression scenario completes", fn() => checkAll("legacy execution", [true]))
+/// Applies the strict inner Range policy in isolation.
+fn strictRangeForTest() = handle Range clamp v hi => 1 in loadRetries(500)(10)
+
+/// Applies the ordinary clamping Range policy in isolation.
+fn relaxedRangeForTest() = handle Range clamp v hi => hi in loadRetries(500)(10)
+
+// Replays Range under two policies and checks the composed channel result.
+test("typed error channels compose and restore shadowed handlers", fn() => checkAll("typed channel results", [
+        combined == 40,
+        strictRangeForTest() == 1,
+        relaxedRangeForTest() == 10,
+        strictRangeForTest() != relaxedRangeForTest()
+]))

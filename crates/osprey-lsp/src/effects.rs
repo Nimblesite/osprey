@@ -10,6 +10,7 @@ use lspkit_vfs::PositionEncoding;
 use osprey_ast::{walk_program, AstVisitor, Expr, Position, Program, Stmt};
 use osprey_syntax::Flavor;
 
+use crate::analysis::{collect_symbols, SymbolInfo};
 use crate::features::nth_line;
 use crate::model::Location;
 use crate::text::{char_width, measure, prefix_to, word_at, WordSpan};
@@ -40,6 +41,7 @@ struct EffectIndex {
     declarations: Vec<Declaration>,
     performs: Vec<Site>,
     handlers: Vec<Site>,
+    effect_symbols: Vec<SymbolInfo>,
 }
 
 /// Hover markdown for an operation declaration, `perform`, or handler arm.
@@ -91,16 +93,29 @@ fn declaration(index: &EffectIndex, uri: &str, id: &OperationId) -> Option<Decla
     index
         .declarations
         .iter()
-        .find(|declaration| declaration.id == *id)
+        .find(|declaration| same_operation(&declaration.id, id))
         .cloned()
         .or_else(|| {
             workspace::siblings(uri).into_iter().find_map(|sibling| {
                 effect_index(&sibling.program)
                     .declarations
                     .into_iter()
-                    .find(|declaration| declaration.id == *id)
+                    .find(|declaration| same_operation(&declaration.id, id))
             })
         })
+}
+
+fn same_operation(left: &OperationId, right: &OperationId) -> bool {
+    left.operation == right.operation
+        && (left.effect == right.effect
+            || qualified_suffix(&left.effect, &right.effect)
+            || qualified_suffix(&right.effect, &left.effect))
+}
+
+fn qualified_suffix(qualified: &str, suffix: &str) -> bool {
+    qualified
+        .strip_suffix(suffix)
+        .is_some_and(|prefix| prefix.ends_with("::"))
 }
 
 fn render_hover(declaration: &Declaration, flavor: Flavor) -> String {
@@ -127,7 +142,7 @@ fn handler_locations(
     index
         .handlers
         .iter()
-        .filter(|site| site.id == *id)
+        .filter(|site| same_operation(&site.id, id))
         .filter_map(|site| site_location(site, source, uri, encoding, flavor))
         .collect()
 }
@@ -255,7 +270,14 @@ fn encoded_column(
 }
 
 fn effect_index(program: &Program) -> EffectIndex {
-    let mut index = EffectIndex::default();
+    let effect_symbols = collect_symbols(program)
+        .into_iter()
+        .filter(|symbol| symbol.ty == "effect")
+        .collect();
+    let mut index = EffectIndex {
+        effect_symbols,
+        ..EffectIndex::default()
+    };
     walk_program(program, &mut index);
     index
 }
@@ -266,14 +288,20 @@ impl AstVisitor for EffectIndex {
             name,
             operations,
             doc,
+            position,
             ..
         } = statement
         else {
             return;
         };
+        let owner = self
+            .effect_symbols
+            .iter()
+            .find(|symbol| symbol.source_name == *name && symbol.position == *position)
+            .map_or(name.as_str(), |symbol| symbol.name.as_str());
         self.declarations
             .extend(operations.iter().map(|operation| Declaration {
-                id: operation_id(name, &operation.name),
+                id: operation_id(owner, &operation.name),
                 ty: operation.ty.clone(),
                 doc: doc.as_ref().map(osprey_ast::DocComment::render_markdown),
                 position: operation.position,
@@ -306,5 +334,62 @@ fn operation_id(effect: &str, operation: &str) -> OperationId {
     OperationId {
         effect: effect.to_owned(),
         operation: operation.to_owned(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[cfg(unix)]
+    mod unix {
+        use super::super::*;
+
+        const CREDIT_PERFORM_LINE: u32 = 90;
+        const CREDIT_PERFORM_COLUMN: u32 = 52;
+        const CREDIT_HANDLER_SPAN: (u32, u32, u32, u32) = (97, 8, 97, 14);
+
+        fn route_document() -> (String, String) {
+            let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../../examples/projects/modules/src");
+            let route = root.join("api/routes.ospml");
+            let source = std::fs::read_to_string(&route).expect("read API routes");
+            (source, format!("file://{}", route.display()))
+        }
+
+        fn credit_hover(source: &str, uri: &str) -> String {
+            let parsed = osprey_syntax::parse_program_for_path(uri, source);
+            operation_hover(
+                &parsed.program,
+                source,
+                uri,
+                CREDIT_PERFORM_LINE,
+                CREDIT_PERFORM_COLUMN,
+                PositionEncoding::Utf16,
+                parsed.flavor,
+            )
+            .expect("resolve the Store declaration in the ledger sibling")
+        }
+
+        fn credit_implementations(source: &str, uri: &str) -> Vec<Location> {
+            implementations(
+                source,
+                uri,
+                CREDIT_PERFORM_LINE,
+                CREDIT_PERFORM_COLUMN,
+                PositionEncoding::Utf16,
+            )
+        }
+
+        #[test]
+        fn effect_navigation_crosses_project_files() {
+            let (source, uri) = route_document();
+            let hover = credit_hover(&source, &uri);
+            assert!(hover.contains("bank::Ledger::Store.credit"), "{hover}");
+            assert!(hover.contains("(int, int, string) => int"), "{hover}");
+            let locations = credit_implementations(&source, &uri);
+            assert_eq!(locations.len(), 1, "{locations:?}");
+            let handler = locations.first().expect("one Store.credit handler");
+            assert!(handler.uri.ends_with("src/main.ospml"), "{handler:?}");
+            assert_eq!(handler.span, CREDIT_HANDLER_SPAN);
+        }
     }
 }

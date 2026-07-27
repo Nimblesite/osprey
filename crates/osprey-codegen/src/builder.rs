@@ -37,6 +37,10 @@ pub struct Codegen {
     cur_lines: Vec<String>,
     cur_block: String,
     scopes: Vec<HashMap<String, Value>>,
+    /// Stable identity of each lexical scope. Sibling blocks have equal depth
+    /// but distinct ids, which ARC last-use bookkeeping must not conflate.
+    scope_ids: Vec<usize>,
+    next_scope_id: usize,
 
     /// Declared parameter names per function, for named-argument ordering.
     pub(crate) fn_params: HashMap<String, Vec<String>>,
@@ -249,6 +253,7 @@ pub(crate) struct SavedFn {
     regs: usize,
     labels: usize,
     scopes: Vec<HashMap<String, Value>>,
+    scope_ids: Vec<usize>,
     /// Stream-fusion stages are per-function: a stage recorded inside a nested
     /// function body must never replay in the suspended function's next loop.
     pending_iter_ops: Vec<crate::iter::IterOp>,
@@ -517,6 +522,8 @@ impl Codegen {
             cur_block: String::from("entry"),
             value_discarded: false,
             scopes: Vec::new(),
+            scope_ids: Vec::new(),
+            next_scope_id: 0,
             fn_params: HashMap::new(),
             extern_ret_types: BTreeSet::new(),
             nullary_singletons: HashMap::new(),
@@ -728,6 +735,7 @@ impl Codegen {
             regs: self.reg_count,
             labels: self.label_count,
             scopes: std::mem::take(&mut self.scopes),
+            scope_ids: std::mem::take(&mut self.scope_ids),
             pending_iter_ops: std::mem::take(&mut self.pending_iter_ops),
             cell_vars: std::mem::take(&mut self.cell_vars),
             cell_slots: std::mem::take(&mut self.cell_slots),
@@ -750,7 +758,7 @@ impl Codegen {
         self.reg_count = 0;
         self.label_count = 0;
         self.cur_lines = vec!["entry:".to_string()];
-        self.scopes = vec![HashMap::new()];
+        self.push_scope();
         self.arc_slot_count = 0;
         saved
     }
@@ -769,6 +777,7 @@ impl Codegen {
         self.reg_count = saved.regs;
         self.label_count = saved.labels;
         self.scopes = saved.scopes;
+        self.scope_ids = saved.scope_ids;
         self.pending_iter_ops = saved.pending_iter_ops;
         self.cell_vars = saved.cell_vars;
         self.cell_slots = saved.cell_slots;
@@ -1170,10 +1179,17 @@ impl Codegen {
 
     pub(crate) fn push_scope(&mut self) {
         self.scopes.push(HashMap::new());
+        self.scope_ids.push(self.next_scope_id);
+        self.next_scope_id = self.next_scope_id.saturating_add(1);
     }
 
     pub(crate) fn pop_scope(&mut self) {
         let _ = self.scopes.pop();
+        let _ = self.scope_ids.pop();
+    }
+
+    pub(crate) fn scope_id(&self) -> Option<usize> {
+        self.scope_ids.last().copied()
     }
 
     pub(crate) fn bind(&mut self, name: impl Into<String>, value: Value) {

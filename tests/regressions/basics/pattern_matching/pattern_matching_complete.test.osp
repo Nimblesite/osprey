@@ -113,5 +113,44 @@ print("good elvis = ${toString(goodElv)}")
 print("ok toString  = ${toString(okCalc)}")
 print("bad toString = ${toString(badDiv)}")
 
-// Registers the regression scenario with the assertion-driven test runner.
-test("regression scenario completes", fn() => checkAll("legacy execution", [true]))
+/// Replays every meaningful branch with value-level assertions.
+fn patternMatchingCase() = {
+    let localAlice = PersonData { name: "Alice", age: 30 }
+    let localCircle = Circle { radius: 5 }
+    let localSquare = Square { x: 3, y: 7 }
+    let personText = match localAlice {
+        PersonData { name, age } => "${name}/${toString(age)}"
+    }
+    let structuralValue = { value: "It worked" }
+    let extracted = structuralValue { value } ? value : "fallback"
+    let divisionFailed = match divide(a: 10, b: 0) {
+        Success { value } => false
+        Error { message } => message != ""
+    }
+    checkAll("literal, union, structural, and Result patterns", [
+        analyze(0) == "Zero",
+        analyze(42) == "The answer to everything!",
+        analyze(7) == "Some other number",
+        isEven(0) == 1,
+        isEven(2) == 1,
+        isEven(4) == 1,
+        isEven(42) == 0,
+        category(100) == "Perfect!",
+        category(85) == "Very Good",
+        category(50) == "Needs Improvement",
+        nested(x: 0, y: 0) == "Both zero",
+        nested(x: 0, y: 3) == "X zero",
+        nested(x: 4, y: 0) == "Y zero",
+        nested(x: 4, y: 5) == "Both other",
+        personText == "Alice/30",
+        describe(localCircle) == "circle r=5",
+        describe(localSquare) == "square (3,7)",
+        shapeKind(localCircle) == "dyn circle",
+        shapeKind(localSquare) == "dyn square",
+        extracted == "It worked",
+        (intDiv(a: 10, b: 5) ?: ((0 - 1) ?: 0)) == 2,
+        divisionFailed,
+        (divide(a: 10, b: 2) ?: 0.0) == 5.0
+    ])
+}
+test("pattern matching selects and preserves every value", patternMatchingCase)

@@ -16,7 +16,7 @@ processEventHandler (processID, eventType, data) =
         _ => print "[UNKNOWN] Process ${toString processID} event ${toString eventType}: ${data}"
 
 print "--- Test 1: Basic Process Spawning ---"
-result1 = spawnProcess "echo 'Hello from async process!'" processEventHandler
+result1 = spawnProcess "echo Hello from async process!" processEventHandler
 match result1
     Success value =>
         print "✓ Process spawned successfully"
@@ -27,7 +27,7 @@ match result1
     Error message => print "✗ Process spawn failed"
 
 print "--- Test 2: Another Process ---"
-result2 = spawnProcess "echo 'Process 2 output'" processEventHandler
+result2 = spawnProcess "echo Process 2 output" processEventHandler
 match result2
     Success value =>
         print "Process 2 spawned successfully"
@@ -37,7 +37,7 @@ match result2
     Error message => print "Process 2 failed"
 
 print "--- Test 3: Error Handling ---"
-result3 = spawnProcess "false" processEventHandler
+result3 = spawnProcess "exit 1" processEventHandler
 match result3
     Success value =>
         exitCode3 = awaitProcess value
@@ -46,7 +46,7 @@ match result3
     Error message => print "✗ Process spawn unexpectedly failed"
 
 print "--- Test 4: ProcessHandle Result toString ---"
-result4 = spawnProcess "echo 'Testing toString'" processEventHandler
+result4 = spawnProcess "echo Testing toString" processEventHandler
 print "ProcessHandle Result toString: ${toString result4}"
 match result4
     Success value =>
@@ -57,6 +57,21 @@ match result4
 print "=== Async Process Management Demo Complete ==="
 print "Note: Process output appears via C runtime callbacks during execution"
 
-(** Register the regression scenario with the assertion-driven test runner. *)
-migratedLegacyCase () = checkAll "legacy execution" [true]
-test "regression scenario completes" migratedLegacyCase
+(** Start fresh processes so the test asserts real wait and cleanup behavior. *)
+asyncProcessLifecycleCase () =
+    successProbe = spawnProcess "exit 0" processEventHandler
+    successExit = match successProbe
+        Success value =>
+            exitCode = awaitProcess value
+            cleanupProcess value
+            exitCode == 0
+        Error message => false
+    failureProbe = spawnProcess "exit 1" processEventHandler
+    failureExit = match failureProbe
+        Success value =>
+            exitCode = awaitProcess value
+            cleanupProcess value
+            exitCode != 0
+        Error message => false
+    checkAll "process wait and cleanup state" [successExit, failureExit]
+test "async processes report successful and failing exits" asyncProcessLifecycleCase

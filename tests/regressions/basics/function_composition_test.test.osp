@@ -193,5 +193,85 @@ print("generic-values: ${applyFunction(value: 33, func: identity)} ${idAlias(7)}
 
 print("=== Function Composition Test Complete ===")
 
-// Registers the regression scenario with the assertion-driven test runner.
-test("regression scenario completes", fn() => checkAll("legacy execution", [true]))
+/// Verifies named, inline, nested, and string-valued function application.
+fn basicCompositionCase() = {
+    let outer = fn(x) => x * 2 ?: 0
+    let inner = fn(y) => outer(y) + 1 ?: 0
+    let exclaimValue = fn(s) => s + "!"
+    checkAll("basic function composition", [
+        applyFunction(value: 10, func: double) == 20,
+        applyFunction(value: 10, func: triple) == 30,
+        applyFunction(value: 10, func: add5) == 15,
+        applyFunction(value: 5, func: square) == 25,
+        inner(5) == 11, exclaimValue("hi") == "hi!",
+        "hi" == "hi", "hi" != "no",
+        "apple" < "zebra", !("zebra" < "apple")
+    ])
+}
+
+/// Verifies escaping captures, function fields, aliases, Results, and generics.
+fn closureCompositionCase() = {
+    let plus5 = makeAdder(5)
+    let plus10 = makeAdder(10)
+    let offset = 100
+    let addOffset = fn(x) => x + offset ?: 0
+    let middleware = wrap(double)
+    let base = 3
+    let nested = fn(x: int) => fn(y: int) => x + y + base
+    let checker = Checker { check: fn(n) => n > 10 }
+    let check = checker.check
+    let alias = double
+    let unwrapped = fn(x) => mkR(x) ?: 0
+    let idAlias = identity
+    checkAll("closure and generic composition", [
+        plus5(3) == 8, plus10(3) == 13, plus5(100) == 105,
+        makeAdder(7)(3) == 10, (makeScaler(3)(7) ?: 0) == 21,
+        applyFunction(value: 11, func: addOffset) == 111,
+        middleware(20) == 41, (nested(10)(20) ?: 0) == 33,
+        check(50), !check(5),
+        applyFunction(value: 21, func: alias) == 42,
+        applyFunction(value: 9, func: unwrapped) == 9,
+        applyFunction(value: 33, func: identity) == 33,
+        idAlias(7) == 7,
+        (alsoDo(21, fn(n) => n * 2) ?: 0) == 42,
+        alsoDo("osp", fn(s) => s + "!") == "osp!"
+    ])
+}
+
+/// Verifies capturing callbacks through map, filter, fold, and chained calls.
+fn iteratorCompositionCase() = {
+    let checker = Checker { check: fn(n) => n > 10 }
+    let predicate = checker.check
+    let evenSum = fold(filter(range(1, 10), fn(x) => (x % 2 ?: 1) == 0), 0, fn(a, b) => a + b ?: 0)
+    let captured = fold(map(range(1, 4), fn(x) => x * 10 + 3 ?: 0), 0, fn(a, b) => a + b ?: 0)
+    let computed = fold(map(range(1, 4), makeAdder(10)), 0, fn(a, b) => a + b ?: 0)
+    let selected = fold(filter(range(8, 13), predicate), 0, fn(a, b) => a + b ?: 0)
+    let tri = fn(a: int) => fn(b: int) => fn(c: int) => a + b + c
+    checkAll("capturing iterator callbacks", [
+        evenSum == 20, captured == 69,
+        computed == 36, selected == 23,
+        (tri(1)(2)(3) ?: 0) == 6
+    ])
+}
+
+/// Verifies handler-owned mutation and closure rebinding inside the test body.
+fn effectCompositionCase() = {
+    mut count = 0
+    handle CounterState
+        increment => { count = count + 1 ?: count }
+    in {
+        perform CounterState.increment()
+        perform CounterState.increment()
+        perform CounterState.increment()
+    }
+    mut rebound = fn(x) => x + 1 ?: 0
+    handle ClosureSlot
+        rebindAdder amount => { rebound = makeAdder(amount) }
+    in { perform ClosureSlot.rebindAdder(40) }
+    checkAll("effect-managed function state", [count == 3, rebound(2) == 42])
+}
+
+test("functions compose across scalar and string values", basicCompositionCase)
+test("closures retain captures through higher-order consumers", closureCompositionCase)
+test("capturing callbacks preserve iterator results", iteratorCompositionCase)
+test("effects own mutation and closure rebinding", effectCompositionCase)

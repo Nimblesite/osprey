@@ -7,8 +7,8 @@
 
 print "=== Comprehensive HTTP API Test ==="
 
-print "Creating HTTP server on port 8080..."
-serverId = httpCreateServer 8080 "127.0.0.1"
+print "Creating HTTP server on port 18080..."
+serverId = httpCreateServer 18080 "127.0.0.1"
 print "Server created with ID: ${serverId}"
 
 handleHttpRequest : string -> string -> string -> string -> HttpResponse
@@ -113,10 +113,10 @@ handleHttpRequest (method, path, headers, body) =
 
 print "Starting server listener with callback handler..."
 listenResult = httpListen serverId handleHttpRequest
-print "Server listening on http://127.0.0.1:8080"
+print "Server listening on http://127.0.0.1:18080"
 
 print "Creating HTTP client..."
-clientId = httpCreateClient "http://127.0.0.1:8080" 5000
+clientId = httpCreateClient "http://127.0.0.1:18080" 5000
 print "Client created with ID: ${clientId}"
 
 print "=== Testing HTTP Methods ==="
@@ -162,6 +162,16 @@ print "Server stopped with result: ${stopResult}"
 
 print "=== HTTP API Test Complete ==="
 
-(** Register the regression scenario with the assertion-driven test runner. *)
-migratedLegacyCase () = checkAll "legacy execution" [true]
-test "regression scenario completes" migratedLegacyCase
+// Verify every routed method, the error route, and graceful shutdown.
+test "local HTTP API routes every method and status" (\() => checkAll "HTTP API statuses" [
+    serverId > 0,
+    clientId > 0,
+    getUsersResult == 200,
+    getHealthResult == 200,
+    postResult == 201,
+    loginResult == 200,
+    putResult == 200,
+    deleteResult == 200,
+    notFoundResult == 404,
+    stopResult == 0
+])

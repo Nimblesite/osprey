@@ -199,5 +199,55 @@ match e1 {
     _ => print("expected EAdd")
 }
 
-// Registers the regression scenario with the assertion-driven test runner.
-test("regression scenario completes", fn() => checkAll("legacy execution", [true]))
+/// Verifies recursive list, map, tree, and mutually-recursive payloads survive unwrapping.
+fn recursiveUnionCase() = {
+    let arrayNumber = JNum { v: 7 }
+    let arrayText = JStr { v: "seven" }
+    let recursiveArray = JArr {
+        items: List() |> listAppend(arrayNumber) |> listAppend(arrayText)
+    }
+    let arrayLength = match recursiveArray {
+        JArr { items } => listLength(items)
+        _ => 0
+    }
+    let arrayHasNumber = match recursiveArray {
+        JArr { items } => listContains(items, arrayNumber)
+        _ => false
+    }
+    let recursiveObject = JObj {
+        entries: Map() |> mapSet("answer", arrayNumber) |> mapSet("word", arrayText)
+    }
+    let objectLength = match recursiveObject {
+        JObj { entries } => mapLength(entries)
+        _ => 0
+    }
+    let objectHasWord = match recursiveObject {
+        JObj { entries } => mapContains(entries, "word")
+        _ => false
+    }
+    let leftChild = Node { value: 2, left: Leaf, right: Node { value: 3, left: Leaf, right: Leaf } }
+    let rightChild = Node { value: 6, left: Leaf, right: Node { value: 7, left: Leaf, right: Leaf } }
+    let recursiveTree = Node { value: 4, left: leftChild, right: rightChild }
+    let expressionArgs = List() |> listAppend(ENum { v: 2 }) |> listAppend(ENum { v: 3 })
+    let recursiveExpression = EBlk { body: SRet { value: EAdd { args: expressionArgs } } }
+    let unwrappedExpression = unwrapRet(unwrapBlk(recursiveExpression))
+    checkAll("recursive union payloads", [
+        describe(recursiveArray) == "arr",
+        arrayLength == 2,
+        arrayHasNumber,
+        describe(recursiveObject) == "obj",
+        objectLength == 2,
+        objectHasWord,
+        label(recursiveTree) == "node",
+        rootVal(recursiveTree) == 4,
+        leftLabel(recursiveTree) == "node",
+        leftRightVal(recursiveTree) == 3,
+        rightRootVal(recursiveTree) == 6,
+        rightRightVal(recursiveTree) == 7,
+        descExpr(recursiveExpression) == "blk",
+        descStmt(unwrapBlk(recursiveExpression)) == "ret",
+        descExpr(unwrappedExpression) == "add",
+        unwrapAddLen(unwrappedExpression) == 2
+    ])
+}
+test("recursive union payloads retain nested tags and values", recursiveUnionCase)

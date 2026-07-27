@@ -28,5 +28,28 @@ print("Error Result toString: ${toString(errorResult)}")  // Should print "Error
 
 print("=== Test Complete ===")
 
-// Registers the regression scenario with the assertion-driven test runner.
-test("regression scenario completes", fn() => checkAll("legacy execution", [true]))
+/// Repeats the real write/read workflow and verifies both Result payloads.
+fn fileWorkflowCase() = {
+    let expected = "Hello, Osprey file I/O!"
+    let written = writeFile("test_output.txt", expected)
+    let readBack = readFile("test_output.txt")
+    let missing = readFile("nonexistent_file_xyz123.txt")
+    let writeMatches = match written {
+        Success { value } => value == byteLength(expected)
+        Error { message } => false
+    }
+    let readMatches = match readBack {
+        Success { value } => value == expected
+        Error { message } => false
+    }
+    let missingFails = match missing {
+        Success { value } => false
+        Error { message } => length(message) > 0
+    }
+    checkAll("file write/read Results", [
+        writeMatches,
+        readMatches,
+        missingFails
+    ])
+}
+test("file workflow persists content and reports missing files", fileWorkflowCase)

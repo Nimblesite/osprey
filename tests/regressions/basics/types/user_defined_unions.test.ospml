@@ -28,6 +28,11 @@ print (describe (Err(message = "missing")))
 print (label Active)
 print (label Inactive)
 
-(** Register the regression scenario with the assertion-driven test runner. *)
-migratedLegacyCase () = checkAll "legacy execution" [true]
-test "regression scenario completes" migratedLegacyCase
+(** Verify payload and payload-free variants dispatch to their matching arms. *)
+userDefinedUnionCase () = checkAll "user-defined union matching" [
+    describe (Ok(value = "loaded")) == "ok: loaded",
+    describe (Err(message = "missing")) == "err: missing",
+    label Active == "active",
+    label Inactive == "inactive"
+]
+test "user-defined union variants preserve their tags and payloads" userDefinedUnionCase

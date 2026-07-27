@@ -84,6 +84,17 @@ shadowed =
 print ("nested resuming " + toString nested + " shadowed resume " + toString shadowed)
 print "=== resume scoping done ==="
 
-(** Register the regression scenario with the assertion-driven test runner. *)
-migratedLegacyCase () = checkAll "legacy execution" [true]
-test "regression scenario completes" migratedLegacyCase
+(** Run the forward-referenced chain under a quiet handler. *)
+forwardResultForTest () =
+    handle Logger
+        log msg => 0
+        debug msg => 0
+    in nestedCall ()
+
+// Re-enter the forward call chain and check nested handler restoration.
+test "nested handlers override locally and restore outer scope" (\() => checkAll "handler scope results" [
+        (forwardResultForTest () ?: 0) == 42,
+        nested == 10,
+        shadowed == 2,
+        nested != shadowed
+])

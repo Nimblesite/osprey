@@ -34,5 +34,18 @@ print(toString(isPositive(5)))
 print(toString(isPositive((0 - 5) ?: 0)))
 print(toString(isPositive(0)))
 
-// Registers the regression scenario with the assertion-driven test runner.
-test("regression scenario completes", fn() => checkAll("legacy execution", [true]))
+/// Verifies every validator at its accepted values and rejected sentinels.
+fn validationPredicatesCase() = checkAll("validation predicate boundaries", [
+    !(notEmpty("")),
+    notEmpty("Osprey"),
+    !(isPositive(0)),
+    isPositive(1),
+    !(isPositive((0 - 1) ?: 0)),
+    !(isValidAge(0)),
+    isValidAge(25),
+    !(isValidAge(200)),
+    !(isValidEmail("")),
+    !(isValidEmail("invalid")),
+    isValidEmail("alice@example.com")
+])
+test("validators reject sentinels and accept valid inputs", validationPredicatesCase)

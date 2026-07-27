@@ -113,5 +113,68 @@ print("${route(method: "DELETE", path: "/anything")}\n")
 print("=== Pipeline Complete ===\n")
 0
 
-// Registers the regression scenario with the assertion-driven test runner.
-test("regression scenario completes", fn() => checkAll("legacy execution", [true]))
+/// Replays the transformation pipeline, fallible operations, and routing branches.
+fn stringPipelineCase() = {
+    let source = "  GET /api/users?name=alice&age=30  "
+    let cleaned = source |> trim |> toLowerCase
+    let splitCount = match split("a,b,c", ",") {
+        Success { value } => listLength(value)
+        Error { message } => (0 - 1) ?: 0
+    }
+    let splitEmptyRejected = match split("anything", "") {
+        Success { value } => false
+        Error { message } => message != ""
+    }
+    let invalidIntegerRejected = match parseInt("oops") {
+        Success { value } => false
+        Error { message } => message != ""
+    }
+    let missingIndexRejected = match indexOf("hello", "xyz") {
+        Success { value } => false
+        Error { message } => message != ""
+    }
+    checkAll("string inspection and transformations", [
+        length(source) == 36,
+        !isEmpty(source),
+        contains(source, "GET"),
+        startsWith(source, "  "),
+        endsWith(source, "  "),
+        source.length() == 36,
+        cleaned == "get /api/users?name=alice&age=30",
+        startsWith(cleaned, "get "),
+        toUpperCase("hello") == "HELLO",
+        trimStart("  hi  ") == "hi  ",
+        trimEnd("  hi  ") == "  hi",
+        join(["a", "b", "c"], "-") == "a-b-c",
+        cleaned |> take(5) == "get /",
+        take("hello", 3) == "hel",
+        drop("hello", 3) == "lo",
+        reverse("abc") == "cba"
+    ])
+    checkAll("fallible string values and collection results", [
+        (indexOf(source, "?") ?: ((0 - 1) ?: 0)) == 16,
+        (substring("hello world", 6, 11) ?: "missing") == "world",
+        (replace("a-b-c-d", "-", "/") ?: "missing") == "a/b/c/d",
+        (repeat("ab", 4) ?: "missing") == "abababab",
+        (padStart("42", 5, "0") ?: "missing") == "00042",
+        (padEnd("42", 5, "0") ?: "missing") == "42000",
+        (parseInt("123") ?: 0) == 123,
+        (parseFloat("3.14") ?: 0.0) == 3.14,
+        listLength(lines("a\nb\nc")) == 3,
+        listLength(words("  hello   world  ")) == 2,
+        splitCount == 3,
+        splitEmptyRejected,
+        invalidIntegerRejected,
+        missingIndexRejected
+    ])
+    checkAll("HTTP routing branches", [
+        route(method: "GET", path: "/health") == "200 ok",
+        route(method: "GET", path: "/api/users/42") == "200 user-detail 42",
+        route(method: "GET", path: "/api/orders") == "200 api-fallback",
+        route(method: "POST", path: "/api/users") == "201 created",
+        route(method: "POST", path: "/other") == "404 not-found",
+        route(method: "GET", path: "/random") == "404 not-found",
+        route(method: "DELETE", path: "/anything") == "405 method-not-allowed"
+    ])
+}
+test("string pipeline preserves transformations and routing", stringPipelineCase)

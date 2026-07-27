@@ -42,22 +42,30 @@ fn run() = {
     let listenResult = httpListen(serverId, handleRequest)
     let clientId = httpCreateClient("http://127.0.0.1:18095", 5000)
     let resp = httpGetResponse(clientId, "/", "")
-    match resp {
+    let summary = match resp {
         Success { value } => {
-            print("status=${httpResponseStatus(value)}")
-            print(bodyLine(h: value))
-            print(headerLine(h: value, name: "X-Demo"))
-            print(headerLine(h: value, name: "Nope"))
-            print(freeLine(h: value))
-            print(freeLine(h: value))
+            let status = httpResponseStatus(value)
+            let body = bodyLine(h: value)
+            let header = headerLine(h: value, name: "X-Demo")
+            let missing = headerLine(h: value, name: "Nope")
+            let freed = freeLine(h: value)
+            let doubleFreed = freeLine(h: value)
+            "${status}|${body}|${header}|${missing}|${freed}|${doubleFreed}"
         }
-        Error { message } => print("reqfail ${message}")
+        Error { message } => "request-error:${message}"
     }
     let closeResult = httpCloseClient(clientId)
     let stopResult = httpStopServer(serverId)
+    summary
 }
 
-run()
-
-// Registers the regression scenario with the assertion-driven test runner.
-test("regression scenario completes", fn() => checkAll("legacy execution", [true]))
+/// Runs the complete response-handle lifecycle and verifies every transition.
+fn responseHandleCase() = {
+    let summary = run()
+    checkAll("response handle lifecycle", [
+        summary == "200|body=hello body|hdr=hi|missing-ok|free-ok|free-err-double",
+        startsWith(summary, "200|body=hello body"),
+        endsWith(summary, "free-err-double")
+    ])
+}
+test("HTTP response handles expose data and reject double free", responseHandleCase)

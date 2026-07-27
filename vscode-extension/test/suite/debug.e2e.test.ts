@@ -38,8 +38,8 @@ const extensionId = "nimblesite.osprey";
 // are load-bearing — the assertions below reference them. Verified against the
 // real lldb on this exact program before it was written.
 const FIXTURE = [
-  "fn square(n) -> int = n * n", // 1
-  "fn addThree(n) -> int = n + 3", // 2
+  "fn square(n) = n * n ?: 0", // 1
+  "fn addThree(n) = n + 3 ?: 0", // 2
   "let first = square(5)", // 3
   "let second = square(7)", // 4
   "let third = addThree(second)", // 5

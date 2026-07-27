@@ -38,7 +38,8 @@ outcome =
             match tries > 3
                 true =>
                     print "attempt ${toString tries}: handler GIVES UP, aborting with sentinel"
-                    (0 - 999) ?: 0
+                    sentinel = (0 - 999) ?: 0
+                    sentinel
                 false =>
                     value = (0 - tries) ?: 0
                     print "attempt ${toString tries}: handler feeds ${toString value}"
@@ -49,6 +50,11 @@ verdict = match outcome > 0
     false => "gave up (sentinel ${toString outcome}) after ${toString (tries - 1)} bad answers"
 print "SCENARIO 2 outcome: ${verdict}"
 
-(** Register the regression scenario with the assertion-driven test runner. *)
-migratedLegacyCase () = checkAll "legacy execution" [true]
-test "regression scenario completes" migratedLegacyCase
+// Verify successful retries and the non-resuming early-exit policy.
+test "retry handlers resume until success or abort at their limit" (\() => checkAll "retry outcomes" [
+    accepted == 7,
+    attempt == 3,
+    outcome == ((0 - 999) ?: 0),
+    tries == 4,
+    contains verdict "after Success(3) bad answers"
+])

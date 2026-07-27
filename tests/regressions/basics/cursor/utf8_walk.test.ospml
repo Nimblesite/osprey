@@ -52,6 +52,29 @@ print mid
 print "=== walk complete ==="
 0
 
-(** Register the regression scenario with the assertion-driven test runner. *)
-migratedLegacyCase () = checkAll "legacy execution" [true]
-test "regression scenario completes" migratedLegacyCase
+(** Check a decoded scalar at a known byte boundary. *)
+codepointIs (s, index, expected) =
+    match codePointAt s index
+        Success value => value == expected
+        Error message => false
+
+(** A byte inside a multi-byte sequence must carry a real diagnostic. *)
+codepointIsRejected (s, index) =
+    match codePointAt s index
+        Success value => false
+        Error message => length message > 0
+
+(** Walk the real sample and verify byte/codepoint boundaries and errors. *)
+utf8WalkCase () =
+    text = sample ()
+    checkAll "UTF-8 recursive walk" [
+        byteLength text == 18,
+        walk (text, 0, 0) == 12,
+        codepointIs (text, 0, 65),
+        codepointIs (text, 1, 233),
+        codepointIs (text, 3, 19990),
+        codepointIs (text, 6, 128512),
+        codepointIs (text, 10, 44),
+        codepointIsRejected (text, 7)
+    ]
+test "UTF-8 walker advances only on scalar boundaries" utf8WalkCase

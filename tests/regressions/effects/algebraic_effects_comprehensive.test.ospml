@@ -25,8 +25,7 @@ doubleValue x = match x * 2
     Success value => value
     Error message => 0
 
-concatenateStrings : string -> string -> string
-concatenateStrings a b = a + b
+concatenateStrings (a, b) = a + b
 
 loggedIncrement message =
     perform Logger.log "Incrementing: ${message}"
@@ -112,7 +111,7 @@ readAndProcessLogFile logFile =
         Error message => content
     processedContent
 
-generateReport reportId data =
+generateReport (reportId, data) =
     reportFile = match "report_" + toString reportId + ".txt"
         Success value => value
         Error message => "report.txt"
@@ -211,6 +210,9 @@ count =
     in bumped ()
 print "Generic Stash: <string> gave ${words}, <int> gave ${count}"
 
-(** Register the regression scenario with the assertion-driven test runner. *)
-migratedLegacyCase () = checkAll "legacy execution" [true]
-test "regression scenario completes" migratedLegacyCase
+// Verify the values produced by every effect family and generic instance.
+test "effect handlers produce and preserve typed results" (\() => checkAll "comprehensive effect results" [
+    words == "stash-words",
+    count == 42,
+    doubleValue 21 == 42
+])

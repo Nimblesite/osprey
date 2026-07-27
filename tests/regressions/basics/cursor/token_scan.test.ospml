@@ -99,6 +99,28 @@ forEachList tokens print
 print "=== Scan Complete ===\n"
 0
 
-(** Register the regression scenario with the assertion-driven test runner. *)
-migratedLegacyCase () = checkAll "legacy execution" [true]
-test "regression scenario completes" migratedLegacyCase
+(** Check a token value at an exact position without hiding index failures. *)
+tokenIs : List int -> int -> int -> bool
+tokenIs (tokens, index, expected) =
+    match listGet tokens index
+        Success value => value == expected
+        Error message => false
+
+(** Verify token boundaries, empty input, and a complete multi-token scan. *)
+tokenScanCase () =
+    scanned = scanAll ("12,345-6789 0!42", 0, (List ()))
+    checkAll "integer cursor scan" [
+        scanInt ("12345abc", 0, 0) == 12345,
+        scanEnd ("12345abc", 0) == 5,
+        scanInt ("777", 0, 0) == 777,
+        scanEnd ("777", 0) == 3,
+        scanInt ("ab42", 0, 0) == 0,
+        nextDigit ("ab42", 0) == 2,
+        scanInt ("ab42", 2, 0) == 42,
+        scanInt ("", 0, 0) == 0,
+        listLength scanned == 5,
+        tokenIs (scanned, 0, 12), tokenIs (scanned, 1, 345),
+        tokenIs (scanned, 2, 6789), tokenIs (scanned, 3, 0),
+        tokenIs (scanned, 4, 42)
+    ]
+test "token scanner finds every integer and boundary" tokenScanCase

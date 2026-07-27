@@ -46,5 +46,15 @@ in {
     print("tuned(37) = ${local}, worker = ${await(worker)}, napped = ${await(idler)}ms")
 }
 
-// Registers the regression scenario with the assertion-driven test runner.
-test("regression scenario completes", fn() => checkAll("legacy execution", [true]))
+/// Runs the tuned computation under the same resumable baseline policy.
+fn tunedForTest(n) = handle Tuning
+    baseline value => resume(fib(sub(value, 2)))
+in tuned(n)
+
+// Verifies recursion, arithmetic helpers, and effectful tuning with small inputs.
+test("profiling workload computes deterministic values", fn() => checkAll("profiling workload", [
+    fib(10) == 55,
+    tunedForTest(10) == 76,
+    add(20, 22) == 42,
+    sub(20, 22) == ((0 - 2) ?: 0)
+]))

@@ -219,5 +219,160 @@ Error   { message } => print("user-msg=${message}\n")
   print("=== Edge Cases Complete ===\n")
   0
 
-// Registers the regression scenario with the assertion-driven test runner.
-test("regression scenario completes", fn() => checkAll("legacy execution", [true]))
+/// Re-evaluates successful boundaries, rejected inputs, cursor values, and payloads.
+fn stringEdgeCase() = {
+    let negativeOne = (0 - 1) ?: 0
+    let substringNegative = match substring("hi", negativeOne, 2) {
+        Success { value } => false
+        Error { message } => message != ""
+    }
+    let substringOverrun = match substring("hi", 0, 99) {
+        Success { value } => false
+        Error { message } => message != ""
+    }
+    let substringInverted = match substring("hi", 2, 0) {
+        Success { value } => false
+        Error { message } => message != ""
+    }
+    let indexMissing = match indexOf("hello", "xyz") {
+        Success { value } => false
+        Error { message } => message != ""
+    }
+    let replaceEmpty = match replace("hello", "", "x") {
+        Success { value } => false
+        Error { message } => message != ""
+    }
+    let repeatNegative = match repeat("ab", negativeOne) {
+        Success { value } => false
+        Error { message } => message != ""
+    }
+    let padStartEmpty = match padStart("hi", 5, "") {
+        Success { value } => false
+        Error { message } => message != ""
+    }
+    let padEndEmpty = match padEnd("hi", 5, "") {
+        Success { value } => false
+        Error { message } => message != ""
+    }
+    let emptyFloat = match parseFloat("") {
+        Success { value } => false
+        Error { message } => message != ""
+    }
+    let trailingFloat = match parseFloat("3.14x") {
+        Success { value } => false
+        Error { message } => message != ""
+    }
+    let spacedFloat = match parseFloat(" 3.14") {
+        Success { value } => false
+        Error { message } => message != ""
+    }
+    let nanFloat = match parseFloat("nan") {
+        Success { value } => false
+        Error { message } => message != ""
+    }
+    let hexFloat = match parseFloat("0x1p2") {
+        Success { value } => false
+        Error { message } => message != ""
+    }
+    let infiniteFloat = match parseFloat("1e9999") {
+        Success { value } => false
+        Error { message } => message != ""
+    }
+    let integerOverflow = match parseInt("99999999999999999999") {
+        Success { value } => false
+        Error { message } => message != ""
+    }
+    let integerLeadingSpace = match parseInt(" 42") {
+        Success { value } => false
+        Error { message } => message != ""
+    }
+    let byteOutOfBounds = match byteAt("héllo", 99) {
+        Success { value } => false
+        Error { message } => message != ""
+    }
+    let codePointMidSequence = match codePointAt("héllo", 2) {
+        Success { value } => false
+        Error { message } => message != ""
+    }
+    let surrogateRejected = match codePointWidth(55296) {
+        Success { value } => false
+        Error { message } => message != ""
+    }
+    let invalidCodePoint = match fromCodePoint(2000000) {
+        Success { value } => false
+        Error { message } => message != ""
+    }
+    let nulCodePoint = match fromCodePoint(0) {
+        Success { value } => false
+        Error { message } => message != ""
+    }
+    let roundTrip = match fromCodePoint(233) {
+        Success { value } => (codePointAt(value, 0) ?: 0) == 233
+        Error { message } => false
+    }
+    let customPayload = match failWith("custom boom") {
+        Success { value } => false
+        Error { message } => message == "custom boom"
+    }
+    let divisionRejected = match 10 / 0 {
+        Success { value } => false
+        Error { message } => message != ""
+    }
+
+    checkAll("total string boundary values", [
+        isEmpty(""),
+        !isEmpty("x"),
+        startsWith("abc", ""),
+        endsWith("abc", ""),
+        !startsWith("hi", "hello"),
+        !endsWith("hi", "hello"),
+        take("hi", (0 - 5) ?: 0) == "",
+        take("hi", 99) == "hi",
+        drop("hi", (0 - 5) ?: 0) == "hi",
+        drop("hi", 99) == "",
+        trim("   ") == "",
+        trim("") == "",
+        (substring("hi", 0, 0) ?: "missing") == "",
+        (substring("hi", 0, 2) ?: "missing") == "hi",
+        (indexOf("hello", "") ?: negativeOne) == 0,
+        (replace("hello", "l", "") ?: "missing") == "heo",
+        (repeat("ab", 0) ?: "missing") == "",
+        (padStart("hi", 1, "x") ?: "missing") == "hi",
+        (padStart("42", 5, "ab") ?: "missing") == "aba42"
+    ])
+    checkAll("rejected string inputs", [
+        substringNegative,
+        substringOverrun,
+        substringInverted,
+        indexMissing,
+        replaceEmpty,
+        repeatNegative,
+        padStartEmpty,
+        padEndEmpty,
+        emptyFloat,
+        trailingFloat,
+        spacedFloat,
+        nanFloat,
+        hexFloat,
+        infiniteFloat,
+        integerOverflow,
+        integerLeadingSpace
+    ])
+    checkAll("cursor values and error payloads", [
+        byteLength("héllo") == 6,
+        (byteAt("héllo", 1) ?: 0) == 195,
+        byteOutOfBounds,
+        (codePointAt("héllo", 1) ?: 0) == 233,
+        codePointMidSequence,
+        (codePointWidth(128512) ?: 0) == 4,
+        surrogateRejected,
+        (fromCodePoint(128512) ?: "missing") == "😀",
+        invalidCodePoint,
+        nulCodePoint,
+        roundTrip,
+        (parseInt("-9223372036854775808") ?: 0) == (((0 - 9223372036854775807) - 1) ?: 0),
+        customPayload,
+        divisionRejected
+    ])
+}
+test("string edge cases preserve values and error payloads", stringEdgeCase)

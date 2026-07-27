@@ -85,5 +85,27 @@ print("findEq('bad_entry_no_equals') = ${findEq("bad_entry_no_equals", 0)}")
 print("=== parser complete ===")
 0
 
-// Registers the regression scenario with the assertion-driven test runner.
-test("regression scenario completes", fn() => checkAll("legacy execution", [true]))
+/// Confirms a successful pair carries the complete key/value rendering.
+fn pairMatches(seg, expected) = match parsePair(seg) {
+    Success { value } => value == expected
+    Error { message } => false
+}
+
+/// Confirms malformed input carries the entry-specific rejection reason.
+fn pairIsRejected(seg) = match parsePair(seg) {
+    Success { value } => false
+    Error { message } => message == "no '=' in entry '${seg}'"
+}
+
+/// Exercises cursor discovery, both Result arms, and recursive reporting.
+fn keyValueParserCase() = checkAll("key/value parser behavior", [
+    semi() == ";", eqByte() == 61,
+    findEq("port=8080", 0) == 4,
+    findEq("bad_entry_no_equals", 0) == notFound(),
+    pairMatches("host=localhost", "key='host' value='localhost'"),
+    pairMatches("empty=", "key='empty' value=''"),
+    pairIsRejected("bad_entry_no_equals"),
+    processAll("a=1;b=2") == 0,
+    processAll("a=1;bad;c=3") == 0
+])
+test("cursor parser preserves values and rejection reasons", keyValueParserCase)

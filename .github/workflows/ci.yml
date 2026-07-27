@@ -94,7 +94,7 @@ jobs:
         run: make _lint
 
       # make test = fail-fast + per-project coverage + threshold enforcement +
-      # differential goldens + the Default/ML assertion corpus under tests/.
+      # the Default/ML assertion corpus under tests/.
       # Thresholds live in coverage-thresholds.json.
       # Xvfb is needed because vscode-extension
       # tests spawn a real VS Code Electron build.
@@ -162,8 +162,8 @@ jobs:
 
       - name: Test example compilation and execution
         run: |
-          target/release/osprey examples/tested/basics/math/comprehensive_math.osp --run
-          target/release/osprey tests/core/feature_composition/feature_omnibus.test.osp --run
+          target/release/osprey test tests/regressions/basics/math/comprehensive_math.test.osp
+          target/release/osprey test tests/core/feature_composition/feature_omnibus.test.osp
 
       - name: Test Web Compiler
         run: |
@@ -180,12 +180,10 @@ jobs:
 
   # ─── Focused compiler gate ──────────────────────────────────────────────────
   # Fast signal on the compiler alone: format + clippy (-D warnings: clippy::all
-  # + pedantic + restriction) + workspace tests + the differential harness —
-  # every examples/tested case run through `osprey --run` must match its
-  # .expectedoutput byte-for-byte (whole-string trim), and the must-reject suite
-  # (examples/failscompilation) must stay within the FC_EXPECTED_ESCAPES ratchet.
+  # + pedantic + restriction) + workspace tests + the complete assertion-driven
+  # Default/ML language corpus.
   rust:
-    name: Rust Compiler (fmt, clippy, test, differential)
+    name: Rust Compiler (fmt, clippy, test, corpus)
     needs: changes
     # Compiler-only gate — irrelevant to website-only PRs, so skip them.
     if: ${{ needs.changes.outputs.code == 'true' }}
@@ -214,8 +212,8 @@ jobs:
 
       - name: Install clang/LLVM, OpenSSL, SQLite and zsh
         # clang links the osprey-emitted IR; libssl-dev/libsqlite3-dev satisfy
-        # the HTTP and FFI-database runtimes the examples link; zsh runs the
-        # differential harness.
+        # the HTTP and FFI-database runtimes the assertion corpus links; zsh
+        # runs its GC and ARC backend harness.
         run: |
           sudo apt-get update
           sudo apt-get install -y clang llvm libssl-dev libsqlite3-dev pkg-config zsh
@@ -236,15 +234,9 @@ jobs:
       - name: Test (workspace)
         run: cargo test --workspace
 
-      - name: Differential golden tests (osprey --run vs .expectedoutput)
-      # Every remaining golden example must pass with zero missing outputs, and
-      # the must-reject ratchet must hold. Assertion suites live under tests/.
-        run: |
-          out=$(zsh crates/diff_examples.sh)
-          echo "$out"
-          echo "$out" | grep -Eq 'FAIL=0 '  || { echo '::error::differential test FAILures'; exit 1; }
-          echo "$out" | grep -Eq 'NOEXP=0 ' || { echo '::error::an example has no .expectedoutput'; exit 1; }
-          echo "$out" | grep -q  'FC_OK'    || { echo '::error::must-reject ratchet exceeded (ill-formed programs accepted)'; exit 1; }
+      - name: Core language assertion corpus (Default + ML)
+        # Fixed-port loopback twins must not contend with one another.
+        run: OSPREY_TEST_JOBS=1 target/release/osprey test tests
 
       # Dead-code gate: fail if any `pub` declaration is unreachable from the
       # osprey binary (hawk::dead_public). Scoped to dead_public only — see the
@@ -311,16 +303,20 @@ jobs:
           node scripts/wasm-smoke.mjs examples/wasm/build/hello.wasm examples/wasm/hello.expectedoutput
           node scripts/wasm-browser-smoke.mjs examples/wasm/build/hello.wasm examples/wasm/hello.expectedoutput
 
-      - name: WebAssembly golden suite (every tested example, wasm vs .expectedoutput)
-        # Compiles every examples/tested/*.osp to wasm and runs it under
-        # Node's WASI, comparing stdout to its .expectedoutput. Examples using a
-        # non-portable feature (fibers/HTTP/SQLite/processes/file I/O/random) link
-        # with an `undefined symbol` and are SKIPped, not failed. Gate: FAIL=0.
+      - name: WebAssembly Data Studio suite (Default + ML)
+        # Both source flavors compile to portable WASI modules and must produce
+        # the same committed manifest under Node and the browser WASI shim.
         run: |
-          out=$(zsh crates/diff_wasm_examples.sh)
-          echo "$out"
-          echo "$out" | grep -Eq 'FAIL=0 '  || { echo '::error::wasm golden suite FAILures'; exit 1; }
-          echo "$out" | grep -Eq 'NOEXP=0 ' || { echo '::error::a tested example has no .expectedoutput'; exit 1; }
+          target/release/osprey examples/wasm/studio.osp --target=wasm32 \
+            --compile -o examples/wasm/build/studio.osp.wasm
+          target/release/osprey examples/wasm/studio.ospml --target=wasm32 \
+            --compile -o examples/wasm/build/studio.ospml.wasm
+          wasm-validate examples/wasm/build/studio.osp.wasm
+          wasm-validate examples/wasm/build/studio.ospml.wasm
+          node scripts/wasm-smoke.mjs examples/wasm/build/studio.osp.wasm examples/wasm/studio.expectedoutput
+          node scripts/wasm-browser-smoke.mjs examples/wasm/build/studio.osp.wasm examples/wasm/studio.expectedoutput
+          node scripts/wasm-smoke.mjs examples/wasm/build/studio.ospml.wasm examples/wasm/studio.expectedoutput
+          node scripts/wasm-browser-smoke.mjs examples/wasm/build/studio.ospml.wasm examples/wasm/studio.expectedoutput
 
   # ─── Website end-to-end (Playwright) ────────────────────────────────────────
   # Builds the site (compiler-free; committed reference docs) and runs the

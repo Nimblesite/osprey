@@ -72,5 +72,25 @@ let job1 = yield 10
 print("Processed ${job1} items")
 print("=== Fiber Example Complete ===")
 
-// Registers the regression scenario with the assertion-driven test runner.
-test("regression scenario completes", fn() => checkAll("legacy execution", [true]))
+/// Verifies the website helpers, pipelines, matches, and fiber result end to end.
+fn websiteExamplesCase() = {
+    let pipedValue = square(double(5))
+    let worker = spawn compute(7)
+    let fiberValue = await(worker)
+    checkAll("website example behavior", [
+        double(21) == 42,
+        square(12) == 144,
+        pipedValue == 100,
+        analyzeNumber(0) == "Zero",
+        analyzeNumber(42) == "The answer!",
+        analyzeNumber(5) == "Something else",
+        getGrade(100) == "Perfect!",
+        getGrade(95) == "Excellent",
+        getGrade(85) == "Very Good",
+        getGrade(75) == "Good",
+        getGrade(50) == "Needs Improvement",
+        compute(11) == 22,
+        fiberValue == 14
+    ])
+}
+test("website snippets produce their documented values", websiteExamplesCase)

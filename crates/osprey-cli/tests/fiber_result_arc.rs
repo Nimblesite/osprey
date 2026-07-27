@@ -114,3 +114,82 @@ print(second)
     );
     Ok(())
 }
+
+#[test]
+fn scalar_return_releases_map_on_nonreading_match_arm_under_arc() -> io::Result<()> {
+    let source = r#"
+fn conditionalBlock(value) = {
+    let scoreMap = { "test1": 84, "test2": 90 }
+    let doubled = value * 2
+    match doubled {
+        Success { dValue } => match dValue {
+            84 => match scoreMap["test1"] {
+                Success { sValue } => {
+                    let added = sValue + 10
+                    match added {
+                        Success { value } => value
+                        Error { message } => 0
+                    }
+                }
+                Error { message } => 0
+            }
+            _ => 0
+        }
+        Error { message } => 0
+    }
+}
+
+test("map branch scalar", fn() => checkAll("map branch scalar", [
+    conditionalBlock(10) == 0
+]))
+"#;
+
+    let output = run_arc(source)?;
+
+    assert!(
+        output.status.success(),
+        "stderr={}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        String::from_utf8_lossy(&output.stderr).contains("[osp-arc] exit: 0 live objects"),
+        "stderr={}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    Ok(())
+}
+
+#[test]
+fn sibling_match_arm_maps_release_independently_under_arc() -> io::Result<()> {
+    let source = r#"
+fn siblingOwner(flag) = match flag {
+    true => {
+        let left = { "left": 1 }
+        mapLength(left)
+    }
+    false => {
+        let right = { "right": 2 }
+        mapLength(right)
+    }
+}
+
+test("sibling owners", fn() => checkAll("sibling owners", [
+    siblingOwner(true) == 1,
+    siblingOwner(false) == 1
+]))
+"#;
+
+    let output = run_arc(source)?;
+
+    assert!(
+        output.status.success(),
+        "stderr={}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        String::from_utf8_lossy(&output.stderr).contains("[osp-arc] exit: 0 live objects"),
+        "stderr={}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    Ok(())
+}

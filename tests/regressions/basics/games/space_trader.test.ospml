@@ -259,6 +259,90 @@ print "🌟 Your trading empire awaits! 🌟"
 print "End of Galactic Trade Simulation"
 print "Thank you for playing Osprey Space Trader!"
 
-(** Register the regression scenario with the assertion-driven test runner. *)
-migratedLegacyCase () = checkAll "legacy execution" [true]
-test "regression scenario completes" migratedLegacyCase
+(** Replay the trading ledger and validate every market and status branch. *)
+spaceTraderCase () =
+    costOne = calculateCargoValue (10, getResourcePrice 1)
+    creditsOne = (1000 - costOne) ?: 1000
+    cargoOne = (0 + 10) ?: 0
+    fuelOne = (100 - calculateTravelCost 2) ?: 100
+    sellPriceOne = (getResourcePrice 1 + 25) ?: getResourcePrice 1
+    revenueOne = calculateCargoValue (10, sellPriceOne)
+    creditsTwo = (creditsOne + revenueOne) ?: creditsOne
+    cargoTwo = (cargoOne - 10) ?: cargoOne
+    costTwo = calculateCargoValue (15, getResourcePrice 2)
+    creditsThree = (creditsTwo - costTwo) ?: creditsTwo
+    cargoThree = (cargoTwo + 15) ?: cargoTwo
+    fuelTwo = (fuelOne - calculateTravelCost 3) ?: fuelOne
+    sellPriceTwo = (getResourcePrice 2 + 30) ?: getResourcePrice 2
+    revenueTwo = calculateCargoValue (15, sellPriceTwo)
+    creditsFour = (creditsThree + revenueTwo) ?: creditsThree
+    cargoFour = (cargoThree - 15) ?: cargoThree
+    profit = (creditsFour - 1000) ?: 0
+    projected = (creditsFour * 2) ?: creditsFour
+
+    checkAll "space trader branch tables" [
+        getResourcePrice 1 == 50,
+        getResourcePrice 2 == 25,
+        getResourcePrice 3 == 75,
+        getResourcePrice 4 == 100,
+        getResourcePrice 5 == 30,
+        getResourcePrice 9 == 10,
+        getResourceName 1 == "Quantum Crystals",
+        getResourceName 2 == "Space Metal",
+        getResourceName 3 == "Exotic Spices",
+        getResourceName 4 == "Rare Artifacts",
+        getResourceName 5 == "Energy Cells",
+        getResourceName 9 == "Common Minerals",
+        getPlanetName 1 == "Nebula Prime",
+        getPlanetName 2 == "Crystal Moon",
+        getPlanetName 3 == "Trade Station Alpha",
+        getPlanetName 4 == "Asteroid Mining Base",
+        getPlanetName 5 == "Galactic Hub",
+        getPlanetName 9 == "Unknown Sector",
+        getPlanetSpecialty 1 == 1,
+        getPlanetSpecialty 2 == 2,
+        getPlanetSpecialty 3 == 3,
+        getPlanetSpecialty 4 == 4,
+        getPlanetSpecialty 5 == 5,
+        getPlanetSpecialty 9 == 6,
+        calculateTravelCost 1 == 10,
+        calculateTravelCost 2 == 20,
+        calculateTravelCost 3 == 30,
+        calculateTravelCost 4 == 40,
+        calculateTravelCost 9 == 50
+    ]
+    checkAll "space trader ledger and ship state" [
+        getReputationTitle 0 == "Unknown Trader",
+        getReputationTitle 1 == "Novice Merchant",
+        getReputationTitle 2 == "Skilled Trader",
+        getReputationTitle 3 == "Master Merchant",
+        getReputationTitle 4 == "Trade Baron",
+        getReputationTitle 9 == "Galactic Legend",
+        getShipStatus 100 == "Excellent",
+        getShipStatus 75 == "Good",
+        getShipStatus 50 == "Fair",
+        getShipStatus 25 == "Low",
+        getShipStatus 10 == "Critical",
+        calculateCargoValue (10, 50) == 500,
+        calculateCargoValue (9223372036854775807, 2) == 0,
+        costOne == 500,
+        creditsOne == 500,
+        cargoOne == 10,
+        fuelOne == 80,
+        sellPriceOne == 75,
+        revenueOne == 750,
+        creditsTwo == 1250,
+        cargoTwo == 0,
+        costTwo == 375,
+        creditsThree == 875,
+        cargoThree == 15,
+        fuelTwo == 50,
+        sellPriceTwo == 55,
+        revenueTwo == 825,
+        creditsFour == 1700,
+        cargoFour == 0,
+        profit == 700,
+        getShipStatus fuelTwo == "Fair",
+        projected == 3400
+    ]
+test "space trading preserves market, ledger, and ship state" spaceTraderCase

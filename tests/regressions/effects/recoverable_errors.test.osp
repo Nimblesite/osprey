@@ -63,5 +63,17 @@ in fulfill(happyBatch)(start)
 let happyFilled = start - happyFinal
 print("HAPPY done: recovered ${happyCount} orders, fulfilled ${happyFilled} units, ${happyFinal} left in stock\n=== all three batches completed ===")
 
-// Registers the regression scenario with the assertion-driven test runner.
-test("regression scenario completes", fn() => checkAll("legacy execution", [true]))
+// Verifies skip, cap, and happy-path recovery policies independently.
+test("recovery policies substitute values without stopping traversal", fn() => checkAll("recovery policy results", [
+    skipCount == 2,
+    skipFinal == 1,
+    (skipFilled ?: 0) == 19,
+    contains(skipReason, "skipped 30"),
+    capCount == 4,
+    capFinal == 0,
+    (capFilled ?: 0) == 20,
+    contains(capReason, "capped 30 to 14"),
+    happyCount == 0,
+    happyFinal == 6,
+    (happyFilled ?: 0) == 14
+]))

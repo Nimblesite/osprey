@@ -47,5 +47,17 @@ print("── signup: Owen ──" + audit("Owen", 34, 88, "owen@example.com"))
 // (c) A partial failure — proves the count is exact, not all-or-nothing.
 print("── signup: blank ──" + audit("", 40, 60, ""))
 
-// Registers the regression scenario with the assertion-driven test runner.
-test("regression scenario completes", fn() => checkAll("legacy execution", [true]))
+/// Verifies exact collection counts, order, and the zero-error branch.
+fn collectAllErrorsCase() = {
+    let nadia = audit("", (0 - 3) ?: 0, 250, "nadia_at_example.com")
+    let owen = audit("Owen", 34, 88, "owen@example.com")
+    let blank = audit("", 40, 60, "")
+    checkAll("collected validation state", [
+        contains(nadia, "#1 name is empty"),
+        contains(nadia, "#4 email is missing '@'"),
+        contains(nadia, "REJECTED (4 errors"),
+        contains(owen, "ACCEPTED (0 errors)"),
+        contains(blank, "REJECTED (3 errors")
+    ])
+}
+test("validation collects every error in field order", collectAllErrorsCase)

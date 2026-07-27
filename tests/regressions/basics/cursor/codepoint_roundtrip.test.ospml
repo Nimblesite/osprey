@@ -97,6 +97,44 @@ match byteAt "é" 1
 print "=== codepoint roundtrip complete ===\n"
 0
 
-(** Register the regression scenario with the assertion-driven test runner. *)
-migratedLegacyCase () = checkAll "legacy execution" [true]
-test "regression scenario completes" migratedLegacyCase
+(** Return whether encoding, decoding, and width calculation agree for a scalar. *)
+scalarRoundTrips cp =
+    match fromCodePoint cp
+        Success value =>
+            match codePointAt value 0
+                Success decoded => decoded == cp && widthMatches (cp, value)
+                Error message => false
+        Error message => false
+
+(** Check one width band without defaulting an unexpected Error. *)
+widthIs (cp, expected) =
+    match codePointWidth cp
+        Success value => value == expected
+        Error message => false
+
+(** Invalid scalars must return a non-empty diagnostic. *)
+scalarIsRejected cp =
+    match fromCodePoint cp
+        Success value => false
+        Error message => length message > 0
+
+(** Raw-byte access must expose the exact encoded byte. *)
+byteIs (s, index, expected) =
+    match byteAt s index
+        Success value => value == expected
+        Error message => false
+
+(** Verify all UTF-8 widths, invalid scalar handling, and raw byte access. *)
+codepointRoundTripCase () =
+    checkAll "Unicode cursor round trips" [
+        scalarRoundTrips 1, scalarRoundTrips 233,
+        scalarRoundTrips 19990, scalarRoundTrips 128512,
+        widthIs (127, 1), widthIs (2047, 2),
+        widthIs (65535, 3), widthIs (1114111, 4),
+        scalarIsRejected 55296, scalarIsRejected 57343,
+        scalarIsRejected 1114112,
+        byteIs ("é", 0, 195), byteIs ("é", 1, 169),
+        roundTrip 65 == 0, roundTrip 55296 == 0,
+        rejectInvalid 55296 == 0
+    ]
+test "Unicode scalars survive encode and decode" codepointRoundTripCase

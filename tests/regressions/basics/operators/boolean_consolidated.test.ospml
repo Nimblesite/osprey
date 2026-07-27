@@ -87,6 +87,35 @@ print label
 
 print "=== Boolean Test Complete ==="
 
-(** Register the regression scenario with the assertion-driven test runner. *)
-migratedLegacyCase () = checkAll "legacy execution" [true]
-test "regression scenario completes" migratedLegacyCase
+(** Exercise literals, comparison families, composition, and both short-circuit paths. *)
+booleanBehaviorCase () =
+    leftShortCircuits = !(false && reportTrue ())
+    rightShortCircuits = true || reportTrue ()
+    localParity = match 4
+        0 => false
+        4 => true
+        _ => false
+    localLabel = match 3 < 5
+        true => "yes"
+        false => "no"
+    checkAll "boolean operators and branches" [
+        getTrue (),
+        !(getFalse ()),
+        isEqual (5, 5),
+        !(isEqual (5, 6)),
+        !(xor (true, true)),
+        xor (true, false),
+        !(xor (false, false)),
+        leftShortCircuits,
+        rightShortCircuits,
+        !(true && false),
+        true || false,
+        !(true && false) == ((!true) || (!false)),
+        !(true || false) == ((!true) && (!false)),
+        (5 > 3) && (10 == 10),
+        1.5 < 2.5,
+        "apple" < "banana",
+        localParity,
+        localLabel == "yes"
+    ]
+test "boolean operators preserve values and short-circuiting" booleanBehaviorCase

@@ -54,6 +54,26 @@ print computed.y
 
 print "=== RECORD UPDATE BASIC TESTS COMPLETE ==="
 
-(** Register the regression scenario with the assertion-driven test runner. *)
-migratedLegacyCase () = checkAll "legacy execution" [true]
-test "regression scenario completes" migratedLegacyCase
+(** Verify updates replace selected fields without mutating their source record. *)
+recordUpdateCase () =
+    original = Point(x = 10, y = 20)
+    moved = original(x = 30)
+    replaced = original(x = 50, y = 60)
+    person = Person(name = "Alice", age = 25)
+    olderPerson = person(age = 26)
+    computedPoint = original(x = original.y, y = original.x)
+    checkAll "non-destructive record updates" [
+        original.x == 10,
+        original.y == 20,
+        moved.x == 30,
+        moved.y == 20,
+        replaced.x == 50,
+        replaced.y == 60,
+        person.name == "Alice",
+        person.age == 25,
+        olderPerson.name == "Alice",
+        olderPerson.age == 26,
+        computedPoint.x == 20,
+        computedPoint.y == 10
+    ]
+test "record updates preserve the source and untouched fields" recordUpdateCase

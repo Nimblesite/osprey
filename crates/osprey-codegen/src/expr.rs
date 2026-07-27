@@ -210,36 +210,11 @@ fn gen_arith_propagating(cg: &mut Codegen, op: &str, l: Value, r: Value) -> Resu
     let Some((bad, msg)) = operand_error(cg, &l, &r) else {
         return gen_arith(cg, op, l, r);
     };
-    let (bad_bb, good_bb, end) = (cg.fresh_label(), cg.fresh_label(), cg.fresh_label());
-    cg.emit(format!("br i1 {bad}, label %{bad_bb}, label %{good_bb}"));
-
-    cg.start_block(&good_bb);
-    let lv = crate::result::unwrap(cg, l);
-    let rv = crate::result::unwrap(cg, r);
-    let value = gen_arith(cg, op, lv, rv)?;
-    let inner = value.result_inner.unwrap_or(value.ty);
-    let ok = match value.result_inner {
-        // A fallible operation already produced the wrapper; an otherwise-plain
-        // operation needs one because this expression inherited an operand's
-        // error channel.
-        Some(_) => value,
-        None => crate::result::make_ok(cg, value, inner)?,
-    };
-    let okb = cg.snapshot_to(&end);
-
-    cg.start_block(&bad_bb);
-    let zero = Value::new(crate::llty::zero_literal(inner), inner);
-    let err = crate::result::make_result(cg, zero, inner, "1", &msg)?;
-    let errb = cg.snapshot_to(&end);
-
-    cg.start_block(&end);
-    let reg = cg.emit_reg(format!(
-        "phi {0}* [ {1}, %{okb} ], [ {2}, %{errb} ]",
-        crate::llty::result_struct_ty(inner),
-        ok.operand,
-        err.operand
-    ));
-    Ok(Value::result(reg, inner))
+    gen_propagated_result(cg, &bad, &msg, |cg| {
+        let lv = crate::result::unwrap(cg, l);
+        let rv = crate::result::unwrap(cg, r);
+        gen_arith(cg, op, lv, rv)
+    })
 }
 
 /// The "an operand already failed" flag and the message to carry onward, or
@@ -541,21 +516,62 @@ fn gen_guarded_with_message(
     ok_value: impl FnOnce(&mut Codegen) -> String,
 ) -> Result<Value> {
     use crate::result::{make_result, NO_MSG};
-    let (bad_bb, good_bb, end) = (cg.fresh_label(), cg.fresh_label(), cg.fresh_label());
-    cg.emit(format!("br i1 {bad}, label %{bad_bb}, label %{good_bb}"));
-
-    cg.start_block(&good_bb);
+    let guard = open_result_guard(cg, bad);
     let value = ok_value(cg);
     let ok = make_result(cg, Value::new(value, inner), inner, "0", NO_MSG)?;
-    let okb = cg.snapshot_to(&end);
+    finish_result_guard(cg, &guard, &ok, Value::new(zero, inner), message)
+}
 
-    cg.start_block(&bad_bb);
-    let err = make_result(cg, Value::new(zero, inner), inner, "1", message)?;
-    let errb = cg.snapshot_to(&end);
+struct ResultGuard {
+    bad: String,
+    end: String,
+}
 
-    cg.start_block(&end);
+fn open_result_guard(cg: &mut Codegen, bad: &str) -> ResultGuard {
+    let (bad_block, good_block, end) = (cg.fresh_label(), cg.fresh_label(), cg.fresh_label());
+    cg.emit(format!(
+        "br i1 {bad}, label %{bad_block}, label %{good_block}"
+    ));
+    cg.start_block(&good_block);
+    ResultGuard {
+        bad: bad_block,
+        end,
+    }
+}
+
+fn gen_propagated_result(
+    cg: &mut Codegen,
+    bad: &str,
+    message: &str,
+    success: impl FnOnce(&mut Codegen) -> Result<Value>,
+) -> Result<Value> {
+    let guard = open_result_guard(cg, bad);
+    let value = success(cg)?;
+    let (ok, inner) = if let Some(inner) = value.result_inner {
+        (value, inner)
+    } else {
+        let inner = value.ty;
+        (crate::result::make_ok(cg, value, inner)?, inner)
+    };
+    let zero = Value::new(crate::llty::zero_literal(inner), inner);
+    finish_result_guard(cg, &guard, &ok, zero, message)
+}
+
+fn finish_result_guard(
+    cg: &mut Codegen,
+    guard: &ResultGuard,
+    ok: &Value,
+    zero: Value,
+    message: &str,
+) -> Result<Value> {
+    let inner = zero.ty;
+    let ok_block = cg.snapshot_to(&guard.end);
+    cg.start_block(&guard.bad);
+    let err = crate::result::make_result(cg, zero, inner, "1", message)?;
+    let err_block = cg.snapshot_to(&guard.end);
+    cg.start_block(&guard.end);
     let reg = cg.emit_reg(format!(
-        "phi {0}* [ {1}, %{okb} ], [ {2}, %{errb} ]",
+        "phi {0}* [ {1}, %{ok_block} ], [ {2}, %{err_block} ]",
         crate::llty::result_struct_ty(inner),
         ok.operand,
         err.operand
@@ -664,33 +680,10 @@ fn gen_unary_propagating(
 
     let bad = result_failed(cg, &value);
     let msg = crate::result::load_errmsg(cg, &value);
-    let (bad_bb, good_bb, end) = (cg.fresh_label(), cg.fresh_label(), cg.fresh_label());
-    cg.emit(format!("br i1 {bad}, label %{bad_bb}, label %{good_bb}"));
-
-    cg.start_block(&good_bb);
-    let payload = crate::result::unwrap(cg, value);
-    let generated = operation(cg, payload)?;
-    let inner = generated.result_inner.unwrap_or(generated.ty);
-    let ok = if generated.result_inner.is_some() {
-        generated
-    } else {
-        crate::result::make_ok(cg, generated, inner)?
-    };
-    let okb = cg.snapshot_to(&end);
-
-    cg.start_block(&bad_bb);
-    let zero = Value::new(crate::llty::zero_literal(inner), inner);
-    let err = crate::result::make_result(cg, zero, inner, "1", &msg.operand)?;
-    let errb = cg.snapshot_to(&end);
-
-    cg.start_block(&end);
-    let reg = cg.emit_reg(format!(
-        "phi {0}* [ {1}, %{okb} ], [ {2}, %{errb} ]",
-        crate::llty::result_struct_ty(inner),
-        ok.operand,
-        err.operand
-    ));
-    Ok(Value::result(reg, inner))
+    gen_propagated_result(cg, &bad, &msg.operand, |cg| {
+        let payload = crate::result::unwrap(cg, value);
+        operation(cg, payload)
+    })
 }
 
 /// Unary numeric negation on an already-unwrapped value. IEEE-754 negation is

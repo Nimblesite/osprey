@@ -22,5 +22,11 @@ print(describe(Err { message: "missing" }))
 print(label(Active))
 print(label(Inactive))
 
-// Registers the regression scenario with the assertion-driven test runner.
-test("regression scenario completes", fn() => checkAll("legacy execution", [true]))
+/// Verifies payload and payload-free variants dispatch to their matching arms.
+fn userDefinedUnionCase() = checkAll("user-defined union matching", [
+    describe(Ok { value: "loaded" }) == "ok: loaded",
+    describe(Err { message: "missing" }) == "err: missing",
+    label(Active) == "active",
+    label(Inactive) == "inactive"
+])
+test("user-defined union variants preserve their tags and payloads", userDefinedUnionCase)

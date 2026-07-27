@@ -80,6 +80,39 @@ cleanup = osprey_ffi_free dbCell
 closed = sqlite3_close db
 print "closed ${okText closed}"
 
-(** Register the regression scenario with the assertion-driven test runner. *)
-migratedLegacyCase () = checkAll "legacy execution" [true]
-test "regression scenario completes" migratedLegacyCase
+(** Verify generic FFI pointer cells, bound parameters, and typed row access. *)
+sqliteRoundTripCase () =
+    testCell = osprey_ffi_cell ()
+    testOpen = sqlite3_open ":memory:" testCell
+    testDb = osprey_ffi_deref testCell
+    testDdl = sqlite3_exec testDb "CREATE TABLE users(id INTEGER PRIMARY KEY, name TEXT)" (osprey_ffi_null ()) (osprey_ffi_null ()) (osprey_ffi_null ())
+    testInsert = insertUser (testDb, 7, "Grace")
+    testQuery = prepare (testDb, "SELECT id, name FROM users WHERE id = 7")
+    testRow = sqlite3_step testQuery
+    selectedId = sqlite3_column_int testQuery 0
+    selectedName = "${sqlite3_column_text testQuery 1}"
+    testDone = sqlite3_step testQuery
+    testFinalized = sqlite3_finalize testQuery
+    testClosed = sqlite3_close testDb
+    testFreed = osprey_ffi_free testCell
+    // Opening, schema creation, and status rendering agree on SQLITE_OK.
+    checkAll "SQLite setup status" [
+        testOpen == 0,
+        okText testOpen == "ok",
+        testDdl == 0
+    ]
+    // Bound parameters produce SQLITE_DONE and the expected typed row.
+    checkAll "SQLite bound row" [
+        testInsert == 101,
+        testRow == 100,
+        selectedId == 7,
+        selectedName == "Grace",
+        testDone == 101
+    ]
+    // Statements, connections, and generic pointer cells all release cleanly.
+    checkAll "SQLite cleanup status" [
+        testFinalized == 0,
+        testClosed == 0,
+        testFreed == 0
+    ]
+test "SQLite FFI binds and reads a typed row" sqliteRoundTripCase

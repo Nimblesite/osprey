@@ -130,15 +130,21 @@ fn discover(path: &Path) -> Vec<PathBuf> {
 }
 
 fn is_test_file(path: &Path) -> bool {
-    path.file_name()
-        .and_then(|name| name.to_str())
-        .is_some_and(|name| name.ends_with(".test.osp") || name.ends_with(".test.ospml"))
+    matches_file_name(path, |name| {
+        name.ends_with(".test.osp") || name.ends_with(".test.ospml")
+    })
 }
 
 fn skipped_dir_entry(path: &Path) -> bool {
+    matches_file_name(path, |name| {
+        name.starts_with('.') || name == "target" || name == "node_modules"
+    })
+}
+
+fn matches_file_name(path: &Path, predicate: impl FnOnce(&str) -> bool) -> bool {
     path.file_name()
         .and_then(|name| name.to_str())
-        .is_some_and(|name| name.starts_with('.') || name == "target" || name == "node_modules")
+        .is_some_and(predicate)
 }
 
 fn visit(dir: &Path, out: &mut Vec<PathBuf>) {
@@ -460,20 +466,23 @@ mod tests {
     }
 
     #[test]
-    fn only_test_suffixed_files_are_recognized() {
+    fn test_paths_are_classified() {
         // [TESTING-FILE-CONVENTION] both flavor suffixes are exact.
-        assert!(is_test_file(Path::new("money.test.osp")));
-        assert!(is_test_file(Path::new("json.test.ospml")));
-        assert!(!is_test_file(Path::new("money.osp")));
-        assert!(!is_test_file(Path::new("notes.txt")));
-    }
-
-    #[test]
-    fn hidden_target_and_node_modules_directories_are_skipped() {
-        assert!(skipped_dir_entry(Path::new("proj/.git")));
-        assert!(skipped_dir_entry(Path::new("proj/target")));
-        assert!(skipped_dir_entry(Path::new("proj/node_modules")));
-        assert!(!skipped_dir_entry(Path::new("proj/src")));
+        let file_rule: fn(&Path) -> bool = is_test_file;
+        let skip_rule: fn(&Path) -> bool = skipped_dir_entry;
+        let cases = [
+            (file_rule, "money.test.osp", true),
+            (file_rule, "json.test.ospml", true),
+            (file_rule, "money.osp", false),
+            (file_rule, "notes.txt", false),
+            (skip_rule, "proj/.git", true),
+            (skip_rule, "proj/target", true),
+            (skip_rule, "proj/node_modules", true),
+            (skip_rule, "proj/src", false),
+        ];
+        for (rule, path, expected) in cases {
+            assert_eq!(rule(Path::new(path)), expected, "{path}");
+        }
     }
 
     #[test]

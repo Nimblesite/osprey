@@ -6,7 +6,7 @@ effect Prompt {
 }
 
 /// Each invalid value causes a fresh Prompt.ask operation.
-fn readPositive(label) -> int !Prompt = {
+fn readPositive(label: string) -> int !Prompt = {
     let value = perform Prompt.ask(label)
     match value > 0 {
         true => value
@@ -58,5 +58,11 @@ let verdict = match outcome > 0 {
 }
 print("SCENARIO 2 outcome: ${verdict}")
 
-// Registers the regression scenario with the assertion-driven test runner.
-test("regression scenario completes", fn() => checkAll("legacy execution", [true]))
+// Verifies successful retries and the non-resuming early-exit policy.
+test("retry handlers resume until success or abort at their limit", fn() => checkAll("retry outcomes", [
+    accepted == 7,
+    attempt == 3,
+    outcome == ((0 - 999) ?: 0),
+    tries == 4,
+    contains(verdict, "after Success(3) bad answers")
+]))

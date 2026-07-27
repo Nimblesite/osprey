@@ -20,7 +20,7 @@ fn processEventHandler(processID: int, eventType: int, data: string) = {
 
 // Test 1: Simple stdout callback demo
 print("--- Test 1: Basic Stdout Callback ---")
-let result1 = spawnProcess("echo 'Hello from callback!'", processEventHandler)
+let result1 = spawnProcess("echo Hello from callback!", processEventHandler)
 match result1 {
     Success { value } => {
         print("✓ Process spawned with ID: ${toString(value)}")
@@ -34,7 +34,7 @@ match result1 {
 
 // Test 2: Multiple output lines callback demo
 print("--- Test 2: Multiple Lines Callback ---")
-let result2 = spawnProcess("printf 'Line 1\\nLine 2\\nLine 3\\n'", processEventHandler)
+let result2 = spawnProcess("echo Line 1 && echo Line 2 && echo Line 3", processEventHandler)
 match result2 {
     Success { value } => {
         print("✓ Multi-line process spawned with ID: ${toString(value)}")
@@ -47,7 +47,7 @@ match result2 {
 
 // Test 3: Error process callback demo
 print("--- Test 3: Error Process Callback ---")
-let result3 = spawnProcess("ls /nonexistent/directory", processEventHandler)
+let result3 = spawnProcess("echo Expected failure 1>&2 && exit 1", processEventHandler)
 match result3 {
     Success { value } => {
         print("✓ Error process spawned with ID: ${toString(value)}")
@@ -61,5 +61,26 @@ match result3 {
 print("=== CALLBACK DEMO COMPLETE ===")
 print("The [CALLBACK] lines above show C runtime calling into Osprey!")
 
-// Registers the regression scenario with the assertion-driven test runner.
-test("regression scenario completes", fn() => checkAll("legacy execution", [true]))
+/// Drives stdout, exit callbacks, waits, and cleanup from inside the test body.
+fn callbackLifecycleCase() = {
+    let outputProbe = spawnProcess("echo asserted callback output", processEventHandler)
+    let outputCompleted = match outputProbe {
+        Success { value } => {
+            let exitCode = awaitProcess(value)
+            cleanupProcess(value)
+            exitCode == 0
+        }
+        Error { message } => false
+    }
+    let errorProbe = spawnProcess("echo asserted callback error 1>&2 && exit 1", processEventHandler)
+    let errorCompleted = match errorProbe {
+        Success { value } => {
+            let exitCode = awaitProcess(value)
+            cleanupProcess(value)
+            exitCode == 1
+        }
+        Error { message } => false
+    }
+    checkAll("callback process lifecycle state", [outputCompleted, errorCompleted])
+}
+test("callbacks accompany successful and failing process exits", callbackLifecycleCase)

@@ -55,5 +55,11 @@ let aborted = handle Step
 in pipeline()
 print("aborted result=" + toString(aborted))
 
-// Registers the regression scenario with the assertion-driven test runner.
-test("regression scenario completes", fn() => checkAll("legacy execution", [true]))
+// Verifies both continuation policies and their exact operation counts.
+test("resuming completes while returning aborts the pipeline", fn() => checkAll("abort versus resume state", [
+    recovered == 60,
+    counter == 3,
+    aborted == sentinel,
+    counter2 == 2,
+    recovered != aborted
+]))

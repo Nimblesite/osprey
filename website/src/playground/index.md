@@ -568,34 +568,34 @@ date: "git Last Modified"
     let currentFlavor = 'osp';
     const SAMPLES = {
         // @generated:osp — filled from tests/regressions/basics/osprey_mega_showcase.test.osp by scripts/update-playground.js
-        osp: `// 🦅 Osprey in one screen — algebraic effects, fibers, unions, HM inference.
-// The SAME account() runs in two worlds; only the installed handler differs.
+        osp: `/// 🦅 Osprey in one screen — algebraic effects, fibers, unions, HM inference.
+/// The SAME account() runs in two worlds; only the installed handler differs.
 effect Console { emit: fn(string) -> Unit }
 effect Ledger  { post: fn(int) -> int }
 
-// account() only performs effects — it never learns whether the ledger is real.
+/// account() only performs effects — it never learns whether the ledger is real.
 fn account() ![Console, Ledger] = {
     perform Console.emit("open account")
     let afterDeposit = perform Ledger.post(100)
     perform Console.emit("deposit 100  → balance \${afterDeposit}")
     let afterMore = perform Ledger.post(250)
     perform Console.emit("deposit 250  → balance \${afterMore}")
-    let afterDraw = perform Ledger.post(0 - 90)
+    let afterDraw = perform Ledger.post((0 - 90) ?: 0)
     perform Console.emit("withdraw 90  → balance \${afterDraw}")
     afterMore
 }
 
-// World A: a real, stateful ledger — the handler owns a \`mut\` it threads through.
+/// World A: a real, stateful ledger — the handler owns a \`mut\` it threads through.
 fn realWorld() = {
     mut balance = 0
     handle Console
         emit line => print("  💸 \${line}")
     in handle Ledger
-        post amount => { balance = balance + amount  balance }
+        post amount => { balance = balance + amount ?: balance  balance }
     in account()
 }
 
-// World B: same code, a frozen compliance mock — every post is a no-op.
+/// World B: same code, a frozen compliance mock — every post is a no-op.
 fn dryRun() =
     handle Console
         emit line => print("  🧪 [dry-run] \${line}")
@@ -603,16 +603,16 @@ fn dryRun() =
         post amount => 0
     in account()
 
-// Pure pipeline: Σ of squares of the evens in [1, n) — no loops, no mutation.
-fn even(x) = (x % 2) == 0
-fn sq(x)   = x * x
-fn crunch(n) = range(1, n) |> filter(even) |> map(sq) |> fold(0, fn(a, b) => a + b)
+/// Pure pipeline: Σ of squares of the evens in [1, n) — no loops, no mutation.
+fn even(x) = (x % 2 ?: 1) == 0
+fn sq(x)   = x * x ?: 0
+fn crunch(n) = range(1, n) |> filter(even) |> map(sq) |> fold(0, fn(a, b) => a + b ?: 0)
 
-// Exhaustive match over a union — drop a case and it won't compile.
+/// Exhaustive match over a union — drop a case and it won't compile.
 type Tier = Epic | Solid | Starter
 
-// \`if\`/\`else if\` desugars to the same boolean match the ML twin writes
-// explicitly — byte-identical IR across flavors ([FLAVOR-IR-EQUIV]).
+/// \`if\`/\`else if\` desugars to the same boolean match the ML twin writes
+/// explicitly — byte-identical IR across flavors ([FLAVOR-IR-EQUIV]).
 fn tier(score) = if score >= 2000 { Epic } else if score >= 500 { Solid } else { Starter }
 
 fn badge(t) = match t {
@@ -631,7 +631,7 @@ print("  ↳ dryRun()   returned \${mock}")
 
 print("══════════════════════════════════════\\nACT 2 · fibers compute functional pipelines in parallel")
 
-// Each crunch() runs in its own fiber; await in order for a deterministic report.
+/// Each crunch() runs in its own fiber; await in order for a deterministic report.
 let fa = spawn crunch(10)
 let fb = spawn crunch(20)
 let fc = spawn crunch(40)
@@ -642,7 +642,40 @@ let rc = await(fc)
 print("  Σeven² <10  = \${ra}  \${badge(tier(ra))}")
 print("  Σeven² <20  = \${rb}  \${badge(tier(rb))}")
 print("  Σeven² <40  = \${rc}  \${badge(tier(rc))}")
-print("══════════════════════════════════════\\ntotal \${ra + rb + rc}  ·  fleet \${badge(tier(ra + rb + rc))}")
+print("══════════════════════════════════════\\ntotal \${ra + rb + rc}  ·  fleet \${badge(tier((ra + rb + rc) ?: 0))}")
+
+/// Replays both effect worlds and the fiber-backed scoring pipeline.
+fn megaShowcaseCase() = {
+    let realResult = realWorld()
+    let mockResult = dryRun()
+    let future = spawn crunch(12)
+    let fiberResult = await(future)
+    let scoreA = crunch(10)
+    let scoreB = crunch(20)
+    let scoreC = crunch(40)
+    let fleetScore = (scoreA + scoreB + scoreC) ?: 0
+    checkAll("effect worlds and functional scoring state", [
+        realResult == 350,
+        mockResult == 0,
+        even(2),
+        !even(3),
+        sq(9) == 81,
+        crunch(1) == 0,
+        scoreA == 120,
+        scoreB == 1140,
+        scoreC == 9880,
+        fiberResult == 220,
+        fleetScore == 11140,
+        badge(tier(499)) == "🟢 STARTER",
+        badge(tier(500)) == "🔵 SOLID",
+        badge(tier(1999)) == "🔵 SOLID",
+        badge(tier(2000)) == "🟣 EPIC",
+        badge(Starter) == "🟢 STARTER",
+        badge(Solid) == "🔵 SOLID",
+        badge(Epic) == "🟣 EPIC"
+    ])
+}
+test("mega showcase preserves effect, fiber, and tier state", megaShowcaseCase)
 `,
         // @generated:ospml — filled from tests/regressions/basics/osprey_mega_showcase.test.ospml by scripts/update-playground.js
         ospml: `(* ═══════════════════════════════════════════════════════════════════════
@@ -677,7 +710,7 @@ account () =
     perform Console.emit "deposit 100  → balance \${afterDeposit}"
     afterMore = perform Ledger.post 250
     perform Console.emit "deposit 250  → balance \${afterMore}"
-    afterDraw = perform Ledger.post (0 - 90)
+    afterDraw = perform Ledger.post ((0 - 90) ?: 0)
     perform Console.emit "withdraw 90  → balance \${afterDraw}"
     afterMore
 
@@ -691,7 +724,7 @@ realWorld () =
     in handle Ledger
         (* the resuming arm updates state, then hands the balance back *)
         post amount =>
-            balance := balance + amount
+            balance := balance + amount ?: balance
             balance
     in account ()
 
@@ -706,15 +739,15 @@ dryRun () =
     in account ()
 
 (** [true] when [x] is even. *)
-even x = (x % 2) == 0
+even x = (x % 2 ?: 1) == 0
 
 (** The square of [x]. *)
-sq x   = x * x
+sq x   = x * x ?: 0
 
 (** Σ of the squares of the even numbers in [1, n).
     A pure pipeline: no loops, no mutation — [range] feeds [filter], [map],
     then [fold]. *)
-crunch n = range 1 n |> filter even |> map sq |> fold 0 (\\(a, b) => a + b)
+crunch n = range 1 n |> filter even |> map sq |> fold 0 (\\(a, b) => a + b ?: 0)
 
 (** A performance tier a score falls into. Exhaustive: dropping a variant is a
     compile error at every [match] over it. *)
@@ -759,7 +792,39 @@ rc = await fc
 print "  Σeven² <10  = \${ra}  \${badge (tier ra)}"
 print "  Σeven² <20  = \${rb}  \${badge (tier rb)}"
 print "  Σeven² <40  = \${rc}  \${badge (tier rc)}"
-print "══════════════════════════════════════\\ntotal \${ra + rb + rc}  ·  fleet \${badge (tier (ra + rb + rc))}"
+print "══════════════════════════════════════\\ntotal \${ra + rb + rc}  ·  fleet \${badge (tier ((ra + rb + rc) ?: 0))}"
+
+(** Replay both effect worlds and the fiber-backed scoring pipeline. *)
+megaShowcaseCase () =
+    realResult = realWorld ()
+    mockResult = dryRun ()
+    future = spawn (crunch 12)
+    fiberResult = await future
+    scoreA = crunch 10
+    scoreB = crunch 20
+    scoreC = crunch 40
+    fleetScore = (scoreA + scoreB + scoreC) ?: 0
+    checkAll "effect worlds and functional scoring state" [
+        realResult == 350,
+        mockResult == 0,
+        even 2,
+        !(even 3),
+        sq 9 == 81,
+        crunch 1 == 0,
+        scoreA == 120,
+        scoreB == 1140,
+        scoreC == 9880,
+        fiberResult == 220,
+        fleetScore == 11140,
+        badge (tier 499) == "🟢 STARTER",
+        badge (tier 500) == "🔵 SOLID",
+        badge (tier 1999) == "🔵 SOLID",
+        badge (tier 2000) == "🟣 EPIC",
+        badge Starter == "🟢 STARTER",
+        badge Solid == "🔵 SOLID",
+        badge Epic == "🟣 EPIC"
+    ]
+test "mega showcase preserves effect, fiber, and tier state" megaShowcaseCase
 `,
     };
 

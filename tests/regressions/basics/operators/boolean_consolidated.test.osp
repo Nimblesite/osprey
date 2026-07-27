@@ -88,5 +88,35 @@ print(label)
 
 print("=== Boolean Test Complete ===")
 
-// Registers the regression scenario with the assertion-driven test runner.
-test("regression scenario completes", fn() => checkAll("legacy execution", [true]))
+/// Exercises literals, comparison families, composition, and both short-circuit paths.
+fn booleanBehaviorCase() = {
+    let leftShortCircuits = !(false && reportTrue())
+    let rightShortCircuits = true || reportTrue()
+    let localParity = match 4 {
+        0 => false
+        4 => true
+        _ => false
+    }
+    let localLabel = (3 < 5) ? "yes" : "no"
+    checkAll("boolean operators and branches", [
+        getTrue(),
+        !getFalse(),
+        isEqual(x: 5, y: 5),
+        !isEqual(x: 5, y: 6),
+        !xor(a: true, b: true),
+        xor(a: true, b: false),
+        !xor(a: false, b: false),
+        leftShortCircuits,
+        rightShortCircuits,
+        !(true && false),
+        true || false,
+        !(true && false) == ((!true) || (!false)),
+        !(true || false) == ((!true) && (!false)),
+        (5 > 3) && (10 == 10),
+        1.5 < 2.5,
+        "apple" < "banana",
+        localParity,
+        localLabel == "yes"
+    ])
+}
+test("boolean operators preserve values and short-circuiting", booleanBehaviorCase)

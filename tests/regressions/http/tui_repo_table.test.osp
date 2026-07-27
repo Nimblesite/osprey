@@ -74,8 +74,14 @@ fn renderBody(bodyText) = {
 fn renderResponse(h) = {
     let body = httpResponseBody(h)
     match body {
-        Success { value } => renderBody(value)
-        Error { message } => print("bodyfail")
+        Success { value } => {
+            renderBody(value)
+            value
+        }
+        Error { message } => {
+            print("bodyfail")
+            ""
+        }
     }
 }
 
@@ -84,18 +90,31 @@ fn run() = {
     let listenResult = httpListen(serverId, handleRequest)
     let clientId = httpCreateClient("http://127.0.0.1:18099", 5000)
     let resp = httpGetResponse(clientId, "/repos", "")
-    match resp {
+    let bodyText = match resp {
         Success { value } => {
-            renderResponse(value)
+            let rendered = renderResponse(value)
             let freed = httpResponseFree(value)
+            rendered
         }
-        Error { message } => print("reqfail ${message}")
+        Error { message } => {
+            print("reqfail ${message}")
+            ""
+        }
     }
     let closeResult = httpCloseClient(clientId)
     let stopResult = httpStopServer(serverId)
+    bodyText
 }
 
-run()
-
-// Registers the regression scenario with the assertion-driven test runner.
-test("regression scenario completes", fn() => checkAll("legacy execution", [true]))
+/// Fetches, renders, and validates the repository document over loopback HTTP.
+fn repoTableCase() = {
+    let bodyText = run()
+    checkAll("repository table data", [
+        contains(bodyText, "\"name\":\"osprey\""),
+        contains(bodyText, "\"stars\":9001"),
+        contains(bodyText, "\"lang\":\"Java\""),
+        pad("Go", 4) == "Go  ",
+        startsWith(cyan("*"), "\e[36m")
+    ])
+}
+test("repository JSON renders after an HTTP response round trip", repoTableCase)

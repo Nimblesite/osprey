@@ -66,5 +66,32 @@ print("")
 
 print("=== COMPREHENSIVE FIELD ACCESS TEST COMPLETE ===")
 
-// Registers the regression scenario with the assertion-driven test runner.
-test("regression scenario completes", fn() => checkAll("legacy execution", [true]))
+/// Derives the same conditional label from a record field.
+fn userStatus(value: User) -> string = match value.active {
+    true => "Active User"
+    false => "Inactive User"
+}
+
+/// Verifies reads, arithmetic consumers, branching, and persistent updates.
+fn fieldAccessCase() = {
+    let point = Point { x: 15, y: 25 }
+    let user = User { id: 42, active: true }
+    let inactive = user { active: false }
+    let rect = Rectangle { width: 10, height: 5 }
+    let counter = Counter { count: 0 }
+    let incremented = counter { count: counter.count }
+    let moved = point { x: 100, y: 200 }
+    checkAll("record field behavior", [
+        point.x == 15, point.y == 25,
+        user.id == 42, user.active, !inactive.active,
+        (calculateArea(rect) ?: 0) == 50,
+        (rect.width + rect.height ?: 0) == 15,
+        (point.x + point.y ?: 0) == 40,
+        userStatus(user) == "Active User",
+        userStatus(inactive) == "Inactive User",
+        counter.count == 0, incremented.count == 0,
+        moved.x == 100, moved.y == 200,
+        point.x == 15, point.y == 25
+    ])
+}
+test("field access feeds expressions without mutating records", fieldAccessCase)

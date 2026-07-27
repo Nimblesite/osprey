@@ -101,6 +101,28 @@ print "findEq('bad_entry_no_equals') = ${badEq}"
 print "=== parser complete ==="
 0
 
-(** Register the regression scenario with the assertion-driven test runner. *)
-migratedLegacyCase () = checkAll "legacy execution" [true]
-test "regression scenario completes" migratedLegacyCase
+(** Confirm a successful pair carries the complete key/value rendering. *)
+pairMatches (seg, expected) =
+    match parsePair seg
+        Success value => value == expected
+        Error message => false
+
+(** Confirm malformed input carries the entry-specific rejection reason. *)
+pairIsRejected seg =
+    match parsePair seg
+        Success value => false
+        Error message => message == "no '=' in entry '${seg}'"
+
+(** Exercise cursor discovery, both Result arms, and recursive reporting. *)
+keyValueParserCase () =
+    checkAll "key/value parser behavior" [
+        semi () == ";", eqByte () == 61,
+        findEq ("port=8080", 0) == 4,
+        findEq ("bad_entry_no_equals", 0) == notFound (),
+        pairMatches ("host=localhost", "key='host' value='localhost'"),
+        pairMatches ("empty=", "key='empty' value=''"),
+        pairIsRejected "bad_entry_no_equals",
+        processAll "a=1;b=2" == 0,
+        processAll "a=1;bad;c=3" == 0
+    ]
+test "cursor parser preserves values and rejection reasons" keyValueParserCase

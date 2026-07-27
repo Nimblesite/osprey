@@ -5,8 +5,8 @@
 //! count toward coverage — and each one is asserted to still type-check and
 //! lower to LLVM IR. The must-reject corpus (`failscompilation/*.ospo`) is run
 //! through the same pipeline to cover the rejection branches. This is the
-//! library-boundary twin of `crates/diff_examples.sh` (which runs the built
-//! binary out-of-process and therefore never reaches the coverage profile).
+//! in-process coverage counterpart to the built CLI's `osprey test tests`
+//! assertion run, which executes out-of-process and cannot reach this profile.
 
 use std::fs;
 use std::path::{Path, PathBuf};

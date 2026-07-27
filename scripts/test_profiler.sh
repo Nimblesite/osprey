@@ -11,9 +11,9 @@ TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 
 cat > "$TMP/profdemo.osp" <<'EOF'
-fn add(a: int, b: int) -> int = a + b
-fn sub(a: int, b: int) -> int = a - b
-fn fib(n: int) -> int = match n {
+fn add(a, b) = a + b ?: 0
+fn sub(a, b) = a - b ?: 0
+fn fib(n) = match n {
     0 => 0
     1 => 1
     _ => add(fib(sub(n, 1)), fib(sub(n, 2)))

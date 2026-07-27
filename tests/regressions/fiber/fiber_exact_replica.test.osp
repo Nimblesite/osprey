@@ -107,5 +107,18 @@ in {
     print("=== Test Complete ===")
 }
 
-// Registers the regression scenario with the assertion-driven test runner.
-test("regression scenario completes", fn() => checkAll("legacy execution", [true]))
+/// Repeats the complete batch under quiet handlers for an asserted result.
+fn alphaBatchForTest() = handle Metrics
+    recordSuccess taskId processed => 0
+in handle Logger
+    info msg => 0
+in processAlphaBatch()
+
+// Verifies preprocessing, classification, and the awaited batch total.
+test("fiber batch preserves transformed results", fn() => checkAll("fiber batch results", [
+    alphaBatchForTest() == 2700,
+    preprocessData(150) == 400,
+    transformData(400) == 1200,
+    calculateEfficiency(52) == 100,
+    calculateComplexity(Low) == 75
+]))

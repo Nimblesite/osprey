@@ -113,5 +113,31 @@ print("fn-payload gate accepted: ${describe(mkGate())}")
 
 print("=== TYPE EQUALITY COMPLETE ===")
 
-// Registers the regression scenario with the assertion-driven test runner.
-test("regression scenario completes", fn() => checkAll("legacy execution", [true]))
+/// Verifies generic records, function shapes, union tags, and variant payload types.
+fn typeEqualityCase() = {
+    let container = makeContainer(7)
+    let pair = makePair(a: 8, b: "eight")
+    let triple = makeTriple(a: 9, b: "nine", c: 10)
+    checkAll("generic, function, and union type behavior", [
+        container.value == 7,
+        pair.first == 8,
+        pair.second == "eight",
+        triple.first == 9,
+        triple.second == "nine",
+        triple.third == 10,
+        applyInt(f: addOne, x: 9) == 10,
+        applyInt(f: timesTwo, x: 9) == 18,
+        applyInt(f: minusOne, x: 9) == 8,
+        applyStr(f: excl, s: "hi") == "hi!",
+        applyStr(f: ques, s: "hi") == "hi?",
+        applyToStr(f: intToString, x: 42) == "42",
+        applyTwo(f: twoArgAdd, a: 5, b: 7) == 12,
+        applyThree(f: threeArgAdd, a: 1, b: 2, c: 3) == 6,
+        sameColor(a: Red, b: Red),
+        !(sameColor(a: Red, b: Blue)),
+        colorName(Green) == "green",
+        label(mkFeed()) == "supplied",
+        describe(mkGate()) == "guarded"
+    ])
+}
+test("equivalent type shapes compose while union tags remain distinct", typeEqualityCase)

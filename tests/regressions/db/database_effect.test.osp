@@ -117,5 +117,84 @@ in match perform Database.open(":memory:") {
     Error { message } => print("open ${message}")
 }
 
-// Registers the regression scenario with the assertion-driven test runner.
-test("regression scenario completes", fn() => checkAll("legacy execution", [true]))
+/// Captures every externally visible result of one handled database interaction.
+type DatabaseObservation = {
+    createStatus: int,
+    insertStatus: int,
+    rowStatus: int,
+    selectedId: int,
+    selectedName: string,
+    doneStatus: int,
+    finalizeStatus: int,
+    closeStatus: int
+}
+
+/// Runs application helpers through Database and returns immutable evidence.
+fn observeDatabase(db) !Database = {
+    let createStatus = perform Database.exec(db, "CREATE TABLE users(id INTEGER PRIMARY KEY, name TEXT)")
+    let insertStatus = seedUser(db: db, uid: 7, uname: "Grace")
+    let query = perform Database.prepare(db, "SELECT id, name FROM users WHERE id = 7")
+    let rowStatus = perform Database.step(query)
+    let selectedId = perform Database.columnInt(query, 0)
+    let selectedName = "${perform Database.columnText(query, 1)}"
+    let doneStatus = perform Database.step(query)
+    let finalizeStatus = perform Database.finalize(query)
+    let closeStatus = perform Database.close(db)
+    DatabaseObservation {
+        createStatus: createStatus,
+        insertStatus: insertStatus,
+        rowStatus: rowStatus,
+        selectedId: selectedId,
+        selectedName: selectedName,
+        doneStatus: doneStatus,
+        finalizeStatus: finalizeStatus,
+        closeStatus: closeStatus
+    }
+}
+
+/// Installs the real handler and preserves an open failure in the Result channel.
+fn runDatabaseProbe() =
+    handle Database
+        open path => openReal(path: path)
+        exec db sql => execReal(db: db, sql: sql)
+        prepare db sql => prepareReal(db: db, sql: sql)
+        bindInt stmt idx val => sqlite3_bind_int(stmt: stmt, idx: idx, val: val)
+        bindText stmt idx val => sqlite3_bind_text(stmt: stmt, idx: idx, val: val, nByte: (0 - 1) ?: 0, destructor: osprey_ffi_transient())
+        step stmt => sqlite3_step(stmt: stmt)
+        columnInt stmt col => sqlite3_column_int(stmt: stmt, col: col)
+        columnText stmt col => sqlite3_column_text(stmt: stmt, col: col)
+        finalize stmt => sqlite3_finalize(stmt: stmt)
+        close db => sqlite3_close(db: db)
+    in match perform Database.open(":memory:") {
+        Success { value } => Success { value: observeDatabase(value) }
+        Error { message } => Error { message: message }
+    }
+
+/// Reports whether the real handler produced an observation instead of an error.
+fn databaseOpened(result) = match result {
+    Success { value } => true
+    Error { message } => false
+}
+
+/// Verifies the Database capability performs a complete typed SQLite round trip.
+fn databaseEffectCase() = {
+    let result = runDatabaseProbe()
+    match result {
+        Success { value } => checkAll("Database effect round trip", [
+            databaseOpened(result),
+            value.createStatus == 0,
+            value.insertStatus == 101,
+            value.rowStatus == 100,
+            value.selectedId == 7,
+            value.selectedName == "Grace",
+            value.doneStatus == 101,
+            value.finalizeStatus == 0,
+            value.closeStatus == 0
+        ])
+        Error { message } => checkAll("Database effect open result", [
+            databaseOpened(result),
+            message == ""
+        ])
+    }
+}
+test("Database capability binds, queries, and closes through its handler", databaseEffectCase)

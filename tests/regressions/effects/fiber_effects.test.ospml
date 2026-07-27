@@ -100,6 +100,24 @@ raceSum =
 print ("race-free sum " + toString raceSum)
 print "=== done ==="
 
-(** Register the regression scenario with the assertion-driven test runner. *)
-migratedLegacyCase () = checkAll "legacy execution" [true]
-test "regression scenario completes" migratedLegacyCase
+(** Run one logged job under a silent handler for assertion use. *)
+highScoreForTest () =
+    handle Logger
+        log msg => 0
+    in await (spawn (runJob (priWeight High)))
+
+(** Repeat the two-fiber resuming interaction for assertion use. *)
+pairedScoreForTest () =
+    handle Gift
+        get tag => resume ((tag * 10) ?: 0)
+    in pairSum (1, 2)
+
+// Re-execute effectful fiber work and check deterministic results on the main fiber.
+test "fiber results remain deterministic across effect handlers" (\() => checkAll "fiber and effect results" [
+        highScoreForTest () == 81,
+        pairedScoreForTest () == 30,
+        prodR == 10,
+        silentR == 0,
+        raceSum == 30,
+        priWeight Low == 1
+])
