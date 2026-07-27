@@ -24,10 +24,16 @@ ROOT=${ROOT:A}
 OSP=$ROOT/target/release/osprey
 CASEDIR=$BENCHDIR/cases
 OUT=$BENCHDIR/results
-TMP=$OUT/tmp
-BINDIR=$OUT/bin
-HFDIR=$OUT/hf
-RAW=$OUT/raw.jsonl
+RUNOUT=$OUT
+PARTIAL=${BENCH_PARTIAL:-0}
+if [[ "$PARTIAL" == 1 ]]; then
+  RUNOUT=$(mktemp -d "${TMPDIR:-/tmp}/osprey-partial-bench.XXXXXX")
+  trap 'rm -rf "$RUNOUT"' EXIT INT TERM
+fi
+TMP=$RUNOUT/tmp
+BINDIR=$RUNOUT/bin
+HFDIR=$RUNOUT/hf
+RAW=$RUNOUT/raw.jsonl
 
 FILTER=${1:-}
 WARMUP=${BENCH_WARMUP:-3}
@@ -40,6 +46,9 @@ MEMRUNS=${BENCH_MEMRUNS:-3}
 # and Perceus ARC (--memory=arc) backends, so the allocation cases
 # (binarytrees) show both reclamation strategies next to the default backend.
 LANGS=(osprey osprey-arc osprey-gc rust c csharp dart ocaml haskell osprey-wasm rust-wasm c-wasm)
+if [[ "$PARTIAL" == 1 ]]; then
+  LANGS=(osprey osprey-arc osprey-gc osprey-wasm)
+fi
 typeset -A EXT
 EXT=(osprey osp  osprey-arc osp  osprey-gc osp  rust rs  c c  csharp cs  dart dart
      ocaml ml  haskell hs  osprey-wasm osp  rust-wasm rs  c-wasm c)
@@ -133,7 +142,15 @@ json_row() {
     "$1" "$2" "$3" "$4" "$5" "${6:-0}" >> "$RAW"
 }
 
-rm -rf "$OUT"; mkdir -p "$TMP" "$BINDIR" "$HFDIR"; : > "$RAW"
+if [[ "$PARTIAL" == 1 ]]; then
+  [[ -f "$OUT/raw.jsonl" ]] || {
+    echo "FATAL: partial-bench needs existing results at $OUT; run 'make bench' first." >&2
+    exit 1
+  }
+else
+  rm -rf "$OUT"
+fi
+mkdir -p "$TMP" "$BINDIR" "$HFDIR"; : > "$RAW"
 
 # Benchmark input modes. A case may read its first stdin line to pick a token
 # seed: "0" => a fixed seed (fully deterministic — what we time and oracle), "1"
@@ -235,6 +252,10 @@ for dir in $CASEDIR/*/(/); do
 done
 
 echo "\n==> rendering report"
+if [[ "$PARTIAL" == 1 ]]; then
+  python3 "$BENCHDIR/merge_results.py" "$OUT" "$RUNOUT" osprey osprey-arc osprey-gc osprey-wasm \
+    || { echo "result merge failed" >&2; exit 1; }
+fi
 python3 "$BENCHDIR/report.py" "$OUT" || { echo "report failed" >&2; exit 1; }
 rm -rf "$TMP"
 echo "==> done. Open $OUT/results.html"

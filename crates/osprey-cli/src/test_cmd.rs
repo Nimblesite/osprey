@@ -17,7 +17,7 @@ use crate::{TEST_CACHE_DIR_ENV, TEST_COVERAGE_BUILD_ENV, USAGE};
 use std::collections::BTreeMap;
 use std::io::Write;
 use std::path::{Path, PathBuf};
-use std::process::{Command, ExitCode};
+use std::process::{Command, ExitCode, Stdio};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Mutex;
 
@@ -281,6 +281,7 @@ fn suite_command(
         .arg(file)
         .args(["--run", "--quiet"])
         .env(TEST_CACHE_DIR_ENV, cache_dir);
+    close_stdin(&mut command);
     if let Some(value) = filter {
         let _ = command.env("OSPREY_TEST_FILTER", value);
     }
@@ -297,6 +298,10 @@ fn suite_command(
         }
     }
     Ok(command)
+}
+
+fn close_stdin(command: &mut Command) {
+    let _ = command.stdin(Stdio::null());
 }
 
 fn replay_suite(file: &Path, output: &SuiteOutput, quiet: bool) {
@@ -418,6 +423,20 @@ fn json_string(text: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(unix)]
+    #[test]
+    fn suite_command_closes_stdin_so_input_cannot_hang_on_a_terminal() {
+        let mut command = Command::new("sh");
+        let _ = command.args(["-c", "read line"]);
+        close_stdin(&mut command);
+
+        let output = command.output().expect("stdin probe");
+        assert!(
+            !output.status.success(),
+            "suite children must receive EOF rather than reading terminal input"
+        );
+    }
 
     #[test]
     fn coverage_dump_path_is_stable_and_scratch_scoped() {

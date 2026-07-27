@@ -121,6 +121,32 @@ fn every_language_test_compiles_to_ir() {
 }
 
 #[test]
+fn every_benchmark_source_compiles_after_checked_arithmetic_change() {
+    let dir = repo_root().join("benchmarks/cases");
+    let files = sources(&dir, "osp");
+    assert!(
+        files.len() >= 22,
+        "expected the full Osprey benchmark corpus, found {}",
+        files.len()
+    );
+
+    let mut failures = Vec::new();
+    for path in &files {
+        let source = fs::read_to_string(path).expect("read benchmark");
+        if let Err(stage) = compile(path, &source) {
+            let rel = path.strip_prefix(&dir).unwrap_or(path);
+            failures.push(format!("{}: {stage}", rel.display()));
+        }
+    }
+
+    assert!(
+        failures.is_empty(),
+        "benchmark sources must compile cleanly; failures:\n{}",
+        failures.join("\n")
+    );
+}
+
+#[test]
 fn list_pattern_negative_cases_are_rejected() {
     let dir = repo_root().join("examples/failscompilation");
     for name in [

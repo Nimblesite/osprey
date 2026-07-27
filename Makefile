@@ -7,7 +7,7 @@
 # --run`) and TypeScript sub-projects (vscode-extension, webcompiler, website).
 # =============================================================================
 
-.PHONY: build test language-test lint fmt clean ci setup run install bench wasm wasm-site wasm-serve vsix-rebuild-reinstall bank bank-web bank-test bank-e2e hawk
+.PHONY: build test language-test lint fmt clean ci setup run install bench partial-bench wasm wasm-site wasm-serve vsix-rebuild-reinstall bank bank-web bank-test bank-e2e hawk
 
 # ---------------------------------------------------------------------------
 # OS Detection
@@ -621,6 +621,12 @@ _website-build:
 ##        benchmarks/results/results.md. See benchmarks/README.md.
 bench: build
 	@zsh benchmarks/run.sh $(BENCH_FILTER)
+
+## partial-bench: Re-run only the Osprey implementations and merge those
+##        measurements into the existing results. Every non-Osprey result is
+##        preserved byte-for-byte at the data-record level.
+partial-bench: build
+	@BENCH_PARTIAL=1 zsh benchmarks/run.sh $(BENCH_FILTER)
 
 ## vsix-rebuild-reinstall: Clean → build → reinstall the Osprey VSCode
 ##      extension in place, bundling the freshly-built Rust compiler as `osprey`.

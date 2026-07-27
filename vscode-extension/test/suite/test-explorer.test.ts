@@ -220,7 +220,7 @@ suite("Osprey Test Explorer", () => {
       return item;
     }
 
-    test("a whole-file run maps TAP results onto leaves with diagnostics", async function () {
+    test("a failed test peek includes complete Context For AI details", async function () {
       if (!compiler) {
         this.skip();
       }
@@ -250,6 +250,19 @@ suite("Osprey Test Explorer", () => {
       assert.match(
         String(failures[0].message),
         /expect failed: expected 3, got 2/,
+      );
+      const expectedContext = [
+        "## Context For AI",
+        "",
+        `- File: ${failUri.fsPath}`,
+        "- Test: bad math",
+        "- Status: failed",
+        "- Location: line 3, column 1",
+        "- Failure: expect failed: expected 3, got 2",
+      ].join("\n");
+      assert.ok(
+        String(failures[0].message).includes(expectedContext),
+        `missing complete AI context in:\n${String(failures[0].message)}`,
       );
       assert.strictEqual(sink.ofKind("enqueued").length, 2);
       assert.ok(sink.output.includes("\r\n"));
