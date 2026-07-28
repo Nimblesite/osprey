@@ -1132,10 +1132,7 @@ suite("Osprey Language Features Tests", () => {
 
     // Hover the user-defined `classify` function where the registered scenario
     // executes its many-element branch and verifies the captured head and tail.
-    const classifyAt = at(
-      'classify(a) == "many head=1 rest=2"',
-      "classify",
-    );
+    const classifyAt = at('classify(a) == "many head=1 rest=2"', "classify");
     const classifyHover = await pollFor(
       () => hoverAt(doc.uri, classifyAt.line, classifyAt.character),
       (h) => nonEmptyHover(h) && hoverText(h[0]).includes("classify"),

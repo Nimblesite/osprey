@@ -300,6 +300,7 @@ mod tests {
             ty: ty.into(),
             parameters: Vec::new(),
             return_type: String::new(),
+            doc: None,
             position: None,
         };
         // `out T` in result position: legal.

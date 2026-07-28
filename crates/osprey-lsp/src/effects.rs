@@ -299,13 +299,22 @@ impl AstVisitor for EffectIndex {
             .iter()
             .find(|symbol| symbol.source_name == *name && symbol.position == *position)
             .map_or(name.as_str(), |symbol| symbol.name.as_str());
-        self.declarations
-            .extend(operations.iter().map(|operation| Declaration {
+        self.declarations.extend(operations.iter().map(|operation| {
+            Declaration {
                 id: operation_id(owner, &operation.name),
                 ty: operation.ty.clone(),
-                doc: doc.as_ref().map(osprey_ast::DocComment::render_markdown),
+                // The operation's OWN doc wins. Falling back to the effect's
+                // doc keeps undocumented operations useful, but showing the
+                // capability blurb on every operation would make `Prompt.ask`
+                // and `Prompt.tell` hover identically ([DOC-EFFECT-OP]).
+                doc: operation
+                    .doc
+                    .as_ref()
+                    .or(doc.as_ref())
+                    .map(osprey_ast::DocComment::render_markdown),
                 position: operation.position,
-            }));
+            }
+        }));
     }
 
     fn expression(&mut self, expression: &Expr) {

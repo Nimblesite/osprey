@@ -341,6 +341,10 @@ pub(crate) struct MlEffectOp {
     pub payload: MlType,
     /// The operation's result type.
     pub result: MlType,
+    /// Raw `(** … *)` text preceding this operation line, still unparsed —
+    /// `lower_effect_op` runs it through the shared flavor-neutral doc parser
+    /// so both surfaces yield the same `DocComment` ([DOC-EFFECT-OP]).
+    pub doc: Option<String>,
     /// Source position of the operation name.
     pub pos: Position,
 }

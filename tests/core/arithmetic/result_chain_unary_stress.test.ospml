@@ -41,26 +41,26 @@ observeArithmeticResult010 () = match 10 / 0
     Success value => "value=${toString value}"
     Error message => "error=${message}"
 
-test "unary negation 001" (\() => check "unary negation 001" "Success(-1)" (toString (-1)))
-test "double unary negation 001" (\() => check "double unary negation 001" "Success(1)" (toString (--1)))
-test "unary negation 002" (\() => check "unary negation 002" "Success(-2)" (toString (-2)))
-test "double unary negation 002" (\() => check "double unary negation 002" "Success(2)" (toString (--2)))
-test "unary negation 003" (\() => check "unary negation 003" "Success(-3)" (toString (-3)))
-test "double unary negation 003" (\() => check "double unary negation 003" "Success(3)" (toString (--3)))
-test "unary negation 004" (\() => check "unary negation 004" "Success(-4)" (toString (-4)))
-test "double unary negation 004" (\() => check "double unary negation 004" "Success(4)" (toString (--4)))
-test "unary negation 005" (\() => check "unary negation 005" "Success(-5)" (toString (-5)))
-test "double unary negation 005" (\() => check "double unary negation 005" "Success(5)" (toString (--5)))
-test "unary negation 006" (\() => check "unary negation 006" "Success(-6)" (toString (-6)))
-test "double unary negation 006" (\() => check "double unary negation 006" "Success(6)" (toString (--6)))
-test "unary negation 007" (\() => check "unary negation 007" "Success(-7)" (toString (-7)))
-test "double unary negation 007" (\() => check "double unary negation 007" "Success(7)" (toString (--7)))
-test "unary negation 008" (\() => check "unary negation 008" "Success(-8)" (toString (-8)))
-test "double unary negation 008" (\() => check "double unary negation 008" "Success(8)" (toString (--8)))
-test "unary negation 009" (\() => check "unary negation 009" "Success(-9)" (toString (-9)))
-test "double unary negation 009" (\() => check "double unary negation 009" "Success(9)" (toString (--9)))
-test "unary negation 010" (\() => check "unary negation 010" "Success(-10)" (toString (-10)))
-test "double unary negation 010" (\() => check "double unary negation 010" "Success(10)" (toString (--10)))
+test "unary negation 001" (\() => check "unary negation 001" "-1" (toString (-1)))
+test "double unary negation 001" (\() => check "double unary negation 001" "1" (toString (--1)))
+test "unary negation 002" (\() => check "unary negation 002" "-2" (toString (-2)))
+test "double unary negation 002" (\() => check "double unary negation 002" "2" (toString (--2)))
+test "unary negation 003" (\() => check "unary negation 003" "-3" (toString (-3)))
+test "double unary negation 003" (\() => check "double unary negation 003" "3" (toString (--3)))
+test "unary negation 004" (\() => check "unary negation 004" "-4" (toString (-4)))
+test "double unary negation 004" (\() => check "double unary negation 004" "4" (toString (--4)))
+test "unary negation 005" (\() => check "unary negation 005" "-5" (toString (-5)))
+test "double unary negation 005" (\() => check "double unary negation 005" "5" (toString (--5)))
+test "unary negation 006" (\() => check "unary negation 006" "-6" (toString (-6)))
+test "double unary negation 006" (\() => check "double unary negation 006" "6" (toString (--6)))
+test "unary negation 007" (\() => check "unary negation 007" "-7" (toString (-7)))
+test "double unary negation 007" (\() => check "double unary negation 007" "7" (toString (--7)))
+test "unary negation 008" (\() => check "unary negation 008" "-8" (toString (-8)))
+test "double unary negation 008" (\() => check "double unary negation 008" "8" (toString (--8)))
+test "unary negation 009" (\() => check "unary negation 009" "-9" (toString (-9)))
+test "double unary negation 009" (\() => check "double unary negation 009" "9" (toString (--9)))
+test "unary negation 010" (\() => check "unary negation 010" "-10" (toString (-10)))
+test "double unary negation 010" (\() => check "double unary negation 010" "10" (toString (--10)))
 test "absolute positive 001" (\() => check "absolute positive 001" "Success(1)" (toString (abs 1)))
 test "absolute negative 001" (\() => check "absolute negative 001" "Success(1)" (toString (abs ((-1) ?: 0))))
 test "absolute positive 002" (\() => check "absolute positive 002" "Success(2)" (toString (abs 2)))
@@ -152,3 +152,11 @@ test "explicit Result match 008" (\() => check "explicit Result match 008" "erro
 test "explicit Result match 009" (\() => check "explicit Result match 009" "error=integer overflow" (observeArithmeticResult009 ()))
 test "explicit Result match 010" (\() => check "explicit Result match 010" "error=division by zero" (observeArithmeticResult010 ()))
 
+
+(** Negating a LITERAL folds to the literal and stays a plain int, so `-1` is
+    usable wherever an int is required. Negating a runtime VALUE stays checked,
+    because `-i64::MIN` genuinely overflows. [ARITH-NEG-LITERAL], [ARITH-CHECKED] *)
+negateValue n = -n
+
+test "literal negation is a plain int" (\() => check "literal negation is a plain int" "-7" (toString (-7)))
+test "runtime negation stays a Result" (\() => check "runtime negation stays a Result" "Success(-7)" (toString (negateValue 7)))

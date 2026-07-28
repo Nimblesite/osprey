@@ -1,7 +1,10 @@
 // Assertion-driven replacement for the former mutation flavor golden.
 
 /// Counter exposes mutation only through its handled tick operation.
-effect FlavorCounter { tick: fn(int) -> Unit }
+effect FlavorCounter {
+    /// Add `amount` to the counter the handler owns.
+    tick: fn(int) -> Unit
+}
 
 /// This case proves the initial, intermediate, final, and rendered counter state.
 fn mutationCase() = {

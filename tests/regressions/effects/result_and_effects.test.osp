@@ -2,6 +2,7 @@
 // value-substitution handler supplies defaults and counts recoveries.
 
 effect Rescue {
+    /// Supply the integer a failed operation should yield instead.
     onErr: fn(string) -> int
 }
 

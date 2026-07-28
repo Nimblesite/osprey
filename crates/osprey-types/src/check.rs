@@ -262,7 +262,9 @@ impl Checker {
                 value,
                 position,
             } => self.check_assignment(name, value, env, *position),
-            Stmt::Expr { value, position } => {
+            Stmt::Expr {
+                value, position, ..
+            } => {
                 let inferred = self.infer_expr(value, env);
                 if self.ctx.prune(&inferred).is_named(names::RESULT) {
                     self.record_err(

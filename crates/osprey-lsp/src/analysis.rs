@@ -513,7 +513,13 @@ fn fn_sym(
     doc: Option<String>,
     position: Option<Position>,
 ) -> SymbolInfo {
-    let ret = return_type.map_or_else(|| String::from("Unit"), render_type);
+    let written = return_type.map(render_type);
+    // `Unit` is only the *display* fallback for a function whose return type
+    // the author left to inference. `return_type` keeps the written type alone
+    // (`None` when unwritten) so hover can tell "declared Unit" from "not
+    // declared" and fill the latter in from the checker
+    // ([LSP-HOVER-INFERRED-SIGNATURE]).
+    let ret = written.clone().unwrap_or_else(|| String::from("Unit"));
     let shown: Vec<String> = parameters.iter().map(render_param).collect();
     let signature = format!("fn {name}({}) -> {ret}", shown.join(", "));
     SymbolInfo {
@@ -524,12 +530,12 @@ fn fn_sym(
         position,
         signature: Some(signature),
         parameters,
-        return_type: Some(ret),
+        return_type: written,
         doc,
     }
 }
 
-fn render_param((n, t): &(String, String)) -> String {
+pub(crate) fn render_param((n, t): &(String, String)) -> String {
     if t.is_empty() {
         n.clone()
     } else {
@@ -1030,6 +1036,7 @@ mod tests {
                 .into_iter()
                 .map(|value| Stmt::Expr {
                     value,
+                    doc: None,
                     position: None,
                 })
                 .collect(),

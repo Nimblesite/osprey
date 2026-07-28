@@ -232,6 +232,49 @@ test that is a function or lambda body, the enclosing declaration's line.
 Dynamically named tests (non-literal first argument) still run and report via
 TAP; they are not listed statically.
 
+### Documented test cases — `[TESTING-DOC]`
+
+A test case is an expression statement, not a declaration, so the grammar
+accepts a leading documentation block on any expression statement and the AST
+carries it on `Stmt::Expr`. Both surface forms lower to the one `DocComment`
+model of spec 0026: `///` in the Default flavor, `(** … *)` in ML.
+
+```osprey
+/// Addition is commutative.
+///
+/// # Since
+/// 0.3
+test("addition commutes", fn() => expect(add(1, 2), add(2, 1)))
+```
+
+A documented case gains two OPTIONAL keys in the `--list-tests` array — absent
+entirely when the case carries no documentation, so an undocumented suite's
+wire form is unchanged:
+
+```json
+[{"name":"addition commutes","line":6,"column":1,
+  "summary":"Addition is commutative.",
+  "doc":"Addition is commutative.\n\n**Since**\n\n0.3"}]
+```
+
+- `summary` is the doc's first paragraph;
+- `doc` is the whole comment rendered to Markdown by `[DOC-EXPORT]` — every
+  populated `# Parameters` / `# Returns` / `# Raises` / `# Examples` /
+  `# See also` / `# Since` / `# Deprecated` section.
+
+Attachment is exact: only the case's OWN statement documents it. A `///` block
+on the enclosing `fn` or `let` documents that declaration, and a block above a
+`{ … }` documents the block — neither is inherited by a nested case. The
+reported `line` stays on the `test(` call, never on the first `///` line, so an
+editor's gutter marker does not drift up into the comment.
+
+**`[TESTING-DOC-HOVER]`** The language server answers a hover over the `test`
+callee of a documented case with that case's documentation (`**Test:** <name>`
+followed by the rendered block) rather than the built-in's generic signature.
+An undocumented case still hovers as `**Test:** <name>`; the word `test` used
+anywhere else falls through to the ordinary lookup chain, so a user binding
+named `test` keeps hovering as itself.
+
 ## Line coverage
 
 **`[TESTING-COVERAGE-CLI]`** `osprey test --coverage` builds each suite with
@@ -286,6 +329,37 @@ and coverage measures that file (`[TESTING-CLI-RUN]`).
 `osprey test <file> --coverage-json <tmp> --quiet`, adding `--filter <name>` for
 a single case. It maps `[TESTING-COVERAGE-JSON]` lines to VS Code
 `FileCoverage` and per-line `StatementCoverage` entries.
+
+**`[TESTING-DOC-VSCODE]`** Documentation `[TESTING-DOC]` reaches three
+surfaces, because VS Code's `TestItem` carries no tooltip of its own:
+
+- the case's `summary` becomes its `TestItem.description` — the greyed text
+  the Testing tree renders beside the case name (a multi-line summary
+  collapses to one row);
+- hovering the `test(...)` call in the editor renders the whole block
+  (`[TESTING-DOC-HOVER]`);
+- **Osprey: Show Test Documentation** (`osprey.showTestDocumentation`, also on
+  the Testing view's item context menu) opens the rendered block, its heading,
+  and a `Declared at <file>:<line>` footer as Markdown. It resolves its target
+  from an explicit test item first, then from the active editor's cursor —
+  the nearest case declared at or above it.
+
+A failing case's peek message leads with its documentation, then the failure,
+then the `Context For AI` block, which gains a `- Documentation:` field.
+Documentation is refreshed wholesale per file on every resolve, so deleting a
+`///` block clears the description on the next discovery.
+
+**`[TESTING-PROFILE]`** A third, non-default run profile — **Profile** — runs
+the same discovery, filtering, and TAP mapping as Run, but executes each suite
+as `osprey <file> --run --profile` (`[PROF-CLI-RUN]`) inside a per-suite
+directory beneath one per-request artifact root, so several suites in one
+request cannot overwrite each other's exports. Verdicts are reported exactly as
+a plain run reports them; when the suite produced artifacts, the run
+additionally opens the flame-graph webview (`[PROF-VSCODE-FLAME]`) and applies
+the inline heat decorations (`[PROF-VSCODE-HEAT]`), and appends the suite's
+profile summary plus its artifact directory to the run output. A suite that
+fails to compile writes no artifacts; the run still reports the compile
+failure. The sampling profiler is POSIX-only, matching `[PROF-CLI-RUN]`.
 
 ## Runtime
 

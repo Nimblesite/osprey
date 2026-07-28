@@ -1,5 +1,6 @@
 /// Trace exposes a Unit-returning operation to an explicit-resume handler.
 effect Trace {
+    /// Record a named marker so unwind order is observable.
     mark: fn(string) -> Unit
 }
 

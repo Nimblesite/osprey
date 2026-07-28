@@ -12,10 +12,17 @@ import * as path from "path";
 import type { Readable } from "stream";
 import * as vscode from "vscode";
 import {
+  failureMarkdown,
+  testDescription,
+  testDocOf,
+  type TestDoc,
+} from "./test-explorer-docs";
+import {
   compileFailureMessage,
+  COVERAGE_RUN,
   coverageCounts,
-  coverageRunArgs,
   discoveryOutcome,
+  envFilterFor,
   excludedIdSet,
   fileTestId,
   isCompileFailure,
@@ -23,7 +30,9 @@ import {
   outcomeForLeaf,
   parseCoverageJson,
   parseTapStream,
+  PLAIN_RUN,
   planRun,
+  runArgsFor,
   strayFailureMessage,
   testRangeStart,
   testRunEnv,
@@ -33,6 +42,7 @@ import {
   type FilePlan,
   type LeafOutcome,
   type LineHits,
+  type RunMode,
   type TestListParse,
 } from "./test-explorer-parse";
 
@@ -67,6 +77,12 @@ export interface TestRunSink {
   end(): void;
   /** Coverage runs report each file's line hits here ([TESTING-COVERAGE-VSCODE]). */
   addLineCoverage?(uri: vscode.Uri, hits: LineHits): void;
+  /**
+   * Profiling runs report where one file's profiler artifacts landed
+   * ([TESTING-PROFILE]); the Profile profile turns that directory into the
+   * flame panel and the inline heat decorations.
+   */
+  addProfile?(uri: vscode.Uri, dir: string): void;
 }
 
 // On POSIX the compiler child is spawned detached (its own process group) so
@@ -170,7 +186,8 @@ function getOrCreateFileItem(
   let children = controller.items;
   let directoryPath = "";
   for (const part of parts) {
-    directoryPath = directoryPath.length === 0 ? part : `${directoryPath}/${part}`;
+    directoryPath =
+      directoryPath.length === 0 ? part : `${directoryPath}/${part}`;
     const directoryId = `${DIRECTORY_ID_PREFIX}${workspaceFolder.uri.toString()}:${directoryPath}`;
     let directory = children.get(directoryId);
     if (directory === undefined) {
@@ -189,16 +206,32 @@ function getOrCreateFileItem(
   return item;
 }
 
+/**
+ * Every discovered case's documentation, keyed by leaf TestItem id
+ * ([TESTING-DOC]). Discovery refreshes a file's entries wholesale, so a doc
+ * comment deleted from the source disappears here on the next resolve. The
+ * Test Explorer reads it for the inline description, the "Show Documentation"
+ * detail panel, and the documentation header on a failure message.
+ */
+const testDocs = new Map<string, TestDoc>();
+
+/** The documentation discovery recorded for one leaf id, if any. */
+export function testDocFor(leafId: string): TestDoc | undefined {
+  return testDocs.get(leafId);
+}
+
+/** Every leaf id currently carrying documentation (exported for tests). */
+export function documentedTestIds(): string[] {
+  return [...testDocs.keys()];
+}
+
 function makeLeafItem(
   controller: vscode.TestController,
   uri: vscode.Uri,
   test: DiscoveredTest,
 ): vscode.TestItem {
-  const leaf = controller.createTestItem(
-    leafTestId(uri.toString(), test.name),
-    test.name,
-    uri,
-  );
+  const id = leafTestId(uri.toString(), test.name);
+  const leaf = controller.createTestItem(id, test.name, uri);
   const start = testRangeStart(test);
   leaf.range = new vscode.Range(
     start.line,
@@ -206,7 +239,24 @@ function makeLeafItem(
     start.line,
     start.character,
   );
+  // The summary renders greyed beside the case name; the full doc is stashed
+  // for the detail panel and failure messages ([TESTING-DOC]).
+  const description = testDescription(test);
+  if (description !== undefined) {
+    leaf.description = description;
+  }
+  testDocs.set(id, testDocOf(test));
   return leaf;
+}
+
+/** Drop every doc recorded for `uri`'s cases — called before a re-resolve. */
+function forgetDocs(uri: vscode.Uri): void {
+  const prefix = leafTestId(uri.toString(), "");
+  for (const id of [...testDocs.keys()]) {
+    if (id.startsWith(prefix)) {
+      testDocs.delete(id);
+    }
+  }
 }
 
 function applyDiscovery(
@@ -215,6 +265,7 @@ function applyDiscovery(
   uri: vscode.Uri,
   outcome: TestListParse,
 ): void {
+  forgetDocs(uri);
   if (!outcome.ok) {
     item.error = outcome.error;
     item.children.replace([]);
@@ -318,11 +369,13 @@ export function requestedItems(
   controller: vscode.TestController,
   request: Pick<vscode.TestRunRequest, "include">,
 ): vscode.TestItem[] {
-  const requested = request.include ?? (() => {
-    const roots: vscode.TestItem[] = [];
-    controller.items.forEach((item) => roots.push(item));
-    return roots;
-  })();
+  const requested =
+    request.include ??
+    (() => {
+      const roots: vscode.TestItem[] = [];
+      controller.items.forEach((item) => roots.push(item));
+      return roots;
+    })();
   const runnable: vscode.TestItem[] = [];
   const expand = (item: vscode.TestItem): void => {
     if (!item.id.startsWith(DIRECTORY_ID_PREFIX)) {
@@ -337,22 +390,32 @@ export function requestedItems(
   return runnable;
 }
 
+/**
+ * A failed case's peek message: the case's own documentation (when it has any)
+ * above the failure, then the machine-readable context block
+ * ([TESTING-DOC]).
+ */
 function failedTestMessage(
   leaf: vscode.TestItem,
   failure: string,
 ): vscode.TestMessage {
   const start = leaf.range?.start;
-  const context = [
+  const location =
+    start === undefined
+      ? "unknown"
+      : `line ${start.line + 1}, column ${start.character + 1}`;
+  const doc = testDocs.get(leaf.id) ?? {
+    name: leaf.label,
+    summary: "",
+    markdown: "",
+    line: (start?.line ?? 0) + 1,
+  };
+  const context = failureMarkdown(
     failure,
-    "",
-    "## Context For AI",
-    "",
-    `- File: ${leaf.uri?.fsPath ?? "unknown"}`,
-    `- Test: ${leaf.label}`,
-    "- Status: failed",
-    `- Location: ${start === undefined ? "unknown" : `line ${start.line + 1}, column ${start.character + 1}`}`,
-    `- Failure: ${failure}`,
-  ].join("\n");
+    doc,
+    leaf.uri?.fsPath ?? "unknown",
+    location,
+  );
   return new vscode.TestMessage(new vscode.MarkdownString(context));
 }
 
@@ -389,7 +452,9 @@ function includedChildren(
 // file item for whole-file runs, the leaf for filtered runs) and any other
 // started leaves errored with the compiler's stderr. A coverage run goes
 // through `osprey test --coverage-json` instead — same TAP, plus the report
-// fed back through the sink ([TESTING-COVERAGE-VSCODE]).
+// fed back through the sink ([TESTING-COVERAGE-VSCODE]). A profiling run adds
+// `--profile` and executes in a per-file artifact directory, which the sink
+// receives once the TAP has been reported ([TESTING-PROFILE]).
 async function runLeaves(
   errorTarget: vscode.TestItem,
   leaves: vscode.TestItem[],
@@ -397,7 +462,7 @@ async function runLeaves(
   sink: TestRunSink,
   token: vscode.CancellationToken,
   compiler: string,
-  coverage: boolean,
+  mode: RunMode,
 ): Promise<void> {
   const uri = errorTarget.uri;
   if (uri === undefined) {
@@ -407,16 +472,19 @@ async function runLeaves(
     sink.enqueued(leaf);
     sink.started(leaf);
   }
-  const env = testRunEnv(process.env, coverage ? undefined : filter);
-  const jsonPath = coverage ? coverageJsonPath(uri) : undefined;
-  const args =
-    jsonPath === undefined
-      ? [uri.fsPath, "--run"]
-      : coverageRunArgs(uri.fsPath, jsonPath, filter);
+  const env = testRunEnv(process.env, envFilterFor(mode, filter));
+  const jsonPath = mode.kind === "coverage" ? coverageJsonPath(uri) : undefined;
+  // Profiler exports land in the process's working directory ([PROF-CLI-RUN]),
+  // so a profiling run executes in its own artifact directory instead of the
+  // suite's own directory.
+  const cwd =
+    mode.kind === "profile"
+      ? await makeProfileDir(mode.dir, uri)
+      : path.dirname(uri.fsPath);
   const result = await runCompiler(
     compiler,
-    args,
-    path.dirname(uri.fsPath),
+    runArgsFor(mode, uri.fsPath, jsonPath, filter),
+    cwd,
     env,
     token,
   );
@@ -427,12 +495,27 @@ async function runLeaves(
   if (jsonPath !== undefined) {
     await reportCoverage(uri, jsonPath, sink);
   }
+  if (mode.kind === "profile" && sink.addProfile !== undefined) {
+    sink.addProfile(uri, cwd);
+  }
 }
 
 /** Where one file's coverage report lands (unique per file, per session). */
 function coverageJsonPath(uri: vscode.Uri): string {
   const stem = path.basename(uri.fsPath).replace(/[^A-Za-z0-9_.-]/g, "_");
   return path.join(os.tmpdir(), `osprey-cov-${process.pid}-${stem}.json`);
+}
+
+/**
+ * A per-file directory under the run's profile root, so several suites in one
+ * request cannot overwrite each other's `<stem>.profile.json`
+ * ([TESTING-PROFILE]).
+ */
+async function makeProfileDir(root: string, uri: vscode.Uri): Promise<string> {
+  const stem = path.basename(uri.fsPath).replace(/[^A-Za-z0-9_.-]/g, "_");
+  const dir = path.join(root, stem);
+  await fs.mkdir(dir, { recursive: true });
+  return dir;
 }
 
 /** Read, parse, and forward one run's coverage report, then drop the file. */
@@ -505,7 +588,7 @@ async function runPlan(
   sink: TestRunSink,
   token: vscode.CancellationToken,
   compiler: string,
-  coverage: boolean,
+  mode: RunMode,
 ): Promise<void> {
   const leaves = plan.wholeFile
     ? includedChildren(plan.file, excluded)
@@ -514,22 +597,14 @@ async function runPlan(
   // request with exclusions falls through to per-leaf filtered runs so the
   // excluded cases never execute — not merely go unreported.
   if (plan.wholeFile && leaves.length === plan.file.children.size) {
-    await runLeaves(
-      plan.file,
-      leaves,
-      undefined,
-      sink,
-      token,
-      compiler,
-      coverage,
-    );
+    await runLeaves(plan.file, leaves, undefined, sink, token, compiler, mode);
     return;
   }
   for (const leaf of leaves) {
     if (token.isCancellationRequested) {
       return;
     }
-    await runLeaves(leaf, [leaf], leaf.label, sink, token, compiler, coverage);
+    await runLeaves(leaf, [leaf], leaf.label, sink, token, compiler, mode);
   }
 }
 
@@ -554,7 +629,7 @@ export async function executeRunRequest(
   sink: TestRunSink,
   token: vscode.CancellationToken,
   resolveCompiler: () => string,
-  coverage = false,
+  mode: RunMode = PLAIN_RUN,
 ): Promise<void> {
   const excluded = excludedIdSet(request.exclude);
   // end() MUST fire on every exit path — a thrown discovery/report error or a
@@ -574,7 +649,7 @@ export async function executeRunRequest(
       }
       const compiler = resolveCompiler();
       await ensureFileResolved(controller, plan, compiler, token);
-      await runPlan(plan, excluded, sink, token, compiler, coverage);
+      await runPlan(plan, excluded, sink, token, compiler, mode);
     }
   } finally {
     sink.end();
@@ -671,7 +746,7 @@ export function makeCoverageHandler(
       coverageSink(controller.createTestRun(request)),
       token,
       resolveCompiler,
-      true,
+      COVERAGE_RUN,
     );
 }
 

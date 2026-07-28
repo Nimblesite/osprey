@@ -2,30 +2,43 @@
 
 /// Multiple effect declarations
 effect IO {
+    /// Read one line from the input the handler represents.
     read: fn() -> string
+    /// Write `text` to the output the handler represents.
     write: fn(string) -> Unit
-    input: fn() -> Result<string, Error>  // Mock input for testing
+    /// Read one line, reporting failure as a `Result` rather than trapping.
+    input: fn() -> Result<string, Error>
 }
 
 effect FileIO {
+    /// Write `contents` to `path`.
     writeFile: fn(string, string) -> Unit
+    /// Read the whole contents of `path`.
     readFile: fn(string) -> string
+    /// Delete `path`.
     deleteFile: fn(string) -> Unit
 }
 
 effect State {
+    /// Read the current value of the handled state cell.
     get: fn() -> int
+    /// Replace the handled state cell with `value`.
     set: fn(int) -> Unit
 }
 
 effect Logger {
+    /// Record `message` in whatever log the installed handler owns.
     log: fn(string) -> Unit
+    /// Record a failure `message` against the active logger.
     error: fn(string) -> Unit
 }
 
 effect Counter {
+    /// Advance the counter the handler owns.
     increment: fn() -> Unit
+    /// Read the counter's current total.
     getValue: fn() -> int
+    /// Return the counter to its starting value.
     reset: fn() -> Unit
 }
 
@@ -245,7 +258,9 @@ in {
 /// Implements [EFFECTS-GENERIC-DECL], [EFFECTS-GENERIC-INSTANTIATION],
 /// [EFFECTS-GENERIC-ROWS], [EFFECTS-GENERIC-RUNTIME]
 effect Stash<T> {
+    /// Store `value` in the stash for a later `take`.
     put: fn(T) -> Unit
+    /// Remove and return the stashed value of type `T`.
     take: fn() -> T
 }
 

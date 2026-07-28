@@ -30,15 +30,25 @@ extern osprey_ffi_transient -> Ptr
 (** The capability. Connection/statement handles are passed explicitly so handler
     arms stay free of captured state. *)
 effect Database
+    (** Open the database at `path`, reporting failure as a `Result`. *)
     open : string => Result<Ptr, Error>
+    (** Run one statement that returns no rows; yields the status code. *)
     exec : (Ptr, string) => int
+    (** Compile `sql` into a reusable prepared statement. *)
     prepare : (Ptr, string) => Ptr
+    (** Bind integer `value` to one-based parameter `index`. *)
     bindInt : (Ptr, int, int) => int
+    (** Bind text `value` to one-based parameter `index`. *)
     bindText : (Ptr, int, string) => int
+    (** Advance the statement one row; yields the status code. *)
     step : Ptr => int
+    (** Read the current row's integer column `index`. *)
     columnInt : (Ptr, int) => int
+    (** Read the current row's text column `index`. *)
     columnText : (Ptr, int) => string
+    (** Release the prepared statement. *)
     finalize : Ptr => int
+    (** Close the connection and release its resources. *)
     close : Ptr => int
 
 (** --- real SQLite handler implementations (top-level, no captures) --- *)

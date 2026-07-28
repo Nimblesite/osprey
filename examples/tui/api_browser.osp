@@ -33,14 +33,21 @@
 // ============================================================================
 
 // ---- effects: the complete vocabulary of side effects this program has ------
-effect Console { print: fn(string) -> Unit }
+effect Console {
+    /// Write `text` to the console the handler represents.
+    print: fn(string) -> Unit
+}
 effect Terminal {
+    /// Read one keypress, reporting failure as a `Result`.
     readKey: fn() -> Result<string, Error>
-    raw:     fn(int) -> Unit
+    /// Enter raw mode when `enable` is non-zero, cooked mode otherwise.
+    raw: fn(int) -> Unit
 }
 effect Http {
-    fetch:    fn(string) -> Result<string, Error>   // GET JSON (listings)
-    fetchRaw: fn(string) -> Result<string, Error>   // GET raw bytes (file source)
+    /// GET `url` as JSON, reporting transport failure as a `Result`.
+    fetch: fn(string) -> Result<string, Error>
+    /// GET `url` as raw bytes, reporting transport failure as a `Result`.
+    fetchRaw: fn(string) -> Result<string, Error>
 }
 
 // Which GitHub account's public repositories to browse.
@@ -59,10 +66,11 @@ fn invert(s: string) -> string = "\e[7m${s}\e[0m"
 fn rule() -> string = dim("  ==================================================")
 
 // ---- tiny integer helpers ---------------------------------------------------
-fn inc(x: int) -> int = x + 1
-fn dec(x: int) -> int = x - 1
-fn min(a: int, b: int) -> int = match a < b { true => a false => b }
-fn gap(a: int, b: int) -> int = match a < b { true => b - a false => a - b }
+// UI counters explicitly keep their previous value on arithmetic overflow.
+fn inc(x) = x + 1 ?: x
+fn dec(x) = x - 1 ?: x
+fn min(a, b) = match a < b { true => a false => b }
+fn gap(a, b) = match a < b { true => b - a ?: 0 false => a - b ?: 0 }
 // `%` returns `Result<int, MathError>`; the UI uses positive constant divisors
 // and falls back to zero if that invariant is broken.
 fn modv(a: int, b: int) -> int = match a % b {
@@ -100,7 +108,7 @@ fn hue(frame: int) -> string = match modv(a: frame, b: 6) {
 // Three rotors at staggered phases + staggered hues = a flowing comet of dots.
 fn comet(frame: int) -> string =
     hue(frame) + rotor(frame) + hue(inc(inc(frame))) + rotor(inc(inc(inc(frame)))) +
-    hue(inc(inc(inc(inc(frame))))) + rotor(frame + 6) + "\e[0m"
+    hue(inc(inc(inc(inc(frame))))) + rotor(frame + 6 ?: frame) + "\e[0m"
 
 // Animated trailing dots: "" . .. ...
 fn dots(frame: int) -> string = match modv(a: frame, b: 4) {
@@ -111,7 +119,7 @@ fn dots(frame: int) -> string = match modv(a: frame, b: 4) {
 fn waveWidth() -> int = 36
 fn wavePos(frame: int) -> int = match modv(a: frame, b: 70) < waveWidth() {
     true  => modv(a: frame, b: 70)
-    false => 70 - modv(a: frame, b: 70)
+    false => 70 - modv(a: frame, b: 70) ?: 0
 }
 fn waveCell(i: int, pos: int, frame: int) -> string = match gap(a: i, b: pos) {
     0 => hue(frame) + "█\e[0m"
@@ -183,7 +191,7 @@ fn treeRow(tree: int, i: int, sel: int) -> string = match i == sel {
 // A scrolling window keeps the cursor on screen for big directories.
 fn winStart(sel: int, n: int) -> int = match n < 23 {
     true  => 0
-    false => match sel < 11 { true => 0 false => min(a: sel - 11, b: n - 22) }
+    false => match sel < 11 { true => 0 false => min(a: sel - 11 ?: 0, b: n - 22 ?: 0) }
 }
 fn treeRows(tree: int, i: int, last: int, sel: int) -> string = match i < last {
     true  => treeRow(tree: tree, i: i, sel: sel) + "\n" + treeRows(tree: tree, i: inc(i), last: last, sel: sel)
@@ -195,7 +203,7 @@ fn treeScreen(repo: string, path: string, tree: int, sel: int, n: int) -> string
     bold(cyan("FILES  ")) + green(repo) + dim("/" + path) + "\n" +
     rule() + "\n\n" +
     treeRows(tree: tree, i: winStart(sel: sel, n: n),
-             last: min(a: winStart(sel: sel, n: n) + 22, b: n), sel: sel) + "\n" +
+             last: min(a: winStart(sel: sel, n: n) + 22 ?: n, b: n), sel: sel) + "\n" +
     rule() + "\n" +
     dim("  up/down move    enter open dir/file    esc back")
 
@@ -387,8 +395,10 @@ fn finish(clientId: int, resp: int) -> Result<string, Error> = match resp > 0 {
     false => closeAfter(clientId: clientId, result: Error { message: "request failed" })
 }
 
+/// Release the response handle, then hand back the body already read from it.
+/// The release is best-effort — a failed free must not mask the body's result.
 fn freeAfter(value: int, result: Result<string, Error>) -> Result<string, Error> = {
-    httpResponseFree(value)
+    httpResponseFree(value) ?: 0
     result
 }
 

@@ -10,11 +10,13 @@
 (** An effect that emits a line of human-readable output.
     The handler decides where the line goes — a real console, or nowhere. *)
 effect Console
+    (** Write one line to the console the handler represents. *)
     emit : string => Unit
 
 (** A ledger effect: post a signed [amount] and get the running balance back.
     Whether that balance is real or faked is entirely the handler's choice. *)
 effect Ledger
+    (** Post `amount` to the account and return the new balance. *)
     post : int => int
 
 (** Run a fixed sequence of account operations, purely in terms of effects.

@@ -12,7 +12,9 @@ namespace bank
 
 signature MetricsApi
     effect MetricsFx
+        (** Count one hit for `key` and return the running total. *)
         hit : string => int
+        (** Read the total number of hits recorded so far. *)
         total : Unit => int
     track : (Unit -> int) -> int
 
@@ -20,7 +22,9 @@ state Metrics : MetricsApi
     mut served = 0
 
     effect MetricsFx
+        (** Count one hit for `key` and return the running total. *)
         hit : string => int
+        (** Read the total number of hits recorded so far. *)
         total : Unit => int
 
     // The handler installer: wraps a request-serving body in the one region

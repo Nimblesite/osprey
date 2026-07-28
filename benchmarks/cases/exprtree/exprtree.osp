@@ -7,29 +7,29 @@
 //
 // Modes via the first stdin line: "0"/empty -> fixed seed (deterministic,
 // oracle-checked); "1" -> cryptographically-secure random seed (randomBelow).
-fn add(a: int, b: int) -> int = a + b ?: 0
-fn sub(a: int, b: int) -> int = a - b ?: 0
-fn mul(a: int, b: int) -> int = a * b ?: 0
-fn modp(a: int, b: int) -> int = a % b ?: 0
-fn r1(x: int) -> int = modp(mul(x, 16807), 2147483647)
-fn hashAt(seed: int, i: int) -> int = r1(r1(add(seed, i)))
-fn addM(a: int, b: int) -> int = modp(add(a, b), 1000000007)
-fn mulM(a: int, b: int) -> int = modp(mul(a, b), 1000000007)
-fn randSeed() -> int = match randomBelow(2147483646) { Success { value } => add(value, 1)  Error { message } => 1 }
-fn seedOf(s) -> int = match parseInt(s) { Success { value } => match value { 0 => 1  _ => randSeed() }  Error { message } => 1 }
+fn add(a, b) = a + b ?: 0
+fn sub(a, b) = a - b ?: 0
+fn mul(a, b) = a * b ?: 0
+fn modp(a, b) = a % b ?: 0
+fn r1(x) = modp(mul(x, 16807), 2147483647)
+fn hashAt(seed, i) = r1(r1(add(seed, i)))
+fn addM(a, b) = modp(add(a, b), 1000000007)
+fn mulM(a, b) = modp(mul(a, b), 1000000007)
+fn randSeed() = match randomBelow(2147483646) { Success { value } => add(value, 1)  Error { message } => 1 }
+fn seedOf(s) = match parseInt(s) { Success { value } => match value { 0 => 1  _ => randSeed() }  Error { message } => 1 }
 type Expr = Lit { v: int } | Add { l: Expr, r: Expr } | Mul { l: Expr, r: Expr }
-fn build(seed: int, idx: int, depth: int) -> Expr = match depth {
+fn build(seed, idx, depth) = match depth {
     0 => Lit { v: modp(hashAt(seed, idx), 1000) }
     _ => match modp(hashAt(seed, idx), 2) {
         0 => Add { l: build(seed, add(mul(idx, 2), 1), sub(depth, 1)), r: build(seed, add(mul(idx, 2), 2), sub(depth, 1)) }
         _ => Mul { l: build(seed, add(mul(idx, 2), 1), sub(depth, 1)), r: build(seed, add(mul(idx, 2), 2), sub(depth, 1)) }
     }
 }
-fn eval(e: Expr) -> int = match e {
+fn eval(e) = match e {
     Lit { v }    => v
     Add { l, r } => addM(eval(l), eval(r))
     Mul { l, r } => mulM(eval(l), eval(r))
 }
-fn runOne(seed: int, t: int) -> int = eval(build(add(seed, mul(t, 7)), 1, 14))
+fn runOne(seed, t) = eval(build(add(seed, mul(t, 7)), 1, 14))
 let seed = seedOf(input())
 print("${range(0, 10) |> fold(0, |acc, t| => addM(acc, runOne(seed, t)))}")

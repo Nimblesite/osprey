@@ -2,6 +2,7 @@
 // Effects centralize policy; they do not erase the original MathError.
 
 effect ArithmeticFailure
+    (** Decide what a failed calculation yields, preserving the original `MathError`. *)
     decide : string => Result<int, MathError>
 
 (** Convert a successful sum to text while preserving the exact error branch. *)

@@ -592,8 +592,10 @@ impl Parser<'_> {
         operations
     }
 
-    /// One `op : payload => result` operation line.
+    /// One `op : payload => result` operation line, optionally preceded by its
+    /// own `(** … *)` doc ([DOC-EFFECT-OP]).
     fn effect_op(&mut self) -> Option<MlEffectOp> {
+        let doc = self.effect_op_doc();
         let pos = self.pos();
         let name = self.ident()?;
         if !self.eat(&TokKind::Colon) {
@@ -608,8 +610,21 @@ impl Parser<'_> {
             name,
             payload,
             result,
+            doc,
             pos,
         })
+    }
+
+    /// Consume a `(** … *)` doc token sitting in front of an operation line.
+    /// Separators between the doc and the operation are skipped so a doc on its
+    /// own line still attaches.
+    fn effect_op_doc(&mut self) -> Option<String> {
+        let TokKind::Doc(text) = self.peek().clone() else {
+            return None;
+        };
+        self.i += 1;
+        self.skip_separators();
+        Some(text)
     }
 
     /// Dispatch an identifier-led item: signature (skipped), assignment,

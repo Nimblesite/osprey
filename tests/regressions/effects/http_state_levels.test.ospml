@@ -1,17 +1,25 @@
 effect Db
+    (** Append a task and return its new id. *)
     add : string => int
+    (** Render the current task table. *)
     list : Unit => string
+    (** Count the tasks currently stored. *)
     count : Unit => int
 
 effect Metrics
+    (** Record one served request for `route`. *)
     hit : string => Unit
+    (** Read the total requests served since boot. *)
     served : Unit => int
 
 effect Persist
+    (** Durably write a snapshot, returning the number of bytes written. *)
     flush : string => int
+    (** Read how many bytes the last flush wrote. *)
     bytes : Unit => int
 
 effect Log
+    (** Record an informational `message` about server activity. *)
     info : string => Unit
 
 textResp (status, bodyText) = HttpResponse(status = status, headers = "Content-Type: text/plain", contentType = "text/plain", streamFd = (0 - 1) ?: 0, isComplete = true, partialBody = bodyText)

@@ -59,7 +59,9 @@ fn collect_stmt(stmt: &Stmt, lines: &mut BTreeSet<u32>) {
         | Stmt::Assignment {
             value, position, ..
         }
-        | Stmt::Expr { value, position } => {
+        | Stmt::Expr {
+            value, position, ..
+        } => {
             mark(*position, lines);
             collect_expr(value, lines);
         }

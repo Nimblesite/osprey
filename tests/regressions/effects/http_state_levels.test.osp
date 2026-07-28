@@ -18,19 +18,29 @@
 
 /// ---- the three state layers, one effect each (+ logging) -------------------
 effect Db {
-    add:   fn(string) -> int      // append a task, returns its id
-    list:  fn() -> string         // the rendered task table
-    count: fn() -> int            // how many tasks exist
+    /// Append a task and return its new id.
+    add: fn(string) -> int
+    /// Render the current task table.
+    list: fn() -> string
+    /// Count the tasks currently stored.
+    count: fn() -> int
 }
 effect Metrics {
-    hit:    fn(string) -> Unit    // record one served request
-    served: fn() -> int           // total requests served since boot
+    /// Record one served request for `route`.
+    hit: fn(string) -> Unit
+    /// Read the total requests served since boot.
+    served: fn() -> int
 }
 effect Persist {
-    flush: fn(string) -> int      // durably write a snapshot, returns bytes
-    bytes: fn() -> int            // bytes last written to disk
+    /// Durably write a snapshot, returning the number of bytes written.
+    flush: fn(string) -> int
+    /// Read how many bytes the last flush wrote.
+    bytes: fn() -> int
 }
-effect Log { info: fn(string) -> Unit }
+effect Log {
+    /// Record an informational `message` about server activity.
+    info: fn(string) -> Unit
+}
 
 /// ---- HTTP plumbing helpers (pure) ------------------------------------------
 fn textResp(status, bodyText) = HttpResponse {

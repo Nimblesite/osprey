@@ -1,29 +1,38 @@
 /// RecoveryError models expected failures whose handlers supply ordinary values.
 effect RecoveryError {
+    /// Supply the integer for the absent field `name`.
     missingInt: fn(string) -> int
+    /// Supply the text for the absent field `name`.
     missingText: fn(string) -> string
+    /// Decide whether `name` is permitted.
     denied: fn(string) -> bool
+    /// Record a recovery without changing what the caller receives.
     report: fn(string) -> Unit
 }
 
 /// StockError lets callers choose what an over-sized request receives.
 effect StockError {
+    /// Decide what an over-sized request receives given `wanted` and `available`.
     shortage: fn(int, int) -> int
 }
 
 /// PolicyError exposes two operations so a nested handler can override only one.
 effect PolicyError {
+    /// Supply the score for `label` under the active policy.
     score: fn(string) -> int
+    /// Supply the display text for `label` under the active policy.
     label: fn(string) -> string
 }
 
 /// AuditError records recovery decisions without changing the recovered value.
 effect AuditError {
+    /// Record that a recovery happened, without altering it.
     note: fn(string) -> Unit
 }
 
 /// LookupError returns a complete Result so the handler chooses success or failure.
 effect LookupError {
+    /// Look up `key`, reporting absence as a `Result` the caller matches on.
     find: fn(string) -> Result<int, string>
 }
 
@@ -298,23 +307,42 @@ fn wholeResultOperationCase() = {
     }
 }
 
-// Register the no-error path.
+/// A run that never fails must never enter a recovery arm.
+///
+/// The handler is installed but its operations stay untouched, so the
+/// value reaching the caller is the ordinary computed one.
 test("successful paths bypass recovery handlers", happyPathBypassCase)
-// Register direct substitution followed by ordinary work.
+/// A handler-supplied value resumes ordinary arithmetic where the
+/// failure was performed, rather than unwinding to the handler.
 test("fallback values continue at the perform site", fallbackContinuationCase)
-// Register repeated stateful recovery.
+/// Three substitutions in one handler scope observe the handler's own
+/// mutable state, proving each recovery resumes into the same handler
+/// instance instead of a fresh one.
 test("repeated recoveries share handler-owned state", repeatedRecoveryStateCase)
-// Register collect-all Unit reporting.
+/// A `Unit`-returning report operation records a broken rule and lets
+/// every later rule still run, so one validation pass collects all
+/// failures instead of stopping at the first.
 test("Unit error reports collect without early exit", collectAllReportsCase)
-// Register mixed operation result types.
+/// One handler answers `int`, `string`, and `bool` operations of the
+/// same effect, proving each operation keeps its own result type.
 test("one handler supplies several result types", multipleResultTypesCase)
-// Register local policy replacement.
+/// The same effectful function runs under two different handlers and
+/// yields two different answers — the policy lives in the handler, not
+/// in the function.
 test("one effectful function supports two policies", twoPoliciesCase)
-// Register same-effect shadowing and restoration.
+/// An inner handler shadows ONE operation of an effect; the outer
+/// handler still answers the others, and its behavior returns once the
+/// inner scope ends.
 test("nested handlers override locally and restore outer behavior", nestedOverrideCase)
-// Register cross-effect composition.
+/// A recovery arm performs a second, outer effect while recovering from
+/// the first — composition across effect boundaries.
 test("a recovery arm can use an outer effect", outerEffectCompositionCase)
-// Register deep dynamic reachability.
+/// A failure performed several helper calls and recursion levels deep
+/// still reaches the installed handler.
 test("recovery reaches through helpers and recursion", deepRecursionCase)
-// Register complete Result substitution as a known failure tracked by issue #183.
+/// A handler may answer with a complete `Result`, choosing success or
+/// failure itself rather than only supplying a bare fallback.
+///
+/// # Since
+/// 0.3
 test("handlers can return whole Result operation values", wholeResultOperationCase)

@@ -326,7 +326,9 @@ fn gen_stmt_kind(cg: &mut Codegen, stmt: &Stmt) -> Result<()> {
         // side effects is allowed arms of differing LLVM type — there is no
         // `phi` to type. Everywhere else that disagreement is a hard error
         // ([`crate::pattern::finish_phi`]).
-        Stmt::Expr { value, position } => with_stmt_debug(cg, *position, |cg| {
+        Stmt::Expr {
+            value, position, ..
+        } => with_stmt_debug(cg, *position, |cg| {
             let outer = std::mem::replace(&mut cg.value_discarded, true);
             let generated = gen_expr(cg, value);
             cg.value_discarded = outer;

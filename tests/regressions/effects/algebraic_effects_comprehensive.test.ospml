@@ -1,24 +1,37 @@
 effect IO
+    (** Read one line from the input the handler represents. *)
     read : Unit => string
+    (** Write `text` to the output the handler represents. *)
     write : string => Unit
+    (** Read one line, reporting failure as a `Result` rather than trapping. *)
     input : Unit => Result string Error
 
 effect FileIO
+    (** Write `contents` to `path`. *)
     writeFile : (string, string) => Unit
+    (** Read the whole contents of `path`. *)
     readFile : string => string
+    (** Delete `path`. *)
     deleteFile : string => Unit
 
 effect State
+    (** Read the current value of the handled state cell. *)
     get : Unit => int
+    (** Replace the handled state cell with `value`. *)
     set : int => Unit
 
 effect Logger
+    (** Record `message` in whatever log the installed handler owns. *)
     log : string => Unit
+    (** Record a failure `message` against the active logger. *)
     error : string => Unit
 
 effect Counter
+    (** Advance the counter the handler owns. *)
     increment : Unit => Unit
+    (** Read the counter's current total. *)
     getValue : Unit => int
+    (** Return the counter to its starting value. *)
     reset : Unit => Unit
 
 doubleValue x = match x * 2
@@ -184,7 +197,9 @@ in
     Implements [EFFECTS-GENERIC-DECL], [EFFECTS-GENERIC-INSTANTIATION],
     [EFFECTS-GENERIC-ROWS], [EFFECTS-GENERIC-RUNTIME], [FLAVOR-ML-GENERICS] *)
 effect Stash T
+    (** Store `value` in the stash for a later `take`. *)
     put : T => Unit
+    (** Remove and return the stashed value of type `T`. *)
     take : Unit => T
 
 relabel : Unit -> string ! Stash<string>

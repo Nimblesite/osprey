@@ -1,5 +1,6 @@
 /// Supply lets a handler choose each integer observed by the performer.
 effect Supply {
+    /// Request the next scripted value for `label`.
     next: fn(string) -> int
 }
 
@@ -13,6 +14,7 @@ fn total() -> int !Supply = {
 
 /// Relay proves generic operation values unbox at two distinct instantiations.
 effect Relay<T> {
+    /// Request one value of the instantiated element type `T`.
     ask: fn() -> T
 }
 
@@ -21,6 +23,7 @@ fn echoWord() -> string !Relay<string> = perform Relay.ask()
 
 /// Checked proves resume supplies a whole Result rather than its payload.
 effect Checked {
+    /// Halve `value`, reporting an odd input as an `Error`.
     half: fn(int) -> Result<int, string>
 }
 

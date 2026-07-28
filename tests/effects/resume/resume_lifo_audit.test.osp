@@ -1,5 +1,6 @@
 /// Audit supplies numbered values and observes continuation unwind order.
 effect Audit {
+    /// Request the numbered value for `label`, recording the visit.
     step: fn(string) -> int
 }
 

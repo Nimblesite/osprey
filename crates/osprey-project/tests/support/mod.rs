@@ -85,6 +85,7 @@ pub(crate) fn state_module(
                     ty: "fn() -> int".to_string(),
                     parameters: Vec::new(),
                     return_type: "int".to_string(),
+                    doc: None,
                     position: None,
                 }],
                 doc: None,

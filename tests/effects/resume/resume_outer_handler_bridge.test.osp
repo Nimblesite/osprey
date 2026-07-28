@@ -1,10 +1,12 @@
 /// Prompt suspends a form until its handler supplies a field value.
 effect Prompt {
+    /// Request the value the caller should use for `label`; the handler decides what is supplied.
     ask: fn(string) -> string
 }
 
 /// Log proves the outer handler remains installed across a resumed body.
 effect Log {
+    /// Append one already-formatted line to the log.
     line: fn(string) -> Unit
 }
 

@@ -1,13 +1,13 @@
 // Count coprime pairs (i,j), 1<=i,j<=N — nested iteration + Euclidean gcd.
-fn add(a: int, b: int) -> int = a + b ?: 0
-fn sub(a: int, b: int) -> int = a - b ?: 0
-fn mod_(a: int, b: int) -> int = a % b ?: 0
-fn gcd(a: int, b: int) -> int = match b { 0 => a  _ => gcd(b, mod_(a, b)) }
-fn loopJ(i: int, j: int, acc: int) -> int = match j {
+fn add(a, b) = a + b ?: 0
+fn sub(a, b) = a - b ?: 0
+fn mod_(a, b) = a % b ?: 0
+fn gcd(a, b) = match b { 0 => a  _ => gcd(b, mod_(a, b)) }
+fn loopJ(i, j, acc) = match j {
     0 => acc
     _ => match gcd(i, j) { 1 => loopJ(i, sub(j, 1), add(acc, 1))  _ => loopJ(i, sub(j, 1), acc) }
 }
-fn loopI(i: int, n: int, acc: int) -> int = match i {
+fn loopI(i, n, acc) = match i {
     0 => acc
     _ => loopI(sub(i, 1), n, loopJ(i, n, acc))
 }

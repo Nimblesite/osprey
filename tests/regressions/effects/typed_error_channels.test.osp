@@ -3,12 +3,15 @@
 
 /// --- three distinct, independent typed error channels ---
 effect Parse {
+    /// Supply the integer to use for unparseable `text`.
     bad: fn(string) -> int
 }
 effect Missing {
+    /// Supply the default for the absent field `name`.
     fill: fn(string) -> int
 }
 effect Range {
+    /// Clamp `value` into range, returning the bound it was pinned to.
     clamp: fn(int, int) -> int
 }
 

@@ -1,9 +1,11 @@
 (** Returning from an arm stops the suspended continuation. *)
 effect Stop
+    (** Check `value`; the handler may resume or stop the continuation. *)
     check : int => int
 
 (** Observation records performer-side events without stdout. *)
 effect Observation
+    (** Record a performer-side event without touching stdout. *)
     line : string => Unit
 
 (** Route one observation through the outer handler. *)

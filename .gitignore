@@ -135,3 +135,6 @@ __pycache__/
 *.wasm
 
 __pycache__/
+
+
+.mcp.json

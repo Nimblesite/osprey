@@ -10,6 +10,7 @@
 // siloing fibers, effects, and types in three separate files.
 
 effect Logger {
+    /// Record `message` in whatever log the installed handler owns.
     log: fn(string) -> Unit
 }
 
@@ -108,6 +109,7 @@ print("regions prod=" + toString(prodR) + " silent=" + toString(silentR))
 /// claims the op channel exclusively, so the answers stay deterministic — this
 /// locks the fiber-perform race fix ([EFFECTS-FIBER-PERFORM]).
 effect Gift {
+    /// Request the value awarded for `seed`.
     get: fn(int) -> int
 }
 

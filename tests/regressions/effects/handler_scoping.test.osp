@@ -6,7 +6,9 @@
 //      restored for code that follows.
 
 effect Logger {
-    log:   fn(string) -> Unit
+    /// Record `message` in whatever log the installed handler owns.
+    log: fn(string) -> Unit
+    /// Record a diagnostic `message` kept out of normal output.
     debug: fn(string) -> Unit
 }
 
@@ -78,9 +80,11 @@ fn nestedCall() !Logger = {
 ///     nested RESUMING handlers for different effects compose, and the
 ///     innermost handler of a shadowed effect wins for `resume` too.
 effect Ask {
+    /// Request a replacement for `value` from the installed handler.
     ask: fn(int) -> int
 }
 effect Tell {
+    /// Hand `value` to the handler and use whatever it returns.
     tell: fn(int) -> int
 }
 

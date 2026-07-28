@@ -8,14 +8,14 @@
 //                    same workload over an unpredictable token stream (timing).
 // The token generator is Park-Miller MINSTD, which stays within int64 (no
 // overflow trap) and is reproducible across every language port.
-fn add(a: int, b: int) -> int = a + b ?: 0
-fn mul(a: int, b: int) -> int = a * b ?: 0
-fn modp(a: int, b: int) -> int = a % b ?: 0
-fn r1(x: int) -> int = modp(mul(x, 16807), 2147483647)
-fn hashAt(seed: int, i: int) -> int = r1(r1(add(seed, i)))
-fn randSeed() -> int = match randomBelow(2147483646) { Success { value } => add(value, 1)  Error { message } => 1 }
-fn seedOf(s) -> int = match parseInt(s) { Success { value } => match value { 0 => 1  _ => randSeed() }  Error { message } => 1 }
-fn word(k: int) -> string = match k {
+fn add(a, b) = a + b ?: 0
+fn mul(a, b) = a * b ?: 0
+fn modp(a, b) = a % b ?: 0
+fn r1(x) = modp(mul(x, 16807), 2147483647)
+fn hashAt(seed, i) = r1(r1(add(seed, i)))
+fn randSeed() = match randomBelow(2147483646) { Success { value } => add(value, 1)  Error { message } => 1 }
+fn seedOf(s) = match parseInt(s) { Success { value } => match value { 0 => 1  _ => randSeed() }  Error { message } => 1 }
+fn word(k) = match k {
     0 => "the"    1 => "quick"  2 => "brown"  3 => "fox"
     4 => "jumps"  5 => "over"   6 => "lazy"   _ => "dog"
 }

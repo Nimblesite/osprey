@@ -64,6 +64,77 @@ test("doubles", fn() => {
 })
 `;
 
+/**
+ * A documented suite ([TESTING-DOC]). "documented case" (line 22) carries every
+ * recognised doc section; "summary only" (line 25) carries a bare summary;
+ * "undocumented case" (line 27) carries none. `fn add` is documented too — a
+ * declaration's doc must NOT leak onto the cases.
+ */
+export const DOC_FIXTURE = `/// Adds two integers.
+fn add(a, b) = a + b
+
+/// Addition is commutative.
+///
+/// Swapping the operands cannot change the sum, so both orders agree.
+///
+/// # Parameters
+/// - left: the first addend
+/// - right: the second addend
+///
+/// # Returns
+/// Unit, reported through \`expect\`.
+///
+/// # Raises
+/// - Overflow: when the sum leaves int range
+///
+/// # See also
+/// [add]
+///
+/// # Since
+/// 0.3
+test("documented case", fn() => expect(add(1, 2), add(2, 1)))
+
+/// Zero is the additive identity.
+test("summary only", fn() => expect(add(5, 0), 5))
+
+test("undocumented case", fn() => expect(add(1, 1), 2))
+`;
+
+/** A documented case that FAILS — proves docs reach the failure message. */
+export const DOC_FAIL_FIXTURE = `fn add(a, b) = a + b
+
+/// Proves the broken invariant.
+///
+/// # Since
+/// 0.9
+test("documented failure", fn() => {
+    expect(add(1, 1), 3)
+})
+`;
+
+/** The ML twin of DOC_FIXTURE's first case, using \`(** … *)\` blocks. */
+export const ML_DOC_FIXTURE = `add a b = a + b
+
+(** Addition is commutative.
+
+    Swapping the operands cannot change the sum. *)
+test "ml documented" (\\() => check "sum" (add 1 2) (add 2 1))
+
+test "ml bare" (\\() => check "bare" 1 1)
+`;
+
+/** A busy suite the sampling profiler can collect frames from ([TESTING-PROFILE]). */
+export const PROFILE_FIXTURE = `fn spin(n, acc) = match n <= 0 {
+    true => acc
+    false => spin((n - 1) ?: 0, (acc + n) ?: 0)
+}
+
+/// Burns enough CPU for the sampling profiler to collect frames.
+test("profiled work", fn() => {
+    expect(spin(2000000, 0) > 0, true)
+})
+`;
+
 export interface SinkEvent {
   kind:
     | "enqueued"

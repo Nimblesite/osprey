@@ -2,6 +2,7 @@
 // resuming with scripted values; another returns without resume to stop.
 
 effect Prompt {
+    /// Request the value the caller should use for `label`; the handler decides what is supplied.
     ask: fn(string) -> int
 }
 

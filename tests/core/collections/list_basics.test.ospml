@@ -2,6 +2,7 @@
 
 (** Record callback values without using stdout. *)
 effect IterationProbe
+    (** Record one callback value so traversal order is testable. *)
     observe : int => Unit
 
 (** Append an inclusive integer range without mutating earlier lists. *)

@@ -1,13 +1,13 @@
 //! `match` lowering. Three shapes, dispatched on the arm patterns:
 //!   * literal arms (bool/int/float/string) + catch-all — a compare/branch chain;
-//!   * `Success`/`Error` arms — Result discrimination (an already-unwrapped
-//!     scalar scrutinee falls back to `disc >= 0` ⇒ Success);
+//!   * `Success`/`Error` arms — Result discrimination (a scrutinee that is not
+//!     a `Result` takes the Success arm unconditionally, per the auto-wrap
+//!     rule: any value may be matched as if wrapped in `Success`);
 //!   * user-union variant arms — tag comparison against the heap block's leading
 //!     discriminant, binding the variant's fields.
 
 use crate::builder::Codegen;
 use crate::collections::LIST_OWNER;
-use crate::conv::as_i64;
 use crate::error::{CodegenError, Result};
 use crate::expr::gen_expr;
 use crate::llty::{LType, Value};
@@ -16,7 +16,7 @@ use osprey_ast::{Expr, MatchArm, Pattern};
 pub(crate) fn gen_match(cg: &mut Codegen, value: &Expr, arms: &[MatchArm]) -> Result<Value> {
     let disc = gen_expr(cg, value)?;
     if arms.iter().any(|a| is_result_arm(&a.pattern)) {
-        return gen_result_match(cg, disc, arms);
+        return gen_result_match(cg, &disc, arms);
     }
     if arms
         .iter()
@@ -180,7 +180,7 @@ fn union_owner(cg: &Codegen, arms: &[MatchArm]) -> Option<String> {
 /// its `i8` discriminant (`== 0` ⇒ Success) and binds the success arm's field to
 /// the loaded payload; a bare scalar discriminant falls back to `disc >= 0`
 /// (always Success), preserving the scalar's own type for the binding.
-fn gen_result_match(cg: &mut Codegen, disc: Value, arms: &[MatchArm]) -> Result<Value> {
+fn gen_result_match(cg: &mut Codegen, disc: &Value, arms: &[MatchArm]) -> Result<Value> {
     let success = arms.iter().find(|a| {
         matches!(&a.pattern,
         Pattern::Constructor { name, .. } if name == "Success")
@@ -192,7 +192,7 @@ fn gen_result_match(cg: &mut Codegen, disc: Value, arms: &[MatchArm]) -> Result<
 
     // (cond, success-binding, error-binding) by Result shape.
     let (cond, succ_val, err_val) = if disc.result_inner.is_some() {
-        let d = crate::result::load_disc(cg, &disc);
+        let d = crate::result::load_disc(cg, disc);
         let c = cg.fresh_reg();
         cg.emit(format!("{c} = icmp eq i8 {d}, 0"));
         // Success binds the value slot; Error binds the errmsg slot (the real
@@ -200,8 +200,8 @@ fn gen_result_match(cg: &mut Codegen, disc: Value, arms: &[MatchArm]) -> Result<
         // success payload type. Implements [ERR-PAYLOAD].
         let bound = (
             c,
-            crate::result::load_value(cg, &disc),
-            crate::result::load_errmsg_str(cg, &disc),
+            crate::result::load_value(cg, disc),
+            crate::result::load_errmsg_str(cg, disc),
         );
         // Both slots are now in registers, so a freshly produced block is dead
         // here. Retiring it at the match — rather than letting the region-end
@@ -209,7 +209,7 @@ fn gen_result_match(cg: &mut Codegen, disc: Value, arms: &[MatchArm]) -> Result<
         // what allows a self-call in an arm to stay in tail position.
         // `consume_fresh` only fires for a pure-scalar block, whose errmsg is
         // rodata and so outlives the release. [GC-ARC-PERCEUS]
-        crate::arc::consume_fresh(cg, &disc);
+        crate::arc::consume_fresh(cg, disc);
         bound
     } else if matches!(disc.ty, LType::Str | LType::Ptr) {
         // A handle discriminant (e.g. a WHERE-constrained constructor that
@@ -218,15 +218,19 @@ fn gen_result_match(cg: &mut Codegen, disc: Value, arms: &[MatchArm]) -> Result<
         let empty = Value::new(cg.string_constant("").operand, LType::Str);
         ("true".to_string(), disc.clone(), empty)
     } else {
-        let scalar = disc.clone();
-        let di = as_i64(cg, disc)?;
-        let c = cg.fresh_reg();
-        cg.emit(format!("{c} = icmp sge i64 {}, 0", di.operand));
-        (
-            c,
-            scalar,
-            Value::new(cg.string_constant("").operand, LType::Str),
-        )
+        // A scalar that is NOT a `Result` is matched under the auto-wrap rule:
+        // "any value may be matched as if wrapped in `Success`"
+        // ([`crate::pattern`] mirror of the checker's rule in
+        // osprey-types/src/pattern.rs). So the Success arm is taken
+        // UNCONDITIONALLY, exactly as the handle branch above does.
+        //
+        // This used to branch on `icmp sge i64 value, 0`, treating a negative
+        // scalar as an Error — a negative-sentinel heuristic no builtin relies
+        // on. It made `-1 ?: 99` evaluate to `99` and `abs(-1)` see `0`: a
+        // SILENT wrong answer on every negative value reaching `?:`.
+        // Implements [PATTERN-RESULT-AUTOWRAP].
+        let empty = Value::new(cg.string_constant("").operand, LType::Str);
+        ("true".to_string(), disc.clone(), empty)
     };
 
     let sl = cg.fresh_label();

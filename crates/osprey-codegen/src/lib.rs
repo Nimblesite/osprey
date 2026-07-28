@@ -452,6 +452,7 @@ mod tests {
                     arguments: Vec::new(),
                     named_arguments: Vec::new(),
                 },
+                doc: None,
                 position: None,
             }],
         };
@@ -744,20 +745,34 @@ mod tests {
         assert!(closure.contains("bitcast i8* %$p0 to { i64, i8, i8* }*"));
     }
 
+    /// Matching a bare scalar against `Success`/`Error` arms takes the Success
+    /// arm UNCONDITIONALLY, per the auto-wrap rule ("any value may be matched as
+    /// if wrapped in `Success`", osprey-types/src/pattern.rs).
+    ///
+    /// This used to emit `icmp sge i64 disc, 0` and route a NEGATIVE scalar to
+    /// the Error arm — so `-1 ?: 99` silently produced `99`. The sign of a value
+    /// must never decide which arm runs. Implements [PATTERN-RESULT-AUTOWRAP].
     #[test]
-    fn result_match_on_a_scalar_discriminant() {
-        // Matching a bare scalar against Success/Error arms falls back to the
-        // `disc >= 0 ⇒ Success` rule (pattern.rs gen_result_match scalar branch).
-        let ir = module(
-            "fn main() -> Unit = {\n\
-               let n = 5\n\
-               match n {\n\
-                 Success { value } => print(\"v=${value}\")\n\
-                 Error { message } => print(\"e=${message}\")\n\
-               }\n\
-             }\n",
-        );
-        assert!(ir.contains("icmp sge i64"));
+    fn result_match_on_a_scalar_discriminant_always_takes_success() {
+        for scrutinee in ["5", "-1"] {
+            let ir = module(&format!(
+                "fn main() -> Unit = {{\n\
+                   let n = {scrutinee}\n\
+                   match n {{\n\
+                     Success {{ value }} => print(\"v=${{value}}\")\n\
+                     Error {{ message }} => print(\"e=${{message}}\")\n\
+                   }}\n\
+                 }}\n"
+            ));
+            assert!(
+                !ir.contains("icmp sge i64"),
+                "the sign of {scrutinee} must not select the arm:\n{ir}"
+            );
+            assert!(
+                ir.contains("br i1 true"),
+                "Success arm is unconditional for {scrutinee}:\n{ir}"
+            );
+        }
     }
 
     #[test]

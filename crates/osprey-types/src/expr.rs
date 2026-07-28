@@ -6,6 +6,18 @@
 
 use crate::check::Checker;
 use crate::convert::type_expr_to_type;
+
+/// Builtin types that carry no fields, so `x.field` on one can never resolve.
+/// Deliberately excludes `any` (which unifies with everything, including
+/// records) and every collection/generic whose element MIGHT be a record.
+/// Implements [TYPE-FIELD-ACCESS-NON-RECORD].
+const FIELDLESS_TYPES: &[&str] = &[
+    names::INT,
+    names::FLOAT,
+    names::STRING,
+    names::BOOL,
+    names::UNIT,
+];
 use crate::env::{instantiate, TypeEnv};
 use crate::error::TypeError;
 use crate::ty::{names, Type};
@@ -153,13 +165,36 @@ impl Checker {
     /// the target is not a known record (split out of [`Self::infer_expr`]).
     fn infer_field_access(&mut self, target: &Expr, field: &str, env: &TypeEnv) -> Type {
         let tt = self.infer_expr(target, env);
-        match &self.ctx.prune(&tt) {
+        let pruned = self.ctx.prune(&tt);
+        match &pruned {
             Type::Record { fields, .. } => fields
                 .get(field)
                 .cloned()
                 .unwrap_or_else(|| self.ctx.fresh()),
-            _ => self.ctx.fresh(),
+            other => {
+                if let Type::Con { name, .. } = other {
+                    if FIELDLESS_TYPES.contains(&name.as_str()) {
+                        self.record_field_access_on_fieldless(field, name);
+                    }
+                }
+                self.ctx.fresh()
+            }
         }
+    }
+
+    /// Reject `x.field` where `x` is a builtin that has no fields at all.
+    ///
+    /// This arm used to fall through to a fresh variable, so the program passed
+    /// the checker and CODEGEN emitted invalid LLVM (`bitcast i8* 42 to
+    /// { i64, i64 }*`) — the "error" then surfaced from clang, naming a
+    /// temporary `.ll` file rather than the offending source line. Only names
+    /// that can NEVER be a user record are listed, and an unresolved type
+    /// variable is deliberately left alone: inference may still resolve it to a
+    /// record. Implements [TYPE-FIELD-ACCESS-NON-RECORD].
+    fn record_field_access_on_fieldless(&mut self, field: &str, ty: &str) {
+        self.errors.push(TypeError::new(format!(
+            "cannot access field '{field}' on non-struct type {ty}"
+        )));
     }
 
     /// A channel and its sent value share one element type; the send is `Unit`.
@@ -1135,6 +1170,7 @@ mod tests {
                 left: Box::new(Expr::Integer(10)),
                 right: Box::new(Expr::Identifier("inc".into())),
             },
+            doc: None,
             position: None,
         };
         // Pipe, call form: `10 |> inc(0)` prepends `10`, becoming `inc(10, 0)`
@@ -1148,6 +1184,7 @@ mod tests {
                     named_arguments: Vec::new(),
                 }),
             },
+            doc: None,
             position: None,
         };
         // `Expr::Update` over a non-record binding hits the else arm of
@@ -1160,6 +1197,7 @@ mod tests {
                     value: Expr::Integer(1),
                 }],
             },
+            doc: None,
             position: None,
         };
         let prog = Program {
@@ -1229,6 +1267,7 @@ mod tests {
         let mut stmts = prog.statements;
         stmts.push(Stmt::Expr {
             value: body,
+            doc: None,
             position: None,
         });
         let errs = check_program(&Program { statements: stmts });

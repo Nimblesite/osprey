@@ -41,6 +41,7 @@
     "onCommand:osprey.debug",
     "onCommand:osprey.profileCurrentFile",
     "onCommand:osprey.profiler.openLast",
+    "onCommand:osprey.showTestDocumentation",
     "onDebugResolve:osprey",
     "workspaceContains:**/*.test.osp",
     "workspaceContains:**/*.test.ospml"
@@ -150,6 +151,12 @@
         "command": "osprey.profiler.openLast",
         "title": "Show Last Profile",
         "category": "Osprey"
+      },
+      {
+        "command": "osprey.showTestDocumentation",
+        "title": "Show Test Documentation",
+        "category": "Osprey",
+        "icon": "$(book)"
       }
     ],
     "menus": {
@@ -173,6 +180,11 @@
           "when": "resourceLangId == osprey || resourceLangId == osprey-ml",
           "command": "osprey.profileCurrentFile",
           "group": "navigation@4"
+        },
+        {
+          "when": "resourceLangId == osprey || resourceLangId == osprey-ml",
+          "command": "osprey.showTestDocumentation",
+          "group": "navigation@5"
         }
       ],
       "commandPalette": [
@@ -191,6 +203,16 @@
         {
           "command": "osprey.profileCurrentFile",
           "when": "resourceLangId == osprey || resourceLangId == osprey-ml"
+        },
+        {
+          "command": "osprey.showTestDocumentation",
+          "when": "resourceLangId == osprey || resourceLangId == osprey-ml"
+        }
+      ],
+      "testing/item/context": [
+        {
+          "command": "osprey.showTestDocumentation",
+          "group": "osprey@1"
         }
       ]
     },
@@ -330,7 +352,7 @@
         "osprey.profiler.inlineHeat": {
           "type": "boolean",
           "default": true,
-          "description": "After profiling, show inline per-line heat annotations (NN.N% · M samples) and overview-ruler marks in the profiled source files."
+          "description": "After profiling, show inline per-line heat annotations (NN.N% \u00b7 M samples) and overview-ruler marks in the profiled source files."
         }
       }
     }

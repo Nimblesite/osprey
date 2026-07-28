@@ -25,7 +25,10 @@ fn parseStatus(text) = match parseInt(text) {
 }
 
 /// Counter models a handled state-changing capability with an integer payload.
-effect Counter { increment: fn(int) -> Unit }
+effect Counter {
+    /// Advance the counter the handler owns.
+    increment: fn(int) -> Unit
+}
 
 /// Verifies unions, Results, interpolation, arithmetic, and ordering together.
 fn unionsResultsAndScalars() = {

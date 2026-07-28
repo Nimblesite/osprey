@@ -1,7 +1,7 @@
 // Towers of Hanoi — count moves via exponential double recursion. hanoi(n)=2^n-1.
-fn add(a: int, b: int) -> int = a + b ?: 0
-fn sub(a: int, b: int) -> int = a - b ?: 0
-fn hanoi(n: int, acc: int) -> int = match n {
+fn add(a, b) = a + b ?: 0
+fn sub(a, b) = a - b ?: 0
+fn hanoi(n, acc) = match n {
     0 => acc
     _ => hanoi(sub(n, 1), add(hanoi(sub(n, 1), acc), 1))
 }

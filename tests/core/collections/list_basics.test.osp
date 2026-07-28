@@ -1,7 +1,10 @@
 // Assertion-driven migration of the persistent List golden example.
 
 /// IterationProbe records callback values so forEachList order is testable without stdout.
-effect IterationProbe { observe: fn(int) -> Unit }
+effect IterationProbe {
+    /// Record one callback value so traversal order is testable.
+    observe: fn(int) -> Unit
+}
 
 /// appendThrough builds inclusive integer ranges while preserving every prior list version.
 fn appendThrough(xs: List<int>) -> (int) -> (int) -> List<int> =

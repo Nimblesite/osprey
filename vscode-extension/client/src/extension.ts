@@ -25,7 +25,9 @@ import {
 } from "vscode-languageclient/node";
 import { registerOspreyDebugPanel } from "./debug-panel";
 import { registerProfilerCommands } from "./profiler/profile-run";
+import { registerTestDocsCommand } from "./test-docs-panel";
 import { registerOspreyTestExplorer } from "./test-explorer";
+import { registerTestProfileProfile } from "./test-profile";
 
 // @nimblesite/shipwright-vscode is ESM-only; this extension is CommonJS, so it
 // is loaded via dynamic import() (never a static require) inside activate().
@@ -361,15 +363,30 @@ export function activate(context: ExtensionContext) {
   outputChannel.appendLine("=== Osprey Extension Activation ===");
   outputChannel.show();
 
-  // Native Test Explorer integration ([TESTING-VSCODE]). Registered before the
-  // server-enabled gate: test discovery/running only needs the compiler CLI, so
-  // it must keep working even with the LSP disabled.
-  registerOspreyTestExplorer(context, () => resolveServerCommand(context));
-
   // CPU profiler ([PROF-VSCODE-FLAME]): the Profile Current File command, the
-  // interactive flame-graph webview, and inline heat decorations. Also
-  // registered before the server gate — it only needs the compiler CLI.
-  registerProfilerCommands(context, () => resolveServerCommand(context));
+  // interactive flame-graph webview, and inline heat decorations. Registered
+  // before the server-enabled gate — it only needs the compiler CLI — and
+  // first, so the Test Explorer's Profile run profile can reuse its heat
+  // manager ([TESTING-PROFILE]).
+  const heat = registerProfilerCommands(context, () =>
+    resolveServerCommand(context),
+  );
+
+  // Native Test Explorer integration ([TESTING-VSCODE]). Also before the gate:
+  // test discovery/running only needs the compiler CLI, so it must keep
+  // working even with the LSP disabled.
+  const controller = registerOspreyTestExplorer(context, () =>
+    resolveServerCommand(context),
+  );
+  // The Profile run profile runs a suite under the sampling profiler and opens
+  // its flame graph + heat decorations ([TESTING-PROFILE]); the documentation
+  // command opens a case's `///` block ([TESTING-DOC]).
+  registerTestProfileProfile(
+    controller,
+    () => resolveServerCommand(context),
+    () => heat,
+  );
+  registerTestDocsCommand(context);
 
   // Check if Osprey server is enabled
   const config = workspace.getConfiguration("osprey");
@@ -754,7 +771,8 @@ function compileAndRunCurrentFile(compilerCommand: string) {
     startLine: (fileName) => `Compiling and running ${fileName}...`,
     args: (fileName) => [fileName, "--run"],
     outputHeader: `=== COMPILE AND RUN OUTPUT ===`,
-    failureMessage: "Compilation or execution failed. Check output for details.",
+    failureMessage:
+      "Compilation or execution failed. Check output for details.",
     successHeader: "=== SUCCESS ===",
     successMessage: "Osprey program executed successfully!",
   });

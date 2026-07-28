@@ -356,9 +356,15 @@ impl Lowerer<'_> {
         if op == "-" && operand.is_some_and(|n| super::is_i64_min_magnitude_text(&self.text(n))) {
             return Expr::Integer(i64::MIN);
         }
+        let lowered = self.lower_expr_field(node, "operand");
+        // A negated literal folds to the literal itself so `-1` stays an `int`
+        // rather than becoming a fallible `Result` ([ARITH-NEG-LITERAL]).
+        if op == "-" {
+            return Expr::negated(lowered);
+        }
         Expr::Unary {
             op,
-            operand: Box::new(self.lower_expr_field(node, "operand")),
+            operand: Box::new(lowered),
         }
     }
 
@@ -475,6 +481,27 @@ mod tests {
             Expr::Str(s) => assert_eq!(s, "\n\r\t\u{1b}\0\"\\\\q"),
             other => panic!("expected string, got {other:?}"),
         }
+    }
+
+    /// A negated literal is a compile-time constant, so it folds to the literal
+    /// and keeps the plain `int`/`float` type; a negated *variable* stays a
+    /// checked `Unary` because `-i64::MIN` really can overflow.
+    /// Implements [ARITH-NEG-LITERAL].
+    #[test]
+    fn negated_literals_fold_but_negated_values_stay_checked() {
+        assert!(matches!(let_value("let r = -1\n"), Expr::Integer(-1)));
+        assert!(matches!(let_value("let r = -0\n"), Expr::Integer(0)));
+        match let_value("let r = -2.5\n") {
+            Expr::Float(f) => assert!((f + 2.5).abs() < f64::EPSILON, "got {f}"),
+            other => panic!("expected folded float, got {other:?}"),
+        }
+        // The one value whose negation overflows stays an unfolded, checked
+        // `Unary` rather than panicking or silently wrapping in the folder.
+        assert!(matches!(
+            let_value("let r = -(-9223372036854775808)\n"),
+            Expr::Unary { .. }
+        ));
+        assert!(matches!(let_value("let r = -x\n"), Expr::Unary { .. }));
     }
 
     #[test]

@@ -2,6 +2,7 @@
 // handler that aborts by returning without resume. [EFFECTS-RESUME]
 
 effect Step
+    (** Run one pipeline stage over `value` under the active policy. *)
     run : int => int
 
 (** An aborted continuation omits observations after the poison step. *)

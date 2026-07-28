@@ -2,6 +2,7 @@
 // Effects centralize policy; they do not erase the original MathError.
 
 effect ArithmeticFailure {
+    /// Decide what a failed calculation yields, preserving the original `MathError`.
     decide: fn(string) -> Result<int, MathError>
 }
 

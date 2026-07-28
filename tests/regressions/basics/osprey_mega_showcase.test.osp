@@ -1,7 +1,13 @@
 /// 🦅 Osprey in one screen — algebraic effects, fibers, unions, HM inference.
 /// The SAME account() runs in two worlds; only the installed handler differs.
-effect Console { emit: fn(string) -> Unit }
-effect Ledger  { post: fn(int) -> int }
+effect Console {
+    /// Write one line to the console the handler represents.
+    emit: fn(string) -> Unit
+}
+effect Ledger {
+    /// Post `amount` to the account and return the new balance.
+    post: fn(int) -> int
+}
 
 /// account() only performs effects — it never learns whether the ledger is real.
 fn account() ![Console, Ledger] = {

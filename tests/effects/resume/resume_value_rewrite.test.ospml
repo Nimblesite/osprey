@@ -1,5 +1,6 @@
 (** Supply lets the handler choose each observed integer. *)
 effect Supply
+    (** Request the next scripted value for `label`. *)
     next : string => int
 
 (** Sum three values supplied by explicit resumes. *)
@@ -12,6 +13,7 @@ total () =
 
 (** Relay is exercised at two concrete result types. *)
 effect Relay T
+    (** Request one value of the instantiated element type `T`. *)
     ask : Unit => T
 
 (** Receive a string from Relay<string>. *)
@@ -20,6 +22,7 @@ echoWord () = perform Relay.ask ()
 
 (** Checked returns a Result as the operation value. *)
 effect Checked
+    (** Halve `value`, reporting an odd input as an `Error`. *)
     half : int => Result<int, string>
 
 (** Default the Result returned by Checked. *)

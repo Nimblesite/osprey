@@ -1,9 +1,11 @@
 (** Prompt suspends a form until its handler supplies a value. *)
 effect Prompt
+    (** Request the value the caller should use for `label`; the handler decides what is supplied. *)
     ask : string => string
 
 (** Log observes both sides of the resumed prompt. *)
 effect Log
+    (** Append one already-formatted line to the log. *)
     line : string => Unit
 
 (** Log on both sides of the prompt. *)

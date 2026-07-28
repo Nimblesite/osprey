@@ -13,6 +13,7 @@
 // napping fiber blocked in sleep (waiting samples).
 
 effect Tuning {
+    /// Establish the baseline cost the profiler measures against.
     baseline: fn(int) -> int
 }
 

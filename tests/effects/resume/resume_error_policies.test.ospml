@@ -2,6 +2,7 @@
 
 (** ResumeFallback lets a policy replace one failed integer and continue the caller. *)
 effect ResumeFallback
+    (** Replace one failed value, resuming the caller with the substitute. *)
     recover : (string, int) => int
 
 (** This workflow proves that work on both sides of a recovered operation still runs. *)
@@ -30,10 +31,12 @@ resumeRecoveryContinuesCase () =
 
 (** FatalExit models one operation whose recoverable branch resumes and fatal branch stops. *)
 effect FatalExit
+    (** Abandon the computation with `reason`; the handler does not resume. *)
     raise : string => int
 
 (** ExitTrace records which parts of a deep call chain were reached. *)
 effect ExitTrace
+    (** Record that this point of a deep call chain was reached. *)
     mark : string => Unit
 
 (** The deepest helper requests a fatal exit instead of returning an ordinary value. *)
@@ -74,6 +77,7 @@ fatalExitStopsDeepCallCase () =
 
 (** RetryInput supplies successive candidates to a validation loop. *)
 effect RetryInput
+    (** Request the candidate for `attempt`; invalid answers ask again. *)
     next : int => int
 
 (** Invalid candidates recursively ask again under the same deep handler. *)
@@ -105,8 +109,10 @@ recursiveRetryCase () =
 
 (** ParseRecovery supplies an integer while LookupRecovery supplies a string. *)
 effect ParseRecovery
+    (** Supply the integer to use when `text` will not parse. *)
     parse : string => int
 effect LookupRecovery
+    (** Supply the text to use when `key` is absent. *)
     missing : string => string
 
 (** This configuration consumes two independently typed recovery channels. *)
@@ -142,6 +148,7 @@ nestedRecoveryChannelsCase () =
 
 (** ScopedRecovery demonstrates nearest-handler lookup for a resuming effect. *)
 effect ScopedRecovery
+    (** Supply a value for `seed`; the nearest enclosing handler wins. *)
     value : int => int
 
 (** This helper keeps handler lookup visible across ordinary function calls. *)
@@ -173,6 +180,7 @@ resumingHandlerShadowCase () =
 
 (** WrapAnswer exposes how post-resume code can transform the completed answer. *)
 effect WrapAnswer
+    (** Request the number the performer will transform before returning. *)
     number : Unit => int
 
 (** The performer adds one to the value supplied by its handler. *)
@@ -195,6 +203,7 @@ postResumeTransformsAnswerCase () =
 
 (** ResultRecovery returns the complete Result value through a continuation. *)
 effect ResultRecovery
+    (** Fetch `key`, letting the CALLER — not the handler — turn the `Result` into a value. *)
     fetch : string => Result<int, string>
 
 (** The caller, not the handler, decides how Success and Error become integers. *)
@@ -226,6 +235,7 @@ type RecoveryChoice = Use int | Reject int
 
 (** ChoiceRecovery returns a tagged choice rather than an untyped sentinel. *)
 effect ChoiceRecovery
+    (** Choose whether `label` is recovered or rejected. *)
     decide : string => RecoveryChoice
 
 (** Exhaustive matching makes both recovery choices visible to the caller. *)
@@ -251,6 +261,7 @@ resumeTaggedChoiceCase () =
 
 (** DeepRecovery drives many sequential suspensions through one handler. *)
 effect DeepRecovery
+    (** Supply the value contributed at recursion `depth`. *)
     checkpoint : int => int
 
 (** Each recursive level performs once before descending to the next level. *)
@@ -276,9 +287,13 @@ deepResumeStressCase () =
 
 (** TypedRecovery combines integer, string, boolean, and Unit operations in one region. *)
 effect TypedRecovery
+    (** Supply the integer channel's replacement for `label`. *)
     number : string => int
+    (** Supply the text channel's replacement for `label`. *)
     text : string => string
+    (** Supply the boolean channel's decision for `label`. *)
     allow : string => bool
+    (** Record a recovery on the `Unit` channel. *)
     note : string => Unit
 
 (** The workflow consumes every operation result type after its continuation resumes. *)
@@ -318,6 +333,7 @@ heterogeneousResumeCase () =
 
 (** StringAnswerRecovery reproduces the ARC leak for a managed continuation answer. *)
 effect StringAnswerRecovery
+    (** Request the replacement text the handler supplies. *)
     get : Unit => string
 
 (** This exact shape returns a dynamic string after resuming with another string. *)
@@ -332,6 +348,7 @@ stringAnswerArcKnownFailureCase () =
 
 (** SixteenArgumentRecovery locks the largest operation payload the current runtime transports. *)
 effect SixteenArgumentRecovery
+    (** Recover across sixteen integer arguments — the last arity passed in registers. *)
     recover : (int, int, int, int, int, int, int, int, int, int, int, int, int, int, int, int) => int
 
 (** The operation sends sixteen distinct values so no mailbox position can hide behind equality. *)
@@ -360,6 +377,7 @@ type Verdict = Pass | Fail string | Skip string
 
 (** SeventeenArgumentRecovery is accepted today but runtime argument 17 becomes zero. *)
 effect SeventeenArgumentRecovery
+    (** Recover across seventeen integer arguments — the first arity that spills to the stack. *)
     recover : (int, int, int, int, int, int, int, int, int, int, int, int, int, int, int, int, int) => int
 
 (** This is the exact operation shape tracked by critical issue #182. *)

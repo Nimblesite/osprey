@@ -76,6 +76,7 @@ match zStr < aStr {
 /// Reassignment after explicitly handling checked integer addition. The client
 /// can only request a state transition; the handler owns the actual mutation.
 effect CounterState {
+    /// Advance the counter the handler owns by one.
     increment: fn() -> Unit
 }
 
@@ -142,6 +143,7 @@ print("wrapped: ${mw(20)} nested: ${nest(10)(20)}")
 /// call is explicitly defaulted before entering a scalar-returning slot.
 fn mkR(x: int) -> Result<int, string> = Success { value: x }
 effect ClosureSlot {
+    /// Rebind the captured adder to `value`.
     rebindAdder: fn(int) -> Unit
 }
 mut rb = fn(x) => x + 1 ?: 0

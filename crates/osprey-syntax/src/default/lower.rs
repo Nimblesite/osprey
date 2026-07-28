@@ -229,10 +229,14 @@ impl<'a> Lowerer<'a> {
                 doc: self.doc_text(node),
                 position: Some(self.field_pos(node, "keyword")),
             },
+            // A leading `///` block documents the expression that follows, so
+            // the expression is looked up by kind rather than by position —
+            // `first_named` would hand back the doc comment ([TESTING-DOC]).
             "expression_statement" => {
-                let expr = self.first_named(node)?;
+                let expr = self.first_child_of_kind(node, "expression")?;
                 Stmt::Expr {
                     value: self.lower_expr(expr),
+                    doc: self.doc_text(node),
                     position: Some(self.pos(expr)),
                 }
             }
@@ -356,7 +360,11 @@ impl<'a> Lowerer<'a> {
                     .unwrap_or_default(),
                 parameters: Vec::new(),
                 return_type: String::new(),
-                position: Some(self.pos(*op)),
+                doc: self.doc_text(*op),
+                // Anchor on the NAME, not the node: a leading `///` is now a
+                // child of `operation_declaration`, so `pos(op)` would land on
+                // the comment and defeat position-based hover resolution.
+                position: Some(self.field_pos(*op, "name")),
             })
             .collect()
     }
@@ -699,6 +707,104 @@ mod tests {
         let mut cursor = node.walk();
         let children: Vec<Node<'t>> = node.children(&mut cursor).collect();
         children.into_iter().find_map(|c| find_kind(c, kind))
+    }
+
+    // ---------- [TESTING-DOC] expression-statement documentation ----------
+
+    /// The doc comment lowered onto a statement, or `None`.
+    fn stmt_doc(stmt: &Stmt) -> Option<&osprey_ast::DocComment> {
+        match stmt {
+            Stmt::Expr { doc, .. } | Stmt::Let { doc, .. } | Stmt::Function { doc, .. } => {
+                doc.as_ref()
+            }
+            _ => None,
+        }
+    }
+
+    #[test]
+    fn a_doc_comment_lowers_onto_the_expression_statement_it_precedes() {
+        // A `test(...)` case is an expression statement, not a declaration, so
+        // documenting one requires the doc to attach here ([TESTING-DOC]).
+        let s = one("/// Documents the call.\nprint(\"hi\")\n");
+        let doc = stmt_doc(&s).expect("doc attached to the expression statement");
+        assert_eq!(doc.summary, "Documents the call.");
+        assert!(matches!(s, Stmt::Expr { .. }), "still an expr stmt: {s:?}");
+    }
+
+    #[test]
+    fn a_documented_expression_statement_keeps_its_value_and_position() {
+        // The doc must not displace the lowered expression, and the recorded
+        // position must stay on the EXPRESSION — the Test Explorer's gutter
+        // marker would otherwise land on the first `///` line.
+        let s = one("/// Line one.\n/// Line two.\ntest(\"named\", 1)\n");
+        match &s {
+            Stmt::Expr {
+                value, position, ..
+            } => {
+                assert!(
+                    matches!(value, Expr::Call { .. }),
+                    "the call survived: {value:?}"
+                );
+                let position = position.expect("position recorded");
+                assert_eq!(position.line, 3, "the `test(` line, not the doc's");
+                assert_eq!(position.column, 0);
+            }
+            other => panic!("expected an expression statement, got {other:?}"),
+        }
+        // Consecutive `///` lines are one paragraph, so they join into a single
+        // summary line ([DOC-MODEL]).
+        let doc = stmt_doc(&s).expect("doc attached");
+        assert_eq!(doc.summary, "Line one. Line two.");
+    }
+
+    #[test]
+    fn an_undocumented_expression_statement_carries_no_doc() {
+        let s = one("print(\"hi\")\n");
+        assert!(stmt_doc(&s).is_none(), "no doc invented: {s:?}");
+    }
+
+    #[test]
+    fn each_documented_statement_owns_only_its_own_doc() {
+        let all = stmts("/// First.\ntest(\"a\", 1)\ntest(\"b\", 2)\n/// Third.\ntest(\"c\", 3)\n");
+        assert_eq!(all.len(), 3);
+        assert_eq!(
+            stmt_doc(&all[0]).map(|d| d.summary.as_str()),
+            Some("First.")
+        );
+        assert_eq!(stmt_doc(&all[1]).map(|d| d.summary.as_str()), None);
+        assert_eq!(
+            stmt_doc(&all[2]).map(|d| d.summary.as_str()),
+            Some("Third.")
+        );
+    }
+
+    #[test]
+    fn a_documented_declaration_after_a_documented_statement_keeps_its_own_doc() {
+        // Adding the expression-statement slot must not steal a following
+        // declaration's doc comment.
+        let all = stmts("/// Runs it.\nprint(\"hi\")\n/// Adds.\nfn add(a, b) = a + b\n");
+        assert_eq!(all.len(), 2);
+        assert_eq!(
+            stmt_doc(&all[0]).map(|d| d.summary.as_str()),
+            Some("Runs it.")
+        );
+        assert!(matches!(all[1], Stmt::Function { .. }));
+        assert_eq!(stmt_doc(&all[1]).map(|d| d.summary.as_str()), Some("Adds."));
+    }
+
+    #[test]
+    fn documented_statements_inside_a_block_lower_with_their_docs() {
+        let s = one("fn main() = {\n/// Inner case.\ntest(\"inner\", 1)\n0\n}\n");
+        let Stmt::Function { body, .. } = &s else {
+            panic!("expected a function, got {s:?}");
+        };
+        let Expr::Block { statements, .. } = body else {
+            panic!("expected a block body, got {body:?}");
+        };
+        assert_eq!(
+            stmt_doc(&statements[0]).map(|d| d.summary.as_str()),
+            Some("Inner case.")
+        );
     }
 
     #[test]

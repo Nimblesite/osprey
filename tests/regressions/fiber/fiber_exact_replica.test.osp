@@ -3,10 +3,12 @@
 extern fn fiber_set_deterministic_mode(enabled: bool) -> int
 
 effect Logger {
+    /// Record an informational `message` against the active logger.
     info: fn(string) -> Unit
 }
 
 effect Metrics {
+    /// Record a successful `route` call taking `millis`.
     recordSuccess: fn(string, int) -> Unit
 }
 

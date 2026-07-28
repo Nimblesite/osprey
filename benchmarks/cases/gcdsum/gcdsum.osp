@@ -1,11 +1,11 @@
 // Sum of gcd(i, K) for i in 1..N — Euclidean-algorithm recursion (modulo heavy).
-fn add(a: int, b: int) -> int = a + b ?: 0
-fn mod_(a: int, b: int) -> int = a % b ?: 0
+fn add(a, b) = a + b ?: 0
+fn mod_(a, b) = a % b ?: 0
 
-fn gcd(a: int, b: int) -> int = match b {
+fn gcd(a, b) = match b {
     0 => a
     _ => gcd(b, mod_(a, b))
 }
-fn step(acc: int, i: int) -> int = add(acc, gcd(i, 1234567))
+fn step(acc, i) = add(acc, gcd(i, 1234567))
 
 print("${range(1, 2000000) |> fold(0, step)}")

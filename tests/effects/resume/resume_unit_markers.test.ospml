@@ -1,5 +1,6 @@
 (** Trace exposes a Unit-returning operation. *)
 effect Trace
+    (** Record a named marker so unwind order is observable. *)
     mark : string => Unit
 
 (** Perform two markers before returning the final value. *)

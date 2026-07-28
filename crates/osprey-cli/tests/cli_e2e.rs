@@ -761,6 +761,68 @@ fn list_tests_reports_literal_cases_as_json() {
     assert_eq!(o.stdout.trim(), "[]");
 }
 
+// [TESTING-DOC] a `///` block above a case travels through `--list-tests` as
+// `summary` (the Test Explorer's inline description) and `doc` (the hover
+// markdown); an undocumented case emits neither key.
+#[test]
+fn list_tests_carries_case_documentation() {
+    let prog = temp_osp(
+        "list_tests_docs",
+        "fn add(a, b) = a + b\n\
+         /// Addition is commutative.\n\
+         ///\n\
+         /// # Parameters\n\
+         /// - left: the first addend\n\
+         ///\n\
+         /// # Since\n\
+         /// 0.3\n\
+         test(\"commutes\", fn() => expect(add(1, 2), add(2, 1)))\n\
+         test(\"bare\", fn() => expect(1, 1))\n",
+    );
+    let o = run_file(&prog, &["--list-tests"]);
+    assert_eq!(o.code, Some(0), "{}", o.stderr);
+    let out = o.stdout.trim();
+    assert!(
+        out.contains("\"summary\":\"Addition is commutative.\""),
+        "{out}"
+    );
+    assert!(out.contains("**Parameters**"), "sections render: {out}");
+    assert!(
+        out.contains("- `left` \\u2014 the first addend")
+            || out.contains("- `left` — the first addend"),
+        "{out}"
+    );
+    assert!(out.contains("**Since**"), "{out}");
+    // The case's own line, not the doc block's first line.
+    assert!(out.contains("\"name\":\"commutes\",\"line\":9"), "{out}");
+    // The undocumented case keeps the bare three-key shape.
+    assert!(
+        out.contains("{\"name\":\"bare\",\"line\":10,\"column\":1}"),
+        "{out}"
+    );
+    // Whatever the content, the whole array must be a single JSON line the
+    // extension can JSON.parse.
+    assert!(!out.trim_end().contains('\n'), "one line of JSON: {out}");
+
+    // The ML twin lowers the `(** … *)` form to the same wire shape.
+    let ml_dir = temp_dir("list_tests_docs_ml");
+    let ml = write_in(
+        &ml_dir,
+        "docs.test.ospml",
+        "add a b = a + b\n\
+         (** Addition is commutative. *)\n\
+         test \"commutes\" (\\() => check \"c\" (add 1 2) (add 2 1))\n",
+    );
+    let o = run_file(&ml, &["--list-tests"]);
+    assert_eq!(o.code, Some(0), "{}", o.stderr);
+    assert!(
+        o.stdout
+            .contains("\"summary\":\"Addition is commutative.\""),
+        "{}",
+        o.stdout
+    );
+}
+
 // [TESTING-CLI-RUN][TESTING-FILE-CONVENTION] the runner discovers
 // *.test.osp{,ml} under a directory, streams TAP under headers, and aggregates
 // the exit status.

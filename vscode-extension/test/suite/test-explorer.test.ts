@@ -9,7 +9,11 @@ import * as os from "os";
 import * as path from "path";
 import * as sinon from "sinon";
 import * as vscode from "vscode";
-import { fileTestId, leafTestId } from "../../client/src/test-explorer-parse";
+import {
+  COVERAGE_RUN,
+  fileTestId,
+  leafTestId,
+} from "../../client/src/test-explorer-parse";
 import {
   coverageSink,
   detailedCoverageFor,
@@ -366,7 +370,7 @@ suite("Osprey Test Explorer", () => {
         sink,
         token(),
         () => compiler,
-        true,
+        COVERAGE_RUN,
       );
       assert.strictEqual(sink.ofKind("passed").length, 1);
       const hits = sink.coverage.get(coverageUri.fsPath);
@@ -453,7 +457,7 @@ suite("Osprey Test Explorer", () => {
         coverageSink(recordingRun(received)),
         token(),
         () => compiler,
-        true,
+        COVERAGE_RUN,
       );
       assert.strictEqual(received.length, 1, "one FileCoverage per suite file");
       const fc = received[0];

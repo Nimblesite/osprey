@@ -2,6 +2,7 @@
 
 (** Counter mutation is available only through this handled operation. *)
 effect FlavorCounter
+    (** Add `amount` to the counter the handler owns. *)
     tick : int => Unit
 
 (** Verify state before, during, and after the handler. *)

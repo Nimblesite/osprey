@@ -87,6 +87,7 @@ books () =
 
 // ── algebraic effect ── the handler is the SQLite writer AND the accountant ──
 effect Db
+    (** Record one `Sale` and return its assigned id. *)
     record : Sale => int
 
 ddl () =

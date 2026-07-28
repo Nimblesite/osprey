@@ -21,6 +21,10 @@ use crate::mlrender;
 use crate::reference_docs::{keyword_hover, type_hover};
 use crate::workspace;
 
+/// The built-in that declares a test case; hovering it shows that case's own
+/// documentation rather than the built-in's signature ([TESTING-DOC]).
+const TEST_CALLEE: &str = "test";
+
 /// Hover markdown for the identifier at `(line, character)`: the symbol's
 /// signature, or `name: type` for a binding — inferring an unannotated `let`'s
 /// type from the checker — followed by its `///` documentation. Built-ins fall
@@ -37,6 +41,15 @@ pub(crate) fn hover(
     let word = word_under(text, line, character, enc)?;
     let flavor = flavor_of(path, text);
     let parsed = osprey_syntax::parse_program_with_flavor(text, flavor);
+    // A `test` callee resolves to the built-in's generic signature, which says
+    // nothing about THIS case; the case's own `///` block does. Answer with it
+    // before the generic lookups ([TESTING-DOC]).
+    if word == TEST_CALLEE {
+        if let Some(hov) = crate::testing::test_case_hover(&parsed.program, line.saturating_add(1))
+        {
+            return Some(hov);
+        }
+    }
     let symbols = collect_all_symbols(&parsed.program);
     // A `[Symbol]` intra-doc link under the cursor resolves to the referenced
     // element's own hover — the whole dotted target (`Effect.op`), not just the
@@ -128,6 +141,7 @@ fn resolve_link(
 /// and should not be shown it. Implements [LSP-FLAVOR-RENDER], [FLAVOR-ML-FN].
 fn symbol_hover(s: &SymbolInfo, program: &Program, flavor: Flavor) -> String {
     let code = match (s.kind, &s.signature) {
+        (SymbolKind::Function, Some(sig)) => inferred_signature(s, sig, program),
         (_, Some(sig)) => sig.clone(),
         (SymbolKind::Namespace | SymbolKind::Module | SymbolKind::Signature, None) => {
             format!("{} {}", s.kind.as_str(), s.name)
@@ -141,6 +155,43 @@ fn symbol_hover(s: &SymbolInfo, program: &Program, flavor: Flavor) -> String {
         out.push_str(doc);
     }
     out
+}
+
+/// A function's signature with every slot the author left blank filled in by
+/// the checker: unannotated parameters and an unwritten return type.
+///
+/// Osprey is Hindley-Milner and the house style omits every inferable
+/// annotation, so blank slots are the COMMON case, not the exception. Rendering
+/// them literally showed `fn fib(n) -> Unit` — the parameter untyped and the
+/// return type flatly WRONG (`Unit` was the display fallback, never a claim
+/// about the function). Hover is the main way a reader recovers the types the
+/// source deliberately omits, so it must answer from inference.
+/// Implements [LSP-HOVER-INFERRED-SIGNATURE].
+fn inferred_signature(s: &SymbolInfo, sig: &str, program: &Program) -> String {
+    let complete = s.return_type.is_some() && s.parameters.iter().all(|(_, t)| !t.is_empty());
+    if complete {
+        return sig.to_string();
+    }
+    let types = osprey_types::infer_program(program);
+    let inferred = types.param_types(&s.name).unwrap_or_default();
+    let shown: Vec<String> = s
+        .parameters
+        .iter()
+        .enumerate()
+        .map(|(slot, (name, written))| {
+            let ty = match (written.is_empty(), inferred.get(slot)) {
+                (true, Some(found)) => found.to_string(),
+                _ => written.clone(),
+            };
+            crate::analysis::render_param(&(name.clone(), ty))
+        })
+        .collect();
+    let ret = s
+        .return_type
+        .clone()
+        .or_else(|| types.return_type(&s.name).map(ToString::to_string))
+        .unwrap_or_else(|| String::from("Unit"));
+    format!("fn {}({}) -> {ret}", s.name, shown.join(", "))
 }
 
 /// The type shown for a non-function symbol: its declared/category type, or —
@@ -282,11 +333,11 @@ mod tests {
 
         let src =
             include_str!("../../../tests/effects/resume/resume_outer_handler_bridge.test.osp");
-        let col = col_of(src, 19, "resumeOuterHandlerBridgeCase");
+        let (line, col) = decl_of(src, "resumeOuterHandlerBridgeCase()");
         let md = hover(
             src,
             "file:///resume_outer_handler_bridge.test.osp",
-            19,
+            line,
             col,
             U16,
         )
@@ -333,11 +384,74 @@ mod tests {
         }
     }
 
+    /// Sibling operations must hover with their OWN prose. Before
+    /// [DOC-EFFECT-OP] every operation was handed the owning effect's doc, so
+    /// `ask` and `tell` rendered identically and the hover said nothing about
+    /// the operation actually under the cursor.
+    #[test]
+    fn ml_effect_operations_hover_with_their_own_docs() {
+        let src = concat!(
+            "(** Console conversation capability. *)\n",
+            "effect Prompt\n",
+            "    (** Ask the operator a question and read back their answer. *)\n",
+            "    ask : string => int\n",
+            "    (** Announce a result without expecting a reply. *)\n",
+            "    tell : string => Unit\n",
+        );
+        let ask = hover(src, "file:///p.ospml", 3, col_of(src, 3, "ask"), U16)
+            .expect("hover over `ask` declaration");
+        let tell = hover(src, "file:///p.ospml", 5, col_of(src, 5, "tell"), U16)
+            .expect("hover over `tell` declaration");
+
+        assert!(ask.contains("Ask the operator a question"), "{ask}");
+        assert!(!ask.contains("Announce a result"), "leaked sibling: {ask}");
+        assert!(tell.contains("Announce a result"), "{tell}");
+        assert!(!tell.contains("Ask the operator"), "leaked sibling: {tell}");
+    }
+
+    /// The Default flavor's `///` operation docs lower to the same model.
+    #[test]
+    fn default_effect_operations_hover_with_their_own_docs() {
+        let src = concat!(
+            "/// Console conversation capability.\n",
+            "effect Prompt {\n",
+            "    /// Ask the operator a question and read back their answer.\n",
+            "    ask: fn(string) -> int\n",
+            "    /// Announce a result without expecting a reply.\n",
+            "    tell: fn(string) -> Unit\n",
+            "}\n",
+        );
+        let ask = hover(src, "file:///p.osp", 3, col_of(src, 3, "ask"), U16)
+            .expect("hover over `ask` declaration");
+        let tell = hover(src, "file:///p.osp", 5, col_of(src, 5, "tell"), U16)
+            .expect("hover over `tell` declaration");
+
+        assert!(ask.contains("Ask the operator a question"), "{ask}");
+        assert!(!ask.contains("Announce a result"), "leaked sibling: {ask}");
+        assert!(tell.contains("Announce a result"), "{tell}");
+    }
+
+    /// An operation with no doc of its own still shows the owning effect's, so
+    /// adding per-operation docs never makes hover worse than it was.
+    #[test]
+    fn undocumented_operation_falls_back_to_the_effect_doc() {
+        let src = concat!(
+            "(** Records trace markers. *)\n",
+            "effect Trace\n",
+            "    mark : string => Unit\n",
+        );
+        let md = hover(src, "file:///t.ospml", 2, col_of(src, 2, "mark"), U16)
+            .expect("hover over undocumented operation");
+        assert!(md.contains("Records trace markers."), "{md}");
+    }
+
     #[test]
     fn ml_pipeline_hover_shows_its_native_documentation() {
         let src = include_str!("../../../tests/effects/resume/resume_lifo_audit.test.ospml");
-        let col = col_of(src, 5, "pipeline");
-        let md = hover(src, "file:///resume_lifo_audit.test.ospml", 5, col, U16)
+        // The declaration is located by CONTENT, not a hard-coded line: this
+        // fixture is a live regression suite that gains and loses lines.
+        let (line, col) = decl_of(src, "pipeline ()");
+        let md = hover(src, "file:///resume_lifo_audit.test.ospml", line, col, U16)
             .expect("hover over documented ML pipeline");
 
         assert!(md.contains("pipeline : Unit -> int"), "ML signature: {md}");
@@ -357,11 +471,29 @@ mod tests {
                    fn main() = helper(1)\n";
         let col = col_of(src, 2, "helper");
         let md = hover(src, "file:///a.osp", 2, col, U16).expect("hover over [helper]");
+        // `helper` annotates nothing, so both slots come from the checker:
+        // `n: int`, returning the `Result` that checked `+` produces
+        // ([ARITH-CHECKED], [LSP-HOVER-INFERRED-SIGNATURE]).
         assert!(
-            md.contains("fn helper(n)"),
-            "resolves to helper's signature: {md}"
+            md.contains("fn helper(n: int) -> Result<int, MathError>"),
+            "resolves to helper's inferred signature: {md}"
         );
         assert!(md.contains("A helper."), "shows helper's docs: {md}");
+    }
+
+    /// The annotation-free house style must still hover with real types: both
+    /// the parameter and the return type come from inference, in both flavors.
+    #[test]
+    fn unannotated_functions_hover_with_inferred_types() {
+        let osp = "fn double(n) = n * 2 ?: 0\n";
+        let md = hover(osp, "file:///d.osp", 0, col_of(osp, 0, "double"), U16)
+            .expect("hover over unannotated Default function");
+        assert!(md.contains("fn double(n: int) -> int"), "{md}");
+
+        let ml = "double n = n * 2 ?: 0\n";
+        let md = hover(ml, "file:///d.ospml", 0, col_of(ml, 0, "double"), U16)
+            .expect("hover over unannotated ML function");
+        assert!(md.contains("double : int -> int"), "{md}");
     }
 
     #[test]
@@ -428,6 +560,94 @@ mod tests {
                 .unwrap_or_else(|| panic!("no hover for keyword `{kw}`"));
             assert!(md.contains(kw), "hover for `{kw}` names it: {md}");
         }
+    }
+
+    #[test]
+    fn hovering_a_documented_test_call_shows_that_cases_own_documentation() {
+        // [TESTING-DOC] The `test` callee resolves to a built-in whose generic
+        // signature says nothing about the case being declared. Hovering it
+        // must answer with the `///` block written above THAT case.
+        let src = "\
+fn add(a, b) = a + b
+
+/// Addition is commutative.
+///
+/// # Parameters
+/// - left: the first addend
+///
+/// # Since
+/// 0.3
+test(\"commutes\", fn() => expect(add(1, 2), add(2, 1)))
+
+/// Zero is the additive identity.
+test(\"identity\", fn() => expect(add(5, 0), 5))
+";
+        let first = hover(src, "file:///suite.test.osp", 9, 1, U16).expect("hover over `test`");
+        assert!(first.starts_with("**Test:** commutes"), "{first}");
+        assert!(first.contains("Addition is commutative."), "{first}");
+        assert!(first.contains("**Parameters**"), "{first}");
+        assert!(first.contains("- `left` — the first addend"), "{first}");
+        assert!(first.contains("**Since**"), "{first}");
+        assert!(first.contains("0.3"), "{first}");
+        // The SECOND case's hover shows the second case's docs, not the first's.
+        let second = hover(src, "file:///suite.test.osp", 12, 1, U16).expect("hover over `test`");
+        assert!(second.starts_with("**Test:** identity"), "{second}");
+        assert!(
+            second.contains("Zero is the additive identity."),
+            "{second}"
+        );
+        assert!(
+            !second.contains("Addition is commutative."),
+            "no bleed between cases: {second}"
+        );
+    }
+
+    #[test]
+    fn hovering_an_undocumented_test_call_names_the_case() {
+        // [TESTING-DOC] With no doc comment there is still something better to
+        // say than the built-in's signature: which case is declared here.
+        let src = "test(\"bare case\", fn() => expect(1, 1))\n";
+        let md = hover(src, "file:///suite.test.osp", 0, 1, U16).expect("hover over `test`");
+        assert_eq!(md, "**Test:** bare case");
+    }
+
+    #[test]
+    fn hovering_an_ml_test_call_shows_its_block_documentation() {
+        // [TESTING-DOC][DOC-SIGIL-ML] the ML `(** … *)` form reaches the same
+        // hover through the shared doc model.
+        let src = "add a b = a + b\n\n\
+                   (** Addition is commutative. *)\n\
+                   test \"commutes\" (\\() => check \"c\" (add 1 2) (add 2 1))\n";
+        let md = hover(src, "file:///suite.test.ospml", 3, 1, U16).expect("hover over `test`");
+        assert!(md.starts_with("**Test:** commutes"), "{md}");
+        assert!(md.contains("Addition is commutative."), "{md}");
+    }
+
+    #[test]
+    fn hovering_test_away_from_a_case_falls_back_to_the_builtin() {
+        // [TESTING-DOC] the special case is line-scoped: the word `test` used
+        // anywhere else still resolves through the ordinary lookup chain, so a
+        // user-declared `test` binding keeps hovering as itself.
+        let src = "/// A local shadow.\nlet test = 1\nprint(\"${test}\")\n";
+        let md = hover(src, "file:///a.osp", 1, 5, U16).expect("hover over the binding");
+        assert!(md.contains("test: int"), "{md}");
+        assert!(md.contains("A local shadow."), "{md}");
+        assert!(!md.contains("**Test:**"), "not a test case: {md}");
+    }
+
+    /// The 0-based (line, column) of a cursor sitting inside the declaration
+    /// whose line contains `needle`. Fixtures under `tests/` are live
+    /// regression suites, so anchoring on content keeps these hovers pinned to
+    /// the declaration rather than to a line number that drifts.
+    fn decl_of(src: &str, needle: &str) -> (u32, u32) {
+        let (index, text) = src
+            .lines()
+            .enumerate()
+            .find(|(_, text)| text.contains(needle))
+            .unwrap_or_else(|| panic!("no line containing `{needle}`"));
+        let at = text.find(needle).expect("needle on found line");
+        let line = u32::try_from(index).expect("line fits");
+        (line, u32::try_from(at).expect("column fits") + 1)
     }
 
     /// The 0-based column just inside the first occurrence of `needle` on

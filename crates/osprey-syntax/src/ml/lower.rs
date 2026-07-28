@@ -333,10 +333,13 @@ impl ItemLower {
                     position: Some(pos),
                 });
             }
+            // A `(** … *)` block preceding a bare expression documents it —
+            // the shape a `test "name" case` case takes ([TESTING-DOC]).
             MlItem::Expr { value, pos } => {
-                self.clear_pending();
+                self.pending = None;
                 self.out.push(Stmt::Expr {
                     value: lower_expr(value),
+                    doc: self.pending_doc.take(),
                     position: Some(pos),
                 });
             }
@@ -761,6 +764,9 @@ pub(super) fn lower_effect_op(op: MlEffectOp) -> EffectOperation {
         name: op.name,
         parameters: Vec::new(),
         return_type: String::new(),
+        doc: op
+            .doc
+            .map(|text| crate::docparse::parse_doc(&text, DocScope::Outer)),
         position: Some(op.pos),
     }
 }
@@ -983,6 +989,9 @@ fn lower_expr(expr: MlExpr) -> Expr {
             segments: path.segments,
         }),
         MlExpr::Paren(inner) => lower_expr(*inner),
+        // `-literal` folds to the literal so both flavors agree that `-1` is an
+        // `int`, not a fallible `Result` ([ARITH-NEG-LITERAL], [FLAVOR-IR-EQUIV]).
+        MlExpr::Unary { op, operand } if op == "-" => Expr::negated(lower_expr(*operand)),
         MlExpr::Unary { op, operand } => Expr::Unary {
             op,
             operand: Box::new(lower_expr(*operand)),
@@ -1301,6 +1310,78 @@ mod tests {
         // `remove(0)` is panic-free given the length assertion above and avoids
         // the repository-forbidden `unwrap()`.
         s.remove(0)
+    }
+
+    // ---------- [TESTING-DOC] expression-statement documentation ----------
+
+    /// The doc comment lowered onto a statement, or `None`.
+    fn stmt_doc(stmt: &Stmt) -> Option<&osprey_ast::DocComment> {
+        match stmt {
+            Stmt::Expr { doc, .. } | Stmt::Let { doc, .. } | Stmt::Function { doc, .. } => {
+                doc.as_ref()
+            }
+            _ => None,
+        }
+    }
+
+    #[test]
+    fn an_ml_block_doc_lowers_onto_the_expression_statement_it_precedes() {
+        // `test "name" case` is an application expression, so documenting a
+        // case requires the doc to attach to the expression statement
+        // ([TESTING-DOC], [DOC-SIGIL-ML]).
+        let s = one("(** Documents the call. *)\nprintLine \"hi\"\n");
+        assert!(matches!(s, Stmt::Expr { .. }), "still an expr stmt: {s:?}");
+        assert_eq!(
+            stmt_doc(&s).map(|d| d.summary.as_str()),
+            Some("Documents the call.")
+        );
+    }
+
+    #[test]
+    fn an_undocumented_ml_expression_statement_carries_no_doc() {
+        let s = one("printLine \"hi\"\n");
+        assert!(stmt_doc(&s).is_none(), "no doc invented: {s:?}");
+    }
+
+    #[test]
+    fn an_ml_doc_is_consumed_by_the_first_statement_and_not_the_next() {
+        let all = stmts("(** First. *)\nprintLine \"a\"\nprintLine \"b\"\n");
+        assert_eq!(all.len(), 2);
+        assert_eq!(
+            stmt_doc(&all[0]).map(|d| d.summary.as_str()),
+            Some("First.")
+        );
+        assert_eq!(
+            stmt_doc(&all[1]).map(|d| d.summary.as_str()),
+            None,
+            "the doc does not leak forward"
+        );
+    }
+
+    #[test]
+    fn an_ml_binding_after_a_documented_statement_keeps_its_own_doc() {
+        let all = stmts("(** Runs it. *)\nprintLine \"hi\"\n(** Adds. *)\nadd a b = a + b\n");
+        assert_eq!(all.len(), 2);
+        assert_eq!(
+            stmt_doc(&all[0]).map(|d| d.summary.as_str()),
+            Some("Runs it.")
+        );
+        assert!(matches!(all[1], Stmt::Function { .. }));
+        assert_eq!(stmt_doc(&all[1]).map(|d| d.summary.as_str()), Some("Adds."));
+    }
+
+    #[test]
+    fn an_ml_doc_with_sections_lowers_every_recognised_field() {
+        let s = one(
+            "(** Summary line.\n\n    # Parameters\n    - left: the first addend\n\n    # Since\n    0.3 *)\nprintLine \"hi\"\n",
+        );
+        let doc = stmt_doc(&s).expect("doc attached");
+        assert_eq!(doc.summary, "Summary line.");
+        assert_eq!(
+            doc.params,
+            vec![("left".to_owned(), "the first addend".to_owned())]
+        );
+        assert_eq!(doc.since.as_deref(), Some("0.3"));
     }
 
     #[test]

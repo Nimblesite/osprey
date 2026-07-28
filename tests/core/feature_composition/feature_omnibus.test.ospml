@@ -28,6 +28,7 @@ parseStatus text = match parseInt text
 
 (** Add an integer through handled state. *)
 effect Counter
+    (** Advance the counter the handler owns. *)
     increment : int => Unit
 
 (** Exercise unions, Results, interpolation, arithmetic, and ordering. *)

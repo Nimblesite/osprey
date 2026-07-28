@@ -30,15 +30,25 @@ extern fn osprey_ffi_transient() -> Ptr
 /// The capability. Connection/statement handles are passed explicitly so handler
 /// arms stay free of captured state.
 effect Database {
+    /// Open the database at `path`, reporting failure as a `Result`.
     open: fn(string) -> Result<Ptr, Error>
+    /// Run one statement that returns no rows; yields the status code.
     exec: fn(Ptr, string) -> int
+    /// Compile `sql` into a reusable prepared statement.
     prepare: fn(Ptr, string) -> Ptr
+    /// Bind integer `value` to one-based parameter `index`.
     bindInt: fn(Ptr, int, int) -> int
+    /// Bind text `value` to one-based parameter `index`.
     bindText: fn(Ptr, int, string) -> int
+    /// Advance the statement one row; yields the status code.
     step: fn(Ptr) -> int
+    /// Read the current row's integer column `index`.
     columnInt: fn(Ptr, int) -> int
+    /// Read the current row's text column `index`.
     columnText: fn(Ptr, int) -> string
+    /// Release the prepared statement.
     finalize: fn(Ptr) -> int
+    /// Close the connection and release its resources.
     close: fn(Ptr) -> int
 }
 

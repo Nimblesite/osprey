@@ -1,7 +1,10 @@
 // Exception-style handlers either resume with a recovery value or stop the rest of the computation.
 
 /// ResumeFallback lets a policy replace one failed integer and continue the caller.
-effect ResumeFallback { recover: fn(string, int) -> int }
+effect ResumeFallback {
+    /// Replace one failed value, resuming the caller with the substitute.
+    recover: fn(string, int) -> int
+}
 
 /// This workflow proves that work on both sides of a recovered operation still runs.
 fn recoveredSum() !ResumeFallback = {
@@ -29,10 +32,16 @@ fn resumeRecoveryContinuesCase() = {
 }
 
 /// FatalExit models one operation whose recoverable branch resumes and fatal branch stops.
-effect FatalExit { raise: fn(string) -> int }
+effect FatalExit {
+    /// Abandon the computation with `reason`; the handler does not resume.
+    raise: fn(string) -> int
+}
 
 /// ExitTrace records which parts of a deep call chain were reached.
-effect ExitTrace { mark: fn(string) -> Unit }
+effect ExitTrace {
+    /// Record that this point of a deep call chain was reached.
+    mark: fn(string) -> Unit
+}
 
 /// The deepest helper requests a fatal exit instead of returning an ordinary value.
 fn deepestFailure() ![FatalExit, ExitTrace] = {
@@ -71,7 +80,10 @@ fn fatalExitStopsDeepCallCase() = {
 }
 
 /// RetryInput supplies successive candidates to a validation loop.
-effect RetryInput { next: fn(int) -> int }
+effect RetryInput {
+    /// Request the candidate for `attempt`; invalid answers ask again.
+    next: fn(int) -> int
+}
 
 /// Invalid candidates recursively ask again under the same deep handler.
 fn requirePositive(attempt) !RetryInput = {
@@ -100,8 +112,14 @@ fn recursiveRetryCase() = {
 }
 
 /// ParseRecovery supplies an integer while LookupRecovery supplies a string.
-effect ParseRecovery { parse: fn(string) -> int }
-effect LookupRecovery { missing: fn(string) -> string }
+effect ParseRecovery {
+    /// Supply the integer to use when `text` will not parse.
+    parse: fn(string) -> int
+}
+effect LookupRecovery {
+    /// Supply the text to use when `key` is absent.
+    missing: fn(string) -> string
+}
 
 /// This configuration consumes two independently typed recovery channels.
 fn recoveredConfig() ![ParseRecovery, LookupRecovery] = {
@@ -136,7 +154,10 @@ fn nestedRecoveryChannelsCase() = {
 }
 
 /// ScopedRecovery demonstrates nearest-handler lookup for a resuming effect.
-effect ScopedRecovery { value: fn(int) -> int }
+effect ScopedRecovery {
+    /// Supply a value for `seed`; the nearest enclosing handler wins.
+    value: fn(int) -> int
+}
 
 /// This helper keeps handler lookup visible across ordinary function calls.
 fn scopedValue(seed) !ScopedRecovery = perform ScopedRecovery.value(seed)
@@ -167,7 +188,10 @@ fn resumingHandlerShadowCase() = {
 }
 
 /// WrapAnswer exposes how post-resume code can transform the completed answer.
-effect WrapAnswer { number: fn() -> int }
+effect WrapAnswer {
+    /// Request the number the performer will transform before returning.
+    number: fn() -> int
+}
 
 /// The performer adds one to the value supplied by its handler.
 fn wrappedBody() !WrapAnswer = perform WrapAnswer.number() + 1 ?: 0
@@ -188,7 +212,10 @@ fn postResumeTransformsAnswerCase() = {
 }
 
 /// ResultRecovery returns the complete Result value through a continuation.
-effect ResultRecovery { fetch: fn(string) -> Result<int, string> }
+effect ResultRecovery {
+    /// Fetch `key`, letting the CALLER — not the handler — turn the `Result` into a value.
+    fetch: fn(string) -> Result<int, string>
+}
 
 /// The caller, not the handler, decides how Success and Error become integers.
 fn resultValue(key) !ResultRecovery = match perform ResultRecovery.fetch(key) {
@@ -220,7 +247,10 @@ fn resumeWholeResultCase() = {
 type RecoveryChoice = Use { value: int } | Reject { code: int }
 
 /// ChoiceRecovery returns a tagged choice rather than an untyped sentinel.
-effect ChoiceRecovery { decide: fn(string) -> RecoveryChoice }
+effect ChoiceRecovery {
+    /// Choose whether `label` is recovered or rejected.
+    decide: fn(string) -> RecoveryChoice
+}
 
 /// Exhaustive matching makes both recovery choices visible to the caller.
 fn choiceValue(label) !ChoiceRecovery = match perform ChoiceRecovery.decide(label) {
@@ -246,7 +276,10 @@ fn resumeTaggedChoiceCase() = {
 }
 
 /// DeepRecovery drives many sequential suspensions through one handler.
-effect DeepRecovery { checkpoint: fn(int) -> int }
+effect DeepRecovery {
+    /// Supply the value contributed at recursion `depth`.
+    checkpoint: fn(int) -> int
+}
 
 /// Each recursive level performs once before descending to the next level.
 fn deepSum(depth) !DeepRecovery = match depth {
@@ -273,9 +306,13 @@ fn deepResumeStressCase() = {
 
 /// TypedRecovery combines integer, string, boolean, and Unit operations in one region.
 effect TypedRecovery {
+    /// Supply the integer channel's replacement for `label`.
     number: fn(string) -> int
+    /// Supply the text channel's replacement for `label`.
     text: fn(string) -> string
+    /// Supply the boolean channel's decision for `label`.
     allow: fn(string) -> bool
+    /// Record a recovery on the `Unit` channel.
     note: fn(string) -> Unit
 }
 
@@ -317,7 +354,10 @@ fn heterogeneousResumeCase() = {
 }
 
 /// StringAnswerRecovery reproduces the ARC leak for a managed continuation answer.
-effect StringAnswerRecovery { get: fn() -> string }
+effect StringAnswerRecovery {
+    /// Request the replacement text the handler supplies.
+    get: fn() -> string
+}
 
 /// This exact shape returns a dynamic string after resuming with another string.
 fn stringAnswerBody() -> string !StringAnswerRecovery = {
@@ -331,6 +371,7 @@ fn stringAnswerArcKnownFailureCase() =
 
 /// SixteenArgumentRecovery locks the largest operation payload the current runtime transports.
 effect SixteenArgumentRecovery {
+    /// Recover across sixteen integer arguments — the last arity passed in registers.
     recover: fn(int, int, int, int, int, int, int, int, int, int, int, int, int, int, int, int) -> int
 }
 
@@ -360,6 +401,7 @@ type Verdict = Pass | Fail { reason: string } | Skip { why: string }
 
 /// SeventeenArgumentRecovery is accepted today but runtime argument 17 becomes zero.
 effect SeventeenArgumentRecovery {
+    /// Recover across seventeen integer arguments — the first arity that spills to the stack.
     recover: fn(int, int, int, int, int, int, int, int, int, int, int, int, int, int, int, int, int) -> int
 }
 

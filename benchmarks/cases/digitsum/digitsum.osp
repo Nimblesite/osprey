@@ -1,11 +1,11 @@
 // Sum of decimal digit-sums over 1..N — integer division (n/10) and modulo in recursion.
-fn add(a: int, b: int) -> int = a + b ?: 0
-fn mod_(a: int, b: int) -> int = a % b ?: 0
-fn div10(n: int) -> int = intDiv(n, 10) ?: 0
+fn add(a, b) = a + b ?: 0
+fn mod_(a, b) = a % b ?: 0
+fn div10(n) = intDiv(n, 10) ?: 0
 
-fn digsum(n: int) -> int = match (n < 10) {
+fn digsum(n) = match (n < 10) {
     true  => n
     false => add(mod_(n, 10), digsum(div10(n)))
 }
-fn step(acc: int, i: int) -> int = add(acc, digsum(i))
+fn step(acc, i) = add(acc, digsum(i))
 print("${range(1, 2000001) |> fold(0, step)}")

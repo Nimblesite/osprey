@@ -3,9 +3,13 @@
 // needs a return-type or effect-row annotation.
 
 effect Supply
+    (** Request a value where the performer calls the operation itself. *)
     direct : int => int
+    (** Request a value through an intermediate call, not directly. *)
     transitive : int => int
+    (** Request a value from inside a callback passed to another function. *)
     callback : Unit => int
+    (** Request a value from inside a closure invoked later. *)
     delayed : Unit => int
 
 direct seed = perform Supply.direct seed
@@ -35,7 +39,9 @@ delayedValue =
     in delayed ()
 
 effect Pair
+    (** Read the first of the two supplied integers. *)
     first : Unit => int
+    (** Read the second of the two supplied integers. *)
     second : Unit => int
 
 pairTotal () =
@@ -54,7 +60,9 @@ partialValue =
         in pairTotal ()
 
 effect Stash T
+    (** Store `value` in the stash for a later `take`. *)
     put : T => Unit
+    (** Remove and return the stashed value of type `T`. *)
     take : Unit => T
 
 storeText () = perform Stash.put "fresh"

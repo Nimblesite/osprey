@@ -2,6 +2,7 @@
 // every field check to run while the handler accumulates messages.
 
 effect Invalid
+    (** Report one validation failure and keep checking the rest. *)
     report : string => Unit
 
 (** Both branches return Unit, so validation continues after a report. *)

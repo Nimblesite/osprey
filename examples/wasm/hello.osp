@@ -16,8 +16,14 @@
 // wasm32, where `long` is 32-bit).
 
 // ── algebraic effects ── meaning chosen by the handler, not the call site ──
-effect Console { emit: fn(string) -> Unit }
-effect Ledger  { post: fn(int) -> int }
+effect Console {
+    /// Write one line to the console the handler represents.
+    emit: fn(string) -> Unit
+}
+effect Ledger {
+    /// Post `amount` to the account and return the new balance.
+    post: fn(int) -> int
+}
 
 fn account() ![Console, Ledger] = {
     perform Console.emit("open account")

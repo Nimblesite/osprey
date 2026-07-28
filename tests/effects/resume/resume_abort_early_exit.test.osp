@@ -1,10 +1,12 @@
 /// A stopped continuation returns the handler arm value and omits later work.
 effect Stop {
+    /// Check `value`; the handler may resume or stop the continuation.
     check: fn(int) -> int
 }
 
 /// Observation records performer-side events without relying on stdout.
 effect Observation {
+    /// Record a performer-side event without touching stdout.
     line: fn(string) -> Unit
 }
 

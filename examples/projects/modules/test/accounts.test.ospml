@@ -157,7 +157,9 @@ bs = "\\"
     any storage behavior with no database, no injection framework, and
     compile-time safety: forget a handler and the suite refuses to build. *)
 effect Vault
+    (** Read the balance held for `account`. *)
     balance : int => int
+    (** Withdraw `amount` from `account`, reporting the `Outcome`. *)
     debit : (int, int) => Outcome
 
 (** The workflow under test: rent only moves when the guard says it can. *)

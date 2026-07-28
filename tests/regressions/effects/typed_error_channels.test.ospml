@@ -3,10 +3,13 @@
 
 (** --- three distinct, independent typed error channels --- *)
 effect Parse
+    (** Supply the integer to use for unparseable `text`. *)
     bad : string => int
 effect Missing
+    (** Supply the default for the absent field `name`. *)
     fill : string => int
 effect Range
+    (** Clamp `value` into range, returning the bound it was pinned to. *)
     clamp : (int, int) => int
 
 (** The row scopes these performs; rows are not yet propagated through calls. *)

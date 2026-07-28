@@ -2,6 +2,7 @@
 // resuming with scripted values; another returns without resume to stop.
 
 effect Prompt
+    (** Request the value the caller should use for `label`; the handler decides what is supplied. *)
     ask : string => int
 
 (** Each invalid value causes a fresh Prompt.ask operation. *)
@@ -29,8 +30,8 @@ accepted =
     in readPositive "age"
 print "SCENARIO 1 accepted=${toString accepted} after ${toString attempt} attempts"
 
-(** After three invalid values, return a sentinel without resuming. *)
 mut tries = 0
+(** After three invalid values, return a sentinel without resuming. *)
 outcome =
     handle Prompt
         ask label =>

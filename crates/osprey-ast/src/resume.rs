@@ -237,6 +237,7 @@ mod tests {
         let block = Expr::Block {
             statements: vec![Stmt::Expr {
                 value: Expr::Resume(None),
+                doc: None,
                 position: None,
             }],
             value: None,

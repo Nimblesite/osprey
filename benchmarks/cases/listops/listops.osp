@@ -5,18 +5,18 @@
 //
 // Modes via the first stdin line: "0"/empty -> fixed seed (deterministic,
 // oracle-checked); "1" -> cryptographically-secure random seed (randomBelow).
-fn add(a: int, b: int) -> int = a + b ?: 0
-fn mul(a: int, b: int) -> int = a * b ?: 0
-fn modp(a: int, b: int) -> int = a % b ?: 0
-fn r1(x: int) -> int = modp(mul(x, 16807), 2147483647)
-fn hashAt(seed: int, i: int) -> int = r1(r1(add(seed, i)))
-fn addM(a: int, b: int) -> int = modp(add(a, b), 1000000007)
-fn randSeed() -> int = match randomBelow(2147483646) { Success { value } => add(value, 1)  Error { message } => 1 }
-fn seedOf(s) -> int = match parseInt(s) { Success { value } => match value { 0 => 1  _ => randSeed() }  Error { message } => 1 }
-fn buildList(s: int) = range(0, 4000) |> fold(List(), |acc, i| => listAppend(acc, modp(hashAt(s, i), 1000)))
-fn sumL(xs) -> int = match xs { [] => 0  [head, ...tail] => add(head, sumL(tail)) }
-fn belowL(xs) -> int = match xs { [] => 0  [head, ...tail] => add(match head < 500 { true => 1  false => 0 }, belowL(tail)) }
-fn runOne(s: int) -> int = {
+fn add(a, b) = a + b ?: 0
+fn mul(a, b) = a * b ?: 0
+fn modp(a, b) = a % b ?: 0
+fn r1(x) = modp(mul(x, 16807), 2147483647)
+fn hashAt(seed, i) = r1(r1(add(seed, i)))
+fn addM(a, b) = modp(add(a, b), 1000000007)
+fn randSeed() = match randomBelow(2147483646) { Success { value } => add(value, 1)  Error { message } => 1 }
+fn seedOf(s) = match parseInt(s) { Success { value } => match value { 0 => 1  _ => randSeed() }  Error { message } => 1 }
+fn buildList(s) = range(0, 4000) |> fold(List(), |acc, i| => listAppend(acc, modp(hashAt(s, i), 1000)))
+fn sumL(xs) = match xs { [] => 0  [head, ...tail] => add(head, sumL(tail)) }
+fn belowL(xs) = match xs { [] => 0  [head, ...tail] => add(match head < 500 { true => 1  false => 0 }, belowL(tail)) }
+fn runOne(s) = {
     let xs = buildList(s)
     add(sumL(xs), belowL(xs))
 }

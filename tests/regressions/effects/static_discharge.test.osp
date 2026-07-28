@@ -3,9 +3,13 @@
 // needs a return-type or effect-row annotation.
 
 effect Supply {
+    /// Request a value where the performer calls the operation itself.
     direct: fn(int) -> int
+    /// Request a value through an intermediate call, not directly.
     transitive: fn(int) -> int
+    /// Request a value from inside a callback passed to another function.
     callback: fn() -> int
+    /// Request a value from inside a closure invoked later.
     delayed: fn() -> int
 }
 
@@ -32,7 +36,9 @@ let delayedValue = handle Supply
 in delayed()
 
 effect Pair {
+    /// Read the first of the two supplied integers.
     first: fn() -> int
+    /// Read the second of the two supplied integers.
     second: fn() -> int
 }
 
@@ -51,7 +57,9 @@ in handle Pair
 in pairTotal()
 
 effect Stash<T> {
+    /// Store `value` in the stash for a later `take`.
     put: fn(T) -> Unit
+    /// Remove and return the stashed value of type `T`.
     take: fn() -> T
 }
 
