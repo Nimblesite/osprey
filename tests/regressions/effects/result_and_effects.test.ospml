@@ -7,36 +7,33 @@ effect Rescue
 RESCUED_DEFAULT = 100
 
 (** intDiv gives Result<int, Error>; the handler chooses the fallback value. *)
-divRescue : int -> int -> int ! Rescue
-divRescue a b = match intDiv a b
+divRescue (a, b) = match intDiv a b
     Success value => value
     Error message => perform Rescue.onErr message
 
 (** % is the zero-checked remainder: 7 % 0 => Error(division by zero). *)
-modRescue : int -> int -> int ! Rescue
-modRescue a b = match a % b
+modRescue (a, b) = match a % b
     Success value => value
     Error message => perform Rescue.onErr message
 
 (** checkedAdd is overflow-checked: MAX_INT + 1 => Error(integer overflow). *)
-addRescue : int -> int -> int ! Rescue
-addRescue a b = match checkedAdd a b
+addRescue (a, b) = match checkedAdd a b
     Success value => value
     Error message => perform Rescue.onErr message
 
 (** Every failed step receives a replacement value, so later steps still run. *)
 pipeline () =
-    a = divRescue 10 0
+    a = divRescue (10, 0)
     print "  step a  intDiv 10 / 0   -> ${toString a}"
-    b = divRescue 20 4
+    b = divRescue (20, 4)
     print "  step b  intDiv 20 / 4   -> ${toString b}"
-    c = modRescue 7 0
+    c = modRescue (7, 0)
     print "  step c  7 % 0           -> ${toString c}"
-    d = modRescue 17 5
+    d = modRescue (17, 5)
     print "  step d  17 % 5          -> ${toString d}"
-    e = addRescue 9223372036854775807 1
+    e = addRescue (9223372036854775807, 1)
     print "  step e  MAX + 1         -> ${toString e}"
-    f = addRescue 100 23
+    f = addRescue (100, 23)
     print "  step f  100 + 23        -> ${toString f}"
     a + b + c + d + e + f ?: 0
 

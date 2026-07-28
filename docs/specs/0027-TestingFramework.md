@@ -177,7 +177,7 @@ gate — any Osprey program may call the testing built-ins.
 
 ## CLI
 
-### `osprey test [path] [--filter <name>] [--quiet] [--coverage] [--coverage-json <path>]` — `[TESTING-CLI-RUN]`
+### `osprey test [path] [--filter <name>] [--quiet] [--coverage] [--coverage-json <path>] [--memory=default|gc|arc]` — `[TESTING-CLI-RUN]`
 
 Runs test files and aggregates results. `path` (default `.`) is either a
 single file (run as-is, regardless of naming) or a directory searched
@@ -188,6 +188,12 @@ Each file runs like `osprey <file> --run`, with its TAP output under a
 processes. The runner prints `# suites: X passed, Y failed` and exits `1` if a
 suite fails to compile or run, otherwise `0`. An empty discovery set fails with
 `no test files found`.
+
+One invocation runs every discovered suite under exactly one memory backend.
+`--memory=gc` selects tracing garbage collection, `--memory=arc` selects
+Perceus reference counting, and `--memory=default` explicitly selects the
+non-reclaiming backend. Omitting `--memory` delegates the choice to the compiler
+default.
 
 **`[TESTING-PARALLEL]`** Independent suites compile and run concurrently by
 default. Their captured stdout and stderr are replayed in sorted suite order,

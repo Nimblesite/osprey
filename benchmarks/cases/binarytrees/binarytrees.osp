@@ -3,11 +3,11 @@ type Tree = Leaf | Node(Tree, Tree)
 
 fn make(d) = match d {
     0 => Node(Leaf, Leaf)
-    _ => Node(make(d - 1), make(d - 1))
+    _ => Node(make((d - 1) ?: 0), make((d - 1) ?: 0))
 }
 fn check(t) = match t {
     Leaf       => 0
-    Node(l, r) => 1 + check(l) + check(r)
+    Node(l, r) => 1 + check(l) + check(r) ?: 0
 }
 
-print("${range(0, 1200) |> fold(0, |acc, _| => acc + check(make(13)))}")
+print("${range(0, 1200) |> fold(0, |acc, _| => acc + check(make(13)) ?: 0)}")

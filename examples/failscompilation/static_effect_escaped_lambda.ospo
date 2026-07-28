@@ -1,0 +1,12 @@
+// [EFFECTS-STATIC-DISCHARGE] Handler authority cannot escape in a closure.
+effect Alarm {
+    ring: fn() -> int
+}
+
+fn make() = fn() => perform Alarm.ring()
+
+let delayed = handle Alarm
+    ring => 41
+in make()
+
+let answer = delayed()

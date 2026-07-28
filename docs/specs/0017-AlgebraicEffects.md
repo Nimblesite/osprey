@@ -5,10 +5,12 @@ lexical handler, which supplies the operation result. Default and ML syntax
 lower to the same effect, perform, handler, and resume AST nodes; their runtime
 semantics are identical.
 
-The checker validates declared operations and their value types. Effect rows
-are part of function types and propagate through calls. A handler discharges
-its handled effect from the row; every effect must be discharged before program
-entry. A missing handler is therefore a compile error, never a runtime abort.
+The checker validates declared operations and their value types, infers the
+operations required by unannotated functions and callbacks, and propagates
+those requirements through calls. A handler discharges only the operation arms
+it actually supplies, for the same generic effect instantiation. Every
+requirement must be discharged before program entry. A missing handler is
+therefore a compile error, never a runtime abort.
 
 ## Keywords
 
@@ -67,10 +69,12 @@ in perform Stash.take()
 
 `[EFFECTS-GENERIC-RUNTIME]` Generic operation payloads use an erased machine-word
 ABI. Code generation boxes and unboxes values using the type inferred at each
-site. Runtime handler keys include the resolved instantiation, such as
-`Stash$string`, so a mismatched instantiation misses lookup and aborts instead
-of calling a handler with the wrong representation. Monomorphic effects use
-their declared name as the key.
+site. Static discharge distinguishes resolved instantiations, so a
+`Stash<string>` handler does not discharge `Stash<int>.put`. Runtime handler
+keys also include the resolved instantiation, such as `Stash$string`; their
+null-lookup guard is a defensive backstop and must not be the normal rejection
+path for a checked program. Monomorphic effects use their declared name as the
+key.
 
 ## Effectful Function Types
 
@@ -99,10 +103,26 @@ fetch url = perform Net.get url
 effect instantiation used by performs in that function body. A bare generic
 entry leaves its arguments to inference.
 
-Rows form part of the function type and are propagated through calls. An
-unannotated function infers the effects performed by its body. The checker
-requires the program entry expression to have an empty row, proving that every
-performed operation has a statically known handler.
+`[EFFECTS-STATIC-DISCHARGE]` Effect annotations are checked contracts, not
+handlers. Writing `!Logger` declares which effect the function body may require;
+it does not authorize `Logger.log` at the call site and does not discharge that
+operation. The checker rejects an operation outside a non-empty declared row.
+It infers requirements when annotations are omitted, propagates them through
+named calls and higher-order callback calls, and requires the selected program
+entry (`main` when present, otherwise the top-level executable statements) to
+have no remaining operation requirements.
+
+Discharge is operation- and instantiation-specific. A handler for `Pair.first`
+does not discharge `Pair.second`, and a handler inferred as `Stash<string>` does
+not discharge `Stash<int>.put`. Complementary nested partial handlers may each
+discharge the operation they cover. Constructing a lambda is pure, but invoking
+it contributes its latent requirements; constructing one inside a handler does
+not give it authority after it escapes that handler's lexical region.
+
+The current compiler realizes these rules with a closed-program operation
+summary and fixed-point call analysis. Explicit open effect-row variables are
+not surface syntax and effect rows are not yet exposed as independently
+quantified values in the Hindley–Milner type representation.
 
 ## Performing Operations
 
@@ -150,6 +170,13 @@ in handle Logger
     log message => print("inner: ${message}")
 in perform Logger.log("test")
 ```
+
+A handler arm is not permission to perform its own active operation
+recursively. The checker rejects a perform with the same effect, resolved
+generic instantiation, and operation as the active arm. A different operation
+not covered by a partial handler, or a different generic instantiation, may
+instead be discharged by an enclosing matching handler. Every remaining arm
+requirement follows the ordinary entry-discharge rule.
 
 ## Handler-Owned State
 

@@ -18,12 +18,18 @@ impl Lowerer<'_> {
 
     /// Lower an expression node, transparently unwrapping the `expression` and
     /// `primary_expression` wrapper nodes tree-sitter inserts.
-    pub(crate) fn lower_expr(&self, node: Node<'_>) -> Expr {
+    pub(crate) fn lower_expr(&self, mut node: Node<'_>) -> Expr {
+        // Parenthesised expressions can contain hundreds of alternating
+        // `expression`/`primary_expression` CST wrappers. They carry no AST
+        // meaning, so peel them iteratively instead of spending one Rust stack
+        // frame per wrapper before reaching the actual expression node.
+        while matches!(node.kind(), "expression" | "primary_expression") {
+            let Some(inner) = self.first_named(node) else {
+                return Expr::Bool(false);
+            };
+            node = inner;
+        }
         match node.kind() {
-            "expression" | "primary_expression" => match self.first_named(node) {
-                Some(inner) => self.lower_expr(inner),
-                None => Expr::Bool(false),
-            },
             "binary_expression" => Expr::Binary {
                 op: self.field_text(node, "operator"),
                 left: Box::new(self.lower_expr_field(node, "left")),

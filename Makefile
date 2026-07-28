@@ -7,7 +7,8 @@
 # --run`) and TypeScript sub-projects (vscode-extension, webcompiler, website).
 # =============================================================================
 
-.PHONY: build test language-test lint fmt clean ci setup run install bench partial-bench wasm wasm-site wasm-serve vsix-rebuild-reinstall bank bank-web bank-test bank-e2e hawk
+.PHONY: build test language-test lint fmt clean ci setup run install bench partial-bench wasm wasm-site wasm-serve vsix-rebuild-reinstall bank bank-web bank-test bank-e2e hawk \
+	_rebuild-install-vsix _vsix_clean _vsix_build _vsix_bundle _vsix_package _vsix_install
 
 # ---------------------------------------------------------------------------
 # OS Detection
@@ -634,31 +635,39 @@ partial-bench: build
 ##      never another extension, never another VSCode profile. macOS only.
 ##      ONE `code` invocation (install --force, no separate uninstall) so the
 ##      running VSCode reconciles its extension host exactly once, not twice.
-vsix-rebuild-reinstall: _vsix_clean build _vsix_build _vsix_bundle _vsix_package _vsix_install
+vsix-rebuild-reinstall:
+	$(MAKE) _vsix_clean
+	$(MAKE) build
+	$(MAKE) _vsix_bundle
+	$(MAKE) _vsix_package
+	$(MAKE) _vsix_install
 
 # _rebuild-install-vsix: deprecated private alias of `vsix-rebuild-reinstall`.
 _rebuild-install-vsix: vsix-rebuild-reinstall
 
 # --- vsix sub-steps ---------------------------------------------------------
 _vsix_clean:
-	cd $(EXT_DIR) && $(RM) out dist osprey-*.vsix
+	$(MAKE) clean
+	cd $(EXT_DIR) && $(RM) bin osprey-*.vsix
 
 _vsix_build:
-	cd $(EXT_DIR) && npm run compile
+	$(MAKE) build
 
 # Stage the freshly-built Rust binary AND the C runtime archives where the
 # extension expects its bundled compiler (bin/<os>-<arch>/), so the VSIX runs
 # against THIS build. The compiler locates its runtime archives next to its own
-# executable (find_runtime_lib in osprey-cli), so libfiber_runtime.a /
-# libhttp_runtime.a must sit beside the bundled `osprey` for `--run` to link.
+# executable (find_runtime_lib in osprey-cli), so every native runtime variant
+# must sit beside the bundled `osprey` for `--run --memory=<mode>` to link.
 _vsix_bundle:
 	@OS=$$(uname -s | tr '[:upper:]' '[:lower:]'); \
 	case "$$OS" in darwin) OS=darwin;; linux) OS=linux;; *) OS=win32;; esac; \
 	ARCH=$$(uname -m); case "$$ARCH" in arm64|aarch64) ARCH=arm64;; *) ARCH=x64;; esac; \
 	DEST="$(EXT_DIR)/bin/$$OS-$$ARCH"; $(MKDIR) "$$DEST"; \
 	cp $(BIN) "$$DEST/osprey"; \
-	cp $(RTB)/libfiber_runtime.a $(RTB)/libhttp_runtime.a "$$DEST/"; \
-	echo "  bundled $(BIN) + libfiber_runtime.a + libhttp_runtime.a -> $$DEST/"
+	cp $(RTB)/libfiber_runtime.a $(RTB)/libhttp_runtime.a \
+	   $(RTB)/libfiber_runtime_gc.a $(RTB)/libhttp_runtime_gc.a \
+	   $(RTB)/libfiber_runtime_arc.a $(RTB)/libhttp_runtime_arc.a "$$DEST/"; \
+	echo "  bundled $(BIN) + all native runtime archives -> $$DEST/"
 
 _vsix_package:
 	cd $(EXT_DIR) && npm run package

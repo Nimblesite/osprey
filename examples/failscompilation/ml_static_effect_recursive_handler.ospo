@@ -1,0 +1,9 @@
+// osprey: flavor=ml
+// [EFFECTS-STATIC-DISCHARGE] An arm cannot re-enter its active handler.
+effect Loop
+    again : Unit => int
+
+answer =
+    handle Loop
+        again => perform Loop.again ()
+    in perform Loop.again ()

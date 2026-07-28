@@ -3,7 +3,6 @@ effect Audit
     step : string => int
 
 (** Perform two ordered steps and combine their supplied values. *)
-pipeline : Unit -> int ! Audit
 pipeline () =
     a = perform Audit.step "load"
     b = perform Audit.step "parse"

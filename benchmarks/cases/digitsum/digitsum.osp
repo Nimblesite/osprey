@@ -1,7 +1,7 @@
 // Sum of decimal digit-sums over 1..N — integer division (n/10) and modulo in recursion.
-fn add(a: int, b: int) -> int = a + b
-fn mod_(a: int, b: int) -> int = a % b
-fn div10(n: int) -> int = intDiv(n, 10)
+fn add(a: int, b: int) -> int = a + b ?: 0
+fn mod_(a: int, b: int) -> int = a % b ?: 0
+fn div10(n: int) -> int = intDiv(n, 10) ?: 0
 
 fn digsum(n: int) -> int = match (n < 10) {
     true  => n

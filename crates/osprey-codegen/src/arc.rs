@@ -233,11 +233,32 @@ pub(crate) fn move_phi_owners(cg: &mut Codegen, incoming: &[String], out: &Value
     if !all_fresh {
         return;
     }
+    // Exactly one arm runs, so the phi holds no managed references whenever
+    // EVERY arm it selects from held none. Without carrying the flag across the
+    // join, `own` below re-registers the merged owner as impure and
+    // `consume_fresh` can no longer retire it at its unwrap — the drop sinks to
+    // the region end, which is past any tail call in the same expression and
+    // costs the callee its tail position. [GC-ARC-PERCEUS]
+    let all_pure = incoming_all_pure(cg, incoming, mark);
     if let Some(f) = cg.arc.frames.last_mut() {
         let tail = f.split_off(mark.min(f.len()));
         f.extend(tail.into_iter().filter(|e| !consumable(e)));
     }
     own(cg, out);
+    if all_pure {
+        mark_pure_scalar(cg, out);
+    }
+}
+
+/// Whether every arm-produced owner feeding a phi was proved pure-scalar.
+fn incoming_all_pure(cg: &Codegen, incoming: &[String], mark: usize) -> bool {
+    cg.arc.frames.last().is_some_and(|f| {
+        incoming.iter().all(|op| {
+            f.iter()
+                .skip(mark)
+                .any(|e| e.operand == *op && e.name.is_none() && e.pure_scalar)
+        })
+    })
 }
 
 /// Open a region: statement, loop body.

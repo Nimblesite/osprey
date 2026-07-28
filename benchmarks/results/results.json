@@ -1,5 +1,8 @@
 {
   "languages": [
+    "osprey",
+    "osprey-arc",
+    "osprey-gc",
     "rust",
     "c",
     "csharp",
@@ -67,20 +70,28 @@
         "max": 0.150372042
       },
       "osprey": {
-        "status": "build_failed",
-        "rss": 0
+        "status": "ok",
+        "rss": 2155855872,
+        "mean": 0.9145769248999999,
+        "stddev": 0.007557973743778028,
+        "min": 0.908628791,
+        "max": 0.9323148330000001
       },
       "osprey-arc": {
-        "status": "build_failed",
-        "rss": 0
+        "status": "ok",
+        "rss": 2031616,
+        "mean": 0.8642003957,
+        "stddev": 0.0110863846883628,
+        "min": 0.8444029160000001,
+        "max": 0.884081709
       },
       "osprey-gc": {
-        "status": "build_failed",
-        "rss": 0
-      },
-      "osprey-wasm": {
-        "status": "wasm_incompatible",
-        "rss": 0
+        "status": "ok",
+        "rss": 19972096,
+        "mean": 4.949318591800001,
+        "stddev": 0.35134580035604096,
+        "min": 4.640549,
+        "max": 5.758133917
       }
     },
     "binarytrees": {
@@ -141,20 +152,28 @@
         "max": 0.818866541
       },
       "osprey": {
-        "status": "build_failed",
-        "rss": 0
+        "status": "ok",
+        "rss": 2527870976,
+        "mean": 1.0757269539,
+        "stddev": 0.011810050128214232,
+        "min": 1.060976208,
+        "max": 1.092785792
       },
       "osprey-arc": {
-        "status": "build_failed",
-        "rss": 0
+        "status": "ok",
+        "rss": 2981888,
+        "mean": 1.3009211999999999,
+        "stddev": 0.01605799073808627,
+        "min": 1.268521375,
+        "max": 1.3230813750000001
       },
       "osprey-gc": {
-        "status": "build_failed",
-        "rss": 0
-      },
-      "osprey-wasm": {
-        "status": "wasm_incompatible",
-        "rss": 0
+        "status": "ok",
+        "rss": 19103744,
+        "mean": 4.8061647667,
+        "stddev": 0.11611339765200909,
+        "min": 4.628484,
+        "max": 4.9715053750000004
       }
     },
     "coins": {
@@ -215,20 +234,28 @@
         "max": 0.11616433300000001
       },
       "osprey": {
-        "status": "build_failed",
-        "rss": 0
+        "status": "ok",
+        "rss": 1437876224,
+        "mean": 0.6114326877,
+        "stddev": 0.016850234777748947,
+        "min": 0.5938914590000001,
+        "max": 0.64999925
       },
       "osprey-arc": {
-        "status": "build_failed",
-        "rss": 0
+        "status": "ok",
+        "rss": 1556480,
+        "mean": 0.5735767667,
+        "stddev": 0.006836440040949834,
+        "min": 0.564006,
+        "max": 0.589324625
       },
       "osprey-gc": {
-        "status": "build_failed",
-        "rss": 0
-      },
-      "osprey-wasm": {
-        "status": "wasm_incompatible",
-        "rss": 0
+        "status": "ok",
+        "rss": 20037632,
+        "mean": 3.4439853582000004,
+        "stddev": 0.20380069881407306,
+        "min": 3.243480292,
+        "max": 3.734931875
       }
     },
     "collatz": {
@@ -289,20 +316,28 @@
         "max": 0.029071375000000003
       },
       "osprey": {
-        "status": "build_failed",
-        "rss": 0
+        "status": "ok",
+        "rss": 1155743744,
+        "mean": 0.48021789989999997,
+        "stddev": 0.00672775041813407,
+        "min": 0.47384533300000004,
+        "max": 0.497693708
       },
       "osprey-arc": {
-        "status": "build_failed",
-        "rss": 0
+        "status": "ok",
+        "rss": 1540096,
+        "mean": 0.46394785830000007,
+        "stddev": 0.0033620457576257557,
+        "min": 0.45972425,
+        "max": 0.469508209
       },
       "osprey-gc": {
-        "status": "build_failed",
-        "rss": 0
-      },
-      "osprey-wasm": {
-        "status": "wasm_incompatible",
-        "rss": 0
+        "status": "ok",
+        "rss": 21594112,
+        "mean": 2.6689815624,
+        "stddev": 0.07302402682223547,
+        "min": 2.60189175,
+        "max": 2.812154375
       }
     },
     "coprime": {
@@ -363,20 +398,28 @@
         "max": 0.07881500000000001
       },
       "osprey": {
-        "status": "build_failed",
-        "rss": 0
+        "status": "ok",
+        "rss": 1040334848,
+        "mean": 0.390137846,
+        "stddev": 0.00545764009829277,
+        "min": 0.381848625,
+        "max": 0.39826041700000003
       },
       "osprey-arc": {
-        "status": "build_failed",
-        "rss": 0
+        "status": "ok",
+        "rss": 1540096,
+        "mean": 0.373116804,
+        "stddev": 0.0034224510965095304,
+        "min": 0.36920004100000003,
+        "max": 0.378744375
       },
       "osprey-gc": {
-        "status": "build_failed",
-        "rss": 0
-      },
-      "osprey-wasm": {
-        "status": "wasm_incompatible",
-        "rss": 0
+        "status": "ok",
+        "rss": 19513344,
+        "mean": 2.2889062082,
+        "stddev": 0.03320976588523099,
+        "min": 2.246980625,
+        "max": 2.360280916
       }
     },
     "digitsum": {
@@ -437,20 +480,28 @@
         "max": 0.022009125
       },
       "osprey": {
-        "status": "build_failed",
-        "rss": 0
+        "status": "ok",
+        "rss": 1115258880,
+        "mean": 0.40829771270000004,
+        "stddev": 0.003931430202687569,
+        "min": 0.401932875,
+        "max": 0.414786417
       },
       "osprey-arc": {
-        "status": "build_failed",
-        "rss": 0
+        "status": "ok",
+        "rss": 1523712,
+        "mean": 0.39770332920000007,
+        "stddev": 0.009091025450032063,
+        "min": 0.38357079200000005,
+        "max": 0.409295583
       },
       "osprey-gc": {
-        "status": "build_failed",
-        "rss": 0
-      },
-      "osprey-wasm": {
-        "status": "wasm_incompatible",
-        "rss": 0
+        "status": "ok",
+        "rss": 19759104,
+        "mean": 2.4584255498000003,
+        "stddev": 0.03416635791302194,
+        "min": 2.412894291,
+        "max": 2.514155916
       }
     },
     "exprtree": {
@@ -511,20 +562,28 @@
         "max": 0.024282125
       },
       "osprey": {
-        "status": "build_failed",
-        "rss": 0
+        "status": "ok",
+        "rss": 114753536,
+        "mean": 0.044387047161764726,
+        "stddev": 0.0007467193816726605,
+        "min": 0.042941708,
+        "max": 0.047214417
       },
       "osprey-arc": {
-        "status": "build_failed",
-        "rss": 0
+        "status": "ok",
+        "rss": 3522560,
+        "mean": 0.04789132474603175,
+        "stddev": 0.0011334056089554083,
+        "min": 0.045801791,
+        "max": 0.05135337500000001
       },
       "osprey-gc": {
-        "status": "build_failed",
-        "rss": 0
-      },
-      "osprey-wasm": {
-        "status": "wasm_incompatible",
-        "rss": 0
+        "status": "ok",
+        "rss": 19431424,
+        "mean": 0.2811709585,
+        "stddev": 0.006739000683151438,
+        "min": 0.27331508400000004,
+        "max": 0.29421575
       }
     },
     "factorial": {
@@ -585,20 +644,28 @@
         "max": 0.055848458000000004
       },
       "osprey": {
-        "status": "build_failed",
-        "rss": 0
+        "status": "ok",
+        "rss": 644055040,
+        "mean": 0.23723847225000003,
+        "stddev": 0.002568513948559649,
+        "min": 0.23268225,
+        "max": 0.23985275
       },
       "osprey-arc": {
-        "status": "build_failed",
-        "rss": 0
+        "status": "ok",
+        "rss": 1523712,
+        "mean": 0.22449130769230768,
+        "stddev": 0.00527303762463472,
+        "min": 0.217360875,
+        "max": 0.237485792
       },
       "osprey-gc": {
-        "status": "build_failed",
-        "rss": 0
-      },
-      "osprey-wasm": {
-        "status": "wasm_incompatible",
-        "rss": 0
+        "status": "ok",
+        "rss": 20578304,
+        "mean": 1.420570575,
+        "stddev": 0.020475228067282535,
+        "min": 1.398616625,
+        "max": 1.453321459
       }
     },
     "fib": {
@@ -659,20 +726,28 @@
         "max": 0.042810417
       },
       "osprey": {
-        "status": "build_failed",
-        "rss": 0
+        "status": "ok",
+        "rss": 1440481280,
+        "mean": 0.5555568293,
+        "stddev": 0.007364569702087808,
+        "min": 0.543532542,
+        "max": 0.564626625
       },
       "osprey-arc": {
-        "status": "build_failed",
-        "rss": 0
+        "status": "ok",
+        "rss": 1523712,
+        "mean": 0.5359994832,
+        "stddev": 0.006936479775792618,
+        "min": 0.523771208,
+        "max": 0.5489312080000001
       },
       "osprey-gc": {
-        "status": "build_failed",
-        "rss": 0
-      },
-      "osprey-wasm": {
-        "status": "wasm_incompatible",
-        "rss": 0
+        "status": "ok",
+        "rss": 19513344,
+        "mean": 3.1710282166,
+        "stddev": 0.07265083420146609,
+        "min": 3.083246,
+        "max": 3.284425583
       }
     },
     "gcdsum": {
@@ -733,20 +808,28 @@
         "max": 0.100523291
       },
       "osprey": {
-        "status": "build_failed",
-        "rss": 0
+        "status": "ok",
+        "rss": 912244736,
+        "mean": 0.33105869970000007,
+        "stddev": 0.005447205484370346,
+        "min": 0.31816966700000004,
+        "max": 0.337029416
       },
       "osprey-arc": {
-        "status": "build_failed",
-        "rss": 0
+        "status": "ok",
+        "rss": 1523712,
+        "mean": 0.3233511082,
+        "stddev": 0.004606660362735017,
+        "min": 0.31658325000000004,
+        "max": 0.327873375
       },
       "osprey-gc": {
-        "status": "build_failed",
-        "rss": 0
-      },
-      "osprey-wasm": {
-        "status": "wasm_incompatible",
-        "rss": 0
+        "status": "ok",
+        "rss": 19742720,
+        "mean": 1.9958096540999997,
+        "stddev": 0.03697976229076407,
+        "min": 1.9263946660000002,
+        "max": 2.056321333
       }
     },
     "hanoi": {
@@ -807,20 +890,28 @@
         "max": 0.056413916
       },
       "osprey": {
-        "status": "build_failed",
-        "rss": 0
+        "status": "ok",
+        "rss": 3235397632,
+        "mean": 1.2541156459,
+        "stddev": 0.01987384779414938,
+        "min": 1.231548084,
+        "max": 1.293495917
       },
       "osprey-arc": {
-        "status": "build_failed",
-        "rss": 0
+        "status": "ok",
+        "rss": 1540096,
+        "mean": 1.2442459957,
+        "stddev": 0.017786828624979177,
+        "min": 1.209263208,
+        "max": 1.280249333
       },
       "osprey-gc": {
-        "status": "build_failed",
-        "rss": 0
-      },
-      "osprey-wasm": {
-        "status": "wasm_incompatible",
-        "rss": 0
+        "status": "ok",
+        "rss": 21594112,
+        "mean": 7.288645320799999,
+        "stddev": 0.10494937221685548,
+        "min": 7.14649925,
+        "max": 7.459104458
       }
     },
     "isqrt": {
@@ -881,20 +972,28 @@
         "max": 0.029699875
       },
       "osprey": {
-        "status": "build_failed",
-        "rss": 0
+        "status": "ok",
+        "rss": 1256669184,
+        "mean": 0.4452364291000001,
+        "stddev": 0.004841701417112779,
+        "min": 0.43806075000000005,
+        "max": 0.45286800000000005
       },
       "osprey-arc": {
-        "status": "build_failed",
-        "rss": 0
+        "status": "ok",
+        "rss": 1540096,
+        "mean": 0.44429240830000005,
+        "stddev": 0.007358797696764945,
+        "min": 0.435011417,
+        "max": 0.45452775
       },
       "osprey-gc": {
-        "status": "build_failed",
-        "rss": 0
-      },
-      "osprey-wasm": {
-        "status": "wasm_incompatible",
-        "rss": 0
+        "status": "ok",
+        "rss": 20021248,
+        "mean": 2.7168718583,
+        "stddev": 0.029170105451374013,
+        "min": 2.674621125,
+        "max": 2.760632083
       }
     },
     "josephus": {
@@ -955,20 +1054,28 @@
         "max": 0.090193625
       },
       "osprey": {
-        "status": "build_failed",
-        "rss": 0
+        "status": "ok",
+        "rss": 644087808,
+        "mean": 0.23231849369230773,
+        "stddev": 0.004529763027571093,
+        "min": 0.22465045800000003,
+        "max": 0.24075237500000002
       },
       "osprey-arc": {
-        "status": "build_failed",
-        "rss": 0
+        "status": "ok",
+        "rss": 1556480,
+        "mean": 0.22558221469230766,
+        "stddev": 0.004276809633841102,
+        "min": 0.21952716700000002,
+        "max": 0.23671170900000002
       },
       "osprey-gc": {
-        "status": "build_failed",
-        "rss": 0
-      },
-      "osprey-wasm": {
-        "status": "wasm_incompatible",
-        "rss": 0
+        "status": "ok",
+        "rss": 19496960,
+        "mean": 1.4126058084,
+        "stddev": 0.03284989451376663,
+        "min": 1.377491208,
+        "max": 1.468826042
       }
     },
     "listops": {
@@ -1029,20 +1136,28 @@
         "max": 0.01807475
       },
       "osprey": {
-        "status": "build_failed",
-        "rss": 0
+        "status": "ok",
+        "rss": 23314432,
+        "mean": 0.0068688803945578195,
+        "stddev": 0.00038134244730743145,
+        "min": 0.0063269170000000005,
+        "max": 0.009816625
       },
       "osprey-arc": {
-        "status": "build_failed",
-        "rss": 0
+        "status": "ok",
+        "rss": 2146304,
+        "mean": 0.007407462724880381,
+        "stddev": 0.00035197314032605736,
+        "min": 0.006872958,
+        "max": 0.012674042
       },
       "osprey-gc": {
-        "status": "build_failed",
-        "rss": 0
-      },
-      "osprey-wasm": {
-        "status": "wasm_incompatible",
-        "rss": 0
+        "status": "ok",
+        "rss": 14680064,
+        "mean": 0.024367843860655745,
+        "stddev": 0.001554395151235203,
+        "min": 0.021817000000000003,
+        "max": 0.034591500000000004
       }
     },
     "mutual": {
@@ -1103,20 +1218,28 @@
         "max": 0.039225834
       },
       "osprey": {
-        "status": "build_failed",
-        "rss": 0
+        "status": "ok",
+        "rss": 2093891584,
+        "mean": 0.7300477875000001,
+        "stddev": 0.010222214033245558,
+        "min": 0.713364042,
+        "max": 0.744938667
       },
       "osprey-arc": {
-        "status": "build_failed",
-        "rss": 0
+        "status": "ok",
+        "rss": 1540096,
+        "mean": 0.6854856625999999,
+        "stddev": 0.010211982367247975,
+        "min": 0.6710425830000001,
+        "max": 0.6957130420000001
       },
       "osprey-gc": {
-        "status": "build_failed",
-        "rss": 0
-      },
-      "osprey-wasm": {
-        "status": "wasm_incompatible",
-        "rss": 0
+        "status": "ok",
+        "rss": 19464192,
+        "mean": 4.562711033499999,
+        "stddev": 0.06583094118124531,
+        "min": 4.448736833,
+        "max": 4.685815167
       }
     },
     "nestedloop": {
@@ -1177,20 +1300,28 @@
         "max": 0.064719416
       },
       "osprey": {
-        "status": "build_failed",
-        "rss": 0
+        "status": "ok",
+        "rss": 2513387520,
+        "mean": 0.8668739707,
+        "stddev": 0.010033923949978476,
+        "min": 0.8533714160000001,
+        "max": 0.884929666
       },
       "osprey-arc": {
-        "status": "build_failed",
-        "rss": 0
+        "status": "ok",
+        "rss": 1523712,
+        "mean": 0.8620227833000002,
+        "stddev": 0.011409290537939269,
+        "min": 0.8438698750000001,
+        "max": 0.8853095000000001
       },
       "osprey-gc": {
-        "status": "build_failed",
-        "rss": 0
-      },
-      "osprey-wasm": {
-        "status": "wasm_incompatible",
-        "rss": 0
+        "status": "ok",
+        "rss": 19496960,
+        "mean": 5.372185666799999,
+        "stddev": 0.09211998651374395,
+        "min": 5.216552042,
+        "max": 5.557882167
       }
     },
     "pascal": {
@@ -1251,20 +1382,28 @@
         "max": 0.080685167
       },
       "osprey": {
-        "status": "build_failed",
-        "rss": 0
+        "status": "ok",
+        "rss": 2579070976,
+        "mean": 0.9630189458999998,
+        "stddev": 0.007148774683738517,
+        "min": 0.9501965840000001,
+        "max": 0.972110083
       },
       "osprey-arc": {
-        "status": "build_failed",
-        "rss": 0
+        "status": "ok",
+        "rss": 1540096,
+        "mean": 0.9627446916,
+        "stddev": 0.008213396610624282,
+        "min": 0.947279791,
+        "max": 0.974808541
       },
       "osprey-gc": {
-        "status": "build_failed",
-        "rss": 0
-      },
-      "osprey-wasm": {
-        "status": "wasm_incompatible",
-        "rss": 0
+        "status": "ok",
+        "rss": 19480576,
+        "mean": 5.5492239333,
+        "stddev": 0.07911438741774161,
+        "min": 5.410595542,
+        "max": 5.686219667
       }
     },
     "powmod": {
@@ -1325,20 +1464,28 @@
         "max": 0.044864791
       },
       "osprey": {
-        "status": "build_failed",
-        "rss": 0
+        "status": "ok",
+        "rss": 1993375744,
+        "mean": 0.6870725541,
+        "stddev": 0.005549366181138516,
+        "min": 0.680312333,
+        "max": 0.6986373330000001
       },
       "osprey-arc": {
-        "status": "build_failed",
-        "rss": 0
+        "status": "ok",
+        "rss": 1556480,
+        "mean": 0.6794077083,
+        "stddev": 0.00833965896678391,
+        "min": 0.66477925,
+        "max": 0.6925119160000001
       },
       "osprey-gc": {
-        "status": "build_failed",
-        "rss": 0
-      },
-      "osprey-wasm": {
-        "status": "wasm_incompatible",
-        "rss": 0
+        "status": "ok",
+        "rss": 19480576,
+        "mean": 4.3323569084,
+        "stddev": 0.054545445823862435,
+        "min": 4.26208475,
+        "max": 4.417397084
       }
     },
     "primes": {
@@ -1399,20 +1546,28 @@
         "max": 0.021417959
       },
       "osprey": {
-        "status": "build_failed",
-        "rss": 0
+        "status": "ok",
+        "rss": 687669248,
+        "mean": 0.23849453125000009,
+        "stddev": 0.005513239178455607,
+        "min": 0.233807959,
+        "max": 0.253079333
       },
       "osprey-arc": {
-        "status": "build_failed",
-        "rss": 0
+        "status": "ok",
+        "rss": 1556480,
+        "mean": 0.2297935576153846,
+        "stddev": 0.003795437223385899,
+        "min": 0.22396691600000002,
+        "max": 0.23786979200000002
       },
       "osprey-gc": {
-        "status": "build_failed",
-        "rss": 0
-      },
-      "osprey-wasm": {
-        "status": "wasm_incompatible",
-        "rss": 0
+        "status": "ok",
+        "rss": 19447808,
+        "mean": 1.4728300791,
+        "stddev": 0.01588407109041241,
+        "min": 1.455810375,
+        "max": 1.505744
       }
     },
     "tak": {
@@ -1473,20 +1628,28 @@
         "max": 0.24615270800000003
       },
       "osprey": {
-        "status": "build_failed",
-        "rss": 0
+        "status": "ok",
+        "rss": 1218543616,
+        "mean": 0.47141332069999997,
+        "stddev": 0.004846752931971514,
+        "min": 0.46590966600000006,
+        "max": 0.48066745800000005
       },
       "osprey-arc": {
-        "status": "build_failed",
-        "rss": 0
+        "status": "ok",
+        "rss": 1523712,
+        "mean": 0.46883670009999995,
+        "stddev": 0.006699399354727906,
+        "min": 0.457516792,
+        "max": 0.47952225000000004
       },
       "osprey-gc": {
-        "status": "build_failed",
-        "rss": 0
-      },
-      "osprey-wasm": {
-        "status": "wasm_incompatible",
-        "rss": 0
+        "status": "ok",
+        "rss": 19759104,
+        "mean": 2.5668085458,
+        "stddev": 0.028892475084118834,
+        "min": 2.514168875,
+        "max": 2.601385625
       }
     },
     "textstats": {
@@ -1547,20 +1710,28 @@
         "max": 0.015609250000000002
       },
       "osprey": {
-        "status": "build_failed",
-        "rss": 0
+        "status": "ok",
+        "rss": 59424768,
+        "mean": 0.0238211570873016,
+        "stddev": 0.0007541397329070309,
+        "min": 0.022458459,
+        "max": 0.0270735
       },
       "osprey-arc": {
-        "status": "build_failed",
-        "rss": 0
+        "status": "ok",
+        "rss": 1605632,
+        "mean": 0.024795744512396693,
+        "stddev": 0.0005842535274048718,
+        "min": 0.023553125,
+        "max": 0.026635958
       },
       "osprey-gc": {
-        "status": "build_failed",
-        "rss": 0
-      },
-      "osprey-wasm": {
-        "status": "wasm_incompatible",
-        "rss": 0
+        "status": "ok",
+        "rss": 15548416,
+        "mean": 0.12317802433333336,
+        "stddev": 0.0020555486270009814,
+        "min": 0.120131291,
+        "max": 0.127006167
       }
     },
     "wordfreq": {
@@ -1621,20 +1792,28 @@
         "max": 0.017833917
       },
       "osprey": {
-        "status": "build_failed",
-        "rss": 0
+        "status": "ok",
+        "rss": 106905600,
+        "mean": 0.040911095119402975,
+        "stddev": 0.0018370908419779348,
+        "min": 0.038914959,
+        "max": 0.048076375000000005
       },
       "osprey-arc": {
-        "status": "build_failed",
-        "rss": 0
+        "status": "ok",
+        "rss": 1654784,
+        "mean": 0.04779211825806452,
+        "stddev": 0.0010808614944953646,
+        "min": 0.045554416,
+        "max": 0.051259375
       },
       "osprey-gc": {
-        "status": "build_failed",
-        "rss": 0
-      },
-      "osprey-wasm": {
-        "status": "wasm_incompatible",
-        "rss": 0
+        "status": "ok",
+        "rss": 18972672,
+        "mean": 0.18743808350000005,
+        "stddev": 0.006892849993496759,
+        "min": 0.179939292,
+        "max": 0.19935775
       }
     }
   }

@@ -1,8 +1,8 @@
 // Sum of modular exponentiation: sum of i^20 mod P for i in 1..N, naive repeated multiply.
-fn add(a: int, b: int) -> int = a + b
-fn sub(a: int, b: int) -> int = a - b
-fn mul(a: int, b: int) -> int = a * b
-fn mod_(a: int, b: int) -> int = a % b
+fn add(a: int, b: int) -> int = a + b ?: 0
+fn sub(a: int, b: int) -> int = a - b ?: 0
+fn mul(a: int, b: int) -> int = a * b ?: 0
+fn mod_(a: int, b: int) -> int = a % b ?: 0
 fn powmod(base: int, e: int, acc: int) -> int = match e {
     0 => acc
     _ => powmod(base, sub(e, 1), mod_(mul(acc, base), 1000000007))

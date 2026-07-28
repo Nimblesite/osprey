@@ -77,10 +77,10 @@ print("modzero: ${10 % 0}")     // garbage — undefined `srem` by zero
 
 `MathError::Overflow` was unreachable and `%`-by-zero was undefined behaviour;
 the corpus paid 11 wrapper functions and 112 signature lines although codegen
-performed no overflow check. `%` is now zero-checked — `10 % 0` yields
-`Error(division by zero)` — and `checkedAdd` / `checkedSub` / `checkedMul`
-detect overflow. Bare `+` still wraps; overflow checking is opt-in at the call
-site.
+performed no overflow check. The historical phase made `%` zero-checked and
+added `checkedAdd` / `checkedSub` / `checkedMul`, but still let bare `+` wrap.
+That intermediate behavior is no longer permitted: `[ARITH-CHECKED]` makes
+integer `+`, `-`, and `*` checked `Result` operations by default.
 
 The wrapper also caused one heap allocation per arithmetic operation.
 `make_ok` → `make_result`
@@ -98,8 +98,10 @@ store i8 0, i8* %r6                                    ; store discriminant
 — one `add`, one runtime allocation, three stores, then an immediate unwrap back
 to `i64`. Every `+`, `-`, `*` and `%` paid this cost. The arithmetic-dominated
 benchmark cases (`fib`, `ackermann`, `nestedloop`, `collatz`, `binarytrees`)
-allocated once per operation. `+ - *` now allocate nothing; only `/` and `%`
-still build a `Result`.
+allocated once per operation. Phase 2 temporarily removed that representation
+from `+ - *`; the later safety correction restored their checked `Result`
+contract. Performance work must optimize that safe representation rather than
+erase its failure channel.
 
 ### Defects fixed along the way
 
@@ -226,10 +228,9 @@ change. Its contract is superseded by
 - Every `.expectedoutput` showing `Success(n)` from `toString` over an
   arithmetic expression was regenerated.
 
-Contract: operators whose only failure mode is overflow
-return the plain type — overflow wraps, and already does so today; operators
-that can fail on a value with no representable result (`/` and `%` by zero) keep
-`Result`.
+**Historical contract (superseded):** operators whose only failure mode was
+overflow returned the plain type and wrapped, while `/` and `%` kept `Result`.
+This paragraph records the removed decision; it is not valid Osprey semantics.
 
 **Result: binarytrees 14 → 6 lines.** Corpus-wide, 11 operator wrappers were
 deleted, 112 signature lines became removable, and one heap allocation per
@@ -352,7 +353,7 @@ defect fixes are implemented and verified. The completion audit enforces:
   hand-written `.osp` and `.ospml` source under `examples`, `benchmarks`, and
   `tests`;
 - preservation of inline unions, positional construction, grouped and list
-  equation clauses, `_`, `?:`, plain arithmetic, and explicit `match` through
+  equation clauses, `_`, `?:`, checked arithmetic, and explicit `match` through
   formatting; and
 - byte-identical LLVM IR for every Default/ML twin in the paired corpus.
 
@@ -377,7 +378,7 @@ defect fixes are implemented and verified. The completion audit enforces:
 - [x] Defect — binding lookahead accepted list-pattern clauses while the parameter parser rejected them; `size [] = 0` and sibling list clauses now parse, merge, format, and execute
 - [x] Migrate the `.ospml` corpus per phase — `tests/core/feature_composition/feature_omnibus.test.ospml` now mixes
       grouped positional patterns, inline unions, `_` parameters, equational
-      clauses, `?:`, plain arithmetic, and positional construction. The
+      clauses, `?:`, checked arithmetic, and positional construction. The
       whole-corpus formatter test requires every `.ospml` to parse and
       round-trip idempotently, with an explicit clause-vs-`match` surface-form
       regression; the Default twin remains byte-identical at LLVM IR.

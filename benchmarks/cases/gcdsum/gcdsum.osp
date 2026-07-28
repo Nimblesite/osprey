@@ -1,6 +1,6 @@
 // Sum of gcd(i, K) for i in 1..N — Euclidean-algorithm recursion (modulo heavy).
-fn add(a: int, b: int) -> int = a + b
-fn mod_(a: int, b: int) -> int = a % b
+fn add(a: int, b: int) -> int = a + b ?: 0
+fn mod_(a: int, b: int) -> int = a % b ?: 0
 
 fn gcd(a: int, b: int) -> int = match b {
     0 => a

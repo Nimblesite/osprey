@@ -1,0 +1,15 @@
+// [EFFECTS-STATIC-DISCHARGE] A partial handler discharges only its own arms.
+effect Pair {
+    first: fn() -> int
+    second: fn() -> int
+}
+
+fn both() = {
+    let first = perform Pair.first()
+    let second = perform Pair.second()
+    first + second ?: 0
+}
+
+let answer = handle Pair
+    first => 20
+in both()

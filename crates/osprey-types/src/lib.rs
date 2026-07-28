@@ -19,6 +19,9 @@ mod builtins;
 mod check;
 mod convert;
 mod ctx;
+mod effect_rows;
+#[cfg(test)]
+mod effect_rows_tests;
 mod env;
 mod error;
 mod expr;

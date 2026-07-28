@@ -1,7 +1,7 @@
 // Count primes below a limit by trial division — integer % in a tight loop.
-fn add(a: int, b: int) -> int = a + b
-fn mul(a: int, b: int) -> int = a * b
-fn mod_(a: int, b: int) -> int = a % b
+fn add(a: int, b: int) -> int = a + b ?: 0
+fn mul(a: int, b: int) -> int = a * b ?: 0
+fn mod_(a: int, b: int) -> int = a % b ?: 0
 
 fn hasFactor(n: int, d: int) -> bool = match (mul(d, d) > n) {
     true  => false

@@ -41,6 +41,7 @@ export const TEST_FILE_GLOB = "**/*.test.{osp,ospml}";
 
 const CONTROLLER_ID = "ospreyTests";
 const CONTROLLER_LABEL = "Osprey Tests";
+const DIRECTORY_ID_PREFIX = "osprey-test-directory:";
 
 /**
  * The slice of vscode.TestRun the executor reports through. A real TestRun
@@ -150,12 +151,41 @@ function getOrCreateFileItem(
   uri: vscode.Uri,
 ): vscode.TestItem {
   const id = fileTestId(uri.toString());
-  const existing = controller.items.get(id);
+  const workspaceFolder = vscode.workspace.getWorkspaceFolder(uri);
+  if (workspaceFolder === undefined) {
+    const existing = controller.items.get(id);
+    if (existing !== undefined) {
+      return existing;
+    }
+    const item = controller.createTestItem(id, testFileLabel(uri), uri);
+    controller.items.add(item);
+    return item;
+  }
+
+  const parts = vscode.workspace
+    .asRelativePath(uri, false)
+    .split(/[\\/]+/)
+    .filter((part) => part.length > 0);
+  const fileLabel = parts.pop() ?? path.basename(uri.fsPath);
+  let children = controller.items;
+  let directoryPath = "";
+  for (const part of parts) {
+    directoryPath = directoryPath.length === 0 ? part : `${directoryPath}/${part}`;
+    const directoryId = `${DIRECTORY_ID_PREFIX}${workspaceFolder.uri.toString()}:${directoryPath}`;
+    let directory = children.get(directoryId);
+    if (directory === undefined) {
+      directory = controller.createTestItem(directoryId, part);
+      children.add(directory);
+    }
+    children = directory.children;
+  }
+
+  const existing = children.get(id);
   if (existing !== undefined) {
     return existing;
   }
-  const item = controller.createTestItem(id, testFileLabel(uri), uri);
-  controller.items.add(item);
+  const item = controller.createTestItem(id, fileLabel, uri);
+  children.add(item);
   return item;
 }
 
@@ -225,7 +255,46 @@ export function removeTestFile(
   controller: vscode.TestController,
   uri: vscode.Uri,
 ): void {
-  controller.items.delete(fileTestId(uri.toString()));
+  const id = fileTestId(uri.toString());
+  const find = (
+    items: vscode.TestItemCollection,
+  ): vscode.TestItem | undefined => {
+    const direct = items.get(id);
+    if (direct !== undefined) {
+      return direct;
+    }
+    let found: vscode.TestItem | undefined;
+    items.forEach((item) => {
+      if (found === undefined && item.id.startsWith(DIRECTORY_ID_PREFIX)) {
+        found = find(item.children);
+      }
+    });
+    return found;
+  };
+  const item = find(controller.items);
+  if (item === undefined) {
+    return;
+  }
+  const parent = item.parent;
+  if (parent === undefined) {
+    controller.items.delete(id);
+    return;
+  }
+  parent.children.delete(id);
+  let emptyDirectory: vscode.TestItem | undefined = parent;
+  while (
+    emptyDirectory !== undefined &&
+    emptyDirectory.id.startsWith(DIRECTORY_ID_PREFIX) &&
+    emptyDirectory.children.size === 0
+  ) {
+    const ancestor: vscode.TestItem | undefined = emptyDirectory.parent;
+    if (ancestor === undefined) {
+      controller.items.delete(emptyDirectory.id);
+    } else {
+      ancestor.children.delete(emptyDirectory.id);
+    }
+    emptyDirectory = ancestor;
+  }
 }
 
 /** Initial workspace scan. `findFiles` is injectable so tests can seed uris. */
@@ -240,17 +309,51 @@ export async function scanWorkspaceTestFiles(
   }
 }
 
-/** The items a request targets: its `include`, or every root when absent. */
+/**
+ * The runnable items a request targets. Directory selections (including every
+ * root for Run All) expand to the files beneath them; file and case selections
+ * remain intact for run planning.
+ */
 export function requestedItems(
   controller: vscode.TestController,
   request: Pick<vscode.TestRunRequest, "include">,
 ): vscode.TestItem[] {
-  if (request.include !== undefined) {
-    return [...request.include];
+  const requested = request.include ?? (() => {
+    const roots: vscode.TestItem[] = [];
+    controller.items.forEach((item) => roots.push(item));
+    return roots;
+  })();
+  const runnable: vscode.TestItem[] = [];
+  const expand = (item: vscode.TestItem): void => {
+    if (!item.id.startsWith(DIRECTORY_ID_PREFIX)) {
+      runnable.push(item);
+      return;
+    }
+    item.children.forEach(expand);
+  };
+  for (const item of requested) {
+    expand(item);
   }
-  const roots: vscode.TestItem[] = [];
-  controller.items.forEach((item) => roots.push(item));
-  return roots;
+  return runnable;
+}
+
+function failedTestMessage(
+  leaf: vscode.TestItem,
+  failure: string,
+): vscode.TestMessage {
+  const start = leaf.range?.start;
+  const context = [
+    failure,
+    "",
+    "## Context For AI",
+    "",
+    `- File: ${leaf.uri?.fsPath ?? "unknown"}`,
+    `- Test: ${leaf.label}`,
+    "- Status: failed",
+    `- Location: ${start === undefined ? "unknown" : `line ${start.line + 1}, column ${start.character + 1}`}`,
+    `- Failure: ${failure}`,
+  ].join("\n");
+  return new vscode.TestMessage(new vscode.MarkdownString(context));
 }
 
 function markLeaf(
@@ -261,7 +364,7 @@ function markLeaf(
   if (outcome.status === "passed") {
     sink.passed(leaf);
   } else if (outcome.status === "failed") {
-    sink.failed(leaf, new vscode.TestMessage(outcome.message));
+    sink.failed(leaf, failedTestMessage(leaf, outcome.message));
   } else {
     sink.skipped(leaf);
   }
@@ -459,7 +562,13 @@ export async function executeRunRequest(
   // leave the run spinning forever in the Testing view, uncancellable (Stop
   // only signals the token; VS Code retires a run only when end() is called).
   try {
-    for (const plan of planRun(requestedItems(controller, request), excluded)) {
+    for (const plan of planRun(
+      requestedItems(controller, request),
+      excluded,
+      (item) =>
+        item.uri !== undefined &&
+        (item.parent === undefined || item.parent.uri === undefined),
+    )) {
       if (token.isCancellationRequested) {
         break;
       }

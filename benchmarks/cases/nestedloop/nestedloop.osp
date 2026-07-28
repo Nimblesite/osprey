@@ -1,8 +1,8 @@
 // Triple-nested counting loop accumulating (i*j*k) mod P — nested iteration.
-fn add(a: int, b: int) -> int = a + b
-fn sub(a: int, b: int) -> int = a - b
-fn mul(a: int, b: int) -> int = a * b
-fn mod_(a: int, b: int) -> int = a % b
+fn add(a: int, b: int) -> int = a + b ?: 0
+fn sub(a: int, b: int) -> int = a - b ?: 0
+fn mul(a: int, b: int) -> int = a * b ?: 0
+fn mod_(a: int, b: int) -> int = a % b ?: 0
 
 fn loopK(i: int, j: int, k: int, acc: int) -> int = match k {
     0 => acc

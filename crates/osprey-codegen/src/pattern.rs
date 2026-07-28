@@ -198,11 +198,19 @@ fn gen_result_match(cg: &mut Codegen, disc: Value, arms: &[MatchArm]) -> Result<
         // Success binds the value slot; Error binds the errmsg slot (the real
         // reason), so `Error { message }` sees the message regardless of the
         // success payload type. Implements [ERR-PAYLOAD].
-        (
+        let bound = (
             c,
             crate::result::load_value(cg, &disc),
             crate::result::load_errmsg_str(cg, &disc),
-        )
+        );
+        // Both slots are now in registers, so a freshly produced block is dead
+        // here. Retiring it at the match — rather than letting the region-end
+        // drop do it — keeps the release off the path after the arms, which is
+        // what allows a self-call in an arm to stay in tail position.
+        // `consume_fresh` only fires for a pure-scalar block, whose errmsg is
+        // rodata and so outlives the release. [GC-ARC-PERCEUS]
+        crate::arc::consume_fresh(cg, &disc);
+        bound
     } else if matches!(disc.ty, LType::Str | LType::Ptr) {
         // A handle discriminant (e.g. a WHERE-constrained constructor that
         // currently always succeeds) has no numeric tag — take the Success arm

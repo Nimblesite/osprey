@@ -1,6 +1,6 @@
 // Ackermann–Péter function — deep, non-tail mutual self-recursion.
-fn add(a: int, b: int) -> int = a + b
-fn sub(a: int, b: int) -> int = a - b
+fn add(a: int, b: int) -> int = a + b ?: 0
+fn sub(a: int, b: int) -> int = a - b ?: 0
 
 fn ack(m: int, n: int) -> int = match m {
     0 => add(n, 1)

@@ -1,6 +1,6 @@
 // Sum of integer square roots over 1..N — Newton's method, integer division heavy.
-fn add(a: int, b: int) -> int = a + b
-fn divv(a: int, b: int) -> int = intDiv(a, b)
+fn add(a: int, b: int) -> int = a + b ?: 0
+fn divv(a: int, b: int) -> int = intDiv(a, b) ?: 0
 
 fn isqrtIter(n: int, x: int) -> int = {
     let y = divv(add(x, divv(n, x)), 2)

@@ -53,10 +53,15 @@ pub(crate) fn make_result(
     cg.emit(format!("store i8* {errmsg}, i8** {mp}"));
     let out = Value::result(obj, inner).with_payload_owner(payload_owner);
     crate::arc::own(cg, &out);
-    // A scalar payload plus a non-register errmsg (null / rodata constant)
-    // means the block holds zero managed references — eligible for the
-    // consume-at-unwrap fast path that lets -O2 delete the whole block.
-    if !matches!(inner, LType::Str | LType::Ptr) && !errmsg.starts_with('%') {
+    // A scalar payload plus an unmanaged errmsg means the block holds zero
+    // managed references — eligible for the consume-at-unwrap fast path that
+    // lets -O2 delete the whole block. A literal reason (`"integer overflow"`,
+    // `"division by zero"`) reaches here as a REGISTER holding a getelementptr
+    // into a private constant, so testing the spelling alone would misjudge
+    // every checked-arithmetic Error arm as impure; ask the rodata ledger
+    // instead. [GC-ARC-PERCEUS]
+    let errmsg_unmanaged = !errmsg.starts_with('%') || cg.is_rodata(errmsg);
+    if !matches!(inner, LType::Str | LType::Ptr) && errmsg_unmanaged {
         crate::arc::mark_pure_scalar(cg, &out);
     }
     Ok(out)

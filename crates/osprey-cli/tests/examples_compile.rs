@@ -88,6 +88,56 @@ unhandledOverflow () =
 }
 
 #[test]
+fn inferred_effects_without_handlers_are_rejected_in_both_flavors() {
+    // [EFFECTS-STATIC-DISCHARGE] Omitting a function signature must infer both
+    // its value type and its effect row. Neither flavor may turn an omitted
+    // `!ArithmeticFailure` annotation into a runtime-only safety check.
+    let cases = [
+        (
+            "unhandled_inferred_effect.test.osp",
+            r"
+effect ArithmeticFailure {
+    raise: fn(string) -> Result<int, MathError>
+}
+
+fn addPreservingError(a, b) = match a + b {
+    Success { value } => Success { value: value }
+    Error { message } => perform ArithmeticFailure.raise(message)
+}
+
+print(toString(addPreservingError(9223372036854775807, 1)))
+",
+        ),
+        (
+            "unhandled_inferred_effect.test.ospml",
+            r"
+effect ArithmeticFailure
+    raise : string => Result<int, MathError>
+
+addPreservingError a b = match a + b
+    Success value => Success(value = value)
+    Error message => perform ArithmeticFailure.raise message
+
+print (toString (addPreservingError 9223372036854775807 1))
+",
+        ),
+    ];
+
+    let mut accepted = Vec::new();
+    for (path, source) in cases {
+        if compile(Path::new(path), source).is_ok() {
+            accepted.push(path);
+        }
+    }
+
+    assert!(
+        accepted.is_empty(),
+        "unhandled inferred effects must fail compilation in both flavors; accepted: {}",
+        accepted.join(", ")
+    );
+}
+
+#[test]
 fn every_language_test_compiles_to_ir() {
     let dir = repo_root().join("tests");
     let files = sources(&dir, "osp");
@@ -181,6 +231,55 @@ fn generics_and_variance_negative_cases_are_rejected() {
         assert!(
             compile(&path, &source).is_err(),
             "{name} must be rejected (variance/generic-effect misuse)"
+        );
+    }
+}
+
+#[test]
+fn static_effect_safety_negative_cases_are_rejected_in_both_flavors() {
+    // [EFFECTS-STATIC-DISCHARGE] These paired fixtures pin the end-to-end
+    // parse -> inference -> entry-proof boundary, including ML lowering.
+    let dir = repo_root().join("examples/failscompilation");
+    let cases = [
+        (
+            "static_effect_unhandled_inferred_transitive.ospo",
+            "Alarm.ring",
+        ),
+        ("static_effect_escaped_lambda.ospo", "Alarm.ring"),
+        (
+            "static_effect_partial_missing_operation.ospo",
+            "Pair.second",
+        ),
+        ("static_effect_generic_mismatch.ospo", "Stash<int>.put"),
+        (
+            "static_effect_recursive_handler.ospo",
+            "recursively re-enter",
+        ),
+        (
+            "ml_static_effect_unhandled_inferred_transitive.ospo",
+            "Alarm.ring",
+        ),
+        ("ml_static_effect_escaped_lambda.ospo", "Alarm.ring"),
+        (
+            "ml_static_effect_partial_missing_operation.ospo",
+            "Pair.second",
+        ),
+        ("ml_static_effect_generic_mismatch.ospo", "Stash<int>.put"),
+        (
+            "ml_static_effect_recursive_handler.ospo",
+            "recursively re-enter",
+        ),
+    ];
+
+    for (name, expected) in cases {
+        let path = dir.join(name);
+        let source = fs::read_to_string(&path).expect("read static effect fixture");
+        let Err(reason) = compile(&path, &source) else {
+            panic!("{name} must be rejected by static effect discharge");
+        };
+        assert!(
+            reason.contains(expected),
+            "{name}: expected a diagnostic containing {expected:?}, got {reason:?}"
         );
     }
 }

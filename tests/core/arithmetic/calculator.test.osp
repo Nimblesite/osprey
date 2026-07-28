@@ -1,5 +1,5 @@
-/// Adds two integers through curried application.
-fn add(a: int) -> (int) -> int = fn(b) => a + b ?: 0
+/// Adds two integers with its safe fallback inferred from the body.
+fn add(a, b) = a + b ?: 0
 /// Doubles an integer for reusable pipeline stages.
 fn double(x) = x * 2 ?: 0
 /// Classifies an integer through modulo Result unwrapping and boolean matching.
@@ -10,16 +10,16 @@ fn parity(n) = match (n % 2 ?: 1) == 0 {
 
 /// Checks positive, negative, nested, boundary, and relational arithmetic together.
 fn additionCase() = {
-    let subtotal = add(10)(20)
+    let subtotal = add(10, 20)
     // One batch keeps seven independent arithmetic assertions compact.
     checkAll("addition state", [
-        add(2)(3) == 5,
-        add((0 - 1) ?: 0)(1) == 0,
-        add(subtotal)((0 - 5) ?: 0) == 25,
-        add(0)(0) == 0,
-        add(1000)((0 - 250) ?: 0) == 750,
-        add(4)(5) > add(2)(3),
-        !(add((0 - 2) ?: 0)(1) > 0)
+        add(2, 3) == 5,
+        add((0 - 1) ?: 0, 1) == 0,
+        add(subtotal, (0 - 5) ?: 0) == 25,
+        add(0, 0) == 0,
+        add(1000, (0 - 250) ?: 0) == 750,
+        add(4, 5) > add(2, 3),
+        !(add((0 - 2) ?: 0, 1) > 0)
     ])
 }
 
@@ -30,7 +30,7 @@ fn pipelineCase() = {
     checkAll("pipeline state", [
         (10 |> double |> double) == 40,
         (5 |> fn(x) => x + 100 ?: 0) == 105,
-        (six |> fn(x) => add(x)(4)) == 10,
+        (six |> fn(x) => add(x, 4)) == 10,
         (((0 - 2) ?: 0) |> double |> double) == ((0 - 8) ?: 0),
         (6 |> double |> fn(x) => x == 12),
         (1 |> double |> double) > 0
@@ -43,7 +43,7 @@ fn patternCase() = {
     checkAll("pattern state", [
         parity(4) == "even",
         parity(7) == "odd",
-        parity(add(5)(5)) == "even",
+        parity(add(5, 5)) == "even",
         "${parity(3)}:${double(3)}" == "odd:6",
         parity(double(9)) == "even",
         parity(3) != parity(4)

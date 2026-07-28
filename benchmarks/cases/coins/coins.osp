@@ -1,6 +1,6 @@
 // Counting change — ways to make an amount from coins [1,5,10,25,50] (SICP classic).
-fn add(a: int, b: int) -> int = a + b
-fn sub(a: int, b: int) -> int = a - b
+fn add(a: int, b: int) -> int = a + b ?: 0
+fn sub(a: int, b: int) -> int = a - b ?: 0
 fn coin(k: int) -> int = match k { 1 => 1  2 => 5  3 => 10  4 => 25  _ => 50 }
 fn ways(amount: int, kind: int) -> int = match amount {
     0 => 1

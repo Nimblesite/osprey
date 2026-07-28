@@ -1,0 +1,12 @@
+// [EFFECTS-STATIC-DISCHARGE] Generic handlers discharge only one instantiation.
+effect Stash<T> {
+    put: fn(T) -> Unit
+    take: fn() -> T
+}
+
+fn storeNumber() = perform Stash.put(42)
+
+let done = handle Stash
+    put value => print("")
+    take => "cached text"
+in storeNumber()

@@ -1,6 +1,6 @@
 // Naive recursive Fibonacci — exercises raw function-call + recursion overhead.
-fn add(a: int, b: int) -> int = a + b
-fn sub(a: int, b: int) -> int = a - b
+fn add(a: int, b: int) -> int = a + b ?: 0
+fn sub(a: int, b: int) -> int = a - b ?: 0
 
 fn fib(n: int) -> int = match n {
     0 => 0

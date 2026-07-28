@@ -1,5 +1,5 @@
 // Factorial-style product 1*2*...*N taken mod 1000000007 (real N! overflows i64).
-fn mul(a: int, b: int) = a * b
-fn mod_(a: int, b: int)  = a % b
+fn mul(a: int, b: int) = a * b ?: 0
+fn mod_(a: int, b: int)  = a % b ?: 0
 fn step(acc: int, i: int) = mod_(mul(acc, i), 1000000007)
 print("${range(1, 10000001) |> fold(1, step)}")

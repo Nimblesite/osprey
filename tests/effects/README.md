@@ -85,10 +85,23 @@ pattern.
 ## What the compiler checks today
 
 The compiler checks that effects, operations, arguments, handler parameters and
-operation results agree. It does not yet prove that every call has a matching
-handler. A missing handler can compile and then stop at runtime with an
-`unhandled effect` diagnostic. Function effect rows also do not yet propagate
-through every call.
+operation results agree. It also infers operation requirements when return and
+effect annotations are omitted, propagates them through named and higher-order
+calls, and rejects a program entry with any undisclosed operation. An explicit
+row such as `!Logger` is a checked contract on the function body, not a handler
+and not permission for an unhandled call.
+
+Handler discharge is exact: only an operation named by an arm is removed, and
+only for the same resolved generic effect instantiation. A partial `Pair.first`
+handler leaves `Pair.second` outstanding; `Stash<string>` does not discharge
+`Stash<int>.put`. Nested partial handlers may cover complementary operations.
+A lambda's requirements remain latent while it is merely constructed and are
+checked when it is invoked, including after it escapes the lexical handler
+where it was created. A handler arm that performs its own active operation at
+the same generic instantiation is rejected as recursive re-entry. An uncovered
+operation or different instantiation may route to an enclosing matching
+handler. The runtime `unhandled effect` guard remains a defensive backstop for
+invalid compiler output, not the expected path for source-level error handling.
 
 Explicit resume is deep, single-shot and native-only. A resumed computation may
 perform the same effect again because its handler stays installed. Resuming the
@@ -126,7 +139,12 @@ frontends for:
 - a direct handler returning the wrong operation type;
 - `resume` receiving the wrong value type;
 - `resume` outside a handler arm; and
-- one generic recovery region being forced to incompatible types.
+- one generic recovery region being forced to incompatible types;
+- a direct or transitively inferred operation reaching program entry without a
+  matching handler;
+- partial handlers leaving an operation uncovered;
+- handlers and callees using different generic effect instantiations; and
+- recursive same-effect performance from a handler arm.
 
 Default fixtures use names such as `effect_perform_arity_mismatch.ospo`; their
 ML twins use the `ml_` prefix and an explicit flavor marker. Each fixture has an

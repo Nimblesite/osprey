@@ -118,10 +118,22 @@ jobs:
           ./target/release/osprey.exe test tests/core/feature_composition/feature_omnibus.test.osp --quiet > omni.txt
           cat omni.txt
 
-      # The root corpus recursively exercises both Default and ML programs with
+      # Each invocation recursively exercises both Default and ML programs with
       # internal assertions, including cross-feature interaction scenarios.
-      - name: Core language assertion corpus (Default + ML)
+      - name: Core language assertion corpus — no memory management
         shell: msys2 {0}
         run: |
           set -euo pipefail
           OSPREY_TEST_JOBS=1 ./target/release/osprey.exe test tests
+
+      - name: Core language assertion corpus — GC
+        shell: msys2 {0}
+        run: |
+          set -euo pipefail
+          OSPREY_TEST_JOBS=1 ./target/release/osprey.exe test tests --memory=gc
+
+      - name: Core language assertion corpus — ARC
+        shell: msys2 {0}
+        run: |
+          set -euo pipefail
+          OSPREY_ARC_DEBUG=1 OSPREY_TEST_JOBS=1 ./target/release/osprey.exe test tests --memory=arc

@@ -111,6 +111,10 @@ pub struct Checker {
     /// type arguments, keyed by its source position — resolved and published
     /// for the code generator.
     pub(crate) perform_tys: Vec<(Position, crate::info::OpType, Vec<Type>)>,
+    /// A perform site's effect arguments inferred independently from its
+    /// declared function row. This keeps a wrong row contract from laundering
+    /// the operation's actual instantiation in the static effect proof.
+    pub(crate) perform_actual_tys: Vec<(Position, Vec<Type>)>,
     /// Every `handle` site's instantiated effect type arguments and operation
     /// signatures, keyed by its source position — resolved and published for
     /// the code generator.
@@ -141,6 +145,7 @@ impl Checker {
             resume_ctx: Vec::new(),
             handler_scopes: Vec::new(),
             perform_tys: Vec::new(),
+            perform_actual_tys: Vec::new(),
             handler_tys: Vec::new(),
             fn_typarams: HashMap::new(),
             current_fn_typarams: HashMap::new(),
@@ -867,6 +872,62 @@ fn checked_program(program: &Program) -> Checker {
     checker.collect(program, &mut env);
     checker.check(program, &mut env);
     checker.validate_builtin_uses();
+    let perform_tys = checker.perform_tys.clone();
+    let perform_actual_tys = checker.perform_actual_tys.clone();
+    let handler_tys = checker.handler_tys.clone();
+    let scoped_performs =
+        collect_site_candidates(perform_tys.into_iter().map(|(position, _, arguments)| {
+            (
+                (position.line, position.column),
+                arguments
+                    .iter()
+                    .map(|argument| checker.ctx.apply(argument).to_string())
+                    .collect(),
+            )
+        }));
+    let mut actual_performs = HashMap::new();
+    let mut unresolved_actual_sites = HashSet::new();
+    for (position, arguments) in perform_actual_tys {
+        let key = (position.line, position.column);
+        let arguments: Vec<_> = arguments
+            .iter()
+            .map(|argument| checker.ctx.apply(argument))
+            .collect();
+        if arguments.iter().all(type_is_resolved) {
+            push_site_candidate(
+                &mut actual_performs,
+                key,
+                arguments.iter().map(ToString::to_string).collect(),
+            );
+        } else {
+            let _ = unresolved_actual_sites.insert(key);
+        }
+    }
+    let mut performs = scoped_performs;
+    for (key, candidates) in actual_performs {
+        if unresolved_actual_sites.contains(&key) {
+            for candidate in candidates {
+                push_site_candidate(&mut performs, key, candidate);
+            }
+        } else {
+            let _ = performs.insert(key, candidates);
+        }
+    }
+    let instances = crate::effect_rows::Instances {
+        performs,
+        handlers: dedupe_sites(handler_tys.into_iter().map(|(position, arguments, _)| {
+            (
+                (position.line, position.column),
+                arguments
+                    .iter()
+                    .map(|argument| checker.ctx.apply(argument).to_string())
+                    .collect(),
+            )
+        })),
+    };
+    checker
+        .errors
+        .extend(crate::effect_rows::check(program, &instances));
     checker
 }
 
@@ -884,6 +945,37 @@ fn resolve_op(ctx: &mut InferCtx, op: &crate::info::OpType) -> crate::info::OpTy
     crate::info::OpType {
         params: op.params.iter().map(|t| ctx.apply(t)).collect(),
         ret: ctx.apply(&op.ret),
+    }
+}
+
+fn type_is_resolved(ty: &Type) -> bool {
+    match ty {
+        Type::Var(_) => false,
+        Type::Con { args, .. } => args.iter().all(type_is_resolved),
+        Type::Fun { params, ret } => params.iter().all(type_is_resolved) && type_is_resolved(ret),
+        Type::Record { fields, .. } => fields.values().all(type_is_resolved),
+        Type::Union { variants, .. } => variants.iter().all(type_is_resolved),
+    }
+}
+
+fn collect_site_candidates<S: PartialEq>(
+    entries: impl Iterator<Item = ((u32, u32), S)>,
+) -> HashMap<(u32, u32), Vec<S>> {
+    let mut out = HashMap::new();
+    for (key, candidate) in entries {
+        push_site_candidate(&mut out, key, candidate);
+    }
+    out
+}
+
+fn push_site_candidate<S: PartialEq>(
+    sites: &mut HashMap<(u32, u32), Vec<S>>,
+    key: (u32, u32),
+    candidate: S,
+) {
+    let candidates = sites.entry(key).or_default();
+    if !candidates.contains(&candidate) {
+        candidates.push(candidate);
     }
 }
 

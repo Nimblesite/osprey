@@ -39,7 +39,7 @@ pub(crate) const USAGE: &str =
        osprey build [project] [--quiet] [--debug] [--memory=default|gc|arc] \
 [--target=native|wasm32] [-o <out>]\n\
        osprey test [path] [--filter <name>] [--quiet] [--coverage] \
-[--coverage-json <path>]\n\
+[--coverage-json <path>] [--memory=default|gc|arc]\n\
        osprey fmt [--check | --stdout] [--flavor default|ml] <path...>\n\
        osprey --hover <name>\n\
        osprey --docs --docs-dir <dir>\n\

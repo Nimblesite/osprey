@@ -11,6 +11,8 @@
 //! headers. The exit code aggregates suite outcomes.
 //! `--coverage` instruments each suite and reports per-file and total line
 //! coverage; `--coverage-json <path>` also writes the merged hit counts.
+//! `--memory=default|gc|arc` selects one backend for every discovered suite;
+//! when omitted, child compiler invocations use the compiler's default.
 //! Unchanged native suites reuse content-addressed executables across runs.
 
 use crate::{TEST_CACHE_DIR_ENV, TEST_COVERAGE_BUILD_ENV, USAGE};
@@ -31,6 +33,7 @@ struct Opts {
     quiet: bool,
     coverage: bool,
     coverage_json: Option<String>,
+    memory: Option<String>,
 }
 
 /// One suite's parsed coverage dump: flattened line → hit count
@@ -84,6 +87,7 @@ fn parse(args: &[String]) -> Result<Opts, String> {
         quiet: false,
         coverage: false,
         coverage_json: None,
+        memory: None,
     };
     let mut path = None;
     let mut it = args.iter();
@@ -103,6 +107,11 @@ fn parse(args: &[String]) -> Result<Opts, String> {
                     .ok_or_else(|| format!("--coverage-json requires a path\n{USAGE}"))?;
                 opts.coverage = true;
                 opts.coverage_json = Some(next.clone());
+            }
+            flag if flag.starts_with("--memory=") => {
+                opts.memory = Some(crate::parse_memory(
+                    flag.strip_prefix("--memory=").unwrap_or_default(),
+                )?);
             }
             flag if flag.starts_with("--") => {
                 return Err(format!("unknown flag {flag}\n{USAGE}"));
@@ -250,8 +259,13 @@ fn suite_worker(
 
 fn execute_suite(file: &Path, opts: &Opts, index: usize) -> SuiteOutput {
     let dump = opts.coverage.then(|| coverage_dump_path(file));
-    let result = suite_command(file, opts.filter.as_deref(), dump.as_deref())
-        .and_then(|mut command| command.output());
+    let result = suite_command(
+        file,
+        opts.filter.as_deref(),
+        dump.as_deref(),
+        opts.memory.as_deref(),
+    )
+    .and_then(|mut command| command.output());
     match result {
         Ok(output) => SuiteOutput {
             index,
@@ -272,6 +286,7 @@ fn suite_command(
     file: &Path,
     filter: Option<&str>,
     dump: Option<&Path>,
+    memory: Option<&str>,
 ) -> std::io::Result<Command> {
     let mut command = Command::new(std::env::current_exe()?);
     let cache_dir = std::env::var_os(TEST_CACHE_DIR_ENV)
@@ -281,6 +296,9 @@ fn suite_command(
         .arg(file)
         .args(["--run", "--quiet"])
         .env(TEST_CACHE_DIR_ENV, cache_dir);
+    if let Some(memory) = memory {
+        let _ = command.arg(format!("--memory={memory}"));
+    }
     close_stdin(&mut command);
     if let Some(value) = filter {
         let _ = command.env("OSPREY_TEST_FILTER", value);
@@ -462,11 +480,36 @@ mod tests {
         assert_eq!(ok.filter.as_deref(), Some("adds"));
         assert!(ok.quiet);
         assert!(!ok.coverage);
+        assert!(ok.memory.is_none());
 
         assert_eq!(parse(&[]).expect("default").path, ".");
         assert!(parse(&["--filter".to_string()]).is_err());
         assert!(parse(&["--bogus".to_string()]).is_err());
         assert!(parse(&["a".to_string(), "b".to_string()]).is_err());
+    }
+
+    #[test]
+    fn memory_backend_is_single_mode_and_optional() {
+        let default = parse(&[]).expect("compiler default");
+        assert!(default.memory.is_none());
+
+        for memory in ["default", "gc", "arc"] {
+            let opts = parse(&[format!("--memory={memory}")]).expect("valid memory backend");
+            assert_eq!(opts.memory.as_deref(), Some(memory));
+        }
+        assert!(parse(&["--memory=bogus".to_string()]).is_err());
+
+        let default_command = suite_command(Path::new("suite.test.osp"), None, None, None)
+            .expect("default suite command");
+        assert!(!default_command
+            .get_args()
+            .any(|arg| arg.to_string_lossy().starts_with("--memory=")));
+
+        let gc_command = suite_command(Path::new("suite.test.osp"), None, None, Some("gc"))
+            .expect("GC suite command");
+        assert!(gc_command
+            .get_args()
+            .any(|arg| arg == std::ffi::OsStr::new("--memory=gc")));
     }
 
     // [TESTING-COVERAGE-CLI]: --coverage turns instrumentation on;

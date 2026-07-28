@@ -1,0 +1,47 @@
+// Checked arithmetic stays a Result all the way through these examples.
+// Effects centralize policy; they do not erase the original MathError.
+
+effect ArithmeticFailure
+    decide : string => Result<int, MathError>
+
+(** Convert a successful sum to text while preserving the exact error branch. *)
+renderSum (a, b) = match a + b
+    Success value => Success(value = toString value)
+    Error message => Error(message = message)
+
+(** Raise only after checked addition has produced an explicit Error value. *)
+addThroughPolicy (a, b) = match a + b
+    Success value => Success(value = value)
+    Error message => perform ArithmeticFailure.decide message
+
+(** This handler preserves failure and its diagnostic verbatim. *)
+preserveFailure (a, b) =
+    handle ArithmeticFailure
+        decide message => Error(message = message)
+    in addThroughPolicy (a, b)
+
+(** This handler deliberately recovers, but still receives the exact reason. *)
+recoverWith (a, b, fallback) =
+    handle ArithmeticFailure
+        decide message => match message == "integer overflow"
+            true => Success(value = fallback)
+            false => Error(message = message)
+    in addThroughPolicy (a, b)
+
+test "success can be rendered without contextual coercion" (\() =>
+    expect (toString (renderSum (1, 1))) "Success(2)")
+
+test "rendering preserves the overflow error Result" (\() =>
+    expect (toString (renderSum (9223372036854775807, 1))) "Error(integer overflow)")
+
+test "effect policy bypasses its handler on success" (\() =>
+    expect (toString (preserveFailure (20, 22))) "Success(42)")
+
+test "effect policy can preserve the exact overflow Result" (\() =>
+    expect (toString (preserveFailure (9223372036854775807, 1))) "Error(integer overflow)")
+
+test "effect policy may deliberately recover from known overflow" (\() =>
+    expect (toString (recoverWith (9223372036854775807, 1, 7))) "Success(7)")
+
+test "healthy arithmetic never invokes the recovery decision" (\() =>
+    expect (toString (recoverWith (19, 23, 7))) "Success(42)")

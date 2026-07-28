@@ -525,9 +525,14 @@ fn gen_guarded_with_message(
 struct ResultGuard {
     bad: String,
     end: String,
+    /// Ownership-ledger depth before either arm allocated its `Result` block,
+    /// so the join can tell the two arm-produced owners from values that
+    /// already existed. [GC-ARC-PERCEUS]
+    mark: usize,
 }
 
 fn open_result_guard(cg: &mut Codegen, bad: &str) -> ResultGuard {
+    let mark = crate::arc::frame_mark(cg);
     let (bad_block, good_block, end) = (cg.fresh_label(), cg.fresh_label(), cg.fresh_label());
     cg.emit(format!(
         "br i1 {bad}, label %{bad_block}, label %{good_block}"
@@ -536,6 +541,7 @@ fn open_result_guard(cg: &mut Codegen, bad: &str) -> ResultGuard {
     ResultGuard {
         bad: bad_block,
         end,
+        mark,
     }
 }
 
@@ -576,7 +582,19 @@ fn finish_result_guard(
         ok.operand,
         err.operand
     ));
-    Ok(Value::result(reg, inner))
+    let out = Value::result(reg, inner);
+    // Exactly one arm allocates on any path, so the join owns one block rather
+    // than two. Merging them here is what lets an immediate unwrap retire the
+    // block at its use (`consume_fresh`) instead of at region end — the latter
+    // sinks the drop past any call in the same expression and would cost a
+    // self-call its tail position. [GC-ARC-PERCEUS]
+    crate::arc::move_phi_owners(
+        cg,
+        &[ok.operand.clone(), err.operand.clone()],
+        &out,
+        guard.mark,
+    );
+    Ok(out)
 }
 
 /// String concatenation: `malloc(osp_strlen a + osp_strlen b + 1)` then

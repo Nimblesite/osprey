@@ -4,7 +4,7 @@ effect Audit {
 }
 
 /// This helper performs two ordered steps and combines their supplied values.
-fn pipeline() -> int !Audit = {
+fn pipeline() = {
     let a = perform Audit.step("load")
     let b = perform Audit.step("parse")
     a + b ?: 0

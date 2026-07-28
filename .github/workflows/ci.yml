@@ -94,7 +94,8 @@ jobs:
         run: make _lint
 
       # make test = fail-fast + per-project coverage + threshold enforcement +
-      # the Default/ML assertion corpus under tests/.
+      # the Default/ML assertion corpus under tests/ in the compiler-default,
+      # GC, and ARC memory modes.
       # Thresholds live in coverage-thresholds.json.
       # Xvfb is needed because vscode-extension
       # tests spawn a real VS Code Electron build.
@@ -181,7 +182,7 @@ jobs:
   # ─── Focused compiler gate ──────────────────────────────────────────────────
   # Fast signal on the compiler alone: format + clippy (-D warnings: clippy::all
   # + pedantic + restriction) + workspace tests + the complete assertion-driven
-  # Default/ML language corpus.
+  # Default/ML language corpus in all three memory modes.
   rust:
     name: Rust Compiler (fmt, clippy, test, corpus)
     needs: changes
@@ -234,9 +235,15 @@ jobs:
       - name: Test (workspace)
         run: cargo test --workspace
 
-      - name: Core language assertion corpus (Default + ML)
+      - name: Core language assertion corpus — no memory management
         # Fixed-port loopback twins must not contend with one another.
         run: OSPREY_TEST_JOBS=1 target/release/osprey test tests
+
+      - name: Core language assertion corpus — GC
+        run: OSPREY_TEST_JOBS=1 target/release/osprey test tests --memory=gc
+
+      - name: Core language assertion corpus — ARC
+        run: OSPREY_ARC_DEBUG=1 OSPREY_TEST_JOBS=1 target/release/osprey test tests --memory=arc
 
       # Dead-code gate: fail if any `pub` declaration is unreachable from the
       # osprey binary (hawk::dead_public). Scoped to dead_public only — see the

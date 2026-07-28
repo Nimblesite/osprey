@@ -103,6 +103,64 @@ match (10 + 5) / 2
     Error   message => print "error: ${message}"
 ```
 
+### Choosing and preserving a policy
+
+`?:` is the concise form only when replacing every error with one fallback is
+the intended policy. Use an exhaustive `match` when the diagnostic must remain
+available. An expected `string` never causes a successful integer payload to
+be coerced to text and never turns the error branch into a string; both branches
+must be mapped explicitly into a new `Result`.
+
+```osprey
+fn renderSum(a, b) = match a + b {
+    Success { value } => Success { value: toString(value) }
+    Error { message } => Error { message: message }
+}
+```
+
+```osprey-ml
+renderSum (a, b) = match a + b
+    Success value => Success(value = toString value)
+    Error message => Error(message = message)
+```
+
+An algebraic effect may centralize a larger region's policy. The effect must
+carry the original diagnostic and return a `Result`; its handler is statically
+required and may preserve or deliberately recover from the error. Function
+return types and effect rows in this example are inferred.
+
+```osprey
+effect ArithmeticFailure {
+    decide: fn(string) -> Result<int, MathError>
+}
+
+fn addThroughPolicy(a, b) = match a + b {
+    Success { value } => Success { value: value }
+    Error { message } => perform ArithmeticFailure.decide(message)
+}
+
+fn preserveFailure(a, b) = handle ArithmeticFailure
+    decide message => Error { message: message }
+in addThroughPolicy(a, b)
+```
+
+```osprey-ml
+effect ArithmeticFailure
+    decide : string => Result<int, MathError>
+
+addThroughPolicy (a, b) = match a + b
+    Success value => Success(value = value)
+    Error message => perform ArithmeticFailure.decide message
+
+preserveFailure (a, b) =
+    handle ArithmeticFailure
+        decide message => Error(message = message)
+    in addThroughPolicy (a, b)
+```
+
+Executable preserve-and-recover cases for both flavors live in
+`tests/core/arithmetic/effect_policies.test.osp{,ml}`.
+
 ### toString Format
 
 A `Result` formats as `Success(<value>)` or `Error(<message>)`:

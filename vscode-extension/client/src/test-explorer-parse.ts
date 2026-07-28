@@ -201,10 +201,16 @@ function isExcluded(
   item: TestItemLike,
   excluded: ReadonlySet<string>,
 ): boolean {
-  return (
-    excluded.has(item.id) ||
-    (item.parent !== undefined && excluded.has(item.parent.id))
-  );
+  for (
+    let candidate: TestItemLike | undefined = item;
+    candidate !== undefined;
+    candidate = candidate.parent
+  ) {
+    if (excluded.has(candidate.id)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 /**
@@ -216,16 +222,20 @@ function isExcluded(
 export function planRun<T extends TestItemLike>(
   requested: readonly T[],
   excluded: ReadonlySet<string> = new Set(),
+  isFile: (item: T) => boolean = (item) => item.parent === undefined,
 ): FilePlan<T>[] {
   const plans = new Map<string, FilePlan<T>>();
   for (const item of requested) {
     if (isExcluded(item, excluded)) {
       continue;
     }
-    const file = (item.parent ?? item) as T;
+    const file = (isFile(item) ? item : item.parent) as T;
+    if (file === undefined) {
+      continue;
+    }
     const plan = plans.get(file.id) ?? { file, leaves: [], wholeFile: false };
     plans.set(file.id, plan);
-    if (item.parent === undefined) {
+    if (isFile(item)) {
       plan.wholeFile = true;
     } else {
       plan.leaves.push(item);

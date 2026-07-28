@@ -1,0 +1,10 @@
+// osprey: flavor=ml
+// [EFFECTS-STATIC-DISCHARGE] Inferred rows propagate through every call.
+effect Alarm
+    ring : Unit => int
+
+ring () = perform Alarm.ring ()
+relay () = ring ()
+relayAgain () = relay ()
+
+answer = relayAgain ()

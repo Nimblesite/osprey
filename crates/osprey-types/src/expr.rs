@@ -261,6 +261,12 @@ impl Checker {
         for na in named_arguments {
             let _ = self.infer_expr(&na.value, env);
         }
+        // Infer a second, annotation-independent instance from the operation
+        // payload. A declared row is a contract, not authority: if
+        // `!Stash<string>` surrounds `Stash.put(42)`, the row must not rewrite
+        // the performed instance from `Stash<int>` to `Stash<string>` in the
+        // later static discharge proof.
+        let actual_instance = self.effect_instance_ops(effect);
         if !named_arguments.is_empty() {
             self.errors.push(TypeError::new(format!(
                 "perform `{effect}.{operation}` does not support named arguments"
@@ -307,6 +313,16 @@ impl Checker {
                 },
                 eff_args,
             ));
+            if let Some((actual_args, actual_ops)) = actual_instance {
+                if let Some(actual_op) = actual_ops.get(operation) {
+                    if actual_op.params.len() == arg_tys.len() {
+                        for (parameter, argument) in actual_op.params.iter().zip(&arg_tys) {
+                            let _ = unify(&mut self.ctx, parameter, argument);
+                        }
+                    }
+                }
+                self.perform_actual_tys.push((pos, actual_args));
+            }
         }
         op.ret
     }
