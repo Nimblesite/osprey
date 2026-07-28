@@ -38,13 +38,21 @@ fn napper() = {
 /// tower, so the effect continuation thread appears as its own hot fiber.
 fn tuned(n: int) -> int ![Tuning] = add(fib(n), perform Tuning.baseline(n))
 
+/// The fib inputs are sized so the sampler still gets tens of samples per fiber
+/// while the whole run fits any memory backend. The tracing collector stops
+/// collecting for good the moment a second thread allocates ([MEM-FIBER-ISOLATION]),
+/// which `spawn` guarantees here — so under `--memory=gc` every allocation this
+/// block makes is retained until exit. At fib(36)/fib(37) that was tens of
+/// millions of retained objects and over 6 GB resident, enough to exhaust a CI
+/// runner; the shape of the profile (three fibers, fib self-time dominant) is
+/// identical at this size.
 handle Tuning
     baseline n => resume(fib(sub(n, 2)))
 in {
-    let worker = spawn fib(36)
+    let worker = spawn fib(28)
     let idler = spawn napper()
-    let local = tuned(37)
-    print("tuned(37) = ${local}, worker = ${await(worker)}, napped = ${await(idler)}ms")
+    let local = tuned(29)
+    print("tuned(29) = ${local}, worker = ${await(worker)}, napped = ${await(idler)}ms")
 }
 
 /// Runs the tuned computation under the same resumable baseline policy.
