@@ -1,0 +1,5 @@
+done 27
+failed empty
+ok 1 - string union payloads survive matching
+1..1
+# tests=1 passed=1 failed=0 skipped=0

@@ -1,0 +1,3 @@
+ok 1 - resume rewrites values across scalar, Result, and generic effects
+1..1
+# tests=1 passed=1 failed=0 skipped=0

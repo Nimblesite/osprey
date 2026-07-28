@@ -1,0 +1,3 @@
+ok 1 - handled mutation retains every counter transition
+1..1
+# tests=1 passed=1 failed=0 skipped=0

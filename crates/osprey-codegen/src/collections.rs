@@ -99,12 +99,15 @@ fn handle_i64(cg: &mut Codegen, recv: &Value, cname: &str) -> Value {
     Value::new(cg.call("i64", cname, "i8*", &[&recv.operand]), LType::I64)
 }
 
-/// The `i`-th positional argument as an opaque `i8*` collection handle.
+/// The `i`-th positional argument as an opaque `i8*` collection handle. A flat
+/// list literal is rebuilt as a runtime list first — the list runtime cannot
+/// read the literal layout ([`crate::listlit::to_runtime_list`]).
 fn handle_arg(cg: &mut Codegen, args: &[Expr], i: usize) -> Result<Value> {
     let e = args
         .get(i)
         .ok_or_else(|| CodegenError::invalid("collection builtin: missing argument"))?;
     let v = gen_expr(cg, e)?;
+    let v = crate::listlit::to_runtime_list(cg, v);
     coerce_to(cg, v, LType::Ptr)
 }
 

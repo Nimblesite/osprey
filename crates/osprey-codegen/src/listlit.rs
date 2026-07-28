@@ -22,6 +22,13 @@ use osprey_ast::Expr;
 const LIST_LIT: &str = "[]";
 const LIST_STRUCT: &str = "{ i64, i8* }";
 
+/// The owner tag for a `{ i64 length, char **items }` block minted by the C
+/// string runtime (`osp_string_lines` / `split` / `words`). That struct IS the
+/// flat literal layout with `i8*` elements, NOT an `OspreyList` — tagging it
+/// `List` claimed a runtime handle it never was, so `forEachList(lines(s), f)`
+/// handed `osprey_list_get` a foreign header and segfaulted.
+pub(crate) const STRING_LIST_OWNER: &str = "[]i8*";
+
 /// Tag a flat list-literal handle with its element. A scalar element records its
 /// LLVM spelling (`[]i64`); a handle element (a nested list, a record) records
 /// its own owner so access can recover it (`[][]i64`, `[]Point`).
@@ -111,6 +118,50 @@ pub(crate) fn gen_list(cg: &mut Codegen, elements: &[Expr]) -> Result<Value> {
     let v = Value::handle(obj, lit_owner(&Value::new("", elem).with_owner(elem_owner)));
     crate::arc::own(cg, &v);
     Ok(v)
+}
+
+/// Rebuild a flat list-literal handle as a runtime `OspreyList`, or return the
+/// value untouched when it is not a literal.
+///
+/// The two layouts share ONLY their leading `i64 length`. Handing a literal
+/// straight to the list runtime therefore makes `osprey_list_get` read
+/// `shift` / `tail_count` / `root` / `tail` / `offset` out of the bytes that
+/// follow the length — the data POINTER — and dereference them: every one of
+/// `forEachList([1,2], f)`, `listAppend([1,2], 3)`, `listReverse([1,2])` and
+/// `listContains([1,2], 1)` segfaulted. `listLength` appeared to work only
+/// because `length` is the first field of both layouts.
+///
+/// Elements are BORROWED from the literal, which keeps its own reference and
+/// stays alive for the rest of the region, so the builder dups the ones it
+/// keeps ([`crate::collections::list_builder_push_borrowed`]). Every builtin
+/// that speaks to the list runtime funnels through the two argument helpers
+/// that call this, so the conversion is expressed once. [BUILTIN-LIST-GET]
+pub(crate) fn to_runtime_list(cg: &mut Codegen, v: Value) -> Value {
+    let Some((elem, _)) = lit_elem(v.osp_ty.as_deref()) else {
+        return v;
+    };
+    let len = crate::aggregate::load_field(cg, LIST_STRUCT, &v.operand, 0, LType::I64);
+    let data = crate::aggregate::load_field(cg, LIST_STRUCT, &v.operand, 1, LType::Str);
+    let managed = if matches!(elem, LType::Str | LType::Ptr) {
+        "1"
+    } else {
+        "0"
+    };
+    let bld = crate::collections::list_builder_new_of(cg, managed);
+    let arr = cg.emit_reg(format!("bitcast i8* {data} to {}*", elem.as_str()));
+    let lp = crate::loops::open_range_loop(cg, "0", &len);
+    let slot = cg.emit_reg(format!(
+        "getelementptr {0}, {0}* {arr}, i64 {1}",
+        elem.as_str(),
+        lp.i
+    ));
+    let raw = cg.emit_reg(format!("load {0}, {0}* {slot}", elem.as_str()));
+    // The builder's slots are uniform i64 words, so a double or an i1 element
+    // is widened the same way every other collection element is.
+    let word = crate::conv::box_to_i64(cg, Value::new(raw, elem));
+    crate::collections::list_builder_push_borrowed(cg, &bld, &word.operand);
+    crate::loops::close_range_loop(cg, &lp);
+    crate::collections::list_builder_seal(cg, &bld)
 }
 
 /// `target[index]` — flat list-literal access (bounds-checked `Result<T, _>`) or

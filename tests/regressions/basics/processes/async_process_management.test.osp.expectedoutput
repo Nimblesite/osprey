@@ -1,0 +1,29 @@
+=== Async Process Management Demo ===
+--- Test 1: Basic Process Spawning ---
+✓ Process spawned successfully
+[STDOUT] Process 1: Hello from async process!
+
+[EXIT] Process 1 exited with code: 0
+✓ Process completed successfully
+✓ Process resources cleaned up
+--- Test 2: Another Process ---
+Process 2 spawned successfully
+[STDOUT] Process 2: Process 2 output
+
+[EXIT] Process 2 exited with code: 0
+Process 2 finished
+--- Test 3: Error Handling ---
+[EXIT] Process 3 exited with code: 1
+Error process returned non-zero exit code
+--- Test 4: ProcessHandle Result toString ---
+ProcessHandle Result toString: Success(4)
+[STDOUT] Process 4: Testing toString
+
+[EXIT] Process 4 exited with code: 0
+=== Async Process Management Demo Complete ===
+Note: Process output appears via C runtime callbacks during execution
+[EXIT] Process 5 exited with code: 0
+[EXIT] Process 6 exited with code: 1
+ok 1 - async processes report successful and failing exits
+1..1
+# tests=1 passed=1 failed=0 skipped=0

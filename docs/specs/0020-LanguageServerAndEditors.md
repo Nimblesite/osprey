@@ -148,6 +148,30 @@ Every binding is hoverable:
   [`osprey-types`](../../crates/osprey-types/src/check.rs) (`let_tys`) and
   [`osprey-types/src/info.rs`](../../crates/osprey-types/src/info.rs).
 
+### Inferred signatures `[LSP-HOVER-INFERRED-SIGNATURE]`
+
+Hovering a **function declaration** shows the signature with every slot the
+author left blank filled in by the checker. Osprey is Hindley-Milner and the
+house style omits every inferable annotation, so blank slots are the common
+case: rendering them literally showed `fn fib(n) -> Unit`, where the parameter
+carried no type and the return type was flatly wrong (`Unit` was the display
+fallback, never a claim about the function). Hover is the main way a reader
+recovers the types the source deliberately omits, so it answers from inference.
+
+One exception, in both directions:
+
+- A slot the author **did** write is shown as written — hover never restates a
+  declared type in the checker's spelling.
+- An inferred type that still holds a **type variable** is not shown at all;
+  the slot stays bare. A variable name (`t5`) is an inference artefact: it
+  means nothing outside the run that produced it and it shifts when an
+  unrelated line is edited, so `fn classify(xs) -> int` is correct and
+  `fn classify(xs: List<t5>) -> int` is not.
+
+Implemented by `inferred_signature` in
+[`crates/osprey-lsp/src/hover.rs`](../../crates/osprey-lsp/src/hover.rs), over
+`ProgramTypes::param_types` / `return_type` and `osprey_types::has_type_var`.
+
 ### Written names `[LSP-HOVER-WRITTEN]`
 
 Parameters and built-in type names are hoverable even though they are not

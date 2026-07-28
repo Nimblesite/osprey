@@ -1,0 +1,105 @@
+empty-emp=true
+
+empty-x=false
+
+starts-empty=true
+
+ends-empty=true
+
+starts-long=false
+
+ends-long=false
+
+take-neg=""
+
+take-big="hi"
+
+drop-neg="hi"
+
+drop-big=""
+
+trim-allws=""
+
+trim-empty=""
+
+sub-empty=""
+
+sub-full="hi"
+
+sub-neg rejected
+
+sub-over rejected
+
+sub-inverted rejected
+
+idx-empty=0
+
+idx-missing rejected
+
+rep-empty rejected
+
+rep-shrink="heo"
+
+rep0=""
+
+rep-neg rejected
+
+padS-empty rejected
+
+padE-empty rejected
+
+padS-noop="hi"
+
+padS-multi="aba42"
+
+pf-empty rejected
+
+pf-trailing rejected
+
+pf-space rejected
+
+pf-nan rejected
+
+pf-hex rejected
+
+pf-infinite rejected
+
+pi-overflow rejected
+
+pi-min=-9223372036854775808
+
+pi-leading-space rejected
+
+byteLen=6
+
+byteAt1=195
+
+byteAt-oob=byteAt: index out of range
+
+cpAt1=233
+
+cpAt-mid=codePointAt: invalid UTF-8 lead byte
+
+cpWidth=4
+
+cpWidth-surrogate=codePointWidth: surrogate is not a scalar
+
+fromCp=😀
+
+fromCp-bad=fromCodePoint: invalid code point
+
+fromCp-nul=fromCodePoint: invalid code point
+
+roundtrip=233
+
+pi-msg=parseInt: invalid integer
+
+div-msg=division by zero
+
+user-msg=custom boom
+
+=== Edge Cases Complete ===
+
+ok 1 - string edge cases preserve values and error payloads
+1..1
+# tests=1 passed=1 failed=0 skipped=0

@@ -269,11 +269,7 @@ mod tests {
     /// Classify the cursor at the end of `src` — the position an editor asks
     /// about while the author is typing.
     fn end_of(src: &str) -> Cursor {
-        // `split` — not `lines` — so a trailing newline puts the cursor on the
-        // fresh line it opened, which is exactly where an author types next.
-        let rows: Vec<&str> = src.split('\n').collect();
-        let line = u32::try_from(rows.len().saturating_sub(1)).unwrap_or(0);
-        let column = u32::try_from(rows.last().unwrap_or(&"").chars().count()).unwrap_or(0);
+        let (line, column) = crate::text::end_position(src);
         at(src, line, column, U16)
     }
 

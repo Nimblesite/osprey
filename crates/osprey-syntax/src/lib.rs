@@ -18,6 +18,8 @@ mod docparse;
 mod ml;
 mod positional;
 mod strings;
+#[cfg(test)]
+mod test_support;
 
 pub use default::parse_tree;
 pub use docparse::doc_links;

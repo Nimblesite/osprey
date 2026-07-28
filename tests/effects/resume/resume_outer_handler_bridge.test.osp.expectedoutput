@@ -1,0 +1,3 @@
+ok 1 - a resumed body retains its outer handlers
+1..1
+# tests=1 passed=1 failed=0 skipped=0

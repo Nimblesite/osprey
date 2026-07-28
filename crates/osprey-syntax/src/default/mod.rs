@@ -168,21 +168,15 @@ pub(crate) fn position_from_point(point: Point) -> Position {
 )]
 mod tests {
     use crate::parse_program;
+    use crate::test_support::one_stmt;
     use osprey_ast::{Expr, Pattern, Stmt};
-
-    fn one(src: &str) -> Stmt {
-        let parsed = parse_program(src);
-        assert!(parsed.errors.is_empty(), "errors: {:?}", parsed.errors);
-        assert_eq!(parsed.program.statements.len(), 1);
-        parsed.program.statements.into_iter().next().unwrap()
-    }
 
     #[test]
     fn lowers_doc_comments_on_let_and_function() {
         // A `///` block above a binding is captured as its `doc`, stripped of the
         // markers, and the recorded position stays on the declaration keyword/name
         // (line 3 here), not the comment lines. Implements [LSP-HOVER-DOCS]
-        match one(
+        match one_stmt(
             "/// The retry budget.\n/// Bounded above by `maxRetries`.\nlet retries: int = 3\n",
         ) {
             Stmt::Let {
@@ -202,7 +196,7 @@ mod tests {
             }
             s => panic!("expected let, got {s:?}"),
         }
-        match one("/// Adds two ints.\nfn add(a: int, b: int) -> int = a + b\n") {
+        match one_stmt("/// Adds two ints.\nfn add(a: int, b: int) -> int = a + b\n") {
             Stmt::Function { doc, position, .. } => {
                 assert_eq!(
                     doc.as_ref().map(|d| d.summary.clone()).as_deref(),
@@ -213,7 +207,7 @@ mod tests {
             s => panic!("expected function, got {s:?}"),
         }
         // An undocumented binding carries no doc.
-        match one("let x = 1\n") {
+        match one_stmt("let x = 1\n") {
             Stmt::Let { doc, .. } => assert_eq!(doc, None),
             s => panic!("expected let, got {s:?}"),
         }
@@ -221,7 +215,7 @@ mod tests {
 
     #[test]
     fn lowers_let() {
-        match one("let x = 42\n") {
+        match one_stmt("let x = 42\n") {
             Stmt::Let {
                 name,
                 value,
@@ -238,7 +232,7 @@ mod tests {
 
     #[test]
     fn lowers_function_with_binary_body() {
-        match one("fn add(a: int, b: int) -> int = a + b\n") {
+        match one_stmt("fn add(a: int, b: int) -> int = a + b\n") {
             Stmt::Function {
                 name,
                 parameters,
@@ -261,7 +255,7 @@ mod tests {
 
     #[test]
     fn lowers_union_type() {
-        match one("type Color = Red | Green | Blue\n") {
+        match one_stmt("type Color = Red | Green | Blue\n") {
             Stmt::Type { name, variants, .. } => {
                 assert_eq!(name, "Color");
                 assert_eq!(variants.len(), 3);
@@ -273,7 +267,7 @@ mod tests {
 
     #[test]
     fn lowers_extern_with_ptr() {
-        match one("extern fn sqlite3_open(filename: string, ppDb: Ptr) -> int\n") {
+        match one_stmt("extern fn sqlite3_open(filename: string, ppDb: Ptr) -> int\n") {
             Stmt::Extern {
                 name,
                 parameters,
@@ -291,7 +285,7 @@ mod tests {
 
     #[test]
     fn lowers_match() {
-        match one("let r = match x {\n  Ok { value } => value\n  _ => 0\n}\n") {
+        match one_stmt("let r = match x {\n  Ok { value } => value\n  _ => 0\n}\n") {
             Stmt::Let {
                 value: Expr::Match { arms, .. },
                 ..

@@ -1,0 +1,13 @@
+[Parse]    cannot parse '=80=' -> substitute 0
+[Missing]  key 'timeout' absent -> default 30
+[Range]    250 exceeds max 10 -> clamp to 10
+assembled  -> port=0 timeout=30 retries=10
+combined config total = 40
+[Range*]   STRICT override: force 500 -> 1
+strict retries (inner handler)  = 1
+[Range]    500 exceeds max 10 -> clamp to 10
+relaxed retries (outer handler) = 10
+final combined result = 40
+ok 1 - typed error channels compose and restore shadowed handlers
+1..1
+# tests=1 passed=1 failed=0 skipped=0

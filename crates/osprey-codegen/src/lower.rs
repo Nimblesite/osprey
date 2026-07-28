@@ -270,10 +270,7 @@ fn coerce_return(cg: &mut Codegen, name: &str, body: Value) -> Result<Value> {
         // body like `Error { message }` types its slot from the message (`i8*`),
         // which must agree with the `i64` the callers read or the block's
         // disc/errmsg offsets shift on 32-bit targets. [WASM-TARGET-WIDTH]
-        if body.result_inner.is_some() {
-            return crate::result::repack_to_inner(cg, body, inner);
-        }
-        return crate::result::make_ok(cg, body, inner);
+        return crate::result::fit_to_inner(cg, body, inner);
     }
     let ret_ty = cg.fn_ret_ltype(name).unwrap_or(LType::I64);
     crate::cast::coerce_to(cg, body, ret_ty)
@@ -478,8 +475,7 @@ fn gen_bind(cg: &mut Codegen, name: &str, value: &Expr, position: Option<Positio
     }
     let v = gen_expr(cg, value)?;
     let v = match expected_result_inner {
-        Some(inner) if v.result_inner.is_some() => crate::result::repack_to_inner(cg, v, inner)?,
-        Some(inner) => crate::result::make_ok(cg, v, inner)?,
+        Some(inner) => crate::result::fit_to_inner(cg, v, inner)?,
         None => v,
     };
     // A non-lambda (re)binding invalidates any stale beta-reduction entry or

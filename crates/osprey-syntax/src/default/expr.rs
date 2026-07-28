@@ -450,15 +450,13 @@ fn pipe_into(left: Expr, right: Expr) -> Expr {
     reason = "test assertions: an out-of-bounds index is a test failure, not a production panic"
 )]
 mod tests {
-    use crate::parse_program;
     use crate::parse_tree;
+    use crate::test_support::stmts;
     use osprey_ast::{Expr, InterpolatedPart, Stmt};
     use tree_sitter::Node;
 
     fn let_value(src: &str) -> Expr {
-        let parsed = parse_program(src);
-        assert!(parsed.errors.is_empty(), "errors: {:?}", parsed.errors);
-        match parsed.program.statements.into_iter().next() {
+        match stmts(src).into_iter().next() {
             Some(Stmt::Let { value, .. }) => value,
             other => panic!("expected let, got {other:?}"),
         }
@@ -510,9 +508,10 @@ mod tests {
         assert!(matches!(let_value("let r = -x\n"), Expr::Unary { .. }));
         // A function-body block whose trailing value is emitted as an
         // expression_statement: lower_block recovers it as the block value.
-        let parsed = parse_program("fn f() = {\n  print(1)\n  42\n}\n");
-        assert!(parsed.errors.is_empty(), "errors: {:?}", parsed.errors);
-        match parsed.program.statements.into_iter().next() {
+        match stmts("fn f() = {\n  print(1)\n  42\n}\n")
+            .into_iter()
+            .next()
+        {
             Some(Stmt::Function {
                 body: Expr::Block { statements, value },
                 ..

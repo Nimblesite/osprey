@@ -1,0 +1,62 @@
+parseInt: parseInt: invalid integer
+
+parseFloat: parseFloat: invalid number
+
+split: split: separator must not be empty
+
+indexOf: indexOf: substring not found
+
+substring: substring: index out of range
+
+replace: replace: needle must not be empty
+
+repeat: repeat: count must not be negative
+
+padStart: padStart: fill must not be empty
+
+padEnd: padEnd: fill must not be empty
+
+byteAt: byteAt: index out of range
+
+codePointAt-oob: codePointAt: index out of range
+
+codePointAt-mid: codePointAt: invalid UTF-8 lead byte
+
+codePointWidth-surrogate: codePointWidth: surrogate is not a scalar
+
+codePointWidth-toobig: codePointWidth: code point out of range
+
+fromCodePoint: fromCodePoint: invalid code point
+
+codePointAt-truncated: codePointAt: truncated codepoint
+
+codePointAt-continuation: codePointAt: invalid continuation byte
+
+divide: division by zero
+
+divide-ok: 3.5
+
+listIndex: index out of bounds
+
+mapKey: mapGet: key not found
+
+toString cursor err = Error(codePointWidth: surrogate is not a scalar)
+
+toString builtin err = Error(parseInt: invalid integer)
+
+toString user err   = Error(user boom)
+
+toString ok int     = Success(42)
+
+toString ok float   = Success(3.5)
+
+toString ok string  = Success(A)
+
+=== Error Catalogue Complete ===
+
+ok 1 - numeric failures retain their reasons
+ok 2 - string failures retain their reasons
+ok 3 - cursor failures retain their reasons
+ok 4 - collections fail safely and valid Results succeed
+1..4
+# tests=4 passed=4 failed=0 skipped=0

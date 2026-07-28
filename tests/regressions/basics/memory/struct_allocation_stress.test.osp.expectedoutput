@@ -1,0 +1,6 @@
+particles=100000 totalEnergy=15000050000
+heavyEnergy=11249875000
+bumpedMass=100002
+ok 1 - record allocation preserves aggregate values
+1..1
+# tests=1 passed=1 failed=0 skipped=0

@@ -221,10 +221,33 @@ fn push_match(out: &mut Vec<Occurrence>, run: &str, start: u32, end: u32, line: 
     }
 }
 
+/// The `(line, character)` one past the end of `src` — where an author's
+/// cursor actually rests while typing, and so the position editor-behaviour
+/// tests must ask about.
+///
+/// `split` — not `lines` — so a trailing newline puts the cursor on the fresh
+/// line it opened rather than back on the previous one.
+#[cfg(test)]
+#[must_use]
+pub(crate) fn end_position(src: &str) -> (u32, u32) {
+    let rows: Vec<&str> = src.split('\n').collect();
+    let line = u32::try_from(rows.len().saturating_sub(1)).unwrap_or(0);
+    let column = u32::try_from(rows.last().unwrap_or(&"").chars().count()).unwrap_or(0);
+    (line, column)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     const U16: PositionEncoding = PositionEncoding::Utf16;
+
+    #[test]
+    fn end_position_lands_on_the_line_a_trailing_newline_opened() {
+        assert_eq!(end_position(""), (0, 0));
+        assert_eq!(end_position("let x = 1"), (0, 9));
+        assert_eq!(end_position("let x = 1\n"), (1, 0));
+        assert_eq!(end_position("let x = 1\nlet y = "), (1, 8));
+    }
 
     #[test]
     fn word_at_finds_identifier_under_and_after_cursor() {

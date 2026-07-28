@@ -9,7 +9,7 @@
 # Absent toolchains (rustc/ghc/ocamlopt/cc) are skipped and reported, so the
 # suite runs today with whatever is installed and lights up the rest later.
 #
-# Mirrors the conventions of crates/diff_examples.sh (zsh, set -u, ROOT from
+# Mirrors the conventions of crates/run_test_corpus.sh (zsh, set -u, ROOT from
 # the script path). Results land in benchmarks/results/ (gitignored).
 #
 # Usage: run.sh [name-filter]

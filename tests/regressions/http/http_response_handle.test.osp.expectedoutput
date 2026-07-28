@@ -1,0 +1,3 @@
+ok 1 - HTTP response handles expose data and reject double free
+1..1
+# tests=1 passed=1 failed=0 skipped=0

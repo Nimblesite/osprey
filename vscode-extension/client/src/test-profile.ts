@@ -18,7 +18,11 @@ import type { HeatDecorationManager } from "./profiler/heat-decorations";
 import { showFlamePanel } from "./profiler/profiler-panel";
 import { formatSummaryHeader } from "./profiler/summary";
 import { profileRunHeader } from "./test-explorer-docs";
-import { executeRunRequest, type TestRunSink } from "./test-explorer";
+import {
+  executeRunRequest,
+  verdictSink,
+  type TestRunSink,
+} from "./test-explorer";
 import type { RunMode } from "./test-explorer-parse";
 
 /** Prefix of the per-request profile artifact root, under the OS temp dir. */
@@ -92,14 +96,7 @@ export function profileSink(
   present: typeof presentProfile = presentProfile,
 ): TestRunSink {
   return {
-    enqueued: (test) => run.enqueued(test),
-    started: (test) => run.started(test),
-    passed: (test, duration) => run.passed(test, duration),
-    failed: (test, message, duration) => run.failed(test, message, duration),
-    errored: (test, message, duration) => run.errored(test, message, duration),
-    skipped: (test) => run.skipped(test),
-    appendOutput: (output) => run.appendOutput(output),
-    end: () => run.end(),
+    ...verdictSink(run),
     addProfile: (uri, dir) => {
       const outcome = present(uri, dir, heat);
       run.appendOutput(

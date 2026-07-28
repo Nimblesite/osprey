@@ -8,6 +8,7 @@
 mod doc;
 mod generics;
 mod resume;
+pub mod symbol;
 mod visit;
 pub use doc::{DocComment, DocExample, DocScope};
 pub use generics::{EffectRef, TypeParam, Variance};

@@ -1,0 +1,15 @@
+Testing validation functions:
+false
+true
+false
+true
+true
+false
+false
+true
+true
+false
+false
+ok 1 - validators reject sentinels and accept valid inputs
+1..1
+# tests=1 passed=1 failed=0 skipped=0

@@ -1,0 +1,39 @@
+=== Functional Showcase ===
+range 1..6 forEach print:
+1
+2
+3
+4
+5
+range -2..3 forEach print:
+-2
+-1
+0
+1
+2
+range 5..5 (empty):
+map dbl over 1..5:
+2
+4
+6
+8
+filter even over 1..7:
+2
+4
+6
+map dbl |> filter gt4 over 1..5:
+6
+8
+filter lt3 |> map dbl over 1..6:
+2
+4
+sum 1..5 = 15
+prod 1..4 = 24
+3|>inc|>dbl|>sq = 64
+10|>(x+5) = 15
+5|>+100|>*2 = 210
+=== Showcase Complete ===
+ok 1 - scalar pipes preserve helper composition
+ok 2 - iterator pipes preserve order and boundaries
+1..2
+# tests=2 passed=2 failed=0 skipped=0

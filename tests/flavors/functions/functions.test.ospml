@@ -1,35 +1,46 @@
 // ML function twin covering currying, higher-order calls, and recursion.
 
-(** Capture an offset through partial application. *)
-closureAdder : int -> int -> int
-closureAdder n x = x + n ?: 0
+(** Capture an offset in a RETURNED lambda: one parameter whose body is a
+    closure, the form-for-form mirror of the Default twin's
+    `fn closureAdder(n) = fn(x) => …`. Spelled `closureAdder n x = …` it is an
+    ordinary two-parameter function; both spellings lower to the same IR, which
+    is exactly the [FLAVOR-IR-EQUIV] claim — but only this one puts the ML
+    closure-returning binding through the front end, and after the ml/ example
+    suite was deleted no file in tests/ did. The signature is load-bearing: it
+    keeps the returned closure concrete. *)
+closureAdder : int -> (int) -> int
+closureAdder n = \x => x + n ?: 0
 
 (** Verify independent closures and direct application. *)
 closuresCase () =
     add10 = closureAdder 10
     add100 = closureAdder 100
 
-    // Preserve the complete rendered result.
+    // Preserve the complete rendered result. `(closureAdder 3) 4` is the
+    // stepwise call the Default twin writes `closureAdder(3)(4)`: apply the
+    // factory, then apply the closure it handed back.
     checkAll "closures legacy rendered lines" [
-        "a=${add10 5} b=${add100 5} c=${closureAdder 3 4}" == "a=15 b=105 c=7"
+        "a=${add10 5} b=${add100 5} c=${(closureAdder 3) 4}" == "a=15 b=105 c=7"
     ]
     // Check each captured call independently.
     checkAll "closures legacy constituent values" [
         add10 5 == 15,
         add100 5 == 105,
-        closureAdder 3 4 == 7
+        (closureAdder 3) 4 == 7
     ]
     // Exercise identity, cancellation, and capture independence.
     checkAll "closures capture edge cases" [
         add10 ((0 - 10) ?: 0) == 0,
         add100 0 == 100,
-        closureAdder 0 9 == 9,
+        (closureAdder 0) 9 == 9,
         (add10 5 == add100 5) == false
     ]
 
-(** Add two values through partial or full application. *)
-partialAdd : int -> int -> int
-partialAdd a b = a + b ?: 0
+(** Return an explicitly curried addition closure, mirroring the Default twin's
+    `fn partialAdd(a) = fn(b) => …`: `partialAdd 5` yields a function, not a
+    number. *)
+partialAdd : int -> (int) -> int
+partialAdd a = \b => a + b ?: 0
 
 (** Verify partially and fully applied addition. *)
 curryPartialCase () =
@@ -38,7 +49,7 @@ curryPartialCase () =
 
     // Preserve the complete rendered result.
     checkAll "partial application legacy rendered lines" [
-        "a=${add5 10} b=${add5 0} c=${add100 23} full=${partialAdd 7 8}" ==
+        "a=${add5 10} b=${add5 0} c=${add100 23} full=${(partialAdd 7) 8}" ==
             "a=15 b=5 c=123 full=15"
     ]
     // Check each application independently.
@@ -46,14 +57,14 @@ curryPartialCase () =
         add5 10 == 15,
         add5 0 == 5,
         add100 23 == 123,
-        partialAdd 7 8 == 15
+        (partialAdd 7) 8 == 15
     ]
     // Exercise identity, cancellation, and equivalent sums.
     checkAll "partial application edge cases" [
         add5 ((0 - 5) ?: 0) == 0,
         add100 0 == 100,
-        partialAdd 0 9 == 9,
-        partialAdd 5 5 == partialAdd 8 2
+        (partialAdd 0) 9 == 9,
+        (partialAdd 5) 5 == (partialAdd 8) 2
     ]
 
 (** Apply a supplied function once. *)

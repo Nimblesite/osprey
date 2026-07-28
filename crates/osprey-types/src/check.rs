@@ -1050,6 +1050,27 @@ mod tests {
     }
 
     #[test]
+    fn a_discarded_result_statement_is_rejected() {
+        // A bare statement whose value is a `Result` throws the failure away —
+        // the one place the wrapper can vanish without anyone naming it.
+        let errs = check(
+            "fn risky(n: int) -> Result<int, MathError> = n + 1\n\
+             fn go() -> int = {\n\
+               risky(1)\n\
+               0\n\
+             }\n",
+        );
+        assert!(errs
+            .iter()
+            .any(|e| e.message.contains("cannot be discarded")));
+        ok("fn risky(n: int) -> Result<int, MathError> = n + 1\n\
+            fn go() -> int = {\n\
+              let handled = risky(1) ?: 0\n\
+              handled\n\
+            }\n");
+    }
+
+    #[test]
     fn testing_builtins_typecheck_and_reject_bad_arity() {
         // [TESTING-BUILTINS] all assertion schemes accept the documented shapes.
         let errs = check(

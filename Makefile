@@ -121,7 +121,12 @@ WASM_CFLAGS  ?= --target=$(WASM_TARGET) --sysroot=$(WASI_SYSROOT) -O2 -std=c11 -
 # (termios) and ffi (dlopen).
 # profiler_runtime compiles to inert stubs on wasm32 (no pthreads/signals) but
 # must be present: codegen anchors `osp_prof_boot` into every main [PROF-ACTIVATE-ENV].
-WASM_RT_SRC  ?= memory_runtime string_runtime string_runtime_list list_runtime map_runtime map_runtime_hamt json_runtime effects_runtime test_runtime coverage_runtime web_runtime profiler_runtime wasm_builtins_runtime
+# system_runtime and random_runtime are here for their PORTABLE halves: file
+# I/O + JSON/string helpers, and the OS CSPRNG (wasi-libc's arc4random_buf over
+# the WASI random_get host call). Each compiles its non-portable half out under
+# `#ifndef __wasm__`, so adding them unskips file and random programs on wasm32
+# without pretending fork/exec or pthreads exist.
+WASM_RT_SRC  ?= memory_runtime string_runtime string_runtime_list list_runtime map_runtime map_runtime_hamt json_runtime effects_runtime test_runtime coverage_runtime web_runtime profiler_runtime wasm_builtins_runtime system_runtime random_runtime
 # `make wasm-serve` static-host dir + port for the in-browser example.
 WASM_SERVE_DIR  ?= examples/wasm
 WASM_SERVE_PORT ?= 8080
@@ -145,6 +150,7 @@ test: build
 	$(MAKE) _coverage_check_rust
 	$(MAKE) _test_c_runtime
 	$(MAKE) _test_language_corpus
+	$(MAKE) _test_goldens
 	$(MAKE) _conformance-gc
 	$(MAKE) _conformance-arc
 	$(MAKE) _test_profiler
@@ -206,11 +212,15 @@ _lint:
 ## fresh checkout still builds; CI enforces the gate through the official action.
 deslop:
 	@echo "==> Duplication gate (deslop)..."
-	@if command -v deslop >/dev/null 2>&1; then \
-		deslop . --nohtml --nojson --output $(CURDIR)/target/deslop-report --log-to-console --log-level error --no-color; \
-	else \
-		echo "WARNING: deslop not installed — skipping duplication gate. Install: https://deslop.live"; \
+	@if ! command -v deslop >/dev/null 2>&1; then \
+		echo "FAIL: deslop is not installed, so the duplication gate cannot run."; \
+		echo "      A gate that cannot run must not report success — this used to"; \
+		echo "      print a warning and exit 0, which made every local 'make ci'"; \
+		echo "      green with the ceiling in .deslop.toml unchecked."; \
+		echo "      Install: https://deslop.live   (CI uses the official action.)"; \
+		exit 1; \
 	fi
+	deslop . --nohtml --nojson --output $(CURDIR)/target/deslop-report --log-to-console --log-level error --no-color
 
 ## hawk: Dead-code gate (astral-sh/hawk). Fails the build when any `pub`
 ## declaration is unreachable from the osprey binary (hawk::dead_public). Scoped
@@ -273,9 +283,10 @@ wasm: build _runtime_wasm
 	node scripts/wasm-browser-smoke.mjs examples/wasm/build/studio.osp.wasm   examples/wasm/studio.expectedoutput
 	node scripts/wasm-smoke.mjs         examples/wasm/build/studio.ospml.wasm examples/wasm/studio.expectedoutput
 	node scripts/wasm-browser-smoke.mjs examples/wasm/build/studio.ospml.wasm examples/wasm/studio.expectedoutput
+	$(MAKE) _test_wasm_goldens
 	@echo "==> wasm ready: built + validated + WASI/browser smoke green"
 
-wasm wasm-site _runtime_wasm bank-web: export PATH := $(WASM_PATH_PREFIX)$(PATH)
+wasm wasm-site _runtime_wasm bank-web _test_wasm_goldens: export PATH := $(WASM_PATH_PREFIX)$(PATH)
 
 ## wasm-site: Build only the WebAssembly artifacts published by the website.
 ##      Used by GitHub Pages before `npm run build`; does not rely on checked-in
@@ -535,6 +546,28 @@ _test_language_corpus:
 	@echo "==> [language] Default + ML assertion corpus..."
 	@OSPREY_TEST_JOBS=1 ./$(BIN) test tests
 
+# _test_goldens: byte-exact stdout comparison against the .expectedoutput
+# goldens. Distinct from the target above, which runs the same corpus through
+# the built-in TAP runner and so only ever observes whether the in-language
+# assertions passed. An assertion can only state what someone thought to write
+# down as a value; the goldens pin the ENTIRE observable output — print ORDER,
+# exact formatting, and the TAP tally that exposes a deleted assertion.
+_test_goldens:
+	@echo "==> [language] golden stdout comparison..."
+	@OSPREY_TEST_JOBS=1 zsh crates/run_test_corpus.sh default
+
+# _test_wasm_goldens: the same corpus, the same goldens, the OTHER code
+# generator. Every program that links on wasm32 is compiled to a module, run
+# under Node's WASI host, and held to the byte-exact output the native backend
+# produces; the rest report as named skips because they use a feature the
+# portable runtime deliberately does not port [WASM-TARGET]. Without this the
+# wasm target is gated by three hand-picked example programs, which cannot
+# notice a backend that miscompiles arithmetic, strings, maps or pattern
+# matching everywhere else.
+_test_wasm_goldens:
+	@echo "==> [wasm32] golden stdout comparison under WASI..."
+	@OSPREY_TARGET=wasm32 zsh crates/run_test_corpus.sh
+
 # _conformance-gc: run every assertion suite under the tracing GC backend.
 _conformance-gc:
 	@echo "==> [conformance] assertion corpus under --memory=gc..."
@@ -553,7 +586,15 @@ _conformance-arc:
 # integration tests need a real compiler on PATH: the Rust binary is staged as
 # `osprey`. vscode-test runs with V8 coverage; c8 merges the profiles into
 # coverage/coverage-summary.json.
-_test_vscode_extension:
+#
+# `_vsix_bundle` is a prerequisite because staging PATH is NOT enough:
+# `resolveServerCommand` prefers the extension's BUNDLED compiler
+# (bin/<os>-<arch>/osprey) over PATH, so a bundle left behind by an earlier
+# build silently shadows the one under test. That is a local-only trap — CI
+# checks out a tree with no bin/ and falls through to PATH — which makes it
+# exactly the kind of failure a developer cannot reproduce from a green CI run.
+# Restaging keeps `make test` honest about which compiler it just tested.
+_test_vscode_extension: _vsix_bundle
 	@echo "==> [vscode-extension] staging osprey as 'osprey' for LSP integration..."
 	$(MKDIR) target/path-bin
 	cp $(BIN) target/path-bin/osprey

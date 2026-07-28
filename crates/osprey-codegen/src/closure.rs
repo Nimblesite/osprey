@@ -476,8 +476,7 @@ fn closure_return(
 /// Result); a scalar slot accepts only a plain value.
 fn ret_as_sig(cg: &mut Codegen, v: Value, ret_ty: LType, ret_inner: Option<LType>) -> Result<()> {
     let rv = match ret_inner {
-        Some(inner) if v.result_inner.is_some() => crate::result::repack_to_inner(cg, v, inner)?,
-        Some(inner) => crate::result::make_ok(cg, v, inner)?,
+        Some(inner) => crate::result::fit_to_inner(cg, v, inner)?,
         None => crate::cast::coerce_to(cg, v, ret_ty)?,
     };
     // Nested-function epilogue: the return transfers +1, owned locals drop

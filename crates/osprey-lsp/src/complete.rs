@@ -227,9 +227,7 @@ mod tests {
 
     /// Complete at the end of `src` — where an author's cursor actually is.
     fn at_end(src: &str, path: &str) -> Vec<CompletionItem> {
-        let rows: Vec<&str> = src.split('\n').collect();
-        let line = u32::try_from(rows.len().saturating_sub(1)).unwrap_or(0);
-        let column = u32::try_from(rows.last().unwrap_or(&"").chars().count()).unwrap_or(0);
+        let (line, column) = crate::text::end_position(src);
         completion(src, path, line, column, U16)
     }
 

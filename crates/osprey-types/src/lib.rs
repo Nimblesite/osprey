@@ -21,6 +21,8 @@ mod convert;
 mod ctx;
 mod effect_rows;
 #[cfg(test)]
+mod effect_rows_expr_tests;
+#[cfg(test)]
 mod effect_rows_tests;
 mod env;
 mod error;

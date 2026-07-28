@@ -1,0 +1,8 @@
+ok 1 - success can be rendered without contextual coercion
+ok 2 - rendering preserves the overflow error Result
+ok 3 - effect policy bypasses its handler on success
+ok 4 - effect policy can preserve the exact overflow Result
+ok 5 - effect policy may deliberately recover from known overflow
+ok 6 - healthy arithmetic never invokes the recovery decision
+1..6
+# tests=6 passed=6 failed=0 skipped=0

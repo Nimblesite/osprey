@@ -352,26 +352,44 @@ mod tests {
     mod unix {
         use super::super::*;
 
-        const CREDIT_PERFORM_LINE: u32 = 90;
-        const CREDIT_PERFORM_COLUMN: u32 = 52;
-        const CREDIT_HANDLER_SPAN: (u32, u32, u32, u32) = (97, 8, 97, 14);
+        /// The `perform` and the handler arm are located by their source text
+        /// rather than by line number: both live in a demo project that is
+        /// edited for its own reasons, and a hard-coded line makes an unrelated
+        /// comment fail this test.
+        const CREDIT_PERFORM: &str = "credit id cents note";
+        const CREDIT_OPERATION: &str = "credit";
 
-        fn route_document() -> (String, String) {
-            let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-                .join("../../examples/projects/modules/src");
-            let route = root.join("api/routes.ospml");
-            let source = std::fs::read_to_string(&route).expect("read API routes");
-            (source, format!("file://{}", route.display()))
+        fn project_source(relative: &str) -> (String, String) {
+            let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../../examples/projects/modules/src")
+                .join(relative);
+            let source = std::fs::read_to_string(&path)
+                .unwrap_or_else(|error| panic!("read {relative}: {error}"));
+            (source, format!("file://{}", path.display()))
+        }
+
+        /// Zero-based line and column of `needle`'s first occurrence.
+        fn locate(source: &str, needle: &str) -> (u32, u32) {
+            let (line, column) = source
+                .lines()
+                .enumerate()
+                .find_map(|(line, text)| text.find(needle).map(|column| (line, column)))
+                .unwrap_or_else(|| panic!("`{needle}` present in the example source"));
+            (
+                u32::try_from(line).unwrap_or_default(),
+                u32::try_from(column).unwrap_or_default(),
+            )
         }
 
         fn credit_hover(source: &str, uri: &str) -> String {
+            let (line, column) = locate(source, CREDIT_PERFORM);
             let parsed = osprey_syntax::parse_program_for_path(uri, source);
             operation_hover(
                 &parsed.program,
                 source,
                 uri,
-                CREDIT_PERFORM_LINE,
-                CREDIT_PERFORM_COLUMN,
+                line,
+                column,
                 PositionEncoding::Utf16,
                 parsed.flavor,
             )
@@ -379,18 +397,13 @@ mod tests {
         }
 
         fn credit_implementations(source: &str, uri: &str) -> Vec<Location> {
-            implementations(
-                source,
-                uri,
-                CREDIT_PERFORM_LINE,
-                CREDIT_PERFORM_COLUMN,
-                PositionEncoding::Utf16,
-            )
+            let (line, column) = locate(source, CREDIT_PERFORM);
+            implementations(source, uri, line, column, PositionEncoding::Utf16)
         }
 
         #[test]
         fn effect_navigation_crosses_project_files() {
-            let (source, uri) = route_document();
+            let (source, uri) = project_source("api/routes.ospml");
             let hover = credit_hover(&source, &uri);
             assert!(hover.contains("bank::Ledger::Store.credit"), "{hover}");
             assert!(hover.contains("(int, int, string) => int"), "{hover}");
@@ -398,7 +411,12 @@ mod tests {
             assert_eq!(locations.len(), 1, "{locations:?}");
             let handler = locations.first().expect("one Store.credit handler");
             assert!(handler.uri.ends_with("src/main.ospml"), "{handler:?}");
-            assert_eq!(handler.span, CREDIT_HANDLER_SPAN);
+            let (main, _) = project_source("main.ospml");
+            let (line, column) = locate(&main, CREDIT_PERFORM);
+            let end = column.saturating_add(
+                u32::try_from(CREDIT_OPERATION.len()).expect("operation name fits a u32"),
+            );
+            assert_eq!(handler.span, (line, column, line, end));
         }
     }
 }

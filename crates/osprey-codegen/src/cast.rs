@@ -64,8 +64,7 @@ pub(crate) fn coerce_param(cg: &mut Codegen, v: Value, want: ParamSig) -> Result
 /// Result as a typed block (there is no emitted ABI boundary to erase here).
 pub(crate) fn coerce_semantic_param(cg: &mut Codegen, v: Value, want: ParamSig) -> Result<Value> {
     let value = match want.result_inner {
-        Some(inner) if v.result_inner.is_some() => crate::result::repack_to_inner(cg, v, inner)?,
-        Some(inner) => crate::result::make_ok(cg, v, inner)?,
+        Some(inner) => crate::result::fit_to_inner(cg, v, inner)?,
         None => coerce_to(cg, v, want.ty)?,
     };
     Ok(match want.fiber {

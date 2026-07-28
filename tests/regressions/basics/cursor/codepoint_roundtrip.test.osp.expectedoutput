@@ -1,0 +1,69 @@
+=== 1-byte: 0x01..0x7F ===
+
+cp=1 char= byteLen=1 width-ok=true -> roundtrip OK 1
+
+cp=65 char=A byteLen=1 width-ok=true -> roundtrip OK 65
+
+cp=127 char= byteLen=1 width-ok=true -> roundtrip OK 127
+
+=== 2-byte: 0x80..0x7FF ===
+
+cp=128 char= byteLen=2 width-ok=true -> roundtrip OK 128
+
+cp=233 char=é byteLen=2 width-ok=true -> roundtrip OK 233
+
+cp=2047 char=߿ byteLen=2 width-ok=true -> roundtrip OK 2047
+
+=== 3-byte: 0x800..0xFFFF ===
+
+cp=2048 char=ࠀ byteLen=3 width-ok=true -> roundtrip OK 2048
+
+cp=19990 char=世 byteLen=3 width-ok=true -> roundtrip OK 19990
+
+cp=65535 char=￿ byteLen=3 width-ok=true -> roundtrip OK 65535
+
+=== 4-byte: 0x10000..0x10FFFF ===
+
+cp=65536 char=𐀀 byteLen=4 width-ok=true -> roundtrip OK 65536
+
+cp=128512 char=😀 byteLen=4 width-ok=true -> roundtrip OK 128512
+
+cp=1114111 char=􏿿 byteLen=4 width-ok=true -> roundtrip OK 1114111
+
+=== invalid scalars are rejected ===
+
+cp=55296 rejected: fromCodePoint: invalid code point
+
+cp=57343 rejected: fromCodePoint: invalid code point
+
+cp=1114112 rejected: fromCodePoint: invalid code point
+
+cp=-1 rejected: fromCodePoint: invalid code point
+
+=== codePointWidth band boundaries ===
+
+width(0x7F)=1
+
+width(0x7FF)=2
+
+width(0xFFFF)=3
+
+width(0x10FFFF)=4
+
+=== byteAt raw-byte semantics ===
+
+byteAt(é,0)=195
+
+byteAt(é,1)=169
+
+=== codepoint roundtrip complete ===
+
+cp=65 char=A byteLen=1 width-ok=true -> roundtrip OK 65
+
+cp=55296 encode FAILED: fromCodePoint: invalid code point
+
+cp=55296 rejected: fromCodePoint: invalid code point
+
+ok 1 - Unicode scalars survive encode and decode
+1..1
+# tests=1 passed=1 failed=0 skipped=0

@@ -17,7 +17,7 @@ impl TypeError {
     /// Create an error with a message but no associated position.
     pub(crate) fn new(message: impl Into<String>) -> TypeError {
         TypeError {
-            message: message.into(),
+            message: readable(message),
             position: None,
         }
     }
@@ -25,7 +25,7 @@ impl TypeError {
     /// Create an error with a message anchored to a source position.
     pub fn at(message: impl Into<String>, position: Position) -> TypeError {
         TypeError {
-            message: message.into(),
+            message: readable(message),
             position: Some(position),
         }
     }
@@ -49,6 +49,19 @@ impl TypeError {
     #[must_use]
     pub(crate) fn recursive(a: &Type, b: &Type) -> TypeError {
         TypeError::new(format!("recursive type: {a} occurs in {b}"))
+    }
+}
+
+/// Restore source names in a message before it is stored.
+///
+/// A declaration inside a namespace reaches the checker under the flat linkage
+/// name project assembly gave it, so a diagnostic naming a function would
+/// otherwise read `__osp_4x62616e6b_5x7365727665` instead of `bank::serve`.
+/// Doing this once at construction covers every consumer — CLI, LSP, tests.
+fn readable(message: impl Into<String>) -> String {
+    match osprey_ast::symbol::demangle_message(&message.into()) {
+        std::borrow::Cow::Borrowed(text) => text.to_owned(),
+        std::borrow::Cow::Owned(text) => text,
     }
 }
 

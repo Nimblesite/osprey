@@ -9,7 +9,7 @@
 // any failure so `make wasm` / CI can gate on it.
 
 import { readFile } from "node:fs/promises";
-import { openSync, closeSync, readFileSync } from "node:fs";
+import { openSync, closeSync, readFileSync, mkdirSync, rmSync } from "node:fs";
 import { WASI } from "node:wasi";
 
 const [, , wasmPath, expectedPath] = process.argv;
@@ -28,10 +28,22 @@ if (!WebAssembly.validate(bytes)) {
 // instance's fd 1 at a temp file and reading it back after the run.
 const capturePath = `${wasmPath}.stdout.txt`;
 const fd = openSync(capturePath, "w");
+
+// A WASI module has NO filesystem until the host preopens one — capabilities
+// are granted, not ambient. Without this, `writeFile("out.txt", …)` fails on
+// wasm for a reason that has nothing to do with the compiler. Grant a private
+// scratch directory per module, as both the root and the working directory, so
+// a relative path resolves; it is fresh each run so file programs stay
+// deterministic and cannot see another module's leftovers. [WASM-TARGET]
+const sandbox = `${wasmPath}.fs`;
+rmSync(sandbox, { recursive: true, force: true });
+mkdirSync(sandbox, { recursive: true });
+
 const wasi = new WASI({
   version: "preview1",
   args: [wasmPath],
   env: {},
+  preopens: { "/": sandbox, ".": sandbox },
   stdout: fd,
   returnOnExit: true,
 });

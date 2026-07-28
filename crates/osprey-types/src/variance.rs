@@ -316,6 +316,46 @@ mod tests {
     }
 
     #[test]
+    fn the_walk_descends_into_structural_records_and_unions() {
+        // No field-type spelling produces a structural record or a union
+        // today, so these arms are reached only when a RESOLVED type carries
+        // one. They still have to keep descending: stopping there would let a
+        // mis-polarised parameter through unreported, which is exactly the
+        // failure declaration-site variance exists to prevent.
+        // Implements [TYPE-VARIANCE-POSITIONS].
+        let ctx = InferCtx::new();
+        let declared: HashMap<String, Variance> = [("T".to_string(), Variance::Covariant)]
+            .into_iter()
+            .collect();
+        let offending = Type::fun(vec![Type::con("T", Vec::new())], Type::int());
+        let nested = [
+            Type::Record {
+                name: "Wrapper".into(),
+                fields: [("f".to_string(), offending.clone())].into_iter().collect(),
+            },
+            Type::Union {
+                name: "Either".into(),
+                variants: vec![offending],
+            },
+        ];
+        for ty in nested {
+            let mut errors = Vec::new();
+            walk(
+                &ctx,
+                &ty,
+                Polarity::Out,
+                &declared,
+                &mut errors,
+                "field `f` of `Wrapper`",
+            );
+            assert!(
+                errors.iter().any(|e| e.message.contains("input position")),
+                "{ty:?} did not report its mis-polarised parameter"
+            );
+        }
+    }
+
+    #[test]
     fn fn_type_params_reject_variance_markers() {
         let errs = reject_fn_variance("map", &[tp("T", Variance::Covariant)]);
         assert!(errs

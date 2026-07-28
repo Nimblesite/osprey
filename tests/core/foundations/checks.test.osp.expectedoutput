@@ -1,0 +1,5 @@
+ok 1 - arithmetic checks share derived values
+ok 2 - classification checks include computed inputs
+ok 3 - strings and lists mix with matching
+1..3
+# tests=3 passed=3 failed=0 skipped=0

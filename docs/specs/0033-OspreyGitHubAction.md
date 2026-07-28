@@ -160,7 +160,7 @@ Until one lands, all packaging is native.
 - An `tests/regressions/` program that reads one JSON line via `input()`, parses
   it with the string builtins, and prints `key=value` lines — the ferry +
   parse + emit round-trip, checked byte-for-byte by the differential harness
-  (`crates/diff_examples.sh`).
+  (`crates/run_test_corpus.sh`).
 - `osprey <program>.osp --run < payload.json` reproduces the harness output,
   proving the stdin channel end to end.
 - The Docker image builds and its entrypoint reproduces the same output for the

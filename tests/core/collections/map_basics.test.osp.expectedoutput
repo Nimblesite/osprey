@@ -1,0 +1,7 @@
+ok 1 - maps construct, overwrite, and retain source bindings
+ok 2 - map generations and sibling branches remain isolated
+ok 3 - map removal and merge preserve values and bias
+ok 4 - map views and list interactions preserve both collections
+ok 5 - map literals and receiver dispatch preserve lookup semantics
+1..5
+# tests=5 passed=5 failed=0 skipped=0

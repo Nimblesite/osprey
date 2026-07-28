@@ -1,0 +1,4 @@
+tuned(37) = 33385282, worker = 14930352, napped = 40ms
+ok 1 - profiling workload computes deterministic values
+1..1
+# tests=1 passed=1 failed=0 skipped=0

@@ -10,7 +10,8 @@
 
 use crate::error::TypeError;
 use osprey_ast::{
-    Expr, HandlerArm, InterpolatedPart, ModuleItem, NamedArgument, Pattern, Position, Program, Stmt,
+    Expr, FieldAssignment, HandlerArm, InterpolatedPart, ModuleItem, NamedArgument, Pattern,
+    Position, Program, Stmt,
 };
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
@@ -378,14 +379,20 @@ struct CallableEnv {
 }
 
 impl CallableEnv {
-    fn for_parameters(parameters: &[String]) -> Self {
-        let mut env = Self::default();
+    /// Bind each parameter at the current level, shadowing any outer binding of
+    /// the same name.
+    fn bind_parameters(&mut self, parameters: &[String]) {
         for (index, parameter) in parameters.iter().enumerate() {
-            let _ = env.shadowed.insert(parameter.clone());
-            let _ = env
+            let _ = self.shadowed.insert(parameter.clone());
+            let _ = self
                 .values
                 .insert(parameter.clone(), Value::parameter(0, index));
         }
+    }
+
+    fn for_parameters(parameters: &[String]) -> Self {
+        let mut env = Self::default();
+        env.bind_parameters(parameters);
         env
     }
 
@@ -397,12 +404,7 @@ impl CallableEnv {
         for value in env.channel_payloads.values_mut() {
             shift_value_levels(value, 1, 0);
         }
-        for (index, parameter) in parameters.iter().enumerate() {
-            let _ = env.shadowed.insert(parameter.clone());
-            let _ = env
-                .values
-                .insert(parameter.clone(), Value::parameter(0, index));
-        }
+        env.bind_parameters(parameters);
         env
     }
 }
@@ -1023,19 +1025,6 @@ impl Analyzer<'_> {
                     ..Value::default()
                 })
             }
-            Expr::Object(fields) => {
-                let fields: BTreeMap<_, _> = fields
-                    .iter()
-                    .filter_map(|field| {
-                        self.value(&field.value, scope, env)
-                            .map(|value| (field.name.clone(), value))
-                    })
-                    .collect();
-                (!fields.is_empty()).then_some(Value {
-                    fields,
-                    ..Value::default()
-                })
-            }
             Expr::TypeConstructor { name, fields, .. }
                 if !self.index.constructors.contains_key(name) && env.shadowed.contains(name) =>
             {
@@ -1051,18 +1040,10 @@ impl Analyzer<'_> {
                 }
                 Some(updated)
             }
-            Expr::TypeConstructor { fields, .. } => {
-                let fields: BTreeMap<_, _> = fields
-                    .iter()
-                    .filter_map(|field| {
-                        self.value(&field.value, scope, env)
-                            .map(|value| (field.name.clone(), value))
-                    })
-                    .collect();
-                (!fields.is_empty()).then_some(Value {
-                    fields,
-                    ..Value::default()
-                })
+            // Ordered after the shadowed-constructor guard above: a shadowed
+            // name is a record update, not a fresh record.
+            Expr::Object(fields) | Expr::TypeConstructor { fields, .. } => {
+                self.record_value(fields, scope, env)
             }
             Expr::Update { record, fields } => {
                 let mut updated = self
@@ -1179,6 +1160,29 @@ impl Analyzer<'_> {
             }
             _ => None,
         }
+    }
+
+    /// Record-shaped literals — an object literal and a type constructor —
+    /// carry the same value information: only the fields whose value is itself
+    /// inferable. A record with nothing inferable tells the pass nothing, so it
+    /// yields `None` rather than an empty record that would mask a callable.
+    fn record_value(
+        &self,
+        fields: &[FieldAssignment],
+        scope: &[String],
+        env: &CallableEnv,
+    ) -> Option<Value> {
+        let fields: BTreeMap<_, _> = fields
+            .iter()
+            .filter_map(|field| {
+                self.value(&field.value, scope, env)
+                    .map(|value| (field.name.clone(), value))
+            })
+            .collect();
+        (!fields.is_empty()).then_some(Value {
+            fields,
+            ..Value::default()
+        })
     }
 
     fn function_value(&self, id: usize) -> Value {
@@ -1371,29 +1375,29 @@ impl Analyzer<'_> {
         for nested in value.fields.values_mut() {
             *nested = self.substitute_value_at(nested.clone(), target_level, arguments);
         }
-        if let Some(element) = value.element.take() {
-            value.element = Some(Box::new(self.substitute_value_at(
-                *element,
-                target_level,
-                arguments,
-            )));
-        }
-        if let Some(success) = value.result_payload.take() {
-            value.result_payload = Some(Box::new(self.substitute_value_at(
-                *success,
-                target_level,
-                arguments,
-            )));
-        }
-        if let Some(payload) = value.fiber_payload.take() {
-            value.fiber_payload = Some(Box::new(self.substitute_value_at(
+        self.substitute_payload_at(&mut value.element, target_level, arguments);
+        self.substitute_payload_at(&mut value.result_payload, target_level, arguments);
+        self.substitute_payload_at(&mut value.fiber_payload, target_level, arguments);
+        value.deferred = self.substitute_summary_at(value.deferred, target_level, arguments);
+        value
+    }
+
+    /// Substitute through one optional boxed payload slot. The element, result
+    /// and fiber payloads are all single nested values, so each descends the
+    /// same way — an absent payload stays absent.
+    fn substitute_payload_at(
+        &self,
+        slot: &mut Option<Box<Value>>,
+        target_level: usize,
+        arguments: &[Option<Value>],
+    ) {
+        if let Some(payload) = slot.take() {
+            *slot = Some(Box::new(self.substitute_value_at(
                 *payload,
                 target_level,
                 arguments,
             )));
         }
-        value.deferred = self.substitute_summary_at(value.deferred, target_level, arguments);
-        value
     }
 
     fn handler_arm_env(
@@ -1934,6 +1938,116 @@ fn bind_pattern(pattern: &Pattern, value: Option<&Value>, index: &Index, env: &m
     }
 }
 
+/// Advance one function's inferred row and return provenance by a single
+/// iteration, reporting whether either moved.
+fn advance_function(
+    analyzer: &Analyzer<'_>,
+    id: usize,
+    function: &Function,
+    rows: &mut [Summary],
+    returns: &mut [Option<Value>],
+) -> bool {
+    let mut changed = false;
+    let mut actual = analyzer.function_body(function);
+    actual.widen();
+    if let Some(row) = rows.get_mut(id) {
+        let before = row.clone();
+        // Requirements and parameter uses only grow toward the least fixed
+        // point, so unioning them is what makes this converge. The provenance
+        // verdict is not of that kind — see `check` — so take the freshly
+        // computed one. `widen` still re-raises it when it drops a use.
+        let resolved = actual.unresolved_dynamic_call;
+        row.union(actual);
+        row.unresolved_dynamic_call = resolved;
+        row.widen();
+        changed |= *row != before;
+    }
+    if let Some(returned) = analyzer.function_return(function) {
+        if let Some(slot) = returns.get_mut(id) {
+            let before = slot.clone();
+            // Recompute rather than merge with the previous iteration.
+            // `function_return` already merges every return path of the body,
+            // so each pass yields a COMPLETE answer for the rows it was given;
+            // unioning across passes only preserves superseded ones.
+            *slot = Some(returned.widened().widened());
+            changed |= *slot != before;
+        }
+    }
+    changed
+}
+
+/// Least fixed point over every function's row and return provenance:
+/// recursive and forward calls only add requirements.
+fn converge(
+    index: &Index,
+    instances: &Instances,
+    rows: &mut Vec<Summary>,
+    returns: &mut Vec<Option<Value>>,
+) {
+    loop {
+        let analyzer = Analyzer {
+            index,
+            rows,
+            returns,
+            instances,
+        };
+        let mut next = rows.clone();
+        let mut next_returns = returns.clone();
+        let changed = index
+            .functions
+            .iter()
+            .enumerate()
+            .fold(false, |changed, (id, function)| {
+                advance_function(&analyzer, id, function, &mut next, &mut next_returns) || changed
+            });
+        // `analyzer` borrows `rows`/`returns`; its last use is the fold above,
+        // so the borrow has ended by the time the new state is written back.
+        *rows = next;
+        *returns = next_returns;
+        if !changed {
+            return;
+        }
+    }
+}
+
+/// Erase the provenance verdicts a structural sweep recorded, leaving the
+/// requirements, parameter uses and callable shapes that carry them intact so
+/// the next sweep can re-derive each verdict from converged provenance.
+fn clear_verdicts(rows: &mut [Summary], returns: &mut [Option<Value>]) {
+    for row in rows.iter_mut() {
+        row.unresolved_dynamic_call = false;
+    }
+    for returned in returns.iter_mut().flatten() {
+        clear_value_verdicts(returned);
+    }
+}
+
+fn clear_value_verdicts(value: &mut Value) {
+    value.deferred.unresolved_dynamic_call = false;
+    // `Callable::Unknown` is deliberately left in place: it is the SHAPE that
+    // makes an invocation unresolvable, so the next sweep raises the verdict
+    // again wherever the callable is actually called.
+    if let Some(Callable::Known(known)) = &mut value.callable {
+        known.summary.unresolved_dynamic_call = false;
+        if let Some(returned) = &mut known.returned {
+            clear_value_verdicts(returned);
+        }
+    }
+    for nested in value.fields.values_mut() {
+        clear_value_verdicts(nested);
+    }
+    for nested in [
+        value.element.as_mut(),
+        value.result_payload.as_mut(),
+        value.fiber_payload.as_mut(),
+    ]
+    .into_iter()
+    .flatten()
+    {
+        clear_value_verdicts(nested);
+    }
+}
+
 /// Check inferred rows and entry discharge. Implements
 /// [EFFECTS-STATIC-DISCHARGE].
 #[expect(
@@ -1970,63 +2084,20 @@ pub(crate) fn check(program: &Program, instances: &Instances) -> Vec<TypeError> 
     let mut rows = vec![Summary::default(); index.functions.len()];
     let mut returns = vec![None; index.functions.len()];
 
-    // Least fixed point: recursive and forward calls only add requirements.
-    loop {
-        let analyzer = Analyzer {
-            index: &index,
-            rows: &rows,
-            returns: &returns,
-            instances,
-        };
-        let mut changed = false;
-        let mut next = rows.clone();
-        let mut next_returns = returns.clone();
-        for (id, function) in index.functions.iter().enumerate() {
-            let mut actual = analyzer.function_body(function);
-            actual.widen();
-            if let Some(row) = next.get_mut(id) {
-                let before = row.clone();
-                // Requirements and parameter uses only grow toward the least
-                // fixed point, so unioning them is what makes this converge.
-                // Provenance is not of that kind: it is a property of the
-                // CONVERGED row. A self-call reads `returns[id] == None` on the
-                // first iteration and resolves to `Callable::Unknown`, so
-                // folding that transient verdict in with `|=` would leave every
-                // recursive function permanently unresolved. Take the freshly
-                // computed verdict instead — the loop only exits once nothing
-                // changed, so the surviving one was derived from converged
-                // rows. `widen` still re-raises it when it drops a use.
-                let resolved = actual.unresolved_dynamic_call;
-                row.union(actual);
-                row.unresolved_dynamic_call = resolved;
-                row.widen();
-                changed |= *row != before;
-            }
-            if let Some(returned) = analyzer.function_return(function) {
-                if let Some(slot) = next_returns.get_mut(id) {
-                    let before = slot.clone();
-                    // Recompute rather than merge with the previous iteration.
-                    // `function_return` already merges every return path of the
-                    // body, so each pass yields a COMPLETE answer for the rows
-                    // it was given; unioning across passes only preserves
-                    // superseded ones. That distinction is load-bearing: on the
-                    // first pass a recursive call reads `returns[id] == None`
-                    // and evaluates to `Callable::Unknown`, and `merge_callable`
-                    // folds `callable_summary(Unknown)` — which carries
-                    // `unresolved_dynamic_call` — into the merged callable. Kept
-                    // by union, that transient verdict outlives the fixed point
-                    // and condemns every recursive curried ML function.
-                    *slot = Some(returned.widened().widened());
-                    changed |= *slot != before;
-                }
-            }
-        }
-        rows = next;
-        returns = next_returns;
-        if !changed {
-            break;
-        }
-    }
+    // TWO sweeps, not one. `unresolved_dynamic_call` is a property of the
+    // CONVERGED rows, but a returned closure carries its OWN summary inside
+    // `returns[id]`, and that summary is read back on the next iteration. A
+    // verdict raised on the first iteration — when a self-call still reads
+    // `returns[id] == None`, resolves to no callable, and fails closed — is
+    // therefore laundered through the stored closure and re-derives itself
+    // forever, condemning every recursive curried function. Sweep once for
+    // structure, erase those transient verdicts, then sweep again from
+    // converged provenance. Nothing genuine is lost: every verdict is
+    // recomputed from the body, from a stored `Callable::Unknown`, or from a
+    // callee whose own verdict the second sweep raises first and propagates.
+    converge(&index, instances, &mut rows, &mut returns);
+    clear_verdicts(&mut rows, &mut returns);
+    converge(&index, instances, &mut rows, &mut returns);
 
     let analyzer = Analyzer {
         index: &index,

@@ -40,9 +40,10 @@ folder may mix flavors across files. Because every file lowers to the same AST, 
 import each other normally (per-file selection ships today; multi-file cross-flavor
 imports are the design direction).
 
-The differential harness ([`../crates/diff_examples.sh`](../crates/diff_examples.sh))
-discovers examples additively across both flavors. A `.osp`/`.ospml` twin that
-produces identical output can share a single `.expectedoutput` file.
+The differential harness ([`../crates/run_test_corpus.sh`](../crates/run_test_corpus.sh))
+discovers programs additively across both flavors. A `.osp`/`.ospml` twin that
+produces identical output shares a single `.expectedoutput` file — one golden
+proving both flavors print the same bytes.
 
 ## Directory layout
 
@@ -84,9 +85,9 @@ multi-parameter — both emitting byte-identical IR.
 
 Every file here is an ill-formed program the language defines as a compile error.
 The must-reject suite in
-[`../crates/diff_examples.sh`](../crates/diff_examples.sh) runs each one and
-requires a nonzero exit; the count still accepted is held down by the
-`FC_EXPECTED_ESCAPES` ratchet, so an added fixture that the compiler *accepts*
+[`../crates/osprey-cli/tests/examples_compile.rs`](../crates/osprey-cli/tests/examples_compile.rs)
+runs each one through the pipeline and requires rejection. The bar is ZERO
+escapes — a fixture the compiler *accepts* names itself in the failure and
 breaks CI. Never add one without confirming it is actually rejected.
 
 - **Negatives use `.ospo`.** That extension is not a source extension anywhere in

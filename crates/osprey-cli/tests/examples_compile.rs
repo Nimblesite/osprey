@@ -349,19 +349,27 @@ fn ml_flavor_negative_cases_are_rejected_by_the_ml_frontend() {
 #[test]
 fn failscompilation_corpus_drives_rejection_paths() {
     // Every `.ospo` is run through the pipeline to cover the rejection branches.
-    // The compiler does not yet reject all of them (the shell harness tracks the
-    // residue via a ratchet), so this asserts only that a healthy majority are
-    // already rejected and that the pipeline never panics on ill-formed input.
+    // EVERY ill-formed program must be rejected — the corpus stands at 90/90.
+    //
+    // This assertion used to read `rejected * 2 >= files.len()`, i.e. "a healthy
+    // majority", which tolerated 45 of the 90 silently starting to compile. Its
+    // comment deferred the exact residue to "the shell harness ratchet", but
+    // that harness (crates/diff_examples.sh, FC_EXPECTED_ESCAPES=0) was deleted,
+    // so the strict count it pointed at no longer existed. A must-reject corpus
+    // that permits half its cases to be accepted is not a gate.
     let dir = repo_root().join("examples/failscompilation");
     let files = sources(&dir, "ospo");
     assert!(!files.is_empty(), "expected a must-reject corpus");
-    let rejected = files
+    let escaped: Vec<String> = files
         .iter()
-        .filter(|p| compile(p.as_path(), &fs::read_to_string(p).unwrap_or_default()).is_err())
-        .count();
+        .filter(|p| compile(p.as_path(), &fs::read_to_string(p).unwrap_or_default()).is_ok())
+        .map(|p| p.strip_prefix(&dir).unwrap_or(p).display().to_string())
+        .collect();
     assert!(
-        rejected * 2 >= files.len(),
-        "most ill-formed programs should be rejected, got {rejected}/{}",
-        files.len()
+        escaped.is_empty(),
+        "every ill-formed program must be rejected; {} of {} were accepted:\n{}",
+        escaped.len(),
+        files.len(),
+        escaped.join("\n")
     );
 }

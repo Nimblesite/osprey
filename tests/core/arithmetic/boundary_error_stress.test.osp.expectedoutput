@@ -1,0 +1,104 @@
+ok 1 - maximum minus delta 001
+ok 2 - maximum restored after subtraction 001
+ok 3 - maximum intermediate then overflow 001
+ok 4 - minimum plus delta 001
+ok 5 - maximum minus delta 002
+ok 6 - maximum restored after subtraction 002
+ok 7 - maximum intermediate then overflow 002
+ok 8 - minimum plus delta 002
+ok 9 - maximum minus delta 003
+ok 10 - maximum restored after subtraction 003
+ok 11 - maximum intermediate then overflow 003
+ok 12 - minimum plus delta 003
+ok 13 - maximum minus delta 004
+ok 14 - maximum restored after subtraction 004
+ok 15 - maximum intermediate then overflow 004
+ok 16 - minimum plus delta 004
+ok 17 - maximum minus delta 005
+ok 18 - maximum restored after subtraction 005
+ok 19 - maximum intermediate then overflow 005
+ok 20 - minimum plus delta 005
+ok 21 - maximum minus delta 006
+ok 22 - maximum restored after subtraction 006
+ok 23 - maximum intermediate then overflow 006
+ok 24 - minimum plus delta 006
+ok 25 - maximum minus delta 007
+ok 26 - maximum restored after subtraction 007
+ok 27 - maximum intermediate then overflow 007
+ok 28 - minimum plus delta 007
+ok 29 - maximum minus delta 008
+ok 30 - maximum restored after subtraction 008
+ok 31 - maximum intermediate then overflow 008
+ok 32 - minimum plus delta 008
+ok 33 - maximum minus delta 009
+ok 34 - maximum restored after subtraction 009
+ok 35 - maximum intermediate then overflow 009
+ok 36 - minimum plus delta 009
+ok 37 - maximum minus delta 010
+ok 38 - maximum restored after subtraction 010
+ok 39 - maximum intermediate then overflow 010
+ok 40 - minimum plus delta 010
+ok 41 - maximum minus delta 011
+ok 42 - maximum restored after subtraction 011
+ok 43 - maximum intermediate then overflow 011
+ok 44 - minimum plus delta 011
+ok 45 - maximum minus delta 012
+ok 46 - maximum restored after subtraction 012
+ok 47 - maximum intermediate then overflow 012
+ok 48 - minimum plus delta 012
+ok 49 - maximum minus delta 013
+ok 50 - maximum restored after subtraction 013
+ok 51 - maximum intermediate then overflow 013
+ok 52 - minimum plus delta 013
+ok 53 - maximum minus delta 014
+ok 54 - maximum restored after subtraction 014
+ok 55 - maximum intermediate then overflow 014
+ok 56 - minimum plus delta 014
+ok 57 - maximum minus delta 015
+ok 58 - maximum restored after subtraction 015
+ok 59 - maximum intermediate then overflow 015
+ok 60 - minimum plus delta 015
+ok 61 - division by zero 001
+ok 62 - remainder by zero 001
+ok 63 - division by zero 002
+ok 64 - remainder by zero 002
+ok 65 - division by zero 003
+ok 66 - remainder by zero 003
+ok 67 - division by zero 004
+ok 68 - remainder by zero 004
+ok 69 - division by zero 005
+ok 70 - remainder by zero 005
+ok 71 - division by zero 006
+ok 72 - remainder by zero 006
+ok 73 - division by zero 007
+ok 74 - remainder by zero 007
+ok 75 - division by zero 008
+ok 76 - remainder by zero 008
+ok 77 - division by zero 009
+ok 78 - remainder by zero 009
+ok 79 - division by zero 010
+ok 80 - remainder by zero 010
+ok 81 - maximum plus one overflows
+ok 82 - maximum times two overflows
+ok 83 - square above signed root overflows
+ok 84 - minimum minus one overflows
+ok 85 - minimum times negative one overflows
+ok 86 - negating minimum overflows
+ok 87 - absolute minimum overflows
+ok 88 - minimum remainder negative one is representable
+ok 89 - minimum remainder one is zero
+ok 90 - minimum float division by negative one is finite
+ok 91 - integer division minimum by negative one overflows
+ok 92 - integer division minimum by one succeeds
+ok 93 - checkedAdd success
+ok 94 - checkedSub negative success
+ok 95 - checkedMul success
+ok 96 - checkedAdd maximum overflow
+ok 97 - checkedSub minimum overflow
+ok 98 - checkedMul wide overflow
+ok 99 - checkedAdd reaches maximum
+ok 100 - checkedSub reaches minimum
+ok 101 - checkedMul maximum identity
+ok 102 - checkedMul minimum identity
+1..102
+# tests=102 passed=102 failed=0 skipped=0

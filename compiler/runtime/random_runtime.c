@@ -13,7 +13,19 @@
 #include <stdlib.h>
 #include <string.h>
 
-#if defined(__APPLE__) || defined(__FreeBSD__) || defined(__OpenBSD__) ||      \
+#if defined(__wasm__)
+// wasm32-wasip1 gets its entropy from the WASI `random_get` host call, which
+// wasi-libc exposes as getentropy(2) — the same OS-CSPRNG contract as the
+// branches below, and the only one available here: there is no /dev to fall
+// back to. Declared locally because wasi-libc hides both arc4random_buf and
+// getentropy behind _BSD_SOURCE/_GNU_SOURCE, and the runtime builds -std=c11;
+// defining a feature macro to reach one symbol would change every other
+// translation unit in the archive too. Without this the whole TU stayed out of
+// the wasm archive and every program touching `random` link-failed.
+// [WASM-TARGET] [BUILTIN-RANDOM]
+#define OSP_HAVE_GETENTROPY 1
+int getentropy(void *, size_t);
+#elif defined(__APPLE__) || defined(__FreeBSD__) || defined(__OpenBSD__) ||    \
     defined(__NetBSD__)
 #define OSP_HAVE_ARC4RANDOM 1
 #elif defined(__linux__)
@@ -26,7 +38,12 @@
 // fallback path: a short read leaves the tail zeroed rather than aborting,
 // which never happens on the supported platforms.
 static void osp_entropy(void *buf, size_t len) {
-#ifdef OSP_HAVE_ARC4RANDOM
+#ifdef OSP_HAVE_GETENTROPY
+  // getentropy caps a single call at 256 bytes; every caller here asks for 8.
+  if (getentropy(buf, len) != 0) {
+    memset(buf, 0, len);
+  }
+#elif defined(OSP_HAVE_ARC4RANDOM)
   arc4random_buf(buf, len);
 #else
 #ifdef OSP_HAVE_GETRANDOM

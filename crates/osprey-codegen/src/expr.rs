@@ -253,13 +253,18 @@ fn result_failed(cg: &mut Codegen, v: &Value) -> String {
 fn gen_arith(cg: &mut Codegen, op: &str, l: Value, r: Value) -> Result<Value> {
     // `+` on list handles is concatenation (`a + b` ≡ `listConcat(a, b)`); on
     // map handles it is a right-biased merge (`a + b` ≡ `mapMerge(a, b)`).
-    let is_list = |v: &Value| v.osp_ty.as_deref() == Some(crate::collections::LIST_OWNER);
-    let is_map = |v: &Value| v.osp_ty.as_deref() == Some(crate::collections::MAP_OWNER);
-    if op == "+" && (is_list(&l) || is_list(&r)) {
-        return Ok(crate::collections::concat_handles(cg, &l, &r));
-    }
-    if op == "+" && (is_map(&l) || is_map(&r)) {
-        return Ok(crate::collections::merge_handles(cg, &l, &r));
+    // Either operand carrying the owner tag selects the collection meaning.
+    if op == "+" {
+        let tagged = |owner| {
+            let has = |v: &Value| v.osp_ty.as_deref() == Some(owner);
+            has(&l) || has(&r)
+        };
+        if tagged(crate::collections::LIST_OWNER) {
+            return Ok(crate::collections::concat_handles(cg, &l, &r));
+        }
+        if tagged(crate::collections::MAP_OWNER) {
+            return Ok(crate::collections::merge_handles(cg, &l, &r));
+        }
     }
     // `+` with a string operand is concatenation: osp_strlen/strcpy/strcat
     // into a fresh malloc'd buffer. [BUILTIN-STRING-CONCAT]
@@ -538,6 +543,9 @@ fn open_result_guard(cg: &mut Codegen, bad: &str) -> ResultGuard {
         "br i1 {bad}, label %{bad_block}, label %{good_block}"
     ));
     cg.start_block(&good_block);
+    // Everything emitted until the join runs on one path only, so owners that
+    // existed before the branch must not be retired at a use inside it.
+    crate::arc::open_conditional(cg, mark);
     ResultGuard {
         bad: bad_block,
         end,
@@ -576,6 +584,7 @@ fn finish_result_guard(
     let err = crate::result::make_result(cg, zero, inner, "1", message)?;
     let err_block = cg.snapshot_to(&guard.end);
     cg.start_block(&guard.end);
+    crate::arc::close_conditional(cg);
     let reg = cg.emit_reg(format!(
         "phi {0}* [ {1}, %{ok_block} ], [ {2}, %{err_block} ]",
         crate::llty::result_struct_ty(inner),
@@ -716,6 +725,36 @@ fn gen_negated_value(cg: &mut Codegen, value: Value) -> Result<Value> {
     gen_checked_arith(cg, "ssub", Value::new("0", LType::I64), value)
 }
 
+/// One runtime-builtin dispatcher: returns `None` when `name` is not its
+/// builtin, so a chain of them falls through to a user call.
+type BuiltinDispatch = fn(&mut Codegen, &str, &[Expr], &[NamedArgument]) -> Result<Option<Value>>;
+
+/// The fiber dispatcher predates named arguments and takes none; this adapts it
+/// to the shared shape rather than making the table's element type optional.
+fn gen_fiber_builtin(
+    cg: &mut Codegen,
+    name: &str,
+    args: &[Expr],
+    _named: &[NamedArgument],
+) -> Result<Option<Value>> {
+    crate::fiber::gen_builtin(cg, name, args)
+}
+
+/// Runtime builtin dispatchers IN RESOLUTION ORDER. A bare name shared by the
+/// string and collection runtimes resolves on the RECEIVER, so
+/// `gen_receiver_directed` must come before the name-keyed string/collection
+/// dispatchers — reordering this table changes which builtin a shared name
+/// means.
+const BUILTIN_DISPATCH: [BuiltinDispatch; 7] = [
+    crate::testing::gen,
+    crate::collections::gen_receiver_directed,
+    crate::strings::gen,
+    crate::collections::gen,
+    crate::iter::gen,
+    gen_fiber_builtin,
+    crate::extern_call::gen,
+];
+
 fn gen_call(
     cg: &mut Codegen,
     function: &Expr,
@@ -814,30 +853,10 @@ fn gen_call(
         // names below are reserved. Each dispatcher returns `None` when the name
         // is not its builtin, so the chain falls through to a user call.
         _ => {
-            if let Some(v) = crate::testing::gen(cg, name, arguments, named)? {
-                return Ok(v);
-            }
-            // A bare name shared by the string and collection runtimes resolves
-            // on the receiver, so it must be settled BEFORE the name-keyed
-            // string/collection dispatchers below.
-            if let Some(v) = crate::collections::gen_receiver_directed(cg, name, arguments, named)?
-            {
-                return Ok(v);
-            }
-            if let Some(v) = crate::strings::gen(cg, name, arguments, named)? {
-                return Ok(v);
-            }
-            if let Some(v) = crate::collections::gen(cg, name, arguments, named)? {
-                return Ok(v);
-            }
-            if let Some(v) = crate::iter::gen(cg, name, arguments, named)? {
-                return Ok(v);
-            }
-            if let Some(v) = crate::fiber::gen_builtin(cg, name, arguments)? {
-                return Ok(v);
-            }
-            if let Some(v) = crate::extern_call::gen(cg, name, arguments, named)? {
-                return Ok(v);
+            for dispatch in BUILTIN_DISPATCH {
+                if let Some(v) = dispatch(cg, name, arguments, named)? {
+                    return Ok(v);
+                }
             }
             // A generic user function is specialised by inlining its body with
             // the concrete argument types at this call site.

@@ -4,8 +4,10 @@
 //! links against libc and the prebuilt C runtime archives in `compiler/bin/`
 //! (`libfiber_runtime.a` / `libhttp_runtime.a`). Two anchors define correct
 //! output: the C runtime ABI (those archives' symbols and conventions) and the
-//! golden outputs in `tests/regressions`, exercised end-to-end by
-//! `crates/diff_examples.sh`. Constructs the backend does not lower return
+//! `.expectedoutput` goldens beside every program under `tests/`, compared
+//! byte-for-byte end-to-end by `crates/run_test_corpus.sh` — under each memory
+//! backend, and again on wasm32 with `OSPREY_TARGET=wasm32`.
+//! Constructs the backend does not lower return
 //! [`CodegenError::Unsupported`] — it never emits a placeholder.
 //!
 //! Public surface: [`compile_program`] turns a parsed [`osprey_ast::Program`]

@@ -188,7 +188,7 @@ npm install && npm start         # Start web-based compiler service
 
 **Testing Strategy:**
 - Unit tests live inside each crate in `crates/`
-- `tests/regressions/` - Working examples run via the differential harness (`crates/diff_examples.sh`); output must match `.expectedoutput` byte-for-byte
+- `tests/` - Working programs run via the differential harness (`crates/run_test_corpus.sh`) under each memory backend and again on wasm32 (`OSPREY_TARGET=wasm32`); output must match the sibling `.expectedoutput` byte-for-byte. An ML twin shares its Default twin's golden — both flavors must print identically
 - `examples/failscompilation/` - Error cases the compiler must reject
 - Coverage thresholds enforced per-project via `coverage-thresholds.json`
 

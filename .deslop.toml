@@ -1,7 +1,7 @@
 # Deslop duplication gate
 # Single source of truth for this repo's code-duplication budget. Committed,
 # PR-reviewed, ratcheted DOWN only — never up without a written justification.
-# The official Deslop action in Windows CI reads this file and exits non-zero —
+# The official Deslop action in the REQUIRED `ci` job reads this file and exits non-zero —
 # FAILING THE BUILD — when measured duplication exceeds the ceiling below. Deslop parses
 # Rust/C#/Python/Dart, so this gates the Rust workspace (the C runtime is out
 # of scope here).
@@ -9,15 +9,20 @@
 # Local `make ci` uses the `deslop` target; hosted CI uses the official action.
 # Both fail when measured duplication exceeds the ceiling below (deslop exits 3).
 [threshold]
-# Ceiling = 6.1% (2026-07-12). Measured product-code duplication is ~6.10%
-# after a round of genuine dedup: the three AST expression visitors
+# Ceiling = 5% (2026-07-28). Measured product-code duplication is 5.0%
+# (3175 / 63834 LOC) — a margin of roughly TWO lines. Adding a clone of any size
+# fails the build; run `make deslop` before pushing rather than discovering it
+# in CI. This is deliberate: the ceiling ratchets DOWN with the measurement, so
+# it stays a ceiling rather than drifting into headroom.
+#
+# The 5% was reached by a round of genuine dedup: the three AST expression
+# visitors
 # (osprey-codegen `freevars`/`effects`, osprey-lsp `analysis`) now share one
 # `osprey_ast::walk_each` collection-walker instead of each carrying its own
 # `walk_all`/`walk_named`/`walk_fields` trio; `wire.rs`'s request-field
 # accessors share a `nested` two-level lookup; and `default/lower.rs` folds its
 # "collect children of a kind, lower each" sites into one `map_of_kind`. 8.0%
-# remains the AUTHORISED HARD CAP — never raise above it; this ceiling sits well
-# below that and ratchets DOWN only as duplication is removed. Worst remaining
+# remains the AUTHORISED HARD CAP — never raise above it. Worst remaining
 # offenders are the `builtin_docs_*` documentation TABLES (repeated data rows,
 # not logic — see the [category=data] note deslop prints) and structural-only
 # CST-walk shapes that don't factor without obscuring intent.

@@ -13,7 +13,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-fn diagnostics(source: &str) -> Vec<TypeError> {
+pub(crate) fn diagnostics(source: &str) -> Vec<TypeError> {
     let parsed = parse_program_with_flavor(source, Flavor::Default);
     assert!(
         parsed.errors.is_empty(),
@@ -23,12 +23,12 @@ fn diagnostics(source: &str) -> Vec<TypeError> {
     check_program(&parsed.program)
 }
 
-fn assert_accepted(source: &str) {
+pub(crate) fn assert_accepted(source: &str) {
     let errors = diagnostics(source);
     assert!(errors.is_empty(), "unexpected diagnostics: {errors:#?}");
 }
 
-fn assert_rejected_with(source: &str, expected: &[&str]) {
+pub(crate) fn assert_rejected_with(source: &str, expected: &[&str]) {
     let errors = diagnostics(source);
     assert!(!errors.is_empty(), "expected static rejection, got none");
     let rendered = errors
@@ -84,6 +84,82 @@ fn recursive_closure_provenance_reaches_a_bounded_fixed_point() {
         }
         thread::sleep(Duration::from_millis(10));
     }
+}
+
+/// A recursive curried function is the shape an ML definition of arity > 1
+/// lowers to. Its first fixed-point iteration cannot resolve the self-call —
+/// its own return provenance does not exist yet — and that transient verdict
+/// used to be stored in the returned closure's summary and re-derived on every
+/// later iteration, condemning the function forever.
+#[test]
+fn a_pure_recursive_curried_function_is_accepted() {
+    assert_accepted(
+        "effect Alarm { ring: fn() -> int }\n\
+         fn countDown(n) = fn(acc) => match n <= 0 {\n\
+           true => acc\n\
+           false => countDown((n - 1) ?: 0)((acc + n) ?: acc)\n\
+         }\n\
+         let total = countDown(3)(0)\n",
+    );
+}
+
+#[test]
+fn mutually_recursive_curried_functions_are_accepted() {
+    assert_accepted(
+        "effect Alarm { ring: fn() -> int }\n\
+         fn evens(n) = fn(acc) => match n <= 0 {\n\
+           true => acc\n\
+           false => odds((n - 1) ?: 0)((acc + n) ?: acc)\n\
+         }\n\
+         fn odds(n) = fn(acc) => match n <= 0 {\n\
+           true => acc\n\
+           false => evens((n - 1) ?: 0)((acc + n) ?: acc)\n\
+         }\n\
+         let total = evens(4)(0)\n",
+    );
+}
+
+#[test]
+fn a_recursive_curried_function_still_carries_its_effect_to_the_call_site() {
+    assert_rejected_with(
+        "effect Alarm { ring: fn() -> int }\n\
+         fn countDown(n) = fn(acc) => match n <= 0 {\n\
+           true => acc\n\
+           false => countDown((n - 1) ?: 0)((acc + perform Alarm.ring()) ?: acc)\n\
+         }\n\
+         let total = countDown(3)(0)\n",
+        &["unhandled effect operations at program entry", "Alarm.ring"],
+    );
+}
+
+#[test]
+fn a_handler_discharges_a_recursive_curried_function() {
+    assert_accepted(
+        "effect Alarm { ring: fn() -> int }\n\
+         fn countDown(n) = fn(acc) => match n <= 0 {\n\
+           true => acc\n\
+           false => countDown((n - 1) ?: 0)((acc + perform Alarm.ring()) ?: acc)\n\
+         }\n\
+         let total = handle Alarm\n\
+           ring => 1\n\
+         in countDown(3)(0)\n",
+    );
+}
+
+/// The guard on the fix above: provenance verdicts are re-derived after the
+/// rows converge, NOT merely erased. A call this pass cannot resolve — here a
+/// top-level `let` alias the function environment never sees — must still be
+/// reported when it hides inside a returned closure.
+#[test]
+fn an_unresolvable_call_inside_a_returned_closure_is_still_rejected() {
+    assert_rejected_with(
+        "effect Alarm { ring: fn() -> int }\n\
+         fn ring() = perform Alarm.ring()\n\
+         let siren = ring\n\
+         fn make() = fn() => siren()\n\
+         let answer = make()()\n",
+        &["effect provenance cannot be proven"],
+    );
 }
 
 #[test]

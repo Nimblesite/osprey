@@ -85,6 +85,25 @@ export interface TestRunSink {
   addProfile?(uri: vscode.Uri, dir: string): void;
 }
 
+/**
+ * The verdict half of a TestRunSink: every result forwarded straight to `run`.
+ * Each profile's sink spreads this and adds only its own extra channel
+ * (coverage, profiler artifacts), so a verdict is reported identically no
+ * matter which profile launched the run.
+ */
+export function verdictSink(run: vscode.TestRun): TestRunSink {
+  return {
+    enqueued: (test) => run.enqueued(test),
+    started: (test) => run.started(test),
+    passed: (test, duration) => run.passed(test, duration),
+    failed: (test, message, duration) => run.failed(test, message, duration),
+    errored: (test, message, duration) => run.errored(test, message, duration),
+    skipped: (test) => run.skipped(test),
+    appendOutput: (output) => run.appendOutput(output),
+    end: () => run.end(),
+  };
+}
+
 // On POSIX the compiler child is spawned detached (its own process group) so
 // cancellation can kill the WHOLE tree: `osprey --run` execs the compiled test
 // binary as a grandchild, and killing only osprey would leave a hanging test
@@ -701,14 +720,7 @@ export function detailedCoverageFor(
  */
 export function coverageSink(run: vscode.TestRun): TestRunSink {
   return {
-    enqueued: (test) => run.enqueued(test),
-    started: (test) => run.started(test),
-    passed: (test, duration) => run.passed(test, duration),
-    failed: (test, message, duration) => run.failed(test, message, duration),
-    errored: (test, message, duration) => run.errored(test, message, duration),
-    skipped: (test) => run.skipped(test),
-    appendOutput: (output) => run.appendOutput(output),
-    end: () => run.end(),
+    ...verdictSink(run),
     addLineCoverage: (uri, hits) => {
       const counts = coverageCounts(hits);
       const file = new vscode.FileCoverage(

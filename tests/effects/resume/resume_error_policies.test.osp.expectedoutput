@@ -1,0 +1,15 @@
+ok 1 - resuming recovery continues after the failed operation
+ok 2 - returning without resume stops a deep failed computation
+ok 3 - resumed validation can perform the same effect again
+ok 4 - nested resuming error channels enter FIFO and settle LIFO
+ok 5 - an inner resuming handler shadows then restores its outer handler
+ok 6 - a handler can transform the completed continuation answer
+ok 7 - resume preserves Success and Error values
+ok 8 - resume preserves tagged recovery choices
+ok 9 - thirty-two sequential recoveries settle exactly once
+ok 10 - one handler resumes integer string boolean and Unit operations
+ok 11 - string continuation answers must release under ARC # SKIP CRITICAL #185: resuming handlers leak string continuation answers under ARC
+ok 12 - sixteen resumable operation arguments arrive intact
+ok 13 - seventeen resumable operation arguments must not be truncated # SKIP CRITICAL #182: resumable operation argument 17 is silently replaced with zero
+1..13
+# tests=13 passed=11 failed=0 skipped=2

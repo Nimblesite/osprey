@@ -315,9 +315,12 @@ fn fold(cg: &mut Codegen, args: &[Expr]) -> Result<Value> {
     Ok(acc_result(cg, &acc, &tmpl))
 }
 
-/// The `i`-th positional argument as a list handle.
+/// The `i`-th positional argument as a list handle. A flat list literal is
+/// rebuilt as a runtime list first — `osprey_list_get` cannot read the literal
+/// layout ([`crate::listlit::to_runtime_list`]).
 fn list_arg(cg: &mut Codegen, args: &[Expr], i: usize) -> Result<Value> {
     let v = gen_expr(cg, nth(args, i)?)?;
+    let v = crate::listlit::to_runtime_list(cg, v);
     crate::cast::coerce_to(cg, v, LType::Ptr)
 }
 

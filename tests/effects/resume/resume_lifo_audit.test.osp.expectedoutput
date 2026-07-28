@@ -1,0 +1,3 @@
+ok 1 - post-resume code unwinds in reverse operation order
+1..1
+# tests=1 passed=1 failed=0 skipped=0

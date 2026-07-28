@@ -167,6 +167,17 @@ fn symbol_hover(s: &SymbolInfo, program: &Program, flavor: Flavor) -> String {
 /// about the function). Hover is the main way a reader recovers the types the
 /// source deliberately omits, so it must answer from inference.
 /// Implements [LSP-HOVER-INFERRED-SIGNATURE].
+/// Whether a checker-supplied type is safe to show a reader.
+///
+/// An inferred type that still holds a type VARIABLE is not an answer — it is
+/// the checker's private placeholder, and rendering it puts `List<t5>` in a
+/// tooltip. The name is unstable (it moves when an unrelated line is edited)
+/// and means nothing outside the inference run that produced it, so a generic
+/// parameter is better left as the author wrote it: bare.
+fn resolved(ty: &osprey_types::Type) -> bool {
+    !osprey_types::has_type_var(ty)
+}
+
 fn inferred_signature(s: &SymbolInfo, sig: &str, program: &Program) -> String {
     let complete = s.return_type.is_some() && s.parameters.iter().all(|(_, t)| !t.is_empty());
     if complete {
@@ -180,7 +191,7 @@ fn inferred_signature(s: &SymbolInfo, sig: &str, program: &Program) -> String {
         .enumerate()
         .map(|(slot, (name, written))| {
             let ty = match (written.is_empty(), inferred.get(slot)) {
-                (true, Some(found)) => found.to_string(),
+                (true, Some(found)) if resolved(found) => found.to_string(),
                 _ => written.clone(),
             };
             crate::analysis::render_param(&(name.clone(), ty))
@@ -189,7 +200,12 @@ fn inferred_signature(s: &SymbolInfo, sig: &str, program: &Program) -> String {
     let ret = s
         .return_type
         .clone()
-        .or_else(|| types.return_type(&s.name).map(ToString::to_string))
+        .or_else(|| {
+            types
+                .return_type(&s.name)
+                .filter(|found| resolved(found))
+                .map(ToString::to_string)
+        })
         .unwrap_or_else(|| String::from("Unit"));
     format!("fn {}({}) -> {ret}", s.name, shown.join(", "))
 }
@@ -271,6 +287,37 @@ mod tests {
     use super::*;
     const U16: PositionEncoding = PositionEncoding::Utf16;
     const SRC: &str = "fn add(a: int, b: int) -> int = (a + b) ?: 0\nlet total = add(1, 2)\n";
+
+    #[test]
+    fn an_inferred_signature_fills_resolved_slots_and_leaves_generic_ones_bare() {
+        // Implements [LSP-HOVER-INFERRED-SIGNATURE]. `r` resolves to a concrete
+        // `int`, so the reader gets it. `xs` stays a type VARIABLE, and `t5` is
+        // an inference artefact whose name shifts when an unrelated line moves —
+        // showing it would be worse than showing nothing, so the parameter is
+        // left exactly as written.
+        let concrete = hover(
+            "fn area(r) = r * r\nlet a = area(5)\n",
+            "file:///a.osp",
+            0,
+            3,
+            U16,
+        )
+        .expect("hover over `area`");
+        assert!(concrete.contains("fn area(r: int)"), "{concrete}");
+        let generic = hover(
+            "fn classify(xs) = match xs {\n  [] => 0\n  [head, ...tail] => 1\n}\nlet e = classify([])\n",
+            "file:///b.osp",
+            0,
+            3,
+            U16,
+        )
+        .expect("hover over `classify`");
+        assert!(generic.contains("fn classify(xs) -> int"), "{generic}");
+        assert!(
+            !generic.contains("xs:"),
+            "an unresolved parameter stays bare: {generic}"
+        );
+    }
 
     #[test]
     fn hover_uses_signature_for_functions_and_builtins() {

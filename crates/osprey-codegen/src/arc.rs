@@ -44,12 +44,21 @@ struct Entry {
 /// statements, loop bodies). Swapped wholesale across `enter_nested_fn`.
 pub(crate) struct ArcLedger {
     frames: Vec<Vec<Entry>>,
+    /// Open conditional regions as (frame depth, ledger length at the branch).
+    /// [`consume_fresh`] retires an owner AT ITS USE and removes its ledger
+    /// entry, which is only sound when that use is on every path out of the
+    /// region. Inside a conditional it is not: the sibling path reaches region
+    /// end with the entry already gone and nothing releases the object. Each
+    /// entry recorded here is the high-water mark of owners that existed BEFORE
+    /// the branch — those must survive to region end. [GC-ARC-PERCEUS]
+    cond_floors: Vec<(usize, usize)>,
 }
 
 impl ArcLedger {
     pub(crate) fn new() -> ArcLedger {
         ArcLedger {
             frames: vec![Vec::new()],
+            cond_floors: Vec::new(),
         }
     }
 }
@@ -155,6 +164,15 @@ pub(crate) fn consume_fresh(cg: &mut Codegen, v: &Value) {
     if !fresh {
         return;
     }
+    // The owner must also have been created INSIDE the innermost open
+    // conditional. Retiring one from before the branch drops its ledger entry
+    // on this path only, so the sibling path leaks it — `(1 % 0) * 5` leaked
+    // one Result per evaluation exactly this way: the propagating-arithmetic
+    // guard unwraps its operand in the success arm, and the error arm then had
+    // nothing left to release. [GC-ARC-PERCEUS]
+    if cg.arc.frames.last().map_or(0, Vec::len) <= conditional_floor(cg) {
+        return;
+    }
     if let Some(e) = cg.arc.frames.last_mut().and_then(Vec::pop) {
         cg.add_extern(RELEASE_UNIQUE_DECL);
         let ptr = as_i8ptr(cg, v);
@@ -200,6 +218,32 @@ pub(crate) fn consume_into_store(cg: &mut Codegen, operand: &str) -> bool {
 /// from values that already existed at the join (above all: the scrutinee).
 pub(crate) fn frame_mark(cg: &Codegen) -> usize {
     cg.arc.frames.last().map_or(0, Vec::len)
+}
+
+/// Record that code emitted from here on runs on only ONE path out of the
+/// region, with `mark` owners already live. Pairs with [`close_conditional`]
+/// at the join. See [`ArcLedger::cond_floors`].
+pub(crate) fn open_conditional(cg: &mut Codegen, mark: usize) {
+    let depth = cg.arc.frames.len();
+    cg.arc.cond_floors.push((depth, mark));
+}
+
+/// Both paths have merged: owners from before the branch are unconditional again.
+pub(crate) fn close_conditional(cg: &mut Codegen) {
+    let _ = cg.arc.cond_floors.pop();
+}
+
+/// The ledger length below which owners predate the innermost conditional open
+/// in THIS frame. A frame pushed inside a conditional is wholly contained by
+/// it, so its own owners are unconditional within it and the floor is 0.
+fn conditional_floor(cg: &Codegen) -> usize {
+    let depth = cg.arc.frames.len();
+    cg.arc
+        .cond_floors
+        .iter()
+        .rev()
+        .find(|(d, _)| *d == depth)
+        .map_or(0, |(_, mark)| *mark)
 }
 
 /// Perceus phi ownership merge (TR §2.3, join points): when EVERY arm of a

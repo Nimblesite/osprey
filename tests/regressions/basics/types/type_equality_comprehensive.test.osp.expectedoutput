@@ -1,0 +1,31 @@
+=== TYPE EQUALITY ===
+C<int>:  42, 99
+C<str>:  text
+P<I,S>:  1/test | 2/hello
+T<I,S,I>: 1/test/42
+
+=== Same (int)->int passed via HOF ===
+11
+20
+9
+=== Same (string)->string passed via HOF ===
+hi!
+hi?
+=== Different shapes ===
+42
+12
+6
+
+42
+99
+a
+b
+color1=red color3=blue
+sameRR=true
+sameRB=false
+fn-payload feed accepted: supplied
+fn-payload gate accepted: guarded
+=== TYPE EQUALITY COMPLETE ===
+ok 1 - equivalent type shapes compose while union tags remain distinct
+1..1
+# tests=1 passed=1 failed=0 skipped=0

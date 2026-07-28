@@ -1,0 +1,7 @@
+ok: loaded
+err: missing
+active
+inactive
+ok 1 - user-defined union variants preserve their tags and payloads
+1..1
+# tests=1 passed=1 failed=0 skipped=0

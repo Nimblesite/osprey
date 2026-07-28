@@ -570,8 +570,14 @@ date: "git Last Modified"
         // @generated:osp — filled from tests/regressions/basics/osprey_mega_showcase.test.osp by scripts/update-playground.js
         osp: `/// 🦅 Osprey in one screen — algebraic effects, fibers, unions, HM inference.
 /// The SAME account() runs in two worlds; only the installed handler differs.
-effect Console { emit: fn(string) -> Unit }
-effect Ledger  { post: fn(int) -> int }
+effect Console {
+    /// Write one line to the console the handler represents.
+    emit: fn(string) -> Unit
+}
+effect Ledger {
+    /// Post \`amount\` to the account and return the new balance.
+    post: fn(int) -> int
+}
 
 /// account() only performs effects — it never learns whether the ledger is real.
 fn account() ![Console, Ledger] = {
@@ -690,11 +696,13 @@ test("mega showcase preserves effect, fiber, and tier state", megaShowcaseCase)
 (** An effect that emits a line of human-readable output.
     The handler decides where the line goes — a real console, or nowhere. *)
 effect Console
+    (** Write one line to the console the handler represents. *)
     emit : string => Unit
 
 (** A ledger effect: post a signed [amount] and get the running balance back.
     Whether that balance is real or faked is entirely the handler's choice. *)
 effect Ledger
+    (** Post \`amount\` to the account and return the new balance. *)
     post : int => int
 
 (** Run a fixed sequence of account operations, purely in terms of effects.

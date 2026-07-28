@@ -60,21 +60,34 @@ in {
     print("=== Test Complete ===")
 }
 
-/// Repeats the batch under quiet handlers and returns the awaited total.
-fn deterministicTotalForTest() = handle Metrics
-    recordSuccess taskId processed => 0
-in handle Logger
-    info msg => 0
-in {
-    let first = spawn processTask1()
-    let second = spawn processTask2()
-    let third = spawn processTask3()
-    totalProcessed(await(first), await(second), await(third))
+/// Repeats the batch under recording handlers, returning the completion trace
+/// the deterministic scheduler produced followed by the awaited total.
+fn completionTrace() = {
+    mut completions = ""
+    let total = handle Metrics
+        recordSuccess taskId processed => {
+            completions = "${completions}${taskId}:${toString(processed)}|"
+            0
+        }
+    in handle Logger
+        info msg => 0
+    in {
+        let first = spawn processTask1()
+        let second = spawn processTask2()
+        let third = spawn processTask3()
+        totalProcessed(await(first), await(second), await(third))
+    }
+    "${completions}total:${toString(total)}"
 }
 
-// Verifies task math and the deterministic three-fiber batch.
-test("deterministic fibers preserve every task result", fn() => checkAll("deterministic fiber results", [
-    deterministicTotalForTest() == 3400,
+// A sum is ORDER-BLIND: `total == 3400` holds just as well when the scheduler
+// runs the three fibers backwards, so asserting the total alone leaves the one
+// property this file exists to prove completely unguarded. The trace pins the
+// spawn order 1, 2, 3. Implements [CONCURRENCY-DETERMINISTIC].
+test("deterministic fibers complete in spawn order", fn() => checkAll("deterministic fiber ordering", [
+    completionTrace() == "task-1:1200|task-2:1600|task-3:600|total:3400",
+    startsWith(completionTrace(), "task-1:"),
+    endsWith(completionTrace(), "total:3400"),
     calculateComplexity(Urgent) == 750,
     calculateComplexity(High) == 450,
     calculateTaskTime(600) == 62

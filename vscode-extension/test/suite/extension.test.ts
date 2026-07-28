@@ -616,17 +616,18 @@ suite("Osprey Language Features Tests", () => {
       (h) => nonEmptyHover(h) && hoverText(h[0]).includes("area"),
     );
     const areaDeclMd = hoverText(areaDecl[0]);
+    // `fn area(r) = r * r` writes neither the parameter type nor the return
+    // type, so both slots come from the checker ([LSP-HOVER-INFERRED-SIGNATURE]).
+    // This used to assert a bare `fn area(r)` returning `Unit`; `Unit` was the
+    // display fallback for "nothing written", never a claim about the function,
+    // so that assertion pinned the very bug inferred signatures fixed.
     assert.ok(
-      areaDeclMd.includes("fn area(r)"),
-      "area decl hover shows the signature",
+      areaDeclMd.includes("fn area(r: int)"),
+      "area decl hover fills in the inferred parameter type",
     );
     assert.ok(
-      areaDeclMd.includes("->"),
-      "area decl hover shows the return arrow",
-    );
-    assert.ok(
-      areaDeclMd.includes("Unit"),
-      "area decl hover shows the inferred return type",
+      areaDeclMd.includes("-> Result<int, MathError>"),
+      "area decl hover shows the inferred return type, not the Unit fallback",
     );
 
     const areaCall = await pollFor(
@@ -644,8 +645,8 @@ suite("Osprey Language Features Tests", () => {
       (h) => nonEmptyHover(h) && hoverText(h[0]).includes("perimeter"),
     );
     assert.ok(
-      hoverText(periCall[0]).includes("fn perimeter(r)"),
-      "perimeter hover shows its signature",
+      hoverText(periCall[0]).includes("fn perimeter(r"),
+      `perimeter hover shows its signature, got: ${hoverText(periCall[0])}`,
     );
 
     // --- HOVER: built-ins carry their own typed signatures ---
@@ -1004,7 +1005,7 @@ suite("Osprey Language Features Tests", () => {
     );
     assert.ok(
       hoverText(decl[0]).includes("fn classify(xs)"),
-      "declaration hover shows classify signature",
+      `declaration hover shows classify signature, got: ${hoverText(decl[0])}`,
     );
     const call = await pollFor(
       () => hoverAt(doc.uri, 4, 9),

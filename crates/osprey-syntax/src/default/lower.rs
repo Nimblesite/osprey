@@ -683,21 +683,10 @@ fn negate_literal(e: Expr) -> Expr {
     reason = "test assertions: an out-of-bounds index is a test failure, not a production panic"
 )]
 mod tests {
-    use crate::{parse_program, parse_tree};
+    use crate::parse_tree;
+    use crate::test_support::{one_stmt, stmts};
     use osprey_ast::{Expr, Pattern, Stmt};
     use tree_sitter::Node;
-
-    fn stmts(src: &str) -> Vec<Stmt> {
-        let parsed = parse_program(src);
-        assert!(parsed.errors.is_empty(), "errors: {:?}", parsed.errors);
-        parsed.program.statements
-    }
-
-    fn one(src: &str) -> Stmt {
-        let mut s = stmts(src);
-        assert_eq!(s.len(), 1, "expected one stmt for {src:?}");
-        s.pop().unwrap()
-    }
 
     /// Find the first descendant node of a given kind anywhere in the tree.
     fn find_kind<'t>(node: Node<'t>, kind: &str) -> Option<Node<'t>> {
@@ -725,7 +714,7 @@ mod tests {
     fn a_doc_comment_lowers_onto_the_expression_statement_it_precedes() {
         // A `test(...)` case is an expression statement, not a declaration, so
         // documenting one requires the doc to attach here ([TESTING-DOC]).
-        let s = one("/// Documents the call.\nprint(\"hi\")\n");
+        let s = one_stmt("/// Documents the call.\nprint(\"hi\")\n");
         let doc = stmt_doc(&s).expect("doc attached to the expression statement");
         assert_eq!(doc.summary, "Documents the call.");
         assert!(matches!(s, Stmt::Expr { .. }), "still an expr stmt: {s:?}");
@@ -736,7 +725,7 @@ mod tests {
         // The doc must not displace the lowered expression, and the recorded
         // position must stay on the EXPRESSION — the Test Explorer's gutter
         // marker would otherwise land on the first `///` line.
-        let s = one("/// Line one.\n/// Line two.\ntest(\"named\", 1)\n");
+        let s = one_stmt("/// Line one.\n/// Line two.\ntest(\"named\", 1)\n");
         match &s {
             Stmt::Expr {
                 value, position, ..
@@ -759,7 +748,7 @@ mod tests {
 
     #[test]
     fn an_undocumented_expression_statement_carries_no_doc() {
-        let s = one("print(\"hi\")\n");
+        let s = one_stmt("print(\"hi\")\n");
         assert!(stmt_doc(&s).is_none(), "no doc invented: {s:?}");
     }
 
@@ -794,7 +783,7 @@ mod tests {
 
     #[test]
     fn documented_statements_inside_a_block_lower_with_their_docs() {
-        let s = one("fn main() = {\n/// Inner case.\ntest(\"inner\", 1)\n0\n}\n");
+        let s = one_stmt("fn main() = {\n/// Inner case.\ntest(\"inner\", 1)\n0\n}\n");
         let Stmt::Function { body, .. } = &s else {
             panic!("expected a function, got {s:?}");
         };
@@ -810,7 +799,7 @@ mod tests {
     #[test]
     fn lowers_record_type_and_array_and_function_types() {
         // record_type definition (lower_type_decl record arm + lower_field_decls)
-        match one("type Point = {\n  x: int,\n  y: int\n}\n") {
+        match one_stmt("type Point = {\n  x: int,\n  y: int\n}\n") {
             Stmt::Type { name, variants, .. } => {
                 assert_eq!(name, "Point");
                 assert_eq!(variants.len(), 1);
@@ -822,7 +811,7 @@ mod tests {
         // A positional payload carries generated slot names, so this Default
         // declaration lowers to the same variants as the ML twin
         // `type Tree = Leaf | Node Tree Tree` ([TYPE-UNION-POSITIONAL]).
-        match one("type Tree = Leaf | Node(Tree, Tree)\n") {
+        match one_stmt("type Tree = Leaf | Node(Tree, Tree)\n") {
             Stmt::Type { variants, .. } => {
                 assert_eq!(variants.len(), 2);
                 assert!(variants[0].fields.is_empty());
@@ -834,7 +823,7 @@ mod tests {
         }
         // array_type `Item[int]` (lower_type array_type arm + descendants_type_in),
         // a function type, and a generic type — all in one signature.
-        match one(
+        match one_stmt(
             "fn f(xs: Item[int], g: fn(int) -> bool, m: Map<string, int>) -> Item[int] = xs\n",
         ) {
             Stmt::Function {
@@ -859,7 +848,7 @@ mod tests {
     /// The single match arm's pattern for `match x { <arm> => 0  _ => 1 }`.
     fn first_pattern(arm: &str) -> Pattern {
         let src = format!("let r = match x {{ {arm} => 0  _ => 1 }}\n");
-        match one(&src) {
+        match one_stmt(&src) {
             Stmt::Let {
                 value: Expr::Match { mut arms, .. },
                 ..
@@ -887,7 +876,7 @@ mod tests {
         ));
         // Generic type params on a type declaration (type_parameters field),
         // including variance markers. Implements [TYPE-VARIANCE-DECL].
-        match one("type Foo<T, out U, in V> = Bar | Baz\n") {
+        match one_stmt("type Foo<T, out U, in V> = Bar | Baz\n") {
             Stmt::Type {
                 type_params,
                 variants,
@@ -911,14 +900,14 @@ mod tests {
         }
         // Fn-level type params and a generic effect declaration.
         // Implements [TYPE-GENERICS-FN] and [EFFECTS-GENERIC-DECL].
-        match one("fn map2<T, U>(f: (T) -> U, x: T) -> U = f(x)\n") {
+        match one_stmt("fn map2<T, U>(f: (T) -> U, x: T) -> U = f(x)\n") {
             Stmt::Function { type_params, .. } => {
                 assert_eq!(type_params.len(), 2);
                 assert_eq!(type_params[0].name, "T");
             }
             s => panic!("expected function, got {s:?}"),
         }
-        match one("effect State<T> {\n  get: fn() -> T\n}\n") {
+        match one_stmt("effect State<T> {\n  get: fn() -> T\n}\n") {
             Stmt::Effect {
                 type_params,
                 operations,
@@ -946,7 +935,7 @@ mod tests {
     #[test]
     fn lowers_assignment_effects_structural_and_list_patterns() {
         // Reassignment statement (lower_stmt Assignment arm).
-        match one("x = 5\n") {
+        match one_stmt("x = 5\n") {
             Stmt::Assignment { name, value, .. } => {
                 assert_eq!(name, "x");
                 assert_eq!(value, Expr::Integer(5));
@@ -955,7 +944,7 @@ mod tests {
         }
         // Function effect clause `! [Log, State<int>]` — effect refs carry
         // optional type arguments. Implements [EFFECTS-GENERIC-ROWS].
-        match one("fn act() ! [Log, State<int>] = 1\n") {
+        match one_stmt("fn act() ! [Log, State<int>] = 1\n") {
             Stmt::Function { effects, .. } => {
                 let names: Vec<&str> = effects.iter().map(|e| e.name.as_str()).collect();
                 assert_eq!(names, vec!["Log", "State"]);

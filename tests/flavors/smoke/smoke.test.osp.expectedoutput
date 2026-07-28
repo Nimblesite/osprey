@@ -1,0 +1,3 @@
+ok 1 - top-level binding and interpolation retain both hello lines
+1..1
+# tests=1 passed=1 failed=0 skipped=0

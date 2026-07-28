@@ -1068,6 +1068,84 @@ mod tests {
         assert!(result_channel
             .iter()
             .any(|e| e.message.contains("Result-valued channels")));
+        // The receiving end is gated for the same reason: handing the Result
+        // wrapper back out of `recv` would erase it silently.
+        let result_recv = bad(
+            "fn recvFailed(ch: Channel<Result<int, MathError>>) -> Result<int, MathError> = recv(ch)\n",
+        );
+        assert!(result_recv
+            .iter()
+            .any(|e| e.message.contains("Result-valued channels")));
+    }
+
+    #[test]
+    fn a_unit_operation_arm_may_not_swallow_a_result() {
+        // A `Unit` operation discards its arm's value, so a `Result` produced
+        // there would lose its failure with nothing left to observe it.
+        // Implements [EFFECTS-RESUME].
+        let errs = bad("effect Sink { drop: fn(int) -> Unit }\n\
+                        fn risky(n: int) -> Result<int, MathError> = n + 1\n\
+                        fn go() -> int = handle Sink\n\
+                          drop v => risky(v)\n\
+                        in 0\n");
+        assert!(errs
+            .iter()
+            .any(|e| e.message.contains("Unit effect operation arm")));
+        ok("effect Sink { drop: fn(int) -> Unit }\n\
+            fn risky(n: int) -> Result<int, MathError> = n + 1\n\
+            fn go() -> int = handle Sink\n\
+              drop v => { let handled = risky(v) ?: 0 }\n\
+            in 0\n");
+    }
+
+    #[test]
+    fn handling_an_undeclared_effect_names_it_and_keeps_checking_the_arms() {
+        // The handler's own operations are unknown, so the arms cannot be
+        // typed against a signature — but checking must continue rather than
+        // abandon the body, or one typo would hide every later diagnostic.
+        let errs = bad("fn go() -> int = handle Nowhere\n\
+                          chime => 0\n\
+                        in 1\n");
+        assert!(errs
+            .iter()
+            .any(|e| e.message.contains("unknown effect `Nowhere`")));
+    }
+
+    #[test]
+    fn perform_of_an_undeclared_effect_names_the_effect_it_could_not_find() {
+        let errs = bad("fn ring() -> int = perform Nowhere.chime()\n");
+        assert!(errs
+            .iter()
+            .any(|e| e.message.contains("unknown effect `Nowhere`")));
+    }
+
+    #[test]
+    fn a_generic_constructor_checks_its_type_argument_arity() {
+        // Implements [GENERICS-CTOR-ARITY]. Writing the arguments out is a
+        // contract with the declaration, so a mismatch is an error rather than
+        // a silently ignored annotation.
+        ok("type Box<T> = { v: T }\n\
+            let good = Box<int> { v: 1 }\n");
+        let errs = bad("type Box<T> = { v: T }\n\
+                        let wrong = Box<int, string> { v: 1 }\n");
+        assert!(errs
+            .iter()
+            .any(|e| e.message.contains("takes 1 type argument(s), got 2")));
+    }
+
+    #[test]
+    fn a_qualified_path_callee_is_looked_up_under_its_whole_name() {
+        // `infer_callee`'s path arm looks up `a::b` as ONE name rather than
+        // resolving `a` and projecting. A single file has no assembled project
+        // graph to bind the qualified name, so the diagnostic must name the
+        // full path — naming only `twice` would send the reader to the wrong
+        // declaration.
+        let errs = bad("namespace tools;\n\
+                        fn twice(n: int) -> int = (n * 2) ?: 0\n\
+                        let doubled = tools::twice(21)\n");
+        assert!(errs
+            .iter()
+            .any(|e| e.message.contains("unknown identifier `tools::twice`")));
     }
 
     #[test]

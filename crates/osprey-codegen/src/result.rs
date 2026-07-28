@@ -282,6 +282,20 @@ pub(crate) fn repack_to_inner(cg: &mut Codegen, v: Value, inner: LType) -> Resul
     )
 }
 
+/// Fit a value into a declared `Result<inner, _>` slot: an existing Result is
+/// re-laid under `inner` by [`repack_to_inner`], a plain value takes the
+/// language's safe `T -> Success(T)` promotion. Every Result-typed parameter,
+/// return and binding boundary routes through here so the promotion direction
+/// is decided in exactly one place — the reverse (Result to plain) is never a
+/// silent coercion.
+pub(crate) fn fit_to_inner(cg: &mut Codegen, v: Value, inner: LType) -> Result<Value> {
+    if v.result_inner.is_some() {
+        repack_to_inner(cg, v, inner)
+    } else {
+        make_ok(cg, v, inner)
+    }
+}
+
 /// Extract a Result's success payload after the caller has established that
 /// this is an explicit handling context (such as a `?:` success branch or
 /// failure-preserving arithmetic). A non-Result passes through.

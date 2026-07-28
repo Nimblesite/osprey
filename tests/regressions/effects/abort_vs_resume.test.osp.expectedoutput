@@ -1,0 +1,16 @@
+=== recovering handler: resume every step, drive to completion ===
+pipeline saw step1 -> 10
+pipeline saw step2 -> 20
+pipeline saw step3 -> 30
+audit[recover]: step 3 (input 3) settled, downstream=60
+audit[recover]: step 2 (input 2) settled, downstream=60
+audit[recover]: step 1 (input 1) settled, downstream=60
+recovered result=60
+=== stopping handler: step 2 stops the pipeline, then step 1 handler finishes ===
+pipeline saw step1 -> 10
+poison at step 2 (input 2) -> abort, discard the rest
+audit[abort-run]: step 1 (input 1) settled, downstream=-99
+aborted result=-99
+ok 1 - resuming completes while returning aborts the pipeline
+1..1
+# tests=1 passed=1 failed=0 skipped=0

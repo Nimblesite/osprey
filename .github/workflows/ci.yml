@@ -81,6 +81,31 @@ jobs:
           sudo apt-get install -y jq xvfb
           cargo install cargo-llvm-cov --locked || true
 
+      # The `ci` job's coverage gate already DEPENDS on this toolchain, so it is
+      # not optional here. `osprey-cli`'s wasm end-to-end test
+      # (crates/osprey-cli/src/wasm.rs) self-skips unless wasm-ld, a WASI
+      # sysroot and libosprey_runtime_wasm.a are all present; skipping it drops
+      # osprey-cli from 96.7% to 94.8%, under its 95% floor, and fails this
+      # required check. Without these steps the gate could only ever go red, so
+      # the cost is already being paid — this makes the dependency explicit
+      # instead of leaving it to whatever a runner happens to have installed.
+      - name: Install lld (wasm-ld) and a WASI sysroot
+        run: |
+          sudo apt-get install -y lld wabt
+          WASI_VERSION=24
+          curl -fsSL -o /tmp/wasi-sysroot.tar.gz \
+            "https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-${WASI_VERSION}/wasi-sysroot-${WASI_VERSION}.0.tar.gz"
+          # The tarball unpacks to a versioned top dir; strip it so the sysroot
+          # lands at a stable path containing lib/wasm32-wasip1.
+          sudo mkdir -p /opt/wasi-sdk/share/wasi-sysroot
+          sudo tar -xzf /tmp/wasi-sysroot.tar.gz -C /opt/wasi-sdk/share/wasi-sysroot --strip-components=1
+          test -d /opt/wasi-sdk/share/wasi-sysroot/lib/wasm32-wasip1
+          echo "OSPREY_WASI_SYSROOT=/opt/wasi-sdk/share/wasi-sysroot" >> "$GITHUB_ENV"
+          wasm-ld --version
+
+      - name: Build the wasm runtime archive
+        run: make _runtime_wasm
+
       # [EDITOR-VERSIONING] Keep shipwright.json valid against the in-repo
       # Shipwright schema. Do not use @nimblesite/shipwright-validate-manifest:
       # published versions currently ship without their bundled schemas.
@@ -88,14 +113,31 @@ jobs:
         run: npm run test:shipwright
         working-directory: ./vscode-extension
 
+      # Official duplication gate. This MUST live in the `ci` job: `ci` is the
+      # required status check on `main` (ruleset 6154907), so a gate anywhere
+      # else cannot block a merge. It previously sat in ci-windows.yml, whose
+      # `windows-core` job is explicitly NOT required — which silently turned
+      # the duplication ceiling into a suggestion. The committed .deslop.toml is
+      # the threshold source (deslop exits 3 when over); reports stay ephemeral
+      # rather than consuming Actions artifact storage. `version` is explicit
+      # because the action is pinned to the immutable commit for v0.27.0 rather
+      # than its mutable tag. Docs: https://deslop.live/docs/github-action/
+      - name: Deslop duplication gate
+        uses: Nimblesite/Deslop@f1915e6328165f23a4bd1c6cd4262a64dd7d9033 # v0.27.0
+        with:
+          version: "0.27.0"
+          upload-artifact: "false"
+
       - name: Lint
-        # The official Deslop action runs in ci-windows.yml; this internal target
-        # runs the remaining linters without invoking the local CLI integration.
+        # Duplication is gated by the Deslop action step above, so this internal
+        # target runs the remaining linters without re-invoking the local CLI.
         run: make _lint
 
       # make test = fail-fast + per-project coverage + threshold enforcement +
       # the Default/ML assertion corpus under tests/ in the compiler-default,
-      # GC, and ARC memory modes.
+      # GC, and ARC memory modes, PLUS the byte-exact stdout goldens (a program
+      # whose assertions all pass can still have stopped printing in the right
+      # order — only the golden sees that).
       # Thresholds live in coverage-thresholds.json.
       # Xvfb is needed because vscode-extension
       # tests spawn a real VS Code Electron build.
@@ -324,6 +366,23 @@ jobs:
           node scripts/wasm-browser-smoke.mjs examples/wasm/build/studio.osp.wasm examples/wasm/studio.expectedoutput
           node scripts/wasm-smoke.mjs examples/wasm/build/studio.ospml.wasm examples/wasm/studio.expectedoutput
           node scripts/wasm-browser-smoke.mjs examples/wasm/build/studio.ospml.wasm examples/wasm/studio.expectedoutput
+
+      - name: WebAssembly differential — whole tests/ corpus vs the native goldens
+        # The three steps above gate the wasm backend on three hand-picked
+        # programs. This one runs EVERY program in tests/ that links on wasm32
+        # (103 of 160; the rest name the unported symbol and report as skips)
+        # and holds each to the byte-exact stdout the native backend produces.
+        # A backend that miscompiles arithmetic, strings, maps or pattern
+        # matching outside hello/studio has nowhere else to be caught.
+        #
+        # CAVEAT: this `wasm` job is NOT a required status check (only `ci` is,
+        # per ruleset 6154907), so a red result here does not block a merge —
+        # the same arrangement the deleted harness had. The sysroot download and
+        # wasm runtime build this would need in `ci` are now there anyway (the
+        # coverage gate depends on them), so moving this corpus differential
+        # into `ci` costs only its runtime — still a deliberate call, not a
+        # silent one.
+        run: OSPREY_TARGET=wasm32 zsh crates/run_test_corpus.sh
 
   # ─── Website end-to-end (Playwright) ────────────────────────────────────────
   # Builds the site (compiler-free; committed reference docs) and runs the

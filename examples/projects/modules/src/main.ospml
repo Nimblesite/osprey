@@ -72,7 +72,10 @@ table id count = match id > count
         next = (id + 1) ?: count
         table next count
 
-serve : Ptr -> int ! [Ledger::Store, Metrics::MetricsFx]
+// `Api::Audit` is in the row because `handleRequest` is registered here: every
+// request the in-process client drives is audited while `serve` is still on
+// the stack, so the audit capability is part of serving, not of booting.
+serve : Ptr -> int ! [Ledger::Store, Metrics::MetricsFx, Api::Audit]
 serve db =
     server = httpCreateServer 18790 "127.0.0.1"
     listening = httpListen server handleRequest

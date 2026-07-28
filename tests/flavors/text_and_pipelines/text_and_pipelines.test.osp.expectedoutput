@@ -1,0 +1,4 @@
+ok 1 - pipelines retain each stage and complete chain
+ok 2 - string calls retain interpolation and concatenation
+1..2
+# tests=2 passed=2 failed=0 skipped=0

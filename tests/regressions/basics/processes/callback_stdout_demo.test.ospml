@@ -25,8 +25,15 @@ match result1
         print "✓ Process cleaned up"
     Error message => print "✗ Failed to spawn process"
 
+// ONE `printf` rather than three chained `echo`s on purpose. Three echoes are
+// three separate writes to the pipe, so the runtime's reader can wake between
+// them and split the text across two STDOUT callbacks — the same three lines
+// arrive, but under a second `[CALLBACK]` prefix, which is a different
+// transcript. A single sub-PIPE_BUF write is atomic, so the chunking is fixed
+// and this program's output is a property of the runtime rather than of
+// machine load. [BUILTIN-PROCESS]
 print "--- Test 2: Multiple Lines Callback ---"
-result2 = spawnProcess "echo Line 1 && echo Line 2 && echo Line 3" processEventHandler
+result2 = spawnProcess "printf 'Line 1\\nLine 2\\nLine 3\\n'" processEventHandler
 match result2
     Success value =>
         print "✓ Multi-line process spawned with ID: ${toString value}"

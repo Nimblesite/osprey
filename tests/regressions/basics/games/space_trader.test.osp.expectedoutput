@@ -1,0 +1,82 @@
+🌌 Welcome to the Galactic Trade Network! 🌌
+You are Captain Alex, commander of the starship Osprey-7
+Your mission: Build a trading empire across the galaxy!
+
+🛸 MISSION BRIEFING 🛸
+Ship: Osprey-7 Starfreighter
+Fuel: 100% ⛽
+Credits: 1000 💰
+Cargo Space: 0/50 📦
+Reputation: Unknown Trader
+
+🌍 GALACTIC TRADING SIMULATION 🌍
+
+📍 Arriving at Nebula Prime
+This planet specializes in: Quantum Crystals
+Market price: 50 credits per unit
+Purchasing 10 units of Quantum Crystals
+Total cost: 500 credits
+Remaining credits: 500 💰
+Cargo: 10/50 📦
+
+🚀 Traveling to Crystal Moon...
+Fuel consumed: 20%
+Current fuel: 80% ⛽
+
+📍 Arrived at Crystal Moon
+Local specialty: Space Metal
+Market price: 25 credits per unit
+Selling 10 units of Quantum Crystals
+Sale price: 75 credits per unit
+Revenue: 750 credits 💰
+New balance: 1250 credits
+Cargo space freed: 0/50 📦
+
+Purchasing 15 units of Space Metal
+Cost: 375 credits
+Remaining credits: 875 💰
+
+🚀 Long-range jump to Trade Station Alpha
+Fuel consumed: 30%
+Current fuel: 50% ⛽
+
+📍 Docking at Trade Station Alpha
+This is the galaxy's premier trading hub!
+Selling 15 units of Space Metal
+Hub premium price: 55 credits per unit
+Major revenue: 825 credits! 💰
+New balance: 1700 credits
+
+📈 TRADING RESULTS 📈
+Starting credits: 1000
+Final credits: 1700
+Total profit: 700 credits! 💰
+Planets visited: 3
+New reputation: Novice Merchant
+
+🛸 SHIP STATUS REPORT 🛸
+Fuel level: 50% (Fair)
+Cargo bay: 0/50 units
+Ship condition: Operational
+
+📊 ADVANCED ANALYTICS 📊
+Fuel efficiency: Success(16.66666667)% per planet
+Profit per planet: Success(233.3333333) credits
+Projected wealth (if doubled): 3400 credits
+
+🏆 MISSION COMPLETE! 🏆
+Congratulations, Captain Novice Merchant!
+You have successfully established trade routes across the galaxy!
+
+Next objectives:
+  ⭐ Explore more distant sectors
+  ⭐ Upgrade ship cargo capacity
+  ⭐ Establish permanent trade agreements
+  ⭐ Recruit specialized crew members
+
+🌟 Your trading empire awaits! 🌟
+End of Galactic Trade Simulation
+Thank you for playing Osprey Space Trader!
+ok 1 - space trading preserves market, ledger, and ship state
+1..1
+# tests=1 passed=1 failed=0 skipped=0

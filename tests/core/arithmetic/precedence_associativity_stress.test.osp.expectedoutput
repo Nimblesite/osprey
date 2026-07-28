@@ -1,0 +1,92 @@
+ok 1 - precedence unparenthesized 001
+ok 2 - precedence unparenthesized 002
+ok 3 - precedence unparenthesized 003
+ok 4 - precedence unparenthesized 004
+ok 5 - precedence unparenthesized 005
+ok 6 - precedence unparenthesized 006
+ok 7 - precedence unparenthesized 007
+ok 8 - precedence unparenthesized 008
+ok 9 - precedence unparenthesized 009
+ok 10 - precedence unparenthesized 010
+ok 11 - precedence unparenthesized 011
+ok 12 - precedence unparenthesized 012
+ok 13 - precedence unparenthesized 013
+ok 14 - precedence unparenthesized 014
+ok 15 - precedence unparenthesized 015
+ok 16 - precedence unparenthesized 016
+ok 17 - precedence unparenthesized 017
+ok 18 - precedence unparenthesized 018
+ok 19 - precedence unparenthesized 019
+ok 20 - precedence unparenthesized 020
+ok 21 - precedence unparenthesized 021
+ok 22 - precedence unparenthesized 022
+ok 23 - precedence unparenthesized 023
+ok 24 - precedence unparenthesized 024
+ok 25 - precedence unparenthesized 025
+ok 26 - precedence unparenthesized 026
+ok 27 - precedence unparenthesized 027
+ok 28 - precedence unparenthesized 028
+ok 29 - precedence unparenthesized 029
+ok 30 - precedence unparenthesized 030
+ok 31 - precedence parenthesized 001
+ok 32 - precedence parenthesized 002
+ok 33 - precedence parenthesized 003
+ok 34 - precedence parenthesized 004
+ok 35 - precedence parenthesized 005
+ok 36 - precedence parenthesized 006
+ok 37 - precedence parenthesized 007
+ok 38 - precedence parenthesized 008
+ok 39 - precedence parenthesized 009
+ok 40 - precedence parenthesized 010
+ok 41 - precedence parenthesized 011
+ok 42 - precedence parenthesized 012
+ok 43 - precedence parenthesized 013
+ok 44 - precedence parenthesized 014
+ok 45 - precedence parenthesized 015
+ok 46 - precedence parenthesized 016
+ok 47 - precedence parenthesized 017
+ok 48 - precedence parenthesized 018
+ok 49 - precedence parenthesized 019
+ok 50 - precedence parenthesized 020
+ok 51 - subtraction left associative 001
+ok 52 - subtraction right grouped 001
+ok 53 - subtraction left associative 002
+ok 54 - subtraction right grouped 002
+ok 55 - subtraction left associative 003
+ok 56 - subtraction right grouped 003
+ok 57 - subtraction left associative 004
+ok 58 - subtraction right grouped 004
+ok 59 - subtraction left associative 005
+ok 60 - subtraction right grouped 005
+ok 61 - subtraction left associative 006
+ok 62 - subtraction right grouped 006
+ok 63 - subtraction left associative 007
+ok 64 - subtraction right grouped 007
+ok 65 - subtraction left associative 008
+ok 66 - subtraction right grouped 008
+ok 67 - subtraction left associative 009
+ok 68 - subtraction right grouped 009
+ok 69 - subtraction left associative 010
+ok 70 - subtraction right grouped 010
+ok 71 - multiply remainder left associative 001
+ok 72 - multiply remainder left associative 002
+ok 73 - multiply remainder left associative 003
+ok 74 - multiply remainder left associative 004
+ok 75 - multiply remainder left associative 005
+ok 76 - multiply remainder left associative 006
+ok 77 - multiply remainder left associative 007
+ok 78 - multiply remainder left associative 008
+ok 79 - multiply remainder left associative 009
+ok 80 - multiply remainder left associative 010
+ok 81 - division multiplication left associative 001
+ok 82 - division multiplication left associative 002
+ok 83 - division multiplication left associative 003
+ok 84 - division multiplication left associative 004
+ok 85 - division multiplication left associative 005
+ok 86 - division multiplication left associative 006
+ok 87 - division multiplication left associative 007
+ok 88 - division multiplication left associative 008
+ok 89 - division multiplication left associative 009
+ok 90 - division multiplication left associative 010
+1..90
+# tests=90 passed=90 failed=0 skipped=0

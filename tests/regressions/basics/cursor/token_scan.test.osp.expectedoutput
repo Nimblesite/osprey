@@ -1,0 +1,32 @@
+byteLen=8
+
+scan=12345
+
+end=5
+
+stopByte=97
+
+pure=777
+
+pureEnd=3
+
+leadScan=0
+
+leadNext=2
+
+leadVal=42
+
+emptyScan=0
+
+tokenCount=5
+
+12
+345
+6789
+0
+42
+=== Scan Complete ===
+
+ok 1 - token scanner finds every integer and boundary
+1..1
+# tests=1 passed=1 failed=0 skipped=0

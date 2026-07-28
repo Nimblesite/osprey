@@ -1,0 +1,4 @@
+ok 1 - operator precedence retains every arithmetic golden
+ok 2 - boolean composition retains every logical golden
+1..2
+# tests=2 passed=2 failed=0 skipped=0
