@@ -571,6 +571,7 @@ fn emit_handler_fn(
     env_ty: &str,
 ) -> Result<()> {
     let saved = cg.enter_nested_fn();
+    cg.begin_nested_debug(name, arm.position);
     let mut params = vec![(LType::Ptr, String::from("__env"))];
     reload_env(cg, caps, env_ty);
     bind_arm_params(cg, arm, sig, resolved, &mut params);
@@ -857,6 +858,7 @@ struct ArmFnSpec<'a> {
 
 fn emit_resuming_arm_fn(cg: &mut Codegen, arm: &HandlerArm, spec: &ArmFnSpec<'_>) -> Result<()> {
     let saved = cg.enter_nested_fn();
+    cg.begin_nested_debug(spec.name, arm.position);
     reload_env(cg, spec.caps, spec.env_ty);
     let mut params = vec![
         (LType::Ptr, String::from("__env")),

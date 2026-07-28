@@ -119,7 +119,23 @@ suite("Osprey test documentation and profiling", () => {
   // ---------------------------------------------------------------- discovery
 
   suite("discovery carries documentation onto TestItems", () => {
-    test("a documented case's summary becomes the TestItem description", async function () {
+    /**
+     * A leaf's description must carry the WHOLE doc, not just its first
+     * paragraph. `vscode.TestItem` has no tooltip of its own, so the row's
+     * description is the only documentation its hover can show — pinning it to
+     * the summary showed one line of a multi-paragraph block ([TESTING-DOC]).
+     */
+    function assertWholeDoc(
+      description: string | undefined,
+      ...fragments: string[]
+    ): void {
+      assert.ok(description !== undefined, "documented case is described");
+      for (const fragment of fragments) {
+        assert.ok(description.includes(fragment), `${fragment}: ${description}`);
+      }
+    }
+
+    test("a documented case's whole doc becomes the TestItem description", async function () {
       if (!compiler) {
         this.skip();
       }
@@ -128,7 +144,15 @@ suite("Osprey test documentation and profiling", () => {
       assert.strictEqual(file.children.size, 3, "every case discovered");
       const rich = leaf(file, docUri, "documented case");
       assert.strictEqual(rich.label, "documented case");
-      assert.strictEqual(rich.description, "Addition is commutative.");
+      assertWholeDoc(
+        rich.description,
+        "Addition is commutative.",
+        "Swapping the operands cannot change the sum",
+        "**Parameters**",
+        "**Returns**",
+        "**Raises**",
+        "**Since**",
+      );
     });
 
     test("a summary-only case describes with its one line", async function () {
@@ -248,7 +272,11 @@ suite("Osprey test documentation and profiling", () => {
       const { file } = await discovered(mlDocUri);
       assert.strictEqual(file.children.size, 2);
       const documented = leaf(file, mlDocUri, "ml documented");
-      assert.strictEqual(documented.description, "Addition is commutative.");
+      assertWholeDoc(
+        documented.description,
+        "Addition is commutative.",
+        "Swapping the operands cannot change the sum.",
+      );
       assert.ok(
         testDocFor(documented.id)?.markdown.includes(
           "Swapping the operands cannot change the sum.",
@@ -269,9 +297,10 @@ suite("Osprey test documentation and profiling", () => {
       const uri = writeFixture("edited-docs.test.osp", DOC_FIXTURE);
       const controller = newController();
       const before = await refreshTestFile(controller, uri, compiler);
-      assert.strictEqual(
+      assertWholeDoc(
         leaf(before, uri, "documented case").description,
         "Addition is commutative.",
+        "Swapping the operands cannot change the sum",
       );
       fs.writeFileSync(
         uri.fsPath,

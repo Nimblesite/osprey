@@ -258,8 +258,10 @@ function makeLeafItem(
     start.line,
     start.character,
   );
-  // The summary renders greyed beside the case name; the full doc is stashed
-  // for the detail panel and failure messages ([TESTING-DOC]).
+  // The whole doc renders greyed beside the case name — truncated in the row,
+  // entire in the row's hover, which is the only tooltip a TestItem has. The
+  // Markdown form is stashed for the detail panel and failure messages
+  // ([TESTING-DOC]).
   const description = testDescription(test);
   if (description !== undefined) {
     leaf.description = description;

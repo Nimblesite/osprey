@@ -306,6 +306,57 @@ mod tests {
     }
 
     #[test]
+    fn a_breakpoint_inside_a_handler_arm_body_has_a_line_to_bind_to() {
+        // A handler arm is emitted as its own LLVM function, and a nested
+        // function starts with NO debug scope. Nothing reopened one, so every
+        // instruction lowered from the arm carried no `!dbg` and the arm got no
+        // `DISubprogram` — the arm's source lines were simply absent from the
+        // line table. A debugger has nothing to bind a breakpoint to there, so
+        // one set inside the arm never fires even though the arm runs.
+        // [DEBUGGER-DBG-DECLARE]
+        let ir = debug_module(
+            "effect State { get: fn() -> int }\n\
+             fn bump() -> int !State = perform State.get()\n\
+             fn main() -> int {\n\
+             let r = handle State get => {\n\
+             let inner = 41\n\
+             inner\n\
+             } in bump()\n\
+             print(\"r=${toString(r)}\")\n\
+             0 }\n",
+        );
+
+        assert!(
+            ir.contains("!DISubprogram(name: \"__handler_State_get_"),
+            "the arm function needs its own subprogram to be a debuggable scope"
+        );
+        // `let inner = 41` is line 5, inside the arm.
+        assert!(
+            ir.contains("!DILocation(line: 5,"),
+            "the arm body's own statement lines must reach the line table"
+        );
+
+        // A `resume`-using arm is emitted down a separate path, and it is the
+        // same construct to the author — so it must be just as debuggable.
+        let resuming = debug_module(
+            "effect State { get: fn() -> int }\n\
+             fn bump() -> int !State = perform State.get()\n\
+             fn main() -> int {\n\
+             let r = handle State get => {\n\
+             let inner = 41\n\
+             resume(inner)\n\
+             } in bump()\n\
+             print(\"r=${toString(r)}\")\n\
+             0 }\n",
+        );
+
+        assert!(
+            resuming.contains("!DILocation(line: 5,"),
+            "a resuming arm's body lines must reach the line table too"
+        );
+    }
+
+    #[test]
     fn generic_function_inlines_at_call_site() {
         // A polymorphic function is specialised by inlining, so no monomorphic
         // definition is emitted; the call computes directly at the use site.

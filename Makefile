@@ -115,6 +115,21 @@ WASI_SYSROOT ?= $(shell for d in "$$OSPREY_WASI_SYSROOT" \
   /opt/wasi-sdk/share/wasi-sysroot "$$WASI_SDK_PATH/share/wasi-sysroot" \
   /usr/share/wasi-sysroot; do [ -n "$$d" ] && [ -d "$$d" ] && { echo "$$d"; break; }; done)
 WASM_CFLAGS  ?= --target=$(WASM_TARGET) --sysroot=$(WASI_SYSROOT) -O2 -std=c11 -Wall -Wextra -Werror -c
+
+# wasm_validate: structural check of the modules named in $(1). wasm-validate
+# ships with wabt and is genuinely optional, so an ABSENT binary skips loudly —
+# but a check that RUNS and FAILS must fail the build. Every call site used to
+# spell this as `command -v wasm-validate && wasm-validate a && wasm-validate b
+# || echo "(not found — skipping)"`, where the trailing `||` catches BOTH arms:
+# a module that failed validation reported itself as a missing tool and the
+# build went green. Defined once so the three call sites cannot drift.
+define wasm_validate
+	@if command -v wasm-validate >/dev/null 2>&1; then \
+		for module in $(1); do wasm-validate "$$module" || exit 1; done; \
+	else \
+		echo "(wasm-validate not found — structural check skipped; install wabt)"; \
+	fi
+endef
 # Portable subset that compiles for wasm32: allocator + strings + value
 # containers + JSON + effects + the browser host bridge. Excludes fiber
 # (pthreads), http/websocket (sockets/OpenSSL), system (fork/wait), term
@@ -229,16 +244,21 @@ deslop:
 ## integration tests under this workspace's `dead_code = "deny"` policy, so they
 ## must NOT fail the gate. hawk needs rustc_private (RUSTC_BOOTSTRAP=1) and its
 ## prebuilt driver is pinned to the workspace toolchain (1.97.1) — bump the
-## installer and the CI toolchain together. When cargo-hawk is absent the gate is
-## skipped with a loud warning so a fresh checkout still builds; CI installs it,
-## so the gate is enforced there. Install: https://github.com/astral-sh/hawk
+## installer and the CI toolchain together. An absent cargo-hawk FAILS this
+## target: a gate that cannot run must not report success.
+## Install: https://github.com/astral-sh/hawk
 hawk:
 	@echo "==> Dead-code gate (hawk)..."
-	@if command -v cargo-hawk >/dev/null 2>&1; then \
-		RUSTC_BOOTSTRAP=1 cargo hawk check --only dead-public -D hawk::dead_public --target-dir $(CURDIR)/target/hawk; \
-	else \
-		echo "WARNING: cargo-hawk not installed — skipping dead-code gate. Install: https://github.com/astral-sh/hawk"; \
+	@if ! command -v cargo-hawk >/dev/null 2>&1; then \
+		echo "FAIL: cargo-hawk is not installed, so the dead-code gate cannot run."; \
+		echo "      A gate that cannot run must not report success — this used to"; \
+		echo "      print a warning and exit 0, so 'make hawk' was green on every"; \
+		echo "      machine without the binary, the CI runner included if its"; \
+		echo "      install step ever stopped landing cargo-hawk on PATH."; \
+		echo "      Install: https://github.com/astral-sh/hawk"; \
+		exit 1; \
 	fi
+	RUSTC_BOOTSTRAP=1 cargo hawk check --only dead-public -D hawk::dead_public --target-dir $(CURDIR)/target/hawk
 
 ## fmt: Format all code in-place. Pass CHECK=1 for read-only check (CI use).
 fmt:
@@ -271,13 +291,13 @@ wasm: build _runtime_wasm
 	@$(MKDIR) examples/wasm/build
 	$(BIN) examples/wasm/hello.osp --target=wasm32 --compile -o examples/wasm/build/hello.wasm
 	@echo "==> validating + smoke-running examples/wasm/build/hello.wasm"
-	@command -v wasm-validate >/dev/null 2>&1 && wasm-validate examples/wasm/build/hello.wasm || echo "(wasm-validate not found — skipping structural check)"
+	$(call wasm_validate,examples/wasm/build/hello.wasm)
 	node scripts/wasm-smoke.mjs         examples/wasm/build/hello.wasm examples/wasm/hello.expectedoutput
 	node scripts/wasm-browser-smoke.mjs examples/wasm/build/hello.wasm examples/wasm/hello.expectedoutput
 	@echo "==> compiling Osprey Data Studio (BOTH flavors) -> examples/wasm/build/"
 	$(BIN) examples/wasm/studio.osp   --target=wasm32 --compile -o examples/wasm/build/studio.osp.wasm
 	$(BIN) examples/wasm/studio.ospml --target=wasm32 --compile -o examples/wasm/build/studio.ospml.wasm
-	@command -v wasm-validate >/dev/null 2>&1 && wasm-validate examples/wasm/build/studio.osp.wasm && wasm-validate examples/wasm/build/studio.ospml.wasm || echo "(wasm-validate not found — skipping structural check)"
+	$(call wasm_validate,examples/wasm/build/studio.osp.wasm examples/wasm/build/studio.ospml.wasm)
 	@echo "==> both Studio flavors must emit the SAME manifest (byte-identical golden)"
 	node scripts/wasm-smoke.mjs         examples/wasm/build/studio.osp.wasm   examples/wasm/studio.expectedoutput
 	node scripts/wasm-browser-smoke.mjs examples/wasm/build/studio.osp.wasm   examples/wasm/studio.expectedoutput
@@ -298,7 +318,7 @@ wasm-site: _runtime_wasm
 	@$(MKDIR) examples/wasm/build
 	$(BIN) examples/wasm/studio.osp   --target=wasm32 --compile -o examples/wasm/build/studio.osp.wasm
 	$(BIN) examples/wasm/studio.ospml --target=wasm32 --compile -o examples/wasm/build/studio.ospml.wasm
-	@command -v wasm-validate >/dev/null 2>&1 && wasm-validate examples/wasm/build/studio.osp.wasm && wasm-validate examples/wasm/build/studio.ospml.wasm || echo "(wasm-validate not found — skipping structural check)"
+	$(call wasm_validate,examples/wasm/build/studio.osp.wasm examples/wasm/build/studio.ospml.wasm)
 	node scripts/wasm-smoke.mjs         examples/wasm/build/studio.osp.wasm   examples/wasm/studio.expectedoutput
 	node scripts/wasm-browser-smoke.mjs examples/wasm/build/studio.osp.wasm   examples/wasm/studio.expectedoutput
 	node scripts/wasm-smoke.mjs         examples/wasm/build/studio.ospml.wasm examples/wasm/studio.expectedoutput
@@ -441,7 +461,14 @@ _runtime_wasm:
 # cargo test is fail-fast at the binary level by
 # default (a failing test binary aborts the run); coverage via cargo-llvm-cov.
 # `--profile ci` is the workspace's fast-compile profile (see root Cargo.toml).
-_test_rust:
+# `_runtime_wasm` is a prerequisite because the coverage gate below already
+# DEPENDS on it: osprey-cli's wasm end-to-end test (crates/osprey-cli/src/wasm.rs)
+# self-skips unless wasm-ld, a WASI sysroot and libosprey_runtime_wasm.a are all
+# present, and skipping it drops osprey-cli from 96.7% to 94.8% — under its 95%
+# floor. Without this line the archive is whatever an earlier target happened to
+# leave behind, so a plain `make clean && make ci` fails on a coverage number
+# that says nothing about the code that changed. Build what the gate measures.
+_test_rust: _runtime_wasm
 	@echo "==> [rust] running tests with coverage..."
 	set -o pipefail && cargo llvm-cov --workspace --profile ci --lcov --output-path lcov.info 2>&1 | tee test.log
 

@@ -38,14 +38,24 @@ export function isDocumented(doc: TestDoc | undefined): boolean {
   return doc !== undefined && (doc.summary !== "" || doc.markdown !== "");
 }
 
+/** Collapse every run of whitespace to one space — a tree row is one line. */
+function oneLine(text: string): string {
+  return text.replace(/\s+/g, " ").trim();
+}
+
 /**
  * The greyed text VS Code renders after the case name in the Test Explorer
- * tree. Undocumented cases get `undefined` so the tree stays clean, and a
- * multi-line summary collapses to one line — the tree renders a single row.
+ * tree — and, because `vscode.TestItem` carries no tooltip of its own, the
+ * ONLY documentation its hover can show. So it carries the WHOLE doc comment,
+ * not just the summary: the row truncates to the panel width either way, while
+ * the hover gains every paragraph and section the author wrote. Describing
+ * with the summary alone showed one line of a four-paragraph block and dropped
+ * the rest ([TESTING-DOC]). Undocumented cases get `undefined` so the tree
+ * stays clean, and the doc collapses to one line — the tree renders one row.
  */
 export function testDescription(test: DiscoveredTest): string | undefined {
-  const summary = (test.summary ?? "").replace(/\s+/g, " ").trim();
-  return summary === "" ? undefined : summary;
+  const text = oneLine(test.doc ?? "") || oneLine(test.summary ?? "");
+  return text === "" ? undefined : text;
 }
 
 /**

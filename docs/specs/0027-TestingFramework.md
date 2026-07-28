@@ -333,9 +333,13 @@ a single case. It maps `[TESTING-COVERAGE-JSON]` lines to VS Code
 **`[TESTING-DOC-VSCODE]`** Documentation `[TESTING-DOC]` reaches three
 surfaces, because VS Code's `TestItem` carries no tooltip of its own:
 
-- the case's `summary` becomes its `TestItem.description` — the greyed text
-  the Testing tree renders beside the case name (a multi-line summary
-  collapses to one row);
+- the case's whole `doc`, collapsed to a single line, becomes its
+  `TestItem.description` — the greyed text the Testing tree renders beside the
+  case name. The row truncates it to the panel width, but `description` is also
+  the only text the row's hover can show, so the hover must carry the entire
+  block: a `description` of just the `summary` showed one line of a
+  four-paragraph doc and dropped the rest. `summary` is the fallback when a
+  case reports one without a rendered `doc`;
 - hovering the `test(...)` call in the editor renders the whole block
   (`[TESTING-DOC-HOVER]`);
 - **Osprey: Show Test Documentation** (`osprey.showTestDocumentation`, also on

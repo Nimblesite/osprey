@@ -110,8 +110,48 @@ suite("Test documentation (pure)", () => {
   });
 
   suite("testDescription — the greyed text beside the case name", () => {
-    test("a documented case describes with its summary", () => {
-      assert.strictEqual(testDescription(RICH), "Addition is commutative.");
+    test("a documented case describes with its WHOLE doc, not just the summary", () => {
+      // [TESTING-DOC] `vscode.TestItem` has no tooltip API — the only text the
+      // Test Explorer can show when a row is hovered is `label` +
+      // `description`. Describing with the summary alone therefore threw away
+      // every paragraph and section after the first, and the hover bubble
+      // showed one line of a doc block that had four.
+      const description = testDescription(RICH);
+      assert.ok(description !== undefined, "documented case has a description");
+      for (const fragment of [
+        "Addition is commutative.",
+        "Swapping the operands cannot change the sum.",
+        "**Parameters**",
+        "- `left` — the first addend",
+        "**Since**",
+        "0.3",
+      ]) {
+        assert.ok(description.includes(fragment), `${fragment}: ${description}`);
+      }
+    });
+
+    test("the whole doc collapses to a single tree row", () => {
+      assert.strictEqual(
+        testDescription(RICH),
+        "Addition is commutative. Swapping the operands cannot change the sum. " +
+          "**Parameters** - `left` — the first addend **Since** 0.3",
+      );
+    });
+
+    test("a summary-only case describes with that summary", () => {
+      assert.strictEqual(
+        testDescription({ ...BARE, summary: "Adds.", doc: "Adds." }),
+        "Adds.",
+      );
+    });
+
+    test("a summary with no rendered doc still describes", () => {
+      // The wire omits `doc` only when undocumented, but a description must
+      // never depend on that: summary alone is enough to describe.
+      assert.strictEqual(
+        testDescription({ ...BARE, summary: "Adds." }),
+        "Adds.",
+      );
     });
 
     test("an undocumented case has no description at all", () => {

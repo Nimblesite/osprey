@@ -1,9 +1,12 @@
 // `Osprey: Show Test Documentation` ([TESTING-DOC]). VS Code's TestItem API
-// carries no tooltip, so a case's full `///` documentation is surfaced three
-// ways: the one-line summary renders inline in the tree (test-explorer.ts), a
-// hover over the `test(...)` call renders the whole block (the language
-// server), and this command opens it as a Markdown preview from either the
-// Testing view's context menu or the cursor's position in a test file.
+// carries no tooltip of its own — the tree row's hover shows its label and
+// description — so a case's full `///` documentation is surfaced three ways:
+// the whole block collapsed to one line rides in the tree row's description,
+// where the row truncates it and the hover shows it entire
+// (test-explorer-docs.ts); a hover over the `test(...)` call renders it as
+// Markdown (the language server); and this command opens it as a Markdown
+// preview from either the Testing view's context menu or the cursor's position
+// in a test file.
 //
 // The argument VS Code hands a `testing/item/context` command is not part of
 // the stable API surface, so resolution is defensive: a TestItem-shaped object

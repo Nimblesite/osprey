@@ -1243,6 +1243,22 @@ impl Codegen {
         }
     }
 
+    /// Open a debug scope for a nested function whose body is user-written code.
+    ///
+    /// [`enter_nested_fn`](Self::enter_nested_fn) clears the debug scope, and for
+    /// the synthetic trampolines (suspend, drive, fn-value forwarders) that is
+    /// what we want — a `DISubprogram` there would surface compiler-invented
+    /// frames the author never wrote. A handler arm is the opposite case: its
+    /// body is source someone can set a breakpoint in. Without a scope,
+    /// `location_id` returns `None` for every instruction in it, so the arm's
+    /// lines never reach the line table and a breakpoint there can never bind —
+    /// the arm runs but the debugger sails past it. [DEBUGGER-DBG-DECLARE]
+    pub(crate) fn begin_nested_debug(&mut self, name: &str, position: Option<Position>) {
+        if let Some(debug) = self.debug.as_mut() {
+            let _ = debug.begin_function(name, position);
+        }
+    }
+
     /// Render the in-progress function and append it to the module. `ret` is the
     /// already-rendered LLVM return type (`i64`, `{ i1, i8 }*`, …).
     pub(crate) fn finish_function(&mut self, ret: &str, name: &str, params: &[(LType, String)]) {
