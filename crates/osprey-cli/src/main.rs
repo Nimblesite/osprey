@@ -981,6 +981,17 @@ fn link_args(ir: &str, source: &str, memory: &str) -> Vec<String> {
     #[cfg(windows)]
     {
         args.push("-lpthread".to_string());
+        // Winsock is not ambient on Windows the way BSD sockets are in libc.
+        // The HTTP/WebSocket runtime's socket/connect/select/accept/closesocket
+        // calls compile fine but resolve to `__imp_*` import stubs that only
+        // ws2_32 supplies, so without this every HTTP program fails at LINK
+        // time while every non-HTTP program links clean. That is why it stayed
+        // hidden: Windows CI ran two non-HTTP smoke tests until this branch
+        // started running the whole corpus there. Ordered after the archive
+        // that references these symbols.
+        if uses_http {
+            args.push("-lws2_32".to_string());
+        }
     }
 
     // FFI directives: `// @link: sqlite3` -> `-lsqlite3`, `// @linkdir: P` -> `-LP`.
