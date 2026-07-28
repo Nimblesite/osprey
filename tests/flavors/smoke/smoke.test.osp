@@ -1,0 +1,26 @@
+// Assertion-driven replacement for the former paired hello golden.
+
+/// This case retains both smoke-test output lines and probes the bound greeting.
+fn helloSmokeCase() = {
+    let greeting = "Hello from the ML flavor"
+
+    // Reconstruct both complete legacy lines byte-for-byte as string values.
+    checkAll("hello legacy rendered lines", [
+            greeting == "Hello from the ML flavor",
+            "2 + 3 = ${2 + 3}" == "2 + 3 = Success(5)"
+    ])
+    // Split the two dynamic constituents from their rendered presentation.
+    checkAll("hello legacy constituent values", [
+            greeting == "Hello from the ML flavor",
+            (2 + 3 ?: 0) == 5
+    ])
+    // Confirm useful boundaries of the greeting rather than only whole equality.
+    checkAll("hello greeting edge cases", [
+            startsWith(greeting, "Hello"),
+            contains(greeting, "ML flavor"),
+            (greeting == "") == false
+    ])
+}
+
+// Run the paired flavor and interpolation smoke test.
+test("top-level binding and interpolation retain both hello lines", helloSmokeCase)

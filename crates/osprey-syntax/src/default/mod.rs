@@ -18,7 +18,15 @@ mod expr;
 mod lower;
 mod modules;
 
-pub use lower::Lowerer;
+const I64_MIN_MAGNITUDE: &str = "9223372036854775808";
+
+fn is_i64_min_magnitude_text(text: &str) -> bool {
+    text.chars()
+        .filter(|c| !c.is_whitespace() && *c != '(' && *c != ')')
+        .eq(I64_MIN_MAGNITUDE.chars())
+}
+
+pub(crate) use lower::Lowerer;
 
 /// The Default (brace) frontend: tree-sitter CST + [`Lowerer`] → [`Program`].
 pub(crate) fn parse(source: &str) -> Parsed {
@@ -81,11 +89,53 @@ fn collect_errors(node: Node<'_>, src: &[u8], out: &mut Vec<SyntaxError>) {
             message: format!("`{word}` is reserved for the module system"),
             position: position_from_point(p),
         });
+    } else if node.kind() == "integer" {
+        let text = node.utf8_text(src).unwrap_or_default();
+        let valid = text.parse::<i64>().is_ok()
+            || (text == I64_MIN_MAGNITUDE && is_negative_numeric(node, src));
+        if !valid {
+            out.push(SyntaxError {
+                message: format!("integer literal `{text}` is outside the signed 64-bit range"),
+                position: position_from_point(node.start_position()),
+            });
+        }
+    } else if node.kind() == "float" {
+        let text = node.utf8_text(src).unwrap_or_default();
+        if !text.parse::<f64>().is_ok_and(f64::is_finite) {
+            out.push(SyntaxError {
+                message: format!("float literal `{text}` is outside the finite 64-bit range"),
+                position: position_from_point(node.start_position()),
+            });
+        }
     }
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
         collect_errors(child, src, out);
     }
+}
+
+fn is_negative_numeric(node: Node<'_>, src: &[u8]) -> bool {
+    let mut ancestor = node.parent();
+    while let Some(parent) = ancestor {
+        let is_negative = parent
+            .child_by_field_name("operator")
+            .and_then(|op| op.utf8_text(src).ok())
+            == Some("-");
+        if parent.kind() == "unary_expression" && is_negative {
+            return parent
+                .child_by_field_name("operand")
+                .and_then(|operand| operand.utf8_text(src).ok())
+                .is_some_and(is_i64_min_magnitude_text);
+        }
+        if parent.kind() == "pattern" && is_negative {
+            return true;
+        }
+        if matches!(parent.kind(), "statement" | "source_file") {
+            break;
+        }
+        ancestor = parent.parent();
+    }
+    false
 }
 
 /// Tree-sitter keywords are contextual at identifier-only parse states. The
@@ -118,21 +168,15 @@ pub(crate) fn position_from_point(point: Point) -> Position {
 )]
 mod tests {
     use crate::parse_program;
+    use crate::test_support::one_stmt;
     use osprey_ast::{Expr, Pattern, Stmt};
-
-    fn one(src: &str) -> Stmt {
-        let parsed = parse_program(src);
-        assert!(parsed.errors.is_empty(), "errors: {:?}", parsed.errors);
-        assert_eq!(parsed.program.statements.len(), 1);
-        parsed.program.statements.into_iter().next().unwrap()
-    }
 
     #[test]
     fn lowers_doc_comments_on_let_and_function() {
         // A `///` block above a binding is captured as its `doc`, stripped of the
         // markers, and the recorded position stays on the declaration keyword/name
         // (line 3 here), not the comment lines. Implements [LSP-HOVER-DOCS]
-        match one(
+        match one_stmt(
             "/// The retry budget.\n/// Bounded above by `maxRetries`.\nlet retries: int = 3\n",
         ) {
             Stmt::Let {
@@ -152,7 +196,7 @@ mod tests {
             }
             s => panic!("expected let, got {s:?}"),
         }
-        match one("/// Adds two ints.\nfn add(a: int, b: int) -> int = a + b\n") {
+        match one_stmt("/// Adds two ints.\nfn add(a: int, b: int) -> int = a + b\n") {
             Stmt::Function { doc, position, .. } => {
                 assert_eq!(
                     doc.as_ref().map(|d| d.summary.clone()).as_deref(),
@@ -163,7 +207,7 @@ mod tests {
             s => panic!("expected function, got {s:?}"),
         }
         // An undocumented binding carries no doc.
-        match one("let x = 1\n") {
+        match one_stmt("let x = 1\n") {
             Stmt::Let { doc, .. } => assert_eq!(doc, None),
             s => panic!("expected let, got {s:?}"),
         }
@@ -171,7 +215,7 @@ mod tests {
 
     #[test]
     fn lowers_let() {
-        match one("let x = 42\n") {
+        match one_stmt("let x = 42\n") {
             Stmt::Let {
                 name,
                 value,
@@ -188,7 +232,7 @@ mod tests {
 
     #[test]
     fn lowers_function_with_binary_body() {
-        match one("fn add(a: int, b: int) -> int = a + b\n") {
+        match one_stmt("fn add(a: int, b: int) -> int = a + b\n") {
             Stmt::Function {
                 name,
                 parameters,
@@ -211,7 +255,7 @@ mod tests {
 
     #[test]
     fn lowers_union_type() {
-        match one("type Color = Red | Green | Blue\n") {
+        match one_stmt("type Color = Red | Green | Blue\n") {
             Stmt::Type { name, variants, .. } => {
                 assert_eq!(name, "Color");
                 assert_eq!(variants.len(), 3);
@@ -223,7 +267,7 @@ mod tests {
 
     #[test]
     fn lowers_extern_with_ptr() {
-        match one("extern fn sqlite3_open(filename: string, ppDb: Ptr) -> int\n") {
+        match one_stmt("extern fn sqlite3_open(filename: string, ppDb: Ptr) -> int\n") {
             Stmt::Extern {
                 name,
                 parameters,
@@ -241,7 +285,7 @@ mod tests {
 
     #[test]
     fn lowers_match() {
-        match one("let r = match x {\n  Ok { value } => value\n  _ => 0\n}\n") {
+        match one_stmt("let r = match x {\n  Ok { value } => value\n  _ => 0\n}\n") {
             Stmt::Let {
                 value: Expr::Match { arms, .. },
                 ..
@@ -283,5 +327,24 @@ mod tests {
         );
         // The error carries a 1-based line.
         assert!(parsed.errors[0].position.line >= 1);
+    }
+
+    #[test]
+    fn rejects_out_of_range_integer_literals_without_substituting_zero() {
+        let too_large = parse_program("let n = 9223372036854775808\n");
+        assert!(too_large
+            .errors
+            .iter()
+            .any(|e| e.message.contains("outside the signed 64-bit range")));
+
+        let minimum = parse_program("let n = -9223372036854775808\n");
+        assert!(minimum.errors.is_empty(), "errors: {:?}", minimum.errors);
+        assert!(matches!(
+            minimum.program.statements.first(),
+            Some(Stmt::Let {
+                value: Expr::Integer(i64::MIN),
+                ..
+            })
+        ));
     }
 }

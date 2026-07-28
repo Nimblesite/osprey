@@ -83,16 +83,17 @@ clip. Diagram rendering is guarded by `website/tests/interactions.spec.js`.
     the body or call site. Write `fn add(a, b) = a + b`, NOT
     `fn add(a: int, b: int) = a + b`.
   - **Never annotate a function return type** when it is inferable. Write
-    `fn isEven(x) = (x % 2) == 0`, NOT `fn isEven(x: int) -> bool = ...`.
+    `fn isEven(x) = (x % 2 ?: 1) == 0`, NOT
+    `fn isEven(x: int) -> bool = ...`.
   - **Never annotate lambda parameters** when inferable: `|x| => x * 2`, not
     `|x: int| => x * 2`.
   - Keep an annotation ONLY when the compiler genuinely cannot infer it: an
     empty literal with no context (`let xs: List<int> = []`), an `extern` /
-    ambiguous return, an unconstrained polymorphic type variable, or a
-    load-bearing return type that forces `Result<T, MathError>` to
-    auto-unwrap to `T`. If removing an annotation still compiles and produces
+    ambiguous return, or an unconstrained polymorphic type variable. A return
+    annotation never permits `Result<T, E>` to become `T`; handle failure with
+    `match` or `?:`. If removing an annotation still compiles and produces
     identical output, it was redundant — remove it.
-  - This applies to ALL `.osp` you write or touch — `examples/tested/`,
+  - This applies to ALL `.osp` you write or touch — `tests/regressions/`,
     `benchmarks/`, docs, and website snippets alike.
 - **NO CONSECUTIVE PRINT CALLS IN OSP** - Use string interpolation! Consolidate consecutive prints into singular interpolated strings!!!
 
@@ -187,7 +188,7 @@ npm install && npm start         # Start web-based compiler service
 
 **Testing Strategy:**
 - Unit tests live inside each crate in `crates/`
-- `examples/tested/` - Working examples run via the differential harness (`crates/diff_examples.sh`); output must match `.expectedoutput` byte-for-byte
+- `tests/` - Working programs run via the differential harness (`crates/run_test_corpus.sh`) under each memory backend and again on wasm32 (`OSPREY_TARGET=wasm32`); output must match the sibling `.expectedoutput` byte-for-byte. An ML twin shares its Default twin's golden — both flavors must print identically
 - `examples/failscompilation/` - Error cases the compiler must reject
 - Coverage thresholds enforced per-project via `coverage-thresholds.json`
 
@@ -200,7 +201,7 @@ npm install && npm start         # Start web-based compiler service
 **Development Workflow:**
 1. **Grammar Changes**: Edit the tree-sitter grammar in `tree-sitter-osprey/`
 2. **Language Features**: Implement in `osprey-syntax`/`osprey-ast`, then `osprey-codegen`
-3. **Testing**: Add examples to `examples/tested/` and error cases to `examples/failscompilation/`
+3. **Testing**: Add examples to `tests/regressions/` and error cases to `examples/failscompilation/`
 4. **Type System**: Extend `crates/osprey-types` for new type rules
 5. **Runtime**: Add C functions in `compiler/runtime/` for system operations
 

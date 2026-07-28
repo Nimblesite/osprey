@@ -1,0 +1,77 @@
+// Convert fallible division/remainder Results into one typed Rescue effect. Its direct
+// value-substitution handler supplies defaults and counts recoveries.
+
+effect Rescue {
+    /// Supply the integer a failed operation should yield instead.
+    onErr: fn(string) -> int
+}
+
+let RESCUED_DEFAULT = 100
+
+/// intDiv gives Result<int, Error>; the handler chooses the fallback value.
+fn divRescue(a, b) = match intDiv(a: a, b: b) {
+        Success { value } => value
+        Error { message } => perform Rescue.onErr(message)
+}
+
+/// % is the zero-checked remainder: 7 % 0 => Error(division by zero).
+fn modRescue(a, b) = match a % b {
+        Success { value } => value
+        Error { message } => perform Rescue.onErr(message)
+}
+
+/// checkedAdd is overflow-checked: MAX_INT + 1 => Error(integer overflow).
+fn addRescue(a, b) = match checkedAdd(a: a, b: b) {
+        Success { value } => value
+        Error { message } => perform Rescue.onErr(message)
+}
+
+/// Every failed step receives a replacement value, so later steps still run.
+fn pipeline() = {
+    let a = divRescue(10, 0)
+    print("  step a  intDiv 10 / 0   -> ${toString(a)}")
+    let b = divRescue(20, 4)
+    print("  step b  intDiv 20 / 4   -> ${toString(b)}")
+    let c = modRescue(7, 0)
+    print("  step c  7 % 0           -> ${toString(c)}")
+    let d = modRescue(17, 5)
+    print("  step d  17 % 5          -> ${toString(d)}")
+    let e = addRescue(9223372036854775807, 1)
+    print("  step e  MAX + 1         -> ${toString(e)}")
+    let f = addRescue(100, 23)
+    print("  step f  100 + 23        -> ${toString(f)}")
+    a + b + c + d + e + f ?: 0
+}
+
+print("=== Result -> effect rescue pipeline ===")
+
+/// [EFFECTS-HANDLER-STATE] The handler owns its rescue count; each arm value is
+/// substituted at the perform site because this region contains no `resume`.
+mut rescues = 0
+let total = handle Rescue
+    onErr message => {
+        rescues = rescues + 1 ?: rescues
+        print("  RESCUE #${toString(rescues)}: original error \"${message}\" -> using ${toString(RESCUED_DEFAULT)}")
+        RESCUED_DEFAULT
+    }
+in pipeline()
+
+print("rescued ${toString(rescues)} failing step(s); healthy + rescued total = ${toString(total)}")
+
+/// `?:` supplies a local fallback without invoking the Rescue policy.
+let localOk  = (10 % 3) ?: ((0 - 1) ?: 0)
+let localBad = (10 % 0) ?: ((0 - 1) ?: 0)
+print("local ?: default  10 % 3 -> ${toString(localOk)}   10 % 0 -> ${toString(localBad)}")
+
+// The raw float division Result remains a value.
+print("raw 10 / 0 as a value = ${toString(10 / 0)}")
+print("=== pipeline complete ===")
+
+// Verifies rescued failures beside healthy Result and local-fallback paths.
+test("fallible arithmetic is recovered without masking healthy results", fn() => checkAll("Result and effect outcomes", [
+    rescues == 3,
+    total == 430,
+    localOk == 1,
+    localBad == ((0 - 1) ?: 0),
+    toString(10 / 0) == "Error(division by zero)"
+]))

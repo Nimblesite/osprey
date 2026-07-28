@@ -1,0 +1,32 @@
+=== Math Showcase ===
+Next year: Success(26)
+Last year: Success(24)
+Double:    Success(50)
+Half:      Success(12.5)
+12 % 5  = Success(2)
+isEven(8) = true
+isEven(7) = false
+intDiv(25,2) = Success(12), intDiv(100,7) = Success(14)
+intDiv(5,0): division by zero
+checked add=Success(5), sub=Success(-1), mul=Success(42)
+checked overflow add=Error(integer overflow)
+checked overflow sub=Error(integer overflow)
+checked overflow mul=Error(integer overflow)
+abs(-5000000000) = Success(5000000000)
+abs(INT64_MIN) = Error(integer overflow)
+intDiv(INT64_MIN,-1): integer overflow
+INT64_MIN % -1 = 0
+pow(5,2)   = Success(25)
+pow(5,3)   = Success(125)
+fact(5)    = 120
+fib(5)     = 5
+complex    = Success(18)
+10 / 2 = 5
+Error: Cannot divide 15 by 0!
+20 / 4 = 5
+classify Zero / One / Many
+random>=0 yes, randomBelow(100) in-range, randomBelow(0) rejected, stdin=[]
+=== Math Showcase Complete ===
+ok 1 - math showcase produces checked deterministic state
+1..1
+# tests=1 passed=1 failed=0 skipped=0

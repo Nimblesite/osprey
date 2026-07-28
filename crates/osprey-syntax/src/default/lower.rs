@@ -33,7 +33,7 @@ pub struct Lowerer<'a> {
 impl<'a> Lowerer<'a> {
     /// Creates a lowerer over the given source bytes.
     #[must_use]
-    pub fn new(src: &'a [u8]) -> Self {
+    pub(crate) fn new(src: &'a [u8]) -> Self {
         Lowerer { src }
     }
 
@@ -52,7 +52,7 @@ impl<'a> Lowerer<'a> {
     /// Position of `node`'s named `field`, or `node`'s own start when absent. A
     /// leading `///` doc comment shifts `node.start` onto the comment, so a
     /// declaration keeps a stable position by anchoring on its keyword/name.
-    pub(crate) fn field_pos(&self, node: Node<'_>, field: &str) -> Position {
+    fn field_pos(&self, node: Node<'_>, field: &str) -> Position {
         self.pos(node.child_by_field_name(field).unwrap_or(node))
     }
 
@@ -97,7 +97,7 @@ impl<'a> Lowerer<'a> {
 
     /// Lowers the root `source_file` node into a full program AST.
     #[must_use]
-    pub fn lower_program(&self, root: Node<'_>) -> Program {
+    pub(crate) fn lower_program(&self, root: Node<'_>) -> Program {
         let _positional = crate::positional::install(
             self.descendants_of_kind(root, "variant")
                 .into_iter()
@@ -229,10 +229,14 @@ impl<'a> Lowerer<'a> {
                 doc: self.doc_text(node),
                 position: Some(self.field_pos(node, "keyword")),
             },
+            // A leading `///` block documents the expression that follows, so
+            // the expression is looked up by kind rather than by position —
+            // `first_named` would hand back the doc comment ([TESTING-DOC]).
             "expression_statement" => {
-                let expr = self.first_named(node)?;
+                let expr = self.first_child_of_kind(node, "expression")?;
                 Stmt::Expr {
                     value: self.lower_expr(expr),
+                    doc: self.doc_text(node),
                     position: Some(self.pos(expr)),
                 }
             }
@@ -356,6 +360,11 @@ impl<'a> Lowerer<'a> {
                     .unwrap_or_default(),
                 parameters: Vec::new(),
                 return_type: String::new(),
+                doc: self.doc_text(*op),
+                // Anchor on the NAME, not the node: a leading `///` is now a
+                // child of `operation_declaration`, so `pos(op)` would land on
+                // the comment and defeat position-based hover resolution.
+                position: Some(self.field_pos(*op, "name")),
             })
             .collect()
     }
@@ -529,11 +538,21 @@ impl<'a> Lowerer<'a> {
             // into the literal so `-5` matches `-5`, not `5`. Scalar literals now
             // appear unwrapped (no `literal` node) so `[…]` stays a list_pattern.
             "integer" | "float" | "boolean" | "string" | "interpolated_string" => {
-                let lit = self.lower_literal_node(inner);
                 let negated = pat
                     .child_by_field_name("operator")
                     .is_some_and(|op| self.text(op) == "-");
-                Pattern::Literal(Box::new(if negated { negate_literal(lit) } else { lit }))
+                let minimum = negated
+                    && inner.kind() == "integer"
+                    && super::is_i64_min_magnitude_text(&self.text(inner));
+                let lit = self.lower_literal_node(inner);
+                let signed = if minimum {
+                    Expr::Integer(i64::MIN)
+                } else if negated {
+                    negate_literal(lit)
+                } else {
+                    lit
+                };
+                Pattern::Literal(Box::new(signed))
             }
             "list_pattern" => self.lower_list_pattern(inner),
             "field_pattern" => Pattern::Structural {
@@ -608,7 +627,7 @@ impl<'a> Lowerer<'a> {
     /// Map every named child of `node` of the given `kind` through `f` — the
     /// shared "collect the children of a kind, lower each" step behind the
     /// per-kind accessors below and the variant/pattern lowering sites.
-    pub(crate) fn map_of_kind<T>(
+    fn map_of_kind<T>(
         &self,
         node: Node<'_>,
         kind: &str,
@@ -664,21 +683,10 @@ fn negate_literal(e: Expr) -> Expr {
     reason = "test assertions: an out-of-bounds index is a test failure, not a production panic"
 )]
 mod tests {
-    use crate::{parse_program, parse_tree};
+    use crate::parse_tree;
+    use crate::test_support::{one_stmt, stmts};
     use osprey_ast::{Expr, Pattern, Stmt};
     use tree_sitter::Node;
-
-    fn stmts(src: &str) -> Vec<Stmt> {
-        let parsed = parse_program(src);
-        assert!(parsed.errors.is_empty(), "errors: {:?}", parsed.errors);
-        parsed.program.statements
-    }
-
-    fn one(src: &str) -> Stmt {
-        let mut s = stmts(src);
-        assert_eq!(s.len(), 1, "expected one stmt for {src:?}");
-        s.pop().unwrap()
-    }
 
     /// Find the first descendant node of a given kind anywhere in the tree.
     fn find_kind<'t>(node: Node<'t>, kind: &str) -> Option<Node<'t>> {
@@ -690,10 +698,108 @@ mod tests {
         children.into_iter().find_map(|c| find_kind(c, kind))
     }
 
+    // ---------- [TESTING-DOC] expression-statement documentation ----------
+
+    /// The doc comment lowered onto a statement, or `None`.
+    fn stmt_doc(stmt: &Stmt) -> Option<&osprey_ast::DocComment> {
+        match stmt {
+            Stmt::Expr { doc, .. } | Stmt::Let { doc, .. } | Stmt::Function { doc, .. } => {
+                doc.as_ref()
+            }
+            _ => None,
+        }
+    }
+
+    #[test]
+    fn a_doc_comment_lowers_onto_the_expression_statement_it_precedes() {
+        // A `test(...)` case is an expression statement, not a declaration, so
+        // documenting one requires the doc to attach here ([TESTING-DOC]).
+        let s = one_stmt("/// Documents the call.\nprint(\"hi\")\n");
+        let doc = stmt_doc(&s).expect("doc attached to the expression statement");
+        assert_eq!(doc.summary, "Documents the call.");
+        assert!(matches!(s, Stmt::Expr { .. }), "still an expr stmt: {s:?}");
+    }
+
+    #[test]
+    fn a_documented_expression_statement_keeps_its_value_and_position() {
+        // The doc must not displace the lowered expression, and the recorded
+        // position must stay on the EXPRESSION — the Test Explorer's gutter
+        // marker would otherwise land on the first `///` line.
+        let s = one_stmt("/// Line one.\n/// Line two.\ntest(\"named\", 1)\n");
+        match &s {
+            Stmt::Expr {
+                value, position, ..
+            } => {
+                assert!(
+                    matches!(value, Expr::Call { .. }),
+                    "the call survived: {value:?}"
+                );
+                let position = position.expect("position recorded");
+                assert_eq!(position.line, 3, "the `test(` line, not the doc's");
+                assert_eq!(position.column, 0);
+            }
+            other => panic!("expected an expression statement, got {other:?}"),
+        }
+        // Consecutive `///` lines are one paragraph, so they join into a single
+        // summary line ([DOC-MODEL]).
+        let doc = stmt_doc(&s).expect("doc attached");
+        assert_eq!(doc.summary, "Line one. Line two.");
+    }
+
+    #[test]
+    fn an_undocumented_expression_statement_carries_no_doc() {
+        let s = one_stmt("print(\"hi\")\n");
+        assert!(stmt_doc(&s).is_none(), "no doc invented: {s:?}");
+    }
+
+    #[test]
+    fn each_documented_statement_owns_only_its_own_doc() {
+        let all = stmts("/// First.\ntest(\"a\", 1)\ntest(\"b\", 2)\n/// Third.\ntest(\"c\", 3)\n");
+        assert_eq!(all.len(), 3);
+        assert_eq!(
+            stmt_doc(&all[0]).map(|d| d.summary.as_str()),
+            Some("First.")
+        );
+        assert_eq!(stmt_doc(&all[1]).map(|d| d.summary.as_str()), None);
+        assert_eq!(
+            stmt_doc(&all[2]).map(|d| d.summary.as_str()),
+            Some("Third.")
+        );
+    }
+
+    #[test]
+    fn a_documented_declaration_after_a_documented_statement_keeps_its_own_doc() {
+        // Adding the expression-statement slot must not steal a following
+        // declaration's doc comment.
+        let all = stmts("/// Runs it.\nprint(\"hi\")\n/// Adds.\nfn add(a, b) = a + b\n");
+        assert_eq!(all.len(), 2);
+        assert_eq!(
+            stmt_doc(&all[0]).map(|d| d.summary.as_str()),
+            Some("Runs it.")
+        );
+        assert!(matches!(all[1], Stmt::Function { .. }));
+        assert_eq!(stmt_doc(&all[1]).map(|d| d.summary.as_str()), Some("Adds."));
+    }
+
+    #[test]
+    fn documented_statements_inside_a_block_lower_with_their_docs() {
+        let s = one_stmt("fn main() = {\n/// Inner case.\ntest(\"inner\", 1)\n0\n}\n");
+        let Stmt::Function { body, .. } = &s else {
+            panic!("expected a function, got {s:?}");
+        };
+        let Expr::Block { statements, .. } = body else {
+            panic!("expected a block body, got {body:?}");
+        };
+        assert_eq!(
+            stmt_doc(&statements[0]).map(|d| d.summary.as_str()),
+            Some("Inner case.")
+        );
+    }
+
     #[test]
     fn lowers_record_type_and_array_and_function_types() {
         // record_type definition (lower_type_decl record arm + lower_field_decls)
-        match one("type Point = {\n  x: int,\n  y: int\n}\n") {
+        match one_stmt("type Point = {\n  x: int,\n  y: int\n}\n") {
             Stmt::Type { name, variants, .. } => {
                 assert_eq!(name, "Point");
                 assert_eq!(variants.len(), 1);
@@ -705,7 +811,7 @@ mod tests {
         // A positional payload carries generated slot names, so this Default
         // declaration lowers to the same variants as the ML twin
         // `type Tree = Leaf | Node Tree Tree` ([TYPE-UNION-POSITIONAL]).
-        match one("type Tree = Leaf | Node(Tree, Tree)\n") {
+        match one_stmt("type Tree = Leaf | Node(Tree, Tree)\n") {
             Stmt::Type { variants, .. } => {
                 assert_eq!(variants.len(), 2);
                 assert!(variants[0].fields.is_empty());
@@ -717,7 +823,7 @@ mod tests {
         }
         // array_type `Item[int]` (lower_type array_type arm + descendants_type_in),
         // a function type, and a generic type — all in one signature.
-        match one(
+        match one_stmt(
             "fn f(xs: Item[int], g: fn(int) -> bool, m: Map<string, int>) -> Item[int] = xs\n",
         ) {
             Stmt::Function {
@@ -742,7 +848,7 @@ mod tests {
     /// The single match arm's pattern for `match x { <arm> => 0  _ => 1 }`.
     fn first_pattern(arm: &str) -> Pattern {
         let src = format!("let r = match x {{ {arm} => 0  _ => 1 }}\n");
-        match one(&src) {
+        match one_stmt(&src) {
             Stmt::Let {
                 value: Expr::Match { mut arms, .. },
                 ..
@@ -770,7 +876,7 @@ mod tests {
         ));
         // Generic type params on a type declaration (type_parameters field),
         // including variance markers. Implements [TYPE-VARIANCE-DECL].
-        match one("type Foo<T, out U, in V> = Bar | Baz\n") {
+        match one_stmt("type Foo<T, out U, in V> = Bar | Baz\n") {
             Stmt::Type {
                 type_params,
                 variants,
@@ -794,14 +900,14 @@ mod tests {
         }
         // Fn-level type params and a generic effect declaration.
         // Implements [TYPE-GENERICS-FN] and [EFFECTS-GENERIC-DECL].
-        match one("fn map2<T, U>(f: (T) -> U, x: T) -> U = f(x)\n") {
+        match one_stmt("fn map2<T, U>(f: (T) -> U, x: T) -> U = f(x)\n") {
             Stmt::Function { type_params, .. } => {
                 assert_eq!(type_params.len(), 2);
                 assert_eq!(type_params[0].name, "T");
             }
             s => panic!("expected function, got {s:?}"),
         }
-        match one("effect State<T> {\n  get: fn() -> T\n}\n") {
+        match one_stmt("effect State<T> {\n  get: fn() -> T\n}\n") {
             Stmt::Effect {
                 type_params,
                 operations,
@@ -829,7 +935,7 @@ mod tests {
     #[test]
     fn lowers_assignment_effects_structural_and_list_patterns() {
         // Reassignment statement (lower_stmt Assignment arm).
-        match one("x = 5\n") {
+        match one_stmt("x = 5\n") {
             Stmt::Assignment { name, value, .. } => {
                 assert_eq!(name, "x");
                 assert_eq!(value, Expr::Integer(5));
@@ -838,7 +944,7 @@ mod tests {
         }
         // Function effect clause `! [Log, State<int>]` — effect refs carry
         // optional type arguments. Implements [EFFECTS-GENERIC-ROWS].
-        match one("fn act() ! [Log, State<int>] = 1\n") {
+        match one_stmt("fn act() ! [Log, State<int>] = 1\n") {
             Stmt::Function { effects, .. } => {
                 let names: Vec<&str> = effects.iter().map(|e| e.name.as_str()).collect();
                 assert_eq!(names, vec!["Log", "State"]);

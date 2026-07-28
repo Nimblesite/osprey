@@ -1,0 +1,118 @@
+// ML-flavor twin of block_statements_basic.osp — byte-identical IR.
+// Layout blocks as expressions: list & map access via Result-unwrap,
+// multi-statement blocks, nested blocks with shadowing, blocks inside
+// function bodies, nested collections (2D list), conditional logic
+// through match arms producing values out of a block.
+
+print "=== Block Statements ==="
+
+(** --- 1. Block with list access (single statement) --- *)
+listHeadBlock () =
+    nums = [42, 84, 126]
+    match nums[0]
+        Success value => value
+        Error message => 0
+r1 = listHeadBlock ()
+print "1 list head: ${r1}"
+
+(** --- 2. Block with map access + multiplication --- *)
+mapProductBlock () =
+    config = ["factor" => 2, "base" => 10]
+    x = match config["base"]
+        Success value => value
+        Error message => 0
+    factor = match config["factor"]
+        Success value => value
+        Error message => 1
+    m = x * factor
+    match m
+        Success value => value
+        Error message => 0
+r2 = mapProductBlock ()
+print "2 map factor*base: ${r2}"
+
+(** --- 3. Nested blocks with shadowing --- *)
+outer = 100
+shadowedBlock () =
+    config = ["multiplier" => 2, "offset" => 25]
+    outer = match config["offset"]
+        Success value => value
+        Error message => 50
+    inner =
+        listData = [10, 20, 30]
+        outer = match listData[2]
+            Success value => value
+            Error message => 25
+        m = outer * 2
+        match m
+            Success value => value
+            Error message => 0
+    s = outer + inner
+    match s
+        Success value => value
+        Error message => 0
+r3 = shadowedBlock ()
+print "3 shadowed inner+outer: ${r3}"
+
+(** --- 4. Block inside a function --- *)
+compute () =
+    numbers = [5, 10, 15]
+    base = match numbers[1]
+        Success value => value
+        Error message => 10
+    multiplier = 3
+    r = base * multiplier
+    match r
+        Success value => value
+        Error message => 0
+print "4 fn block: ${compute ()}"
+
+(** --- 5. 2D list inside a block --- *)
+matrixBlock () =
+    matrix = [[1, 2], [3, 4]]
+    firstRow = match matrix[0]
+        Success value => value
+        Error message => [0]
+    match firstRow[1]
+        Success value =>
+            m = value * 10
+            match m
+                Success result => result
+                Error message => 0
+        Error message => 0
+r5 = matrixBlock ()
+print "5 2D matrix[0][1]*10: ${r5}"
+
+(** --- 6. Conditional logic via nested match producing a block result --- *)
+value = 42
+conditionalBlock value =
+    scoreMap = ["test1" => 84, "test2" => 90]
+    doubled = value * 2
+    match doubled
+        Success dValue => match dValue
+            84 => match scoreMap["test1"]
+                Success sValue =>
+                    added = sValue + 10
+                    match added
+                        Success value => value
+                        Error message => 0
+                Error message => 0
+            _ => 0
+        Error message => 0
+r6 = conditionalBlock value
+print "6 cond match block: ${r6}"
+
+print "=== Done ==="
+
+(** Verify every block result, including shadowing and the wildcard branch. *)
+blockStatementsCase () =
+    checkAll "block statement values" [
+        listHeadBlock () == 42,
+        mapProductBlock () == 20,
+        shadowedBlock () == 85,
+        compute () == 30,
+        matrixBlock () == 20,
+        conditionalBlock 42 == 94,
+        conditionalBlock 10 == 0
+    ]
+test "blocks preserve values and lexical scope" blockStatementsCase

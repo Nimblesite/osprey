@@ -1,0 +1,279 @@
+// 🔗 Function Composition Test
+// Tests passing functions as arguments to other functions
+
+print("=== Function Composition Test ===")
+
+/// Define some simple functions
+fn double(x) = x * 2 ?: 0
+fn triple(x) = x * 3 ?: 0
+fn add5(x) = x + 5 ?: 0
+
+// Function composition test showing higher-order functions with strong typing
+print("Testing function composition...")
+
+fn square(x) = x * x ?: 0
+
+/// Higher-order function with proper function typing instead of 'any'
+fn applyFunction(value, func: (int) -> int) = func(value)
+
+/// Test function composition
+let testValue = 10
+print("Starting value: ${testValue}")
+
+/// Test passing different functions - use named arguments
+let doubled = applyFunction(value: testValue, func: double)
+print("After double: ${doubled}")
+
+let tripled = applyFunction(value: testValue, func: triple)  
+print("After triple: ${tripled}")
+
+let added = applyFunction(value: testValue, func: add5)
+print("After add5: ${added}")
+
+let squared = applyFunction(value: 5, func: square)
+print("square(5) = ${squared}")
+
+print("Function composition working correctly!")
+
+/// Inline string-typed lambda exercises non-i64 lambda parameter codegen
+let exclaim = fn(s) => s + "!"
+print(exclaim("hi"))
+
+/// Nested lambda: the inner lambda calls the outer lambda, then adds one.
+let outerLam = fn(x) => x * 2
+let innerLam = fn(y) => outerLam(y) + 1
+print(toString(innerLam(5)))
+
+/// Higher-order: an inline integer lambda flows into an `(int) -> int` slot.
+let inlineApplied = applyFunction(value: 10, func: fn(x) => x + 100 ?: 0)
+print(toString(inlineApplied))
+
+/// String equality must compare contents (strcmp), not the i8* pointer
+let strA = "hi"
+let strB = "hi"
+let strC = "no"
+match strA == strB {
+    true => print("strEq=hi")
+    false => print("strEq=fail")
+}
+match strA == strC {
+    true => print("strNe=fail")
+    false => print("strNe=ok")
+}
+
+/// String ordering must use strcmp lexicographically, not raw pointer order
+let zStr = "zebra"
+let aStr = "apple"
+match aStr < zStr {
+    true => print("strLt=ok")
+    false => print("strLt=fail")
+}
+match zStr < aStr {
+    true => print("strLt2=fail")
+    false => print("strLt2=ok")
+}
+
+/// Reassignment after explicitly handling checked integer addition. The client
+/// can only request a state transition; the handler owns the actual mutation.
+effect CounterState {
+    /// Advance the counter the handler owns by one.
+    increment: fn() -> Unit
+}
+
+mut counter = 0
+handle CounterState
+    increment => { counter = counter + 1 ?: counter }
+in {
+    perform CounterState.increment()
+    perform CounterState.increment()
+    perform CounterState.increment()
+}
+print(toString(counter))
+
+/// Generic union variant payload was rendering as "<T>" because toString hit the
+/// fallback formatter for an unresolved type-variable name even though the LLVM
+/// runtime value was a plain i64.
+type Box<T> = Empty | Full { value: T }
+let bx = Full { value: 7 }
+match bx {
+    Full { value } => print(toString(value))
+    Empty => print("empty")
+}
+
+// strings.Trim on the lexer token was greedy; "Quote: \"hi\"" lost its closing
+// quote and gained a stray trailing backslash. Surrounding-quote strip is now
+// single-step via TrimPrefix/TrimSuffix. Same bug existed on the interpolated
+// string path.
+print("Quote: \"hi\"")
+let nm = "Bob"
+print("Hi \"${nm}\"")
+
+// Escape processor used to scan multiple times in the wrong order, so
+// `\\n` would match the inner `\n` first and produce a real newline.
+print("lit: ab\\nc")
+
+/// Unary minus on a float was rejected ("operand of - must be Int") and
+/// codegen always lowered to i64 sub even when operand was a double.
+let nf = -2.5
+print(toString(nf))
+
+/// === Closures: escaping capture [TYPE-FN-CLOSURE] ===
+/// A returned lambda keeps its maker's state alive (heap closure cell); each
+/// instance owns its own cell, and an annotated or inferred maker works alike.
+fn makeAdder(n: int) -> (int) -> int = fn(x) => x + n ?: 0
+fn makeScaler(k) = fn(v) => v * k
+let plus5 = makeAdder(5)
+let plus10 = makeAdder(10)
+print("adders: ${plus5(3)} ${plus10(3)} ${plus5(100)}")
+print("direct: ${makeAdder(7)(3)} inferred: ${makeScaler(3)(7)}")
+
+/// A capturing let-bound lambda is a first-class value, curried composition
+/// (the middleware shape) works, and nested closures capture level by level.
+let offset = 100
+let addOffset = fn(x) => x + offset ?: 0
+print("passed: ${applyFunction(value: 11, func: addOffset)}")
+fn wrap(h: fn(int) -> int) -> (int) -> int = fn(b) => h(b) + 1 ?: 0
+let mw = wrap(double)
+let base = 3
+let nest = fn(x: int) => fn(y: int) => x + y + base
+print("wrapped: ${mw(20)} nested: ${nest(10)(20)}")
+
+/// Regression pins: a rebound mut calls the NEW closure (not a stale inline
+/// body); a named-function alias is a first-class value; a Result-returning
+/// call is explicitly defaulted before entering a scalar-returning slot.
+fn mkR(x: int) -> Result<int, string> = Success { value: x }
+effect ClosureSlot {
+    /// Rebind the captured adder to `value`.
+    rebindAdder: fn(int) -> Unit
+}
+mut rb = fn(x) => x + 1 ?: 0
+handle ClosureSlot
+    rebindAdder offset => {
+        rb = makeAdder(offset)
+    }
+in {
+    perform ClosureSlot.rebindAdder(40)
+}
+let dblAlias = double
+let unwrapped = fn(x) => mkR(x) ?: 0
+print("pins: ${rb(2)} ${applyFunction(value: 21, func: dblAlias)} ${applyFunction(value: 9, func: unwrapped)}")
+
+/// A function-typed record field holds a capturing closure (read it via `let`;
+/// the direct `vchk.check(50)` spelling awaits the UFCS field-call rule).
+type Checker = { check: (int) -> bool }
+let limit = 10
+let vchk = Checker { check: fn(n) => n > limit }
+let chk = vchk.check
+print("field: ${chk(50)} ${chk(5)}")
+
+/// Capturing lambdas as iterator callbacks: fused range pipeline and list walk.
+let factor2 = 3
+forEach(map(range(1, 4), fn(x) => x * 10 + factor2 ?: 0), fn(v) => print("mapped: ${v}"))
+let evensum = fold(filter(range(1, 10), fn(x) => (x % 2 ?: 1) == 0), 0, fn(a, b) => a + b ?: 0)
+let pair = listAppend(listAppend(List(), 4), 5)
+print("evensum: ${evensum}")
+forEachList(pair, fn(x) => print("elem: ${x * factor2}"))
+
+/// Higher-order calls through non-name callees [TYPE-FN-HIGHER-ORDER]: a chained
+/// 3-deep application (the outer callee is itself a call result), an iterator
+/// callback that is a computed call result (`makeAdder(10)`), and a filter keyed
+/// on a function read from a record field (`vchk.check`).
+let tri3 = fn(a: int) => fn(b: int) => fn(c: int) => a + b + c
+let computed = fold(map(range(1, 4), makeAdder(10)), 0, fn(a, b) => a + b ?: 0)
+let fieldcb = fold(filter(range(8, 13), vchk.check), 0, fn(a, b) => a + b ?: 0)
+print("chain3: ${tri3(1)(2)(3)} computed: ${computed} fieldcb: ${fieldcb}")
+
+/// === Generic functions as first-class values [TYPE-GENERICS-FN] ===
+/// A generic function specialises into a concrete function-typed slot, a
+/// let-bound generic name stays callable (call alias), and the Kotlin-style
+/// scope-function idiom works: a generic HOF applies its lambda argument at
+/// two different instantiations (int and string).
+fn identity<T>(x: T) -> T = x
+fn alsoDo(x, f) = f(x)
+let idAlias = identity
+print("generic-values: ${applyFunction(value: 33, func: identity)} ${idAlias(7)} ${alsoDo(21, fn(n) => n * 2)} ${alsoDo("osp", fn(s) => s + "!")}")
+
+print("=== Function Composition Test Complete ===")
+
+/// Verifies named, inline, nested, and string-valued function application.
+fn basicCompositionCase() = {
+    let outer = fn(x) => x * 2 ?: 0
+    let inner = fn(y) => outer(y) + 1 ?: 0
+    let exclaimValue = fn(s) => s + "!"
+    checkAll("basic function composition", [
+        applyFunction(value: 10, func: double) == 20,
+        applyFunction(value: 10, func: triple) == 30,
+        applyFunction(value: 10, func: add5) == 15,
+        applyFunction(value: 5, func: square) == 25,
+        inner(5) == 11, exclaimValue("hi") == "hi!",
+        "hi" == "hi", "hi" != "no",
+        "apple" < "zebra", !("zebra" < "apple")
+    ])
+}
+
+/// Verifies escaping captures, function fields, aliases, Results, and generics.
+fn closureCompositionCase() = {
+    let plus5 = makeAdder(5)
+    let plus10 = makeAdder(10)
+    let offset = 100
+    let addOffset = fn(x) => x + offset ?: 0
+    let middleware = wrap(double)
+    let base = 3
+    let nested = fn(x: int) => fn(y: int) => x + y + base
+    let checker = Checker { check: fn(n) => n > 10 }
+    let check = checker.check
+    let alias = double
+    let unwrapped = fn(x) => mkR(x) ?: 0
+    let idAlias = identity
+    checkAll("closure and generic composition", [
+        plus5(3) == 8, plus10(3) == 13, plus5(100) == 105,
+        makeAdder(7)(3) == 10, (makeScaler(3)(7) ?: 0) == 21,
+        applyFunction(value: 11, func: addOffset) == 111,
+        middleware(20) == 41, (nested(10)(20) ?: 0) == 33,
+        check(50), !check(5),
+        applyFunction(value: 21, func: alias) == 42,
+        applyFunction(value: 9, func: unwrapped) == 9,
+        applyFunction(value: 33, func: identity) == 33,
+        idAlias(7) == 7,
+        (alsoDo(21, fn(n) => n * 2) ?: 0) == 42,
+        alsoDo("osp", fn(s) => s + "!") == "osp!"
+    ])
+}
+
+/// Verifies capturing callbacks through map, filter, fold, and chained calls.
+fn iteratorCompositionCase() = {
+    let checker = Checker { check: fn(n) => n > 10 }
+    let predicate = checker.check
+    let evenSum = fold(filter(range(1, 10), fn(x) => (x % 2 ?: 1) == 0), 0, fn(a, b) => a + b ?: 0)
+    let captured = fold(map(range(1, 4), fn(x) => x * 10 + 3 ?: 0), 0, fn(a, b) => a + b ?: 0)
+    let computed = fold(map(range(1, 4), makeAdder(10)), 0, fn(a, b) => a + b ?: 0)
+    let selected = fold(filter(range(8, 13), predicate), 0, fn(a, b) => a + b ?: 0)
+    let tri = fn(a: int) => fn(b: int) => fn(c: int) => a + b + c
+    checkAll("capturing iterator callbacks", [
+        evenSum == 20, captured == 69,
+        computed == 36, selected == 23,
+        (tri(1)(2)(3) ?: 0) == 6
+    ])
+}
+
+/// Verifies handler-owned mutation and closure rebinding inside the test body.
+fn effectCompositionCase() = {
+    mut count = 0
+    handle CounterState
+        increment => { count = count + 1 ?: count }
+    in {
+        perform CounterState.increment()
+        perform CounterState.increment()
+        perform CounterState.increment()
+    }
+    mut rebound = fn(x) => x + 1 ?: 0
+    handle ClosureSlot
+        rebindAdder amount => { rebound = makeAdder(amount) }
+    in { perform ClosureSlot.rebindAdder(40) }
+    checkAll("effect-managed function state", [count == 3, rebound(2) == 42])
+}
+
+test("functions compose across scalar and string values", basicCompositionCase)
+test("closures retain captures through higher-order consumers", closureCompositionCase)
+test("capturing callbacks preserve iterator results", iteratorCompositionCase)
+test("effects own mutation and closure rebinding", effectCompositionCase)

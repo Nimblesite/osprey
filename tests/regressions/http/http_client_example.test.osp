@@ -1,0 +1,29 @@
+// Deterministic loopback coverage for the status-only HTTP client.
+
+fn localResponse(method: string, path: string, headers: string, body: string) -> HttpResponse = HttpResponse {
+    status: 200,
+    headers: "Content-Type: text/plain",
+    contentType: "text/plain",
+    streamFd: 0,
+    isComplete: true,
+    partialBody: "ok"
+}
+
+fn localHttpRoundTrip() = {
+    let server = httpCreateServer(18107, "127.0.0.1")
+    let listening = httpListen(server, localResponse)
+    let client = httpCreateClient("http://127.0.0.1:18107", 1000)
+    let status = httpGet(client, "/health", "")
+    let closed = httpCloseClient(client)
+    let stopped = httpStopServer(server)
+    checkAll("loopback HTTP round trip", [
+        server != 0,
+        listening == 0,
+        client != 0,
+        status == 200,
+        closed == 0,
+        stopped == 0
+    ])
+}
+
+test("status-only HTTP client uses a local server", localHttpRoundTrip)

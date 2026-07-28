@@ -21,7 +21,7 @@ Copies the language specification from `docs/specs/` to the website source.
 
 ### `update-playground.js`
 Syncs the playground editor content from
-`examples/tested/basics/osprey_mega_showcase.osp`.
+`tests/regressions/basics/osprey_mega_showcase.test.osp`.
 
 ## Manual Documentation Generation
 

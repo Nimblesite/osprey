@@ -1,0 +1,71 @@
+// Exercises the HTTP response-handle lifecycle against a local server: status,
+// body, header lookup, missing-header error, free, and a double-free that must
+// report Error (not crash). Each Result-returning op lives in its own helper so
+// the handle is never reused across a nested match. [BUILTIN-HTTP]
+// [HTTP-RESPONSE-HANDLE]
+
+fn handleRequest(method: string, path: string, headers: string, body: string) -> HttpResponse = HttpResponse {
+    status: 200,
+    headers: "X-Demo: hi\r\n",
+    contentType: "text/plain",
+    streamFd: (0 - 1) ?: 0,
+    isComplete: true,
+    partialBody: "hello body"
+}
+
+fn bodyLine(h) = {
+    let r = httpResponseBody(h)
+    match r {
+        Success { value } => "body=${value}"
+        Error { message } => "nobody"
+    }
+}
+
+fn headerLine(h, name) = {
+    let r = httpResponseHeader(h, name)
+    match r {
+        Success { value } => "hdr=${value}"
+        Error { message } => "missing-ok"
+    }
+}
+
+fn freeLine(h) = {
+    let r = httpResponseFree(h)
+    match r {
+        Success { value } => "free-ok"
+        Error { message } => "free-err-double"
+    }
+}
+
+fn run() = {
+    let serverId = httpCreateServer(18095, "127.0.0.1")
+    let listenResult = httpListen(serverId, handleRequest)
+    let clientId = httpCreateClient("http://127.0.0.1:18095", 5000)
+    let resp = httpGetResponse(clientId, "/", "")
+    let summary = match resp {
+        Success { value } => {
+            let status = httpResponseStatus(value)
+            let body = bodyLine(h: value)
+            let header = headerLine(h: value, name: "X-Demo")
+            let missing = headerLine(h: value, name: "Nope")
+            let freed = freeLine(h: value)
+            let doubleFreed = freeLine(h: value)
+            "${status}|${body}|${header}|${missing}|${freed}|${doubleFreed}"
+        }
+        Error { message } => "request-error:${message}"
+    }
+    let closeResult = httpCloseClient(clientId)
+    let stopResult = httpStopServer(serverId)
+    summary
+}
+
+/// Runs the complete response-handle lifecycle and verifies every transition.
+fn responseHandleCase() = {
+    let summary = run()
+    checkAll("response handle lifecycle", [
+        summary == "200|body=hello body|hdr=hi|missing-ok|free-ok|free-err-double",
+        startsWith(summary, "200|body=hello body"),
+        endsWith(summary, "free-err-double")
+    ])
+}
+test("HTTP response handles expose data and reject double free", responseHandleCase)

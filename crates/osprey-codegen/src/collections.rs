@@ -74,7 +74,12 @@ pub(crate) fn gen_receiver_directed(
     let e = crate::expr::first_arg(args, named)
         .ok_or_else(|| CodegenError::invalid(format!("{name} needs one argument")))?;
     let lowered = gen_expr(cg, e)?;
-    let recv = crate::result::unwrap(cg, lowered);
+    if lowered.result_inner.is_some() {
+        return Err(CodegenError::invalid(format!(
+            "{name} cannot consume an unhandled Result"
+        )));
+    }
+    let recv = lowered;
     let count = match recv.osp_ty.as_deref() {
         Some(LIST_OWNER) => handle_i64(cg, &recv, "osprey_list_length"),
         Some(MAP_OWNER) => handle_i64(cg, &recv, "osprey_map_length"),
@@ -94,27 +99,35 @@ fn handle_i64(cg: &mut Codegen, recv: &Value, cname: &str) -> Value {
     Value::new(cg.call("i64", cname, "i8*", &[&recv.operand]), LType::I64)
 }
 
-/// The `i`-th positional argument as an opaque `i8*` collection handle.
+/// The `i`-th positional argument as an opaque `i8*` collection handle. A flat
+/// list literal is rebuilt as a runtime list first — the list runtime cannot
+/// read the literal layout ([`crate::listlit::to_runtime_list`]).
 fn handle_arg(cg: &mut Codegen, args: &[Expr], i: usize) -> Result<Value> {
     let e = args
         .get(i)
         .ok_or_else(|| CodegenError::invalid("collection builtin: missing argument"))?;
     let v = gen_expr(cg, e)?;
+    let v = crate::listlit::to_runtime_list(cg, v);
     coerce_to(cg, v, LType::Ptr)
 }
 
-/// The `i`-th positional argument, evaluated and unwrapped (pre-boxing).
+/// The `i`-th positional argument, evaluated without changing its Result
+/// representation.
 fn unboxed_arg(cg: &mut Codegen, args: &[Expr], i: usize) -> Result<Value> {
     let e = args
         .get(i)
         .ok_or_else(|| CodegenError::invalid("collection builtin: missing argument"))?;
-    let v = gen_expr(cg, e)?;
-    Ok(crate::result::unwrap(cg, v))
+    gen_expr(cg, e)
 }
 
 /// The `i`-th positional argument, boxed to the uniform `i64` element ABI.
 fn boxed_arg(cg: &mut Codegen, args: &[Expr], i: usize) -> Result<Value> {
     let v = unboxed_arg(cg, args, i)?;
+    if v.result_inner.is_some() {
+        return Err(CodegenError::invalid(
+            "an index or map key cannot be an unhandled Result",
+        ));
+    }
     Ok(box_to_i64(cg, v))
 }
 
@@ -137,6 +150,11 @@ pub(crate) fn managed_flag(v: &Value) -> &'static str {
 /// region drop can reclaim them [GC-ARC-PERCEUS].
 fn stored_boxed_arg(cg: &mut Codegen, args: &[Expr], i: usize) -> Result<(Value, &'static str)> {
     let v = unboxed_arg(cg, args, i)?;
+    if v.result_inner.is_some() {
+        return Err(CodegenError::unsupported(
+            "Result-valued collection elements are not yet supported; handle the Result before storing it",
+        ));
+    }
     let flag = managed_flag(&v);
     crate::arc::escape_retain(cg, &v);
     Ok((box_to_i64(cg, v), flag))
@@ -236,7 +254,11 @@ fn list_contains(cg: &mut Codegen, args: &[Expr]) -> Result<Value> {
         .get(1)
         .ok_or_else(|| CodegenError::invalid("listContains: missing argument"))?;
     let needle = gen_expr(cg, needle_e)?;
-    let needle = crate::result::unwrap(cg, needle);
+    if needle.result_inner.is_some() {
+        return Err(CodegenError::unsupported(
+            "listContains cannot compare an unhandled Result element",
+        ));
+    }
     let is_str = needle.ty == LType::Str;
     let boxed = box_to_i64(cg, needle.clone());
 
@@ -422,14 +444,18 @@ pub(crate) fn gen_map_literal(cg: &mut Codegen, entries: &[osprey_ast::MapEntry]
     let bld = cg.call("i8*", "osprey_map_builder_new", "i32", &["1"]);
     for e in entries {
         let k = gen_expr(cg, &e.key)?;
-        let k = crate::result::unwrap(cg, k);
+        let k = coerce_to(cg, k, LType::Str)?;
         // The map stores both key and value: dup before the i64 erasure, and
         // hand the value's kind over so the sealed map walks it on death
         // (see stored_boxed_arg) [GC-ARC-PERCEUS].
         crate::arc::escape_retain(cg, &k);
         let k = box_to_i64(cg, k);
         let v = gen_expr(cg, &e.value)?;
-        let v = crate::result::unwrap(cg, v);
+        if v.result_inner.is_some() {
+            return Err(CodegenError::unsupported(
+                "Result-valued map entries are not yet supported; handle the Result before storing it",
+            ));
+        }
         let managed = managed_flag(&v);
         crate::arc::escape_retain(cg, &v);
         let v = box_to_i64(cg, v);

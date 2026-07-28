@@ -1,0 +1,97 @@
+// Comprehensive Field Access Test
+// This tests various aspects of field access with different scenarios
+
+/// Define record types
+type Point = { x: int, y: int }
+type User = { id: int, active: bool }
+type Rectangle = { width: int, height: int }
+type Counter = { count: int }
+
+print("=== COMPREHENSIVE FIELD ACCESS TEST ===")
+
+// Test 1 - Basic integer fields
+print("Test 1 - Basic integer fields:")
+let point = Point { x: 15, y: 25 }
+print("Point x: ${point.x}")
+print("Point y: ${point.y}")
+print("")
+
+// Test 2 - Boolean and integer fields
+print("Test 2 - Boolean and integer fields:")
+let user = User { id: 42, active: true }
+print("User ID: ${user.id}")
+print("User active: ${match user.active { true => 1 false => 0 }}")
+print("")
+
+// Test 3 - Field access in arithmetic
+print("Test 3 - Field access in arithmetic:")
+let rect = Rectangle { width: 10, height: 5 }
+print("Rectangle width: ${rect.width}")
+print("Rectangle height: ${rect.height}")
+let area = rect.width * rect.height
+print("Area: ${area}")
+print("")
+
+// Test 4 - Field access in conditionals
+print("Test 4 - Field access in conditionals:")
+let status = match user.active {
+    true => "Active User"
+    false => "Inactive User"
+}
+print("User status: ${status}")
+print("")
+
+// Test 5 - Non-destructive updates
+print("Test 5 - Non-destructive updates:")
+let counter = Counter { count: 0 }
+print("Original count: ${counter.count}")
+let incremented = counter { count: counter.count }
+print("After update: ${incremented.count}")
+let movedPoint = point { x: 100, y: 200 }
+print("Updated point: (${movedPoint.x}, ${movedPoint.y})")
+print("Original point unchanged: (${point.x}, ${point.y})")
+print("")
+
+// Test 6 - Complex expressions with field access
+print("Test 6 - Complex expressions with field access:")
+fn calculateArea(r) = r.width * r.height
+let perimeter = 2 * (rect.width + rect.height)
+let manhattanDistance = point.x + point.y
+let calculatedArea = calculateArea(rect)
+
+print("Rectangle perimeter: ${perimeter}")
+print("Manhattan distance from origin: ${manhattanDistance}")
+print("Calculated area using function: ${calculatedArea}")
+print("")
+
+print("=== COMPREHENSIVE FIELD ACCESS TEST COMPLETE ===")
+
+/// Derives the same conditional label from a record field.
+fn userStatus(value: User) -> string = match value.active {
+    true => "Active User"
+    false => "Inactive User"
+}
+
+/// Verifies reads, arithmetic consumers, branching, and persistent updates.
+fn fieldAccessCase() = {
+    let point = Point { x: 15, y: 25 }
+    let user = User { id: 42, active: true }
+    let inactive = user { active: false }
+    let rect = Rectangle { width: 10, height: 5 }
+    let counter = Counter { count: 0 }
+    let incremented = counter { count: counter.count }
+    let moved = point { x: 100, y: 200 }
+    checkAll("record field behavior", [
+        point.x == 15, point.y == 25,
+        user.id == 42, user.active, !inactive.active,
+        (calculateArea(rect) ?: 0) == 50,
+        (rect.width + rect.height ?: 0) == 15,
+        (point.x + point.y ?: 0) == 40,
+        userStatus(user) == "Active User",
+        userStatus(inactive) == "Inactive User",
+        counter.count == 0, incremented.count == 0,
+        moved.x == 100, moved.y == 200,
+        point.x == 15, point.y == 25
+    ])
+}
+test("field access feeds expressions without mutating records", fieldAccessCase)

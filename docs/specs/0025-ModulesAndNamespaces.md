@@ -81,16 +81,20 @@ A plain module is a closed, stateless declaration boundary. It may contain
 immutable values, functions, types, effects, external declarations, and nested
 plain modules. Direct module-level `mut` is rejected. A `mut` cell inside a
 function is intended for handler-owned effect state
-([Bindings](0003-Syntax.md#bindings)); the checker does not yet restrict such
-local reassignment to that form
-([issue #180](https://github.com/Nimblesite/osprey/issues/180)).
+([Bindings](0003-Syntax.md#bindings)); the checker restricts every local
+reassignment to an effect handler arm.
 
 ```osprey
 namespace billing;
 
 module Tax {
     let rate = 10
-    export fn add(cents: int) -> int = cents + cents * rate / 100
+    export fn add(cents: int) -> int = {
+        let scaled = (cents * rate) ?: 0
+        let tax = intDiv(scaled, 100) ?: 0
+        let answer = (cents + tax) ?: cents
+        answer
+    }
 }
 ```
 
@@ -99,8 +103,18 @@ namespace billing
 
 module Tax
     rate = 10
-    export add cents = cents + cents * rate / 100
+    export add cents =
+        scaled = (cents * rate) ?: 0
+        tax = intDiv (scaled, 100) ?: 0
+        answer = (cents + tax) ?: cents
+        answer
 ```
+
+Under [ARITH-CHECKED](0013-ErrorHandling.md#arithmetic-and-result--arith-checked),
+this example keeps the original cent amount if the checked multiplication,
+integer division, or final addition fails. A module that needs to expose the
+failure instead may export a `Result`-returning function; module boundaries do
+not erase its error channel.
 
 Unascribed module items are private unless marked `export`. An ascribed module
 exports the items named by its signature.

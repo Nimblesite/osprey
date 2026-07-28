@@ -1,0 +1,24 @@
+// ML smoke twin covering bindings and interpolation.
+
+(** Verify greeting text and arithmetic interpolation. *)
+helloSmokeCase () =
+    greeting = "Hello from the ML flavor"
+
+    // Preserve both complete rendered lines.
+    checkAll "hello legacy rendered lines" [
+        greeting == "Hello from the ML flavor",
+        "2 + 3 = ${2 + 3}" == "2 + 3 = Success(5)"
+    ]
+    // Check the dynamic values independently.
+    checkAll "hello legacy constituent values" [
+        greeting == "Hello from the ML flavor",
+        (2 + 3 ?: 0) == 5
+    ]
+    // Exercise useful greeting boundaries.
+    checkAll "hello greeting edge cases" [
+        startsWith greeting "Hello",
+        contains greeting "ML flavor",
+        (greeting == "") == false
+    ]
+
+test "top-level binding and interpolation retain both hello lines" helloSmokeCase

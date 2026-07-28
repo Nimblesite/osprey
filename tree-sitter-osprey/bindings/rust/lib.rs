@@ -9,13 +9,6 @@ extern "C" {
 /// The tree-sitter [`LanguageFn`] for this grammar.
 pub const LANGUAGE: LanguageFn = unsafe { LanguageFn::from_raw(tree_sitter_osprey) };
 
-/// The syntax-highlighting query.
-pub const HIGHLIGHTS_QUERY: &str = include_str!("../../queries/highlights.scm");
-/// The local-variables / scope query.
-pub const LOCALS_QUERY: &str = include_str!("../../queries/locals.scm");
-/// The code-folding query.
-pub const FOLDS_QUERY: &str = include_str!("../../queries/folds.scm");
-
 #[cfg(test)]
 mod tests {
     #[test]

@@ -20,18 +20,27 @@
 // ============================================================================
 
 effect Db {
-    add:   fn(string) -> int      // append a task, returns its id
-    list:  fn() -> string         // the rendered task table
-    count: fn() -> int            // how many tasks exist
+    /// Append a task and return its new id.
+    add: fn(string) -> int
+    /// Render the current task table.
+    list: fn() -> string
+    /// Count the tasks currently stored.
+    count: fn() -> int
 }
 effect Metrics {
-    hit:    fn(string) -> Unit    // record one served request
-    served: fn() -> int           // total requests served since boot
+    /// Record one served request for `route`.
+    hit: fn(string) -> Unit
+    /// Read the total requests served since boot.
+    served: fn() -> int
 }
 effect Persist {
-    flush: fn(string) -> int      // durably write a snapshot, returns bytes
+    /// Durably write a snapshot, returning the number of bytes written.
+    flush: fn(string) -> int
 }
-effect Log { info: fn(string) -> Unit }
+effect Log {
+    /// Record an informational `message` about server activity.
+    info: fn(string) -> Unit
+}
 
 // ---- ANSI pizazz (pure string wrappers) ------------------------------------
 fn esc(code: string, s: string) -> string = "\e[${code}m${s}\e[0m"
@@ -42,8 +51,9 @@ fn cyan(s: string) -> string = esc("36", s)
 fn green(s: string) -> string = esc("92", s)
 fn yellow(s: string) -> string = esc("93", s)
 fn magenta(s: string) -> string = esc("95", s)
-fn inc(x: int) -> int = x + 1
-fn mn(a: int, b: int) -> int = match a < b { true => a  false => b }
+// Counters explicitly keep their previous value on arithmetic overflow.
+fn inc(x) = x + 1 ?: x
+fn mn(a, b) = match a < b { true => a  false => b }
 
 // A colored, fixed-width method badge (black text on a colored block).
 fn badge(method: string) -> string = match method {
@@ -141,11 +151,11 @@ fn main() -> int {
             diskBytes
         }
     in handle Metrics
-        hit p  => { requests = requests + 1 }
+        hit p  => { requests = inc(requests) }
         served => requests
     in handle Db
         add t => {
-            taskCount = taskCount + 1
+            taskCount = inc(taskCount)
             tasks = "${tasks}#${toString(taskCount)} ${t}\n"
             taskCount
         }

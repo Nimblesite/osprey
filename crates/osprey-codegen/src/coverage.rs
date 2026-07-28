@@ -29,7 +29,7 @@ pub(crate) struct CoverageState {
 /// All coverable lines in `program`: function definitions plus positioned
 /// statements, recursing through nested blocks, lambdas, match/handler arms,
 /// and module/namespace bodies.
-pub(crate) fn coverable_lines(program: &Program) -> BTreeSet<u32> {
+fn coverable_lines(program: &Program) -> BTreeSet<u32> {
     let mut lines = BTreeSet::new();
     collect_stmts(&program.statements, &mut lines);
     lines
@@ -59,7 +59,9 @@ fn collect_stmt(stmt: &Stmt, lines: &mut BTreeSet<u32>) {
         | Stmt::Assignment {
             value, position, ..
         }
-        | Stmt::Expr { value, position } => {
+        | Stmt::Expr {
+            value, position, ..
+        } => {
             mark(*position, lines);
             collect_expr(value, lines);
         }
@@ -208,8 +210,27 @@ impl Codegen {
 
 #[cfg(test)]
 mod tests {
+    use super::coverable_lines;
     use crate::builder::{Codegen, CodegenOptions};
     use osprey_ast::Position;
+
+    const NESTED_SOURCE: &str = "namespace sample {\n\
+      module Stats {\n\
+        fn choose(flag) = {\n\
+          let identity = fn(x) => x\n\
+          mut result = 0\n\
+          result = match flag {\n\
+            true => identity(1)\n\
+            false => identity(2)\n\
+          }\n\
+          result\n\
+        }\n\
+      }\n\
+    }\n\
+    effect Ask { value: fn() -> int }\n\
+    fn read() = perform Ask.value()\n\
+    let handled = handle Ask value => 42 in read()\n\
+    print(toString(handled))\n";
 
     fn coverage_codegen() -> Codegen {
         Codegen::with_options(
@@ -253,5 +274,35 @@ mod tests {
         cg.finish_function("i64", "f", &[]);
         assert!(cg.cov_render_init().is_none());
         assert!(!cg.render().contains("__osp_cov"));
+    }
+
+    #[test]
+    fn cov_seed_finds_lines_inside_every_nested_control_flow_shape() {
+        let parsed = osprey_syntax::parse_program(NESTED_SOURCE);
+        assert!(parsed.errors.is_empty(), "syntax: {:?}", parsed.errors);
+        let expected = std::collections::BTreeSet::from([3, 4, 5, 6, 15, 16, 17]);
+        assert_eq!(coverable_lines(&parsed.program), expected);
+        let mut cg = coverage_codegen();
+        cg.cov_seed(&parsed.program);
+        let module = cg.render();
+        for line in expected {
+            let global = format!("@__osp_cov_hits.{line} = internal global i64 0");
+            assert!(module.contains(&global), "missing line {line}:\n{module}");
+        }
+        assert_eq!(module.matches("internal global i64 0").count(), 7);
+    }
+
+    #[test]
+    fn inline_function_definition_hits_are_recorded_at_call_sites() {
+        let mut cg = coverage_codegen();
+        cg.begin_function("caller", None);
+        cg.cov_note_inline_fn("identity", Some(Position { line: 8, column: 3 }));
+        cg.cov_hit_inline_fn("identity");
+        cg.cov_hit_inline_fn("unknown");
+        cg.emit("ret i64 0");
+        cg.finish_function("i64", "caller", &[]);
+        let module = cg.render();
+        assert!(module.contains("@__osp_cov_hits.8 = internal global i64 0"));
+        assert_eq!(module.matches("store i64").count(), 1);
     }
 }

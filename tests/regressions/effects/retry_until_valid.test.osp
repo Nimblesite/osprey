@@ -1,0 +1,69 @@
+// `readPositive` validates values supplied by Prompt. One handler keeps
+// resuming with scripted values; another returns without resume to stop.
+
+effect Prompt {
+    /// Request the value the caller should use for `label`; the handler decides what is supplied.
+    ask: fn(string) -> int
+}
+
+/// Each invalid value causes a fresh Prompt.ask operation.
+fn readPositive(label: string) -> int !Prompt = {
+    let value = perform Prompt.ask(label)
+    match value > 0 {
+        true => value
+        false => {
+            print("  business: rejected ${toString(value)} for ${label}, asking again")
+            readPositive(label)
+        }
+    }
+}
+
+/// Resume with -3, 0, then 7.
+mut attempt = 0
+let accepted = handle Prompt
+    ask label => {
+        attempt = attempt + 1 ?: attempt
+        let value = match attempt {
+            1 => (0 - 3) ?: 0
+            2 => 0
+            _ => 7
+        }
+        print("attempt ${toString(attempt)}: handler feeds ${toString(value)}")
+        resume(value)
+    }
+in readPositive("age")
+print("SCENARIO 1 accepted=${toString(accepted)} after ${toString(attempt)} attempts")
+
+/// After three invalid values, return a sentinel without resuming.
+mut tries = 0
+let outcome = handle Prompt
+    ask label => {
+        tries = tries + 1 ?: tries
+        match tries > 3 {
+            true => {
+                print("attempt ${toString(tries)}: handler GIVES UP, aborting with sentinel")
+                let sentinel = (0 - 999) ?: 0
+                sentinel
+            }
+            false => {
+                let value = (0 - tries) ?: 0
+                print("attempt ${toString(tries)}: handler feeds ${toString(value)}")
+                resume(value)
+            }
+        }
+    }
+in readPositive("quota")
+let verdict = match outcome > 0 {
+    true => "valid ${toString(outcome)}"
+    false => "gave up (sentinel ${toString(outcome)}) after ${toString(tries - 1)} bad answers"
+}
+print("SCENARIO 2 outcome: ${verdict}")
+
+// Verifies successful retries and the non-resuming early-exit policy.
+test("retry handlers resume until success or abort at their limit", fn() => checkAll("retry outcomes", [
+    accepted == 7,
+    attempt == 3,
+    outcome == ((0 - 999) ?: 0),
+    tries == 4,
+    contains(verdict, "after Success(3) bad answers")
+]))

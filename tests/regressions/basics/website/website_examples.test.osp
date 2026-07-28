@@ -1,0 +1,96 @@
+// The six tiny code blocks that appear on the website, run as one file
+// to keep them honest. If a copy/paste snippet stops compiling, this
+// breaks. Sections preserved verbatim (apart from being concatenated).
+
+/// --- Hero ---
+fn double(n) = n * 2 ?: 0
+
+let x = 42
+let name = "Alice"
+print("x = ${x}")
+print("name = ${name}")
+
+let result = match x {
+    42 => "The answer!"
+    0 => "Zero"
+    _ => "Something else"
+}
+print("Result: ${result}")
+
+/// --- String interpolation ---
+let age = 25
+let score = 95
+print("Hello ${name}!")
+print("Next year you'll be ${(age + 1) ?: 0}")
+print("Double score: ${(score * 2) ?: 0}")
+print("${name} (${age}) scored ${score}/100")
+
+/// --- Type-safe pattern matching ---
+fn analyzeNumber(n) = match n {
+    0 => "Zero"
+    42 => "The answer!"
+    _ => "Something else"
+}
+fn square(v) = v * v ?: 0
+print("Testing functions:")
+print(analyzeNumber(0))
+print(analyzeNumber(42))
+print(analyzeNumber(5))
+
+let xx = 5
+let doubled = double(xx)
+let squared = square(doubled)
+print("${xx} doubled is ${doubled}")
+print("${doubled} squared is ${squared}")
+
+/// --- Grade pattern matching ---
+fn getGrade(s) = match s {
+    100 => "Perfect!"
+    95 => "Excellent"
+    85 => "Very Good"
+    75 => "Good"
+    _ => "Needs Improvement"
+}
+print("Grade for 100: ${getGrade(100)}")
+print("Grade for 95: ${getGrade(95)}")
+print("Grade for 85: ${getGrade(85)}")
+print("Grade for 75: ${getGrade(75)}")
+print("Grade for 50: ${getGrade(50)}")
+
+// --- Functional pipe ---
+5 |> double |> square |> print
+print("Range operations:")
+range(1, 10) |> forEach(print)
+
+/// --- Fibers ---
+fn compute(value) = value * 2 ?: 0
+let fiber1 = spawn compute(5)
+let fiber2 = spawn compute(10)
+print("Fiber 1 result: ${fiber1}")
+print("Fiber 2 result: ${fiber2}")
+let job1 = yield 10
+print("Processed ${job1} items")
+print("=== Fiber Example Complete ===")
+
+/// Verifies the website helpers, pipelines, matches, and fiber result end to end.
+fn websiteExamplesCase() = {
+    let pipedValue = square(double(5))
+    let worker = spawn compute(7)
+    let fiberValue = await(worker)
+    checkAll("website example behavior", [
+        double(21) == 42,
+        square(12) == 144,
+        pipedValue == 100,
+        analyzeNumber(0) == "Zero",
+        analyzeNumber(42) == "The answer!",
+        analyzeNumber(5) == "Something else",
+        getGrade(100) == "Perfect!",
+        getGrade(95) == "Excellent",
+        getGrade(85) == "Very Good",
+        getGrade(75) == "Good",
+        getGrade(50) == "Needs Improvement",
+        compute(11) == 22,
+        fiberValue == 14
+    ])
+}
+test("website snippets produce their documented values", websiteExamplesCase)

@@ -5,8 +5,8 @@
 //! count toward coverage — and each one is asserted to still type-check and
 //! lower to LLVM IR. The must-reject corpus (`failscompilation/*.ospo`) is run
 //! through the same pipeline to cover the rejection branches. This is the
-//! library-boundary twin of `crates/diff_examples.sh` (which runs the built
-//! binary out-of-process and therefore never reaches the coverage profile).
+//! in-process coverage counterpart to the built CLI's `osprey test tests`
+//! assertion run, which executes out-of-process and cannot reach this profile.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -64,8 +64,82 @@ fn compile(path: &Path, source: &str) -> Result<usize, String> {
 }
 
 #[test]
-fn every_tested_example_compiles_to_ir() {
-    let dir = repo_root().join("examples/tested");
+fn unhandled_integer_overflow_in_mutation_is_rejected() {
+    let source = r#"
+effect Audit
+    step : string => int
+
+pipeline : Unit -> int ! Audit
+pipeline () = perform Audit.step "tick"
+
+unhandledOverflow () =
+    mut n = 0
+    handle Audit
+        step label =>
+            n := n + 1
+            resume n
+    in pipeline ()
+"#;
+    let result = compile(Path::new("unhandled_integer_overflow.test.ospml"), source);
+    assert!(
+        matches!(&result, Err(reason) if reason.starts_with("typecheck:")),
+        "potentially overflowing `n := n + 1` must be rejected at type checking unless its failure is handled; got {result:?}"
+    );
+}
+
+#[test]
+fn inferred_effects_without_handlers_are_rejected_in_both_flavors() {
+    // [EFFECTS-STATIC-DISCHARGE] Omitting a function signature must infer both
+    // its value type and its effect row. Neither flavor may turn an omitted
+    // `!ArithmeticFailure` annotation into a runtime-only safety check.
+    let cases = [
+        (
+            "unhandled_inferred_effect.test.osp",
+            r"
+effect ArithmeticFailure {
+    raise: fn(string) -> Result<int, MathError>
+}
+
+fn addPreservingError(a, b) = match a + b {
+    Success { value } => Success { value: value }
+    Error { message } => perform ArithmeticFailure.raise(message)
+}
+
+print(toString(addPreservingError(9223372036854775807, 1)))
+",
+        ),
+        (
+            "unhandled_inferred_effect.test.ospml",
+            r"
+effect ArithmeticFailure
+    raise : string => Result<int, MathError>
+
+addPreservingError a b = match a + b
+    Success value => Success(value = value)
+    Error message => perform ArithmeticFailure.raise message
+
+print (toString (addPreservingError 9223372036854775807 1))
+",
+        ),
+    ];
+
+    let mut accepted = Vec::new();
+    for (path, source) in cases {
+        if compile(Path::new(path), source).is_ok() {
+            accepted.push(path);
+        }
+    }
+
+    assert!(
+        accepted.is_empty(),
+        "unhandled inferred effects must fail compilation in both flavors; accepted: {}",
+        accepted.join(", ")
+    );
+}
+
+#[test]
+fn every_language_test_compiles_to_ir() {
+    let dir = repo_root().join("tests");
     let files = sources(&dir, "osp");
     assert!(
         files.len() >= 40,
@@ -94,6 +168,32 @@ fn every_tested_example_compiles_to_ir() {
         failures.join("\n")
     );
     assert!(total_ir > 0, "the corpus lowered to non-empty IR");
+}
+
+#[test]
+fn every_benchmark_source_compiles_after_checked_arithmetic_change() {
+    let dir = repo_root().join("benchmarks/cases");
+    let files = sources(&dir, "osp");
+    assert!(
+        files.len() >= 22,
+        "expected the full Osprey benchmark corpus, found {}",
+        files.len()
+    );
+
+    let mut failures = Vec::new();
+    for path in &files {
+        let source = fs::read_to_string(path).expect("read benchmark");
+        if let Err(stage) = compile(path, &source) {
+            let rel = path.strip_prefix(&dir).unwrap_or(path);
+            failures.push(format!("{}: {stage}", rel.display()));
+        }
+    }
+
+    assert!(
+        failures.is_empty(),
+        "benchmark sources must compile cleanly; failures:\n{}",
+        failures.join("\n")
+    );
 }
 
 #[test]
@@ -131,6 +231,55 @@ fn generics_and_variance_negative_cases_are_rejected() {
         assert!(
             compile(&path, &source).is_err(),
             "{name} must be rejected (variance/generic-effect misuse)"
+        );
+    }
+}
+
+#[test]
+fn static_effect_safety_negative_cases_are_rejected_in_both_flavors() {
+    // [EFFECTS-STATIC-DISCHARGE] These paired fixtures pin the end-to-end
+    // parse -> inference -> entry-proof boundary, including ML lowering.
+    let dir = repo_root().join("examples/failscompilation");
+    let cases = [
+        (
+            "static_effect_unhandled_inferred_transitive.ospo",
+            "Alarm.ring",
+        ),
+        ("static_effect_escaped_lambda.ospo", "Alarm.ring"),
+        (
+            "static_effect_partial_missing_operation.ospo",
+            "Pair.second",
+        ),
+        ("static_effect_generic_mismatch.ospo", "Stash<int>.put"),
+        (
+            "static_effect_recursive_handler.ospo",
+            "recursively re-enter",
+        ),
+        (
+            "ml_static_effect_unhandled_inferred_transitive.ospo",
+            "Alarm.ring",
+        ),
+        ("ml_static_effect_escaped_lambda.ospo", "Alarm.ring"),
+        (
+            "ml_static_effect_partial_missing_operation.ospo",
+            "Pair.second",
+        ),
+        ("ml_static_effect_generic_mismatch.ospo", "Stash<int>.put"),
+        (
+            "ml_static_effect_recursive_handler.ospo",
+            "recursively re-enter",
+        ),
+    ];
+
+    for (name, expected) in cases {
+        let path = dir.join(name);
+        let source = fs::read_to_string(&path).expect("read static effect fixture");
+        let Err(reason) = compile(&path, &source) else {
+            panic!("{name} must be rejected by static effect discharge");
+        };
+        assert!(
+            reason.contains(expected),
+            "{name}: expected a diagnostic containing {expected:?}, got {reason:?}"
         );
     }
 }
@@ -200,19 +349,27 @@ fn ml_flavor_negative_cases_are_rejected_by_the_ml_frontend() {
 #[test]
 fn failscompilation_corpus_drives_rejection_paths() {
     // Every `.ospo` is run through the pipeline to cover the rejection branches.
-    // The compiler does not yet reject all of them (the shell harness tracks the
-    // residue via a ratchet), so this asserts only that a healthy majority are
-    // already rejected and that the pipeline never panics on ill-formed input.
+    // EVERY ill-formed program must be rejected — the corpus stands at 90/90.
+    //
+    // This assertion used to read `rejected * 2 >= files.len()`, i.e. "a healthy
+    // majority", which tolerated 45 of the 90 silently starting to compile. Its
+    // comment deferred the exact residue to "the shell harness ratchet", but
+    // that harness (crates/diff_examples.sh, FC_EXPECTED_ESCAPES=0) was deleted,
+    // so the strict count it pointed at no longer existed. A must-reject corpus
+    // that permits half its cases to be accepted is not a gate.
     let dir = repo_root().join("examples/failscompilation");
     let files = sources(&dir, "ospo");
     assert!(!files.is_empty(), "expected a must-reject corpus");
-    let rejected = files
+    let escaped: Vec<String> = files
         .iter()
-        .filter(|p| compile(p.as_path(), &fs::read_to_string(p).unwrap_or_default()).is_err())
-        .count();
+        .filter(|p| compile(p.as_path(), &fs::read_to_string(p).unwrap_or_default()).is_ok())
+        .map(|p| p.strip_prefix(&dir).unwrap_or(p).display().to_string())
+        .collect();
     assert!(
-        rejected * 2 >= files.len(),
-        "most ill-formed programs should be rejected, got {rejected}/{}",
-        files.len()
+        escaped.is_empty(),
+        "every ill-formed program must be rejected; {} of {} were accepted:\n{}",
+        escaped.len(),
+        files.len(),
+        escaped.join("\n")
     );
 }

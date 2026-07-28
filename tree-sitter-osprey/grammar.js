@@ -268,8 +268,16 @@ module.exports = grammar({
         repeat($.operation_declaration),
         '}',
       ),
+    // Each operation carries its OWN `///` docs — an effect's operations are
+    // independent entry points, so `Prompt.ask` and `Prompt.tell` must hover
+    // with their own prose, not the effect's. Implements [DOC-EFFECT-OP].
     operation_declaration: ($) =>
-      seq(field('name', $.identifier), ':', field('type', $._type)),
+      seq(
+        optional($.doc_comment),
+        field('name', $.identifier),
+        ':',
+        field('type', $._type),
+      ),
 
     // Effect rows reference effects optionally applied to type arguments:
     // `!State<int>`, `![State<int>, Log]`. Implements [EFFECTS-GENERIC-ROWS].
@@ -302,7 +310,10 @@ module.exports = grammar({
     type_list: ($) => sep1(',', $._type),
 
     // ---------- EXPRESSIONS ----------
-    expression_statement: ($) => $.expression,
+    // A leading `///` block documents the statement it precedes — the only way
+    // to document a `test("name", …)` case, which is a call expression rather
+    // than a declaration. Implements [DOC-ATTACH], [TESTING-DOC].
+    expression_statement: ($) => seq(optional($.doc_comment), $.expression),
 
     expression: ($) =>
       choice(

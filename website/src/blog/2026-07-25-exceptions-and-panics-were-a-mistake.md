@@ -5,7 +5,7 @@ excerpt: "Exceptions and panics turn ordinary control flow into hidden exits. Os
 description: "Why exceptions and panics create hidden control flow, what software research found, and how Osprey handles errors with Result types and algebraic effects."
 tags: ["blog", "error-handling", "exceptions", "panics", "algebraic-effects", "result-types", "ocaml", "koka", "eff", "language-design"]
 author: "Christian Findlay"
-modified: 2026-07-25
+modified: 2026-07-26
 readingTime: 20
 image: /assets/images/blog/exceptions-and-panics-were-a-mistake.png
 imageAlt: "A cyan wireframe osprey above branching error-handling paths while one hidden exception path fractures below"
@@ -137,7 +137,7 @@ print(describePort("8080"))
 
 Failure is now ordinary data. Code can return it, store it, test it or transform it. The caller decides what to do because the failure is right there in the return value. If another outcome is added later, existing matches fail to compile until they handle it.
 
-Use `Result<T, E>` for failures that callers expect to deal with: invalid input, a missing record, checked arithmetic, file access or an HTTP error. The runnable [validation pipeline](https://github.com/Nimblesite/osprey/blob/main/examples/tested/basics/errors/validation_pipeline.osp) returns `Result<int, string>`, keeps the original error messages and handles both outcomes.
+Use `Result<T, E>` for failures that callers expect to deal with: invalid input, a missing record, checked arithmetic, file access or an HTTP error. The runnable [validation pipeline](https://github.com/Nimblesite/osprey/blob/main/tests/regressions/basics/errors/validation_pipeline.test.osp) returns `Result<int, string>`, keeps the original error messages and handles both outcomes.
 
 ## Algebraic effects vs exceptions: direct code without hidden exits
 
@@ -199,11 +199,11 @@ The handler returns `8080`, which becomes the result of `perform`, and `readPort
 
 This keeps the convenience people want from exceptions without hiding what can happen. `!InvalidPort` says that `readPort` may make this request, and the surrounding handler shows how the application will answer it.
 
-The runnable [recoverable_errors.osp](https://github.com/Nimblesite/osprey/blob/main/examples/tested/effects/recoverable_errors.osp) uses the same pattern in a batch workflow. One handler skips an impossible order; another reduces it to the available stock. [retry_until_valid.osp](https://github.com/Nimblesite/osprey/blob/main/examples/tested/effects/retry_until_valid.osp) retries validation and continues once it receives a valid value.
+The runnable [recoverable_errors.osp](https://github.com/Nimblesite/osprey/blob/main/tests/regressions/effects/recoverable_errors.test.osp) and [recoverable_errors.ospml](https://github.com/Nimblesite/osprey/blob/main/tests/regressions/effects/recoverable_errors.test.ospml) use the same pattern in a batch workflow. One handler skips an impossible order; another reduces it to the available stock. The paired [retry_until_valid.osp](https://github.com/Nimblesite/osprey/blob/main/tests/regressions/effects/retry_until_valid.test.osp) and [ML version](https://github.com/Nimblesite/osprey/blob/main/tests/regressions/effects/retry_until_valid.test.ospml) retry validation and continue once they receive a valid value.
 
 ### Algebraic effect exception example: resume or abort
 
-An effect handler can also stop work early, just like an exception. `resume(value)` returns to the point that called `perform`, using `value` as its result. If the handler returns without calling `resume`, the paused function does not continue. The handler's value becomes the result of the whole `handle … in` block.
+An effect handler can also stop work early, just like an exception. In a handler region that contains `resume`, `resume(value)` returns to the point that called `perform`, using `value` as its result. If the selected branch returns without calling `resume`, the paused function does not continue. The branch's value becomes the result of the whole `handle … in` block. In a handler with no `resume` anywhere, returning from an arm has different behavior: it supplies the current operation result and the caller continues.
 
 ```osprey
 effect PortError {
@@ -229,25 +229,25 @@ in boot("not-a-port")
 
 On success, `resume(value)` returns to `boot`, which prints the startup message and returns `0`. On failure, the handler prints the error and returns `1`; the rest of `boot` never runs. This has the early-exit behaviour of an exception, but the operation has a name and type, and its handler is visible around the code.
 
-The repository's native regression case [resume_abort_early_exit.osp](https://github.com/Nimblesite/osprey/blob/main/examples/tested/effects/resume_abort_early_exit.osp) exercises both branches and verifies the exact output. The broader [algebraic effects suite](https://github.com/Nimblesite/osprey/tree/main/examples/tested/effects) covers nested handlers, handler scoping, state, fibers and code that runs after `resume` returns.
+The repository's paired Default/ML [resume regression suites](https://github.com/Nimblesite/osprey/tree/main/tests/effects/resume) exercise both branches and assert internal continuation state. The paired [direct recovery suites](https://github.com/Nimblesite/osprey/tree/main/tests/effects/errors) test fallback substitution, collect-all validation, nested policies, state and recursion. The runnable [algebraic effects examples](https://github.com/Nimblesite/osprey/tree/main/tests/regressions/effects) cover handler scoping, state, fibers and code that runs after `resume` returns.
 
 ### Combine algebraic effects with `Result`
 
-Effects and results work together. A handler can return a `Result`, leaving the caller to deal with the expected failure as ordinary data:
+Effects and results work together. One safe pattern is for the handler to provide a dependency and for the caller to turn that value into a `Result`:
 
 ```osprey
 effect Accounts {
-    find: fn(int) -> Result<string, string>
+    find: fn(int) -> string
 }
 
 fn greeting(id) -> Result<string, string> !Accounts =
     match perform Accounts.find(id) {
-        Success { value }   => Success { value: "Hello, ${value}" }
-        Error   { message } => Error { message: message }
+        ""   => Error { message: "user ${id} was not found" }
+        name => Success { value: "Hello, ${name}" }
     }
 
 let lookup = handle Accounts
-    find id => Error { message: "user ${id} was not found" }
+    find id => ""
 in greeting(42)
 
 match lookup {
@@ -256,9 +256,11 @@ match lookup {
 }
 ```
 
-A production `Accounts` handler could query a database. A test handler could return a fixed value. The effect lets the surrounding code provide the lookup, while `Result` still tells `greeting` that the lookup may fail. No database exception has to travel invisibly through the layers in between.
+A production `Accounts` handler could query a database. A test handler could return a fixed value. The effect lets surrounding code provide the lookup, while `Result` tells the immediate caller that `greeting` may fail. No database exception has to travel invisibly through the layers in between.
 
-The tested suite also includes [result_and_effects.osp](https://github.com/Nimblesite/osprey/blob/main/examples/tested/effects/result_and_effects.osp), [typed_error_channels.osp](https://github.com/Nimblesite/osprey/blob/main/examples/tested/effects/typed_error_channels.osp) and [collect_all_errors.osp](https://github.com/Nimblesite/osprey/blob/main/examples/tested/effects/collect_all_errors.osp). They show explicit results under handlers, separate named error channels, and accumulation of multiple validation failures instead of stopping at the first one.
+The tested suite includes paired Default/ML versions of [result_and_effects](https://github.com/Nimblesite/osprey/blob/main/tests/regressions/effects/result_and_effects.test.osp), [typed_error_channels](https://github.com/Nimblesite/osprey/blob/main/tests/regressions/effects/typed_error_channels.test.osp) and [collect_all_errors](https://github.com/Nimblesite/osprey/blob/main/tests/regressions/effects/collect_all_errors.test.osp). They show local Results feeding a handler policy, separate named error channels, and accumulation of multiple validation failures instead of stopping at the first one. The ML twins sit beside those files with the `.ospml` extension.
+
+One alpha limitation matters here: a direct handler operation declared to return a whole `Result<T, E>` currently corrupts that value. [Critical issue #183](https://github.com/Nimblesite/osprey/issues/183) has paired reproducers. Keep the `Result` outside that direct operation boundary, as above, until the bug is fixed.
 
 ## Result type or algebraic effect?
 
@@ -280,15 +282,19 @@ The goal is not less error handling. It is fewer errors that were never handled.
 
 Osprey is alpha software, so here is exactly what works today.
 
-The compiler checks the values passed into and returned from effect operations. It runs handlers around a block of code and, in native builds, allows a handler to resume paused work once. For known `Result` values, it checks that matches cover every case and normally prevents code from grabbing the success value directly. The examples above compile and run today, and the linked files under `examples/tested` are regression tests.
+The compiler checks the values passed into and returned from effect operations. It runs handlers around a block of code and, in native builds, allows a handler to resume paused work once. For known `Result` values, it checks that matches cover every case and normally prevents code from grabbing the success value directly. The examples above compile and run today, and every linked file under `tests/regressions/effects` now has both a Default and an ML regression test.
 
-There are three important limits:
+Important limits include:
 
 - An `Error` currently always carries a string message. Although signatures use `Result<T, E>`, `E` cannot yet be an arbitrary error value. That is why these examples use `Result<T, string>`.
 - The compiler does not yet prove that every effect has a handler. Code with a missing handler can compile and then stop at runtime with an `unhandled effect` message. This work is tracked in the [algebraic-effects specification](/spec/0017-algebraiceffects/) and on the [implementation status page](/status/). Handlers that pause and resume work are also native-only today; WebAssembly handlers must return immediately.
 - The compiler automatically extracts the success value from a `Result` in six convenience cases. If the value is actually an `Error`, the current code can discard that error and produce a zero or default value. Osprey therefore does **not** yet force explicit handling of every `Result` on every path. This is an alpha safety gap to fix, not intended language behaviour.
+- Resuming effect operations currently transport 16 arguments. The compiler accepts a 17th, but the runtime silently replaces it with zero. This is tracked as [critical issue #182](https://github.com/Nimblesite/osprey/issues/182); paired tests prove the safe boundary and skip the corrupting case.
+- Direct handlers currently corrupt whole `Result<T, E>` operation values, tracked as [critical issue #183](https://github.com/Nimblesite/osprey/issues/183). Whole Results passed through explicit `resume` have separate passing tests.
+- An unannotated four-argument curried ML helper can silently skip effects performed through its body. The verified workaround is a flat parenthesised parameter list while [critical issue #184](https://github.com/Nimblesite/osprey/issues/184) is open.
+- Under ARC memory management, a resuming handler whose completed answer is a dynamic string currently leaks one managed object. Paired tests keep the failing path visible while [critical issue #185](https://github.com/Nimblesite/osprey/issues/185) is open.
 
-This post states the standard Osprey is aiming for. To meet it, the compiler must reject missing handlers and must never silently discard an `Error`. The language features already run; the checks around them are not yet complete.
+This post states the standard Osprey is aiming for. To meet it, the compiler must reject missing handlers, preserve every accepted operation value and never silently discard an `Error`. The language features already run; the checks and two value-transport paths above are not yet complete.
 
 ## Stop hiding the second return channel
 

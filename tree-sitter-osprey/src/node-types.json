@@ -480,9 +480,13 @@
     "named": true,
     "fields": {},
     "children": {
-      "multiple": false,
+      "multiple": true,
       "required": true,
       "types": [
+        {
+          "type": "doc_comment",
+          "named": true
+        },
         {
           "type": "expression",
           "named": true
@@ -1710,6 +1714,16 @@
           }
         ]
       }
+    },
+    "children": {
+      "multiple": false,
+      "required": false,
+      "types": [
+        {
+          "type": "doc_comment",
+          "named": true
+        }
+      ]
     }
   },
   {

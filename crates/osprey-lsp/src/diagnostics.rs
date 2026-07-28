@@ -25,7 +25,7 @@ const SOURCE: &str = "osprey";
 /// alone (an unparsable file is not type-checked, matching the CLI gate); a clean
 /// parse is then type-checked.
 #[must_use]
-pub fn compute(source: &str, path: &str, encoding: PositionEncoding) -> Vec<Diagnostic> {
+pub(crate) fn compute(source: &str, path: &str, encoding: PositionEncoding) -> Vec<Diagnostic> {
     // [FLAVOR-SELECT] makes a marker/extension disagreement a hard error, and
     // the CLI refuses to build such a file. Resolve FIRST and report the
     // conflict as the document's only finding: guessing a flavor would parse
@@ -275,7 +275,7 @@ mod tests {
         // (bare `:` signature, `\` lambda, whitespace application) must parse
         // cleanly under the ML frontend rather than be flagged as broken Default
         // syntax. Selecting the flavor by the document path is what fixes it.
-        let ml = "inc : int -> int\ninc x = x + 1\nmain () =\n    print \"v=${toString (inc 41)}\"\n    0\n";
+        let ml = "inc : int -> int\ninc x = (x + 1) ?: 0\nmain () =\n    print \"v=${toString (inc 41)}\"\n    0\n";
         let clean = compute(ml, "file:///tour.ospml", U16);
         assert!(
             clean.is_empty(),

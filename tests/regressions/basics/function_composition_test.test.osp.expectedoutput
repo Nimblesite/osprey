@@ -1,0 +1,42 @@
+=== Function Composition Test ===
+Testing function composition...
+Starting value: 10
+After double: 20
+After triple: 30
+After add5: 15
+square(5) = 25
+Function composition working correctly!
+hi!
+Success(11)
+110
+strEq=hi
+strNe=ok
+strLt=ok
+strLt2=ok
+3
+7
+Quote: "hi"
+Hi "Bob"
+lit: ab\nc
+-2.5
+adders: 8 13 105
+direct: 10 inferred: Success(21)
+passed: 111
+wrapped: 41 nested: Success(33)
+pins: 42 42 9
+field: true false
+mapped: 13
+mapped: 23
+mapped: 33
+evensum: 20
+elem: Success(12)
+elem: Success(15)
+chain3: Success(6) computed: 36 fieldcb: 23
+generic-values: 33 7 Success(42) osp!
+=== Function Composition Test Complete ===
+ok 1 - functions compose across scalar and string values
+ok 2 - closures retain captures through higher-order consumers
+ok 3 - capturing callbacks preserve iterator results
+ok 4 - effects own mutation and closure rebinding
+1..4
+# tests=4 passed=4 failed=0 skipped=0

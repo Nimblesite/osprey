@@ -56,7 +56,7 @@ pub(crate) const fn zero_literal(ty: LType) -> &'static str {
 impl LType {
     /// The textual LLVM spelling.
     #[must_use]
-    pub fn as_str(self) -> &'static str {
+    pub(crate) fn as_str(self) -> &'static str {
         match self {
             LType::I64 => "i64",
             LType::I1 => "i1",
@@ -105,80 +105,108 @@ pub(crate) fn comma_join<T>(xs: &[T], f: impl Fn(&T) -> String) -> String {
 pub struct Value {
     /// The textual LLVM operand: a register (`%3`), a literal (`42`), or an
     /// instruction result.
-    pub operand: String,
+    pub(crate) operand: String,
     /// The LLVM type the operand travels as.
-    pub ty: LType,
+    pub(crate) ty: LType,
     /// For aggregate handles ([`LType::Ptr`]): the Osprey owner type name
     /// (`Point`, `Shape`, `Result`, …) so field access and `match` can recover
     /// the heap layout. `None` for scalars and untyped handles.
-    pub osp_ty: Option<String>,
+    pub(crate) osp_ty: Option<String>,
     /// When `Some(inner)`, this value is a `Result<inner, _>` carried as a
     /// pointer to a heap block `{ inner, i8 disc }` (disc 0 = Success). Match,
-    /// `toString` and value-site coercion read this to branch on the
-    /// discriminant or auto-unwrap the success payload — every fallible
-    /// producer in the backend builds exactly this block shape.
-    pub result_inner: Option<LType>,
+    /// `?:`, failure-preserving arithmetic, and Result rendering read this to
+    /// branch on the discriminant; ordinary value sites preserve the whole
+    /// block. Every fallible producer in the backend builds this exact shape.
+    pub(crate) result_inner: Option<LType>,
+    /// Whether `result_inner` is only the physical placeholder layout chosen
+    /// by a bare `Error { message }` constructor.  An Error has no success
+    /// payload from which to discover `T`, so joins and contextual boundaries
+    /// must re-layout it to a concrete Success arm before the Result escapes.
+    pub(crate) result_inner_is_placeholder: bool,
     /// The Osprey owner type to tag the success payload with when this Result is
     /// unwrapped — e.g. a `Result<List<int>, _>` from indexing a list-of-lists
     /// carries `[]i64` so the unwrapped element is itself indexable. `None` for
     /// scalar payloads.
-    pub payload_owner: Option<String>,
+    pub(crate) payload_owner: Option<String>,
     /// For a `Fiber<T>` handle: the element type `T` the fiber's result was
     /// boxed from, so `await` can unbox the uniform `i64` result back to `T`
     /// (a string fiber result is a pointer, not an integer). `None` for
     /// non-fiber values (then `await` keeps the legacy `i64` result).
-    pub fiber_elem: Option<LType>,
+    pub(crate) fiber_elem: Option<LType>,
+    /// Aggregate owner metadata for the element carried by a Fiber.
+    pub(crate) fiber_elem_owner: Option<String>,
+    /// Result layout metadata for a `Fiber<Result<T, E>>`; `await` restores the
+    /// whole Result block rather than treating its pointer as the payload.
+    pub(crate) fiber_elem_result_inner: Option<LType>,
+    /// Aggregate owner metadata for the Success payload of a fiber Result.
+    pub(crate) fiber_elem_payload_owner: Option<String>,
 }
 
 impl Value {
     /// A plain SSA value: an operand paired with its LLVM type.
-    pub fn new(operand: impl Into<String>, ty: LType) -> Value {
+    pub(crate) fn new(operand: impl Into<String>, ty: LType) -> Value {
         Value {
             operand: operand.into(),
             ty,
             osp_ty: None,
             result_inner: None,
+            result_inner_is_placeholder: false,
             payload_owner: None,
             fiber_elem: None,
+            fiber_elem_owner: None,
+            fiber_elem_result_inner: None,
+            fiber_elem_payload_owner: None,
         }
     }
 
     /// An aggregate handle tagged with its Osprey owner type name.
-    pub fn handle(operand: impl Into<String>, owner: impl Into<String>) -> Value {
+    pub(crate) fn handle(operand: impl Into<String>, owner: impl Into<String>) -> Value {
         Value {
             operand: operand.into(),
             ty: LType::Ptr,
             osp_ty: Some(owner.into()),
             result_inner: None,
+            result_inner_is_placeholder: false,
             payload_owner: None,
             fiber_elem: None,
+            fiber_elem_owner: None,
+            fiber_elem_result_inner: None,
+            fiber_elem_payload_owner: None,
         }
     }
 
     /// A `Result<inner, _>` value: `operand` points at a
     /// `{ inner, i8 disc, i8* errmsg }` block.
-    pub fn result(operand: impl Into<String>, inner: LType) -> Value {
+    pub(crate) fn result(operand: impl Into<String>, inner: LType) -> Value {
         Value {
             operand: operand.into(),
             ty: LType::Ptr,
             osp_ty: Some("Result".to_string()),
             result_inner: Some(inner),
+            result_inner_is_placeholder: false,
             payload_owner: None,
             fiber_elem: None,
+            fiber_elem_owner: None,
+            fiber_elem_result_inner: None,
+            fiber_elem_payload_owner: None,
         }
     }
 
     /// Tag this fiber handle with its element type so `await` can unbox the
     /// boxed `i64` result back to it.
     #[must_use]
-    pub fn with_fiber_elem(mut self, elem: LType) -> Value {
-        self.fiber_elem = Some(elem);
+    pub(crate) fn with_fiber_elem(mut self, elem: &Value) -> Value {
+        self.fiber_elem = Some(elem.ty);
+        self.fiber_elem_owner.clone_from(&elem.osp_ty);
+        self.fiber_elem_result_inner = elem.result_inner;
+        self.fiber_elem_payload_owner
+            .clone_from(&elem.payload_owner);
         self
     }
 
     /// This value re-tagged with an Osprey owner type name.
     #[must_use]
-    pub fn with_owner(mut self, owner: Option<String>) -> Value {
+    pub(crate) fn with_owner(mut self, owner: Option<String>) -> Value {
         self.osp_ty = owner;
         self
     }
@@ -186,35 +214,43 @@ impl Value {
     /// This Result re-tagged with the owner type of its success payload (so an
     /// unwrapped element keeps its handle identity — e.g. a nested list).
     #[must_use]
-    pub fn with_payload_owner(mut self, owner: Option<String>) -> Value {
+    pub(crate) fn with_payload_owner(mut self, owner: Option<String>) -> Value {
         self.payload_owner = owner;
+        self
+    }
+
+    /// Mark this Result's success-slot layout as the unconstrained placeholder
+    /// carried by a bare Error constructor.
+    #[must_use]
+    pub(crate) fn with_result_inner_placeholder(mut self) -> Value {
+        self.result_inner_is_placeholder = true;
         self
     }
 
     /// The canonical Unit value — Osprey `Unit` carries no data, so it is the
     /// `i64 0` placeholder a side-effecting expression yields.
     #[must_use]
-    pub fn unit() -> Value {
+    pub(crate) fn unit() -> Value {
         Value::new("0", LType::I64)
     }
 
     /// The LLVM type spelling this value travels as — the precise Result block
     /// pointer for a Result, else the plain [`LType`].
     #[must_use]
-    pub fn llvm_ty(&self) -> String {
+    pub(crate) fn llvm_ty(&self) -> String {
         ret_spelling(self.ty, self.result_inner)
     }
 
     /// The Result block struct spelling (no pointer), or `None` for a non-Result.
     #[must_use]
-    pub fn result_struct_ty(&self) -> Option<String> {
+    pub(crate) fn result_struct_ty(&self) -> Option<String> {
         self.result_inner.map(result_struct_ty)
     }
 
     /// Render as a typed operand, e.g. `i64 %3` — the form arguments and `ret`
     /// take.
     #[must_use]
-    pub fn typed(&self) -> String {
+    pub(crate) fn typed(&self) -> String {
         format!("{} {}", self.llvm_ty(), self.operand)
     }
 }

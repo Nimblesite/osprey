@@ -16,11 +16,11 @@ use osprey_ast::Program;
 #[derive(Debug, Clone)]
 pub struct Sibling {
     /// The file's `file://` URI, for locations sent back to the editor.
-    pub uri: String,
+    pub(crate) uri: String,
     /// The file's text, for occurrence scanning.
-    pub source: String,
+    pub(crate) source: String,
     /// The parsed program, for symbol collection.
-    pub program: Program,
+    pub(crate) program: Program,
 }
 
 /// Every *other* source file of the project that claims `uri`.
@@ -31,7 +31,7 @@ pub struct Sibling {
 /// the source of truth, and a stale index answering "no such symbol" is worse
 /// than re-reading a handful of files.
 #[must_use]
-pub fn siblings(uri: &str) -> Vec<Sibling> {
+pub(crate) fn siblings(uri: &str) -> Vec<Sibling> {
     let Some(file) = file_path(uri) else {
         return Vec::new();
     };
@@ -54,7 +54,7 @@ pub fn siblings(uri: &str) -> Vec<Sibling> {
 
 /// The directory of the nearest enclosing `osprey.toml`, if any.
 #[must_use]
-pub fn project_root(file: &Path) -> Option<PathBuf> {
+pub(crate) fn project_root(file: &Path) -> Option<PathBuf> {
     file.parent()?
         .ancestors()
         .find(|directory| directory.join("osprey.toml").is_file())
@@ -65,7 +65,7 @@ pub fn project_root(file: &Path) -> Option<PathBuf> {
 /// filesystem can. A path that cannot be canonicalized (an unsaved buffer)
 /// compares literally rather than erroring.
 #[must_use]
-pub fn same_path(left: &Path, right: &Path) -> bool {
+pub(crate) fn same_path(left: &Path, right: &Path) -> bool {
     let normalize =
         |path: &Path| std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
     normalize(left) == normalize(right)
@@ -73,7 +73,7 @@ pub fn same_path(left: &Path, right: &Path) -> bool {
 
 /// The filesystem path a `file://` URI names, percent-decoded.
 #[must_use]
-pub fn file_path(uri: &str) -> Option<PathBuf> {
+pub(crate) fn file_path(uri: &str) -> Option<PathBuf> {
     let encoded = uri.strip_prefix("file://")?;
     let decoded = percent_decode(encoded)?;
     #[cfg(windows)]
@@ -88,7 +88,7 @@ pub fn file_path(uri: &str) -> Option<PathBuf> {
 /// The `file://` URI for `path` — the inverse of [`file_path`] for the ASCII
 /// paths a project loader yields.
 #[must_use]
-pub fn uri_of(path: &Path) -> String {
+pub(crate) fn uri_of(path: &Path) -> String {
     format!("file://{}", path.display())
 }
 

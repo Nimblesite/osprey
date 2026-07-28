@@ -338,7 +338,7 @@ fn parse_strict(
 fn string_list(cg: &mut Codegen, cname: &str, args: &[Expr]) -> Result<Value> {
     let s = arg(cg, args, 0, LType::Str)?;
     let r = cg.call("i8*", cname, "i8*", &[&s.operand]);
-    let v = Value::handle(r, crate::collections::LIST_OWNER);
+    let v = Value::handle(r, crate::listlit::STRING_LIST_OWNER);
     crate::arc::own(cg, &v);
     Ok(v)
 }
@@ -358,7 +358,7 @@ fn split(cg: &mut Codegen, args: &[Expr]) -> Result<Value> {
     cg.emit(format!("{iserr} = icmp eq i8* {ptr}, null"));
     make_result_if_err(
         cg,
-        Value::handle(ptr, crate::collections::LIST_OWNER),
+        Value::handle(ptr, crate::listlit::STRING_LIST_OWNER),
         LType::Ptr,
         &iserr,
         Some("split: separator must not be empty"),

@@ -1,0 +1,8 @@
+// [EFFECTS-STATIC-DISCHARGE] An arm cannot re-enter its active handler.
+effect Loop {
+    again: fn() -> int
+}
+
+let answer = handle Loop
+    again => perform Loop.again()
+in perform Loop.again()

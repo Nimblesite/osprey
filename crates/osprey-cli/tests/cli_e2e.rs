@@ -600,6 +600,98 @@ fn write_in(dir: &Path, name: &str, body: &str) -> PathBuf {
     path
 }
 
+#[cfg(unix)]
+fn executable_script(dir: &Path, name: &str, body: &str) -> PathBuf {
+    use std::os::unix::fs::PermissionsExt;
+
+    let script = write_in(dir, name, body);
+    if let Ok(metadata) = std::fs::metadata(&script) {
+        let mut permissions = metadata.permissions();
+        permissions.set_mode(0o755);
+        let _ = std::fs::set_permissions(&script, permissions);
+    }
+    script
+}
+
+#[cfg(unix)]
+const CONCURRENCY_PROBE_SCRIPT: &str = "#!/bin/sh\nmarker=\"$OSPREY_PARALLEL_PROBE/worker-$$\"\n\
+         : > \"$marker\"\n\
+         count=$(find \"$OSPREY_PARALLEL_PROBE\" -name 'worker-*' | wc -l)\n\
+         if [ \"$count\" -gt 1 ]; then : > \"$OSPREY_PARALLEL_PROBE/overlap\"; fi\n\
+         sleep 1\nrm -f \"$marker\"\nexit 1\n";
+
+#[cfg(unix)]
+fn parallel_probe_fixture(
+    root: &Path,
+    tests: &Path,
+    bin: &Path,
+    driver_name: &str,
+) -> (PathBuf, PathBuf) {
+    let probe = root.join("probe");
+    for dir in [tests, bin, &probe] {
+        let _ = std::fs::create_dir_all(dir);
+    }
+    let _ = write_in(tests, "one.test.osp", PASSING_TESTS);
+    let _ = write_in(tests, "two.test.osp", PASSING_TESTS);
+    let driver = executable_script(bin, driver_name, CONCURRENCY_PROBE_SCRIPT);
+    (probe, driver)
+}
+
+#[cfg(unix)]
+fn run_concurrency_probe(dir: &Path, driver: &Path, jobs: Option<&str>) -> Out {
+    let mut cmd = osprey();
+    let _ = cmd
+        .args(["test", dir.to_string_lossy().as_ref(), "--quiet"])
+        .env("OSPREY_CC", driver)
+        .env("OSPREY_PARALLEL_PROBE", dir.join("probe"));
+    if let Some(value) = jobs {
+        let _ = cmd.env("OSPREY_TEST_JOBS", value);
+    }
+    finish(cmd)
+}
+
+#[cfg(unix)]
+fn run_conformance_probe(root: &Path, jobs: Option<&str>) -> Out {
+    let mut cmd = Command::new("zsh");
+    let _ = cmd
+        .arg(repo_root().join("crates/run_test_corpus.sh"))
+        .arg("default")
+        .current_dir(repo_root())
+        .env("OSPREY_ROOT", root)
+        .env("OSPREY_PARALLEL_PROBE", root.join("probe"));
+    if let Some(value) = jobs {
+        let _ = cmd.env("OSPREY_TEST_JOBS", value);
+    }
+    finish(cmd)
+}
+
+#[cfg(unix)]
+fn assert_parallel_default_has_serial_escape(
+    probe: &Path,
+    mut run: impl FnMut(Option<&str>) -> Out,
+    failure: &str,
+) {
+    let parallel = run(None);
+    assert_eq!(parallel.code, Some(1), "{}", parallel.stderr);
+    let overlap = probe.join("overlap");
+    assert!(overlap.exists(), "{failure}");
+    let _ = std::fs::remove_file(&overlap);
+    let serial = run(Some("1"));
+    assert_eq!(serial.code, Some(1), "{}", serial.stderr);
+    assert!(!overlap.exists(), "OSPREY_TEST_JOBS=1 was not serial");
+}
+
+#[cfg(unix)]
+fn run_cache_probe(dir: &Path, driver: &Path) -> Out {
+    let mut cmd = osprey();
+    let _ = cmd
+        .args(["test", dir.to_string_lossy().as_ref(), "--quiet"])
+        .env("OSPREY_CC", driver)
+        .env("OSPREY_CC_COUNT", dir.join("cc-count"))
+        .env("OSPREY_TEST_CACHE_DIR", dir.join("cache"));
+    finish(cmd)
+}
+
 // [TESTING-BUILTIN-TEST][TESTING-BUILTIN-EXPECT][TESTING-BUILTIN-CHECK]
 // [TESTING-RUNTIME][TESTING-TAP][TESTING-EXIT] a test binary reports TAP and
 // exits by outcome.
@@ -669,6 +761,68 @@ fn list_tests_reports_literal_cases_as_json() {
     assert_eq!(o.stdout.trim(), "[]");
 }
 
+// [TESTING-DOC] a `///` block above a case travels through `--list-tests` as
+// `summary` (the Test Explorer's inline description) and `doc` (the hover
+// markdown); an undocumented case emits neither key.
+#[test]
+fn list_tests_carries_case_documentation() {
+    let prog = temp_osp(
+        "list_tests_docs",
+        "fn add(a, b) = a + b\n\
+         /// Addition is commutative.\n\
+         ///\n\
+         /// # Parameters\n\
+         /// - left: the first addend\n\
+         ///\n\
+         /// # Since\n\
+         /// 0.3\n\
+         test(\"commutes\", fn() => expect(add(1, 2), add(2, 1)))\n\
+         test(\"bare\", fn() => expect(1, 1))\n",
+    );
+    let o = run_file(&prog, &["--list-tests"]);
+    assert_eq!(o.code, Some(0), "{}", o.stderr);
+    let out = o.stdout.trim();
+    assert!(
+        out.contains("\"summary\":\"Addition is commutative.\""),
+        "{out}"
+    );
+    assert!(out.contains("**Parameters**"), "sections render: {out}");
+    assert!(
+        out.contains("- `left` \\u2014 the first addend")
+            || out.contains("- `left` — the first addend"),
+        "{out}"
+    );
+    assert!(out.contains("**Since**"), "{out}");
+    // The case's own line, not the doc block's first line.
+    assert!(out.contains("\"name\":\"commutes\",\"line\":9"), "{out}");
+    // The undocumented case keeps the bare three-key shape.
+    assert!(
+        out.contains("{\"name\":\"bare\",\"line\":10,\"column\":1}"),
+        "{out}"
+    );
+    // Whatever the content, the whole array must be a single JSON line the
+    // extension can JSON.parse.
+    assert!(!out.trim_end().contains('\n'), "one line of JSON: {out}");
+
+    // The ML twin lowers the `(** … *)` form to the same wire shape.
+    let ml_dir = temp_dir("list_tests_docs_ml");
+    let ml = write_in(
+        &ml_dir,
+        "docs.test.ospml",
+        "add a b = a + b\n\
+         (** Addition is commutative. *)\n\
+         test \"commutes\" (\\() => check \"c\" (add 1 2) (add 2 1))\n",
+    );
+    let o = run_file(&ml, &["--list-tests"]);
+    assert_eq!(o.code, Some(0), "{}", o.stderr);
+    assert!(
+        o.stdout
+            .contains("\"summary\":\"Addition is commutative.\""),
+        "{}",
+        o.stdout
+    );
+}
+
 // [TESTING-CLI-RUN][TESTING-FILE-CONVENTION] the runner discovers
 // *.test.osp{,ml} under a directory, streams TAP under headers, and aggregates
 // the exit status.
@@ -718,6 +872,87 @@ fn test_subcommand_runs_directories_and_files() {
         o.stdout
     );
     assert!(!o.stdout.contains("# file:"), "--quiet drops headers");
+}
+
+// [TESTING-PARALLEL] Independent suites compile concurrently by default, while
+// configuration can force serial execution for constrained or diagnostic runs.
+#[cfg(unix)]
+#[test]
+fn test_subcommand_parallel_default_has_serial_escape_hatch() {
+    let dir = temp_dir("suite_parallel");
+    let (probe, driver) = parallel_probe_fixture(&dir, &dir, &dir, "probe-cc.sh");
+    assert_parallel_default_has_serial_escape(
+        &probe,
+        |jobs| run_concurrency_probe(&dir, &driver, jobs),
+        "test suites compiled serially by default",
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn conformance_corpus_parallel_default_has_serial_escape_hatch() {
+    let root = temp_dir("conformance_parallel");
+    let tests = root.join("tests");
+    let bin = root.join("target/release");
+    let (probe, _) = parallel_probe_fixture(&root, &tests, &bin, "osprey");
+    assert_parallel_default_has_serial_escape(
+        &probe,
+        |jobs| run_conformance_probe(&root, jobs),
+        "conformance suites ran serially by default",
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn test_subcommand_reuses_unchanged_compiled_suites() {
+    // [TESTING-NATIVE-CACHE] the second identical run never invokes clang.
+    let dir = temp_dir("suite_cache");
+    let _ = write_in(&dir, "cached.test.osp", PASSING_TESTS);
+    let _ = write_in(
+        &dir,
+        "cached_http.test.osp",
+        "let client = httpCreateClient(\"http://127.0.0.1:1\", 1)\n\
+         let closed = httpCloseClient(client)\n\
+         test(\"http client\", fn() => expect(closed, 0))\n",
+    );
+    let linked = format!("// @link: m\n{PASSING_TESTS}");
+    let _ = write_in(&dir, "cached_link.test.osp", &linked);
+    let custom_search = format!("// @linkdir: {}\n{PASSING_TESTS}", dir.display());
+    let _ = write_in(&dir, "uncached_linkdir.test.osp", &custom_search);
+    let driver = executable_script(
+        &dir,
+        "counting-cc.sh",
+        "#!/bin/sh\nprintf x >> \"$OSPREY_CC_COUNT\"\nexec clang \"$@\"\n",
+    );
+
+    let first = run_cache_probe(&dir, &driver);
+    assert_eq!(first.code, Some(0), "{}", first.stderr);
+    let second = run_cache_probe(&dir, &driver);
+    assert_eq!(second.code, Some(0), "{}", second.stderr);
+    assert_eq!(read_text(&dir.join("cc-count")), "xxxxx");
+}
+
+#[cfg(unix)]
+#[test]
+fn run_removes_temporary_native_artifacts() {
+    let dir = temp_dir("native_cleanup");
+    let scratch = dir.join("scratch");
+    let _ = std::fs::create_dir_all(&scratch);
+    let suite = write_in(&dir, "cleanup.test.osp", PASSING_TESTS);
+    let mut cmd = osprey();
+    let _ = cmd
+        .args([suite.to_string_lossy().as_ref(), "--run", "--quiet"])
+        .env("TMPDIR", &scratch)
+        .env_remove("OSPREY_TEST_CACHE_DIR");
+    let output = finish(cmd);
+    assert_eq!(output.code, Some(0), "{}", output.stderr);
+    let leaked = std::fs::read_dir(&scratch)
+        .into_iter()
+        .flatten()
+        .flatten()
+        .map(|entry| entry.path())
+        .collect::<Vec<_>>();
+    assert!(leaked.is_empty(), "temporary artifacts leaked: {leaked:?}");
 }
 
 // A compile-error suite fails the run; an empty discovery set is loud.

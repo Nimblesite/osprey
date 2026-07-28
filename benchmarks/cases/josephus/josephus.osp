@@ -1,5 +1,5 @@
 // Josephus problem — survivor index for n people, step k=7, via the modular recurrence.
-fn add(a: int, b: int) -> int = a + b
-fn mod_(a: int, b: int) -> int = a % b
-fn step(acc: int, i: int) -> int = mod_(add(acc, 7), i)
+fn add(a, b) = a + b ?: 0
+fn mod_(a, b) = a % b ?: 0
+fn step(acc, i) = mod_(add(acc, 7), i)
 print("${range(2, 10000001) |> fold(0, step)}")

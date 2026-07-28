@@ -1,0 +1,74 @@
+(** Returning from an arm stops the suspended continuation. *)
+effect Stop
+    (** Check `value`; the handler may resume or stop the continuation. *)
+    check : int => int
+
+(** Observation records performer-side events without stdout. *)
+effect Observation
+    (** Record a performer-side event without touching stdout. *)
+    line : string => Unit
+
+(** Route one observation through the outer handler. *)
+observe message = perform Observation.line message
+
+(** The zero check prevents the final observation and return value. *)
+guarded : Unit -> int ! [Stop, Observation]
+guarded () =
+    observe "before first check"
+    a = perform Stop.check 1
+    observe ("after first check: " + toString a)
+    b = perform Stop.check 0
+    observe ("after second check: " + toString b)
+    99
+
+(** Verify resume, abort, unwind, and discarded work. *)
+resumeAbortEarlyExitCase () =
+    mut transcript = ""
+    mut checks = 0
+    mut resumed = 0
+    mut aborted = 0
+
+    result =
+        handle Observation
+            line message =>
+                transcript := "${transcript}${message}\n"
+        in
+            handle Stop
+                check n =>
+                    checks := checks + 1 ?: checks
+                    match n
+                        0 =>
+                            aborted := aborted + 1 ?: aborted
+                            observe "stopping at zero"
+                            999
+                        _ =>
+                            resumed := resumed + 1 ?: resumed
+                            supplied = n * 10 ?: 0
+                            answer = resume supplied
+                            observe ("continued check " + toString n + ": answer=" + toString answer)
+                            answer
+            in guarded ()
+    legacyTranscript = "${transcript}result=${toString result}\n"
+
+    // Preserve the full five-line transcript.
+    checkAll "early-exit legacy observations" [
+        legacyTranscript == "before first check\nafter first check: 10\nstopping at zero\ncontinued check 1: answer=999\nresult=999\n",
+        contains legacyTranscript "before first check\n",
+        contains legacyTranscript "after first check: 10\n",
+        contains legacyTranscript "stopping at zero\n",
+        contains legacyTranscript "continued check 1: answer=999\n",
+        contains legacyTranscript "result=999\n",
+        !(contains legacyTranscript "after second check"),
+        !(contains legacyTranscript "result=99\n")
+    ]
+
+    // Check the branch counts and replacement value.
+    checkAll "early-exit internal state" [
+        result == 999,
+        checks == 2,
+        resumed == 1,
+        aborted == 1,
+        checks == (resumed + aborted ?: 0)
+    ]
+
+test "returning without resume aborts the suspended continuation" resumeAbortEarlyExitCase

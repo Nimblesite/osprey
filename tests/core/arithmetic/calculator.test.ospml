@@ -1,0 +1,52 @@
+(** Add two integers with its safe fallback inferred from the body. *)
+add (a, b) = a + b ?: 0
+(** Double an integer for pipeline stages. *)
+double x = x * 2 ?: 0
+(** Classify an integer through checked modulo and boolean matching. *)
+parity n =
+    match (n % 2 ?: 1) == 0
+        true => "even"
+        false => "odd"
+
+(** Exercise positive, negative, nested, and relational arithmetic. *)
+additionCase () =
+    subtotal = add (10, 20)
+    // Check arithmetic values and ordering.
+    checkAll "addition state" [
+        add (2, 3) == 5,
+        add ((0 - 1) ?: 0, 1) == 0,
+        add (subtotal, (0 - 5) ?: 0) == 25,
+        add (0, 0) == 0,
+        add (1000, (0 - 250) ?: 0) == 750,
+        add (4, 5) > add (2, 3),
+        !(add ((0 - 2) ?: 0, 1) > 0)
+    ]
+
+(** Exercise pipelines, lambdas, negatives, and derived predicates. *)
+pipelineCase () =
+    six = 3 |> double
+    // Check every pipeline stage independently.
+    checkAll "pipeline state" [
+        (10 |> double |> double) == 40,
+        (5 |> \x => x + 100 ?: 0) == 105,
+        (six |> \x => add (x, 4)) == 10,
+        (((0 - 2) ?: 0) |> double |> double) == ((0 - 8) ?: 0),
+        (6 |> double |> \x => x == 12),
+        (1 |> double |> double) > 0
+    ]
+
+(** Exercise both parity branches with calls and interpolation. *)
+patternCase () =
+    // Check branch selection and composed results.
+    checkAll "pattern state" [
+        parity 4 == "even",
+        parity 7 == "odd",
+        parity (add (5, 5)) == "even",
+        "${parity 3}:${double 3}" == "odd:6",
+        parity (double 9) == "even",
+        parity 3 != parity 4
+    ]
+
+test "arithmetic composes across calls" additionCase
+test "pipes and lambdas compose" pipelineCase
+test "matching, interpolation and calls interact" patternCase

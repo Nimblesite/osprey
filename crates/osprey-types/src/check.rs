@@ -76,21 +76,21 @@ pub struct Checker {
     pub(crate) errors: Vec<TypeError>,
     pub(crate) ctors: HashMap<String, CtorInfo>,
     /// Effect name -> its generic declaration (type params + raw op sigs).
-    pub(crate) effects: HashMap<String, EffectInfo>,
+    effects: HashMap<String, EffectInfo>,
     /// Union/Result type name -> its variant constructor names (exhaustiveness).
     pub(crate) union_variants: HashMap<String, Vec<String>>,
     /// Function/extern name -> declared parameter names (for named arguments).
     pub(crate) fn_params: HashMap<String, Vec<String>>,
     /// Function name -> the exact (params, ret) types created in pass one, so
     /// body inference reuses the very same variables the signature exported.
-    pub(crate) fn_sigs: HashMap<String, (Vec<Type>, Type)>,
+    fn_sigs: HashMap<String, (Vec<Type>, Type)>,
     /// Every lambda's inferred function type, keyed by its source position —
     /// resolved and published to the backend by [`infer_program`].
     pub(crate) lambda_tys: Vec<(Position, Type)>,
     /// Every `let` binding's inferred type, keyed by its source position, so
     /// editor hover can show the type of an unannotated binding. Resolved and
     /// published by [`infer_program`]. Implements [LSP-HOVER-VARIABLES]
-    pub(crate) let_tys: Vec<(Position, Type)>,
+    let_tys: Vec<(Position, Type)>,
     /// Concrete arguments passed to representation-sensitive built-ins. These
     /// are validated after inference so a variable constrained later in the
     /// same body is checked at its final type.
@@ -111,13 +111,17 @@ pub struct Checker {
     /// type arguments, keyed by its source position — resolved and published
     /// for the code generator.
     pub(crate) perform_tys: Vec<(Position, crate::info::OpType, Vec<Type>)>,
+    /// A perform site's effect arguments inferred independently from its
+    /// declared function row. This keeps a wrong row contract from laundering
+    /// the operation's actual instantiation in the static effect proof.
+    pub(crate) perform_actual_tys: Vec<(Position, Vec<Type>)>,
     /// Every `handle` site's instantiated effect type arguments and operation
     /// signatures, keyed by its source position — resolved and published for
     /// the code generator.
     pub(crate) handler_tys: Vec<(Position, Vec<Type>, HashMap<String, crate::info::OpType>)>,
     /// Function name → its declared type parameters bound to fresh inference
     /// variables (empty for undeclared). Implements [TYPE-GENERICS-FN].
-    pub(crate) fn_typarams: HashMap<String, HashMap<String, Type>>,
+    fn_typarams: HashMap<String, HashMap<String, Type>>,
     /// The type parameters of the function whose body is currently being
     /// inferred, so annotations inside the body (explicit construction-site
     /// type arguments) resolve the binder's variables, not nominal names.
@@ -141,6 +145,7 @@ impl Checker {
             resume_ctx: Vec::new(),
             handler_scopes: Vec::new(),
             perform_tys: Vec::new(),
+            perform_actual_tys: Vec::new(),
             handler_tys: Vec::new(),
             fn_typarams: HashMap::new(),
             current_fn_typarams: HashMap::new(),
@@ -232,7 +237,8 @@ impl Checker {
         }
     }
 
-    /// Assignment-site unification (Result auto-unwrap), recording failures.
+    /// Directional assignment-site unification, recording failures. This may
+    /// wrap a bare value in Success but never erase a Result error channel.
     pub(crate) fn push_assign(&mut self, expected: &Type, actual: &Type) {
         if let Err(e) = unify_assignable(&mut self.ctx, expected, actual) {
             self.errors.push(e);
@@ -256,8 +262,18 @@ impl Checker {
                 value,
                 position,
             } => self.check_assignment(name, value, env, *position),
-            Stmt::Expr { value, .. } => {
-                let _ = self.infer_expr(value, env);
+            Stmt::Expr {
+                value, position, ..
+            } => {
+                let inferred = self.infer_expr(value, env);
+                if self.ctx.prune(&inferred).is_named(names::RESULT) {
+                    self.record_err(
+                        TypeError::new(
+                            "an unhandled `Result` cannot be discarded; use `match` or `?:`",
+                        ),
+                        *position,
+                    );
+                }
             }
             _ => {}
         }
@@ -508,6 +524,11 @@ impl Checker {
             )));
             return;
         }
+        if self.fn_sigs.contains_key(name) {
+            self.errors
+                .push(TypeError::new(format!("duplicate definition `{name}`")));
+            return;
+        }
         // Declared type parameters (`fn map<T, U>`) bind to fresh inference
         // variables so every `T` in the signature is the SAME variable —
         // without a binder, `T` would be a nominal type named "T".
@@ -632,17 +653,20 @@ impl Checker {
         pos: Option<Position>,
     ) {
         let value_ty = self.infer_expr(value, env);
-        if let Some(te) = ty {
+        let binding_ty = if let Some(te) = ty {
             let annotated = type_expr_to_type(te, &HashMap::new());
             self.unify_or_err(&annotated, &value_ty, &format!("let `{name}`"), pos);
-        }
+            annotated
+        } else {
+            value_ty.clone()
+        };
         // Publish the binding's inferred type for editor hover, keyed by source
         // position (resolved against the final substitution in `infer_program`).
         // Implements [LSP-HOVER-VARIABLES]
         if let Some(p) = pos {
-            self.let_tys.push((p, value_ty.clone()));
+            self.let_tys.push((p, binding_ty.clone()));
         }
-        let scheme = generalize(&mut self.ctx, env, &value_ty);
+        let scheme = generalize(&mut self.ctx, env, &binding_ty);
         if mutable {
             env.insert_mutable(name, scheme);
         } else {
@@ -671,6 +695,18 @@ impl Checker {
                 if !env.is_mutable(name) {
                     self.record_err(
                         TypeError::new(format!("cannot assign to immutable variable `{name}`")),
+                        pos,
+                    );
+                } else if self.resume_ctx.is_empty() {
+                    // Handler arms are the language's mutation boundary. The
+                    // resume context is present only while an arm body is
+                    // being checked and is deliberately cleared across lambda
+                    // boundaries, matching where handler-owned state may be
+                    // changed at runtime.
+                    self.record_err(
+                        TypeError::new(
+                            "state mutation is only allowed inside an effect handler arm",
+                        ),
                         pos,
                     );
                 }
@@ -838,6 +874,62 @@ fn checked_program(program: &Program) -> Checker {
     checker.collect(program, &mut env);
     checker.check(program, &mut env);
     checker.validate_builtin_uses();
+    let perform_tys = checker.perform_tys.clone();
+    let perform_actual_tys = checker.perform_actual_tys.clone();
+    let handler_tys = checker.handler_tys.clone();
+    let scoped_performs =
+        collect_site_candidates(perform_tys.into_iter().map(|(position, _, arguments)| {
+            (
+                (position.line, position.column),
+                arguments
+                    .iter()
+                    .map(|argument| checker.ctx.apply(argument).to_string())
+                    .collect(),
+            )
+        }));
+    let mut actual_performs = HashMap::new();
+    let mut unresolved_actual_sites = HashSet::new();
+    for (position, arguments) in perform_actual_tys {
+        let key = (position.line, position.column);
+        let arguments: Vec<_> = arguments
+            .iter()
+            .map(|argument| checker.ctx.apply(argument))
+            .collect();
+        if arguments.iter().all(type_is_resolved) {
+            push_site_candidate(
+                &mut actual_performs,
+                key,
+                arguments.iter().map(ToString::to_string).collect(),
+            );
+        } else {
+            let _ = unresolved_actual_sites.insert(key);
+        }
+    }
+    let mut performs = scoped_performs;
+    for (key, candidates) in actual_performs {
+        if unresolved_actual_sites.contains(&key) {
+            for candidate in candidates {
+                push_site_candidate(&mut performs, key, candidate);
+            }
+        } else {
+            let _ = performs.insert(key, candidates);
+        }
+    }
+    let instances = crate::effect_rows::Instances {
+        performs,
+        handlers: dedupe_sites(handler_tys.into_iter().map(|(position, arguments, _)| {
+            (
+                (position.line, position.column),
+                arguments
+                    .iter()
+                    .map(|argument| checker.ctx.apply(argument).to_string())
+                    .collect(),
+            )
+        })),
+    };
+    checker
+        .errors
+        .extend(crate::effect_rows::check(program, &instances));
     checker
 }
 
@@ -855,6 +947,37 @@ fn resolve_op(ctx: &mut InferCtx, op: &crate::info::OpType) -> crate::info::OpTy
     crate::info::OpType {
         params: op.params.iter().map(|t| ctx.apply(t)).collect(),
         ret: ctx.apply(&op.ret),
+    }
+}
+
+fn type_is_resolved(ty: &Type) -> bool {
+    match ty {
+        Type::Var(_) => false,
+        Type::Con { args, .. } => args.iter().all(type_is_resolved),
+        Type::Fun { params, ret } => params.iter().all(type_is_resolved) && type_is_resolved(ret),
+        Type::Record { fields, .. } => fields.values().all(type_is_resolved),
+        Type::Union { variants, .. } => variants.iter().all(type_is_resolved),
+    }
+}
+
+fn collect_site_candidates<S: PartialEq>(
+    entries: impl Iterator<Item = ((u32, u32), S)>,
+) -> HashMap<(u32, u32), Vec<S>> {
+    let mut out = HashMap::new();
+    for (key, candidate) in entries {
+        push_site_candidate(&mut out, key, candidate);
+    }
+    out
+}
+
+fn push_site_candidate<S: PartialEq>(
+    sites: &mut HashMap<(u32, u32), Vec<S>>,
+    key: (u32, u32),
+    candidate: S,
+) {
+    let candidates = sites.entry(key).or_default();
+    if !candidates.contains(&candidate) {
+        candidates.push(candidate);
     }
 }
 
@@ -905,7 +1028,7 @@ mod tests {
     fn module_bodies_are_checked_in_a_child_scope() {
         let errs = check(
             "module Math {\n\
-               fn square(x: int) -> int = x * x\n\
+               fn square(x: int) -> int = (x * x) ?: 0\n\
              }\n",
         );
         assert!(errs.is_empty(), "unexpected type errors: {errs:?}");
@@ -927,15 +1050,52 @@ mod tests {
     }
 
     #[test]
+    fn a_discarded_result_statement_is_rejected() {
+        // A bare statement whose value is a `Result` throws the failure away —
+        // the one place the wrapper can vanish without anyone naming it.
+        let errs = check(
+            "fn risky(n: int) -> Result<int, MathError> = n + 1\n\
+             fn go() -> int = {\n\
+               risky(1)\n\
+               0\n\
+             }\n",
+        );
+        assert!(errs
+            .iter()
+            .any(|e| e.message.contains("cannot be discarded")));
+        ok("fn risky(n: int) -> Result<int, MathError> = n + 1\n\
+            fn go() -> int = {\n\
+              let handled = risky(1) ?: 0\n\
+              handled\n\
+            }\n");
+    }
+
+    #[test]
     fn testing_builtins_typecheck_and_reject_bad_arity() {
-        // [TESTING-BUILTINS] the three schemes accept the documented shapes.
+        // [TESTING-BUILTINS] all assertion schemes accept the documented shapes.
         let errs = check(
             "test(\"adds\", fn() => expect(1 + 1, 2))\n\
-             test(\"labeled\", fn() => check(\"sum\", 4, 2 + 2))\n",
+             test(\"labeled\", fn() => check(\"sum\", 4, 2 + 2))\n\
+             test(\"predicates\", fn() => {\n\
+               expectTrue(2 < 3)\n\
+               expectFalse(3 < 2)\n\
+               checkTrue(\"ordered\", 4 <= 4)\n\
+               checkFalse(\"different\", 4 == 5)\n\
+               expectAll([true, 2 < 3, 4 == 4])\n\
+               checkAll(\"batch\", [true, 5 != 6])\n\
+             })\n",
         );
         assert!(errs.is_empty(), "unexpected type errors: {errs:?}");
         let errs = check("expect(1)\n");
         assert!(errs.iter().any(|e| e.message.contains("arity")));
+        let errs = check("expectTrue(1)\n");
+        assert!(errs.iter().any(|e| e.message.contains("type mismatch")));
+        let errs = check("checkFalse(true)\n");
+        assert!(errs.iter().any(|e| e.message.contains("arity")));
+        let errs = check("expectAll([true, 1])\n");
+        assert!(errs.iter().any(|e| e.message.contains("type mismatch")));
+        let errs = check("checkAll(\"batch\", [true])\n");
+        assert!(errs.is_empty(), "unexpected type errors: {errs:?}");
         let errs = check("test(42, fn() => expect(1, 1))\n");
         assert!(
             !errs.is_empty(),
@@ -948,7 +1108,7 @@ mod tests {
         // [TESTING-SHADOWING] a user test/expect/check replaces the built-in;
         // every other built-in still rejects redefinition.
         let errs = check(
-            "fn check(t: int) -> int = t + 1\n\
+            "fn check(t: int) -> int = (t + 1) ?: 0\n\
              fn expect(a: int) -> int = a\n\
              fn test(x: int) -> int = x\n\
              let r = check(expect(test(1)))\n",
@@ -1022,7 +1182,7 @@ mod tests {
     fn runtime_callbacks_use_their_exact_function_types() {
         ok("fn event(pid: int, kind: int, data: string) -> Unit = print(data)\n\
             let process = spawnProcess(\"echo ok\", event)\n\
-            fn request(method: string, path: string, headers: string, body: string) -> HttpResponse = HttpResponse { status: 200, headers: headers, contentType: \"text/plain\", streamFd: -1, isComplete: true, partialBody: body }\n\
+            fn request(method: string, path: string, headers: string, body: string) -> HttpResponse = HttpResponse { status: 200, headers: headers, contentType: \"text/plain\", streamFd: (-1) ?: 0, isComplete: true, partialBody: body }\n\
             let listening = httpListen(1, request)\n");
         let process_errs = check(
             "fn wrong(pid: int) -> Unit = print(pid)\n\

@@ -1,6 +1,6 @@
 // Takeuchi function — heavy ternary self-recursion.
-fn sub(a: int, b: int) -> int = a - b
-fn tak(x: int, y: int, z: int) -> int = match (x > y) {
+fn sub(a, b) = a - b ?: 0
+fn tak(x, y, z) = match (x > y) {
     false => z
     true  => tak(tak(sub(x, 1), y, z), tak(sub(y, 1), z, x), tak(sub(z, 1), x, y))
 }

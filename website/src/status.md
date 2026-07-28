@@ -42,7 +42,7 @@ The release list was unavailable when this page was built. See
   language-server commands
 
 The runnable programs in
-[`examples/tested/`](https://github.com/Nimblesite/osprey/tree/main/examples/tested)
+[`tests/regressions/`](https://github.com/Nimblesite/osprey/tree/main/tests/regressions)
 are compiled and compared with checked-in expected output.
 
 ## Current limits

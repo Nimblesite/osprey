@@ -1,0 +1,96 @@
+// ML-flavor twin of functional_showcase.osp. Layout blocks, whitespace
+// application (`range 1 6`), and `\x => …` lambdas lower to the SAME canonical
+// AST as the Default braces/parens/`fn(x) =>` form — byte-identical IR
+// ([FLAVOR-IR-EQUIV]). The `sq`/`add` signatures mirror the Default `-> int`
+// returns; the unannotated helpers stay unannotated in both flavors.
+
+dbl x = x * 2 ?: 0
+
+sq : int -> int
+sq x = x * x ?: 0
+
+inc x = x + 1 ?: 0
+gt4 x = x > 4
+lt3 x = x < 3
+even x = (x % 2 ?: 1) == 0
+
+add : int -> int -> int
+add (a, b) = a + b ?: 0
+
+mul (a, b) = a * b ?: 0
+
+print "=== Functional Showcase ==="
+
+// 1. forEach over a range
+print "range 1..6 forEach print:"
+range 1 6 |> forEach print
+
+// 2. negative + empty ranges
+print "range -2..3 forEach print:"
+range ((0 - 2) ?: 0) 3 |> forEach print
+print "range 5..5 (empty):"
+range 5 5 |> forEach print
+
+// 3. map + forEach
+print "map dbl over 1..5:"
+range 1 5 |> map dbl |> forEach print
+
+// 4. filter + forEach
+print "filter even over 1..7:"
+range 1 7 |> filter even |> forEach print
+
+// 5. map-then-filter — filter sees mapped value
+print "map dbl |> filter gt4 over 1..5:"
+range 1 5 |> map dbl |> filter gt4 |> forEach print
+
+// 6. filter-then-map — map applied after filtering raw values
+print "filter lt3 |> map dbl over 1..6:"
+range 1 6 |> filter lt3 |> map dbl |> forEach print
+
+(** 7. fold (sum, product) *)
+s = range 1 6 |> fold 0 add
+print "sum 1..5 = ${toString s}"
+p = range 1 5 |> fold 1 mul
+print "prod 1..4 = ${toString p}"
+
+(** 8. chained pipes on a single value *)
+r = 3 |> inc |> dbl |> sq
+print "3|>inc|>dbl|>sq = ${toString r}"
+
+(** 9. inline lambda in pipeline *)
+lr = 10 |> \x => x + 5 ?: 0
+print "10|>(x+5) = ${toString lr}"
+
+(** 10. lambda chained twice (parens around each so the chain doesn't get swallowed) *)
+lr2 = 5 |> (\x => x + 100 ?: 0) |> (\x => x * 2 ?: 0)
+print "5|>+100|>*2 = ${toString lr2}"
+
+print "=== Showcase Complete ==="
+// Exercises [BUILTIN-ITER], [BUILTIN-ITER-RANGE], [BUILTIN-ITER-MAP],
+// [BUILTIN-ITER-FILTER], [BUILTIN-ITER-FOREACH], [BUILTIN-ITER-FOLD],
+// [BUILTIN-ITER-CALLBACK], [BUILTIN-ITER-PIPE], and [BUILTIN-ITER-FUSION].
+
+(** Verify direct helpers and every scalar pipe from the showcase. *)
+scalarPipelineCase () =
+    checkAll "functional scalar pipelines" [
+        dbl 7 == 14, sq 5 == 25, inc 9 == 10,
+        gt4 5, !gt4 4, lt3 2, !lt3 3,
+        even 2, !even 3, add (7, 8) == 15, mul (6, 7) == 42,
+        (3 |> inc |> dbl |> sq) == 64,
+        (10 |> \x => x + 5 ?: 0) == 15,
+        (5 |> (\x => x + 100 ?: 0) |> (\x => x * 2 ?: 0)) == 210
+    ]
+
+(** Verify range boundaries and both map/filter orderings through folds. *)
+iteratorPipelineCase () =
+    checkAll "functional iterator pipelines" [
+        (range 1 6 |> fold 0 add) == 15,
+        (range 1 5 |> fold 1 mul) == 24,
+        (range 5 5 |> fold 9 add) == 9,
+        (range ((0 - 2) ?: 0) 3 |> fold 0 add) == 0,
+        (range 1 5 |> map dbl |> filter gt4 |> fold 0 add) == 14,
+        (range 1 6 |> filter lt3 |> map dbl |> fold 0 add) == 6
+    ]
+
+test "scalar pipes preserve helper composition" scalarPipelineCase
+test "iterator pipes preserve order and boundaries" iteratorPipelineCase

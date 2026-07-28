@@ -8,45 +8,59 @@
 ([FLAVOR-HANDLER-VALUE])
 **Status:** Shipped: effect declarations, `perform`, lexical handlers,
 handler-owned mutable state, generic effects, single-shot deep `resume`, and
-runtime rejection of a second resume. Missing: static effect-row checks,
-including unhandled-effect enforcement; first-class handler values; resuming
-effects on wasm; and a multi-shot-capable runtime. This plan supersedes retired
-plan 0008 and absorbs the handler-value work sketched in
+runtime rejection of a second resume. Static operation inference, propagation,
+handler discharge, entry-point enforcement, generic-instantiation matching and
+recursive handler-arm rejection are also shipped. Missing: first-class handler
+values; resuming effects on wasm; a multi-shot-capable runtime; and a
+first-class open-row representation in Hindley–Milner function types. This plan
+supersedes retired plan 0008 and absorbs the handler-value work sketched in
 [plan 0013](0013-ml-flavor-frontend.md) Phase 0
 and the effect-row-polymorphism gap flagged in
-[plan 0015](0015-generics-and-variance.md).
+[plan 0015](0015-generics-and-variance.md). Open critical correctness defects:
+resumable argument transport after position 16
+([#182](https://github.com/Nimblesite/osprey/issues/182)), direct-handler
+`Result` transport ([#183](https://github.com/Nimblesite/osprey/issues/183)),
+and effect loss through one curried ML lowering path
+([#184](https://github.com/Nimblesite/osprey/issues/184)), plus managed string
+continuation answers leaking under ARC
+([#185](https://github.com/Nimblesite/osprey/issues/185)).
 
 ## Summary
 
-Osprey supports `effect` declarations, `perform`, `handle … in`
-(Default) / `handle … in`/`… do` (ML), effect annotations, handler-owned `mut`
+Osprey supports `effect` declarations, `perform`, and `handle … in` in both
+Default and ML syntax, plus effect annotations and handler-owned `mut`
 state, **generic effects**
 (`effect State<T>` with per-site instantiation), and **single-shot deep
 `resume`** (thread-as-continuation), and **multi-shot rejection** (a second
-resume on a consumed continuation now aborts — Phase A, done). Not implemented:
-a **multi-shot-capable runtime**, **first-class handler values**
-(`handler E { … }` and multi-install `handle a b do body`), **static effect
-safety across the handler/row instantiation seam** (currently a runtime
-abort, not a compile error), and **effects on the wasm target** (the
-continuation runtime is native-only).
+resume on a consumed continuation now aborts — Phase A, done), plus static
+effect discharge for inferred and explicitly declared operations (Phase C,
+done for the current language surface). Not implemented: a
+**multi-shot-capable runtime**, **first-class handler values**
+(`handler E { … }` and multi-install `handle a b do body`), generalized open
+row variables as part of HM function types, and **resuming effects on the wasm
+target** (the continuation runtime is native-only; direct substitution handlers
+work on WebAssembly).
 
 ## What works today (file:line evidence)
 
 - Declarations, `perform X.op(args)`, `handle X arm… in body`, effect
   annotations, and operation signature checking —
-  `crates/osprey-types/src/check.rs`. Missing-handler enforcement is the
-  runtime null-lookup guard emitted by `crates/osprey-codegen/src/effects.rs`
-  and implemented in `compiler/runtime/effects_runtime.c`.
-- **Tail-resume** by value substitution: a non-resuming arm's value becomes
+  `crates/osprey-types/src/check.rs`.
+- **Static discharge** — `crates/osprey-types/src/effect_rows.rs` infers
+  operation requirements, propagates them to named and higher-order call sites,
+  removes only the covered operation at the matching generic instantiation,
+  rejects recursive handler-arm re-entry, and requires an empty entry row.
+  Explicit rows are checked contracts, not handlers. The runtime null-lookup
+  guard in `crates/osprey-codegen/src/effects.rs` remains a defensive backstop.
+- **Direct value substitution**: a non-resuming arm's value becomes
   the `perform`'s result; handlers may own `mut` state
   ([EFFECTS-HANDLER-STATE], `capture_list`/`build_env`/`reload_env` in
-  `effects.rs`). Reference: `examples/tested/effects/http_state_levels.osp`.
+  `effects.rs`). Reference: `tests/regressions/effects/http_state_levels.test.osp`.
 - **Single-shot deep `resume`**: an arm that mentions `resume` runs the body
   on a pthread (`__osprey_coro_*`, `effects_runtime.c`), suspends at each
   `perform`, and `resume(v)` drives it to completion or the next operation.
-  Reference: `examples/tested/effects/resume_value_rewrite.osp` and the
-  `resume_*` family (LIFO audit, early-exit abort, outer-handler bridge,
-  unit markers).
+  Reference: `tests/effects/resume/`, whose paired assertion suites cover value
+  rewrite, LIFO audit, early-exit abort, outer-handler bridge, and unit markers.
 - **Generic effects**: one declaration, many instantiations, boxed erased
   ABI, instantiation-mangled runtime keys ([EFFECTS-GENERIC-*], plan 0015).
 
@@ -76,7 +90,7 @@ continuation runtime is native-only).
    exclusively for its full ping-pong (`in_flight` in
    `compiler/runtime/effects_runtime.c` `__osprey_coro_suspend`); queued
    performs are dispatched by the existing drive-loop re-entry. Locked by
-   `examples/tested/effects/fiber_effects.{osp,ospml}` §(3) — deterministic
+   `tests/regressions/effects/fiber_effects.{osp,ospml}` §(3) — deterministic
    `race-free sum 30`.
 
 1c. ~~**`resume` inside a lambda in an arm: checker accepted, codegen
@@ -85,6 +99,36 @@ continuation runtime is native-only).
    *called*, not where it is written, so the arm's continuation is not live
    inside it. Now a type error (`` `resume` is only valid inside a handler
    arm ``); pinned by `examples/failscompilation/resume_in_arm_lambda.ospo`.
+
+1d. **Resuming operation arguments after position 16 become zero.** The
+   compiler accepts the operation, but the native continuation mailbox copies
+   only 16 arguments and `__osprey_coro_arg` returns zero for later positions.
+   The process exits successfully with corrupted data. Tracked as critical
+   [issue #182](https://github.com/Nimblesite/osprey/issues/182); the paired
+   `resume_error_policies.test.{osp,ospml}` suites prove positions 1–16 and keep
+   position 17 as an explicit known-failure skip.
+
+1e. **Direct handlers corrupt whole `Result<T, E>` operation values.** Both
+   `Success` and `Error` values reach the caller as pointer-like integers that
+   vary between runs, with exit 0. Explicit-resume transport is a separate path
+   and passes. Tracked as critical
+   [issue #183](https://github.com/Nimblesite/osprey/issues/183) by paired
+   conditional regressions in `tests/effects/errors/`.
+
+1f. **One curried ML lowering path silently drops performed effects.** An
+   unannotated four-argument curried function can run under a handler without
+   delivering its operations; the equivalent flat parameter form works.
+   Tracked as critical
+   [issue #184](https://github.com/Nimblesite/osprey/issues/184). Paired golden
+   examples use the verified flat form until the curried path is repaired.
+
+1g. **A dynamic string continuation answer leaks under ARC.** A one-operation
+   handler that resumes with a string and returns a computed string produces
+   correct output but leaves one managed object live at exit. Repetition and
+   both syntax flavors reproduce it. Tracked as critical
+   [issue #185](https://github.com/Nimblesite/osprey/issues/185); paired tests
+   keep the unsafe shape as a known-failure skip while other string operation
+   paths still run under every memory mode.
 
 2. **First-class handler values do not parse.**
    ```osprey-ml
@@ -98,16 +142,19 @@ continuation runtime is native-only).
    fuses construction and installation, so a handler cannot be bound,
    returned, passed, or multi-installed.
 
-3. **Handler/row instantiation mismatch is a runtime abort, not a type
-   error.** A `!Stash<int>` function called under a `handle Stash` whose arms
-   pin `Stash<string>` type-checks (the two instantiate independently across
-   the `Type::Fun` boundary, which carries no effect row) and aborts at
-   runtime with `unhandled effect: Stash$int.take`. Sound, but the effect
-   system's promise is *compile-time* safety. (Flagged in plan 0015 §3.)
+3. ~~**Handler/row instantiation mismatch is a runtime abort, not a type
+   error.**~~ **FIXED (Phase C).** The static discharge pass carries the
+   resolved effect arguments with every operation requirement. A
+   `Stash<string>` handler therefore cannot remove `Stash<int>.take`, and the
+   remaining requirement makes compilation fail at program entry. The
+   instantiation-mangled runtime lookup remains a backstop for invalid IR or a
+   compiler defect, not the expected rejection mechanism. This is implemented
+   without yet adding independently quantified open rows to `Type::Fun`.
 
-4. **No effects on wasm.** `__osprey_coro_*` is native-only
+4. **No explicit resume on wasm.** `__osprey_coro_*` is native-only
    ([WASM-TARGET-EFFECTS]); resuming effects link-fail and are SKIP-classed
-   by `diff_wasm_examples.sh`.
+   by `diff_wasm_examples.sh`. Direct value-substitution handlers compile to
+   WebAssembly because they do not use the continuation runtime.
 
 ## Phasing
 
@@ -165,52 +212,49 @@ plan 0013 Phase 0.
       to the fused form for every existing effect example (both flavors,
       shared goldens, cross-flavor IR equivalence).
 
-### Phase C — Static effect safety across the handler/row seam — ⬜ (effect-row polymorphism)
+### Phase C — Static effect safety across the handler/row seam — ✅
 
-Turns the plan-0015 §3 runtime abort into a compile error through effect-row
-polymorphism.
+The concrete safety goal is shipped for the current language surface. The
+checker performs a least-fixed-point operation-summary analysis over named
+functions and first-class callbacks. Requirements carry effect name, operation
+name and resolved generic arguments; handlers remove only exact covered
+requirements. This makes the plan-0015 §3 mismatch, direct unhandled performs,
+transitive inferred calls, partially handled effects and effectful implicit
+`main` bodies compile errors.
 
-> **Scope is wider than the seam (2026-07 audit).** The Rust compiler
-> currently has **no compile-time unhandled-effect checking at all** — every
-> rejection (unhandled perform, undeclared operation, missing `!E` row,
-> circular handler dependency) is the runtime null-lookup abort emitted by
-> `emit_unhandled_guard` (`crates/osprey-codegen/src/effects.rs`). The Go-era
-> static checks were not ported (`crates/diff_examples.sh` documents the
-> escapes: `FC_EXPECTED_ESCAPES` counts fc cases that *compile* when they
-> should be compile errors). Spec 0017's §Static Safety Checks describes the
-> designed state, with a Status note marking enforcement as runtime-abort
-> today. Phase C's rows are the machinery that restores the static checks —
-> when it lands, ratchet `FC_EXPECTED_ESCAPES` down. Also unenforced today:
-> a handler arm performing its own effect **hangs** (LLVM turns the
-> arm→perform→arm recursion into an infinite loop) instead of erroring — the
-> self-recursion check belongs to this phase too.
+- [x] **Inference and propagation**: infer operations from bodies without
+      requiring return/effect annotations; propagate through named calls,
+      callback parameters and callable returns.
+- [x] **Exact discharge**: subtract only handler arms that cover the same
+      effect operation and resolved generic instantiation. Complementary nested
+      partial handlers compose without hiding uncovered operations.
+- [x] **Entry proof**: require the implicit `main` or executable top level to
+      have no remaining concrete operation requirements.
+- [x] **Checked explicit contracts**: a non-empty `!E` row constrains what a
+      function may require, but never acts as a handler at its call site.
+- [x] **Recursive re-entry rejection**: reject an arm that performs its own
+      active operation at the same resolved instantiation instead of allowing
+      runtime recursion/hang; preserve routing to outer handlers for different
+      operations or instantiations.
+- [x] **Runtime backstop**: retain instantiation-mangled null-lookup guards for
+      defense in depth; a correctly checked program must not rely on them.
+- [x] **Regression matrix**: checker tests cover inferred/transitive calls,
+      higher-order callbacks, escaped lambdas, implicit `main`, partial and
+      nested handlers, generic mismatches, explicit contracts and self-handler
+      re-entry.
 
-- [ ] **Effect rows on function types**: add an effect-row component to
-      `Type::Fun` (a set of instantiated `EffectRef`s, plus a row variable
-      `!E` for polymorphism), so a call carries the callee's declared row into
-      the caller's inference.
-- [ ] **Row unification**: at a `handle` site, unify the handler's
-      instantiation with the rows of functions invoked in the handled body;
-      an instantiation mismatch (`Stash<int>` handler vs `Stash<string>`
-      callee row) becomes a type error at the call, with both spans.
-- [ ] **Row polymorphism**: infer and generalize row variables so a
-      higher-order function (`fn run<E>(f: () -> a !E) -> a !E`) threads its
-      callee's effects. Keep principal types (bounded by the same
-      HM discipline generics use).
-- [ ] **Downgrade the runtime guard**: once the seam is statically proven,
-      the instantiation-mangled-key null-guard abort ([EFFECTS-GENERIC-RUNTIME])
-      becomes a defensive backstop rather than the primary safety mechanism;
-      keep it, but no correct program should reach it.
-- [ ] **Tests**: failscompilation cases for the cross-function instantiation
-      mismatch (currently a runtime abort); positive cases for row-polymorphic
-      HOFs over effects.
+This phase does **not** claim that `Type::Fun` now stores a general row variable.
+The shipped analysis is closed-program and operation-summary based. A future
+surface feature that exposes independently quantified open rows (for example,
+an explicit `!e` variable in a public higher-order signature) still requires a
+row representation and HM generalization rules.
 
 ### Phase D — Effects on wasm — ⬜ (target parity)
 
 - [ ] A wasm-viable continuation strategy for resuming handlers: either
       compile resuming handlers via a CPS transform (no native stack switch),
       or adopt the wasm stack-switching proposal when toolchain support lands.
-      Tail-resume already works on wasm (no coro); only the resuming path is
+      Direct substitution already works on wasm (no coroutine); only the resuming path is
       native-only.
 - [ ] Un-SKIP the resuming effect examples in `diff_wasm_examples.sh` once the
       path exists; byte-identical output to native.
@@ -229,13 +273,13 @@ polymorphism.
 ```
 A (reject multi-shot)      ✅ DONE — closed the silent-correctness bug
 B (handler values)         independent of A; unblocks plan 0013 Phase 0
-C (effect-row polymorphism) independent of A/B; closes plan 0015 §3
+C (static discharge)        ✅ DONE — closes plan 0015 §3 for current syntax
 D (wasm effects)           independent; target parity
 E (ergonomics)             after B (handler values change diagnostics surface)
 ```
 
-A is done. B enables handler values and completes plan 0013 Phase 0. C replaces
-runtime-abort enforcement with static effect checking.
+A and C are done. B enables handler values and completes plan 0013 Phase 0.
+The runtime guard is now defense in depth rather than normal effect checking.
 
 ## Risks
 
@@ -248,9 +292,9 @@ runtime-abort enforcement with static effect checking.
   snapshot/restore paths assume the current push/pop discipline; a heap
   handler value that outlives a `handle` region must not dangle its captured
   env. Cover with state-isolation tests across those boundaries.
-- **Effect-row polymorphism × principal types.** Adding rows to `Type::Fun`
-  must not break HM principality. Specify the row-unification discipline and
-  lock principality with inference tests.
+- **Future open rows × principal types.** If independently quantified effect
+  row variables are added to `Type::Fun`, they must not break HM principality.
+  Specify the row-unification discipline and lock it with inference tests.
 - **Byte-exact backstop.** Every phase must keep all existing effect examples
   byte-identical across both flavors (cross-flavor IR equivalence + shared
   goldens), and the `FC_EXPECTED_ESCAPES` ratchet honest.
@@ -267,10 +311,19 @@ runtime-abort enforcement with static effect checking.
 - [x] **Phase A** — reject multi-shot resume (runtime guard +
       failscompilation + 0017 §Status). *Done.* (Optional static-detection
       refinement deferred; the runtime guard is sound and total.)
+- [ ] **Critical #182** — preserve every accepted resumable operation argument
+      or reject arities above a documented limit before code generation.
+- [ ] **Critical #183** — preserve complete `Result<T, E>` values through the
+      direct handler ABI in both flavors and all memory modes.
+- [ ] **Critical #184** — keep effectful curried ML functions behaviorally
+      equivalent to their flat parameter form.
+- [ ] **Critical #185** — release managed continuation answers exactly once
+      under ARC, including nested and repeated string-valued resumptions.
 - [ ] **Phase B** — first-class handler values + multi-install (AST, types,
       state, codegen, both surfaces, tests). *Unblocks plan 0013 Phase 0.*
-- [ ] **Phase C** — effect-row polymorphism on `Type::Fun`; static seam
-      safety. *Closes plan 0015 §3.*
+- [x] **Phase C** — static inferred-operation propagation, exact handler
+      discharge, entry proof, generic seam rejection and self-handler
+      rejection. *Closes plan 0015 §3 for the current language surface.*
 - [ ] **Phase D** — resuming effects on wasm (CPS or stack-switching).
 - [ ] **Phase E** — diagnostics, LSP effect completion, optional handler
       return clauses.

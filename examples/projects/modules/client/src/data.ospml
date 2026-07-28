@@ -16,9 +16,9 @@ module BankData
 
     export accountCount : string -> int
     accountCount source =
-        doc = jsonParse source
+        doc = jsonParse source ?: 0
         count = jsonLength doc ""
-        freed = jsonFree doc
+        freed = jsonFree doc ?: 0
         count
 
     export activityCount : string -> int
@@ -35,7 +35,9 @@ module BankData
     digitsFrom source index = match index >= byteLength source
         true => true
         false => match digitAt source index
-            true => digitsFrom source (index + 1)
+            true =>
+                nextIndex = (index + 1) ?: byteLength source
+                digitsFrom source nextIndex
             false => false
 
     digits source = length source > 0 && digitsFrom source 0
@@ -52,7 +54,8 @@ module BankData
                 false => validGroup source false
             Success at =>
                 group = take source at
-                rest = drop source (at + 1)
+                nextIndex = (at + 1) ?: byteLength source
+                rest = drop source nextIndex
                 validGroup group first && groupedDigits rest false
 
     fractionCents source = match parseInt source
@@ -73,7 +76,8 @@ module BankData
 
     decimalCents source at =
         whole = take source at
-        fraction = drop source (at + 1)
+        nextIndex = (at + 1) ?: byteLength source
+        fraction = drop source nextIndex
         valid = groupedDigits whole true && length fraction > 0 && length fraction <= 2 && digits fraction
         match valid
             true => combineCents whole fraction
@@ -101,14 +105,19 @@ module BankData
         match item
             Error message => running
             Success value => match parseInt value
-                Error bad => totalFrom doc (index + 1) running
-                Success cents => totalFrom doc (index + 1) (running + cents)
+                Error bad =>
+                    nextIndex = (index + 1) ?: index
+                    totalFrom doc nextIndex running
+                Success cents =>
+                    nextIndex = (index + 1) ?: index
+                    nextTotal = (running + cents) ?: running
+                    totalFrom doc nextIndex nextTotal
 
     export total : string -> int
     total source =
-        doc = jsonParse source
+        doc = jsonParse source ?: 0
         amount = totalFrom doc 0 0
-        freed = jsonFree doc
+        freed = jsonFree doc ?: 0
         amount
 
     findIndex : int -> int -> int -> int
@@ -119,8 +128,12 @@ module BankData
             Success raw => match parseInt raw
                 Success id => match id == wanted
                     true => index
-                    false => findIndex doc (index + 1) wanted
-                Error bad => findIndex doc (index + 1) wanted
+                    false =>
+                        nextIndex = (index + 1) ?: index
+                        findIndex doc nextIndex wanted
+                Error bad =>
+                    nextIndex = (index + 1) ?: index
+                    findIndex doc nextIndex wanted
 
     export accountIndex : int -> string -> int
     accountIndex doc selected = match parseInt selected
@@ -135,7 +148,8 @@ module BankData
             Success name =>
                 id = value doc "[${index}].id" "0"
                 option = UI::option id "#${id} · ${name}"
-                rest = accountOptions doc (index + 1)
+                nextIndex = (index + 1) ?: index
+                rest = accountOptions doc nextIndex
                 match length rest == 0
                     true => option
                     false => option + "," + rest

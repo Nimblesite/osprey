@@ -1,9 +1,0 @@
-type Job =
-    id : int
-    weight : int
-runJob : Job -> int
-runJob j = j.id * j.weight
-jHigh = Job(id = 3, weight = 9)
-print (toString (runJob jHigh))
-f = spawn (runJob jHigh)
-print (toString (await f))

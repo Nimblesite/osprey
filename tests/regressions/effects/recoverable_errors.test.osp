@@ -1,0 +1,80 @@
+/// One effectful order function runs under two recovery policies. Neither
+/// handler uses `resume`, so each arm value replaces the operation result and
+/// `fulfill` continues with the next order. [EFFECTS-HANDLER-STATE]
+effect Recover {
+    /// Decide what an order for more than the balance receives.
+    overdraw: fn(int, int) -> int
+}
+
+fn drawOrder(requested: int) -> (int) -> int !Recover =
+    fn(available) => match requested > available {
+        true => perform Recover.overdraw(requested, available)
+        false => requested
+    }
+
+fn fulfill(orders: List<int>) -> (int) -> int !Recover =
+    fn(stock) => match orders {
+        [] => stock
+        [requested, ...rest] => {
+            let drawn = drawOrder(requested)(stock)
+            let remaining = stock - drawn ?: stock
+            print("  order ${requested}: from ${stock} in stock -> took ${drawn}, ${remaining} left")
+            fulfill(rest)(remaining)
+        }
+    }
+
+let start = 20
+let batch = listAppend(listAppend(listAppend(listAppend(listAppend(List(), 6), 30), 5), 8), 40)
+
+mut skipCount = 0
+mut skipReason = ""
+print("=== POLICY A: SKIP (substitute 0, preserve stock) ===")
+let skipFinal = handle Recover
+    overdraw requested available => {
+        skipCount = skipCount + 1 ?: skipCount
+        skipReason = skipReason + "skipped ${requested} (only ${available} left); "
+        0
+    }
+in fulfill(batch)(start)
+let skipFilled = start - skipFinal
+print("SKIP done: recovered ${skipCount} orders, fulfilled ${skipFilled} units, ${skipFinal} left in stock\nSKIP log: [${skipReason}]")
+
+mut capCount = 0
+mut capReason = ""
+print("=== POLICY B: CAP (substitute available, drain to fit) ===")
+let capFinal = handle Recover
+    overdraw requested available => {
+        capCount = capCount + 1 ?: capCount
+        capReason = capReason + "capped ${requested} to ${available}; "
+        available
+    }
+in fulfill(batch)(start)
+let capFilled = start - capFinal
+print("CAP done: recovered ${capCount} orders, fulfilled ${capFilled} units, ${capFinal} left in stock\nCAP log: [${capReason}]")
+
+mut happyCount = 0
+let happyBatch = listAppend(listAppend(listAppend(listAppend(List(), 3), 5), 2), 4)
+print("=== HAPPY PATH: SKIP handler, no over-draws ===")
+let happyFinal = handle Recover
+    overdraw requested available => {
+        happyCount = happyCount + 1 ?: happyCount
+        0
+    }
+in fulfill(happyBatch)(start)
+let happyFilled = start - happyFinal
+print("HAPPY done: recovered ${happyCount} orders, fulfilled ${happyFilled} units, ${happyFinal} left in stock\n=== all three batches completed ===")
+
+// Verifies skip, cap, and happy-path recovery policies independently.
+test("recovery policies substitute values without stopping traversal", fn() => checkAll("recovery policy results", [
+    skipCount == 2,
+    skipFinal == 1,
+    (skipFilled ?: 0) == 19,
+    contains(skipReason, "skipped 30"),
+    capCount == 4,
+    capFinal == 0,
+    (capFilled ?: 0) == 20,
+    contains(capReason, "capped 30 to 14"),
+    happyCount == 0,
+    happyFinal == 6,
+    (happyFilled ?: 0) == 14
+]))

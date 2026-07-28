@@ -1,0 +1,8 @@
+create ok
+inserted 101 101
+user 1 = Ada
+user 2 = Linus
+closed ok
+ok 1 - Database capability binds, queries, and closes through its handler
+1..1
+# tests=1 passed=1 failed=0 skipped=0

@@ -299,26 +299,38 @@ fn a_namespace_owns_a_block_or_the_rest_of_the_file() {
     }
 }
 
-/// [PATTERN-RESULT-DEFAULT]: `e ?: d` lowers to the same two-arm boolean `match` the Default flavor's
-/// ternary emits — a different node here would break [FLAVOR-IR-EQUIV].
+/// [PATTERN-RESULT-DEFAULT]: `e ?: d` lowers to the same exhaustive Result
+/// match as the Default flavor. It must bind and return only the Success
+/// payload; treating a Result as a boolean would erase Error information.
 #[test]
-fn the_result_default_lowers_to_a_boolean_match() {
+fn the_result_default_lowers_to_an_exhaustive_result_match() {
     match value("r = risky ?: 0\n") {
         Expr::Match { value, arms } => {
             assert_eq!(*value, Expr::Identifier("risky".to_owned()));
             assert_eq!(arms.len(), 2);
             assert_eq!(
                 arms[0].pattern,
-                osprey_ast::Pattern::Literal(Box::new(Expr::Bool(true)))
+                osprey_ast::Pattern::Constructor {
+                    name: "Success".to_owned(),
+                    fields: vec!["$__osprey_result_default".to_owned()],
+                    sub_patterns: Vec::new(),
+                }
             );
-            assert_eq!(arms[0].body, Expr::Identifier("risky".to_owned()));
+            assert_eq!(
+                arms[0].body,
+                Expr::Identifier("$__osprey_result_default".to_owned())
+            );
             assert_eq!(
                 arms[1].pattern,
-                osprey_ast::Pattern::Literal(Box::new(Expr::Bool(false)))
+                osprey_ast::Pattern::Constructor {
+                    name: "Error".to_owned(),
+                    fields: Vec::new(),
+                    sub_patterns: Vec::new(),
+                }
             );
             assert_eq!(arms[1].body, Expr::Integer(0));
         }
-        other => panic!("expected a boolean match, got {other:?}"),
+        other => panic!("expected an exhaustive Result match, got {other:?}"),
     }
 }
 

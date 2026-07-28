@@ -1,0 +1,6 @@
+ok 1 - unions, Results and scalar operations compose
+ok 2 - functions, forward calls, booleans and pipes compose
+ok 3 - effects mutate handled state beside persistent collections
+ok 4 - string transformations consume values from other features
+1..4
+# tests=4 passed=4 failed=0 skipped=0

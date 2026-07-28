@@ -37,6 +37,10 @@ pub struct Codegen {
     cur_lines: Vec<String>,
     cur_block: String,
     scopes: Vec<HashMap<String, Value>>,
+    /// Stable identity of each lexical scope. Sibling blocks have equal depth
+    /// but distinct ids, which ARC last-use bookkeeping must not conflate.
+    scope_ids: Vec<usize>,
+    next_scope_id: usize,
 
     /// Declared parameter names per function, for named-argument ordering.
     pub(crate) fn_params: HashMap<String, Vec<String>>,
@@ -44,13 +48,13 @@ pub struct Codegen {
     /// return type expression, conservatively). A foreign pointer typed as a
     /// union would break the `KIND_MASK_DIRECT` all-children-are-ARC-bodies
     /// proof, so these unions stay on the probing `KIND_MASK`. [GC-ARC-PERCEUS]
-    pub(crate) extern_ret_types: BTreeSet<String>,
+    extern_ret_types: BTreeSet<String>,
     /// Nullary union variant name → the module-constant handle every use of it
     /// shares. A payload-free variant (`Leaf`, `None`) is one immutable
     /// immortal value, so it is interned as a single `private global` with a
     /// baked ARC header (rc = -1) instead of a fresh heap block per occurrence —
     /// binarytrees alone stops allocating ~19.6M `Leaf`s. [GC-ARC-PERCEUS]
-    pub(crate) nullary_singletons: HashMap<String, String>,
+    nullary_singletons: HashMap<String, String>,
     /// Resolved signatures, constructor layouts and union tags from inference.
     pub(crate) prog: ProgramTypes,
     /// Stream-fusion pipeline: pending `map`/`filter` stages recorded by those
@@ -61,24 +65,31 @@ pub struct Codegen {
     /// (`let f = fn(x) => …` then `f(y)`) — a beta-reduction fast path. The
     /// same lambda is also materialized as a closure cell (`crate::closure`)
     /// so the name works as a first-class value.
-    pub(crate) lambdas: HashMap<String, (Vec<osprey_ast::Parameter>, osprey_ast::Expr)>,
+    pub(crate) lambdas: HashMap<
+        String,
+        (
+            Vec<osprey_ast::Parameter>,
+            osprey_ast::Expr,
+            Option<osprey_ast::Position>,
+        ),
+    >,
     /// Top-level functions already wrapped as closure cells (name → the cell's
     /// constant global), so the forwarder is emitted once per module.
     pub(crate) fnval_cells: HashMap<String, String>,
     /// Whether the fiber-result global table has been emitted yet.
     /// Parsed `effect` operation signatures, keyed `"Effect.operation"`.
-    pub(crate) effect_ops: HashMap<String, crate::effects::OpSig>,
+    effect_ops: HashMap<String, crate::effects::OpSig>,
     /// Monotonic id giving each emitted handler function a unique name.
-    pub(crate) handler_count: usize,
+    handler_count: usize,
     /// Monotonic id giving each lambda lifted to a top-level function (a lambda
     /// used as a value, e.g. passed to a function-typed parameter) a unique name.
-    pub(crate) lambda_count: usize,
+    lambda_count: usize,
     /// Synthetic layouts of anonymous object literals (`{ a: 1, b: "x" }`),
     /// keyed by the generated owner name carried on the handle, so field access
     /// can recover the ordered `(field, LType)` slots.
-    pub(crate) obj_layouts: HashMap<String, Vec<(String, LType)>>,
+    obj_layouts: HashMap<String, Vec<(String, LType)>>,
     /// Monotonic id giving each object literal a unique synthetic owner name.
-    pub(crate) obj_count: usize,
+    obj_count: usize,
     /// User function `(parameters, body)` defs, for inlining a *generic*
     /// function at each call site so its type variables monomorphize to the
     /// concrete argument types there (specialisation by inlining rather than by
@@ -120,6 +131,10 @@ pub struct Codegen {
     /// Whether any testing built-in was lowered — makes `main` return the TAP
     /// epilogue's exit status [TESTING-EXIT].
     pub(crate) testing_used: bool,
+    /// Whether any fiber was spawned. Completed fiber results keep one runtime
+    /// owner so repeated `await` calls can each receive a live value; `main`
+    /// releases those runtime owners during its final cleanup.
+    pub(crate) fibers_used: bool,
     /// LLVM/DWARF debug metadata state, when `--debug` was requested.
     debug: Option<DebugState>,
     /// Coverage instrumentation state, when coverage was requested
@@ -155,17 +170,81 @@ pub(crate) struct ResumeCodegenContext {
     pub coro: String,
     pub drive_fn: String,
     pub answer_ty: LType,
-    /// Whether the resumed operation's result type (at this handle site's
-    /// instantiation) is a `Result` — a resume value then boxes the WHOLE
-    /// Result block, never its unwrapped payload, because the perform site
-    /// unboxes the slot as a Result pointer. Implements
-    /// [EFFECTS-GENERIC-RUNTIME].
-    pub op_ret_is_result: bool,
+    pub answer_result_inner: Option<LType>,
+    pub answer_owner: Option<String>,
+    pub answer_payload_owner: Option<String>,
+    /// Concrete operation-result shape at this handler site. A plain resume
+    /// value may be promoted to Success for a Result slot; the inverse is
+    /// forbidden and rejected by codegen as well as by the checker.
+    pub op_ret_ty: LType,
+    pub op_ret_result_inner: Option<LType>,
 }
 
-/// A function value's lowered signature: parameter [`LType`]s, the return
-/// [`LType`], and (when it returns `Result<T, _>`) the success inner type.
-pub(crate) type FnSig = (Vec<LType>, LType, Option<LType>);
+/// One function-parameter ABI slot. Result parameters travel as opaque `i8*`
+/// arguments plus the success-layout metadata needed to reconstruct their
+/// discriminant-bearing block inside the callee.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct FiberSig {
+    pub(crate) elem: LType,
+    pub(crate) result_inner: Option<LType>,
+}
+
+impl FiberSig {
+    fn of(ty: &Type) -> Option<Self> {
+        let Type::Con { name, args } = ty else {
+            return None;
+        };
+        if name != osprey_types::names::FIBER {
+            return None;
+        }
+        let elem = args.first()?;
+        let result_inner = crate::types::result_inner(elem);
+        Some(Self {
+            elem: if result_inner.is_some() {
+                LType::Ptr
+            } else {
+                ltype_of(elem)
+            },
+            result_inner,
+        })
+    }
+
+    pub(crate) fn restore(self, mut value: Value) -> Value {
+        value.fiber_elem = Some(self.elem);
+        value.fiber_elem_result_inner = self.result_inner;
+        value
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct ParamSig {
+    pub(crate) ty: LType,
+    pub(crate) result_inner: Option<LType>,
+    pub(crate) fiber: Option<FiberSig>,
+}
+
+impl ParamSig {
+    pub(crate) fn of(ty: &Type) -> Self {
+        let fiber = FiberSig::of(ty);
+        match crate::types::result_inner(ty) {
+            Some(inner) => Self {
+                ty: LType::Ptr,
+                result_inner: Some(inner),
+                fiber,
+            },
+            None => Self {
+                ty: ltype_of(ty),
+                result_inner: None,
+                fiber,
+            },
+        }
+    }
+}
+
+/// A function value's lowered signature: parameter ABI slots, the return
+/// [`LType`], (when it returns `Result<T, _>`) the success inner type, and any
+/// Fiber element shape that must survive the erased integer ABI.
+pub(crate) type FnSig = (Vec<ParamSig>, LType, Option<LType>, Option<FiberSig>);
 
 /// Saved emission state of a suspended function (see [`Codegen::enter_nested_fn`]).
 pub(crate) struct SavedFn {
@@ -174,6 +253,7 @@ pub(crate) struct SavedFn {
     regs: usize,
     labels: usize,
     scopes: Vec<HashMap<String, Value>>,
+    scope_ids: Vec<usize>,
     /// Stream-fusion stages are per-function: a stage recorded inside a nested
     /// function body must never replay in the suspended function's next loop.
     pending_iter_ops: Vec<crate::iter::IterOp>,
@@ -442,6 +522,8 @@ impl Codegen {
             cur_block: String::from("entry"),
             value_discarded: false,
             scopes: Vec::new(),
+            scope_ids: Vec::new(),
+            next_scope_id: 0,
             fn_params: HashMap::new(),
             extern_ret_types: BTreeSet::new(),
             nullary_singletons: HashMap::new(),
@@ -463,6 +545,7 @@ impl Codegen {
             cell_slots: HashMap::new(),
             resume_ctx: None,
             testing_used: false,
+            fibers_used: false,
             debug: options.debug_source.map(DebugState::new),
             coverage: options
                 .coverage
@@ -592,20 +675,16 @@ impl Codegen {
     }
 
     /// The lowered [`FnSig`] of a function-typed value `ty`, for the closure
-    /// ABI — `None` if `ty` is not a function. The return is normalized via
-    /// [`crate::types::normalize_fn_ret`] so maker and consumer derive the
-    /// same ABI even when the assignable-unwrap rule let their types differ by
-    /// a Result wrapper.
+    /// ABI — `None` if `ty` is not a function. Result returns retain their
+    /// discriminant-bearing ABI; function values must never erase failure.
     pub(crate) fn fn_value_sig(ty: &Type) -> Option<FnSig> {
         match ty {
-            Type::Fun { params, ret } => {
-                let ret = crate::types::normalize_fn_ret(ret);
-                Some((
-                    params.iter().map(ltype_of).collect(),
-                    ltype_of(ret),
-                    crate::types::result_inner(ret),
-                ))
-            }
+            Type::Fun { params, ret } => Some((
+                params.iter().map(ParamSig::of).collect(),
+                ltype_of(ret),
+                crate::types::result_inner(ret),
+                FiberSig::of(ret),
+            )),
             _ => None,
         }
     }
@@ -656,6 +735,7 @@ impl Codegen {
             regs: self.reg_count,
             labels: self.label_count,
             scopes: std::mem::take(&mut self.scopes),
+            scope_ids: std::mem::take(&mut self.scope_ids),
             pending_iter_ops: std::mem::take(&mut self.pending_iter_ops),
             cell_vars: std::mem::take(&mut self.cell_vars),
             cell_slots: std::mem::take(&mut self.cell_slots),
@@ -678,7 +758,7 @@ impl Codegen {
         self.reg_count = 0;
         self.label_count = 0;
         self.cur_lines = vec!["entry:".to_string()];
-        self.scopes = vec![HashMap::new()];
+        self.push_scope();
         self.arc_slot_count = 0;
         saved
     }
@@ -697,6 +777,7 @@ impl Codegen {
         self.reg_count = saved.regs;
         self.label_count = saved.labels;
         self.scopes = saved.scopes;
+        self.scope_ids = saved.scope_ids;
         self.pending_iter_ops = saved.pending_iter_ops;
         self.cell_vars = saved.cell_vars;
         self.cell_slots = saved.cell_slots;
@@ -741,15 +822,22 @@ impl Codegen {
     pub(crate) fn fn_param_ltypes(&self, name: &str) -> Option<Vec<LType>> {
         self.prog
             .param_types(name)
-            .map(|ps| ps.iter().map(ltype_of).collect())
+            .map(|ps| ps.iter().map(|t| ParamSig::of(t).ty).collect())
+    }
+
+    /// Full parameter ABI slots, including Result layout metadata.
+    pub(crate) fn fn_param_abis(&self, name: &str) -> Option<Vec<ParamSig>> {
+        self.prog
+            .param_types(name)
+            .map(|ps| ps.iter().map(ParamSig::of).collect())
     }
 
     /// The `(LType, owner)` parameter signature — `owner` tags record/union
     /// parameters so their fields are reachable inside the body.
-    pub(crate) fn fn_param_sig(&self, name: &str) -> Option<Vec<(LType, Option<String>)>> {
+    pub(crate) fn fn_param_sig(&self, name: &str) -> Option<Vec<(ParamSig, Option<String>)>> {
         self.prog.param_types(name).map(|ps| {
             ps.iter()
-                .map(|t| (ltype_of(t), crate::types::owner_name(t)))
+                .map(|t| (ParamSig::of(t), crate::types::owner_name(t)))
                 .collect()
         })
     }
@@ -766,6 +854,11 @@ impl Codegen {
     /// `{ T, i8 }*` Result block rather than a bare `T`.
     pub(crate) fn fn_ret_result_inner(&self, name: &str) -> Option<LType> {
         crate::types::result_inner(self.prog.return_type(name)?)
+    }
+
+    /// Fiber element shape carried by a function's erased `i64` return slot.
+    pub(crate) fn fn_ret_fiber_sig(&self, name: &str) -> Option<FiberSig> {
+        FiberSig::of(self.prog.return_type(name)?)
     }
 
     /// The LLVM spelling of `name`'s emitted return slot (Result block or
@@ -900,6 +993,20 @@ impl Codegen {
         } else {
             None
         }
+    }
+
+    /// The success payload layout when a declared aggregate field is a
+    /// `Result<T, E>`. Aggregate slots currently carry only an [`LType`], so
+    /// callers use this to reject a field before its discriminant could be
+    /// erased.
+    pub(crate) fn ctor_field_result_inner(&self, owner: &str, field: &str) -> Option<LType> {
+        self.prog
+            .ctors
+            .get(owner)?
+            .fields
+            .iter()
+            .find(|(name, _)| name == field)
+            .and_then(|(_, ty)| crate::types::result_inner(ty))
     }
 
     /// The variant constructor names of a union owner, in tag order.
@@ -1072,10 +1179,17 @@ impl Codegen {
 
     pub(crate) fn push_scope(&mut self) {
         self.scopes.push(HashMap::new());
+        self.scope_ids.push(self.next_scope_id);
+        self.next_scope_id = self.next_scope_id.saturating_add(1);
     }
 
     pub(crate) fn pop_scope(&mut self) {
         let _ = self.scopes.pop();
+        let _ = self.scope_ids.pop();
+    }
+
+    pub(crate) fn scope_id(&self) -> Option<usize> {
+        self.scope_ids.last().copied()
     }
 
     pub(crate) fn bind(&mut self, name: impl Into<String>, value: Value) {
@@ -1124,6 +1238,22 @@ impl Codegen {
         self.rodata_regs.clear();
         self.push_scope();
         self.cur_lines.push("entry:".to_string());
+        if let Some(debug) = self.debug.as_mut() {
+            let _ = debug.begin_function(name, position);
+        }
+    }
+
+    /// Open a debug scope for a nested function whose body is user-written code.
+    ///
+    /// [`enter_nested_fn`](Self::enter_nested_fn) clears the debug scope, and for
+    /// the synthetic trampolines (suspend, drive, fn-value forwarders) that is
+    /// what we want — a `DISubprogram` there would surface compiler-invented
+    /// frames the author never wrote. A handler arm is the opposite case: its
+    /// body is source someone can set a breakpoint in. Without a scope,
+    /// `location_id` returns `None` for every instruction in it, so the arm's
+    /// lines never reach the line table and a breakpoint there can never bind —
+    /// the arm runs but the debugger sails past it. [DEBUGGER-DBG-DECLARE]
+    pub(crate) fn begin_nested_debug(&mut self, name: &str, position: Option<Position>) {
         if let Some(debug) = self.debug.as_mut() {
             let _ = debug.begin_function(name, position);
         }
@@ -1212,28 +1342,32 @@ impl Codegen {
     /// mask, see [`crate::meta`]): the ARC backend stores it in the object
     /// header so `osp_release` can drop children precisely; other backends
     /// ignore it. Implements [GC-ARC-PERCEUS].
-    pub(crate) fn heap_alloc_tagged(&mut self, size: &str, meta: i64) -> String {
-        if meta == crate::meta::KIND_RAW {
-            return self.heap_alloc(size);
-        }
-        self.add_extern(OSP_ALLOC_TAGGED_DECL);
-        self.emit_reg(format!(
-            "call i8* @osp_alloc_tagged(i64 {size}, i64 {meta})"
-        ))
+    fn heap_alloc_tagged(&mut self, size: &str, meta: i64) -> String {
+        self.heap_alloc_tagged_via(size, meta, OSP_ALLOC_TAGGED_DECL, "osp_alloc_tagged")
     }
 
     /// [`heap_alloc_tagged`] for a block the caller fully initializes before it
     /// can drop (every masked word stored): the ARC backend skips its
     /// drop-safety pre-zero. A `KIND_RAW` block is never zeroed anyway, so it
     /// shares the plain allocator. [GC-ARC-PERCEUS]
-    pub(crate) fn heap_alloc_tagged_noinit(&mut self, size: &str, meta: i64) -> String {
+    fn heap_alloc_tagged_noinit(&mut self, size: &str, meta: i64) -> String {
+        self.heap_alloc_tagged_via(
+            size,
+            meta,
+            OSP_ALLOC_TAGGED_NOINIT_DECL,
+            "osp_alloc_tagged_noinit",
+        )
+    }
+
+    /// Shared body of the tagged allocators: a `KIND_RAW` block has nothing to
+    /// mark so it falls back to the plain allocator; otherwise declare `decl` and
+    /// emit `call i8* @{func}(i64 size, i64 meta)`.
+    fn heap_alloc_tagged_via(&mut self, size: &str, meta: i64, decl: &str, func: &str) -> String {
         if meta == crate::meta::KIND_RAW {
             return self.heap_alloc(size);
         }
-        self.add_extern(OSP_ALLOC_TAGGED_NOINIT_DECL);
-        self.emit_reg(format!(
-            "call i8* @osp_alloc_tagged_noinit(i64 {size}, i64 {meta})"
-        ))
+        self.add_extern(decl);
+        self.emit_reg(format!("call i8* @{func}(i64 {size}, i64 {meta})"))
     }
 
     /// Allocate a heap block sized for the LLVM struct type `struct_ty`, via the
@@ -1308,24 +1442,24 @@ impl Codegen {
 /// async frame-pointer chain walk is valid from any sample point. Implements
 /// [PROF-CODEGEN-FP], docs/specs/0028-Profiler.md; cost is ~1% (arm64 reserves
 /// x29 for the frame chain by ABI anyway).
-pub(crate) const FRAME_POINTER_ATTRS: &str = "attributes #0 = { \"frame-pointer\"=\"all\" }";
+const FRAME_POINTER_ATTRS: &str = "attributes #0 = { \"frame-pointer\"=\"all\" }";
 
 /// The swappable allocation hook declaration. `noalias` + the allocator
 /// attributes (`allocsize`/`allockind`/`alloc-family`) make LLVM treat
 /// `@osp_alloc` as an allocation function for dead-allocation elimination, while
 /// a custom `alloc-family` ("osprey", not "malloc") stops LLVM rewriting it to
 /// libc `calloc`/`realloc` and bypassing the backend. Implements [MEM-BACKENDS].
-pub(crate) const OSP_ALLOC_DECL: &str = "declare noalias i8* @osp_alloc(i64) allocsize(0) allockind(\"alloc,uninitialized\") mustprogress nounwind willreturn \"alloc-family\"=\"osprey\"";
+const OSP_ALLOC_DECL: &str = "declare noalias i8* @osp_alloc(i64) allocsize(0) allockind(\"alloc,uninitialized\") mustprogress nounwind willreturn \"alloc-family\"=\"osprey\"";
 
 /// The layout-carrying twin of [`OSP_ALLOC_DECL`]: same allocator attributes
 /// (so `-O2` dead-allocation elimination still applies), plus the meta word the
 /// ARC backend stores in the object header. Implements [GC-ARC-PERCEUS].
-pub(crate) const OSP_ALLOC_TAGGED_DECL: &str = "declare noalias i8* @osp_alloc_tagged(i64, i64) allocsize(0) allockind(\"alloc,uninitialized\") mustprogress nounwind willreturn \"alloc-family\"=\"osprey\"";
+const OSP_ALLOC_TAGGED_DECL: &str = "declare noalias i8* @osp_alloc_tagged(i64, i64) allocsize(0) allockind(\"alloc,uninitialized\") mustprogress nounwind willreturn \"alloc-family\"=\"osprey\"";
 
 /// The non-pre-zeroing twin of [`OSP_ALLOC_TAGGED_DECL`] for caller-fully-
 /// initialized blocks (`allockind` is already `uninitialized`; the difference
 /// is only that the ARC backend skips its drop-safety memset). [GC-ARC-PERCEUS]
-pub(crate) const OSP_ALLOC_TAGGED_NOINIT_DECL: &str = "declare noalias i8* @osp_alloc_tagged_noinit(i64, i64) allocsize(0) allockind(\"alloc,uninitialized\") mustprogress nounwind willreturn \"alloc-family\"=\"osprey\"";
+const OSP_ALLOC_TAGGED_NOINIT_DECL: &str = "declare noalias i8* @osp_alloc_tagged_noinit(i64, i64) allocsize(0) allockind(\"alloc,uninitialized\") mustprogress nounwind willreturn \"alloc-family\"=\"osprey\"";
 
 /// The resolved heap layout of a constructor.
 pub(crate) struct CtorView {

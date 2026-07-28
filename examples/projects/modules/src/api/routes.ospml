@@ -27,7 +27,7 @@ module Api
     // The `headers` string is spliced verbatim into the wire response, so
     // each header line must carry its own CRLF terminator.
     json : int -> string -> HttpResponse
-    json status body = HttpResponse(status = status, headers = "Content-Type: application/json\r\n", contentType = "application/json", streamFd = -1, isComplete = true, partialBody = body)
+    json status body = HttpResponse(status = status, headers = "Content-Type: application/json\r\n", contentType = "application/json", streamFd = (0 - 1) ?: 0, isComplete = true, partialBody = body)
 
     refuse : string -> HttpResponse
     refuse why = json 422 (Json::error why)
@@ -39,11 +39,11 @@ module Api
     // Pull one string field out of a JSON request body.
     field : string -> string -> string
     field body path =
-        doc = jsonParse body
+        doc = jsonParse body ?: 0
         v = match jsonGet doc path
             Success value => value
             Error message => ""
-        freed = jsonFree doc
+        freed = jsonFree doc ?: 0
         v
 
     num : string -> string -> int
@@ -65,7 +65,8 @@ module Api
             sep = match id < count
                 true => ","
                 false => ""
-            "${Accounts::json (load id)}${sep}${rows (id + 1) count}"
+            next = (id + 1) ?: count
+            "${Accounts::json (load id)}${sep}${rows next count}"
 
     onOpen : string -> HttpResponse ! [Ledger::Store, Audit]
     onOpen body =

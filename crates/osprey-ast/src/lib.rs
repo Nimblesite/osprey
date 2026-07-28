@@ -8,11 +8,12 @@
 mod doc;
 mod generics;
 mod resume;
+pub mod symbol;
 mod visit;
 pub use doc::{DocComment, DocExample, DocScope};
 pub use generics::{EffectRef, TypeParam, Variance};
 pub use resume::contains_resume;
-pub use visit::walk_each;
+pub use visit::{walk_each, walk_program, AstVisitor};
 
 /// A source position: 1-based line, 0-based column.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -302,6 +303,14 @@ pub struct EffectOperation {
     pub parameters: Vec<Parameter>,
     /// The operation's return type as written.
     pub return_type: String,
+    /// Structured documentation comment, when written ([DOC-MODEL]). An
+    /// operation documents ITSELF; the owning effect's doc describes the
+    /// capability as a whole and is only a fallback. Implements
+    /// [DOC-EFFECT-OP].
+    pub doc: Option<DocComment>,
+    /// Source position of the operation name. Implements
+    /// [LSP-HOVER-EFFECT-OPERATIONS].
+    pub position: Option<Position>,
 }
 
 /// Whether a signature type is abstract or exposes a manifest representation.
@@ -524,6 +533,10 @@ pub enum Stmt {
     Expr {
         /// The expression being evaluated for side effects.
         value: Expr,
+        /// Structured documentation comment, when written ([DOC-MODEL]). A
+        /// `test("name", …)` case is an expression statement, so this is the
+        /// field that carries a test's documentation ([TESTING-DOC]).
+        doc: Option<DocComment>,
         /// Source position, if recorded.
         position: Option<Position>,
     },
@@ -793,6 +806,42 @@ pub enum Expr {
     Resume(Option<Box<Expr>>),
 }
 
+impl Expr {
+    /// Build `-operand`, folding a negated numeric **literal** into the literal
+    /// itself so it keeps the plain `int`/`float` type.
+    ///
+    /// A runtime negation is fallible (`-i64::MIN` overflows) and correctly
+    /// yields `Result<int, MathError>` under [ARITH-CHECKED]. A *literal*
+    /// negation is a compile-time constant: the lexer already rejects every
+    /// magnitude above `i64::MAX`, so the fold below cannot lose a value. Not
+    /// folding made `-1` a `Result` and therefore unusable anywhere an `int`
+    /// was required — `let x: int = -1` failed to typecheck.
+    ///
+    /// `checked_neg` keeps the one genuinely-overflowing case (`-(i64::MIN)`,
+    /// reachable only by double negation) as a checked `Unary`, so this is
+    /// total: it never panics and never silently wraps.
+    /// Implements [ARITH-NEG-LITERAL].
+    #[must_use]
+    pub fn negated(operand: Self) -> Self {
+        match operand {
+            Self::Integer(value) => match value.checked_neg() {
+                Some(negated) => Self::Integer(negated),
+                None => Self::unary_minus(Self::Integer(value)),
+            },
+            Self::Float(value) => Self::Float(-value),
+            other => Self::unary_minus(other),
+        }
+    }
+
+    /// The unfolded `-operand` node.
+    fn unary_minus(operand: Self) -> Self {
+        Self::Unary {
+            op: String::from("-"),
+            operand: Box::new(operand),
+        }
+    }
+}
+
 /// One arm of a `handle ... in` expression (`ast` handler arm).
 #[derive(Debug, Clone, PartialEq)]
 pub struct HandlerArm {
@@ -802,6 +851,9 @@ pub struct HandlerArm {
     pub params: Vec<String>,
     /// The arm body.
     pub body: Expr,
+    /// Source position of the operation name. Implements
+    /// [LSP-IMPLEMENTATIONS-EFFECT-HANDLERS].
+    pub position: Option<Position>,
 }
 
 #[cfg(test)]

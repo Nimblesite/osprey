@@ -1,0 +1,188 @@
+// ML-flavor twin of string_pipeline.osp. Layout blocks, whitespace
+// application (`route "GET" "/health"`), and pipe-with-arg (`raw |> contains "GET"`)
+// lower to the SAME canonical AST as the Default braces/parens form —
+// byte-identical IR ([FLAVOR-IR-EQUIV]). String API end-to-end: inspection,
+// search, transformation, parsing, pipe / UFCS / direct-call equivalence,
+// lines/words/split returning List<string>, and an HTTP-routing pattern.
+// Spec: [BUILTIN-STRING-UFCS] for the pipe/UFCS/direct equivalence and
+// [BUILTIN-STRING-LIST] for the splitting family. Builtins exercised:
+// [BUILTIN-STRING-LENGTH], [BUILTIN-STRING-ISEMPTY],
+// [BUILTIN-STRING-CONTAINS], [BUILTIN-STRING-STARTSWITH],
+// [BUILTIN-STRING-ENDSWITH], [BUILTIN-STRING-INDEXOF],
+// [BUILTIN-STRING-SUBSTRING], [BUILTIN-STRING-TAKE], [BUILTIN-STRING-DROP],
+// [BUILTIN-STRING-TRIM], [BUILTIN-STRING-TRIMSTART],
+// [BUILTIN-STRING-TRIMEND], [BUILTIN-STRING-TOLOWERCASE],
+// [BUILTIN-STRING-TOUPPERCASE], [BUILTIN-STRING-JOIN],
+// [BUILTIN-STRING-REPLACE], [BUILTIN-STRING-REPEAT],
+// [BUILTIN-STRING-REVERSE], [BUILTIN-STRING-PADSTART],
+// [BUILTIN-STRING-PADEND], [BUILTIN-STRING-PARSEINT],
+// [BUILTIN-STRING-PARSEFLOAT], [BUILTIN-STRING-SPLIT],
+// [BUILTIN-STRING-LINES], [BUILTIN-STRING-WORDS], the `+` operator
+// [BUILTIN-STRING-CONCAT], and [BUILTIN-COLLECTION-LENGTH] to count the
+// resulting List<string>.
+
+handleGet path =
+    match path
+        "/health" => "200 ok"
+        _ => match startsWith path "/api/users/"
+            true  => "200 user-detail " + drop path 11
+            false => match startsWith path "/api/"
+                true  => "200 api-fallback"
+                false => "404 not-found"
+handlePost path =
+    match path
+        "/api/users" => "201 created"
+        _            => "404 not-found"
+route (method, path) =
+    match method
+        "GET"  => handleGet path
+        "POST" => handlePost path
+        _      => "405 method-not-allowed"
+print "=== String Pipeline ===\n"
+
+(** ----- Inspection / search (total, no Result wrap) ----- *)
+raw = "  GET /api/users?name=alice&age=30  "
+print "raw=\"${raw}\" len=${raw |> length}\n"
+print "isEmpty=${raw |> isEmpty}\n"
+print "contains 'GET'=${raw |> contains "GET"}\n"
+print "startsWith '  '=${raw |> startsWith "  "}\n"
+print "endsWith '  '=${raw |> endsWith "  "}\n"
+
+// pipe == UFCS == direct
+print "len pipe=${raw |> length}  ufcs=${length raw}  direct=${length raw}\n"
+print "ctns pipe=${raw |> contains "GET"}  ufcs=${contains raw "GET"}  direct=${contains raw "GET"}\n"
+
+(** ----- Transformation chain via pipe ----- *)
+normalized = raw |> trim |> toLowerCase
+print "normalized=\"${normalized}\"\n"
+print "isGetRequest=${normalized |> startsWith "get "}\n"
+print "upper=\"${toUpperCase "hello"}\"\n"
+print "trimStart=\"${trimStart "  hi  "}\"\n"
+print "trimEnd=\"${trimEnd "  hi  "}\"\n"
+print "join=\"${join ["a", "b", "c"] "-"}\"\n"
+
+// UFCS chain
+print "chain=\"${take (toLowerCase (trim raw)) 5}\"\n"
+
+// ----- Substring & search (fallible — Result<T,E>) -----
+match indexOf raw "?"
+    Success value   => print "query starts at ${value}\n"
+    Error   message => print "no query string\n"
+match substring "hello world" 6 11
+    Success value   => print "substring=\"${value}\"\n"
+    Error   message => print "substring err\n"
+
+// ----- Transformation (fallible) -----
+match replace "a-b-c-d" "-" "/"
+    Success value => print "replace=\"${value}\"\n"
+    Error message => print "replace err\n"
+match repeat "ab" 4
+    Success value => print "repeat=\"${value}\"\n"
+    Error message => print "repeat err\n"
+match padStart "42" 5 "0"
+    Success value => print "padS=\"${value}\"\n"
+    Error message => print "padS err\n"
+match padEnd "42" 5 "0"
+    Success value => print "padE=\"${value}\"\n"
+    Error message => print "padE err\n"
+
+(** ----- take/drop/reverse (UFCS form) ----- *)
+hello = "hello"
+print "take ufcs=\"${take hello 3}\"\n"
+print "drop ufcs=\"${drop hello 3}\"\n"
+print "reverse=\"${reverse "abc"}\"\n"
+
+// ----- Parsing -----
+match parseInt "123"
+    Success value => print "parseInt=${value}\n"
+    Error message => print "pi err\n"
+match parseInt "oops"
+    Success value => print "oops=${value}\n"
+    Error message => print "parseInt strict: rejects 'oops'\n"
+match parseFloat "3.14"
+    Success value => print "parseFloat=${value}\n"
+    Error message => print "pf err\n"
+
+(** ----- Split/lines/words → List<string> ----- *)
+multi  = "a\nb\nc"
+spaced = "  hello   world  "
+print "lines count=${listLength (lines multi)}\n"
+print "words count=${listLength (words spaced)}\n"
+match split "a,b,c" ","
+    Success value => print "split count=${listLength value}\n"
+    Error message => print "split err\n"
+match split "anything" ""
+    Success value => print "split empty unexpected\n"
+    Error message => print "split empty rejected\n"
+
+// ----- HTTP-routing via startsWith + pattern matching -----
+print "${route ("GET", "/health")}\n"
+print "${route ("GET", "/api/users/42")}\n"
+print "${route ("GET", "/api/orders")}\n"
+print "${route ("POST", "/api/users")}\n"
+print "${route ("GET", "/random")}\n"
+print "${route ("DELETE", "/anything")}\n"
+
+print "=== Pipeline Complete ===\n"
+0
+
+(** Replay the transformation pipeline, fallible operations, and routing branches. *)
+stringPipelineCase () =
+    source = "  GET /api/users?name=alice&age=30  "
+    cleaned = source |> trim |> toLowerCase
+    splitCount = match split "a,b,c" ","
+        Success value => listLength value
+        Error message => (0 - 1) ?: 0
+    splitEmptyRejected = match split "anything" ""
+        Success value => false
+        Error message => message != ""
+    invalidIntegerRejected = match parseInt "oops"
+        Success value => false
+        Error message => message != ""
+    missingIndexRejected = match indexOf "hello" "xyz"
+        Success value => false
+        Error message => message != ""
+    checkAll "string inspection and transformations" [
+        length source == 36,
+        !(isEmpty source),
+        contains source "GET",
+        startsWith source "  ",
+        endsWith source "  ",
+        (source |> length) == 36,
+        cleaned == "get /api/users?name=alice&age=30",
+        startsWith cleaned "get ",
+        toUpperCase "hello" == "HELLO",
+        trimStart "  hi  " == "hi  ",
+        trimEnd "  hi  " == "  hi",
+        join ["a", "b", "c"] "-" == "a-b-c",
+        take cleaned 5 == "get /",
+        take "hello" 3 == "hel",
+        drop "hello" 3 == "lo",
+        reverse "abc" == "cba"
+    ]
+    checkAll "fallible string values and collection results" [
+        (indexOf source "?" ?: ((0 - 1) ?: 0)) == 16,
+        (substring "hello world" 6 11 ?: "missing") == "world",
+        (replace "a-b-c-d" "-" "/" ?: "missing") == "a/b/c/d",
+        (repeat "ab" 4 ?: "missing") == "abababab",
+        (padStart "42" 5 "0" ?: "missing") == "00042",
+        (padEnd "42" 5 "0" ?: "missing") == "42000",
+        (parseInt "123" ?: 0) == 123,
+        (parseFloat "3.14" ?: 0.0) == 3.14,
+        listLength (lines "a\nb\nc") == 3,
+        listLength (words "  hello   world  ") == 2,
+        splitCount == 3,
+        splitEmptyRejected,
+        invalidIntegerRejected,
+        missingIndexRejected
+    ]
+    checkAll "HTTP routing branches" [
+        route ("GET", "/health") == "200 ok",
+        route ("GET", "/api/users/42") == "200 user-detail 42",
+        route ("GET", "/api/orders") == "200 api-fallback",
+        route ("POST", "/api/users") == "201 created",
+        route ("POST", "/other") == "404 not-found",
+        route ("GET", "/random") == "404 not-found",
+        route ("DELETE", "/anything") == "405 method-not-allowed"
+    ]
+test "string pipeline preserves transformations and routing" stringPipelineCase

@@ -19,7 +19,7 @@ use osprey_syntax::Flavor;
 /// (`source.osprey-ml`), so ML hover text fenced as `osprey` is highlighted by
 /// brace-flavor rules that do not apply to it.
 #[must_use]
-pub const fn fence(flavor: Flavor) -> &'static str {
+pub(crate) const fn fence(flavor: Flavor) -> &'static str {
     match flavor {
         Flavor::Default => "osprey",
         Flavor::Ml => "osprey-ml",
@@ -29,11 +29,19 @@ pub const fn fence(flavor: Flavor) -> &'static str {
 /// Re-spell one rendered Default signature for `flavor`. Default documents get
 /// their input back untouched — Default *is* the canonical rendering.
 #[must_use]
-pub fn signature(flavor: Flavor, sig: &str) -> String {
+pub(crate) fn signature(flavor: Flavor, sig: &str) -> String {
     match flavor {
         Flavor::Default => sig.to_owned(),
         Flavor::Ml => ml_signature(sig),
     }
+}
+
+/// `code` in a code fence labelled for `flavor`, its contents respelled in that
+/// flavor. The shared way every hover renders a signature or a bare name.
+/// Implements [LSP-FLAVOR-RENDER].
+#[must_use]
+pub(crate) fn fenced(flavor: Flavor, code: &str) -> String {
+    format!("```{}\n{}\n```", fence(flavor), signature(flavor, code))
 }
 
 /// Re-spell a whole rendered hover block — fenced signature followed by prose —
@@ -45,7 +53,7 @@ pub fn signature(flavor: Flavor, sig: &str) -> String {
 /// later `**Example**` block holds real Default source; re-labelling it
 /// `osprey-ml` would claim it parses as ML, which it does not.
 #[must_use]
-pub fn hover_markdown(flavor: Flavor, md: &str) -> String {
+pub(crate) fn hover_markdown(flavor: Flavor, md: &str) -> String {
     if flavor == Flavor::Default {
         return md.to_owned();
     }
@@ -74,6 +82,9 @@ fn ml_signature(sig: &str) -> String {
     if let Some(rest) = sig.strip_prefix("fn ") {
         return ml_function(rest);
     }
+    if let Some(operation) = ml_effect_operation(sig) {
+        return operation;
+    }
     for keyword in ["type ", "effect "] {
         if let Some(rest) = sig.strip_prefix(keyword) {
             return format!("{keyword}{}", ml_binder(rest));
@@ -86,6 +97,37 @@ fn ml_signature(sig: &str) -> String {
             format!("{name} : {}", ml_type(ty))
         }
         _ => sig.to_owned(),
+    }
+}
+
+/// `Trace.mark: fn(string) -> Unit` ⇒ `Trace.mark : string => Unit`.
+/// Effect operations use their own ML arrow rather than a value-function type.
+/// Implements [LSP-HOVER-EFFECT-OPERATIONS], [FLAVOR-ML-EFFECT].
+fn ml_effect_operation(sig: &str) -> Option<String> {
+    let (name, ty) = sig.split_once(": ")?;
+    let rest = name.contains('.').then(|| ty.strip_prefix("fn"))??;
+    let (head, params, tail) = split_params(rest)?;
+    if !head.trim().is_empty() {
+        return None;
+    }
+    let result_type = tail.trim().strip_prefix("->").map(str::trim)?;
+    Some(format!(
+        "{name} : {} => {}",
+        ml_effect_payload(&params),
+        ml_type(result_type)
+    ))
+}
+
+fn ml_effect_payload(params: &str) -> String {
+    match split_top(params)
+        .iter()
+        .map(|param| ml_type(param))
+        .collect::<Vec<_>>()
+        .as_slice()
+    {
+        [] => String::from("Unit"),
+        [only] => only.clone(),
+        many => format!("({})", many.join(", ")),
     }
 }
 
@@ -241,6 +283,14 @@ mod tests {
         );
         // A binding ascription gains ML's spaced colon.
         assert_eq!(signature(Flavor::Ml, "total: int"), "total : int");
+        assert_eq!(
+            signature(Flavor::Ml, "Trace.mark: fn(string) -> Unit"),
+            "Trace.mark : string => Unit"
+        );
+        assert_eq!(
+            signature(Flavor::Ml, "Clock.now: fn() -> int"),
+            "Clock.now : Unit => int"
+        );
         // Default documents are never rewritten.
         assert_eq!(
             signature(Flavor::Default, "fn inc(x: int) -> int"),

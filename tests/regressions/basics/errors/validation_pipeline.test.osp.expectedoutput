@@ -1,0 +1,14 @@
+=== Validation Pipeline ===
+input "30" -> accepted age 30
+input "-4" -> rejected: age must be non-negative
+input "999" -> rejected: age unrealistically large
+input "abc" -> rejected: not a number
+threaded reasons = "not a number" / "age unrealistically large"
+=== Validation Pipeline Complete ===
+input "30" -> accepted age 30
+input "-4" -> rejected: age must be non-negative
+input "999" -> rejected: age unrealistically large
+input "abc" -> rejected: not a number
+ok 1 - age validation preserves values and rejection reasons
+1..1
+# tests=1 passed=1 failed=0 skipped=0

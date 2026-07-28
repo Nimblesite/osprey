@@ -1,8 +1,0 @@
-// `=` binds an immutable name; `mut` marks a rebindable cell; `:=` mutates it.
-// These lower to `Stmt::Let { mutable }` and `Stmt::Assignment` — the same nodes
-// the Default flavor emits for `let`, `mut`, and reassignment.
-
-mut counter = 0
-counter := counter + 1
-counter := counter + 41
-print "counter = ${counter}"

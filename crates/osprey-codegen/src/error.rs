@@ -17,15 +17,15 @@ pub enum CodegenError {
 
 impl CodegenError {
     /// An unsupported construct the backend does not lower yet.
-    pub fn unsupported(what: impl Into<String>) -> CodegenError {
+    pub(crate) fn unsupported(what: impl Into<String>) -> CodegenError {
         CodegenError::Unsupported(what.into())
     }
     /// A reference to an unknown name (function, constructor, variable).
-    pub fn unknown(name: impl Into<String>) -> CodegenError {
+    pub(crate) fn unknown(name: impl Into<String>) -> CodegenError {
         CodegenError::UnknownName(name.into())
     }
     /// A program that is structurally invalid for codegen.
-    pub fn invalid(why: impl Into<String>) -> CodegenError {
+    pub(crate) fn invalid(why: impl Into<String>) -> CodegenError {
         CodegenError::Invalid(why.into())
     }
 }

@@ -1,0 +1,13 @@
+// osprey: flavor=ml
+// [EFFECTS-STATIC-DISCHARGE] Generic handlers discharge only one instantiation.
+effect Stash T
+    put : T => Unit
+    take : Unit => T
+
+storeNumber () = perform Stash.put 42
+
+done =
+    handle Stash
+        put value => print ""
+        take => "cached text"
+    in storeNumber ()

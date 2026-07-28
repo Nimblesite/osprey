@@ -95,7 +95,7 @@ pub(crate) fn parse_file(path: &Path) -> Result<Profile, ProfileError> {
 }
 
 /// Parse and validate raw-profile JSON; `path` is only used for error context.
-pub(crate) fn parse_str(text: &str, path: &Path) -> Result<Profile, ProfileError> {
+fn parse_str(text: &str, path: &Path) -> Result<Profile, ProfileError> {
     let raw: RawProfile = serde_json::from_str(text).map_err(|source| ProfileError::Parse {
         path: path.to_path_buf(),
         source,

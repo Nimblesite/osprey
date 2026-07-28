@@ -424,7 +424,6 @@ dependencies = [
  "osprey-project",
  "osprey-syntax",
  "osprey-types",
- "serde",
  "serde_json",
  "thiserror",
  "tokio",

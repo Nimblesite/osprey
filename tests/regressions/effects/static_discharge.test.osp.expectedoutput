@@ -1,0 +1,4 @@
+
+ok 1 - inferred effect rows discharge only under matching handlers
+1..1
+# tests=1 passed=1 failed=0 skipped=0

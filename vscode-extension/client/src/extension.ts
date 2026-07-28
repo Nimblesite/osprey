@@ -9,6 +9,7 @@ import {
   debug,
   DebugAdapterExecutable,
   languages,
+  OutputChannel,
 } from "vscode";
 import { execFile, execFileSync } from "child_process";
 import * as fs from "fs";
@@ -24,7 +25,9 @@ import {
 } from "vscode-languageclient/node";
 import { registerOspreyDebugPanel } from "./debug-panel";
 import { registerProfilerCommands } from "./profiler/profile-run";
+import { registerTestDocsCommand } from "./test-docs-panel";
 import { registerOspreyTestExplorer } from "./test-explorer";
+import { registerTestProfileProfile } from "./test-profile";
 
 // @nimblesite/shipwright-vscode is ESM-only; this extension is CommonJS, so it
 // is loaded via dynamic import() (never a static require) inside activate().
@@ -360,15 +363,30 @@ export function activate(context: ExtensionContext) {
   outputChannel.appendLine("=== Osprey Extension Activation ===");
   outputChannel.show();
 
-  // Native Test Explorer integration ([TESTING-VSCODE]). Registered before the
-  // server-enabled gate: test discovery/running only needs the compiler CLI, so
-  // it must keep working even with the LSP disabled.
-  registerOspreyTestExplorer(context, () => resolveServerCommand(context));
-
   // CPU profiler ([PROF-VSCODE-FLAME]): the Profile Current File command, the
-  // interactive flame-graph webview, and inline heat decorations. Also
-  // registered before the server gate — it only needs the compiler CLI.
-  registerProfilerCommands(context, () => resolveServerCommand(context));
+  // interactive flame-graph webview, and inline heat decorations. Registered
+  // before the server-enabled gate — it only needs the compiler CLI — and
+  // first, so the Test Explorer's Profile run profile can reuse its heat
+  // manager ([TESTING-PROFILE]).
+  const heat = registerProfilerCommands(context, () =>
+    resolveServerCommand(context),
+  );
+
+  // Native Test Explorer integration ([TESTING-VSCODE]). Also before the gate:
+  // test discovery/running only needs the compiler CLI, so it must keep
+  // working even with the LSP disabled.
+  const controller = registerOspreyTestExplorer(context, () =>
+    resolveServerCommand(context),
+  );
+  // The Profile run profile runs a suite under the sampling profiler and opens
+  // its flame graph + heat decorations ([TESTING-PROFILE]); the documentation
+  // command opens a case's `///` block ([TESTING-DOC]).
+  registerTestProfileProfile(
+    controller,
+    () => resolveServerCommand(context),
+    () => heat,
+  );
+  registerTestDocsCommand(context);
 
   // Check if Osprey server is enabled
   const config = workspace.getConfiguration("osprey");
@@ -658,125 +676,105 @@ async function debugCurrentFile() {
   await debug.startDebugging(undefined, config);
 }
 
-function compileCurrentFile(compilerCommand: string) {
+// The two "compile the active file" commands (compile, compile-and-run) differ
+// only in the compiler args and the strings they log; everything else — the
+// active-editor / .osp guards, save, output channel and the STDOUT/STDERR/ERROR
+// reporting — is one shared shape captured by `runCompileTask`.
+interface CompileTask {
+  fileVerb: string;
+  channelName: string;
+  startLine: (fileName: string) => string;
+  args: (fileName: string) => string[];
+  outputHeader: string;
+  failureMessage: string;
+  successHeader: string;
+  successMessage: string;
+}
+
+function reportCompileOutput(
+  channel: OutputChannel,
+  task: CompileTask,
+  error: any,
+  stdout: any,
+  stderr: any,
+) {
+  channel.appendLine(task.outputHeader);
+  if (stdout) {
+    channel.appendLine(`STDOUT:`);
+    channel.appendLine(stdout);
+  }
+  if (stderr) {
+    channel.appendLine(`STDERR:`);
+    channel.appendLine(stderr);
+  }
+  if (error) {
+    channel.appendLine(`ERROR:`);
+    channel.appendLine(`Exit code: ${error.code || "unknown"}`);
+    channel.appendLine(`Signal: ${error.signal || "none"}`);
+    channel.appendLine(`Error message: ${error.message}`);
+    window.showErrorMessage(task.failureMessage);
+  } else {
+    channel.appendLine(task.successHeader);
+    window.showInformationMessage(task.successMessage);
+  }
+  channel.appendLine(`=== END OUTPUT ===`);
+}
+
+function runCompileTask(compilerCommand: string, task: CompileTask) {
   const activeEditor = window.activeTextEditor;
   if (!activeEditor) {
     window.showErrorMessage("No active Osprey file found");
     return;
   }
-
   const document = activeEditor.document;
   if (!isOspreyFile(document.fileName)) {
-    window.showErrorMessage("Please open a .osp or .ospml file to compile");
+    window.showErrorMessage(
+      `Please open a .osp or .ospml file to ${task.fileVerb}`,
+    );
     return;
   }
-
-  // Save the file first
+  // Save the file first, then compile with the resolved osprey compiler (user
+  // setting → version-matched bundled binary → `osprey` on PATH — same
+  // resolution the language server uses).
   document.save().then(() => {
-    const outputChannel = window.createOutputChannel("Osprey Compiler");
+    const outputChannel = window.createOutputChannel(task.channelName);
     outputChannel.show();
-    outputChannel.appendLine(`Compiling ${document.fileName}...`);
-
-    // Get the directory containing the file (no workspace required)
+    outputChannel.appendLine(task.startLine(document.fileName));
     const fileDir = path.dirname(document.fileName);
-
-    // Use the resolved osprey compiler (user setting → version-matched bundled
-    // binary → `osprey` on PATH) — same resolution the language server uses.
     execFile(
       compilerCommand,
-      [document.fileName],
+      task.args(document.fileName),
       { cwd: fileDir },
-      (error: any, stdout: any, stderr: any) => {
-        outputChannel.appendLine(`=== COMPILATION OUTPUT ===`);
-
-        if (stdout) {
-          outputChannel.appendLine(`STDOUT:`);
-          outputChannel.appendLine(stdout);
-        }
-
-        if (stderr) {
-          outputChannel.appendLine(`STDERR:`);
-          outputChannel.appendLine(stderr);
-        }
-
-        if (error) {
-          outputChannel.appendLine(`ERROR:`);
-          outputChannel.appendLine(`Exit code: ${error.code || "unknown"}`);
-          outputChannel.appendLine(`Signal: ${error.signal || "none"}`);
-          outputChannel.appendLine(`Error message: ${error.message}`);
-          window.showErrorMessage(
-            "Compilation failed. Check output for details.",
-          );
-        } else {
-          outputChannel.appendLine("=== COMPILATION SUCCESS ===");
-          window.showInformationMessage("Osprey file compiled successfully!");
-        }
-
-        outputChannel.appendLine(`=== END OUTPUT ===`);
-      },
+      (error: any, stdout: any, stderr: any) =>
+        reportCompileOutput(outputChannel, task, error, stdout, stderr),
     );
   });
 }
 
+function compileCurrentFile(compilerCommand: string) {
+  runCompileTask(compilerCommand, {
+    fileVerb: "compile",
+    channelName: "Osprey Compiler",
+    startLine: (fileName) => `Compiling ${fileName}...`,
+    args: (fileName) => [fileName],
+    outputHeader: `=== COMPILATION OUTPUT ===`,
+    failureMessage: "Compilation failed. Check output for details.",
+    successHeader: "=== COMPILATION SUCCESS ===",
+    successMessage: "Osprey file compiled successfully!",
+  });
+}
+
 function compileAndRunCurrentFile(compilerCommand: string) {
-  const activeEditor = window.activeTextEditor;
-  if (!activeEditor) {
-    window.showErrorMessage("No active Osprey file found");
-    return;
-  }
-
-  const document = activeEditor.document;
-  if (!isOspreyFile(document.fileName)) {
-    window.showErrorMessage("Please open a .osp or .ospml file to run");
-    return;
-  }
-
-  // Save the file first
-  document.save().then(() => {
-    const outputChannel = window.createOutputChannel("Osprey Runner");
-    outputChannel.show();
-    outputChannel.appendLine(`Compiling and running ${document.fileName}...`);
-
-    // Get the directory containing the file (no workspace required)
-    const fileDir = path.dirname(document.fileName);
-
-    // Use the resolved osprey compiler with --run (user setting → version-matched
-    // bundled binary → `osprey` on PATH) — same resolution the language server uses.
-    execFile(
-      compilerCommand,
-      [document.fileName, "--run"],
-      { cwd: fileDir },
-      (error: any, stdout: any, stderr: any) => {
-        outputChannel.appendLine(`=== COMPILE AND RUN OUTPUT ===`);
-
-        if (stdout) {
-          outputChannel.appendLine(`STDOUT:`);
-          outputChannel.appendLine(stdout);
-        }
-
-        if (stderr) {
-          outputChannel.appendLine(`STDERR:`);
-          outputChannel.appendLine(stderr);
-        }
-
-        if (error) {
-          outputChannel.appendLine(`ERROR:`);
-          outputChannel.appendLine(`Exit code: ${error.code || "unknown"}`);
-          outputChannel.appendLine(`Signal: ${error.signal || "none"}`);
-          outputChannel.appendLine(`Error message: ${error.message}`);
-          window.showErrorMessage(
-            "Compilation or execution failed. Check output for details.",
-          );
-        } else {
-          outputChannel.appendLine("=== SUCCESS ===");
-          window.showInformationMessage(
-            "Osprey program executed successfully!",
-          );
-        }
-
-        outputChannel.appendLine(`=== END OUTPUT ===`);
-      },
-    );
+  runCompileTask(compilerCommand, {
+    fileVerb: "run",
+    channelName: "Osprey Runner",
+    startLine: (fileName) => `Compiling and running ${fileName}...`,
+    args: (fileName) => [fileName, "--run"],
+    outputHeader: `=== COMPILE AND RUN OUTPUT ===`,
+    failureMessage:
+      "Compilation or execution failed. Check output for details.",
+    successHeader: "=== SUCCESS ===",
+    successMessage: "Osprey program executed successfully!",
   });
 }
 

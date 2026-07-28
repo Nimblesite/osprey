@@ -6,12 +6,11 @@
 //! Signatures use `any` only where one Hindley-Milner type cannot express the
 //! runtime's supported alternatives (`print`, `toString`, `length`,
 //! `isEmpty`); `builtin_constraints` checks their concrete call-site types.
-//! Result-returning builtins return `Result<T, Error>` — the
-//! shape the C runtime actually returns — so the match/auto-unwrap paths agree
-//! with the expected outputs in `examples/tested`.
+//! Result-returning runtime builtins return `Result<T, Error>` — the shape the C
+//! runtime actually returns — while arithmetic operators use `MathError`.
 
 use crate::env::TypeEnv;
-use crate::ty::{Scheme, Type};
+use crate::ty::{names, Scheme, Type};
 
 fn s() -> Type {
     Type::string()
@@ -56,7 +55,17 @@ fn poly(env: &mut TypeEnv, name: &str, vars: Vec<u32>, params: Vec<Type>, ret: T
 /// Built-ins a user function may redefine: the testing names are common
 /// identifiers, so a same-named user function shadows the built-in instead of
 /// erroring. Implements [TESTING-SHADOWING] (docs/specs/0027-TestingFramework.md).
-pub const SHADOWABLE_BUILTINS: &[&str] = &["test", "expect", "check"];
+pub const SHADOWABLE_BUILTINS: &[&str] = &[
+    "test",
+    "expect",
+    "expectAll",
+    "expectTrue",
+    "expectFalse",
+    "check",
+    "checkAll",
+    "checkTrue",
+    "checkFalse",
+];
 
 /// Install every built-in into a base environment.
 pub fn base_env() -> TypeEnv {
@@ -84,14 +93,18 @@ fn core(e: &mut TypeEnv) {
     mono(e, "sleep", vec![i()], u());
     // A range is a fused iterator handle, not a materialized List [BUILTIN-ITER].
     mono(e, "range", vec![i(), i()], Type::iterator(i()));
-    mono(e, "abs", vec![i()], i());
+    mono(
+        e,
+        "abs",
+        vec![i()],
+        Type::result(i(), Type::prim(names::MATH_ERROR)),
+    );
     // Truncating integer division, divide-by-zero-checked → Result<int, Error>.
     // The `/` operator is float-only (Osprey spec); this is its integer sibling.
     // Implements [BUILTIN-INTDIV].
     mono(e, "intDiv", vec![i(), i()], res(i()));
-    // The opt-in overflow guarantee. `+ - *` return plain `int` because overflow
-    // wraps and every wrapped result is representable ([ARITH-PLAIN]); these
-    // report it instead, via `llvm.s{add,sub,mul}.with.overflow`.
+    // Named equivalents of the overflow-checked integer operators. These retain
+    // the runtime builtins' generic Error channel for compatibility.
     for checked in ["checkedAdd", "checkedSub", "checkedMul"] {
         mono(e, checked, vec![i(), i()], res(i()));
     }
@@ -118,8 +131,14 @@ fn testing(e: &mut TypeEnv) {
     );
     // expect(actual, expected). [TESTING-BUILTIN-EXPECT]
     mono(e, "expect", vec![any(), any()], u());
+    mono(e, "expectAll", vec![Type::list(b())], u());
+    mono(e, "expectTrue", vec![b()], u());
+    mono(e, "expectFalse", vec![b()], u());
     // check(label, expected, actual). [TESTING-BUILTIN-CHECK]
     mono(e, "check", vec![s(), any(), any()], u());
+    mono(e, "checkAll", vec![s(), Type::list(b())], u());
+    mono(e, "checkTrue", vec![s(), b()], u());
+    mono(e, "checkFalse", vec![s(), b()], u());
 }
 
 fn strings(e: &mut TypeEnv) {
@@ -403,6 +422,10 @@ mod tests {
         assert_eq!(
             builtin_signature("fiberDone").as_deref(),
             Some("fiberDone : (Fiber<t0>) -> int")
+        );
+        assert_eq!(
+            builtin_signature("abs").as_deref(),
+            Some("abs : (int) -> Result<int, MathError>")
         );
     }
 

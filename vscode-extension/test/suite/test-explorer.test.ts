@@ -7,8 +7,13 @@ import * as assert from "assert";
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
+import * as sinon from "sinon";
 import * as vscode from "vscode";
-import { fileTestId, leafTestId } from "../../client/src/test-explorer-parse";
+import {
+  COVERAGE_RUN,
+  fileTestId,
+  leafTestId,
+} from "../../client/src/test-explorer-parse";
 import {
   coverageSink,
   detailedCoverageFor,
@@ -146,6 +151,52 @@ suite("Osprey Test Explorer", () => {
       assert.ok(item.children.get(leafTestId(mlUri.toString(), "ml addition")));
     });
 
+    test("refreshTestFile groups workspace test files by folder", async function () {
+      if (!compiler) {
+        this.skip();
+      }
+      this.timeout(30000);
+      const controller = newController();
+      const workspaceUri = vscode.Uri.file(fixtureDir);
+      const testDir = path.join(fixtureDir, "tests", "core", "arithmetic");
+      fs.mkdirSync(testDir, { recursive: true });
+      const uri = vscode.Uri.file(path.join(testDir, "calculator.test.osp"));
+      fs.writeFileSync(uri.fsPath, PASS_FIXTURE);
+      const workspaceFolder = {
+        uri: workspaceUri,
+        name: "fixture",
+        index: 0,
+      } satisfies vscode.WorkspaceFolder;
+      const getWorkspaceFolder = sinon
+        .stub(vscode.workspace, "getWorkspaceFolder")
+        .returns(workspaceFolder);
+      const asRelativePath = sinon
+        .stub(vscode.workspace, "asRelativePath")
+        .callsFake((resource: vscode.Uri | string) =>
+          path.relative(
+            fixtureDir,
+            typeof resource === "string" ? resource : resource.fsPath,
+          ),
+        );
+      try {
+        const file = await refreshTestFile(controller, uri, compiler);
+        const tests = [...controller.items].map(([, item]) => item);
+        assert.strictEqual(tests.length, 1);
+        assert.strictEqual(tests[0].label, "tests");
+        const core = [...tests[0].children].map(([, item]) => item);
+        assert.strictEqual(core.length, 1);
+        assert.strictEqual(core[0].label, "core");
+        const arithmetic = [...core[0].children].map(([, item]) => item);
+        assert.strictEqual(arithmetic.length, 1);
+        assert.strictEqual(arithmetic[0].label, "arithmetic");
+        assert.strictEqual(arithmetic[0].children.get(file.id), file);
+        assert.strictEqual(file.label, "calculator.test.osp");
+      } finally {
+        getWorkspaceFolder.restore();
+        asRelativePath.restore();
+      }
+    });
+
     test("a syntax error surfaces on the file item with no children", async function () {
       if (!compiler) {
         this.skip();
@@ -220,7 +271,7 @@ suite("Osprey Test Explorer", () => {
       return item;
     }
 
-    test("a whole-file run maps TAP results onto leaves with diagnostics", async function () {
+    test("a failed test peek includes complete Context For AI details", async function () {
       if (!compiler) {
         this.skip();
       }
@@ -250,6 +301,19 @@ suite("Osprey Test Explorer", () => {
       assert.match(
         String(failures[0].message),
         /expect failed: expected 3, got 2/,
+      );
+      const expectedContext = [
+        "## Context For AI",
+        "",
+        `- File: ${failUri.fsPath}`,
+        "- Test: bad math",
+        "- Status: failed",
+        "- Location: line 3, column 1",
+        "- Failure: expect failed: expected 3, got 2",
+      ].join("\n");
+      assert.ok(
+        String(failures[0].message).includes(expectedContext),
+        `missing complete AI context in:\n${String(failures[0].message)}`,
       );
       assert.strictEqual(sink.ofKind("enqueued").length, 2);
       assert.ok(sink.output.includes("\r\n"));
@@ -306,7 +370,7 @@ suite("Osprey Test Explorer", () => {
         sink,
         token(),
         () => compiler,
-        true,
+        COVERAGE_RUN,
       );
       assert.strictEqual(sink.ofKind("passed").length, 1);
       const hits = sink.coverage.get(coverageUri.fsPath);
@@ -393,7 +457,7 @@ suite("Osprey Test Explorer", () => {
         coverageSink(recordingRun(received)),
         token(),
         () => compiler,
-        true,
+        COVERAGE_RUN,
       );
       assert.strictEqual(received.length, 1, "one FileCoverage per suite file");
       const fc = received[0];

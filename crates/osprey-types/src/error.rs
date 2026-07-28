@@ -15,9 +15,9 @@ pub struct TypeError {
 
 impl TypeError {
     /// Create an error with a message but no associated position.
-    pub fn new(message: impl Into<String>) -> TypeError {
+    pub(crate) fn new(message: impl Into<String>) -> TypeError {
         TypeError {
-            message: message.into(),
+            message: readable(message),
             position: None,
         }
     }
@@ -25,14 +25,14 @@ impl TypeError {
     /// Create an error with a message anchored to a source position.
     pub fn at(message: impl Into<String>, position: Position) -> TypeError {
         TypeError {
-            message: message.into(),
+            message: readable(message),
             position: Some(position),
         }
     }
 
     /// Attach a position if one is known and none is set yet.
     #[must_use]
-    pub fn with_pos(mut self, position: Option<Position>) -> TypeError {
+    pub(crate) fn with_pos(mut self, position: Option<Position>) -> TypeError {
         if self.position.is_none() {
             self.position = position;
         }
@@ -41,14 +41,27 @@ impl TypeError {
 
     /// Build an error for two types that fail to unify.
     #[must_use]
-    pub fn mismatch(a: &Type, b: &Type) -> TypeError {
+    pub(crate) fn mismatch(a: &Type, b: &Type) -> TypeError {
         TypeError::new(format!("type mismatch: cannot unify {a} with {b}"))
     }
 
     /// Build an error for a type that recursively contains itself (occurs check).
     #[must_use]
-    pub fn recursive(a: &Type, b: &Type) -> TypeError {
+    pub(crate) fn recursive(a: &Type, b: &Type) -> TypeError {
         TypeError::new(format!("recursive type: {a} occurs in {b}"))
+    }
+}
+
+/// Restore source names in a message before it is stored.
+///
+/// A declaration inside a namespace reaches the checker under the flat linkage
+/// name project assembly gave it, so a diagnostic naming a function would
+/// otherwise read `__osp_4x62616e6b_5x7365727665` instead of `bank::serve`.
+/// Doing this once at construction covers every consumer — CLI, LSP, tests.
+fn readable(message: impl Into<String>) -> String {
+    match osprey_ast::symbol::demangle_message(&message.into()) {
+        std::borrow::Cow::Borrowed(text) => text.to_owned(),
+        std::borrow::Cow::Owned(text) => text,
     }
 }
 

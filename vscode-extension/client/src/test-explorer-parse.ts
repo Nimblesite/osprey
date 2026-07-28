@@ -11,6 +11,19 @@ export interface DiscoveredTest {
   readonly line: number;
   /** 1-based source column of the `test(...)` call. */
   readonly column: number;
+  /**
+   * First paragraph of the `///` / `(** … *)` block written above the case —
+   * the inline description shown beside its name. Absent when undocumented
+   * ([TESTING-DOC]).
+   */
+  readonly summary?: string;
+  /**
+   * The whole doc comment rendered as Markdown (summary, body, and every
+   * populated `# Parameters` / `# Returns` / `# Raises` / `# Examples` /
+   * `# See also` / `# Since` section). Absent when undocumented
+   * ([TESTING-DOC], [DOC-EXPORT]).
+   */
+  readonly doc?: string;
 }
 
 /** The outcome of parsing a `--list-tests` invocation. */
@@ -55,14 +68,27 @@ export interface FilePlan<T extends TestItemLike> {
   wholeFile: boolean;
 }
 
+/** An optional wire field is valid when absent or a string ([TESTING-DOC]). */
+function isOptionalString(value: unknown): boolean {
+  return value === undefined || typeof value === "string";
+}
+
 function isDiscoveredTest(value: unknown): value is DiscoveredTest {
-  const record = value as { name?: unknown; line?: unknown; column?: unknown };
+  const record = value as {
+    name?: unknown;
+    line?: unknown;
+    column?: unknown;
+    summary?: unknown;
+    doc?: unknown;
+  };
   return (
     typeof value === "object" &&
     value !== null &&
     typeof record.name === "string" &&
     typeof record.line === "number" &&
-    typeof record.column === "number"
+    typeof record.column === "number" &&
+    isOptionalString(record.summary) &&
+    isOptionalString(record.doc)
   );
 }
 
@@ -201,10 +227,16 @@ function isExcluded(
   item: TestItemLike,
   excluded: ReadonlySet<string>,
 ): boolean {
-  return (
-    excluded.has(item.id) ||
-    (item.parent !== undefined && excluded.has(item.parent.id))
-  );
+  for (
+    let candidate: TestItemLike | undefined = item;
+    candidate !== undefined;
+    candidate = candidate.parent
+  ) {
+    if (excluded.has(candidate.id)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 /**
@@ -216,16 +248,20 @@ function isExcluded(
 export function planRun<T extends TestItemLike>(
   requested: readonly T[],
   excluded: ReadonlySet<string> = new Set(),
+  isFile: (item: T) => boolean = (item) => item.parent === undefined,
 ): FilePlan<T>[] {
   const plans = new Map<string, FilePlan<T>>();
   for (const item of requested) {
     if (isExcluded(item, excluded)) {
       continue;
     }
-    const file = (item.parent ?? item) as T;
+    const file = (isFile(item) ? item : item.parent) as T;
+    if (file === undefined) {
+      continue;
+    }
     const plan = plans.get(file.id) ?? { file, leaves: [], wholeFile: false };
     plans.set(file.id, plan);
-    if (item.parent === undefined) {
+    if (isFile(item)) {
       plan.wholeFile = true;
     } else {
       plan.leaves.push(item);
@@ -356,6 +392,55 @@ export function coverageRunArgs(
     "--quiet",
     ...(filter === undefined ? [] : ["--filter", filter]),
   ];
+}
+
+/**
+ * How one run profile executes a test file. `plain` is the default Run
+ * profile; `coverage` instruments through `osprey test`
+ * ([TESTING-COVERAGE-CLI]); `profile` runs the suite under the sampling CPU
+ * profiler and drops its export artifacts in `dir` ([TESTING-PROFILE],
+ * [PROF-CLI-RUN]).
+ */
+export type RunMode =
+  | { readonly kind: "plain" }
+  | { readonly kind: "coverage" }
+  | { readonly kind: "profile"; readonly dir: string };
+
+export const PLAIN_RUN: RunMode = { kind: "plain" };
+export const COVERAGE_RUN: RunMode = { kind: "coverage" };
+
+/**
+ * The CLI arguments for one run of `filePath` under `mode`. Only the coverage
+ * mode consumes `jsonPath`; the profiler needs no argument beyond `--profile`
+ * because its artifacts land in the process's working directory
+ * ([PROF-CLI-RUN]).
+ */
+export function runArgsFor(
+  mode: RunMode,
+  filePath: string,
+  jsonPath: string | undefined,
+  filter: string | undefined,
+): string[] {
+  if (mode.kind === "coverage" && jsonPath !== undefined) {
+    return coverageRunArgs(filePath, jsonPath, filter);
+  }
+  if (mode.kind === "profile") {
+    return [filePath, "--run", "--profile"];
+  }
+  return [filePath, "--run"];
+}
+
+/**
+ * The filter a run of `mode` passes through OSPREY_TEST_FILTER. The coverage
+ * mode carries its filter as a `--filter` ARGUMENT instead, so it must never
+ * also inherit the environment variable ([TESTING-FILTER]); the plain and
+ * profile modes have no such flag and rely on the variable.
+ */
+export function envFilterFor(
+  mode: RunMode,
+  filter: string | undefined,
+): string | undefined {
+  return mode.kind === "coverage" ? undefined : filter;
 }
 
 function parsedLineHits(value: unknown): Map<number, number> | undefined {

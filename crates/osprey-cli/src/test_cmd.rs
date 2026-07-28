@@ -1,19 +1,31 @@
 //! `osprey test` — discover and run test suites. Implements
 //! [TESTING-CLI-RUN], [TESTING-FILE-CONVENTION], [TESTING-FILTER],
-//! [TESTING-COVERAGE-CLI] (docs/specs/0027-TestingFramework.md).
+//! [TESTING-COVERAGE-CLI], [TESTING-PARALLEL], [TESTING-NATIVE-CACHE]
+//! (docs/specs/0027-TestingFramework.md).
 //!
 //! `path` (default `.`) is a single file run as-is, or a directory searched
 //! recursively for `*.test.osp` / `*.test.ospml`, sorted for determinism,
 //! skipping hidden, `target`, and `node_modules` directories. Each file
-//! compiles and runs like `osprey <file> --run`; its TAP output streams
-//! through under a `# file:` header; the exit code aggregates suite outcomes.
+//! compiles and runs like `osprey <file> --run`; suites execute concurrently,
+//! then their TAP output is replayed in sorted file order under `# file:`
+//! headers. The exit code aggregates suite outcomes.
 //! `--coverage` instruments each suite and reports per-file and total line
 //! coverage; `--coverage-json <path>` also writes the merged hit counts.
+//! `--memory=default|gc|arc` selects one backend for every discovered suite;
+//! when omitted, child compiler invocations use the compiler's default.
+//! Unchanged native suites reuse content-addressed executables across runs.
 
-use crate::{execute_native, load_input, report_type_errors, Cli, USAGE};
+use crate::{TEST_CACHE_DIR_ENV, TEST_COVERAGE_BUILD_ENV, USAGE};
 use std::collections::BTreeMap;
+use std::io::Write;
 use std::path::{Path, PathBuf};
-use std::process::ExitCode;
+use std::process::{Command, ExitCode, Stdio};
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::Mutex;
+
+const TEST_JOBS_ENV: &str = "OSPREY_TEST_JOBS";
+const MIN_DEFAULT_JOBS: usize = 2;
+const TEST_CACHE_DIR: &str = "osprey-test-cache-v1";
 
 struct Opts {
     path: String,
@@ -21,6 +33,7 @@ struct Opts {
     quiet: bool,
     coverage: bool,
     coverage_json: Option<String>,
+    memory: Option<String>,
 }
 
 /// One suite's parsed coverage dump: flattened line → hit count
@@ -35,17 +48,36 @@ pub(crate) fn run(args: &[String]) -> ExitCode {
             return ExitCode::from(2);
         }
     };
-    if let Some(filter) = &opts.filter {
-        // The compiled test binaries inherit the environment; the filter is
-        // an exact-name match applied by the C runtime [TESTING-FILTER].
-        std::env::set_var("OSPREY_TEST_FILTER", filter);
-    }
     let files = discover(Path::new(&opts.path));
     if files.is_empty() {
         eprintln!("osprey test: no test files found under {}", opts.path);
         return ExitCode::FAILURE;
     }
-    run_suites(&files, &opts)
+    let jobs = match configured_jobs(files.len()) {
+        Ok(jobs) => jobs,
+        Err(message) => {
+            eprintln!("osprey test: {message}");
+            return ExitCode::from(2);
+        }
+    };
+    run_suites(&files, &opts, jobs)
+}
+
+fn configured_jobs(suite_count: usize) -> Result<usize, String> {
+    let jobs = match std::env::var(TEST_JOBS_ENV) {
+        Ok(value) => value
+            .parse::<usize>()
+            .ok()
+            .filter(|jobs| *jobs > 0)
+            .ok_or_else(|| format!("{TEST_JOBS_ENV} must be a positive integer"))?,
+        Err(std::env::VarError::NotPresent) => std::thread::available_parallelism()
+            .map_or(MIN_DEFAULT_JOBS, usize::from)
+            .max(MIN_DEFAULT_JOBS),
+        Err(std::env::VarError::NotUnicode(_)) => {
+            return Err(format!("{TEST_JOBS_ENV} must be valid UTF-8"));
+        }
+    };
+    Ok(jobs.min(suite_count).max(1))
 }
 
 fn parse(args: &[String]) -> Result<Opts, String> {
@@ -55,6 +87,7 @@ fn parse(args: &[String]) -> Result<Opts, String> {
         quiet: false,
         coverage: false,
         coverage_json: None,
+        memory: None,
     };
     let mut path = None;
     let mut it = args.iter();
@@ -74,6 +107,11 @@ fn parse(args: &[String]) -> Result<Opts, String> {
                     .ok_or_else(|| format!("--coverage-json requires a path\n{USAGE}"))?;
                 opts.coverage = true;
                 opts.coverage_json = Some(next.clone());
+            }
+            flag if flag.starts_with("--memory=") => {
+                opts.memory = Some(crate::parse_memory(
+                    flag.strip_prefix("--memory=").unwrap_or_default(),
+                )?);
             }
             flag if flag.starts_with("--") => {
                 return Err(format!("unknown flag {flag}\n{USAGE}"));
@@ -101,15 +139,21 @@ fn discover(path: &Path) -> Vec<PathBuf> {
 }
 
 fn is_test_file(path: &Path) -> bool {
-    path.file_name()
-        .and_then(|name| name.to_str())
-        .is_some_and(|name| name.ends_with(".test.osp") || name.ends_with(".test.ospml"))
+    matches_file_name(path, |name| {
+        name.ends_with(".test.osp") || name.ends_with(".test.ospml")
+    })
 }
 
 fn skipped_dir_entry(path: &Path) -> bool {
+    matches_file_name(path, |name| {
+        name.starts_with('.') || name == "target" || name == "node_modules"
+    })
+}
+
+fn matches_file_name(path: &Path, predicate: impl FnOnce(&str) -> bool) -> bool {
     path.file_name()
         .and_then(|name| name.to_str())
-        .is_some_and(|name| name.starts_with('.') || name == "target" || name == "node_modules")
+        .is_some_and(predicate)
 }
 
 fn visit(dir: &Path, out: &mut Vec<PathBuf>) {
@@ -134,18 +178,28 @@ fn visit(dir: &Path, out: &mut Vec<PathBuf>) {
     }
 }
 
-fn run_suites(files: &[PathBuf], opts: &Opts) -> ExitCode {
+struct SuiteOutput {
+    index: usize,
+    passed: bool,
+    stdout: Vec<u8>,
+    stderr: Vec<u8>,
+}
+
+fn run_suites(files: &[PathBuf], opts: &Opts, jobs: usize) -> ExitCode {
+    let outputs = execute_suites(files, opts, jobs);
     let mut failed = 0usize;
     let mut report = BTreeMap::new();
-    for file in files {
-        if !opts.quiet {
-            println!("# file: {}", file.display());
-        }
-        let hits = opts.coverage.then(|| coverage_dump_path(file));
-        if !suite_passes(file, hits.as_deref()) {
+    for output in outputs {
+        let Some(file) = files.get(output.index) else {
+            failed += 1;
+            continue;
+        };
+        replay_suite(file, &output, opts.quiet);
+        if !output.passed {
             failed += 1;
         }
-        if let Some(dump) = hits {
+        if opts.coverage {
+            let dump = coverage_dump_path(file);
             collect_suite_coverage(file, &dump, &mut report, opts.quiet);
         }
     }
@@ -167,26 +221,114 @@ fn run_suites(files: &[PathBuf], opts: &Opts) -> ExitCode {
     }
 }
 
-/// Compile and execute one test file like `--run`; `true` when it exits 0
-/// [TESTING-EXIT]. Compile and type errors print their own diagnostics.
-/// `coverage_dump` (when set) instruments the build and points the runtime's
-/// exit-time dump at it [TESTING-COVERAGE-CLI].
-fn suite_passes(file: &Path, coverage_dump: Option<&Path>) -> bool {
-    let cli = Cli::run_native(file.display().to_string());
-    let Ok(input) = load_input(&cli) else {
-        return false;
-    };
-    if report_type_errors(&input) > 0 {
-        return false;
-    }
-    let kind = match coverage_dump {
-        Some(dump) => {
-            std::env::set_var("OSPREY_COVERAGE", dump);
-            osprey_debug::BuildKind::Coverage
+fn execute_suites(files: &[PathBuf], opts: &Opts, jobs: usize) -> Vec<SuiteOutput> {
+    // [TESTING-PARALLEL] bounded workers capture independently, then sort.
+    let next = AtomicUsize::new(0);
+    let completed = Mutex::new(Vec::with_capacity(files.len()));
+    std::thread::scope(|scope| {
+        for _ in 0..jobs {
+            let _ = scope.spawn(|| suite_worker(files, opts, &next, &completed));
         }
-        None => osprey_debug::BuildKind::Release,
+    });
+    let mut outputs = match completed.into_inner() {
+        Ok(outputs) => outputs,
+        Err(poisoned) => poisoned.into_inner(),
     };
-    matches!(execute_native(&input, "default", kind), Ok(0))
+    outputs.sort_by_key(|output| output.index);
+    outputs
+}
+
+fn suite_worker(
+    files: &[PathBuf],
+    opts: &Opts,
+    next: &AtomicUsize,
+    completed: &Mutex<Vec<SuiteOutput>>,
+) {
+    loop {
+        let index = next.fetch_add(1, Ordering::Relaxed);
+        let Some(file) = files.get(index) else {
+            return;
+        };
+        let output = execute_suite(file, opts, index);
+        match completed.lock() {
+            Ok(mut outputs) => outputs.push(output),
+            Err(poisoned) => poisoned.into_inner().push(output),
+        }
+    }
+}
+
+fn execute_suite(file: &Path, opts: &Opts, index: usize) -> SuiteOutput {
+    let dump = opts.coverage.then(|| coverage_dump_path(file));
+    let result = suite_command(
+        file,
+        opts.filter.as_deref(),
+        dump.as_deref(),
+        opts.memory.as_deref(),
+    )
+    .and_then(|mut command| command.output());
+    match result {
+        Ok(output) => SuiteOutput {
+            index,
+            passed: output.status.success(),
+            stdout: output.stdout,
+            stderr: output.stderr,
+        },
+        Err(error) => SuiteOutput {
+            index,
+            passed: false,
+            stdout: Vec::new(),
+            stderr: format!("osprey test: cannot run {}: {error}\n", file.display()).into_bytes(),
+        },
+    }
+}
+
+fn suite_command(
+    file: &Path,
+    filter: Option<&str>,
+    dump: Option<&Path>,
+    memory: Option<&str>,
+) -> std::io::Result<Command> {
+    let mut command = Command::new(std::env::current_exe()?);
+    let cache_dir = std::env::var_os(TEST_CACHE_DIR_ENV)
+        .filter(|path| !path.is_empty())
+        .map_or_else(|| std::env::temp_dir().join(TEST_CACHE_DIR), PathBuf::from);
+    let _ = command
+        .arg(file)
+        .args(["--run", "--quiet"])
+        .env(TEST_CACHE_DIR_ENV, cache_dir);
+    if let Some(memory) = memory {
+        let _ = command.arg(format!("--memory={memory}"));
+    }
+    close_stdin(&mut command);
+    if let Some(value) = filter {
+        let _ = command.env("OSPREY_TEST_FILTER", value);
+    }
+    match dump {
+        Some(path) => {
+            let _ = command
+                .env(TEST_COVERAGE_BUILD_ENV, "1")
+                .env("OSPREY_COVERAGE", path);
+        }
+        None => {
+            let _ = command
+                .env_remove(TEST_COVERAGE_BUILD_ENV)
+                .env_remove("OSPREY_COVERAGE");
+        }
+    }
+    Ok(command)
+}
+
+fn close_stdin(command: &mut Command) {
+    let _ = command.stdin(Stdio::null());
+}
+
+fn replay_suite(file: &Path, output: &SuiteOutput, quiet: bool) {
+    let mut stdout = std::io::stdout().lock();
+    if !quiet {
+        let _ = writeln!(stdout, "# file: {}", file.display());
+    }
+    let _ = stdout.write_all(&output.stdout);
+    let _ = std::io::stderr().lock().write_all(&output.stderr);
 }
 
 /// Where one suite's coverage dump lands (the scratch dir the compiled
@@ -300,6 +442,20 @@ fn json_string(text: &str) -> String {
 mod tests {
     use super::*;
 
+    #[cfg(unix)]
+    #[test]
+    fn suite_command_closes_stdin_so_input_cannot_hang_on_a_terminal() {
+        let mut command = Command::new("sh");
+        let _ = command.args(["-c", "read line"]);
+        close_stdin(&mut command);
+
+        let output = command.output().expect("stdin probe");
+        assert!(
+            !output.status.success(),
+            "suite children must receive EOF rather than reading terminal input"
+        );
+    }
+
     #[test]
     fn coverage_dump_path_is_stable_and_scratch_scoped() {
         let file = Path::new("/proj/tests/math_test.osp");
@@ -324,11 +480,36 @@ mod tests {
         assert_eq!(ok.filter.as_deref(), Some("adds"));
         assert!(ok.quiet);
         assert!(!ok.coverage);
+        assert!(ok.memory.is_none());
 
         assert_eq!(parse(&[]).expect("default").path, ".");
         assert!(parse(&["--filter".to_string()]).is_err());
         assert!(parse(&["--bogus".to_string()]).is_err());
         assert!(parse(&["a".to_string(), "b".to_string()]).is_err());
+    }
+
+    #[test]
+    fn memory_backend_is_single_mode_and_optional() {
+        let default = parse(&[]).expect("compiler default");
+        assert!(default.memory.is_none());
+
+        for memory in ["default", "gc", "arc"] {
+            let opts = parse(&[format!("--memory={memory}")]).expect("valid memory backend");
+            assert_eq!(opts.memory.as_deref(), Some(memory));
+        }
+        assert!(parse(&["--memory=bogus".to_string()]).is_err());
+
+        let default_command = suite_command(Path::new("suite.test.osp"), None, None, None)
+            .expect("default suite command");
+        assert!(!default_command
+            .get_args()
+            .any(|arg| arg.to_string_lossy().starts_with("--memory=")));
+
+        let gc_command = suite_command(Path::new("suite.test.osp"), None, None, Some("gc"))
+            .expect("GC suite command");
+        assert!(gc_command
+            .get_args()
+            .any(|arg| arg == std::ffi::OsStr::new("--memory=gc")));
     }
 
     // [TESTING-COVERAGE-CLI]: --coverage turns instrumentation on;
@@ -347,20 +528,23 @@ mod tests {
     }
 
     #[test]
-    fn only_test_suffixed_files_are_recognized() {
+    fn test_paths_are_classified() {
         // [TESTING-FILE-CONVENTION] both flavor suffixes are exact.
-        assert!(is_test_file(Path::new("money.test.osp")));
-        assert!(is_test_file(Path::new("json.test.ospml")));
-        assert!(!is_test_file(Path::new("money.osp")));
-        assert!(!is_test_file(Path::new("notes.txt")));
-    }
-
-    #[test]
-    fn hidden_target_and_node_modules_directories_are_skipped() {
-        assert!(skipped_dir_entry(Path::new("proj/.git")));
-        assert!(skipped_dir_entry(Path::new("proj/target")));
-        assert!(skipped_dir_entry(Path::new("proj/node_modules")));
-        assert!(!skipped_dir_entry(Path::new("proj/src")));
+        let file_rule: fn(&Path) -> bool = is_test_file;
+        let skip_rule: fn(&Path) -> bool = skipped_dir_entry;
+        let cases = [
+            (file_rule, "money.test.osp", true),
+            (file_rule, "json.test.ospml", true),
+            (file_rule, "money.osp", false),
+            (file_rule, "notes.txt", false),
+            (skip_rule, "proj/.git", true),
+            (skip_rule, "proj/target", true),
+            (skip_rule, "proj/node_modules", true),
+            (skip_rule, "proj/src", false),
+        ];
+        for (rule, path, expected) in cases {
+            assert_eq!(rule(Path::new(path)), expected, "{path}");
+        }
     }
 
     #[test]

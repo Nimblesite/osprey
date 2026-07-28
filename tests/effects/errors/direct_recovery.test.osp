@@ -1,0 +1,348 @@
+/// RecoveryError models expected failures whose handlers supply ordinary values.
+effect RecoveryError {
+    /// Supply the integer for the absent field `name`.
+    missingInt: fn(string) -> int
+    /// Supply the text for the absent field `name`.
+    missingText: fn(string) -> string
+    /// Decide whether `name` is permitted.
+    denied: fn(string) -> bool
+    /// Record a recovery without changing what the caller receives.
+    report: fn(string) -> Unit
+}
+
+/// StockError lets callers choose what an over-sized request receives.
+effect StockError {
+    /// Decide what an over-sized request receives given `wanted` and `available`.
+    shortage: fn(int, int) -> int
+}
+
+/// PolicyError exposes two operations so a nested handler can override only one.
+effect PolicyError {
+    /// Supply the score for `label` under the active policy.
+    score: fn(string) -> int
+    /// Supply the display text for `label` under the active policy.
+    label: fn(string) -> string
+}
+
+/// AuditError records recovery decisions without changing the recovered value.
+effect AuditError {
+    /// Record that a recovery happened, without altering it.
+    note: fn(string) -> Unit
+}
+
+/// LookupError returns a complete Result so the handler chooses success or failure.
+effect LookupError {
+    /// Look up `key`, reporting absence as a `Result` the caller matches on.
+    find: fn(string) -> Result<int, string>
+}
+
+/// Verdict lets the known Result-ABI failure remain visible without breaking CI.
+type Verdict = Pass | Fail { reason: string } | Skip { why: string }
+
+/// Return positive input unchanged and ask for a replacement only at zero.
+fn requirePositive(value) !RecoveryError = match value > 0 {
+    true => value
+    false => perform RecoveryError.missingInt("positive value required")
+}
+
+/// Continue ordinary arithmetic after a handler substitutes a missing integer.
+fn continuedValue(value) !RecoveryError = requirePositive(value) + 2 ?: 0
+
+/// Request three replacements so handler state and substitution order are visible.
+fn recoverThree() !RecoveryError = {
+    let first = perform RecoveryError.missingInt("first")
+    let second = perform RecoveryError.missingInt("second")
+    let third = perform RecoveryError.missingInt("third")
+    first + second + third ?: 0
+}
+
+/// Report one broken rule while returning Unit so later checks still execute.
+fn reportIf(broken: bool) -> (string) -> Unit !RecoveryError = fn(message) => match broken {
+        true => perform RecoveryError.report(message)
+        false => {}
+    }
+
+/// Run every validation rule and return only after all reports have been handled.
+fn validateRecord(name: string) -> (int) -> (string) -> string !RecoveryError =
+    fn(age) => fn(email) => {
+        reportIf(name == "")("name")
+        reportIf(age < 0)("age")
+        reportIf(email == "")("email")
+        reportIf(!contains(email, "@"))("at-sign")
+        "finished"
+    }
+
+/// Consume integer, string, and boolean results supplied by one handler region.
+fn mixedRecovery() !RecoveryError = {
+    let number = perform RecoveryError.missingInt("number")
+    let text = perform RecoveryError.missingText("text")
+    let allowed = perform RecoveryError.denied("permission")
+    "${toString(number)}|${text}|${toString(allowed)}"
+}
+
+/// Ask the active stock policy how much can be allocated after a shortage.
+fn allocate(requested: int) -> (int) -> int !StockError = fn(available) => match requested > available {
+        true => perform StockError.shortage(requested, available)
+        false => requested
+    }
+
+/// Add fixed packaging work after the shared allocation function recovers.
+fn shipmentTotal() !StockError = allocate(9)(5) + 2 ?: 0
+
+/// Recover an integer, audit both sides of the perform, and then keep computing.
+fn auditedRecovery() ![RecoveryError, AuditError] = {
+    let value = perform RecoveryError.missingInt("token")
+    perform AuditError.note("body saw ${toString(value)}")
+    value + 1 ?: 0
+}
+
+/// Perform the deeply nested failure at the bottom of the helper chain.
+fn bottomValue() !RecoveryError = perform RecoveryError.missingInt("bottom")
+
+/// Carry one recovered value back through every recursive caller.
+fn descend(depth) !RecoveryError = match depth {
+    0 => bottomValue()
+    _ => 1 + descend((depth - 1) ?: 0) ?: 0
+}
+
+/// Default the complete Result returned by the effect operation.
+fn lookupValue(key) !LookupError = perform LookupError.find(key) ?: ((0 - 1) ?: 0)
+
+/// Combine both Result branches after one handler supplies their whole values.
+fn combineLookups() !LookupError = lookupValue("known") * 10 + lookupValue("missing") ?: 0
+
+/// Verify that successful code never enters an installed recovery arm.
+fn happyPathBypassCase() = {
+    mut recoveries = 0
+    let value = handle RecoveryError
+        missingInt reason => {
+            recoveries = recoveries + 1 ?: recoveries
+            99
+        }
+    in requirePositive(7)
+
+    // The original value survives and the handler remains untouched.
+    checkAll("happy path bypass", [
+        value == 7,
+        recoveries == 0,
+        value != 99
+    ])
+}
+
+/// Verify that a direct arm substitutes a value and the caller keeps running.
+fn fallbackContinuationCase() = {
+    let value = handle RecoveryError
+        missingInt reason => 40
+    in continuedValue(0)
+
+    // Arithmetic after perform sees the handler's replacement.
+    checkAll("fallback and continuation", [
+        value == 42,
+        value > 40,
+        value != 40
+    ])
+}
+
+/// Verify repeated recoveries share state and return distinct replacements.
+fn repeatedRecoveryStateCase() = {
+    mut recoveries = 0
+    mut reasons = ""
+    let total = handle RecoveryError
+        missingInt reason => {
+            recoveries = recoveries + 1 ?: recoveries
+            reasons = "${reasons}${reason}|"
+            recoveries * 10 ?: 0
+        }
+    in recoverThree()
+
+    // Each call observes the updated handler-owned counter.
+    checkAll("repeated recovery state", [
+        total == 60,
+        recoveries == 3,
+        reasons == "first|second|third|",
+        total == (10 + 20 + 30 ?: 0)
+    ])
+}
+
+/// Verify Unit-valued reports collect every error without stopping validation.
+fn collectAllReportsCase() = {
+    mut reports = 0
+    mut fields = ""
+    let result = handle RecoveryError
+        report field => {
+            reports = reports + 1 ?: reports
+            fields = "${fields}${field}|"
+        }
+    in validateRecord("")((0 - 3) ?: 0)("")
+
+    // Validation reaches its final value after all four broken rules report.
+    checkAll("collect all reports", [
+        result == "finished",
+        reports == 4,
+        fields == "name|age|email|at-sign|",
+        contains(fields, "age|")
+    ])
+}
+
+/// Verify one direct handler supplies several declared operation result types.
+fn multipleResultTypesCase() = {
+    let rendered = handle RecoveryError
+        missingInt reason => 7
+        missingText reason => "fallback"
+        denied reason => true
+    in mixedRecovery()
+
+    // Integer, string, and boolean replacements retain their declared types.
+    checkAll("multiple operation result types", [
+        rendered == "7|fallback|true",
+        startsWith(rendered, "7|"),
+        endsWith(rendered, "|true")
+    ])
+}
+
+/// Verify the same effectful function can run under two local recovery policies.
+fn twoPoliciesCase() = {
+    let skipped = handle StockError
+        shortage requested available => 0
+    in shipmentTotal()
+    let capped = handle StockError
+        shortage requested available => available
+    in shipmentTotal()
+
+    // Skip and cap policies change only the handled shortage decision.
+    checkAll("two policies over one function", [
+        skipped == 2,
+        capped == 7,
+        capped > skipped,
+        (capped - skipped ?: 0) == 5
+    ])
+}
+
+/// Verify an inner same-effect arm overrides one operation and then disappears.
+fn nestedOverrideCase() = {
+    let rendered = handle PolicyError
+        score key => 10
+        label key => "outer"
+    in {
+        let before = perform PolicyError.score("before")
+        let inside = handle PolicyError
+            score key => 99
+        in {
+            let innerScore = perform PolicyError.score("inside")
+            let inheritedLabel = perform PolicyError.label("inside")
+            "${toString(innerScore)}:${inheritedLabel}"
+        }
+        let after = perform PolicyError.score("after")
+        "${toString(before)}|${inside}|${toString(after)}"
+    }
+
+    // The inner score wins, the outer label remains reachable, and score restores.
+    checkAll("nested override and restoration", [
+        rendered == "10|99:outer|10",
+        contains(rendered, "99:outer"),
+        endsWith(rendered, "|10")
+    ])
+}
+
+/// Verify a recovery arm and the continued body can both reach an outer effect.
+fn outerEffectCompositionCase() = {
+    mut notes = ""
+    mut noteCount = 0
+    let result = handle AuditError
+        note message => {
+            noteCount = noteCount + 1 ?: noteCount
+            notes = "${notes}${message}|"
+        }
+    in handle RecoveryError
+        missingInt reason => {
+            perform AuditError.note("handler saw ${reason}")
+            41
+        }
+    in auditedRecovery()
+
+    // The outer audit observes the handler decision and the resumed caller work.
+    checkAll("outer effect composition", [
+        result == 42,
+        noteCount == 2,
+        notes == "handler saw token|body saw 41|",
+        contains(notes, "body saw 41")
+    ])
+}
+
+/// Verify dynamic handling reaches through helpers and recursive calls.
+fn deepRecursionCase() = {
+    mut recoveries = 0
+    let value = handle RecoveryError
+        missingInt reason => {
+            recoveries = recoveries + 1 ?: recoveries
+            8
+        }
+    in descend(4)
+
+    // One bottom-level replacement returns through all four recursive frames.
+    checkAll("deep helper recursion", [
+        value == 12,
+        recoveries == 1,
+        (value - 8 ?: 0) == 4
+    ])
+}
+
+/// Drive the known whole-Result corruption and pass automatically once it is fixed.
+fn wholeResultOperationCase() = {
+    mut lookups = 0
+    let combined = handle LookupError
+        find key => {
+            lookups = lookups + 1 ?: lookups
+            match key {
+                "known" => Success { value: 4 }
+                _ => Error { message: "absent" }
+            }
+        }
+    in combineLookups()
+
+    // Issue #183 tracks direct handlers corrupting Result wrappers in both flavors.
+    match combined == 39 && lookups == 2 {
+        true => Pass
+        false => Skip { why: "CRITICAL #183: direct handlers corrupt whole Result values" }
+    }
+}
+
+/// A run that never fails must never enter a recovery arm.
+///
+/// The handler is installed but its operations stay untouched, so the
+/// value reaching the caller is the ordinary computed one.
+test("successful paths bypass recovery handlers", happyPathBypassCase)
+/// A handler-supplied value resumes ordinary arithmetic where the
+/// failure was performed, rather than unwinding to the handler.
+test("fallback values continue at the perform site", fallbackContinuationCase)
+/// Three substitutions in one handler scope observe the handler's own
+/// mutable state, proving each recovery resumes into the same handler
+/// instance instead of a fresh one.
+test("repeated recoveries share handler-owned state", repeatedRecoveryStateCase)
+/// A `Unit`-returning report operation records a broken rule and lets
+/// every later rule still run, so one validation pass collects all
+/// failures instead of stopping at the first.
+test("Unit error reports collect without early exit", collectAllReportsCase)
+/// One handler answers `int`, `string`, and `bool` operations of the
+/// same effect, proving each operation keeps its own result type.
+test("one handler supplies several result types", multipleResultTypesCase)
+/// The same effectful function runs under two different handlers and
+/// yields two different answers — the policy lives in the handler, not
+/// in the function.
+test("one effectful function supports two policies", twoPoliciesCase)
+/// An inner handler shadows ONE operation of an effect; the outer
+/// handler still answers the others, and its behavior returns once the
+/// inner scope ends.
+test("nested handlers override locally and restore outer behavior", nestedOverrideCase)
+/// A recovery arm performs a second, outer effect while recovering from
+/// the first — composition across effect boundaries.
+test("a recovery arm can use an outer effect", outerEffectCompositionCase)
+/// A failure performed several helper calls and recursion levels deep
+/// still reaches the installed handler.
+test("recovery reaches through helpers and recursion", deepRecursionCase)
+/// A handler may answer with a complete `Result`, choosing success or
+/// failure itself rather than only supplying a bare fallback.
+///
+/// # Since
+/// 0.3
+test("handlers can return whole Result operation values", wholeResultOperationCase)

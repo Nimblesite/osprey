@@ -39,11 +39,16 @@ pub(crate) const USAGE: &str =
        osprey build [project] [--quiet] [--debug] [--memory=default|gc|arc] \
 [--target=native|wasm32] [-o <out>]\n\
        osprey test [path] [--filter <name>] [--quiet] [--coverage] \
-[--coverage-json <path>]\n\
+[--coverage-json <path>] [--memory=default|gc|arc]\n\
        osprey fmt [--check | --stdout] [--flavor default|ml] <path...>\n\
        osprey --hover <name>\n\
        osprey --docs --docs-dir <dir>\n\
        osprey lsp";
+
+/// Internal child-process switch used by the parallel test runner.
+pub(crate) const TEST_COVERAGE_BUILD_ENV: &str = "OSPREY_TEST_COVERAGE_BUILD";
+/// Internal content-addressed executable cache used by the test runner.
+pub(crate) const TEST_CACHE_DIR_ENV: &str = "OSPREY_TEST_CACHE_DIR";
 
 /// The parsed invocation: source path, mode flag, and behaviour switches.
 #[derive(Debug)]
@@ -71,25 +76,6 @@ pub(crate) struct Cli {
     /// resolution falls through to the marker/extension precedence
     /// ([FLAVOR-SELECT], docs/specs/0023-LanguageFlavors.md).
     flavor: Option<Flavor>,
-}
-
-impl Cli {
-    /// A `--run`-mode invocation for `path` with default switches — the
-    /// `osprey test` runner's per-file configuration [TESTING-CLI-RUN].
-    pub(crate) fn run_native(path: String) -> Cli {
-        Cli {
-            path,
-            mode: String::from("--run"),
-            quiet: true,
-            policy: Policy::allow_all(),
-            memory: String::from("default"),
-            target: String::from("native"),
-            output: None,
-            debug: false,
-            profile: false,
-            flavor: None,
-        }
-    }
 }
 
 fn main() -> ExitCode {
@@ -468,6 +454,8 @@ fn build_kind(cli: &Cli) -> osprey_debug::BuildKind {
         osprey_debug::BuildKind::Debug
     } else if cli.profile {
         osprey_debug::BuildKind::Profile
+    } else if std::env::var_os(TEST_COVERAGE_BUILD_ENV).is_some() {
+        osprey_debug::BuildKind::Coverage
     } else {
         osprey_debug::BuildKind::Release
     }
@@ -542,6 +530,29 @@ pub(crate) fn execute_native(
     memory: &str,
     kind: osprey_debug::BuildKind,
 ) -> Result<u8, ExitCode> {
+    let (exe, temporary) = native_executable(input, memory, kind)?;
+    let status = Command::new(&exe).status();
+    if temporary {
+        let _ = std::fs::remove_file(&exe);
+    }
+    match status {
+        Ok(s) => Ok(child_exit_code(s)),
+        Err(e) => {
+            eprintln!("error: could not run {}: {e}", exe.display());
+            Err(ExitCode::FAILURE)
+        }
+    }
+}
+
+fn native_executable(
+    input: &CompilationInput,
+    memory: &str,
+    kind: osprey_debug::BuildKind,
+) -> Result<(PathBuf, bool), ExitCode> {
+    if let Some(cached) = test_cache_path(input, memory, kind) {
+        ensure_cached_executable(input, memory, kind, &cached)?;
+        return Ok((cached, false));
+    }
     let exe = std::env::temp_dir().join(format!("{}.out", scratch_stem(input.display_path())));
     build_executable(
         input.debug_path(),
@@ -551,10 +562,141 @@ pub(crate) fn execute_native(
         memory,
         kind,
     )?;
-    match Command::new(&exe).status() {
-        Ok(s) => Ok(child_exit_code(s)),
-        Err(e) => {
-            eprintln!("error: could not run {}: {e}", exe.display());
+    Ok((exe, true))
+}
+
+fn test_cache_path(
+    input: &CompilationInput,
+    memory: &str,
+    kind: osprey_debug::BuildKind,
+) -> Option<PathBuf> {
+    // [TESTING-NATIVE-CACHE] every input affecting the native artifact is
+    // represented by the cache key; untracked external links bypass caching.
+    let dir = std::env::var_os(TEST_CACHE_DIR_ENV).map(PathBuf::from)?;
+    if dir.as_os_str().is_empty() || !cacheable_test_source(input.source()) {
+        return None;
+    }
+    if std::fs::create_dir_all(&dir).is_err() || !directory_is_safe(&dir) {
+        return None;
+    }
+    Some(dir.join(format!(
+        "suite-{:016x}.out",
+        test_cache_key(input, memory, kind)
+    )))
+}
+
+fn cacheable_test_source(source: &str) -> bool {
+    !source
+        .lines()
+        .any(|line| directive(line, "linkdir").is_some())
+}
+
+fn directory_is_safe(path: &Path) -> bool {
+    let Ok(metadata) = std::fs::symlink_metadata(path) else {
+        return false;
+    };
+    if !metadata.file_type().is_dir() {
+        return false;
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mut permissions = metadata.permissions();
+        permissions.set_mode(0o700);
+        if std::fs::set_permissions(path, permissions).is_err() {
+            return false;
+        }
+    }
+    true
+}
+
+fn test_cache_key(input: &CompilationInput, memory: &str, kind: osprey_debug::BuildKind) -> u64 {
+    use std::collections::hash_map::DefaultHasher;
+    use std::hash::{Hash, Hasher};
+
+    let mut state = DefaultHasher::new();
+    "osprey-test-cache-v1".hash(&mut state);
+    input.source().hash(&mut state);
+    input.debug_path().hash(&mut state);
+    memory.hash(&mut state);
+    std::mem::discriminant(&kind).hash(&mut state);
+    opt_flag(kind).hash(&mut state);
+    let compiler = c_compiler();
+    compiler.hash(&mut state);
+    hash_file_identity(Some(Path::new(&compiler)), &mut state);
+    std::env::var_os("PATH").hash(&mut state);
+    let executable = std::env::current_exe().ok();
+    hash_file_identity(executable.as_deref(), &mut state);
+    hash_runtime_identity(memory, &mut state);
+    state.finish()
+}
+
+fn hash_runtime_identity<H: std::hash::Hasher>(memory: &str, state: &mut H) {
+    let suffix = match memory {
+        "gc" => "_gc",
+        "arc" => "_arc",
+        _ => "",
+    };
+    for prefix in ["libfiber_runtime", "libhttp_runtime"] {
+        let runtime = find_runtime_lib(&format!("{prefix}{suffix}.a")).map(PathBuf::from);
+        hash_file_identity(runtime.as_deref(), state);
+    }
+}
+
+fn hash_file_identity<H: std::hash::Hasher>(path: Option<&Path>, state: &mut H) {
+    use std::hash::Hash;
+
+    path.hash(state);
+    let Some(metadata) = path.and_then(|file| std::fs::metadata(file).ok()) else {
+        return;
+    };
+    metadata.len().hash(state);
+    metadata.modified().ok().hash(state);
+}
+
+fn ensure_cached_executable(
+    input: &CompilationInput,
+    memory: &str,
+    kind: osprey_debug::BuildKind,
+    cached: &Path,
+) -> Result<(), ExitCode> {
+    if is_nonempty_file(cached) {
+        return Ok(());
+    }
+    let staging = cached.with_extension(format!("{}.tmp", std::process::id()));
+    let build = build_executable(
+        input.debug_path(),
+        input.program(),
+        input.source(),
+        &staging,
+        memory,
+        kind,
+    );
+    if let Err(code) = build {
+        let _ = std::fs::remove_file(&staging);
+        return Err(code);
+    }
+    publish_cached_executable(&staging, cached)
+}
+
+fn is_nonempty_file(path: &Path) -> bool {
+    std::fs::symlink_metadata(path)
+        .is_ok_and(|metadata| metadata.file_type().is_file() && metadata.len() > 0)
+}
+
+fn publish_cached_executable(staging: &Path, cached: &Path) -> Result<(), ExitCode> {
+    match std::fs::rename(staging, cached) {
+        Ok(()) => Ok(()),
+        Err(_) if is_nonempty_file(cached) => {
+            let _ = std::fs::remove_file(staging);
+            Ok(())
+        }
+        Err(error) => {
+            eprintln!(
+                "error: cannot publish test executable {}: {error}",
+                cached.display()
+            );
+            let _ = std::fs::remove_file(staging);
             Err(ExitCode::FAILURE)
         }
     }
@@ -645,19 +787,22 @@ fn build_executable(
         eprintln!("error: cannot write IR to {}: {e}", ll.display());
         return Err(ExitCode::FAILURE);
     }
-    if kind == osprey_debug::BuildKind::Profile {
-        return build_profile_executable(&ll, &ir, source, exe, memory);
-    }
-    let mut cmd = Command::new(c_compiler());
-    let _ = cmd
-        .arg(&ll)
-        .arg("-o")
-        .arg(exe)
-        .arg("-Wno-override-module")
-        .arg(opt_flag(kind))
-        .args(kind.native_driver_flags())
-        .args(link_args(&ir, source, memory));
-    run_build_step(cmd, &ll)
+    let result = if kind == osprey_debug::BuildKind::Profile {
+        build_profile_executable(&ll, &ir, source, exe, memory)
+    } else {
+        let mut cmd = Command::new(c_compiler());
+        let _ = cmd
+            .arg(&ll)
+            .arg("-o")
+            .arg(exe)
+            .arg("-Wno-override-module")
+            .arg(opt_flag(kind))
+            .args(kind.native_driver_flags())
+            .args(link_args(&ir, source, memory));
+        run_build_step(cmd, &ll)
+    };
+    let _ = std::fs::remove_file(&ll);
+    result
 }
 
 /// Profile builds go `.ll -> .o -> link -> dsymutil` [PROF-BUILD-MODE]: the
@@ -681,7 +826,10 @@ fn build_profile_executable(
         .arg("-Wno-override-module")
         .arg(opt_flag(kind))
         .args(kind.native_driver_flags());
-    run_build_step(compile, ll)?;
+    if let Err(code) = run_build_step(compile, ll) {
+        let _ = std::fs::remove_file(&obj);
+        return Err(code);
+    }
     let mut link = Command::new(c_compiler());
     let _ = link
         .arg(&obj)
@@ -689,13 +837,14 @@ fn build_profile_executable(
         .arg(exe)
         .args(kind.native_driver_flags())
         .args(link_args(ir, source, memory));
-    run_build_step(link, &obj)?;
-    if cfg!(target_os = "macos") {
+    let result = run_build_step(link, &obj);
+    if result.is_ok() && cfg!(target_os = "macos") {
         // Best-effort: without a dSYM the profile still symbolizes to function
         // names from the symbol table, just without file:line detail.
         let _ = Command::new("dsymutil").arg(exe).status();
     }
-    Ok(())
+    let _ = std::fs::remove_file(&obj);
+    result
 }
 
 /// Run one compiler/linker step, mapping failure onto the CLI exit contract.
@@ -832,6 +981,17 @@ fn link_args(ir: &str, source: &str, memory: &str) -> Vec<String> {
     #[cfg(windows)]
     {
         args.push("-lpthread".to_string());
+        // Winsock is not ambient on Windows the way BSD sockets are in libc.
+        // The HTTP/WebSocket runtime's socket/connect/select/accept/closesocket
+        // calls compile fine but resolve to `__imp_*` import stubs that only
+        // ws2_32 supplies, so without this every HTTP program fails at LINK
+        // time while every non-HTTP program links clean. That is why it stayed
+        // hidden: Windows CI ran two non-HTTP smoke tests until this branch
+        // started running the whole corpus there. Ordered after the archive
+        // that references these symbols.
+        if uses_http {
+            args.push("-lws2_32".to_string());
+        }
     }
 
     // FFI directives: `// @link: sqlite3` -> `-lsqlite3`, `// @linkdir: P` -> `-LP`.
@@ -911,1200 +1071,7 @@ fn openssl_flags() -> Vec<String> {
 mod tests {
     use super::*;
 
-    use std::collections::BTreeSet;
-    use std::fs;
-    use std::path::{Path, PathBuf};
-    use std::process::Command;
-    use std::sync::{Mutex, MutexGuard, OnceLock};
-
-    #[derive(Debug)]
-    struct Out {
-        code: Option<i32>,
-        stdout: String,
-        stderr: String,
-    }
-
-    fn repo_root() -> PathBuf {
-        Path::new(env!("CARGO_MANIFEST_DIR")).join("..").join("..")
-    }
-
-    fn example_lock() -> MutexGuard<'static, ()> {
-        let lock = EXAMPLE_LOCK.get_or_init(|| Mutex::new(()));
-        match lock.lock() {
-            Ok(guard) => guard,
-            Err(poisoned) => poisoned.into_inner(),
-        }
-    }
-
-    struct CurrentDirGuard {
-        prior: PathBuf,
-    }
-
-    impl Drop for CurrentDirGuard {
-        fn drop(&mut self) {
-            let _ = std::env::set_current_dir(&self.prior);
-        }
-    }
-
-    fn enter_repo_root() -> Result<CurrentDirGuard, String> {
-        let prior = std::env::current_dir().map_err(|e| format!("cannot read cwd: {e}"))?;
-        std::env::set_current_dir(repo_root())
-            .map_err(|e| format!("cannot enter repo root {}: {e}", repo_root().display()))?;
-        Ok(CurrentDirGuard { prior })
-    }
-
-    fn read_text(path: &Path) -> Result<String, String> {
-        fs::read_to_string(path).map_err(|e| format!("cannot read {}: {e}", path.display()))
-    }
-
-    fn native_exe_path(source: &Path) -> PathBuf {
-        let rel = repo_relative(source);
-        let sanitized = rel
-            .chars()
-            .map(|ch| if ch.is_ascii_alphanumeric() { ch } else { '_' })
-            .collect::<String>();
-        std::env::temp_dir().join(format!("osprey_golden_{sanitized}"))
-    }
-
-    fn parse_example(path: &str, source: &str) -> Result<osprey_ast::Program, String> {
-        let flavor = osprey_syntax::resolve_flavor(None, path, source)
-            .map_err(|e| format!("{path}: {e}"))?;
-        let parsed = osprey_syntax::parse_program_with_flavor(source, flavor);
-        if !parsed.errors.is_empty() {
-            let errors = parsed
-                .errors
-                .iter()
-                .map(|e| {
-                    format!(
-                        "{}:{}:{}: {}",
-                        path, e.position.line, e.position.column, e.message
-                    )
-                })
-                .collect::<Vec<_>>()
-                .join("\n");
-            return Err(errors);
-        }
-        Ok(parsed.program)
-    }
-
-    fn run_example(source: &Path) -> Result<Out, String> {
-        let source_text = read_text(source)?;
-        let path = source.to_string_lossy().into_owned();
-        let program = parse_example(&path, &source_text)?;
-        let _cwd = enter_repo_root()?;
-
-        let violations = sandbox::violations(&program, Policy::allow_all());
-        if !violations.is_empty() {
-            return Err(format!("{}: {}", path, violations.join("\n")));
-        }
-
-        let type_errors = osprey_types::check_program(&program);
-        if !type_errors.is_empty() {
-            let errors = type_errors
-                .iter()
-                .map(|e| match e.position {
-                    Some(p) => format!("{}:{}:{}: {}", path, p.line, p.column, e.message),
-                    None => format!("{}: {}", path, e.message),
-                })
-                .collect::<Vec<_>>()
-                .join("\n");
-            return Err(errors);
-        }
-
-        let exe = native_exe_path(source);
-        build_executable(
-            &path,
-            &program,
-            &source_text,
-            &exe,
-            "default",
-            osprey_debug::BuildKind::Release,
-        )
-        .map_err(|code| format!("{}: native build failed: {code:?}", source.display()))?;
-
-        Command::new(&exe)
-            .output()
-            .map(|out| Out {
-                code: out.status.code(),
-                stdout: String::from_utf8_lossy(&out.stdout).into_owned(),
-                stderr: String::from_utf8_lossy(&out.stderr).into_owned(),
-            })
-            .map_err(|e| format!("could not run {}: {e}", exe.display()))
-    }
-
-    fn path_with_suffix(path: &Path, suffix: &str) -> PathBuf {
-        PathBuf::from(format!("{}{}", path.display(), suffix))
-    }
-
-    fn source_base(source: &Path) -> PathBuf {
-        let mut base = source.to_path_buf();
-        assert!(
-            base.set_extension(""),
-            "example path has no extension: {}",
-            source.display()
-        );
-        base
-    }
-
-    fn uname_s() -> &'static str {
-        match std::env::consts::OS {
-            "macos" => "Darwin",
-            "linux" => "Linux",
-            "windows" => "Windows_NT",
-            other => other,
-        }
-    }
-
-    fn expected_candidates(source: &Path) -> Vec<PathBuf> {
-        let os = uname_s();
-        let base = source_base(source);
-        vec![
-            path_with_suffix(source, ".expectedoutput"),
-            path_with_suffix(source, &format!(".expectedoutput.{os}")),
-            path_with_suffix(&base, ".osp.expectedoutput"),
-            path_with_suffix(&base, &format!(".osp.expectedoutput.{os}")),
-            path_with_suffix(&base, ".expectedoutput"),
-        ]
-    }
-
-    fn expected_output_path(source: &Path) -> Result<PathBuf, String> {
-        for candidate in expected_candidates(source) {
-            if candidate.is_file() {
-                return Ok(candidate);
-            }
-        }
-        Err(format!("missing expected output for {}", source.display()))
-    }
-
-    fn check_example_matches(rel_source: &str) -> Result<(), String> {
-        let _guard = example_lock();
-        let source = repo_root().join(rel_source);
-        let expected_path = expected_output_path(&source)?;
-        let expected = read_text(&expected_path)?;
-        let actual = run_example(&source)?;
-
-        if actual.code == Some(0) && actual.stdout.trim() == expected.trim() {
-            return Ok(());
-        }
-
-        Err(format!(
-        "{rel_source}\nstatus={:?}\nexpected file={}\n--- expected ---\n{}\n--- actual ---\n{}\n--- stderr ---\n{}",
-        actual.code,
-        expected_path.display(),
-        expected.trim(),
-        actual.stdout.trim(),
-        actual.stderr.trim()
-    ))
-    }
-
-    fn assert_example_matches(rel_source: &str) {
-        if let Err(e) = check_example_matches(rel_source) {
-            assert!(e.is_empty(), "{e}");
-        }
-    }
-
-    fn collect_sources(dir: &Path, out: &mut Vec<PathBuf>) {
-        let Ok(entries) = fs::read_dir(dir) else {
-            return;
-        };
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if path.is_dir() {
-                collect_sources(&path, out);
-            } else if matches!(
-                path.extension().and_then(|ext| ext.to_str()),
-                Some("osp" | "ospml")
-            ) {
-                out.push(path);
-            }
-        }
-    }
-
-    fn tested_example_sources() -> Vec<PathBuf> {
-        let mut out = Vec::new();
-        collect_sources(&repo_root().join("examples/tested"), &mut out);
-        out.sort();
-        out
-    }
-
-    fn repo_relative(path: &Path) -> String {
-        let root = repo_root();
-        match path.strip_prefix(&root) {
-            Ok(rel) => rel.to_string_lossy().replace('\\', "/"),
-            Err(_) => path.to_string_lossy().replace('\\', "/"),
-        }
-    }
-
-    #[test]
-    fn fiber_cpu_profiling_demo_osp() {
-        assert_example_matches("examples/tested/fiber/cpu_profiling_demo.osp");
-    }
-
-    #[test]
-    fn fiber_fiber_determinism_osp() {
-        assert_example_matches("examples/tested/fiber/fiber_determinism.osp");
-    }
-
-    #[test]
-    fn fiber_fiber_exact_replica_osp() {
-        assert_example_matches("examples/tested/fiber/fiber_exact_replica.osp");
-    }
-
-    #[test]
-    fn all_tested_examples_are_registered_as_individual_tests() {
-        let discovered = tested_example_sources()
-            .iter()
-            .map(|path| repo_relative(path))
-            .collect::<BTreeSet<_>>();
-        let registered = REGISTERED_EXAMPLES
-            .iter()
-            .map(|path| (*path).to_string())
-            .collect::<BTreeSet<_>>();
-
-        let missing = discovered
-            .difference(&registered)
-            .cloned()
-            .collect::<Vec<_>>();
-        let stale = registered
-            .difference(&discovered)
-            .cloned()
-            .collect::<Vec<_>>();
-
-        assert!(
-            missing.is_empty() && stale.is_empty(),
-            "every examples/tested fixture must have a named Rust test\nmissing:\n{}\nstale:\n{}",
-            missing.join("\n"),
-            stale.join("\n")
-        );
-    }
-
-    static EXAMPLE_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
-
-    const REGISTERED_EXAMPLES: &[&str] = &[
-        "examples/tested/basics/blocks/block_statements_basic.osp",
-        "examples/tested/basics/blocks/block_statements_basic.ospml",
-        "examples/tested/basics/cursor/codepoint_roundtrip.osp",
-        "examples/tested/basics/cursor/codepoint_roundtrip.ospml",
-        "examples/tested/basics/cursor/kv_parser.osp",
-        "examples/tested/basics/cursor/kv_parser.ospml",
-        "examples/tested/basics/cursor/token_scan.osp",
-        "examples/tested/basics/cursor/token_scan.ospml",
-        "examples/tested/basics/cursor/utf8_walk.osp",
-        "examples/tested/basics/cursor/utf8_walk.ospml",
-        "examples/tested/basics/errors/error_messages.osp",
-        "examples/tested/basics/errors/error_messages.ospml",
-        "examples/tested/basics/errors/validation_pipeline.osp",
-        "examples/tested/basics/errors/validation_pipeline.ospml",
-        "examples/tested/basics/feature_omnibus.osp",
-        "examples/tested/basics/feature_omnibus.ospml",
-        "examples/tested/basics/field_access_comprehensive.osp",
-        "examples/tested/basics/field_access_comprehensive.ospml",
-        "examples/tested/basics/files/file_io_json_workflow.osp",
-        "examples/tested/basics/files/file_io_json_workflow.ospml",
-        "examples/tested/basics/json/json_document_query.osp",
-        "examples/tested/basics/json/json_document_query.ospml",
-        "examples/tested/basics/function_composition_test.osp",
-        "examples/tested/basics/functional/functional_showcase.osp",
-        "examples/tested/basics/functional/functional_showcase.ospml",
-        "examples/tested/basics/games/adventure_game.osp",
-        "examples/tested/basics/games/adventure_game.ospml",
-        "examples/tested/basics/games/space_trader.osp",
-        "examples/tested/basics/games/space_trader.ospml",
-        "examples/tested/basics/knownbugs/bug1_spawn_record.osp",
-        "examples/tested/basics/knownbugs/bug1_spawn_record.ospml",
-        "examples/tested/basics/knownbugs/bug2_string_union_payload.osp",
-        "examples/tested/basics/knownbugs/bug2_string_union_payload.ospml",
-        "examples/tested/basics/knownbugs/bug3_map_built_index.osp",
-        "examples/tested/basics/knownbugs/bug3_map_built_index.ospml",
-        "examples/tested/basics/knownbugs/bug4_union_return_arg.osp",
-        "examples/tested/basics/knownbugs/bug4_union_return_arg.ospml",
-        "examples/tested/basics/lists/list_basics.osp",
-        "examples/tested/basics/lists/list_basics.ospml",
-        "examples/tested/basics/lists/map_basics.osp",
-        "examples/tested/basics/lists/map_basics.ospml",
-        "examples/tested/basics/math/comprehensive_math.osp",
-        "examples/tested/basics/math/comprehensive_math.ospml",
-        "examples/tested/basics/memory/struct_allocation_stress.osp",
-        "examples/tested/basics/memory/struct_allocation_stress.ospml",
-        "examples/tested/basics/operators/boolean_consolidated.osp",
-        "examples/tested/basics/operators/boolean_consolidated.ospml",
-        "examples/tested/basics/osprey_mega_showcase.osp",
-        "examples/tested/basics/osprey_mega_showcase.ospml",
-        "examples/tested/basics/pattern_matching/pattern_matching_complete.osp",
-        "examples/tested/basics/processes/async_process_management.osp",
-        "examples/tested/basics/processes/async_process_management.ospml",
-        "examples/tested/basics/processes/callback_stdout_demo.osp",
-        "examples/tested/basics/processes/callback_stdout_demo.ospml",
-        "examples/tested/basics/strings/string_edge_cases.osp",
-        "examples/tested/basics/strings/string_edge_cases.ospml",
-        "examples/tested/basics/strings/string_pipeline.osp",
-        "examples/tested/basics/strings/string_pipeline.ospml",
-        "examples/tested/basics/types/any_type_comprehensive.osp",
-        "examples/tested/basics/types/any_type_comprehensive.ospml",
-        "examples/tested/basics/types/pure_hindley_milner_test.osp",
-        "examples/tested/basics/types/pure_hindley_milner_test.ospml",
-        "examples/tested/basics/types/record_update_basic.osp",
-        "examples/tested/basics/types/record_update_basic.ospml",
-        "examples/tested/basics/types/recursive_unions.osp",
-        "examples/tested/basics/types/recursive_unions.ospml",
-        "examples/tested/basics/types/type_equality_comprehensive.osp",
-        "examples/tested/basics/types/type_equality_comprehensive.ospml",
-        "examples/tested/basics/types/user_defined_unions.osp",
-        "examples/tested/basics/types/user_defined_unions.ospml",
-        "examples/tested/basics/validation/proper_validation_test.osp",
-        "examples/tested/basics/validation/proper_validation_test.ospml",
-        "examples/tested/basics/website/website_examples.osp",
-        "examples/tested/basics/website/website_examples.ospml",
-        "examples/tested/db/database_effect.osp",
-        "examples/tested/db/database_effect.ospml",
-        "examples/tested/db/sqlite_basics.osp",
-        "examples/tested/db/sqlite_basics.ospml",
-        "examples/tested/effects/abort_vs_resume.osp",
-        "examples/tested/effects/algebraic_effects_comprehensive.osp",
-        "examples/tested/effects/algebraic_effects_comprehensive.ospml",
-        "examples/tested/effects/collect_all_errors.osp",
-        "examples/tested/effects/fiber_effects.osp",
-        "examples/tested/effects/fiber_effects.ospml",
-        "examples/tested/effects/handler_scoping.osp",
-        "examples/tested/effects/handler_scoping.ospml",
-        "examples/tested/effects/http_state_levels.osp",
-        "examples/tested/effects/http_state_levels.ospml",
-        "examples/tested/effects/recoverable_errors.osp",
-        "examples/tested/effects/result_and_effects.osp",
-        "examples/tested/effects/resume_abort_early_exit.osp",
-        "examples/tested/effects/resume_abort_early_exit.ospml",
-        "examples/tested/effects/resume_lifo_audit.osp",
-        "examples/tested/effects/resume_lifo_audit.ospml",
-        "examples/tested/effects/resume_outer_handler_bridge.osp",
-        "examples/tested/effects/resume_outer_handler_bridge.ospml",
-        "examples/tested/effects/resume_unit_markers.osp",
-        "examples/tested/effects/resume_unit_markers.ospml",
-        "examples/tested/effects/resume_value_rewrite.osp",
-        "examples/tested/effects/resume_value_rewrite.ospml",
-        "examples/tested/effects/retry_until_valid.osp",
-        "examples/tested/effects/typed_error_channels.osp",
-        "examples/tested/fiber/cpu_profiling_demo.osp",
-        "examples/tested/fiber/fiber_determinism.osp",
-        "examples/tested/fiber/fiber_exact_replica.osp",
-        "examples/tested/fiber/fiber_showcase.osp",
-        "examples/tested/fiber/fiber_showcase.ospml",
-        "examples/tested/http/http_client_example.osp",
-        "examples/tested/http/http_client_example.ospml",
-        "examples/tested/http/http_create_client.osp",
-        "examples/tested/http/http_create_client.ospml",
-        "examples/tested/http/http_response_handle.osp",
-        "examples/tested/http/http_response_handle.ospml",
-        "examples/tested/http/http_server_example.osp",
-        "examples/tested/http/http_server_example.ospml",
-        "examples/tested/http/tui_repo_table.osp",
-        "examples/tested/http/tui_repo_table.ospml",
-        "examples/tested/ml/arith.osp",
-        "examples/tested/ml/arith.ospml",
-        "examples/tested/ml/booleans.osp",
-        "examples/tested/ml/booleans.ospml",
-        "examples/tested/ml/closures.osp",
-        "examples/tested/ml/closures.ospml",
-        "examples/tested/ml/curry_partial.osp",
-        "examples/tested/ml/curry_partial.ospml",
-        "examples/tested/ml/curry_tour.osp",
-        "examples/tested/ml/curry_tour.ospml",
-        "examples/tested/ml/hello.osp",
-        "examples/tested/ml/hello.ospml",
-        "examples/tested/ml/hof.osp",
-        "examples/tested/ml/hof.ospml",
-        "examples/tested/ml/match_tour.osp",
-        "examples/tested/ml/match_tour.ospml",
-        "examples/tested/ml/matchbool.osp",
-        "examples/tested/ml/matchbool.ospml",
-        "examples/tested/ml/matchint.osp",
-        "examples/tested/ml/matchint.ospml",
-        "examples/tested/ml/mixed.osp",
-        "examples/tested/ml/mixed.ospml",
-        "examples/tested/ml/mutation.osp",
-        "examples/tested/ml/mutation.ospml",
-        "examples/tested/ml/nested_calls.osp",
-        "examples/tested/ml/nested_calls.ospml",
-        "examples/tested/ml/pipechain.osp",
-        "examples/tested/ml/pipechain.ospml",
-        "examples/tested/ml/recursion.osp",
-        "examples/tested/ml/recursion.ospml",
-        "examples/tested/ml/results_state_hof.osp",
-        "examples/tested/ml/results_state_hof.ospml",
-        "examples/tested/ml/strings.osp",
-        "examples/tested/ml/strings.ospml",
-        "examples/tested/testing/calculator.test.osp",
-        "examples/tested/testing/calculator.test.ospml",
-        "examples/tested/testing/mlcheck.test.osp",
-        "examples/tested/testing/mlcheck.test.ospml",
-        "examples/tested/testing/verdict.test.ospml",
-    ];
-
-    #[test]
-    fn basics_blocks_block_statements_basic_osp() {
-        assert_example_matches("examples/tested/basics/blocks/block_statements_basic.osp");
-    }
-
-    #[test]
-    fn basics_blocks_block_statements_basic_ospml() {
-        assert_example_matches("examples/tested/basics/blocks/block_statements_basic.ospml");
-    }
-
-    #[test]
-    fn basics_cursor_codepoint_roundtrip_osp() {
-        assert_example_matches("examples/tested/basics/cursor/codepoint_roundtrip.osp");
-    }
-
-    #[test]
-    fn basics_cursor_codepoint_roundtrip_ospml() {
-        assert_example_matches("examples/tested/basics/cursor/codepoint_roundtrip.ospml");
-    }
-
-    #[test]
-    fn basics_cursor_kv_parser_osp() {
-        assert_example_matches("examples/tested/basics/cursor/kv_parser.osp");
-    }
-
-    #[test]
-    fn basics_cursor_kv_parser_ospml() {
-        assert_example_matches("examples/tested/basics/cursor/kv_parser.ospml");
-    }
-
-    #[test]
-    fn basics_cursor_token_scan_osp() {
-        assert_example_matches("examples/tested/basics/cursor/token_scan.osp");
-    }
-
-    #[test]
-    fn basics_cursor_token_scan_ospml() {
-        assert_example_matches("examples/tested/basics/cursor/token_scan.ospml");
-    }
-
-    #[test]
-    fn basics_cursor_utf8_walk_osp() {
-        assert_example_matches("examples/tested/basics/cursor/utf8_walk.osp");
-    }
-
-    #[test]
-    fn basics_cursor_utf8_walk_ospml() {
-        assert_example_matches("examples/tested/basics/cursor/utf8_walk.ospml");
-    }
-
-    #[test]
-    fn basics_errors_error_messages_osp() {
-        assert_example_matches("examples/tested/basics/errors/error_messages.osp");
-    }
-
-    #[test]
-    fn basics_errors_error_messages_ospml() {
-        assert_example_matches("examples/tested/basics/errors/error_messages.ospml");
-    }
-
-    #[test]
-    fn basics_errors_validation_pipeline_osp() {
-        assert_example_matches("examples/tested/basics/errors/validation_pipeline.osp");
-    }
-
-    #[test]
-    fn basics_errors_validation_pipeline_ospml() {
-        assert_example_matches("examples/tested/basics/errors/validation_pipeline.ospml");
-    }
-
-    #[test]
-    fn basics_feature_omnibus_osp() {
-        assert_example_matches("examples/tested/basics/feature_omnibus.osp");
-    }
-
-    #[test]
-    fn basics_feature_omnibus_ospml() {
-        assert_example_matches("examples/tested/basics/feature_omnibus.ospml");
-    }
-
-    #[test]
-    fn basics_field_access_comprehensive_osp() {
-        assert_example_matches("examples/tested/basics/field_access_comprehensive.osp");
-    }
-
-    #[test]
-    fn basics_field_access_comprehensive_ospml() {
-        assert_example_matches("examples/tested/basics/field_access_comprehensive.ospml");
-    }
-
-    #[test]
-    fn basics_files_file_io_json_workflow_osp() {
-        assert_example_matches("examples/tested/basics/files/file_io_json_workflow.osp");
-    }
-
-    #[test]
-    fn basics_files_file_io_json_workflow_ospml() {
-        assert_example_matches("examples/tested/basics/files/file_io_json_workflow.ospml");
-    }
-
-    #[test]
-    fn basics_json_json_document_query_osp() {
-        assert_example_matches("examples/tested/basics/json/json_document_query.osp");
-    }
-
-    #[test]
-    fn basics_json_json_document_query_ospml() {
-        assert_example_matches("examples/tested/basics/json/json_document_query.ospml");
-    }
-
-    #[test]
-    fn basics_function_composition_test_osp() {
-        assert_example_matches("examples/tested/basics/function_composition_test.osp");
-    }
-
-    #[test]
-    fn basics_functional_functional_showcase_osp() {
-        assert_example_matches("examples/tested/basics/functional/functional_showcase.osp");
-    }
-
-    #[test]
-    fn basics_functional_functional_showcase_ospml() {
-        assert_example_matches("examples/tested/basics/functional/functional_showcase.ospml");
-    }
-
-    #[test]
-    fn basics_games_adventure_game_osp() {
-        assert_example_matches("examples/tested/basics/games/adventure_game.osp");
-    }
-
-    #[test]
-    fn basics_games_adventure_game_ospml() {
-        assert_example_matches("examples/tested/basics/games/adventure_game.ospml");
-    }
-
-    #[test]
-    fn basics_games_space_trader_osp() {
-        assert_example_matches("examples/tested/basics/games/space_trader.osp");
-    }
-
-    #[test]
-    fn basics_games_space_trader_ospml() {
-        assert_example_matches("examples/tested/basics/games/space_trader.ospml");
-    }
-
-    #[test]
-    fn basics_knownbugs_bug1_spawn_record_osp() {
-        assert_example_matches("examples/tested/basics/knownbugs/bug1_spawn_record.osp");
-    }
-
-    #[test]
-    fn basics_knownbugs_bug1_spawn_record_ospml() {
-        assert_example_matches("examples/tested/basics/knownbugs/bug1_spawn_record.ospml");
-    }
-
-    #[test]
-    fn basics_knownbugs_bug2_string_union_payload_osp() {
-        assert_example_matches("examples/tested/basics/knownbugs/bug2_string_union_payload.osp");
-    }
-
-    #[test]
-    fn basics_knownbugs_bug2_string_union_payload_ospml() {
-        assert_example_matches("examples/tested/basics/knownbugs/bug2_string_union_payload.ospml");
-    }
-
-    #[test]
-    fn basics_knownbugs_bug3_map_built_index_osp() {
-        assert_example_matches("examples/tested/basics/knownbugs/bug3_map_built_index.osp");
-    }
-
-    #[test]
-    fn basics_knownbugs_bug3_map_built_index_ospml() {
-        assert_example_matches("examples/tested/basics/knownbugs/bug3_map_built_index.ospml");
-    }
-
-    #[test]
-    fn basics_knownbugs_bug4_union_return_arg_osp() {
-        assert_example_matches("examples/tested/basics/knownbugs/bug4_union_return_arg.osp");
-    }
-
-    #[test]
-    fn basics_knownbugs_bug4_union_return_arg_ospml() {
-        assert_example_matches("examples/tested/basics/knownbugs/bug4_union_return_arg.ospml");
-    }
-
-    #[test]
-    fn basics_lists_list_basics_osp() {
-        assert_example_matches("examples/tested/basics/lists/list_basics.osp");
-    }
-
-    #[test]
-    fn basics_lists_list_basics_ospml() {
-        assert_example_matches("examples/tested/basics/lists/list_basics.ospml");
-    }
-
-    #[test]
-    fn basics_lists_map_basics_osp() {
-        assert_example_matches("examples/tested/basics/lists/map_basics.osp");
-    }
-
-    #[test]
-    fn basics_lists_map_basics_ospml() {
-        assert_example_matches("examples/tested/basics/lists/map_basics.ospml");
-    }
-
-    #[test]
-    fn basics_math_comprehensive_math_osp() {
-        assert_example_matches("examples/tested/basics/math/comprehensive_math.osp");
-    }
-
-    #[test]
-    fn basics_math_comprehensive_math_ospml() {
-        assert_example_matches("examples/tested/basics/math/comprehensive_math.ospml");
-    }
-
-    #[test]
-    fn basics_memory_struct_allocation_stress_osp() {
-        assert_example_matches("examples/tested/basics/memory/struct_allocation_stress.osp");
-    }
-
-    #[test]
-    fn basics_memory_struct_allocation_stress_ospml() {
-        assert_example_matches("examples/tested/basics/memory/struct_allocation_stress.ospml");
-    }
-
-    #[test]
-    fn basics_operators_boolean_consolidated_osp() {
-        assert_example_matches("examples/tested/basics/operators/boolean_consolidated.osp");
-    }
-
-    #[test]
-    fn basics_operators_boolean_consolidated_ospml() {
-        assert_example_matches("examples/tested/basics/operators/boolean_consolidated.ospml");
-    }
-
-    #[test]
-    fn basics_osprey_mega_showcase_osp() {
-        assert_example_matches("examples/tested/basics/osprey_mega_showcase.osp");
-    }
-
-    #[test]
-    fn basics_osprey_mega_showcase_ospml() {
-        assert_example_matches("examples/tested/basics/osprey_mega_showcase.ospml");
-    }
-
-    #[test]
-    fn basics_pattern_matching_pattern_matching_complete_osp() {
-        assert_example_matches(
-            "examples/tested/basics/pattern_matching/pattern_matching_complete.osp",
-        );
-    }
-
-    #[test]
-    fn basics_processes_async_process_management_osp() {
-        assert_example_matches("examples/tested/basics/processes/async_process_management.osp");
-    }
-
-    #[test]
-    fn basics_processes_async_process_management_ospml() {
-        assert_example_matches("examples/tested/basics/processes/async_process_management.ospml");
-    }
-
-    #[test]
-    fn basics_processes_callback_stdout_demo_osp() {
-        assert_example_matches("examples/tested/basics/processes/callback_stdout_demo.osp");
-    }
-
-    #[test]
-    fn basics_processes_callback_stdout_demo_ospml() {
-        assert_example_matches("examples/tested/basics/processes/callback_stdout_demo.ospml");
-    }
-
-    #[test]
-    fn basics_strings_string_edge_cases_osp() {
-        assert_example_matches("examples/tested/basics/strings/string_edge_cases.osp");
-    }
-
-    #[test]
-    fn basics_strings_string_edge_cases_ospml() {
-        assert_example_matches("examples/tested/basics/strings/string_edge_cases.ospml");
-    }
-
-    #[test]
-    fn basics_strings_string_pipeline_osp() {
-        assert_example_matches("examples/tested/basics/strings/string_pipeline.osp");
-    }
-
-    #[test]
-    fn basics_strings_string_pipeline_ospml() {
-        assert_example_matches("examples/tested/basics/strings/string_pipeline.ospml");
-    }
-
-    #[test]
-    fn basics_types_any_type_comprehensive_osp() {
-        assert_example_matches("examples/tested/basics/types/any_type_comprehensive.osp");
-    }
-
-    #[test]
-    fn basics_types_any_type_comprehensive_ospml() {
-        assert_example_matches("examples/tested/basics/types/any_type_comprehensive.ospml");
-    }
-
-    #[test]
-    fn basics_types_pure_hindley_milner_test_osp() {
-        assert_example_matches("examples/tested/basics/types/pure_hindley_milner_test.osp");
-    }
-
-    #[test]
-    fn basics_types_pure_hindley_milner_test_ospml() {
-        assert_example_matches("examples/tested/basics/types/pure_hindley_milner_test.ospml");
-    }
-
-    #[test]
-    fn basics_types_record_update_basic_osp() {
-        assert_example_matches("examples/tested/basics/types/record_update_basic.osp");
-    }
-
-    #[test]
-    fn basics_types_record_update_basic_ospml() {
-        assert_example_matches("examples/tested/basics/types/record_update_basic.ospml");
-    }
-
-    #[test]
-    fn basics_types_recursive_unions_osp() {
-        assert_example_matches("examples/tested/basics/types/recursive_unions.osp");
-    }
-
-    #[test]
-    fn basics_types_recursive_unions_ospml() {
-        assert_example_matches("examples/tested/basics/types/recursive_unions.ospml");
-    }
-
-    #[test]
-    fn basics_types_type_equality_comprehensive_osp() {
-        assert_example_matches("examples/tested/basics/types/type_equality_comprehensive.osp");
-    }
-
-    #[test]
-    fn basics_types_type_equality_comprehensive_ospml() {
-        assert_example_matches("examples/tested/basics/types/type_equality_comprehensive.ospml");
-    }
-
-    #[test]
-    fn basics_types_user_defined_unions_osp() {
-        assert_example_matches("examples/tested/basics/types/user_defined_unions.osp");
-    }
-
-    #[test]
-    fn basics_types_user_defined_unions_ospml() {
-        assert_example_matches("examples/tested/basics/types/user_defined_unions.ospml");
-    }
-
-    #[test]
-    fn basics_validation_proper_validation_test_osp() {
-        assert_example_matches("examples/tested/basics/validation/proper_validation_test.osp");
-    }
-
-    #[test]
-    fn basics_validation_proper_validation_test_ospml() {
-        assert_example_matches("examples/tested/basics/validation/proper_validation_test.ospml");
-    }
-
-    #[test]
-    fn basics_website_website_examples_osp() {
-        assert_example_matches("examples/tested/basics/website/website_examples.osp");
-    }
-
-    #[test]
-    fn basics_website_website_examples_ospml() {
-        assert_example_matches("examples/tested/basics/website/website_examples.ospml");
-    }
-
-    #[test]
-    fn db_database_effect_osp() {
-        assert_example_matches("examples/tested/db/database_effect.osp");
-    }
-
-    #[test]
-    fn db_database_effect_ospml() {
-        assert_example_matches("examples/tested/db/database_effect.ospml");
-    }
-
-    #[test]
-    fn db_sqlite_basics_osp() {
-        assert_example_matches("examples/tested/db/sqlite_basics.osp");
-    }
-
-    #[test]
-    fn db_sqlite_basics_ospml() {
-        assert_example_matches("examples/tested/db/sqlite_basics.ospml");
-    }
-
-    #[test]
-    fn effects_abort_vs_resume_osp() {
-        assert_example_matches("examples/tested/effects/abort_vs_resume.osp");
-    }
-
-    #[test]
-    fn effects_algebraic_effects_comprehensive_osp() {
-        assert_example_matches("examples/tested/effects/algebraic_effects_comprehensive.osp");
-    }
-
-    #[test]
-    fn effects_algebraic_effects_comprehensive_ospml() {
-        assert_example_matches("examples/tested/effects/algebraic_effects_comprehensive.ospml");
-    }
-
-    #[test]
-    fn effects_collect_all_errors_osp() {
-        assert_example_matches("examples/tested/effects/collect_all_errors.osp");
-    }
-
-    #[test]
-    fn effects_fiber_effects_osp() {
-        assert_example_matches("examples/tested/effects/fiber_effects.osp");
-    }
-
-    #[test]
-    fn effects_fiber_effects_ospml() {
-        assert_example_matches("examples/tested/effects/fiber_effects.ospml");
-    }
-
-    #[test]
-    fn effects_handler_scoping_osp() {
-        assert_example_matches("examples/tested/effects/handler_scoping.osp");
-    }
-
-    #[test]
-    fn effects_handler_scoping_ospml() {
-        assert_example_matches("examples/tested/effects/handler_scoping.ospml");
-    }
-
-    #[test]
-    fn effects_http_state_levels_osp() {
-        assert_example_matches("examples/tested/effects/http_state_levels.osp");
-    }
-
-    #[test]
-    fn effects_http_state_levels_ospml() {
-        assert_example_matches("examples/tested/effects/http_state_levels.ospml");
-    }
-
-    #[test]
-    fn effects_recoverable_errors_osp() {
-        assert_example_matches("examples/tested/effects/recoverable_errors.osp");
-    }
-
-    #[test]
-    fn effects_result_and_effects_osp() {
-        assert_example_matches("examples/tested/effects/result_and_effects.osp");
-    }
-
-    #[test]
-    fn effects_resume_abort_early_exit_osp() {
-        assert_example_matches("examples/tested/effects/resume_abort_early_exit.osp");
-    }
-
-    #[test]
-    fn effects_resume_abort_early_exit_ospml() {
-        assert_example_matches("examples/tested/effects/resume_abort_early_exit.ospml");
-    }
-
-    #[test]
-    fn effects_resume_lifo_audit_osp() {
-        assert_example_matches("examples/tested/effects/resume_lifo_audit.osp");
-    }
-
-    #[test]
-    fn effects_resume_lifo_audit_ospml() {
-        assert_example_matches("examples/tested/effects/resume_lifo_audit.ospml");
-    }
-
-    #[test]
-    fn effects_resume_outer_handler_bridge_osp() {
-        assert_example_matches("examples/tested/effects/resume_outer_handler_bridge.osp");
-    }
-
-    #[test]
-    fn effects_resume_outer_handler_bridge_ospml() {
-        assert_example_matches("examples/tested/effects/resume_outer_handler_bridge.ospml");
-    }
-
-    #[test]
-    fn effects_resume_unit_markers_osp() {
-        assert_example_matches("examples/tested/effects/resume_unit_markers.osp");
-    }
-
-    #[test]
-    fn effects_resume_unit_markers_ospml() {
-        assert_example_matches("examples/tested/effects/resume_unit_markers.ospml");
-    }
-
-    #[test]
-    fn effects_resume_value_rewrite_osp() {
-        assert_example_matches("examples/tested/effects/resume_value_rewrite.osp");
-    }
-
-    #[test]
-    fn effects_resume_value_rewrite_ospml() {
-        assert_example_matches("examples/tested/effects/resume_value_rewrite.ospml");
-    }
-
-    #[test]
-    fn effects_retry_until_valid_osp() {
-        assert_example_matches("examples/tested/effects/retry_until_valid.osp");
-    }
-
-    #[test]
-    fn effects_typed_error_channels_osp() {
-        assert_example_matches("examples/tested/effects/typed_error_channels.osp");
-    }
-
-    #[test]
-    fn fiber_fiber_showcase_osp() {
-        assert_example_matches("examples/tested/fiber/fiber_showcase.osp");
-    }
-
-    #[test]
-    fn fiber_fiber_showcase_ospml() {
-        assert_example_matches("examples/tested/fiber/fiber_showcase.ospml");
-    }
-
-    #[test]
-    fn http_http_client_example_osp() {
-        assert_example_matches("examples/tested/http/http_client_example.osp");
-    }
-
-    #[test]
-    fn http_http_client_example_ospml() {
-        assert_example_matches("examples/tested/http/http_client_example.ospml");
-    }
-
-    #[test]
-    fn http_http_create_client_osp() {
-        assert_example_matches("examples/tested/http/http_create_client.osp");
-    }
-
-    #[test]
-    fn http_http_create_client_ospml() {
-        assert_example_matches("examples/tested/http/http_create_client.ospml");
-    }
-
-    #[test]
-    fn http_http_response_handle_osp() {
-        assert_example_matches("examples/tested/http/http_response_handle.osp");
-    }
-
-    #[test]
-    fn http_http_response_handle_ospml() {
-        assert_example_matches("examples/tested/http/http_response_handle.ospml");
-    }
-
-    #[test]
-    fn http_http_server_example_osp() {
-        assert_example_matches("examples/tested/http/http_server_example.osp");
-    }
-
-    #[test]
-    fn http_http_server_example_ospml() {
-        assert_example_matches("examples/tested/http/http_server_example.ospml");
-    }
-
-    #[test]
-    fn http_tui_repo_table_osp() {
-        assert_example_matches("examples/tested/http/tui_repo_table.osp");
-    }
-
-    #[test]
-    fn http_tui_repo_table_ospml() {
-        assert_example_matches("examples/tested/http/tui_repo_table.ospml");
-    }
-
-    #[test]
-    fn ml_arith_osp() {
-        assert_example_matches("examples/tested/ml/arith.osp");
-    }
-
-    #[test]
-    fn ml_arith_ospml() {
-        assert_example_matches("examples/tested/ml/arith.ospml");
-    }
-
-    #[test]
-    fn ml_booleans_osp() {
-        assert_example_matches("examples/tested/ml/booleans.osp");
-    }
-
-    #[test]
-    fn ml_booleans_ospml() {
-        assert_example_matches("examples/tested/ml/booleans.ospml");
-    }
-
-    #[test]
-    fn ml_closures_osp() {
-        assert_example_matches("examples/tested/ml/closures.osp");
-    }
-
-    #[test]
-    fn ml_closures_ospml() {
-        assert_example_matches("examples/tested/ml/closures.ospml");
-    }
-
-    #[test]
-    fn ml_curry_partial_osp() {
-        assert_example_matches("examples/tested/ml/curry_partial.osp");
-    }
-
-    #[test]
-    fn ml_curry_partial_ospml() {
-        assert_example_matches("examples/tested/ml/curry_partial.ospml");
-    }
-
-    #[test]
-    fn ml_curry_tour_osp() {
-        assert_example_matches("examples/tested/ml/curry_tour.osp");
-    }
-
-    #[test]
-    fn ml_curry_tour_ospml() {
-        assert_example_matches("examples/tested/ml/curry_tour.ospml");
-    }
-
-    #[test]
-    fn ml_hello_osp() {
-        assert_example_matches("examples/tested/ml/hello.osp");
-    }
-
-    #[test]
-    fn ml_hello_ospml() {
-        assert_example_matches("examples/tested/ml/hello.ospml");
-    }
-
-    #[test]
-    fn ml_hof_osp() {
-        assert_example_matches("examples/tested/ml/hof.osp");
-    }
-
-    #[test]
-    fn ml_hof_ospml() {
-        assert_example_matches("examples/tested/ml/hof.ospml");
-    }
-
-    #[test]
-    fn ml_match_tour_osp() {
-        assert_example_matches("examples/tested/ml/match_tour.osp");
-    }
-
-    #[test]
-    fn ml_match_tour_ospml() {
-        assert_example_matches("examples/tested/ml/match_tour.ospml");
-    }
-
-    #[test]
-    fn ml_matchbool_osp() {
-        assert_example_matches("examples/tested/ml/matchbool.osp");
-    }
-
-    #[test]
-    fn ml_matchbool_ospml() {
-        assert_example_matches("examples/tested/ml/matchbool.ospml");
-    }
-
-    #[test]
-    fn ml_matchint_osp() {
-        assert_example_matches("examples/tested/ml/matchint.osp");
-    }
-
-    #[test]
-    fn ml_matchint_ospml() {
-        assert_example_matches("examples/tested/ml/matchint.ospml");
-    }
-
-    #[test]
-    fn ml_mixed_osp() {
-        assert_example_matches("examples/tested/ml/mixed.osp");
-    }
-
-    #[test]
-    fn ml_mixed_ospml() {
-        assert_example_matches("examples/tested/ml/mixed.ospml");
-    }
-
-    #[test]
-    fn ml_mutation_osp() {
-        assert_example_matches("examples/tested/ml/mutation.osp");
-    }
-
-    #[test]
-    fn ml_mutation_ospml() {
-        assert_example_matches("examples/tested/ml/mutation.ospml");
-    }
-
-    #[test]
-    fn ml_nested_calls_osp() {
-        assert_example_matches("examples/tested/ml/nested_calls.osp");
-    }
-
-    #[test]
-    fn ml_nested_calls_ospml() {
-        assert_example_matches("examples/tested/ml/nested_calls.ospml");
-    }
-
-    #[test]
-    fn ml_pipechain_osp() {
-        assert_example_matches("examples/tested/ml/pipechain.osp");
-    }
-
-    #[test]
-    fn ml_pipechain_ospml() {
-        assert_example_matches("examples/tested/ml/pipechain.ospml");
-    }
-
-    #[test]
-    fn ml_recursion_osp() {
-        assert_example_matches("examples/tested/ml/recursion.osp");
-    }
-
-    #[test]
-    fn ml_recursion_ospml() {
-        assert_example_matches("examples/tested/ml/recursion.ospml");
-    }
-
-    #[test]
-    fn ml_results_state_hof_osp() {
-        assert_example_matches("examples/tested/ml/results_state_hof.osp");
-    }
-
-    #[test]
-    fn ml_results_state_hof_ospml() {
-        assert_example_matches("examples/tested/ml/results_state_hof.ospml");
-    }
-
-    #[test]
-    fn ml_strings_osp() {
-        assert_example_matches("examples/tested/ml/strings.osp");
-    }
-
-    #[test]
-    fn ml_strings_ospml() {
-        assert_example_matches("examples/tested/ml/strings.ospml");
-    }
-
-    #[test]
-    fn testing_calculator_test_osp() {
-        assert_example_matches("examples/tested/testing/calculator.test.osp");
-    }
-
-    #[test]
-    fn testing_calculator_test_ospml() {
-        assert_example_matches("examples/tested/testing/calculator.test.ospml");
-    }
-
-    #[test]
-    fn testing_mlcheck_test_osp() {
-        assert_example_matches("examples/tested/testing/mlcheck.test.osp");
-    }
-
-    #[test]
-    fn testing_mlcheck_test_ospml() {
-        assert_example_matches("examples/tested/testing/mlcheck.test.ospml");
-    }
-
-    #[test]
-    fn testing_verdict_test_ospml() {
-        assert_example_matches("examples/tested/testing/verdict.test.ospml");
-    }
+    use std::path::PathBuf;
 
     fn args(list: &[&str]) -> Vec<String> {
         list.iter().map(|s| (*s).to_string()).collect()
@@ -2503,7 +1470,7 @@ mod tests {
     fn profile_run_writes_exports_where_output_points() {
         let path = temp_source(
             "prof_e2e",
-            "fn dec(n: int) -> int = n - 1\n\
+            "fn dec(n: int) -> int = (n - 1) ?: 0\n\
              fn count(n: int) -> int = match n {\n    0 => 0\n    _ => count(dec(n))\n}\n\
              print(\"${count(500)}\")\n",
         );

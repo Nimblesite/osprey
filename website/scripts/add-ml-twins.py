@@ -2,7 +2,7 @@
 # Deterministically add an osprey-ml twin after every osprey block in the
 # website reference docs. Idempotent: never inserts a twin if one already follows.
 #
-# ML translation rules (verified against examples/tested/ml/*.ospml):
+# ML translation rules (verified against the paired tests/flavors/*.ospml corpus):
 #   let x = v        -> x = v
 #   mut c = 0        -> mut c = 0 ; reassign c = e -> c := e
 #   fn f(a, b) = e   -> f (a, b) = e     ; fn f(x) = e -> f x = e

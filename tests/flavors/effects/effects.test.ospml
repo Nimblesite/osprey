@@ -1,0 +1,41 @@
+// ML effect-handling twin of the counter mutation suite.
+
+(** Counter mutation is available only through this handled operation. *)
+effect FlavorCounter
+    (** Add `amount` to the counter the handler owns. *)
+    tick : int => Unit
+
+(** Verify state before, during, and after the handler. *)
+mutationCase () =
+    mut flavorCounter = 0
+
+    // The counter starts at zero for each test run.
+    checkAll "counter initial state" [
+        flavorCounter == 0
+    ]
+
+    handle FlavorCounter
+        tick amount =>
+            flavorCounter := flavorCounter + amount ?: flavorCounter
+    in
+        perform FlavorCounter.tick 1
+
+        // The first operation is independently observable.
+        checkAll "counter first transition" [
+            flavorCounter == 1
+        ]
+
+        perform FlavorCounter.tick 41
+
+        // The second operation reaches the expected total.
+        checkAll "counter second transition" [
+            flavorCounter == 42
+        ]
+
+    // State and rendering survive handler exit.
+    checkAll "counter legacy final state and rendering" [
+        flavorCounter == 42,
+        "counter = ${flavorCounter}" == "counter = 42"
+    ]
+
+test "handled mutation retains every counter transition" mutationCase

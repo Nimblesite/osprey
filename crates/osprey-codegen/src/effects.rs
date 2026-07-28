@@ -7,7 +7,7 @@
 //! indirect call. The example handlers never `resume`, so an arm is an ordinary
 //! function returning the operation's result.
 
-use crate::builder::{CellSlot, Codegen, ResumeCodegenContext};
+use crate::builder::{CellSlot, Codegen, ParamSig, ResumeCodegenContext};
 use crate::cast::coerce_to;
 use crate::conv::unbox_from_i64;
 use crate::error::Result;
@@ -25,7 +25,7 @@ use std::collections::{BTreeSet, HashSet};
 /// Implements [EFFECTS-GENERIC-RUNTIME].
 #[derive(Clone)]
 pub(crate) struct OpSig {
-    pub params: Vec<LType>,
+    pub params: Vec<ParamSig>,
     pub ret: LType,
     pub ret_result_inner: Option<LType>,
     /// Per-parameter: whether the declared type is an effect type parameter.
@@ -35,11 +35,26 @@ pub(crate) struct OpSig {
 }
 
 impl OpSig {
+    fn word_param() -> ParamSig {
+        ParamSig {
+            ty: LType::I64,
+            result_inner: None,
+            fiber: None,
+        }
+    }
+
+    fn param(&self, index: usize) -> ParamSig {
+        self.params
+            .get(index)
+            .copied()
+            .unwrap_or_else(Self::word_param)
+    }
+
     /// A default all-`i64` signature for `arity` parameters — the fallback when
     /// inference recorded no resolved signature for an effect operation.
     fn default_for_arity(arity: usize) -> Self {
         OpSig {
-            params: vec![LType::I64; arity],
+            params: vec![Self::word_param(); arity],
             ret: LType::I64,
             ret_result_inner: None,
             param_erased: vec![false; arity],
@@ -57,7 +72,7 @@ impl OpSig {
     /// `i8* env` (its captured cells + values), e.g. `i64 (i8*, i64)*`.
     fn fn_ptr_ty(&self) -> String {
         let mut parts = vec!["i8*".to_string()];
-        parts.extend(self.params.iter().map(LType::to_string));
+        parts.extend(self.params.iter().map(|param| param.ty.to_string()));
         format!("{} ({})*", self.ret_ty(), parts.join(", "))
     }
 }
@@ -92,14 +107,21 @@ fn bind_arm_params(
     params: &mut Vec<(LType, String)>,
 ) {
     for (i, pname) in arm.params.iter().enumerate() {
-        let pty = sig.params.get(i).copied().unwrap_or(LType::I64);
+        let param = sig.param(i);
         let erased = sig.param_erased.get(i).copied().unwrap_or(false);
         let bound = match resolved.and_then(|r| r.params.get(i)).filter(|_| erased) {
             Some(rt) => crate::effect_generics::unbox_erased(cg, &format!("%{pname}"), rt),
-            None => Value::new(format!("%{pname}"), pty),
+            None => crate::cast::incoming_param(
+                cg,
+                format!("%{pname}"),
+                param,
+                resolved
+                    .and_then(|r| r.params.get(i))
+                    .and_then(crate::types::owner_name),
+            ),
         };
         cg.bind(pname.clone(), bound);
-        params.push((pty, pname.clone()));
+        params.push((param.ty, pname.clone()));
     }
 }
 
@@ -165,9 +187,9 @@ pub(crate) fn op_sig_of(op: &osprey_types::OpType) -> OpSig {
             .iter()
             .map(|t| {
                 if osprey_types::has_type_var(t) {
-                    LType::I64
+                    OpSig::word_param()
                 } else {
-                    ltype_of(t)
+                    ParamSig::of(t)
                 }
             })
             .collect(),
@@ -549,20 +571,22 @@ fn emit_handler_fn(
     env_ty: &str,
 ) -> Result<()> {
     let saved = cg.enter_nested_fn();
+    cg.begin_nested_debug(name, arm.position);
     let mut params = vec![(LType::Ptr, String::from("__env"))];
     reload_env(cg, caps, env_ty);
     bind_arm_params(cg, arm, sig, resolved, &mut params);
     let body = gen_expr(cg, &arm.body)?;
     let ret = if sig.ret_erased {
-        // An erased (generic) result returns boxed — pointer-ness leaves the
-        // arm's frame, so dup before the epilogue drops it [GC-ARC-PERCEUS].
-        crate::arc::escape_retain(cg, &body);
+        // Adapt before retaining: a plain body can become a freshly allocated
+        // Success block, and that actual return value must survive the epilogue.
+        let adapted = crate::effect_generics::adapt_erased(cg, body, resolved.map(|r| &r.ret))?;
+        crate::arc::escape_retain(cg, &adapted);
         // The perform site unboxes it to its resolved type. Implements
-        // [EFFECTS-GENERIC-RUNTIME].
-        crate::effect_generics::box_erased(cg, body, resolved.map(|r| &r.ret))
+        // [EFFECTS-GENERIC-RUNTIME] [GC-ARC-PERCEUS].
+        crate::effect_generics::box_raw_value(cg, adapted)
     } else if let Some(inner) = sig.ret_result_inner {
         if body.result_inner.is_some() {
-            body
+            crate::result::repack_to_inner(cg, body, inner)?
         } else {
             crate::result::make_ok(cg, body, inner)?
         }
@@ -622,6 +646,48 @@ struct DriveArm {
     arm_fn: String,
 }
 
+/// The complete runtime shape of the handled expression's answer. Resuming
+/// handlers cross an erased `i64` mailbox, so Result and aggregate metadata
+/// must travel beside the LLVM scalar type instead of being discarded.
+#[derive(Clone)]
+struct AnswerShape {
+    ty: LType,
+    owner: Option<String>,
+    result_inner: Option<LType>,
+    payload_owner: Option<String>,
+}
+
+impl AnswerShape {
+    fn of(value: &Value) -> Self {
+        Self {
+            ty: value.ty,
+            owner: value.osp_ty.clone(),
+            result_inner: value.result_inner,
+            payload_owner: value.payload_owner.clone(),
+        }
+    }
+
+    fn restore(&self, cg: &mut Codegen, raw: &str) -> Value {
+        let mut value =
+            unbox_coro_value(cg, raw, self.ty, self.result_inner).with_owner(self.owner.clone());
+        value.payload_owner.clone_from(&self.payload_owner);
+        value
+    }
+}
+
+/// Coerce an arm answer without ever erasing a Result. The only
+/// representation-changing coercion allowed here is the language's safe
+/// `T -> Success(T)` promotion when the handled expression itself is Result.
+fn coerce_to_answer(cg: &mut Codegen, value: Value, answer: &AnswerShape) -> Result<Value> {
+    match answer.result_inner {
+        Some(inner) if value.result_inner.is_some() => {
+            crate::result::repack_to_inner(cg, value, inner)
+        }
+        Some(inner) => crate::result::make_ok(cg, value, inner),
+        None => coerce_to(cg, value, answer.ty),
+    }
+}
+
 /// `handle` region whose arms contain explicit `resume`: the handled body runs
 /// on a body thread and each `perform` suspends into this host-side dispatcher.
 fn gen_resuming_handler(
@@ -646,7 +712,7 @@ fn gen_resuming_handler(
     let body_fn = format!("__resume_body_{effect}_{id}");
     let drive_fn = format!("__resume_drive_{effect}_{id}");
 
-    let answer_ty = emit_resuming_body_fn(cg, &body_fn, body, &caps, &env_ty)?;
+    let answer = emit_resuming_body_fn(cg, &body_fn, body, &caps, &env_ty)?;
     let mut drive_arms = Vec::new();
     for (op_id, arm) in arms.iter().enumerate() {
         let sig = op_sig_for(cg, effect, arm);
@@ -660,7 +726,7 @@ fn gen_resuming_handler(
             &ArmFnSpec {
                 name: &arm_fn,
                 drive_fn: &drive_fn,
-                answer_ty,
+                answer: &answer,
                 sig: &sig,
                 resolved,
                 caps: &caps,
@@ -674,7 +740,7 @@ fn gen_resuming_handler(
             arm_fn,
         });
     }
-    emit_drive_fn(cg, &drive_fn, &drive_arms);
+    emit_drive_fn(cg, &drive_fn, &drive_arms)?;
 
     let coro = cg.call("i8*", "__osprey_coro_new", "i8*", &[&env]);
     for arm in &drive_arms {
@@ -713,7 +779,7 @@ fn gen_resuming_handler(
     if env != "null" {
         crate::arc::release_operand(cg, &env);
     }
-    let out = unbox_from_i64(cg, &boxed, answer_ty);
+    let out = answer.restore(cg, &boxed);
     // The body fn escape-retained its answer at the boxing site: own it here.
     crate::arc::own(cg, &out);
     Ok(out)
@@ -725,24 +791,23 @@ fn emit_resuming_body_fn(
     body: &Expr,
     caps: &[ArmCap],
     env_ty: &str,
-) -> Result<LType> {
+) -> Result<AnswerShape> {
     let saved = cg.enter_nested_fn();
     reload_env(cg, caps, env_ty);
-    let body_raw = gen_expr(cg, body)?;
-    let body = crate::result::unwrap(cg, body_raw);
-    let answer_ty = body.ty;
+    let body = gen_expr(cg, body)?;
+    let answer = AnswerShape::of(&body);
     let boxed = box_codegen_value(cg, body);
     crate::arc::epilogue(cg, None);
     cg.emit(format!("ret i64 {}", boxed.operand));
     cg.exit_nested_fn(saved, "i64", name, &[(LType::Ptr, String::from("__env"))]);
-    Ok(answer_ty)
+    Ok(answer)
 }
 
 fn emit_suspend_fn(cg: &mut Codegen, name: &str, op_id: usize, sig: &OpSig) {
     let saved = cg.enter_nested_fn();
     let mut params = vec![(LType::Ptr, String::from("__coro"))];
-    for (i, pty) in sig.params.iter().copied().enumerate() {
-        params.push((pty, format!("__arg{i}")));
+    for (i, param) in sig.params.iter().copied().enumerate() {
+        params.push((param.ty, format!("__arg{i}")));
     }
 
     let args_ptr = if sig.params.is_empty() {
@@ -750,8 +815,8 @@ fn emit_suspend_fn(cg: &mut Codegen, name: &str, op_id: usize, sig: &OpSig) {
     } else {
         let arr_ty = format!("[{} x i64]", sig.params.len());
         let arr = cg.emit_reg(format!("alloca {arr_ty}"));
-        for (i, pty) in sig.params.iter().copied().enumerate() {
-            let value = Value::new(format!("%__arg{i}"), pty);
+        for (i, param) in sig.params.iter().copied().enumerate() {
+            let value = crate::cast::incoming_param(cg, format!("%__arg{i}"), param, None);
             let boxed = box_codegen_value(cg, value);
             let slot = cg.emit_reg(format!(
                 "getelementptr {arr_ty}, {arr_ty}* {arr}, i64 0, i64 {i}"
@@ -784,7 +849,7 @@ fn emit_suspend_fn(cg: &mut Codegen, name: &str, op_id: usize, sig: &OpSig) {
 struct ArmFnSpec<'a> {
     name: &'a str,
     drive_fn: &'a str,
-    answer_ty: LType,
+    answer: &'a AnswerShape,
     sig: &'a OpSig,
     resolved: Option<&'a osprey_types::OpType>,
     caps: &'a [ArmCap],
@@ -793,25 +858,33 @@ struct ArmFnSpec<'a> {
 
 fn emit_resuming_arm_fn(cg: &mut Codegen, arm: &HandlerArm, spec: &ArmFnSpec<'_>) -> Result<()> {
     let saved = cg.enter_nested_fn();
+    cg.begin_nested_debug(spec.name, arm.position);
     reload_env(cg, spec.caps, spec.env_ty);
     let mut params = vec![
         (LType::Ptr, String::from("__env")),
         (LType::Ptr, String::from("__coro")),
     ];
     bind_arm_params(cg, arm, spec.sig, spec.resolved, &mut params);
-    let op_ret_is_result = spec.sig.ret_result_inner.is_some()
-        || spec
-            .resolved
-            .is_some_and(|r| result_inner(&r.ret).is_some());
+    let op_ret_ty = spec
+        .resolved
+        .map_or(spec.sig.ret, |r| crate::types::ltype_of(&r.ret));
+    let op_ret_result_inner = spec
+        .resolved
+        .and_then(|r| result_inner(&r.ret))
+        .or(spec.sig.ret_result_inner);
     cg.resume_ctx = Some(ResumeCodegenContext {
         env: String::from("%__env"),
         coro: String::from("%__coro"),
         drive_fn: spec.drive_fn.to_string(),
-        answer_ty: spec.answer_ty,
-        op_ret_is_result,
+        answer_ty: spec.answer.ty,
+        answer_result_inner: spec.answer.result_inner,
+        answer_owner: spec.answer.owner.clone(),
+        answer_payload_owner: spec.answer.payload_owner.clone(),
+        op_ret_ty,
+        op_ret_result_inner,
     });
     let body_raw = gen_expr(cg, &arm.body)?;
-    let body = coerce_to(cg, body_raw, spec.answer_ty)?;
+    let body = coerce_to_answer(cg, body_raw, spec.answer)?;
     let boxed = box_codegen_value(cg, body);
     crate::arc::epilogue(cg, None);
     cg.emit(format!("ret i64 {}", boxed.operand));
@@ -819,7 +892,7 @@ fn emit_resuming_arm_fn(cg: &mut Codegen, arm: &HandlerArm, spec: &ArmFnSpec<'_>
     Ok(())
 }
 
-fn emit_drive_fn(cg: &mut Codegen, name: &str, arms: &[DriveArm]) {
+fn emit_drive_fn(cg: &mut Codegen, name: &str, arms: &[DriveArm]) -> Result<()> {
     let saved = cg.enter_nested_fn();
     let params = vec![
         (LType::Ptr, String::from("__env")),
@@ -860,14 +933,15 @@ fn emit_drive_fn(cg: &mut Codegen, name: &str, arms: &[DriveArm]) {
     for (arm, arm_label) in arms.iter().zip(&arm_labels) {
         cg.start_block(arm_label);
         let mut args = vec![String::from("i8* %__env"), String::from("i8* %__coro")];
-        for (idx, pty) in arm.sig.params.iter().copied().enumerate() {
+        for (idx, param) in arm.sig.params.iter().copied().enumerate() {
             let raw = cg.call(
                 "i64",
                 "__osprey_coro_arg",
                 "i8*, i64",
                 &["%__coro", &idx.to_string()],
             );
-            let value = unbox_from_i64(cg, &raw, pty);
+            let value = unbox_coro_value(cg, &raw, param.ty, param.result_inner);
+            let value = crate::cast::coerce_param(cg, value, param)?;
             args.push(value.typed());
         }
         let arm_result = cg.emit_reg(format!("call i64 @{}({})", arm.arm_fn, args.join(", ")));
@@ -889,6 +963,7 @@ fn emit_drive_fn(cg: &mut Codegen, name: &str, arms: &[DriveArm]) {
     cg.call_void("__osprey_coro_abort", "i8*", &["%__coro"]);
     cg.emit("ret i64 0");
     cg.exit_nested_fn(saved, "i64", name, &params);
+    Ok(())
 }
 
 pub(crate) fn gen_resume(cg: &mut Codegen, value: Option<&Expr>) -> Result<Value> {
@@ -902,13 +977,17 @@ pub(crate) fn gen_resume(cg: &mut Codegen, value: Option<&Expr>) -> Result<Value
         Some(expr) => gen_expr(cg, expr)?,
         None => Value::unit(),
     };
-    // The resume value lands in the operation-result slot: unwrap a Result
-    // only when the operation does NOT expect one (the usual value-site
-    // rule); a Result-instantiated slot receives the whole block.
-    let raw_value = if ctx.op_ret_is_result {
-        raw_value
+    // The resume value lands in the operation-result slot. Preserve a complete
+    // Result, safely promote a plain value to Success when that is the declared
+    // slot, and reject the forbidden Result -> plain direction.
+    let raw_value = if let Some(inner) = ctx.op_ret_result_inner {
+        if raw_value.result_inner.is_some() {
+            crate::result::repack_to_inner(cg, raw_value, inner)?
+        } else {
+            crate::result::make_ok(cg, raw_value, inner)?
+        }
     } else {
-        crate::result::unwrap(cg, raw_value)
+        coerce_to(cg, raw_value, ctx.op_ret_ty)?
     };
     let boxed_value = box_codegen_value(cg, raw_value);
     let resumed = cg.call(
@@ -940,7 +1019,10 @@ pub(crate) fn gen_resume(cg: &mut Codegen, value: Option<&Expr>) -> Result<Value
     let phi = cg.emit_reg(format!(
         "phi i64 [ {resumed}, %{done_pred} ], [ {nested}, %{more_pred} ]"
     ));
-    Ok(unbox_from_i64(cg, &phi, ctx.answer_ty))
+    let mut answer = unbox_coro_value(cg, &phi, ctx.answer_ty, ctx.answer_result_inner)
+        .with_owner(ctx.answer_owner);
+    answer.payload_owner = ctx.answer_payload_owner;
+    Ok(answer)
 }
 
 fn box_codegen_value(cg: &mut Codegen, value: Value) -> Value {
@@ -1000,10 +1082,9 @@ pub(crate) fn gen_perform(
                 cg,
                 v,
                 site.as_ref().and_then(|s| s.op.params.get(i)),
-            )
+            )?
         } else {
-            let want = sig.params.get(i).copied().unwrap_or(LType::I64);
-            coerce_to(cg, v, want)?
+            crate::cast::coerce_param(cg, v, sig.param(i))?
         };
         typed.push(v.typed());
     }

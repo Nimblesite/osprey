@@ -7,9 +7,11 @@
 
 module Money
     pennies : int -> string
-    pennies c = match c % 100 < 10
-        true => "0${c % 100}"
-        false => "${c % 100}"
+    pennies c =
+        remainder = (c % 100) ?: 0
+        match remainder < 10
+            true => "0${remainder}"
+            false => "${remainder}"
 
     triple : int -> string
     triple n = match n < 10
@@ -21,10 +23,13 @@ module Money
     group : int -> string
     group dollars = match dollars < 1000
         true => "${dollars}"
-        false => "${group (intDiv dollars 1000)},${triple (dollars % 1000)}"
+        false =>
+            next = intDiv dollars 1000 ?: 0
+            remainder = (dollars % 1000) ?: 0
+            "${group next},${triple remainder}"
 
     export show : int -> string
-    show cents = "$${group (intDiv cents 100)}.${pennies cents}"
+    show cents = "$${group (intDiv cents 100 ?: 0)}.${pennies cents}"
 
     export positive : int -> bool
     positive cents = cents > 0
@@ -39,8 +44,8 @@ module Json
     escape s =
         bslash = "\\"
         quote = "\""
-        step = unwrap (replace s bslash (bslash + bslash))
-        unwrap (replace step quote (bslash + quote))
+        step = replace s bslash (bslash + bslash) ?: ""
+        replace step quote (bslash + quote) ?: ""
 
     quoted : string -> string
     quoted s =
@@ -92,15 +97,15 @@ module Accounts
 
 q = "\""
 
-// A refusal is a domain value, not an error: classify one exhaustively.
+(** A refusal is a domain value, not an error: classify one exhaustively. *)
 settle : Outcome -> string
 settle o = match o
     Landed balance => "landed ${balance}"
     Refused why => "refused ${why}"
 
-// The pure ML-flavor testing surface [TESTING-VERDICT]: a three-state Verdict
-// value and combinators. A case is a pure function returning a Verdict; `test`
-// pattern-matches and reports it. No exceptions, no imperative assertions.
+(** The pure ML-flavor testing surface [TESTING-VERDICT]: a three-state Verdict
+    value and combinators. A case is a pure function returning a Verdict; `test`
+    pattern-matches and reports it. No exceptions, no imperative assertions. *)
 type Verdict =
     Pass
     Fail
@@ -117,65 +122,67 @@ andThen first rest = match first
     Fail reason => Fail(reason = reason)
     Skip why => Skip(why = why)
 
-// --- account-opening rule ---
+(** --- account-opening rule --- *)
 namableCase () =
     real = andThen (check ("a real name is namable", true, Accounts::namable "Amelia Chen")) (check ("single char is namable", true, Accounts::namable "x"))
     andThen real (check ("empty name is refused", false, Accounts::namable ""))
 
-// --- movement-amount rule ---
+(** --- movement-amount rule --- *)
 movableCase () =
     pos = andThen (check ("positive cents move", true, Accounts::movable 5000)) (check ("one cent moves", true, Accounts::movable 1))
-    zeroNeg = andThen (check ("zero does not move", false, Accounts::movable 0)) (check ("negative does not move", false, Accounts::movable (0 - 250)))
+    zeroNeg = andThen (check ("zero does not move", false, Accounts::movable 0)) (check ("negative does not move", false, Accounts::movable ((0 - 250) ?: 0)))
     andThen pos zeroNeg
 
-// --- the Outcome union both API and main pattern-match ---
+(** --- the Outcome union both API and main pattern-match --- *)
 outcomeCase () =
     andThen (check ("landed carries the new balance", "landed 3600", settle (Landed(balance = 3600)))) (check ("refused carries the reason", "refused insufficient funds", settle (Refused(why = "insufficient funds"))))
 
-// --- JSON rendering, escaping the owner name through the encoder ---
+(** --- JSON rendering, escaping the owner name through the encoder --- *)
 jsonCase () =
     plain = check ("plain account row", "{${q}id${q}:1,${q}owner${q}:${q}Amelia Chen${q},${q}cents${q}:246240,${q}balance${q}:${q}$2,462.40${q}}", Accounts::json (Account(id = 1, owner = "Amelia Chen", balance = 246240)))
     andThen plain (check ("owner with a quote stays valid JSON", "{${q}id${q}:9,${q}owner${q}:${q}a${bs}${q}b${q},${q}cents${q}:0,${q}balance${q}:${q}$0.00${q}}", Accounts::json (Account(id = 9, owner = "a${q}b", balance = 0))))
 
-// --- fixed-width TUI row alignment ---
+(** --- fixed-width TUI row alignment --- *)
 rowCase () =
     wide = check ("row pads owner and right-aligns money", "│  1 │ Amelia Chen  │ $2,462.40 │", Accounts::row (Account(id = 1, owner = "Amelia Chen", balance = 246240)))
     andThen wide (check ("short owner and small balance pad out", "│  3 │ Bo           │     $0.05 │", Accounts::row (Account(id = 3, owner = "Bo", balance = 5))))
 
 bs = "\\"
 
-// --- MOCKING VIA ALGEBRAIC EFFECTS ---
-//
-// `Vault` is the same capability shape main.ospml wires to SQLite via
-// Ledger::Store. Business logic performs against the EFFECT; each test
-// installs its own handler — a mock — so one workflow is proven against
-// any storage behavior with no database, no injection framework, and
-// compile-time safety: forget a handler and the suite refuses to build.
+(** --- MOCKING VIA ALGEBRAIC EFFECTS ---
+
+    `Vault` is the same capability shape main.ospml wires to SQLite via
+    Ledger::Store. Business logic performs against the EFFECT; each test
+    installs its own handler — a mock — so one workflow is proven against
+    any storage behavior with no database, no injection framework, and
+    compile-time safety: forget a handler and the suite refuses to build. *)
 effect Vault
+    (** Read the balance held for `account`. *)
     balance : int => int
+    (** Withdraw `amount` from `account`, reporting the `Outcome`. *)
     debit : (int, int) => Outcome
 
-// The workflow under test: rent only moves when the guard says it can.
+(** The workflow under test: rent only moves when the guard says it can. *)
 payRent account cents = match Accounts::movable cents && perform Vault.balance account >= cents
     true => perform Vault.debit account cents
     false => Refused(why = "blocked by guard")
 
-// Mock 1: a flush account — every debit lands on a fixed 9000-cent float.
+(** Mock 1: a flush account — every debit lands on a fixed 9000-cent float. *)
 flushVault () = handle Vault
     balance id => 9000
-    debit id cents => Landed(balance = 9000 - cents)
+    debit id cents => Landed(balance = (9000 - cents) ?: 0)
 in settle (payRent 1 2500)
 
-// Mock 2: a broke account — the guard refuses before storage is even asked.
+(** Mock 2: a broke account — the guard refuses before storage is even asked. *)
 brokeVault () = handle Vault
     balance id => 40
     debit id cents => Landed(balance = 0)
 in settle (payRent 1 2500)
 
-// Mock 3: interaction spy — proves the guard SHORT-CIRCUITS on a bad amount.
-// The arms are poisoned to PASS the guard and land if ever consulted: a
-// "landed"/"vault touched" result would unmask a zero-cent debit reaching
-// storage, so "refused blocked by guard" proves domain-only refusal.
+(** Mock 3: interaction spy — proves the guard SHORT-CIRCUITS on a bad amount.
+    The arms are poisoned to PASS the guard and land if ever consulted: a
+    "landed"/"vault touched" result would unmask a zero-cent debit reaching
+    storage, so "refused blocked by guard" proves domain-only refusal. *)
 spyVault () = handle Vault
     balance id => 999999
     debit id cents => Refused(why = "vault touched")

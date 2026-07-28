@@ -129,7 +129,7 @@ fn hex_chains(unslid_addrs: &[u64]) -> Vec<Vec<SymFrame>> {
 }
 
 /// First `name` on `PATH` that exists as a file.
-pub(crate) fn find_tool(name: &str) -> Option<PathBuf> {
+fn find_tool(name: &str) -> Option<PathBuf> {
     let path = std::env::var_os("PATH")?;
     std::env::split_paths(&path)
         .map(|dir| dir.join(name))
@@ -137,7 +137,7 @@ pub(crate) fn find_tool(name: &str) -> Option<PathBuf> {
 }
 
 /// Run to completion, returning stdout only on a zero exit status.
-pub(crate) fn run_capture(command: &mut Command) -> Option<String> {
+fn run_capture(command: &mut Command) -> Option<String> {
     let output = command.stderr(Stdio::null()).output().ok()?;
     output
         .status
@@ -165,7 +165,7 @@ fn run_with_stdin(command: &mut Command, input: &str) -> Option<String> {
 /// address, each holding one or more `name\nfile:line:col` PAIRS —
 /// innermost inline frame first. Unresolved addresses (`??`) become
 /// single hex-frame chains.
-pub(crate) fn parse_llvm_output(out: &str, unslid_addrs: &[u64]) -> Vec<Vec<SymFrame>> {
+fn parse_llvm_output(out: &str, unslid_addrs: &[u64]) -> Vec<Vec<SymFrame>> {
     let blocks: Vec<&str> = out
         .split("\n\n")
         .map(str::trim)
@@ -220,7 +220,7 @@ fn parse_file_line(loc: &str) -> (String, u32) {
 
 /// One `atos` line → frame. Formats: `name (in mod) (file.c:12)`,
 /// `name (in mod) + 40`, or a bare `0x…` for unresolved addresses.
-pub(crate) fn parse_atos_line(line: &str, addr: u64) -> SymFrame {
+fn parse_atos_line(line: &str, addr: u64) -> SymFrame {
     let trimmed = line.trim();
     if trimmed.is_empty() || trimmed.starts_with("0x") {
         return SymFrame::hex(addr);

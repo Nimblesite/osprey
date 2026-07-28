@@ -12,7 +12,8 @@ permanent syntaxes called **flavors**:
 - **ML flavor (`.ospml`)** — offside-rule layout (indentation, no braces),
   curry-by-default, whitespace application `f a b`, `\x => e` lambdas, `:=`
   mutation, `->` for types and `=>` for clauses. Terse and expression-first.
-  **In active development**, with runnable proof in [`tested/ml/`](tested/ml).
+  **In active development**, with runnable proof in the paired
+  [`tests/flavors/`](../tests/flavors) assertion corpus.
 
 Neither flavor is the watered-down one. The Default surface is what a **systems
 programmer** reaches for — real braces, explicit calls, nothing optional. The ML
@@ -39,33 +40,35 @@ folder may mix flavors across files. Because every file lowers to the same AST, 
 import each other normally (per-file selection ships today; multi-file cross-flavor
 imports are the design direction).
 
-The differential harness ([`../crates/diff_examples.sh`](../crates/diff_examples.sh))
-discovers examples additively across both flavors. A `.osp`/`.ospml` twin that
-produces identical output can share a single `.expectedoutput` file.
+The differential harness ([`../crates/run_test_corpus.sh`](../crates/run_test_corpus.sh))
+discovers programs additively across both flavors. A `.osp`/`.ospml` twin that
+produces identical output shares a single `.expectedoutput` file — one golden
+proving both flavors print the same bytes.
 
 ## Directory layout
 
 - **`tested/`** — working examples that compile and run; output is checked
   byte-for-byte against `.expectedoutput`. Subfolders: `basics/`, `db/`,
-  `effects/`, `fiber/`, `http/`, and `ml/`.
-- **`tested/ml/`** — the ML-flavor examples (see below).
+  `effects/`, `fiber/`, and `http/`.
+- **`../tests/flavors/`** — paired Default/ML executable documentation with
+  internal state assertions and edge cases.
 - **`failscompilation/`** — programs the compiler must reject, each paired with the
   expected diagnostic.
 - **`api/`, `db_postgres/`, `statefulhttp/`, `websocketserver/`, `tui/`, `wasm/`** —
   larger application/runtime examples.
 - **`bugs/`** — regression reproductions.
 
-## ML-flavor examples (`tested/ml/`)
+## Paired flavor tests (`../tests/flavors/`)
 
 Each exercises a distinct ML-surface feature and runs today:
 
-| File | ML feature exercised |
+| Suite | ML feature exercised |
 | --- | --- |
-| `hello.ospml` | layout basics: top-level bindings, `print`, `${...}` interpolation |
-| `curry_tour.ospml` | curry-by-default + partial application (`add 10`) |
-| `match_tour.ospml` | offside-rule `match` with `=>` clauses |
-| `mutation.ospml` | `mut` bindings and `:=` mutation vs. `=` binding |
-| `results_state_hof.ospml` | higher-order functions + `Result` payload matching |
+| `smoke/` | layout basics, top-level bindings, and interpolation |
+| `functions/` | currying, closures, higher-order calls, nesting, and recursion |
+| `matching/` | offside-rule matches, literal arms, and wildcard branches |
+| `effects/` | handler-owned `mut` state and `:=` mutation |
+| `workflows/` | Results, partial application, matching, and pipelines together |
 
 Currying is the one honest difference between the flavors. ML `add x y = x + y`
 lowers to the Default **explicit-curry** form `fn add(x) = fn(y) => x + y` — the
@@ -82,9 +85,9 @@ multi-parameter — both emitting byte-identical IR.
 
 Every file here is an ill-formed program the language defines as a compile error.
 The must-reject suite in
-[`../crates/diff_examples.sh`](../crates/diff_examples.sh) runs each one and
-requires a nonzero exit; the count still accepted is held down by the
-`FC_EXPECTED_ESCAPES` ratchet, so an added fixture that the compiler *accepts*
+[`../crates/osprey-cli/tests/examples_compile.rs`](../crates/osprey-cli/tests/examples_compile.rs)
+runs each one through the pipeline and requires rejection. The bar is ZERO
+escapes — a fixture the compiler *accepts* names itself in the failure and
 breaks CI. Never add one without confirming it is actually rejected.
 
 - **Negatives use `.ospo`.** That extension is not a source extension anywhere in
@@ -103,21 +106,22 @@ breaks CI. Never add one without confirming it is actually rejected.
   Default-flavor spellings (`{ … }` records, the `?` sigil) that the ML lexer
   refuses outright `[FLAVOR-BOUNDARY]`.
 - **Each fixture pairs with `<name>.ospo.expectedoutput`** holding the compiler's
-  real stderr, captured verbatim — documentation of the exact diagnostic, never
-  hand-written prose.
+  real stderr, captured verbatim. The file documents the intended diagnostic.
+  The shell ratchet checks only for a nonzero exit, so diagnostic-focused work
+  must compare stderr with this file explicitly.
 - **A case the compiler cannot reject yet is parked with `.notimplemented`** (for
   example `infinite_handler_recursion.notimplemented`). The extension keeps it
   out of discovery so it neither passes nor inflates the ratchet; rename it back
   to `.ospo` when the validation lands.
 
-## Running an example
+## Running the paired flavor smoke tests
 
 ```bash
-# Default flavor (the .osp twin of the ML hello)
-osprey examples/tested/ml/hello.osp --run
+# Default flavor
+osprey test tests/flavors/smoke/smoke.test.osp
 
-# ML flavor (resolved by the .ospml extension)
-osprey examples/tested/ml/hello.ospml --run
+# ML flavor
+osprey test tests/flavors/smoke/smoke.test.ospml
 ```
 
 The flavor is resolved automatically from the extension; add `--flavor ml` only to
@@ -125,8 +129,7 @@ force the ML surface on a file without the `.ospml` extension or marker.
 
 ## ML status (honest)
 
-- **H1.** Default is fully implemented; ML is in active development with the runnable
-  examples above as proof.
-- **H2.** ML **effects/handlers** (`handle … do`) are the **deferred Phase 0**
-  shared-core feature and error loudly today. They are not shown here as working —
-  all effect demos use the Default flavor, which is complete.
+- **H1.** Default is fully implemented; ML is in active development with the paired
+  assertion suites above as executable proof.
+- **H2.** ML effects and handlers are covered by paired suites under
+  `tests/flavors/effects/` and `tests/effects/resume/`.

@@ -1,0 +1,71 @@
+(** Return a catalog item or the caller's fallback. *)
+itemAt : int -> string -> string
+itemAt index fallback = ["coffee", "bread", "fruit"][index] ?: fallback
+
+(** Return an item's price or zero when it is absent. *)
+unitPrice : string -> int
+unitPrice item = ["coffee" => 12, "bread" => 5, "fruit" => 7][item] ?: 0
+
+(** Apply the membership tier's percentage discount. *)
+loyaltyDiscount : string -> int -> int
+loyaltyDiscount "gold" subtotal = intDiv ((subtotal * 20) ?: 0) 100 ?: 0
+loyaltyDiscount "silver" subtotal = intDiv ((subtotal * 10) ?: 0) 100 ?: 0
+loyaltyDiscount _ _ = 0
+
+(** Compose price lookup, quantity, and loyalty policy. *)
+total : string -> string -> int -> int
+total level item quantity =
+    subtotal = unitPrice item * quantity ?: 0
+    subtotal - loyaltyDiscount level subtotal ?: 0
+
+(** Normalize the customer and render the receipt. *)
+receipt : string -> string -> string -> int -> string
+receipt customer level item quantity =
+    normalized = toUpperCase (trim customer)
+    "${normalized}:${item}:${quantity}:${total level item quantity}"
+
+(** Verify catalog fallbacks, prices, and collection state. *)
+catalogueInteraction () =
+    // Cover both successful and fallback interactions.
+    checkAll "catalogue state" [
+        itemAt 0 "missing" == "coffee",
+        itemAt 2 "missing" == "fruit",
+        itemAt 8 "missing" == "missing",
+        unitPrice (itemAt 0 "missing") == 12,
+        unitPrice (itemAt 1 "missing") == 5,
+        unitPrice "tea" == 0,
+        listLength ["coffee", "bread", "fruit"] == 3,
+        itemAt 9 "missing" != itemAt 0 "missing"
+    ]
+
+(** Verify every tier with quantities and missing items. *)
+pricingInteraction () =
+    // Cover every branch and a cross-tier invariant.
+    checkAll "pricing state" [
+        total "gold" "coffee" 5 == 48,
+        total "silver" "bread" 4 == 18,
+        total "guest" "fruit" 3 == 21,
+        total "gold" "tea" 10 == 0,
+        loyaltyDiscount "gold" 60 == 12,
+        loyaltyDiscount "silver" 60 == 6,
+        loyaltyDiscount "guest" 60 == 0,
+        total "gold" "coffee" 5 < total "guest" "coffee" 5
+    ]
+
+(** Verify receipts composed from lookups, pricing, pipes, and strings. *)
+receiptInteraction () =
+    // Cover the complete receipt workflow.
+    checkAll "receipt state" [
+        receipt "  Ada " "gold" "coffee" 5 == "ADA:coffee:5:48",
+        receipt "Lin" "guest" "tea" 2 == "LIN:tea:2:0",
+        contains (receipt "Ada" "gold" "bread" 2) ":bread:",
+        startsWith (receipt "  jo " "guest" "fruit" 1) "JO:",
+        endsWith (receipt "Ada" "silver" "coffee" 2) ":22",
+        !(contains (receipt " Ada " "guest" "fruit" 1) " "),
+        (receipt "Ada" "guest" "fruit" 2 |> toUpperCase) == "ADA:FRUIT:2:14",
+        receipt "Kai" "silver" (itemAt 1 "missing") ((2 * 2) ?: 0) == "KAI:bread:4:18"
+    ]
+
+test "catalogue lookup drives prices and fallbacks" catalogueInteraction
+test "pricing combines maps, matches, Results and arithmetic" pricingInteraction
+test "receipts compose normalization, totals and pipelines" receiptInteraction

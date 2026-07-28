@@ -133,3 +133,13 @@ __pycache__/
 
 
 *.wasm
+
+__pycache__/
+
+
+.mcp.json
+
+# Written into the CWD by the file-I/O regression test
+# (tests/regressions/basics/files/file_io_json_workflow.test.osp), which means
+# it lands at the repo root whenever the corpus is run from there.
+test_output.txt

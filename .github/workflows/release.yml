@@ -413,7 +413,7 @@ jobs:
         run: |
           set -euo pipefail
           exe=""; [ "${{ runner.os }}" = "Windows" ] && exe=".exe"
-          unzip -l *.vsix | grep -F "extension/bin/${{ matrix.target }}/osprey${exe}"
+          unzip -l ./*.vsix | grep -F "extension/bin/${{ matrix.target }}/osprey${exe}"
       # Packaging is per-platform (each VSIX bundles the matching native binary);
       # publishing is centralised in the publish-marketplace / publish-openvsx
       # jobs so the registry tokens live in one least-privilege place.

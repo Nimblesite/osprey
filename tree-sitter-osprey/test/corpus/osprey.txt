@@ -447,3 +447,50 @@ fn run(x: billing::Money) -> billing::Result<int> = {
                       (expression
                         (primary_expression
                           (identifier))))))))))))))
+
+================================================================================
+Documented expression statement: `///` above a test case [TESTING-DOC]
+================================================================================
+
+/// Addition is commutative.
+///
+/// # Since
+/// 0.3
+test("commutes", commutesCase)
+
+test("undocumented", bareCase)
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (statement
+    (expression_statement
+      (doc_comment)
+      (expression
+        (call_expression
+          (expression
+            (primary_expression
+              (identifier)))
+          (argument_list
+            (expression
+              (primary_expression
+                (literal
+                  (string))))
+            (expression
+              (primary_expression
+                (identifier))))))))
+  (statement
+    (expression_statement
+      (expression
+        (call_expression
+          (expression
+            (primary_expression
+              (identifier)))
+          (argument_list
+            (expression
+              (primary_expression
+                (literal
+                  (string))))
+            (expression
+              (primary_expression
+                (identifier)))))))))

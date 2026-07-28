@@ -8,19 +8,21 @@
 //! from the real AST, not by shelling out. [LSP-REUSE-LSPKIT]
 
 pub mod analysis;
-pub mod complete;
+pub(crate) mod complete;
 pub mod context;
-pub mod diagnostics;
+pub(crate) mod diagnostics;
+pub(crate) mod effects;
 pub mod engine;
-pub mod features;
-pub mod hover;
-pub mod keywords;
-pub mod mlrender;
+pub(crate) mod features;
+pub(crate) mod hover;
+pub(crate) mod keywords;
+pub(crate) mod mlrender;
 pub mod model;
+pub(crate) mod reference_docs;
 pub mod server;
 pub mod testing;
 pub mod text;
-pub mod wire;
+pub(crate) mod wire;
 pub mod workspace;
 
 pub use crate::analysis::{builtin_hover, symbols_json};

@@ -1,0 +1,32 @@
+=== COMPREHENSIVE FIELD ACCESS TEST ===
+Test 1 - Basic integer fields:
+Point x: 15
+Point y: 25
+
+Test 2 - Boolean and integer fields:
+User ID: 42
+User active: 1
+
+Test 3 - Field access in arithmetic:
+Rectangle width: 10
+Rectangle height: 5
+Area: Success(50)
+
+Test 4 - Field access in conditionals:
+User status: Active User
+
+Test 5 - Non-destructive updates:
+Original count: 0
+After update: 0
+Updated point: (100, 200)
+Original point unchanged: (15, 25)
+
+Test 6 - Complex expressions with field access:
+Rectangle perimeter: Success(30)
+Manhattan distance from origin: Success(40)
+Calculated area using function: Success(50)
+
+=== COMPREHENSIVE FIELD ACCESS TEST COMPLETE ===
+ok 1 - field access feeds expressions without mutating records
+1..1
+# tests=1 passed=1 failed=0 skipped=0

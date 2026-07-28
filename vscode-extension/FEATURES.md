@@ -84,6 +84,7 @@ Intelligent autocompletion for:
 - **Type information**: Hover over variables to see their types
 - **Function signatures**: Detailed parameter and return type info
 - **Documentation**: Built-in function documentation
+- **Keyword meanings**: Hover any reserved keyword (`match`, `handle`, `in`, …) for a one-line explanation
 - **Pipe operator help**: Comprehensive `|>` operator documentation
 
 ### Signature Help
@@ -97,6 +98,36 @@ Intelligent autocompletion for:
 - **Function outline**: Quick navigation to functions
 - **Type definitions**: Jump to type declarations
 - **Symbol hierarchy**: Organized code structure view
+
+## 🧪 Test Explorer
+
+### Discovery and running
+
+- **Automatic discovery**: `*.test.osp` and `*.test.ospml` files and their
+  individual `test(...)` cases appear in the Testing view
+- **Run profiles**: **Run**, **Coverage** (line coverage in the gutter), and
+  **Profile**
+- **Profile a test**: run any file or single case under the sampling CPU
+  profiler — the flame graph opens and per-line heat annotations appear in the
+  source, with each suite's artifacts (`.speedscope.json`, `.cpuprofile`,
+  `.folded`, `.profile.json`) kept in a per-run directory named in the output
+
+### Test documentation
+
+A `///` block (ML: `(** … *)`) directly above a `test(...)` case documents that
+case, and the extension surfaces it four ways:
+
+- **Inline description**: the doc's first line renders beside the case name in
+  the Testing tree
+- **Hover**: hovering the `test(...)` call shows the whole block — summary,
+  body, and every `# Parameters` / `# Returns` / `# Raises` / `# Examples` /
+  `# See also` / `# Since` / `# Deprecated` section
+- **`Osprey: Show Test Documentation`**: opens the rendered block as Markdown,
+  from the Testing view's context menu or the cursor's position in a test file
+- **Failure messages**: a failing case's peek leads with its documentation
+
+Documentation attaches exactly: a `///` on the enclosing `fn` documents the
+function, not the cases inside it.
 
 ## 🛠️ Language Features
 

@@ -1,0 +1,63 @@
+// [BUILTIN-HTTP] [HTTP-RESPONSE-HANDLE]
+// ML twin of http_response_handle.osp. The HTTP builtins are ordinary calls; named
+// args (`bodyLine(h: value)`) become positional (`bodyLine value`). The handler's
+// `-> HttpResponse` return is load-bearing, mirrored by an ML signature; the record
+// literal `HttpResponse { status: 200, … }` becomes the inline call form
+// `HttpResponse(status = 200, …)`. Multi-line blocks become indented layout blocks.
+
+handleRequest : string -> string -> string -> string -> HttpResponse
+handleRequest (method, path, headers, body) = HttpResponse(
+    status = 200,
+    headers = "X-Demo: hi\r\n",
+    contentType = "text/plain",
+    streamFd = (0 - 1) ?: 0,
+    isComplete = true,
+    partialBody = "hello body"
+)
+
+bodyLine h =
+    r = httpResponseBody h
+    match r
+        Success value => "body=${value}"
+        Error message => "nobody"
+
+headerLine (h, name) =
+    r = httpResponseHeader h name
+    match r
+        Success value => "hdr=${value}"
+        Error message => "missing-ok"
+
+freeLine h =
+    r = httpResponseFree h
+    match r
+        Success value => "free-ok"
+        Error message => "free-err-double"
+
+run () =
+    serverId = httpCreateServer 18095 "127.0.0.1"
+    listenResult = httpListen serverId handleRequest
+    clientId = httpCreateClient "http://127.0.0.1:18095" 5000
+    resp = httpGetResponse clientId "/" ""
+    summary = match resp
+        Success value =>
+            status = httpResponseStatus value
+            body = bodyLine value
+            header = headerLine (value, "X-Demo")
+            missing = headerLine (value, "Nope")
+            freed = freeLine value
+            doubleFreed = freeLine value
+            "${status}|${body}|${header}|${missing}|${freed}|${doubleFreed}"
+        Error message => "request-error:${message}"
+    closeResult = httpCloseClient clientId
+    stopResult = httpStopServer serverId
+    summary
+
+(** Run the complete response-handle lifecycle and verify every transition. *)
+responseHandleCase () =
+    summary = run ()
+    checkAll "response handle lifecycle" [
+        summary == "200|body=hello body|hdr=hi|missing-ok|free-ok|free-err-double",
+        startsWith summary "200|body=hello body",
+        endsWith summary "free-err-double"
+    ]
+test "HTTP response handles expose data and reject double free" responseHandleCase

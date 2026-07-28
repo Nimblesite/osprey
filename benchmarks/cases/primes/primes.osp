@@ -1,16 +1,16 @@
 // Count primes below a limit by trial division — integer % in a tight loop.
-fn add(a: int, b: int) -> int = a + b
-fn mul(a: int, b: int) -> int = a * b
-fn mod_(a: int, b: int) -> int = a % b
+fn add(a, b) = a + b ?: 0
+fn mul(a, b) = a * b ?: 0
+fn mod_(a, b) = a % b ?: 0
 
-fn hasFactor(n: int, d: int) -> bool = match (mul(d, d) > n) {
+fn hasFactor(n, d) = match (mul(d, d) > n) {
     true  => false
     false => match mod_(n, d) { 0 => true  _ => hasFactor(n, add(d, 1)) }
 }
-fn isPrime(n: int) -> bool = match (n < 2) {
+fn isPrime(n) = match (n < 2) {
     true  => false
     false => match hasFactor(n, 2) { true => false  false => true }
 }
-fn tally(acc: int, n: int) -> int = match isPrime(n) { true => add(acc, 1)  false => acc }
+fn tally(acc, n) = match isPrime(n) { true => add(acc, 1)  false => acc }
 
 print("${range(2, 200000) |> fold(0, tally)}")

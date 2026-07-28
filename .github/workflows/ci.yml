@@ -81,14 +81,30 @@ jobs:
           sudo apt-get install -y jq xvfb
           cargo install cargo-llvm-cov --locked || true
 
-      # `make lint` runs the `deslop` duplication gate,
-      # which enforces the ceiling in .deslop.toml (deslop exits 3 when over).
-      # Installed from the Nimblesite Homebrew tap so the gate is ENFORCED here;
-      # the Makefile only skips it when the binary is entirely absent.
-      - name: Install deslop (duplication gate)
-        uses: Homebrew/actions/setup-homebrew@master
-      - name: Install deslop
-        run: brew install nimblesite/tap/deslop
+      # The `ci` job's coverage gate already DEPENDS on this toolchain, so it is
+      # not optional here. `osprey-cli`'s wasm end-to-end test
+      # (crates/osprey-cli/src/wasm.rs) self-skips unless wasm-ld, a WASI
+      # sysroot and libosprey_runtime_wasm.a are all present; skipping it drops
+      # osprey-cli from 96.7% to 94.8%, under its 95% floor, and fails this
+      # required check. Without these steps the gate could only ever go red, so
+      # the cost is already being paid — this makes the dependency explicit
+      # instead of leaving it to whatever a runner happens to have installed.
+      - name: Install lld (wasm-ld) and a WASI sysroot
+        run: |
+          sudo apt-get install -y lld wabt
+          WASI_VERSION=24
+          curl -fsSL -o /tmp/wasi-sysroot.tar.gz \
+            "https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-${WASI_VERSION}/wasi-sysroot-${WASI_VERSION}.0.tar.gz"
+          # The tarball unpacks to a versioned top dir; strip it so the sysroot
+          # lands at a stable path containing lib/wasm32-wasip1.
+          sudo mkdir -p /opt/wasi-sdk/share/wasi-sysroot
+          sudo tar -xzf /tmp/wasi-sysroot.tar.gz -C /opt/wasi-sdk/share/wasi-sysroot --strip-components=1
+          test -d /opt/wasi-sdk/share/wasi-sysroot/lib/wasm32-wasip1
+          echo "OSPREY_WASI_SYSROOT=/opt/wasi-sdk/share/wasi-sysroot" >> "$GITHUB_ENV"
+          wasm-ld --version
+
+      - name: Build the wasm runtime archive
+        run: make _runtime_wasm
 
       # [EDITOR-VERSIONING] Keep shipwright.json valid against the in-repo
       # Shipwright schema. Do not use @nimblesite/shipwright-validate-manifest:
@@ -97,11 +113,32 @@ jobs:
         run: npm run test:shipwright
         working-directory: ./vscode-extension
 
+      # Official duplication gate. This MUST live in the `ci` job: `ci` is the
+      # required status check on `main` (ruleset 6154907), so a gate anywhere
+      # else cannot block a merge. It previously sat in ci-windows.yml, whose
+      # `windows-core` job is explicitly NOT required — which silently turned
+      # the duplication ceiling into a suggestion. The committed .deslop.toml is
+      # the threshold source (deslop exits 3 when over); reports stay ephemeral
+      # rather than consuming Actions artifact storage. `version` is explicit
+      # because the action is pinned to the immutable commit for v0.27.0 rather
+      # than its mutable tag. Docs: https://deslop.live/docs/github-action/
+      - name: Deslop duplication gate
+        uses: Nimblesite/Deslop@f1915e6328165f23a4bd1c6cd4262a64dd7d9033 # v0.27.0
+        with:
+          version: "0.27.0"
+          upload-artifact: "false"
+
       - name: Lint
-        run: make lint
+        # Duplication is gated by the Deslop action step above, so this internal
+        # target runs the remaining linters without re-invoking the local CLI.
+        run: make _lint
 
       # make test = fail-fast + per-project coverage + threshold enforcement +
-      # the differential golden suite. Thresholds live in coverage-thresholds.json.
+      # the Default/ML assertion corpus under tests/ in the compiler-default,
+      # GC, and ARC memory modes, PLUS the byte-exact stdout goldens (a program
+      # whose assertions all pass can still have stopped printing in the right
+      # order — only the golden sees that).
+      # Thresholds live in coverage-thresholds.json.
       # Xvfb is needed because vscode-extension
       # tests spawn a real VS Code Electron build.
       - name: Test
@@ -168,8 +205,8 @@ jobs:
 
       - name: Test example compilation and execution
         run: |
-          target/release/osprey examples/tested/basics/math/comprehensive_math.osp --run
-          target/release/osprey examples/tested/basics/feature_omnibus.osp --run
+          target/release/osprey test tests/regressions/basics/math/comprehensive_math.test.osp
+          target/release/osprey test tests/core/feature_composition/feature_omnibus.test.osp
 
       - name: Test Web Compiler
         run: |
@@ -186,12 +223,10 @@ jobs:
 
   # ─── Focused compiler gate ──────────────────────────────────────────────────
   # Fast signal on the compiler alone: format + clippy (-D warnings: clippy::all
-  # + pedantic + restriction) + workspace tests + the differential harness —
-  # every examples/tested case run through `osprey --run` must match its
-  # .expectedoutput byte-for-byte (whole-string trim), and the must-reject suite
-  # (examples/failscompilation) must stay within the FC_EXPECTED_ESCAPES ratchet.
+  # + pedantic + restriction) + workspace tests + the complete assertion-driven
+  # Default/ML language corpus in all three memory modes.
   rust:
-    name: Rust Compiler (fmt, clippy, test, differential)
+    name: Rust Compiler (fmt, clippy, test, corpus)
     needs: changes
     # Compiler-only gate — irrelevant to website-only PRs, so skip them.
     if: ${{ needs.changes.outputs.code == 'true' }}
@@ -220,8 +255,8 @@ jobs:
 
       - name: Install clang/LLVM, OpenSSL, SQLite and zsh
         # clang links the osprey-emitted IR; libssl-dev/libsqlite3-dev satisfy
-        # the HTTP and FFI-database runtimes the examples link; zsh runs the
-        # differential harness.
+        # the HTTP and FFI-database runtimes the assertion corpus links; zsh
+        # runs its GC and ARC backend harness.
         run: |
           sudo apt-get update
           sudo apt-get install -y clang llvm libssl-dev libsqlite3-dev pkg-config zsh
@@ -242,15 +277,26 @@ jobs:
       - name: Test (workspace)
         run: cargo test --workspace
 
-      - name: Differential golden tests (osprey --run vs .expectedoutput)
-        # Must be 41/41 with zero examples lacking an expected output, and the
-        # must-reject ratchet must hold.
+      - name: Core language assertion corpus — no memory management
+        # Fixed-port loopback twins must not contend with one another.
+        run: OSPREY_TEST_JOBS=1 target/release/osprey test tests
+
+      - name: Core language assertion corpus — GC
+        run: OSPREY_TEST_JOBS=1 target/release/osprey test tests --memory=gc
+
+      - name: Core language assertion corpus — ARC
+        run: OSPREY_ARC_DEBUG=1 OSPREY_TEST_JOBS=1 target/release/osprey test tests --memory=arc
+
+      # Dead-code gate: fail if any `pub` declaration is unreachable from the
+      # osprey binary (hawk::dead_public). Scoped to dead_public only — see the
+      # `hawk` target in the Makefile. cargo-hawk's prebuilt driver is pinned to
+      # the stable toolchain this job installs (1.97.1); bump them together.
+      - name: Install cargo-hawk (dead-code gate)
         run: |
-          out=$(zsh crates/diff_examples.sh)
-          echo "$out"
-          echo "$out" | grep -Eq 'FAIL=0 '  || { echo '::error::differential test FAILures'; exit 1; }
-          echo "$out" | grep -Eq 'NOEXP=0 ' || { echo '::error::an example has no .expectedoutput'; exit 1; }
-          echo "$out" | grep -q  'FC_OK'    || { echo '::error::must-reject ratchet exceeded (ill-formed programs accepted)'; exit 1; }
+          curl --proto '=https' --tlsv1.2 -LsSf \
+            https://github.com/astral-sh/hawk/releases/latest/download/cargo-hawk-installer.sh | sh
+      - name: Dead-code gate (hawk)
+        run: make hawk
 
   # ─── WebAssembly target ─────────────────────────────────────────────────────
   # Compiles a sample Osprey program to wasm32-wasip1 with `osprey --target=wasm32`
@@ -306,16 +352,37 @@ jobs:
           node scripts/wasm-smoke.mjs examples/wasm/build/hello.wasm examples/wasm/hello.expectedoutput
           node scripts/wasm-browser-smoke.mjs examples/wasm/build/hello.wasm examples/wasm/hello.expectedoutput
 
-      - name: WebAssembly golden suite (every tested example, wasm vs .expectedoutput)
-        # Compiles every examples/tested/*.osp to wasm and runs it under
-        # Node's WASI, comparing stdout to its .expectedoutput. Examples using a
-        # non-portable feature (fibers/HTTP/SQLite/processes/file I/O/random) link
-        # with an `undefined symbol` and are SKIPped, not failed. Gate: FAIL=0.
+      - name: WebAssembly Data Studio suite (Default + ML)
+        # Both source flavors compile to portable WASI modules and must produce
+        # the same committed manifest under Node and the browser WASI shim.
         run: |
-          out=$(zsh crates/diff_wasm_examples.sh)
-          echo "$out"
-          echo "$out" | grep -Eq 'FAIL=0 '  || { echo '::error::wasm golden suite FAILures'; exit 1; }
-          echo "$out" | grep -Eq 'NOEXP=0 ' || { echo '::error::a tested example has no .expectedoutput'; exit 1; }
+          target/release/osprey examples/wasm/studio.osp --target=wasm32 \
+            --compile -o examples/wasm/build/studio.osp.wasm
+          target/release/osprey examples/wasm/studio.ospml --target=wasm32 \
+            --compile -o examples/wasm/build/studio.ospml.wasm
+          wasm-validate examples/wasm/build/studio.osp.wasm
+          wasm-validate examples/wasm/build/studio.ospml.wasm
+          node scripts/wasm-smoke.mjs examples/wasm/build/studio.osp.wasm examples/wasm/studio.expectedoutput
+          node scripts/wasm-browser-smoke.mjs examples/wasm/build/studio.osp.wasm examples/wasm/studio.expectedoutput
+          node scripts/wasm-smoke.mjs examples/wasm/build/studio.ospml.wasm examples/wasm/studio.expectedoutput
+          node scripts/wasm-browser-smoke.mjs examples/wasm/build/studio.ospml.wasm examples/wasm/studio.expectedoutput
+
+      - name: WebAssembly differential — whole tests/ corpus vs the native goldens
+        # The three steps above gate the wasm backend on three hand-picked
+        # programs. This one runs EVERY program in tests/ that links on wasm32
+        # (103 of 160; the rest name the unported symbol and report as skips)
+        # and holds each to the byte-exact stdout the native backend produces.
+        # A backend that miscompiles arithmetic, strings, maps or pattern
+        # matching outside hello/studio has nowhere else to be caught.
+        #
+        # CAVEAT: this `wasm` job is NOT a required status check (only `ci` is,
+        # per ruleset 6154907), so a red result here does not block a merge —
+        # the same arrangement the deleted harness had. The sysroot download and
+        # wasm runtime build this would need in `ci` are now there anyway (the
+        # coverage gate depends on them), so moving this corpus differential
+        # into `ci` costs only its runtime — still a deliberate call, not a
+        # silent one.
+        run: OSPREY_TARGET=wasm32 zsh crates/run_test_corpus.sh
 
   # ─── Website end-to-end (Playwright) ────────────────────────────────────────
   # Builds the site (compiler-free; committed reference docs) and runs the

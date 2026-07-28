@@ -85,9 +85,14 @@ For each command extracted from the CI workflow:
   build + extension).
 - The compiler is the Rust workspace (`crates/`, binary `target/release/osprey`);
   the C runtime archives are built by the internal `make _runtime` helper.
-- The differential harness is `zsh crates/diff_examples.sh` — expect
-  `PASS=N FAIL=0 NOEXP=0` (N grows as examples are added; 48 at time of
-  writing) and `FC_OK`.
+- The differential harness is `zsh crates/run_test_corpus.sh [default|gc|arc]` —
+  expect `TEST_CORPUS_FAIL=0` and `TEST_CORPUS_GOLDEN_FAIL=0
+  TEST_CORPUS_GOLDEN_MISSING=0` at or above the golden floor the script prints
+  (160 natively). `OSPREY_TARGET=wasm32 zsh crates/run_test_corpus.sh` runs the
+  same corpus through the wasm32 backend under Node's WASI (103 compared, 57
+  named skips). The must-reject ratchet moved into `cargo test` — it is the
+  `every ill-formed program must be rejected` assertion in
+  `crates/osprey-cli/tests/examples_compile.rs`.
 - The Docker web-compiler test needs a running daemon. If `docker info` fails,
   start it (`open -a Docker` on macOS) and wait for readiness before running —
   do NOT treat an unavailable daemon as licence to skip the check.

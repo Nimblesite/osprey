@@ -1,0 +1,55 @@
+/// Subtracts integers through curried application.
+fn sub(a: int) -> (int) -> int = fn(b) => a - b ?: 0
+/// Classifies exact integer cases and a wildcard branch.
+fn classify(n) = match n {
+    0 => "zero"
+    1 => "one"
+    _ => "many"
+}
+
+/// Verifies arithmetic values and relational properties in one documented batch.
+fn arithmeticCase() = {
+    // Six independent soft assertions cover results and algebraic behavior.
+    checkAll("arithmetic foundations", [
+            sub(7)(3) == 4,
+            (6 * 7 ?: 0) == 42,
+            sub(20)(2 * 4 ?: 0) == 12,
+            sub(8)(3) > 4,
+            sub(100)(1) > 0,
+            sub(9)(4) != sub(4)(9)
+    ])
+}
+
+/// Verifies every match branch using literal and computed inputs.
+fn classifyCase() = {
+    // The conditions cover exact arms, wildcard behavior, and string consumers.
+    checkAll("classification foundations", [
+            classify(0) == "zero",
+            classify(1) == "one",
+            classify(9) == "many",
+            classify(sub(4)(3)) == "one",
+            startsWith(classify(20), "m"),
+            classify(99) != classify(0)
+    ])
+}
+
+/// Verifies strings, fallible operations, and list state in one interaction.
+fn stringsAndListsCase() = {
+    // Seven separately reported conditions document the combined standard-library behavior.
+    checkAll("string and list foundations", [
+            contains("talon bank", "bank"),
+            (repeat("ab", 3) ?: "") == "ababab",
+            trim("  Osprey  ") == "Osprey",
+            toUpperCase("Osprey") == "OSPREY",
+            startsWith("osprey language", "osprey"),
+            !endsWith("osprey language", "compiler"),
+            listLength([10, 20, 30]) == 3
+    ])
+}
+
+// Register the arithmetic foundation interaction.
+test("arithmetic checks share derived values", arithmeticCase)
+// Register the classification interaction.
+test("classification checks include computed inputs", classifyCase)
+// Register the standard-library composition interaction.
+test("strings and lists mix with matching", stringsAndListsCase)

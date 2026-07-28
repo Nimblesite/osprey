@@ -1,7 +1,16 @@
 # Plan 0019 — ML Flavor Elegance
 
-**Status:** **Phases 1.1–1.5, 2 and 3 are implemented and verified.** `+ - *`
-return plain scalars, `%` is zero-checked,
+> **Superseded safety decision (2026-07-26).** Phase 2's shipped
+> `[ARITH-PLAIN]` decision is retained below only as implementation history. It
+> is no longer a language contract. The normative replacement is
+> [ARITH-CHECKED](../specs/0013-ErrorHandling.md#arithmetic-and-result--arith-checked):
+> integer `+`, `-`, `*`, unary negation, and `abs` are checked `Result`
+> operations, and no context may implicitly erase a `Result`. Any implementation
+> or corpus state described below that silently wraps is a known violation to be
+> migrated, not permitted behavior.
+
+**Status:** **Complete.** Phases 1.1–1.5, 2 and 3 are implemented and verified.
+Integer `+ - *` return checked `Result` values, `%` is zero-checked,
 `checkedAdd` / `checkedSub` / `checkedMul` exist in both flavors, `_` is a legal
 parameter in both flavors, positional variant payloads are shared core, and ML
 inline unions, clause sets, grouped patterns and `?:` all work.
@@ -11,9 +20,10 @@ byte-identical LLVM IR to its Default twin. Specs
 [0013 — Error Handling](../specs/0013-ErrorHandling.md),
 [0004 — Type System](../specs/0004-TypeSystem.md) and
 [0003 — Syntax](../specs/0003-Syntax.md) carry the shipped surface as normative
-text. The corpus sweep for silently-shadowed same-name bindings and the
-`osprey-fmt` round-trip audit are still open. See
-[§What is left](#what-is-left).
+text. The same-name binding sweep and whole-corpus `osprey-fmt` audit are also
+complete: unreachable adjacent clauses and non-adjacent duplicate definitions
+are diagnosed, and every hand-written source under `examples`, `benchmarks`,
+and `tests` must parse and format idempotently.
 
 ## Summary
 
@@ -67,10 +77,10 @@ print("modzero: ${10 % 0}")     // garbage — undefined `srem` by zero
 
 `MathError::Overflow` was unreachable and `%`-by-zero was undefined behaviour;
 the corpus paid 11 wrapper functions and 112 signature lines although codegen
-performed no overflow check. `%` is now zero-checked — `10 % 0` yields
-`Error(division by zero)` — and `checkedAdd` / `checkedSub` / `checkedMul`
-detect overflow. Bare `+` still wraps; overflow checking is opt-in at the call
-site.
+performed no overflow check. The historical phase made `%` zero-checked and
+added `checkedAdd` / `checkedSub` / `checkedMul`, but still let bare `+` wrap.
+That intermediate behavior is no longer permitted: `[ARITH-CHECKED]` makes
+integer `+`, `-`, and `*` checked `Result` operations by default.
 
 The wrapper also caused one heap allocation per arithmetic operation.
 `make_ok` → `make_result`
@@ -88,8 +98,10 @@ store i8 0, i8* %r6                                    ; store discriminant
 — one `add`, one runtime allocation, three stores, then an immediate unwrap back
 to `i64`. Every `+`, `-`, `*` and `%` paid this cost. The arithmetic-dominated
 benchmark cases (`fib`, `ackermann`, `nestedloop`, `collatz`, `binarytrees`)
-allocated once per operation. `+ - *` now allocate nothing; only `/` and `%`
-still build a `Result`.
+allocated once per operation. Phase 2 temporarily removed that representation
+from `+ - *`; the later safety correction restored their checked `Result`
+contract. Performance work must optimize that safe representation rather than
+erase its failure channel.
 
 ### Defects fixed along the way
 
@@ -182,21 +194,21 @@ independently mergeable, in this order.
 **Result: binarytrees 22 → 14 lines**, and ~620 LOC removable corpus-wide by
 `?:` alone once the corpus migrates.
 
-### Corpus sweep still owed by phase 1
+### Phase 1 corpus sweep
 
 Two same-name bindings compiled clean and last-wins silently before the merge:
-`f x = 1` / `f x = 2` printed `2` with no diagnostic. Merging adjacent
-all-irrefutable duplicates flips that to first-wins, silently, which is why the
-sweep was deliberately **not** done and the preferred unreachable-clause error
-is not yet emitted — both remain open. Non-adjacent same-name bindings must be a
-hard duplicate-definition error, never a merge: a function whose definition is
-scattered through a file would otherwise have order-dependent clause grouping.
+`f x = 1` / `f x = 2` printed `2` with no diagnostic. The completed sweep now
+rejects every clause after an irrefutable binder or wildcard, including adjacent
+all-irrefutable duplicates, with `unreachable clause`. Non-adjacent same-name
+bindings remain separate through parsing and the type checker reports
+`duplicate definition`, so a scattered function can never acquire
+order-dependent clause grouping.
 
-## Phase 2 — &#91;ARITH-PLAIN&#93;
+## Phase 2 — &#91;ARITH-PLAIN&#93; (historical, superseded)
 
-The normative arithmetic contract is
-[defined in Error Handling](../specs/0013-ErrorHandling.md#arithmetic-and-result--arith-plain).
-This phase records its type-system implementation; it required no AST change.
+This section records the former type-system implementation; it required no AST
+change. Its contract is superseded by
+[ARITH-CHECKED](../specs/0013-ErrorHandling.md#arithmetic-and-result--arith-checked).
 
 - `int_arithmetic` (`crates/osprey-types/src/expr.rs`) returns `int` for two int
   operands and `float` when either operand is float, for `+ - *`; `gen_arith`
@@ -216,10 +228,9 @@ This phase records its type-system implementation; it required no AST change.
 - Every `.expectedoutput` showing `Success(n)` from `toString` over an
   arithmetic expression was regenerated.
 
-Contract: operators whose only failure mode is overflow
-return the plain type — overflow wraps, and already does so today; operators
-that can fail on a value with no representable result (`/` and `%` by zero) keep
-`Result`.
+**Historical contract (superseded):** operators whose only failure mode was
+overflow returned the plain type and wrapped, while `/` and `%` kept `Result`.
+This paragraph records the removed decision; it is not valid Osprey semantics.
 
 **Result: binarytrees 14 → 6 lines.** Corpus-wide, 11 operator wrappers were
 deleted, 112 signature lines became removable, and one heap allocation per
@@ -323,26 +334,28 @@ No logic changes; each site loses a wrapper. 8 `.expectedoutput` files carried
 corpus was untouched.
 
 **Phase 1.4 is the one behavioural change to watch.** Two same-name bindings
-compiled clean and last-wins silently (`f x = 1` / `f x = 2` printed `2`); after
-the merge the first clause wins, silently. The unreachable-clause diagnostic that
-should replace that silence, and the corpus sweep, are still open;
-non-adjacent same-name bindings must stay a hard duplicate-definition error.
+formerly compiled clean and last-wins silently (`f x = 1` / `f x = 2` printed
+`2`). They are now rejected: an adjacent binding after an irrefutable clause
+reports `unreachable clause`, while a non-adjacent same-name binding reports
+`duplicate definition`.
 
 Nothing in phases 1–3 removes an existing form. The ML layout union, layout
 record construction, named-field payloads, and the explicit `match` all remain
 normative and valid; the new forms sit beside them.
 
-## What is left
+## Completion
 
-Phases 1.1–1.5, 2 and 3 and both defects are implemented and verified: 148/148
-differential examples pass and the cross-flavor IR-equivalence test passes.
-What remains:
+No implementation or migration items remain. Phases 1.1–1.5, 2 and 3 and the
+defect fixes are implemented and verified. The completion audit enforces:
 
-- **The phase 1.x corpus sweep** for silently-shadowed same-name bindings, with
-  the unreachable-clause diagnostic it wants.
-- **`osprey-fmt` round-tripping** of the new ML forms, unaudited, together with
-  the rest of the `.ospml` corpus migration: the corpus still compiles on the
-  older forms, which stay valid, and migrates per phase.
+- unreachable adjacent clauses and non-adjacent duplicate definitions;
+- parse-clean, meaning-preserving, idempotent formatting across every
+  hand-written `.osp` and `.ospml` source under `examples`, `benchmarks`, and
+  `tests`;
+- preservation of inline unions, positional construction, grouped and list
+  equation clauses, `_`, `?:`, checked arithmetic, and explicit `match` through
+  formatting; and
+- byte-identical LLVM IR for every Default/ML twin in the paired corpus.
 
 ## TODO
 
@@ -351,7 +364,10 @@ What remains:
 - [x] Phase 1.3 — `[PARAM-WILDCARD]`: `_` param with generated name, both flavors; positional LLVM parameter naming
 - [x] Phase 1.4 — `[FLAVOR-ML-CLAUSES]`: pattern heads, CST change, `ml/clauses.rs` CST-to-CST clause-merge pre-pass, per-clause spans
 - [x] Phase 1.5 — ML `?:`: lex and parse the Result default the Default flavor already implements
-- [ ] Phase 1.x — corpus sweep for silently-shadowed same-name bindings
+- [x] Phase 1.x — corpus sweep completed. Adjacent clauses after a binder or
+      wildcard now report `unreachable clause`; adjacent all-irrefutable heads
+      report the same; non-adjacent same-name functions report
+      `duplicate definition`. The full formatter corpus parses cleanly.
 - [x] Phase 2 — `[ARITH-PLAIN]`: `int_arithmetic`, `gen_arith`, `%` zero check, `checked*` builtins, `.expectedoutput` regeneration
 - [x] Phase 2 — re-ran `make bench` and rewrote `website/src/benchmarks.md`: the per-operation `osp_alloc_tagged` is gone from `+ - *`, and the six `+ - *`-only cases now sit at C's ~1.5 MB
 - [x] Phase 3 — `[TYPE-UNION-POSITIONAL]`: decimal-index field names, `grammar.js` variant rule, shared `positional.rs` construction table, `sub_patterns`-by-slot fix
@@ -359,4 +375,10 @@ What remains:
 - [x] Defect — arithmetic propagates a `Result` operand's error instead of unwrapping it and fabricating `Success` (`(10 / 0) + 1.0` → `Error(division by zero)`)
 - [x] Defect — a Default interpolation fragment is re-parsed as a nested program mid-lowering, which cleared the positional-constructor table; `positional::install` now scopes to the outermost lowering, so `"${Node(l, r)}"` folds like the same expression outside a string
 - [x] Defect — a Default nested constructor sub-pattern (`Node(Node(a, b), c)`) was silently discarded and the arm behaved as `Node(_, _)`; it is now rejected with the ML flavor's diagnostic
-- [ ] Migrate the `.ospml` corpus per phase; `osprey-fmt` must round-trip every new form and never convert between clauses and `match`
+- [x] Defect — binding lookahead accepted list-pattern clauses while the parameter parser rejected them; `size [] = 0` and sibling list clauses now parse, merge, format, and execute
+- [x] Migrate the `.ospml` corpus per phase — `tests/core/feature_composition/feature_omnibus.test.ospml` now mixes
+      grouped positional patterns, inline unions, `_` parameters, equational
+      clauses, `?:`, checked arithmetic, and positional construction. The
+      whole-corpus formatter test requires every `.ospml` to parse and
+      round-trip idempotently, with an explicit clause-vs-`match` surface-form
+      regression; the Default twin remains byte-identical at LLVM IR.

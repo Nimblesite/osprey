@@ -1,0 +1,13 @@
+=== File I/O Workflow Test ===
+-- Step 1: Writing to file --
+File written successfully!
+-- Step 2: Reading from file --
+Read successful!
+-- Step 3: Testing Result<string> toString --
+Write Result toString: Success(23)
+Read Result toString: Success(Hello, Osprey file I/O!)
+Error Result toString: Error(File read error)
+=== Test Complete ===
+ok 1 - file workflow persists content and reports missing files
+1..1
+# tests=1 passed=1 failed=0 skipped=0

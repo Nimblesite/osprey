@@ -1,0 +1,54 @@
+(** Trace exposes a Unit-returning operation. *)
+effect Trace
+    (** Record a named marker so unwind order is observable. *)
+    mark : string => Unit
+
+(** Perform two markers before returning the final value. *)
+traced : Unit -> int ! Trace
+traced () =
+    perform Trace.mark "one"
+    perform Trace.mark "two"
+    7
+
+(** Verify Unit resume syntax and reverse unwind order. *)
+resumeUnitMarkersCase () =
+    mut transcript = ""
+    mut markCount = 0
+    mut beforeLabels = ""
+    mut afterLabels = ""
+    mut finalValues = ""
+
+    result =
+        handle Trace
+            mark label =>
+                markCount := markCount + 1 ?: markCount
+                beforeLabels := "${beforeLabels}${label}|"
+                transcript := "${transcript}before ${label}\n"
+                final = resume
+                afterLabels := "${afterLabels}${label}|"
+                finalValues := "${finalValues}${toString final}|"
+                transcript := "${transcript}after ${label}: final=${toString final}\n"
+                final
+        in traced ()
+    legacyTranscript = "${transcript}result=${toString result}\n"
+
+    (* Preserve the five-line LIFO transcript. *)
+    checkAll "Unit-resume legacy observations" [
+        legacyTranscript == "before one\nbefore two\nafter two: final=7\nafter one: final=7\nresult=7\n",
+        startsWith legacyTranscript "before one\nbefore two\n",
+        contains legacyTranscript "after two: final=7\n",
+        contains legacyTranscript "after one: final=7\n",
+        endsWith legacyTranscript "result=7\n"
+    ]
+
+    (* Check marker count, entry order, unwind order, and values. *)
+    checkAll "Unit-resume internal state" [
+        result == 7,
+        markCount == 2,
+        beforeLabels == "one|two|",
+        afterLabels == "two|one|",
+        finalValues == "7|7|",
+        beforeLabels != afterLabels
+    ]
+
+test "Unit operations resume and unwind in LIFO order" resumeUnitMarkersCase

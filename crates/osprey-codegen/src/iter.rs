@@ -9,7 +9,7 @@
 //! [BUILTIN-ITER-FUSION] and [BUILTIN-LIST-FOREACH].
 
 use crate::builder::{Codegen, FnSig};
-use crate::conv::{as_i64, box_to_i64, unbox_from_i64};
+use crate::conv::{as_i64, box_to_i64};
 use crate::error::{CodegenError, Result};
 use crate::expr::{apply_lambda_values, call_with_values, gen_expr};
 use crate::llty::{LType, Value};
@@ -33,7 +33,7 @@ pub(crate) enum Callback {
     Named(String),
     /// An inline (or let-bound) lambda — beta-reduced per element, so its
     /// captures resolve in the enclosing scope.
-    Lambda(Vec<Parameter>, Expr),
+    Lambda(Vec<Parameter>, Expr, Option<FnSig>),
     /// A function-typed local (closure value) — called through its cell.
     Local(String, FnSig),
     /// A computed closure value (a call result like `makeAdder(1)` or a field
@@ -49,20 +49,35 @@ pub(crate) enum Callback {
 fn callback_of(cg: &mut Codegen, e: &Expr) -> Result<Callback> {
     match e {
         Expr::Lambda {
-            parameters, body, ..
-        } => Ok(Callback::Lambda(parameters.clone(), (**body).clone())),
+            parameters,
+            body,
+            position,
+            ..
+        } => Ok(Callback::Lambda(
+            parameters.clone(),
+            (**body).clone(),
+            cg.prog
+                .lambda_type(*position)
+                .and_then(Codegen::fn_value_sig),
+        )),
         Expr::Identifier(n) => {
             if let Some(sig) = cg.fn_ptr_locals.get(n) {
                 Ok(Callback::Local(n.clone(), sig.clone()))
-            } else if let Some((params, body)) = cg.lambdas.get(n) {
-                Ok(Callback::Lambda(params.clone(), body.clone()))
+            } else if let Some((params, body, position)) = cg.lambdas.get(n) {
+                Ok(Callback::Lambda(
+                    params.clone(),
+                    body.clone(),
+                    cg.prog
+                        .lambda_type(*position)
+                        .and_then(Codegen::fn_value_sig),
+                ))
             } else if let Some((params, body)) = cg.fn_defs.get(n) {
                 // A generic (unannotated) user function has NO emitted `@name`
                 // symbol — it is specialised by inlining at each call site
                 // (lower.rs). As an iterator callback it must be beta-reduced
                 // per element the same way, not dispatched through a
                 // `call @name` that was never defined. [BUILTIN-ITER-CALLBACK]
-                Ok(Callback::Lambda(params.clone(), body.clone()))
+                Ok(Callback::Lambda(params.clone(), body.clone(), None))
             } else {
                 Ok(Callback::Named(n.clone()))
             }
@@ -85,7 +100,9 @@ fn callback_of(cg: &mut Codegen, e: &Expr) -> Result<Callback> {
 fn invoke(cg: &mut Codegen, cb: &Callback, args: Vec<Value>) -> Result<Value> {
     match cb {
         Callback::Named(name) => call_with_values(cg, name, args),
-        Callback::Lambda(params, body) => apply_lambda_values(cg, params, body, args),
+        Callback::Lambda(params, body, sig) => {
+            apply_lambda_values(cg, params, body, args, sig.as_ref())
+        }
         Callback::Local(name, sig) => {
             let handle = cg.lookup(name).ok_or_else(|| CodegenError::unknown(name))?;
             let typed = crate::closure::coerce_typed_args(cg, sig, args)?;
@@ -160,10 +177,9 @@ fn replay(cg: &mut Codegen, v: Value, skip: &str) -> Result<Value> {
     for op in &ops {
         if op.map {
             cur = invoke(cg, &op.cb, vec![cur])?;
-            cur = crate::result::unwrap(cg, cur);
         } else {
             let pred = invoke(cg, &op.cb, vec![cur.clone()])?;
-            let pred = crate::result::unwrap(cg, pred);
+            let pred = crate::cast::coerce_to(cg, pred, LType::I1)?;
             let pb = as_i64(cg, pred)?;
             let nz = cg.fresh_reg();
             cg.emit(format!("{nz} = icmp ne i64 {}, 0", pb.operand));
@@ -200,13 +216,12 @@ fn for_each(cg: &mut Codegen, args: &[Expr]) -> Result<Value> {
 }
 
 /// An `i64` accumulator slot seeded with a `fold` builtin's `initial` (the 2nd
-/// argument), evaluated, unwrapped and boxed. Returns the slot together with a
+/// argument), evaluated and boxed without erasing Result. Returns the slot with a
 /// TYPE TEMPLATE — the seed value, whose `ty`/`osp_ty`/… tags are reused by
 /// [`rebuild_acc`] to recover the accumulator from the uniform `i64` slot. The
 /// operand of the template is stale; only its type tags are read [MEM-BACKENDS].
 fn acc_init(cg: &mut Codegen, args: &[Expr]) -> Result<(String, Value)> {
     let initial = gen_expr(cg, nth(args, 1)?)?;
-    let initial = crate::result::unwrap(cg, initial);
     // A pointer accumulator escapes into the loop-carried slot: dup it so the
     // per-iteration region drop cannot free it [GC-ARC-PERCEUS].
     crate::arc::escape_retain(cg, &initial);
@@ -224,11 +239,14 @@ fn acc_init(cg: &mut Codegen, args: &[Expr]) -> Result<(String, Value)> {
 /// combine can field-access or record-update it — and the final result carries
 /// a usable layout — instead of a bare `i64` [MEM-BACKENDS].
 fn rebuild_acc(cg: &mut Codegen, raw: &str, tmpl: &Value) -> Value {
-    let mut v = unbox_from_i64(cg, raw, tmpl.ty);
+    let mut v = crate::effects::unbox_coro_value(cg, raw, tmpl.ty, tmpl.result_inner);
     v.osp_ty.clone_from(&tmpl.osp_ty);
-    v.result_inner = tmpl.result_inner;
     v.payload_owner.clone_from(&tmpl.payload_owner);
     v.fiber_elem = tmpl.fiber_elem;
+    v.fiber_elem_owner.clone_from(&tmpl.fiber_elem_owner);
+    v.fiber_elem_result_inner = tmpl.fiber_elem_result_inner;
+    v.fiber_elem_payload_owner
+        .clone_from(&tmpl.fiber_elem_payload_owner);
     v
 }
 
@@ -244,7 +262,13 @@ fn acc_step(
     let a = cg.emit_reg(format!("load i64, i64* {acc}"));
     let acc_val = rebuild_acc(cg, &a, tmpl);
     let new = invoke(cg, combine, vec![acc_val, elem])?;
-    let new = crate::result::unwrap(cg, new);
+    let new = match tmpl.result_inner {
+        Some(inner) if new.result_inner.is_some() => {
+            crate::result::repack_to_inner(cg, new, inner)?
+        }
+        Some(inner) => crate::result::make_ok(cg, new, inner)?,
+        None => crate::cast::coerce_to(cg, new, tmpl.ty)?,
+    };
     // Loop-carried slot rebind for a pointer accumulator: dup the incoming
     // value BEFORE dropping the outgoing one (a combine returning `acc`
     // unchanged must never free it). Keyed on the static type — an integer
@@ -291,9 +315,12 @@ fn fold(cg: &mut Codegen, args: &[Expr]) -> Result<Value> {
     Ok(acc_result(cg, &acc, &tmpl))
 }
 
-/// The `i`-th positional argument as a list handle.
+/// The `i`-th positional argument as a list handle. A flat list literal is
+/// rebuilt as a runtime list first — `osprey_list_get` cannot read the literal
+/// layout ([`crate::listlit::to_runtime_list`]).
 fn list_arg(cg: &mut Codegen, args: &[Expr], i: usize) -> Result<Value> {
     let v = gen_expr(cg, nth(args, i)?)?;
+    let v = crate::listlit::to_runtime_list(cg, v);
     crate::cast::coerce_to(cg, v, LType::Ptr)
 }
 
@@ -329,7 +356,7 @@ fn list_builder(cg: &mut Codegen, args: &[Expr], filter: bool) -> Result<Value> 
     let elem = Value::new(lp.elem.clone(), LType::I64);
     if filter {
         let pred = invoke(cg, &f, vec![elem.clone()])?;
-        let pred = crate::result::unwrap(cg, pred);
+        let pred = crate::cast::coerce_to(cg, pred, LType::I1)?;
         let pb = as_i64(cg, pred)?;
         let nz = cg.fresh_reg();
         cg.emit(format!("{nz} = icmp ne i64 {}, 0", pb.operand));
@@ -342,7 +369,11 @@ fn list_builder(cg: &mut Codegen, args: &[Expr], filter: bool) -> Result<Value> 
         cg.start_block(&skip);
     } else {
         let mapped = invoke(cg, &f, vec![elem])?;
-        let mapped = crate::result::unwrap(cg, mapped);
+        if mapped.result_inner.is_some() {
+            return Err(crate::error::CodegenError::unsupported(
+                "mapList cannot store an unhandled Result element; handle it in the callback",
+            ));
+        }
         // The built list stores the mapped element: dup it before the
         // per-iteration region drop, and tell the builder its kind
         // [GC-ARC-PERCEUS].

@@ -154,6 +154,7 @@ fn offset_signature_item(item: &mut SignatureItem, offset: u32) {
 
 fn offset_operations(operations: &mut [EffectOperation], offset: u32) {
     for operation in operations {
+        shift(&mut operation.position, offset);
         offset_params(&mut operation.parameters, offset);
     }
 }
@@ -305,6 +306,7 @@ fn offset_expr(expr: &mut Expr, offset: u32) {
         } => {
             shift(position, offset);
             for arm in arms {
+                shift(&mut arm.position, offset);
                 offset_expr(&mut arm.body, offset);
             }
             offset_expr(body, offset);

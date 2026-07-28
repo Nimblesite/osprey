@@ -237,6 +237,7 @@ mod tests {
         let block = Expr::Block {
             statements: vec![Stmt::Expr {
                 value: Expr::Resume(None),
+                doc: None,
                 position: None,
             }],
             value: None,
@@ -249,6 +250,7 @@ mod tests {
                 operation: "op".into(),
                 params: Vec::new(),
                 body: Expr::Resume(None),
+                position: None,
             }],
             body: Box::new(Expr::Integer(1)),
             position: None,

@@ -10,8 +10,9 @@
 //! the harness proves the two flavors *run* the same; this proves they *compile*
 //! to the same IR, which is a far stronger structural claim.
 //!
-//! Data-driven: every `examples/tested/ml/<stem>.ospml` MUST have a sibling
-//! Default twin `examples/tested/ml/<stem>.osp`. The test compiles both through
+//! Data-driven: every `.ospml` under the root `tests`
+//! corpus MUST have an in-place Default `.osp` twin unless explicitly exempt.
+//! The test compiles both through
 //! `osprey_codegen::compile_program` (in-process — no built binary required) and
 //! asserts the emitted IR text is identical.
 //!
@@ -43,15 +44,20 @@ fn is_ml_only(path: &Path) -> bool {
         .is_some_and(|stem| ML_ONLY_STEMS.contains(&stem))
 }
 
-/// `examples/tested`, resolved from the crate manifest dir so the test runs
-/// unchanged on a dev box and in CI. Every `.ospml` ANYWHERE under this tree is
-/// an in-place twin of its sibling `.osp` and must emit byte-identical IR.
-fn ml_examples_dir() -> PathBuf {
+/// Flavor-pair roots, resolved from the crate manifest directory so the test
+/// runs unchanged locally and in CI. Moved assertion suites retain the same IR
+/// equivalence guarantee as golden examples.
+fn flavor_roots() -> Vec<PathBuf> {
     // canonicalize() resolves the `../../`; fall back to the joined path when it
     // is unavailable rather than expect()-panicking outside a `#[test]` (the
     // workspace denies clippy::expect_used in non-test code).
-    let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples/tested");
-    dir.canonicalize().unwrap_or(dir)
+    ["../../tests"]
+        .iter()
+        .map(|relative| {
+            let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join(relative);
+            dir.canonicalize().unwrap_or(dir)
+        })
+        .collect()
 }
 
 /// Parse `source` under `flavor` and emit LLVM IR text, surfacing parse errors
@@ -69,7 +75,7 @@ fn ir_for(source: &str, flavor: Flavor, label: &str) -> Result<String, String> {
 
 /// Every `.ospml` file anywhere under `dir`, found by a recursive walk and
 /// sorted for deterministic output. Twins live in place next to their `.osp`
-/// counterparts throughout `examples/tested`, not in one folder.
+/// counterparts throughout `tests`, not in one folder.
 fn ml_stems(dir: &Path) -> Vec<PathBuf> {
     let mut out = Vec::new();
     collect_ospml(dir, &mut out);
@@ -93,9 +99,9 @@ fn collect_ospml(dir: &Path, out: &mut Vec<PathBuf>) {
 /// is a hard failure — the pairing is the whole point of the flavor system.
 #[test]
 fn every_ml_example_has_a_default_twin() {
-    let dir = ml_examples_dir();
-    let missing: Vec<String> = ml_stems(&dir)
-        .into_iter()
+    let missing: Vec<String> = flavor_roots()
+        .iter()
+        .flat_map(|dir| ml_stems(dir))
         .filter(|p| !is_ml_only(p) && !p.with_extension("osp").exists())
         .map(|p| {
             p.file_name()
@@ -115,11 +121,10 @@ fn every_ml_example_has_a_default_twin() {
 /// every mismatch before failing so one run reports all drift, not just the first.
 #[test]
 fn ml_and_default_twins_emit_identical_ir() {
-    let dir = ml_examples_dir();
     let mut mismatches: Vec<String> = Vec::new();
     let mut checked = 0usize;
 
-    for ml_path in ml_stems(&dir) {
+    for ml_path in flavor_roots().iter().flat_map(|dir| ml_stems(dir)) {
         let def_path = ml_path.with_extension("osp");
         if !def_path.exists() {
             continue; // covered by `every_ml_example_has_a_default_twin`
@@ -146,10 +151,7 @@ fn ml_and_default_twins_emit_identical_ir() {
         }
     }
 
-    assert!(
-        checked > 0,
-        "no flavor pairs found under examples/tested/ml — expected at least one"
-    );
+    assert!(checked > 0, "no flavor pairs found under tests");
     assert!(
         mismatches.is_empty(),
         "ML and Default twins MUST emit identical LLVM IR; {} pair(s) drifted:\n{}",

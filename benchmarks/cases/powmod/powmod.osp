@@ -1,11 +1,11 @@
 // Sum of modular exponentiation: sum of i^20 mod P for i in 1..N, naive repeated multiply.
-fn add(a: int, b: int) -> int = a + b
-fn sub(a: int, b: int) -> int = a - b
-fn mul(a: int, b: int) -> int = a * b
-fn mod_(a: int, b: int) -> int = a % b
-fn powmod(base: int, e: int, acc: int) -> int = match e {
+fn add(a, b) = a + b ?: 0
+fn sub(a, b) = a - b ?: 0
+fn mul(a, b) = a * b ?: 0
+fn mod_(a, b) = a % b ?: 0
+fn powmod(base, e, acc) = match e {
     0 => acc
     _ => powmod(base, sub(e, 1), mod_(mul(acc, base), 1000000007))
 }
-fn step(acc: int, i: int) -> int = mod_(add(acc, powmod(i, 20, 1)), 1000000007)
+fn step(acc, i) = mod_(add(acc, powmod(i, 20, 1)), 1000000007)
 print("${range(1, 1000000) |> fold(0, step)}")

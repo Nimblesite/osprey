@@ -27,8 +27,16 @@ typedef struct Fiber {
   int64_t (*env_function)(void *);
   void *env;
   int64_t result;
+  // The completed result keeps one runtime-owned managed reference. Each
+  // await retains a separate caller reference; main releases this root through
+  // fiber_cleanup_results after its language-level owners have dropped.
+  bool result_owned;
+  // The erased i64 is a managed pointer only when codegen says so. Never probe
+  // scalar/float bits: they may coincidentally equal a live heap address.
+  bool result_managed;
   bool completed;
   pthread_t thread;
+  bool joined;
   pthread_mutex_t mutex;
   pthread_cond_t cond;
   bool uses_thread;
@@ -90,6 +98,7 @@ static void execute_fiber_directly(Fiber *fiber) {
     fiber->handler_snapshot = NULL;
   }
   fiber->result = run_fiber_fn(fiber);
+  fiber->result_owned = true;
   fiber->completed = true;
 }
 
@@ -113,6 +122,7 @@ static void *fiber_thread_func(void *arg) {
 
   // Mark as completed and signal
   pthread_mutex_lock(&fiber->mutex);
+  fiber->result_owned = true;
   fiber->completed = true;
   pthread_cond_signal(&fiber->cond);
   pthread_mutex_unlock(&fiber->mutex);
@@ -123,7 +133,8 @@ static void *fiber_thread_func(void *arg) {
 // Create and schedule a fiber (shared by both spawn ABIs).
 // [CONCURRENCY-SPAWN-AWAIT]
 static int64_t fiber_spawn_internal(int64_t (*fn)(void),
-                                    int64_t (*env_fn)(void *), void *env) {
+                                    int64_t (*env_fn)(void *), void *env,
+                                    bool result_managed) {
   pthread_mutex_lock(&runtime_mutex);
 
   int64_t id = next_id++;
@@ -144,8 +155,12 @@ static int64_t fiber_spawn_internal(int64_t (*fn)(void),
   fiber->function = fn;
   fiber->env_function = env_fn;
   fiber->env = env;
+  fiber->result = 0;
+  fiber->result_owned = false;
+  fiber->result_managed = result_managed;
   fiber->completed = false;
   fiber->uses_thread = false;
+  fiber->joined = false;
   fiber->handler_snapshot = __osprey_handler_snapshot();
 
   if (!deterministic_mode) {
@@ -188,7 +203,7 @@ int64_t fiber_spawn(int64_t (*fn)(void)) {
   if (!fn) {
     return -1; // Invalid function pointer
   }
-  return fiber_spawn_internal(fn, NULL, NULL);
+  return fiber_spawn_internal(fn, NULL, NULL, false);
 }
 
 // Spawn with the closure-cell entry ABI: `fn(env)` runs on the fiber. The env
@@ -198,7 +213,18 @@ int64_t fiber_spawn_env(int64_t (*fn)(void *), void *env) {
   if (!fn) {
     return -1; // Invalid function pointer
   }
-  return fiber_spawn_internal(NULL, fn, env);
+  return fiber_spawn_internal(NULL, fn, env, false);
+}
+
+// Spawn a compiler-generated closure thunk and preserve whether its erased
+// result word is a managed pointer. The legacy two-argument entry point remains
+// scalar for C-runtime callers such as the HTTP server.
+int64_t fiber_spawn_env_owned(int64_t (*fn)(void *), void *env,
+                              int64_t result_managed) {
+  if (!fn) {
+    return -1; // Invalid function pointer
+  }
+  return fiber_spawn_internal(NULL, fn, env, result_managed != 0);
 }
 
 // Wait for fiber completion [CONCURRENCY-SPAWN-AWAIT].
@@ -230,6 +256,13 @@ int64_t fiber_await(int64_t fiber_id) {
       }
     }
     int64_t result = fiber->result;
+    // The runtime keeps the thunk's transferred +1 until final cleanup. Every
+    // await receives an independent +1 so repeated awaits cannot observe a
+    // result reclaimed by an earlier caller [MEM-FIBER-ISOLATION]. Scalars and
+    // foreign words are safe no-ops in every memory backend.
+    if (fiber->result_managed) {
+      osp_retain((void *)(uintptr_t)result);
+    }
     pthread_mutex_unlock(&runtime_mutex);
     return result;
   } else {
@@ -239,15 +272,80 @@ int64_t fiber_await(int64_t fiber_id) {
       pthread_cond_wait(&fiber->cond, &fiber->mutex);
     }
     int64_t result = fiber->result;
+    if (fiber->result_managed) {
+      osp_retain((void *)(uintptr_t)result);
+    }
+    bool should_join = fiber->uses_thread && !fiber->joined;
+    if (should_join) {
+      fiber->joined = true;
+    }
     pthread_mutex_unlock(&fiber->mutex);
 
-    // Join thread
-    if (fiber->uses_thread) {
+    // A completed pthread is joined exactly once even when several callers
+    // await the same reusable Fiber handle.
+    if (should_join) {
       pthread_join(fiber->thread, NULL);
     }
 
     return result;
   }
+}
+
+// Release the runtime roots of completed fiber results. Codegen calls this
+// once at the end of main, after language-level ARC owners have dropped, so the
+// retained root supports any number of awaits without becoming a process leak.
+void fiber_cleanup_results(void) {
+  pthread_mutex_lock(&runtime_mutex);
+
+  // Never invalidate a cached result while another fiber can still execute an
+  // await against it. Unstructured, still-running fibers are terminated by
+  // process exit; their roots intentionally remain process-owned here. Once
+  // every thunk is quiescent no more language code can race this teardown.
+  for (int64_t id = 1; id < next_id && id < 1000; id++) {
+    Fiber *fiber = fibers[id];
+    if (!fiber)
+      continue;
+
+    bool completed;
+    if (fiber->uses_thread) {
+      pthread_mutex_lock(&fiber->mutex);
+      completed = fiber->completed;
+      pthread_mutex_unlock(&fiber->mutex);
+    } else {
+      completed = fiber->completed;
+    }
+    if (!completed) {
+      pthread_mutex_unlock(&runtime_mutex);
+      return;
+    }
+  }
+
+  for (int64_t id = 1; id < next_id && id < 1000; id++) {
+    Fiber *fiber = fibers[id];
+    if (!fiber)
+      continue;
+
+    int64_t result = 0;
+    bool release_result = false;
+    if (fiber->uses_thread) {
+      pthread_mutex_lock(&fiber->mutex);
+      if (fiber->completed && fiber->result_owned) {
+        result = fiber->result;
+        fiber->result_owned = false;
+        release_result = true;
+      }
+      pthread_mutex_unlock(&fiber->mutex);
+    } else if (fiber->completed && fiber->result_owned) {
+      result = fiber->result;
+      fiber->result_owned = false;
+      release_result = true;
+    }
+
+    if (release_result && fiber->result_managed) {
+      osp_release((void *)(uintptr_t)result);
+    }
+  }
+  pthread_mutex_unlock(&runtime_mutex);
 }
 
 // Cooperative hand-off [CONCURRENCY-YIELD]. In concurrent (threaded) mode,

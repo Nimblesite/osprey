@@ -1,0 +1,120 @@
+// A mini-lexer primitive built directly on the O(1) string cursor
+// (byteAt / byteLength, [BUILTIN-STRING-CURSOR]). It scans a run of ASCII
+// digits out of a string and accumulates them into an integer, advancing one
+// byte at a time by RECURSION (Osprey has no loops). byteAt's Result is the
+// end-of-input signal: an Error from an out-of-range index ends the run just
+// like a non-digit byte does.
+//
+// Demonstrates:
+//   * scanning "12345abc" -> 12345, stopping cleanly at 'a'
+//   * locating where a number token ends (the index of the first non-digit)
+//   * walking a string of several number tokens separated by non-digits and
+//     printing each scanned value (a real multi-token lexer loop)
+//
+// Spec: docs/specs/0012-Built-InFunctions.md (Cursor Access)
+
+/// ASCII '0' and '9' as named constants (zero-arg fns are in scope everywhere;
+/// top-level `let`s are not visible inside fn bodies).
+fn zero() = 48
+fn nine() = 57
+
+/// Is the byte at index i an ASCII digit? End-of-input (Error) is "no".
+fn isDigitAt(s, i) = match byteAt(s, i) {
+    Success { value } => value >= zero() && value <= nine()
+    Error   { message } => false
+}
+
+/// Accumulate the digit run starting at i. acc carries the value built so far;
+/// each step multiplies by ten and adds (byte - '0'). Stops at the first
+/// non-digit byte OR at end-of-input, returning the accumulated integer.
+fn scanInt(s, i, acc) = match byteAt(s, i) {
+    Success { value } => match value >= zero() && value <= nine() {
+        true  => scanInt(s, (i + 1) ?: i, (acc * 10 + value - zero()) ?: acc)
+        false => acc
+    }
+    Error { message } => acc
+}
+
+/// Index of the first byte at or after i that is NOT a digit (where the token
+/// ends). Recurses while digits continue; returns i at the first non-digit/EOI.
+fn scanEnd(s, i) = match isDigitAt(s, i) {
+    true  => scanEnd(s, (i + 1) ?: i)
+    false => i
+}
+
+/// Skip a run of non-digit bytes: index of the next digit at or after i, or
+/// byteLength(s) if none remains. The dual of scanEnd, used to hop between
+/// number tokens.
+fn nextDigit(s, i) = match i >= byteLength(s) {
+    true  => i
+    false => match isDigitAt(s, i) {
+        true  => i
+        false => nextDigit(s, (i + 1) ?: i)
+    }
+}
+
+/// Walk the whole string, scanning every number token into a List<int>.
+/// From position i: skip to the next digit, scan that number, append it, then
+/// continue from just past the token. Terminates when no digit remains.
+fn scanAll(s, i, acc) = match nextDigit(s, i) >= byteLength(s) {
+    true  => acc
+    false => scanAll(s, scanEnd(s, nextDigit(s, i)),
+                     listAppend(acc, scanInt(s, nextDigit(s, i), 0)))
+}
+
+/// ---- single token: "12345abc" stops at 'a' ----
+let mixed = "12345abc"
+print("byteLen=${byteLength(mixed)}\n")
+print("scan=${scanInt(mixed, 0, 0)}\n")        // 12345
+print("end=${scanEnd(mixed, 0)}\n")            // 5 (index of 'a')
+match byteAt(mixed, scanEnd(mixed, 0)) {        // proves we stopped at 'a'
+    Success { value }   => print("stopByte=${value}\n")   // 97 == 'a'
+    Error   { message } => print("stopByte FAILED\n")
+}
+
+// ---- digits-only token runs to end-of-input via the Error branch ----
+print("pure=${scanInt("777", 0, 0)}\n")        // 777
+print("pureEnd=${scanEnd("777", 0)}\n")        // 3 == byteLength
+
+// ---- leading non-digits: scan returns 0, nextDigit finds the run ----
+print("leadScan=${scanInt("ab42", 0, 0)}\n")   // 0 (starts on 'a')
+print("leadNext=${nextDigit("ab42", 0)}\n")    // 2 (index of '4')
+print("leadVal=${scanInt("ab42", nextDigit("ab42", 0), 0)}\n")  // 42
+
+// ---- empty input: nothing to scan ----
+print("emptyScan=${scanInt("", 0, 0)}\n")      // 0
+
+/// ---- multi-token lexer over a delimited string ----
+let stream = "12,345-6789 0!42"
+let tokens = scanAll(stream, 0, List())
+print("tokenCount=${listLength(tokens)}\n")    // 5
+forEachList(tokens, print)                     // 12 345 6789 0 42
+
+print("=== Scan Complete ===\n")
+0
+
+/// Checks a token value at an exact position without hiding index failures.
+fn tokenIs(tokens: List<int>, index: int, expected: int) -> bool = match listGet(tokens, index) {
+    Success { value } => value == expected
+    Error { message } => false
+}
+
+/// Verifies token boundaries, empty input, and a complete multi-token scan.
+fn tokenScanCase() = {
+    let scanned = scanAll("12,345-6789 0!42", 0, List())
+    checkAll("integer cursor scan", [
+        scanInt("12345abc", 0, 0) == 12345,
+        scanEnd("12345abc", 0) == 5,
+        scanInt("777", 0, 0) == 777,
+        scanEnd("777", 0) == 3,
+        scanInt("ab42", 0, 0) == 0,
+        nextDigit("ab42", 0) == 2,
+        scanInt("ab42", 2, 0) == 42,
+        scanInt("", 0, 0) == 0,
+        listLength(scanned) == 5,
+        tokenIs(scanned, 0, 12), tokenIs(scanned, 1, 345),
+        tokenIs(scanned, 2, 6789), tokenIs(scanned, 3, 0),
+        tokenIs(scanned, 4, 42)
+    ])
+}
+test("token scanner finds every integer and boundary", tokenScanCase)

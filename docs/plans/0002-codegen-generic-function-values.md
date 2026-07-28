@@ -40,13 +40,13 @@ incorrect.
   `fold`/`forEach` are lowered specially in
   [iter.rs](../../crates/osprey-codegen/src/iter.rs) (fused loop), not via
   `try_inline`, so their callback resolution had the same link-error gap: a
-  generic reducer like `fn add(a, b) -> int = a + b` passed to `fold(0, add)`
+  generic reducer like `fn add(a, b) -> int = (a + b) ?: a` passed to `fold(0, add)`
   fell through to `call @add`, a symbol that generics never emit. `callback_of`
   now resolves a name found in `fn_defs` to an inlined lambda, beta-reducing it
   per element. Implements [BUILTIN-ITER-CALLBACK]; pinned by
   `generic_function_as_an_iterator_callback_inlines_not_calls_a_missing_symbol`
   (codegen lib.rs) and
-  `examples/tested/basics/memory/struct_allocation_stress.{osp,ospml}`.
+  `tests/regressions/basics/memory/struct_allocation_stress.{osp,ospml}`.
 - **The `-> T` generalization poisoning is fixed**: builtin schemes
   hand-write `Var(0)`/`Var(1)` as quantified binders, and the checker's fresh
   supply used to hand out those same ids to live inference variables; once a
@@ -89,7 +89,7 @@ functions as values are not covered by tests.
 
 ## Testing
 
-- `examples/tested/basics/function_composition_test.osp` §"Generic functions as
+- `tests/regressions/basics/function_composition_test.test.osp` §"Generic functions as
   first-class values": `identity<T>` into a concrete slot, a let-alias call,
   and `alsoDo(x, f) = f(x)` applied at **two instantiations** (int and string).
 - `generic_function_into_concrete_slot_specialises` and
@@ -121,7 +121,7 @@ functions as values are not covered by tests.
       recovered at its real type (`rebuild_acc`), then owned by the enclosing
       region so ARC frees it (zero leaks). Implements [BUILTIN-ITER-CALLBACK];
       pinned by two codegen unit tests and
-      `examples/tested/basics/memory/struct_allocation_stress.{osp,ospml}`
+      `tests/regressions/basics/memory/struct_allocation_stress.{osp,ospml}`
       (green under default/GC/ARC, `ARC_LEAKY=0`).
 - [x] Emit-once dedupe cache for repeated same-slot specializations — **done**.
       `emit_closure_keyed` (`closure.rs`) takes a `(function, slot ABI)` key

@@ -1,11 +1,11 @@
 //! Whole-corpus formatter invariants.
 //!
-//! Every tested example — both `.osp` (Default) and `.ospml` (ML) — is run
-//! through the formatter and held to the two guarantees the formatter promises:
-//! formatting is **idempotent** (a second pass changes nothing) and
-//! **meaning-preserving** (the formatted text reparses to the very same AST).
-//! Files that do not currently parse are skipped rather than failed, so the test
-//! stays green while the language frontends are mid-flight.
+//! Every hand-written example, benchmark, and language test — both `.osp`
+//! (Default) and `.ospml` (ML) — is run through the formatter and held to the
+//! two guarantees the formatter promises: formatting is **idempotent** (a
+//! second pass changes nothing) and **meaning-preserving** (the formatted text
+//! reparses to the very same AST). Every corpus file must parse: silently
+//! skipping one would leave a formatter regression outside this audit.
 #![expect(
     clippy::panic,
     reason = "test assertions: a read or re-format failure here is a test failure, not a production panic"
@@ -16,19 +16,27 @@ use std::path::{Path, PathBuf};
 
 use osprey_fmt::format_for_path;
 
-fn examples_dir() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("..")
-        .join("..")
-        .join("examples")
-        .join("tested")
+fn repo_dir() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("..").join("..")
 }
 
-/// Every file with extension `ext` under `dir`, recursively, sorted for stable
-/// failure output.
-fn sources(dir: &Path, ext: &str) -> Vec<PathBuf> {
+/// Plan 0019 measured the hand-written corpus under `examples` and
+/// `benchmarks`; `tests` extends the same audit to the current language corpus.
+fn corpus_roots() -> [PathBuf; 3] {
+    let repo = repo_dir();
+    [
+        repo.join("examples"),
+        repo.join("benchmarks"),
+        repo.join("tests"),
+    ]
+}
+
+/// Every hand-written file with extension `ext`, sorted for stable failures.
+fn sources(ext: &str) -> Vec<PathBuf> {
     let mut out = Vec::new();
-    collect(dir, ext, &mut out);
+    for root in corpus_roots() {
+        collect(&root, ext, &mut out);
+    }
     out.sort();
     out
 }
@@ -40,26 +48,32 @@ fn collect(dir: &Path, ext: &str, out: &mut Vec<PathBuf>) {
     for entry in entries.flatten() {
         let path = entry.path();
         if path.is_dir() {
-            collect(&path, ext, out);
-        } else if path.extension().is_some_and(|e| e == ext) {
+            if path.file_name().is_none_or(|name| name != "build") {
+                collect(&path, ext, out);
+            }
+        } else if path.extension().is_some_and(|e| e == ext) && !is_generated(&path) {
             out.push(path);
         }
     }
 }
 
-/// Format every example of one extension, asserting idempotency and a clean
-/// reparse on each that currently parses. Returns `(processed, changed)`.
+/// The checked-in web bundle is generated JavaScript embedded in an Osprey
+/// string, explicitly excluded from Plan 0019's hand-written corpus baseline.
+fn is_generated(path: &Path) -> bool {
+    path.ends_with("examples/projects/modules/src/web/bundle.ospml")
+}
+
+/// Format every corpus source of one extension, asserting idempotency and a clean
+/// reparse. Returns `(processed, changed)`.
 fn check_extension(ext: &str) -> (usize, usize) {
     let mut processed = 0;
     let mut changed = 0;
-    for path in sources(&examples_dir(), ext) {
+    for path in sources(ext) {
         let display = path.display();
         let src = fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {display}: {e}"));
         let key = path.to_string_lossy();
-        // Skip files that do not parse today (mid-flight frontend work).
-        let Ok(once) = format_for_path(&key, &src) else {
-            continue;
-        };
+        let once = format_for_path(&key, &src)
+            .unwrap_or_else(|errors| panic!("format {display}: {errors:?}"));
         processed += 1;
         if once != src {
             changed += 1;
@@ -72,13 +86,64 @@ fn check_extension(ext: &str) -> (usize, usize) {
 }
 
 #[test]
-fn default_examples_format_idempotently() {
+fn default_corpus_formats_idempotently() {
     let (processed, _changed) = check_extension("osp");
-    assert!(processed > 0, "no .osp examples were processed");
+    assert!(processed > 0, "no .osp sources were processed");
 }
 
 #[test]
-fn ml_examples_format_idempotently() {
+fn ml_corpus_formats_idempotently() {
+    let paths = sources("ospml");
+    for required in [
+        "benchmarks/cases/binarytrees/binarytrees.ospml",
+        "examples/projects/modules/src/main.ospml",
+        "examples/wasm/studio.ospml",
+        "tests/core/collections/list_basics.test.ospml",
+        "tests/core/feature_composition/feature_omnibus.test.ospml",
+    ] {
+        assert!(
+            paths.iter().any(|path| path.ends_with(required)),
+            "ML formatter corpus omitted {required}"
+        );
+    }
     let (processed, _changed) = check_extension("ospml");
-    assert!(processed > 0, "no .ospml examples were processed");
+    assert!(processed > 0, "no .ospml sources were processed");
+}
+
+#[test]
+fn ml_clause_and_match_surface_forms_are_preserved() {
+    let src = concat!(
+        "type Choice = None | Some int\n",
+        "value (Some n) = n\n",
+        "value None = 0\n",
+        "build n = Some (n + 1)\n",
+        "ignore _ = 0\n",
+        "recover n = n % 2 ?: -1\n",
+        "explicit x = match x\n",
+        "  Some n => n\n",
+        "  None => 0\n",
+    );
+    let out = format_for_path("forms.ospml", src).unwrap_or_else(|e| panic!("{e:?}"));
+    assert_ne!(out, src, "the irregular layout must be reformatted");
+    assert!(
+        out.contains("type Choice = None | Some int"),
+        "union changed: {out}"
+    );
+    assert!(out.contains("value (Some n) = n"), "clause changed: {out}");
+    assert!(
+        out.contains("build n = Some (n + 1)"),
+        "constructor changed: {out}"
+    );
+    assert!(out.contains("ignore _ = 0"), "wildcard changed: {out}");
+    assert!(
+        out.contains("recover n = n % 2 ?: -1"),
+        "fallback changed: {out}"
+    );
+    assert!(out.contains("explicit x = match x"), "match changed: {out}");
+    assert!(
+        out.contains("\n    Some n => n\n"),
+        "match layout changed: {out}"
+    );
+    let twice = format_for_path("forms.ospml", &out).unwrap_or_else(|e| panic!("{e:?}"));
+    assert_eq!(out, twice, "Plan 0019 forms are not idempotent");
 }

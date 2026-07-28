@@ -5,7 +5,7 @@
 //! The pipeline is the textbook one: a [`ty::Type`] language, an index-addressed
 //! union-find substitution ([`ctx::InferCtx`]), [`unify`](unify::unify)
 //! with the Osprey-specific rules (`any`, bare-collection generics, structural
-//! records, Result auto-unwrap), let-polymorphism ([`env`]), and a two-pass
+//! records, directional Result Success wrapping), let-polymorphism ([`env`]), and a two-pass
 //! [`check::check_program`] driver over the AST.
 //!
 //! Public surface: [`check_program`] takes a parsed [`osprey_ast::Program`] and
@@ -19,6 +19,11 @@ mod builtins;
 mod check;
 mod convert;
 mod ctx;
+mod effect_rows;
+#[cfg(test)]
+mod effect_rows_expr_tests;
+#[cfg(test)]
+mod effect_rows_tests;
 mod env;
 mod error;
 mod expr;
@@ -45,11 +50,30 @@ pub use ty::{has_type_var, names, Scheme, Type, VarId};
     reason = "tests drive checking for its side effects and discard the returned diagnostics"
 )]
 mod tests {
+    use crate::check_program;
     use crate::testutil::{bad, ok};
+    use osprey_syntax::{parse_program_with_flavor, Flavor};
 
     #[test]
     fn checks_arithmetic_and_let() {
-        ok("fn inc(x: int) -> int = x + 1\nlet y = inc(41)\n");
+        ok("fn inc(x: int) -> Result<int, MathError> = x + 1\nlet y = inc(41)\n");
+    }
+
+    #[test]
+    fn non_adjacent_ml_functions_with_one_name_are_duplicates() {
+        let parsed = parse_program_with_flavor("f 0 = 1\ng x = x\nf n = n\n", Flavor::Ml);
+        assert!(
+            parsed.errors.is_empty(),
+            "syntax errors: {:?}",
+            parsed.errors
+        );
+        let errors = check_program(&parsed.program);
+        assert!(
+            errors
+                .iter()
+                .any(|e| e.message.contains("duplicate definition `f`")),
+            "expected duplicate-definition error, got: {errors:?}"
+        );
     }
 
     #[test]
@@ -135,20 +159,62 @@ mod tests {
         assert!(errs
             .iter()
             .any(|e| e.message.contains("immutable variable `x`")));
-        // `mut` bindings stay assignable.
-        ok("fn main() -> Unit = {\n  mut y = 1\n  y = 2\n}\n");
     }
 
     #[test]
-    fn elvis_on_result_is_a_truth_test_yielding_the_payload() {
-        // `r ?: fallback` desugars to `match r { true => r  false => fallback }`;
-        // over a `Result` that is a discriminant test whose value is the
-        // unwrapped payload — it must not unify the payload with `bool`.
-        // `+ - *` are plain `int` now ([ARITH-PLAIN]), so the scrutinee has to
-        // come from an operation that still carries the error channel.
+    fn mutable_assignment_requires_an_effect_handler_arm() {
+        let errs = bad("fn main() -> Unit = {\n  mut cell = 0\n  cell = 1\n}\n");
+        assert!(errs.iter().any(|e| {
+            e.message
+                .contains("state mutation is only allowed inside an effect handler arm")
+        }));
+
+        ok("effect State { set: fn(int) -> Unit }\n\
+            fn main() -> Unit = {\n\
+              mut cell = 0\n\
+              handle State\n\
+                set value => { cell = value }\n\
+              in { perform State.set(1) }\n\
+            }\n");
+    }
+
+    #[test]
+    fn handled_client_body_does_not_gain_mutation_authority() {
+        let errs = bad("effect State { set: fn(int) -> Unit }\n\
+            fn main() -> Unit = {\n\
+              mut cell = 0\n\
+              handle State\n\
+                set value => { cell = value }\n\
+              in { cell = 1 }\n\
+            }\n");
+        assert!(errs.iter().any(|e| {
+            e.message
+                .contains("state mutation is only allowed inside an effect handler arm")
+        }));
+    }
+
+    #[test]
+    fn ml_mutable_assignment_requires_an_effect_handler_arm() {
+        let parsed = parse_program_with_flavor("mut cell = 0\ncell := 1\n", Flavor::Ml);
+        assert!(
+            parsed.errors.is_empty(),
+            "syntax errors: {:?}",
+            parsed.errors
+        );
+        let errors = check_program(&parsed.program);
+        assert!(errors.iter().any(|e| {
+            e.message
+                .contains("state mutation is only allowed inside an effect handler arm")
+        }));
+    }
+
+    #[test]
+    fn elvis_on_result_defaults_error_and_yields_success_payload() {
+        // `r ?: fallback` desugars to an explicit exhaustive Result match:
+        // Success yields its payload and Error yields the fallback.
         ok("let okCalc = intDiv(a: 10, b: 5)\n\
             let okElvis = okCalc ?: -1\n\
-            fn keep(x: int) -> int = x + okElvis\n");
+            fn keep(x: int) -> int = (x + okElvis) ?: 0\n");
     }
 
     #[test]
@@ -165,7 +231,7 @@ mod tests {
     fn higher_order_function_application() {
         ok(
             "fn applyFn(value: int, func: (int) -> int) -> int = func(value)\n\
-            fn double(x: int) -> int = x * 2\n\
+            fn double(x: int) -> int = (x * 2) ?: 0\n\
             let r = applyFn(value: 10, func: double)\n",
         );
     }

@@ -35,6 +35,15 @@ in-process — the same engine targeted at Neovim and Zed next.
 - **Compile & run** from the editor:
   - `Osprey: Compile Osprey File` (`Ctrl/Cmd+Shift+B`)
   - `Osprey: Compile and Run Osprey File` (`F5`)
+- **Test Explorer** — `*.test.osp` / `*.test.ospml` files and their cases appear
+  in the Testing view, with three run profiles: **Run**, **Coverage**, and
+  **Profile** (runs the suite under the sampling CPU profiler and opens its
+  flame graph plus inline heat annotations).
+- **Documented tests** — a `///` block (or ML `(** … *)`) above a `test(...)`
+  case shows as the case's description in the Testing tree, renders in full when
+  you hover the `test(...)` call, opens as Markdown via
+  `Osprey: Show Test Documentation`, and leads the failure message when the case
+  fails.
 - **Bracket matching, auto-closing, and comment toggling.**
 
 ## Requirements

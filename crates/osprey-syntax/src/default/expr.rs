@@ -18,21 +18,24 @@ impl Lowerer<'_> {
 
     /// Lower an expression node, transparently unwrapping the `expression` and
     /// `primary_expression` wrapper nodes tree-sitter inserts.
-    pub(crate) fn lower_expr(&self, node: Node<'_>) -> Expr {
+    pub(crate) fn lower_expr(&self, mut node: Node<'_>) -> Expr {
+        // Parenthesised expressions can contain hundreds of alternating
+        // `expression`/`primary_expression` CST wrappers. They carry no AST
+        // meaning, so peel them iteratively instead of spending one Rust stack
+        // frame per wrapper before reaching the actual expression node.
+        while matches!(node.kind(), "expression" | "primary_expression") {
+            let Some(inner) = self.first_named(node) else {
+                return Expr::Bool(false);
+            };
+            node = inner;
+        }
         match node.kind() {
-            "expression" | "primary_expression" => match self.first_named(node) {
-                Some(inner) => self.lower_expr(inner),
-                None => Expr::Bool(false),
-            },
             "binary_expression" => Expr::Binary {
                 op: self.field_text(node, "operator"),
                 left: Box::new(self.lower_expr_field(node, "left")),
                 right: Box::new(self.lower_expr_field(node, "right")),
             },
-            "unary_expression" => Expr::Unary {
-                op: self.field_text(node, "operator"),
-                operand: Box::new(self.lower_expr_field(node, "operand")),
-            },
+            "unary_expression" => self.lower_unary(node),
             // `x |> f` desugars to `f(x)` and `x |> f(a, …)` to `f(x, a, …)` —
             // the piped value becomes the callee's first positional argument, so
             // both the type checker and codegen see an ordinary call.
@@ -146,9 +149,8 @@ impl Lowerer<'_> {
         )
     }
 
-    /// `cond ? then : else` desugars to `match cond { true => then  false => else }`
-    /// (and the Elvis form `cond ?: else` reuses the condition as the `then`),
-    /// so the existing boolean-match lowering carries the runtime semantics.
+    /// `cond ? then : else` desugars to a boolean match. The Elvis spelling
+    /// `result ?: fallback` instead becomes an explicit Success/Error match.
     fn lower_ternary(&self, node: Node<'_>) -> Expr {
         let condition = self.lower_expr_field(node, "condition");
         // Structural form `cond { f1, f2 } ? then : else`: bind each field from
@@ -181,11 +183,10 @@ impl Lowerer<'_> {
             };
         }
         let else_expr = self.lower_expr_field(node, "else");
-        let then_expr = match node.child_by_field_name("then") {
-            Some(n) => self.lower_expr(n),
-            None => condition.clone(), // Elvis `?:`
-        };
-        crate::desugar::bool_match(condition, then_expr, else_expr)
+        match node.child_by_field_name("then") {
+            Some(n) => crate::desugar::bool_match(condition, self.lower_expr(n), else_expr),
+            None => crate::desugar::result_default(condition, else_expr),
+        }
     }
 
     fn lower_inner_expr(&self, node: Node<'_>) -> Expr {
@@ -288,6 +289,7 @@ impl Lowerer<'_> {
                     .map(|hp| self.texts_of_kind(hp, "identifier"))
                     .unwrap_or_default(),
                 body: self.lower_expr_field(*arm, "body"),
+                position: Some(self.pos(*arm)),
             })
             .collect()
     }
@@ -338,11 +340,32 @@ impl Lowerer<'_> {
         Expr::Block { statements, value }
     }
 
-    pub(crate) fn lower_literal(&self, node: Node<'_>) -> Expr {
+    fn lower_literal(&self, node: Node<'_>) -> Expr {
         let Some(inner) = self.first_named(node) else {
             return Expr::Bool(false);
         };
         self.lower_literal_node(inner)
+    }
+
+    fn lower_unary(&self, node: Node<'_>) -> Expr {
+        let op = self.field_text(node, "operator");
+        let operand = node.child_by_field_name("operand");
+        // The magnitude of i64::MIN is one larger than i64::MAX. Accept that
+        // one spelling only under unary minus and lower it directly; every
+        // larger magnitude is reported by the frontend's numeric validator.
+        if op == "-" && operand.is_some_and(|n| super::is_i64_min_magnitude_text(&self.text(n))) {
+            return Expr::Integer(i64::MIN);
+        }
+        let lowered = self.lower_expr_field(node, "operand");
+        // A negated literal folds to the literal itself so `-1` stays an `int`
+        // rather than becoming a fallible `Result` ([ARITH-NEG-LITERAL]).
+        if op == "-" {
+            return Expr::negated(lowered);
+        }
+        Expr::Unary {
+            op,
+            operand: Box::new(lowered),
+        }
     }
 
     /// Lower an already-unwrapped literal node (`integer`/`string`/… directly,
@@ -427,15 +450,13 @@ fn pipe_into(left: Expr, right: Expr) -> Expr {
     reason = "test assertions: an out-of-bounds index is a test failure, not a production panic"
 )]
 mod tests {
-    use crate::parse_program;
     use crate::parse_tree;
+    use crate::test_support::stmts;
     use osprey_ast::{Expr, InterpolatedPart, Stmt};
     use tree_sitter::Node;
 
     fn let_value(src: &str) -> Expr {
-        let parsed = parse_program(src);
-        assert!(parsed.errors.is_empty(), "errors: {:?}", parsed.errors);
-        match parsed.program.statements.into_iter().next() {
+        match stmts(src).into_iter().next() {
             Some(Stmt::Let { value, .. }) => value,
             other => panic!("expected let, got {other:?}"),
         }
@@ -460,15 +481,37 @@ mod tests {
         }
     }
 
+    /// A negated literal is a compile-time constant, so it folds to the literal
+    /// and keeps the plain `int`/`float` type; a negated *variable* stays a
+    /// checked `Unary` because `-i64::MIN` really can overflow.
+    /// Implements [ARITH-NEG-LITERAL].
+    #[test]
+    fn negated_literals_fold_but_negated_values_stay_checked() {
+        assert!(matches!(let_value("let r = -1\n"), Expr::Integer(-1)));
+        assert!(matches!(let_value("let r = -0\n"), Expr::Integer(0)));
+        match let_value("let r = -2.5\n") {
+            Expr::Float(f) => assert!((f + 2.5).abs() < f64::EPSILON, "got {f}"),
+            other => panic!("expected folded float, got {other:?}"),
+        }
+        // The one value whose negation overflows stays an unfolded, checked
+        // `Unary` rather than panicking or silently wrapping in the folder.
+        assert!(matches!(
+            let_value("let r = -(-9223372036854775808)\n"),
+            Expr::Unary { .. }
+        ));
+        assert!(matches!(let_value("let r = -x\n"), Expr::Unary { .. }));
+    }
+
     #[test]
     fn lowers_unary_and_block_recovery() {
         // unary_expression arm.
         assert!(matches!(let_value("let r = -x\n"), Expr::Unary { .. }));
         // A function-body block whose trailing value is emitted as an
         // expression_statement: lower_block recovers it as the block value.
-        let parsed = parse_program("fn f() = {\n  print(1)\n  42\n}\n");
-        assert!(parsed.errors.is_empty(), "errors: {:?}", parsed.errors);
-        match parsed.program.statements.into_iter().next() {
+        match stmts("fn f() = {\n  print(1)\n  42\n}\n")
+            .into_iter()
+            .next()
+        {
             Some(Stmt::Function {
                 body: Expr::Block { statements, value },
                 ..
@@ -544,8 +587,8 @@ mod tests {
             } => assert_eq!(named_arguments.len(), 2),
             other => panic!("expected call, got {other:?}"),
         }
-        // Ternary and Elvis desugar to a boolean match
-        // [PATTERN-RESULT-DEFAULT].
+        // Ternary desugars to a boolean match; Elvis desugars to an exhaustive
+        // Success/Error match [PATTERN-RESULT-DEFAULT].
         assert!(matches!(
             let_value("let r = c ? 1 : 2\n"),
             Expr::Match { .. }

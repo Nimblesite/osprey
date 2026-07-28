@@ -1,0 +1,104 @@
+effect Logger
+    (** Record `message` in whatever log the installed handler owns. *)
+    log : string => Unit
+    (** Record a diagnostic `message` kept out of normal output. *)
+    debug : string => Unit
+
+innerOp () =
+    perform Logger.log "inner exec"
+    perform Logger.debug "debug inner"
+    42
+
+outerOp () =
+    perform Logger.log "outer exec"
+    perform Logger.debug "debug outer"
+    21
+
+testNested () =
+    perform Logger.log "before inner handler"
+
+    innerResult =
+        handle Logger
+            log msg   => print ("[INNER-LOG] " + msg)
+            debug msg => print ("[INNER-DEBUG] " + msg)
+        in
+            r = innerOp ()
+            perform Logger.log ("inner result: " + toString r)
+            r
+
+    perform Logger.log "after inner handler — back to outer"
+    outerResult = outerOp ()
+    perform Logger.log ("outer result: " + toString outerResult)
+
+handle Logger
+    log msg   => print ("[OUTER-LOG] " + msg)
+    debug msg => print ("[OUTER-DEBUG] " + msg)
+in
+    print "=== handler scoping ==="
+    r = nestedCall ()
+    print ("forward chain result: " + toString r)
+
+    testNested ()
+    print "=== done ==="
+
+performComplex () =
+    perform Logger.log "complex starting"
+    v = 21 * 2
+    perform Logger.log ("complex intermediate: " + toString v)
+    v
+
+deepNestedOp () =
+    perform Logger.log "deep op exec"
+    performComplex ()
+
+nestedCall () =
+    perform Logger.log "before nested"
+    r = deepNestedOp ()
+    perform Logger.log "after nested"
+    r
+
+effect Ask
+    (** Request a replacement for `value` from the installed handler. *)
+    ask : int => int
+effect Tell
+    (** Hand `value` to the handler and use whatever it returns. *)
+    tell : int => int
+
+askBoth n =
+    a = perform Ask.ask n
+    perform Tell.tell a
+
+nested =
+    handle Ask
+        ask v => resume ((v + 1) ?: v)
+    in
+        handle Tell
+            tell v => resume ((v * 2) ?: v)
+        in askBoth 4
+
+askOnce n = perform Ask.ask n
+
+shadowed =
+    handle Ask
+        ask v => resume ((v + 100) ?: v)
+    in
+        handle Ask
+            ask v => resume ((v + 1) ?: v)
+        in askOnce 1
+print ("nested resuming " + toString nested + " shadowed resume " + toString shadowed)
+print "=== resume scoping done ==="
+
+(** Run the forward-referenced chain under a quiet handler. *)
+forwardResultForTest () =
+    handle Logger
+        log msg => 0
+        debug msg => 0
+    in nestedCall ()
+
+// Re-enter the forward call chain and check nested handler restoration.
+test "nested handlers override locally and restore outer scope" (\() => checkAll "handler scope results" [
+        (forwardResultForTest () ?: 0) == 42,
+        nested == 10,
+        shadowed == 2,
+        nested != shadowed
+])

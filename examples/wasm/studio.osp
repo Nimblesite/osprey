@@ -69,7 +69,10 @@ fn books() ![Db] = {
 // Each performed Sale appends an INSERT to the seed script and folds the row
 // into running totals. The same pass produces the DML the page feeds SQLite and
 // the gold-standard numbers it checks SQLite's answers against.
-effect Db { record: fn(Sale) -> int }
+effect Db {
+    /// Record one `Sale` and return its assigned id.
+    record: fn(Sale) -> int
+}
 
 fn ddl() =
     "CREATE TABLE sales (
@@ -111,10 +114,10 @@ fn run() = {
     handle Db
         record sale => {
             seed    = seed + insertLine(sale) + "\n"
-            revenue = revenue + sale.qty * sale.price
-            units   = units + sale.qty
-            count   = count + 1
-            premium = premium + isPremium(sale.price)
+            revenue = revenue + (sale.qty * sale.price ?: 0) ?: revenue
+            units   = units + sale.qty ?: units
+            count   = count + 1 ?: count
+            premium = premium + isPremium(sale.price) ?: premium
             revenue
         }
     in {

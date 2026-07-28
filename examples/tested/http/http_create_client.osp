@@ -1,8 +1,0 @@
-// 🌐 Minimal HTTP Test - No Pattern Matching
-// Just test if httpCreateClient works as a built-in function
-
-print("Creating client")
-
-// Simple function call test (like print, spawn, etc.)
-let result = httpCreateClient("https://httpbin.org", 5000)
-print(result) 

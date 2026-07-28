@@ -1,0 +1,31 @@
+🦅 OSPREY FEATURE TOUR
+══════════════════════════════════════
+ACT 1 · algebraic effects — same code, two worlds
+  💸 open account
+  💸 deposit 100  → balance 100
+  💸 deposit 250  → balance 350
+  💸 withdraw 90  → balance 260
+  ↳ realWorld() returned 350
+  🧪 [dry-run] open account
+  🧪 [dry-run] deposit 100  → balance 0
+  🧪 [dry-run] deposit 250  → balance 0
+  🧪 [dry-run] withdraw 90  → balance 0
+  ↳ dryRun()   returned 0
+══════════════════════════════════════
+ACT 2 · fibers compute functional pipelines in parallel
+  Σeven² <10  = 120  🟢 STARTER
+  Σeven² <20  = 1140  🔵 SOLID
+  Σeven² <40  = 9880  🟣 EPIC
+══════════════════════════════════════
+total Success(11140)  ·  fleet 🟣 EPIC
+  💸 open account
+  💸 deposit 100  → balance 100
+  💸 deposit 250  → balance 350
+  💸 withdraw 90  → balance 260
+  🧪 [dry-run] open account
+  🧪 [dry-run] deposit 100  → balance 0
+  🧪 [dry-run] deposit 250  → balance 0
+  🧪 [dry-run] withdraw 90  → balance 0
+ok 1 - mega showcase preserves effect, fiber, and tier state
+1..1
+# tests=1 passed=1 failed=0 skipped=0

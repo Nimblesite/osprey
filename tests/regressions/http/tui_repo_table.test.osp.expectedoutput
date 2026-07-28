@@ -1,0 +1,10 @@
+[32m  Repositories (3)[0m
+  ----------------------------
+  [36m*[0m [1mosprey      [0m [33m* 1200 [0m [2mGo[0m
+  [36m*[0m [1mllvm        [0m [33m* 9001 [0m [2mC++[0m
+  [36m*[0m [1mantlr       [0m [33m* 4200 [0m [2mJava[0m
+
+[2m  rendered[0m
+ok 1 - repository JSON renders after an HTTP response round trip
+1..1
+# tests=1 passed=1 failed=0 skipped=0

@@ -68,8 +68,10 @@ are defined in [Type System](0004-TypeSystem.md).
 
 ## Operators
 
-- Arithmetic: `+`, `-`, `*`, `/`, `%`. `+`, `-`, and `*` return plain numbers;
-  `/` and `%` return a `Result` and reject a zero divisor ([ARITH-PLAIN]).
+- Arithmetic: `+`, `-`, `*`, `/`, `%`. Integer `+`, `-`, and `*`, integer
+  unary `-`, and `/` and `%` return a checked `Result`; floating-point `+`,
+  `-`, `*`, and unary `-` remain plain IEEE-754 operations
+  ([ARITH-CHECKED](0013-ErrorHandling.md#arithmetic-and-result--arith-checked)).
 - Comparison: `==`, `!=`, `<`, `>`, `<=`, `>=`.
 - Boolean: `&&`, `||`, `!`. `&&` and `||` short-circuit.
 - Calls and data access: `()`, `.`, `[]`.
@@ -81,9 +83,8 @@ Default uses `=` both to initialize a `let`/`mut` declaration and to reassign a
 previously declared `mut` binding. ML uses `=` for a binding and `:=` for
 reassignment. A `mut` binding is a cell for **handler-owned effect state**, not a
 general imperative variable; where its reassignment is valid is defined in
-[Bindings](0003-Syntax.md#bindings), and the checker does not yet enforce that
-effect-scoped restriction
-([issue #180](https://github.com/Nimblesite/osprey/issues/180)).
+[Bindings](0003-Syntax.md#bindings). The checker accepts reassignment only in an
+effect handler arm.
 
 `?:` is a single token and is matched before bare `?` or `:`. Its semantics are
 defined by [PATTERN-RESULT-DEFAULT](0007-PatternMatching.md#result-default--pattern-result-default).

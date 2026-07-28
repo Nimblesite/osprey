@@ -6,6 +6,18 @@
 
 use crate::check::Checker;
 use crate::convert::type_expr_to_type;
+
+/// Builtin types that carry no fields, so `x.field` on one can never resolve.
+/// Deliberately excludes `any` (which unifies with everything, including
+/// records) and every collection/generic whose element MIGHT be a record.
+/// Implements [TYPE-FIELD-ACCESS-NON-RECORD].
+const FIELDLESS_TYPES: &[&str] = &[
+    names::INT,
+    names::FLOAT,
+    names::STRING,
+    names::BOOL,
+    names::UNIT,
+];
 use crate::env::{instantiate, TypeEnv};
 use crate::error::TypeError;
 use crate::ty::{names, Type};
@@ -35,6 +47,8 @@ impl Checker {
             Expr::InterpolatedStr(parts) => {
                 for p in parts {
                     if let InterpolatedPart::Expr(inner) = p {
+                        // Interpolation preserves a Result as its complete
+                        // Success/Error rendering; it never extracts a payload.
                         let _ = self.infer_expr(inner, env);
                     }
                 }
@@ -59,8 +73,7 @@ impl Checker {
                     self.push_assign(&Type::bool(), &t);
                     Type::bool()
                 } else {
-                    // numeric negation keeps the operand type (int or float)
-                    t
+                    self.infer_negation(&t)
                 }
             }
             Expr::Call {
@@ -98,7 +111,7 @@ impl Checker {
                 Type::con(names::FIBER, vec![t])
             }
             Expr::Await(inner) => self.infer_unwrap_con(inner, names::FIBER, env),
-            Expr::Recv(channel) => self.infer_unwrap_con(channel, names::CHANNEL, env),
+            Expr::Recv(channel) => self.infer_recv(channel, env),
             Expr::Send { channel, value } => self.infer_send(channel, value, env),
             // Valued yield forwards its type; bare yield is Unit.
             // Implements [CONCURRENCY-YIELD].
@@ -152,13 +165,36 @@ impl Checker {
     /// the target is not a known record (split out of [`Self::infer_expr`]).
     fn infer_field_access(&mut self, target: &Expr, field: &str, env: &TypeEnv) -> Type {
         let tt = self.infer_expr(target, env);
-        match &self.ctx.prune(&tt) {
+        let pruned = self.ctx.prune(&tt);
+        match &pruned {
             Type::Record { fields, .. } => fields
                 .get(field)
                 .cloned()
                 .unwrap_or_else(|| self.ctx.fresh()),
-            _ => self.ctx.fresh(),
+            other => {
+                if let Type::Con { name, .. } = other {
+                    if FIELDLESS_TYPES.contains(&name.as_str()) {
+                        self.record_field_access_on_fieldless(field, name);
+                    }
+                }
+                self.ctx.fresh()
+            }
         }
+    }
+
+    /// Reject `x.field` where `x` is a builtin that has no fields at all.
+    ///
+    /// This arm used to fall through to a fresh variable, so the program passed
+    /// the checker and CODEGEN emitted invalid LLVM (`bitcast i8* 42 to
+    /// { i64, i64 }*`) — the "error" then surfaced from clang, naming a
+    /// temporary `.ll` file rather than the offending source line. Only names
+    /// that can NEVER be a user record are listed, and an unresolved type
+    /// variable is deliberately left alone: inference may still resolve it to a
+    /// record. Implements [TYPE-FIELD-ACCESS-NON-RECORD].
+    fn record_field_access_on_fieldless(&mut self, field: &str, ty: &str) {
+        self.errors.push(TypeError::new(format!(
+            "cannot access field '{field}' on non-struct type {ty}"
+        )));
     }
 
     /// A channel and its sent value share one element type; the send is `Unit`.
@@ -172,13 +208,26 @@ impl Checker {
             &Type::con(names::CHANNEL, vec![element_ty.clone()]),
         );
         self.push_assign(&element_ty, &value_ty);
+        if self.ctx.prune(&value_ty).is_named(names::RESULT) {
+            self.errors.push(TypeError::new(
+                "Result-valued channels are not supported by this backend; handle the Result before sending",
+            ));
+        }
         Type::unit()
     }
 
-    /// Infer `resume(v)`: its argument is delivered as the operation's result, so
-    /// it lands in the op-result slot at an assignment site — a bare
-    /// `Result<T, E>` (e.g. from arithmetic) auto-unwraps into a concrete `T`,
-    /// exactly as function returns and `let`/`mut` assignments do. The expression
+    fn infer_recv(&mut self, channel: &Expr, env: &TypeEnv) -> Type {
+        let elem = self.infer_unwrap_con(channel, names::CHANNEL, env);
+        if self.ctx.prune(&elem).is_named(names::RESULT) {
+            self.errors.push(TypeError::new(
+                "Result-valued channels are not supported by this backend; receiving must never erase the Result wrapper",
+            ));
+        }
+        elem
+    }
+
+    /// Infer `resume(v)`: its argument is delivered as the operation's result and
+    /// must match that slot without erasing a Result error channel. The expression
     /// itself evaluates to the handler's answer type. A `resume` outside any
     /// handler arm is a hard error. Implements [EFFECTS-RESUME].
     fn infer_resume(&mut self, value: Option<&Expr>, env: &TypeEnv) -> Type {
@@ -247,6 +296,12 @@ impl Checker {
         for na in named_arguments {
             let _ = self.infer_expr(&na.value, env);
         }
+        // Infer a second, annotation-independent instance from the operation
+        // payload. A declared row is a contract, not authority: if
+        // `!Stash<string>` surrounds `Stash.put(42)`, the row must not rewrite
+        // the performed instance from `Stash<int>` to `Stash<string>` in the
+        // later static discharge proof.
+        let actual_instance = self.effect_instance_ops(effect);
         if !named_arguments.is_empty() {
             self.errors.push(TypeError::new(format!(
                 "perform `{effect}.{operation}` does not support named arguments"
@@ -293,6 +348,16 @@ impl Checker {
                 },
                 eff_args,
             ));
+            if let Some((actual_args, actual_ops)) = actual_instance {
+                if let Some(actual_op) = actual_ops.get(operation) {
+                    if actual_op.params.len() == arg_tys.len() {
+                        for (parameter, argument) in actual_op.params.iter().zip(&arg_tys) {
+                            let _ = unify(&mut self.ctx, parameter, argument);
+                        }
+                    }
+                }
+                self.perform_actual_tys.push((pos, actual_args));
+            }
         }
         op.ret
     }
@@ -304,9 +369,8 @@ impl Checker {
     /// under this instantiation (innermost-first, matching the runtime's
     /// handler stack), so its `perform` sites pin the same type arguments.
     /// The handled body, the arms, and the whole expression all share one
-    /// answer type; the body lands in the answer slot at an assignment site,
-    /// so a bare `Result<T, E>` body auto-unwraps into a concrete answer just
-    /// as function returns do. Implements [EFFECTS-RESUME],
+    /// answer type; a Result answer remains a Result unless explicitly handled.
+    /// Implements [EFFECTS-RESUME],
     /// [EFFECTS-GENERIC-INSTANTIATION], and [EFFECTS-OP-TYPING].
     fn infer_handler(
         &mut self,
@@ -372,6 +436,10 @@ impl Checker {
                 self.push_assign(&answer, &arm_ty);
             } else if !self.ctx.prune(&op_ret).is_named(crate::ty::names::UNIT) {
                 self.push_assign(&op_ret, &arm_ty);
+            } else if self.ctx.prune(&arm_ty).is_named(crate::ty::names::RESULT) {
+                self.errors.push(TypeError::new(
+                    "an unhandled `Result` cannot be discarded by a Unit effect operation arm; use `match` or `?:`",
+                ));
             }
         }
         self.handler_scopes.push(crate::check::EffectScope {
@@ -554,15 +622,22 @@ impl Checker {
 
     fn infer_index(&mut self, target: &Expr, index: &Expr, env: &TypeEnv) -> Type {
         let tt = self.infer_expr(target, env);
-        let _ = self.infer_expr(index, env);
+        let it = self.infer_expr(index, env);
         match self.ctx.prune(&tt) {
             Type::Con { name, args } if name == names::LIST && !args.is_empty() => {
+                self.push_assign(&Type::int(), &it);
                 res_math_like(args.first().cloned().unwrap_or_else(|| self.ctx.fresh()))
             }
             Type::Con { name, args } if name == names::MAP && args.len() == 2 => {
+                if let Some(key) = args.first() {
+                    self.push_assign(key, &it);
+                }
                 res_math_like(args.get(1).cloned().unwrap_or_else(|| self.ctx.fresh()))
             }
-            t if t.is_named(names::STRING) => res_math_like(Type::string()),
+            t if t.is_named(names::STRING) => {
+                self.push_assign(&Type::int(), &it);
+                res_math_like(Type::string())
+            }
             _ => {
                 let fresh = self.ctx.fresh();
                 res_math_like(fresh)
@@ -748,6 +823,20 @@ fn unwrap_result(t: &Type) -> Type {
     }
 }
 
+fn is_result(t: &Type) -> bool {
+    t.is_named(names::RESULT)
+}
+
+/// Arithmetic propagation is intentionally a single `MathError` channel. A
+/// Result carrying any other error type must be handled before arithmetic so
+/// its identity cannot be silently relabelled.
+fn result_error(t: &Type) -> Option<Type> {
+    match t {
+        Type::Con { name, args } if name == names::RESULT => args.get(1).cloned(),
+        _ => None,
+    }
+}
+
 impl Checker {
     fn infer_binary(&mut self, op: &str, left: &Expr, right: &Expr, env: &TypeEnv) -> Type {
         let lt = self.infer_expr(left, env);
@@ -759,9 +848,15 @@ impl Checker {
                 Type::bool()
             }
             OpKind::Comparison => {
-                let lu = unwrap_result(&self.ctx.prune(&lt));
-                let ru = unwrap_result(&self.ctx.prune(&rt));
-                let _ = unify(&mut self.ctx, &lu, &ru);
+                let l = self.ctx.prune(&lt);
+                let r = self.ctx.prune(&rt);
+                if is_result(&l) || is_result(&r) {
+                    self.errors.push(TypeError::new(
+                        "cannot compare a `Result` directly; handle it explicitly with `match` or `?:`",
+                    ));
+                } else {
+                    let _ = unify(&mut self.ctx, &l, &r);
+                }
                 Type::bool()
             }
             OpKind::Arith => self.infer_arith(op, &lt, &rt),
@@ -771,68 +866,108 @@ impl Checker {
     fn infer_arith(&mut self, op: &str, lt: &Type, rt: &Type) -> Type {
         let l = self.ctx.prune(lt);
         let r = self.ctx.prune(rt);
+        // Arithmetic is the sole failure-preserving Result flattening context:
+        // inspect an operand's success type to choose the operator overload, but
+        // keep one outer Result whenever either operand already has an error
+        // channel. No other value context may erase that channel.
+        let propagates_error = is_result(&l) || is_result(&r);
+        if let Some(error) = result_error(&l) {
+            self.push_unify(&math_err(), &error);
+        }
+        if let Some(error) = result_error(&r) {
+            self.push_unify(&math_err(), &error);
+        }
+        let lu = unwrap_result(&l);
+        let ru = unwrap_result(&r);
         match op {
-            // `/` and `%` can be handed a value with no representable result,
-            // so they keep the `Result` error channel ([ARITH-PLAIN]).
-            "%" if l.is_named(names::FLOAT) || r.is_named(names::FLOAT) => res_math(Type::float()),
+            "%" if lu.is_named(names::FLOAT) || ru.is_named(names::FLOAT) => {
+                res_math(Type::float())
+            }
             "%" => {
-                self.push_assign(&Type::int(), lt);
-                self.push_assign(&Type::int(), rt);
+                self.push_unify(&Type::int(), &lu);
+                self.push_unify(&Type::int(), &ru);
                 res_math(Type::int())
             }
             "/" => res_math(Type::float()),
             "+" => {
-                if l.is_named(names::STRING) || r.is_named(names::STRING) {
-                    self.push_assign(&Type::string(), lt);
-                    self.push_assign(&Type::string(), rt);
+                let total = if lu.is_named(names::STRING) || ru.is_named(names::STRING) {
+                    self.push_unify(&Type::string(), &lu);
+                    self.push_unify(&Type::string(), &ru);
                     Type::string()
-                } else if l.is_named(names::FLOAT) || r.is_named(names::FLOAT) {
+                } else if lu.is_named(names::FLOAT) || ru.is_named(names::FLOAT) {
                     Type::float()
-                } else if l.is_named(names::LIST) {
-                    let _ = unify(&mut self.ctx, lt, rt);
-                    l
-                } else if r.is_named(names::LIST) {
-                    let _ = unify(&mut self.ctx, lt, rt);
-                    r
-                } else if l.is_named(names::MAP) || r.is_named(names::MAP) {
-                    let _ = unify(&mut self.ctx, lt, rt);
-                    if l.is_named(names::MAP) {
-                        l
+                } else if lu.is_named(names::LIST) {
+                    let _ = unify(&mut self.ctx, &lu, &ru);
+                    lu
+                } else if ru.is_named(names::LIST) {
+                    let _ = unify(&mut self.ctx, &lu, &ru);
+                    ru
+                } else if lu.is_named(names::MAP) || ru.is_named(names::MAP) {
+                    let _ = unify(&mut self.ctx, &lu, &ru);
+                    if lu.is_named(names::MAP) {
+                        lu
                     } else {
-                        r
+                        ru
                     }
-                } else if both_vars(&l, &r) {
-                    // Both operands unconstrained: defer (`+` is overloaded over
-                    // int/float/string/list). Tie them and yield a fresh result
-                    // so usage context can pick the type.
-                    let _ = unify(&mut self.ctx, lt, rt);
-                    self.ctx.fresh()
+                } else if both_vars(&lu, &ru) {
+                    // No type-class constraint exists to defer this overload
+                    // safely: a later integer instantiation would otherwise
+                    // lose its overflow channel. As with unconstrained `-` and
+                    // `*`, default two unconstrained operands to integer.
+                    return self.int_arithmetic_result(&lu, &ru);
                 } else {
-                    self.int_arithmetic(lt, rt)
+                    return self.int_arithmetic_result(&lu, &ru);
+                };
+                if propagates_error {
+                    res_math(total)
+                } else {
+                    total
                 }
             }
-            // "-" and "*": unlike "+", these have no string/list overload, so
-            // unconstrained operands default to int. Neither operation is
-            // fallible; checked integer variants are explicit builtins.
+            // Unlike `+`, `-` and `*` have no string/list overload, so
+            // unconstrained operands default to int.
             _ => {
-                if l.is_named(names::FLOAT) || r.is_named(names::FLOAT) {
-                    Type::float()
+                if lu.is_named(names::FLOAT) || ru.is_named(names::FLOAT) {
+                    if propagates_error {
+                        res_math(Type::float())
+                    } else {
+                        Type::float()
+                    }
                 } else {
-                    self.int_arithmetic(lt, rt)
+                    self.int_arithmetic_result(&lu, &ru)
                 }
             }
         }
     }
 
-    /// Constrain both operands to integers and yield the plain `int`. `+ - *`
-    /// fail only by overflow, which wraps two's complement — every wrapped
-    /// result is representable, so there is nothing to report and no `Result`
-    /// to unwrap ([ARITH-PLAIN]). `checkedAdd`/`checkedSub`/`checkedMul` are
-    /// the opt-in guarded siblings.
-    fn int_arithmetic(&mut self, left: &Type, right: &Type) -> Type {
-        self.push_assign(&Type::int(), left);
-        self.push_assign(&Type::int(), right);
-        Type::int()
+    /// Constrain both operands to integers and preserve overflow as a typed
+    /// failure. Integer `+`, `-`, and `*` can all exceed the i64 range.
+    fn int_arithmetic_result(&mut self, left: &Type, right: &Type) -> Type {
+        self.push_unify(&Type::int(), left);
+        self.push_unify(&Type::int(), right);
+        res_math(Type::int())
+    }
+
+    /// Integer negation fails for `INT64_MIN`; float negation is total. A
+    /// Result operand is inspected only to propagate its existing failure into
+    /// the one flattened arithmetic Result.
+    fn infer_negation(&mut self, operand: &Type) -> Type {
+        let operand = self.ctx.prune(operand);
+        let propagates_error = is_result(&operand);
+        if let Some(error) = result_error(&operand) {
+            self.push_unify(&math_err(), &error);
+        }
+        let inner = unwrap_result(&operand);
+        if inner.is_named(names::FLOAT) {
+            if propagates_error {
+                res_math(Type::float())
+            } else {
+                Type::float()
+            }
+        } else {
+            self.push_unify(&Type::int(), &inner);
+            res_math(Type::int())
+        }
     }
 }
 
@@ -860,8 +995,8 @@ mod tests {
     #[test]
     fn pipe_into_call_and_bare_function() {
         // Call form: `x |> f(a)` prepends `x`. Bare form: `x |> f` applies `f(x)`.
-        ok("fn add(a: int, b: int) -> int = a + b\n\
-            fn inc(n: int) -> int = n + 1\n\
+        ok("fn add(a: int, b: int) -> Result<int, MathError> = a + b\n\
+            fn inc(n: int) -> Result<int, MathError> = n + 1\n\
             let r = 10 |> add(5)\n\
             let s = 10 |> inc\n");
     }
@@ -927,6 +1062,90 @@ mod tests {
         assert!(errs
             .iter()
             .any(|e| e.message.contains("cannot unify int with string")));
+        let result_channel = bad(
+            "fn sendFailed(ch: Channel<Result<int, MathError>>, value: Result<int, MathError>) -> Unit = send(ch, value)\n",
+        );
+        assert!(result_channel
+            .iter()
+            .any(|e| e.message.contains("Result-valued channels")));
+        // The receiving end is gated for the same reason: handing the Result
+        // wrapper back out of `recv` would erase it silently.
+        let result_recv = bad(
+            "fn recvFailed(ch: Channel<Result<int, MathError>>) -> Result<int, MathError> = recv(ch)\n",
+        );
+        assert!(result_recv
+            .iter()
+            .any(|e| e.message.contains("Result-valued channels")));
+    }
+
+    #[test]
+    fn a_unit_operation_arm_may_not_swallow_a_result() {
+        // A `Unit` operation discards its arm's value, so a `Result` produced
+        // there would lose its failure with nothing left to observe it.
+        // Implements [EFFECTS-RESUME].
+        let errs = bad("effect Sink { drop: fn(int) -> Unit }\n\
+                        fn risky(n: int) -> Result<int, MathError> = n + 1\n\
+                        fn go() -> int = handle Sink\n\
+                          drop v => risky(v)\n\
+                        in 0\n");
+        assert!(errs
+            .iter()
+            .any(|e| e.message.contains("Unit effect operation arm")));
+        ok("effect Sink { drop: fn(int) -> Unit }\n\
+            fn risky(n: int) -> Result<int, MathError> = n + 1\n\
+            fn go() -> int = handle Sink\n\
+              drop v => { let handled = risky(v) ?: 0 }\n\
+            in 0\n");
+    }
+
+    #[test]
+    fn handling_an_undeclared_effect_names_it_and_keeps_checking_the_arms() {
+        // The handler's own operations are unknown, so the arms cannot be
+        // typed against a signature — but checking must continue rather than
+        // abandon the body, or one typo would hide every later diagnostic.
+        let errs = bad("fn go() -> int = handle Nowhere\n\
+                          chime => 0\n\
+                        in 1\n");
+        assert!(errs
+            .iter()
+            .any(|e| e.message.contains("unknown effect `Nowhere`")));
+    }
+
+    #[test]
+    fn perform_of_an_undeclared_effect_names_the_effect_it_could_not_find() {
+        let errs = bad("fn ring() -> int = perform Nowhere.chime()\n");
+        assert!(errs
+            .iter()
+            .any(|e| e.message.contains("unknown effect `Nowhere`")));
+    }
+
+    #[test]
+    fn a_generic_constructor_checks_its_type_argument_arity() {
+        // Implements [GENERICS-CTOR-ARITY]. Writing the arguments out is a
+        // contract with the declaration, so a mismatch is an error rather than
+        // a silently ignored annotation.
+        ok("type Box<T> = { v: T }\n\
+            let good = Box<int> { v: 1 }\n");
+        let errs = bad("type Box<T> = { v: T }\n\
+                        let wrong = Box<int, string> { v: 1 }\n");
+        assert!(errs
+            .iter()
+            .any(|e| e.message.contains("takes 1 type argument(s), got 2")));
+    }
+
+    #[test]
+    fn a_qualified_path_callee_is_looked_up_under_its_whole_name() {
+        // `infer_callee`'s path arm looks up `a::b` as ONE name rather than
+        // resolving `a` and projecting. A single file has no assembled project
+        // graph to bind the qualified name, so the diagnostic must name the
+        // full path — naming only `twice` would send the reader to the wrong
+        // declaration.
+        let errs = bad("namespace tools;\n\
+                        fn twice(n: int) -> int = (n * 2) ?: 0\n\
+                        let doubled = tools::twice(21)\n");
+        assert!(errs
+            .iter()
+            .any(|e| e.message.contains("unknown identifier `tools::twice`")));
     }
 
     #[test]
@@ -935,18 +1154,17 @@ mod tests {
             fn run() -> int = handle Logger\n\
               log msg => 0\n\
             in 42\n");
-        // `resume(v + 1000)` feeds the operation-result slot and the handled
-        // body ends in `a + 1`; both must retain the handler's answer type.
-        // Guards the [EFFECTS-RESUME] fix.
+        // Resume feeds the operation-result slot and the handled body feeds the
+        // handler-answer slot. Guards the [EFFECTS-RESUME] fix.
         ok("effect Guard { check: fn(int) -> int }\n\
             fn guarded() -> int = handle Guard\n\
               check v => match v < 100 {\n\
-                true => resume(v + 1000)\n\
+                true => resume(v)\n\
                 false => 0\n\
               }\n\
             in {\n\
               let a = perform Guard.check(5)\n\
-              a + 1\n\
+              a\n\
             }\n");
     }
 
@@ -1019,11 +1237,7 @@ mod tests {
                 ty: Some(TypeExpr::named("int")),
             }],
             return_type: Some(TypeExpr::named("int")),
-            body: Expr::Binary {
-                op: "+".into(),
-                left: Box::new(Expr::Identifier("n".into())),
-                right: Box::new(Expr::Integer(1)),
-            },
+            body: Expr::Identifier("n".into()),
             effects: Vec::new(),
             doc: None,
             position: None,
@@ -1034,6 +1248,7 @@ mod tests {
                 left: Box::new(Expr::Integer(10)),
                 right: Box::new(Expr::Identifier("inc".into())),
             },
+            doc: None,
             position: None,
         };
         // Pipe, call form: `10 |> inc(0)` prepends `10`, becoming `inc(10, 0)`
@@ -1047,6 +1262,7 @@ mod tests {
                     named_arguments: Vec::new(),
                 }),
             },
+            doc: None,
             position: None,
         };
         // `Expr::Update` over a non-record binding hits the else arm of
@@ -1059,6 +1275,7 @@ mod tests {
                     value: Expr::Integer(1),
                 }],
             },
+            doc: None,
             position: None,
         };
         let prog = Program {
@@ -1117,11 +1334,7 @@ mod tests {
                 type_params: Vec::new(),
                 parameters: vec![int_param("self"), int_param("other"), int_param("third")],
                 return_type: Some(TypeExpr::named("int")),
-                body: Expr::Binary {
-                    op: "+".into(),
-                    left: Box::new(Expr::Identifier("self".into())),
-                    right: Box::new(Expr::Identifier("other".into())),
-                },
+                body: Expr::Identifier("self".into()),
                 effects: Vec::new(),
                 doc: None,
                 position: None,
@@ -1132,6 +1345,7 @@ mod tests {
         let mut stmts = prog.statements;
         stmts.push(Stmt::Expr {
             value: body,
+            doc: None,
             position: None,
         });
         let errs = check_program(&Program { statements: stmts });
@@ -1174,11 +1388,14 @@ mod tests {
     }
 
     #[test]
-    fn non_dividing_float_arithmetic_is_plain() {
+    fn natural_arithmetic_infers_one_result() {
         let parsed = parse_program(
-            "fn add(a: float, b: float) = a + b\n\
-             fn sub(a: float, b: float) = a - b\n\
-             fn mul(a: float, b: float) = a * b\n",
+            "fn intCalc(a: int, b: int, c: int) = (a + b) * c - 1\n\
+             fn floatCalc(a: float, b: float, c: float) = (a + b) * c - 1.0\n\
+             fn mixedChain(a: int, b: int, c: float) = (a + b) + c\n\
+             fn inferredIntAdd(a, b) = a + b\n\
+             fn intNeg(n: int) = -n\n\
+             fn floatNeg(n: float) = -n\n",
         );
         assert!(
             parsed.errors.is_empty(),
@@ -1186,9 +1403,29 @@ mod tests {
             parsed.errors
         );
         let types = infer_program(&parsed.program);
-        for name in ["add", "sub", "mul"] {
-            assert_eq!(types.return_type(name), Some(&Type::float()), "{name}");
-        }
+        let result = |inner| Type::result(inner, Type::prim("MathError"));
+        assert_eq!(types.return_type("intCalc"), Some(&result(Type::int())));
+        assert_eq!(types.return_type("floatCalc"), Some(&Type::float()));
+        assert_eq!(
+            types.return_type("mixedChain"),
+            Some(&result(Type::float()))
+        );
+        assert_eq!(
+            types.return_type("inferredIntAdd"),
+            Some(&result(Type::int()))
+        );
+        assert_eq!(types.return_type("intNeg"), Some(&result(Type::int())));
+        assert_eq!(types.return_type("floatNeg"), Some(&Type::float()));
+
+        let errors = bad("fn wrong(r: Result<int, Error>) = r + 1\n");
+        assert!(errors
+            .iter()
+            .any(|e| { e.message.contains("MathError") && e.message.contains("Error") }));
+    }
+
+    #[test]
+    fn interpolation_preserves_the_complete_result() {
+        ok("fn show(a: int, b: int) -> string = \"sum=${a + b}\"\n");
     }
 
     #[test]
@@ -1230,6 +1467,8 @@ mod tests {
     #[test]
     fn map_index_yields_value_result() {
         ok("fn lookup(m: Map<string, int>) -> Result<int, Error> = m[\"k\"]\n");
+        assert!(!bad("fn bad(m: Map<string, int>) = m[1 + 1]\n").is_empty());
+        assert!(!bad("fn bad(xs: List<int>) = xs[1 + 1]\n").is_empty());
     }
 
     #[test]
@@ -1253,10 +1492,14 @@ mod tests {
     }
 
     #[test]
-    fn comparison_over_results_unwraps_both_sides() {
-        // `a % b` and `c % d` are both `Result<int, MathError>`; comparing them
-        // exercises the comparison arm's `unwrap_result` on both operands.
-        ok("fn cmp(a: int, b: int) -> bool = (a % b) == (b % a)\n");
+    fn comparison_over_results_requires_explicit_handling() {
+        let errs = bad("fn cmp(a: int, b: int) -> bool = (a % b) == (b % a)\n");
+        assert!(errs.iter().any(|e| {
+            e.message.contains("cannot compare a `Result` directly")
+                && e.message.contains("match")
+                && e.message.contains("?:")
+        }));
+        ok("fn cmp(a: int, b: int) -> bool = ((a % b) ?: 0) == ((b % a) ?: 0)\n");
     }
 
     #[test]
@@ -1271,7 +1514,7 @@ mod tests {
 
     #[test]
     fn lambda_with_param_and_return_annotations() {
-        ok("let f = fn(x: int) -> int => x + 1\n\
+        ok("let f = fn(x: int) -> int => (x + 1) ?: 0\n\
             let r = f(10)\n");
     }
 

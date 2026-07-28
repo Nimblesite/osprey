@@ -43,7 +43,7 @@ Default flavor:
 type Lookup = Found { value: int } | Missing
 
 fn doubleFound(result) = match result {
-  Found { value } => Success(value * 2)
+  Found { value } => Success((value * 2) ?: value)
   Missing => Error("value not found")
 }
 
@@ -56,14 +56,14 @@ match doubleFound(Found { value: 21 }) {
 ML flavor:
 
 ```osprey-ml
-adder : int -> int -> int
+adder : int -> int -> Result<int, MathError>
 adder a b = a + b
 
 addTen = adder 10
-answer = addTen 32
+answer = addTen 32 ?: 0
 ```
 
-Runnable examples live in [`examples/tested/`](examples/tested/).
+Executable language tests live in [`tests/`](tests/).
 
 ## Installation
 

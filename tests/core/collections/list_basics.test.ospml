@@ -1,0 +1,313 @@
+// Persistent List behavior across construction, traversal, and branching.
+
+(** Record callback values without using stdout. *)
+effect IterationProbe
+    (** Record one callback value so traversal order is testable. *)
+    observe : int => Unit
+
+(** Append an inclusive integer range without mutating earlier lists. *)
+appendThrough : List int -> int -> int -> List int
+appendThrough xs next last = match next > last
+    true => xs
+    false => appendThrough (listAppend xs next) (next + 1 ?: next) last
+
+(** Classify empty, singleton, pair, and head-tail list patterns. *)
+classify : List int -> string
+classify [] = "empty"
+classify [single] = "one(${single})"
+classify [first, second] = "two(${first},${second})"
+classify [head, ...tail] = "many head=${head} rest=${listLength tail}"
+
+(** Sum a list through recursive head-tail destructuring. *)
+sumList : List int -> int
+sumList [] = 0
+sumList [head, ...tail] = head + sumList tail ?: 0
+
+(** Measure a tail after two fixed prefix elements. *)
+restLen : List int -> int
+restLen [_, second, ...rest] = listLength rest
+restLen _ = 0
+
+(** Encode callback order as a base-100 integer through an effect. *)
+encodeIteration : List int -> int
+encodeIteration xs =
+    mut encoded = 0
+    handle IterationProbe
+        observe value =>
+            encoded := encoded * 100 + value ?: encoded
+    in
+        forEachList xs (\value => perform IterationProbe.observe value)
+    encoded
+
+(** Exercise construction, reversal, prepend, concatenation, and identity. *)
+constructionAndIdentityCase () =
+    empty = List ()
+    a = listAppend (listAppend (listAppend (List ()) 1) 2) 3
+    b = listAppend (listAppend (List ()) 10) 20
+    reversed = listReverse a
+    restored = listReverse reversed
+    prepended = listPrepend a 0
+    concatenated = listConcat a b
+    emptyPlusA = empty + a
+    aPlusEmpty = a + empty
+    doubledA = a + a
+    abPlusA = a + b + a
+
+    // Check lengths across construction and concatenation.
+    checkAll "legacy construction and operation lengths" [
+        listLength empty == 0,
+        listLength a == 3,
+        listLength b == 2,
+        listLength reversed == 3,
+        listLength restored == 3,
+        listLength concatenated == 5,
+        listLength (listConcat empty a) == 3,
+        listLength (listConcat a empty) == 3,
+        listLength (a + a) == 6,
+        listLength (a + b + a) == 8,
+        listLength prepended == 4,
+        listLength a == 3
+    ]
+
+    // Check construction and reversal contents.
+    checkAll "construction and reverse contents" [
+        (listGet a 0 ?: ((0 - 999) ?: 0)) == 1,
+        (listGet a 1 ?: ((0 - 999) ?: 0)) == 2,
+        (listGet a 2 ?: ((0 - 999) ?: 0)) == 3,
+        (listGet b 0 ?: ((0 - 999) ?: 0)) == 10,
+        (listGet b 1 ?: ((0 - 999) ?: 0)) == 20,
+        (listGet reversed 0 ?: ((0 - 999) ?: 0)) == 3,
+        (listGet reversed 1 ?: ((0 - 999) ?: 0)) == 2,
+        (listGet reversed 2 ?: ((0 - 999) ?: 0)) == 1,
+        (listGet restored 0 ?: ((0 - 999) ?: 0)) == 1,
+        (listGet restored 1 ?: ((0 - 999) ?: 0)) == 2,
+        (listGet restored 2 ?: ((0 - 999) ?: 0)) == 3,
+        (listGet prepended 0 ?: ((0 - 999) ?: 0)) == 0,
+        (listGet prepended 1 ?: ((0 - 999) ?: 0)) == 1,
+        (listGet prepended 2 ?: ((0 - 999) ?: 0)) == 2,
+        (listGet prepended 3 ?: ((0 - 999) ?: 0)) == 3
+    ]
+
+    // Check concatenation seams, endpoints, identities, and the + alias.
+    checkAll "concat identities and boundaries" [
+        (listGet concatenated 0 ?: ((0 - 999) ?: 0)) == 1,
+        (listGet concatenated 2 ?: ((0 - 999) ?: 0)) == 3,
+        (listGet concatenated 3 ?: ((0 - 999) ?: 0)) == 10,
+        (listGet concatenated 4 ?: ((0 - 999) ?: 0)) == 20,
+        (listGet emptyPlusA 0 ?: ((0 - 999) ?: 0)) == 1,
+        (listGet aPlusEmpty 2 ?: ((0 - 999) ?: 0)) == 3,
+        (listGet doubledA 3 ?: ((0 - 999) ?: 0)) == 1,
+        (listGet abPlusA 5 ?: ((0 - 999) ?: 0)) == 1,
+        (listGet abPlusA 7 ?: ((0 - 999) ?: 0)) == 3
+    ]
+
+    // Check membership at present, absent, and endpoint values.
+    checkAll "contains behavior" [
+        listContains a 2,
+        !(listContains a 99),
+        !(listContains (List ()) 1),
+        listContains a 1,
+        listContains a 3,
+        listContains concatenated 10,
+        listContains concatenated 20,
+        !(listContains prepended 99)
+    ]
+
+(** Exercise callback order and persistent generation branches. *)
+iterationAndPersistenceCase () =
+    a = listAppend (listAppend (listAppend (List ()) 1) 2) 3
+    reversed = listReverse a
+    b = listAppend (listAppend (List ()) 10) 20
+    combined = a + b
+    g0 = List ()
+    g1 = listAppend g0 10
+    g2 = listAppend g1 20
+    g3 = listAppend g2 30
+    g4 = listAppend g3 40
+    g5 = listAppend g4 50
+    x = listAppend g3 999
+    y = listAppend g3 888
+    y2 = listAppend y 777
+
+    // Check exact forEachList callback order.
+    checkAll "forEachList iteration order" [
+        encodeIteration a == 10203,
+        encodeIteration reversed == 30201,
+        encodeIteration combined == 102031020
+    ]
+
+    // Check each iterated constituent value.
+    checkAll "iteration constituent values" [
+        (listGet a 0 ?: ((0 - 999) ?: 0)) == 1,
+        (listGet a 1 ?: ((0 - 999) ?: 0)) == 2,
+        (listGet a 2 ?: ((0 - 999) ?: 0)) == 3,
+        (listGet reversed 0 ?: ((0 - 999) ?: 0)) == 3,
+        (listGet reversed 1 ?: ((0 - 999) ?: 0)) == 2,
+        (listGet reversed 2 ?: ((0 - 999) ?: 0)) == 1,
+        (listGet combined 0 ?: ((0 - 999) ?: 0)) == 1,
+        (listGet combined 1 ?: ((0 - 999) ?: 0)) == 2,
+        (listGet combined 2 ?: ((0 - 999) ?: 0)) == 3,
+        (listGet combined 3 ?: ((0 - 999) ?: 0)) == 10,
+        (listGet combined 4 ?: ((0 - 999) ?: 0)) == 20
+    ]
+
+    // Check generation and sibling-branch lengths.
+    checkAll "persistent generation and branch lengths" [
+        listLength g0 == 0,
+        listLength g1 == 1,
+        listLength g2 == 2,
+        listLength g3 == 3,
+        listLength g4 == 4,
+        listLength g5 == 5,
+        listLength g2 == 2,
+        listLength x == 4,
+        listLength y == 4,
+        listLength y2 == 5,
+        listLength g3 == 3
+    ]
+
+    // Check that descendants and siblings do not mutate ancestors.
+    checkAll "persistent generation and branch contents" [
+        !(listContains g0 10),
+        listContains g1 10,
+        !(listContains g1 20),
+        listContains g2 10,
+        listContains g2 20,
+        !(listContains g2 30),
+        listContains g5 10,
+        listContains g5 50,
+        !(listContains g2 50),
+        listContains x 999,
+        !(listContains x 888),
+        listContains y 888,
+        !(listContains y 999),
+        listContains y2 777,
+        !(listContains y 777),
+        !(listContains g3 999),
+        !(listContains g3 888),
+        !(listContains g3 777),
+        (listGet g5 4 ?: ((0 - 999) ?: 0)) == 50,
+        (listGet y2 3 ?: ((0 - 999) ?: 0)) == 888,
+        (listGet y2 4 ?: ((0 - 999) ?: 0)) == 777
+    ]
+
+(** Exercise both sides of the 32-element structural tail boundary. *)
+tailBoundaryCase () =
+    t = appendThrough (List ()) 1 10
+    t2 = appendThrough t 11 20
+    t3 = appendThrough t2 21 30
+    t4 = appendThrough t3 31 35
+    reversed = listReverse t4
+    doubled = listConcat t4 t4
+
+    // Check lengths around the tail boundary.
+    checkAll "tail boundary legacy lengths" [
+        listLength t == 10,
+        listLength t2 == 20,
+        listLength t3 == 30,
+        listLength t4 == 35,
+        listLength reversed == 35,
+        listLength doubled == 70
+    ]
+
+    // Check contents before, at, and after the tail split.
+    checkAll "tail boundary contents" [
+        (listGet t 0 ?: ((0 - 999) ?: 0)) == 1,
+        (listGet t 9 ?: ((0 - 999) ?: 0)) == 10,
+        (listGet t2 10 ?: ((0 - 999) ?: 0)) == 11,
+        (listGet t2 19 ?: ((0 - 999) ?: 0)) == 20,
+        (listGet t3 29 ?: ((0 - 999) ?: 0)) == 30,
+        (listGet t4 30 ?: ((0 - 999) ?: 0)) == 31,
+        (listGet t4 31 ?: ((0 - 999) ?: 0)) == 32,
+        (listGet t4 32 ?: ((0 - 999) ?: 0)) == 33,
+        (listGet t4 34 ?: ((0 - 999) ?: 0)) == 35,
+        (listGet reversed 0 ?: ((0 - 999) ?: 0)) == 35,
+        (listGet reversed 2 ?: ((0 - 999) ?: 0)) == 33,
+        (listGet reversed 3 ?: ((0 - 999) ?: 0)) == 32,
+        (listGet reversed 34 ?: ((0 - 999) ?: 0)) == 1,
+        (listGet doubled 34 ?: ((0 - 999) ?: 0)) == 35,
+        (listGet doubled 35 ?: ((0 - 999) ?: 0)) == 1,
+        (listGet doubled 69 ?: ((0 - 999) ?: 0)) == 35,
+        listLength t3 == 30,
+        !(listContains t3 31),
+        sumList t == 55,
+        sumList t4 == 630
+    ]
+
+(** Exercise Result indexing, list patterns, recursion, and builtin dispatch. *)
+indexingPatternsAndDispatchCase () =
+    commands = ["echo hello", "echo world", "echo test"]
+    empty : List<string>
+    empty = []
+    a = listAppend (listAppend (listAppend (List ()) 1) 2) 3
+    b = listAppend (listAppend (List ()) 10) 20
+    singleton = listAppend (List ()) 7
+    short = listAppend (List ()) 9
+    pair = listAppend short 8
+    four = listAppend (listAppend pair 7) 6
+    patternFour = listAppend (listAppend (listAppend (listAppend (List ()) 4) 5) 6) 7
+    t = appendThrough (List ()) 1 10
+    dispatchFive = listAppend (listAppend (listAppend (listAppend (listAppend (List ()) 1) 2) 3) 4) 5
+    dispatchTen = listConcat dispatchFive dispatchFive
+    dispatchTwenty = listConcat dispatchTen dispatchTen
+    dispatchThirty = listConcat dispatchTwenty dispatchTen
+    dispatchThirtyFive = listConcat dispatchThirty dispatchFive
+    commandOob = match commands[5]
+        Success value => false
+        Error message => message == "index out of bounds"
+    emptyOob = match empty[0]
+        Success value => false
+        Error message => message == "index out of bounds"
+
+    // Check successful indexing and exact out-of-bounds errors.
+    checkAll "list index Result behavior" [
+        (commands[0] ?: "missing") == "echo hello",
+        (commands[2] ?: "missing") == "echo test",
+        commandOob,
+        emptyOob,
+        (commands[1] ?: "missing") == "echo world",
+        listLength commands == 3,
+        listLength empty == 0
+    ]
+
+    // Check list patterns, recursive sums, and wildcard tails.
+    checkAll "list pattern and recursion results" [
+        classify (List ()) == "empty",
+        classify b == "two(10,20)",
+        classify a == "many head=1 rest=2",
+        classify singleton == "one(7)",
+        sumList a == 6,
+        sumList t == 55,
+        restLen a == 1,
+        restLen short == 0,
+        restLen pair == 0,
+        restLen four == 2,
+        classify patternFour == "many head=4 rest=3"
+    ]
+
+    // Check receiver-directed length dispatch.
+    checkAll "receiver-directed length dispatch" [
+        length a == 3,
+        length dispatchThirtyFive == 35,
+        length "abcd" == 4,
+        length empty == 0,
+        length "" == 0
+    ]
+
+    // Check receiver-directed isEmpty dispatch.
+    checkAll "receiver-directed isEmpty dispatch" [
+        isEmpty empty,
+        !(isEmpty a),
+        isEmpty "",
+        !(isEmpty "abcd"),
+        !(isEmpty (listReverse a)),
+        isEmpty (listConcat empty empty)
+    ]
+
+test "lists construct, reverse, prepend, concatenate, and retain contents" constructionAndIdentityCase
+
+test "list iteration and persistent branches retain order and isolation" iterationAndPersistenceCase
+
+test "lists preserve content across the 32-element tail boundary" tailBoundaryCase
+
+test "list indexing, patterns, recursion, and receiver dispatch compose" indexingPatternsAndDispatchCase

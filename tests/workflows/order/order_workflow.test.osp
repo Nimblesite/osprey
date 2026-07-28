@@ -1,0 +1,78 @@
+/// Returns a catalog item or a caller-supplied fallback after Result matching.
+fn itemAt(index: int) -> (string) -> string =
+    fn(fallback) => ["coffee", "bread", "fruit"][index] ?: fallback
+
+/// Looks up an item's integer price and turns a missing-key Result into zero.
+fn unitPrice(item: string) -> int = { "coffee": 12, "bread": 5, "fruit": 7 }[item] ?: 0
+
+/// Applies the membership tier's percentage discount using safe integer division.
+fn loyaltyDiscount(level: string) -> (int) -> int = fn(subtotal) => match level {
+    "gold" => intDiv((subtotal * 20) ?: 0, 100) ?: 0
+    "silver" => intDiv((subtotal * 10) ?: 0, 100) ?: 0
+    _ => 0
+}
+
+/// Composes price lookup, quantity arithmetic, and the loyalty policy.
+fn total(level: string) -> (string) -> (int) -> int = fn(item) => fn(quantity) => {
+    let subtotal = unitPrice(item) * quantity ?: 0
+    subtotal - loyaltyDiscount(level)(subtotal) ?: 0
+}
+
+/// Normalizes customer text and renders the complete derived order state.
+fn receipt(customer: string) -> (string) -> (string) -> (int) -> string =
+    fn(level) => fn(item) => fn(quantity) => {
+    let normalized = customer.trim().toUpperCase()
+    "${normalized}:${item}:${quantity}:${total(level)(item)(quantity)}"
+}
+
+/// Verifies catalog Result branches, price lookup, and collection-derived state.
+fn catalogueInteraction() = {
+    // Eight independent predicates cover both successful and fallback interactions.
+    checkAll("catalogue state", [
+        itemAt(0)("missing") == "coffee",
+        itemAt(2)("missing") == "fruit",
+        itemAt(8)("missing") == "missing",
+        unitPrice(itemAt(0)("missing")) == 12,
+        unitPrice(itemAt(1)("missing")) == 5,
+        unitPrice("tea") == 0,
+        listLength(["coffee", "bread", "fruit"]) == 3,
+        itemAt(9)("missing") != itemAt(0)("missing")
+    ])
+}
+
+/// Verifies tier branches and their interaction with quantities and missing items.
+fn pricingInteraction() = {
+    // The batch checks every pricing branch and a cross-tier business invariant.
+    checkAll("pricing state", [
+        total("gold")("coffee")(5) == 48,
+        total("silver")("bread")(4) == 18,
+        total("guest")("fruit")(3) == 21,
+        total("gold")("tea")(10) == 0,
+        loyaltyDiscount("gold")(60) == 12,
+        loyaltyDiscount("silver")(60) == 6,
+        loyaltyDiscount("guest")(60) == 0,
+        total("gold")("coffee")(5) < total("guest")("coffee")(5)
+    ])
+}
+
+/// Verifies normalized receipts built from lookup, pricing, pipes, and strings.
+fn receiptInteraction() = {
+    // Eight separately reported predicates document the complete receipt workflow.
+    checkAll("receipt state", [
+        receipt("  Ada ")("gold")("coffee")(5) == "ADA:coffee:5:48",
+        receipt("Lin")("guest")("tea")(2) == "LIN:tea:2:0",
+        contains(receipt("Ada")("gold")("bread")(2), ":bread:"),
+        startsWith(receipt("  jo ")("guest")("fruit")(1), "JO:"),
+        endsWith(receipt("Ada")("silver")("coffee")(2), ":22"),
+        !contains(receipt(" Ada ")("guest")("fruit")(1), " "),
+        (receipt("Ada")("guest")("fruit")(2) |> fn(text) => text.toUpperCase()) == "ADA:FRUIT:2:14",
+        receipt("Kai")("silver")(itemAt(1)("missing"))((2 * 2) ?: 0) == "KAI:bread:4:18"
+    ])
+}
+
+// Register the catalog lookup interaction.
+test("catalogue lookup drives prices and fallbacks", catalogueInteraction)
+// Register the pricing-policy interaction.
+test("pricing combines maps, matches, Results and arithmetic", pricingInteraction)
+// Register the complete receipt workflow.
+test("receipts compose normalization, totals and pipelines", receiptInteraction)

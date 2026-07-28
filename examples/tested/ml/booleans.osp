@@ -1,7 +1,0 @@
-// Default-flavor twin of booleans.ospml. ML value bindings lower to `let`, the
-// bare script to `fn main() = { ... }`, and the logical/comparison operators are
-// identical across flavors — byte-identical IR.
-
-let t = true
-let f = false
-print("and=${t && f} or=${t || f} not=${!t} lt=${3 < 5} ge=${5 >= 5} eq=${4 == 4} chain=${(3 < 5) && !(2 > 9)}")

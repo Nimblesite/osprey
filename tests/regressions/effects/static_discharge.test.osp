@@ -1,0 +1,83 @@
+// Static effect rows are inferred through direct calls, call chains, callbacks,
+// closures, partial handlers, and generic effect instances. No function below
+// needs a return-type or effect-row annotation.
+
+effect Supply {
+    /// Request a value where the performer calls the operation itself.
+    direct: fn(int) -> int
+    /// Request a value through an intermediate call, not directly.
+    transitive: fn(int) -> int
+    /// Request a value from inside a callback passed to another function.
+    callback: fn() -> int
+    /// Request a value from inside a closure invoked later.
+    delayed: fn() -> int
+}
+
+fn direct(seed) = perform Supply.direct(seed)
+fn source(seed) = perform Supply.transitive(seed)
+fn relay(seed) = source(seed)
+fn invoke(callback) = callback()
+
+let directValue = handle Supply
+    direct seed => seed
+in direct(7)
+
+let transitiveValue = handle Supply
+    transitive seed => seed
+in relay(11)
+
+let callbackValue = handle Supply
+    callback => 13
+in invoke(fn() => perform Supply.callback())
+
+let delayed = fn() => perform Supply.delayed()
+let delayedValue = handle Supply
+    delayed => 17
+in delayed()
+
+effect Pair {
+    /// Read the first of the two supplied integers.
+    first: fn() -> int
+    /// Read the second of the two supplied integers.
+    second: fn() -> int
+}
+
+fn pairTotal() = {
+    let first = perform Pair.first()
+    let second = perform Pair.second()
+    first + second ?: 0
+}
+
+/// The inner partial handler discharges only `first`; `second` reaches the
+/// complementary outer handler.
+let partialValue = handle Pair
+    second => 22
+in handle Pair
+    first => 20
+in pairTotal()
+
+effect Stash<T> {
+    /// Store `value` in the stash for a later `take`.
+    put: fn(T) -> Unit
+    /// Remove and return the stashed value of type `T`.
+    take: fn() -> T
+}
+
+fn storeText() = perform Stash.put("fresh")
+
+let genericValue = handle Stash
+    put value => print("")
+    take => "cached"
+in {
+    storeText()
+    19
+}
+
+test("inferred effect rows discharge only under matching handlers", fn() => checkAll("static discharge values", [
+    directValue == 7,
+    transitiveValue == 11,
+    callbackValue == 13,
+    delayedValue == 17,
+    partialValue == 42,
+    genericValue == 19
+]))

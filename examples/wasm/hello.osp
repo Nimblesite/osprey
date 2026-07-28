@@ -16,14 +16,20 @@
 // wasm32, where `long` is 32-bit).
 
 // ── algebraic effects ── meaning chosen by the handler, not the call site ──
-effect Console { emit: fn(string) -> Unit }
-effect Ledger  { post: fn(int) -> int }
+effect Console {
+    /// Write one line to the console the handler represents.
+    emit: fn(string) -> Unit
+}
+effect Ledger {
+    /// Post `amount` to the account and return the new balance.
+    post: fn(int) -> int
+}
 
 fn account() ![Console, Ledger] = {
     perform Console.emit("open account")
     let afterDeposit = perform Ledger.post(100)
     perform Console.emit("deposit 100  -> balance ${afterDeposit}")
-    let afterDraw = perform Ledger.post(0 - 40)
+    let afterDraw = perform Ledger.post((0 - 40) ?: 0)
     perform Console.emit("withdraw 40  -> balance ${afterDraw}")
     afterDraw
 }
@@ -34,7 +40,7 @@ fn realWorld() = {
     handle Console
         emit line => print("    money ${line}")
     in handle Ledger
-        post amount => { balance = balance + amount  balance }
+        post amount => { balance = balance + amount ?: balance  balance }
     in account()
 }
 
@@ -64,9 +70,9 @@ fn badge(t) = match t {
 
 // ── pure functional pipeline: sum of squares of the evens in [1, n) ──
 // `fold` is the idiomatic iteration here -- no manual loops, no mutation.
-fn even(x) = (x % 2) == 0
-fn sq(x)   = x * x
-fn crunch(n) = range(1, n) |> filter(even) |> map(sq) |> fold(0, fn(a, b) => a + b)
+fn even(x) = (x % 2 ?: 1) == 0
+fn sq(x)   = x * x ?: 0
+fn crunch(n) = range(1, n) |> filter(even) |> map(sq) |> fold(0, fn(a, b) => a + b ?: a)
 
 // ── persistent List<T> + Map<K,V> ── immutable, structurally shared ──
 let nums     = listAppend(listAppend(listAppend(listAppend(List(), 3), 1), 4), 1)
@@ -76,7 +82,7 @@ let has4     = listContains(nums, 4)
 let has9     = listContains(nums, 9)
 let crunched = crunch(40)
 let who      = "Osprey" + " on " + "WebAssembly"
-let big      = 2 * 1500000000
+let big      = 2 * 1500000000 ?: 0
 
 print("OSPREY -> WebAssembly  ::  language tour
 ======================================

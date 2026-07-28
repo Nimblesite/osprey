@@ -333,10 +333,13 @@ impl ItemLower {
                     position: Some(pos),
                 });
             }
+            // A `(** … *)` block preceding a bare expression documents it —
+            // the shape a `test "name" case` case takes ([TESTING-DOC]).
             MlItem::Expr { value, pos } => {
-                self.clear_pending();
+                self.pending = None;
                 self.out.push(Stmt::Expr {
                     value: lower_expr(value),
+                    doc: self.pending_doc.take(),
                     position: Some(pos),
                 });
             }
@@ -761,6 +764,10 @@ pub(super) fn lower_effect_op(op: MlEffectOp) -> EffectOperation {
         name: op.name,
         parameters: Vec::new(),
         return_type: String::new(),
+        doc: op
+            .doc
+            .map(|text| crate::docparse::parse_doc(&text, DocScope::Outer)),
+        position: Some(op.pos),
     }
 }
 
@@ -982,6 +989,9 @@ fn lower_expr(expr: MlExpr) -> Expr {
             segments: path.segments,
         }),
         MlExpr::Paren(inner) => lower_expr(*inner),
+        // `-literal` folds to the literal so both flavors agree that `-1` is an
+        // `int`, not a fallible `Result` ([ARITH-NEG-LITERAL], [FLAVOR-IR-EQUIV]).
+        MlExpr::Unary { op, operand } if op == "-" => Expr::negated(lower_expr(*operand)),
         MlExpr::Unary { op, operand } => Expr::Unary {
             op,
             operand: Box::new(lower_expr(*operand)),
@@ -1111,6 +1121,7 @@ fn lower_handle_arm(arm: MlHandleArm) -> HandlerArm {
         operation: arm.operation,
         params: arm.params,
         body: lower_expr(arm.body),
+        position: Some(arm.pos),
     }
 }
 
@@ -1144,13 +1155,10 @@ fn lower_block(items: Vec<MlItem>, value: Option<Box<MlExpr>>) -> Expr {
     }
 }
 
-/// `e ?: d` — the Result default ([PATTERN-RESULT-DEFAULT]). Emits the shape
-/// the Default flavor's `lower_ternary` emits: the scrutinee reused as the
-/// `then` branch of a two-arm `Expr::Match` over boolean literal patterns. A
-/// `Success`/`Wildcard` pair would be a different node and would break
-/// [FLAVOR-IR-EQUIV] against the Default twin.
+/// `e ?: d` — the explicit Result default ([PATTERN-RESULT-DEFAULT]). Both
+/// flavors emit the same exhaustive Success/Error match.
 fn result_default(scrutinee: Expr, fallback: Expr) -> Expr {
-    crate::desugar::bool_match(scrutinee.clone(), scrutinee, fallback)
+    crate::desugar::result_default(scrutinee, fallback)
 }
 
 fn lower_arm(arm: MlArm) -> MatchArm {
@@ -1288,25 +1296,84 @@ fn parse_fragment(frag: &str) -> Expr {
 )]
 mod tests {
     use super::super::parse_ml;
+    use crate::test_support::{ml_one_stmt, ml_stmts};
     use osprey_ast::{Expr, InterpolatedPart, Pattern, Stmt, Variance};
 
-    fn stmts(src: &str) -> Vec<Stmt> {
-        let parsed = parse_ml(src);
-        assert!(parsed.errors.is_empty(), "ml errors: {:?}", parsed.errors);
-        parsed.program.statements
+    // ---------- [TESTING-DOC] expression-statement documentation ----------
+
+    /// The doc comment lowered onto a statement, or `None`.
+    fn stmt_doc(stmt: &Stmt) -> Option<&osprey_ast::DocComment> {
+        match stmt {
+            Stmt::Expr { doc, .. } | Stmt::Let { doc, .. } | Stmt::Function { doc, .. } => {
+                doc.as_ref()
+            }
+            _ => None,
+        }
     }
 
-    fn one(src: &str) -> Stmt {
-        let mut s = stmts(src);
-        assert_eq!(s.len(), 1, "expected exactly one statement: {s:?}");
-        // `remove(0)` is panic-free given the length assertion above and avoids
-        // the repository-forbidden `unwrap()`.
-        s.remove(0)
+    #[test]
+    fn an_ml_block_doc_lowers_onto_the_expression_statement_it_precedes() {
+        // `test "name" case` is an application expression, so documenting a
+        // case requires the doc to attach to the expression statement
+        // ([TESTING-DOC], [DOC-SIGIL-ML]).
+        let s = ml_one_stmt("(** Documents the call. *)\nprintLine \"hi\"\n");
+        assert!(matches!(s, Stmt::Expr { .. }), "still an expr stmt: {s:?}");
+        assert_eq!(
+            stmt_doc(&s).map(|d| d.summary.as_str()),
+            Some("Documents the call.")
+        );
+    }
+
+    #[test]
+    fn an_undocumented_ml_expression_statement_carries_no_doc() {
+        let s = ml_one_stmt("printLine \"hi\"\n");
+        assert!(stmt_doc(&s).is_none(), "no doc invented: {s:?}");
+    }
+
+    #[test]
+    fn an_ml_doc_is_consumed_by_the_first_statement_and_not_the_next() {
+        let all = ml_stmts("(** First. *)\nprintLine \"a\"\nprintLine \"b\"\n");
+        assert_eq!(all.len(), 2);
+        assert_eq!(
+            stmt_doc(&all[0]).map(|d| d.summary.as_str()),
+            Some("First.")
+        );
+        assert_eq!(
+            stmt_doc(&all[1]).map(|d| d.summary.as_str()),
+            None,
+            "the doc does not leak forward"
+        );
+    }
+
+    #[test]
+    fn an_ml_binding_after_a_documented_statement_keeps_its_own_doc() {
+        let all = ml_stmts("(** Runs it. *)\nprintLine \"hi\"\n(** Adds. *)\nadd a b = a + b\n");
+        assert_eq!(all.len(), 2);
+        assert_eq!(
+            stmt_doc(&all[0]).map(|d| d.summary.as_str()),
+            Some("Runs it.")
+        );
+        assert!(matches!(all[1], Stmt::Function { .. }));
+        assert_eq!(stmt_doc(&all[1]).map(|d| d.summary.as_str()), Some("Adds."));
+    }
+
+    #[test]
+    fn an_ml_doc_with_sections_lowers_every_recognised_field() {
+        let s = ml_one_stmt(
+            "(** Summary line.\n\n    # Parameters\n    - left: the first addend\n\n    # Since\n    0.3 *)\nprintLine \"hi\"\n",
+        );
+        let doc = stmt_doc(&s).expect("doc attached");
+        assert_eq!(doc.summary, "Summary line.");
+        assert_eq!(
+            doc.params,
+            vec![("left".to_owned(), "the first addend".to_owned())]
+        );
+        assert_eq!(doc.since.as_deref(), Some("0.3"));
     }
 
     #[test]
     fn value_binding_lowers_to_let() {
-        let s = one("answer = 42\n");
+        let s = ml_one_stmt("answer = 42\n");
         assert!(matches!(s, Stmt::Let { .. }), "expected let, got {s:?}");
         if let Stmt::Let {
             name,
@@ -1323,7 +1390,7 @@ mod tests {
 
     #[test]
     fn mut_and_assignment_lower_distinctly() {
-        let s = stmts("mut requests = 0\nrequests := requests + 1\n");
+        let s = ml_stmts("mut requests = 0\nrequests := requests + 1\n");
         assert!(matches!(s[0], Stmt::Let { mutable: true, .. }));
         assert!(matches!(s[1], Stmt::Assignment { ref name, .. } if name == "requests"));
     }
@@ -1335,7 +1402,7 @@ mod tests {
         // over `y` — byte-identical to the Default *explicit-curry*
         // `fn add(x) = fn(y) => x + y`, deliberately NOT the multi-parameter
         // `fn add(x, y)`.
-        let s = one("add x y = x + y\n");
+        let s = ml_one_stmt("add x y = x + y\n");
         assert!(
             matches!(s, Stmt::Function { .. }),
             "expected function, got {s:?}"
@@ -1363,7 +1430,7 @@ mod tests {
 
     #[test]
     fn single_param_function_has_no_extra_lambda() {
-        let s = one("inc x = x + 1\n");
+        let s = ml_one_stmt("inc x = x + 1\n");
         assert!(
             matches!(s, Stmt::Function { .. }),
             "expected function, got {s:?}"
@@ -1380,7 +1447,7 @@ mod tests {
     #[test]
     fn unit_function_has_zero_parameters() {
         // `f () = body` is a zero-parameter function, like the Default `fn f()`.
-        let s = one("greet () = 1\n");
+        let s = ml_one_stmt("greet () = 1\n");
         assert!(
             matches!(s, Stmt::Function { .. }),
             "expected function, got {s:?}"
@@ -1397,7 +1464,7 @@ mod tests {
         // `Call(Call(add, [1]), [2])` — byte-identical to the Default explicit-curry
         // `add(1)(2)`, NOT a flat `add(1, 2)`. (An UNBOUND head is treated as a
         // multi-argument builtin and folds to a flat saturated call instead.)
-        let value = stmts("add a b = a + b\nr = add 1 2\n")
+        let value = ml_stmts("add a b = a + b\nr = add 1 2\n")
             .into_iter()
             .find_map(|st| match st {
                 Stmt::Let { name, value, .. } if name == "r" => Some(value),
@@ -1430,7 +1497,7 @@ mod tests {
     #[test]
     fn application_binds_tighter_than_operators() {
         // `add 1 2 == 3` ⇒ (add 1 2) == 3.
-        let s = one("r = add 1 2 == 3\n");
+        let s = ml_one_stmt("r = add 1 2 == 3\n");
         assert!(
             matches!(
                 s,
@@ -1454,7 +1521,7 @@ mod tests {
 
     #[test]
     fn unit_application_is_zero_arg_call() {
-        let s = one("r = make ()\n");
+        let s = ml_one_stmt("r = make ()\n");
         assert!(
             matches!(
                 s,
@@ -1482,7 +1549,7 @@ mod tests {
 
     #[test]
     fn match_lowers_constructor_and_wildcard_arms() {
-        let s = one("r =\n    match x\n        Success value => value\n        _ => 0\n");
+        let s = ml_one_stmt("r =\n    match x\n        Success value => value\n        _ => 0\n");
         assert!(
             matches!(
                 s,
@@ -1518,7 +1585,7 @@ mod tests {
         // SAME `Pattern::List { elements, rest }` the Default flavor emits
         // ([FLAVOR-ML-MATCH], [TYPE-LIST-PATTERNS]).
         let src = "r =\n    match xs\n        [] => 0\n        [head, ...tail] => 1\n        [_, b, ...rest] => 2\n";
-        let s = one(src);
+        let s = ml_one_stmt(src);
         assert!(
             matches!(
                 s,
@@ -1566,7 +1633,7 @@ mod tests {
         // `Expr::Lambda` over `x` whose body is a one-parameter lambda over `y` —
         // byte-identical to the Default explicit-curry `fn(x) => fn(y) => x + y`,
         // not a single two-parameter lambda.
-        let s = one("f = \\x y => x + y\n");
+        let s = ml_one_stmt("f = \\x y => x + y\n");
         assert!(
             matches!(
                 s,
@@ -1597,7 +1664,7 @@ mod tests {
         }
         // `x |> f` becomes `f(x)` — no Pipe node survives, matching Default
         // [BUILTIN-ITER-PIPE].
-        let piped = one("r = x |> f\n");
+        let piped = ml_one_stmt("r = x |> f\n");
         assert!(
             matches!(
                 piped,
@@ -1626,7 +1693,7 @@ mod tests {
     #[test]
     fn record_block_lowers_to_type_constructor() {
         let src = "p =\n    Point\n        x = 1\n        y = 2\n";
-        let s = one(src);
+        let s = ml_one_stmt(src);
         assert!(
             matches!(
                 s,
@@ -1653,7 +1720,7 @@ mod tests {
         // `Ok(value = "x")` in expression position is an inline record literal —
         // it lowers to the SAME `Expr::TypeConstructor` the layout form and the
         // Default `Ok { value: "x" }` produce ([FLAVOR-ML-RECORD]).
-        let s = one("r = Ok(value = \"x\")\n");
+        let s = ml_one_stmt("r = Ok(value = \"x\")\n");
         assert!(
             matches!(
                 s,
@@ -1681,7 +1748,7 @@ mod tests {
         // `receiver(field = v)` with a LOWERCASE head is a non-destructive record
         // update; it lowers to the SAME `Expr::Update` the Default
         // `receiver { field: v }` produces ([FLAVOR-ML-RECORD]).
-        let s = one("p2 = point1(x = 30)\n");
+        let s = ml_one_stmt("p2 = point1(x = 30)\n");
         assert!(
             matches!(
                 s,
@@ -1708,7 +1775,7 @@ mod tests {
     fn map_literal_lowers_to_canonical_map() {
         // `["a" => 1, "b" => 2]` lowers to the SAME `Expr::Map` the Default
         // `{ "a": 1, "b": 2 }` produces ([FLAVOR-ML-MAP]).
-        let s = one("m = [\"a\" => 1, \"b\" => 2]\n");
+        let s = ml_one_stmt("m = [\"a\" => 1, \"b\" => 2]\n");
         assert!(
             matches!(
                 s,
@@ -1731,7 +1798,7 @@ mod tests {
         }
         // `[=>]` is the explicit empty-map form.
         assert!(matches!(
-            one("m = [=>]\n"),
+            ml_one_stmt("m = [=>]\n"),
             Stmt::Let { value: Expr::Map(ref e), .. } if e.is_empty()
         ));
     }
@@ -1740,7 +1807,7 @@ mod tests {
     fn generic_type_annotation_lowers_to_generic_params() {
         // `empty : List<string>` flows the angle-bracketed generic argument into
         // `TypeExpr.generic_params`, byte-identical to the Default annotation.
-        let s = stmts("empty : List<string>\nempty = []\n");
+        let s = ml_stmts("empty : List<string>\nempty = []\n");
         let first = s.first();
         assert!(
             matches!(first, Some(Stmt::Let { ty: Some(_), .. })),
@@ -1757,7 +1824,7 @@ mod tests {
     fn fn_typed_field_renders_with_parenthesised_arg() {
         // A function-typed record field renders as `(int) -> bool` — the spelling
         // the type checker accepts — not the bare `int -> bool` ([FLAVOR-ML-TYPE]).
-        let s = one("type Checker =\n    check : (int) -> bool\n");
+        let s = ml_one_stmt("type Checker =\n    check : (int) -> bool\n");
         assert!(matches!(s, Stmt::Type { .. }), "expected type, got {s:?}");
         if let Stmt::Type { variants, .. } = s {
             assert_eq!(variants[0].fields[0].ty, "(int) -> bool");
@@ -1768,7 +1835,7 @@ mod tests {
     fn spawn_inline_expr_lowers_to_spawn() {
         // `spawn f x` lowers to `Expr::Spawn` wrapping the call, byte-identical
         // to the Default `spawn f(x)` ([FLAVOR-ML-SPAWN]).
-        let s = one("r = spawn task 1\n");
+        let s = ml_one_stmt("r = spawn task 1\n");
         assert!(
             matches!(
                 s,
@@ -1794,7 +1861,7 @@ mod tests {
     #[test]
     fn spawn_block_lowers_to_spawn_block() {
         // `spawn` + an indented block lowers to `Expr::Spawn` wrapping the block.
-        let s = one("r = spawn\n    x = 1\n    task x\n");
+        let s = ml_one_stmt("r = spawn\n    x = 1\n    task x\n");
         assert!(
             matches!(
                 s,
@@ -1820,7 +1887,7 @@ mod tests {
     #[test]
     fn interpolation_parses_fragment_as_ml_application() {
         // `${toString id}` is ML whitespace application inside the fragment.
-        let s = one("r = \"n=${toString id}\"\n");
+        let s = ml_one_stmt("r = \"n=${toString id}\"\n");
         assert!(
             matches!(
                 s,
@@ -1847,7 +1914,7 @@ mod tests {
     #[test]
     fn block_body_with_statements_keeps_block_with_trailing_value() {
         let src = "f x =\n    y = x + 1\n    y + 2\n";
-        let s = one(src);
+        let s = ml_one_stmt(src);
         assert!(
             matches!(
                 s,
@@ -1877,11 +1944,11 @@ mod tests {
         // ([FLAVOR-CURRY], [FLAVOR-IR-EQUIV]); only `mut`+`:=` produces an
         // `Assignment`, never a bare `=`.
         assert!(matches!(
-            one("answer = 41 + 1\n"),
+            ml_one_stmt("answer = 41 + 1\n"),
             Stmt::Let { mutable: false, .. }
         ));
         // Same binding, this time the first statement of a function block.
-        let s = one("main () =\n    answer = 41 + 1\n    answer\n");
+        let s = ml_one_stmt("main () =\n    answer = 41 + 1\n    answer\n");
         assert!(
             matches!(
                 s,
@@ -1912,7 +1979,7 @@ mod tests {
         // field `constraint: None` ([FLAVOR-ML-TYPE], [FLAVOR-IR-EQUIV]).
         let src =
             "type Outcome =\n    Ok\n        value : string\n    Err\n        message : string\n";
-        let s = one(src);
+        let s = ml_one_stmt(src);
         assert!(matches!(s, Stmt::Type { .. }), "expected type, got {s:?}");
         if let Stmt::Type {
             name,
@@ -1938,7 +2005,7 @@ mod tests {
 
     #[test]
     fn enum_type_lowers_to_fieldless_variants() {
-        let s = one("type Status =\n    Active\n    Inactive\n");
+        let s = ml_one_stmt("type Status =\n    Active\n    Inactive\n");
         assert!(matches!(s, Stmt::Type { .. }), "expected type, got {s:?}");
         if let Stmt::Type { variants, .. } = s {
             assert_eq!(variants.len(), 2);
@@ -1953,7 +2020,7 @@ mod tests {
     fn record_type_lowers_to_single_variant_named_after_type() {
         // A lowercase first field marks the record form; its lone variant takes
         // the type's own name, exactly as Default's `type Point = { x, y }` does.
-        let s = one("type Point =\n    x : int\n    y : int\n");
+        let s = ml_one_stmt("type Point =\n    x : int\n    y : int\n");
         assert!(matches!(s, Stmt::Type { .. }), "expected type, got {s:?}");
         if let Stmt::Type { name, variants, .. } = s {
             assert_eq!(name, "Point");
@@ -1970,7 +2037,7 @@ mod tests {
         // `extern name (p : T) (q : U) -> R` lowers to the SAME `Stmt::Extern`
         // the Default `extern fn name(p: T, q: U) -> R` emits — typed parameters
         // in order plus a return type ([FLAVOR-ML-EXTERN], [FLAVOR-IR-EQUIV]).
-        let s = one("extern sqlite3_open (filename : string) (ppDb : Ptr) -> int\n");
+        let s = ml_one_stmt("extern sqlite3_open (filename : string) (ppDb : Ptr) -> int\n");
         assert!(
             matches!(s, Stmt::Extern { .. }),
             "expected extern, got {s:?}"
@@ -2009,7 +2076,7 @@ mod tests {
         // `Stmt::Effect` the Default `effect Trace { mark: fn(string) -> Unit }`
         // emits — one operation rendered as `fn(string) -> Unit`, with empty
         // parameters and a blank return type ([FLAVOR-ML-EFFECT], [FLAVOR-IR-EQUIV]).
-        let s = one("effect Trace\n    mark : string => Unit\n");
+        let s = ml_one_stmt("effect Trace\n    mark : string => Unit\n");
         assert!(
             matches!(s, Stmt::Effect { .. }),
             "expected effect, got {s:?}"
@@ -2034,7 +2101,7 @@ mod tests {
         // parenthesised `fn((Ptr, string)) -> int` — so inference recovers each
         // argument type and the IR is byte-identical ([FLAVOR-ML-EFFECT],
         // [FLAVOR-IR-EQUIV]).
-        let s = one("effect Database\n    exec : (Ptr, string) => int\n");
+        let s = ml_one_stmt("effect Database\n    exec : (Ptr, string) => int\n");
         if let Stmt::Effect { operations, .. } = s {
             assert_eq!(operations[0].ty, "fn(Ptr, string) -> int");
         } else {
@@ -2046,7 +2113,9 @@ mod tests {
     fn signature_effect_row_threads_into_function() {
         // `traced : Unit -> int ! Trace` puts `Trace` in the function's effect row,
         // byte-identical to the Default `fn traced() -> int !Trace`.
-        let s = one("traced : Unit -> int ! Trace\ntraced () =\n    perform Trace.mark \"one\"\n");
+        let s = ml_one_stmt(
+            "traced : Unit -> int ! Trace\ntraced () =\n    perform Trace.mark \"one\"\n",
+        );
         assert!(
             matches!(s, Stmt::Function { .. }),
             "expected function, got {s:?}"
@@ -2065,7 +2134,9 @@ mod tests {
         // `Stmt::Function`, byte-identical to the Default
         // `fn tick<T>() -> int !State<int>`. Implements [FLAVOR-ML-GENERICS],
         // [EFFECTS-GENERIC-ROWS].
-        let s = one("tick<T> : Unit -> int ! State<int>\ntick () =\n    perform State.get ()\n");
+        let s = ml_one_stmt(
+            "tick<T> : Unit -> int ! State<int>\ntick () =\n    perform State.get ()\n",
+        );
         if let Stmt::Function {
             type_params,
             effects,
@@ -2088,7 +2159,7 @@ mod tests {
         // `type Source out T =` / `type Sink in T =` — variance markers lower
         // to the canonical `TypeParam` variance the Default `type Source<out T>`
         // carries. Implements [TYPE-VARIANCE-DECL].
-        let s = one("type Source out T =\n    produce : T\n");
+        let s = ml_one_stmt("type Source out T =\n    produce : T\n");
         if let Stmt::Type { type_params, .. } = s {
             assert_eq!(type_params.len(), 1);
             assert_eq!(type_params[0].name, "T");
@@ -2096,7 +2167,7 @@ mod tests {
         } else {
             panic!("expected type, got {s:?}");
         }
-        let s = one("type Sink in T =\n    accept : T -> Unit\n");
+        let s = ml_one_stmt("type Sink in T =\n    accept : T -> Unit\n");
         if let Stmt::Type { type_params, .. } = s {
             assert_eq!(type_params[0].variance, Variance::Contravariant);
         } else {
@@ -2104,7 +2175,7 @@ mod tests {
         }
         // `effect State T` — a generic effect declaration.
         // Implements [EFFECTS-GENERIC-DECL].
-        let s = one("effect State T\n    get : Unit => T\n    set : T => Unit\n");
+        let s = ml_one_stmt("effect State T\n    get : Unit => T\n    set : T => Unit\n");
         if let Stmt::Effect {
             type_params,
             operations,
@@ -2125,7 +2196,7 @@ mod tests {
     fn perform_lowers_to_perform_expr() {
         // `perform Trace.mark "one"` lowers to the SAME `Expr::Perform` the Default
         // `perform Trace.mark("one")` emits ([FLAVOR-ML-EFFECT]).
-        let s = one("r = perform Trace.mark \"one\"\n");
+        let s = ml_one_stmt("r = perform Trace.mark \"one\"\n");
         assert!(
             matches!(
                 s,
@@ -2162,7 +2233,7 @@ mod tests {
         // emits ([FLAVOR-ML-EFFECT]).
         let src =
             "r =\n    handle Trace\n        mark label =>\n            resume\n    in traced ()\n";
-        let s = one(src);
+        let s = ml_one_stmt(src);
         assert!(
             matches!(
                 s,
@@ -2195,7 +2266,7 @@ mod tests {
     fn resume_lowers_with_and_without_argument() {
         // `resume` (no arg) → `Resume(None)`; `resume seed` → `Resume(Some(seed))`,
         // byte-identical to the Default `resume()` / `resume(seed)` ([FLAVOR-ML-EFFECT]).
-        let bare = one("r = resume\n");
+        let bare = ml_one_stmt("r = resume\n");
         assert!(
             matches!(
                 bare,
@@ -2206,7 +2277,7 @@ mod tests {
             ),
             "expected bare resume, got {bare:?}"
         );
-        let valued = one("r = resume seed\n");
+        let valued = ml_one_stmt("r = resume seed\n");
         assert!(
             matches!(
                 valued,

@@ -1,0 +1,114 @@
+ok 1 - unary negation 001
+ok 2 - double unary negation 001
+ok 3 - unary negation 002
+ok 4 - double unary negation 002
+ok 5 - unary negation 003
+ok 6 - double unary negation 003
+ok 7 - unary negation 004
+ok 8 - double unary negation 004
+ok 9 - unary negation 005
+ok 10 - double unary negation 005
+ok 11 - unary negation 006
+ok 12 - double unary negation 006
+ok 13 - unary negation 007
+ok 14 - double unary negation 007
+ok 15 - unary negation 008
+ok 16 - double unary negation 008
+ok 17 - unary negation 009
+ok 18 - double unary negation 009
+ok 19 - unary negation 010
+ok 20 - double unary negation 010
+ok 21 - absolute positive 001
+ok 22 - absolute negative 001
+ok 23 - absolute positive 002
+ok 24 - absolute negative 002
+ok 25 - absolute positive 003
+ok 26 - absolute negative 003
+ok 27 - absolute positive 004
+ok 28 - absolute negative 004
+ok 29 - absolute positive 005
+ok 30 - absolute negative 005
+ok 31 - absolute positive 006
+ok 32 - absolute negative 006
+ok 33 - absolute positive 007
+ok 34 - absolute negative 007
+ok 35 - absolute positive 008
+ok 36 - absolute negative 008
+ok 37 - absolute positive 009
+ok 38 - absolute negative 009
+ok 39 - absolute positive 010
+ok 40 - absolute negative 010
+ok 41 - mixed integer Result chain 001
+ok 42 - mixed integer Result chain 002
+ok 43 - mixed integer Result chain 003
+ok 44 - mixed integer Result chain 004
+ok 45 - mixed integer Result chain 005
+ok 46 - mixed integer Result chain 006
+ok 47 - mixed integer Result chain 007
+ok 48 - mixed integer Result chain 008
+ok 49 - mixed integer Result chain 009
+ok 50 - mixed integer Result chain 010
+ok 51 - mixed float Result chain 001
+ok 52 - mixed float Result chain 002
+ok 53 - mixed float Result chain 003
+ok 54 - mixed float Result chain 004
+ok 55 - mixed float Result chain 005
+ok 56 - mixed float Result chain 006
+ok 57 - mixed float Result chain 007
+ok 58 - mixed float Result chain 008
+ok 59 - mixed float Result chain 009
+ok 60 - mixed float Result chain 010
+ok 61 - overflow precedes division error 001
+ok 62 - remainder error precedes overflow 001
+ok 63 - multiply overflow precedes remainder error 001
+ok 64 - division error precedes multiply overflow 001
+ok 65 - late maximum overflow short circuits right error 001
+ok 66 - overflow precedes division error 002
+ok 67 - remainder error precedes overflow 002
+ok 68 - multiply overflow precedes remainder error 002
+ok 69 - division error precedes multiply overflow 002
+ok 70 - late maximum overflow short circuits right error 002
+ok 71 - overflow precedes division error 003
+ok 72 - remainder error precedes overflow 003
+ok 73 - multiply overflow precedes remainder error 003
+ok 74 - division error precedes multiply overflow 003
+ok 75 - late maximum overflow short circuits right error 003
+ok 76 - overflow precedes division error 004
+ok 77 - remainder error precedes overflow 004
+ok 78 - multiply overflow precedes remainder error 004
+ok 79 - division error precedes multiply overflow 004
+ok 80 - late maximum overflow short circuits right error 004
+ok 81 - successful Result default 001
+ok 82 - overflow Result default 001
+ok 83 - successful Result default 002
+ok 84 - overflow Result default 002
+ok 85 - successful Result default 003
+ok 86 - overflow Result default 003
+ok 87 - successful Result default 004
+ok 88 - overflow Result default 004
+ok 89 - successful Result default 005
+ok 90 - overflow Result default 005
+ok 91 - successful Result default 006
+ok 92 - overflow Result default 006
+ok 93 - successful Result default 007
+ok 94 - overflow Result default 007
+ok 95 - successful Result default 008
+ok 96 - overflow Result default 008
+ok 97 - successful Result default 009
+ok 98 - overflow Result default 009
+ok 99 - successful Result default 010
+ok 100 - overflow Result default 010
+ok 101 - explicit Result match 001
+ok 102 - explicit Result match 002
+ok 103 - explicit Result match 003
+ok 104 - explicit Result match 004
+ok 105 - explicit Result match 005
+ok 106 - explicit Result match 006
+ok 107 - explicit Result match 007
+ok 108 - explicit Result match 008
+ok 109 - explicit Result match 009
+ok 110 - explicit Result match 010
+ok 111 - literal negation is a plain int
+ok 112 - runtime negation stays a Result
+1..112
+# tests=112 passed=112 failed=0 skipped=0

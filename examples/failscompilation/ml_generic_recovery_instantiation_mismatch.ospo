@@ -1,0 +1,12 @@
+// osprey: flavor=ml
+// [EFFECTS-GENERIC-INSTANTIATION] One handled effect region has one concrete payload type.
+effect Recovery T
+    recover : T => T
+
+recovered =
+    handle Recovery
+        recover fallback => fallback
+    in
+        number = perform Recovery.recover 7
+        text = perform Recovery.recover "seven"
+        number

@@ -1,0 +1,137 @@
+// [BLOCK-SCOPE] covers nested shadowing and restoration of the outer binding.
+// Block statements as expressions: list & map access via Result-unwrap,
+// multi-statement blocks, nested blocks with shadowing, blocks inside
+// function bodies, nested collections (2D list), conditional logic
+// through match arms producing values out of a block.
+
+print("=== Block Statements ===")
+
+/// --- 1. Block with list access (single statement) ---
+fn listHeadBlock() = {
+    let nums = [42, 84, 126]
+    match nums[0] {
+        Success { value }   => value
+        Error   { message } => 0
+    }
+}
+let r1 = listHeadBlock()
+print("1 list head: ${r1}")
+
+/// --- 2. Block with map access + multiplication ---
+fn mapProductBlock() = {
+    let config = { "factor": 2, "base": 10 }
+    let x      = match config["base"]   { Success { value } => value Error { message } => 0 }
+    let factor = match config["factor"] { Success { value } => value Error { message } => 1 }
+    let m = x * factor
+    match m {
+        Success { value }   => value
+        Error   { message } => 0
+    }
+}
+let r2 = mapProductBlock()
+print("2 map factor*base: ${r2}")
+
+/// --- 3. Nested blocks with shadowing ---
+let outer = 100
+fn shadowedBlock() = {
+    let config = { "multiplier": 2, "offset": 25 }
+    let outer = match config["offset"] {
+        Success { value } => value
+        Error   { message } => 50
+    }
+    let inner = {
+        let listData = [10, 20, 30]
+        let outer = match listData[2] {
+            Success { value } => value
+            Error   { message } => 25
+        }
+        let m = outer * 2
+        match m {
+            Success { value } => value
+            Error   { message } => 0
+        }
+    }
+    let s = outer + inner
+    match s {
+        Success { value } => value
+        Error   { message } => 0
+    }
+}
+let r3 = shadowedBlock()
+print("3 shadowed inner+outer: ${r3}")
+
+/// --- 4. Block inside a function ---
+fn compute() = {
+    let numbers = [5, 10, 15]
+    let base = match numbers[1] {
+        Success { value } => value
+        Error   { message } => 10
+    }
+    let multiplier = 3
+    let r = base * multiplier
+    match r {
+        Success { value } => value
+        Error   { message } => 0
+    }
+}
+print("4 fn block: ${compute()}")
+
+/// --- 5. 2D list inside a block ---
+fn matrixBlock() = {
+    let matrix = [[1, 2], [3, 4]]
+    let firstRow = match matrix[0] {
+        Success { value }   => value
+        Error   { message } => [0]
+    }
+    match firstRow[1] {
+        Success { value } => {
+            let m = value * 10
+            match m {
+                Success { result } => result
+                Error   { message } => 0
+            }
+        }
+        Error { message } => 0
+    }
+}
+let r5 = matrixBlock()
+print("5 2D matrix[0][1]*10: ${r5}")
+
+/// --- 6. Conditional logic via nested match producing a block result ---
+let value = 42
+fn conditionalBlock(value) = {
+    let scoreMap = { "test1": 84, "test2": 90 }
+    let doubled = value * 2
+    match doubled {
+        Success { dValue } => match dValue {
+            84 => match scoreMap["test1"] {
+                Success { sValue } => {
+                    let added = sValue + 10
+                    match added {
+                        Success { value }   => value
+                        Error   { message } => 0
+                    }
+                }
+                Error { message } => 0
+            }
+            _ => 0
+        }
+        Error { message } => 0
+    }
+}
+let r6 = conditionalBlock(value)
+print("6 cond match block: ${r6}")
+
+print("=== Done ===")
+
+/// Verifies every block result, including shadowing and the wildcard branch.
+fn blockStatementsCase() = checkAll("block statement values", [
+    listHeadBlock() == 42,
+    mapProductBlock() == 20,
+    shadowedBlock() == 85,
+    compute() == 30,
+    matrixBlock() == 20,
+    conditionalBlock(42) == 94,
+    conditionalBlock(10) == 0
+])
+test("blocks preserve values and lexical scope", blockStatementsCase)

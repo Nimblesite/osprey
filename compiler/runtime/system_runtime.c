@@ -1,5 +1,4 @@
 #include <errno.h>
-#include <pthread.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -12,6 +11,15 @@
 // fork/exec/pipe/select; Windows uses the Win32 process APIs from <windows.h>
 // (via the compat header). pthreads work on both (winpthreads on Windows).
 // The file/JSON/string helpers at the bottom are portable and built everywhere.
+//
+// wasm32-wasip1 has neither fork/exec nor usable pthreads, so the process half
+// is compiled only for native targets — the same split effects_runtime.c makes
+// for thread-based continuations. The file/JSON/string half below IS portable
+// (WASI supplies fopen/fread/fwrite/remove), so this translation unit is in the
+// wasm runtime archive and `readFile`/`writeFile` programs run there instead of
+// link-failing the whole file. [WASM-TARGET]
+#ifndef __wasm__
+#include <pthread.h>
 #ifdef _WIN32
 #include "osprey_win_compat.h"
 #else
@@ -21,6 +29,7 @@
 #include <sys/wait.h>
 #include <unistd.h>
 #endif
+#endif // !__wasm__
 
 // Make stdout line-buffered at startup so a long-running program (e.g. an HTTP
 // server that never returns to flush at exit) shows each printed line live,
@@ -30,6 +39,7 @@ __attribute__((constructor)) static void osprey_stdio_lbf(void) {
   setvbuf(stdout, NULL, _IOLBF, 0);
 }
 
+#ifndef __wasm__
 // Process event handler function type - Osprey provides this callback
 typedef void (*ProcessEventHandler)(int64_t process_id, int64_t event_type,
                                     char *data);
@@ -588,6 +598,7 @@ char *spawn_process(char *command) {
 }
 
 #endif // _WIN32
+#endif // !__wasm__ — fork/exec/pthreads are absent on wasm32-wasip1
 
 // Write file function - returns 0 for success, negative for error
 int64_t write_file(char *filename, char *content) {

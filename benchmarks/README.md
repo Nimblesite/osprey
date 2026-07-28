@@ -21,12 +21,15 @@ zsh benchmarks/run.sh primes     # direct, single case
 ```
 
 > **Heads-up on RAM.** With the optimized build (below) the non-allocating cases
-> peak at ~1.4 MB — on par with C. The allocating ones balloon under the
-> *default* backend, which never reclaims (see *Findings*): `binarytrees` peaks
-> near **905 MB**. The **`Osprey (ARC)`** and **`Osprey (GC)`** columns compile
-> the same source with `--memory=arc` / `--memory=gc` and bring that to
-> **~4.9 MB** and **~24 MB**. Run the default column on a machine with a few GB
-> free, or skip it with `BENCH_FILTER`.
+> peak at ~1.4 MB — on par with C. The allocating ones use substantially more
+> memory under the *default* backend, which never reclaims (see *Findings*).
+> The **`Osprey (ARC)`** and **`Osprey (GC)`** columns compile the same source
+> with `--memory=arc` / `--memory=gc` and reclaim unused values. Run the default
+> column on a machine with a few GB free, or skip it with `BENCH_FILTER`.
+>
+> <!-- binarytrees-results:start -->
+> Current measured peaks: default **2.53e+03 MB**, `--memory=arc` **2.98 MB**, and `--memory=gc` **19.1 MB**.
+> <!-- binarytrees-results:end -->
 
 Results are written to `benchmarks/results/` (gitignored):
 
@@ -232,16 +235,15 @@ See [plan 0010](../docs/plans/0010-cross-language-benchmark-suite.md).
 
 **The one remaining gap — and how reclamation closes it: `binarytrees`.** Its
 tree nodes genuinely *escape* — built, held, then checksummed — so the optimizer
-cannot statically free them, and the default allocator
-(`compiler/runtime/memory_runtime.c`, a `malloc` passthrough) never reclaims:
-~905 MB. Allocation funnels through one swappable `@osp_alloc` hook
+cannot statically free them. The default allocator
+(`compiler/runtime/memory_runtime.c`, a `malloc` passthrough) never reclaims.
+Allocation funnels through one swappable `@osp_alloc` hook
 ([MEM-BACKENDS](../docs/specs/0018-MemoryManagement.md)), so a reclaiming backend
 drops in at LINK time with **no language change and byte-identical output**. The
-conservative tracing collector (`--memory=gc`) takes peak RSS to ~24 MB; Perceus
-reference counting (`--memory=arc`, `compiler/runtime/memory_arc.c`) takes it to
-**~4.9 MB** — within 3× of C, and the `Osprey (ARC)` column beats the GC on every
-allocating case in the table (on `exprtree` it beats C). Both are complete
-without a cycle collector because the value heap is acyclic [MEM-ACYCLIC].
+current measurements are generated above from the report data. The `Osprey
+(ARC)` column beats the GC on every allocating case in the table (on `exprtree`
+it beats C). Both are complete without a cycle collector because the value heap
+is acyclic [MEM-ACYCLIC].
 
 The cost is visible in the time column and is exactly what the remaining Perceus
 precision tiers address: ARC is **free** on the non-allocating cases (identical

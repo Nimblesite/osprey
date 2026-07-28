@@ -1,4 +1,4 @@
-// Missing handlers abort at runtime; row propagation does not reject this yet.
+// Must fail compilation: !Logger is a checked contract, not a handler.
 effect Logger {
     log: fn(string) -> Unit
 }

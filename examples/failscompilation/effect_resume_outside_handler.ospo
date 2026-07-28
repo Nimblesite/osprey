@@ -1,0 +1,2 @@
+// [EFFECTS-RESUME] No live continuation exists outside an effect handler arm.
+let invalidResume = resume(1)

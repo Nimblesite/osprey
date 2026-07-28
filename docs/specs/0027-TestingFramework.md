@@ -11,7 +11,7 @@ use soft assertions and return `Unit`; an ML case may instead return `Verdict`
 ## The built-ins
 
 **`[TESTING-BUILTINS]`** The type environment, code generator, and C runtime
-provide three functions.
+provide nine functions.
 
 ### `test(name: string, body: fn() -> a) -> Unit` — `[TESTING-BUILTIN-TEST]`
 
@@ -52,11 +52,11 @@ matches `expect`.
 Both assertions are valid anywhere an expression is — inside `test` bodies,
 in helper functions called from tests, or at the top level of a script.
 
-**`[TESTING-SHADOWING]`** Unlike other runtime built-ins, `test`, `expect`,
-and `check` do NOT reserve their names: a user-defined function or `extern`
+**`[TESTING-SHADOWING]`** Unlike other runtime built-ins, the testing names
+(`test`, `expect`, `expectAll`, `expectTrue`, `expectFalse`, `check`, `checkAll`,
+`checkTrue`, and `checkFalse`) are not reserved: a user-defined function or `extern`
 declaration with the same name shadows the built-in in both the type
-environment and codegen dispatch. Ordinary declarations may therefore use
-these names.
+environment and codegen dispatch.
 
 ## Equality semantics
 
@@ -69,6 +69,21 @@ renders a `Success` as its bare payload and an `Error` as `Error(<message>)`.
 Lists, maps, and records are rejected as assertion operands at code generation.
 Values of different types that render identically, such as `5` and `"5"`,
 compare equal.
+
+### Boolean assertion shortcuts
+
+`expectTrue(actual)` and `expectFalse(actual)` are compact forms of
+`expect(actual, true)` and `expect(actual, false)`. `checkTrue(label, actual)`
+and `checkFalse(label, actual)` provide the corresponding labeled forms. They
+are soft assertions with the same case state, diagnostics, and exit behavior.
+
+### Grouped assertions
+
+`expectAll([condition, ...])` and `checkAll(label, [condition, ...])` accept a
+non-empty boolean list literal and record every element as an independent soft
+assertion. Evaluation continues through the entire list after failures. The
+literal-only form keeps dense test tables allocation-free while preserving one
+runtime assertion result per condition.
 
 ## ML Verdict model
 
@@ -162,7 +177,7 @@ gate — any Osprey program may call the testing built-ins.
 
 ## CLI
 
-### `osprey test [path] [--filter <name>] [--quiet] [--coverage] [--coverage-json <path>]` — `[TESTING-CLI-RUN]`
+### `osprey test [path] [--filter <name>] [--quiet] [--coverage] [--coverage-json <path>] [--memory=default|gc|arc]` — `[TESTING-CLI-RUN]`
 
 Runs test files and aggregates results. `path` (default `.`) is either a
 single file (run as-is, regardless of naming) or a directory searched
@@ -173,6 +188,31 @@ Each file runs like `osprey <file> --run`, with its TAP output under a
 processes. The runner prints `# suites: X passed, Y failed` and exits `1` if a
 suite fails to compile or run, otherwise `0`. An empty discovery set fails with
 `no test files found`.
+
+One invocation runs every discovered suite under exactly one memory backend.
+`--memory=gc` selects tracing garbage collection, `--memory=arc` selects
+Perceus reference counting, and `--memory=default` explicitly selects the
+non-reclaiming backend. Omitting `--memory` delegates the choice to the compiler
+default.
+
+**`[TESTING-PARALLEL]`** Independent suites compile and run concurrently by
+default. Their captured stdout and stderr are replayed in sorted suite order,
+so parallel scheduling does not scramble TAP output. The positive-integer
+environment setting `OSPREY_TEST_JOBS` limits worker concurrency;
+`OSPREY_TEST_JOBS=1` is the serial escape hatch for constrained or diagnostic
+runs. An unset value uses the host's available parallelism, with at least two
+workers when the corpus contains multiple suites. Invalid or zero values fail
+argument validation with exit code `2`.
+
+**`[TESTING-NATIVE-CACHE]`** Native test runs reuse a content-addressed
+executable when the suite sources, compiler binary, runtime archive, memory
+mode, build kind, compiler command, and optimization setting are unchanged.
+The cache key includes both native runtime archives, so built-in HTTP and
+WebSocket suites remain cacheable. Named system-library `@link` directives are
+part of the source key and remain cacheable. Sources with custom `@linkdir`
+search paths bypass the cache because those external inputs cannot be validated
+from source alone. A cache miss builds to a process-unique staging path and
+publishes atomically, so concurrent runners never execute a partial artifact.
 
 ### `osprey <file> --list-tests` — `[TESTING-LIST]`
 
@@ -191,6 +231,49 @@ statement — the call's own line in the conventional top-level layout; for a
 test that is a function or lambda body, the enclosing declaration's line.
 Dynamically named tests (non-literal first argument) still run and report via
 TAP; they are not listed statically.
+
+### Documented test cases — `[TESTING-DOC]`
+
+A test case is an expression statement, not a declaration, so the grammar
+accepts a leading documentation block on any expression statement and the AST
+carries it on `Stmt::Expr`. Both surface forms lower to the one `DocComment`
+model of spec 0026: `///` in the Default flavor, `(** … *)` in ML.
+
+```osprey
+/// Addition is commutative.
+///
+/// # Since
+/// 0.3
+test("addition commutes", fn() => expect(add(1, 2), add(2, 1)))
+```
+
+A documented case gains two OPTIONAL keys in the `--list-tests` array — absent
+entirely when the case carries no documentation, so an undocumented suite's
+wire form is unchanged:
+
+```json
+[{"name":"addition commutes","line":6,"column":1,
+  "summary":"Addition is commutative.",
+  "doc":"Addition is commutative.\n\n**Since**\n\n0.3"}]
+```
+
+- `summary` is the doc's first paragraph;
+- `doc` is the whole comment rendered to Markdown by `[DOC-EXPORT]` — every
+  populated `# Parameters` / `# Returns` / `# Raises` / `# Examples` /
+  `# See also` / `# Since` / `# Deprecated` section.
+
+Attachment is exact: only the case's OWN statement documents it. A `///` block
+on the enclosing `fn` or `let` documents that declaration, and a block above a
+`{ … }` documents the block — neither is inherited by a nested case. The
+reported `line` stays on the `test(` call, never on the first `///` line, so an
+editor's gutter marker does not drift up into the comment.
+
+**`[TESTING-DOC-HOVER]`** The language server answers a hover over the `test`
+callee of a documented case with that case's documentation (`**Test:** <name>`
+followed by the rendered block) rather than the built-in's generic signature.
+An undocumented case still hovers as `**Test:** <name>`; the word `test` used
+anywhere else falls through to the ordinary lookup chain, so a user binding
+named `test` keeps hovering as itself.
 
 ## Line coverage
 
@@ -246,6 +329,41 @@ and coverage measures that file (`[TESTING-CLI-RUN]`).
 `osprey test <file> --coverage-json <tmp> --quiet`, adding `--filter <name>` for
 a single case. It maps `[TESTING-COVERAGE-JSON]` lines to VS Code
 `FileCoverage` and per-line `StatementCoverage` entries.
+
+**`[TESTING-DOC-VSCODE]`** Documentation `[TESTING-DOC]` reaches three
+surfaces, because VS Code's `TestItem` carries no tooltip of its own:
+
+- the case's whole `doc`, collapsed to a single line, becomes its
+  `TestItem.description` — the greyed text the Testing tree renders beside the
+  case name. The row truncates it to the panel width, but `description` is also
+  the only text the row's hover can show, so the hover must carry the entire
+  block: a `description` of just the `summary` showed one line of a
+  four-paragraph doc and dropped the rest. `summary` is the fallback when a
+  case reports one without a rendered `doc`;
+- hovering the `test(...)` call in the editor renders the whole block
+  (`[TESTING-DOC-HOVER]`);
+- **Osprey: Show Test Documentation** (`osprey.showTestDocumentation`, also on
+  the Testing view's item context menu) opens the rendered block, its heading,
+  and a `Declared at <file>:<line>` footer as Markdown. It resolves its target
+  from an explicit test item first, then from the active editor's cursor —
+  the nearest case declared at or above it.
+
+A failing case's peek message leads with its documentation, then the failure,
+then the `Context For AI` block, which gains a `- Documentation:` field.
+Documentation is refreshed wholesale per file on every resolve, so deleting a
+`///` block clears the description on the next discovery.
+
+**`[TESTING-PROFILE]`** A third, non-default run profile — **Profile** — runs
+the same discovery, filtering, and TAP mapping as Run, but executes each suite
+as `osprey <file> --run --profile` (`[PROF-CLI-RUN]`) inside a per-suite
+directory beneath one per-request artifact root, so several suites in one
+request cannot overwrite each other's exports. Verdicts are reported exactly as
+a plain run reports them; when the suite produced artifacts, the run
+additionally opens the flame-graph webview (`[PROF-VSCODE-FLAME]`) and applies
+the inline heat decorations (`[PROF-VSCODE-HEAT]`), and appends the suite's
+profile summary plus its artifact directory to the run output. A suite that
+fails to compile writes no artifacts; the run still reports the compile
+failure. The sampling profiler is POSIX-only, matching `[PROF-CLI-RUN]`.
 
 ## Runtime
 

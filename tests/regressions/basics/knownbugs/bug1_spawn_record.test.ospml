@@ -1,0 +1,24 @@
+type Job =
+    id : int
+    weight : int
+runJob : Job -> int
+runJob j = j.id * j.weight ?: 0
+jHigh = Job(id = 3, weight = 9)
+print (toString (runJob jHigh))
+f = spawn (runJob jHigh)
+print (toString (await f))
+
+(** Verify that record arguments survive both direct and spawned calls. *)
+spawnRecordCase () =
+    primary = Job(id = 3, weight = 9)
+    another = Job(id = 4, weight = 7)
+    future = spawn (runJob another)
+    spawnedResult = await future
+    checkAll "record values cross the fiber boundary" [
+        runJob primary == 27,
+        runJob another == 28,
+        spawnedResult == 28,
+        primary.id == 3,
+        primary.weight == 9
+    ]
+test "spawn preserves record arguments" spawnRecordCase

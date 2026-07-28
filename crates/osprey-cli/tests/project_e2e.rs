@@ -253,6 +253,32 @@ fn ordinary_script_bypasses_project_name_mangling() {
     let _ = std::fs::remove_file(source);
 }
 
+/// A namespaced declaration reaches the type checker under its flat linkage
+/// name, so a diagnostic about it must be translated back before a human sees
+/// it — the same rule `--symbols` and `--llvm` already hold to.
+#[test]
+fn a_project_type_diagnostic_names_declarations_in_source_form() {
+    let project = copy_fixture("diagnostic_names");
+    let main = project.join("src/main.ospml");
+    let source = std::fs::read_to_string(&main).expect("read project entry");
+    std::fs::write(
+        &main,
+        source.replace(
+            "serve : Ptr -> int ! [Ledger::Store, Metrics::MetricsFx, Api::Audit]",
+            "serve : Ptr -> int ! [Ledger::Store, Metrics::MetricsFx]",
+        ),
+    )
+    .expect("drop one effect from the declared row");
+
+    let output = run(&[arg(&project), "--check".to_string()]);
+    assert_ne!(output.code, Some(0), "stdout={}", output.stdout);
+    let rendered = format!("{}{}", output.stdout, output.stderr);
+    assert!(rendered.contains("`bank::serve`"), "{rendered}");
+    assert!(rendered.contains("bank::Api::Audit.log"), "{rendered}");
+    assert!(!rendered.contains("__osp_"), "{rendered}");
+    let _ = std::fs::remove_dir_all(project);
+}
+
 #[cfg(unix)]
 #[test]
 fn link_directives_from_a_non_entry_source_reach_the_native_driver() {

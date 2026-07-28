@@ -39,35 +39,35 @@ assigns to it. As in the Default flavor ([Bindings](0003-Syntax.md#bindings)),
 **handler-owned state for algebraic effects**
 ([EFFECTS-HANDLER-STATE](0017-AlgebraicEffects.md#handler-owned-state)), mutated
 *through* an effect handler rather than by free procedural `:=` reassignment.
+The checker rejects every `:=` outside an effect handler arm.
 
 ```osprey-ml
 answer = 42
 
 mut requests = 0
 total = handle Counter
-    tick => requests := requests + 1
+    tick => requests := (requests + 1) ?: requests
 in run ()
 ```
 
 These lower to `Stmt::Let { mutable: false }`,
 `Stmt::Let { mutable: true }`, and `Stmt::Assignment` respectively. Assignment
 to an immutable binding is a type error.
-
-> **Intended rule vs. current checker.** The checker does not yet enforce the
-> effect-scoped restriction — a bare `requests := requests + 1` with no handler
-> still compiles. The gap is tracked in
-> [issue #180](https://github.com/Nimblesite/osprey/issues/180).
+Assignment to a mutable binding is also a type error unless it occurs in an
+effect handler arm; the handled `in` body remains ordinary client code.
 
 ## Functions and Currying
 
 `[FLAVOR-ML-FN]` A signature precedes its binding. Function arrows associate to
-the right.
+the right. Checked integer arithmetic keeps its `Result` return in both written
+and inferred signatures
+([ARITH-CHECKED](0013-ErrorHandling.md#arithmetic-and-result--arith-checked)).
 
 ```osprey-ml
-inc : int -> int
+inc : int -> Result<int, MathError>
 inc x = x + 1
 
-add : int -> int -> int
+add : int -> int -> Result<int, MathError>
 add x y = x + y
 ```
 
@@ -76,18 +76,26 @@ one-parameter `Stmt::Function` whose body is a one-parameter `Expr::Lambda`.
 `add 1 2` lowers to nested one-argument calls. `add 1` therefore returns the
 remaining function.
 
+[Critical issue #184](https://github.com/Nimblesite/osprey/issues/184) currently
+qualifies this rule for effects: an unannotated four-argument curried ML
+function can silently skip operations performed through its body. The
+equivalent flat parameter form works. Until the lowering bug is fixed, write
+effectful functions of that shape with parenthesised comma-separated
+parameters.
+
 Parenthesised comma-separated parameters are explicitly flat:
 
 ```osprey-ml
-add : (int, int) -> int
+add : (int, int) -> Result<int, MathError>
 add (x, y) = x + y
 
 sum = add (10, 20)
 ```
 
 The flat binding lowers to one two-parameter `Stmt::Function`; the call lowers
-to one two-argument `Expr::Call`. Parentheses group arguments here; Osprey has
-no tuple value type.
+to one two-argument `Expr::Call`. `sum` retains the complete
+`Result<int, MathError>` return; neither flat nor curried application unwraps
+it. Parentheses group arguments here; Osprey has no tuple value type.
 
 Lambdas follow the same split: `\x y => body` is curried and
 `\(x, y) => body` is flat. `name () = body` is a zero-parameter function;
@@ -98,7 +106,9 @@ form one function by cases:
 
 ```osprey-ml
 make 0 = Leaf
-make depth = Node (make (depth - 1)) (make (depth - 1))
+make depth =
+    next = (depth - 1) ?: 0
+    Node (make next) (make next)
 ```
 
 The clause group lowers to one function whose body is `Expr::Match`. A group
@@ -142,7 +152,7 @@ namespace, module, state-module, signature, and import bodies.
 namespace billing
 
 signature TaxApi
-    addTax : int -> int
+    addTax : int -> Result<int, MathError>
 
 module Tax : TaxApi
     addTax cents = cents + 1
@@ -157,6 +167,8 @@ A namespace without an indented body is file-scoped. An ascribed module exports
 exactly its signature; explicit `export` inside it is rejected. An unascribed
 module marks public declarations with `export`. `state Name` is the ML spelling
 of a state module. `::` qualifies logical symbols; `.` accesses a value field.
+Here `gross` is `Result<int, MathError>`; module ascription and import boundaries
+preserve the exported failure channel.
 
 Imports support whole targets, `as` aliases, indented member selection with
 optional member aliases, and an indented `*` wildcard. Quoted namespace labels
@@ -274,6 +286,8 @@ patterns and or-patterns are rejected; bind the inner payload and match again.
 parsing. They allow a constructor pattern in a clause head:
 
 ```osprey-ml
+size : Tree -> Result<int, MathError>
+size Leaf = Success(value = 0)
 size (Node left right) = 1 + size left + size right
 ```
 
@@ -302,6 +316,8 @@ and matched by juxtaposition:
 
 ```osprey-ml
 tree = Node Leaf Leaf
+depth : Tree -> Result<int, MathError>
+depth Leaf = Success(value = 0)
 depth (Node left right) = 1 + depth left + depth right
 ```
 

@@ -616,17 +616,18 @@ suite("Osprey Language Features Tests", () => {
       (h) => nonEmptyHover(h) && hoverText(h[0]).includes("area"),
     );
     const areaDeclMd = hoverText(areaDecl[0]);
+    // `fn area(r) = r * r` writes neither the parameter type nor the return
+    // type, so both slots come from the checker ([LSP-HOVER-INFERRED-SIGNATURE]).
+    // This used to assert a bare `fn area(r)` returning `Unit`; `Unit` was the
+    // display fallback for "nothing written", never a claim about the function,
+    // so that assertion pinned the very bug inferred signatures fixed.
     assert.ok(
-      areaDeclMd.includes("fn area(r)"),
-      "area decl hover shows the signature",
+      areaDeclMd.includes("fn area(r: int)"),
+      "area decl hover fills in the inferred parameter type",
     );
     assert.ok(
-      areaDeclMd.includes("->"),
-      "area decl hover shows the return arrow",
-    );
-    assert.ok(
-      areaDeclMd.includes("Unit"),
-      "area decl hover shows the inferred return type",
+      areaDeclMd.includes("-> Result<int, MathError>"),
+      "area decl hover shows the inferred return type, not the Unit fallback",
     );
 
     const areaCall = await pollFor(
@@ -644,8 +645,8 @@ suite("Osprey Language Features Tests", () => {
       (h) => nonEmptyHover(h) && hoverText(h[0]).includes("perimeter"),
     );
     assert.ok(
-      hoverText(periCall[0]).includes("fn perimeter(r)"),
-      "perimeter hover shows its signature",
+      hoverText(periCall[0]).includes("fn perimeter(r"),
+      `perimeter hover shows its signature, got: ${hoverText(periCall[0])}`,
     );
 
     // --- HOVER: built-ins carry their own typed signatures ---
@@ -1004,7 +1005,7 @@ suite("Osprey Language Features Tests", () => {
     );
     assert.ok(
       hoverText(decl[0]).includes("fn classify(xs)"),
-      "declaration hover shows classify signature",
+      `declaration hover shows classify signature, got: ${hoverText(decl[0])}`,
     );
     const call = await pollFor(
       () => hoverAt(doc.uri, 4, 9),
@@ -1077,19 +1078,18 @@ suite("Osprey Language Features Tests", () => {
     );
   });
 
-  test("CHUNKY: hover + symbols work on the ACTUAL reported list_basics.osp file", async function () {
+  test("CHUNKY: hover + symbols work on the actual list corpus file", async function () {
     this.timeout(60000);
     // Open the very file the user reported ("Hover doesnt work!") straight from
     // the repository and prove the language features answer over it. extensionRoot
-    // is <repo>/vscode-extension; the example lives under examples.
+    // is <repo>/vscode-extension; the assertion corpus lives under tests.
     const reported = path.resolve(
       extensionRoot,
       "..",
-      "examples",
-      "tested",
-      "basics",
-      "lists",
-      "list_basics.osp",
+      "tests",
+      "core",
+      "collections",
+      "list_basics.test.osp",
     );
     assert.ok(
       fs.existsSync(reported),
@@ -1112,8 +1112,10 @@ suite("Osprey Language Features Tests", () => {
       return new vscode.Position(line, col);
     };
 
-    // Hover the `listLength` builtin at its first call site.
-    const lenAt = at("print(listLength(e))", "listLength");
+    // Hover `listLength` where the registered indexing scenario asserts the
+    // constructed command list's exact size. This probe is both executed by the
+    // corpus and tied to observable list behavior rather than legacy stdout.
+    const lenAt = at("listLength(commands) == 3", "listLength");
     const lenHover = await pollFor(
       () => hoverAt(doc.uri, lenAt.line, lenAt.character),
       (h) => nonEmptyHover(h) && hoverText(h[0]).includes("listLength"),
@@ -1129,8 +1131,9 @@ suite("Osprey Language Features Tests", () => {
       "listLength hover shows it returns int",
     );
 
-    // Hover the user-defined `classify` function at its declaration.
-    const classifyAt = at("fn classify(xs)", "classify");
+    // Hover the user-defined `classify` function where the registered scenario
+    // executes its many-element branch and verifies the captured head and tail.
+    const classifyAt = at('classify(a) == "many head=1 rest=2"', "classify");
     const classifyHover = await pollFor(
       () => hoverAt(doc.uri, classifyAt.line, classifyAt.character),
       (h) => nonEmptyHover(h) && hoverText(h[0]).includes("classify"),
@@ -2037,12 +2040,13 @@ suite("Osprey VSIX Debugger E2E", () => {
     // A function call on the breakpoint line lets the same test assert that F10
     // (Step Over) EXECUTES the call without descending into it — the regression
     // guard for "step over behaved like step in". bump is monomorphic (annotated
-    // `-> int`), so it is a real call frame the debugger could wrongly enter.
+    // (its checked addition is handled to produce an int), so it is a real call
+    // frame the debugger could wrongly enter.
     // [DEBUGGER-EDITOR-LAUNCH]
     fs.writeFileSync(
       source,
       [
-        "fn bump(v) -> int = v + 1",
+        "fn bump(v) = v + 1 ?: 0",
         "let x = 1",
         "let y = bump(x)",
         'print("debugger reached ${x} and ${y}")',
@@ -2168,7 +2172,7 @@ suite("Osprey VSIX Debugger E2E", () => {
       // Replace the whole buffer WITHOUT saving: the editor is now dirty and the
       // in-memory program differs from disk.
       const edited = [
-        "fn tag(v) -> int = v + 100",
+        "fn tag(v) = v + 100 ?: 0",
         "let base = 7",
         "let tagged = tag(base)",
         'print("dirty debug ${base} and ${tagged}")',

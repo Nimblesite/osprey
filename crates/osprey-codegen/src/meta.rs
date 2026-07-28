@@ -15,17 +15,17 @@ use crate::llty::LType;
 /// Opaque bytes: no children to release. The default for plain `osp_alloc`.
 pub(crate) const KIND_RAW: i64 = 0;
 /// Children live at the masked word offsets.
-pub(crate) const KIND_MASK: i64 = 1;
+const KIND_MASK: i64 = 1;
 /// `{ i64 len, i8* data }` with pointer elements: release `data[0..len)`,
 /// then `data`.
-pub(crate) const KIND_LIST_HDR_PTR: i64 = 2;
+const KIND_LIST_HDR_PTR: i64 = 2;
 /// `{ i64 len, i8* data }` with scalar elements: release `data` only.
-pub(crate) const KIND_LIST_HDR_SCALAR: i64 = 3;
+const KIND_LIST_HDR_SCALAR: i64 = 3;
 /// A `KIND_MASK` whose every masked child is PROVEN to be an ARC body or
 /// NULL (all fields are declared-union values, which only constructors can
 /// produce): the drop walk reads child headers directly, skipping the
 /// registry probe that dominates deep-structure drops.
-pub(crate) const KIND_MASK_DIRECT: i64 = 5;
+const KIND_MASK_DIRECT: i64 = 5;
 
 /// Highest word index the 56-bit mask can name.
 const MASK_MAX_WORD: u64 = 55;

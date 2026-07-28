@@ -17,7 +17,7 @@
 //! `effects.rs` keeps its own bare-pointer convention (handlers are not
 //! first-class values) and is intentionally untouched.
 
-use crate::builder::{Codegen, FnSig};
+use crate::builder::{Codegen, FnSig, ParamSig};
 use crate::error::{CodegenError, Result};
 use crate::expr::gen_expr;
 use crate::freevars::free_idents;
@@ -127,7 +127,19 @@ fn emit_fresh_closure(
 /// forwarder in the same map.
 pub(crate) fn specialisation_key(target: &str, sig: &FnSig) -> String {
     let (ret, plist) = spelling_with_env(sig);
-    format!("{target}|{ret}({plist})")
+    let semantic_params = sig
+        .0
+        .iter()
+        .map(|param| match param.result_inner {
+            Some(inner) => format!("Result<{inner}>"),
+            None => param.ty.to_string(),
+        })
+        .collect::<Vec<_>>()
+        .join(",");
+    format!(
+        "{target}|({semantic_params})->{}:{:?}:{:?}|{ret}({plist})",
+        sig.1, sig.2, sig.3
+    )
 }
 
 /// The free identifiers of `body` (minus the lambda's own parameters) that are
@@ -163,7 +175,7 @@ fn emit_closure_fn(
     body: &Expr,
     sig: &FnSig,
 ) -> Result<()> {
-    let (param_tys, ret_ty, ret_inner) = sig;
+    let (param_tys, ret_ty, ret_inner, _) = sig;
     let (ret_spelling, _) = spelling(sig);
     let saved = cg.enter_nested_fn();
     reload_captures(cg, cell_ty, caps);
@@ -179,13 +191,14 @@ fn emit_closure_fn(
 fn bind_params(
     cg: &mut Codegen,
     parameters: &[Parameter],
-    param_tys: &[LType],
+    param_tys: &[ParamSig],
 ) -> Vec<(LType, String)> {
     let mut out = Vec::with_capacity(parameters.len());
     for (i, (p, pty)) in parameters.iter().zip(param_tys).enumerate() {
         let reg = crate::llty::param_register(i);
-        cg.bind(p.name.clone(), Value::new(format!("%{reg}"), *pty));
-        out.push((*pty, reg));
+        let value = crate::cast::incoming_param(cg, format!("%{reg}"), *pty, None);
+        cg.bind(p.name.clone(), value);
+        out.push((pty.ty, reg));
     }
     out
 }
@@ -273,7 +286,7 @@ pub(crate) fn raw_callback_lambda(
             "a capturing lambda as an FFI callback (captures cannot cross the C boundary; use a named function)",
         ));
     }
-    let (param_tys, ret_ty, ret_inner) = sig;
+    let (param_tys, ret_ty, ret_inner, _) = sig;
     let (ret_spelling, plist) = spelling(sig);
     let name = format!("__callback_{}", cg.next_lambda_id());
     let saved = cg.enter_nested_fn();
@@ -301,7 +314,7 @@ pub(crate) fn coerce_typed_args(
 ) -> Result<Vec<String>> {
     let mut typed = Vec::with_capacity(args.len());
     for (want, a) in sig.0.iter().zip(args) {
-        typed.push(crate::cast::coerce_to(cg, a, *want)?.typed());
+        typed.push(crate::cast::coerce_param(cg, a, *want)?.typed());
     }
     Ok(typed)
 }
@@ -345,6 +358,10 @@ pub(crate) fn cell_call(
         Some(inner) => Value::result(r, inner),
         None => Value::new(r, sig.1),
     };
+    let v = match sig.3 {
+        Some(fiber) => fiber.restore(v),
+        None => v,
+    };
     // Closure functions transfer +1 on return (their `ret_as_sig` epilogue).
     crate::arc::own(cg, &v);
     v
@@ -370,8 +387,7 @@ pub(crate) fn named_fn_cell(cg: &mut Codegen, name: &str) -> Result<Value> {
 /// Emit `@__fnval_{name}` (env-dropping forwarder) and its constant cell;
 /// register and return the cell's global name. The cell exposes the canonical
 /// value ABI ([`Codegen::fn_value_sig`]); inside, the real function is called
-/// with its own emitted ABI and the result adapted (a math-Result return is
-/// unwrapped to its payload).
+/// with its own emitted ABI and the complete return value preserved.
 fn emit_forwarder(cg: &mut Codegen, name: &str) -> Result<String> {
     let sig = named_fn_sig(cg, name)
         .ok_or_else(|| CodegenError::invalid(format!("`{name}` has no resolved signature")))?;
@@ -387,8 +403,8 @@ fn emit_forwarder(cg: &mut Codegen, name: &str) -> Result<String> {
     let mut typed = Vec::new();
     for (i, t) in sig.0.iter().enumerate() {
         let reg = crate::llty::param_register(i);
-        typed.push(format!("{t} %{reg}"));
-        params.push((*t, reg));
+        typed.push(format!("{} %{reg}", t.ty));
+        params.push((t.ty, reg));
     }
     let r = cg.emit_reg(format!("call {real_ret} @{name}({})", typed.join(", ")));
     let rv = match real_inner {
@@ -411,7 +427,7 @@ fn emit_forwarder(cg: &mut Codegen, name: &str) -> Result<String> {
 }
 
 /// The canonical value-ABI [`FnSig`] of a named top-level function.
-pub(crate) fn named_fn_sig(cg: &Codegen, name: &str) -> Option<FnSig> {
+fn named_fn_sig(cg: &Codegen, name: &str) -> Option<FnSig> {
     let (params, ret) = cg.prog.functions.get(name)?;
     Codegen::fn_value_sig(&osprey_types::Type::fun(params.clone(), ret.clone()))
 }
@@ -419,10 +435,17 @@ pub(crate) fn named_fn_sig(cg: &Codegen, name: &str) -> Option<FnSig> {
 /// The LLVM return-type and parameter-list spellings of a function value's
 /// signature (no env): the return is a Result block `{ T, i8 }*` when it
 /// returns `Result<T, _>`, else the plain scalar.
-pub(crate) fn spelling(sig: &FnSig) -> (String, String) {
-    let (param_tys, ret_ty, ret_inner) = sig;
+fn spelling(sig: &FnSig) -> (String, String) {
+    let (param_tys, ret_ty, ret_inner, _) = sig;
     let ret = crate::llty::ret_spelling(*ret_ty, *ret_inner);
-    (ret, crate::llty::comma_join(param_tys, LType::to_string))
+    (
+        ret,
+        param_tys
+            .iter()
+            .map(|param| param.ty.to_string())
+            .collect::<Vec<_>>()
+            .join(", "),
+    )
 }
 
 /// [`spelling`] with the hidden leading `i8*` env parameter — the ABI every
@@ -449,17 +472,12 @@ fn closure_return(
 }
 
 /// Adapt a value to a signature's return discipline and emit the `ret`: a
-/// `Result<T, _>` slot wraps a bare value into a Success block (or passes an
-/// existing Result through); a scalar slot unwraps and coerces — mirroring
-/// `lower::coerce_return` for a named function.
+/// `Result<T, _>` slot wraps a bare value into Success (or preserves an existing
+/// Result); a scalar slot accepts only a plain value.
 fn ret_as_sig(cg: &mut Codegen, v: Value, ret_ty: LType, ret_inner: Option<LType>) -> Result<()> {
     let rv = match ret_inner {
-        Some(_) if v.result_inner.is_some() => v,
-        Some(inner) => crate::result::make_ok(cg, v, inner)?,
-        None => {
-            let u = crate::result::unwrap(cg, v);
-            crate::cast::coerce_to(cg, u, ret_ty)?
-        }
+        Some(inner) => crate::result::fit_to_inner(cg, v, inner)?,
+        None => crate::cast::coerce_to(cg, v, ret_ty)?,
     };
     // Nested-function epilogue: the return transfers +1, owned locals drop
     // [GC-ARC-PERCEUS].

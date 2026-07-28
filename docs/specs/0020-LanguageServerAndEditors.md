@@ -87,8 +87,9 @@ The server exposes:
 | Capability       | Method                            | Notes                                                                                                                                                                                       |
 | ---------------- | --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Diagnostics      | `textDocument/publishDiagnostics` | Push, via `DiagnosticsBus`. `[LSP-DIAGNOSTICS]`                                                                                                                                             |
-| Hover            | `textDocument/hover`              | Markdown. Functions/builtins → signature; **`let`/`mut` bindings (local _and_ top-level) → their declared or inferred type**; any declaration's `///` docs rendered as prose. `[LSP-HOVER]` |
+| Hover            | `textDocument/hover`              | Markdown. Functions/builtins → signature; **effect operations → qualified operation type plus owning-effect docs**; **`let`/`mut` bindings (local _and_ top-level) → their declared or inferred type**; **reserved keywords (`match`, `handle`, `in`, …) → a one-line meaning**; declaration docs rendered as prose. `[LSP-HOVER]` |
 | Go to definition | `textDocument/definition`         | AST-driven, anchored on the identifier; built-ins resolve to their own use. `[LSP-DEFINITION-BUILTIN]`                                                                                       |
+| Find implementations | `textDocument/implementation` | An effect operation resolves to every matching handler arm, keyed by owning effect plus operation. `[LSP-IMPLEMENTATIONS-EFFECT-HANDLERS]` |
 | Find references  | `textDocument/references`         | Whole-word scan; `includeDeclaration` honored.                                                                                                                                              |
 | Document symbols | `textDocument/documentSymbol`     | Flat `DocumentSymbol`s; range on the **name**, not the `fn`/`let`/`type` keyword.                                                                                                           |
 | Signature help   | `textDocument/signatureHelp`      | Active-parameter tracking; ignores `,`/`(`/`)` inside strings and `//` comments. Triggers on the **callee name** as well as inside its parentheses. `[LSP-WORKSPACE]`                       |
@@ -115,13 +116,17 @@ over [`analysis.rs`](../../crates/osprey-lsp/src/analysis.rs)
 
 Resolution order for the symbol under the cursor:
 
-1. A declaration in the open document — including user functions and
+1. An effect-operation declaration, qualified `perform`, or handler arm →
+   `[LSP-HOVER-EFFECT-OPERATIONS]`.
+2. A declaration in the open document — including user functions and
    **`let`/`mut` bindings** — with nearest-binding shadowing
    (`[LSP-HOVER-VARIABLES]`).
-2. A built-in (`print`, `map`, …) → its reference signature.
-3. A **written name that declares nothing** — a parameter or built-in type
+3. A built-in (`print`, `map`, …) → its reference signature.
+4. A **written name that declares nothing** — a parameter or built-in type
    name → `[LSP-HOVER-WRITTEN]`.
-4. A symbol declared in a **sibling file** of the project → `[LSP-WORKSPACE]`.
+5. A symbol declared in a **sibling file** of the project → `[LSP-WORKSPACE]`.
+6. A **reserved keyword** (`match`, `handle`, `in`, …) → `[LSP-HOVER-KEYWORD]`.
+   Checked last, since a keyword can never be any of the above.
 
 ### Variable hover `[LSP-HOVER-VARIABLES]`
 
@@ -143,6 +148,30 @@ Every binding is hoverable:
   [`osprey-types`](../../crates/osprey-types/src/check.rs) (`let_tys`) and
   [`osprey-types/src/info.rs`](../../crates/osprey-types/src/info.rs).
 
+### Inferred signatures `[LSP-HOVER-INFERRED-SIGNATURE]`
+
+Hovering a **function declaration** shows the signature with every slot the
+author left blank filled in by the checker. Osprey is Hindley-Milner and the
+house style omits every inferable annotation, so blank slots are the common
+case: rendering them literally showed `fn fib(n) -> Unit`, where the parameter
+carried no type and the return type was flatly wrong (`Unit` was the display
+fallback, never a claim about the function). Hover is the main way a reader
+recovers the types the source deliberately omits, so it answers from inference.
+
+One exception, in both directions:
+
+- A slot the author **did** write is shown as written — hover never restates a
+  declared type in the checker's spelling.
+- An inferred type that still holds a **type variable** is not shown at all;
+  the slot stays bare. A variable name (`t5`) is an inference artefact: it
+  means nothing outside the run that produced it and it shifts when an
+  unrelated line is edited, so `fn classify(xs) -> int` is correct and
+  `fn classify(xs: List<t5>) -> int` is not.
+
+Implemented by `inferred_signature` in
+[`crates/osprey-lsp/src/hover.rs`](../../crates/osprey-lsp/src/hover.rs), over
+`ProgramTypes::param_types` / `return_type` and `osprey_types::has_type_var`.
+
 ### Written names `[LSP-HOVER-WRITTEN]`
 
 Parameters and built-in type names are hoverable even though they are not
@@ -158,6 +187,21 @@ declarations:
   source file declares these, so there is nothing to navigate to; hover carries
   a one-line summary instead. A **declared** type resolves to its declaration
   and never reaches this table.
+
+### Keywords `[LSP-HOVER-KEYWORD]`
+
+Every reserved keyword hovers to a one-line meaning — `match`, `handle`, `in`,
+`fn`, `let`, `effect`, `perform`, `resume`, `spawn`, and the rest. A keyword is
+reserved, so it can never be a declared symbol, a built-in, a parameter or a
+written type; it reaches hover as an ordinary word that no declaration-driven
+path can answer, and previously returned nothing — even though the highlighter
+colours a keyword exactly like the built-in types that *do* hover, so an author
+expects the same. The fixed reference table (shared with the built-in type
+summaries in
+[`osprey-lsp/src/reference_docs.rs`](../../crates/osprey-lsp/src/reference_docs.rs))
+is flavor-blind — the reserved set is common to both surfaces even where a
+Default keyword such as `fn` has no ML spelling — and the summary is fenced in
+the **document's** flavor like every other hover.
 
 ### Documentation comments `[LSP-HOVER-DOCS]`
 
@@ -177,6 +221,15 @@ in [`osprey-lsp/src/hover.rs`](../../crates/osprey-lsp/src/hover.rs)
 [`osprey-syntax/src/docparse.rs`](../../crates/osprey-syntax/src/docparse.rs)
 and each flavor's lowerer.
 
+### Effect operations `[LSP-HOVER-EFFECT-OPERATIONS]`
+
+The operation name in an effect declaration, qualified `perform Effect.op`, or
+matching handler arm hovers to the operation's qualified type. The presentation
+uses the active authoring flavor: `Audit.step: fn(string) -> int` in Default and
+`Audit.step : string => int` in ML (`[FLAVOR-ML-EFFECT]`). Operations do not
+carry independent documentation (`[DOC-ATTACH]`), so the hover appends the
+owning effect declaration's documentation.
+
 ## Go to definition `[LSP-DEFINITION-BUILTIN]`
 
 `textDocument/definition` resolves the identifier under the cursor to its
@@ -188,6 +241,14 @@ that hovers perfectly well — the built-in resolves to the identifier the curso
 sits on, a graceful self-definition. Implemented in
 [`osprey-lsp/src/features.rs`](../../crates/osprey-lsp/src/features.rs)
 (`builtin_definition`), reusing the same built-in table as `[LSP-HOVER]`.
+
+## Find implementations `[LSP-IMPLEMENTATIONS-EFFECT-HANDLERS]`
+
+`textDocument/implementation` on any effect-operation site returns the
+operation-name range of every handler arm that implements it. Identity includes
+both the owning effect and operation, so `Trace.mark` never returns a handler
+for `Other.mark`. The unsaved open buffer is searched first, followed by project
+siblings through `[LSP-WORKSPACE]`; a standalone file searches only itself.
 
 ## Answering in the authoring flavor `[LSP-FLAVOR-RENDER]`
 
@@ -262,8 +323,9 @@ symbol table is forbidden.
 ## Project-wide analysis `[LSP-WORKSPACE]`
 
 When the open document belongs to a project — the nearest ancestor directory
-holding an `osprey.toml` — hover, go-to-definition, find-references, completion,
-and signature help resolve against every source file linked by the manifest.
+holding an `osprey.toml` — hover, go-to-definition, find-implementations,
+find-references, completion, and signature help resolve against every source
+file linked by the manifest.
 
 Sibling files are loaded through `osprey_project::load`, the same loader used by
 the CLI and `[LSP-DIAGNOSTICS]`. URI/path resolution and project discovery are

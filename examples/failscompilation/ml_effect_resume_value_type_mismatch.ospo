@@ -1,0 +1,9 @@
+// osprey: flavor=ml
+// [EFFECTS-RESUME] A handler must resume with the operation's declared result type.
+effect ParseFailure
+    raise : string => int
+
+recovered =
+    handle ParseFailure
+        raise message => resume "not an integer"
+    in perform ParseFailure.raise "invalid number"

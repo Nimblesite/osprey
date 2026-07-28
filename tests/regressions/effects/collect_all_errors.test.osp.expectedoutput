@@ -1,0 +1,16 @@
+── signup: Nadia ──
+    #1 name is empty
+    #2 age is negative (-3)
+    #3 score above 100 (250)
+    #4 email is missing '@' (nadia_at_example.com)
+    => REJECTED (4 errors collected in ONE pass)
+── signup: Owen ── — clean
+    => ACCEPTED (0 errors)
+── signup: blank ──
+    #1 name is empty
+    #2 email is empty
+    #3 email is missing '@' ()
+    => REJECTED (3 errors collected in ONE pass)
+ok 1 - validation collects every error in field order
+1..1
+# tests=1 passed=1 failed=0 skipped=0

@@ -1,0 +1,121 @@
+// SQLite from Osprey through the GENERIC C interop (FFI) layer — no hardcoded
+// database builtins. The `// @link:` directive links libsqlite3; every database
+// call is a plain `extern fn` bound to the C API. SQLite's out-parameters
+// (sqlite3 **, sqlite3_stmt **) are handled with the generic FFI pointer cells
+// (osprey_ffi_cell / osprey_ffi_deref). Values are always BOUND (?, ?), never
+// interpolated — injection is structurally impossible.
+// [FFI-LINK-DIRECTIVES] [FFI-PTR] [FFI-NO-DB-BUILTINS]
+//
+// Plan: docs/plans/ffi-sqlite.md. Authority: https://sqlite.org/cintro.html
+//
+// @link: sqlite3
+
+/// --- SQLite C API (bound via extern fn) ---
+extern fn sqlite3_open(filename: string, ppDb: Ptr) -> int
+extern fn sqlite3_exec(db: Ptr, sql: string, cb: Ptr, arg: Ptr, errmsg: Ptr) -> int
+extern fn sqlite3_prepare_v2(db: Ptr, sql: string, nByte: int, ppStmt: Ptr, tail: Ptr) -> int
+extern fn sqlite3_bind_int(stmt: Ptr, idx: int, val: int) -> int
+extern fn sqlite3_bind_text(stmt: Ptr, idx: int, val: string, nByte: int, destructor: Ptr) -> int
+extern fn sqlite3_step(stmt: Ptr) -> int
+extern fn sqlite3_column_int(stmt: Ptr, col: int) -> int
+extern fn sqlite3_column_text(stmt: Ptr, col: int) -> string
+extern fn sqlite3_finalize(stmt: Ptr) -> int
+extern fn sqlite3_close(db: Ptr) -> int
+
+/// --- generic FFI pointer helpers (runtime/ffi_runtime.c) ---
+extern fn osprey_ffi_cell() -> Ptr
+extern fn osprey_ffi_deref(cell: Ptr) -> Ptr
+extern fn osprey_ffi_free(cell: Ptr) -> int
+extern fn osprey_ffi_null() -> Ptr
+extern fn osprey_ffi_transient() -> Ptr
+
+/// SQLITE_OK = 0, SQLITE_DONE = 101. A friendly status for the OK code.
+fn okText(rc) = match rc {
+    0 => "ok"
+    _ => "err"
+}
+
+/// Prepare a statement and hand back the live stmt pointer (out-param via a cell).
+fn prepare(db, sql) = {
+    let cell = osprey_ffi_cell()
+    let rc = sqlite3_prepare_v2(db: db, sql: sql, nByte: (0 - 1) ?: 0, ppStmt: cell, tail: osprey_ffi_null())
+    let stmt = osprey_ffi_deref(cell: cell)
+    let freed = osprey_ffi_free(cell: cell)
+    stmt
+}
+
+/// Insert one user with BOUND parameters — no string interpolation of values.
+fn insertUser(db, uid, uname) = {
+    let stmt = prepare(db: db, sql: "INSERT INTO users(id, name) VALUES (?, ?)")
+    let b1 = sqlite3_bind_int(stmt: stmt, idx: 1, val: uid)
+    let b2 = sqlite3_bind_text(stmt: stmt, idx: 2, val: uname, nByte: (0 - 1) ?: 0, destructor: osprey_ffi_transient())
+    let rc = sqlite3_step(stmt: stmt)
+    let fin = sqlite3_finalize(stmt: stmt)
+    rc
+}
+
+/// Read the next row and print it as a typed (int, text) pair.
+fn printRow(stmt) = {
+    let rc = sqlite3_step(stmt: stmt)
+    print("user ${sqlite3_column_int(stmt: stmt, col: 0)} = ${sqlite3_column_text(stmt: stmt, col: 1)}")
+    rc
+}
+
+let dbCell = osprey_ffi_cell()
+let openrc = sqlite3_open(filename: ":memory:", ppDb: dbCell)
+let db = osprey_ffi_deref(cell: dbCell)
+print("open ${okText(rc: openrc)}")
+
+let ddl = sqlite3_exec(db: db, sql: "CREATE TABLE users(id INTEGER PRIMARY KEY, name TEXT)", cb: osprey_ffi_null(), arg: osprey_ffi_null(), errmsg: osprey_ffi_null())
+print("create ${okText(rc: ddl)}")
+
+let i1 = insertUser(db: db, uid: 1, uname: "Ada")
+let i2 = insertUser(db: db, uid: 2, uname: "Linus")
+print("inserted ${i1} ${i2}")
+
+let q = prepare(db: db, sql: "SELECT id, name FROM users ORDER BY id")
+let r1 = printRow(stmt: q)
+let r2 = printRow(stmt: q)
+let qfin = sqlite3_finalize(stmt: q)
+
+let cleanup = osprey_ffi_free(cell: dbCell)
+let closed = sqlite3_close(db: db)
+print("closed ${okText(rc: closed)}")
+
+/// Verifies generic FFI pointer cells, bound parameters, and typed row access.
+fn sqliteRoundTripCase() = {
+    let testCell = osprey_ffi_cell()
+    let testOpen = sqlite3_open(filename: ":memory:", ppDb: testCell)
+    let testDb = osprey_ffi_deref(cell: testCell)
+    let testDdl = sqlite3_exec(db: testDb, sql: "CREATE TABLE users(id INTEGER PRIMARY KEY, name TEXT)", cb: osprey_ffi_null(), arg: osprey_ffi_null(), errmsg: osprey_ffi_null())
+    let testInsert = insertUser(db: testDb, uid: 7, uname: "Grace")
+    let testQuery = prepare(db: testDb, sql: "SELECT id, name FROM users WHERE id = 7")
+    let testRow = sqlite3_step(stmt: testQuery)
+    let selectedId = sqlite3_column_int(stmt: testQuery, col: 0)
+    let selectedName = "${sqlite3_column_text(stmt: testQuery, col: 1)}"
+    let testDone = sqlite3_step(stmt: testQuery)
+    let testFinalized = sqlite3_finalize(stmt: testQuery)
+    let testClosed = sqlite3_close(db: testDb)
+    let testFreed = osprey_ffi_free(cell: testCell)
+    // Opening, schema creation, and status rendering agree on SQLITE_OK.
+    checkAll("SQLite setup status", [
+        testOpen == 0,
+        okText(testOpen) == "ok",
+        testDdl == 0
+    ])
+    // Bound parameters produce SQLITE_DONE and the expected typed row.
+    checkAll("SQLite bound row", [
+        testInsert == 101,
+        testRow == 100,
+        selectedId == 7,
+        selectedName == "Grace",
+        testDone == 101
+    ])
+    // Statements, connections, and generic pointer cells all release cleanly.
+    checkAll("SQLite cleanup status", [
+        testFinalized == 0,
+        testClosed == 0,
+        testFreed == 0
+    ])
+}
+test("SQLite FFI binds and reads a typed row", sqliteRoundTripCase)

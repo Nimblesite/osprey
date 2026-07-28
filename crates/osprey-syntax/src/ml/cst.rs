@@ -215,7 +215,7 @@ pub(crate) enum MlItem {
     /// `name : type` — a standalone type signature, paired with the binding of
     /// the same name that follows it. Kept in the CST so the lowerer can apply
     /// concrete parameter/return types (which the type checker and codegen rely
-    /// on for curried closures and `Result` auto-unwrap).
+    /// on for curried closures and exact `Result` preservation).
     ValueSignature {
         /// The signed name.
         name: String,
@@ -341,6 +341,12 @@ pub(crate) struct MlEffectOp {
     pub payload: MlType,
     /// The operation's result type.
     pub result: MlType,
+    /// Raw `(** … *)` text preceding this operation line, still unparsed —
+    /// `lower_effect_op` runs it through the shared flavor-neutral doc parser
+    /// so both surfaces yield the same `DocComment` ([DOC-EFFECT-OP]).
+    pub doc: Option<String>,
+    /// Source position of the operation name.
+    pub pos: Position,
 }
 
 /// One variant of a `type` declaration: a constructor name and its payload
@@ -581,6 +587,8 @@ pub(crate) struct MlHandleArm {
     pub params: Vec<String>,
     /// The arm body.
     pub body: MlExpr,
+    /// Source position of the operation name.
+    pub pos: Position,
 }
 
 /// One `pattern => body` arm of a `match`.

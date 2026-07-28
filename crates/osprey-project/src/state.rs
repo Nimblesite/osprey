@@ -126,7 +126,9 @@ fn inspect_item(
             position,
             ..
         }
-        | Stmt::Expr { value, position } => {
+        | Stmt::Expr {
+            value, position, ..
+        } => {
             Inspector::new(cells, cell_paths, effects, source, sources, errors)
                 .expr(value, false, *position);
         }
@@ -336,7 +338,9 @@ impl<'a> Inspector<'a> {
                     }
                     self.expr(value, in_owner_arm, *position);
                 }
-                Stmt::Expr { value, position } => self.expr(value, in_owner_arm, *position),
+                Stmt::Expr {
+                    value, position, ..
+                } => self.expr(value, in_owner_arm, *position),
                 _ => {}
             }
         }

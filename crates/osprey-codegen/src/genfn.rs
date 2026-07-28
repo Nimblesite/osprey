@@ -28,6 +28,12 @@ pub(crate) fn try_inline(
     let Some((params, body)) = cg.fn_defs.get(name).cloned() else {
         return Ok(None);
     };
+    let returns_result = cg
+        .prog
+        .return_type(name)
+        .is_some_and(|ty| {
+            matches!(ty, osprey_types::Type::Con { name, .. } if name == osprey_types::names::RESULT)
+        });
     // Pair each parameter with its argument expression (named by name, else
     // positional), then bind it as a value — or, when the argument is a bare
     // callee name, as a call alias so the parameter stays callable.
@@ -50,7 +56,16 @@ pub(crate) fn try_inline(
     cg.call_aliases = saved_aliases;
     cg.fn_ptr_locals = saved_ptr_locals;
     cg.fn_value_types = saved_value_types;
-    result.map(Some)
+    result
+        .and_then(|value| {
+            if returns_result && value.result_inner.is_none() {
+                let inner = value.ty;
+                crate::result::make_ok(cg, value, inner)
+            } else {
+                Ok(value)
+            }
+        })
+        .map(Some)
 }
 
 /// Bind one inlined-call argument to its parameter: a bare callee name becomes
@@ -64,6 +79,17 @@ fn bind_inline_arg(cg: &mut Codegen, p: &Parameter, a: &Expr) -> Result<()> {
         return Ok(());
     }
     let v = gen_expr(cg, a)?;
+    let v = if p
+        .ty
+        .as_ref()
+        .is_some_and(|ty| ty.name == osprey_types::names::RESULT)
+        && v.result_inner.is_none()
+    {
+        let inner = v.ty;
+        crate::result::make_ok(cg, v, inner)?
+    } else {
+        v
+    };
     if let Some(ty) = crate::lower::fn_result_type(cg, a) {
         cg.bind_fn_local(&p.name, ty);
     }
@@ -115,7 +141,7 @@ pub(crate) fn try_indirect(
     let Some(sig) = cg.fn_ptr_locals.get(name).cloned() else {
         return Ok(None);
     };
-    let Some(handle) = cg.lookup(name) else {
+    let Some(handle) = cg.cell_read(name).or_else(|| cg.lookup(name)) else {
         return Ok(None);
     };
     let exprs = crate::expr::arg_exprs(args, named);

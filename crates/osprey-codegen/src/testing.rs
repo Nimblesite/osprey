@@ -1,6 +1,7 @@
 //! Codegen for the testing built-ins `test` / `expect` / `check`: lowers each
 //! call to the TAP-emitting C runtime (`compiler/runtime/test_runtime.c`).
-//! Assertion equality is canonical-string equality after Result auto-unwrap
+//! Assertion equality is canonical-string equality; a successful Result uses
+//! its payload string while an Error stays visible as `Error(<message>)`
 //! [TESTING-EQUALITY]. Implements [TESTING-CODEGEN], [TESTING-BUILTIN-TEST],
 //! [TESTING-BUILTIN-EXPECT], [TESTING-BUILTIN-CHECK]
 //! (docs/specs/0027-TestingFramework.md).
@@ -30,7 +31,13 @@ pub(crate) fn gen(
     match name {
         "test" => gen_test(cg, &args).map(Some),
         "expect" => gen_expect(cg, &args).map(Some),
+        "expectAll" => gen_all(cg, &args, false).map(Some),
+        "expectTrue" => gen_bool_expect(cg, &args, true, None).map(Some),
+        "expectFalse" => gen_bool_expect(cg, &args, false, None).map(Some),
         "check" => gen_check(cg, &args).map(Some),
+        "checkAll" => gen_all(cg, &args, true).map(Some),
+        "checkTrue" => gen_bool_expect(cg, &args, true, Some("checkTrue")).map(Some),
+        "checkFalse" => gen_bool_expect(cg, &args, false, Some("checkFalse")).map(Some),
         "reportPass" => gen_report(cg, "osp_test_pass", None).map(Some),
         "reportFail" => gen_report(cg, "osp_test_fail", args.first().copied()).map(Some),
         "reportSkip" => gen_report(cg, "osp_test_skip", args.first().copied()).map(Some),
@@ -130,6 +137,82 @@ fn gen_check(cg: &mut Codegen, args: &[&Expr]) -> Result<Value> {
     let e = eval_to_string(cg, expected)?;
     let a = eval_to_string(cg, actual)?;
     Ok(emit_assert(cg, &l.operand, &e, &a))
+}
+
+/// Grouped soft assertions. Each boolean in the source list literal is
+/// evaluated and reported independently, so a failed item never masks later
+/// checks. Keeping this as a compiler form avoids allocating a runtime list
+/// solely to iterate assertions.
+fn gen_all(cg: &mut Codegen, args: &[&Expr], labeled: bool) -> Result<Value> {
+    let (label, conditions) = match (labeled, args) {
+        (false, [conditions]) => (None, *conditions),
+        (true, [label, conditions]) => (Some(*label), *conditions),
+        (false, _) => {
+            return Err(CodegenError::invalid(
+                "expectAll needs one list-literal argument",
+            ));
+        }
+        (true, _) => {
+            return Err(CodegenError::invalid(
+                "checkAll needs (label, conditions) arguments",
+            ));
+        }
+    };
+    let Expr::List(items) = conditions else {
+        return Err(CodegenError::invalid(
+            "expectAll/checkAll conditions must be a list literal",
+        ));
+    };
+    if items.is_empty() {
+        return Err(CodegenError::invalid(
+            "expectAll/checkAll needs at least one condition",
+        ));
+    }
+    let label_value = label.map(|expr| eval_to_string(cg, expr)).transpose()?;
+    for condition in items {
+        let expected = eval_to_string(cg, &Expr::Bool(true))?;
+        let actual = eval_to_string(cg, condition)?;
+        let _ = emit_assert(
+            cg,
+            label_value.as_ref().map_or("null", |value| &value.operand),
+            &expected,
+            &actual,
+        );
+    }
+    Ok(Value::unit())
+}
+
+/// Compact boolean assertions: `expectTrue(actual)` / `expectFalse(actual)`,
+/// plus labeled `checkTrue(label, actual)` / `checkFalse(label, actual)`.
+fn gen_bool_expect(
+    cg: &mut Codegen,
+    args: &[&Expr],
+    expected: bool,
+    labeled_name: Option<&str>,
+) -> Result<Value> {
+    let (label, actual) = match (labeled_name, args) {
+        (None, [actual]) => (None, *actual),
+        (Some(_), [label, actual]) => (Some(*label), *actual),
+        (None, _) => {
+            return Err(CodegenError::invalid(
+                "expectTrue/expectFalse needs one boolean argument",
+            ));
+        }
+        (Some(name), _) => {
+            return Err(CodegenError::invalid(format!(
+                "{name} needs (label, actual) arguments"
+            )));
+        }
+    };
+    let label_value = label.map(|expr| eval_to_string(cg, expr)).transpose()?;
+    let expected_value = eval_to_string(cg, &Expr::Bool(expected))?;
+    let actual_value = eval_to_string(cg, actual)?;
+    Ok(emit_assert(
+        cg,
+        label_value.as_ref().map_or("null", |value| &value.operand),
+        &expected_value,
+        &actual_value,
+    ))
 }
 
 /// `reportPass()` / `reportFail(reason)` / `reportSkip(reason)`: the effect

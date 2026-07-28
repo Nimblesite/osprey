@@ -1,16 +1,16 @@
 // Collatz (3n+1) stopping time summed over 1..N — integer division (n/2) in deep recursion.
-fn add(a: int, b: int) -> int = a + b
-fn mul(a: int, b: int) -> int = a * b
-fn mod_(a: int, b: int) -> int = a % b
-fn half(n: int) -> int = intDiv(n, 2)
-fn next3(n: int) -> int = add(mul(3, n), 1)
+fn add(a, b) = a + b ?: 0
+fn mul(a, b) = a * b ?: 0
+fn mod_(a, b) = a % b ?: 0
+fn half(n) = intDiv(n, 2) ?: 0
+fn next3(n) = add(mul(3, n), 1)
 
-fn collatz(n: int) -> int = match n {
+fn collatz(n) = match n {
     1 => 0
     _ => match mod_(n, 2) {
         0 => add(1, collatz(half(n)))
         _ => add(1, collatz(next3(n)))
     }
 }
-fn step(acc: int, i: int) -> int = add(acc, collatz(i))
+fn step(acc, i) = add(acc, collatz(i))
 print("${range(1, 100001) |> fold(0, step)}")

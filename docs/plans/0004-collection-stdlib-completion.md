@@ -2,7 +2,7 @@
 
 **Subsystem:** `crates/osprey-types` (builtin registry, `TypeEnv`, inference
 order), `crates/osprey-codegen` (dispatch), `crates/osprey-types/src/builtin_docs*.rs`
-(doc parity), `compiler/runtime` (a few new C ops), `examples/tested`
+(doc parity), `compiler/runtime` (a few new C ops), `tests/regressions`
 **Status:** Partially implemented. The **receiver-directed miscompile on
 `length`/`isEmpty` is FIXED and shipped**. The rest of the bare-name surface
 (`contains`, `get`, `reverse`, `indexOf` on List/Map) is **blocked on a type-system
@@ -199,14 +199,14 @@ transformers under `mapKeys`/`mapValues`. Call sites to migrate (grep
 
 | File | Lines |
 |------|-------|
-| `examples/tested/basics/lists/map_basics.osp` | 122, 123, 129, 145 |
-| `examples/tested/basics/lists/map_basics.ospml` | 122, 123, 129, 145 |
-| `examples/tested/basics/types/recursive_unions.osp` | 75, 79, 83 |
-| `examples/tested/basics/types/recursive_unions.ospml` | 80, 84, 89 |
-| `examples/tested/basics/json/json_document_query.osp` | 26 |
-| `examples/tested/basics/json/json_document_query.ospml` | 34 |
-| `examples/tested/effects/fiber_effects.osp` | 6 (comment), 89 |
-| `examples/tested/effects/fiber_effects.ospml` | 70 |
+| `tests/core/collections/map_basics.test.osp` | map view assertion batches |
+| `tests/core/collections/map_basics.test.ospml` | map view assertion batches |
+| `tests/regressions/basics/types/recursive_unions.test.osp` | 75, 79, 83 |
+| `tests/regressions/basics/types/recursive_unions.test.ospml` | 80, 84, 89 |
+| `tests/regressions/basics/json/json_document_query.test.osp` | 26 |
+| `tests/regressions/basics/json/json_document_query.test.ospml` | 34 |
+| `tests/regressions/effects/fiber_effects.test.osp` | 6 (comment), 89 |
+| `tests/regressions/effects/fiber_effects.test.ospml` | 70 |
 
 Plus the non-owned prose/generated surfaces that list the name:
 `website/src/status.md` and the generated `website/src/docs/**` function index.
@@ -250,7 +250,7 @@ pair migrates together against one shared `.expectedoutput`.
 
 ## Testing
 
-- Extend [examples/tested/basics/lists/](../../examples/tested/basics/lists/)
+- Extend [tests/regressions/basics/lists/](../../tests/regressions/basics/lists/)
   (`map_basics`, and the list examples) plus their `.ospml` twins to use the bare
   names and the new ops; refresh the shared `.expectedoutput`.
 - Cover `head([])`/`tail([])` edge cases and `zipToMap` length-mismatch error.

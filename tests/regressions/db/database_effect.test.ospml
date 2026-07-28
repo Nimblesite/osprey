@@ -1,0 +1,195 @@
+// The Database EFFECT — L1 capstone. DB access is a capability: app logic is
+// `!Database`, so an unhandled Database effect is a COMPILE error, and the
+// handler is swappable (real SQLite here; a mock/in-memory handler can replace
+// it in tests with zero changes to app code). The handler is the only place that
+// touches the generic-FFI SQLite bindings — there are NO hardcoded DB builtins,
+// and the connection/statement pointers are threaded through op arguments (so no
+// handler closes over outer state). Fallible ops return `Result<_, Error>`.
+//
+// Plan: docs/plans/ffi-sqlite.md · Spec: docs/specs/0019-Database.md
+//
+// @link: sqlite3
+
+extern sqlite3_open (filename : string) (ppDb : Ptr) -> int
+extern sqlite3_exec (db : Ptr) (sql : string) (cb : Ptr) (arg : Ptr) (errmsg : Ptr) -> int
+extern sqlite3_prepare_v2 (db : Ptr) (sql : string) (nByte : int) (ppStmt : Ptr) (tail : Ptr) -> int
+extern sqlite3_bind_int (stmt : Ptr) (idx : int) (val : int) -> int
+extern sqlite3_bind_text (stmt : Ptr) (idx : int) (val : string) (nByte : int) (destructor : Ptr) -> int
+extern sqlite3_step (stmt : Ptr) -> int
+extern sqlite3_column_int (stmt : Ptr) (col : int) -> int
+extern sqlite3_column_text (stmt : Ptr) (col : int) -> string
+extern sqlite3_finalize (stmt : Ptr) -> int
+extern sqlite3_close (db : Ptr) -> int
+
+extern osprey_ffi_cell -> Ptr
+extern osprey_ffi_deref (cell : Ptr) -> Ptr
+extern osprey_ffi_free (cell : Ptr) -> int
+extern osprey_ffi_null -> Ptr
+extern osprey_ffi_transient -> Ptr
+
+(** The capability. Connection/statement handles are passed explicitly so handler
+    arms stay free of captured state. *)
+effect Database
+    (** Open the database at `path`, reporting failure as a `Result`. *)
+    open : string => Result<Ptr, Error>
+    (** Run one statement that returns no rows; yields the status code. *)
+    exec : (Ptr, string) => int
+    (** Compile `sql` into a reusable prepared statement. *)
+    prepare : (Ptr, string) => Ptr
+    (** Bind integer `value` to one-based parameter `index`. *)
+    bindInt : (Ptr, int, int) => int
+    (** Bind text `value` to one-based parameter `index`. *)
+    bindText : (Ptr, int, string) => int
+    (** Advance the statement one row; yields the status code. *)
+    step : Ptr => int
+    (** Read the current row's integer column `index`. *)
+    columnInt : (Ptr, int) => int
+    (** Read the current row's text column `index`. *)
+    columnText : (Ptr, int) => string
+    (** Release the prepared statement. *)
+    finalize : Ptr => int
+    (** Close the connection and release its resources. *)
+    close : Ptr => int
+
+(** --- real SQLite handler implementations (top-level, no captures) --- *)
+openReal path =
+    cell = osprey_ffi_cell ()
+    rc = sqlite3_open path cell
+    db = osprey_ffi_deref cell
+    freed = osprey_ffi_free cell
+    match rc
+        0 => Success(value = db)
+        _ => Error(message = "open failed")
+
+execReal (db, sql) =
+    sqlite3_exec db sql (osprey_ffi_null ()) (osprey_ffi_null ()) (osprey_ffi_null ())
+
+prepareReal (db, sql) =
+    cell = osprey_ffi_cell ()
+    rc = sqlite3_prepare_v2 db sql ((0 - 1) ?: 0) cell (osprey_ffi_null ())
+    stmt = osprey_ffi_deref cell
+    freed = osprey_ffi_free cell
+    stmt
+
+(** --- application logic: effect-typed, knows nothing about SQLite or FFI --- *)
+seedUser (db, uid, uname) =
+    stmt = perform Database.prepare db "INSERT INTO users(id, name) VALUES (?, ?)"
+    b1 = perform Database.bindInt stmt 1 uid
+    b2 = perform Database.bindText stmt 2 uname
+    rc = perform Database.step stmt
+    fin = perform Database.finalize stmt
+    rc
+
+showUser stmt =
+    rc = perform Database.step stmt
+    print "user ${perform Database.columnInt stmt 0} = ${perform Database.columnText stmt 1}"
+    rc
+
+runApp db =
+    createrc = perform Database.exec db "CREATE TABLE users(id INTEGER PRIMARY KEY, name TEXT)"
+    match createrc
+        0 => print "create ok"
+        _ => print "create err"
+    i1 = seedUser (db, 1, "Ada")
+    i2 = seedUser (db, 2, "Linus")
+    print "inserted ${i1} ${i2}"
+    q = perform Database.prepare db "SELECT id, name FROM users ORDER BY id"
+    r1 = showUser q
+    r2 = showUser q
+    qfin = perform Database.finalize q
+    closed = perform Database.close db
+    match closed
+        0 => print "closed ok"
+        _ => print "closed err"
+
+handle Database
+    open path => openReal path
+    exec db sql => execReal (db, sql)
+    prepare db sql => prepareReal (db, sql)
+    bindInt stmt idx val => sqlite3_bind_int stmt idx val
+    bindText stmt idx val => sqlite3_bind_text stmt idx val ((0 - 1) ?: 0) (osprey_ffi_transient ())
+    step stmt => sqlite3_step stmt
+    columnInt stmt col => sqlite3_column_int stmt col
+    columnText stmt col => sqlite3_column_text stmt col
+    finalize stmt => sqlite3_finalize stmt
+    close db => sqlite3_close db
+in match perform Database.open ":memory:"
+    Success value => runApp value
+    Error message => print "open ${message}"
+
+(** Capture every externally visible result of one handled database interaction. *)
+type DatabaseObservation =
+    createStatus : int
+    insertStatus : int
+    rowStatus : int
+    selectedId : int
+    selectedName : string
+    doneStatus : int
+    finalizeStatus : int
+    closeStatus : int
+
+(** Run application helpers through Database and return immutable evidence. *)
+observeDatabase db =
+    createStatus = perform Database.exec db "CREATE TABLE users(id INTEGER PRIMARY KEY, name TEXT)"
+    insertStatus = seedUser (db, 7, "Grace")
+    query = perform Database.prepare db "SELECT id, name FROM users WHERE id = 7"
+    rowStatus = perform Database.step query
+    selectedId = perform Database.columnInt query 0
+    selectedName = "${perform Database.columnText query 1}"
+    doneStatus = perform Database.step query
+    finalizeStatus = perform Database.finalize query
+    closeStatus = perform Database.close db
+    DatabaseObservation(
+        createStatus = createStatus,
+        insertStatus = insertStatus,
+        rowStatus = rowStatus,
+        selectedId = selectedId,
+        selectedName = selectedName,
+        doneStatus = doneStatus,
+        finalizeStatus = finalizeStatus,
+        closeStatus = closeStatus
+    )
+
+(** Install the real handler and preserve an open failure in the Result channel. *)
+runDatabaseProbe () =
+    handle Database
+        open path => openReal path
+        exec db sql => execReal (db, sql)
+        prepare db sql => prepareReal (db, sql)
+        bindInt stmt idx val => sqlite3_bind_int stmt idx val
+        bindText stmt idx val => sqlite3_bind_text stmt idx val ((0 - 1) ?: 0) (osprey_ffi_transient ())
+        step stmt => sqlite3_step stmt
+        columnInt stmt col => sqlite3_column_int stmt col
+        columnText stmt col => sqlite3_column_text stmt col
+        finalize stmt => sqlite3_finalize stmt
+        close db => sqlite3_close db
+    in match perform Database.open ":memory:"
+        Success value => Success(value = observeDatabase value)
+        Error message => Error(message = message)
+
+(** Report whether the real handler produced an observation instead of an error. *)
+databaseOpened result =
+    match result
+        Success value => true
+        Error message => false
+
+(** Verify the Database capability performs a complete typed SQLite round trip. *)
+databaseEffectCase () =
+    result = runDatabaseProbe ()
+    match result
+        Success value => checkAll "Database effect round trip" [
+            databaseOpened result,
+            value.createStatus == 0,
+            value.insertStatus == 101,
+            value.rowStatus == 100,
+            value.selectedId == 7,
+            value.selectedName == "Grace",
+            value.doneStatus == 101,
+            value.finalizeStatus == 0,
+            value.closeStatus == 0
+        ]
+        Error message => checkAll "Database effect open result" [
+            databaseOpened result,
+            message == ""
+        ]
+test "Database capability binds, queries, and closes through its handler" databaseEffectCase

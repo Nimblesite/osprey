@@ -1,0 +1,9 @@
+// osprey: flavor=ml
+// [EFFECTS-OP-TYPING] A direct handler arm must return its operation's declared result type.
+effect ParseFailure
+    raise : string => int
+
+recovered =
+    handle ParseFailure
+        raise message => "not an integer"
+    in perform ParseFailure.raise "invalid number"

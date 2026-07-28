@@ -34,7 +34,7 @@ pub struct OspreyEngine {
 impl OspreyEngine {
     /// New engine over `vfs`, starting at [`Generation::ZERO`].
     #[must_use]
-    pub fn new(vfs: Vfs) -> Self {
+    pub(crate) fn new(vfs: Vfs) -> Self {
         Self {
             vfs,
             session: Session::new(),
@@ -44,7 +44,7 @@ impl OspreyEngine {
 
     /// The shared open-document store.
     #[must_use]
-    pub fn vfs(&self) -> &Vfs {
+    pub(crate) fn vfs(&self) -> &Vfs {
         &self.vfs
     }
 
@@ -69,6 +69,13 @@ impl OspreyEngine {
             }
             Query::Hover(at) => Report::Hover(self.hover(&at)),
             Query::Definition(at) => Report::Locations(self.locate(&at, true, false)),
+            Query::Implementation(at) => Report::Locations(crate::effects::implementations(
+                &self.text(&at.uri),
+                at.uri.as_str(),
+                at.line,
+                at.character,
+                enc,
+            )),
             Query::References {
                 at,
                 include_declaration,
@@ -229,7 +236,7 @@ mod tests {
     #[tokio::test]
     async fn report_answers_every_positional_query_kind() {
         use crate::model::{At, Report};
-        let src = "fn add(a: int, b: int) -> int = a + b\nlet total = add(1, 2)\n";
+        let src = "fn add(a: int, b: int) -> int = (a + b) ?: 0\nlet total = add(1, 2)\n";
         let (engine, uri) = engine_with(src);
         let at = |line, character| At {
             uri: uri.clone(),

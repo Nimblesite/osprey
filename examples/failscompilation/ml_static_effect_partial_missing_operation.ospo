@@ -1,0 +1,15 @@
+// osprey: flavor=ml
+// [EFFECTS-STATIC-DISCHARGE] A partial handler discharges only its own arms.
+effect Pair
+    first : Unit => int
+    second : Unit => int
+
+both () =
+    first = perform Pair.first ()
+    second = perform Pair.second ()
+    first + second ?: 0
+
+answer =
+    handle Pair
+        first => 20
+    in both ()

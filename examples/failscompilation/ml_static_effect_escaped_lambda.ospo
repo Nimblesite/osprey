@@ -1,0 +1,13 @@
+// osprey: flavor=ml
+// [EFFECTS-STATIC-DISCHARGE] Handler authority cannot escape in a closure.
+effect Alarm
+    ring : Unit => int
+
+make () = \() => perform Alarm.ring ()
+
+delayed =
+    handle Alarm
+        ring => 41
+    in make ()
+
+answer = delayed ()

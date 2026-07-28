@@ -1,0 +1,120 @@
+(** Supply lets the handler choose each observed integer. *)
+effect Supply
+    (** Request the next scripted value for `label`. *)
+    next : string => int
+
+(** Sum three values supplied by explicit resumes. *)
+total : Unit -> int ! Supply
+total () =
+    first = perform Supply.next "first"
+    second = perform Supply.next "second"
+    third = perform Supply.next "third"
+    first + second + third ?: 0
+
+(** Relay is exercised at two concrete result types. *)
+effect Relay T
+    (** Request one value of the instantiated element type `T`. *)
+    ask : Unit => T
+
+(** Receive a string from Relay<string>. *)
+echoWord : Unit -> string ! Relay<string>
+echoWord () = perform Relay.ask ()
+
+(** Checked returns a Result as the operation value. *)
+effect Checked
+    (** Halve `value`, reporting an odd input as an `Error`. *)
+    half : int => Result<int, string>
+
+(** Default the Result returned by Checked. *)
+runChecked : Unit -> int ! Checked
+runChecked () = perform Checked.half 10 ?: 0
+
+(** Receive an integer from Relay<int>. *)
+echoNum : Unit -> int ! Relay<int>
+echoNum () = perform Relay.ask ()
+
+(** Verify rewritten values, unwind answers, Results, and generics. *)
+resumeValueRewriteCase () =
+    mut supplyTranscript = ""
+    mut seed = 100
+    mut supplyCalls = 0
+    mut supplied = ""
+    mut settled = ""
+
+    result =
+        handle Supply
+            next label =>
+                supplyCalls := supplyCalls + 1 ?: supplyCalls
+                seed := seed + 5 ?: seed
+                supplied := "${supplied}${label}:${toString seed}|"
+                supplyTranscript := "${supplyTranscript}supply ${label}=${toString seed}\n"
+                answer = resume seed
+                settled := "${settled}${label}:${toString answer}|"
+                supplyTranscript := "${supplyTranscript}seen after ${label}: ${toString answer}\n"
+                answer
+        in total ()
+
+    mut wordRelayCalls = 0
+    mut wordSettled = ""
+    mut relayTranscript = ""
+    word =
+        handle Relay
+            ask =>
+                wordRelayCalls := wordRelayCalls + 1 ?: wordRelayCalls
+                answer = resume "carried"
+                wordSettled := answer
+                relayTranscript := "${relayTranscript}relay answered: ${answer}\n"
+                answer
+        in echoWord ()
+
+    mut checkedCalls = 0
+    checked =
+        handle Checked
+            half n =>
+                checkedCalls := checkedCalls + 1 ?: checkedCalls
+                resume (Success(value = n))
+        in runChecked ()
+
+    mut numRelayCalls = 0
+    num =
+        handle Relay
+            ask =>
+                numRelayCalls := numRelayCalls + 1 ?: numRelayCalls
+                resume 41
+        in echoNum ()
+    legacyTranscript = "${supplyTranscript}result=${toString result}\n${relayTranscript}word=${word}\nchecked=${toString checked} num=${toString num}\n"
+
+    // Preserve the complete ten-line transcript.
+    checkAll "value-rewrite legacy observations" [
+        legacyTranscript == "supply first=105\nsupply second=110\nsupply third=115\nseen after third: 330\nseen after second: 330\nseen after first: 330\nresult=330\nrelay answered: carried\nword=carried\nchecked=10 num=41\n",
+        contains legacyTranscript "supply first=105\n",
+        contains legacyTranscript "supply second=110\n",
+        contains legacyTranscript "supply third=115\n",
+        contains legacyTranscript "seen after third: 330\n",
+        contains legacyTranscript "seen after second: 330\n",
+        contains legacyTranscript "seen after first: 330\n",
+        contains legacyTranscript "result=330\n",
+        contains legacyTranscript "relay answered: carried\n",
+        contains legacyTranscript "word=carried\n",
+        endsWith legacyTranscript "checked=10 num=41\n"
+    ]
+
+    // Check supplied values, LIFO settlement, Result shape, and Relay types.
+    checkAll "value-rewrite internal state" [
+        result == 330,
+        seed == 115,
+        supplyCalls == 3,
+        supplied == "first:105|second:110|third:115|",
+        settled == "third:330|second:330|first:330|",
+        result == (105 + 110 + 115 ?: 0),
+        word == "carried",
+        wordRelayCalls == 1,
+        wordSettled == "carried",
+        checked == 10,
+        checkedCalls == 1,
+        num == 41,
+        numRelayCalls == 1,
+        checked != num
+    ]
+
+test "resume rewrites values across scalar, Result, and generic effects" resumeValueRewriteCase

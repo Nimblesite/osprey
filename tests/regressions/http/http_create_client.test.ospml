@@ -1,0 +1,8 @@
+// Client construction is local and must never depend on public DNS or network.
+
+createsLocalClient () =
+    client = httpCreateClient "http://127.0.0.1:1" 100
+    closed = httpCloseClient client
+    checkAll "local HTTP client lifecycle" [client > 0, closed == 0]
+
+test "HTTP client creation is offline" createsLocalClient

@@ -1,0 +1,162 @@
+// ML twin for unary, abs, Result chains, first-error propagation, defaults, and matches.
+// Observer helpers rely on inference and every test remains independently named.
+
+observeArithmeticResult001 () = match 10 + 3
+    Success value => "value=${toString value}"
+    Error message => "error=${message}"
+
+observeArithmeticResult002 () = match 20 + 4
+    Success value => "value=${toString value}"
+    Error message => "error=${message}"
+
+observeArithmeticResult003 () = match 30 + 5
+    Success value => "value=${toString value}"
+    Error message => "error=${message}"
+
+observeArithmeticResult004 () = match 40 + 6
+    Success value => "value=${toString value}"
+    Error message => "error=${message}"
+
+observeArithmeticResult005 () = match 50 + 7
+    Success value => "value=${toString value}"
+    Error message => "error=${message}"
+
+observeArithmeticResult006 () = match 6 / 0
+    Success value => "value=${toString value}"
+    Error message => "error=${message}"
+
+observeArithmeticResult007 () = match 9223372036854775807 + 7
+    Success value => "value=${toString value}"
+    Error message => "error=${message}"
+
+observeArithmeticResult008 () = match 8 / 0
+    Success value => "value=${toString value}"
+    Error message => "error=${message}"
+
+observeArithmeticResult009 () = match 9223372036854775807 + 9
+    Success value => "value=${toString value}"
+    Error message => "error=${message}"
+
+observeArithmeticResult010 () = match 10 / 0
+    Success value => "value=${toString value}"
+    Error message => "error=${message}"
+
+test "unary negation 001" (\() => check "unary negation 001" "-1" (toString (-1)))
+test "double unary negation 001" (\() => check "double unary negation 001" "1" (toString (--1)))
+test "unary negation 002" (\() => check "unary negation 002" "-2" (toString (-2)))
+test "double unary negation 002" (\() => check "double unary negation 002" "2" (toString (--2)))
+test "unary negation 003" (\() => check "unary negation 003" "-3" (toString (-3)))
+test "double unary negation 003" (\() => check "double unary negation 003" "3" (toString (--3)))
+test "unary negation 004" (\() => check "unary negation 004" "-4" (toString (-4)))
+test "double unary negation 004" (\() => check "double unary negation 004" "4" (toString (--4)))
+test "unary negation 005" (\() => check "unary negation 005" "-5" (toString (-5)))
+test "double unary negation 005" (\() => check "double unary negation 005" "5" (toString (--5)))
+test "unary negation 006" (\() => check "unary negation 006" "-6" (toString (-6)))
+test "double unary negation 006" (\() => check "double unary negation 006" "6" (toString (--6)))
+test "unary negation 007" (\() => check "unary negation 007" "-7" (toString (-7)))
+test "double unary negation 007" (\() => check "double unary negation 007" "7" (toString (--7)))
+test "unary negation 008" (\() => check "unary negation 008" "-8" (toString (-8)))
+test "double unary negation 008" (\() => check "double unary negation 008" "8" (toString (--8)))
+test "unary negation 009" (\() => check "unary negation 009" "-9" (toString (-9)))
+test "double unary negation 009" (\() => check "double unary negation 009" "9" (toString (--9)))
+test "unary negation 010" (\() => check "unary negation 010" "-10" (toString (-10)))
+test "double unary negation 010" (\() => check "double unary negation 010" "10" (toString (--10)))
+test "absolute positive 001" (\() => check "absolute positive 001" "Success(1)" (toString (abs 1)))
+test "absolute negative 001" (\() => check "absolute negative 001" "Success(1)" (toString (abs ((-1) ?: 0))))
+test "absolute positive 002" (\() => check "absolute positive 002" "Success(2)" (toString (abs 2)))
+test "absolute negative 002" (\() => check "absolute negative 002" "Success(2)" (toString (abs ((-2) ?: 0))))
+test "absolute positive 003" (\() => check "absolute positive 003" "Success(3)" (toString (abs 3)))
+test "absolute negative 003" (\() => check "absolute negative 003" "Success(3)" (toString (abs ((-3) ?: 0))))
+test "absolute positive 004" (\() => check "absolute positive 004" "Success(4)" (toString (abs 4)))
+test "absolute negative 004" (\() => check "absolute negative 004" "Success(4)" (toString (abs ((-4) ?: 0))))
+test "absolute positive 005" (\() => check "absolute positive 005" "Success(5)" (toString (abs 5)))
+test "absolute negative 005" (\() => check "absolute negative 005" "Success(5)" (toString (abs ((-5) ?: 0))))
+test "absolute positive 006" (\() => check "absolute positive 006" "Success(6)" (toString (abs 6)))
+test "absolute negative 006" (\() => check "absolute negative 006" "Success(6)" (toString (abs ((-6) ?: 0))))
+test "absolute positive 007" (\() => check "absolute positive 007" "Success(7)" (toString (abs 7)))
+test "absolute negative 007" (\() => check "absolute negative 007" "Success(7)" (toString (abs ((-7) ?: 0))))
+test "absolute positive 008" (\() => check "absolute positive 008" "Success(8)" (toString (abs 8)))
+test "absolute negative 008" (\() => check "absolute negative 008" "Success(8)" (toString (abs ((-8) ?: 0))))
+test "absolute positive 009" (\() => check "absolute positive 009" "Success(9)" (toString (abs 9)))
+test "absolute negative 009" (\() => check "absolute negative 009" "Success(9)" (toString (abs ((-9) ?: 0))))
+test "absolute positive 010" (\() => check "absolute positive 010" "Success(10)" (toString (abs 10)))
+test "absolute negative 010" (\() => check "absolute negative 010" "Success(10)" (toString (abs ((-10) ?: 0))))
+test "mixed integer Result chain 001" (\() => check "mixed integer Result chain 001" "Success(9)" (toString ((((11 + 3) * 4 - 1) % 6) + 8)))
+test "mixed integer Result chain 002" (\() => check "mixed integer Result chain 002" "Success(10)" (toString ((((12 + 4) * 5 - 2) % 7) + 9)))
+test "mixed integer Result chain 003" (\() => check "mixed integer Result chain 003" "Success(11)" (toString ((((13 + 5) * 6 - 3) % 8) + 10)))
+test "mixed integer Result chain 004" (\() => check "mixed integer Result chain 004" "Success(11)" (toString ((((14 + 2) * 7 - 4) % 9) + 11)))
+test "mixed integer Result chain 005" (\() => check "mixed integer Result chain 005" "Success(21)" (toString ((((15 + 3) * 3 - 5) % 10) + 12)))
+test "mixed integer Result chain 006" (\() => check "mixed integer Result chain 006" "Success(21)" (toString ((((16 + 4) * 4 - 6) % 11) + 13)))
+test "mixed integer Result chain 007" (\() => check "mixed integer Result chain 007" "Success(17)" (toString ((((17 + 5) * 5 - 7) % 5) + 14)))
+test "mixed integer Result chain 008" (\() => check "mixed integer Result chain 008" "Success(19)" (toString ((((18 + 2) * 6 - 8) % 6) + 15)))
+test "mixed integer Result chain 009" (\() => check "mixed integer Result chain 009" "Success(21)" (toString ((((19 + 3) * 7 - 9) % 7) + 16)))
+test "mixed integer Result chain 010" (\() => check "mixed integer Result chain 010" "Success(23)" (toString ((((20 + 4) * 3 - 10) % 8) + 17)))
+test "mixed float Result chain 001" (\() => check "mixed float Result chain 001" "Success(8.0)" (toString ((6 / 2) + 5.0)))
+test "mixed float Result chain 002" (\() => check "mixed float Result chain 002" "Success(10.0)" (toString ((12 / 3) + 6.0)))
+test "mixed float Result chain 003" (\() => check "mixed float Result chain 003" "Success(12.0)" (toString ((20 / 4) + 7.0)))
+test "mixed float Result chain 004" (\() => check "mixed float Result chain 004" "Success(14.0)" (toString ((30 / 5) + 8.0)))
+test "mixed float Result chain 005" (\() => check "mixed float Result chain 005" "Success(16.0)" (toString ((42 / 6) + 9.0)))
+test "mixed float Result chain 006" (\() => check "mixed float Result chain 006" "Success(18.0)" (toString ((56 / 7) + 10.0)))
+test "mixed float Result chain 007" (\() => check "mixed float Result chain 007" "Success(20.0)" (toString ((72 / 8) + 11.0)))
+test "mixed float Result chain 008" (\() => check "mixed float Result chain 008" "Success(22.0)" (toString ((90 / 9) + 12.0)))
+test "mixed float Result chain 009" (\() => check "mixed float Result chain 009" "Success(24.0)" (toString ((110 / 10) + 13.0)))
+test "mixed float Result chain 010" (\() => check "mixed float Result chain 010" "Success(26.0)" (toString ((132 / 11) + 14.0)))
+test "overflow precedes division error 001" (\() => check "overflow precedes division error 001" "Error(integer overflow)" (toString ((9223372036854775807 + 1) + (1 / 0))))
+test "remainder error precedes overflow 001" (\() => check "remainder error precedes overflow 001" "Error(division by zero)" (toString ((1 % 0) * (9223372036854775807 + 1))))
+test "multiply overflow precedes remainder error 001" (\() => check "multiply overflow precedes remainder error 001" "Error(integer overflow)" (toString ((9223372036854775807 * 2) % 0)))
+test "division error precedes multiply overflow 001" (\() => check "division error precedes multiply overflow 001" "Error(division by zero)" (toString ((1 / 0) + (9223372036854775807 * 2))))
+test "late maximum overflow short circuits right error 001" (\() => check "late maximum overflow short circuits right error 001" "Error(integer overflow)" (toString (((9223372036854775807 - 1) + 1 + 1) * (1 % 0))))
+test "overflow precedes division error 002" (\() => check "overflow precedes division error 002" "Error(integer overflow)" (toString ((9223372036854775807 + 2) + (2 / 0))))
+test "remainder error precedes overflow 002" (\() => check "remainder error precedes overflow 002" "Error(division by zero)" (toString ((2 % 0) * (9223372036854775807 + 2))))
+test "multiply overflow precedes remainder error 002" (\() => check "multiply overflow precedes remainder error 002" "Error(integer overflow)" (toString ((9223372036854775807 * 2) % 0)))
+test "division error precedes multiply overflow 002" (\() => check "division error precedes multiply overflow 002" "Error(division by zero)" (toString ((2 / 0) + (9223372036854775807 * 2))))
+test "late maximum overflow short circuits right error 002" (\() => check "late maximum overflow short circuits right error 002" "Error(integer overflow)" (toString (((9223372036854775807 - 2) + 2 + 1) * (2 % 0))))
+test "overflow precedes division error 003" (\() => check "overflow precedes division error 003" "Error(integer overflow)" (toString ((9223372036854775807 + 3) + (3 / 0))))
+test "remainder error precedes overflow 003" (\() => check "remainder error precedes overflow 003" "Error(division by zero)" (toString ((3 % 0) * (9223372036854775807 + 3))))
+test "multiply overflow precedes remainder error 003" (\() => check "multiply overflow precedes remainder error 003" "Error(integer overflow)" (toString ((9223372036854775807 * 2) % 0)))
+test "division error precedes multiply overflow 003" (\() => check "division error precedes multiply overflow 003" "Error(division by zero)" (toString ((3 / 0) + (9223372036854775807 * 2))))
+test "late maximum overflow short circuits right error 003" (\() => check "late maximum overflow short circuits right error 003" "Error(integer overflow)" (toString (((9223372036854775807 - 3) + 3 + 1) * (3 % 0))))
+test "overflow precedes division error 004" (\() => check "overflow precedes division error 004" "Error(integer overflow)" (toString ((9223372036854775807 + 4) + (4 / 0))))
+test "remainder error precedes overflow 004" (\() => check "remainder error precedes overflow 004" "Error(division by zero)" (toString ((4 % 0) * (9223372036854775807 + 4))))
+test "multiply overflow precedes remainder error 004" (\() => check "multiply overflow precedes remainder error 004" "Error(integer overflow)" (toString ((9223372036854775807 * 2) % 0)))
+test "division error precedes multiply overflow 004" (\() => check "division error precedes multiply overflow 004" "Error(division by zero)" (toString ((4 / 0) + (9223372036854775807 * 2))))
+test "late maximum overflow short circuits right error 004" (\() => check "late maximum overflow short circuits right error 004" "Error(integer overflow)" (toString (((9223372036854775807 - 4) + 4 + 1) * (4 % 0))))
+test "successful Result default 001" (\() => check "successful Result default 001" "7" (toString ((4 + 3) ?: 901)))
+test "overflow Result default 001" (\() => check "overflow Result default 001" "901" (toString ((9223372036854775807 + 1) ?: 901)))
+test "successful Result default 002" (\() => check "successful Result default 002" "12" (toString ((8 + 4) ?: 902)))
+test "overflow Result default 002" (\() => check "overflow Result default 002" "902" (toString ((9223372036854775807 + 2) ?: 902)))
+test "successful Result default 003" (\() => check "successful Result default 003" "17" (toString ((12 + 5) ?: 903)))
+test "overflow Result default 003" (\() => check "overflow Result default 003" "903" (toString ((9223372036854775807 + 3) ?: 903)))
+test "successful Result default 004" (\() => check "successful Result default 004" "22" (toString ((16 + 6) ?: 904)))
+test "overflow Result default 004" (\() => check "overflow Result default 004" "904" (toString ((9223372036854775807 + 4) ?: 904)))
+test "successful Result default 005" (\() => check "successful Result default 005" "27" (toString ((20 + 7) ?: 905)))
+test "overflow Result default 005" (\() => check "overflow Result default 005" "905" (toString ((9223372036854775807 + 5) ?: 905)))
+test "successful Result default 006" (\() => check "successful Result default 006" "32" (toString ((24 + 8) ?: 906)))
+test "overflow Result default 006" (\() => check "overflow Result default 006" "906" (toString ((9223372036854775807 + 6) ?: 906)))
+test "successful Result default 007" (\() => check "successful Result default 007" "37" (toString ((28 + 9) ?: 907)))
+test "overflow Result default 007" (\() => check "overflow Result default 007" "907" (toString ((9223372036854775807 + 7) ?: 907)))
+test "successful Result default 008" (\() => check "successful Result default 008" "42" (toString ((32 + 10) ?: 908)))
+test "overflow Result default 008" (\() => check "overflow Result default 008" "908" (toString ((9223372036854775807 + 8) ?: 908)))
+test "successful Result default 009" (\() => check "successful Result default 009" "47" (toString ((36 + 11) ?: 909)))
+test "overflow Result default 009" (\() => check "overflow Result default 009" "909" (toString ((9223372036854775807 + 9) ?: 909)))
+test "successful Result default 010" (\() => check "successful Result default 010" "52" (toString ((40 + 12) ?: 910)))
+test "overflow Result default 010" (\() => check "overflow Result default 010" "910" (toString ((9223372036854775807 + 10) ?: 910)))
+test "explicit Result match 001" (\() => check "explicit Result match 001" "value=13" (observeArithmeticResult001 ()))
+test "explicit Result match 002" (\() => check "explicit Result match 002" "value=24" (observeArithmeticResult002 ()))
+test "explicit Result match 003" (\() => check "explicit Result match 003" "value=35" (observeArithmeticResult003 ()))
+test "explicit Result match 004" (\() => check "explicit Result match 004" "value=46" (observeArithmeticResult004 ()))
+test "explicit Result match 005" (\() => check "explicit Result match 005" "value=57" (observeArithmeticResult005 ()))
+test "explicit Result match 006" (\() => check "explicit Result match 006" "error=division by zero" (observeArithmeticResult006 ()))
+test "explicit Result match 007" (\() => check "explicit Result match 007" "error=integer overflow" (observeArithmeticResult007 ()))
+test "explicit Result match 008" (\() => check "explicit Result match 008" "error=division by zero" (observeArithmeticResult008 ()))
+test "explicit Result match 009" (\() => check "explicit Result match 009" "error=integer overflow" (observeArithmeticResult009 ()))
+test "explicit Result match 010" (\() => check "explicit Result match 010" "error=division by zero" (observeArithmeticResult010 ()))
+
+
+(** Negating a LITERAL folds to the literal and stays a plain int, so `-1` is
+    usable wherever an int is required. Negating a runtime VALUE stays checked,
+    because `-i64::MIN` genuinely overflows. [ARITH-NEG-LITERAL], [ARITH-CHECKED] *)
+negateValue n = -n
+
+test "literal negation is a plain int" (\() => check "literal negation is a plain int" "-7" (toString (-7)))
+test "runtime negation stays a Result" (\() => check "runtime negation stays a Result" "Success(-7)" (toString (negateValue 7)))

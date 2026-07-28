@@ -45,7 +45,7 @@ test-runner.js
 !out/client/**
 out/test/**
 out/tsconfig.tsbuildinfo
-# Bundled, version-matched osprey compiler + C runtime archives (libfiber/libhttp)
+# Bundled, version-matched osprey compiler + all native C runtime archives
 # staged by `make _vsix_bundle`. resolveBundledCompiler() loads bin/<platform>/osprey,
 # and the compiler links the .a archives sitting beside it for `--run`.
 !bin/**

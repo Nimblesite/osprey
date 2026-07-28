@@ -1,0 +1,9 @@
+=== JSON value union ===
+root is object with 1 field
+deeply nested string = devon@osprey.dev
+types: null, boolean, number, string, array, object
+=== JSON value union complete ===
+deeply nested string = devon@osprey.dev
+ok 1 - recursive JSON traversal preserves the nested value
+1..1
+# tests=1 passed=1 failed=0 skipped=0

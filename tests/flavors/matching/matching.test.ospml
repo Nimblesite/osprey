@@ -1,0 +1,93 @@
+// ML matching twin covering literals, booleans, and wildcards.
+
+(** Classify literals through adjacent pattern clauses. *)
+tourClassify 0 = "zero"
+tourClassify 1 = "one"
+tourClassify _ = "many"
+
+(** Verify every literal and wildcard branch. *)
+matchTourCase () =
+    // Preserve each rendered branch result.
+    checkAll "match tour legacy rendered lines" [
+        tourClassify 0 == "zero",
+        tourClassify 1 == "one",
+        tourClassify 9 == "many"
+    ]
+    // Check each dynamic result independently.
+    checkAll "match tour legacy constituent values" [
+        tourClassify 0 == "zero",
+        tourClassify 1 == "one",
+        tourClassify 9 == "many"
+    ]
+    // Exercise adjacent, negative, and large wildcard inputs.
+    checkAll "match tour wildcard edge cases" [
+        tourClassify 2 == "many",
+        tourClassify ((0 - 1) ?: 0) == "many",
+        tourClassify 100 == "many",
+        (tourClassify 0 == tourClassify 1) == false
+    ]
+
+(** Convert a threshold comparison to a grade label. *)
+matchGrade n =
+    match n >= 50
+        true => "pass"
+        false => "fail"
+
+(** Convert parity to an even-or-odd label. *)
+matchEven n =
+    match (n % 2 ?: 1) == 0
+        true => "even"
+        false => "odd"
+
+(** Verify boolean scrutinees for grading and parity. *)
+matchBooleanCase () =
+    // Preserve the complete rendered result.
+    checkAll "boolean match legacy rendered lines" [
+        "g80=${matchGrade 80} g20=${matchGrade 20} e4=${matchEven 4} e7=${matchEven 7}" ==
+            "g80=pass g20=fail e4=even e7=odd"
+    ]
+    // Check each label independently.
+    checkAll "boolean match legacy constituent values" [
+        matchGrade 80 == "pass",
+        matchGrade 20 == "fail",
+        matchEven 4 == "even",
+        matchEven 7 == "odd"
+    ]
+    // Exercise threshold and parity boundaries.
+    checkAll "boolean match boundaries" [
+        matchGrade 50 == "pass",
+        matchGrade 49 == "fail",
+        matchEven 0 == "even",
+        matchEven 9 == "odd"
+    ]
+
+(** Label integer literals through adjacent pattern clauses. *)
+matchLabel 0 = "none"
+matchLabel 1 = "single"
+matchLabel 2 = "pair"
+matchLabel _ = "many"
+
+(** Verify literal and wildcard integer matching. *)
+matchIntegerCase () =
+    // Preserve the complete rendered result.
+    checkAll "integer match legacy rendered lines" [
+        "a=${matchLabel 0} b=${matchLabel 1} c=${matchLabel 2} d=${matchLabel 7}" ==
+            "a=none b=single c=pair d=many"
+    ]
+    // Check each label independently.
+    checkAll "integer match legacy constituent values" [
+        matchLabel 0 == "none",
+        matchLabel 1 == "single",
+        matchLabel 2 == "pair",
+        matchLabel 7 == "many"
+    ]
+    // Exercise adjacent, negative, and large wildcard inputs.
+    checkAll "integer match wildcard boundaries" [
+        matchLabel 3 == "many",
+        matchLabel ((0 - 1) ?: 0) == "many",
+        matchLabel 100 == "many"
+    ]
+
+test "literal matching retains every printed arm" matchTourCase
+test "boolean matching covers thresholds and parity" matchBooleanCase
+test "integer matching covers literals and wildcard" matchIntegerCase

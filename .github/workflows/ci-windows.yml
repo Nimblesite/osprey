@@ -25,6 +25,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # No duplication gate here. Deslop measures source text, so its verdict is
+      # platform-independent — and this `windows-core` job is NOT a required
+      # status check, so gating from here could never block a merge. The gate
+      # lives in ci.yml's required `ci` job instead.
+
       - name: Install Rust (stable)
         uses: dtolnay/rust-toolchain@stable
 
@@ -56,6 +61,7 @@ jobs:
             mingw-w64-ucrt-x86_64-llvm
             mingw-w64-ucrt-x86_64-pkgconf
             mingw-w64-ucrt-x86_64-openssl
+            mingw-w64-ucrt-x86_64-sqlite3
 
       # Build the C runtime archives with the MinGW toolchain. The root
       # Makefile auto-detects this MSYS2 shell (via $MSYSTEM) and runs the
@@ -87,22 +93,42 @@ jobs:
           echo "OSPREY_CC=$CC_PATH" >> "$GITHUB_ENV"
 
       # fiber_showcase exercises spawn/await/yield/channels/select — i.e. the
-      # winpthreads-backed fiber runtime. feature_omnibus covers lists/maps/
+      # winpthreads-backed fiber runtime. The feature omnibus covers lists/maps/
       # strings/pattern-matching. Neither uses HTTP, so both are valid core
       # Windows smoke tests; clang resolves to the MSYS2 LLVM inside this shell.
       - name: Smoke test — fiber showcase
         shell: msys2 {0}
         run: |
           set -euo pipefail
-          ./target/release/osprey.exe examples/tested/fiber/fiber_showcase.osp --run --quiet > out.txt
+          ./target/release/osprey.exe test tests/regressions/fiber/fiber_showcase.test.osp --quiet > out.txt
           cat out.txt
           grep -Fq "=== Fiber Showcase Complete ===" out.txt
           grep -Fq "map-reduce total = 1400" out.txt
           grep -Fq "pipeline = 200" out.txt
 
-      - name: Smoke test — feature omnibus
+      - name: Smoke test — feature omnibus assertion suite
         shell: msys2 {0}
         run: |
           set -euo pipefail
-          ./target/release/osprey.exe examples/tested/basics/feature_omnibus.osp --run --quiet > omni.txt
+          ./target/release/osprey.exe test tests/core/feature_composition/feature_omnibus.test.osp --quiet > omni.txt
           cat omni.txt
+
+      # Each invocation recursively exercises both Default and ML programs with
+      # internal assertions, including cross-feature interaction scenarios.
+      - name: Core language assertion corpus — no memory management
+        shell: msys2 {0}
+        run: |
+          set -euo pipefail
+          OSPREY_TEST_JOBS=1 ./target/release/osprey.exe test tests
+
+      - name: Core language assertion corpus — GC
+        shell: msys2 {0}
+        run: |
+          set -euo pipefail
+          OSPREY_TEST_JOBS=1 ./target/release/osprey.exe test tests --memory=gc
+
+      - name: Core language assertion corpus — ARC
+        shell: msys2 {0}
+        run: |
+          set -euo pipefail
+          OSPREY_ARC_DEBUG=1 OSPREY_TEST_JOBS=1 ./target/release/osprey.exe test tests --memory=arc

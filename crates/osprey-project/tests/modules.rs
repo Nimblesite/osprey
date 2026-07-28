@@ -305,6 +305,7 @@ fn non_entry_main_and_top_level_execution_are_rejected() {
             function("main", Expr::Integer(1)),
             Stmt::Expr {
                 value: Expr::Integer(2),
+                doc: None,
                 position: None,
             },
         ],

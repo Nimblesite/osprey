@@ -1,0 +1,94 @@
+// Fiber execution order remains deterministic when awaited in spawn order.
+// [CONCURRENCY-DETERMINISTIC]
+
+extern fn fiber_set_deterministic_mode(enabled: bool) -> int
+
+effect Logger {
+    /// Record an informational `message` against the active logger.
+    info: fn(string) -> Unit
+}
+
+effect Metrics {
+    /// Record a successful `route` call taking `millis`.
+    recordSuccess: fn(string, int) -> Unit
+}
+
+type TaskPriority = Urgent | High | Medium
+
+fn calculateComplexity(priority) = match priority {
+    Urgent => 750
+    High => 450    
+    Medium => 600
+}
+
+fn calculateTaskTime(complexity: int) -> int = (intDiv(complexity, 10) ?: 0) + 2 ?: 0
+
+fn processTask(taskId: string, dataSize: int, priority: TaskPriority) -> int ![Logger, Metrics] = {
+    perform Logger.info("Starting task: " + taskId + " with data size: " + toString(dataSize))
+    let complexity = calculateComplexity(priority)
+    let processed = dataSize * 8 ?: 0
+    perform Metrics.recordSuccess(taskId, processed)
+    perform Logger.info("Task " + taskId + " completed successfully in " + toString(calculateTaskTime(complexity)) + "ms")
+    processed
+}
+
+fn processTask1() = processTask(taskId: "task-1", dataSize: 150, priority: High)
+fn processTask2() = processTask(taskId: "task-2", dataSize: 200, priority: Medium)
+fn processTask3() = processTask(taskId: "task-3", dataSize: 75, priority: Urgent)
+fn totalProcessed(first: int, second: int, third: int) -> int = first + second + third ?: 0
+
+fiber_set_deterministic_mode(enabled: true)
+handle Metrics
+    recordSuccess taskId processed => print("✅ " + taskId + " succeeded: " + toString(processed) + " units")
+in handle Logger
+    info msg => print("ℹ️  " + msg)
+in {
+    print("=== Fiber Determinism Test ===")
+    print("This test executes tasks in spawn order 1, 2, 3")
+    print("The deterministic run scheduler preserves that order")
+    print("")
+
+    /// Spawn all three fibers, then await in spawn order.
+    let fiber1 = spawn processTask1()
+    let fiber2 = spawn processTask2()
+    let fiber3 = spawn processTask3()
+    let result1 = await(fiber1)
+    let result2 = await(fiber2)
+    let result3 = await(fiber3)
+
+    print("Total processed: " + toString(totalProcessed(result1, result2, result3)) + " units")
+    print("=== Test Complete ===")
+}
+
+/// Repeats the batch under recording handlers, returning the completion trace
+/// the deterministic scheduler produced followed by the awaited total.
+fn completionTrace() = {
+    mut completions = ""
+    let total = handle Metrics
+        recordSuccess taskId processed => {
+            completions = "${completions}${taskId}:${toString(processed)}|"
+            0
+        }
+    in handle Logger
+        info msg => 0
+    in {
+        let first = spawn processTask1()
+        let second = spawn processTask2()
+        let third = spawn processTask3()
+        totalProcessed(await(first), await(second), await(third))
+    }
+    "${completions}total:${toString(total)}"
+}
+
+// A sum is ORDER-BLIND: `total == 3400` holds just as well when the scheduler
+// runs the three fibers backwards, so asserting the total alone leaves the one
+// property this file exists to prove completely unguarded. The trace pins the
+// spawn order 1, 2, 3. Implements [CONCURRENCY-DETERMINISTIC].
+test("deterministic fibers complete in spawn order", fn() => checkAll("deterministic fiber ordering", [
+    completionTrace() == "task-1:1200|task-2:1600|task-3:600|total:3400",
+    startsWith(completionTrace(), "task-1:"),
+    endsWith(completionTrace(), "total:3400"),
+    calculateComplexity(Urgent) == 750,
+    calculateComplexity(High) == 450,
+    calculateTaskTime(600) == 62
+]))

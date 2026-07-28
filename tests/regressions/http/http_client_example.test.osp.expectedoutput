@@ -1,0 +1,3 @@
+ok 1 - status-only HTTP client uses a local server
+1..1
+# tests=1 passed=1 failed=0 skipped=0

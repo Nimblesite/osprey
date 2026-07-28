@@ -48,11 +48,19 @@ mod tests {
     use super::*;
 
     #[test]
-    fn source_extensions_are_exact() {
-        assert!(is_source(Path::new("a.osp")));
-        assert!(is_source(Path::new("a.ospml")));
-        assert!(!is_source(Path::new("a.ospo")));
-        assert!(hidden(Path::new("target")));
-        assert!(hidden(Path::new(".cache")));
+    fn source_paths_are_classified() {
+        let cases = [
+            ("a.osp", true, false),
+            ("a.ospml", true, false),
+            ("a.ospo", false, false),
+            ("target", false, true),
+            (".cache", false, true),
+        ];
+        for (path, source, ignored) in cases {
+            assert_eq!(
+                (is_source(Path::new(path)), hidden(Path::new(path))),
+                (source, ignored)
+            );
+        }
     }
 }

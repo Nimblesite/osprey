@@ -1,0 +1,51 @@
+// Match-based validation predicates.
+
+notEmpty s =
+    match s
+        "" => false
+        _ => true
+
+isPositive n = n > 0
+
+isValidAge age =
+    match age
+        0 => false
+        200 => false
+        _ => true
+
+isValidEmail email =
+    match email
+        "" => false
+        "invalid" => false
+        _ => true
+
+print "Testing validation functions:"
+print (toString (notEmpty ""))
+print (toString (notEmpty "test"))
+
+print (toString (isPositive 0))
+print (toString (isPositive 10))
+print (toString (isValidAge 25))
+print (toString (isValidAge 200))
+print (toString (isValidEmail ""))
+print (toString (isValidEmail "alice@example.com"))
+
+print (toString (isPositive 5))
+print (toString (isPositive ((0 - 5) ?: 0)))
+print (toString (isPositive 0))
+
+(** Verify every validator at its accepted values and rejected sentinels. *)
+validationPredicatesCase () = checkAll "validation predicate boundaries" [
+    !(notEmpty ""),
+    notEmpty "Osprey",
+    !(isPositive 0),
+    isPositive 1,
+    !(isPositive ((0 - 1) ?: 0)),
+    !(isValidAge 0),
+    isValidAge 25,
+    !(isValidAge 200),
+    !(isValidEmail ""),
+    !(isValidEmail "invalid"),
+    isValidEmail "alice@example.com"
+]
+test "validators reject sentinels and accept valid inputs" validationPredicatesCase

@@ -1,0 +1,81 @@
+# Programs that CANNOT link on wasm32-wasip1, and the symbol each fails on.
+#
+# A skip is a hole in coverage. This file is what makes each one deliberate:
+# crates/run_test_corpus.sh compares the actual skip set to this list EXACTLY
+# and fails the build on any difference — a new skip, a removed one, or the
+# same program skipping for a different reason. There is no regeneration flag;
+# editing this file is meant to be a reviewed act.
+#
+# Every entry below is blocked on a capability wasm32-wasip1 does not have, not
+# on unfinished work:
+#
+#   __osprey_coro_suspend       resumable effect continuations — the handler
+#                               runs the suspended computation on its own
+#                               thread; wasm32-wasip1 has no usable pthreads.
+#                               [WASM-TARGET-EFFECTS]
+#   fiber_spawn_env_owned       fibers, same reason. `fiber_sleep` entries also
+#                               spawn and await; sleep is merely the first
+#                               unresolved symbol the linker names.
+#   http_create_server          HTTP/WebSocket — BSD sockets, absent from WASI
+#   http_create_client          preview1 (sockets arrive in preview2).
+#   http_get_response
+#   http_response_body
+#   spawn_process_with_handler  subprocesses — no fork/exec under WASI.
+#   osprey_ffi_cell             FFI — no dlopen under WASI.
+#
+# Anything portable has been ported: file I/O and the OS CSPRNG moved into the
+# wasm runtime archive rather than staying on this list. Shrink it further by
+# porting a capability, never by loosening the check.
+tests/effects/resume/resume_abort_early_exit.test.osp __osprey_coro_suspend
+tests/effects/resume/resume_abort_early_exit.test.ospml __osprey_coro_suspend
+tests/effects/resume/resume_error_policies.test.osp __osprey_coro_suspend
+tests/effects/resume/resume_error_policies.test.ospml __osprey_coro_suspend
+tests/effects/resume/resume_lifo_audit.test.osp __osprey_coro_suspend
+tests/effects/resume/resume_lifo_audit.test.ospml __osprey_coro_suspend
+tests/effects/resume/resume_outer_handler_bridge.test.osp __osprey_coro_suspend
+tests/effects/resume/resume_outer_handler_bridge.test.ospml __osprey_coro_suspend
+tests/effects/resume/resume_unit_markers.test.osp __osprey_coro_suspend
+tests/effects/resume/resume_unit_markers.test.ospml __osprey_coro_suspend
+tests/effects/resume/resume_value_rewrite.test.osp __osprey_coro_suspend
+tests/effects/resume/resume_value_rewrite.test.ospml __osprey_coro_suspend
+tests/regressions/basics/knownbugs/bug1_spawn_record.test.osp fiber_spawn_env_owned
+tests/regressions/basics/knownbugs/bug1_spawn_record.test.ospml fiber_spawn_env_owned
+tests/regressions/basics/osprey_mega_showcase.test.osp fiber_spawn_env_owned
+tests/regressions/basics/osprey_mega_showcase.test.ospml fiber_spawn_env_owned
+tests/regressions/basics/processes/async_process_management.test.osp spawn_process_with_handler
+tests/regressions/basics/processes/async_process_management.test.ospml spawn_process_with_handler
+tests/regressions/basics/processes/callback_stdout_demo.test.osp spawn_process_with_handler
+tests/regressions/basics/processes/callback_stdout_demo.test.ospml spawn_process_with_handler
+tests/regressions/basics/website/website_examples.test.osp fiber_spawn_env_owned
+tests/regressions/basics/website/website_examples.test.ospml fiber_spawn_env_owned
+tests/regressions/db/database_effect.test.osp osprey_ffi_cell
+tests/regressions/db/database_effect.test.ospml osprey_ffi_cell
+tests/regressions/db/sqlite_basics.test.osp osprey_ffi_cell
+tests/regressions/db/sqlite_basics.test.ospml osprey_ffi_cell
+tests/regressions/effects/abort_vs_resume.test.osp __osprey_coro_suspend
+tests/regressions/effects/abort_vs_resume.test.ospml __osprey_coro_suspend
+tests/regressions/effects/algebraic_effects_comprehensive.test.osp fiber_sleep
+tests/regressions/effects/algebraic_effects_comprehensive.test.ospml fiber_sleep
+tests/regressions/effects/fiber_effects.test.osp fiber_spawn_env_owned
+tests/regressions/effects/fiber_effects.test.ospml fiber_spawn_env_owned
+tests/regressions/effects/handler_scoping.test.osp __osprey_coro_suspend
+tests/regressions/effects/handler_scoping.test.ospml __osprey_coro_suspend
+tests/regressions/effects/http_state_levels.test.osp http_get_response
+tests/regressions/effects/http_state_levels.test.ospml http_get_response
+tests/regressions/effects/retry_until_valid.test.osp __osprey_coro_suspend
+tests/regressions/effects/retry_until_valid.test.ospml __osprey_coro_suspend
+tests/regressions/fiber/cpu_profiling_demo.test.osp __osprey_coro_suspend
+tests/regressions/fiber/fiber_determinism.test.osp fiber_spawn_env_owned
+tests/regressions/fiber/fiber_exact_replica.test.osp fiber_spawn_env_owned
+tests/regressions/fiber/fiber_showcase.test.osp fiber_spawn_env_owned
+tests/regressions/fiber/fiber_showcase.test.ospml fiber_spawn_env_owned
+tests/regressions/http/http_client_example.test.osp http_create_server
+tests/regressions/http/http_client_example.test.ospml http_create_server
+tests/regressions/http/http_create_client.test.osp http_create_client
+tests/regressions/http/http_create_client.test.ospml http_create_client
+tests/regressions/http/http_response_handle.test.osp http_response_body
+tests/regressions/http/http_response_handle.test.ospml http_response_body
+tests/regressions/http/http_server_example.test.osp http_create_server
+tests/regressions/http/http_server_example.test.ospml http_create_server
+tests/regressions/http/tui_repo_table.test.osp http_create_server
+tests/regressions/http/tui_repo_table.test.ospml http_create_server

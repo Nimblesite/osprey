@@ -10,9 +10,9 @@ that compiled programs link against:
   `--compile`/`--run` time.
 
 Example programs and the golden test suites live at the top-level
-[examples/](../examples/) directory: [examples/tested/](../examples/tested/)
-(golden examples run in CI against `.expectedoutput` via
-[crates/diff_examples.sh](../crates/diff_examples.sh)),
+[examples/](../examples/) directory: [tests/regressions/](../tests/regressions/)
+(golden programs run in CI against `.expectedoutput` via
+[crates/run_test_corpus.sh](../crates/run_test_corpus.sh)),
 [examples/failscompilation/](../examples/failscompilation/) (the must-reject
 ratchet), and [examples/tui/](../examples/tui/) (the `make _tui` showcase).
 

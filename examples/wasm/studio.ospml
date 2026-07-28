@@ -87,6 +87,7 @@ books () =
 
 // ── algebraic effect ── the handler is the SQLite writer AND the accountant ──
 effect Db
+    (** Record one `Sale` and return its assigned id. *)
     record : Sale => int
 
 ddl () =
@@ -107,10 +108,10 @@ run () =
     handle Db
         record sale =>
             seed := "${seed}${insertLine sale}\n"
-            revenue := revenue + sale.qty * sale.price
-            units := units + sale.qty
-            count := count + 1
-            premium := premium + isPremium sale.price
+            revenue := revenue + (sale.qty * sale.price ?: 0) ?: revenue
+            units := units + sale.qty ?: units
+            count := count + 1 ?: count
+            premium := premium + isPremium sale.price ?: premium
             revenue
     in
         total = books ()

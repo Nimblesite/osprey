@@ -6,9 +6,10 @@ osprey-types, osprey-codegen, osprey-lsp
 (fn/type/effect),
 declaration-site `in`/`out` variance with position checking and
 variance-directed assignability, generic effects with per-site instantiation,
-and explicit construction-site type arguments all work in BOTH flavors. Three
-follow-ups remain (call-site type application, generic functions as values,
-static proof of the handler/row instantiation seam) — see
+explicit construction-site type arguments, and static proof of the
+handler/operation-instantiation seam all work in BOTH flavors. Call-site type
+application and the already-documented returned-generic-lambda limitation
+remain — see
 [§What is left](#what-is-left-detailed).
 **Spec:** 0004 §Generics/§Variance ([TYPE-GENERICS-*], [TYPE-VARIANCE-*]),
 0017 §Generic Effects ([EFFECTS-GENERIC-*]), 0003 §typeParamList/§effectSet,
@@ -30,9 +31,9 @@ plain HM unification is untouched, so principal types survive.
   (grammar.js:135-146, ml/parser.rs:230, check.rs `collect_type`).
 - HM let-polymorphism: implicit generalization of top-level fns
   (check.rs `check_function`, env.rs `generalize`/`instantiate`).
-- The assignability relation `unify_assignable` (unify.rs:102) already models
-  Result auto-unwrap/wrap and function param-contra/ret-co; declared variance
-  uses this relation.
+- The assignability relation `unify_assignable` models the safe one-way
+  promotion `T -> Result<T, E>` plus function param-contra/ret-co. The inverse
+  `Result<T, E> -> T` is forbidden; declared variance uses this relation.
 - Codegen specializes generic fns by inlining (genfn.rs), erases `Type::Var`
   to `i64` (types.rs:19), and effects run on a name-keyed handler stack
   (effects_runtime.c) — fully type-erased.
@@ -67,9 +68,9 @@ plain HM unification is untouched, so principal types survive.
    - `InferCtx` carries a constructor→variance table; `unify_assignable`
      matches same-name `Con` args variance-directed (co: expected←actual,
      contra: flipped, invariant: plain `unify`), with EXACT unification at
-     the leaves — the coercive Result unwrap never applies under a container
-     (it is representation-changing and codegen coerces only at direct value
-     sites). Builtins: `Result<out, out>`, `List<out>`, `Fiber<out>`,
+     the leaves. A `Result<T, E>` never coerces to `T`, under a container or at
+     a direct value site, because that would erase failure and change the
+     representation. Builtins: `Result<out, out>`, `List<out>`, `Fiber<out>`,
      `Map<inv, out>`.
    - Declaration-site position validation walks variant-field and
      effect-op types with a polarity that function parameters flip and
@@ -86,18 +87,18 @@ plain HM unification is untouched, so principal types survive.
    type-var-mentioning slot is a boxed `i64`), so the C runtime is untouched.
    Perform sites box erased arguments (bitcast for floats — never `fptosi`)
    and unbox erased results to the site-resolved type; handler arms unbox
-   erased params at entry and box erased returns/resumes. Handlers register
-   and performs look up under instantiation-mangled keys (`Stash$int`), so a
-   handler/row instantiation mismatch — which the checker cannot rule out
-   across the dynamic-scoping seam — misses the lookup and aborts with
-   `unhandled effect: …` via a null-guard at every perform site, without
-   type-confusing values. Monomorphic effects keep bare names and identical
-   behavior.
+   erased params at entry and box erased returns/resumes. Static operation
+   summaries retain each resolved instantiation across calls and handlers, so
+   a `Stash<string>` handler does not discharge a `Stash<int>` operation and
+   compilation fails while the requirement remains at entry. Handlers still
+   register and performs still look up under instantiation-mangled keys
+   (`Stash$int`); the null-guard is defense in depth, not normal rejection.
+   Monomorphic effects keep bare names and identical behavior.
 5. **Runtime**: zero C changes (keys are opaque strings).
 
 ## Testing
 
-- Expand `examples/tested/basics/types/pure_hindley_milner_test.{osp,ospml}`
+- Expand `tests/regressions/basics/types/pure_hindley_milner_test.{osp,ospml}`
   (fn type params), `type_equality_comprehensive.{osp,ospml}` (variance
   assignability), `effects/algebraic_effects_comprehensive.{osp,ospml}`
   (generic effect, two instantiations, rows with args) — shared goldens,
@@ -156,23 +157,28 @@ instantiations works). The enabling checker fix: builtin scheme binder ids
 of `-> T`-annotated functions. Plan 0002 still rejects a generic lambda returned
 from a generic function.
 
-### 3. Static proof of the handler/row instantiation seam
+### 3. Static proof of the handler/operation instantiation seam — ✅ landed
 
-**State:** checked-then-guarded, not statically proven. Function effect rows
-(`!Stash<int>`) and `handle` sites each instantiate independently; because
-`Type::Fun` carries no effect row, a call across a function boundary does not
-unify the handler's instantiation with the callee's row. Today the runtime
-closes the hole: handlers register and performs look up under
-instantiation-mangled keys (`Stash$int`), so a mismatch misses and aborts
-with `unhandled effect: Stash$int.take` — sound, but a **runtime**
-failure where the effect system's promise is **compile-time** safety.
+**State:** statically enforced. `crates/osprey-types/src/effect_rows.rs`
+computes a closed-program summary of the operations required by each function
+and callback. Every requirement includes its resolved generic arguments. Calls
+propagate those requirements, and a handler removes only an operation arm with
+the same effect name and instantiation. A `Stash<string>` handler therefore
+cannot discharge `Stash<int>.take`; the remaining requirement is a compile
+error at program entry. The runtime's instantiation-mangled null guard remains
+a defensive backstop.
 
-**Scope:** effect rows must flow through function types (an effect-row
-component on `Type::Fun`, or a row-polymorphism variable `!E`) so a `handle`
-site unifies its instantiation with the rows of functions invoked in the
-handled body. This effect-row-polymorphism work is tracked by the effects roadmap
-([plan 0016](0016-algebraic-effects-and-handlers.md)), not this plan. It is
-documented in `[EFFECTS-GENERIC-ROWS]` as a known limitation.
+Explicit rows such as `!Stash<int>` are checked contracts and instantiation
+hints, not handlers. They constrain operations in a function body but do not
+grant authority when that function is called. Unannotated functions infer the
+same requirements without needless return or effect annotations.
+
+**Representation boundary:** this safety pass does not add a general open-row
+variable to `Type::Fun`; it uses fixed-point operation summaries for the
+current closed-program language surface. If future syntax exposes independently
+quantified row variables in public higher-order types, that representation and
+its HM generalization rules remain separate work in
+[plan 0016](0016-algebraic-effects-and-handlers.md).
 
 ### 4. Unspecified extensions (no work planned)
 
@@ -211,9 +217,9 @@ Remaining:
       registration; `let g = identity` passed to a HOF compiles and runs
       (§What-is-left 2). Only the returned still-generic lambda remains, in
       plan 0002.
-- [ ] **Static handler/row seam** — effect-row polymorphism on `Type::Fun`
-      so the instantiation mismatch becomes a compile error, not a runtime
-      abort; owned by [plan 0016](0016-algebraic-effects-and-handlers.md)
-      (§What-is-left 3).
+- [x] **Static handler/operation seam** — resolved operation summaries make an
+      instantiation mismatch a compile error; explicit rows are contracts, and
+      the runtime null guard is only a backstop (§What-is-left 3 and
+      [plan 0016](0016-algebraic-effects-and-handlers.md)).
 - [ ] failscompilation case for turbofish once it lands (arity/instantiation
       mismatch at the call site).

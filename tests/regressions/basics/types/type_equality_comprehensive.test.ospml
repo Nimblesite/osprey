@@ -1,0 +1,175 @@
+// ML-flavor twin of type_equality_comprehensive.osp — byte-identical IR.
+// Generic records, function-type equality through HOFs, generic
+// monomorphization, and union variants compared by tag.
+
+print "=== TYPE EQUALITY ==="
+
+(** --- Generic type equality --- *)
+type Container T =
+    value : T
+type Pair T U =
+    first : T
+    second : U
+type Triple T U V =
+    first : T
+    second : U
+    third : V
+
+makeContainer val = Container(value = val)
+makePair (a, b) = Pair(first = a, second = b)
+makeTriple (a, b, c) = Triple(first = a, second = b, third = c)
+
+cInt1 = makeContainer 42
+cInt2 = makeContainer 99
+cStr = makeContainer "text"
+pairIS1 = makePair (1, "test")
+pairIS2 = makePair (2, "hello")
+tIBI = makeTriple (1, "test", 42)
+
+print "C<int>:  ${cInt1.value}, ${cInt2.value}"
+print "C<str>:  ${cStr.value}"
+print "P<I,S>:  ${pairIS1.first}/${pairIS1.second} | ${pairIS2.first}/${pairIS2.second}"
+print "T<I,S,I>: ${tIBI.first}/${tIBI.second}/${tIBI.third}"
+print ""
+
+(** --- Function type equality via HOFs ---
+    Explicit signatures keep the function values concrete and match the Default
+    flavor's annotated helpers. *)
+addOne : int -> int
+addOne x = x + 1 ?: 0
+timesTwo : int -> int
+timesTwo x = x * 2 ?: 0
+minusOne : int -> int
+minusOne x = x - 1 ?: 0
+excl s = s + "!"
+ques s = s + "?"
+intToString x = toString x
+twoArgAdd : int -> int -> int
+twoArgAdd (a, b) = a + b ?: 0
+threeArgAdd : int -> int -> int -> int
+threeArgAdd (a, b, c) = a + b + c ?: 0
+
+applyInt (f, x) = f x
+applyStr (f, s) = f s
+applyToStr (f, x) = f x
+applyTwo : ((int, int) -> int) -> int -> int -> int
+applyTwo (f, a, b) = f (a, b)
+applyThree : ((int, int, int) -> int) -> int -> int -> int -> int
+applyThree (f, a, b, c) = f (a, b, c)
+
+print "=== Same (int)->int passed via HOF ==="
+print (toString (applyInt (addOne, 10)))
+print (toString (applyInt (timesTwo, 10)))
+print (toString (applyInt (minusOne, 10)))
+
+print "=== Same (string)->string passed via HOF ==="
+print (applyStr (excl, "hi"))
+print (applyStr (ques, "hi"))
+
+print "=== Different shapes ==="
+print (applyToStr (intToString, 42))
+print (toString (applyTwo (twoArgAdd, 5, 7)))
+print (toString (applyThree (threeArgAdd, 1, 2, 3)))
+print ""
+
+(** --- Generic monomorphization via identity-like functions --- *)
+identity x = x
+duplicate x = x
+print (toString (identity 42))
+print (toString (duplicate 99))
+print (identity "a")
+print (duplicate "b")
+
+(** --- Union type equality (same tag = same, different tag = different) --- *)
+type Color =
+    Red
+    Green
+    Blue
+colorName c =
+    match c
+        Red => "red"
+        Green => "green"
+        Blue => "blue"
+sameColor (a, b) =
+    match a
+        Red =>
+            match b
+                Red => true
+                _ => false
+        Green =>
+            match b
+                Green => true
+                _ => false
+        Blue =>
+            match b
+                Blue => true
+                _ => false
+c1 = Red
+c2 = Red
+c3 = Blue
+print "color1=${colorName c1} color3=${colorName c3}"
+print "sameRR=${toString (sameColor (c1, c2))}"
+print "sameRB=${toString (sameColor (c1, c3))}"
+
+(** --- Declaration-site variance: out T (covariant) / in T (contravariant) ---
+    Variance is position-checked: `out T` may appear only where the payload
+    flows out, `in T` only where it flows in (function parameters flip the
+    polarity). Payload instantiations match exactly at the leaves; function
+    payload function signatures retain their exact, explicit Result channels.
+    Implements [TYPE-VARIANCE-DECL], [TYPE-VARIANCE-ASSIGN],
+    [FLAVOR-ML-GENERICS] *)
+type Feed out T =
+    Feed
+        supply : T
+    Dry
+type Gate in T =
+    Gate
+        admit : T -> bool
+    Open
+
+label : Feed<(int) -> Result<int, MathError>> -> string
+label f = match f
+    Feed supply => "supplied"
+    Dry => "dry"
+mkFeed : Unit -> Feed<(int) -> Result<int, MathError>>
+mkFeed () = Feed(supply = \x => x * 2)
+
+describe : Gate<(int) -> Result<int, MathError>> -> string
+describe g = match g
+    Gate admit => "guarded"
+    Open => "open"
+mkGate : Unit -> Gate<(int) -> Result<int, MathError>>
+mkGate () = Gate(admit = \f => true)
+
+print "fn-payload feed accepted: ${label (mkFeed ())}"
+print "fn-payload gate accepted: ${describe (mkGate ())}"
+
+print "=== TYPE EQUALITY COMPLETE ==="
+
+(** Verify generic records, function shapes, union tags, and variant payload types. *)
+typeEqualityCase () =
+    container = makeContainer 7
+    pair = makePair (8, "eight")
+    triple = makeTriple (9, "nine", 10)
+    checkAll "generic, function, and union type behavior" [
+        container.value == 7,
+        pair.first == 8,
+        pair.second == "eight",
+        triple.first == 9,
+        triple.second == "nine",
+        triple.third == 10,
+        applyInt (addOne, 9) == 10,
+        applyInt (timesTwo, 9) == 18,
+        applyInt (minusOne, 9) == 8,
+        applyStr (excl, "hi") == "hi!",
+        applyStr (ques, "hi") == "hi?",
+        applyToStr (intToString, 42) == "42",
+        applyTwo (twoArgAdd, 5, 7) == 12,
+        applyThree (threeArgAdd, 1, 2, 3) == 6,
+        sameColor (Red, Red),
+        !(sameColor (Red, Blue)),
+        colorName Green == "green",
+        label (mkFeed ()) == "supplied",
+        describe (mkGate ()) == "guarded"
+    ]
+test "equivalent type shapes compose while union tags remain distinct" typeEqualityCase

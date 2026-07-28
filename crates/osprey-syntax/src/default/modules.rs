@@ -239,26 +239,17 @@ fn attach_doc(statement: &mut Stmt, doc: osprey_ast::DocComment) {
 )]
 mod tests {
     use crate::parse_program;
+    use crate::test_support::stmts;
     use osprey_ast::{
         Expr, ImportSelection, ModuleKind, NamespaceName, SignatureItem, SignatureType, Stmt,
         Visibility,
     };
 
-    fn parse(src: &str) -> Vec<Stmt> {
-        let parsed = parse_program(src);
-        assert!(
-            parsed.errors.is_empty(),
-            "syntax errors: {:?}",
-            parsed.errors
-        );
-        parsed.program.statements
-    }
-
     #[test]
     fn lowers_file_and_block_namespaces_with_opaque_labels() {
         // The file-scoped form owns every following declaration in canonical
         // AST form. [MODULES-FILE-SCOPED-NAMESPACE]
-        let statements = parse("namespace billing;\nlet x = 1\nfn f() = x\n");
+        let statements = stmts("namespace billing;\nlet x = 1\nfn f() = x\n");
         match &statements[0] {
             Stmt::Namespace {
                 name,
@@ -274,7 +265,7 @@ mod tests {
             other => panic!("expected file namespace, got {other:?}"),
         }
 
-        let statements = parse("namespace \"billing/api\" { let x = 1 }\n");
+        let statements = stmts("namespace \"billing/api\" { let x = 1 }\n");
         match &statements[0] {
             Stmt::Namespace {
                 name,
@@ -292,7 +283,7 @@ mod tests {
 
     #[test]
     fn lowers_every_import_selection_and_legacy_dots() {
-        let statements = parse(
+        let statements = stmts(
             "import billing::Tax\n\
              import billing::Tax as T\n\
              import billing::Tax::{addTax, zero as noTax}\n\
@@ -327,7 +318,7 @@ mod tests {
 
     #[test]
     fn lowers_state_module_paths_ascription_exports_and_opaque_alias() {
-        let statements = parse(
+        let statements = stmts(
             "state module Storage::Memory : StoreSig + extra {\n\
                mut count = 0\n\
                export opaque type Store = int\n\
@@ -368,7 +359,7 @@ mod tests {
 
     #[test]
     fn lowers_typed_signature_items() {
-        let statements = parse(
+        let statements = stmts(
             "signature StoreSig {\n\
                opaque type Store\n\
                type Count = int\n\
@@ -413,7 +404,7 @@ mod tests {
     #[test]
     fn exported_docs_attach_to_every_declaration_and_repair_uppercase_opaque_aliases() {
         // [DOC-ATTACH] Default docs reach all seven declaration-level forms.
-        let statements = parse(
+        let statements = stmts(
             "module Documented {\n\
                /// value docs\n\
                export let answer = 42\n\
@@ -460,7 +451,7 @@ mod tests {
 
     #[test]
     fn lowers_qualified_paths_in_calls_types_and_interpolation() {
-        let statements = parse(
+        let statements = stmts(
             "fn run(x: billing::Money) = billing::Tax::addTax(x)\n\
              let shown = \"${billing::Tax::addTax(1)}\"\n",
         );

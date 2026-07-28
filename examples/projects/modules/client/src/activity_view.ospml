@@ -69,7 +69,8 @@ module ActivityView
                     nextShown = match show
                         true => increment shown
                         false => shown
-                    rest = rowsFrom doc (index + 1) limit filter search nextShown
+                    nextIndex = (index + 1) ?: index
+                    rest = rowsFrom doc nextIndex limit filter search nextShown
                     match show
                         false => rest
                         true => match length rest == 0
@@ -78,9 +79,9 @@ module ActivityView
 
     export rows : string -> int -> string -> string -> string
     rows source limit filter search =
-        doc = jsonParse source
+        doc = jsonParse source ?: 0
         content = rowsFrom doc 0 limit filter search 0
-        freed = jsonFree doc
+        freed = jsonFree doc ?: 0
         content
 
     countFrom : int -> int -> string -> int -> int
@@ -92,11 +93,12 @@ module ActivityView
                 nextCount = match value == kind
                     true => increment running
                     false => running
-                countFrom doc (index + 1) kind nextCount
+                nextIndex = (index + 1) ?: index
+                countFrom doc nextIndex kind nextCount
 
     export count : string -> string -> int
     count source kind =
-        doc = jsonParse source
+        doc = jsonParse source ?: 0
         total = countFrom doc 0 kind 0
-        freed = jsonFree doc
+        freed = jsonFree doc ?: 0
         total

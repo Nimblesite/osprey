@@ -41,20 +41,9 @@ impl SymbolKey {
     }
 
     pub fn mangled(&self) -> String {
-        let mut out = String::from("__osp");
-        push_hex_segment(&mut out, &self.namespace);
-        for segment in &self.path {
-            push_hex_segment(&mut out, segment);
-        }
-        out
-    }
-}
-
-fn push_hex_segment(out: &mut String, segment: &str) {
-    use std::fmt::Write as _;
-    let _ = write!(out, "_{}x", segment.len());
-    for byte in segment.as_bytes() {
-        let _ = write!(out, "{byte:02x}");
+        osprey_ast::symbol::mangle(
+            std::iter::once(self.namespace.as_str()).chain(self.path.iter().map(String::as_str)),
+        )
     }
 }
 

@@ -5,11 +5,12 @@ lexical handler, which supplies the operation result. Default and ML syntax
 lower to the same effect, perform, handler, and resume AST nodes; their runtime
 semantics are identical.
 
-The checker validates declared operations and their value types. Effect rows
-provide generic-instantiation scope inside the annotated function
-body, but are not stored in function types or propagated through calls. A
-missing handler can therefore compile; the generated program aborts with
-`unhandled effect: <Effect>.<operation>` when lookup fails.
+The checker validates declared operations and their value types, infers the
+operations required by unannotated functions and callbacks, and propagates
+those requirements through calls. A handler discharges only the operation arms
+it actually supplies, for the same generic effect instantiation. Every
+requirement must be discharged before program entry. A missing handler is
+therefore a compile error, never a runtime abort.
 
 ## Keywords
 
@@ -68,10 +69,12 @@ in perform Stash.take()
 
 `[EFFECTS-GENERIC-RUNTIME]` Generic operation payloads use an erased machine-word
 ABI. Code generation boxes and unboxes values using the type inferred at each
-site. Runtime handler keys include the resolved instantiation, such as
-`Stash$string`, so a mismatched instantiation misses lookup and aborts instead
-of calling a handler with the wrong representation. Monomorphic effects use
-their declared name as the key.
+site. Static discharge distinguishes resolved instantiations, so a
+`Stash<string>` handler does not discharge `Stash<int>.put`. Runtime handler
+keys also include the resolved instantiation, such as `Stash$string`; their
+null-lookup guard is a defensive backstop and must not be the normal rejection
+path for a checked program. Monomorphic effects use their declared name as the
+key.
 
 ## Effectful Function Types
 
@@ -100,9 +103,26 @@ fetch url = perform Net.get url
 effect instantiation used by performs in that function body. A bare generic
 entry leaves its arguments to inference.
 
-Rows do not form part of `Type::Fun`. The checker does not propagate them
-through calls, prove that a caller installs every required handler, or require
-an unannotated function to be pure.
+`[EFFECTS-STATIC-DISCHARGE]` Effect annotations are checked contracts, not
+handlers. Writing `!Logger` declares which effect the function body may require;
+it does not authorize `Logger.log` at the call site and does not discharge that
+operation. The checker rejects an operation outside a non-empty declared row.
+It infers requirements when annotations are omitted, propagates them through
+named calls and higher-order callback calls, and requires the selected program
+entry (`main` when present, otherwise the top-level executable statements) to
+have no remaining operation requirements.
+
+Discharge is operation- and instantiation-specific. A handler for `Pair.first`
+does not discharge `Pair.second`, and a handler inferred as `Stash<string>` does
+not discharge `Stash<int>.put`. Complementary nested partial handlers may each
+discharge the operation they cover. Constructing a lambda is pure, but invoking
+it contributes its latent requirements; constructing one inside a handler does
+not give it authority after it escapes that handler's lexical region.
+
+The current compiler realizes these rules with a closed-program operation
+summary and fixed-point call analysis. Explicit open effect-row variables are
+not surface syntax and effect rows are not yet exposed as independently
+quantified values in the Hindley–Milner type representation.
 
 ## Performing Operations
 
@@ -113,14 +133,14 @@ performExpr ::= "perform" IDENT "." IDENT "(" args? ")"
 ```osprey
 fn increment() -> int !State = {
     let current = perform State.get()
-    perform State.set(current + 1)
+    perform State.set((current + 1) ?: current)
     perform State.get()
 }
 ```
 
-The operation result is the value returned by its active handler arm. If no
-handler exists for that effect and operation, runtime lookup prints the
-unhandled-effect message and exits nonzero.
+The operation result is the value returned by its active handler arm. The
+static effect-row check guarantees that a matching handler exists on every
+execution path.
 
 ## Handlers
 
@@ -151,6 +171,13 @@ in handle Logger
 in perform Logger.log("test")
 ```
 
+A handler arm is not permission to perform its own active operation
+recursively. The checker rejects a perform with the same effect, resolved
+generic instantiation, and operation as the active arm. A different operation
+not covered by a partial handler, or a different generic instantiation, may
+instead be discharged by an enclosing matching handler. Every remaining arm
+requirement follows the ordinary entry-discharge rule.
+
 ## Handler-Owned State
 
 `[EFFECTS-HANDLER-STATE]` A handler arm may capture a mutable binding. Code
@@ -159,8 +186,8 @@ the handled body, and code after the region observe the same location. This is
 the **sanctioned form of mutation** in Osprey: a `mut` cell is meant to change
 *through* an effect handler like the one below, not by free imperative
 reassignment in ordinary statement position (see
-[Bindings](0003-Syntax.md#bindings) and
-[issue #180](https://github.com/Nimblesite/osprey/issues/180)).
+[Bindings](0003-Syntax.md#bindings)). The checker enforces this boundary:
+assignment to a mutable binding outside a handler arm is a type error.
 
 ```osprey
 mut cell = 0
@@ -173,8 +200,8 @@ print("result=${result} cell=${cell}")
 
 Handler state is also preserved when a perform crosses a spawned-fiber or HTTP
 callback boundary. The native conformance cases are
-`examples/tested/effects/fiber_effects.osp` and
-`examples/tested/effects/http_state_levels.osp`.
+`tests/regressions/effects/fiber_effects.test.osp` and
+`tests/regressions/effects/http_state_levels.test.osp`.
 
 ## Resuming Handlers
 
@@ -205,15 +232,17 @@ Resuming handlers have these rules:
   runs.
 - They are single-shot. A second resume of one continuation aborts with
   `fatal: continuation already resumed (multi-shot resume is not supported)`.
-- Handler mode is selected per region. If any arm contains `resume`, an arm
-  that returns without resuming aborts the suspended computation and its value
-  becomes the result of the whole handler. This per-region selection is a
-  known deviation from the intended per-arm rule: adding `resume` to one arm
-  changes how a sibling arm's non-resuming return is treated
-  (recover-and-continue versus abort). It is tracked as
-  [issue #177](https://github.com/Nimblesite/osprey/issues/177). Keep each
-  handler in a single mode: either no arm resumes, or every control-flow arm
-  does.
+- Handler mode is selected per region. With no `resume` in any arm, every arm
+  directly supplies its operation result and the caller continues. If any arm
+  contains `resume`, returning from the selected branch without resuming stops
+  the suspended computation and its value becomes the result of the whole
+  handler. A single operation arm may intentionally resume its success branch
+  and return from its error branch; that is the exception-style early-exit
+  pattern. The known deviation is across sibling operations: adding `resume`
+  to one arm also changes a non-resuming sibling from substitution to early
+  exit. This region-wide behavior is tracked as
+  [issue #177](https://github.com/Nimblesite/osprey/issues/177). Until it is
+  fixed, keep sibling operations in the same mode.
 - `resume` is lexical to the arm. It is rejected at top level and inside a
   lambda declared in an arm, because that lambda has no live arm continuation.
 - Explicit resume is native-only. WebAssembly supports direct value-substitution
@@ -221,6 +250,20 @@ Resuming handlers have these rules:
 
 Native resume uses one suspended pthread stack as the continuation. Regions
 whose arms contain no `resume` stay on the direct handler-call path.
+
+Two critical implementation defects currently limit operation values:
+
+- [issue #182](https://github.com/Nimblesite/osprey/issues/182): the native
+  resumable-operation mailbox transports 16 arguments. The compiler accepts a
+  17th argument, but the runtime silently delivers zero for it.
+- [issue #183](https://github.com/Nimblesite/osprey/issues/183): a direct
+  handler corrupts an operation result whose type is `Result<T, E>`. Resuming
+  handlers have separate passing coverage for complete `Result` values.
+- [issue #185](https://github.com/Nimblesite/osprey/issues/185): under ARC, a
+  resuming handler leaks one managed object when its completed continuation
+  answer is a dynamic string.
+
+Both defects have paired Default/ML known-failure cases under `tests/effects`.
 
 `[EFFECTS-FIBER-PERFORM]` Concurrent performs into one resuming handler are
 serialized for the full suspend-to-resume round trip. This prevents arguments

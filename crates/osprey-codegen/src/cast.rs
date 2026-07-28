@@ -2,16 +2,19 @@
 //! boundaries). String/handle targets take the operand as-is, only re-tagging
 //! the LLVM type.
 
-use crate::builder::Codegen;
+use crate::builder::{Codegen, ParamSig};
 use crate::conv::{as_double, as_i1, as_i64};
 use crate::error::Result;
 use crate::llty::{LType, Value};
 
-/// Coerce a value to the wanted type, preserving its aggregate owner tag. A
-/// `Result` arriving at a value boundary (argument, field, return scalar)
-/// auto-unwraps to its success payload first, per the type-system spec.
+/// Coerce a plain value to the wanted type, preserving its aggregate owner tag.
+/// Result is never a coercion source: callers must preserve it or handle it.
 pub(crate) fn coerce_to(cg: &mut Codegen, v: Value, want: LType) -> Result<Value> {
-    let v = crate::result::unwrap(cg, v);
+    if v.result_inner.is_some() {
+        return Err(crate::error::CodegenError::invalid(
+            "cannot coerce an unhandled Result to a plain value",
+        ));
+    }
     if v.ty == want {
         return Ok(v);
     }
@@ -39,4 +42,53 @@ pub(crate) fn coerce_to(cg: &mut Codegen, v: Value, want: LType) -> Result<Value
         }
     };
     Ok(out.with_owner(owner))
+}
+
+/// Adapt an argument to a function parameter ABI slot. Result parameters use
+/// an opaque pointer at the call boundary while retaining their complete block;
+/// a plain value is safely promoted to Success, never the reverse.
+pub(crate) fn coerce_param(cg: &mut Codegen, v: Value, want: ParamSig) -> Result<Value> {
+    let semantic = coerce_semantic_param(cg, v, want)?;
+    let Some(_) = want.result_inner else {
+        return Ok(semantic);
+    };
+    let ptr = cg.emit_reg(format!(
+        "bitcast {} {} to i8*",
+        semantic.llvm_ty(),
+        semantic.operand
+    ));
+    Ok(Value::new(ptr, LType::Ptr))
+}
+
+/// Adapt an inline argument to the semantic parameter shape while keeping a
+/// Result as a typed block (there is no emitted ABI boundary to erase here).
+pub(crate) fn coerce_semantic_param(cg: &mut Codegen, v: Value, want: ParamSig) -> Result<Value> {
+    let value = match want.result_inner {
+        Some(inner) => crate::result::fit_to_inner(cg, v, inner)?,
+        None => coerce_to(cg, v, want.ty)?,
+    };
+    Ok(match want.fiber {
+        Some(fiber) => fiber.restore(value),
+        None => value,
+    })
+}
+
+/// Reconstruct an incoming parameter value from its emitted ABI register.
+pub(crate) fn incoming_param(
+    cg: &mut Codegen,
+    operand: String,
+    sig: ParamSig,
+    owner: Option<String>,
+) -> Value {
+    let value = if let Some(inner) = sig.result_inner {
+        let struct_ty = crate::llty::result_struct_ty(inner);
+        let typed = cg.emit_reg(format!("bitcast i8* {operand} to {struct_ty}*"));
+        Value::result(typed, inner)
+    } else {
+        Value::new(operand, sig.ty).with_owner(owner)
+    };
+    match sig.fiber {
+        Some(fiber) => fiber.restore(value),
+        None => value,
+    }
 }

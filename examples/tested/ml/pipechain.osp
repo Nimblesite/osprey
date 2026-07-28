@@ -1,9 +1,0 @@
-// Default-flavor twin of pipechain.ospml. The `|>` pipe operator and plain
-// integer arithmetic lower to byte-identical IR in both flavors.
-
-fn inc(x: int) -> int = x + 1
-fn double(x: int) -> int = x + x
-fn square(x: int) -> int = x * x
-
-print("p1=${5 |> inc |> double} p2=${3 |> double |> square |> inc} p3=${10 |> inc |> inc |> double}")
-0

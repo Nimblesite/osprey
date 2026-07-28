@@ -1,6 +1,6 @@
 {
   "comments": {
-    "lineComment": "//"
+    "blockComment": ["(*", "*)"]
   },
   "brackets": [["(", ")"]],
   "autoClosingPairs": [
@@ -26,8 +26,8 @@
   },
   "folding": {
     "markers": {
-      "start": "^\\s*//\\s*#region",
-      "end": "^\\s*//\\s*#endregion"
+      "start": "^\\s*\\(\\*\\s*#region\\b.*\\*\\)\\s*$",
+      "end": "^\\s*\\(\\*\\s*#endregion\\b.*\\*\\)\\s*$"
     }
   }
 }

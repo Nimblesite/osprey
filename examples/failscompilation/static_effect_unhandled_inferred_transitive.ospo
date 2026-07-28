@@ -1,0 +1,10 @@
+// [EFFECTS-STATIC-DISCHARGE] Inferred rows propagate through every call.
+effect Alarm {
+    ring: fn() -> int
+}
+
+fn ring() = perform Alarm.ring()
+fn relay() = ring()
+fn relayAgain() = relay()
+
+let answer = relayAgain()

@@ -173,11 +173,10 @@ surface.
       passing silently. Spec 0018 corrected to say **where** the bar is
       enforced (`make test` via `_conformance-arc`) rather than implying every
       bare harness run checks it.
-- [ ] **Refresh the stale ARC figure in `benchmarks/README.md`** — it quotes
-      binarytrees ARC peak RSS as “~4.9 MB”, but the committed measurement in
-      `benchmarks/results/results.json` is 2 965 504 B ≈ **2.97 MB**. (The same
-      README's “905 MB” default figure is likewise ahead of the committed 633 MB.)
-      Regenerate rather than hand-edit.
+- [x] **Refresh the stale ARC figure in `benchmarks/README.md`** —
+      `benchmarks/report.py` now regenerates the marked README measurement from
+      `benchmarks/results/results.json` alongside the HTML report. Current data:
+      default 633 MB, ARC 2.98 MB, GC 18.6 MB.
 - [ ] (Later) mutable arrays → sieve, matrix-multiply, n-sieve, fannkuch,
       n-queens.
 - [ ] (Later) `int`↔`float` + `sqrt` → mandelbrot, n-body, spectral-norm.

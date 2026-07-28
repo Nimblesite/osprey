@@ -104,9 +104,9 @@ match calculation {
 }
 ```
 
-The error type of `intDiv` and other fallible built-ins is `Error`. Arithmetic
-operators `/` and `%` use `MathError`; `+`, `-`, and `*` return plain scalars
-([ARITH-PLAIN](0013-ErrorHandling.md#arithmetic-and-result--arith-plain)).
+The error type of `intDiv` and other fallible built-ins is `Error`. Checked
+integer operators `+`, `-`, `*`, unary `-`, and numeric `/` and `%` use
+`MathError` ([ARITH-CHECKED](0013-ErrorHandling.md#arithmetic-and-result--arith-checked)).
 
 ## Ternary Match (Syntactic Sugar)
 
@@ -132,16 +132,19 @@ For a `Result`, `result ?: fallback` yields the `Success` payload or lazily
 evaluates `fallback` for `Error`.
 
 ```osprey
-let safe = intDiv(10, 2) ?: -1
-let failed = intDiv(10, 0) ?: -1
+let safe = intDiv(10, 2) ?: 0
+let failed = intDiv(10, 0) ?: 0
 ```
 
 `?:` is right-associative and binds below every other operator
 ([Syntax](0003-Syntax.md#expressions)). The same spelling is available in ML.
+It is an explicit handling operation: the result of `?:` is the unwrapped
+success type, and the fallback must have that same plain type.
 
-A boolean scrutinee is also accepted by the shared boolean-match lowering:
-`true ?: false` is `true`. On that degenerate true path, a nontrivial scrutinee
-expression is evaluated again; use the ordinary boolean ternary instead.
+The scrutinee must be a `Result`; `?:` is not a boolean operator and never
+reinterprets a plain value as `Success`. Use the ordinary boolean ternary for a
+boolean condition. This separation prevents Result handling from becoming an
+implicit truthiness conversion.
 
 ### Boolean ternary
 

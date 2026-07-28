@@ -4,8 +4,10 @@
 //! links against libc and the prebuilt C runtime archives in `compiler/bin/`
 //! (`libfiber_runtime.a` / `libhttp_runtime.a`). Two anchors define correct
 //! output: the C runtime ABI (those archives' symbols and conventions) and the
-//! golden outputs in `examples/tested`, exercised end-to-end by
-//! `crates/diff_examples.sh`. Constructs the backend does not lower return
+//! `.expectedoutput` goldens beside every program under `tests/`, compared
+//! byte-for-byte end-to-end by `crates/run_test_corpus.sh` — under each memory
+//! backend, and again on wasm32 with `OSPREY_TARGET=wasm32`.
+//! Constructs the backend does not lower return
 //! [`CodegenError::Unsupported`] — it never emits a placeholder.
 //!
 //! Public surface: [`compile_program`] turns a parsed [`osprey_ast::Program`]
@@ -152,13 +154,19 @@ mod tests {
     fn emits_arithmetic_function() {
         // A monomorphic (annotated) function is emitted as a real definition and
         // called directly; a generic one would instead inline at its call sites.
-        let ir = module("fn add(a: int, b: int) -> int = a + b\nlet r = add(2, 3)\n");
+        let ir = module(
+            "fn add(a: int, b: int) -> Result<int, MathError> = a + b\n\
+             let r = add(2, 3)\n",
+        );
         // Parameters are named positionally, not after their source
         // identifier, so an ML/Default twin pair stays byte-identical
         // ([FLAVOR-IR-EQUIV]).
-        assert!(ir.contains("define i64 @add(i64 %$p0, i64 %$p1)"));
-        assert!(ir.contains("add i64 %$p0, %$p1"));
-        assert!(ir.contains("call i64 @add(i64 2, i64 3)"));
+        assert!(ir.contains("define { i64, i8, i8* }* @add(i64 %$p0, i64 %$p1)"));
+        assert!(
+            ir.contains("call { i64, i1 } @llvm.sadd.with.overflow.i64(i64 %$p0, i64 %$p1)"),
+            "integer addition must lower through LLVM's checked intrinsic:\n{ir}"
+        );
+        assert!(ir.contains("call { i64, i8, i8* }* @add(i64 2, i64 3)"));
     }
 
     // Testing built-ins lower to the TAP runtime and re-route main's exit
@@ -183,6 +191,38 @@ mod tests {
     }
 
     #[test]
+    fn boolean_assertion_shortcuts_lower_with_expected_values_and_labels() {
+        let ir = module(
+            "test(\"predicates\", fn() => {\n\
+               expectTrue(2 < 3)\n\
+               expectFalse(3 < 2)\n\
+               checkTrue(\"ordered\", 4 <= 4)\n\
+               checkFalse(\"different\", 4 == 5)\n\
+             })\n",
+        );
+        assert_eq!(ir.matches("call void @osp_test_assert").count(), 4);
+        assert_eq!(ir.matches("@osp_test_assert(i8* null").count(), 2);
+    }
+
+    #[test]
+    fn grouped_assertions_emit_one_soft_assertion_per_condition() {
+        let ir = module(
+            "test(\"batch\", fn() => {\n\
+               expectAll([1 == 1, 2 < 3, true])\n\
+               checkAll(\"state\", [4 == 4, 5 != 6])\n\
+             })\n",
+        );
+        assert_eq!(ir.matches("call void @osp_test_assert").count(), 5);
+        assert_eq!(ir.matches("@osp_test_assert(i8* null").count(), 3);
+        assert!(compile_err("let checks = [true]\nexpectAll(checks)\n")
+            .to_string()
+            .contains("must be a list literal"));
+        assert!(compile_err("expectAll([])\n")
+            .to_string()
+            .contains("at least one condition"));
+    }
+
+    #[test]
     fn programs_without_tests_keep_the_plain_exit_path() {
         let ir = module("print(\"hi\")\n");
         assert!(!ir.contains("osp_test_finalize"));
@@ -192,7 +232,7 @@ mod tests {
     #[test]
     fn user_functions_shadow_testing_builtins() {
         // [TESTING-SHADOWING] a user `check` compiles as an ordinary call.
-        let ir = module("fn check(t: int) -> int = t + 1\nlet r = check(4)\nprint(r)\n");
+        let ir = module("fn check(t: int) -> int = (t + 1) ?: t\nlet r = check(4)\nprint(r)\n");
         assert!(!ir.contains("osp_test_assert"));
         assert!(ir.contains("call i64 @check(i64 4)"));
         // …and so does an extern declaration of the same name.
@@ -216,9 +256,10 @@ mod tests {
     }
 
     #[test]
-    fn assertion_operands_unwrap_results_before_comparing() {
+    fn assertion_operands_render_success_payloads_without_hiding_errors() {
         // [TESTING-EQUALITY] intDiv returns Result<int, _>; expect compares
-        // its unwrapped payload's canonical string.
+        // a Success payload canonically, while the sibling test proves Error
+        // remains visible rather than being read as a fabricated payload.
         let ir = module("expect(intDiv(4, 2), 2)\n");
         assert!(ir.contains("call void @osp_test_assert(i8* null, i32"));
     }
@@ -240,8 +281,9 @@ mod tests {
 
     #[test]
     fn debug_compile_emits_source_level_metadata() {
-        let ir =
-            debug_module("fn add(a: int, b: int) -> int = a + b\nlet x = add(1, 2)\nprint(x)\n");
+        let ir = debug_module(
+            "fn add(a: int, b: int) -> int = (a + b) ?: a\nlet x = add(1, 2)\nprint(x)\n",
+        );
         let expected_dwarf_version = if cfg!(target_os = "macos") { 4 } else { 5 };
 
         assert!(ir.contains("source_filename = \"/tmp/debug.osp\""));
@@ -264,6 +306,57 @@ mod tests {
     }
 
     #[test]
+    fn a_breakpoint_inside_a_handler_arm_body_has_a_line_to_bind_to() {
+        // A handler arm is emitted as its own LLVM function, and a nested
+        // function starts with NO debug scope. Nothing reopened one, so every
+        // instruction lowered from the arm carried no `!dbg` and the arm got no
+        // `DISubprogram` — the arm's source lines were simply absent from the
+        // line table. A debugger has nothing to bind a breakpoint to there, so
+        // one set inside the arm never fires even though the arm runs.
+        // [DEBUGGER-DBG-DECLARE]
+        let ir = debug_module(
+            "effect State { get: fn() -> int }\n\
+             fn bump() -> int !State = perform State.get()\n\
+             fn main() -> int {\n\
+             let r = handle State get => {\n\
+             let inner = 41\n\
+             inner\n\
+             } in bump()\n\
+             print(\"r=${toString(r)}\")\n\
+             0 }\n",
+        );
+
+        assert!(
+            ir.contains("!DISubprogram(name: \"__handler_State_get_"),
+            "the arm function needs its own subprogram to be a debuggable scope"
+        );
+        // `let inner = 41` is line 5, inside the arm.
+        assert!(
+            ir.contains("!DILocation(line: 5,"),
+            "the arm body's own statement lines must reach the line table"
+        );
+
+        // A `resume`-using arm is emitted down a separate path, and it is the
+        // same construct to the author — so it must be just as debuggable.
+        let resuming = debug_module(
+            "effect State { get: fn() -> int }\n\
+             fn bump() -> int !State = perform State.get()\n\
+             fn main() -> int {\n\
+             let r = handle State get => {\n\
+             let inner = 41\n\
+             resume(inner)\n\
+             } in bump()\n\
+             print(\"r=${toString(r)}\")\n\
+             0 }\n",
+        );
+
+        assert!(
+            resuming.contains("!DILocation(line: 5,"),
+            "a resuming arm's body lines must reach the line table too"
+        );
+    }
+
+    #[test]
     fn generic_function_inlines_at_call_site() {
         // A polymorphic function is specialised by inlining, so no monomorphic
         // definition is emitted; the call computes directly at the use site.
@@ -275,19 +368,19 @@ mod tests {
     fn generic_function_as_an_iterator_callback_inlines_not_calls_a_missing_symbol() {
         // [BUILTIN-ITER-CALLBACK] A reducer with unannotated params is generic,
         // so it has NO `@name` definition. Passed to `fold` it must be
-        // beta-reduced per element (inlined), not lowered to `call @add` — a
+        // beta-reduced per element (inlined), not lowered to `call @choose` — a
         // call to a symbol that was never emitted (invalid IR).
         let ir = module(
-            "fn add(a, b) -> int = a + b\n\
-             let t = range(1, 4) |> fold(0, add)\n\
+            "fn choose(a, b) = match a == b { true => a false => b }\n\
+             let t = range(1, 4) |> fold(0, choose)\n\
              print(\"t=${t}\")\n",
         );
         assert!(
-            !ir.contains("@add"),
-            "generic reducer must inline, not call @add:\n{ir}"
+            !ir.contains("@choose"),
+            "generic reducer must inline, not call @choose:\n{ir}"
         );
         assert!(
-            ir.contains("add i64"),
+            ir.contains("icmp eq i64") && ir.contains("phi i64"),
             "the reducer body must be emitted inline"
         );
     }
@@ -319,17 +412,22 @@ mod tests {
     fn spawn_lowers_to_a_per_instance_closure_cell() {
         // `spawn` lowers its expression as a zero-parameter closure: the thunk
         // takes its heap cell as env (so two in-flight spawns from one site
-        // never alias captures) and goes to `fiber_spawn_env`; `await` maps to
-        // `fiber_await`. No module globals are involved.
+        // never alias captures) and goes to `fiber_spawn_env_owned`; `await`
+        // maps to `fiber_await`. No module globals are involved.
         let ir = module(
-            "fn work(n: int) -> int = n * 2\n\
+            "fn work(n: int) -> int = (n * 2) ?: n\n\
              fn main() -> Unit = {\n\
                let x = 21\n\
                let f = spawn work(x)\n\
                print(\"got ${await(f)}\")\n\
              }\n",
         );
-        assert!(ir.contains("call i64 @fiber_spawn_env(i64 (i8*)* @__fiber_thunk_"));
+        assert!(ir.contains("call i64 @fiber_spawn_env_owned(i64 (i8*)* @__fiber_thunk_"));
+        assert!(
+            ir.lines()
+                .any(|line| line.contains("@fiber_spawn_env_owned") && line.ends_with(", i64 0)")),
+            "an erased scalar fiber result must not be probed as a managed pointer:\n{ir}"
+        );
         assert!(ir.contains("define i64 @__fiber_thunk_0(i8* %__env)"));
         assert!(!ir.contains("@__fiber_cap_"));
         assert!(ir.contains("call i64 @fiber_await(i64"));
@@ -343,7 +441,7 @@ mod tests {
         // fnptr from the cell and passes the cell back as the env.
         let ir = module(
             "fn apply(value: int, f: (int) -> int) -> int = f(value)\n\
-             let r = apply(value: 10, f: fn(x: int) => x + 1)\n\
+             let r = apply(value: 10, f: fn(x: int) => (x + 1) ?: x)\n\
              print(\"r=${r}\")\n",
         );
         assert!(ir.contains("define i64 @__closure_fn_0(i8* %__env, i64 %$p0)"));
@@ -358,7 +456,7 @@ mod tests {
         // stored in a malloc'd cell and reloaded from `%__env` inside the
         // lifted function.
         let ir = module(
-            "fn makeAdder(n: int) -> (int) -> int = fn(x: int) => x + n\n\
+            "fn makeAdder(n: int) -> (int) -> int = fn(x: int) => (x + n) ?: x\n\
              fn main() -> Unit = {\n\
                let add5 = makeAdder(5)\n\
                print(\"r=${add5(3)}\")\n\
@@ -407,6 +505,7 @@ mod tests {
                     arguments: Vec::new(),
                     named_arguments: Vec::new(),
                 },
+                doc: None,
                 position: None,
             }],
         };
@@ -443,9 +542,9 @@ mod tests {
         // both stages, counted loop), plus a fold accumulator. Exercises iter.rs
         // callback_of (named + lambda), replay, for_each, fold, acc_*.
         let ir = module(
-            "fn dbl(x: int) -> int = x * 2\n\
+            "fn dbl(x: int) -> int = (x * 2) ?: x\n\
              fn big(x: int) -> bool = x > 4\n\
-             fn add(a: int, b: int) -> int = a + b\n\
+             fn add(a: int, b: int) -> int = (a + b) ?: a\n\
              fn main() -> Unit = {\n\
                range(1, 6) |> map(dbl) |> filter(big) |> forEach(print)\n\
                let s = range(1, 6) |> fold(0, add)\n\
@@ -463,9 +562,9 @@ mod tests {
         // Exercises iter.rs list_builder (both branches), fold_list,
         // for_each_list and collections list-builder protocol.
         let ir = module(
-            "fn dbl(x: int) -> int = x * 2\n\
+            "fn dbl(x: int) -> int = (x * 2) ?: x\n\
              fn keep(x: int) -> bool = x > 1\n\
-             fn add(a: int, b: int) -> int = a + b\n\
+             fn add(a: int, b: int) -> int = (a + b) ?: a\n\
              fn main() -> Unit = {\n\
                let xs = listAppend(listAppend(List(), 1), 2)\n\
                let m = mapList(xs, dbl)\n\
@@ -486,7 +585,7 @@ mod tests {
         // callbacks — iter.rs callback_of's Lambda arms + the lambdas cache.
         let ir = module(
             "fn main() -> Unit = {\n\
-               let f = fn(x: int) => x + 1\n\
+               let f = fn(x: int) => (x + 1) ?: x\n\
                range(0, 3) |> map(f) |> forEach(fn(x: int) => print(\"v=${x}\"))\n\
              }\n",
         );
@@ -509,12 +608,12 @@ mod tests {
         // freevars.rs Map/Object/List/interpolation walks and closure.rs
         // capture_list + reload_captures + cell_value (malloc cell).
         let ir = module(
-            "fn make(a: int, b: int) -> () -> int = fn() => {\n\
+            "fn make(a: int, b: int) -> () -> int = fn() -> int => {\n\
                let m = { \"k\": a }\n\
                let o = { x: b, y: a }\n\
                let xs = [a, b]\n\
-               print(\"${a} ${b} ${listLength(xs)}\")\n\
-               a + b\n\
+               let shown = \"${a} ${b} ${listLength(xs)}\"\n\
+               match a + b { Success { value } => value Error { message } => a }\n\
              }\n\
              fn main() -> Unit = {\n\
                let g = make(1, 2)\n\
@@ -550,7 +649,7 @@ mod tests {
         // forwarder cell (closure.rs named_fn_cell + emit_forwarder), then is
         // called through the cell.
         let ir = module(
-            "fn dbl(x: int) -> int = x * 2\n\
+            "fn dbl(x: int) -> int = (x * 2) ?: x\n\
              fn apply(f: (int) -> int, v: int) -> int = f(v)\n\
              fn main() -> Unit = {\n\
                let r = apply(dbl, 21)\n\
@@ -571,15 +670,21 @@ mod tests {
                Circle { r: int }\n\
                | Square { s: int }\n\
                | Blank\n\
-             fn area(sh: Shape) -> int = match sh {\n\
+             fn area(sh: Shape) -> Result<int, MathError> = match sh {\n\
                Circle { r } => r * r\n\
                Square { s } => s * s\n\
-               _ => 0\n\
+               _ => Success { value: 0 }\n\
              }\n\
              fn main() -> Unit = print(\"a=${area(Circle { r: 3 })}\")\n",
         );
         assert!(ir.contains("load i64, i64*"));
         assert!(ir.contains("icmp eq i64"));
+        assert_eq!(
+            ir.matches("call { i64, i1 } @llvm.smul.with.overflow.i64")
+                .count(),
+            2,
+            "both integer multiplication arms must be overflow-checked:\n{ir}"
+        );
     }
 
     #[test]
@@ -641,19 +746,86 @@ mod tests {
     }
 
     #[test]
-    fn result_match_on_a_scalar_discriminant() {
-        // Matching a bare scalar against Success/Error arms falls back to the
-        // `disc >= 0 ⇒ Success` rule (pattern.rs gen_result_match scalar branch).
-        let ir = module(
-            "fn main() -> Unit = {\n\
-               let n = 5\n\
-               match n {\n\
-                 Success { value } => print(\"v=${value}\")\n\
-                 Error { message } => print(\"e=${message}\")\n\
-               }\n\
-             }\n",
+    fn match_result_constructor_arms_share_the_contextual_success_layout() {
+        // A bare Error constructor initially has a string-shaped placeholder
+        // success slot.  The match join must re-layout it to the Success arm's
+        // inferred payload type, regardless of source-arm order, so the whole
+        // Result remains readable on both native and wasm32 targets.
+        for body in [
+            "\
+               \"known\" => Success { value: 4 }\n\
+               _ => Error { message: \"absent\" }",
+            "\
+               \"missing\" => Error { message: \"absent\" }\n\
+               _ => Success { value: 4 }",
+        ] {
+            let ir = module(&format!(
+                "fn find(key: string) -> Result<int, string> = match key {{\n{body}\n}}\n\
+                 fn main() -> Unit = print(\"${{find(\"known\")}}\")\n"
+            ));
+            assert!(ir.contains("phi { i64, i8, i8* }*"), "unexpected IR:\n{ir}");
+        }
+    }
+
+    #[test]
+    fn result_parameters_preserve_the_wrapper_for_named_functions_and_closures() {
+        let named = module(
+            "fn choose(r: Result<int, MathError>) -> int = match r {\n\
+               Success { value } => value\n\
+               Error { message } => 0\n\
+             }\n\
+             let failed = choose(9223372036854775807 + 1)\n\
+             let wrapped = choose(7)\n\
+             print(\"${failed}:${wrapped}\")\n",
         );
-        assert!(ir.contains("icmp sge i64"));
+        assert!(
+            named.contains("define i64 @choose(i8* %$p0)"),
+            "unexpected named-function IR:\n{named}"
+        );
+        assert!(named.contains("bitcast i8* %$p0 to { i64, i8, i8* }*"));
+
+        let closure = module(
+            "let choose = fn(r: Result<int, MathError>) => match r {\n\
+               Success { value } => value\n\
+               Error { message } => 0\n\
+             }\n\
+             let failed = choose(9223372036854775807 + 1)\n\
+             let wrapped = choose(7)\n\
+             print(\"${failed}:${wrapped}\")\n",
+        );
+        assert!(closure.contains("define i64 @__closure_fn_"));
+        assert!(closure.contains("i8* %__env, i8* %$p0"));
+        assert!(closure.contains("bitcast i8* %$p0 to { i64, i8, i8* }*"));
+    }
+
+    /// Matching a bare scalar against `Success`/`Error` arms takes the Success
+    /// arm UNCONDITIONALLY, per the auto-wrap rule ("any value may be matched as
+    /// if wrapped in `Success`", osprey-types/src/pattern.rs).
+    ///
+    /// This used to emit `icmp sge i64 disc, 0` and route a NEGATIVE scalar to
+    /// the Error arm — so `-1 ?: 99` silently produced `99`. The sign of a value
+    /// must never decide which arm runs. Implements [PATTERN-RESULT-AUTOWRAP].
+    #[test]
+    fn result_match_on_a_scalar_discriminant_always_takes_success() {
+        for scrutinee in ["5", "-1"] {
+            let ir = module(&format!(
+                "fn main() -> Unit = {{\n\
+                   let n = {scrutinee}\n\
+                   match n {{\n\
+                     Success {{ value }} => print(\"v=${{value}}\")\n\
+                     Error {{ message }} => print(\"e=${{message}}\")\n\
+                   }}\n\
+                 }}\n"
+            ));
+            assert!(
+                !ir.contains("icmp sge i64"),
+                "the sign of {scrutinee} must not select the arm:\n{ir}"
+            );
+            assert!(
+                ir.contains("br i1 true"),
+                "Success arm is unconditional for {scrutinee}:\n{ir}"
+            );
+        }
     }
 
     #[test]
@@ -803,13 +975,89 @@ mod tests {
     // ---- algebraic effects: handler-owned state (effects.rs) ----
 
     #[test]
+    fn effect_result_parameters_preserve_shape_in_direct_and_resuming_abis() {
+        fn try_module(src: &str) -> std::result::Result<String, String> {
+            let parsed = parse_program(src);
+            if !parsed.errors.is_empty() {
+                return Err(format!("syntax errors: {:?}", parsed.errors));
+            }
+            compile_program(&parsed.program).map_err(|error| error.to_string())
+        }
+
+        let direct = try_module(
+            "effect Inspect { inspect: fn(Result<int, MathError>, Fiber<Result<int, MathError>>) -> int }\n\
+             fn ask() -> int !Inspect = perform Inspect.inspect(9223372036854775807 + 1, spawn(9223372036854775807 + 1))\n\
+             fn main() -> int = handle Inspect\n\
+               inspect immediate deferred => match immediate {\n\
+                 Success { value } => value\n\
+                 Error { message } => match await(deferred) {\n\
+                   Success { value } => value\n\
+                   Error { message } => 7\n\
+                 }\n\
+               }\n\
+             in ask()\n",
+        );
+        let resuming = try_module(
+            "effect ResumeInspect { inspect: fn(Result<int, MathError>, Fiber<Result<int, MathError>>) -> int }\n\
+             fn ask() -> int !ResumeInspect = perform ResumeInspect.inspect(9223372036854775807 + 1, spawn(9223372036854775807 + 1))\n\
+             fn main() -> int = handle ResumeInspect\n\
+               inspect immediate deferred => match immediate {\n\
+                 Success { value } => resume(value)\n\
+                 Error { message } => match await(deferred) {\n\
+                   Success { value } => resume(value)\n\
+                   Error { message } => resume(7)\n\
+                 }\n\
+               }\n\
+             in ask()\n",
+        );
+        assert!(
+            direct.is_ok() && resuming.is_ok(),
+            "effect Result parameters must compile without erasing their wrapper:\n  direct={direct:?}\n  resuming={resuming:?}"
+        );
+
+        for (ir, function) in [
+            (
+                direct.expect("checked above"),
+                "@__handler_Inspect_inspect_",
+            ),
+            (
+                resuming.expect("checked above"),
+                "@__resume_arm_ResumeInspect_inspect_",
+            ),
+        ] {
+            let definition = ir
+                .lines()
+                .find(|line| line.starts_with("define ") && line.contains(function))
+                .expect("effect handler definition");
+            assert!(
+                definition.contains("i8* %immediate") && definition.contains("i64 %deferred"),
+                "effect parameters must use their complete ParamSig ABI:\n{definition}\n{ir}"
+            );
+            assert!(
+                ir.contains("bitcast i8* %immediate to { i64, i8, i8* }*"),
+                "the handler must reconstruct the incoming Result block:\n{ir}"
+            );
+            assert!(
+                ir.lines().collect::<Vec<_>>().windows(2).any(
+                    |pair| matches!(pair, [first, second]
+                        if first.contains("inttoptr i64")
+                            && first.contains("to i8*")
+                            && second.contains("bitcast i8*")
+                            && second.contains("to { i64, i8, i8* }*"))
+                ),
+                "the Fiber<Result> parameter must retain its Result element shape:\n{ir}"
+            );
+        }
+    }
+
+    #[test]
     fn handler_owned_mutable_state_threads_through_a_heap_cell() {
         // A `mut` an effect handler arm captures is promoted to a shared heap
         // cell: the env-carrying handler ABI passes the cell pointer, `get`
         // loads it and `set` stores it, so `perform` threads real state.
         let ir = module(
             "effect State { get: fn() -> int  set: fn(int) -> Unit }\n\
-             fn bump() -> int !State = { let a = perform State.get()  perform State.set(a + 1)  perform State.get() }\n\
+             fn bump() -> int !State = { let a = perform State.get()  perform State.set((a + 1) ?: a)  perform State.get() }\n\
              fn main() -> int { mut c = 0\n  let r = handle State get => c set v => { c = v } in bump()\n  print(\"r=${toString(r)} c=${toString(c)}\")\n  0 }\n",
         );
         // env-carrying handler ABI (push takes a 4th i8* env; perform resolves it)
@@ -822,6 +1070,35 @@ mod tests {
     }
 
     #[test]
+    fn handler_rebound_function_cell_calls_latest_closure_indirectly() {
+        let ir = module(
+            "effect ClosureSlot { rebind: fn(int) -> Unit }\n\
+             fn makeAdder(n: int) -> (int) -> int = fn(x) => (x + n) ?: x\n\
+             fn main() -> int {\n\
+               mut rb = fn(x) => (x + 1) ?: x\n\
+               handle ClosureSlot\n\
+                 rebind offset => { rb = makeAdder(offset) }\n\
+               in perform ClosureSlot.rebind(40)\n\
+               print(toString(rb(2)))\n\
+               0\n\
+             }\n",
+        );
+
+        let push = ir
+            .lines()
+            .find(|line| line.contains("call i32 @__osprey_handler_push"))
+            .expect("handler push");
+        assert!(
+            !push.contains("i8* null"),
+            "the assignment target must be captured as a shared function cell:\n{ir}"
+        );
+        assert!(
+            !ir.contains("@rb"),
+            "a handler-rebound function cell must load and call its latest closure, not emit a direct call to an undefined/stale `rb` symbol:\n{ir}"
+        );
+    }
+
+    #[test]
     fn fiber_await_unboxes_a_string_result_to_a_pointer() {
         // `await(spawn e)` recovers the fiber's element type: a string result is
         // a pointer, recovered with `inttoptr`, not kept as a raw integer.
@@ -831,6 +1108,52 @@ mod tests {
         );
         assert!(ir.contains("fiber_await"));
         assert!(ir.contains("inttoptr i64"));
+        assert!(
+            ir.lines()
+                .any(|line| line.contains("@fiber_spawn_env_owned") && line.ends_with(", i64 1)")),
+            "a managed string fiber result must carry its ownership bit:\n{ir}"
+        );
+    }
+
+    #[test]
+    fn fiber_result_shape_survives_named_and_closure_function_boundaries() {
+        fn result_pointer_unboxes(ir: &str) -> usize {
+            ir.lines()
+                .collect::<Vec<_>>()
+                .windows(2)
+                .filter(|pair| {
+                    matches!(pair, [first, second]
+                    if first.contains("inttoptr i64")
+                        && first.contains("to i8*")
+                        && second.contains("bitcast i8*")
+                        && second.contains("to { i64, i8, i8* }*"))
+                })
+                .count()
+        }
+
+        let named = module(
+            "fn start(n: int) -> Fiber<Result<int, MathError>> = spawn(n + 1)\n\
+             fn finish(f: Fiber<Result<int, MathError>>) -> Result<int, MathError> = await(f)\n\
+             let through_return = await(start(9223372036854775807))\n\
+             let through_parameter = finish(spawn(9223372036854775807 + 1))\n",
+        );
+        assert_eq!(
+            result_pointer_unboxes(&named),
+            2,
+            "named Fiber<Result> boundaries must recover the complete Result block:\n{named}"
+        );
+
+        let closure = module(
+            "let start = fn(n: int) -> Fiber<Result<int, MathError>> => spawn(n + 1)\n\
+             let finish = fn(f: Fiber<Result<int, MathError>>) -> Result<int, MathError> => await(f)\n\
+             let through_return = await(start(9223372036854775807))\n\
+             let through_parameter = finish(spawn(9223372036854775807 + 1))\n",
+        );
+        assert_eq!(
+            result_pointer_unboxes(&closure),
+            2,
+            "closure Fiber<Result> boundaries must recover the complete Result block:\n{closure}"
+        );
     }
 
     // ---- conversions / arithmetic (conv.rs) ----
@@ -919,7 +1242,7 @@ card doc index selected =
         // spawn/await (covered elsewhere) plus Channel/send/recv, yield with and
         // without a value, select first-arm, fiber_yield and fiberDone.
         let ir = module(
-            "fn work(n: int) -> int = n + 1\n\
+            "fn work(n: int) -> int = (n + 1) ?: n\n\
              fn main() -> Unit = {\n\
                let ch = Channel(1)\n\
                send(ch, 42)\n\
@@ -947,13 +1270,13 @@ card doc index selected =
         let ir = module(
             "type Cfg = { keep: (int) -> bool }\n\
              fn add3(a: int) -> (int) -> (int) -> int =\n\
-               fn(b: int) => fn(c: int) => a + b + c\n\
-             fn makeAdder(n: int) -> (int) -> int = fn(x: int) => x + n\n\
+               fn(b: int) => fn(c: int) => (a + b + c) ?: a\n\
+             fn makeAdder(n: int) -> (int) -> int = fn(x: int) => (x + n) ?: x\n\
              fn main() -> Unit = {\n\
                let cfg = Cfg { keep: fn(n: int) => n > 1 }\n\
                let chain = add3(1)(2)(3)\n\
-               let computed = fold(map(range(1, 4), makeAdder(10)), 0, fn(a: int, b: int) => a + b)\n\
-               let fieldcb = fold(filter(range(1, 5), cfg.keep), 0, fn(a: int, b: int) => a + b)\n\
+               let computed = fold(map(range(1, 4), makeAdder(10)), 0, fn(a: int, b: int) => (a + b) ?: a)\n\
+               let fieldcb = fold(filter(range(1, 5), cfg.keep), 0, fn(a: int, b: int) => (a + b) ?: a)\n\
                print(\"${chain} ${computed} ${fieldcb}\")\n\
              }\n",
         );

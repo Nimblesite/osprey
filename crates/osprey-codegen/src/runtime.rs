@@ -2,7 +2,7 @@
 //! `toString` per type, `print`, and the numeric→string conversions. Float
 //! formatting is delegated to `osp_float_to_string` (linked from
 //! `libfiber_runtime`) so whole-valued floats keep their visible `.0`, exactly
-//! as the golden outputs in `examples/tested` expect.
+//! as the golden outputs in `tests/regressions` expect.
 
 use crate::builder::Codegen;
 use crate::conv::as_i64;
@@ -108,7 +108,7 @@ pub(crate) fn gen_print(cg: &mut Codegen, v: Value) -> Result<Value> {
     Ok(Value::unit())
 }
 
-pub(crate) fn int_to_string(cg: &mut Codegen, v: Value) -> Result<Value> {
+fn int_to_string(cg: &mut Codegen, v: Value) -> Result<Value> {
     cg.add_extern("declare i32 @sprintf(i8*, i8*, ...)");
     let i = as_i64(cg, v)?;
     // `%lld` (not `%ld`): Osprey `int` is i64, and on ILP32 targets like wasm32
@@ -128,7 +128,7 @@ pub(crate) fn int_to_string(cg: &mut Codegen, v: Value) -> Result<Value> {
 
 /// Whole-valued floats must print with a trailing `.0`; the runtime handles
 /// that (and NaN/inf) — see `runtime/string_runtime.c`.
-pub(crate) fn float_to_string(cg: &mut Codegen, v: &Value) -> Value {
+fn float_to_string(cg: &mut Codegen, v: &Value) -> Value {
     cg.add_extern("declare i8* @osp_float_to_string(double)");
     let reg = cg.fresh_reg();
     cg.emit(format!(
@@ -140,7 +140,7 @@ pub(crate) fn float_to_string(cg: &mut Codegen, v: &Value) -> Value {
     out
 }
 
-pub(crate) fn bool_to_string(cg: &mut Codegen, v: &Value) -> Value {
+fn bool_to_string(cg: &mut Codegen, v: &Value) -> Value {
     let t = cg.string_constant("true");
     let f = cg.string_constant("false");
     let reg = cg.fresh_reg();

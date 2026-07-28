@@ -6,7 +6,7 @@
 // connect + query demo binds PQconnectdb / PQexecParams / PQgetvalue / PQfinish
 // the same way and requires a running PostgreSQL instance.
 //
-// NOTE: not in examples/tested/ because the library search path is
+// NOTE: not in tests/regressions/ because the library search path is
 // platform-specific. On macOS, Homebrew's libpq is keg-only, hence the
 // `// @linkdir:` below; on Linux, `libpq-dev` installs to a standard path and
 // the `@linkdir` line is unnecessary. Adjust the path for your machine.

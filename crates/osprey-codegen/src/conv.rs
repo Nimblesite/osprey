@@ -38,6 +38,15 @@ pub(crate) fn as_i1(cg: &mut Codegen, v: Value) -> Result<Value> {
 /// Widen any value to the uniform `i64` collection-element ABI: pointers
 /// `ptrtoint`, narrow ints `zext`, `double` `bitcast`.
 pub(crate) fn box_to_i64(cg: &mut Codegen, v: Value) -> Value {
+    // A Result's operand has a precise `{ payload, disc, errmsg }*` LLVM type
+    // even though its broad `LType` is Ptr. Normalize that pointer to i8*
+    // before the erased machine-word ABI; spelling it directly as `i8*` would
+    // generate invalid IR and, more importantly, must never load the payload.
+    if v.result_inner.is_some() {
+        let ptr = cg.emit_reg(format!("bitcast {} {} to i8*", v.llvm_ty(), v.operand));
+        let reg = cg.emit_reg(format!("ptrtoint i8* {ptr} to i64"));
+        return Value::new(reg, LType::I64);
+    }
     let reg = match v.ty {
         LType::I64 => return v,
         LType::Str | LType::Ptr => cg.emit_reg(format!("ptrtoint {} {} to i64", v.ty, v.operand)),
@@ -74,5 +83,65 @@ pub(crate) fn as_double(cg: &mut Codegen, v: Value) -> Result<Value> {
             as_double(cg, i)
         }
         LType::I32 | LType::Str | LType::Ptr => Err(CodegenError::invalid("expected a number")),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const EXPECTED_IR: [&str; 8] = [
+        "zext i1 true to i64",
+        "sext i32 -7 to i64",
+        "fptosi double 2.5 to i64",
+        "icmp ne i32 -1, 0",
+        "trunc i64 1 to i1",
+        "trunc i64 9 to i32",
+        "bitcast i64 123 to double",
+        "sitofp i64",
+    ];
+
+    fn emitted_conversions(cg: &mut Codegen) {
+        let _ = as_i64(cg, Value::new("true", LType::I1));
+        let _ = as_i64(cg, Value::new("-7", LType::I32));
+        let _ = as_i64(cg, Value::new("2.5", LType::Double));
+        let _ = as_i1(cg, Value::new("-1", LType::I32));
+        let _ = unbox_from_i64(cg, "1", LType::I1);
+        let _ = unbox_from_i64(cg, "9", LType::I32);
+        let _ = unbox_from_i64(cg, "123", LType::Double);
+        let _ = as_double(cg, Value::new("false", LType::I1));
+    }
+
+    #[test]
+    fn numeric_coercions_emit_width_and_representation_preserving_ir() {
+        let mut cg = Codegen::new();
+        cg.begin_function("coercions", None);
+        emitted_conversions(&mut cg);
+        cg.emit("ret i64 0");
+        cg.finish_function("i64", "coercions", &[]);
+        let ir = cg.render();
+        for instruction in EXPECTED_IR {
+            assert!(ir.contains(instruction), "missing `{instruction}`:\n{ir}");
+        }
+    }
+
+    #[test]
+    fn invalid_numeric_coercions_return_precise_diagnostics() {
+        let mut cg = Codegen::new();
+        let integer = as_i64(&mut cg, Value::new("null", LType::Str));
+        let boolean = as_i1(&mut cg, Value::new("0.0", LType::Double));
+        let number = as_double(&mut cg, Value::new("0", LType::I32));
+        assert_eq!(
+            integer.unwrap_err(),
+            CodegenError::invalid("expected an integer, found a string/handle")
+        );
+        assert_eq!(
+            boolean.unwrap_err(),
+            CodegenError::invalid("expected a bool")
+        );
+        assert_eq!(
+            number.unwrap_err(),
+            CodegenError::invalid("expected a number")
+        );
     }
 }

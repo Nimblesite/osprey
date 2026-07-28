@@ -18,18 +18,41 @@
 
 // ---- view state (handler-owned), the server, the terminal, the screen ------
 effect Model {
-    items:    fn() -> string        // cached task list, as fetched
+    /// Read the cached task list exactly as last fetched.
+    items: fn() -> string
+    /// Replace the cached task list with `text`.
     setItems: fn(string) -> Unit
-    sel:      fn() -> int           // selected row
-    moveSel:  fn(int) -> Unit       // move the cursor (clamped)
-    flash:    fn() -> string        // one-line status message
+    /// Read the selected row index.
+    sel: fn() -> int
+    /// Move the cursor by `delta`, clamped to the list bounds.
+    moveSel: fn(int) -> Unit
+    /// Read the one-line status message.
+    flash: fn() -> string
+    /// Replace the one-line status message with `text`.
     setFlash: fn(string) -> Unit
-    nextSeq:  fn() -> int           // client-side counter for added tasks
+    /// Take the next client-side sequence number for an added task.
+    nextSeq: fn() -> int
 }
-effect Net  { fetch: fn() -> string  push: fn(string) -> Unit }
-effect Term { readKey: fn() -> Result<string, Error>  raw: fn(int) -> Unit }
-effect Out  { line: fn(string) -> Unit }
-effect Diag { log: fn(string) -> Unit }   // every request → /tmp/osprey_tui.log
+effect Net {
+    /// Fetch the current task list from the server.
+    fetch: fn() -> string
+    /// Send `body` to the server as a new task.
+    push: fn(string) -> Unit
+}
+effect Term {
+    /// Read one keypress, reporting failure as a `Result`.
+    readKey: fn() -> Result<string, Error>
+    /// Enter raw mode when `enable` is non-zero, cooked mode otherwise.
+    raw: fn(int) -> Unit
+}
+effect Out {
+    /// Emit one rendered line to the terminal.
+    line: fn(string) -> Unit
+}
+effect Diag {
+    /// Append one diagnostic line — every request lands in /tmp/osprey_tui.log.
+    log: fn(string) -> Unit
+}
 
 // ---- ANSI helpers (pure) ----------------------------------------------------
 fn cyan(s: string) -> string = "\e[36m${s}\e[0m"
@@ -40,10 +63,10 @@ fn bold(s: string) -> string = "\e[1m${s}\e[0m"
 fn invert(s: string) -> string = "\e[7m${s}\e[0m"
 fn rule() -> string = dim("  ------------------------------------------")
 
-// Plain integer arithmetic helpers used in argument position.
-fn inc(x: int) -> int = x + 1
-fn dec(x: int) -> int = x - 1
-fn shift(a: int, b: int) -> int = a + b
+// UI counters explicitly keep their previous value on arithmetic overflow.
+fn inc(x: int) -> int = (x + 1) ?: x
+fn dec(x: int) -> int = (x - 1) ?: x
+fn shift(a: int, b: int) -> int = (a + b) ?: a
 
 // ---- list helpers (the cached text is split into rows for rendering) --------
 fn rows(text: string) -> List<string> = match split(text, "\n") {
@@ -198,7 +221,7 @@ fn main() -> Unit = {
         moveSel d   => { cursor = clamp(shift(cursor, d), rowCount(cache)) }
         flash       => status
         setFlash m  => { status = m }
-        nextSeq     => { seq = seq + 1  seq }
+        nextSeq     => { seq = (seq + 1) ?: seq  seq }
     in handle Net
         fetch    => httpFetch()
         push t   => httpPush(t)

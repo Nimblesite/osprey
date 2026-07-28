@@ -53,6 +53,13 @@ pub(crate) fn gen_constructor(
     let view = cg
         .ctor_layout(name)
         .ok_or_else(|| CodegenError::unknown(name))?;
+    if view
+        .fields
+        .iter()
+        .any(|(field, _)| cg.ctor_field_result_inner(name, field).is_some())
+    {
+        return Err(result_field_unsupported());
+    }
     // A payload-free union variant (`Leaf`, `None`) is one immutable value:
     // hand back the shared immortal singleton instead of a fresh heap block.
     // Records keep the heap path — `r.field` and record-update need a distinct
@@ -82,11 +89,7 @@ pub(crate) fn gen_constructor(
         store_field(cg, &struct_ty, obj.as_str(), i + 1, *fty, &v.operand);
     }
 
-    let handle = cg.fresh_reg();
-    cg.emit(format!("{handle} = bitcast {struct_ty}* {obj} to i8*"));
-    let v = Value::handle(handle, view.owner);
-    crate::arc::own(cg, &v);
-    Ok(v)
+    Ok(own_struct_handle(cg, &struct_ty, &obj, view.owner))
 }
 
 /// `{ field: value, … }` — an anonymous object literal: the same `{ i64 tag,
@@ -96,6 +99,9 @@ pub(crate) fn gen_object(cg: &mut Codegen, fields: &[FieldAssignment]) -> Result
     let mut vals = Vec::with_capacity(fields.len());
     for fa in fields {
         let v = gen_expr(cg, &fa.value)?;
+        if v.result_inner.is_some() {
+            return Err(result_field_unsupported());
+        }
         vals.push((fa.name.clone(), v));
     }
     let mut parts = vec!["i64".to_string()];
@@ -112,11 +118,7 @@ pub(crate) fn gen_object(cg: &mut Codegen, fields: &[FieldAssignment]) -> Result
     for (i, (_, v)) in vals.iter().enumerate() {
         store_field(cg, &struct_ty, obj.as_str(), i + 1, v.ty, &v.operand);
     }
-    let handle = cg.fresh_reg();
-    cg.emit(format!("{handle} = bitcast {struct_ty}* {obj} to i8*"));
-    let v = Value::handle(handle, owner);
-    crate::arc::own(cg, &v);
-    Ok(v)
+    Ok(own_struct_handle(cg, &struct_ty, &obj, owner))
 }
 
 /// The layout word for an ANONYMOUS-object block `{ i64 tag, fields… }`
@@ -133,6 +135,22 @@ fn tagged_fields_meta(fields: &[(String, LType)]) -> i64 {
             .map(|(_, t)| crate::meta::MetaField::of_lty(*t)),
     );
     crate::meta::struct_meta(&mf)
+}
+
+/// Bitcast a freshly-built struct block to the `i8*` handle callers receive,
+/// tag it with its Osprey `owner` type, and register it with ARC — the shared
+/// tail every record/object constructor ends on.
+fn own_struct_handle(
+    cg: &mut Codegen,
+    struct_ty: &str,
+    obj: &str,
+    owner: impl Into<String>,
+) -> Value {
+    let handle = cg.fresh_reg();
+    cg.emit(format!("{handle} = bitcast {struct_ty}* {obj} to i8*"));
+    let v = Value::handle(handle, owner);
+    crate::arc::own(cg, &v);
+    v
 }
 
 /// The built-in HTTP response record name.
@@ -208,7 +226,12 @@ fn gen_result_ctor(cg: &mut Codegen, name: &str, fields: &[FieldAssignment]) -> 
     } else {
         crate::result::NO_MSG.to_string()
     };
-    crate::result::make_result(cg, v, inner, disc, &errmsg)
+    let result = crate::result::make_result(cg, v, inner, disc, &errmsg)?;
+    Ok(if is_error {
+        result.with_result_inner_placeholder()
+    } else {
+        result
+    })
 }
 
 /// `record { field: newValue }` — copy every field of `record` into a fresh
@@ -228,6 +251,13 @@ pub(crate) fn gen_update(
     let view = cg
         .ctor_layout(&owner)
         .ok_or_else(|| CodegenError::unknown(&owner))?;
+    if view
+        .fields
+        .iter()
+        .any(|(field, _)| cg.ctor_field_result_inner(&owner, field).is_some())
+    {
+        return Err(result_field_unsupported());
+    }
     let struct_ty = cg
         .ctor_struct_ty(&owner)
         .ok_or_else(|| CodegenError::unknown(&owner))?;
@@ -256,11 +286,7 @@ pub(crate) fn gen_update(
         store_field(cg, &struct_ty, obj.as_str(), i + 1, *fty, &val);
     }
 
-    let handle = cg.fresh_reg();
-    cg.emit(format!("{handle} = bitcast {struct_ty}* {obj} to i8*"));
-    let v = Value::handle(handle, owner);
-    crate::arc::own(cg, &v);
-    Ok(v)
+    Ok(own_struct_handle(cg, &struct_ty, &obj, owner))
 }
 
 /// `obj.field` — recover the record layout from the handle's owner type and
@@ -278,6 +304,9 @@ pub(crate) fn gen_field_access(cg: &mut Codegen, target: &Expr, field: &str) -> 
     let owner = known
         .or_else(|| cg.find_field_owner(field))
         .ok_or_else(|| CodegenError::invalid(format!("field `{field}` on a non-record")))?;
+    if cg.ctor_field_result_inner(&owner, field).is_some() {
+        return Err(result_field_unsupported());
+    }
     let (struct_ty, fields_layout) = cg
         .record_layout(&owner)
         .ok_or_else(|| CodegenError::unknown(&owner))?;
@@ -295,6 +324,15 @@ pub(crate) fn gen_field_access(cg: &mut Codegen, target: &Expr, field: &str) -> 
     let loaded = load_field(cg, &struct_ty, src.as_str(), idx + 1, fty);
     let owner = cg.ctor_field_owner(&owner, field);
     Ok(Value::new(loaded, fty).with_owner(owner))
+}
+
+/// Aggregate layouts do not yet carry the shape metadata needed to preserve a
+/// Result field's discriminant and payload type. Rejecting is mandatory: a
+/// broad pointer/scalar slot must never silently turn failure into success.
+fn result_field_unsupported() -> CodegenError {
+    CodegenError::unsupported(
+        "Result-valued aggregate fields require a shape-aware layout; handle the Result before storing it",
+    )
 }
 
 /// Store `val` (LLVM type `fty`) into the `idx`-th element of a `{TY}*` block.

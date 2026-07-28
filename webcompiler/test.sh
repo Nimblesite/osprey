@@ -8,8 +8,7 @@ echo "===================================="
 
 # Define paths to the test files
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-OSP_FILE="$SCRIPT_DIR/../examples/tested/basics/osprey_mega_showcase.osp"
-EXPECTED_OUTPUT_FILE="$SCRIPT_DIR/../examples/tested/basics/osprey_mega_showcase.osp.expectedoutput"
+OSP_FILE="$SCRIPT_DIR/../tests/regressions/basics/osprey_mega_showcase.test.osp"
 
 # Check if files exist
 if [ ! -f "$OSP_FILE" ]; then
@@ -17,17 +16,10 @@ if [ ! -f "$OSP_FILE" ]; then
     exit 1
 fi
 
-if [ ! -f "$EXPECTED_OUTPUT_FILE" ]; then
-    echo "❌ Error: Expected output file not found at $EXPECTED_OUTPUT_FILE"
-    exit 1
-fi
-
-# Read the Osprey code and expected output
+# Read the assertion-driven Osprey test.
 OSP_CODE=$(cat "$OSP_FILE")
-EXPECTED_OUTPUT=$(cat "$EXPECTED_OUTPUT_FILE")
 
 echo "📄 Loaded Osprey code from: $OSP_FILE"
-echo "📄 Loaded expected output from: $EXPECTED_OUTPUT_FILE"
 
 # Test the local API
 echo "Testing local API at http://localhost:3001/api/run"
@@ -55,16 +47,14 @@ else
     exit 1
 fi
 
-# Compare the program output with expected output
-if [ "$PROGRAM_OUTPUT" = "$EXPECTED_OUTPUT" ]; then
-    echo "✅ Test PASSED: Program output matches expected output exactly"
+# Require the showcase's named assertion, TAP plan, and zero-failure summary.
+if echo "$PROGRAM_OUTPUT" | grep -Fq 'ok 1 - mega showcase preserves effect, fiber, and tier state' \
+    && echo "$PROGRAM_OUTPUT" | grep -Fq '1..1' \
+    && echo "$PROGRAM_OUTPUT" | grep -Fq '# tests=1 passed=1 failed=0 skipped=0'; then
+    echo "✅ Test PASSED: Mega showcase assertion suite passed"
     exit 0
 else
-    echo "❌ Test FAILED: Program output does not match expected output"
-    echo ""
-    echo "Expected output:"
-    echo "=================="
-    echo "$EXPECTED_OUTPUT"
+    echo "❌ Test FAILED: Regression assertion result was not present"
     echo ""
     echo "Actual output:"
     echo "=============="

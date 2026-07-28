@@ -1,11 +1,11 @@
 // Sum of integer square roots over 1..N — Newton's method, integer division heavy.
-fn add(a: int, b: int) -> int = a + b
-fn divv(a: int, b: int) -> int = intDiv(a, b)
+fn add(a, b) = a + b ?: 0
+fn divv(a, b) = intDiv(a, b) ?: 0
 
-fn isqrtIter(n: int, x: int) -> int = {
+fn isqrtIter(n, x) = {
     let y = divv(add(x, divv(n, x)), 2)
     match (y < x) { true => isqrtIter(n, y)  false => x }
 }
-fn isqrt(n: int) -> int = match (n < 2) { true => n  _ => isqrtIter(n, n) }
-fn step(acc: int, i: int) -> int = add(acc, isqrt(i))
+fn isqrt(n) = match (n < 2) { true => n  _ => isqrtIter(n, n) }
+fn step(acc, i) = add(acc, isqrt(i))
 print("${range(1, 1000001) |> fold(0, step)}")

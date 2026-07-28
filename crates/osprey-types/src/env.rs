@@ -12,7 +12,7 @@ use std::collections::{BTreeSet, HashMap, HashSet};
 #[derive(Debug, Clone, Default)]
 pub struct TypeEnv {
     vars: HashMap<String, Scheme>,
-    /// Names declared `mut` — the only bindings assignment may target.
+    /// Names declared `mut` — the only bindings handler-arm assignment may target.
     mutables: HashSet<String>,
 }
 
@@ -32,7 +32,7 @@ impl TypeEnv {
         let _ = self.vars.insert(name, scheme);
     }
 
-    /// Bind a `mut` declaration — the one binding form assignment may target.
+    /// Bind a `mut` declaration — the one binding form handler arms may assign.
     pub fn insert_mutable(&mut self, name: impl Into<String>, scheme: Scheme) {
         let name = name.into();
         let _ = self.vars.insert(name.clone(), scheme);

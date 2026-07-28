@@ -1,7 +1,7 @@
 // Binomial coefficient via naive (un-memoised) Pascal recursion C(n,k)=C(n-1,k-1)+C(n-1,k).
-fn add(a: int, b: int) -> int = a + b
-fn sub(a: int, b: int) -> int = a - b
-fn binom(n: int, k: int) -> int = match k {
+fn add(a, b) = a + b ?: 0
+fn sub(a, b) = a - b ?: 0
+fn binom(n, k) = match k {
     0 => 1
     _ => match (k == n) {
         true  => 1

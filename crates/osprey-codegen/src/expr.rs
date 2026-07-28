@@ -153,11 +153,10 @@ fn gen_binary(cg: &mut Codegen, op: &str, left: &Expr, right: &Expr) -> Result<V
     let r = gen_expr(cg, right)?;
     match op {
         "+" | "-" | "*" | "/" | "%" => gen_arith_propagating(cg, op, l, r),
-        // Comparison operands auto-unwrap a Result to its success payload —
-        // they are value sites, and a comparison has no error channel to carry.
         "==" | "!=" | "<" | "<=" | ">" | ">=" => {
-            let l = crate::result::unwrap(cg, l);
-            let r = crate::result::unwrap(cg, r);
+            if l.result_inner.is_some() || r.result_inner.is_some() {
+                return Err(CodegenError::invalid("cannot compare an unhandled Result"));
+            }
             gen_comparison(cg, op, l, r)
         }
         other => Err(CodegenError::unsupported(format!(
@@ -205,42 +204,17 @@ fn open_short_circuit(cg: &mut Codegen, op: &str, left: &Expr) -> Result<(String
 /// Arithmetic whose operands may themselves carry an error channel. The
 /// enclosing expression is ONE `Result`: an erroring operand makes the whole
 /// expression `Error` instead of contributing a fabricated success payload, so
-/// `(10 / 0) + 1.0` is `Error(division by zero)` and not `Success(1.0)`
-/// ([ARITH-PLAIN], Chaining Arithmetic). With no `Result` operand this is
-/// exactly [`gen_arith`].
+/// `(10 / 0) + 1.0` is `Error(division by zero)` and not `Success(1.0)`.
+/// With no `Result` operand this is exactly [`gen_arith`].
 fn gen_arith_propagating(cg: &mut Codegen, op: &str, l: Value, r: Value) -> Result<Value> {
     let Some((bad, msg)) = operand_error(cg, &l, &r) else {
         return gen_arith(cg, op, l, r);
     };
-    let (bad_bb, good_bb, end) = (cg.fresh_label(), cg.fresh_label(), cg.fresh_label());
-    cg.emit(format!("br i1 {bad}, label %{bad_bb}, label %{good_bb}"));
-
-    cg.start_block(&good_bb);
-    let lv = crate::result::unwrap(cg, l);
-    let rv = crate::result::unwrap(cg, r);
-    let value = gen_arith(cg, op, lv, rv)?;
-    let inner = value.result_inner.unwrap_or(value.ty);
-    let ok = match value.result_inner {
-        // `/` and `%` already produced the wrapper; everything else needs one,
-        // because this expression as a whole now has an error channel.
-        Some(_) => value,
-        None => crate::result::make_ok(cg, value, inner)?,
-    };
-    let okb = cg.snapshot_to(&end);
-
-    cg.start_block(&bad_bb);
-    let zero = Value::new(crate::llty::zero_literal(inner), inner);
-    let err = crate::result::make_result(cg, zero, inner, "1", &msg)?;
-    let errb = cg.snapshot_to(&end);
-
-    cg.start_block(&end);
-    let reg = cg.emit_reg(format!(
-        "phi {0}* [ {1}, %{okb} ], [ {2}, %{errb} ]",
-        crate::llty::result_struct_ty(inner),
-        ok.operand,
-        err.operand
-    ));
-    Ok(Value::result(reg, inner))
+    gen_propagated_result(cg, &bad, &msg, |cg| {
+        let lv = crate::result::unwrap(cg, l);
+        let rv = crate::result::unwrap(cg, r);
+        gen_arith(cg, op, lv, rv)
+    })
 }
 
 /// The "an operand already failed" flag and the message to carry onward, or
@@ -275,18 +249,22 @@ fn result_failed(cg: &mut Codegen, v: &Value) -> String {
 /// The typed zero literal for the unread payload slot of an `Error` block.
 /// Arithmetic. Float if either operand is a float (the other is promoted),
 /// otherwise integer. Division ALWAYS returns float (the Osprey spec); modulo
-/// stays integer. The Result<…, `MathError`> wrapper the type system tracks is
-/// auto-unwrapped at value sites.
+/// stays integer.
 fn gen_arith(cg: &mut Codegen, op: &str, l: Value, r: Value) -> Result<Value> {
     // `+` on list handles is concatenation (`a + b` ≡ `listConcat(a, b)`); on
     // map handles it is a right-biased merge (`a + b` ≡ `mapMerge(a, b)`).
-    let is_list = |v: &Value| v.osp_ty.as_deref() == Some(crate::collections::LIST_OWNER);
-    let is_map = |v: &Value| v.osp_ty.as_deref() == Some(crate::collections::MAP_OWNER);
-    if op == "+" && (is_list(&l) || is_list(&r)) {
-        return Ok(crate::collections::concat_handles(cg, &l, &r));
-    }
-    if op == "+" && (is_map(&l) || is_map(&r)) {
-        return Ok(crate::collections::merge_handles(cg, &l, &r));
+    // Either operand carrying the owner tag selects the collection meaning.
+    if op == "+" {
+        let tagged = |owner| {
+            let has = |v: &Value| v.osp_ty.as_deref() == Some(owner);
+            has(&l) || has(&r)
+        };
+        if tagged(crate::collections::LIST_OWNER) {
+            return Ok(crate::collections::concat_handles(cg, &l, &r));
+        }
+        if tagged(crate::collections::MAP_OWNER) {
+            return Ok(crate::collections::merge_handles(cg, &l, &r));
+        }
     }
     // `+` with a string operand is concatenation: osp_strlen/strcpy/strcat
     // into a fresh malloc'd buffer. [BUILTIN-STRING-CONCAT]
@@ -295,18 +273,15 @@ fn gen_arith(cg: &mut Codegen, op: &str, l: Value, r: Value) -> Result<Value> {
     }
     // `/` and `%` can be handed a divisor with no representable result, so they
     // are typed `Result<…, MathError>` and build a Success/Error block. The
-    // Success wrapper auto-unwraps at value sites (interpolation, comparison,
-    // args), but `toString`/`print` show it as `Success(n)`.
+    // Fallible operators preserve the wrapper until explicit handling.
     if op == "/" {
         return gen_division(cg, l, r);
     }
     if op == "%" {
         return gen_remainder(cg, l, r);
     }
-    // `+ - *` yield the plain operand type: their only failure mode is
-    // overflow, which wraps two's complement, so every result is representable
-    // and there is nothing to report ([ARITH-PLAIN]). `checkedAdd`/`checkedSub`
-    // /`checkedMul` are the opt-in guarded siblings.
+    // IEEE-754 arithmetic stays plain. Integer `+ - *` below are fallible and
+    // return a Result when their exact mathematical result is outside i64.
     if l.ty == LType::Double || r.ty == LType::Double {
         let ld = as_double(cg, l)?;
         let rd = as_double(cg, r)?;
@@ -318,15 +293,12 @@ fn gen_arith(cg: &mut Codegen, op: &str, l: Value, r: Value) -> Result<Value> {
         let reg = cg.emit_reg(format!("{opc} double {}, {}", ld.operand, rd.operand));
         return Ok(Value::new(reg, LType::Double));
     }
-    let li = as_i64(cg, l)?;
-    let ri = as_i64(cg, r)?;
-    let opc = match op {
-        "+" => "add",
-        "-" => "sub",
-        _ => "mul",
+    let intrinsic = match op {
+        "+" => "sadd",
+        "-" => "ssub",
+        _ => "smul",
     };
-    let reg = cg.emit_reg(format!("{opc} i64 {}, {}", li.operand, ri.operand));
-    Ok(Value::new(reg, LType::I64))
+    gen_checked_arith(cg, intrinsic, l, r)
 }
 
 /// The `/` operator — always float, divide-by-zero checked.
@@ -344,7 +316,7 @@ fn gen_division(cg: &mut Codegen, l: Value, r: Value) -> Result<Value> {
     )
 }
 
-/// The `%` operator — remainder, modulo-by-zero checked ([ARITH-PLAIN]).
+/// The `%` operator — remainder, modulo-by-zero checked.
 /// `int % int` stays `int`-valued; a float operand promotes both to `float`.
 /// The guard replaces a bare `srem`, whose behaviour on a zero divisor is
 /// undefined.
@@ -362,15 +334,11 @@ fn gen_remainder(cg: &mut Codegen, l: Value, r: Value) -> Result<Value> {
             "0.0",
         );
     }
-    let li = as_i64(cg, l)?;
-    let ri = as_i64(cg, r)?;
-    let div_zero = cg.emit_reg(format!("icmp eq i64 {}, 0", ri.operand));
     // LLVM `srem INT64_MIN, -1` is poison even though the mathematical
     // remainder is representable as zero. Substitute divisor 1 for that pair;
-    // both remainders are zero, preserving [ARITH-PLAIN] without executing UB.
-    let lhs_min = cg.emit_reg(format!("icmp eq i64 {}, -9223372036854775808", li.operand));
-    let rhs_neg_one = cg.emit_reg(format!("icmp eq i64 {}, -1", ri.operand));
-    let overflow_pair = cg.emit_reg(format!("and i1 {lhs_min}, {rhs_neg_one}"));
+    // both remainders are zero, preserving the defined result without executing
+    // undefined behaviour.
+    let (li, ri, div_zero, overflow_pair) = i64_div_guards(cg, l, r)?;
     let safe_divisor = cg.emit_reg(format!(
         "select i1 {overflow_pair}, i64 1, i64 {}",
         ri.operand
@@ -385,12 +353,7 @@ fn gen_remainder(cg: &mut Codegen, l: Value, r: Value) -> Result<Value> {
 /// checked. The integer sibling of `/` (which the spec fixes to float).
 /// Implements [BUILTIN-INTDIV].
 fn gen_int_division(cg: &mut Codegen, l: Value, r: Value) -> Result<Value> {
-    let li = as_i64(cg, l)?;
-    let ri = as_i64(cg, r)?;
-    let div_zero = cg.emit_reg(format!("icmp eq i64 {}, 0", ri.operand));
-    let lhs_min = cg.emit_reg(format!("icmp eq i64 {}, -9223372036854775808", li.operand));
-    let rhs_neg_one = cg.emit_reg(format!("icmp eq i64 {}, -1", ri.operand));
-    let overflow = cg.emit_reg(format!("and i1 {lhs_min}, {rhs_neg_one}"));
+    let (li, ri, div_zero, overflow) = i64_div_guards(cg, l, r)?;
     let invalid = cg.emit_reg(format!("or i1 {div_zero}, {overflow}"));
     let zero_message = cg.string_constant(DIVIDE_BY_ZERO);
     let overflow_message = cg.string_constant("integer overflow");
@@ -403,21 +366,41 @@ fn gen_int_division(cg: &mut Codegen, l: Value, r: Value) -> Result<Value> {
     })
 }
 
-/// `abs(n: int) -> int`, lowered in the language's i64 ABI instead of falling
-/// through to libc's `int abs(int)`. Negation is deliberately plain wrapping
-/// arithmetic: the unrepresentable magnitude of `INT64_MIN` remains `INT64_MIN`,
-/// matching Osprey's plain integer operators. [BUILTIN-ABS]
+/// Load both operands as `i64` and emit the two guards every checked integer
+/// division shares: `div_zero` (`ri == 0`) and `overflow` (the `INT64_MIN ÷ -1`
+/// pair whose `sdiv`/`srem` is LLVM poison). Emit order matches the sequence
+/// `%` and intDiv both hand-wrote, so register numbering is unchanged.
+fn i64_div_guards(cg: &mut Codegen, l: Value, r: Value) -> Result<(Value, Value, String, String)> {
+    let li = as_i64(cg, l)?;
+    let ri = as_i64(cg, r)?;
+    let div_zero = cg.emit_reg(format!("icmp eq i64 {}, 0", ri.operand));
+    let lhs_min = cg.emit_reg(format!("icmp eq i64 {}, -9223372036854775808", li.operand));
+    let rhs_neg_one = cg.emit_reg(format!("icmp eq i64 {}, -1", ri.operand));
+    let overflow = cg.emit_reg(format!("and i1 {lhs_min}, {rhs_neg_one}"));
+    Ok((li, ri, div_zero, overflow))
+}
+
+/// `abs(n: int)`, lowered in the language's i64 ABI instead of falling through
+/// to libc's `int abs(int)`. The one unrepresentable magnitude (`INT64_MIN`)
+/// returns `Error(integer overflow)`. [BUILTIN-ABS]
 fn gen_abs(cg: &mut Codegen, argument: &Expr) -> Result<Value> {
     let value = gen_expr(cg, argument)?;
-    let value = crate::result::unwrap(cg, value);
+    gen_unary_propagating(cg, value, gen_abs_value)
+}
+
+/// Absolute value for an already-unwrapped integer operand.
+fn gen_abs_value(cg: &mut Codegen, value: Value) -> Result<Value> {
     let value = as_i64(cg, value)?;
     let negative = cg.emit_reg(format!("icmp slt i64 {}, 0", value.operand));
-    let negated = cg.emit_reg(format!("sub i64 0, {}", value.operand));
-    let magnitude = cg.emit_reg(format!(
-        "select i1 {negative}, i64 {negated}, i64 {}",
-        value.operand
-    ));
-    Ok(Value::new(magnitude, LType::I64))
+    let (negated, overflow) =
+        emit_overflow_arith(cg, "ssub", Value::new("0", LType::I64), value.clone())?;
+    gen_guarded(cg, &overflow, LType::I64, "0", INTEGER_OVERFLOW, |cg| {
+        let negated = cg.emit_reg(negated);
+        cg.emit_reg(format!(
+            "select i1 {negative}, i64 {negated}, i64 {}",
+            value.operand
+        ))
+    })
 }
 
 /// Shared zero-divisor skeleton for `/`, `%` and `intDiv`: a zero divisor
@@ -442,13 +425,28 @@ fn gen_zero_checked(
 /// The one `MathError` reason for a zero divisor, shared by `/`, `%` and
 /// `intDiv` so the three never drift apart in golden output.
 const DIVIDE_BY_ZERO: &str = "division by zero";
+const INTEGER_OVERFLOW: &str = "integer overflow";
 
-/// `checkedAdd` / `checkedSub` / `checkedMul` — the opt-in overflow guarantee
-/// ([ARITH-PLAIN], [BUILTIN-CHECKED-ARITH]).
+/// Checked integer arithmetic shared by the `+ - *` operators and the
+/// `checkedAdd` / `checkedSub` / `checkedMul` compatibility builtins.
 /// `llvm.s{add,sub,mul}.with.overflow.i64` returns the wrapped
-/// value paired with an overflow bit; the bit selects `Error`, so the guarantee
-/// `+ - *` cannot give (a wrapped result is still representable) is real here.
+/// value paired with an overflow bit; the bit selects `Error`.
 fn gen_checked_arith(cg: &mut Codegen, intrinsic: &str, l: Value, r: Value) -> Result<Value> {
+    let (wrapped, bad) = emit_overflow_arith(cg, intrinsic, l, r)?;
+    gen_guarded(cg, &bad, LType::I64, "0", INTEGER_OVERFLOW, |cg| {
+        cg.emit_reg(wrapped)
+    })
+}
+
+/// Emit one LLVM signed-overflow intrinsic and return its wrapped-value
+/// extraction instruction plus the overflow flag. Callers decide how the
+/// successful value is shaped before joining it with the Error path.
+fn emit_overflow_arith(
+    cg: &mut Codegen,
+    intrinsic: &str,
+    l: Value,
+    r: Value,
+) -> Result<(String, String)> {
     const PAIR: &str = "{ i64, i1 }";
     let li = as_i64(cg, l)?;
     let ri = as_i64(cg, r)?;
@@ -461,9 +459,7 @@ fn gen_checked_arith(cg: &mut Codegen, intrinsic: &str, l: Value, r: Value) -> R
     ));
     let bad = cg.emit_reg(format!("extractvalue {PAIR} {pair}, 1"));
     let wrapped = format!("extractvalue {PAIR} {pair}, 0");
-    gen_guarded(cg, &bad, LType::I64, "0", "integer overflow", |cg| {
-        cg.emit_reg(wrapped)
-    })
+    Ok((wrapped, bad))
 }
 
 /// The LLVM overflow-intrinsic stem behind each `checked*` builtin.
@@ -475,9 +471,9 @@ fn checked_intrinsic(name: &str) -> &'static str {
     }
 }
 
-/// The two evaluated, `Result`-unwrapped operands of a binary integer builtin.
-/// Shared by `intDiv` and the `checked*` family so neither restates the
-/// arity check.
+/// The two evaluated plain operands of a binary integer builtin. The checker
+/// normally proves this shape; the backend also rejects an unhandled Result
+/// instead of extracting its success slot.
 fn two_int_args(
     cg: &mut Codegen,
     name: &str,
@@ -491,9 +487,9 @@ fn two_int_args(
         args.get(1).ok_or_else(missing)?,
     );
     let l = gen_expr(cg, an)?;
-    let l = crate::result::unwrap(cg, l);
+    let l = crate::cast::coerce_to(cg, l, LType::I64)?;
     let r = gen_expr(cg, bn)?;
-    let r = crate::result::unwrap(cg, r);
+    let r = crate::cast::coerce_to(cg, r, LType::I64)?;
     Ok((l, r))
 }
 
@@ -525,26 +521,89 @@ fn gen_guarded_with_message(
     ok_value: impl FnOnce(&mut Codegen) -> String,
 ) -> Result<Value> {
     use crate::result::{make_result, NO_MSG};
-    let (bad_bb, good_bb, end) = (cg.fresh_label(), cg.fresh_label(), cg.fresh_label());
-    cg.emit(format!("br i1 {bad}, label %{bad_bb}, label %{good_bb}"));
-
-    cg.start_block(&good_bb);
+    let guard = open_result_guard(cg, bad);
     let value = ok_value(cg);
     let ok = make_result(cg, Value::new(value, inner), inner, "0", NO_MSG)?;
-    let okb = cg.snapshot_to(&end);
+    finish_result_guard(cg, &guard, &ok, Value::new(zero, inner), message)
+}
 
-    cg.start_block(&bad_bb);
-    let err = make_result(cg, Value::new(zero, inner), inner, "1", message)?;
-    let errb = cg.snapshot_to(&end);
+struct ResultGuard {
+    bad: String,
+    end: String,
+    /// Ownership-ledger depth before either arm allocated its `Result` block,
+    /// so the join can tell the two arm-produced owners from values that
+    /// already existed. [GC-ARC-PERCEUS]
+    mark: usize,
+}
 
-    cg.start_block(&end);
+fn open_result_guard(cg: &mut Codegen, bad: &str) -> ResultGuard {
+    let mark = crate::arc::frame_mark(cg);
+    let (bad_block, good_block, end) = (cg.fresh_label(), cg.fresh_label(), cg.fresh_label());
+    cg.emit(format!(
+        "br i1 {bad}, label %{bad_block}, label %{good_block}"
+    ));
+    cg.start_block(&good_block);
+    // Everything emitted until the join runs on one path only, so owners that
+    // existed before the branch must not be retired at a use inside it.
+    crate::arc::open_conditional(cg, mark);
+    ResultGuard {
+        bad: bad_block,
+        end,
+        mark,
+    }
+}
+
+fn gen_propagated_result(
+    cg: &mut Codegen,
+    bad: &str,
+    message: &str,
+    success: impl FnOnce(&mut Codegen) -> Result<Value>,
+) -> Result<Value> {
+    let guard = open_result_guard(cg, bad);
+    let value = success(cg)?;
+    let (ok, inner) = if let Some(inner) = value.result_inner {
+        (value, inner)
+    } else {
+        let inner = value.ty;
+        (crate::result::make_ok(cg, value, inner)?, inner)
+    };
+    let zero = Value::new(crate::llty::zero_literal(inner), inner);
+    finish_result_guard(cg, &guard, &ok, zero, message)
+}
+
+fn finish_result_guard(
+    cg: &mut Codegen,
+    guard: &ResultGuard,
+    ok: &Value,
+    zero: Value,
+    message: &str,
+) -> Result<Value> {
+    let inner = zero.ty;
+    let ok_block = cg.snapshot_to(&guard.end);
+    cg.start_block(&guard.bad);
+    let err = crate::result::make_result(cg, zero, inner, "1", message)?;
+    let err_block = cg.snapshot_to(&guard.end);
+    cg.start_block(&guard.end);
+    crate::arc::close_conditional(cg);
     let reg = cg.emit_reg(format!(
-        "phi {0}* [ {1}, %{okb} ], [ {2}, %{errb} ]",
+        "phi {0}* [ {1}, %{ok_block} ], [ {2}, %{err_block} ]",
         crate::llty::result_struct_ty(inner),
         ok.operand,
         err.operand
     ));
-    Ok(Value::result(reg, inner))
+    let out = Value::result(reg, inner);
+    // Exactly one arm allocates on any path, so the join owns one block rather
+    // than two. Merging them here is what lets an immediate unwrap retire the
+    // block at its use (`consume_fresh`) instead of at region end — the latter
+    // sinks the drop past any call in the same expression and would cost a
+    // self-call its tail position. [GC-ARC-PERCEUS]
+    crate::arc::move_phi_owners(
+        cg,
+        &[ok.operand.clone(), err.operand.clone()],
+        &out,
+        guard.mark,
+    );
+    Ok(out)
 }
 
 /// String concatenation: `malloc(osp_strlen a + osp_strlen b + 1)` then
@@ -619,17 +678,7 @@ pub(crate) fn gen_comparison(cg: &mut Codegen, op: &str, l: Value, r: Value) -> 
 fn gen_unary(cg: &mut Codegen, op: &str, operand: &Expr) -> Result<Value> {
     let v = gen_expr(cg, operand)?;
     match op {
-        "-" if v.ty == LType::Double => Ok(Value::new(
-            cg.emit_reg(format!("fneg double {}", v.operand)),
-            LType::Double,
-        )),
-        "-" => {
-            let i = as_i64(cg, v)?;
-            Ok(Value::new(
-                cg.emit_reg(format!("sub i64 0, {}", i.operand)),
-                LType::I64,
-            ))
-        }
+        "-" => gen_unary_propagating(cg, v, gen_negated_value),
         "!" => {
             let b = as_i1(cg, v)?;
             Ok(Value::new(
@@ -643,6 +692,69 @@ fn gen_unary(cg: &mut Codegen, op: &str, operand: &Expr) -> Result<Value> {
     }
 }
 
+/// Preserve an operand's existing error channel across a unary operation. The
+/// operation runs only on Success; its own Result is used directly, while a
+/// plain result is wrapped so the inherited Error and Success paths share one
+/// flattened Result.
+fn gen_unary_propagating(
+    cg: &mut Codegen,
+    value: Value,
+    operation: fn(&mut Codegen, Value) -> Result<Value>,
+) -> Result<Value> {
+    if value.result_inner.is_none() {
+        return operation(cg, value);
+    }
+
+    let bad = result_failed(cg, &value);
+    let msg = crate::result::load_errmsg(cg, &value);
+    gen_propagated_result(cg, &bad, &msg.operand, |cg| {
+        let payload = crate::result::unwrap(cg, value);
+        operation(cg, payload)
+    })
+}
+
+/// Unary numeric negation on an already-unwrapped value. IEEE-754 negation is
+/// total and remains plain; integer negation reports the `INT64_MIN` overflow.
+fn gen_negated_value(cg: &mut Codegen, value: Value) -> Result<Value> {
+    if value.ty == LType::Double {
+        return Ok(Value::new(
+            cg.emit_reg(format!("fneg double {}", value.operand)),
+            LType::Double,
+        ));
+    }
+    gen_checked_arith(cg, "ssub", Value::new("0", LType::I64), value)
+}
+
+/// One runtime-builtin dispatcher: returns `None` when `name` is not its
+/// builtin, so a chain of them falls through to a user call.
+type BuiltinDispatch = fn(&mut Codegen, &str, &[Expr], &[NamedArgument]) -> Result<Option<Value>>;
+
+/// The fiber dispatcher predates named arguments and takes none; this adapts it
+/// to the shared shape rather than making the table's element type optional.
+fn gen_fiber_builtin(
+    cg: &mut Codegen,
+    name: &str,
+    args: &[Expr],
+    _named: &[NamedArgument],
+) -> Result<Option<Value>> {
+    crate::fiber::gen_builtin(cg, name, args)
+}
+
+/// Runtime builtin dispatchers IN RESOLUTION ORDER. A bare name shared by the
+/// string and collection runtimes resolves on the RECEIVER, so
+/// `gen_receiver_directed` must come before the name-keyed string/collection
+/// dispatchers — reordering this table changes which builtin a shared name
+/// means.
+const BUILTIN_DISPATCH: [BuiltinDispatch; 7] = [
+    crate::testing::gen,
+    crate::collections::gen_receiver_directed,
+    crate::strings::gen,
+    crate::collections::gen,
+    crate::iter::gen,
+    gen_fiber_builtin,
+    crate::extern_call::gen,
+];
+
 fn gen_call(
     cg: &mut Codegen,
     function: &Expr,
@@ -652,10 +764,13 @@ fn gen_call(
     // A directly-applied lambda (`x |> fn(y) => …`, `(fn(y) => …)(x)`) is
     // beta-reduced inline.
     if let Expr::Lambda {
-        parameters, body, ..
+        parameters,
+        body,
+        position,
+        ..
     } = function
     {
-        return apply_lambda(cg, parameters, body, arguments);
+        return apply_lambda(cg, parameters, body, *position, arguments);
     }
     // `makeAdder(5)(3)` — the callee is itself a call producing a function
     // value: evaluate it to a closure handle and call through the cell.
@@ -703,8 +818,8 @@ fn gen_call(
         return Ok(v);
     }
     // A let-bound lambda with no materialized cell is inlined at its call site.
-    if let Some((params, body)) = cg.lambdas.get(name).cloned() {
-        return apply_lambda(cg, &params, &body, arguments);
+    if let Some((params, body, position)) = cg.lambdas.get(name).cloned() {
+        return apply_lambda(cg, &params, &body, position, arguments);
     }
     match name {
         "print" => {
@@ -728,7 +843,8 @@ fn gen_call(
             let (l, r) = two_int_args(cg, name, arguments, named)?;
             gen_int_division(cg, l, r)
         }
-        // The guarded siblings of `+ - *` ([ARITH-PLAIN]).
+        // Compatibility names for the same checked integer operations used by
+        // the natural operators.
         "checkedAdd" | "checkedSub" | "checkedMul" => {
             let (l, r) = two_int_args(cg, name, arguments, named)?;
             gen_checked_arith(cg, checked_intrinsic(name), l, r)
@@ -737,30 +853,10 @@ fn gen_call(
         // names below are reserved. Each dispatcher returns `None` when the name
         // is not its builtin, so the chain falls through to a user call.
         _ => {
-            if let Some(v) = crate::testing::gen(cg, name, arguments, named)? {
-                return Ok(v);
-            }
-            // A bare name shared by the string and collection runtimes resolves
-            // on the receiver, so it must be settled BEFORE the name-keyed
-            // string/collection dispatchers below.
-            if let Some(v) = crate::collections::gen_receiver_directed(cg, name, arguments, named)?
-            {
-                return Ok(v);
-            }
-            if let Some(v) = crate::strings::gen(cg, name, arguments, named)? {
-                return Ok(v);
-            }
-            if let Some(v) = crate::collections::gen(cg, name, arguments, named)? {
-                return Ok(v);
-            }
-            if let Some(v) = crate::iter::gen(cg, name, arguments, named)? {
-                return Ok(v);
-            }
-            if let Some(v) = crate::fiber::gen_builtin(cg, name, arguments)? {
-                return Ok(v);
-            }
-            if let Some(v) = crate::extern_call::gen(cg, name, arguments, named)? {
-                return Ok(v);
+            for dispatch in BUILTIN_DISPATCH {
+                if let Some(v) = dispatch(cg, name, arguments, named)? {
+                    return Ok(v);
+                }
             }
             // A generic user function is specialised by inlining its body with
             // the concrete argument types at this call site.
@@ -788,21 +884,24 @@ fn call_fn_value(
 }
 
 /// Beta-reduce a lambda at its application site: bind each parameter to its
-/// argument, lower the body in a fresh scope, then unwrap a `Result` return.
-/// A lambda's inferred return type is its body's success payload, so applying
-/// `fn(x) => x * 2` yields a plain `int` — the body's `Result<…, MathError>`
-/// is unwrapped at the non-Result return boundary.
+/// argument and lower the body in a fresh scope. The returned value keeps its
+/// complete inferred representation, including a Result wrapper.
 fn apply_lambda(
     cg: &mut Codegen,
     parameters: &[Parameter],
     body: &Expr,
+    position: Option<osprey_ast::Position>,
     arguments: &[Expr],
 ) -> Result<Value> {
     let mut values = Vec::with_capacity(arguments.len());
     for a in arguments {
         values.push(gen_expr(cg, a)?);
     }
-    apply_lambda_values(cg, parameters, body, values)
+    let sig = cg
+        .prog
+        .lambda_type(position)
+        .and_then(Codegen::fn_value_sig);
+    apply_lambda_values(cg, parameters, body, values, sig.as_ref())
 }
 
 /// [`apply_lambda`] over already-evaluated argument values — shared with the
@@ -812,14 +911,33 @@ pub(crate) fn apply_lambda_values(
     parameters: &[Parameter],
     body: &Expr,
     values: Vec<Value>,
+    sig: Option<&FnSig>,
 ) -> Result<Value> {
     cg.push_scope();
-    for (p, v) in parameters.iter().zip(values) {
-        cg.bind(p.name.clone(), v);
-    }
-    let v = gen_expr(cg, body);
+    let lowered = (|| {
+        for (index, (p, v)) in parameters.iter().zip(values).enumerate() {
+            let v = match sig.and_then(|s| s.0.get(index)).copied() {
+                Some(want) => crate::cast::coerce_semantic_param(cg, v, want)?,
+                None => v,
+            };
+            cg.bind(p.name.clone(), v);
+        }
+        let value = gen_expr(cg, body)?;
+        let value = match sig {
+            Some((_, _, Some(inner), _)) if value.result_inner.is_some() => {
+                crate::result::repack_to_inner(cg, value, *inner)?
+            }
+            Some((_, _, Some(inner), _)) => crate::result::make_ok(cg, value, *inner)?,
+            Some((_, ret, None, _)) => crate::cast::coerce_to(cg, value, *ret)?,
+            None => value,
+        };
+        Ok(match sig.and_then(|signature| signature.3) {
+            Some(fiber) => fiber.restore(value),
+            None => value,
+        })
+    })();
     cg.pop_scope();
-    Ok(crate::result::unwrap(cg, v?))
+    lowered
 }
 
 /// A call to a user-defined or runtime function. Parameter types come from
@@ -846,11 +964,11 @@ pub(crate) fn call_with_values(cg: &mut Codegen, name: &str, args: Vec<Value>) -
         return gen_print(cg, v);
     }
     // Coerce each argument to the declared parameter type where known.
-    let coerced = match cg.fn_param_ltypes(name) {
+    let coerced = match cg.fn_param_abis(name) {
         Some(ptys) if ptys.len() == args.len() => args
             .into_iter()
             .zip(ptys)
-            .map(|(a, want)| crate::cast::coerce_to(cg, a, want))
+            .map(|(a, want)| crate::cast::coerce_param(cg, a, want))
             .collect::<Result<Vec<_>>>()?,
         _ => args,
     };
@@ -867,6 +985,10 @@ pub(crate) fn call_with_values(cg: &mut Codegen, name: &str, args: Vec<Value>) -
     let ret = cg.fn_ret_ltype(name).unwrap_or(LType::I64);
     let reg = emit_user_call(cg, name, ret.as_str(), &coerced, &typed);
     let v = Value::new(reg, ret).with_owner(cg.fn_ret_owner(name));
+    let v = match cg.fn_ret_fiber_sig(name) {
+        Some(fiber) => fiber.restore(v),
+        None => v,
+    };
     crate::arc::own(cg, &v);
     Ok(v)
 }
@@ -888,7 +1010,7 @@ fn emit_user_call(
     cg.emit_reg(format!("call {rty} @{name}({typed})"))
 }
 
-pub(crate) fn ordered_args(
+fn ordered_args(
     cg: &mut Codegen,
     name: &str,
     arguments: &[Expr],
@@ -986,11 +1108,9 @@ fn gen_interpolation(cg: &mut Codegen, parts: &[InterpolatedPart]) -> Result<Val
         match part {
             InterpolatedPart::Text(t) => fmt.push_str(&t.replace('%', "%%")),
             InterpolatedPart::Expr(e) => {
-                // `${expr}` unwraps a Result to its payload before formatting
-                // (an interpolation hole is a value site), so `${21 * 2}`
-                // prints `42`, not `Success(42)`.
+                // Preserve Result's complete Success/Error rendering. Logging
+                // or formatting must never erase a failure discriminant.
                 let v = gen_expr(cg, e)?;
-                let v = crate::result::unwrap(cg, v);
                 let s = to_string_value(cg, v)?;
                 fmt.push_str("%s");
                 args.push(format!("i8* {}", s.operand));
@@ -1047,7 +1167,7 @@ pub(crate) fn arg_exprs<'a>(args: &'a [Expr], named: &'a [NamedArgument]) -> Vec
     }
 }
 
-pub(crate) fn describe(expr: &Expr) -> String {
+fn describe(expr: &Expr) -> String {
     let kind = match expr {
         Expr::List(_) => "list literal",
         Expr::Map(_) => "map literal",

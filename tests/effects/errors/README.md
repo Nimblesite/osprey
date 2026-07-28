@@ -1,0 +1,30 @@
+# Direct recovery tests
+
+The paired `direct_recovery.test.osp` and `direct_recovery.test.ospml` suites
+cover handlers whose regions contain no `resume`. In this mode an arm supplies
+the current operation result, and execution continues after `perform`.
+
+The ten named cases check:
+
+- a successful path never enters its recovery arm;
+- a fallback value reaches ordinary work after `perform`;
+- repeated recoveries share handler-owned state;
+- `Unit` reports collect every validation error;
+- one effect can declare integer, string and boolean operations;
+- one effectful function can run under different local policies;
+- an inner handler overrides one operation, falls through to an outer arm for
+  another operation, and restores the outer policy afterward;
+- a handler arm and the continued body can both use a different outer effect;
+- handler lookup reaches through helpers and recursion; and
+- a whole `Result<T, E>` operation value exercises the known corruption in
+  [critical issue #183](https://github.com/Nimblesite/osprey/issues/183).
+
+The final case returns `Pass` automatically when the correct value arrives and
+an explicit `Skip` while #183 remains reproducible. It never labels corrupted
+data as a passing result.
+
+Run only these twins with:
+
+```sh
+target/release/osprey test tests/effects/errors
+```

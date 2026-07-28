@@ -7,7 +7,8 @@
 # --run`) and TypeScript sub-projects (vscode-extension, webcompiler, website).
 # =============================================================================
 
-.PHONY: build test lint fmt clean ci setup run install bench wasm wasm-site wasm-serve vsix-rebuild-reinstall bank bank-web bank-test bank-e2e
+.PHONY: build test language-test lint fmt clean ci setup run install bench partial-bench wasm wasm-site wasm-serve vsix-rebuild-reinstall bank bank-web bank-test bank-e2e hawk \
+	_rebuild-install-vsix _vsix_clean _vsix_build _vsix_bundle _vsix_package _vsix_install
 
 # ---------------------------------------------------------------------------
 # OS Detection
@@ -92,6 +93,10 @@ HTTP_OBJ_GC ?= bin/http_shared.o bin/http_client_runtime.o bin/http_server_reque
 # [GC-ARC-PERCEUS], spec 0018.
 FIB_OBJ_ARC  ?= bin/memory_arc.o bin/fiber_runtime.o bin/system_runtime.o bin/effects_runtime.o bin/arc/string_runtime.o bin/arc/string_runtime_list.o bin/arc/list_runtime.o bin/arc/map_runtime.o bin/arc/map_runtime_hamt.o bin/arc/json_runtime.o bin/ffi_runtime.o bin/term_runtime.o bin/random_runtime.o bin/test_runtime.o bin/coverage_runtime.o bin/profiler_runtime.o bin/profiler_sampler.o
 HTTP_OBJ_ARC ?= bin/http_shared.o bin/http_client_runtime.o bin/http_server_request.o bin/http_server_response.o bin/http_server_runtime.o bin/websocket_client_runtime.o bin/websocket_server_runtime.o $(FIB_OBJ_ARC)
+NATIVE_RUNTIME_CONFIG ?= compiler/bin/.native-runtime-config
+NATIVE_RUNTIME_STAMP ?= compiler/bin/.native-runtime.stamp
+NATIVE_RUNTIME_INPUTS ?= $(filter-out compiler/runtime/%_tests.c compiler/runtime/test_http_length_validation.c compiler/runtime/test_openssl.c compiler/runtime/test_system_runtime.c compiler/runtime/web_runtime.c,$(wildcard compiler/runtime/*.c)) $(wildcard compiler/runtime/*.h)
+NATIVE_RUNTIME_ARCHIVES ?= compiler/bin/libfiber_runtime.a compiler/bin/libhttp_runtime.a compiler/bin/libfiber_runtime_gc.a compiler/bin/libhttp_runtime_gc.a compiler/bin/libfiber_runtime_arc.a compiler/bin/libhttp_runtime_arc.a compiler/lib/libfiber_runtime.a compiler/lib/libhttp_runtime.a compiler/lib/libfiber_runtime_gc.a compiler/lib/libhttp_runtime_gc.a compiler/lib/libfiber_runtime_arc.a compiler/lib/libhttp_runtime_arc.a
 
 # WebAssembly (wasm32-wasip1) cross-build toolchain — opt-in via `make wasm`.
 # Compiles the portable C-runtime subset (no pthreads/sockets/OpenSSL/syscalls)
@@ -110,13 +115,33 @@ WASI_SYSROOT ?= $(shell for d in "$$OSPREY_WASI_SYSROOT" \
   /opt/wasi-sdk/share/wasi-sysroot "$$WASI_SDK_PATH/share/wasi-sysroot" \
   /usr/share/wasi-sysroot; do [ -n "$$d" ] && [ -d "$$d" ] && { echo "$$d"; break; }; done)
 WASM_CFLAGS  ?= --target=$(WASM_TARGET) --sysroot=$(WASI_SYSROOT) -O2 -std=c11 -Wall -Wextra -Werror -c
+
+# wasm_validate: structural check of the modules named in $(1). wasm-validate
+# ships with wabt and is genuinely optional, so an ABSENT binary skips loudly —
+# but a check that RUNS and FAILS must fail the build. Every call site used to
+# spell this as `command -v wasm-validate && wasm-validate a && wasm-validate b
+# || echo "(not found — skipping)"`, where the trailing `||` catches BOTH arms:
+# a module that failed validation reported itself as a missing tool and the
+# build went green. Defined once so the three call sites cannot drift.
+define wasm_validate
+	@if command -v wasm-validate >/dev/null 2>&1; then \
+		for module in $(1); do wasm-validate "$$module" || exit 1; done; \
+	else \
+		echo "(wasm-validate not found — structural check skipped; install wabt)"; \
+	fi
+endef
 # Portable subset that compiles for wasm32: allocator + strings + value
 # containers + JSON + effects + the browser host bridge. Excludes fiber
 # (pthreads), http/websocket (sockets/OpenSSL), system (fork/wait), term
 # (termios) and ffi (dlopen).
 # profiler_runtime compiles to inert stubs on wasm32 (no pthreads/signals) but
 # must be present: codegen anchors `osp_prof_boot` into every main [PROF-ACTIVATE-ENV].
-WASM_RT_SRC  ?= memory_runtime string_runtime string_runtime_list list_runtime map_runtime map_runtime_hamt json_runtime effects_runtime test_runtime coverage_runtime web_runtime profiler_runtime
+# system_runtime and random_runtime are here for their PORTABLE halves: file
+# I/O + JSON/string helpers, and the OS CSPRNG (wasi-libc's arc4random_buf over
+# the WASI random_get host call). Each compiles its non-portable half out under
+# `#ifndef __wasm__`, so adding them unskips file and random programs on wasm32
+# without pretending fork/exec or pthreads exist.
+WASM_RT_SRC  ?= memory_runtime string_runtime string_runtime_list list_runtime map_runtime map_runtime_hamt json_runtime effects_runtime test_runtime coverage_runtime web_runtime profiler_runtime wasm_builtins_runtime system_runtime random_runtime
 # `make wasm-serve` static-host dir + port for the in-browser example.
 WASM_SERVE_DIR  ?= examples/wasm
 WASM_SERVE_PORT ?= 8080
@@ -135,10 +160,12 @@ build: _runtime
 ##       Projects listed in coverage-thresholds.json are each tested + checked.
 test: build
 	@echo "==> Testing (fail-fast + coverage + per-project thresholds)..."
+	$(MAKE) _test_runtime_incremental
 	$(MAKE) _test_rust
 	$(MAKE) _coverage_check_rust
 	$(MAKE) _test_c_runtime
-	$(MAKE) _test_differential
+	$(MAKE) _test_language_corpus
+	$(MAKE) _test_goldens
 	$(MAKE) _conformance-gc
 	$(MAKE) _conformance-arc
 	$(MAKE) _test_profiler
@@ -174,6 +201,10 @@ bank-test: build
 	@echo "==> Bank native tests (osprey test)..."
 	./$(BIN) test examples/projects/modules/test
 
+## language-test: Run the assertion-driven Default + ML core language corpus.
+language-test: build
+	$(MAKE) _test_language_corpus
+
 ## bank-e2e: Browser end-to-end tests for the Talon Bank modules showcase
 ##           (examples/projects/modules) — real Chromium via Playwright drives
 ##           the compiled osprey binary serving its HTTP API and web UI.
@@ -182,7 +213,9 @@ bank-e2e: bank-web
 	cd examples/projects/modules/e2e && npm ci && npx playwright install chromium && npx playwright test
 
 ## lint: Run all linters/analyzers (read-only). Does NOT format.
-lint: deslop
+lint: deslop _lint
+
+_lint:
 	@echo "==> Linting..."
 	cargo clippy --workspace --all-targets -- -D warnings
 	cd $(EXT_DIR) && npm run lint
@@ -191,14 +224,41 @@ lint: deslop
 ## duplication exceeds the ceiling in .deslop.toml (exit 3). Exclusions and the
 ## threshold live in that committed config — the single source of truth. When
 ## the `deslop` binary is absent the gate is skipped with a loud warning so a
-## fresh checkout still builds; CI installs it, so the gate is enforced there.
+## fresh checkout still builds; CI enforces the gate through the official action.
 deslop:
 	@echo "==> Duplication gate (deslop)..."
-	@if command -v deslop >/dev/null 2>&1; then \
-		deslop . --nohtml --nojson --output $(CURDIR)/target/deslop-report --log-to-console --log-level error --no-color; \
-	else \
-		echo "WARNING: deslop not installed — skipping duplication gate. Install: https://deslop.live"; \
+	@if ! command -v deslop >/dev/null 2>&1; then \
+		echo "FAIL: deslop is not installed, so the duplication gate cannot run."; \
+		echo "      A gate that cannot run must not report success — this used to"; \
+		echo "      print a warning and exit 0, which made every local 'make ci'"; \
+		echo "      green with the ceiling in .deslop.toml unchecked."; \
+		echo "      Install: https://deslop.live   (CI uses the official action.)"; \
+		exit 1; \
 	fi
+	deslop . --nohtml --nojson --output $(CURDIR)/target/deslop-report --log-to-console --log-level error --no-color
+
+## hawk: Dead-code gate (astral-sh/hawk). Fails the build when any `pub`
+## declaration is unreachable from the osprey binary (hawk::dead_public). Scoped
+## to dead_public ONLY — unnecessary_public / restricted-visibility findings are
+## over-exposure, not dead code, and several are irreducibly public for the
+## integration tests under this workspace's `dead_code = "deny"` policy, so they
+## must NOT fail the gate. hawk needs rustc_private (RUSTC_BOOTSTRAP=1) and its
+## prebuilt driver is pinned to the workspace toolchain (1.97.1) — bump the
+## installer and the CI toolchain together. An absent cargo-hawk FAILS this
+## target: a gate that cannot run must not report success.
+## Install: https://github.com/astral-sh/hawk
+hawk:
+	@echo "==> Dead-code gate (hawk)..."
+	@if ! command -v cargo-hawk >/dev/null 2>&1; then \
+		echo "FAIL: cargo-hawk is not installed, so the dead-code gate cannot run."; \
+		echo "      A gate that cannot run must not report success — this used to"; \
+		echo "      print a warning and exit 0, so 'make hawk' was green on every"; \
+		echo "      machine without the binary, the CI runner included if its"; \
+		echo "      install step ever stopped landing cargo-hawk on PATH."; \
+		echo "      Install: https://github.com/astral-sh/hawk"; \
+		exit 1; \
+	fi
+	RUSTC_BOOTSTRAP=1 cargo hawk check --only dead-public -D hawk::dead_public --target-dir $(CURDIR)/target/hawk
 
 ## fmt: Format all code in-place. Pass CHECK=1 for read-only check (CI use).
 fmt:
@@ -213,15 +273,16 @@ clean:
 	$(RM) $(RTB) compiler/lib outputs lcov.info test.log
 	cd $(EXT_DIR) && $(RM) out dist coverage test.log
 
-## ci: lint + test + bank-test + bank-e2e + build (full CI simulation)
-ci: lint test bank-test bank-e2e build
+## ci: lint + hawk + test + bank-test + bank-e2e + build (full CI simulation)
+ci: lint hawk test bank-test bank-e2e build
 
 ## wasm: Build everything for the WebAssembly target, ready to go — the wasm
 ## runtime archive (compiler/bin/libosprey_runtime_wasm.a), the hello example,
 ## and Osprey Data Studio in BOTH flavors (studio.{osp,ospml} -> one byte-
 ## identical manifest that drives the SQLite dashboard in examples/wasm/
 ## index.html) — then validate them and smoke-run under Node's WASI, the browser
-## WASI shim, and the full golden suite. Requires clang (wasm32 backend),
+## WASI shim, with committed expected output for hello and both Studio flavors.
+## Requires clang (wasm32 backend),
 ## wasm-ld and a WASI sysroot —
 ## `brew install lld wasi-libc` (macOS) or the wasi-sdk. See
 ## docs/specs/0022-WebAssemblyTarget.md.
@@ -230,25 +291,22 @@ wasm: build _runtime_wasm
 	@$(MKDIR) examples/wasm/build
 	$(BIN) examples/wasm/hello.osp --target=wasm32 --compile -o examples/wasm/build/hello.wasm
 	@echo "==> validating + smoke-running examples/wasm/build/hello.wasm"
-	@command -v wasm-validate >/dev/null 2>&1 && wasm-validate examples/wasm/build/hello.wasm || echo "(wasm-validate not found — skipping structural check)"
+	$(call wasm_validate,examples/wasm/build/hello.wasm)
 	node scripts/wasm-smoke.mjs         examples/wasm/build/hello.wasm examples/wasm/hello.expectedoutput
 	node scripts/wasm-browser-smoke.mjs examples/wasm/build/hello.wasm examples/wasm/hello.expectedoutput
 	@echo "==> compiling Osprey Data Studio (BOTH flavors) -> examples/wasm/build/"
 	$(BIN) examples/wasm/studio.osp   --target=wasm32 --compile -o examples/wasm/build/studio.osp.wasm
 	$(BIN) examples/wasm/studio.ospml --target=wasm32 --compile -o examples/wasm/build/studio.ospml.wasm
-	@command -v wasm-validate >/dev/null 2>&1 && wasm-validate examples/wasm/build/studio.osp.wasm && wasm-validate examples/wasm/build/studio.ospml.wasm || echo "(wasm-validate not found — skipping structural check)"
+	$(call wasm_validate,examples/wasm/build/studio.osp.wasm examples/wasm/build/studio.ospml.wasm)
 	@echo "==> both Studio flavors must emit the SAME manifest (byte-identical golden)"
 	node scripts/wasm-smoke.mjs         examples/wasm/build/studio.osp.wasm   examples/wasm/studio.expectedoutput
 	node scripts/wasm-browser-smoke.mjs examples/wasm/build/studio.osp.wasm   examples/wasm/studio.expectedoutput
 	node scripts/wasm-smoke.mjs         examples/wasm/build/studio.ospml.wasm examples/wasm/studio.expectedoutput
 	node scripts/wasm-browser-smoke.mjs examples/wasm/build/studio.ospml.wasm examples/wasm/studio.expectedoutput
-	@echo "==> [wasm differential] osprey --target=wasm32 vs examples/tested..."
-	@out=$$(zsh crates/diff_wasm_examples.sh); echo "$$out"; \
-	  echo "$$out" | grep -Eq '(^| )FAIL=0 '  || { echo 'FAIL: wasm differential mismatch'; exit 1; }; \
-	  echo "$$out" | grep -Eq '(^| )NOEXP=0 ' || { echo 'FAIL: example missing .expectedoutput'; exit 1; }
-	@echo "==> wasm ready: built + validated + WASI/browser smoke + golden suite green"
+	$(MAKE) _test_wasm_goldens
+	@echo "==> wasm ready: built + validated + WASI/browser smoke green"
 
-wasm wasm-site _runtime_wasm bank-web: export PATH := $(WASM_PATH_PREFIX)$(PATH)
+wasm wasm-site _runtime_wasm bank-web _test_wasm_goldens: export PATH := $(WASM_PATH_PREFIX)$(PATH)
 
 ## wasm-site: Build only the WebAssembly artifacts published by the website.
 ##      Used by GitHub Pages before `npm run build`; does not rely on checked-in
@@ -260,7 +318,7 @@ wasm-site: _runtime_wasm
 	@$(MKDIR) examples/wasm/build
 	$(BIN) examples/wasm/studio.osp   --target=wasm32 --compile -o examples/wasm/build/studio.osp.wasm
 	$(BIN) examples/wasm/studio.ospml --target=wasm32 --compile -o examples/wasm/build/studio.ospml.wasm
-	@command -v wasm-validate >/dev/null 2>&1 && wasm-validate examples/wasm/build/studio.osp.wasm && wasm-validate examples/wasm/build/studio.ospml.wasm || echo "(wasm-validate not found — skipping structural check)"
+	$(call wasm_validate,examples/wasm/build/studio.osp.wasm examples/wasm/build/studio.ospml.wasm)
 	node scripts/wasm-smoke.mjs         examples/wasm/build/studio.osp.wasm   examples/wasm/studio.expectedoutput
 	node scripts/wasm-browser-smoke.mjs examples/wasm/build/studio.osp.wasm   examples/wasm/studio.expectedoutput
 	node scripts/wasm-smoke.mjs         examples/wasm/build/studio.ospml.wasm examples/wasm/studio.expectedoutput
@@ -296,7 +354,42 @@ setup:
 
 # Build the pure-C runtime archives osprey links at `--run` time. One shell
 # so `cd` persists; faithful port of the original hardened C recipes.
+_test_runtime_incremental: _runtime
+	@runtime_mtime() { stat -c %Y "$$1" 2>/dev/null || stat -f %m "$$1"; }; \
+	  before="$$(runtime_mtime $(RTB)/libfiber_runtime.a)"; \
+	  $(MAKE) _runtime >/dev/null; \
+	  after="$$(runtime_mtime $(RTB)/libfiber_runtime.a)"; \
+	  if [ "$$before" != "$$after" ]; then \
+	    echo "ERROR: unchanged native runtime rebuilt and invalidated the test cache"; \
+	    exit 1; \
+	  fi
+
 _runtime:
+	@$(MKDIR) $(RTB)
+	@set -e; config_tmp="$(NATIVE_RUNTIME_CONFIG).$$$$"; \
+	  { printf '%s\n' \
+	      "CC=$(CC)" "AR=$(AR)" "A=$(A)" "B=$(B)" "WARN_MAX=$(WARN_MAX)" \
+	      "OSSL=$(OSSL)" "FIB_OBJ=$(FIB_OBJ)" "HTTP_OBJ=$(HTTP_OBJ)" \
+	      "FIB_OBJ_GC=$(FIB_OBJ_GC)" "HTTP_OBJ_GC=$(HTTP_OBJ_GC)" \
+	      "FIB_OBJ_ARC=$(FIB_OBJ_ARC)" "HTTP_OBJ_ARC=$(HTTP_OBJ_ARC)"; \
+	    command -v "$(firstword $(CC))" 2>/dev/null || true; \
+	    $(CC) --version 2>&1 | sed -n '1p' || true; \
+	    command -v "$(firstword $(AR))" 2>/dev/null || true; \
+	    $(AR) --version 2>&1 | sed -n '1p' || true; \
+	    pkg-config --cflags openssl 2>/dev/null || true; \
+	    pkg-config --modversion openssl 2>/dev/null || true; \
+	  } >"$$config_tmp"; \
+	  if cmp -s "$$config_tmp" "$(NATIVE_RUNTIME_CONFIG)"; then \
+	    rm -f "$$config_tmp"; \
+	  else \
+	    mv "$$config_tmp" "$(NATIVE_RUNTIME_CONFIG)"; \
+	  fi; \
+	  for archive in $(NATIVE_RUNTIME_ARCHIVES); do \
+	    if [ ! -s "$$archive" ]; then rm -f "$(NATIVE_RUNTIME_STAMP)"; break; fi; \
+	  done
+	@$(MAKE) --no-print-directory -s $(NATIVE_RUNTIME_STAMP)
+
+$(NATIVE_RUNTIME_STAMP): $(NATIVE_RUNTIME_INPUTS) $(NATIVE_RUNTIME_CONFIG) Makefile
 	@echo "==> building C runtime archives ($(RTB)/lib*_runtime.a)"
 	@cd compiler && set -e && $(MKDIR) bin lib bin/gc bin/arc && \
 	  $(CC) $(B) runtime/memory_runtime.c       -o bin/memory_runtime.o && \
@@ -346,6 +439,7 @@ _runtime:
 	  $(AR) rcs bin/libfiber_runtime_arc.a $(FIB_OBJ_ARC) && \
 	  $(AR) rcs bin/libhttp_runtime_arc.a  $(HTTP_OBJ_ARC) && \
 	  cp bin/libfiber_runtime.a bin/libhttp_runtime.a bin/libfiber_runtime_gc.a bin/libhttp_runtime_gc.a bin/libfiber_runtime_arc.a bin/libhttp_runtime_arc.a lib/
+	@touch $@
 
 # Cross-compile the portable C-runtime subset to a wasm32-wasip1 archive that
 # osprey links for `--target=wasm32`. One shell so `cd` persists. Fails loudly
@@ -367,7 +461,14 @@ _runtime_wasm:
 # cargo test is fail-fast at the binary level by
 # default (a failing test binary aborts the run); coverage via cargo-llvm-cov.
 # `--profile ci` is the workspace's fast-compile profile (see root Cargo.toml).
-_test_rust:
+# `_runtime_wasm` is a prerequisite because the coverage gate below already
+# DEPENDS on it: osprey-cli's wasm end-to-end test (crates/osprey-cli/src/wasm.rs)
+# self-skips unless wasm-ld, a WASI sysroot and libosprey_runtime_wasm.a are all
+# present, and skipping it drops osprey-cli from 96.7% to 94.8% — under its 95%
+# floor. Without this line the archive is whatever an earlier target happened to
+# leave behind, so a plain `make clean && make ci` fails on a coverage number
+# that says nothing about the code that changed. Build what the gate measures.
+_test_rust: _runtime_wasm
 	@echo "==> [rust] running tests with coverage..."
 	set -o pipefail && cargo llvm-cov --workspace --profile ci --lcov --output-path lcov.info 2>&1 | tee test.log
 
@@ -464,41 +565,63 @@ _test_profiler:
 	@echo "==> [profiler] osprey --profile end-to-end..."
 	@bash scripts/test_profiler.sh
 
-# Differential golden harness: every examples/tested/*.osp run through
-# `osprey --run` must match its .expectedoutput byte-for-byte, and the
-# must-reject suite (examples/failscompilation) must stay within the
-# FC_EXPECTED_ESCAPES ratchet declared in the harness.
-_test_differential:
-	@echo "==> [differential] osprey --run vs .expectedoutput..."
-	@out=$$(zsh crates/diff_examples.sh); echo "$$out"; \
-	  echo "$$out" | grep -Eq 'FAIL=0 '  || { echo 'FAIL: differential mismatch'; exit 1; }; \
-	  echo "$$out" | grep -Eq 'NOEXP=0 ' || { echo 'FAIL: example missing .expectedoutput'; exit 1; }; \
-	  echo "$$out" | grep -q  'FC_OK'    || { echo 'FAIL: must-reject ratchet exceeded'; exit 1; }
+# Assertion-driven language corpus: recursively runs both *.test.osp and
+# *.test.ospml suites. These inspect internal values rather than stdout goldens.
+# Some loopback integration twins intentionally use the same fixed port so their
+# Default and ML sources lower to identical IR; one worker prevents port races.
+_test_language_corpus:
+	@echo "==> [language] Default + ML assertion corpus..."
+	@OSPREY_TEST_JOBS=1 ./$(BIN) test tests
 
-# _conformance-gc: run every tested example under the tracing GC backend; output
-# must be byte-identical to the default ([MEM-BACKENDS] oracle, spec 0018).
+# _test_goldens: byte-exact stdout comparison against the .expectedoutput
+# goldens. Distinct from the target above, which runs the same corpus through
+# the built-in TAP runner and so only ever observes whether the in-language
+# assertions passed. An assertion can only state what someone thought to write
+# down as a value; the goldens pin the ENTIRE observable output — print ORDER,
+# exact formatting, and the TAP tally that exposes a deleted assertion.
+_test_goldens:
+	@echo "==> [language] golden stdout comparison..."
+	@OSPREY_TEST_JOBS=1 zsh crates/run_test_corpus.sh default
+
+# _test_wasm_goldens: the same corpus, the same goldens, the OTHER code
+# generator. Every program that links on wasm32 is compiled to a module, run
+# under Node's WASI host, and held to the byte-exact output the native backend
+# produces; the rest report as named skips because they use a feature the
+# portable runtime deliberately does not port [WASM-TARGET]. Without this the
+# wasm target is gated by three hand-picked example programs, which cannot
+# notice a backend that miscompiles arithmetic, strings, maps or pattern
+# matching everywhere else.
+_test_wasm_goldens:
+	@echo "==> [wasm32] golden stdout comparison under WASI..."
+	@OSPREY_TARGET=wasm32 zsh crates/run_test_corpus.sh
+
+# _conformance-gc: run every assertion suite under the tracing GC backend.
 _conformance-gc:
-	@echo "==> [conformance] differential harness under --memory=gc..."
-	@out=$$(OSPREY_RUN_FLAGS=--memory=gc zsh crates/diff_examples.sh); echo "$$out"; \
-	  echo "$$out" | grep -Eq 'FAIL=0 ' || { echo 'FAIL: GC backend output diverged'; exit 1; }
+	@echo "==> [conformance] assertion corpus under --memory=gc..."
+	@OSPREY_TEST_JOBS=1 zsh crates/run_test_corpus.sh gc
 
-# _conformance-arc: run every tested example under the Perceus ARC backend;
-# output must be byte-identical to the default ([MEM-BACKENDS] / [GC-ARC-PERCEUS]),
-# AND every example must end with zero live ARC objects. OSPREY_ARC_DEBUG=1 makes
+# _conformance-arc: run every assertion suite under the Perceus ARC backend;
+# every suite must pass and end with zero live ARC objects. OSPREY_ARC_DEBUG=1 makes
 # memory_arc.c report its live count at exit, which is the only automatic check
-# for the [GC-ARC-PERCEUS] zero-leak bar: comparing stdout cannot see a leak.
+# for the [GC-ARC-PERCEUS] zero-leak bar.
 _conformance-arc:
-	@echo "==> [conformance] differential harness under --memory=arc..."
-	@out=$$(OSPREY_ARC_DEBUG=1 OSPREY_RUN_FLAGS=--memory=arc zsh crates/diff_examples.sh); echo "$$out"; \
-	  echo "$$out" | grep -Eq 'FAIL=0 '   || { echo 'FAIL: ARC backend output diverged'; exit 1; }; \
-	  echo "$$out" | grep -Eq 'ARC_LEAKY=0 ' || { echo 'FAIL: ARC leaked language values'; exit 1; }
+	@echo "==> [conformance] assertion corpus under --memory=arc..."
+	@OSPREY_ARC_DEBUG=1 OSPREY_TEST_JOBS=1 zsh crates/run_test_corpus.sh arc
 
 # --- vscode-extension -------------------------------------------------------
 # The extension's LSP server spawns the `osprey` binary at runtime, so the
 # integration tests need a real compiler on PATH: the Rust binary is staged as
 # `osprey`. vscode-test runs with V8 coverage; c8 merges the profiles into
 # coverage/coverage-summary.json.
-_test_vscode_extension:
+#
+# `_vsix_bundle` is a prerequisite because staging PATH is NOT enough:
+# `resolveServerCommand` prefers the extension's BUNDLED compiler
+# (bin/<os>-<arch>/osprey) over PATH, so a bundle left behind by an earlier
+# build silently shadows the one under test. That is a local-only trap — CI
+# checks out a tree with no bin/ and falls through to PATH — which makes it
+# exactly the kind of failure a developer cannot reproduce from a green CI run.
+# Restaging keeps `make test` honest about which compiler it just tested.
+_test_vscode_extension: _vsix_bundle
 	@echo "==> [vscode-extension] staging osprey as 'osprey' for LSP integration..."
 	$(MKDIR) target/path-bin
 	cp $(BIN) target/path-bin/osprey
@@ -568,37 +691,51 @@ _website-build:
 bench: build
 	@zsh benchmarks/run.sh $(BENCH_FILTER)
 
+## partial-bench: Re-run only the Osprey implementations and merge those
+##        measurements into the existing results. Every non-Osprey result is
+##        preserved byte-for-byte at the data-record level.
+partial-bench: build
+	@BENCH_PARTIAL=1 zsh benchmarks/run.sh $(BENCH_FILTER)
+
 ## vsix-rebuild-reinstall: Clean → build → reinstall the Osprey VSCode
 ##      extension in place, bundling the freshly-built Rust compiler as `osprey`.
 ##      Touches ONLY the Osprey extension ($(EXT_ID)) in the DEFAULT profile —
 ##      never another extension, never another VSCode profile. macOS only.
 ##      ONE `code` invocation (install --force, no separate uninstall) so the
 ##      running VSCode reconciles its extension host exactly once, not twice.
-vsix-rebuild-reinstall: _vsix_clean build _vsix_build _vsix_bundle _vsix_package _vsix_install
+vsix-rebuild-reinstall:
+	$(MAKE) _vsix_clean
+	$(MAKE) build
+	$(MAKE) _vsix_bundle
+	$(MAKE) _vsix_package
+	$(MAKE) _vsix_install
 
 # _rebuild-install-vsix: deprecated private alias of `vsix-rebuild-reinstall`.
 _rebuild-install-vsix: vsix-rebuild-reinstall
 
 # --- vsix sub-steps ---------------------------------------------------------
 _vsix_clean:
-	cd $(EXT_DIR) && $(RM) out dist osprey-*.vsix
+	$(MAKE) clean
+	cd $(EXT_DIR) && $(RM) bin osprey-*.vsix
 
 _vsix_build:
-	cd $(EXT_DIR) && npm run compile
+	$(MAKE) build
 
 # Stage the freshly-built Rust binary AND the C runtime archives where the
 # extension expects its bundled compiler (bin/<os>-<arch>/), so the VSIX runs
 # against THIS build. The compiler locates its runtime archives next to its own
-# executable (find_runtime_lib in osprey-cli), so libfiber_runtime.a /
-# libhttp_runtime.a must sit beside the bundled `osprey` for `--run` to link.
+# executable (find_runtime_lib in osprey-cli), so every native runtime variant
+# must sit beside the bundled `osprey` for `--run --memory=<mode>` to link.
 _vsix_bundle:
 	@OS=$$(uname -s | tr '[:upper:]' '[:lower:]'); \
 	case "$$OS" in darwin) OS=darwin;; linux) OS=linux;; *) OS=win32;; esac; \
 	ARCH=$$(uname -m); case "$$ARCH" in arm64|aarch64) ARCH=arm64;; *) ARCH=x64;; esac; \
 	DEST="$(EXT_DIR)/bin/$$OS-$$ARCH"; $(MKDIR) "$$DEST"; \
 	cp $(BIN) "$$DEST/osprey"; \
-	cp $(RTB)/libfiber_runtime.a $(RTB)/libhttp_runtime.a "$$DEST/"; \
-	echo "  bundled $(BIN) + libfiber_runtime.a + libhttp_runtime.a -> $$DEST/"
+	cp $(RTB)/libfiber_runtime.a $(RTB)/libhttp_runtime.a \
+	   $(RTB)/libfiber_runtime_gc.a $(RTB)/libhttp_runtime_gc.a \
+	   $(RTB)/libfiber_runtime_arc.a $(RTB)/libhttp_runtime_arc.a "$$DEST/"; \
+	echo "  bundled $(BIN) + all native runtime archives -> $$DEST/"
 
 _vsix_package:
 	cd $(EXT_DIR) && npm run package

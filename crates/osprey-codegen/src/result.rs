@@ -4,8 +4,9 @@
 //! null-terminated `i8*` (`null` when there is none). The builders here
 //! construct that block; the readers branch on or load out of it. Runtime
 //! fallible builtins (list/map get, string ops) and user functions declared
-//! `-> Result<…>` both produce this shape, so match, `toString` and value-site
-//! coercion handle exactly one representation. Implements [ERR-PAYLOAD].
+//! `-> Result<…>` both produce this shape, so match, `?:`, failure-preserving
+//! arithmetic, and rendering handle exactly one representation. Implements
+//! [ERR-PAYLOAD].
 
 use crate::builder::Codegen;
 use crate::cast::coerce_to;
@@ -52,10 +53,15 @@ pub(crate) fn make_result(
     cg.emit(format!("store i8* {errmsg}, i8** {mp}"));
     let out = Value::result(obj, inner).with_payload_owner(payload_owner);
     crate::arc::own(cg, &out);
-    // A scalar payload plus a non-register errmsg (null / rodata constant)
-    // means the block holds zero managed references — eligible for the
-    // consume-at-unwrap fast path that lets -O2 delete the whole block.
-    if !matches!(inner, LType::Str | LType::Ptr) && !errmsg.starts_with('%') {
+    // A scalar payload plus an unmanaged errmsg means the block holds zero
+    // managed references — eligible for the consume-at-unwrap fast path that
+    // lets -O2 delete the whole block. A literal reason (`"integer overflow"`,
+    // `"division by zero"`) reaches here as a REGISTER holding a getelementptr
+    // into a private constant, so testing the spelling alone would misjudge
+    // every checked-arithmetic Error arm as impure; ask the rodata ledger
+    // instead. [GC-ARC-PERCEUS]
+    let errmsg_unmanaged = !errmsg.starts_with('%') || cg.is_rodata(errmsg);
+    if !matches!(inner, LType::Str | LType::Ptr) && errmsg_unmanaged {
         crate::arc::mark_pure_scalar(cg, &out);
     }
     Ok(out)
@@ -222,14 +228,77 @@ pub(crate) fn repack_to_inner(cg: &mut Codegen, v: Value, inner: LType) -> Resul
     }
     let disc = load_disc(cg, &v);
     let errmsg = load_errmsg(cg, &v);
+    let is_success = cg.emit_reg(format!("icmp eq i8 {disc}, 0"));
+    let success = cg.fresh_label();
+    let error = cg.fresh_label();
+    let end = cg.fresh_label();
+    cg.emit(format!(
+        "br i1 {is_success}, label %{success}, label %{error}"
+    ));
+
+    cg.start_block(&success);
     let loaded = load_value(cg, &v);
-    let value = coerce_to(cg, loaded, inner)?;
-    make_result(cg, value, inner, &disc, &errmsg.operand)
+    let owner = loaded.osp_ty.clone();
+    // An `Error { message }` constructor initially carries a string-shaped
+    // placeholder success slot. This branch is unreachable for that value, but
+    // its LLVM still has to type-check when the contextual Result payload is a
+    // float or bool. Convert pointer bits through the erased word solely to
+    // produce a well-typed unreachable operand; real Success values have
+    // matching source types and take the ordinary coercion.
+    let converted = match (loaded.ty, inner) {
+        (LType::Str | LType::Ptr, LType::Double) => {
+            let bits = crate::conv::box_to_i64(cg, loaded);
+            Value::new(
+                cg.emit_reg(format!("bitcast i64 {} to double", bits.operand)),
+                LType::Double,
+            )
+        }
+        (LType::Str | LType::Ptr, LType::I1) => {
+            let bits = crate::conv::box_to_i64(cg, loaded);
+            Value::new(
+                cg.emit_reg(format!("trunc i64 {} to i1", bits.operand)),
+                LType::I1,
+            )
+        }
+        _ => coerce_to(cg, loaded, inner)?,
+    };
+    let success_pred = cg.snapshot_to(&end);
+
+    cg.start_block(&error);
+    let zero = crate::llty::zero_literal(inner);
+    let error_pred = cg.snapshot_to(&end);
+
+    cg.start_block(&end);
+    let payload = cg.emit_reg(format!(
+        "phi {inner} [ {}, %{success_pred} ], [ {zero}, %{error_pred} ]",
+        converted.operand
+    ));
+    make_result(
+        cg,
+        Value::new(payload, inner).with_owner(owner),
+        inner,
+        &disc,
+        &errmsg.operand,
+    )
 }
 
-/// Auto-unwrap a Result at a value site (`print`, an argument, or the successful
-/// branch of arithmetic error propagation), yielding its success payload; a
-/// non-Result value passes through.
+/// Fit a value into a declared `Result<inner, _>` slot: an existing Result is
+/// re-laid under `inner` by [`repack_to_inner`], a plain value takes the
+/// language's safe `T -> Success(T)` promotion. Every Result-typed parameter,
+/// return and binding boundary routes through here so the promotion direction
+/// is decided in exactly one place — the reverse (Result to plain) is never a
+/// silent coercion.
+pub(crate) fn fit_to_inner(cg: &mut Codegen, v: Value, inner: LType) -> Result<Value> {
+    if v.result_inner.is_some() {
+        repack_to_inner(cg, v, inner)
+    } else {
+        make_ok(cg, v, inner)
+    }
+}
+
+/// Extract a Result's success payload after the caller has established that
+/// this is an explicit handling context (such as a `?:` success branch or
+/// failure-preserving arithmetic). A non-Result passes through.
 pub(crate) fn unwrap(cg: &mut Codegen, v: Value) -> Value {
     if v.result_inner.is_some() {
         let out = load_value(cg, &v);

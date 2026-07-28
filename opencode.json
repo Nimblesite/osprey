@@ -1,5 +1,9 @@
 {
-  "_agent_pmo": "74cf183",
   "$schema": "https://opencode.ai/config.json",
-  "instructions": ["CLAUDE.md"]
+  "instructions": [
+    "CLAUDE.md"
+  ],
+  "permission": {
+    "*": "allow"
+  }
 }

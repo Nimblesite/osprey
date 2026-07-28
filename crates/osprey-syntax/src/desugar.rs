@@ -8,19 +8,40 @@
 
 use osprey_ast::{Expr, MatchArm, Pattern};
 
-/// The two-arm boolean match that every conditional form in both flavors
-/// desugars to: Default `if`/`else`, the Default ternary `{ c } ? a : b`, and
-/// the Result default `e ?: d` in both flavors ([PATTERN-RESULT-DEFAULT]).
-///
-/// The arms are boolean *literal patterns* rather than a `Success`/`Wildcard`
-/// pair. That is load-bearing for `?:`: the checker reads a two-arm boolean
-/// match over a `Result` as the truthiness test that yields the unwrapped
-/// success payload, and a constructor pattern pair would be a different node
-/// with a different type.
+/// The two-arm boolean match that conditional forms in both flavors desugar
+/// to: Default `if`/`else` and the Default ternary `{ c } ? a : b`.
 pub(crate) fn bool_match(condition: Expr, then: Expr, otherwise: Expr) -> Expr {
     Expr::Match {
         value: Box::new(condition),
         arms: vec![bool_arm(true, then), bool_arm(false, otherwise)],
+    }
+}
+
+/// `result ?: fallback` as an explicit exhaustive Result match. Keeping this
+/// distinct from [`bool_match`] prevents an ordinary `if result` or ternary
+/// condition from acquiring implicit Result-unwrapping semantics.
+pub(crate) fn result_default(scrutinee: Expr, fallback: Expr) -> Expr {
+    const PAYLOAD: &str = "$__osprey_result_default";
+    Expr::Match {
+        value: Box::new(scrutinee),
+        arms: vec![
+            MatchArm {
+                pattern: Pattern::Constructor {
+                    name: "Success".to_string(),
+                    fields: vec![PAYLOAD.to_string()],
+                    sub_patterns: Vec::new(),
+                },
+                body: Expr::Identifier(PAYLOAD.to_string()),
+            },
+            MatchArm {
+                pattern: Pattern::Constructor {
+                    name: "Error".to_string(),
+                    fields: Vec::new(),
+                    sub_patterns: Vec::new(),
+                },
+                body: fallback,
+            },
+        ],
     }
 }
 

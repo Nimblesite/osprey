@@ -39,7 +39,7 @@ const WILDCARD: &str = "_";
 
 /// Completion items for the cursor at `(line, character)`.
 #[must_use]
-pub fn completion(
+pub(crate) fn completion(
     text: &str,
     path: &str,
     line: u32,
@@ -227,9 +227,7 @@ mod tests {
 
     /// Complete at the end of `src` — where an author's cursor actually is.
     fn at_end(src: &str, path: &str) -> Vec<CompletionItem> {
-        let rows: Vec<&str> = src.split('\n').collect();
-        let line = u32::try_from(rows.len().saturating_sub(1)).unwrap_or(0);
-        let column = u32::try_from(rows.last().unwrap_or(&"").chars().count()).unwrap_or(0);
+        let (line, column) = crate::text::end_position(src);
         completion(src, path, line, column, U16)
     }
 
@@ -243,7 +241,7 @@ mod tests {
         names.iter().any(|name| name == label)
     }
 
-    const SRC: &str = "fn add(a: int, b: int) -> int = a + b\nlet total = add(1, 2)\n";
+    const SRC: &str = "fn add(a: int, b: int) -> int = (a + b) ?: 0\nlet total = add(1, 2)\n";
 
     #[test]
     fn completion_includes_keywords_and_declarations_at_declaration_position() {

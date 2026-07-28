@@ -6,11 +6,15 @@ The backend reuses Osprey's LLVM IR, compiles it with clang, and links it with
 
 The portable language core runs under a WASI host. CI compiles and validates the
 hello fixture, runs it through Node's WASI host and the browser shim, then runs
-`crates/diff_wasm_examples.sh`. The golden harness compiles every Default-flavor
-`.osp` example with an expected-output file; portable examples must match it.
-The harness classifies an `undefined symbol` compile error as `SKIP`; every
-other build or runtime error fails. CI requires `FAIL=0` and `NOEXP=0` rather
-than a fixed example count.
+`OSPREY_TARGET=wasm32 zsh crates/run_test_corpus.sh` — the same corpus harness
+the native backend uses, pointed at the other code generator. It compiles every
+program under `tests/` to wasm32, runs it under Node's WASI host, and compares
+stdout byte-for-byte to the same `.expectedoutput` golden the native run must
+match. The harness classifies an `undefined symbol` compile error as `SKIP` and
+names each one; every other build or runtime error fails. CI requires
+`TEST_CORPUS_FAIL=0`, `TEST_CORPUS_GOLDEN_FAIL=0` and
+`TEST_CORPUS_GOLDEN_MISSING=0`, plus a golden floor (103) so coverage cannot
+quietly shrink.
 
 The wasm runtime includes strings, persistent collections, JSON, test and
 coverage hooks, the effect-handler stack, profiler stubs, and the browser host
@@ -124,7 +128,7 @@ ordinary wasm linear memory.
 - `wasm-validate examples/wasm/build/hello.wasm`
 - `node scripts/wasm-smoke.mjs examples/wasm/build/hello.wasm examples/wasm/hello.expectedoutput`
 - `node scripts/wasm-browser-smoke.mjs examples/wasm/build/hello.wasm examples/wasm/hello.expectedoutput`
-- `zsh crates/diff_wasm_examples.sh`
+- `OSPREY_TARGET=wasm32 zsh crates/run_test_corpus.sh` (or `make _test_wasm_goldens`)
 
 The CI `wasm` job runs the validate, Node-WASI, browser-shim, and golden-harness
 checks with a pinned WASI sysroot.

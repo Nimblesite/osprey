@@ -1,0 +1,12 @@
+ok 1 - successful paths bypass recovery handlers
+ok 2 - fallback values continue at the perform site
+ok 3 - repeated recoveries share handler-owned state
+ok 4 - Unit error reports collect without early exit
+ok 5 - one handler supplies several result types
+ok 6 - one effectful function supports two policies
+ok 7 - nested handlers override locally and restore outer behavior
+ok 8 - a recovery arm can use an outer effect
+ok 9 - recovery reaches through helpers and recursion
+ok 10 - handlers can return whole Result operation values
+1..10
+# tests=10 passed=10 failed=0 skipped=0

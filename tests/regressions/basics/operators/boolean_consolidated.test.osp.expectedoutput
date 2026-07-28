@@ -1,0 +1,30 @@
+=== Boolean Test ===
+true
+false
+false
+true
+true
+true
+true
+true
+true
+Equal
+&& false  || true  comp&& true  comp|| true
+false
+true
+deMorgan && true
+deMorgan || true
+xor T T false
+xor T F true
+xor F F false
+parity true
+true
+true
+true
+true
+true
+yes
+=== Boolean Test Complete ===
+ok 1 - boolean operators preserve values and short-circuiting
+1..1
+# tests=1 passed=1 failed=0 skipped=0

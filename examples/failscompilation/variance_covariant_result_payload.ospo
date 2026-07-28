@@ -1,4 +1,4 @@
-// Variance never lifts the coercive Result auto-unwrap under a container:
+// Variance never permits a Result payload to be extracted under a container:
 // a Feed<Result<int, string>> is NOT assignable where Feed<int> is expected,
 // even under `out T` — the stored representation differs and no coercion is
 // emitted inside containers. Implements [TYPE-VARIANCE-ASSIGN]
