@@ -64,4 +64,7 @@ uppercase, hyphen-separated segments. Numbered suffixes are forbidden. See the
 project's [`CLAUDE.md`](../../CLAUDE.md) for the full convention.
 
 Code implementing a spec section MUST repeat that section's bracketed ID in a
-comment. The `spec-check` skill enforces this by grep.
+comment. The `spec-check` skill enforces this by grep. Specs whose header
+declares **Status: normative target** (0029–0033) are not implemented yet;
+their IDs are exempt from the code-citation requirement until their delivery
+plan lands, at which point every landed section must be cited as usual.

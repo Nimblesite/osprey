@@ -14,31 +14,12 @@ feature is not implemented merely because this document specifies it.
 
 ## Research basis `[PACKAGE-RESEARCH]`
 
-The design follows primary research and current standards, not registry custom:
-
-- Raemaekers, van Deursen, and Visser found that "around one third of all releases introduce at least one breaking change" ([SCAM 2014](https://doi.org/10.1109/SCAM.2014.30)).
-  Osprey does not treat a human version label as compatibility proof.
-- Dependency solving is "a hard (NP-complete) problem" in non-trivial models ([Abate et al. 2020](https://doi.org/10.1109/SANER48275.2020.9054837)).
-  Osprey uses a complete solver and never falls back to a greedy answer.
-- The Package Calculus requires "root inclusion, dependency closure, and version uniqueness" ([Gibb et al., ICFP 2026](https://icfp26.sigplan.org/details/icfp-2026-icfp-papers/27/Package-Managers-la-Carte)).
-  Osprey makes uniqueness global across published, workspace, and local sources.
-- Tests detected only "47% of direct and 35% of indirect artificial faults" ([Hejderup and Gousios 2022](https://doi.org/10.1016/j.jss.2021.111097)).
-  Passing tests cannot by itself certify an upgrade.
-- TUF targets "defense against key compromise" ([Samuel et al. 2010](https://doi.org/10.1145/1866307.1866315)).
-  Osprey uses threshold roles, delegation, expiry, and rollback protection.
-- A compromised supply-chain step can modify software ([in-toto, USENIX Security 2019](https://www.usenix.org/conference/usenixsecurity19/presentation/torres-arias)).
-  Osprey authenticates every step, not only the final file.
-- LastPyMile finds source/package equivalence is commonly assumed ([FSE 2021](https://doi.org/10.1145/3468264.3468592)).
-  Osprey instead assembles releases from archived source.
-- Rankers owe responsibility to users and "the items being ranked" ([Singh and Joachims, KDD 2018](https://doi.org/10.1145/3219819.3220088)).
-  Search accounts for provider exposure without sacrificing intent.
-- Coverage "should not be used as a quality target" ([Inozemtseva and Holmes 2014](https://doi.org/10.1145/2568225.2568271)).
-  Osprey gives stronger weight to mutation and client tests.
-- A strong code model fell from 68.26% F1 on BigVul to 3.09% on PrimeVul ([Ding et al. 2025](https://doi.org/10.1109/ICSE55347.2025.00038)).
-  Osprey evaluates AI at realistic base rates and never calls its verdict proof.
-
-The linked corpus records more than fifty peer-reviewed papers, specifications,
-and current official controls, with short quotations and their design effects.
+Every design decision below traces to the annotated corpus in
+[Package-manager research](../package-manager-research.md) — peer-reviewed
+findings on breaking-change rates, NP-complete resolution, test/coverage
+blind spots, TUF/in-toto supply-chain controls, ranking fairness, and AI
+false-positive base rates. That document, not registry custom, is the
+evidence record; this specification states only the resulting rules.
 
 ## Decided design `[PACKAGE-DECISIONS]`
 

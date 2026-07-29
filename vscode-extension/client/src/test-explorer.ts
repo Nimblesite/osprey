@@ -260,8 +260,8 @@ function makeLeafItem(
   );
   // The whole doc renders greyed beside the case name — truncated in the row,
   // entire in the row's hover, which is the only tooltip a TestItem has. The
-  // Markdown form is stashed for the detail panel and failure messages
-  // ([TESTING-DOC]).
+  // Markdown form is stashed for the detail panel and failure messages.
+  // Implements [TESTING-DOC-VSCODE].
   const description = testDescription(test);
   if (description !== undefined) {
     leaf.description = description;

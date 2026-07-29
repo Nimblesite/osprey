@@ -1,4 +1,7 @@
 // ML twin for unary, abs, Result chains, first-error propagation, defaults, and matches.
+// Every Result is discharged by an exhaustive match or an explicit `?:` fallback —
+// never implicitly unwrapped ([FAILURE-EXPLICIT]). The wasm32 corpus run pins the
+// 32-bit Result repack path byte-for-byte ([WASM-TARGET-WIDTH]).
 // Observer helpers rely on inference and every test remains independently named.
 
 observeArithmeticResult001 () = match 10 + 3

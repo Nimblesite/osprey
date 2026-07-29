@@ -401,6 +401,9 @@ mod tests {
             implementations(source, uri, line, column, PositionEncoding::Utf16)
         }
 
+        // Hover resolves the operation's declaration across project files
+        // ([LSP-HOVER-EFFECT-OPERATIONS]) and go-to-implementations lands on
+        // the handler arm ([LSP-IMPLEMENTATIONS-EFFECT-HANDLERS]).
         #[test]
         fn effect_navigation_crosses_project_files() {
             let (source, uri) = project_source("api/routes.ospml");

@@ -1,4 +1,7 @@
-# Osprey GitHub Action [GHA]
+# Osprey GitHub Action
+
+**Status:** normative target; implementation has not started. Delivery is fixed
+by [plan 0015](../plans/0015-osprey-github-action.md).
 
 A marketplace-published GitHub Action whose entire behaviour is to ferry a job's
 inputs into a co-located Osprey program and surface that program's stdout as the

@@ -48,9 +48,8 @@ compose (f, g)   = \x => f (g x)             // <A,B,C>((B)->C,(A)->B) -> (A)->C
 integer `+ - *` return `Result<int, MathError>`. With a `float` operand, the
 integer is promoted and the IEEE-754 operation returns plain `float`.
 
-Annotations are optional where inference has enough context. Record fields and
-foreign declarations include types as part of their syntax; annotations on
-bindings and functions constrain the inferred type.
+Record fields and foreign declarations include types as part of their syntax;
+annotations on bindings and functions constrain the inferred type.
 
 A polymorphic function is monomorphised independently at each call site:
 
@@ -194,18 +193,16 @@ unary `-` return `Result<int, MathError>`; `/` and `%` return
 ## Result Preservation
 
 A fallible expression has type `Result<T, E>`, and the compiler never
-implicitly erases that wrapper. Passing it to a function or concurrency
-operation that expects `T`, assigning it to a plain `T` cell or annotation,
-returning it from a function declared to return `T`, comparing it with a `T`,
-or using it through a function value is a type error. Interpolation and
-formatting preserve and display the complete `Success` or `Error` value.
-
-Callers obtain the success payload only through an exhaustive `match` or an
-explicit `?:` fallback. The sole compositional exception is
-failure-preserving arithmetic chaining: compatible numeric `Result<T, MathError>`
-operands propagate the first error and flatten the chain to one
-`Result<T, MathError>` ([Chaining Arithmetic](0013-ErrorHandling.md#chaining-arithmetic)).
-It never turns the chain into a plain number.
+implicitly erases that wrapper
+([FAILURE-EXPLICIT](0001-Introduction.md#failure-safety--failure-explicit)).
+Every consuming position — arguments, bindings, plain-`T` returns, comparisons,
+function-value calls — preserves the `Result` or is rejected; interpolation
+displays the complete `Success` or `Error` value. Callers obtain the payload
+only through an exhaustive `match` or an explicit `?:` fallback. The sole
+compositional exception is failure-preserving arithmetic chaining
+([Chaining Arithmetic](0013-ErrorHandling.md#chaining-arithmetic)), which
+flattens compatible `Result<T, MathError>` chains to one `Result` and never
+yields a plain number.
 
 ## Function Types
 

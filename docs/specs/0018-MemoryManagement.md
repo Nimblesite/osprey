@@ -68,6 +68,27 @@ The C runtime memory tests exercise each backend directly. The differential
 conformance targets exercise compiled Osprey programs and compare their output;
 the ARC target additionally checks its live-allocation counter at process exit.
 
+### Container Element Ownership [MEM-BACKENDS-ELEMENTS]
+
+Persistent container slots use an erased `int64` ABI, so the runtime cannot
+infer whether a slot is a managed pointer from its bits. Lists carry an
+`elem_managed` flag. Maps derive key ownership from the key type and carry a
+separate managed-value flag. Codegen supplies these flags from static types.
+
+- Insertion gives the container an owned key/value reference.
+- Path copying and builders retain every managed key, value, or child they
+  continue to share.
+- Lookup, iteration, loop elements, and list-pattern heads borrow from the
+  container; they do not create an owned reference by themselves.
+
+### Backend Hook ABI [MEM-BACKENDS-CUSTOM]
+
+The runtime archives implement the same internal C hooks: allocation,
+tagged allocation, retain, release, proved-unique release, layout stamping,
+multithread notification, and collection. Backends that do not use a hook
+implement it as a no-op. This ABI keeps emitted IR independent of
+the selected native backend.
+
 ### Conservative Tracing GC [GC-TRACE-CONSERVATIVE]
 
 The native GC records managed allocation base addresses and conservatively
@@ -92,24 +113,3 @@ arrays. Releases walk managed child slots non-recursively. Persistent list and
 map nodes retain shared structure and release the portion no longer referenced
 by any live version. ARC operations start lock-free and become mutex-protected
 before a pthread-backed fiber is spawned.
-
-### Container Element Ownership [MEM-BACKENDS-ELEMENTS]
-
-Persistent container slots use an erased `int64` ABI, so the runtime cannot
-infer whether a slot is a managed pointer from its bits. Lists carry an
-`elem_managed` flag. Maps derive key ownership from the key type and carry a
-separate managed-value flag. Codegen supplies these flags from static types.
-
-- Insertion gives the container an owned key/value reference.
-- Path copying and builders retain every managed key, value, or child they
-  continue to share.
-- Lookup, iteration, loop elements, and list-pattern heads borrow from the
-  container; they do not create an owned reference by themselves.
-
-### Backend Hook ABI [MEM-BACKENDS-CUSTOM]
-
-The runtime archives implement the same internal C hooks: allocation,
-tagged allocation, retain, release, proved-unique release, layout stamping,
-multithread notification, and collection. Backends that do not use a hook
-implement it as a no-op. This ABI keeps emitted IR independent of
-the selected native backend.

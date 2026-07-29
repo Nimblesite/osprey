@@ -28,7 +28,8 @@ restLen : List int -> int
 restLen [_, second, ...rest] = listLength rest
 restLen _ = 0
 
-(** Encode callback order as a base-100 integer through an effect. *)
+(** Encode callback order as a base-100 integer through an effect, pinning
+    forEachList's in-order traversal ([BUILTIN-LIST-FOREACH]). *)
 encodeIteration : List int -> int
 encodeIteration xs =
     mut encoded = 0
@@ -101,7 +102,7 @@ constructionAndIdentityCase () =
         (listGet abPlusA 7 ?: ((0 - 999) ?: 0)) == 3
     ]
 
-    // Check membership at present, absent, and endpoint values.
+    // Check membership at present, absent, and endpoint values ([BUILTIN-LIST-CONTAINS]).
     checkAll "contains behavior" [
         listContains a 2,
         !(listContains a 99),

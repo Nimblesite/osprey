@@ -182,8 +182,9 @@ fn record_test_call(
 }
 
 /// The documentation of the test case declared on `line` (1-based), rendered as
-/// hover Markdown under the case's own name heading. Drives the editor hover
-/// over a `test("…", …)` call ([TESTING-DOC], [LSP-HOVER-DOCS]).
+/// hover Markdown under the case's own name heading. An undocumented case still
+/// answers with its `**Test:** <name>` heading. Implements [TESTING-DOC-HOVER]
+/// ([TESTING-DOC], [LSP-HOVER-DOCS]).
 #[must_use]
 pub(crate) fn test_case_hover(program: &Program, line: u32) -> Option<String> {
     let case = collect_tests(program)
@@ -481,6 +482,7 @@ test(\"undocumented\", fn() => expect(add(1, 1), 2))
         assert!(md.starts_with("Legacy check."), "{md}");
     }
 
+    // [TESTING-DOC-HOVER] the hover answers on the `test(` line only.
     #[test]
     fn test_case_hover_answers_on_the_cases_own_line_only() {
         let program = program(DOCUMENTED);

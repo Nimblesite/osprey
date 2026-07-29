@@ -123,7 +123,8 @@ suite("Osprey test documentation and profiling", () => {
      * A leaf's description must carry the WHOLE doc, not just its first
      * paragraph. `vscode.TestItem` has no tooltip of its own, so the row's
      * description is the only documentation its hover can show — pinning it to
-     * the summary showed one line of a multi-paragraph block ([TESTING-DOC]).
+     * the summary showed one line of a multi-paragraph block
+     * ([TESTING-DOC-VSCODE]).
      */
     function assertWholeDoc(
       description: string | undefined,

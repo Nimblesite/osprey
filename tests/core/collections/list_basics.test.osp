@@ -33,7 +33,8 @@ fn restLen(xs: List<int>) -> int = match xs {
     _ => 0
 }
 
-/// encodeIteration folds callback order into a base-100 integer through a handled effect.
+/// encodeIteration folds callback order into a base-100 integer through a handled
+/// effect, pinning forEachList's in-order traversal ([BUILTIN-LIST-FOREACH]).
 fn encodeIteration(xs: List<int>) -> int = {
     mut encoded = 0
     handle IterationProbe
@@ -106,7 +107,8 @@ fn constructionAndIdentityCase() = {
         (listGet(abPlusA, 7) ?: ((0 - 999) ?: 0)) == 3
     ])
 
-    // All three legacy contains results survive alongside additional positive and endpoint checks.
+    // All three legacy contains results survive alongside additional positive and
+    // endpoint checks ([BUILTIN-LIST-CONTAINS]).
     checkAll("contains behavior", [
         listContains(a, 2),
         !listContains(a, 99),

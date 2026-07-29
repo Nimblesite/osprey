@@ -1,4 +1,4 @@
-// `Osprey: Show Test Documentation` ([TESTING-DOC]). VS Code's TestItem API
+// `Osprey: Show Test Documentation` ([TESTING-DOC-VSCODE]). VS Code's TestItem API
 // carries no tooltip of its own — the tree row's hover shows its label and
 // description — so a case's full `///` documentation is surfaced three ways:
 // the whole block collapsed to one line rides in the tree row's description,
