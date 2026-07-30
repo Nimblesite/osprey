@@ -1,1 +1,1 @@
-unhandled effect operations at program entry: Alarm.ring
+unhandled effect operations at program entry: Alarm.ring; add a matching `handle`

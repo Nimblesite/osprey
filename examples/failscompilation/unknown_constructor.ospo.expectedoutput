@@ -1,1 +1,1 @@
-line 7:13: undefined type: NonExistingConstructor
+unknown constructor `NonExistingConstructor`

@@ -1,0 +1,2 @@
+unknown variant in match expression: variant `Bleu` is not defined in type `Color`
+non-exhaustive match on `Color`: missing Green, Blue

@@ -178,9 +178,15 @@ def bake_website_fragment(fragment: str) -> Optional[Path]:
     return path
 
 
-def measured_mb(cell: Cell) -> str:
-    """Decimal MB, matching the README's human-readable benchmark figures."""
-    return f"{float(cell['rss']) / 1_000_000:.3g}"
+def measured_peak(cell: Cell) -> str:
+    """Human-readable decimal peak RSS, e.g. `2.53 GB` or `2.98 MB`.
+
+    `:.3g` alone rendered a gigabyte-scale peak as `2.53e+03 MB` — technically
+    right, unreadable in prose, and this string is baked into the README and the
+    published website page.
+    """
+    mb = float(cell["rss"]) / 1_000_000
+    return f"{mb / 1000:.3g} GB" if mb >= 1000 else f"{mb:.3g} MB"
 
 
 def update_readme(data: Data) -> Path:
@@ -193,13 +199,13 @@ def update_readme(data: Data) -> Path:
     if not marked or not found:
         raise ValueError("benchmarks README is missing binarytrees result markers")
     cells = data["binarytrees"]
-    default = measured_mb(cells["osprey"])
-    arc = measured_mb(cells["osprey-arc"])
-    gc = measured_mb(cells["osprey-gc"])
+    default = measured_peak(cells["osprey"])
+    arc = measured_peak(cells["osprey-arc"])
+    gc = measured_peak(cells["osprey-gc"])
     generated = (
         f"{start}\n"
-        f"> Current measured peaks: default **{default} MB**, "
-        f"`--memory=arc` **{arc} MB**, and `--memory=gc` **{gc} MB**.\n"
+        f"> Current measured peaks: default **{default}**, "
+        f"`--memory=arc` **{arc}**, and `--memory=gc` **{gc}**.\n"
         f"{end}"
     )
     path.write_text(before + generated + after)

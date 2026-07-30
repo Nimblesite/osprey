@@ -1,6 +1,6 @@
-// This should fail compilation: Unknown constructor
-// Tests: ErrUnknownConstructor, WrapUnknownConstructor
-// Error: unknown constructor
+// This should fail compilation: constructor names an undeclared type.
+// A constructor must name a type that exists.
+// Implements [TYPE-UNION-REC]
 
 type Result = Success { value: Int } | Error { message: String }
 

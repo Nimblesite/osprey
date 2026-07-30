@@ -1,7 +1,7 @@
 # Osprey GitHub Action
 
 **Status:** normative target; implementation has not started. Delivery is fixed
-by [plan 0015](../plans/0015-osprey-github-action.md).
+by [plan 0021](../plans/0021-osprey-github-action.md).
 
 A marketplace-published GitHub Action whose entire behaviour is to ferry a job's
 inputs into a co-located Osprey program and surface that program's stdout as the
@@ -124,7 +124,8 @@ runs:
         INPUT_PAYLOAD: ${{ toJSON(inputs) }}
 ```
 
-`osprey` is installed via the existing Homebrew tap ([homebrew-package]) on
+`osprey` is installed via the existing
+[Homebrew tap](../../homebrew-package/osprey.rb) on
 macOS/Linux or Scoop on Windows; `clang` must be present (preinstalled on the
 GitHub-hosted images, otherwise one install step). Properties: runs on all
 runner OSes. Cost: a per-run toolchain install unless cached, and a hard
@@ -136,7 +137,8 @@ dependency on `clang` being resolvable.
 `branding`, typed `inputs`, and `outputs`. Releases are tag-triggered
 (`vX.Y.Z`); the Marketplace listing pins to a tag or a commit digest. Version
 fields follow the placeholder rule — no hard-coded version in source; the tag
-stamps it at build time (Shipwright contract, see [docs/RELEASING.md]).
+stamps it at build time (Shipwright contract, see
+[RELEASING.md](../RELEASING.md)).
 
 ## Deferred: wasm Packaging [GHA-WASM-DEFERRED]
 

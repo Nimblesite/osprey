@@ -923,12 +923,16 @@ mod tests {
         // [BUILTIN-COLLECTION-LENGTH], [BUILTIN-COLLECTION-ISEMPTY]: the bare
         // spec names are receiver-directed. Routing a List/Map handle into the
         // string runtime reads an `i8*` heap pointer as a NUL-terminated string
-        // — a wrong answer AND an out-of-bounds read.
+        // — a wrong answer AND an out-of-bounds read. A flat list *literal* is a
+        // third layout: it matched neither collection tag and fell through to
+        // `osp_strlen`, which counted the length word's own bytes and answered
+        // `1` for every list of 1..=255 elements.
         let ir = module(
             "fn main() -> Unit = {\n\
                let xs = listAppend(listAppend(List(), 1), 2)\n\
                let m = mapSet(Map(), \"a\", 1)\n\
-               print(\"${length(xs)} ${isEmpty(xs)} ${length(m)} ${isEmpty(m)} ${length(\"ab\")}\")\n\
+               let lit = [7, 8, 9]\n\
+               print(\"${length(xs)} ${isEmpty(xs)} ${length(m)} ${isEmpty(m)} ${length(lit)} ${isEmpty(lit)} ${length(\"ab\")}\")\n\
              }\n",
         );
         assert!(
@@ -953,6 +957,65 @@ mod tests {
             ir.matches("@osp_string_is_empty").count(),
             0,
             "no collection receiver may reach the string isEmpty"
+        );
+    }
+
+    #[test]
+    fn list_literal_operands_of_plus_are_rebuilt_before_concatenation() {
+        // `+` on lists is `listConcat`, selected by the LIST_OWNER tag — which a
+        // flat list literal does not carry. `xs + [1]` therefore handed
+        // `osprey_list_concat` the literal's foreign `{ i64, i8* }` header (a
+        // SEGFAULT), and `[1] + [2]` matched neither operand and fell through to
+        // integer arithmetic. Both operands are now rebuilt into runtime lists.
+        let ir = module(
+            "fn main() -> Unit = {\n\
+               let xs = listAppend(List(), 1)\n\
+               let both = [1, 2] + [3]\n\
+               let mixedL = xs + [4]\n\
+               let mixedR = [5] + xs\n\
+               print(\"${listLength(both)} ${listLength(mixedL)} ${listLength(mixedR)}\")\n\
+             }\n",
+        );
+        // Three concatenations, each over two real OspreyList handles.
+        assert_eq!(
+            ir.matches("call i8* @osprey_list_concat").count(),
+            3,
+            "every `+` over a list must reach the list runtime"
+        );
+        // Five literals appear; each is sealed into a runtime list before use.
+        assert!(
+            ir.matches("osprey_list_builder_seal").count() >= 5,
+            "each literal operand must be rebuilt as a runtime list"
+        );
+    }
+
+    #[test]
+    fn a_list_literal_argument_is_rebuilt_before_it_crosses_into_a_callee() {
+        // A callee's `List<T>` parameter is one `i8*` whichever layout the caller
+        // wrote, so the body cannot branch on it. `osprey_list_length` reads both
+        // layouts (shared leading `i64`), but `osprey_list_get`/`_drop` need the
+        // real trie — so a list pattern over a literal argument SEGFAULTED while
+        // the same call on a `listAppend` chain worked. The literal is rebuilt at
+        // the boundary instead.
+        let ir = module(
+            "fn headOf(xs: List<int>) -> int = match xs {\n\
+               [] => 0\n\
+               [h, ...t] => h\n\
+             }\n\
+             fn main() -> Unit = {\n\
+               let rt = listAppend(List(), 7)\n\
+               print(\"${headOf([7, 8])} ${headOf(rt)}\")\n\
+             }\n",
+        );
+        // The literal argument seals a runtime list; the handle argument does not.
+        assert_eq!(
+            ir.matches("call i8* @osprey_list_builder_seal").count(),
+            1,
+            "exactly the literal argument is rebuilt"
+        );
+        assert!(
+            ir.contains("osprey_list_get"),
+            "the arm still binds its head from the list runtime"
         );
     }
 
@@ -1238,9 +1301,9 @@ card doc index selected =
     // ---- fibers (fiber.rs) ----
 
     #[test]
-    fn fibers_channels_yield_select_and_done() {
+    fn fibers_channels_yield_and_done() {
         // spawn/await (covered elsewhere) plus Channel/send/recv, yield with and
-        // without a value, select first-arm, fiber_yield and fiberDone.
+        // without a value, fiber_yield and fiberDone.
         let ir = module(
             "fn work(n: int) -> int = (n + 1) ?: n\n\
              fn main() -> Unit = {\n\
@@ -1249,15 +1312,33 @@ card doc index selected =
                let got = recv(ch)\n\
                let y = yield 5\n\
                let z = fiber_yield(9)\n\
-               let pick = select { 1 => 100  2 => 200 }\n\
                let f = spawn work(3)\n\
-               print(\"${got} ${y} ${z} ${pick} ${await(f)} ${fiberDone(f)}\")\n\
+               print(\"${got} ${y} ${z} ${await(f)} ${fiberDone(f)}\")\n\
              }\n",
         );
         assert!(ir.contains("channel_create"));
         assert!(ir.contains("channel_send"));
         assert!(ir.contains("channel_recv"));
         assert!(ir.contains("fiber_done"));
+    }
+
+    #[test]
+    fn direct_ast_select_is_rejected_instead_of_choosing_the_first_arm() {
+        // [CONCURRENCY-SELECT-REJECT]: the type checker rejects `select` first, so
+        // codegen sees one only when an AST is compiled directly. It used to lower
+        // the FIRST arm's body and return it as the select's value — a wrong answer
+        // that looked right. Plan 0007's acceptance bar is that this path cannot
+        // silently pick an arm.
+        let err = compile_err(
+            "fn main() -> Unit = {\n\
+               let pick = select { 1 => 100  2 => 200 }\n\
+               print(\"${pick}\")\n\
+             }\n",
+        );
+        assert!(
+            err.to_string().contains("`select` is not supported"),
+            "expected the select rejection, got {err}"
+        );
     }
 
     #[test]

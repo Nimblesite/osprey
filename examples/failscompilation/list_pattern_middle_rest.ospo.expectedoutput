@@ -1,1 +1,1 @@
-examples/failscompilation/list_pattern_middle_rest.ospo:8:14: syntax error near ", b"
+8:14: syntax error near ", b"

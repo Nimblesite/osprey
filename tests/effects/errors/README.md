@@ -16,12 +16,15 @@ The ten named cases check:
   another operation, and restores the outer policy afterward;
 - a handler arm and the continued body can both use a different outer effect;
 - handler lookup reaches through helpers and recursion; and
-- a whole `Result<T, E>` operation value exercises the known corruption in
+- a whole `Result<T, E>` operation value crosses the direct handler boundary
+  intact — formerly the corruption in
   [critical issue #183](https://github.com/Nimblesite/osprey/issues/183).
 
-The final case returns `Pass` automatically when the correct value arrives and
-an explicit `Skip` while #183 remains reproducible. It never labels corrupted
-data as a passing result.
+That final case was written to return `Pass` automatically when the correct value
+arrives and an explicit `Skip` while #183 remained reproducible, so it could never
+label corrupted data as passing. **#183 is fixed, so it now returns `Pass`** in
+both flavors under all three memory backends — the self-skipping shape is what
+made the transition observable rather than silent.
 
 Run only these twins with:
 

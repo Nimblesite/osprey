@@ -8,9 +8,6 @@
 
 import type { DiscoveredTest } from "./test-explorer-parse";
 
-/** The documentation known for one leaf, keyed by its TestItem id. */
-export type TestDocs = ReadonlyMap<string, TestDoc>;
-
 /** One test case's documentation, as discovery reported it. */
 export interface TestDoc {
   /** The case's name, for headings. */

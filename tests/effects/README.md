@@ -116,10 +116,11 @@ as successes or making unrelated CI unusable:
 - [#182](https://github.com/Nimblesite/osprey/issues/182): resumable operations
   silently replace arguments after the 16th with zero. The paired resume suite
   proves all 16 supported positions and skips the unsafe 17th-position repro.
-- [#183](https://github.com/Nimblesite/osprey/issues/183): direct handlers
-  corrupt whole `Result<T, E>` operation values. Keep `Result` outside the
-  direct operation boundary until this is fixed; explicit-resume transport has
-  separate passing coverage.
+- ~~[#183](https://github.com/Nimblesite/osprey/issues/183): direct handlers
+  corrupt whole `Result<T, E>` operation values.~~ **Fixed.** A direct operation
+  may return a complete `Result`; `errors/direct_recovery.test.{osp,ospml}` case
+  10 passes in both flavors under default, `--memory=gc` and `--memory=arc`.
+  Explicit-resume transport keeps its separate coverage.
 - [#184](https://github.com/Nimblesite/osprey/issues/184): a four-argument
   curried ML function can silently skip handled effects. The paired golden
   examples use the verified tuple-parameter form while the issue retains the

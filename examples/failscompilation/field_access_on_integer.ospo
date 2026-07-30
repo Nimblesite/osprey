@@ -1,6 +1,6 @@
-// This should fail compilation: Field access on integer type
-// Tests: ErrFieldAccessOnInteger, WrapFieldAccessOnInteger
-// Error: cannot access field on integer type
+// This should fail compilation: field access on an integer.
+// int carries no fields, so `x.value` can never resolve.
+// Implements [TYPE-FIELD-ACCESS-NON-RECORD]
 
 let x = 42
 let field = x.value  // Cannot access field on integer

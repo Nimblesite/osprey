@@ -108,6 +108,19 @@ The error type of `intDiv` and other fallible built-ins is `Error`. Checked
 integer operators `+`, `-`, `*`, unary `-`, and numeric `/` and `%` use
 `MathError` ([ARITH-CHECKED](0013-ErrorHandling.md#arithmetic-and-result--arith-checked)).
 
+### Non-Result Scrutinees Auto-Wrap — [PATTERN-RESULT-AUTOWRAP]
+
+A `Success`/`Error` pattern may be matched against a value that is not a
+`Result`: the scrutinee is treated as if wrapped in `Success`, so `Success`
+binds the value itself and the `Error` arm is unreachable. Both the type
+checker and code generation apply this rule identically.
+
+The `Success` arm is therefore taken **unconditionally** for a non-`Result`
+scrutinee. A value's magnitude or sign MUST NOT select the arm — a negative
+scalar is a `Success` payload, not an error sentinel. Applying a
+negative-means-error heuristic would make `-1 ?: 99` evaluate to `99` and
+`abs(-1)` observe `0`, silently wrong on every negative value.
+
 ## Ternary Match (Syntactic Sugar)
 
 Default has a structural form:

@@ -1,1 +1,1 @@
-line 1:0: cannot access field 'name' on non-struct type 
+cannot access field 'name' on non-struct type int

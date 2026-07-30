@@ -1,1 +1,3 @@
-line 5:9: match expression type mismatch: arm 1 returns 'string' but expected 'int'
+type mismatch: cannot unify int with string
+type mismatch: cannot unify int with string
+4:3: function `badNestedMatch` body: type mismatch: cannot unify string with int

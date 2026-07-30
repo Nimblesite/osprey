@@ -258,23 +258,31 @@ Returns the byte index of the first occurrence of `needle`, or
 `Error` with `"indexOf: substring not found"` if absent. An empty `needle`
 returns `Success { value: 0 }`.
 
-### Cursor Access (total, O(1)) — [BUILTIN-STRING-CURSOR]
+### Cursor Access — [BUILTIN-STRING-CURSOR]
 
-These primitives provide non-allocating access to UTF-8 bytes and codepoints.
+These primitives give indexed access to UTF-8 bytes and codepoints. Only
+`byteLength` is total; `byteAt`, `codePointAt`, and `codePointWidth` are
+fallible and return `Result` on a bad index, a non-boundary index, or malformed
+UTF-8. Only `fromCodePoint` allocates.
+
+A runtime string is a bare NUL-terminated `char*` carrying no stored length, so
+every entry point here begins with a `strlen` and is **O(n) in the string's byte
+length**, not O(1). A scan that re-derives `byteLength` per step is therefore
+quadratic. Making these O(1) requires a length-carrying string ABI.
 
 #### `byteLength(s: string) -> int` — [BUILTIN-STRING-BYTELENGTH]
-Byte length of the underlying UTF-8 storage. Equivalent to `length(s)`. O(1).
+Byte length of the underlying UTF-8 storage. Equivalent to `length(s)`.
 
 #### `byteAt(s: string, i: int) -> Result<int, Error>` — [BUILTIN-STRING-BYTEAT]
 Returns the UTF-8 byte at index `i` as an `int` in `[0, 255]`, or `Error` if
-`i < 0` or `i >= byteLength(s)`. O(1). Does **not** allocate.
+`i < 0` or `i >= byteLength(s)`. Does **not** allocate.
 
 #### `codePointAt(s: string, byteIndex: int) -> Result<int, Error>` — [BUILTIN-STRING-CODEPOINTAT]
 Decodes the UTF-8 codepoint starting at `byteIndex` and returns it as an `int`.
 Returns `Error` if the index is out of range, does not land on a codepoint
 boundary, or begins a truncated, overlong, surrogate, out-of-range, or otherwise
-malformed UTF-8 sequence. O(1) (at most 4 bytes read). Pair with
-`codePointWidth` to advance:
+malformed UTF-8 sequence. Decoding reads at most 4 bytes once the index is
+bounds-checked. Pair with `codePointWidth` to advance:
 
 ```osprey
 type CharStep = { codePoint: int, nextIndex: int }

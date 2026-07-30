@@ -11,7 +11,8 @@ fn sample() = "Aé世😀, hello!"
 
 /// Decode the codepoint at byteIndex, print its scalar value, and recurse to the
 /// next codepoint boundary (byteIndex + width). Returns the running codepoint
-/// count. Stops exactly when the cursor reaches byteLength — total O(n).
+/// count. Stops exactly when the cursor reaches byteLength. `byteLength` is a
+/// strlen per step ([BUILTIN-STRING-CURSOR]), so this walk is O(n²), not O(n).
 fn walk(s, byteIndex, count) = match byteIndex >= byteLength(s) {
     true  => count
     false => match codePointAt(s, byteIndex) {

@@ -17,7 +17,12 @@ pub struct ProjectConfig {
     pub default_namespace: Option<String>,
     /// Optional entry source, relative to the manifest directory.
     pub entry: Option<PathBuf>,
-    /// Optional project-wide fallback flavor.
+    /// Optional project-wide flavor **override**, not a fallback: `parse_source`
+    /// passes it as `resolve_flavor`'s `flag`, which is precedence level 1 in
+    /// [FLAVOR-SELECT] (spec 0023) — the same level as `--flavor`. So it outranks
+    /// both the `// osprey: flavor=` marker and the file extension, and a `.osp`
+    /// file in a `flavor = "ml"` project is parsed as ML. Absent, selection falls
+    /// through to marker > extension > Default per file.
     pub flavor: Option<Flavor>,
     /// Whether `::*` imports are permitted outside scripts and tests.
     pub allow_wildcard_imports: bool,

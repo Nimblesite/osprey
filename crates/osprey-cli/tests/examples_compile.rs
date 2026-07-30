@@ -373,3 +373,62 @@ fn failscompilation_corpus_drives_rejection_paths() {
         escaped.join("\n")
     );
 }
+
+/// Every diagnostic the CLI would print for one rejected source, path prefix
+/// stripped so the golden is location-independent. Mirrors the two shapes
+/// `main.rs` emits: `{path}:{line}:{col}: {msg}` for a located error and
+/// `{path}: {msg}` for one with no position.
+fn rejection_diagnostics(path: &Path, source: &str) -> String {
+    use std::fmt::Write as _;
+
+    let mut out = String::new();
+    let parsed = osprey_syntax::parse_program_for_path(&path.to_string_lossy(), source);
+    if !parsed.errors.is_empty() {
+        for e in &parsed.errors {
+            // A formatting failure into a String cannot happen; ignoring the
+            // Result keeps this panic-free without an unwrap.
+            let _ = writeln!(out, "{}:{}: {}", e.position.line, e.position.column, e.message);
+        }
+        return out;
+    }
+    for e in &osprey_types::check_program(&parsed.program) {
+        let _ = match e.position {
+            Some(p) => writeln!(out, "{}:{}: {}", p.line, p.column, e.message),
+            None => writeln!(out, "{}", e.message),
+        };
+    }
+    out
+}
+
+#[test]
+fn failscompilation_corpus_matches_its_expected_diagnostics() {
+    // Rejection alone is a weak gate: a case can keep failing for a reason that
+    // has nothing to do with what it was written to pin. Each `.ospo` therefore
+    // carries a sibling `.expectedoutput` holding the exact diagnostics, and
+    // this asserts them byte-for-byte.
+    //
+    // These goldens previously described Go-era messages ("line 6:12: cannot
+    // access field 'value' on non-struct type") that the Rust compiler stopped
+    // emitting years ago, and nothing read them — 33 of 82 were stale.
+    let dir = repo_root().join("examples/failscompilation");
+    let mut drift = Vec::new();
+    for path in sources(&dir, "ospo") {
+        let name = path.strip_prefix(&dir).unwrap_or(&path).display().to_string();
+        let source = fs::read_to_string(&path).unwrap_or_default();
+        let golden_path = path.with_extension("ospo.expectedoutput");
+        let Ok(expected) = fs::read_to_string(&golden_path) else {
+            drift.push(format!("{name}: no .expectedoutput golden"));
+            continue;
+        };
+        let actual = rejection_diagnostics(&path, &source);
+        if actual != expected {
+            drift.push(format!("{name}:\n  expected: {expected:?}\n  actual:   {actual:?}"));
+        }
+    }
+    assert!(
+        drift.is_empty(),
+        "{} rejected program(s) drifted from their expected diagnostics:\n{}",
+        drift.len(),
+        drift.join("\n")
+    );
+}

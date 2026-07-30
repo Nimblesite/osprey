@@ -34,8 +34,23 @@ pub(crate) fn gen_match(cg: &mut Codegen, value: &Expr, arms: &[MatchArm]) -> Re
 /// `[a, b]`, `>= n` for a `[a, ...rest]` — then its prefix elements and tail are
 /// bound from the runtime list. Coexists with a trailing catch-all
 /// (`xs => …` / `_`). Implements [TYPE-LIST-PATTERNS].
+///
+/// A flat list **literal** is a different layout from an `OspreyList` handle, so
+/// the scrutinee is rebuilt into a runtime list first (a no-op for one that
+/// already is). Without that, `osprey_list_length` read the literal's foreign
+/// `{ i64, i8* }` header and the program **segfaulted** — reachable from ordinary
+/// code, since `fn headOf(xs) = match xs { [] => -1  [h, ...t] => h }` crashed on
+/// `headOf([7, 8])` while the same call on a `listAppend` chain worked.
+///
+/// The catch-all arm binds the ORIGINAL scrutinee, not the rebuilt list: a
+/// literal bound by `xs => xs[0]` must keep the literal layout, because
+/// [`crate::listlit::gen_index`] reads its element type off the literal's owner
+/// tag. A literal carries no `payload_owner`, so the rebuilt value loses no
+/// element-owner information the guarded arms could have used.
 fn gen_list_match(cg: &mut Codegen, disc: &Value, arms: &[MatchArm]) -> Result<Value> {
-    let list_val = crate::cast::coerce_to(cg, disc.clone(), LType::Ptr)?;
+    let original = crate::cast::coerce_to(cg, disc.clone(), LType::Ptr)?;
+    let rebuilt = crate::listlit::to_runtime_list(cg, disc.clone());
+    let list_val = crate::cast::coerce_to(cg, rebuilt, LType::Ptr)?;
     let len = cg.call("i64", "osprey_list_length", "i8*", &[&list_val.operand]);
     let (end, mut phi_in, last, mark) = match_state(cg, arms);
 
@@ -50,7 +65,7 @@ fn gen_list_match(cg: &mut Codegen, disc: &Value, arms: &[MatchArm]) -> Result<V
                 finish_guarded_arm(cg, arm, &mut phi_in, &next_lbl, i == last)?;
             }
             Pattern::Wildcard | Pattern::Binding(_) | Pattern::TypeAnnotated { .. } => {
-                bind_catch_all(cg, &arm.pattern, &list_val);
+                bind_catch_all(cg, &arm.pattern, &original);
                 emit_arm_body(cg, arm, &mut phi_in)?;
                 break;
             }

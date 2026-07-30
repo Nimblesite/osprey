@@ -1,6 +1,6 @@
-// This should fail compilation: Field access on boolean type
-// Tests: ErrFieldAccessOnBoolean, WrapFieldAccessOnBoolean  
-// Error: cannot access field on boolean type
+// This should fail compilation: field access on a boolean.
+// bool carries no fields, so `flag.value` can never resolve.
+// Implements [TYPE-FIELD-ACCESS-NON-RECORD]
 
 let flag = true
 let field = flag.value  // Cannot access field on boolean

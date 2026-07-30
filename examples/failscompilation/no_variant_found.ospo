@@ -1,6 +1,6 @@
-// This should fail compilation: No variant found matching field structure
-// Tests: ErrNoVariantFound, WrapNoVariantFound
-// Error: no variant found matching field structure
+// This should fail compilation: fields match no declared variant.
+// A constructor's field set must match a variant of the named type.
+// Implements [PATTERN-RESULT-AUTOWRAP]
 
 type Result = Success { value: Int } | Error { message: String }
 

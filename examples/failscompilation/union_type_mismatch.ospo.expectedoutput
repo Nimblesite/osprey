@@ -1,1 +1,1 @@
-function call type mismatch: actual=(Shape) -> string, expected=(Color) -> t1: parameter 0 unification failed: Shape vs Color: type mismatch: Shape != Color
+type mismatch: cannot unify Shape with Color

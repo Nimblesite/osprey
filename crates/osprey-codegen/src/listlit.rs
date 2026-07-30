@@ -53,6 +53,29 @@ fn lit_elem(osp_ty: Option<&str>) -> Option<(LType, Option<String>)> {
     })
 }
 
+/// The element count of a flat list-literal handle, or `None` when `v` is not
+/// one. The literal layout is **not** an `OspreyList`, so a receiver-directed
+/// `length` / `isEmpty` ([`crate::collections::gen_receiver_directed`]) must
+/// read the leading `i64` here. Falling through to the string runtime instead
+/// ran `osp_strlen` over the length word's own bytes, so `length([1, 2, 3])`
+/// answered `1` — the NUL-free byte count of little-endian `3`.
+pub(crate) fn lit_length(cg: &mut Codegen, v: &Value) -> Option<Value> {
+    if !is_lit(v) {
+        return None;
+    }
+    let len = crate::aggregate::load_field(cg, LIST_STRUCT, &v.operand, 0, LType::I64);
+    Some(Value::new(len, LType::I64))
+}
+
+/// `true` when `v` is a flat list-literal handle rather than an `OspreyList`.
+/// The two layouts answer to different runtimes, so any builtin that hands a
+/// list to the `osprey_list_*` C API must route a literal through
+/// [`to_runtime_list`] first — see [`lit_length`] for what happens when it does
+/// not.
+pub(crate) fn is_lit(v: &Value) -> bool {
+    lit_elem(v.osp_ty.as_deref()).is_some()
+}
+
 /// `[e0, e1, …]` → a flat `{ length, data }` block.
 pub(crate) fn gen_list(cg: &mut Codegen, elements: &[Expr]) -> Result<Value> {
     if elements.is_empty() {

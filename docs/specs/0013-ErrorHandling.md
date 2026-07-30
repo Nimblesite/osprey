@@ -16,7 +16,7 @@ type Result<T, E> = Success { value: T } | Error { message: E }
 The compiler rejects direct access to the contained value and never implicitly
 converts `Result<T, E>` to `T`. Callers must pattern-match the `Result` (see
 [Pattern Matching](0007-PatternMatching.md)) or use `?:` to supply a fallback
-([Result Default](0007-PatternMatching.md#result-default--pattern-result-default)).
+([Result Default](0007-PatternMatching.md#result-default---pattern-result-default)).
 Assignments, arguments, comparisons, interpolation, and declared plain return
 types do not erase the wrapper ([Result Preservation](0004-TypeSystem.md#result-preservation)).
 
@@ -79,6 +79,18 @@ mixed     = 10 + 5.5   // float
 checked   = checkedAdd (1, 3)   // Result<int, Error>
 divZero   = 10 / 0     // Error(division by zero)
 ```
+
+### Negated Literals — [ARITH-NEG-LITERAL]
+
+A negated numeric *literal* is folded at parse time into a literal of the
+opposite sign, so `-1` has type `int` and `-1.5` has type `float` — neither is a
+`Result`. Without the fold, `let x: int = -1` would fail to typecheck and a
+negative literal would be unusable wherever a plain `int` is required.
+
+The fold is total, never partial: the one genuinely overflowing case,
+`-(-9223372036854775808)`, is reachable only by double negation and stays a
+checked unary operation returning `Result<int, MathError>`. Negation of any
+non-literal operand is ordinary checked arithmetic under [ARITH-CHECKED].
 
 ### Chaining Arithmetic
 

@@ -1,1 +1,2 @@
-UFCS call `_.add(...)` is rejected because the receiver has a field named `add`; field access wins over UFCS dispatch per spec [BUILTIN-STRING-UFCS], and `add` is not callable: line 10:19: undefined variable 'add': undefined variable
+type mismatch: cannot unify int with Result<int, MathError>
+unknown identifier `add`

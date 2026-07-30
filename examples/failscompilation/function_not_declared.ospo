@@ -1,6 +1,6 @@
-// This should fail compilation: Function not declared
-// Tests: ErrFunctionNotDeclared, WrapFunctionNotDeclared 
-// Error: function not declared
+// This should fail compilation: call to an undeclared function.
+// A callee must resolve to a declaration.
+// Implements [CALL-ARGUMENTS]
 
 let result = unknownFunction(42)  // unknownFunction is not declared
 print(result)

@@ -13,8 +13,10 @@ stdout byte-for-byte to the same `.expectedoutput` golden the native run must
 match. The harness classifies an `undefined symbol` compile error as `SKIP` and
 names each one; every other build or runtime error fails. CI requires
 `TEST_CORPUS_FAIL=0`, `TEST_CORPUS_GOLDEN_FAIL=0` and
-`TEST_CORPUS_GOLDEN_MISSING=0`, plus a golden floor (103) so coverage cannot
-quietly shrink.
+`TEST_CORPUS_GOLDEN_MISSING=0`, plus a golden floor so coverage cannot quietly
+shrink — 107 on wasm32 and 160 natively (`crates/run_test_corpus.sh`,
+`OSPREY_GOLDEN_MIN`). The floor ratchets up as goldens are added and is never
+lowered to turn a red build green.
 
 The wasm runtime includes strings, persistent collections, JSON, test and
 coverage hooks, the effect-handler stack, profiler stubs, and the browser host

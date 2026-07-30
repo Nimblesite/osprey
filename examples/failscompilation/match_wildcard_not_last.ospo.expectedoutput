@@ -1,1 +1,1 @@
-line 5:17: forEach expects exactly 2 arguments (iterator, function), got 0
+call arity mismatch: expected 2 argument(s), got 0

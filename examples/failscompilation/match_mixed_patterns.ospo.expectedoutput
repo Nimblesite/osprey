@@ -1,1 +1,2 @@
-line 5:17: range expects exactly 2 arguments (start, end), got 0
+call arity mismatch: expected 2 argument(s), got 0
+cannot convert value for printing: Iterator<int>

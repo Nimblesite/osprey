@@ -1,1 +1,1 @@
-line 5:4 extraneous input '|' expecting {'{', ID} 
+5:4: syntax error near "|"

@@ -1,6 +1,6 @@
-// This should fail compilation: Function arity mismatch
-// Tests: ErrFunctionArityMismatch, WrapFunctionArityMismatch
-// Error: function arity mismatch
+// This should fail compilation: wrong argument count.
+// A call must supply exactly the declared parameter count.
+// Implements [CALL-ARGUMENTS]
 
 fn add(x, y) = x + y
 

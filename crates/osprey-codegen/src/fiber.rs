@@ -16,7 +16,7 @@
 
 use crate::builder::Codegen;
 use crate::conv::{as_i64, box_to_i64};
-use crate::error::Result;
+use crate::error::{CodegenError, Result};
 use crate::expr::gen_expr;
 use crate::llty::{LType, Value};
 use osprey_ast::{Expr, MatchArm};
@@ -133,14 +133,20 @@ pub(crate) fn gen_recv(cg: &mut Codegen, channel: &Expr) -> Result<Value> {
     Ok(Value::new(r, LType::I64))
 }
 
-/// Legacy direct-AST lowering for `select`. The typed compiler rejects every
-/// such node before code generation ([CONCURRENCY-SELECT-REJECT]); this remains
-/// only because an older codegen unit test constructs the node directly.
-pub(crate) fn gen_select(cg: &mut Codegen, arms: &[MatchArm]) -> Result<Value> {
-    match arms.first() {
-        Some(arm) => gen_expr(cg, &arm.body),
-        None => Ok(Value::unit()),
-    }
+/// `select` reaching code generation is a hard error, not a silent choice.
+///
+/// The typed compiler rejects every such node first ([CONCURRENCY-SELECT-REJECT]),
+/// so this arm is only reachable by compiling an AST directly. It used to lower
+/// the FIRST arm's body — a plausible-looking wrong answer for any program that
+/// bypassed the checker, and one that would have masked the real multiplexing
+/// primitive's absence once channel operations landed in the arms. Failing here
+/// is [plan 0007](../../../docs/plans/0007-fiber-select.md)'s "direct AST
+/// compilation cannot silently choose the first arm" acceptance bar; the arms are
+/// unused because no arm shape survives to lowering yet.
+pub(crate) fn gen_select(_cg: &mut Codegen, _arms: &[MatchArm]) -> Result<Value> {
+    Err(CodegenError::unsupported(
+        "`select` is not supported; use explicit `send`, `recv`, and `await`",
+    ))
 }
 
 /// Fiber/channel builtins reached as ordinary calls. Returns `None` when `name`

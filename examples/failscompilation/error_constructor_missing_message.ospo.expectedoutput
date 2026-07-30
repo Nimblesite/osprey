@@ -1,1 +1,3 @@
-error constructor requires 'message' field
+constructor `Error` has no field `text`
+constructor `Error` requires field `message`
+cannot convert value for printing: Result

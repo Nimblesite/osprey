@@ -28,10 +28,13 @@ zsh benchmarks/run.sh primes     # direct, single case
 > column on a machine with a few GB free, or skip it with `BENCH_FILTER`.
 >
 > <!-- binarytrees-results:start -->
-> Current measured peaks: default **2.53e+03 MB**, `--memory=arc` **2.98 MB**, and `--memory=gc` **19.1 MB**.
+> Current measured peaks: default **2.53 GB**, `--memory=arc` **2.98 MB**, and `--memory=gc` **19.1 MB**.
 > <!-- binarytrees-results:end -->
 
-Results are written to `benchmarks/results/` (gitignored):
+Results are written to `benchmarks/results/`. The measured outputs below are
+**tracked**, so a figure quoted anywhere in the repo can be checked against them;
+only the per-case binaries (`bin/`) and raw hyperfine exports (`hf/`) are
+gitignored:
 
 | file | contents |
 |------|----------|
@@ -260,7 +263,7 @@ Blocked on language features Osprey doesn't expose today (left out, not faked):
 |-----------|-----------|
 | mandelbrot, n-body, spectral-norm | no `sqrt`/trig stdlib, no `int`↔`float` conversion, float-formatting differs across languages (no exact integer oracle) |
 | n-queens, fannkuch | no mutable arrays |
-| quicksort, mergesort | recursive `filter`+concat over a persistent `List` currently miscompiles (codegen) — `listops` covers list build + recursive traversal instead |
+| quicksort, mergesort | **unblocked — cases not written yet.** The recursive-`List` miscompile this row used to cite is fixed: a list *literal* is a different layout from an `OspreyList` handle, and passing one into a callee that list-pattern-matches segfaulted, so `quicksort([3, 1, 2, 5, 4])` crashed while the same call on a `listAppend` chain worked. Literal arguments are now rebuilt at the call boundary and both sorts run correctly under all three memory backends. Note `filter` itself still cannot express them — it returns `Iterator<T>` and nothing collects an iterator back into a `List<T>` — so the cases need explicit head/tail recursion, as `listops` already uses |
 | sieve of Eratosthenes, matrix-multiply, n-sieve | no mutable arrays |
 | pidigits | no arbitrary-precision integers (i64 only) |
 

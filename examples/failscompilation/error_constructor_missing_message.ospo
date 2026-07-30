@@ -1,6 +1,6 @@
-// This should fail compilation: Error constructor missing message field
-// Tests: ErrErrorConstructorMissingMessage, WrapErrorConstructorMissingMessage  
-// Error: error constructor requires 'message' field
+// This should fail compilation: `Error` without its payload.
+// `Error` requires its `message` field.
+// Implements [PATTERN-RESULT-AUTOWRAP]
 
 type Result = Success { value: Int } | Error { message: String }
 

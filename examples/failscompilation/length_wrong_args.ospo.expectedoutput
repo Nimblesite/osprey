@@ -1,1 +1,1 @@
-line 5:17: length expects exactly 1 argument (s), got 0
+call arity mismatch: expected 1 argument(s), got 0

@@ -1,1 +1,1 @@
-examples/failscompilation/print_record_unsupported.ospo: cannot convert value for printing: { x: int, y: int }
+cannot convert value for printing: { x: int, y: int }

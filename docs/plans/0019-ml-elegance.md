@@ -9,13 +9,18 @@
 > or corpus state described below that silently wraps is a known violation to be
 > migrated, not permitted behavior.
 
-**Status:** **Complete.** Phases 1.1–1.5, 2 and 3 are implemented and verified.
+**Status:** **Mostly complete — not retired.** Phases 1.1–1.5, 2 and 3 are
+implemented and verified.
 Integer `+ - *` return checked `Result` values, `%` is zero-checked,
 `checkedAdd` / `checkedSub` / `checkedMul` exist in both flavors, `_` is a legal
 parameter in both flavors, positional variant payloads are shared core, and ML
 inline unions, clause sets, grouped patterns and `?:` all work.
 `benchmarks/cases/binarytrees/binarytrees.ospml` is 6 code lines and emits
-byte-identical LLVM IR to its Default twin. Specs
+byte-identical LLVM IR to its Default twin — **true again as of 2026-07-30**, and
+now guarded: it had silently stopped compiling under `[ARITH-CHECKED]` (four
+`cannot unify int with Result<int, MathError>` errors) because no test
+type-checked a `.ospml` outside `tests/`. See
+[§Outstanding](#outstanding-2026-07-30) for what still is not done. Specs
 [0024 — ML Flavor Syntax](../specs/0024-MLFlavorSyntax.md),
 [0013 — Error Handling](../specs/0013-ErrorHandling.md),
 [0004 — Type System](../specs/0004-TypeSystem.md) and
@@ -345,8 +350,8 @@ normative and valid; the new forms sit beside them.
 
 ## Completion
 
-No implementation or migration items remain. Phases 1.1–1.5, 2 and 3 and the
-defect fixes are implemented and verified. The completion audit enforces:
+Phases 1.1–1.5, 2 and 3 and the defect fixes are implemented and verified. The
+completion audit enforces:
 
 - unreachable adjacent clauses and non-adjacent duplicate definitions;
 - parse-clean, meaning-preserving, idempotent formatting across every
@@ -355,7 +360,57 @@ defect fixes are implemented and verified. The completion audit enforces:
 - preservation of inline unions, positional construction, grouped and list
   equation clauses, `_`, `?:`, checked arithmetic, and explicit `match` through
   formatting; and
-- byte-identical LLVM IR for every Default/ML twin in the paired corpus.
+- byte-identical LLVM IR for every Default/ML twin under `tests` **and**
+  `benchmarks` (`cross_flavor_ir_equiv.rs` `flavor_roots`).
+
+One documented exception to the last bullet: `examples/wasm/studio.{osp,ospml}`
+is a twin pair whose IR is **not** identical — Default lowers string concat
+through `strcat`/`strcpy`, ML through the format path. `examples/` is not a
+`flavor_roots` entry, so the guarantee is scoped to the two roots named above.
+
+## Outstanding (2026-07-30)
+
+Found by auditing every checked claim against the tree. None of these block the
+shipped syntax; all of them mean this plan is not retired.
+
+- [x] **`binarytrees.ospml` compiles and is IR-identical to its twin.** It had
+      not been migrated to `[ARITH-CHECKED]`: four `+`/`-` sites lacked the `?: 0`
+      their Default twin carries, so `--check` emitted four
+      `cannot unify int with Result<int, MathError>`. Migrated, and the coverage
+      hole that let it rot is closed — `flavor_roots()` in
+      `crates/osprey-cli/tests/cross_flavor_ir_equiv.rs` now walks `benchmarks`
+      as well as `tests` (verified to fail when a `?:` is removed). Still 6 code
+      lines, still checksum `19659600`.
+- [ ] **Positional sub-patterns over a *named*-payload variant miscompile.**
+      `type W = Wrap { value: int }` with the pattern `Wrap(v)` type-checks and
+      then dies at `codegen: unknown name v`, in **both** flavors — a live
+      typecheck/codegen disagreement. Worse, `positional_constructor_destructures_fields`
+      (`crates/osprey-types/src/pattern.rs`) asserts that program is `ok()`, so
+      the checker's acceptance is pinned while codegen rejects it. Phase 3's
+      "positional patterns bind positionally **only** against
+      positionally-declared variants" is the intended rule; either the checker
+      must enforce it or codegen must bind by slot for named payloads too. Fixing
+      this belongs to whichever side the rule lands on and touches
+      `crates/osprey-types`.
+- [ ] **`5 ?: -1` is accepted.** Phase 1.5's prose and
+      [PATTERN-RESULT-DEFAULT](../specs/0007-PatternMatching.md) both say the
+      `?:` scrutinee must be a `Result` (or `bool`), and that `5 ?: -1` is
+      `cannot unify int with bool`. In reality it type-checks and prints `5` in
+      both flavors. The spec rule is unenforced. It outlives this plan — file it
+      against spec 0007 rather than here.
+- [ ] **Two fixed defects have no regression test.** `finish_phi`'s
+      `match arms disagree on type` error
+      (`crates/osprey-codegen/src/pattern.rs`) is named by no test —
+      `grep "match arms disagree" crates examples tests` finds only the source.
+      Same for the interpolation-fragment positional-table scoping guard
+      (`crates/osprey-syntax/src/positional.rs` `DEPTH`/`Scope`): the behaviour is
+      real but nothing fails if the guard is deleted. Both are cheap `compile_err`
+      / golden additions.
+- [ ] **The formatter corpus idempotency assertion is partly self-fulfilling.**
+      `format_source` silently returns its input when `preserves_meaning` fails,
+      so `crates/osprey-fmt/tests/corpus.rs` cannot distinguish "formatted
+      identically" from "declined to format". The parse-clean half of the
+      guarantee is real; the idempotency half needs the bail to be observable.
 
 ## TODO
 
@@ -369,16 +424,37 @@ defect fixes are implemented and verified. The completion audit enforces:
       report the same; non-adjacent same-name functions report
       `duplicate definition`. The full formatter corpus parses cleanly.
 - [x] Phase 2 — `[ARITH-PLAIN]`: `int_arithmetic`, `gen_arith`, `%` zero check, `checked*` builtins, `.expectedoutput` regeneration
-- [x] Phase 2 — re-ran `make bench` and rewrote `website/src/benchmarks.md`: the per-operation `osp_alloc_tagged` is gone from `+ - *`, and the six `+ - *`-only cases now sit at C's ~1.5 MB
+- [ ] Phase 2 — re-run `make bench` and refresh `website/src/benchmarks.md`.
+      **This item was checked in error, and its claim is now false.** It held only
+      under the superseded `[ARITH-PLAIN]` decision. `[ARITH-CHECKED]` restored
+      the `Result` representation — `int_arithmetic_result`
+      (`crates/osprey-types/src/expr.rs`) returns `res_math(Type::int())` — so the
+      per-operation allocation is back: `fn addup(a: int, b: int) = a + b`
+      compiles to `define { i64, i8, i8* }* @addup(…)` containing two
+      `call i8* @osp_alloc_tagged` sites. The "~1.5 MB for the six `+ - *`-only
+      cases" figure therefore describes a compiler that no longer exists, and
+      `website/src/benchmarks.md` says so itself ("Re-run `make bench` before
+      drawing current per-case conclusions from this historical table").
+      Optimizing the *safe* representation is the follow-up; erasing its failure
+      channel is not (see §Phase 2 above).
 - [x] Phase 3 — `[TYPE-UNION-POSITIONAL]`: decimal-index field names, `grammar.js` variant rule, shared `positional.rs` construction table, `sub_patterns`-by-slot fix
 - [x] Defect — `finish_phi` errors on mismatched arm LLVM types unless the value is discarded, instead of returning `Value::unit()`
 - [x] Defect — arithmetic propagates a `Result` operand's error instead of unwrapping it and fabricating `Success` (`(10 / 0) + 1.0` → `Error(division by zero)`)
 - [x] Defect — a Default interpolation fragment is re-parsed as a nested program mid-lowering, which cleared the positional-constructor table; `positional::install` now scopes to the outermost lowering, so `"${Node(l, r)}"` folds like the same expression outside a string
 - [x] Defect — a Default nested constructor sub-pattern (`Node(Node(a, b), c)`) was silently discarded and the arm behaved as `Node(_, _)`; it is now rejected with the ML flavor's diagnostic
 - [x] Defect — binding lookahead accepted list-pattern clauses while the parameter parser rejected them; `size [] = 0` and sibling list clauses now parse, merge, format, and execute
-- [x] Migrate the `.ospml` corpus per phase — `tests/core/feature_composition/feature_omnibus.test.ospml` now mixes
-      grouped positional patterns, inline unions, `_` parameters, equational
+- [x] Migrate the `.ospml` corpus per phase — `tests/core/feature_composition/feature_omnibus.test.ospml` mixes
+      inline unions, `_` parameters, equational
       clauses, `?:`, checked arithmetic, and positional construction. The
       whole-corpus formatter test requires every `.ospml` to parse and
       round-trip idempotently, with an explicit clause-vs-`match` surface-form
       regression; the Default twin remains byte-identical at LLVM IR.
+      Two corrections to this item's original wording: `binarytrees.ospml` was
+      **not** migrated and did not compile until 2026-07-30 (see §Outstanding),
+      and `feature_omnibus.test.ospml` carries no **grouped** (parenthesized)
+      positional pattern — its only positional destructure is an unparenthesized
+      `Wrapped n =>` inside a `match`. Grouped positional clause *heads* are
+      exercised end-to-end only by `tests/framework/verdict.test.ospml`
+      (`andThen (Pass) rest = rest`), which is in `ML_ONLY_STEMS` and so exempt
+      from IR equivalence — a grouped head in a twinned file would be better
+      coverage.

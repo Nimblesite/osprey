@@ -87,7 +87,7 @@ general imperative variable; where its reassignment is valid is defined in
 effect handler arm.
 
 `?:` is a single token and is matched before bare `?` or `:`. Its semantics are
-defined by [PATTERN-RESULT-DEFAULT](0007-PatternMatching.md#result-default--pattern-result-default).
+defined by [PATTERN-RESULT-DEFAULT](0007-PatternMatching.md#result-default---pattern-result-default).
 
 ## Comments
 

@@ -90,8 +90,22 @@ attach docs to functions, `let`/`mut` bindings, types, effects, externs,
 modules, and signatures, including declarations inside modules. Only these
 declaration forms receive a documentation field.
 
-Docs do not attach separately to variants, fields, effect operations, or
-parameters.
+Docs do not attach separately to variants, fields, or parameters.
+
+### Effect operations `[DOC-EFFECT-OP]`
+
+An effect operation is the one nested form that carries its own documentation.
+A `///` (Default) or `(** … *)` (ML) block written directly above an operation
+line attaches to that operation, and both flavors lower it to the same
+`EffectOperation::doc`. An operation documents ITSELF: the owning effect's doc
+describes the capability as a whole and serves only as a fallback for an
+undocumented operation. Without per-operation docs, sibling operations hovered
+identically and said nothing about the operation under the cursor
+([LSP-HOVER-EFFECT-OPERATIONS]).
+
+The operation's recorded position anchors on its NAME, not on its declaration
+node, so a leading doc block does not drag the position up onto the comment and
+defeat position-based hover resolution.
 
 ## Markdown rendering `[DOC-EXPORT]`
 

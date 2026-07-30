@@ -91,8 +91,16 @@ one swappable boundary of the
 [Memory Management spec](/spec/0018-memorymanagement/), and under
 `--memory=arc` (Perceus reference counting) **every case drops to 1.5–3.5 MB** —
 matching C throughout, beating it on `exprtree` — with no change to a line of
-Osprey source and, on the allocation-heavy cases, slightly *faster* wall clock.
-`--memory=gc` offers the same trade with a tracing collector.
+Osprey source.
+
+Wall clock cuts both ways, and the split is the opposite of what you might
+expect. On the 17 allocation-light cases ARC is slightly *faster* than the
+non-reclaiming default (up to 6% on `ackermann`, `coins`, `mutual`), because
+freeing early keeps the working set in cache. On the 5 allocation-heavy cases it
+is *slower* — `binarytrees` by 21%, `wordfreq` by 17%, `exprtree` and `listops`
+by 8% — which is the refcount traffic those cases exist to provoke. Reclaiming
+memory is a real trade, not a free win. `--memory=gc` offers the same trade with
+a tracing collector.
 
 ## Reproduce it
 

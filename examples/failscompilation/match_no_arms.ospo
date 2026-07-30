@@ -1,6 +1,6 @@
-// This should fail compilation: Match expression must have at least one arm
-// Tests: ErrMatchNoArms, WrapMatchNoArms
-// Error: match expression must have at least one arm
+// This should fail compilation: a match with zero arms.
+// Zero arms cover no case, so the match cannot be exhaustive.
+// Implements [TYPE-MATCH-EXHAUSTIVE]
 
 type Option = Some { value: Int } | None
 

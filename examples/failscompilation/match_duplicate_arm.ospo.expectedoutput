@@ -1,1 +1,1 @@
-line 5:17: contains expects exactly 2 arguments (s, needle), got 0
+call arity mismatch: expected 2 argument(s), got 0

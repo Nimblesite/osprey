@@ -1,1 +1,2 @@
-handler arm `Loop.again` performs `Loop` while that handler is active; this would recursively re-enter the same handler
+8:8: handler arm `Loop.again` performs `Loop` while that handler is active; this would recursively re-enter the same handler
+unhandled effect operations at program entry: Loop.again; add a matching `handle`

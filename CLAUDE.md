@@ -180,8 +180,13 @@ npm install && npm start         # Start web-based compiler service
 
 **Key Technical Patterns:**
 - Effects are declared with `effect` keyword and handled with `handle...in` expressions
-- The compiler checks values passed into and returned from effects, but does not
-  yet catch every missing effect setup before the program runs
+- The compiler checks values passed into and returned from effects, and rejects a
+  program that performs an effect no handler discharges — `unhandled effect
+  operations at program entry: E.op; add a matching handle`, reaching through
+  helpers, lambdas passed to HOFs, and fibers
+  (`crates/osprey-types/src/effect_rows.rs`). The remaining limit is
+  representational: closed-program operation summaries, not an effect-row variable
+  in `Type::Fun`
 - Pattern matching is mandatory for `any` types and union types
 - All HTTP/WebSocket operations return `Result<T, String>` for error handling
 - Fiber isolation prevents shared memory bugs through message passing

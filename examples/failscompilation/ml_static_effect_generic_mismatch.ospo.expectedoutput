@@ -1,1 +1,1 @@
-unhandled effect operations at program entry: Stash<int>.put
+unhandled effect operations at program entry: Stash<int>.put; add a matching `handle`
