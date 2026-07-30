@@ -189,7 +189,9 @@ second resume aborts with a diagnostic.
       `a_second_resume_aborts_the_program_at_runtime` (`cli_e2e.rs`), which
       asserts the program type-checks, that `--run` reports
       `continuation already resumed`, and that execution never reaches the
-      program's `print`. The fixture and its golden are deleted (89 `.ospo`).
+      program's `print`. The fixture and its golden are deleted (the corpus went
+      to 89 `.ospo`, and back to 90 when `?:` gained a Result-scrutinee check —
+      see [plan 0019](0019-ml-elegance.md#outstanding-2026-07-30)).
 - [x] Flipped plan 0008's open TODO `Reject multi-shot resume with a clear
       diagnostic`.
 

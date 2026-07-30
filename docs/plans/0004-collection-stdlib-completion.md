@@ -367,13 +367,25 @@ pair migrates together against one shared `.expectedoutput`.
       `tests/core/collections/list_basics.test.{osp,ospml}`, green under
       default / `--memory=gc` / `--memory=arc` (`ARC_LEAKY=0`) and wasm32.
 - [ ] **Defect found, not fixed: `listGet` over a `List<string>`.** Independent
-      of the layout work above — a plain runtime handle fails too:
+      of the layout work above — a plain runtime handle fails too. Re-measured
+      2026-07-30; it has **two faces**, and the quiet one is the reason this
+      matters more than a rejected program:
 
       ```osprey
+      let ints = listAppend(List(), 7)
       let ss = listAppend(List(), "x")
-      print("${listGet(ss, 0) ?: "missing"}")   // codegen: invalid program:
-                                                // expected an integer, found a string/handle
+      print("${listGet(ints, 0) ?: -1}")        // 7 — correct
+      print("${listGet(ss, 0) ?: "missing"}")   // 0 — WRONG, and silent
+      let v = listGet(ss, 0) ?: "missing"       // codegen: invalid program:
+                                                // match arms disagree on type: `i64` and `i8*`
       ```
+
+      Inside an interpolation the program compiles and prints `0` for a value
+      that is `"x"`; bound to a `let` the same expression is rejected, because
+      the desugared `?:` match is where the `i64` payload meets the `i8*`
+      fallback. The rejection message recorded here previously
+      (`expected an integer, found a string/handle`) no longer reproduces — the
+      arm-type mismatch is the current one.
 
       `list_get` (`collections.rs`) wraps `osprey_list_get`'s raw `i64` element
       word with `result_from_flag` and never `inttoptr`s it back, so the `Result`

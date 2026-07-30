@@ -265,6 +265,14 @@ pub fn generated_name(role: &str, index: usize) -> String {
     format!("${role}{index}")
 }
 
+/// The generated payload binder of the `Success` arm that `result ?: fallback`
+/// desugars to ([PATTERN-RESULT-DEFAULT]). It is named here, rather than inside
+/// the desugarer that emits it, because the type checker needs to tell that
+/// match apart from a hand-written one: an ordinary `Success` arm may auto-wrap
+/// a plain scrutinee, whereas `?:` may not — the spec requires a `Result` on its
+/// left and forbids reinterpreting a plain value as `Success`.
+pub const RESULT_DEFAULT_PAYLOAD: &str = "$__osprey_result_default";
+
 /// The generated name of an ignored `_` parameter in slot `index`
 /// ([PARAM-WILDCARD]) — unspellable, so repeated `_`s in one head cannot
 /// collide and none of them is referenceable from the body.

@@ -267,8 +267,7 @@ fn gen_arith(cg: &mut Codegen, op: &str, l: Value, r: Value) -> Result<Value> {
             has(&l) || has(&r)
         };
         let list_like = |v: &Value| {
-            v.osp_ty.as_deref() == Some(crate::collections::LIST_OWNER)
-                || crate::listlit::is_lit(v)
+            v.osp_ty.as_deref() == Some(crate::collections::LIST_OWNER) || crate::listlit::is_lit(v)
         };
         if list_like(&l) || list_like(&r) {
             let l = crate::listlit::to_runtime_list(cg, l);

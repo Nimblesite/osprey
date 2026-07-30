@@ -1,0 +1,7 @@
+// `?:` is an explicit Result handling operation, not a fallback for any value:
+// its scrutinee must already be a Result, and it never reinterprets a plain
+// value as `Success`. Accepting this made the fallback unreachable dead code —
+// a negative literal is folded, so `-1` is a plain `int` even though the
+// checked unary negation of a *variable* is a Result. [PATTERN-RESULT-DEFAULT]
+let dead = 5 ?: -1
+print("${dead}")

@@ -387,7 +387,11 @@ fn rejection_diagnostics(path: &Path, source: &str) -> String {
         for e in &parsed.errors {
             // A formatting failure into a String cannot happen; ignoring the
             // Result keeps this panic-free without an unwrap.
-            let _ = writeln!(out, "{}:{}: {}", e.position.line, e.position.column, e.message);
+            let _ = writeln!(
+                out,
+                "{}:{}: {}",
+                e.position.line, e.position.column, e.message
+            );
         }
         return out;
     }
@@ -413,7 +417,11 @@ fn failscompilation_corpus_matches_its_expected_diagnostics() {
     let dir = repo_root().join("examples/failscompilation");
     let mut drift = Vec::new();
     for path in sources(&dir, "ospo") {
-        let name = path.strip_prefix(&dir).unwrap_or(&path).display().to_string();
+        let name = path
+            .strip_prefix(&dir)
+            .unwrap_or(&path)
+            .display()
+            .to_string();
         let source = fs::read_to_string(&path).unwrap_or_default();
         let golden_path = path.with_extension("ospo.expectedoutput");
         let Ok(expected) = fs::read_to_string(&golden_path) else {
@@ -422,7 +430,9 @@ fn failscompilation_corpus_matches_its_expected_diagnostics() {
         };
         let actual = rejection_diagnostics(&path, &source);
         if actual != expected {
-            drift.push(format!("{name}:\n  expected: {expected:?}\n  actual:   {actual:?}"));
+            drift.push(format!(
+                "{name}:\n  expected: {expected:?}\n  actual:   {actual:?}"
+            ));
         }
     }
     assert!(

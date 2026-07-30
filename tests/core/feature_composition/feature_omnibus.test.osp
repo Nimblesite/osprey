@@ -6,6 +6,9 @@ type Pri = Low | Med | High
 type Color = Red | Green | Blue
 /// Wrapped demonstrates extracting a positional union payload.
 type Wrapped = Wrapped(int)
+/// Pair carries a NAMED payload destructured positionally, pinning that a binder
+/// takes its column and not its like-named field.
+type Pair = Pair { first: string, second: int }
 
 /// Converts every priority constructor into its business weight.
 fn priWeight(p) = match p { Low => 1 Med => 5 High => 9 }
@@ -34,6 +37,13 @@ effect Counter {
 fn unionsResultsAndScalars() = {
     let wrapped = Wrapped(42)
     let wrappedValue = match wrapped { Wrapped(n) => n }
+    let pair = Pair { first: "ada", second: 36 }
+    /// `a` and `b` name no declared field, so only column order can resolve them.
+    let bySlot = match pair { Pair(a, b) => "${a}/${b}" }
+    /// Here every binder IS a field name, spelled in the opposite order. The
+    /// column still wins, so `first` takes slot 1. Resolving by name instead
+    /// handed back slot 0's string pointer as an int.
+    let swapped = match pair { Pair(second, first) => "${first}/${second}" }
     // One grouped call records every former golden value plus new branch state.
     checkAll("union/result/scalar state", [
         "=== omnibus ===" == "=== omnibus ===",
@@ -41,6 +51,8 @@ fn unionsResultsAndScalars() = {
         priWeight(Med) == 5,
         priWeight(Low) == 1,
         "${colorName(Green)} wrapped ${wrappedValue}" == "green wrapped 42",
+        bySlot == "ada/36",
+        swapped == "36/ada",
         "next ${25 + 1} half ${25 / 2}" == "next Success(26) half Success(12.5)",
         1.5 == 1.5,
         parseStatus("oops") == "parseInt rejected oops",

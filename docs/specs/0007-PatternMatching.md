@@ -19,9 +19,25 @@ let label = match value {
 
 ## Union patterns
 
-A nullary variant is matched by name. A named payload binds fields by field
-name, independent of their order in the pattern. A positional payload binds by
-slot ([TYPE-UNION-POSITIONAL](0003-Syntax.md#positional-variants-type-union-positional)).
+A nullary variant is matched by name. A payload has two destructuring forms, and
+the **form written** — not how the payload was declared — decides how binders map
+onto slots:
+
+- `Ctor { a, b }` binds each binder to the field of that same name, independent
+  of their order in the pattern.
+- `Ctor(a, b)` binds by slot: the binder in column *i* takes payload slot *i*,
+  whatever it is spelled
+  ([TYPE-UNION-POSITIONAL](0003-Syntax.md#positional-variants-type-union-positional)).
+
+A named payload accepts either form, so `Some(n)` is legal beside
+`Some { value }`. A positionally declared payload accepts only the second in
+practice, because its slots have no spellable names.
+
+Deciding this from the declaration instead is what let the type checker and the
+code generator disagree: the checker read `Ctor(a, b)` by column while codegen
+read it by name for any named payload, so a binder that named no field bound
+nothing, and one that named the *wrong* field silently loaded another slot —
+returning a payload pointer out of an `-> int` function.
 
 ```osprey
 type Option = Some { value: int } | None
@@ -38,8 +54,12 @@ let side = match tree {
 }
 ```
 
-ML drops the payload delimiters (`Some value`, `Node left _`) but produces the
-same constructor patterns.
+ML drops the payload delimiters (`Some value`, `Node left _`). It has only the
+one form, and that form is the positional one — ML `Some value` is the same
+constructor pattern as Default `Some(value)`, so an ML binder always takes its
+column and may be renamed freely. `Success`/`Error` are the single exception:
+their payload binds by role (`value`, `message`), so ML spells them by name like
+Default's `Success { value }`.
 
 ## Wildcard patterns
 
@@ -117,9 +137,15 @@ checker and code generation apply this rule identically.
 
 The `Success` arm is therefore taken **unconditionally** for a non-`Result`
 scrutinee. A value's magnitude or sign MUST NOT select the arm — a negative
-scalar is a `Success` payload, not an error sentinel. Applying a
-negative-means-error heuristic would make `-1 ?: 99` evaluate to `99` and
-`abs(-1)` observe `0`, silently wrong on every negative value.
+scalar is a `Success` payload, not an error sentinel. Under a
+negative-means-error heuristic `match -1 { Success { value } => value ... }`
+would take the `Error` arm and `abs(-1)` would observe `0`, silently wrong on
+every negative value.
+
+This rule governs hand-written `Success`/`Error` arms only. `?:` does **not**
+inherit it: its scrutinee must be a real `Result`, and a plain value on its
+left is a compile-time error
+([PATTERN-RESULT-DEFAULT](#result-default---pattern-result-default)).
 
 ## Ternary Match (Syntactic Sugar)
 
