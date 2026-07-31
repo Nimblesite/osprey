@@ -1,0 +1,161 @@
+// Osprey -> macOS graphics bridge: a real Cocoa window, real pixels, animated
+// from pure GPU kernels. Osprey owns every pixel; `libospgfx` (ospgfx.m) owns
+// only the window and the blit ([FFI-LINK-DIRECTIVES], [FFI-PTR] —
+// docs/specs/0019-ForeignFunctionInterface.md).
+//
+// Each frame is three dispatches over the flat pixel grid ([GPU-IOTA],
+// [GPU-MAP], [GPU-ZIPWITH] — docs/specs/0034-GPUComputation.md): a plasma
+// field, an orbiting-light field, then one elementwise pass that shades them
+// into packed 24-bit colour. Arithmetic is fixed point because [GPU-CONVERT]'s
+// `toFloat` is not implemented; the sine below is a parabola approximation.
+
+// @link: ospgfx
+// @linkdir: examples/graphics
+
+extern fn osp_gfx_open(width: int, height: int, scale: int, title: string) -> Ptr
+extern fn osp_gfx_put(win: Ptr, index: int, rgb: int) -> int
+extern fn osp_gfx_present(win: Ptr) -> int
+extern fn osp_gfx_ticks(win: Ptr) -> int
+extern fn osp_gfx_close(win: Ptr) -> int
+
+/// unit is the fixed-point one; turn is a full rotation in angle units.
+fn unit() = 4096
+fn turn() = 4096
+fn halfTurn() = 2048
+
+/// frameWidth, frameHeight and windowScale size the framebuffer and window.
+fn frameWidth() = 320
+fn frameHeight() = 200
+fn windowScale() = 3
+fn pixelCount() = (frameWidth() * frameHeight()) ?: 0
+
+/// wrapTurn folds any angle into [0, turn).
+fn wrapTurn(a) = {
+    let m = (a % turn()) ?: 0
+    match m < 0 { true => (m + turn()) ?: 0 false => m }
+}
+
+/// sinArc is the positive half-wave: a parabola through (0,0), (1024,unit), (2048,0).
+fn sinArc(u) = intDiv((u * ((halfTurn() - u) ?: 0)) ?: 0, 256) ?: 0
+
+/// fsin and fcos return -unit..unit for an angle in turn units.
+fn fsin(a) = {
+    let u = wrapTurn(a)
+    match u < halfTurn() {
+        true => sinArc(u)
+        false => (0 - sinArc((u - halfTurn()) ?: 0)) ?: 0
+    }
+}
+fn fcos(a) = fsin((a + 1024) ?: 0)
+
+/// isqrtIter is Newton's method on integers, converging from above.
+fn isqrtIter(n: int, guess: int) -> int = {
+    let next = intDiv((guess + (intDiv(n, guess) ?: guess)) ?: guess, 2) ?: guess
+    match next >= guess { true => guess false => isqrtIter(n, next) }
+}
+
+/// isqrt is the floor of the square root, total on zero and negatives.
+fn isqrt(n: int) -> int = match n <= 0 { true => 0 false => isqrtIter(n, n) }
+
+/// pixelX and pixelY recover frame coordinates from a flat kernel index.
+fn pixelX(idx) = (idx % frameWidth()) ?: 0
+fn pixelY(idx) = intDiv(idx, frameWidth()) ?: 0
+
+/// centreX and centreY are the frame midpoint, in pixels.
+fn centreX() = intDiv(frameWidth(), 2) ?: 0
+fn centreY() = intDiv(frameHeight(), 2) ?: 0
+
+/// plasmaHue is the first kernel: four interfering sine waves — two axis
+/// aligned, one diagonal, one radial about a drifting focus — summed into a
+/// hue that sweeps the whole colour wheel as `t` advances.
+fn plasmaHue(idx, t) = {
+    let x = pixelX(idx)
+    let y = pixelY(idx)
+    let fx = ((x - centreX()) ?: 0) - (intDiv((fcos((t * 3) ?: 0) * 90) ?: 0, unit()) ?: 0) ?: 0
+    let fy = ((y - centreY()) ?: 0) - (intDiv((fsin((t * 2) ?: 0) * 60) ?: 0, unit()) ?: 0) ?: 0
+    let r = isqrt(((fx * fx) ?: 0) + ((fy * fy) ?: 0) ?: 0)
+    let waves = fsin(((x * 26) ?: 0) + t ?: 0) + fsin(((y * 34) ?: 0) + ((t * 2) ?: 0) ?: 0)
+        + fsin(((((x + y) ?: 0) * 19) ?: 0) - ((t * 3) ?: 0) ?: 0)
+        + ((fsin(((r * 58) ?: 0) - ((t * 5) ?: 0) ?: 0) * 3) ?: 0) ?: 0
+    wrapTurn(intDiv((waves * 5) ?: 0, 24) ?: 0)
+}
+
+/// orbit places one light on an ellipse around the frame centre.
+fn orbitX(t, speed, phase, radius) =
+    (centreX() + (intDiv((fcos((((t * speed) ?: 0) + phase) ?: 0) * radius) ?: 0, unit()) ?: 0)) ?: 0
+fn orbitY(t, speed, phase, radius) =
+    (centreY() + (intDiv((fsin((((t * speed) ?: 0) + phase) ?: 0) * radius) ?: 0, unit()) ?: 0)) ?: 0
+
+/// falloff is one light's inverse-square contribution at a pixel.
+fn falloff(x, y, lx, ly) = {
+    let dx = (x - lx) ?: 0
+    let dy = (y - ly) ?: 0
+    intDiv(700000, (((dx * dx) ?: 0) + ((dy * dy) ?: 0) + 40) ?: 40) ?: 0
+}
+
+/// lightField is the second kernel: three orbiting lights, summed. Their cores
+/// blow past white and their halos ride over the plasma underneath.
+fn lightField(idx, t) = {
+    let x = pixelX(idx)
+    let y = pixelY(idx)
+    falloff(x, y, orbitX(t, 4, 0, 108), orbitY(t, 4, 0, 62))
+        + falloff(x, y, orbitX(t, 3, 1365, 130), orbitY(t, 3, 1365, 74))
+        + falloff(x, y, orbitX(t, 5, 2731, 84), orbitY(t, 5, 2731, 48)) ?: 0
+}
+
+/// clampByte keeps a computed channel inside 0..255.
+fn clampByte(v) = match v < 0 {
+    true => 0
+    false => match v > 255 { true => 255 false => v }
+}
+
+/// channel samples the colour wheel at one phase offset, 0..255.
+fn channel(hue, phase) =
+    intDiv((((fsin((hue + phase) ?: 0) + unit()) ?: 0) * 255) ?: 0, (2 * unit()) ?: 0) ?: 0
+
+/// shade is the elementwise pass: hue in, light in, packed 24-bit colour out.
+/// Light is added to every channel, so bright cores wash out to white.
+fn shade(hue: int, light: int) -> int = {
+    let r = clampByte((intDiv((channel(hue, 0) * 3) ?: 0, 4) ?: 0) + light ?: 0)
+    let g = clampByte((intDiv((channel(hue, 1365) * 3) ?: 0, 4) ?: 0) + light ?: 0)
+    let b = clampByte((intDiv((channel(hue, 2731) * 3) ?: 0, 4) ?: 0) + light ?: 0)
+    b + ((g * 256) ?: 0) + ((r * 65536) ?: 0) ?: 0
+}
+
+/// pixelGrid is the flat index buffer every kernel is dispatched over.
+fn pixelGrid() = gpuIota(pixelCount())
+
+/// blit pushes a rendered buffer into the window, one pixel at a time, and
+/// returns the number of pixels the bridge accepted.
+fn blit(win, pixels) =
+    range(0, pixelCount()) |> fold(0, |acc, i| =>
+        (acc + osp_gfx_put(win, i, gpuGet(pixels, i) ?: 0)) ?: acc)
+
+/// renderFrame dispatches both fields, composites them and presents.
+fn renderFrame(win, t) = {
+    let hue = pixelGrid() |> gpuMap(|i| => plasmaHue(i, t))
+    let light = pixelGrid() |> gpuMap(|i| => lightField(i, t))
+    blit(win, gpuZipWith(hue, light, shade))
+}
+
+/// animate runs until the window is closed, advancing on wall-clock time so
+/// the motion plays at the same speed whatever frame rate the host sustains.
+fn animate(win: Ptr, frame: int) -> int = match osp_gfx_present(win) == 0 {
+    true => frame
+    false => {
+        let drawn = renderFrame(win, intDiv(osp_gfx_ticks(win), 12) ?: 0)
+        match drawn == pixelCount() {
+            true => animate(win, (frame + 1) ?: frame)
+            false => frame
+        }
+    }
+}
+
+fn main() = {
+    let win = osp_gfx_open(frameWidth(), frameHeight(), windowScale(), "Osprey · plasma")
+    let frames = animate(win, 0)
+    print("rendered ${frames} frames of ${pixelCount()} pixels on ${gpuDevice()}")
+    osp_gfx_close(win)
+}
+
+main()
