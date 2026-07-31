@@ -657,10 +657,13 @@ _tui: build
 	@echo "==> launching TUI demo (live GitHub API browser)"
 	./$(BIN) examples/tui/api_browser.osp --run
 
-## gpu-demo: Render the GPU graphics demo (fractal, shaded sphere, composite)
+## gpu-demo: Render the gpu* kernel demo (fractal, shaded sphere, composite)
+#            Runs on the CPU: [GPU-BACKEND-HOST] is the only backend, so the
+#            gpu* builtins are a dispatch surface, not silicon. For pixels on
+#            the actual GPU, see `make graphics`.
 #            FLAVOR=ml renders the ML twin, which prints byte-identical output.
 gpu-demo: build
-	@echo "==> rendering GPU graphics demo (fractal, shaded sphere, composite)"
+	@echo "==> rendering gpu* kernel demo on the host backend (CPU)"
 	./$(BIN) tests/core/gpu/raster.test.$(if $(filter ml,$(FLAVOR)),ospml,osp) --run
 
 ## graphics: Build the macOS graphics bridge and run the animated Metal demo

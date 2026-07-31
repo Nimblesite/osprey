@@ -135,6 +135,50 @@ Stages ratchet: each keeps `make ci` green and the differential harness
 byte-exact, and later stages must not change the meaning of programs
 accepted by earlier stages (`[GPU-ROADMAP]`).
 
+## Start here — the next session's work order
+
+Work the checklist below in this order; each item names the files it lives in.
+
+1. **`toFloat` (plan 0004, ~1 hour, unblocks two checklist items here).**
+   One `sitofp` arm in `crates/osprey-codegen/src/conv.rs` + scheme in
+   `builtins.rs` + docs entry, per `[GPU-CONVERT]` in spec 0034 (semantics
+   already specified: round-to-nearest-even, exact for |n| ≤ 2^53). Then
+   seed float pipelines from `gpuIota(n) |> gpuMap(toFloat)` in
+   `tests/core/gpu/stress.test.osp` and tick the stage-2 seed item.
+2. **Buffer literals + `Iterator` → `GpuBuffer` fusion** (stage 2 remainder,
+   self-contained in `crates/osprey-codegen/src/gpu.rs` + `iter.rs`). Fusion
+   means `toGpu` consuming an iterator chain writes elements straight into
+   the dense buffer — no intermediate `List`. Corpus proof: extend an
+   existing suite, don't add a file.
+3. **Stage 3 kernel extraction** — the critical path to any device backend,
+   fully testable with zero GPU hardware. Everything in stage 4+ waits on
+   it; start it as soon as 1–2 land.
+
+Items *not* to start from this plan: block-bodied lambda kernels and
+recursive-generic emission belong to plan 0002, F10 int-defaulting to plan
+0022. If you land those there, come back and strip the load-bearing
+annotations from the `mlkernels`/`stress` twins and tick the corresponding
+stage-2 items here.
+
+Landmines the last session hit (avoid re-learning them):
+
+- Unannotated recursive functions now **fail closed** with "annotate its
+  parameters and return type" (`genfn.rs` re-entry guard, golden
+  `recursive_generic_needs_annotation.ospo`) — that diagnostic is
+  deliberate, not a bug to "fix" by reverting the guard.
+- Twins must emit **identical IR** (`cross_flavor_ir_equiv`), goldens are
+  byte-exact under default/GC/ARC **and** wasm32 — wasm goldens run under
+  `make _test_wasm_goldens`, *not* `make ci`; run both before claiming
+  green.
+- `GOLDEN_MIN` (172 native / 119 wasm in `crates/run_test_corpus.sh`) must
+  be bumped whenever the corpus grows — it is a ratchet, never lower it.
+- The deslop duplication ceiling sits at 5.00% and the repo is at ~4.99%:
+  any combinator added to `gpu.rs` must reuse `kernel_of`/`scalar_acc_init`
+  or it will trip CI.
+- Float `/` returns `Result<float, MathError>` — corpus kernels need `?:`.
+  ML twins: no braces in constructor patterns (`Success value`),
+  parenthesize match-arm and pipe continuations.
+
 ## TODO checklist
 
 ### Stage 1 — typed surface + host backend
