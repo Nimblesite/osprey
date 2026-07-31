@@ -226,9 +226,9 @@ and each flavor's lowerer.
 The operation name in an effect declaration, qualified `perform Effect.op`, or
 matching handler arm hovers to the operation's qualified type. The presentation
 uses the active authoring flavor: `Audit.step: fn(string) -> int` in Default and
-`Audit.step : string => int` in ML (`[FLAVOR-ML-EFFECT]`). Operations do not
-carry independent documentation (`[DOC-ATTACH]`), so the hover appends the
-owning effect declaration's documentation.
+`Audit.step : string => int` in ML (`[FLAVOR-ML-EFFECT]`). An operation carries
+its OWN documentation (`[DOC-EFFECT-OP]`), which the hover appends; the owning
+effect declaration's documentation is the fallback when the operation has none.
 
 ## Go to definition `[LSP-DEFINITION-BUILTIN]`
 
@@ -348,7 +348,7 @@ Normative requirements:
 The server advertises and uses **UTF-16** `positionEncoding`. Tree-sitter
 reports columns as **byte** offsets, so every position crossing the wire is
 re-measured into UTF-16 units
-([`crates/osprey-lsp/src/text.rs`](../../crates/osprey-lsp/src/text.rs),
+([`crates/osprey-lsp/src/diagnostics.rs`](../../crates/osprey-lsp/src/diagnostics.rs),
 `byte_col_to_encoding`). The internal helpers remain encoding-parameterized so
 conversion behavior can be unit-tested independently of the fixed wire choice.
 

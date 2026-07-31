@@ -125,6 +125,16 @@ mod tests {
         .expect("debug codegen should succeed")
     }
 
+    /// The body of one emitted function, so an assertion about its instructions
+    /// cannot be satisfied by an unrelated function elsewhere in the module.
+    fn function_body(ir: &str, header: &str) -> String {
+        ir.split(header)
+            .nth(1)
+            .and_then(|rest| rest.split("\n}").next())
+            .unwrap_or_default()
+            .to_string()
+    }
+
     /// Compile `src` and assert codegen rejected it (used for the loud-failure
     /// branches that have no surface syntax of their own).
     fn compile_err(src: &str) -> CodegenError {
@@ -688,6 +698,89 @@ mod tests {
     }
 
     #[test]
+    fn positional_sub_patterns_bind_by_slot_over_a_named_payload() {
+        // `Ctor(a, b)` is the POSITIONAL destructure: column i takes payload
+        // slot i, whatever the binder is spelled ([TYPE-UNION-POSITIONAL]).
+        // `bind_variant_fields` used to pick its mode from the *declaration* —
+        // by slot only when the variant was declared positionally, by name
+        // otherwise — while `osprey-types` bound `sub_patterns` by slot for
+        // every variant. Over a named payload the two disagreed: a binder that
+        // named no field silently bound nothing and the arm body died at
+        // `codegen: unknown name a`.
+        let ir = module(
+            "type Pair = Pair { first: string, second: int }\n\
+             fn render(p: Pair) -> string = match p {\n\
+               Pair(a, b) => \"${a}|${b}\"\n\
+             }\n\
+             fn main() -> Unit = print(render(Pair { first: \"ada\", second: 36 }))\n",
+        );
+        // Slot 0 (`first`, a string) and slot 1 (`second`, an int) are payload
+        // fields 1 and 2 — field 0 is the tag. Both must be loaded, at their
+        // declared LLVM types, for the two binders to have resolved by column.
+        let body = function_body(&ir, "define i8* @render");
+        assert!(
+            body.contains("load i8*, i8**") && body.contains("load i64, i64*"),
+            "both payload slots must be loaded at their declared types:\n{body}"
+        );
+    }
+
+    #[test]
+    fn positional_binders_ignore_field_names_even_when_they_collide() {
+        // The dangerous half of the same disagreement. Here every binder IS a
+        // declared field name, but in the opposite order, so by-name and
+        // by-slot binding disagree *silently* rather than failing: the checker
+        // typed `second: string` / `first: int` from the columns while codegen
+        // resolved each binder to its like-named slot. The program compiled and
+        // printed values of the wrong static types.
+        let ir = module(
+            "type Pair = Pair { first: string, second: int }\n\
+             fn secondSlot(p: Pair) -> int = match p {\n\
+               Pair(second, first) => first\n\
+             }\n\
+             fn main() -> Unit = print(\"n=${secondSlot(Pair { first: \"ada\", second: 36 })}\")\n",
+        );
+        // `first` sits in column 1, so it must yield slot 1's i64 directly.
+        // Binding by name instead reached slot 0 and returned that string
+        // pointer `ptrtoint`-cast to i64 out of an `-> int` function, so the
+        // program printed a raw heap address that changed between runs.
+        let body = function_body(&ir, "define i64 @secondSlot");
+        assert!(
+            !body.contains("ptrtoint"),
+            "an `-> int` arm must not return a payload pointer as an int:\n{body}"
+        );
+        assert!(
+            body.contains("phi i64"),
+            "the column-1 binder must carry slot 1's int type:\n{body}"
+        );
+    }
+
+    #[test]
+    fn a_positional_declaration_binds_by_column_through_the_named_form() {
+        // The third shape, and the reason the pattern form alone cannot settle
+        // every case. A POSITIONALLY declared variant (`Fail(string)`) has only
+        // synthetic slot names, which no binder can spell, so the *named* form
+        // over it is positional after all and must fall back to the column —
+        // `slot_of`'s `declared_positionally` arm. Resolving strictly by name
+        // here bound nothing and the arm died at `codegen: unknown name reason`
+        // ([TYPE-UNION-POSITIONAL]).
+        let ir = module(
+            "type Verdict = Pass | Fail(string)\n\
+             fn why(v: Verdict) -> string = match v {\n\
+               Pass => \"ok\"\n\
+               Fail { reason } => reason\n\
+             }\n\
+             fn main() -> Unit = print(why(Fail(\"bad\")))\n",
+        );
+        // Slot 0 is payload field 1; loading it as an i8* is the only way the
+        // binder could have resolved to a column rather than to a name.
+        let body = function_body(&ir, "define i8* @why");
+        assert!(
+            body.contains("load i8*, i8**"),
+            "the column-0 binder must load the positional payload slot:\n{body}"
+        );
+    }
+
+    #[test]
     fn single_variant_record_destructures_in_match() {
         // A single-variant type whose sole variant shares the type's name is
         // classified as a record, so it never lands in `union_variants`.
@@ -923,12 +1016,16 @@ mod tests {
         // [BUILTIN-COLLECTION-LENGTH], [BUILTIN-COLLECTION-ISEMPTY]: the bare
         // spec names are receiver-directed. Routing a List/Map handle into the
         // string runtime reads an `i8*` heap pointer as a NUL-terminated string
-        // — a wrong answer AND an out-of-bounds read.
+        // — a wrong answer AND an out-of-bounds read. A flat list *literal* is a
+        // third layout: it matched neither collection tag and fell through to
+        // `osp_strlen`, which counted the length word's own bytes and answered
+        // `1` for every list of 1..=255 elements.
         let ir = module(
             "fn main() -> Unit = {\n\
                let xs = listAppend(listAppend(List(), 1), 2)\n\
                let m = mapSet(Map(), \"a\", 1)\n\
-               print(\"${length(xs)} ${isEmpty(xs)} ${length(m)} ${isEmpty(m)} ${length(\"ab\")}\")\n\
+               let lit = [7, 8, 9]\n\
+               print(\"${length(xs)} ${isEmpty(xs)} ${length(m)} ${isEmpty(m)} ${length(lit)} ${isEmpty(lit)} ${length(\"ab\")}\")\n\
              }\n",
         );
         assert!(
@@ -953,6 +1050,65 @@ mod tests {
             ir.matches("@osp_string_is_empty").count(),
             0,
             "no collection receiver may reach the string isEmpty"
+        );
+    }
+
+    #[test]
+    fn list_literal_operands_of_plus_are_rebuilt_before_concatenation() {
+        // `+` on lists is `listConcat`, selected by the LIST_OWNER tag — which a
+        // flat list literal does not carry. `xs + [1]` therefore handed
+        // `osprey_list_concat` the literal's foreign `{ i64, i8* }` header (a
+        // SEGFAULT), and `[1] + [2]` matched neither operand and fell through to
+        // integer arithmetic. Both operands are now rebuilt into runtime lists.
+        let ir = module(
+            "fn main() -> Unit = {\n\
+               let xs = listAppend(List(), 1)\n\
+               let both = [1, 2] + [3]\n\
+               let mixedL = xs + [4]\n\
+               let mixedR = [5] + xs\n\
+               print(\"${listLength(both)} ${listLength(mixedL)} ${listLength(mixedR)}\")\n\
+             }\n",
+        );
+        // Three concatenations, each over two real OspreyList handles.
+        assert_eq!(
+            ir.matches("call i8* @osprey_list_concat").count(),
+            3,
+            "every `+` over a list must reach the list runtime"
+        );
+        // Five literals appear; each is sealed into a runtime list before use.
+        assert!(
+            ir.matches("osprey_list_builder_seal").count() >= 5,
+            "each literal operand must be rebuilt as a runtime list"
+        );
+    }
+
+    #[test]
+    fn a_list_literal_argument_is_rebuilt_before_it_crosses_into_a_callee() {
+        // A callee's `List<T>` parameter is one `i8*` whichever layout the caller
+        // wrote, so the body cannot branch on it. `osprey_list_length` reads both
+        // layouts (shared leading `i64`), but `osprey_list_get`/`_drop` need the
+        // real trie — so a list pattern over a literal argument SEGFAULTED while
+        // the same call on a `listAppend` chain worked. The literal is rebuilt at
+        // the boundary instead.
+        let ir = module(
+            "fn headOf(xs: List<int>) -> int = match xs {\n\
+               [] => 0\n\
+               [h, ...t] => h\n\
+             }\n\
+             fn main() -> Unit = {\n\
+               let rt = listAppend(List(), 7)\n\
+               print(\"${headOf([7, 8])} ${headOf(rt)}\")\n\
+             }\n",
+        );
+        // The literal argument seals a runtime list; the handle argument does not.
+        assert_eq!(
+            ir.matches("call i8* @osprey_list_builder_seal").count(),
+            1,
+            "exactly the literal argument is rebuilt"
+        );
+        assert!(
+            ir.contains("osprey_list_get"),
+            "the arm still binds its head from the list runtime"
         );
     }
 
@@ -1238,9 +1394,9 @@ card doc index selected =
     // ---- fibers (fiber.rs) ----
 
     #[test]
-    fn fibers_channels_yield_select_and_done() {
+    fn fibers_channels_yield_and_done() {
         // spawn/await (covered elsewhere) plus Channel/send/recv, yield with and
-        // without a value, select first-arm, fiber_yield and fiberDone.
+        // without a value, fiber_yield and fiberDone.
         let ir = module(
             "fn work(n: int) -> int = (n + 1) ?: n\n\
              fn main() -> Unit = {\n\
@@ -1249,15 +1405,54 @@ card doc index selected =
                let got = recv(ch)\n\
                let y = yield 5\n\
                let z = fiber_yield(9)\n\
-               let pick = select { 1 => 100  2 => 200 }\n\
                let f = spawn work(3)\n\
-               print(\"${got} ${y} ${z} ${pick} ${await(f)} ${fiberDone(f)}\")\n\
+               print(\"${got} ${y} ${z} ${await(f)} ${fiberDone(f)}\")\n\
              }\n",
         );
         assert!(ir.contains("channel_create"));
         assert!(ir.contains("channel_send"));
         assert!(ir.contains("channel_recv"));
         assert!(ir.contains("fiber_done"));
+    }
+
+    #[test]
+    fn direct_ast_select_is_rejected_instead_of_choosing_the_first_arm() {
+        // [CONCURRENCY-SELECT-REJECT]: the type checker rejects `select` first, so
+        // codegen sees one only when an AST is compiled directly. It used to lower
+        // the FIRST arm's body and return it as the select's value — a wrong answer
+        // that looked right. Plan 0007's acceptance bar is that this path cannot
+        // silently pick an arm.
+        let err = compile_err(
+            "fn main() -> Unit = {\n\
+               let pick = select { 1 => 100  2 => 200 }\n\
+               print(\"${pick}\")\n\
+             }\n",
+        );
+        assert!(
+            err.to_string().contains("`select` is not supported"),
+            "expected the select rejection, got {err}"
+        );
+    }
+
+    #[test]
+    fn match_arms_of_different_physical_types_are_rejected_not_unitised() {
+        // The other loud-failure branch with no surface syntax of its own: the
+        // checker rejects mismatched arms (`cannot unify int with string`), so
+        // `finish_phi` only meets them when an AST reaches codegen directly.
+        // It used to return `Value::unit()` there, turning a whole class of
+        // type errors into silently-unit expressions; it must error instead,
+        // except where the value is genuinely discarded.
+        let err = compile_err(
+            "fn pick(n: int) -> int = match n {\n\
+               1 => 1\n\
+               _ => \"two\"\n\
+             }\n\
+             fn main() -> Unit = print(\"${pick(1)}\")\n",
+        );
+        assert!(
+            err.to_string().contains("match arms disagree on type"),
+            "expected the arm-type mismatch, got {err}"
+        );
     }
 
     #[test]

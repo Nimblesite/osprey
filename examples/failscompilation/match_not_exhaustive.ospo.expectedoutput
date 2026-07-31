@@ -1,1 +1,1 @@
-line 8:18: match expression not exhaustive: missing patterns: [Blue]
+non-exhaustive match on `Color`: missing Blue

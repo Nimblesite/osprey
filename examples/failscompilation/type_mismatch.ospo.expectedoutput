@@ -1,1 +1,1 @@
-line 5:0: type mismatch: cannot assign int to variable 'x' of type Int
+6:0: let `y`: type mismatch: cannot unify string with int

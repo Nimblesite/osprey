@@ -6,7 +6,7 @@
 //!   * user-union variant arms — tag comparison against the heap block's leading
 //!     discriminant, binding the variant's fields.
 
-use crate::builder::Codegen;
+use crate::builder::{Codegen, CtorView};
 use crate::collections::LIST_OWNER;
 use crate::error::{CodegenError, Result};
 use crate::expr::gen_expr;
@@ -34,8 +34,23 @@ pub(crate) fn gen_match(cg: &mut Codegen, value: &Expr, arms: &[MatchArm]) -> Re
 /// `[a, b]`, `>= n` for a `[a, ...rest]` — then its prefix elements and tail are
 /// bound from the runtime list. Coexists with a trailing catch-all
 /// (`xs => …` / `_`). Implements [TYPE-LIST-PATTERNS].
+///
+/// A flat list **literal** is a different layout from an `OspreyList` handle, so
+/// the scrutinee is rebuilt into a runtime list first (a no-op for one that
+/// already is). Without that, `osprey_list_length` read the literal's foreign
+/// `{ i64, i8* }` header and the program **segfaulted** — reachable from ordinary
+/// code, since `fn headOf(xs) = match xs { [] => -1  [h, ...t] => h }` crashed on
+/// `headOf([7, 8])` while the same call on a `listAppend` chain worked.
+///
+/// The catch-all arm binds the ORIGINAL scrutinee, not the rebuilt list: a
+/// literal bound by `xs => xs[0]` must keep the literal layout, because
+/// [`crate::listlit::gen_index`] reads its element type off the literal's owner
+/// tag. A literal carries no `payload_owner`, so the rebuilt value loses no
+/// element-owner information the guarded arms could have used.
 fn gen_list_match(cg: &mut Codegen, disc: &Value, arms: &[MatchArm]) -> Result<Value> {
-    let list_val = crate::cast::coerce_to(cg, disc.clone(), LType::Ptr)?;
+    let original = crate::cast::coerce_to(cg, disc.clone(), LType::Ptr)?;
+    let rebuilt = crate::listlit::to_runtime_list(cg, disc.clone());
+    let list_val = crate::cast::coerce_to(cg, rebuilt, LType::Ptr)?;
     let len = cg.call("i64", "osprey_list_length", "i8*", &[&list_val.operand]);
     let (end, mut phi_in, last, mark) = match_state(cg, arms);
 
@@ -50,7 +65,7 @@ fn gen_list_match(cg: &mut Codegen, disc: &Value, arms: &[MatchArm]) -> Result<V
                 finish_guarded_arm(cg, arm, &mut phi_in, &next_lbl, i == last)?;
             }
             Pattern::Wildcard | Pattern::Binding(_) | Pattern::TypeAnnotated { .. } => {
-                bind_catch_all(cg, &arm.pattern, &list_val);
+                bind_catch_all(cg, &arm.pattern, &original);
                 emit_arm_body(cg, arm, &mut phi_in)?;
                 break;
             }
@@ -126,10 +141,24 @@ fn is_result_arm(p: &Pattern) -> bool {
     matches!(p, Pattern::Constructor { name, .. } if name == "Success" || name == "Error")
 }
 
+/// How a constructor arm's binders map onto the variant's payload slots. The
+/// *pattern form* decides this, never the declaration: `osprey-types` binds
+/// `sub_patterns` by column and `fields` by name for every variant alike, so
+/// codegen must agree or a well-typed arm reads the wrong slot.
+#[derive(Clone, Copy)]
+enum BindMode {
+    /// `Ctor { a, b }` — each binder names the slot it takes, so a reordered
+    /// destructure (`PersonData { age, name }`) still binds correctly.
+    ByName,
+    /// `Ctor(a, b)`, and ML `Ctor a b` — column *i* takes payload slot *i*
+    /// whatever the binder is spelled ([TYPE-UNION-POSITIONAL]).
+    BySlot,
+}
+
 /// The constructor name a pattern selects, if any: an explicit `Ctor { … }` or a
 /// bare `Ctor` (a nullary variant lowers to a `Binding` indistinguishable from a
 /// capture until we know the constructor table).
-fn pattern_ctor<'a>(cg: &Codegen, p: &'a Pattern) -> Option<(&'a str, Vec<String>)> {
+fn pattern_ctor<'a>(cg: &Codegen, p: &'a Pattern) -> Option<(&'a str, Vec<String>, BindMode)> {
     match p {
         // `Ctor { a, b }` names its binders directly; `Ctor(a, b)` carries them
         // as sub-patterns, which bind by slot ([TYPE-UNION-POSITIONAL]). A
@@ -139,9 +168,13 @@ fn pattern_ctor<'a>(cg: &Codegen, p: &'a Pattern) -> Option<(&'a str, Vec<String
             name,
             fields,
             sub_patterns,
-        } if fields.is_empty() => Some((name, sub_patterns.iter().map(binder_name).collect())),
-        Pattern::Constructor { name, fields, .. } => Some((name, fields.clone())),
-        Pattern::Binding(name) if cg.is_ctor(name) => Some((name, Vec::new())),
+        } if fields.is_empty() => Some((
+            name,
+            sub_patterns.iter().map(binder_name).collect(),
+            BindMode::BySlot,
+        )),
+        Pattern::Constructor { name, fields, .. } => Some((name, fields.clone(), BindMode::ByName)),
+        Pattern::Binding(name) if cg.is_ctor(name) => Some((name, Vec::new(), BindMode::BySlot)),
         _ => None,
     }
 }
@@ -165,7 +198,7 @@ fn binder_name(p: &Pattern) -> String {
 /// (`Success`/`Error`) arms are dispatched earlier and never reach this.
 fn union_owner(cg: &Codegen, arms: &[MatchArm]) -> Option<String> {
     for a in arms {
-        if let Some((name, _)) = pattern_ctor(cg, &a.pattern) {
+        if let Some((name, _, _)) = pattern_ctor(cg, &a.pattern) {
             if let Some(view) = cg.ctor_layout(name) {
                 if view.owner_is_record || cg.union_variants(&view.owner).is_some() {
                     return Some(view.owner);
@@ -291,14 +324,14 @@ fn gen_union_match(
     let variants = cg.union_variants(owner).unwrap_or(&[]).to_vec();
 
     for arm in arms {
-        if let Some((name, fields)) = pattern_ctor(cg, &arm.pattern) {
+        if let Some((name, fields, mode)) = pattern_ctor(cg, &arm.pattern) {
             let name = name.to_string();
             let vpos = variants.iter().position(|v| *v == name).unwrap_or(0);
             let vtag = i64::try_from(vpos).unwrap_or(0);
             let cond = cg.fresh_reg();
             cg.emit(format!("{cond} = icmp eq i64 {tag}, {vtag}"));
             let next_lbl = open_guarded_arm(cg, &cond);
-            bind_variant_fields(cg, disc, &name, &fields);
+            bind_variant_fields(cg, disc, &name, &fields, mode);
             emit_arm_body(cg, arm, &mut phi_in)?;
             cg.start_block(&next_lbl);
         } else {
@@ -317,48 +350,76 @@ fn gen_union_match(
     finish_phi(cg, &phi_in, &end, mark)
 }
 
-/// Bind a matched variant's fields (in declared order) from the heap block.
-fn bind_variant_fields(cg: &mut Codegen, disc: &Value, variant: &str, pat_fields: &[String]) {
-    let Some(view) = cg.ctor_layout(variant) else {
-        return;
-    };
-    let Some(struct_ty) = cg.ctor_struct_ty(variant) else {
-        return;
-    };
-    if view.fields.is_empty() || pat_fields.is_empty() {
-        return;
+/// A variant declared positionally (`Fail string`) carries only synthetic field
+/// names, so no binder in a `fields` destructure can ever name one.
+fn declared_positionally(view: &CtorView) -> bool {
+    view.fields
+        .first()
+        .is_some_and(|(f, _)| osprey_ast::is_positional_field(f))
+}
+
+/// The payload slot a binder column resolves to, or `None` when a named
+/// destructure mentions a field this variant does not declare.
+fn slot_of(view: &CtorView, column: usize, bind_name: &str, mode: BindMode) -> Option<usize> {
+    let by_slot = (column < view.fields.len()).then_some(column);
+    match mode {
+        BindMode::BySlot => by_slot,
+        // A `fields` destructure of a POSITIONALLY declared variant is
+        // positional after all — its binders name nothing, so they must take
+        // their column ([TYPE-UNION-POSITIONAL]). Named payloads keep the strict
+        // lookup: a binder naming no field binds nothing.
+        BindMode::ByName => match view.fields.iter().position(|(f, _)| f == bind_name) {
+            Some(idx) => Some(idx),
+            None if declared_positionally(view) => by_slot,
+            None => None,
+        },
     }
+}
+
+/// The `{ i64 tag, fields… }` view and LLVM struct type of a variant that has a
+/// payload for this pattern to bind, or `None` when there is nothing to bind.
+fn bindable_layout(
+    cg: &Codegen,
+    variant: &str,
+    pat_fields: &[String],
+) -> Option<(CtorView, String)> {
+    let view = cg.ctor_layout(variant)?;
+    let struct_ty = cg.ctor_struct_ty(variant)?;
+    let bindable = !view.fields.is_empty() && !pat_fields.is_empty();
+    bindable.then_some((view, struct_ty))
+}
+
+/// Bind a matched variant's fields (in declared order) from the heap block. The
+/// value's owner type comes from the DECLARED name at the resolved slot, not
+/// from the binder's spelling, which under [`BindMode::BySlot`] names no field.
+fn bind_variant_fields(
+    cg: &mut Codegen,
+    disc: &Value,
+    variant: &str,
+    pat_fields: &[String],
+    mode: BindMode,
+) {
+    let Some((view, struct_ty)) = bindable_layout(cg, variant, pat_fields) else {
+        return;
+    };
     let src = cg.fresh_reg();
     cg.emit(format!(
         "{src} = bitcast i8* {} to {struct_ty}*",
         disc.operand
     ));
-    // A NAMED payload binds each pattern field to the layout slot of the SAME
-    // name, so a reordered destructuring (`PersonData { age, name }`) binds
-    // correctly regardless of declaration order. A POSITIONALLY-declared variant
-    // has no field names to resolve against and binds by slot instead: the
-    // binder in column i takes payload slot i ([TYPE-UNION-POSITIONAL]).
-    let positional = view
-        .fields
-        .first()
-        .is_some_and(|(f, _)| osprey_ast::is_positional_field(f));
     for (column, bind_name) in pat_fields.iter().enumerate() {
         if bind_name.is_empty() {
             continue; // an ignored slot binds nothing
         }
-        let slot = if positional {
-            view.fields.get(column).map(|(_, fty)| (column, fty))
-        } else {
-            view.fields
-                .iter()
-                .enumerate()
-                .find(|(_, (f, _))| f == bind_name)
-                .map(|(idx, (_, fty))| (idx, fty))
+        let Some(idx) = slot_of(&view, column, bind_name, mode) else {
+            continue;
         };
-        let Some((idx, fty)) = slot else { continue };
+        let Some((declared, fty)) = view.fields.get(idx) else {
+            continue;
+        };
         let fty = *fty;
+        let owner = cg.ctor_field_owner(variant, declared);
         let loaded = crate::aggregate::load_field(cg, &struct_ty, src.as_str(), idx + 1, fty);
-        let owner = cg.ctor_field_owner(variant, bind_name);
         cg.bind(bind_name.clone(), Value::new(loaded, fty).with_owner(owner));
     }
 }

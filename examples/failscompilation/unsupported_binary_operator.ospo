@@ -1,6 +1,6 @@
-// This should fail compilation: Unsupported binary operator
-// Tests: ErrUnsupportedBinaryOperator, WrapUnsupportedBinaryOpWithPos
-// Error: unsupported binary operator
+// This should fail compilation: binary operator with no right operand.
+// The parser rejects the truncated expression.
+// Parse-level rejection; no semantic spec section applies.
 
 let x = 10
 let y = 20  

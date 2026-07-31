@@ -174,6 +174,38 @@ fn main() = {
 }
 "#;
 
+/// A handler arm that resumes its continuation TWICE. Single-shot is the shipped
+/// contract ([EFFECTS-RESUME]); the second `resume` aborts at run time.
+///
+/// This lived as `examples/failscompilation/multishot_resume_rejected.ospo`,
+/// which was a category error: the program is well formed, so a must-reject
+/// fixture could never observe the abort. It "passed" only because `x + 1` and
+/// `a + b` lacked the `?:` that `[ARITH-CHECKED]` requires, and the corpus
+/// recorded that unrelated type error as the expected rejection — leaving the
+/// multi-shot guard with zero coverage while three documents cited the fixture
+/// as its proof.
+const MULTISHOT_RESUME: &str = r#"
+effect Choose {
+    pick: fn() -> int
+}
+
+fn both() -> int !Choose = {
+    let x = perform Choose.pick()
+    x + 1 ?: 0
+}
+
+fn main() = {
+    let total = handle Choose
+        pick => {
+            let a = resume(10)
+            let b = resume(20)
+            a + b ?: 0
+        }
+    in both()
+    print("total=" + toString(total))
+}
+"#;
+
 #[test]
 fn version_plain_and_json() {
     // [SWR-VERSION-BUILD-STAMPING] [SWR-VERSION-CLI-OUTPUT]
@@ -454,6 +486,35 @@ fn explicit_resume_runs_the_performer_continuation() {
     assert_eq!(
         o.stdout,
         "after parse: answer=3\nafter load: answer=3\ntotal=3\n"
+    );
+}
+
+#[test]
+fn a_second_resume_aborts_the_program_at_runtime() {
+    // [EFFECTS-RESUME] A continuation is single-shot. The program COMPILES — this
+    // is a runtime contract, not a static one — and the second `resume` aborts
+    // with a named diagnostic rather than resuming a spent continuation.
+    let prog = temp_osp("multishot_resume", MULTISHOT_RESUME);
+    let check = run_file(&prog, &["--check"]);
+    assert_eq!(
+        check.code,
+        Some(0),
+        "multi-shot resume must be well typed, so the abort is what gets observed; stderr={}",
+        check.stderr
+    );
+    let o = run_file(&prog, &["--run"]);
+    let out = format!("{}{}", o.stdout, o.stderr);
+    assert!(
+        out.contains("continuation already resumed"),
+        "expected the single-shot abort, got code={:?} stdout={} stderr={}",
+        o.code,
+        o.stdout,
+        o.stderr
+    );
+    assert!(
+        !o.stdout.contains("total="),
+        "the program must not reach its print; stdout={}",
+        o.stdout
     );
 }
 

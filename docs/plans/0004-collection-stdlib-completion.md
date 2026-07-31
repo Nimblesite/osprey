@@ -3,27 +3,34 @@
 **Subsystem:** `crates/osprey-types` (builtin registry, `TypeEnv`, inference
 order), `crates/osprey-codegen` (dispatch), `crates/osprey-types/src/builtin_docs*.rs`
 (doc parity), `compiler/runtime` (a few new C ops), `tests/regressions`
-**Status:** Partially implemented. The **receiver-directed miscompile on
-`length`/`isEmpty` is FIXED and shipped**. The rest of the bare-name surface
-(`contains`, `get`, `reverse`, `indexOf` on List/Map) is **blocked on a type-system
-change**, not on a dispatch tweak: `TypeEnv` is one-scheme-per-name and the callee
-scheme is instantiated *before* any argument is inferred, so registering a List
-`contains` **replaces** the string `contains`. Delivering it needs an overload
-candidate registry, an inference reordering, a deferred-resolution store, and an
-explicit loss of HM principality (see §Principality)
-**Scope:** **High** (the earlier “Low–Medium” estimate considered dispatch but
-not the required type-inference changes)
+**Status:** **The plan's premise was resolved from the other side.** Everything it
+set out to *fix* is fixed and tested: the receiver-directed `length`/`isEmpty`
+miscompile, across all **three** list-shaped layouts, plus the `+` operator over
+the literal layout. Everything it set out to *add* — the bare-name surface
+(`get`, `contains`, `reverse`, `indexOf`, `keys`, `values`, `head`, `tail`,
+`entries`, `zipToMap`, `groupBy`) — was **deleted from the spec** instead of
+added to the compiler. Spec 0012 §Collection Functions now reads "Except for
+`length` and `isEmpty`, public names are prefixed with `list` or `map`", every
+bare-name anchor this plan chased is gone from it, and `mapKeys`/`mapValues` are
+the normative spellings rather than names awaiting a rename. Those items are
+therefore **unspecified surface, not outstanding work** — see
+[§Unspecified: no work planned](#unspecified-no-work-planned). One live defect
+remains and is recorded in the TODO: `listGet` over a `List<string>`.
+**Scope:** Low (remainder is one defect; the type-system work below is not
+scheduled because nothing normative asks for it)
 **Spec:** [0012-Built-InFunctions.md](../specs/0012-Built-InFunctions.md)
 
 ## Summary
 
-The list/map runtime is implemented and correct, but most of it is exposed under
-`listXxx`/`mapXxx` names while [the spec](../specs/0012-Built-InFunctions.md)
-specifies **bare** names (`append`, `prepend`, `concat`, `get`, `reverse`,
-`contains`, `keys`, `values`, …). A handful of spec'd operations have no
-implementation at all. So the operations work, but the documented API does not
-resolve — and the two bare names that *were* already exposed (`length`,
-`isEmpty`) were exposed **unsoundly** until the fix below.
+The list/map runtime is implemented and correct, and it is exposed under
+`listXxx`/`mapXxx` names. When this plan was written [the
+spec](../specs/0012-Built-InFunctions.md) specified **bare** names (`append`,
+`prepend`, `concat`, `get`, `reverse`, `contains`, `keys`, `values`, …), so the
+documented API did not resolve. The spec has since been rewritten to the
+prefixed surface, closing that gap by correcting the document rather than the
+compiler. What was left is what was genuinely broken: the two bare names that
+*were* exposed (`length`, `isEmpty`) were exposed **unsoundly**, and the `+`
+operator shared the same layout hole. Both are fixed below.
 
 ## What works today
 
@@ -75,6 +82,32 @@ Both anchors are now defined in
 [0012 §Common](../specs/0012-Built-InFunctions.md) alongside the rest of the
 collection surface, so the citation resolves.
 
+**Second half of the same miscompile (fixed 2026-07-30).** The owner-tag branch
+covered two of the *three* list-shaped layouts. A flat **list literal** —
+`[1, 2, 3]`, and the `{ i64 length, char **items }` block minted by
+`osp_string_lines` / `split` / `words` — is neither an `OspreyList` handle nor a
+string: its `osp_ty` is a `[]<elem>` literal tag
+([listlit.rs](../../crates/osprey-codegen/src/listlit.rs)). It matched neither
+collection arm and fell through to `strings::gen_size`, so `osp_strlen` counted
+the bytes of the struct's own leading length word:
+
+```osprey
+let xs = [1, 2, 3]
+print("${length(xs)} ${listLength(xs)}")   // printed "1 3"
+print("${length(lines("a\nb\nc"))}")       // printed "1"
+```
+
+`length` answered **1** for every literal of 1–255 elements (2 above 255) and
+**0** for the empty literal, which is why the empty-list assertion in the corpus
+passed and hid it. `gen_receiver_directed` now consults
+`listlit::lit_length`, which reads the literal's leading `i64` directly — the two
+layouts share that field, which is why `listLength` always read both correctly.
+No runtime list is materialized just to count one. Pinned by the literal receiver
+added to `bare_length_and_is_empty_dispatch_on_the_receiver_type` (the
+"exactly one `osp_strlen` call site" assertion now also fences the literal) and
+by `length(commands)` / `length(lines(…))` / `!isEmpty(commands)` in
+`tests/core/collections/list_basics.test.{osp,ospml}`.
+
 ## Gaps (spec → impl)
 
 Spec uses bare names ([0012 §Lists/§Maps](../specs/0012-Built-InFunctions.md)):
@@ -92,6 +125,35 @@ Spec uses bare names ([0012 §Lists/§Maps](../specs/0012-Built-InFunctions.md))
 | `keys`, `values` (map) | **name collision with a different meaning** — see §Semantic collision |
 | `entries` (map) | **missing** |
 | `filterEntries`, `foldEntries`, `zipToMap`, `groupBy` | **missing** |
+
+The table above describes the spec **as it was when this plan was written**. Every
+row marked "name not exposed", "collides", or "missing" now describes a name spec
+0012 no longer specifies; see
+[§Unspecified: no work planned](#unspecified-no-work-planned).
+
+## Unspecified: no work planned
+
+Spec 0012 §Collection Functions is now: `length` and `isEmpty` bare and
+receiver-directed, everything else prefixed `list`/`map`. Concretely, the spec no
+longer defines `[BUILTIN-LIST-HEAD]`, `[BUILTIN-LIST-TAIL]`,
+`[BUILTIN-LIST-INDEXOF]`, `[BUILTIN-MAP-ENTRIES]`, `[BUILTIN-MAP-ZIPTOMAP]` or
+`[BUILTIN-MAP-GROUPBY]`, and it names `mapKeys` / `mapValues` normatively rather
+than as spellings awaiting a rename to `keys` / `values`.
+
+So the following are **unspecified extensions, not outstanding work** — the same
+treatment [plan 0015](0015-generics-and-variance.md) §4 gives bounded
+polymorphism. Reopening any of them means re-specifying it in 0012 first, and
+paying §Principality:
+
+- bare `get` / `contains` / `reverse` / `indexOf` over List and Map, and the
+  overload candidate registry + inference reordering + deferred resolution they
+  require;
+- renaming `mapKeys` / `mapValues` to `keys` / `values`;
+- `head`, `tail`, `entries`, `filterEntries`, `foldEntries`, `zipToMap`,
+  `groupBy`;
+- the collision-free bare aliases (`append`, `prepend`, `concat`, `set`,
+  `remove`, `merge`) — cheap to register, but registering a name the spec does not
+  define creates surface no document backs.
 
 ## Blocker — why bare names are not a dispatch tweak
 
@@ -120,9 +182,12 @@ the type checker requires three changes.
    checking on the string surface — the same hole that produced the `length`
    miscompile above.
 
-Approach **B** (keep prefixed names and change the spec) remains rejected because
-the spec defines the contract. It has lower implementation scope than the
-overload mechanism described below.
+Approach **B** (keep prefixed names and change the spec) was previously rejected
+here "because the spec defines the contract". **Approach B is what shipped.**
+Spec 0012 §Collection Functions was rewritten to the prefixed surface, so the
+mechanism below is no longer required by anything normative. It is retained as
+the design of record should bare-name overloading ever be re-specified, and
+because §Principality documents a real cost that any future proposal must pay.
 
 ## Implementation — the minimal sound mechanism
 
@@ -281,39 +346,98 @@ pair migrates together against one shared `.expectedoutput`.
       vs `LType::Str`; ordered ahead of the name-keyed `strings::gen`.
       [BUILTIN-COLLECTION-LENGTH], [BUILTIN-COLLECTION-ISEMPTY]. Regression test
       `bare_length_and_is_empty_dispatch_on_the_receiver_type`.
+- [x] **Third layout: the flat list literal** — `[1, 2, 3]` and the string
+      runtime's `lines`/`split`/`words` block carry a `[]<elem>` literal tag, not
+      `LIST_OWNER`, so they still reached `osp_strlen` and `length` answered `1`
+      for any 1–255-element literal. `gen_receiver_directed` now reads the
+      literal's leading `i64` via `listlit::lit_length`. Pinned by the literal
+      receiver in the codegen test above plus `length(commands)`,
+      `length(lines(…))` and `!isEmpty(commands)` in
+      `tests/core/collections/list_basics.test.{osp,ospml}`.
+- [x] **The `+` operator over the literal layout** — the same three-layout hole,
+      one operator over. `gen_arith` (`osprey-codegen/src/expr.rs`) selected
+      `listConcat` off the `LIST_OWNER` tag alone, so `xs + [1]` handed
+      `osprey_list_concat` the literal's foreign header and **segfaulted**
+      (exit 139), while `[1] + [2]` matched neither operand and fell into integer
+      arithmetic with `expected an integer, found a string/handle`. Both operands
+      are now normalised through `listlit::to_runtime_list` (a no-op for a real
+      handle). Pinned by
+      `list_literal_operands_of_plus_are_rebuilt_before_concatenation` (codegen
+      `lib.rs`) and the four literal/handle position combinations in
+      `tests/core/collections/list_basics.test.{osp,ospml}`, green under
+      default / `--memory=gc` / `--memory=arc` (`ARC_LEAKY=0`) and wasm32.
+- [ ] **Defect found, not fixed: `listGet` over a `List<string>`.** Independent
+      of the layout work above — a plain runtime handle fails too. Re-measured
+      2026-07-30; it has **two faces**, and the quiet one is the reason this
+      matters more than a rejected program:
+
+      ```osprey
+      let ints = listAppend(List(), 7)
+      let ss = listAppend(List(), "x")
+      print("${listGet(ints, 0) ?: -1}")        // 7 — correct
+      print("${listGet(ss, 0) ?: "missing"}")   // 0 — WRONG, and silent
+      let v = listGet(ss, 0) ?: "missing"       // codegen: invalid program:
+                                                // match arms disagree on type: `i64` and `i8*`
+      ```
+
+      Inside an interpolation the program compiles and prints `0` for a value
+      that is `"x"`; bound to a `let` the same expression is rejected, because
+      the desugared `?:` match is where the `i64` payload meets the `i8*`
+      fallback. The rejection message recorded here previously
+      (`expected an integer, found a string/handle`) no longer reproduces — the
+      arm-type mismatch is the current one.
+
+      `list_get` (`collections.rs`) wraps `osprey_list_get`'s raw `i64` element
+      word with `result_from_flag` and never `inttoptr`s it back, so the `Result`
+      payload is typed `i64` while the `?:` default is `i8*`. Only the index
+      spelling `ss[0]` works, because `gen_index` reads the element `LType` off
+      the literal tag. The runtime handle carries no element type, so the fix
+      needs the checker's inferred `List<T>` argument type at the call site —
+      `listContains` sidesteps this by reading its *needle*'s type
+      (`is_str = needle.ty == LType::Str`). Same gap applies to any `listGet`
+      whose element is a managed pointer (nested list, record).
 - [x] Define the collection spec anchors in 0012 — `[BUILTIN-LIST]`,
       `[BUILTIN-MAP]`, `[BUILTIN-COLLECTION-LENGTH]`,
       `[BUILTIN-COLLECTION-ISEMPTY]` and the
       per-function ids (`[BUILTIN-LIST-APPEND]`, `[BUILTIN-MAP-SET]`, …) — so
       the code and example citations resolve, and the wildcard references in
       the list/map examples are expanded to concrete ids.
-- [ ] Register the **collision-free** bare names (`append`, `prepend`, `concat`,
-      `set`, `remove`, `merge`) against the existing lowering + doc entries.
-- [ ] Overload candidate registry keyed by the head constructor of parameter 0,
-      kept **beside** `TypeEnv` (which stays one-scheme-per-name).
-- [ ] Reorder `infer_call` / `infer_method_call` to infer + prune argument 0
-      **before** selecting and instantiating the callee scheme.
-- [ ] Deferred-resolution store for still-variable receivers, drained in the
-      existing post-inference substitution phase; **explicit ambiguity error**, no
-      silent default.
-- [ ] Codegen dispatch via `Value.osp_ty` for `get`, `contains`, `reverse`,
-      `indexOf` (**not** a position-keyed table — `Expr::Call` has no `Position`).
-- [ ] Rename impl `mapKeys`→`keys`, `mapValues`→`values`; register the spec's
-      arity-2 `mapKeys`/`mapValues` transformers; migrate the 8 example files
-      listed above (twins together, one shared `.expectedoutput`).
-- [ ] Implement `head` (Result) and `tail` (total) — signatures, dispatch, C if
-      needed. Note the source-breaking name reservation.
-- [ ] Implement list `indexOf` (gated on the overload machinery).
-- [ ] Implement `entries`, `filterEntries`, `foldEntries`, `zipToMap`, `groupBy`
-      (computed callbacks already work — plan 0001 done).
-- [ ] Doc entry in `builtin_docs_lang.rs`/`builtin_docs_sys.rs` for **every** new
-      builtin — `every_builtin_is_documented_with_matching_arity` fails the build
+- [x] `make ci` green.
+
+### Withdrawn — the bare-name surface
+
+The items below were this plan's bulk. They are **withdrawn, not deferred**: spec
+0012 §Collection Functions no longer specifies any of the names they deliver, so
+there is nothing to conform to. They are listed rather than deleted because the
+mechanism they describe is the design of record if the surface is ever
+re-specified, and because each carries a real constraint a future proposal must
+re-satisfy. See [§Unspecified: no work planned](#unspecified-no-work-planned).
+
+- ~~Register the collision-free bare names (`append`, `prepend`, `concat`, `set`,
+  `remove`, `merge`).~~ Cheap, but creates surface no document backs.
+- ~~Overload candidate registry keyed by the head constructor of parameter 0,
+  beside `TypeEnv` (which stays one-scheme-per-name).~~
+- ~~Reorder `infer_call` / `infer_method_call` to infer + prune argument 0 before
+  selecting and instantiating the callee scheme.~~
+- ~~Deferred-resolution store for still-variable receivers, drained in the
+  post-inference substitution phase; explicit ambiguity error, no silent
+  default.~~
+- ~~Codegen dispatch via `Value.osp_ty` for `get`, `contains`, `reverse`,
+  `indexOf`.~~ (Not a position-keyed table — `Expr::Call` has no `Position`.)
+- ~~Rename `mapKeys`→`keys`, `mapValues`→`values` and add the arity-2
+  transformers.~~ Spec 0012 names `mapKeys` / `mapValues` normatively.
+- ~~Implement `head`, `tail`, list `indexOf`, `entries`, `filterEntries`,
+  `foldEntries`, `zipToMap`, `groupBy`.~~ None are specified.
+- ~~Must-reject example pinning the overload-ambiguity error.~~ No overloading, no
+  ambiguity error.
+- ~~Document the principality loss in spec 0012; open a qualified-types plan.~~
+  Nothing loses principality, because no overloading landed. §Principality stays
+  here as the standing cost estimate.
+
+Two constraints from that block **still bind** any future builtin, so they are
+kept live rather than struck:
+
+- [ ] Any new builtin needs a `builtin_docs_lang.rs` / `builtin_docs_sys.rs`
+      entry — `every_builtin_is_documented_with_matching_arity` fails the build
       otherwise.
 - [ ] `find-similar` before adding any C helper; no duplicate primitives.
-- [ ] Must-reject example pinning the overload-ambiguity error.
-- [ ] Extend `tested/basics/lists` + a map example (+ `.ospml` twins); refresh
-      `.expectedoutput`.
-- [ ] Document the principality loss in spec 0012; open a separate plan for
-      qualified types (`preds` on `Scheme`, discharged by monomorphization, no
-      dictionary passing) if principality is to be recovered.
-- [ ] `make ci` green.

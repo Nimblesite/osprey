@@ -254,12 +254,24 @@ fn gen_arith(cg: &mut Codegen, op: &str, l: Value, r: Value) -> Result<Value> {
     // `+` on list handles is concatenation (`a + b` ≡ `listConcat(a, b)`); on
     // map handles it is a right-biased merge (`a + b` ≡ `mapMerge(a, b)`).
     // Either operand carrying the owner tag selects the collection meaning.
+    //
+    // A flat list *literal* means the same thing but is a different layout, so
+    // each operand is normalised to a runtime list first (a no-op for one that
+    // already is). Without that, `xs + [1]` handed `osprey_list_concat` the
+    // literal's foreign `{ i64, i8* }` header and **segfaulted**, while
+    // `[1] + [2]` — where neither operand carries the owner tag — fell past this
+    // arm into integer arithmetic and failed with "expected an integer".
     if op == "+" {
         let tagged = |owner| {
             let has = |v: &Value| v.osp_ty.as_deref() == Some(owner);
             has(&l) || has(&r)
         };
-        if tagged(crate::collections::LIST_OWNER) {
+        let list_like = |v: &Value| {
+            v.osp_ty.as_deref() == Some(crate::collections::LIST_OWNER) || crate::listlit::is_lit(v)
+        };
+        if list_like(&l) || list_like(&r) {
+            let l = crate::listlit::to_runtime_list(cg, l);
+            let r = crate::listlit::to_runtime_list(cg, r);
             return Ok(crate::collections::concat_handles(cg, &l, &r));
         }
         if tagged(crate::collections::MAP_OWNER) {
@@ -1095,10 +1107,44 @@ fn eval_arg(cg: &mut Codegen, expr: &Expr, sig: Option<&FnSig>, ffi: bool) -> Re
             if ffi && cg.fn_params.contains_key(&target) {
                 return Ok(fn_pointer(cg, &target));
             }
-            gen_expr(cg, expr)
+            let v = gen_expr(cg, expr)?;
+            Ok(list_arg_as_handle(cg, v, ffi))
         }
-        _ => gen_expr(cg, expr),
+        _ => {
+            let v = gen_expr(cg, expr)?;
+            Ok(list_arg_as_handle(cg, v, ffi))
+        }
     }
+}
+
+/// Normalise a flat list-literal argument into an `OspreyList` handle before it
+/// crosses into a callee (a no-op for every other value).
+///
+/// A callee cannot tell which list layout it was handed: its parameter is one
+/// `i8*` either way, and inside the body the value carries the `List` owner tag
+/// regardless of how the caller spelled it. `osprey_list_length` happens to read
+/// both layouts — they share a leading `i64` — but `osprey_list_get` and
+/// `osprey_list_drop` need the real trie, so a list pattern over a literal
+/// argument **segfaulted**:
+///
+/// ```text
+/// fn headOf(xs: List<int>) -> int = match xs { [] => -1  [h, ...t] => h }
+/// print("${headOf([7, 8])}")            // SIGSEGV
+/// print("${headOf(listAppend(List(), 7))}")   // fine
+/// ```
+///
+/// Rebuilding at the boundary makes a parameter's representation independent of
+/// the caller's spelling. Nothing regresses: a `List<T>` parameter cannot be
+/// indexed in the first place (`xs[0]` on a parameter is
+/// `index of a non-list/map value` for both spellings), and every `list*`
+/// builtin, the receiver-directed `length`/`isEmpty`, and `+` all accept a
+/// handle. An `extern` callee is skipped — a C signature taking a list is
+/// outside this contract, so its argument is left exactly as written.
+fn list_arg_as_handle(cg: &mut Codegen, v: Value, ffi: bool) -> Value {
+    if ffi {
+        return v;
+    }
+    crate::listlit::to_runtime_list(cg, v)
 }
 
 fn gen_interpolation(cg: &mut Codegen, parts: &[InterpolatedPart]) -> Result<Value> {

@@ -1,0 +1,2 @@
+4:0: syntax error near "fn sign(n) = if n > 0 { 1 }\n\nprint(sign(5))"
+4:24: syntax error near "1 }"

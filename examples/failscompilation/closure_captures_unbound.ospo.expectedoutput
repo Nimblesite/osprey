@@ -1,0 +1,2 @@
+unknown identifier `nowhereBound`
+4:3: function `main` body: type mismatch: cannot unify int with Result<int, MathError>

@@ -43,7 +43,9 @@ pub(crate) fn hover(
     let parsed = osprey_syntax::parse_program_with_flavor(text, flavor);
     // A `test` callee resolves to the built-in's generic signature, which says
     // nothing about THIS case; the case's own `///` block does. Answer with it
-    // before the generic lookups ([TESTING-DOC]).
+    // before the generic lookups. A `test` that names no case falls through, so
+    // a user binding called `test` keeps its own hover. Implements
+    // [TESTING-DOC-HOVER].
     if word == TEST_CALLEE {
         if let Some(hov) = crate::testing::test_case_hover(&parsed.program, line.saturating_add(1))
         {
@@ -611,9 +613,9 @@ mod tests {
 
     #[test]
     fn hovering_a_documented_test_call_shows_that_cases_own_documentation() {
-        // [TESTING-DOC] The `test` callee resolves to a built-in whose generic
-        // signature says nothing about the case being declared. Hovering it
-        // must answer with the `///` block written above THAT case.
+        // [TESTING-DOC-HOVER] The `test` callee resolves to a built-in whose
+        // generic signature says nothing about the case being declared. Hovering
+        // it must answer with the `///` block written above THAT case.
         let src = "\
 fn add(a, b) = a + b
 

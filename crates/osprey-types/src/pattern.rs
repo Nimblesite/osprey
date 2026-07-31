@@ -187,6 +187,7 @@ impl Checker {
         // matched as if wrapped in `Success`). This also lets validated record
         // constructions be matched without a real Result.
         if owner == names::RESULT {
+            self.reject_plain_result_default(fields, disc);
             self.bind_result_fields(fields, disc, local);
             return;
         }
@@ -239,6 +240,31 @@ impl Checker {
     /// Bind the built-in `Result` pattern fields against `disc`: `value` is the
     /// success payload (the discriminant itself when it is not a `Result` — the
     /// match auto-wrap rule), `message` is the error string.
+    /// `?:` is an explicit Result handling operation, so it does NOT get the
+    /// ordinary `Success`-arm auto-wrap: [PATTERN-RESULT-DEFAULT] states that
+    /// its scrutinee must be a `Result` and that it "never reinterprets a plain
+    /// value as `Success`". Inheriting auto-wrap made `5 ?: -1` well-typed with
+    /// an unreachable fallback. Only the desugarer's unspellable payload binder
+    /// distinguishes the two, since both are a `Success`/`Error` match.
+    ///
+    /// An unresolved scrutinee is left alone: this checker unifies eagerly, so a
+    /// type variable here may still become a `Result` later.
+    fn reject_plain_result_default(&mut self, fields: &[String], disc: &Type) {
+        if !fields
+            .iter()
+            .any(|f| f == osprey_ast::RESULT_DEFAULT_PAYLOAD)
+        {
+            return;
+        }
+        let pruned = self.ctx.prune(disc);
+        if is_result(&pruned) || matches!(pruned, Type::Var(_)) {
+            return;
+        }
+        self.errors.push(TypeError::new(format!(
+            "`?:` needs a Result on its left, found {pruned}"
+        )));
+    }
+
     fn bind_result_fields(&mut self, fields: &[String], disc: &Type, local: &mut TypeEnv) {
         let dp = self.ctx.prune(disc);
         let ok = match &dp {

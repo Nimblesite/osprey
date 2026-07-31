@@ -9,8 +9,8 @@
 - [Union Types](#union-types)
 - [Collection Types](#collection-types)
 - [Built-in Error Types](#built-in-error-types)
-- [The `any` Type](#the-any-type)
-- [Type Annotations](#type-annotations)
+- [The `any` Type](#the-any-type--type-any)
+- [Type Annotations](#type-annotations--type-annotation-check)
 
 ## Hindley-Milner Inference
 
@@ -48,9 +48,8 @@ compose (f, g)   = \x => f (g x)             // <A,B,C>((B)->C,(A)->B) -> (A)->C
 integer `+ - *` return `Result<int, MathError>`. With a `float` operand, the
 integer is promoted and the IEEE-754 operation returns plain `float`.
 
-Annotations are optional where inference has enough context. Record fields and
-foreign declarations include types as part of their syntax; annotations on
-bindings and functions constrain the inferred type.
+Record fields and foreign declarations include types as part of their syntax;
+annotations on bindings and functions constrain the inferred type.
 
 A polymorphic function is monomorphised independently at each call site:
 
@@ -76,7 +75,7 @@ unify(R1, R2) :=
 
 ### Polymorphic Variables vs `any`
 
-Inference produces polymorphic variables (`<T>`, `<A>`, …), not `any`. The `any` type is opt-in; see [The `any` Type](#the-any-type).
+Inference produces polymorphic variables (`<T>`, `<A>`, …), not `any`. The `any` type is opt-in; see [The `any` Type](#the-any-type--type-any).
 
 ## Generics and Variance
 
@@ -90,6 +89,13 @@ variant field. A construction site may apply explicit type arguments —
 `Pair<int, string> { first: 1, second: "a" }` — which unify with the
 instantiation the fields would otherwise infer; an argument that contradicts a
 field is a type error.
+
+`[GENERICS-CTOR-ARITY]` **Explicit constructor type arguments must match the
+declaration's arity.** `Box<int> { v: 1 }` against `type Box<T>` is well-formed;
+`Box<int, string> { v: 1 }` is rejected with
+`takes 1 type argument(s), got 2`. Writing the arguments out is a contract with
+the declaration, so a count mismatch is an error rather than a silently ignored
+annotation.
 
 `[TYPE-GENERICS-FN]` **Functions bind type parameters with `fn name<T, …>`.**
 A binder makes every use of `T` in the signature the SAME inference variable;
@@ -194,18 +200,16 @@ unary `-` return `Result<int, MathError>`; `/` and `%` return
 ## Result Preservation
 
 A fallible expression has type `Result<T, E>`, and the compiler never
-implicitly erases that wrapper. Passing it to a function or concurrency
-operation that expects `T`, assigning it to a plain `T` cell or annotation,
-returning it from a function declared to return `T`, comparing it with a `T`,
-or using it through a function value is a type error. Interpolation and
-formatting preserve and display the complete `Success` or `Error` value.
-
-Callers obtain the success payload only through an exhaustive `match` or an
-explicit `?:` fallback. The sole compositional exception is
-failure-preserving arithmetic chaining: compatible numeric `Result<T, MathError>`
-operands propagate the first error and flatten the chain to one
-`Result<T, MathError>` ([Chaining Arithmetic](0013-ErrorHandling.md#chaining-arithmetic)).
-It never turns the chain into a plain number.
+implicitly erases that wrapper
+([FAILURE-EXPLICIT](0001-Introduction.md#failure-safety--failure-explicit)).
+Every consuming position — arguments, bindings, plain-`T` returns, comparisons,
+function-value calls — preserves the `Result` or is rejected; interpolation
+displays the complete `Success` or `Error` value. Callers obtain the payload
+only through an exhaustive `match` or an explicit `?:` fallback. The sole
+compositional exception is failure-preserving arithmetic chaining
+([Chaining Arithmetic](0013-ErrorHandling.md#chaining-arithmetic)), which
+flattens compatible `Result<T, MathError>` chains to one `Result` and never
+yields a plain number.
 
 ## Function Types
 
@@ -339,11 +343,20 @@ person2 =
 
 All fields are required. Missing or unknown fields, or type mismatches, are compilation errors.
 
-### Field Access
+### Field Access — [TYPE-FIELD-ACCESS-NON-RECORD]
 
 Direct field access is permitted only on a record value. A `Result` or union
 must be matched to a concrete payload before field access. Because `any` has no
 runtime type tag, it cannot be narrowed for field access.
+
+Field access on a type that can never carry fields — `int`, `float`, `string`,
+`bool`, `Unit` — is rejected by the type checker with
+`cannot access field '<field>' on non-struct type <type>`, naming the offending
+source line. The check is deliberately narrow: `any` unifies with records, a
+collection's element may be a record, and an unresolved type variable may still
+infer to one, so none of those are rejected here. Without the check, codegen
+emitted invalid LLVM and the failure surfaced from `clang` against a temporary
+`.ll` file instead of the user's source.
 
 ```osprey
 let n = person.name        // ok
@@ -621,9 +634,12 @@ used mainly at heterogeneous builtin and foreign-function boundaries. In
 particular, `print` and `toString` cannot recover an aggregate hidden behind
 `any`; they render its raw pointer-sized representation rather than its fields.
 
-## Type Annotations
+## Type Annotations — [TYPE-ANNOTATION-CHECK]
 
-An annotation constrains inference and is checked against the expression:
+An annotation constrains inference and is checked against the expression. A
+primitive spelling is case-sensitive, so `Int` is not `int`: an unknown
+capitalized name is a nominal type, and assigning an `int` to a variable
+annotated `Int` is a type mismatch rather than a silent alias.
 
 ```osprey
 let xs: List<int> = []

@@ -1,1 +1,1 @@
-line 5:13: cannot access field 'length' on non-struct type - did you mean `length(stringVar)` or `stringVar.length()`?
+cannot access field 'length' on non-struct type string

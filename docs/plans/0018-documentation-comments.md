@@ -1,7 +1,7 @@
 # Plan 0018 — Documentation Comments (Both Flavors)
 
 **Subsystem:** `crates/osprey-ast` + `crates/osprey-syntax` (default + ml) +
-`crates/osprey-lsp` + `crates/osprey-cli` + `crates/diff_examples.sh`
+`crates/osprey-lsp` + `crates/osprey-cli` + `crates/run_test_corpus.sh`
 **Status:** Phases 1–2 done (structured model, both flavors capture docs on all
 six declaration forms, hover renders them, `[Symbol]` links hover). Phase 3
 (doctest execution, user-declaration `--docs` export, `//!` attachment) remains.
@@ -88,7 +88,7 @@ module documentation.
 
 ### Phase 3 — Doctests + user-doc export
 
-10. Doctest extraction pre-pass for `crates/diff_examples.sh`: emit
+10. Doctest extraction pre-pass for `crates/run_test_corpus.sh`: emit
     `.osp`/`.ospml` + `.expectedoutput` from each `DocExample` (compiled under
     the file's flavor), run by the existing harness.
 11. `osprey --docs` accepts a source file and emits user-declaration pages from
@@ -105,7 +105,7 @@ Phases 1–2 shipped the model. Phase 3 requires the following additions:
 - **No CLI can emit a `DocExample`.** `docparse::parse_doc` is `pub(crate)`
   (`crates/osprey-syntax/src/docparse.rs`; `lib.rs` re-exports only
   `doc_links`), and there is no `--doctests` mode. Add an extract-and-emit
-  compiler mode before the `diff_examples.sh` pre-pass (model it on
+  compiler mode before the `run_test_corpus.sh` pre-pass (model it on
   `--list-tests`).
 - **Generated examples must not land under `tests/regressions/`.**
   `crates/osprey-cli/src/main.rs` asserts the discovered example set equals the
@@ -199,5 +199,5 @@ Phase 3 remains, ordered by cost. Each item requires new surface (see
       `--check`-only path for `run == false` examples so they never reach the
       `NOEXP` counter, and a decision on the snippet→program synthesis rule.
       Reference `[DOC-DOCTEST-HARNESS]` from the extractor and
-      `diff_examples.sh`.
+      `run_test_corpus.sh`.
 - [x] `make ci` green (Phases 1–2).

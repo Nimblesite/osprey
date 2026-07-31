@@ -1,1 +1,1 @@
-line 5:17: readFile expects exactly 1 argument (filename), got 0
+call arity mismatch: expected 1 argument(s), got 0

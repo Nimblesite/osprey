@@ -1,6 +1,6 @@
-// This should fail compilation: Method not implemented
-// Tests: WrapMethodCallNotImplemented, ErrMethodCallNotImplemented
-// Error: method call not implemented
+// This should fail compilation: UFCS call to an undeclared function.
+// `_.unknownMethod(...)` rewrites to `unknownMethod(_, ...)`, which must resolve.
+// Implements [BUILTIN-STRING-UFCS]
 
 type Person = { name: String, age: Int }
 

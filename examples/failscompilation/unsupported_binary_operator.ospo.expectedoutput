@@ -1,1 +1,1 @@
-line 7:16 extraneous input '*' expecting {'select', 'fn', 'perform', 'handle', 'spawn', 'yield', 'await', 'send', 'recv', 'true', 'false', '!', '|', '(', '{', '[', '+', '-', FLOAT, INT, INTERPOLATED_STRING, STRING, ID}
+7:16: syntax error near "*"

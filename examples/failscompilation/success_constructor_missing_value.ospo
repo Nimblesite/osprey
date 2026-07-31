@@ -1,6 +1,6 @@
-// This should fail compilation: Success constructor missing value field
-// Tests: ErrSuccessConstructorMissingValue, WrapSuccessConstructorMissingValue
-// Error: success constructor requires 'value' field
+// This should fail compilation: `Success` without its payload.
+// `Success` requires its `value` field.
+// Implements [PATTERN-RESULT-AUTOWRAP]
 
 type Result = Success { value: Int } | Error { message: String }
 

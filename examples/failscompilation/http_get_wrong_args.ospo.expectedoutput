@@ -1,1 +1,1 @@
-line 6:19: httpGet expects exactly 3 arguments (clientID, path, headers), got 0
+call arity mismatch: expected 3 argument(s), got 0

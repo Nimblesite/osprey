@@ -194,9 +194,25 @@ fn clause_set_collapses_into_a_match() {
                 }
             );
             match &arms[1].pattern {
-                Pattern::Constructor { name, fields, .. } => {
+                Pattern::Constructor {
+                    name,
+                    fields,
+                    sub_patterns,
+                } => {
                     assert_eq!(name, "Node");
-                    assert_eq!(fields, &["l".to_owned(), "r".to_owned()]);
+                    // ML's only constructor destructure is positional, so its
+                    // binders lower into `sub_patterns` — the same node the
+                    // Default twin `Node(l, r)` emits. Lowering them into
+                    // `fields` made each binder resolve to the payload slot that
+                    // happened to share its spelling ([TYPE-UNION-POSITIONAL]).
+                    assert!(fields.is_empty(), "{fields:?}");
+                    assert_eq!(
+                        sub_patterns,
+                        &[
+                            Pattern::Binding("l".to_owned()),
+                            Pattern::Binding("r".to_owned()),
+                        ]
+                    );
                 }
                 other => panic!("expected a Node pattern, got {other:?}"),
             }

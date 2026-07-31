@@ -1,6 +1,6 @@
-// This should fail compilation: Field access on string type  
-// Tests: ErrFieldAccessOnString, WrapFieldAccessOnString
-// Error: cannot access field on string type
+// This should fail compilation: field access on a string.
+// The diagnostic offers `length(name)` and the UFCS `name.length()` instead.
+// Implements [TYPE-FIELD-ACCESS-NON-RECORD], [BUILTIN-STRING-UFCS]
 
 let name = "test"
 let field = name.length  // Cannot access field on string

@@ -1,1 +1,1 @@
-line 4:0: validation error: cannot redefine built-in function 'toString'
+cannot redefine built-in function `toString`

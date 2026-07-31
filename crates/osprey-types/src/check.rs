@@ -1182,7 +1182,7 @@ mod tests {
     fn runtime_callbacks_use_their_exact_function_types() {
         ok("fn event(pid: int, kind: int, data: string) -> Unit = print(data)\n\
             let process = spawnProcess(\"echo ok\", event)\n\
-            fn request(method: string, path: string, headers: string, body: string) -> HttpResponse = HttpResponse { status: 200, headers: headers, contentType: \"text/plain\", streamFd: (-1) ?: 0, isComplete: true, partialBody: body }\n\
+            fn request(method: string, path: string, headers: string, body: string) -> HttpResponse = HttpResponse { status: 200, headers: headers, contentType: \"text/plain\", streamFd: -1, isComplete: true, partialBody: body }\n\
             let listening = httpListen(1, request)\n");
         let process_errs = check(
             "fn wrong(pid: int) -> Unit = print(pid)\n\

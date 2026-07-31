@@ -282,6 +282,12 @@ Patterns include `_`, literals, bindings, constructor payload binders, and list
 patterns such as `[]`, `[one]`, and `[head, ...tail]`. Nested constructor
 patterns and or-patterns are rejected; bind the inner payload and match again.
 
+A constructor payload binder takes its **column**, not the field that shares its
+spelling, so `Node l r` may rename freely against a named payload as well as a
+positional one — ML's one form is Default's `Node(l, r)`
+([Union patterns](0007-PatternMatching.md#union-patterns)). `Success`/`Error` are
+the exception, binding by role.
+
 `[FLAVOR-ML-PATTERN-GROUP]` Parentheses group one pattern and disappear during
 parsing. They allow a constructor pattern in a clause head:
 

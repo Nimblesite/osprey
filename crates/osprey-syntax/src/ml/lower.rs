@@ -1175,11 +1175,7 @@ fn lower_pattern(pattern: MlPattern) -> Pattern {
         MlPattern::Str(raw) => Pattern::Literal(Box::new(lower_string(&raw))),
         MlPattern::Bool(b) => Pattern::Literal(Box::new(Expr::Bool(b))),
         MlPattern::Bind(name) => Pattern::Binding(name),
-        MlPattern::Ctor { name, fields } => Pattern::Constructor {
-            name,
-            fields,
-            sub_patterns: Vec::new(),
-        },
+        MlPattern::Ctor { name, fields } => crate::desugar::ctor_pattern(name, fields),
         MlPattern::List { elements, rest } => Pattern::List {
             elements: elements.into_iter().map(lower_pattern).collect(),
             rest,

@@ -8,7 +8,8 @@ use crate::error::Result;
 use crate::llty::{LType, Value};
 
 /// Coerce a plain value to the wanted type, preserving its aggregate owner tag.
-/// Result is never a coercion source: callers must preserve it or handle it.
+/// Result is never a coercion source: callers must preserve it or handle it —
+/// there is no implicit `Result<T, E>` → `T`. Implements [FAILURE-EXPLICIT].
 pub(crate) fn coerce_to(cg: &mut Codegen, v: Value, want: LType) -> Result<Value> {
     if v.result_inner.is_some() {
         return Err(crate::error::CodegenError::invalid(

@@ -1,1 +1,3 @@
 type mismatch: cannot unify int with string
+8:3: function `bad` performs effects outside its declared row: Stash<string>.put
+unhandled effect operations at program entry: Stash<string>.put; add a matching `handle`

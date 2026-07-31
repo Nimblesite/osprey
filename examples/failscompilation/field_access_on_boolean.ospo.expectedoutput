@@ -1,1 +1,1 @@
-line 6:12: cannot access field 'value' on non-struct type
+cannot access field 'value' on non-struct type bool

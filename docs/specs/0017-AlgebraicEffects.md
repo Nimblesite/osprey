@@ -256,9 +256,13 @@ Two critical implementation defects currently limit operation values:
 - [issue #182](https://github.com/Nimblesite/osprey/issues/182): the native
   resumable-operation mailbox transports 16 arguments. The compiler accepts a
   17th argument, but the runtime silently delivers zero for it.
-- [issue #183](https://github.com/Nimblesite/osprey/issues/183): a direct
-  handler corrupts an operation result whose type is `Result<T, E>`. Resuming
-  handlers have separate passing coverage for complete `Result` values.
+- ~~[issue #183](https://github.com/Nimblesite/osprey/issues/183): a direct
+  handler corrupts an operation result whose type is `Result<T, E>`.~~ **Fixed.**
+  A direct handler now transports a complete `Result<T, E>` operation value in
+  both flavors and under all three memory backends, covered by
+  `tests/effects/errors/direct_recovery.test.{osp,ospml}` case 10, "handlers can
+  return whole Result operation values" — formerly a `Skip`, now a `Pass` locked
+  by the shared golden. Resuming handlers keep their separate coverage.
 - [issue #185](https://github.com/Nimblesite/osprey/issues/185): under ARC, a
   resuming handler leaks one managed object when its completed continuation
   answer is a dynamic string.

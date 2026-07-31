@@ -18,8 +18,7 @@ supersedes retired plan 0008 and absorbs the handler-value work sketched in
 and the effect-row-polymorphism gap flagged in
 [plan 0015](0015-generics-and-variance.md). Open critical correctness defects:
 resumable argument transport after position 16
-([#182](https://github.com/Nimblesite/osprey/issues/182)), direct-handler
-`Result` transport ([#183](https://github.com/Nimblesite/osprey/issues/183)),
+([#182](https://github.com/Nimblesite/osprey/issues/182))
 and effect loss through one curried ML lowering path
 ([#184](https://github.com/Nimblesite/osprey/issues/184)), plus managed string
 continuation answers leaking under ARC
@@ -108,12 +107,14 @@ work on WebAssembly).
    `resume_error_policies.test.{osp,ospml}` suites prove positions 1–16 and keep
    position 17 as an explicit known-failure skip.
 
-1e. **Direct handlers corrupt whole `Result<T, E>` operation values.** Both
-   `Success` and `Error` values reach the caller as pointer-like integers that
-   vary between runs, with exit 0. Explicit-resume transport is a separate path
-   and passes. Tracked as critical
-   [issue #183](https://github.com/Nimblesite/osprey/issues/183) by paired
-   conditional regressions in `tests/effects/errors/`.
+1e. ~~**Direct handlers corrupt whole `Result<T, E>` operation values.**~~
+   **FIXED.** Both `Success` and `Error` values used to reach the caller as
+   pointer-like integers that varied between runs, with exit 0; explicit-resume
+   transport was a separate, passing path. The paired conditional regressions in
+   `tests/effects/errors/` that tracked
+   [issue #183](https://github.com/Nimblesite/osprey/issues/183) now return
+   `Pass` rather than `Skip`, in both flavors under default, `--memory=gc` and
+   `--memory=arc`, byte-locked by the shared golden.
 
 1f. **One curried ML lowering path silently drops performed effects.** An
    unannotated four-argument curried function can run under a handler without
@@ -175,9 +176,22 @@ second resume aborts with a diagnostic.
       — could report the error before runtime. Not implemented: the
       runtime guard is sound and total, and the static analysis (distinguishing
       always-both from mutually-exclusive match arms) is a nontrivial follow-up.
-- [x] `examples/failscompilation/multishot_resume_rejected.ospo`: a
-      double-`resume` arm rejected (nonzero exit) with the clear fatal message;
-      single-shot limitation documented in 0017 §Status.
+- [x] A double-`resume` arm aborts with the clear fatal message; single-shot
+      limitation documented in 0017 §Status. **Coverage corrected 2026-07-30.**
+      This was pinned on `examples/failscompilation/multishot_resume_rejected.ospo`,
+      which never observed the abort: multi-shot is a **runtime** contract, so a
+      must-reject fixture is the wrong instrument. That program is well formed;
+      the fixture only "passed" because `x + 1` and `a + b` lacked the `?:`
+      `[ARITH-CHECKED]` requires, and its golden recorded that unrelated
+      `cannot unify int with Result<int, MathError>` as the expected rejection.
+      The guard had **zero** coverage while this plan, plan 0008's retirement row
+      and the README all cited the fixture as its proof. Replaced by
+      `a_second_resume_aborts_the_program_at_runtime` (`cli_e2e.rs`), which
+      asserts the program type-checks, that `--run` reports
+      `continuation already resumed`, and that execution never reaches the
+      program's `print`. The fixture and its golden are deleted (the corpus went
+      to 89 `.ospo`, and back to 90 when `?:` gained a Result-scrutinee check —
+      see [plan 0019](0019-ml-elegance.md#outstanding-2026-07-30)).
 - [x] Flipped plan 0008's open TODO `Reject multi-shot resume with a clear
       diagnostic`.
 
@@ -185,6 +199,10 @@ second resume aborts with a diagnostic.
 
 The [FLAVOR-HANDLER-VALUE] shared-core addition is flavor-neutral and unblocks
 plan 0013 Phase 0.
+
+**This phase is the single owner of the handler-value checklist.** Plan 0013
+Phase 0 used to carry the same eight items verbatim; it now defers here and keeps
+only the ML-surface lowering that follows once these nodes exist.
 
 - [ ] **AST**: add `Expr::HandlerValue { effect, arms }` and
       `Expr::Install { handlers: Vec<Expr>, body }`. Make the existing
@@ -313,8 +331,16 @@ The runtime guard is now defense in depth rather than normal effect checking.
       refinement deferred; the runtime guard is sound and total.)
 - [ ] **Critical #182** — preserve every accepted resumable operation argument
       or reject arities above a documented limit before code generation.
-- [ ] **Critical #183** — preserve complete `Result<T, E>` values through the
-      direct handler ABI in both flavors and all memory modes.
+- [x] **Critical #183** — preserve complete `Result<T, E>` values through the
+      direct handler ABI in both flavors and all memory modes. **Fixed; this item
+      was left unchecked after the fix landed.**
+      `tests/effects/errors/direct_recovery.test.{osp,ospml}` case 10, "handlers
+      can return whole Result operation values", was a `Skip` and now returns
+      `Pass` (`combined == 39 && lookups == 2` through `combineLookups`), verified
+      green in **both** flavors under default, `--memory=gc` and `--memory=arc`,
+      and byte-locked by the shared golden. The §1e prose above, spec 0017's
+      status note and the exceptions-and-panics blog post still describe the
+      broken behaviour and need the same correction; gh issue 183 can close.
 - [ ] **Critical #184** — keep effectful curried ML functions behaviorally
       equivalent to their flat parameter form.
 - [ ] **Critical #185** — release managed continuation answers exactly once

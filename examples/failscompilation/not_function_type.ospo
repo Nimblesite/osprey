@@ -1,6 +1,6 @@
-// This should fail compilation: Not a function type
-// Tests: ErrNotAFunction, ErrNotFunctionType 
-// Error: type is not a function
+// This should fail compilation: calling a non-function.
+// Only an expression with a function type is callable.
+// Implements [TYPE-FN-HIGHER-ORDER]
 
 let x = 42
 let result = x(10)  // Trying to call an integer as function

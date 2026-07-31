@@ -1,5 +1,37 @@
 # Plan 0012 - Modern Osprey Debugger
 
+**Subsystem:** `crates/osprey-debug`, `crates/osprey-codegen` (DWARF metadata),
+`crates/osprey-cli`, `vscode-extension`
+**Status:** Phases 1–3 substantially shipped; Phase 4 onward unstarted. Line
+tables land in native debug builds (`compile_program_debug` emitting
+`DICompileUnit`/`DIFile`/`DISubprogram`/`DILocation` plus module flags, DWARF 4 on
+macOS and 5 elsewhere, 1-based `DILocation` columns), and F5 in VS Code is a real
+`lldb-dap` session rather than the former placeholder provider — pinned by
+`debug_compile_emits_source_level_metadata` and
+`a_breakpoint_inside_a_handler_arm_body_has_a_line_to_bind_to`.
+
+Two gaps no checklist item currently tracks, both verified against the tree:
+
+- **Lambda bodies are undebuggable.** `let f = |x| => …` emits
+  `define i64 @__closure_fn_0(i8* %__env, i64 %$p0)` with **no** `!dbg`
+  attachment and no body `DILocation`s — the module carries exactly one
+  `DISubprogram`, for `@main`. The fix is the one already proven for handler arms
+  (`crates/osprey-codegen/src/effects.rs`), applied to closure bodies. Match-arm
+  bodies have the same shape of problem: a `fn classify` spanning four lines emits
+  only the `DILocation` of its first.
+- **Layer 3's and Layer 4's advertised surfaces do not exist.** The plan describes
+  `--debug-info`, `--debug-opt`, `--debug-out`, `--debug-preserve-ir` and
+  `--debug-preserve-symbols`; `crates/osprey-cli/src/main.rs` accepts only
+  `--debug` (`osprey x.osp --debug-info` → `unknown flag --debug-info`), and
+  `build_executable` deletes the `.ll` unconditionally, so `--debug-preserve-ir`
+  has nothing to preserve. Likewise the `compilerPath`, `preserveArtifacts` and
+  `console` launch fields are contributed by no entry in
+  `vscode-extension/package.json` `debuggers[0]`.
+
+A debug-metadata coverage metric — Layer 6 — would have caught both, which is an
+argument for pulling it earlier than its current position.
+**Spec:** [0021 - Debugging](../specs/0021-Debugging.md)
+
 ## Summary
 
 The debugger scope includes source breakpoints, stepping, stack

@@ -47,11 +47,19 @@ fn is_ml_only(path: &Path) -> bool {
 /// Flavor-pair roots, resolved from the crate manifest directory so the test
 /// runs unchanged locally and in CI. Moved assertion suites retain the same IR
 /// equivalence guarantee as golden examples.
+///
+/// `benchmarks` is a root because its twins were otherwise unguarded and rotted:
+/// nothing type-checked a `.ospml` under it — this test walked only `tests/`, the
+/// formatter corpus test only *parses*, and `benchmarks/run.sh` compiles the
+/// `.osp` side alone. `binarytrees.ospml` sat with four
+/// `cannot unify int with Result<int, MathError>` errors while
+/// [plan 0019](../../../docs/plans/0019-ml-elegance.md) advertised it as the
+/// proof that ML reaches 6 lines at IR parity with its Default twin.
 fn flavor_roots() -> Vec<PathBuf> {
     // canonicalize() resolves the `../../`; fall back to the joined path when it
     // is unavailable rather than expect()-panicking outside a `#[test]` (the
     // workspace denies clippy::expect_used in non-test code).
-    ["../../tests"]
+    ["../../tests", "../../benchmarks"]
         .iter()
         .map(|relative| {
             let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join(relative);

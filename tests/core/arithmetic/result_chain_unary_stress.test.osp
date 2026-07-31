@@ -1,4 +1,7 @@
 // Unary, abs, mixed Result chains, first-error propagation, defaults, and matches.
+// Every Result is discharged by an exhaustive match or an explicit `?:` fallback —
+// never implicitly unwrapped ([FAILURE-EXPLICIT]). The wasm32 corpus run pins the
+// 32-bit Result repack path byte-for-byte ([WASM-TARGET-WIDTH]).
 // Observer helpers omit needless return annotations and each test remains independently named.
 
 fn observeArithmeticResult001() = match 10 + 3 {
@@ -72,25 +75,25 @@ test("double unary negation 009", fn() => check("double unary negation 009", "9"
 test("unary negation 010", fn() => check("unary negation 010", "-10", toString(-10)))
 test("double unary negation 010", fn() => check("double unary negation 010", "10", toString(--10)))
 test("absolute positive 001", fn() => check("absolute positive 001", "Success(1)", toString(abs(1))))
-test("absolute negative 001", fn() => check("absolute negative 001", "Success(1)", toString(abs((-1) ?: 0))))
+test("absolute negative 001", fn() => check("absolute negative 001", "Success(1)", toString(abs(-1))))
 test("absolute positive 002", fn() => check("absolute positive 002", "Success(2)", toString(abs(2))))
-test("absolute negative 002", fn() => check("absolute negative 002", "Success(2)", toString(abs((-2) ?: 0))))
+test("absolute negative 002", fn() => check("absolute negative 002", "Success(2)", toString(abs(-2))))
 test("absolute positive 003", fn() => check("absolute positive 003", "Success(3)", toString(abs(3))))
-test("absolute negative 003", fn() => check("absolute negative 003", "Success(3)", toString(abs((-3) ?: 0))))
+test("absolute negative 003", fn() => check("absolute negative 003", "Success(3)", toString(abs(-3))))
 test("absolute positive 004", fn() => check("absolute positive 004", "Success(4)", toString(abs(4))))
-test("absolute negative 004", fn() => check("absolute negative 004", "Success(4)", toString(abs((-4) ?: 0))))
+test("absolute negative 004", fn() => check("absolute negative 004", "Success(4)", toString(abs(-4))))
 test("absolute positive 005", fn() => check("absolute positive 005", "Success(5)", toString(abs(5))))
-test("absolute negative 005", fn() => check("absolute negative 005", "Success(5)", toString(abs((-5) ?: 0))))
+test("absolute negative 005", fn() => check("absolute negative 005", "Success(5)", toString(abs(-5))))
 test("absolute positive 006", fn() => check("absolute positive 006", "Success(6)", toString(abs(6))))
-test("absolute negative 006", fn() => check("absolute negative 006", "Success(6)", toString(abs((-6) ?: 0))))
+test("absolute negative 006", fn() => check("absolute negative 006", "Success(6)", toString(abs(-6))))
 test("absolute positive 007", fn() => check("absolute positive 007", "Success(7)", toString(abs(7))))
-test("absolute negative 007", fn() => check("absolute negative 007", "Success(7)", toString(abs((-7) ?: 0))))
+test("absolute negative 007", fn() => check("absolute negative 007", "Success(7)", toString(abs(-7))))
 test("absolute positive 008", fn() => check("absolute positive 008", "Success(8)", toString(abs(8))))
-test("absolute negative 008", fn() => check("absolute negative 008", "Success(8)", toString(abs((-8) ?: 0))))
+test("absolute negative 008", fn() => check("absolute negative 008", "Success(8)", toString(abs(-8))))
 test("absolute positive 009", fn() => check("absolute positive 009", "Success(9)", toString(abs(9))))
-test("absolute negative 009", fn() => check("absolute negative 009", "Success(9)", toString(abs((-9) ?: 0))))
+test("absolute negative 009", fn() => check("absolute negative 009", "Success(9)", toString(abs(-9))))
 test("absolute positive 010", fn() => check("absolute positive 010", "Success(10)", toString(abs(10))))
-test("absolute negative 010", fn() => check("absolute negative 010", "Success(10)", toString(abs((-10) ?: 0))))
+test("absolute negative 010", fn() => check("absolute negative 010", "Success(10)", toString(abs(-10))))
 test("mixed integer Result chain 001", fn() => check("mixed integer Result chain 001", "Success(9)", toString((((11 + 3) * 4 - 1) % 6) + 8)))
 test("mixed integer Result chain 002", fn() => check("mixed integer Result chain 002", "Success(10)", toString((((12 + 4) * 5 - 2) % 7) + 9)))
 test("mixed integer Result chain 003", fn() => check("mixed integer Result chain 003", "Success(11)", toString((((13 + 5) * 6 - 3) % 8) + 10)))

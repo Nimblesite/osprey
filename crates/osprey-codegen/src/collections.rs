@@ -61,7 +61,9 @@ const RECEIVER_DIRECTED: [&str; 2] = ["length", "isEmpty"];
 /// re-lowering it per candidate would duplicate its side effects. The
 /// collection arms exist because sending a `List`/`Map` handle to the string
 /// runtime reads an `i8*` heap pointer as a NUL-terminated string: a wrong
-/// answer and an out-of-bounds read.
+/// answer and an out-of-bounds read. A flat list *literal* is a third layout
+/// and needs its own arm ([`crate::listlit::lit_length`]) — it is not an
+/// `OspreyList` handle, so neither collection tag matches it.
 pub(crate) fn gen_receiver_directed(
     cg: &mut Codegen,
     name: &str,
@@ -83,7 +85,10 @@ pub(crate) fn gen_receiver_directed(
     let count = match recv.osp_ty.as_deref() {
         Some(LIST_OWNER) => handle_i64(cg, &recv, "osprey_list_length"),
         Some(MAP_OWNER) => handle_i64(cg, &recv, "osprey_map_length"),
-        _ => return crate::strings::gen_size(cg, name, recv).map(Some),
+        _ => match crate::listlit::lit_length(cg, &recv) {
+            Some(n) => n,
+            None => return crate::strings::gen_size(cg, name, recv).map(Some),
+        },
     };
     Ok(Some(if name == "isEmpty" {
         let r = cg.fresh_reg();

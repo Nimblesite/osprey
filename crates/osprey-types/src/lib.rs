@@ -218,6 +218,29 @@ mod tests {
     }
 
     #[test]
+    fn elvis_rejects_a_scrutinee_that_is_not_a_result() {
+        // [PATTERN-RESULT-DEFAULT]: "The scrutinee must be a `Result`; `?:` is
+        // not a boolean operator and never reinterprets a plain value as
+        // `Success`." `?:` desugars to a Success/Error match, so it used to
+        // inherit the ORDINARY match auto-wrap rule — under which any value may
+        // be matched as if wrapped in `Success` — and `5 ?: -1` type-checked and
+        // printed `5`, with the fallback silently unreachable.
+        let errs = bad("let dead = 5 ?: -1\n");
+        assert!(errs.iter().any(|e| e.message.contains("`?:`")), "{errs:?}");
+    }
+
+    #[test]
+    fn an_ordinary_success_arm_still_auto_wraps_a_plain_scrutinee() {
+        // The rule above is specific to `?:`. A hand-written `Success` arm keeps
+        // the documented auto-wrap, which is what lets a validated record
+        // construction be matched without a real Result.
+        ok("let label = match 5 {\n\
+              Success { value } => toString(value)\n\
+              Error { message } => message\n\
+            }\n");
+    }
+
+    #[test]
     fn generic_union_flows_type_argument() {
         ok("type Box<T> = Empty | Full { value: T }\n\
             let b = Full { value: 7 }\n\

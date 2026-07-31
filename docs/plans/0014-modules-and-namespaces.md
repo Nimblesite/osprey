@@ -1,5 +1,22 @@
 # Plan 0014 - Modules, Namespaces, and Multi-File Apps
 
+**Subsystem:** `crates/osprey-ast`, `crates/osprey-syntax` (both flavors),
+`crates/osprey-project`, `crates/osprey-types`, `crates/osprey-codegen`,
+`crates/osprey-cli`, `crates/osprey-lsp`
+**Status:** Core shipped and tested — Default + ML project compilation, the
+resolver/flattener, project-aware CLI and LSP diagnostics, state-ownership
+enforcement, and cross-file LSP resolution. **Fourteen items remain, not the
+three this plan's Summary and its README row used to name.** Beyond the three
+architectural ones (opaque manifest aliases, separate per-unit checking of
+importers against signatures, an incremental LSP project graph — `osprey_project::load`
+runs per request, deliberately uncached) the open set also includes: source-level
+names in debug info (`DISubprogram` still emits the mangled `__osp_*` name),
+cross-flavor module IR equivalence, the docs generator, and state-boundary LSP
+warnings / quick fixes. One defect beyond the checklist is recorded in
+[§Opaque types leak their representation](#opaque-types-leak-their-representation-defect).
+**Spec:** [0025 - Modules and Namespaces](../specs/0025-ModulesAndNamespaces.md)
+(`[MODULES-*]`)
+
 ## Summary
 
 Implement [spec 0025 - Modules and Namespaces](../specs/0025-ModulesAndNamespaces.md):
@@ -153,7 +170,16 @@ TODO:
       `mut` and reassignment.
 - [x] Reject direct state-cell reads and writes everywhere except the owning
       state module's algebraic-effect handler arms.
-- [x] Reject exported `mut` cells, including signature-based export attempts.
+- [x] Reject exported `mut` cells — `export mut` in a state module reports
+      ``` `export mut` is forbidden in a state module ``` (`osprey-project/src/collect.rs`),
+      covered by `module_mutation_boundaries_preserve_ordinary_local_mut`.
+- [ ] The **signature-based** half of that item is untested, and it may not be
+      reachable: a signature item list accepts `fn` / `type` / `effect` / nested
+      module entries, but a bare value entry (`count: int`) is a syntax error, so
+      a signature has no way to name a `mut` cell in the first place. Decide which
+      it is — if the route is unreachable, say so in `[MODULES-SIGNATURE]` and drop
+      the clause; if a signature should be able to list values, the ascription
+      check needs the rejection *and* a fixture.
 - [ ] Reject state-cell escape through exported pointers/references once pointer
       escape analysis exists; until then, reject direct export of `Ptr` derived
       from a state cell.
@@ -245,11 +271,47 @@ TODO:
 7. LSP and formatter integration.
 8. Parameterised modules after the basic module system is stable.
 
+## Opaque types leak their representation (defect)
+
+`[MODULES-OPAQUE-TYPES]` says "opaque union constructors are private" and that
+the compiler must not "expose `int` to clients". The manifest-*alias* half is
+enforced (`export opaque type UserId = int` is rejected during flattening with
+`opaque alias … unsupported`). The **record-payload** half is not enforced at
+all — a client outside the owning module can both construct the type and read
+through it:
+
+```osprey
+namespace opq;
+
+module Ids {
+    export opaque type Id = Id { value: int }
+    export fn make(n) = Id { value: n }
+}
+
+fn main() = {
+    let direct = Ids::Id { value: 3 }     // constructed from outside
+    print("field=${direct.value}")        // prints field=3
+}
+```
+
+`osprey build` accepts this and the binary prints `field=3`. So `opaque` is
+currently metadata the resolver carries but nothing enforces for the shape people
+actually reach for, which is the single-variant record wrapper — the newtype
+idiom the feature exists to serve. Abstraction is not a guarantee until a
+construction site and a field access outside the declaring module are both
+rejected.
+
+- [ ] Enforce opacity for record-payload opaque types: reject an out-of-module
+      constructor application and an out-of-module field access, with a
+      must-reject fixture for each and a positive fixture proving the owning
+      module still constructs and destructures freely.
+
 ## Risks
 
 - Resolver churn will touch type checking and codegen. Keep a raw-name fallback
   only temporarily and remove it before project mode is declared complete.
 - Opaque types need careful interaction with existing union/record constructors.
+  See the defect above: today they interact by not being enforced.
 - State modules overlap with existing handler-owned state. Treat state modules as
   a disciplined way to define handlers and access paths, not as process-global
   mutable singletons.

@@ -88,11 +88,11 @@ Every behaviour above is locked in by tests at two levels:
 
 ## What's deferred
 
-A few items from the [collections plan](https://github.com/Nimblesite/osprey/tree/main/docs/plans/collections.md) are explicitly deferred:
+A few items from the [collections plan](https://github.com/Nimblesite/osprey/blob/main/docs/plans/0004-collection-stdlib-completion.md) are explicitly deferred:
 
 - **`[head, ...tail]` and subset map patterns** in `match` — requires grammar additions and a parser regeneration cycle.
 - **List comprehensions** (`[x * x for x in xs]`) — same grammar pipeline.
-- **Names collapsing to `length` / `contains`** without a `list`/`map` prefix — waiting on universal function call syntax (UFCS), which is in flight.
+- **Bare `contains` / `get` / `reverse` / `indexOf`** without a `list`/`map` prefix. `length` and `isEmpty` already collapse: they dispatch on the receiver's runtime layout, so one spelling covers strings, lists and maps. The rest need overload resolution keyed on the first argument, which the one-scheme-per-name type environment cannot express yet.
 
 The plan document tracks each of these with its specific blocker.
 

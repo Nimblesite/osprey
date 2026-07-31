@@ -33,7 +33,8 @@ fn restLen(xs: List<int>) -> int = match xs {
     _ => 0
 }
 
-/// encodeIteration folds callback order into a base-100 integer through a handled effect.
+/// encodeIteration folds callback order into a base-100 integer through a handled
+/// effect, pinning forEachList's in-order traversal ([BUILTIN-LIST-FOREACH]).
 fn encodeIteration(xs: List<int>) -> int = {
     mut encoded = 0
     handle IterationProbe
@@ -106,7 +107,8 @@ fn constructionAndIdentityCase() = {
         (listGet(abPlusA, 7) ?: ((0 - 999) ?: 0)) == 3
     ])
 
-    // All three legacy contains results survive alongside additional positive and endpoint checks.
+    // All three legacy contains results survive alongside additional positive and
+    // endpoint checks ([BUILTIN-LIST-CONTAINS]).
     checkAll("contains behavior", [
         listContains(a, 2),
         !listContains(a, 99),
@@ -294,13 +296,34 @@ fn indexingPatternsAndDispatchCase() = {
         classify(patternFour) == "many head=4 rest=3"
     ])
 
+    // The same patterns reached through a LITERAL argument. A callee cannot tell
+    // which list layout it received — its parameter is one `i8*` either way — and
+    // `osprey_list_get`/`_drop` need a real OspreyList, so every one of these
+    // SEGFAULTED before the literal was rebuilt at the call boundary.
+    // `osprey_list_length` masked it by reading both layouts' shared leading
+    // `i64`, which is why the length-only assertions above never caught it.
+    checkAll("list patterns bind through a literal argument", [
+        classify([9]) == "one(9)",
+        classify([9, 8]) == "two(9,8)",
+        classify([9, 8, 7]) == "many head=9 rest=2",
+        sumList([1, 2, 3]) == 6,
+        sumList([5]) == 5,
+        restLen([1, 2, 3, 4]) == 2,
+        restLen([1]) == 0
+    ])
+
     // The old composite bare-length row is split into one condition per receiver.
+    // A flat list literal is its own layout, distinct from both an OspreyList
+    // handle and a string: it used to reach `osp_strlen`, which counted the
+    // length word's bytes and answered 1 for any list of 1..=255 elements.
     checkAll("receiver-directed length dispatch", [
         length(a) == 3,
         length(dispatchThirtyFive) == 35,
         length("abcd") == 4,
         length(empty) == 0,
-        length("") == 0
+        length("") == 0,
+        length(commands) == 3,
+        length(lines("a\nb\nc")) == 3
     ])
 
     // The old composite bare-isEmpty row is split and extended across derived lists.
@@ -310,7 +333,29 @@ fn indexingPatternsAndDispatchCase() = {
         isEmpty(""),
         !isEmpty("abcd"),
         !isEmpty(listReverse(a)),
-        isEmpty(listConcat(empty, empty))
+        isEmpty(listConcat(empty, empty)),
+        !isEmpty(commands)
+    ])
+
+    // A flat list literal is a third layout, distinct from both an OspreyList
+    // handle and a string. `+` used to hand `osprey_list_concat` the literal's
+    // foreign header and SEGFAULT when exactly one side was a literal, and fall
+    // through to integer arithmetic ("expected an integer") when both were. Each
+    // operand is normalised to a runtime list first, so all four combinations of
+    // literal and handle concatenate and keep their order.
+    checkAll("list literal and runtime handle concatenate in either position", [
+        listLength(commands + commands) == 6,
+        listLength(commands + empty) == 3,
+        listLength(empty + commands) == 3,
+        listContains(commands + empty, "echo test"),
+        !listContains(empty + commands, "echo missing"),
+        listLength(a + [7, 8]) == 5,
+        listLength([7, 8] + a) == 5,
+        (listGet([7, 8] + a, 0) ?: ((0 - 999) ?: 0)) == 7,
+        (listGet([7, 8] + a, 2) ?: ((0 - 999) ?: 0)) == 1,
+        (listGet(a + [7, 8], 3) ?: ((0 - 999) ?: 0)) == 7,
+        (listGet(a + [7, 8], 4) ?: ((0 - 999) ?: 0)) == 8,
+        length([7, 8] + a) == 5
     ])
 }
 

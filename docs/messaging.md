@@ -159,9 +159,18 @@ This same idea works for logging, metrics, retries and other work that normally
 needs dependency injection, global state or wrapper libraries. These comparisons
 help explain effects; they do not mean every framework automatically disappears.
 
-Agents must keep this claim accurate: the compiler checks the data going into and
-coming out of an effect. It does not yet catch every missing effect setup before
-the program runs. Explain that limitation in plain English wherever it matters.
+Agents must keep this claim accurate. The compiler checks the data going into and
+coming out of an effect, **and it now also refuses to build a program that
+performs an effect nothing handles.** A missing handler is a compile error naming
+the effect and the operation — `unhandled effect operations at program entry:
+Log.write; add a matching handle` — not a runtime surprise, and it holds through
+helper calls, lambdas passed to higher-order functions, and fibers. Earlier
+revisions of this document said the opposite; that limitation is gone for the
+language surface as it exists today. What remains is narrower and worth stating
+precisely if it comes up: the checker reasons over a closed program's operation
+summaries rather than a general effect-row variable in a function type, so a
+future surface that quantifies rows independently in public higher-order
+signatures would need separate work.
 
 ## How to write about the two flavors
 
@@ -208,8 +217,11 @@ project is dividing people rather than giving them a readable surface.
 
 These constraints materially affect how the language must be described:
 
-- The compiler checks the inputs and outputs of effects, but it does not yet catch
-  every missing effect setup before the program runs.
+- The compiler checks the inputs and outputs of effects, **and** rejects a program
+  that performs an effect no handler discharges, naming the effect and operation
+  at compile time. The remaining scope limit is representational, not a hole in
+  the check: it reasons over closed-program operation summaries rather than an
+  effect-row variable in a function type.
 - Effects that pause work and later continue it are currently available only in
   native programs. WebAssembly supports effects that return immediately.
 - Tail-call optimisation is not implemented.

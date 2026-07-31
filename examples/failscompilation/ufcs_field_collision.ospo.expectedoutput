@@ -1,1 +1,1 @@
-UFCS call `_.trim(...)` is rejected because the receiver has a field named `trim`; field access wins over UFCS dispatch per spec [BUILTIN-STRING-UFCS], and `trim` is not callable: function call type mismatch: actual=(string) -> string, expected=({trim: string}) -> t1: parameter 0 unification failed: string vs {trim: string}: type mismatch: string != {trim: string}
+type mismatch: cannot unify string with { trim: string }

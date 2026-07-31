@@ -1,1 +1,1 @@
-line 8:13: match expression must have at least one arm
+non-exhaustive match on `Option`: missing Some, None
