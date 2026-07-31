@@ -7,7 +7,7 @@
 # --run`) and TypeScript sub-projects (vscode-extension, webcompiler, website).
 # =============================================================================
 
-.PHONY: build test language-test lint fmt clean ci setup run install bench partial-bench wasm wasm-site wasm-serve vsix-rebuild-reinstall bank bank-web bank-test bank-e2e hawk gpu-demo \
+.PHONY: build test language-test lint fmt clean ci setup run install bench partial-bench wasm wasm-site wasm-serve vsix-rebuild-reinstall bank bank-web bank-test bank-e2e hawk gpu-demo graphics \
 	_rebuild-install-vsix _vsix_clean _vsix_build _vsix_bundle _vsix_package _vsix_install
 
 # ---------------------------------------------------------------------------
@@ -662,6 +662,22 @@ _tui: build
 gpu-demo: build
 	@echo "==> rendering GPU graphics demo (fractal, shaded sphere, composite)"
 	./$(BIN) tests/core/gpu/raster.test.$(if $(filter ml,$(FLAVOR)),ospml,osp) --run
+
+## graphics: Build the macOS graphics bridge and run the animated Metal demo
+#            Osprey drives the scene; the GPU shades every pixel. macOS only.
+GFX_DIR := examples/graphics
+GFX_LIB := $(GFX_DIR)/libospgfx.dylib
+
+$(GFX_LIB): $(GFX_DIR)/ospgfx.m
+	@echo "==> building Osprey -> macOS graphics bridge"
+	clang -dynamiclib -fobjc-arc -O2 -Wall -Werror \
+		-install_name $(CURDIR)/$(GFX_LIB) \
+		-framework Cocoa -framework Metal -framework QuartzCore \
+		-o $(GFX_LIB) $(GFX_DIR)/ospgfx.m
+
+graphics: build $(GFX_LIB)
+	@echo "==> launching Osprey graphics demo (close the window to exit)"
+	./$(BIN) $(GFX_DIR)/scene.osp --run
 
 ## run: Compile and run an Osprey file (usage: make run FILE=<path>)
 run: build

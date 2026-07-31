@@ -1,0 +1,129 @@
+// Osprey -> macOS graphics bridge, driving the Apple GPU.
+//
+// Osprey is the host program: it opens a real Cocoa window, reads the clock,
+// and recomputes the scene every frame in its own fixed-point arithmetic. The
+// GPU is the rasteriser: `scene.metal` shades every pixel from the parameter
+// slots pushed below ([FFI-LINK-DIRECTIVES], [FFI-PTR] —
+// docs/specs/0019-ForeignFunctionInterface.md).
+//
+// This is deliberately NOT Osprey's `gpu*` builtin surface. [GPU-BACKEND-HOST]
+// is the only backend that exists, so `gpuMap` is a CPU loop — measured at
+// ~1.2us a pixel, which is 13fps at this resolution. The bridge below is where
+// [GPU-BACKEND-DEVICE] would attach when it lands.
+
+// @link: ospgfx
+// @linkdir: examples/graphics
+
+extern fn osp_gfx_open(width: int, height: int, scale: int, title: string, shader: string) -> Ptr
+extern fn osp_gfx_set(win: Ptr, slot: int, value: int) -> int
+extern fn osp_gfx_draw(win: Ptr) -> int
+extern fn osp_gfx_ticks(win: Ptr) -> int
+extern fn osp_gfx_close(win: Ptr) -> int
+
+/// unit is the fixed-point one, and also a full turn in angle units, so a
+/// slot carrying an angle reaches the shader already normalised to 0..1.
+fn unit() = 4096
+fn halfTurn() = 2048
+fn quarterTurn() = 1024
+
+/// The design resolution and the factor it is magnified by on screen. The
+/// drawable is this window at full backing density, so a Retina display is
+/// shaded at Retina resolution.
+fn designWidth() = 480
+fn designHeight() = 300
+fn windowScale() = 2
+
+/// slotCount is how many parameters one frame pushes; `pushScene` returning
+/// anything else means the bridge rejected a slot.
+fn slotCount() = 8
+
+/// wrapTurn folds any angle into [0, unit).
+fn wrapTurn(a) = {
+    let m = (a % unit()) ?: 0
+    match m < 0 { true => (m + unit()) ?: 0 false => m }
+}
+
+/// sinArc is the positive half-wave: a parabola through (0,0), (1024,unit)
+/// and (2048,0), which tracks a true sine closely enough to steer a shader.
+fn sinArc(u) = intDiv((u * ((halfTurn() - u) ?: 0)) ?: 0, 256) ?: 0
+
+/// fsin and fcos return -unit..unit for an angle in turn units.
+fn fsin(a) = {
+    let u = wrapTurn(a)
+    match u < halfTurn() {
+        true => sinArc(u)
+        false => (0 - sinArc((u - halfTurn()) ?: 0)) ?: 0
+    }
+}
+fn fcos(a) = fsin((a + quarterTurn()) ?: 0)
+
+/// phase converts elapsed milliseconds into turn units for a given period, so
+/// every oscillator below is written in the time it takes to come around.
+fn phase(t, periodMs) = intDiv((t * unit()) ?: 0, periodMs) ?: 0
+
+/// swing and sway are the two oscillators the whole scene is built from: a
+/// value centred on `centre`, moving `amp` either side of it, once per period.
+fn swing(t, periodMs, centre, amp) =
+    (centre + (intDiv((fsin(phase(t, periodMs)) * amp) ?: 0, unit()) ?: 0)) ?: 0
+fn sway(t, periodMs, centre, amp) =
+    (centre + (intDiv((fcos(phase(t, periodMs)) * amp) ?: 0, unit()) ?: 0)) ?: 0
+
+/// foldShapeX and foldShapeY are the Kali constant. It is the single most
+/// consequential pair of numbers in the scene: small moves here restructure
+/// every filament, so they drift slowly and on coprime periods, which keeps
+/// the figure from ever repeating itself.
+fn foldShapeX(t) = swing(t, 27000, 4055, 1105)
+fn foldShapeY(t) = sway(t, 37000, 3768, 1064)
+
+/// zoomLevel breathes the whole figure in and out.
+fn zoomLevel(t) = swing(t, 41000, 4300, 1350)
+
+/// spinTurns rotates the plane once every 73 seconds.
+fn spinTurns(t) = phase(t, 73000)
+
+/// paletteTurns walks the colour wheel once every 19 seconds.
+fn paletteTurns(t) = phase(t, 19000)
+
+/// coreGlow pulses the brightness of the neon cores along each filament.
+fn coreGlow(t) = swing(t, 11000, 1150, 720)
+
+/// driftX and driftY pan the viewport on a slow Lissajous figure.
+fn driftX(t) = swing(t, 53000, 0, 700)
+fn driftY(t) = sway(t, 61000, 0, 620)
+
+/// pushScene writes one frame of scene state into the bridge and returns the
+/// number of slots it accepted.
+fn pushScene(win, t) =
+    osp_gfx_set(win, 0, foldShapeX(t))
+        + osp_gfx_set(win, 1, foldShapeY(t))
+        + osp_gfx_set(win, 2, zoomLevel(t))
+        + osp_gfx_set(win, 3, spinTurns(t))
+        + osp_gfx_set(win, 4, paletteTurns(t))
+        + osp_gfx_set(win, 5, coreGlow(t))
+        + osp_gfx_set(win, 6, driftX(t))
+        + osp_gfx_set(win, 7, driftY(t)) ?: 0
+
+/// animate advances on wall-clock time, so the motion plays at the same speed
+/// whatever frame rate the display sustains, and stops when the window closes.
+fn animate(win: Ptr, frame: int) -> int = {
+    let pushed = pushScene(win, osp_gfx_ticks(win))
+    match (pushed == slotCount()) && (osp_gfx_draw(win) == 1) {
+        true => animate(win, (frame + 1) ?: frame)
+        false => frame
+    }
+}
+
+fn report(frames, ms) = {
+    let fps = intDiv((frames * 1000) ?: 0, match ms > 0 { true => ms false => 1 }) ?: 0
+    print("${frames} frames in ${ms} ms — ${fps} fps at ${designWidth()}x${designHeight()}")
+}
+
+fn main() = {
+    let win = osp_gfx_open(designWidth(), designHeight(), windowScale(),
+        "Osprey · Kali", "examples/graphics/scene.metal")
+    let frames = animate(win, 0)
+    report(frames, osp_gfx_ticks(win))
+    osp_gfx_close(win)
+}
+
+main()

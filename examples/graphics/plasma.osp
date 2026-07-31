@@ -48,14 +48,19 @@ fn fsin(a) = {
 }
 fn fcos(a) = fsin((a + 1024) ?: 0)
 
-/// isqrtIter is Newton's method on integers, converging from above.
-fn isqrtIter(n: int, guess: int) -> int = {
-    let next = intDiv((guess + (intDiv(n, guess) ?: guess)) ?: guess, 2) ?: guess
-    match next >= guess { true => guess false => isqrtIter(n, next) }
-}
+/// absOf is the magnitude of a signed value.
+fn absOf(v) = match v < 0 { true => (0 - v) ?: 0 false => v }
 
-/// isqrt is the floor of the square root, total on zero and negatives.
-fn isqrt(n: int) -> int = match n <= 0 { true => 0 false => isqrtIter(n, n) }
+/// hypot is the octagonal approximation to sqrt(dx^2 + dy^2): the larger leg
+/// scaled by 0.9604 plus the smaller by 0.3978, within ~4% of the true radius
+/// and free of the Newton iteration a real square root would cost per pixel.
+fn hypot(dx, dy) = {
+    let a = absOf(dx)
+    let b = absOf(dy)
+    let hi = match a > b { true => a false => b }
+    let lo = match a > b { true => b false => a }
+    intDiv(((hi * 3934) ?: 0) + ((lo * 1629) ?: 0) ?: 0, unit()) ?: 0
+}
 
 /// pixelX and pixelY recover frame coordinates from a flat kernel index.
 fn pixelX(idx) = (idx % frameWidth()) ?: 0
@@ -73,7 +78,7 @@ fn plasmaHue(idx, t) = {
     let y = pixelY(idx)
     let fx = ((x - centreX()) ?: 0) - (intDiv((fcos((t * 3) ?: 0) * 90) ?: 0, unit()) ?: 0) ?: 0
     let fy = ((y - centreY()) ?: 0) - (intDiv((fsin((t * 2) ?: 0) * 60) ?: 0, unit()) ?: 0) ?: 0
-    let r = isqrt(((fx * fx) ?: 0) + ((fy * fy) ?: 0) ?: 0)
+    let r = hypot(fx, fy)
     let waves = fsin(((x * 26) ?: 0) + t ?: 0) + fsin(((y * 34) ?: 0) + ((t * 2) ?: 0) ?: 0)
         + fsin(((((x + y) ?: 0) * 19) ?: 0) - ((t * 3) ?: 0) ?: 0)
         + ((fsin(((r * 58) ?: 0) - ((t * 5) ?: 0) ?: 0) * 3) ?: 0) ?: 0
