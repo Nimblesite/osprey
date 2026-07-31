@@ -70,6 +70,13 @@ jobs:
         shell: msys2 {0}
         run: make _runtime CC=gcc AR=ar
 
+      # The collector must scan roots in its callers, not only the frames below
+      # the first allocation. This focused test catches platform stack-bound
+      # discovery errors before the larger language corpus obscures the crash.
+      - name: GC keeps roots in outer caller stack frames
+        shell: msys2 {0}
+        run: make _test_gc_stack_root CC=gcc
+
       - name: Build osprey (release)
         run: cargo build --release -p osprey-cli
 

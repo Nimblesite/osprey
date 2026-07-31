@@ -7,7 +7,7 @@
 # --run`) and TypeScript sub-projects (vscode-extension, webcompiler, website).
 # =============================================================================
 
-.PHONY: build test language-test lint fmt clean ci setup run install bench partial-bench wasm wasm-site wasm-serve vsix-rebuild-reinstall bank bank-web bank-test bank-e2e hawk gpu-demo graphics \
+.PHONY: build test language-test lint fmt clean ci setup run install bench partial-bench wasm wasm-site wasm-serve vsix-rebuild-reinstall bank bank-web bank-test bank-e2e hawk gpu-demo graphics _test_gc_stack_root \
 	_rebuild-install-vsix _vsix_clean _vsix_build _vsix_bundle _vsix_package _vsix_install
 
 # ---------------------------------------------------------------------------
@@ -516,7 +516,13 @@ _coverage_check_rust:
 OSSL_CFLAGS = $(OSSL) `pkg-config --cflags openssl 2>/dev/null || echo ""`
 RT_THREADS  = runtime/fiber_runtime.c runtime/system_runtime.c runtime/effects_runtime.c \
               runtime/profiler_runtime.c runtime/profiler_sampler.c
-_test_c_runtime:
+_test_gc_stack_root:
+	@echo "==> [c-runtime] GC caller-stack root regression..."
+	@cd compiler && $(CC) $(T) \
+	  runtime/memory_gc_stack_root_tests.c runtime/memory_gc.c -pthread \
+	  -o bin/memory_gc_stack_root_tests && ./bin/memory_gc_stack_root_tests
+
+_test_c_runtime: _test_gc_stack_root
 	@echo "==> [c-runtime] memory backend + containers + string/error/HTTP/fiber tests..."
 	@cd compiler && $(CC) $(T) \
 	  runtime/memory_arc_tests.c runtime/memory_arc.c -pthread \
