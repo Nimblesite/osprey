@@ -586,7 +586,10 @@ impl Checker {
     }
 
     fn apply_named_fn(&mut self, name: Option<&str>, ft: &Type, args: Vec<Type>) -> Type {
-        let constrained_builtin = matches!(name, Some("length" | "isEmpty" | "print" | "toString"));
+        let constrained_builtin = name.is_some_and(|name| {
+            matches!(name, "length" | "isEmpty" | "print" | "toString" | "toGpu")
+                || crate::builtin_constraints::is_gpu_buffer_builtin(name)
+        });
         if let (Some(name), Some(receiver)) = (name, args.first()) {
             if constrained_builtin {
                 self.builtin_uses.push((name.to_string(), receiver.clone()));

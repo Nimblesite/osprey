@@ -46,7 +46,7 @@ pub(crate) enum Callback {
 /// closure value wins over the beta-reduction cache — the cell carries the
 /// captures snapshotted at creation. A computed callback (call result or field
 /// access) is evaluated once here to a closure handle.
-fn callback_of(cg: &mut Codegen, e: &Expr) -> Result<Callback> {
+pub(crate) fn callback_of(cg: &mut Codegen, e: &Expr) -> Result<Callback> {
     match e {
         Expr::Lambda {
             parameters,
@@ -97,7 +97,7 @@ fn callback_of(cg: &mut Codegen, e: &Expr) -> Result<Callback> {
 }
 
 /// Apply a callback to already-evaluated argument values.
-fn invoke(cg: &mut Codegen, cb: &Callback, args: Vec<Value>) -> Result<Value> {
+pub(crate) fn invoke(cg: &mut Codegen, cb: &Callback, args: Vec<Value>) -> Result<Value> {
     match cb {
         Callback::Named(name) => call_with_values(cg, name, args),
         Callback::Lambda(params, body, sig) => {
@@ -137,7 +137,7 @@ pub(crate) fn gen(
     Ok(Some(v))
 }
 
-fn nth(args: &[Expr], i: usize) -> Result<&Expr> {
+pub(crate) fn nth(args: &[Expr], i: usize) -> Result<&Expr> {
     args.get(i)
         .ok_or_else(|| CodegenError::invalid("iterator builtin: missing argument"))
 }
@@ -220,7 +220,7 @@ fn for_each(cg: &mut Codegen, args: &[Expr]) -> Result<Value> {
 /// TYPE TEMPLATE — the seed value, whose `ty`/`osp_ty`/… tags are reused by
 /// [`rebuild_acc`] to recover the accumulator from the uniform `i64` slot. The
 /// operand of the template is stale; only its type tags are read [MEM-BACKENDS].
-fn acc_init(cg: &mut Codegen, args: &[Expr]) -> Result<(String, Value)> {
+pub(crate) fn acc_init(cg: &mut Codegen, args: &[Expr]) -> Result<(String, Value)> {
     let initial = gen_expr(cg, nth(args, 1)?)?;
     // A pointer accumulator escapes into the loop-carried slot: dup it so the
     // per-iteration region drop cannot free it [GC-ARC-PERCEUS].
@@ -252,7 +252,7 @@ fn rebuild_acc(cg: &mut Codegen, raw: &str, tmpl: &Value) -> Value {
 
 /// One fold step: load the accumulator (recovering its real type), apply
 /// `combine(acc, elem)`, box the result back into the slot.
-fn acc_step(
+pub(crate) fn acc_step(
     cg: &mut Codegen,
     acc: &str,
     tmpl: &Value,
@@ -287,7 +287,7 @@ fn acc_step(
 /// or `double` accumulator is recovered from the uniform `i64` slot, not
 /// returned as raw bits — a downstream field access would otherwise `bitcast`
 /// an `i64` as if it were already a pointer (invalid IR) [MEM-BACKENDS].
-fn acc_result(cg: &mut Codegen, acc: &str, tmpl: &Value) -> Value {
+pub(crate) fn acc_result(cg: &mut Codegen, acc: &str, tmpl: &Value) -> Value {
     let raw = cg.emit_reg(format!("load i64, i64* {acc}"));
     let v = rebuild_acc(cg, &raw, tmpl);
     // The escaped accumulator carries the loop's surviving +1 (the last
@@ -318,7 +318,7 @@ fn fold(cg: &mut Codegen, args: &[Expr]) -> Result<Value> {
 /// The `i`-th positional argument as a list handle. A flat list literal is
 /// rebuilt as a runtime list first — `osprey_list_get` cannot read the literal
 /// layout ([`crate::listlit::to_runtime_list`]).
-fn list_arg(cg: &mut Codegen, args: &[Expr], i: usize) -> Result<Value> {
+pub(crate) fn list_arg(cg: &mut Codegen, args: &[Expr], i: usize) -> Result<Value> {
     let v = gen_expr(cg, nth(args, i)?)?;
     let v = crate::listlit::to_runtime_list(cg, v);
     crate::cast::coerce_to(cg, v, LType::Ptr)

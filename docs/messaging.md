@@ -227,6 +227,12 @@ These constraints materially affect how the language must be described:
 - Tail-call optimisation is not implemented.
 - Generics, complete multi-file module imports and a package manager remain
   roadmap work.
+- GPU computation is a typed language surface with a host execution backend:
+  `GpuBuffer` types, data-parallel kernels the compiler proves pure at compile
+  time, and dense buffers that run as native loops today
+  (docs/specs/0034-GPUComputation.md). Device code generation (PTX, Metal,
+  WebGPU) is staged roadmap work — do not describe Osprey as executing on GPU
+  hardware yet.
 - WebAssembly memory behavior must be checked against what the browser runtime
   currently supports rather than assumed from native builds.
 - The C FFI is outside Osprey's memory-safety guarantee.

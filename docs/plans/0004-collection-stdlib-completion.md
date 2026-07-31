@@ -366,6 +366,16 @@ pair migrates together against one shared `.expectedoutput`.
       `lib.rs`) and the four literal/handle position combinations in
       `tests/core/collections/list_basics.test.{osp,ospml}`, green under
       default / `--memory=gc` / `--memory=arc` (`ARC_LEAKY=0`) and wasm32.
+- [ ] **`toFloat(n: int) -> float`** — the missing scalar conversion builtin.
+      Round-to-nearest-even, exact for `|n| <= 2^53`; total (no `Result`).
+      Required by [GPU-CONVERT] (docs/specs/0034-GPUComputation.md) so the
+      canonical float-pipeline seed `gpuIota(n) |> gpuMap(toFloat)` is
+      expressible — today the GPU float stress tests
+      (`tests/core/gpu/stress.test.osp` `floatChurnCase`) iterate literal
+      buffers because no int→float conversion exists anywhere in the surface.
+      Register the scheme in `builtins.rs`, lower via `sitofp` (a `conv.rs`
+      one-liner), add the docs entry per the checklist below, and extend the
+      GPU stress corpus to seed from `gpuIota` once available.
 - [ ] **Defect found, not fixed: `listGet` over a `List<string>`.** Independent
       of the layout work above — a plain runtime handle fails too. Re-measured
       2026-07-30; it has **two faces**, and the quiet one is the reason this

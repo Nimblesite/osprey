@@ -1,0 +1,6 @@
+ok 1 - gpu buffers round-trip lists densely
+ok 2 - pure int kernels map and fold on buffers
+ok 3 - float kernels keep element bits through map and fold
+ok 4 - kernels may change the element scalar type
+1..4
+# tests=4 passed=4 failed=0 skipped=0

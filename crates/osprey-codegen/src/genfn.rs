@@ -14,8 +14,10 @@ use osprey_ast::{Expr, NamedArgument, Parameter};
 
 /// If `name` is a generic user function, inline its body with the call's
 /// arguments bound to its parameters (so its type variables monomorphise to the
-/// concrete argument types here) and return the result. A re-entry guard makes a
-/// recursive generic call fall back to a direct call rather than inline forever.
+/// concrete argument types here) and return the result. A re-entry guard stops
+/// a recursive generic call from inlining forever — and fails closed, because
+/// the fallback (a direct call) would name a definition that is never emitted:
+/// generic functions exist only as inlined specialisations.
 pub(crate) fn try_inline(
     cg: &mut Codegen,
     name: &str,
@@ -23,7 +25,10 @@ pub(crate) fn try_inline(
     named: &[NamedArgument],
 ) -> Result<Option<Value>> {
     if cg.inlining.contains(name) {
-        return Ok(None);
+        return Err(crate::error::CodegenError::unsupported(format!(
+            "`{name}` is recursive but its signature is not fully inferred; \
+             annotate its parameters and return type so it is emitted as a real function"
+        )));
     }
     let Some((params, body)) = cg.fn_defs.get(name).cloned() else {
         return Ok(None);

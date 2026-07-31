@@ -41,6 +41,7 @@ fn builtin_docs() -> impl Iterator<Item = &'static BuiltinDoc> {
         lang::FUNCTIONAL,
         lang::LISTS,
         lang::MAPS,
+        lang::GPU,
         sys::FILES,
         sys::HTTP,
         sys::JSON,

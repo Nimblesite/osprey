@@ -1,0 +1,8 @@
+ok 1 - particles integrate velocity over ticks
+ok 2 - lerp eases toward targets elementwise
+ok 3 - culling keeps in-range entities in draw order
+ok 4 - damage resolves and survivors compact
+ok 5 - clamping normalizes channel buffers
+ok 6 - scan accumulates a running frame budget
+1..6
+# tests=6 passed=6 failed=0 skipped=0

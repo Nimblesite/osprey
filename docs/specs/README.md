@@ -56,6 +56,10 @@ This directory holds **all spec documents** for the project:
     stdin-only input ferry (one JSON line via `input`), the `key=value` →
     `$GITHUB_OUTPUT` contract, Docker vs composite packaging, and why the native
     target is forced (wasm omits `input`) with the deferred wasm path.
+  - [`0034-GPUComputation.md`](0034-GPUComputation.md) — typed GPU buffers,
+    data-parallel kernels with compile-time purity proofs, the host execution
+    baseline, and the staged device-backend roadmap grounded in
+    [`gpu.md`](gpu.md).
 
 ## Spec ID convention
 

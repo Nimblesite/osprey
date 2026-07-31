@@ -1,0 +1,67 @@
+// GPU buffer surface: dense round-trips, pure kernels, and scalar reductions
+// ([GPU-BUFFER], [GPU-MAP], [GPU-FOLD] — docs/specs/0034-GPUComputation.md).
+
+(** Pure int kernel; the checker proves it performs no effects. *)
+square x = (x * x) ?: 0
+
+(** Keep the checked-arithmetic Result inside the kernel. *)
+addInts : (int, int) -> int
+addInts (acc, x) = (acc + x) ?: acc
+
+(** Pure float kernel; the buffer's element tag types x as float. *)
+scale x = x * 1.5
+
+(** Float reduction kernel for gpuFold's uncurried combine slot. *)
+addFloats : (float, float) -> float
+addFloats (a, x) = a + x
+
+(** Map an int element to a bool element, changing the buffer's type. *)
+isOdd x = (x % 2 ?: 0) == 1
+
+(** Count the true elements of a bool buffer. *)
+countOdd : (int, bool) -> int
+countOdd (acc, flag) = match flag
+    true => (acc + 1) ?: acc
+    false => acc
+
+(** Pin toGpu/fromGpu as an order-preserving dense copy. *)
+roundTripCase () =
+    buf = toGpu [3, 1, 4, 1, 5]
+    back = fromGpu buf
+    checkAll "round trip" [
+        gpuLength buf == 5,
+        listLength back == 5,
+        (listGet (back, 0) ?: 0) == 3,
+        (listGet (back, 2) ?: 0) == 4,
+        (listGet (back, 4) ?: 0) == 5,
+        gpuLength (toGpu []) == 0
+    ]
+
+(** Pipe a buffer through a named kernel and fold it away. *)
+intKernelCase () =
+    total = toGpu [1, 2, 3, 4] |> gpuMap square |> gpuFold 0 addInts
+    squares = toGpu [1, 2, 3] |> gpuMap (\x => (x * x) ?: 0) |> fromGpu
+    checkAll "int kernels" [
+        total == 30,
+        (listGet (squares, 2) ?: 0) == 9,
+        (toGpu [10, 20] |> gpuFold 5 addInts) == 35
+    ]
+
+(** Prove float words keep their bits through map and fold. *)
+floatKernelCase () =
+    sum = toGpu [1.0, 2.0, 3.0] |> gpuMap scale |> gpuFold 0.0 addFloats
+    checkAll "float kernels" [
+        sum == 9.0,
+        (toGpu [0.5, 0.25] |> gpuFold 0.0 addFloats) == 0.75
+    ]
+
+(** Map int elements to bool elements and count the odd ones. *)
+boolKernelCase () =
+    odds = toGpu [1, 2, 3, 4, 5] |> gpuMap isOdd
+    count = odds |> gpuFold 0 countOdd
+    checkAll "bool kernels" [gpuLength odds == 5, count == 3]
+
+test ("gpu buffers round-trip lists densely", roundTripCase)
+test ("pure int kernels map and fold on buffers", intKernelCase)
+test ("float kernels keep element bits through map and fold", floatKernelCase)
+test ("kernels may change the element scalar type", boolKernelCase)

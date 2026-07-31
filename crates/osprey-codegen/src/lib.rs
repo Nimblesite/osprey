@@ -30,6 +30,7 @@ mod extern_call;
 mod fiber;
 mod freevars;
 mod genfn;
+mod gpu;
 mod iter;
 mod listlit;
 mod llty;

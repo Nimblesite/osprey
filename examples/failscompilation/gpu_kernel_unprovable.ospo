@@ -1,0 +1,10 @@
+// [GPU-KERNEL-PURE] fails closed: a kernel received as a bare function
+// parameter has unknown effects at the combinator call site, so the checker
+// rejects it rather than assume purity.
+effect Noise {
+    blip: fn() -> Unit
+}
+
+fn runIt(f) = toGpu([1]) |> gpuMap(f) |> gpuLength()
+
+fn main() = print(runIt(|x| => x))

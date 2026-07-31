@@ -50,6 +50,9 @@ pub mod names {
     pub const CHANNEL: &str = "Channel";
     /// The opaque foreign pointer type used for C interop.
     pub const PTR: &str = "Ptr";
+    /// The dense scalar buffer for GPU computation [GPU-BUFFER]
+    /// (docs/specs/0034-GPUComputation.md).
+    pub const GPU_BUFFER: &str = "GpuBuffer";
 }
 
 /// A type in the Osprey type system.
@@ -165,6 +168,11 @@ impl Type {
     #[must_use]
     pub(crate) fn iterator(elem: Type) -> Type {
         Type::con(names::ITERATOR, vec![elem])
+    }
+    /// `GpuBuffer<elem>` — the dense scalar buffer [GPU-BUFFER].
+    #[must_use]
+    pub(crate) fn gpu_buffer(elem: Type) -> Type {
+        Type::con(names::GPU_BUFFER, vec![elem])
     }
 
     /// True if this is a nullary-or-applied constructor with the given name.

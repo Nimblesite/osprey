@@ -568,3 +568,7 @@ See [WebSockets](0015-WebSockets.md).
 ## Fibers and Channels
 
 `spawn`, `await`, `send`, `recv`, `yield`, `Fiber<T>`, `Channel<T>` are documented in [Fibers and Concurrency](0011-LightweightFibersAndConcurrency.md).
+
+## GPU Computation
+
+`toGpu`, `fromGpu`, `gpuLength`, `gpuMap`, `gpuFold`, and `GpuBuffer<T>` are documented in [GPU Computation](0034-GPUComputation.md).

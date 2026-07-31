@@ -2220,6 +2220,88 @@ fn validate_statement_handlers(
     }
 }
 
+/// The argument slot holding the kernel callback of a GPU combinator, if
+/// `name` is one. Implements [GPU-KERNEL-PURE]
+/// (docs/specs/0034-GPUComputation.md).
+fn gpu_kernel_slot(name: &str) -> Option<usize> {
+    match name {
+        "gpuMap" | "gpuFilter" => Some(1),
+        "gpuFold" | "gpuZipWith" | "gpuScan" => Some(2),
+        _ => None,
+    }
+}
+
+/// Reject a GPU combinator call whose kernel is not provably pure
+/// [GPU-KERNEL-PURE]. A surrounding handler cannot lift the restriction: a
+/// handler makes an effect dischargeable on the host, but a kernel body cannot
+/// leave the device to reach one, so the requirement is purity, and any
+/// kernel whose effects cannot be proven absent fails closed.
+fn validate_gpu_kernel(
+    analyzer: &Analyzer<'_>,
+    expression: &Expr,
+    scope: &[String],
+    env: &CallableEnv,
+    errors: &mut Vec<TypeError>,
+) {
+    let Expr::Call {
+        function,
+        arguments,
+        ..
+    } = expression
+    else {
+        return;
+    };
+    let Some(slot) = expression_name(function)
+        .filter(|name| !env.shadowed.contains(*name))
+        .and_then(gpu_kernel_slot)
+    else {
+        return;
+    };
+    let Some(kernel) = arguments.get(slot) else {
+        return;
+    };
+    if let Some(message) = gpu_kernel_verdict(analyzer, kernel, scope, env) {
+        errors.push(TypeError::new(message).with_pos(kernel_position(kernel)));
+    }
+}
+
+/// The rejection message for a GPU combinator kernel, or `None` when the
+/// kernel is provably pure [GPU-KERNEL-PURE].
+fn gpu_kernel_verdict(
+    analyzer: &Analyzer<'_>,
+    kernel: &Expr,
+    scope: &[String],
+    env: &CallableEnv,
+) -> Option<String> {
+    let Some(callee) = analyzer.callable(kernel, scope, env) else {
+        return Some(String::from(
+            "cannot prove GPU kernel pure; pass a named function or an inline lambda",
+        ));
+    };
+    let row = analyzer.invoke(callee, &[], &[], scope, env);
+    if !row.required.is_empty() {
+        let performed: Vec<String> = row.required.iter().map(requirement_name).collect();
+        return Some(format!(
+            "GPU kernel must be pure; it performs: {}",
+            performed.join(", ")
+        ));
+    }
+    if row.unresolved_dynamic_call || !row.parameter_uses.is_empty() {
+        return Some(String::from(
+            "cannot prove GPU kernel pure; pass a named function or an inline lambda",
+        ));
+    }
+    None
+}
+
+/// A kernel expression's own source position, when it carries one.
+fn kernel_position(kernel: &Expr) -> Option<Position> {
+    match kernel {
+        Expr::Lambda { position, .. } => *position,
+        _ => None,
+    }
+}
+
 fn validate_handler_arms(
     analyzer: &Analyzer<'_>,
     expression: &Expr,
@@ -2227,6 +2309,7 @@ fn validate_handler_arms(
     env: &CallableEnv,
     errors: &mut Vec<TypeError>,
 ) {
+    validate_gpu_kernel(analyzer, expression, scope, env, errors);
     if let Expr::Handler {
         effect,
         arms,

@@ -1,0 +1,117 @@
+// AI/ML workloads on the GPU surface: dot products, SAXPY, activation
+// functions, matrix-vector products via gather, mean centering, and a full
+// gradient-descent training loop — the patterns ML runtimes are built from
+// ([GPU-ZIPWITH], [GPU-IOTA], [GPU-GET], [GPU-FOLD] —
+// docs/specs/0034-GPUComputation.md).
+
+/// mulF is the elementwise product kernel behind every dot product.
+fn mulF(x: float, y: float) -> float = x * y
+
+/// addF is the float reduction kernel shared by every sum below.
+fn addF(a: float, x: float) -> float = a + x
+
+/// dot is BLAS level 1: fuse an elementwise product into a reduction.
+fn dot(xs, ys) = gpuZipWith(xs, ys, mulF) |> gpuFold(0.0, addF)
+
+/// saxpy is the classic a*x + y with a = 2.0.
+fn saxpy(x: float, y: float) -> float = 2.0 * x + y
+
+/// relu is the workhorse activation: negative inputs clamp to zero.
+fn relu(x) = match x > 0.0 { true => x false => 0.0 }
+
+/// isActive marks the elements a relu layer would let through.
+fn isActive(x) = x > 0.0
+
+/// at reads a matrix element, treating out of bounds as zero padding.
+fn at(m, i) = gpuGet(m, i) ?: 0.0
+
+/// rowDot walks one row of a flat row-major matrix against a vector. The
+/// annotations are load-bearing: a recursive function must be emitted as a
+/// real definition, and only a fully concrete signature is.
+fn rowDot(m: GpuBuffer<float>, v: GpuBuffer<float>, cols: int, r: int, c: int) -> float = match c == cols {
+    true => 0.0
+    false => at(m, (((r * cols) ?: 0) + c) ?: 0) * at(v, c)
+        + rowDot(m, v, cols, r, (c + 1) ?: 0)
+}
+
+/// matVec gathers every row's dot product: one kernel invocation per row.
+fn matVec(m, v, cols, rows) = gpuIota(rows) |> gpuMap(fn(r) => rowDot(m, v, cols, r, 0))
+
+/// gradStep is one epoch of least-squares gradient descent on y = w * x.
+/// The weight annotation types the captured w inside the kernel lambda.
+fn gradStep(w: float, xs: GpuBuffer<float>, ys: GpuBuffer<float>) -> float = w - 0.05 * (((gpuZipWith(xs, ys,
+    fn(x, y) => 2.0 * (w * x - y) * x) |> gpuFold(0.0, addF)) / 3.0) ?: 0.0)
+
+/// train iterates gradStep n times, keeping the whole loop on buffers.
+/// Annotated for the same recursion-emission reason as rowDot.
+fn train(w: float, xs: GpuBuffer<float>, ys: GpuBuffer<float>, n: int) -> float = match n {
+    0 => w
+    _ => train(gradStep(w, xs, ys), xs, ys, (n - 1) ?: 0)
+}
+
+/// dotCase pins the fused product-and-reduce against hand computation.
+fn dotCase() = {
+    let xs = toGpu([1.0, 2.0, 3.0])
+    let ys = toGpu([4.0, 5.0, 6.0])
+    checkAll("dot product", [
+        dot(xs, ys) == 32.0,
+        dot(xs, xs) == 14.0,
+        dot(toGpu([]), toGpu([])) == 0.0
+    ])
+}
+
+/// saxpyCase pins BLAS saxpy elementwise over a buffer pair.
+fn saxpyCase() = {
+    let out = gpuZipWith(toGpu([1.0, 2.0, 3.0]), toGpu([10.0, 20.0, 30.0]), saxpy)
+    checkAll("saxpy", [
+        (out |> gpuFold(0.0, addF)) == 72.0,
+        (gpuGet(out, 2) ?: 0.0) == 36.0
+    ])
+}
+
+/// reluCase pins activation clamping and active-unit counting.
+fn reluCase() = {
+    let acts = toGpu([0.0 - 1.5, 2.5, 0.0 - 0.5, 1.0]) |> gpuMap(relu)
+    checkAll("relu", [
+        (acts |> gpuFold(0.0, addF)) == 3.5,
+        (gpuGet(acts, 0) ?: 9.9) == 0.0,
+        gpuLength(toGpu([0.0 - 1.5, 2.5, 0.0 - 0.5, 1.0]) |> gpuFilter(isActive)) == 2
+    ])
+}
+
+/// matVecCase multiplies a 2x3 matrix by a vector through iota + gather.
+fn matVecCase() = {
+    let m = toGpu([1.0, 2.0, 3.0, 4.0, 5.0, 6.0])
+    let v = toGpu([1.0, 1.0, 2.0])
+    let out = matVec(m, v, 3, 2)
+    checkAll("matrix-vector", [
+        gpuLength(out) == 2,
+        (gpuGet(out, 0) ?: 0.0) == 9.0,
+        (gpuGet(out, 1) ?: 0.0) == 21.0
+    ])
+}
+
+/// meanCase centers a feature column: the centered sum vanishes.
+fn meanCase() = {
+    let xs = toGpu([1.0, 2.0, 3.0, 6.0])
+    let mean = ((xs |> gpuFold(0.0, addF)) / 4.0) ?: 0.0
+    let centered = xs |> gpuMap(fn(v) => v - mean)
+    checkAll("mean centering", [
+        mean == 3.0,
+        (centered |> gpuFold(0.0, addF)) == 0.0,
+        (gpuGet(centered, 3) ?: 0.0) == 3.0
+    ])
+}
+
+/// trainCase runs 40 gradient-descent epochs and converges on w = 2.
+fn trainCase() = {
+    let w = train(0.0, toGpu([1.0, 2.0, 3.0]), toGpu([2.0, 4.0, 6.0]), 40)
+    checkAll("gradient descent", [w - 2.0 < 0.01, 2.0 - w < 0.01, w > 1.0])
+}
+
+test("dot product fuses zip and fold", dotCase)
+test("saxpy runs elementwise over buffer pairs", saxpyCase)
+test("relu clamps and filter counts active units", reluCase)
+test("matrix-vector product gathers rows via iota", matVecCase)
+test("mean centering pipes a scalar back into a kernel", meanCase)
+test("gradient descent converges on the true weight", trainCase)

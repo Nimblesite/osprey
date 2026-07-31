@@ -401,6 +401,14 @@ fn rejection_diagnostics(path: &Path, source: &str) -> String {
             None => writeln!(out, "{}", e.message),
         };
     }
+    // A program the frontend accepts can still be rejected at lowering (the
+    // CLI prints these as `{path}: {msg}` too) — e.g. a recursive function
+    // whose signature never became concrete enough to emit.
+    if out.is_empty() {
+        if let Err(e) = osprey_codegen::compile_program(&parsed.program) {
+            let _ = writeln!(out, "{e}");
+        }
+    }
     out
 }
 

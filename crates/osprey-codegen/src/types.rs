@@ -41,11 +41,15 @@ fn ltype_of_con(name: &str, args: &[Type]) -> LType {
 
 /// The Osprey owner type name to tag an aggregate value with, if `ty` is a
 /// nominal record/union (so field access / match can recover its layout).
-/// Scalars, collections and `Result` carry no nominal aggregate owner.
+/// Scalars, collections and `Result` carry no nominal aggregate owner. A
+/// `GpuBuffer<elem>` with a concrete scalar element carries the element-typed
+/// tag `Gpu#<spelling>` ([`crate::gpu::GPU_TAG`]), the same convention flat
+/// list literals use (`[]double`), so combinator lowering recovers the
+/// element's `LType` through parameters and returns [GPU-BUFFER-ELEM].
 pub fn owner_name(ty: &Type) -> Option<String> {
     match ty {
         Type::Record { name, .. } | Type::Union { name, .. } => Some(name.clone()),
-        Type::Con { name, .. } => match name.as_str() {
+        Type::Con { name, args } => match name.as_str() {
             names::INT
             | names::FLOAT
             | names::STRING
@@ -59,6 +63,7 @@ pub fn owner_name(ty: &Type) -> Option<String> {
             | names::FIBER
             | names::CHANNEL
             | names::PTR => None,
+            names::GPU_BUFFER => Some(crate::gpu::buffer_owner(args.first())),
             other => Some(other.to_string()),
         },
         _ => None,

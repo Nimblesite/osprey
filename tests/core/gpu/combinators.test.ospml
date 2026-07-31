@@ -1,0 +1,97 @@
+// GPU parallel primitives: elementwise zip, index generation, bounds-checked
+// gather, prefix scan, stream compaction, and backend introspection
+// ([GPU-ZIPWITH], [GPU-IOTA], [GPU-GET], [GPU-SCAN], [GPU-FILTER],
+// [GPU-DEVICE] — docs/specs/0034-GPUComputation.md).
+
+(** Elementwise product kernel for gpuZipWith. *)
+mulI : (int, int) -> int
+mulI (a, b) = (a * b) ?: 0
+
+(** Associative reduction kernel shared by fold and scan. *)
+sumI : (int, int) -> int
+sumI (a, b) = (a + b) ?: a
+
+(** Make gpuScan a running-maximum, not just a running sum. *)
+maxI : (int, int) -> int
+maxI (a, b) = match a > b
+    true => a
+    false => b
+
+(** Compaction predicate for gpuFilter. *)
+isEven x = (x % 2 ?: 1) == 0
+
+(** Pin elementwise combination and ragged-pair truncation. *)
+zipCase () =
+    products = gpuZipWith (toGpu [1, 2, 3, 4], toGpu [10, 20, 30, 40], mulI)
+    ragged = gpuZipWith (toGpu [1, 2, 3], toGpu [5, 5], sumI)
+    checkAll "zipWith" [
+        (products |> gpuFold 0 sumI) == 300,
+        gpuLength products == 4,
+        gpuLength ragged == 2,
+        (ragged |> gpuFold 0 sumI) == 13,
+        gpuLength (gpuZipWith (toGpu [], toGpu [1], sumI)) == 0
+    ]
+
+(** Pin the index buffer [0, n) that gather and stencil start from. *)
+iotaCase () =
+    idx = gpuIota 5
+    checkAll "iota" [
+        gpuLength idx == 5,
+        (idx |> gpuFold 0 sumI) == 10,
+        (gpuGet (idx, 4) ?: 0) == 4,
+        gpuLength (gpuIota 0) == 0
+    ]
+
+(** Pin typed reads in bounds and a visible Error out of bounds. *)
+getCase () =
+    ints = toGpu [7, 8, 9]
+    floats = toGpu [1.5, 2.5]
+    oob = match gpuGet (ints, 3)
+        Success value => "value ${value}"
+        Error message => message
+    checkAll "get" [
+        (gpuGet (ints, 0) ?: 0) == 7,
+        (gpuGet (ints, 2) ?: 0) == 9,
+        (gpuGet (floats, 1) ?: 0.0) == 2.5,
+        (gpuGet (ints, 3) ?: 999) == 999,
+        (gpuGet (ints, (0 - 1) ?: 0) ?: 999) == 999,
+        oob == "gpuGet: index out of bounds"
+    ]
+
+(** Pin the inclusive prefix contract for two associative combines. *)
+scanCase () =
+    sums = toGpu [1, 2, 3, 4] |> gpuScan 0 sumI
+    maxes = toGpu [3, 1, 4, 1, 5] |> gpuScan 0 maxI
+    checkAll "scan" [
+        (gpuGet (sums, 0) ?: 0) == 1,
+        (gpuGet (sums, 3) ?: 0) == 10,
+        gpuLength sums == 4,
+        (gpuGet (maxes, 1) ?: 0) == 3,
+        (gpuGet (maxes, 4) ?: 0) == 5,
+        gpuLength (toGpu [] |> gpuScan 0 sumI) == 0
+    ]
+
+(** Pin order-preserving compaction, keep-all, and keep-none. *)
+filterCase () =
+    evens = toGpu [1, 2, 3, 4, 5, 6] |> gpuFilter isEven
+    checkAll "filter" [
+        gpuLength evens == 3,
+        (evens |> gpuFold 0 sumI) == 12,
+        (gpuGet (evens, 0) ?: 0) == 2,
+        (gpuGet (evens, 2) ?: 0) == 6,
+        gpuLength (toGpu [1, 3, 5] |> gpuFilter isEven) == 0,
+        gpuLength (toGpu [2, 4] |> gpuFilter isEven) == 2
+    ]
+
+(** Pin backend introspection: the host backend names itself. *)
+deviceCase () = checkAll "device" [
+    gpuDevice () == "host",
+    length (gpuDevice ()) == 4
+]
+
+test ("gpuZipWith combines elementwise and truncates ragged pairs", zipCase)
+test ("gpuIota builds the index buffer", iotaCase)
+test ("gpuGet reads typed elements and errors out of bounds", getCase)
+test ("gpuScan is an inclusive prefix over any associative combine", scanCase)
+test ("gpuFilter compacts in order", filterCase)
+test ("gpuDevice names the active backend", deviceCase)

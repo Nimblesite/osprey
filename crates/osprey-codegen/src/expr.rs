@@ -757,12 +757,13 @@ fn gen_fiber_builtin(
 /// `gen_receiver_directed` must come before the name-keyed string/collection
 /// dispatchers — reordering this table changes which builtin a shared name
 /// means.
-const BUILTIN_DISPATCH: [BuiltinDispatch; 7] = [
+const BUILTIN_DISPATCH: [BuiltinDispatch; 8] = [
     crate::testing::gen,
     crate::collections::gen_receiver_directed,
     crate::strings::gen,
     crate::collections::gen,
     crate::iter::gen,
+    crate::gpu::gen,
     gen_fiber_builtin,
     crate::extern_call::gen,
 ];

@@ -78,20 +78,20 @@ OSSL ?= -DOPENSSL_SUPPRESS_DEPRECATED -DOPENSSL_API_COMPAT=30000 -Wno-deprecated
 # the flag list per suite.
 T    ?= -O2 -D_FORTIFY_SOURCE=2 -fstack-protector-strong $(WARN) -ftrapv -std=c11 -D_GNU_SOURCE
 # Object lists for the archives (paths relative to compiler/, where `ar` runs).
-FIB_OBJ  ?= bin/memory_runtime.o bin/fiber_runtime.o bin/system_runtime.o bin/effects_runtime.o bin/string_runtime.o bin/string_runtime_list.o bin/list_runtime.o bin/map_runtime.o bin/map_runtime_hamt.o bin/json_runtime.o bin/ffi_runtime.o bin/term_runtime.o bin/random_runtime.o bin/test_runtime.o bin/coverage_runtime.o bin/profiler_runtime.o bin/profiler_sampler.o
+FIB_OBJ  ?= bin/memory_runtime.o bin/gpu_runtime.o bin/fiber_runtime.o bin/system_runtime.o bin/effects_runtime.o bin/string_runtime.o bin/string_runtime_list.o bin/list_runtime.o bin/map_runtime.o bin/map_runtime_hamt.o bin/json_runtime.o bin/ffi_runtime.o bin/term_runtime.o bin/random_runtime.o bin/test_runtime.o bin/coverage_runtime.o bin/profiler_runtime.o bin/profiler_sampler.o
 HTTP_OBJ ?= bin/http_shared.o bin/http_client_runtime.o bin/http_server_request.o bin/http_server_response.o bin/http_server_runtime.o bin/websocket_client_runtime.o bin/websocket_server_runtime.o $(FIB_OBJ)
 # GC backend archives (osprey --memory=gc): the tracing collector replaces
 # memory_runtime.o, and the value-container units are rebuilt with the malloc
 # redirect (osp_gc_shim.h) so their nodes live in the managed heap. Everything
 # else is the same object. Implements [GC-TRACE-CONSERVATIVE], spec 0018.
-FIB_OBJ_GC  ?= bin/memory_gc.o bin/fiber_runtime.o bin/system_runtime.o bin/effects_runtime.o bin/string_runtime.o bin/string_runtime_list.o bin/gc/list_runtime.o bin/gc/map_runtime.o bin/gc/map_runtime_hamt.o bin/json_runtime.o bin/ffi_runtime.o bin/term_runtime.o bin/random_runtime.o bin/test_runtime.o bin/coverage_runtime.o bin/profiler_runtime.o bin/profiler_sampler.o
+FIB_OBJ_GC  ?= bin/memory_gc.o bin/gpu_runtime.o bin/fiber_runtime.o bin/system_runtime.o bin/effects_runtime.o bin/string_runtime.o bin/string_runtime_list.o bin/gc/list_runtime.o bin/gc/map_runtime.o bin/gc/map_runtime_hamt.o bin/json_runtime.o bin/ffi_runtime.o bin/term_runtime.o bin/random_runtime.o bin/test_runtime.o bin/coverage_runtime.o bin/profiler_runtime.o bin/profiler_sampler.o
 HTTP_OBJ_GC ?= bin/http_shared.o bin/http_client_runtime.o bin/http_server_request.o bin/http_server_response.o bin/http_server_runtime.o bin/websocket_client_runtime.o bin/websocket_server_runtime.o $(FIB_OBJ_GC)
 # ARC backend archives (osprey --memory=arc): Perceus reference counting
 # replaces memory_runtime.o, and the value-producing units (containers +
 # strings + JSON) are rebuilt with the allocation redirect (osp_arc_shim.h) so
 # their nodes/buffers carry the 16-byte header and registry entry. Implements
 # [GC-ARC-PERCEUS], spec 0018.
-FIB_OBJ_ARC  ?= bin/memory_arc.o bin/fiber_runtime.o bin/system_runtime.o bin/effects_runtime.o bin/arc/string_runtime.o bin/arc/string_runtime_list.o bin/arc/list_runtime.o bin/arc/map_runtime.o bin/arc/map_runtime_hamt.o bin/arc/json_runtime.o bin/ffi_runtime.o bin/term_runtime.o bin/random_runtime.o bin/test_runtime.o bin/coverage_runtime.o bin/profiler_runtime.o bin/profiler_sampler.o
+FIB_OBJ_ARC  ?= bin/memory_arc.o bin/gpu_runtime.o bin/fiber_runtime.o bin/system_runtime.o bin/effects_runtime.o bin/arc/string_runtime.o bin/arc/string_runtime_list.o bin/arc/list_runtime.o bin/arc/map_runtime.o bin/arc/map_runtime_hamt.o bin/arc/json_runtime.o bin/ffi_runtime.o bin/term_runtime.o bin/random_runtime.o bin/test_runtime.o bin/coverage_runtime.o bin/profiler_runtime.o bin/profiler_sampler.o
 HTTP_OBJ_ARC ?= bin/http_shared.o bin/http_client_runtime.o bin/http_server_request.o bin/http_server_response.o bin/http_server_runtime.o bin/websocket_client_runtime.o bin/websocket_server_runtime.o $(FIB_OBJ_ARC)
 NATIVE_RUNTIME_CONFIG ?= compiler/bin/.native-runtime-config
 NATIVE_RUNTIME_STAMP ?= compiler/bin/.native-runtime.stamp
@@ -141,7 +141,7 @@ endef
 # the WASI random_get host call). Each compiles its non-portable half out under
 # `#ifndef __wasm__`, so adding them unskips file and random programs on wasm32
 # without pretending fork/exec or pthreads exist.
-WASM_RT_SRC  ?= memory_runtime string_runtime string_runtime_list list_runtime map_runtime map_runtime_hamt json_runtime effects_runtime test_runtime coverage_runtime web_runtime profiler_runtime wasm_builtins_runtime system_runtime random_runtime
+WASM_RT_SRC  ?= memory_runtime gpu_runtime string_runtime string_runtime_list list_runtime map_runtime map_runtime_hamt json_runtime effects_runtime test_runtime coverage_runtime web_runtime profiler_runtime wasm_builtins_runtime system_runtime random_runtime
 # `make wasm-serve` static-host dir + port for the in-browser example.
 WASM_SERVE_DIR  ?= examples/wasm
 WASM_SERVE_PORT ?= 8080
@@ -416,6 +416,7 @@ $(NATIVE_RUNTIME_STAMP): $(NATIVE_RUNTIME_INPUTS) $(NATIVE_RUNTIME_CONFIG) Makef
 	  $(CC) $(B) runtime/ffi_runtime.c          -o bin/ffi_runtime.o && \
 	  $(CC) $(B) runtime/term_runtime.c         -o bin/term_runtime.o && \
 	  $(CC) $(B) runtime/random_runtime.c       -o bin/random_runtime.o && \
+	  $(CC) $(B) runtime/gpu_runtime.c          -o bin/gpu_runtime.o && \
 	  $(CC) $(B) runtime/test_runtime.c         -o bin/test_runtime.o && \
 	  $(CC) $(B) runtime/coverage_runtime.c     -o bin/coverage_runtime.o && \
 	  $(CC) $(B) runtime/profiler_runtime.c     -o bin/profiler_runtime.o && \

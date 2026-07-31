@@ -1,0 +1,69 @@
+// GPU buffer surface: dense round-trips, pure kernels, and scalar reductions
+// ([GPU-BUFFER], [GPU-MAP], [GPU-FOLD] — docs/specs/0034-GPUComputation.md).
+
+/// square is a pure int kernel; the checker proves it performs no effects.
+fn square(x) = (x * x) ?: 0
+
+/// addInts keeps the checked-arithmetic Result inside the kernel.
+fn addInts(acc: int, x: int) -> int = (acc + x) ?: acc
+
+/// scale is a pure float kernel; the buffer's element tag types x as float.
+fn scale(x) = x * 1.5
+
+/// addFloats is the float reduction kernel for gpuFold's combine slot.
+fn addFloats(a: float, x: float) -> float = a + x
+
+/// isOdd maps an int element to a bool element, changing the buffer's type.
+fn isOdd(x) = (x % 2 ?: 0) == 1
+
+/// countOdd counts the true elements of a bool buffer.
+fn countOdd(acc: int, flag: bool) -> int = match flag {
+    true => (acc + 1) ?: acc
+    false => acc
+}
+
+/// roundTripCase pins toGpu/fromGpu as an order-preserving dense copy.
+fn roundTripCase() = {
+    let buf = toGpu([3, 1, 4, 1, 5])
+    let back = fromGpu(buf)
+    checkAll("round trip", [
+        gpuLength(buf) == 5,
+        listLength(back) == 5,
+        (listGet(back, 0) ?: 0) == 3,
+        (listGet(back, 2) ?: 0) == 4,
+        (listGet(back, 4) ?: 0) == 5,
+        gpuLength(toGpu([])) == 0
+    ])
+}
+
+/// intKernelCase pipes a buffer through a named kernel and folds it away.
+fn intKernelCase() = {
+    let total = toGpu([1, 2, 3, 4]) |> gpuMap(square) |> gpuFold(0, addInts)
+    let squares = toGpu([1, 2, 3]) |> gpuMap(fn(x) => (x * x) ?: 0) |> fromGpu()
+    checkAll("int kernels", [
+        total == 30,
+        (listGet(squares, 2) ?: 0) == 9,
+        (toGpu([10, 20]) |> gpuFold(5, addInts)) == 35
+    ])
+}
+
+/// floatKernelCase proves float words keep their bits through map and fold.
+fn floatKernelCase() = {
+    let sum = toGpu([1.0, 2.0, 3.0]) |> gpuMap(scale) |> gpuFold(0.0, addFloats)
+    checkAll("float kernels", [
+        sum == 9.0,
+        (toGpu([0.5, 0.25]) |> gpuFold(0.0, addFloats)) == 0.75
+    ])
+}
+
+/// boolKernelCase maps int elements to bool elements and counts the odd ones.
+fn boolKernelCase() = {
+    let odds = toGpu([1, 2, 3, 4, 5]) |> gpuMap(isOdd)
+    let count = odds |> gpuFold(0, countOdd)
+    checkAll("bool kernels", [gpuLength(odds) == 5, count == 3])
+}
+
+test("gpu buffers round-trip lists densely", roundTripCase)
+test("pure int kernels map and fold on buffers", intKernelCase)
+test("float kernels keep element bits through map and fold", floatKernelCase)
+test("kernels may change the element scalar type", boolKernelCase)

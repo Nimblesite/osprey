@@ -1,0 +1,1 @@
+codegen: unsupported construct: `walk` is recursive but its signature is not fully inferred; annotate its parameters and return type so it is emitted as a real function

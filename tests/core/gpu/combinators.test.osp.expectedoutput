@@ -1,0 +1,8 @@
+ok 1 - gpuZipWith combines elementwise and truncates ragged pairs
+ok 2 - gpuIota builds the index buffer
+ok 3 - gpuGet reads typed elements and errors out of bounds
+ok 4 - gpuScan is an inclusive prefix over any associative combine
+ok 5 - gpuFilter compacts in order
+ok 6 - gpuDevice names the active backend
+1..6
+# tests=6 passed=6 failed=0 skipped=0

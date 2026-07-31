@@ -1,0 +1,106 @@
+// Game-engine workloads on the GPU surface: particle integration, easing,
+// distance culling, damage resolution over entity buffers, and value
+// clamping — the per-frame patterns engines run over thousands of entities
+// ([GPU-ZIPWITH], [GPU-FILTER], [GPU-SCAN] —
+// docs/specs/0034-GPUComputation.md).
+
+(** Advance a position by its velocity over a fixed 0.1s tick. *)
+integrate : (float, float) -> float
+integrate (p, v) = p + v * 0.1
+
+(** Ease a value a quarter of the way toward its target. *)
+lerpQuarter : (float, float) -> float
+lerpQuarter (a, b) = a + (b - a) * 0.25
+
+(** Keep entities inside the 100-unit draw distance. *)
+visible d = d < 100.0
+
+(** Keep a normalized channel inside [0, 1]. *)
+clamp01 x = match x < 0.0
+    true => 0.0
+    false => match x > 1.0
+        true => 1.0
+        false => x
+
+(** Resolve a hit, flooring health at zero. *)
+applyDamage : (int, int) -> int
+applyDamage (h, d) = match ((h - d) ?: 0) > 0
+    true => (h - d) ?: 0
+    false => 0
+
+(** Keep the entities damage did not eliminate. *)
+alive h = h > 0
+
+(** Total a float buffer. *)
+sumF : (float, float) -> float
+sumF (a, x) = a + x
+
+(** Total an int buffer. *)
+sumInts : (int, int) -> int
+sumInts (a, x) = (a + x) ?: a
+
+(** Run two physics ticks: positions advance by velocity twice. *)
+particleCase () =
+    vel = toGpu [10.0, 0.0 - 20.0, 5.0]
+    tick1 = gpuZipWith (toGpu [0.0, 100.0, 2.5], vel, integrate)
+    tick2 = gpuZipWith (tick1, vel, integrate)
+    checkAll "particle integration" [
+        (gpuGet (tick1, 0) ?: 0.0) == 1.0,
+        (gpuGet (tick1, 1) ?: 0.0) == 98.0,
+        (gpuGet (tick2, 0) ?: 0.0) == 2.0,
+        (gpuGet (tick2, 1) ?: 0.0) == 96.0,
+        (gpuGet (tick2, 2) ?: 0.0) == 3.5
+    ]
+
+(** Ease a camera rig toward its targets in one buffer pass. *)
+lerpCase () =
+    eased = gpuZipWith (toGpu [0.0, 8.0], toGpu [4.0, 0.0], lerpQuarter)
+    checkAll "lerp easing" [
+        (gpuGet (eased, 0) ?: 0.0) == 1.0,
+        (gpuGet (eased, 1) ?: 0.0) == 6.0
+    ]
+
+(** Draw only entities inside the view distance, in draw order. *)
+cullCase () =
+    drawn = toGpu [12.5, 250.0, 99.9, 100.0, 3.0] |> gpuFilter visible
+    checkAll "distance culling" [
+        gpuLength drawn == 3,
+        (gpuGet (drawn, 0) ?: 0.0) == 12.5,
+        (gpuGet (drawn, 2) ?: 0.0) == 3.0,
+        gpuLength (toGpu [500.0, 900.0] |> gpuFilter visible) == 0
+    ]
+
+(** Resolve an attack wave then count and total the survivors. *)
+damageCase () =
+    after = gpuZipWith (toGpu [100, 40, 75, 10], toGpu [30, 60, 0, 10], applyDamage)
+    survivors = after |> gpuFilter alive
+    checkAll "damage resolution" [
+        (gpuGet (after, 0) ?: 0) == 70,
+        (gpuGet (after, 1) ?: 0) == 0,
+        gpuLength survivors == 2,
+        (survivors |> gpuFold 0 sumInts) == 145
+    ]
+
+(** Normalize a color channel buffer into legal range. *)
+clampCase () =
+    safe = toGpu [0.0 - 0.5, 0.25, 1.75, 1.0] |> gpuMap clamp01
+    checkAll "clamping" [
+        (safe |> gpuFold 0.0 sumF) == 2.25,
+        (gpuGet (safe, 0) ?: 9.9) == 0.0,
+        (gpuGet (safe, 2) ?: 0.0) == 1.0
+    ]
+
+(** Turn per-entity costs into a running frame budget via scan. *)
+budgetCase () =
+    running = toGpu [3, 5, 2, 7] |> gpuScan 0 sumInts
+    checkAll "frame budget" [
+        (gpuGet (running, 0) ?: 0) == 3,
+        (gpuGet (running, 3) ?: 0) == 17
+    ]
+
+test ("particles integrate velocity over ticks", particleCase)
+test ("lerp eases toward targets elementwise", lerpCase)
+test ("culling keeps in-range entities in draw order", cullCase)
+test ("damage resolves and survivors compact", damageCase)
+test ("clamping normalizes channel buffers", clampCase)
+test ("scan accumulates a running frame budget", budgetCase)

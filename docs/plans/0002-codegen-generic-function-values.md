@@ -113,6 +113,22 @@ functions as values are not covered by tests.
 - [ ] Materialize a still-generic *returned* lambda against its call-site
       instantiations (per-instantiation cache) — replaces the last
       `lambda_value` bail.
+- [ ] **Recursive generic function → emit a real monomorphic definition** per
+      instantiation instead of failing closed. The `try_inline` re-entry guard
+      (`genfn.rs`) now rejects a recursive call inside a specialised body with
+      `annotate its parameters and return type so it is emitted as a real
+      function` (was: an LLVM `use of undefined value '@name'` clang crash);
+      golden `examples/failscompilation/recursive_generic_needs_annotation.ospo`.
+      Until fixed, the annotations on `train`/`rowDot`
+      (`tests/core/gpu/mlkernels.test.osp`) and `simulate`/`mix`
+      (`tests/core/gpu/stress.test.osp`) are load-bearing — drop them when this
+      lands. Spec: [GPU-KERNEL-FORM] (docs/specs/0034-GPUComputation.md).
+- [ ] **Block-bodied lambda with internal `let` as a HOF/kernel callback** —
+      the inline-callback path loses the block's local scope:
+      `gpuMap(|r| => { let base = (r * 3) ?: 0 ... })` fails with
+      `unknown identifier `base``. Named kernels are the workaround in
+      `tests/core/gpu/`. Spec: [GPU-KERNEL-FORM] requires every pure lambda
+      form to be a valid kernel, block bodies included.
 - [x] Generic function as a **builtin iterator callback** (`map`/`filter`/
       `fold`/`forEach`) — the fused-loop path in `iter.rs` had the same
       link-error gap as user HOFs did before `bind_inline_arg`. `callback_of`

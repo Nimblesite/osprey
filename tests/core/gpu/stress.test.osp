@@ -1,0 +1,101 @@
+// GPU stress and profiling workloads: million-element pipelines, chained
+// buffer passes, heavy compaction and scans, and a long iterative
+// simulation loop. These are the profiling targets for the host backend
+// and the future device backends — every expected value is a closed-form
+// constant, so a miscompiled loop is a loud failure
+// ([GPU-BACKEND-HOST], [GPU-ROADMAP] — docs/specs/0034-GPUComputation.md).
+
+/// square feeds the million-element map/fold pipeline.
+fn square(x) = (x * x) ?: 0
+
+/// tally is the shared associative int reduction.
+fn tally(a: int, x: int) -> int = (a + x) ?: a
+
+/// bump advances every element one step per simulation pass.
+fn bump(x) = (x + 1) ?: x
+
+/// isEven drives compaction over half a million elements.
+fn isEven(x) = (x % 2 ?: 1) == 0
+
+/// stir is a float mixing kernel with several operations per element.
+fn stir(x: float) -> float = (x * 1.0001 + 0.5) * 0.9999
+
+/// addStir totals the mixed float buffer.
+fn addStir(a: float, x: float) -> float = a + x
+
+/// simulate reruns bump over the whole buffer n times: allocation churn and
+/// kernel-launch overhead is exactly what a profiler should see here. The
+/// annotations are load-bearing: recursion requires a real emitted definition.
+fn simulate(buf: GpuBuffer<int>, n: int) -> GpuBuffer<int> = match n {
+    0 => buf
+    _ => simulate(buf |> gpuMap(bump), (n - 1) ?: 0)
+}
+
+/// mix reruns stir over a float buffer n times.
+fn mix(buf: GpuBuffer<float>, n: int) -> GpuBuffer<float> = match n {
+    0 => buf
+    _ => mix(buf |> gpuMap(stir), (n - 1) ?: 0)
+}
+
+/// millionCase pushes one million elements through map and fold in one pass.
+fn millionCase() = {
+    let sumOfSquares = gpuIota(1000000) |> gpuMap(square) |> gpuFold(0, tally)
+    checkAll("million-element pipeline", [sumOfSquares == 333332833333500000])
+}
+
+/// scanCase runs a 100k-element prefix sum and reads its closed-form tail.
+fn scanCase() = {
+    let running = gpuIota(100000) |> gpuScan(0, tally)
+    checkAll("100k prefix scan", [
+        (gpuGet(running, 99999) ?: 0) == 4999950000,
+        (gpuGet(running, 1) ?: 0) == 1,
+        gpuLength(running) == 100000
+    ])
+}
+
+/// chainCase chains ten dependent map passes over 100k elements: ten buffer
+/// allocations and ten kernel sweeps back to back.
+fn chainCase() = {
+    let out = gpuIota(100000)
+        |> gpuMap(bump) |> gpuMap(bump) |> gpuMap(bump) |> gpuMap(bump)
+        |> gpuMap(bump) |> gpuMap(bump) |> gpuMap(bump) |> gpuMap(bump)
+        |> gpuMap(bump) |> gpuMap(bump)
+    checkAll("ten chained passes", [(out |> gpuFold(0, tally)) == 5000950000])
+}
+
+/// compactionCase filters half a million elements and folds the kept half.
+fn compactionCase() = {
+    let evens = gpuIota(500000) |> gpuFilter(isEven)
+    checkAll("500k compaction", [
+        gpuLength(evens) == 250000,
+        (evens |> gpuFold(0, tally)) == 62499750000
+    ])
+}
+
+/// zipCase multiplies two quarter-million-element buffers elementwise.
+fn zipCase() = {
+    let squares = gpuZipWith(gpuIota(250000), gpuIota(250000), fn(a, b) => (a * b) ?: 0)
+    checkAll("250k zip", [(squares |> gpuFold(0, tally)) == 5208302083375000])
+}
+
+/// simulationCase runs 500 whole-buffer passes over 10k elements — the
+/// allocation-churn profile of a game loop or training loop.
+fn simulationCase() = {
+    let settled = simulate(gpuIota(10000), 500)
+    checkAll("500-pass simulation", [(settled |> gpuFold(0, tally)) == 54995000])
+}
+
+/// floatChurnCase runs 400 float passes so profiling sees double-word traffic.
+fn floatChurnCase() = {
+    let mixed = mix(toGpu([1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0]), 400)
+    let total = mixed |> gpuFold(0.0, addStir)
+    checkAll("400-pass float churn", [total > 1635.8, total < 1635.9, gpuLength(mixed) == 8])
+}
+
+test("a million elements map and fold in one pipeline", millionCase)
+test("a 100k prefix scan matches its closed form", scanCase)
+test("ten dependent map passes stay exact", chainCase)
+test("half a million elements compact to the even half", compactionCase)
+test("quarter-million-element zip multiplies exactly", zipCase)
+test("five hundred simulation passes stay exact", simulationCase)
+test("float churn keeps double words through 400 passes", floatChurnCase)

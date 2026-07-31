@@ -1,0 +1,8 @@
+ok 1 - dot product fuses zip and fold
+ok 2 - saxpy runs elementwise over buffer pairs
+ok 3 - relu clamps and filter counts active units
+ok 4 - matrix-vector product gathers rows via iota
+ok 5 - mean centering pipes a scalar back into a kernel
+ok 6 - gradient descent converges on the true weight
+1..6
+# tests=6 passed=6 failed=0 skipped=0

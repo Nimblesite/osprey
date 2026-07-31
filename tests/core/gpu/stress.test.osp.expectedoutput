@@ -1,0 +1,9 @@
+ok 1 - a million elements map and fold in one pipeline
+ok 2 - a 100k prefix scan matches its closed form
+ok 3 - ten dependent map passes stay exact
+ok 4 - half a million elements compact to the even half
+ok 5 - quarter-million-element zip multiplies exactly
+ok 6 - five hundred simulation passes stay exact
+ok 7 - float churn keeps double words through 400 passes
+1..7
+# tests=7 passed=7 failed=0 skipped=0

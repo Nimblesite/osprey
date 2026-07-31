@@ -1,0 +1,1 @@
+cannot prove GPU kernel pure; pass a named function or an inline lambda
