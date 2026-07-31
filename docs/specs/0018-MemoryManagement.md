@@ -32,10 +32,12 @@ Code generation tracks managed values in an ownership ledger:
 - Region exits and proved last uses release their remaining owners.
 - A returned owner transfers its reference; a returned borrow is retained.
 
-The generated calls are identical for every backend. They are no-ops under the
-default and tracing-GC runtimes and active under ARC. For a proved-unique value,
-codegen emits the paired `osp_release_unique` hook with LLVM allocator/free
-attributes, allowing `-O2` to remove a non-escaping allocation and release.
+The generated calls are identical for every backend. General retain/release
+calls are no-ops under the default and tracing-GC runtimes and active under ARC.
+For a proved-unique value, codegen emits the paired `osp_release_unique` hook
+with LLVM allocator/free attributes, allowing `-O2` to remove a non-escaping
+allocation and release. The default runtime also frees that unique value when
+the pair survives optimization; tracing GC leaves it for the collector.
 
 ## Fiber Boundary Ownership [MEM-FIBER-ISOLATION]
 

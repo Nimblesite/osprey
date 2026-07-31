@@ -113,10 +113,11 @@ link. The golden harness classifies that known undefined-symbol case as `SKIP`.
 
 ## Memory Backend [WASM-TARGET-MEMORY]
 
-The wasm archive contains `memory_runtime.c`, the same non-reclaiming
-`osp_alloc` implementation used by native `--memory=default`. The wasm driver
-does not receive the parsed `--memory` value, so `--memory=gc` and
-`--memory=arc` also link this default archive.
+The wasm archive contains `memory_runtime.c`, the same default allocator used by
+native `--memory=default`. General releases do not reclaim aliased values, but
+the compiler's proved-unique release hook frees uniquely consumed temporaries.
+The wasm driver does not receive the parsed `--memory` value, so `--memory=gc`
+and `--memory=arc` also link this default archive.
 
 The native conservative collector is not in `WASM_RT_SRC`: it depends on native
 stack/register/data-segment scanning, `setjmp`, and pthread synchronization.

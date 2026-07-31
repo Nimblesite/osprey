@@ -3,10 +3,10 @@
 // Implements [MEM-BACKENDS] / [MEM-BACKENDS-CUSTOM] (docs/specs/0018). Compiler
 // codegen emits calls to `osp_alloc` / `osp_alloc_tagged` and never names
 // `malloc`, so the memory manager is chosen at link time, never baked into the
-// IR. This default backend is a `malloc` passthrough with no reclamation —
-// matching the current "allocate, never free during a run" semantics, which is
-// sound because reclamation is unobservable [MEM-OPAQUE]. A custom manager
-// (ARC, tracing GC, arena, pool) replaces this object by linking its own
+// IR. This default backend is a `malloc` passthrough without general retain /
+// release reclamation. It only frees values codegen proves uniquely owned;
+// reclamation is otherwise unobservable [MEM-OPAQUE]. A custom manager (ARC,
+// tracing GC, arena, pool) replaces this object by linking its own
 // implementations of the same symbols.
 //
 // The full backend ABI (docs/specs/0018-MemoryManagement.md [MEM-BACKENDS]):
@@ -44,9 +44,9 @@ void *osp_alloc_tagged_noinit(int64_t size, int64_t meta) {
 // duality: under tracing or leak-everything, reference counts carry no work).
 void osp_retain(void *o) { (void)o; }
 void osp_release(void *o) { (void)o; }
-// Codegen-proved-unique drop (memory_hooks.h) — same no-op here; the symbol
-// exists so codegen can attach LLVM free-pair attributes to it.
-void osp_release_unique(void *o) { (void)o; }
+// Codegen-proved-unique drop (memory_hooks.h). Unlike the general release hook,
+// this value has no aliases, so the default backend can reclaim it directly.
+void osp_release_unique(void *o) { free(o); }
 // Singleton-immortality hook (memory_hooks.h) — meaningful only under ARC.
 void osp_mem_immortal(void *p) { (void)p; }
 // Multithreaded-heap trip (memory_hooks.h) — this backend never locks the heap.
