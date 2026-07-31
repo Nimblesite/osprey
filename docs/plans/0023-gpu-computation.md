@@ -1,9 +1,11 @@
 # Plan 0023 — GPU Computation: Surface Completion & Device Backends
 
 **Subsystem:** `crates/osprey-types` + `crates/osprey-codegen` + `compiler/runtime` (+ CLI target drivers)
-**Status:** Stages 1–2 substantially shipped (typed surface, purity checking,
-host backend, eleven built-ins, full differential corpus); stages 3–7 are
-device work, unstarted
+**Status:** **NOT SHIPPED. No GPU execution exists.** Stages 1–2 (typed
+surface, purity checking, CPU host backend, eleven built-ins, differential
+corpus) are substantially done. Stages 3–7 — kernel extraction and *every*
+device backend — are unstarted. Until stage 4 lands, this feature runs
+entirely on the CPU and nothing in it may be described as GPU-accelerated.
 **Spec:** [0034-GPUComputation.md](../specs/0034-GPUComputation.md)
 
 ## Summary
@@ -16,6 +18,63 @@ remains is everything between "host loops" and "PTX": kernel extraction,
 the first device target, effect-selected execution, portability backends,
 and the differentiation features (autodiff, schedules) that justify the
 "superior to Mojo" positioning.
+
+## Read this first: `gpu*` does not touch a GPU
+
+Nothing in the shipped `gpu*` surface runs on graphics hardware. `gpuMap` is a
+`for` loop on the CPU, `gpuDevice()` returns the string `"host"`, and no code
+path in the compiler or runtime talks to a driver. `[GPU-BACKEND-HOST]` is the
+only backend that exists; `[GPU-BACKEND-DEVICE]` is stage 4 and unstarted.
+
+The names are a *dispatch surface* — the shape a kernel must have to be
+offloadable later. They are not a claim about where the work happens. Anything
+that reads otherwise (a make target, a demo header, a README line) is a
+documentation defect; fix it where you find it.
+
+### What that costs, measured
+
+Measured July 2026 on an M-series Mac, release build, default memory backend:
+
+| Workload | Result |
+| --- | --- |
+| Per checked arithmetic op inside a kernel | **~18 ns** (~60–70 cycles) |
+| `examples/graphics` fragment scene, 2 × `gpuMap` + `gpuZipWith` + blit over 64 000 px | **76 ms/frame → 13 fps** |
+| Same scene as a Metal fragment shader, 1920×1200 drawable | **103 fps** |
+
+The middle row is the honest ceiling of the host backend for anything
+per-pixel. The dominant cost is *not* buffer overhead or the FFI blit (2
+ms/frame, measured separately) — it is that every `+`, `*` and `intDiv` inside
+a kernel is a checked, `Result`-returning operation, at roughly 60–70 cycles
+each. A kernel doing 40 arithmetic ops per element therefore costs ~700 ns per
+element before anything else.
+
+Two consequences that shape the stages below:
+
+- **Stage 3 (kernel extraction) is worth doing for the host backend alone.**
+  Extracted kernels with concrete scalar signatures are what let the optimiser
+  see a kernel body as straight-line integer code instead of an inlined chain
+  of `Result` branches.
+- **No amount of surface work closes a 13 → 103 fps gap.** Only stage 4/6
+  (real device backends) does. Do not accept host-backend micro-optimisation
+  as progress toward the performance claims in this plan.
+
+### The macOS graphics bridge already exists
+
+`examples/graphics/` is a working Osprey → macOS bridge and the reference
+shape for stage 6's Metal target:
+
+- `ospgfx.m` — Cocoa window + `CAMetalLayer`, flat C ABI (`osp_gfx_open`,
+  `osp_gfx_set`, `osp_gfx_draw`, `osp_gfx_ticks`, `osp_gfx_close`).
+- `scene.metal` — fragment shader, loaded from disk at open time.
+- `scene.osp` — Osprey as the host: it owns the window, the clock and the
+  per-frame scene state, and pushes parameters over FFI ([FFI-PTR]).
+- `make graphics` builds the dylib and runs it.
+
+It deliberately bypasses `gpu*`, because `gpu*` cannot reach the GPU. It proves
+the boundary works — FFI, a real drawable, 103 fps — so stage 6 is wiring
+extracted kernels (stage 3) into a Metal compute pipeline, not starting from
+nothing. It does **not** run in CI: it needs a display, and it is not in the
+differential corpus.
 
 ## What works today
 
@@ -152,7 +211,14 @@ Work the checklist below in this order; each item names the files it lives in.
    existing suite, don't add a file.
 3. **Stage 3 kernel extraction** — the critical path to any device backend,
    fully testable with zero GPU hardware. Everything in stage 4+ waits on
-   it; start it as soon as 1–2 land.
+   it; start it as soon as 1–2 land. It is also the only item on this list
+   that improves the host backend's 13 fps ceiling, because it is what lets
+   the optimiser see a kernel body as straight-line integer code.
+
+Items 1 and 2 are surface polish. **They do not move this feature toward
+running on a GPU.** If the goal for a session is "make `gpu*` actually use the
+GPU", skip to item 3 and then stage 4 or stage 6 — nothing else on this page
+gets there.
 
 Items *not* to start from this plan: block-bodied lambda kernels and
 recursive-generic emission belong to plan 0002, F10 int-defaulting to plan
@@ -251,7 +317,11 @@ Landmines the last session hit (avoid re-learning them):
 
 ### Stage 6 — portability targets
 
-- [ ] Metal backend (runnable in macOS CI).
+- [ ] Metal backend (runnable in macOS CI). The window/drawable/FFI half is
+      already proven by `examples/graphics/` (see above) — the missing half is
+      compiling stage-3 extracted kernels to MSL and dispatching them as a
+      compute pipeline, so `gpuMap` itself reaches the GPU instead of a demo
+      shader hand-written beside it.
 - [ ] WebGPU/WGSL backend paired with the wasm32 target.
 - [ ] Differential harness extended so every backend must match the host
       goldens byte-for-byte.
