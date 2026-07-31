@@ -53,15 +53,15 @@ WASM_MANIFEST=$TESTDIR/WASM_UNPORTABLE.txt
 # Silence is not success — if coverage ever drops below this floor the harness
 # FAILS rather than quietly checking less than it used to.
 #
-# Natively all 170 programs are covered by 88 golden files: 82 are shared by a
+# Natively all 172 programs are covered by 89 golden files: 83 are shared by a
 # Default/ML flavor pair, 6 belong to a program with no twin. On wasm32 the 53
 # programs blocked on a capability WASI does not have are skipped — each named
-# in tests/WASM_UNPORTABLE.txt — leaving 117.
+# in tests/WASM_UNPORTABLE.txt — leaving 119.
 # Ratchet UP as goldens are added; never lower it to turn a red build green.
 if [[ $TARGET == wasm32 ]]; then
-  GOLDEN_MIN=${OSPREY_GOLDEN_MIN:-117}
+  GOLDEN_MIN=${OSPREY_GOLDEN_MIN:-119}
 else
-  GOLDEN_MIN=${OSPREY_GOLDEN_MIN:-170}
+  GOLDEN_MIN=${OSPREY_GOLDEN_MIN:-172}
 fi
 
 # Exit code run_wasm uses to say "not a failure, an unported feature". Distinct

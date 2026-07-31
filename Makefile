@@ -7,7 +7,7 @@
 # --run`) and TypeScript sub-projects (vscode-extension, webcompiler, website).
 # =============================================================================
 
-.PHONY: build test language-test lint fmt clean ci setup run install bench partial-bench wasm wasm-site wasm-serve vsix-rebuild-reinstall bank bank-web bank-test bank-e2e hawk \
+.PHONY: build test language-test lint fmt clean ci setup run install bench partial-bench wasm wasm-site wasm-serve vsix-rebuild-reinstall bank bank-web bank-test bank-e2e hawk gpu-demo \
 	_rebuild-install-vsix _vsix_clean _vsix_build _vsix_bundle _vsix_package _vsix_install
 
 # ---------------------------------------------------------------------------
@@ -656,6 +656,12 @@ _coverage_check_vscode_extension:
 _tui: build
 	@echo "==> launching TUI demo (live GitHub API browser)"
 	./$(BIN) examples/tui/api_browser.osp --run
+
+## gpu-demo: Render the GPU graphics demo (fractal, shaded sphere, composite)
+#            FLAVOR=ml renders the ML twin, which prints byte-identical output.
+gpu-demo: build
+	@echo "==> rendering GPU graphics demo (fractal, shaded sphere, composite)"
+	./$(BIN) tests/core/gpu/raster.test.$(if $(filter ml,$(FLAVOR)),ospml,osp) --run
 
 ## run: Compile and run an Osprey file (usage: make run FILE=<path>)
 run: build

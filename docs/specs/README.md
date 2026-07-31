@@ -58,8 +58,8 @@ This directory holds **all spec documents** for the project:
     target is forced (wasm omits `input`) with the deferred wasm path.
   - [`0034-GPUComputation.md`](0034-GPUComputation.md) — typed GPU buffers,
     data-parallel kernels with compile-time purity proofs, the host execution
-    baseline, and the staged device-backend roadmap grounded in
-    [`gpu.md`](gpu.md).
+    baseline, and the cited research foundation; the staged device-backend
+    roadmap lives in [plan 0023](../plans/0023-gpu-computation.md).
 
 ## Spec ID convention
 

@@ -2,9 +2,10 @@
 
 **Status: partially implemented.** The typed buffer surface, kernel purity
 checking, and the host execution backend exist today. Device code generation
-(PTX, Metal, WebGPU) is roadmap work; the staged plan is at the end of this
-document. The research foundation behind these choices is
-[`gpu.md`](gpu.md).
+(PTX, Metal, WebGPU) is roadmap work; the staged plan and its detailed
+checklist live in [plan 0023](../plans/0023-gpu-computation.md). The
+scholarly work each design choice rests on is cited inline and collected in
+[References](#references--gpu-research) at the end of this document.
 
 GPU computation in Osprey is a language surface, not a bound library. The
 type system separates host data from device-shaped data, and the compiler
@@ -36,7 +37,13 @@ same ownership analysis and memory backends as every heap value
 
 Buffer elements are scalars: `int`, `float`, or `bool`. This is the regular,
 first-order device sublanguage that every production functional GPU language
-(Futhark, Accelerate) restricts device data to. Strings, lists, records, and
+restricts device data to — Futhark ([Henriksen et al., PLDI
+2017](https://doi.org/10.1145/3062341.3062354)) and Accelerate ([McDonell et
+al., ICFP 2013](https://doi.org/10.1145/2500365.2500595)) both make this
+restriction, because representing sum types and pointers on SIMT hardware is
+an open research problem (the flattening line of work: [Blelloch, CACM
+1996](https://doi.org/10.1145/227234.227246); [Bergstrom et al., PPoPP
+2013](https://doi.org/10.1145/2442516.2442525)). Strings, lists, records, and
 unions stay on the host side of the boundary; full ADTs and pattern matching
 remain available in host code, including the code that builds and consumes
 buffers. A non-scalar element is a compile error at the call that would
@@ -138,10 +145,13 @@ fn rowSum(m, r) = at(m, (r * 3) ?: 0) + at(m, ((r * 3) ?: 1) + 1 ?: 1)
 ### `gpuScan(buffer: GpuBuffer<T>, initial: T, combine: fn(T, T) -> T) -> GpuBuffer<T>` — [GPU-SCAN]
 
 Inclusive prefix scan: element `i` of the result is `combine` folded over
-the source through element `i`. The associativity contract is `gpuFold`'s:
-the host backend runs left-to-right; a device backend may run the classic
-work-efficient parallel scan, so a non-associative combine has
-backend-dependent results.
+the source through element `i`. Scan is *the* classic parallel primitive —
+segmented scans and flag vectors are how nested data parallelism flattens
+onto flat hardware ([Blelloch, CACM
+1996](https://doi.org/10.1145/227234.227246); [NESL](https://www.cs.cmu.edu/~scandal/nesl.html)).
+The associativity contract is `gpuFold`'s: the host backend runs
+left-to-right; a device backend may run the work-efficient parallel scan,
+so a non-associative combine has backend-dependent results.
 
 ### `gpuFilter(buffer: GpuBuffer<T>, predicate: fn(T) -> bool) -> GpuBuffer<T>` — [GPU-FILTER]
 
@@ -160,6 +170,18 @@ operation summary must be empty. Wrapping the call in a handler does not
 lift the restriction — a handler makes an effect *dischargeable*, but a
 kernel body still cannot leave the device to reach one, so the requirement
 is purity, not handledness.
+
+Effect-typed parallelism is the studied way to draw this line: Dex
+distinguishes the parallelism-destroying `State` effect from a
+parallelism-preserving accumulation effect ([Paszke et al., ICFP
+2021](https://arxiv.org/abs/2104.05372)), on effect-system foundations from
+Koka ([Leijen, 2014](https://arxiv.org/abs/1406.2061)); which handler
+shapes commute with parallel evaluation at all is formalized in "Parallel
+Algebraic Effect Handlers" ([Xie et al., ICFP
+2024](https://dl.acm.org/toc/pacmpl/2024/8/ICFP)) — the theory closest to
+Osprey's handlers. Today's rule is the sound conservative point on that
+spectrum: an empty effect row. A parallelism-preserving accumulation
+effect, if ever added, must be justified against that work.
 
 The check fails closed: a kernel whose effects the checker cannot prove
 (for example, a function value received as a parameter from an unknown call
@@ -242,25 +264,36 @@ checked truncation on the arithmetic side and is out of scope for buffers.
 
 Every GPU program has defined, deterministic semantics with no GPU present:
 the host backend executes combinators as fused native loops over the dense
-buffer, exactly as Futhark's `c` backend and every portability layer
-provide. This is the reference semantics device backends must match, it is
-what the differential test harness verifies under every memory backend and
-on wasm32, and it is what runs today. The dense unboxed buffer layout is
-the same staging layout a device transfer uses, so adopting the surface now
+buffer, exactly as [Futhark](https://futhark-lang.org)'s `c` backend and
+every portability layer provide (fusion as the load-bearing optimization:
+[McDonell et al., ICFP 2013](https://doi.org/10.1145/2500365.2500595)).
+This is the reference semantics device backends must match, it is what the
+differential test harness verifies under every memory backend and on
+wasm32, and it is what runs today. The dense unboxed buffer layout is the
+same staging layout a device transfer uses, so adopting the surface now
 costs nothing when device codegen lands.
 
 ### Device backends — [GPU-BACKEND-DEVICE]
 
-Not implemented. The design (from [`gpu.md`](gpu.md)): device code
-generation lowers the same checked combinator calls through a data-parallel
-pipeline to accelerator targets, selected at build time like the memory
-backends are. The compiler emits target-agnostic textual LLVM IR and hands
-it to clang today; the wasm32 target already works as a sibling link driver
+Not implemented. The design (staged in [plan
+0023](../plans/0023-gpu-computation.md)): device code generation lowers the
+same checked combinator calls through a data-parallel pipeline to
+accelerator targets, selected at build time like the memory backends are.
+The compiler emits target-agnostic textual LLVM IR and hands it to clang
+today; the wasm32 target already works as a sibling link driver
 (`crates/osprey-cli/src/wasm.rs`), and a device target follows the same
 shape: a kernel-extraction pass plus a target driver (NVPTX via clang, then
-Metal, then WebGPU/WGSL pairing with the existing wasm target). Kernel
-purity and the element restriction exist precisely so that every program
-accepted today remains compilable unchanged when offload arrives.
+Metal, then WebGPU/WGSL pairing with the existing wasm target). The
+studied alternatives — an MLIR `gpu`/`nvgpu`/`nvvm` pipeline (the substrate
+[Mojo](https://arxiv.org/abs/2509.21039) is built on), tile-level IRs
+([Triton — Tillet et al., MAPL
+2019](https://doi.org/10.1145/3315508.3329973); NVIDIA's open-source
+[CUDA Tile IR](https://github.com/NVIDIA/cuda-tile)), and polyhedral
+compilation ([PPCG — Verdoolaege et al., TACO
+2013](https://doi.org/10.1145/2400682.2400713)) — are weighed in the plan,
+not fixed by this spec. Kernel purity and the element restriction exist
+precisely so that every program accepted today remains compilable unchanged
+when offload arrives.
 
 ### Device selection — [GPU-DEVICE]
 
@@ -290,36 +323,116 @@ Until stage 5 lands, programs run on the host backend and `gpuDevice()`
 truthfully reports it; nothing in the surface changes when real devices
 arrive — a handler simply gains the power to pick one.
 
-## Implementation roadmap — [GPU-ROADMAP]
+## Roadmap invariant — [GPU-ROADMAP]
 
-Stages ratchet; each keeps `make ci` green and the differential harness
-byte-exact. Later stages must not change the meaning of programs accepted
-by earlier stages.
+Implementation is staged in [plan
+0023](../plans/0023-gpu-computation.md), which carries the stage
+descriptions and the detailed TODO checklist. The normative invariant this
+spec imposes on every stage: stages ratchet — each keeps `make ci` green
+and the differential harness byte-exact, and a later stage must not change
+the meaning of any program accepted by an earlier stage.
 
-1. **Typed surface + host backend** (this spec's implemented scope):
-   `GpuBuffer<T>`, the five built-ins, [GPU-BUFFER-ELEM] and
-   [GPU-KERNEL-PURE] enforcement, dense-buffer C runtime, corpus +
-   rejection tests in both flavors.
-2. **Surface completion** (implemented: `gpuZipWith`, `gpuIota`, `gpuGet`,
-   `gpuScan`, `gpuFilter`, `gpuDevice`; remaining: buffer literals and
-   `Iterator` → `GpuBuffer` fusion so `range |> map |> toGpu` never
-   materializes a list).
-3. **Kernel extraction**: lower kernels passed to GPU combinators into
-   standalone IR functions with explicit scalar signatures (today they are
-   inlined into the host loop) — the compiler-side prerequisite for any
-   device target, testable with no GPU by diffing extracted-kernel output
-   against host-loop output.
-4. **First device target — NVPTX**: emit kernel IR compiled by clang to
-   PTX, a CUDA-driver launch path in the runtime behind a build flag, and
-   buffer transfer using the existing dense layout. Threshold from
-   `gpu.md`: within 2× of Futhark/CUDA on stencil and reduction
-   micro-benchmarks before promoting the flag.
-5. **Effect-selected execution**: a `Gpu` effect whose handler chooses the
-   execution strategy per region, making offload a lexical, testable,
-   capability-checked decision — the language construct competitors bolt on
-   as library calls.
-6. **Portability targets**: Metal (macOS CI can actually run it) and
-   WebGPU/WGSL beside the wasm target.
-7. **Autodiff and schedules**: differentiable kernels and an optional
-   Halide-style schedule layer, per the Stage 3 research plan in
-   [`gpu.md`](gpu.md).
+## References — [GPU-RESEARCH]
+
+The scholarly work Osprey's GPU features are grounded in. Inline citations
+above point here; the design decisions these produced are recorded in
+[plan 0023](../plans/0023-gpu-computation.md).
+
+**The device sublanguage and functional GPU compilation**
+
+- Henriksen, Serup, Elsman, Henglein, Oancea. *Futhark: Purely Functional
+  GPU-Programming with Nested Parallelism and In-Place Array Updates.*
+  PLDI 2017. <https://doi.org/10.1145/3062341.3062354> — the blueprint for
+  [GPU-BUFFER-ELEM]'s first-order scalar device sublanguage and the host
+  backend's reference semantics.
+- Henriksen, Thorøe, Elsman, Oancea. *Incremental Flattening for Nested
+  Data Parallelism.* PPoPP 2019.
+  <https://doi.org/10.1145/3293883.3295707> — why nested parallelism is
+  deferred rather than naively flattened.
+- Chakravarty, Keller, Lee, McDonell, Grover. *Accelerating Haskell Array
+  Codes with Multicore GPUs.* DAMP 2011.
+  <https://doi.org/10.1145/1926354.1926358> — type-level host/device
+  separation, the model for `GpuBuffer` vs `List`.
+- McDonell, Chakravarty, Keller, Lippmeier. *Optimising Purely Functional
+  GPU Programs.* ICFP 2013. <https://doi.org/10.1145/2500365.2500595> —
+  array fusion as the load-bearing optimization behind [GPU-BACKEND-HOST].
+
+**Parallel primitives and flattening foundations**
+
+- Blelloch. *Programming Parallel Algorithms.* CACM 1996.
+  <https://doi.org/10.1145/227234.227246> — scan as the fundamental
+  primitive behind [GPU-FOLD]/[GPU-SCAN]; the
+  [NESL](https://www.cs.cmu.edu/~scandal/nesl.html) nested-data-parallel
+  line.
+- Bergstrom, Fluet, Rainey, Reppy, Rosen, Shaw. *Data-Only Flattening for
+  Nested Data Parallelism.* PPoPP 2013.
+  <https://doi.org/10.1145/2442516.2442525> — the frontier that justifies
+  keeping ADTs at the boundary.
+
+**Effects and parallelism**
+
+- Leijen. *Koka: Programming with Row-Polymorphic Effect Types.* MSFP
+  2014. <https://arxiv.org/abs/1406.2061> — the effect-system foundation
+  Osprey's handlers descend from.
+- Paszke, Johnson, Duvenaud, Vytiniotis, Radul, Johnson, Ragan-Kelley,
+  Maclaurin. *Getting to the Point: Index Sets and Parallelism-Preserving
+  Autodiff for Pointful Array Programming* (Dex). ICFP 2021.
+  <https://arxiv.org/abs/2104.05372> — parallelism-preserving vs
+  parallelism-destroying effects, the theory behind [GPU-KERNEL-PURE];
+  implementation at <https://github.com/google-research/dex-lang>.
+- Xie et al. *Parallel Algebraic Effect Handlers.* ICFP 2024 (PACMPL
+  8, ICFP issue: <https://dl.acm.org/toc/pacmpl/2024/8/ICFP>) — which
+  handler shapes commute with parallel evaluation; governs any future
+  relaxation of the empty-effect-row kernel rule and the stage-5 `Gpu`
+  effect.
+
+**Device code generation and scheduling**
+
+- Tillet, Kung, Cox. *Triton: An Intermediate Language and Compiler for
+  Tiled Neural Network Computations.* MAPL 2019.
+  <https://doi.org/10.1145/3315508.3329973> — the tile abstraction; with
+  NVIDIA's open-source [CUDA Tile IR](https://github.com/NVIDIA/cuda-tile),
+  a candidate escape-hatch level for stage 4+.
+- Ragan-Kelley, Barnes, Adams, Paris, Durand, Amarasinghe. *Halide:
+  Decoupling Algorithms from Schedules for High-Performance Image
+  Processing.* PLDI 2013. <https://doi.org/10.1145/2491956.2462176> — the
+  algorithm/schedule separation stage 7's schedule layer follows; the
+  autoscheduler is [Adams et al., SIGGRAPH
+  2019](https://doi.org/10.1145/3306346.3322967).
+- Ikarashi, Bernstein, Reinking, Genc, Ragan-Kelley. *Exo: Externalized
+  Rewriting for Hardware Accelerators.* PLDI 2022.
+  <https://doi.org/10.1145/3519939.3523446> — user-extensible scheduling.
+- Verdoolaege, Juega, Cohen, Gómez, Tenllado, Catthoor. *Polyhedral
+  Parallel Code Generation for CUDA* (PPCG). ACM TACO 2013.
+  <https://doi.org/10.1145/2400682.2400713>; the tiling/fusion algorithm is
+  [Bondhugula et al., PLDI 2008](https://doi.org/10.1145/1375581.1375595)
+  (Pluto).
+- MLIR GPU dialect stack:
+  [`gpu`](https://mlir.llvm.org/docs/Dialects/GPU/),
+  [`nvgpu`](https://mlir.llvm.org/docs/Dialects/NVGPU/),
+  [`nvvm`](https://mlir.llvm.org/docs/Dialects/NVVMDialect/) — the
+  progressive-lowering substrate weighed at stage 4's decision checkpoint.
+
+**Autodiff (stage 7)**
+
+- Elliott. *The Simple Essence of Automatic Differentiation.* ICFP 2018.
+  <https://arxiv.org/abs/1804.00746> — the categorical core for a
+  functional language's AD.
+- Bangaru, Wu, Li, Munkberg, et al. *SLANG.D: Fast, Modular and
+  Differentiable Shader Programming.* SIGGRAPH Asia 2023.
+  <https://doi.org/10.1145/3618353> — autodiff as a type-system feature
+  with compile-time safety, not a library.
+- Hu et al. *DiffTaichi: Differentiable Programming for Physical
+  Simulation.* ICLR 2020. <https://arxiv.org/abs/1910.00935>; the layout
+  decoupling is [Taichi, SIGGRAPH Asia
+  2019](https://doi.org/10.1145/3355089.3356506).
+
+**Competitive positioning and portability layers**
+
+- Godoy et al. *Mojo: MLIR-Based Performance-Portable HPC Science Kernels
+  on GPUs for the Python Ecosystem.* SC Workshops 2025 (WACCPD).
+  <https://arxiv.org/abs/2509.21039> — the measured Mojo baseline stage
+  4's benchmark gates target.
+- Edwards, Trott, Sunderland. *Kokkos: Enabling Manycore Performance
+  Portability.* JPDC 2014. <https://doi.org/10.1016/j.jpdc.2014.07.003> —
+  execution/memory-space abstraction for the stage-6 portability story.
