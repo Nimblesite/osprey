@@ -979,11 +979,7 @@ fn gen_user_call(
 /// print)`, `gpuMap(toFloat)`. Each arm has a value form needing no argument
 /// expressions, so it lowers once per element. `None` means `name` has no such
 /// form. Implements [BUILTIN-ITER-CALLBACK].
-fn call_builtin_with_values(
-    cg: &mut Codegen,
-    name: &str,
-    args: &[Value],
-) -> Option<Result<Value>> {
+fn call_builtin_with_values(cg: &mut Codegen, name: &str, args: &[Value]) -> Option<Result<Value>> {
     let arg = || args.first().cloned().unwrap_or_else(Value::unit);
     Some(match name {
         "print" => gen_print(cg, arg()),

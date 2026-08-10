@@ -65,9 +65,11 @@ shape for stage 6's Metal target:
 
 - `ospgfx.m` — Cocoa window + `CAMetalLayer`, flat C ABI (`osp_gfx_open`,
   `osp_gfx_set`, `osp_gfx_draw`, `osp_gfx_ticks`, `osp_gfx_close`).
-- `scene.metal` — fragment shader, loaded from disk at open time.
-- `scene.osp` — Osprey as the host: it owns the window, the clock and the
-  per-frame scene state, and pushes parameters over FFI ([FFI-PTR]).
+- `scene.metal` / `scene2.metal` — fragment shaders, loaded from disk at open
+  time.
+- `scene.osp` / `scene2.osp` — Osprey as the host: each owns the window, the
+  clock and the per-frame scene state, and pushes parameters over FFI
+  ([FFI-PTR]).
 - `make graphics` builds the dylib and runs it.
 
 It deliberately bypasses `gpu*`, because `gpu*` cannot reach the GPU. It proves
@@ -75,6 +77,19 @@ the boundary works — FFI, a real drawable, 103 fps — so stage 6 is wiring
 extracted kernels (stage 3) into a Metal compute pipeline, not starting from
 nothing. It does **not** run in CI: it needs a display, and it is not in the
 differential corpus.
+
+**Pre-existing red, not owned by this plan.**
+`crates/osprey-cli/tests/graphics_scenes.rs` (committed in `5f007c6d`) asserts
+a structure that has never existed in git history: a shared `base.osp` +
+`base.metal`, three ≤4-line entry points `scene{,2,3}.osp` importing
+`graphics::SceneBase`, and **no** `scene2.metal`/`scene3.metal`. On disk there
+is no `base.*` and no `scene3.osp`, so the test fails at its first read, and
+its `panic!` also fails `cargo clippy -D clippy::panic`, which is what turns
+`make lint` red today. `scene.osp` does already carry the exact `original*`
+timings the test pins and `scene.metal` all seven pinned shader markers, so the
+refactor is mostly mechanical — except the "character" scene, which does not
+exist in any form and has no spec. Resolve by either implementing the refactor
+or deleting the aspirational test; do not leave it red.
 
 ## What works today
 
@@ -203,54 +218,48 @@ accepted by earlier stages (`[GPU-ROADMAP]`).
 
 ## Start here — the next session's work order
 
-Work the checklist below in this order; each item names the files it lives in.
+**Stage 2 is now complete except for the two items delegated to other plans.**
+`toFloat`, buffer literals and iterator fusion all landed; the remaining two
+stage-2 boxes are blocked in plan 0002 (recursive generic emission; ML-parser
+block-lambda support) and plan 0022 (F10 numeric constraint on the arithmetic
+operators). Neither is a GPU-surface change — do not try to close them here.
 
-1. **`toFloat` (plan 0004, ~1 hour, unblocks two checklist items here).**
-   One `sitofp` arm in `crates/osprey-codegen/src/conv.rs` + scheme in
-   `builtins.rs` + docs entry, per `[GPU-CONVERT]` in spec 0034 (semantics
-   already specified: round-to-nearest-even, exact for |n| ≤ 2^53). Then
-   seed float pipelines from `gpuIota(n) |> gpuMap(toFloat)` in
-   `tests/core/gpu/stress.test.osp` and tick the stage-2 seed item.
-2. **Buffer literals + `Iterator` → `GpuBuffer` fusion** (stage 2 remainder,
-   self-contained in `crates/osprey-codegen/src/gpu.rs` + `iter.rs`). Fusion
-   means `toGpu` consuming an iterator chain writes elements straight into
-   the dense buffer — no intermediate `List`. Corpus proof: extend an
-   existing suite, don't add a file.
-3. **Stage 3 kernel extraction** — the critical path to any device backend,
-   fully testable with zero GPU hardware. Everything in stage 4+ waits on
-   it; start it as soon as 1–2 land. It is also the only item on this list
-   that improves the host backend's 13 fps ceiling, because it is what lets
-   the optimiser see a kernel body as straight-line integer code.
+**The next work on this plan is stage 3, kernel extraction.** It is the
+critical path to every device backend, it is fully testable with zero GPU
+hardware, and it is the only remaining item that improves the host backend's
+13 fps ceiling — because it is what lets the optimiser see a kernel body as
+straight-line integer code instead of an inlined chain of `Result` branches.
+Everything in stage 4+ waits on it.
 
-Items 1 and 2 are surface polish. **They do not move this feature toward
-running on a GPU.** If the goal for a session is "make `gpu*` actually use the
-GPU", skip to item 3 and then stage 4 or stage 6 — nothing else on this page
-gets there.
+If the goal for a session is "make `gpu*` actually use the GPU", the route is
+stage 3 → stage 6 (Metal, since `examples/graphics/` already proves the
+window/drawable/FFI half on this hardware) or stage 4 (NVPTX). Nothing else on
+this page gets there, and no amount of further surface work will.
 
-Items *not* to start from this plan: block-bodied lambda kernels and
-recursive-generic emission belong to plan 0002, F10 int-defaulting to plan
-0022. If you land those there, come back and strip the load-bearing
-annotations from the `mlkernels`/`stress` twins and tick the corresponding
-stage-2 items here.
+Landmines previous sessions hit:
 
-Landmines the last session hit (avoid re-learning them):
-
-- Unannotated recursive functions now **fail closed** with "annotate its
-  parameters and return type" (`genfn.rs` re-entry guard, golden
-  `recursive_generic_needs_annotation.ospo`) — that diagnostic is
-  deliberate, not a bug to "fix" by reverting the guard.
-- Twins must emit **identical IR** (`cross_flavor_ir_equiv`), goldens are
-  byte-exact under default/GC/ARC **and** wasm32 — wasm goldens run under
-  `make _test_wasm_goldens`, *not* `make ci`; run both before claiming
-  green.
-- `GOLDEN_MIN` (172 native / 119 wasm in `crates/run_test_corpus.sh`) must
-  be bumped whenever the corpus grows — it is a ratchet, never lower it.
-- The deslop duplication ceiling sits at 5.00% and the repo is at ~4.99%:
-  any combinator added to `gpu.rs` must reuse `kernel_of`/`scalar_acc_init`
-  or it will trip CI.
-- Float `/` returns `Result<float, MathError>` — corpus kernels need `?:`.
-  ML twins: no braces in constructor patterns (`Success value`),
+- Unannotated recursive functions **fail closed** ("annotate its parameters
+  and return type", `genfn.rs` re-entry guard). Deliberate — generic functions
+  are inlined, never emitted, so a recursive one has no call target.
+- Twins must emit identical IR (`cargo test -p osprey-cli --test
+  cross_flavor_ir_equiv`), so a construct only one flavor's parser accepts
+  cannot enter the corpus.
+- Goldens are byte-exact under default/GC/ARC **and** wasm32. Wasm goldens run
+  under `make wasm`, not `make ci` — run both. `make wasm` also *builds*
+  `libosprey_runtime_wasm.a`; without it every wasm golden fails at once and
+  `TEST_CORPUS_WASM_SKIPPED` reads 0 instead of 53.
+- `GOLDEN_MIN` (172 native / 119 wasm) counts *programs*, not test cases —
+  adding a `test(...)` to an existing suite does not move it. Never lower it.
+- The deslop duplication ceiling is 5.00% and the repo is near it: any new
+  combinator in `gpu.rs` must reuse `kernel_of`/`scalar_acc_init`.
+- Float `/` returns `Result<float, MathError>` — kernels need `?:`. ML twins:
+  no braces in constructor patterns (`Success value`), lambdas are `\x => …`,
   parenthesize match-arm and pipe continuations.
+- A builtin passed by name as a callback needs a value form in
+  `expr.rs::call_builtin_with_values`, or it emits `call @name` to a symbol
+  that is never defined and fails at *link* time with no source location.
+- A statement followed by a line starting with `(` parses as a **call**:
+  `let d = 5` then `(d + 1) ?: d` becomes `5(d + 1)`. Write `d + 1 ?: d`.
 
 ## TODO checklist
 
@@ -273,87 +282,54 @@ Landmines the last session hit (avoid re-learning them):
 - [x] `gpuDevice` (`[GPU-DEVICE]`) host introspection.
 - [x] Corpus expansion: `combinators`, `mlkernels`, `gamedev`, `stress`,
       `raster` suites × 2 flavors; `GOLDEN_MIN` 172 native / 119 wasm.
-- [x] Buffer literals `[GPU-BUFFER-LITERAL]` — a literal argument to `toGpu`
-      stores its elements straight into the dense buffer at constant indices
-      (`gpu.rs::buffer_literal`). Neither the flat literal block nor an
-      `OspreyList` is built: `toGpu([1.0, 2.0, 3.0, 4.0])` emits one
-      `osprey_gpu_alloc` plus four stores — zero `osprey_list_*` calls, zero
-      `malloc`, zero loops. Covered by `buffers` twins, which now also pin the
-      list-*value* path so the copy loop cannot rot.
-- [x] `Iterator` → `GpuBuffer` fusion `[GPU-BUFFER-FUSE]` — `toGpu` is a
-      consuming stage of the iterator pipeline, accepting `Iterator<T>`
-      wherever it accepts `List<T>` (`expr.rs::fuse_gpu_source` retargets the
-      scheme's container while keeping the element variable, so the
-      `GpuBuffer<T>` return stays linked; `gpu.rs::fuse_iterator` replays the
-      pending stages inside the fill loop). `range(0, 100) |> map(dbl) |>
-      toGpu()` emits zero `osprey_list_*` calls. A `filter` stage publishes
-      the kept prefix via `osprey_gpu_take`; an inverted range yields an empty
-      buffer, not a negative allocation. Covered by `combinators` twins
-      (`fusionCase`).
-- [x] Float pipeline seed `gpuIota(n) |> gpuMap(toFloat)` — `toFloat` landed
-      (plan 0004, `[BUILTIN-TOFLOAT]`); `stress` twins' `floatChurnCase` now
-      seeds from `gpuIota(8) |> gpuMap(toFloat)` instead of a literal buffer.
-      Landing it required closing a latent hole: a builtin passed *by name* as
-      a callback emitted `call @toFloat` to a symbol that is never defined, so
-      it failed at **link** time with no diagnostic.
-      `expr.rs::call_builtin_with_values` now lowers the intrinsic builtins
-      (`print`, `toString`, `toFloat`, `abs`) to their value forms at the
-      callback site — previously only `print` was handled.
-- [ ] Kernel-form gaps closed (plan 0002): block-bodied lambda kernels;
-      recursive helpers without load-bearing annotations — then strip the
-      annotations from `mlkernels`/`stress` twins.
-      **Re-measured this session — the two halves are in very different
-      places, and the earlier framing of this item was wrong.**
-      - *Block-bodied lambda kernels already work in the Default flavor.*
-        `gpuMap(fn(x) => { let d = x * 2 ?: 0  d + 1 ?: d })` and the `|x| =>
-        { … }` spelling both compile and run correctly, as does a
-        block-bodied `gpuFold` combine. `block` has been an `expression`
-        choice in `tree-sitter-osprey/grammar.js` all along. What does *not*
-        parse is the brace-only spelling `fn(x) { … }` (no `=>`).
-        The blocker on ticking this box is the **ML twin**: the hand-written
-        ML parser has no block-lambda form at all (neither `\x => { … }` nor
-        a layout block), so the construct cannot enter the corpus —
-        `cross_flavor_ir_equiv` requires twins to emit byte-identical IR, and
-        a Default-only construct drifts them (verified: adding one made
-        `buffers.test` fail that test). **Next step is ML-parser support for
-        a multi-statement lambda body, not grammar work on the Default side.**
-      - *Recursive helpers still need their annotations.* Stripping them from
-        `mlkernels`' `rowDot`/`train` fails closed with "`rowDot` is recursive
-        but its signature is not fully inferred; annotate its parameters and
-        return type". This is structural, not a missing special case: generic
-        functions are lowered by **inlining** at each call site
-        (`genfn.rs::try_inline`), never emitted as symbols, so a recursive
-        generic has nothing to call and the re-entry guard must fail. Closing
-        it means real monomorphization — emitting a name-mangled copy per
-        instantiation with the recursive self-call bound to that symbol —
-        which is plan 0002's "recursive generic emission" and touches function
-        emission, ARC frames and coverage. The `mlkernels`/`stress`
+- [x] Buffer literals `[GPU-BUFFER-LITERAL]` — a literal `toGpu` argument
+      stores straight into the dense buffer at constant indices
+      (`gpu.rs::buffer_literal`). `toGpu([1.0, 2.0, 3.0, 4.0])` emits one
+      `osprey_gpu_alloc` plus four stores: no `osprey_list_*`, no `malloc`, no
+      loop. `buffers` twins now also pin the list-*value* path.
+- [x] `Iterator` → `GpuBuffer` fusion `[GPU-BUFFER-FUSE]` — `toGpu` accepts an
+      `Iterator<T>` wherever it accepts `List<T>` and replays the pending
+      map/filter stages inside the fill loop (`expr.rs::fuse_gpu_source`
+      retargets the scheme's container, keeping the element variable so the
+      `GpuBuffer<T>` return stays linked; `gpu.rs::fuse_iterator` lowers it).
+      `range(0, 100) |> map(dbl) |> toGpu()` emits zero `osprey_list_*` calls.
+      A `filter` stage publishes the kept prefix via `osprey_gpu_take`; an
+      inverted range yields an empty buffer. Covered by `combinators`
+      `fusionCase`.
+- [x] Float pipeline seed — `toFloat` landed (plan 0004,
+      `[BUILTIN-TOFLOAT]`); `stress` `floatChurnCase` seeds from
+      `gpuIota(8) |> gpuMap(toFloat)`. Required closing a latent hole: a
+      builtin passed *by name* as a callback emitted `call @toFloat` to a
+      symbol never defined, failing at link time with no source location.
+      `expr.rs::call_builtin_with_values` now lowers `print`, `toString`,
+      `toFloat` and `abs` to value forms at the callback site.
+- [ ] Kernel-form gaps (plan 0002). Re-measured; the two halves differ:
+      - Block-bodied lambda kernels **already work in Default** —
+        `gpuMap(fn(x) => { let d = x * 2 ?: 0  d + 1 ?: d })` and `|x| => { … }`
+        both run. Only the brace-only `fn(x) { … }` (no `=>`) is rejected.
+        The blocker is the ML parser, which has no multi-statement lambda body,
+        so the construct cannot enter the corpus without drifting
+        `cross_flavor_ir_equiv`. Next step is ML-parser support, not Default
+        grammar work.
+      - Recursive helpers still need annotations. Generic functions are
+        lowered by inlining (`genfn.rs::try_inline`), never emitted as symbols,
+        so a recursive generic has no call target and the guard must fail.
+        Closing it means real monomorphization — a name-mangled copy per
+        instantiation with the self-call bound to it. `mlkernels`/`stress`
         annotations stay load-bearing until then.
-      - **Defect found meanwhile, fixed:** nine shipped builtin docs examples
-        (`range`, `forEach`, `map`, `filter`, `gpuMap`, `gpuFold`,
-        `gpuZipWith`, `gpuScan`, `gpuFilter` in `builtin_docs_lang.rs`) used
-        the brace-only `fn(x) { … }` spelling the compiler rejects. Four were
-        *also* semantically wrong — `x * 2` is checked arithmetic returning
-        `Result`, so `map`/`forEach` printed `Success(2)` where the comment
-        claimed `2`, and the `filter`/`gpuZipWith` examples did not compile at
-        all. These are published to `website/src/docs/functions/`. All nine
-        now compile and produce exactly the output their comments claim.
-- [ ] Kernel element typing (plan 0022 F10): an unannotated `add` shared by
-      an int fold and a float fold in `tests/core/gpu/`.
-      **Re-measured this session, and the cause is narrower than "int
-      defaulting".** Let-polymorphism is *not* the problem — `fn id(x) = x`
-      instantiates fine at `int`, `float` and `string` in one program. The
-      problem is `+` itself: in `fn add(a, x) = a + x` the operator resolves
-      to the int operation with no numeric constraint to keep it open, so
-      - `toGpu([1.5, 2.5]) |> gpuFold(0.0, add)` → `cannot unify int with
-        float`, and
-      - `toGpu([1, 2, 3]) |> gpuFold(0, add)` → `cannot unify int with
-        Result<int, MathError>`, because checked int `+` returns a `Result`
-        while the combine slot wants `(v, t) -> v`.
-      Both need a numeric constraint on the arithmetic operators — a
-      type-class-shaped mechanism HM alone cannot express. That is plan 0022's
-      F10 and is not a GPU-surface change; the GPU corpus is only where it
-      shows up.
+      - Fixed meanwhile: nine builtin docs examples used the rejected
+        `fn(x) { … }` spelling, and four were also semantically wrong (`x * 2`
+        is checked arithmetic, so `map`/`forEach` printed `Success(2)` where
+        the comment claimed `2`; `filter`/`gpuZipWith` did not compile). All
+        nine now run and match their stated output.
+- [ ] Kernel element typing (plan 0022 F10). Re-measured; narrower than "int
+      defaulting". Let-polymorphism is fine (`fn id(x) = x` instantiates at
+      three types). `+` is the problem: in `fn add(a, x) = a + x` it resolves
+      to the int operation with no numeric constraint, so `gpuFold(0.0, add)`
+      gives `cannot unify int with float` and `gpuFold(0, add)` gives
+      `cannot unify int with Result<int, MathError>` (checked int `+` returns a
+      `Result`; the combine slot wants `(v, t) -> v`). Both need a numeric
+      constraint on the operators — plan 0022 F10, not a GPU-surface change.
 
 ### Stage 3 — kernel extraction
 

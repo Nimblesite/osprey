@@ -1,2 +1,2 @@
-`toGpu` supports only List<int> | List<float> | List<bool>; got List<string>
+`toGpu` supports only List<int> | List<float> | List<bool> | Iterator<int> | Iterator<float> | Iterator<bool>; got List<string>
 `gpuLength` supports only GpuBuffer<int> | GpuBuffer<float> | GpuBuffer<bool>; got GpuBuffer<string>

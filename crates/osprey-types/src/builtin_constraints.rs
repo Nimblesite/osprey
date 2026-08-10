@@ -10,8 +10,8 @@ use crate::ty::{names, Type};
 const SIZED_DISPLAY: &str = "string | List<T> | Map<string, V>";
 const PRINTABLE_DISPLAY: &str =
     "int | float | bool | string | Unit | any | Result<printable, printable>";
-const GPU_SOURCE_DISPLAY: &str =
-    "List<int> | List<float> | List<bool> | the same over Iterator";
+const GPU_SOURCE_DISPLAY: &str = "List<int> | List<float> | List<bool> \
+     | Iterator<int> | Iterator<float> | Iterator<bool>";
 const GPU_BUFFER_DISPLAY: &str = "GpuBuffer<int> | GpuBuffer<float> | GpuBuffer<bool>";
 
 /// Human-facing parameter type for a constrained `any` scheme.

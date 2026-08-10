@@ -614,7 +614,11 @@ impl Checker {
         let Type::Fun { params, ret } = self.ctx.prune(ft) else {
             return None;
         };
-        let [Type::Con { name: con, args: elem }] = params.as_slice() else {
+        let [Type::Con {
+            name: con,
+            args: elem,
+        }] = params.as_slice()
+        else {
             return None;
         };
         if con != names::LIST || !self.is_iterator(args.first()?) {

@@ -66,19 +66,18 @@ let buf = toGpu [1, 2, 3, 4]
 
 #### Buffer literals — [GPU-BUFFER-LITERAL]
 
-A **literal** argument to `toGpu` is a buffer literal: the elements are
-stored straight into the dense buffer at their constant indices. No list of
-any kind is built — not the flat literal block, not an `OspreyList` — so the
-form above costs one allocation and four stores rather than three
-allocations and a copy loop. The observable result is identical to copying a
-list of the same elements; only the lowering differs.
+A **literal** argument to `toGpu` stores its elements straight into the dense
+buffer at constant indices. No list is built — neither the flat literal block
+nor an `OspreyList` — so the form above costs one allocation and four stores
+rather than three allocations and a copy loop. The result is identical to
+copying a list of the same elements; only the lowering differs.
 
 #### Iterator fusion — [GPU-BUFFER-FUSE]
 
 `toGpu` is also a **consuming stage of an iterator pipeline**, accepting an
 `Iterator<T>` wherever it accepts a `List<T>`. The pending `map`/`filter`
-stages replay inside the single counted loop that fills the buffer, so a
-chain never materializes an intermediate collection:
+stages replay inside the single counted loop that fills the buffer, so a chain
+never materializes an intermediate collection:
 
 ```osprey
 let buf = range(0, 1000) |> filter(isEven) |> map(square) |> toGpu()
@@ -88,14 +87,14 @@ let buf = range(0, 1000) |> filter(isEven) |> map(square) |> toGpu()
 buf = range (0, 1000) |> filter isEven |> map square |> toGpu ()
 ```
 
-A `filter` stage leaves the kept count unknown until the loop has run, so
-the buffer is allocated at the range's span and the exact prefix is
-published on completion — the same compaction `gpuFilter` performs. An
-inverted or empty range yields an empty buffer.
+A `filter` stage leaves the kept count unknown until the loop has run, so the
+buffer is allocated at the range's span and the exact prefix is published on
+completion — the compaction `gpuFilter` performs. An inverted or empty range
+yields an empty buffer.
 
-This is fusion in the [Futhark](https://futhark-lang.org)/Accelerate sense
-and the reason the surface has no separate "buffer builder": the iterator
-pipeline already is one.
+This is fusion in the [Futhark](https://futhark-lang.org)/Accelerate sense, and
+the reason the surface needs no separate buffer builder: the iterator pipeline
+is one.
 
 ### `fromGpu(buffer: GpuBuffer<T>) -> List<T>` — [GPU-BUFFER-TO-LIST]
 

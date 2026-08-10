@@ -189,6 +189,31 @@ fn buffer_literal(cg: &mut Codegen, elements: &[Expr]) -> Result<Value> {
     Ok(out.with_owner(Some(elem_owner(elem))))
 }
 
+/// The compaction counter shared by `gpuFilter` and iterator fusion: a stack
+/// slot holding how many elements have been kept so far. Both write into a
+/// buffer sized at the *source* length, because the kept count is not known
+/// until the loop has run.
+fn kept_counter(cg: &mut Codegen) -> String {
+    let kept = cg.fresh_reg();
+    cg.emit(format!("{kept} = alloca i64"));
+    cg.emit(format!("store i64 0, i64* {kept}"));
+    kept
+}
+
+/// Append `word` at the counter's position and advance it.
+fn push_kept(cg: &mut Codegen, out: &Value, kept: &str, word: &str) {
+    let at = cg.emit_reg(format!("load i64, i64* {kept}"));
+    buffer_set(cg, out, &at, word);
+    let next = cg.emit_reg(format!("add i64 {at}, 1"));
+    cg.emit(format!("store i64 {next}, i64* {kept}"));
+}
+
+/// Publish the compacted prefix: the buffer's length becomes the kept count.
+fn take_kept(cg: &mut Codegen, out: &Value, kept: &str) {
+    let total = cg.emit_reg(format!("load i64, i64* {kept}"));
+    cg.call_void("osprey_gpu_take", "i8*, i64", &[&out.operand, &total]);
+}
+
 /// `toGpu(iterator)` — iterator/buffer fusion [GPU-BUFFER-FUSE]. `toGpu` is a
 /// consuming stage of the iterator pipeline: the pending map/filter stages
 /// replay inside one counted loop that writes each surviving element straight
@@ -203,22 +228,16 @@ fn fuse_iterator(cg: &mut Codegen, range: &Value) -> Result<Value> {
     let empty = cg.emit_reg(format!("icmp slt i64 {span}, 0"));
     let span = cg.emit_reg(format!("select i1 {empty}, i64 0, i64 {span}"));
     let out = buffer_alloc(cg, &span, GPU_OWNER.to_string());
-    let kept = cg.fresh_reg();
-    cg.emit(format!("{kept} = alloca i64"));
-    cg.emit(format!("store i64 0, i64* {kept}"));
+    let kept = kept_counter(cg);
     let lp = open_range_loop(cg, &start, &end);
     crate::arc::push_frame(cg);
     let v = crate::iter::replay(cg, Value::new(lp.i.clone(), LType::I64), &lp.incr)?;
     let elem = v.ty;
     let word = scalar_word(cg, v, "a toGpu element")?;
-    let at = cg.emit_reg(format!("load i64, i64* {kept}"));
-    buffer_set(cg, &out, &at, &word.operand);
-    let next = cg.emit_reg(format!("add i64 {at}, 1"));
-    cg.emit(format!("store i64 {next}, i64* {kept}"));
+    push_kept(cg, &out, &kept, &word.operand);
     crate::arc::pop_frame(cg);
     close_range_loop(cg, &lp);
-    let total = cg.emit_reg(format!("load i64, i64* {kept}"));
-    cg.call_void("osprey_gpu_take", "i8*, i64", &[&out.operand, &total]);
+    take_kept(cg, &out, &kept);
     Ok(out.with_owner(Some(elem_owner(Some(elem)))))
 }
 
@@ -445,9 +464,7 @@ fn gpu_filter(cg: &mut Codegen, args: &[Expr]) -> Result<Value> {
     let (predicate, elem) = kernel_of(cg, args, 1, &src, 0)?;
     let len = buffer_len(cg, &src);
     let out = buffer_alloc(cg, &len, elem_owner(elem));
-    let kept = cg.fresh_reg();
-    cg.emit(format!("{kept} = alloca i64"));
-    cg.emit(format!("store i64 0, i64* {kept}"));
+    let kept = kept_counter(cg);
     kernel_loop(cg, &src, &len, elem, |cg, arg, i| {
         let raw = buffer_get(cg, &src, i);
         let verdict = invoke(cg, &predicate, vec![arg])?;
@@ -459,15 +476,11 @@ fn gpu_filter(cg: &mut Codegen, args: &[Expr]) -> Result<Value> {
             verdict.operand
         ));
         cg.start_block(&keep);
-        let at = cg.emit_reg(format!("load i64, i64* {kept}"));
-        buffer_set(cg, &out, &at, &raw);
-        let next = cg.emit_reg(format!("add i64 {at}, 1"));
-        cg.emit(format!("store i64 {next}, i64* {kept}"));
+        push_kept(cg, &out, &kept, &raw);
         cg.emit(format!("br label %{skip}"));
         cg.start_block(&skip);
         Ok(())
     })?;
-    let total = cg.emit_reg(format!("load i64, i64* {kept}"));
-    cg.call_void("osprey_gpu_take", "i8*, i64", &[&out.operand, &total]);
+    take_kept(cg, &out, &kept);
     Ok(out)
 }
