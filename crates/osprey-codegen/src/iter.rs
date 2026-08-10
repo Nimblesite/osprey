@@ -17,7 +17,7 @@ use crate::loops::{close_list_loop, close_range_loop, open_list_loop, open_range
 use osprey_ast::{Expr, NamedArgument, Parameter};
 
 const RANGE_TY: &str = "{ i64, i64 }";
-const RANGE_OWNER: &str = "Range";
+pub(crate) const RANGE_OWNER: &str = "Range";
 
 /// A recorded stream-fusion stage.
 #[derive(Clone)]
@@ -163,7 +163,7 @@ fn record(cg: &mut Codegen, args: &[Expr], is_map: bool) -> Result<Value> {
 }
 
 /// Load a range block's `(start, end)` bounds.
-fn bounds(cg: &mut Codegen, range: &Value) -> (String, String) {
+pub(crate) fn bounds(cg: &mut Codegen, range: &Value) -> (String, String) {
     let s = crate::aggregate::load_field(cg, RANGE_TY, &range.operand, 0, LType::I64);
     let e = crate::aggregate::load_field(cg, RANGE_TY, &range.operand, 1, LType::I64);
     (s, e)
@@ -171,7 +171,7 @@ fn bounds(cg: &mut Codegen, range: &Value) -> (String, String) {
 
 /// Replay the pending map/filter stages on element `v` in the current block,
 /// branching to `skip` when a filter rejects it. Returns the transformed value.
-fn replay(cg: &mut Codegen, v: Value, skip: &str) -> Result<Value> {
+pub(crate) fn replay(cg: &mut Codegen, v: Value, skip: &str) -> Result<Value> {
     let ops = std::mem::take(&mut cg.pending_iter_ops);
     let mut cur = v;
     for op in &ops {

@@ -10,7 +10,8 @@ use crate::ty::{names, Type};
 const SIZED_DISPLAY: &str = "string | List<T> | Map<string, V>";
 const PRINTABLE_DISPLAY: &str =
     "int | float | bool | string | Unit | any | Result<printable, printable>";
-const GPU_SOURCE_DISPLAY: &str = "List<int> | List<float> | List<bool>";
+const GPU_SOURCE_DISPLAY: &str =
+    "List<int> | List<float> | List<bool> | the same over Iterator";
 const GPU_BUFFER_DISPLAY: &str = "GpuBuffer<int> | GpuBuffer<float> | GpuBuffer<bool>";
 
 /// Human-facing parameter type for a constrained `any` scheme.
@@ -85,8 +86,10 @@ fn is_gpu_container(ty: &Type, container: &str) -> bool {
     }
 }
 
+/// A `toGpu` source: a scalar `List`, or a scalar `Iterator` pipeline that
+/// fuses straight into the buffer with no list in between [GPU-BUFFER-FUSE].
 fn is_gpu_source(ty: &Type) -> bool {
-    is_gpu_container(ty, names::LIST)
+    is_gpu_container(ty, names::LIST) || is_gpu_container(ty, names::ITERATOR)
 }
 
 fn is_gpu_buffer(ty: &Type) -> bool {

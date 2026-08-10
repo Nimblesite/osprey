@@ -86,10 +86,12 @@ fn simulationCase() = {
 }
 
 /// floatChurnCase runs 400 float passes so profiling sees double-word traffic.
+/// The seed is the canonical float pipeline [GPU-CONVERT]: an index buffer
+/// widened elementwise, so nothing materializes a list of literals.
 fn floatChurnCase() = {
-    let mixed = mix(toGpu([1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0]), 400)
+    let mixed = mix(gpuIota(8) |> gpuMap(toFloat), 400)
     let total = mixed |> gpuFold(0.0, addStir)
-    checkAll("400-pass float churn", [total > 1635.8, total < 1635.9, gpuLength(mixed) == 8])
+    checkAll("400-pass float churn", [total > 1627.8, total < 1627.9, gpuLength(mixed) == 8])
 }
 
 test("a million elements map and fold in one pipeline", millionCase)

@@ -172,10 +172,69 @@ fn scalar_word(cg: &mut Codegen, v: Value, what: &str) -> Result<Value> {
     Ok(box_to_i64(cg, v))
 }
 
+/// `toGpu([a, b, c])` — a buffer literal [GPU-BUFFER-LITERAL]. The elements are
+/// stored straight into the dense buffer at their constant indices, so neither
+/// the flat literal block nor an `OspreyList` is ever built: one allocation
+/// instead of three, and no copy loop. The element tag comes from the first
+/// element's lowered type, exactly as a flat list literal's would.
+fn buffer_literal(cg: &mut Codegen, elements: &[Expr]) -> Result<Value> {
+    let out = buffer_alloc(cg, &elements.len().to_string(), GPU_OWNER.to_string());
+    let mut elem = None;
+    for (i, e) in elements.iter().enumerate() {
+        let v = gen_expr(cg, e)?;
+        elem = elem.or(Some(v.ty));
+        let word = scalar_word(cg, v, "a GPU buffer literal element")?;
+        buffer_set(cg, &out, &i.to_string(), &word.operand);
+    }
+    Ok(out.with_owner(Some(elem_owner(elem))))
+}
+
+/// `toGpu(iterator)` — iterator/buffer fusion [GPU-BUFFER-FUSE]. `toGpu` is a
+/// consuming stage of the iterator pipeline: the pending map/filter stages
+/// replay inside one counted loop that writes each surviving element straight
+/// into the dense buffer, so `range |> map |> toGpu` never materializes a
+/// `List`. A filter stage makes the kept count dynamic, so this fills a
+/// span-length buffer and publishes the exact prefix, as `gpuFilter` does.
+fn fuse_iterator(cg: &mut Codegen, range: &Value) -> Result<Value> {
+    let (start, end) = crate::iter::bounds(cg, range);
+    let span = cg.emit_reg(format!("sub i64 {end}, {start}"));
+    // An inverted range yields no elements, so its buffer is empty, not a
+    // negative-length allocation.
+    let empty = cg.emit_reg(format!("icmp slt i64 {span}, 0"));
+    let span = cg.emit_reg(format!("select i1 {empty}, i64 0, i64 {span}"));
+    let out = buffer_alloc(cg, &span, GPU_OWNER.to_string());
+    let kept = cg.fresh_reg();
+    cg.emit(format!("{kept} = alloca i64"));
+    cg.emit(format!("store i64 0, i64* {kept}"));
+    let lp = open_range_loop(cg, &start, &end);
+    crate::arc::push_frame(cg);
+    let v = crate::iter::replay(cg, Value::new(lp.i.clone(), LType::I64), &lp.incr)?;
+    let elem = v.ty;
+    let word = scalar_word(cg, v, "a toGpu element")?;
+    let at = cg.emit_reg(format!("load i64, i64* {kept}"));
+    buffer_set(cg, &out, &at, &word.operand);
+    let next = cg.emit_reg(format!("add i64 {at}, 1"));
+    cg.emit(format!("store i64 {next}, i64* {kept}"));
+    crate::arc::pop_frame(cg);
+    close_range_loop(cg, &lp);
+    let total = cg.emit_reg(format!("load i64, i64* {kept}"));
+    cg.call_void("osprey_gpu_take", "i8*, i64", &[&out.operand, &total]);
+    Ok(out.with_owner(Some(elem_owner(Some(elem)))))
+}
+
 /// `toGpu(list)` — dense copy of a scalar list [GPU-BUFFER-FROM-LIST]. A flat
 /// list literal's element tag (`[]double`) becomes the buffer's element tag.
+/// A literal argument takes [`buffer_literal`] and an iterator pipeline
+/// [`fuse_iterator`], so neither builds a list on the way to the buffer.
 fn to_gpu(cg: &mut Codegen, args: &[Expr]) -> Result<Value> {
-    let source = gen_expr(cg, nth(args, 0)?)?;
+    let arg = nth(args, 0)?;
+    if let Expr::List(elements) = arg {
+        return buffer_literal(cg, elements);
+    }
+    let source = gen_expr(cg, arg)?;
+    if source.osp_ty.as_deref() == Some(crate::iter::RANGE_OWNER) {
+        return fuse_iterator(cg, &source);
+    }
     let elem = list_elem(&source);
     let l = crate::listlit::to_runtime_list(cg, source);
     let l = crate::cast::coerce_to(cg, l, LType::Ptr)?;

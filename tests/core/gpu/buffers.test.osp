@@ -22,17 +22,25 @@ fn countOdd(acc: int, flag: bool) -> int = match flag {
     false => acc
 }
 
-/// roundTripCase pins toGpu/fromGpu as an order-preserving dense copy.
+/// roundTripCase pins toGpu/fromGpu as an order-preserving dense copy over
+/// both spellings of the source. A literal argument is a buffer literal
+/// [GPU-BUFFER-LITERAL] — its elements are stored straight into the dense
+/// buffer, with no list built at all — while a list *value* takes the copy
+/// loop [GPU-BUFFER-FROM-LIST]. Both must produce the same buffer.
 fn roundTripCase() = {
     let buf = toGpu([3, 1, 4, 1, 5])
     let back = fromGpu(buf)
+    let viaList = toGpu(back)
     checkAll("round trip", [
         gpuLength(buf) == 5,
         listLength(back) == 5,
         (listGet(back, 0) ?: 0) == 3,
         (listGet(back, 2) ?: 0) == 4,
         (listGet(back, 4) ?: 0) == 5,
-        gpuLength(toGpu([])) == 0
+        gpuLength(toGpu([])) == 0,
+        gpuLength(viaList) == 5,
+        (gpuGet(viaList, 2) ?: 0) == 4,
+        (viaList |> gpuFold(0, addInts)) == 14
     ])
 }
 

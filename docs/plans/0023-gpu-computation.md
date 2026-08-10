@@ -85,7 +85,14 @@ differential corpus.
   `types.rs::owner_name`).
 - Eleven built-ins: `toGpu`, `fromGpu`, `gpuLength`, `gpuMap`, `gpuFold`,
   `gpuZipWith`, `gpuIota`, `gpuGet`, `gpuScan`, `gpuFilter`, `gpuDevice` —
-  each with a docs entry (parity-tested) and spec ID.
+  each with a docs entry (parity-tested) and spec ID. `toFloat`
+  (`[BUILTIN-TOFLOAT]`) is the scalar conversion that makes float pipelines
+  expressible.
+- Two list-free buffer constructions: buffer literals
+  `[GPU-BUFFER-LITERAL]` (a literal `toGpu` argument stores straight into the
+  dense buffer) and iterator fusion `[GPU-BUFFER-FUSE]` (`toGpu` consumes an
+  `Iterator<T>`, replaying the pending map/filter stages inside the fill
+  loop). Both emit zero `osprey_list_*` calls.
 - Kernel purity `[GPU-KERNEL-PURE]` via the static effect discharge
   machinery (`effect_rows.rs::gpu_kernel_verdict`), fail-closed, with
   rejection fixtures in `examples/failscompilation/`.
@@ -102,11 +109,11 @@ differential corpus.
 
 ## Gaps delegated to other plans
 
-- **Block-bodied lambda kernels** and **recursive generic emission** —
-  [plan 0002](0002-codegen-generic-function-values.md) (spec
-  `[GPU-KERNEL-FORM]`).
-- **`toFloat` conversion builtin** —
-  [plan 0004](0004-collection-stdlib-completion.md) (spec `[GPU-CONVERT]`).
+- **Recursive generic emission** (monomorphization) and **ML-parser support
+  for block-bodied lambdas** — [plan
+  0002](0002-codegen-generic-function-values.md) (spec `[GPU-KERNEL-FORM]`).
+  Block-bodied lambda kernels already work in the Default flavor; see the
+  stage-2 entry for the measurement.
 - **Context-free kernel int-defaulting (F10)** —
   [plan 0022](0022-arithmetic-totality-audit.md) (spec
   `[GPU-KERNEL-ELEM-TYPING]`).
@@ -266,16 +273,87 @@ Landmines the last session hit (avoid re-learning them):
 - [x] `gpuDevice` (`[GPU-DEVICE]`) host introspection.
 - [x] Corpus expansion: `combinators`, `mlkernels`, `gamedev`, `stress`,
       `raster` suites × 2 flavors; `GOLDEN_MIN` 172 native / 119 wasm.
-- [ ] Buffer literals (construct a `GpuBuffer` without a `List` detour).
-- [ ] `Iterator` → `GpuBuffer` fusion so `range |> map |> toGpu` never
-      materializes a list.
-- [ ] Float pipeline seed `gpuIota(n) |> gpuMap(toFloat)` once `toFloat`
-      lands (plan 0004); extend `stress.test.osp` to seed from `gpuIota`.
+- [x] Buffer literals `[GPU-BUFFER-LITERAL]` — a literal argument to `toGpu`
+      stores its elements straight into the dense buffer at constant indices
+      (`gpu.rs::buffer_literal`). Neither the flat literal block nor an
+      `OspreyList` is built: `toGpu([1.0, 2.0, 3.0, 4.0])` emits one
+      `osprey_gpu_alloc` plus four stores — zero `osprey_list_*` calls, zero
+      `malloc`, zero loops. Covered by `buffers` twins, which now also pin the
+      list-*value* path so the copy loop cannot rot.
+- [x] `Iterator` → `GpuBuffer` fusion `[GPU-BUFFER-FUSE]` — `toGpu` is a
+      consuming stage of the iterator pipeline, accepting `Iterator<T>`
+      wherever it accepts `List<T>` (`expr.rs::fuse_gpu_source` retargets the
+      scheme's container while keeping the element variable, so the
+      `GpuBuffer<T>` return stays linked; `gpu.rs::fuse_iterator` replays the
+      pending stages inside the fill loop). `range(0, 100) |> map(dbl) |>
+      toGpu()` emits zero `osprey_list_*` calls. A `filter` stage publishes
+      the kept prefix via `osprey_gpu_take`; an inverted range yields an empty
+      buffer, not a negative allocation. Covered by `combinators` twins
+      (`fusionCase`).
+- [x] Float pipeline seed `gpuIota(n) |> gpuMap(toFloat)` — `toFloat` landed
+      (plan 0004, `[BUILTIN-TOFLOAT]`); `stress` twins' `floatChurnCase` now
+      seeds from `gpuIota(8) |> gpuMap(toFloat)` instead of a literal buffer.
+      Landing it required closing a latent hole: a builtin passed *by name* as
+      a callback emitted `call @toFloat` to a symbol that is never defined, so
+      it failed at **link** time with no diagnostic.
+      `expr.rs::call_builtin_with_values` now lowers the intrinsic builtins
+      (`print`, `toString`, `toFloat`, `abs`) to their value forms at the
+      callback site — previously only `print` was handled.
 - [ ] Kernel-form gaps closed (plan 0002): block-bodied lambda kernels;
       recursive helpers without load-bearing annotations — then strip the
       annotations from `mlkernels`/`stress` twins.
+      **Re-measured this session — the two halves are in very different
+      places, and the earlier framing of this item was wrong.**
+      - *Block-bodied lambda kernels already work in the Default flavor.*
+        `gpuMap(fn(x) => { let d = x * 2 ?: 0  d + 1 ?: d })` and the `|x| =>
+        { … }` spelling both compile and run correctly, as does a
+        block-bodied `gpuFold` combine. `block` has been an `expression`
+        choice in `tree-sitter-osprey/grammar.js` all along. What does *not*
+        parse is the brace-only spelling `fn(x) { … }` (no `=>`).
+        The blocker on ticking this box is the **ML twin**: the hand-written
+        ML parser has no block-lambda form at all (neither `\x => { … }` nor
+        a layout block), so the construct cannot enter the corpus —
+        `cross_flavor_ir_equiv` requires twins to emit byte-identical IR, and
+        a Default-only construct drifts them (verified: adding one made
+        `buffers.test` fail that test). **Next step is ML-parser support for
+        a multi-statement lambda body, not grammar work on the Default side.**
+      - *Recursive helpers still need their annotations.* Stripping them from
+        `mlkernels`' `rowDot`/`train` fails closed with "`rowDot` is recursive
+        but its signature is not fully inferred; annotate its parameters and
+        return type". This is structural, not a missing special case: generic
+        functions are lowered by **inlining** at each call site
+        (`genfn.rs::try_inline`), never emitted as symbols, so a recursive
+        generic has nothing to call and the re-entry guard must fail. Closing
+        it means real monomorphization — emitting a name-mangled copy per
+        instantiation with the recursive self-call bound to that symbol —
+        which is plan 0002's "recursive generic emission" and touches function
+        emission, ARC frames and coverage. The `mlkernels`/`stress`
+        annotations stay load-bearing until then.
+      - **Defect found meanwhile, fixed:** nine shipped builtin docs examples
+        (`range`, `forEach`, `map`, `filter`, `gpuMap`, `gpuFold`,
+        `gpuZipWith`, `gpuScan`, `gpuFilter` in `builtin_docs_lang.rs`) used
+        the brace-only `fn(x) { … }` spelling the compiler rejects. Four were
+        *also* semantically wrong — `x * 2` is checked arithmetic returning
+        `Result`, so `map`/`forEach` printed `Success(2)` where the comment
+        claimed `2`, and the `filter`/`gpuZipWith` examples did not compile at
+        all. These are published to `website/src/docs/functions/`. All nine
+        now compile and produce exactly the output their comments claim.
 - [ ] Kernel element typing (plan 0022 F10): an unannotated `add` shared by
       an int fold and a float fold in `tests/core/gpu/`.
+      **Re-measured this session, and the cause is narrower than "int
+      defaulting".** Let-polymorphism is *not* the problem — `fn id(x) = x`
+      instantiates fine at `int`, `float` and `string` in one program. The
+      problem is `+` itself: in `fn add(a, x) = a + x` the operator resolves
+      to the int operation with no numeric constraint to keep it open, so
+      - `toGpu([1.5, 2.5]) |> gpuFold(0.0, add)` → `cannot unify int with
+        float`, and
+      - `toGpu([1, 2, 3]) |> gpuFold(0, add)` → `cannot unify int with
+        Result<int, MathError>`, because checked int `+` returns a `Result`
+        while the combine slot wants `(v, t) -> v`.
+      Both need a numeric constraint on the arithmetic operators — a
+      type-class-shaped mechanism HM alone cannot express. That is plan 0022's
+      F10 and is not a GPU-surface change; the GPU corpus is only where it
+      shows up.
 
 ### Stage 3 — kernel extraction
 

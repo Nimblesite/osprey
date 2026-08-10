@@ -171,6 +171,10 @@ fn core(e: &mut TypeEnv) {
     // The `/` operator is float-only (Osprey spec); this is its integer sibling.
     // Implements [BUILTIN-INTDIV].
     mono(e, "intDiv", vec![i(), i()], res(i()));
+    // Widening int → float. Total, so it is bare `float` rather than a Result:
+    // every i64 has a nearest double. Implements [BUILTIN-TOFLOAT] and the GPU
+    // surface's explicit element conversion [GPU-CONVERT].
+    mono(e, "toFloat", vec![i()], Type::float());
     // Named equivalents of the overflow-checked integer operators. These retain
     // the runtime builtins' generic Error channel for compatibility.
     for checked in ["checkedAdd", "checkedSub", "checkedMul"] {

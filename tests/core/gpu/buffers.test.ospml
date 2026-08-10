@@ -24,17 +24,25 @@ countOdd (acc, flag) = match flag
     true => (acc + 1) ?: acc
     false => acc
 
-(** Pin toGpu/fromGpu as an order-preserving dense copy. *)
+(** Pin toGpu/fromGpu as an order-preserving dense copy over both spellings of
+    the source. A literal argument is a buffer literal [GPU-BUFFER-LITERAL] —
+    its elements are stored straight into the dense buffer, with no list built
+    at all — while a list *value* takes the copy loop [GPU-BUFFER-FROM-LIST].
+    Both must produce the same buffer. *)
 roundTripCase () =
     buf = toGpu [3, 1, 4, 1, 5]
     back = fromGpu buf
+    viaList = toGpu back
     checkAll "round trip" [
         gpuLength buf == 5,
         listLength back == 5,
         (listGet (back, 0) ?: 0) == 3,
         (listGet (back, 2) ?: 0) == 4,
         (listGet (back, 4) ?: 0) == 5,
-        gpuLength (toGpu []) == 0
+        gpuLength (toGpu []) == 0,
+        gpuLength viaList == 5,
+        (gpuGet (viaList, 2) ?: 0) == 4,
+        (viaList |> gpuFold 0 addInts) == 14
     ]
 
 (** Pipe a buffer through a named kernel and fold it away. *)

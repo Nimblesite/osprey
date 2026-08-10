@@ -83,6 +83,27 @@ filterCase () =
         gpuLength (toGpu [2, 4] |> gpuFilter isEven) == 2
     ]
 
+(** Pin toGpu as a consuming stage of an iterator pipeline [GPU-BUFFER-FUSE]:
+    the pending map/filter stages replay inside the loop that fills the
+    buffer, so no List is built on the way. A filtered chain publishes the
+    kept prefix, exactly as gpuFilter does, and an inverted range yields an
+    empty buffer rather than a negative allocation. *)
+fusionCase () =
+    doubled = range (0, 10) |> map (\x => (x * 2) ?: 0) |> toGpu ()
+    evens = range (0, 10) |> filter isEven |> toGpu ()
+    staged = range (0, 10) |> filter isEven |> map (\x => (x * 2) ?: 0) |> toGpu ()
+    checkAll "iterator fusion" [
+        gpuLength doubled == 10,
+        (doubled |> gpuFold 0 sumI) == 90,
+        gpuLength evens == 5,
+        (evens |> gpuFold 0 sumI) == 20,
+        gpuLength staged == 5,
+        (staged |> gpuFold 0 sumI) == 40,
+        (range (3, 7) |> toGpu () |> gpuFold 0 sumI) == 18,
+        gpuLength (range (5, 5) |> toGpu ()) == 0,
+        gpuLength (range (9, 2) |> toGpu ()) == 0
+    ]
+
 (** Pin backend introspection: the host backend names itself. *)
 deviceCase () = checkAll "device" [
     gpuDevice () == "host",
@@ -94,4 +115,5 @@ test ("gpuIota builds the index buffer", iotaCase)
 test ("gpuGet reads typed elements and errors out of bounds", getCase)
 test ("gpuScan is an inclusive prefix over any associative combine", scanCase)
 test ("gpuFilter compacts in order", filterCase)
+test ("an iterator pipeline fuses into a buffer with no list", fusionCase)
 test ("gpuDevice names the active backend", deviceCase)

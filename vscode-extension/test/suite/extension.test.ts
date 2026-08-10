@@ -2020,6 +2020,55 @@ suite("Osprey VSIX Debugger E2E", () => {
     );
   });
 
+  // Osprey files are identified by extension alone. A `firstLine` content
+  // heuristic claimed every sibling whose header comment mentioned Osprey —
+  // `examples/graphics/scene.metal` was being parsed as Osprey and reported 45
+  // syntax errors. Nothing may re-introduce a content-based claim.
+  test("language contributions claim files by extension, never by content", () => {
+    const pkg = JSON.parse(
+      fs.readFileSync(path.join(extensionRoot, "package.json"), "utf8"),
+    ) as {
+      contributes?: {
+        languages?: {
+          id: string;
+          extensions?: string[];
+          firstLine?: string;
+        }[];
+      };
+    };
+    const languages = pkg.contributes?.languages ?? [];
+
+    assert.deepStrictEqual(
+      languages.map((language) => language.id).sort(),
+      ["osprey", "osprey-ml"],
+      "the extension contributes exactly the two Osprey languages",
+    );
+    for (const language of languages) {
+      assert.strictEqual(
+        language.firstLine,
+        undefined,
+        `${language.id} must not claim files by first-line content`,
+      );
+    }
+    assert.deepStrictEqual(
+      languages.flatMap((language) => language.extensions ?? []).sort(),
+      [".osp", ".ospml"],
+      "only .osp and .ospml are Osprey sources",
+    );
+  });
+
+  // The shader beside the graphics bridge opens as a shader, not as Osprey.
+  test("a Metal shader mentioning Osprey in its header is not an Osprey file", () => {
+    const shader = path.join(tempDir, "scene.metal");
+    fs.writeFileSync(
+      shader,
+      "// The fragment shader the Osprey graphics bridge runs on the Apple GPU.\n" +
+        "#include <metal_stdlib>\n",
+    );
+    assert.strictEqual(isOspreyFile(shader), false);
+    assert.strictEqual(ospreyLanguageForFile(shader), undefined);
+  });
+
   test("debug command synthesizes the same real launch config as F5", () => {
     const source = path.join(tempDir, "command.osp");
     const config = defaultOspreyDebugConfigForEditor({

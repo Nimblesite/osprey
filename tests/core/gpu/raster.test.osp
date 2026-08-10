@@ -4,8 +4,8 @@
 // ([GPU-IOTA], [GPU-MAP], [GPU-ZIPWITH], [GPU-FILTER], [GPU-FOLD],
 // [GPU-GET], [GPU-DEVICE] — docs/specs/0034-GPUComputation.md).
 //
-// Shading is fixed-point integer arithmetic because [GPU-CONVERT]'s
-// `toFloat` is not implemented yet, and the kernels reach recursive helpers
+// Shading is deliberately fixed-point integer arithmetic — the workload a
+// fragment shader actually runs — and the kernels reach recursive helpers
 // (`escape`, `isqrtIter`) to prove [GPU-KERNEL-FORM]'s claim that a kernel is
 // gated on purity, not on shape. Execution is the host backend
 // [GPU-BACKEND-HOST]; the same program is what a device target runs unchanged.

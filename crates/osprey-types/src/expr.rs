@@ -595,9 +595,40 @@ impl Checker {
                 self.builtin_uses.push((name.to_string(), receiver.clone()));
             }
         }
+        let fused = self.fuse_gpu_source(name, ft, &args);
         // Preserve unresolved argument variables until the surrounding expression
         // can refine them; the recorded constraint validates the final type.
-        self.apply_fn(ft, args, constrained_builtin)
+        self.apply_fn(fused.as_ref().unwrap_or(ft), args, constrained_builtin)
+    }
+
+    /// `toGpu` is written over `List<t>`, but an iterator pipeline is an
+    /// equally valid source — it fuses straight into the dense buffer with no
+    /// list in between [GPU-BUFFER-FUSE]. Retarget the parameter's container
+    /// to `Iterator` when the argument is one, reusing the *same* element type
+    /// so the `GpuBuffer<t>` return stays linked to it. `None` leaves the
+    /// declared scheme untouched.
+    fn fuse_gpu_source(&mut self, name: Option<&str>, ft: &Type, args: &[Type]) -> Option<Type> {
+        if name != Some("toGpu") {
+            return None;
+        }
+        let Type::Fun { params, ret } = self.ctx.prune(ft) else {
+            return None;
+        };
+        let [Type::Con { name: con, args: elem }] = params.as_slice() else {
+            return None;
+        };
+        if con != names::LIST || !self.is_iterator(args.first()?) {
+            return None;
+        }
+        Some(Type::fun(
+            vec![Type::con(names::ITERATOR, elem.clone())],
+            (*ret).clone(),
+        ))
+    }
+
+    /// Whether an argument has already resolved to an `Iterator<_>`.
+    fn is_iterator(&mut self, ty: &Type) -> bool {
+        matches!(self.ctx.apply(ty), Type::Con { name, .. } if name == names::ITERATOR)
     }
 
     fn infer_pipe(&mut self, left: &Expr, right: &Expr, env: &TypeEnv) -> Type {

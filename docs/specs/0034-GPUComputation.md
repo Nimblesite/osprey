@@ -51,10 +51,10 @@ create it.
 
 ## Buffer built-ins
 
-### `toGpu(list: List<T>) -> GpuBuffer<T>` — [GPU-BUFFER-FROM-LIST]
+### `toGpu(source) -> GpuBuffer<T>` — [GPU-BUFFER-FROM-LIST]
 
-Copies a host list into a dense buffer. `T` must satisfy
-[GPU-BUFFER-ELEM].
+Produces a dense buffer from a host `List<T>` — or, per [GPU-BUFFER-FUSE],
+from an `Iterator<T>`. `T` must satisfy [GPU-BUFFER-ELEM].
 
 ```osprey
 let buf = toGpu([1, 2, 3, 4])
@@ -63,6 +63,39 @@ let buf = toGpu([1, 2, 3, 4])
 ```osprey-ml
 let buf = toGpu [1, 2, 3, 4]
 ```
+
+#### Buffer literals — [GPU-BUFFER-LITERAL]
+
+A **literal** argument to `toGpu` is a buffer literal: the elements are
+stored straight into the dense buffer at their constant indices. No list of
+any kind is built — not the flat literal block, not an `OspreyList` — so the
+form above costs one allocation and four stores rather than three
+allocations and a copy loop. The observable result is identical to copying a
+list of the same elements; only the lowering differs.
+
+#### Iterator fusion — [GPU-BUFFER-FUSE]
+
+`toGpu` is also a **consuming stage of an iterator pipeline**, accepting an
+`Iterator<T>` wherever it accepts a `List<T>`. The pending `map`/`filter`
+stages replay inside the single counted loop that fills the buffer, so a
+chain never materializes an intermediate collection:
+
+```osprey
+let buf = range(0, 1000) |> filter(isEven) |> map(square) |> toGpu()
+```
+
+```osprey-ml
+buf = range (0, 1000) |> filter isEven |> map square |> toGpu ()
+```
+
+A `filter` stage leaves the kept count unknown until the loop has run, so
+the buffer is allocated at the range's span and the exact prefix is
+published on completion — the same compaction `gpuFilter` performs. An
+inverted or empty range yields an empty buffer.
+
+This is fusion in the [Futhark](https://futhark-lang.org)/Accelerate sense
+and the reason the surface has no separate "buffer builder": the iterator
+pipeline already is one.
 
 ### `fromGpu(buffer: GpuBuffer<T>) -> List<T>` — [GPU-BUFFER-TO-LIST]
 
@@ -251,11 +284,11 @@ implicitly at buffer boundaries. The required primitive is
 let xs = gpuIota(100000) |> gpuMap(toFloat)
 ```
 
-`toFloat` is not implemented yet — float stress workloads iterate literal
-buffers until it lands ([plan
-0004](../plans/0004-collection-stdlib-completion.md); the builtin registers
-in [0012-Built-InFunctions.md](0012-Built-InFunctions.md) with docs
-entries like every builtin). The reverse direction already exists as
+`toFloat` is a total widening — every `int` has a nearest `double` — so it
+returns a bare `float` rather than a `Result`, and it registers in
+[0012-Built-InFunctions.md](0012-Built-InFunctions.md) with a docs entry
+like every builtin. It is usable both as a direct call and, as above, as a
+first-class kernel passed by name. The reverse direction already exists as
 checked truncation on the arithmetic side and is out of scope for buffers.
 
 ## Execution backends

@@ -856,6 +856,15 @@ fn gen_call(
             let (l, r) = two_int_args(cg, name, arguments, named)?;
             gen_int_division(cg, l, r)
         }
+        // [BUILTIN-TOFLOAT] [GPU-CONVERT] Widening int → float: one `sitofp`,
+        // round-to-nearest-even, exact for |n| <= 2^53. Total, so no Result.
+        "toFloat" => {
+            let arg = first_arg(arguments, named)
+                .ok_or_else(|| CodegenError::invalid("toFloat needs one argument"))?;
+            let v = gen_expr(cg, arg)?;
+            let n = crate::conv::as_i64(cg, v)?;
+            crate::conv::as_double(cg, n)
+        }
         // Compatibility names for the same checked integer operations used by
         // the natural operators.
         "checkedAdd" | "checkedSub" | "checkedMul" => {
@@ -966,15 +975,36 @@ fn gen_user_call(
     call_with_values(cg, name, args)
 }
 
+/// Lower a builtin that was passed as a first-class callback — `forEach(xs,
+/// print)`, `gpuMap(toFloat)`. Each arm has a value form needing no argument
+/// expressions, so it lowers once per element. `None` means `name` has no such
+/// form. Implements [BUILTIN-ITER-CALLBACK].
+fn call_builtin_with_values(
+    cg: &mut Codegen,
+    name: &str,
+    args: &[Value],
+) -> Option<Result<Value>> {
+    let arg = || args.first().cloned().unwrap_or_else(Value::unit);
+    Some(match name {
+        "print" => gen_print(cg, arg()),
+        "toString" => to_string_value(cg, arg()),
+        // [BUILTIN-TOFLOAT] [GPU-CONVERT] the canonical float-pipeline seed
+        // `gpuIota(n) |> gpuMap(toFloat)` lowers through this arm.
+        "toFloat" => as_i64(cg, arg()).and_then(|n| crate::conv::as_double(cg, n)),
+        "abs" => gen_unary_propagating(cg, arg(), gen_abs_value),
+        _ => return None,
+    })
+}
+
 /// Call `name` with already-evaluated argument values — the shared tail of
 /// `gen_user_call` and the iterator callbacks. Coerces each argument to the
 /// inferred parameter type, declares unknown (runtime) callees, and tags a
 /// `Result`-returning callee's value.
 pub(crate) fn call_with_values(cg: &mut Codegen, name: &str, args: Vec<Value>) -> Result<Value> {
-    // `print` as a first-class callback maps to the print intrinsic.
-    if name == "print" {
-        let v = args.into_iter().next().unwrap_or_else(Value::unit);
-        return gen_print(cg, v);
+    // An intrinsic builtin has no emitted `@name` symbol, so one reaching this
+    // path as a first-class callback lowers to its value form here.
+    if let Some(v) = call_builtin_with_values(cg, name, &args) {
+        return v;
     }
     // Coerce each argument to the declared parameter type where known.
     let coerced = match cg.fn_param_abis(name) {
