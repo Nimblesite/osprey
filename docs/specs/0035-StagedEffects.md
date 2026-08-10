@@ -24,8 +24,8 @@ turns four separate hard problems into one mechanism:
 
 - **GPU.** Code whose requests are all answered early is exactly the code that
   is safe to run on a graphics card. "Can this be a kernel?" stops being a
-  guess about whether the optimiser got lucky and becomes a question the type
-  checker answers yes or no, with the offending operation named
+  guess about whether the optimiser got lucky and becomes a question the
+  compiler answers yes or no, naming the offending operation
   ([STAGE-GPU-LEGAL](#gpu-legality--stage-gpu-legal)).
 - **WebAssembly.** Requests answered early need no stack switching, so they
   need nothing the browser does not already have
@@ -35,8 +35,7 @@ turns four separate hard problems into one mechanism:
   dependency arrays, no forgotten dependency
   ([STAGE-SIGNALS](#reactive-signals--stage-signals)).
 - **Compiler pipelines.** A statically answered effect is a compiler pass in
-  disguise; the correspondence with progressive lowering is exact
-  ([STAGE-DIALECT](#effects-as-dialects--stage-dialect)).
+  disguise ([STAGE-DIALECT](#effects-as-dialects--stage-dialect)).
 
 ## Stage — [STAGE-AXIS]
 
@@ -240,9 +239,14 @@ effect is free.** Not "usually optimised away" — absent.
 
 ## Effects as dialects — [STAGE-DIALECT]
 
-`[STAGE-DIALECT]` The correspondence with progressive lowering in
-[MLIR](https://mlir.llvm.org/) is exact, and it is the reason one mechanism
-covers both jobs:
+[MLIR](https://mlir.llvm.org/) is an LLVM subproject for building compilers out
+of **dialects** — named sets of operations at whatever abstraction level suits
+the problem — and **progressive lowering**, a pipeline of passes that each
+rewrite one dialect into a more concrete one until only machine-level
+operations remain. Mojo, Triton and IREE are built on it.
+
+`[STAGE-DIALECT]` The correspondence between that architecture and effect
+handlers is exact, and it is the reason one mechanism covers both jobs:
 
 | Osprey | MLIR |
 | --- | --- |
@@ -255,15 +259,27 @@ covers both jobs:
 | [STAGE-LOWER-ORDER] | Pass pipeline order |
 | Dynamic handler | An op that stays, interpreted at runtime |
 
-This is a correspondence between designs, not a claim about the compiler's
-implementation. Osprey emits textual LLVM IR and hands it to clang; whether the
-device path is built on MLIR's `gpu`/`nvgpu`/`nvvm` stack or lowered directly
-is the open decision at
-[plan 0023](../plans/0023-gpu-computation.md) stage 4, and this spec does not
-settle it. What the correspondence buys either way is that `Parallel`, `Tensor`
-and `Alloc` are declared once, in the language, and the passes that give them
-meaning are handlers a user can read, replace and test — not compiler internals
-a user can only accept.
+`[STAGE-DIALECT-INDEPENDENT]` The correspondence is between *designs*. Osprey
+does not use MLIR: it emits textual LLVM IR and hands it to clang, and static
+discharge is an Osprey-language rewrite over its own canonical AST. That is a
+deliberate choice with stated reasons and stated conditions for revisiting it,
+recorded in [plan 0024](../plans/0024-staged-effects.md#decision--why-osprey-does-not-use-mlir-today);
+whether a *device* path is eventually built on MLIR's `gpu`/`nvgpu`/`nvvm`
+stack remains the separate open decision at
+[plan 0023](../plans/0023-gpu-computation.md) stage 4. This spec settles
+neither.
+
+What the correspondence buys either way is the part that matters to a user:
+`Parallel`, `Tensor` and `Alloc` are declared once, in the language, and the
+passes that give them meaning are handlers a user can read, replace and test —
+not compiler internals a user can only accept.
+
+`[STAGE-DIALECT-PORTABLE]` A conforming implementation may discharge static
+handlers by any means that respects this document — including a dialect
+conversion pipeline. The four obligations are what make that possible (total
+coverage is full conversion, [STAGE-RESIDUE] is target legality,
+tail-resumptiveness is what makes an arm expressible as a rewrite pattern), so
+no rule here may be tightened in a way that forecloses one.
 
 ## GPU legality — [STAGE-GPU-LEGAL]
 

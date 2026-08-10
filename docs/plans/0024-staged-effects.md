@@ -102,6 +102,103 @@ These are real and none of them is hidden by a passing test:
 6. **Static handler state is untested.** A `mut` cell captured by a static arm
    has no coverage either way.
 
+## Decision — why Osprey does not use MLIR today
+
+### What MLIR is
+
+[MLIR](https://mlir.llvm.org/) (Multi-Level Intermediate Representation) is a
+subproject of LLVM. LLVM IR is one fixed, low-level language — registers,
+loads, branches — so by the time a program reaches it, the structure an
+optimiser would want (this is a matrix multiply; this loop is parallel) is
+already gone. MLIR's answer is two ideas:
+
+- **Dialects.** You define your own operations at whatever abstraction level
+  fits the problem, and dialects coexist in one IR. `linalg` has `matmul`,
+  `scf` has `parallel`, `gpu` has `launch`, `nvvm` is close to PTX.
+- **Progressive lowering.** Compilation is a pipeline of conversion passes,
+  each rewriting one dialect into a more concrete one, until only target-level
+  operations remain. Each pass understands its own operations and nothing else.
+
+Mojo, Triton, IREE and TensorFlow are built on it. The upstream GPU stack
+(`gpu`, `nvgpu`, `nvvm`, `spirv`) is a working, maintained path from parallel
+loops to PTX and SPIR-V.
+
+### The decision
+
+**Not now, deliberately, and the door is held open.** Osprey emits target-
+agnostic textual LLVM IR and hands it to clang; `wasm32` is a sibling link
+driver (`crates/osprey-cli/src/wasm.rs`). Static discharge is an Osprey-language
+rewrite over the canonical AST. Five reasons:
+
+1. **Correspondence is not dependency.** The architectural benefit — abstract
+   operations plus rewriting layers that give them meaning — is a *design*, and
+   staging already has it. Adopting the framework would buy the design a second
+   time at the price of a large dependency.
+2. **The user-facing win points the other way.** The reason to declare
+   `Parallel` as an effect rather than a compiler dialect is that a user can
+   read its handler, replace it in a test, and write their own. A conversion
+   pattern written in C++ and TableGen inside the compiler is exactly the thing
+   a user cannot do. Moving lowering into MLIR would move it *out* of the
+   language, discarding the feature this plan exists to deliver.
+3. **Nothing today needs it.** There is no device backend
+   ([plan 0023](0023-gpu-computation.md) stages 3–4 are unstarted); the host
+   backend is fused native loops. A dialect framework acquired before there is
+   a target to lower to is infrastructure for a program that does not exist.
+4. **It changes the shipping story on every platform.** MLIR means building
+   against LLVM's C++ libraries at a pinned version, with TableGen in the build
+   graph — against a Rust workspace whose current output is text a stock clang
+   consumes. That reaches the release pipeline, the Homebrew tap, the Scoop
+   bucket and the per-platform VSIX bundles ([docs/RELEASING.md](../RELEASING.md)),
+   and it is a cost that must be paid by a benefit that does not yet exist.
+5. **Deferring is cheap; adopting early is not.** The seam is an AST-to-AST
+   pass with a checked contract. Adding an MLIR-backed discharge later is
+   additive — a second implementation behind the same surface — whereas
+   unwinding a premature dependency is not.
+
+### What keeps the option open
+
+These are invariants, not aspirations. Breaking one forfeits the option, so a
+change that breaks one needs this section updated in the same edit:
+
+- **The rewrite stays a separate pass over the canonical AST**
+  (`crates/osprey-ast/src/lower_static.rs`), never entangled with LLVM text
+  emission. A second discharge backend must be substitutable at that seam.
+- **The four obligations stay as they are.** Total coverage is MLIR's full
+  conversion, [STAGE-RESIDUE] is target legality, tail-resumptiveness
+  ([STAGE-STATIC-TAIL]) is what makes an arm expressible as a rewrite pattern,
+  and stage monotonicity keeps a pass from needing a runtime.
+- **Effect signatures stay declarative** — a name, typed operations, no
+  implementation — so an effect declaration can be mapped onto a dialect
+  definition mechanically.
+- **The host backend stays the reference semantics** ([GPU-BACKEND-HOST]), so
+  any lowering path is verified against a fixed oracle rather than against
+  itself.
+- **Dialect-shaped effects are named after their MLIR counterparts** where one
+  exists — `Parallel` ↔ `scf.parallel`, `Tensor` ↔ `linalg`, `Alloc` ↔
+  `memref` — so the mapping stays obvious to whoever picks this up.
+
+### When to pick it up
+
+Revisit at [plan 0023](0023-gpu-computation.md) stage 4's decision checkpoint,
+and adopt when **three or more** of these hold:
+
+- A device target is being written and hand-rolled lowering to PTX, Metal or
+  WGSL would duplicate what `gpu`/`nvgpu`/`nvvm`/`spirv` already provide.
+- Tiling, fusion or vectorization is needed and would otherwise mean
+  reimplementing `linalg`/`affine` passes.
+- Two or more device backends exist and share more than half their lowering.
+- The measured gap to a published baseline (the Mojo numbers in
+  [plan 0023](0023-gpu-computation.md)) is attributable to lowering quality
+  rather than to kernel extraction or checked arithmetic.
+- The LLVM C++ build dependency has been shown acceptable on every release
+  platform, with the pinned-version policy written down.
+
+Adoption, if it happens, is **backend-only**: `static effect` and
+`handle static` stay the surface, the obligations stay the contract, and a
+program's meaning must not change ([STAGE-COMPAT]). The acceptance gate is that
+the differential corpus stays byte-exact against the host backend with the MLIR
+path enabled.
+
 ## Stages
 
 Each stage keeps `make ci` green and the differential harness byte-exact, and
@@ -171,4 +268,7 @@ the code generator, and the MLIR-versus-direct decision stays with that plan.
 - [ ] Stage 4: instantiation-keyed rewrite rules
 - [ ] Stage 5: `signal` form, LSP dependency view, reactive example
 - [ ] Stage 6: device dialects and the `kernel` region form
+- [ ] Re-evaluate the MLIR decision at [plan 0023](0023-gpu-computation.md)
+      stage 4's checkpoint against the adoption criteria above; record the
+      outcome here either way
 - [ ] Static handler state: decide and test, or reject it explicitly
