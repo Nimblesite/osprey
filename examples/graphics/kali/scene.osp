@@ -1,0 +1,5 @@
+// Kali — the original scene. Filaments woven by an iterated fold, lit by an
+// orbit trap. Everything it is made of lives in `graphics::SceneBase`.
+import graphics::SceneBase
+
+fn main() = SceneBase::original()

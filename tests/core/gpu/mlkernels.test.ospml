@@ -1,38 +1,79 @@
-// AI/ML workloads on the GPU surface: dot products, SAXPY, activation
-// functions, matrix-vector products via gather, mean centering, and a full
-// gradient-descent training loop — the patterns ML runtimes are built from
-// ([GPU-ZIPWITH], [GPU-IOTA], [GPU-GET], [GPU-FOLD] —
-// docs/specs/0034-GPUComputation.md).
+// AI/ML workloads on the GPU surface and the closure captures they are made
+// of: dot products, SAXPY, weighted sums, mean and variance, normalisation,
+// activations, a softmax-shaped pipeline, dense layers, matrix-vector products
+// via gather, and a gradient-descent training loop ([GPU-KERNEL-FORM],
+// [GPU-MAP], [GPU-ZIPWITH], [GPU-FOLD], [GPU-SCAN], [GPU-FILTER], [GPU-IOTA],
+// [GPU-GET], [GPU-CONVERT] — docs/specs/0034-GPUComputation.md).
+//
+// The capture is the load-bearing shape. [GPU-KERNEL-FORM] names "a closure
+// capturing enclosing locals (a folded scalar piped back into a gpuMap)" as a
+// kernel form the purity proof must accept, so every statistic below is folded
+// out of one buffer and spent inside a kernel over another: a mean into a
+// centering pass, a maximum into a softmax shift, a weight total into a
+// normalising divide — values staged beside the buffer, never shared state.
 
-(** Elementwise product kernel behind every dot product. *)
-mulF : (float, float) -> float
-mulF (x, y) = x * y
-
-(** Float reduction kernel shared by every sum below. *)
+(** The float reduction and the elementwise product every sum and dot use. *)
 addF : (float, float) -> float
 addF (a, x) = a + x
 
-(** BLAS level 1: fuse an elementwise product into a reduction. *)
+mulF : (float, float) -> float
+mulF (x, y) = x * y
+
+(** Fold a buffer to its extremes: what a shift and a rescale capture. *)
+maxF : (float, float) -> float
+maxF (a, x) = match x > a
+    true => x
+    false => a
+
+minF : (float, float) -> float
+minF (a, x) = match x < a
+    true => x
+    false => a
+
+(** relu clamps negatives to zero; isActive marks what a layer lets through. *)
+relu x = match x > 0.0
+    true => x
+    false => 0.0
+
+isActive x = x > 0.0
+
+(** at reads a matrix element, treating out of bounds as zero padding; sumOf and
+    meanOf are the folded statistics the kernels capture, and meanOf's checked
+    division is what keeps an empty buffer total instead of partial. *)
+at (m, i) = gpuGet (m, i) ?: 0.0
+
+sumOf xs = xs |> gpuFold 0.0 addF
+
+meanOf xs = (sumOf xs / toFloat (gpuLength xs)) ?: 0.0
+
+(** dot is BLAS level 1: fuse an elementwise product into a reduction, which is
+    the shape varianceOf reuses twice — fold a mean, then capture it inside the
+    kernel measuring squared deviation from it. *)
 dot (xs, ys) = gpuZipWith (xs, ys, mulF) |> gpuFold 0.0 addF
+
+varianceOf xs =
+    mean = meanOf xs
+    meanOf (xs |> gpuMap (\v => (v - mean) * (v - mean)))
 
 (** The classic a*x + y with a = 2.0. *)
 saxpy : (float, float) -> float
 saxpy (x, y) = 2.0 * x + y
 
-(** The workhorse activation: negative inputs clamp to zero. *)
-relu x = match x > 0.0
-    true => x
-    false => 0.0
+(** softWeight weights a score already shifted by the batch maximum, so d >= 0. *)
+softWeight : float -> float
+softWeight d = (1.0 / (1.0 + d + d * d)) ?: 0.0
 
-(** Mark the elements a relu layer would let through. *)
-isActive x = x > 0.0
+(** softmax is four stages, two of them captures: fold the maximum, spend it in
+    the shift, fold the partition function, spend that in the divide. *)
+softmax scores =
+    peak = scores |> gpuFold (gpuGet (scores, 0) ?: 0.0) maxF
+    weights = scores |> gpuMap (\s => softWeight (peak - s))
+    partition = sumOf weights
+    weights |> gpuMap (\w => (w / partition) ?: 0.0)
 
-(** Read a matrix element, treating out of bounds as zero padding. *)
-at (m, i) = gpuGet (m, i) ?: 0.0
-
-(** Walk one row of a flat row-major matrix against a vector. The
-    signature is load-bearing: a recursive function must be emitted as a
-    real definition, and only a fully concrete signature is. *)
+(** rowDot walks one row of a flat row-major matrix against a vector. The
+    signature is load-bearing: only a concrete signature is emitted as a real
+    definition, which recursion requires. *)
 rowDot : (GpuBuffer<float>, GpuBuffer<float>, int, int, int) -> float
 rowDot (m, v, cols, r, c) = match c == cols
     true => 0.0
@@ -42,76 +83,417 @@ rowDot (m, v, cols, r, c) = match c == cols
 (** Gather every row's dot product: one kernel invocation per row. *)
 matVec (m, v, cols, rows) = gpuIota rows |> gpuMap (\r => rowDot (m, v, cols, r, 0))
 
-(** One epoch of least-squares gradient descent on y = w * x. The
-    signature types the captured w inside the kernel lambda. *)
+(** One MLP layer: gather rows, add bias elementwise, then activate. *)
+dense (m, v, cols, rows, bias) = gpuZipWith (matVec (m, v, cols, rows), bias, addF) |> gpuMap relu
+
+(** The loss the training loop descends; w is captured by the residual. *)
+mse : (float, GpuBuffer<float>, GpuBuffer<float>) -> float
+mse (w, xs, ys) = meanOf (gpuZipWith (xs, ys, \(x, y) => (w * x - y) * (w * x - y)))
+
+(** One epoch of least-squares descent on y = w * x; the signature types the
+    captured w inside the kernel lambda. *)
 gradStep : (float, GpuBuffer<float>, GpuBuffer<float>) -> float
 gradStep (w, xs, ys) = w - 0.05 * (((gpuZipWith (xs, ys,
     \(x, y) => 2.0 * (w * x - y) * x) |> gpuFold 0.0 addF) / 3.0) ?: 0.0)
 
-(** Iterate gradStep n times, keeping the whole loop on buffers.
-    Annotated for the same recursion-emission reason as rowDot. *)
+(** Iterate gradStep n times, keeping the loop on buffers. Annotated for the
+    same recursion-emission reason as rowDot. *)
 train : (float, GpuBuffer<float>, GpuBuffer<float>, int) -> float
 train (w, xs, ys, n) = match n
     0 => w
     _ => train (gradStep (w, xs, ys), xs, ys, (n - 1) ?: 0)
 
-(** Pin the fused product-and-reduce against hand computation. *)
+(** Pin the fused product-and-reduce over orthogonal, negated, zeroed,
+    singleton, empty and ragged operands. *)
 dotCase () =
     xs = toGpu [1.0, 2.0, 3.0]
     ys = toGpu [4.0, 5.0, 6.0]
     checkAll "dot product" [
         dot (xs, ys) == 32.0,
+        dot (ys, xs) == 32.0,
         dot (xs, xs) == 14.0,
-        dot (toGpu [], toGpu []) == 0.0
+        dot (toGpu [], toGpu []) == 0.0,
+        dot (xs, toGpu [0.0, 0.0, 0.0]) == 0.0,
+        dot (toGpu [1.0, 0.0, 0.0 - 1.0], toGpu [1.0, 2.0, 1.0]) == 0.0,
+        dot (toGpu [0.0 - 1.0, 2.0], toGpu [3.0, 0.0 - 4.0]) == 0.0 - 11.0,
+        dot (xs, toGpu [2.0, 2.0]) == 6.0,
+        dot (toGpu [0.5], toGpu [0.5]) == 0.25,
+        dot (toGpu [1.0, 0.0, 0.0], ys) == 4.0,
+        gpuLength (gpuZipWith (xs, ys, mulF)) == 3,
+        gpuLength (gpuZipWith (xs, toGpu [1.0], mulF)) == 1
     ]
 
-(** Pin BLAS saxpy elementwise over a buffer pair. *)
+(** Pin BLAS saxpy, then the same shape with the scale factor captured —
+    including alphas zero and one, which reduce to projections. *)
 saxpyCase () =
-    out = gpuZipWith (toGpu [1.0, 2.0, 3.0], toGpu [10.0, 20.0, 30.0], saxpy)
+    alpha = 0.5
+    xs = toGpu [1.0, 2.0, 3.0]
+    out = gpuZipWith (xs, toGpu [10.0, 20.0, 30.0], saxpy)
+    axpy = gpuZipWith (xs, toGpu [1.0, 1.0, 1.0], \(x, y) => alpha * x + y)
     checkAll "saxpy" [
-        (out |> gpuFold 0.0 addF) == 72.0,
-        (gpuGet (out, 2) ?: 0.0) == 36.0
+        sumOf out == 72.0,
+        (gpuGet (out, 0) ?: 0.0) == 12.0,
+        (gpuGet (out, 2) ?: 0.0) == 36.0,
+        gpuLength out == 3,
+        sumOf axpy == 6.0,
+        (gpuGet (axpy, 0) ?: 0.0) == 1.5,
+        (gpuGet (axpy, 2) ?: 0.0) == 2.5,
+        sumOf (gpuZipWith (xs, xs, \(x, y) => 0.0 * x + y)) == 6.0,
+        sumOf (gpuZipWith (xs, xs, \(x, y) => 1.0 * x + y)) == 12.0,
+        sumOf (gpuZipWith (xs, toGpu [10.0, 20.0], saxpy)) == 36.0,
+        gpuLength (gpuZipWith (toGpu [], xs, saxpy)) == 0,
+        sumOf (gpuZipWith (xs, toGpu [0.0, 0.0, 0.0], \(x, y) => alpha * x + y)) == 3.0
     ]
 
-(** Pin activation clamping and active-unit counting. *)
+(** The first acceptance shape: one host scalar closed over by a kernel, spent
+    by map, filter, fold and scan, empty buffer included. *)
+captureScalarCase () =
+    k = 3.0
+    xs = toGpu [1.0, 2.0, 3.0]
+    scaled = xs |> gpuMap (\x => k * x)
+    twice = xs |> gpuMap (\x => k * x + k)
+    checkAll "captured scalar" [
+        sumOf scaled == 18.0,
+        (gpuGet (scaled, 1) ?: 0.0) == 6.0,
+        gpuLength scaled == 3,
+        sumOf twice == 27.0,
+        (gpuGet (twice, 2) ?: 0.0) == 12.0,
+        sumOf (scaled |> gpuMap (\y => k * y)) == 54.0,
+        sumOf (xs |> gpuMap (\x => k + x)) == 15.0,
+        gpuLength (xs |> gpuFilter (\x => x > k)) == 0,
+        gpuLength (xs |> gpuFilter (\x => k > x)) == 2,
+        gpuLength (toGpu [] |> gpuMap (\x => k * x)) == 0,
+        (xs |> gpuFold 0.0 (\(a, x) => a + k * x)) == 18.0,
+        (gpuGet (xs |> gpuScan 0.0 (\(a, x) => a + k * x), 2) ?: 0.0) == 18.0
+    ]
+
+(** Put several distinct captures inside one kernel, in different orders and
+    arities, so no single-capture shortcut can pass it. *)
+captureManyCase () =
+    a = 2.0
+    b = 5.0
+    c = 0.5
+    xs = toGpu [1.0, 2.0, 3.0]
+    affine = xs |> gpuMap (\x => (a * x + b) * c)
+    checkAll "several captures" [
+        (gpuGet (affine, 0) ?: 0.0) == 3.5,
+        (gpuGet (affine, 1) ?: 0.0) == 4.5,
+        (gpuGet (affine, 2) ?: 0.0) == 5.5,
+        sumOf affine == 13.5,
+        gpuLength affine == 3,
+        sumOf (xs |> gpuMap (\x => c * x + b - a)) == 12.0,
+        sumOf (xs |> gpuMap (\x => a * x + b * c)) == 19.5,
+        sumOf (xs |> gpuMap (\x => a * c * x)) == 6.0,
+        sumOf (xs |> gpuMap (\x => b - a * x - c)) == 1.5,
+        sumOf (gpuZipWith (xs, xs, \(x, y) => a * x + c * y)) == 15.0,
+        (xs |> gpuFold b (\(acc, x) => acc + c * x)) == 8.0
+    ]
+
+(** Spend one capture across every combinator and then again in a chained pass,
+    so it must survive being staged more than once. *)
+captureSharedCase () =
+    t = 2.0
+    xs = toGpu [1.0, 2.0, 3.0, 4.0]
+    scanned = xs |> gpuScan 0.0 (\(acc, x) => acc + t * x)
+    kept = xs |> gpuFilter (\x => x > t)
+    checkAll "shared capture" [
+        sumOf (xs |> gpuMap (\x => t * x)) == 20.0,
+        gpuLength kept == 2,
+        sumOf kept == 7.0,
+        (gpuGet (kept, 0) ?: 0.0) == 3.0,
+        (xs |> gpuFold 0.0 (\(acc, x) => acc + t * x)) == 20.0,
+        (gpuGet (scanned, 0) ?: 0.0) == 2.0,
+        (gpuGet (scanned, 3) ?: 0.0) == 20.0,
+        gpuLength scanned == 4,
+        sumOf (gpuZipWith (xs, xs, \(x, y) => t * x * y)) == 60.0,
+        sumOf (gpuIota 4 |> gpuMap (\i => t * toFloat i)) == 12.0,
+        gpuLength (xs |> gpuFilter (\x => t > x)) == 1,
+        sumOf (xs |> gpuMap (\x => t * x) |> gpuFilter (\y => y > t)) == 18.0
+    ]
+
+(** The shape [GPU-KERNEL-FORM] spells out: the capture is itself a fold over
+    another buffer — a sum, a maximum and a minimum off `ws`. *)
+captureFoldedCase () =
+    ws = toGpu [1.0, 3.0, 4.0, 8.0]
+    total = sumOf ws
+    peak = ws |> gpuFold (gpuGet (ws, 0) ?: 0.0) maxF
+    xs = toGpu [2.0, 4.0]
+    checkAll "capture folded from another buffer" [
+        total == 16.0,
+        peak == 8.0,
+        sumOf (xs |> gpuMap (\x => (x / total) ?: 0.0)) == 0.375,
+        (gpuGet (xs |> gpuMap (\x => (x / total) ?: 0.0), 0) ?: 0.0) == 0.125,
+        sumOf (xs |> gpuMap (\x => x - peak)) == 0.0 - 10.0,
+        sumOf (xs |> gpuMap (\x => peak * x)) == 48.0,
+        (ws |> gpuFold 0.0 minF) == 0.0,
+        (ws |> gpuFold (gpuGet (ws, 0) ?: 0.0) minF) == 1.0,
+        sumOf (ws |> gpuMap (\w => (w / total) ?: 0.0)) == 1.0,
+        gpuLength (ws |> gpuFilter (\w => w * 4.0 >= total)) == 2,
+        sumOf (gpuZipWith (xs, xs, mulF) |> gpuMap (\p => (p / total) ?: 0.0)) == 1.25,
+        (toGpu [] |> gpuFold total addF) == 16.0
+    ]
+
+(** Push on the form a capture arrives in: a buffer captured for gather
+    (out-of-range reads padding to zero), a capture read from a nested lambda,
+    one reached only through a match branch, and a shadowing parameter. *)
+captureShapeCase () =
+    k = 3.0
+    w = toGpu [10.0, 20.0, 30.0]
+    gathered = gpuIota 5 |> gpuMap (\i => gpuGet (w, i) ?: 0.0)
+    branch = \x => match x > 15.0
+        true => k
+        false => x
+    checkAll "capture forms" [
+        sumOf gathered == 60.0,
+        (gpuGet (gathered, 3) ?: 9.9) == 0.0,
+        (gpuGet (gathered, 4) ?: 9.9) == 0.0,
+        gpuLength gathered == 5,
+        sumOf (w |> gpuMap branch) == 16.0,
+        sumOf (gpuIota 3 |> gpuMap (\i => k * (gpuGet (w, i) ?: 0.0))) == 180.0,
+        (gpuGet (gpuIota 3 |> gpuMap (\i => k * (gpuGet (w, i) ?: 0.0)), 2) ?: 0.0) == 90.0,
+        sumOf (w |> gpuMap (\x => (\z => k * z) x)) == 180.0,
+        sumOf (w |> gpuMap (\k => 2.0 * k)) == 120.0,
+        sumOf (gpuZipWith (w, gpuIota 3 |> gpuMap toFloat, \(x, i) => x - k * i)) == 51.0,
+        (w |> gpuFold 0.0 (\(a, x) => a + (\z => 0.5 * z) x)) == 30.0,
+        gpuLength (w |> gpuFilter (\x => (\z => z > k) x)) == 3
+    ]
+
+(** The boundary sweep: a captured zero divisor whose checked division must
+    surface as its fallback rather than an infinity, the identity captures, an
+    unread capture, and empty/ragged operands under one. *)
+captureDegenerateCase () =
+    zero = 0.0
+    one = 1.0
+    xs = toGpu [1.0, 2.0, 3.0]
+    guarded = xs |> gpuMap (\x => (x / zero) ?: (0.0 - 1.0))
+    checkAll "degenerate captures" [
+        sumOf guarded == 0.0 - 3.0,
+        (gpuGet (guarded, 0) ?: 0.0) == 0.0 - 1.0,
+        sumOf (xs |> gpuMap (\x => zero * x)) == 0.0,
+        sumOf (xs |> gpuMap (\x => one * x)) == 6.0,
+        sumOf (xs |> gpuMap (\x => zero + x)) == 6.0,
+        sumOf (xs |> gpuMap (\x => one)) == 3.0,
+        gpuLength (toGpu [] |> gpuFilter (\x => x > zero)) == 0,
+        (toGpu [] |> gpuFold one (\(a, x) => a + zero * x)) == 1.0,
+        sumOf (toGpu [5.0] |> gpuMap (\x => one * x)) == 5.0,
+        gpuLength (gpuZipWith (xs, toGpu [], \(x, y) => zero * x + y)) == 0,
+        gpuLength (gpuZipWith (toGpu [7.0], xs, \(x, y) => one * x + y)) == 1,
+        sumOf (gpuIota 0 |> gpuMap (\i => one * toFloat i)) == 0.0
+    ]
+
+(** Pin weighted sum and weighted mean: the weight total is folded once,
+    captured by the normalising kernel, and both routes must agree. *)
+weightedSumCase () =
+    vals = toGpu [1.0, 2.0, 3.0, 4.0]
+    ws = toGpu [1.0, 2.0, 4.0, 1.0]
+    wtot = sumOf ws
+    normw = ws |> gpuMap (\w => (w / wtot) ?: 0.0)
+    checkAll "weighted sums" [
+        wtot == 8.0,
+        dot (vals, ws) == 21.0,
+        ((dot (vals, ws) / wtot) ?: 0.0) == 2.625,
+        sumOf normw == 1.0,
+        (gpuGet (normw, 2) ?: 0.0) == 0.5,
+        (gpuGet (normw, 0) ?: 0.0) == 0.125,
+        dot (vals, normw) == 2.625,
+        dot (toGpu [2.0, 4.0, 8.0, 16.0], toGpu [0.5, 0.25, 0.125, 0.125]) == 5.0,
+        dot (vals, toGpu [0.0, 0.0, 0.0, 0.0]) == 0.0,
+        dot (vals, toGpu [1.0, 1.0, 1.0, 1.0]) == sumOf vals,
+        sumOf (gpuZipWith (vals, ws, \(v, w) => wtot * v * w)) == 168.0,
+        sumOf (vals |> gpuMap (\v => (v / wtot) ?: 0.0)) == 1.25
+    ]
+
+(** Center a feature column: the folded mean is captured by the centering
+    kernel, and the centered column's own mean vanishes. *)
+meanCase () =
+    xs = toGpu [1.0, 2.0, 3.0, 6.0]
+    mean = meanOf xs
+    centered = xs |> gpuMap (\v => v - mean)
+    checkAll "mean centering" [
+        mean == 3.0,
+        sumOf centered == 0.0,
+        (gpuGet (centered, 0) ?: 9.9) == 0.0 - 2.0,
+        (gpuGet (centered, 3) ?: 0.0) == 3.0,
+        gpuLength centered == 4,
+        meanOf centered == 0.0,
+        meanOf (toGpu []) == 0.0,
+        meanOf (toGpu [5.0]) == 5.0,
+        meanOf (toGpu [2.0, 4.0, 4.0, 4.0, 5.0, 5.0, 7.0, 9.0]) == 5.0,
+        meanOf (xs |> gpuMap (\v => mean + v)) == 6.0,
+        meanOf (gpuIota 9 |> gpuMap toFloat) == 4.0,
+        gpuLength (xs |> gpuFilter (\v => v > mean)) == 1
+    ]
+
+(** Pin two-pass variance and its z-scores: a normalised column has mean zero
+    and variance one, and a constant column's zero deviation falls back. *)
+varianceCase () =
+    xs = toGpu [2.0, 4.0, 4.0, 4.0, 5.0, 5.0, 7.0, 9.0]
+    mean = meanOf xs
+    sd = 2.0
+    z = xs |> gpuMap (\v => ((v - mean) / sd) ?: 0.0)
+    checkAll "variance and z-scores" [
+        mean == 5.0,
+        varianceOf xs == 4.0,
+        sd * sd == 4.0,
+        sumOf z == 0.0,
+        (gpuGet (z, 0) ?: 9.9) == 0.0 - 1.5,
+        (gpuGet (z, 4) ?: 9.9) == 0.0,
+        (gpuGet (z, 7) ?: 0.0) == 2.0,
+        meanOf z == 0.0,
+        varianceOf z == 1.0,
+        varianceOf (toGpu [3.0, 3.0, 3.0]) == 0.0,
+        varianceOf (toGpu []) == 0.0,
+        sumOf (toGpu [3.0, 3.0] |> gpuMap (\v => ((v - 3.0) / 0.0) ?: 0.0)) == 0.0
+    ]
+
+(** Pin the min-max rescale: both extremes are folded out and captured, and a
+    constant column's zero range falls back instead of dividing. *)
+normalizeCase () =
+    xs = toGpu [1.0, 3.0, 5.0, 9.0]
+    lo = xs |> gpuFold (gpuGet (xs, 0) ?: 0.0) minF
+    hi = xs |> gpuFold (gpuGet (xs, 0) ?: 0.0) maxF
+    scaled = xs |> gpuMap (\v => ((v - lo) / (hi - lo)) ?: 0.0)
+    checkAll "normalisation" [
+        lo == 1.0,
+        hi == 9.0,
+        (gpuGet (scaled, 0) ?: 9.9) == 0.0,
+        (gpuGet (scaled, 1) ?: 0.0) == 0.25,
+        (gpuGet (scaled, 2) ?: 0.0) == 0.5,
+        (gpuGet (scaled, 3) ?: 0.0) == 1.0,
+        sumOf scaled == 1.75,
+        meanOf scaled == 0.4375,
+        sumOf (xs |> gpuMap (\v => ((hi - v) / (hi - lo)) ?: 0.0)) == 2.25,
+        (xs |> gpuFold hi minF) == 1.0,
+        gpuLength (xs |> gpuFilter (\v => v > lo)) == 3,
+        sumOf (toGpu [4.0, 4.0] |> gpuMap (\v => ((v - 4.0) / 0.0) ?: 0.5)) == 1.0
+    ]
+
+(** Pin clamping, active-unit counting, and a leaky variant whose slope is
+    captured — spelled as a match and as arithmetic, which must agree. *)
 reluCase () =
-    acts = toGpu [0.0 - 1.5, 2.5, 0.0 - 0.5, 1.0] |> gpuMap relu
-    checkAll "relu" [
-        (acts |> gpuFold 0.0 addF) == 3.5,
-        (gpuGet (acts, 0) ?: 9.9) == 0.0,
-        gpuLength (toGpu [0.0 - 1.5, 2.5, 0.0 - 0.5, 1.0] |> gpuFilter isActive) == 2
+    slope = 0.5
+    cap = 2.0
+    acts = toGpu [0.0 - 1.5, 2.5, 0.0 - 0.5, 1.0]
+    leaky = \x => match x > 0.0
+        true => x
+        false => slope * x
+    checkAll "activations" [
+        sumOf (acts |> gpuMap relu) == 3.5,
+        (gpuGet (acts |> gpuMap relu, 0) ?: 9.9) == 0.0,
+        gpuLength (acts |> gpuFilter isActive) == 2,
+        sumOf (acts |> gpuMap leaky) == 2.5,
+        (gpuGet (acts |> gpuMap leaky, 0) ?: 0.0) == 0.0 - 0.75,
+        (gpuGet (acts |> gpuMap leaky, 1) ?: 0.0) == 2.5,
+        (gpuGet (acts |> gpuMap leaky, 2) ?: 0.0) == 0.0 - 0.25,
+        sumOf (acts |> gpuMap (\x => relu x - slope * relu (0.0 - x))) == 2.5,
+        sumOf (acts |> gpuMap (\x => cap - relu (cap - relu x))) == 3.0,
+        sumOf (toGpu [0.0 - 1.0, 0.0 - 2.0] |> gpuMap relu) == 0.0,
+        sumOf (toGpu [1.0, 2.0] |> gpuMap relu) == 3.0,
+        sumOf (acts |> gpuMap (\x => slope * relu x)) == 1.75
     ]
 
-(** Multiply a 2x3 matrix by a vector through iota + gather. *)
+(** Pin the pipeline by its properties, not its digits: a distribution,
+    order-preserving, shift-invariant, uniform on a flat vector. *)
+softmaxCase () =
+    scores = toGpu [1.0, 2.0, 3.0]
+    probs = softmax scores
+    shifted = softmax (scores |> gpuMap (\s => 10.0 + s))
+    flat = softmax (toGpu [5.0, 5.0, 5.0])
+    checkAll "softmax pipeline" [
+        gpuLength probs == 3,
+        sumOf probs > 0.9999999,
+        sumOf probs < 1.0000001,
+        (gpuGet (probs, 0) ?: 0.0) > 0.0,
+        (gpuGet (probs, 2) ?: 0.0) < 1.0,
+        (gpuGet (probs, 1) ?: 0.0) > (gpuGet (probs, 0) ?: 0.0),
+        (gpuGet (probs, 2) ?: 0.0) > (gpuGet (probs, 1) ?: 0.0),
+        (gpuGet (probs, 0) ?: 0.0) == (gpuGet (shifted, 0) ?: 9.9),
+        (gpuGet (probs, 2) ?: 0.0) == (gpuGet (shifted, 2) ?: 9.9),
+        gpuLength (probs |> gpuFilter (\p => p > 0.5)) == 1,
+        (gpuGet (flat, 0) ?: 0.0) == (gpuGet (flat, 2) ?: 9.9),
+        sumOf flat > 0.9999999
+    ]
+
+(** Multiply through iota + gather: identity, zero matrix, 1x1, a zero-column
+    walk, and a row past the end, which pads to zero. *)
 matVecCase () =
     m = toGpu [1.0, 2.0, 3.0, 4.0, 5.0, 6.0]
     v = toGpu [1.0, 1.0, 2.0]
+    eye = toGpu [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0]
     out = matVec (m, v, 3, 2)
     checkAll "matrix-vector" [
         gpuLength out == 2,
         (gpuGet (out, 0) ?: 0.0) == 9.0,
-        (gpuGet (out, 1) ?: 0.0) == 21.0
+        (gpuGet (out, 1) ?: 0.0) == 21.0,
+        sumOf out == 30.0,
+        sumOf (matVec (eye, toGpu [7.0, 8.0, 9.0], 3, 3)) == 24.0,
+        (gpuGet (matVec (eye, toGpu [7.0, 8.0, 9.0], 3, 3), 1) ?: 0.0) == 8.0,
+        sumOf (matVec (toGpu [0.0, 0.0, 0.0, 0.0], toGpu [5.0, 5.0], 2, 2)) == 0.0,
+        (gpuGet (matVec (toGpu [5.0], toGpu [3.0], 1, 1), 0) ?: 0.0) == 15.0,
+        (gpuGet (matVec (m, v, 3, 3), 2) ?: 9.9) == 0.0,
+        gpuLength (matVec (m, v, 3, 0)) == 0,
+        sumOf (matVec (m, v, 0, 2)) == 0.0,
+        (gpuGet (matVec (m, v, 3, 2), 0) ?: 0.0) == dot (toGpu [1.0, 2.0, 3.0], v)
     ]
 
-(** Center a feature column: the centered sum vanishes. *)
-meanCase () =
-    xs = toGpu [1.0, 2.0, 3.0, 6.0]
-    mean = ((xs |> gpuFold 0.0 addF) / 4.0) ?: 0.0
-    centered = xs |> gpuMap (\v => v - mean)
-    checkAll "mean centering" [
-        mean == 3.0,
-        (centered |> gpuFold 0.0 addF) == 0.0,
-        (gpuGet (centered, 3) ?: 0.0) == 3.0
+(** Run a two-layer forward pass; the first layer's negative unit must be
+    silenced by relu before the second layer sees it. *)
+layerCase () =
+    w1 = toGpu [1.0, 0.0, 0.0 - 1.0, 0.5, 0.5, 0.5]
+    x = toGpu [2.0, 4.0, 6.0]
+    h = dense (w1, x, 3, 2, toGpu [1.0, 0.0 - 2.0])
+    out = dense (toGpu [2.0, 0.25], h, 2, 1, toGpu [0.5])
+    checkAll "dense layers" [
+        gpuLength h == 2,
+        (gpuGet (h, 0) ?: 9.9) == 0.0,
+        (gpuGet (h, 1) ?: 0.0) == 4.0,
+        sumOf h == 4.0,
+        gpuLength (h |> gpuFilter isActive) == 1,
+        gpuLength out == 1,
+        (gpuGet (out, 0) ?: 0.0) == 1.5,
+        (gpuGet (matVec (w1, x, 3, 2), 0) ?: 0.0) == 0.0 - 4.0,
+        (gpuGet (matVec (w1, x, 3, 2), 1) ?: 0.0) == 6.0,
+        sumOf (dense (w1, x, 3, 2, toGpu [0.0, 0.0])) == 6.0,
+        sumOf (dense (w1, toGpu [0.0, 0.0, 0.0], 3, 2, toGpu [1.0, 2.0])) == 3.0,
+        gpuLength (dense (w1, x, 3, 0, toGpu [1.0])) == 0
     ]
 
-(** Run 40 gradient-descent epochs and converge on w = 2. *)
+(** Descend from both sides of the true weight and pin the loss surface: the
+    optimum is a fixed point, the loss is symmetric about it. *)
 trainCase () =
-    w = train (0.0, toGpu [1.0, 2.0, 3.0], toGpu [2.0, 4.0, 6.0], 40)
-    checkAll "gradient descent" [w - 2.0 < 0.01, 2.0 - w < 0.01, w > 1.0]
+    xs = toGpu [1.0, 2.0, 3.0]
+    ys = toGpu [2.0, 4.0, 6.0]
+    w = train (0.0, xs, ys, 40)
+    hi = train (5.0, xs, ys, 40)
+    checkAll "gradient descent" [
+        w - 2.0 < 0.01,
+        2.0 - w < 0.01,
+        w > 1.0,
+        hi - 2.0 < 0.01,
+        2.0 - hi < 0.01,
+        hi < 3.0,
+        train (2.0, xs, ys, 0) == 2.0,
+        train (2.0, xs, ys, 10) == 2.0,
+        gradStep (2.0, xs, ys) == 2.0,
+        mse (2.0, xs, ys) == 0.0,
+        mse (3.0, xs, ys) == mse (1.0, xs, ys),
+        mse (0.0, xs, ys) > mse (w, xs, ys)
+    ]
 
 test ("dot product fuses zip and fold", dotCase)
 test ("saxpy runs elementwise over buffer pairs", saxpyCase)
-test ("relu clamps and filter counts active units", reluCase)
-test ("matrix-vector product gathers rows via iota", matVecCase)
+test ("a kernel closes over one host scalar", captureScalarCase)
+test ("one kernel closes over several distinct scalars", captureManyCase)
+test ("one capture is spent by every combinator", captureSharedCase)
+test ("a capture folded from one buffer drives a kernel over another", captureFoldedCase)
+test ("captures survive gather, nesting, branching and shadowing", captureShapeCase)
+test ("degenerate captures stay total on empty and ragged buffers", captureDegenerateCase)
+test ("weighted sums normalise through a captured weight total", weightedSumCase)
 test ("mean centering pipes a scalar back into a kernel", meanCase)
+test ("variance and z-scores normalise a feature column", varianceCase)
+test ("min-max rescaling captures both folded extremes", normalizeCase)
+test ("relu clamps, leaks and counts active units", reluCase)
+test ("a softmax-shaped pipeline is a shift-invariant distribution", softmaxCase)
+test ("matrix-vector product gathers rows via iota", matVecCase)
+test ("dense layers stack bias and activation over gathered rows", layerCase)
 test ("gradient descent converges on the true weight", trainCase)

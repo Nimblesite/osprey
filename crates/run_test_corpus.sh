@@ -64,6 +64,22 @@ else
   GOLDEN_MIN=${OSPREY_GOLDEN_MIN:-172}
 fi
 
+# [GPU-KERNEL-EXTRACT] differential. The extracted-kernel lowering and the
+# pre-stage-3 inlined host-loop lowering are two code generators for the same
+# semantics, so the GPU suites must produce byte-identical output under both.
+# This re-runs ONLY tests/core/gpu under the OPPOSITE lowering and compares it
+# to the stdout the main pass already captured — a second oracle for the same
+# goldens at the cost of twelve programs, not a second corpus.
+GPU_SUITE_DIR=$TESTDIR/core/gpu
+GPU_KERNELS_MODE=${OSPREY_GPU_KERNELS:-extract}
+if [[ $GPU_KERNELS_MODE == inline ]]; then
+  GPU_ALT_MODE=extract
+else
+  GPU_ALT_MODE=inline
+fi
+# Six suites x two flavors. Ratchet UP; never lower it to turn a build green.
+GPU_MODE_MIN=${OSPREY_GPU_MODE_MIN:-12}
+
 # Exit code run_wasm uses to say "not a failure, an unported feature". Distinct
 # from any status the compiler or Node can return on its own.
 SKIP_CODE=200
@@ -210,15 +226,19 @@ for (( index = 1; index <= ${#FILES}; index++ )); do
   fi
 done
 
-# Dispatch one batch of (index, file) pairs at the given parallelism.
+# Dispatch one batch of (index, file) pairs at the given parallelism, writing
+# each worker's transcript into $dir. The result directory is a parameter so the
+# alternate-lowering pass below can collect its own transcripts without
+# overwriting the main pass's.
 dispatch_batch() {
-  local jobs=$1; shift
+  local jobs=$1 dir=$2; shift 2
   (( $# > 0 )) || return 0
-  printf '%s\0' "$@" | xargs -0 -n 2 -P "$jobs" zsh "$SCRIPT" --worker "$MEMORY" "$RESULTDIR"
+  printf '%s\0' "$@" | xargs -0 -n 2 -P "$jobs" zsh "$SCRIPT" --worker "$MEMORY" "$dir"
 }
 
 if (( ${#FILES} > 0 )); then
-  dispatch_batch "$JOBS" "${concurrent[@]}" && dispatch_batch 1 "${serialized[@]}"
+  dispatch_batch "$JOBS" "$RESULTDIR" "${concurrent[@]}" \
+    && dispatch_batch 1 "$RESULTDIR" "${serialized[@]}"
   dispatch_code=$?
   if [[ $dispatch_code -ne 0 ]]; then
     echo "test corpus worker dispatch failed ($dispatch_code)" >&2
@@ -342,5 +362,48 @@ if [[ "$MEMORY" == "arc" ]]; then
   echo "TEST_CORPUS_ARC_LEAKY=$leaky"
   for item in $LEAKS; do echo "  leak: $item"; done
 fi
+
+# [GPU-KERNEL-EXTRACT]: re-run the GPU suites under the opposite kernel lowering
+# and require the SAME transcript. Extraction is a lowering choice, never a
+# semantic one, so a divergence here is a codegen bug and nothing else.
+gpu_mode_fail=0
+gpu_mode_pairs=0
+typeset -a GPU_MODE_FAILED=()
+alt_pairs=()
+for (( index = 1; index <= ${#FILES}; index++ )); do
+  [[ $FILES[$index] == $GPU_SUITE_DIR/* ]] && alt_pairs+=("$index" "$FILES[$index]")
+done
+if (( ${#alt_pairs} > 0 )); then
+  ALTDIR=$RESULTDIR/altmode
+  mkdir -p "$ALTDIR" || exit 1
+  export OSPREY_GPU_KERNELS=$GPU_ALT_MODE
+  dispatch_batch "$JOBS" "$ALTDIR" "${alt_pairs[@]}"
+  unset OSPREY_GPU_KERNELS
+  for (( i = 1; i <= ${#alt_pairs}; i += 2 )); do
+    index=$alt_pairs[$i]
+    rel=${alt_pairs[$((i + 1))]#$ROOT/}
+    # A wasm SKIP was never built, so it has no transcript to compare.
+    if [[ -r "$ALTDIR/$index.status" && "$(<$ALTDIR/$index.status)" == "$SKIP_STATUS" ]]; then
+      continue
+    fi
+    gpu_mode_pairs=$((gpu_mode_pairs + 1))
+    if [[ "$(<$ALTDIR/$index.stdout)" != "$(<$RESULTDIR/$index.stdout)" ]]; then
+      gpu_mode_fail=$((gpu_mode_fail + 1))
+      GPU_MODE_FAILED+=("$rel")
+      echo "GPU-KERNEL-MODE-MISMATCH $rel ($MEMORY, $GPU_KERNELS_MODE vs $GPU_ALT_MODE)"
+      diff -u "$RESULTDIR/$index.stdout" "$ALTDIR/$index.stdout" | sed -n '1,12p' | sed 's/^/  /'
+    fi
+  done
+fi
+echo "TEST_CORPUS_GPU_MODE_PASS=$((gpu_mode_pairs - gpu_mode_fail)) TEST_CORPUS_GPU_MODE_FAIL=$gpu_mode_fail (alt lowering: $GPU_ALT_MODE, floor $GPU_MODE_MIN)"
+for item in $GPU_MODE_FAILED; do echo "  kernel-mode mismatch: $item"; done
+gpu_mode_floor_ok=1
+if [[ $gpu_mode_pairs -lt $GPU_MODE_MIN ]]; then
+  gpu_mode_floor_ok=0
+  echo "GPU KERNEL-MODE FLOOR BREACHED: $gpu_mode_pairs compared, minimum is $GPU_MODE_MIN." >&2
+  echo "Both kernel lowerings must stay exercised; do not lower the floor." >&2
+fi
+
 [[ $fail -eq 0 && $leaky -eq 0 && $golden_fail -eq 0 && $golden_missing -eq 0 \
-   && $golden_floor_ok -eq 1 && $skips_ok -eq 1 ]]
+   && $golden_floor_ok -eq 1 && $skips_ok -eq 1 \
+   && $gpu_mode_fail -eq 0 && $gpu_mode_floor_ok -eq 1 ]]

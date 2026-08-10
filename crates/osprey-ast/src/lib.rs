@@ -7,12 +7,16 @@
 
 mod doc;
 mod generics;
+mod lower_static;
+pub mod mutate;
 mod resume;
+pub mod stage;
 pub mod symbol;
 mod visit;
 pub use doc::{DocComment, DocExample, DocScope};
 pub use generics::{EffectRef, TypeParam, Variance};
 pub use resume::contains_resume;
+pub use stage::Stage;
 pub use visit::{walk_each, walk_program, AstVisitor};
 
 /// A source position: 1-based line, 0-based column.
@@ -499,6 +503,11 @@ pub enum Stmt {
     },
     /// An `effect` declaration listing its operations.
     Effect {
+        /// When the effect's operations are answered: [`Stage::Static`] rewrites
+        /// them away before type checking, [`Stage::Dynamic`] (the default, and
+        /// every effect written without `static`) dispatches them at runtime.
+        /// Implements [STAGE-DECL].
+        stage: Stage,
         /// Effect name.
         name: String,
         /// Declared type parameters (`effect State<T>`). Implements
@@ -797,6 +806,10 @@ pub enum Expr {
     },
     /// `handle Effect op params => body ... in body`.
     Handler {
+        /// [`Stage::Static`] for a `handle static` region — the arms are a
+        /// rewrite rule, not a runtime handler. Implements
+        /// [STAGE-HANDLE-STATIC].
+        stage: Stage,
         /// Handled effect name.
         effect: String,
         /// Per-operation handler arms.

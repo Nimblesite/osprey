@@ -1,1 +1,7 @@
 libospgfx.dylib
+ospgfx.dll
+libospgfx.dll.a
+ospgfx.lib
+ospgfx.exp
+*.obj
+.shadercheck.cso

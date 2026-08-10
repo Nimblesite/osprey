@@ -1,0 +1,5 @@
+ok 1 - static handlers are discharged before the program runs
+ok 2 - one function serves the static and dynamic stages
+ok 3 - a GPU kernel may perform a static effect
+1..3
+# tests=3 passed=3 failed=0 skipped=0

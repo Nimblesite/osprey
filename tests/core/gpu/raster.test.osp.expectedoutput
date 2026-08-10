@@ -74,10 +74,65 @@
                    .......................::+:::........        
                         ...........................             
 interior=344 lit=764 light=2928
+== triangle ==
+        
+ @@@@@@ 
+ @@@@@  
+ @@@@   
+ @@@    
+ @@     
+ @      
+        
+== inverted triangle ==
+        
+        
+        
+        
+        
+        
+        
+        
+== span y=3 x=2..5 ==
+        
+        
+        
+  @@@@  
+        
+        
+        
+        
+== span clipped from -4..2 ==
+        
+        
+        
+        
+        
+@@@     
+        
+        
+== upscaled 2x2 ==
+..==
+..==
+##@@
+##@@
+== quad ==
+@@@@
+@@@*
+@@=*
+@:=*
+
 ok 1 - one kernel dispatch covers the whole pixel grid
 ok 2 - brightness levels map onto the palette
-ok 3 - the fractal kernel renders a symmetric frame
-ok 4 - the sphere kernel shades a lit silhouette
-ok 5 - zipWith composites two rendered layers
-1..5
-# tests=5 passed=5 failed=0 skipped=0
+ok 3 - flat indices decompose into raster coordinates
+ok 4 - edge functions are signed areas about their edge
+ok 5 - triangles rasterise to exact coverage and spans
+ok 6 - spans fill scanlines and clip at the tile edge
+ok 7 - channel arithmetic saturates at both rails
+ok 8 - clamped addressing samples and magnifies
+ok 9 - gather transposes rows and columns
+ok 10 - a small pipeline is correct at every pixel
+ok 11 - the fractal kernel renders a symmetric frame
+ok 12 - the sphere kernel shades a lit silhouette
+ok 13 - zipWith composites two rendered layers
+1..13
+# tests=13 passed=13 failed=0 skipped=0

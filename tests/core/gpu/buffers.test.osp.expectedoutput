@@ -1,6 +1,17 @@
-ok 1 - gpu buffers round-trip lists densely
-ok 2 - pure int kernels map and fold on buffers
-ok 3 - float kernels keep element bits through map and fold
-ok 4 - kernels may change the element scalar type
-1..4
-# tests=4 passed=4 failed=0 skipped=0
+ok 1 - buffer literals store elements densely at constant indices
+ok 2 - a list value copies into a buffer element for element
+ok 3 - gpu buffers round-trip lists densely
+ok 4 - the empty buffer answers every builtin without elements
+ok 5 - a one-element buffer bounds gpuGet to index zero
+ok 6 - gpuGet errors identically at both ends of every buffer
+ok 7 - gpuIota spans zero, one and two hundred thousand indices
+ok 8 - int, float and bool words survive the identity kernel
+ok 9 - buffers keep their tag through lets, pipes, params and returns
+ok 10 - aliased bindings observe one immutable buffer
+ok 11 - a fused iterator buffer is addressable element by element
+ok 12 - pure int kernels map and fold on buffers
+ok 13 - float kernels keep element bits through map and fold
+ok 14 - kernels may change the element scalar type
+ok 15 - the copy path stays exact at a hundred thousand elements
+1..15
+# tests=15 passed=15 failed=0 skipped=0

@@ -1,8 +1,23 @@
-ok 1 - particles integrate velocity over ticks
-ok 2 - lerp eases toward targets elementwise
-ok 3 - culling keeps in-range entities in draw order
-ok 4 - damage resolves and survivors compact
-ok 5 - clamping normalizes channel buffers
-ok 6 - scan accumulates a running frame budget
-1..6
-# tests=6 passed=6 failed=0 skipped=0
+ok 1 - q10 fixed-point scalars and scale kernels truncate toward zero
+ok 2 - vector algebra combines four component buffers
+ok 3 - octagonal distance estimates length without a root
+ok 4 - particles integrate velocity over ticks
+ok 5 - semi-implicit euler advances three buffers together
+ok 6 - drag damps velocity monotonically
+ok 7 - folds build a bounding box and survive an empty world
+ok 8 - aabb overlap zips four interval buffers
+ok 9 - circle broadphase combines six buffers
+ok 10 - culling keeps in-range entities in draw order
+ok 11 - damage resolves and survivors compact
+ok 12 - easing and clamping normalize float buffers
+ok 13 - three channel buffers pack, unpack and clamp
+ok 14 - alpha blending composites through a coverage buffer
+ok 15 - palette gathers paint magenta where the index misses
+ok 16 - a strided gather de-interleaves a vertex stream
+ok 17 - transposing a tile grid twice is the identity
+ok 18 - an edge-clamped stencil blurs a heightfield
+ok 19 - scan accumulates a running frame budget
+ok 20 - every combinator survives an empty world
+ok 21 - ragged entity streams truncate to the shortest
+1..21
+# tests=21 passed=21 failed=0 skipped=0

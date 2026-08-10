@@ -1,0 +1,9 @@
+// [STAGE-HANDLE-STATIC] The other direction: a static effect must be discharged
+// at compile time, so an ordinary handler for one is rejected.
+static effect Tile {
+    size: fn() -> int
+}
+
+fn main() = print("${handle Tile
+    size => 8
+in perform Tile.size()}")

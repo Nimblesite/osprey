@@ -1,0 +1,9 @@
+// [STAGE-STATIC-TAIL] A static handler is a rewrite rule, so it cannot capture
+// a continuation. Capturing one is what a dynamic handler is for.
+static effect Tile {
+    size: fn() -> int
+}
+
+fn main() = print("${handle static Tile
+    size => resume(8)
+in perform Tile.size()}")

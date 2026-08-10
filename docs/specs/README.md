@@ -56,6 +56,13 @@ This directory holds **all spec documents** for the project:
     stdin-only input ferry (one JSON line via `input`), the `key=value` →
     `$GITHUB_OUTPUT` contract, Docker vs composite packaging, and why the native
     target is forced (wasm omits `input`) with the deferred wasm path.
+  - [`0035-StagedEffects.md`](0035-StagedEffects.md) — **stage** as a second
+    axis on an effect: a `static effect` is answered by the compiler and leaves
+    no runtime trace, a dynamic one keeps today's handler stack. One rewrite,
+    run before type checking, that makes GPU legality a typing question,
+    removes WebAssembly's stack-switching dependency for static rows, and turns
+    an effect row into an exact reactive dependency set. Delivery in
+    [plan 0024](../plans/0024-staged-effects.md).
   - [`0034-GPUComputation.md`](0034-GPUComputation.md) — typed GPU buffers,
     data-parallel kernels with compile-time purity proofs, the host execution
     baseline, and the cited research foundation; the staged device-backend

@@ -3,21 +3,30 @@
 **Subsystem:** `crates/osprey-types` + `crates/osprey-codegen` + `compiler/runtime` (+ CLI target drivers)
 **Status:** **NOT SHIPPED. No GPU execution exists.** Stages 1–2 (typed
 surface, purity checking, CPU host backend, eleven built-ins, differential
-corpus) are substantially done. Stages 3–7 — kernel extraction and *every*
-device backend — are unstarted. Until stage 4 lands, this feature runs
-entirely on the CPU and nothing in it may be described as GPU-accelerated.
+corpus) are done bar two items delegated to other plans. Stage 3 (kernel
+extraction, `[GPU-KERNEL-EXTRACT]`) has **landed for lambda kernels** —
+`crates/osprey-codegen/src/gpu_kernel.rs`, differentially gated against the
+retained inlined lowering — with three kernel shapes that still decline,
+listed below. Stages 4–7 — *every* device backend — are unstarted. Until
+stage 4 lands, this feature runs entirely on the CPU and nothing in it may be
+described as GPU-accelerated.
 **Spec:** [0034-GPUComputation.md](../specs/0034-GPUComputation.md)
+**Sibling plan:** [0025 — GPU graphics library
+backends](0025-gpu-graphics-backends.md) owns `examples/graphics/`
+(Metal + D3D12 + the shared shader library) and converges with this plan at
+stage 6.
 
 ## Summary
 
 The GPU surface is a language feature, not a library: `GpuBuffer<T>` in the
 type system, kernel purity proven by the effect checker (fail-closed), and a
 host execution backend whose fused loops over dense unboxed buffers define
-the reference semantics device backends must reproduce byte-for-byte. What
-remains is everything between "host loops" and "PTX": kernel extraction,
-the first device target, effect-selected execution, portability backends,
-and the differentiation features (autodiff, schedules) that justify the
-"superior to Mojo" positioning.
+the reference semantics device backends must reproduce byte-for-byte. Kernel
+extraction has since made each kernel a real, first-order, capture-free
+function — the artifact a device emitter consumes. What remains is everything
+between an extracted kernel and a running device: an IR emitter, a launch and
+transfer path, effect-selected execution, portability backends, and the
+differentiation features (autodiff, schedules) the roadmap ends at.
 
 ## Read this first: `gpu*` does not touch a GPU
 
@@ -50,46 +59,33 @@ element before anything else.
 
 Two consequences that shape the stages below:
 
-- **Stage 3 (kernel extraction) is worth doing for the host backend alone.**
-  Extracted kernels with concrete scalar signatures are what let the optimiser
-  see a kernel body as straight-line integer code instead of an inlined chain
-  of `Result` branches.
+- **Stage 3 (kernel extraction) was expected to pay for itself on the host
+  backend alone** — an extracted kernel with a concrete scalar signature is
+  what lets the optimiser see the body as straight-line code instead of an
+  inlined chain of `Result` branches. **That payoff has not been measured.**
+  The stage landed with a correctness gate (byte-identical output under both
+  lowerings) and no performance gate. Re-running the table above under
+  `OSPREY_GPU_KERNELS=extract` versus `inline` is an open item; until it is
+  run, claim only the structural result (a first-order kernel ABI exists),
+  never a speedup.
 - **No amount of surface work closes a 13 → 103 fps gap.** Only stage 4/6
   (real device backends) does. Do not accept host-backend micro-optimisation
   as progress toward the performance claims in this plan.
 
-### The macOS graphics bridge already exists
+### The graphics bridge already exists — and is a different plan
 
-`examples/graphics/` is a working Osprey → macOS bridge and the reference
-shape for stage 6's Metal target:
+`examples/graphics/` is a working Osprey → GPU bridge (Metal on macOS,
+Direct3D 12 on Windows) that deliberately **bypasses `gpu*`**, because `gpu*`
+cannot reach the GPU. It proves the boundary works — FFI, a real drawable,
+103 fps — so stage 6 is wiring extracted kernels into a compute pipeline, not
+starting from nothing. It does not run in CI: it needs a display and it is not
+in the differential corpus.
 
-- `ospgfx.m` — Cocoa window + `CAMetalLayer`, flat C ABI (`osp_gfx_open`,
-  `osp_gfx_set`, `osp_gfx_draw`, `osp_gfx_ticks`, `osp_gfx_close`).
-- `scene.metal` / `scene2.metal` — fragment shaders, loaded from disk at open
-  time.
-- `scene.osp` / `scene2.osp` — Osprey as the host: each owns the window, the
-  clock and the per-frame scene state, and pushes parameters over FFI
-  ([FFI-PTR]).
-- `make graphics` builds the dylib and runs it.
-
-It deliberately bypasses `gpu*`, because `gpu*` cannot reach the GPU. It proves
-the boundary works — FFI, a real drawable, 103 fps — so stage 6 is wiring
-extracted kernels (stage 3) into a Metal compute pipeline, not starting from
-nothing. It does **not** run in CI: it needs a display, and it is not in the
-differential corpus.
-
-**Pre-existing red, not owned by this plan.**
-`crates/osprey-cli/tests/graphics_scenes.rs` (committed in `5f007c6d`) asserts
-a structure that has never existed in git history: a shared `base.osp` +
-`base.metal`, three ≤4-line entry points `scene{,2,3}.osp` importing
-`graphics::SceneBase`, and **no** `scene2.metal`/`scene3.metal`. On disk there
-is no `base.*` and no `scene3.osp`, so the test fails at its first read, and
-its `panic!` also fails `cargo clippy -D clippy::panic`, which is what turns
-`make lint` red today. `scene.osp` does already carry the exact `original*`
-timings the test pins and `scene.metal` all seven pinned shader markers, so the
-refactor is mostly mechanical — except the "character" scene, which does not
-exist in any form and has no spec. Resolve by either implementing the refactor
-or deleting the aspirational test; do not leave it red.
+Its design, its verification status and the convergence point where `gpuMap`
+emits these shaders instead of the examples hand-writing them are owned by
+[plan 0025](0025-gpu-graphics-backends.md). Do not duplicate that material
+here; this plan only consumes its conclusion: the host half of a Metal
+backend is solved, the device half is stage 3 output plus an MSL emitter.
 
 ## What works today
 
@@ -114,24 +110,106 @@ or deleting the aspirational test; do not leave it red.
 - Dense-buffer C runtime (`compiler/runtime/gpu_runtime.c`) working under
   all three memory backends and wasm32; ARC reclaims buffers with zero
   leaks.
+- Kernel extraction `[GPU-KERNEL-EXTRACT]`
+  (`crates/osprey-codegen/src/gpu_kernel.rs`, 407 LOC): an inline lambda
+  kernel is lifted to a module-scope `@__gpu_kernel_N` with a flat scalar
+  signature — captures become **leading uniform parameters**, no environment
+  pointer, no closure cell — and the host loop calls it per element. Verified
+  in the emitted IR: `fn(v) => v - mean` becomes
+  `define double @__gpu_kernel_N(double %$p0, double %$p1)`; `mlkernels`'s
+  `matVec` capture set becomes
+  `@__gpu_kernel_3(i64 %$p0, i8* %$p1, i8* %$p2, i64 %$p3)`, buffer handles
+  included, ordered by identifier. Extracted-kernel counts per suite today:
+  buffers 21, combinators 9, gamedev 20, mlkernels 78, raster 11, stress 13.
+  Three kernel shapes still decline — see stage 3's checklist.
+- Both lowerings are retained and differentially gated: `OSPREY_GPU_KERNELS`
+  selects `extract` (default) or `inline`, any other value is a compile error
+  (`OSPREY_GPU_KERNELS=nope: expected 'extract' or 'inline'`), and
+  `run_test_corpus.sh` re-dispatches the twelve `tests/core/gpu` programs
+  under the opposite lowering into `$RESULTDIR/altmode` and requires
+  byte-identical stdout (`GPU_MODE_MIN=12`). `test_cache_key` in
+  `osprey-cli/src/main.rs` hashes the switch, so the two modes cannot share a
+  cached binary.
 - Differential corpus: six suites × two flavors in `tests/core/gpu/`
   (`buffers`, `combinators`, `mlkernels`, `gamedev`, `stress`, `raster`) —
-  34 cases covering round-trips, all ten data combinators,
-  dot/matvec/relu/gradient descent, particles/culling/damage, fragment-shaped
-  raster rendering, and million-element profiling workloads with closed-form
-  expected values. Twins emit identical IR; goldens are byte-exact under
-  default/GC/ARC and wasm32 (`GOLDEN_MIN` 172/119).
+  **100 cases** (15/18/17/21/16/13), up from 34, covering round-trips, all ten
+  data combinators, dot/matvec/relu/softmax/gradient descent, fixed-point
+  particles/collision/palette work, fragment-shaped raster rendering, checked
+  arithmetic at both sides of every i64 boundary, float accumulation ordering,
+  and million-element workloads with closed-form expected values. Twins emit
+  identical IR; goldens are byte-exact under default/GC/ARC and wasm32
+  (`GOLDEN_MIN` 172/119).
+
+## Defects the expanded corpus exposed
+
+Each was reproduced against `target/release/osprey` while writing this entry,
+and none is encoded in a golden — the suites route around them and say so in a
+comment. They are listed here because a device backend inherits every one.
+
+1. **`fromGpu` on a float or bool buffer cannot be read back**
+   (`[GPU-BUFFER-TO-LIST]`). `listGet` over the resulting `List<float>` yields
+   the raw IEEE-754 word as an `int`; with a float default the program does not
+   even compile (`match arms disagree on type: 'i64' and 'double'`). The root
+   cause is **not** GPU-specific — a plain `let xs = [1.5, 2.5]` reads back the
+   same way — so the fix belongs to list element read-back for non-int scalars.
+2. **`toGpu(list-value)` loses the element tag**
+   (`[GPU-BUFFER-FROM-LIST]`). `gpu.rs::to_gpu` derives the buffer's element
+   tag from a *syntactic* flat-list-literal tag and ignores the statically
+   inferred element type that `buffer_owner(elem)` in the same file already
+   spells. A buffer built from a list *value* is therefore tagged bare
+   `GpuBuffer`, and `gpuGet` on it mis-types or fails to compile. The words
+   survive (a `gpuFold` with a typed kernel still gives the right answer), so
+   the fix is the tag on the copy path only.
+3. **`-9223372036854775808` is accepted in Default and rejected in ML.** The
+   ML lexer applies unary minus to a positive literal, which cannot represent
+   −2^63 (`invalid integer literal '9223372036854775808'`); the Default lexer
+   folds the sign in. Twins must accept the same programs, so `stress` computes
+   `minInt` arithmetically instead. Same family, lower severity: ML
+   juxtaposition swallows a negative literal argument
+   (`gpuIota -1000000` parses as subtraction), producing a type error that
+   names the wrong cause.
+4. **Kernel element typing is order-sensitive within one expression**
+   (`[GPU-KERNEL-ELEM-TYPING]`, plan 0022 F10). Not merely "context-free
+   kernels int-default": with a float in scope and reachable, left-associativity
+   decides. `fn(x, y) => t * x * y` compiles; `fn(x, y) => x * y * t` is
+   rejected with `cannot unify int with float`, because the inner `x * y`
+   unifies and defaults before the trailing float is seen.
+
+## Spec statements the corpus falsified
+
+`docs/specs/0034-GPUComputation.md` is owned by another agent; these are
+recorded so the correction is not lost.
+
+- **`[GPU-KERNEL-FORM]`'s first implementation gap is stale.** The spec says a
+  block-bodied lambda with an internal `let` fails codegen as a kernel. It
+  does not — `gpuMap(fn(x) => { let y = t * x  y + t })` over `[1.0, 2.0, 3.0]`
+  runs and prints the correct `sum=18.0 g0=4.0`. The bullet should be deleted.
+  It remains untestable in the corpus for a different reason: ML has no
+  multi-statement lambda body, so a twin is unspellable and
+  `cross_flavor_ir_equiv` forbids a Default-only construct in a twinned file.
+- **`[GPU-KERNEL-FORM]`'s second gap is overstated.** "A recursive helper — or
+  any recursive function — must carry a fully concrete signature" is wrong: an
+  unannotated recursive `fn triangular(n)` used as a kernel compiles and runs.
+  The restriction bites only when the signature is not *inferable* — e.g. a
+  `GpuBuffer<int>` parameter, which does fail closed exactly as documented.
+  Scope the claim to that.
+- **`[GPU-SCAN]` never defines its `initial` parameter** and **`[GPU-IOTA]`
+  never defines `n <= 0`.** The implementation computes
+  `result[0] = combine(initial, src[0])` and returns an empty buffer for
+  non-positive `n`; both are now pinned by `combinators`, but the spec should
+  say so.
 
 ## Gaps delegated to other plans
 
 - **Recursive generic emission** (monomorphization) and **ML-parser support
   for block-bodied lambdas** — [plan
   0002](0002-codegen-generic-function-values.md) (spec `[GPU-KERNEL-FORM]`).
-  Block-bodied lambda kernels already work in the Default flavor; see the
-  stage-2 entry for the measurement.
 - **Context-free kernel int-defaulting (F10)** —
   [plan 0022](0022-arithmetic-totality-audit.md) (spec
-  `[GPU-KERNEL-ELEM-TYPING]`).
+  `[GPU-KERNEL-ELEM-TYPING]`); defect 4 above is the sharpened repro.
+- **Float/bool list element read-back** (defect 1) — belongs with the
+  collection surface, [plan 0004](0004-collection-stdlib-completion.md), which
+  already tracks a `listGet` layout defect over `List<string>`.
 
 ## Design decisions carried from the research foundation
 
@@ -188,14 +266,77 @@ here because they shape the remaining stages:
   device sublanguage's type-and-effect rules is a credibility play worth
   its own milestone.
 
+## The distance to "the language people build the next CUDA on"
+
+That is the stated ambition. Stated as engineering rather than marketing: CUDA
+is a device code generator, an explicit memory hierarchy, a multi-dimensional
+index space, and a launch API — and Osprey today has **none of the four**. It
+has the thing that comes before them, which is a kernel that is provably pure,
+typed from its buffer, and now compiled as a first-order function with no
+environment. That is real progress and it is roughly one quarter of the
+distance to a first device execution, not to parity.
+
+```mermaid
+flowchart TB
+    A[Pure typed kernel] --> B[Extracted flat ABI]
+    B --> C[Device IR emitter]
+    C --> D[Launch and transfer]
+    D --> E[Index spaces]
+    E --> F[Memory hierarchy]
+    F --> G[Schedules and autodiff]
+```
+
+Where the current design already commits to the right shape:
+
+- **Purity is proven, not promised.** `[GPU-KERNEL-PURE]` is discharged by the
+  effect checker and fails closed. Every offload decision downstream rests on
+  it, and no competitor with a library-shaped GPU surface can make it.
+- **The element restriction is the device sublanguage.** `[GPU-BUFFER-ELEM]`
+  is the Futhark/Accelerate discipline made normative before any device code
+  exists, so no accepted program will have to be un-accepted later.
+- **The buffer layout is already the transfer layout.** Dense, unboxed,
+  contiguous — a device copy is a `memcpy`, not a marshalling pass.
+- **The extracted ABI is the emitter's input.** Uniforms then element slots,
+  scalar return, no environment pointer: a PTX/AIR/SPIR-V emitter walks that
+  signature directly.
+- **The host backend is the oracle.** Every backend is held byte-for-byte to
+  it, and the `extract`/`inline` differential proves the harness can actually
+  hold two code generators to one golden.
+
+Where it will have to change — name these before promising anything:
+
+- **One dimension.** Every combinator is rank-1 over a flat buffer. Real GPU
+  work is `(x, y, z)` blocks and grids; a matrix today is a flat buffer plus
+  an index kernel (`mlkernels`'s `matVec` literally does this). Multi-
+  dimensional index spaces are a **surface change**, not a backend change, and
+  the longer the corpus encodes flat indexing the more expensive it gets.
+- **Transfer is invisible.** `toGpu`/`fromGpu` are a copy on the host today.
+  Once a device exists they become the host↔device boundary, and a program
+  that calls them in a loop is a program that is memory-bound by accident.
+  Making the cost visible — in the type, in an effect, or in a diagnostic —
+  is a design decision that has not been made.
+- **No memory hierarchy.** Shared/local memory, tiling and coalescing are what
+  separates a working kernel from a fast one. Stage 7's schedule layer is the
+  intended home; nothing about the current surface expresses it.
+- **Reductions are semantically host-ordered.** `gpuFold`/`gpuScan` document
+  backend-dependent results for non-associative combines, but the corpus now
+  *pins* left-to-right traversal (`horner`, `subI`, the float-ordering case).
+  A parallel device reduction will change those numbers. Either the goldens
+  become associativity-restricted or the device backend must run a sequential
+  fallback for non-associative combines — decide at stage 4, not after.
+- **Kernels that decline extraction have no device story.** A closure cell is
+  a host pointer; a builtin-by-name is an intrinsic. The host backend runs
+  both correctly. A device backend must **reject** them with a diagnostic that
+  names the kernel, never silently offload.
+
+Concrete milestones, in dependency order: `[GPU-BACKEND-DEVICE]` behind the
+existing host lowering → one device IR emitter fed by `[GPU-KERNEL-EXTRACT]`
+→ explicit host/device transfer → multi-dimensional index spaces → memory
+hierarchy via schedules. Stages 4–7 below are those milestones with gates
+attached.
+
 ## Remaining stages
 
-3. **Kernel extraction.** Lower kernels passed to GPU combinators into
-   standalone IR functions with explicit scalar signatures (today they are
-   inlined into the host loop). This is the compiler-side prerequisite for
-   any device target and is fully testable with no GPU: diff
-   extracted-kernel output against host-loop output in the differential
-   harness.
 4. **First device target — NVPTX.** Kernel IR compiled to PTX, a
    CUDA-driver launch path in the runtime behind a build flag, buffer
    transfer using the existing dense layout (which was chosen as the
@@ -218,48 +359,69 @@ accepted by earlier stages (`[GPU-ROADMAP]`).
 
 ## Start here — the next session's work order
 
-**Stage 2 is now complete except for the two items delegated to other plans.**
-`toFloat`, buffer literals and iterator fusion all landed; the remaining two
-stage-2 boxes are blocked in plan 0002 (recursive generic emission; ML-parser
-block-lambda support) and plan 0022 (F10 numeric constraint on the arithmetic
-operators). Neither is a GPU-surface change — do not try to close them here.
+**Stages 1–2 are complete except for the items delegated to other plans**, and
+**stage 3 has landed for lambda kernels.** Do not re-open either here.
 
-**The next work on this plan is stage 3, kernel extraction.** It is the
-critical path to every device backend, it is fully testable with zero GPU
-hardware, and it is the only remaining item that improves the host backend's
-13 fps ceiling — because it is what lets the optimiser see a kernel body as
-straight-line integer code instead of an inlined chain of `Result` branches.
-Everything in stage 4+ waits on it.
+Three things are worth a short session before stage 4 starts, in this order:
 
-If the goal for a session is "make `gpu*` actually use the GPU", the route is
-stage 3 → stage 6 (Metal, since `examples/graphics/` already proves the
-window/drawable/FFI half on this hardware) or stage 4 (NVPTX). Nothing else on
-this page gets there, and no amount of further surface work will.
+1. **Measure what extraction bought.** Re-run the fps/per-op table under
+   `OSPREY_GPU_KERNELS=extract` and `=inline`. The stage was justified by a
+   host-backend speedup that has never been measured. If there is none, say so
+   in this plan and keep extraction anyway — its value is the device ABI.
+2. **De-duplicate `gpu_kernel::returned`.** `deslop` cluster #48 pairs it with
+   the identical `sig.2`/`sig.3` reconstruction inside
+   `closure.rs::cell_call`. The repo sits at exactly 5.0% against a 5.00%
+   ceiling, so this is one of the cheapest ways to buy headroom.
+3. **Fix the two tag/read-back defects** (defects 1 and 2 above). They are
+   small, they are in `crates/`, and every device backend inherits them.
+
+**Then stage 4 or stage 6 — nothing else on this page reaches a GPU.** Stage 6
+(Metal) is closer on this hardware, because [plan
+0025](0025-gpu-graphics-backends.md) has already solved the window, the
+drawable, the shader-library loading and the uniform ABI; the missing half is
+an MSL emitter over stage 3's extracted kernels plus a compute dispatch. Stage
+4 (NVPTX) is the wider payoff and needs the substrate decision made first.
 
 Landmines previous sessions hit:
 
-- Unannotated recursive functions **fail closed** ("annotate its parameters
-  and return type", `genfn.rs` re-entry guard). Deliberate — generic functions
-  are inlined, never emitted, so a recursive one has no call target.
+- Unannotated recursive functions fail closed **only when their signature is
+  not inferable** ("annotate its parameters and return type", `genfn.rs`
+  re-entry guard) — an unannotated recursive `fn triangular(n)` kernel is
+  fine; one taking a `GpuBuffer<int>` is not. Generic functions are inlined,
+  never emitted, so a recursive one with no inferred signature has no call
+  target.
 - Twins must emit identical IR (`cargo test -p osprey-cli --test
   cross_flavor_ir_equiv`), so a construct only one flavor's parser accepts
-  cannot enter the corpus.
+  cannot enter the corpus. This is what keeps block-bodied lambda kernels out
+  even though they work.
 - Goldens are byte-exact under default/GC/ARC **and** wasm32. Wasm goldens run
   under `make wasm`, not `make ci` — run both. `make wasm` also *builds*
   `libosprey_runtime_wasm.a`; without it every wasm golden fails at once and
   `TEST_CORPUS_WASM_SKIPPED` reads 0 instead of 53.
 - `GOLDEN_MIN` (172 native / 119 wasm) counts *programs*, not test cases —
   adding a `test(...)` to an existing suite does not move it. Never lower it.
-- The deslop duplication ceiling is 5.00% and the repo is near it: any new
-  combinator in `gpu.rs` must reuse `kernel_of`/`scalar_acc_init`.
+  `GPU_MODE_MIN` (12) counts the `tests/core/gpu` programs re-run under the
+  opposite kernel lowering; adding a seventh suite raises it to 14.
+- **A new kernel lowering must be cache-keyed.** `test_cache_key` hashes
+  `OSPREY_GPU_KERNELS`; without that the harness compares one cached binary to
+  itself and the differential silently passes forever. Falsify any new mode
+  gate by breaking it on purpose once and watching it fail.
+- The deslop duplication ceiling is 5.00% and the repo is **at** it (5.0%,
+  3367/67685 LOC): any new combinator in `gpu.rs` must reuse
+  `kernel_of`/`scalar_acc_init`, and any new lifted-call helper must reuse
+  `closure.rs` rather than restating it.
 - Float `/` returns `Result<float, MathError>` — kernels need `?:`. ML twins:
   no braces in constructor patterns (`Success value`), lambdas are `\x => …`,
-  parenthesize match-arm and pipe continuations.
+  parenthesize match-arm and pipe continuations, and **parenthesize a negative
+  literal argument** (`gpuIota (-4)`) or juxtaposition reads it as subtraction.
 - A builtin passed by name as a callback needs a value form in
   `expr.rs::call_builtin_with_values`, or it emits `call @name` to a symbol
   that is never defined and fails at *link* time with no source location.
 - A statement followed by a line starting with `(` parses as a **call**:
   `let d = 5` then `(d + 1) ?: d` becomes `5(d + 1)`. Write `d + 1 ?: d`.
+- Debug builds emit **no `DISubprogram`** for a lifted kernel, matching
+  `closure::emit_closure_fn`. Stepping into a kernel under lldb will not work
+  until [plan 0012](0012-osprey-debugger.md) closes the lambda-debug-info gap.
 
 ## TODO checklist
 
@@ -281,7 +443,10 @@ Landmines previous sessions hit:
       `gpuFilter` (`[GPU-FILTER]` via `osprey_gpu_take` compaction).
 - [x] `gpuDevice` (`[GPU-DEVICE]`) host introspection.
 - [x] Corpus expansion: `combinators`, `mlkernels`, `gamedev`, `stress`,
-      `raster` suites × 2 flavors; `GOLDEN_MIN` 172 native / 119 wasm.
+      `raster` suites × 2 flavors; `GOLDEN_MIN` 172 native / 119 wasm. Since
+      deepened to 100 cases across the six suites (15/18/17/21/16/13), every
+      source file under the 500-LOC cap, twins carrying identical case counts
+      and sharing one golden.
 - [x] Buffer literals `[GPU-BUFFER-LITERAL]` — a literal `toGpu` argument
       stores straight into the dense buffer at constant indices
       (`gpu.rs::buffer_literal`). `toGpu([1.0, 2.0, 3.0, 4.0])` emits one
@@ -311,12 +476,16 @@ Landmines previous sessions hit:
         so the construct cannot enter the corpus without drifting
         `cross_flavor_ir_equiv`. Next step is ML-parser support, not Default
         grammar work.
-      - Recursive helpers still need annotations. Generic functions are
-        lowered by inlining (`genfn.rs::try_inline`), never emitted as symbols,
-        so a recursive generic has no call target and the guard must fail.
-        Closing it means real monomorphization — a name-mangled copy per
-        instantiation with the self-call bound to it. `mlkernels`/`stress`
-        annotations stay load-bearing until then.
+      - Recursive helpers need annotations **only when their signature is not
+        inferable** — `fn triangular(n)` as a kernel runs; `fn walk(src, w, i)`
+        taking a `GpuBuffer<int>` fails closed. Generic functions are lowered
+        by inlining (`genfn.rs::try_inline`), never emitted as symbols, so a
+        recursive generic with an uninferred signature has no call target and
+        the guard must fail. Closing it means real monomorphization — a
+        name-mangled copy per instantiation with the self-call bound to it.
+        Four annotations in `raster` and three in `stress` stay load-bearing
+        until then; the other 29 (raster) and 15 (stress) were redundant and
+        have been removed.
       - Fixed meanwhile: nine builtin docs examples used the rejected
         `fn(x) { … }` spelling, and four were also semantically wrong (`x * 2`
         is checked arithmetic, so `map`/`forEach` printed `Success(2)` where
@@ -333,15 +502,65 @@ Landmines previous sessions hit:
 
 ### Stage 3 — kernel extraction
 
-- [ ] Extract each combinator kernel into a standalone IR function with an
-      explicit scalar signature; host loop calls it instead of inlining.
-- [ ] Spec ID `[GPU-KERNEL-EXTRACT]` in 0034 defining the extracted ABI
-      (params, return, no captures beyond scalar/buffer operands).
-- [ ] Harness mode diffing extracted-kernel output against the inlined
+The mechanism is `crates/osprey-codegen/src/gpu_kernel.rs`; `gpu.rs` shrank
+486 → 460 as `kernel_of`/`kernel_elem_ltype` moved into it, `iter.rs` gained
+one `Callback::Extracted` variant and one `invoke` arm, and `expr.rs` hoisted
+the lambda return adaptation into `fit_lambda_return` so the inline and
+extracted paths cannot drift.
+
+- [x] Spec ID `[GPU-KERNEL-EXTRACT]` in 0034 defining the extracted ABI —
+      uniforms (sorted by identifier) then element slots, scalar return, no
+      environment pointer, the decline cases, determinism, and the
+      differential guarantee.
+- [x] Harness mode diffing extracted-kernel output against the inlined
       host-loop output for the whole `tests/core/gpu/` corpus.
-- [ ] Closure captures lowered to explicit kernel parameters (the
-      `mean`-capture and `w`-capture cases in `mlkernels.test.osp` are the
-      acceptance tests).
+      `dispatch_batch` is parameterised by result dir; the twelve programs
+      re-run into `$RESULTDIR/altmode` under the opposite lowering and are
+      compared byte-for-byte, floor `GPU_MODE_MIN=12`, under every memory
+      backend and on wasm32. Falsified once with a deliberately invalid mode
+      (12/12 `GPU-KERNEL-MODE-MISMATCH`), then reverted.
+- [x] Closure captures lowered to explicit kernel parameters. Verified in the
+      emitted IR for both named acceptance cases: `meanCase`'s
+      `fn(v) => v - mean` → `@__gpu_kernel_N(double %$p0, double %$p1)` with
+      the folded mean as the leading operand; `gradStep`'s
+      `fn(x, y) => 2.0 * (w * x - y) * x` → a three-parameter kernel with `w`
+      leading. Multi-capture ordering is sorted-by-identifier, and a captured
+      `GpuBuffer` handle is admissible as a uniform (`matVec` →
+      `@__gpu_kernel_3(i64, i8*, i8*, i64)`).
+- [x] Generic kernels are monomorphised rather than inlined: an unannotated
+      `fn twice(x) = x * 2.0` passed to `gpuMap` emits
+      `define double @__gpu_kernel_0(double %$p0)` and a call to it.
+- [ ] **Extract *every* combinator kernel.** Not done — three shapes still
+      take the inlined lowering, each for a stated reason, each safe (the
+      pre-extraction lowering produces the same values):
+      - **Closure cells** (`Callback::Local`/`Value`). A let-bound lambda that
+        was materialised as a cell resolves through `fn_ptr_locals`, and a cell
+        *is* the captured environment this ABI forbids. Five indirect
+        `call double %rN(…)` sites survive in `mlkernels.test.osp` today.
+        Closing this means either lifting the cell's body at its binding site
+        or teaching the ABI a uniform-pack — a real design decision, and the
+        one that decides whether a device backend can offload such a kernel or
+        must reject it.
+      - **Builtins passed by name** (`gpuMap(toFloat)` in `stress`). No symbol
+        exists to call; an intrinsic lowers to its per-element value form.
+        A device emitter must therefore know the intrinsics itself.
+      - **Bodies reaching host-only state** — a free name in `cell_slots`,
+        `lambdas`, `fn_ptr_locals` or `call_aliases`, a non-scalar/non-buffer
+        capture, or a `Result`/Fiber parameter slot. `admissible` declines
+        rather than emit `call @f` to an undefined symbol, which would fail at
+        link time with no source location.
+      A **named function** kernel is deliberately not lifted and is *not* a
+      gap: the host loop already calls its emitted symbol, which is the
+      extracted form. That is why `raster`'s named kernels are IR-identical
+      under both modes while its eleven lambda kernels are not.
+- [ ] Measure the host-backend payoff under `extract` versus `inline` and
+      record it in "What that costs, measured". Unmeasured today.
+- [ ] Remove the `gpu_kernel::returned` / `closure::cell_call` clone
+      (`deslop` cluster #48, 31 nodes) — one shared helper for
+      `sig.2`/`sig.3` return reconstruction.
+- [ ] Lifted kernels carry no `DISubprogram`, so they are invisible to lldb.
+      Deliberate (it matches `closure::emit_closure_fn`) and owned by
+      [plan 0012](0012-osprey-debugger.md).
 
 ### Stage 4 — first device target (NVPTX)
 
@@ -353,6 +572,14 @@ Landmines previous sessions hit:
       existing dense staging layout; no API surface change.
 - [ ] CI story with no GPU: device path compiles everywhere, executes where
       hardware exists, host diff remains the source of truth.
+- [ ] **Decline-to-offload diagnostic.** Every kernel shape stage 3 declines
+      to extract (closure cell, builtin-by-name, host-bound body) must be
+      rejected by name at the launch site, never silently run on the host
+      inside a region the program believes is on the device.
+- [ ] **Non-associative reduction decision.** The corpus pins left-to-right
+      `gpuFold`/`gpuScan` traversal. Either restrict device reduction to
+      associative combines (checked how?) or run a sequential device fallback.
+      Decide before PTX emission, not after the goldens break.
 - [ ] Benchmark gate: within 2× of Futhark/CUDA on stencil + reduction
       micro-benchmarks before the flag is promoted; record numbers in
       `benchmarks/`.
@@ -372,11 +599,17 @@ Landmines previous sessions hit:
 ### Stage 6 — portability targets
 
 - [ ] Metal backend (runnable in macOS CI). The window/drawable/FFI half is
-      already proven by `examples/graphics/` (see above) — the missing half is
-      compiling stage-3 extracted kernels to MSL and dispatching them as a
-      compute pipeline, so `gpuMap` itself reaches the GPU instead of a demo
-      shader hand-written beside it.
-- [ ] WebGPU/WGSL backend paired with the wasm32 target.
+      already proven by [plan 0025](0025-gpu-graphics-backends.md) — the
+      missing half is compiling stage-3 extracted kernels to MSL and
+      dispatching them as a compute pipeline, so `gpuMap` itself reaches the
+      GPU instead of a demo shader hand-written beside it. That plan's stage 5
+      is the same convergence point seen from the other side; write the
+      emitter once.
+- [ ] WebGPU/WGSL backend paired with the wasm32 target. Plan 0025's SPIR-V
+      backend and this one share a target: WGSL and SPIR-V are the same
+      device sublanguage with two spellings.
+- [ ] Multi-dimensional index spaces before, not after, the second backend —
+      every backend written against rank-1 buffers has to be revisited.
 - [ ] Differential harness extended so every backend must match the host
       goldens byte-for-byte.
 

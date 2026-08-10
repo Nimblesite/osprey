@@ -224,6 +224,14 @@ These constraints materially affect how the language must be described:
   effect-row variable in a function type.
 - Effects that pause work and later continue it are currently available only in
   native programs. WebAssembly supports effects that return immediately.
+- An effect can now say **when** it is answered. An effect declared `static` is
+  worked out by the compiler before the program runs and leaves nothing behind;
+  an ordinary effect is answered while the program runs, exactly as before. This
+  is a prototype in the brace flavor only (docs/specs/0035-StagedEffects.md):
+  the ML flavor has no `static` surface yet, and the reactive and device
+  features the design enables are not built. Describe what it does today —
+  compile-time answers with no runtime cost, and a compiler-derived list of
+  which data a function reads — not the roadmap it opens.
 - Tail-call optimisation is not implemented.
 - Generics, complete multi-file module imports and a package manager remain
   roadmap work.

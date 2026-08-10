@@ -290,6 +290,92 @@ like every builtin. It is usable both as a direct call and, as above, as a
 first-class kernel passed by name. The reverse direction already exists as
 checked truncation on the arithmetic side and is out of scope for buffers.
 
+## Kernel extraction — [GPU-KERNEL-EXTRACT]
+
+Each kernel a combinator runs is compiled **once**, as a standalone
+module-scope function with a flat scalar signature, and the loop over the
+buffer calls it per element. This is not an optimization detail: an extracted
+kernel with a first-order scalar ABI and no captured environment is exactly
+the artifact a PTX, AIR or SPIR-V emitter consumes, so [GPU-BACKEND-DEVICE]
+becomes a target driver rather than a rewrite.
+
+```mermaid
+flowchart LR
+    A[Host loop] -->|element| B[Kernel fn]
+    C[Free vars] -->|uniforms| B
+    B -->|scalar| D[Buffer store]
+```
+
+### The extracted ABI
+
+A kernel function takes, in this order:
+
+1. **Uniforms** — the kernel body's free variables from the enclosing scope,
+   one leading parameter each, ordered by identifier name. They are loop
+   invariants: the host evaluates each once *before* the loop and passes the
+   same operand at every call. Only a scalar (`int`, `float`, `bool`) or a
+   `GpuBuffer` handle may be a uniform — the same restriction
+   [GPU-BUFFER-ELEM] places on element data, for the same reason.
+2. **Element slots** — the kernel's own declared parameters, typed from the
+   buffer's element type per [GPU-KERNEL-ELEM-TYPING]; `gpuFold` and
+   `gpuScan` pass the accumulator first, then the element.
+
+There is **no environment pointer and no closure struct**. A capturing kernel
+compiles to a function whose captures are arguments, not to a heap cell with a
+hidden `env` parameter. The return is a scalar.
+
+A kernel that would return an unhandled `Result` is rejected before the
+program links, by the same scalar discipline that already guards the
+combinators: `gpuMap`/`gpuZipWith` reject the stored element, `gpuFold` and
+`gpuScan` reject the accumulator update, and `gpuFilter` rejects the verdict.
+Handle failure inside the kernel with `?:` or `match`.
+
+### Which kernels are extracted
+
+- A **named function** kernel reuses its own definition. It already has an
+  emitted symbol with a concrete signature, and the host loop already calls
+  it — extraction emits nothing new and copies nothing.
+- An **inline lambda** is lifted to a fresh module-scope function, its free
+  variables becoming leading uniform parameters.
+- An **unannotated (generic) function** kernel is *monomorphised*: parameter
+  types come from the buffer's element type at the call and the return type
+  from the lowered body, so each instantiation gets its own real definition.
+  This is the one place polymorphism is resolved by emitting a definition
+  rather than by inlining; the language-wide rule is unchanged.
+- A kernel that reaches the combinator as an **already-built function value**
+  (a closure held in a local, a record field, a call result) keeps its
+  closure-cell call. A cell *is* a captured environment, which this ABI has no
+  representation for; the host backend runs it correctly and a device backend
+  must reject it rather than silently offload a host pointer.
+- A **built-in passed by name** (`gpuMap(toFloat)`) has no symbol to call: it
+  is an intrinsic with a per-element value form, and it lowers inline.
+- A lambda whose body reads a name the lifted function cannot see — a
+  let-bound lambda, a function-typed local, a handler-owned mutable cell —
+  keeps the inlined lowering rather than emitting a call to a symbol that was
+  never defined.
+
+Declining to extract is always safe: it is the pre-extraction lowering, which
+produces the same values, and it never changes what a program prints.
+
+### Determinism and flavor equivalence
+
+Generated kernel symbols are numbered by a per-module counter advanced only by
+extraction, in AST walk order. No part of a kernel's name comes from a source
+position, an identifier spelling, a file path or a source hash, so a
+Default/ML twin pair still emits byte-identical IR ([FLAVOR-IR-EQUIV],
+[0023-LanguageFlavors.md](0023-LanguageFlavors.md)).
+
+### Differential guarantee
+
+Extraction is a lowering choice, never a semantic one. The compiler retains
+the pre-extraction inlined lowering behind the `OSPREY_GPU_KERNELS`
+environment switch (`extract`, the default, or `inline`; any other value is
+an error, never a silent fallback), and `crates/run_test_corpus.sh` runs the
+whole `tests/core/gpu` corpus both ways and requires byte-identical output —
+under every memory backend and on wasm32. Two code generators for one
+semantics, held to one golden, exactly as [GPU-BACKEND-HOST] holds device
+backends to the host's.
+
 ## Execution backends
 
 ### Host baseline — [GPU-BACKEND-HOST]

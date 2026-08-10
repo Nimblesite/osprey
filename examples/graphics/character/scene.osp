@@ -1,0 +1,5 @@
+// Character — a signed-distance creature standing in front of a folded
+// backdrop. Everything it is made of lives in `graphics::SceneBase`.
+import graphics::SceneBase
+
+fn main() = SceneBase::character()

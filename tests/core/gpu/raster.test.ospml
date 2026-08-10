@@ -1,52 +1,69 @@
-// Graphics on the GPU surface: a fragment-shader-shaped renderer. Every
-// scene is one pure kernel dispatched over `gpuIota (width * height)` — the
-// flat pixel grid — and layers composite with a single elementwise pass
-// ([GPU-IOTA], [GPU-MAP], [GPU-ZIPWITH], [GPU-FILTER], [GPU-FOLD],
-// [GPU-GET], [GPU-DEVICE] — docs/specs/0034-GPUComputation.md).
-//
-// Shading is deliberately fixed-point integer arithmetic — the workload a
-// fragment shader actually runs — and the kernels reach recursive helpers
-// (`escape`, `isqrtIter`) to prove [GPU-KERNEL-FORM]'s claim that a kernel is
-// gated on purity, not on shape. Execution is the host backend
-// [GPU-BACKEND-HOST]; the same program is what a device target runs unchanged.
+// Rasterisation on the GPU surface: a fragment-shader-shaped renderer, and
+// the addressing algebra every rasteriser is built out of. Every scene is one
+// pure kernel dispatched over `gpuIota (width * height)` — the flat pixel grid
+// — and layers composite with a single elementwise pass ([GPU-IOTA], [GPU-MAP],
+// [GPU-ZIPWITH], [GPU-FILTER], [GPU-FOLD], [GPU-SCAN], [GPU-GET], [GPU-DEVICE]
+// — docs/specs/0034-GPUComputation.md). Shading is fixed-point integer
+// arithmetic — the workload a fragment shader actually runs — and the kernels
+// reach recursive helpers and vertices captured by an inline lambda, both of
+// which prove [GPU-KERNEL-FORM]'s claim that a kernel is gated on purity, not
+// on shape. Execution is the host backend [GPU-BACKEND-HOST] and a device
+// target runs it unchanged.
 
-(** The fixed-point unit: one whole number is 4096 sub-units. *)
+(** scale is the fixed-point unit: one whole number is 4096 sub-units. The frame
+    is the two full-size scenes, the tile the size raster primitives are asserted
+    at, the quad the image small enough to pin every pixel of, and the ramp the
+    palette a brightness level indexes — darkest first; glyph is that indexing. *)
 scale () = 4096
-
-(** Frame dimensions, shared by every raster in this file. *)
 frameWidth () = 64
 frameHeight () = 24
-
-(** The brightness palette, darkest first. *)
+tileEdge () = 8
+quadEdge () = 4
 ramp () = " .:-=+*#%@"
-
-(** Turn a 0..9 brightness level into its palette character. *)
-glyph : int -> string
+maxLevel () = 9
+channelMax () = 255
 glyph level = substring (ramp (), level, (level + 1) ?: level) ?: " "
+clampLevel (v, low) = clampRange (v, low, maxLevel ())
 
-(** Keep a computed brightness inside the palette, never below `low`. *)
-clampLevel : (int, int) -> int
-clampLevel (v, low) = match v < low
-    true => low
-    false => match v > 9
-        true => 9
+(** clampRange is saturation: values outside [lo, hi] stick to the nearer end;
+    clampLevel above is that clamp against the palette, never below `low`. *)
+clampRange (v, lo, hi) = match v < lo
+    true => lo
+    false => match v > hi
+        true => hi
         false => v
 
-(** Newton's method on integers, converging from above. *)
+(** absOf is a signed residual's magnitude, bit turns a coverage decision into a
+    drawable sample, fullBright lifts it to the palette top, outOfFrame is a
+    sentinel no brightness level can equal, and colOf/rowOf decompose a flat
+    buffer index into raster coordinates with flatIndex as their exact inverse
+    — the whole of [GPU-IOTA] addressing. *)
+absOf v = match v < 0
+    true => (0 - v) ?: 0
+    false => v
+bit flag = match flag
+    true => 1
+    false => 0
+fullBright v = (v * maxLevel ()) ?: 0
+outOfFrame () = (0 - 1) ?: 0
+colOf (idx, w) = (idx % w) ?: 0
+rowOf (idx, w) = intDiv (idx, w) ?: 0
+flatIndex (x, y, w) = ((y * w) ?: 0) + x ?: 0
+
+(** isqrt is the floor of the square root by Newton's method converging from
+    above, total on zero and on negatives; escape counts Mandelbrot iterations
+    before z leaves the radius-2 disc, and mandelPixel is the fragment kernel
+    that shades one — flat pixel index in, brightness out, the complex plane
+    sampled at pixel centers over [-2.25, 0.75] x [-1.25, 1.25]. *)
 isqrtIter : (int, int) -> int
 isqrtIter (n, guess) =
     next = intDiv ((guess + (intDiv (n, guess) ?: guess)) ?: guess, 2) ?: guess
     match next >= guess
         true => guess
         false => isqrtIter (n, next)
-
-(** The floor of the square root, total on zero and negatives. *)
-isqrt : int -> int
 isqrt n = match n <= 0
     true => 0
     false => isqrtIter (n, n)
-
-(** Count Mandelbrot iterations before z leaves the radius-2 disc. *)
 escape : (int, int, int, int, int) -> int
 escape (zr, zi, cr, ci, i) = match i >= 24
     true => 24
@@ -59,41 +76,29 @@ escape (zr, zi, cr, ci, i) = match i >= 24
                 ((zr2 - zi2) ?: 0) + cr ?: 0,
                 (intDiv ((2 * zr * zi) ?: 0, scale ()) ?: 0) + ci ?: 0,
                 cr, ci, (i + 1) ?: i)
-
-(** The fractal fragment kernel: flat pixel index in, brightness out. The
-    complex plane is sampled at pixel centers over [-2.25, 0.75] x [-1.25, 1.25]. *)
-mandelPixel : int -> int
 mandelPixel idx =
-    x = (idx % frameWidth ()) ?: 0
-    y = intDiv (idx, frameWidth ()) ?: 0
-    sx = ((2 * x) ?: 0) + 1 - frameWidth () ?: 0
-    sy = ((2 * y) ?: 0) + 1 - frameHeight () ?: 0
+    sx = ((2 * colOf (idx, frameWidth ())) ?: 0) + 1 - frameWidth () ?: 0
+    sy = ((2 * rowOf (idx, frameWidth ())) ?: 0) + 1 - frameHeight () ?: 0
     cr = (intDiv ((sx * 12288) ?: 0, (2 * frameWidth ()) ?: 0) ?: 0) - 3072 ?: 0
     ci = intDiv ((sy * 10240) ?: 0, (2 * frameHeight ()) ?: 0) ?: 0
     clampLevel (intDiv ((escape (0, 0, cr, ci, 0) * 10) ?: 0, 24) ?: 0, 0)
 
-(** Silhouette radii in half-cells; the 2:1 ratio corrects for character
-    cells being twice as tall as wide. *)
+(** The silhouette radii are in half-cells — the 2:1 ratio corrects for cells
+    being twice as tall as wide — and lightAxis is one axis of the unit light
+    direction, 1/sqrt(3) in fixed-point. lambert is the diffuse term for a
+    surface point, in the same units, and spherePixel shades a unit sphere one
+    ray per cell: the normal is recovered from the disc equation and lit from
+    the upper left, and cells outside the silhouette stay at level zero. *)
 sphereRadiusX () = 44
 sphereRadiusY () = 22
-
-(** One axis of the unit light direction, 1/sqrt(3) in fixed-point. *)
 lightAxis () = 2365
-
-(** The diffuse term for a surface point, in fixed-point units. *)
-lambert : (int, int, int) -> int
 lambert (nx, ny, dd) =
     nz = isqrt (((scale () - dd) ?: 0) * scale () ?: 0)
     axis = (0 - lightAxis ()) ?: 0
     intDiv (((nx * axis) ?: 0) + ((ny * axis) ?: 0) + ((nz * lightAxis ()) ?: 0) ?: 0, scale ()) ?: 0
-
-(** Shade a unit sphere, one ray per character cell. The surface normal is
-    recovered from the disc equation and lit from the upper left; cells
-    outside the silhouette stay at background level zero. *)
-spherePixel : int -> int
 spherePixel idx =
-    sx = ((2 * ((idx % frameWidth ()) ?: 0)) ?: 0) + 1 - frameWidth () ?: 0
-    sy = ((2 * (intDiv (idx, frameWidth ()) ?: 0)) ?: 0) + 1 - frameHeight () ?: 0
+    sx = ((2 * colOf (idx, frameWidth ())) ?: 0) + 1 - frameWidth () ?: 0
+    sy = ((2 * rowOf (idx, frameWidth ())) ?: 0) + 1 - frameHeight () ?: 0
     nx = intDiv ((sx * scale ()) ?: 0, sphereRadiusX ()) ?: 0
     ny = intDiv ((sy * scale ()) ?: 0, sphereRadiusY ()) ?: 0
     dd = intDiv (((nx * nx) ?: 0) + ((ny * ny) ?: 0) ?: 0, scale ()) ?: 0
@@ -101,40 +106,120 @@ spherePixel idx =
         true => 0
         false => clampLevel (intDiv ((lambert (nx, ny, dd) * 9) ?: 0, scale ()) ?: 0, 1)
 
-(** Composite a lit foreground pixel over a background pixel. *)
-overLayer : (int, int) -> int
+(** edgeFn is the half-plane test at the heart of every triangle rasteriser: the
+    cross product of edge AB with AP. It is zero exactly on the edge line, and at
+    the opposite vertex its magnitude is twice the triangle's area. insideTri
+    accepts a sample only when all three edges agree in sign, so a triangle wound
+    the other way covers nothing; coverBuf rasterises one across a tile, its
+    vertices captured by the kernel closure. *)
+edgeFn (ax, ay, bx, by, px, py) =
+    (((px - ax) ?: 0) * ((by - ay) ?: 0) ?: 0) - (((py - ay) ?: 0) * ((bx - ax) ?: 0) ?: 0) ?: 0
+insideTri (ax, ay, bx, by, cx, cy, px, py) =
+    (edgeFn (ax, ay, bx, by, px, py) <= 0 && edgeFn (bx, by, cx, cy, px, py) <= 0
+     && edgeFn (cx, cy, ax, ay, px, py) <= 0)
+coverBuf (ax, ay, bx, by, cx, cy) = (gpuIota (tilePixels ()) |> gpuMap (\idx =>
+    bit (insideTri (ax, ay, bx, by, cx, cy, colOf (idx, tileEdge ()), rowOf (idx, tileEdge ())))))
+
+(** spanBit lights a pixel on scanline `sy` between columns x0 and x1 inclusive
+    — a scanline filler's innermost test — spanBuf fills one such span across a
+    tile, and clampedSpan clips the endpoints first so an off-image span draws
+    its visible part rather than nothing. An inverted range fills nothing either
+    way. spanStart is the first lit column of a scanline, or the width when it
+    is empty; rowTotal sums one scanline a pixel at a time and rowSums reduces a
+    raster to one total per scanline. Recursion needs a concrete signature. *)
+spanBit (idx, sy, x0, x1) = bit (rowOf (idx, tileEdge ()) == sy
+    && colOf (idx, tileEdge ()) >= x0 && colOf (idx, tileEdge ()) <= x1)
+spanBuf (sy, x0, x1) = gpuIota (tilePixels ()) |> gpuMap (\idx => spanBit (idx, sy, x0, x1))
+clampedSpan (sy, x0, x1) = spanBuf (sy,
+    clampRange (x0, 0, (tileEdge () - 1) ?: 0), clampRange (x1, 0, (tileEdge () - 1) ?: 0))
+spanStart : (GpuBuffer<int>, int, int, int) -> int
+spanStart (src, w, y, x) = match x == w
+    true => w
+    false => match (gpuGet (src, flatIndex (x, y, w)) ?: 0) > 0
+        true => x
+        false => spanStart (src, w, y, (x + 1) ?: 0)
+rowTotal : (GpuBuffer<int>, int, int, int) -> int
+rowTotal (src, w, y, x) = match x == w
+    true => 0
+    false => ((gpuGet (src, flatIndex (x, y, w)) ?: 0) + rowTotal (src, w, y, (x + 1) ?: 0)) ?: 0
+rowSums (src, w, h) = gpuIota h |> gpuMap (\y => rowTotal (src, w, y, 0))
+
+(** sampleClamped is edge-clamp texture addressing: a coordinate off the image
+    reads the nearest border texel instead of failing the gather. upscale2 is
+    nearest-neighbour magnification — each source texel becomes a 2x2 block — and
+    transposeOf swaps rows and columns; both address purely by decomposing the
+    destination index and recomposing it against the source. The sat* trio is
+    8-bit channel arithmetic: results saturate into [0, 255] instead of wrapping. *)
+sampleClamped (tex, w, h, x, y) =
+    gpuGet (tex, flatIndex (clampRange (x, 0, (w - 1) ?: 0), clampRange (y, 0, (h - 1) ?: 0), w)) ?: 0
+upscale2 (src, w, h) = (gpuIota ((((2 * w) ?: 0) * ((2 * h) ?: 0)) ?: 0)
+    |> gpuMap (\idx => sampleClamped (src, w, h, intDiv (colOf (idx, (2 * w) ?: 0), 2) ?: 0,
+        intDiv (rowOf (idx, (2 * w) ?: 0), 2) ?: 0)))
+transposeOf (src, w, h) = (gpuIota ((w * h) ?: 0)
+    |> gpuMap (\idx => sampleClamped (src, w, h, rowOf (idx, h), colOf (idx, h))))
+satAdd (a, b) = clampRange ((a + b) ?: 0, 0, channelMax ())
+satSub (a, b) = clampRange ((a - b) ?: 0, 0, channelMax ())
+satMul (a, b) = clampRange (intDiv ((a * b) ?: 0, channelMax ()) ?: 0, 0, channelMax ())
+
+(** texel is a bounds-checked read falling back to an impossible level, so an
+    assertion against a gather that errored can never accidentally pass; total
+    and litCount are the whole-buffer reductions the cases read. overLayer
+    composites a lit foreground pixel over a background one, addLevels totals
+    brightness, and the predicates select the cells a scene drew, the cells that
+    never escaped, and the right frame edge. *)
+texel (pixels, i) = gpuGet (pixels, i) ?: outOfFrame ()
+total pixels = pixels |> gpuFold 0 addLevels
+litCount pixels = gpuLength (pixels |> gpuFilter litPixel)
 overLayer (bg, fg) = match fg > 0
     true => fg
     false => bg
-
-(** Select the cells a scene actually drew. *)
-litPixel level = level > 0
-
-(** Select the cells that never escaped. *)
-interiorPixel level = level >= 9
-
-(** Total brightness across a frame. *)
-addLevels : (int, int) -> int
 addLevels (a, b) = (a + b) ?: a
+litPixel level = level > 0
+interiorPixel level = level >= 9
+lastColumn v = v == ((frameWidth () - 1) ?: 0)
 
-(** The flat index buffer every kernel is dispatched over. *)
+(** residual is the index-decomposition error at one pixel — colOf and rowOf
+    then flatIndex must reproduce the index exactly, everywhere — and
+    columnOfPixel/rowOfPixel are that decomposition itself, as kernels.
+    tilePixels and quadPixels are the small rasters' dispatch sizes, pixelGrid
+    the index buffer the full-size kernels dispatch over, and the two frames
+    the rendered layers; triCover is the reference triangle — a right wedge
+    inset one pixel from the tile corner, covering x, y >= 1 with x + y <= 7. *)
+residual idx =
+    absOf ((flatIndex (colOf (idx, frameWidth ()), rowOf (idx, frameWidth ()), frameWidth ()) - idx) ?: 1)
+columnOfPixel idx = colOf (idx, frameWidth ())
+rowOfPixel idx = rowOf (idx, frameWidth ())
+tilePixels () = (tileEdge () * tileEdge ()) ?: 0
+quadPixels () = (quadEdge () * quadEdge ()) ?: 0
 pixelGrid () = gpuIota ((frameWidth () * frameHeight ()) ?: 0)
-
-(** The two rendered layers. *)
 mandelFrame () = pixelGrid () |> gpuMap mandelPixel
 sphereFrame () = pixelGrid () |> gpuMap spherePixel
+triCover () = coverBuf (1, 1, 6, 1, 1, 6)
 
-(** Render one scanline of a rendered buffer. *)
-row (pixels, y) =
-    range (0, frameWidth ()) |> fold "" (\(acc, x) =>
-        acc + glyph (gpuGet (pixels, ((y * frameWidth ()) ?: 0) + x ?: 0) ?: 0))
+(** gradientPixel is the quad's background — brightness rises with the column
+    — wedgePixel covers its upper-left triangle at full brightness, and
+    quadFrame is the whole small pipeline: two dispatches over one index grid
+    composited by one elementwise pass, every pixel of it pinned below. rowText
+    renders one scanline of any raster at any width, frameText all of them, and
+    row/canvas/tile are those two at this file's fixed sizes. *)
+gradientPixel idx = clampLevel ((colOf (idx, quadEdge ()) * 2) ?: 0, 0)
+wedgePixel idx =
+    (bit (insideTri (0, 0, 3, 0, 0, 3, colOf (idx, quadEdge ()), rowOf (idx, quadEdge ()))) * maxLevel ()) ?: 0
+quadFrame () = gpuZipWith (gpuIota (quadPixels ()) |> gpuMap gradientPixel,
+    gpuIota (quadPixels ()) |> gpuMap wedgePixel, overLayer)
+rowText (pixels, w, y) =
+    (range (0, w) |> fold "" (\(acc, x) => acc + glyph (gpuGet (pixels, flatIndex (x, y, w)) ?: 0)))
+frameText (pixels, w, h) =
+    (range (0, h) |> fold "" (\(acc, y) => acc + rowText (pixels, w, y) + "\n"))
+row (pixels, y) = rowText (pixels, frameWidth (), y)
+canvas pixels = frameText (pixels, frameWidth (), frameHeight ())
+tile pixels = frameText (pixels |> gpuMap fullBright, tileEdge (), tileEdge ())
 
-(** Render every scanline of a buffer into one printable frame. *)
-canvas pixels =
-    range (0, frameHeight ()) |> fold "" (\(acc, y) => acc + row (pixels, y) + "\n")
-
-(** Render all three layers and their buffer statistics as one frame of
-    output — one dispatch per scene, one elementwise pass to composite. *)
+(** gallery renders all three layers and their buffer statistics as one frame of
+    output — one dispatch per scene, one elementwise pass to composite — then
+    the raster primitives at a size every pixel can be read at: both windings of
+    a triangle, spans clipped and unclipped, a magnified texel block, and the
+    quad whose every pixel is asserted below. *)
 gallery () =
     mandel = mandelFrame ()
     sphere = sphereFrame ()
@@ -144,69 +229,261 @@ gallery () =
      "== composite ==\n${canvas composite}" +
      "interior=${gpuLength (mandel |> gpuFilter interiorPixel)} " +
      "lit=${gpuLength (sphere |> gpuFilter litPixel)} " +
-     "light=${sphere |> gpuFold 0 addLevels}")
+     "light=${sphere |> gpuFold 0 addLevels}" +
+     "\n== triangle ==\n${tile (triCover ())}" +
+     "== inverted triangle ==\n${tile (coverBuf (1, 6, 6, 1, 1, 1))}" +
+     "== span y=3 x=2..5 ==\n${tile (spanBuf (3, 2, 5))}" +
+     "== span clipped from -4..2 ==\n${tile (clampedSpan (5, (0 - 4) ?: 0, 2))}" +
+     "== upscaled 2x2 ==\n${frameText (upscale2 (toGpu [1, 4, 7, 9], 2, 2), 4, 4)}" +
+     "== quad ==\n${frameText (quadFrame (), quadEdge (), quadEdge ())}")
 
-(** Pin the grid one kernel dispatch covers. *)
+(** dispatchCase pins the grid one dispatch covers at every raster size here,
+    plus the empty dispatch every combinator survives and three gathers that
+    leave the buffer entirely. *)
 dispatchCase () = checkAll "dispatch" [
-    gpuLength (pixelGrid ()) == 1536,
-    gpuLength (mandelFrame ()) == 1536,
-    gpuLength (sphereFrame ()) == 1536,
-    gpuDevice () == "host"
+    gpuLength (pixelGrid ()) == 1536, gpuLength (mandelFrame ()) == 1536,
+    gpuLength (sphereFrame ()) == 1536, gpuLength (gpuIota (tilePixels ())) == 64,
+    gpuLength (triCover ()) == 64, gpuLength (quadFrame ()) == 16,
+    gpuLength (rowSums (triCover (), tileEdge (), tileEdge ())) == 8,
+    gpuLength (gpuIota 0) == 0, gpuLength (gpuIota 0 |> gpuMap residual) == 0,
+    litCount (gpuIota 0) == 0, total (gpuIota 0) == 0, texel (gpuIota 0, 0) == outOfFrame (),
+    texel (triCover (), 64) == outOfFrame (),
+    texel (triCover (), (0 - 1) ?: 0) == outOfFrame (), gpuDevice () == "host"
 ]
 
-(** Pin the brightness-to-character mapping and its clamps. *)
+(** paletteCase pins the whole brightness-to-character mapping and the clamps
+    that keep a computed level inside it from either side. *)
 paletteCase () = checkAll "palette" [
-    glyph 0 == " ",
-    glyph 9 == "@",
-    glyph (clampLevel (99, 0)) == "@",
-    glyph (clampLevel ((0 - 4) ?: 0, 0)) == " ",
-    clampLevel (0, 1) == 1
+    glyph 0 == " ", glyph 1 == ".", glyph 2 == ":", glyph 3 == "-", glyph 4 == "=",
+    glyph 5 == "+", glyph 6 == "*", glyph 7 == "#", glyph 8 == "%", glyph 9 == "@",
+    length (ramp ()) == 10, glyph (clampLevel (99, 0)) == "@",
+    glyph (clampLevel ((0 - 4) ?: 0, 0)) == " ", clampLevel (0, 1) == 1,
+    clampLevel (9, 0) == 9, clampLevel (10, 0) == 9, clampRange (5, 5, 5) == 5,
+    clampRange (4, 5, 5) == 5, clampRange (6, 5, 5) == 5,
+    clampRange ((0 - 7) ?: 0, (0 - 9) ?: 0, 0) == ((0 - 7) ?: 0),
+    absOf ((0 - 12) ?: 0) == 12, absOf 0 == 0, bit true == 1, bit false == 0,
+    fullBright 1 == 9, fullBright 0 == 0
 ]
 
-(** Count a scanline that matches its mirror across the real axis. *)
+(** decomposeCase pins index-to-coordinate decomposition over the whole frame:
+    colOf/rowOf then flatIndex is the identity at all 1536 pixels, and the
+    coordinate fields sum to their closed forms. *)
+decomposeCase () =
+    cols = pixelGrid () |> gpuMap columnOfPixel
+    rows = pixelGrid () |> gpuMap rowOfPixel
+    checkAll "decompose" [
+        total (pixelGrid () |> gpuMap residual) == 0, litCount (pixelGrid () |> gpuMap residual) == 0,
+        total cols == 48384, total rows == 17664, total (pixelGrid ()) == 1178880,
+        gpuLength (cols |> gpuFilter lastColumn) == 24, litCount cols == 1512, litCount rows == 1472,
+        texel (cols, 0) == 0, texel (rows, 0) == 0, texel (cols, 63) == 63, texel (rows, 63) == 0,
+        texel (cols, 64) == 0, texel (rows, 64) == 1, texel (cols, 1535) == 63, texel (rows, 1535) == 23,
+        flatIndex (0, 0, frameWidth ()) == 0, flatIndex (63, 23, frameWidth ()) == 1535,
+        flatIndex (0, 1, frameWidth ()) == 64, flatIndex (3, 2, tileEdge ()) == 19,
+        colOf (19, tileEdge ()) == 3, rowOf (19, tileEdge ()) == 2,
+        flatIndex (0, 0, 1) == 0, colOf (7, 1) == 0, rowOf (7, 1) == 7
+    ]
+
+(** edgeCase pins the edge function itself: zero along its own edge, twice the
+    signed area at the opposite vertex, and a sign that flips with winding. *)
+edgeCase () = checkAll "edge function" [
+    edgeFn (1, 1, 6, 1, 1, 1) == 0, edgeFn (1, 1, 6, 1, 6, 1) == 0,
+    edgeFn (1, 1, 6, 1, 3, 1) == 0, edgeFn (1, 1, 6, 1, 1, 6) == ((0 - 25) ?: 0),
+    edgeFn (1, 1, 1, 6, 6, 1) == 25, edgeFn (6, 1, 1, 1, 1, 6) == 25,
+    edgeFn (1, 1, 6, 1, 1, 2) == ((0 - 5) ?: 0), edgeFn (1, 1, 6, 1, 1, 0) == 5,
+    edgeFn (0, 0, 3, 0, 3, 3) == ((0 - 9) ?: 0), edgeFn (0, 0, 0, 0, 5, 5) == 0,
+    edgeFn (0, 0, 4, 0, 2, 0) == 0, edgeFn (0, 0, 4, 4, 2, 2) == 0,
+    edgeFn (0, 0, 4, 4, 0, 4) == ((0 - 16) ?: 0), edgeFn (0, 0, 4, 4, 4, 0) == 16,
+    insideTri (1, 1, 6, 1, 1, 6, 2, 2) == true, insideTri (1, 1, 6, 1, 1, 6, 0, 0) == false,
+    insideTri (1, 6, 6, 1, 1, 1, 2, 2) == false
+]
+
+(** triangleCase rasterises triangles over a tile and pins their coverage: exact
+    area, per-scanline spans, boundary inclusion, and the degenerate shapes —
+    reversed winding, off-tile, larger than the tile, and the two of zero area.
+    That last pair is where an inclusive half-plane test shows its teeth:
+    collinear vertices leave a whole scanline satisfying every edge, and
+    coincident vertices zero all three edge functions, so the whole tile passes
+    — the ambiguity a real rasteriser resolves with a fill rule. *)
+triangleCase () =
+    cover = triCover ()
+    sums = rowSums (cover, tileEdge (), tileEdge ())
+    checkAll "triangle" [
+        total cover == 21, litCount cover == 21, texel (sums, 0) == 0, texel (sums, 1) == 6,
+        texel (sums, 2) == 5, texel (sums, 3) == 4, texel (sums, 4) == 3, texel (sums, 5) == 2,
+        texel (sums, 6) == 1, texel (sums, 7) == 0,
+        total sums == 21, spanStart (cover, tileEdge (), 0, 0) == 8,
+        spanStart (cover, tileEdge (), 1, 0) == 1, spanStart (cover, tileEdge (), 6, 0) == 1,
+        texel (cover, flatIndex (6, 1, tileEdge ())) == 1, texel (cover, flatIndex (7, 1, tileEdge ())) == 0,
+        texel (cover, flatIndex (1, 6, tileEdge ())) == 1, texel (cover, flatIndex (0, 1, tileEdge ())) == 0,
+        texel (cover, flatIndex (4, 4, tileEdge ())) == 0, texel (cover, flatIndex (3, 3, tileEdge ())) == 1,
+        total (coverBuf (1, 6, 6, 1, 1, 1)) == 0, total (coverBuf (2, 2, 2, 2, 2, 2)) == 64,
+        total (coverBuf (0, 0, 3, 0, 6, 0)) == 8, total (coverBuf (20, 20, 26, 20, 20, 26)) == 0,
+        total (coverBuf (0, 0, 7, 0, 0, 7)) == 36,
+        (coverBuf ((0 - 9) ?: 0, (0 - 9) ?: 0, 40, (0 - 9) ?: 0, (0 - 9) ?: 0, 40)
+            |> gpuFold 0 addLevels) == 64
+    ]
+
+(** spanCase pins scanline filling and every degenerate span: a normal run, a
+    single pixel, a whole row, an inverted range, a row off the tile, and one
+    off-image span that draws nothing until clipped. *)
+spanCase () =
+    mid = spanBuf (3, 2, 5)
+    checkAll "span fill" [
+        total mid == 4, spanStart (mid, tileEdge (), 3, 0) == 2,
+        texel (mid, flatIndex (2, 3, tileEdge ())) == 1, texel (mid, flatIndex (5, 3, tileEdge ())) == 1,
+        texel (mid, flatIndex (1, 3, tileEdge ())) == 0, texel (mid, flatIndex (6, 3, tileEdge ())) == 0,
+        texel (mid, flatIndex (2, 2, tileEdge ())) == 0, texel (mid, flatIndex (2, 4, tileEdge ())) == 0,
+        total (spanBuf (0, 0, 0)) == 1, total (spanBuf (7, 7, 7)) == 1, total (spanBuf (0, 0, 7)) == 8,
+        total (spanBuf (4, 5, 2)) == 0, total (spanBuf (8, 0, 7)) == 0,
+        total (spanBuf ((0 - 1) ?: 0, 0, 7)) == 0, total (spanBuf (2, (0 - 4) ?: 0, (0 - 1) ?: 0)) == 0,
+        total (clampedSpan (2, (0 - 4) ?: 0, (0 - 1) ?: 0)) == 1,
+        total (clampedSpan (5, (0 - 4) ?: 0, 2)) == 3, total (clampedSpan (5, 6, 99)) == 2,
+        total (spanBuf (1, (0 - 9) ?: 0, 99)) == 8,
+        texel (clampedSpan (2, (0 - 4) ?: 0, (0 - 1) ?: 0), flatIndex (0, 2, tileEdge ())) == 1,
+        rowText (spanBuf (3, 2, 5) |> gpuMap fullBright, tileEdge (), 3) == "  @@@@  ",
+        rowText (spanBuf (3, 2, 5) |> gpuMap fullBright, tileEdge (), 2) == "        "
+    ]
+
+(** saturateCase pins channel arithmetic at both rails: nothing wraps, nothing
+    leaves [0, 255], and the same clamps hold elementwise over buffers. *)
+saturateCase () =
+    base = toGpu [200, 0, 128, 255, 40]
+    addend = toGpu [100, 0, 200, 1, 10]
+    checkAll "saturation" [
+        satAdd (1, 1) == 2, satAdd (0, 0) == 0, satAdd (255, 0) == 255,
+        satAdd (254, 1) == 255, satAdd (255, 1) == 255, satAdd (255, 255) == 255,
+        satAdd ((0 - 50) ?: 0, 10) == 0, satSub (255, 255) == 0, satSub (0, 1) == 0,
+        satSub (255, 1) == 254, satSub (10, 40) == 0, satMul (255, 255) == 255,
+        satMul (0, 255) == 0, satMul (255, 0) == 0, satMul (128, 200) == 100, satMul (255, 1) == 1,
+        texel (gpuZipWith (base, addend, satAdd), 0) == 255, texel (gpuZipWith (base, addend, satAdd), 1) == 0,
+        texel (gpuZipWith (base, addend, satAdd), 4) == 50,
+        total (gpuZipWith (base, addend, satAdd)) == 815, total (gpuZipWith (base, addend, satSub)) == 384,
+        total (gpuZipWith (base, addend, satMul)) == 180, litCount (gpuZipWith (base, addend, satAdd)) == 4
+    ]
+
+(** samplingCase pins edge-clamp addressing and nearest-neighbour magnification
+    — every magnified texel of it — plus the 1x1, single-row, single-column and
+    empty degenerate images. *)
+samplingCase () =
+    tex = toGpu [1, 2, 3, 4]
+    big = upscale2 (tex, 2, 2)
+    checkAll "sampling" [
+        sampleClamped (tex, 2, 2, 0, 0) == 1, sampleClamped (tex, 2, 2, 1, 0) == 2,
+        sampleClamped (tex, 2, 2, 0, 1) == 3, sampleClamped (tex, 2, 2, 1, 1) == 4,
+        sampleClamped (tex, 2, 2, (0 - 5) ?: 0, (0 - 5) ?: 0) == 1,
+        sampleClamped (tex, 2, 2, 9, 9) == 4, sampleClamped (tex, 2, 2, 9, 0) == 2,
+        sampleClamped (tex, 2, 2, 0, 9) == 3, sampleClamped (tex, 2, 2, (0 - 1) ?: 0, 9) == 3,
+        sampleClamped (toGpu [7], 1, 1, 5, 5) == 7, sampleClamped (toGpu [5, 6, 7], 3, 1, 2, 4) == 7,
+        sampleClamped (toGpu [5, 6, 7], 1, 3, 4, 2) == 7, gpuLength big == 16,
+        texel (big, 0) == 1, texel (big, 1) == 1, texel (big, 2) == 2, texel (big, 3) == 2,
+        texel (big, 4) == 1, texel (big, 5) == 1, texel (big, 6) == 2, texel (big, 7) == 2,
+        texel (big, 8) == 3, texel (big, 9) == 3, texel (big, 10) == 4, texel (big, 11) == 4,
+        texel (big, 12) == 3, texel (big, 13) == 3, texel (big, 14) == 4, texel (big, 15) == 4,
+        total big == 40, gpuLength (upscale2 (toGpu [7], 1, 1)) == 4,
+        total (upscale2 (toGpu [7], 1, 1)) == 28, gpuLength (upscale2 (gpuIota 0, 0, 0)) == 0
+    ]
+
+(** gatherCase pins row and column addressing over a non-square raster:
+    transpose by gather alone, its involution, the reductions it turns into each
+    other, and a prefix scan read at each scanline boundary. *)
+gatherCase () =
+    src = toGpu [1, 2, 3, 4, 5, 6]
+    flipped = transposeOf (src, 3, 2)
+    running = triCover () |> gpuScan 0 addLevels
+    checkAll "gather" [
+        gpuLength flipped == 6, texel (flipped, 0) == 1, texel (flipped, 1) == 4,
+        texel (flipped, 2) == 2, texel (flipped, 3) == 5, texel (flipped, 4) == 3, texel (flipped, 5) == 6,
+        total (gpuZipWith (transposeOf (flipped, 2, 3), src, satSub)) == 0,
+        texel (rowSums (src, 3, 2), 0) == 6, texel (rowSums (src, 3, 2), 1) == 15,
+        texel (rowSums (flipped, 2, 3), 0) == 5, texel (rowSums (flipped, 2, 3), 1) == 7,
+        texel (rowSums (flipped, 2, 3), 2) == 9,
+        rowTotal (src, 3, 0, 0) == 6, rowTotal (src, 6, 0, 0) == 21, rowTotal (src, 1, 4, 0) == 5,
+        texel (transposeOf (toGpu [9], 1, 1), 0) == 9, texel (running, 7) == 0, texel (running, 15) == 6,
+        texel (running, 23) == 11, texel (running, 63) == 21
+    ]
+
+(** quadCase is the whole small pipeline pinned pixel by pixel: two kernels over
+    one index grid, composited, read back at all sixteen positions and rendered
+    as text — nothing here is a spot check. *)
+quadCase () =
+    quad = quadFrame ()
+    checkAll "quad pipeline" [
+        gpuLength quad == 16, texel (quad, 0) == 9, texel (quad, 1) == 9,
+        texel (quad, 2) == 9, texel (quad, 3) == 9, texel (quad, 4) == 9, texel (quad, 5) == 9,
+        texel (quad, 6) == 9, texel (quad, 7) == 6, texel (quad, 8) == 9, texel (quad, 9) == 9,
+        texel (quad, 10) == 4, texel (quad, 11) == 6, texel (quad, 12) == 9, texel (quad, 13) == 2,
+        texel (quad, 14) == 4, texel (quad, 15) == 6,
+        total quad == 118, gpuLength (quad |> gpuFilter interiorPixel) == 10, litCount quad == 16,
+        rowText (quad, quadEdge (), 0) == "@@@@", rowText (quad, quadEdge (), 1) == "@@@*",
+        rowText (quad, quadEdge (), 2) == "@@=*", rowText (quad, quadEdge (), 3) == "@:=*",
+        frameText (quad, quadEdge (), 0) == "", frameText (gpuIota 0, 0, 0) == "",
+        rowText (quad, 0, 0) == "", texel (gpuIota (quadPixels ()) |> gpuMap gradientPixel, 3) == 6,
+        texel (gpuIota (quadPixels ()) |> gpuMap wedgePixel, 3) == 9,
+        texel (gpuIota (quadPixels ()) |> gpuMap wedgePixel, 15) == 0
+    ]
+
+(** mirrorRow counts a scanline matching its mirror across the real axis, and
+    symmetryCase pins that the fractal frame is symmetric about that axis. *)
 mirrorRow (pixels, acc, y) = match row (pixels, y) == row (pixels, ((frameHeight () - 1) ?: 0) - y ?: 0)
     true => (acc + 1) ?: acc
     false => acc
-
-(** Pin that the fractal is mirror-symmetric about the real axis — a
-    whole-frame property only a correct kernel produces. *)
 symmetryCase () =
     mandel = mandelFrame ()
+    sums = rowSums (mandel, frameWidth (), frameHeight ())
     mirrored = range (0, frameHeight ()) |> fold 0 (\(acc, y) => mirrorRow (mandel, acc, y))
     checkAll "symmetry" [
-        mirrored == 24,
-        gpuLength (mandel |> gpuFilter interiorPixel) == 344
+        mirrored == 24, gpuLength (mandel |> gpuFilter interiorPixel) == 344,
+        litCount mandel == 1212, total mandel == 4624,
+        row (mandel, 0) == row (mandel, 23), row (mandel, 11) == row (mandel, 12),
+        texel (sums, 11) == texel (sums, 12),
+        spanStart (mandel, frameWidth (), 0, 0) == 24, texel (mandel, 0) == 0, texel (mandel, 1535) == 0
     ]
 
-(** Pin the sphere: a lit silhouette, a dark background, and a brightest
-    cell on the side the light comes from. *)
+(** shadingCase pins the sphere: a lit silhouette, a dark background, a brightest
+    cell on the lit side, and the integer square root that recovers the normal. *)
 shadingCase () =
     sphere = sphereFrame ()
+    sums = rowSums (sphere, frameWidth (), frameHeight ())
     checkAll "shading" [
-        (gpuGet (sphere, 0) ?: 9) == 0,
-        (gpuGet (sphere, 1535) ?: 9) == 0,
-        (gpuGet (sphere, ((5 * frameWidth ()) ?: 0) + 19 ?: 0) ?: 0) == 9,
-        gpuLength (sphere |> gpuFilter litPixel) == 764,
-        (sphere |> gpuFold 0 addLevels) == 2928
+        texel (sphere, 0) == 0, texel (sphere, 1535) == 0, texel (sphere, flatIndex (19, 5, frameWidth ())) == 9,
+        texel (sphere, flatIndex (31, 0, frameWidth ())) == 0,
+        texel (sphere, flatIndex (63, 12, frameWidth ())) == 0, litCount sphere == 764,
+        gpuLength (sphere |> gpuFilter interiorPixel) == 1, total sphere == 2928,
+        texel (sums, 0) == 0, texel (sums, 23) == 0,
+        spanStart (sphere, frameWidth (), 0, 0) == 64, spanStart (sphere, frameWidth (), 12, 0) == 10,
+        isqrt 0 == 0, isqrt 1 == 1, isqrt 16 == 4, isqrt 17 == 4,
+        isqrt 4096 == 64, isqrt ((0 - 9) ?: 0) == 0
     ]
 
-(** Pin that one elementwise pass layers sphere over fractal. *)
+(** compositeCase pins that one elementwise pass layers sphere over fractal. The
+    silhouette falls entirely inside what the fractal drew, so the composite
+    lights exactly the fractal's cells while its brightness total drops — the
+    foreground is darker than what it hides. *)
 compositeCase () =
     mandel = mandelFrame ()
     sphere = sphereFrame ()
     composite = gpuZipWith (mandel, sphere, overLayer)
     checkAll "composite" [
-        gpuLength composite == 1536,
-        (gpuGet (composite, 0) ?: 9) == (gpuGet (mandel, 0) ?: 8),
-        (gpuGet (composite, ((5 * frameWidth ()) ?: 0) + 19 ?: 0) ?: 0) == 9,
-        gpuLength (composite |> gpuFilter litPixel) ==
-            gpuLength (gpuZipWith (mandel, sphere, overLayer) |> gpuFilter litPixel)
+        gpuLength composite == 1536, texel (composite, 0) == texel (mandel, 0),
+        texel (composite, flatIndex (19, 5, frameWidth ())) == 9, litCount composite == 1212,
+        litCount composite == litCount mandel, total composite == 3860,
+        overLayer (3, 0) == 3, overLayer (0, 7) == 7, overLayer (0, 0) == 0, overLayer (4, 4) == 4,
+        gpuLength (gpuZipWith (mandel, gpuIota 0, overLayer)) == 0,
+        gpuLength (gpuZipWith (gpuIota (quadPixels ()), sphere, overLayer)) == 16
     ]
 
 print (gallery ())
 
 test ("one kernel dispatch covers the whole pixel grid", dispatchCase)
 test ("brightness levels map onto the palette", paletteCase)
+test ("flat indices decompose into raster coordinates", decomposeCase)
+test ("edge functions are signed areas about their edge", edgeCase)
+test ("triangles rasterise to exact coverage and spans", triangleCase)
+test ("spans fill scanlines and clip at the tile edge", spanCase)
+test ("channel arithmetic saturates at both rails", saturateCase)
+test ("clamped addressing samples and magnifies", samplingCase)
+test ("gather transposes rows and columns", gatherCase)
+test ("a small pipeline is correct at every pixel", quadCase)
 test ("the fractal kernel renders a symmetric frame", symmetryCase)
 test ("the sphere kernel shades a lit silhouette", shadingCase)
 test ("zipWith composites two rendered layers", compositeCase)

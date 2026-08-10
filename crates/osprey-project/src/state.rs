@@ -302,6 +302,7 @@ impl<'a> Inspector<'a> {
                 self.named(named_arguments, in_owner_arm, *perform_position);
             }
             Expr::Handler {
+                stage: _,
                 effect,
                 arms,
                 body,

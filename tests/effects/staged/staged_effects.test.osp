@@ -1,0 +1,85 @@
+/// Staged effects: an effect declared `static` is answered by the compiler and
+/// leaves nothing behind ([STAGE-DECL], [STAGE-RESIDUE],
+/// docs/specs/0035-StagedEffects.md). This suite pins the four consequences —
+/// compile-time answers, a GPU kernel that performs an effect, one function
+/// serving both stages, and a dynamic effect still behaving exactly as before.
+static effect Tile {
+    /// The tile edge every kernel scales by; answered at compile time.
+    size: fn() -> int
+}
+
+/// A second static effect, to prove discharge is per effect and per operation.
+static effect Alloc {
+    /// Bytes of scratch a stage requests; answered at compile time.
+    scratch: fn(int) -> int
+}
+
+/// An ordinary runtime effect, unchanged by staging ([STAGE-COMPAT]).
+effect Log {
+    /// Record one line through whichever handler is active.
+    write: fn(string) -> Unit
+}
+
+/// A helper reached from a static region: discharge follows calls, not syntax.
+fn tiled(n) = (n * perform Tile.size()) ?: 0
+
+/// A helper reached from a dynamic region, for the shared-callee case.
+fn logged(n) = {
+    let next = (n + 1) ?: n
+    perform Log.write("step ${n} -> ${next}")
+    next
+}
+
+/// ONE definition applied in both worlds — the shared function of
+/// [STAGE-FALSIFY], with no stage annotation and no stage inference.
+fn twice(f, x) = f(f(x))
+
+/// Static handlers answer through helpers, nest, and compose with each other.
+fn staticDischargeCase() = {
+    let scaled = handle static Tile
+        size => 8
+    in tiled(2)
+    let both = handle static Alloc
+        scratch bytes => (bytes * 4) ?: 0
+    in handle static Tile
+        size => 3
+    in "${tiled(5)}/${perform Alloc.scratch(16)}"
+    checkAll("static handlers answer at compile time", [
+        scaled == 16,
+        both == "15/64"
+    ])
+}
+
+/// The same `twice`, once with a compile-time callback and once with a runtime
+/// one. Implements the [STAGE-FALSIFY] gate.
+fn sharedAcrossStagesCase() = {
+    mut transcript = ""
+    let early = handle static Tile
+        size => 8
+    in twice(tiled, 2)
+    let late = handle Log
+        write message => { transcript = "${transcript}${message};" }
+    in twice(logged, 0)
+    checkAll("one function serves both stages", [
+        early == 128,
+        late == 2,
+        transcript == "step 0 -> 1;step 1 -> 2;"
+    ])
+}
+
+/// A kernel that performs an effect. The purity gate
+/// ([GPU-KERNEL-PURE]) sees an empty row because discharge ran first —
+/// [STAGE-GPU-LEGAL] needs no separate check.
+fn stagedKernelCase() = {
+    let scaled = handle static Tile
+        size => 3
+    in toGpu([1, 2, 3, 4]) |> gpuMap(tiled)
+    checkAll("a static effect is legal inside a GPU kernel", [
+        gpuFold(scaled, 0, fn(a, v) => (a + v) ?: a) == 30,
+        gpuLength(scaled) == 4
+    ])
+}
+
+test("static handlers are discharged before the program runs", staticDischargeCase)
+test("one function serves the static and dynamic stages", sharedAcrossStagesCase)
+test("a GPU kernel may perform a static effect", stagedKernelCase)

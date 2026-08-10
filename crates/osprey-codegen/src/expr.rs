@@ -76,6 +76,7 @@ pub(crate) fn gen_expr(cg: &mut Codegen, expr: &Expr) -> Result<Value> {
             ..
         } => crate::effects::gen_perform(cg, effect, operation, arguments, *position),
         Expr::Handler {
+            stage: _,
             effect,
             arms,
             body,
@@ -945,21 +946,33 @@ pub(crate) fn apply_lambda_values(
             cg.bind(p.name.clone(), v);
         }
         let value = gen_expr(cg, body)?;
-        let value = match sig {
-            Some((_, _, Some(inner), _)) if value.result_inner.is_some() => {
-                crate::result::repack_to_inner(cg, value, *inner)?
-            }
-            Some((_, _, Some(inner), _)) => crate::result::make_ok(cg, value, *inner)?,
-            Some((_, ret, None, _)) => crate::cast::coerce_to(cg, value, *ret)?,
-            None => value,
-        };
-        Ok(match sig.and_then(|signature| signature.3) {
-            Some(fiber) => fiber.restore(value),
-            None => value,
-        })
+        fit_lambda_return(cg, value, sig)
     })();
     cg.pop_scope();
     lowered
+}
+
+/// Adapt a lambda body's value to the lambda's own inferred signature — the
+/// shared tail of beta-reduction ([`apply_lambda_values`]) and kernel
+/// extraction ([`crate::gpu_kernel`]), so the two lowerings of one lambda
+/// produce the same value by construction [GPU-KERNEL-EXTRACT].
+pub(crate) fn fit_lambda_return(
+    cg: &mut Codegen,
+    value: Value,
+    sig: Option<&FnSig>,
+) -> Result<Value> {
+    let value = match sig {
+        Some((_, _, Some(inner), _)) if value.result_inner.is_some() => {
+            crate::result::repack_to_inner(cg, value, *inner)?
+        }
+        Some((_, _, Some(inner), _)) => crate::result::make_ok(cg, value, *inner)?,
+        Some((_, ret, None, _)) => crate::cast::coerce_to(cg, value, *ret)?,
+        None => value,
+    };
+    Ok(match sig.and_then(|signature| signature.3) {
+        Some(fiber) => fiber.restore(value),
+        None => value,
+    })
 }
 
 /// A call to a user-defined or runtime function. Parameter types come from

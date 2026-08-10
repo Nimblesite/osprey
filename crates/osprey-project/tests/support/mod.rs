@@ -78,6 +78,7 @@ pub(crate) fn state_module(
         item(
             Visibility::Exported,
             Stmt::Effect {
+                stage: osprey_ast::Stage::Dynamic,
                 name: "CounterFx".to_string(),
                 type_params: Vec::new(),
                 operations: vec![EffectOperation {
@@ -107,6 +108,7 @@ pub(crate) fn state_module(
 
 pub(crate) fn handler(effect: &str, arm_body: Expr) -> Expr {
     Expr::Handler {
+        stage: osprey_ast::Stage::Dynamic,
         effect: effect.to_string(),
         arms: vec![HandlerArm {
             operation: "next".to_string(),

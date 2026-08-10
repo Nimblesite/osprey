@@ -1,0 +1,1 @@
+2:4: static handler arm `Tile.size` resumes; static handlers cannot capture a continuation

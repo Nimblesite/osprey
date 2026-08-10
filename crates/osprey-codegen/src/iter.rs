@@ -40,6 +40,10 @@ pub(crate) enum Callback {
     /// access like `cfg.processor`) — already evaluated to a handle operand,
     /// called through its cell per element.
     Value(String, FnSig),
+    /// A kernel lifted to a module-scope function with the flat scalar ABI
+    /// [GPU-KERNEL-EXTRACT] — called by symbol, with the loop-invariant free
+    /// variables re-passed as leading arguments at every element.
+    Extracted(crate::gpu_kernel::Extracted),
 }
 
 /// Resolve an iterator callback argument to a [`Callback`]. A materialized
@@ -112,6 +116,7 @@ pub(crate) fn invoke(cg: &mut Codegen, cb: &Callback, args: Vec<Value>) -> Resul
             let typed = crate::closure::coerce_typed_args(cg, sig, args)?;
             Ok(crate::closure::cell_call(cg, operand, sig, &typed))
         }
+        Callback::Extracted(kernel) => crate::gpu_kernel::extracted_call(cg, kernel, args),
     }
 }
 

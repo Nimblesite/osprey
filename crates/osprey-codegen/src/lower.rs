@@ -52,7 +52,19 @@ pub fn compile_program_coverage(program: &Program) -> Result<String> {
     )
 }
 
+/// `options` with the GPU kernel lowering resolved from the environment. The
+/// lowering is an environment switch so the corpus harness can compile the same
+/// programs both ways and require identical output [GPU-KERNEL-EXTRACT]; an
+/// unrecognised value is an error, never a silent fallback.
+fn with_kernel_mode(options: CodegenOptions) -> Result<CodegenOptions> {
+    Ok(CodegenOptions {
+        gpu_kernels: crate::gpu_kernel::mode_from_env()?,
+        ..options
+    })
+}
+
 fn compile_program_with_options(program: &Program, options: CodegenOptions) -> Result<String> {
+    let options = with_kernel_mode(options)?;
     let prog = osprey_types::infer_program(program);
     let mut cg = Codegen::with_options(prog, options);
     // Seed the coverage denominator from the source, not from what lowering

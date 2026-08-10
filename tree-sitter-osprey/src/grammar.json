@@ -1241,6 +1241,10 @@
         }
       ]
     },
+    "static_stage": {
+      "type": "STRING",
+      "value": "static"
+    },
     "effect_declaration": {
       "type": "SEQ",
       "members": [
@@ -1250,6 +1254,22 @@
             {
               "type": "SYMBOL",
               "name": "doc_comment"
+            },
+            {
+              "type": "BLANK"
+            }
+          ]
+        },
+        {
+          "type": "CHOICE",
+          "members": [
+            {
+              "type": "FIELD",
+              "name": "stage",
+              "content": {
+                "type": "SYMBOL",
+                "name": "static_stage"
+              }
             },
             {
               "type": "BLANK"
@@ -1862,6 +1882,22 @@
           {
             "type": "STRING",
             "value": "handle"
+          },
+          {
+            "type": "CHOICE",
+            "members": [
+              {
+                "type": "FIELD",
+                "name": "stage",
+                "content": {
+                  "type": "SYMBOL",
+                  "name": "static_stage"
+                }
+              },
+              {
+                "type": "BLANK"
+              }
+            ]
           },
           {
             "type": "FIELD",

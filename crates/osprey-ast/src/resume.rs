@@ -245,6 +245,7 @@ mod tests {
         assert!(contains_resume(&block));
         // A nested handler's resume belongs to the nested handler.
         let nested = Expr::Handler {
+            stage: crate::Stage::Dynamic,
             effect: "E".into(),
             arms: vec![crate::HandlerArm {
                 operation: "op".into(),

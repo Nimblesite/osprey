@@ -274,6 +274,16 @@
           }
         ]
       },
+      "stage": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "static_stage",
+            "named": true
+          }
+        ]
+      },
       "type_parameters": {
         "multiple": false,
         "required": false,
@@ -937,6 +947,16 @@
           },
           {
             "type": "qualified_path",
+            "named": true
+          }
+        ]
+      },
+      "stage": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "static_stage",
             "named": true
           }
         ]
@@ -3227,6 +3247,10 @@
   {
     "type": "state",
     "named": false
+  },
+  {
+    "type": "static_stage",
+    "named": true
   },
   {
     "type": "string",

@@ -630,6 +630,7 @@ impl Analyzer<'_> {
                 arms,
                 body,
                 position,
+                ..
             } => {
                 // Arm bodies run outside this handler's discharge. In
                 // particular, a same-effect arm is diagnosed separately rather
@@ -2315,6 +2316,7 @@ fn validate_handler_arms(
         arms,
         body,
         position,
+        ..
     } = expression
     {
         let handler_arguments =

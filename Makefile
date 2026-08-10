@@ -7,7 +7,7 @@
 # --run`) and TypeScript sub-projects (vscode-extension, webcompiler, website).
 # =============================================================================
 
-.PHONY: build test language-test lint fmt clean ci setup run install bench partial-bench wasm wasm-site wasm-serve vsix-rebuild-reinstall bank bank-web bank-test bank-e2e hawk gpu-demo graphics _test_gc_stack_root \
+.PHONY: build test language-test lint fmt clean ci setup run install bench partial-bench wasm wasm-site wasm-serve vsix-rebuild-reinstall bank bank-web bank-test bank-e2e hawk gpu-demo graphics graphics-shader _test_gc_stack_root \
 	_rebuild-install-vsix _vsix_clean _vsix_build _vsix_bundle _vsix_package _vsix_install
 
 # ---------------------------------------------------------------------------
@@ -672,21 +672,96 @@ gpu-demo: build
 	@echo "==> rendering gpu* kernel demo on the host backend (CPU)"
 	./$(BIN) tests/core/gpu/raster.test.$(if $(filter ml,$(FLAVOR)),ospml,osp) --run
 
-## graphics: Build the macOS graphics bridge and run the animated Metal demo
-#            Osprey drives the scene; the GPU shades every pixel. macOS only.
+## graphics: Build the platform graphics bridge and run the animated GPU demo
+#            Osprey drives the scene; the GPU shades every pixel. macOS renders
+#            it through Metal, Windows through Direct3D 12 — and the Osprey
+#            sources are the same files on both, which is the entire point.
+#            SCENE=kali|opal|character selects one of the three scenes; every
+#            one is a one-file project sharing examples/graphics/base/base.osp
+#            and one named fragment entry in the platform shader library.
+#            GFX_WARN overrides the C warning set. See $(GFX_DIR)/README.md.
 GFX_DIR := examples/graphics
+GFX_WARN ?= -Wall -Werror
+SCENE ?= kali
+
+ifeq ($(OS),Windows_NT)
+# Direct3D 12. Built with the same MinGW UCRT64 toolchain that builds the C
+# runtime on Windows, so `// @link: ospgfx` in base/base.osp resolves the import
+# library below exactly as it resolves the dylib on macOS.
+#
+# UNVERIFIED. This branch, the two C files it compiles and base.hlsl were all
+# written on a macOS machine with no Windows toolchain and have never been
+# built or run. $(GFX_DIR)/README.md says what would establish that they work.
+GFX_SHADER := $(GFX_DIR)/base.hlsl
+GFX_SRC    := $(GFX_DIR)/ospgfx_d3d12.c $(GFX_DIR)/ospgfx_d3d12_setup.c
+GFX_DLL    := $(GFX_DIR)/ospgfx.dll
+GFX_LIB    := $(GFX_DIR)/libospgfx.dll.a
+GFX_SYSLIB := -ld3d12 -ldxgi -ld3dcompiler -ldxguid -luser32
+# Every entry point the run-time compiler will be asked for, with its target
+# profile. `make graphics-shader` compiles all four so a typo in one scene's
+# fragment cannot hide behind another scene running fine.
+GFX_ENTRIES := osp_vertex:vs_5_0 osp_fragment:ps_5_0 \
+	osp_fragment_opal:ps_5_0 osp_fragment_character:ps_5_0
+
+ifeq ($(MSYSTEM),)
+# Native PowerShell has neither bash for the recipes below nor a MinGW cc.
+graphics graphics-shader:
+	@Write-Host "make graphics needs the MSYS2 UCRT64 shell -- see $(GFX_DIR)/README.md"
+else
+$(GFX_LIB): $(GFX_SRC) $(GFX_DIR)/ospgfx_d3d12.h
+	@echo "==> building Osprey -> Direct3D 12 graphics bridge"
+	$(CC) -shared -O2 $(GFX_WARN) -o $(GFX_DLL) $(GFX_SRC) \
+		-Wl,--out-implib,$(GFX_LIB) $(GFX_SYSLIB)
+
+# The bridge compiles the shader at run time, so an error in it would otherwise
+# only surface as a window that refuses to open. fxc is the same compiler
+# D3DCompile is, so checking here checks exactly what the bridge will do; the
+# Windows SDK ships it, but not on PATH, so the check skips when it is absent.
+graphics-shader:
+	@if command -v fxc.exe >/dev/null 2>&1; then \
+		for entry in $(GFX_ENTRIES); do \
+			echo "==> checking $(GFX_SHADER) $${entry%%:*}"; \
+			fxc.exe -nologo -T $${entry##*:} -E $${entry%%:*} \
+				-Fo $(GFX_DIR)/.shadercheck.cso $(GFX_SHADER) || exit 1; \
+		done; \
+		$(RM) $(GFX_DIR)/.shadercheck.cso; \
+	else \
+		echo "==> skipping shader check (no fxc.exe on PATH)"; \
+	fi
+
+# The DLL lives beside its source rather than beside the compiled scene, so the
+# loader is pointed at it for the length of the run.
+graphics: build $(GFX_LIB) graphics-shader
+	@echo "==> launching Osprey graphics demo: $(SCENE) (close the window to exit)"
+	PATH="$(CURDIR)/$(GFX_DIR):$$PATH" ./$(BIN) $(GFX_DIR)/$(SCENE) --run
+endif
+
+else
 GFX_LIB := $(GFX_DIR)/libospgfx.dylib
+GFX_SHADER := $(GFX_DIR)/base.metal
 
 $(GFX_LIB): $(GFX_DIR)/ospgfx.m
 	@echo "==> building Osprey -> macOS graphics bridge"
-	clang -dynamiclib -fobjc-arc -O2 -Wall -Werror \
+	clang -dynamiclib -fobjc-arc -O2 $(GFX_WARN) \
 		-install_name $(CURDIR)/$(GFX_LIB) \
 		-framework Cocoa -framework Metal -framework QuartzCore \
 		-o $(GFX_LIB) $(GFX_DIR)/ospgfx.m
 
-graphics: build $(GFX_LIB)
-	@echo "==> launching Osprey graphics demo (close the window to exit)"
-	./$(BIN) $(GFX_DIR)/scene.osp --run
+# The bridge compiles the shader at run time, so a syntax error in it would
+# otherwise only surface as a window that refuses to open. Check it up front
+# when the Metal toolchain is installed, and skip quietly when it is not.
+graphics-shader:
+	@if xcrun -sdk macosx --find metal >/dev/null 2>&1; then \
+		echo "==> checking $(GFX_SHADER)"; \
+		xcrun -sdk macosx metal -c $(GFX_SHADER) -o /dev/null; \
+	else \
+		echo "==> skipping shader check (no Metal toolchain)"; \
+	fi
+
+graphics: build $(GFX_LIB) graphics-shader
+	@echo "==> launching Osprey graphics demo: $(SCENE) (close the window to exit)"
+	./$(BIN) $(GFX_DIR)/$(SCENE) --run
+endif
 
 ## run: Compile and run an Osprey file (usage: make run FILE=<path>)
 run: build

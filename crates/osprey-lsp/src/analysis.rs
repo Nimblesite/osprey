@@ -448,6 +448,7 @@ fn sym_of(stmt: &Stmt) -> Option<SymbolInfo> {
             *position,
         )),
         Stmt::Effect {
+            stage: osprey_ast::Stage::Dynamic,
             name,
             type_params,
             doc,
@@ -1013,6 +1014,7 @@ mod tests {
                 position: None,
             },
             Expr::Handler {
+                stage: osprey_ast::Stage::Dynamic,
                 effect: "E".into(),
                 arms: vec![HandlerArm {
                     operation: "op".into(),

@@ -56,6 +56,7 @@ impl Lowerer<'_> {
                 arms: self.lower_arms(node),
             },
             "handler_expression" => Expr::Handler {
+                stage: self.stage(node),
                 effect: self.field_text(node, "effect"),
                 arms: self.lower_handler_arms(node),
                 body: Box::new(self.lower_expr_field(node, "body")),

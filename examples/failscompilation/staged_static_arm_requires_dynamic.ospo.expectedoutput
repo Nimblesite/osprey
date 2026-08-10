@@ -1,0 +1,1 @@
+2:4: static handler arm `Tile.size` requires dynamic effect `Log.write`; static handler arms may require only static effects

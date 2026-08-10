@@ -156,6 +156,7 @@ impl Checker {
                 arms,
                 body,
                 position,
+                ..
             } => self.infer_handler(effect, arms, body, *position, env),
             other => self.infer_expr(other, env),
         }

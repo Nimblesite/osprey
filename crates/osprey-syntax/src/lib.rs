@@ -102,9 +102,54 @@ pub fn parse_program(source: &str) -> Parsed {
 /// Implements [FLAVOR-FRONTEND], [FLAVOR-BOUNDARY].
 #[must_use]
 pub fn parse_program_with_flavor(source: &str, flavor: Flavor) -> Parsed {
-    match flavor {
+    let parsed = match flavor {
         Flavor::Default => default::parse(source),
         Flavor::Ml => ml::parse_ml(source),
+    };
+    discharge_static_handlers(parsed)
+}
+
+/// Every function's dependency set: the static-effect operations it requires,
+/// transitively, minus what it answers itself. Implements
+/// [STAGE-SIGNALS-DIRTY] (docs/specs/0035-StagedEffects.md).
+///
+/// Computed on the program **before** static discharge, because discharge is
+/// what makes those reads free and this is what makes them visible. Every
+/// other entry point returns a discharged program, in which the dependency set
+/// no longer exists to be read.
+#[must_use]
+pub fn dependency_sets(
+    source: &str,
+    flavor: Flavor,
+) -> std::collections::BTreeMap<String, Vec<String>> {
+    let parsed = match flavor {
+        Flavor::Default => default::parse(source),
+        Flavor::Ml => ml::parse_ml(source),
+    };
+    osprey_ast::stage::dependencies(&parsed.program)
+}
+
+/// Answer every `static` effect before the canonical program leaves the flavor
+/// boundary, so no later phase — the checker, the GPU purity gate, codegen, the
+/// language server — ever sees a compile-time effect. A static handler is a
+/// lowering pass, and this is where lowering belongs. Implements [STAGE-LOWER],
+/// [STAGE-LOWER-ORDER-PHASE] (docs/specs/0035-StagedEffects.md).
+///
+/// A program with no `static` effect is returned untouched ([STAGE-COMPAT]);
+/// when a staging rule is violated the *undischarged* program is kept so
+/// tolerant consumers (outline, test discovery) still see declarations, and the
+/// violations join the syntax errors.
+fn discharge_static_handlers(parsed: Parsed) -> Parsed {
+    match osprey_ast::stage::discharge(&parsed.program) {
+        Ok(program) => Parsed { program, ..parsed },
+        Err(violations) => {
+            let mut errors = parsed.errors;
+            errors.extend(violations.into_iter().map(|violation| SyntaxError {
+                message: violation.message,
+                position: violation.position.unwrap_or_default(),
+            }));
+            Parsed { errors, ..parsed }
+        }
     }
 }
 
