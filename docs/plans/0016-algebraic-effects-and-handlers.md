@@ -24,6 +24,15 @@ and effect loss through one curried ML lowering path
 continuation answers leaking under ARC
 ([#185](https://github.com/Nimblesite/osprey/issues/185)).
 
+**Ten open effect defects share three root causes**, sequenced together in
+umbrella [#200](https://github.com/Nimblesite/osprey/issues/200) (which parents
+#182, #183, #185; #177, #179; #184, #178, #156; #180; #186): the operation
+mailbox is fixed-width and untyped (`effects_runtime.c` `int64_t args[16]`),
+resumption mode is scanned per *handler* rather than per arm
+(`codegen/effects.rs` `arms.iter().any(contains_resume)`), and the handler set
+lives on the thread's stack instead of travelling with the continuation. Fix
+each once and the ten close in four steps — do not schedule them individually.
+
 ## Summary
 
 Osprey supports `effect` declarations, `perform`, and `handle … in` in both
