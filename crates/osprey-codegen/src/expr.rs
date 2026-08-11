@@ -268,7 +268,10 @@ fn gen_arith(cg: &mut Codegen, op: &str, l: Value, r: Value) -> Result<Value> {
             has(&l) || has(&r)
         };
         let list_like = |v: &Value| {
-            v.osp_ty.as_deref() == Some(crate::collections::LIST_OWNER) || crate::listlit::is_lit(v)
+            v.osp_ty
+                .as_deref()
+                .is_some_and(crate::collections::is_list_owner)
+                || crate::listlit::is_lit(v)
         };
         if list_like(&l) || list_like(&r) {
             let l = crate::listlit::to_runtime_list(cg, l);
@@ -961,6 +964,9 @@ pub(crate) fn fit_lambda_return(
     value: Value,
     sig: Option<&FnSig>,
 ) -> Result<Value> {
+    // A lambda's return slot is typed by its signature, so a list literal
+    // returned through a cell loses the flat tag [`crate::listlit::escaping`].
+    let value = crate::listlit::escaping(cg, value);
     let value = match sig {
         Some((_, _, Some(inner), _)) if value.result_inner.is_some() => {
             crate::result::repack_to_inner(cg, value, *inner)?
@@ -1016,6 +1022,12 @@ pub(crate) fn call_with_values(cg: &mut Codegen, name: &str, args: Vec<Value>) -
         return v;
     }
     // Coerce each argument to the declared parameter type where known.
+    // A parameter slot is typed, not tagged: a list literal handed to a real
+    // (non-inlined) callee arrives as `List<T>` [`crate::listlit::escaping`].
+    let args: Vec<Value> = args
+        .into_iter()
+        .map(|a| crate::listlit::escaping(cg, a))
+        .collect();
     let coerced = match cg.fn_param_abis(name) {
         Some(ptys) if ptys.len() == args.len() => args
             .into_iter()

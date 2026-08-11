@@ -1,0 +1,4 @@
+ok 1 - minimum int literals are flavor-equivalent in GPU buffers
+ok 2 - negative gpuIota arguments are flavor-equivalent
+1..2
+# tests=2 passed=2 failed=0 skipped=0

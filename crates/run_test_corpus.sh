@@ -53,15 +53,15 @@ WASM_MANIFEST=$TESTDIR/WASM_UNPORTABLE.txt
 # Silence is not success — if coverage ever drops below this floor the harness
 # FAILS rather than quietly checking less than it used to.
 #
-# Natively all 172 programs are covered by 89 golden files: 83 are shared by a
-# Default/ML flavor pair, 6 belong to a program with no twin. On wasm32 the 53
+# Natively all 179 programs are covered by 93 golden files: 86 are shared by a
+# Default/ML flavor pair, 7 belong to a program with no twin. On wasm32 the 53
 # programs blocked on a capability WASI does not have are skipped — each named
-# in tests/WASM_UNPORTABLE.txt — leaving 119.
+# in tests/WASM_UNPORTABLE.txt — leaving 126.
 # Ratchet UP as goldens are added; never lower it to turn a red build green.
 if [[ $TARGET == wasm32 ]]; then
-  GOLDEN_MIN=${OSPREY_GOLDEN_MIN:-119}
+  GOLDEN_MIN=${OSPREY_GOLDEN_MIN:-126}
 else
-  GOLDEN_MIN=${OSPREY_GOLDEN_MIN:-172}
+  GOLDEN_MIN=${OSPREY_GOLDEN_MIN:-179}
 fi
 
 # [GPU-KERNEL-EXTRACT] differential. The extracted-kernel lowering and the
@@ -69,7 +69,7 @@ fi
 # semantics, so the GPU suites must produce byte-identical output under both.
 # This re-runs ONLY tests/core/gpu under the OPPOSITE lowering and compares it
 # to the stdout the main pass already captured — a second oracle for the same
-# goldens at the cost of twelve programs, not a second corpus.
+# goldens at the cost of eighteen programs, not a second corpus.
 GPU_SUITE_DIR=$TESTDIR/core/gpu
 GPU_KERNELS_MODE=${OSPREY_GPU_KERNELS:-extract}
 if [[ $GPU_KERNELS_MODE == inline ]]; then
@@ -77,8 +77,8 @@ if [[ $GPU_KERNELS_MODE == inline ]]; then
 else
   GPU_ALT_MODE=inline
 fi
-# Six suites x two flavors. Ratchet UP; never lower it to turn a build green.
-GPU_MODE_MIN=${OSPREY_GPU_MODE_MIN:-12}
+# Nine suites x two flavors. Ratchet UP; never lower it to turn a build green.
+GPU_MODE_MIN=${OSPREY_GPU_MODE_MIN:-18}
 
 # Exit code run_wasm uses to say "not a failure, an unported feature". Distinct
 # from any status the compiler or Node can return on its own.

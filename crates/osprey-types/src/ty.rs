@@ -203,6 +203,15 @@ pub struct Scheme {
     pub(crate) vars: Vec<VarId>,
     /// The quantified type body.
     pub(crate) ty: Type,
+    /// Built-in representation obligations this body carries on its quantified
+    /// variables: `(built-in name, the type it was applied to)`. A wrapper like
+    /// `fn bufferLength(xs) = gpuLength(toGpu(xs))` generalizes over `xs`, and
+    /// its obligation — that `xs` is a scalar list [GPU-BUFFER-ELEM] — must
+    /// travel with the scheme, or the wrapper launders `List<string>` into a
+    /// buffer at a call site the obligation never reaches. Each instantiation
+    /// re-states them against that site's fresh variables
+    /// ([`crate::env::instantiate`]).
+    pub(crate) obligations: Vec<(String, Type)>,
 }
 
 impl Scheme {
@@ -212,12 +221,17 @@ impl Scheme {
         Scheme {
             vars: Vec::new(),
             ty,
+            obligations: Vec::new(),
         }
     }
     /// A polymorphic scheme over the given variables.
     #[must_use]
     pub(crate) fn poly(vars: Vec<VarId>, ty: Type) -> Scheme {
-        Scheme { vars, ty }
+        Scheme {
+            vars,
+            ty,
+            obligations: Vec::new(),
+        }
     }
 }
 

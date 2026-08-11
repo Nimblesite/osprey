@@ -18,7 +18,7 @@ const FIELDLESS_TYPES: &[&str] = &[
     names::BOOL,
     names::UNIT,
 ];
-use crate::env::{instantiate, TypeEnv};
+use crate::env::TypeEnv;
 use crate::error::TypeError;
 use crate::ty::{names, Type};
 use crate::unify::unify;
@@ -472,7 +472,13 @@ impl Checker {
             }
         }
         if let Some(scheme) = env.get(name).cloned() {
-            return instantiate(&mut self.ctx, &scheme);
+            // Re-state the scheme's built-in obligations against this site's
+            // fresh variables, so a generalized wrapper's constraint is checked
+            // against the types this call actually supplies
+            // ([`crate::ty::Scheme::obligations`]).
+            let (ty, obligations) = crate::env::instantiated(&mut self.ctx, &scheme);
+            self.builtin_uses.extend(obligations);
+            return ty;
         }
         self.errors
             .push(TypeError::new(format!("unknown identifier `{name}`")));
@@ -487,7 +493,7 @@ impl Checker {
         env: &TypeEnv,
     ) -> Type {
         let (fname, ft) = self.infer_callee(function, env);
-        let args = self.ordered_arg_types(fname.as_deref(), arguments, named, env);
+        let args = self.ordered_arg_types(fname.as_deref(), &ft, arguments, named, env);
         self.apply_named_fn(fname.as_deref(), &ft, args)
     }
 
@@ -529,6 +535,7 @@ impl Checker {
     fn ordered_arg_types(
         &mut self,
         fname: Option<&str>,
+        ft: &Type,
         arguments: &[Expr],
         named: &[NamedArgument],
         env: &TypeEnv,
@@ -550,7 +557,87 @@ impl Checker {
                 .map(|a| self.infer_expr(&a.value, env))
                 .collect();
         }
-        arguments.iter().map(|a| self.infer_expr(a, env)).collect()
+        self.positional_arg_types(ft, arguments, env)
+    }
+
+    /// Positional arguments, inferred in two passes: every argument that is
+    /// not a lambda first — each linked to the parameter slot it fills — then
+    /// each lambda, CHECKED against the parameter type those links have now
+    /// pinned.
+    ///
+    /// A kernel's parameter types flow from the buffer and the seed
+    /// [GPU-KERNEL-ELEM-TYPING] (docs/specs/0034-GPUComputation.md) because of
+    /// this order. Inferring a lambda body before its parameter slot is known
+    /// leaves bare arithmetic (`a + v`) with two unconstrained operands, which
+    /// int-defaults for want of a numeric class — so
+    /// `gpuFold(0.0, fn(a, v) => a + v)` over a float buffer was rejected with
+    /// `cannot unify int with float` and every float kernel needed
+    /// annotations.
+    ///
+    /// Pass one's links are best-effort: a genuine mismatch is reported once,
+    /// by [`Self::apply_fn`], which re-checks every argument against its slot.
+    fn positional_arg_types(&mut self, ft: &Type, arguments: &[Expr], env: &TypeEnv) -> Vec<Type> {
+        let params = self.callee_params(ft, arguments.len());
+        let Some(params) = params else {
+            return arguments.iter().map(|a| self.infer_expr(a, env)).collect();
+        };
+        let mut out: Vec<Option<Type>> = vec![None; arguments.len()];
+        for ((slot, a), param) in out.iter_mut().zip(arguments).zip(&params) {
+            if !matches!(a, Expr::Lambda { .. }) {
+                *slot = Some(self.linked_arg(a, param, env));
+            }
+        }
+        for ((slot, a), param) in out.iter_mut().zip(arguments).zip(&params) {
+            if slot.is_none() {
+                *slot = Some(self.infer_checked(a, param, env));
+            }
+        }
+        out.into_iter().flatten().collect()
+    }
+
+    /// The callee's parameter types when it is a known function of matching
+    /// arity, and any argument is a lambda whose body the parameter types can
+    /// inform. Every other call keeps the plain left-to-right pass.
+    fn callee_params(&mut self, ft: &Type, arity: usize) -> Option<Vec<Type>> {
+        match self.ctx.prune(ft) {
+            Type::Fun { params, .. } if params.len() == arity => Some(params),
+            _ => None,
+        }
+    }
+
+    /// An argument inferred and linked to the parameter slot it fills, so a
+    /// later lambda argument sees what this one pinned. An `any` slot is left
+    /// unlinked — [`Self::apply_named_fn`] keeps a constrained builtin's
+    /// argument variables open for the surrounding expression to refine.
+    fn linked_arg(&mut self, argument: &Expr, param: &Type, env: &TypeEnv) -> Type {
+        let ty = self.infer_expr(argument, env);
+        if !param.is_named(names::ANY) {
+            let _ = crate::unify::unify_assignable(&mut self.ctx, param, &ty);
+        }
+        ty
+    }
+
+    /// A lambda argument inferred against the function type its slot declares.
+    fn infer_checked(&mut self, argument: &Expr, param: &Type, env: &TypeEnv) -> Type {
+        match argument {
+            Expr::Lambda {
+                parameters,
+                return_type,
+                body,
+                position,
+            } => {
+                let expected = self.ctx.prune(param);
+                self.infer_lambda_of(
+                    parameters,
+                    return_type.as_ref(),
+                    body,
+                    *position,
+                    env,
+                    Some(&expected),
+                )
+            }
+            other => self.infer_expr(other, env),
+        }
     }
 
     fn apply_fn(&mut self, ft: &Type, args: Vec<Type>, defer_any_binding: bool) -> Type {
@@ -692,13 +779,31 @@ impl Checker {
         position: Option<osprey_ast::Position>,
         env: &TypeEnv,
     ) -> Type {
+        self.infer_lambda_of(parameters, return_type, body, position, env, None)
+    }
+
+    /// [`Self::infer_lambda`] with the function type the context requires of
+    /// this lambda, when there is one ([`Self::infer_checked`]). An
+    /// unannotated parameter takes its expected type BEFORE the body is
+    /// inferred; an annotated one keeps its annotation, which
+    /// [`Self::apply_fn`] still checks against the slot.
+    fn infer_lambda_of(
+        &mut self,
+        parameters: &[Parameter],
+        return_type: Option<&TypeExpr>,
+        body: &Expr,
+        position: Option<osprey_ast::Position>,
+        env: &TypeEnv,
+        expected: Option<&Type>,
+    ) -> Type {
         let empty = HashMap::new();
         let mut local = env.child();
         let mut ptys = Vec::new();
-        for p in parameters {
+        let wanted = expected_params(expected, parameters.len());
+        for (i, p) in parameters.iter().enumerate() {
             let ty = match &p.ty {
                 Some(te) => type_expr_to_type(te, &empty),
-                None => self.ctx.fresh(),
+                None => wanted.get(i).cloned().unwrap_or_else(|| self.ctx.fresh()),
             };
             local.insert(p.name.clone(), crate::ty::Scheme::mono(ty.clone()));
             ptys.push(ty);
@@ -864,6 +969,16 @@ fn unwrap_result(t: &Type) -> Type {
 
 fn is_result(t: &Type) -> bool {
     t.is_named(names::RESULT)
+}
+
+/// The parameter types a lambda's context requires of it, when that context is
+/// a function type of matching arity — the checking half of
+/// [`Checker::infer_lambda_of`]. Anything else leaves every parameter open.
+fn expected_params(expected: Option<&Type>, arity: usize) -> Vec<Type> {
+    match expected {
+        Some(Type::Fun { params, .. }) if params.len() == arity => params.clone(),
+        _ => Vec::new(),
+    }
 }
 
 /// Arithmetic propagation is intentionally a single `MathError` channel. A

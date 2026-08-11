@@ -522,13 +522,13 @@ pub(crate) static MAPS: &[BuiltinDoc] = &[
 pub(crate) static GPU: &[BuiltinDoc] = &[
     builtin_doc!(
         "toGpu",
-        "Copies a list of scalars (int, float, or bool) into a dense GpuBuffer.",
-        ["list" => "The scalar list to copy into a buffer"],
+        "Copies a list of scalars (int, float, or bool) into a dense GpuBuffer. Also consumes an iterator pipeline, replaying its map/filter stages into the buffer with no list in between.",
+        ["source" => "The scalar list or iterator to copy into a buffer"],
         "let buf = toGpu([1, 2, 3, 4])",
     ),
     builtin_doc!(
         "fromGpu",
-        "Materializes a GpuBuffer back into a host list.",
+        "Materializes a GpuBuffer back into a host list, keeping the element type: a float buffer becomes a List<float>.",
         ["buffer" => "The buffer to copy back to a list"],
         "fromGpu(toGpu([1, 2])) |> forEachList(print)  // Prints: 1, 2",
     ),
@@ -540,7 +540,7 @@ pub(crate) static GPU: &[BuiltinDoc] = &[
     ),
     builtin_doc!(
         "gpuMap",
-        "Applies a pure kernel to every buffer element independently. The compiler rejects a kernel that performs any effect.",
+        "Applies a pure kernel to every buffer element independently. The compiler rejects a kernel that performs any effect a handler must discharge at runtime; an effect a static handler has already erased is gone before the check.",
         ["buffer" => "The source buffer", "kernel" => "The pure per-element function"],
         "toGpu([1, 2, 3]) |> gpuMap(fn(x) => (x * x) ?: 0)",
     ),

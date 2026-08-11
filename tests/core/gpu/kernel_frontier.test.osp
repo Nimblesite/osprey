@@ -1,0 +1,74 @@
+// Aspirational kernel-frontier conformance. The GPU contract requires element
+// types to flow from combinator slots before bodies default, and every pure
+// function form to remain usable as a kernel ([GPU-KERNEL-ELEM-TYPING],
+// [GPU-KERNEL-FORM], [GPU-KERNEL-EXTRACT]).
+
+fn addFloats(a: float, x: float) -> float = a + x
+
+// Numeric operators must specialize this definition from gpuFold's float slots.
+fn plus(a, x) = a + x
+
+fn atFloat(xs, i) = gpuGet(xs, i) ?: 0.0
+
+// This deliberately has no signature. A concrete device specialization must
+// be emitted from its use with GpuBuffer<float> values, including the self-call.
+fn rowDot(matrix, vector, cols, row, col) = match col == cols {
+    true => 0.0
+    false => atFloat(matrix, (((row * cols) ?: 0) + col) ?: 0) * atFloat(vector, col)
+        + rowDot(matrix, vector, cols, row, (col + 1) ?: col)
+}
+
+fn multiplicationOrderCase() = {
+    let t = 2.0
+    let xs = toGpu([1.0, 2.0])
+    let ys = toGpu([3.0, 4.0])
+    let captureFirst = gpuZipWith(xs, ys, fn(x, y) => t * x * y)
+    let captureLast = gpuZipWith(xs, ys, fn(x, y) => x * y * t)
+    checkAll("buffer slots type every multiplication order", [
+        (captureFirst |> gpuFold(0.0, addFloats)) == 22.0,
+        (captureLast |> gpuFold(0.0, addFloats)) == 22.0,
+        (gpuGet(captureFirst, 0) ?: 0.0) == 6.0,
+        (gpuGet(captureLast, 1) ?: 0.0) == 16.0
+    ])
+}
+
+fn genericCombineCase() = {
+    let xs = toGpu([1.0, 2.0, 3.0])
+    checkAll("named generic float combines specialize from buffer slots", [
+        (xs |> gpuFold(0.0, plus)) == 6.0,
+        (gpuGet(xs |> gpuScan(0.0, plus), 2) ?: 0.0) == 6.0
+    ])
+}
+
+fn recursiveHelperCase() = {
+    let matrix = toGpu([1.0, 2.0, 3.0, 4.0])
+    let vector = toGpu([10.0, 20.0])
+    let rows = gpuIota(2) |> gpuMap(fn(row) => rowDot(matrix, vector, 2, row, 0))
+    checkAll("recursive GPU helpers monomorphize from their call site", [
+        gpuLength(rows) == 2,
+        (gpuGet(rows, 0) ?: 0.0) == 50.0,
+        (gpuGet(rows, 1) ?: 0.0) == 110.0,
+        (rows |> gpuFold(0.0, addFloats)) == 160.0
+    ])
+}
+
+fn blockBodyCase() = {
+    let t = 2.0
+    let xs = toGpu([1.0, 2.0, 3.0])
+    let mapped = xs |> gpuMap(fn(x) => {
+        let y = t * x
+        y + t
+    })
+    checkAll("block-bodied kernels preserve local bindings", [
+        gpuLength(mapped) == 3,
+        (gpuGet(mapped, 0) ?: 0.0) == 4.0,
+        (gpuGet(mapped, 1) ?: 0.0) == 6.0,
+        (gpuGet(mapped, 2) ?: 0.0) == 8.0,
+        (mapped |> gpuFold(0.0, addFloats)) == 18.0
+    ])
+}
+
+test("float kernel slots type both multiplication orders", multiplicationOrderCase)
+test("named generic float combines specialize from buffer slots", genericCombineCase)
+test("unannotated recursive helpers are valid GPU kernels", recursiveHelperCase)
+test("block-bodied GPU kernels keep local bindings", blockBodyCase)

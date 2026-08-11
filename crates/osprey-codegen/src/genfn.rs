@@ -33,6 +33,16 @@ pub(crate) fn try_inline(
     let Some((params, body)) = cg.fn_defs.get(name).cloned() else {
         return Ok(None);
     };
+    // A body that calls itself cannot be specialised by expanding it here, so
+    // this instantiation is emitted as a real function instead
+    // ([`crate::monofn`]).
+    if crate::monofn::calls_itself(name, &body) {
+        let exprs: Vec<&Expr> = pair_args(&params, args, named)
+            .into_iter()
+            .map(|(_, a)| a)
+            .collect();
+        return crate::monofn::specialize(cg, name, &params, &body, &exprs).map(Some);
+    }
     let returns_result = cg
         .prog
         .return_type(name)

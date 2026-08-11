@@ -12,10 +12,12 @@ use crate::env::{generalize, TypeEnv};
 use crate::error::TypeError;
 use crate::ty::{names, Scheme, Type};
 use crate::unify::{unify, unify_assignable};
+use crate::VarId;
 use osprey_ast::{
     EffectOperation, EffectRef, Expr, ExternParameter, Parameter, Position, Program, Stmt,
     TypeExpr, TypeParam, TypeVariant, Variance,
 };
+use std::collections::BTreeSet;
 use std::collections::{HashMap, HashSet};
 
 /// The shared `name` accessor of the two AST parameter node types, so
@@ -44,6 +46,10 @@ pub(crate) struct CtorInfo {
     /// (field name, field type as written).
     pub fields: Vec<(String, String)>,
 }
+
+/// Built-in obligations split by whether they rest on a scheme's quantified
+/// variables: `(deferred to each instantiation, checked here)`.
+type SplitObligations = (Vec<(String, Type)>, Vec<(String, Type)>);
 
 /// A constructor instantiated against fresh type arguments:
 /// (owner type arguments, instantiated `(field, type)` pairs, owner name,
@@ -639,8 +645,57 @@ impl Checker {
         // generalize.
         let fun_ty = Type::fun(params, ret);
         env.remove(name);
-        let scheme = generalize(&mut self.ctx, env, &fun_ty);
+        let scheme = self.generalize_with_obligations(env, &fun_ty);
         env.insert(name, scheme);
+    }
+
+    /// Generalize `ty`, carrying every built-in obligation recorded on a
+    /// variable this scheme quantifies ([`Scheme::obligations`]).
+    ///
+    /// An obligation on a variable that generalizes cannot be discharged here —
+    /// the body never says what the type is — but it is not vacuous either: it
+    /// binds at every call site. Keeping it in the flat list as well would
+    /// report the wrapper itself, which is not an error, so the obligation
+    /// MOVES into the scheme.
+    fn generalize_with_obligations(&mut self, env: &TypeEnv, ty: &Type) -> Scheme {
+        let mut scheme = generalize(&mut self.ctx, env, ty);
+        if scheme.vars.is_empty() {
+            return scheme;
+        }
+        let (deferred, kept) = self.split_obligations(&scheme.vars);
+        self.builtin_uses = kept;
+        scheme.obligations = deferred;
+        scheme
+    }
+
+    /// Split the recorded built-in uses into those resting on `vars` (deferred
+    /// to each instantiation) and those that stay for [`Self::validate_builtin_uses`].
+    fn split_obligations(&mut self, vars: &[VarId]) -> SplitObligations {
+        let uses = std::mem::take(&mut self.builtin_uses);
+        let resolved: Vec<(String, Type)> = uses
+            .into_iter()
+            .map(|(name, ty)| {
+                let ty = self.ctx.apply(&ty);
+                (name, ty)
+            })
+            .collect();
+        let mut deferred = Vec::new();
+        let mut kept = Vec::new();
+        for (name, ty) in resolved {
+            if self.mentions_any(&ty, vars) {
+                deferred.push((name, ty));
+            } else {
+                kept.push((name, ty));
+            }
+        }
+        (deferred, kept)
+    }
+
+    /// Whether `ty` still rests on one of the quantified variables.
+    fn mentions_any(&mut self, ty: &Type, vars: &[VarId]) -> bool {
+        let mut free = BTreeSet::new();
+        self.ctx.free_vars(ty, &mut free);
+        vars.iter().any(|v| free.contains(v))
     }
 
     fn check_let(

@@ -336,7 +336,11 @@ fn for_each_list(cg: &mut Codegen, args: &[Expr]) -> Result<Value> {
     let consumer = callback_of(cg, nth(args, 1)?)?;
     let lp = open_list_loop(cg, &l.operand);
     crate::arc::push_frame(cg);
-    let _ = invoke(cg, &consumer, vec![Value::new(lp.elem.clone(), LType::I64)])?;
+    // The consumer sees the ELEMENT, not the storage word: `forEachList` over a
+    // `List<float>` printed IEEE-754 bits before this
+    // ([`crate::collections::LIST_TAG`]).
+    let elem = crate::collections::elem_value(cg, &l, &lp.elem);
+    let _ = invoke(cg, &consumer, vec![elem])?;
     crate::arc::pop_frame(cg);
     close_list_loop(cg, &lp);
     Ok(Value::new("0", LType::I64))
@@ -356,9 +360,12 @@ fn list_builder(cg: &mut Codegen, args: &[Expr], filter: bool) -> Result<Value> 
     } else {
         crate::collections::list_builder_new(cg)
     };
+    // `filterList` keeps the source's elements and so its element type;
+    // `mapList` learns the built list's element type from the callback below.
+    let mut out_elem = crate::collections::tagged_elem(&l).filter(|_| filter);
     let lp = open_list_loop(cg, &l.operand);
     crate::arc::push_frame(cg);
-    let elem = Value::new(lp.elem.clone(), LType::I64);
+    let elem = crate::collections::elem_value(cg, &l, &lp.elem);
     if filter {
         let pred = invoke(cg, &f, vec![elem.clone()])?;
         let pred = crate::cast::coerce_to(cg, pred, LType::I1)?;
@@ -379,6 +386,9 @@ fn list_builder(cg: &mut Codegen, args: &[Expr], filter: bool) -> Result<Value> 
                 "mapList cannot store an unhandled Result element; handle it in the callback",
             ));
         }
+        // The callback's return type is what the built list holds, so the
+        // result is tagged with it ([`crate::collections::LIST_TAG`]).
+        out_elem = Some(mapped.ty);
         // The built list stores the mapped element: dup it before the
         // per-iteration region drop, and tell the builder its kind
         // [GC-ARC-PERCEUS].
@@ -389,7 +399,8 @@ fn list_builder(cg: &mut Codegen, args: &[Expr], filter: bool) -> Result<Value> 
     }
     crate::arc::pop_frame(cg);
     close_list_loop(cg, &lp);
-    Ok(crate::collections::list_builder_seal(cg, &bld))
+    let sealed = crate::collections::list_builder_seal(cg, &bld);
+    Ok(sealed.with_owner(Some(crate::collections::list_owner(out_elem))))
 }
 
 /// `foldList(list, initial, fn)` — reduce a list with `fn(acc, elem)`.
@@ -399,13 +410,8 @@ fn fold_list(cg: &mut Codegen, args: &[Expr]) -> Result<Value> {
     let combine = callback_of(cg, nth(args, 2)?)?;
     let lp = open_list_loop(cg, &l.operand);
     crate::arc::push_frame(cg);
-    acc_step(
-        cg,
-        &acc,
-        &tmpl,
-        &combine,
-        Value::new(lp.elem.clone(), LType::I64),
-    )?;
+    let elem = crate::collections::elem_value(cg, &l, &lp.elem);
+    acc_step(cg, &acc, &tmpl, &combine, elem)?;
     crate::arc::pop_frame(cg);
     close_list_loop(cg, &lp);
     Ok(acc_result(cg, &acc, &tmpl))

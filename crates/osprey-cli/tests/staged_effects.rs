@@ -23,7 +23,9 @@ fn compile_staged(source: &str) -> String {
         "parse errors: {:?}",
         parsed.errors
     );
-    compile_program(&parsed.program).expect("codegen")
+    let compiled = compile_program(&parsed.program);
+    assert!(compiled.is_ok(), "codegen failed: {:?}", compiled.err());
+    compiled.unwrap_or_default()
 }
 
 const STATIC_SOURCE: &str = r#"

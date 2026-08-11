@@ -38,6 +38,7 @@ mod llty;
 mod loops;
 mod lower;
 mod meta;
+mod monofn;
 mod pattern;
 mod result;
 mod runtime;

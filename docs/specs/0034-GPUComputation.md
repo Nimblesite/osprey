@@ -54,7 +54,10 @@ create it.
 ### `toGpu(source) -> GpuBuffer<T>` — [GPU-BUFFER-FROM-LIST]
 
 Produces a dense buffer from a host `List<T>` — or, per [GPU-BUFFER-FUSE],
-from an `Iterator<T>`. `T` must satisfy [GPU-BUFFER-ELEM].
+from an `Iterator<T>`. `T` must satisfy [GPU-BUFFER-ELEM]. The element type
+comes from the source, whether that source is a literal, a list value
+returned by a function, or a list built at runtime — a float list copies in
+as a float buffer, never as raw words.
 
 ```osprey
 let buf = toGpu([1, 2, 3, 4])
@@ -98,7 +101,11 @@ is one.
 
 ### `fromGpu(buffer: GpuBuffer<T>) -> List<T>` — [GPU-BUFFER-TO-LIST]
 
-Materializes a buffer back into a host list.
+Materializes a buffer back into a host list. The element type crosses with
+the values: a `GpuBuffer<float>` becomes a `List<float>` whose elements read
+back as floats, not as the machine words the list runtime stores them in.
+Round-tripping is therefore lossless in both directions for every scalar
+[GPU-BUFFER-ELEM] admits.
 
 ### `gpuLength(buffer: GpuBuffer<T>) -> int` — [GPU-BUFFER-LENGTH]
 
@@ -143,6 +150,11 @@ fn add(a, b) = (a + b) ?: a
 let total = toGpu([1, 2, 3, 4]) |> gpuFold(0, add)
 ```
 
+```osprey-ml
+add (a, b) = (a + b) ?: a
+total = toGpu [1, 2, 3, 4] |> gpuFold 0 add
+```
+
 ### `gpuZipWith(a: GpuBuffer<T>, b: GpuBuffer<U>, kernel: fn(T, U) -> V) -> GpuBuffer<V>` — [GPU-ZIPWITH]
 
 Elementwise binary combination — the primitive every vector, tensor, and
@@ -155,11 +167,33 @@ fn dot(xs, ys) = gpuZipWith(xs, ys, fn(x: float, y: float) => x * y)
     |> gpuFold(0.0, fn(a: float, v: float) => a + v)
 ```
 
+```osprey-ml
+dot (xs, ys) =
+    gpuZipWith (xs, ys, \(x : float, y : float) => x * y)
+        |> gpuFold 0.0 (\(a : float, v : float) => a + v)
+```
+
+The float slots are named here only because `dot`'s own parameters are
+unconstrained — nothing in this definition says which element type the
+buffers hold. Over a buffer whose type is known, a kernel needs no
+annotation at all: its parameters come from the buffer
+([GPU-KERNEL-ELEM-TYPING]).
+
+```osprey
+let total = toGpu([1.5, 2.5]) |> gpuFold(0.0, fn(a, v) => a + v)
+```
+
+```osprey-ml
+total = toGpu [1.5, 2.5] |> gpuFold 0.0 (\(a, v) => a + v)
+```
+
 ### `gpuIota(n: int) -> GpuBuffer<int>` — [GPU-IOTA]
 
 The index buffer `[0, n)`. Kernels see element values, not positions, so
 gather, stencil, and matrix addressing all start from `gpuIota`: map over
-the indices and read neighbours with `gpuGet`.
+the indices and read neighbours with `gpuGet`. A non-positive `n` names an
+empty range, so it yields an empty buffer rather than an error — the
+half-open interval `[0, n)` is empty for every `n <= 0`.
 
 ### `gpuGet(buffer: GpuBuffer<T>, index: int) -> Result<T, Error>` — [GPU-GET]
 
@@ -174,10 +208,17 @@ fn at(m, i) = gpuGet(m, i) ?: 0.0
 fn rowSum(m, r) = at(m, (r * 3) ?: 0) + at(m, ((r * 3) ?: 1) + 1 ?: 1)
 ```
 
+```osprey-ml
+at (m, i) = gpuGet (m, i) ?: 0.0
+rowSum (m, r) = at (m, (r * 3) ?: 0) + at (m, ((r * 3) ?: 1) + 1 ?: 1)
+```
+
 ### `gpuScan(buffer: GpuBuffer<T>, initial: T, combine: fn(T, T) -> T) -> GpuBuffer<T>` — [GPU-SCAN]
 
 Inclusive prefix scan: element `i` of the result is `combine` folded over
-the source through element `i`. Scan is *the* classic parallel primitive —
+the source through element `i`, seeded with `initial` — so the first
+element is `combine(initial, src[0])`, not `src[0]`, and the result always
+has the source's length. Scan is *the* classic parallel primitive —
 segmented scans and flag vectors are how nested data parallelism flattens
 onto flat hardware ([Blelloch, CACM
 1996](https://doi.org/10.1145/227234.227246); [NESL](https://www.cs.cmu.edu/~scandal/nesl.html)).
@@ -195,7 +236,12 @@ contract with a scan-based compaction.
 ## Kernel purity — [GPU-KERNEL-PURE]
 
 The compiler rejects any GPU combinator call whose kernel performs an
-algebraic effect, directly or through any chain of helpers and lambdas. The
+algebraic effect **that a handler must discharge at run time**, directly or
+through any chain of helpers and lambdas. An effect a *static* handler has
+already erased ([0035-StagedEffects.md](0035-StagedEffects.md)) is not
+present in the kernel by the time this gate runs, so it is not an effect the
+kernel performs — the rule is about what reaches the device, not about how
+the source was written. The
 proof reuses the static effect discharge machinery
 ([EFFECTS-STATIC-DISCHARGE](0017-AlgebraicEffects.md)): the kernel's
 operation summary must be empty. Wrapping the call in a handler does not
@@ -231,6 +277,17 @@ fn loud(x) = {
 // let bad = toGpu([1]) |> gpuMap(loud)
 ```
 
+```osprey-ml
+effect Log
+    write : string => Unit
+
+loud x =
+    perform Log.write "saw it"   (* kernel performs Log.write *)
+    x
+(* COMPILE ERROR: GPU kernel must be pure; it performs: Log.write *)
+(* bad = toGpu [1] |> gpuMap loud *)
+```
+
 ## Kernel expressiveness
 
 ### Kernel forms — [GPU-KERNEL-FORM]
@@ -243,19 +300,26 @@ including **recursive** helpers such as a row walk over a flat matrix. The
 purity proof ([GPU-KERNEL-PURE]) is the only gate; syntax shape is never
 one.
 
-Current implementation gaps, tracked in
-[plan 0002](../plans/0002-codegen-generic-function-values.md):
+Every form above compiles and runs today, without annotations. A recursive
+helper is **monomorphised**: the call site's argument types fix one
+instantiation, which is emitted as a real function and called, and the
+self-call inside it becomes a direct recursive call to that same symbol
+(`crates/osprey-codegen/src/monofn.rs`). This is the one place polymorphism
+is resolved by emitting a definition rather than by inlining; the
+language-wide rule is unchanged, because inlining cannot specialise a body
+that calls itself.
 
-- A block-bodied lambda with an internal `let` fails codegen when used as a
-  kernel (the inline-callback path loses the block's local scope:
-  `unknown identifier`). Named kernels are the workaround.
-- A recursive helper reachable from a kernel — or any recursive function —
-  must carry a fully concrete signature; an unannotated one is rejected
-  with `annotate its parameters and return type so it is emitted as a real
-  function` (fail-closed, `examples/failscompilation/`
-  `recursive_generic_needs_annotation.ospo`). The end state is emitting a
-  monomorphic definition per instantiation, making the annotations
-  optional.
+Remaining limits, neither of them about kernel shape:
+
+- A recursive function whose **return type** inference cannot resolve has no
+  signature to emit and is still rejected with `annotate its return type so
+  it is emitted as a real function` (fail-closed). Parameter annotations are
+  no longer required.
+- A block-bodied lambda has no ML twin: ML suppresses layout inside brackets,
+  so `gpuMap (\x => …)` cannot open an indented body
+  ([0023-LanguageFlavors.md](0023-LanguageFlavors.md), [FLAVOR-ML-LAYOUT]).
+  The Default form runs; the twinned corpus therefore covers it in one
+  flavor only.
 
 ### Kernel element typing — [GPU-KERNEL-ELEM-TYPING]
 
@@ -265,11 +329,20 @@ A kernel's parameter types flow **from the buffer**: in
 `float` — never silently default to `int`. Defaulting is only permissible
 when a parameter is genuinely unconstrained by every consuming slot.
 
-Today the checker int-defaults a context-free kernel
-(`fn plus(a, b) = a + b` cannot serve a float fold anywhere in the
-language), so float kernels need a float literal or signature in scope.
-This is a language-wide inference defect, not a GPU rule — tracked as a
-Phase 0 defect in
+A lambda kernel gets this: call arguments are checked against the callee's
+signature, and a lambda argument is inferred **after** the slots its
+siblings pin, so `gpuFold(0.0, fn(a, v) => a + v)` over a float buffer
+types at `float` in either operand order
+(`crates/osprey-types/src/expr.rs::positional_arg_types`). No annotation is
+required, and the associativity of the arithmetic no longer decides.
+
+A **named** context-free function is still defaulted at its own definition:
+`fn plus(a, b) = a + b` types as `int` there and so cannot serve a float
+fold, because `+` on two unconstrained operands has no numeric class to
+defer to — and the two overloads differ in shape, not just element type
+(checked `Result<int, MathError>` versus total `float`). Give it a float
+literal or a signature. This is a language-wide inference defect, not a GPU
+rule — tracked as a Phase 0 defect in
 [plan 0022](../plans/0022-arithmetic-totality-audit.md).
 
 ### Element conversion — [GPU-CONVERT]
@@ -283,6 +356,10 @@ implicitly at buffer boundaries. The required primitive is
 let xs = gpuIota(100000) |> gpuMap(toFloat)
 ```
 
+```osprey-ml
+xs = gpuIota 100000 |> gpuMap toFloat
+```
+
 `toFloat` is a total widening — every `int` has a nearest `double` — so it
 returns a bare `float` rather than a `Result`, and it registers in
 [0012-Built-InFunctions.md](0012-Built-InFunctions.md) with a docs entry
@@ -292,9 +369,12 @@ checked truncation on the arithmetic side and is out of scope for buffers.
 
 ## Kernel extraction — [GPU-KERNEL-EXTRACT]
 
-Each kernel a combinator runs is compiled **once**, as a standalone
-module-scope function with a flat scalar signature, and the loop over the
-buffer calls it per element. This is not an optimization detail: an extracted
+Each **admissible** kernel a combinator runs is compiled **once**, as a
+standalone module-scope function with a flat scalar signature, and the loop
+over the buffer calls it per element. The forms that decline are listed
+under [Which kernels are extracted](#which-kernels-are-extracted); they run
+correctly on the host backend, and a device backend must reject them with a
+diagnostic rather than silently execute a host pointer. This is not an optimization detail: an extracted
 kernel with a first-order scalar ABI and no captured environment is exactly
 the artifact a PTX, AIR or SPIR-V emitter consumes, so [GPU-BACKEND-DEVICE]
 becomes a target driver rather than a rewrite.
@@ -337,11 +417,11 @@ Handle failure inside the kernel with `?:` or `match`.
   it — extraction emits nothing new and copies nothing.
 - An **inline lambda** is lifted to a fresh module-scope function, its free
   variables becoming leading uniform parameters.
-- An **unannotated (generic) function** kernel is *monomorphised*: parameter
-  types come from the buffer's element type at the call and the return type
-  from the lowered body, so each instantiation gets its own real definition.
-  This is the one place polymorphism is resolved by emitting a definition
-  rather than by inlining; the language-wide rule is unchanged.
+- An **unannotated (generic) function** kernel is specialised at its call
+  site with the buffer's element type, by inlining — the language-wide rule
+  for generic functions. A **recursive** one instead gets its own emitted
+  definition per instantiation ([GPU-KERNEL-FORM]), because a body that
+  calls itself cannot be specialised by inlining.
 - A kernel that reaches the combinator as an **already-built function value**
   (a closure held in a local, a record field, a call result) keeps its
   closure-cell call. A cell *is* a captured environment, which this ABI has no
@@ -437,11 +517,24 @@ handle Gpu.select => "cuda:0" in {
 // in CI with no GPU attached.
 ```
 
+```osprey-ml
+(* Stage 5 surface (design, not yet implemented). *)
+handle Gpu
+    select => "cuda:0"
+in
+    scores = embeddings |> gpuMap normalize |> gpuZipWith (query, dot)
+```
+
 Until stage 5 lands, programs run on the host backend and `gpuDevice()`
 truthfully reports it; nothing in the surface changes when real devices
 arrive — a handler simply gains the power to pick one.
 
 ## Roadmap invariant — [GPU-ROADMAP]
+
+*Non-normative on implementation:* this section constrains how the staged work
+proceeds, not what any code path does, so it has no implementing file. Its one
+requirement — that stages ratchet — is enforced by the harness gates the plan
+lists, not by a compiler behaviour.
 
 Implementation is staged in [plan
 0023](../plans/0023-gpu-computation.md), which carries the stage
@@ -451,6 +544,9 @@ and the differential harness byte-exact, and a later stage must not change
 the meaning of any program accepted by an earlier stage.
 
 ## References — [GPU-RESEARCH]
+
+*Non-normative:* a bibliography, not a requirement. It has no implementing
+code and no test.
 
 The scholarly work Osprey's GPU features are grounded in. Inline citations
 above point here; the design decisions these produced are recorded in

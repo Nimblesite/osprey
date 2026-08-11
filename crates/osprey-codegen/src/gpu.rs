@@ -33,26 +33,12 @@ pub(crate) const GPU_TAG: &str = "Gpu#";
 /// The owner tag for a `GpuBuffer<elem>` static type: element-typed when the
 /// element is a concrete scalar, the bare owner otherwise.
 pub(crate) fn buffer_owner(elem: Option<&osprey_types::Type>) -> String {
-    elem_owner(
-        elem.filter(|ty| !osprey_types::has_type_var(ty))
-            .map(crate::types::ltype_of),
-    )
-}
-
-/// The scalar element `LType` spelled after `prefix` in a value's owner tag —
-/// `Gpu#double` on buffers, `[]double` on flat list literals.
-fn elem_of_tag(v: &Value, prefix: &str) -> Option<LType> {
-    match v.osp_ty.as_deref()?.strip_prefix(prefix)? {
-        "double" => Some(LType::Double),
-        "i1" => Some(LType::I1),
-        "i64" => Some(LType::I64),
-        _ => None,
-    }
+    elem_owner(crate::types::scalar_elem(elem))
 }
 
 /// The element `LType` recorded on a buffer value's owner tag, if any.
 pub(crate) fn tagged_elem(v: &Value) -> Option<LType> {
-    elem_of_tag(v, GPU_TAG)
+    crate::llty::elem_of_tag(v, GPU_TAG)
 }
 
 /// Whether an owner tag names a GPU buffer handle — element-typed (`Gpu#double`)
@@ -62,17 +48,17 @@ pub(crate) fn is_buffer_owner(owner: &str) -> bool {
     owner == GPU_OWNER || owner.starts_with(GPU_TAG)
 }
 
-/// The element `LType` tagged on a flat list-literal value (`[]double`), if any.
+/// The element `LType` of the list `v` holds, from either list representation:
+/// a flat literal's `[]double` or a runtime handle's `List#double`. The copy
+/// into a buffer is element-blind without it, so `toGpu` of a `List<float>`
+/// value produced a bare-tagged buffer whose reads mis-typed [GPU-BUFFER-ELEM].
 fn list_elem(v: &Value) -> Option<LType> {
-    elem_of_tag(v, "[]")
+    crate::llty::elem_of_tag(v, "[]").or_else(|| crate::collections::tagged_elem(v))
 }
 
 /// The owner tag for a buffer holding `elem` words.
 fn elem_owner(elem: Option<LType>) -> String {
-    match elem {
-        Some(lt) => format!("{GPU_TAG}{}", lt.as_str()),
-        None => GPU_OWNER.to_string(),
-    }
+    crate::llty::elem_tagged_owner(GPU_TAG, GPU_OWNER, elem)
 }
 
 /// Dispatch a GPU builtin by name, or `None` if `name` is not one.
@@ -134,10 +120,7 @@ fn buffer_set(cg: &mut Codegen, buf: &Value, index: &str, word: &str) {
 /// raw bits become a `double` operand (never an integer conversion), a `bool`
 /// becomes `i1`, and an unknown element passes through as the raw word.
 fn elem_value(cg: &mut Codegen, raw: String, elem: Option<LType>) -> Value {
-    match elem {
-        Some(lt) if lt != LType::I64 => crate::effects::unbox_coro_value(cg, &raw, lt, None),
-        _ => Value::new(raw, LType::I64),
-    }
+    crate::conv::from_word(cg, raw, elem)
 }
 
 /// The scalar-element backstop [GPU-BUFFER-ELEM]: a buffer word is an `int`,
@@ -260,7 +243,11 @@ fn from_gpu(cg: &mut Codegen, args: &[Expr]) -> Result<Value> {
     let elem = buffer_get(cg, &b, &lp.i);
     crate::collections::list_builder_push(cg, &bld, &elem, "0");
     close_range_loop(cg, &lp);
-    Ok(crate::collections::list_builder_seal(cg, &bld))
+    // The buffer's element type crosses to the list's owner tag: a float buffer
+    // materializes as a `List<float>` that reads back as floats, not as the
+    // IEEE-754 words the uniform element ABI stores [GPU-BUFFER-TO-LIST].
+    let sealed = crate::collections::list_builder_seal(cg, &bld);
+    Ok(sealed.with_owner(Some(crate::collections::list_owner(tagged_elem(&b)))))
 }
 
 /// `gpuLength(buffer)` — the element count [GPU-BUFFER-LENGTH].
@@ -439,8 +426,10 @@ fn gpu_filter(cg: &mut Codegen, args: &[Expr]) -> Result<Value> {
     let len = buffer_len(cg, &src);
     let out = buffer_alloc(cg, &len, elem_owner(elem));
     let kept = kept_counter(cg);
-    kernel_loop(cg, &src, &len, elem, |cg, arg, i| {
-        let raw = buffer_get(cg, &src, i);
+    kernel_loop(cg, &src, &len, elem, |cg, arg, _i| {
+        // The loop already loaded this element: box the typed value back to its
+        // storage word rather than reading the buffer a second time per element.
+        let raw = box_to_i64(cg, arg.clone()).operand;
         let verdict = invoke(cg, &predicate, vec![arg])?;
         let verdict = crate::cast::coerce_to(cg, verdict, LType::I1)?;
         let keep = cg.fresh_label();

@@ -184,7 +184,33 @@ pub(crate) fn to_runtime_list(cg: &mut Codegen, v: Value) -> Value {
     let word = crate::conv::box_to_i64(cg, Value::new(raw, elem));
     crate::collections::list_builder_push_borrowed(cg, &bld, &word.operand);
     crate::loops::close_range_loop(cg, &lp);
-    crate::collections::list_builder_seal(cg, &bld)
+    // The literal knew its element type; the runtime list keeps that knowledge
+    // in its owner tag rather than losing it to the uniform `i64` element ABI
+    // ([`crate::collections::LIST_TAG`]).
+    let sealed = crate::collections::list_builder_seal(cg, &bld);
+    sealed.with_owner(Some(crate::collections::list_owner(Some(elem))))
+}
+
+/// Normalize a list value that is about to ESCAPE the scope which knows its
+/// representation — a function return, a record field, an object literal, a
+/// lambda's return slot.
+///
+/// The flat layout is a codegen-local optimization whose element tag rides on
+/// the VALUE (`[]double`), never on the type: `List<T>` has no owner tag
+/// ([`crate::types::owner_name`]), so a receiver seeing only `List<T>` reads a
+/// literal's `{ length, data }` header as an `OspreyList` — the exact
+/// misreading [`to_runtime_list`] documents. `fn xs() = [1, 2, 3]` followed by
+/// `listGet(xs(), 0)` therefore segfaulted, as did a record field holding a
+/// literal, while the same literal used in place worked.
+///
+/// Converting at the escape keeps the fast path where the tag is visible (a
+/// literal consumed in the scope that built it, `toGpu([1, 2, 3])`) and pays
+/// for the runtime layout only when the value outlives that knowledge.
+pub(crate) fn escaping(cg: &mut Codegen, v: Value) -> Value {
+    if is_lit(&v) {
+        return to_runtime_list(cg, v);
+    }
+    v
 }
 
 /// `target[index]` — flat list-literal access (bounds-checked `Result<T, _>`) or

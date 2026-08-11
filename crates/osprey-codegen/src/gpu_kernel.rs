@@ -121,6 +121,14 @@ pub(crate) fn kernel_elem(
 /// The shared preamble of every combinator that runs a kernel over `src`: the
 /// `arg_i`-th argument as a callback, plus the element `LType` recovered from
 /// the buffer's owner tag or the kernel's parameter at `slot`.
+///
+/// Admits every kernel form [GPU-KERNEL-FORM] (docs/specs/0034-GPUComputation.md):
+/// [`callback_of`] resolves a named top-level function, an inline lambda, a
+/// block-bodied lambda, a let-bound lambda, a capturing closure local and a
+/// computed function value alike, and each spelling has a lowering in
+/// [`crate::iter::invoke`]. Syntax shape is never a gate here — the only
+/// rejection is the effect checker's purity proof [GPU-KERNEL-PURE], which has
+/// already run by the time codegen sees the call.
 pub(crate) fn kernel_of(
     cg: &mut Codegen,
     args: &[Expr],
@@ -166,7 +174,8 @@ pub(crate) fn extract(cg: &mut Codegen, cb: Callback, slots: &[LType]) -> Result
 
 /// Lift a lambda kernel, or hand the callback back untouched when its shape
 /// declines extraction. Declining is always safe: it is the pre-extraction
-/// lowering, which produces the same values.
+/// lowering, which produces the same values — so a shape the flat ABI cannot
+/// carry still runs as a kernel [GPU-KERNEL-FORM], it just runs inlined.
 fn lift(
     cg: &mut Codegen,
     parameters: Vec<Parameter>,

@@ -122,6 +122,15 @@ backend is solved, the device half is stage 3 output plus an MSL emitter.
   included, ordered by identifier. Extracted-kernel counts per suite today:
   buffers 21, combinators 9, gamedev 20, mlkernels 78, raster 11, stress 13.
   Three kernel shapes still decline — see stage 3's checklist.
+- Every kernel FORM `[GPU-KERNEL-FORM]` names now compiles: named functions,
+  inline lambdas, block-bodied lambdas, capturing closures, and recursive
+  unannotated helpers, the last by monomorphisation
+  (`crates/osprey-codegen/src/monofn.rs`) rather than by inlining.
+- Scalar element types survive every host/device crossing: runtime lists
+  carry an element-typed owner tag (`List#double`) exactly as buffers do, so
+  `toGpu`/`fromGpu` round-trip floats and bools losslessly and a flat list
+  literal normalises to the runtime layout whenever it escapes the scope that
+  knows its shape.
 - Both lowerings are retained and differentially gated: `OSPREY_GPU_KERNELS`
   selects `extract` (default) or `inline`, any other value is a compile error
   (`OSPREY_GPU_KERNELS=nope: expected 'extract' or 'inline'`), and
@@ -140,76 +149,97 @@ backend is solved, the device half is stage 3 output plus an MSL emitter.
   identical IR; goldens are byte-exact under default/GC/ARC and wasm32
   (`GOLDEN_MIN` 172/119).
 
-## Defects the expanded corpus exposed
+## Defects the expanded corpus exposed — now fixed
 
-Each was reproduced against `target/release/osprey` while writing this entry,
-and none is encoded in a golden — the suites route around them and say so in a
-comment. They are listed here because a device backend inherits every one.
+All four are fixed and pinned by `tests/core/gpu/scalar_contracts` and
+`tests/core/gpu/flavor_parity`. They are kept here because each names a
+contract a device backend inherits.
 
-1. **`fromGpu` on a float or bool buffer cannot be read back**
-   (`[GPU-BUFFER-TO-LIST]`). `listGet` over the resulting `List<float>` yields
-   the raw IEEE-754 word as an `int`; with a float default the program does not
-   even compile (`match arms disagree on type: 'i64' and 'double'`). The root
-   cause is **not** GPU-specific — a plain `let xs = [1.5, 2.5]` reads back the
-   same way — so the fix belongs to list element read-back for non-int scalars.
-2. **`toGpu(list-value)` loses the element tag**
-   (`[GPU-BUFFER-FROM-LIST]`). `gpu.rs::to_gpu` derives the buffer's element
-   tag from a *syntactic* flat-list-literal tag and ignores the statically
-   inferred element type that `buffer_owner(elem)` in the same file already
-   spells. A buffer built from a list *value* is therefore tagged bare
-   `GpuBuffer`, and `gpuGet` on it mis-types or fails to compile. The words
-   survive (a `gpuFold` with a typed kernel still gives the right answer), so
-   the fix is the tag on the copy path only.
-3. **`-9223372036854775808` is accepted in Default and rejected in ML.** The
-   ML lexer applies unary minus to a positive literal, which cannot represent
-   −2^63 (`invalid integer literal '9223372036854775808'`); the Default lexer
-   folds the sign in. Twins must accept the same programs, so `stress` computes
-   `minInt` arithmetically instead. Same family, lower severity: ML
-   juxtaposition swallows a negative literal argument
-   (`gpuIota -1000000` parses as subtraction), producing a type error that
-   names the wrong cause.
-4. **Kernel element typing is order-sensitive within one expression**
-   (`[GPU-KERNEL-ELEM-TYPING]`, plan 0022 F10). Not merely "context-free
-   kernels int-default": with a float in scope and reachable, left-associativity
-   decides. `fn(x, y) => t * x * y` compiles; `fn(x, y) => x * y * t` is
-   rejected with `cannot unify int with float`, because the inner `x * y`
-   unifies and defaults before the trailing float is seen.
+1. **`fromGpu` on a float or bool buffer could not be read back**
+   (`[GPU-BUFFER-TO-LIST]`) — FIXED. The root cause was language-wide, not
+   GPU-specific: a runtime `List<T>` stores every element as a uniform `i64`
+   word and nothing recorded what the word meant, so `listGet([1.5], 0)`
+   handed back IEEE-754 bits typed as an `int` and `forEachList` printed
+   them. Runtime list handles now carry the same element-typed owner tag
+   buffers do (`List#double`, `crates/osprey-codegen/src/collections.rs`),
+   `types.rs::owner_name` gives `List<T>` that tag so it survives parameters,
+   returns and fields, and `fromGpu` copies the buffer's element type onto
+   the list it builds.
+2. **`toGpu(list-value)` lost the element tag** (`[GPU-BUFFER-FROM-LIST]`) —
+   FIXED by the same tag: `to_gpu` reads the element type from either list
+   representation. A worse defect sat underneath it — a list *literal*
+   returned from a function, stored in a record field or passed to a
+   non-inlined callee kept its flat `{ length, data }` layout while the
+   receiver, which sees only `List<T>`, handed that header to the list
+   runtime: `fn xs() = [1, 2, 3]` then `toGpu(xs())` gave garbage, and the
+   float twin **segfaulted**. Every escape now normalises to the runtime
+   layout (`crates/osprey-codegen/src/listlit.rs::escaping`).
+3. **`-9223372036854775808` was accepted in Default and rejected in ML** —
+   FIXED. The ML lexer emits the `i64::MIN` magnitude as its own token, which
+   the parser folds under a unary minus and rejects anywhere else — the rule
+   the Default frontend already had. The related juxtaposition defect is fixed
+   too: a `-` spaced from what precedes it and glued to the digits that follow
+   is a negative literal ARGUMENT (`gpuIota -3`), not subtraction, so the twins
+   parse alike. Default's own precedence was the mirror defect —
+   `-7 |> gpuIota()` parsed as `-(7 |> gpuIota())`, because the grammar bound
+   `|>` tighter than unary; unary now binds tighter, matching ML.
+4. **Kernel element typing was order-sensitive within one expression**
+   (`[GPU-KERNEL-ELEM-TYPING]`) — FIXED. Call arguments are now checked
+   against the callee's signature: non-lambda arguments are inferred and
+   linked to their slots first, then each lambda is inferred with the
+   parameter type those links pinned
+   (`crates/osprey-types/src/expr.rs::positional_arg_types`). Both
+   `fn(x, y) => t * x * y` and `fn(x, y) => x * y * t` compile, and
+   `gpuFold(0.0, fn(a, v) => a + v)` no longer needs annotations. What
+   remains is plan 0022's F10 proper: a NAMED context-free function
+   (`fn plus(a, b) = a + b`) defaults at its own definition, where no call
+   site is in sight.
 
-## Spec statements the corpus falsified
+Open, and the reason `tests/core/gpu/kernel_frontier` and
+`tests/core/gpu/scalar_contracts` are not yet green:
 
-`docs/specs/0034-GPUComputation.md` is owned by another agent; these are
-recorded so the correction is not lost.
+- **A named context-free numeric function cannot serve a float slot** (F10,
+  [plan 0022](0022-arithmetic-totality-audit.md)). Deferring the default needs
+  a numeric class, because the two overloads differ in *shape*: checked
+  `Result<int, MathError>` versus total `float`.
+- **An empty list literal has no element type in codegen.** `toGpu([])` tags
+  the buffer bare, so `gpuGet(toGpu([]), 0) ?: 9.5` reads the Result slot as
+  an `int`. Lambdas and `let`s publish their inferred types by source position
+  (`ProgramTypes::lambdas` / `lets`); list literals do not, because
+  `Expr::List` carries no position. The fix is to give it one and publish the
+  same way — an AST change, not a GPU one.
+- **ML cannot spell a block-bodied lambda**, so `kernel_frontier`'s Default
+  case has no twin: layout is suppressed inside brackets, and the body opens
+  inside `gpuMap (…)`.
 
-- **`[GPU-KERNEL-FORM]`'s first implementation gap is stale.** The spec says a
-  block-bodied lambda with an internal `let` fails codegen as a kernel. It
-  does not — `gpuMap(fn(x) => { let y = t * x  y + t })` over `[1.0, 2.0, 3.0]`
-  runs and prints the correct `sum=18.0 g0=4.0`. The bullet should be deleted.
-  It remains untestable in the corpus for a different reason: ML has no
-  multi-statement lambda body, so a twin is unspellable and
-  `cross_flavor_ir_equiv` forbids a Default-only construct in a twinned file.
-- **`[GPU-KERNEL-FORM]`'s second gap is overstated.** "A recursive helper — or
-  any recursive function — must carry a fully concrete signature" is wrong: an
-  unannotated recursive `fn triangular(n)` used as a kernel compiles and runs.
-  The restriction bites only when the signature is not *inferable* — e.g. a
-  `GpuBuffer<int>` parameter, which does fail closed exactly as documented.
-  Scope the claim to that.
-- **`[GPU-SCAN]` never defines its `initial` parameter** and **`[GPU-IOTA]`
-  never defines `n <= 0`.** The implementation computes
-  `result[0] = combine(initial, src[0])` and returns an empty buffer for
-  non-positive `n`; both are now pinned by `combinators`, but the spec should
-  say so.
+## Spec statements the corpus falsified — now corrected
+
+The corrections below have been applied to
+`docs/specs/0034-GPUComputation.md`; they are kept as the record of why.
+
+- **`[GPU-KERNEL-FORM]`'s first implementation gap was stale.** A block-bodied
+  lambda with an internal `let` works as a kernel and always did —
+  `gpuMap(fn(x) => { let y = t * x  y + t })` over `[1.0, 2.0, 3.0]` prints
+  the correct `sum=18.0 g0=4.0`. The bullet is deleted; the ML twin
+  limitation replaces it.
+- **`[GPU-KERNEL-FORM]`'s second gap is now implemented, not scoped.** A
+  recursive unannotated helper is monomorphised per instantiation
+  (`crates/osprey-codegen/src/monofn.rs`), so the annotations are optional.
+  Only an unresolvable *return* type still fails closed.
+- **`[GPU-SCAN]` never defined its `initial` parameter** and **`[GPU-IOTA]`
+  never defined `n <= 0`.** Both are now normative in the spec:
+  `result[0] = combine(initial, src[0])`, and a non-positive `n` yields an
+  empty buffer.
 
 ## Gaps delegated to other plans
 
-- **Recursive generic emission** (monomorphization) and **ML-parser support
-  for block-bodied lambdas** — [plan
-  0002](0002-codegen-generic-function-values.md) (spec `[GPU-KERNEL-FORM]`).
-- **Context-free kernel int-defaulting (F10)** —
+- **Numeric defaulting for named context-free functions (F10)** —
   [plan 0022](0022-arithmetic-totality-audit.md) (spec
-  `[GPU-KERNEL-ELEM-TYPING]`); defect 4 above is the sharpened repro.
-- **Float/bool list element read-back** (defect 1) — belongs with the
-  collection surface, [plan 0004](0004-collection-stdlib-completion.md), which
-  already tracks a `listGet` layout defect over `List<string>`.
+  `[GPU-KERNEL-ELEM-TYPING]`). The lambda half is fixed here.
+- **Positions on list literals**, so an empty literal's inferred element type
+  reaches codegen — an AST/`ProgramTypes` change with no GPU-specific part.
+- **ML block-bodied lambda bodies** (layout inside brackets) —
+  [0023-LanguageFlavors.md](../specs/0023-LanguageFlavors.md).
 
 ## Design decisions carried from the research foundation
 

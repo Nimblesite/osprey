@@ -19,6 +19,47 @@ use osprey_ast::{Expr, NamedArgument};
 pub(crate) const LIST_OWNER: &str = "List";
 pub(crate) const MAP_OWNER: &str = "Map";
 
+/// Owner-tag prefix marking a runtime list whose element type is known; the
+/// suffix is the element's LLVM spelling (`List#double`), the same convention
+/// GPU buffers (`Gpu#double`) and flat literals (`[]double`) use.
+///
+/// The list runtime stores every element as a uniform `i64` word, so this tag
+/// is the ONLY surviving record of what that word means. Without it
+/// `listGet([1.5, 2.5], 0)` handed back IEEE-754 bits typed as an `int` — a
+/// `?: 0.0` default then failed to type — and `forEachList` printed
+/// `4609434218613702656` for `1.5`. [BUILTIN-LIST-GET]
+pub(crate) const LIST_TAG: &str = "List#";
+
+/// The owner tag for a runtime list holding `elem` words.
+pub(crate) fn list_owner(elem: Option<LType>) -> String {
+    crate::llty::elem_tagged_owner(LIST_TAG, LIST_OWNER, elem)
+}
+
+/// Whether an owner tag names a runtime list handle — element-typed
+/// (`List#double`) or bare.
+pub(crate) fn is_list_owner(owner: &str) -> bool {
+    owner == LIST_OWNER || owner.starts_with(LIST_TAG)
+}
+
+/// The element `LType` recorded on a list handle's owner tag, if any.
+pub(crate) fn tagged_elem(v: &Value) -> Option<LType> {
+    crate::llty::elem_of_tag(v, LIST_TAG)
+}
+
+/// One element word read out of `list`, recovered at its tagged element type —
+/// what every consumer (a callback, a `?:` default, a `match` arm) must see
+/// instead of the storage word [`LIST_TAG`].
+pub(crate) fn elem_value(cg: &mut Codegen, list: &Value, raw: &str) -> Value {
+    crate::conv::from_word(cg, raw, tagged_elem(list))
+}
+
+/// A fresh list handle tagged with the element type of the list it derives
+/// from (`listReverse`, `filterList`), or with the element it stores
+/// (`listAppend`).
+fn derived_list(cg: &mut Codegen, operand: String, elem: Option<LType>) -> Value {
+    own_handle(cg, Value::handle(operand, list_owner(elem)))
+}
+
 /// Dispatch a collection builtin by name, or `None` if `name` is not one.
 pub(crate) fn gen(
     cg: &mut Codegen,
@@ -31,7 +72,7 @@ pub(crate) fn gen(
         "listLength" => one_list_i64(cg, "osprey_list_length", args)?,
         "listAppend" => list_insert(cg, "osprey_list_append_of", args)?,
         "listPrepend" => list_insert(cg, "osprey_list_prepend_of", args)?,
-        "listConcat" => binary_handle_op(cg, args, "osprey_list_concat", LIST_OWNER)?,
+        "listConcat" => list_concat(cg, args)?,
         "listReverse" => one_list_handle(cg, "osprey_list_reverse", args)?,
         "listGet" => list_get(cg, args)?,
         "listContains" => list_contains(cg, args)?,
@@ -83,7 +124,7 @@ pub(crate) fn gen_receiver_directed(
     }
     let recv = lowered;
     let count = match recv.osp_ty.as_deref() {
-        Some(LIST_OWNER) => handle_i64(cg, &recv, "osprey_list_length"),
+        Some(owner) if is_list_owner(owner) => handle_i64(cg, &recv, "osprey_list_length"),
         Some(MAP_OWNER) => handle_i64(cg, &recv, "osprey_map_length"),
         _ => match crate::listlit::lit_length(cg, &recv) {
             Some(n) => n,
@@ -155,6 +196,12 @@ pub(crate) fn managed_flag(v: &Value) -> &'static str {
 /// region drop can reclaim them [GC-ARC-PERCEUS].
 fn stored_boxed_arg(cg: &mut Codegen, args: &[Expr], i: usize) -> Result<(Value, &'static str)> {
     let v = unboxed_arg(cg, args, i)?;
+    stored_element(cg, v)
+}
+
+/// [`stored_boxed_arg`] for an element already lowered — the insert path reads
+/// the element's type before it is erased into the `i64` ABI.
+fn stored_element(cg: &mut Codegen, v: Value) -> Result<(Value, &'static str)> {
     if v.result_inner.is_some() {
         return Err(CodegenError::unsupported(
             "Result-valued collection elements are not yet supported; handle the Result before storing it",
@@ -191,25 +238,30 @@ fn one_list_i64(cg: &mut Codegen, cname: &str, args: &[Expr]) -> Result<Value> {
     Ok(Value::new(r, LType::I64))
 }
 
-/// `f(handle) -> handle`.
+/// `f(handle) -> handle`. The result holds the source's own elements, so it
+/// keeps the source's element tag.
 fn one_list_handle(cg: &mut Codegen, cname: &str, args: &[Expr]) -> Result<Value> {
     let h = handle_arg(cg, args, 0)?;
     let r = cg.call("i8*", cname, "i8*", &[&h.operand]);
-    Ok(own_handle(cg, Value::handle(r, LIST_OWNER)))
+    Ok(derived_list(cg, r, tagged_elem(&h)))
 }
 
 /// `f(handle, element, elem_managed) -> handle` — `listAppend` / `listPrepend`.
 /// The element is STORED, so it is dup'd and the new list records its kind.
+/// The element's own type tags the result, so `listAppend(List(), 1.5)` yields
+/// a `List<float>` that reads back as one.
 fn list_insert(cg: &mut Codegen, cname: &str, args: &[Expr]) -> Result<Value> {
     let h = handle_arg(cg, args, 0)?;
-    let (x, managed) = stored_boxed_arg(cg, args, 1)?;
+    let x = unboxed_arg(cg, args, 1)?;
+    let elem = tagged_elem(&h).or(Some(x.ty));
+    let (x, managed) = stored_element(cg, x)?;
     let r = cg.call(
         "i8*",
         cname,
         "i8*, i64, i32",
         &[&h.operand, &x.operand, managed],
     );
-    Ok(own_handle(cg, Value::handle(r, LIST_OWNER)))
+    Ok(derived_list(cg, r, elem))
 }
 
 /// A binary runtime op on two collection-handle arguments → a new handle
@@ -228,9 +280,18 @@ fn combine_handles(cg: &mut Codegen, a: &Value, b: &Value, cname: &str, owner: &
     own_handle(cg, v)
 }
 
-/// Emit `osprey_list_concat` on two already-evaluated list handles.
+/// `listConcat(a, b)` — the two lists' elements in one list.
+fn list_concat(cg: &mut Codegen, args: &[Expr]) -> Result<Value> {
+    let a = handle_arg(cg, args, 0)?;
+    let b = handle_arg(cg, args, 1)?;
+    Ok(concat_handles(cg, &a, &b))
+}
+
+/// Emit `osprey_list_concat` on two already-evaluated list handles. Both hold
+/// the same element type, so either operand's tag types the result.
 pub(crate) fn concat_handles(cg: &mut Codegen, a: &Value, b: &Value) -> Value {
-    combine_handles(cg, a, b, "osprey_list_concat", LIST_OWNER)
+    let owner = list_owner(tagged_elem(a).or_else(|| tagged_elem(b)));
+    combine_handles(cg, a, b, "osprey_list_concat", &owner)
 }
 
 /// `listGet(l, i) -> Result<T, _>` gated on `osprey_list_in_bounds`.
@@ -243,13 +304,24 @@ fn list_get(cg: &mut Codegen, args: &[Expr]) -> Result<Value> {
         "i8*, i64",
         &[&l.operand, &i.operand],
     );
-    let val = cg.call(
+    let raw = cg.call(
         "i64",
         "osprey_list_get",
         "i8*, i64",
         &[&l.operand, &i.operand],
     );
-    result_from_flag(cg, &inb, &val, "listGet: index out of bounds")
+    // The success payload is the ELEMENT's type, not the storage word's, so a
+    // `List<float>` yields `Result<float, _>` [`LIST_TAG`].
+    let value = elem_value(cg, &l, &raw);
+    let inner = value.ty;
+    let is_err = cg.emit_reg(format!("icmp eq i32 {inb}, 0"));
+    crate::result::make_result_if_err(
+        cg,
+        value,
+        inner,
+        &is_err,
+        Some("listGet: index out of bounds"),
+    )
 }
 
 /// `listContains(l, x) -> bool`: linear scan, content-equality for strings.

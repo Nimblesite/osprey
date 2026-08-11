@@ -84,7 +84,10 @@ pub(crate) fn gen_constructor(
         let fa = fields.iter().find(|f| &f.name == fname).ok_or_else(|| {
             CodegenError::invalid(format!("missing field `{fname}` for `{name}`"))
         })?;
+        // A field slot is typed, not tagged: a list literal stored here would
+        // be read back as an `OspreyList` [`crate::listlit::escaping`].
         let v = gen_expr(cg, &fa.value)?;
+        let v = crate::listlit::escaping(cg, v);
         let v = crate::cast::coerce_to(cg, v, *fty)?;
         store_field(cg, &struct_ty, obj.as_str(), i + 1, *fty, &v.operand);
     }
@@ -99,6 +102,7 @@ pub(crate) fn gen_object(cg: &mut Codegen, fields: &[FieldAssignment]) -> Result
     let mut vals = Vec::with_capacity(fields.len());
     for fa in fields {
         let v = gen_expr(cg, &fa.value)?;
+        let v = crate::listlit::escaping(cg, v);
         if v.result_inner.is_some() {
             return Err(result_field_unsupported());
         }

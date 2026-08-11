@@ -1,0 +1,67 @@
+// Aspirational kernel-frontier conformance ([GPU-KERNEL-ELEM-TYPING],
+// [GPU-KERNEL-FORM], [GPU-KERNEL-EXTRACT]). The layout-bodied lambda below is
+// intentionally the ML spelling required for parity with Default block bodies.
+
+addFloats : (float, float) -> float
+addFloats (a, x) = a + x
+
+plus (a, x) = a + x
+
+atFloat (xs, i) = gpuGet (xs, i) ?: 0.0
+
+// Deliberately unannotated: the concrete GpuBuffer<float> specialization and
+// recursive self-call must be emitted from the call site.
+rowDot (matrix, vector, cols, row, col) = match col == cols
+    true => 0.0
+    false => (atFloat (matrix, (((row * cols) ?: 0) + col) ?: 0) * atFloat (vector, col)
+        + rowDot (matrix, vector, cols, row, (col + 1) ?: col))
+
+multiplicationOrderCase () =
+    t = 2.0
+    xs = toGpu [1.0, 2.0]
+    ys = toGpu [3.0, 4.0]
+    captureFirst = gpuZipWith (xs, ys, \(x, y) => t * x * y)
+    captureLast = gpuZipWith (xs, ys, \(x, y) => x * y * t)
+    checkAll "buffer slots type every multiplication order" [
+        (captureFirst |> gpuFold 0.0 addFloats) == 22.0,
+        (captureLast |> gpuFold 0.0 addFloats) == 22.0,
+        (gpuGet (captureFirst, 0) ?: 0.0) == 6.0,
+        (gpuGet (captureLast, 1) ?: 0.0) == 16.0
+    ]
+
+genericCombineCase () =
+    xs = toGpu [1.0, 2.0, 3.0]
+    checkAll "named generic float combines specialize from buffer slots" [
+        (xs |> gpuFold 0.0 plus) == 6.0,
+        (gpuGet (xs |> gpuScan 0.0 plus, 2) ?: 0.0) == 6.0
+    ]
+
+recursiveHelperCase () =
+    matrix = toGpu [1.0, 2.0, 3.0, 4.0]
+    vector = toGpu [10.0, 20.0]
+    rows = gpuIota 2 |> gpuMap (\row => rowDot (matrix, vector, 2, row, 0))
+    checkAll "recursive GPU helpers monomorphize from their call site" [
+        gpuLength rows == 2,
+        (gpuGet (rows, 0) ?: 0.0) == 50.0,
+        (gpuGet (rows, 1) ?: 0.0) == 110.0,
+        (rows |> gpuFold 0.0 addFloats) == 160.0
+    ]
+
+blockBodyCase () =
+    t = 2.0
+    xs = toGpu [1.0, 2.0, 3.0]
+    mapped = xs |> gpuMap (\x =>
+        y = t * x
+        y + t)
+    checkAll "block-bodied kernels preserve local bindings" [
+        gpuLength mapped == 3,
+        (gpuGet (mapped, 0) ?: 0.0) == 4.0,
+        (gpuGet (mapped, 1) ?: 0.0) == 6.0,
+        (gpuGet (mapped, 2) ?: 0.0) == 8.0,
+        (mapped |> gpuFold 0.0 addFloats) == 18.0
+    ]
+
+test ("float kernel slots type both multiplication orders", multiplicationOrderCase)
+test ("named generic float combines specialize from buffer slots", genericCombineCase)
+test ("unannotated recursive helpers are valid GPU kernels", recursiveHelperCase)
+test ("block-bodied GPU kernels keep local bindings", blockBodyCase)

@@ -12,6 +12,12 @@
 
 use osprey_ast::{Position, Program};
 
+/// The decimal magnitude of `i64::MIN`. One larger than `i64::MAX`, so it is a
+/// valid literal ONLY under a unary minus — both flavors accept exactly that
+/// spelling and reject every other use, so a twin pair agrees on the full int
+/// domain ([ARITH-NEG-LITERAL], [FLAVOR-EQUIVALENCE]).
+pub(crate) const I64_MIN_MAGNITUDE: &str = "9223372036854775808";
+
 mod default;
 mod desugar;
 mod docparse;

@@ -24,6 +24,11 @@ pub(crate) struct Token {
 pub(crate) enum TokKind {
     /// Integer literal.
     Int(i64),
+    /// The decimal magnitude of `i64::MIN` ([`crate::I64_MIN_MAGNITUDE`]),
+    /// which is one larger than `i64::MAX` and therefore a literal only as the
+    /// operand of a unary minus. The parser folds `-` + this into
+    /// `Int(i64::MIN)` and rejects it anywhere else ([ARITH-NEG-LITERAL]).
+    IntMinMagnitude,
     /// Float literal.
     Float(f64),
     /// String literal body (raw, including `${...}` spans, escapes unresolved).

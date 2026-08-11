@@ -1077,7 +1077,14 @@ impl Parser<'_> {
     /// A prefix unary (`-x`, `!x`) or an application.
     fn unary(&mut self) -> MlExpr {
         if let TokKind::Op(op) = self.peek() {
-            if op == "-" || op == "!" {
+            if op == MINUS_OP && matches!(self.peek_at(1), TokKind::IntMinMagnitude) {
+                // The one spelling of `i64::MIN`: its magnitude is a literal
+                // only here ([`crate::I64_MIN_MAGNITUDE`]).
+                self.advance();
+                self.advance();
+                return MlExpr::Int(i64::MIN);
+            }
+            if op == MINUS_OP || op == "!" {
                 let op = op.clone();
                 self.advance();
                 let operand = self.unary();
@@ -1124,7 +1131,7 @@ impl Parser<'_> {
                 func: Box::new(func),
             };
         }
-        while self.starts_atom() {
+        while self.starts_atom() || self.at_negative_literal_arg() {
             // `f (a, b)` — a parenthesised comma-list argument is the uncurried
             // saturated call: a single multi-argument `Call` ([FLAVOR-ML-CALL]).
             // A lone `f (a)` has no top-level comma and stays plain grouping.
@@ -1136,13 +1143,39 @@ impl Parser<'_> {
                 };
                 continue;
             }
-            let arg = self.postfix();
+            let arg = if self.at_negative_literal_arg() {
+                self.negative_literal_arg()
+            } else {
+                self.postfix()
+            };
             func = MlExpr::App {
                 func: Box::new(func),
                 arg: Box::new(arg),
             };
         }
         func
+    }
+
+    /// A `-` that opens a NEGATIVE LITERAL ARGUMENT rather than subtraction:
+    /// spaced from what precedes it and glued to the digits that follow, so
+    /// `gpuIota -3` applies `gpuIota` to `-3` — the parse its Default twin
+    /// `gpuIota(-3)` has. `a - 3` (spaced both sides) and `a-3` (glued both
+    /// sides) stay subtraction, so only the spelling that already reads as one
+    /// argument changes meaning ([FLAVOR-ML-CALL], [FLAVOR-EQUIVALENCE]).
+    fn at_negative_literal_arg(&self) -> bool {
+        matches!(self.peek(), TokKind::Op(op) if op == MINUS_OP)
+            && !self.glued()
+            && self.glued_at(1)
+            && matches!(self.peek_at(1), TokKind::Int(_) | TokKind::Float(_))
+    }
+
+    /// Consume `-<literal>` as one negated literal argument.
+    fn negative_literal_arg(&mut self) -> MlExpr {
+        self.advance(); // `-`
+        MlExpr::Unary {
+            op: String::from(MINUS_OP),
+            operand: Box::new(self.postfix()),
+        }
     }
 
     /// `( e ( , e )* )` — the parenthesised comma-list arguments of an uncurried
@@ -1203,7 +1236,12 @@ impl Parser<'_> {
 
     /// Whether the current token abuts the previous one with no whitespace.
     fn glued(&self) -> bool {
-        self.toks.get(self.i).is_some_and(|t| t.glued)
+        self.glued_at(0)
+    }
+
+    /// Whether the token `ahead` of the cursor abuts its predecessor.
+    fn glued_at(&self, ahead: usize) -> bool {
+        self.toks.get(self.i + ahead).is_some_and(|t| t.glued)
     }
 
     /// Whether the next token can begin an argument atom.
@@ -1226,6 +1264,16 @@ impl Parser<'_> {
             TokKind::Int(n) => {
                 self.advance();
                 MlExpr::Int(n)
+            }
+            // Reachable only where no unary minus precedes it, which is the
+            // one position `i64::MIN`'s magnitude is not a literal.
+            TokKind::IntMinMagnitude => {
+                self.error(format!(
+                    "invalid integer literal '{}'",
+                    crate::I64_MIN_MAGNITUDE
+                ));
+                self.advance();
+                MlExpr::Int(0)
             }
             TokKind::Float(f) => {
                 self.advance();

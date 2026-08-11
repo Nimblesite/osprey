@@ -69,6 +69,29 @@ impl LType {
     }
 }
 
+/// The scalar element `LType` spelled after `prefix` in a value's owner tag:
+/// `Gpu#double` on a buffer, `List#double` on a runtime list handle,
+/// `[]double` on a flat list literal. The container kinds differ; the element
+/// spelling does not, so every container reads its tag through here.
+pub(crate) fn elem_of_tag(v: &Value, prefix: &str) -> Option<LType> {
+    match v.osp_ty.as_deref()?.strip_prefix(prefix)? {
+        "double" => Some(LType::Double),
+        "i1" => Some(LType::I1),
+        "i64" => Some(LType::I64),
+        _ => None,
+    }
+}
+
+/// The owner tag for a container holding `elem` words: `<prefix><spelling>`
+/// when the element is a concrete scalar the uniform `i64` element ABI would
+/// otherwise erase, the untyped `bare` owner when it is anything else.
+pub(crate) fn elem_tagged_owner(prefix: &str, bare: &str, elem: Option<LType>) -> String {
+    match elem.filter(|lt| matches!(lt, LType::I64 | LType::Double | LType::I1)) {
+        Some(lt) => format!("{prefix}{}", lt.as_str()),
+        None => bare.to_string(),
+    }
+}
+
 impl fmt::Display for LType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(self.as_str())

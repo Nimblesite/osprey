@@ -277,6 +277,9 @@ fn gen_fn_body(cg: &mut Codegen, name: &str, body: &Expr) -> Result<Value> {
 /// return wraps a bare body into a Success block (or passes an existing Result
 /// through); everything else coerces to the inferred scalar return type.
 fn coerce_return(cg: &mut Codegen, name: &str, body: Value) -> Result<Value> {
+    // A returned list literal leaves the only scope that knows it is the flat
+    // layout — callers see `List<T>` [`crate::listlit::escaping`].
+    let body = crate::listlit::escaping(cg, body);
     if let Some(inner) = cg.fn_ret_result_inner(name) {
         // An existing Result is re-laid to the *declared* success-slot type: a
         // body like `Error { message }` types its slot from the message (`i8*`),

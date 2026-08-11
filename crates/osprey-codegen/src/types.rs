@@ -8,6 +8,15 @@
 use crate::llty::LType;
 use osprey_types::{names, Type};
 
+/// The `LType` of a container's element type argument when inference resolved
+/// it concretely — the input to an element-typed owner tag
+/// ([`crate::llty::elem_tagged_owner`]). A still-polymorphic element has no
+/// type to record, so its container stays untagged.
+pub(crate) fn scalar_elem(elem: Option<&Type>) -> Option<LType> {
+    elem.filter(|ty| !osprey_types::has_type_var(ty))
+        .map(ltype_of)
+}
+
 /// Map an inferred type to the LLVM type a runtime value of it travels as.
 pub fn ltype_of(ty: &Type) -> LType {
     match ty {
@@ -57,13 +66,17 @@ pub fn owner_name(ty: &Type) -> Option<String> {
             | names::UNIT
             | names::ANY
             | names::RESULT
-            | names::LIST
             | names::MAP
             | names::ITERATOR
             | names::FIBER
             | names::CHANNEL
             | names::PTR => None,
             names::GPU_BUFFER => Some(crate::gpu::buffer_owner(args.first())),
+            // A `List<T>` handle carries its element the same way, so a float
+            // list read back through a parameter, a return or a field is
+            // floats rather than the `i64` words the runtime stores it as
+            // ([`crate::collections::LIST_TAG`]).
+            names::LIST => Some(crate::collections::list_owner(scalar_elem(args.first()))),
             other => Some(other.to_string()),
         },
         _ => None,

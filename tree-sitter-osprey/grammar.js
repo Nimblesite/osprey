@@ -6,7 +6,7 @@
  * collapsed to one (docs/plans/go-to-rust-migration.md). It is the compiler
  * front-end's parser: crates/osprey-syntax lowers this CST to the AST.
  *
- * Precedence climbs or < and < cmp < add < mul < unary < pipe < call via
+ * Precedence climbs or < and < cmp < add < mul < pipe < unary < call via
  * tree-sitter prec.left/right with the PREC table below (higher = binds
  * tighter), preserving the associativity the language has always had.
  */
@@ -18,8 +18,8 @@ const PREC = {
   compare: 4,
   add: 5,
   mul: 6,
-  unary: 7,
-  pipe: 8,
+  pipe: 7,
+  unary: 8,
   call: 9,
   member: 10,
 };

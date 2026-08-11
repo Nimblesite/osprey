@@ -108,6 +108,12 @@ pub struct Codegen {
     /// (mutually) recursive generic call falls back to a direct call instead of
     /// inlining forever.
     pub(crate) inlining: HashSet<String>,
+    /// Emitted instantiations of RECURSIVE generic functions, keyed by the call
+    /// site's argument representations ([`crate::monofn`]): the one form of
+    /// polymorphism resolved by emitting a definition rather than by inlining.
+    pub(crate) monofns: HashMap<String, crate::monofn::Instantiation>,
+    /// Monotonic id naming each emitted instantiation.
+    monofn_count: usize,
     /// Function-typed locals in the current function (a higher-order parameter
     /// `f: (int) -> int`): name → its signature ([`FnSig`]), so a call `f(x)`
     /// lowers to an indirect call through the `i8*` handle.
@@ -549,6 +555,8 @@ impl Codegen {
             obj_count: 0,
             fn_defs: HashMap::new(),
             inlining: HashSet::new(),
+            monofns: HashMap::new(),
+            monofn_count: 0,
             fn_ptr_locals: HashMap::new(),
             fn_value_types: HashMap::new(),
             call_aliases: HashMap::new(),
@@ -746,6 +754,15 @@ impl Codegen {
     pub(crate) fn next_kernel_id(&mut self) -> usize {
         let id = self.kernel_count;
         self.kernel_count += 1;
+        id
+    }
+
+    /// A fresh id naming an emitted instantiation of a recursive generic
+    /// function. Advanced only by specialisation, so it is a pure function of
+    /// AST walk order and a Default/ML twin pair numbers alike [FLAVOR-IR-EQUIV].
+    pub(crate) fn next_monofn_id(&mut self) -> usize {
+        let id = self.monofn_count;
+        self.monofn_count += 1;
         id
     }
 
