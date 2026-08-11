@@ -89,7 +89,7 @@ fn sample_weights(samples: &[Sample], rate_hz: u64) -> Vec<f64> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::testutil::{model_of, osp_frame, sample, thread};
+    use crate::testutil::{field_str, field_u64, model_of, osp_frame, sample, thread};
 
     fn fixture() -> Value {
         // Threads: main (3 samples incl. one waiting), fiber-7 (0 samples).
@@ -112,20 +112,17 @@ mod tests {
     #[test]
     fn document_shape_and_shared_frames() {
         let doc = fixture();
-        assert_eq!(doc.get("$schema").and_then(Value::as_str), Some(SCHEMA));
-        assert_eq!(doc.get("exporter").and_then(Value::as_str), Some("osprey"));
+        field_str(&doc, "$schema", SCHEMA);
+        field_str(&doc, "exporter", "osprey");
         let frames = doc
             .pointer("/shared/frames")
             .and_then(Value::as_array)
             .unwrap();
         assert_eq!(frames.len(), 3);
         let fib = frames.first().unwrap();
-        assert_eq!(fib.get("name").and_then(Value::as_str), Some("fib"));
-        assert_eq!(
-            fib.get("file").and_then(Value::as_str),
-            Some("/src/app.osp")
-        );
-        assert_eq!(fib.get("line").and_then(Value::as_u64), Some(5));
+        field_str(fib, "name", "fib");
+        field_str(fib, "file", "/src/app.osp");
+        field_u64(fib, "line", 5);
     }
 
     #[test]
@@ -134,10 +131,10 @@ mod tests {
         let profiles = profiles.get("profiles").and_then(Value::as_array).unwrap();
         assert_eq!(profiles.len(), 1);
         let main = profiles.first().unwrap();
-        assert_eq!(main.get("name").and_then(Value::as_str), Some("main"));
-        assert_eq!(main.get("type").and_then(Value::as_str), Some("sampled"));
-        assert_eq!(main.get("unit").and_then(Value::as_str), Some("seconds"));
-        assert_eq!(main.get("startValue").and_then(Value::as_u64), Some(0));
+        field_str(main, "name", "main");
+        field_str(main, "type", "sampled");
+        field_str(main, "unit", "seconds");
+        field_u64(main, "startValue", 0);
     }
 
     #[test]

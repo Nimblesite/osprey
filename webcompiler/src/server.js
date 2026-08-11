@@ -101,134 +101,118 @@ function sendSystemError(res, error) {
     res.status(500).json({ success: false, error: error.message })
 }
 
-// Compile endpoint
-app.post('/api/compile', async (req, res) => {
-    const { code, flavor } = req.body
-    console.log('📝 Compile request received')
-    console.log('📄 Code length:', code?.length || 0)
-    
-    // LOG THE ACTUAL CODE
-    console.log('🔍 CODE BEING COMPILED:')
-    console.log('='.repeat(50))
-    console.log(code || 'NO CODE PROVIDED')
-    console.log('='.repeat(50))
-
-    if (!code) {
-        return res.status(400).json({ success: false, error: 'No code provided' })
-    }
-
+// One trace shape for both directions of the LSP bridge.
+function logLspTraffic(direction, count, message) {
+    console.log(`${direction} [${count}]:`, message.substring(0, 200) + (message.length > 200 ? '...' : ''))
     try {
-        const result = await runOspreyCompiler(['--sandbox', '--ast'], code, flavor)
-
-        logCompilerResult(result)
-
-        if (result.success) {
-            console.log('✅ Compile success, exit code:', result.exitCode)
-            res.status(200).json({
-                success: true,
-                compilerOutput: result.stderr || '',
-                programOutput: result.stdout || '' // AST output goes to stdout
-            })
-        } else {
-            console.error('❌ Compile failed, exit code:', result.exitCode)
-
-            const errorOutput = result.stderr || result.stdout || '';
-
-            // Detect INTERNAL compiler errors - simple marker from compiler
-            const isInternalError = errorOutput.includes('INTERNAL_COMPILER_ERROR:');
-
-            if (isInternalError) {
-                // Internal compiler error - log for debugging but don't expose to user
-                console.error('🚨 INTERNAL COMPILER ERROR DETECTED:', errorOutput);
-                res.status(502).json({
-                    success: false,
-                    error: 'The compiler encountered an internal error. Please report this code to help us fix the issue.',
-                    isInternalError: true
-                });
-                return;
-            }
-
-            res.status(422).json({ // 422 Unprocessable Entity for compilation errors
-                success: false,
-                compilerOutput: result.stderr || '',
-                programOutput: result.stdout || '',
-                error: errorOutput || `Compilation failed with exit code ${result.exitCode}`
-            })
+        const parsed = JSON.parse(message)
+        console.log(`  📌 Message type: ${parsed.method || parsed.id ? 'request/response' : 'notification'}`)
+        if (parsed.method) {
+            console.log(`  📌 Method: ${parsed.method}`)
         }
-    } catch (error) {
-        sendSystemError(res, error)
+    } catch (e) {
+        console.log('  ⚠️ Could not parse message as JSON')
     }
-})
+}
 
-// Run endpoint
-app.post('/api/run', async (req, res) => {
-    const { code, flavor } = req.body
-    console.log('🏃 Run request received')
-    console.log('📄 Code length:', code?.length || 0)
-    
-    // LOG THE ACTUAL CODE
-    console.log('🔍 CODE BEING RUN:')
-    console.log('='.repeat(50))
-    console.log(code || 'NO CODE PROVIDED')
-    console.log('='.repeat(50))
-
-    if (!code) {
-        return res.status(400).json({ success: false, error: 'No code provided' })
+// An internal compiler error is never surfaced verbatim: log it, answer 502.
+// Returns true when it has already answered the request.
+function internalErrorHandled(res, errorOutput) {
+    if (!errorOutput.includes('INTERNAL_COMPILER_ERROR:')) {
+        return false
     }
+    console.error('🚨 INTERNAL COMPILER ERROR DETECTED:', errorOutput)
+    res.status(502).json({
+        success: false,
+        error: 'The compiler encountered an internal error. Please report this code to help us fix the issue.',
+        isInternalError: true
+    })
+    return true
+}
 
-    try {
-        const result = await runOspreyCompiler(['--run'], code, flavor)
+// /api/compile and /api/run differ only in the compiler flags they pass and in
+// how a failing exit code maps onto a status + body, so they share one handler.
+function compilerEndpoint({ label, requestLog, codeLog, args, failure }) {
+    return async (req, res) => {
+        const { code, flavor } = req.body
+        console.log(requestLog)
+        console.log('📄 Code length:', code?.length || 0)
+        console.log(codeLog)
+        console.log('='.repeat(50))
+        console.log(code || 'NO CODE PROVIDED')
+        console.log('='.repeat(50))
 
-        logCompilerResult(result)
+        if (!code) {
+            return res.status(400).json({ success: false, error: 'No code provided' })
+        }
 
-        if (result.success) {
-            console.log('✅ Run success, exit code:', result.exitCode)
+        try {
+            const result = await runOspreyCompiler(args, code, flavor)
 
-            res.status(200).json({
-                success: true,
-                compilerOutput: result.stderr || '',
-                programOutput: result.stdout || ''
-            })
-        } else {
-            console.error('❌ Run failed, exit code:', result.exitCode)
+            logCompilerResult(result)
 
-            const errorOutput = result.stderr || result.stdout || '';
-
-            // Detect INTERNAL compiler errors - simple marker from compiler
-            const isInternalError = errorOutput.includes('INTERNAL_COMPILER_ERROR:');
-
-            if (isInternalError) {
-                // Internal compiler error - log for debugging but don't expose to user
-                console.error('🚨 INTERNAL COMPILER ERROR DETECTED:', errorOutput);
-                res.status(502).json({
-                    success: false,
-                    error: 'The compiler encountered an internal error. Please report this code to help us fix the issue.',
-                    isInternalError: true
-                });
-                return;
+            if (result.success) {
+                console.log(`✅ ${label} success, exit code:`, result.exitCode)
+                return res.status(200).json({
+                    success: true,
+                    compilerOutput: result.stderr || '',
+                    programOutput: result.stdout || ''
+                })
             }
 
-            // Determine if it's a user syntax/compilation error or runtime error
-            const isCompilationError = errorOutput.includes('parse errors') ||
-                errorOutput.includes('undefined variable') ||
-                errorOutput.includes('syntax error') ||
-                errorOutput.includes('type mismatch') ||
-                errorOutput.includes('Compilation failed');
-
-            const statusCode = isCompilationError ? 422 : 400; // 422 for compilation, 400 for runtime
-
-            res.status(statusCode).json({
+            console.error(`❌ ${label} failed, exit code:`, result.exitCode)
+            const errorOutput = result.stderr || result.stdout || ''
+            if (internalErrorHandled(res, errorOutput)) {
+                return
+            }
+            const { status, body } = failure(result, errorOutput)
+            res.status(status).json({
                 success: false,
                 compilerOutput: result.stderr || '',
                 programOutput: result.stdout || '',
+                ...body
+            })
+        } catch (error) {
+            sendSystemError(res, error)
+        }
+    }
+}
+
+// Compile endpoint — AST output goes to stdout; every failure is 422
+// (Unprocessable Entity) because nothing ran.
+app.post('/api/compile', compilerEndpoint({
+    label: 'Compile',
+    requestLog: '📝 Compile request received',
+    codeLog: '🔍 CODE BEING COMPILED:',
+    args: ['--sandbox', '--ast'],
+    failure: (result, errorOutput) => ({
+        status: 422,
+        body: { error: errorOutput || `Compilation failed with exit code ${result.exitCode}` }
+    })
+}))
+
+// Run endpoint — a failure is 422 when the program never compiled and 400 when
+// it compiled and then failed at runtime.
+app.post('/api/run', compilerEndpoint({
+    label: 'Run',
+    requestLog: '🏃 Run request received',
+    codeLog: '🔍 CODE BEING RUN:',
+    args: ['--run'],
+    failure: (result, errorOutput) => {
+        const isCompilationError = errorOutput.includes('parse errors') ||
+            errorOutput.includes('undefined variable') ||
+            errorOutput.includes('syntax error') ||
+            errorOutput.includes('type mismatch') ||
+            errorOutput.includes('Compilation failed')
+        return {
+            status: isCompilationError ? 422 : 400,
+            body: {
                 isCompilationError: isCompilationError,
                 error: errorOutput || `Process failed with exit code ${result.exitCode}`
-            })
+            }
         }
-    } catch (error) {
-        sendSystemError(res, error)
     }
-})
+}))
 
 // STARTUP: Delete ALL temp folders on server startup
 async function deleteAllTempFolders() {
@@ -478,18 +462,7 @@ wss.on('connection', (ws, req) => {
     ws.on('message', (data) => {
         const message = data.toString()
         clientToServerCount++
-        console.log(`📨 Client -> LSP [${clientToServerCount}]:`, message.substring(0, 200) + (message.length > 200 ? '...' : ''))
-
-        // Parse to check message type
-        try {
-            const parsed = JSON.parse(message)
-            console.log(`  📌 Message type: ${parsed.method || parsed.id ? 'request/response' : 'notification'}`)
-            if (parsed.method) {
-                console.log(`  📌 Method: ${parsed.method}`)
-            }
-        } catch (e) {
-            console.log('  ⚠️ Could not parse message as JSON')
-        }
+        logLspTraffic('📨 Client -> LSP', clientToServerCount, message)
 
         if (lspProcess.stdin && !lspProcess.stdin.destroyed) {
             lspProcess.stdin.write(message)
@@ -501,18 +474,7 @@ wss.on('connection', (ws, req) => {
     lspProcess.stdout.on('data', (data) => {
         const message = data.toString()
         serverToClientCount++
-        console.log(`📤 LSP -> Client [${serverToClientCount}]:`, message.substring(0, 200) + (message.length > 200 ? '...' : ''))
-
-        // Parse to check message type
-        try {
-            const parsed = JSON.parse(message)
-            console.log(`  📌 Message type: ${parsed.method || parsed.id ? 'request/response' : 'notification'}`)
-            if (parsed.method) {
-                console.log(`  📌 Method: ${parsed.method}`)
-            }
-        } catch (e) {
-            console.log('  ⚠️ Could not parse message as JSON')
-        }
+        logLspTraffic('📤 LSP -> Client', serverToClientCount, message)
 
         if (ws.readyState === ws.OPEN) {
             ws.send(data)

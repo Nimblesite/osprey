@@ -186,7 +186,11 @@ void test_deterministic_mode(void) {
   int64_t a = fiber_spawn(test_function_1);
   int64_t b = fiber_spawn(test_function_2);
   assert(a > 0 && b > 0 && a != b);
-  assert(fiber_done(a) == 0); // queued, not yet executed
+  // A queued deterministic fiber reports READY before it has run: execution
+  // happens at the await, and a `while (!fiber_done(f))` poll would otherwise
+  // spin forever with nothing to drive it (fiber_runtime.c's `is_deterministic`
+  // early return). The contract is "safe to await", not "already finished".
+  assert(fiber_done(a) == 1);
   assert(fiber_await(b) == 100); // executes the queue IN ORDER up to b
   assert(fiber_done(a) == 1);    // ...so a completed on the way
   assert(fiber_await(a) == 42);

@@ -8,21 +8,13 @@
 // output file is given, asserts captured stdout matches it. Exits non-zero on
 // any failure so `make wasm` / CI can gate on it.
 
-import { readFile } from "node:fs/promises";
 import { openSync, closeSync, readFileSync, mkdirSync, rmSync } from "node:fs";
 import { WASI } from "node:wasi";
+import { loadModuleFromArgv, assertMatchesGolden } from "./wasm-smoke-support.mjs";
 
-const [, , wasmPath, expectedPath] = process.argv;
-if (!wasmPath) {
-  console.error("usage: node wasm-smoke.mjs <module.wasm> [expected-stdout-file]");
-  process.exit(2);
-}
-
-const bytes = await readFile(wasmPath);
-if (!WebAssembly.validate(bytes)) {
-  console.error(`FAIL: ${wasmPath} is not a valid WebAssembly module`);
-  process.exit(1);
-}
+const { wasmPath, expectedPath, bytes } = await loadModuleFromArgv(
+  "usage: node wasm-smoke.mjs <module.wasm> [expected-stdout-file]",
+);
 
 // Node's WASI writes to the real stdout fd, so capture it by pointing the
 // instance's fd 1 at a temp file and reading it back after the run.
@@ -69,14 +61,6 @@ if (exitCode) {
   process.exit(1);
 }
 
-if (expectedPath) {
-  const expected = (await readFile(expectedPath, "utf8")).trim();
-  if (captured.trim() !== expected) {
-    console.error("FAIL: stdout mismatch");
-    console.error(`  expected: ${JSON.stringify(expected)}`);
-    console.error(`  actual:   ${JSON.stringify(captured.trim())}`);
-    process.exit(1);
-  }
-}
+await assertMatchesGolden(expectedPath, captured, "");
 
 console.error(`OK: ${wasmPath} validated and ran cleanly`);

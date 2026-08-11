@@ -68,6 +68,24 @@ pub(crate) fn lower(items: Vec<MlItem>) -> Program {
     }
 }
 
+/// Apply `descend` to the items a declaration CONTAINER holds — a namespace or
+/// module body, or the single item an `export`/`opaque` wraps — and report
+/// whether `item` was one. Every collector that walks a unit shares this so it
+/// only spells out the arms it actually cares about.
+fn descend_containers<T>(item: &MlItem, out: &mut T, descend: fn(&[MlItem], &mut T)) -> bool {
+    match item {
+        MlItem::Namespace {
+            body: Some(body), ..
+        }
+        | MlItem::Module { body, .. } => descend(body, out),
+        MlItem::Export { item, .. } | MlItem::Opaque { item, .. } => {
+            descend(std::slice::from_ref(item.as_ref()), out);
+        }
+        _ => return false,
+    }
+    true
+}
+
 /// Record every name a `name … = …` binding introduces (functions and values),
 /// recursing into nested blocks so block-local definitions are seen too.
 fn collect_bound_names(items: &[MlItem], out: &mut HashSet<String>) {
@@ -80,14 +98,9 @@ fn collect_bound_names(items: &[MlItem], out: &mut HashSet<String>) {
             MlItem::Assign { value, .. } | MlItem::Expr { value, .. } => {
                 collect_names_in_expr(value, out);
             }
-            MlItem::Namespace {
-                body: Some(body), ..
+            other => {
+                let _ = descend_containers(other, out, collect_bound_names);
             }
-            | MlItem::Module { body, .. } => collect_bound_names(body, out),
-            MlItem::Export { item, .. } | MlItem::Opaque { item, .. } => {
-                collect_bound_names(std::slice::from_ref(item.as_ref()), out);
-            }
-            _ => {}
         }
     }
 }
@@ -107,14 +120,9 @@ fn collect_positional_ctors(items: &[MlItem], out: &mut HashMap<String, usize>) 
                     }
                 }
             }
-            MlItem::Namespace {
-                body: Some(body), ..
+            other => {
+                let _ = descend_containers(other, out, collect_positional_ctors);
             }
-            | MlItem::Module { body, .. } => collect_positional_ctors(body, out),
-            MlItem::Export { item, .. } | MlItem::Opaque { item, .. } => {
-                collect_positional_ctors(std::slice::from_ref(item.as_ref()), out);
-            }
-            _ => {}
         }
     }
 }

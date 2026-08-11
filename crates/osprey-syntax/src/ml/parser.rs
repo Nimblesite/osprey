@@ -990,6 +990,14 @@ impl Parser<'_> {
     /// hold a top-level comma before its matching `)`? Distinguishes the
     /// uncurried comma-list `(x, y)` from grouping `(x)` and the unit `()`.
     fn first_paren_has_comma(&self) -> bool {
+        self.group_has_at_top_level(&TokKind::Comma)
+    }
+
+    /// Non-consuming: does `marker` appear at the OWN nesting depth of the
+    /// group opening at the cursor, before that group closes? `(` and `[` both
+    /// open a level, so a marker nested inside an inner group cannot spoof one
+    /// at the top level. False at end of input or when the group closes first.
+    fn group_has_at_top_level(&self, marker: &TokKind) -> bool {
         let mut depth = 0i32;
         let mut j = self.i;
         while let Some(tok) = self.toks.get(j) {
@@ -1001,8 +1009,8 @@ impl Parser<'_> {
                         return false;
                     }
                 }
-                TokKind::Comma if depth == 1 => return true,
                 TokKind::Eof => return false,
+                ref kind if depth == 1 && kind == marker => return true,
                 _ => {}
             }
             j += 1;
@@ -1379,24 +1387,7 @@ impl Parser<'_> {
     /// hold map entries? True when a `=>` appears at the group's own nesting
     /// depth before the matching `]`, or for the explicit empty form `[=>]`.
     fn bracket_is_map(&self) -> bool {
-        let mut depth = 0i32;
-        let mut j = self.i;
-        while let Some(tok) = self.toks.get(j) {
-            match tok.kind {
-                TokKind::LBracket | TokKind::LParen => depth += 1,
-                TokKind::RBracket | TokKind::RParen => {
-                    depth -= 1;
-                    if depth == 0 {
-                        return false; // closed without a top-level `=>`
-                    }
-                }
-                TokKind::FatArrow if depth == 1 => return true,
-                TokKind::Eof => return false,
-                _ => {}
-            }
-            j += 1;
-        }
-        false
+        self.group_has_at_top_level(&TokKind::FatArrow)
     }
 
     /// `[ k => v ( , k => v )* ]` or the empty `[=>]` — a map literal. Each entry

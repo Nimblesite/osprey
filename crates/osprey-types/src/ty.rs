@@ -94,6 +94,35 @@ pub enum Type {
     },
 }
 
+/// The nullary type constructors (`int`, `Unit`, …). Each is the same body
+/// over a different name in [`names`], so they are enumerated as rows rather
+/// than written out one identical function at a time.
+macro_rules! prim_types {
+    ($($(#[$doc:meta])* $vis:vis $name:ident = $konst:ident;)*) => {
+        $(
+            $(#[$doc])*
+            #[must_use]
+            $vis fn $name() -> Type {
+                Type::prim(names::$konst)
+            }
+        )*
+    };
+}
+
+/// The applied type constructors (`List<e>`, `Map<k, v>`, …): one row per
+/// constructor, listing its argument names in order.
+macro_rules! applied_types {
+    ($($(#[$doc:meta])* $vis:vis $name:ident = $konst:ident($($arg:ident),+);)*) => {
+        $(
+            $(#[$doc])*
+            #[must_use]
+            $vis fn $name($($arg: Type),+) -> Type {
+                Type::con(names::$konst, vec![$($arg),+])
+            }
+        )*
+    };
+}
+
 impl Type {
     /// A constructor application, e.g. `Type::con("List", vec![Type::int()])`.
     pub(crate) fn con(name: impl Into<String>, args: Vec<Type>) -> Type {
@@ -106,41 +135,23 @@ impl Type {
     pub(crate) fn prim(name: impl Into<String>) -> Type {
         Type::con(name, Vec::new())
     }
-    /// The `int` primitive type.
-    #[must_use]
-    pub(crate) fn int() -> Type {
-        Type::prim(names::INT)
+    prim_types! {
+        /// The `int` primitive type.
+        pub(crate) int = INT;
+        /// The `float` primitive type.
+        pub(crate) float = FLOAT;
+        /// The `string` primitive type.
+        pub(crate) string = STRING;
+        /// The `bool` primitive type.
+        pub(crate) bool = BOOL;
+        /// The `Unit` primitive type.
+        pub unit = UNIT;
+        /// The `any` top type.
+        pub(crate) any = ANY;
+        /// The opaque foreign-pointer type [FFI-PTR].
+        pub ptr = PTR;
     }
-    /// The `float` primitive type.
-    #[must_use]
-    pub(crate) fn float() -> Type {
-        Type::prim(names::FLOAT)
-    }
-    /// The `string` primitive type.
-    #[must_use]
-    pub(crate) fn string() -> Type {
-        Type::prim(names::STRING)
-    }
-    /// The `bool` primitive type.
-    #[must_use]
-    pub(crate) fn bool() -> Type {
-        Type::prim(names::BOOL)
-    }
-    /// The `Unit` primitive type.
-    #[must_use]
-    pub fn unit() -> Type {
-        Type::prim(names::UNIT)
-    }
-    /// The `any` top type.
-    #[must_use]
-    pub(crate) fn any() -> Type {
-        Type::prim(names::ANY)
-    }
-    /// The opaque foreign-pointer type [FFI-PTR].
-    #[must_use]
-    pub fn ptr() -> Type {
-        Type::prim(names::PTR)
-    }
+
     /// A function type from the given parameters to the given return type.
     #[must_use]
     pub fn fun(params: Vec<Type>, ret: Type) -> Type {
@@ -149,30 +160,18 @@ impl Type {
             ret: Box::new(ret),
         }
     }
-    /// `Result<ok, err>`.
-    #[must_use]
-    pub(crate) fn result(ok: Type, err: Type) -> Type {
-        Type::con(names::RESULT, vec![ok, err])
-    }
-    /// `List<elem>`.
-    #[must_use]
-    pub(crate) fn list(elem: Type) -> Type {
-        Type::con(names::LIST, vec![elem])
-    }
-    /// `Map<key, value>`.
-    #[must_use]
-    pub(crate) fn map(key: Type, value: Type) -> Type {
-        Type::con(names::MAP, vec![key, value])
-    }
-    /// `Iterator<elem>` used by range/map/filter/fold pipelines.
-    #[must_use]
-    pub(crate) fn iterator(elem: Type) -> Type {
-        Type::con(names::ITERATOR, vec![elem])
-    }
-    /// `GpuBuffer<elem>` — the dense scalar buffer [GPU-BUFFER].
-    #[must_use]
-    pub(crate) fn gpu_buffer(elem: Type) -> Type {
-        Type::con(names::GPU_BUFFER, vec![elem])
+
+    applied_types! {
+        /// `Result<ok, err>`.
+        pub(crate) result = RESULT(ok, err);
+        /// `List<elem>`.
+        pub(crate) list = LIST(elem);
+        /// `Map<key, value>`.
+        pub(crate) map = MAP(key, value);
+        /// `Iterator<elem>` used by range/map/filter/fold pipelines.
+        pub(crate) iterator = ITERATOR(elem);
+        /// `GpuBuffer<elem>` — the dense scalar buffer [GPU-BUFFER].
+        pub(crate) gpu_buffer = GPU_BUFFER(elem);
     }
 
     /// True if this is a nullary-or-applied constructor with the given name.

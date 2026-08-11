@@ -80,6 +80,27 @@ impl ProjectError {
         }
     }
 
+    /// Locate an error in `sources[source]`, or record it unlocated when that
+    /// index names no known source. Every collector that reports against a
+    /// source index goes through here.
+    pub(crate) fn in_source(
+        sources: &[SourceMetadata],
+        source: usize,
+        position: Option<osprey_ast::Position>,
+        message: impl Into<String>,
+    ) -> Self {
+        let message = message.into();
+        sources.get(source).map_or_else(
+            || Self {
+                message: message.clone(),
+                path: None,
+                line: None,
+                column: None,
+            },
+            |metadata| Self::source(metadata, position, message.clone()),
+        )
+    }
+
     fn source(
         source: &SourceMetadata,
         position: Option<osprey_ast::Position>,

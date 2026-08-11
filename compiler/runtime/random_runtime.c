@@ -34,10 +34,13 @@ int getentropy(void *, size_t);
 #define OSP_HAVE_GETRANDOM 1
 #endif
 
+// Drain the OS entropy source into `buf` — the runtime-wide source of
+// unpredictable bytes, also used for the WebSocket handshake nonce in
+// http_shared.c so there is exactly one CSPRNG entry point.
 // Drain the OS entropy source into `buf`. Best-effort on the /dev/urandom
 // fallback path: a short read leaves the tail zeroed rather than aborting,
 // which never happens on the supported platforms.
-static void osp_entropy(void *buf, size_t len) {
+void osp_random_bytes(void *buf, size_t len) {
 #ifdef OSP_HAVE_GETENTROPY
   // getentropy caps a single call at 256 bytes; every caller here asks for 8.
   if (getentropy(buf, len) != 0) {
@@ -74,7 +77,7 @@ static void osp_entropy(void *buf, size_t len) {
 // Implements [BUILTIN-RANDOM]: a uniform non-negative random int (0 .. 2^63-1).
 int64_t osp_random(void) {
   uint64_t v;
-  osp_entropy(&v, sizeof(v));
+  osp_random_bytes(&v, sizeof(v));
   return (int64_t)(v & (uint64_t)OSP_SIGN_MASK);
 }
 
@@ -92,7 +95,7 @@ int64_t osp_random_below(int64_t n) {
   uint64_t threshold = (UINT64_MAX - bound + 1) % bound;
   uint64_t r;
   do {
-    osp_entropy(&r, sizeof(r));
+    osp_random_bytes(&r, sizeof(r));
   } while (r < threshold);
   return (int64_t)(r % bound);
 }

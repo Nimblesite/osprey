@@ -491,10 +491,25 @@ impl Checker {
             .map(|p| type_expr_to_type(&p.ty, &empty))
             .collect();
         let ret = return_type.map_or_else(Type::unit, |r| type_expr_to_type(r, &empty));
+        // Publishing the resolved signature is what lets the backend type FFI
+        // calls with the declared parameter/return types (a `Ptr` as `i8*`, not
+        // the `i64` default) — same as `collect_function`.
+        self.publish_signature(name, parameters, params, ret, env);
+    }
+
+    /// Record a declaration's parameter names, publish its resolved signature
+    /// for the backend, and bind it monomorphically in `env`. Both collectors
+    /// (extern and function) finish here, so a signature can never reach one
+    /// table and miss another.
+    fn publish_signature<P: ParamName>(
+        &mut self,
+        name: &str,
+        parameters: &[P],
+        params: Vec<Type>,
+        ret: Type,
+        env: &mut TypeEnv,
+    ) {
         self.record_fn_params(name, parameters);
-        // Publish the resolved signature so the backend types FFI calls with the
-        // declared parameter/return types (a `Ptr` as `i8*`, not the `i64`
-        // default) — same as `collect_function`.
         let _ = self
             .fn_sigs
             .insert(name.to_string(), (params.clone(), ret.clone()));
@@ -556,11 +571,7 @@ impl Checker {
             None => self.ctx.fresh(),
         };
         let _ = self.fn_typarams.insert(name.to_string(), typarams);
-        self.record_fn_params(name, parameters);
-        let _ = self
-            .fn_sigs
-            .insert(name.to_string(), (params.clone(), ret.clone()));
-        env.insert(name, Scheme::mono(Type::fun(params, ret)));
+        self.publish_signature(name, parameters, params, ret, env);
     }
 
     /// Pass two: infer bodies and run top-level statements.
@@ -1005,14 +1016,10 @@ fn resolve_op(ctx: &mut InferCtx, op: &crate::info::OpType) -> crate::info::OpTy
     }
 }
 
+/// A type is resolved once it mentions no inference variable anywhere — the
+/// exact complement of [`crate::ty::has_type_var`], which owns the traversal.
 fn type_is_resolved(ty: &Type) -> bool {
-    match ty {
-        Type::Var(_) => false,
-        Type::Con { args, .. } => args.iter().all(type_is_resolved),
-        Type::Fun { params, ret } => params.iter().all(type_is_resolved) && type_is_resolved(ret),
-        Type::Record { fields, .. } => fields.values().all(type_is_resolved),
-        Type::Union { variants, .. } => variants.iter().all(type_is_resolved),
-    }
+    !crate::ty::has_type_var(ty)
 }
 
 fn collect_site_candidates<S: PartialEq>(

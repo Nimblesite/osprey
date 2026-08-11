@@ -65,6 +65,37 @@ pub(crate) fn osp_frame(name: &str, line: u32) -> SymFrame {
     SymFrame::new(name, "/src/app.osp", line)
 }
 
+/// Assert a JSON object field holds an expected scalar. The exporter tests
+/// check dozens of fields each; every one of them was spelling the same
+/// `get(..).and_then(Value::as_..)` accessor pair inline, which buried the
+/// expectation in accessor noise and reported failures without naming the
+/// field. One row per field, and the key is in the failure message.
+pub(crate) fn field_str(doc: &serde_json::Value, key: &str, want: &str) {
+    assert_eq!(
+        doc.get(key).and_then(serde_json::Value::as_str),
+        Some(want),
+        "field `{key}`"
+    );
+}
+
+/// [`field_str`] for an unsigned-integer field.
+pub(crate) fn field_u64(doc: &serde_json::Value, key: &str, want: u64) {
+    assert_eq!(
+        doc.get(key).and_then(serde_json::Value::as_u64),
+        Some(want),
+        "field `{key}`"
+    );
+}
+
+/// [`field_str`] for a floating-point field.
+pub(crate) fn field_f64(doc: &serde_json::Value, key: &str, want: f64) {
+    assert_eq!(
+        doc.get(key).and_then(serde_json::Value::as_f64),
+        Some(want),
+        "field `{key}`"
+    );
+}
+
 /// A unique, created scratch directory for one test.
 pub(crate) fn temp_dir(tag: &str) -> PathBuf {
     let nanos = std::time::SystemTime::now()

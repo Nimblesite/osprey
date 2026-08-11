@@ -130,8 +130,15 @@ static void capture_stack_bounds(OspProfSlot *slot) {
 #endif
 }
 
-static void fill_slot(OspProfSlot *slot, uint32_t row) {
+// Populate a registry slot for the calling thread. The identity pair
+// (fiber_id, label) is copied here as well as into the row table: the slot is
+// what a signal handler and every osp_prof_self_slot consumer can reach, and
+// the struct has always ADVERTISED both fields — they were simply left zeroed.
+static void fill_slot(OspProfSlot *slot, uint32_t row, int64_t fiber_id,
+                      const char *label) {
   slot->index = row;
+  slot->fiber_id = fiber_id;
+  snprintf(slot->label, sizeof(slot->label), "%s", label ? label : "");
   slot->pthread = pthread_self();
 #if defined(__APPLE__)
   slot->mach_port = pthread_mach_thread_np(pthread_self());
@@ -155,7 +162,7 @@ void osp_prof_thread_register(int64_t fiber_id, const char *label) {
   int idx = g_active ? find_free_slot() : -1;
   uint32_t row = 0;
   if (idx >= 0 && append_row(fiber_id, label, &row)) {
-    fill_slot(&g_slots[idx], row);
+    fill_slot(&g_slots[idx], row, fiber_id, label);
     tls_slot = idx;
   }
   pthread_mutex_unlock(&g_registry_mutex);

@@ -9,11 +9,33 @@
 # Local `make ci` uses the `deslop` target; hosted CI uses the official action.
 # Both fail when measured duplication exceeds the ceiling below (deslop exits 3).
 [threshold]
-# Ceiling = 5% (2026-07-28). Measured product-code duplication is 5.0%
-# (3175 / 63834 LOC) — a margin of roughly TWO lines. Adding a clone of any size
-# fails the build; run `make deslop` before pushing rather than discovering it
-# in CI. This is deliberate: the ceiling ratchets DOWN with the measurement, so
-# it stays a ceiling rather than drifting into headroom.
+# Ceiling = 4.4% (2026-08-11), ratcheted down from 5%. Measured duplication is
+# 4.29% (2932 / 68400 LOC), down from 5.12% — the branch had BREACHED the old
+# 5% ceiling. Adding a clone of any size fails the build; run `make deslop`
+# before pushing rather than discovering it in CI. This is deliberate: the
+# ceiling ratchets DOWN with the measurement, so it stays a ceiling rather than
+# drifting into headroom.
+#
+# The 4.29% came from a round of real dedup: `analysis.rs`'s outline and hover
+# statement walkers became ONE walker parameterised by whether it descends into
+# bodies; `effect_rows.rs`'s four "receiver becomes the first argument"
+# desugarings share `receiver_first`; the web compiler's `/api/compile` and
+# `/api/run` handlers (and both directions of its LSP bridge trace) collapsed
+# onto one endpoint factory; the two wasm smoke scripts share their argv/
+# validation/golden-comparison support module; the site's Prism grammar is one
+# module the 11ty build and the browser studio both import; `ty.rs`'s nullary
+# and applied type constructors are two macro-generated families; the ML
+# parser's two group-scanning lookaheads share one; iterator codegen's
+# list/range loop prologues and predicate branches are helpers; and
+# `type_is_resolved` now delegates to `has_type_var` instead of restating the
+# traversal.
+#
+# NEXT: the remaining mass is inline `#[cfg(test)] mod tests` — repeated
+# `assert_eq!(doc.get(..).and_then(..), Some(..))` rows in the profiler
+# exporters, and per-case fixture scaffolding in the parser/lowering suites.
+# `exclude` already scopes this gate to product code by PATH, but a Rust inline
+# test module has no path of its own, so those rows still count. Table-driving
+# them is the way down to 4%.
 #
 # The 5% was reached by a round of genuine dedup: the three AST expression
 # visitors

@@ -90,14 +90,19 @@ void test_http_response_length_calculation(void) {
     TEST_ASSERT(actual_length == strlen(short_resp.partialBody), "Runtime should calculate length from string");
     
     // Test 3: Long JSON response
-    char long_json[2000];
+    // 79-byte prefix + 50 x 78-byte chunks + 2-byte suffix + NUL = 3982 bytes.
+    // This was a 2000-byte buffer: the composition overran it by ~2KB, which
+    // _FORTIFY_SOURCE trapped the first time this suite was actually built.
+    char long_json[4096];
     strcpy(long_json, "{\"success\": true, \"compilerOutput\": \"Compilation successful\", \"programOutput\": \"");
     // Add long content
     for (int i = 0; i < 50; i++) {
         strcat(long_json, "This is a very long output message that should test proper length calculation. ");
     }
     strcat(long_json, "\"}");
-    
+    TEST_ASSERT_EQUALS(strlen(long_json), 4032, "Composed long JSON has the exact expected length");
+    TEST_ASSERT(strlen(long_json) < sizeof(long_json), "Composed long JSON fits its buffer");
+
     TestHttpResponse long_resp = {
         .status = 200,
         .headers = "Content-Type: application/json\r\n",
@@ -120,7 +125,11 @@ void test_http_response_length_calculation(void) {
     };
     
     actual_length = strlen(special_resp.partialBody);
-    TEST_ASSERT_EQUALS(actual_length, 33, "Special chars response should have correct length");
+    // The escapes are DOUBLE-escaped in the C literal, so the runtime string
+    // holds two characters for each of `\n`, `\t` and the three `\"` — 37
+    // bytes, not the 33 this hand-written constant claimed before the suite
+    // was ever built.
+    TEST_ASSERT_EQUALS(actual_length, 37, "Special chars response should have correct length");
     TEST_ASSERT(actual_length == strlen(special_resp.partialBody), "Runtime should calculate length from string");
 }
 

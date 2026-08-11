@@ -335,7 +335,17 @@ int64_t osp_parse_float_strict(const char *s, double *out) {
  * +inf / -inf pass through unchanged. */
 char *osp_float_to_string(double d) {
     char buf[64];
-    int n = snprintf(buf, sizeof(buf), "%.10g", d);
+    /* %.10g alone SILENTLY LOSES value: 1234567890.5 has 11 significant
+     * digits, so it rendered as "1234567890" and then gained a fabricated
+     * ".0". Widen only as far as the value needs to survive a round trip, so
+     * short decimals keep their short spelling and no printed float ever
+     * names a different double than the one held. */
+    int n = -1;
+    for (int precision = 10; precision <= 17; precision++) {
+        n = snprintf(buf, sizeof(buf), "%.*g", precision, d);
+        if (n < 0 || (size_t)n >= sizeof(buf)) break;
+        if (strtod(buf, NULL) == d) break;
+    }
     if (n < 0) return osp_string_empty_internal();
     /* If snprintf produced a representation with none of '.', 'e', 'E',
      * 'n' (NaN), or 'i' (inf), the value lost its float-ness — re-append

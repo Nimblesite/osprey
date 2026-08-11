@@ -255,17 +255,12 @@ impl Builder<'_> {
     }
 
     fn error(&mut self, source: usize, position: Option<Position>, message: impl Into<String>) {
-        if let Some(metadata) = self.sources.get(source) {
-            self.errors
-                .push(ProjectError::source(metadata, position, message));
-        } else {
-            self.errors.push(ProjectError {
-                message: message.into(),
-                path: None,
-                line: None,
-                column: None,
-            });
-        }
+        self.errors.push(ProjectError::in_source(
+            self.sources,
+            source,
+            position,
+            message,
+        ));
     }
 }
 

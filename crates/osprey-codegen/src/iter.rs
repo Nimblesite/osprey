@@ -13,7 +13,7 @@ use crate::conv::{as_i64, box_to_i64};
 use crate::error::{CodegenError, Result};
 use crate::expr::{apply_lambda_values, call_with_values, gen_expr};
 use crate::llty::{LType, Value};
-use crate::loops::{close_list_loop, close_range_loop, open_list_loop, open_range_loop};
+use crate::loops::{close_list_loop, close_range_loop, open_list_loop, open_range_loop, ListLoop};
 use osprey_ast::{Expr, NamedArgument, Parameter};
 
 const RANGE_TY: &str = "{ i64, i64 }";
@@ -174,6 +174,21 @@ pub(crate) fn bounds(cg: &mut Codegen, range: &Value) -> (String, String) {
     (s, e)
 }
 
+/// Emit `cb(elem)` as a truth test and branch on the result. Returns the
+/// `(taken, rejected)` labels; neither block is started, so the caller decides
+/// what each edge does. Every filtering combinator tests its predicate here.
+fn branch_on_predicate(cg: &mut Codegen, cb: &Callback, elem: Value) -> Result<(String, String)> {
+    let pred = invoke(cg, cb, vec![elem])?;
+    let pred = crate::cast::coerce_to(cg, pred, LType::I1)?;
+    let pb = as_i64(cg, pred)?;
+    let nz = cg.fresh_reg();
+    cg.emit(format!("{nz} = icmp ne i64 {}, 0", pb.operand));
+    let taken = cg.fresh_label();
+    let rejected = cg.fresh_label();
+    cg.emit(format!("br i1 {nz}, label %{taken}, label %{rejected}"));
+    Ok((taken, rejected))
+}
+
 /// Replay the pending map/filter stages on element `v` in the current block,
 /// branching to `skip` when a filter rejects it. Returns the transformed value.
 pub(crate) fn replay(cg: &mut Codegen, v: Value, skip: &str) -> Result<Value> {
@@ -183,14 +198,7 @@ pub(crate) fn replay(cg: &mut Codegen, v: Value, skip: &str) -> Result<Value> {
         if op.map {
             cur = invoke(cg, &op.cb, vec![cur])?;
         } else {
-            let pred = invoke(cg, &op.cb, vec![cur.clone()])?;
-            let pred = crate::cast::coerce_to(cg, pred, LType::I1)?;
-            let pb = as_i64(cg, pred)?;
-            let nz = cg.fresh_reg();
-            cg.emit(format!("{nz} = icmp ne i64 {}, 0", pb.operand));
-            let pass = cg.fresh_label();
-            let reject = cg.fresh_label();
-            cg.emit(format!("br i1 {nz}, label %{pass}, label %{reject}"));
+            let (pass, reject) = branch_on_predicate(cg, &op.cb, cur.clone())?;
             // The reject edge jumps past the loop body's region close, so it
             // drops the region itself — otherwise every value the preceding
             // map stages owned this iteration leaks [GC-ARC-PERCEUS].
@@ -203,20 +211,33 @@ pub(crate) fn replay(cg: &mut Codegen, v: Value, skip: &str) -> Result<Value> {
     Ok(cur)
 }
 
+/// Run a counted loop over `range`, replaying the pending map/filter stages and
+/// handing each surviving element to `body` inside its own ARC region: values
+/// the body owns drop before the back-edge, so slots are reusable next
+/// iteration [GC-ARC-PERCEUS]. Every consuming iterator combinator lands here.
+fn each_range_elem(
+    cg: &mut Codegen,
+    range: &Value,
+    body: impl FnOnce(&mut Codegen, Value) -> Result<()>,
+) -> Result<()> {
+    let (start, end) = bounds(cg, range);
+    let lp = open_range_loop(cg, &start, &end);
+    crate::arc::push_frame(cg);
+    let elem = replay(cg, Value::new(lp.i.clone(), LType::I64), &lp.incr)?;
+    body(cg, elem)?;
+    crate::arc::pop_frame(cg);
+    close_range_loop(cg, &lp);
+    Ok(())
+}
+
 /// `forEach(iterator, fn)` — counted loop applying `fn` to each (fused) element.
 fn for_each(cg: &mut Codegen, args: &[Expr]) -> Result<Value> {
     let range = gen_expr(cg, nth(args, 0)?)?;
     let consumer = callback_of(cg, nth(args, 1)?)?;
-    let (start, end) = bounds(cg, &range);
-
-    let lp = open_range_loop(cg, &start, &end);
-    // Per-iteration ARC region: values the body owns drop before the
-    // back-edge, so slots are reusable next iteration [GC-ARC-PERCEUS].
-    crate::arc::push_frame(cg);
-    let elem = replay(cg, Value::new(lp.i.clone(), LType::I64), &lp.incr)?;
-    let _ = invoke(cg, &consumer, vec![elem])?;
-    crate::arc::pop_frame(cg);
-    close_range_loop(cg, &lp);
+    each_range_elem(cg, &range, |cg, elem| {
+        let _ = invoke(cg, &consumer, vec![elem])?;
+        Ok(())
+    })?;
     Ok(Value::new("0", LType::I64))
 }
 
@@ -308,15 +329,9 @@ fn fold(cg: &mut Codegen, args: &[Expr]) -> Result<Value> {
     let range = gen_expr(cg, nth(args, 0)?)?;
     let (acc, tmpl) = acc_init(cg, args)?;
     let combine = callback_of(cg, nth(args, 2)?)?;
-    let (start, end) = bounds(cg, &range);
-
-    let lp = open_range_loop(cg, &start, &end);
-    crate::arc::push_frame(cg);
-    let elem = replay(cg, Value::new(lp.i.clone(), LType::I64), &lp.incr)?;
-    acc_step(cg, &acc, &tmpl, &combine, elem)?;
-    crate::arc::pop_frame(cg);
-    close_range_loop(cg, &lp);
-
+    each_range_elem(cg, &range, |cg, elem| {
+        acc_step(cg, &acc, &tmpl, &combine, elem)
+    })?;
     Ok(acc_result(cg, &acc, &tmpl))
 }
 
@@ -329,20 +344,35 @@ pub(crate) fn list_arg(cg: &mut Codegen, args: &[Expr], i: usize) -> Result<Valu
     crate::cast::coerce_to(cg, v, LType::Ptr)
 }
 
+/// Walk a runtime list with a counted loop, running `body` on each element
+/// inside its own ARC region so per-iteration values drop before the back-edge
+/// [GC-ARC-PERCEUS]. The body sees the ELEMENT, not the storage word — a
+/// `List<float>` printed IEEE-754 bits before that distinction existed
+/// ([`crate::collections::LIST_TAG`]) — plus the loop itself, for a combinator
+/// that needs the raw word.
+fn each_list_elem(
+    cg: &mut Codegen,
+    l: &Value,
+    body: impl FnOnce(&mut Codegen, &ListLoop, Value) -> Result<()>,
+) -> Result<()> {
+    let lp = open_list_loop(cg, &l.operand);
+    crate::arc::push_frame(cg);
+    let elem = crate::collections::elem_value(cg, l, &lp.elem);
+    body(cg, &lp, elem)?;
+    crate::arc::pop_frame(cg);
+    close_list_loop(cg, &lp);
+    Ok(())
+}
+
 /// `forEachList(list, fn)` — call `fn` on each element in order
 /// [BUILTIN-LIST-FOREACH].
 fn for_each_list(cg: &mut Codegen, args: &[Expr]) -> Result<Value> {
     let l = list_arg(cg, args, 0)?;
     let consumer = callback_of(cg, nth(args, 1)?)?;
-    let lp = open_list_loop(cg, &l.operand);
-    crate::arc::push_frame(cg);
-    // The consumer sees the ELEMENT, not the storage word: `forEachList` over a
-    // `List<float>` printed IEEE-754 bits before this
-    // ([`crate::collections::LIST_TAG`]).
-    let elem = crate::collections::elem_value(cg, &l, &lp.elem);
-    let _ = invoke(cg, &consumer, vec![elem])?;
-    crate::arc::pop_frame(cg);
-    close_list_loop(cg, &lp);
+    each_list_elem(cg, &l, |cg, _, elem| {
+        let _ = invoke(cg, &consumer, vec![elem])?;
+        Ok(())
+    })?;
     Ok(Value::new("0", LType::I64))
 }
 
@@ -363,23 +393,15 @@ fn list_builder(cg: &mut Codegen, args: &[Expr], filter: bool) -> Result<Value> 
     // `filterList` keeps the source's elements and so its element type;
     // `mapList` learns the built list's element type from the callback below.
     let mut out_elem = crate::collections::tagged_elem(&l).filter(|_| filter);
-    let lp = open_list_loop(cg, &l.operand);
-    crate::arc::push_frame(cg);
-    let elem = crate::collections::elem_value(cg, &l, &lp.elem);
-    if filter {
-        let pred = invoke(cg, &f, vec![elem.clone()])?;
-        let pred = crate::cast::coerce_to(cg, pred, LType::I1)?;
-        let pb = as_i64(cg, pred)?;
-        let nz = cg.fresh_reg();
-        cg.emit(format!("{nz} = icmp ne i64 {}, 0", pb.operand));
-        let push = cg.fresh_label();
-        let skip = cg.fresh_label();
-        cg.emit(format!("br i1 {nz}, label %{push}, label %{skip}"));
-        cg.start_block(&push);
-        crate::collections::list_builder_push_borrowed(cg, &bld, &lp.elem);
-        cg.emit(format!("br label %{skip}"));
-        cg.start_block(&skip);
-    } else {
+    each_list_elem(cg, &l, |cg, lp, elem| {
+        if filter {
+            let (push, skip) = branch_on_predicate(cg, &f, elem)?;
+            cg.start_block(&push);
+            crate::collections::list_builder_push_borrowed(cg, &bld, &lp.elem);
+            cg.emit(format!("br label %{skip}"));
+            cg.start_block(&skip);
+            return Ok(());
+        }
         let mapped = invoke(cg, &f, vec![elem])?;
         if mapped.result_inner.is_some() {
             return Err(crate::error::CodegenError::unsupported(
@@ -396,9 +418,8 @@ fn list_builder(cg: &mut Codegen, args: &[Expr], filter: bool) -> Result<Value> 
         crate::arc::escape_retain(cg, &mapped);
         let boxed = box_to_i64(cg, mapped);
         crate::collections::list_builder_push(cg, &bld, &boxed.operand, managed);
-    }
-    crate::arc::pop_frame(cg);
-    close_list_loop(cg, &lp);
+        Ok(())
+    })?;
     let sealed = crate::collections::list_builder_seal(cg, &bld);
     Ok(sealed.with_owner(Some(crate::collections::list_owner(out_elem))))
 }
@@ -408,11 +429,8 @@ fn fold_list(cg: &mut Codegen, args: &[Expr]) -> Result<Value> {
     let l = list_arg(cg, args, 0)?;
     let (acc, tmpl) = acc_init(cg, args)?;
     let combine = callback_of(cg, nth(args, 2)?)?;
-    let lp = open_list_loop(cg, &l.operand);
-    crate::arc::push_frame(cg);
-    let elem = crate::collections::elem_value(cg, &l, &lp.elem);
-    acc_step(cg, &acc, &tmpl, &combine, elem)?;
-    crate::arc::pop_frame(cg);
-    close_list_loop(cg, &lp);
+    each_list_elem(cg, &l, |cg, _, elem| {
+        acc_step(cg, &acc, &tmpl, &combine, elem)
+    })?;
     Ok(acc_result(cg, &acc, &tmpl))
 }

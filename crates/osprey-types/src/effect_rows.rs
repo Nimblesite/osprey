@@ -570,18 +570,13 @@ impl Analyzer<'_> {
                 method,
                 arguments,
                 named_arguments,
-            } => {
-                let mut all_arguments = Vec::with_capacity(arguments.len() + 1);
-                all_arguments.push((**target).clone());
-                all_arguments.extend(arguments.iter().cloned());
-                self.call(
-                    &Expr::Identifier(method.clone()),
-                    &all_arguments,
-                    named_arguments,
-                    scope,
-                    env,
-                )
-            }
+            } => self.call(
+                &Expr::Identifier(method.clone()),
+                &receiver_first(target, arguments),
+                named_arguments,
+                scope,
+                env,
+            ),
             Expr::Match { value, arms } => {
                 let mut out = self.expression(value, scope, env);
                 let matched = self.value(value, scope, env);
@@ -916,12 +911,13 @@ impl Analyzer<'_> {
                 function,
                 arguments,
                 named_arguments,
-            } => {
-                let mut all_arguments = Vec::with_capacity(arguments.len() + 1);
-                all_arguments.push(left.clone());
-                all_arguments.extend(arguments.iter().cloned());
-                self.call(function, &all_arguments, named_arguments, scope, env)
-            }
+            } => self.call(
+                function,
+                &receiver_first(left, arguments),
+                named_arguments,
+                scope,
+                env,
+            ),
             _ => self.call(right, std::slice::from_ref(left), &[], scope, env),
         }
     }
@@ -938,12 +934,13 @@ impl Analyzer<'_> {
                 function,
                 arguments,
                 named_arguments,
-            } => {
-                let mut all_arguments = Vec::with_capacity(arguments.len() + 1);
-                all_arguments.push(left.clone());
-                all_arguments.extend(arguments.iter().cloned());
-                self.call_value(function, &all_arguments, named_arguments, scope, env)
-            }
+            } => self.call_value(
+                function,
+                &receiver_first(left, arguments),
+                named_arguments,
+                scope,
+                env,
+            ),
             _ => self.call_value(right, std::slice::from_ref(left), &[], scope, env),
         }
     }
@@ -1103,18 +1100,13 @@ impl Analyzer<'_> {
                 method,
                 arguments,
                 named_arguments,
-            } => {
-                let mut all_arguments = Vec::with_capacity(arguments.len() + 1);
-                all_arguments.push((**target).clone());
-                all_arguments.extend(arguments.iter().cloned());
-                self.call_value(
-                    &Expr::Identifier(method.clone()),
-                    &all_arguments,
-                    named_arguments,
-                    scope,
-                    env,
-                )
-            }
+            } => self.call_value(
+                &Expr::Identifier(method.clone()),
+                &receiver_first(target, arguments),
+                named_arguments,
+                scope,
+                env,
+            ),
             Expr::Pipe { left, right } => self.pipe_value(left, right, scope, env),
             Expr::Match { value, arms } => {
                 let matched = self.value(value, scope, env);
@@ -1530,6 +1522,15 @@ impl Analyzer<'_> {
         }
         out
     }
+}
+
+/// Method calls and piped calls are both plain calls whose receiver becomes the
+/// first argument; every desugaring site builds that argument list here.
+fn receiver_first(receiver: &Expr, arguments: &[Expr]) -> Vec<Expr> {
+    let mut all = Vec::with_capacity(arguments.len() + 1);
+    all.push(receiver.clone());
+    all.extend(arguments.iter().cloned());
+    all
 }
 
 fn expression_name(expression: &Expr) -> Option<&str> {
