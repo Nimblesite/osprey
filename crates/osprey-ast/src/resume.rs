@@ -15,7 +15,7 @@ pub fn contains_resume(e: &Expr) -> bool {
         Expr::InterpolatedStr(parts) => parts
             .iter()
             .any(|p| matches!(p, crate::InterpolatedPart::Expr(inner) if contains_resume(inner))),
-        Expr::List(xs) => xs.iter().any(contains_resume),
+        Expr::List(xs, _) => xs.iter().any(contains_resume),
         Expr::Map(entries) => entries
             .iter()
             .any(|entry| contains_resume(&entry.key) || contains_resume(&entry.value)),

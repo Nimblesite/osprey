@@ -197,7 +197,7 @@ fn collect_names_in_expr(expr: &MlExpr, out: &mut HashSet<String>) {
                 collect_names_in_expr(&a.body, out);
             }
         }
-        MlExpr::List(items) => {
+        MlExpr::List(items, ..) => {
             for i in items {
                 collect_names_in_expr(i, out);
             }
@@ -1021,7 +1021,7 @@ fn lower_expr(expr: MlExpr) -> Expr {
             })
         }
         MlExpr::UnitApp { func } => call(lower_expr(*func), Vec::new()),
-        MlExpr::List(items) => Expr::List(items.into_iter().map(lower_expr).collect()),
+        MlExpr::List(items, pos) => Expr::List(items.into_iter().map(lower_expr).collect(), Some(pos)),
         MlExpr::Map(entries) => Expr::Map(entries.into_iter().map(lower_map_entry).collect()),
         MlExpr::Index { target, index } => Expr::Index {
             target: Box::new(lower_expr(*target)),

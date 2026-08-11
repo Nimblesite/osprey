@@ -9,7 +9,7 @@ pub(crate) fn is_pure(expression: &Expr) -> bool {
             InterpolatedPart::Text(_) => true,
             InterpolatedPart::Expr(value) => is_pure(value),
         }),
-        Expr::List(items) => items.iter().all(is_pure),
+        Expr::List(items, _) => items.iter().all(is_pure),
         Expr::Map(entries) => entries
             .iter()
             .all(|entry| is_pure(&entry.key) && is_pure(&entry.value)),

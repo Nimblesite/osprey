@@ -1366,6 +1366,7 @@ impl Parser<'_> {
         if self.bracket_is_map() {
             return self.map_literal();
         }
+        let open = self.pos();
         self.advance(); // `[`
         let mut items = Vec::new();
         if !matches!(self.peek(), TokKind::RBracket) {
@@ -1380,7 +1381,7 @@ impl Parser<'_> {
         if !self.eat(&TokKind::RBracket) {
             self.error("expected ']'");
         }
-        MlExpr::List(items)
+        MlExpr::List(items, open)
     }
 
     /// Non-consuming lookahead: does the bracket group opening at the current `[`

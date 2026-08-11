@@ -45,7 +45,7 @@ fn walk(e: &Expr, bound: &mut Vec<String>, out: &mut BTreeSet<String>) {
                 }
             }
         }
-        Expr::List(xs) => walk_slice(xs, bound, out, |x| x),
+        Expr::List(xs, _) => walk_slice(xs, bound, out, |x| x),
         Expr::Map(entries) => {
             for en in entries {
                 walk(&en.key, bound, out);

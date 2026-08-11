@@ -97,6 +97,11 @@ pub struct Checker {
     /// editor hover can show the type of an unannotated binding. Resolved and
     /// published by [`infer_program`]. Implements [LSP-HOVER-VARIABLES]
     let_tys: Vec<(Position, Type)>,
+    /// Every list literal's inferred `List<T>`, keyed by the literal's source
+    /// position. An empty literal carries no element the backend can read a
+    /// representation from, so this table is its only source of one. Resolved
+    /// and published by [`infer_program`].
+    pub(crate) list_tys: Vec<(Position, Type)>,
     /// Concrete arguments passed to representation-sensitive built-ins. These
     /// are validated after inference so a variable constrained later in the
     /// same body is checked at its final type.
@@ -146,6 +151,7 @@ impl Checker {
             fn_sigs: HashMap::new(),
             lambda_tys: Vec::new(),
             let_tys: Vec::new(),
+            list_tys: Vec::new(),
             builtin_uses: Vec::new(),
             builtins: HashSet::new(),
             resume_ctx: Vec::new(),
@@ -899,8 +905,10 @@ pub fn infer_program(program: &Program) -> crate::info::ProgramTypes {
         .collect();
     let lambda_tys = checker.lambda_tys.clone();
     let let_tys = checker.let_tys.clone();
+    let list_tys = checker.list_tys.clone();
     let lambdas = resolve_positioned(&mut checker.ctx, &lambda_tys);
     let lets = resolve_positioned(&mut checker.ctx, &let_tys);
+    let lists = resolve_positioned(&mut checker.ctx, &list_tys);
     let perform_tys = checker.perform_tys.clone();
     let performs = dedupe_sites(perform_tys.iter().map(|(pos, op, args)| {
         let site = crate::info::PerformSite {
@@ -927,6 +935,7 @@ pub fn infer_program(program: &Program) -> crate::info::ProgramTypes {
         effects,
         lambdas,
         lets,
+        lists,
         performs,
         handler_ops,
     }

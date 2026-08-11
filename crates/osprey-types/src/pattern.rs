@@ -274,8 +274,14 @@ impl Checker {
             _ => dp.clone(),
         };
         for fname in fields {
+            // The desugarer's unspellable `?:` binder names the SAME success
+            // payload `value` does. Leaving it to the fresh-variable fallback
+            // detached the payload from the fallback expression, so
+            // `listGet([1, 2, 3], 0) ?: 9.5` type-checked and only failed in the
+            // backend ("match arms disagree on type"), and an empty literal's
+            // element type was never resolved at all [PATTERN-RESULT-DEFAULT].
             let ft = match fname.as_str() {
-                "value" => ok.clone(),
+                "value" | osprey_ast::RESULT_DEFAULT_PAYLOAD => ok.clone(),
                 "message" => Type::string(),
                 _ => self.ctx.fresh(),
             };

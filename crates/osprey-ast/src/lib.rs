@@ -664,8 +664,12 @@ pub enum Expr {
     Identifier(String),
     /// A namespace/module-qualified reference (`billing::Tax::addTax`).
     Path(SymbolPath),
-    /// `[a, b, c]` list literal.
-    List(Vec<Expr>),
+    /// `[a, b, c]` list literal, with the source position inference keys its
+    /// resolved `List<T>` on ([`crate::Position`]). An EMPTY literal has no
+    /// element to read a representation from, so the backend can only recover
+    /// `T` — and with it the element-typed owner tag every later read depends
+    /// on — from what inference published at this position.
+    List(Vec<Expr>, Option<Position>),
     /// `{ k: v, ... }` map literal.
     Map(Vec<MapEntry>),
     /// `{ field: value, ... }` anonymous object literal.

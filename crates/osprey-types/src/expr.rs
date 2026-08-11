@@ -56,13 +56,21 @@ impl Checker {
             }
             Expr::Identifier(name) => self.lookup_ident(name, env),
             Expr::Path(path) => self.lookup_ident(&path.to_string(), env),
-            Expr::List(items) => {
+            Expr::List(items, position) => {
                 let elem = self.ctx.fresh();
                 for it in items {
                     let t = self.infer_expr(it, env);
                     self.push_unify(&elem, &t);
                 }
-                Type::list(elem)
+                let list = Type::list(elem);
+                // Publish the literal's resolved type for the backend. An empty
+                // literal has no element to lower, so this is the only channel
+                // that can tell it whether `[]` is a `List<float>` or a
+                // `List<int>` ([GPU-BUFFER-ELEM], [COLLECTIONS-LIST-ELEM]).
+                if let Some(p) = position {
+                    self.list_tys.push((*p, list.clone()));
+                }
+                list
             }
             Expr::Map(entries) => self.infer_map(entries, env),
             Expr::Object(fields) => self.infer_object(fields, env),

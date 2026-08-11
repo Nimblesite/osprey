@@ -317,7 +317,7 @@ fn scan_children(e: &Expr, muts: &mut BTreeSet<String>, captured: &mut BTreeSet<
                 }
             }
         }
-        Expr::List(xs) => scan_slice(xs, muts, captured, |x| x),
+        Expr::List(xs, _) => scan_slice(xs, muts, captured, |x| x),
         Expr::Map(es) => {
             for en in es {
                 scan_expr(&en.key, muts, captured);

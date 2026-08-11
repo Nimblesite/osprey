@@ -210,7 +210,7 @@ fn walk_expr(e: &Expr, prefix: &[String], out: &mut Vec<SymbolInfo>) {
                 walk_expr(x, prefix, out);
             }
         }),
-        Expr::List(xs) => walk_each(xs, out, |x| x, |x, out| walk_expr(x, prefix, out)),
+        Expr::List(xs, _) => walk_each(xs, out, |x| x, |x, out| walk_expr(x, prefix, out)),
         Expr::Map(entries) => entries.iter().for_each(|en| {
             walk_expr(&en.key, prefix, out);
             walk_expr(&en.value, prefix, out);

@@ -59,7 +59,7 @@ pub(crate) fn gen_expr(cg: &mut Codegen, expr: &Expr) -> Result<Value> {
             crate::aggregate::gen_field_access(cg, target, field)
         }
         Expr::Object(fields) => crate::aggregate::gen_object(cg, fields),
-        Expr::List(elements) => crate::listlit::gen_list(cg, elements),
+        Expr::List(elements, position) => crate::listlit::gen_list(cg, elements, *position),
         Expr::Map(entries) => crate::collections::gen_map_literal(cg, entries),
         Expr::Index { target, index } => crate::listlit::gen_index(cg, target, index),
         Expr::Spawn(e) => crate::fiber::gen_spawn(cg, e),
@@ -1267,7 +1267,7 @@ pub(crate) fn arg_exprs<'a>(args: &'a [Expr], named: &'a [NamedArgument]) -> Vec
 
 fn describe(expr: &Expr) -> String {
     let kind = match expr {
-        Expr::List(_) => "list literal",
+        Expr::List(..) => "list literal",
         Expr::Map(_) => "map literal",
         Expr::Object(_) => "object literal",
         Expr::Pipe { .. } => "pipe expression",

@@ -33,6 +33,13 @@
 #include <mach-o/getsect.h>
 #endif
 
+#if defined(_WIN32)
+// Only the TEB is needed (see gc_stack_base); LEAN_AND_MEAN keeps the rest of
+// the Win32 surface — and its macro pollution — out of this translation unit.
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+#endif
+
 // Word size used for conservative scanning and the candidate-pointer step.
 #define OSP_GC_WORD ((uintptr_t)sizeof(void *))
 // Lower bound on the allocate-since-GC budget (a nursery-like size); the
@@ -288,10 +295,43 @@ static void gc_collect_locked(void) {
   gc_sweep();
 }
 
+// A stack address sampled before `main` runs, so it sits within a few frames of
+// the true stack top. It is the fallback bound for platforms with no exact
+// query; a constructor is the only point at which "address of a local" is a
+// defensible answer.
+static uintptr_t g_early_sp;
+
+__attribute__((constructor)) static void gc_capture_early_sp(void) {
+  uintptr_t here = 0;
+  g_early_sp = (uintptr_t)&here;
+}
+
+// The highest address of the initial thread's stack. Everything from the
+// collector's own frame up to this bound is scanned conservatively, so a base
+// that is too LOW silently hides every root held by a caller — the collector
+// then frees a still-live block and the next allocation overwrites it.
+//
+// The address of a local HERE is therefore never an acceptable answer:
+// `gc_init_main` runs on the FIRST allocation, which is typically deep inside
+// the program, so such a base sits far below the frames that hold the roots and
+// the scan range misses every one of them. That is exactly what
+// `memory_gc_stack_root_tests.c` pins, and exactly what Windows did — it fell
+// through to the generic fallback, and unlike clang, gcc does not diagnose
+// returning a local's address once it is cast to an integer, so it built
+// silently and mis-collected. Windows now reads the TEB; every other platform
+// without an exact query uses the pre-`main` sample instead.
 static uintptr_t gc_stack_base(void) {
 #if defined(__APPLE__)
   void *sa = pthread_get_stackaddr_np(pthread_self());
   return (uintptr_t)sa;
+#elif defined(_WIN32)
+  // NT_TIB is the first member of every TEB, and `StackBase` is the stack's
+  // high bound. Reading it through NtCurrentTeb() works on every supported
+  // Windows version, unlike GetCurrentThreadStackLimits (Windows 8+), whose
+  // declaration is additionally gated on the _WIN32_WINNT the toolchain
+  // happens to default to.
+  const NT_TIB *tib = (const NT_TIB *)NtCurrentTeb();
+  return (uintptr_t)tib->StackBase;
 #elif defined(__linux__) && defined(__GLIBC__)
   pthread_attr_t a;
   void *addr = NULL;
@@ -301,10 +341,12 @@ static uintptr_t gc_stack_base(void) {
     pthread_attr_destroy(&a);
     return (uintptr_t)addr + sz;
   }
-  return (uintptr_t)&a;
+  return g_early_sp;
 #else
-  uintptr_t here = 0;
-  return (uintptr_t)&here;
+  // No exact query on this platform: use the frame captured before `main`,
+  // which is within a few frames of the true top — never the first-allocation
+  // frame, which can be arbitrarily deep.
+  return g_early_sp;
 #endif
 }
 

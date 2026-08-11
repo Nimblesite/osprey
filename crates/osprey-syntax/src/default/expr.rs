@@ -391,7 +391,10 @@ impl Lowerer<'_> {
             "interpolated_string" => {
                 Expr::InterpolatedStr(lower_interpolation(&self.text(inner), parse_fragment))
             }
-            "list_literal" => Expr::List(self.exprs_of_kind(inner, "expression")),
+            "list_literal" => Expr::List(
+                self.exprs_of_kind(inner, "expression"),
+                Some(self.pos(inner)),
+            ),
             "map_literal" => Expr::Map(
                 self.named_of_kind(inner, "map_entry")
                     .iter()

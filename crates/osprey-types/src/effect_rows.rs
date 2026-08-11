@@ -517,7 +517,7 @@ impl Analyzer<'_> {
                 }
                 out
             }
-            Expr::List(items) => self.expressions(items, scope, env),
+            Expr::List(items, _) => self.expressions(items, scope, env),
             Expr::Map(entries) => {
                 let mut out = Summary::default();
                 for entry in entries {
@@ -999,7 +999,7 @@ impl Analyzer<'_> {
             Expr::FieldAccess { target, field } => self
                 .value(target, scope, env)
                 .and_then(|value| project_field(value, field)),
-            Expr::List(items) => {
+            Expr::List(items, _) => {
                 let mut element = None;
                 for item in items {
                     if let Some(value) = self.value(item, scope, env) {
@@ -2361,7 +2361,7 @@ fn walk_children<'a>(expression: &'a Expr, mut visit: impl FnMut(&'a Expr)) {
                 }
             }
         }
-        Expr::List(items) => items.iter().for_each(&mut visit),
+        Expr::List(items, _) => items.iter().for_each(&mut visit),
         Expr::Map(entries) => {
             for entry in entries {
                 visit(&entry.key);

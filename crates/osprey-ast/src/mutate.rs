@@ -23,7 +23,7 @@ pub fn children_mut(expression: &mut Expr, visit: &mut impl FnMut(&mut Expr)) {
                 }
             }
         }
-        Expr::List(values) => {
+        Expr::List(values, _) => {
             for value in &mut *values {
                 visit(value);
             }

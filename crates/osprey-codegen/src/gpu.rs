@@ -143,10 +143,17 @@ fn scalar_word(cg: &mut Codegen, v: Value, what: &str) -> Result<Value> {
 /// stored straight into the dense buffer at their constant indices, so neither
 /// the flat literal block nor an `OspreyList` is ever built: one allocation
 /// instead of three, and no copy loop. The element tag comes from the first
-/// element's lowered type, exactly as a flat list literal's would.
-fn buffer_literal(cg: &mut Codegen, elements: &[Expr]) -> Result<Value> {
+/// element's lowered type, exactly as a flat list literal's would — or, for an
+/// EMPTY literal, from the element type inference resolved at the literal's own
+/// position, so `toGpu([])` in a float context is a float buffer instead of a
+/// bare handle whose reads default to `int` [GPU-BUFFER-ELEM].
+fn buffer_literal(
+    cg: &mut Codegen,
+    elements: &[Expr],
+    position: Option<osprey_ast::Position>,
+) -> Result<Value> {
     let out = buffer_alloc(cg, &elements.len().to_string(), GPU_OWNER.to_string());
-    let mut elem = None;
+    let mut elem = crate::listlit::inferred_elem(cg, position);
     for (i, e) in elements.iter().enumerate() {
         let v = gen_expr(cg, e)?;
         elem = elem.or(Some(v.ty));
@@ -214,8 +221,8 @@ fn fuse_iterator(cg: &mut Codegen, range: &Value) -> Result<Value> {
 /// [`fuse_iterator`], so neither builds a list on the way to the buffer.
 fn to_gpu(cg: &mut Codegen, args: &[Expr]) -> Result<Value> {
     let arg = nth(args, 0)?;
-    if let Expr::List(elements) = arg {
-        return buffer_literal(cg, elements);
+    if let Expr::List(elements, position) = arg {
+        return buffer_literal(cg, elements, *position);
     }
     let source = gen_expr(cg, arg)?;
     if source.osp_ty.as_deref() == Some(crate::iter::RANGE_OWNER) {
