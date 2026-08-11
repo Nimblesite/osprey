@@ -370,8 +370,10 @@ jobs:
       - name: WebAssembly differential — whole tests/ corpus vs the native goldens
         # The three steps above gate the wasm backend on three hand-picked
         # programs. This one runs EVERY program in tests/ that links on wasm32
-        # (103 of 160; the rest name the unported symbol and report as skips)
         # and holds each to the byte-exact stdout the native backend produces.
+        # The programs that may skip are pinned — name and symbol — in
+        # tests/WASM_UNPORTABLE.txt, and the harness fails on any drift, so the
+        # covered count lives in exactly one place instead of going stale here.
         # A backend that miscompiles arithmetic, strings, maps or pattern
         # matching outside hello/studio has nowhere else to be caught.
         #

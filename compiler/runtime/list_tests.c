@@ -481,6 +481,44 @@ static void test_builder_paths(void) {
   }
 }
 
+/* The element-kind surface [MEM-BACKENDS-ELEMENTS]: `_of` spellings latch the
+   managed flag at the call site, the arity-2 forms inherit it from the source,
+   every derived container carries it forward, builders latch it at
+   construction or first push, and the borrowed push stores the same word. */
+static void test_element_kind_flags(void) {
+  OspreyList *e = osprey_list_empty();
+  CHECK(osprey_list_elem_managed(e) == 0); /* empty source means "scalar" */
+  OspreyList *managed = osprey_list_append_of(e, 41, 1);
+  CHECK(osprey_list_elem_managed(managed) == 1);
+  CHECK(osprey_list_get(managed, 0) == 41);
+  CHECK(osprey_list_elem_managed(e) == 0); /* the singleton is never stamped */
+  OspreyList *scalar = osprey_list_append_of(e, 42, 0);
+  CHECK(osprey_list_elem_managed(scalar) == 0);
+  OspreyList *inherit = osprey_list_append(managed, 43);
+  CHECK(osprey_list_elem_managed(inherit) == 1); /* arity-2 inherits */
+  CHECK(osprey_list_get(inherit, 1) == 43);
+  OspreyList *pre = osprey_list_prepend_of(e, 40, 1);
+  CHECK(osprey_list_elem_managed(pre) == 1 && osprey_list_get(pre, 0) == 40);
+  OspreyList *pre2 = osprey_list_prepend(pre, 39);
+  CHECK(osprey_list_elem_managed(pre2) == 1 && osprey_list_get(pre2, 0) == 39);
+  CHECK(osprey_list_elem_managed(osprey_list_set(inherit, 0, 7)) == 1);
+  CHECK(osprey_list_elem_managed(osprey_list_reverse(inherit)) == 1);
+  CHECK(osprey_list_elem_managed(osprey_list_drop(inherit, 1)) == 1);
+  CHECK(osprey_list_elem_managed(osprey_list_concat(managed, inherit)) == 1);
+  OspreyListBuilder *b1 = osprey_list_builder_new_of(1);
+  CHECK(b1 != NULL);
+  osprey_list_builder_push(b1, 1);
+  osprey_list_builder_push_borrowed(b1, 2); /* dup-first path, same word */
+  OspreyList *s1 = osprey_list_builder_seal(b1);
+  CHECK(osprey_list_elem_managed(s1) == 1);
+  CHECK(osprey_list_length(s1) == 2 && osprey_list_get(s1, 1) == 2);
+  OspreyListBuilder *b2 = osprey_list_builder_new();
+  CHECK(b2 != NULL);
+  osprey_list_builder_push_of(b2, 5, 1); /* latches on first push */
+  OspreyList *s2 = osprey_list_builder_seal(b2);
+  CHECK(osprey_list_elem_managed(s2) == 1 && osprey_list_get(s2, 0) == 5);
+}
+
 void run_list_tests(void) {
   test_empty_singleton();
   test_null_arguments();
@@ -495,6 +533,7 @@ void run_list_tests(void) {
   test_branching_persistence();
   test_random_ops();
   test_builder_paths();
+  test_element_kind_flags();
 }
 
 /* collection_tests.c supplies its own main and calls run_list_tests(); define

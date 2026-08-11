@@ -31,6 +31,14 @@
 // A OSP_MEM_MASK layout word over the given word bits.
 #define OSP_MEM_LAYOUT(bits) ((int64_t)(((uint64_t)(bits) << 8) | OSP_MEM_MASK))
 
+// Called once at main entry, before any user code. Anchors the memory backend
+// object into the link — static archives extract only referenced members, so
+// a program with zero heap allocations would otherwise link no backend at all
+// — and lets a backend arm exit-time accounting unconditionally: the ARC leak
+// sentinel must print (under OSPREY_ARC_DEBUG) even for a program that never
+// allocates, or the harness cannot tell "no leaks" from "never audited".
+void osp_mem_boot(void);
+
 // Layout-carrying allocation (every backend defines it; default/gc ignore meta).
 void *osp_alloc_tagged(int64_t size, int64_t meta);
 

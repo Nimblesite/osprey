@@ -38,7 +38,7 @@ fixtures named below.
 | GPU legality ([STAGE-GPU-LEGAL]) | A kernel performing a **static** effect compiles and runs. The same kernel performing a **dynamic** effect is still rejected — `GPU kernel must be pure; it performs: Log.write`. **The GPU checker was not modified.** Erasure before checking turned the existing purity gate into the stage-legality gate. |
 | WebAssembly ([STAGE-WASM]) | The static program links to a 27 KB `wasm32` module. Its resuming dynamic twin fails to link: `undefined symbol: __osprey_coro_free`. The continuation runtime is exactly what static handlers do not need. |
 | Dependency sets ([STAGE-SIGNALS-DIRTY]) | `osprey --deps` derives them exactly: a helper reading one signal reports one, its caller inherits it transitively, a function reading two reports two, and a function reading none **appears nowhere**. No dependency arrays, no runtime tracking. |
-| The falsification gate ([STAGE-FALSIFY]) | **Passed.** One unannotated `fn twice(f, x) = f(f(x))` serves a static callback and a dynamic one in the same program. |
+| The falsification gate ([STAGE-FALSIFY]) | **Passed for the higher-order case only.** One unannotated `fn twice(f, x) = f(f(x))` serves a static callback and a dynamic one in the same program. The spec names three falsifiers; the generic-signal identity/reactive-rebuild and nested-parallel-matmul programs do not exist yet, so the gate as specified is incomplete — the prototype status holds until all three pass. |
 
 ### What the gate actually settled
 
@@ -101,6 +101,36 @@ These are real and none of them is hidden by a passing test:
    road test 4 uses one effect per signal.
 6. **Static handler state is untested.** A `mut` cell captured by a static arm
    has no coverage either way.
+7. **Monotonicity is not transitive, and unused arms erase unvalidated.**
+   `validate_static_arms` checks missing arms, `resume`, and *direct*
+   `perform` syntax only (`crates/osprey-ast/src/stage.rs`); a static arm that
+   calls a helper with a dynamic effect passes, and an outer dynamic handler
+   can then make the program survive erasure — violating
+   [STAGE-STATIC-MONOTONE]. Because discharge runs before type/effect
+   checking and drops the region's arms, an unknown, duplicate, wrong-arity,
+   or ill-typed **unused** arm can vanish before ordinary validation sees it.
+   Fix: validate every static arm against declared operation signatures and
+   resolved transitive effect rows *before* erasure, with must-reject
+   fixtures for the direct, transitive, unused-arm, duplicate-arm, arity, and
+   ill-typed cases.
+8. **Tail `resume` is specified but rejected.** Spec 0035 permits a tail-call
+   `resume`; the implementation rejects every `resume` in a static arm.
+   Either implement tail substitution or narrow the spec until it exists.
+9. **Discharge runs per source file, before project assembly.** Declarations,
+   handlers, and helpers split across files cannot resolve
+   (`crates/osprey-project` assembles after `osprey-syntax` discharges).
+   Discharge must move after assembly or work against a project-wide symbol
+   index.
+10. **`--deps` is approximate and error-tolerant.** Dependencies come from
+    raw identifier names, so shadowing or passing an effectful function value
+    can fabricate or hide one, and parse errors are dropped while the CLI
+    still exits `0`. [STAGE-SIGNALS-EXACT] requires resolved effect-row
+    provenance and a nonzero exit on any diagnostic.
+11. **The wasm rejection contract is not implemented.** Spec 0035 requires a
+    diagnostic naming the effect and operation for a residual dynamic effect
+    on wasm32; today the build dies on an undefined coroutine symbol, which
+    the corpus reads as a generic capability skip. Reject before linking,
+    with the required message.
 
 ## Decision — why Osprey does not use MLIR today
 
@@ -218,10 +248,13 @@ Gate: the twins emit byte-identical IR.
 
 ### Stage 3 — soundness hardening
 
-Close limitations 2–4: resolve names before rewriting, keep the original
-definition alive for diagnostics, and bind operation arguments hygienically.
-Gate: a fixture per limitation, each currently mis-reported, reporting
-correctly.
+Close limitations 2–4 and 7–9: resolve names before rewriting, keep the
+original definition alive for diagnostics, bind operation arguments
+hygienically, validate arms against operation signatures and transitive
+effect rows before erasure, implement (or de-specify) tail `resume`, and
+move discharge after project assembly. Limitation 7 is the branch review's
+P0.3 — it is soundness, not polish, and leads this stage. Gate: a fixture
+per limitation, each currently mis-reported, reporting correctly.
 
 ### Stage 4 — generic instantiation identity
 
@@ -253,7 +286,10 @@ the code generator, and the MLIR-versus-direct decision stays with that plan.
 - [x] `stage::discharge` at the flavor boundary, so every consumer gets a
       discharged program and staging violations arrive as parse diagnostics
 - [x] [STAGE-STATIC-TOTAL] / [STAGE-STATIC-TAIL] / [STAGE-STATIC-MONOTONE] /
-      [STAGE-STATIC-FINITE] checks with distinct messages
+      [STAGE-STATIC-FINITE] checks with distinct messages — **direct syntax
+      only**: the monotone check is not transitive and unused arms erase
+      unvalidated (limitation 7); tail resume is rejected outright
+      (limitation 8)
 - [x] Region-stack rewrite with per-region helper specialization
 - [x] `tests/effects/staged/staged_effects.test.osp` + golden
 - [x] Five must-reject fixtures with `.expectedoutput`
@@ -262,9 +298,19 @@ the code generator, and the MLIR-versus-direct decision stays with that plan.
 - [x] `crates/osprey-cli/tests/staged_effects.rs`: residue asserted against the
       emitted IR, with the dynamic control case that proves it can fail
 - [ ] A fixture for [STAGE-STATIC-FINITE]'s rewrite bound
+- [ ] The two missing [STAGE-FALSIFY] falsifiers: generic-signal
+      identity/reactive rebuild, nested-parallel matmul
+- [ ] [STAGE-SIGNALS-EXACT]: `--deps` from resolved effect rows, diagnostics
+      propagated, nonzero exit on error (limitation 10)
+- [ ] Wasm residual-effect rejection naming effect and operation before
+      linking (limitation 11)
+- [ ] Static handler-state coverage either way (limitation 6)
 - [ ] Stage 2: ML surface + twin + `[FLAVOR-IR-EQUIV]` coverage
 - [ ] Stage 3: name resolution before rewriting; keep originals for
-      diagnostics; hygienic argument binding
+      diagnostics; hygienic argument binding; arm validation against
+      signatures and transitive rows before erasure (limitation 7 / review
+      P0.3); tail `resume` or spec narrowing (limitation 8); discharge after
+      project assembly (limitation 9)
 - [ ] Stage 4: instantiation-keyed rewrite rules
 - [ ] Stage 5: `signal` form, LSP dependency view, reactive example
 - [ ] Stage 6: device dialects and the `kernel` region form

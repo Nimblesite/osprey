@@ -34,6 +34,7 @@ void *osp_gc_realloc(void *old, size_t size);
 void osp_gc_free(void *p);
 size_t osp_gc_live_objects(void);
 size_t osp_gc_collections(void);
+void osp_mem_boot(void);
 
 static long g_checks = 0;
 #define CHECK(c)                                                               \
@@ -64,6 +65,32 @@ static void *alloc_churn(int rounds, size_t size) {
     sink = osp_alloc(size);
   }
   return sink;
+}
+
+// MEMORY GOLDEN / spike guard: with the budget floored at 1 MiB
+// (OSPREY_GC_HEAP_MB=1, set in main before the first allocation), unrooted
+// churn past the budget MUST fire collections BY ITSELF — no explicit
+// osp_collect — and the tracked set must stay bounded. This is the test that
+// fails when memory spikes: if the adaptive budget stops triggering, live
+// objects grow with the churn count instead of staying under the ceiling.
+// Runs FIRST: it also pins that the very first allocation reads the env knob.
+#define GOLDEN_CHURN_ROUNDS 40000
+#define GOLDEN_CHURN_SIZE ((size_t)64) /* 40000 * 64 = ~2.4x the 1 MiB budget */
+#define GOLDEN_LIVE_CEILING ((size_t)(GOLDEN_CHURN_ROUNDS / 2))
+static void t_budget_spike_guard(void) {
+  osp_mem_boot(); // link anchor: callable before/after any allocation
+  CHECK(osp_gc_collections() == 0); // nothing may have collected pre-alloc
+  void *last = alloc_churn(GOLDEN_CHURN_ROUNDS, GOLDEN_CHURN_SIZE);
+  CHECK(last != NULL);
+  size_t fired = osp_gc_collections();
+  CHECK(fired >= 1); // the budget alone forced at least one collection
+  CHECK(osp_gc_live_objects() <= GOLDEN_LIVE_CEILING);
+  // A second identical round must NOT stack on top of the first: the live set
+  // stays under the same ceiling, proving reclamation keeps pace with churn.
+  (void)alloc_churn(GOLDEN_CHURN_ROUNDS, GOLDEN_CHURN_SIZE);
+  CHECK(osp_gc_collections() > fired);
+  CHECK(osp_gc_live_objects() <= GOLDEN_LIVE_CEILING);
+  osp_mem_boot(); // still a harmless no-op with a live heap
 }
 
 // A fresh block is non-NULL, distinct, and fully writable across its length.
@@ -223,6 +250,11 @@ static void t_multithread_disables_collection(void) {
 }
 
 int main(void) {
+  // Floor the collection budget at 1 MiB BEFORE the first allocation so the
+  // spike guard exercises the budget with a deterministic knob. gc_init_main
+  // reads the env exactly once, on the first allocation.
+  CHECK(setenv("OSPREY_GC_HEAP_MB", "1", 1) == 0);
+  t_budget_spike_guard(); // FIRST: needs the pristine pre-allocation state
   t_alloc_distinct_writable();
   t_tagged_and_noinit();
   t_refcount_hooks_noop();

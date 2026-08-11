@@ -365,6 +365,10 @@ void *osp_alloc(int64_t size) {
   return p;
 }
 
+// Link anchor (memory_hooks.h): main calls this so an allocation-free program
+// still extracts this object. The collector arms lazily; nothing to do here.
+void osp_mem_boot(void) {}
+
 // Layout-carrying allocation: the meta word (kind + pointer mask) is only
 // meaningful to the ARC backend — the conservative collector scans words, so
 // it needs no layout and treats this as a plain managed allocation.

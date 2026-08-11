@@ -63,6 +63,13 @@ This directory holds **all spec documents** for the project:
     removes WebAssembly's stack-switching dependency for static rows, and turns
     an effect row into an exact reactive dependency set. Delivery in
     [plan 0024](../plans/0024-staged-effects.md).
+  - [`0036-StructuredConcurrency.md`](0036-StructuredConcurrency.md) —
+    **normative target**: structured fiber scopes, cancellation as an
+    effect-handler action (decline to resume, run `finally` finalizers,
+    interruptible only at row-visible suspension points), and turn isolation
+    (handler regions as implicit monitors, compile-time reentrancy-cycle
+    rejection, `atomic`/`retry` with row-checked isolation). Research-cited;
+    delivery in [plan 0026](../plans/0026-structured-concurrency.md).
   - [`0034-GPUComputation.md`](0034-GPUComputation.md) — typed GPU buffers,
     data-parallel kernels with compile-time purity proofs, the host execution
     baseline, and the cited research foundation; the staged device-backend
@@ -76,6 +83,6 @@ project's [`CLAUDE.md`](../../CLAUDE.md) for the full convention.
 
 Code implementing a spec section MUST repeat that section's bracketed ID in a
 comment. The `spec-check` skill enforces this by grep. Specs whose header
-declares **Status: normative target** (0029–0033) are not implemented yet;
+declares **Status: normative target** (0029–0033, 0036) are not implemented yet;
 their IDs are exempt from the code-citation requirement until their delivery
 plan lands, at which point every landed section must be cited as usual.

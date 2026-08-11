@@ -361,7 +361,12 @@ fn gpu_iota(cg: &mut Codegen, args: &[Expr]) -> Result<Value> {
     let n = gen_expr(cg, nth(args, 0)?)?;
     let n = crate::conv::as_i64(cg, n)?;
     let out = buffer_alloc(cg, &n.operand, elem_owner(Some(LType::I64)));
-    let lp = open_range_loop(cg, "0", &n.operand);
+    // The trip count is the ALLOCATED length, never the requested `n`: the
+    // runtime clamps negative/oversized requests and a failed data allocation
+    // to the empty buffer, and a loop bounded by `n` would spin up to 2^63
+    // dropped stores against that empty buffer [GPU-IOTA].
+    let len = buffer_len(cg, &out);
+    let lp = open_range_loop(cg, "0", &len);
     buffer_set(cg, &out, &lp.i, &lp.i.clone());
     close_range_loop(cg, &lp);
     Ok(out)

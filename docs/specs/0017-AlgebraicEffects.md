@@ -271,4 +271,8 @@ Both defects have paired Default/ML known-failure cases under `tests/effects`.
 
 `[EFFECTS-FIBER-PERFORM]` Concurrent performs into one resuming handler are
 serialized for the full suspend-to-resume round trip. This prevents arguments
-or results from being delivered to the wrong performer.
+or results from being delivered to the wrong performer. This shipped
+round-trip serialization is also the seed of the **turn** model — handler
+regions as implicit monitors, static reentrancy checking, and transactional
+composition — specified as a normative target in
+[Structured Concurrency](0036-StructuredConcurrency.md#the-handler-is-the-monitor--serial-turn).

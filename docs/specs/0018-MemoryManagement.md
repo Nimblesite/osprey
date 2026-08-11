@@ -99,6 +99,13 @@ only when it equals a registered allocation base. A false positive can retain an
 otherwise dead object but cannot make the collector free a reachable one. The
 collector is non-moving.
 
+Root discovery is implemented for Apple and glibc-Linux targets. On Windows
+the stack base falls back to an address inside the collector's own frame and
+data/BSS ranges are not scanned at all, so the GC backend is **not part of
+the supported Windows contract** until `GetCurrentThreadStackLimits` (or TEB
+bounds) and executable data/BSS bounds are implemented, with stack-root and
+global-root regressions on a required Windows job.
+
 Collection is restricted to the initial allocator thread. The first allocation
 from another thread permanently disables collection, while allocation-table
 access remains synchronized.

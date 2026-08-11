@@ -309,6 +309,20 @@ at matched uniforms — the same A/B bar the grade refactor cleared.
 - [ ] **Nothing above has been compiled, linked or run.** Execute CI steps 1–5
       on Windows.
 - [ ] Steps 1–4 wired into CI on a Windows runner.
+- [ ] **Propagate frame-path failures (branch review P1.13).** In
+      `ospgfx_d3d12.c`, `Present`, the fence wait, frame reset/close, and the
+      final queue drain currently discard their status: draw still returns
+      success and close can release GPU-owned resources after an unsuccessful
+      drain. Return status from submit/frame, propagate through draw/close,
+      never reset or free after a failed drain, and add injected
+      `Present`/`Signal`/timeout failure tests before calling the bridge
+      implemented.
+- [ ] **Make the drift guard structural and bidirectional (branch review
+      P2.9).** `graphics_scenes.rs` compares export names/text fragments and
+      shader constants Metal-to-HLSL only, so HLSL-only drift passes. Derive
+      complete normalized signatures from one canonical ABI and compare
+      constant sets in both directions with an explicit backend-only
+      whitelist.
 - [ ] Replace the "unverified" notices in `base.hlsl`, `ospgfx_d3d12.h`,
       `ospgfx_d3d12_setup.c`, `ospgfx_d3d12.c`, the Makefile branch, the README
       and `graphics_scenes.rs`'s module doc with observed results.

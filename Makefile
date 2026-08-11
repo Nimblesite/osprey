@@ -8,6 +8,7 @@
 # =============================================================================
 
 .PHONY: build test language-test lint fmt clean ci setup run install bench partial-bench wasm wasm-site wasm-serve vsix-rebuild-reinstall bank bank-web bank-test bank-e2e hawk gpu-demo graphics graphics-shader _test_gc_stack_root \
+	_test_c_runtime _coverage_check_c_runtime \
 	_rebuild-install-vsix _vsix_clean _vsix_build _vsix_bundle _vsix_package _vsix_install
 
 # ---------------------------------------------------------------------------
@@ -164,6 +165,7 @@ test: build
 	$(MAKE) _test_rust
 	$(MAKE) _coverage_check_rust
 	$(MAKE) _test_c_runtime
+	$(MAKE) _coverage_check_c_runtime
 	$(MAKE) _test_language_corpus
 	$(MAKE) _test_goldens
 	$(MAKE) _conformance-gc
@@ -212,11 +214,15 @@ bank-e2e: bank-web
 	@echo "==> Bank e2e (Playwright)..."
 	cd examples/projects/modules/e2e && npm ci && npx playwright install chromium && npx playwright test
 
-## lint: Run all linters/analyzers (read-only). Does NOT format.
+## lint: Run all linters/analyzers (read-only). Checks formatting but does
+## NOT rewrite it — `make fmt` does that. The fmt check lives HERE because
+## `lint` is what the required CI job runs; a format gate only in an optional
+## job cannot block a merge.
 lint: deslop _lint
 
 _lint:
 	@echo "==> Linting..."
+	cargo fmt --all --check
 	cargo clippy --workspace --all-targets -- -D warnings
 	cd $(EXT_DIR) && npm run lint
 
@@ -514,58 +520,112 @@ _coverage_check_rust:
 # hooks — so they test container semantics with reference counting neutralised;
 # memory_arc_tests covers the counting itself.
 OSSL_CFLAGS = $(OSSL) `pkg-config --cflags openssl 2>/dev/null || echo ""`
+OSSL_LIBS   = `pkg-config --libs openssl 2>/dev/null || echo "-lssl -lcrypto"`
 RT_THREADS  = runtime/fiber_runtime.c runtime/system_runtime.c runtime/effects_runtime.c \
               runtime/profiler_runtime.c runtime/profiler_sampler.c
+# Frame-pointer profile for the profiler suite: its unwind tests need -g and
+# real frame chains, and it predates the WARN core, so it keeps its own flags.
+PROF_T = -O2 -g -fno-omit-frame-pointer -D_FORTIFY_SOURCE=2 -fstack-protector-strong -Werror -Wall -Wextra -ftrapv -std=c11 -D_GNU_SOURCE
+
+# --- C runtime suite TABLE ---------------------------------------------------
+# One row per test binary. C_SRC_<name> lists sources relative to compiler/,
+# C_FLAGS_<name> extra compile flags, C_LIBS_<name> trailing libraries, and
+# C_PROFILE_<name> optionally replaces the default $(T) flag core. BOTH the
+# hardened run (_test_c_runtime) and the per-library coverage gate
+# (_coverage_check_c_runtime) iterate this same table, so adding one row wires
+# a suite into testing AND coverage measurement.
+C_TEST_SUITES ?= memory_gc_stack_root_tests memory_arc_tests memory_gc_tests \
+  memory_pool_tests memory_runtime_tests memory_golden_tests gpu_runtime_tests \
+  list_tests map_tests string_runtime_tests json_runtime_tests \
+  effects_runtime_tests builtins_runtime_tests test_system_runtime \
+  test_http_length_validation http_server_send_tests http_server_request_tests \
+  fiber_runtime_tests http_runtime_tests profiler_runtime_tests \
+  coverage_runtime_tests
+C_SRC_memory_gc_stack_root_tests = runtime/memory_gc_stack_root_tests.c runtime/memory_gc.c
+C_LIBS_memory_gc_stack_root_tests = -pthread
+C_SRC_memory_arc_tests = runtime/memory_arc_tests.c runtime/memory_arc.c
+C_LIBS_memory_arc_tests = -pthread
+C_SRC_memory_gc_tests = runtime/memory_gc_tests.c runtime/memory_gc.c
+C_LIBS_memory_gc_tests = -pthread
+C_SRC_memory_pool_tests = runtime/memory_pool_tests.c
+C_SRC_memory_runtime_tests = runtime/memory_runtime_tests.c runtime/memory_runtime.c
+C_SRC_memory_golden_tests = runtime/memory_golden_tests.c runtime/memory_arc.c runtime/gpu_runtime.c
+C_LIBS_memory_golden_tests = -pthread
+C_SRC_gpu_runtime_tests = runtime/gpu_runtime_tests.c runtime/gpu_runtime.c runtime/memory_runtime.c
+C_SRC_list_tests = runtime/list_tests.c runtime/list_runtime.c runtime/memory_runtime.c
+C_SRC_map_tests = runtime/map_tests.c runtime/map_runtime.c runtime/map_runtime_hamt.c runtime/memory_runtime.c
+C_SRC_string_runtime_tests = runtime/string_runtime_tests.c runtime/string_runtime.c runtime/string_runtime_list.c runtime/memory_runtime.c
+C_SRC_json_runtime_tests = runtime/json_runtime_tests.c runtime/json_runtime.c
+C_LIBS_json_runtime_tests = -pthread
+C_SRC_effects_runtime_tests = runtime/effects_runtime_tests.c runtime/effects_runtime.c runtime/profiler_runtime.c runtime/profiler_sampler.c
+C_LIBS_effects_runtime_tests = -pthread
+C_SRC_builtins_runtime_tests = runtime/builtins_runtime_tests.c runtime/ffi_runtime.c runtime/random_runtime.c runtime/term_runtime.c runtime/test_runtime.c
+C_SRC_test_system_runtime = runtime/test_system_runtime.c runtime/system_runtime.c runtime/memory_runtime.c
+C_LIBS_test_system_runtime = -pthread
+C_FLAGS_test_http_length_validation = $(OSSL_CFLAGS)
+C_SRC_test_http_length_validation = runtime/test_http_length_validation.c
+C_FLAGS_http_server_send_tests = $(OSSL_CFLAGS)
+C_SRC_http_server_send_tests = runtime/http_server_send_tests.c runtime/memory_runtime.c
+C_LIBS_http_server_send_tests = -pthread
+C_FLAGS_http_server_request_tests = $(OSSL_CFLAGS)
+C_SRC_http_server_request_tests = runtime/http_server_request_tests.c runtime/memory_runtime.c
+C_LIBS_http_server_request_tests = -pthread
+C_SRC_fiber_runtime_tests = runtime/fiber_runtime_tests.c runtime/memory_runtime.c $(RT_THREADS)
+C_LIBS_fiber_runtime_tests = -pthread
+C_FLAGS_http_runtime_tests = $(OSSL_CFLAGS)
+C_SRC_http_runtime_tests = runtime/http_runtime_tests.c runtime/http_client_runtime.c runtime/http_server_runtime.c runtime/http_server_request.c runtime/http_server_response.c runtime/http_shared.c runtime/websocket_client_runtime.c runtime/websocket_server_runtime.c runtime/string_runtime.c runtime/memory_runtime.c $(RT_THREADS)
+C_LIBS_http_runtime_tests = -pthread $(OSSL_LIBS)
+C_PROFILE_profiler_runtime_tests = $(PROF_T)
+C_SRC_profiler_runtime_tests = runtime/profiler_runtime_tests.c runtime/profiler_runtime.c runtime/profiler_sampler.c
+C_LIBS_profiler_runtime_tests = -pthread
+C_SRC_coverage_runtime_tests = runtime/coverage_runtime_tests.c runtime/coverage_runtime.c
+
+# Build + run one suite (expanded inside a `cd compiler` shell, hence bin/).
+C_SUITE_CMD = echo "--- $(1)" && $(CC) $(or $(C_PROFILE_$(1)),$(T)) $(C_FLAGS_$(1)) $(C_SRC_$(1)) $(C_LIBS_$(1)) -o bin/$(1) && ./bin/$(1)
+
 _test_gc_stack_root:
 	@echo "==> [c-runtime] GC caller-stack root regression..."
-	@cd compiler && $(CC) $(T) \
-	  runtime/memory_gc_stack_root_tests.c runtime/memory_gc.c -pthread \
-	  -o bin/memory_gc_stack_root_tests && ./bin/memory_gc_stack_root_tests
+	@cd compiler && $(call C_SUITE_CMD,memory_gc_stack_root_tests)
 
-_test_c_runtime: _test_gc_stack_root
-	@echo "==> [c-runtime] memory backend + containers + string/error/HTTP/fiber tests..."
-	@cd compiler && $(CC) $(T) \
-	  runtime/memory_arc_tests.c runtime/memory_arc.c -pthread \
-	  -o bin/memory_arc_tests && ./bin/memory_arc_tests && \
-	  $(CC) $(T) \
-	  runtime/memory_gc_tests.c runtime/memory_gc.c -pthread \
-	  -o bin/memory_gc_tests && ./bin/memory_gc_tests && \
-	  $(CC) $(T) \
-	  runtime/memory_pool_tests.c \
-	  -o bin/memory_pool_tests && ./bin/memory_pool_tests && \
-	  $(CC) $(T) \
-	  runtime/list_tests.c runtime/list_runtime.c runtime/memory_runtime.c \
-	  -o bin/list_tests && ./bin/list_tests && \
-	  $(CC) $(T) \
-	  runtime/map_tests.c runtime/map_runtime.c runtime/map_runtime_hamt.c runtime/memory_runtime.c \
-	  -o bin/map_tests && ./bin/map_tests && \
-	  $(CC) $(T) \
-	  runtime/string_runtime_tests.c runtime/string_runtime.c runtime/string_runtime_list.c \
-	  runtime/memory_runtime.c \
-	  -o bin/string_runtime_tests && ./bin/string_runtime_tests && \
-	  $(CC) $(T) $(OSSL_CFLAGS) \
-	  runtime/http_server_send_tests.c runtime/memory_runtime.c -pthread \
-	  -o bin/http_server_send_tests && ./bin/http_server_send_tests && \
-	  $(CC) $(T) $(OSSL_CFLAGS) \
-	  runtime/http_server_request_tests.c runtime/memory_runtime.c -pthread \
-	  -o bin/http_server_request_tests && ./bin/http_server_request_tests && \
-	  $(CC) $(T) \
-	  runtime/fiber_runtime_tests.c runtime/memory_runtime.c $(RT_THREADS) -pthread \
-	  -o bin/fiber_runtime_tests && ./bin/fiber_runtime_tests && \
-	  $(CC) $(T) $(OSSL_CFLAGS) \
-	  runtime/http_runtime_tests.c runtime/http_client_runtime.c runtime/http_server_runtime.c \
-	  runtime/http_server_request.c runtime/http_server_response.c runtime/http_shared.c \
-	  runtime/websocket_client_runtime.c runtime/websocket_server_runtime.c \
-	  runtime/string_runtime.c runtime/memory_runtime.c $(RT_THREADS) -pthread \
-	  `pkg-config --libs openssl 2>/dev/null || echo "-lssl -lcrypto"` \
-	  -o bin/http_runtime_tests && ./bin/http_runtime_tests && \
-	  $(CC) -O2 -g -fno-omit-frame-pointer -D_FORTIFY_SOURCE=2 -fstack-protector-strong -Werror -Wall -Wextra \
-	  -ftrapv -std=c11 -D_GNU_SOURCE \
-	  runtime/profiler_runtime_tests.c runtime/profiler_runtime.c runtime/profiler_sampler.c -pthread \
-	  -o bin/profiler_runtime_tests && ./bin/profiler_runtime_tests && \
-	  $(CC) $(T) \
-	  runtime/coverage_runtime_tests.c runtime/coverage_runtime.c \
-	  -o bin/coverage_runtime_tests && ./bin/coverage_runtime_tests
+_test_c_runtime:
+	@echo "==> [c-runtime] memory/gpu/effects/json/builtins/system/string/HTTP/fiber suites..."
+	@cd compiler && set -e; $(foreach s,$(C_TEST_SUITES),$(call C_SUITE_CMD,$(s)) && ) true
+
+# Per-library C line-coverage gate. Rebuilds every table suite with gcov
+# instrumentation into compiler/bin/cov/<suite>/, reruns it there (a failing
+# suite still contributes whatever it covered before aborting), reduces each
+# suite's gcov summaries, and gates every `language: "c"` entry in
+# coverage-thresholds.json at its threshold. A library's number is the MAX
+# line coverage across the suites linking it — per-TU summaries cannot be
+# unioned, so max is the honest lower bound. wasm-only units (web_runtime.c,
+# wasm_builtins_runtime.c) do not build natively and are not gated.
+GCOV_TOOL ?= $(shell if $(CC) --version 2>/dev/null | grep -qi clang; then \
+    if command -v xcrun >/dev/null 2>&1; then echo "xcrun llvm-cov gcov"; \
+    else echo "llvm-cov gcov"; fi; \
+  else echo gcov; fi)
+
+_coverage_check_c_runtime:
+	@echo "==> [c-runtime] per-library line coverage (gcov)..."
+	@rm -rf compiler/bin/cov
+	@set -e; cd compiler/bin && mkdir -p cov && cd cov; \
+	$(foreach s,$(C_TEST_SUITES),mkdir -p $(s) && (cd $(s) && $(CC) $(or $(C_PROFILE_$(s)),$(T)) --coverage $(C_FLAGS_$(s)) $(addprefix ../../../,$(C_SRC_$(s))) $(C_LIBS_$(s)) -o $(s) && { ./$(s) >/dev/null 2>&1 || true; } && { $(GCOV_TOOL) *.gcda > summary.txt 2>/dev/null || true; }) && ) true
+	@fail=0; \
+	for lib in $$(jq -r '.projects | to_entries[] | select(.value.language=="c") | .key' "$(COVERAGE_THRESHOLDS_FILE)"); do \
+	  thr=$$(jq -r --arg l "$$lib" '.projects[$$l].threshold' "$(COVERAGE_THRESHOLDS_FILE)"); \
+	  best=$$(for f in compiler/bin/cov/*/summary.txt; do \
+	    [ -f "$$f" ] || continue; \
+	    sed -n "\#File '.*/runtime/$$lib\.c'#{n;s/Lines executed:\([0-9.]*\)% of .*/\1/p;}" "$$f"; \
+	  done | sort -rn | head -1); \
+	  if [ -z "$$best" ]; then echo "[c] $$lib FAIL: no coverage data (no suite links it, or its suite died before dumping)"; fail=1; continue; fi; \
+	  best_int=$${best%.*}; \
+	  if [ "$${best_int:-0}" -lt "$$thr" ]; then \
+	    echo "[c] $$lib FAIL: $${best}% < $${thr}%"; fail=1; \
+	  else \
+	    echo "[c] $$lib OK: $${best}% >= $${thr}%"; \
+	  fi; \
+	done; \
+	if [ "$$fail" -ne 0 ]; then echo "[c] FAIL: one or more C libraries below threshold"; exit 1; fi; \
+	echo "[c] OK: all C libraries meet their thresholds"
 
 # [PROF-TEST] end-to-end profiler gate: --profile runs, exports, and reports.
 _test_profiler:

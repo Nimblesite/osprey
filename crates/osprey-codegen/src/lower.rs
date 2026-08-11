@@ -155,6 +155,14 @@ fn compile_program_with_options(program: &Program, options: CodegenOptions) -> R
     // OSPREY_PROFILE is set [PROF-ACTIVATE-ENV], docs/specs/0028-Profiler.md.
     cg.add_extern("declare void @osp_prof_boot()");
     cg.emit("call void @osp_prof_boot()");
+    // Anchor the MEMORY backend the same way: an allocation-free program
+    // would otherwise extract no backend object from the archive, and the ARC
+    // leak sentinel (armed by OSPREY_ARC_DEBUG) must print even for a program
+    // that never allocates — the differential harness requires the sentinel
+    // for every passing arc run, so its absence must mean "broken", never
+    // "small program" [MEM-BACKENDS].
+    cg.add_extern("declare void @osp_mem_boot()");
+    cg.emit("call void @osp_mem_boot()");
     // Register every coverable line's counter before user code runs; the
     // init body is rendered after all lowering [TESTING-COVERAGE-CODEGEN].
     cg.cov_emit_boot();

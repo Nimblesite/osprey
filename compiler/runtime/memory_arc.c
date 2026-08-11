@@ -94,6 +94,7 @@ static size_t g_used = 0;    // non-empty slots: live + pooled + tombstones (gro
 static size_t g_live = 0;    // live objects (leak stats)
 static size_t g_present = 0; // non-tombstone slots: live + pooled (table sizing)
 static size_t g_live_bytes = 0;
+static size_t g_peak_bytes = 0; // high-water mark of g_live_bytes (spike goldens)
 static int g_debug_armed = 0;
 
 // Live-object accounting for the leak report [GC-ARC-PERCEUS], armed only by
@@ -108,6 +109,9 @@ static inline void arc_live_inc(size_t bytes) {
   if (g_arc_track) {
     g_live++;
     g_live_bytes += bytes;
+    if (g_live_bytes > g_peak_bytes) {
+      g_peak_bytes = g_live_bytes;
+    }
   }
 }
 
@@ -486,6 +490,16 @@ static void arc_release_zero_locked(uintptr_t start) {
 // --- public ABI ------------------------------------------------------------------
 // Implements the [MEM-BACKENDS] C interface (docs/specs/0018 §Custom Managers).
 
+// Link anchor AND unconditional arming (memory_hooks.h): the leak sentinel
+// must print under OSPREY_ARC_DEBUG even when the program never allocates —
+// lazy arming on first alloc left an allocation-free program with no report,
+// which the corpus harness cannot tell apart from a crashed exit path.
+void osp_mem_boot(void) {
+  arc_lock();
+  arc_arm_debug();
+  arc_unlock();
+}
+
 void *osp_alloc_tagged(int64_t size, int64_t meta) {
   arc_lock();
   void *p = arc_alloc_locked(size > 0 ? (size_t)size : 0, meta, 1);
@@ -580,6 +594,45 @@ void osp_mem_set_layout(void *p, int64_t meta) {
   if (slot) {
     arc_hdr((void *)*slot)->meta = meta;
   }
+  arc_unlock();
+}
+
+// --- diagnostics (read-only snapshots; not on any hot path) ------------------
+// Mirrors the tracing GC's osp_gc_live_objects/osp_gc_collections surface so
+// the memory GOLDEN tests can pin exact numbers: live counts must return to a
+// known baseline and the peak must never exceed a workload's stated ceiling.
+// The counters are armed by OSPREY_ARC_DEBUG (osp_mem_boot / first alloc);
+// unarmed they read 0 — callers must arm before allocating. [GC-ARC-PERCEUS]
+
+size_t osp_arc_live_objects(void) {
+  arc_lock();
+  size_t n = g_live;
+  arc_unlock();
+  return n;
+}
+
+size_t osp_arc_live_bytes(void) {
+  arc_lock();
+  size_t n = g_live_bytes;
+  arc_unlock();
+  return n;
+}
+
+// High-water mark of live bytes since arming (or the last reset). A memory
+// spike between two checkpoints is visible here even when the live set has
+// already returned to baseline — the property RSS assertions cannot give.
+size_t osp_arc_peak_bytes(void) {
+  arc_lock();
+  size_t n = g_peak_bytes;
+  arc_unlock();
+  return n;
+}
+
+// Restart the high-water mark at the current live level, so a test can bound
+// one workload's transient footprint in isolation.
+void osp_arc_peak_reset(void) {
+  arc_lock();
+  g_peak_bytes = g_live_bytes;
   arc_unlock();
 }
 

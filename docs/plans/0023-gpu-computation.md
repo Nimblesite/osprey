@@ -74,12 +74,14 @@ Two consequences that shape the stages below:
 
 ### The graphics bridge already exists — and is a different plan
 
-`examples/graphics/` is a working Osprey → GPU bridge (Metal on macOS,
-Direct3D 12 on Windows) that deliberately **bypasses `gpu*`**, because `gpu*`
-cannot reach the GPU. It proves the boundary works — FFI, a real drawable,
-103 fps — so stage 6 is wiring extracted kernels into a compute pipeline, not
-starting from nothing. It does not run in CI: it needs a display and it is not
-in the differential corpus.
+`examples/graphics/` is an Osprey → GPU bridge that deliberately **bypasses
+`gpu*`**, because `gpu*` cannot reach the GPU. The Metal path has been
+observed running on macOS — FFI, a real drawable, 103 fps — so stage 6 is
+wiring extracted kernels into a compute pipeline, not starting from nothing.
+The Direct3D 12 path is **written but has never been compiled, linked, or
+run** (plan 0025 owns that verification); do not describe it as working.
+Neither runs in CI: they need a display and are not in the differential
+corpus.
 
 Its design, its verification status and the convergence point where `gpuMap`
 emits these shaders instead of the examples hand-writing them are owned by
@@ -134,20 +136,25 @@ backend is solved, the device half is stage 3 output plus an MSL emitter.
 - Both lowerings are retained and differentially gated: `OSPREY_GPU_KERNELS`
   selects `extract` (default) or `inline`, any other value is a compile error
   (`OSPREY_GPU_KERNELS=nope: expected 'extract' or 'inline'`), and
-  `run_test_corpus.sh` re-dispatches the twelve `tests/core/gpu` programs
-  under the opposite lowering into `$RESULTDIR/altmode` and requires
-  byte-identical stdout (`GPU_MODE_MIN=12`). `test_cache_key` in
-  `osprey-cli/src/main.rs` hashes the switch, so the two modes cannot share a
-  cached binary.
-- Differential corpus: six suites × two flavors in `tests/core/gpu/`
-  (`buffers`, `combinators`, `mlkernels`, `gamedev`, `stress`, `raster`) —
-  **100 cases** (15/18/17/21/16/13), up from 34, covering round-trips, all ten
-  data combinators, dot/matvec/relu/softmax/gradient descent, fixed-point
+  `run_test_corpus.sh` re-dispatches the eighteen `tests/core/gpu` programs
+  under the opposite lowering into `$RESULTDIR/altmode` and requires the
+  whole observable outcome to AGREE — exit status, raw transcript bytes via
+  `cmp`, and (under ARC) a present-and-zero leak sentinel
+  (`GPU_MODE_MIN=18`). The mode string is canonicalized once, the same trim
+  the compiler applies, so a padded value can never make the harness compare
+  a lowering against itself. `test_cache_key` in `osprey-cli/src/main.rs`
+  hashes the switch, so the two modes cannot share a cached binary.
+- Differential corpus: nine suites × two flavors in `tests/core/gpu/` — the
+  six original (`buffers`, `combinators`, `mlkernels`, `gamedev`, `stress`,
+  `raster`, **100 cases**: 15/18/17/21/16/13) plus the three forward-contract
+  suites the branch review added (`scalar_contracts`, `kernel_frontier`,
+  `flavor_parity`, **10 cases**) — covering round-trips, all ten data
+  combinators, dot/matvec/relu/softmax/gradient descent, fixed-point
   particles/collision/palette work, fragment-shaped raster rendering, checked
   arithmetic at both sides of every i64 boundary, float accumulation ordering,
   and million-element workloads with closed-form expected values. Twins emit
-  identical IR; goldens are byte-exact under default/GC/ARC and wasm32
-  (`GOLDEN_MIN` 172/119).
+  identical IR; goldens are byte-exact — raw `cmp`, not a trimmed compare —
+  under default/GC/ARC and wasm32 (`GOLDEN_MIN` 179/126).
 
 ## Defects the expanded corpus exposed — now fixed
 
@@ -235,11 +242,17 @@ The corrections below have been applied to
 
 - **Numeric defaulting for named context-free functions (F10)** —
   [plan 0022](0022-arithmetic-totality-audit.md) (spec
-  `[GPU-KERNEL-ELEM-TYPING]`). The lambda half is fixed here.
+  `[GPU-KERNEL-ELEM-TYPING]`). The lambda half is fixed here. This is what
+  keeps `kernel_frontier`'s named-combine case red in both flavors.
 - **Positions on list literals**, so an empty literal's inferred element type
-  reaches codegen — an AST/`ProgramTypes` change with no GPU-specific part.
-- **ML block-bodied lambda bodies** (layout inside brackets) —
-  [0023-LanguageFlavors.md](../specs/0023-LanguageFlavors.md).
+  reaches codegen — an AST/`ProgramTypes` change with no GPU-specific part
+  (`Expr::List` and `Expr::Call` carry no position today, so neither a
+  literal-site nor a call-site table can be keyed). This is what keeps
+  `scalar_contracts`' empty-literal case red.
+
+The two cases above are the whole aspirational red set: they fail all four
+corpus lanes and `cross_flavor_ir_equiv` by design, as forward contracts. Do
+not delete or weaken the tests; land the language work.
 
 ## Design decisions carried from the research foundation
 
@@ -392,18 +405,35 @@ accepted by earlier stages (`[GPU-ROADMAP]`).
 **Stages 1–2 are complete except for the items delegated to other plans**, and
 **stage 3 has landed for lambda kernels.** Do not re-open either here.
 
-Three things are worth a short session before stage 4 starts, in this order:
+The branch review left a short list of gate work worth a session before
+stage 4 starts, in this order:
 
-1. **Measure what extraction bought.** Re-run the fps/per-op table under
-   `OSPREY_GPU_KERNELS=extract` and `=inline`. The stage was justified by a
-   host-backend speedup that has never been measured. If there is none, say so
-   in this plan and keep extraction anyway — its value is the device ABI.
-2. **De-duplicate `gpu_kernel::returned`.** `deslop` cluster #48 pairs it with
+1. **Ratchet extraction structure (review P1.3).** The per-suite
+   extracted-kernel counts published above are measured, not asserted: an
+   extraction regression to zero keeps the differential green because both
+   modes still agree. Add extracted-symbol minima per suite and exact-ABI IR
+   tests for zip, scan, and filter beside the existing map/fold ones.
+2. **IR structural gates for the literal/fusion claims (review P2.1).**
+   "Zero `osprey_list_*` calls" and one-allocation literal lowering are
+   semantic-test-only today; assert them in emitted IR. Note
+   `osprey_gpu_alloc` internally performs a header and a payload allocation
+   plus zero-fill — keep the claim precise.
+3. **Table-driven purity coverage (review P2.2).** Impure-kernel rejection is
+   tested for map/fold and an unprovable map; extend to filter/zip/scan, a
+   transitive helper chain, and an ML end-to-end rejection fixture.
+4. **Measure what extraction bought (review P2.7).** Re-run the fps/per-op
+   table under `OSPREY_GPU_KERNELS=extract` and `=inline`, and check in the
+   benchmark artifact and environment metadata. The stage was justified by a
+   host-backend speedup that has never been measured. If there is none, say
+   so here and keep extraction anyway — its value is the device ABI.
+5. **Decide the wasm corpus gate (review P1.14).** The full wasm GPU
+   differential runs in a non-required job; either move it into the required
+   `ci` job or make the wasm job required. Until then a wasm-only regression
+   does not block a merge.
+6. **De-duplicate `gpu_kernel::returned`.** `deslop` cluster #48 pairs it with
    the identical `sig.2`/`sig.3` reconstruction inside
    `closure.rs::cell_call`. The repo sits at exactly 5.0% against a 5.00%
    ceiling, so this is one of the cheapest ways to buy headroom.
-3. **Fix the two tag/read-back defects** (defects 1 and 2 above). They are
-   small, they are in `crates/`, and every device backend inherits them.
 
 **Then stage 4 or stage 6 — nothing else on this page reaches a GPU.** Stage 6
 (Metal) is closer on this hardware, because [plan
@@ -422,16 +452,18 @@ Landmines previous sessions hit:
   target.
 - Twins must emit identical IR (`cargo test -p osprey-cli --test
   cross_flavor_ir_equiv`), so a construct only one flavor's parser accepts
-  cannot enter the corpus. This is what keeps block-bodied lambda kernels out
-  even though they work.
+  cannot enter the corpus. Block-bodied lambda kernels cleared this bar when
+  the ML lexer learned layout bodies inside brackets; the named
+  context-free-combine case still trips it (both flavors red until plan
+  0022's F10 lands).
 - Goldens are byte-exact under default/GC/ARC **and** wasm32. Wasm goldens run
   under `make wasm`, not `make ci` — run both. `make wasm` also *builds*
   `libosprey_runtime_wasm.a`; without it every wasm golden fails at once and
   `TEST_CORPUS_WASM_SKIPPED` reads 0 instead of 53.
-- `GOLDEN_MIN` (172 native / 119 wasm) counts *programs*, not test cases —
+- `GOLDEN_MIN` (179 native / 126 wasm) counts *programs*, not test cases —
   adding a `test(...)` to an existing suite does not move it. Never lower it.
-  `GPU_MODE_MIN` (12) counts the `tests/core/gpu` programs re-run under the
-  opposite kernel lowering; adding a seventh suite raises it to 14.
+  `GPU_MODE_MIN` (18) counts the `tests/core/gpu` programs re-run under the
+  opposite kernel lowering; adding a tenth suite raises it to 20.
 - **A new kernel lowering must be cache-keyed.** `test_cache_key` hashes
   `OSPREY_GPU_KERNELS`; without that the harness compares one cached binary to
   itself and the differential silently passes forever. Falsify any new mode

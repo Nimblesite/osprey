@@ -33,6 +33,12 @@ coalesced access require. Buffers are values like any other — they obey the
 same ownership analysis and memory backends as every heap value
 ([0018](0018-MemoryManagement.md)).
 
+Buffer allocation is total: a negative length, a length whose byte count
+would overflow, and a failed data allocation all yield the **empty**
+buffer. Combinator loops bound their trip counts by allocated lengths and
+every store is bounds-checked, so a failed allocation is observably the
+empty buffer — never a partial result, an out-of-bounds write, or a trap.
+
 ### Element restriction — [GPU-BUFFER-ELEM]
 
 Buffer elements are scalars: `int`, `float`, or `bool`. This is the regular,
@@ -139,11 +145,13 @@ let squares = toGpu [1, 2, 3, 4] |> gpuMap square
 
 Reduces a buffer to one value. The accumulator must itself be a scalar
 ([GPU-BUFFER-ELEM]) so the reduction can execute on device hardware; a
-record accumulator is a compile error at the `gpuFold` call. The host
-backend applies `combine` left-to-right; a device backend may reassociate,
-so `combine` should be associative — the compiler does not verify
-associativity today, and the documented contract is that a
-non-associative combine has backend-dependent results.
+record accumulator is a compile error at the `gpuFold` call. `combine` is
+applied left-to-right, and that order is the contract, not a host detail:
+[GPU-BACKEND-HOST] is the reference semantics and [GPU-ROADMAP] holds every
+later backend to the host's bytes, so a device backend may reassociate a
+reduction only where it produces the host's exact result and must otherwise
+run it in the host's order. A non-associative combine therefore means the
+same thing on every backend — it is slower to offload, never different.
 
 ```osprey
 fn add(a, b) = (a + b) ?: a
@@ -222,9 +230,10 @@ has the source's length. Scan is *the* classic parallel primitive —
 segmented scans and flag vectors are how nested data parallelism flattens
 onto flat hardware ([Blelloch, CACM
 1996](https://doi.org/10.1145/227234.227246); [NESL](https://www.cs.cmu.edu/~scandal/nesl.html)).
-The associativity contract is `gpuFold`'s: the host backend runs
-left-to-right; a device backend may run the work-efficient parallel scan,
-so a non-associative combine has backend-dependent results.
+The order contract is `gpuFold`'s: element `i` is the left-to-right fold
+through `i` on every backend. A device backend may substitute the
+work-efficient parallel scan only where it reproduces the host's exact
+bytes, and falls back to the sequential order where it cannot.
 
 ### `gpuFilter(buffer: GpuBuffer<T>, predicate: fn(T) -> bool) -> GpuBuffer<T>` — [GPU-FILTER]
 
@@ -461,13 +470,16 @@ backends to the host's.
 ### Host baseline — [GPU-BACKEND-HOST]
 
 Every GPU program has defined, deterministic semantics with no GPU present:
-the host backend executes combinators as fused native loops over the dense
-buffer, exactly as [Futhark](https://futhark-lang.org)'s `c` backend and
-every portability layer provide (fusion as the load-bearing optimization:
-[McDonell et al., ICFP 2013](https://doi.org/10.1145/2500365.2500595)).
-This is the reference semantics device backends must match, it is what the
-differential test harness verifies under every memory backend and on
-wasm32, and it is what runs today. The dense unboxed buffer layout is the
+the host backend executes each combinator as a native counted loop over the
+dense buffer. The only fusion implemented today is the iterator pipeline
+into `toGpu` ([GPU-BUFFER-FUSE]); each combinator otherwise allocates its
+result buffer and runs its own loop. Combinator-to-combinator array fusion
+in the [Futhark](https://futhark-lang.org)/Accelerate sense (the
+load-bearing optimization: [McDonell et al., ICFP
+2013](https://doi.org/10.1145/2500365.2500595)) is planned alongside the
+device IR, not present. This is the reference semantics device backends
+must match, it is what the differential test harness verifies under every
+memory backend and on wasm32, and it is what runs today. The dense unboxed buffer layout is the
 same staging layout a device transfer uses, so adopting the surface now
 costs nothing when device codegen lands.
 

@@ -29,7 +29,7 @@ static int tests_failed = 0;
 
 #define TEST_ASSERT_EQUALS(actual, expected, message) \
     do { \
-        if ((actual) == (expected)) { \
+        if ((long)(actual) == (long)(expected)) { \
             printf("✅ PASS: %s (got %ld, expected %ld)\n", message, (long)(actual), (long)(expected)); \
             tests_passed++; \
         } else { \
@@ -60,7 +60,7 @@ typedef struct TestHttpResponse {
 } TestHttpResponse;
 
 // Test HTTP response creation with various body lengths
-void test_http_response_length_calculation() {
+void test_http_response_length_calculation(void) {
     printf("\n🧪 Testing HTTP Response Length Calculation...\n");
     
     // Test 1: Empty response (NO MORE HARDCODED LENGTHS!)
@@ -125,7 +125,7 @@ void test_http_response_length_calculation() {
 }
 
 // Test buffer overflow protection
-void test_buffer_overflow_protection() {
+void test_buffer_overflow_protection(void) {
     printf("\n🧪 Testing Buffer Overflow Protection...\n");
     
     // Test 1: Oversized method string
@@ -161,7 +161,7 @@ void test_buffer_overflow_protection() {
 }
 
 // Test HTTP header construction
-void test_http_header_construction() {
+void test_http_header_construction(void) {
     printf("\n🧪 Testing HTTP Header Construction...\n");
     
     // Test 1: Content-Length header with various sizes
@@ -180,7 +180,7 @@ void test_http_header_construction() {
                                 body_len);
         
         TEST_ASSERT(header_len > 0, "Header construction should succeed");
-        TEST_ASSERT(header_len < sizeof(http_response), "Header should fit in buffer");
+        TEST_ASSERT(header_len > 0 && (size_t)header_len < sizeof(http_response), "Header should fit in buffer");
         
         // Verify Content-Length is correctly formatted
         char expected_length_str[32];
@@ -198,7 +198,7 @@ void test_http_header_construction() {
 }
 
 // Test that fallback response uses dynamic length
-void test_fallback_response_dynamic_length() {
+void test_fallback_response_dynamic_length(void) {
     printf("\n🧪 Testing Fallback Response Dynamic Length...\n");
     
     // Test the actual fallback response logic
@@ -238,7 +238,7 @@ void test_fallback_response_dynamic_length() {
 }
 
 // Test edge cases and potential security issues
-void test_security_edge_cases() {
+void test_security_edge_cases(void) {
     printf("\n🧪 Testing Security Edge Cases...\n");
     
     // Test 1: NULL body handling
@@ -271,13 +271,13 @@ void test_security_edge_cases() {
     const char *large_content = "This is a very long string that will not fit in the small buffer";
     
     int written = snprintf(small_buffer, sizeof(small_buffer), "%s", large_content);
-    TEST_ASSERT(written >= strlen(large_content), "snprintf should report full length needed");
+    TEST_ASSERT(written > 0 && (size_t)written >= strlen(large_content), "snprintf should report full length needed");
     TEST_ASSERT_EQUALS(strlen(small_buffer), 9, "Buffer should be truncated to fit");
     TEST_ASSERT_EQUALS(small_buffer[9], '\0', "Buffer should be null-terminated");
 }
 
 // Main test runner
-int main() {
+int main(void) {
     printf("🚨 HTTP LENGTH VALIDATION TEST SUITE 🚨\n");
     printf("=======================================\n");
     printf("Testing for hardcoded lengths, buffer overflows, and security issues...\n");

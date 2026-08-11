@@ -477,6 +477,61 @@ static void test_scale(void) {
   chk_int_range(hi, MERGE_LO, MERGE_HI);
   CHECK(drain(big, 0, MERGE_HI) == MERGE_HI);
 }
+/* The entry-ownership flag surface [MEM-BACKENDS-ELEMENTS]: the KEY side is
+   discriminated by the key type (STRING managed, INT/BOOL scalar), the VALUE
+   side latches through the `_of` spellings, the arity-3 forms inherit it from
+   the source, and every derived map carries it forward. */
+static void test_entry_kind_flags(void) {
+  CHECK(osprey_map_key_managed(osprey_map_empty(KI)) == 0);
+  CHECK(osprey_map_key_managed(osprey_map_empty(KB)) == 0);
+  CHECK(osprey_map_key_managed(osprey_map_empty(KS)) == 1);
+  OspreyMap *e = osprey_map_empty(KI);
+  CHECK(osprey_map_value_managed(e) == 0);
+  OspreyMap *mv = osprey_map_set_of(e, 1, 10, 1);
+  CHECK(osprey_map_value_managed(mv) == 1);
+  CHECK(osprey_map_get(mv, 1) == 10);
+  CHECK(osprey_map_value_managed(e) == 0); /* the source is never stamped */
+  OspreyMap *inherit = osprey_map_set(mv, 2, 20); /* arity-3 inherits */
+  CHECK(osprey_map_value_managed(inherit) == 1);
+  CHECK(osprey_map_length(inherit) == 2 && osprey_map_get(inherit, 2) == 20);
+  CHECK(osprey_map_value_managed(osprey_map_remove(inherit, 1)) == 1);
+  CHECK(osprey_map_value_managed(osprey_map_merge(mv, inherit)) == 1);
+  OspreyMapBuilder *b = osprey_map_builder_new(KI);
+  CHECK(b != NULL);
+  osprey_map_builder_put_of(b, 1, 100, 1); /* latches on first put */
+  osprey_map_builder_put(b, 2, 200);
+  OspreyMap *sealed = osprey_map_builder_seal(b);
+  CHECK(osprey_map_value_managed(sealed) == 1);
+  CHECK(osprey_map_get(sealed, 1) == 100 && osprey_map_get(sealed, 2) == 200);
+}
+
+/* [BUILTIN-MAP-KEYS]/[BUILTIN-MAP-VALUES] cursors: a full walk yields every
+   entry exactly once, exhaustion is stable, and the dedicated free entry
+   point releases the cursor (codegen must call it once per finished walk). */
+static void test_iter_lifecycle(void) {
+  OspreyMap *m = osprey_map_empty(KI);
+  for (int64_t k = 0; k < PREFIX_N; k++) {
+    m = osprey_map_set(m, k, k * VAL_MUL);
+  }
+  OspreyMapIter *it = osprey_map_iter_new(m);
+  CHECK(it != NULL);
+  int64_t key = 0;
+  int64_t value = 0;
+  int64_t seen_mask = 0;
+  int64_t seen = 0;
+  while (osprey_map_iter_next(it, &key, &value) == 1) {
+    CHECK(key >= 0 && key < PREFIX_N);
+    CHECK(value == key * VAL_MUL);
+    CHECK((seen_mask & ((int64_t)1 << key)) == 0); /* no duplicates */
+    seen_mask |= (int64_t)1 << key;
+    seen++;
+  }
+  CHECK(seen == PREFIX_N);
+  CHECK(osprey_map_iter_next(it, &key, &value) == 0); /* stays exhausted */
+  osprey_map_iter_free(it);
+  osprey_map_iter_free(NULL); /* tolerated, like free(NULL) */
+}
+
 void run_map_tests(void) {
   test_hash_and_equality();
   test_node_algebra();
@@ -494,6 +549,8 @@ void run_map_tests(void) {
   test_builder();
   test_builder_key_types();
   test_scale();
+  test_entry_kind_flags();
+  test_iter_lifecycle();
   printf("[ok] map: %llu assertions\n", (unsigned long long)g_asserts);
 }
 #ifndef OSPREY_NO_TEST_MAIN

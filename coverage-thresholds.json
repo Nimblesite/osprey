@@ -1,6 +1,6 @@
 {
   "_agent_pmo": "b636503",
-  "_doc": "Per-project coverage thresholds. Each entry is a project; `make test` measures it and fails hard below its threshold. Rust entries (language=rust) are individual crates under crates/<name>/, each measured separately from lcov.info; the vscode-extension entry is measured from its V8 coverage summary. FLOOR: every crate is gated at >=95%. RATCHET: thresholds are monotonically increasing — when a crate's coverage improves, bump its threshold to max(95, measured - 1) in the same PR so it can never regress.",
+  "_doc": "Per-project coverage thresholds. Each entry is a project; `make test` measures it and fails hard below its threshold. Rust entries (language=rust) are individual crates under crates/<name>/, each measured separately from lcov.info; the vscode-extension entry is measured from its V8 coverage summary; C entries (language=c) are individual libraries under compiler/runtime/<name>.c, each measured as gcov line coverage by the Makefile's _coverage_check_c_runtime (the best number across every unit-test suite that links the library). wasm-only units (web_runtime.c, wasm_builtins_runtime.c) do not build natively and are not gated. FLOOR: every Rust crate is gated at >=95%; every C library at >=90%. RATCHET: thresholds are monotonically increasing — when a project's coverage improves, bump its threshold to max(floor, measured - 1) in the same PR so it can never regress.",
   "projects": {
     "osprey-ast": {
       "threshold": 97,
@@ -41,6 +41,114 @@
     "vscode-extension": {
       "threshold": 95,
       "language": "typescript"
+    },
+    "memory_runtime": {
+      "threshold": 90,
+      "language": "c"
+    },
+    "memory_arc": {
+      "threshold": 90,
+      "language": "c"
+    },
+    "memory_gc": {
+      "threshold": 90,
+      "language": "c"
+    },
+    "gpu_runtime": {
+      "threshold": 90,
+      "language": "c"
+    },
+    "effects_runtime": {
+      "threshold": 90,
+      "language": "c"
+    },
+    "json_runtime": {
+      "threshold": 90,
+      "language": "c"
+    },
+    "ffi_runtime": {
+      "threshold": 90,
+      "language": "c"
+    },
+    "random_runtime": {
+      "threshold": 90,
+      "language": "c"
+    },
+    "term_runtime": {
+      "threshold": 90,
+      "language": "c"
+    },
+    "test_runtime": {
+      "threshold": 90,
+      "language": "c"
+    },
+    "system_runtime": {
+      "threshold": 90,
+      "language": "c"
+    },
+    "string_runtime": {
+      "threshold": 90,
+      "language": "c"
+    },
+    "string_runtime_list": {
+      "threshold": 90,
+      "language": "c"
+    },
+    "list_runtime": {
+      "threshold": 90,
+      "language": "c"
+    },
+    "map_runtime": {
+      "threshold": 90,
+      "language": "c"
+    },
+    "map_runtime_hamt": {
+      "threshold": 90,
+      "language": "c"
+    },
+    "fiber_runtime": {
+      "threshold": 90,
+      "language": "c"
+    },
+    "coverage_runtime": {
+      "threshold": 90,
+      "language": "c"
+    },
+    "profiler_runtime": {
+      "threshold": 90,
+      "language": "c"
+    },
+    "profiler_sampler": {
+      "threshold": 90,
+      "language": "c"
+    },
+    "http_shared": {
+      "threshold": 90,
+      "language": "c"
+    },
+    "http_client_runtime": {
+      "threshold": 90,
+      "language": "c"
+    },
+    "http_server_request": {
+      "threshold": 90,
+      "language": "c"
+    },
+    "http_server_response": {
+      "threshold": 90,
+      "language": "c"
+    },
+    "http_server_runtime": {
+      "threshold": 90,
+      "language": "c"
+    },
+    "websocket_client_runtime": {
+      "threshold": 90,
+      "language": "c"
+    },
+    "websocket_server_runtime": {
+      "threshold": 90,
+      "language": "c"
     }
   }
 }

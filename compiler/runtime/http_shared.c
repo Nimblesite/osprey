@@ -209,11 +209,15 @@ int parse_websocket_frame(const char *frame_data, size_t frame_len,
 
   size_t offset = 2;
 
-  // Extended payload length
+  // Extended payload length. The bytes must be read UNSIGNED: `char` is
+  // signed here, and a length byte >= 0x80 would sign-extend into a huge
+  // size_t, rejecting every extended frame whose low length byte has the top
+  // bit set (e.g. any 128..255-byte payload).
   if (payload_len == 126) {
     if (frame_len < offset + 2)
       return -1;
-    payload_len = (frame_data[offset] << 8) | frame_data[offset + 1];
+    payload_len = ((size_t)(unsigned char)frame_data[offset] << 8) |
+                  (size_t)(unsigned char)frame_data[offset + 1];
     offset += 2;
   } else if (payload_len == 127) {
     // Not implemented for this simple version

@@ -26,6 +26,10 @@
 
 void *osp_alloc(int64_t size) { return malloc((size_t)size); }
 
+// Link anchor (memory_hooks.h): main calls this so an allocation-free program
+// still extracts this object. The passthrough has no exit accounting to arm.
+void osp_mem_boot(void) {}
+
 // Layout-carrying allocation: the meta word (low 8 bits = kind, upper 56 =
 // managed-pointer word bitmask) is meaningful only to the ARC backend.
 void *osp_alloc_tagged(int64_t size, int64_t meta) {

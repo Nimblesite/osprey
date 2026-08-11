@@ -71,12 +71,21 @@ fi
 # to the stdout the main pass already captured — a second oracle for the same
 # goldens at the cost of eighteen programs, not a second corpus.
 GPU_SUITE_DIR=$TESTDIR/core/gpu
+# Canonicalized exactly as the compiler's mode_of: surrounding whitespace is
+# ignored, empty keeps extraction, anything else is an error. Selecting the
+# alternate from the RAW string once let `OSPREY_GPU_KERNELS=" inline "` run
+# inline against itself — the compiler trimmed, the shell did not.
 GPU_KERNELS_MODE=${OSPREY_GPU_KERNELS:-extract}
-if [[ $GPU_KERNELS_MODE == inline ]]; then
-  GPU_ALT_MODE=extract
-else
-  GPU_ALT_MODE=inline
-fi
+GPU_KERNELS_MODE=${GPU_KERNELS_MODE//[[:space:]]/}
+[[ -n $GPU_KERNELS_MODE ]] || GPU_KERNELS_MODE=extract
+case $GPU_KERNELS_MODE in
+  extract) GPU_ALT_MODE=inline ;;
+  inline) GPU_ALT_MODE=extract ;;
+  *)
+    echo "OSPREY_GPU_KERNELS=$GPU_KERNELS_MODE: expected 'extract' or 'inline'" >&2
+    exit 2
+    ;;
+esac
 # Nine suites x two flavors. Ratchet UP; never lower it to turn a build green.
 GPU_MODE_MIN=${OSPREY_GPU_MODE_MIN:-18}
 
@@ -135,12 +144,15 @@ golden_for() {
   return 1
 }
 
-# Whole-string trim — one leading and one trailing strip, never a per-line
-# strip, which would discard trailing whitespace the program deliberately emits.
-trimmed() {
-  local s=$1
-  s="${s#"${s%%[![:space:]]*}"}"
-  print -r -- "${s%"${s##*[![:space:]]}"}"
+# The single ARC exit sentinel in a stderr transcript: echoes the live-object
+# count only when EXACTLY one `[osp-arc] exit: N live objects` line is present.
+# Absent or repeated sentinels echo nothing, which every caller treats as a
+# failed check — a run that never printed the sentinel (crashed runtime,
+# swallowed stderr) must read as unverified, never as leak-free.
+arc_live_count() {
+  local matches
+  matches=$(sed -n 's/^\[osp-arc\] exit: \([0-9]*\) live objects.*/\1/p' "$1")
+  [[ -n "$matches" && "$matches" != *$'\n'* ]] && print -r -- "$matches"
 }
 
 if [[ ${1:-} == "--worker" ]]; then
@@ -174,6 +186,13 @@ configured_jobs() {
 }
 
 MEMORY=${1:-default}
+# The ARC leak oracle reads the runtime's exit report, which memory_arc.c
+# arms only under OSPREY_ARC_DEBUG. The harness arms it ITSELF whenever it
+# audits the arc backend: the sentinel check below is strict (exactly one
+# line, value 0, for every passing run in BOTH kernel lowerings), and an
+# oracle that depends on the caller remembering an env var is fail-open by
+# construction — an unarmed run would read as leak-free.
+[[ "$MEMORY" == "arc" ]] && export OSPREY_ARC_DEBUG=1
 JOBS=$(configured_jobs)
 jobs_code=$?
 [[ $jobs_code -eq 0 ]] || exit $jobs_code
@@ -277,8 +296,10 @@ for (( index = 1; index <= ${#FILES}; index++ )); do
 
   # Golden comparison is independent of the exit status: a program whose
   # assertions all pass can still have stopped printing in the right order.
+  # `cmp` on the raw files — byte-exact means byte-exact, including trailing
+  # whitespace and the final newline; whole-string trimming once hid both.
   if GOLDEN=$(golden_for "$f"); then
-    if [[ "$(trimmed "$(<$RESULTDIR/$index.stdout)")" == "$(trimmed "$(<$GOLDEN)")" ]]; then
+    if cmp -s -- "$RESULTDIR/$index.stdout" "$GOLDEN"; then
       golden_pass=$((golden_pass + 1))
     else
       golden_fail=$((golden_fail + 1))
@@ -291,11 +312,15 @@ for (( index = 1; index <= ${#FILES}; index++ )); do
     GOLDEN_MISSING+=("$rel")
   fi
 
-  if [[ "$MEMORY" == "arc" ]]; then
-    live=$(sed -n 's/^\[osp-arc\] exit: \([0-9]*\) live objects.*/\1/p' "$ERRFILE" | tail -1)
-    if [[ -n "$live" && "$live" != 0 ]]; then
+  # Only a passing run owes a sentinel — a program that never built has no
+  # runtime to print one and is already red above. For a passing run the
+  # sentinel is REQUIRED to be present and zero; parsing "no line" as "no
+  # leak" is how a crashed exit path would read as leak-free.
+  if [[ "$MEMORY" == "arc" && $rc -eq 0 ]]; then
+    live=$(arc_live_count "$ERRFILE")
+    if [[ "$live" != "0" ]]; then
       leaky=$((leaky + 1))
-      LEAKS+=("$rel ($live)")
+      LEAKS+=("$rel (${live:-no sentinel})")
     fi
   fi
 done
@@ -387,10 +412,26 @@ if (( ${#alt_pairs} > 0 )); then
       continue
     fi
     gpu_mode_pairs=$((gpu_mode_pairs + 1))
-    if [[ "$(<$ALTDIR/$index.stdout)" != "$(<$RESULTDIR/$index.stdout)" ]]; then
+    # The oracle is AGREEMENT on the whole observable outcome, not stdout
+    # alone: exit status, raw transcript bytes, and (under ARC) the leak
+    # sentinel. Comparing stdout via command substitution once let the
+    # alternate lowering crash, leak, or drop a trailing line unnoticed.
+    main_rc=1 alt_rc=1
+    [[ -r "$RESULTDIR/$index.status" ]] && main_rc=$(<$RESULTDIR/$index.status)
+    [[ -r "$ALTDIR/$index.status" ]] && alt_rc=$(<$ALTDIR/$index.status)
+    mode_diverged=""
+    if [[ "$alt_rc" != "$main_rc" ]]; then
+      mode_diverged="exit $alt_rc vs $main_rc"
+    elif ! cmp -s -- "$RESULTDIR/$index.stdout" "$ALTDIR/$index.stdout"; then
+      mode_diverged="transcripts differ"
+    elif [[ "$MEMORY" == "arc" && "$main_rc" == "0" ]]; then
+      alt_live=$(arc_live_count "$ALTDIR/$index.stderr")
+      [[ "$alt_live" == "0" ]] || mode_diverged="alternate ARC sentinel: ${alt_live:-missing}"
+    fi
+    if [[ -n "$mode_diverged" ]]; then
       gpu_mode_fail=$((gpu_mode_fail + 1))
       GPU_MODE_FAILED+=("$rel")
-      echo "GPU-KERNEL-MODE-MISMATCH $rel ($MEMORY, $GPU_KERNELS_MODE vs $GPU_ALT_MODE)"
+      echo "GPU-KERNEL-MODE-MISMATCH $rel ($MEMORY, $GPU_KERNELS_MODE vs $GPU_ALT_MODE): $mode_diverged"
       diff -u "$RESULTDIR/$index.stdout" "$ALTDIR/$index.stdout" | sed -n '1,12p' | sed 's/^/  /'
     fi
   done
