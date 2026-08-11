@@ -345,14 +345,21 @@ types at `float` in either operand order
 (`crates/osprey-types/src/expr.rs::positional_arg_types`). No annotation is
 required, and the associativity of the arithmetic no longer decides.
 
-A **named** context-free function is still defaulted at its own definition:
-`fn plus(a, b) = a + b` types as `int` there and so cannot serve a float
-fold, because `+` on two unconstrained operands has no numeric class to
-defer to — and the two overloads differ in shape, not just element type
-(checked `Result<int, MathError>` versus total `float`). Give it a float
-literal or a signature. This is a language-wide inference defect, not a GPU
-rule — tracked as a Phase 0 defect in
-[plan 0022](../plans/0022-arithmetic-totality-audit.md).
+A **named** context-free function gets it too. `fn plus(a, b) = a + b`
+leaves its overload OPEN rather than defaulting at its own definition, and
+the choice is made once, after all unification, from whatever the operands
+finally became (`crates/osprey-types/src/expr.rs::deferred_arith`). Folded
+over a float buffer it is a float addition; used only on integers it is
+still the checked integer one, `Result<int, MathError>` and all. No
+annotation, no float literal, no rewrite of the call site.
+
+The operand does **not** generalize, because there is no numeric class to
+quantify over: one definition gets one overload. A helper used at BOTH
+`int` and `float` in a single program is therefore a type error
+(`cannot unify int with float`) rather than a silent reinterpretation —
+write the two definitions, or annotate. A lambda is unaffected either way:
+it is a runtime value with one ABI, its parameters are already pinned by
+its slot, and its body never leaves an overload open.
 
 ### Element conversion — [GPU-CONVERT]
 

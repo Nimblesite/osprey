@@ -5,13 +5,13 @@
 
 fn addFloats(a: float, x: float) -> float = a + x
 
-// Numeric operators must specialize this definition from gpuFold's float slots.
+/// Numeric operators must specialize this definition from gpuFold's float slots.
 fn plus(a, x) = a + x
 
 fn atFloat(xs, i) = gpuGet(xs, i) ?: 0.0
 
-// This deliberately has no signature. A concrete device specialization must
-// be emitted from its use with GpuBuffer<float> values, including the self-call.
+/// This deliberately has no signature. A concrete device specialization must
+/// be emitted from its use with GpuBuffer<float> values, including the self-call.
 fn rowDot(matrix, vector, cols, row, col) = match col == cols {
     true => 0.0
     false => atFloat(matrix, (((row * cols) ?: 0) + col) ?: 0) * atFloat(vector, col)

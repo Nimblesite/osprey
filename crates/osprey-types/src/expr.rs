@@ -660,7 +660,7 @@ impl Checker {
                     return *ret;
                 }
                 for (p, a) in params.iter().zip(&args) {
-                    if !(defer_any_binding && p.is_named(names::ANY)) {
+                    if !self.absorbed_by_any(p, a, defer_any_binding) {
                         self.push_assign(p, a);
                     }
                 }
@@ -679,6 +679,22 @@ impl Checker {
                 self.ctx.fresh()
             }
         }
+    }
+
+    /// Whether passing `argument` to an `any` parameter would only DESTROY
+    /// information, so the assignment is skipped.
+    ///
+    /// `any` unifies with every type ([TYPE-ANY]), so assigning a resolved
+    /// argument to it already learns nothing. Assigning an unresolved VARIABLE
+    /// to it learns nothing either — and costs the variable, because unify
+    /// binds a variable before it reaches the `any` wildcard arm. That is how
+    /// `expect(add(1, 1), 2)` erased the pending overload of
+    /// `fn add(a, b) = a + b`: the site's open result became `any`, so
+    /// settling it later could no longer say `Result<int, MathError>` and the
+    /// backend read the call as a plain word. A constrained built-in defers the
+    /// same way for the same reason, by name.
+    fn absorbed_by_any(&mut self, param: &Type, argument: &Type, deferred: bool) -> bool {
+        param.is_named(names::ANY) && (deferred || matches!(self.ctx.prune(argument), Type::Var(_)))
     }
 
     fn apply_named_fn(&mut self, name: Option<&str>, ft: &Type, args: Vec<Type>) -> Type {
@@ -823,7 +839,14 @@ impl Checker {
         // keeps the checker in agreement so the program is rejected here,
         // with a type error, instead of deep in codegen. [EFFECTS-RESUME]
         let saved_resume_ctx = std::mem::take(&mut self.resume_ctx);
+        // A lambda is a runtime VALUE with one ABI, not a definition the
+        // backend re-specialises per call site, so its body never leaves an
+        // arithmetic overload open ([`Self::defers`]). Where a lambda's slot
+        // pins its parameters this changes nothing — they are already concrete
+        // by the time the body is inferred.
+        let saved_defer = std::mem::replace(&mut self.defer_arith, false);
         let body_ty = self.infer_expr(body, &local);
+        self.defer_arith = saved_defer;
         self.resume_ctx = saved_resume_ctx;
         let ret = match return_type {
             Some(te) => {
@@ -965,6 +988,29 @@ fn both_vars(l: &Type, r: &Type) -> bool {
     matches!(l, Type::Var(_)) && matches!(r, Type::Var(_))
 }
 
+/// Marks a pending arithmetic overload in the obligation list
+/// ([`Checker::deferred_arith`]). Obligations already carry per-site types
+/// through generalization and instantiation, and an operator can never collide
+/// with a built-in's name, so a deferred overload rides that list rather than a
+/// parallel one.
+const DEFERRED_ARITH: &str = "arith ";
+
+fn deferred_arith_name(op: &str) -> String {
+    format!("{DEFERRED_ARITH}{op}")
+}
+
+/// The operator a deferred-arithmetic obligation name carries; `None` for a
+/// built-in's obligation.
+fn parse_deferred_arith(name: &str) -> Option<&str> {
+    name.strip_prefix(DEFERRED_ARITH)
+}
+
+/// Whether an obligation marks a pending arithmetic overload rather than a
+/// built-in's representation constraint.
+pub(crate) fn is_deferred_arith(name: &str) -> bool {
+    parse_deferred_arith(name).is_some()
+}
+
 /// Operator → result type. Lives free of `self` so the borrow checker is happy.
 fn unwrap_result(t: &Type) -> Type {
     match t {
@@ -1045,6 +1091,7 @@ impl Checker {
             "%" if lu.is_named(names::FLOAT) || ru.is_named(names::FLOAT) => {
                 res_math(Type::float())
             }
+            "%" if self.defers(&lu, &ru) => self.deferred_arith(op, &l, &r, &lu, &ru),
             "%" => {
                 self.push_unify(&Type::int(), &lu);
                 self.push_unify(&Type::int(), &ru);
@@ -1071,12 +1118,8 @@ impl Checker {
                     } else {
                         ru
                     }
-                } else if both_vars(&lu, &ru) {
-                    // No type-class constraint exists to defer this overload
-                    // safely: a later integer instantiation would otherwise
-                    // lose its overflow channel. As with unconstrained `-` and
-                    // `*`, default two unconstrained operands to integer.
-                    return self.int_arithmetic_result(&lu, &ru);
+                } else if self.defers(&lu, &ru) {
+                    return self.deferred_arith(op, &l, &r, &lu, &ru);
                 } else {
                     return self.int_arithmetic_result(&lu, &ru);
                 };
@@ -1086,10 +1129,13 @@ impl Checker {
                     total
                 }
             }
-            // Unlike `+`, `-` and `*` have no string/list overload, so
-            // unconstrained operands default to int.
+            // Unlike `+`, `-` and `*` have no string/list overload; their
+            // unconstrained form still defers, and resolves without the string
+            // case ([`Checker::resolve_deferred_arith`]).
             _ => {
-                if lu.is_named(names::FLOAT) || ru.is_named(names::FLOAT) {
+                if self.defers(&lu, &ru) {
+                    self.deferred_arith(op, &l, &r, &lu, &ru)
+                } else if lu.is_named(names::FLOAT) || ru.is_named(names::FLOAT) {
                     if propagates_error {
                         res_math(Type::float())
                     } else {
@@ -1100,6 +1146,71 @@ impl Checker {
                 }
             }
         }
+    }
+
+    /// Whether an arithmetic site with these (unwrapped) operands may still
+    /// leave its overload open. Two unconstrained variables can; and only while
+    /// inference is still running — the resolution pass re-enters
+    /// [`Self::infer_arith`] with deferral CLOSED, so a site nothing ever
+    /// constrained lands on the integer default there.
+    fn defers(&self, left: &Type, right: &Type) -> bool {
+        self.defer_arith && both_vars(left, right)
+    }
+
+    /// Type an arithmetic operator whose BOTH operands are still unconstrained
+    /// variables, without committing to the integer overload.
+    ///
+    /// Eagerly defaulting here is what made a named numeric helper unusable as
+    /// a float kernel: `fn plus(a, x) = a + x` is checked before anything says
+    /// what `a` is, so it became `(int, int) -> Result<int, MathError>` and
+    /// `gpuFold(0.0, plus)` over a float buffer was rejected with `cannot unify
+    /// int with float` ([GPU-KERNEL-ELEM-TYPING], [GPU-KERNEL-FORM]). A lambda
+    /// in the same slot already works, because its parameters are pinned from
+    /// the slot before its body is inferred ([`Self::positional_arg_types`]);
+    /// this is the same rule for the named form.
+    ///
+    /// Both operands unify with one another and the result is left OPEN. The
+    /// overload is picked once, after all unification, by re-running the very
+    /// same selection over the operands' final types
+    /// ([`Self::resolve_deferred_arith`]) — so the pending site records the
+    /// operands AS WRITTEN, error channel included, and not the unwrapped pair
+    /// the selection happens to compare.
+    ///
+    /// An operand carrying a pending overload does NOT generalize
+    /// ([`Checker::generalize_with_obligations`]): with no numeric class to
+    /// quantify over, one definition gets ONE overload, chosen by how the
+    /// program actually uses it. `fn plus(a, x) = a + x` folded over a float
+    /// buffer is a float addition; the same helper used only on integers is
+    /// still the checked integer one; using it at both in a single program is a
+    /// type error rather than a silent reinterpretation.
+    fn deferred_arith(&mut self, op: &str, l: &Type, r: &Type, lu: &Type, ru: &Type) -> Type {
+        self.push_unify(lu, ru);
+        let result = self.ctx.fresh();
+        self.builtin_uses.push((
+            deferred_arith_name(op),
+            Type::fun(vec![l.clone(), r.clone()], result.clone()),
+        ));
+        result
+    }
+
+    /// Settle one deferred site: re-run the ordinary overload selection over
+    /// the operands' final types with deferral closed, and tie the site's open
+    /// result to the answer. Re-running rather than restating the rules is what
+    /// keeps `p.x * p.x + p.y * p.y` right — by the time the outer `+` resolves,
+    /// its operands have become `Result<int, MathError>`, and only the real
+    /// selection knows to unwrap them and keep one flattened error channel.
+    pub(crate) fn resolve_deferred_arith(&mut self, name: &str, site: &Type) {
+        let Some(op) = parse_deferred_arith(name) else {
+            return;
+        };
+        let Type::Fun { params, ret } = self.ctx.apply(site) else {
+            return;
+        };
+        let [left, right] = params.as_slice() else {
+            return;
+        };
+        let answer = self.infer_arith(op, left, right);
+        self.push_unify(&answer, &ret);
     }
 
     /// Constrain both operands to integers and preserve overflow as a typed

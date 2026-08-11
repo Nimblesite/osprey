@@ -9,8 +9,8 @@ plus (a, x) = a + x
 
 atFloat (xs, i) = gpuGet (xs, i) ?: 0.0
 
-// Deliberately unannotated: the concrete GpuBuffer<float> specialization and
-// recursive self-call must be emitted from the call site.
+(** Deliberately unannotated: the concrete GpuBuffer<float> specialization and
+    recursive self-call must be emitted from the call site. *)
 rowDot (matrix, vector, cols, row, col) = match col == cols
     true => 0.0
     false => (atFloat (matrix, (((row * cols) ?: 0) + col) ?: 0) * atFloat (vector, col)

@@ -1021,7 +1021,9 @@ fn lower_expr(expr: MlExpr) -> Expr {
             })
         }
         MlExpr::UnitApp { func } => call(lower_expr(*func), Vec::new()),
-        MlExpr::List(items, pos) => Expr::List(items.into_iter().map(lower_expr).collect(), Some(pos)),
+        MlExpr::List(items, pos) => {
+            Expr::List(items.into_iter().map(lower_expr).collect(), Some(pos))
+        }
         MlExpr::Map(entries) => Expr::Map(entries.into_iter().map(lower_map_entry).collect()),
         MlExpr::Index { target, index } => Expr::Index {
             target: Box::new(lower_expr(*target)),

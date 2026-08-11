@@ -11,8 +11,8 @@ fn countTrue(a: int, x: bool) -> int = match x {
     false => a
 }
 
-// listReverse forces the runtime-list copy path; a direct literal would take
-// [GPU-BUFFER-LITERAL] and would not exercise the missing type metadata.
+/// listReverse forces the runtime-list copy path; a direct literal would take
+/// [GPU-BUFFER-LITERAL] and would not exercise the missing type metadata.
 fn floatListValue() -> List<float> = listReverse([2.5, 1.5])
 fn boolListValue() -> List<bool> = listReverse([true, false, false])
 
@@ -66,8 +66,8 @@ fn repeatedCrossingCase() = {
     ])
 }
 
-// With no first element to inspect, lowering must use the inferred result type
-// rather than leave the owner bare and let gpuGet default the word to int.
+/// With no first element to inspect, lowering must use the inferred result type
+/// rather than leave the owner bare and let gpuGet default the word to int.
 fn emptyTypedLiteralCase() = checkAll("empty literals retain contextual scalar types", [
     gpuLength(toGpu([])) == 0,
     (gpuGet(toGpu([]), 0) ?: 9.5) == 9.5,

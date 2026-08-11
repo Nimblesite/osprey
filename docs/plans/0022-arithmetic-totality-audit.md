@@ -354,19 +354,28 @@ Phase 0 is required under every option. Nothing here is done yet.
       silently (`lit=inf`, exit 0). Locate the literal→`f64` site and reject
       overflow at parse time, or the "every float is finite" invariant is
       unreachable no matter what arithmetic does.
-- [ ] **F10** Context-free arithmetic **int-defaults before the consuming slot
-      can constrain it**: `fn plus(a, b) = a + b` can never serve a float fold —
-      anywhere in the language — because the operands default to `int` inside
-      the definition instead of unifying with the slot's element type
+- [x] **F10** Context-free arithmetic **int-defaulted before the consuming slot
+      could constrain it**: `fn plus(a, b) = a + b` could never serve a float
+      fold — anywhere in the language — because the operands defaulted to `int`
+      inside the definition instead of unifying with the slot's element type
       (`GpuBuffer<float>`, `List<float>`, a `(float, float) -> float`
-      parameter). A float kernel therefore needs a float literal or a signature
-      in scope, which [GPU-KERNEL-ELEM-TYPING]
-      (docs/specs/0034-GPUComputation.md) forbids as an end state: kernel
-      parameter types must flow from the buffer, and defaulting is legal only
-      when a parameter is genuinely unconstrained by every consuming slot.
-      Defer the int default until generalization sees all call-site
-      constraints. Corpus proof once fixed: an unannotated `add` shared by an
-      int fold and a float fold in `tests/core/gpu/`.
+      parameter). **Fixed.** An arithmetic site whose operands are both still
+      unconstrained records a pending overload instead of defaulting
+      (`crates/osprey-types/src/expr.rs::deferred_arith`); the choice is made
+      once, after all unification, by re-running the ordinary selection over
+      the operands' final types. `tests/core/gpu/kernel_frontier.test.{osp,ospml}`
+      is the corpus proof — an unannotated `plus` specialising at `float` from
+      `gpuFold`'s and `gpuScan`'s slots, alongside an unannotated recursive
+      helper — and it satisfies [GPU-KERNEL-ELEM-TYPING].
+
+      **Scope, deliberately:** the operand does NOT generalize, so one
+      definition gets ONE overload. A helper used at both `int` and `float` in a
+      single program is a type error, not a reinterpretation. Sharing one
+      definition across both would need a real numeric class — quantifying over
+      the overload, whose two arms differ in SHAPE (checked
+      `Result<int, MathError>` versus total `float`), not just element type.
+      That is a separate design decision and belongs with the float-totality
+      decision below, not with this defect.
 
 ### Phase 1 — Spec first (code comments must cite an ID)
 

@@ -197,24 +197,35 @@ contract a device backend inherits.
    parameter type those links pinned
    (`crates/osprey-types/src/expr.rs::positional_arg_types`). Both
    `fn(x, y) => t * x * y` and `fn(x, y) => x * y * t` compile, and
-   `gpuFold(0.0, fn(a, v) => a + v)` no longer needs annotations. What
-   remains is plan 0022's F10 proper: a NAMED context-free function
-   (`fn plus(a, b) = a + b`) defaults at its own definition, where no call
-   site is in sight.
+   `gpuFold(0.0, fn(a, v) => a + v)` no longer needs annotations. The NAMED
+   context-free case (`fn plus(a, b) = a + b`) is fixed too, by the other
+   half of plan 0022's F10: the definition records a PENDING overload instead
+   of defaulting where no call site is in sight, and the choice is settled
+   once, after all unification, from the operands' final types.
 
-Open, and the reason `tests/core/gpu/kernel_frontier` and
-`tests/core/gpu/scalar_contracts` are not yet green:
+Both closed. `tests/core/gpu/kernel_frontier` and
+`tests/core/gpu/scalar_contracts` are green in both flavors under
+default/GC/ARC and wasm32:
 
-- **A named context-free numeric function cannot serve a float slot** (F10,
-  [plan 0022](0022-arithmetic-totality-audit.md)). Deferring the default needs
-  a numeric class, because the two overloads differ in *shape*: checked
-  `Result<int, MathError>` versus total `float`.
-- **An empty list literal has no element type in codegen.** `toGpu([])` tags
-  the buffer bare, so `gpuGet(toGpu([]), 0) ?: 9.5` reads the Result slot as
-  an `int`. Lambdas and `let`s publish their inferred types by source position
-  (`ProgramTypes::lambdas` / `lets`); list literals do not, because
-  `Expr::List` carries no position. The fix is to give it one and publish the
-  same way — an AST change, not a GPU one.
+- **A named context-free numeric function can now serve a float slot** (F10,
+  [plan 0022](0022-arithmetic-totality-audit.md)). No numeric class was
+  needed: the overload is left open and settled after unification, at the cost
+  that one definition gets one overload (using a helper at both `int` and
+  `float` is a type error, not a reinterpretation).
+- **An empty list literal now reaches codegen with its element type.**
+  `Expr::List` carries a position, inference publishes each literal's resolved
+  `List<T>` there (`ProgramTypes::lists`), and `toGpu([])` / `[]` tag their
+  handle from it. `toGpu([])` used to tag the buffer bare, so
+  `gpuGet(toGpu([]), 0) ?: 9.5` read the Result slot as an `int`.
+
+  The other half of that case was a separate, language-wide inference hole the
+  corpus flushed out: the `?:` desugaring binds its payload through an
+  unspellable field name, and `bind_result_fields` typed anything it did not
+  recognise as a FRESH variable. So the fallback never constrained the payload
+  at all — `listGet([1, 2, 3], 0) ?: 9.5` type-checked, on an `int` list, and
+  only failed in codegen with `match arms disagree on type`. A `Success`/
+  `Error` pattern over an unresolved discriminant now pins it to a `Result`
+  with an open payload instead of auto-wrapping it.
 - **ML cannot spell a block-bodied lambda**, so `kernel_frontier`'s Default
   case has no twin: layout is suppressed inside brackets, and the body opens
   inside `gpuMap (…)`.
@@ -240,14 +251,15 @@ The corrections below have been applied to
 
 ## Gaps delegated to other plans
 
-- **Numeric defaulting for named context-free functions (F10)** —
+- ~~**Numeric defaulting for named context-free functions (F10)**~~ —
   [plan 0022](0022-arithmetic-totality-audit.md) (spec
-  `[GPU-KERNEL-ELEM-TYPING]`). The lambda half is fixed here. This is what
-  keeps `kernel_frontier`'s named-combine case red in both flavors.
-- **Positions on list literals**, so an empty literal's inferred element type
-  reaches codegen — an AST/`ProgramTypes` change with no GPU-specific part
-  (`Expr::List` and `Expr::Call` carry no position today, so neither a
-  literal-site nor a call-site table can be keyed). This is what keeps
+  `[GPU-KERNEL-ELEM-TYPING]`). **Landed.** Both halves — lambda and named —
+  now type from the consuming slot.
+- ~~**Positions on list literals**~~, so an empty literal's inferred element
+  type reaches codegen — an AST/`ProgramTypes` change with no GPU-specific
+  part. **Landed**: `Expr::List` carries a position and inference publishes
+  `ProgramTypes::lists`. (`Expr::Call` still carries none, so a call-site
+  table remains unavailable.) This used to keep
   `scalar_contracts`' empty-literal case red.
 
 The two cases above are the whole aspirational red set: they fail all four
@@ -454,8 +466,7 @@ Landmines previous sessions hit:
   cross_flavor_ir_equiv`), so a construct only one flavor's parser accepts
   cannot enter the corpus. Block-bodied lambda kernels cleared this bar when
   the ML lexer learned layout bodies inside brackets; the named
-  context-free-combine case still trips it (both flavors red until plan
-  0022's F10 lands).
+  context-free-combine case clears it now that plan 0022's F10 has landed.
 - Goldens are byte-exact under default/GC/ARC **and** wasm32. Wasm goldens run
   under `make wasm`, not `make ci` — run both. `make wasm` also *builds*
   `libosprey_runtime_wasm.a`; without it every wasm golden fails at once and
@@ -553,14 +564,16 @@ Landmines previous sessions hit:
         is checked arithmetic, so `map`/`forEach` printed `Success(2)` where
         the comment claimed `2`; `filter`/`gpuZipWith` did not compile). All
         nine now run and match their stated output.
-- [ ] Kernel element typing (plan 0022 F10). Re-measured; narrower than "int
-      defaulting". Let-polymorphism is fine (`fn id(x) = x` instantiates at
-      three types). `+` is the problem: in `fn add(a, x) = a + x` it resolves
-      to the int operation with no numeric constraint, so `gpuFold(0.0, add)`
-      gives `cannot unify int with float` and `gpuFold(0, add)` gives
-      `cannot unify int with Result<int, MathError>` (checked int `+` returns a
-      `Result`; the combine slot wants `(v, t) -> v`). Both need a numeric
-      constraint on the operators — plan 0022 F10, not a GPU-surface change.
+- [x] Kernel element typing (plan 0022 F10). Re-measured; narrower than "int
+      defaulting". Let-polymorphism was always fine (`fn id(x) = x` instantiates
+      at three types). `+` was the problem: in `fn add(a, x) = a + x` it
+      resolved to the int operation with no numeric constraint, so
+      `gpuFold(0.0, add)` gave `cannot unify int with float`. **Fixed** by
+      leaving the overload open at the definition and settling it after
+      unification — no numeric class, and no GPU-surface change. `gpuFold(0,
+      add)` still needs the combine slot's `(v, t) -> v` to accept checked
+      integer `+`'s `Result`, which is the shape question the float-totality
+      decision owns.
 
 ### Stage 3 — kernel extraction
 

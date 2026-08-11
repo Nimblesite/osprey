@@ -137,6 +137,11 @@ pub struct Checker {
     /// inferred, so annotations inside the body (explicit construction-site
     /// type arguments) resolve the binder's variables, not nominal names.
     pub(crate) current_fn_typarams: HashMap<String, Type>,
+    /// Whether an arithmetic site with two unconstrained operands may still
+    /// leave its overload open ([`Checker::deferred_arith`]). Cleared for the
+    /// resolution pass, which re-enters the same selection to settle every
+    /// pending site against its operands' final types.
+    pub(crate) defer_arith: bool,
 }
 
 impl Checker {
@@ -161,6 +166,7 @@ impl Checker {
             handler_tys: Vec::new(),
             fn_typarams: HashMap::new(),
             current_fn_typarams: HashMap::new(),
+            defer_arith: true,
         };
         c.register_result_ctors();
         c.register_builtin_variances();
@@ -680,9 +686,27 @@ impl Checker {
             return scheme;
         }
         let (deferred, kept) = self.split_obligations(&scheme.vars);
+        // Quantifying a variable that still carries a pending arithmetic
+        // overload would hand every call site its own fresh copy, so no use
+        // could ever inform the choice and the definition would default to
+        // integer with nothing having looked at it. Keeping it monomorphic is
+        // what lets `gpuFold(0.0, plus)` type `plus` at float.
+        let pinned = self.arith_operand_vars(&kept);
+        scheme.vars.retain(|v| !pinned.contains(v));
         self.builtin_uses = kept;
         scheme.obligations = deferred;
         scheme
+    }
+
+    /// Every type variable a pending arithmetic overload rests on.
+    fn arith_operand_vars(&mut self, obligations: &[(String, Type)]) -> BTreeSet<VarId> {
+        let mut vars = BTreeSet::new();
+        for (name, ty) in obligations {
+            if crate::expr::is_deferred_arith(name) {
+                self.ctx.free_vars(ty, &mut vars);
+            }
+        }
+        vars
     }
 
     /// Split the recorded built-in uses into those resting on `vars` (deferred
@@ -699,10 +723,15 @@ impl Checker {
         let mut deferred = Vec::new();
         let mut kept = Vec::new();
         for (name, ty) in resolved {
-            if self.mentions_any(&ty, vars) {
-                deferred.push((name, ty));
-            } else {
+            // A pending arithmetic overload never travels into a scheme: it is
+            // settled once for the whole program
+            // ([`Checker::deferred_arith`]), and the variables it rests on stay
+            // monomorphic so every use of the definition constrains the SAME
+            // choice.
+            if crate::expr::is_deferred_arith(&name) || !self.mentions_any(&ty, vars) {
                 kept.push((name, ty));
+            } else {
+                deferred.push((name, ty));
             }
         }
         (deferred, kept)
@@ -807,6 +836,26 @@ impl Checker {
             let resolved = self.ctx.apply(&ty);
             if let Some(message) = crate::builtin_constraints::invalid_use(&name, &resolved) {
                 self.errors.push(TypeError::new(message));
+            }
+        }
+    }
+
+    /// Settle every arithmetic overload left open by
+    /// [`Checker::deferred_arith`], now that nothing further can constrain an
+    /// operand. Resolving one site can constrain another's operand — `fn twice(x)
+    /// = x + x` used by `fn quad(y) = twice(y) + twice(y)` — so this repeats
+    /// until a pass changes nothing, which it must: each pass either resolves a
+    /// site or leaves the substitution untouched.
+    fn resolve_deferred_arithmetic(&mut self) {
+        self.defer_arith = false;
+        for _ in 0..self.builtin_uses.len().saturating_add(1) {
+            let before = self.ctx.bound_count();
+            let uses = self.builtin_uses.clone();
+            for (name, ty) in &uses {
+                self.resolve_deferred_arith(name, ty);
+            }
+            if self.ctx.bound_count() == before {
+                return;
             }
         }
     }
@@ -948,6 +997,7 @@ fn checked_program(program: &Program) -> Checker {
     let mut env = base_env();
     checker.collect(program, &mut env);
     checker.check(program, &mut env);
+    checker.resolve_deferred_arithmetic();
     checker.validate_builtin_uses();
     let perform_tys = checker.perform_tys.clone();
     let perform_actual_tys = checker.perform_actual_tys.clone();

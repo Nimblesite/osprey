@@ -53,6 +53,17 @@ impl StageError {
 /// Implements [STAGE-STATIC-FINITE].
 pub(crate) const REWRITE_BOUND: u32 = 10_000;
 
+/// How deeply one substitution may re-enter the rewrite. Discharge replaces a
+/// `perform` with its arm's body and rewrites THAT, so a cycle between two
+/// static handlers nests one native frame per step: the [`REWRITE_BOUND`] fuel
+/// alone bounds how many steps run, not how deep they go, and 10,000 nested
+/// frames overflow a worker thread's stack before the fuel is spent. This bound
+/// stops the same divergence at a depth no legitimate program reaches — nesting
+/// is how many answers are needed to reach ONE normal form, while the fuel
+/// budget covers the whole program — and reports it as the same finite-rewrite
+/// violation. Implements [STAGE-STATIC-FINITE].
+pub(crate) const REWRITE_DEPTH_BOUND: u32 = 256;
+
 /// The declared operations of one effect, with its stage.
 pub(crate) struct EffectDecl {
     pub(crate) stage: Stage,

@@ -894,7 +894,7 @@ mod tests {
             body: blk(name),
         };
         vec![
-            Expr::List(vec![blk("list")]),
+            Expr::List(vec![blk("list")], None),
             Expr::Map(vec![MapEntry {
                 key: blk("mapk"),
                 value: blk("mapv"),

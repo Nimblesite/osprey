@@ -1,9 +1,11 @@
 // A recursive function whose signature is not fully inferred cannot be
-// specialised by inlining (the self-call would name a definition that is
-// never emitted), so codegen fails closed and asks for annotations.
+// specialised (the self-call would name a definition that is never emitted),
+// so codegen fails closed and asks for annotations. `walk` stays generic in its
+// element type because nothing in the body inspects an element, and the two
+// call sites instantiate it at two different ones.
 fn walk(xs, n) = match n {
-    0 => 0
-    _ => (walk(xs, (n - 1) ?: 0) + (listGet(xs, n) ?: 0)) ?: 0
+    0 => xs
+    _ => walk(listReverse(xs), (n - 1) ?: 0)
 }
 
-fn main() = print("sum=${walk([5, 6, 7], 2)}")
+fn main() = print("${listLength(walk([5, 6, 7], 2))} ${listLength(walk(["a", "b"], 1))}")

@@ -110,7 +110,7 @@ mod tests {
     fn walks_literal_and_data_container_forms() {
         assert_all_contain(&[
             Expr::InterpolatedStr(vec![crate::InterpolatedPart::Expr(r())]),
-            Expr::List(vec![r()]),
+            Expr::List(vec![r()], None),
             Expr::Map(vec![crate::MapEntry {
                 key: r(),
                 value: Expr::Integer(0),

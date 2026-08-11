@@ -12,7 +12,7 @@
 //! effect. Implements [STAGE-LOWER], [STAGE-LOWER-ORDER].
 
 use crate::mutate::{children_mut, statement_children_mut};
-use crate::stage::{dependencies, StageError, REWRITE_BOUND};
+use crate::stage::{dependencies, StageError, REWRITE_BOUND, REWRITE_DEPTH_BOUND};
 use crate::{Expr, HandlerArm, Position, Program, Stage, Stmt};
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -49,6 +49,9 @@ struct Lowering {
     errors: Vec<StageError>,
     regions: u32,
     fuel: u32,
+    /// How many substitutions are currently nested, so a diverging rewrite is
+    /// reported rather than overflowing the stack ([`REWRITE_DEPTH_BOUND`]).
+    depth: u32,
 }
 
 /// Discharge every static handler in `program`.
@@ -62,6 +65,7 @@ pub(crate) fn run(program: &Program) -> Result<Program, Vec<StageError>> {
         errors: Vec::new(),
         regions: 0,
         fuel: REWRITE_BOUND,
+        depth: 0,
     };
     let mut rewritten = program.clone();
     for statement in &mut rewritten.statements {
@@ -165,13 +169,19 @@ impl Lowering {
         }
         if self.spend_fuel(&effect, &operation, position) {
             *expression = bind_parameters(&arm, &arguments);
+            self.depth = self.depth.saturating_add(1);
             self.rewrite(expression, regions);
+            self.depth = self.depth.saturating_sub(1);
         }
     }
 
     /// Consume one rewrite step. Implements [STAGE-STATIC-FINITE].
     fn spend_fuel(&mut self, effect: &str, operation: &str, position: Option<Position>) -> bool {
-        if let Some(remaining) = self.fuel.checked_sub(1) {
+        if let Some(remaining) = self
+            .fuel
+            .checked_sub(1)
+            .filter(|_| self.depth < REWRITE_DEPTH_BOUND)
+        {
             self.fuel = remaining;
             true
         } else {

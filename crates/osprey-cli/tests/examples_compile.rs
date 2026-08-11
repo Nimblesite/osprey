@@ -140,10 +140,17 @@ print (toString (addPreservingError 9223372036854775807 1))
 #[test]
 fn every_language_test_compiles_to_ir() {
     let dir = repo_root().join("tests");
-    let files = sources(&dir, "osp");
+    // BOTH flavors. An ML twin is not a translation of its Default twin — it is
+    // a second front end producing the same IR ([FLAVOR-IR-EQUIV]) — and it
+    // reaches AST forms the Default lowerer never builds (`Expr::MethodCall`
+    // among them), so compiling only `.osp` here left the ML half of every
+    // shared walker unexercised in-process.
+    let mut files = sources(&dir, "osp");
+    files.extend(sources(&dir, "ospml"));
+    files.sort();
     assert!(
-        files.len() >= 40,
-        "expected the full tested corpus, found {}",
+        files.len() >= 80,
+        "expected the full tested corpus in both flavors, found {}",
         files.len()
     );
     let mut failures = Vec::new();
