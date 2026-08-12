@@ -77,7 +77,12 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          # 24 because `make test` runs osprey-cli's
+          # wasm::tests::build_and_run_end_to_end_when_toolchain_present, which
+          # shells out to scripts/wasm-smoke.mjs and so RUNS a module under
+          # `node:wasi` — the host whose cached memory backing store goes stale
+          # on `memory.grow` before 24. See the comment on the wasm job below.
+          node-version: '24'
           cache: 'npm'
           cache-dependency-path: |
             vscode-extension/package-lock.json
