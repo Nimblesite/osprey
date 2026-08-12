@@ -42,7 +42,10 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          # 24 because `make wasm-site` runs the modules under `node:wasi`,
+          # whose cached memory backing store goes stale on `memory.grow`
+          # before Node 24 — see the comment on the ci.yml wasm job.
+          node-version: "24"
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable

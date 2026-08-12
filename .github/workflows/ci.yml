@@ -334,7 +334,17 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          # 24, not 20: this job EXECUTES wasm modules under `node:wasi`, and
+          # that host caches a module's memory backing store when the instance
+          # starts without refreshing it after `memory.grow`. Every WASI call a
+          # growing module makes afterwards then reads or writes freed memory —
+          # on x86_64 a SIGSEGV in node itself (exit 139, no stderr, no wasm
+          # trap), or, where the stale page is still mapped, output silently
+          # dropped on the floor. A 12-line hand-written module that writes,
+          # grows and writes again reproduces it with no Osprey involved; Node
+          # 24 is the first release that runs both it and the assertion corpus
+          # clean. scripts/wasm-smoke.mjs refuses to run on anything older.
+          node-version: '24'
 
       - name: Install Rust (stable)
         uses: dtolnay/rust-toolchain@stable
