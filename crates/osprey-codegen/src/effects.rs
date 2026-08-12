@@ -317,7 +317,7 @@ fn scan_children(e: &Expr, muts: &mut BTreeSet<String>, captured: &mut BTreeSet<
                 }
             }
         }
-        Expr::List(xs) => scan_slice(xs, muts, captured, |x| x),
+        Expr::List(xs, _) => scan_slice(xs, muts, captured, |x| x),
         Expr::Map(es) => {
             for en in es {
                 scan_expr(&en.key, muts, captured);
@@ -340,8 +340,7 @@ fn scan_children(e: &Expr, muts: &mut BTreeSet<String>, captured: &mut BTreeSet<
             named_arguments,
         } => {
             scan_expr(function, muts, captured);
-            scan_slice(arguments, muts, captured, |x| x);
-            scan_slice(named_arguments, muts, captured, |n| &n.value);
+            scan_args(arguments, named_arguments, muts, captured);
         }
         Expr::MethodCall {
             target,
@@ -350,8 +349,7 @@ fn scan_children(e: &Expr, muts: &mut BTreeSet<String>, captured: &mut BTreeSet<
             ..
         } => {
             scan_expr(target, muts, captured);
-            scan_slice(arguments, muts, captured, |x| x);
-            scan_slice(named_arguments, muts, captured, |n| &n.value);
+            scan_args(arguments, named_arguments, muts, captured);
         }
         Expr::FieldAccess { target, .. } => scan_expr(target, muts, captured),
         Expr::Index { target, index } => {
@@ -370,13 +368,23 @@ fn scan_children(e: &Expr, muts: &mut BTreeSet<String>, captured: &mut BTreeSet<
             arguments,
             named_arguments,
             ..
-        } => {
-            scan_slice(arguments, muts, captured, |x| x);
-            scan_slice(named_arguments, muts, captured, |n| &n.value);
-        }
+        } => scan_args(arguments, named_arguments, muts, captured),
         Expr::Resume(Some(value)) => scan_expr(value, muts, captured),
         _ => {}
     }
+}
+
+/// Scan a callee-style argument list: positional arguments then the named
+/// ones, in source order. Shared by every call-shaped node (call, method call,
+/// `perform`) so none of them can forget a half.
+fn scan_args(
+    arguments: &[Expr],
+    named_arguments: &[osprey_ast::NamedArgument],
+    muts: &mut BTreeSet<String>,
+    captured: &mut BTreeSet<String>,
+) {
+    scan_slice(arguments, muts, captured, |x| x);
+    scan_slice(named_arguments, muts, captured, |n| &n.value);
 }
 
 /// Recurse into each element of `items`, projecting it to its sub-expression

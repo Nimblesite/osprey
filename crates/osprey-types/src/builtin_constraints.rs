@@ -10,6 +10,9 @@ use crate::ty::{names, Type};
 const SIZED_DISPLAY: &str = "string | List<T> | Map<string, V>";
 const PRINTABLE_DISPLAY: &str =
     "int | float | bool | string | Unit | any | Result<printable, printable>";
+const GPU_SOURCE_DISPLAY: &str = "List<int> | List<float> | List<bool> \
+     | Iterator<int> | Iterator<float> | Iterator<bool>";
+const GPU_BUFFER_DISPLAY: &str = "GpuBuffer<int> | GpuBuffer<float> | GpuBuffer<bool>";
 
 /// Human-facing parameter type for a constrained `any` scheme.
 pub(crate) fn display_param_type(name: &str, index: usize) -> Option<&'static str> {
@@ -19,6 +22,8 @@ pub(crate) fn display_param_type(name: &str, index: usize) -> Option<&'static st
     match name {
         "length" | "isEmpty" => Some(SIZED_DISPLAY),
         "print" | "toString" => Some(PRINTABLE_DISPLAY),
+        "toGpu" => Some(GPU_SOURCE_DISPLAY),
+        name if is_gpu_buffer_builtin(name) => Some(GPU_BUFFER_DISPLAY),
         _ => None,
     }
 }
@@ -31,8 +36,64 @@ pub(crate) fn invalid_use(name: &str, ty: &Type) -> Option<String> {
         )),
         "print" if !is_printable(ty) => Some(format!("cannot convert value for printing: {ty}")),
         "toString" if !is_printable(ty) => Some(format!("cannot convert value to string: {ty}")),
+        // GPU buffer elements are scalars [GPU-BUFFER-ELEM]
+        // (docs/specs/0034-GPUComputation.md).
+        "toGpu" if !is_gpu_source(ty) => Some(format!(
+            "`toGpu` supports only {GPU_SOURCE_DISPLAY}; got {ty}"
+        )),
+        name if is_gpu_buffer_builtin(name) && !is_gpu_buffer(ty) => Some(format!(
+            "`{name}` supports only {GPU_BUFFER_DISPLAY}; got {ty}"
+        )),
         _ => None,
     }
+}
+
+/// The GPU built-ins whose first argument is a buffer [GPU-BUFFER-ELEM].
+pub(crate) fn is_gpu_buffer_builtin(name: &str) -> bool {
+    matches!(
+        name,
+        "fromGpu"
+            | "gpuMap"
+            | "gpuFold"
+            | "gpuLength"
+            | "gpuZipWith"
+            | "gpuGet"
+            | "gpuScan"
+            | "gpuFilter"
+    )
+}
+
+/// A scalar a `GpuBuffer` may hold [GPU-BUFFER-ELEM]. Unresolved variables are
+/// deferred exactly as `is_sized` defers them.
+fn is_gpu_scalar(ty: &Type) -> bool {
+    match ty {
+        Type::Var(_) => true,
+        Type::Con { name, args } => {
+            args.is_empty() && matches!(name.as_str(), names::INT | names::FLOAT | names::BOOL)
+        }
+        _ => false,
+    }
+}
+
+/// A `container<scalar>` (or still-unresolved) receiver for a GPU builtin.
+fn is_gpu_container(ty: &Type, container: &str) -> bool {
+    match ty {
+        Type::Var(_) => true,
+        Type::Con { name, args } if name == container => {
+            matches!(args.as_slice(), [elem] if is_gpu_scalar(elem))
+        }
+        _ => false,
+    }
+}
+
+/// A `toGpu` source: a scalar `List`, or a scalar `Iterator` pipeline that
+/// fuses straight into the buffer with no list in between [GPU-BUFFER-FUSE].
+fn is_gpu_source(ty: &Type) -> bool {
+    is_gpu_container(ty, names::LIST) || is_gpu_container(ty, names::ITERATOR)
+}
+
+fn is_gpu_buffer(ty: &Type) -> bool {
+    is_gpu_container(ty, names::GPU_BUFFER)
 }
 
 /// Unresolved variables are deferred by the checker and remain accepted when
@@ -103,6 +164,22 @@ mod tests {
             name: "R".into(),
             fields: BTreeMap::new(),
         }));
+    }
+
+    #[test]
+    fn gpu_constraints_accept_scalar_containers_and_reject_the_rest() {
+        // [GPU-BUFFER-ELEM] (docs/specs/0034-GPUComputation.md)
+        assert!(invalid_use("toGpu", &Type::list(Type::int())).is_none());
+        assert!(invalid_use("toGpu", &Type::list(Type::string())).is_some());
+        assert!(invalid_use("toGpu", &Type::int()).is_some());
+        assert!(invalid_use("gpuMap", &Type::gpu_buffer(Type::float())).is_none());
+        assert!(invalid_use("gpuLength", &Type::gpu_buffer(Type::string())).is_some());
+        // Still-unresolved receivers are deferred, exactly as `is_sized` defers.
+        assert!(invalid_use("fromGpu", &Type::Var(9)).is_none());
+        assert!(invalid_use("gpuFold", &Type::gpu_buffer(Type::Var(9))).is_none());
+        assert_eq!(display_param_type("toGpu", 0), Some(GPU_SOURCE_DISPLAY));
+        assert_eq!(display_param_type("gpuFold", 0), Some(GPU_BUFFER_DISPLAY));
+        assert_eq!(display_param_type("gpuFold", 1), None);
     }
 
     #[test]

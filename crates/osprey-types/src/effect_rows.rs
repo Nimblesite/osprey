@@ -517,7 +517,7 @@ impl Analyzer<'_> {
                 }
                 out
             }
-            Expr::List(items) => self.expressions(items, scope, env),
+            Expr::List(items, _) => self.expressions(items, scope, env),
             Expr::Map(entries) => {
                 let mut out = Summary::default();
                 for entry in entries {
@@ -570,18 +570,13 @@ impl Analyzer<'_> {
                 method,
                 arguments,
                 named_arguments,
-            } => {
-                let mut all_arguments = Vec::with_capacity(arguments.len() + 1);
-                all_arguments.push((**target).clone());
-                all_arguments.extend(arguments.iter().cloned());
-                self.call(
-                    &Expr::Identifier(method.clone()),
-                    &all_arguments,
-                    named_arguments,
-                    scope,
-                    env,
-                )
-            }
+            } => self.call(
+                &Expr::Identifier(method.clone()),
+                &receiver_first(target, arguments),
+                named_arguments,
+                scope,
+                env,
+            ),
             Expr::Match { value, arms } => {
                 let mut out = self.expression(value, scope, env);
                 let matched = self.value(value, scope, env);
@@ -630,6 +625,7 @@ impl Analyzer<'_> {
                 arms,
                 body,
                 position,
+                ..
             } => {
                 // Arm bodies run outside this handler's discharge. In
                 // particular, a same-effect arm is diagnosed separately rather
@@ -915,12 +911,13 @@ impl Analyzer<'_> {
                 function,
                 arguments,
                 named_arguments,
-            } => {
-                let mut all_arguments = Vec::with_capacity(arguments.len() + 1);
-                all_arguments.push(left.clone());
-                all_arguments.extend(arguments.iter().cloned());
-                self.call(function, &all_arguments, named_arguments, scope, env)
-            }
+            } => self.call(
+                function,
+                &receiver_first(left, arguments),
+                named_arguments,
+                scope,
+                env,
+            ),
             _ => self.call(right, std::slice::from_ref(left), &[], scope, env),
         }
     }
@@ -937,12 +934,13 @@ impl Analyzer<'_> {
                 function,
                 arguments,
                 named_arguments,
-            } => {
-                let mut all_arguments = Vec::with_capacity(arguments.len() + 1);
-                all_arguments.push(left.clone());
-                all_arguments.extend(arguments.iter().cloned());
-                self.call_value(function, &all_arguments, named_arguments, scope, env)
-            }
+            } => self.call_value(
+                function,
+                &receiver_first(left, arguments),
+                named_arguments,
+                scope,
+                env,
+            ),
             _ => self.call_value(right, std::slice::from_ref(left), &[], scope, env),
         }
     }
@@ -1001,7 +999,7 @@ impl Analyzer<'_> {
             Expr::FieldAccess { target, field } => self
                 .value(target, scope, env)
                 .and_then(|value| project_field(value, field)),
-            Expr::List(items) => {
+            Expr::List(items, _) => {
                 let mut element = None;
                 for item in items {
                     if let Some(value) = self.value(item, scope, env) {
@@ -1102,18 +1100,13 @@ impl Analyzer<'_> {
                 method,
                 arguments,
                 named_arguments,
-            } => {
-                let mut all_arguments = Vec::with_capacity(arguments.len() + 1);
-                all_arguments.push((**target).clone());
-                all_arguments.extend(arguments.iter().cloned());
-                self.call_value(
-                    &Expr::Identifier(method.clone()),
-                    &all_arguments,
-                    named_arguments,
-                    scope,
-                    env,
-                )
-            }
+            } => self.call_value(
+                &Expr::Identifier(method.clone()),
+                &receiver_first(target, arguments),
+                named_arguments,
+                scope,
+                env,
+            ),
             Expr::Pipe { left, right } => self.pipe_value(left, right, scope, env),
             Expr::Match { value, arms } => {
                 let matched = self.value(value, scope, env);
@@ -1529,6 +1522,15 @@ impl Analyzer<'_> {
         }
         out
     }
+}
+
+/// Method calls and piped calls are both plain calls whose receiver becomes the
+/// first argument; every desugaring site builds that argument list here.
+fn receiver_first(receiver: &Expr, arguments: &[Expr]) -> Vec<Expr> {
+    let mut all = Vec::with_capacity(arguments.len() + 1);
+    all.push(receiver.clone());
+    all.extend(arguments.iter().cloned());
+    all
 }
 
 fn expression_name(expression: &Expr) -> Option<&str> {
@@ -2220,6 +2222,88 @@ fn validate_statement_handlers(
     }
 }
 
+/// The argument slot holding the kernel callback of a GPU combinator, if
+/// `name` is one. Implements [GPU-KERNEL-PURE]
+/// (docs/specs/0034-GPUComputation.md).
+fn gpu_kernel_slot(name: &str) -> Option<usize> {
+    match name {
+        "gpuMap" | "gpuFilter" => Some(1),
+        "gpuFold" | "gpuZipWith" | "gpuScan" => Some(2),
+        _ => None,
+    }
+}
+
+/// Reject a GPU combinator call whose kernel is not provably pure
+/// [GPU-KERNEL-PURE]. A surrounding handler cannot lift the restriction: a
+/// handler makes an effect dischargeable on the host, but a kernel body cannot
+/// leave the device to reach one, so the requirement is purity, and any
+/// kernel whose effects cannot be proven absent fails closed.
+fn validate_gpu_kernel(
+    analyzer: &Analyzer<'_>,
+    expression: &Expr,
+    scope: &[String],
+    env: &CallableEnv,
+    errors: &mut Vec<TypeError>,
+) {
+    let Expr::Call {
+        function,
+        arguments,
+        ..
+    } = expression
+    else {
+        return;
+    };
+    let Some(slot) = expression_name(function)
+        .filter(|name| !env.shadowed.contains(*name))
+        .and_then(gpu_kernel_slot)
+    else {
+        return;
+    };
+    let Some(kernel) = arguments.get(slot) else {
+        return;
+    };
+    if let Some(message) = gpu_kernel_verdict(analyzer, kernel, scope, env) {
+        errors.push(TypeError::new(message).with_pos(kernel_position(kernel)));
+    }
+}
+
+/// The rejection message for a GPU combinator kernel, or `None` when the
+/// kernel is provably pure [GPU-KERNEL-PURE].
+fn gpu_kernel_verdict(
+    analyzer: &Analyzer<'_>,
+    kernel: &Expr,
+    scope: &[String],
+    env: &CallableEnv,
+) -> Option<String> {
+    let Some(callee) = analyzer.callable(kernel, scope, env) else {
+        return Some(String::from(
+            "cannot prove GPU kernel pure; pass a named function or an inline lambda",
+        ));
+    };
+    let row = analyzer.invoke(callee, &[], &[], scope, env);
+    if !row.required.is_empty() {
+        let performed: Vec<String> = row.required.iter().map(requirement_name).collect();
+        return Some(format!(
+            "GPU kernel must be pure; it performs: {}",
+            performed.join(", ")
+        ));
+    }
+    if row.unresolved_dynamic_call || !row.parameter_uses.is_empty() {
+        return Some(String::from(
+            "cannot prove GPU kernel pure; pass a named function or an inline lambda",
+        ));
+    }
+    None
+}
+
+/// A kernel expression's own source position, when it carries one.
+fn kernel_position(kernel: &Expr) -> Option<Position> {
+    match kernel {
+        Expr::Lambda { position, .. } => *position,
+        _ => None,
+    }
+}
+
 fn validate_handler_arms(
     analyzer: &Analyzer<'_>,
     expression: &Expr,
@@ -2227,11 +2311,13 @@ fn validate_handler_arms(
     env: &CallableEnv,
     errors: &mut Vec<TypeError>,
 ) {
+    validate_gpu_kernel(analyzer, expression, scope, env, errors);
     if let Expr::Handler {
         effect,
         arms,
         body,
         position,
+        ..
     } = expression
     {
         let handler_arguments =
@@ -2275,7 +2361,7 @@ fn walk_children<'a>(expression: &'a Expr, mut visit: impl FnMut(&'a Expr)) {
                 }
             }
         }
-        Expr::List(items) => items.iter().for_each(&mut visit),
+        Expr::List(items, _) => items.iter().for_each(&mut visit),
         Expr::Map(entries) => {
             for entry in entries {
                 visit(&entry.key);

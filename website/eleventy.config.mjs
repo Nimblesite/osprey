@@ -9,29 +9,12 @@ import techdoc from "eleventy-plugin-techdoc";
 import Prism from "prismjs";
 import { DateTime } from "luxon";
 import { renderToString as renderTypeDiagram } from "typediagram-core";
+// Shared by the syntaxhighlight plugin, the transform below, and the browser
+// studio page — one grammar, one colour scheme for the language.
+import { ospreyGrammar } from "./src/js/osprey-grammar.mjs";
 
 const SITE_URL = "https://www.ospreylang.dev";
 const AUTHOR_URL = "https://www.christianfindlay.com/";
-
-// Osprey Prism grammar — shared by the syntaxhighlight plugin and the transform.
-const ospreyGrammar = {
-  comment: [
-    { pattern: /(^|[^\\])\/\*[\s\S]*?(?:\*\/|$)/, lookbehind: true },
-    { pattern: /(^|[^\\:])\/\/.*/, lookbehind: true },
-  ],
-  string: { pattern: /"(?:[^"\\]|\\.)*"/, greedy: true },
-  interpolation: {
-    pattern: /\$\{[^}]+\}/,
-    inside: { punctuation: /^\$\{|\}$/ },
-  },
-  keyword:
-    /\b(?:fn|let|mut|match|type|effect|perform|handle|in|extern|spawn|await|yield|if|else|import|module|true|false|where|Unit|Result|Option|Some|None|Ok|Err)\b/,
-  type: /\b(?:int|float|string|bool|List|Map|Set|Ptr|Channel|Fiber|Json|HttpResponse)\b/,
-  function: /\b[a-zA-Z_][a-zA-Z0-9_]*(?=\s*\()/,
-  number: /\b(?:0x[\da-f]+|\d*\.?\d+(?:e[+-]?\d+)?)\b/i,
-  operator: /\|>|->|=>|<-|\+|-|\*|\/|%|==|!=|<=|>=|<|>|=|!|&&|\|\|/,
-  punctuation: /[{}[\];(),.:]/,
-};
 
 // ML flavor (.ospml) — offside layout, curry-by-default, whitespace application,
 // `\x => e` lambdas, `:=` mutation, `handler`/`handle … do`. Same token palette as

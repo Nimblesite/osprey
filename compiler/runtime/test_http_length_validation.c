@@ -29,7 +29,7 @@ static int tests_failed = 0;
 
 #define TEST_ASSERT_EQUALS(actual, expected, message) \
     do { \
-        if ((actual) == (expected)) { \
+        if ((long)(actual) == (long)(expected)) { \
             printf("✅ PASS: %s (got %ld, expected %ld)\n", message, (long)(actual), (long)(expected)); \
             tests_passed++; \
         } else { \
@@ -60,7 +60,7 @@ typedef struct TestHttpResponse {
 } TestHttpResponse;
 
 // Test HTTP response creation with various body lengths
-void test_http_response_length_calculation() {
+void test_http_response_length_calculation(void) {
     printf("\n🧪 Testing HTTP Response Length Calculation...\n");
     
     // Test 1: Empty response (NO MORE HARDCODED LENGTHS!)
@@ -90,14 +90,19 @@ void test_http_response_length_calculation() {
     TEST_ASSERT(actual_length == strlen(short_resp.partialBody), "Runtime should calculate length from string");
     
     // Test 3: Long JSON response
-    char long_json[2000];
+    // 79-byte prefix + 50 x 78-byte chunks + 2-byte suffix + NUL = 3982 bytes.
+    // This was a 2000-byte buffer: the composition overran it by ~2KB, which
+    // _FORTIFY_SOURCE trapped the first time this suite was actually built.
+    char long_json[4096];
     strcpy(long_json, "{\"success\": true, \"compilerOutput\": \"Compilation successful\", \"programOutput\": \"");
     // Add long content
     for (int i = 0; i < 50; i++) {
         strcat(long_json, "This is a very long output message that should test proper length calculation. ");
     }
     strcat(long_json, "\"}");
-    
+    TEST_ASSERT_EQUALS(strlen(long_json), 4032, "Composed long JSON has the exact expected length");
+    TEST_ASSERT(strlen(long_json) < sizeof(long_json), "Composed long JSON fits its buffer");
+
     TestHttpResponse long_resp = {
         .status = 200,
         .headers = "Content-Type: application/json\r\n",
@@ -120,12 +125,16 @@ void test_http_response_length_calculation() {
     };
     
     actual_length = strlen(special_resp.partialBody);
-    TEST_ASSERT_EQUALS(actual_length, 33, "Special chars response should have correct length");
+    // The escapes are DOUBLE-escaped in the C literal, so the runtime string
+    // holds two characters for each of `\n`, `\t` and the three `\"` — 37
+    // bytes, not the 33 this hand-written constant claimed before the suite
+    // was ever built.
+    TEST_ASSERT_EQUALS(actual_length, 37, "Special chars response should have correct length");
     TEST_ASSERT(actual_length == strlen(special_resp.partialBody), "Runtime should calculate length from string");
 }
 
 // Test buffer overflow protection
-void test_buffer_overflow_protection() {
+void test_buffer_overflow_protection(void) {
     printf("\n🧪 Testing Buffer Overflow Protection...\n");
     
     // Test 1: Oversized method string
@@ -161,7 +170,7 @@ void test_buffer_overflow_protection() {
 }
 
 // Test HTTP header construction
-void test_http_header_construction() {
+void test_http_header_construction(void) {
     printf("\n🧪 Testing HTTP Header Construction...\n");
     
     // Test 1: Content-Length header with various sizes
@@ -180,7 +189,7 @@ void test_http_header_construction() {
                                 body_len);
         
         TEST_ASSERT(header_len > 0, "Header construction should succeed");
-        TEST_ASSERT(header_len < sizeof(http_response), "Header should fit in buffer");
+        TEST_ASSERT(header_len > 0 && (size_t)header_len < sizeof(http_response), "Header should fit in buffer");
         
         // Verify Content-Length is correctly formatted
         char expected_length_str[32];
@@ -198,7 +207,7 @@ void test_http_header_construction() {
 }
 
 // Test that fallback response uses dynamic length
-void test_fallback_response_dynamic_length() {
+void test_fallback_response_dynamic_length(void) {
     printf("\n🧪 Testing Fallback Response Dynamic Length...\n");
     
     // Test the actual fallback response logic
@@ -238,7 +247,7 @@ void test_fallback_response_dynamic_length() {
 }
 
 // Test edge cases and potential security issues
-void test_security_edge_cases() {
+void test_security_edge_cases(void) {
     printf("\n🧪 Testing Security Edge Cases...\n");
     
     // Test 1: NULL body handling
@@ -266,18 +275,25 @@ void test_security_edge_cases() {
         free(long_body);
     }
     
-    // Test 5: Buffer size validation
+    // Test 5: Buffer size validation. The truncation here is the POINT of the
+    // test — snprintf must report the length it needed and still terminate what
+    // it wrote. Reaching the source through a volatile pointer keeps the
+    // compiler from folding its length: gcc proves the truncation statically
+    // otherwise and rejects the call under -Werror=format-truncation, which
+    // would make the runtime contract untestable rather than tested.
     char small_buffer[10];
-    const char *large_content = "This is a very long string that will not fit in the small buffer";
-    
+    const char *volatile source =
+        "This is a very long string that will not fit in the small buffer";
+    const char *large_content = source;
+
     int written = snprintf(small_buffer, sizeof(small_buffer), "%s", large_content);
-    TEST_ASSERT(written >= strlen(large_content), "snprintf should report full length needed");
+    TEST_ASSERT(written > 0 && (size_t)written >= strlen(large_content), "snprintf should report full length needed");
     TEST_ASSERT_EQUALS(strlen(small_buffer), 9, "Buffer should be truncated to fit");
     TEST_ASSERT_EQUALS(small_buffer[9], '\0', "Buffer should be null-terminated");
 }
 
 // Main test runner
-int main() {
+int main(void) {
     printf("🚨 HTTP LENGTH VALIDATION TEST SUITE 🚨\n");
     printf("=======================================\n");
     printf("Testing for hardcoded lengths, buffer overflows, and security issues...\n");

@@ -8,21 +8,36 @@
 // output file is given, asserts captured stdout matches it. Exits non-zero on
 // any failure so `make wasm` / CI can gate on it.
 
-import { readFile } from "node:fs/promises";
 import { openSync, closeSync, readFileSync, mkdirSync, rmSync } from "node:fs";
 import { WASI } from "node:wasi";
+import { loadModuleFromArgv, assertMatchesGolden } from "./wasm-smoke-support.mjs";
 
-const [, , wasmPath, expectedPath] = process.argv;
-if (!wasmPath) {
-  console.error("usage: node wasm-smoke.mjs <module.wasm> [expected-stdout-file]");
-  process.exit(2);
-}
-
-const bytes = await readFile(wasmPath);
-if (!WebAssembly.validate(bytes)) {
-  console.error(`FAIL: ${wasmPath} is not a valid WebAssembly module`);
+// `node:wasi` caches the module's memory backing store when the instance starts
+// and never refreshes it after `memory.grow`, so every WASI call a growing
+// module makes afterwards reads or writes freed memory. On x86_64 that is a
+// SIGSEGV inside node — exit 139, no stderr, no wasm trap — and where the stale
+// page happens to still be mapped it silently drops the module's output
+// instead, which is worse. A 12-line hand-written module that writes, grows and
+// writes again reproduces it with no Osprey involved, and Node 24 is the first
+// release that runs both it and the assertion corpus clean. Refuse older hosts
+// rather than let a defect in the runner report itself as a compiler one; the
+// module still has a second oracle in wasm-browser-smoke.mjs, whose shim reads
+// the memory afresh per call and is unaffected. [WASM-TARGET]
+const MIN_WASI_NODE_MAJOR = 24;
+const nodeMajor = Number(process.versions.node.split(".")[0]);
+if (nodeMajor < MIN_WASI_NODE_MAJOR) {
+  console.error(
+    `FAIL: node:wasi in Node ${process.versions.node} corrupts a module's memory after ` +
+      `memory.grow (use-after-free on its cached backing store). Run under Node ` +
+      `${MIN_WASI_NODE_MAJOR}+, or use scripts/wasm-browser-smoke.mjs, which drives the ` +
+      `same module through the browser WASI shim.`,
+  );
   process.exit(1);
 }
+
+const { wasmPath, expectedPath, bytes } = await loadModuleFromArgv(
+  "usage: node wasm-smoke.mjs <module.wasm> [expected-stdout-file]",
+);
 
 // Node's WASI writes to the real stdout fd, so capture it by pointing the
 // instance's fd 1 at a temp file and reading it back after the run.
@@ -69,14 +84,6 @@ if (exitCode) {
   process.exit(1);
 }
 
-if (expectedPath) {
-  const expected = (await readFile(expectedPath, "utf8")).trim();
-  if (captured.trim() !== expected) {
-    console.error("FAIL: stdout mismatch");
-    console.error(`  expected: ${JSON.stringify(expected)}`);
-    console.error(`  actual:   ${JSON.stringify(captured.trim())}`);
-    process.exit(1);
-  }
-}
+await assertMatchesGolden(expectedPath, captured, "");
 
 console.error(`OK: ${wasmPath} validated and ran cleanly`);

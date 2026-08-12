@@ -15,7 +15,7 @@ pub fn contains_resume(e: &Expr) -> bool {
         Expr::InterpolatedStr(parts) => parts
             .iter()
             .any(|p| matches!(p, crate::InterpolatedPart::Expr(inner) if contains_resume(inner))),
-        Expr::List(xs) => xs.iter().any(contains_resume),
+        Expr::List(xs, _) => xs.iter().any(contains_resume),
         Expr::Map(entries) => entries
             .iter()
             .any(|entry| contains_resume(&entry.key) || contains_resume(&entry.value)),
@@ -110,7 +110,7 @@ mod tests {
     fn walks_literal_and_data_container_forms() {
         assert_all_contain(&[
             Expr::InterpolatedStr(vec![crate::InterpolatedPart::Expr(r())]),
-            Expr::List(vec![r()]),
+            Expr::List(vec![r()], None),
             Expr::Map(vec![crate::MapEntry {
                 key: r(),
                 value: Expr::Integer(0),
@@ -245,6 +245,7 @@ mod tests {
         assert!(contains_resume(&block));
         // A nested handler's resume belongs to the nested handler.
         let nested = Expr::Handler {
+            stage: crate::Stage::Dynamic,
             effect: "E".into(),
             arms: vec![crate::HandlerArm {
                 operation: "op".into(),

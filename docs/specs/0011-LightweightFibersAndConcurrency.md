@@ -133,6 +133,17 @@ requested fiber. This mode is sequential, not an interleaving scheduler;
 `yield` therefore cannot switch fibers. `fiberDone` returns `1` for a queued
 fiber because its following `await` is what drives execution.
 
+## Cancellation and scopes — design direction [CONCURRENCY-CANCEL-DESIGN]
+
+The shipped runtime has **no cancellation**: a spawned fiber always runs to
+completion, `await` blocks until it does, and `fiberDone` is the only probe.
+The normative target that changes this — lexical scopes that own their fibers,
+`cancel` delivered only at suspension points, `finally` finalizers, `join`
+returning an `Outcome<T>`, and deadline/racing forms — is specified in
+[Structured Concurrency](0036-StructuredConcurrency.md) and delivered by
+[plan 0026](../plans/0026-structured-concurrency.md). Until that plan lands,
+nothing in this section's target exists in the compiler.
+
 ## Reserved `select` syntax [CONCURRENCY-SELECT-REJECT]
 
 Both parsers reserve and lower `select`, but channel selection has no runtime

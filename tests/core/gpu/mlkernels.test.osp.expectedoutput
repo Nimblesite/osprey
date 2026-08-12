@@ -1,0 +1,19 @@
+ok 1 - dot product fuses zip and fold
+ok 2 - saxpy runs elementwise over buffer pairs
+ok 3 - a kernel closes over one host scalar
+ok 4 - one kernel closes over several distinct scalars
+ok 5 - one capture is spent by every combinator
+ok 6 - a capture folded from one buffer drives a kernel over another
+ok 7 - captures survive gather, nesting, branching and shadowing
+ok 8 - degenerate captures stay total on empty and ragged buffers
+ok 9 - weighted sums normalise through a captured weight total
+ok 10 - mean centering pipes a scalar back into a kernel
+ok 11 - variance and z-scores normalise a feature column
+ok 12 - min-max rescaling captures both folded extremes
+ok 13 - relu clamps, leaks and counts active units
+ok 14 - a softmax-shaped pipeline is a shift-invariant distribution
+ok 15 - matrix-vector product gathers rows via iota
+ok 16 - dense layers stack bias and activation over gathered rows
+ok 17 - gradient descent converges on the true weight
+1..17
+# tests=17 passed=17 failed=0 skipped=0

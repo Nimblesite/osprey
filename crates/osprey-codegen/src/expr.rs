@@ -59,7 +59,7 @@ pub(crate) fn gen_expr(cg: &mut Codegen, expr: &Expr) -> Result<Value> {
             crate::aggregate::gen_field_access(cg, target, field)
         }
         Expr::Object(fields) => crate::aggregate::gen_object(cg, fields),
-        Expr::List(elements) => crate::listlit::gen_list(cg, elements),
+        Expr::List(elements, position) => crate::listlit::gen_list(cg, elements, *position),
         Expr::Map(entries) => crate::collections::gen_map_literal(cg, entries),
         Expr::Index { target, index } => crate::listlit::gen_index(cg, target, index),
         Expr::Spawn(e) => crate::fiber::gen_spawn(cg, e),
@@ -76,6 +76,7 @@ pub(crate) fn gen_expr(cg: &mut Codegen, expr: &Expr) -> Result<Value> {
             ..
         } => crate::effects::gen_perform(cg, effect, operation, arguments, *position),
         Expr::Handler {
+            stage: _,
             effect,
             arms,
             body,
@@ -267,7 +268,10 @@ fn gen_arith(cg: &mut Codegen, op: &str, l: Value, r: Value) -> Result<Value> {
             has(&l) || has(&r)
         };
         let list_like = |v: &Value| {
-            v.osp_ty.as_deref() == Some(crate::collections::LIST_OWNER) || crate::listlit::is_lit(v)
+            v.osp_ty
+                .as_deref()
+                .is_some_and(crate::collections::is_list_owner)
+                || crate::listlit::is_lit(v)
         };
         if list_like(&l) || list_like(&r) {
             let l = crate::listlit::to_runtime_list(cg, l);
@@ -757,12 +761,13 @@ fn gen_fiber_builtin(
 /// `gen_receiver_directed` must come before the name-keyed string/collection
 /// dispatchers — reordering this table changes which builtin a shared name
 /// means.
-const BUILTIN_DISPATCH: [BuiltinDispatch; 7] = [
+const BUILTIN_DISPATCH: [BuiltinDispatch; 8] = [
     crate::testing::gen,
     crate::collections::gen_receiver_directed,
     crate::strings::gen,
     crate::collections::gen,
     crate::iter::gen,
+    crate::gpu::gen,
     gen_fiber_builtin,
     crate::extern_call::gen,
 ];
@@ -855,6 +860,15 @@ fn gen_call(
             let (l, r) = two_int_args(cg, name, arguments, named)?;
             gen_int_division(cg, l, r)
         }
+        // [BUILTIN-TOFLOAT] [GPU-CONVERT] Widening int → float: one `sitofp`,
+        // round-to-nearest-even, exact for |n| <= 2^53. Total, so no Result.
+        "toFloat" => {
+            let arg = first_arg(arguments, named)
+                .ok_or_else(|| CodegenError::invalid("toFloat needs one argument"))?;
+            let v = gen_expr(cg, arg)?;
+            let n = crate::conv::as_i64(cg, v)?;
+            crate::conv::as_double(cg, n)
+        }
         // Compatibility names for the same checked integer operations used by
         // the natural operators.
         "checkedAdd" | "checkedSub" | "checkedMul" => {
@@ -935,21 +949,36 @@ pub(crate) fn apply_lambda_values(
             cg.bind(p.name.clone(), v);
         }
         let value = gen_expr(cg, body)?;
-        let value = match sig {
-            Some((_, _, Some(inner), _)) if value.result_inner.is_some() => {
-                crate::result::repack_to_inner(cg, value, *inner)?
-            }
-            Some((_, _, Some(inner), _)) => crate::result::make_ok(cg, value, *inner)?,
-            Some((_, ret, None, _)) => crate::cast::coerce_to(cg, value, *ret)?,
-            None => value,
-        };
-        Ok(match sig.and_then(|signature| signature.3) {
-            Some(fiber) => fiber.restore(value),
-            None => value,
-        })
+        fit_lambda_return(cg, value, sig)
     })();
     cg.pop_scope();
     lowered
+}
+
+/// Adapt a lambda body's value to the lambda's own inferred signature — the
+/// shared tail of beta-reduction ([`apply_lambda_values`]) and kernel
+/// extraction ([`crate::gpu_kernel`]), so the two lowerings of one lambda
+/// produce the same value by construction [GPU-KERNEL-EXTRACT].
+pub(crate) fn fit_lambda_return(
+    cg: &mut Codegen,
+    value: Value,
+    sig: Option<&FnSig>,
+) -> Result<Value> {
+    // A lambda's return slot is typed by its signature, so a list literal
+    // returned through a cell loses the flat tag [`crate::listlit::escaping`].
+    let value = crate::listlit::escaping(cg, value);
+    let value = match sig {
+        Some((_, _, Some(inner), _)) if value.result_inner.is_some() => {
+            crate::result::repack_to_inner(cg, value, *inner)?
+        }
+        Some((_, _, Some(inner), _)) => crate::result::make_ok(cg, value, *inner)?,
+        Some((_, ret, None, _)) => crate::cast::coerce_to(cg, value, *ret)?,
+        None => value,
+    };
+    Ok(match sig.and_then(|signature| signature.3) {
+        Some(fiber) => fiber.restore(value),
+        None => value,
+    })
 }
 
 /// A call to a user-defined or runtime function. Parameter types come from
@@ -965,17 +994,40 @@ fn gen_user_call(
     call_with_values(cg, name, args)
 }
 
+/// Lower a builtin that was passed as a first-class callback — `forEach(xs,
+/// print)`, `gpuMap(toFloat)`. Each arm has a value form needing no argument
+/// expressions, so it lowers once per element. `None` means `name` has no such
+/// form. Implements [BUILTIN-ITER-CALLBACK].
+fn call_builtin_with_values(cg: &mut Codegen, name: &str, args: &[Value]) -> Option<Result<Value>> {
+    let arg = || args.first().cloned().unwrap_or_else(Value::unit);
+    Some(match name {
+        "print" => gen_print(cg, arg()),
+        "toString" => to_string_value(cg, arg()),
+        // [BUILTIN-TOFLOAT] [GPU-CONVERT] the canonical float-pipeline seed
+        // `gpuIota(n) |> gpuMap(toFloat)` lowers through this arm.
+        "toFloat" => as_i64(cg, arg()).and_then(|n| crate::conv::as_double(cg, n)),
+        "abs" => gen_unary_propagating(cg, arg(), gen_abs_value),
+        _ => return None,
+    })
+}
+
 /// Call `name` with already-evaluated argument values — the shared tail of
 /// `gen_user_call` and the iterator callbacks. Coerces each argument to the
 /// inferred parameter type, declares unknown (runtime) callees, and tags a
 /// `Result`-returning callee's value.
 pub(crate) fn call_with_values(cg: &mut Codegen, name: &str, args: Vec<Value>) -> Result<Value> {
-    // `print` as a first-class callback maps to the print intrinsic.
-    if name == "print" {
-        let v = args.into_iter().next().unwrap_or_else(Value::unit);
-        return gen_print(cg, v);
+    // An intrinsic builtin has no emitted `@name` symbol, so one reaching this
+    // path as a first-class callback lowers to its value form here.
+    if let Some(v) = call_builtin_with_values(cg, name, &args) {
+        return v;
     }
     // Coerce each argument to the declared parameter type where known.
+    // A parameter slot is typed, not tagged: a list literal handed to a real
+    // (non-inlined) callee arrives as `List<T>` [`crate::listlit::escaping`].
+    let args: Vec<Value> = args
+        .into_iter()
+        .map(|a| crate::listlit::escaping(cg, a))
+        .collect();
     let coerced = match cg.fn_param_abis(name) {
         Some(ptys) if ptys.len() == args.len() => args
             .into_iter()
@@ -1215,7 +1267,7 @@ pub(crate) fn arg_exprs<'a>(args: &'a [Expr], named: &'a [NamedArgument]) -> Vec
 
 fn describe(expr: &Expr) -> String {
     let kind = match expr {
-        Expr::List(_) => "list literal",
+        Expr::List(..) => "list literal",
         Expr::Map(_) => "map literal",
         Expr::Object(_) => "object literal",
         Expr::Pipe { .. } => "pipe expression",

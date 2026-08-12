@@ -33,7 +33,7 @@ use std::process::{Command, ExitCode};
 
 pub(crate) const USAGE: &str =
     "usage: osprey <file-or-project> [--check | --ast | --llvm | --compile | --run | \
---symbols | --list-tests] [--quiet] [--debug] [--profile] [--flavor default|ml] \
+--symbols | --list-tests | --deps] [--quiet] [--debug] [--profile] [--flavor default|ml] \
 [--memory=default|gc|arc] [--target=native|wasm32] [-o <out>] \
 [--sandbox | --no-http | --no-websocket | --no-fs | --no-ffi]\n\
        osprey build [project] [--quiet] [--debug] [--memory=default|gc|arc] \
@@ -122,6 +122,14 @@ fn main() -> ExitCode {
             return ExitCode::from(2);
         }
     };
+    // `--deps` reports each function's dependency set — the static-effect
+    // operations it requires, transitively. It runs on the parsed program
+    // BEFORE static discharge erases those operations, which is the whole
+    // point: exact because it is derived, free because it is erased.
+    // Implements [STAGE-SIGNALS-DIRTY].
+    if cli.mode == "--deps" {
+        return report_dependencies(&cli.path, cli.flavor);
+    }
     if cli.mode == "--hover" {
         // The positional is a built-in NAME, not a file. Unknown names print
         // nothing (the editor simply shows no hover) and still exit 0.
@@ -131,6 +139,25 @@ fn main() -> ExitCode {
         return ExitCode::SUCCESS;
     }
     run(&cli)
+}
+
+/// Print every function's dependency set, one `name: op, op` line per function
+/// that has one. Implements [STAGE-SIGNALS-DIRTY].
+fn report_dependencies(path: &str, flavor: Option<Flavor>) -> ExitCode {
+    let Ok(source) = std::fs::read_to_string(path) else {
+        eprintln!("error: cannot read {path}");
+        return ExitCode::from(2);
+    };
+    let Ok(flavor) = osprey_syntax::resolve_flavor(flavor, path, &source) else {
+        eprintln!("error: cannot resolve the flavor of {path}");
+        return ExitCode::from(2);
+    };
+    for (function, operations) in osprey_syntax::dependency_sets(&source, flavor) {
+        if !operations.is_empty() {
+            println!("{function}: {}", operations.join(", "));
+        }
+    }
+    ExitCode::SUCCESS
 }
 
 /// Run the stdio language server to completion on a fresh Tokio runtime.
@@ -179,7 +206,7 @@ fn parse_args(args: &[String]) -> Result<Cli, String> {
     while let Some(a) = it.next() {
         match a.as_str() {
             "--ast" | "--check" | "--llvm" | "--compile" | "--run" | "--symbols"
-            | "--list-tests" | "--hover"
+            | "--list-tests" | "--hover" | "--deps"
                 if project_build =>
             {
                 return Err(format!(
@@ -187,7 +214,7 @@ fn parse_args(args: &[String]) -> Result<Cli, String> {
                 ));
             }
             "--ast" | "--check" | "--llvm" | "--compile" | "--run" | "--symbols"
-            | "--list-tests" | "--hover" => {
+            | "--list-tests" | "--hover" | "--deps" => {
                 mode.clone_from(a);
                 mode_explicit = true;
             }
@@ -356,15 +383,17 @@ pub(crate) fn load_input(cli: &Cli) -> Result<CompilationInput, ExitCode> {
         }
         return Err(ExitCode::FAILURE);
     }
-    if project::needs_assembly(&parsed.program) {
-        return CompilationInput::one_source(path, flavor, source, parsed.program).map_err(
-            |errors| {
-                print_project_errors(&errors, path);
-                ExitCode::FAILURE
-            },
-        );
+    // Static handlers were already discharged at the flavor boundary
+    // ([STAGE-LOWER-ORDER-PHASE]), and any staging violation arrived as a parse
+    // error above, so `parsed.program` is an ordinary program from here on.
+    let program = parsed.program;
+    if project::needs_assembly(&program) {
+        return CompilationInput::one_source(path, flavor, source, program).map_err(|errors| {
+            print_project_errors(&errors, path);
+            ExitCode::FAILURE
+        });
     }
-    Ok(CompilationInput::script(path, source, parsed.program))
+    Ok(CompilationInput::script(path, source, program))
 }
 
 fn print_project_errors(errors: &[osprey_project::ProjectError], fallback: &str) {
@@ -619,6 +648,11 @@ fn test_cache_key(input: &CompilationInput, memory: &str, kind: osprey_debug::Bu
     input.source().hash(&mut state);
     input.debug_path().hash(&mut state);
     memory.hash(&mut state);
+    // The GPU kernel lowering changes the emitted module [GPU-KERNEL-EXTRACT],
+    // so it is part of the artifact's identity: without it the corpus harness's
+    // extracted-vs-inlined differential would silently compare one binary to
+    // itself and pass forever.
+    std::env::var_os(osprey_codegen::GPU_KERNELS_ENV).hash(&mut state);
     std::mem::discriminant(&kind).hash(&mut state);
     opt_flag(kind).hash(&mut state);
     let compiler = c_compiler();

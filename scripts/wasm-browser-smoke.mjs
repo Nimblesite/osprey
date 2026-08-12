@@ -7,20 +7,12 @@
 // wasi-shim.mjs — so a regression in the browser loader is caught in CI without
 // launching a browser. Exits non-zero on trap or stdout mismatch.
 
-import { readFile } from "node:fs/promises";
 import { runModule } from "../examples/wasm/wasi-shim.mjs";
+import { loadModuleFromArgv, assertMatchesGolden } from "./wasm-smoke-support.mjs";
 
-const [, , wasmPath, expectedPath] = process.argv;
-if (!wasmPath) {
-  console.error("usage: node wasm-browser-smoke.mjs <module.wasm> [expected-stdout-file]");
-  process.exit(2);
-}
-
-const bytes = await readFile(wasmPath);
-if (!WebAssembly.validate(bytes)) {
-  console.error(`FAIL: ${wasmPath} is not a valid WebAssembly module`);
-  process.exit(1);
-}
+const { wasmPath, expectedPath, bytes } = await loadModuleFromArgv(
+  "usage: node wasm-browser-smoke.mjs <module.wasm> [expected-stdout-file]",
+);
 
 let captured = "";
 try {
@@ -33,14 +25,6 @@ try {
 }
 process.stdout.write(captured);
 
-if (expectedPath) {
-  const expected = (await readFile(expectedPath, "utf8")).trim();
-  if (captured.trim() !== expected) {
-    console.error("FAIL: browser-shim stdout mismatch");
-    console.error(`  expected: ${JSON.stringify(expected)}`);
-    console.error(`  actual:   ${JSON.stringify(captured.trim())}`);
-    process.exit(1);
-  }
-}
+await assertMatchesGolden(expectedPath, captured, "browser-shim ");
 
 console.error(`OK: ${wasmPath} ran cleanly under the browser WASI shim`);

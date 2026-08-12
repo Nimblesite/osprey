@@ -113,10 +113,11 @@ link. The golden harness classifies that known undefined-symbol case as `SKIP`.
 
 ## Memory Backend [WASM-TARGET-MEMORY]
 
-The wasm archive contains `memory_runtime.c`, the same non-reclaiming
-`osp_alloc` implementation used by native `--memory=default`. The wasm driver
-does not receive the parsed `--memory` value, so `--memory=gc` and
-`--memory=arc` also link this default archive.
+The wasm archive contains `memory_runtime.c`, the same default allocator used by
+native `--memory=default`. General releases do not reclaim aliased values, but
+the compiler's proved-unique release hook frees uniquely consumed temporaries.
+The wasm driver does not receive the parsed `--memory` value, so `--memory=gc`
+and `--memory=arc` also link this default archive.
 
 The native conservative collector is not in `WASM_RT_SRC`: it depends on native
 stack/register/data-segment scanning, `setjmp`, and pthread synchronization.
@@ -134,3 +135,15 @@ ordinary wasm linear memory.
 
 The CI `wasm` job runs the validate, Node-WASI, browser-shim, and golden-harness
 checks with a pinned WASI sysroot.
+
+Every check that *runs* a module under `node:wasi` requires **Node 24 or newer**,
+and `scripts/wasm-smoke.mjs` refuses to start on anything older. Before 24 that
+host caches the module's memory backing store when the instance starts and never
+refreshes it after `memory.grow`, so each WASI call a growing module makes
+afterwards touches freed memory: on x86_64 a SIGSEGV inside node — no stderr, no
+wasm trap — and where the stale page is still mapped, the module's output is
+silently dropped instead. A twelve-line hand-written module that writes, grows
+and writes again reproduces it, so the constraint is the host's, not this
+target's. `scripts/wasm-browser-smoke.mjs` reads the memory afresh per call and
+runs on any supported Node, which is what makes it a second, independent oracle
+rather than a copy of the first.

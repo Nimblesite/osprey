@@ -99,7 +99,7 @@ mod tests {
     use crate::model::build_model;
     use crate::raw::{Profile, Sample, Thread};
     use crate::symbolize::SymFrame;
-    use crate::testutil::{model_of, osp_frame, sample, thread};
+    use crate::testutil::{field_f64, field_str, field_u64, model_of, osp_frame, sample, thread};
 
     fn fixture() -> Value {
         let (_, model) = model_of(
@@ -122,16 +122,13 @@ mod tests {
     #[test]
     fn header_totals_and_program() {
         let doc = fixture();
-        assert_eq!(doc.get("version").and_then(Value::as_u64), Some(1));
-        assert_eq!(
-            doc.get("program").and_then(Value::as_str),
-            Some("/abs/fib.osp")
-        );
-        assert_eq!(doc.get("wallSeconds").and_then(Value::as_f64), Some(3.0));
-        assert_eq!(doc.get("cpuSeconds").and_then(Value::as_f64), Some(0.003));
-        assert_eq!(doc.get("sampleCount").and_then(Value::as_u64), Some(4));
-        assert_eq!(doc.get("rateHz").and_then(Value::as_u64), Some(1000));
-        assert_eq!(doc.get("droppedSamples").and_then(Value::as_u64), Some(0));
+        field_u64(&doc, "version", 1);
+        field_str(&doc, "program", "/abs/fib.osp");
+        field_f64(&doc, "wallSeconds", 3.0);
+        field_f64(&doc, "cpuSeconds", 0.003);
+        field_u64(&doc, "sampleCount", 4);
+        field_u64(&doc, "rateHz", 1000);
+        field_u64(&doc, "droppedSamples", 0);
     }
 
     #[test]
@@ -140,13 +137,13 @@ mod tests {
         let fibers = doc.get("fibers").and_then(Value::as_array).unwrap();
         assert_eq!(fibers.len(), 2);
         let main = fibers.first().unwrap();
-        assert_eq!(main.get("id").and_then(Value::as_u64), Some(0));
-        assert_eq!(main.get("label").and_then(Value::as_str), Some("main"));
-        assert_eq!(main.get("samples").and_then(Value::as_u64), Some(3));
-        assert_eq!(main.get("oncpuSamples").and_then(Value::as_u64), Some(3));
+        field_u64(main, "id", 0);
+        field_str(main, "label", "main");
+        field_u64(main, "samples", 3);
+        field_u64(main, "oncpuSamples", 3);
         let fiber = fibers.get(1).unwrap();
-        assert_eq!(fiber.get("label").and_then(Value::as_str), Some("fiber-4"));
-        assert_eq!(fiber.get("oncpuSamples").and_then(Value::as_u64), Some(0));
+        field_str(fiber, "label", "fiber-4");
+        field_u64(fiber, "oncpuSamples", 0);
     }
 
     #[test]
@@ -154,16 +151,13 @@ mod tests {
         let doc = fixture();
         let funcs = doc.get("hotFunctions").and_then(Value::as_array).unwrap();
         let fib = funcs.first().unwrap();
-        assert_eq!(fib.get("name").and_then(Value::as_str), Some("fib"));
-        assert_eq!(
-            fib.get("file").and_then(Value::as_str),
-            Some("/src/app.osp")
-        );
-        assert_eq!(fib.get("line").and_then(Value::as_u64), Some(5));
-        assert_eq!(fib.get("selfPct").and_then(Value::as_f64), Some(66.7));
-        assert_eq!(fib.get("totalPct").and_then(Value::as_f64), Some(66.7));
-        assert_eq!(fib.get("selfSamples").and_then(Value::as_u64), Some(2));
-        assert_eq!(fib.get("kind").and_then(Value::as_str), Some("user"));
+        field_str(fib, "name", "fib");
+        field_str(fib, "file", "/src/app.osp");
+        field_u64(fib, "line", 5);
+        field_f64(fib, "selfPct", 66.7);
+        field_f64(fib, "totalPct", 66.7);
+        field_u64(fib, "selfSamples", 2);
+        field_str(fib, "kind", "user");
         let memcpy = funcs
             .iter()
             .find(|f| f.get("name").and_then(Value::as_str) == Some("memcpy"));
@@ -179,13 +173,10 @@ mod tests {
         let lines = doc.get("hotLines").and_then(Value::as_array).unwrap();
         assert_eq!(lines.len(), 1);
         let hot = lines.first().unwrap();
-        assert_eq!(
-            hot.get("file").and_then(Value::as_str),
-            Some("/src/app.osp")
-        );
-        assert_eq!(hot.get("line").and_then(Value::as_u64), Some(5));
-        assert_eq!(hot.get("pct").and_then(Value::as_f64), Some(66.7));
-        assert_eq!(hot.get("samples").and_then(Value::as_u64), Some(2));
+        field_str(hot, "file", "/src/app.osp");
+        field_u64(hot, "line", 5);
+        field_f64(hot, "pct", 66.7);
+        field_u64(hot, "samples", 2);
     }
 
     /// 55 single-frame functions: the function list caps at 50 and sub-0.5%

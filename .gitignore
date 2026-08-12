@@ -87,11 +87,7 @@ examples/rust_integration/librust_utils.a
 examples/tested/effects/test_data/
 
 # Tool caches
-.deslop-cache/
-# Deslop report artifacts (the gate reads .deslop.toml; reports are local only)
-deslop-report.json
-deslop-report.txt
-deslop-report.html
+
 .ghissues/
 .dart_tool/
 .pytest_cache/
@@ -109,7 +105,7 @@ compiler/test.log
 target/
 
 
-.deslop-cache/
+.deslop
 
 .vscode/code-navigator/
 

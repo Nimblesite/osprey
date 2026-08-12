@@ -1,0 +1,1 @@
+1:15: effect `Tile` is dynamic; a static handler requires `static effect Tile`

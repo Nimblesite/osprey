@@ -113,7 +113,7 @@ impl Resolver<'_> {
             for statement in &mut self.program {
                 if let Stmt::Function { name, body, .. } = statement {
                     if name == "main" {
-                        inject_prologue(body, &self.entry_prologue);
+                        crate::state_support::inject(body, &self.entry_prologue);
                         break;
                     }
                 }
@@ -462,22 +462,5 @@ fn collect_alias_statements(
             }
             _ => {}
         }
-    }
-}
-
-fn inject_prologue(body: &mut Expr, prologue: &[Stmt]) {
-    if prologue.is_empty() {
-        return;
-    }
-    if let Expr::Block { statements, .. } = body {
-        let mut combined = prologue.to_vec();
-        combined.append(statements);
-        *statements = combined;
-    } else {
-        let original = std::mem::replace(body, Expr::Bool(false));
-        *body = Expr::Block {
-            statements: prologue.to_vec(),
-            value: Some(Box::new(original)),
-        };
     }
 }

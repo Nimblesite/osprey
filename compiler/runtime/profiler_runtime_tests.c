@@ -109,6 +109,69 @@ static void *busy_thread(void *arg) {
   return NULL;
 }
 
+// The boot anchor stays inert without OSPREY_PROFILE, both clocks behave
+// (monotonic never regresses; busy work consumes measurable CPU time), and the
+// registry primitives are callable from an unregistered thread.
+static void test_boot_and_clocks(void) {
+  osp_prof_boot();
+  osp_prof_boot(); // idempotent
+  assert(!osp_prof_is_active());
+  uint64_t t0 = osp_prof_mono_ns();
+  uint64_t t1 = osp_prof_mono_ns();
+  assert(t0 > 0 && t1 >= t0);
+  uint64_t cpu0 = osp_prof_self_cpu_ns();
+  g_sink += busy_work(2000000);
+  uint64_t cpu1 = osp_prof_self_cpu_ns();
+  assert(cpu1 > 0 && cpu1 >= cpu0);
+  assert(osp_prof_self_slot() == NULL); // never registered on this path
+  osp_prof_registry_lock();
+  osp_prof_registry_unlock();
+  osp_prof_note_drop(); // inactive: safe, just a counter
+}
+
+// Registered-slot introspection and generation validation: the self slot
+// carries the exact fiber id/label and sane stack bounds; a snapshot entry is
+// live until unregister and DEAD after; record_repeat appends against a stack
+// interned by record_sample (called before any slot is registered, so this
+// test remains the sampler's single record producer).
+static void test_slot_snapshot_generation(void) {
+  const char *out = "/tmp/osprey_profiler_slots_test.json";
+  unlink(out);
+  assert(osp_prof_start(out, 200));
+  uint64_t pcs[2] = {0x100000F000, 0x100000E000};
+  uint32_t stack = osp_prof_record_sample(osp_prof_mono_ns(), 0, pcs, 2,
+                                          OSP_PROF_STATE_ONCPU);
+  assert(stack != OSP_PROF_STACK_NONE);
+  osp_prof_record_repeat(osp_prof_mono_ns(), 0, stack, OSP_PROF_STATE_WAITING);
+  osp_prof_note_drop();
+  osp_prof_thread_register(7, "fiber");
+  OspProfSlot *self = osp_prof_self_slot();
+  assert(self != NULL);
+  assert(self->fiber_id == 7);
+  assert(strcmp(self->label, "fiber") == 0);
+  assert(self->stack_lo < self->stack_hi);
+  OspProfSnap snaps[OSP_PROF_MAX_THREADS];
+  int n = osp_prof_snapshot(snaps, OSP_PROF_MAX_THREADS);
+  assert(n >= 1);
+  OspProfSnap mine = {0};
+  for (int i = 0; i < n; i++) {
+    if (snaps[i].slot == self) {
+      mine = snaps[i];
+    }
+  }
+  assert(mine.slot == self);
+  osp_prof_registry_lock();
+  assert(osp_prof_snap_live(&mine));
+  osp_prof_registry_unlock();
+  osp_prof_thread_unregister();
+  osp_prof_registry_lock();
+  assert(!osp_prof_snap_live(&mine)); // generation advanced: stale snapshot
+  osp_prof_registry_unlock();
+  osp_prof_stop_and_dump();
+  assert(!osp_prof_is_active());
+  unlink(out);
+}
+
 static char *slurp(const char *path) {
   FILE *f = fopen(path, "r");
   assert(f != NULL);
@@ -148,6 +211,24 @@ static void test_end_to_end_capture(void) {
   // Real samples were captured: a non-empty samples array with a stack row.
   assert(strstr(json, "\"samples\":[[") != NULL);
   assert(strstr(json, "\"stacks\":[[") != NULL);
+  free(json);
+  unlink(out);
+
+  // EVERY dump must be well-formed, not just a process's first. The image list
+  // is emitted by a `dl_iterate_phdr` callback, and holding its "already wrote
+  // one" flag in a function-local static made each later capture open the array
+  // with a separator — `"images":[,{...}` — which no JSON reader accepts, so a
+  // second profile lost the image list its addresses symbolize against. Assert
+  // a second capture in the SAME process is shaped like the first, so the
+  // defect cannot come back disguised as suite ordering [PROF-RAW-FORMAT].
+  assert(osp_prof_start(out, TEST_RATE_HZ));
+  osp_prof_thread_register(0, "main");
+  g_sink += busy_work(200000);
+  osp_prof_thread_unregister();
+  osp_prof_stop_and_dump();
+  json = slurp(out);
+  assert(strstr(json, "\"images\":[{") != NULL);
+  assert(strstr(json, "\"images\":[,") == NULL);
   free(json);
   unlink(out);
 }
@@ -191,6 +272,8 @@ int main(void) {
   test_walk_rejects_invalid_fp();
   test_hooks_inactive_noop();
   test_record_drop_returns_sentinel();
+  test_boot_and_clocks();
+  test_slot_snapshot_generation();
   test_end_to_end_capture();
   test_churn_under_max_rate_sampling();
   printf("profiler_runtime_tests: all tests passed (sink=%f)\n", g_sink);

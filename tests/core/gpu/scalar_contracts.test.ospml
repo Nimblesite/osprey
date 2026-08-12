@@ -1,0 +1,78 @@
+// Aspirational conformance for scalar transfers ([GPU-BUFFER-ELEM],
+// [GPU-BUFFER-FROM-LIST], [GPU-BUFFER-TO-LIST]). The Default twin shares this
+// file's golden; both flavors must preserve identical runtime element types.
+
+addFloats : (float, float) -> float
+addFloats (a, x) = a + x
+
+countTrue : (int, bool) -> int
+countTrue (a, x) = match x
+    true => (a + 1) ?: a
+    false => a
+
+(** listReverse forces the runtime-list copy path rather than literal lowering. *)
+floatListValue : Unit -> List<float>
+floatListValue () = listReverse [2.5, 1.5]
+
+boolListValue : Unit -> List<bool>
+boolListValue () = listReverse [true, false, false]
+
+listValueTagsCase () =
+    floats = toGpu (floatListValue ())
+    flags = toGpu (boolListValue ())
+    checkAll "runtime list values keep GPU scalar tags" [
+        gpuLength floats == 2,
+        (gpuGet (floats, 0) ?: 99.0) == 1.5,
+        (gpuGet (floats, 1) ?: 99.0) == 2.5,
+        (floats |> gpuFold 0.0 addFloats) == 4.0,
+        gpuLength flags == 3,
+        (gpuGet (flags, 0) ?: true) == false,
+        (gpuGet (flags, 1) ?: true) == false,
+        (gpuGet (flags, 2) ?: false) == true,
+        (flags |> gpuFold 0 countTrue) == 1
+    ]
+
+fromGpuScalarCase () =
+    floats = fromGpu (toGpu [1.25, 2.5, 5.0])
+    flags = fromGpu (toGpu [true, false, true])
+    checkAll "fromGpu preserves float and bool list elements" [
+        listLength floats == 3,
+        (listGet (floats, 0) ?: 99.0) == 1.25,
+        (listGet (floats, 1) ?: 99.0) == 2.5,
+        (listGet (floats, 2) ?: 99.0) == 5.0,
+        listLength flags == 3,
+        (listGet (flags, 0) ?: false) == true,
+        (listGet (flags, 1) ?: true) == false,
+        (listGet (flags, 2) ?: false) == true
+    ]
+
+repeatedCrossingCase () =
+    floats = toGpu (fromGpu (toGpu (floatListValue ())))
+    flags = toGpu (fromGpu (toGpu (boolListValue ())))
+    floatsBack = fromGpu floats
+    flagsBack = fromGpu flags
+    checkAll "repeated host and GPU crossings retain scalar types" [
+        gpuLength floats == 2,
+        (gpuGet (floats, 0) ?: 99.0) == 1.5,
+        (gpuGet (floats, 1) ?: 99.0) == 2.5,
+        (floats |> gpuFold 0.0 addFloats) == 4.0,
+        (listGet (floatsBack, 0) ?: 99.0) == 1.5,
+        (listGet (floatsBack, 1) ?: 99.0) == 2.5,
+        gpuLength flags == 3,
+        (flags |> gpuFold 0 countTrue) == 1,
+        (listGet (flagsBack, 0) ?: true) == false,
+        (listGet (flagsBack, 2) ?: false) == true
+    ]
+
+(** With no first element to inspect, lowering must use the inferred result type. *)
+emptyTypedLiteralCase () = checkAll "empty literals retain contextual scalar types" [
+    gpuLength (toGpu []) == 0,
+    (gpuGet (toGpu [], 0) ?: 9.5) == 9.5,
+    (gpuGet (toGpu [], 0) ?: true) == true,
+    listLength (fromGpu (toGpu [])) == 0
+]
+
+test ("runtime list values retain float and bool GPU element tags", listValueTagsCase)
+test ("fromGpu reads float and bool elements at their source types", fromGpuScalarCase)
+test ("repeated List and GpuBuffer crossings preserve scalar types", repeatedCrossingCase)
+test ("empty GPU literals retain contextual scalar types", emptyTypedLiteralCase)

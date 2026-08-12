@@ -76,11 +76,25 @@ impl TypeEnv {
 
 /// Instantiate a scheme: replace each quantified variable with a fresh one.
 pub fn instantiate(ctx: &mut InferCtx, scheme: &Scheme) -> Type {
+    instantiated(ctx, scheme).0
+}
+
+/// [`instantiate`], also re-stating the scheme's built-in obligations against
+/// this site's fresh variables. The caller records them so the site is checked
+/// against the concrete types it supplies — a generalized wrapper cannot
+/// launder an ineligible element type past a constrained built-in
+/// ([`Scheme::obligations`]).
+pub fn instantiated(ctx: &mut InferCtx, scheme: &Scheme) -> (Type, Vec<(String, Type)>) {
     if scheme.vars.is_empty() {
-        return scheme.ty.clone();
+        return (scheme.ty.clone(), scheme.obligations.clone());
     }
     let map: HashMap<VarId, Type> = scheme.vars.iter().map(|v| (*v, ctx.fresh())).collect();
-    subst_vars(&scheme.ty, &map)
+    let obligations = scheme
+        .obligations
+        .iter()
+        .map(|(name, ty)| (name.clone(), subst_vars(ty, &map)))
+        .collect();
+    (subst_vars(&scheme.ty, &map), obligations)
 }
 
 /// Generalize a type over the variables free in it but not in the environment.
@@ -90,7 +104,11 @@ pub fn generalize(ctx: &mut InferCtx, env: &TypeEnv, ty: &Type) -> Scheme {
     let mut ty_fv = BTreeSet::new();
     ctx.free_vars(&ty, &mut ty_fv);
     let vars: Vec<VarId> = ty_fv.difference(&env_fv).copied().collect();
-    Scheme { vars, ty }
+    Scheme {
+        vars,
+        ty,
+        obligations: Vec::new(),
+    }
 }
 
 fn subst_vars(t: &Type, map: &HashMap<VarId, Type>) -> Type {

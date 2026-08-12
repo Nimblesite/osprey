@@ -807,6 +807,83 @@ static void test_cursor_roundtrip_exhaustive(void) {
     printf("  ok  cursor.roundtrip_exhaustive (%lld scalars)\n", (long long)checked);
 }
 
+/* ---------- length, float formatting, interpolation, internals ---------- */
+
+/* [BUILTIN-STRING-LENGTH] osp_strlen wraps strlen behind a fixed int64. */
+static void test_strlen(void) {
+    assert(osp_strlen("") == 0);
+    assert(osp_strlen("a") == 1);
+    assert(osp_strlen("hello world") == 11);
+    assert(osp_strlen("caf\xC3\xA9") == 5); /* BYTES, not codepoints */
+}
+
+/* osp_float_to_string keeps float-ness visible: whole values gain ".0",
+   scientific/NaN/inf spellings pass through, %.10g precision holds. */
+static void test_float_to_string(void) {
+    struct { double in; const char *want; } cases[] = {
+        {3.0, "3.0"},       {0.0, "0.0"},        {-2.0, "-2.0"},
+        {3.5, "3.5"},       {-0.25, "-0.25"},    {100000.0, "100000.0"},
+        {1e20, "1e+20"},    {2.5e-8, "2.5e-08"}, {1234567890.5, "1234567890.5"},
+    };
+    for (size_t i = 0; i < sizeof(cases) / sizeof(cases[0]); i++) {
+        char *s = osp_float_to_string(cases[i].in);
+        assert(s != NULL);
+        assert(strcmp(s, cases[i].want) == 0);
+        free(s);
+    }
+    volatile double zero = 0.0;   /* volatile: no constant-fold warnings */
+    char *nan_s = osp_float_to_string(zero / zero);
+    /* NaN spelling is libc-defined ("nan"); the contract is no ".0" suffix */
+    assert(nan_s != NULL && strstr(nan_s, "nan") != NULL);
+    assert(strstr(nan_s, ".0") == NULL);
+    free(nan_s);
+    volatile double huge_val = 1e308;
+    char *inf_s = osp_float_to_string(huge_val * 10.0);
+    assert(inf_s != NULL && strstr(inf_s, "inf") != NULL);
+    free(inf_s);
+}
+
+/* [STRING-INTERPOLATION] the measure/write pair: size matches the write
+   exactly, the write NUL-terminates within cap, and hostile caps are safe. */
+static void test_format_measure_write(void) {
+    int64_t need = osp_format_size("%s|%s", "ab", "cde");
+    assert(need == 6);
+    char buf[16];
+    memset(buf, 'Z', sizeof(buf));
+    osp_format_into(buf, (int64_t)sizeof(buf), "%s|%s", "ab", "cde");
+    assert(strcmp(buf, "ab|cde") == 0);
+    assert(osp_format_size("%s", "") == 0);
+    osp_format_into(buf, 4, "%s", "abcdef"); /* truncates, still terminated */
+    assert(strcmp(buf, "abc") == 0);
+    osp_format_into(NULL, 8, "%s", "x");  /* NULL buffer: no-op */
+    osp_format_into(buf, 0, "%s", "x");   /* zero cap: no-op */
+    osp_format_into(buf, -5, "%s", "x");  /* negative cap: no-op */
+    assert(strcmp(buf, "abc") == 0);      /* untouched by the no-ops */
+}
+
+/* The internal helpers shared across TUs: bounded dup, fresh empty string,
+   and the exact whitespace set trim/words rely on. */
+static void test_internal_helpers(void) {
+    char *d = osp_string_dup_internal("hello", 3);
+    assert(d != NULL && strcmp(d, "hel") == 0);
+    free(d);
+    char *z = osp_string_dup_internal("", 0);
+    assert(z != NULL && z[0] == '\0');
+    free(z);
+    char *e1 = osp_string_empty_internal();
+    char *e2 = osp_string_empty_internal();
+    assert(e1 != NULL && e2 != NULL && e1[0] == '\0' && e2[0] == '\0');
+    free(e1);
+    free(e2);
+    assert(osp_is_ws_internal(' ') != 0);
+    assert(osp_is_ws_internal('\t') != 0);
+    assert(osp_is_ws_internal('\n') != 0);
+    assert(osp_is_ws_internal('\r') != 0);
+    assert(osp_is_ws_internal('a') == 0);
+    assert(osp_is_ws_internal('0') == 0);
+    assert(osp_is_ws_internal(0xC3) == 0); /* UTF-8 lead byte is not ws */
+}
+
 /* ---------- entry point ---------- */
 
 int main(void) {
@@ -845,6 +922,10 @@ int main(void) {
     test_cursor_from_codepoint();
     test_cursor_error_messages();
     test_cursor_roundtrip_exhaustive();
+    test_strlen();
+    test_float_to_string();
+    test_format_measure_write();
+    test_internal_helpers();
     printf("✅ all string_runtime tests passed\n");
     return 0;
 }

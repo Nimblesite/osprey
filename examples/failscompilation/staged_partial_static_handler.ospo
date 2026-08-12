@@ -1,0 +1,10 @@
+// [STAGE-STATIC-TOTAL] A static handler must answer every operation; a residual
+// operation has nowhere left to go once the rewrite has run.
+static effect Tensor {
+    stride: fn() -> int
+    rank: fn() -> int
+}
+
+fn main() = print("${handle static Tensor
+    stride => 3
+in perform Tensor.stride()}")

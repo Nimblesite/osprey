@@ -6,7 +6,7 @@
  * collapsed to one (docs/plans/go-to-rust-migration.md). It is the compiler
  * front-end's parser: crates/osprey-syntax lowers this CST to the AST.
  *
- * Precedence climbs or < and < cmp < add < mul < unary < pipe < call via
+ * Precedence climbs or < and < cmp < add < mul < pipe < unary < call via
  * tree-sitter prec.left/right with the PREC table below (higher = binds
  * tighter), preserving the associativity the language has always had.
  */
@@ -18,8 +18,8 @@ const PREC = {
   compare: 4,
   add: 5,
   mul: 6,
-  unary: 7,
-  pipe: 8,
+  pipe: 7,
+  unary: 8,
   call: 9,
   member: 10,
 };
@@ -258,9 +258,13 @@ module.exports = grammar({
     // ---------- EFFECTS ----------
     // `effect State<T> { ... }` — effects accept type parameters (with
     // variance) for full polymorphism. Implements [EFFECTS-GENERIC-DECL].
+    // A `static effect` is a compile-time dialect: its operations are rewritten
+    // away and never reach the runtime. Implements [STAGE-DECL].
+    static_stage: ($) => 'static',
     effect_declaration: ($) =>
       seq(
         optional($.doc_comment),
+        optional(field('stage', $.static_stage)),
         'effect',
         field('name', $.identifier),
         optional(seq('<', field('type_parameters', $.type_parameter_list), '>')),
@@ -361,8 +365,10 @@ module.exports = grammar({
         ),
       ),
 
+    // `handle static E ... in body` marks a region the compiler discharges by
+    // rewriting, leaving no runtime handler. Implements [STAGE-HANDLE-STATIC].
     handler_expression: ($) =>
-      prec.right(seq('handle', field('effect', choice($.qualified_path, $.identifier)), repeat1($.handler_arm), 'in', field('body', $.expression))),
+      prec.right(seq('handle', optional(field('stage', $.static_stage)), field('effect', choice($.qualified_path, $.identifier)), repeat1($.handler_arm), 'in', field('body', $.expression))),
     handler_arm: ($) =>
       seq(field('operation', $.identifier), optional($.handler_params), '=>', field('body', $.expression)),
     handler_params: ($) => repeat1($.identifier),

@@ -1,0 +1,6 @@
+// Midnight Opal — the same fold, read as a fixed cyan-violet composition
+// instead of a colour wheel. Everything it is made of lives in
+// `graphics::SceneBase`.
+import graphics::SceneBase
+
+fn main() = SceneBase::opal()

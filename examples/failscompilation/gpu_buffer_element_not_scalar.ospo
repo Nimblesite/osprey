@@ -1,0 +1,6 @@
+// [GPU-BUFFER-ELEM]: buffer elements are scalars (int, float, bool); strings
+// stay on the host side of the boundary.
+fn main() = {
+    let b = toGpu(["a", "b"])
+    print(gpuLength(b))
+}

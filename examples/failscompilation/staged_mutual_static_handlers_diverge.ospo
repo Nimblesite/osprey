@@ -1,0 +1,20 @@
+// [STAGE-STATIC-FINITE] Discharge is a rewrite, so it must terminate. A single
+// arm that performs its own effect is caught by the recursion check; two static
+// handlers whose arms perform EACH OTHER's effect are not — the cycle only
+// shows up as a rewrite that never reaches a normal form, so the pass runs on a
+// finite fuel budget and reports the bound it exhausted.
+static effect Ping {
+    /// Answered by performing `Pong.back`.
+    go: fn() -> int
+}
+
+static effect Pong {
+    /// Answered by performing `Ping.go`, closing the cycle.
+    back: fn() -> int
+}
+
+fn main() = print("${handle static Ping
+    go => perform Pong.back()
+in handle static Pong
+    back => perform Ping.go()
+in perform Ping.go()}")

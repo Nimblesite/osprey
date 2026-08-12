@@ -8,6 +8,15 @@
 use crate::llty::LType;
 use osprey_types::{names, Type};
 
+/// The `LType` of a container's element type argument when inference resolved
+/// it concretely — the input to an element-typed owner tag
+/// ([`crate::llty::elem_tagged_owner`]). A still-polymorphic element has no
+/// type to record, so its container stays untagged.
+pub(crate) fn scalar_elem(elem: Option<&Type>) -> Option<LType> {
+    elem.filter(|ty| !osprey_types::has_type_var(ty))
+        .map(ltype_of)
+}
+
 /// Map an inferred type to the LLVM type a runtime value of it travels as.
 pub fn ltype_of(ty: &Type) -> LType {
     match ty {
@@ -41,11 +50,15 @@ fn ltype_of_con(name: &str, args: &[Type]) -> LType {
 
 /// The Osprey owner type name to tag an aggregate value with, if `ty` is a
 /// nominal record/union (so field access / match can recover its layout).
-/// Scalars, collections and `Result` carry no nominal aggregate owner.
+/// Scalars, collections and `Result` carry no nominal aggregate owner. A
+/// `GpuBuffer<elem>` with a concrete scalar element carries the element-typed
+/// tag `Gpu#<spelling>` ([`crate::gpu::GPU_TAG`]), the same convention flat
+/// list literals use (`[]double`), so combinator lowering recovers the
+/// element's `LType` through parameters and returns [GPU-BUFFER-ELEM].
 pub fn owner_name(ty: &Type) -> Option<String> {
     match ty {
         Type::Record { name, .. } | Type::Union { name, .. } => Some(name.clone()),
-        Type::Con { name, .. } => match name.as_str() {
+        Type::Con { name, args } => match name.as_str() {
             names::INT
             | names::FLOAT
             | names::STRING
@@ -53,12 +66,17 @@ pub fn owner_name(ty: &Type) -> Option<String> {
             | names::UNIT
             | names::ANY
             | names::RESULT
-            | names::LIST
             | names::MAP
             | names::ITERATOR
             | names::FIBER
             | names::CHANNEL
             | names::PTR => None,
+            names::GPU_BUFFER => Some(crate::gpu::buffer_owner(args.first())),
+            // A `List<T>` handle carries its element the same way, so a float
+            // list read back through a parameter, a return or a field is
+            // floats rather than the `i64` words the runtime stores it as
+            // ([`crate::collections::LIST_TAG`]).
+            names::LIST => Some(crate::collections::list_owner(scalar_elem(args.first()))),
             other => Some(other.to_string()),
         },
         _ => None,

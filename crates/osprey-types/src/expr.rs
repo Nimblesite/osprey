@@ -18,7 +18,7 @@ const FIELDLESS_TYPES: &[&str] = &[
     names::BOOL,
     names::UNIT,
 ];
-use crate::env::{instantiate, TypeEnv};
+use crate::env::TypeEnv;
 use crate::error::TypeError;
 use crate::ty::{names, Type};
 use crate::unify::unify;
@@ -56,13 +56,21 @@ impl Checker {
             }
             Expr::Identifier(name) => self.lookup_ident(name, env),
             Expr::Path(path) => self.lookup_ident(&path.to_string(), env),
-            Expr::List(items) => {
+            Expr::List(items, position) => {
                 let elem = self.ctx.fresh();
                 for it in items {
                     let t = self.infer_expr(it, env);
                     self.push_unify(&elem, &t);
                 }
-                Type::list(elem)
+                let list = Type::list(elem);
+                // Publish the literal's resolved type for the backend. An empty
+                // literal has no element to lower, so this is the only channel
+                // that can tell it whether `[]` is a `List<float>` or a
+                // `List<int>` ([GPU-BUFFER-ELEM], [COLLECTIONS-LIST-ELEM]).
+                if let Some(p) = position {
+                    self.list_tys.push((*p, list.clone()));
+                }
+                list
             }
             Expr::Map(entries) => self.infer_map(entries, env),
             Expr::Object(fields) => self.infer_object(fields, env),
@@ -156,6 +164,7 @@ impl Checker {
                 arms,
                 body,
                 position,
+                ..
             } => self.infer_handler(effect, arms, body, *position, env),
             other => self.infer_expr(other, env),
         }
@@ -471,7 +480,13 @@ impl Checker {
             }
         }
         if let Some(scheme) = env.get(name).cloned() {
-            return instantiate(&mut self.ctx, &scheme);
+            // Re-state the scheme's built-in obligations against this site's
+            // fresh variables, so a generalized wrapper's constraint is checked
+            // against the types this call actually supplies
+            // ([`crate::ty::Scheme::obligations`]).
+            let (ty, obligations) = crate::env::instantiated(&mut self.ctx, &scheme);
+            self.builtin_uses.extend(obligations);
+            return ty;
         }
         self.errors
             .push(TypeError::new(format!("unknown identifier `{name}`")));
@@ -486,7 +501,7 @@ impl Checker {
         env: &TypeEnv,
     ) -> Type {
         let (fname, ft) = self.infer_callee(function, env);
-        let args = self.ordered_arg_types(fname.as_deref(), arguments, named, env);
+        let args = self.ordered_arg_types(fname.as_deref(), &ft, arguments, named, env);
         self.apply_named_fn(fname.as_deref(), &ft, args)
     }
 
@@ -528,6 +543,7 @@ impl Checker {
     fn ordered_arg_types(
         &mut self,
         fname: Option<&str>,
+        ft: &Type,
         arguments: &[Expr],
         named: &[NamedArgument],
         env: &TypeEnv,
@@ -549,7 +565,87 @@ impl Checker {
                 .map(|a| self.infer_expr(&a.value, env))
                 .collect();
         }
-        arguments.iter().map(|a| self.infer_expr(a, env)).collect()
+        self.positional_arg_types(ft, arguments, env)
+    }
+
+    /// Positional arguments, inferred in two passes: every argument that is
+    /// not a lambda first — each linked to the parameter slot it fills — then
+    /// each lambda, CHECKED against the parameter type those links have now
+    /// pinned.
+    ///
+    /// A kernel's parameter types flow from the buffer and the seed
+    /// [GPU-KERNEL-ELEM-TYPING] (docs/specs/0034-GPUComputation.md) because of
+    /// this order. Inferring a lambda body before its parameter slot is known
+    /// leaves bare arithmetic (`a + v`) with two unconstrained operands, which
+    /// int-defaults for want of a numeric class — so
+    /// `gpuFold(0.0, fn(a, v) => a + v)` over a float buffer was rejected with
+    /// `cannot unify int with float` and every float kernel needed
+    /// annotations.
+    ///
+    /// Pass one's links are best-effort: a genuine mismatch is reported once,
+    /// by [`Self::apply_fn`], which re-checks every argument against its slot.
+    fn positional_arg_types(&mut self, ft: &Type, arguments: &[Expr], env: &TypeEnv) -> Vec<Type> {
+        let params = self.callee_params(ft, arguments.len());
+        let Some(params) = params else {
+            return arguments.iter().map(|a| self.infer_expr(a, env)).collect();
+        };
+        let mut out: Vec<Option<Type>> = vec![None; arguments.len()];
+        for ((slot, a), param) in out.iter_mut().zip(arguments).zip(&params) {
+            if !matches!(a, Expr::Lambda { .. }) {
+                *slot = Some(self.linked_arg(a, param, env));
+            }
+        }
+        for ((slot, a), param) in out.iter_mut().zip(arguments).zip(&params) {
+            if slot.is_none() {
+                *slot = Some(self.infer_checked(a, param, env));
+            }
+        }
+        out.into_iter().flatten().collect()
+    }
+
+    /// The callee's parameter types when it is a known function of matching
+    /// arity, and any argument is a lambda whose body the parameter types can
+    /// inform. Every other call keeps the plain left-to-right pass.
+    fn callee_params(&mut self, ft: &Type, arity: usize) -> Option<Vec<Type>> {
+        match self.ctx.prune(ft) {
+            Type::Fun { params, .. } if params.len() == arity => Some(params),
+            _ => None,
+        }
+    }
+
+    /// An argument inferred and linked to the parameter slot it fills, so a
+    /// later lambda argument sees what this one pinned. An `any` slot is left
+    /// unlinked — [`Self::apply_named_fn`] keeps a constrained builtin's
+    /// argument variables open for the surrounding expression to refine.
+    fn linked_arg(&mut self, argument: &Expr, param: &Type, env: &TypeEnv) -> Type {
+        let ty = self.infer_expr(argument, env);
+        if !param.is_named(names::ANY) {
+            let _ = crate::unify::unify_assignable(&mut self.ctx, param, &ty);
+        }
+        ty
+    }
+
+    /// A lambda argument inferred against the function type its slot declares.
+    fn infer_checked(&mut self, argument: &Expr, param: &Type, env: &TypeEnv) -> Type {
+        match argument {
+            Expr::Lambda {
+                parameters,
+                return_type,
+                body,
+                position,
+            } => {
+                let expected = self.ctx.prune(param);
+                self.infer_lambda_of(
+                    parameters,
+                    return_type.as_ref(),
+                    body,
+                    *position,
+                    env,
+                    Some(&expected),
+                )
+            }
+            other => self.infer_expr(other, env),
+        }
     }
 
     fn apply_fn(&mut self, ft: &Type, args: Vec<Type>, defer_any_binding: bool) -> Type {
@@ -564,7 +660,7 @@ impl Checker {
                     return *ret;
                 }
                 for (p, a) in params.iter().zip(&args) {
-                    if !(defer_any_binding && p.is_named(names::ANY)) {
+                    if !self.absorbed_by_any(p, a, defer_any_binding) {
                         self.push_assign(p, a);
                     }
                 }
@@ -585,16 +681,70 @@ impl Checker {
         }
     }
 
+    /// Whether passing `argument` to an `any` parameter would only DESTROY
+    /// information, so the assignment is skipped.
+    ///
+    /// `any` unifies with every type ([TYPE-ANY]), so assigning a resolved
+    /// argument to it already learns nothing. Assigning an unresolved VARIABLE
+    /// to it learns nothing either — and costs the variable, because unify
+    /// binds a variable before it reaches the `any` wildcard arm. That is how
+    /// `expect(add(1, 1), 2)` erased the pending overload of
+    /// `fn add(a, b) = a + b`: the site's open result became `any`, so
+    /// settling it later could no longer say `Result<int, MathError>` and the
+    /// backend read the call as a plain word. A constrained built-in defers the
+    /// same way for the same reason, by name.
+    fn absorbed_by_any(&mut self, param: &Type, argument: &Type, deferred: bool) -> bool {
+        param.is_named(names::ANY) && (deferred || matches!(self.ctx.prune(argument), Type::Var(_)))
+    }
+
     fn apply_named_fn(&mut self, name: Option<&str>, ft: &Type, args: Vec<Type>) -> Type {
-        let constrained_builtin = matches!(name, Some("length" | "isEmpty" | "print" | "toString"));
+        let constrained_builtin = name.is_some_and(|name| {
+            matches!(name, "length" | "isEmpty" | "print" | "toString" | "toGpu")
+                || crate::builtin_constraints::is_gpu_buffer_builtin(name)
+        });
         if let (Some(name), Some(receiver)) = (name, args.first()) {
             if constrained_builtin {
                 self.builtin_uses.push((name.to_string(), receiver.clone()));
             }
         }
+        let fused = self.fuse_gpu_source(name, ft, &args);
         // Preserve unresolved argument variables until the surrounding expression
         // can refine them; the recorded constraint validates the final type.
-        self.apply_fn(ft, args, constrained_builtin)
+        self.apply_fn(fused.as_ref().unwrap_or(ft), args, constrained_builtin)
+    }
+
+    /// `toGpu` is written over `List<t>`, but an iterator pipeline is an
+    /// equally valid source — it fuses straight into the dense buffer with no
+    /// list in between [GPU-BUFFER-FUSE]. Retarget the parameter's container
+    /// to `Iterator` when the argument is one, reusing the *same* element type
+    /// so the `GpuBuffer<t>` return stays linked to it. `None` leaves the
+    /// declared scheme untouched.
+    fn fuse_gpu_source(&mut self, name: Option<&str>, ft: &Type, args: &[Type]) -> Option<Type> {
+        if name != Some("toGpu") {
+            return None;
+        }
+        let Type::Fun { params, ret } = self.ctx.prune(ft) else {
+            return None;
+        };
+        let [Type::Con {
+            name: con,
+            args: elem,
+        }] = params.as_slice()
+        else {
+            return None;
+        };
+        if con != names::LIST || !self.is_iterator(args.first()?) {
+            return None;
+        }
+        Some(Type::fun(
+            vec![Type::con(names::ITERATOR, elem.clone())],
+            (*ret).clone(),
+        ))
+    }
+
+    /// Whether an argument has already resolved to an `Iterator<_>`.
+    fn is_iterator(&mut self, ty: &Type) -> bool {
+        matches!(self.ctx.apply(ty), Type::Con { name, .. } if name == names::ITERATOR)
     }
 
     fn infer_pipe(&mut self, left: &Expr, right: &Expr, env: &TypeEnv) -> Type {
@@ -653,13 +803,31 @@ impl Checker {
         position: Option<osprey_ast::Position>,
         env: &TypeEnv,
     ) -> Type {
+        self.infer_lambda_of(parameters, return_type, body, position, env, None)
+    }
+
+    /// [`Self::infer_lambda`] with the function type the context requires of
+    /// this lambda, when there is one ([`Self::infer_checked`]). An
+    /// unannotated parameter takes its expected type BEFORE the body is
+    /// inferred; an annotated one keeps its annotation, which
+    /// [`Self::apply_fn`] still checks against the slot.
+    fn infer_lambda_of(
+        &mut self,
+        parameters: &[Parameter],
+        return_type: Option<&TypeExpr>,
+        body: &Expr,
+        position: Option<osprey_ast::Position>,
+        env: &TypeEnv,
+        expected: Option<&Type>,
+    ) -> Type {
         let empty = HashMap::new();
         let mut local = env.child();
         let mut ptys = Vec::new();
-        for p in parameters {
+        let wanted = expected_params(expected, parameters.len());
+        for (i, p) in parameters.iter().enumerate() {
             let ty = match &p.ty {
                 Some(te) => type_expr_to_type(te, &empty),
-                None => self.ctx.fresh(),
+                None => wanted.get(i).cloned().unwrap_or_else(|| self.ctx.fresh()),
             };
             local.insert(p.name.clone(), crate::ty::Scheme::mono(ty.clone()));
             ptys.push(ty);
@@ -671,7 +839,14 @@ impl Checker {
         // keeps the checker in agreement so the program is rejected here,
         // with a type error, instead of deep in codegen. [EFFECTS-RESUME]
         let saved_resume_ctx = std::mem::take(&mut self.resume_ctx);
+        // A lambda is a runtime VALUE with one ABI, not a definition the
+        // backend re-specialises per call site, so its body never leaves an
+        // arithmetic overload open ([`Self::defers`]). Where a lambda's slot
+        // pins its parameters this changes nothing — they are already concrete
+        // by the time the body is inferred.
+        let saved_defer = std::mem::replace(&mut self.defer_arith, false);
         let body_ty = self.infer_expr(body, &local);
+        self.defer_arith = saved_defer;
         self.resume_ctx = saved_resume_ctx;
         let ret = match return_type {
             Some(te) => {
@@ -813,6 +988,29 @@ fn both_vars(l: &Type, r: &Type) -> bool {
     matches!(l, Type::Var(_)) && matches!(r, Type::Var(_))
 }
 
+/// Marks a pending arithmetic overload in the obligation list
+/// ([`Checker::deferred_arith`]). Obligations already carry per-site types
+/// through generalization and instantiation, and an operator can never collide
+/// with a built-in's name, so a deferred overload rides that list rather than a
+/// parallel one.
+const DEFERRED_ARITH: &str = "arith ";
+
+fn deferred_arith_name(op: &str) -> String {
+    format!("{DEFERRED_ARITH}{op}")
+}
+
+/// The operator a deferred-arithmetic obligation name carries; `None` for a
+/// built-in's obligation.
+fn parse_deferred_arith(name: &str) -> Option<&str> {
+    name.strip_prefix(DEFERRED_ARITH)
+}
+
+/// Whether an obligation marks a pending arithmetic overload rather than a
+/// built-in's representation constraint.
+pub(crate) fn is_deferred_arith(name: &str) -> bool {
+    parse_deferred_arith(name).is_some()
+}
+
 /// Operator → result type. Lives free of `self` so the borrow checker is happy.
 fn unwrap_result(t: &Type) -> Type {
     match t {
@@ -825,6 +1023,16 @@ fn unwrap_result(t: &Type) -> Type {
 
 fn is_result(t: &Type) -> bool {
     t.is_named(names::RESULT)
+}
+
+/// The parameter types a lambda's context requires of it, when that context is
+/// a function type of matching arity — the checking half of
+/// [`Checker::infer_lambda_of`]. Anything else leaves every parameter open.
+fn expected_params(expected: Option<&Type>, arity: usize) -> Vec<Type> {
+    match expected {
+        Some(Type::Fun { params, .. }) if params.len() == arity => params.clone(),
+        _ => Vec::new(),
+    }
 }
 
 /// Arithmetic propagation is intentionally a single `MathError` channel. A
@@ -883,6 +1091,7 @@ impl Checker {
             "%" if lu.is_named(names::FLOAT) || ru.is_named(names::FLOAT) => {
                 res_math(Type::float())
             }
+            "%" if self.defers(&lu, &ru) => self.deferred_arith(op, &l, &r, &lu, &ru),
             "%" => {
                 self.push_unify(&Type::int(), &lu);
                 self.push_unify(&Type::int(), &ru);
@@ -909,12 +1118,8 @@ impl Checker {
                     } else {
                         ru
                     }
-                } else if both_vars(&lu, &ru) {
-                    // No type-class constraint exists to defer this overload
-                    // safely: a later integer instantiation would otherwise
-                    // lose its overflow channel. As with unconstrained `-` and
-                    // `*`, default two unconstrained operands to integer.
-                    return self.int_arithmetic_result(&lu, &ru);
+                } else if self.defers(&lu, &ru) {
+                    return self.deferred_arith(op, &l, &r, &lu, &ru);
                 } else {
                     return self.int_arithmetic_result(&lu, &ru);
                 };
@@ -924,10 +1129,13 @@ impl Checker {
                     total
                 }
             }
-            // Unlike `+`, `-` and `*` have no string/list overload, so
-            // unconstrained operands default to int.
+            // Unlike `+`, `-` and `*` have no string/list overload; their
+            // unconstrained form still defers, and resolves without the string
+            // case ([`Checker::resolve_deferred_arith`]).
             _ => {
-                if lu.is_named(names::FLOAT) || ru.is_named(names::FLOAT) {
+                if self.defers(&lu, &ru) {
+                    self.deferred_arith(op, &l, &r, &lu, &ru)
+                } else if lu.is_named(names::FLOAT) || ru.is_named(names::FLOAT) {
                     if propagates_error {
                         res_math(Type::float())
                     } else {
@@ -938,6 +1146,71 @@ impl Checker {
                 }
             }
         }
+    }
+
+    /// Whether an arithmetic site with these (unwrapped) operands may still
+    /// leave its overload open. Two unconstrained variables can; and only while
+    /// inference is still running — the resolution pass re-enters
+    /// [`Self::infer_arith`] with deferral CLOSED, so a site nothing ever
+    /// constrained lands on the integer default there.
+    fn defers(&self, left: &Type, right: &Type) -> bool {
+        self.defer_arith && both_vars(left, right)
+    }
+
+    /// Type an arithmetic operator whose BOTH operands are still unconstrained
+    /// variables, without committing to the integer overload.
+    ///
+    /// Eagerly defaulting here is what made a named numeric helper unusable as
+    /// a float kernel: `fn plus(a, x) = a + x` is checked before anything says
+    /// what `a` is, so it became `(int, int) -> Result<int, MathError>` and
+    /// `gpuFold(0.0, plus)` over a float buffer was rejected with `cannot unify
+    /// int with float` ([GPU-KERNEL-ELEM-TYPING], [GPU-KERNEL-FORM]). A lambda
+    /// in the same slot already works, because its parameters are pinned from
+    /// the slot before its body is inferred ([`Self::positional_arg_types`]);
+    /// this is the same rule for the named form.
+    ///
+    /// Both operands unify with one another and the result is left OPEN. The
+    /// overload is picked once, after all unification, by re-running the very
+    /// same selection over the operands' final types
+    /// ([`Self::resolve_deferred_arith`]) — so the pending site records the
+    /// operands AS WRITTEN, error channel included, and not the unwrapped pair
+    /// the selection happens to compare.
+    ///
+    /// An operand carrying a pending overload does NOT generalize
+    /// ([`Checker::generalize_with_obligations`]): with no numeric class to
+    /// quantify over, one definition gets ONE overload, chosen by how the
+    /// program actually uses it. `fn plus(a, x) = a + x` folded over a float
+    /// buffer is a float addition; the same helper used only on integers is
+    /// still the checked integer one; using it at both in a single program is a
+    /// type error rather than a silent reinterpretation.
+    fn deferred_arith(&mut self, op: &str, l: &Type, r: &Type, lu: &Type, ru: &Type) -> Type {
+        self.push_unify(lu, ru);
+        let result = self.ctx.fresh();
+        self.builtin_uses.push((
+            deferred_arith_name(op),
+            Type::fun(vec![l.clone(), r.clone()], result.clone()),
+        ));
+        result
+    }
+
+    /// Settle one deferred site: re-run the ordinary overload selection over
+    /// the operands' final types with deferral closed, and tie the site's open
+    /// result to the answer. Re-running rather than restating the rules is what
+    /// keeps `p.x * p.x + p.y * p.y` right — by the time the outer `+` resolves,
+    /// its operands have become `Result<int, MathError>`, and only the real
+    /// selection knows to unwrap them and keep one flattened error channel.
+    pub(crate) fn resolve_deferred_arith(&mut self, name: &str, site: &Type) {
+        let Some(op) = parse_deferred_arith(name) else {
+            return;
+        };
+        let Type::Fun { params, ret } = self.ctx.apply(site) else {
+            return;
+        };
+        let [left, right] = params.as_slice() else {
+            return;
+        };
+        let answer = self.infer_arith(op, left, right);
+        self.push_unify(&answer, &ret);
     }
 
     /// Constrain both operands to integers and preserve overflow as a typed

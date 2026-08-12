@@ -141,18 +141,31 @@ char *base64_encode(const unsigned char *data, size_t input_length) {
     encoded_data[j++] = base64_chars[(triple >> 0 * 6) & 0x3F];
   }
 
+  // RFC 4648 §4: a final group short of three input bytes is padded with '='
+  // — one for two input bytes, two for one. Without this the trailing zero
+  // octets encoded as literal 'A's, so every value whose length was not a
+  // multiple of three (a 16-byte Sec-WebSocket-Key, a 20-byte SHA-1 accept
+  // token) produced base64 no conforming peer could decode.
+  static const size_t pad_for_remainder[] = {0, 2, 1};
+  for (size_t p = 0; p < pad_for_remainder[input_length % 3]; p++) {
+    encoded_data[output_length - 1 - p] = '=';
+  }
   encoded_data[output_length] = '\0';
   return encoded_data;
 }
 
-// Generate WebSocket key for handshake
+// The runtime's OS-CSPRNG entry point (random_runtime.c) — the handshake nonce
+// draws from the same source as `random`, rather than keeping a second one.
+void osp_random_bytes(void *buf, size_t len);
+
+// Generate the Sec-WebSocket-Key nonce for a handshake (RFC 6455 §4.1: base64
+// of 16 FRESH random bytes). This used to `srand(time(NULL))` on every call and
+// draw from `rand()`, so two connections opened in the same second sent the
+// IDENTICAL key — a predictable, repeated nonce.
 char *generate_websocket_key(void) {
   unsigned char key_bytes[16];
-  srand(time(NULL));
-  for (int i = 0; i < 16; i++) {
-    key_bytes[i] = rand() % 256;
-  }
-  return base64_encode(key_bytes, 16);
+  osp_random_bytes(key_bytes, sizeof(key_bytes));
+  return base64_encode(key_bytes, sizeof(key_bytes));
 }
 
 // WebSocket frame encoding (shared)
@@ -209,11 +222,15 @@ int parse_websocket_frame(const char *frame_data, size_t frame_len,
 
   size_t offset = 2;
 
-  // Extended payload length
+  // Extended payload length. The bytes must be read UNSIGNED: `char` is
+  // signed here, and a length byte >= 0x80 would sign-extend into a huge
+  // size_t, rejecting every extended frame whose low length byte has the top
+  // bit set (e.g. any 128..255-byte payload).
   if (payload_len == 126) {
     if (frame_len < offset + 2)
       return -1;
-    payload_len = (frame_data[offset] << 8) | frame_data[offset + 1];
+    payload_len = ((size_t)(unsigned char)frame_data[offset] << 8) |
+                  (size_t)(unsigned char)frame_data[offset + 1];
     offset += 2;
   } else if (payload_len == 127) {
     // Not implemented for this simple version

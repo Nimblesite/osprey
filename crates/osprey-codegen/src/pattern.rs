@@ -7,7 +7,6 @@
 //!     discriminant, binding the variant's fields.
 
 use crate::builder::{Codegen, CtorView};
-use crate::collections::LIST_OWNER;
 use crate::error::{CodegenError, Result};
 use crate::expr::gen_expr;
 use crate::llty::{LType, Value};
@@ -95,15 +94,19 @@ fn bind_list_arm(
 ) {
     for (idx, el) in elements.iter().enumerate() {
         if let Pattern::Binding(name) = el {
-            let elem = cg.call(
+            let raw = cg.call(
                 "i64",
                 "osprey_list_get",
                 "i8*, i64",
                 &[&list_val.operand, &idx.to_string()],
             );
+            // A destructured element is bound at the list's element type, so a
+            // `[first, second]` arm over a `List<float>` binds floats
+            // ([`crate::collections::LIST_TAG`]).
+            let elem = crate::collections::elem_value(cg, list_val, &raw);
             cg.bind(
                 name.clone(),
-                Value::new(elem, LType::I64).with_owner(list_val.payload_owner.clone()),
+                elem.with_owner(list_val.payload_owner.clone()),
             );
         }
     }
@@ -114,7 +117,8 @@ fn bind_list_arm(
             "i8*, i64",
             &[&list_val.operand, &n.to_string()],
         );
-        let v = Value::handle(tail, LIST_OWNER).with_payload_owner(list_val.payload_owner.clone());
+        let tail_owner = crate::collections::list_owner(crate::collections::tagged_elem(list_val));
+        let v = Value::handle(tail, tail_owner).with_payload_owner(list_val.payload_owner.clone());
         // `osprey_list_drop` returns +1 on EVERY path (fresh view or retained
         // alias, plan 0011 M4a), so the arm owns it and must drop it at region
         // end — without this a `[head, ...tail]` recursion leaks one list

@@ -1,0 +1,27 @@
+// Aspirational GPU frontend parity. Flavor-equivalent programs must reach the
+// same typed GPU IR, including the full int domain and negative arguments
+// ([GPU-BUFFER-ELEM], [GPU-IOTA], [GPU-KERNEL-EXTRACT]).
+
+fn minimumIntCase() = {
+    let minimum = -9223372036854775808
+    let buf = toGpu([minimum])
+    checkAll("minimum int literal crosses the GPU boundary", [
+        gpuLength(buf) == 1,
+        (gpuGet(buf, 0) ?: 0) == minimum,
+        (listGet(fromGpu(buf), 0) ?: 0) == minimum
+    ])
+}
+
+fn negativeIotaCase() = {
+    let direct = gpuIota(-3)
+    let piped = -7 |> gpuIota()
+    checkAll("negative gpuIota arguments are empty", [
+        gpuLength(direct) == 0,
+        gpuLength(piped) == 0,
+        listLength(fromGpu(direct)) == 0,
+        listLength(fromGpu(piped)) == 0
+    ])
+}
+
+test("minimum int literals are flavor-equivalent in GPU buffers", minimumIntCase)
+test("negative gpuIota arguments are flavor-equivalent", negativeIotaCase)

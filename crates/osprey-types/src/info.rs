@@ -3,7 +3,7 @@
 //! union tags are then frozen into the plain, substitution-free tables below
 //! so the backend can drive codegen off real types instead of guessing `i64`.
 
-use crate::ty::Type;
+use crate::ty::{names, Type};
 use std::collections::HashMap;
 
 /// The declared shape of a record/variant constructor: ordered `(field, type)`
@@ -56,6 +56,10 @@ pub struct ProgramTypes {
     /// editor hover can show the type of an unannotated binding.
     /// Implements [LSP-HOVER-VARIABLES]
     pub(crate) lets: HashMap<(u32, u32), Type>,
+    /// Each list literal's resolved `List<T>`, keyed by its source position.
+    /// The backend reads it when the literal itself cannot supply an element
+    /// representation — i.e. when it is empty.
+    pub(crate) lists: HashMap<(u32, u32), Type>,
     /// `perform` site position `(line, column)` → the operation signature and
     /// effect type arguments instantiated at that site, so the backend can
     /// box/unbox erased generic operation slots against the site's concrete
@@ -111,5 +115,19 @@ impl ProgramTypes {
     #[must_use]
     pub fn let_type(&self, position: Option<osprey_ast::Position>) -> Option<&Type> {
         position.and_then(|p| self.lets.get(&(p.line, p.column)))
+    }
+
+    /// The resolved element type of the list literal written at `position`,
+    /// when inference pinned it to something concrete. This is how an EMPTY
+    /// literal still reaches the backend with an element representation
+    /// ([GPU-BUFFER-ELEM]).
+    #[must_use]
+    pub fn list_elem_type(&self, position: Option<osprey_ast::Position>) -> Option<&Type> {
+        position
+            .and_then(|p| self.lists.get(&(p.line, p.column)))
+            .and_then(|ty| match ty {
+                Type::Con { name, args } if name == names::LIST => args.first(),
+                _ => None,
+            })
     }
 }

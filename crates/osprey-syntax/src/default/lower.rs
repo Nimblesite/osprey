@@ -4,8 +4,8 @@
 use super::position_from_point;
 use osprey_ast::{
     DocComment, DocScope, EffectOperation, EffectRef, Expr, ExternParameter, ModuleKind, Parameter,
-    Pattern, Position, Program, Stmt, SymbolPath, TypeExpr, TypeField, TypeParam, TypeVariant,
-    Variance,
+    Pattern, Position, Program, Stage, Stmt, SymbolPath, TypeExpr, TypeField, TypeParam,
+    TypeVariant, Variance,
 };
 use tree_sitter::Node;
 
@@ -47,6 +47,21 @@ impl<'a> Lowerer<'a> {
     )]
     pub(crate) fn pos(&self, node: Node<'_>) -> Position {
         position_from_point(node.start_position())
+    }
+
+    /// The stage of an effect declaration or handler region: [`Stage::Static`]
+    /// when the `static` marker is present, dynamic otherwise — so every effect
+    /// written before staging keeps its meaning. Implements [STAGE-DECL],
+    /// [STAGE-HANDLE-STATIC], [STAGE-COMPAT].
+    #[expect(
+        clippy::unused_self,
+        reason = "kept for Lowerer method-call ergonomics"
+    )]
+    pub(crate) fn stage(&self, node: Node<'_>) -> Stage {
+        match node.child_by_field_name("stage") {
+            Some(_) => Stage::Static,
+            None => Stage::Dynamic,
+        }
     }
 
     /// Position of `node`'s named `field`, or `node`'s own start when absent. A
@@ -193,6 +208,7 @@ impl<'a> Lowerer<'a> {
             },
             "type_declaration" => self.lower_type_decl(node),
             "effect_declaration" => Stmt::Effect {
+                stage: self.stage(node),
                 name: self.field_text(node, "name"),
                 type_params: self.lower_type_params(node),
                 operations: self.lower_operations(node),

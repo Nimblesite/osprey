@@ -89,6 +89,22 @@ intDiv(-9223372036854775808, -1) // Error — "integer overflow"
 fn half(n) -> Result<int, Error> = intDiv(n, 2)
 ```
 
+### `toFloat(n: int) -> float` — [BUILTIN-TOFLOAT]
+Widens an integer to the nearest `double`, rounding ties to even. Exact for
+`|n| <= 2^53`; larger magnitudes round, which is the IEEE-754 result and not
+an error. The conversion is total — every `int` has a nearest `double` — so
+it returns a bare `float`, not a `Result`.
+
+This is the explicit element conversion GPU kernels use; a buffer never
+widens implicitly at its boundary ([GPU-CONVERT](0034-GPUComputation.md)).
+It may be passed by name as a kernel, not only called directly.
+
+```osprey
+toFloat(7)                        // 7.0
+toFloat(-3)                       // -3.0
+gpuIota(1000) |> gpuMap(toFloat)  // GpuBuffer<float>, 0.0 .. 999.0
+```
+
 ```osprey-ml
 intDiv (7, 2)        // Success(3)
 intDiv (255643, 10)  // Success(25564)
@@ -568,3 +584,7 @@ See [WebSockets](0015-WebSockets.md).
 ## Fibers and Channels
 
 `spawn`, `await`, `send`, `recv`, `yield`, `Fiber<T>`, `Channel<T>` are documented in [Fibers and Concurrency](0011-LightweightFibersAndConcurrency.md).
+
+## GPU Computation
+
+`toGpu`, `fromGpu`, `gpuLength`, `gpuMap`, `gpuFold`, and `GpuBuffer<T>` are documented in [GPU Computation](0034-GPUComputation.md).

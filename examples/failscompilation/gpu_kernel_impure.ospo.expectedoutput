@@ -1,0 +1,1 @@
+GPU kernel must be pure; it performs: Log.write

@@ -1,0 +1,9 @@
+// [STAGE-HANDLE-STATIC] Stage is declared on the effect. A static handler for a
+// dynamic effect names the fix in its own message.
+effect Tile {
+    size: fn() -> int
+}
+
+fn main() = print("${handle static Tile
+    size => 8
+in perform Tile.size()}")

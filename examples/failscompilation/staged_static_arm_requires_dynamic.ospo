@@ -1,0 +1,15 @@
+// [STAGE-STATIC-MONOTONE] A compile-time answer may not make a runtime request;
+// that would reintroduce the residue the static stage exists to remove.
+static effect Tile {
+    size: fn() -> int
+}
+
+effect Log {
+    write: fn(string) -> Unit
+}
+
+fn main() = handle Log
+    write message => print(message)
+in print("${handle static Tile
+    size => { perform Log.write("measuring") 8 }
+in perform Tile.size()}")

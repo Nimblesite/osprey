@@ -83,7 +83,9 @@ Three changes addressed these measurements:
    ([`parse_memory` in crates/osprey-cli/src/main.rs](../../crates/osprey-cli/src/main.rs),
    accepting `default | gc | arc`):
    [memory_runtime.c](../../compiler/runtime/memory_runtime.c) (`malloc`
-   passthrough, the default), [memory_gc.c](../../compiler/runtime/memory_gc.c)
+   passthrough that additionally frees values codegen proves uniquely owned —
+   see spec 0018; it is no longer a pure no-reclamation backend),
+   [memory_gc.c](../../compiler/runtime/memory_gc.c)
    (conservative mark & sweep), [memory_arc.c](../../compiler/runtime/memory_arc.c)
    (Perceus reference counting).
 

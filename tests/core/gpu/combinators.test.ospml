@@ -1,0 +1,498 @@
+// GPU combinator algebra: how gpuMap, gpuFilter, gpuScan, gpuZipWith and
+// gpuFold behave alone, at their degenerate edges, and composed into deep
+// chains — the empty and one-element buffer, ragged truncation to the shorter
+// operand, order-preserving compaction, the inclusive-prefix seed, the initial
+// value a fold returns with nothing to reduce, and the left-to-right traversal
+// the host backend documents ([GPU-MAP], [GPU-FOLD], [GPU-ZIPWITH],
+// [GPU-IOTA], [GPU-GET], [GPU-SCAN], [GPU-FILTER], [GPU-BUFFER-FUSE],
+// [GPU-CONVERT], [GPU-BACKEND-HOST], [GPU-DEVICE] —
+// docs/specs/0034-GPUComputation.md).
+
+(** The zero-length buffers every combinator is pushed through; the annotation
+    supplies the element type an empty literal cannot. *)
+emptyInts : Unit -> GpuBuffer<int>
+emptyInts () = toGpu []
+emptyFloats : Unit -> GpuBuffer<float>
+emptyFloats () = toGpu []
+
+(** The associative int combines fold and scan share. *)
+sumI : (int, int) -> int
+sumI (a, b) = (a + b) ?: a
+mulI : (int, int) -> int
+mulI (a, b) = (a * b) ?: 0
+
+(** subI and horner are deliberately non-commutative. Left-to-right is the
+    only traversal that reproduces their results, so every assertion on them
+    pins the order [GPU-BACKEND-HOST] rather than merely the element set. *)
+subI : (int, int) -> int
+subI (a, b) = (a - b) ?: a
+horner : (int, int) -> int
+horner (a, d) = (((a * 10) ?: 0) + d) ?: a
+
+(** maxI makes a scan a running maximum; addF is the float reduction; orB is
+    the boolean any-reduction that latches on the first accepted element. *)
+maxI : (int, int) -> int
+maxI (a, b) = match a > b
+    true => a
+    false => b
+addF : (float, float) -> float
+addF (a, x) = a + x
+orB : (bool, bool) -> bool
+orB (a, b) = a || b
+
+(** The population count that turns a bool buffer into a scalar. *)
+countTrue : (int, bool) -> int
+countTrue (a, flag) = match flag
+    true => (a + 1) ?: a
+    false => a
+
+(** dbl, inc and half are the one-line stages the deep chains are built from. *)
+dbl x = (x * 2) ?: 0
+inc x = (x + 1) ?: x
+half : float -> float
+half x = x * 0.5
+
+(** toBit widens a bool element back to an int one, closing the type cycle
+    int -> bool -> int that [GPU-BUFFER-ELEM]'s three scalars allow. *)
+toBit b = match b
+    true => 1
+    false => 0
+
+(** isEven and isOddP are each other's negation; isOddP is spelled with `!` so
+    the predicate slot is fed by a boolean operator, not just a comparison. *)
+isEven x = (x % 2 ?: 1) == 0
+isOddP x = !(isEven x)
+
+(** keepEvery and keepNone are the degenerate predicates — total acceptance
+    and total rejection, independent of the element. *)
+keepEvery x = x == x
+keepNone x = x != x
+
+(** The remaining predicates compose comparisons with &&, || and !. *)
+isBig x = x > 4
+bigEven x = isEven x && isBig x
+inBand x = x >= 3 && x <= 6
+notBand x = !(inBand x)
+atEdge x = (x < 2) || (x > 7)
+isPositive x = x > 0.0
+truthy b = b
+
+(** The zip kernels below all return an element type neither operand has, so
+    gpuZipWith is exercised as a type-changing combinator too. *)
+sameParity : (int, int) -> bool
+sameParity (a, b) = isEven a == isEven b
+lessF : (float, float) -> bool
+lessF (a, b) = a < b
+meanF : (int, int) -> float
+meanF (a, b) = (toFloat a + toFloat b) * 0.5
+mixAdd : (int, float) -> float
+mixAdd (i, x) = toFloat i + x
+
+(** oobMessage renders a gpuGet outcome as text so the Error [GPU-GET] returns
+    is visible in an assertion instead of being swallowed by a `?:` default. *)
+oobMessage : (GpuBuffer<int>, int) -> string
+oobMessage (buf, i) = match gpuGet (buf, i)
+    Success value => "value ${value}"
+    Error message => message
+
+(** Pin that no combinator invents an element from nothing: map, filter and
+    scan over zero elements are all zero elements, whatever the kernel does to
+    the element type. *)
+emptyShapeCase () =
+    chained = emptyInts () |> gpuMap dbl |> gpuFilter isEven |> gpuScan 0 sumI |> gpuMap inc
+    checkAll "empty shapes" [
+        gpuLength (emptyInts ()) == 0,
+        gpuLength (emptyInts () |> gpuMap dbl) == 0,
+        gpuLength (emptyInts () |> gpuMap toFloat) == 0,
+        gpuLength (emptyInts () |> gpuMap isEven) == 0,
+        gpuLength (emptyFloats () |> gpuMap half) == 0,
+        gpuLength (emptyInts () |> gpuFilter keepEvery) == 0,
+        gpuLength (emptyInts () |> gpuFilter keepNone) == 0,
+        gpuLength (emptyInts () |> gpuScan 0 sumI) == 0,
+        gpuLength (emptyInts () |> gpuScan 99 maxI) == 0,
+        gpuLength (gpuZipWith (emptyInts (), toGpu [1, 2, 3], sumI)) == 0,
+        gpuLength (gpuZipWith (toGpu [1, 2, 3], emptyInts (), sumI)) == 0,
+        listLength (fromGpu (emptyInts ())) == 0,
+        (gpuGet (emptyInts (), 0) ?: 42) == 42,
+        gpuLength chained == 0
+    ]
+
+(** Pin [GPU-FOLD]'s base case: with no element to combine, the result is
+    exactly the initial value — for every combine, and for a buffer emptied by
+    compaction rather than born empty. *)
+emptyFoldCase () =
+    drained = toGpu [1, 3, 5] |> gpuFilter keepNone
+    checkAll "empty folds" [
+        (emptyInts () |> gpuFold 0 sumI) == 0,
+        (emptyInts () |> gpuFold 7 sumI) == 7,
+        (emptyInts () |> gpuFold 1 mulI) == 1,
+        (emptyInts () |> gpuFold 100 subI) == 100,
+        (emptyInts () |> gpuFold 9 horner) == 9,
+        (emptyInts () |> gpuFold 3 maxI) == 3,
+        (emptyFloats () |> gpuFold 0.0 addF) == 0.0,
+        (emptyFloats () |> gpuFold 2.5 addF) == 2.5,
+        (emptyInts () |> gpuMap isEven |> gpuFold 4 countTrue) == 4,
+        gpuLength drained == 0,
+        (drained |> gpuFold 11 sumI) == 11,
+        (drained |> gpuScan 0 sumI |> gpuFold 13 sumI) == 13,
+        (gpuIota 0 |> gpuFold 5 mulI) == 5,
+        (gpuZipWith (emptyInts (), emptyInts (), sumI) |> gpuFold 6 sumI) == 6
+    ]
+
+(** Walk the one-element buffer through every combinator: the smallest shape
+    where a kernel actually runs, and the one where an off-by-one in a loop
+    bound or a prefix seed shows up immediately. *)
+singletonCase () =
+    one = toGpu [5]
+    scanned = one |> gpuScan 3 sumI
+    checkAll "singleton" [
+        gpuLength one == 1,
+        (gpuGet (one |> gpuMap dbl, 0) ?: 0) == 10,
+        gpuLength (one |> gpuFilter isEven) == 0,
+        gpuLength (toGpu [4] |> gpuFilter isEven) == 1,
+        (gpuGet (toGpu [4] |> gpuFilter isEven, 0) ?: 0) == 4,
+        gpuLength scanned == 1,
+        (gpuGet (scanned, 0) ?: 0) == 8,
+        (gpuGet (one |> gpuScan 0 maxI, 0) ?: 0) == 5,
+        (one |> gpuFold 3 sumI) == 8,
+        (one |> gpuFold 10 subI) == 5,
+        (gpuGet (gpuZipWith (one, toGpu [7], sumI), 0) ?: 0) == 12,
+        (gpuGet (gpuZipWith (toGpu [1, 2, 3], one, sumI), 0) ?: 0) == 6,
+        (gpuGet (one, 1) ?: 42) == 42
+    ]
+
+(** Pin [GPU-ZIPWITH]'s truncation to the shorter operand in both argument
+    orders, with a non-commutative kernel so a swapped operand pair could not
+    pass by accident. *)
+raggedCase () =
+    leftFirst = gpuZipWith (toGpu [1, 2, 3, 4, 5], toGpu [10, 20], subI)
+    rightFirst = gpuZipWith (toGpu [10, 20], toGpu [1, 2, 3, 4, 5], subI)
+    checkAll "ragged zip" [
+        gpuLength leftFirst == 2,
+        gpuLength rightFirst == 2,
+        (gpuGet (rightFirst, 0) ?: 0) == 9,
+        (gpuGet (rightFirst, 1) ?: 0) == 18,
+        (leftFirst |> gpuFold 27 sumI) == 0,
+        (rightFirst |> gpuFold 0 sumI) == 27,
+        (gpuGet (leftFirst, 2) ?: 77) == 77,
+        gpuLength (gpuZipWith (toGpu [1, 2, 3], toGpu [9], mulI)) == 1,
+        gpuLength (gpuZipWith (toGpu [9], toGpu [1, 2, 3], mulI)) == 1,
+        gpuLength (gpuZipWith (gpuIota 3, gpuIota 7, sumI)) == 3,
+        gpuLength (gpuZipWith (gpuIota 7, gpuIota 3, sumI)) == 3,
+        (gpuZipWith (gpuIota 7, gpuIota 3, mulI) |> gpuFold 0 sumI) == 5,
+        gpuLength (gpuZipWith (gpuIota 4, gpuIota 4, sumI)) == 4
+    ]
+
+(** Pin that the zip kernel's result type is the buffer's, not either
+    operand's, including a pair whose two operands differ in type. *)
+zipTypeCase () =
+    parity = gpuZipWith (toGpu [1, 2, 3, 4], toGpu [3, 5, 7, 9], sameParity)
+    means = gpuZipWith (toGpu [1, 3], toGpu [3, 5], meanF)
+    mixed = gpuZipWith (toGpu [1, 2], toGpu [0.5, 0.25], mixAdd)
+    checkAll "zip element types" [
+        gpuLength parity == 4,
+        (gpuGet (parity, 0) ?: false) == true,
+        (gpuGet (parity, 1) ?: true) == false,
+        (parity |> gpuFold 0 countTrue) == 2,
+        gpuLength means == 2,
+        (gpuGet (means, 0) ?: 0.0) == 2.0,
+        (gpuGet (means, 1) ?: 0.0) == 4.0,
+        (means |> gpuFold 0.0 addF) == 6.0,
+        (gpuGet (mixed, 0) ?: 0.0) == 1.5,
+        (mixed |> gpuFold 0.0 addF) == 3.75,
+        gpuLength (gpuZipWith (toGpu [1, 2, 3], toGpu [0.5], mixAdd)) == 1,
+        (gpuZipWith (toGpu [1.0, 2.0, 3.0], toGpu [3.0, 2.0, 1.0], lessF) |> gpuFold 0 countTrue) == 1
+    ]
+
+(** Pin the three shapes of a compaction — every element kept, none kept,
+    alternating — and read the kept run back element by element so
+    [GPU-FILTER]'s source-order guarantee is checked, not just its count. *)
+filterKeepCase () =
+    src = toGpu [9, 4, 7, 2, 5, 8]
+    kept = src |> gpuFilter keepEvery
+    alternates = src |> gpuFilter isEven
+    checkAll "filter keep sets" [
+        gpuLength kept == 6,
+        (gpuGet (kept, 0) ?: 0) == 9,
+        (gpuGet (kept, 5) ?: 0) == 8,
+        (kept |> gpuFold 0 sumI) == 35,
+        gpuLength (src |> gpuFilter keepNone) == 0,
+        gpuLength alternates == 3,
+        (gpuGet (alternates, 0) ?: 0) == 4,
+        (gpuGet (alternates, 1) ?: 0) == 2,
+        (gpuGet (alternates, 2) ?: 0) == 8,
+        (gpuGet (alternates, 3) ?: 55) == 55,
+        gpuLength (src |> gpuFilter isOddP) == 3,
+        (src |> gpuFilter isOddP |> gpuFold 0 horner) == 975
+    ]
+
+(** Feed the predicate slot from comparisons and from every boolean operator,
+    over int and float elements and over a bool buffer whose elements are the
+    predicate. *)
+filterPredicateCase () =
+    digits = gpuIota 10
+    signed = toGpu [0.0 - 1.5, 0.0, 2.5, 4.0]
+    checkAll "filter predicates" [
+        gpuLength (digits |> gpuFilter isBig) == 5,
+        (digits |> gpuFilter isBig |> gpuFold 0 sumI) == 35,
+        gpuLength (digits |> gpuFilter bigEven) == 2,
+        (digits |> gpuFilter bigEven |> gpuFold 0 sumI) == 14,
+        gpuLength (digits |> gpuFilter atEdge) == 4,
+        (digits |> gpuFilter atEdge |> gpuFold 0 horner) == 189,
+        (digits |> gpuFilter isOddP |> gpuFold 0 sumI) == 25,
+        gpuLength (digits |> gpuFilter inBand) == 4,
+        gpuLength (digits |> gpuFilter notBand) == 6,
+        (digits |> gpuFilter notBand |> gpuFold 0 sumI) == 27,
+        gpuLength (signed |> gpuFilter isPositive) == 2,
+        (signed |> gpuFilter isPositive |> gpuFold 0.0 addF) == 6.5,
+        gpuLength (gpuIota 6 |> gpuMap isEven |> gpuFilter truthy) == 3
+    ]
+
+(** Read [GPU-SCAN]'s inclusive prefix out one element at a time: element i is
+    the combine folded through element i, so the last element must equal the
+    whole-buffer fold and index n is out of bounds. *)
+scanPrefixCase () =
+    sums = toGpu [1, 2, 3, 4, 5] |> gpuScan 0 sumI
+    twice = sums |> gpuScan 0 sumI
+    products = toGpu [1, 2, 3, 4] |> gpuScan 1 mulI
+    checkAll "inclusive prefix" [
+        gpuLength sums == 5,
+        (gpuGet (sums, 0) ?: 0) == 1,
+        (gpuGet (sums, 1) ?: 0) == 3,
+        (gpuGet (sums, 2) ?: 0) == 6,
+        (gpuGet (sums, 3) ?: 0) == 10,
+        (gpuGet (sums, 4) ?: 0) == 15,
+        (gpuGet (sums, 5) ?: 77) == 77,
+        (gpuGet (sums, 4) ?: 0) == (toGpu [1, 2, 3, 4, 5] |> gpuFold 0 sumI),
+        (gpuGet (twice, 4) ?: 0) == 35,
+        gpuLength products == 4,
+        (gpuGet (products, 3) ?: 0) == 24,
+        (gpuGet (gpuIota 5 |> gpuScan 0 sumI, 4) ?: 0) == 10
+    ]
+
+(** Pin the seed's role — element 0 is combine(initial, src 0), never src 0 —
+    over a sum, a maximum a high seed swamps, and a bool latch. *)
+scanSeedCase () =
+    seeded = toGpu [1, 2, 3] |> gpuScan 10 sumI
+    running = toGpu [3, 1, 4, 1, 5, 9, 2, 6] |> gpuScan 0 maxI
+    latched = toGpu [1, 3, 4, 7] |> gpuMap isEven |> gpuScan false orB
+    checkAll "scan seeds" [
+        (gpuGet (seeded, 0) ?: 0) == 11,
+        (gpuGet (seeded, 1) ?: 0) == 13,
+        (gpuGet (seeded, 2) ?: 0) == 16,
+        (gpuGet (running, 0) ?: 0) == 3,
+        (gpuGet (running, 1) ?: 0) == 3,
+        (gpuGet (running, 3) ?: 0) == 4,
+        (gpuGet (running, 7) ?: 0) == 9,
+        (running |> gpuFold 0 sumI) == 46,
+        (toGpu [3, 1, 4] |> gpuScan 100 maxI |> gpuFold 0 sumI) == 300,
+        gpuLength latched == 4,
+        (gpuGet (latched, 1) ?: true) == false,
+        (latched |> gpuFold 0 countTrue) == 2
+    ]
+
+(** Pin the traversal itself. Every combine here is order-sensitive, so
+    reversing the source has to change the answer, and a scan's last element
+    has to agree with the fold running the same combine — the left-to-right
+    host contract [GPU-BACKEND-HOST], written out as numbers. *)
+orderCase () =
+    digitsUp = toGpu [1, 2, 3, 4]
+    running = digitsUp |> gpuScan 0 horner
+    checkAll "traversal order" [
+        (digitsUp |> gpuFold 0 horner) == 1234,
+        (toGpu [4, 3, 2, 1] |> gpuFold 0 horner) == 4321,
+        (digitsUp |> gpuFold 9 horner) == 91234,
+        (toGpu [1, 2, 3] |> gpuFold 100 subI) == 94,
+        (toGpu [3, 2, 1] |> gpuFold 100 subI) == 94,
+        (gpuGet (running, 0) ?: 0) == 1,
+        (gpuGet (running, 1) ?: 0) == 12,
+        (gpuGet (running, 2) ?: 0) == 123,
+        (gpuGet (running, 3) ?: 0) == 1234,
+        (gpuGet (running, 3) ?: 0) == (digitsUp |> gpuFold 0 horner),
+        (toGpu [1, 2, 3] |> gpuScan 10 subI |> gpuFold 0 sumI) == 20,
+        (toGpu [1, 2, 3] |> gpuScan 0 subI |> gpuFold 10 sumI) == 0,
+        (running |> gpuFold 0 sumI) == 1370
+    ]
+
+(** Run pipelines of five and more dependent stages: each one allocates a
+    fresh buffer the next stage consumes, so a stage that read a stale length
+    or a stale pointer would corrupt every number below. *)
+deepChainCase () =
+    widened = gpuIota 12 |> gpuMap dbl |> gpuMap toFloat |> gpuMap half
+    stepped = gpuIota 8 |> gpuMap inc |> gpuMap dbl |> gpuMap inc |> gpuMap dbl |> gpuMap inc
+    compacted = gpuIota 20 |> gpuMap dbl |> gpuFilter isBig |> gpuScan 0 sumI
+    checkAll "deep chains" [
+        gpuLength compacted == 17,
+        (gpuGet (compacted, 0) ?: 0) == 6,
+        (gpuGet (compacted, 16) ?: 0) == 374,
+        (compacted |> gpuFold 0 sumI) == 2550,
+        (widened |> gpuFold 0.0 addF) == 66.0,
+        (widened |> gpuMap isPositive |> gpuMap toBit |> gpuFold 0 sumI) == 11,
+        gpuLength stepped == 8,
+        (gpuGet (stepped, 0) ?: 0) == 7,
+        (gpuGet (stepped, 7) ?: 0) == 35,
+        (stepped |> gpuFold 0 sumI) == 168,
+        (stepped |> gpuFilter isOddP |> gpuFold 0 sumI) == 168,
+        gpuLength (stepped |> gpuFilter isEven) == 0
+    ]
+
+(** Interleave the shape-changing combinators — a compaction feeding a scan
+    feeding another compaction, a zip feeding a map feeding a filter — where a
+    wrong published length silently shortens everything after. *)
+mixedChainCase () =
+    prefixes = gpuIota 30 |> gpuFilter isEven |> gpuScan 0 sumI |> gpuFilter bigEven
+    tripled = gpuIota 6 |> gpuMap (\x => (x * 3) ?: 0)
+    woven = gpuZipWith (gpuIota 6, tripled, mulI) |> gpuMap inc |> gpuFilter isOddP
+    checkAll "mixed chains" [
+        gpuLength prefixes == 13,
+        (gpuGet (prefixes, 0) ?: 0) == 6,
+        (gpuGet (prefixes, 12) ?: 0) == 210,
+        (prefixes |> gpuFold 0 sumI) == 1118,
+        (tripled |> gpuFold 0 sumI) == 45,
+        (gpuZipWith (tripled, gpuIota 6, subI) |> gpuFold 0 sumI) == 30,
+        gpuLength woven == 3,
+        (gpuGet (woven, 0) ?: 0) == 1,
+        (gpuGet (woven, 2) ?: 0) == 49,
+        (woven |> gpuFold 0 sumI) == 63,
+        gpuLength (woven |> gpuFilter isEven) == 0,
+        (woven |> gpuScan 0 sumI |> gpuFold 0 sumI) == 78
+    ]
+
+(** Walk the whole element lattice [GPU-BUFFER-ELEM] allows — int to float
+    through [GPU-CONVERT]'s toFloat, int and float to bool through predicates,
+    bool back to int — folding each buffer at its own element type. *)
+typeChangeCase () =
+    widened = toGpu [1, 2, 3] |> gpuMap toFloat
+    flags = toGpu [1, 2, 3, 4] |> gpuMap isEven
+    bits = flags |> gpuMap toBit
+    checkAll "type-changing maps" [
+        (widened |> gpuFold 0.0 addF) == 6.0,
+        (gpuGet (widened, 1) ?: 0.0) == 2.0,
+        (widened |> gpuMap half |> gpuFold 0.0 addF) == 3.0,
+        (widened |> gpuScan 0.0 addF |> gpuFold 0.0 addF) == 10.0,
+        gpuLength flags == 4,
+        (gpuGet (flags, 0) ?: true) == false,
+        (gpuGet (flags, 1) ?: false) == true,
+        (flags |> gpuFold 0 countTrue) == 2,
+        (bits |> gpuFold 0 sumI) == 2,
+        (bits |> gpuMap toFloat |> gpuFold 0.0 addF) == 2.0,
+        (toGpu [0.0 - 1.5, 0.0, 2.5] |> gpuMap isPositive |> gpuFold 0 countTrue) == 1,
+        (toGpu [0, 1, 2] |> gpuMap toFloat |> gpuMap isPositive |> gpuFold 0 countTrue) == 2
+    ]
+
+(** Pin toGpu as a consuming stage of an iterator pipeline [GPU-BUFFER-FUSE]:
+    the pending map/filter stages replay inside the loop that fills the
+    buffer, so no List is built on the way. A filtered chain publishes the
+    kept prefix exactly as gpuFilter does, an inverted or empty range yields
+    an empty buffer, and a fused map may change the element type. *)
+fusionSourceCase () =
+    staged = range (0, 10) |> filter isEven |> map (\x => (x * 2) ?: 0) |> toGpu ()
+    checkAll "fused sources" [
+        (range (0, 4) |> map toFloat |> map half |> toGpu () |> gpuFold 0.0 addF) == 3.0,
+        (range (0, 4) |> map dbl |> map inc |> toGpu () |> gpuFold 0 sumI) == 16,
+        gpuLength staged == 5,
+        (gpuGet (staged, 4) ?: 0) == 16,
+        (staged |> gpuFold 0 sumI) == 40,
+        (range (0, 10) |> filter isEven |> toGpu () |> gpuFold 0 horner) == 2468,
+        (range (3, 7) |> toGpu () |> gpuFold 0 sumI) == 18,
+        gpuLength (range (0, 1) |> toGpu ()) == 1,
+        gpuLength (range (5, 5) |> toGpu ()) == 0,
+        gpuLength (range (9, 2) |> toGpu ()) == 0,
+        gpuLength (range (0, 10) |> filter keepNone |> toGpu ()) == 0,
+        gpuLength (range (0, 10) |> filter keepEvery |> toGpu ()) == 10,
+        (range (0, 6) |> map toFloat |> toGpu () |> gpuFold 0.0 addF) == 15.0,
+        (range (0, 6) |> map isEven |> toGpu () |> gpuFold 0 countTrue) == 3
+    ]
+
+(** Feed a fused buffer into every combinator in turn, including both operand
+    slots of a ragged zip, so a buffer built by the fusion path is
+    indistinguishable from one copied out of a list. *)
+fusionStageCase () =
+    fused = range (0, 10) |> map (\x => (x * 2) ?: 0) |> toGpu ()
+    kept = range (0, 10) |> filter isEven |> toGpu ()
+    checkAll "fused into combinators" [
+        (fused |> gpuMap inc |> gpuFold 0 sumI) == 100,
+        gpuLength (fused |> gpuFilter isBig) == 7,
+        (fused |> gpuFilter isBig |> gpuFold 0 sumI) == 84,
+        (fused |> gpuFilter isEven |> gpuFold 0 sumI) == 90,
+        (gpuGet (fused |> gpuScan 0 sumI, 9) ?: 0) == 90,
+        gpuLength (gpuZipWith (fused, kept, sumI)) == 5,
+        gpuLength (gpuZipWith (kept, fused, sumI)) == 5,
+        (gpuZipWith (fused, kept, sumI) |> gpuFold 0 sumI) == 40,
+        (gpuZipWith (kept, kept, mulI) |> gpuFold 0 sumI) == 120,
+        (fused |> gpuMap toFloat |> gpuFold 0.0 addF) == 90.0,
+        (kept |> gpuScan 0 sumI |> gpuFold 0 sumI) == 40,
+        gpuLength (fused |> gpuMap isEven |> gpuFilter truthy) == 10,
+        (fused |> gpuMap dbl |> gpuScan 0 sumI |> gpuFold 0 sumI) == 660
+    ]
+
+(** Pin the index buffer [0, n) that gather and stencil start from, down to
+    n = 1, n = 0, and a negative n — which yields an empty buffer for the same
+    reason an inverted range does, never a negative allocation. *)
+iotaCase () =
+    idx = gpuIota 5
+    checkAll "iota" [
+        gpuLength idx == 5,
+        (idx |> gpuFold 0 sumI) == 10,
+        (gpuGet (idx, 0) ?: 9) == 0,
+        (gpuGet (idx, 4) ?: 0) == 4,
+        (gpuGet (idx, 5) ?: 77) == 77,
+        (idx |> gpuFold 0 horner) == 1234,
+        gpuLength (gpuIota 1) == 1,
+        (gpuGet (gpuIota 1, 0) ?: 9) == 0,
+        gpuLength (gpuIota 0) == 0,
+        (gpuIota 0 |> gpuFold 3 sumI) == 3,
+        gpuLength (gpuIota ((0 - 4) ?: 0)) == 0,
+        (gpuZipWith (idx, idx, mulI) |> gpuFold 0 sumI) == 30,
+        (idx |> gpuMap toFloat |> gpuFold 0.0 addF) == 10.0,
+        (gpuIota 3 |> gpuScan 0 horner |> gpuFold 0 sumI) == 13
+    ]
+
+(** Pin typed reads in bounds and a visible Error out of bounds, at both ends
+    of the index range and at both element types — plus a gather kernel, since
+    reading a buffer is pure and therefore legal inside one. *)
+getCase () =
+    ints = toGpu [7, 8, 9]
+    floats = toGpu [1.5, 2.5]
+    reversed = gpuIota 3 |> gpuMap (\i => gpuGet (ints, (2 - i) ?: 0) ?: 0)
+    checkAll "get" [
+        (gpuGet (ints, 0) ?: 0) == 7,
+        (gpuGet (ints, 1) ?: 0) == 8,
+        (gpuGet (ints, 2) ?: 0) == 9,
+        (gpuGet (floats, 0) ?: 0.0) == 1.5,
+        (gpuGet (floats, 1) ?: 0.0) == 2.5,
+        (gpuGet (ints, 3) ?: 999) == 999,
+        (gpuGet (ints, (0 - 1) ?: 0) ?: 999) == 999,
+        (gpuGet (floats, 2) ?: 9.5) == 9.5,
+        oobMessage (ints, 0) == "value 7",
+        oobMessage (ints, 3) == "gpuGet: index out of bounds",
+        (gpuGet (reversed, 0) ?: 0) == 9,
+        (reversed |> gpuFold 0 horner) == 987
+    ]
+
+(** Pin backend introspection: the host backend names itself, and says so
+    rather than reporting a device it does not have [GPU-DEVICE]. *)
+deviceCase () = checkAll "device" [
+    gpuDevice () == "host",
+    length (gpuDevice ()) == 4,
+    gpuDevice () != "cuda:0"
+]
+
+test ("every combinator over an empty buffer stays empty", emptyShapeCase)
+test ("gpuFold over an empty buffer is the initial value", emptyFoldCase)
+test ("every combinator handles a one-element buffer", singletonCase)
+test ("gpuZipWith truncates to the shorter operand in both orders", raggedCase)
+test ("gpuZipWith produces the kernel's element type", zipTypeCase)
+test ("gpuFilter keeps all, none, or alternates in source order", filterKeepCase)
+test ("gpuFilter predicates compose comparisons and boolean operators", filterPredicateCase)
+test ("gpuScan is an inclusive prefix element by element", scanPrefixCase)
+test ("gpuScan seeds element zero with the initial value", scanSeedCase)
+test ("non-commutative combines pin the traversal order", orderCase)
+test ("five-stage and longer chains stay exact", deepChainCase)
+test ("shape-changing combinators compose", mixedChainCase)
+test ("kernels move elements between all three scalar types", typeChangeCase)
+test ("an iterator pipeline fuses into a buffer with no list", fusionSourceCase)
+test ("a fused buffer feeds every combinator", fusionStageCase)
+test ("gpuIota builds the index buffer", iotaCase)
+test ("gpuGet reads typed elements and errors out of bounds", getCase)
+test ("gpuDevice names the active backend", deviceCase)

@@ -31,7 +31,13 @@ pub(crate) fn pattern_names(pattern: &Pattern, names: &mut BTreeSet<String>) {
     }
 }
 
+/// Prepend `cells` to a function body, wrapping a non-block body in a block so
+/// the statements have somewhere to live. Injecting nothing is a no-op — it
+/// must not rewrite the body's shape.
 pub(crate) fn inject(body: &mut Expr, cells: &[Stmt]) {
+    if cells.is_empty() {
+        return;
+    }
     if let Expr::Block { statements, .. } = body {
         let mut prefixed = cells.to_vec();
         prefixed.append(statements);

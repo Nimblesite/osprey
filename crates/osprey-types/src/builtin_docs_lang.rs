@@ -61,7 +61,7 @@ pub(crate) static CORE: &[BuiltinDoc] = &[
         "range",
         "Creates an iterator that generates numbers from start to end (exclusive).",
         ["start" => "The starting number (inclusive)", "end" => "The ending number (exclusive)"],
-        "forEach(range(0, 5), fn(x) { print(x) })  // Prints: 0, 1, 2, 3, 4",
+        "forEach(range(0, 5), fn(x) => print(x))  // Prints: 0, 1, 2, 3, 4",
     ),
     builtin_doc!(
         "abs",
@@ -74,6 +74,12 @@ pub(crate) static CORE: &[BuiltinDoc] = &[
         "Truncating integer division. Zero returns Error(division by zero); INT64_MIN / -1 returns Error(integer overflow).",
         ["a" => "The dividend", "b" => "The divisor"],
         "fn half(n) -> int = intDiv(n, 2)  // half(7) == 3",
+    ),
+    builtin_doc!(
+        "toFloat",
+        "Widens an int to a float, rounding to nearest even. Exact for magnitudes up to 2^53. Total, so it returns a bare float rather than a Result. This is the explicit element conversion GPU kernels use; there is no implicit widening at a buffer boundary.",
+        ["value" => "The integer to widen"],
+        "let xs = gpuIota(1000) |> gpuMap(toFloat)  // a float buffer 0.0 .. 999.0",
     ),
     builtin_doc!(
         "checkedAdd",
@@ -353,19 +359,19 @@ pub(crate) static FUNCTIONAL: &[BuiltinDoc] = &[
         "forEach",
         "Applies a function to each element in an iterator.",
         ["iterator" => "The iterator to process", "function" => "The function to apply to each element"],
-        "forEach(range(1, 4), fn(x) { print(x * 2) })  // Prints: 2, 4, 6",
+        "forEach(range(1, 4), fn(x) => print(x * 2 ?: 0))  // Prints: 2, 4, 6",
     ),
     builtin_doc!(
         "map",
         "Transforms each element in an iterator using a function, returning a new iterator.",
         ["iterator" => "The iterator to transform", "fn" => "The transformation function"],
-        "let doubled = map(range(1, 4), fn(x) { x * 2 })\nforEach(doubled, print)  // Prints: 2, 4, 6",
+        "let doubled = map(range(1, 4), fn(x) => x * 2 ?: 0)\nforEach(doubled, print)  // Prints: 2, 4, 6",
     ),
     builtin_doc!(
         "filter",
         "Filters elements in an iterator based on a predicate function.",
         ["iterator" => "The iterator to filter", "predicate" => "The predicate function that returns true for elements to keep"],
-        "let evens = filter(range(1, 6), fn(x) { x % 2 == 0 })\nforEach(evens, print)  // Prints: 2, 4",
+        "let evens = filter(range(1, 6), fn(x) => (x % 2 ?: 1) == 0)\nforEach(evens, print)  // Prints: 2, 4",
     ),
     builtin_doc!(
         "fold",
@@ -503,5 +509,81 @@ pub(crate) static MAPS: &[BuiltinDoc] = &[
         "All values of the map as a list. Order matches mapKeys.",
         ["map" => "The map"],
         "mapValues(m)  // List<V>",
+    ),
+];
+
+/// GPU computation built-in documentation. Prose only — types come from the
+/// authoritative scheme in `builtins.rs`, joined by name.
+///
+/// GPU surface from docs/specs/0034-GPUComputation.md: [GPU-BUFFER-FROM-LIST],
+/// [GPU-BUFFER-TO-LIST], [GPU-BUFFER-LENGTH], [GPU-MAP], [GPU-FOLD],
+/// [GPU-ZIPWITH], [GPU-IOTA], [GPU-GET], [GPU-SCAN], [GPU-FILTER],
+/// [GPU-DEVICE].
+pub(crate) static GPU: &[BuiltinDoc] = &[
+    builtin_doc!(
+        "toGpu",
+        "Copies a list of scalars (int, float, or bool) into a dense GpuBuffer. Also consumes an iterator pipeline, replaying its map/filter stages into the buffer with no list in between.",
+        ["source" => "The scalar list or iterator to copy into a buffer"],
+        "let buf = toGpu([1, 2, 3, 4])",
+    ),
+    builtin_doc!(
+        "fromGpu",
+        "Materializes a GpuBuffer back into a host list, keeping the element type: a float buffer becomes a List<float>.",
+        ["buffer" => "The buffer to copy back to a list"],
+        "fromGpu(toGpu([1, 2])) |> forEachList(print)  // Prints: 1, 2",
+    ),
+    builtin_doc!(
+        "gpuLength",
+        "Returns a GpuBuffer's element count. O(1).",
+        ["buffer" => "The buffer to measure"],
+        "gpuLength(toGpu([1, 2, 3]))  // 3",
+    ),
+    builtin_doc!(
+        "gpuMap",
+        "Applies a pure kernel to every buffer element independently. The compiler rejects a kernel that performs any effect a handler must discharge at runtime; an effect a static handler has already erased is gone before the check.",
+        ["buffer" => "The source buffer", "kernel" => "The pure per-element function"],
+        "toGpu([1, 2, 3]) |> gpuMap(fn(x) => (x * x) ?: 0)",
+    ),
+    builtin_doc!(
+        "gpuFold",
+        "Reduces a buffer to one scalar with a pure combine function. Use an associative combine: a device backend may reassociate.",
+        ["buffer" => "The buffer to reduce", "initial" => "The initial scalar accumulator", "combine" => "The pure (accumulator, element) function"],
+        "toGpu([1, 2, 3]) |> gpuFold(0, fn(a, x) => (a + x) ?: a)",
+    ),
+    builtin_doc!(
+        "gpuZipWith",
+        "Combines two buffers elementwise with a pure binary kernel. The result takes the shorter operand's length.",
+        ["a" => "The left buffer", "b" => "The right buffer", "kernel" => "The pure (a, b) element function"],
+        "gpuZipWith(xs, ys, fn(x, y) => (x * y) ?: 0)  // elementwise product",
+    ),
+    builtin_doc!(
+        "gpuIota",
+        "Builds the index buffer [0, n). Gather, stencil, and matrix addressing start here.",
+        ["n" => "The element count"],
+        "gpuIota(4) |> fromGpu()  // [0, 1, 2, 3]",
+    ),
+    builtin_doc!(
+        "gpuGet",
+        "Bounds-checked read of one element at the buffer's element type. Out of bounds returns Error.",
+        ["buffer" => "The buffer to read", "index" => "The element index"],
+        "gpuGet(toGpu([10, 20]), 1) ?: 0  // 20",
+    ),
+    builtin_doc!(
+        "gpuScan",
+        "Inclusive prefix scan: element i is combine folded through element i. Use an associative combine: a device backend may run it work-efficiently in parallel.",
+        ["buffer" => "The buffer to scan", "initial" => "The initial scalar accumulator", "combine" => "The pure (accumulator, element) function"],
+        "toGpu([1, 2, 3]) |> gpuScan(0, fn(a, x) => (a + x) ?: a)  // 1, 3, 6",
+    ),
+    builtin_doc!(
+        "gpuFilter",
+        "Stream compaction: keeps the elements a pure predicate accepts, preserving order.",
+        ["buffer" => "The source buffer", "predicate" => "The pure element predicate"],
+        "toGpu([1, 2, 3, 4]) |> gpuFilter(fn(x) => (x % 2 ?: 0) == 0)",
+    ),
+    builtin_doc!(
+        "gpuDevice",
+        "Returns the active GPU execution backend's name. The host backend reports \"host\"; device backends report names like \"cuda:0\".",
+        [],
+        "print(gpuDevice())  // host",
     ),
 ];

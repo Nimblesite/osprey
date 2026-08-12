@@ -12,10 +12,12 @@ use crate::env::{generalize, TypeEnv};
 use crate::error::TypeError;
 use crate::ty::{names, Scheme, Type};
 use crate::unify::{unify, unify_assignable};
+use crate::VarId;
 use osprey_ast::{
     EffectOperation, EffectRef, Expr, ExternParameter, Parameter, Position, Program, Stmt,
     TypeExpr, TypeParam, TypeVariant, Variance,
 };
+use std::collections::BTreeSet;
 use std::collections::{HashMap, HashSet};
 
 /// The shared `name` accessor of the two AST parameter node types, so
@@ -44,6 +46,10 @@ pub(crate) struct CtorInfo {
     /// (field name, field type as written).
     pub fields: Vec<(String, String)>,
 }
+
+/// Built-in obligations split by whether they rest on a scheme's quantified
+/// variables: `(deferred to each instantiation, checked here)`.
+type SplitObligations = (Vec<(String, Type)>, Vec<(String, Type)>);
 
 /// A constructor instantiated against fresh type arguments:
 /// (owner type arguments, instantiated `(field, type)` pairs, owner name,
@@ -91,6 +97,11 @@ pub struct Checker {
     /// editor hover can show the type of an unannotated binding. Resolved and
     /// published by [`infer_program`]. Implements [LSP-HOVER-VARIABLES]
     let_tys: Vec<(Position, Type)>,
+    /// Every list literal's inferred `List<T>`, keyed by the literal's source
+    /// position. An empty literal carries no element the backend can read a
+    /// representation from, so this table is its only source of one. Resolved
+    /// and published by [`infer_program`].
+    pub(crate) list_tys: Vec<(Position, Type)>,
     /// Concrete arguments passed to representation-sensitive built-ins. These
     /// are validated after inference so a variable constrained later in the
     /// same body is checked at its final type.
@@ -126,6 +137,11 @@ pub struct Checker {
     /// inferred, so annotations inside the body (explicit construction-site
     /// type arguments) resolve the binder's variables, not nominal names.
     pub(crate) current_fn_typarams: HashMap<String, Type>,
+    /// Whether an arithmetic site with two unconstrained operands may still
+    /// leave its overload open ([`Checker::deferred_arith`]). Cleared for the
+    /// resolution pass, which re-enters the same selection to settle every
+    /// pending site against its operands' final types.
+    pub(crate) defer_arith: bool,
 }
 
 impl Checker {
@@ -140,6 +156,7 @@ impl Checker {
             fn_sigs: HashMap::new(),
             lambda_tys: Vec::new(),
             let_tys: Vec::new(),
+            list_tys: Vec::new(),
             builtin_uses: Vec::new(),
             builtins: HashSet::new(),
             resume_ctx: Vec::new(),
@@ -149,6 +166,7 @@ impl Checker {
             handler_tys: Vec::new(),
             fn_typarams: HashMap::new(),
             current_fn_typarams: HashMap::new(),
+            defer_arith: true,
         };
         c.register_result_ctors();
         c.register_builtin_variances();
@@ -485,10 +503,25 @@ impl Checker {
             .map(|p| type_expr_to_type(&p.ty, &empty))
             .collect();
         let ret = return_type.map_or_else(Type::unit, |r| type_expr_to_type(r, &empty));
+        // Publishing the resolved signature is what lets the backend type FFI
+        // calls with the declared parameter/return types (a `Ptr` as `i8*`, not
+        // the `i64` default) — same as `collect_function`.
+        self.publish_signature(name, parameters, params, ret, env);
+    }
+
+    /// Record a declaration's parameter names, publish its resolved signature
+    /// for the backend, and bind it monomorphically in `env`. Both collectors
+    /// (extern and function) finish here, so a signature can never reach one
+    /// table and miss another.
+    fn publish_signature<P: ParamName>(
+        &mut self,
+        name: &str,
+        parameters: &[P],
+        params: Vec<Type>,
+        ret: Type,
+        env: &mut TypeEnv,
+    ) {
         self.record_fn_params(name, parameters);
-        // Publish the resolved signature so the backend types FFI calls with the
-        // declared parameter/return types (a `Ptr` as `i8*`, not the `i64`
-        // default) — same as `collect_function`.
         let _ = self
             .fn_sigs
             .insert(name.to_string(), (params.clone(), ret.clone()));
@@ -550,11 +583,7 @@ impl Checker {
             None => self.ctx.fresh(),
         };
         let _ = self.fn_typarams.insert(name.to_string(), typarams);
-        self.record_fn_params(name, parameters);
-        let _ = self
-            .fn_sigs
-            .insert(name.to_string(), (params.clone(), ret.clone()));
-        env.insert(name, Scheme::mono(Type::fun(params, ret)));
+        self.publish_signature(name, parameters, params, ret, env);
     }
 
     /// Pass two: infer bodies and run top-level statements.
@@ -639,8 +668,80 @@ impl Checker {
         // generalize.
         let fun_ty = Type::fun(params, ret);
         env.remove(name);
-        let scheme = generalize(&mut self.ctx, env, &fun_ty);
+        let scheme = self.generalize_with_obligations(env, &fun_ty);
         env.insert(name, scheme);
+    }
+
+    /// Generalize `ty`, carrying every built-in obligation recorded on a
+    /// variable this scheme quantifies ([`Scheme::obligations`]).
+    ///
+    /// An obligation on a variable that generalizes cannot be discharged here —
+    /// the body never says what the type is — but it is not vacuous either: it
+    /// binds at every call site. Keeping it in the flat list as well would
+    /// report the wrapper itself, which is not an error, so the obligation
+    /// MOVES into the scheme.
+    fn generalize_with_obligations(&mut self, env: &TypeEnv, ty: &Type) -> Scheme {
+        let mut scheme = generalize(&mut self.ctx, env, ty);
+        if scheme.vars.is_empty() {
+            return scheme;
+        }
+        let (deferred, kept) = self.split_obligations(&scheme.vars);
+        // Quantifying a variable that still carries a pending arithmetic
+        // overload would hand every call site its own fresh copy, so no use
+        // could ever inform the choice and the definition would default to
+        // integer with nothing having looked at it. Keeping it monomorphic is
+        // what lets `gpuFold(0.0, plus)` type `plus` at float.
+        let pinned = self.arith_operand_vars(&kept);
+        scheme.vars.retain(|v| !pinned.contains(v));
+        self.builtin_uses = kept;
+        scheme.obligations = deferred;
+        scheme
+    }
+
+    /// Every type variable a pending arithmetic overload rests on.
+    fn arith_operand_vars(&mut self, obligations: &[(String, Type)]) -> BTreeSet<VarId> {
+        let mut vars = BTreeSet::new();
+        for (name, ty) in obligations {
+            if crate::expr::is_deferred_arith(name) {
+                self.ctx.free_vars(ty, &mut vars);
+            }
+        }
+        vars
+    }
+
+    /// Split the recorded built-in uses into those resting on `vars` (deferred
+    /// to each instantiation) and those that stay for [`Self::validate_builtin_uses`].
+    fn split_obligations(&mut self, vars: &[VarId]) -> SplitObligations {
+        let uses = std::mem::take(&mut self.builtin_uses);
+        let resolved: Vec<(String, Type)> = uses
+            .into_iter()
+            .map(|(name, ty)| {
+                let ty = self.ctx.apply(&ty);
+                (name, ty)
+            })
+            .collect();
+        let mut deferred = Vec::new();
+        let mut kept = Vec::new();
+        for (name, ty) in resolved {
+            // A pending arithmetic overload never travels into a scheme: it is
+            // settled once for the whole program
+            // ([`Checker::deferred_arith`]), and the variables it rests on stay
+            // monomorphic so every use of the definition constrains the SAME
+            // choice.
+            if crate::expr::is_deferred_arith(&name) || !self.mentions_any(&ty, vars) {
+                kept.push((name, ty));
+            } else {
+                deferred.push((name, ty));
+            }
+        }
+        (deferred, kept)
+    }
+
+    /// Whether `ty` still rests on one of the quantified variables.
+    fn mentions_any(&mut self, ty: &Type, vars: &[VarId]) -> bool {
+        let mut free = BTreeSet::new();
+        self.ctx.free_vars(ty, &mut free);
+        vars.iter().any(|v| free.contains(v))
     }
 
     fn check_let(
@@ -739,6 +840,26 @@ impl Checker {
         }
     }
 
+    /// Settle every arithmetic overload left open by
+    /// [`Checker::deferred_arith`], now that nothing further can constrain an
+    /// operand. Resolving one site can constrain another's operand — `fn twice(x)
+    /// = x + x` used by `fn quad(y) = twice(y) + twice(y)` — so this repeats
+    /// until a pass changes nothing, which it must: each pass either resolves a
+    /// site or leaves the substitution untouched.
+    fn resolve_deferred_arithmetic(&mut self) {
+        self.defer_arith = false;
+        for _ in 0..self.builtin_uses.len().saturating_add(1) {
+            let before = self.ctx.bound_count();
+            let uses = self.builtin_uses.clone();
+            for (name, ty) in &uses {
+                self.resolve_deferred_arith(name, ty);
+            }
+            if self.ctx.bound_count() == before {
+                return;
+            }
+        }
+    }
+
     /// Build the instantiated field types of a constructor against fresh type
     /// arguments. Returns (per-type-param fresh var, declared field map).
     pub(crate) fn ctor_instance(&mut self, name: &str) -> Option<CtorInstance> {
@@ -833,8 +954,10 @@ pub fn infer_program(program: &Program) -> crate::info::ProgramTypes {
         .collect();
     let lambda_tys = checker.lambda_tys.clone();
     let let_tys = checker.let_tys.clone();
+    let list_tys = checker.list_tys.clone();
     let lambdas = resolve_positioned(&mut checker.ctx, &lambda_tys);
     let lets = resolve_positioned(&mut checker.ctx, &let_tys);
+    let lists = resolve_positioned(&mut checker.ctx, &list_tys);
     let perform_tys = checker.perform_tys.clone();
     let performs = dedupe_sites(perform_tys.iter().map(|(pos, op, args)| {
         let site = crate::info::PerformSite {
@@ -861,6 +984,7 @@ pub fn infer_program(program: &Program) -> crate::info::ProgramTypes {
         effects,
         lambdas,
         lets,
+        lists,
         performs,
         handler_ops,
     }
@@ -873,6 +997,7 @@ fn checked_program(program: &Program) -> Checker {
     let mut env = base_env();
     checker.collect(program, &mut env);
     checker.check(program, &mut env);
+    checker.resolve_deferred_arithmetic();
     checker.validate_builtin_uses();
     let perform_tys = checker.perform_tys.clone();
     let perform_actual_tys = checker.perform_actual_tys.clone();
@@ -950,14 +1075,10 @@ fn resolve_op(ctx: &mut InferCtx, op: &crate::info::OpType) -> crate::info::OpTy
     }
 }
 
+/// A type is resolved once it mentions no inference variable anywhere — the
+/// exact complement of [`crate::ty::has_type_var`], which owns the traversal.
 fn type_is_resolved(ty: &Type) -> bool {
-    match ty {
-        Type::Var(_) => false,
-        Type::Con { args, .. } => args.iter().all(type_is_resolved),
-        Type::Fun { params, ret } => params.iter().all(type_is_resolved) && type_is_resolved(ret),
-        Type::Record { fields, .. } => fields.values().all(type_is_resolved),
-        Type::Union { variants, .. } => variants.iter().all(type_is_resolved),
-    }
+    !crate::ty::has_type_var(ty)
 }
 
 fn collect_site_candidates<S: PartialEq>(

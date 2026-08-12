@@ -263,7 +263,7 @@ impl Resolver<'_> {
                     }
                 }
             }
-            Expr::List(items) => self.rewrite_exprs(items, context, locals),
+            Expr::List(items, _) => self.rewrite_exprs(items, context, locals),
             Expr::Map(entries) => {
                 for entry in entries {
                     self.rewrite_expr(&mut entry.key, context, locals);

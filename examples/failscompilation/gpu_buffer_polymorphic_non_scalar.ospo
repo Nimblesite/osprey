@@ -1,0 +1,6 @@
+// [GPU-BUFFER-ELEM]: scalar eligibility is an obligation on GpuBuffer<T>, not
+// a direct-call syntax check. Generalizing this wrapper must retain that
+// obligation and reject its List<string> instantiation.
+fn bufferLength(xs) = gpuLength(toGpu(xs))
+
+fn main() = print(bufferLength(["a", "b"]))

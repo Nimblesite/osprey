@@ -149,7 +149,7 @@ fn time_deltas(samples: &[Sample]) -> Vec<u64> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::testutil::{model_of, osp_frame, sample, thread};
+    use crate::testutil::{field_u64, model_of, osp_frame, sample, thread};
 
     fn fixture() -> Value {
         // Two on-CPU samples on [main->fib], one on [main->fib->fib]
@@ -190,7 +190,7 @@ mod tests {
         // 1-based, and the waiting sample contributed nothing.
         assert_eq!(doc.get("nodes").and_then(Value::as_array).unwrap().len(), 4);
         let root = node(&doc, 0);
-        assert_eq!(root.get("id").and_then(Value::as_u64), Some(1));
+        field_u64(root, "id", 1);
         assert_eq!(
             root.pointer("/callFrame/functionName")
                 .and_then(Value::as_str),
@@ -236,8 +236,8 @@ mod tests {
         // Sorted by time: 500µs (fib, id 3), 1500µs (fib), 2500µs (fib fib, id 4).
         assert_eq!(doc.get("samples").unwrap(), &json!([3, 3, 4]));
         assert_eq!(doc.get("timeDeltas").unwrap(), &json!([500, 1000, 1000]));
-        assert_eq!(doc.get("startTime").and_then(Value::as_u64), Some(0));
-        assert_eq!(doc.get("endTime").and_then(Value::as_u64), Some(2500));
+        field_u64(&doc, "startTime", 0);
+        field_u64(&doc, "endTime", 2500);
     }
 
     #[test]
@@ -293,6 +293,6 @@ mod tests {
         assert_eq!(doc.get("nodes").and_then(Value::as_array).unwrap().len(), 1);
         assert_eq!(doc.get("samples").unwrap(), &json!([]));
         assert_eq!(doc.get("timeDeltas").unwrap(), &json!([]));
-        assert_eq!(doc.get("endTime").and_then(Value::as_u64), Some(0));
+        field_u64(&doc, "endTime", 0);
     }
 }

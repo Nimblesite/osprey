@@ -1,0 +1,1 @@
+1:15: effect `Tile` is static; handle it with `handle static Tile` so it is discharged at compile time

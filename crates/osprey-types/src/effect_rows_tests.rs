@@ -862,3 +862,70 @@ fn unknown_declared_effect_is_rejected() {
         &["declares unknown effects", "Imaginary"],
     );
 }
+
+// -------------------- GPU kernel purity [GPU-KERNEL-PURE] --------------------
+// (docs/specs/0034-GPUComputation.md)
+
+#[test]
+fn gpu_kernels_must_be_pure_even_under_a_matching_handler() {
+    // A handler makes an effect dischargeable on the host; a kernel body still
+    // cannot leave the device to reach it, so the map kernel is rejected.
+    assert_rejected_with(
+        "effect Log { write: fn(string) -> Unit }\n\
+         fn loud(x) = {\n\
+             perform Log.write(\"saw\")\n\
+             x\n\
+         }\n\
+         fn main() = {\n\
+             let n = handle Log\n\
+                 write m => print(m)\n\
+             in toGpu([1, 2]) |> gpuMap(loud) |> gpuLength()\n\
+             print(n)\n\
+         }\n",
+        &["GPU kernel must be pure; it performs: Log.write"],
+    );
+}
+
+#[test]
+fn gpu_fold_combine_kernels_are_purity_checked_too() {
+    assert_rejected_with(
+        "effect Log { write: fn(string) -> Unit }\n\
+         fn noisyAdd(acc, x) = {\n\
+             perform Log.write(\"step\")\n\
+             (acc + x) ?: acc\n\
+         }\n\
+         fn main() = {\n\
+             let n = handle Log\n\
+                 write m => print(m)\n\
+             in toGpu([1, 2]) |> gpuFold(0, noisyAdd)\n\
+             print(n)\n\
+         }\n",
+        &["GPU kernel must be pure; it performs: Log.write"],
+    );
+}
+
+#[test]
+fn unprovable_gpu_kernels_fail_closed() {
+    // A kernel received as a bare function parameter has unknown effects at
+    // the combinator call site: rejected rather than assumed pure.
+    assert_rejected_with(
+        "effect Noise { blip: fn() -> Unit }\n\
+         fn runIt(f) = toGpu([1]) |> gpuMap(f) |> gpuLength()\n\
+         fn main() = print(runIt(|x| => x))\n",
+        &["cannot prove GPU kernel pure"],
+    );
+}
+
+#[test]
+fn pure_gpu_kernels_are_accepted_beside_declared_effects() {
+    assert_accepted(
+        "effect Log { write: fn(string) -> Unit }\n\
+         fn square(x) = (x * x) ?: 0\n\
+         fn main() = {\n\
+             let total = toGpu([1, 2]) |> gpuMap(square) |> gpuFold(0, |a, x| => (a + x) ?: a)\n\
+             handle Log\n\
+                 write m => print(m)\n\
+             in perform Log.write(\"host ${total}\")\n\
+         }\n",
+    );
+}

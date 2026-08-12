@@ -132,7 +132,10 @@ suite("Osprey test documentation and profiling", () => {
     ): void {
       assert.ok(description !== undefined, "documented case is described");
       for (const fragment of fragments) {
-        assert.ok(description.includes(fragment), `${fragment}: ${description}`);
+        assert.ok(
+          description.includes(fragment),
+          `${fragment}: ${description}`,
+        );
       }
     }
 

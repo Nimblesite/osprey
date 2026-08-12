@@ -56,6 +56,7 @@ impl Lowerer<'_> {
                 arms: self.lower_arms(node),
             },
             "handler_expression" => Expr::Handler {
+                stage: self.stage(node),
                 effect: self.field_text(node, "effect"),
                 arms: self.lower_handler_arms(node),
                 body: Box::new(self.lower_expr_field(node, "body")),
@@ -390,7 +391,10 @@ impl Lowerer<'_> {
             "interpolated_string" => {
                 Expr::InterpolatedStr(lower_interpolation(&self.text(inner), parse_fragment))
             }
-            "list_literal" => Expr::List(self.exprs_of_kind(inner, "expression")),
+            "list_literal" => Expr::List(
+                self.exprs_of_kind(inner, "expression"),
+                Some(self.pos(inner)),
+            ),
             "map_literal" => Expr::Map(
                 self.named_of_kind(inner, "map_entry")
                     .iter()
@@ -655,7 +659,10 @@ mod tests {
             other => panic!("expected constructor, got {other:?}"),
         }
         // List and string-key map literals [TYPE-MAP-LITERAL].
-        assert!(matches!(let_value("let r = [1, 2, 3]\n"), Expr::List(v) if v.len() == 3));
+        assert!(matches!(
+            let_value("let r = [1, 2, 3]\n"),
+            Expr::List(v, position) if v.len() == 3 && position.is_some()
+        ));
         assert!(
             matches!(let_value("let r = { \"a\": 1, \"b\": 2 }\n"), Expr::Map(m) if m.len() == 2)
         );

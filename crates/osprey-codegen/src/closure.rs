@@ -28,8 +28,8 @@ use std::collections::BTreeSet;
 /// One captured binding: its source name and the parent-scope [`Value`] whose
 /// metadata (Result shape, owner tag) the reload inside the closure must keep.
 pub(crate) struct Capture {
-    name: String,
-    val: Value,
+    pub(crate) name: String,
+    pub(crate) val: Value,
 }
 
 /// Lower a lambda in plain expression position (returned, block tail, stored)
@@ -147,13 +147,21 @@ pub(crate) fn specialisation_key(target: &str, sig: &FnSig) -> String {
 /// (sorted) order. Also used by `fiber::gen_spawn` (a spawn body is a
 /// zero-parameter closure).
 pub(crate) fn capture_list(cg: &Codegen, parameters: &[Parameter], body: &Expr) -> Vec<Capture> {
-    let mut names = BTreeSet::new();
-    free_idents(body, &mut names);
-    names
+    free_names(parameters, body)
         .into_iter()
-        .filter(|n| !parameters.iter().any(|p| &p.name == n))
         .filter_map(|name| cg.lookup(&name).map(|val| Capture { name, val }))
         .collect()
+}
+
+/// The free identifiers of `body` minus the lambda's own parameters, in stable
+/// (sorted) order — what [`capture_list`] narrows to the bound ones, and what
+/// kernel extraction tests against the host state a lifted body cannot see
+/// ([`crate::gpu_kernel`]).
+pub(crate) fn free_names(parameters: &[Parameter], body: &Expr) -> BTreeSet<String> {
+    let mut names = BTreeSet::new();
+    free_idents(body, &mut names);
+    names.retain(|n| !parameters.iter().any(|p| &p.name == n));
+    names
 }
 
 /// The LLVM struct spelling of a closure cell: the fnptr slot then one slot per
@@ -180,22 +188,25 @@ fn emit_closure_fn(
     let saved = cg.enter_nested_fn();
     reload_captures(cg, cell_ty, caps);
     let mut params = vec![(LType::Ptr, String::from("__env"))];
-    params.extend(bind_params(cg, parameters, param_tys));
+    params.extend(bind_params_from(cg, parameters, param_tys, 0));
     let emitted = closure_return(cg, body, *ret_ty, *ret_inner);
     cg.exit_nested_fn(saved, &ret_spelling, fn_name, &params);
     emitted
 }
 
 /// Bind each lambda parameter as its incoming LLVM register and collect the
-/// `define`'s parameter list.
-fn bind_params(
+/// `define`'s parameter list. Binding starts at register index `first`, which
+/// is 0 for a closure and the uniform count for a lifted GPU kernel, whose
+/// captures hold the leading positional registers ([`crate::gpu_kernel`]).
+pub(crate) fn bind_params_from(
     cg: &mut Codegen,
     parameters: &[Parameter],
     param_tys: &[ParamSig],
+    first: usize,
 ) -> Vec<(LType, String)> {
     let mut out = Vec::with_capacity(parameters.len());
     for (i, (p, pty)) in parameters.iter().zip(param_tys).enumerate() {
-        let reg = crate::llty::param_register(i);
+        let reg = crate::llty::param_register(first + i);
         let value = crate::cast::incoming_param(cg, format!("%{reg}"), *pty, None);
         cg.bind(p.name.clone(), value);
         out.push((pty.ty, reg));
@@ -290,7 +301,7 @@ pub(crate) fn raw_callback_lambda(
     let (ret_spelling, plist) = spelling(sig);
     let name = format!("__callback_{}", cg.next_lambda_id());
     let saved = cg.enter_nested_fn();
-    let params = bind_params(cg, parameters, param_tys);
+    let params = bind_params_from(cg, parameters, param_tys, 0);
     let emitted = closure_return(cg, body, *ret_ty, *ret_inner);
     cg.exit_nested_fn(saved, &ret_spelling, &name, &params);
     emitted?;
@@ -354,17 +365,25 @@ pub(crate) fn cell_call(
     let mut args = vec![format!("i8* {handle}")];
     args.extend_from_slice(typed_args);
     let r = cg.emit_reg(format!("call {ret_spelling} {fp}({})", args.join(", ")));
-    let v = match sig.2 {
-        Some(inner) => Value::result(r, inner),
-        None => Value::new(r, sig.1),
-    };
-    let v = match sig.3 {
-        Some(fiber) => fiber.restore(v),
-        None => v,
-    };
+    let v = returned(r, sig);
     // Closure functions transfer +1 on return (their `ret_as_sig` epilogue).
     crate::arc::own(cg, &v);
     v
+}
+
+/// A call's result at the callee's return discipline: a `Result` block pointer
+/// stays a Result, and a Fiber return keeps its element shape. Shared by every
+/// caller that has a register and the signature it was produced under —
+/// closure-cell calls here and extracted GPU kernels [GPU-KERNEL-EXTRACT].
+pub(crate) fn returned(reg: String, sig: &FnSig) -> Value {
+    let value = match sig.2 {
+        Some(inner) => Value::result(reg, inner),
+        None => Value::new(reg, sig.1),
+    };
+    match sig.3 {
+        Some(fiber) => fiber.restore(value),
+        None => value,
+    }
 }
 
 /// A top-level function used as an Osprey function value: emit (once per

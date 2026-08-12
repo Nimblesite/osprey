@@ -1,0 +1,246 @@
+// The shared host for every Osprey graphics example.
+//
+// Osprey is the host program: it opens a real Cocoa window, reads the clock,
+// and recomputes the scene every frame in its own fixed-point arithmetic. The
+// GPU is the rasteriser: `base.metal` shades every pixel from the parameter
+// slots pushed below ([FFI-LINK-DIRECTIVES], [FFI-PTR] —
+// docs/specs/0019-ForeignFunctionInterface.md).
+//
+// The fixed-point trigonometry here exists exactly once. A scene is not a copy
+// of this file: it is a title, the name of a fragment entry in the shared Metal
+// library, a table of oscillators, and a table of authored constants. Default
+// Osprey cannot import across standalone scripts — an `import` needs a project
+// ([MODULES-MODEL]) and a project has exactly one entry ([MODULES-ENTRYPOINT])
+// — so each scene is its own one-file project that names this directory as a
+// second source root. That is the layout that makes sharing possible at all.
+//
+// This is deliberately NOT Osprey's `gpu*` builtin surface. [GPU-BACKEND-HOST]
+// is the only backend that exists, so `gpuMap` is a CPU loop — measured at
+// ~1.2us a pixel, which is 13fps at this resolution. The bridge below is where
+// [GPU-BACKEND-DEVICE] would attach when it lands.
+
+// @link: ospgfx
+// @linkdir: examples/graphics
+
+namespace graphics;
+
+module SceneBase {
+    extern fn osp_gfx_open(width: int, height: int, scale: int, title: string,
+        shader: string, fragment: string) -> Ptr
+    extern fn osp_gfx_set(win: Ptr, slot: int, value: int) -> int
+    extern fn osp_gfx_set_milli(win: Ptr, slot: int, thousandths: int) -> int
+    extern fn osp_gfx_draw(win: Ptr) -> int
+    extern fn osp_gfx_ticks(win: Ptr) -> int
+    extern fn osp_gfx_close(win: Ptr) -> int
+
+    /// unit is the fixed-point one, and also a full turn in angle units, so a
+    /// slot carrying an angle reaches the shader already normalised to 0..1.
+    fn unit() = 4096
+    fn halfTurn() = 2048
+    fn quarterTurn() = 1024
+
+    /// The design resolution and the factor it is magnified by on screen. The
+    /// drawable is this window at full backing density, so a Retina display is
+    /// shaded at Retina resolution.
+    fn designWidth() = 480
+    fn designHeight() = 300
+    fn windowScale() = 2
+
+    /// Every scene shares one Metal library and differs by which fragment entry
+    /// it names. The path is relative to the repository root, which is where
+    /// `make graphics` runs the compiler from.
+    fn shaderPath() = "examples/graphics/base.metal"
+
+    /// Slots 0..7 carry motion, in 4096ths, rewritten every frame. Slots 8..20
+    /// carry authored tuning, in thousandths, pushed once at open. Both ranges
+    /// are named in base.metal; changing either boundary means changing both.
+    fn motionCount() = 8
+    fn lookFirst() = 8
+    fn lookLast() = 20
+    fn lookCount() = 13
+
+    /// wrapTurn folds any angle into [0, unit).
+    fn wrapTurn(a) = {
+        let m = (a % unit()) ?: 0
+        match m < 0 { true => (m + unit()) ?: 0 false => m }
+    }
+
+    /// sinArc is the positive half-wave: a parabola through (0,0), (1024,unit)
+    /// and (2048,0), which tracks a true sine closely enough to steer a shader.
+    fn sinArc(u) = intDiv((u * ((halfTurn() - u) ?: 0)) ?: 0, 256) ?: 0
+
+    /// fsin and fcos return -unit..unit for an angle in turn units.
+    fn fsin(a) = {
+        let u = wrapTurn(a)
+        match u < halfTurn() {
+            true => sinArc(u)
+            false => (0 - sinArc((u - halfTurn()) ?: 0)) ?: 0
+        }
+    }
+    fn fcos(a) = fsin((a + quarterTurn()) ?: 0)
+
+    /// phase converts elapsed milliseconds into turn units for a given period,
+    /// so every oscillator below is written in the time it takes to come around.
+    fn phase(t, periodMs) = intDiv((t * unit()) ?: 0, periodMs) ?: 0
+
+    /// swing and sway are the two oscillators every scene is built from: a
+    /// value centred on `centre`, moving `amp` either side of it, once per
+    /// period. They differ only in phase, which is what lets a pair of them
+    /// trace a Lissajous figure instead of a line.
+    fn swing(t, periodMs, centre, amp) =
+        (centre + (intDiv((fsin(phase(t, periodMs)) * amp) ?: 0, unit()) ?: 0)) ?: 0
+    fn sway(t, periodMs, centre, amp) =
+        (centre + (intDiv((fcos(phase(t, periodMs)) * amp) ?: 0, unit()) ?: 0)) ?: 0
+
+    /// Kali. Slots 0 and 1 are the fold constant, the most consequential pair of
+    /// numbers in the scene: small moves there restructure every filament, so
+    /// they drift slowly and on coprime periods, which keeps the figure from
+    /// ever repeating itself. The rest breathe the zoom, turn the plane once
+    /// every 73 seconds, walk the colour wheel, pulse the neon cores, and pan
+    /// the viewport on a slow Lissajous figure.
+    fn originalMotion(slot, t) =
+        match slot {
+            0 => swing(t, 27000, 4055, 1105)
+            1 => sway(t, 37000, 3768, 1064)
+            2 => swing(t, 41000, 4300, 1350)
+            3 => phase(t, 73000)
+            4 => phase(t, 19000)
+            5 => swing(t, 11000, 1150, 720)
+            6 => swing(t, 53000, 0, 700)
+            _ => sway(t, 61000, 0, 620)
+        }
+
+    /// Kali's grade, in thousandths. Every one of these used to be written into
+    /// the shader source; they are authored numbers, so Osprey owns them.
+    fn originalLook(slot) =
+        match slot {
+            8 => 3600
+            9 => 85
+            10 => 450
+            11 => 420
+            12 => 90
+            13 => 6
+            14 => 3000
+            15 => 1450
+            16 => 300
+            17 => 720
+            18 => 24000
+            _ => 0
+        }
+
+    /// Midnight Opal. Tiny fold moves on very long periods, so the motion stays
+    /// close to one composed form instead of boiling through unrelated shapes,
+    /// and the spin is a barely perceptible pendulum rather than a perpetual
+    /// turn. Light moves through its fixed palette once every nine minutes.
+    fn opalMotion(slot, t) =
+        match slot {
+            0 => swing(t, 83000, 4055, 30)
+            1 => sway(t, 107000, 4525, 24)
+            2 => swing(t, 47000, 4250, 180)
+            3 => swing(t, 89000, 0, 70)
+            4 => wrapTurn(phase(t, 558000))
+            5 => swing(t, 13000, 2700, 260)
+            6 => swing(t, 97000, 170, 40)
+            _ => sway(t, 127000, -110, 35)
+        }
+
+    /// Opal is a fixed composition: its colours and placements are its identity
+    /// and stay in the shader. Only its dynamic range is tunable from here.
+    fn opalLook(slot) =
+        match slot {
+            8 => 4000
+            9 => 71
+            10 => 110
+            16 => 380
+            18 => 16000
+            _ => 0
+        }
+
+    /// The character. The fold slots now frame the backdrop rather than the
+    /// subject, the spin is a slow lean of a few degrees, and the core glow
+    /// breathes the rim light every five seconds.
+    fn characterMotion(slot, t) =
+        match slot {
+            0 => swing(t, 31000, 3300, 240)
+            1 => sway(t, 43000, 3100, 200)
+            2 => swing(t, 17000, 4300, 120)
+            3 => swing(t, 9000, 0, 60)
+            4 => phase(t, 23000)
+            5 => swing(t, 5000, 3200, 700)
+            6 => swing(t, 13000, 80, 90)
+            _ => sway(t, 19000, 120, 70)
+        }
+
+    /// The character's grade, including the two slots only it reads: how far the
+    /// backdrop's fold is zoomed out, and how far down it is mixed.
+    fn characterLook(slot) =
+        match slot {
+            8 => 5200
+            9 => 130
+            10 => 900
+            11 => 950
+            12 => 550
+            13 => 20
+            14 => 9000
+            15 => 1250
+            16 => 280
+            17 => 450
+            18 => 12000
+            19 => 1600
+            _ => 110
+        }
+
+    /// Push one slot range and count how many the bridge accepted. A count that
+    /// comes back short means the bridge rejected a slot, which is the only way
+    /// a scene finds out that it and base.metal disagree about the layout.
+    ///
+    /// The three recursive functions below are the only annotated ones in this
+    /// file: codegen refuses a recursive function whose signature it has not
+    /// fully inferred, so these annotations are load-bearing rather than noise.
+    fn pushMotion(win: Ptr, motion, t: int, slot: int) -> int =
+        match slot < motionCount() {
+            true => ((osp_gfx_set(win, slot, motion(slot, t)) +
+                pushMotion(win, motion, t, (slot + 1) ?: slot)) ?: 0)
+            false => 0
+        }
+
+    fn pushLook(win: Ptr, look, slot: int) -> int =
+        match slot <= lookLast() {
+            true => ((osp_gfx_set_milli(win, slot, look(slot)) +
+                pushLook(win, look, (slot + 1) ?: slot)) ?: 0)
+            false => 0
+        }
+
+    /// animate advances on wall-clock time, so the motion plays at the same
+    /// speed whatever frame rate the display sustains, and stops when the window
+    /// closes.
+    fn animate(win: Ptr, motion, frame: int) -> int = {
+        let pushed = pushMotion(win, motion, osp_gfx_ticks(win), 0)
+        match (pushed == motionCount()) && (osp_gfx_draw(win) == 1) {
+            true => animate(win, motion, (frame + 1) ?: frame)
+            false => frame
+        }
+    }
+
+    fn report(title, frames, ms) = {
+        let fps = intDiv((frames * 1000) ?: 0, match ms > 0 { true => ms false => 1 }) ?: 0
+        print("${title}: ${frames} frames in ${ms} ms — ${fps} fps at ${designWidth()}x${designHeight()}")
+    }
+
+    /// Open a window on one fragment entry of the shared library, push the
+    /// scene's authored grade once, then hand the clock to `animate`.
+    fn run(title, fragment, motion, look) = {
+        let win = osp_gfx_open(designWidth(), designHeight(), windowScale(),
+            title, shaderPath(), fragment)
+        let frames = match pushLook(win, look, lookFirst()) == lookCount() {
+            true => animate(win, motion, 0)
+            false => 0
+        }
+        report(title, frames, osp_gfx_ticks(win))
+        osp_gfx_close(win)
+    }
+
+    export fn original() = run("Osprey · Kali", "osp_fragment", originalMotion, originalLook)
+    export fn opal() = run("Osprey · Midnight Opal", "osp_fragment_opal", opalMotion, opalLook)
+    export fn character() = run("Osprey · Character", "osp_fragment_character", characterMotion, characterLook)
+}

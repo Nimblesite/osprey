@@ -1,0 +1,499 @@
+// Game-engine workloads on the GPU surface: Q10 fixed-point vector algebra
+// over parallel component buffers, semi-implicit Euler integration, broadphase
+// collision predicates, bounding volumes built by folds, packed-colour
+// blending, gpuIota-driven gathers (de-interleave, transpose, edge-clamped
+// stencils), and per-frame pipelines that combine six buffers at once
+// ([GPU-ZIPWITH], [GPU-IOTA], [GPU-GET], [GPU-FOLD], [GPU-SCAN], [GPU-FILTER]
+// — docs/specs/0034-GPUComputation.md). The simulation half is deliberately
+// fixed point: a frame that must replay identically on every backend cannot
+// afford float reassociation, and integer kernels are what a physics step and
+// a blitter actually run.
+
+(** Q10 fixed point: one world unit is 1024 sub-units. *)
+unit () = 1024
+(** fpMul and fpDiv stay in Q10; a zero divisor saturates instead of failing. *)
+fpMul : (int, int) -> int
+fpMul (a, b) = intDiv ((a * b) ?: 0, unit ()) ?: 0
+fpDiv : (int, int) -> int
+fpDiv (a, b) = intDiv ((a * unit ()) ?: 0, b) ?: 0
+(** The sign helpers every component-wise kernel needs. *)
+negFp : int -> int
+negFp x = (0 - x) ?: 0
+fpAbs : int -> int
+fpAbs x = match x < 0
+    true => negFp x
+    false => x
+(** Whole-buffer scale kernels at Q10. *)
+doubleFp x = fpMul (x, (2 * unit ()) ?: 0)
+halveFp x = fpMul (x, intDiv (unit (), 2) ?: 0)
+(** sumInts doubles as elementwise vector addition; subInts is displacement. *)
+sumInts : (int, int) -> int
+sumInts (a, x) = (a + x) ?: a
+subInts : (int, int) -> int
+subInts (a, b) = (a - b) ?: a
+sqrOf : int -> int
+sqrOf v = (v * v) ?: 0
+(** Squared length in one pass, so a broadphase needs no product buffer. *)
+addSquares : (int, int) -> int
+addSquares (dx, dy) = (sqrOf dx + sqrOf dy) ?: 0
+(** speedOf accumulates absolute magnitude — total speed, or total error. *)
+speedOf : (int, int) -> int
+speedOf (acc, v) = (acc + fpAbs v) ?: acc
+(** The associative fold combines that grow an axis-aligned box. *)
+boundMin : (int, int) -> int
+boundMin (a, b) = match a <= b
+    true => a
+    false => b
+boundMax : (int, int) -> int
+boundMax (a, b) = match a >= b
+    true => a
+    false => b
+(** Collision is inclusive: volumes that merely touch already overlap. *)
+leqI : (int, int) -> bool
+leqI (a, b) = a <= b
+bothOf : (bool, bool) -> bool
+bothOf (a, b) = a && b
+(** Flag-buffer helpers: total the hits, or compact them either way. *)
+hitCost : bool -> int
+hitCost flag = match flag
+    true => 1
+    false => 0
+isHit flag = flag == true
+isMiss flag = !flag
+(** The alpha-max-plus-beta-min length estimate, |v| ~= max + 3*min/8: what a
+    broadphase reaches for because it needs no square root. *)
+octagonal : (int, int) -> int
+octagonal (x, y) =
+    hi = boundMax (fpAbs x, fpAbs y)
+    lo = boundMin (fpAbs x, fpAbs y)
+    beta = intDiv ((3 * lo) ?: 0, 8) ?: 0
+    hi + beta ?: hi
+(** A colour packs r:g:b into one int element, the way a framebuffer does. *)
+channelBits () = 256
+redShift () = (channelBits () * channelBits ()) ?: 0
+clampChannel : int -> int
+clampChannel v = match v < 0
+    true => 0
+    false => match v > 255
+        true => 255
+        false => v
+packRG : (int, int) -> int
+packRG (r, g) = ((clampChannel r * channelBits ()) ?: 0) + clampChannel g ?: 0
+packRGB : (int, int) -> int
+packRGB (rg, b) = ((rg * channelBits ()) ?: 0) + clampChannel b ?: 0
+redOf : int -> int
+redOf c = intDiv (c, redShift ()) ?: 0
+greenOf : int -> int
+greenOf c = (intDiv (c, channelBits ()) ?: 0) % channelBits () ?: 0
+blueOf : int -> int
+blueOf c = (c % channelBits ()) ?: 0
+(** Integer Rec.601 grey; the weights sum to exactly 256, so white maps to 255. *)
+luminance : int -> int
+luminance c = intDiv (
+    ((77 * redOf c) ?: 0) + ((151 * greenOf c) ?: 0) + ((28 * blueOf c) ?: 0) ?: 0,
+    channelBits ()) ?: 0
+(** A blend is two coverage-weighted scales and one add. *)
+scaleColor : (int, int) -> int
+scaleColor (c, w) = packRGB (
+    packRG (intDiv ((redOf c * w) ?: 0, channelBits ()) ?: 0,
+        intDiv ((greenOf c * w) ?: 0, channelBits ()) ?: 0),
+    intDiv ((blueOf c * w) ?: 0, channelBits ()) ?: 0)
+invAlpha : int -> int
+invAlpha a = (channelBits () - a) ?: 0
+(** The reference colours; missingColor is the magenta a failed asset paints. *)
+black () = 0
+red () = 16711680
+green () = 65280
+white () = 16777215
+missingColor () = 16711935
+(** at turns [GPU-GET]'s out-of-range Error into the engine's chosen padding. *)
+at (buf, i, miss) = gpuGet (buf, i) ?: miss
+(** clampIdx keeps a stencil tap on the field; blurAt is the three-tap average. *)
+clampIdx : (int, int) -> int
+clampIdx (i, n) = boundMin (boundMax (i, 0), (n - 1) ?: 0)
+blurAt (field, n, i) = intDiv (at (field, clampIdx ((i - 1) ?: i, n), 0)
+    + at (field, i, 0) + at (field, clampIdx ((i + 1) ?: i, n), 0) ?: 0, 3) ?: 0
+(** tileTranspose reads a w-by-h tile grid column-major: dest(x, y) = src(y, x). *)
+tileTranspose (src, w, h) = (gpuIota ((w * h) ?: 0)
+    |> gpuMap (\i => at (src, ((((i % h) ?: 0) * w) ?: 0) + (intDiv (i, h) ?: 0) ?: 0, 0)))
+(** Semi-implicit Euler: velocity updates first, then position integrates the
+    *new* velocity. Only a concrete signature gets a recursive helper emitted. *)
+velAfter : (GpuBuffer<int>, GpuBuffer<int>, int) -> GpuBuffer<int>
+velAfter (vel, acc, n) = match n
+    0 => vel
+    _ => velAfter (gpuZipWith (vel, acc, sumInts), acc, (n - 1) ?: 0)
+posAfter : (GpuBuffer<int>, GpuBuffer<int>, GpuBuffer<int>, int) -> GpuBuffer<int>
+posAfter (pos, vel, acc, n) = match n
+    0 => pos
+    _ => gpuZipWith (posAfter (pos, vel, acc, (n - 1) ?: 0), velAfter (vel, acc, n), sumInts)
+(** damp reruns a drag multiply over a velocity buffer n times. *)
+damp : (GpuBuffer<int>, int, int) -> GpuBuffer<int>
+damp (vel, drag, n) = match n
+    0 => vel
+    _ => damp (vel |> gpuMap (\v => fpMul (v, drag)), drag, (n - 1) ?: 0)
+(** A tick is 0.1s; lerpQuarter eases a quarter of the way toward the target. *)
+integrate : (float, float) -> float
+integrate (p, v) = p + v * 0.1
+lerpQuarter : (float, float) -> float
+lerpQuarter (a, b) = a + (b - a) * 0.25
+(** The draw distance, the float reduction, and the survivor predicate. *)
+visible d = d < 100.0
+sumF : (float, float) -> float
+sumF (a, x) = a + x
+alive h = h > 0
+(** clamp01 keeps a normalized channel inside [0, 1]. *)
+clamp01 x = match x < 0.0
+    true => 0.0
+    false => match x > 1.0
+        true => 1.0
+        false => x
+(** applyDamage resolves a hit, flooring health at zero. *)
+applyDamage : (int, int) -> int
+applyDamage (h, d) = match ((h - d) ?: 0) > 0
+    true => (h - d) ?: 0
+    false => 0
+(** fixedPointCase pins the Q10 contract, truncation included — a product below
+    one sub-unit rounds toward zero — and runs the same arithmetic as kernels. *)
+fixedPointCase () =
+    scaled = toGpu [unit (), 512, 0, negFp 256] |> gpuMap doubleFp
+    checkAll "q10 fixed point" [
+        fpMul (unit (), unit ()) == unit (), fpMul (unit (), 0) == 0, fpMul (0, unit ()) == 0,
+        fpMul (512, 512) == 256, fpMul (negFp 512, 512) == negFp 256,
+        fpMul (negFp 512, negFp 512) == 256, fpMul (1, 1) == 0, fpMul (negFp 1, 1) == 0,
+        fpDiv (unit (), (2 * unit ()) ?: 0) == 512, fpDiv (768, 256) == 3072, fpDiv (unit (), 0) == 0,
+        fpDiv (0, unit ()) == 0, fpDiv (negFp 512, 512) == negFp 1024, fpAbs (negFp 7) == 7,
+        fpAbs 0 == 0, fpAbs 7 == 7, negFp (negFp 9) == 9, at (scaled, 0, 0) == 2048,
+        at (scaled, 1, 0) == 1024, at (scaled, 2, 1) == 0, at (scaled, 3, 0) == negFp 512,
+        (scaled |> gpuFold 0 sumInts) == 2560, (scaled |> gpuFold 0 speedOf) == 3584,
+        (scaled |> gpuMap halveFp |> gpuFold 0 sumInts) == 1280,
+        (scaled |> gpuMap halveFp |> gpuMap halveFp |> gpuFold 0 sumInts) == 640, gpuLength scaled == 4,
+        gpuLength (toGpu [] |> gpuMap doubleFp) == 0
+    ]
+(** vectorCase does 2D algebra across four parallel component buffers; dot and
+    cross each combine two zipped products, and a . perp a and a x a vanish. *)
+vectorCase () =
+    ax = toGpu [1024, 2048, 0, 1024]
+    ay = toGpu [0, 0, 3072, 1024]
+    bx = toGpu [1024, 512, 0, 0]
+    by = toGpu [0, 1024, 1024, 2048]
+    dots = gpuZipWith (gpuZipWith (ax, bx, fpMul), gpuZipWith (ay, by, fpMul), sumInts)
+    cross = gpuZipWith (gpuZipWith (ax, by, fpMul), gpuZipWith (ay, bx, fpMul), subInts)
+    perp = gpuZipWith (gpuZipWith (ax, (ay |> gpuMap negFp), fpMul), gpuZipWith (ay, ax, fpMul), sumInts)
+    selfCross = gpuZipWith (gpuZipWith (ax, ay, fpMul), gpuZipWith (ay, ax, fpMul), subInts)
+    checkAll "fixed-point vector algebra" [
+        at (dots, 0, 0) == 1024, at (dots, 1, 0) == 1024, at (dots, 2, 0) == 3072,
+        at (dots, 3, 0) == 2048, at (cross, 0, 1) == 0, at (cross, 1, 0) == 2048, at (cross, 2, 1) == 0,
+        at (cross, 3, 0) == 2048, (dots |> gpuFold 0 sumInts) == 7168,
+        (cross |> gpuFold 0 sumInts) == 4096, (perp |> gpuFold 0 speedOf) == 0, at (perp, 3, 1) == 0,
+        (selfCross |> gpuFold 0 speedOf) == 0, gpuLength dots == 4, gpuLength cross == 4
+    ]
+(** magnitudeCase pins the octagonal estimate: exact on the axes, a slight
+    undershoot on the diagonal, symmetric in both signs and in x/y. *)
+magnitudeCase () =
+    dist = gpuZipWith (toGpu [1024, 0, 3072, negFp 1024, 0],
+        toGpu [0, 2048, 4096, negFp 1024, 0], octagonal)
+    checkAll "octagonal distance" [
+        at (dist, 0, 0) == 1024, at (dist, 1, 0) == 2048, at (dist, 2, 0) == 5248,
+        at (dist, 3, 0) == 1408, at (dist, 4, 1) == 0, (dist |> gpuFold 0 sumInts) == 9728,
+        (dist |> gpuFold 0 boundMax) == 5248, (dist |> gpuFold 99999 boundMin) == 0,
+        gpuLength (dist |> gpuFilter (\d => d <= 2048)) == 4, octagonal (0, 0) == 0,
+        octagonal (negFp 1024, 0) == 1024, octagonal (1024, 1024) == 1408,
+        octagonal (3072, 4096) == 5248, octagonal (4096, 3072) == 5248,
+        octagonal (negFp 4096, negFp 3072) == 5248
+    ]
+(** integrationCase runs four float physics ticks; a resting particle must not
+    drift, and every tick is one elementwise pass over the same velocity. *)
+integrationCase () =
+    vel = toGpu [10.0, 0.0 - 20.0, 5.0, 0.0]
+    tick1 = gpuZipWith (toGpu [0.0, 100.0, 2.5, 42.0], vel, integrate)
+    tick2 = gpuZipWith (tick1, vel, integrate)
+    tick4 = gpuZipWith (gpuZipWith (tick2, vel, integrate), vel, integrate)
+    checkAll "particle integration" [
+        at (tick1, 0, 0.0) == 1.0, at (tick1, 1, 0.0) == 98.0, at (tick1, 2, 0.0) == 3.0,
+        at (tick1, 3, 0.0) == 42.0, at (tick2, 0, 0.0) == 2.0, at (tick2, 1, 0.0) == 96.0,
+        at (tick2, 2, 0.0) == 3.5, at (tick4, 0, 0.0) == 4.0, at (tick4, 1, 0.0) == 92.0,
+        at (tick4, 2, 0.0) == 4.5, at (tick4, 3, 0.0) == 42.0, (tick1 |> gpuFold 0.0 sumF) == 144.0,
+        (tick4 |> gpuFold 0.0 sumF) == 142.5, (vel |> gpuFold 0.0 sumF) == 0.0 - 5.0,
+        gpuLength tick4 == 4
+    ]
+(** eulerCase advances position, velocity and acceleration together, matching
+    the closed forms v(n) = v0 + n*a and p(n) = p0 + n*v0 + a*n*(n+1)/2. *)
+eulerCase () =
+    pos = toGpu [0, 100, negFp 50]
+    vel = toGpu [10, 0, 20]
+    acc = toGpu [negFp 2, 3, 0]
+    v4 = velAfter (vel, acc, 4)
+    p4 = posAfter (pos, vel, acc, 4)
+    p1 = posAfter (pos, vel, acc, 1)
+    checkAll "semi-implicit euler" [
+        at (v4, 0, 0) == 2, at (v4, 1, 0) == 12, at (v4, 2, 0) == 20, at (p1, 0, 0) == 8,
+        at (p1, 1, 0) == 103, at (p1, 2, 0) == negFp 30, at (p4, 0, 0) == 20, at (p4, 1, 0) == 130,
+        at (p4, 2, 0) == 30, (v4 |> gpuFold 0 sumInts) == 34, (p4 |> gpuFold 0 sumInts) == 180,
+        (velAfter (vel, acc, 0) |> gpuFold 0 sumInts) == 30,
+        (posAfter (pos, vel, acc, 0) |> gpuFold 0 sumInts) == 50, gpuLength p4 == 3, gpuLength v4 == 3
+    ]
+(** dragCase damps velocity by a Q10 coefficient every tick: total speed falls
+    monotonically, drag 1.0 is the identity and drag 0 stops the world. *)
+dragCase () =
+    vel = toGpu [4096, negFp 2048, 1024, 0]
+    three = damp (vel, 768, 3)
+    checkAll "velocity damping" [
+        (vel |> gpuFold 0 speedOf) == 7168, (three |> gpuFold 0 speedOf) == 3024,
+        (damp (vel, 768, 1) |> gpuFold 0 speedOf) == 5376,
+        (damp (vel, 768, 2) |> gpuFold 0 speedOf) == 4032, at (three, 0, 0) == 1728,
+        at (three, 1, 0) == negFp 864, at (three, 2, 0) == 432, at (three, 3, 1) == 0,
+        (damp (vel, unit (), 5) |> gpuFold 0 speedOf) == 7168,
+        (damp (vel, 0, 1) |> gpuFold 0 speedOf) == 0, (damp (vel, 768, 0) |> gpuFold 0 speedOf) == 7168,
+        gpuLength three == 4
+    ]
+(** aabbCase builds a box from four folds. The sentinel seeds are the empty-world
+    contract: [GPU-FOLD] returns the seed, so the box comes back inverted. *)
+aabbCase () =
+    xs = toGpu [30, negFp 10, 75, 12, 0]
+    ys = toGpu [5, 60, negFp 20, 60, 0]
+    loX = xs |> gpuFold 9999 boundMin
+    hiX = xs |> gpuFold (negFp 9999) boundMax
+    loY = ys |> gpuFold 9999 boundMin
+    hiY = ys |> gpuFold (negFp 9999) boundMax
+    checkAll "bounding box" [
+        loX == negFp 10, hiX == 75, loY == negFp 20, hiY == 60, ((hiX - loX) ?: 0) == 85,
+        ((hiY - loY) ?: 0) == 80, (intDiv ((loX + hiX) ?: 0, 2) ?: 0) == 32,
+        (intDiv ((loY + hiY) ?: 0, 2) ?: 0) == 20,
+        gpuLength (xs |> gpuFilter (\x => x >= loX && x <= hiX)) == 5,
+        (toGpu [7] |> gpuFold 9999 boundMin) == 7, (toGpu [7] |> gpuFold (negFp 9999) boundMax) == 7,
+        (toGpu [] |> gpuFold 9999 boundMin) == 9999,
+        (toGpu [] |> gpuFold (negFp 9999) boundMax) == negFp 9999
+    ]
+(** overlapCase is the four-buffer interval test every broadphase runs: two
+    inclusive comparisons zipped into one flag buffer. Touching edges collide. *)
+overlapCase () =
+    aLo = toGpu [0, 100, 0, 10]
+    aHi = toGpu [10, 110, 100, 20]
+    hit = gpuZipWith (gpuZipWith (aLo, toGpu [15, 50, 300, 30], leqI),
+        gpuZipWith (toGpu [5, 0, 200, 20], aHi, leqI), bothOf)
+    selfHit = gpuZipWith (gpuZipWith (aLo, aHi, leqI), gpuZipWith (aLo, aHi, leqI), bothOf)
+    checkAll "aabb overlap" [
+        at (hit, 0, false) == true, at (hit, 1, true) == false, at (hit, 2, true) == false,
+        at (hit, 3, false) == true, (hit |> gpuMap hitCost |> gpuFold 0 sumInts) == 2,
+        (selfHit |> gpuMap hitCost |> gpuFold 0 sumInts) == 4, gpuLength (hit |> gpuFilter isHit) == 2,
+        gpuLength (hit |> gpuFilter isMiss) == 2, gpuLength hit == 4, leqI (3, 3) == true,
+        leqI (4, 3) == false, bothOf (true, false) == false, bothOf (true, true) == true
+    ]
+(** circleCase combines six buffers — two positions, two radii, a squared
+    distance and a squared reach; circles that exactly touch count as a hit. *)
+circleCase () =
+    dist2 = gpuZipWith (
+        gpuZipWith (toGpu [0, 0, 3000, 0], toGpu [0, 3000, 0, 6000], subInts),
+        gpuZipWith (toGpu [0, 4000, 4000, 0], toGpu [0, 0, 0, 8000], subInts), addSquares)
+    reach = (gpuZipWith (toGpu [100, 2000, 6000, 1000], toGpu [100, 3000, 1000, 1000], sumInts)
+        |> gpuMap sqrOf)
+    hit = gpuZipWith (dist2, reach, leqI)
+    checkAll "circle broadphase" [
+        at (dist2, 0, 1) == 0, at (dist2, 1, 0) == 25000000, at (dist2, 2, 0) == 25000000,
+        at (dist2, 3, 0) == 100000000, (dist2 |> gpuFold 0 sumInts) == 150000000,
+        at (reach, 0, 0) == 40000, at (reach, 1, 0) == 25000000, at (hit, 0, false) == true,
+        at (hit, 1, false) == true, at (hit, 2, false) == true, at (hit, 3, true) == false,
+        gpuLength hit == 4, (hit |> gpuMap hitCost |> gpuFold 0 sumInts) == 3, addSquares (3, 4) == 25,
+        addSquares (0, 0) == 0
+    ]
+(** cullCase draws only entities inside the view distance, in draw order, and
+    pins that compaction publishes exactly the kept prefix. *)
+cullCase () =
+    dists = toGpu [12.5, 250.0, 99.9, 100.0, 3.0, 0.0]
+    drawn = dists |> gpuFilter visible
+    checkAll "distance culling" [
+        gpuLength drawn == 4, gpuLength dists == 6, at (drawn, 0, 0.0) == 12.5,
+        at (drawn, 1, 0.0) == 99.9, at (drawn, 2, 0.0) == 3.0, at (drawn, 3, 9.5) == 0.0,
+        at (drawn, 4, 7.5) == 7.5, (drawn |> gpuFold 0.0 sumF) == 115.4,
+        gpuLength (toGpu [500.0, 900.0] |> gpuFilter visible) == 0,
+        gpuLength (toGpu [1.0, 2.0] |> gpuFilter visible) == 2,
+        gpuLength (toGpu [100.0] |> gpuFilter visible) == 0
+    ]
+(** damageCase resolves an attack wave: overkill floors at zero, zero damage is
+    a no-op, and the survivors compact in place. *)
+damageCase () =
+    health = toGpu [100, 40, 75, 10, 0]
+    after = gpuZipWith (health, toGpu [30, 60, 0, 10, 5], applyDamage)
+    survivors = after |> gpuFilter alive
+    wiped = gpuZipWith (health, health, applyDamage)
+    checkAll "damage resolution" [
+        at (after, 0, 0) == 70, at (after, 1, 9) == 0, at (after, 2, 0) == 75, at (after, 3, 9) == 0,
+        at (after, 4, 9) == 0, gpuLength survivors == 2, at (survivors, 0, 0) == 70,
+        at (survivors, 1, 0) == 75, (survivors |> gpuFold 0 sumInts) == 145,
+        (after |> gpuFold 0 sumInts) == 145, gpuLength (wiped |> gpuFilter alive) == 0,
+        (wiped |> gpuFold 0 sumInts) == 0, gpuLength wiped == 5
+    ]
+(** easingCase eases a camera rig toward its targets and normalizes a channel
+    buffer; a value already at its target is a fixed point of the ease. *)
+easingCase () =
+    target = toGpu [4.0, 0.0, 1.0, 1.0]
+    eased = gpuZipWith (toGpu [0.0, 8.0, 1.0, 0.0], target, lerpQuarter)
+    twice = gpuZipWith (eased, target, lerpQuarter)
+    safe = toGpu [0.0 - 0.5, 0.25, 1.75, 1.0, 0.0] |> gpuMap clamp01
+    checkAll "easing and clamping" [
+        at (eased, 0, 0.0) == 1.0, at (eased, 1, 0.0) == 6.0, at (eased, 2, 0.0) == 1.0,
+        at (eased, 3, 0.0) == 0.25, at (twice, 0, 0.0) == 1.75, at (twice, 2, 0.0) == 1.0,
+        (safe |> gpuFold 0.0 sumF) == 2.25, at (safe, 0, 9.9) == 0.0, at (safe, 1, 0.0) == 0.25,
+        at (safe, 2, 0.0) == 1.0, at (safe, 3, 0.0) == 1.0, at (safe, 4, 9.9) == 0.0,
+        gpuLength safe == 5
+    ]
+(** packCase meets three channel buffers in two passes and unpacks them again;
+    an out-of-range channel clamps rather than bleeding into its neighbour. *)
+packCase () =
+    packed = gpuZipWith (
+        gpuZipWith (toGpu [255, 0, 18, 300], toGpu [0, 255, 52, 128], packRG),
+        toGpu [0, 0, 86, negFp 20], packRGB)
+    checkAll "colour packing" [
+        at (packed, 0, 0) == red (), at (packed, 1, 0) == green (), at (packed, 2, 0) == 1193046,
+        at (packed, 3, 0) == 16744448, (packed |> gpuMap redOf |> gpuFold 0 sumInts) == 528,
+        (packed |> gpuMap greenOf |> gpuFold 0 sumInts) == 435,
+        (packed |> gpuMap blueOf |> gpuFold 0 sumInts) == 86,
+        (packed |> gpuMap luminance |> gpuFold 0 sumInts) == 423, gpuLength packed == 4,
+        packRGB (packRG (0, 0), 0) == black (), packRGB (packRG (255, 255), 255) == white (),
+        packRGB (packRG (255, 0), 0) == red (), packRGB (packRG (0, 255), 0) == green (),
+        redOf (white ()) == 255, greenOf (white ()) == 255, blueOf (white ()) == 255,
+        redOf (black ()) == 0, greenOf (green ()) == 255, redOf (green ()) == 0,
+        redOf (packRGB (packRG (300, 0), 0)) == 255, blueOf (packRGB (packRG (0, 0), negFp 20)) == 0,
+        clampChannel 255 == 255, clampChannel 256 == 255, clampChannel (negFp 1) == 0,
+        luminance (white ()) == 255, luminance (black ()) == 0, luminance (red ()) == 76
+    ]
+(** blendCase composites two colour layers through a coverage buffer. Coverage
+    0 keeps the base and 256 takes the layer exactly, with no rounding drift. *)
+blendCase () =
+    alpha = toGpu [0, 128, 256, 64]
+    blended = gpuZipWith (
+        gpuZipWith (toGpu [white (), red (), black (), green ()], (alpha |> gpuMap invAlpha), scaleColor),
+        gpuZipWith (toGpu [black (), green (), white (), red ()], alpha, scaleColor), sumInts)
+    checkAll "alpha blending" [
+        at (blended, 0, 0) == white (), at (blended, 2, 0) == white (),
+        redOf (at (blended, 1, 0)) == 127, greenOf (at (blended, 1, 0)) == 127,
+        blueOf (at (blended, 1, 0)) == 0, redOf (at (blended, 3, 0)) == 63,
+        greenOf (at (blended, 3, 0)) == 191, blueOf (at (blended, 3, 0)) == 0,
+        (blended |> gpuMap luminance |> gpuFold 0 sumInts) == 754,
+        scaleColor (white (), 256) == white (), scaleColor (white (), 0) == black (), invAlpha 0 == 256,
+        invAlpha 256 == 0, gpuLength blended == 4
+    ]
+(** paletteCase gathers through an index buffer: a wrapped index tiles the
+    palette, and one off the end becomes magenta rather than a silent black. *)
+paletteCase () =
+    pal = toGpu [black (), red (), green (), 255, white ()]
+    tiled = gpuIota 8 |> gpuMap (\i => at (pal, (i % 5) ?: 0, missingColor ()))
+    raw = gpuIota 8 |> gpuMap (\i => at (pal, i, missingColor ()))
+    checkAll "palette gather" [
+        gpuLength tiled == 8, gpuLength raw == 8, at (tiled, 0, 1) == black (),
+        at (tiled, 4, 0) == white (), at (tiled, 5, 1) == black (), at (tiled, 6, 0) == red (),
+        at (raw, 4, 0) == white (), at (raw, 5, 0) == missingColor (),
+        at (raw, 7, 0) == missingColor (), (tiled |> gpuMap redOf |> gpuFold 0 sumInts) == 765,
+        gpuLength (raw |> gpuFilter (\c => c == missingColor ())) == 3,
+        at (pal, negFp 1, missingColor ()) == missingColor (), at (pal, 0, missingColor ()) == black (),
+        gpuLength (gpuIota 0 |> gpuMap (\i => at (pal, i, missingColor ()))) == 0
+    ]
+(** gatherCase de-interleaves an array-of-structs vertex stream with a strided
+    gather; a read that overruns the stream must land on the padding value. *)
+gatherCase () =
+    flat = toGpu [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
+    xs = gpuIota 4 |> gpuMap (\i => at (flat, (3 * i) ?: 0, 0))
+    ys = gpuIota 4 |> gpuMap (\i => at (flat, ((3 * i) ?: 0) + 1 ?: 0, 0))
+    zs = gpuIota 4 |> gpuMap (\i => at (flat, ((3 * i) ?: 0) + 2 ?: 0, 0))
+    flipped = gpuIota 4 |> gpuMap (\i => at (xs, (3 - i) ?: 0, 0))
+    over = gpuIota 5 |> gpuMap (\i => at (flat, (3 * i) ?: 0, negFp 1))
+    checkAll "aos to soa gather" [
+        (xs |> gpuFold 0 sumInts) == 22, (ys |> gpuFold 0 sumInts) == 26,
+        (zs |> gpuFold 0 sumInts) == 30, (flat |> gpuFold 0 sumInts) == 78, at (xs, 0, 0) == 1,
+        at (xs, 3, 0) == 10, at (ys, 2, 0) == 8, at (zs, 1, 0) == 6, at (flipped, 0, 0) == 10,
+        at (flipped, 3, 0) == 1, (flipped |> gpuFold 0 sumInts) == 22, at (over, 4, 0) == negFp 1,
+        gpuLength over == 5, gpuLength xs == 4
+    ]
+(** transposeCase gathers a tile grid column-major. A transpose permutes, so the
+    total is invariant and transposing twice must differ from the source by 0. *)
+transposeCase () =
+    tiles = gpuIota 12
+    flip = tileTranspose (tiles, 4, 3)
+    back = tileTranspose (flip, 3, 4)
+    checkAll "tile transpose" [
+        gpuLength flip == 12, gpuLength back == 12, at (flip, 0, 1) == 0, at (flip, 1, 0) == 4,
+        at (flip, 2, 0) == 8, at (flip, 3, 0) == 1, at (flip, 11, 0) == 11,
+        (flip |> gpuFold 0 sumInts) == 66,
+        (gpuZipWith (back, tiles, subInts) |> gpuFold 0 speedOf) == 0,
+        (flip |> gpuFold (negFp 1) boundMax) == 11, gpuLength (tileTranspose (gpuIota 1, 1, 1)) == 1,
+        (tileTranspose (gpuIota 1, 1, 1) |> gpuFold 9 boundMin) == 0
+    ]
+(** stencilCase runs an edge-clamped three-tap blur over a heightfield. A spike
+    spreads and flattens while its total survives; a plateau is a fixed point. *)
+stencilCase () =
+    spike = toGpu [0, 0, 90, 0, 0]
+    smoothed = gpuIota 5 |> gpuMap (\i => blurAt (spike, 5, i))
+    plateau = gpuIota 5 |> gpuMap (\i => blurAt (toGpu [7, 7, 7, 7, 7], 5, i))
+    checkAll "edge-clamped stencil" [
+        at (smoothed, 0, 1) == 0, at (smoothed, 1, 0) == 30, at (smoothed, 2, 0) == 30,
+        at (smoothed, 3, 0) == 30, at (smoothed, 4, 1) == 0, (smoothed |> gpuFold 0 sumInts) == 90,
+        (smoothed |> gpuFold 0 boundMax) == 30, (spike |> gpuFold 0 boundMax) == 90,
+        (plateau |> gpuFold 0 sumInts) == 35, at (plateau, 0, 0) == 7, at (plateau, 4, 0) == 7,
+        clampIdx (negFp 9, 5) == 0, clampIdx (99, 5) == 4, clampIdx (2, 5) == 2
+    ]
+(** budgetCase pins [GPU-SCAN] as an inclusive seeded prefix: the last element
+    equals the fold, a carried budget shifts every prefix, max gives the peak. *)
+budgetCase () =
+    costs = toGpu [3, 5, 2, 7, 1, 9]
+    running = costs |> gpuScan 0 sumInts
+    carried = costs |> gpuScan 100 sumInts
+    peak = costs |> gpuScan 0 boundMax
+    checkAll "frame budget" [
+        at (running, 0, 0) == 3, at (running, 1, 0) == 8, at (running, 3, 0) == 17,
+        at (running, 5, 0) == 27, at (running, 5, 0) == (costs |> gpuFold 0 sumInts),
+        gpuLength running == 6, at (carried, 0, 0) == 103, at (carried, 5, 0) == 127,
+        at (peak, 2, 0) == 5, at (peak, 5, 0) == 9,
+        gpuLength (running |> gpuFilter (\c => c > 12)) == 3,
+        at (toGpu [3] |> gpuScan 0 sumInts, 0, 0) == 3, gpuLength (toGpu [] |> gpuScan 0 sumInts) == 0
+    ]
+(** emptyWorldCase is the degenerate frame: maps and filters stay empty, a fold
+    returns its seed untouched, and a read is an Error, never a zero. *)
+emptyWorldCase () =
+    none = toGpu []
+    idx = gpuIota 0
+    checkAll "empty world" [
+        gpuLength none == 0, gpuLength idx == 0, gpuLength (none |> gpuMap sqrOf) == 0,
+        gpuLength (none |> gpuFilter alive) == 0, gpuLength (none |> gpuScan 0 sumInts) == 0,
+        gpuLength (gpuZipWith (none, toGpu [1, 2, 3], sumInts)) == 0,
+        gpuLength (gpuZipWith (toGpu [1, 2, 3], none, subInts)) == 0,
+        gpuLength (gpuZipWith (gpuZipWith (toGpu [1, 2], none, sumInts), toGpu [9], sumInts)) == 0,
+        (none |> gpuFold 0 sumInts) == 0, (none |> gpuFold 9999 boundMin) == 9999,
+        (none |> gpuFold 0 speedOf) == 0, at (none, 0, negFp 1) == negFp 1,
+        at (idx, 0, negFp 1) == negFp 1, gpuLength (idx |> gpuMap (\i => at (none, i, 0))) == 0
+    ]
+(** raggedCase pins [GPU-ZIPWITH] truncation: a three-buffer step narrows to its
+    shortest stream instead of reading past the end. *)
+raggedCase () =
+    pos = toGpu [1, 2, 3, 4, 5]
+    vel = toGpu [10, 20, 30]
+    acc = toGpu [100, 200]
+    stepped = gpuZipWith (pos, gpuZipWith (vel, acc, sumInts), sumInts)
+    swapped = gpuZipWith (gpuZipWith (acc, vel, sumInts), pos, sumInts)
+    checkAll "ragged streams truncate" [
+        gpuLength (gpuZipWith (vel, acc, sumInts)) == 2, gpuLength stepped == 2,
+        at (stepped, 0, 0) == 111, at (stepped, 1, 0) == 222, (stepped |> gpuFold 0 sumInts) == 333,
+        at (stepped, 2, negFp 1) == negFp 1, gpuLength swapped == 2,
+        (swapped |> gpuFold 0 sumInts) == 333, gpuLength (gpuZipWith (pos, pos, sumInts)) == 5,
+        gpuLength (gpuZipWith (toGpu [1], pos, subInts)) == 1
+    ]
+test ("q10 fixed-point scalars and scale kernels truncate toward zero", fixedPointCase)
+test ("vector algebra combines four component buffers", vectorCase)
+test ("octagonal distance estimates length without a root", magnitudeCase)
+test ("particles integrate velocity over ticks", integrationCase)
+test ("semi-implicit euler advances three buffers together", eulerCase)
+test ("drag damps velocity monotonically", dragCase)
+test ("folds build a bounding box and survive an empty world", aabbCase)
+test ("aabb overlap zips four interval buffers", overlapCase)
+test ("circle broadphase combines six buffers", circleCase)
+test ("culling keeps in-range entities in draw order", cullCase)
+test ("damage resolves and survivors compact", damageCase)
+test ("easing and clamping normalize float buffers", easingCase)
+test ("three channel buffers pack, unpack and clamp", packCase)
+test ("alpha blending composites through a coverage buffer", blendCase)
+test ("palette gathers paint magenta where the index misses", paletteCase)
+test ("a strided gather de-interleaves a vertex stream", gatherCase)
+test ("transposing a tile grid twice is the identity", transposeCase)
+test ("an edge-clamped stencil blurs a heightfield", stencilCase)
+test ("scan accumulates a running frame budget", budgetCase)
+test ("every combinator survives an empty world", emptyWorldCase)
+test ("ragged entity streams truncate to the shortest", raggedCase)

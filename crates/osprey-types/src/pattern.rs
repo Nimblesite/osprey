@@ -266,6 +266,20 @@ impl Checker {
     }
 
     fn bind_result_fields(&mut self, fields: &[String], disc: &Type, local: &mut TypeEnv) {
+        // An UNRESOLVED discriminant is not a candidate for the auto-wrap rule
+        // below — auto-wrap answers "what does `Success { value }` mean over a
+        // value that is known not to be a Result", and nothing is known here
+        // yet. A `Success`/`Error` pattern is itself the evidence, so pin the
+        // scrutinee to a Result with an open payload. Binding the whole
+        // variable as the payload instead detached the two: once the scrutinee
+        // later became `Result<int, MathError>` — as a deferred arithmetic
+        // operand does ([`crate::expr::Checker::deferred_arith`]) — `value` was
+        // still the Result, and `Success { value: value }` failed with `cannot
+        // unify Result<int, MathError> with int`.
+        if matches!(self.ctx.prune(disc), Type::Var(_)) {
+            let open = Type::result(self.ctx.fresh(), self.ctx.fresh());
+            self.push_unify(&open, disc);
+        }
         let dp = self.ctx.prune(disc);
         let ok = match &dp {
             Type::Con { name, args } if name == names::RESULT && !args.is_empty() => {
@@ -274,8 +288,14 @@ impl Checker {
             _ => dp.clone(),
         };
         for fname in fields {
+            // The desugarer's unspellable `?:` binder names the SAME success
+            // payload `value` does. Leaving it to the fresh-variable fallback
+            // detached the payload from the fallback expression, so
+            // `listGet([1, 2, 3], 0) ?: 9.5` type-checked and only failed in the
+            // backend ("match arms disagree on type"), and an empty literal's
+            // element type was never resolved at all [PATTERN-RESULT-DEFAULT].
             let ft = match fname.as_str() {
-                "value" => ok.clone(),
+                "value" | osprey_ast::RESULT_DEFAULT_PAYLOAD => ok.clone(),
                 "message" => Type::string(),
                 _ => self.ctx.fresh(),
             };

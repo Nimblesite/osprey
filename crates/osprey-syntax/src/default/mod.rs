@@ -18,12 +18,10 @@ mod expr;
 mod lower;
 mod modules;
 
-const I64_MIN_MAGNITUDE: &str = "9223372036854775808";
-
 fn is_i64_min_magnitude_text(text: &str) -> bool {
     text.chars()
         .filter(|c| !c.is_whitespace() && *c != '(' && *c != ')')
-        .eq(I64_MIN_MAGNITUDE.chars())
+        .eq(crate::I64_MIN_MAGNITUDE.chars())
 }
 
 pub(crate) use lower::Lowerer;
@@ -92,7 +90,7 @@ fn collect_errors(node: Node<'_>, src: &[u8], out: &mut Vec<SyntaxError>) {
     } else if node.kind() == "integer" {
         let text = node.utf8_text(src).unwrap_or_default();
         let valid = text.parse::<i64>().is_ok()
-            || (text == I64_MIN_MAGNITUDE && is_negative_numeric(node, src));
+            || (text == crate::I64_MIN_MAGNITUDE && is_negative_numeric(node, src));
         if !valid {
             out.push(SyntaxError {
                 message: format!("integer literal `{text}` is outside the signed 64-bit range"),

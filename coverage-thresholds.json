@@ -1,6 +1,6 @@
 {
   "_agent_pmo": "b636503",
-  "_doc": "Per-project coverage thresholds. Each entry is a project; `make test` measures it and fails hard below its threshold. Rust entries (language=rust) are individual crates under crates/<name>/, each measured separately from lcov.info; the vscode-extension entry is measured from its V8 coverage summary. FLOOR: every crate is gated at >=95%. RATCHET: thresholds are monotonically increasing — when a crate's coverage improves, bump its threshold to max(95, measured - 1) in the same PR so it can never regress.",
+  "_doc": "Per-project coverage thresholds. Each entry is a project; `make test` measures it and fails hard below its threshold. Rust entries (language=rust) are individual crates under crates/<name>/, each measured separately from lcov.info; the vscode-extension entry is measured from its V8 coverage summary; C entries (language=c) are individual libraries under compiler/runtime/<name>.c, each measured as gcov line coverage by the Makefile's _coverage_check_c_runtime (the best number across every unit-test suite that links the library). wasm-only units (web_runtime.c, wasm_builtins_runtime.c) do not build natively and are not gated, and neither are term_runtime.c/test_runtime.c: their suites run every case in a FORKED CHILD (a pty-less terminal and the TAP state machine can only be asserted on captured child output), and the child's gcov counters are never flushed back, so gcov reports 0% against 10k passing assertions. Gate them once the harness calls __gcov_dump in the child. FLOOR: every Rust crate is gated at >=95%. C LIBRARIES: a threshold must hold on EVERY platform the gate runs on, so each C entry is the WEAKEST measured platform minus ~2 points, not the local one. macOS and Linux disagree by far more than the '~2 points of gcov rounding' this file used to assume, and they disagree in BOTH directions -- measured on the same commit: system_runtime 78.24 on macOS vs 70.24 on Linux, fiber_runtime 74.83 vs 70.64, websocket_client_runtime 37.96 vs 30.34, but random_runtime 47.50 vs 50.00 and websocket_server_runtime 24.89 vs 27.01. Thresholds set from macOS alone passed locally and failed the required CI job. Re-measure on BOTH before ratcheting; Linux numbers are reproducible in a Debian container. C libraries TARGET >=90%; everything under it is a to-do, worst first: websocket_server 27, websocket_client 30, random 47, http_client 67, system 70, fiber 71, coverage_runtime 78, http_shared 81 (#197). RATCHET: thresholds are monotonically increasing -- when a project's coverage improves on every platform, bump its threshold to max(floor, weakest measured - 1) in the same PR so it can never regress.",
   "projects": {
     "osprey-ast": {
       "threshold": 97,
@@ -41,6 +41,106 @@
     "vscode-extension": {
       "threshold": 95,
       "language": "typescript"
+    },
+    "memory_runtime": {
+      "threshold": 90,
+      "language": "c"
+    },
+    "memory_arc": {
+      "threshold": 89,
+      "language": "c"
+    },
+    "memory_gc": {
+      "threshold": 90,
+      "language": "c"
+    },
+    "gpu_runtime": {
+      "threshold": 90,
+      "language": "c"
+    },
+    "effects_runtime": {
+      "threshold": 90,
+      "language": "c"
+    },
+    "json_runtime": {
+      "threshold": 87,
+      "language": "c"
+    },
+    "ffi_runtime": {
+      "threshold": 90,
+      "language": "c"
+    },
+    "random_runtime": {
+      "threshold": 45,
+      "language": "c"
+    },
+    "system_runtime": {
+      "threshold": 68,
+      "language": "c"
+    },
+    "string_runtime": {
+      "threshold": 90,
+      "language": "c"
+    },
+    "string_runtime_list": {
+      "threshold": 90,
+      "language": "c"
+    },
+    "list_runtime": {
+      "threshold": 90,
+      "language": "c"
+    },
+    "map_runtime": {
+      "threshold": 90,
+      "language": "c"
+    },
+    "map_runtime_hamt": {
+      "threshold": 90,
+      "language": "c"
+    },
+    "fiber_runtime": {
+      "threshold": 68,
+      "language": "c"
+    },
+    "coverage_runtime": {
+      "threshold": 77,
+      "language": "c"
+    },
+    "profiler_runtime": {
+      "threshold": 85,
+      "language": "c"
+    },
+    "profiler_sampler": {
+      "threshold": 90,
+      "language": "c"
+    },
+    "http_shared": {
+      "threshold": 74,
+      "language": "c"
+    },
+    "http_client_runtime": {
+      "threshold": 66,
+      "language": "c"
+    },
+    "http_server_request": {
+      "threshold": 88,
+      "language": "c"
+    },
+    "http_server_response": {
+      "threshold": 87,
+      "language": "c"
+    },
+    "http_server_runtime": {
+      "threshold": 77,
+      "language": "c"
+    },
+    "websocket_client_runtime": {
+      "threshold": 28,
+      "language": "c"
+    },
+    "websocket_server_runtime": {
+      "threshold": 22,
+      "language": "c"
     }
   }
 }

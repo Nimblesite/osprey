@@ -2,6 +2,9 @@
 // adds rows and writes queries against it. SQL and Osprey are both highlighted
 // with Prism using the SAME Osprey grammar the site build uses (eleventy.config.mjs).
 import { runModule } from "/wasm/wasi-shim.mjs";
+// The site-wide Osprey grammar, so this page colours exactly like every other
+// Osprey snippet (eleventy.config.mjs highlights those with the same module).
+import { ospreyGrammar as OSPREY_GRAMMAR } from "/js/osprey-grammar.mjs";
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s).replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
@@ -10,24 +13,6 @@ const OSP_WASM = "/wasm/build/studio.osp.wasm";
 const OSP_SRC = "/wasm/studio.osp";
 const SQLJS = "https://cdn.jsdelivr.net/npm/sql.js@1.11.0/dist/";
 const PRISM = "https://cdn.jsdelivr.net/npm/prismjs@1.29.0/";
-
-// Osprey Prism grammar — identical to the one in eleventy.config.mjs so the
-// source here colours exactly like every other Osprey snippet on the site.
-const OSPREY_GRAMMAR = {
-  comment: [
-    { pattern: /(^|[^\\])\/\*[\s\S]*?(?:\*\/|$)/, lookbehind: true },
-    { pattern: /(^|[^\\:])\/\/.*/, lookbehind: true },
-  ],
-  string: { pattern: /"(?:[^"\\]|\\.)*"/, greedy: true },
-  interpolation: { pattern: /\$\{[^}]+\}/, inside: { punctuation: /^\$\{|\}$/ } },
-  keyword:
-    /\b(?:fn|let|mut|match|type|effect|perform|handle|in|extern|spawn|await|yield|if|else|import|module|true|false|where|Unit|Result|Option|Some|None|Ok|Err)\b/,
-  type: /\b(?:int|float|string|bool|List|Map|Set|Ptr|Channel|Fiber|Json|HttpResponse)\b/,
-  function: /\b[a-zA-Z_][a-zA-Z0-9_]*(?=\s*\()/,
-  number: /\b(?:0x[\da-f]+|\d*\.?\d+(?:e[+-]?\d+)?)\b/i,
-  operator: /\|>|->|=>|<-|\+|-|\*|\/|%|==|!=|<=|>=|<|>|=|!|&&|\|\|/,
-  punctuation: /[{}[\];(),.:]/,
-};
 
 const PRESETS = [
   { label: "revenue by region", sql: "SELECT region, SUM(qty * price) AS revenue, SUM(qty) AS units\nFROM sales GROUP BY region ORDER BY revenue DESC;" },

@@ -76,14 +76,30 @@ pub(crate) fn is_lit(v: &Value) -> bool {
     lit_elem(v.osp_ty.as_deref()).is_some()
 }
 
-/// `[e0, e1, …]` → a flat `{ length, data }` block.
-pub(crate) fn gen_list(cg: &mut Codegen, elements: &[Expr]) -> Result<Value> {
+/// The element `LType` inference resolved for the list literal at `position`,
+/// when it resolved to a concrete scalar. A still-polymorphic element has no
+/// representation to record.
+pub(crate) fn inferred_elem(cg: &Codegen, position: Option<osprey_ast::Position>) -> Option<LType> {
+    crate::types::scalar_elem(cg.prog.list_elem_type(position))
+}
+
+/// `[e0, e1, …]` → a flat `{ length, data }` block. `position` is the literal's
+/// own source position, which an EMPTY literal needs: with no element to lower,
+/// the element type inference published there is the only thing that can tag
+/// the handle, and an untagged empty list reads back as `int` however it was
+/// declared ([GPU-BUFFER-ELEM]).
+pub(crate) fn gen_list(
+    cg: &mut Codegen,
+    elements: &[Expr],
+    position: Option<osprey_ast::Position>,
+) -> Result<Value> {
     if elements.is_empty() {
         // No data block, no elements: nothing for the drop walk to release.
         let obj = cg.malloc_struct(LIST_STRUCT, crate::meta::list_hdr_meta(false));
         crate::aggregate::store_field(cg, LIST_STRUCT, &obj, 0, LType::I64, "0");
         crate::aggregate::store_field(cg, LIST_STRUCT, &obj, 1, LType::Str, "null");
-        let v = Value::handle(obj, lit_owner(&Value::new("", LType::Str)));
+        let elem = inferred_elem(cg, position).unwrap_or(LType::Str);
+        let v = Value::handle(obj, lit_owner(&Value::new("", elem)));
         crate::arc::own(cg, &v);
         return Ok(v);
     }
@@ -184,7 +200,33 @@ pub(crate) fn to_runtime_list(cg: &mut Codegen, v: Value) -> Value {
     let word = crate::conv::box_to_i64(cg, Value::new(raw, elem));
     crate::collections::list_builder_push_borrowed(cg, &bld, &word.operand);
     crate::loops::close_range_loop(cg, &lp);
-    crate::collections::list_builder_seal(cg, &bld)
+    // The literal knew its element type; the runtime list keeps that knowledge
+    // in its owner tag rather than losing it to the uniform `i64` element ABI
+    // ([`crate::collections::LIST_TAG`]).
+    let sealed = crate::collections::list_builder_seal(cg, &bld);
+    sealed.with_owner(Some(crate::collections::list_owner(Some(elem))))
+}
+
+/// Normalize a list value that is about to ESCAPE the scope which knows its
+/// representation — a function return, a record field, an object literal, a
+/// lambda's return slot.
+///
+/// The flat layout is a codegen-local optimization whose element tag rides on
+/// the VALUE (`[]double`), never on the type: `List<T>` has no owner tag
+/// ([`crate::types::owner_name`]), so a receiver seeing only `List<T>` reads a
+/// literal's `{ length, data }` header as an `OspreyList` — the exact
+/// misreading [`to_runtime_list`] documents. `fn xs() = [1, 2, 3]` followed by
+/// `listGet(xs(), 0)` therefore segfaulted, as did a record field holding a
+/// literal, while the same literal used in place worked.
+///
+/// Converting at the escape keeps the fast path where the tag is visible (a
+/// literal consumed in the scope that built it, `toGpu([1, 2, 3])`) and pays
+/// for the runtime layout only when the value outlives that knowledge.
+pub(crate) fn escaping(cg: &mut Codegen, v: Value) -> Value {
+    if is_lit(&v) {
+        return to_runtime_list(cg, v);
+    }
+    v
 }
 
 /// `target[index]` — flat list-literal access (bounds-checked `Result<T, _>`) or

@@ -1,0 +1,20 @@
+ok 1 - every combinator over an empty buffer stays empty
+ok 2 - gpuFold over an empty buffer is the initial value
+ok 3 - every combinator handles a one-element buffer
+ok 4 - gpuZipWith truncates to the shorter operand in both orders
+ok 5 - gpuZipWith produces the kernel's element type
+ok 6 - gpuFilter keeps all, none, or alternates in source order
+ok 7 - gpuFilter predicates compose comparisons and boolean operators
+ok 8 - gpuScan is an inclusive prefix element by element
+ok 9 - gpuScan seeds element zero with the initial value
+ok 10 - non-commutative combines pin the traversal order
+ok 11 - five-stage and longer chains stay exact
+ok 12 - shape-changing combinators compose
+ok 13 - kernels move elements between all three scalar types
+ok 14 - an iterator pipeline fuses into a buffer with no list
+ok 15 - a fused buffer feeds every combinator
+ok 16 - gpuIota builds the index buffer
+ok 17 - gpuGet reads typed elements and errors out of bounds
+ok 18 - gpuDevice names the active backend
+1..18
+# tests=18 passed=18 failed=0 skipped=0

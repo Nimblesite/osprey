@@ -48,29 +48,55 @@ runs:
       # osprey-emitted debug info correctly) is buggy on x86_64: it reports a
       # stopped frame's source path as "." and ignores breakpoint conditions,
       # and intervening releases (20) flake on x86_64 step/line resolution.
-      # Pin lldb-dap to 22 — the exact toolchain (LLVM 22.1.8) developers run on
-      # macOS, where the whole debugger E2E suite passes deterministically, and
-      # which is stable on Linux too (verified). Keep clang/llvm 18 for the C
-      # runtime build. The distro lldb is a last-resort fallback so a mirror
-      # hiccup is loud (debugger tests fail) rather than silently degraded.
+      # So pin lldb-dap to the 21 channel and keep clang/llvm 18 for the C
+      # runtime build.
+      #
+      # 21 because it is a RELEASED LLVM: apt.llvm.org's
+      # llvm-toolchain-<dist>-21 is frozen to that release branch. The 22
+      # channel is NOT — 22 is still in development, so
+      # llvm-toolchain-<dist>-22 is a rolling trunk nightly whose builds all
+      # report themselves as "22.1.8" no matter which day's snapshot they are.
+      # Pinning there looked like pinning and silently advanced a month of
+      # trunk, landing on a snapshot whose lldb-dap never emits the
+      # `initialized` event and so deadlocks every DAP client on every binary —
+      # a trivial clang-compiled C program included, while the plain `lldb` CLI
+      # debugs the same binaries fine. That surfaced as eight identical
+      # "Debug session did not start" timeouts in the debugger E2E suite.
+      # Verified in a noble container holding the CI packages: lldb-dap 21
+      # passes all six debugger E2E workflows, the 22 snapshot passes none.
       run: |
         set -euo pipefail
         sudo apt-get update
         sudo apt-get install -y clang llvm libssl-dev libsqlite3-dev pkg-config zsh wget gnupg
         clang --version
-        LLVM_VER=22
+        LLVM_VER=21
         . /etc/os-release
         wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key \
           | sudo tee /etc/apt/trusted.gpg.d/apt.llvm.org.asc >/dev/null
         echo "deb http://apt.llvm.org/${VERSION_CODENAME}/ llvm-toolchain-${VERSION_CODENAME}-${LLVM_VER} main" \
           | sudo tee /etc/apt/sources.list.d/llvm-${LLVM_VER}.list >/dev/null
         sudo apt-get update
-        sudo apt-get install -y "lldb-${LLVM_VER}" || sudo apt-get install -y lldb
-        # Pin /usr/bin/lldb-dap to the newest lldb-dap available (prefers the
-        # apt.llvm.org build) so the extension's PATH//usr/bin resolver finds it.
-        DAP="$(ls /usr/lib/llvm-*/bin/lldb-dap /usr/bin/lldb-dap-* /usr/bin/lldb-vscode 2>/dev/null | sort -V | tail -1 || true)"
-        if [ -n "$DAP" ]; then sudo ln -sf "$DAP" /usr/bin/lldb-dap; fi
-        command -v lldb-dap && lldb-dap --version | head -2 || echo "warning: lldb-dap unresolved"
+        # No fallback to the distro lldb: 18's DAP server is the known-broken
+        # one above, so falling back to it trades a loud install failure for
+        # eight silent test failures.
+        sudo apt-get install -y "lldb-${LLVM_VER}"
+        # Resolve the pinned build by name so the extension's PATH//usr/bin
+        # resolver finds it. Taking "the newest lldb-dap on the box" instead is
+        # how an unrelated toolchain won this slot before; the debugger tests
+        # must run against the version this file names.
+        DAP="/usr/lib/llvm-${LLVM_VER}/bin/lldb-dap"
+        test -x "$DAP"
+        sudo ln -sf "$DAP" /usr/bin/lldb-dap
+        lldb-dap --version | head -2
+
+    - name: Verify lldb-dap can start a debug session
+      if: runner.os == 'Linux'
+      shell: bash
+      # A broken adapter is otherwise invisible until the debugger E2E suite
+      # times out eight times over, which reads as an Osprey regression. This
+      # runs the same handshake against a three-line C program, so the adapter
+      # is what fails, by name, in seconds.
+      run: python3 "${{ github.action_path }}/lldb-dap-preflight.py" /usr/bin/lldb-dap
 
     - name: Install LLVM and OpenSSL (macOS)
       if: runner.os == 'macOS'

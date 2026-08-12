@@ -32,10 +32,12 @@ Code generation tracks managed values in an ownership ledger:
 - Region exits and proved last uses release their remaining owners.
 - A returned owner transfers its reference; a returned borrow is retained.
 
-The generated calls are identical for every backend. They are no-ops under the
-default and tracing-GC runtimes and active under ARC. For a proved-unique value,
-codegen emits the paired `osp_release_unique` hook with LLVM allocator/free
-attributes, allowing `-O2` to remove a non-escaping allocation and release.
+The generated calls are identical for every backend. General retain/release
+calls are no-ops under the default and tracing-GC runtimes and active under ARC.
+For a proved-unique value, codegen emits the paired `osp_release_unique` hook
+with LLVM allocator/free attributes, allowing `-O2` to remove a non-escaping
+allocation and release. The default runtime also frees that unique value when
+the pair survives optimization; tracing GC leaves it for the collector.
 
 ## Fiber Boundary Ownership [MEM-FIBER-ISOLATION]
 
@@ -96,6 +98,13 @@ scans the native stack, flushed registers, and data/BSS ranges. A word is a root
 only when it equals a registered allocation base. A false positive can retain an
 otherwise dead object but cannot make the collector free a reachable one. The
 collector is non-moving.
+
+Root discovery is implemented for Apple and glibc-Linux targets. On Windows
+the stack base falls back to an address inside the collector's own frame and
+data/BSS ranges are not scanned at all, so the GC backend is **not part of
+the supported Windows contract** until `GetCurrentThreadStackLimits` (or TEB
+bounds) and executable data/BSS bounds are implemented, with stack-root and
+global-root regressions on a required Windows job.
 
 Collection is restricted to the initial allocator thread. The first allocation
 from another thread permanently disables collection, while allocation-table

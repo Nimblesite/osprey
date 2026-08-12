@@ -85,7 +85,7 @@ fn push_expression_children<'a>(expression: &'a Expr, pending: &mut Vec<Node<'a>
                 }
             }
         }
-        Expr::List(values) => push_each(values, pending, |value| value),
+        Expr::List(values, _) => push_each(values, pending, |value| value),
         Expr::Map(entries) => {
             for entry in entries.iter().rev() {
                 pending.push(Node::Expression(&entry.value));

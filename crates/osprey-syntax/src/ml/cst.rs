@@ -472,8 +472,10 @@ pub(crate) enum MlExpr {
         /// The field name.
         name: String,
     },
-    /// `[ a, b, c ]` list literal (possibly empty).
-    List(Vec<MlExpr>),
+    /// `[ a, b, c ]` list literal (possibly empty), with the position of its
+    /// opening `[` — inference keys the resolved `List<T>` on it so an EMPTY
+    /// literal still reaches the backend with an element type.
+    List(Vec<MlExpr>, Position),
     /// `[ k => v, … ]` map literal — the bracket form disambiguated from a list
     /// by the `=>` entry separator ([FLAVOR-ML-MAP]).
     Map(Vec<(MlExpr, MlExpr)>),

@@ -1,0 +1,498 @@
+// GPU stress, scale and numeric-edge workloads: million-element pipelines,
+// two-dozen-pass chains, buffers rebuilt from their own output, and the
+// checked-arithmetic boundaries where a `?:` fallback is all that stands
+// between a kernel and an overflow. Every expected value is closed-form, and
+// every accumulation that can overflow asserts both sides of its boundary —
+// the last value that fits and the first that does not ([GPU-BACKEND-HOST],
+// [GPU-FOLD], [GPU-SCAN], [GPU-FILTER], [GPU-ZIPWITH], [GPU-GET],
+// [GPU-CONVERT] — docs/specs/0034-GPUComputation.md).
+
+/// overflowMark is the sentinel a checked-arithmetic fallback publishes: no
+/// kernel below produces it any other way, so reading it back proves the
+/// fallback fired rather than the arithmetic wrapping. maxInt and minInt are
+/// the two's-complement edges these accumulations walk to; hugeFloat is where
+/// a double's ulp reaches 2.0, so adding 1.0 to it is a no-op. minInt counts
+/// down from -maxInt because the ML flavor rejects the literal -2^63.
+fn overflowMark() = -999
+fn maxInt() = 9223372036854775807
+fn minInt() = ((0 - maxInt()) ?: 0) - 1 ?: 0
+fn hugeFloat() = 10000000000000000.0
+
+/// The growth kernels and the shared associative reduction — on overflow tally
+/// keeps its accumulator, so a saturating fold freezes rather than wraps. bump
+/// and lower step an element up and down, so a long chain of them must cancel
+/// exactly, and negate, absI and altSign drive the signed buffers.
+fn square(x) = (x * x) ?: 0
+fn product(a, b) = (a * b) ?: 0
+fn tally(a, x) = (a + x) ?: a
+fn bump(x) = (x + 1) ?: x
+fn lower(x) = (x - 1) ?: x
+fn negate(x) = (0 - x) ?: 0
+fn absI(x) = match x < 0 { true => (0 - x) ?: 0 false => x }
+fn altSign(x) = match (x % 2 ?: 0) == 0 { true => x false => (0 - x) ?: 0 }
+
+/// negSat, lowerSat and sqSat are the boundary-probing twins of negate, lower
+/// and square: the same arithmetic, but the fallback publishes the mark rather
+/// than a plausible value. Then the compaction predicates — parity,
+/// divisibility, sign, saturation — and minI, a running minimum for gpuScan.
+fn negSat(x) = (0 - x) ?: overflowMark()
+fn lowerSat(x) = (x - 1) ?: overflowMark()
+fn sqSat(x) = (x * x) ?: overflowMark()
+fn isEven(x) = (x % 2 ?: 1) == 0
+fn isQuad(x) = (x % 4 ?: 1) == 0
+fn isNeg(x) = x < 0
+fn isPos(x) = x > 0
+fn isMax(x) = x == maxInt()
+fn minI(a, b) = match a < b { true => a false => b }
+
+/// prodSat and doubleUp are sticky: once the mark reaches the accumulator it
+/// stays, so the fold reports the *first* overflow rather than a later product
+/// of the sentinel. addOr marks an overflowing sum, clampAdd saturates it, and
+/// hugeScale walks elements past the int edge one at a time.
+fn prodSat(a, x) = match a == overflowMark() {
+    true => overflowMark()
+    false => (a * x) ?: overflowMark()
+}
+fn doubleUp(a, x) = match a == overflowMark() {
+    true => overflowMark()
+    false => (a * 2) ?: overflowMark()
+}
+fn addOr(a, x) = (a + x) ?: overflowMark()
+fn clampAdd(a, x) = (a + x) ?: maxInt()
+fn hugeScale(x) = (x * 100000000000000000) ?: maxInt()
+
+/// The float kernels: reduction, scaling, negation, a checked reciprocal whose
+/// fallback fires on zero, a constant tenth that also widens int to float, a
+/// positivity predicate, and a mixer with several ops per element. headBig and
+/// tailBig plant one enormous value at opposite ends of an otherwise all-ones
+/// buffer, so one fold absorbs every small term after it and the other does not.
+fn addF(a: float, x: float) -> float = a + x
+fn half(x) = x * 0.5
+fn negF(x) = 0.0 - x
+fn recip(x) = (1.0 / x) ?: 0.0
+fn tenthOf(x) = 0.1
+fn isPositiveF(x) = x > 0.0
+fn stir(x) = (x * 1.0001 + 0.5) * 0.9999
+fn headBig(x) = match x == 0.0 { true => hugeFloat() false => 1.0 }
+fn tailBig(x) = match x == 1000.0 { true => hugeFloat() false => 1.0 }
+
+/// simulate and mix rerun a kernel over the whole buffer n times — the
+/// allocation churn a profiler should see — while rebuild sends the buffer back
+/// to the host and in again every pass, so each round trip is a fresh dense
+/// copy of its own output. The annotations are load-bearing: recursion needs a
+/// real emitted definition.
+fn simulate(buf: GpuBuffer<int>, n: int) -> GpuBuffer<int> = match n {
+    0 => buf
+    _ => simulate(buf |> gpuMap(bump), (n - 1) ?: 0)
+}
+
+fn mix(buf: GpuBuffer<float>, n: int) -> GpuBuffer<float> = match n {
+    0 => buf
+    _ => mix(buf |> gpuMap(stir), (n - 1) ?: 0)
+}
+
+fn rebuild(buf: GpuBuffer<int>, n: int) -> GpuBuffer<int> = match n {
+    0 => buf
+    _ => rebuild(toGpu(fromGpu(buf |> gpuMap(bump))), (n - 1) ?: 0)
+}
+
+/// megaPipelineCase runs a million elements through map, fold, filter and scan.
+fn megaPipelineCase() = {
+    let idx = gpuIota(1000000)
+    let squares = idx |> gpuMap(square)
+    let evens = idx |> gpuFilter(isEven)
+    let running = idx |> gpuScan(0, tally)
+    checkAll("million-element pipeline", [
+        (squares |> gpuFold(0, tally)) == 333332833333500000,
+        (idx |> gpuFold(0, tally)) == 499999500000,
+        gpuLength(idx) == 1000000,
+        gpuLength(squares) == 1000000,
+        (gpuGet(idx, 0) ?: -1) == 0,
+        (gpuGet(idx, 999999) ?: -1) == 999999,
+        (gpuGet(idx, 1000000) ?: -1) == -1,
+        (gpuGet(squares, 999999) ?: -1) == 999998000001,
+        gpuLength(evens) == 500000,
+        (evens |> gpuFold(0, tally)) == 249999500000,
+        (gpuGet(evens, 499999) ?: -1) == 999998,
+        gpuLength(running) == 1000000,
+        (gpuGet(running, 0) ?: -1) == 0,
+        (gpuGet(running, 1) ?: -1) == 1,
+        (gpuGet(running, 999999) ?: -1) == 499999500000
+    ])
+}
+
+/// scanScaleCase reads a 100k prefix sum, a seeded scan and a scan of a scan.
+fn scanScaleCase() = {
+    let running = gpuIota(100000) |> gpuScan(0, tally)
+    let seeded = gpuIota(100000) |> gpuScan(1000, tally)
+    let twice = running |> gpuScan(0, tally)
+    checkAll("100k prefix scan", [
+        (gpuGet(running, 0) ?: -1) == 0,
+        (gpuGet(running, 1) ?: -1) == 1,
+        (gpuGet(running, 2) ?: -1) == 3,
+        (gpuGet(running, 99999) ?: -1) == 4999950000,
+        gpuLength(running) == 100000,
+        (gpuGet(seeded, 0) ?: -1) == 1000,
+        (gpuGet(seeded, 99999) ?: -1) == 4999951000,
+        gpuLength(seeded) == 100000,
+        (gpuGet(twice, 0) ?: -1) == 0,
+        (gpuGet(twice, 2) ?: -1) == 4,
+        (gpuGet(twice, 99999) ?: -1) == 166666666650000,
+        (running |> gpuFold(0, minI)) == 0
+    ])
+}
+
+/// longChainCase runs sixteen climbs then sixteen descents, back to back.
+fn longChainCase() = {
+    let climbed = gpuIota(100000)
+        |> gpuMap(bump) |> gpuMap(bump) |> gpuMap(bump) |> gpuMap(bump)
+        |> gpuMap(bump) |> gpuMap(bump) |> gpuMap(bump) |> gpuMap(bump)
+        |> gpuMap(bump) |> gpuMap(bump) |> gpuMap(bump) |> gpuMap(bump)
+        |> gpuMap(bump) |> gpuMap(bump) |> gpuMap(bump) |> gpuMap(bump)
+        |> gpuMap(lower) |> gpuMap(lower) |> gpuMap(lower) |> gpuMap(lower)
+        |> gpuMap(lower) |> gpuMap(lower) |> gpuMap(lower) |> gpuMap(lower)
+    let cancelled = climbed
+        |> gpuMap(lower) |> gpuMap(lower) |> gpuMap(lower) |> gpuMap(lower)
+        |> gpuMap(lower) |> gpuMap(lower) |> gpuMap(lower) |> gpuMap(lower)
+    checkAll("twenty-four chained passes", [
+        gpuLength(climbed) == 100000,
+        (gpuGet(climbed, 0) ?: -1) == 8,
+        (gpuGet(climbed, 99999) ?: -1) == 100007,
+        (climbed |> gpuFold(0, tally)) == 5000750000,
+        gpuLength(cancelled) == 100000,
+        (gpuGet(cancelled, 0) ?: -1) == 0,
+        (gpuGet(cancelled, 99999) ?: -1) == 99999,
+        (cancelled |> gpuFold(0, tally)) == 4999950000,
+        (cancelled |> gpuFilter(isEven) |> gpuFold(0, tally)) == 2499950000
+    ])
+}
+
+/// rebuildCase rebuilds a buffer from its own materialized output six times.
+fn rebuildCase() = {
+    let settled = rebuild(gpuIota(20000), 6)
+    let back = fromGpu(settled)
+    let again = toGpu(back)
+    checkAll("six host round trips", [
+        gpuLength(settled) == 20000,
+        (gpuGet(settled, 0) ?: -1) == 6,
+        (gpuGet(settled, 19999) ?: -1) == 20005,
+        (settled |> gpuFold(0, tally)) == 200110000,
+        listLength(back) == 20000,
+        (listGet(back, 0) ?: -1) == 6,
+        (listGet(back, 19999) ?: -1) == 20005,
+        gpuLength(again) == 20000,
+        (again |> gpuFold(0, tally)) == 200110000,
+        (again |> gpuFilter(isEven) |> gpuFold(0, tally)) == 100050000,
+        gpuLength(rebuild(gpuIota(0), 4)) == 0,
+        (rebuild(gpuIota(1), 3) |> gpuFold(0, tally)) == 3
+    ])
+}
+
+/// compactionScaleCase compacts 500k elements and then compacts that result.
+fn compactionScaleCase() = {
+    let src = gpuIota(500000)
+    let evens = src |> gpuFilter(isEven)
+    let quads = evens |> gpuFilter(isQuad)
+    checkAll("500k compaction", [
+        gpuLength(evens) == 250000,
+        (evens |> gpuFold(0, tally)) == 62499750000,
+        (gpuGet(evens, 0) ?: -1) == 0,
+        (gpuGet(evens, 249999) ?: -1) == 499998,
+        (gpuGet(evens, 250000) ?: -1) == -1,
+        gpuLength(quads) == 125000,
+        (gpuGet(quads, 124999) ?: -1) == 499996,
+        (quads |> gpuFold(0, tally)) == 31249750000,
+        gpuLength(src |> gpuFilter(isNeg)) == 0,
+        gpuLength(src |> gpuFilter(isPos)) == 499999,
+        (src |> gpuFilter(isPos) |> gpuFold(0, tally)) == 124999750000,
+        gpuLength(src |> gpuFilter(isPos) |> gpuFilter(isNeg)) == 0
+    ])
+}
+
+/// zipScaleCase multiplies 250k buffers, truncates ragged pairs and cancels.
+fn zipScaleCase() = {
+    let idx = gpuIota(250000)
+    let squares = gpuZipWith(idx, idx, product)
+    let ragged = gpuZipWith(gpuIota(1000000), gpuIota(3), tally)
+    let cancel = gpuZipWith(idx, idx |> gpuMap(negate), tally)
+    checkAll("250k zip", [
+        (squares |> gpuFold(0, tally)) == 5208302083375000,
+        gpuLength(squares) == 250000,
+        (gpuGet(squares, 249999) ?: -1) == 62499500001,
+        gpuLength(ragged) == 3,
+        (ragged |> gpuFold(0, tally)) == 6,
+        gpuLength(gpuZipWith(gpuIota(3), gpuIota(1000000), tally)) == 3,
+        gpuLength(gpuZipWith(idx, gpuIota(0), tally)) == 0,
+        gpuLength(cancel) == 250000,
+        (cancel |> gpuFold(0, tally)) == 0,
+        (gpuGet(cancel, 249999) ?: -1) == 0
+    ])
+}
+
+/// simulationCase runs 500 whole-buffer passes over 10k elements, then splits
+/// the pass count in half without changing the answer.
+fn simulationCase() = {
+    let settled = simulate(gpuIota(10000), 500)
+    let staged = simulate(simulate(gpuIota(10000), 250), 250)
+    checkAll("500-pass simulation", [
+        (settled |> gpuFold(0, tally)) == 54995000,
+        gpuLength(settled) == 10000,
+        (gpuGet(settled, 0) ?: -1) == 500,
+        (gpuGet(settled, 9999) ?: -1) == 10499,
+        (staged |> gpuFold(0, tally)) == 54995000,
+        (gpuGet(staged, 9999) ?: -1) == 10499,
+        gpuLength(simulate(gpuIota(0), 100)) == 0,
+        (simulate(gpuIota(1), 7) |> gpuFold(0, tally)) == 7
+    ])
+}
+
+/// overflowBoundaryCase walks each checked operator to the int edge and one
+/// step past: 20! fits and 21! does not, 2^62 fits and 2^63 does not,
+/// 3037000499 squares and its successor does not, and minInt cannot negate.
+fn overflowBoundaryCase() = {
+    let fits = gpuIota(20) |> gpuMap(bump) |> gpuFold(1, prodSat)
+    let spills = gpuIota(21) |> gpuMap(bump) |> gpuFold(1, prodSat)
+    let roots = toGpu([3037000499, 3037000500]) |> gpuMap(sqSat)
+    let edges = toGpu([minInt(), -1, 0, 1, maxInt()]) |> gpuMap(negSat)
+    checkAll("checked overflow boundaries", [
+        fits == 2432902008176640000,
+        spills == overflowMark(),
+        (gpuIota(62) |> gpuFold(1, doubleUp)) == 4611686018427387904,
+        (gpuIota(63) |> gpuFold(1, doubleUp)) == overflowMark(),
+        (gpuGet(roots, 0) ?: 0) == 9223372030926249001,
+        (gpuGet(roots, 1) ?: 0) == overflowMark(),
+        (gpuGet(edges, 0) ?: 0) == overflowMark(),
+        (gpuGet(edges, 1) ?: 0) == 1,
+        (gpuGet(edges, 2) ?: 0) == 0,
+        (gpuGet(edges, 3) ?: 0) == -1,
+        (gpuGet(edges, 4) ?: 0) == -9223372036854775807,
+        (toGpu([maxInt()]) |> gpuFold(0, addOr)) == maxInt(),
+        (toGpu([maxInt(), 1]) |> gpuFold(0, addOr)) == overflowMark(),
+        (toGpu([maxInt(), 1]) |> gpuFold(0, tally)) == maxInt(),
+        (toGpu([minInt()]) |> gpuMap(lowerSat) |> gpuFold(0, addOr)) == overflowMark(),
+        gpuLength(toGpu([maxInt(), 1]) |> gpuFilter(isMax)) == 1
+    ])
+}
+
+/// saturationCase crosses the int edge part way through two thousand elements.
+fn saturationCase() = {
+    let bigs = gpuIota(2000) |> gpuMap(hugeScale)
+    let saturated = bigs |> gpuFilter(isMax)
+    checkAll("saturating accumulation", [
+        gpuLength(bigs) == 2000,
+        (gpuGet(bigs, 0) ?: -1) == 0,
+        (gpuGet(bigs, 92) ?: -1) == 9200000000000000000,
+        (gpuGet(bigs, 93) ?: -1) == maxInt(),
+        (gpuGet(bigs, 1999) ?: -1) == maxInt(),
+        gpuLength(saturated) == 1907,
+        (gpuGet(saturated, 0) ?: -1) == maxInt(),
+        (bigs |> gpuFold(0, clampAdd)) == maxInt(),
+        (bigs |> gpuFold(0, tally)) == 9100000000000000000,
+        gpuLength(bigs |> gpuFilter(isNeg)) == 0,
+        gpuLength(bigs |> gpuMap(isMax)) == 2000
+    ])
+}
+
+/// negativeCase carries a wholly negative buffer through every combinator.
+fn negativeCase() = {
+    let negs = gpuIota(100000) |> gpuMap(negate)
+    let restored = negs |> gpuMap(negate)
+    let running = negs |> gpuScan(0, tally)
+    let lows = negs |> gpuScan(0, minI)
+    checkAll("negative values at scale", [
+        (negs |> gpuFold(0, tally)) == -4999950000,
+        gpuLength(negs) == 100000,
+        (gpuGet(negs, 0) ?: 1) == 0,
+        (gpuGet(negs, 99999) ?: 1) == -99999,
+        gpuLength(negs |> gpuFilter(isNeg)) == 99999,
+        gpuLength(negs |> gpuFilter(isPos)) == 0,
+        gpuLength(negs |> gpuFilter(isEven)) == 50000,
+        (negs |> gpuFilter(isEven) |> gpuFold(0, tally)) == -2499950000,
+        (restored |> gpuFold(0, tally)) == 4999950000,
+        (gpuGet(restored, 99999) ?: -1) == 99999,
+        (gpuGet(running, 1) ?: 1) == -1,
+        (gpuGet(running, 99999) ?: 1) == -4999950000,
+        (gpuGet(lows, 0) ?: 1) == 0,
+        (gpuGet(lows, 99999) ?: 1) == -99999,
+        (gpuZipWith(negs, gpuIota(100000), tally) |> gpuFold(0, tally)) == 0,
+        (negs |> gpuMap(absI) |> gpuFold(0, tally)) == 4999950000
+    ])
+}
+
+/// alternatingCase flips sign on every other element of a 200k buffer: the
+/// fold telescopes, the scan oscillates, squaring erases the signs.
+fn alternatingCase() = {
+    let alt = gpuIota(200000) |> gpuMap(altSign)
+    let running = alt |> gpuScan(0, tally)
+    checkAll("alternating signs", [
+        (alt |> gpuFold(0, tally)) == -100000,
+        gpuLength(alt) == 200000,
+        (gpuGet(alt, 0) ?: 1) == 0,
+        (gpuGet(alt, 1) ?: 0) == -1,
+        (gpuGet(alt, 2) ?: 0) == 2,
+        (gpuGet(alt, 199999) ?: 0) == -199999,
+        (gpuGet(running, 0) ?: 1) == 0,
+        (gpuGet(running, 1) ?: 0) == -1,
+        (gpuGet(running, 2) ?: 0) == 1,
+        (gpuGet(running, 3) ?: 0) == -2,
+        (gpuGet(running, 199999) ?: 0) == -100000,
+        gpuLength(alt |> gpuFilter(isNeg)) == 100000,
+        (alt |> gpuFilter(isNeg) |> gpuFold(0, tally)) == -10000000000,
+        gpuLength(alt |> gpuFilter(isPos)) == 99999,
+        (alt |> gpuFilter(isPos) |> gpuFold(0, tally)) == 9999900000,
+        (alt |> gpuMap(absI) |> gpuFold(0, tally)) == 19999900000,
+        (alt |> gpuMap(square) |> gpuFold(0, tally)) == 2666646666700000,
+        (gpuZipWith(alt, alt, product) |> gpuFold(0, tally)) == 2666646666700000
+    ])
+}
+
+/// zeroDegenerateCase pins the empty buffer, the inverted extent and all-zeros.
+fn zeroDegenerateCase() = {
+    let empty = gpuIota(0)
+    let inverted = gpuIota(-1000000)
+    let zeros = gpuIota(50000) |> gpuMap(fn(x) => 0)
+    checkAll("zero and empty at every combinator", [
+        gpuLength(empty) == 0,
+        gpuLength(inverted) == 0,
+        gpuLength(toGpu([])) == 0,
+        (empty |> gpuFold(42, tally)) == 42,
+        (inverted |> gpuFold(-7, tally)) == -7,
+        gpuLength(empty |> gpuMap(bump)) == 0,
+        gpuLength(empty |> gpuFilter(isEven)) == 0,
+        gpuLength(empty |> gpuScan(0, tally)) == 0,
+        gpuLength(gpuZipWith(empty, gpuIota(1000000), tally)) == 0,
+        gpuLength(gpuZipWith(gpuIota(1000000), empty, tally)) == 0,
+        (gpuGet(empty, 0) ?: -1) == -1,
+        listLength(fromGpu(empty)) == 0,
+        gpuLength(toGpu(fromGpu(empty))) == 0,
+        gpuLength(zeros) == 50000,
+        (zeros |> gpuFold(0, tally)) == 0,
+        (gpuGet(zeros, 49999) ?: -1) == 0,
+        gpuLength(zeros |> gpuFilter(isEven)) == 50000,
+        gpuLength(zeros |> gpuFilter(isPos)) == 0,
+        (gpuGet(zeros |> gpuScan(0, tally), 49999) ?: -1) == 0,
+        (gpuZipWith(zeros, gpuIota(50000), product) |> gpuFold(0, tally)) == 0,
+        (zeros |> gpuMap(square) |> gpuFold(0, tally)) == 0
+    ])
+}
+
+/// gatherBoundaryCase reads one ahead, one behind and straight across a 100k
+/// buffer from inside kernels: each shift falls off exactly one end, and an
+/// out-of-range index is a visible Error rather than a silent zero.
+fn gatherBoundaryCase() = {
+    let src = gpuIota(100000)
+    let ahead = gpuIota(100000) |> gpuMap(fn(i) => gpuGet(src, (i + 1) ?: 0) ?: -7)
+    let behind = gpuIota(100000) |> gpuMap(fn(i) => gpuGet(src, (i - 1) ?: 0) ?: -7)
+    let mirror = gpuIota(100000) |> gpuMap(fn(i) => gpuGet(src, (99999 - i) ?: 0) ?: -7)
+    checkAll("gathers at the buffer edges", [
+        (gpuGet(ahead, 0) ?: 0) == 1,
+        (gpuGet(ahead, 99998) ?: 0) == 99999,
+        (gpuGet(ahead, 99999) ?: 0) == -7,
+        (ahead |> gpuFold(0, tally)) == 4999949993,
+        (gpuGet(behind, 0) ?: 0) == -7,
+        (gpuGet(behind, 1) ?: 0) == 0,
+        (gpuGet(behind, 99999) ?: 0) == 99998,
+        (behind |> gpuFold(0, tally)) == 4999849994,
+        (gpuGet(mirror, 0) ?: 0) == 99999,
+        (gpuGet(mirror, 99999) ?: 0) == 0,
+        (mirror |> gpuFold(0, tally)) == 4999950000,
+        gpuLength(ahead |> gpuFilter(isNeg)) == 1,
+        gpuLength(behind |> gpuFilter(isNeg)) == 1,
+        (gpuGet(src, 99999) ?: -1) == 99999,
+        (gpuGet(src, 100000) ?: -1) == -1,
+        (gpuGet(src, 1000000) ?: -1) == -1,
+        (gpuGet(src, -1) ?: -1) == -1,
+        (gpuGet(src, minInt()) ?: -1) == -1,
+        (gpuGet(src, maxInt()) ?: -1) == -1
+    ])
+}
+
+/// floatScaleCase widens a 100k index buffer through the float combinators.
+fn floatScaleCase() = {
+    let xs = gpuIota(100000) |> gpuMap(toFloat)
+    let halves = xs |> gpuMap(half)
+    let flipped = xs |> gpuMap(negF)
+    let recips = xs |> gpuMap(recip)
+    checkAll("float buffers at scale", [
+        (xs |> gpuFold(0.0, addF)) == 4999950000.0,
+        gpuLength(xs) == 100000,
+        (gpuGet(xs, 0) ?: -1.0) == 0.0,
+        (gpuGet(xs, 99999) ?: -1.0) == 99999.0,
+        (halves |> gpuFold(0.0, addF)) == 2499975000.0,
+        (gpuGet(halves, 3) ?: -1.0) == 1.5,
+        (flipped |> gpuFold(0.0, addF)) == -4999950000.0,
+        (gpuGet(flipped, 99999) ?: 0.0) == -99999.0,
+        (gpuGet(recips, 0) ?: -1.0) == 0.0,
+        (gpuGet(recips, 1) ?: -1.0) == 1.0,
+        (gpuGet(recips, 4) ?: -1.0) == 0.25,
+        (gpuGet(xs |> gpuScan(0.0, addF), 99999) ?: -1.0) == 4999950000.0,
+        (gpuZipWith(xs, flipped, addF) |> gpuFold(0.0, addF)) == 0.0,
+        gpuLength(xs |> gpuFilter(isPositiveF)) == 99999,
+        toFloat(9007199254740992) == 9007199254740992.0,
+        toFloat(9007199254740993) == toFloat(9007199254740992),
+        toFloat(9007199254740991) < toFloat(9007199254740992),
+        toFloat(-9007199254740992) == -9007199254740992.0
+    ])
+}
+
+/// floatOrderCase makes accumulation order observable: [GPU-FOLD] contracts the
+/// host backend to combine left-to-right, so a huge leading term absorbs every
+/// small one after it while the same terms reversed all survive — why the spec
+/// calls a non-associative combine backend-dependent.
+fn floatOrderCase() = {
+    let xs = gpuIota(1001) |> gpuMap(toFloat)
+    let leading = xs |> gpuMap(headBig)
+    let trailing = xs |> gpuMap(tailBig)
+    let absorbed = leading |> gpuFold(0.0, addF)
+    let survived = trailing |> gpuFold(0.0, addF)
+    let tenths = gpuIota(100000) |> gpuMap(tenthOf) |> gpuFold(0.0, addF)
+    checkAll("float accumulation order is observable", [
+        absorbed == hugeFloat(),
+        survived == hugeFloat() + 1000.0,
+        survived > absorbed,
+        survived - absorbed == 1000.0,
+        (toGpu([hugeFloat(), 1.0, 1.0, 1.0]) |> gpuFold(0.0, addF)) == hugeFloat(),
+        (toGpu([1.0, 1.0, 1.0, hugeFloat()]) |> gpuFold(0.0, addF)) > hugeFloat(),
+        (toGpu([1.0, 1.0, 1.0, hugeFloat()]) |> gpuFold(0.0, addF)) - hugeFloat() == 4.0,
+        (gpuGet(leading, 0) ?: 0.0) == hugeFloat(),
+        (gpuGet(leading, 1000) ?: 0.0) == 1.0,
+        (gpuGet(trailing, 1000) ?: 0.0) == hugeFloat(),
+        (gpuGet(leading |> gpuScan(0.0, addF), 1000) ?: 0.0) == hugeFloat(),
+        tenths > 10000.0,
+        tenths < 10000.001,
+        ((1.0 / 0.0) ?: -1.0) == -1.0
+    ])
+}
+
+/// floatChurnCase runs 400 float passes over the canonical [GPU-CONVERT] seed.
+fn floatChurnCase() = {
+    let mixed = mix(gpuIota(8) |> gpuMap(toFloat), 400)
+    let total = mixed |> gpuFold(0.0, addF)
+    checkAll("400-pass float churn", [
+        total > 1627.8,
+        total < 1627.9,
+        gpuLength(mixed) == 8,
+        (gpuGet(mixed, 0) ?: 0.0) > 0.0,
+        (gpuGet(mixed, 7) ?: 0.0) > (gpuGet(mixed, 0) ?: 0.0),
+        gpuLength(mixed |> gpuFilter(isPositiveF)) == 8,
+        gpuLength(mix(gpuIota(0) |> gpuMap(toFloat), 50)) == 0,
+        (mix(gpuIota(8) |> gpuMap(toFloat), 0) |> gpuFold(0.0, addF)) == 28.0
+    ])
+}
+
+test("a million elements map, fold, filter and scan in one pipeline", megaPipelineCase)
+test("a 100k prefix scan matches its closed form", scanScaleCase)
+test("twenty-four dependent map passes stay exact", longChainCase)
+test("a buffer rebuilt from its own output six times stays exact", rebuildCase)
+test("half a million elements compact and compact again", compactionScaleCase)
+test("quarter-million-element zips multiply, truncate and cancel", zipScaleCase)
+test("five hundred simulation passes stay exact", simulationCase)
+test("checked arithmetic marks the exact overflow boundary", overflowBoundaryCase)
+test("a saturating accumulation freezes instead of wrapping", saturationCase)
+test("negative buffers survive every combinator", negativeCase)
+test("alternating signs telescope through fold, scan and filter", alternatingCase)
+test("zero and empty buffers are defined everywhere", zeroDegenerateCase)
+test("gathers report every out-of-range index as an error", gatherBoundaryCase)
+test("float buffers keep their bits at scale", floatScaleCase)
+test("float accumulation order changes the sum", floatOrderCase)
+test("float churn keeps double words through 400 passes", floatChurnCase)

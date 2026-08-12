@@ -126,7 +126,10 @@ suite("Test documentation (pure)", () => {
         "**Since**",
         "0.3",
       ]) {
-        assert.ok(description.includes(fragment), `${fragment}: ${description}`);
+        assert.ok(
+          description.includes(fragment),
+          `${fragment}: ${description}`,
+        );
       }
     });
 

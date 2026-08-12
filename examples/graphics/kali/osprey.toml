@@ -1,0 +1,5 @@
+[project]
+name = "kali"
+source_roots = ["../base", "."]
+default_namespace = "graphics"
+entry = "scene.osp"

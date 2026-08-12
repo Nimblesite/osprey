@@ -158,7 +158,7 @@ fn gen_all(cg: &mut Codegen, args: &[&Expr], labeled: bool) -> Result<Value> {
             ));
         }
     };
-    let Expr::List(items) = conditions else {
+    let Expr::List(items, _) = conditions else {
         return Err(CodegenError::invalid(
             "expectAll/checkAll conditions must be a list literal",
         ));

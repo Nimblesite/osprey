@@ -209,7 +209,7 @@ impl<'a> Inspector<'a> {
                     }
                 }
             }
-            Expr::List(items) => self.exprs(items, in_owner_arm, position),
+            Expr::List(items, _) => self.exprs(items, in_owner_arm, position),
             Expr::Map(entries) => {
                 for entry in entries {
                     self.expr(&entry.key, in_owner_arm, position);
@@ -302,6 +302,7 @@ impl<'a> Inspector<'a> {
                 self.named(named_arguments, in_owner_arm, *perform_position);
             }
             Expr::Handler {
+                stage: _,
                 effect,
                 arms,
                 body,

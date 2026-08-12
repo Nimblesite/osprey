@@ -159,14 +159,20 @@ fn a_type_block_recovers_line_by_line() {
 #[test]
 fn list_literals_span_empty_populated_and_trailing_comma() {
     // [FLAVOR-ML-LIST]
-    assert_eq!(value("xs = []\n"), Expr::List(vec![]));
+    // The literal's own position travels with it: inference keys the resolved
+    // `List<T>` on it, which is the only element type an EMPTY literal has.
+    let at = Some(osprey_ast::Position { line: 1, column: 5 });
+    assert_eq!(value("xs = []\n"), Expr::List(vec![], at));
     assert_eq!(
         value("xs = [1, 2, 3]\n"),
-        Expr::List(vec![Expr::Integer(1), Expr::Integer(2), Expr::Integer(3)])
+        Expr::List(
+            vec![Expr::Integer(1), Expr::Integer(2), Expr::Integer(3)],
+            at
+        )
     );
     assert_eq!(
         value("xs = [1, 2,]\n"),
-        Expr::List(vec![Expr::Integer(1), Expr::Integer(2)])
+        Expr::List(vec![Expr::Integer(1), Expr::Integer(2)], at)
     );
     rejects("xs = [1, 2\n", &["expected ']'"]);
 }

@@ -1,0 +1,18 @@
+ok 1 - a million elements map, fold, filter and scan in one pipeline
+ok 2 - a 100k prefix scan matches its closed form
+ok 3 - twenty-four dependent map passes stay exact
+ok 4 - a buffer rebuilt from its own output six times stays exact
+ok 5 - half a million elements compact and compact again
+ok 6 - quarter-million-element zips multiply, truncate and cancel
+ok 7 - five hundred simulation passes stay exact
+ok 8 - checked arithmetic marks the exact overflow boundary
+ok 9 - a saturating accumulation freezes instead of wrapping
+ok 10 - negative buffers survive every combinator
+ok 11 - alternating signs telescope through fold, scan and filter
+ok 12 - zero and empty buffers are defined everywhere
+ok 13 - gathers report every out-of-range index as an error
+ok 14 - float buffers keep their bits at scale
+ok 15 - float accumulation order changes the sum
+ok 16 - float churn keeps double words through 400 passes
+1..16
+# tests=16 passed=16 failed=0 skipped=0

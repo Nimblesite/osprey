@@ -366,6 +366,20 @@ pair migrates together against one shared `.expectedoutput`.
       `lib.rs`) and the four literal/handle position combinations in
       `tests/core/collections/list_basics.test.{osp,ospml}`, green under
       default / `--memory=gc` / `--memory=arc` (`ARC_LEAKY=0`) and wasm32.
+- [x] **`toFloat(n: int) -> float`** — the scalar conversion builtin
+      [BUILTIN-TOFLOAT]. Round-to-nearest-even, exact for `|n| <= 2^53`;
+      total (no `Result`). Scheme in `builtins.rs`, lowered through
+      `conv.rs::as_double` (`sitofp`), docs entry in `builtin_docs_lang.rs`,
+      spec section in 0012. `tests/core/gpu/stress.test.{osp,ospml}`
+      `floatChurnCase` now seeds from `gpuIota(8) |> gpuMap(toFloat)` instead
+      of a literal buffer, satisfying [GPU-CONVERT].
+      Landing it required fixing a latent hole: a builtin passed *by name* as
+      a callback (`gpuMap(toFloat)`) emitted `call @toFloat` to a symbol that
+      is never defined, so it failed at link time with no diagnostic.
+      `expr.rs::call_builtin_with_values` now lowers the intrinsic builtins
+      (`print`, `toString`, `toFloat`, `abs`) to their value forms at the
+      callback site — previously only `print` was handled
+      [BUILTIN-ITER-CALLBACK].
 - [ ] **Defect found, not fixed: `listGet` over a `List<string>`.** Independent
       of the layout work above — a plain runtime handle fails too. Re-measured
       2026-07-30; it has **two faces**, and the quiet one is the reason this

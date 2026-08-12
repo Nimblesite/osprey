@@ -1,0 +1,6 @@
+ok 1 - float kernel slots type both multiplication orders
+ok 2 - named generic float combines specialize from buffer slots
+ok 3 - unannotated recursive helpers are valid GPU kernels
+ok 4 - block-bodied GPU kernels keep local bindings
+1..4
+# tests=4 passed=4 failed=0 skipped=0

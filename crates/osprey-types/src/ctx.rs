@@ -58,6 +58,15 @@ impl InferCtx {
         t.clone()
     }
 
+    /// How many variables are currently BOUND. A fixpoint loop compares this
+    /// across passes to tell "that pass learned something" from "nothing left
+    /// to learn" without diffing the whole substitution
+    /// ([`crate::check::Checker::resolve_deferred_arithmetic`]).
+    #[must_use]
+    pub fn bound_count(&self) -> usize {
+        self.subst.iter().filter(|slot| slot.is_some()).count()
+    }
+
     /// Bind a variable to a type. The caller guarantees the occurs-check passed.
     pub fn bind(&mut self, id: VarId, t: Type) {
         let idx = usize::try_from(id).unwrap_or(usize::MAX);

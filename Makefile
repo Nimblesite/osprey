@@ -7,7 +7,8 @@
 # --run`) and TypeScript sub-projects (vscode-extension, webcompiler, website).
 # =============================================================================
 
-.PHONY: build test language-test lint fmt clean ci setup run install bench partial-bench wasm wasm-site wasm-serve vsix-rebuild-reinstall bank bank-web bank-test bank-e2e hawk \
+.PHONY: build test language-test lint fmt clean ci setup run install bench partial-bench wasm wasm-site wasm-serve vsix-rebuild-reinstall bank bank-web bank-test bank-e2e hawk gpu-demo graphics graphics-shader _test_gc_stack_root \
+	_test_c_runtime _coverage_check_c_runtime \
 	_rebuild-install-vsix _vsix_clean _vsix_build _vsix_bundle _vsix_package _vsix_install
 
 # ---------------------------------------------------------------------------
@@ -78,20 +79,20 @@ OSSL ?= -DOPENSSL_SUPPRESS_DEPRECATED -DOPENSSL_API_COMPAT=30000 -Wno-deprecated
 # the flag list per suite.
 T    ?= -O2 -D_FORTIFY_SOURCE=2 -fstack-protector-strong $(WARN) -ftrapv -std=c11 -D_GNU_SOURCE
 # Object lists for the archives (paths relative to compiler/, where `ar` runs).
-FIB_OBJ  ?= bin/memory_runtime.o bin/fiber_runtime.o bin/system_runtime.o bin/effects_runtime.o bin/string_runtime.o bin/string_runtime_list.o bin/list_runtime.o bin/map_runtime.o bin/map_runtime_hamt.o bin/json_runtime.o bin/ffi_runtime.o bin/term_runtime.o bin/random_runtime.o bin/test_runtime.o bin/coverage_runtime.o bin/profiler_runtime.o bin/profiler_sampler.o
+FIB_OBJ  ?= bin/memory_runtime.o bin/gpu_runtime.o bin/fiber_runtime.o bin/system_runtime.o bin/effects_runtime.o bin/string_runtime.o bin/string_runtime_list.o bin/list_runtime.o bin/map_runtime.o bin/map_runtime_hamt.o bin/json_runtime.o bin/ffi_runtime.o bin/term_runtime.o bin/random_runtime.o bin/test_runtime.o bin/coverage_runtime.o bin/profiler_runtime.o bin/profiler_sampler.o
 HTTP_OBJ ?= bin/http_shared.o bin/http_client_runtime.o bin/http_server_request.o bin/http_server_response.o bin/http_server_runtime.o bin/websocket_client_runtime.o bin/websocket_server_runtime.o $(FIB_OBJ)
 # GC backend archives (osprey --memory=gc): the tracing collector replaces
 # memory_runtime.o, and the value-container units are rebuilt with the malloc
 # redirect (osp_gc_shim.h) so their nodes live in the managed heap. Everything
 # else is the same object. Implements [GC-TRACE-CONSERVATIVE], spec 0018.
-FIB_OBJ_GC  ?= bin/memory_gc.o bin/fiber_runtime.o bin/system_runtime.o bin/effects_runtime.o bin/string_runtime.o bin/string_runtime_list.o bin/gc/list_runtime.o bin/gc/map_runtime.o bin/gc/map_runtime_hamt.o bin/json_runtime.o bin/ffi_runtime.o bin/term_runtime.o bin/random_runtime.o bin/test_runtime.o bin/coverage_runtime.o bin/profiler_runtime.o bin/profiler_sampler.o
+FIB_OBJ_GC  ?= bin/memory_gc.o bin/gpu_runtime.o bin/fiber_runtime.o bin/system_runtime.o bin/effects_runtime.o bin/string_runtime.o bin/string_runtime_list.o bin/gc/list_runtime.o bin/gc/map_runtime.o bin/gc/map_runtime_hamt.o bin/json_runtime.o bin/ffi_runtime.o bin/term_runtime.o bin/random_runtime.o bin/test_runtime.o bin/coverage_runtime.o bin/profiler_runtime.o bin/profiler_sampler.o
 HTTP_OBJ_GC ?= bin/http_shared.o bin/http_client_runtime.o bin/http_server_request.o bin/http_server_response.o bin/http_server_runtime.o bin/websocket_client_runtime.o bin/websocket_server_runtime.o $(FIB_OBJ_GC)
 # ARC backend archives (osprey --memory=arc): Perceus reference counting
 # replaces memory_runtime.o, and the value-producing units (containers +
 # strings + JSON) are rebuilt with the allocation redirect (osp_arc_shim.h) so
 # their nodes/buffers carry the 16-byte header and registry entry. Implements
 # [GC-ARC-PERCEUS], spec 0018.
-FIB_OBJ_ARC  ?= bin/memory_arc.o bin/fiber_runtime.o bin/system_runtime.o bin/effects_runtime.o bin/arc/string_runtime.o bin/arc/string_runtime_list.o bin/arc/list_runtime.o bin/arc/map_runtime.o bin/arc/map_runtime_hamt.o bin/arc/json_runtime.o bin/ffi_runtime.o bin/term_runtime.o bin/random_runtime.o bin/test_runtime.o bin/coverage_runtime.o bin/profiler_runtime.o bin/profiler_sampler.o
+FIB_OBJ_ARC  ?= bin/memory_arc.o bin/gpu_runtime.o bin/fiber_runtime.o bin/system_runtime.o bin/effects_runtime.o bin/arc/string_runtime.o bin/arc/string_runtime_list.o bin/arc/list_runtime.o bin/arc/map_runtime.o bin/arc/map_runtime_hamt.o bin/arc/json_runtime.o bin/ffi_runtime.o bin/term_runtime.o bin/random_runtime.o bin/test_runtime.o bin/coverage_runtime.o bin/profiler_runtime.o bin/profiler_sampler.o
 HTTP_OBJ_ARC ?= bin/http_shared.o bin/http_client_runtime.o bin/http_server_request.o bin/http_server_response.o bin/http_server_runtime.o bin/websocket_client_runtime.o bin/websocket_server_runtime.o $(FIB_OBJ_ARC)
 NATIVE_RUNTIME_CONFIG ?= compiler/bin/.native-runtime-config
 NATIVE_RUNTIME_STAMP ?= compiler/bin/.native-runtime.stamp
@@ -141,7 +142,7 @@ endef
 # the WASI random_get host call). Each compiles its non-portable half out under
 # `#ifndef __wasm__`, so adding them unskips file and random programs on wasm32
 # without pretending fork/exec or pthreads exist.
-WASM_RT_SRC  ?= memory_runtime string_runtime string_runtime_list list_runtime map_runtime map_runtime_hamt json_runtime effects_runtime test_runtime coverage_runtime web_runtime profiler_runtime wasm_builtins_runtime system_runtime random_runtime
+WASM_RT_SRC  ?= memory_runtime gpu_runtime string_runtime string_runtime_list list_runtime map_runtime map_runtime_hamt json_runtime effects_runtime test_runtime coverage_runtime web_runtime profiler_runtime wasm_builtins_runtime system_runtime random_runtime
 # `make wasm-serve` static-host dir + port for the in-browser example.
 WASM_SERVE_DIR  ?= examples/wasm
 WASM_SERVE_PORT ?= 8080
@@ -164,6 +165,7 @@ test: build
 	$(MAKE) _test_rust
 	$(MAKE) _coverage_check_rust
 	$(MAKE) _test_c_runtime
+	$(MAKE) _coverage_check_c_runtime
 	$(MAKE) _test_language_corpus
 	$(MAKE) _test_goldens
 	$(MAKE) _conformance-gc
@@ -212,11 +214,15 @@ bank-e2e: bank-web
 	@echo "==> Bank e2e (Playwright)..."
 	cd examples/projects/modules/e2e && npm ci && npx playwright install chromium && npx playwright test
 
-## lint: Run all linters/analyzers (read-only). Does NOT format.
+## lint: Run all linters/analyzers (read-only). Checks formatting but does
+## NOT rewrite it — `make fmt` does that. The fmt check lives HERE because
+## `lint` is what the required CI job runs; a format gate only in an optional
+## job cannot block a merge.
 lint: deslop _lint
 
 _lint:
 	@echo "==> Linting..."
+	cargo fmt --all --check
 	cargo clippy --workspace --all-targets -- -D warnings
 	cd $(EXT_DIR) && npm run lint
 
@@ -416,6 +422,7 @@ $(NATIVE_RUNTIME_STAMP): $(NATIVE_RUNTIME_INPUTS) $(NATIVE_RUNTIME_CONFIG) Makef
 	  $(CC) $(B) runtime/ffi_runtime.c          -o bin/ffi_runtime.o && \
 	  $(CC) $(B) runtime/term_runtime.c         -o bin/term_runtime.o && \
 	  $(CC) $(B) runtime/random_runtime.c       -o bin/random_runtime.o && \
+	  $(CC) $(B) runtime/gpu_runtime.c          -o bin/gpu_runtime.o && \
 	  $(CC) $(B) runtime/test_runtime.c         -o bin/test_runtime.o && \
 	  $(CC) $(B) runtime/coverage_runtime.c     -o bin/coverage_runtime.o && \
 	  $(CC) $(B) runtime/profiler_runtime.c     -o bin/profiler_runtime.o && \
@@ -513,52 +520,115 @@ _coverage_check_rust:
 # hooks — so they test container semantics with reference counting neutralised;
 # memory_arc_tests covers the counting itself.
 OSSL_CFLAGS = $(OSSL) `pkg-config --cflags openssl 2>/dev/null || echo ""`
+OSSL_LIBS   = `pkg-config --libs openssl 2>/dev/null || echo "-lssl -lcrypto"`
 RT_THREADS  = runtime/fiber_runtime.c runtime/system_runtime.c runtime/effects_runtime.c \
               runtime/profiler_runtime.c runtime/profiler_sampler.c
+# Frame-pointer profile for the profiler suite: its unwind tests need -g and
+# real frame chains, and it predates the WARN core, so it keeps its own flags.
+PROF_T = -O2 -g -fno-omit-frame-pointer -D_FORTIFY_SOURCE=2 -fstack-protector-strong -Werror -Wall -Wextra -ftrapv -std=c11 -D_GNU_SOURCE
+
+# --- C runtime suite TABLE ---------------------------------------------------
+# One row per test binary. C_SRC_<name> lists sources relative to compiler/,
+# C_FLAGS_<name> extra compile flags, C_LIBS_<name> trailing libraries, and
+# C_PROFILE_<name> optionally replaces the default $(T) flag core. BOTH the
+# hardened run (_test_c_runtime) and the per-library coverage gate
+# (_coverage_check_c_runtime) iterate this same table, so adding one row wires
+# a suite into testing AND coverage measurement.
+C_TEST_SUITES ?= memory_gc_stack_root_tests memory_arc_tests memory_gc_tests \
+  memory_pool_tests memory_runtime_tests memory_golden_tests gpu_runtime_tests \
+  list_tests map_tests string_runtime_tests json_runtime_tests \
+  effects_runtime_tests builtins_runtime_tests test_system_runtime \
+  test_http_length_validation http_server_send_tests http_server_request_tests \
+  fiber_runtime_tests http_runtime_tests profiler_runtime_tests \
+  coverage_runtime_tests
+C_SRC_memory_gc_stack_root_tests = runtime/memory_gc_stack_root_tests.c runtime/memory_gc.c
+C_LIBS_memory_gc_stack_root_tests = -pthread
+C_SRC_memory_arc_tests = runtime/memory_arc_tests.c runtime/memory_arc.c
+C_LIBS_memory_arc_tests = -pthread
+C_SRC_memory_gc_tests = runtime/memory_gc_tests.c runtime/memory_gc.c
+C_LIBS_memory_gc_tests = -pthread
+C_SRC_memory_pool_tests = runtime/memory_pool_tests.c
+C_SRC_memory_runtime_tests = runtime/memory_runtime_tests.c runtime/memory_runtime.c
+C_SRC_memory_golden_tests = runtime/memory_golden_tests.c runtime/memory_arc.c runtime/gpu_runtime.c
+C_LIBS_memory_golden_tests = -pthread
+C_SRC_gpu_runtime_tests = runtime/gpu_runtime_tests.c runtime/gpu_runtime.c runtime/memory_runtime.c
+C_SRC_list_tests = runtime/list_tests.c runtime/list_runtime.c runtime/memory_runtime.c
+C_SRC_map_tests = runtime/map_tests.c runtime/map_runtime.c runtime/map_runtime_hamt.c runtime/memory_runtime.c
+C_SRC_string_runtime_tests = runtime/string_runtime_tests.c runtime/string_runtime.c runtime/string_runtime_list.c runtime/memory_runtime.c
+C_SRC_json_runtime_tests = runtime/json_runtime_tests.c runtime/json_runtime.c
+C_LIBS_json_runtime_tests = -pthread
+C_SRC_effects_runtime_tests = runtime/effects_runtime_tests.c runtime/effects_runtime.c runtime/profiler_runtime.c runtime/profiler_sampler.c
+C_LIBS_effects_runtime_tests = -pthread
+C_SRC_builtins_runtime_tests = runtime/builtins_runtime_tests.c runtime/ffi_runtime.c runtime/random_runtime.c runtime/term_runtime.c runtime/test_runtime.c
+C_SRC_test_system_runtime = runtime/test_system_runtime.c runtime/system_runtime.c runtime/memory_runtime.c
+C_LIBS_test_system_runtime = -pthread
+C_FLAGS_test_http_length_validation = $(OSSL_CFLAGS)
+C_SRC_test_http_length_validation = runtime/test_http_length_validation.c
+C_FLAGS_http_server_send_tests = $(OSSL_CFLAGS)
+C_SRC_http_server_send_tests = runtime/http_server_send_tests.c runtime/memory_runtime.c
+C_LIBS_http_server_send_tests = -pthread
+C_FLAGS_http_server_request_tests = $(OSSL_CFLAGS)
+C_SRC_http_server_request_tests = runtime/http_server_request_tests.c runtime/memory_runtime.c
+C_LIBS_http_server_request_tests = -pthread
+C_SRC_fiber_runtime_tests = runtime/fiber_runtime_tests.c runtime/memory_runtime.c $(RT_THREADS)
+C_LIBS_fiber_runtime_tests = -pthread
+C_FLAGS_http_runtime_tests = $(OSSL_CFLAGS)
+C_SRC_http_runtime_tests = runtime/http_runtime_tests.c runtime/http_client_runtime.c runtime/http_server_runtime.c runtime/http_server_request.c runtime/http_server_response.c runtime/http_shared.c runtime/websocket_client_runtime.c runtime/websocket_server_runtime.c runtime/string_runtime.c runtime/memory_runtime.c runtime/random_runtime.c $(RT_THREADS)
+C_LIBS_http_runtime_tests = -pthread $(OSSL_LIBS)
+C_PROFILE_profiler_runtime_tests = $(PROF_T)
+C_SRC_profiler_runtime_tests = runtime/profiler_runtime_tests.c runtime/profiler_runtime.c runtime/profiler_sampler.c
+C_LIBS_profiler_runtime_tests = -pthread
+C_SRC_coverage_runtime_tests = runtime/coverage_runtime_tests.c runtime/coverage_runtime.c
+
+# Build + run one suite (expanded inside a `cd compiler` shell, hence bin/).
+C_SUITE_CMD = echo "--- $(1)" && $(CC) $(or $(C_PROFILE_$(1)),$(T)) $(C_FLAGS_$(1)) $(C_SRC_$(1)) $(C_LIBS_$(1)) -o bin/$(1) && ./bin/$(1)
+
+_test_gc_stack_root:
+	@echo "==> [c-runtime] GC caller-stack root regression..."
+	@cd compiler && $(call C_SUITE_CMD,memory_gc_stack_root_tests)
+
 _test_c_runtime:
-	@echo "==> [c-runtime] memory backend + containers + string/error/HTTP/fiber tests..."
-	@cd compiler && $(CC) $(T) \
-	  runtime/memory_arc_tests.c runtime/memory_arc.c -pthread \
-	  -o bin/memory_arc_tests && ./bin/memory_arc_tests && \
-	  $(CC) $(T) \
-	  runtime/memory_gc_tests.c runtime/memory_gc.c -pthread \
-	  -o bin/memory_gc_tests && ./bin/memory_gc_tests && \
-	  $(CC) $(T) \
-	  runtime/memory_pool_tests.c \
-	  -o bin/memory_pool_tests && ./bin/memory_pool_tests && \
-	  $(CC) $(T) \
-	  runtime/list_tests.c runtime/list_runtime.c runtime/memory_runtime.c \
-	  -o bin/list_tests && ./bin/list_tests && \
-	  $(CC) $(T) \
-	  runtime/map_tests.c runtime/map_runtime.c runtime/map_runtime_hamt.c runtime/memory_runtime.c \
-	  -o bin/map_tests && ./bin/map_tests && \
-	  $(CC) $(T) \
-	  runtime/string_runtime_tests.c runtime/string_runtime.c runtime/string_runtime_list.c \
-	  runtime/memory_runtime.c \
-	  -o bin/string_runtime_tests && ./bin/string_runtime_tests && \
-	  $(CC) $(T) $(OSSL_CFLAGS) \
-	  runtime/http_server_send_tests.c runtime/memory_runtime.c -pthread \
-	  -o bin/http_server_send_tests && ./bin/http_server_send_tests && \
-	  $(CC) $(T) $(OSSL_CFLAGS) \
-	  runtime/http_server_request_tests.c runtime/memory_runtime.c -pthread \
-	  -o bin/http_server_request_tests && ./bin/http_server_request_tests && \
-	  $(CC) $(T) \
-	  runtime/fiber_runtime_tests.c runtime/memory_runtime.c $(RT_THREADS) -pthread \
-	  -o bin/fiber_runtime_tests && ./bin/fiber_runtime_tests && \
-	  $(CC) $(T) $(OSSL_CFLAGS) \
-	  runtime/http_runtime_tests.c runtime/http_client_runtime.c runtime/http_server_runtime.c \
-	  runtime/http_server_request.c runtime/http_server_response.c runtime/http_shared.c \
-	  runtime/websocket_client_runtime.c runtime/websocket_server_runtime.c \
-	  runtime/string_runtime.c runtime/memory_runtime.c $(RT_THREADS) -pthread \
-	  `pkg-config --libs openssl 2>/dev/null || echo "-lssl -lcrypto"` \
-	  -o bin/http_runtime_tests && ./bin/http_runtime_tests && \
-	  $(CC) -O2 -g -fno-omit-frame-pointer -D_FORTIFY_SOURCE=2 -fstack-protector-strong -Werror -Wall -Wextra \
-	  -ftrapv -std=c11 -D_GNU_SOURCE \
-	  runtime/profiler_runtime_tests.c runtime/profiler_runtime.c runtime/profiler_sampler.c -pthread \
-	  -o bin/profiler_runtime_tests && ./bin/profiler_runtime_tests && \
-	  $(CC) $(T) \
-	  runtime/coverage_runtime_tests.c runtime/coverage_runtime.c \
-	  -o bin/coverage_runtime_tests && ./bin/coverage_runtime_tests
+	@echo "==> [c-runtime] memory/gpu/effects/json/builtins/system/string/HTTP/fiber suites..."
+	@cd compiler && set -e; $(foreach s,$(C_TEST_SUITES),$(call C_SUITE_CMD,$(s)) && ) true
+
+# Per-library C line-coverage gate. Rebuilds every table suite with gcov
+# instrumentation into compiler/bin/cov/<suite>/, reruns it there (a failing
+# suite still contributes whatever it covered before aborting), reduces each
+# suite's gcov summaries, and gates every `language: "c"` entry in
+# coverage-thresholds.json at its threshold. A library's number is the MAX
+# line coverage across the suites linking it — per-TU summaries cannot be
+# unioned, so max is the honest lower bound. wasm-only units (web_runtime.c,
+# wasm_builtins_runtime.c) do not build natively and are not gated.
+GCOV_TOOL ?= $(shell if $(CC) --version 2>/dev/null | grep -qi clang; then \
+    if command -v xcrun >/dev/null 2>&1; then echo "xcrun llvm-cov gcov"; \
+    else echo "llvm-cov gcov"; fi; \
+  else echo gcov; fi)
+
+_coverage_check_c_runtime:
+	@echo "==> [c-runtime] per-library line coverage (gcov)..."
+	@rm -rf compiler/bin/cov
+	@set -e; cd compiler/bin && mkdir -p cov && cd cov; \
+	$(foreach s,$(C_TEST_SUITES),mkdir -p $(s) && (cd $(s) && $(CC) $(or $(C_PROFILE_$(s)),$(T)) --coverage $(C_FLAGS_$(s)) $(addprefix ../../../,$(C_SRC_$(s))) $(C_LIBS_$(s)) -o $(s) && { ./$(s) >/dev/null 2>&1 || true; } && { $(GCOV_TOOL) *.gcda > summary.txt 2>/dev/null || true; }) && ) true
+	@command -v jq >/dev/null || { echo "[c] FAIL: jq is required to read $(COVERAGE_THRESHOLDS_FILE); a gate that cannot run must not report success"; exit 1; }
+	@libs=$$(jq -r '.projects | to_entries[] | select(.value.language=="c") | .key' "$(COVERAGE_THRESHOLDS_FILE)"); \
+	if [ -z "$$libs" ]; then echo "[c] FAIL: no C entries in $(COVERAGE_THRESHOLDS_FILE) -- the gate would pass vacuously"; exit 1; fi; \
+	fail=0; \
+	for lib in $$libs; do \
+	  thr=$$(jq -r --arg l "$$lib" '.projects[$$l].threshold' "$(COVERAGE_THRESHOLDS_FILE)"); \
+	  best=$$(for f in compiler/bin/cov/*/summary.txt; do \
+	    [ -f "$$f" ] || continue; \
+	    sed -n "\#File '.*/runtime/$$lib\.c'#{n;s/Lines executed:\([0-9.]*\)% of .*/\1/p;}" "$$f"; \
+	  done | sort -rn | head -1); \
+	  if [ -z "$$best" ]; then echo "[c] $$lib FAIL: no coverage data (no suite links it, or its suite died before dumping)"; fail=1; continue; fi; \
+	  best_int=$${best%.*}; \
+	  if [ "$${best_int:-0}" -lt "$$thr" ]; then \
+	    echo "[c] $$lib FAIL: $${best}% < $${thr}%"; fail=1; \
+	  else \
+	    echo "[c] $$lib OK: $${best}% >= $${thr}%"; \
+	  fi; \
+	done; \
+	if [ "$$fail" -ne 0 ]; then echo "[c] FAIL: one or more C libraries below threshold"; exit 1; fi; \
+	echo "[c] OK: all C libraries meet their thresholds"
 
 # [PROF-TEST] end-to-end profiler gate: --profile runs, exports, and reports.
 _test_profiler:
@@ -655,6 +725,106 @@ _coverage_check_vscode_extension:
 _tui: build
 	@echo "==> launching TUI demo (live GitHub API browser)"
 	./$(BIN) examples/tui/api_browser.osp --run
+
+## gpu-demo: Render the gpu* kernel demo (fractal, shaded sphere, composite)
+#            Runs on the CPU: [GPU-BACKEND-HOST] is the only backend, so the
+#            gpu* builtins are a dispatch surface, not silicon. For pixels on
+#            the actual GPU, see `make graphics`.
+#            FLAVOR=ml renders the ML twin, which prints byte-identical output.
+gpu-demo: build
+	@echo "==> rendering gpu* kernel demo on the host backend (CPU)"
+	./$(BIN) tests/core/gpu/raster.test.$(if $(filter ml,$(FLAVOR)),ospml,osp) --run
+
+## graphics: Build the platform graphics bridge and run the animated GPU demo
+#            Osprey drives the scene; the GPU shades every pixel. macOS renders
+#            it through Metal, Windows through Direct3D 12 — and the Osprey
+#            sources are the same files on both, which is the entire point.
+#            SCENE=kali|opal|character selects one of the three scenes; every
+#            one is a one-file project sharing examples/graphics/base/base.osp
+#            and one named fragment entry in the platform shader library.
+#            GFX_WARN overrides the C warning set. See $(GFX_DIR)/README.md.
+GFX_DIR := examples/graphics
+GFX_WARN ?= -Wall -Werror
+SCENE ?= kali
+
+ifeq ($(OS),Windows_NT)
+# Direct3D 12. Built with the same MinGW UCRT64 toolchain that builds the C
+# runtime on Windows, so `// @link: ospgfx` in base/base.osp resolves the import
+# library below exactly as it resolves the dylib on macOS.
+#
+# UNVERIFIED. This branch, the two C files it compiles and base.hlsl were all
+# written on a macOS machine with no Windows toolchain and have never been
+# built or run. $(GFX_DIR)/README.md says what would establish that they work.
+GFX_SHADER := $(GFX_DIR)/base.hlsl
+GFX_SRC    := $(GFX_DIR)/ospgfx_d3d12.c $(GFX_DIR)/ospgfx_d3d12_setup.c
+GFX_DLL    := $(GFX_DIR)/ospgfx.dll
+GFX_LIB    := $(GFX_DIR)/libospgfx.dll.a
+GFX_SYSLIB := -ld3d12 -ldxgi -ld3dcompiler -ldxguid -luser32
+# Every entry point the run-time compiler will be asked for, with its target
+# profile. `make graphics-shader` compiles all four so a typo in one scene's
+# fragment cannot hide behind another scene running fine.
+GFX_ENTRIES := osp_vertex:vs_5_0 osp_fragment:ps_5_0 \
+	osp_fragment_opal:ps_5_0 osp_fragment_character:ps_5_0
+
+ifeq ($(MSYSTEM),)
+# Native PowerShell has neither bash for the recipes below nor a MinGW cc.
+graphics graphics-shader:
+	@Write-Host "make graphics needs the MSYS2 UCRT64 shell -- see $(GFX_DIR)/README.md"
+else
+$(GFX_LIB): $(GFX_SRC) $(GFX_DIR)/ospgfx_d3d12.h
+	@echo "==> building Osprey -> Direct3D 12 graphics bridge"
+	$(CC) -shared -O2 $(GFX_WARN) -o $(GFX_DLL) $(GFX_SRC) \
+		-Wl,--out-implib,$(GFX_LIB) $(GFX_SYSLIB)
+
+# The bridge compiles the shader at run time, so an error in it would otherwise
+# only surface as a window that refuses to open. fxc is the same compiler
+# D3DCompile is, so checking here checks exactly what the bridge will do; the
+# Windows SDK ships it, but not on PATH, so the check skips when it is absent.
+graphics-shader:
+	@if command -v fxc.exe >/dev/null 2>&1; then \
+		for entry in $(GFX_ENTRIES); do \
+			echo "==> checking $(GFX_SHADER) $${entry%%:*}"; \
+			fxc.exe -nologo -T $${entry##*:} -E $${entry%%:*} \
+				-Fo $(GFX_DIR)/.shadercheck.cso $(GFX_SHADER) || exit 1; \
+		done; \
+		$(RM) $(GFX_DIR)/.shadercheck.cso; \
+	else \
+		echo "==> skipping shader check (no fxc.exe on PATH)"; \
+	fi
+
+# The DLL lives beside its source rather than beside the compiled scene, so the
+# loader is pointed at it for the length of the run.
+graphics: build $(GFX_LIB) graphics-shader
+	@echo "==> launching Osprey graphics demo: $(SCENE) (close the window to exit)"
+	PATH="$(CURDIR)/$(GFX_DIR):$$PATH" ./$(BIN) $(GFX_DIR)/$(SCENE) --run
+endif
+
+else
+GFX_LIB := $(GFX_DIR)/libospgfx.dylib
+GFX_SHADER := $(GFX_DIR)/base.metal
+
+$(GFX_LIB): $(GFX_DIR)/ospgfx.m
+	@echo "==> building Osprey -> macOS graphics bridge"
+	clang -dynamiclib -fobjc-arc -O2 $(GFX_WARN) \
+		-install_name $(CURDIR)/$(GFX_LIB) \
+		-framework Cocoa -framework Metal -framework QuartzCore \
+		-o $(GFX_LIB) $(GFX_DIR)/ospgfx.m
+
+# The bridge compiles the shader at run time, so a syntax error in it would
+# otherwise only surface as a window that refuses to open. Check it up front
+# when the Metal toolchain is installed, and skip quietly when it is not.
+graphics-shader:
+	@if xcrun -sdk macosx --find metal >/dev/null 2>&1; then \
+		echo "==> checking $(GFX_SHADER)"; \
+		xcrun -sdk macosx metal -c $(GFX_SHADER) -o /dev/null; \
+	else \
+		echo "==> skipping shader check (no Metal toolchain)"; \
+	fi
+
+graphics: build $(GFX_LIB) graphics-shader
+	@echo "==> launching Osprey graphics demo: $(SCENE) (close the window to exit)"
+	./$(BIN) $(GFX_DIR)/$(SCENE) --run
+endif
 
 ## run: Compile and run an Osprey file (usage: make run FILE=<path>)
 run: build

@@ -50,15 +50,39 @@ jobs:
     # A skipped required check reports as passing (see the `changes` job note).
     if: ${{ needs.changes.outputs.code == 'true' }}
     runs-on: ubuntu-latest
-    # TIMEOUT EXCEPTION: full compiler build + C runtime compile + extension
-    # tests + Docker web compiler test requires ~15 min
-    timeout-minutes: 30
+    # TIMEOUT EXCEPTION. The "~15 min" this budget was written for was never a
+    # measurement of a COMPLETE run: the job used to die early — at the Rust
+    # tests, then the C compile, then the C coverage gate — so no run had ever
+    # reached the later stages. The first run that got through them all was
+    # killed at 30 minutes mid-way through the extension suite. Measured stage
+    # times from that run:
+    #
+    #   C + wasm runtime archives   2m30s
+    #   lint + build                  25s
+    #   rust tests with coverage    2m35s
+    #   C suites + coverage gate      35s
+    #   language corpus             2m35s
+    #   golden comparison           2m50s
+    #   GC conformance              3m05s
+    #   ARC conformance             2m50s
+    #   extension suite            12m+ (killed, still progressing)
+    #
+    # The extension suite dominates: it drives a real VS Code under xvfb and
+    # spawns lldb-dap per debug-adapter case, which is minutes slower on a
+    # runner than the ~2 min it takes locally. 60 leaves headroom for that
+    # without hiding a hang — a stuck run still fails, just later.
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          # 24 because `make test` runs osprey-cli's
+          # wasm::tests::build_and_run_end_to_end_when_toolchain_present, which
+          # shells out to scripts/wasm-smoke.mjs and so RUNS a module under
+          # `node:wasi` — the host whose cached memory backing store goes stale
+          # on `memory.grow` before 24. See the comment on the wasm job below.
+          node-version: '24'
           cache: 'npm'
           cache-dependency-path: |
             vscode-extension/package-lock.json
@@ -315,7 +339,17 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          # 24, not 20: this job EXECUTES wasm modules under `node:wasi`, and
+          # that host caches a module's memory backing store when the instance
+          # starts without refreshing it after `memory.grow`. Every WASI call a
+          # growing module makes afterwards then reads or writes freed memory —
+          # on x86_64 a SIGSEGV in node itself (exit 139, no stderr, no wasm
+          # trap), or, where the stale page is still mapped, output silently
+          # dropped on the floor. A 12-line hand-written module that writes,
+          # grows and writes again reproduces it with no Osprey involved; Node
+          # 24 is the first release that runs both it and the assertion corpus
+          # clean. scripts/wasm-smoke.mjs refuses to run on anything older.
+          node-version: '24'
 
       - name: Install Rust (stable)
         uses: dtolnay/rust-toolchain@stable
@@ -370,8 +404,10 @@ jobs:
       - name: WebAssembly differential — whole tests/ corpus vs the native goldens
         # The three steps above gate the wasm backend on three hand-picked
         # programs. This one runs EVERY program in tests/ that links on wasm32
-        # (103 of 160; the rest name the unported symbol and report as skips)
         # and holds each to the byte-exact stdout the native backend produces.
+        # The programs that may skip are pinned — name and symbol — in
+        # tests/WASM_UNPORTABLE.txt, and the harness fails on any drift, so the
+        # covered count lives in exactly one place instead of going stale here.
         # A backend that miscompiles arithmetic, strings, maps or pattern
         # matching outside hello/studio has nowhere else to be caught.
         #
@@ -401,7 +437,11 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          # 24 because `npm test` here starts with `build:wasm` -> `make
+          # wasm-site`, which RUNS the studio modules under `node:wasi` — the
+          # host whose cached memory backing store goes stale on `memory.grow`
+          # before 24. See the comment on the wasm job above.
+          node-version: '24'
           cache: 'npm'
           cache-dependency-path: website/package-lock.json
 

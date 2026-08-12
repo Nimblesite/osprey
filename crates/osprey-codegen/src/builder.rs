@@ -19,6 +19,9 @@ pub struct CodegenOptions {
     pub debug_source: Option<DebugSource>,
     /// Instrument coverable lines with hit counters [TESTING-COVERAGE-CODEGEN].
     pub coverage: bool,
+    /// Which lowering the GPU combinators use for their kernels
+    /// [GPU-KERNEL-EXTRACT].
+    pub gpu_kernels: crate::gpu_kernel::GpuKernelMode,
 }
 
 /// Accumulates a whole module while lowering one function at a time.
@@ -84,6 +87,12 @@ pub struct Codegen {
     /// Monotonic id giving each lambda lifted to a top-level function (a lambda
     /// used as a value, e.g. passed to a function-typed parameter) a unique name.
     lambda_count: usize,
+    /// The kernel lowering this module compiles under [GPU-KERNEL-EXTRACT].
+    gpu_kernels: crate::gpu_kernel::GpuKernelMode,
+    /// Monotonic id naming each extracted GPU kernel. A counter of its OWN —
+    /// sharing `lambda_count` would renumber `__closure_fn_N` in every program
+    /// that mixes closures with kernels.
+    kernel_count: usize,
     /// Synthetic layouts of anonymous object literals (`{ a: 1, b: "x" }`),
     /// keyed by the generated owner name carried on the handle, so field access
     /// can recover the ordered `(field, LType)` slots.
@@ -99,6 +108,12 @@ pub struct Codegen {
     /// (mutually) recursive generic call falls back to a direct call instead of
     /// inlining forever.
     pub(crate) inlining: HashSet<String>,
+    /// Emitted instantiations of RECURSIVE generic functions, keyed by the call
+    /// site's argument representations ([`crate::monofn`]): the one form of
+    /// polymorphism resolved by emitting a definition rather than by inlining.
+    pub(crate) monofns: HashMap<String, crate::monofn::Instantiation>,
+    /// Monotonic id naming each emitted instantiation.
+    monofn_count: usize,
     /// Function-typed locals in the current function (a higher-order parameter
     /// `f: (int) -> int`): name → its signature ([`FnSig`]), so a call `f(x)`
     /// lowers to an indirect call through the `i8*` handle.
@@ -534,10 +549,14 @@ impl Codegen {
             effect_ops: HashMap::new(),
             handler_count: 0,
             lambda_count: 0,
+            gpu_kernels: options.gpu_kernels,
+            kernel_count: 0,
             obj_layouts: HashMap::new(),
             obj_count: 0,
             fn_defs: HashMap::new(),
             inlining: HashSet::new(),
+            monofns: HashMap::new(),
+            monofn_count: 0,
             fn_ptr_locals: HashMap::new(),
             fn_value_types: HashMap::new(),
             call_aliases: HashMap::new(),
@@ -721,6 +740,29 @@ impl Codegen {
     pub(crate) fn next_lambda_id(&mut self) -> usize {
         let id = self.lambda_count;
         self.lambda_count += 1;
+        id
+    }
+
+    /// The kernel lowering this module compiles under [GPU-KERNEL-EXTRACT].
+    pub(crate) fn gpu_kernels(&self) -> crate::gpu_kernel::GpuKernelMode {
+        self.gpu_kernels
+    }
+
+    /// A fresh id naming an extracted GPU kernel. Advanced ONLY by extraction,
+    /// so it is a pure function of AST walk order and a Default/ML twin pair
+    /// numbers its kernels identically [FLAVOR-IR-EQUIV].
+    pub(crate) fn next_kernel_id(&mut self) -> usize {
+        let id = self.kernel_count;
+        self.kernel_count += 1;
+        id
+    }
+
+    /// A fresh id naming an emitted instantiation of a recursive generic
+    /// function. Advanced only by specialisation, so it is a pure function of
+    /// AST walk order and a Default/ML twin pair numbers alike [FLAVOR-IR-EQUIV].
+    pub(crate) fn next_monofn_id(&mut self) -> usize {
+        let id = self.monofn_count;
+        self.monofn_count += 1;
         id
     }
 

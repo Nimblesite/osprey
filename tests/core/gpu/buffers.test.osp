@@ -1,0 +1,464 @@
+// GPU buffer surface: dense construction, round-trips in both directions,
+// bounds-checked reads at every degenerate index, and the element tag's
+// survival through lets, pipes, parameters, returns and aliases
+// ([GPU-BUFFER], [GPU-BUFFER-ELEM], [GPU-BUFFER-LITERAL],
+// [GPU-BUFFER-FROM-LIST], [GPU-BUFFER-FUSE], [GPU-BUFFER-TO-LIST],
+// [GPU-BUFFER-LENGTH], [GPU-IOTA], [GPU-GET] — 0034-GPUComputation.md).
+
+/// square is a pure int kernel; the checker proves it performs no effects.
+fn square(x) = (x * x) ?: 0
+
+/// addInts keeps the checked-arithmetic Result inside the kernel.
+fn addInts(acc: int, x: int) -> int = (acc + x) ?: acc
+
+/// scale is a pure float kernel; the buffer's element tag types x as float.
+fn scale(x) = x * 1.5
+
+/// addFloats is the float reduction kernel for gpuFold's combine slot.
+fn addFloats(a: float, x: float) -> float = a + x
+
+/// isOdd maps an int element to a bool element, changing the buffer's type.
+fn isOdd(x) = (x % 2 ?: 0) == 1
+
+/// countOdd counts the true elements of a bool buffer.
+fn countOdd(acc: int, flag: bool) -> int = match flag {
+    true => (acc + 1) ?: acc
+    false => acc
+}
+
+/// same is the identity kernel: every scalar word must come back out
+/// unchanged, at the element type its source buffer was tagged with.
+fn same(x) = x
+
+/// The exact payload [GPU-GET] contracts for a read outside the buffer, so a
+/// wrong gather is a visible failure and never a sentinel element.
+fn oobMessage() = "gpuGet: index out of bounds"
+
+/// readback renders one gpuGet outcome as text — the element for a hit, the
+/// error payload for a miss. Being polymorphic over the element type, it is
+/// itself the assertion that gpuGet recovers int, float and bool alike.
+fn readback(b, i) = match gpuGet(b, i) {
+    Success { value } => toString(value)
+    Error { message } => message
+}
+
+/// lastOf computes the final index from the length: the read that sits
+/// exactly on the in-bounds boundary.
+fn lastOf(b) = gpuGet(b, (gpuLength(b) - 1) ?: 0)
+
+/// widthOf takes a buffer as a plain parameter — the handle and its element
+/// tag have to survive the call.
+fn widthOf(b) = gpuLength(b)
+
+/// doubledInts both receives and returns a buffer, so the tag must survive a
+/// parameter and a return in one call.
+fn doubledInts(b) = b |> gpuMap(fn(x) => (x * 2) ?: 0)
+
+/// scaledFloats is doubledInts' float twin: tags are per-buffer, so a float
+/// buffer must come back out of a return still reading as float.
+fn scaledFloats(b) = b |> gpuMap(scale)
+
+/// chooseBuffer returns a buffer out of a match arm — the fourth binding form
+/// a handle travels through.
+fn chooseBuffer(flag, a, b) = match flag {
+    true => a
+    false => b
+}
+
+/// literalCase pins [GPU-BUFFER-LITERAL]: a literal argument stores its
+/// elements straight into the dense buffer at constant indices, with no list
+/// built at all. Every scalar element type [GPU-BUFFER-ELEM] is covered, plus
+/// the degenerate one- and zero-element literals and the sign and magnitude
+/// extremes an int word must hold.
+fn literalCase() = {
+    let ints = toGpu([3, 1, 4, 1, 5])
+    let floats = toGpu([0.25, 0.5, 0.75, 1.0])
+    let flags = toGpu([true, false, true])
+    let signed = toGpu([-3, 0, 7, -1])
+    let wide = toGpu([4611686018427387904, -4611686018427387904])
+    checkAll("buffer literals", [
+        gpuLength(ints) == 5, gpuLength(floats) == 4,
+        gpuLength(flags) == 3, gpuLength(signed) == 4,
+        gpuLength(wide) == 2, gpuLength(toGpu([9])) == 1,
+        gpuLength(toGpu([])) == 0, widthOf(ints) == 5,
+        (gpuGet(ints, 0) ?: 0) == 3, (gpuGet(ints, 1) ?: 0) == 1,
+        (gpuGet(ints, 2) ?: 0) == 4, (gpuGet(ints, 3) ?: 0) == 1,
+        (gpuGet(ints, 4) ?: 0) == 5, (lastOf(ints) ?: 0) == 5,
+        (gpuGet(floats, 0) ?: 9.5) == 0.25, (gpuGet(floats, 1) ?: 9.5) == 0.5,
+        (gpuGet(floats, 2) ?: 9.5) == 0.75, (gpuGet(floats, 3) ?: 9.5) == 1.0,
+        (gpuGet(flags, 0) ?: false) == true, (gpuGet(flags, 1) ?: true) == false,
+        (gpuGet(flags, 2) ?: false) == true, (lastOf(flags) ?: false) == true,
+        (gpuGet(signed, 0) ?: 0) == -3, (gpuGet(signed, 1) ?: 9) == 0,
+        (gpuGet(signed, 2) ?: 0) == 7, (gpuGet(signed, 3) ?: 0) == -1,
+        (gpuGet(wide, 0) ?: 0) == 4611686018427387904,
+        (gpuGet(wide, 1) ?: 0) == -4611686018427387904,
+        (lastOf(floats) ?: 9.5) == 1.0, (gpuGet(toGpu([9]), 0) ?: 0) == 9,
+        (ints |> gpuFold(0, addInts)) == 14, (signed |> gpuFold(0, addInts)) == 3,
+        (floats |> gpuFold(0.0, addFloats)) == 2.5,
+        (flags |> gpuFold(0, countOdd)) == 2
+    ])
+}
+
+/// listCopyCase pins [GPU-BUFFER-FROM-LIST]: a list *value* takes the copy
+/// loop rather than the literal path and must land on a buffer
+/// indistinguishable from the literal one — same length, same elements, same
+/// reduction — down to the one- and zero-element lists.
+fn listCopyCase() = {
+    let source = [2, 4, 6, 8]
+    let copied = toGpu(source)
+    let relayed = toGpu(fromGpu(copied))
+    let lone = [11]
+    let none = fromGpu(gpuIota(0))
+    checkAll("list copy path", [
+        listLength(source) == 4, gpuLength(copied) == 4,
+        (gpuGet(copied, 0) ?: 0) == 2, (gpuGet(copied, 1) ?: 0) == 4,
+        (gpuGet(copied, 2) ?: 0) == 6, (gpuGet(copied, 3) ?: 0) == 8,
+        (lastOf(copied) ?: 0) == 8, readback(copied, 4) == oobMessage(),
+        readback(copied, -1) == oobMessage(), readback(copied, 0) == "2",
+        (copied |> gpuFold(0, addInts)) == 20, gpuLength(relayed) == 4,
+        (gpuGet(relayed, 2) ?: 0) == 6, (relayed |> gpuFold(0, addInts)) == 20,
+        gpuLength(toGpu(lone)) == 1, (gpuGet(toGpu(lone), 0) ?: 0) == 11,
+        (lastOf(toGpu(lone)) ?: 0) == 11, listLength(none) == 0,
+        gpuLength(toGpu(none)) == 0, (toGpu(none) |> gpuFold(7, addInts)) == 7,
+        widthOf(toGpu(source)) == widthOf(copied),
+        (toGpu(source) |> gpuFold(0, addInts)) == (copied |> gpuFold(0, addInts))
+    ])
+}
+
+/// roundTripCase pins toGpu/fromGpu as an order-preserving dense copy in both
+/// directions [GPU-BUFFER-TO-LIST]: list to buffer to list to buffer, every
+/// index checked at every hop, with a list index past the end still failing.
+fn roundTripCase() = {
+    let buf = toGpu([3, 1, 4, 1, 5])
+    let back = fromGpu(buf)
+    let viaList = toGpu(back)
+    let twice = fromGpu(viaList)
+    checkAll("round trip", [
+        gpuLength(buf) == 5, listLength(back) == 5,
+        (listGet(back, 0) ?: 0) == 3, (listGet(back, 1) ?: 0) == 1,
+        (listGet(back, 2) ?: 0) == 4, (listGet(back, 3) ?: 0) == 1,
+        (listGet(back, 4) ?: 0) == 5, (listGet(back, 5) ?: 99) == 99,
+        (listGet(back, -1) ?: 99) == 99, gpuLength(viaList) == 5,
+        (gpuGet(viaList, 0) ?: 0) == 3, (gpuGet(viaList, 2) ?: 0) == 4,
+        (gpuGet(viaList, 4) ?: 0) == 5, readback(viaList, 5) == oobMessage(),
+        (viaList |> gpuFold(0, addInts)) == 14, listLength(twice) == 5,
+        (listGet(twice, 4) ?: 0) == 5, (toGpu(twice) |> gpuFold(0, addInts)) == 14,
+        listLength(fromGpu(gpuIota(0))) == 0,
+        gpuLength(toGpu(fromGpu(gpuIota(6)))) == 6,
+        (toGpu(fromGpu(gpuIota(6))) |> gpuFold(0, addInts)) == 15,
+        (gpuGet(toGpu(fromGpu(gpuIota(6))), 5) ?: 0) == 5
+    ])
+}
+
+/// emptyCase pins the zero-element buffer through every builtin that takes
+/// one: no element is readable at any index, it materializes as an empty
+/// list, maps to another empty buffer, and folds to its seed untouched.
+fn emptyCase() = {
+    let none = gpuIota(0)
+    let mapped = none |> gpuMap(square)
+    let flags = none |> gpuMap(isOdd)
+    let widened = none |> gpuMap(toFloat)
+    checkAll("empty buffers", [
+        gpuLength(none) == 0, gpuLength(mapped) == 0,
+        gpuLength(flags) == 0, gpuLength(widened) == 0,
+        gpuLength(toGpu([])) == 0, widthOf(none) == 0,
+        listLength(fromGpu(none)) == 0, listLength(fromGpu(mapped)) == 0,
+        (none |> gpuFold(0, addInts)) == 0, (none |> gpuFold(-7, addInts)) == -7,
+        (mapped |> gpuFold(3, addInts)) == 3, (flags |> gpuFold(0, countOdd)) == 0,
+        (widened |> gpuFold(2.5, addFloats)) == 2.5,
+        (gpuGet(none, 0) ?: 42) == 42, (gpuGet(none, 1) ?: 42) == 42,
+        (gpuGet(none, -1) ?: 42) == 42, (gpuGet(none, 1000000) ?: 42) == 42,
+        (lastOf(none) ?: 42) == 42, readback(none, 0) == oobMessage(),
+        readback(none, -1) == oobMessage(), readback(mapped, 0) == oobMessage(),
+        readback(flags, 0) == oobMessage(), readback(widened, 0) == oobMessage()
+    ])
+}
+
+/// singletonCase pins the one-element buffer: index 0 is the only address in
+/// bounds, so both 1 and -1 fail, and a fold sees exactly one element.
+fn singletonCase() = {
+    let lone = toGpu([42])
+    let loneF = toGpu([2.5])
+    let loneB = toGpu([false])
+    let doubled = doubledInts(lone)
+    checkAll("single-element buffers", [
+        gpuLength(lone) == 1, gpuLength(loneF) == 1,
+        gpuLength(loneB) == 1, gpuLength(gpuIota(1)) == 1,
+        (gpuGet(gpuIota(1), 0) ?: 9) == 0, (gpuGet(lone, 0) ?: 0) == 42,
+        (gpuGet(loneF, 0) ?: 9.5) == 2.5, (gpuGet(loneB, 0) ?: true) == false,
+        (gpuGet(lone, 1) ?: 9) == 9, (gpuGet(lone, -1) ?: 9) == 9,
+        (gpuGet(loneF, 1) ?: 9.5) == 9.5, (gpuGet(loneB, 1) ?: true) == true,
+        readback(lone, 1) == oobMessage(), readback(loneF, -1) == oobMessage(),
+        readback(loneB, 2) == oobMessage(), readback(lone, 0) == "42",
+        (lastOf(lone) ?: 0) == 42, (lastOf(loneF) ?: 9.5) == 2.5,
+        (lastOf(loneB) ?: true) == false, (lone |> gpuFold(0, addInts)) == 42,
+        (loneF |> gpuFold(0.0, addFloats)) == 2.5,
+        (loneB |> gpuFold(0, countOdd)) == 0,
+        gpuLength(doubled) == 1, (gpuGet(doubled, 0) ?: 0) == 84,
+        listLength(fromGpu(lone)) == 1, (listGet(fromGpu(lone), 0) ?: 0) == 42,
+        gpuLength(toGpu(fromGpu(lone))) == 1
+    ])
+}
+
+/// boundsCase pins [GPU-GET] at both ends and far outside them for every
+/// element type: an in-bounds read returns the element at the buffer's own
+/// scalar type, and index == length, index == -1 and indices a million past
+/// either edge all return the identical Error payload.
+fn boundsCase() = {
+    let ints = toGpu([10, 20, 30])
+    let floats = toGpu([1.25, 2.5])
+    let flags = toGpu([true, false])
+    checkAll("bounds", [
+        (gpuGet(ints, 0) ?: 0) == 10, (gpuGet(ints, 2) ?: 0) == 30,
+        (gpuGet(ints, (gpuLength(ints) - 1) ?: 0) ?: 0) == 30,
+        readback(ints, 0) == "10", readback(ints, 2) == "30",
+        readback(floats, 0) == "1.25", readback(floats, 1) == "2.5",
+        readback(flags, 0) == "true", readback(flags, 1) == "false",
+        readback(ints, 3) == oobMessage(), readback(ints, 4) == oobMessage(),
+        readback(ints, 1000000) == oobMessage(),
+        readback(ints, -1) == oobMessage(),
+        readback(ints, -1000000) == oobMessage(),
+        readback(floats, 2) == oobMessage(), readback(floats, -1) == oobMessage(),
+        readback(flags, 2) == oobMessage(), readback(flags, -1) == oobMessage(),
+        (gpuGet(ints, gpuLength(ints)) ?: -1) == -1,
+        (gpuGet(ints, 3) ?: -1) == -1, (gpuGet(ints, -1) ?: -1) == -1,
+        (gpuGet(floats, 2) ?: 9.5) == 9.5, (gpuGet(floats, -1) ?: 9.5) == 9.5,
+        (gpuGet(flags, 2) ?: true) == true, (gpuGet(flags, -1) ?: false) == false,
+        (lastOf(ints) ?: 0) == 30, (lastOf(floats) ?: 9.5) == 2.5,
+        (lastOf(flags) ?: true) == false
+    ])
+}
+
+/// iotaCase pins [GPU-IOTA] across its domain: the empty, one- and
+/// two-element index buffers, a large one whose closed-form sum a miscounted
+/// loop cannot match, and a negative count, which has no indices to generate
+/// and so yields an empty buffer rather than a negative allocation.
+fn iotaCase() = {
+    let one = gpuIota(1)
+    let pair = gpuIota(2)
+    let seven = gpuIota(7)
+    let wide = gpuIota(200000)
+    checkAll("iota", [
+        gpuLength(gpuIota(0)) == 0, gpuLength(one) == 1,
+        gpuLength(pair) == 2, gpuLength(seven) == 7,
+        gpuLength(wide) == 200000, gpuLength(gpuIota(-1)) == 0,
+        gpuLength(gpuIota(-200000)) == 0, widthOf(seven) == 7,
+        (gpuGet(one, 0) ?: 9) == 0, (gpuGet(pair, 0) ?: 9) == 0,
+        (gpuGet(pair, 1) ?: 0) == 1, (gpuGet(seven, 0) ?: 9) == 0,
+        (gpuGet(seven, 6) ?: 0) == 6, (lastOf(seven) ?: 0) == 6,
+        (lastOf(wide) ?: 0) == 199999, (gpuGet(wide, 0) ?: 9) == 0,
+        (gpuGet(wide, 100000) ?: 0) == 100000,
+        readback(seven, 7) == oobMessage(), readback(one, 1) == oobMessage(),
+        readback(wide, 200000) == oobMessage(),
+        readback(gpuIota(-1), 0) == oobMessage(),
+        (seven |> gpuFold(0, addInts)) == 21, (pair |> gpuFold(0, addInts)) == 1,
+        (one |> gpuFold(0, addInts)) == 0,
+        (wide |> gpuFold(0, addInts)) == 19999900000,
+        (seven |> gpuMap(square) |> gpuFold(0, addInts)) == 91,
+        listLength(fromGpu(seven)) == 7, (listGet(fromGpu(seven), 3) ?: 0) == 3
+    ])
+}
+
+/// elementCase pins [GPU-BUFFER-ELEM]: int, float and bool words go through
+/// the identity kernel and come back bit-for-bit at their own type — a float
+/// buffer must never read back as the integer its bits spell.
+fn elementCase() = {
+    let ints = toGpu([-9, 0, 9])
+    let floats = toGpu([-0.5, 0.0, 0.125])
+    let flags = toGpu([false, true])
+    checkAll("scalar element words survive identity", [
+        (gpuGet(ints |> gpuMap(same), 0) ?: 0) == -9,
+        (gpuGet(ints |> gpuMap(same), 1) ?: 9) == 0,
+        (gpuGet(ints |> gpuMap(same), 2) ?: 0) == 9,
+        (gpuGet(floats |> gpuMap(same), 0) ?: 9.5) == -0.5,
+        (gpuGet(floats |> gpuMap(same), 1) ?: 9.5) == 0.0,
+        (gpuGet(floats |> gpuMap(same), 2) ?: 9.5) == 0.125,
+        (gpuGet(flags |> gpuMap(same), 0) ?: true) == false,
+        (gpuGet(flags |> gpuMap(same), 1) ?: false) == true,
+        readback(ints, 0) == "-9", readback(ints, 1) == "0",
+        readback(floats, 0) == "-0.5", readback(floats, 1) == "0.0",
+        readback(floats, 2) == "0.125", readback(flags, 0) == "false",
+        (ints |> gpuFold(0, addInts)) == 0,
+        (floats |> gpuFold(0.0, addFloats)) == -0.375,
+        (flags |> gpuFold(0, countOdd)) == 1,
+        gpuLength(floats |> gpuMap(same)) == 3, widthOf(flags |> gpuMap(same)) == 2,
+        listLength(fromGpu(ints |> gpuMap(same))) == 3,
+        (toGpu([2.0]) |> gpuFold(0.0, addFloats)) == 2.0,
+        (lastOf(floats |> gpuMap(same)) ?: 9.5) == 0.125
+    ])
+}
+
+/// flowCase pins the handle and its element tag through all four binding
+/// forms a value takes — a let, a pipe, a function parameter and a function
+/// return — plus a match arm and a lambda parameter. A float buffer that lost
+/// its tag anywhere along the way would read back as raw bits.
+fn flowCase() = {
+    let held = toGpu([1.5, 2.5, 3.5])
+    let piped = held |> gpuMap(scale)
+    let returned = scaledFloats(held)
+    let chosen = chooseBuffer(true, held, piped)
+    let twice = scaledFloats(returned)
+    let lamLength = fn(b) => gpuLength(b)
+    checkAll("buffers flow through every binding form", [
+        (gpuGet(held, 0) ?: 9.5) == 1.5, (gpuGet(piped, 0) ?: 9.5) == 2.25,
+        (gpuGet(piped, 2) ?: 9.5) == 5.25, (gpuGet(returned, 0) ?: 9.5) == 2.25,
+        (gpuGet(returned, 2) ?: 9.5) == 5.25, (lastOf(returned) ?: 9.5) == 5.25,
+        (gpuGet(chosen, 1) ?: 9.5) == 2.5, (lastOf(chosen) ?: 9.5) == 3.5,
+        (gpuGet(chooseBuffer(false, held, piped), 1) ?: 9.5) == 3.75,
+        (gpuGet(twice, 0) ?: 9.5) == 3.375, (lastOf(twice) ?: 9.5) == 7.875,
+        widthOf(held) == 3, widthOf(piped) == 3,
+        widthOf(returned) == 3, widthOf(chosen) == 3,
+        lamLength(held) == 3, lamLength(twice) == 3,
+        (held |> gpuFold(0.0, addFloats)) == 7.5,
+        (piped |> gpuFold(0.0, addFloats)) == 11.25,
+        (returned |> gpuFold(0.0, addFloats)) == 11.25,
+        (twice |> gpuFold(0.0, addFloats)) == 16.875,
+        readback(held, 0) == "1.5", readback(returned, 0) == "2.25",
+        readback(returned, 3) == oobMessage(), readback(twice, -1) == oobMessage(),
+        listLength(fromGpu(held)) == 3
+    ])
+}
+
+/// aliasCase pins two bindings onto one buffer. Buffers are immutable values
+/// [GPU-BUFFER], so a kernel run through one alias publishes a new buffer and
+/// leaves every alias of the source reading what it read before.
+fn aliasCase() = {
+    let source = toGpu([1, 2, 3, 4])
+    let alias = source
+    let alsoAlias = alias
+    let derived = doubledInts(alias)
+    checkAll("aliased bindings share one immutable buffer", [
+        gpuLength(source) == 4, gpuLength(alias) == 4,
+        gpuLength(alsoAlias) == 4, widthOf(alias) == widthOf(source),
+        (gpuGet(alias, 0) ?: 0) == 1, (gpuGet(alsoAlias, 0) ?: 0) == 1,
+        (gpuGet(alias, 3) ?: 0) == 4, (gpuGet(alsoAlias, 3) ?: 0) == 4,
+        (lastOf(alias) ?: 0) == (lastOf(source) ?: 0),
+        (source |> gpuFold(0, addInts)) == 10,
+        (alias |> gpuFold(0, addInts)) == 10,
+        (alsoAlias |> gpuFold(0, addInts)) == 10,
+        gpuLength(derived) == 4, (derived |> gpuFold(0, addInts)) == 20,
+        (gpuGet(derived, 1) ?: 0) == 4, (gpuGet(source, 1) ?: 0) == 2,
+        (gpuGet(alias, 1) ?: 0) == 2, (gpuGet(alsoAlias, 1) ?: 0) == 2,
+        readback(alias, 4) == oobMessage(), readback(alsoAlias, -1) == oobMessage(),
+        readback(source, 4) == readback(alias, 4),
+        listLength(fromGpu(alias)) == 4, (listGet(fromGpu(alsoAlias), 2) ?: 0) == 3
+    ])
+}
+
+/// fusionCase pins [GPU-BUFFER-FUSE] from the indexing side: whatever the
+/// pipeline fused into the buffer has to be addressable element by element,
+/// the published length has to bound gpuGet exactly, and a one-element or
+/// empty range has to land on a buffer of that size.
+fn fusionCase() = {
+    let straight = range(0, 6) |> toGpu()
+    let squares = range(1, 5) |> map(square) |> toGpu()
+    let lone = range(4, 5) |> toGpu()
+    let empty = range(3, 3) |> toGpu()
+    checkAll("iterator fusion fills the buffer directly", [
+        gpuLength(straight) == 6, (gpuGet(straight, 0) ?: 9) == 0,
+        (gpuGet(straight, 5) ?: 0) == 5, (lastOf(straight) ?: 0) == 5,
+        readback(straight, 6) == oobMessage(),
+        readback(straight, -1) == oobMessage(),
+        gpuLength(squares) == 4, (gpuGet(squares, 0) ?: 0) == 1,
+        (gpuGet(squares, 1) ?: 0) == 4, (gpuGet(squares, 2) ?: 0) == 9,
+        (gpuGet(squares, 3) ?: 0) == 16, (lastOf(squares) ?: 0) == 16,
+        readback(squares, 4) == oobMessage(), gpuLength(lone) == 1,
+        (gpuGet(lone, 0) ?: 0) == 4, readback(lone, 1) == oobMessage(),
+        gpuLength(empty) == 0, readback(empty, 0) == oobMessage(),
+        (empty |> gpuFold(5, addInts)) == 5, widthOf(empty) == 0,
+        listLength(fromGpu(straight)) == 6,
+        (listGet(fromGpu(squares), 1) ?: 0) == 4,
+        (toGpu(fromGpu(squares)) |> gpuFold(0, addInts)) == 30
+    ])
+}
+
+/// intKernelCase pipes a buffer through a named kernel and folds it away,
+/// including over negative elements and over no elements at all.
+fn intKernelCase() = {
+    let total = toGpu([1, 2, 3, 4]) |> gpuMap(square) |> gpuFold(0, addInts)
+    let squares = toGpu([1, 2, 3]) |> gpuMap(fn(x) => (x * x) ?: 0) |> fromGpu()
+    let negatives = toGpu([-1, -2, -3]) |> gpuMap(square)
+    checkAll("int kernels", [
+        total == 30, listLength(squares) == 3,
+        (listGet(squares, 0) ?: 0) == 1, (listGet(squares, 2) ?: 0) == 9,
+        (toGpu([10, 20]) |> gpuFold(5, addInts)) == 35, gpuLength(negatives) == 3,
+        (gpuGet(negatives, 0) ?: 0) == 1, (gpuGet(negatives, 2) ?: 0) == 9,
+        (negatives |> gpuFold(0, addInts)) == 14,
+        (toGpu([7]) |> gpuMap(square) |> gpuFold(0, addInts)) == 49,
+        (gpuIota(0) |> gpuMap(square) |> gpuFold(0, addInts)) == 0
+    ])
+}
+
+/// floatKernelCase proves float words keep their bits through map and fold,
+/// including the [GPU-CONVERT] seed that widens an index buffer.
+fn floatKernelCase() = {
+    let sum = toGpu([1.0, 2.0, 3.0]) |> gpuMap(scale) |> gpuFold(0.0, addFloats)
+    let halves = toGpu([0.5, 0.25, 0.125])
+    checkAll("float kernels", [
+        sum == 9.0, (halves |> gpuFold(0.0, addFloats)) == 0.875,
+        (halves |> gpuMap(scale) |> gpuFold(0.0, addFloats)) == 1.3125,
+        (gpuGet(halves |> gpuMap(scale), 2) ?: 9.5) == 0.1875,
+        gpuLength(halves |> gpuMap(scale)) == 3,
+        (toGpu([0.5, 0.25]) |> gpuFold(0.0, addFloats)) == 0.75,
+        (gpuIota(4) |> gpuMap(toFloat) |> gpuFold(0.0, addFloats)) == 6.0,
+        (gpuGet(gpuIota(4) |> gpuMap(toFloat), 3) ?: 9.5) == 3.0,
+        (gpuIota(0) |> gpuMap(toFloat) |> gpuFold(2.5, addFloats)) == 2.5
+    ])
+}
+
+/// boolKernelCase maps int elements to bool elements and counts the odd ones,
+/// covering the all-true and all-false buffers beside the mixed one.
+fn boolKernelCase() = {
+    let odds = toGpu([1, 2, 3, 4, 5]) |> gpuMap(isOdd)
+    let allTrue = toGpu([1, 3]) |> gpuMap(isOdd)
+    let allFalse = toGpu([2, 4]) |> gpuMap(isOdd)
+    checkAll("bool kernels", [
+        gpuLength(odds) == 5, (odds |> gpuFold(0, countOdd)) == 3,
+        (gpuGet(odds, 0) ?: false) == true, (gpuGet(odds, 1) ?: true) == false,
+        (gpuGet(odds, 4) ?: false) == true, (lastOf(odds) ?: false) == true,
+        readback(odds, 1) == "false", readback(odds, 5) == oobMessage(),
+        gpuLength(allTrue) == 2, (allTrue |> gpuFold(0, countOdd)) == 2,
+        (allFalse |> gpuFold(0, countOdd)) == 0,
+        (toGpu([true, true, false]) |> gpuFold(0, countOdd)) == 2,
+        gpuLength(gpuIota(0) |> gpuMap(isOdd)) == 0
+    ])
+}
+
+/// bigCase pushes the copy path itself to scale: a hundred thousand elements
+/// out to a list and back into a buffer, boundary indices and closed-form
+/// sums checked on every hop.
+fn bigCase() = {
+    let wide = gpuIota(100000)
+    let doubled = doubledInts(wide)
+    let back = fromGpu(wide)
+    let rebuilt = toGpu(back)
+    checkAll("hundred-thousand element copies", [
+        gpuLength(wide) == 100000, gpuLength(doubled) == 100000,
+        listLength(back) == 100000, gpuLength(rebuilt) == 100000,
+        (wide |> gpuFold(0, addInts)) == 4999950000,
+        (doubled |> gpuFold(0, addInts)) == 9999900000,
+        (rebuilt |> gpuFold(0, addInts)) == 4999950000,
+        (gpuGet(wide, 0) ?: 9) == 0, (lastOf(wide) ?: 0) == 99999,
+        (gpuGet(doubled, 99999) ?: 0) == 199998,
+        (gpuGet(rebuilt, 99999) ?: 0) == 99999,
+        (listGet(back, 99999) ?: 0) == 99999, (listGet(back, 100000) ?: -1) == -1,
+        readback(wide, 100000) == oobMessage(),
+        readback(rebuilt, -1) == oobMessage(), widthOf(rebuilt) == widthOf(wide)
+    ])
+}
+
+test("buffer literals store elements densely at constant indices", literalCase)
+test("a list value copies into a buffer element for element", listCopyCase)
+test("gpu buffers round-trip lists densely", roundTripCase)
+test("the empty buffer answers every builtin without elements", emptyCase)
+test("a one-element buffer bounds gpuGet to index zero", singletonCase)
+test("gpuGet errors identically at both ends of every buffer", boundsCase)
+test("gpuIota spans zero, one and two hundred thousand indices", iotaCase)
+test("int, float and bool words survive the identity kernel", elementCase)
+test("buffers keep their tag through lets, pipes, params and returns", flowCase)
+test("aliased bindings observe one immutable buffer", aliasCase)
+test("a fused iterator buffer is addressable element by element", fusionCase)
+test("pure int kernels map and fold on buffers", intKernelCase)
+test("float kernels keep element bits through map and fold", floatKernelCase)
+test("kernels may change the element scalar type", boolKernelCase)
+test("the copy path stays exact at a hundred thousand elements", bigCase)

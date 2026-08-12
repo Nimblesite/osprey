@@ -53,16 +53,41 @@ WASM_MANIFEST=$TESTDIR/WASM_UNPORTABLE.txt
 # Silence is not success — if coverage ever drops below this floor the harness
 # FAILS rather than quietly checking less than it used to.
 #
-# Natively all 160 programs are covered by 83 golden files: 77 are shared by a
-# Default/ML flavor pair, 6 belong to a program with no twin. On wasm32 the 53
+# Natively all 179 programs are covered by 93 golden files: 86 are shared by a
+# Default/ML flavor pair, 7 belong to a program with no twin. On wasm32 the 53
 # programs blocked on a capability WASI does not have are skipped — each named
-# in tests/WASM_UNPORTABLE.txt — leaving 107.
+# in tests/WASM_UNPORTABLE.txt — leaving 126.
 # Ratchet UP as goldens are added; never lower it to turn a red build green.
 if [[ $TARGET == wasm32 ]]; then
-  GOLDEN_MIN=${OSPREY_GOLDEN_MIN:-107}
+  GOLDEN_MIN=${OSPREY_GOLDEN_MIN:-126}
 else
-  GOLDEN_MIN=${OSPREY_GOLDEN_MIN:-160}
+  GOLDEN_MIN=${OSPREY_GOLDEN_MIN:-179}
 fi
+
+# [GPU-KERNEL-EXTRACT] differential. The extracted-kernel lowering and the
+# pre-stage-3 inlined host-loop lowering are two code generators for the same
+# semantics, so the GPU suites must produce byte-identical output under both.
+# This re-runs ONLY tests/core/gpu under the OPPOSITE lowering and compares it
+# to the stdout the main pass already captured — a second oracle for the same
+# goldens at the cost of eighteen programs, not a second corpus.
+GPU_SUITE_DIR=$TESTDIR/core/gpu
+# Canonicalized exactly as the compiler's mode_of: surrounding whitespace is
+# ignored, empty keeps extraction, anything else is an error. Selecting the
+# alternate from the RAW string once let `OSPREY_GPU_KERNELS=" inline "` run
+# inline against itself — the compiler trimmed, the shell did not.
+GPU_KERNELS_MODE=${OSPREY_GPU_KERNELS:-extract}
+GPU_KERNELS_MODE=${GPU_KERNELS_MODE//[[:space:]]/}
+[[ -n $GPU_KERNELS_MODE ]] || GPU_KERNELS_MODE=extract
+case $GPU_KERNELS_MODE in
+  extract) GPU_ALT_MODE=inline ;;
+  inline) GPU_ALT_MODE=extract ;;
+  *)
+    echo "OSPREY_GPU_KERNELS=$GPU_KERNELS_MODE: expected 'extract' or 'inline'" >&2
+    exit 2
+    ;;
+esac
+# Nine suites x two flavors. Ratchet UP; never lower it to turn a build green.
+GPU_MODE_MIN=${OSPREY_GPU_MODE_MIN:-18}
 
 # Exit code run_wasm uses to say "not a failure, an unported feature". Distinct
 # from any status the compiler or Node can return on its own.
@@ -119,12 +144,15 @@ golden_for() {
   return 1
 }
 
-# Whole-string trim — one leading and one trailing strip, never a per-line
-# strip, which would discard trailing whitespace the program deliberately emits.
-trimmed() {
-  local s=$1
-  s="${s#"${s%%[![:space:]]*}"}"
-  print -r -- "${s%"${s##*[![:space:]]}"}"
+# The single ARC exit sentinel in a stderr transcript: echoes the live-object
+# count only when EXACTLY one `[osp-arc] exit: N live objects` line is present.
+# Absent or repeated sentinels echo nothing, which every caller treats as a
+# failed check — a run that never printed the sentinel (crashed runtime,
+# swallowed stderr) must read as unverified, never as leak-free.
+arc_live_count() {
+  local matches
+  matches=$(sed -n 's/^\[osp-arc\] exit: \([0-9]*\) live objects.*/\1/p' "$1")
+  [[ -n "$matches" && "$matches" != *$'\n'* ]] && print -r -- "$matches"
 }
 
 if [[ ${1:-} == "--worker" ]]; then
@@ -158,6 +186,13 @@ configured_jobs() {
 }
 
 MEMORY=${1:-default}
+# The ARC leak oracle reads the runtime's exit report, which memory_arc.c
+# arms only under OSPREY_ARC_DEBUG. The harness arms it ITSELF whenever it
+# audits the arc backend: the sentinel check below is strict (exactly one
+# line, value 0, for every passing run in BOTH kernel lowerings), and an
+# oracle that depends on the caller remembering an env var is fail-open by
+# construction — an unarmed run would read as leak-free.
+[[ "$MEMORY" == "arc" ]] && export OSPREY_ARC_DEBUG=1
 JOBS=$(configured_jobs)
 jobs_code=$?
 [[ $jobs_code -eq 0 ]] || exit $jobs_code
@@ -210,15 +245,19 @@ for (( index = 1; index <= ${#FILES}; index++ )); do
   fi
 done
 
-# Dispatch one batch of (index, file) pairs at the given parallelism.
+# Dispatch one batch of (index, file) pairs at the given parallelism, writing
+# each worker's transcript into $dir. The result directory is a parameter so the
+# alternate-lowering pass below can collect its own transcripts without
+# overwriting the main pass's.
 dispatch_batch() {
-  local jobs=$1; shift
+  local jobs=$1 dir=$2; shift 2
   (( $# > 0 )) || return 0
-  printf '%s\0' "$@" | xargs -0 -n 2 -P "$jobs" zsh "$SCRIPT" --worker "$MEMORY" "$RESULTDIR"
+  printf '%s\0' "$@" | xargs -0 -n 2 -P "$jobs" zsh "$SCRIPT" --worker "$MEMORY" "$dir"
 }
 
 if (( ${#FILES} > 0 )); then
-  dispatch_batch "$JOBS" "${concurrent[@]}" && dispatch_batch 1 "${serialized[@]}"
+  dispatch_batch "$JOBS" "$RESULTDIR" "${concurrent[@]}" \
+    && dispatch_batch 1 "$RESULTDIR" "${serialized[@]}"
   dispatch_code=$?
   if [[ $dispatch_code -ne 0 ]]; then
     echo "test corpus worker dispatch failed ($dispatch_code)" >&2
@@ -257,8 +296,10 @@ for (( index = 1; index <= ${#FILES}; index++ )); do
 
   # Golden comparison is independent of the exit status: a program whose
   # assertions all pass can still have stopped printing in the right order.
+  # `cmp` on the raw files — byte-exact means byte-exact, including trailing
+  # whitespace and the final newline; whole-string trimming once hid both.
   if GOLDEN=$(golden_for "$f"); then
-    if [[ "$(trimmed "$(<$RESULTDIR/$index.stdout)")" == "$(trimmed "$(<$GOLDEN)")" ]]; then
+    if cmp -s -- "$RESULTDIR/$index.stdout" "$GOLDEN"; then
       golden_pass=$((golden_pass + 1))
     else
       golden_fail=$((golden_fail + 1))
@@ -271,11 +312,15 @@ for (( index = 1; index <= ${#FILES}; index++ )); do
     GOLDEN_MISSING+=("$rel")
   fi
 
-  if [[ "$MEMORY" == "arc" ]]; then
-    live=$(sed -n 's/^\[osp-arc\] exit: \([0-9]*\) live objects.*/\1/p' "$ERRFILE" | tail -1)
-    if [[ -n "$live" && "$live" != 0 ]]; then
+  # Only a passing run owes a sentinel — a program that never built has no
+  # runtime to print one and is already red above. For a passing run the
+  # sentinel is REQUIRED to be present and zero; parsing "no line" as "no
+  # leak" is how a crashed exit path would read as leak-free.
+  if [[ "$MEMORY" == "arc" && $rc -eq 0 ]]; then
+    live=$(arc_live_count "$ERRFILE")
+    if [[ "$live" != "0" ]]; then
       leaky=$((leaky + 1))
-      LEAKS+=("$rel ($live)")
+      LEAKS+=("$rel (${live:-no sentinel})")
     fi
   fi
 done
@@ -342,5 +387,64 @@ if [[ "$MEMORY" == "arc" ]]; then
   echo "TEST_CORPUS_ARC_LEAKY=$leaky"
   for item in $LEAKS; do echo "  leak: $item"; done
 fi
+
+# [GPU-KERNEL-EXTRACT]: re-run the GPU suites under the opposite kernel lowering
+# and require the SAME transcript. Extraction is a lowering choice, never a
+# semantic one, so a divergence here is a codegen bug and nothing else.
+gpu_mode_fail=0
+gpu_mode_pairs=0
+typeset -a GPU_MODE_FAILED=()
+alt_pairs=()
+for (( index = 1; index <= ${#FILES}; index++ )); do
+  [[ $FILES[$index] == $GPU_SUITE_DIR/* ]] && alt_pairs+=("$index" "$FILES[$index]")
+done
+if (( ${#alt_pairs} > 0 )); then
+  ALTDIR=$RESULTDIR/altmode
+  mkdir -p "$ALTDIR" || exit 1
+  export OSPREY_GPU_KERNELS=$GPU_ALT_MODE
+  dispatch_batch "$JOBS" "$ALTDIR" "${alt_pairs[@]}"
+  unset OSPREY_GPU_KERNELS
+  for (( i = 1; i <= ${#alt_pairs}; i += 2 )); do
+    index=$alt_pairs[$i]
+    rel=${alt_pairs[$((i + 1))]#$ROOT/}
+    # A wasm SKIP was never built, so it has no transcript to compare.
+    if [[ -r "$ALTDIR/$index.status" && "$(<$ALTDIR/$index.status)" == "$SKIP_STATUS" ]]; then
+      continue
+    fi
+    gpu_mode_pairs=$((gpu_mode_pairs + 1))
+    # The oracle is AGREEMENT on the whole observable outcome, not stdout
+    # alone: exit status, raw transcript bytes, and (under ARC) the leak
+    # sentinel. Comparing stdout via command substitution once let the
+    # alternate lowering crash, leak, or drop a trailing line unnoticed.
+    main_rc=1 alt_rc=1
+    [[ -r "$RESULTDIR/$index.status" ]] && main_rc=$(<$RESULTDIR/$index.status)
+    [[ -r "$ALTDIR/$index.status" ]] && alt_rc=$(<$ALTDIR/$index.status)
+    mode_diverged=""
+    if [[ "$alt_rc" != "$main_rc" ]]; then
+      mode_diverged="exit $alt_rc vs $main_rc"
+    elif ! cmp -s -- "$RESULTDIR/$index.stdout" "$ALTDIR/$index.stdout"; then
+      mode_diverged="transcripts differ"
+    elif [[ "$MEMORY" == "arc" && "$main_rc" == "0" ]]; then
+      alt_live=$(arc_live_count "$ALTDIR/$index.stderr")
+      [[ "$alt_live" == "0" ]] || mode_diverged="alternate ARC sentinel: ${alt_live:-missing}"
+    fi
+    if [[ -n "$mode_diverged" ]]; then
+      gpu_mode_fail=$((gpu_mode_fail + 1))
+      GPU_MODE_FAILED+=("$rel")
+      echo "GPU-KERNEL-MODE-MISMATCH $rel ($MEMORY, $GPU_KERNELS_MODE vs $GPU_ALT_MODE): $mode_diverged"
+      diff -u "$RESULTDIR/$index.stdout" "$ALTDIR/$index.stdout" | sed -n '1,12p' | sed 's/^/  /'
+    fi
+  done
+fi
+echo "TEST_CORPUS_GPU_MODE_PASS=$((gpu_mode_pairs - gpu_mode_fail)) TEST_CORPUS_GPU_MODE_FAIL=$gpu_mode_fail (alt lowering: $GPU_ALT_MODE, floor $GPU_MODE_MIN)"
+for item in $GPU_MODE_FAILED; do echo "  kernel-mode mismatch: $item"; done
+gpu_mode_floor_ok=1
+if [[ $gpu_mode_pairs -lt $GPU_MODE_MIN ]]; then
+  gpu_mode_floor_ok=0
+  echo "GPU KERNEL-MODE FLOOR BREACHED: $gpu_mode_pairs compared, minimum is $GPU_MODE_MIN." >&2
+  echo "Both kernel lowerings must stay exercised; do not lower the floor." >&2
+fi
+
 [[ $fail -eq 0 && $leaky -eq 0 && $golden_fail -eq 0 && $golden_missing -eq 0 \
-   && $golden_floor_ok -eq 1 && $skips_ok -eq 1 ]]
+   && $golden_floor_ok -eq 1 && $skips_ok -eq 1 \
+   && $gpu_mode_fail -eq 0 && $gpu_mode_floor_ok -eq 1 ]]

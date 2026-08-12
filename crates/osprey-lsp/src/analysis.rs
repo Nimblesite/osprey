@@ -73,64 +73,16 @@ pub struct SymbolInfo {
 #[must_use]
 pub fn collect_symbols(program: &Program) -> Vec<SymbolInfo> {
     let mut out = Vec::new();
-    collect(&program.statements, &[], &mut out);
+    walk_stmts(&program.statements, &[], Bodies::Skip, &mut out);
     out
 }
 
-fn collect(stmts: &[Stmt], prefix: &[String], out: &mut Vec<SymbolInfo>) {
-    for stmt in stmts {
-        match stmt {
-            Stmt::Namespace {
-                name,
-                body,
-                position,
-                ..
-            } => {
-                let label = name.label();
-                out.push(container_sym(
-                    prefix,
-                    label,
-                    SymbolKind::Namespace,
-                    *position,
-                ));
-                let child_prefix = extended(prefix, std::slice::from_ref(&label.to_owned()));
-                collect(body, &child_prefix, out);
-            }
-            Stmt::Module {
-                path,
-                body,
-                position,
-                ..
-            } => {
-                out.push(container_sym(
-                    prefix,
-                    &path.to_string(),
-                    SymbolKind::Module,
-                    *position,
-                ));
-                let child_prefix = extended(prefix, &path.segments);
-                for item in body {
-                    collect(
-                        std::slice::from_ref(item.declaration.as_ref()),
-                        &child_prefix,
-                        out,
-                    );
-                }
-            }
-            Stmt::Signature { name, position, .. } => out.push(container_sym(
-                prefix,
-                name,
-                SymbolKind::Signature,
-                *position,
-            )),
-            other => {
-                if let Some(mut symbol) = sym_of(other) {
-                    qualify_symbol(&mut symbol, prefix);
-                    out.push(symbol);
-                }
-            }
-        }
-    }
+/// Whether a statement walk descends into expression bodies to pick up nested
+/// `let` bindings (hover) or stops at the declaration (outline).
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Bodies {
+    Skip,
+    Descend,
 }
 
 fn extended(prefix: &[String], segments: &[String]) -> Vec<String> {
@@ -175,11 +127,13 @@ fn container_sym(
 #[must_use]
 pub(crate) fn collect_all_symbols(program: &Program) -> Vec<SymbolInfo> {
     let mut out = Vec::new();
-    walk_stmts(&program.statements, &[], &mut out);
+    walk_stmts(&program.statements, &[], Bodies::Descend, &mut out);
     out
 }
 
-fn walk_stmts(stmts: &[Stmt], prefix: &[String], out: &mut Vec<SymbolInfo>) {
+/// One walker for both surfaces: containers qualify their children identically,
+/// and only `bodies` decides whether declaration bodies are descended.
+fn walk_stmts(stmts: &[Stmt], prefix: &[String], bodies: Bodies, out: &mut Vec<SymbolInfo>) {
     for stmt in stmts {
         match stmt {
             Stmt::Namespace {
@@ -195,7 +149,7 @@ fn walk_stmts(stmts: &[Stmt], prefix: &[String], out: &mut Vec<SymbolInfo>) {
                     SymbolKind::Namespace,
                     *position,
                 ));
-                walk_stmts(body, &extended(prefix, &[label]), out);
+                walk_stmts(body, &extended(prefix, &[label]), bodies, out);
             }
             Stmt::Module {
                 path,
@@ -214,6 +168,7 @@ fn walk_stmts(stmts: &[Stmt], prefix: &[String], out: &mut Vec<SymbolInfo>) {
                     walk_stmts(
                         std::slice::from_ref(item.declaration.as_ref()),
                         &child_prefix,
+                        bodies,
                         out,
                     );
                 }
@@ -229,7 +184,9 @@ fn walk_stmts(stmts: &[Stmt], prefix: &[String], out: &mut Vec<SymbolInfo>) {
                     qualify_symbol(&mut symbol, prefix);
                     out.push(symbol);
                 }
-                walk_stmt_body(other, prefix, out);
+                if bodies == Bodies::Descend {
+                    walk_stmt_body(other, prefix, out);
+                }
             }
         }
     }
@@ -253,7 +210,7 @@ fn walk_expr(e: &Expr, prefix: &[String], out: &mut Vec<SymbolInfo>) {
                 walk_expr(x, prefix, out);
             }
         }),
-        Expr::List(xs) => walk_each(xs, out, |x| x, |x, out| walk_expr(x, prefix, out)),
+        Expr::List(xs, _) => walk_each(xs, out, |x| x, |x, out| walk_expr(x, prefix, out)),
         Expr::Map(entries) => entries.iter().for_each(|en| {
             walk_expr(&en.key, prefix, out);
             walk_expr(&en.value, prefix, out);
@@ -313,7 +270,7 @@ fn walk_expr_rest(e: &Expr, prefix: &[String], out: &mut Vec<SymbolInfo>) {
             );
         }
         Expr::Block { statements, value } => {
-            walk_stmts(statements, prefix, out);
+            walk_stmts(statements, prefix, Bodies::Descend, out);
             if let Some(v) = value {
                 walk_expr(v, prefix, out);
             }
@@ -448,6 +405,7 @@ fn sym_of(stmt: &Stmt) -> Option<SymbolInfo> {
             *position,
         )),
         Stmt::Effect {
+            stage: osprey_ast::Stage::Dynamic,
             name,
             type_params,
             doc,
@@ -936,7 +894,7 @@ mod tests {
             body: blk(name),
         };
         vec![
-            Expr::List(vec![blk("list")]),
+            Expr::List(vec![blk("list")], None),
             Expr::Map(vec![MapEntry {
                 key: blk("mapk"),
                 value: blk("mapv"),
@@ -1013,6 +971,7 @@ mod tests {
                 position: None,
             },
             Expr::Handler {
+                stage: osprey_ast::Stage::Dynamic,
                 effect: "E".into(),
                 arms: vec![HandlerArm {
                     operation: "op".into(),

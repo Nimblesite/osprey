@@ -1,0 +1,25 @@
+// Aspirational GPU frontend parity. In particular, unary minus must not turn
+// the minimum int literal or a negative gpuIota argument into a different ML
+// parse ([GPU-BUFFER-ELEM], [GPU-IOTA], [GPU-KERNEL-EXTRACT]).
+
+minimumIntCase () =
+    minimum = -9223372036854775808
+    buf = toGpu [minimum]
+    checkAll "minimum int literal crosses the GPU boundary" [
+        gpuLength buf == 1,
+        (gpuGet (buf, 0) ?: 0) == minimum,
+        (listGet (fromGpu buf, 0) ?: 0) == minimum
+    ]
+
+negativeIotaCase () =
+    direct = gpuIota -3
+    piped = -7 |> gpuIota
+    checkAll "negative gpuIota arguments are empty" [
+        gpuLength direct == 0,
+        gpuLength piped == 0,
+        listLength (fromGpu direct) == 0,
+        listLength (fromGpu piped) == 0
+    ]
+
+test ("minimum int literals are flavor-equivalent in GPU buffers", minimumIntCase)
+test ("negative gpuIota arguments are flavor-equivalent", negativeIotaCase)

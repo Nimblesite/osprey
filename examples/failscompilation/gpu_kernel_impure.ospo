@@ -1,0 +1,18 @@
+// [GPU-KERNEL-PURE]: a kernel that performs an effect is rejected even when a
+// handler surrounds the combinator call — handlers make effects dischargeable
+// on the host, but a kernel body cannot leave the device to reach one.
+effect Log {
+    write: fn(string) -> Unit
+}
+
+fn loud(x) = {
+    perform Log.write("saw")
+    x
+}
+
+fn main() = {
+    let n = handle Log
+        write m => print(m)
+    in toGpu([1, 2]) |> gpuMap(loud) |> gpuLength()
+    print(n)
+}

@@ -1,7 +1,8 @@
 // Backend-neutral memory-manager hooks C runtime units may call directly.
 // Every memory backend (memory_runtime.c, memory_gc.c, memory_arc.c) defines
 // all of them, so a unit compiled once links against whichever backend the
-// program selected — the default/gc definitions are no-ops. Implements the
+// program selected. General retain/release are no-ops in default/GC; the
+// default backend still reclaims codegen-proved unique values. Implements the
 // C-runtime half of [GC-ARC-PERCEUS] under the [MEM-BACKENDS] ABI
 // (docs/specs/0018-MemoryManagement.md).
 #ifndef OSPREY_MEMORY_HOOKS_H
@@ -30,6 +31,14 @@
 // A OSP_MEM_MASK layout word over the given word bits.
 #define OSP_MEM_LAYOUT(bits) ((int64_t)(((uint64_t)(bits) << 8) | OSP_MEM_MASK))
 
+// Called once at main entry, before any user code. Anchors the memory backend
+// object into the link — static archives extract only referenced members, so
+// a program with zero heap allocations would otherwise link no backend at all
+// — and lets a backend arm exit-time accounting unconditionally: the ARC leak
+// sentinel must print (under OSPREY_ARC_DEBUG) even for a program that never
+// allocates, or the harness cannot tell "no leaks" from "never audited".
+void osp_mem_boot(void);
+
 // Layout-carrying allocation (every backend defines it; default/gc ignore meta).
 void *osp_alloc_tagged(int64_t size, int64_t meta);
 
@@ -52,14 +61,14 @@ void osp_retain(void *o);
 void osp_release(void *o);
 
 // Release a reference codegen PROVES is the only one (a fresh, never-bound,
-// never-stored value consumed in the expression that created it). Runtime
-// behaviour is identical to osp_release; the separate symbol exists so
-// codegen can declare it with LLVM's allocator free-pair attributes
-// (allockind("free") / allocptr) and -O2 can delete a provably-dead
-// alloc+release pair outright — restoring the [MEM-OWNERSHIP] static-free
-// ideal for per-operation Result blocks. Those attributes let LLVM assume
-// the pointee is dead after the call, which is only true when rc == 1 —
-// hence the uniqueness proof requirement on every emission site.
+// never-stored value consumed in the expression that created it). Default
+// frees it directly, ARC performs its ordinary release, and tracing GC leaves
+// it for the collector. The separate symbol also lets codegen declare LLVM's
+// allocator free-pair attributes (allockind("free") / allocptr), so -O2 can
+// delete a provably-dead alloc+release pair outright — restoring the
+// [MEM-OWNERSHIP] static-free ideal for per-operation Result blocks. Those
+// attributes let LLVM assume the pointee is dead after the call, which is only
+// true when rc == 1 — hence the uniqueness proof at every emission site.
 void osp_release_unique(void *o);
 
 // Mark a shared C-runtime singleton immortal (ARC: rc < 0 — dup/drop skip it

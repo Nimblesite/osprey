@@ -209,7 +209,10 @@ fn offset_expr(expr: &mut Expr, offset: u32) {
                 }
             }
         }
-        Expr::List(items) => offset_exprs(items, offset),
+        Expr::List(items, position) => {
+            shift(position, offset);
+            offset_exprs(items, offset);
+        }
         Expr::Map(entries) => {
             for entry in entries {
                 offset_expr(&mut entry.key, offset);
