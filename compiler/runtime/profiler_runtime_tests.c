@@ -213,6 +213,24 @@ static void test_end_to_end_capture(void) {
   assert(strstr(json, "\"stacks\":[[") != NULL);
   free(json);
   unlink(out);
+
+  // EVERY dump must be well-formed, not just a process's first. The image list
+  // is emitted by a `dl_iterate_phdr` callback, and holding its "already wrote
+  // one" flag in a function-local static made each later capture open the array
+  // with a separator — `"images":[,{...}` — which no JSON reader accepts, so a
+  // second profile lost the image list its addresses symbolize against. Assert
+  // a second capture in the SAME process is shaped like the first, so the
+  // defect cannot come back disguised as suite ordering [PROF-RAW-FORMAT].
+  assert(osp_prof_start(out, TEST_RATE_HZ));
+  osp_prof_thread_register(0, "main");
+  g_sink += busy_work(200000);
+  osp_prof_thread_unregister();
+  osp_prof_stop_and_dump();
+  json = slurp(out);
+  assert(strstr(json, "\"images\":[{") != NULL);
+  assert(strstr(json, "\"images\":[,") == NULL);
+  free(json);
+  unlink(out);
 }
 
 static void *churn_thread(void *arg) {
