@@ -50,9 +50,28 @@ jobs:
     # A skipped required check reports as passing (see the `changes` job note).
     if: ${{ needs.changes.outputs.code == 'true' }}
     runs-on: ubuntu-latest
-    # TIMEOUT EXCEPTION: full compiler build + C runtime compile + extension
-    # tests + Docker web compiler test requires ~15 min
-    timeout-minutes: 30
+    # TIMEOUT EXCEPTION. The "~15 min" this budget was written for was never a
+    # measurement of a COMPLETE run: the job used to die early — at the Rust
+    # tests, then the C compile, then the C coverage gate — so no run had ever
+    # reached the later stages. The first run that got through them all was
+    # killed at 30 minutes mid-way through the extension suite. Measured stage
+    # times from that run:
+    #
+    #   C + wasm runtime archives   2m30s
+    #   lint + build                  25s
+    #   rust tests with coverage    2m35s
+    #   C suites + coverage gate      35s
+    #   language corpus             2m35s
+    #   golden comparison           2m50s
+    #   GC conformance              3m05s
+    #   ARC conformance             2m50s
+    #   extension suite            12m+ (killed, still progressing)
+    #
+    # The extension suite dominates: it drives a real VS Code under xvfb and
+    # spawns lldb-dap per debug-adapter case, which is minutes slower on a
+    # runner than the ~2 min it takes locally. 60 leaves headroom for that
+    # without hiding a hang — a stuck run still fails, just later.
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
 
