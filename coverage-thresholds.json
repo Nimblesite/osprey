@@ -1,6 +1,6 @@
 {
   "_agent_pmo": "b636503",
-  "_doc": "Per-project coverage thresholds. Each entry is a project; `make test` measures it and fails hard below its threshold. Rust entries (language=rust) are individual crates under crates/<name>/, each measured separately from lcov.info; the vscode-extension entry is measured from its V8 coverage summary; C entries (language=c) are individual libraries under compiler/runtime/<name>.c, each measured as gcov line coverage by the Makefile's _coverage_check_c_runtime (the best number across every unit-test suite that links the library). wasm-only units (web_runtime.c, wasm_builtins_runtime.c) do not build natively and are not gated, and neither are term_runtime.c/test_runtime.c: their suites run every case in a FORKED CHILD (a pty-less terminal and the TAP state machine can only be asserted on captured child output), and the child's gcov counters are never flushed back, so gcov reports 0% against 10k passing assertions. Gate them once the harness calls __gcov_dump in the child. FLOOR: every Rust crate is gated at >=95%. C libraries TARGET >=90% — the entries below carry each library's ACTUAL measured line coverage minus ~2 points of cross-platform slack (macOS llvm-cov gcov and Linux gcov disagree slightly), capped at 90, so the gate is real rather than aspirational. Everything under 90 is a to-do, worst first: websocket_server 24, websocket_client 37, random 47 (rejection-sampling tail), http_client 68, fiber 74, http_shared 76, http_server_runtime 77, system 78, coverage_runtime 79. RATCHET: thresholds are monotonically increasing — when a project's coverage improves, bump its threshold to max(floor, measured - 1) in the same PR so it can never regress.",
+  "_doc": "Per-project coverage thresholds. Each entry is a project; `make test` measures it and fails hard below its threshold. Rust entries (language=rust) are individual crates under crates/<name>/, each measured separately from lcov.info; the vscode-extension entry is measured from its V8 coverage summary; C entries (language=c) are individual libraries under compiler/runtime/<name>.c, each measured as gcov line coverage by the Makefile's _coverage_check_c_runtime (the best number across every unit-test suite that links the library). wasm-only units (web_runtime.c, wasm_builtins_runtime.c) do not build natively and are not gated, and neither are term_runtime.c/test_runtime.c: their suites run every case in a FORKED CHILD (a pty-less terminal and the TAP state machine can only be asserted on captured child output), and the child's gcov counters are never flushed back, so gcov reports 0% against 10k passing assertions. Gate them once the harness calls __gcov_dump in the child. FLOOR: every Rust crate is gated at >=95%. C LIBRARIES: a threshold must hold on EVERY platform the gate runs on, so each C entry is the WEAKEST measured platform minus ~2 points, not the local one. macOS and Linux disagree by far more than the '~2 points of gcov rounding' this file used to assume, and they disagree in BOTH directions -- measured on the same commit: system_runtime 78.24 on macOS vs 70.24 on Linux, fiber_runtime 74.83 vs 70.64, websocket_client_runtime 37.96 vs 30.34, but random_runtime 47.50 vs 50.00 and websocket_server_runtime 24.89 vs 27.01. Thresholds set from macOS alone passed locally and failed the required CI job. Re-measure on BOTH before ratcheting; Linux numbers are reproducible in a Debian container. C libraries TARGET >=90%; everything under it is a to-do, worst first: websocket_server 27, websocket_client 30, random 47, http_client 67, system 70, fiber 71, coverage_runtime 78, http_shared 81 (#197). RATCHET: thresholds are monotonically increasing -- when a project's coverage improves on every platform, bump its threshold to max(floor, weakest measured - 1) in the same PR so it can never regress.",
   "projects": {
     "osprey-ast": {
       "threshold": 97,
@@ -75,7 +75,7 @@
       "language": "c"
     },
     "system_runtime": {
-      "threshold": 76,
+      "threshold": 68,
       "language": "c"
     },
     "string_runtime": {
@@ -99,7 +99,7 @@
       "language": "c"
     },
     "fiber_runtime": {
-      "threshold": 72,
+      "threshold": 68,
       "language": "c"
     },
     "coverage_runtime": {
@@ -135,7 +135,7 @@
       "language": "c"
     },
     "websocket_client_runtime": {
-      "threshold": 35,
+      "threshold": 28,
       "language": "c"
     },
     "websocket_server_runtime": {

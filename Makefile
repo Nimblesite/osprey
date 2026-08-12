@@ -609,8 +609,11 @@ _coverage_check_c_runtime:
 	@rm -rf compiler/bin/cov
 	@set -e; cd compiler/bin && mkdir -p cov && cd cov; \
 	$(foreach s,$(C_TEST_SUITES),mkdir -p $(s) && (cd $(s) && $(CC) $(or $(C_PROFILE_$(s)),$(T)) --coverage $(C_FLAGS_$(s)) $(addprefix ../../../,$(C_SRC_$(s))) $(C_LIBS_$(s)) -o $(s) && { ./$(s) >/dev/null 2>&1 || true; } && { $(GCOV_TOOL) *.gcda > summary.txt 2>/dev/null || true; }) && ) true
-	@fail=0; \
-	for lib in $$(jq -r '.projects | to_entries[] | select(.value.language=="c") | .key' "$(COVERAGE_THRESHOLDS_FILE)"); do \
+	@command -v jq >/dev/null || { echo "[c] FAIL: jq is required to read $(COVERAGE_THRESHOLDS_FILE); a gate that cannot run must not report success"; exit 1; }
+	@libs=$$(jq -r '.projects | to_entries[] | select(.value.language=="c") | .key' "$(COVERAGE_THRESHOLDS_FILE)"); \
+	if [ -z "$$libs" ]; then echo "[c] FAIL: no C entries in $(COVERAGE_THRESHOLDS_FILE) -- the gate would pass vacuously"; exit 1; fi; \
+	fail=0; \
+	for lib in $$libs; do \
 	  thr=$$(jq -r --arg l "$$lib" '.projects[$$l].threshold' "$(COVERAGE_THRESHOLDS_FILE)"); \
 	  best=$$(for f in compiler/bin/cov/*/summary.txt; do \
 	    [ -f "$$f" ] || continue; \
