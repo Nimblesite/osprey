@@ -1,260 +1,88 @@
 # CLAUDE.md
 <!-- agent-pmo:74cf183 -->
 
-This file provides guidance for agents when working with code in this repository.
+Guidance for agents working in this repository.
 
-⚠️ NEVER ASK THE USER QUESTIONS! USE YOUR JUDGEMENT. ACT AUTONOMOUSLY ⚠️
-⚠️ **NEVER DUPLICATE CODE** - Edit in place, never create new versions. Use deslop - find-similar before adding code, and deslop-top-offenders after modifying code ⚠️
-⚠️ DO NOT USE GIT - ESPECIALLY NOT PUTTING YOUR SIGNATURE ON COMMITS ⚠️
-⚠️ PRACTICE TOKEN ECONOMICS ⚠️
-⚠️ ZERO DUPLICATE CODE ⚠️
+**Osprey is in stabilization mode.** One measure outranks everything else — not new features, not new syntax, not more examples:
 
-## Project Messaging and Philosophy
+> **Every existing feature is stable, accurate and reliable. A program that compiles behaves exactly as documented; a program that must be rejected is rejected with a truthful error.**
 
-Before writing or changing the README, website, specifications, documentation,
-examples, release notes or user-facing code comments, read
-[`docs/messaging.md`](docs/messaging.md). It is the repository-wide source of
-truth for Osprey's philosophy, feature priorities, audience vocabulary and
-current claim qualifications.
+Nearly-complete features get finished. Completely broken features get removed and reported, not papered over. Before adding anything new, ask whether the effort would better harden something that exists.
 
-- Preserve its emphasis on safety, performance and elegance.
-- Present Default and ML as two first-class surfaces of one language.
-- Keep implementation limitations beside the claims they qualify.
-- If documentation, this file or the implementation contradicts the messaging
-  document, investigate the current behavior and correct the stale source.
+## Tests outrank code
 
-## Core Development Principles
+**A failing test that pins a compiler bug is worth more than a speculative fix.** A red test survives refactors and turns a suspicion into an enforceable contract. Code you *believe* is correct is a liability until an assertion proves it.
 
-- **NO PLACEHOLDERS** - Fix existing placeholders or fail with error
-- **RUN make ci ROUTINELY** - Many clippy lints can be easily fixed with auto fix. Don't try to fix them yourself
-- **PREFER EXPANDING EXISTING EXAMPLES AND TESTS** - Don't add new examples/tests
-- **DO NOT USE GIT - IN PARTICULAR, DO NOT STAMP YOURSELF AS COAUTHOR** - unless explicitly requested
-- **MAKE EXAMPLES (TESTS) CONCISE AND MIX WITH MANY LANGUAGE CONSTRUCTS** - Don't create many files with overlapping functionality
-- **KEEP ALL FILES UNDER 500 LOC** - Break large files into focused modules 
-- **KEEP FUNCTIONS BELOW 20 LOC**
-- **FP STYLE CODE** - pure functions over OOP style
-- **Handle all panics and return Result<T,E>** instead of throwing
-- **USE CONSTANTS** - Name values meaningfully instead of using literals
+- Write the test before the fix. If you can only do one, write the test.
+- A red test in the tree is a correct outcome. Never weaken, skip or delete a failing test, and never remove an assertion to make one pass.
+- Unit tests live inside each crate. Working programs live in `tests/` and run via the differential harness (`crates/run_test_corpus.sh`) under each memory backend and again on wasm32 (`OSPREY_TARGET=wasm32`); output must match the sibling `.expectedoutput` byte-for-byte. An ML twin shares its Default twin's golden — both flavors must print identically.
+- `examples/failscompilation/` holds programs the compiler must reject.
+- Coverage thresholds live in `coverage-thresholds.json` and only go up.
+- Expand existing examples/tests instead of adding files. Keep examples concise, mixing many language constructs per file.
 
-## Diagrams
+## 🚨 Broken Code Process
 
-⚠️ **ASCII ART DIAGRAMS ARE ILLEGAL** ⚠️ No box-drawing characters
-(`┌─┐│└┘├┤▼►`), no `+---+` boxes, no hand-drawn arrow chains — in specs, plans,
-READMEs, blog posts, or code comments. They are unreadable to screen readers,
-break on reflow, and cannot be themed. Every diagram is one of exactly two
-fenced languages, both of which the website renders:
+Upon encountering code that fails silently:
 
-- **Data types → ` ```typediagram `** — records, tagged unions, aliases. See
-  the [language reference](https://typediagram.dev/docs/language-reference.html).
-  Rendered to inline SVG at BUILD time; a diagram that fails to parse FAILS THE
-  BUILD.
-  ````
-  ```typediagram
-  type PackageKey { scope: String, name: String }
-  union ReleaseState { Published { at: DateTime }  Yanked { reason: String } }
-  ```
-  ````
-- **Everything else → ` ```mermaid `** — flow, sequence, state, architecture.
-  Rendered in the browser from a vendored runtime (no CDN).
+- REPLACE the code with a panic immediately and include comments to explain WHY the code is wrong
+- Write a test that fails because of the missing implementation
+- Report the problem to the user immediately
+- DO NOT TRY TO FIX THE CODE
 
-Only exception: directory trees (`├── crates/`) stay as text — a file listing
-is not a diagram. Keep mermaid node labels SHORT (two lines max); long labels
-clip. Diagram rendering is guarded by `website/tests/interactions.spec.js`.
+Silently-wrong output is worse than a crash: a panic is found in seconds; a silent failure never is. This quarantine is the one place a panic is mandated.
+
+## Hard rules
+
+- ⚠️ **Never ask the user questions.** Use your judgement, record assumptions, act autonomously.
+- ⚠️ **Zero duplicate code.** Edit in place, never create parallel versions. Use deslop: `find-similar` before writing code, `top-offenders` after modifying it.
+- ⚠️ **No git** — and never stamp yourself as co-author — unless explicitly requested.
+- ⚠️ **Token economics.** Check file size before reading, Grep over Read, smallest diff that solves the problem. Delete dead code, unused imports, stale comments.
+- **No placeholders** — fix existing ones or fail with an error.
+- **Files under 500 LOC, functions under 20 LOC.** Refactor when over.
+- **FP style everywhere** — pure functions over OOP; name values as constants instead of scattering literals.
+- **Run `make ci` routinely** — most clippy lints auto-fix; don't hand-fix them.
+
+## Documentation
+
+- Spec IDs are hierarchical descriptive slugs — `[GROUP-TOPIC]` or `[GROUP-TOPIC-DETAIL]`, never numbered. Code implementing a spec section references its ID in a comment (`// Implements [PARSER-EFFECTS-HANDLE]`) so grep finds spec → code → tests. Code, specs and tests must agree; where they don't, fix the stale source.
+- Let prose wrap naturally — no line endings for forced wrapping.
+- ⚠️ **ASCII-art diagrams are illegal** — [typeDiagram](https://typediagram.dev/docs/language-reference.html) for data types, mermaid for everything else.
+- Before touching the README, website, specs, docs, examples, release notes or user-facing comments, read [`docs/messaging.md`](docs/messaging.md).
+
+## Osprey style
+
+- **FP constructs**: immutable types, expressions over statements, algebraic effects for abstraction, ML-style minimal brackets. The best function is a single pure expression. Avoid consecutive statements and assignments, even when they add clarity.
+- **Lean on type inference — redundant annotations are defects.** Osprey is Hindley-Milner: every type the compiler can infer must be left off.
+  - Never annotate function parameters, return types or lambda parameters when inferable: `fn add(a, b) = a + b`, not `fn add(a: int, b: int) = a + b`; `|x| => x * 2`, not `|x: int| => x * 2`.
+  - Keep an annotation only when the compiler cannot infer the type: an empty literal with no context (`let xs: List<int> = []`), an `extern`/ambiguous return, or an unconstrained polymorphic type variable. A return annotation never turns `Result<T, E>` into `T` — handle failure with `match` or `?:`.
+  - If removing an annotation still compiles with identical output, it was redundant — remove it. Applies to every `.osp` you touch: `tests/regressions/`, `benchmarks/`, docs and website snippets.
+- **No consecutive print calls** — consolidate into one interpolated string.
 
 ## Rust
 
-- **Panics are illegal** Return Result<T,E>
-- **unwrap() and similar are illegal** Use pattern matching
-
-## Osprey
-
-- **Osprey is an FP language** - Use constructs that other FP languages use:
-  - Immutable types
-  - Expressions over statements
-  - Avoid brackets where they are not necessary (ML style)
-  - Use algebraic effects for abstractions
-  - The best function is a single expression with no side effects (pure)
-  - Avoid consecutive statements and assignments, even when assignments add
-    clarity
-- **LEAN ON TYPE INFERENCE — DO NOT WRITE REDUNDANT TYPE ANNOTATIONS** -
-  Osprey is Hindley-Milner: every type the compiler can infer must be left
-  off. This is a core style rule of the language — less redundancy.
-  - **Never annotate function parameters** when their type is inferable from
-    the body or call site. Write `fn add(a, b) = a + b`, NOT
-    `fn add(a: int, b: int) = a + b`.
-  - **Never annotate a function return type** when it is inferable. Write
-    `fn isEven(x) = (x % 2 ?: 1) == 0`, NOT
-    `fn isEven(x: int) -> bool = ...`.
-  - **Never annotate lambda parameters** when inferable: `|x| => x * 2`, not
-    `|x: int| => x * 2`.
-  - Keep an annotation ONLY when the compiler genuinely cannot infer it: an
-    empty literal with no context (`let xs: List<int> = []`), an `extern` /
-    ambiguous return, or an unconstrained polymorphic type variable. A return
-    annotation never permits `Result<T, E>` to become `T`; handle failure with
-    `match` or `?:`. If removing an annotation still compiles and produces
-    identical output, it was redundant — remove it.
-  - This applies to ALL `.osp` you write or touch — `tests/regressions/`,
-    `benchmarks/`, docs, and website snippets alike.
-- **NO CONSECUTIVE PRINT CALLS IN OSP** - Use string interpolation! Consolidate consecutive prints into singular interpolated strings!!!
+- **Panics are illegal** outside the broken-code quarantine. Return `Result<T, E>`.
+- **`unwrap()` and similar are illegal.** Use pattern matching.
 
 ## Commands
 
-**Primary Development Commands (run from the repo root):**
-```bash
-make build         # C runtime archives + cargo build --release + VSCode extension
-make test          # All tests + coverage thresholds + differential example harness
-make lint          # cargo clippy + extension lint
-make fmt           # Format all code in-place (CHECK=1 for read-only check)
-make ci            # lint + test + build (full CI simulation)
-make clean         # Clean all build artifacts
-```
+- Use the Makefile from the repo root: `make ci` (lint + test + build), `make test`, `make build`, `make fmt`, `make run FILE=<path>`. The compiler binary lands at `target/release/osprey`.
+- **VSCode extension**: `cd vscode-extension && npm install && npm run compile`; test with `npm test`.
+- **Website**: `cd website && npm install && npm run dev` (or `npm run build`). **CSS hard budget 1.8k LOC**; blogs/specs/docs are prose and share the `prose` CSS name prefix; **zero Tailwind**.
+- **WebCompiler**: `cd webcompiler && npm install && npm start`.
+- **Never commit generated files.** `website/src/spec/*.md` (from `docs/specs/`) and `website/src/assets/vendor/` are gitignored build output regenerated by `npm run build` — edit the source, never the copy.
 
-**Development Commands:**
-```bash
-make run FILE=<path>       # Compile and run an Osprey file (osprey <file> --run)
-make install               # Install osprey + runtime archives system-wide
-make _rebuild-install-vsix  # Rebuild + reinstall the VSCode extension (macOS)
-```
+## Architecture
 
-The compiler binary lands at `target/release/osprey`.
+- `crates/` — the compiler pipeline: tree-sitter parse (`osprey-syntax`, grammar in `tree-sitter-osprey/`) → AST (`osprey-ast`) → Hindley-Milner inference (`osprey-types`) → LLVM IR (`osprey-codegen`) → CLI (`osprey-cli`, the `osprey` binary); `osprey-runtime-sys` links the C runtime.
+- `compiler/runtime/` — pure-C runtime (fibers, HTTP/WebSocket, system ops), compiled with hardening flags (`-D_FORTIFY_SOURCE=2`, `-fstack-protector-strong`), all warnings as errors. Performance-critical code stays C.
+- `vscode-extension/` (TypeScript), `website/` (11ty), `webcompiler/` (Node service), `homebrew-package/`.
 
-**VSCode Extension:**
-```bash
-cd vscode-extension
-npm install && npm run compile    # Build VSCode extension
-npm test                         # Run extension tests
-```
+Key invariants:
 
-**Website Development:**
-```bash
-cd website
-npm install && npm run dev       # Start local development server
-npm run build                    # Build static site
-```
+- Effects are declared with `effect` and discharged with `handle...in`. The compiler rejects a program that performs an effect no handler discharges — `unhandled effect operations at program entry: E.op; add a matching handle` — reaching through helpers, lambdas passed to HOFs, and fibers (`crates/osprey-types/src/effect_rows.rs`). The remaining limit is representational: closed-program operation summaries, not an effect-row variable in `Type::Fun`.
+- Pattern matching is mandatory for `any` types and union types.
+- All HTTP/WebSocket operations return `Result<T, String>`.
+- Fibers are isolated — message passing, no shared memory.
+- Effects provide capability-based security; file, HTTP and process sandboxing is configurable.
 
-**CSS HARD BUDGET 1.8K LOC** BLOGS, SPECS, DOCS = PROSE = SAME CSS NAME PREFIX PROSE
-**ZERO TAILWIND** CONVERT TO CSS IMMEDIATELY
-
-**NEVER COMMIT GENERATED FILES.** `website/src/spec/*.md` (from `docs/specs/`)
-and `website/src/assets/vendor/` are build output — gitignored, regenerated by
-`npm run build`. Edit the SOURCE (`docs/specs/`), never the copy.
-
-**WebCompiler (Browser-based):**
-```bash
-cd webcompiler  
-npm install && npm start         # Start web-based compiler service
-```
-
-## High-Level Architecture
-
-**Repository Structure:**
-- `crates/` - Core Osprey compiler (Rust workspace → LLVM)
-- `tree-sitter-osprey/` - Tree-sitter grammar for parsing
-- `compiler/` - Pure-C runtime sources (`runtime/`) + example programs (`examples/`)
-- `vscode-extension/` - VSCode language support with TypeScript
-- `website/` - Documentation site using 11ty static site generator
-- `webcompiler/` - Node.js web service for browser compilation
-- `homebrew-package/` - Homebrew tap for macOS installation
-
-**Compiler Architecture (Rust-based):**
-- **Parser**: Tree-sitter grammar (`tree-sitter-osprey/`) consumed by `crates/osprey-syntax`
-- **AST**: Abstract Syntax Tree types in `crates/osprey-ast`
-- **Type System**: Hindley-Milner type inference in `crates/osprey-types`
-- **Code Generation**: LLVM IR generation in `crates/osprey-codegen`
-- **CLI**: `crates/osprey-cli` (the `osprey` binary); `crates/osprey-runtime-sys` links the C runtime
-- **Runtime**: C libraries (`compiler/runtime/`) for fiber concurrency, HTTP/WebSocket, system operations
-
-**Language Features:**
-- **Algebraic Effects**: First-class effects for replacing plumbing such as
-  dependency injection, test doubles and retry wrappers
-- **Fiber Concurrency**: Lightweight isolated execution contexts
-- **Pattern Matching**: Union types with exhaustiveness checking
-- **Functional Programming**: Immutable data, pipe operators, iterators
-- **HTTP/WebSocket**: Built-in networking with streaming support
-- **Type Safety**: Strong static typing with inference
-
-**Multi-Language Runtime:**
-- **Rust**: Compiler frontend, parsing, type checking, codegen (`crates/`)
-- **C**: Performance-critical runtime (fibers, HTTP, WebSockets) — stays C
-- **LLVM IR**: Compilation target for optimized execution
-
-**Key Technical Patterns:**
-- Effects are declared with `effect` keyword and handled with `handle...in` expressions
-- The compiler checks values passed into and returned from effects, and rejects a
-  program that performs an effect no handler discharges — `unhandled effect
-  operations at program entry: E.op; add a matching handle`, reaching through
-  helpers, lambdas passed to HOFs, and fibers
-  (`crates/osprey-types/src/effect_rows.rs`). The remaining limit is
-  representational: closed-program operation summaries, not an effect-row variable
-  in `Type::Fun`
-- Pattern matching is mandatory for `any` types and union types
-- All HTTP/WebSocket operations return `Result<T, String>` for error handling
-- Fiber isolation prevents shared memory bugs through message passing
-
-**Testing Strategy:**
-- Unit tests live inside each crate in `crates/`
-- `tests/` - Working programs run via the differential harness (`crates/run_test_corpus.sh`) under each memory backend and again on wasm32 (`OSPREY_TARGET=wasm32`); output must match the sibling `.expectedoutput` byte-for-byte. An ML twin shares its Default twin's golden — both flavors must print identically
-- `examples/failscompilation/` - Error cases the compiler must reject
-- Coverage thresholds enforced per-project via `coverage-thresholds.json`
-
-**Security Architecture:**
-- Configurable sandboxing for file access, HTTP, and process execution
-- C runtime compiled with security hardening flags (`-D_FORTIFY_SOURCE=2`, `-fstack-protector-strong`)
-- All warnings treated as errors in C compilation
-- Effect system provides capability-based security
-
-**Development Workflow:**
-1. **Grammar Changes**: Edit the tree-sitter grammar in `tree-sitter-osprey/`
-2. **Language Features**: Implement in `osprey-syntax`/`osprey-ast`, then `osprey-codegen`
-3. **Testing**: Add examples to `tests/regressions/` and error cases to `examples/failscompilation/`
-4. **Type System**: Extend `crates/osprey-types` for new type rules
-5. **Runtime**: Add C functions in `compiler/runtime/` for system operations
-
-**AI-Assisted Development Notes:**
-- This compiler is built using various AI agents and models
-- AI can help with tree-sitter grammars, LLVM IR generation, and type inference
-- The codebase follows clear patterns that AI can recognize and extend
-- Use VS Code Dev Container for consistent development environment
-
-This is a functional programming language compiler with first-class effects,
-fiber-based concurrency and strong static typing.
-
-## Standard Build Commands
-
-```bash
-make build        # Build compiler + VSCode extension
-make test         # Fail-fast tests + coverage + threshold (coverage-thresholds.json)
-make lint         # Run all linters (cargo clippy + extension lint)
-make fmt          # Format all code in-place
-make clean        # Remove build artifacts
-make ci           # lint + test + build (full CI simulation)
-make setup        # Post-create dev environment setup
-```
-
-## Releases & Versioning
-
-- **Releases are tag-triggered only.** Push `vX.Y.Z` → `release.yml` builds all
-  platforms, cuts the GitHub Release, updates the Homebrew tap + Scoop bucket,
-  publishes the VS Code extension (`nimblesite.osprey`), and deploys the website.
-- **CI runs only on PRs to `main`.** Merging to `main` triggers nothing.
-- **Versions are NEVER hard-coded.** Every source version field stays at the
-  placeholder `0.0.0-dev` (root `Cargo.toml` workspace version,
-  `vscode-extension/package.json`, `shipwright.json`); the real version is
-  stamped from the git tag at build time. Changing a placeholder to a real
-  version in source is a defect. Follows the Shipwright contract
-  ([SWR-VERSION-*]). See [docs/RELEASING.md](docs/RELEASING.md).
-
-## Spec IDs
-
-Spec IDs are hierarchical descriptive slugs in the format `[GROUP-TOPIC]` or `[GROUP-TOPIC-DETAIL]`. NEVER use numbered IDs (`[SPEC-001]`). Code implementing a spec section MUST reference its ID in a comment. Example: `// Implements [PARSER-EFFECTS-HANDLE]`.
-
-## Branch Naming
-
-| Type | Pattern | Example |
-|------|---------|---------|
-| Feature | `feature/[ISSUE]-[slug]` | `feature/42-add-pattern-matching` |
-| Bug fix | `fix/[ISSUE]-[slug]` | `fix/17-null-ref-effects` |
-| Chore | `chore/[slug]` | `chore/update-deps` |
-| Claude agent | `claude/[slug]-[random5]` | `claude/refactor-XYZab` |
-
-All changes via PR — no direct pushes to `main`. Squash-merge preferred.
+Workflow for a language change: grammar in `tree-sitter-osprey/` → `osprey-syntax`/`osprey-ast` → type rules in `osprey-types` → `osprey-codegen` → C runtime functions if needed → regression program in `tests/regressions/` + rejection case in `examples/failscompilation/`.
