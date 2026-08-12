@@ -275,10 +275,17 @@ void test_security_edge_cases(void) {
         free(long_body);
     }
     
-    // Test 5: Buffer size validation
+    // Test 5: Buffer size validation. The truncation here is the POINT of the
+    // test — snprintf must report the length it needed and still terminate what
+    // it wrote. Reaching the source through a volatile pointer keeps the
+    // compiler from folding its length: gcc proves the truncation statically
+    // otherwise and rejects the call under -Werror=format-truncation, which
+    // would make the runtime contract untestable rather than tested.
     char small_buffer[10];
-    const char *large_content = "This is a very long string that will not fit in the small buffer";
-    
+    const char *volatile source =
+        "This is a very long string that will not fit in the small buffer";
+    const char *large_content = source;
+
     int written = snprintf(small_buffer, sizeof(small_buffer), "%s", large_content);
     TEST_ASSERT(written > 0 && (size_t)written >= strlen(large_content), "snprintf should report full length needed");
     TEST_ASSERT_EQUALS(strlen(small_buffer), 9, "Buffer should be truncated to fit");
