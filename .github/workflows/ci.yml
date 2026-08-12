@@ -432,7 +432,11 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          # 24 because `npm test` here starts with `build:wasm` -> `make
+          # wasm-site`, which RUNS the studio modules under `node:wasi` — the
+          # host whose cached memory backing store goes stale on `memory.grow`
+          # before 24. See the comment on the wasm job above.
+          node-version: '24'
           cache: 'npm'
           cache-dependency-path: website/package-lock.json
 
