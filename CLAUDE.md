@@ -9,6 +9,8 @@ Guidance for agents working in this repository.
 
 Nearly-complete features get finished. Completely broken features get removed and reported, not papered over. Before adding anything new, ask whether the effort would better harden something that exists.
 
+That doesn't mean taking shortcuts to finish features. That means doing the HARD WORK to COMPLETE FEATURES IN THE HIGHEST POSSIBLE quality level
+
 ## Tests outrank code
 
 **A failing test that pins a compiler bug is worth more than a speculative fix.** A red test survives refactors and turns a suspicion into an enforceable contract. Code you *believe* is correct is a liability until an assertion proves it.
@@ -19,6 +21,16 @@ Nearly-complete features get finished. Completely broken features get removed an
 - `examples/failscompilation/` holds programs the compiler must reject.
 - Coverage thresholds live in `coverage-thresholds.json` and only go up.
 - Expand existing examples/tests instead of adding files. Keep examples concise, mixing many language constructs per file.
+
+## 🚨 The pipeline is not negotiable
+
+**A gate you can turn off is not a gate.** On 2026-08-12 both branch rulesets were found `enforcement: disabled` — a 212-file PR merged past them 29 minutes after its own CI failures were filed as issues #202/#203/#204. Nothing in the tree could have noticed, because branch protection lives in GitHub's settings.
+
+- **Never disable, weaken, bypass or narrow a CI gate to get a merge.** Not the rulesets, not a required-check list, not a job's `if:`, not a test's timeout. If a check is red, the code is wrong — fix the code.
+- **"Advisory" is deleted.** Marking a job "not a required status check" removes it. If it is worth running it is worth blocking on; if it is not worth blocking on, delete the job and say so.
+- **Never merge with a known failure.** An open issue describing a red check on the branch is a blocker, not a footnote. File-and-merge is the exact failure this section exists to prevent.
+- The required checks are pinned in [`scripts/verify-branch-protection.mjs`](scripts/verify-branch-protection.mjs), asserted by the `changes` job on every PR. Changing the gate means changing that list and the ruleset together — the check fails until they agree.
+- Adding a required check? It must skip via a **job-level `if:`**, never `on: paths:`/`paths-ignore:`. A path-filtered job never reports, and a required check that never reports blocks every merge forever.
 
 ## 🚨 Broken Code Process
 

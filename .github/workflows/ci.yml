@@ -17,8 +17,9 @@ jobs:
   # runtime, VS Code extension or web-compiler toolchain. Detect whether anything
   # OUTSIDE website/ changed so the heavy jobs below can skip.
   #
-  # Required-check note: the `ci` job ("Test, Format, Build & Validate") is the
-  # required status check on `main` (ruleset 6154907). Skipping a job via an `if:`
+  # Required-check note: ruleset 6154907 requires FIVE checks on `main` — this
+  # `changes` job, `ci`, `rust`, `wasm` and `website` — plus ci-windows.yml's
+  # `windows-core`. Skipping a job via an `if:`
   # condition reports its check as "skipped", which branch protection treats as
   # PASSING — so a website-only PR still merges. Do NOT convert this to an
   # `on: paths:` filter: a workflow skipped by path filtering leaves the required
@@ -41,8 +42,18 @@ jobs:
             code:
               - '!website/**'
 
+      # Branch protection lives in GitHub's settings, not in this tree, so it
+      # drifts silently — both rulesets were once found `enforcement: disabled`
+      # with a 212-file PR already merged past them, and nothing in the repo
+      # could have noticed. This step is the assertion that would have. It runs
+      # HERE because `changes` is the one required job that never skips.
+      - name: Branch protection intact
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/verify-branch-protection.mjs
+
   ci:
-    # IMPORTANT: this name is the required status check on `main` (ruleset 6154907).
+    # IMPORTANT: this name is a required status check on `main` (ruleset 6154907).
     # Renaming it will break branch protection — coordinate with the ruleset update.
     name: Test, Format, Build & Validate
     needs: changes
@@ -137,11 +148,13 @@ jobs:
         run: npm run test:shipwright
         working-directory: ./vscode-extension
 
-      # Official duplication gate. This MUST live in the `ci` job: `ci` is the
-      # required status check on `main` (ruleset 6154907), so a gate anywhere
-      # else cannot block a merge. It previously sat in ci-windows.yml, whose
-      # `windows-core` job is explicitly NOT required — which silently turned
-      # the duplication ceiling into a suggestion. The committed .deslop.toml is
+      # Official duplication gate. This lives in the `ci` job because deslop
+      # measures source text — one platform's verdict is every platform's, so a
+      # second copy in ci-windows.yml would only duplicate this one. (It did sit
+      # there once, back when `windows-core` was not a required check, which
+      # silently turned the duplication ceiling into a suggestion. Every job
+      # named in ruleset 6154907 can block a merge now; this one is `ci`'s.)
+      # The committed .deslop.toml is
       # the threshold source (deslop exits 3 when over); reports stay ephemeral
       # rather than consuming Actions artifact storage. `version` is explicit
       # because the action is pinned to the immutable commit for v0.27.0 rather
@@ -411,13 +424,11 @@ jobs:
         # A backend that miscompiles arithmetic, strings, maps or pattern
         # matching outside hello/studio has nowhere else to be caught.
         #
-        # CAVEAT: this `wasm` job is NOT a required status check (only `ci` is,
-        # per ruleset 6154907), so a red result here does not block a merge —
-        # the same arrangement the deleted harness had. The sysroot download and
-        # wasm runtime build this would need in `ci` are now there anyway (the
-        # coverage gate depends on them), so moving this corpus differential
-        # into `ci` costs only its runtime — still a deliberate call, not a
-        # silent one.
+        # This `wasm` job IS a required status check on `main` (ruleset
+        # 6154907), so a red result here blocks the merge. It was advisory once,
+        # which meant a wasm-only miscompile could land unopposed; issue #202
+        # was found that way. Do not demote it back without demoting the ruleset
+        # entry with it — an advisory gate reads as a gate and is not one.
         run: OSPREY_TARGET=wasm32 zsh crates/run_test_corpus.sh
 
   # ─── Website end-to-end (Playwright) ────────────────────────────────────────

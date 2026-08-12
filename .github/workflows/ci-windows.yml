@@ -5,12 +5,6 @@ name: CI (Windows)
 on:
   pull_request:
     branches: [main]
-    # Website-only PRs don't touch the compiler — skip the Windows build entirely.
-    # windows-core is NOT a required status check, so skipping the whole workflow
-    # via path filtering here is safe and won't leave a pending check blocking the
-    # merge. (ci.yml's required `ci` job uses job-level `if` skipping instead.)
-    paths-ignore:
-      - 'website/**'
   workflow_dispatch:
 
 concurrency:
@@ -18,17 +12,41 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Website-only PRs don't touch the compiler, so `windows-core` skips — but it
+  # must skip at the JOB level, never via an `on: paths-ignore:` filter. A
+  # required check belonging to a workflow that path-filtering skipped stays
+  # pending forever and blocks the merge; a job skipped by `if:` reports as
+  # PASSING. `windows-core` IS a required status check on `main` (ruleset
+  # 6154907), which is why the filter that used to live here is now this job.
+  changes:
+    name: Detect changed areas (Windows)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      code: ${{ steps.filter.outputs.code }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            code:
+              - '!website/**'
+
   windows-core:
+    # IMPORTANT: this name is a required status check on `main` (ruleset 6154907).
+    # Renaming it will break branch protection — coordinate with the ruleset update.
     name: Windows Core Build & Smoke Test
+    needs: changes
+    if: ${{ needs.changes.outputs.code == 'true' }}
     runs-on: windows-latest
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
 
       # No duplication gate here. Deslop measures source text, so its verdict is
-      # platform-independent — and this `windows-core` job is NOT a required
-      # status check, so gating from here could never block a merge. The gate
-      # lives in ci.yml's required `ci` job instead.
+      # platform-independent, so running it on a second OS would only duplicate
+      # ci.yml's required `ci` job. The gate lives there.
 
       - name: Install Rust (stable)
         uses: dtolnay/rust-toolchain@stable
