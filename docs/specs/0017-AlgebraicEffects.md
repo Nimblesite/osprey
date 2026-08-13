@@ -241,33 +241,139 @@ Resuming handlers have these rules:
   pattern. The known deviation is across sibling operations: adding `resume`
   to one arm also changes a non-resuming sibling from substitution to early
   exit. This region-wide behavior is tracked as
-  [issue #177](https://github.com/Nimblesite/osprey/issues/177). Until it is
-  fixed, keep sibling operations in the same mode.
+  [issue #177](https://github.com/Nimblesite/osprey/issues/177).
 - `resume` is lexical to the arm. It is rejected at top level and inside a
   lambda declared in an arm, because that lambda has no live arm continuation.
 - Explicit resume is native-only. WebAssembly supports direct value-substitution
   handlers but not the pthread-backed continuation runtime.
 
+`[EFFECTS-HANDLER-ARMS]` An arm's value is checked against whichever of the two
+things it actually supplies, which follows from the region's mode:
+
+- No arm in the region resumes: the arm's value substitutes for its operation's
+  declared result, and the handled expression's own value is the region's result.
+- Some arm in the region resumes: an arm that returns without resuming abandons
+  the continuation. The operation's result is never produced — the `perform`
+  waiting for it never returns — and the arm's value becomes the result of the
+  whole `handle` expression, so that is what it is checked against.
+
+Disagreement in the second case is a type error naming both types:
+
+```text
+handler arm `Mixed.b` never resumes, so its value becomes the whole `handle`
+expression's result — but it is `string` and that result is `int`. Give the arm
+a `resume`, or make every arm of this handler agree with the handled
+expression's type
+```
+
+The conformance cases are
+`examples/failscompilation/effect_arm_answer_type_mismatch.ospo` and its ML twin
+`ml_effect_arm_answer_type_mismatch.ospo`, which cover both directions and a
+`Result` answer; `tests/regressions/effects/abort_vs_resume.test.osp` holds the
+accepted counterparts.
+
+The rule lives in inference rather than code generation because it needs the
+source types. An `any` arm answers anything [TYPE-ANY], and by the time a value
+reaches code generation an erased `any` and an `int` are the same machine word:
+a check there would either reject every valid erased answer or let a pointer
+through as a successful integer.
+
+### Known limits of abandoning a region
+
+Abandoning a region ends the suspended computation with `pthread_exit`, and a
+killed thread runs no epilogue. Two consequences are unresolved. Both predate
+the operation mailbox and neither is reachable with scalar operands, which is
+why `tests/regressions/effects/abort_vs_resume.test.osp` passes the ARC leak
+oracle: its operands are integers.
+
+**Heap operands owned by the killed frames are not reclaimed.** The mailbox's
+own reference is retired correctly — the dispatcher frees it, and a performer
+killed before the handoff releases what it took ([EFFECTS-OPERATION-MAILBOX]) —
+but the performing frame's *own* reference, the one an ordinary return would
+drop, is abandoned with the stack. Under `--memory=arc` with `OSPREY_ARC_DEBUG=1`
+this program reports one live object at exit, the six bytes of `alpha`:
+
+```osprey
+effect Label { tag: fn(string) -> string }
+
+fn ask(subject) !Label = perform Label.tag(subject)
+
+let answer = handle Label
+    tag subject => match subject == "alpha" {
+        true  => "stopped at ${subject}"
+        false => resume("saw ${subject}")
+    }
+in ask("al" + "pha")
+```
+
+Reclaiming them needs generated cleanup along the abort path — unwinding — not a
+release the runtime could issue, because the owning slots are `alloca`s in every
+frame on the killed stack.
+
+**Abandoning a region whose body is awaiting a spawned fiber deadlocks.**
+`__osprey_coro_abort` joins the body thread, and a body blocked in `await` of a
+fiber the same abort has just killed inside its own `perform` never returns:
+
+```osprey
+fn pair(a, b) !Label = {
+    let f1 = spawn ask(a)
+    let f2 = spawn ask(b)
+    await(f1) + await(f2)
+}
+```
+
+Resolving it means deciding what `await` of an abandoned fiber yields, which is
+the same cancellation question as [issue #177](https://github.com/Nimblesite/osprey/issues/177).
+Until then, do not `await` inside a region whose arms can abandon it.
+
 Native resume uses one suspended pthread stack as the continuation. Regions
 whose arms contain no `resume` stay on the direct handler-call path.
 
-Two critical implementation defects currently limit operation values:
+`[EFFECTS-OPERATION-MAILBOX]` A resumable operation's arguments cross into the
+handler in a **mailbox** allocated per suspension: a word array sized by the
+operation's real arity, a parallel array of operand kinds, and that arity. The
+mailbox carries no fixed capacity, so an operation of any declared arity
+delivers every argument it was given.
 
-- [issue #182](https://github.com/Nimblesite/osprey/issues/182): the native
-  resumable-operation mailbox transports 16 arguments. The compiler accepts a
-  17th argument, but the runtime silently delivers zero for it.
+Each slot's kind says whether its word is a managed pointer or a bare scalar,
+and the mailbox **owns** the managed ones: the performer transfers a reference
+when it suspends, and retiring the mailbox releases exactly those slots. A
+handler arm therefore borrows its operands for the whole time it can reach them
+— including after a `resume` returns, when the performer's own frame may already
+be gone — and an operand can neither be freed early nor outlive its perform.
+
+The dispatcher *takes* the mailbox before reading it, so an arm that resumes can
+let the body perform again: the nested suspension installs its own mailbox
+instead of overwriting one still in use. Reading a slot the operation never sent
+is a compiler bug, not a recoverable condition, and aborts rather than answering
+zero.
+
+Three critical implementation defects previously limited operation values; all
+three are fixed and locked by paired Default/ML cases under `tests/effects`:
+
+- ~~[issue #182](https://github.com/Nimblesite/osprey/issues/182): the native
+  resumable-operation mailbox transports 16 arguments; the compiler accepts a
+  17th but the runtime silently delivers zero for it.~~ **Fixed** by the
+  length-carrying mailbox above.
 - ~~[issue #183](https://github.com/Nimblesite/osprey/issues/183): a direct
   handler corrupts an operation result whose type is `Result<T, E>`.~~ **Fixed.**
-  A direct handler now transports a complete `Result<T, E>` operation value in
-  both flavors and under all three memory backends, covered by
-  `tests/effects/errors/direct_recovery.test.{osp,ospml}` case 10, "handlers can
-  return whole Result operation values" — formerly a `Skip`, now a `Pass` locked
-  by the shared golden. Resuming handlers keep their separate coverage.
-- [issue #185](https://github.com/Nimblesite/osprey/issues/185): under ARC, a
+  A direct handler transports a complete `Result<T, E>` operation value in both
+  flavors and under all three memory backends.
+- ~~[issue #185](https://github.com/Nimblesite/osprey/issues/185): under ARC, a
   resuming handler leaks one managed object when its completed continuation
-  answer is a dynamic string.
+  answer is a dynamic string.~~ **Fixed** by the kind-tagged mailbox above,
+  together with registering the continuation answer as owned at the `resume`
+  site — the one effect boundary that received an owned value and never claimed
+  it.
 
-Both defects have paired Default/ML known-failure cases under `tests/effects`.
+Coverage: `tests/effects/errors/direct_recovery.test.{osp,ospml}` case 10 for
+the whole-`Result` operation value, and
+`tests/effects/resume/resume_error_policies.test.{osp,ospml}` for the managed
+continuation answer, the sixteen- and seventeen-argument boundaries, and nine
+managed with nine scalar operands crossing one operation. Each ran as a
+self-passing `Skip` before it was made to assert. The ARC exit audit in
+`crates/run_test_corpus.sh` is what proves the release half — the value
+assertions pass either way.
 
 `[EFFECTS-FIBER-PERFORM]` Concurrent performs into one resuming handler are
 serialized for the full suspend-to-resume round trip. This prevents arguments

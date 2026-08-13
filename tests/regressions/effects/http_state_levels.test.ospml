@@ -81,10 +81,19 @@ mut taskCount = 0
 
 handle Persist
     flush snap =>
-        saved = writeFile "target/osprey_http_state_levels.db" snap
+        // Written beside the program, not under a build directory: a relative
+        // `target/` only exists when the process happens to run from the repo
+        // root, and this suite is run from wherever an editor or CI step calls
+        // it. A test whose result depends on its cwd tests the cwd.
+        saved = writeFile "osprey_http_state_levels.db" snap
         diskBytes := match saved
             Success value => length snap
-            Error message => (0 - 1) ?: 0
+            // Say WHY [BUILTIN-FILE-ERRMSG]. Storing a bare -1 here is how a
+            // failed persist reached the assertions as "expected true, got
+            // false", with the operating system's own explanation discarded.
+            Error message =>
+                print "[persist] ${message}"
+                0 - 1 ?: 0
         diskBytes
     bytes => diskBytes
 in handle Metrics

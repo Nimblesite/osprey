@@ -634,6 +634,38 @@ used mainly at heterogeneous builtin and foreign-function boundaries. In
 particular, `print` and `toString` cannot recover an aggregate hidden behind
 `any`; they render its raw pointer-sized representation rather than its fields.
 
+The erasure does carry an **ownership** convention: the machine word holds the
+`+1` its producer transferred into it, and the boundary that recovers a pointer
+from it takes that reference over. Both halves are required. Without the
+transfer, the reference counter cannot see the boxed word — it matches owners by
+register — so the referent was released while the caller still held it, and this
+program printed an empty string under `--memory=arc`:
+
+```osprey
+fn erased() -> any = "era" + "sed"
+fn asString() -> string = erased()
+print("v=${asString()}")
+```
+
+Without the matching hand-over on the recovering side, the same transfer merely
+turns that premature free into a leak. `tests/regressions/basics/types/any_type_comprehensive.test.osp`
+pins both, and every `any` there had carried a scalar, which is why an erased
+heap value went uncovered.
+
+What `any` still does not carry is a **type**, and because it unifies with
+everything, nothing rejects recovering a pointer from a word that was never one.
+This compiles and dies with SIGSEGV rather than a diagnostic:
+
+```osprey
+fn intish() -> any = 7
+fn useIt() -> string = intish()
+print("x=${length(useIt())}")
+```
+
+That is the concrete cost of "code that consumes its representation must already
+know what was passed". Until `any` is narrowed so that recovering a concrete
+type requires a `match`, treat every un-erasure as an unchecked assertion.
+
 ## Type Annotations — [TYPE-ANNOTATION-CHECK]
 
 An annotation constrains inference and is checked against the expression. A

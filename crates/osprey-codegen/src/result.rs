@@ -84,14 +84,39 @@ pub(crate) fn make_result_if_err(
     is_err: &str,
     msg: Option<&str>,
 ) -> Result<Value> {
+    make_result_if_err_because(cg, value, inner, is_err, msg, None)
+}
+
+/// [`make_result_if_err`] with a RUNTIME reason: `reason` is an `i8*` operand
+/// (null when the producer recorded none) that outranks the static `msg`. This
+/// is how a failed builtin's real cause — "writeFile: out/x.db: No such file or
+/// directory" — reaches `Error { message }` instead of the placeholder the
+/// static fallback carries. Implements [BUILTIN-FILE-ERRMSG].
+pub(crate) fn make_result_if_err_because(
+    cg: &mut Codegen,
+    value: Value,
+    inner: LType,
+    is_err: &str,
+    msg: Option<&str>,
+    reason: Option<&str>,
+) -> Result<Value> {
     let disc = cg.fresh_reg();
     cg.emit(format!("{disc} = select i1 {is_err}, i8 1, i8 0"));
-    let errmsg = match msg {
-        Some(m) => {
-            let c = cg.string_constant(m);
-            cg.emit_reg(format!("select i1 {is_err}, i8* {}, i8* null", c.operand))
-        }
+    let fallback = match msg {
+        Some(m) => cg.string_constant(m).operand,
         None => NO_MSG.to_string(),
+    };
+    let chosen = match reason {
+        Some(r) => {
+            let given = cg.emit_reg(format!("icmp ne i8* {r}, null"));
+            cg.emit_reg(format!("select i1 {given}, i8* {r}, i8* {fallback}"))
+        }
+        None => fallback,
+    };
+    let errmsg = if chosen == NO_MSG {
+        NO_MSG.to_string()
+    } else {
+        cg.emit_reg(format!("select i1 {is_err}, i8* {chosen}, i8* null"))
     };
     make_result(cg, value, inner, &disc, &errmsg)
 }
@@ -118,25 +143,46 @@ pub(crate) fn result_from_flag(
 /// `Result<int, _>` from a C `i64` whose negative values signal failure — the
 /// uniform convention of the file/process/HTTP/JSON runtime (a negative handle,
 /// byte count, status or process id is Error). The success value carried is the
-/// result itself; `msg` is the Error message text (`None` for a bare Error).
-pub(crate) fn result_from_i64(cg: &mut Codegen, result: &str, msg: Option<&str>) -> Result<Value> {
+/// result itself; `msg` is a static fallback message and `reason` the runtime
+/// one the call recorded, which wins when present.
+pub(crate) fn result_from_i64(
+    cg: &mut Codegen,
+    result: &str,
+    msg: Option<&str>,
+    reason: Option<&str>,
+) -> Result<Value> {
     let err = cg.emit_reg(format!("icmp slt i64 {result}, 0"));
-    make_result_if_err(cg, Value::new(result, LType::I64), LType::I64, &err, msg)
+    make_result_if_err_because(
+        cg,
+        Value::new(result, LType::I64),
+        LType::I64,
+        &err,
+        msg,
+        reason,
+    )
 }
 
 /// `Result<string, _>` from a possibly-NULL C `char*` (`ptr` an `i8*` operand):
-/// NULL ⇒ Error, else Success. The success slot keeps the pointer itself; when
-/// `err` is `Some(msg)`, the errmsg slot carries that constant on the error path
-/// so the `Error { message }` arm and `toString` (`Error(msg)`, e.g.
-/// `readFile`'s `Error(File read error)`) both see a real reason. With `None` a
-/// failure shows the bare `Error`.
+/// NULL ⇒ Error, else Success. The success slot keeps the pointer itself. The
+/// errmsg slot takes `reason` — what the runtime recorded about THIS call —
+/// falling back to the static `err` text only when the producer recorded
+/// nothing, so `Error { message }` and `toString` never show a placeholder for
+/// a failure whose real cause is known.
 pub(crate) fn result_from_nullable(
     cg: &mut Codegen,
     ptr: &str,
     err: Option<&str>,
+    reason: Option<&str>,
 ) -> Result<Value> {
     let is_null = cg.emit_reg(format!("icmp eq i8* {ptr}, null"));
-    make_result_if_err(cg, Value::new(ptr, LType::Str), LType::Str, &is_null, err)
+    make_result_if_err_because(
+        cg,
+        Value::new(ptr, LType::Str),
+        LType::Str,
+        &is_null,
+        err,
+        reason,
+    )
 }
 
 /// Branch on a Result's discriminant: load it, test `== 0` (Success), and emit

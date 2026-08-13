@@ -283,7 +283,7 @@ fn substring(cg: &mut Codegen, args: &[Expr], _named: &[NamedArgument]) -> Resul
     );
     // The raw +1 return is owned here; the Result block dups its own copy.
     crate::arc::own(cg, &Value::new(&ptr, LType::Str));
-    result_from_nullable(cg, &ptr, Some("substring: index out of range"))
+    result_from_nullable(cg, &ptr, Some("substring: index out of range"), None)
 }
 
 /// A fallible string transform returning a runtime `char*` that is NULL on
@@ -301,7 +301,7 @@ fn nullable_str(
     let op_refs: Vec<&str> = ops.iter().map(String::as_str).collect();
     let ptr = cg.call("i8*", cname, &params, &op_refs);
     crate::arc::own(cg, &Value::new(&ptr, LType::Str));
-    result_from_nullable(cg, &ptr, Some(errmsg))
+    result_from_nullable(cg, &ptr, Some(errmsg), None)
 }
 
 /// `parseInt`/`parseFloat`: strict parse writing through an out-slot, returning
@@ -409,7 +409,7 @@ fn from_codepoint(cg: &mut Codegen, args: &[Expr]) -> Result<Value> {
     let cp = arg(cg, args, 0, LType::I64)?;
     let ptr = cg.call("i8*", "osp_string_from_codepoint", "i64", &[&cp.operand]);
     crate::arc::own(cg, &Value::new(&ptr, LType::Str));
-    result_from_nullable(cg, &ptr, Some("fromCodePoint: invalid code point"))
+    result_from_nullable(cg, &ptr, Some("fromCodePoint: invalid code point"), None)
 }
 
 /// `join(list: List<string>, separator: string) -> string`.

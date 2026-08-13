@@ -331,7 +331,7 @@ heterogeneousResumeCase () =
         length "osprey.local" == 12
     ]
 
-(** StringAnswerRecovery reproduces the ARC leak for a managed continuation answer. *)
+(** StringAnswerRecovery carries a managed continuation answer out of a handler. *)
 effect StringAnswerRecovery
     (** Request the replacement text the handler supplies. *)
     get : Unit => string
@@ -342,9 +342,23 @@ stringAnswerBody () =
     value = perform StringAnswerRecovery.get ()
     value + "!"
 
-(** Keep the leaking ARC path visible until critical issue #185 is fixed. *)
-stringAnswerArcKnownFailureCase () =
-    Skip "CRITICAL #185: resuming handlers leak string continuation answers under ARC"
+(** A managed continuation answer reaches the caller and owns exactly one
+    reference: the ARC exit audit sees no survivor. Both the resume value and
+    the answer are built at runtime, so neither is an immortal literal whose
+    retain and release are no-ops. *)
+stringAnswerCase () =
+    mut calls = 0
+    answer =
+        handle StringAnswerRecovery
+            get =>
+                calls := calls + 1 ?: calls
+                resume ("rea" + "dy")
+        in stringAnswerBody ()
+
+    checkAll "managed continuation answer" [
+        answer == "ready!", calls == 1,
+        length answer == 6
+    ]
 
 (** SixteenArgumentRecovery locks the largest operation payload the current runtime transports. *)
 effect SixteenArgumentRecovery
@@ -372,22 +386,57 @@ sixteenArgumentBoundaryCase () =
         observed == "1|2|3|4|5|6|7|8|9|10|11|12|13|14|15|16"
     ]
 
-(** Verdict lets a known critical runtime failure remain visible without making unrelated CI red. *)
-type Verdict = Pass | Fail string | Skip string
-
-(** SeventeenArgumentRecovery is accepted today but runtime argument 17 becomes zero. *)
-effect SeventeenArgumentRecovery
-    (** Recover across seventeen integer arguments — the first arity that spills to the stack. *)
+(** WideArgumentRecovery reaches past the sixteen slots the mailbox once held. *)
+effect WideArgumentRecovery
+    (** Recover across seventeen integer arguments — the first arity past that width. *)
     recover : (int, int, int, int, int, int, int, int, int, int, int, int, int, int, int, int, int) => int
+    (** Recover across nine managed and nine scalar slots interleaved past it. *)
+    describe : (string, int, string, int, string, int, string, int, string, int, string, int, string, int, string, int, string, int) => string
 
 (** This is the exact operation shape tracked by critical issue #182. *)
-seventeenArgumentBody : Unit -> int ! SeventeenArgumentRecovery
+seventeenArgumentBody : Unit -> int ! WideArgumentRecovery
 seventeenArgumentBody () =
-    perform SeventeenArgumentRecovery.recover 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17
+    perform WideArgumentRecovery.recover 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17
 
-(** Keep the unsafe boundary named in TAP until #182 makes it safe to execute. *)
-seventeenArgumentKnownFailureCase () =
-    Skip "CRITICAL #182: resumable operation argument 17 is silently replaced with zero"
+(** Text built at runtime, never a literal, so each managed slot is refcounted. *)
+slotText n = "s" + "${n}"
+
+(** Nine managed and nine scalar arguments cross one operation together. *)
+wideManagedBody : Unit -> string ! WideArgumentRecovery
+wideManagedBody () =
+    perform WideArgumentRecovery.describe (slotText 1) 1 (slotText 2) 2 (slotText 3) 3 (slotText 4) 4 (slotText 5) 5 (slotText 6) 6 (slotText 7) 7 (slotText 8) 8 (slotText 9) 9
+
+(** Argument seventeen arrives as sent instead of silently becoming zero. *)
+seventeenArgumentCase () =
+    mut observed = ""
+    result =
+        handle WideArgumentRecovery
+            recover a1 a2 a3 a4 a5 a6 a7 a8 a9 a10 a11 a12 a13 a14 a15 a16 a17 =>
+                observed := "${a1}|${a2}|${a3}|${a4}|${a5}|${a6}|${a7}|${a8}|${a9}|${a10}|${a11}|${a12}|${a13}|${a14}|${a15}|${a16}|${a17}"
+                resume a17
+        in seventeenArgumentBody ()
+
+    checkAll "seventeen-argument resume boundary" [
+        result == 17,
+        observed == "1|2|3|4|5|6|7|8|9|10|11|12|13|14|15|16|17"
+    ]
+
+(** Managed and scalar slots past that boundary all arrive, and every managed
+    one releases: an argument the mailbox retains but never drops survives to
+    the ARC exit audit exactly like a leaked answer would. *)
+wideManagedArgumentCase () =
+    mut calls = 0
+    joined =
+        handle WideArgumentRecovery
+            describe t1 n1 t2 n2 t3 n3 t4 n4 t5 n5 t6 n6 t7 n7 t8 n8 t9 n9 =>
+                calls := calls + 1 ?: calls
+                resume "${t1}${n1}${t2}${n2}${t3}${n3}${t4}${n4}${t5}${n5}${t6}${n6}${t7}${n7}${t8}${n8}${t9}${n9}"
+        in wideManagedBody ()
+
+    checkAll "wide managed argument transport" [
+        joined == "s11s22s33s44s55s66s77s88s99", calls == 1,
+        length joined == 27
+    ]
 
 // Register recovery that resumes the caller with a fallback.
 test "resuming recovery continues after the failed operation" resumeRecoveryContinuesCase
@@ -409,9 +458,11 @@ test "resume preserves tagged recovery choices" resumeTaggedChoiceCase
 test "thirty-two sequential recoveries settle exactly once" deepResumeStressCase
 // Register multiple operation result types in one resuming handler.
 test "one handler resumes integer string boolean and Unit operations" heterogeneousResumeCase
-// Register the managed continuation-answer ARC leak as a known failure.
-test "string continuation answers must release under ARC" stringAnswerArcKnownFailureCase
-// Register the current safe operation-argument boundary.
+// Register the managed continuation answer that must release under ARC.
+test "string continuation answers release under ARC" stringAnswerCase
+// Register the sixteen-argument operation boundary.
 test "sixteen resumable operation arguments arrive intact" sixteenArgumentBoundaryCase
-// Register the next boundary as an explicit critical known failure.
-test "seventeen resumable operation arguments must not be truncated" seventeenArgumentKnownFailureCase
+// Register the first arity past the mailbox's former fixed width.
+test "seventeen resumable operation arguments arrive intact" seventeenArgumentCase
+// Register managed and scalar arguments interleaved past that width.
+test "managed and scalar arguments cross one wide operation" wideManagedArgumentCase

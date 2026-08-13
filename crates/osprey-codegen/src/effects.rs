@@ -43,7 +43,7 @@ impl OpSig {
         }
     }
 
-    fn param(&self, index: usize) -> ParamSig {
+    pub(crate) fn param(&self, index: usize) -> ParamSig {
         self.params
             .get(index)
             .copied()
@@ -239,11 +239,13 @@ fn emit_unhandled_guard(cg: &mut Codegen, raw: &str, lookup_key: &str, operation
 fn declare_coro(cg: &mut Codegen) {
     cg.add_extern("declare i8* @__osprey_coro_new(i8*)");
     cg.add_extern("declare void @__osprey_coro_start(i8*, i64 (i8*)*, i8*, i8*)");
-    cg.add_extern("declare i64 @__osprey_coro_suspend(i8*, i64, i64*, i64)");
+    cg.add_extern("declare i64 @__osprey_coro_suspend(i8*, i64, i64*, i8*, i64)");
     cg.add_extern("declare i64 @__osprey_coro_resume(i8*, i64)");
     cg.add_extern("declare i64 @__osprey_coro_done(i8*)");
-    cg.add_extern("declare i64 @__osprey_coro_op(i8*)");
-    cg.add_extern("declare i64 @__osprey_coro_arg(i8*, i64)");
+    cg.add_extern("declare i8* @__osprey_coro_take_args(i8*)");
+    cg.add_extern("declare i64 @__osprey_coro_mail_op(i8*)");
+    cg.add_extern("declare i64 @__osprey_coro_mail_arg(i8*, i64)");
+    cg.add_extern("declare void @__osprey_coro_mail_free(i8*)");
     cg.add_extern("declare i64 @__osprey_coro_result(i8*)");
     cg.add_extern("declare void @__osprey_coro_abort(i8*)");
     cg.add_extern("declare void @__osprey_coro_free(i8*)");
@@ -692,7 +694,28 @@ fn coerce_to_answer(cg: &mut Codegen, value: Value, answer: &AnswerShape) -> Res
             crate::result::repack_to_inner(cg, value, inner)
         }
         Some(inner) => crate::result::make_ok(cg, value, inner),
-        None => coerce_to(cg, value, answer.ty),
+        // An arm that does not `resume` abandons the continuation, so ITS value
+        // becomes the whole `handle` block's result. Whether it CAN be that
+        // result is settled in inference, where the semantic types still exist
+        // (`check_abandoning_arm` in `crates/osprey-types/src/expr.rs`).
+        //
+        // A codegen-side guard cannot decide it: `any` and `int` are the same
+        // erased machine word here, so rejecting every scalar that meets a
+        // pointer answer rejects valid erased values, and accepting every
+        // pointer that meets a scalar answer boxes a heap address as a
+        // successful integer. Both directions need the semantic type.
+        //
+        // A handler answer is also an un-erasure boundary: an `any` arm hands
+        // back a machine word carrying the +1 its producer transferred into it,
+        // so the recovered pointer is owned by this region. [GC-ARC-PERCEUS]
+        None => {
+            let unerasing = value.ty == LType::I64 && matches!(answer.ty, LType::Str | LType::Ptr);
+            let out = coerce_to(cg, value, answer.ty)?;
+            if unerasing {
+                crate::arc::own(cg, &out);
+            }
+            Ok(out)
+        }
     }
 }
 
@@ -727,7 +750,7 @@ fn gen_resuming_handler(
         let resolved = site_ops.and_then(|m| m.ops.get(&arm.operation));
         let suspend_fn = format!("__resume_suspend_{effect}_{}_{id}_{op_id}", arm.operation);
         let arm_fn = format!("__resume_arm_{effect}_{}_{id}_{op_id}", arm.operation);
-        emit_suspend_fn(cg, &suspend_fn, op_id, &sig);
+        emit_suspend_fn(cg, &suspend_fn, op_id, &sig, resolved);
         emit_resuming_arm_fn(
             cg,
             arm,
@@ -811,38 +834,33 @@ fn emit_resuming_body_fn(
     Ok(answer)
 }
 
-fn emit_suspend_fn(cg: &mut Codegen, name: &str, op_id: usize, sig: &OpSig) {
+fn emit_suspend_fn(
+    cg: &mut Codegen,
+    name: &str,
+    op_id: usize,
+    sig: &OpSig,
+    resolved: Option<&osprey_types::OpType>,
+) {
     let saved = cg.enter_nested_fn();
     let mut params = vec![(LType::Ptr, String::from("__coro"))];
     for (i, param) in sig.params.iter().copied().enumerate() {
         params.push((param.ty, format!("__arg{i}")));
     }
 
-    let args_ptr = if sig.params.is_empty() {
-        String::from("null")
+    let (args_ptr, kinds_ptr) = if sig.params.is_empty() {
+        (String::from("null"), String::from("null"))
     } else {
-        let arr_ty = format!("[{} x i64]", sig.params.len());
-        let arr = cg.emit_reg(format!("alloca {arr_ty}"));
-        for (i, param) in sig.params.iter().copied().enumerate() {
-            let value = crate::cast::incoming_param(cg, format!("%__arg{i}"), param, None);
-            let boxed = box_codegen_value(cg, value);
-            let slot = cg.emit_reg(format!(
-                "getelementptr {arr_ty}, {arr_ty}* {arr}, i64 0, i64 {i}"
-            ));
-            cg.emit(format!("store i64 {}, i64* {slot}", boxed.operand));
-        }
-        cg.emit_reg(format!(
-            "getelementptr {arr_ty}, {arr_ty}* {arr}, i64 0, i64 0"
-        ))
+        crate::effect_mailbox::emit_mailbox_arrays(cg, sig, resolved)
     };
     let raw = cg.call(
         "i64",
         "__osprey_coro_suspend",
-        "i8*, i64, i64*, i64",
+        "i8*, i64, i64*, i8*, i64",
         &[
             "%__coro",
             &op_id.to_string(),
             &args_ptr,
+            &kinds_ptr,
             &sig.params.len().to_string(),
         ],
     );
@@ -919,7 +937,12 @@ fn emit_drive_fn(cg: &mut Codegen, name: &str, arms: &[DriveArm]) -> Result<()> 
     cg.emit(format!("ret i64 {result}"));
 
     cg.start_block(&dispatch_lbl);
-    let op = cg.call("i64", "__osprey_coro_op", "i8*", &["%__coro"]);
+    // Take the mailbox before reading it. An arm that resumes lets the body
+    // perform again, and that nested suspension installs a mailbox of its own;
+    // taking clears the coro's slot so the two activations never alias, and
+    // makes this activation responsible for retiring the one it holds.
+    let mail = cg.call("i8*", "__osprey_coro_take_args", "i8*", &["%__coro"]);
+    let op = cg.call("i64", "__osprey_coro_mail_op", "i8*", &[&mail]);
     let miss_lbl = cg.fresh_label();
     let check_labels: Vec<String> = arms.iter().map(|_| cg.fresh_label()).collect();
     let arm_labels: Vec<String> = arms.iter().map(|_| cg.fresh_label()).collect();
@@ -944,15 +967,19 @@ fn emit_drive_fn(cg: &mut Codegen, name: &str, arms: &[DriveArm]) -> Result<()> 
         for (idx, param) in arm.sig.params.iter().copied().enumerate() {
             let raw = cg.call(
                 "i64",
-                "__osprey_coro_arg",
+                "__osprey_coro_mail_arg",
                 "i8*, i64",
-                &["%__coro", &idx.to_string()],
+                &[&mail, &idx.to_string()],
             );
             let value = unbox_coro_value(cg, &raw, param.ty, param.result_inner);
             let value = crate::cast::coerce_param(cg, value, param)?;
             args.push(value.typed());
         }
         let arm_result = cg.emit_reg(format!("call i64 @{}({})", arm.arm_fn, args.join(", ")));
+        // The arm borrowed its operands, so retiring the mailbox now drops the
+        // +1 the performer handed over. Anything the arm kept — stored into
+        // handler state, returned, or passed to `resume` — it retained itself.
+        cg.call_void("__osprey_coro_mail_free", "i8*", &[&mail]);
         let done_after = cg.call("i64", "__osprey_coro_done", "i8*", &["%__coro"]);
         let done_after_cond = cg.emit_reg(format!("icmp ne i64 {done_after}, 0"));
         let abort_lbl = cg.fresh_label();
@@ -968,6 +995,9 @@ fn emit_drive_fn(cg: &mut Codegen, name: &str, arms: &[DriveArm]) -> Result<()> 
     }
 
     cg.start_block(&miss_lbl);
+    // No arm claimed this operation: the mailbox is still this activation's to
+    // retire, or its managed operands outlive the program.
+    cg.call_void("__osprey_coro_mail_free", "i8*", &[&mail]);
     cg.call_void("__osprey_coro_abort", "i8*", &["%__coro"]);
     cg.emit("ret i64 0");
     cg.exit_nested_fn(saved, "i64", name, &params);
@@ -1030,10 +1060,16 @@ pub(crate) fn gen_resume(cg: &mut Codegen, value: Option<&Expr>) -> Result<Value
     let mut answer = unbox_coro_value(cg, &phi, ctx.answer_ty, ctx.answer_result_inner)
         .with_owner(ctx.answer_owner);
     answer.payload_owner = ctx.answer_payload_owner;
+    // Both phi edges carry +1: the body fn escape-retained the answer it boxed,
+    // and a nested dispatch returns an arm's escape-retained answer. Registering
+    // it is what balances the retain the enclosing arm adds when it boxes this
+    // value as its own return — without it every managed continuation answer
+    // survived to exit. [GC-ARC-PERCEUS]
+    crate::arc::own(cg, &answer);
     Ok(answer)
 }
 
-fn box_codegen_value(cg: &mut Codegen, value: Value) -> Value {
+pub(crate) fn box_codegen_value(cg: &mut Codegen, value: Value) -> Value {
     // Every effect-boundary boxing erases pointer-ness from the ARC drop
     // walk: dup so the unboxing side owns +1 [GC-ARC-PERCEUS].
     crate::arc::escape_retain(cg, &value);

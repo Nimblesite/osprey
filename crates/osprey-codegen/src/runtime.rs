@@ -84,19 +84,50 @@ fn result_string(cg: &mut Codegen, v: &Value, wrap_success: bool) -> Result<Valu
     Ok(Value::new(phi, LType::Str))
 }
 
-/// `malloc(64)` + `sprintf(buf, fmt, arg)` for a single `%s` substitution,
-/// returning the buffer.
+/// Wrap one string in a single-`%s` template — `Success(%s)`, `Error(%s)` —
+/// into a buffer sized for the string that is actually there.
+///
+/// This used to `sprintf` into a fixed 64-byte block, which is a heap buffer
+/// overflow, not a size heuristic: the substituted string is a runtime value of
+/// any length. `toString` of a `readFile` success wrote the whole file past the
+/// end of a 64-byte allocation, and an error message longer than 56 characters
+/// did the same — silent heap corruption on the printing path of the built-in
+/// whose entire job is to render a value truthfully. [BUILTIN-TOSTRING]
 fn sprintf_wrap(cg: &mut Codegen, fmt: &str, arg: &str) -> String {
-    cg.add_extern("declare i32 @sprintf(i8*, i8*, ...)");
+    format_sized(cg, fmt, &[format!("i8* {arg}")]).operand
+}
+
+/// Build `fmt` — a codegen-built template whose holes are all `%s` — into an
+/// exactly-sized heap buffer, in two passes: measure with `osp_format_size`,
+/// then fill with `osp_format_into`. `args` are complete LLVM operands
+/// (`i8* %r7`). The returned buffer is owned by the current region.
+///
+/// Measuring goes through `osp_format_size` rather than `snprintf` directly
+/// because this IR is target-neutral and `size_t` is not: it is 32-bit on
+/// wasm32 and 64-bit natively, so a literal size type here mismatches
+/// wasi-libc at wasm-ld time. See `string_runtime.h`. [STRING-INTERPOLATION]
+pub(crate) fn format_sized(cg: &mut Codegen, fmt: &str, args: &[String]) -> Value {
+    cg.add_extern("declare i64 @osp_format_size(i8*, ...)");
+    cg.add_extern("declare void @osp_format_into(i8*, i64, i8*, ...)");
     let fmtv = cg.string_constant(fmt);
-    let buf = cg.heap_alloc("64");
-    let tmp = cg.fresh_reg();
-    cg.emit(format!(
-        "{tmp} = call i32 (i8*, i8*, ...) @sprintf(i8* {buf}, i8* {}, i8* {arg})",
+    let extra = args.iter().fold(String::new(), |mut acc, a| {
+        acc.push_str(", ");
+        acc.push_str(a);
+        acc
+    });
+    let len = cg.emit_reg(format!(
+        "call i64 (i8*, ...) @osp_format_size(i8* {}{extra})",
         fmtv.operand
     ));
-    crate::arc::own(cg, &Value::new(&buf, LType::Str));
-    buf
+    let size = cg.emit_reg(format!("add i64 {len}, 1"));
+    let buf = cg.heap_alloc(&size);
+    cg.emit(format!(
+        "call void (i8*, i64, i8*, ...) @osp_format_into(i8* {buf}, i64 {size}, i8* {}{extra})",
+        fmtv.operand
+    ));
+    let v = Value::new(buf, LType::Str);
+    crate::arc::own(cg, &v);
+    v
 }
 
 /// `print(x)` → `puts(toString(x))`; yields Unit. [BUILTIN-PRINT]
@@ -108,6 +139,12 @@ pub(crate) fn gen_print(cg: &mut Codegen, v: Value) -> Result<Value> {
     Ok(Value::unit())
 }
 
+/// The widest `%lld` an i64 can produce: `-9223372036854775808` is 20
+/// characters, so 21 bytes hold every value with its terminator. Unlike the
+/// `%s` templates above, this bound is a property of the type, not of a runtime
+/// value, so a fixed block is sound here and saves the measuring pass.
+const INT_STRING_BYTES: &str = "21";
+
 fn int_to_string(cg: &mut Codegen, v: Value) -> Result<Value> {
     cg.add_extern("declare i32 @sprintf(i8*, i8*, ...)");
     let i = as_i64(cg, v)?;
@@ -115,7 +152,7 @@ fn int_to_string(cg: &mut Codegen, v: Value) -> Result<Value> {
     // `long` is 32-bit while `long long` is 64-bit everywhere. `%lld` reads the
     // full i64 on every target; on LP64 (native) it is identical to `%ld`.
     let fmt = cg.string_constant("%lld");
-    let buf = cg.heap_alloc("32");
+    let buf = cg.heap_alloc(INT_STRING_BYTES);
     let tmp = cg.fresh_reg();
     cg.emit(format!(
         "{tmp} = call i32 (i8*, i8*, ...) @sprintf(i8* {buf}, i8* {}, i64 {})",

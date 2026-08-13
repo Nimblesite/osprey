@@ -6,7 +6,7 @@ Read successful!
 -- Step 3: Testing Result<string> toString --
 Write Result toString: Success(23)
 Read Result toString: Success(Hello, Osprey file I/O!)
-Error Result toString: Error(File read error)
+Error Result toString: Error(readFile: nonexistent_file_xyz123.txt: No such file or directory)
 === Test Complete ===
 ok 1 - file workflow persists content and reports missing files
 1..1

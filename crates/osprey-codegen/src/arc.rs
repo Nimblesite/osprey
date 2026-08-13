@@ -442,18 +442,26 @@ pub(crate) fn dup_store(cg: &mut Codegen, slot_ty: &str, operand: &str) {
 /// retain-before-release order keeps the returned value's count positive
 /// throughout. [GC-ARC-PERCEUS]
 pub(crate) fn epilogue(cg: &mut Codegen, ret: Option<&Value>) {
-    // Perceus return transfer (TR Fig. 6): when the returned value is itself
-    // one of this function's owners, MOVE it out of the ledger rather than
-    // dup-it-then-drop-it — the +1 the caller receives is the one the function
-    // already holds. Saves a retain/release pair on every value-returning call.
-    if let Some(v) = ret.filter(|v| !take_owner_anywhere(cg, v)) {
-        retain_val(cg, v);
+    if let Some(v) = ret {
+        transfer_out(cg, v);
     }
     let frames = std::mem::take(&mut cg.arc.frames);
     for frame in frames.iter().rev() {
         release_entries(cg, frame);
     }
     cg.arc.frames = vec![Vec::new()];
+}
+
+/// Hand this frame's +1 to a value that is leaving it. Perceus return transfer
+/// (TR Fig. 6): when the frame already owns the value, MOVE it out of the
+/// ledger rather than dup-it-then-drop-it — the +1 the receiver gets is the one
+/// the frame was holding. Saves a retain/release pair on every value-returning
+/// call, and is what an erasing boundary needs while the pointer is still
+/// visible to the ledger. [GC-ARC-PERCEUS]
+pub(crate) fn transfer_out(cg: &mut Codegen, v: &Value) {
+    if !take_owner_anywhere(cg, v) {
+        retain_val(cg, v);
+    }
 }
 
 /// A candidate value is about to escape boxed as an `i64` across a fiber /

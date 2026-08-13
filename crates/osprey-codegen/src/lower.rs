@@ -296,7 +296,26 @@ fn coerce_return(cg: &mut Codegen, name: &str, body: Value) -> Result<Value> {
         return crate::result::fit_to_inner(cg, body, inner);
     }
     let ret_ty = cg.fn_ret_ltype(name).unwrap_or(LType::I64);
-    crate::cast::coerce_to(cg, body, ret_ty)
+    // Erasing a pointer into the uniform machine word (`any`, a type variable)
+    // hides it from the ARC ledger: `epilogue` matches the returned value
+    // against its owners BY OPERAND, and the boxed `i64` is a different
+    // register, so the referent was released and the caller handed a dangling
+    // word — `fn erased() -> any = "a" + "b"` read back as a string was empty
+    // under `--memory=arc`, with no crash and no diagnostic. Transfer the +1
+    // here, while the pointer is still something the ledger can see.
+    if ret_ty == LType::I64 && matches!(body.ty, LType::Str | LType::Ptr) {
+        crate::arc::transfer_out(cg, &body);
+    }
+    // The inverse boundary. The erased word carries the +1 its producer
+    // transferred into it, so the recovered pointer is owned here — without
+    // this the transfer above would have no counterpart and the free would
+    // simply become a leak. [GC-ARC-PERCEUS] [TYPE-ANY]
+    let unerasing = body.ty == LType::I64 && matches!(ret_ty, LType::Str | LType::Ptr);
+    let out = crate::cast::coerce_to(cg, body, ret_ty)?;
+    if unerasing {
+        crate::arc::own(cg, &out);
+    }
+    Ok(out)
 }
 
 /// Lower a statement inside its own ARC region: temporaries the statement

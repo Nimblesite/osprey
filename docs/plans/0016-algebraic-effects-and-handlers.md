@@ -16,22 +16,25 @@ first-class open-row representation in Hindley–Milner function types. This pla
 supersedes retired plan 0008 and absorbs the handler-value work sketched in
 [plan 0013](0013-ml-flavor-frontend.md) Phase 0
 and the effect-row-polymorphism gap flagged in
-[plan 0015](0015-generics-and-variance.md). Open critical correctness defects:
-resumable argument transport after position 16
-([#182](https://github.com/Nimblesite/osprey/issues/182))
-and effect loss through one curried ML lowering path
-([#184](https://github.com/Nimblesite/osprey/issues/184)), plus managed string
-continuation answers leaking under ARC
-([#185](https://github.com/Nimblesite/osprey/issues/185)).
+[plan 0015](0015-generics-and-variance.md). Remaining open critical correctness
+defect: effect loss through one curried ML lowering path
+([#184](https://github.com/Nimblesite/osprey/issues/184)).
 
 **Ten open effect defects share three root causes**, sequenced together in
 umbrella [#200](https://github.com/Nimblesite/osprey/issues/200) (which parents
 #182, #183, #185; #177, #179; #184, #178, #156; #180; #186): the operation
-mailbox is fixed-width and untyped (`effects_runtime.c` `int64_t args[16]`),
-resumption mode is scanned per *handler* rather than per arm
-(`codegen/effects.rs` `arms.iter().any(contains_resume)`), and the handler set
-lives on the thread's stack instead of travelling with the continuation. Fix
-each once and the ten close in four steps — do not schedule them individually.
+mailbox is fixed-width and untyped, resumption mode is scanned per *handler*
+rather than per arm (`codegen/effects.rs` `arms.iter().any(contains_resume)`),
+and the handler set lives on the thread's stack instead of travelling with the
+continuation. Fix each once and the ten close in four steps — do not schedule
+them individually.
+
+**Root cause 1 is discharged.** The mailbox is now length-carrying and
+kind-tagged (`compiler/runtime/effects_coro.c`, split out of
+`effects_runtime.c`), which closed #182 and #185 together; #183 was already
+fixed and only its test was masking the fact. See
+[`0017-AlgebraicEffects.md`](../specs/0017-AlgebraicEffects.md)
+`[EFFECTS-OPERATION-MAILBOX]`.
 
 ## Summary
 
@@ -60,10 +63,15 @@ work on WebAssembly).
   rejects recursive handler-arm re-entry, and requires an empty entry row.
   Explicit rows are checked contracts, not handlers. The runtime null-lookup
   guard in `crates/osprey-codegen/src/effects.rs` remains a defensive backstop.
-- **Direct value substitution**: a non-resuming arm's value becomes
-  the `perform`'s result; handlers may own `mut` state
-  ([EFFECTS-HANDLER-STATE], `capture_list`/`build_env`/`reload_env` in
-  `effects.rs`). Reference: `tests/regressions/effects/http_state_levels.test.osp`.
+- **Direct value substitution**: in a region where no arm resumes, a
+  non-resuming arm's value becomes the `perform`'s result; where some arm does,
+  a non-resuming arm abandons the continuation and its value is the whole
+  `handle`'s answer instead, which is what the checker holds it to
+  ([EFFECTS-HANDLER-ARMS], `check_abandoning_arm` in `osprey-types`). Handlers
+  may own `mut` state ([EFFECTS-HANDLER-STATE],
+  `capture_list`/`build_env`/`reload_env` in `effects.rs`). Reference:
+  `tests/regressions/effects/http_state_levels.test.osp`,
+  `tests/regressions/effects/abort_vs_resume.test.osp`.
 - **Single-shot deep `resume`**: an arm that mentions `resume` runs the body
   on a pthread (`__osprey_coro_*`, `effects_runtime.c`), suspends at each
   `perform`, and `resume(v)` drives it to completion or the next operation.
@@ -108,13 +116,16 @@ work on WebAssembly).
    inside it. Now a type error (`` `resume` is only valid inside a handler
    arm ``); pinned by `examples/failscompilation/resume_in_arm_lambda.ospo`.
 
-1d. **Resuming operation arguments after position 16 become zero.** The
-   compiler accepts the operation, but the native continuation mailbox copies
-   only 16 arguments and `__osprey_coro_arg` returns zero for later positions.
-   The process exits successfully with corrupted data. Tracked as critical
-   [issue #182](https://github.com/Nimblesite/osprey/issues/182); the paired
-   `resume_error_policies.test.{osp,ospml}` suites prove positions 1–16 and keep
-   position 17 as an explicit known-failure skip.
+1d. ~~**Resuming operation arguments after position 16 become zero.**~~
+   **FIXED.** The native continuation mailbox copied only 16 arguments while
+   keeping the declared arity, and `__osprey_coro_arg` answered zero for later
+   positions, so the process exited successfully with corrupted data. Tracked as
+   critical [issue #182](https://github.com/Nimblesite/osprey/issues/182). The
+   mailbox is now allocated per suspension and sized by the operation's real
+   arity, and an out-of-range slot aborts instead of answering zero. The paired
+   `resume_error_policies.test.{osp,ospml}` suites assert positions 1–16, 1–17,
+   and nine managed with nine scalar operands in one operation — position 17 was
+   a known-failure skip, now a passing assertion.
 
 1e. ~~**Direct handlers corrupt whole `Result<T, E>` operation values.**~~
    **FIXED.** Both `Success` and `Error` values used to reach the caller as
@@ -132,13 +143,16 @@ work on WebAssembly).
    [issue #184](https://github.com/Nimblesite/osprey/issues/184). Paired golden
    examples use the verified flat form until the curried path is repaired.
 
-1g. **A dynamic string continuation answer leaks under ARC.** A one-operation
-   handler that resumes with a string and returns a computed string produces
-   correct output but leaves one managed object live at exit. Repetition and
-   both syntax flavors reproduce it. Tracked as critical
-   [issue #185](https://github.com/Nimblesite/osprey/issues/185); paired tests
-   keep the unsafe shape as a known-failure skip while other string operation
-   paths still run under every memory mode.
+1g. ~~**A dynamic string continuation answer leaks under ARC.**~~ **FIXED.** A
+   one-operation handler that resumed with a string and returned a computed
+   string produced correct output but left one managed object live at exit, in
+   both flavors. Tracked as critical
+   [issue #185](https://github.com/Nimblesite/osprey/issues/185). Two
+   independent leaks were behind it: `resume` was the one effect boundary that
+   received an owned value and never registered it, and the mailbox held a
+   reference to every managed operand that nothing released. Both are closed;
+   the whole `tests/effects` corpus now exits with zero live ARC objects, and
+   the paired suites assert the previously-skipped shape.
 
 2. **First-class handler values do not parse.**
    ```osprey-ml
@@ -338,8 +352,14 @@ The runtime guard is now defense in depth rather than normal effect checking.
 - [x] **Phase A** — reject multi-shot resume (runtime guard +
       failscompilation + 0017 §Status). *Done.* (Optional static-detection
       refinement deferred; the runtime guard is sound and total.)
-- [ ] **Critical #182** — preserve every accepted resumable operation argument
-      or reject arities above a documented limit before code generation.
+- [x] **Critical #182** — preserve every accepted resumable operation argument.
+      *Done.* The mailbox is allocated per suspension and sized by the
+      operation's real arity ([EFFECTS-OPERATION-MAILBOX]), so there is no
+      documented limit left to reject against; reading a slot the operation
+      never sent aborts instead of answering zero. Asserted at arities 16, 17
+      and 18 (nine managed, nine scalar) in
+      `tests/effects/resume/resume_error_policies.test.{osp,ospml}`, and at 20
+      scalars in `compiler/runtime/effects_runtime_tests.c`.
 - [x] **Critical #183** — preserve complete `Result<T, E>` values through the
       direct handler ABI in both flavors and all memory modes. **Fixed; this item
       was left unchecked after the fix landed.**
@@ -352,8 +372,13 @@ The runtime guard is now defense in depth rather than normal effect checking.
       broken behaviour and need the same correction; gh issue 183 can close.
 - [ ] **Critical #184** — keep effectful curried ML functions behaviorally
       equivalent to their flat parameter form.
-- [ ] **Critical #185** — release managed continuation answers exactly once
+- [x] **Critical #185** — release managed continuation answers exactly once
       under ARC, including nested and repeated string-valued resumptions.
+      *Done.* Two independent leaks: `resume` never registered the owned answer
+      it received, and the mailbox never released the managed operands it held.
+      The whole `tests/effects` corpus now exits with zero live ARC objects, and
+      `compiler/runtime/effects_runtime_tests.c` asserts the mailbox drops
+      exactly one reference per managed slot — no more, no less.
 - [ ] **Phase B** — first-class handler values + multi-install (AST, types,
       state, codegen, both surfaces, tests). *Unblocks plan 0013 Phase 0.*
 - [x] **Phase C** — static inferred-operation propagation, exact handler

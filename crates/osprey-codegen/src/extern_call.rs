@@ -30,7 +30,8 @@ enum Ret {
     /// `Result<int, _>`: the C `i64` is the success value; `< 0` ⇒ Error.
     ResultInt,
     /// `Result<string, _>`: the C `i8*` is the success value; `null` ⇒ Error.
-    /// `Some(msg)` stores that constant on the error path (`readFile`).
+    /// `Some(msg)` is the FALLBACK reason, used only when the call recorded
+    /// none of its own on the failure channel [BUILTIN-FILE-ERRMSG].
     ResultStr(Option<&'static str>),
 }
 
@@ -182,19 +183,45 @@ fn emit(cg: &mut Codegen, sig: &Sig, ops: &[String]) -> Result<Value> {
             Ok(v)
         }
         Ret::ResultInt => {
+            clear_io_error(cg);
             let r = cg.call("i64", sig.cname, &params, &op_refs);
-            // The negative-i64 runtime convention carries no message string;
-            // the Error arm falls back to the bare "Error" reason.
-            result_from_i64(cg, &r, None)
+            let reason = take_io_error(cg);
+            result_from_i64(cg, &r, None, Some(&reason))
         }
         Ret::ResultStr(err) => {
+            clear_io_error(cg);
             let r = cg.call("i8*", sig.cname, &params, &op_refs);
+            let reason = take_io_error(cg);
             // Own the raw C buffer; the Result payload store dups its own +1,
             // so this one drops at region end (null on the error path — no-op).
             crate::arc::own(cg, &Value::new(&r, LType::Str));
-            result_from_nullable(cg, &r, err)
+            result_from_nullable(cg, &r, err, Some(&reason))
         }
     }
+}
+
+/// Retire any reason the calling thread is holding, so a failure recorded by an
+/// EARLIER builtin can never be attributed to this one. Paired with
+/// [`take_io_error`] around every call, this is what makes the channel
+/// trustworthy rather than merely usually-right. Implements
+/// [BUILTIN-FILE-ERRMSG].
+fn clear_io_error(cg: &mut Codegen) {
+    cg.add_extern("declare void @osp_io_error_clear()");
+    cg.emit("call void @osp_io_error_clear()".to_string());
+}
+
+/// Take ownership of the reason the call just recorded — `null` when it
+/// recorded none, which every consumer treats as "no reason given" and falls
+/// back on. Owning is not optional: the channel's own buffer is reused by this
+/// thread's next I/O call, but the `Result` built from it can outlive any number
+/// of those, so a borrowed pointer would later read as an unrelated failure.
+fn take_io_error(cg: &mut Codegen) -> String {
+    cg.add_extern("declare i8* @osp_io_error_take()");
+    let reason = cg.emit_reg("call i8* @osp_io_error_take()".to_string());
+    // The errmsg store dups its own +1, so this one drops at region end
+    // (null on the success path — a no-op).
+    crate::arc::own(cg, &Value::new(&reason, LType::Str));
+    reason
 }
 
 #[cfg(test)]
@@ -224,6 +251,44 @@ mod tests {
             assert!(body.contains(&format!("call i64 @{callee}")), "{body}");
             assert!(body.contains("ret i64 0"), "Unit must return zero: {body}");
         }
+    }
+
+    #[test]
+    fn a_fallible_builtin_carries_the_runtime_failure_reason() {
+        // [BUILTIN-FILE-ERRMSG] The reason must be CLEARED before the call and
+        // TAKEN after it. Without the clear, a reason left by an earlier failed
+        // op is reported as this call's cause; without the take, the Error holds
+        // a borrowed pointer into a thread-local the next I/O call overwrites.
+        let parsed = osprey_syntax::parse_program(
+            "let written = writeFile(\"out.txt\", \"body\")\n\
+             let loaded = readFile(\"out.txt\")\n",
+        );
+        assert!(
+            parsed.errors.is_empty(),
+            "syntax errors: {:?}",
+            parsed.errors
+        );
+        let ir = crate::compile_program(&parsed.program).expect("file builtin codegen");
+        assert!(ir.contains("declare void @osp_io_error_clear()"), "{ir}");
+        assert!(ir.contains("declare i8* @osp_io_error_take()"), "{ir}");
+        for (callee, ret) in [("write_file", "i64"), ("read_file", "i8*")] {
+            let call = format!("call {ret} @{callee}(");
+            let at = ir.find(&call).unwrap_or_else(|| panic!("missing {callee}"));
+            let (before, after) = ir.split_at(at);
+            assert!(
+                before.rfind("call void @osp_io_error_clear()")
+                    > before.rfind("call i8* @osp_io_error_take()"),
+                "{callee}: the clear must be the last channel op before the call"
+            );
+            assert!(
+                after.contains("call i8* @osp_io_error_take()"),
+                "{callee}: no take after the call"
+            );
+        }
+        // The reason outranks the static fallback, so a producer that recorded
+        // one is never reported as the placeholder.
+        assert!(ir.contains("File read error"), "fallback dropped: {ir}");
+        assert!(ir.contains("icmp ne i8* "), "no reason-present test: {ir}");
     }
 
     #[test]

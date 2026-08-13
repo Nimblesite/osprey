@@ -56,11 +56,48 @@ let aborted = handle Step
 in pipeline()
 print("aborted result=" + toString(aborted))
 
+// An abandoning arm answers for the WHOLE `handle`, so it is the arm's value
+// that must match the handled expression's type. The operation's declared
+// result is never produced — the `perform` asking for it never returns — so
+// `stop` may answer a `string` while declaring `int`. An `any` arm answers
+// anything [TYPE-ANY]: by the time codegen sees it, the erased machine word an
+// `any` travels in is indistinguishable from an `int`, which is why the two
+// must be reconciled during inference. [EFFECTS-HANDLER-ARMS]
+effect Mixed {
+    scale: fn(int) -> int
+    stop: fn() -> int
+}
+
+// Built at runtime, not a literal: the erased word must carry OWNERSHIP across
+// the handler answer as well as the value. A literal here would have passed
+// while a heap `any` came back empty under `--memory=arc`. [GC-ARC-PERCEUS]
+fn erased() -> any = "era" + "sed"
+
+fn mixedPipeline() -> string !Mixed = {
+    let scaled = perform Mixed.scale(4)
+    let stopped = perform Mixed.stop()
+    "unreached ${scaled} ${stopped}"
+}
+
+let stoppedAnswer = handle Mixed
+    scale x => resume((x * 2) ?: 0)
+    stop => "stopped"
+in mixedPipeline()
+
+let erasedAnswer = handle Mixed
+    scale x => resume((x * 2) ?: 0)
+    stop => erased()
+in mixedPipeline()
+
+print("mixed answers: ${stoppedAnswer} / ${erasedAnswer}")
+
 // Verifies both continuation policies and their exact operation counts.
 test("resuming completes while returning aborts the pipeline", fn() => checkAll("abort versus resume state", [
     recovered == 60,
     counter == 3,
     aborted == sentinel,
     counter2 == 2,
-    recovered != aborted
+    recovered != aborted,
+    stoppedAnswer == "stopped",
+    erasedAnswer == "erased"
 ]))

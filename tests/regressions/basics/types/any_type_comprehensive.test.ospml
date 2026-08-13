@@ -7,6 +7,19 @@ getDynamicValue () = 42
 processAnyValue : any -> any
 processAnyValue input = input + 10 ?: 0
 
+(** Every `any` above carries a SCALAR, which is why an erased HEAP value went
+    uncovered: the machine word an `any` travels in hides the pointer from the
+    reference counter, so its referent was released before the caller read it
+    and this came back empty under `--memory=arc` — no crash, no diagnostic, and
+    the leak oracle blind to it because a premature free leaks nothing. Built at
+    runtime rather than written as a literal, or the pointer would be a global
+    and never counted at all. [TYPE-ANY] [GC-ARC-PERCEUS] *)
+getDynamicString : Unit -> any
+getDynamicString () = "dyn" + "amic"
+
+asText : Unit -> string
+asText () = getDynamicString ()
+
 print "Explicit any return type works"
 print "getDynamicValue() = ${getDynamicValue ()}"
 print "processAnyValue(5) = ${processAnyValue 5}"
@@ -147,6 +160,8 @@ anyTypeBehaviorCase () =
     checkAll "any values and inferred union behavior" [
         toString (getDynamicValue ()) == "42",
         toString (processAnyValue 5) == "15",
+        asText () == "dynamic",
+        length (asText ()) == 7,
         processAny 42 == "Processed any",
         processAny "hello" == "Processed any",
         processAny true == "Processed any",

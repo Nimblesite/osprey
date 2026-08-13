@@ -79,20 +79,20 @@ OSSL ?= -DOPENSSL_SUPPRESS_DEPRECATED -DOPENSSL_API_COMPAT=30000 -Wno-deprecated
 # the flag list per suite.
 T    ?= -O2 -D_FORTIFY_SOURCE=2 -fstack-protector-strong $(WARN) -ftrapv -std=c11 -D_GNU_SOURCE
 # Object lists for the archives (paths relative to compiler/, where `ar` runs).
-FIB_OBJ  ?= bin/memory_runtime.o bin/gpu_runtime.o bin/fiber_runtime.o bin/system_runtime.o bin/effects_runtime.o bin/string_runtime.o bin/string_runtime_list.o bin/list_runtime.o bin/map_runtime.o bin/map_runtime_hamt.o bin/json_runtime.o bin/ffi_runtime.o bin/term_runtime.o bin/random_runtime.o bin/test_runtime.o bin/coverage_runtime.o bin/profiler_runtime.o bin/profiler_sampler.o
+FIB_OBJ  ?= bin/memory_runtime.o bin/gpu_runtime.o bin/fiber_runtime.o bin/system_runtime.o bin/file_runtime.o bin/effects_runtime.o bin/effects_coro.o bin/string_runtime.o bin/string_runtime_list.o bin/list_runtime.o bin/map_runtime.o bin/map_runtime_hamt.o bin/json_runtime.o bin/ffi_runtime.o bin/term_runtime.o bin/random_runtime.o bin/test_runtime.o bin/coverage_runtime.o bin/profiler_runtime.o bin/profiler_sampler.o
 HTTP_OBJ ?= bin/http_shared.o bin/http_client_runtime.o bin/http_server_request.o bin/http_server_response.o bin/http_server_runtime.o bin/websocket_client_runtime.o bin/websocket_server_runtime.o $(FIB_OBJ)
 # GC backend archives (osprey --memory=gc): the tracing collector replaces
 # memory_runtime.o, and the value-container units are rebuilt with the malloc
 # redirect (osp_gc_shim.h) so their nodes live in the managed heap. Everything
 # else is the same object. Implements [GC-TRACE-CONSERVATIVE], spec 0018.
-FIB_OBJ_GC  ?= bin/memory_gc.o bin/gpu_runtime.o bin/fiber_runtime.o bin/system_runtime.o bin/effects_runtime.o bin/string_runtime.o bin/string_runtime_list.o bin/gc/list_runtime.o bin/gc/map_runtime.o bin/gc/map_runtime_hamt.o bin/json_runtime.o bin/ffi_runtime.o bin/term_runtime.o bin/random_runtime.o bin/test_runtime.o bin/coverage_runtime.o bin/profiler_runtime.o bin/profiler_sampler.o
+FIB_OBJ_GC  ?= bin/memory_gc.o bin/gpu_runtime.o bin/fiber_runtime.o bin/system_runtime.o bin/file_runtime.o bin/effects_runtime.o bin/effects_coro.o bin/string_runtime.o bin/string_runtime_list.o bin/gc/list_runtime.o bin/gc/map_runtime.o bin/gc/map_runtime_hamt.o bin/json_runtime.o bin/ffi_runtime.o bin/term_runtime.o bin/random_runtime.o bin/test_runtime.o bin/coverage_runtime.o bin/profiler_runtime.o bin/profiler_sampler.o
 HTTP_OBJ_GC ?= bin/http_shared.o bin/http_client_runtime.o bin/http_server_request.o bin/http_server_response.o bin/http_server_runtime.o bin/websocket_client_runtime.o bin/websocket_server_runtime.o $(FIB_OBJ_GC)
 # ARC backend archives (osprey --memory=arc): Perceus reference counting
 # replaces memory_runtime.o, and the value-producing units (containers +
 # strings + JSON) are rebuilt with the allocation redirect (osp_arc_shim.h) so
 # their nodes/buffers carry the 16-byte header and registry entry. Implements
 # [GC-ARC-PERCEUS], spec 0018.
-FIB_OBJ_ARC  ?= bin/memory_arc.o bin/gpu_runtime.o bin/fiber_runtime.o bin/system_runtime.o bin/effects_runtime.o bin/arc/string_runtime.o bin/arc/string_runtime_list.o bin/arc/list_runtime.o bin/arc/map_runtime.o bin/arc/map_runtime_hamt.o bin/arc/json_runtime.o bin/ffi_runtime.o bin/term_runtime.o bin/random_runtime.o bin/test_runtime.o bin/coverage_runtime.o bin/profiler_runtime.o bin/profiler_sampler.o
+FIB_OBJ_ARC  ?= bin/memory_arc.o bin/gpu_runtime.o bin/fiber_runtime.o bin/system_runtime.o bin/arc/file_runtime.o bin/effects_runtime.o bin/effects_coro.o bin/arc/string_runtime.o bin/arc/string_runtime_list.o bin/arc/list_runtime.o bin/arc/map_runtime.o bin/arc/map_runtime_hamt.o bin/arc/json_runtime.o bin/ffi_runtime.o bin/term_runtime.o bin/random_runtime.o bin/test_runtime.o bin/coverage_runtime.o bin/profiler_runtime.o bin/profiler_sampler.o
 HTTP_OBJ_ARC ?= bin/http_shared.o bin/http_client_runtime.o bin/http_server_request.o bin/http_server_response.o bin/http_server_runtime.o bin/websocket_client_runtime.o bin/websocket_server_runtime.o $(FIB_OBJ_ARC)
 NATIVE_RUNTIME_CONFIG ?= compiler/bin/.native-runtime-config
 NATIVE_RUNTIME_STAMP ?= compiler/bin/.native-runtime.stamp
@@ -142,7 +142,7 @@ endef
 # the WASI random_get host call). Each compiles its non-portable half out under
 # `#ifndef __wasm__`, so adding them unskips file and random programs on wasm32
 # without pretending fork/exec or pthreads exist.
-WASM_RT_SRC  ?= memory_runtime gpu_runtime string_runtime string_runtime_list list_runtime map_runtime map_runtime_hamt json_runtime effects_runtime test_runtime coverage_runtime web_runtime profiler_runtime wasm_builtins_runtime system_runtime random_runtime
+WASM_RT_SRC  ?= memory_runtime gpu_runtime string_runtime string_runtime_list list_runtime map_runtime map_runtime_hamt json_runtime effects_runtime test_runtime coverage_runtime web_runtime profiler_runtime wasm_builtins_runtime system_runtime file_runtime random_runtime
 # `make wasm-serve` static-host dir + port for the in-browser example.
 WASM_SERVE_DIR  ?= examples/wasm
 WASM_SERVE_PORT ?= 8080
@@ -410,9 +410,12 @@ $(NATIVE_RUNTIME_STAMP): $(NATIVE_RUNTIME_INPUTS) $(NATIVE_RUNTIME_CONFIG) Makef
 	  $(CC) $(A) -include runtime/osp_arc_shim.h runtime/string_runtime.c      -o bin/arc/string_runtime.o && \
 	  $(CC) $(A) -include runtime/osp_arc_shim.h runtime/string_runtime_list.c -o bin/arc/string_runtime_list.o && \
 	  $(CC) $(B) -include runtime/osp_arc_shim.h runtime/json_runtime.c        -o bin/arc/json_runtime.o && \
+	  $(CC) $(A) -include runtime/osp_arc_shim.h runtime/file_runtime.c        -o bin/arc/file_runtime.o && \
 	  $(CC) -c -fPIC -O2 $(WARN_MAX) -Wpedantic -std=c11 -D_GNU_SOURCE runtime/fiber_runtime.c -o bin/fiber_runtime.o && \
 	  $(CC) $(A) runtime/system_runtime.c       -o bin/system_runtime.o && \
+	  $(CC) $(A) runtime/file_runtime.c         -o bin/file_runtime.o && \
 	  $(CC) $(A) runtime/effects_runtime.c      -o bin/effects_runtime.o && \
+	  $(CC) $(A) runtime/effects_coro.c         -o bin/effects_coro.o && \
 	  $(CC) $(A) runtime/string_runtime.c       -o bin/string_runtime.o && \
 	  $(CC) $(A) runtime/string_runtime_list.c  -o bin/string_runtime_list.o && \
 	  $(CC) $(B) runtime/list_runtime.c         -o bin/list_runtime.o && \
@@ -459,9 +462,9 @@ _runtime_wasm:
 	@echo "==> building wasm runtime archive ($(WASM_TARGET), sysroot $(WASI_SYSROOT))"
 	@cd compiler && set -e && $(MKDIR) bin/wasm lib && \
 	  for u in $(WASM_RT_SRC); do \
-	    $(WASM_CC) $(WASM_CFLAGS) runtime/$$u.c -o bin/wasm/$$u.o; \
+	    $(WASM_CC) $(WASM_CFLAGS) runtime/$$u.c -o bin/wasm/$$u.o || exit 1; \
 	  done && \
-	  $(WASM_AR) rcs bin/libosprey_runtime_wasm.a bin/wasm/*.o && \
+	  $(WASM_AR) rcs bin/libosprey_runtime_wasm.a $(addprefix bin/wasm/,$(addsuffix .o,$(WASM_RT_SRC))) && \
 	  cp bin/libosprey_runtime_wasm.a lib/
 
 # --- rust (crates/) ---------------------------------------------------------
@@ -521,7 +524,7 @@ _coverage_check_rust:
 # memory_arc_tests covers the counting itself.
 OSSL_CFLAGS = $(OSSL) `pkg-config --cflags openssl 2>/dev/null || echo ""`
 OSSL_LIBS   = `pkg-config --libs openssl 2>/dev/null || echo "-lssl -lcrypto"`
-RT_THREADS  = runtime/fiber_runtime.c runtime/system_runtime.c runtime/effects_runtime.c \
+RT_THREADS  = runtime/fiber_runtime.c runtime/system_runtime.c runtime/file_runtime.c runtime/effects_runtime.c runtime/effects_coro.c \
               runtime/profiler_runtime.c runtime/profiler_sampler.c
 # Frame-pointer profile for the profiler suite: its unwind tests need -g and
 # real frame chains, and it predates the WARN core, so it keeps its own flags.
@@ -557,10 +560,10 @@ C_SRC_map_tests = runtime/map_tests.c runtime/map_runtime.c runtime/map_runtime_
 C_SRC_string_runtime_tests = runtime/string_runtime_tests.c runtime/string_runtime.c runtime/string_runtime_list.c runtime/memory_runtime.c
 C_SRC_json_runtime_tests = runtime/json_runtime_tests.c runtime/json_runtime.c
 C_LIBS_json_runtime_tests = -pthread
-C_SRC_effects_runtime_tests = runtime/effects_runtime_tests.c runtime/effects_runtime.c runtime/profiler_runtime.c runtime/profiler_sampler.c
+C_SRC_effects_runtime_tests = runtime/effects_runtime_tests.c runtime/effects_runtime.c runtime/effects_coro.c runtime/memory_arc.c runtime/gpu_runtime.c runtime/profiler_runtime.c runtime/profiler_sampler.c
 C_LIBS_effects_runtime_tests = -pthread
 C_SRC_builtins_runtime_tests = runtime/builtins_runtime_tests.c runtime/ffi_runtime.c runtime/random_runtime.c runtime/term_runtime.c runtime/test_runtime.c
-C_SRC_test_system_runtime = runtime/test_system_runtime.c runtime/system_runtime.c runtime/memory_runtime.c
+C_SRC_test_system_runtime = runtime/test_system_runtime.c runtime/system_runtime.c runtime/file_runtime.c runtime/memory_runtime.c
 C_LIBS_test_system_runtime = -pthread
 C_FLAGS_test_http_length_validation = $(OSSL_CFLAGS)
 C_SRC_test_http_length_validation = runtime/test_http_length_validation.c
@@ -597,8 +600,20 @@ _test_c_runtime:
 # suite's gcov summaries, and gates every `language: "c"` entry in
 # coverage-thresholds.json at its threshold. A library's number is the MAX
 # line coverage across the suites linking it — per-TU summaries cannot be
-# unioned, so max is the honest lower bound. wasm-only units (web_runtime.c,
-# wasm_builtins_runtime.c) do not build natively and are not gated.
+# unioned, so max is the honest lower bound.
+#
+# The gate reads the JSON and looks each key up in the summaries, so a runtime
+# .c that no key names is compiled, instrumented, summarised — and discarded.
+# effects_coro.c reached 375 lines of the whole continuation core in exactly
+# that state, split out of an already-gated effects_runtime.c and inheriting
+# none of its 90% floor. C_COV_EXEMPT closes it: every native runtime unit must
+# be gated or listed here by name, and an unlisted one fails the gate.
+#
+# The exemptions, and why. web_runtime.c and wasm_builtins_runtime.c do not
+# build natively. term_runtime.c and test_runtime.c run every case in a FORKED
+# CHILD whose gcov counters are never flushed back, so gcov reports 0% against
+# passing assertions — gate them once the harness calls __gcov_dump in the child.
+C_COV_EXEMPT ?= web_runtime wasm_builtins_runtime term_runtime test_runtime
 GCOV_TOOL ?= $(shell if $(CC) --version 2>/dev/null | grep -qi clang; then \
     if command -v xcrun >/dev/null 2>&1; then echo "xcrun llvm-cov gcov"; \
     else echo "llvm-cov gcov"; fi; \
@@ -613,6 +628,12 @@ _coverage_check_c_runtime:
 	@libs=$$(jq -r '.projects | to_entries[] | select(.value.language=="c") | .key' "$(COVERAGE_THRESHOLDS_FILE)"); \
 	if [ -z "$$libs" ]; then echo "[c] FAIL: no C entries in $(COVERAGE_THRESHOLDS_FILE) -- the gate would pass vacuously"; exit 1; fi; \
 	fail=0; \
+	for f in compiler/runtime/*.c; do \
+	  n=$$(basename "$$f" .c); \
+	  case "$$n" in *_tests|test_*) continue;; esac; \
+	  printf '%s\n' $(C_COV_EXEMPT) $$libs | grep -qx "$$n" || { \
+	    echo "[c] FAIL: runtime/$$n.c is neither gated in $(COVERAGE_THRESHOLDS_FILE) nor in C_COV_EXEMPT -- an ungated library cannot regress visibly"; fail=1; }; \
+	done; \
 	for lib in $$libs; do \
 	  thr=$$(jq -r --arg l "$$lib" '.projects[$$l].threshold' "$(COVERAGE_THRESHOLDS_FILE)"); \
 	  best=$$(for f in compiler/bin/cov/*/summary.txt; do \
