@@ -3,7 +3,7 @@
 **Subsystem:** `tree-sitter-osprey` + `crates/osprey-syntax` (both flavors) +
 `crates/osprey-ast` + `crates/osprey-types` (effect rows, turn graph) +
 `crates/osprey-codegen` + native runtime (`fiber_runtime.c`,
-`effects_runtime.c`)
+`effects_coro.c`)
 **Status:** design spec written; **no implementation started**
 **Spec:** [0036-StructuredConcurrency.md](../specs/0036-StructuredConcurrency.md)
 
@@ -18,7 +18,7 @@ round-trip serialization — rather than adding a parallel subsystem.
 
 ## Existing seams this builds on
 
-- `effects_runtime.c` / `__osprey_coro_*`: the continuation representation to
+- `effects_coro.c` / `__osprey_coro_*`: the continuation representation to
   drop instead of resume; its per-handler serialization is the proto-turn.
 - `crates/osprey-types/src/effect_rows.rs`: the closed-program fixed point
   that already knows which operations a body can reach — reused twice, for

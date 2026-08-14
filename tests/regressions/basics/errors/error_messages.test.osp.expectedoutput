@@ -58,5 +58,6 @@ ok 1 - numeric failures retain their reasons
 ok 2 - string failures retain their reasons
 ok 3 - cursor failures retain their reasons
 ok 4 - collections fail safely and valid Results succeed
-1..4
-# tests=4 passed=4 failed=0 skipped=0
+ok 5 - toString sizes its buffer for the payload
+1..5
+# tests=5 passed=5 failed=0 skipped=0

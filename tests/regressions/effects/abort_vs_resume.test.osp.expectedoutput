@@ -11,6 +11,7 @@ pipeline saw step1 -> 10
 poison at step 2 (input 2) -> abort, discard the rest
 audit[abort-run]: step 1 (input 1) settled, downstream=-99
 aborted result=-99
+mixed answer: stopped
 ok 1 - resuming completes while returning aborts the pipeline
 1..1
 # tests=1 passed=1 failed=0 skipped=0

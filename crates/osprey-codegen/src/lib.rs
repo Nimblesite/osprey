@@ -23,6 +23,7 @@ mod collections;
 mod conv;
 mod coverage;
 mod effect_generics;
+mod effect_mailbox;
 mod effects;
 mod error;
 mod expr;
@@ -486,6 +487,47 @@ mod tests {
         let ir = module("let x = 7\nprint(\"x=${x}\")\n");
         assert!(ir.contains("@sprintf"));
         assert!(ir.contains("@osp_alloc"));
+    }
+
+    /// Recovering a pointer from an erased `any` word must take NO ownership.
+    /// The word is `LType::I64`, which is equally every `int` and every
+    /// BORROWED `any` parameter, so a rule that owns what comes back invents a
+    /// reference that was never transferred: with one, `fn identity(x: any) ->
+    /// any = x` made the epilogue move a fictitious owner out, release the real
+    /// one, and return a dangling pointer — `v=` instead of `v=ab` under
+    /// `--memory=arc`, silently. Owning an erased SCALAR is worse still: it
+    /// enters `7` in the ledger and later frees it.
+    ///
+    /// This guards that repair from being re-applied at the cast. The cast is
+    /// the wrong place: it cannot see which of the three an `i64` is. The gap
+    /// it leaves — an erasing return really does drop its referent — is a real
+    /// open defect, tracked in docs/plans/0027-any-erasure-and-recovery.md
+    /// (#208). [GC-ARC-PERCEUS]
+    #[test]
+    fn recovering_a_pointer_from_an_erased_word_takes_no_ownership() {
+        let ir = module(
+            "fn dynamic() -> any = \"a\" + \"b\"\nfn text() -> string = dynamic()\nprint(\"x\")\n",
+        );
+        let body = function_body(&ir, "define i8* @text()");
+        let recovered = body
+            .lines()
+            .find_map(|l| {
+                l.split(" = inttoptr")
+                    .next()
+                    .filter(|_| l.contains("inttoptr"))
+            })
+            .map(str::trim)
+            .unwrap_or_default()
+            .to_string();
+        assert!(
+            !recovered.is_empty(),
+            "expected the `any` word to be recovered as a pointer:\n{body}"
+        );
+        assert!(
+            !body.contains(&format!("store i8* {recovered}, i8** %arc.")),
+            "the un-erased pointer `{recovered}` was entered in the ARC ledger, \
+             but an erased word carries no reference to take over:\n{body}"
+        );
     }
 
     #[test]
@@ -1208,6 +1250,50 @@ mod tests {
                 "the Fiber<Result> parameter must retain its Result element shape:\n{ir}"
             );
         }
+    }
+
+    #[test]
+    fn a_resumable_operation_sends_every_argument_with_its_ownership_kind() {
+        // The operation mailbox is length-carrying and kind-tagged
+        // ([EFFECTS-OPERATION-MAILBOX]). Nothing else in Rust pins this ABI —
+        // a drift used to surface only as a C link error or, worse, as
+        // `osp_release` called on an integer. Seventeen slots is the arity a
+        // fixed sixteen-word mailbox silently zeroed (#182); the `string` slot
+        // is the one whose reference the mailbox owns (#185).
+        let ir = module(
+            "effect Wide { op: fn(int, int, int, int, int, int, int, int, int, int, int, int, int, int, int, int, string) -> int }\n\
+             fn body() -> int !Wide = perform Wide.op(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, \"x\")\n\
+             fn main() -> int { let r = handle Wide op a b c d e f g h i j k l m n o p q => resume(p) in body()\n  print(\"r=${toString(r)}\")\n  0 }\n",
+        );
+        assert!(
+            ir.contains("declare i64 @__osprey_coro_suspend(i8*, i64, i64*, i8*, i64)"),
+            "suspend must take a kinds array beside the words:\n{ir}"
+        );
+        // Both arrays are sized by the REAL arity — never a fixed capacity.
+        assert!(
+            ir.contains("alloca [17 x i64]") && ir.contains("alloca [17 x i8]"),
+            "the mailbox must be sized by the operation's declared arity:\n{ir}"
+        );
+        // Scalar slots tag 0; the trailing `string` tags 1, and only that one is
+        // a reference the mailbox releases when it retires.
+        assert!(
+            ir.contains("store i8 1, i8*") && ir.contains("store i8 0, i8*"),
+            "each slot must carry its operand kind:\n{ir}"
+        );
+        // The dispatcher takes the mailbox, reads through it, and retires it.
+        for symbol in [
+            "@__osprey_coro_take_args",
+            "@__osprey_coro_mail_op",
+            "@__osprey_coro_mail_arg",
+            "@__osprey_coro_mail_free",
+        ] {
+            assert!(ir.contains(symbol), "missing {symbol} in:\n{ir}");
+        }
+        // The superseded fixed-width accessors must not come back.
+        assert!(
+            !ir.contains("@__osprey_coro_arg(") && !ir.contains("@__osprey_coro_op("),
+            "the fixed-width mailbox accessors are gone:\n{ir}"
+        );
     }
 
     #[test]

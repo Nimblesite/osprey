@@ -1,15 +1,21 @@
 // Assertion-driven tests for system_runtime.c — the process runtime
-// (spawn/await/cleanup with streamed callbacks), the legacy blocking
-// spawn_process, and the portable read_file/write_file pair. Linked with
-// memory_runtime.c by the Makefile's _test_c_runtime; POSIX-only harness.
+// (spawn/await/cleanup with streamed callbacks) and the legacy blocking
+// spawn_process. The read_file/write_file pair moved to
+// test_file_runtime.c with the source it covers. Linked with memory_runtime.c
+// by the Makefile's _test_c_runtime; POSIX-only harness.
 #include <assert.h>
 #include <pthread.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/wait.h>
+#include <sys/resource.h>
 #include <unistd.h>
+
+// system_runtime.c caps concurrently tracked processes at MAX_PROCESSES and
+// never recycles an id. The probe below must be free to burn every one of
+// them, so it bounds itself well past that cap rather than guessing it.
+#define MAX_PROCESSES_PROBE_LIMIT 4000
 
 // Include the system runtime header (we'll define the interface)
 extern int64_t spawn_process_with_handler(const char *command,
@@ -18,8 +24,6 @@ extern int64_t spawn_process_with_handler(const char *command,
 extern int64_t await_process(int64_t process_id);
 extern void cleanup_process(int64_t process_id);
 extern char *spawn_process(char *command);
-extern int64_t write_file(char *filename, char *content);
-extern char *read_file(char *filename);
 
 // Test event handler data
 typedef struct {
@@ -330,31 +334,78 @@ void test_legacy_spawn_process(void) {
   free(big);
 }
 
-#define FILE_ROUNDTRIP_PATH "/tmp/osprey_system_runtime_test.txt"
+// A child killed by a SIGNAL never carries an exit status, so WIFEXITED is
+// false and the status word holds the signal number rather than a code. The
+// runtime must report the documented -1 for it — reading WEXITSTATUS of a
+// signalled status yields whatever the low byte happens to hold, which for
+// SIGKILL is a plain 9 and is indistinguishable from `exit 9`.
+//
+// The command signals the tracked process ITSELF: the runtime runs it as
+// `/bin/sh -c`, so `$$` is exactly the pid being waited on. Wrapping it in a
+// second `sh -c` instead would only work where the outer shell exec's the
+// inner one — bash does, dash does not, so on Linux the tracked shell would
+// survive its child and exit NORMALLY with 137.
+static void test_signalled_child_reports_minus_one(void) {
+  capture_reset();
+  int64_t pid = spawn_process_with_handler("kill -9 $$", capture_handler);
+  assert(pid > 0);
+  assert(await_process(pid) == -1);
+  pthread_mutex_lock(&g_capture.mutex);
+  assert(g_capture.exit_events == 1);
+  assert(g_capture.exit_code == -1); // not the signal number, not 0
+  pthread_mutex_unlock(&g_capture.mutex);
+  cleanup_process(pid);
+}
 
-// write_file returns the byte count written; read_file returns the exact
-// content; NULLs and missing files are rejected; rewrites truncate.
-void test_file_roundtrip(void) {
-  assert(write_file(NULL, "x") == -1);
-  assert(write_file(FILE_ROUNDTRIP_PATH, NULL) == -1);
-  assert(read_file(NULL) == NULL);
-  assert(read_file("/nonexistent_osprey_dir/nope.txt") == NULL);
-  assert(write_file("/nonexistent_osprey_dir/nope.txt", "x") == -2);
-  const char *content = "line one\nline two\n";
-  assert(write_file(FILE_ROUNDTRIP_PATH, (char *)(uintptr_t)content) ==
-         (int64_t)strlen(content));
-  char *back = read_file(FILE_ROUNDTRIP_PATH);
-  assert(back != NULL && strcmp(back, content) == 0);
-  free(back);
-  assert(write_file(FILE_ROUNDTRIP_PATH, (char *)(uintptr_t) "short") == 5);
-  char *truncated = read_file(FILE_ROUNDTRIP_PATH);
-  assert(truncated != NULL && strcmp(truncated, "short") == 0); // truncated
-  free(truncated);
-  assert(write_file(FILE_ROUNDTRIP_PATH, (char *)(uintptr_t) "") == 0);
-  char *emptied = read_file(FILE_ROUNDTRIP_PATH);
-  assert(emptied != NULL && emptied[0] == '\0');
-  free(emptied);
-  assert(remove(FILE_ROUNDTRIP_PATH) == 0);
+// Deny every new descriptor for the duration of `probe`. `dup` hands back the
+// LOWEST free descriptor, so capping RLIMIT_NOFILE at that number makes each
+// later allocation fail with EMFILE and nothing already open change. This is
+// the only portable way to reach the out-of-descriptors branches: no argument
+// can provoke them, and they are the ones that run when a long-lived program
+// finally exhausts its table.
+static void with_no_free_descriptors(void (*probe)(void)) {
+  int probe_fd = dup(STDIN_FILENO);
+  assert(probe_fd >= 0);
+  assert(close(probe_fd) == 0);
+
+  struct rlimit saved;
+  assert(getrlimit(RLIMIT_NOFILE, &saved) == 0);
+  struct rlimit tight = saved;
+  tight.rlim_cur = (rlim_t)probe_fd;
+  assert(setrlimit(RLIMIT_NOFILE, &tight) == 0);
+
+  probe();
+
+  assert(setrlimit(RLIMIT_NOFILE, &saved) == 0);
+}
+
+// popen cannot get a descriptor, so the legacy blocking spawn reports failure
+// rather than reading from a pipe it never opened.
+static void probe_legacy_spawn_without_descriptors(void) {
+  assert(spawn_process("echo unreachable") == NULL);
+}
+
+// Every id burned here is burned for the rest of the process, so this runs
+// LAST. `next_process_id` only ever increments — cleanup_process frees the
+// slot but never returns the id — so a program that has spawned MAX_PROCESSES
+// times can never spawn again even with every slot free. The -2 below is that
+// ceiling, reached without a single fork because the descriptor cap fails each
+// attempt at the pipe, one id later.
+static void probe_spawn_exhausts_descriptors_then_ids(void) {
+  int saw_pipe_failure = 0;
+  int saw_id_exhaustion = 0;
+  for (int attempt = 0; attempt < MAX_PROCESSES_PROBE_LIMIT; attempt++) {
+    int64_t result = spawn_process_with_handler("true", capture_handler);
+    assert(result == -4 || result == -2); // never a live process id
+    if (result == -4) {
+      saw_pipe_failure = 1;
+    } else {
+      saw_id_exhaustion = 1;
+      break;
+    }
+  }
+  assert(saw_pipe_failure); // pipe() denied, reported as -4
+  assert(saw_id_exhaustion); // ids ran out, reported as -2
 }
 
 int main(void) {
@@ -370,7 +421,10 @@ int main(void) {
   test_captured_stderr_and_exact_code();
   test_process_argument_rejection();
   test_legacy_spawn_process();
-  test_file_roundtrip();
+  test_signalled_child_reports_minus_one();
+  with_no_free_descriptors(probe_legacy_spawn_without_descriptors);
+  // LAST: exhausts the process-id space for the rest of this process.
+  with_no_free_descriptors(probe_spawn_exhausts_descriptors_then_ids);
 
   printf("=== ALL SYSTEM RUNTIME TESTS PASSED ===\n");
   return 0;

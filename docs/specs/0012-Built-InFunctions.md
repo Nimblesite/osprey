@@ -432,10 +432,37 @@ greeting = "Hello, " + name + "!"
 ## File System Functions — [BUILTIN-FILE]
 
 ### `writeFile(path: string, content: string) -> Result<int, Error>`
-Writes or replaces a file and returns the number of bytes written.
+Writes or replaces a file and returns the number of bytes written. `Success`
+means every byte reached the file: a partial write and a failed flush are both
+`Error`. Buffering means the bytes leave for the file when it is closed, so a
+full disk or a hung-up pipe is discovered there rather than at the write, and
+either one is reported.
 
 ### `readFile(path: string) -> Result<string, Error>`
-Reads a complete file.
+Reads a complete stream. The length is whatever the stream produced, not what
+seeking to the end claimed it would be — a FIFO, socket or character device
+cannot be seeked and reports its size as `-1`, so a seek-derived length reads
+those sources as empty and truncates or overruns their contents.
+
+### Failure reasons — [BUILTIN-FILE-ERRMSG]
+
+An `Error` from a file operation carries the operation, the subject and the
+operating system's own explanation:
+
+```osprey
+match writeFile("out/report.txt", body) {
+    Success { value } => print("wrote ${toString(value)} bytes")
+    Error { message } => print(message)  // writeFile: out/report.txt: No such file or directory
+}
+```
+
+Discarding that reason makes a missing directory, a permissions denial and a
+full disk indistinguishable at the point they are handled, so a program cannot
+choose to create the directory, ask for access, or free space. The reason
+travels on a thread-local channel that the caller clears immediately before the
+operation and takes ownership of immediately after, which is what lets a
+`Result` outlive later I/O without inheriting an unrelated failure's message. A
+runtime operation that reports no reason falls back to a fixed description.
 
 ## Process Operations — [BUILTIN-PROCESS]
 

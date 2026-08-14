@@ -31,9 +31,6 @@ effect LookupError
     (** Look up `key`, reporting absence as a `Result` the caller matches on. *)
     find : string => Result<int, string>
 
-(** Verdict lets the known Result-ABI failure remain visible without breaking CI. *)
-type Verdict = Pass | Fail string | Skip string
-
 (** Return positive input unchanged and ask for a replacement only at zero. *)
 requirePositive : int -> int ! RecoveryError
 requirePositive value =
@@ -283,7 +280,7 @@ deepRecursionCase () =
         (value - 8 ?: 0) == 4
     ]
 
-(** Drive the known whole-Result corruption and pass automatically once it is fixed. *)
+(** A direct arm returning a whole `Result` must deliver that exact value. *)
 wholeResultOperationCase () =
     mut lookups = 0
     combined =
@@ -295,10 +292,11 @@ wholeResultOperationCase () =
                     _ => Error(message = "absent")
         in combineLookups ()
 
-    // Issue #183 tracks direct handlers corrupting Result wrappers in both flavors.
-    match combined == 39 && lookups == 2
-        true => Pass
-        false => Skip "CRITICAL #183: direct handlers corrupt whole Result values"
+    // Both arms travel as complete Result blocks: Success{4} scales to 40 and
+    // Error{"absent"} matches to its 6-character length.
+    checkAll "whole Result operation values" [
+        combined == 39, lookups == 2
+    ]
 
 (** A run that never fails must never enter a recovery arm.
 

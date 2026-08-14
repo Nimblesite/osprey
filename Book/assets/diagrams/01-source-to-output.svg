@@ -1,0 +1,60 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1000" viewBox="0 0 1600 1000" role="img" aria-labelledby="title description">
+  <title id="title">From Osprey source to visible output</title>
+  <desc id="description">Source code passes through Osprey parsing and checking, then LLVM-backed native compilation, before the program prints output.</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 Z" fill="#77d7f4"/>
+    </marker>
+  </defs>
+  <rect width="1600" height="1000" fill="#0c1325"/>
+  <text x="72" y="104" fill="#77d7f4" font-family="JetBrains Mono, monospace" font-size="22" font-weight="700" letter-spacing="4">SOURCE → OUTPUT</text>
+  <text x="72" y="172" fill="#dce1fb" font-family="Geist, Inter, sans-serif" font-size="54" font-weight="720" letter-spacing="-2">--run performs a checked build</text>
+  <text x="72" y="218" fill="#bdc8cd" font-family="Geist, Inter, sans-serif" font-size="25">The convenience command does not skip the compiler gates.</text>
+
+  <path d="M232 500 L1364 500" fill="none" stroke="#77d7f4" stroke-width="6" marker-end="url(#arrow)"/>
+
+  <g font-family="Geist, Inter, sans-serif">
+    <g transform="translate(72 360)">
+      <rect width="240" height="280" rx="14" fill="#151b2d" stroke="#3e484c"/>
+      <text x="24" y="48" fill="#77d7f4" font-family="JetBrains Mono, monospace" font-size="18" font-weight="700">01 · SOURCE</text>
+      <text x="24" y="112" fill="#dce1fb" font-size="32" font-weight="700">hello.osp</text>
+      <text x="24" y="164" fill="#bdc8cd" font-size="21">Values</text>
+      <text x="24" y="198" fill="#bdc8cd" font-size="21">Functions</text>
+      <text x="24" y="232" fill="#bdc8cd" font-size="21">Expressions</text>
+    </g>
+    <g transform="translate(376 360)">
+      <rect width="240" height="280" rx="14" fill="#191f32" stroke="#3e484c"/>
+      <text x="24" y="48" fill="#77d7f4" font-family="JetBrains Mono, monospace" font-size="18" font-weight="700">02 · READ</text>
+      <text x="24" y="112" fill="#dce1fb" font-size="32" font-weight="700">Parse</text>
+      <text x="24" y="164" fill="#bdc8cd" font-size="21">Recognise the</text>
+      <text x="24" y="198" fill="#bdc8cd" font-size="21">source structure</text>
+    </g>
+    <g transform="translate(680 330)">
+      <rect width="240" height="340" rx="14" fill="#23293d" stroke="#77d7f4" stroke-width="2"/>
+      <text x="24" y="48" fill="#77d7f4" font-family="JetBrains Mono, monospace" font-size="18" font-weight="700">03 · CHECK</text>
+      <text x="24" y="112" fill="#dce1fb" font-size="32" font-weight="700">Prove fit</text>
+      <text x="24" y="164" fill="#bdc8cd" font-size="21">Names exist</text>
+      <text x="24" y="198" fill="#bdc8cd" font-size="21">Types agree</text>
+      <text x="24" y="232" fill="#bdc8cd" font-size="21">Effects covered</text>
+      <rect x="24" y="272" width="192" height="42" rx="8" fill="#151b2d"/>
+      <text x="42" y="300" fill="#ffbe65" font-family="JetBrains Mono, monospace" font-size="16">--check stops here</text>
+    </g>
+    <g transform="translate(984 360)">
+      <rect width="240" height="280" rx="14" fill="#191f32" stroke="#3e484c"/>
+      <text x="24" y="48" fill="#77d7f4" font-family="JetBrains Mono, monospace" font-size="18" font-weight="700">04 · BUILD</text>
+      <text x="24" y="112" fill="#dce1fb" font-size="32" font-weight="700">LLVM + clang</text>
+      <text x="24" y="164" fill="#bdc8cd" font-size="21">Generate and link</text>
+      <text x="24" y="198" fill="#bdc8cd" font-size="21">a native program</text>
+    </g>
+    <g transform="translate(1288 360)">
+      <rect width="240" height="280" rx="14" fill="#151b2d" stroke="#3e484c"/>
+      <text x="24" y="48" fill="#77d7f4" font-family="JetBrains Mono, monospace" font-size="18" font-weight="700">05 · RUN</text>
+      <text x="24" y="112" fill="#dce1fb" font-size="32" font-weight="700">Output</text>
+      <text x="24" y="174" fill="#bdeeff" font-family="JetBrains Mono, monospace" font-size="20">Hello from</text>
+      <text x="24" y="208" fill="#bdeeff" font-family="JetBrains Mono, monospace" font-size="20">Osprey</text>
+    </g>
+  </g>
+
+  <text x="72" y="812" fill="#bbc5ec" font-family="JetBrains Mono, monospace" font-size="22" letter-spacing="2">ONE COMMAND · SEVERAL HONEST STAGES</text>
+  <text x="72" y="856" fill="#bdc8cd" font-family="Geist, Inter, sans-serif" font-size="23">A build failure belongs to the stage that can explain it; a running program has passed the earlier gates.</text>
+</svg>

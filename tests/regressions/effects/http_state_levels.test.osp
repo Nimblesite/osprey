@@ -132,10 +132,19 @@ mut taskCount = 0     // Db layer
 
 handle Persist
     flush snap => {
-        let saved = writeFile("target/osprey_http_state_levels.db", snap)
+        /// A relative path resolves against the PROCESS's working directory, not
+        /// the program's, so this lands wherever the corpus was invoked from —
+        /// the repo root, for `make test`. `target/` would be no better: it only
+        /// exists when that cwd happens to be the root. What the assertions need
+        /// is a name no other case writes; where it lands is the caller's, which
+        /// is why .gitignore names it. [BUILTIN-FILE-ERRMSG]
+        let saved = writeFile("osprey_http_state_levels.db", snap)
         diskBytes = match saved {
             Success { value } => length(snap)
-            Error { message } => (0 - 1) ?: 0
+            // Say WHY [BUILTIN-FILE-ERRMSG]. Storing a bare -1 here is how a
+            // failed persist reached the assertions as "expected true, got
+            // false", with the operating system's own explanation discarded.
+            Error { message } => { print("[persist] ${message}") 0 - 1 ?: 0 }
         }
         diskBytes
     }

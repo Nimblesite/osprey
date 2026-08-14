@@ -14,10 +14,9 @@
 //
 // wasm32-wasip1 has neither fork/exec nor usable pthreads, so the process half
 // is compiled only for native targets — the same split effects_runtime.c makes
-// for thread-based continuations. The file/JSON/string half below IS portable
-// (WASI supplies fopen/fread/fwrite/remove), so this translation unit is in the
-// wasm runtime archive and `readFile`/`writeFile` programs run there instead of
-// link-failing the whole file. [WASM-TARGET]
+// for thread-based continuations. This unit stays in the wasm archive for its
+// stdio line-buffering constructor; the portable file half moved to
+// file_runtime.c, which is in every archive. [WASM-TARGET]
 #ifndef __wasm__
 #include <pthread.h>
 #ifdef _WIN32
@@ -600,50 +599,7 @@ char *spawn_process(char *command) {
 #endif // _WIN32
 #endif // !__wasm__ — fork/exec/pthreads are absent on wasm32-wasip1
 
-// Write file function - returns 0 for success, negative for error
-int64_t write_file(char *filename, char *content) {
-  if (!filename || !content) {
-    return -1;
-  }
-
-  FILE *file = fopen(filename, "w");
-  if (!file) {
-    return -2;
-  }
-
-  size_t written = fwrite(content, 1, strlen(content), file);
-  fclose(file);
-
-  return (int64_t)written;
-}
-
-// Read file function - returns content or NULL on error
-char *read_file(char *filename) {
-  if (!filename) {
-    return NULL;
-  }
-
-  FILE *file = fopen(filename, "r");
-  if (!file) {
-    return NULL;
-  }
-
-  // Get file size
-  fseek(file, 0, SEEK_END);
-  long size = ftell(file);
-  fseek(file, 0, SEEK_SET);
-
-  // Allocate buffer and read content
-  char *content = malloc((size_t)size + 1);
-  if (!content) {
-    fclose(file);
-    return NULL;
-  }
-
-  size_t read_size = fread(content, 1, (size_t)size, file);
-  content[read_size] = '\0';
-  fclose(file);
-
-  return content;
-}
+// read_file / write_file live in file_runtime.c: they are portable, they share
+// the failure channel in io_error.h, and keeping them here left this unit's
+// only wasm-relevant content buried under the process runtime.
 

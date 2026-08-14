@@ -1,0 +1,56 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="2560" viewBox="0 0 1600 2560" role="img" aria-labelledby="title description">
+  <title id="title">The Osprey Book cover</title>
+  <desc id="description">A cyan source path rises through three checking planes and becomes an Osprey flight line over a midnight field.</desc>
+  <defs>
+    <pattern id="grid" width="64" height="64" patternUnits="userSpaceOnUse">
+      <circle cx="2" cy="2" r="2" fill="#77d7f4" opacity="0.13"/>
+    </pattern>
+    <linearGradient id="field" x1="0" y1="1" x2="0.8" y2="0">
+      <stop offset="0" stop-color="#070d1f"/>
+      <stop offset="0.6" stop-color="#0c1325"/>
+      <stop offset="1" stop-color="#151b2d"/>
+    </linearGradient>
+    <filter id="glow" x="-60%" y="-60%" width="220%" height="220%">
+      <feGaussianBlur stdDeviation="18" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+
+  <rect width="1600" height="2560" fill="url(#field)"/>
+  <rect width="1600" height="2560" fill="url(#grid)"/>
+  <rect x="72" y="72" width="1456" height="2416" rx="18" fill="none" stroke="#3e484c"/>
+
+  <text x="112" y="420" fill="#77d7f4" font-family="JetBrains Mono, monospace" font-size="28" font-weight="700" letter-spacing="5">FIRST FLIGHT EDITION</text>
+  <text x="112" y="680" fill="#dce1fb" font-family="Geist, Inter, sans-serif" font-size="204" font-weight="760" letter-spacing="-9">THE</text>
+  <text x="112" y="880" fill="#bdeeff" font-family="Geist, Inter, sans-serif" font-size="204" font-weight="760" letter-spacing="-9">OSPREY</text>
+  <text x="112" y="1080" fill="#dce1fb" font-family="Geist, Inter, sans-serif" font-size="204" font-weight="760" letter-spacing="-9">BOOK</text>
+
+  <line x1="112" y1="1184" x2="1488" y2="1184" stroke="#3e484c" stroke-width="2"/>
+  <text x="112" y="1265" fill="#bdc8cd" font-family="Geist, Inter, sans-serif" font-size="43">A practical first flight through</text>
+  <text x="112" y="1325" fill="#bdc8cd" font-family="Geist, Inter, sans-serif" font-size="43">modern programming.</text>
+
+  <g transform="translate(0 52)">
+    <g fill="none" stroke="#3e4868" stroke-width="3">
+      <path d="M150 2230 L800 2010 L1450 2230 L800 2450 Z"/>
+      <path d="M250 2160 L800 1980 L1350 2160"/>
+      <path d="M350 2070 L800 1925 L1250 2070"/>
+    </g>
+    <g fill="none" stroke="#77d7f4" stroke-width="4" opacity="0.8">
+      <path d="M370 2070 L1230 2070"/>
+      <path d="M455 1960 L1145 1960"/>
+      <path d="M545 1850 L1055 1850"/>
+    </g>
+    <path d="M800 2370 C800 2190 782 2090 800 1980 C818 1870 770 1780 800 1670 C830 1560 955 1530 1060 1480 C1165 1430 1250 1360 1350 1340" fill="none" stroke="#77d7f4" stroke-width="11" stroke-linecap="round" filter="url(#glow)"/>
+    <g fill="#bdeeff" stroke="#77d7f4" stroke-width="3" filter="url(#glow)">
+      <circle cx="800" cy="2290" r="13"/>
+      <circle cx="800" cy="2070" r="13"/>
+      <circle cx="800" cy="1960" r="13"/>
+      <circle cx="800" cy="1850" r="13"/>
+      <circle cx="1350" cy="1340" r="13"/>
+    </g>
+    <path d="M1090 1472 C1010 1380 920 1335 820 1338 C900 1432 982 1484 1090 1472 Z" fill="none" stroke="#77d7f4" stroke-width="6"/>
+    <path d="M1070 1470 C1150 1420 1225 1404 1310 1408 C1230 1492 1152 1512 1070 1470 Z" fill="none" stroke="#77d7f4" stroke-width="6"/>
+  </g>
+
+  <text x="112" y="2418" fill="#bbc5ec" font-family="JetBrains Mono, monospace" font-size="29" letter-spacing="3">CHRISTIAN FINDLAY</text>
+</svg>

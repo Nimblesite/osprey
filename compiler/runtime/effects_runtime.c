@@ -1,22 +1,24 @@
 // effects_runtime.c - Runtime handler stack for algebraic effects
-// Implements dynamic handler resolution for nested effect handlers
+// Implements dynamic handler resolution for nested effect handlers.
+//
+// The `resume` half — thread-as-continuation, the operation mailbox and the
+// coroutine drive protocol — lives in effects_coro.c, which shares only the
+// handler snapshot declared in effects_runtime.h.
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <stdbool.h>
 #include <stdint.h>  // int64_t — explicit so the wasm32-wasip1 sysroot resolves it
 #include <pthread.h>
 
-#include "profiler_runtime.h"
+#include "effects_runtime.h"
 #ifdef __wasm__
 // wasm32-wasip1 is single-threaded: the effect handler stack needs no real
-// locking, so the mutex ops become no-ops. The thread-based coroutine
-// continuation section (struct OspreyCoro onward) is excluded wholesale for
-// wasm via `#ifndef __wasm__` — it needs pthread_create/cond/join/exit, which
-// wasi-libc cannot honour. With those symbols absent from the wasm archive,
-// resumable-effect programs link-fail and are SKIPped by the wasm golden suite,
-// exactly like the fiber/HTTP runtimes. [WASM-TARGET-EFFECTS]
+// locking, so the mutex ops become no-ops. effects_coro.c is excluded from the
+// wasm archive wholesale — it needs pthread_create/cond/join/exit, which
+// wasi-libc cannot honour. With those symbols absent, resumable-effect programs
+// link-fail and are SKIPped by the wasm golden suite, exactly like the
+// fiber/HTTP runtimes. [WASM-TARGET-EFFECTS]
 #define pthread_mutex_init(m, a) ((void)(m), (void)(a), 0)
 #define pthread_mutex_lock(m) ((void)(m), 0)
 #define pthread_mutex_unlock(m) ((void)(m), 0)
@@ -175,10 +177,10 @@ void __osprey_handler_stack_cleanup(void) {
 }
 
 // HandlerSnapshot for copying handler state across fiber boundaries
-typedef struct {
+struct HandlerSnapshot {
     HandlerEntry entries[MAX_HANDLER_STACK_DEPTH];
     int count;
-} HandlerSnapshot;
+};
 
 // Snapshot the current thread's handler stack (called in parent before fiber_spawn)
 // Returns a heap-allocated snapshot that the caller must pass to __osprey_handler_restore
@@ -218,276 +220,3 @@ void __osprey_handler_restore(HandlerSnapshot *snap) {
 
     free(snap);
 }
-
-// Thread-based effect continuations: a handler `resume` is implemented by
-// running the handled computation on its own pthread and ping-ponging control
-// via a condvar. wasm32-wasip1 has no usable pthreads, so this entire section
-// is compiled only for native targets; on wasm the `__osprey_coro_*` symbols
-// are intentionally absent, making resumable-effect programs link-fail and be
-// SKIPped by the wasm golden suite. [WASM-TARGET-EFFECTS]
-#ifndef __wasm__
-typedef struct OspreyCoro {
-    pthread_mutex_t lock;
-    pthread_cond_t cond;
-    pthread_t thread;
-    bool started;
-    bool joined;
-    bool suspended;
-    bool done;
-    bool abort;
-    // One perform occupies the op/args/resume_value channel at a time
-    // [EFFECTS-FIBER-PERFORM]. Concurrent performers (fibers spawned inside
-    // the handled body) queue on this flag instead of overwriting each
-    // other's arguments and stealing each other's resume value.
-    bool in_flight;
-    int64_t op_id;
-    int64_t args[16];
-    int64_t arg_count;
-    int64_t resume_value;
-    int64_t result;
-    void *region_env;
-} OspreyCoro;
-
-typedef struct CoroStartArgs {
-    OspreyCoro *coro;
-    int64_t (*body)(void *);
-    void *body_env;
-    HandlerSnapshot *snapshot;
-} CoroStartArgs;
-
-void *__osprey_coro_new(void *env) {
-    OspreyCoro *coro = (OspreyCoro *)malloc(sizeof(OspreyCoro));
-    if (coro == NULL) {
-        fprintf(stderr, "FATAL: Failed to allocate effect continuation\n");
-        abort();
-    }
-    pthread_mutex_init(&coro->lock, NULL);
-    pthread_cond_init(&coro->cond, NULL);
-    coro->started = false;
-    coro->joined = false;
-    coro->suspended = false;
-    coro->done = false;
-    coro->abort = false;
-    coro->in_flight = false;
-    coro->op_id = 0;
-    coro->arg_count = 0;
-    coro->resume_value = 0;
-    coro->result = 0;
-    coro->region_env = env;
-    for (int i = 0; i < 16; i++) {
-        coro->args[i] = 0;
-    }
-    return coro;
-}
-
-static void *__osprey_coro_thread(void *raw) {
-    CoroStartArgs *args = (CoroStartArgs *)raw;
-    OspreyCoro *coro = args->coro;
-    // Effect continuations run on their own pthread; register so profiler
-    // samples attribute to them distinctly [PROF-COLLECT-REGISTRY].
-    osp_prof_thread_register(-1, "effect");
-    if (args->snapshot != NULL) {
-        __osprey_handler_restore(args->snapshot);
-        args->snapshot = NULL;
-    }
-    int64_t result = args->body(args->body_env);
-    free(args);
-    osp_prof_thread_unregister();
-
-    pthread_mutex_lock(&coro->lock);
-    coro->result = result;
-    coro->done = true;
-    coro->suspended = false;
-    pthread_cond_broadcast(&coro->cond);
-    pthread_mutex_unlock(&coro->lock);
-    return NULL;
-}
-
-void __osprey_coro_start(void *raw, int64_t (*body)(void *), void *body_env, HandlerSnapshot *snapshot) {
-    OspreyCoro *coro = (OspreyCoro *)raw;
-    if (coro == NULL || body == NULL) {
-        fprintf(stderr, "FATAL: Invalid effect continuation start\n");
-        abort();
-    }
-    CoroStartArgs *args = (CoroStartArgs *)malloc(sizeof(CoroStartArgs));
-    if (args == NULL) {
-        fprintf(stderr, "FATAL: Failed to allocate effect continuation start args\n");
-        abort();
-    }
-    args->coro = coro;
-    args->body = body;
-    args->body_env = body_env;
-    args->snapshot = snapshot;
-
-    int rc = pthread_create(&coro->thread, NULL, __osprey_coro_thread, args);
-    if (rc != 0) {
-        free(args);
-        fprintf(stderr, "FATAL: Failed to start effect continuation thread\n");
-        abort();
-    }
-    pthread_mutex_lock(&coro->lock);
-    coro->started = true;
-    while (!coro->suspended && !coro->done) {
-        pthread_cond_wait(&coro->cond, &coro->lock);
-    }
-    pthread_mutex_unlock(&coro->lock);
-}
-
-int64_t __osprey_coro_suspend(void *raw, int64_t op_id, int64_t *args, int64_t arg_count) {
-    OspreyCoro *coro = (OspreyCoro *)raw;
-    if (coro == NULL) {
-        return 0;
-    }
-    pthread_mutex_lock(&coro->lock);
-    // Claim the channel [EFFECTS-FIBER-PERFORM]: a second concurrent perform
-    // (e.g. from a sibling fiber) must wait its turn, or it would overwrite
-    // this perform's arguments and both would consume the same resume value —
-    // nondeterministic wrong answers with exit 0. The drive loop re-enters on
-    // re-suspension, so a queued perform is dispatched as soon as the current
-    // one's resume value is consumed.
-    while (coro->in_flight && !coro->abort) {
-        pthread_cond_wait(&coro->cond, &coro->lock);
-    }
-    if (coro->abort) {
-        pthread_mutex_unlock(&coro->lock);
-        pthread_exit(NULL);
-    }
-    coro->in_flight = true;
-    coro->op_id = op_id;
-    coro->arg_count = arg_count;
-    int64_t capped = arg_count;
-    if (capped > 16) {
-        capped = 16;
-    }
-    for (int64_t i = 0; i < capped; i++) {
-        coro->args[i] = args == NULL ? 0 : args[i];
-    }
-    coro->suspended = true;
-    pthread_cond_broadcast(&coro->cond);
-    while (coro->suspended && !coro->abort) {
-        pthread_cond_wait(&coro->cond, &coro->lock);
-    }
-    if (coro->abort) {
-        pthread_mutex_unlock(&coro->lock);
-        pthread_exit(NULL);
-    }
-    int64_t resume_value = coro->resume_value;
-    coro->in_flight = false;
-    pthread_cond_broadcast(&coro->cond);
-    pthread_mutex_unlock(&coro->lock);
-    return resume_value;
-}
-
-int64_t __osprey_coro_resume(void *raw, int64_t value) {
-    OspreyCoro *coro = (OspreyCoro *)raw;
-    if (coro == NULL) {
-        return 0;
-    }
-    pthread_mutex_lock(&coro->lock);
-    // Multi-shot rejection [EFFECTS-RESUME]: the thread-as-continuation model is
-    // single-shot — a consumed (completed) pthread stack cannot be re-run. A
-    // second `resume` on an already-finished continuation would silently return
-    // the stale first result (a wrong answer with exit 0), so reject it loudly
-    // instead. Legitimate re-entry (the body performed again) leaves the coro
-    // suspended, not done, and never reaches this guard.
-    if (coro->done) {
-        pthread_mutex_unlock(&coro->lock);
-        fprintf(stderr,
-                "fatal: continuation already resumed "
-                "(multi-shot resume is not supported)\n");
-        exit(1);
-    }
-    coro->resume_value = value;
-    coro->suspended = false;
-    pthread_cond_broadcast(&coro->cond);
-    while (!coro->suspended && !coro->done) {
-        pthread_cond_wait(&coro->cond, &coro->lock);
-    }
-    int64_t result = coro->done ? coro->result : 0;
-    pthread_mutex_unlock(&coro->lock);
-    return result;
-}
-
-int64_t __osprey_coro_done(void *raw) {
-    OspreyCoro *coro = (OspreyCoro *)raw;
-    if (coro == NULL) {
-        return 1;
-    }
-    pthread_mutex_lock(&coro->lock);
-    int64_t done = coro->done ? 1 : 0;
-    pthread_mutex_unlock(&coro->lock);
-    return done;
-}
-
-int64_t __osprey_coro_op(void *raw) {
-    OspreyCoro *coro = (OspreyCoro *)raw;
-    if (coro == NULL) {
-        return 0;
-    }
-    pthread_mutex_lock(&coro->lock);
-    int64_t op = coro->op_id;
-    pthread_mutex_unlock(&coro->lock);
-    return op;
-}
-
-int64_t __osprey_coro_arg(void *raw, int64_t index) {
-    OspreyCoro *coro = (OspreyCoro *)raw;
-    if (coro == NULL || index < 0 || index >= 16) {
-        return 0;
-    }
-    pthread_mutex_lock(&coro->lock);
-    int64_t arg = index < coro->arg_count ? coro->args[index] : 0;
-    pthread_mutex_unlock(&coro->lock);
-    return arg;
-}
-
-int64_t __osprey_coro_result(void *raw) {
-    OspreyCoro *coro = (OspreyCoro *)raw;
-    if (coro == NULL) {
-        return 0;
-    }
-    pthread_mutex_lock(&coro->lock);
-    int64_t result = coro->result;
-    pthread_mutex_unlock(&coro->lock);
-    return result;
-}
-
-void __osprey_coro_abort(void *raw) {
-    OspreyCoro *coro = (OspreyCoro *)raw;
-    if (coro == NULL) {
-        return;
-    }
-    pthread_mutex_lock(&coro->lock);
-    if (!coro->done) {
-        coro->abort = true;
-        coro->suspended = false;
-        pthread_cond_broadcast(&coro->cond);
-    }
-    pthread_mutex_unlock(&coro->lock);
-    if (coro->started && !coro->joined) {
-        pthread_join(coro->thread, NULL);
-        coro->joined = true;
-    }
-    pthread_mutex_lock(&coro->lock);
-    coro->done = true;
-    pthread_mutex_unlock(&coro->lock);
-}
-
-void __osprey_coro_free(void *raw) {
-    OspreyCoro *coro = (OspreyCoro *)raw;
-    if (coro == NULL) {
-        return;
-    }
-    if (coro->started && !coro->joined) {
-        if (!coro->done) {
-            __osprey_coro_abort(coro);
-        } else {
-            pthread_join(coro->thread, NULL);
-            coro->joined = true;
-        }
-    }
-    pthread_cond_destroy(&coro->cond);
-    pthread_mutex_destroy(&coro->lock);
-    free(coro);
-}
-#endif // !__wasm__ — thread-based effect continuations excluded on wasm32-wasip1

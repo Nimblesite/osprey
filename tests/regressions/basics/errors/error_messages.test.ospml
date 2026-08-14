@@ -8,6 +8,19 @@
 (** A user-declared fallible function — its Error reason must render in toString. *)
 boom : Unit -> Result<int, string>
 boom () = Error(message = "user boom")
+
+(** A Result payload is a runtime value of ANY length, so `toString` must size
+    its buffer from the string it is handed. The fixed 64-byte block it used to
+    format into was a heap buffer overflow, not a size heuristic: rendering any
+    longer Success payload or Error reason wrote past the allocation and
+    corrupted whatever followed it. [BUILTIN-TOSTRING] *)
+longText () = "a Result payload far longer than the sixty-four byte block toString once formatted into, which made printing one a heap overflow"
+
+longFailure : Unit -> Result<int, string>
+longFailure () = Error(message = longText ())
+
+longSuccess : Unit -> Result<string, string>
+longSuccess () = Success(value = longText ())
 // ---- numeric parsing ----
 match parseInt "nope"
     Success value => print "parseInt: unexpected ${value}\n"
@@ -163,7 +176,18 @@ collectionAndSuccessCase () =
         toString (boom ()) == "Error(user boom)"
     ]
 
+(** `Success(` + payload + `)` is nine characters more than the payload — the
+    exact count the fixed-size buffer got wrong. *)
+oversizedPayloadCase () =
+    text = longText ()
+    checkAll "toString sizes its buffer for the payload" [
+        toString (longFailure ()) == "Error(${text})",
+        toString (longSuccess ()) == "Success(${text})",
+        length (toString (longSuccess ())) == ((length text + 9) ?: 0)
+    ]
+
 test "numeric failures retain their reasons" numericErrorCase
 test "string failures retain their reasons" stringErrorCase
 test "cursor failures retain their reasons" cursorErrorCase
 test "collections fail safely and valid Results succeed" collectionAndSuccessCase
+test "toString sizes its buffer for the payload" oversizedPayloadCase

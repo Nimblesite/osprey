@@ -1,0 +1,50 @@
+// [EFFECTS-HANDLER-ARMS] An arm that never resumes in a region where another
+// arm does ABANDONS the continuation: the handled body is killed and the arm's
+// value becomes the whole `handle` expression's result. So the arm's value must
+// be able to BE that result, in BOTH directions and through a `Result` answer.
+//
+// Checking only one direction is not a partial gate, it is a broken one: the
+// unchecked direction reaches `coerce_to`, which boxes a pointer as an integer
+// and hands back a heap address as a successful `int`. And the check cannot
+// live in codegen, where `any` and `int` are the same erased machine word.
+effect Mixed {
+    a: fn(int) -> int
+    b: fn() -> int
+}
+
+effect Texts {
+    a: fn(int) -> int
+    b: fn() -> string
+}
+
+fn intArm() !Mixed = "v=${perform Mixed.b()}"
+
+fn textArm() -> int !Texts = {
+    let ignored = perform Texts.b()
+    42
+}
+
+fn textArmToResult() -> Result<int, string> !Texts = {
+    let ignored = perform Texts.b()
+    Success { value: 42 }
+}
+
+// scalar arm value, string answer
+let scalarAnswer = handle Mixed
+    a x => resume(x)
+    b => 7
+in intArm()
+
+// pointer arm value, int answer — the direction codegen used to box silently
+let pointerAnswer = handle Texts
+    a x => resume(x)
+    b => "dyn" + "amic"
+in textArm()
+
+// pointer arm value, Result answer — the path that bypassed the guard entirely
+let resultAnswer = handle Texts
+    a x => resume(x)
+    b => "dyn" + "amic"
+in textArmToResult()
+
+print("${scalarAnswer} ${pointerAnswer} ${toString(resultAnswer)}")

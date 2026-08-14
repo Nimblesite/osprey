@@ -1,0 +1,203 @@
+{
+  "schemaVersion": 1,
+  "title": "The Osprey Book",
+  "status": "structural-scaffold-chapter-1-complete",
+  "editionModel": "living-release-aligned",
+  "ospreyRelease": "0.0.0-dev",
+  "releasePinStatus": "pin-before-publication",
+  "teachingFlavor": "default",
+  "alternativeFlavors": ["ml"],
+  "flavorCountPolicy": "open-ended",
+  "terminologyAuthority": "GLOSSARY.md",
+  "targets": {
+    "words": 42600,
+    "printEquivalentPages": 154,
+    "figures": 42
+  },
+  "sections": [
+    {
+      "kind": "front-matter",
+      "part": "Front matter",
+      "title": "How to use this book",
+      "file": "manuscript/00-how-to-use-this-book.md",
+      "status": "representative-draft",
+      "targetWords": 1200,
+      "targetPages": 5,
+      "targetFigures": 1
+    },
+    {
+      "kind": "chapter",
+      "part": "Part I — Make the computer do something",
+      "number": 1,
+      "title": "One file, one result",
+      "file": "manuscript/01-one-file-one-result.md",
+      "status": "complete",
+      "targetWords": 3000,
+      "targetPages": 10,
+      "targetFigures": 3
+    },
+    {
+      "kind": "chapter",
+      "part": "Part I — Make the computer do something",
+      "number": 2,
+      "title": "Give values useful names",
+      "file": "manuscript/02-give-values-useful-names.md",
+      "status": "editorial-scaffold",
+      "targetWords": 2500,
+      "targetPages": 9,
+      "targetFigures": 2
+    },
+    {
+      "kind": "chapter",
+      "part": "Part I — Make the computer do something",
+      "number": 3,
+      "title": "Let the compiler work out the types",
+      "file": "manuscript/03-let-the-compiler-work-out-the-types.md",
+      "status": "editorial-scaffold",
+      "targetWords": 2600,
+      "targetPages": 9,
+      "targetFigures": 3
+    },
+    {
+      "kind": "chapter",
+      "part": "Part I — Make the computer do something",
+      "number": 4,
+      "title": "Make every decision visible",
+      "file": "manuscript/04-make-every-decision-visible.md",
+      "status": "editorial-scaffold",
+      "targetWords": 2500,
+      "targetPages": 9,
+      "targetFigures": 3
+    },
+    {
+      "kind": "chapter",
+      "part": "Part II — Build honest data",
+      "number": 5,
+      "title": "Move a collection through a pipeline",
+      "file": "manuscript/05-move-a-collection-through-a-pipeline.md",
+      "status": "editorial-scaffold",
+      "targetWords": 2700,
+      "targetPages": 10,
+      "targetFigures": 3
+    },
+    {
+      "kind": "chapter",
+      "part": "Part II — Build honest data",
+      "number": 6,
+      "title": "Model only valid states",
+      "file": "manuscript/06-model-only-valid-states.md",
+      "status": "editorial-scaffold",
+      "targetWords": 2800,
+      "targetPages": 10,
+      "targetFigures": 3
+    },
+    {
+      "kind": "chapter",
+      "part": "Part II — Build honest data",
+      "number": 7,
+      "title": "Keep failure in the open",
+      "file": "manuscript/07-keep-failure-in-the-open.md",
+      "status": "editorial-scaffold",
+      "targetWords": 3000,
+      "targetPages": 11,
+      "targetFigures": 3
+    },
+    {
+      "kind": "chapter",
+      "part": "Part II — Build honest data",
+      "number": 8,
+      "title": "Prove what the program does",
+      "file": "manuscript/08-prove-what-the-program-does.md",
+      "status": "editorial-scaffold",
+      "targetWords": 2700,
+      "targetPages": 10,
+      "targetFigures": 2
+    },
+    {
+      "kind": "chapter",
+      "part": "Part III — Meet the outside world",
+      "number": 9,
+      "title": "Ask for an effect",
+      "file": "manuscript/09-ask-for-an-effect.md",
+      "status": "editorial-scaffold",
+      "targetWords": 3000,
+      "targetPages": 11,
+      "targetFigures": 4
+    },
+    {
+      "kind": "chapter",
+      "part": "Part III — Meet the outside world",
+      "number": 10,
+      "title": "Read, write, and call the web",
+      "file": "manuscript/10-read-write-and-call-the-web.md",
+      "status": "editorial-scaffold",
+      "targetWords": 3000,
+      "targetPages": 11,
+      "targetFigures": 3
+    },
+    {
+      "kind": "chapter",
+      "part": "Part III — Meet the outside world",
+      "number": 11,
+      "title": "Let work happen together",
+      "file": "manuscript/11-let-work-happen-together.md",
+      "status": "editorial-scaffold",
+      "targetWords": 2700,
+      "targetPages": 10,
+      "targetFigures": 3
+    },
+    {
+      "kind": "chapter",
+      "part": "Part IV — Make it yours",
+      "number": 12,
+      "title": "Ship a real program",
+      "file": "manuscript/12-ship-a-real-program.md",
+      "status": "editorial-scaffold",
+      "targetWords": 2900,
+      "targetPages": 10,
+      "targetFigures": 3
+    },
+    {
+      "kind": "chapter",
+      "part": "Part IV — Make it yours",
+      "number": 13,
+      "title": "Choose another flavor when it helps",
+      "file": "manuscript/13-choose-another-flavor-when-it-helps.md",
+      "status": "editorial-scaffold",
+      "targetWords": 2600,
+      "targetPages": 9,
+      "targetFigures": 3
+    },
+    {
+      "kind": "chapter",
+      "part": "Part IV — Make it yours",
+      "number": 14,
+      "title": "Build your own flight plan",
+      "file": "manuscript/14-build-your-own-flight-plan.md",
+      "status": "editorial-scaffold",
+      "targetWords": 3400,
+      "targetPages": 12,
+      "targetFigures": 3
+    },
+    {
+      "kind": "back-matter",
+      "part": "Back matter",
+      "title": "Appendices and next steps",
+      "file": "manuscript/90-appendices-and-next-steps.md",
+      "status": "editorial-scaffold",
+      "targetWords": 1000,
+      "targetPages": 4,
+      "targetFigures": 0
+    },
+    {
+      "kind": "glossary",
+      "part": "Back matter",
+      "title": "Glossary",
+      "file": "GLOSSARY.md",
+      "status": "representative-draft",
+      "targetWords": 1000,
+      "targetPages": 4,
+      "targetFigures": 0
+    }
+  ]
+}

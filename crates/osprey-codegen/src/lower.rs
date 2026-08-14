@@ -296,6 +296,12 @@ fn coerce_return(cg: &mut Codegen, name: &str, body: Value) -> Result<Value> {
         return crate::result::fit_to_inner(cg, body, inner);
     }
     let ret_ty = cg.fn_ret_ltype(name).unwrap_or(LType::I64);
+    // No ownership crosses this cast in either direction, and that is a
+    // DELIBERATE gap: `LType::I64` is equally every `int`, every erased `any`
+    // and every BORROWED `any` parameter, so nothing here can tell a
+    // transferred pointer from a scalar. The defect that leaves open, and the
+    // repair that must NOT be retried, are recorded in
+    // docs/plans/0027-any-erasure-and-recovery.md (#208).
     crate::cast::coerce_to(cg, body, ret_ty)
 }
 

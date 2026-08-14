@@ -113,9 +113,11 @@ substitution handlers, but not the current pthread-backed resume runtime.
 The suites keep known failures visible as TAP skips rather than reporting them
 as successes or making unrelated CI unusable:
 
-- [#182](https://github.com/Nimblesite/osprey/issues/182): resumable operations
-  silently replace arguments after the 16th with zero. The paired resume suite
-  proves all 16 supported positions and skips the unsafe 17th-position repro.
+- ~~[#182](https://github.com/Nimblesite/osprey/issues/182): resumable operations
+  silently replace arguments after the 16th with zero.~~ **Fixed.** Operands
+  travel in a heap mailbox instead of a fixed register window, so there is no
+  16-argument cliff. The former skip is now an assertion: the paired suite
+  performs a 17-argument operation and checks every position arrives intact.
 - ~~[#183](https://github.com/Nimblesite/osprey/issues/183): direct handlers
   corrupt whole `Result<T, E>` operation values.~~ **Fixed.** A direct operation
   may return a complete `Result`; `errors/direct_recovery.test.{osp,ospml}` case
@@ -125,10 +127,11 @@ as successes or making unrelated CI unusable:
   curried ML function can silently skip handled effects. The paired golden
   examples use the verified tuple-parameter form while the issue retains the
   failing and passing reproducers.
-- [#185](https://github.com/Nimblesite/osprey/issues/185): a resuming handler
-  whose completed continuation answer is a dynamic string leaks an ARC object.
-  String operation values remain covered with scalar final answers; the leaking
-  managed-answer shape is an explicit paired skip.
+- ~~[#185](https://github.com/Nimblesite/osprey/issues/185): a resuming handler
+  whose completed continuation answer is a dynamic string leaks an ARC
+  object.~~ **Fixed.** The managed-answer shape is now an assertion rather than
+  a skip: both the resume value and the answer are built at runtime, so neither
+  is an immortal literal, and the ARC exit audit sees no survivor.
 
 ## Invalid programs
 

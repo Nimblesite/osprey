@@ -135,7 +135,13 @@ __pycache__/
 
 .mcp.json
 
-# Written into the CWD by the file-I/O regression test
-# (tests/regressions/basics/files/file_io_json_workflow.test.osp), which means
-# it lands at the repo root whenever the corpus is run from there.
+# Written into the CWD by regression tests, which means they land at the repo
+# root whenever the corpus is run from there. Both of the files below were
+# COMMITTED once, in the same change that added the tests writing them — a
+# corpus run then leaves the tree dirty, and a stale copy is a test input
+# nobody wrote on purpose.
+#   file_io_json_workflow.test.osp -> test_output.txt, test_stale_reason.txt
+#   http_state_levels.test.osp     -> osprey_http_state_levels.db
 test_output.txt
+test_stale_reason.txt
+osprey_http_state_levels.db
