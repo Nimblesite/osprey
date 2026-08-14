@@ -5,16 +5,20 @@ fn getDynamicValue() -> any = 42
 /// This should also pass - explicit any with parameter
 fn processAnyValue(input) -> any = input + 10 ?: 0
 
-/// Every `any` above carries a SCALAR, which is why an erased HEAP value went
-/// uncovered: the machine word an `any` travels in hides the pointer from the
-/// reference counter, so its referent was released before the caller read it
-/// and this came back empty under `--memory=arc` — no crash, no diagnostic, and
-/// the leak oracle blind to it because a premature free leaks nothing. Built at
-/// runtime rather than written as a literal, or the pointer would be a global
-/// and never counted at all. [TYPE-ANY] [GC-ARC-PERCEUS]
-fn getDynamicString() -> any = "dyn" + "amic"
+/// Every `any` above carries a SCALAR, which is why erased HEAP values went
+/// uncovered. Forwarding one through `any` must not disturb it: the erasure
+/// carries no ownership either way, so `forward` merely borrows the word while
+/// the caller's frame keeps owning the string it built.
+///
+/// A codegen rule that owned the recovered pointer broke exactly this — the
+/// epilogue moved that invented owner out, released the real one, and returned
+/// a dangling pointer, printing nothing under `--memory=arc`. Built at runtime
+/// rather than written as a literal, or the pointer would be a global and never
+/// counted at all. Returning a heap value AS `any` is the case that still does
+/// not work; [TYPE-ANY] records it. [GC-ARC-PERCEUS]
+fn forward(x: any) -> any = x
 
-fn asText() -> string = getDynamicString()
+fn forwarded() -> string = forward("dyn" + "amic")
 
 print("Explicit any return type works")
 print("getDynamicValue() = ${getDynamicValue()}")
@@ -146,8 +150,8 @@ fn anyTypeBehaviorCase() = {
     checkAll("any values and inferred union behavior", [
         toString(getDynamicValue()) == "42",
         toString(processAnyValue(5)) == "15",
-        asText() == "dynamic",
-        length(asText()) == 7,
+        forwarded() == "dynamic",
+        length(forwarded()) == 7,
         processAny(42) == "Processed any",
         processAny("hello") == "Processed any",
         processAny(true) == "Processed any",

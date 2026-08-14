@@ -1,0 +1,50 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1000" viewBox="0 0 1600 1000" role="img" aria-labelledby="title description">
+  <title id="title">Anatomy of the first Osprey program</title>
+  <desc id="description">A one-line Osprey program is annotated to identify fn, main, the function body, print, and the string value.</desc>
+  <rect width="1600" height="1000" fill="#0c1325"/>
+  <text x="72" y="104" fill="#77d7f4" font-family="JetBrains Mono, monospace" font-size="22" font-weight="700" letter-spacing="4">PROGRAM ANATOMY</text>
+  <text x="72" y="172" fill="#dce1fb" font-family="Geist, Inter, sans-serif" font-size="54" font-weight="720" letter-spacing="-2">Read the jobs before the punctuation</text>
+  <text x="72" y="218" fill="#bdc8cd" font-family="Geist, Inter, sans-serif" font-size="25">Every token contributes one small fact to a complete program.</text>
+
+  <rect x="108" y="356" width="1384" height="210" rx="14" fill="#070d1f" stroke="#3e484c"/>
+  <rect x="108" y="356" width="1384" height="46" rx="14" fill="#23293d"/>
+  <circle cx="140" cy="379" r="7" fill="#ffb4ab"/>
+  <circle cx="166" cy="379" r="7" fill="#ffbe65"/>
+  <circle cx="192" cy="379" r="7" fill="#77d7f4"/>
+  <text x="176" y="494" font-family="JetBrains Mono, monospace" font-size="56">
+    <tspan fill="#bbc5ec">fn</tspan>
+    <tspan fill="#dce1fb"> main</tspan>
+    <tspan fill="#bdc8cd">()</tspan>
+    <tspan fill="#77d7f4"> = </tspan>
+    <tspan fill="#dce1fb">print</tspan>
+    <tspan fill="#bdc8cd">(</tspan>
+    <tspan fill="#ffbe65">&quot;Hello from Osprey&quot;</tspan>
+    <tspan fill="#bdc8cd">)</tspan>
+  </text>
+
+  <g fill="none" stroke="#77d7f4" stroke-width="3">
+    <path d="M214 448 L214 302 L196 302"/>
+    <path d="M362 448 L362 286 L480 286"/>
+    <path d="M540 508 L540 660 L420 660"/>
+    <path d="M810 508 L810 690 L800 690"/>
+    <path d="M1110 508 L1110 660 L1240 660"/>
+  </g>
+  <g fill="#bdeeff">
+    <circle cx="214" cy="448" r="7"/>
+    <circle cx="362" cy="448" r="7"/>
+    <circle cx="540" cy="508" r="7"/>
+    <circle cx="810" cy="508" r="7"/>
+    <circle cx="1110" cy="508" r="7"/>
+  </g>
+
+  <g font-family="Geist, Inter, sans-serif">
+    <text x="108" y="278" fill="#dce1fb" font-size="28" font-weight="700">Declare a function</text>
+    <text x="496" y="278" fill="#dce1fb" font-size="28" font-weight="700">Program starts here</text>
+    <text x="172" y="712" fill="#dce1fb" font-size="28" font-weight="700">Body produces this expression</text>
+    <text x="660" y="744" fill="#dce1fb" font-size="28" font-weight="700">Call print</text>
+    <text x="1200" y="712" fill="#dce1fb" font-size="28" font-weight="700">String argument</text>
+  </g>
+
+  <rect x="108" y="812" width="1384" height="92" rx="12" fill="#151b2d"/>
+  <text x="142" y="870" fill="#bdc8cd" font-family="Geist, Inter, sans-serif" font-size="25">Read aloud: define main with no inputs; its body prints one string value.</text>
+</svg>

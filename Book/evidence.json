@@ -1,0 +1,35 @@
+{
+  "schemaVersion": 1,
+  "editionStatus": "structural-scaffold-chapter-1-complete",
+  "releasePinned": false,
+  "compilerVersion": "0.0.0-dev",
+  "chapters": [
+    {
+      "number": 1,
+      "editorial": "complete",
+      "spec": "mapped",
+      "implementation": "compiler-checked",
+      "examples": "run-with-pinned-dev-binary",
+      "capture": "concept-diagrams-and-editorial-opener-ready"
+    },
+    { "number": 2, "spec": "mapped", "examples": "planned", "capture": "planned" },
+    { "number": 3, "spec": "mapped", "examples": "planned", "capture": "planned" },
+    { "number": 4, "spec": "mapped", "examples": "planned", "capture": "planned" },
+    { "number": 5, "spec": "mapped", "examples": "planned", "capture": "planned" },
+    { "number": 6, "spec": "mapped", "examples": "planned", "capture": "planned" },
+    { "number": 7, "spec": "mapped", "examples": "planned", "capture": "planned" },
+    { "number": 8, "spec": "mapped", "examples": "planned", "capture": "planned" },
+    { "number": 9, "spec": "mapped", "examples": "planned", "capture": "planned" },
+    { "number": 10, "spec": "mapped", "examples": "planned", "capture": "planned" },
+    { "number": 11, "spec": "mapped", "examples": "planned", "capture": "planned" },
+    { "number": 12, "spec": "mapped", "examples": "planned", "capture": "planned" },
+    {
+      "number": 13,
+      "spec": "mapped",
+      "editionDirection": "default-first-ml-optional-future-flavors-open",
+      "examples": "planned",
+      "capture": "planned"
+    },
+    { "number": 14, "spec": "mapped", "examples": "planned", "capture": "planned" }
+  ]
+}

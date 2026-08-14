@@ -489,35 +489,23 @@ mod tests {
         assert!(ir.contains("@osp_alloc"));
     }
 
-    /// A heap value erased into the uniform `any` word must be TRANSFERRED out,
-    /// not released: the ledger matches owners by register, so once the pointer
-    /// is `ptrtoint`-boxed the epilogue can no longer recognise it and would
-    /// drop the referent while the caller still holds the word. That was an
-    /// empty string under `--memory=arc` with no crash and nothing for the leak
-    /// oracle to see, because a premature free leaks nothing.
-    /// [GC-ARC-PERCEUS] [TYPE-ANY]
+    /// Recovering a pointer from an erased `any` word must take NO ownership.
+    /// The word is `LType::I64`, which is equally every `int` and every
+    /// BORROWED `any` parameter, so a rule that owns what comes back invents a
+    /// reference that was never transferred: with one, `fn identity(x: any) ->
+    /// any = x` made the epilogue move a fictitious owner out, release the real
+    /// one, and return a dangling pointer — `v=` instead of `v=ab` under
+    /// `--memory=arc`, silently. Owning an erased SCALAR is worse still: it
+    /// enters `7` in the ledger and later frees it.
+    ///
+    /// This guards that repair from being re-applied at the cast. The cast is
+    /// the wrong place: it cannot see which of the three an `i64` is. The gap
+    /// it leaves — an erasing return really does drop its referent — is a real
+    /// open defect, recorded under [TYPE-ANY], and closing it means making
+    /// `any` distinguishable from `int` in the lowered types.
+    /// [GC-ARC-PERCEUS]
     #[test]
-    fn an_erased_any_return_transfers_ownership_instead_of_releasing() {
-        let ir = module("fn dynamic() -> any = \"a\" + \"b\"\nprint(\"x\")\n");
-        let body = function_body(&ir, "define i64 @dynamic()");
-        assert!(
-            body.contains("ptrtoint"),
-            "expected the `any` return to erase a pointer:\n{body}"
-        );
-        assert!(
-            !body.contains("@osp_release"),
-            "the erased `any` return released its own referent:\n{body}"
-        );
-    }
-
-    /// The other half: recovering a pointer from the erased word takes over the
-    /// reference it carries, by entering it in the region's ledger. Without
-    /// this the transfer above has no counterpart and the premature free simply
-    /// becomes a leak. The ledger entry is what matters, not a release — here
-    /// the value is also the return, so the epilogue MOVES it straight out
-    /// rather than dup-then-drop.
-    #[test]
-    fn recovering_a_pointer_from_an_erased_word_owns_it() {
+    fn recovering_a_pointer_from_an_erased_word_takes_no_ownership() {
         let ir = module(
             "fn dynamic() -> any = \"a\" + \"b\"\nfn text() -> string = dynamic()\nprint(\"x\")\n",
         );
@@ -537,8 +525,9 @@ mod tests {
             "expected the `any` word to be recovered as a pointer:\n{body}"
         );
         assert!(
-            body.contains(&format!("store i8* {recovered}, i8** %arc.")),
-            "the un-erased pointer `{recovered}` was never owned by this region:\n{body}"
+            !body.contains(&format!("store i8* {recovered}, i8** %arc.")),
+            "the un-erased pointer `{recovered}` was entered in the ARC ledger, \
+             but an erased word carries no reference to take over:\n{body}"
         );
     }
 

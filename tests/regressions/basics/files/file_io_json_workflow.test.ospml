@@ -44,16 +44,16 @@ fileWorkflowCase () =
     readMatches = match readBack
         Success value => value == expected
         Error message => false
-    // `length message > 0` is what this used to assert, and the placeholder
-    // "Error" satisfied it — so the test could not tell a truthful reason from
-    // a content-free one. Name the parts instead.
+    (** `length message > 0` is what this used to assert, and the placeholder
+        "Error" satisfied it — so the test could not tell a truthful reason from
+        a content-free one. Name the parts instead. *)
     missingFails = match missing
         Success value => false
         Error message => contains message "readFile" && contains message "nonexistent_file_xyz123.txt" && contains message "No such file or directory"
     unwritableFails = match writeFile "no_such_dir_xyz123/out.txt" "x"
         Success value => false
         Error message => contains message "writeFile" && contains message "no_such_dir_xyz123/out.txt" && contains message "No such file or directory"
-    // A success must leave no reason behind for the next failure to inherit.
+    (** A success must leave no reason behind for the next failure to inherit. *)
     staleReasonCleared = match writeFile "test_stale_reason.txt" "fresh"
         Success value => value == 5
         Error message => false

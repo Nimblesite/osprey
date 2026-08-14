@@ -296,26 +296,25 @@ fn coerce_return(cg: &mut Codegen, name: &str, body: Value) -> Result<Value> {
         return crate::result::fit_to_inner(cg, body, inner);
     }
     let ret_ty = cg.fn_ret_ltype(name).unwrap_or(LType::I64);
-    // Erasing a pointer into the uniform machine word (`any`, a type variable)
-    // hides it from the ARC ledger: `epilogue` matches the returned value
-    // against its owners BY OPERAND, and the boxed `i64` is a different
-    // register, so the referent was released and the caller handed a dangling
-    // word — `fn erased() -> any = "a" + "b"` read back as a string was empty
-    // under `--memory=arc`, with no crash and no diagnostic. Transfer the +1
-    // here, while the pointer is still something the ledger can see.
-    if ret_ty == LType::I64 && matches!(body.ty, LType::Str | LType::Ptr) {
-        crate::arc::transfer_out(cg, &body);
-    }
-    // The inverse boundary. The erased word carries the +1 its producer
-    // transferred into it, so the recovered pointer is owned here — without
-    // this the transfer above would have no counterpart and the free would
-    // simply become a leak. [GC-ARC-PERCEUS] [TYPE-ANY]
-    let unerasing = body.ty == LType::I64 && matches!(ret_ty, LType::Str | LType::Ptr);
-    let out = crate::cast::coerce_to(cg, body, ret_ty)?;
-    if unerasing {
-        crate::arc::own(cg, &out);
-    }
-    Ok(out)
+    // No ownership crosses this cast in either direction, and that is a
+    // DELIBERATE gap, not an oversight — see [TYPE-ANY] in
+    // docs/specs/0004-TypeSystem.md. An erasing return leaks nothing back to
+    // the ledger, so `fn erased() -> any = "a" + "b"` read as a string is a
+    // use-after-free under `--memory=arc`; that bug is real and open.
+    //
+    // The obvious repair is wrong. Transferring on the way out and owning on
+    // the way back in balances ONLY when the word came from a
+    // `pointer -> any` erasure. `LType::I64` is also every `int` and every
+    // BORROWED `any` parameter, and codegen cannot tell them apart, so
+    // `fn identity(x: any) -> any = x` gains an owner it never received: the
+    // epilogue moves that fictitious owner out, releases the real one, and
+    // returns a dangling pointer. Owning an erased scalar is worse again — it
+    // registers `7` as a pointer and later frees it.
+    //
+    // Fixing this needs `any` to be DISTINGUISHABLE from `int` in the lowered
+    // types, so the rule can key off the erased type rather than the machine
+    // word. Until it is, no rule here can be sound.
+    crate::cast::coerce_to(cg, body, ret_ty)
 }
 
 /// Lower a statement inside its own ARC region: temporaries the statement

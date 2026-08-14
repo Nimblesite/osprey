@@ -606,14 +606,24 @@ _test_c_runtime:
 # .c that no key names is compiled, instrumented, summarised — and discarded.
 # effects_coro.c reached 375 lines of the whole continuation core in exactly
 # that state, split out of an already-gated effects_runtime.c and inheriting
-# none of its 90% floor. C_COV_EXEMPT closes it: every native runtime unit must
-# be gated or listed here by name, and an unlisted one fails the gate.
+# none of its 90% floor. The completeness check below closes it: every unit that
+# SHIPS must be gated or exempt, and an unlisted one fails the gate.
 #
-# The exemptions, and why. web_runtime.c and wasm_builtins_runtime.c do not
-# build natively. term_runtime.c and test_runtime.c run every case in a FORKED
-# CHILD whose gcov counters are never flushed back, so gcov reports 0% against
-# passing assertions — gate them once the harness calls __gcov_dump in the child.
-C_COV_EXEMPT ?= web_runtime wasm_builtins_runtime term_runtime test_runtime
+# "Ships" is decided by ARCHIVE MEMBERSHIP, not by a name pattern over
+# runtime/*.c. The first cut of this check skipped `test_*` to get past the test
+# harness sources — and so skipped runtime/test_runtime.c, which is a real
+# member of every native archive, leaving the gate green with it ungated and its
+# exemption entry doing nothing. Membership is the fact the check actually
+# wants; a filename never was. Units built only for wasm (web_runtime.c,
+# wasm_builtins_runtime.c) are absent from these lists and so are not required —
+# they do not build natively, so gcov has nothing to measure.
+C_SHIPPED_UNITS = $(sort $(basename $(notdir $(FIB_OBJ) $(HTTP_OBJ) \
+                    $(FIB_OBJ_GC) $(HTTP_OBJ_GC) $(FIB_OBJ_ARC) $(HTTP_OBJ_ARC))))
+# The exemptions, and why: term_runtime.c and test_runtime.c run every case in a
+# FORKED CHILD whose gcov counters are never flushed back, so gcov reports 0%
+# against passing assertions — gate them once the harness calls __gcov_dump in
+# the child.
+C_COV_EXEMPT ?= term_runtime test_runtime
 GCOV_TOOL ?= $(shell if $(CC) --version 2>/dev/null | grep -qi clang; then \
     if command -v xcrun >/dev/null 2>&1; then echo "xcrun llvm-cov gcov"; \
     else echo "llvm-cov gcov"; fi; \
@@ -628,11 +638,9 @@ _coverage_check_c_runtime:
 	@libs=$$(jq -r '.projects | to_entries[] | select(.value.language=="c") | .key' "$(COVERAGE_THRESHOLDS_FILE)"); \
 	if [ -z "$$libs" ]; then echo "[c] FAIL: no C entries in $(COVERAGE_THRESHOLDS_FILE) -- the gate would pass vacuously"; exit 1; fi; \
 	fail=0; \
-	for f in compiler/runtime/*.c; do \
-	  n=$$(basename "$$f" .c); \
-	  case "$$n" in *_tests|test_*) continue;; esac; \
+	for n in $(C_SHIPPED_UNITS); do \
 	  printf '%s\n' $(C_COV_EXEMPT) $$libs | grep -qx "$$n" || { \
-	    echo "[c] FAIL: runtime/$$n.c is neither gated in $(COVERAGE_THRESHOLDS_FILE) nor in C_COV_EXEMPT -- an ungated library cannot regress visibly"; fail=1; }; \
+	    echo "[c] FAIL: runtime/$$n.c ships in a native archive but is neither gated in $(COVERAGE_THRESHOLDS_FILE) nor in C_COV_EXEMPT -- an ungated library cannot regress visibly"; fail=1; }; \
 	done; \
 	for lib in $$libs; do \
 	  thr=$$(jq -r --arg l "$$lib" '.projects[$$l].threshold' "$(COVERAGE_THRESHOLDS_FILE)"); \

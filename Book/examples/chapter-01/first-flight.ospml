@@ -1,0 +1,6 @@
+launchLine (name, project) = "${name} launched ${project}."
+
+main () =
+    name = "Mika"
+    project = "a first Osprey program"
+    launchLine (name, project) |> print

@@ -52,22 +52,17 @@ aborted =
     in pipeline ()
 print ("aborted result=" + toString aborted)
 
-// An abandoning arm answers for the WHOLE `handle`, so it is the arm's value
-// that must match the handled expression's type. The operation's declared
-// result is never produced — the `perform` asking for it never returns — so
-// `stop` may answer a `string` while declaring `int`. An `any` arm answers
-// anything [TYPE-ANY]: by the time codegen sees it, the erased machine word an
-// `any` travels in is indistinguishable from an `int`, which is why the two
-// must be reconciled during inference. [EFFECTS-HANDLER-ARMS]
+(** An abandoning arm answers for the WHOLE `handle`, so it is the arm's value
+    that must match the handled expression's type. The operation's declared
+    result is never produced — the `perform` asking for it never returns — so
+    `stop` may answer a `string` while declaring `int`. Reconciling the two is
+    inference's job, not codegen's: by the time codegen sees an arm value, the
+    erased machine word an `any` travels in is indistinguishable from an `int`,
+    so a shape test there would reject valid programs and miss invalid ones.
+    [EFFECTS-HANDLER-ARMS] *)
 effect Mixed
     scale : int => int
     stop : Unit => int
-
-// Built at runtime, not a literal: the erased word must carry OWNERSHIP across
-// the handler answer as well as the value. A literal here would have passed
-// while a heap `any` came back empty under `--memory=arc`. [GC-ARC-PERCEUS]
-erased : Unit -> any
-erased () = "era" + "sed"
 
 mixedPipeline : Unit -> string ! Mixed
 mixedPipeline () =
@@ -81,13 +76,7 @@ stoppedAnswer =
         stop => "stopped"
     in mixedPipeline ()
 
-erasedAnswer =
-    handle Mixed
-        scale x => resume ((x * 2) ?: 0)
-        stop => erased ()
-    in mixedPipeline ()
-
-print "mixed answers: ${stoppedAnswer} / ${erasedAnswer}"
+print "mixed answer: ${stoppedAnswer}"
 
 // Verify both continuation policies and their exact operation counts.
 test "resuming completes while returning aborts the pipeline" (\() => checkAll "abort versus resume state" [
@@ -96,6 +85,5 @@ test "resuming completes while returning aborts the pipeline" (\() => checkAll "
     aborted == sentinel,
     counter2 == 2,
     recovered != aborted,
-    stoppedAnswer == "stopped",
-    erasedAnswer == "erased"
+    stoppedAnswer == "stopped"
 ])

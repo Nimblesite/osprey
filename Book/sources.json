@@ -1,0 +1,113 @@
+{
+  "schemaVersion": 1,
+  "sources": [
+    {
+      "id": "spec-introduction",
+      "kind": "repository-specification",
+      "path": "../docs/specs/0001-Introduction.md",
+      "use": "language shape, explicit failure, runtime and platform qualifications"
+    },
+    {
+      "id": "spec-syntax",
+      "kind": "repository-specification",
+      "path": "../docs/specs/0003-Syntax.md",
+      "use": "Default bindings, functions, records, unions, and expression syntax"
+    },
+    {
+      "id": "spec-types",
+      "kind": "repository-specification",
+      "path": "../docs/specs/0004-TypeSystem.md",
+      "use": "inference, records, unions, collections, and Result preservation"
+    },
+    {
+      "id": "spec-functions",
+      "kind": "repository-specification",
+      "path": "../docs/specs/0005-FunctionCalls.md",
+      "use": "Default call syntax and argument behavior"
+    },
+    {
+      "id": "spec-patterns",
+      "kind": "repository-specification",
+      "path": "../docs/specs/0007-PatternMatching.md",
+      "use": "matching, destructuring, exhaustiveness, and fallback policy"
+    },
+    {
+      "id": "spec-iterators",
+      "kind": "repository-specification",
+      "path": "../docs/specs/0010-LoopConstructsAndFunctionalIterators.md",
+      "use": "range pipelines, map, filter, fold, forEach, and stream fusion"
+    },
+    {
+      "id": "spec-errors",
+      "kind": "repository-specification",
+      "path": "../docs/specs/0013-ErrorHandling.md",
+      "use": "Result handling, checked arithmetic, propagation, and explicit fallback"
+    },
+    {
+      "id": "spec-effects",
+      "kind": "repository-specification",
+      "path": "../docs/specs/0017-AlgebraicEffects.md",
+      "use": "effect declarations, operations, handlers, and availability limits"
+    },
+    {
+      "id": "spec-fibers",
+      "kind": "repository-specification",
+      "path": "../docs/specs/0011-LightweightFibersAndConcurrency.md",
+      "use": "fiber isolation, channels, scheduling, and native availability"
+    },
+    {
+      "id": "spec-wasm",
+      "kind": "repository-specification",
+      "path": "../docs/specs/0022-WebAssemblyTarget.md",
+      "use": "WebAssembly build behavior and portable runtime subset"
+    },
+    {
+      "id": "spec-flavors",
+      "kind": "repository-specification",
+      "path": "../docs/specs/0023-LanguageFlavors.md",
+      "use": "current Default and ML surfaces, selection, lowering boundary, and interop"
+    },
+    {
+      "id": "spec-ml",
+      "kind": "repository-specification",
+      "path": "../docs/specs/0024-MLFlavorSyntax.md",
+      "use": "optional ML layout, currying, and source syntax"
+    },
+    {
+      "id": "spec-testing",
+      "kind": "repository-specification",
+      "path": "../docs/specs/0027-TestingFramework.md",
+      "use": "Osprey test declarations, assertions, and test execution"
+    },
+    {
+      "id": "installation-guide",
+      "kind": "maintained-documentation",
+      "path": "../website/src/docs/installation.md",
+      "use": "no-install Playground path, local prerequisites, install commands, and verification"
+    },
+    {
+      "id": "project-messaging",
+      "kind": "editorial-authority",
+      "path": "../docs/messaging.md",
+      "use": "practicality, safety, performance, elegance, and claim qualifications"
+    },
+    {
+      "id": "midnight-synthetic",
+      "kind": "visual-authority",
+      "path": "../docs/designs/design.md",
+      "use": "authoritative palette, typography, spacing, shape, and component direction"
+    },
+    {
+      "id": "website-tokens",
+      "kind": "visual-implementation",
+      "path": "../website/src/css/variables.css",
+      "use": "implemented dark-theme tokens and long-form layout values"
+    },
+    {
+      "id": "chapter-one-examples",
+      "kind": "executable-evidence",
+      "path": "examples/chapter-01/",
+      "use": "checked and run Default and optional ML examples used by Chapter 1"
+    }
+  ]
+}

@@ -1,0 +1,7 @@
+fn launchLine(name, project) = "${name} launched ${project}."
+
+fn main() = {
+    let name = "Mika"
+    let project = "a first Osprey program"
+    launchLine(name, project) |> print
+}

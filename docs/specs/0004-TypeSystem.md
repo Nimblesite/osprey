@@ -634,12 +634,11 @@ used mainly at heterogeneous builtin and foreign-function boundaries. In
 particular, `print` and `toString` cannot recover an aggregate hidden behind
 `any`; they render its raw pointer-sized representation rather than its fields.
 
-The erasure does carry an **ownership** convention: the machine word holds the
-`+1` its producer transferred into it, and the boundary that recovers a pointer
-from it takes that reference over. Both halves are required. Without the
-transfer, the reference counter cannot see the boxed word — it matches owners by
-register — so the referent was released while the caller still held it, and this
-program printed an empty string under `--memory=arc`:
+The erasure carries **no ownership** convention, and returning a heap value as
+`any` is therefore unsound under `--memory=arc`. The reference counter matches
+owners by register, so it cannot see the boxed word: the producing frame
+releases the referent it just erased, and the caller is handed a dangling
+pointer. This prints an empty string, with no crash and no diagnostic:
 
 ```osprey
 fn erased() -> any = "era" + "sed"
@@ -647,10 +646,24 @@ fn asString() -> string = erased()
 print("v=${asString()}")
 ```
 
-Without the matching hand-over on the recovering side, the same transfer merely
-turns that premature free into a leak. `tests/regressions/basics/types/any_type_comprehensive.test.osp`
-pins both, and every `any` there had carried a scalar, which is why an erased
-heap value went uncovered.
+Merely *forwarding* an erased value is safe — the word is borrowed and the
+frame that built the string still owns it — and
+`tests/regressions/basics/types/any_type_comprehensive.test.osp` pins that case:
+
+```osprey
+fn forward(x: any) -> any = x
+fn forwarded() -> string = forward("dyn" + "amic")
+```
+
+The obvious repair — transfer the reference when erasing, take it over when
+recovering — is **wrong**, and was briefly shipped before being reverted. It
+balances only when the word came from a `pointer -> any` erasure. The lowered
+type of an erased word is the same `i64` as every `int` and every *borrowed*
+`any` parameter, so `forward` above gained an owner it never received: the
+epilogue moved that fictitious owner out, released the real one, and returned a
+dangling pointer. Owning an erased scalar is worse again — it enters `7` in the
+ledger and later frees it. Closing this needs `any` to be distinguishable from
+`int` after lowering; until then no rule at the cast can be sound.
 
 What `any` still does not carry is a **type**, and because it unifies with
 everything, nothing rejects recovering a pointer from a word that was never one.

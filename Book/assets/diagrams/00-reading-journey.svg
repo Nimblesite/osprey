@@ -1,0 +1,70 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1000" viewBox="0 0 1600 1000" role="img" aria-labelledby="title description">
+  <title id="title">The Osprey Book reading journey</title>
+  <desc id="description">The learning journey moves from running one file, through honest data and outside-world interaction, to shipping and choosing an optional source flavor.</desc>
+  <defs>
+    <pattern id="dots" width="40" height="40" patternUnits="userSpaceOnUse">
+      <circle cx="2" cy="2" r="1.5" fill="#77d7f4" opacity="0.13"/>
+    </pattern>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 Z" fill="#77d7f4"/>
+    </marker>
+  </defs>
+  <rect width="1600" height="1000" fill="#0c1325"/>
+  <rect width="1600" height="1000" fill="url(#dots)"/>
+
+  <text x="72" y="104" fill="#77d7f4" font-family="JetBrains Mono, monospace" font-size="22" font-weight="700" letter-spacing="4">YOUR FLIGHT PLAN</text>
+  <text x="72" y="172" fill="#dce1fb" font-family="Geist, Inter, sans-serif" font-size="54" font-weight="720" letter-spacing="-2">From one line to a program you can ship</text>
+  <text x="72" y="218" fill="#bdc8cd" font-family="Geist, Inter, sans-serif" font-size="25">One project grows in four passes. Alternative syntax waits until the shared language is familiar.</text>
+
+  <path d="M232 510 C420 390 560 630 740 510 C920 390 1060 630 1360 468" fill="none" stroke="#77d7f4" stroke-width="7" marker-end="url(#arrow)"/>
+
+  <g font-family="Geist, Inter, sans-serif">
+    <g transform="translate(72 330)">
+      <rect width="310" height="420" rx="14" fill="#151b2d" stroke="#3e484c"/>
+      <text x="28" y="52" fill="#77d7f4" font-family="JetBrains Mono, monospace" font-size="20" font-weight="700">PART I · RUN</text>
+      <text x="28" y="118" fill="#dce1fb" font-size="34" font-weight="700">Make it do</text>
+      <text x="28" y="160" fill="#dce1fb" font-size="34" font-weight="700">something</text>
+      <text x="28" y="222" fill="#bdc8cd" font-size="22">One file</text>
+      <text x="28" y="258" fill="#bdc8cd" font-size="22">Named values</text>
+      <text x="28" y="294" fill="#bdc8cd" font-size="22">Inferred types</text>
+      <text x="28" y="330" fill="#bdc8cd" font-size="22">Visible decisions</text>
+      <circle cx="160" cy="410" r="14" fill="#bdeeff"/>
+    </g>
+    <g transform="translate(454 330)">
+      <rect width="310" height="420" rx="14" fill="#191f32" stroke="#3e484c"/>
+      <text x="28" y="52" fill="#77d7f4" font-family="JetBrains Mono, monospace" font-size="20" font-weight="700">PART II · MODEL</text>
+      <text x="28" y="118" fill="#dce1fb" font-size="34" font-weight="700">Build honest</text>
+      <text x="28" y="160" fill="#dce1fb" font-size="34" font-weight="700">data</text>
+      <text x="28" y="222" fill="#bdc8cd" font-size="22">Collections</text>
+      <text x="28" y="258" fill="#bdc8cd" font-size="22">Valid states</text>
+      <text x="28" y="294" fill="#bdc8cd" font-size="22">Explicit failure</text>
+      <text x="28" y="330" fill="#bdc8cd" font-size="22">Tests</text>
+      <circle cx="160" cy="410" r="14" fill="#bdeeff"/>
+    </g>
+    <g transform="translate(836 330)">
+      <rect width="310" height="420" rx="14" fill="#191f32" stroke="#3e484c"/>
+      <text x="28" y="52" fill="#77d7f4" font-family="JetBrains Mono, monospace" font-size="20" font-weight="700">PART III · ACT</text>
+      <text x="28" y="118" fill="#dce1fb" font-size="34" font-weight="700">Meet the</text>
+      <text x="28" y="160" fill="#dce1fb" font-size="34" font-weight="700">outside world</text>
+      <text x="28" y="222" fill="#bdc8cd" font-size="22">Effects</text>
+      <text x="28" y="258" fill="#bdc8cd" font-size="22">Files and HTTP</text>
+      <text x="28" y="294" fill="#bdc8cd" font-size="22">Fibers</text>
+      <text x="28" y="330" fill="#bdc8cd" font-size="22">Boundaries</text>
+      <circle cx="160" cy="410" r="14" fill="#bdeeff"/>
+    </g>
+    <g transform="translate(1218 330)">
+      <rect width="310" height="420" rx="14" fill="#23293d" stroke="#77d7f4"/>
+      <text x="28" y="52" fill="#77d7f4" font-family="JetBrains Mono, monospace" font-size="20" font-weight="700">PART IV · SHIP</text>
+      <text x="28" y="118" fill="#dce1fb" font-size="34" font-weight="700">Make it</text>
+      <text x="28" y="160" fill="#dce1fb" font-size="34" font-weight="700">yours</text>
+      <text x="28" y="222" fill="#bdc8cd" font-size="22">Native or Wasm</text>
+      <text x="28" y="258" fill="#bdc8cd" font-size="22">Optional flavors</text>
+      <text x="28" y="294" fill="#bdc8cd" font-size="22">Evidence</text>
+      <text x="28" y="330" fill="#bdc8cd" font-size="22">Capstone</text>
+      <circle cx="160" cy="410" r="14" fill="#bdeeff"/>
+    </g>
+  </g>
+
+  <text x="72" y="862" fill="#bbc5ec" font-family="JetBrains Mono, monospace" font-size="22" letter-spacing="2">DEFAULT FLAVOR CARRIES THE COMPLETE PATH</text>
+  <text x="72" y="906" fill="#bdc8cd" font-family="Geist, Inter, sans-serif" font-size="23">ML and future flavors are optional source surfaces, introduced after the reader owns the core ideas.</text>
+</svg>

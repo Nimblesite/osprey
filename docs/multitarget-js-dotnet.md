@@ -438,6 +438,7 @@ Local Osprey context:
 - [`crates/osprey-codegen/src/effects.rs`](../../crates/osprey-codegen/src/effects.rs)
 - [`crates/osprey-codegen/src/fiber.rs`](../../crates/osprey-codegen/src/fiber.rs)
 - [`compiler/runtime/effects_runtime.c`](../../compiler/runtime/effects_runtime.c)
+- [`compiler/runtime/effects_coro.c`](../../compiler/runtime/effects_coro.c)
 - [`compiler/runtime/fiber_runtime.c`](../../compiler/runtime/fiber_runtime.c)
 
 External references:

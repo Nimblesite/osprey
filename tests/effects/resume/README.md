@@ -19,11 +19,11 @@ The suites cover:
 - a handler transforming the completed continuation answer;
 - 32 sequential suspensions settling exactly once;
 - integer, string, boolean and `Unit` operations in one handler;
-- string continuation answers as a known ARC leak tracked by
-  [critical issue #185](https://github.com/Nimblesite/osprey/issues/185); and
-- the operation-argument boundary: 16 positions pass, while the silently
-  truncated 17th position is skipped with
-  [critical issue #182](https://github.com/Nimblesite/osprey/issues/182).
+- string continuation answers, asserted to release under ARC — formerly the
+  leak in [#185](https://github.com/Nimblesite/osprey/issues/185); and
+- the operation-argument boundary: a 17-argument operation with every position
+  checked — formerly truncated after the 16th by
+  [#182](https://github.com/Nimblesite/osprey/issues/182).
 
 The older focused files retain their complete former stdout transcripts as
 internal oracles, then assert operation counts, supplied values, abort behavior,
@@ -32,8 +32,8 @@ handler reachability and settlement order.
 Resume is currently deep, single-shot and native-only. A second resume of a
 completed continuation aborts with a clear diagnostic. Direct handlers that do
 not contain `resume` do not use this runtime and can compile to WebAssembly.
-Until #185 is fixed, a resuming region should not finish with a dynamic string
-when using ARC; default memory and tracing GC are separate paths.
+A resuming region may finish with a dynamic string under every memory backend;
+the case is asserted here rather than avoided.
 
 Run this category with:
 

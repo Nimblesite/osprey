@@ -73,7 +73,7 @@ work on WebAssembly).
   `tests/regressions/effects/http_state_levels.test.osp`,
   `tests/regressions/effects/abort_vs_resume.test.osp`.
 - **Single-shot deep `resume`**: an arm that mentions `resume` runs the body
-  on a pthread (`__osprey_coro_*`, `effects_runtime.c`), suspends at each
+  on a pthread (`__osprey_coro_*`, `effects_coro.c`), suspends at each
   `perform`, and `resume(v)` drives it to completion or the next operation.
   Reference: `tests/effects/resume/`, whose paired assertion suites cover value
   rewrite, LIFO audit, early-exit abort, outer-handler bridge, and unit markers.
@@ -104,7 +104,7 @@ work on WebAssembly).
    nondeterministic wrong answers with exit 0 (audit repro: expected `r=3`,
    observed `r=4` on 4 of 5 runs). Each perform now claims the channel
    exclusively for its full ping-pong (`in_flight` in
-   `compiler/runtime/effects_runtime.c` `__osprey_coro_suspend`); queued
+   `compiler/runtime/effects_coro.c` `__osprey_coro_suspend`); queued
    performs are dispatched by the existing drive-loop re-entry. Locked by
    `tests/regressions/effects/fiber_effects.{osp,ospml}` §(3) — deterministic
    `race-free sum 30`.
@@ -193,7 +193,7 @@ second resume aborts with a diagnostic.
       is not supported)` and a nonzero exit when the coro is already done (the
       continuation was consumed). The legitimate drive→resume→drive re-entry
       leaves the coro *suspended*, not done, so it does not trip the guard.
-      (`compiler/runtime/effects_runtime.c`.)
+      (`compiler/runtime/effects_coro.c`.)
 - [ ] *(Optional, deferred.)* A **compile-time** diagnostic where statically
       obvious — an arm that `resume`s on two always-executed control-flow paths
       — could report the error before runtime. Not implemented: the

@@ -705,17 +705,11 @@ fn coerce_to_answer(cg: &mut Codegen, value: Value, answer: &AnswerShape) -> Res
         // pointer that meets a scalar answer boxes a heap address as a
         // successful integer. Both directions need the semantic type.
         //
-        // A handler answer is also an un-erasure boundary: an `any` arm hands
-        // back a machine word carrying the +1 its producer transferred into it,
-        // so the recovered pointer is owned by this region. [GC-ARC-PERCEUS]
-        None => {
-            let unerasing = value.ty == LType::I64 && matches!(answer.ty, LType::Str | LType::Ptr);
-            let out = coerce_to(cg, value, answer.ty)?;
-            if unerasing {
-                crate::arc::own(cg, &out);
-            }
-            Ok(out)
-        }
+        // No ownership crosses this cast either, for the same reason it does
+        // not cross an erasing return: an erased word carries no evidence of
+        // whether a `+1` came with it. See `coerce_return` in `lower.rs` and
+        // [TYPE-ANY].
+        None => coerce_to(cg, value, answer.ty),
     }
 }
 

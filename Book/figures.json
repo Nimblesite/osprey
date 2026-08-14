@@ -1,0 +1,63 @@
+{
+  "schemaVersion": 1,
+  "figures": [
+    {
+      "id": "cover",
+      "kind": "cover",
+      "status": "ready",
+      "master": "assets/cover/cover.svg",
+      "publication": "assets/cover/cover.png",
+      "width": 1600,
+      "height": 2560,
+      "alt": "A cyan source path rises through three checking planes and becomes an Osprey flight line over a midnight field."
+    },
+    {
+      "id": "reading-journey",
+      "kind": "concept-diagram",
+      "status": "ready",
+      "master": "assets/diagrams/00-reading-journey.svg",
+      "publication": "assets/diagrams/00-reading-journey.png",
+      "width": 1600,
+      "height": 1000,
+      "alt": "The learning journey moves from running one file, through honest data and outside-world interaction, to shipping and choosing an optional source flavor."
+    },
+    {
+      "id": "first-flight",
+      "kind": "generated-editorial-illustration",
+      "status": "ready",
+      "master": "assets/illustrations/first-flight-master.png",
+      "publication": "assets/illustrations/first-flight.png",
+      "width": 1600,
+      "height": 900,
+      "alt": "A broad-winged cyan wireframe osprey rises from a single luminous source thread above a precise geometric launch plane.",
+      "provenance": "OpenAI built-in image generation; prompts recorded in assets/illustrations/README.md"
+    },
+    {
+      "id": "program-anatomy",
+      "kind": "concept-diagram",
+      "status": "ready",
+      "master": "assets/diagrams/01-program-anatomy.svg",
+      "publication": "assets/diagrams/01-program-anatomy.png",
+      "width": 1600,
+      "height": 1000,
+      "alt": "A one-line Osprey program is annotated to identify fn, main, the function body, print, and the string value."
+    },
+    {
+      "id": "source-to-output",
+      "kind": "concept-diagram",
+      "status": "ready",
+      "master": "assets/diagrams/01-source-to-output.svg",
+      "publication": "assets/diagrams/01-source-to-output.png",
+      "width": 1600,
+      "height": 1000,
+      "alt": "Source code passes through Osprey's parser, checker, and LLVM-backed build before a native program prints output."
+    },
+    {
+      "id": "flavors-converge",
+      "kind": "concept-diagram",
+      "status": "planned",
+      "chapter": 13,
+      "alt": "Default, ML, and a future flavor converge on the same checked language core before code generation."
+    }
+  ]
+}
