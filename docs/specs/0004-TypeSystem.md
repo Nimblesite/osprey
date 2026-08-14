@@ -634,51 +634,6 @@ used mainly at heterogeneous builtin and foreign-function boundaries. In
 particular, `print` and `toString` cannot recover an aggregate hidden behind
 `any`; they render its raw pointer-sized representation rather than its fields.
 
-The erasure carries **no ownership** convention, and returning a heap value as
-`any` is therefore unsound under `--memory=arc`. The reference counter matches
-owners by register, so it cannot see the boxed word: the producing frame
-releases the referent it just erased, and the caller is handed a dangling
-pointer. This prints an empty string, with no crash and no diagnostic:
-
-```osprey
-fn erased() -> any = "era" + "sed"
-fn asString() -> string = erased()
-print("v=${asString()}")
-```
-
-Merely *forwarding* an erased value is safe — the word is borrowed and the
-frame that built the string still owns it — and
-`tests/regressions/basics/types/any_type_comprehensive.test.osp` pins that case:
-
-```osprey
-fn forward(x: any) -> any = x
-fn forwarded() -> string = forward("dyn" + "amic")
-```
-
-The obvious repair — transfer the reference when erasing, take it over when
-recovering — is **wrong**, and was briefly shipped before being reverted. It
-balances only when the word came from a `pointer -> any` erasure. The lowered
-type of an erased word is the same `i64` as every `int` and every *borrowed*
-`any` parameter, so `forward` above gained an owner it never received: the
-epilogue moved that fictitious owner out, released the real one, and returned a
-dangling pointer. Owning an erased scalar is worse again — it enters `7` in the
-ledger and later frees it. Closing this needs `any` to be distinguishable from
-`int` after lowering; until then no rule at the cast can be sound.
-
-What `any` still does not carry is a **type**, and because it unifies with
-everything, nothing rejects recovering a pointer from a word that was never one.
-This compiles and dies with SIGSEGV rather than a diagnostic:
-
-```osprey
-fn intish() -> any = 7
-fn useIt() -> string = intish()
-print("x=${length(useIt())}")
-```
-
-That is the concrete cost of "code that consumes its representation must already
-know what was passed". Until `any` is narrowed so that recovering a concrete
-type requires a `match`, treat every un-erasure as an unchecked assertion.
-
 ## Type Annotations — [TYPE-ANNOTATION-CHECK]
 
 An annotation constrains inference and is checked against the expression. A

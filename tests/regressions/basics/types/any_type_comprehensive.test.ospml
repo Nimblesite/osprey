@@ -17,7 +17,8 @@ processAnyValue input = input + 10 ?: 0
     a dangling pointer, printing nothing under `--memory=arc`. Built at runtime
     rather than written as a literal, or the pointer would be a global and never
     counted at all. Returning a heap value AS `any` is the case that still does
-    not work; [TYPE-ANY] records it. [GC-ARC-PERCEUS] *)
+    not work; docs/plans/0027-any-erasure-and-recovery.md tracks it (#208).
+    [GC-ARC-PERCEUS] *)
 forward : any -> any
 forward x = x
 

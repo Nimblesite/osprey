@@ -74,9 +74,16 @@ that is the one distinction the rule needs. Closing it properly means making
 own recommendation calls for — not another cast-site patch. Until then the
 erasure carries no ownership in either direction, which restores `origin/main`'s
 behaviour on both programs above and leaves `origin/main`'s own defect standing:
-returning a heap value AS `any` still drops its referent. That defect is
-recorded under [TYPE-ANY] in `docs/specs/0004-TypeSystem.md`, with this
-repair documented as attempted and wrong so it is not tried a third time.
+returning a heap value AS `any` still drops its referent. That defect, the
+repair documented as attempted and wrong so it is not tried a third time, and
+the reproduction for each are in
+[plan 0027](plans/0027-any-erasure-and-recovery.md), filed as
+[#208](https://github.com/Nimblesite/osprey/issues/208). Reproducing it against
+a clean `origin/main` worktree also turned up a second, backend-independent half
+the review did not reach: an erased value recovered through a `let` annotation
+drops the annotation and prints the pointer as a decimal integer, on default, gc
+and arc alike, in both flavors — filed as
+[#209](https://github.com/Nimblesite/osprey/issues/209).
 
 What replaces the reverted tests is coverage of the case that regressed, which
 had none: `forward`/`forwarded` in
@@ -165,6 +172,11 @@ three backends with the leak oracle armed.
   diagnostics.
 - The P1 programs were run on both this branch and a clean `origin/main`
   worktree to establish the behavioral regression.
+- After the fixes, the same programs were re-run against both binaries: branch
+  and `origin/main` now agree — `v=ab` and `42`, zero live objects under ARC on
+  each — so nothing in P1 remains as a branch regression. The two `any` defects
+  that survive reproduce identically on `origin/main` and are filed as #208 and
+  #209 rather than fixed here.
 
 ---
 

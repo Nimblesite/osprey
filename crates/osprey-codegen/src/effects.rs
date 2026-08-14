@@ -708,7 +708,7 @@ fn coerce_to_answer(cg: &mut Codegen, value: Value, answer: &AnswerShape) -> Res
         // No ownership crosses this cast either, for the same reason it does
         // not cross an erasing return: an erased word carries no evidence of
         // whether a `+1` came with it. See `coerce_return` in `lower.rs` and
-        // [TYPE-ANY].
+        // docs/plans/0027-any-erasure-and-recovery.md.
         None => coerce_to(cg, value, answer.ty),
     }
 }

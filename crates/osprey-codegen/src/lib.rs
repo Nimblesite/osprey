@@ -501,9 +501,8 @@ mod tests {
     /// This guards that repair from being re-applied at the cast. The cast is
     /// the wrong place: it cannot see which of the three an `i64` is. The gap
     /// it leaves — an erasing return really does drop its referent — is a real
-    /// open defect, recorded under [TYPE-ANY], and closing it means making
-    /// `any` distinguishable from `int` in the lowered types.
-    /// [GC-ARC-PERCEUS]
+    /// open defect, tracked in docs/plans/0027-any-erasure-and-recovery.md
+    /// (#208). [GC-ARC-PERCEUS]
     #[test]
     fn recovering_a_pointer_from_an_erased_word_takes_no_ownership() {
         let ir = module(
