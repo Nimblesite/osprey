@@ -96,7 +96,7 @@ FIB_OBJ_ARC  ?= bin/memory_arc.o bin/gpu_runtime.o bin/fiber_runtime.o bin/syste
 HTTP_OBJ_ARC ?= bin/http_shared.o bin/http_client_runtime.o bin/http_server_request.o bin/http_server_response.o bin/http_server_runtime.o bin/websocket_client_runtime.o bin/websocket_server_runtime.o $(FIB_OBJ_ARC)
 NATIVE_RUNTIME_CONFIG ?= compiler/bin/.native-runtime-config
 NATIVE_RUNTIME_STAMP ?= compiler/bin/.native-runtime.stamp
-NATIVE_RUNTIME_INPUTS ?= $(filter-out compiler/runtime/%_tests.c compiler/runtime/test_http_length_validation.c compiler/runtime/test_openssl.c compiler/runtime/test_system_runtime.c compiler/runtime/web_runtime.c,$(wildcard compiler/runtime/*.c)) $(wildcard compiler/runtime/*.h)
+NATIVE_RUNTIME_INPUTS ?= $(filter-out compiler/runtime/%_tests.c compiler/runtime/test_http_length_validation.c compiler/runtime/test_openssl.c compiler/runtime/test_system_runtime.c compiler/runtime/test_file_runtime.c compiler/runtime/web_runtime.c,$(wildcard compiler/runtime/*.c)) $(wildcard compiler/runtime/*.h)
 NATIVE_RUNTIME_ARCHIVES ?= compiler/bin/libfiber_runtime.a compiler/bin/libhttp_runtime.a compiler/bin/libfiber_runtime_gc.a compiler/bin/libhttp_runtime_gc.a compiler/bin/libfiber_runtime_arc.a compiler/bin/libhttp_runtime_arc.a compiler/lib/libfiber_runtime.a compiler/lib/libhttp_runtime.a compiler/lib/libfiber_runtime_gc.a compiler/lib/libhttp_runtime_gc.a compiler/lib/libfiber_runtime_arc.a compiler/lib/libhttp_runtime_arc.a
 
 # WebAssembly (wasm32-wasip1) cross-build toolchain — opt-in via `make wasm`.
@@ -541,6 +541,7 @@ C_TEST_SUITES ?= memory_gc_stack_root_tests memory_arc_tests memory_gc_tests \
   memory_pool_tests memory_runtime_tests memory_golden_tests gpu_runtime_tests \
   list_tests map_tests string_runtime_tests json_runtime_tests \
   effects_runtime_tests builtins_runtime_tests test_system_runtime \
+  test_file_runtime \
   test_http_length_validation http_server_send_tests http_server_request_tests \
   fiber_runtime_tests http_runtime_tests profiler_runtime_tests \
   coverage_runtime_tests
@@ -565,6 +566,7 @@ C_LIBS_effects_runtime_tests = -pthread
 C_SRC_builtins_runtime_tests = runtime/builtins_runtime_tests.c runtime/ffi_runtime.c runtime/random_runtime.c runtime/term_runtime.c runtime/test_runtime.c
 C_SRC_test_system_runtime = runtime/test_system_runtime.c runtime/system_runtime.c runtime/file_runtime.c runtime/memory_runtime.c
 C_LIBS_test_system_runtime = -pthread
+C_SRC_test_file_runtime = runtime/test_file_runtime.c runtime/file_runtime.c runtime/memory_runtime.c
 C_FLAGS_test_http_length_validation = $(OSSL_CFLAGS)
 C_SRC_test_http_length_validation = runtime/test_http_length_validation.c
 C_FLAGS_http_server_send_tests = $(OSSL_CFLAGS)
