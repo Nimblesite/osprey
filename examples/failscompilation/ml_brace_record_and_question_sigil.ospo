@@ -5,9 +5,10 @@
 // A flavor is a whole surface, not a dialect you may mix: Default-flavor
 // spellings are not silently accepted by the ML frontend. Two of them appear
 // here — the brace record literal `{ x = 1 }` (ML builds records from the
-// declaration form, not braces) and the `?` sigil of the Default Result-default
-// operator `e ?: d`, which has no ML spelling today and which the ML lexer
-// rejects outright. Neither `{` nor `?` is an ML lexeme at all.
+// declaration form, not braces; `{` lexes only so a structural PATTERN can
+// spell `{ heading, .. }` [PATTERN-STRUCTURAL], and has no expression form)
+// and the `?` sigil of the Default Result-default operator `e ?: d`, which
+// has no ML spelling today and which the ML lexer rejects outright.
 
 point = { x = 1, y = 2 }
 

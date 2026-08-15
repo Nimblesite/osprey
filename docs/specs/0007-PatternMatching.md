@@ -137,11 +137,14 @@ match pair {
 `(x)` is grouping, not a one-element tuple. A tuple pattern is closed: its
 length must match, and `..` does not apply.
 
-> **Status: not implemented.** A closed `{ f }` pattern parses and type-checks;
-> the backend rejects it with `unsupported construct: destructuring match arm`.
-> `..` is in neither grammar. Structural narrowing of `any` additionally
-> requires the runtime row descriptor tracked in
-> [plan 0027](../plans/0027-any-erasure-and-recovery.md).
+> **Status: implemented** for flat rows in both flavors: closed `{ f }` and
+> open `{ f, .. }` arms select concrete records statically and erased values
+> by runtime shape descriptor, and the tuple spelling `(a, b)` works the same
+> way over positional rows. A match over `any` requires its catch-all, and the
+> `..`-shadowing rule above is enforced. Nested rows
+> (`{ origin: { x, y }, .. }`) and `field: binder` renames do not parse yet —
+> a binder always takes its field's own name, and a tuple slot is a binder or
+> `_`.
 
 ## Exhaustiveness and unreachable arms [TYPE-MATCH-EXHAUSTIVE]
 

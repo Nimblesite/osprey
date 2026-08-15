@@ -14,6 +14,7 @@
 //! into a module string.
 
 mod aggregate;
+mod anybox;
 mod arc;
 mod builder;
 mod call;
@@ -489,44 +490,117 @@ mod tests {
         assert!(ir.contains("@osp_alloc"));
     }
 
-    /// Recovering a pointer from an erased `any` word must take NO ownership.
-    /// The word is `LType::I64`, which is equally every `int` and every
-    /// BORROWED `any` parameter, so a rule that owns what comes back invents a
-    /// reference that was never transferred: with one, `fn identity(x: any) ->
-    /// any = x` made the epilogue move a fictitious owner out, release the real
-    /// one, and return a dangling pointer — `v=` instead of `v=ab` under
-    /// `--memory=arc`, silently. Owning an erased SCALAR is worse still: it
-    /// enters `7` in the ledger and later frees it.
-    ///
-    /// This guards that repair from being re-applied at the cast. The cast is
-    /// the wrong place: it cannot see which of the three an `i64` is. The gap
-    /// it leaves — an erasing return really does drop its referent — is a real
-    /// open defect, tracked in docs/plans/0027-any-erasure-and-recovery.md
-    /// (#208). [GC-ARC-PERCEUS]
+    /// An erasure builds a shape-carrying box, and ownership crosses it in
+    /// exactly one direction ([TYPE-ANY], plan 0027 §8): the erasing frame's
+    /// fresh reference MOVES into the box (no compensating retain), while an
+    /// `any` → `any` pass-through copies the box pointer and BORROWS — the
+    /// epilogue retains the borrowed return instead of inventing an owner.
+    /// The reverted transfer-on-erase rule (§6) failed precisely because the
+    /// bare word could not distinguish those two flows; the box's descriptor
+    /// is what makes the distinction real, so #208's over-release cannot
+    /// re-appear without breaking these shapes. [GC-ARC-PERCEUS]
     #[test]
-    fn recovering_a_pointer_from_an_erased_word_takes_no_ownership() {
+    fn erasure_boxes_with_one_way_ownership() {
         let ir = module(
-            "fn dynamic() -> any = \"a\" + \"b\"\nfn text() -> string = dynamic()\nprint(\"x\")\n",
+            "fn dynamic() -> any = \"a\" + \"b\"\n\
+             fn identity(x: any) -> any = x\n\
+             print(\"${dynamic()} ${identity(7)}\")\n",
         );
-        let body = function_body(&ir, "define i8* @text()");
-        let recovered = body
-            .lines()
-            .find_map(|l| {
-                l.split(" = inttoptr")
-                    .next()
-                    .filter(|_| l.contains("inttoptr"))
-            })
-            .map(str::trim)
-            .unwrap_or_default()
-            .to_string();
+        // The erasing producer returns the BOX (a pointer), not a raw word,
+        // and its payload slot is masked managed so every backend's drop walk
+        // releases the referent through the box: `{ i8* desc, i64 payload }`
+        // with word 1 marked is meta 513.
+        let producer = function_body(&ir, "define i8* @dynamic()");
         assert!(
-            !recovered.is_empty(),
-            "expected the `any` word to be recovered as a pointer:\n{body}"
+            producer.contains("@osp_alloc_tagged_noinit(") && producer.contains(", i64 513)"),
+            "an erasing return must box its referent with a managed payload:\n{producer}"
         );
         assert!(
-            !body.contains(&format!("store i8* {recovered}, i8** %arc.")),
-            "the un-erased pointer `{recovered}` was entered in the ARC ledger, \
-             but an erased word carries no reference to take over:\n{body}"
+            producer.contains("store i8* null, i8** %arc.s0"),
+            "the fresh referent must MOVE into the box, not gain a second owner:\n{producer}"
+        );
+        assert!(
+            producer.contains("@osp.any.desc.string"),
+            "the box must carry the string shape descriptor:\n{producer}"
+        );
+        // The pass-through function receives and returns the box UNTOUCHED:
+        // no new box, no descriptor reference — and the borrowed return is
+        // retained (+1) rather than entered in the ledger as a fresh owner.
+        let pass = function_body(&ir, "define i8* @identity(i8* %$p0)");
+        assert!(
+            !pass.contains("@osp.any.desc"),
+            "an `any` -> `any` pass-through must not re-box:\n{pass}"
+        );
+        assert!(
+            pass.contains("@osp_retain"),
+            "a borrowed erased return must be retained for the caller:\n{pass}"
+        );
+    }
+
+    /// Rendering an erased value goes through its descriptor's render
+    /// function — never the raw word, which printed heap addresses as
+    /// integers on every backend while `--check` called the file clean
+    /// (finding D, [TYPE-ANY]).
+    #[test]
+    fn erased_values_render_through_their_descriptor() {
+        let ir = module("fn dynamic() -> any = \"a\" + \"b\"\nprint(\"${dynamic()}\")\n");
+        assert!(ir.contains("call i8* @osp.any.to_string(i8* "));
+        let renderer = function_body(&ir, "define i8* @osp.any.to_string(i8* %box)");
+        assert!(
+            renderer.contains("call i8* %r"),
+            "the shared entry must dispatch through the descriptor's render slot:\n{renderer}"
+        );
+    }
+
+    /// A structural arm over an erased scrutinee narrows by descriptor
+    /// IDENTITY: the candidate set is computed at compile time from the
+    /// declared records, each test is one pointer compare, and the bound
+    /// fields are the deep-boxed children — no field name is compared at run
+    /// time ([PATTERN-STRUCTURAL], [TYPE-ANY]).
+    #[test]
+    fn structural_narrowing_compares_descriptors() {
+        let ir = module(
+            "type Point = { x: int, y: int }\n\
+             fn erased() -> any = Point { x: 1, y: 2 }\n\
+             fn describe(v: any) -> int = match v {\n\
+               { x, y } => 1\n\
+               _ => 0\n\
+             }\n\
+             print(\"${describe(erased())}\")\n",
+        );
+        let body = function_body(&ir, "define i64 @describe(i8* %$p0)");
+        assert!(
+            body.contains("icmp eq i8* ") && body.contains("@osp.any.desc.row.x.y"),
+            "narrowing must be a descriptor pointer compare:\n{body}"
+        );
+        assert!(
+            !body.contains("@strcmp") && !body.contains("@osp_string_equals"),
+            "no name may be compared at run time:\n{body}"
+        );
+        // The erasure deep-boxes through the per-layout boxer, whose slots
+        // hold one child box per field.
+        assert!(
+            ir.contains("call i8* @osp.any.boxrow.Point"),
+            "a record erasure must deep-box:\n{ir}"
+        );
+    }
+
+    /// Over a CONCRETE record scrutinee the same structural arm selects
+    /// statically — field loads, no descriptor anywhere. The tuple pattern is
+    /// the positional spelling of the same mechanism ([PATTERN-TUPLE]).
+    #[test]
+    fn structural_match_on_a_concrete_record_is_static() {
+        let ir = module(
+            "type Pair = Pair(int, string)\n\
+             fn fst(p: Pair) -> int = match p {\n\
+               (n, _) => n\n\
+             }\n\
+             print(\"${fst(Pair(7, \\\"a\\\"))}\")\n",
+        );
+        let body = function_body(&ir, "define i64 @fst(i8* %$p0)");
+        assert!(
+            body.contains("load i64, i64*") && !body.contains("@osp.any.desc"),
+            "a concrete-record structural match binds statically:\n{body}"
         );
     }
 
@@ -1231,12 +1305,17 @@ mod tests {
                 .lines()
                 .find(|line| line.starts_with("define ") && line.contains(function))
                 .expect("effect handler definition");
+            // Arm registers are POSITIONAL (`%__arm0`, `%__arm1`), never the
+            // source binders: a binder spelled `entry` collided with the
+            // `entry:` block label and clang refused the module. The SHAPES
+            // are the contract — the Result parameter travels as its block
+            // pointer, the fiber as its id word ([FLAVOR-IR-EQUIV]).
             assert!(
-                definition.contains("i8* %immediate") && definition.contains("i64 %deferred"),
+                definition.contains("i8* %__arm0") && definition.contains("i64 %__arm1"),
                 "effect parameters must use their complete ParamSig ABI:\n{definition}\n{ir}"
             );
             assert!(
-                ir.contains("bitcast i8* %immediate to { i64, i8, i8* }*"),
+                ir.contains("bitcast i8* %__arm0 to { i64, i8, i8* }*"),
                 "the handler must reconstruct the incoming Result block:\n{ir}"
             );
             assert!(

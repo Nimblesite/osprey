@@ -342,6 +342,12 @@ this flavor because ML maps use `[k => v]` ([FLAVOR-ML-MAP](#collections-and-ind
 origin = { x = 0, y = 0 }
 ```
 
+> **Status:** the inline brace record is not implemented — the ML expression
+> parser rejects `{` (`unexpected token LBrace in expression`, pinned by
+> `examples/failscompilation/ml_brace_record_and_question_sigil.ospo`).
+> Construct records with the layout or parenthesised `Name(field = value)`
+> forms. The brace structural *pattern* below is implemented, including `..`.
+
 Structural patterns use the same spelling with binders in place of values, and
 `..` opens the row
 ([PATTERN-STRUCTURAL](0007-PatternMatching.md#structural-patterns--pattern-structural)):

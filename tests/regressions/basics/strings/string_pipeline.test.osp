@@ -79,9 +79,9 @@ match substring("hello world", 6, 11) {
 
 // ----- Transformation (fallible) -----
 match replace("a-b-c-d", "-", "/") { Success { value } => print("replace=\"${value}\"\n") Error { message } => print("replace err\n") }
-match repeat ("ab", 4)             { Success { value } => print("repeat=\"${value}\"\n")  Error { message } => print("repeat err\n")  }
+match repeat("ab", 4)              { Success { value } => print("repeat=\"${value}\"\n")  Error { message } => print("repeat err\n")  }
 match padStart("42", 5, "0")       { Success { value } => print("padS=\"${value}\"\n")    Error { message } => print("padS err\n")    }
-match padEnd  ("42", 5, "0")       { Success { value } => print("padE=\"${value}\"\n")    Error { message } => print("padE err\n")    }
+match padEnd("42", 5, "0")         { Success { value } => print("padE=\"${value}\"\n")    Error { message } => print("padE err\n")    }
 
 /// ----- take/drop/reverse (UFCS form) -----
 let hello = "hello"

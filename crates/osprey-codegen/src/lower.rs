@@ -70,6 +70,9 @@ fn compile_program_with_options(program: &Program, options: CodegenOptions) -> R
     // Seed the coverage denominator from the source, not from what lowering
     // happens to reach [TESTING-COVERAGE-CODEGEN].
     cg.cov_seed(program);
+    // Seed the erased-`any` candidate row table from the declared records,
+    // BEFORE any match or erasure site is emitted ([`crate::anybox`]).
+    crate::anybox::seed_rows(&mut cg);
 
     // Pre-pass: record parameter names so named-argument calls can be ordered,
     // and parse `effect` operation signatures for `handle`/`perform`.
@@ -149,23 +152,7 @@ fn compile_program_with_options(program: &Program, options: CodegenOptions) -> R
         .and_then(|(_, position)| position)
         .or_else(|| top_level.iter().find_map(|stmt| stmt_position(stmt)));
     cg.begin_function("main", main_position);
-    // Anchor the profiler into the link and give it a deterministic activation
-    // point: static archives only extract referenced objects, so without this
-    // call a fiber-less program would link no profiler at all. A no-op unless
-    // OSPREY_PROFILE is set [PROF-ACTIVATE-ENV], docs/specs/0028-Profiler.md.
-    cg.add_extern("declare void @osp_prof_boot()");
-    cg.emit("call void @osp_prof_boot()");
-    // Anchor the MEMORY backend the same way: an allocation-free program
-    // would otherwise extract no backend object from the archive, and the ARC
-    // leak sentinel (armed by OSPREY_ARC_DEBUG) must print even for a program
-    // that never allocates — the differential harness requires the sentinel
-    // for every passing arc run, so its absence must mean "broken", never
-    // "small program" [MEM-BACKENDS].
-    cg.add_extern("declare void @osp_mem_boot()");
-    cg.emit("call void @osp_mem_boot()");
-    // Register every coverable line's counter before user code runs; the
-    // init body is rendered after all lowering [TESTING-COVERAGE-CODEGEN].
-    cg.cov_emit_boot();
+    emit_main_boot(&mut cg);
     if let Some((body, _)) = user_main {
         cg.cell_vars = crate::effects::captured_mut_vars(body);
         let _ = gen_expr(&mut cg, body)?;
@@ -196,6 +183,27 @@ fn compile_program_with_options(program: &Program, options: CodegenOptions) -> R
     cg.finish_function(LType::I32.as_str(), "main", &[]);
 
     Ok(cg.render())
+}
+
+/// The runtime anchors `main` starts with, before any user code runs.
+fn emit_main_boot(cg: &mut Codegen) {
+    // Anchor the profiler into the link and give it a deterministic activation
+    // point: static archives only extract referenced objects, so without this
+    // call a fiber-less program would link no profiler at all. A no-op unless
+    // OSPREY_PROFILE is set [PROF-ACTIVATE-ENV], docs/specs/0028-Profiler.md.
+    cg.add_extern("declare void @osp_prof_boot()");
+    cg.emit("call void @osp_prof_boot()");
+    // Anchor the MEMORY backend the same way: an allocation-free program
+    // would otherwise extract no backend object from the archive, and the ARC
+    // leak sentinel (armed by OSPREY_ARC_DEBUG) must print even for a program
+    // that never allocates — the differential harness requires the sentinel
+    // for every passing arc run, so its absence must mean "broken", never
+    // "small program" [MEM-BACKENDS].
+    cg.add_extern("declare void @osp_mem_boot()");
+    cg.emit("call void @osp_mem_boot()");
+    // Register every coverable line's counter before user code runs; the
+    // init body is rendered after all lowering [TESTING-COVERAGE-CODEGEN].
+    cg.cov_emit_boot();
 }
 
 fn gen_function(
@@ -296,19 +304,13 @@ fn coerce_return(cg: &mut Codegen, name: &str, body: Value) -> Result<Value> {
         return crate::result::fit_to_inner(cg, body, inner);
     }
     let ret_ty = cg.fn_ret_ltype(name).unwrap_or(LType::I64);
-    // This cast no longer RECOVERS anything: a body of type `any` returned
-    // through a concrete annotation is rejected by inference before emission
+    // This cast never RECOVERS anything: a body of type `any` returned through
+    // a concrete annotation is rejected by inference before emission
     // ([TYPE-ANY], `unify_assignable`), so the surviving `i64 -> i8*` direction
     // is only the uniform collection/fiber element ABI, whose element type the
-    // owner tag still names.
-    //
-    // No ownership crosses it in either direction, and that remains a
-    // DELIBERATE gap: `LType::I64` is equally every `int`, every erased `any`
-    // and every BORROWED `any` parameter, so nothing here can tell a
-    // transferred pointer from a scalar. What that still leaves open — an
-    // erased HEAP value released by its producing frame — and the repair that
-    // must NOT be retried are recorded in
-    // docs/plans/0027-any-erasure-and-recovery.md (#208).
+    // owner tag still names — and no ownership crosses it. An `any` return is
+    // the OTHER direction: `coerce_to` boxes it with its shape descriptor
+    // ([`crate::anybox`]), which is where the erasing transfer happens (#208).
     crate::cast::coerce_to(cg, body, ret_ty)
 }
 

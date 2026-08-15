@@ -88,7 +88,9 @@ in `any` narrowing ([TYPE-ANY](#the-any-type--type-any)). A declared `type` is
 always closed.
 
 > **Status:** closed-row unification is implemented and is what makes two
-> identically-shaped records interchangeable today. Open rows are not.
+> identically-shaped records interchangeable today. Open rows exist exactly
+> where this section places them — a `..`-opened structural pattern and `any`
+> narrowing — and nowhere in type annotations.
 
 ### Polymorphic Variables vs `any`
 
@@ -366,10 +368,14 @@ matching rather than by projection.
 
 A one-element parenthesis is grouping, never a tuple: `(x)` is `x`.
 
-> **Status:** neither anonymous record *values* nor tuples are implemented.
-> The checker already infers an anonymous record type for a bare-identifier
-> brace literal — `{ x: 10 }` reports as `{ x: int }` — but the backend does not
-> lower it, and tuple syntax is rejected in both flavors.
+> **Status:** anonymous record *values* construct, project fields and match
+> structurally, but cannot be erased into `any` — narrowing selects among
+> DECLARED rows, so `let v: any = { x: 1 }` is rejected with
+> `declare its row as a named type first`. Tuple *patterns* are implemented in
+> both flavors as the positional row spelling; tuple *values* and the
+> `(int, string)` type spelling are not, so a tuple pattern today selects a
+> positionally-declared record (`type Pair = Pair(int, string)`), plain or
+> erased.
 
 ### Construction
 
@@ -709,17 +715,24 @@ Erasing an `int`, `float` or `bool` keeps a scalar row: those values carry no
 fields, so every field-naming arm declines and only a binding or `_` arm selects
 them.
 
-> **Status: partly implemented.** The one-way rule holds today — recovering a
-> concrete type out of an `any` at any annotation is rejected with
-> `cannot recover ... from an erased `any``, in both flavors. Narrowing itself
-> does not exist yet: `any` carries no runtime shape, so a structural match over
-> one is rejected by the backend and `print`/`toString` still render the raw
-> pointer-sized word rather than the value. The shape descriptor both need is an
-> ABI change tracked in
-> [plan 0027](../plans/0027-any-erasure-and-recovery.md). The ARC `meta` word
-> cannot serve as that descriptor: it encodes which words are managed pointers
-> rather than which fields exist, and the default and GC backends ignore it
-> entirely.
+> **Status: implemented.** An erased value is a pointer to a two-word box
+> `{ desc, payload }` whose descriptor names its runtime shape, on every
+> memory backend and both flavors. The one-way rule holds at annotations
+> (`cannot recover … from an erased `any``), and every other read of the raw
+> word is rejected too: operators (`erased() == x`, `x + 1`), field access,
+> indexing, and the pattern forms that carry no row test — literal, list,
+> variant and type-annotated arms. Structural narrowing selects among the
+> DECLARED record rows by descriptor identity, so an erased record made by any
+> constructor with the same field names matches the same arm; a field bound
+> from a narrowing is itself `any` until matched further. `print`/`toString`
+> render through the descriptor: scalars and strings exactly, records as their
+> row (`{ x: 1, y: 2 }`), unions by variant, a `Result` as
+> `Success(…)`/`Error(…)`, and shapes rendering cannot see into — lists, maps,
+> closures, foreign handles — as a named placeholder such as `<list>`, never
+> the raw word. Erasing an anonymous record is rejected
+> ([TYPE-RECORD-ANON](#anonymous-records--type-record-anon)); a structural arm
+> never selects an erased union, list or map — match the union before erasing
+> it.
 
 ## Type Annotations — [TYPE-ANNOTATION-CHECK]
 

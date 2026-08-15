@@ -256,7 +256,9 @@ fn uniform_admissible(v: &Value) -> bool {
         && match v.ty {
             LType::I64 | LType::Double | LType::I1 => true,
             LType::Ptr => v.osp_ty.as_deref().is_some_and(crate::gpu::is_buffer_owner),
-            LType::Str | LType::I32 => false,
+            // An erased box points at host-side structure just as a string or
+            // record handle does — no device slot for it.
+            LType::Str | LType::I32 | LType::Any => false,
         }
 }
 

@@ -77,8 +77,9 @@ behaviour on both programs above and leaves `origin/main`'s own defect standing:
 returning a heap value AS `any` still drops its referent. That defect, the
 repair documented as attempted and wrong so it is not tried a third time, and
 the reproduction for each are in
-[plan 0027](plans/0027-any-erasure-and-recovery.md), filed as
-[#208](https://github.com/Nimblesite/osprey/issues/208). Reproducing it against
+plan 0027 (since completed: the erased-value box in
+[TYPE-ANY](specs/0004-TypeSystem.md#the-any-type--type-any) closed it), filed
+as [#208](https://github.com/Nimblesite/osprey/issues/208). Reproducing it against
 a clean `origin/main` worktree also turned up a second, backend-independent half
 the review did not reach: an erased value recovered through a `let` annotation
 drops the annotation and prints the pointer as a decimal integer, on default, gc

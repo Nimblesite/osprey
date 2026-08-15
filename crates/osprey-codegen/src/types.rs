@@ -31,10 +31,13 @@ pub fn ltype_of(ty: &Type) -> LType {
 
 fn ltype_of_con(name: &str, args: &[Type]) -> LType {
     match name {
-        // Int, unit and any travel as a machine word — as do fiber and channel
+        // Int and unit travel as a machine word — as do fiber and channel
         // handles, which are runtime ids drawn from one shared counter, not
         // pointers.
-        names::INT | names::UNIT | names::ANY | names::FIBER | names::CHANNEL => LType::I64,
+        names::INT | names::UNIT | names::FIBER | names::CHANNEL => LType::I64,
+        // An erased `any` is a pointer to its shape-carrying box
+        // ([`crate::anybox`], [TYPE-ANY]) — never a bare machine word.
+        names::ANY => LType::Any,
         names::FLOAT => LType::Double,
         names::STRING => LType::Str,
         names::BOOL => LType::I1,

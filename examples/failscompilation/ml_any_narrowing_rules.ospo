@@ -1,0 +1,41 @@
+// osprey: flavor=ml
+// [TYPE-ANY] The ML half of `any_narrowing_rules.ospo`: an erased value is
+// read ONLY through a structural match, in this flavor too. A literal arm and
+// a variant arm compare the raw word, an operator consumes it, a match with
+// no catch-all pretends the row is known, and an open `{ x, .. }` arm shadows
+// every extension after it. (The annotation-pattern spelling has no ML
+// surface, so its rejection is Default-only.) [PATTERN-STRUCTURAL]
+// [TYPE-MATCH-EXHAUSTIVE]
+type Color = Red | Green
+
+erased : Unit -> any
+erased () = "a" + "b"
+
+viaLiteral : Unit -> int
+viaLiteral () =
+    match erased ()
+        0 => 1
+        _ => 2
+
+viaVariant : Unit -> int
+viaVariant () =
+    match erased ()
+        Red => 5
+        _ => 6
+
+noCatchAll : Unit -> int
+noCatchAll () =
+    match erased ()
+        { x } => 7
+
+shadowed : Unit -> int
+shadowed () =
+    match erased ()
+        { x, .. } => 8
+        { x, y } => 9
+        _ => 10
+
+viaOperator : Unit -> bool
+viaOperator () = erased () == "ab"
+
+print "${viaLiteral ()} ${viaVariant ()} ${noCatchAll ()} ${shadowed ()} ${viaOperator ()}"

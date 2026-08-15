@@ -1679,21 +1679,68 @@ impl Parser<'_> {
         pat
     }
 
-    /// `( p )` — grouping only, erased at parse time
+    /// `( p )` groups a single pattern and is erased at parse time
     /// ([FLAVOR-ML-PATTERN-GROUP]); it is what lets a clause head write
-    /// `check (Node l r)`. A comma inside is not a tuple — Osprey has no tuple
-    /// patterns.
+    /// `check (Node l r)`. A comma list `(a, b)` is a tuple pattern, each slot
+    /// a binder or `_` ([FLAVOR-ML-TUPLE], [PATTERN-TUPLE]).
     fn group_pattern(&mut self) -> MlPattern {
         self.advance(); // `(`
-        let inner = self.pattern();
+        let mut elements = vec![self.pattern()];
         while self.eat(&TokKind::Comma) {
-            self.error("'(' groups a single pattern; Osprey has no tuple patterns");
-            let _ = self.pattern();
+            elements.push(self.pattern());
         }
         if !self.eat(&TokKind::RParen) {
             self.error("expected ')'");
         }
-        inner
+        match elements.pop() {
+            Some(only) if elements.is_empty() => only,
+            Some(last) => {
+                elements.push(last);
+                for slot in &elements {
+                    if !matches!(slot, MlPattern::Bind(_) | MlPattern::Wildcard) {
+                        self.error("a tuple pattern slot binds a name or `_`");
+                    }
+                }
+                MlPattern::Tuple(elements)
+            }
+            None => MlPattern::Wildcard,
+        }
+    }
+
+    /// `{ a, b }` / `{ a, .. }` — a structural row pattern: named binders,
+    /// optionally opened by a trailing `..` ([PATTERN-STRUCTURAL]).
+    fn structural_pattern(&mut self) -> MlPattern {
+        self.advance(); // `{`
+        let mut fields = Vec::new();
+        let mut open = false;
+        loop {
+            if matches!(self.peek(), TokKind::Dot) && matches!(self.peek_at(1), TokKind::Dot) {
+                self.advance();
+                self.advance();
+                open = true;
+                break; // `..` is always the final entry
+            }
+            match self.peek().clone() {
+                TokKind::Ident(name) => {
+                    self.advance();
+                    fields.push(name);
+                }
+                _ => break,
+            }
+            if !self.eat(&TokKind::Comma) {
+                break;
+            }
+        }
+        if fields.is_empty() {
+            // `{ .. }` would match every row and `{}` names nothing; a
+            // structural pattern is closed-by-default over NAMED fields
+            // ([PATTERN-STRUCTURAL]).
+            self.error("a structural pattern names at least one field");
+        }
+        if !self.eat(&TokKind::RBrace) {
+            self.error("expected '}'");
+        }
+        MlPattern::Structural { fields, open }
     }
 
     /// A match pattern: `_`, a literal, `Ctor field…`, `( p )`, or a bare
@@ -1735,6 +1782,7 @@ impl Parser<'_> {
             }
             TokKind::LBracket => self.list_pattern(),
             TokKind::LParen => self.group_pattern(),
+            TokKind::LBrace => self.structural_pattern(),
             other => {
                 self.error(format!("unexpected token {other:?} in pattern"));
                 MlPattern::Wildcard

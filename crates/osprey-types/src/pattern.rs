@@ -13,7 +13,7 @@ use crate::env::TypeEnv;
 use crate::error::TypeError;
 use crate::ty::{names, Scheme, Type};
 use osprey_ast::{Expr, MatchArm, Pattern};
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
 fn is_result(t: &Type) -> bool {
     matches!(t, Type::Con { name, .. } if name == names::RESULT)
@@ -42,7 +42,7 @@ impl Checker {
             self.push_unify(&result, &body_ty);
         }
         self.check_exhaustive(&disc, arms);
-        self.check_redundant_arms(arms);
+        self.check_redundant_arms(arms, &disc);
         result
     }
 
@@ -55,6 +55,9 @@ impl Checker {
     }
 
     fn bind_pattern(&mut self, pattern: &Pattern, disc: &Type, local: &mut TypeEnv) {
+        if self.reject_reading_erased(pattern, disc, local) {
+            return;
+        }
         match pattern {
             Pattern::Wildcard => {}
             Pattern::Binding(name) => self.bind_binding(name, disc, local),
@@ -66,17 +69,8 @@ impl Checker {
                 let t = type_expr_to_type(ty, &HashMap::new());
                 local.insert(name.clone(), Scheme::mono(t));
             }
-            Pattern::Structural { fields } => {
-                let dp = self.ctx.prune(disc);
-                for fname in fields {
-                    let ft = match &dp {
-                        Type::Record { fields: rf, .. } => {
-                            rf.get(fname).cloned().unwrap_or_else(|| self.ctx.fresh())
-                        }
-                        _ => self.ctx.fresh(),
-                    };
-                    local.insert(fname.clone(), Scheme::mono(ft));
-                }
+            Pattern::Structural { fields, open } => {
+                self.bind_structural(fields, *open, disc, local);
             }
             Pattern::Constructor {
                 name,
@@ -86,6 +80,157 @@ impl Checker {
             Pattern::List { elements, rest } => {
                 self.bind_list_pattern(elements, rest.as_deref(), disc, local);
             }
+        }
+    }
+
+    /// Every pattern that READS a value's shape without a runtime row test — a
+    /// literal compare, a variant tag, a list length, a type-annotated binding
+    /// that simply renames the static type — is an unchecked read over an
+    /// erased `any`: the same recovery [TYPE-ANY] rejects at annotations,
+    /// respelled as a pattern (`s: string => length(s)` compiled and read the
+    /// word with no test at all). Only a structural arm carries a row test, so
+    /// everything else is rejected toward one. `Success`/`Error` stay legal:
+    /// auto-wrap binds the erased value whole and reads nothing through it.
+    fn reject_reading_erased(
+        &mut self,
+        pattern: &Pattern,
+        disc: &Type,
+        local: &mut TypeEnv,
+    ) -> bool {
+        if !self.ctx.prune(disc).is_named(names::ANY) {
+            return false;
+        }
+        let offending = match pattern {
+            Pattern::Literal(_) => "a literal pattern",
+            Pattern::List { .. } => "a list pattern",
+            Pattern::TypeAnnotated { .. } => "a type-annotated binding",
+            Pattern::Constructor { name, .. } if !is_result_variant(name) => {
+                "a constructor pattern"
+            }
+            Pattern::Binding(name) if self.ctors.get(name).is_some_and(|i| i.fields.is_empty()) => {
+                "a variant pattern"
+            }
+            _ => return false,
+        };
+        // Bind the pattern's names as `any` so one mistake does not cascade
+        // into unknown-identifier noise in the arm body.
+        for binder in pattern_binder_names(pattern) {
+            local.insert(binder, Scheme::mono(Type::any()));
+        }
+        self.errors.push(TypeError::new(format!(
+            "{offending} cannot read an erased `any`: match its structure instead"
+        )));
+        true
+    }
+
+    /// Bind a structural row pattern ([PATTERN-STRUCTURAL]) or its positional
+    /// tuple spelling ([PATTERN-TUPLE]). Over a concrete record the row is
+    /// checked here — a closed pattern names the exact row, an open one a
+    /// subset — and each binder takes its declared field type. Over `any`
+    /// every binder is itself `any`: the row is unknown until run time, so a
+    /// fresh-variable binder would let the body read the field at any type it
+    /// pleased — recovery by pattern, the hole [TYPE-ANY] deletes.
+    fn bind_structural(
+        &mut self,
+        fields: &[(String, String)],
+        open: bool,
+        disc: &Type,
+        local: &mut TypeEnv,
+    ) {
+        let dp = self.ctx.prune(disc);
+        if dp.is_named(names::ANY) {
+            for (_, binder) in fields {
+                if !binder.is_empty() {
+                    local.insert(binder.clone(), Scheme::mono(Type::any()));
+                }
+            }
+            return;
+        }
+        let Some(row) = self.structural_row(&dp, disc) else {
+            // Raw inference variables have no user-facing spelling; the
+            // guidance for an unresolved scrutinee is the annotation itself.
+            let found = match &dp {
+                Type::Var(_) => ": annotate the value it matches".to_string(),
+                other => format!(", found {other}"),
+            };
+            self.errors.push(TypeError::new(format!(
+                "a structural pattern needs a record or `any` scrutinee{found}"
+            )));
+            for (_, binder) in fields {
+                if !binder.is_empty() {
+                    let fv = self.ctx.fresh();
+                    local.insert(binder.clone(), Scheme::mono(fv));
+                }
+            }
+            return;
+        };
+        self.check_row_selects(fields, open, &dp, &row);
+        for (fname, binder) in fields {
+            if binder.is_empty() {
+                continue;
+            }
+            let ft = row.get(fname).cloned().unwrap_or_else(|| self.ctx.fresh());
+            local.insert(binder.clone(), Scheme::mono(ft));
+        }
+    }
+
+    /// The field row a concrete scrutinee exposes to a structural pattern: a
+    /// record type carries it directly; a nominal record annotation arrives as
+    /// a bare `Con`, so its declared row is instantiated and tied to the
+    /// discriminant exactly as a constructor pattern would.
+    fn structural_row(&mut self, dp: &Type, disc: &Type) -> Option<BTreeMap<String, Type>> {
+        if let Type::Record { fields, .. } = dp {
+            return Some(fields.clone());
+        }
+        let Type::Con { name, .. } = dp else {
+            return None;
+        };
+        let name = name.clone();
+        if !self.ctors.get(&name).is_some_and(|i| i.owner_is_record) {
+            return None;
+        }
+        let (_, declared, owner, _) = self.ctor_instance(&name)?;
+        let declared_map: BTreeMap<String, Type> = declared.into_iter().collect();
+        self.push_unify(
+            &Type::Record {
+                name: owner,
+                fields: declared_map.clone(),
+            },
+            disc,
+        );
+        Some(declared_map)
+    }
+
+    /// Reject a structural arm that can never select its concrete scrutinee:
+    /// naming a field the row lacks, or a closed pattern that does not name
+    /// the whole row ([TYPE-ROW]: closed rows unify only when their names
+    /// agree exactly).
+    fn check_row_selects(
+        &mut self,
+        fields: &[(String, String)],
+        open: bool,
+        dp: &Type,
+        row: &BTreeMap<String, Type>,
+    ) {
+        for (fname, _) in fields {
+            if !row.contains_key(fname) {
+                self.errors.push(TypeError::new(format!(
+                    "structural pattern names `{fname}`, but {dp} has no such field"
+                )));
+                return;
+            }
+        }
+        if !open && fields.len() != row.len() {
+            let missing: Vec<&str> = row
+                .keys()
+                .filter(|k| !fields.iter().any(|(f, _)| f == *k))
+                .map(String::as_str)
+                .collect();
+            self.errors.push(TypeError::new(format!(
+                "a closed structural pattern must name the whole row of {dp}; \
+                 missing {}: add `..` to open it",
+                missing.join(", ")
+            )));
         }
     }
 
@@ -313,6 +458,11 @@ impl Checker {
         let dp = self.ctx.apply(disc);
         match &dp {
             t if t.is_named(names::BOOL) => self.check_bool_exhaustive(arms),
+            // An erased value's row is not known until run time, so no set of
+            // structural arms can cover it ([TYPE-ANY], [TYPE-MATCH-EXHAUSTIVE]).
+            t if t.is_named(names::ANY) => self.errors.push(TypeError::new(
+                "a match over `any` is never exhaustive: add a catch-all arm",
+            )),
             Type::Con { name, .. } if self.union_variants.contains_key(name) => {
                 let all = self.union_variants.get(name).cloned().unwrap_or_default();
                 let covered: HashSet<String> = arms
@@ -354,18 +504,25 @@ impl Checker {
     }
 
     /// Flag arms that can never run: any arm after an irrefutable (catch-all)
-    /// arm, and a repeated constructor/variant arm. A catch-all stays legal — it
-    /// suppresses the missing-variant error — but dead arms after it (or duplicate
-    /// variants) are genuine mistakes, so report them. Implements
-    /// [TYPE-MATCH-EXHAUSTIVE].
-    fn check_redundant_arms(&mut self, arms: &[MatchArm]) {
-        let mut covered_all = false;
+    /// arm, a repeated constructor/variant arm, and a structural arm an
+    /// earlier structural arm shadows — a `..`-opened row covers every row
+    /// extending it, and a closed row repeats only itself; arm order must
+    /// never resolve that silently ([PATTERN-STRUCTURAL]). Over a concrete
+    /// record scrutinee a well-typed structural arm always selects, so it also
+    /// ends the reachable arms. Implements [TYPE-MATCH-EXHAUSTIVE].
+    fn check_redundant_arms(&mut self, arms: &[MatchArm], disc: &Type) {
+        let concrete_row = {
+            let dp = self.ctx.apply(disc);
+            self.is_row_scrutinee(&dp)
+        };
+        let mut covered_by: Option<&str> = None;
         let mut seen: HashSet<String> = HashSet::new();
+        let mut seen_rows: Vec<(BTreeSet<&str>, bool)> = Vec::new();
         for arm in arms {
-            if covered_all {
-                self.errors.push(TypeError::new(
-                    "unreachable match arm: an earlier catch-all already covers every case",
-                ));
+            if let Some(earlier) = covered_by {
+                self.errors.push(TypeError::new(format!(
+                    "unreachable match arm: an earlier {earlier} already covers every case"
+                )));
                 continue;
             }
             if let Some(name) = self.pattern_ctor_name(&arm.pattern) {
@@ -375,7 +532,30 @@ impl Checker {
                     )));
                 }
             }
-            covered_all = self.is_irrefutable(&arm.pattern);
+            if let Pattern::Structural { fields, open } = &arm.pattern {
+                let names: BTreeSet<&str> = fields.iter().map(|(f, _)| f.as_str()).collect();
+                if let Some(shadow) = shadowing_row(&seen_rows, &names) {
+                    self.errors
+                        .push(TypeError::new(format!("unreachable match arm: {shadow}")));
+                }
+                seen_rows.push((names, *open));
+                // A well-typed structural arm over a concrete record always
+                // selects, so nothing after it can run.
+                covered_by = concrete_row.then_some("structural arm");
+                continue;
+            }
+            covered_by = self.is_irrefutable(&arm.pattern).then_some("catch-all");
+        }
+    }
+
+    /// Whether a concrete scrutinee exposes a field row to structural arms — a
+    /// record type, or a nominal record referenced by name. The pure query
+    /// behind [`Self::structural_row`], for reachability decisions.
+    fn is_row_scrutinee(&self, dp: &Type) -> bool {
+        match dp {
+            Type::Record { .. } => true,
+            Type::Con { name, .. } => self.ctors.get(name).is_some_and(|i| i.owner_is_record),
+            _ => false,
         }
     }
 
@@ -425,6 +605,53 @@ impl Checker {
     }
 }
 
+/// The description of an earlier structural arm that makes one carrying
+/// `names` unreachable: an open row it extends (an open `{ x, .. }` selects
+/// every row carrying `x`), or an identical closed row. Rows are compared as
+/// ordered sets so the diagnostic spelling is deterministic.
+fn shadowing_row(seen: &[(BTreeSet<&str>, bool)], names: &BTreeSet<&str>) -> Option<String> {
+    seen.iter().find_map(|(prev, open)| {
+        if *open && prev.is_subset(names) {
+            let spelled = prev.iter().copied().collect::<Vec<_>>().join(", ");
+            Some(format!(
+                "an earlier `{{ {spelled}, .. }}` arm already covers this row"
+            ))
+        } else if !*open && prev == names {
+            Some("this row is already matched by an earlier arm".to_string())
+        } else {
+            None
+        }
+    })
+}
+
+/// Every name a pattern would bind — the cascade-avoidance binding set for a
+/// rejected arm over an erased scrutinee.
+fn pattern_binder_names(pattern: &Pattern) -> Vec<String> {
+    match pattern {
+        Pattern::TypeAnnotated { name, .. } | Pattern::Binding(name) => vec![name.clone()],
+        Pattern::Constructor {
+            fields,
+            sub_patterns,
+            ..
+        } => fields
+            .iter()
+            .cloned()
+            .chain(sub_patterns.iter().flat_map(pattern_binder_names))
+            .collect(),
+        Pattern::List { elements, rest } => elements
+            .iter()
+            .flat_map(pattern_binder_names)
+            .chain(rest.iter().cloned())
+            .collect(),
+        Pattern::Structural { fields, .. } => fields
+            .iter()
+            .filter(|(_, b)| !b.is_empty())
+            .map(|(_, b)| b.clone())
+            .collect(),
+        Pattern::Wildcard | Pattern::Literal(_) => Vec::new(),
+    }
+}
+
 fn nullary_owner_ty(owner: String, args: Vec<Type>, is_record: bool) -> Type {
     if is_record {
         Type::Record {
@@ -446,10 +673,155 @@ mod tests {
             fn getx(p: Point) -> int = match p {\n\
               { x, y } => (x + y) ?: 0\n\
             }\n");
-        // A structural pattern over a non-record discriminant binds fresh vars.
-        ok("fn any(v) = match v {\n\
-              { a, b } => 0\n\
+        // An UNRESOLVED scrutinee refuses a structural arm: the old contract
+        // bound its fields as fresh variables, which let the body read each
+        // field at whatever type it pleased — recovery through a pattern,
+        // with no annotation to reject ([TYPE-ANY]).
+        let errs = check("fn f(v) = match v {\n  { a, b } => 0\n  _ => 1\n}\n");
+        assert!(
+            errs.iter()
+                .any(|e| e.message.contains("needs a record or `any` scrutinee")),
+            "an unresolved scrutinee must not bind structural fields: {errs:?}"
+        );
+    }
+
+    #[test]
+    fn structural_fields_of_an_erased_scrutinee_are_erased_themselves() {
+        // Over `any` the row is unknown until run time, so a bound field is
+        // itself `any` — reading it with an operator is the erasure read the
+        // checker deletes everywhere else.
+        let errs = check(
+            "fn f(v: any) -> int = match v {\n\
+               { n } => n + 1\n\
+               _ => 0\n\
+             }\n",
+        );
+        assert!(
+            errs.iter()
+                .any(|e| e.message.contains("cannot apply `+` to an erased `any`")),
+            "a narrowed field must stay erased until matched further: {errs:?}"
+        );
+    }
+
+    #[test]
+    fn a_match_over_any_requires_a_catch_all() {
+        let errs = check(
+            "fn f(v: any) -> int = match v {\n\
+               { n } => 1\n\
+             }\n",
+        );
+        assert!(
+            errs.iter()
+                .any(|e| e.message.contains("a match over `any` is never exhaustive")),
+            "{errs:?}"
+        );
+    }
+
+    #[test]
+    fn an_open_row_arm_shadows_every_extension_after_it() {
+        let errs = check(
+            "fn f(v: any) -> int = match v {\n\
+               { x, .. } => 1\n\
+               { x, y } => 2\n\
+               _ => 0\n\
+             }\n",
+        );
+        assert!(
+            errs.iter().any(|e| e
+                .message
+                .contains("`{ x, .. }` arm already covers this row")),
+            "{errs:?}"
+        );
+        // Closed rows shadow only their exact repetition; reordering the
+        // spelling does not make it a different row.
+        let errs = check(
+            "fn f(v: any) -> int = match v {\n\
+               { x, y } => 1\n\
+               { y, x } => 2\n\
+               _ => 0\n\
+             }\n",
+        );
+        assert!(
+            errs.iter()
+                .any(|e| e.message.contains("already matched by an earlier arm")),
+            "{errs:?}"
+        );
+    }
+
+    #[test]
+    fn a_closed_structural_pattern_must_name_the_whole_row() {
+        let errs = check(
+            "type Point = { x: int, y: int }\n\
+             fn f(p: Point) -> int = match p {\n\
+               { x } => x\n\
+             }\n",
+        );
+        assert!(
+            errs.iter()
+                .any(|e| e.message.contains("must name the whole row") && e.message.contains('y')),
+            "{errs:?}"
+        );
+        // Opening the row with `..` selects the wider record.
+        ok("type Point = { x: int, y: int }\n\
+            fn f(p: Point) -> int = match p {\n\
+              { x, .. } => x\n\
             }\n");
+        // Naming a field the row lacks can never select.
+        let errs = check(
+            "type Point = { x: int, y: int }\n\
+             fn f(p: Point) -> int = match p {\n\
+               { z, .. } => z\n\
+             }\n",
+        );
+        assert!(
+            errs.iter().any(|e| e.message.contains("has no such field")),
+            "{errs:?}"
+        );
+    }
+
+    #[test]
+    fn tuple_patterns_bind_positional_record_slots() {
+        // `(n, s)` is the positional spelling of `{ 0, 1 }`; over a
+        // positionally-declared record each binder takes its slot's declared
+        // type ([PATTERN-TUPLE]).
+        ok("type Pair = Pair(int, string)\n\
+            fn f(p: Pair) -> int = match p {\n\
+              (n, s) => n + length(s) ?: 0\n\
+            }\n");
+    }
+
+    #[test]
+    fn shape_reading_patterns_are_rejected_over_an_erased_scrutinee() {
+        // Each of these arms reads the erased word with no runtime test — the
+        // annotation-pattern spelling compiled before this rule and read a
+        // heap address exactly as finding B did ([TYPE-ANY]).
+        for (arm, kind) in [
+            ("0 => 1", "a literal pattern"),
+            ("s: string => 2", "a type-annotated binding"),
+            ("[a, b] => 3", "a list pattern"),
+        ] {
+            let errs = check(&format!(
+                "fn f(v: any) -> int = match v {{\n  {arm}\n  _ => 0\n}}\n"
+            ));
+            assert!(
+                errs.iter()
+                    .any(|e| e.message.contains(kind) && e.message.contains("cannot read")),
+                "expected `{kind}` rejection for `{arm}`: {errs:?}"
+            );
+        }
+        let errs = check(
+            "type Color = Red | Green\n\
+             fn f(v: any) -> int = match v {\n\
+               Red => 1\n\
+               _ => 0\n\
+             }\n",
+        );
+        assert!(
+            errs.iter().any(|e| e
+                .message
+                .contains("a variant pattern cannot read an erased `any`")),
+            "{errs:?}"
+        );
     }
 
     #[test]

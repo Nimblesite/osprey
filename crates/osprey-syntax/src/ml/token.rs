@@ -117,6 +117,11 @@ pub(crate) enum TokKind {
     LBracket,
     /// `]`.
     RBracket,
+    /// `{` — opens a structural row pattern (`{ heading, .. }`)
+    /// ([PATTERN-STRUCTURAL]); braces are not an ML expression form.
+    LBrace,
+    /// `}`.
+    RBrace,
     /// `,`.
     Comma,
     /// `|` — the union-variant separator of an inline `type` declaration

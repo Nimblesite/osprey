@@ -24,6 +24,8 @@ Got C
 Union equality tests:
 Both red
 Different colors
+narrowed: held=printed
+rendered: { x: 1, y: 2 }
 ok 1 - any values retain usable behavior across typed boundaries
 1..1
 # tests=1 passed=1 failed=0 skipped=0

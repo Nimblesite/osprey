@@ -1,0 +1,8 @@
+a literal pattern cannot read an erased `any`: match its structure instead
+a type-annotated binding cannot read an erased `any`: match its structure instead
+a variant pattern cannot read an erased `any`: match its structure instead
+a match over `any` is never exhaustive: add a catch-all arm
+unreachable match arm: an earlier `{ x, .. }` arm already covers this row
+cannot apply `==` to an erased `any`: match its structure instead
+cannot access field `name` on an erased `any`: match its structure instead
+45:0: let `viaAnon`: cannot erase an anonymous record into `any`: declare its row as a named type first

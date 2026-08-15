@@ -180,6 +180,13 @@ The relevant precedence, highest to lowest, is:
 
 1. Postfix call, field access, and indexing
 2. Pipe `|>`
+
+A postfix `(` or `[` must immediately follow its callee, with no whitespace:
+`f(x)` is a call and `xs[0]` an index, while a spaced `(` or `[` begins a new
+expression or the next match arm's pattern. This is what lets an arm body be
+followed by a tuple arm `(a, b) => …` or a list arm `[h, ...t] => …` without
+the body swallowing it ([PATTERN-TUPLE](0007-PatternMatching.md#tuple-patterns--pattern-tuple),
+[TYPE-LIST-PATTERNS](0004-TypeSystem.md#patterns--type-list-patterns)).
 3. Unary `!`, `-`, `+`
 4. Multiplicative `*`, `/`, `%`
 5. Additive `+`, `-`

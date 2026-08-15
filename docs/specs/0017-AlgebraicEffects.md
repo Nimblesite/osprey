@@ -273,12 +273,11 @@ The conformance cases are
 accepted counterparts.
 
 The rule lives in inference rather than code generation because it needs the
-source types. An `any` arm answers anything [TYPE-ANY], and today an erased
-`any` and an `int` reach code generation as the same machine word: a check there
-would either reject every valid erased answer or let a pointer through as a
-successful integer. The row descriptor in
-[plan 0027](../plans/0027-any-erasure-and-recovery.md) removes that conflation,
-but the rule stays in inference — it is about source types, not representation.
+source types. The runtime shape descriptor
+([TYPE-ANY](0004-TypeSystem.md#the-any-type--type-any)) has since removed the
+word-level conflation — an erased `any` now reaches code generation as its own
+boxed representation — but the rule stays in inference: it is about source
+types, not representation.
 
 ### Known limits of abandoning a region
 

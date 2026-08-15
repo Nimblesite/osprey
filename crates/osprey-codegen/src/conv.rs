@@ -19,8 +19,16 @@ pub(crate) fn as_i64(cg: &mut Codegen, v: Value) -> Result<Value> {
                 "expected an integer, found a string/handle",
             ))
         }
+        LType::Any => return Err(read_through_erasure()),
     };
     Ok(Value::new(reg, LType::I64))
+}
+
+/// The backend refusal for numerically consuming an erased box. The checker
+/// rejects every reachable spelling first ([TYPE-ANY]); this is the emitter's
+/// own guarantee that no future call path revives the unchecked read.
+fn read_through_erasure() -> CodegenError {
+    CodegenError::invalid("cannot read through an erased `any`: match its structure instead")
 }
 
 /// Coerce to `i1` (truthiness: non-zero).
@@ -31,6 +39,7 @@ pub(crate) fn as_i1(cg: &mut Codegen, v: Value) -> Result<Value> {
         LType::Double | LType::Str | LType::Ptr => {
             return Err(CodegenError::invalid("expected a bool"))
         }
+        LType::Any => return Err(read_through_erasure()),
     };
     Ok(Value::new(reg, LType::I1))
 }
@@ -49,7 +58,11 @@ pub(crate) fn box_to_i64(cg: &mut Codegen, v: Value) -> Value {
     }
     let reg = match v.ty {
         LType::I64 => return v,
-        LType::Str | LType::Ptr => cg.emit_reg(format!("ptrtoint {} {} to i64", v.ty, v.operand)),
+        // A box pointer travels the word ABI like any handle; the erasure
+        // survives because the reader restores `Any` from its slot type.
+        LType::Str | LType::Ptr | LType::Any => {
+            cg.emit_reg(format!("ptrtoint {} {} to i64", v.ty, v.operand))
+        }
         LType::I1 | LType::I32 => cg.emit_reg(format!("zext {} {} to i64", v.ty, v.operand)),
         LType::Double => cg.emit_reg(format!("bitcast double {} to i64", v.operand)),
     };
@@ -62,7 +75,7 @@ pub(crate) fn box_to_i64(cg: &mut Codegen, v: Value) -> Value {
 pub(crate) fn unbox_from_i64(cg: &mut Codegen, raw: &str, ty: LType) -> Value {
     let reg = match ty {
         LType::I64 => return Value::new(raw.to_string(), LType::I64),
-        LType::Str | LType::Ptr => cg.emit_reg(format!("inttoptr i64 {raw} to i8*")),
+        LType::Str | LType::Ptr | LType::Any => cg.emit_reg(format!("inttoptr i64 {raw} to i8*")),
         LType::I1 => cg.emit_reg(format!("trunc i64 {raw} to i1")),
         LType::I32 => cg.emit_reg(format!("trunc i64 {raw} to i32")),
         LType::Double => cg.emit_reg(format!("bitcast i64 {raw} to double")),
@@ -95,6 +108,7 @@ pub(crate) fn as_double(cg: &mut Codegen, v: Value) -> Result<Value> {
             as_double(cg, i)
         }
         LType::I32 | LType::Str | LType::Ptr => Err(CodegenError::invalid("expected a number")),
+        LType::Any => Err(read_through_erasure()),
     }
 }
 

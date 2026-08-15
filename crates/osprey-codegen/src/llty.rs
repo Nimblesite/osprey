@@ -6,7 +6,7 @@
 use std::fmt;
 
 /// An LLVM first-class type the emitter knows how to name and move around.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum LType {
     /// 64-bit integer — Osprey `int`.
     I64,
@@ -22,6 +22,14 @@ pub enum LType {
     /// Distinguished from [`LType::Str`] so it is never strcmp'd or printed as
     /// text directly.
     Ptr,
+    /// `i8*` to an erased-`any` box `{ i8* desc, i64 payload }` — a value that
+    /// crossed into `any` and carries its runtime shape descriptor
+    /// ([`crate::anybox`], [TYPE-ANY]). Distinct from [`LType::I64`] so
+    /// ownership, the effect mailbox and rendering can SEE the erasure —
+    /// `I64` being simultaneously every `int` and every erased word is what
+    /// made #208's over-release and the address-as-integer prints
+    /// undetectable.
+    Any,
 }
 
 /// The generator role of a parameter register, in the shared role table of
@@ -47,7 +55,7 @@ pub(crate) fn param_register(index: usize) -> String {
 pub(crate) const fn zero_literal(ty: LType) -> &'static str {
     match ty {
         LType::Double => "0.0",
-        LType::Str | LType::Ptr => "null",
+        LType::Str | LType::Ptr | LType::Any => "null",
         LType::I1 => "false",
         LType::I64 | LType::I32 => "0",
     }
@@ -62,9 +70,9 @@ impl LType {
             LType::I1 => "i1",
             LType::I32 => "i32",
             LType::Double => "double",
-            // `Str` and `Ptr` are semantically distinct handles that share the
-            // same LLVM spelling `i8*`.
-            LType::Str | LType::Ptr => "i8*",
+            // `Str`, `Ptr` and `Any` are semantically distinct handles that
+            // share the same LLVM spelling `i8*`.
+            LType::Str | LType::Ptr | LType::Any => "i8*",
         }
     }
 }
@@ -78,17 +86,25 @@ pub(crate) fn elem_of_tag(v: &Value, prefix: &str) -> Option<LType> {
         "double" => Some(LType::Double),
         "i1" => Some(LType::I1),
         "i64" => Some(LType::I64),
+        ANY_TAG_SPELLING => Some(LType::Any),
         _ => None,
     }
 }
 
+/// The tag spelling of an erased-`any` element. It cannot use the LLVM
+/// spelling: `i8*` is also every string and handle, and a tag must name the
+/// element unambiguously so a read-back re-types the word correctly.
+const ANY_TAG_SPELLING: &str = "any";
+
 /// The owner tag for a container holding `elem` words: `<prefix><spelling>`
-/// when the element is a concrete scalar the uniform `i64` element ABI would
-/// otherwise erase, the untyped `bare` owner when it is anything else.
+/// when the element is a concrete scalar (or an erased-`any` box) the uniform
+/// `i64` element ABI would otherwise flatten, the untyped `bare` owner when it
+/// is anything else.
 pub(crate) fn elem_tagged_owner(prefix: &str, bare: &str, elem: Option<LType>) -> String {
-    match elem.filter(|lt| matches!(lt, LType::I64 | LType::Double | LType::I1)) {
-        Some(lt) => format!("{prefix}{}", lt.as_str()),
-        None => bare.to_string(),
+    match elem {
+        Some(LType::Any) => format!("{prefix}{ANY_TAG_SPELLING}"),
+        Some(lt @ (LType::I64 | LType::Double | LType::I1)) => format!("{prefix}{}", lt.as_str()),
+        _ => bare.to_string(),
     }
 }
 

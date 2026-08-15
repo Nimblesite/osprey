@@ -75,7 +75,10 @@ impl Default for ArcLedger {
 /// `rodata_regs` is what lets a string literal skip the dup/drop calls
 /// entirely instead of paying a locked probe to learn they are no-ops.
 fn managed(cg: &Codegen, v: &Value) -> bool {
-    matches!(v.ty, LType::Str | LType::Ptr)
+    // An erased-`any` box is an ordinary tagged allocation; excluding it here
+    // was exactly #208 — the epilogue could neither move an erasing return's
+    // owner out nor retain a borrowed one, so the frame freed the referent.
+    matches!(v.ty, LType::Str | LType::Ptr | LType::Any)
         && v.operand.starts_with('%')
         && !cg.is_rodata(&v.operand)
 }

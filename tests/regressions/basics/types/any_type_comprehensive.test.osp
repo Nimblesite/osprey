@@ -149,10 +149,68 @@ print("Union equality tests:")
 print(compareColors(c1: color1, c2: color2))
 print(compareColors(c1: color1, c2: color3))
 
+/// --- Structural narrowing [PATTERN-STRUCTURAL] [PATTERN-TUPLE] ---
+/// The ONLY read through an erased value is a structural match: arms select
+/// by the value's runtime row, `..` opens a row to extensions, a tuple arm is
+/// the positional spelling, and every scalar declines each field-naming arm
+/// so the catch-all takes it. The heap recovery that annotations lost comes
+/// back here as a narrowing: `held` reads a runtime-built string straight
+/// back out of the erased record's row.
+type Boxed = { held: string, tag: int }
+type Pair = Pair(int, string)
+type Point = { x: int, y: int }
+
+fn describeAny(v: any) -> string = match v {
+    { held, .. } => "held=${held}"
+    { value }    => "value=${value}"
+    (n, s)       => "pair=${n}:${s}"
+    _            => "other=${v}"
+}
+
+/// Narrowing is stable: the same box selects the same arm every time.
+fn describeTwice(v: any) -> string = "${describeAny(v)}/${describeAny(v)}"
+
+/// Rendering reads through the shape descriptor, so an erased record prints
+/// its row and an erased scalar prints itself — never a machine word.
+fn erasedPoint() -> any = Point { x: 1, y: 2 }
+
+/// An erased operand crosses an effect mailbox as the box it is: the handler
+/// arm narrows exactly what the performer erased, and the mailbox owns the
+/// box while the arm runs [EFFECTS-OPERATION-MAILBOX].
+effect Audit {
+    note: fn(any) -> int
+}
+
+fn auditWork() -> int = {
+    let a = perform Audit.note(Boxed { held: "eff" + "ect", tag: 3 })
+    let b = perform Audit.note(5)
+    (a + b) ?: 0
+}
+
+fn auditTally() -> int = handle Audit
+    note item => resume(length(describeAny(item)))
+in auditWork()
+
+/// Built, boxed, never read: the erasure alone must not disturb ownership —
+/// the ARC live-object oracle observes the drop. A statement discards it; a
+/// `-> Unit` annotation could not, since even a discard of `any` counts as
+/// recovery at an annotation.
+forward("dis" + "carded")
+print("narrowed: ${describeAny(Boxed { held: "print" + "ed", tag: 0 })}")
+print("rendered: ${erasedPoint()}")
+
 /// Verifies erased values still flow through fields, arguments, and union matches.
 fn anyTypeBehaviorCase() = {
     let object = TestType { value: "payload" }
     checkAll("any values and inferred union behavior", [
+        describeAny(Boxed { held: "dyn" + "amic", tag: 9 }) == "held=dynamic",
+        describeAny(TestType { value: "via row" }) == "value=via row",
+        describeAny(Pair(7, "seven")) == "pair=7:seven",
+        describeAny(42) == "other=42",
+        describeAny(forward("still" + "erased")) == "other=stillerased",
+        describeTwice(Boxed { held: "twin", tag: 2 }) == "held=twin/held=twin",
+        toString(erasedPoint()) == "{ x: 1, y: 2 }",
+        auditTally() == 18,
         toString(getDynamicValue()) == "42",
         toString(processAnyValue(5)) == "15",
         forwardedHeap() == "Processed any",

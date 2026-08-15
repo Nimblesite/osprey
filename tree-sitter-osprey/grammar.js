@@ -63,6 +63,21 @@ module.exports = grammar({
     // expression), NOT a structural-ternary field-pattern on the condition; the
     // `}` with no trailing `?` rules the field-pattern out, GLR resolves it.
     [$.primary_expression, $.field_pattern],
+    // `… => body` then `{ x, y }` — an arm body followed by a brace opens the
+    // NEXT arm's structural pattern, not a structural ternary extending the
+    // body; the token after the closing brace (`=>` vs `?`) decides, GLR
+    // resolves it. The field_pattern self-conflict keeps the fork alive at
+    // the `identifier ,` reduce, where `..` is not yet visible
+    // [PATTERN-STRUCTURAL].
+    [$.primary_expression, $.structural_pattern],
+    [$.field_pattern],
+    [$.ternary_expression, $.match_arm],
+    [$.expression_statement, $.ternary_expression],
+    [$.let_declaration, $.ternary_expression],
+    [$.lambda_expression, $.ternary_expression],
+    [$.select_arm, $.ternary_expression],
+    [$.handler_arm, $.ternary_expression],
+    [$.function_declaration, $.ternary_expression],
     // `await ( x )` — the await_call form vs unary `await` over a parenthesized expr.
     [$.primary_expression, $.await_call],
     // `Name [` / `Name <` — array/generic type vs a bare type identifier.
@@ -378,11 +393,19 @@ module.exports = grammar({
       seq(field('pattern', $.pattern), '=>', field('body', $.expression)),
 
     ternary_expression: ($) =>
-      prec.right(
-        PREC.ternary,
-        choice(
-          seq(field('condition', $.expression), '{', $.field_pattern, '}', '?', $.expression, ':', $.expression),
+      choice(
+        // The structural form carries NO static precedence: after a match-arm
+        // body, `{ f }` is equally the next arm's structural pattern, and a
+        // static winner would make one of the two spellings unparseable. The
+        // declared conflict with match_arm forks instead, and the token after
+        // `}` (`?` vs `=>`) settles it [PATTERN-STRUCTURAL].
+        prec.right(seq(field('condition', $.expression), '{', $.field_pattern, '}', '?', $.expression, ':', $.expression)),
+        prec.right(
+          PREC.ternary,
           seq(field('condition', $.expression), '?', field('then', $.expression), ':', field('else', $.expression)),
+        ),
+        prec.right(
+          PREC.ternary,
           seq(field('condition', $.expression), '?', ':', field('else', $.expression)),
         ),
       ),
@@ -425,7 +448,12 @@ module.exports = grammar({
           field('callee', $.expression),
           choice(
             seq('.', field('member', $.identifier)),
-            seq('(', optional($.argument_list), ')'),
+            // The argument `(` must immediately follow the callee (no
+            // whitespace), exactly as the index `[` below — so a match-arm
+            // body never swallows the next arm's `(a, b)` tuple pattern as an
+            // argument list (`=> 0  (n, s) => …`). Implements [PATTERN-TUPLE]
+            // coexistence with postfix calls.
+            seq(token.immediate('('), optional($.argument_list), ')'),
             // The index `[` must immediately follow the callee (no whitespace),
             // so a match-arm body never swallows the next arm's `[…]` list
             // pattern as an index (`=> 0  [head, ...t] => …`). Implements
@@ -521,8 +549,26 @@ module.exports = grammar({
         seq(field('name', $.identifier), ':', '{', $.field_pattern, '}'), // p: { x, y }
         seq(field('name', $.identifier), ':', field('type', $._type)), // value: Int
         seq(field('name', $.identifier), optional(field('binding', $.identifier))), // bare var / capture
-        seq('{', $.field_pattern, '}'), // { name, age }
+        $.structural_pattern, // { name, age } / { name, .. }
+        $.tuple_pattern, // (a, b) — positional row [PATTERN-TUPLE]
         '_',
+      ),
+    // `{ name, age }` closed row / `{ name, .. }` open row. The `..` marker
+    // lives here, not in field_pattern, so the structural ternary and the
+    // `Ctor { … }` forms — which share field_pattern — cannot spell an open
+    // row [PATTERN-STRUCTURAL].
+    structural_pattern: ($) => seq('{', $.field_pattern, optional(seq(',', '..')), '}'),
+    // Two or more comma-separated slots; `(x)` stays expression grouping and
+    // never reaches pattern position, so a one-element tuple is unspellable.
+    // A slot is a binder or `_` — a nested pattern has no fall-through
+    // spelling, exactly as in positional constructor slots; the ML parser
+    // rejects the same shape ([FLAVOR-ML-PATTERN-GROUP], [PATTERN-TUPLE]).
+    tuple_pattern: ($) =>
+      seq(
+        '(',
+        field('element', choice($.identifier, '_')),
+        repeat1(seq(',', field('element', choice($.identifier, '_')))),
+        ')',
       ),
     // The rest binder `...id` is allowed only at the tail; a fixed-length form
     // (`[]`, `[a, b]`) omits it. Mid-list rest (`[a, ...m, b]`) is unrepresentable.

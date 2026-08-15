@@ -1189,6 +1189,21 @@ fn lower_pattern(pattern: MlPattern) -> Pattern {
         MlPattern::Str(raw) => Pattern::Literal(Box::new(lower_string(&raw))),
         MlPattern::Bool(b) => Pattern::Literal(Box::new(Expr::Bool(b))),
         MlPattern::Bind(name) => Pattern::Binding(name),
+        MlPattern::Structural { fields, open } => Pattern::Structural {
+            fields: fields.into_iter().map(|f| (f.clone(), f)).collect(),
+            open,
+        },
+        // The parser guarantees every slot is a binder or `_`; `_` binds
+        // nothing, spelled as the empty binder.
+        MlPattern::Tuple(elements) => osprey_ast::tuple_pattern(
+            elements
+                .into_iter()
+                .map(|p| match p {
+                    MlPattern::Bind(name) => name,
+                    _ => String::new(),
+                })
+                .collect(),
+        ),
         MlPattern::Ctor { name, fields } => crate::desugar::ctor_pattern(name, fields),
         MlPattern::List { elements, rest } => Pattern::List {
             elements: elements.into_iter().map(lower_pattern).collect(),

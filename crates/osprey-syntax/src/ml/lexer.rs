@@ -429,6 +429,8 @@ fn single_char_operator(c: char) -> Option<TokKind> {
         ')' => TokKind::RParen,
         '[' => TokKind::LBracket,
         ']' => TokKind::RBracket,
+        '{' => TokKind::LBrace,
+        '}' => TokKind::RBrace,
         ',' => TokKind::Comma,
         '.' => TokKind::Dot,
         // Reached only after `two_char_operator` has declined, so `||` and `|>`
@@ -462,8 +464,8 @@ fn insert_layout(content: Vec<Token>) -> (Vec<Token>, Vec<SyntaxError>) {
             layout.open_region(depth, tok.pos, &mut out);
         }
         match tok.kind {
-            TokKind::LParen | TokKind::LBracket => depth += 1,
-            TokKind::RParen | TokKind::RBracket => {
+            TokKind::LParen | TokKind::LBracket | TokKind::LBrace => depth += 1,
+            TokKind::RParen | TokKind::RBracket | TokKind::RBrace => {
                 layout.close_regions_at(depth, tok.pos, &mut out);
                 depth = (depth - 1).max(0);
             }

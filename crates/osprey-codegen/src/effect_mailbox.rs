@@ -27,11 +27,11 @@ const OP_ARG_MANAGED: &str = "1";
 fn slot_is_managed(sig: &OpSig, resolved: Option<&osprey_types::OpType>, i: usize) -> bool {
     if sig.param_erased.get(i).copied().unwrap_or(false) {
         return resolved.and_then(|r| r.params.get(i)).is_some_and(|t| {
-            result_inner(t).is_some() || matches!(ltype_of(t), LType::Ptr | LType::Str)
+            result_inner(t).is_some() || matches!(ltype_of(t), LType::Ptr | LType::Str | LType::Any)
         });
     }
     let param = sig.param(i);
-    param.result_inner.is_some() || matches!(param.ty, LType::Ptr | LType::Str)
+    param.result_inner.is_some() || matches!(param.ty, LType::Ptr | LType::Str | LType::Any)
 }
 
 fn store_slot(cg: &mut Codegen, arr_ty: &str, arr: &str, i: usize, ty: &str, operand: &str) {

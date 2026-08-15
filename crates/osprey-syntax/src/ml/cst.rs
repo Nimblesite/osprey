@@ -622,6 +622,17 @@ pub(crate) enum MlPattern {
     },
     /// A bare lowercase binding.
     Bind(String),
+    /// `{ a, b }` / `{ a, .. }` — a structural row pattern binding each named
+    /// field; `..` opens the row ([PATTERN-STRUCTURAL]).
+    Structural {
+        /// Bound field names in written order.
+        fields: Vec<String>,
+        /// Whether a trailing `..` opens the row.
+        open: bool,
+    },
+    /// `(a, b)` — a tuple pattern: the positional spelling of a structural
+    /// row, one binder or `_` per decimal slot ([PATTERN-TUPLE]).
+    Tuple(Vec<MlPattern>),
     /// `[ p, … ]` or `[ p, …, ...rest ]` — a list pattern with fixed-prefix
     /// element patterns and an optional trailing `...name` rest-binder
     /// ([FLAVOR-ML-MATCH], [TYPE-LIST-PATTERNS]).

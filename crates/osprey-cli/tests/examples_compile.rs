@@ -330,7 +330,7 @@ const ML_NEGATIVES: [(&str, &str); 5] = [
     ("ml_match_arm_thin_arrow.ospo", "expected '=>' in match arm"),
     (
         "ml_brace_record_and_question_sigil.ospo",
-        "unexpected character '{'",
+        "unexpected token LBrace in expression",
     ),
 ];
 
