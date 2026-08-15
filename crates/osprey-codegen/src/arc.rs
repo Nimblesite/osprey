@@ -78,9 +78,7 @@ fn managed(cg: &Codegen, v: &Value) -> bool {
     // An erased-`any` box is an ordinary tagged allocation; excluding it here
     // was exactly #208 — the epilogue could neither move an erasing return's
     // owner out nor retain a borrowed one, so the frame freed the referent.
-    v.ty.is_managed_ptr()
-        && v.operand.starts_with('%')
-        && !cg.is_rodata(&v.operand)
+    v.ty.is_managed_ptr() && v.operand.starts_with('%') && !cg.is_rodata(&v.operand)
 }
 
 /// `v`'s operand as a plain `i8*`, bitcasting a typed block pointer. A flat
@@ -504,6 +502,7 @@ fn release_dead(cg: &mut Codegen, live: &std::collections::BTreeSet<String>) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::llty::LType;
 
     fn owner_names(cg: &Codegen) -> Vec<&str> {
         cg.arc

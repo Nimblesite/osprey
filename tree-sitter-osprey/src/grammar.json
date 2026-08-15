@@ -2698,11 +2698,12 @@
                 "type": "SEQ",
                 "members": [
                   {
-                    "type": "IMMEDIATE_TOKEN",
-                    "content": {
-                      "type": "STRING",
-                      "value": "("
-                    }
+                    "type": "SYMBOL",
+                    "name": "_call_open_gap"
+                  },
+                  {
+                    "type": "STRING",
+                    "value": "("
                   },
                   {
                     "type": "CHOICE",
@@ -4913,7 +4914,12 @@
     ]
   ],
   "precedences": [],
-  "externals": [],
+  "externals": [
+    {
+      "type": "SYMBOL",
+      "name": "_call_open_gap"
+    }
+  ],
   "inline": [],
   "supertypes": []
 }

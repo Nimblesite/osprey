@@ -33,6 +33,12 @@ module.exports = grammar({
 
   word: ($) => $.identifier,
 
+  // A zero-width marker that holds only when the next `(` sits on the SAME LINE
+  // as the callee — the one thing that tells a postfix call from the following
+  // match arm's tuple pattern, and a decision no precedence can encode. See
+  // src/scanner.c for why it lives in the lexer [PATTERN-TUPLE].
+  externals: ($) => [$._call_open_gap],
+
   conflicts: ($) => [
     // `ID { ... }` is ambiguous between an update/type-constructor expression and
     // an object/map literal until the brace body is seen; GLR resolves it.
@@ -448,12 +454,14 @@ module.exports = grammar({
           field('callee', $.expression),
           choice(
             seq('.', field('member', $.identifier)),
-            // The argument `(` must immediately follow the callee (no
-            // whitespace), exactly as the index `[` below — so a match-arm
-            // body never swallows the next arm's `(a, b)` tuple pattern as an
-            // argument list (`=> 0  (n, s) => …`). Implements [PATTERN-TUPLE]
+            // `f(args)` and `f (args)` both — the argument `(` may be preceded
+            // by horizontal space but must stay on the callee's line, which is
+            // what `_call_open_gap` (zero-width, src/scanner.c) asserts. That
+            // keeps the call binding at PREC.member, so `1 + id (2)` is still
+            // `1 + id(2)`, while a `(` opening the next line belongs to that
+            // arm's `(a, b)` tuple pattern instead. Implements [PATTERN-TUPLE]
             // coexistence with postfix calls.
-            seq(token.immediate('('), optional($.argument_list), ')'),
+            seq($._call_open_gap, '(', optional($.argument_list), ')'),
             // The index `[` must immediately follow the callee (no whitespace),
             // so a match-arm body never swallows the next arm's `[…]` list
             // pattern as an index (`=> 0  [head, ...t] => …`). Implements

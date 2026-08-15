@@ -191,6 +191,54 @@ fn auditTally() -> int = handle Audit
     note item => resume(length(describeAny(item)))
 in auditWork()
 
+/// A container of erased values keeps them BOXED. Folding an `any` element
+/// into the uniform integer word tagged the slots unmanaged and read each
+/// box's ADDRESS back as an `int`, so a round-tripped element rendered as a
+/// pointer and its payload was never released. Both list representations have
+/// to survive it — the flat literal here, the runtime `List` below — and both
+/// a scalar and a heap payload, since only the heap one moves the ARC oracle
+/// off zero [TYPE-ANY].
+fn erasedInList() -> string = match [forward("bo" + "xed"), forward(7)] {
+    [a, b] => "${describeAny(a)}|${describeAny(b)}"
+    _      => "miss"
+}
+
+fn erasedInRuntimeList() -> string =
+    "${listGet(listAppend(listAppend(List(), forward("ap" + "pended")), forward(8)), 0)}"
+
+/// The same ownership question, asked at the two other places a value crosses
+/// a representation boundary as a raw word: a fiber's result slot and a fold's
+/// loop-carried accumulator. Each carried its own hand-written "is this a
+/// string or a handle" test, so each answered `no` for a box [GC-ARC-PERCEUS].
+fn fiberAny() -> string = {
+    let f = spawn forward("fib" + "er")
+    describeAny(await(f))
+}
+
+fn foldAny() -> string =
+    describeAny(range(0, 3) |> fold(forward("se" + "ed"), |acc, x| => forward(acc)))
+
+/// Replacing a captured `mut any` must RELEASE the box it displaces. The
+/// rebind released only strings and handles, so every handler operation left
+/// the previous box — and any payload hanging off it — alive; the leak grows
+/// with the number of operations, and the ARC oracle counts what survives.
+effect Swap {
+    swap: fn(any) -> Unit
+}
+
+fn swapWork() -> Unit !Swap = {
+    perform Swap.swap(forward("re" + "placed"))
+    perform Swap.swap(11)
+}
+
+fn swapped() -> string = {
+    mut slot = forward("ini" + "tial")
+    handle Swap
+        swap item => { slot = item }
+    in swapWork()
+    describeAny(slot)
+}
+
 /// Built, boxed, never read: the erasure alone must not disturb ownership —
 /// the ARC live-object oracle observes the drop. A statement discards it; a
 /// `-> Unit` annotation could not, since even a discard of `any` counts as
@@ -208,6 +256,11 @@ fn anyTypeBehaviorCase() = {
         describeAny(Pair(7, "seven")) == "pair=7:seven",
         describeAny(42) == "other=42",
         describeAny(forward("still" + "erased")) == "other=stillerased",
+        erasedInList() == "other=boxed|other=7",
+        erasedInRuntimeList() == "Success(appended)",
+        swapped() == "other=11",
+        fiberAny() == "other=fiber",
+        foldAny() == "other=seed",
         describeTwice(Boxed { held: "twin", tag: 2 }) == "held=twin/held=twin",
         toString(erasedPoint()) == "{ x: 1, y: 2 }",
         auditTally() == 18,
