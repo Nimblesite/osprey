@@ -738,6 +738,38 @@ mod tests {
         }
     }
 
+    /// Indexing is STRICTER than calling: the `[` must touch its target, so
+    /// `xs[0]` indexes and `xs [0]` does not. The asymmetry is deliberate and
+    /// this test is why it cannot simply be unified — list-arm matches are
+    /// written on a SINGLE line, so extending the call's same-line rule to `[`
+    /// reads the `0  [head` in
+    ///
+    ///     match xs { [] => 0  [head, ...tail] => … }
+    ///
+    /// as an index and breaks `benchmarks/cases/listops/listops.osp`. Tuple
+    /// arms have no single-line usage, which is what lets `(` be looser.
+    /// [TYPE-LIST-PATTERNS]
+    #[test]
+    fn an_index_bracket_must_touch_its_target_unlike_a_call() {
+        match let_value("let r = xs[0]\n") {
+            Expr::Index { target, index } => {
+                assert!(matches!(*target, Expr::Identifier(ref n) if n == "xs"));
+                assert!(matches!(*index, Expr::Integer(0)));
+            }
+            other => panic!("expected an index, got {other:?}"),
+        }
+        // Spaced: NOT an index — the `let` takes `xs` alone.
+        assert!(
+            matches!(let_value("let r = xs [0]\n"), Expr::Identifier(ref n) if n == "xs"),
+            "a spaced `[` must not bind as an index"
+        );
+        // The single-line list-arm match the strict rule exists to protect.
+        match let_value("let r = match xs { [] => 0  [head, ...tail] => head }\n") {
+            Expr::Match { arms, .. } => assert_eq!(arms.len(), 2, "got {arms:?}"),
+            other => panic!("expected a match, got {other:?}"),
+        }
+    }
+
     /// The boundary the scanner draws: a `(` that opens the NEXT line is the
     /// following arm's tuple pattern, never an argument list extending the
     /// previous arm's body. Both arms must survive, and the tuple arm binds its

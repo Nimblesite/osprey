@@ -2,4 +2,6 @@ a literal pattern cannot read an erased `any`: match its structure instead
 a constructor pattern cannot read an erased `any`: match its structure instead
 a match over `any` is never exhaustive: add a catch-all arm
 unreachable match arm: an earlier `{ x, .. }` arm already covers this row
+structural pattern names `x` more than once; each field may be bound at most once
+structural pattern names `x` more than once; each field may be bound at most once
 cannot apply `==` to an erased `any`: match its structure instead

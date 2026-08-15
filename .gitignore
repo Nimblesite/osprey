@@ -16,6 +16,7 @@ Desktop.ini
 *~
 *.sublime-project
 *.sublime-workspace
+.vscode/code-navigator/
 
 # Portfolio-wide tooling
 .too_many_cooks/
@@ -23,6 +24,8 @@ Desktop.ini
 .playwright-mcp/
 coordination/
 nohup.out
+.deslop
+.mcp.json
 
 # Coverage artifacts
 coverage/
@@ -39,6 +42,7 @@ TestResults/
 mutants.out/
 
 # Secrets / local overrides
+# `!*.pub.key` must stay immediately after `*.key` — gitignore is last-match-wins.
 .env
 .env.local
 .env.*.local
@@ -52,6 +56,7 @@ mutants.out/
 tmp/
 temp/
 scratch/
+scratchpad/
 *.log
 
 # Build artifacts (C runtime archives + compiled examples)
@@ -70,6 +75,11 @@ examples/wasm/build/
 *.out
 vendor/
 
+# Rust
+target/
+examples/rust_integration/target/
+examples/rust_integration/librust_utils.a
+
 # Node / TypeScript
 node_modules/
 dist/
@@ -79,20 +89,16 @@ vscode-extension/dist/
 webcompiler/src/outputs/
 website/_site/
 
-# Rust
-examples/rust_integration/target/
-examples/rust_integration/librust_utils.a
-
 # Repo-specific test data
 examples/tested/effects/test_data/
 
 # Tool caches
-
 .ghissues/
 .dart_tool/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
+__pycache__/
 
 # Ad-hoc compiler artefacts written into the working tree by manual runs
 compiler/processed_log.txt
@@ -102,12 +108,8 @@ compiler/temp_test.txt
 # `make test` log (#56)
 compiler/test.log
 
-target/
-
-
-.deslop
-
-.vscode/code-navigator/
+# Per-example debug output written beside a compiled example
+.osprey-debug
 
 # Benchmark suite: generated binaries, hyperfine exports, rendered reports.
 # Per-language *source* files under benchmarks/cases/ ARE tracked; only the
@@ -119,22 +121,6 @@ benchmarks/cases/**/*.cmi
 benchmarks/cases/**/*.cmx
 benchmarks/cases/**/*.o
 
-.osprey-debug
-
-
-scratchpad/
-
-
-__pycache__/
-
-
-*.wasm
-
-__pycache__/
-
-
-.mcp.json
-
 # Written into the CWD by regression tests, which means they land at the repo
 # root whenever the corpus is run from there. Both of the files below were
 # COMMITTED once, in the same change that added the tests writing them — a
@@ -142,6 +128,10 @@ __pycache__/
 # nobody wrote on purpose.
 #   file_io_json_workflow.test.osp -> test_output.txt, test_stale_reason.txt
 #   http_state_levels.test.osp     -> osprey_http_state_levels.db
-test_output.txt
-test_stale_reason.txt
-osprey_http_state_levels.db
+# Leading `/` anchors these to the repo root the corpus actually writes to.
+# Unanchored, `test_output.txt` also matched
+# tests/regressions/basics/files/test_output.txt, reaching into the regression
+# corpus and hiding any future file that happens to share the name.
+/test_output.txt
+/test_stale_reason.txt
+/osprey_http_state_levels.db

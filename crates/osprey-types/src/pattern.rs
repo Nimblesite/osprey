@@ -137,6 +137,18 @@ impl Checker {
         disc: &Type,
         local: &mut TypeEnv,
     ) {
+        // Before ANY scrutinee-shaped reasoning, and so uniformly for a concrete
+        // row and an erased one: a repeated field name makes the two halves of
+        // the compiler disagree about the same pattern.
+        if self.reject_duplicate_fields(fields) {
+            for (_, binder) in fields {
+                if !binder.is_empty() {
+                    let fv = self.ctx.fresh();
+                    local.insert(binder.clone(), Scheme::mono(fv));
+                }
+            }
+            return;
+        }
         let dp = self.ctx.prune(disc);
         if dp.is_named(names::ANY) {
             for (_, binder) in fields {
@@ -201,6 +213,38 @@ impl Checker {
         Some(declared_map)
     }
 
+    /// Reject a structural pattern that names the same field twice.
+    ///
+    /// A duplicate binds one name from one slot and tells the row test nothing
+    /// new, and the two halves of the compiler counted it differently: the
+    /// closed-row check below compared the pattern's VECTOR LENGTH against the
+    /// row's, which a duplicate satisfies while a real field is missing, while
+    /// the runtime row test compares NAME SETS ([`candidate_rows`]), which a
+    /// duplicate collapses. So `{ x, x }` selected a concrete `Pair { x, y }`
+    /// and then MISSED the very same value once erased to `any` — erasure
+    /// changing whether a pattern matches is the one thing [TYPE-ANY] must
+    /// never do. Rejecting the duplicate outright removes the disagreement at
+    /// its source rather than teaching both sides the same wrong rule.
+    ///
+    /// Returns whether an error was reported.
+    fn reject_duplicate_fields(&mut self, fields: &[(String, String)]) -> bool {
+        let mut seen: BTreeSet<&str> = BTreeSet::new();
+        let dup = fields
+            .iter()
+            .find(|(fname, _)| !seen.insert(fname.as_str()))
+            .map(|(fname, _)| fname.clone());
+        match dup {
+            Some(fname) => {
+                self.errors.push(TypeError::new(format!(
+                    "structural pattern names `{fname}` more than once; \
+                     each field may be bound at most once"
+                )));
+                true
+            }
+            None => false,
+        }
+    }
+
     /// Reject a structural arm that can never select its concrete scrutinee:
     /// naming a field the row lacks, or a closed pattern that does not name
     /// the whole row ([TYPE-ROW]: closed rows unify only when their names
@@ -220,7 +264,11 @@ impl Checker {
                 return;
             }
         }
-        if !open && fields.len() != row.len() {
+        // Count DISTINCT names, never the vector length: a closed row is
+        // selected by name-set equality, so length is the wrong measure even
+        // though `reject_duplicate_fields` now keeps the two in step.
+        let named: BTreeSet<&str> = fields.iter().map(|(f, _)| f.as_str()).collect();
+        if !open && named.len() != row.len() {
             let missing: Vec<&str> = row
                 .keys()
                 .filter(|k| !fields.iter().any(|(f, _)| f == *k))

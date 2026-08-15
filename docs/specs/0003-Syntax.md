@@ -181,12 +181,29 @@ The relevant precedence, highest to lowest, is:
 1. Postfix call, field access, and indexing
 2. Pipe `|>`
 
-A postfix `(` or `[` must immediately follow its callee, with no whitespace:
-`f(x)` is a call and `xs[0]` an index, while a spaced `(` or `[` begins a new
-expression or the next match arm's pattern. This is what lets an arm body be
-followed by a tuple arm `(a, b) => …` or a list arm `[h, ...t] => …` without
-the body swallowing it ([PATTERN-TUPLE](0007-PatternMatching.md#tuple-patterns--pattern-tuple),
+A postfix `(` must appear on the SAME LINE as its callee, with horizontal space
+allowed: `f(x)` and `f (x)` are the same call. A postfix `[` is stricter — it
+must follow its target with no whitespace at all, so `xs[0]` is an index while
+`xs [0]` is not. In both cases an opener that begins the next line is not
+postfix: it starts a new expression, or the next match arm's pattern. This is
+what lets an arm body be followed by a tuple arm `(a, b) => …` or a list arm
+`[h, ...t] => …` without the body swallowing it
+([PATTERN-TUPLE](0007-PatternMatching.md#tuple-patterns--pattern-tuple),
 [TYPE-LIST-PATTERNS](0004-TypeSystem.md#patterns--type-list-patterns)).
+
+The two rules differ because the source they have to keep working differs.
+Forbidding the space before `(` outright rejects `print(id (1))`, which has
+always been valid. Allowing it before `[` breaks the other direction: list-arm
+matches are written on a single line —
+
+```osprey
+fn sumL(xs) = match xs { [] => 0  [head, ...tail] => add(head, sumL(tail)) }
+```
+
+— where a same-line `[` would read `0  [head` as an index. Tuple-pattern arms
+have no equivalent single-line usage, so `(` can afford the looser rule and `[`
+cannot. The `[` rule's cost is that `xs [0]` stays valid and silently means
+something else, binding `xs` and lowering `[0]` as a separate statement.
 3. Unary `!`, `-`, `+`
 4. Multiplicative `*`, `/`, `%`
 5. Additive `+`, `-`

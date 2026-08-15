@@ -70,5 +70,10 @@ bool tree_sitter_osprey_external_scanner_scan(void *payload, TSLexer *lexer,
     lexer->advance(lexer, true);
   }
 
+  // `(` only. Indexing keeps the stricter byte-adjacency rule: list-pattern
+  // arms really are written on one line (`match xs { [] => 0  [h, ...t] => … }`),
+  // so accepting a same-line `[` here reads `0  [h` as an index. Tuple-pattern
+  // arms have no equivalent single-line usage, which is what lets `(` take the
+  // looser rule. [TYPE-LIST-PATTERNS]
   return lexer->lookahead == '(';
 }

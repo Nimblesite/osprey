@@ -462,10 +462,17 @@ module.exports = grammar({
             // arm's `(a, b)` tuple pattern instead. Implements [PATTERN-TUPLE]
             // coexistence with postfix calls.
             seq($._call_open_gap, '(', optional($.argument_list), ')'),
-            // The index `[` must immediately follow the callee (no whitespace),
-            // so a match-arm body never swallows the next arm's `[…]` list
-            // pattern as an index (`=> 0  [head, ...t] => …`). Implements
-            // [TYPE-LIST-PATTERNS] coexistence with postfix indexing.
+            // The index `[` must IMMEDIATELY follow its target — a stricter rule
+            // than the call's same-line one, and deliberately so. List-pattern
+            // arms are written on ONE line in real source:
+            //
+            //     match xs { [] => 0  [head, ...tail] => add(head, sumL(tail)) }
+            //
+            // so a same-line `[` gap would read `0  [head` as an index and
+            // break benchmarks/cases/listops/listops.osp. Tuple-pattern arms
+            // have no such single-line usage, which is why `(` can afford the
+            // looser rule and `[` cannot. Implements [TYPE-LIST-PATTERNS]
+            // coexistence with postfix indexing.
             seq(token.immediate('['), field('index', $.expression), ']'),
           ),
         ),

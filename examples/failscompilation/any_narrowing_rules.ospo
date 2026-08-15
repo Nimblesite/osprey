@@ -38,6 +38,22 @@ fn shadowed() -> int = match erased() {
     _ => 10
 }
 
+/// A repeated field name is rejected wherever it is written, erased or not.
+/// The closed-row check counted the pattern's LENGTH while the runtime row
+/// test compares NAME SETS, so `{ x, x }` selected a concrete `Pair { x, y }`
+/// and then missed that same value once erased — erasure silently changing
+/// whether an arm matches. [TYPE-ROW]
+fn viaDuplicateErased() -> int = match erased() {
+    { x, x } => 11
+    _ => 12
+}
+
+type Pair = Pair { x: int, y: int }
+
+fn viaDuplicateDirect() -> int = match Pair { x: 7, y: 9 } {
+    { x, x } => 13
+}
+
 fn viaOperator() -> bool = erased() == "ab"
 
 fn viaField() -> string = erased().name
