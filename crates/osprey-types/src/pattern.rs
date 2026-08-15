@@ -733,6 +733,56 @@ mod tests {
         );
     }
 
+    /// The refusal names the type it FOUND when there is one to name. An
+    /// unresolved scrutinee has no user-facing spelling and gets the annotation
+    /// hint instead, but a concrete non-row scrutinee must say what it is —
+    /// otherwise the message reads the same for "annotate this" and "this can
+    /// never be a row", which are different mistakes.
+    #[test]
+    fn a_non_row_scrutinee_is_named_in_the_refusal() {
+        for (src, want) in [
+            (
+                "fn f(v: int) = match v {\n  { a } => 0\n  _ => 1\n}\n",
+                "found int",
+            ),
+            (
+                "fn f(v: string) = match v {\n  { a } => 0\n  _ => 1\n}\n",
+                "found string",
+            ),
+            // A function value is neither a record nor a named constructor, so
+            // it leaves `structural_row` by its non-`Con` exit.
+            (
+                "fn g(x) = x\nlet r = match g {\n  { a } => 0\n  _ => 1\n}\n",
+                "needs a record or `any` scrutinee",
+            ),
+        ] {
+            let errs = check(src);
+            assert!(
+                errs.iter().any(|e| e.message.contains(want)),
+                "expected {want:?} for {src:?}, got {errs:?}"
+            );
+        }
+    }
+
+    /// Binder collection over a structural pattern feeds reachability and free
+    /// variable analysis. A tuple slot spelled `_` carries an EMPTY binder and
+    /// must not be collected as a name — a `""` binding would shadow nothing
+    /// and be impossible to reference.
+    #[test]
+    fn structural_binder_names_skip_unbound_slots() {
+        use osprey_ast::Pattern;
+        let named = Pattern::Structural {
+            fields: vec![
+                (String::from("x"), String::from("x")),
+                (String::from("y"), String::from("y")),
+            ],
+            open: false,
+        };
+        assert_eq!(super::pattern_binder_names(&named), vec!["x", "y"]);
+        let tuple = osprey_ast::tuple_pattern(vec![String::from("n"), String::new()]);
+        assert_eq!(super::pattern_binder_names(&tuple), vec!["n"]);
+    }
+
     #[test]
     fn structural_fields_of_an_erased_scrutinee_are_erased_themselves() {
         // Over `any` the row is unknown until run time, so a bound field is

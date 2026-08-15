@@ -56,6 +56,13 @@ fn viaDuplicateDirect() -> int = match Pair { x: 7, y: 9 } {
 
 fn viaOperator() -> bool = erased() == "ab"
 
+/// The unary and index reads are the same rule as the binary one above: each
+/// consumes the erased word with no runtime test. Both were rejected but
+/// untested, so nothing pinned the message or that it fires at all.
+fn viaUnary() = !erased()
+
+fn viaIndex() = erased()[0]
+
 fn viaField() -> string = erased().name
 
 let viaAnon: any = { x: 1, y: 2 }

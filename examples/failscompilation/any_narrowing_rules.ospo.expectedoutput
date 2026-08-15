@@ -6,5 +6,7 @@ unreachable match arm: an earlier `{ x, .. }` arm already covers this row
 structural pattern names `x` more than once; each field may be bound at most once
 structural pattern names `x` more than once; each field may be bound at most once
 cannot apply `==` to an erased `any`: match its structure instead
+cannot apply unary `!` to an erased `any`: match its structure instead
+cannot index an erased `any`: match its structure instead
 cannot access field `name` on an erased `any`: match its structure instead
-61:0: let `viaAnon`: cannot erase an anonymous record into `any`: declare its row as a named type first
+68:0: let `viaAnon`: cannot erase an anonymous record into `any`: declare its row as a named type first

@@ -191,6 +191,17 @@ fn auditTally() -> int = handle Audit
     note item => resume(length(describeAny(item)))
 in auditWork()
 
+/// Every descriptor kind renders through its own arm: a float, a bool, a
+/// nullary union variant, a record-payload variant, a positional-payload
+/// variant, a `Result` block, and the opaque handles a descriptor cannot see
+/// into. All are reachable from ordinary source, and none of the union,
+/// `Result`, float or opaque render paths had a single test — an erased float
+/// would have printed its IEEE bits and nobody would have known [TYPE-ANY].
+type Shape = Circle { radius: int } | Square { side: int }
+
+fn erasedKinds() -> string =
+    "${forward(1.5 + 0.25)}|${forward(1 < 2)}|${forward(Green)}|${forward(Circle { radius: 3 })}|${forward(intDiv(10, 2))}|${forward(listAppend(List(), 1))}|${forward(mapSet(Map(), "k", 1))}"
+
 /// A container of erased values keeps them BOXED. Folding an `any` element
 /// into the uniform integer word tagged the slots unmanaged and read each
 /// box's ADDRESS back as an `int`, so a round-tripped element rendered as a
@@ -206,15 +217,12 @@ fn erasedInList() -> string = match [forward("bo" + "xed"), forward(7)] {
 fn erasedInRuntimeList() -> string =
     "${listGet(listAppend(listAppend(List(), forward("ap" + "pended")), forward(8)), 0)}"
 
-/// The same ownership question, asked at the two other places a value crosses
-/// a representation boundary as a raw word: a fiber's result slot and a fold's
-/// loop-carried accumulator. Each carried its own hand-written "is this a
-/// string or a handle" test, so each answered `no` for a box [GC-ARC-PERCEUS].
-fn fiberAny() -> string = {
-    let f = spawn forward("fib" + "er")
-    describeAny(await(f))
-}
-
+/// A fold's loop-carried accumulator crosses a representation boundary as a
+/// raw word, and its rebind carried its own hand-written "is this a string or
+/// a handle" test, so it answered `no` for a box [GC-ARC-PERCEUS]. The fiber
+/// result slot had the identical bug; it is covered in
+/// tests/regressions/fiber/fiber_showcase, which spawns and so cannot link on
+/// wasm32 — keeping it here would cost this file its wasm goldens.
 fn foldAny() -> string =
     describeAny(range(0, 3) |> fold(forward("se" + "ed"), |acc, x| => forward(acc)))
 
@@ -256,10 +264,10 @@ fn anyTypeBehaviorCase() = {
         describeAny(Pair(7, "seven")) == "pair=7:seven",
         describeAny(42) == "other=42",
         describeAny(forward("still" + "erased")) == "other=stillerased",
+        erasedKinds() == "1.75|true|Green|Circle { radius: 3 }|Success(5)|<list>|<map>",
         erasedInList() == "other=boxed|other=7",
         erasedInRuntimeList() == "Success(appended)",
         swapped() == "other=11",
-        fiberAny() == "other=fiber",
         foldAny() == "other=seed",
         describeTwice(Boxed { held: "twin", tag: 2 }) == "held=twin/held=twin",
         toString(erasedPoint()) == "{ x: 1, y: 2 }",
