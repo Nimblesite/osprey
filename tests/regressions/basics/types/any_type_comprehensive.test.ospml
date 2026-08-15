@@ -16,14 +16,18 @@ processAnyValue input = input + 10 ?: 0
     epilogue moved that invented owner out, released the real one, and returned
     a dangling pointer, printing nothing under `--memory=arc`. Built at runtime
     rather than written as a literal, or the pointer would be a global and never
-    counted at all. Returning a heap value AS `any` is the case that still does
-    not work; docs/plans/0027-any-erasure-and-recovery.md tracks it (#208).
-    [GC-ARC-PERCEUS] *)
+    counted at all. [GC-ARC-PERCEUS]
+
+    Erasure is one-way [TYPE-ANY], so the heap value is forwarded into another
+    `any` sink rather than recovered as a `string`: an annotation that
+    resurrects a pointer is rejected, and
+    `examples/failscompilation/ml_any_recovery_by_annotation.ospo` pins every
+    form of it in this flavor. *)
 forward : any -> any
 forward x = x
 
-forwarded : Unit -> string
-forwarded () = forward ("dyn" + "amic")
+forwardedHeap : Unit -> string
+forwardedHeap () = processAny (forward ("dyn" + "amic"))
 
 print "Explicit any return type works"
 print "getDynamicValue() = ${getDynamicValue ()}"
@@ -165,8 +169,7 @@ anyTypeBehaviorCase () =
     checkAll "any values and inferred union behavior" [
         toString (getDynamicValue ()) == "42",
         toString (processAnyValue 5) == "15",
-        forwarded () == "dynamic",
-        length (forwarded ()) == 7,
+        forwardedHeap () == "Processed any",
         processAny 42 == "Processed any",
         processAny "hello" == "Processed any",
         processAny true == "Processed any",

@@ -709,15 +709,17 @@ Erasing an `int`, `float` or `bool` keeps a scalar row: those values carry no
 fields, so every field-naming arm declines and only a binding or `_` arm selects
 them.
 
-> **Status: not implemented.** Today `any` carries no runtime shape and no
-> narrowing exists; `print` and `toString` render an aggregate's raw
-> pointer-sized representation rather than its fields, and recovering a pointer
-> from a word that never was one is an unchecked assertion that segfaults with
-> no diagnostic. The shape descriptor this section requires is an ABI change
-> tracked in [plan 0027](../plans/0027-any-erasure-and-recovery.md). The ARC
-> `meta` word cannot serve as that descriptor: it encodes which words are
-> managed pointers rather than which fields exist, and the default and GC
-> backends ignore it entirely.
+> **Status: partly implemented.** The one-way rule holds today — recovering a
+> concrete type out of an `any` at any annotation is rejected with
+> `cannot recover ... from an erased `any``, in both flavors. Narrowing itself
+> does not exist yet: `any` carries no runtime shape, so a structural match over
+> one is rejected by the backend and `print`/`toString` still render the raw
+> pointer-sized word rather than the value. The shape descriptor both need is an
+> ABI change tracked in
+> [plan 0027](../plans/0027-any-erasure-and-recovery.md). The ARC `meta` word
+> cannot serve as that descriptor: it encodes which words are managed pointers
+> rather than which fields exist, and the default and GC backends ignore it
+> entirely.
 
 ## Type Annotations — [TYPE-ANNOTATION-CHECK]
 

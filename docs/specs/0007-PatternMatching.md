@@ -137,8 +137,9 @@ match pair {
 `(x)` is grouping, not a one-element tuple. A tuple pattern is closed: its
 length must match, and `..` does not apply.
 
-> **Status: not implemented.** Structural and tuple patterns are specified here
-> and rejected by the backend today. Structural narrowing of `any` additionally
+> **Status: not implemented.** A closed `{ f }` pattern parses and type-checks;
+> the backend rejects it with `unsupported construct: destructuring match arm`.
+> `..` is in neither grammar. Structural narrowing of `any` additionally
 > requires the runtime row descriptor tracked in
 > [plan 0027](../plans/0027-any-erasure-and-recovery.md).
 

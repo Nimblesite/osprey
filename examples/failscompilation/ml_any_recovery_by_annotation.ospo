@@ -1,0 +1,20 @@
+// osprey: flavor=ml
+// [TYPE-ANY] Erasure is one-way in both flavors — the ML twin of
+// `any_recovery_by_annotation.ospo`. A signature line is an annotation like
+// any other, so it cannot resurrect a pointer out of an erased word either.
+erased : Unit -> any
+erased () = "a" + "b"
+
+intish : Unit -> any
+intish () = 7
+
+viaReturn : Unit -> string
+viaReturn () = erased ()
+
+viaScalar : Unit -> string
+viaScalar () = intish ()
+
+viaLet : string
+viaLet = erased ()
+
+print "${viaReturn ()} ${viaScalar ()} ${viaLet}"

@@ -489,10 +489,11 @@ impl Checker {
     }
 
     /// An arm that abandons the continuation answers for the whole `handle`, so
-    /// its value must be able to BE that answer. `any` unifies with everything
-    /// [TYPE-ANY], so an erased word is accepted here — codegen cannot tell one
-    /// from a genuine `int`, which is why this check belongs in inference.
-    /// Implements [EFFECTS-HANDLER-ARMS].
+    /// its value must be able to BE that answer — an assignment, hence the
+    /// directional check: a concrete arm erases into an `any` region, while an
+    /// erased arm cannot answer a concrete one ([TYPE-ANY]). Codegen cannot
+    /// tell an erased word from a genuine `int`, which is why this belongs in
+    /// inference. Implements [EFFECTS-HANDLER-ARMS].
     fn check_abandoning_arm(&mut self, effect: &str, op: &str, answer: &Type, arm_ty: &Type) {
         if crate::unify::unify_assignable(&mut self.ctx, answer, arm_ty).is_ok() {
             return;
@@ -1528,13 +1529,25 @@ mod tests {
             "\"unreached\"",
             "\"stopped\"",
         ));
-        // `any` answers anything [TYPE-ANY]. Codegen sees the same erased
-        // machine word as an `int`, which is why this is settled here.
-        ok(
+    }
+
+    #[test]
+    fn an_abandoning_arm_may_not_answer_an_erased_word() {
+        // An abandoning arm's value IS the region's result, so an `any` arm in
+        // a `string` region hands the caller an erased word to read as a
+        // pointer — recovery by declared type, which [TYPE-ANY] deletes. The
+        // arm must narrow structurally before it answers.
+        let errs = bad(
             &mixed_region("int", "string", "\"unreached\"", "erased()").replace(
                 "effect Mixed {",
                 "fn erased() -> any = \"x\"\neffect Mixed {",
             ),
+        );
+        assert!(
+            errs.iter().any(|e| e
+                .message
+                .contains("it is `any` and that result is `string`")),
+            "an `any` arm must not answer a `string` region; got {errs:?}"
         );
     }
 
