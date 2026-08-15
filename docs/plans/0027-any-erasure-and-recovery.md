@@ -1,6 +1,10 @@
-# `any` erasure: ownership and recovery
+# `any` erasure: rows, structural recovery and ownership
 
-**Status:** analysis complete, no fix started.
+**Status:** analysis complete, design decided (§7), no fix started. The decision
+adds rows, anonymous records, tuples and structural patterns to the language
+surface — [TYPE-ROW], [TYPE-RECORD-ANON], [TYPE-TUPLE], [PATTERN-STRUCTURAL],
+[PATTERN-TUPLE], [FLAVOR-ML-TUPLE] — because narrowing an `any` is the same
+mechanism as matching a row.
 **Invariant under audit:** *a program the checker accepts either behaves as
 documented or is rejected with a truthful error — it never prints a wrong answer
 and never reads freed memory.*
@@ -166,59 +170,68 @@ So the rule is not merely unbalanced, it is memory-unsafe in the *other*
 direction, and it converts finding C from a crash into a heap corruption. Any
 proposal that keys ownership off the machine word has this same flaw.
 
-## 7. What a real fix requires
+## 7. The decision — `any` carries its row
 
-`any` must be distinguishable from `int` **after lowering**. Options, cheapest
-first:
+**An erased value carries a runtime row descriptor, and the only way to read
+through an `any` is a structural `match`.** Recovery by declared type — the
+mechanism behind both A and B — is deleted, not repaired: `coerce_return`'s
+`inttoptr` and any `Stmt::Let` equivalent are the unchecked assertion, and an
+annotation must never resurrect a pointer. This is normative in
+[TYPE-ANY](../specs/0004-TypeSystem.md#the-any-type--type-any) and
+[PATTERN-STRUCTURAL](../specs/0007-PatternMatching.md#structural-patterns--pattern-structural).
 
-1. **A distinct `LType`.** Keep the `i64` machine representation but give the
-   erased word its own lowered type, so `coerce_return`, `Stmt::Let` and the
-   effect mailbox can all see it. Fixes B and unblocks A; does not fix C.
-2. **A provenance/tag bit.** Distinguishes a transferred pointer from a borrowed
-   or scalar word at runtime. Fixes A and C; costs a bit of every erased value
-   and an ABI break at the FFI boundary.
-3. **Narrow `any` so recovery requires a `match`.** Removes the unchecked
-   assertion entirely, at the cost of breaking existing `any` call sites.
+That fixes all three findings at once. B disappears because no annotation
+coerces. C disappears because an arm naming a field a scalar row lacks does not
+select. A becomes decidable because the descriptor says whether the word is a
+pointer, so ownership stops keying off the machine word — the exact flaw that
+sank the reverted repair in §6.
 
-Option 1 is a prerequisite for the others and is the only one with no surface
-change.
+Two facts constrain the descriptor, both verified in the tree:
+
+- **The ARC `meta` word cannot serve.** It encodes which words are managed
+  pointers, not which fields exist, and `compiler/runtime/memory_hooks.h` states
+  that default and GC *ignore* it. Narrowing must work on all three backends and
+  on wasm32, so the descriptor belongs to the value representation, not the
+  allocator header.
+- **The row encoding already exists.** `positional_field_name`
+  (`crates/osprey-ast/src/lib.rs`) names positional payload slots `"0"`, `"1"`,
+  …, which is exactly the tuple encoding
+  ([TYPE-TUPLE](../specs/0004-TypeSystem.md#tuples--type-tuple)). Records,
+  tuples and positional variant payloads are one row concept, so one descriptor
+  covers them.
 
 ---
 
 ## TODO
 
-### Phase 1 — make the erasure visible to codegen
+### Phase 1 — the row descriptor
 
-- [ ] Give an erased `any` its own `LType` variant distinct from `I64`, keeping
-      the same machine representation and calling convention.
-- [ ] Audit every `LType::I64` match arm in `crates/osprey-codegen/` for whether
-      it means *integer* or *machine word*; the ones meaning machine word take
-      the new variant too.
-- [ ] `cross_flavor_ir_equiv` must stay green — the change is representational,
-      not observable.
+- [ ] One runtime row descriptor per heap value, in the value representation and
+      identical on default, GC, ARC and wasm32. Records, tuples and positional
+      variant payloads share it; scalars carry the empty row.
+- [ ] Give an erased `any` its own `LType` distinct from `I64` so
+      `coerce_return`, `Stmt::Let` and the effect mailbox can see the erasure.
+- [ ] `slot_is_managed` (`crates/osprey-codegen/src/effect_mailbox.rs`)
+      classifies an erased operand from the descriptor, not its ABI.
+- [ ] `cross_flavor_ir_equiv` stays green.
 
-### Phase 2 — positional recovery (#209)
+### Phase 2 — delete recovery-by-annotation (#209, finding C)
 
-- [ ] `Stmt::Let` coerces its initializer to the annotated type, as
-      `coerce_return` does for a declared return type.
-- [ ] Corpus case: the `viaReturn`/`viaLet` program above, asserting both
-      recoveries print `ab`, in both flavors, under all three backends.
+- [ ] Remove the `inttoptr` in `coerce_return` that recovers a pointer from a
+      declared return type; add no `Stmt::Let` equivalent.
+- [ ] `examples/failscompilation/`: reading a field of an `any` without a
+      structural match, and `fn intish() -> any = 7` recovered as a `string`.
+- [ ] Corpus case: the `viaReturn`/`viaLet` program above, now rejected rather
+      than printing an address.
 
-### Phase 3 — ownership across the erasure (#208)
+### Phase 3 — structural narrowing and ownership (#208)
 
-- [ ] Decide transfer-on-erase vs borrow-only now that the erased type is
-      distinguishable, and record the decision in spec 0004.
-- [ ] Corpus cases with `OSPREY_ARC_DEBUG=1`: erasing return recovered once and
-      twice, erased value through an effect operand, erased value discarded
-      while still erased. Each asserts zero live objects.
-- [ ] `slot_is_managed` (`crates/osprey-codegen/src/effect_mailbox.rs`) must
-      classify an erased operand from the new type rather than its ABI.
-
-### Phase 4 — the unchecked assertion (finding C)
-
-- [ ] Decide between a runtime tag and a `match`-gated recovery surface; this is
-      a language change and needs its own spec section, not a codegen patch.
-- [ ] `examples/failscompilation/` case for whichever recovery becomes illegal.
+- [ ] `{ x }` / `{ x, .. }` / `(a, b)` patterns lower against the descriptor,
+      both flavors ([PATTERN-STRUCTURAL], [PATTERN-TUPLE]).
+- [ ] Ownership keys off the descriptor, never the machine word (§6).
+- [ ] Corpus cases with `OSPREY_ARC_DEBUG=1`: erased value narrowed once and
+      twice, through an effect operand, and discarded while still erased. Each
+      asserts zero live objects.
 
 ### Phase 5 — verification
 

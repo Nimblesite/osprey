@@ -142,9 +142,11 @@ under `crates/osprey-syntax/src/ml/`, except the Default-flavor half of
 independently mergeable, in this order.
 
 1. **`[FLAVOR-ML-PATTERN-GROUP]`** — one `TokKind::LParen` arm in `fn pattern()`
-   (`ml/parser.rs`). Grouping erases at parse time. `(a, b)` is an error,
-   not a tuple; nested constructor patterns and or-patterns get explicit
-   diagnostics. ~6 LOC.
+   (`ml/parser.rs`). Grouping erases at parse time; nested constructor patterns
+   and or-patterns get explicit diagnostics. ~6 LOC. **Superseded for the
+   comma case:** `(a, b)` is now a tuple pattern
+   ([FLAVOR-ML-TUPLE](../specs/0024-MLFlavorSyntax.md#match)), tracked in
+   [plan 0027](0027-any-erasure-and-recovery.md).
 2. **`[FLAVOR-ML-UNION-INLINE]`**, named payloads only — `TokKind::Pipe` in
    `ml/token.rs`; `|` in `single_char_operator` (`ml/lexer.rs:410`) **after**
    `two_char_operator` so `||` and `|>` keep maximal munch; a union arm in

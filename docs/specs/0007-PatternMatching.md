@@ -89,8 +89,8 @@ let first = match values {
 
 `name: Type` binds a value under the written compile-time type. It is not a
 runtime type test: code generation treats the arm as a catch-all. Use it only
-when the scrutinee already has that static type. Runtime narrowing of an `any`
-value by type is not implemented.
+when the scrutinee already has that static type; to discriminate at runtime,
+match the structure instead.
 
 ```osprey
 let label = match person {
@@ -98,14 +98,62 @@ let label = match person {
 }
 ```
 
-Standalone structural record patterns such as `{ name, age } => ...` are also
-not implemented by the backend.
+## Structural patterns — [PATTERN-STRUCTURAL]
+
+A brace pattern matches a value's row ([TYPE-ROW](0004-TypeSystem.md#rows-and-record-type-unification--type-row))
+and binds each named field. It is the runtime counterpart of structural
+unification, and the only way to discriminate an `any`
+([TYPE-ANY](0004-TypeSystem.md#the-any-type--type-any)):
+
+```osprey
+let described = match value {
+    { message }               => message
+    { origin: { x, y }, .. }  => "${x},${y}"
+    _                         => "unknown"
+}
+```
+
+A pattern is **closed** by default — `{ message }` selects a row of exactly
+`message` — and trailing `..` opens it to any row carrying at least the named
+fields. Closed-by-default is what keeps arm order from changing meaning: an open
+`{ x, y }` would select a three-dimensional point and shadow a later
+`{ x, y, z }` arm. The compiler rejects a `..`-opened arm that shadows a later
+one rather than resolving it by order.
+
+Rows nest, and `field: binder` renames a binding.
+
+## Tuple patterns — [PATTERN-TUPLE]
+
+A tuple pattern binds by position ([TYPE-TUPLE](0004-TypeSystem.md#tuples--type-tuple)).
+Because a tuple is a row with decimal field names, it is the positional spelling
+of a structural pattern, not a separate mechanism:
+
+```osprey
+match pair {
+    (n, label) => "${label}=${n}"
+}
+```
+
+`(x)` is grouping, not a one-element tuple. A tuple pattern is closed: its
+length must match, and `..` does not apply.
+
+> **Status: not implemented.** Structural and tuple patterns are specified here
+> and rejected by the backend today. Structural narrowing of `any` additionally
+> requires the runtime row descriptor tracked in
+> [plan 0027](../plans/0027-any-erasure-and-recovery.md).
 
 ## Exhaustiveness and unreachable arms [TYPE-MATCH-EXHAUSTIVE]
 
 A match over `bool`, `Result`, or a known union must cover every case, either
 explicitly or with a catch-all. A duplicate variant arm is unreachable, as is
 every arm after `_` or a lower-case binding; the compiler rejects both.
+
+A match over `any` is never exhaustive — its row is not known until run time —
+so it always requires a catch-all
+([TYPE-ANY](0004-TypeSystem.md#the-any-type--type-any)). Among structural arms,
+a `..`-opened arm makes every later arm whose row extends it unreachable, and
+the compiler rejects that shadowing rather than resolving it by arm order
+([PATTERN-STRUCTURAL](#structural-patterns--pattern-structural)).
 
 Matches over open scalar domains such as `int` need a catch-all when total
 behavior is required, but the compiler does not prove scalar exhaustiveness.

@@ -224,16 +224,16 @@ match ::= "match" expression "{" arm+ "}"
 arm   ::= pattern "=>" expression
 ```
 
-Patterns are scalar literals, `_`, a lower-case binding, union
-constructors with named or positional payloads, and list patterns. Pattern
-semantics and exhaustive matching are defined in
+Patterns are scalar literals, `_`, a lower-case binding, union constructors with
+named or positional payloads, list patterns, structural row patterns
+(`{ x, y }`, `{ x, .. }`) and tuple patterns (`(a, b)`). Pattern semantics and
+exhaustive matching are defined in
 [Pattern Matching](0007-PatternMatching.md).
 
-`name: Type` is accepted as a typed binding. The backend treats it as
-a catch-all binding rather than a runtime type test, so it is valid only when
-the scrutinee already has that static type. Standalone structural record
-patterns are not implemented; the Default structural ternary is a separate
-lowering.
+`name: Type` is accepted as a typed binding. The backend treats it as a
+catch-all binding rather than a runtime type test, so it is valid only when the
+scrutinee already has that static type; runtime discrimination is a structural
+pattern ([PATTERN-STRUCTURAL](0007-PatternMatching.md#structural-patterns--pattern-structural)).
 
 ## Evaluation order
 
