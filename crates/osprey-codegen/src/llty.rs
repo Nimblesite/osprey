@@ -75,6 +75,22 @@ impl LType {
             LType::Str | LType::Ptr | LType::Any => "i8*",
         }
     }
+
+    /// Whether a slot of this type holds a REFERENCE the owner must release.
+    /// The one definition every ownership decision keys off — a container's
+    /// element-kind flag, a rebind's release path, a fiber-result flag, a
+    /// struct field's drop mask.
+    ///
+    /// Spelling this as a hand-written `Str | Ptr` at each site is what let
+    /// [`LType::Any`] — managed since #208 gave it a box — slip past four of
+    /// them at once: a list literal tagged its boxes unmanaged, a runtime
+    /// container never released them, a reassigned `mut` leaked the box it
+    /// replaced, and a `Result<any, _>` was marked payload-free. One predicate
+    /// means the NEXT managed [`LType`] cannot be forgotten site by site.
+    #[must_use]
+    pub(crate) fn is_managed_ptr(self) -> bool {
+        matches!(self, LType::Str | LType::Ptr | LType::Any)
+    }
 }
 
 /// The scalar element `LType` spelled after `prefix` in a value's owner tag:
@@ -94,7 +110,7 @@ pub(crate) fn elem_of_tag(v: &Value, prefix: &str) -> Option<LType> {
 /// The tag spelling of an erased-`any` element. It cannot use the LLVM
 /// spelling: `i8*` is also every string and handle, and a tag must name the
 /// element unambiguously so a read-back re-types the word correctly.
-const ANY_TAG_SPELLING: &str = "any";
+pub(crate) const ANY_TAG_SPELLING: &str = "any";
 
 /// The owner tag for a container holding `elem` words: `<prefix><spelling>`
 /// when the element is a concrete scalar (or an erased-`any` box) the uniform

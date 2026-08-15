@@ -455,7 +455,7 @@ fn gen_cell_store(cg: &mut Codegen, name: &str, value: &Expr) -> Result<()> {
     // Rebind order: dup the incoming value BEFORE dropping the old one, so a
     // self-assignment never frees the value it stores [GC-ARC-PERCEUS].
     crate::arc::dup_store(cg, ty, &v.operand);
-    if matches!(slot.pointee, LType::Str | LType::Ptr) {
+    if slot.pointee.is_managed_ptr() {
         let old = cg.emit_reg(format!("load {ty}, {ty}* {}", slot.ptr));
         crate::arc::release_operand(cg, &old);
     }

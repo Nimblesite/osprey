@@ -40,7 +40,7 @@ pub(crate) fn gen_spawn(cg: &mut Codegen, e: &Expr) -> Result<Value> {
     let elem = elem?;
     let sig = (Vec::new(), THUNK_SIG.0, THUNK_SIG.1, None);
     let cell = crate::closure::cell_value(cg, id, &thunk, &cell_ty, &caps, &sig);
-    let result_managed = i64::from(matches!(elem.ty, LType::Str | LType::Ptr)).to_string();
+    let result_managed = i64::from(elem.ty.is_managed_ptr()).to_string();
     let r = cg.call(
         "i64",
         "fiber_spawn_env_owned",

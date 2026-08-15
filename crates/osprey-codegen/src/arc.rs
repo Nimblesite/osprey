@@ -14,7 +14,7 @@
 //! `osp_release` as no-ops, so one IR serves every backend.
 
 use crate::builder::Codegen;
-use crate::llty::{LType, Value};
+use crate::llty::Value;
 use osprey_ast::{Expr, Stmt};
 
 const RETAIN_DECL: &str = "declare void @osp_retain(i8*)";
@@ -78,7 +78,7 @@ fn managed(cg: &Codegen, v: &Value) -> bool {
     // An erased-`any` box is an ordinary tagged allocation; excluding it here
     // was exactly #208 — the epilogue could neither move an erasing return's
     // owner out nor retain a borrowed one, so the frame freed the referent.
-    matches!(v.ty, LType::Str | LType::Ptr | LType::Any)
+    v.ty.is_managed_ptr()
         && v.operand.starts_with('%')
         && !cg.is_rodata(&v.operand)
 }
