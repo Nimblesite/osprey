@@ -356,8 +356,17 @@ A tuple is a row whose field names are the decimal positions `0`, `1`, …, the
 same encoding a positionally-declared union payload already uses
 ([TYPE-UNION-POSITIONAL](0003-Syntax.md#type-declarations)):
 
+A positionally-declared union payload IS such a row, and is what a tuple pattern
+reads today — the standalone `(1, "a")` value and its `(int, string)` type
+spelling do not parse yet (see the status note below):
+
 ```osprey
-let pair: (int, string) = (1, "a")
+type Pair = Pair(int, string)
+
+let described = match erased {
+    (n, label) => "${label}=${n}"
+    _          => "unknown"
+}
 ```
 
 A decimal string is not a valid identifier in either flavor, so a tuple field

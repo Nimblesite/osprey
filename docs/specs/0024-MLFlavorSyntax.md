@@ -302,12 +302,21 @@ size (Node left right) = 1 + size left + size right
 
 `[FLAVOR-ML-TUPLE]` A parenthesised comma list is a tuple, as in ML: `f (a, b)`
 applies `f` to one tuple and `f a b` is curried application of two arguments.
-Tuple types use ML's `*` ([TYPE-TUPLE](0004-TypeSystem.md#tuples--type-tuple)):
+In *pattern* position the same spelling reads a positional row
+([TYPE-TUPLE](0004-TypeSystem.md#tuples--type-tuple)):
 
 ```osprey-ml
-pair : int * string -> string
-pair (n, label) = "${label}=${n}"
+type Pair = Pair int string
+
+describe : any -> string
+describe v =
+    match v
+        (n, label) => "${label}=${n}"
+        _ => "unknown"
 ```
+
+ML's `*` type spelling (`int * string`) is not implemented — `*` is not a type
+operator, and a tuple type has no surface syntax in either flavor.
 
 A tuple destructured in a clause head lowers to a flat parameter list, so ML's
 `pair (n, label)` and Default's `fn pair(n, label)` are the same function and

@@ -107,9 +107,9 @@ unification, and the only way to discriminate an `any`
 
 ```osprey
 let described = match value {
-    { message }               => message
-    { origin: { x, y }, .. }  => "${x},${y}"
-    _                         => "unknown"
+    { message }     => "just=${message}"
+    { code, .. }    => "coded=${code}"
+    _               => "unknown"
 }
 ```
 
@@ -120,7 +120,9 @@ fields. Closed-by-default is what keeps arm order from changing meaning: an open
 `{ x, y, z }` arm. The compiler rejects a `..`-opened arm that shadows a later
 one rather than resolving it by order.
 
-Rows nest, and `field: binder` renames a binding.
+A binder always takes its field's own name. Nested rows
+(`{ origin: { x, y }, .. }`) and `field: binder` renames do not parse — see the
+status note below.
 
 ## Tuple patterns — [PATTERN-TUPLE]
 
