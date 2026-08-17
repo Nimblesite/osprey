@@ -44,11 +44,20 @@ fn collect(dir: &Path, ext: &str, out: &mut Vec<PathBuf>) {
     }
 }
 
-/// Parse + type-check only. Codegen is irrelevant to whether an annotation was
-/// needed, and skipping it keeps a per-annotation sweep affordable.
-fn type_checks(path: &Path, source: &str) -> bool {
+/// Parse, type-check AND lower to IR.
+///
+/// Codegen is NOT optional here, and saying otherwise cost the tree a broken
+/// build: `ec6a5cac` deleted ML signatures this gate called redundant, and
+/// `verdict`, `workflows` and `type_equality_comprehensive` stopped compiling
+/// with "a closure value with a still-generic type". All three still TYPE-CHECK
+/// without their signatures — the annotation was what made a closure's type
+/// concrete enough to lower. An oracle that stops at inference cannot see that,
+/// so it reports a load-bearing annotation as dead weight.
+fn compiles(path: &Path, source: &str) -> bool {
     let parsed = osprey_syntax::parse_program_for_path(&path.to_string_lossy(), source);
-    parsed.errors.is_empty() && osprey_types::check_program(&parsed.program).is_empty()
+    parsed.errors.is_empty()
+        && osprey_types::check_program(&parsed.program).is_empty()
+        && osprey_codegen::compile_program(&parsed.program).is_ok()
 }
 
 /// The concrete return annotation on a `fn` line, as (byte range, spelling).
@@ -73,7 +82,7 @@ fn return_annotation(line: &str) -> Option<(usize, usize, String)> {
     Some((arrow, body, spelling))
 }
 
-/// Every `(line number, spelling)` whose deletion still type-checks.
+/// Every `(line number, spelling)` whose deletion still compiles end to end.
 fn redundant_in(path: &Path, source: &str) -> Vec<(usize, String)> {
     source
         .lines()
@@ -83,7 +92,7 @@ fn redundant_in(path: &Path, source: &str) -> Vec<(usize, String)> {
             let stripped = format!("{}{}", &line[..arrow], &line[body..]);
             let variant: Vec<&str> = source.lines().collect();
             let rebuilt = rebuild(&variant, index, &stripped);
-            type_checks(path, &rebuilt).then(|| (index + 1, spelling))
+            compiles(path, &rebuilt).then(|| (index + 1, spelling))
         })
         .collect()
 }
@@ -124,7 +133,7 @@ fn deleting_an_inferable_annotation_does_not_change_what_symbols_reports() {
             let Ok(source) = fs::read_to_string(&path) else {
                 continue;
             };
-            if !type_checks(&path, &source) {
+            if !compiles(&path, &source) {
                 continue;
             }
             let display = path
@@ -139,7 +148,7 @@ fn deleting_an_inferable_annotation_does_not_change_what_symbols_reports() {
                 };
                 let stripped = format!("{}{}", &line[..arrow], &line[body..]);
                 let rebuilt = rebuild(&lines, index, &stripped);
-                if !type_checks(&path, &rebuilt) {
+                if !compiles(&path, &rebuilt) {
                     continue;
                 }
                 if outline(&rebuilt) != outline(&source) {
@@ -170,7 +179,7 @@ fn no_corpus_program_carries_a_removable_return_annotation() {
             };
             // Only judge a program that is valid to begin with; the
             // must-reject corpus is graded by its own harness.
-            if !type_checks(&path, &source) {
+            if !compiles(&path, &source) {
                 continue;
             }
             let display = path
