@@ -373,12 +373,75 @@ fn or_patterns_are_rejected() {
     assert!(ml_errors(src).contains("or-patterns are not supported"));
 }
 
-/// `(` groups exactly one pattern — Osprey has no tuple patterns
-/// ([FLAVOR-ML-PATTERN-GROUP]).
+/// `( p )` groups exactly one pattern ([FLAVOR-ML-PATTERN-GROUP]); a comma
+/// list is a tuple pattern, and each of its slots is a binder or `_` — a
+/// constructor cannot ride in a slot ([PATTERN-TUPLE]).
 #[test]
 fn a_grouped_pattern_holds_one_pattern() {
     let src = "type Pair = Both int int\nfst p = match p\n    (Both a, b) => a\n";
-    assert!(ml_errors(src).contains("no tuple patterns"));
+    assert!(ml_errors(src).contains("a tuple pattern slot binds a name or `_`"));
+}
+
+/// `(a, b)` lowers to the canonical positional row — the same
+/// [`Pattern::Structural`] both flavors share ([PATTERN-TUPLE],
+/// [FLAVOR-ML-TUPLE]).
+#[test]
+fn a_tuple_pattern_lowers_to_the_positional_row() {
+    let src = "type Pair = Both(int, string)\nfst p = match p\n    (a, _) => a\n";
+    let parsed = parse_program_with_flavor(src, Flavor::Ml);
+    assert!(parsed.errors.is_empty(), "unexpected errors: {parsed:#?}");
+    let arms = find_match_arms(&parsed.program);
+    assert!(
+        matches!(
+            &arms[0].pattern,
+            Pattern::Structural { fields, open: false }
+                if fields
+                    .iter()
+                    .map(|(f, b)| (f.as_str(), b.as_str()))
+                    .eq([("0", "a"), ("1", "")])
+        ),
+        "expected the positional row, got {:?}",
+        arms[0].pattern
+    );
+}
+
+/// `{ heading, .. }` opens the row; `{ heading }` stays closed
+/// ([PATTERN-STRUCTURAL]).
+#[test]
+fn structural_patterns_parse_closed_and_open() {
+    let src = "title page = match page\n    { heading, .. } => heading\n    { name } => name\n    _ => \"untitled\"\n";
+    let parsed = parse_program_with_flavor(src, Flavor::Ml);
+    assert!(parsed.errors.is_empty(), "unexpected errors: {parsed:#?}");
+    let arms = find_match_arms(&parsed.program);
+    assert!(matches!(
+        &arms[0].pattern,
+        Pattern::Structural { fields, open: true }
+            if fields.iter().map(|(f, _)| f.as_str()).eq(["heading"])
+    ));
+    assert!(matches!(
+        &arms[1].pattern,
+        Pattern::Structural { fields, open: false }
+            if fields.iter().map(|(f, _)| f.as_str()).eq(["name"])
+    ));
+}
+
+/// The first match expression's arms anywhere in the program — the shared
+/// digging for the pattern-shape assertions above.
+fn find_match_arms(program: &osprey_ast::Program) -> Vec<osprey_ast::MatchArm> {
+    fn from_expr(e: &osprey_ast::Expr) -> Option<Vec<osprey_ast::MatchArm>> {
+        match e {
+            osprey_ast::Expr::Match { arms, .. } => Some(arms.clone()),
+            _ => None,
+        }
+    }
+    let found = program.statements.iter().find_map(|s| match s {
+        Stmt::Function { body, .. } => from_expr(body),
+        _ => None,
+    });
+    match found {
+        Some(arms) => arms,
+        None => panic!("expected a match expression in the program"),
+    }
 }
 
 /// Clause merging reaches inside the declaration containers, so a clause set in

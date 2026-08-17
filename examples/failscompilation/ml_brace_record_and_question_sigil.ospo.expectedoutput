@@ -1,5 +1,5 @@
-12:8: unexpected character '{'
-12:23: unexpected character '}'
-12:12: unexpected token Eq in expression
-12:15: unexpected token Comma in expression
-12:19: unexpected token Eq in expression
+13:8: unexpected token LBrace in expression
+13:12: unexpected token Eq in expression
+13:15: unexpected token Comma in expression
+13:19: unexpected token Eq in expression
+13:23: unexpected token RBrace in expression

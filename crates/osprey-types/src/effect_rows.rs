@@ -1914,13 +1914,13 @@ fn bind_pattern(pattern: &Pattern, value: Option<&Value>, index: &Index, env: &m
                 bind_pattern(sub_pattern, projected, index, env);
             }
         }
-        Pattern::Structural { fields } => {
-            for field in fields {
-                let _ = env.shadowed.insert(field.clone());
+        Pattern::Structural { fields, .. } => {
+            for (field, binder) in fields {
+                let _ = env.shadowed.insert(binder.clone());
                 if let Some(projected) = value.and_then(|value| value.fields.get(field)) {
-                    let _ = env.values.insert(field.clone(), projected.clone());
+                    let _ = env.values.insert(binder.clone(), projected.clone());
                 } else {
-                    let _ = env.values.remove(field);
+                    let _ = env.values.remove(binder);
                 }
             }
         }

@@ -60,6 +60,9 @@ pub struct Codegen {
     nullary_singletons: HashMap<String, String>,
     /// Resolved signatures, constructor layouts and union tags from inference.
     pub(crate) prog: ProgramTypes,
+    /// Erased-`any` descriptors, deep-box functions and the candidate row
+    /// table ([`crate::anybox`], [TYPE-ANY]).
+    pub(crate) anys: crate::anybox::AnyState,
     /// Stream-fusion pipeline: pending `map`/`filter` stages recorded by those
     /// builtins and replayed (in source order) when `forEach`/`fold` consumes
     /// the iterator. Cleared after each consumer.
@@ -432,7 +435,7 @@ impl DebugState {
             LType::I32 => self.i32_type_id,
             LType::I1 => self.bool_type_id,
             LType::Double => self.double_type_id,
-            LType::Str | LType::Ptr => self.ptr_type_id,
+            LType::Str | LType::Ptr | LType::Any => self.ptr_type_id,
         }
     }
 
@@ -572,6 +575,7 @@ impl Codegen {
             arc: crate::arc::ArcLedger::new(),
             arc_slot_count: 0,
             rodata_regs: HashSet::new(),
+            anys: crate::anybox::AnyState::default(),
         }
     }
 

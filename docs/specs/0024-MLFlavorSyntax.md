@@ -95,7 +95,10 @@ sum = add (10, 20)
 The flat binding lowers to one two-parameter `Stmt::Function`; the call lowers
 to one two-argument `Expr::Call`. `sum` retains the complete
 `Result<int, MathError>` return; neither flat nor curried application unwraps
-it. Parentheses group arguments here; Osprey has no tuple value type.
+it. The parenthesised list is a tuple
+([FLAVOR-ML-TUPLE](#match)), and a tuple applied to a
+known head is exactly this flat call — which is why the ML and Default twins
+share IR.
 
 Lambdas follow the same split: `\x y => body` is curried and
 `\(x, y) => body` is flat. `name () = body` is a zero-parameter function;
@@ -288,8 +291,8 @@ positional one — ML's one form is Default's `Node(l, r)`
 ([Union patterns](0007-PatternMatching.md#union-patterns)). `Success`/`Error` are
 the exception, binding by role.
 
-`[FLAVOR-ML-PATTERN-GROUP]` Parentheses group one pattern and disappear during
-parsing. They allow a constructor pattern in a clause head:
+`[FLAVOR-ML-PATTERN-GROUP]` Parentheses around a **single** pattern group it and
+disappear during parsing. They allow a constructor pattern in a clause head:
 
 ```osprey-ml
 size : Tree -> Result<int, MathError>
@@ -297,7 +300,29 @@ size Leaf = Success(value = 0)
 size (Node left right) = 1 + size left + size right
 ```
 
-`(a, b)` is not a tuple pattern and is rejected.
+`[FLAVOR-ML-TUPLE]` A parenthesised comma list is a tuple, as in ML: `f (a, b)`
+applies `f` to one tuple and `f a b` is curried application of two arguments.
+In *pattern* position the same spelling reads a positional row
+([TYPE-TUPLE](0004-TypeSystem.md#tuples--type-tuple)):
+
+```osprey-ml
+type Pair = Pair int string
+
+describe : any -> string
+describe v =
+    match v
+        (n, label) => "${label}=${n}"
+        _ => "unknown"
+```
+
+ML's `*` type spelling (`int * string`) is not implemented — `*` is not a type
+operator, and a tuple type has no surface syntax in either flavor.
+
+A tuple destructured in a clause head lowers to a flat parameter list, so ML's
+`pair (n, label)` and Default's `fn pair(n, label)` are the same function and
+emit the same IR — the tupled head is what keeps the twins equivalent, where
+curried application lowers to closures ([FLAVOR-IR-EQUIV],
+[FLAVOR-ML-CURRY](#functions-and-currying)).
 
 ## Records
 
@@ -316,6 +341,32 @@ updated = point(x = 50)
 
 Uppercase heads lower to `Expr::TypeConstructor`. A lowercase inline head is a
 non-destructive record update and lowers to `Expr::Update`.
+
+`[FLAVOR-ML-RECORD-ANON]` A headless brace literal is an anonymous record
+([TYPE-RECORD-ANON](0004-TypeSystem.md#anonymous-records--type-record-anon)),
+written ML-style with `=` between field and value. Braces are unambiguous in
+this flavor because ML maps use `[k => v]` ([FLAVOR-ML-MAP](#collections-and-indexing)):
+
+```osprey-ml
+origin = { x = 0, y = 0 }
+```
+
+> **Status:** the inline brace record is not implemented — the ML expression
+> parser rejects `{` (`unexpected token LBrace in expression`, pinned by
+> `examples/failscompilation/ml_brace_record_and_question_sigil.ospo`).
+> Construct records with the layout or parenthesised `Name(field = value)`
+> forms. The brace structural *pattern* below is implemented, including `..`.
+
+Structural patterns use the same spelling with binders in place of values, and
+`..` opens the row
+([PATTERN-STRUCTURAL](0007-PatternMatching.md#structural-patterns--pattern-structural)):
+
+```osprey-ml
+title page =
+    match page
+        { heading, .. } => heading
+        _ => "untitled"
+```
 
 `[FLAVOR-ML-CTOR-POSITIONAL]` A positionally-declared variant is constructed
 and matched by juxtaposition:
@@ -358,9 +409,10 @@ lines are statements. It lowers to `Expr::Block { statements, value }`.
 | ML surface | Canonical AST |
 | --- | --- |
 | `x = e` / `mut x = e` / `x := e` | `Stmt::Let` / mutable `Stmt::Let` / `Stmt::Assignment` |
-| `f x y = e` / `f (x, y) = e` | curried chain / flat `Stmt::Function` |
-| `f a b` / `f (a, b)` | nested calls / one flat call |
+| `f x y = e` / `f (x, y) = e` | curried chain / tuple head, flat `Stmt::Function` |
+| `f a b` / `f (a, b)` | nested calls / one flat call on a tuple |
 | `[a, b]` / `[k => v]` / `xs[i]` | `Expr::List` / `Expr::Map` / `Expr::Index` |
+| `{ x = e }` / `{ x, .. }` | `Expr::Record` / structural pattern |
 | `namespace`, `module`, `state`, `signature`, `import` | shared project AST nodes |
 | `extern f (x : T) -> U` | `Stmt::Extern` |
 | `type`, inline unions | `Stmt::Type` and `TypeVariant` |

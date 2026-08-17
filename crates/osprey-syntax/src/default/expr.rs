@@ -456,7 +456,7 @@ fn pipe_into(left: Expr, right: Expr) -> Expr {
 mod tests {
     use crate::parse_tree;
     use crate::test_support::stmts;
-    use osprey_ast::{Expr, InterpolatedPart, Stmt};
+    use osprey_ast::{Expr, InterpolatedPart, Pattern, Stmt};
     use tree_sitter::Node;
 
     fn let_value(src: &str) -> Expr {
@@ -695,6 +695,114 @@ mod tests {
             let_value("let r = p { x: 1 }\n"),
             Expr::TypeConstructor { .. }
         ));
+    }
+
+    /// Horizontal space between a callee and its argument list is legal, and
+    /// binds exactly as tightly as the unspaced spelling. Requiring
+    /// `token.immediate('(')` to keep a following `(a, b)` tuple-pattern arm
+    /// parseable silently rejected `print(id (1))` — ordinary source the
+    /// language has always accepted — so the same-line test moved into the
+    /// scanner instead ([PATTERN-TUPLE], tree-sitter-osprey/src/scanner.c).
+    #[test]
+    fn a_call_accepts_horizontal_space_before_its_argument_list() {
+        for src in ["let r = id(1)\n", "let r = id (1)\n", "let r = id  (1)\n"] {
+            match let_value(src) {
+                Expr::Call {
+                    function,
+                    arguments,
+                    ..
+                } => {
+                    assert!(
+                        matches!(*function, Expr::Identifier(ref n) if n == "id"),
+                        "{src}"
+                    );
+                    assert_eq!(arguments, vec![Expr::Integer(1)], "{src}");
+                }
+                other => panic!("expected a call for {src:?}, got {other:?}"),
+            }
+        }
+    }
+
+    /// The spaced call still binds at `PREC.member`, so `1 + id (2)` is
+    /// `1 + id(2)` — never `(1 + id)(2)`. Resolving this with a GLR fork could
+    /// not preserve it: both readings contain exactly one spaced call, so their
+    /// dynamic precedences tie and the resolver chose the wrong one.
+    #[test]
+    fn a_spaced_call_binds_tighter_than_an_operator() {
+        match let_value("let r = 1 + id (2)\n") {
+            Expr::Binary { left, right, .. } => {
+                assert!(matches!(*left, Expr::Integer(1)));
+                assert!(matches!(*right, Expr::Call { .. }), "got {right:?}");
+            }
+            other => panic!("expected `1 + id(2)`, got {other:?}"),
+        }
+    }
+
+    /// Indexing is STRICTER than calling: the `[` must touch its target, so
+    /// `xs[0]` indexes and `xs [0]` does not. The asymmetry is deliberate and
+    /// this test is why it cannot simply be unified — list-arm matches are
+    /// written on a SINGLE line, so extending the call's same-line rule to `[`
+    /// reads the `0  [head` in
+    ///
+    ///     match xs { [] => 0  [head, ...tail] => … }
+    ///
+    /// as an index and breaks `benchmarks/cases/listops/listops.osp`. Tuple
+    /// arms have no single-line usage, which is what lets `(` be looser.
+    /// [TYPE-LIST-PATTERNS]
+    #[test]
+    fn an_index_bracket_must_touch_its_target_unlike_a_call() {
+        match let_value("let r = xs[0]\n") {
+            Expr::Index { target, index } => {
+                assert!(matches!(*target, Expr::Identifier(ref n) if n == "xs"));
+                assert!(matches!(*index, Expr::Integer(0)));
+            }
+            other => panic!("expected an index, got {other:?}"),
+        }
+        // Spaced: NOT an index — the `let` takes `xs` alone.
+        assert!(
+            matches!(let_value("let r = xs [0]\n"), Expr::Identifier(ref n) if n == "xs"),
+            "a spaced `[` must not bind as an index"
+        );
+        // The single-line list-arm match the strict rule exists to protect.
+        match let_value("let r = match xs { [] => 0  [head, ...tail] => head }\n") {
+            Expr::Match { arms, .. } => assert_eq!(arms.len(), 2, "got {arms:?}"),
+            other => panic!("expected a match, got {other:?}"),
+        }
+    }
+
+    /// The boundary the scanner draws: a `(` that opens the NEXT line is the
+    /// following arm's tuple pattern, never an argument list extending the
+    /// previous arm's body. Both arms must survive, and the tuple arm binds its
+    /// slots positionally.
+    #[test]
+    fn a_newline_paren_opens_a_tuple_arm_not_a_call() {
+        let src = "let r = match v {\n    { held, .. } => render (held)\n    (n, s) => n\n}\n";
+        match let_value(src) {
+            Expr::Match { arms, .. } => {
+                assert_eq!(arms.len(), 2, "got {arms:?}");
+                // The first arm's body kept its spaced call ...
+                assert!(
+                    matches!(arms[0].body, Expr::Call { .. }),
+                    "arm 0 body: {:?}",
+                    arms[0].body
+                );
+                // ... and did not swallow `(n, s)` as a second argument list.
+                match arms[1].pattern {
+                    Pattern::Structural { ref fields, open } => {
+                        assert!(!open);
+                        assert_eq!(
+                            fields,
+                            &[
+                                (String::from("0"), String::from("n")),
+                                (String::from("1"), String::from("s")),
+                            ]
+                        );
+                    }
+                    ref other => panic!("expected a tuple pattern, got {other:?}"),
+                }
+            }
+            other => panic!("expected a match, got {other:?}"),
+        }
     }
 
     #[test]

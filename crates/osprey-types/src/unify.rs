@@ -78,6 +78,9 @@ pub fn unify(ctx: &mut InferCtx, a: &Type, b: &Type) -> Result<(), TypeError> {
     }
 }
 
+/// Directional assignment-site unification: `actual` must be usable where
+/// `expected` is demanded. Plain [`unify`] stays symmetric — this is the only
+/// place a one-way rule may live.
 pub fn unify_assignable(
     ctx: &mut InferCtx,
     expected: &Type,
@@ -85,6 +88,17 @@ pub fn unify_assignable(
 ) -> Result<(), TypeError> {
     let expected = ctx.prune(expected);
     let actual = ctx.prune(actual);
+    // Erasure is ONE-WAY [TYPE-ANY]. Every value assigns into an `any` slot;
+    // no annotation recovers one back out. Recovery by declared type was an
+    // unchecked cast — it printed a heap address as a decimal integer (#209)
+    // and segfaulted on a word that never was a pointer — so it is rejected
+    // here rather than repaired in the backend.
+    if let Some(e) = erasure_is_one_way(&expected, &actual) {
+        return Err(e);
+    }
+    if let Some(e) = anonymous_erasure(&expected, &actual) {
+        return Err(e);
+    }
     // A bare `T` value satisfies a `Result<T, E>` slot (implicit
     // `Success`), e.g. `fn f() -> Result<bool, E> = x > 0`.
     if let Type::Con { name, args } = &expected {
@@ -128,6 +142,37 @@ pub fn unify_assignable(
         return result;
     }
     unify(ctx, &expected, &actual)
+}
+
+/// The error for recovering a concrete type out of an erased `any`, or `None`
+/// when this assignment is not a recovery. An `expected` that is still a
+/// variable is inference, not an annotation, so it takes the erasure and stays
+/// `any`. Implements [TYPE-ANY].
+fn erasure_is_one_way(expected: &Type, actual: &Type) -> Option<TypeError> {
+    let recovering = actual.is_named(names::ANY)
+        && !expected.is_named(names::ANY)
+        && !matches!(expected, Type::Var(_));
+    recovering.then(|| {
+        TypeError::new(format!(
+            "cannot recover `{expected}` from an erased `any`: \
+             match its structure instead"
+        ))
+    })
+}
+
+/// The error for erasing an anonymous record into `any`, or `None` otherwise.
+/// Narrowing selects among DECLARED row shapes by descriptor identity, so a
+/// shape only a literal spells could never be selected by any arm —
+/// accepted-then-unmatchable would be a silent wrong answer, not a
+/// capability. Implements [TYPE-ANY], [TYPE-RECORD-ANON].
+fn anonymous_erasure(expected: &Type, actual: &Type) -> Option<TypeError> {
+    let erasing = expected.is_named(names::ANY)
+        && matches!(actual, Type::Record { name, .. } if name.is_empty());
+    erasing.then(|| {
+        TypeError::new(
+            "cannot erase an anonymous record into `any`: declare its row as a named type first",
+        )
+    })
 }
 
 /// Match a constructor's expected/actual argument lists under the declared

@@ -571,9 +571,17 @@ impl<'a> Lowerer<'a> {
                 Pattern::Literal(Box::new(signed))
             }
             "list_pattern" => self.lower_list_pattern(inner),
-            "field_pattern" => Pattern::Structural {
-                fields: self.field_pattern_names(inner),
+            "structural_pattern" => Pattern::Structural {
+                fields: self
+                    .first_child_of_kind(inner, "field_pattern")
+                    .map(|fp| self.field_pattern_names(fp))
+                    .unwrap_or_default()
+                    .into_iter()
+                    .map(|f| (f.clone(), f))
+                    .collect(),
+                open: Self::has_row_rest(inner),
             },
+            "tuple_pattern" => osprey_ast::tuple_pattern(self.tuple_binders(inner)),
             "identifier" | "qualified_path" => {
                 // Could be: constructor `Ctor { fields }`, type-annotated, sub-patterns,
                 // or a bare binding. Inspect siblings of the name field.
@@ -607,6 +615,26 @@ impl<'a> Lowerer<'a> {
 
     fn field_pattern_names(&self, fp: Node<'_>) -> Vec<String> {
         self.texts_of_kind(fp, "identifier")
+    }
+
+    /// Whether a structural pattern node carries the trailing `..` row-opener
+    /// ([PATTERN-STRUCTURAL]). `..` is an anonymous token, invisible to the
+    /// named-children traversal the other helpers use.
+    fn has_row_rest(pat: Node<'_>) -> bool {
+        (0..pat.child_count()).any(|i| pat.child(i).is_some_and(|c| c.kind() == ".."))
+    }
+
+    /// Each tuple slot's binder in written order: an identifier's text, or the
+    /// empty binder for a `_` slot ([PATTERN-TUPLE]).
+    fn tuple_binders(&self, tp: Node<'_>) -> Vec<String> {
+        (0..tp.child_count())
+            .filter_map(|i| tp.child(i))
+            .filter_map(|c| match c.kind() {
+                "identifier" => Some(self.text(c)),
+                "_" => Some(String::new()),
+                _ => None,
+            })
+            .collect()
     }
 
     /// Build a [`Pattern::List`] from a `list_pattern` node: the `element` fields
@@ -973,7 +1001,8 @@ mod tests {
         // Bare structural `{ name, age }` and a fixed-length list `[a, b]`.
         assert!(matches!(
             first_pattern("{ name, age }"),
-            Pattern::Structural { fields } if fields == vec!["name", "age"]
+            Pattern::Structural { fields, open: false }
+                if fields.iter().map(|(f, _)| f.as_str()).eq(["name", "age"])
         ));
         assert!(matches!(
             first_pattern("[a, b]"),

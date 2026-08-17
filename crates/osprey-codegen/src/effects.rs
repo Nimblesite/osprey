@@ -109,11 +109,17 @@ fn bind_arm_params(
     for (i, pname) in arm.params.iter().enumerate() {
         let param = sig.param(i);
         let erased = sig.param_erased.get(i).copied().unwrap_or(false);
+        // The REGISTER is positional and compiler-namespaced, never the
+        // source binder: a binder spelled `entry` would collide with the
+        // function's `entry:` block label and clang refused the module —
+        // the same rule user-function parameters follow ([FLAVOR-IR-EQUIV],
+        // [`crate::llty::param_register`]).
+        let reg = format!("%__arm{i}");
         let bound = match resolved.and_then(|r| r.params.get(i)).filter(|_| erased) {
-            Some(rt) => crate::effect_generics::unbox_erased(cg, &format!("%{pname}"), rt),
+            Some(rt) => crate::effect_generics::unbox_erased(cg, &reg, rt),
             None => crate::cast::incoming_param(
                 cg,
-                format!("%{pname}"),
+                reg.clone(),
                 param,
                 resolved
                     .and_then(|r| r.params.get(i))
@@ -121,7 +127,7 @@ fn bind_arm_params(
             ),
         };
         cg.bind(pname.clone(), bound);
-        params.push((param.ty, pname.clone()));
+        params.push((param.ty, format!("__arm{i}")));
     }
 }
 
@@ -699,16 +705,13 @@ fn coerce_to_answer(cg: &mut Codegen, value: Value, answer: &AnswerShape) -> Res
         // result is settled in inference, where the semantic types still exist
         // (`check_abandoning_arm` in `crates/osprey-types/src/expr.rs`).
         //
-        // A codegen-side guard cannot decide it: `any` and `int` are the same
-        // erased machine word here, so rejecting every scalar that meets a
-        // pointer answer rejects valid erased values, and accepting every
-        // pointer that meets a scalar answer boxes a heap address as a
-        // successful integer. Both directions need the semantic type.
-        //
-        // No ownership crosses this cast either, for the same reason it does
-        // not cross an erasing return: an erased word carries no evidence of
-        // whether a `+1` came with it. See `coerce_return` in `lower.rs` and
-        // docs/plans/0027-any-erasure-and-recovery.md.
+        // A codegen-side guard cannot decide it: whether an arm's answer may
+        // BE the region's result is a question about the SOURCE types, which
+        // only inference still has. When the region's answer type is `any`,
+        // `coerce_to` erases the arm's value into its shape-carrying box
+        // ([`crate::anybox`], [TYPE-ANY]) — that boxing is also where the
+        // answer's ownership transfer happens; the plain-scalar directions
+        // carry no ownership, exactly as `coerce_return` in `lower.rs`.
         None => coerce_to(cg, value, answer.ty),
     }
 }

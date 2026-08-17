@@ -20,7 +20,9 @@ pub(crate) fn pattern_names(pattern: &Pattern, names: &mut BTreeSet<String>) {
         Pattern::TypeAnnotated { name, .. } | Pattern::Binding(name) => {
             let _ = names.insert(name.clone());
         }
-        Pattern::Structural { fields } => names.extend(fields.iter().cloned()),
+        Pattern::Structural { fields, .. } => {
+            names.extend(fields.iter().map(|(_, binder)| binder.clone()));
+        }
         Pattern::List { elements, rest } => {
             for nested in elements {
                 pattern_names(nested, names);

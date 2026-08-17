@@ -14,12 +14,16 @@ fn processAnyValue(input) -> any = input + 10 ?: 0
 /// epilogue moved that invented owner out, released the real one, and returned
 /// a dangling pointer, printing nothing under `--memory=arc`. Built at runtime
 /// rather than written as a literal, or the pointer would be a global and never
-/// counted at all. Returning a heap value AS `any` is the case that still does
-/// not work; docs/plans/0027-any-erasure-and-recovery.md tracks it (#208).
-/// [GC-ARC-PERCEUS]
+/// counted at all. [GC-ARC-PERCEUS]
+///
+/// Erasure is one-way [TYPE-ANY], so the heap value is forwarded into another
+/// `any` sink rather than recovered as a `string`: an annotation that
+/// resurrects a pointer is rejected, and
+/// `examples/failscompilation/any_recovery_by_annotation.ospo` pins every form
+/// of it in both flavors.
 fn forward(x: any) -> any = x
 
-fn forwarded() -> string = forward("dyn" + "amic")
+fn forwardedHeap() -> string = processAny(forward("dyn" + "amic"))
 
 print("Explicit any return type works")
 print("getDynamicValue() = ${getDynamicValue()}")
@@ -145,14 +149,123 @@ print("Union equality tests:")
 print(compareColors(c1: color1, c2: color2))
 print(compareColors(c1: color1, c2: color3))
 
+/// --- Structural narrowing [PATTERN-STRUCTURAL] [PATTERN-TUPLE] ---
+/// The ONLY read through an erased value is a structural match: arms select
+/// by the value's runtime row, `..` opens a row to extensions, a tuple arm is
+/// the positional spelling, and every scalar declines each field-naming arm
+/// so the catch-all takes it. The heap recovery that annotations lost comes
+/// back here as a narrowing: `held` reads a runtime-built string straight
+/// back out of the erased record's row.
+type Boxed = { held: string, tag: int }
+type Pair = Pair(int, string)
+type Point = { x: int, y: int }
+
+fn describeAny(v: any) -> string = match v {
+    { held, .. } => "held=${held}"
+    { value }    => "value=${value}"
+    (n, s)       => "pair=${n}:${s}"
+    _            => "other=${v}"
+}
+
+/// Narrowing is stable: the same box selects the same arm every time.
+fn describeTwice(v: any) -> string = "${describeAny(v)}/${describeAny(v)}"
+
+/// Rendering reads through the shape descriptor, so an erased record prints
+/// its row and an erased scalar prints itself — never a machine word.
+fn erasedPoint() -> any = Point { x: 1, y: 2 }
+
+/// Every descriptor kind renders through its own arm: a float, a bool, a
+/// nullary union variant, a record-payload variant, a positional-payload
+/// variant, a `Result` block, and the opaque handles a descriptor cannot see
+/// into. All are reachable from ordinary source, and none of the union,
+/// `Result`, float or opaque render paths had a single test — an erased float
+/// would have printed its IEEE bits and nobody would have known [TYPE-ANY].
+type Shape = Circle { radius: int } | Square { side: int }
+
+fn erasedKinds() -> string =
+    "${forward(1.5 + 0.25)}|${forward(1 < 2)}|${forward(Green)}|${forward(Circle { radius: 3 })}|${forward(intDiv(10, 2))}|${forward(listAppend(List(), 1))}|${forward(mapSet(Map(), "k", 1))}"
+
+/// A container of erased values keeps them BOXED. Folding an `any` element
+/// into the uniform integer word tagged the slots unmanaged and read each
+/// box's ADDRESS back as an `int`, so a round-tripped element rendered as a
+/// pointer and its payload was never released. Both list representations have
+/// to survive it — the flat literal here, the runtime `List` below — and both
+/// a scalar and a heap payload, since only the heap one moves the ARC oracle
+/// off zero [TYPE-ANY].
+fn erasedInList() -> string = match [forward("bo" + "xed"), forward(7)] {
+    [a, b] => "${describeAny(a)}|${describeAny(b)}"
+    _      => "miss"
+}
+
+fn erasedInRuntimeList() -> string =
+    "${listGet(listAppend(listAppend(List(), forward("ap" + "pended")), forward(8)), 0)}"
+
+/// A fold's loop-carried accumulator crosses a representation boundary as a
+/// raw word, and its rebind carried its own hand-written "is this a string or
+/// a handle" test, so it answered `no` for a box [GC-ARC-PERCEUS]. The fiber
+/// result slot had the identical bug; it is covered in
+/// tests/regressions/fiber/fiber_showcase, which spawns and so cannot link on
+/// wasm32 — keeping it here would cost this file its wasm goldens.
+fn foldAny() -> string =
+    describeAny(range(0, 3) |> fold(forward("se" + "ed"), |acc, x| => forward(acc)))
+
+/// An erased operand crosses an effect mailbox as the box it is, and replacing
+/// a captured `mut any` must RELEASE the box it displaces. The rebind released
+/// only strings and handles, so every handler operation left the previous box —
+/// and any payload hanging off it — alive; the leak grows with the number of
+/// operations, and the ARC oracle counts what survives.
+///
+/// No arm here uses `resume`, which is what keeps this file linkable on wasm32:
+/// a value-carrying `resume` compiles to a captured continuation and pulls in
+/// `__osprey_coro_suspend`, which that target has no port of. The resuming twin
+/// of this case — an erased box routed through the mailbox and back out of a
+/// suspend/resume round trip — lives in tests/regressions/effects/handler_scoping,
+/// which is already pinned unportable for exactly that symbol.
+/// [EFFECTS-OPERATION-MAILBOX]
+effect Swap {
+    swap: fn(any) -> Unit
+}
+
+fn swapWork() -> Unit !Swap = {
+    perform Swap.swap(forward("re" + "placed"))
+    perform Swap.swap(11)
+}
+
+fn swapped() -> string = {
+    mut slot = forward("ini" + "tial")
+    handle Swap
+        swap item => { slot = item }
+    in swapWork()
+    describeAny(slot)
+}
+
+/// Built, boxed, never read: the erasure alone must not disturb ownership —
+/// the ARC live-object oracle observes the drop. A statement discards it; a
+/// `-> Unit` annotation could not, since even a discard of `any` counts as
+/// recovery at an annotation.
+forward("dis" + "carded")
+print("narrowed: ${describeAny(Boxed { held: "print" + "ed", tag: 0 })}")
+print("rendered: ${erasedPoint()}")
+
 /// Verifies erased values still flow through fields, arguments, and union matches.
 fn anyTypeBehaviorCase() = {
     let object = TestType { value: "payload" }
     checkAll("any values and inferred union behavior", [
+        describeAny(Boxed { held: "dyn" + "amic", tag: 9 }) == "held=dynamic",
+        describeAny(TestType { value: "via row" }) == "value=via row",
+        describeAny(Pair(7, "seven")) == "pair=7:seven",
+        describeAny(42) == "other=42",
+        describeAny(forward("still" + "erased")) == "other=stillerased",
+        erasedKinds() == "1.75|true|Green|Circle { radius: 3 }|Success(5)|<list>|<map>",
+        erasedInList() == "other=boxed|other=7",
+        erasedInRuntimeList() == "Success(appended)",
+        swapped() == "other=11",
+        foldAny() == "other=seed",
+        describeTwice(Boxed { held: "twin", tag: 2 }) == "held=twin/held=twin",
+        toString(erasedPoint()) == "{ x: 1, y: 2 }",
         toString(getDynamicValue()) == "42",
         toString(processAnyValue(5)) == "15",
-        forwarded() == "dynamic",
-        length(forwarded()) == 7,
+        forwardedHeap() == "Processed any",
         processAny(42) == "Processed any",
         processAny("hello") == "Processed any",
         processAny(true) == "Processed any",

@@ -106,8 +106,17 @@ print("captured spawn = ${await(capF)} done=${fiberDone(capF)}")
 
 print("=== Fiber Showcase Complete ===")
 
+/// A fiber whose result is an erased box. The spawn site's result-managed flag
+/// is keyed on the STATIC type, and its hand-written "string or handle" test
+/// answered `no` for a box, so the runtime never released the fiber's result.
+/// This lives here rather than beside the other `any` ownership cases because a
+/// spawn cannot link on wasm32, and hosting it there would cost that file its
+/// wasm goldens. [GC-ARC-PERCEUS] [TYPE-ANY]
+fn erasedFiberResult() -> any = "fib" + "er"
+
 // Verifies each composed fiber/yield/lambda result instead of merely printing it.
 test("fiber primitives compose into deterministic values", fn() => checkAll("fiber showcase results", [
+    "${await(spawn erasedFiberResult())}" == "fiber",
     mappedTotal == 1400,
     p == 200,
     y1 == 25,

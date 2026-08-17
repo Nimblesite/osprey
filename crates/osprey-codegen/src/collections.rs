@@ -183,7 +183,7 @@ fn boxed_arg(cg: &mut Codegen, args: &[Expr], i: usize) -> Result<Value> {
 /// type-blind `i64` that happened to collide with a live heap address would be
 /// a use-after-free. Keyed on the same static type the dup below is.
 pub(crate) fn managed_flag(v: &Value) -> &'static str {
-    if matches!(v.ty, LType::Str | LType::Ptr) {
+    if v.ty.is_managed_ptr() {
         "1"
     } else {
         "0"

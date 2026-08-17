@@ -72,7 +72,11 @@ impl MetaField {
     /// covered by the runtime's registry probe-miss).
     pub(crate) fn of_lty(lty: LType) -> MetaField {
         match lty {
-            LType::Str | LType::Ptr => MetaField::PtrManaged,
+            // An erased-`any` box is an ordinary tagged allocation, so a slot
+            // holding one is managed like any other heap handle
+            // ([`LType::is_managed_ptr`] is the same classification for
+            // callers that only need the boolean).
+            LType::Str | LType::Ptr | LType::Any => MetaField::PtrManaged,
             LType::I1 => MetaField::Byte,
             LType::I32 => MetaField::Half,
             LType::I64 | LType::Double => MetaField::Word,

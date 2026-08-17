@@ -22,6 +22,10 @@ pub(crate) fn to_string_value(cg: &mut Codegen, v: Value) -> Result<Value> {
         LType::I1 => Ok(bool_to_string(cg, &v)),
         LType::Double => Ok(float_to_string(cg, &v)),
         LType::I64 | LType::I32 => int_to_string(cg, v),
+        // An erased value renders through its shape descriptor — never the
+        // raw word, which printed heap addresses as integers (finding D,
+        // [TYPE-ANY]).
+        LType::Any => Ok(crate::anybox::any_to_string(cg, &v)),
     }
 }
 

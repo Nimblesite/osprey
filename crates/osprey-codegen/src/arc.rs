@@ -14,7 +14,7 @@
 //! `osp_release` as no-ops, so one IR serves every backend.
 
 use crate::builder::Codegen;
-use crate::llty::{LType, Value};
+use crate::llty::Value;
 use osprey_ast::{Expr, Stmt};
 
 const RETAIN_DECL: &str = "declare void @osp_retain(i8*)";
@@ -75,9 +75,10 @@ impl Default for ArcLedger {
 /// `rodata_regs` is what lets a string literal skip the dup/drop calls
 /// entirely instead of paying a locked probe to learn they are no-ops.
 fn managed(cg: &Codegen, v: &Value) -> bool {
-    matches!(v.ty, LType::Str | LType::Ptr)
-        && v.operand.starts_with('%')
-        && !cg.is_rodata(&v.operand)
+    // An erased-`any` box is an ordinary tagged allocation; excluding it here
+    // was exactly #208 — the epilogue could neither move an erasing return's
+    // owner out nor retain a borrowed one, so the frame freed the referent.
+    v.ty.is_managed_ptr() && v.operand.starts_with('%') && !cg.is_rodata(&v.operand)
 }
 
 /// `v`'s operand as a plain `i8*`, bitcasting a typed block pointer. A flat
@@ -501,6 +502,7 @@ fn release_dead(cg: &mut Codegen, live: &std::collections::BTreeSet<String>) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::llty::LType;
 
     fn owner_names(cg: &Codegen) -> Vec<&str> {
         cg.arc

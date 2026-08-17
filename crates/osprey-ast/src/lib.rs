@@ -260,6 +260,23 @@ pub fn is_positional_field(name: &str) -> bool {
     !name.is_empty() && name.bytes().all(|b| b.is_ascii_digit())
 }
 
+/// The canonical [`Pattern::Structural`] a tuple pattern `(a, b)` lowers to:
+/// slot *i* is the decimal field [`positional_field_name`], its binder the
+/// written name (empty for `_`). One definition for both flavors, so ML
+/// `(a, b)` and Default `(a, b)` produce byte-identical AST
+/// ([PATTERN-TUPLE], [FLAVOR-ML-TUPLE]).
+#[must_use]
+pub fn tuple_pattern(binders: Vec<String>) -> Pattern {
+    Pattern::Structural {
+        fields: binders
+            .into_iter()
+            .enumerate()
+            .map(|(i, binder)| (positional_field_name(i), binder))
+            .collect(),
+        open: false,
+    }
+}
+
 /// A compiler-generated binding name that no source can spell: `$` is absent
 /// from the Osprey identifier alphabet in both flavors, and is legal in an
 /// unquoted LLVM identifier, so the name survives codegen unescaped. `role`
@@ -609,10 +626,18 @@ pub enum Pattern {
         /// The annotated type.
         ty: TypeExpr,
     },
-    /// `{ name, age }` anonymous structural.
+    /// `{ name, age }` / `{ name, .. }` structural row pattern. A tuple pattern
+    /// `(a, b)` is the positional spelling: field names are the decimal slots
+    /// `"0"`, `"1"`, … ([`positional_field_name`]) with the written binders.
+    /// Implements [PATTERN-STRUCTURAL], [PATTERN-TUPLE].
     Structural {
-        /// Bound field names.
-        fields: Vec<String>,
+        /// `(field name, binder name)` pairs in written order. A brace pattern
+        /// binds each field under its own name; an empty binder (`_` in a tuple
+        /// slot) matches the field without binding it.
+        fields: Vec<(String, String)>,
+        /// Whether a trailing `..` opens the row to any value carrying at
+        /// least the named fields; a closed pattern selects the exact row.
+        open: bool,
     },
     /// `[]` / `[a, b]` / `[head, ...tail]` list destructuring. `elements` are the
     /// fixed-prefix position patterns; `rest` is the optional tail binder name

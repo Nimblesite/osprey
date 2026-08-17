@@ -1,0 +1,70 @@
+// [TYPE-ANY] An erased value is read ONLY through a structural match. Every
+// spelling below reads the erased word some other way, and each was accepted
+// before this rule with a silent wrong answer behind it: the annotation
+// pattern was finding B re-spelled (`s: string => …` bound a heap address
+// with no runtime test), literal and variant arms compared the raw word, an
+// operator consumed it (two equal erased strings compared unequal, by
+// address), field access read a field the word cannot prove it has, a match
+// with no catch-all pretended the row was known, and an open `{ x, .. }` arm
+// silently shadowed every extension after it. Erasing an anonymous record is
+// rejected too: narrowing selects among DECLARED rows, so a shape only a
+// literal spells could never be selected. [PATTERN-STRUCTURAL]
+// [TYPE-MATCH-EXHAUSTIVE] [TYPE-RECORD-ANON]
+type Color = Red | Green
+fn erased() -> any = "a" + "b"
+
+fn viaLiteral() -> int = match erased() {
+    0 => 1
+    _ => 2
+}
+
+fn viaAnnotation() -> int = match erased() {
+    s: string => 3
+    _ => 4
+}
+
+fn viaVariant() -> int = match erased() {
+    Red => 5
+    _ => 6
+}
+
+fn noCatchAll() -> int = match erased() {
+    { x } => 7
+}
+
+fn shadowed() -> int = match erased() {
+    { x, .. } => 8
+    { x, y }  => 9
+    _ => 10
+}
+
+/// A repeated field name is rejected wherever it is written, erased or not.
+/// The closed-row check counted the pattern's LENGTH while the runtime row
+/// test compares NAME SETS, so `{ x, x }` selected a concrete `Pair { x, y }`
+/// and then missed that same value once erased — erasure silently changing
+/// whether an arm matches. [TYPE-ROW]
+fn viaDuplicateErased() -> int = match erased() {
+    { x, x } => 11
+    _ => 12
+}
+
+type Pair = Pair { x: int, y: int }
+
+fn viaDuplicateDirect() -> int = match Pair { x: 7, y: 9 } {
+    { x, x } => 13
+}
+
+fn viaOperator() -> bool = erased() == "ab"
+
+/// The unary and index reads are the same rule as the binary one above: each
+/// consumes the erased word with no runtime test. Both were rejected but
+/// untested, so nothing pinned the message or that it fires at all.
+fn viaUnary() = !erased()
+
+fn viaIndex() = erased()[0]
+
+fn viaField() -> string = erased().name
+
+let viaAnon: any = { x: 1, y: 2 }
+
+print("${viaLiteral()} ${viaAnnotation()} ${viaVariant()} ${noCatchAll()} ${shadowed()} ${viaOperator()} ${viaField()} ${viaAnon}")

@@ -11,28 +11,43 @@ use crate::llty::{LType, Value};
 /// Result is never a coercion source: callers must preserve it or handle it —
 /// there is no implicit `Result<T, E>` → `T`. Implements [FAILURE-EXPLICIT].
 pub(crate) fn coerce_to(cg: &mut Codegen, v: Value, want: LType) -> Result<Value> {
-    if v.result_inner.is_some() {
+    // An `any` destination is exempt from the Result guard: a `Result` erases
+    // WHOLE — discriminant intact, rendered as `Success(…)`/`Error(…)` — which
+    // is preservation, not unwrapping ([`crate::anybox`], [TYPE-ANY]).
+    if v.result_inner.is_some() && want != LType::Any {
         return Err(crate::error::CodegenError::invalid(
             "cannot coerce an unhandled Result to a plain value",
         ));
     }
-    if v.ty == want {
+    if v.ty == want && v.result_inner.is_none() {
         return Ok(v);
     }
     let owner = v.osp_ty.clone();
     let out = match want {
+        // The erasure boundary: box the value with its shape descriptor. The
+        // reverse direction never appears here — the checker rejects every
+        // recovery.
+        LType::Any => return crate::anybox::box_any(cg, v),
         LType::Double => as_double(cg, v)?,
-        // A string/handle reaching an `i64` boundary is an `any`/generic value
-        // travelling in the uniform machine-word representation — `ptrtoint`-box
+        // A string/handle/box reaching an `i64` boundary is a generic value
+        // travelling in the uniform machine-word representation — `ptrtoint`
         // it (the inverse `inttoptr` is the `Str`/`Ptr` arm below). Genuine
         // type mismatches are already rejected by the checker.
-        LType::I64 if matches!(v.ty, LType::Str | LType::Ptr) => crate::conv::box_to_i64(cg, v),
+        LType::I64 if matches!(v.ty, LType::Str | LType::Ptr | LType::Any) => {
+            crate::conv::box_to_i64(cg, v)
+        }
         LType::I64 => as_i64(cg, v)?,
         LType::I1 => as_i1(cg, v)?,
         // A pointer target. A boxed `i64` element (the uniform collection ABA)
         // must be `inttoptr`-converted back to a handle; an existing pointer
-        // just retags (both are `i8*`).
+        // just retags (both are `i8*`). An erased box is NOT retagged — reading
+        // it as a string/handle is the unchecked recovery [TYPE-ANY] deletes.
         LType::Str | LType::Ptr | LType::I32 => {
+            if v.ty == LType::Any {
+                return Err(crate::error::CodegenError::invalid(
+                    "cannot read through an erased `any`: match its structure instead",
+                ));
+            }
             if v.ty == LType::I64 && matches!(want, LType::Str | LType::Ptr) {
                 let reg = cg.fresh_reg();
                 cg.emit(format!("{reg} = inttoptr i64 {} to i8*", v.operand));

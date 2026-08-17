@@ -61,7 +61,7 @@ pub(crate) fn make_result(
     // every checked-arithmetic Error arm as impure; ask the rodata ledger
     // instead. [GC-ARC-PERCEUS]
     let errmsg_unmanaged = !errmsg.starts_with('%') || cg.is_rodata(errmsg);
-    if !matches!(inner, LType::Str | LType::Ptr) && errmsg_unmanaged {
+    if !inner.is_managed_ptr() && errmsg_unmanaged {
         crate::arc::mark_pure_scalar(cg, &out);
     }
     Ok(out)

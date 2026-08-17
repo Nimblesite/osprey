@@ -299,7 +299,7 @@ pub(crate) fn acc_step(
     // value BEFORE dropping the outgoing one (a combine returning `acc`
     // unchanged must never free it). Keyed on the static type — an integer
     // accumulator's bits must never be released [GC-ARC-PERCEUS].
-    if matches!(new.ty, LType::Str | LType::Ptr) {
+    if new.ty.is_managed_ptr() {
         crate::arc::escape_retain(cg, &new);
         let old = cg.emit_reg(format!("inttoptr i64 {a} to i8*"));
         crate::arc::release_operand(cg, &old);

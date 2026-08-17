@@ -1,0 +1,4 @@
+11:3: function `viaReturn` body: cannot recover `string` from an erased `any`: match its structure instead
+12:3: function `viaScalar` body: cannot recover `string` from an erased `any`: match its structure instead
+14:0: let `viaLet`: cannot recover `string` from an erased `any`: match its structure instead
+15:0: let `viaInt`: cannot recover `int` from an erased `any`: match its structure instead

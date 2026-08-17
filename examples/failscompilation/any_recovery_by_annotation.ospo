@@ -1,0 +1,17 @@
+// [TYPE-ANY] Erasure is one-way: every value assigns INTO an `any`, and no
+// annotation recovers one back out. Each form below was accepted before, and
+// each produced a wrong answer rather than a diagnostic — a return annotation
+// and a `let` annotation resurrected a heap pointer (#209 printed the address
+// as a decimal integer), and recovering a scalar as a string segfaulted with
+// no message at all. Narrowing must go through a structural match instead
+// ([PATTERN-STRUCTURAL]).
+fn erased() -> any = "a" + "b"
+fn intish() -> any = 7
+
+fn viaReturn() -> string = erased()
+fn viaScalar() -> string = intish()
+
+let viaLet: string = erased()
+let viaInt: int = intish()
+
+print("${viaReturn()} ${viaScalar()} ${viaLet} ${viaInt}")

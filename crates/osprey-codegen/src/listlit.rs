@@ -13,7 +13,7 @@ use crate::builder::Codegen;
 use crate::cast::coerce_to;
 use crate::error::{CodegenError, Result};
 use crate::expr::gen_expr;
-use crate::llty::{LType, Value};
+use crate::llty::{LType, Value, ANY_TAG_SPELLING};
 use crate::result::make_result;
 use osprey_ast::Expr;
 
@@ -33,6 +33,14 @@ pub(crate) const STRING_LIST_OWNER: &str = "[]i8*";
 /// LLVM spelling (`[]i64`); a handle element (a nested list, a record) records
 /// its own owner so access can recover it (`[][]i64`, `[]Point`).
 fn lit_owner(elem: &Value) -> String {
+    // An erased element is tagged by its ERASURE and nothing else. Its LLVM
+    // spelling `i8*` already means "string element" ([`STRING_LIST_OWNER`]),
+    // and any owner it carried names the shape it had BEFORE the box — either
+    // one makes the read-back re-type a box pointer as the thing it erased,
+    // which is how `[erased()]` came back as the box's own address.
+    if elem.ty == LType::Any {
+        return format!("{LIST_LIT}{ANY_TAG_SPELLING}");
+    }
     match &elem.osp_ty {
         Some(o) => format!("{LIST_LIT}{o}"),
         None => format!("{LIST_LIT}{}", elem.ty.as_str()),
@@ -48,6 +56,10 @@ fn lit_elem(osp_ty: Option<&str>) -> Option<(LType, Option<String>)> {
         "i64" => (LType::I64, None),
         "double" => (LType::Double, None),
         "i1" => (LType::I1, None),
+        // Before `i8*`: an erased box IS an `i8*`, but recovering it as
+        // `LType::Str` would strcmp and print the box instead of dispatching
+        // through its descriptor.
+        ANY_TAG_SPELLING => (LType::Any, None),
         "i8*" => (LType::Str, None),
         other => (LType::Str, Some(other.to_string())),
     })
@@ -116,6 +128,11 @@ pub(crate) fn gen_list(
         LType::Double => LType::Double,
         LType::I1 => LType::I1,
         LType::Str | LType::Ptr => LType::Str,
+        // An erased box keeps its own slot type: folding it into `I64` here
+        // turned the box POINTER into an integer word, tagged the block an
+        // integer list and marked its slots unmanaged, so the element neither
+        // rendered through its descriptor nor was ever released.
+        LType::Any => LType::Any,
         _ => LType::I64,
     };
     // A handle element (nested list / record) carries its own owner so access can
@@ -145,7 +162,7 @@ pub(crate) fn gen_list(
     }
     // The header's kind tells the ARC drop walk whether data[0..len) holds
     // managed pointers (string/handle elements) or scalars ([`crate::meta`]).
-    let elems_are_ptrs = matches!(elem, LType::Str | LType::Ptr);
+    let elems_are_ptrs = elem.is_managed_ptr();
     let obj = cg.malloc_struct(LIST_STRUCT, crate::meta::list_hdr_meta(elems_are_ptrs));
     crate::aggregate::store_field(cg, LIST_STRUCT, &obj, 0, LType::I64, &n.to_string());
     // The data array is the header's OWN allocation (the LIST_HDR drop frees
@@ -181,11 +198,7 @@ pub(crate) fn to_runtime_list(cg: &mut Codegen, v: Value) -> Value {
     };
     let len = crate::aggregate::load_field(cg, LIST_STRUCT, &v.operand, 0, LType::I64);
     let data = crate::aggregate::load_field(cg, LIST_STRUCT, &v.operand, 1, LType::Str);
-    let managed = if matches!(elem, LType::Str | LType::Ptr) {
-        "1"
-    } else {
-        "0"
-    };
+    let managed = if elem.is_managed_ptr() { "1" } else { "0" };
     let bld = crate::collections::list_builder_new_of(cg, managed);
     let arr = cg.emit_reg(format!("bitcast i8* {data} to {}*", elem.as_str()));
     let lp = crate::loops::open_range_loop(cg, "0", &len);

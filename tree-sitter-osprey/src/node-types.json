@@ -1903,6 +1903,14 @@
         {
           "type": "string",
           "named": true
+        },
+        {
+          "type": "structural_pattern",
+          "named": true
+        },
+        {
+          "type": "tuple_pattern",
+          "named": true
         }
       ]
     }
@@ -2566,6 +2574,21 @@
     }
   },
   {
+    "type": "structural_pattern",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "field_pattern",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
     "type": "symbol_path",
     "named": true,
     "fields": {},
@@ -2628,6 +2651,26 @@
           "named": true
         }
       ]
+    }
+  },
+  {
+    "type": "tuple_pattern",
+    "named": true,
+    "fields": {
+      "element": {
+        "multiple": true,
+        "required": true,
+        "types": [
+          {
+            "type": "_",
+            "named": false
+          },
+          {
+            "type": "identifier",
+            "named": true
+          }
+        ]
+      }
     }
   },
   {
@@ -3050,6 +3093,10 @@
   },
   {
     "type": ".",
+    "named": false
+  },
+  {
+    "type": "..",
     "named": false
   },
   {

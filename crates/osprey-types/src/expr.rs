@@ -77,7 +77,9 @@ impl Checker {
             Expr::Binary { op, left, right } => self.infer_binary(op, left, right, env),
             Expr::Unary { op, operand } => {
                 let t = self.infer_expr(operand, env);
-                if op == "!" {
+                if self.reject_erased_operand(&format!("apply unary `{op}` to"), &t) {
+                    Type::int()
+                } else if op == "!" {
                     self.push_assign(&Type::bool(), &t);
                     Type::bool()
                 } else {
@@ -174,6 +176,12 @@ impl Checker {
     /// the target is not a known record (split out of [`Self::infer_expr`]).
     fn infer_field_access(&mut self, target: &Expr, field: &str, env: &TypeEnv) -> Type {
         let tt = self.infer_expr(target, env);
+        // Reading a field assumes a record layout the erased word cannot
+        // prove it has — the address-as-integer bug reached through `.field`
+        // ([TYPE-FIELD-ACCESS-NON-RECORD], [TYPE-ANY]).
+        if self.reject_erased_operand(&format!("access field `{field}` on"), &tt) {
+            return self.ctx.fresh();
+        }
         let pruned = self.ctx.prune(&tt);
         match &pruned {
             Type::Record { fields, .. } => fields
@@ -489,10 +497,11 @@ impl Checker {
     }
 
     /// An arm that abandons the continuation answers for the whole `handle`, so
-    /// its value must be able to BE that answer. `any` unifies with everything
-    /// [TYPE-ANY], so an erased word is accepted here — codegen cannot tell one
-    /// from a genuine `int`, which is why this check belongs in inference.
-    /// Implements [EFFECTS-HANDLER-ARMS].
+    /// its value must be able to BE that answer — an assignment, hence the
+    /// directional check: a concrete arm erases into an `any` region, while an
+    /// erased arm cannot answer a concrete one ([TYPE-ANY]). Codegen cannot
+    /// tell an erased word from a genuine `int`, which is why this belongs in
+    /// inference. Implements [EFFECTS-HANDLER-ARMS].
     fn check_abandoning_arm(&mut self, effect: &str, op: &str, answer: &Type, arm_ty: &Type) {
         if crate::unify::unify_assignable(&mut self.ctx, answer, arm_ty).is_ok() {
             return;
@@ -814,6 +823,9 @@ impl Checker {
     fn infer_index(&mut self, target: &Expr, index: &Expr, env: &TypeEnv) -> Type {
         let tt = self.infer_expr(target, env);
         let it = self.infer_expr(index, env);
+        if self.reject_erased_operand("index", &tt) {
+            return self.ctx.fresh();
+        }
         match self.ctx.prune(&tt) {
             Type::Con { name, args } if name == names::LIST && !args.is_empty() => {
                 self.push_assign(&Type::int(), &it);
@@ -1087,9 +1099,31 @@ fn result_error(t: &Type) -> Option<Type> {
 }
 
 impl Checker {
+    /// Reject an operation that would consume an erased `any` word directly.
+    /// Every operator reads its operand's representation, and an erased word
+    /// has none to read — comparing one worked only while a scalar's erasure
+    /// happened to be the identity, and compared heap addresses otherwise
+    /// ([TYPE-ANY]). Reports the error and returns whether it fired.
+    fn reject_erased_operand(&mut self, what: &str, ty: &Type) -> bool {
+        let erased = self.ctx.prune(ty).is_named(names::ANY);
+        if erased {
+            self.errors.push(TypeError::new(format!(
+                "cannot {what} an erased `any`: match its structure instead"
+            )));
+        }
+        erased
+    }
+
     fn infer_binary(&mut self, op: &str, left: &Expr, right: &Expr, env: &TypeEnv) -> Type {
         let lt = self.infer_expr(left, env);
         let rt = self.infer_expr(right, env);
+        let what = format!("apply `{op}` to");
+        if self.reject_erased_operand(&what, &lt) || self.reject_erased_operand(&what, &rt) {
+            return match classify(op) {
+                OpKind::Logical | OpKind::Comparison => Type::bool(),
+                OpKind::Arith => Type::int(),
+            };
+        }
         match classify(op) {
             OpKind::Logical => {
                 self.push_assign(&Type::bool(), &lt);
@@ -1528,13 +1562,25 @@ mod tests {
             "\"unreached\"",
             "\"stopped\"",
         ));
-        // `any` answers anything [TYPE-ANY]. Codegen sees the same erased
-        // machine word as an `int`, which is why this is settled here.
-        ok(
+    }
+
+    #[test]
+    fn an_abandoning_arm_may_not_answer_an_erased_word() {
+        // An abandoning arm's value IS the region's result, so an `any` arm in
+        // a `string` region hands the caller an erased word to read as a
+        // pointer — recovery by declared type, which [TYPE-ANY] deletes. The
+        // arm must narrow structurally before it answers.
+        let errs = bad(
             &mixed_region("int", "string", "\"unreached\"", "erased()").replace(
                 "effect Mixed {",
                 "fn erased() -> any = \"x\"\neffect Mixed {",
             ),
+        );
+        assert!(
+            errs.iter().any(|e| e
+                .message
+                .contains("it is `any` and that result is `string`")),
+            "an `any` arm must not answer a `string` region; got {errs:?}"
         );
     }
 

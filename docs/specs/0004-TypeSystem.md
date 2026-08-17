@@ -5,7 +5,7 @@
 - [Built-in Types](#built-in-types)
 - [Result Preservation](#result-preservation)
 - [Function Types](#function-types)
-- [Record Types](#record-types)
+- [Record Types](#record-types) — including [anonymous records](#anonymous-records--type-record-anon) and [tuples](#tuples--type-tuple)
 - [Union Types](#union-types)
 - [Collection Types](#collection-types)
 - [Built-in Error Types](#built-in-error-types)
@@ -63,15 +63,34 @@ i = identity 42          // identity<int>
 s = identity "hello"     // identity<string>
 ```
 
-### Record Type Unification
+### Rows and Record Type Unification — [TYPE-ROW]
 
-Two record types unify iff they have the same set of field names and corresponding field types unify. Field order is irrelevant in both declaration and construction.
+A **row** is an unordered set of `name: type` fields. It is the one structure
+behind every product in the language: a named record, an anonymous record, a
+tuple, and a union variant's payload are all rows, and they unify by the same
+rule. Field order is irrelevant in declaration, construction and matching.
+
+A row is **closed** (it has exactly these fields) or **open** (it has at least
+these fields, written `..`). Two closed rows unify iff they carry the same field
+names and each corresponding field type unifies. An open row unifies with any
+row that carries its named fields.
 
 ```
 unify(R1, R2) :=
-    if names(R1) ≠ names(R2) then FAIL
-    else for each f ∈ names(R1): unify(typeOf(R1, f), typeOf(R2, f))
+    if closed(R1) and closed(R2) and names(R1) ≠ names(R2) then FAIL
+    if open(R1) and names(R1) ⊄ names(R2) then FAIL
+    else for each f ∈ names(R1) ∩ names(R2): unify(typeOf(R1, f), typeOf(R2, f))
 ```
+
+Open rows appear only in patterns ([Structural
+patterns](0007-PatternMatching.md#structural-patterns--pattern-structural)) and
+in `any` narrowing ([TYPE-ANY](#the-any-type--type-any)). A declared `type` is
+always closed.
+
+> **Status:** closed-row unification is implemented and is what makes two
+> identically-shaped records interchangeable today. Open rows exist exactly
+> where this section places them — a `..`-opened structural pattern and `any`
+> narrowing — and nowhere in type annotations.
 
 ### Polymorphic Variables vs `any`
 
@@ -312,6 +331,61 @@ type Person =
     active : bool
 ```
 
+### Anonymous Records — [TYPE-RECORD-ANON]
+
+A row written without a `type` declaration is an anonymous record. The type
+spelling is the declaration's right-hand side, and the value spelling is the
+construction form without a head:
+
+```osprey
+fn describe(p: { x: int, y: int }) -> string = "${p.x},${p.y}"
+
+let origin = { x: 0, y: 0 }
+```
+
+An anonymous record unifies with a declared record of the same row
+([TYPE-ROW](#rows-and-record-type-unification--type-row)), so `origin` is
+accepted wherever a `Point` is expected. Field keys are **bare identifiers**;
+that is what separates a record from a map literal, whose keys are string or
+expression values (`{ "Dave": 28 }`). A brace literal with no fields is the
+empty map, not the empty record.
+
+### Tuples — [TYPE-TUPLE]
+
+A tuple is a row whose field names are the decimal positions `0`, `1`, …, the
+same encoding a positionally-declared union payload already uses
+([TYPE-UNION-POSITIONAL](0003-Syntax.md#type-declarations)):
+
+A positionally-declared union payload IS such a row, and is what a tuple pattern
+reads today — the standalone `(1, "a")` value and its `(int, string)` type
+spelling do not parse yet (see the status note below):
+
+```osprey
+type Pair = Pair(int, string)
+
+let described = match erased {
+    (n, label) => "${label}=${n}"
+    _          => "unknown"
+}
+```
+
+A decimal string is not a valid identifier in either flavor, so a tuple field
+cannot be named in source — `pair.0` does not parse. Tuples are read by pattern
+matching ([Tuple patterns](0007-PatternMatching.md#tuple-patterns--pattern-tuple)),
+which keeps them consistent with the rule that unions and `any` are read by
+matching rather than by projection.
+
+A one-element parenthesis is grouping, never a tuple: `(x)` is `x`.
+
+> **Status:** anonymous record *values* construct, project fields and match
+> structurally, but cannot be erased into `any` — narrowing selects among
+> DECLARED rows, so `let v: any = { x: 1 }` is rejected with
+> `declare its row as a named type first`. Tuple *patterns* are implemented in
+> both flavors as the positional row spelling; tuple *values* and the
+> `(int, string)` type spelling are not, so a tuple pattern today selects a
+> positionally-declared record (`type Pair = Pair(int, string)`), plain or
+> erased.
+
 ### Construction
 
 ```osprey
@@ -345,9 +419,9 @@ All fields are required. Missing or unknown fields, or type mismatches, are comp
 
 ### Field Access — [TYPE-FIELD-ACCESS-NON-RECORD]
 
-Direct field access is permitted only on a record value. A `Result` or union
-must be matched to a concrete payload before field access. Because `any` has no
-runtime type tag, it cannot be narrowed for field access.
+Direct field access is permitted only on a record value. A `Result`, a union or
+an `any` must be matched to a concrete payload or row before field access
+([TYPE-ANY](#the-any-type--type-any)).
 
 Field access on a type that can never carry fields — `int`, `float`, `string`,
 `bool`, `Unit` — is rejected by the type checker with
@@ -628,11 +702,46 @@ let a = ignore(42)
 let b = ignore("text")
 ```
 
-`any` does not carry a runtime type tag and does not provide dynamic type tests.
-Code that consumes its representation must already know what was passed. It is
-used mainly at heterogeneous builtin and foreign-function boundaries. In
-particular, `print` and `toString` cannot recover an aggregate hidden behind
-`any`; they render its raw pointer-sized representation rather than its fields.
+Erasure keeps the value's row ([TYPE-ROW](#rows-and-record-type-unification--type-row)),
+so an `any` is narrowed back to a usable type by matching its structure — never
+by an unchecked cast:
+
+```osprey
+let described = match value {
+    { message, .. } => message
+    { code, .. }    => "code ${code}"
+    _               => "unknown"
+}
+```
+
+Structural narrowing is the **only** way to read a field of an `any`. An arm
+naming a field the value does not carry does not select, so recovery can never
+read a word that was never a pointer, and a match over `any` is never
+exhaustive — it requires a catch-all
+([TYPE-MATCH-EXHAUSTIVE](0007-PatternMatching.md#exhaustiveness-and-unreachable-arms-type-match-exhaustive)).
+
+Erasing an `int`, `float` or `bool` keeps a scalar row: those values carry no
+fields, so every field-naming arm declines and only a binding or `_` arm selects
+them.
+
+> **Status: implemented.** An erased value is a pointer to a two-word box
+> `{ desc, payload }` whose descriptor names its runtime shape, on every
+> memory backend and both flavors. The one-way rule holds at annotations
+> (`cannot recover … from an erased `any``), and every other read of the raw
+> word is rejected too: operators (`erased() == x`, `x + 1`), field access,
+> indexing, and the pattern forms that carry no row test — literal, list,
+> variant and type-annotated arms. Structural narrowing selects among the
+> DECLARED record rows by descriptor identity, so an erased record made by any
+> constructor with the same field names matches the same arm; a field bound
+> from a narrowing is itself `any` until matched further. `print`/`toString`
+> render through the descriptor: scalars and strings exactly, records as their
+> row (`{ x: 1, y: 2 }`), unions by variant, a `Result` as
+> `Success(…)`/`Error(…)`, and shapes rendering cannot see into — lists, maps,
+> closures, foreign handles — as a named placeholder such as `<list>`, never
+> the raw word. Erasing an anonymous record is rejected
+> ([TYPE-RECORD-ANON](#anonymous-records--type-record-anon)); a structural arm
+> never selects an erased union, list or map — match the union before erasing
+> it.
 
 ## Type Annotations — [TYPE-ANNOTATION-CHECK]
 
