@@ -88,6 +88,43 @@ shadowed =
 print ("nested resuming " + toString nested + " shadowed resume " + toString shadowed)
 print "=== resume scoping done ==="
 
+(** (4) RESUME carrying an ERASED operand — the box must survive the captured
+    continuation. A value-carrying `resume` suspends the performer and restores
+    it later, so an `any` operand crosses the mailbox, is narrowed by the arm,
+    and is released by whoever still owns it after the round trip. Every
+    ownership rule for a box is pinned in
+    tests/regressions/basics/types/any_type_comprehensive, but that file stays
+    free of `resume` so it keeps its wasm32 goldens; only a RESUMING handler
+    routes a box through a continuation, and that path is already unportable
+    here for `__osprey_coro_suspend`.
+    [TYPE-ANY] [EFFECTS-OPERATION-MAILBOX] [GC-ARC-PERCEUS] *)
+type Boxed =
+    held : string
+    tag : int
+
+effect Audit
+    (** Narrow `item` and hand back the width of its rendering. *)
+    note : any => int
+
+describeErased : any -> string
+describeErased v =
+    match v
+        { held, .. } => "held=${held}"
+        _ => "other=${v}"
+
+(** Both performs continue afterwards, so each one's box is live across a
+    suspend — the heap payload is built at runtime so ARC actually counts it. *)
+auditWork : Unit -> int ! Audit
+auditWork () =
+    a = perform Audit.note (Boxed(held = "eff" + "ect", tag = 3))
+    b = perform Audit.note 5
+    (a + b) ?: 0
+
+audited =
+    handle Audit
+        note item => resume (length (describeErased item))
+    in auditWork ()
+
 (** Run the forward-referenced chain under a quiet handler. *)
 forwardResultForTest () =
     handle Logger
@@ -100,5 +137,6 @@ test "nested handlers override locally and restore outer scope" (\() => checkAll
         (forwardResultForTest () ?: 0) == 42,
         nested == 10,
         shadowed == 2,
-        nested != shadowed
+        nested != shadowed,
+        audited == 18
 ])
