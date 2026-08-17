@@ -4,17 +4,17 @@
 // toGpu, fromGpu, and repeated crossings ([GPU-BUFFER-ELEM],
 // [GPU-BUFFER-FROM-LIST], [GPU-BUFFER-TO-LIST]).
 
-fn addFloats(a: float, x: float) -> float = a + x
+fn addFloats(a, x) = a + x
 
-fn countTrue(a: int, x: bool) -> int = match x {
+fn countTrue(a, x) = match x {
     true => (a + 1) ?: a
     false => a
 }
 
 /// listReverse forces the runtime-list copy path; a direct literal would take
 /// [GPU-BUFFER-LITERAL] and would not exercise the missing type metadata.
-fn floatListValue() -> List<float> = listReverse([2.5, 1.5])
-fn boolListValue() -> List<bool> = listReverse([true, false, false])
+fn floatListValue() = listReverse([2.5, 1.5])
+fn boolListValue() = listReverse([true, false, false])
 
 fn listValueTagsCase() = {
     let floats = toGpu(floatListValue())

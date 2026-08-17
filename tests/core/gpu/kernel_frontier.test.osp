@@ -3,7 +3,7 @@
 // function form to remain usable as a kernel ([GPU-KERNEL-ELEM-TYPING],
 // [GPU-KERNEL-FORM], [GPU-KERNEL-EXTRACT]).
 
-fn addFloats(a: float, x: float) -> float = a + x
+fn addFloats(a, x) = a + x
 
 /// Numeric operators must specialize this definition from gpuFold's float slots.
 fn plus(a, x) = a + x

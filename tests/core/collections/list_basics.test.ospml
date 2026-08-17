@@ -6,31 +6,26 @@ effect IterationProbe
     observe : int => Unit
 
 (** Append an inclusive integer range without mutating earlier lists. *)
-appendThrough : List int -> int -> int -> List int
 appendThrough xs next last = match next > last
     true => xs
     false => appendThrough (listAppend xs next) (next + 1 ?: next) last
 
 (** Classify empty, singleton, pair, and head-tail list patterns. *)
-classify : List int -> string
 classify [] = "empty"
 classify [single] = "one(${single})"
 classify [first, second] = "two(${first},${second})"
 classify [head, ...tail] = "many head=${head} rest=${listLength tail}"
 
 (** Sum a list through recursive head-tail destructuring. *)
-sumList : List int -> int
 sumList [] = 0
 sumList [head, ...tail] = head + sumList tail ?: 0
 
 (** Measure a tail after two fixed prefix elements. *)
-restLen : List int -> int
 restLen [_, second, ...rest] = listLength rest
 restLen _ = 0
 
 (** Encode callback order as a base-100 integer through an effect, pinning
     forEachList's in-order traversal ([BUILTIN-LIST-FOREACH]). *)
-encodeIteration : List int -> int
 encodeIteration xs =
     mut encoded = 0
     handle IterationProbe

@@ -48,12 +48,12 @@ fn flatIndex(x, y, w) = ((y * w) ?: 0) + x ?: 0
 /// before z leaves the radius-2 disc, and mandelPixel is the fragment kernel
 /// that shades one — flat pixel index in, brightness out, the complex plane
 /// sampled at pixel centers over [-2.25, 0.75] x [-1.25, 1.25].
-fn isqrtIter(n: int, guess: int) -> int = {
+fn isqrtIter(n, guess) = {
     let next = intDiv((guess + (intDiv(n, guess) ?: guess)) ?: guess, 2) ?: guess
     match next >= guess { true => guess false => isqrtIter(n, next) }
 }
 fn isqrt(n) = match n <= 0 { true => 0 false => isqrtIter(n, n) }
-fn escape(zr: int, zi: int, cr: int, ci: int, i: int) -> int = match i >= 24 {
+fn escape(zr, zi, cr, ci, i) = match i >= 24 {
     true => 24
     false => {
         let zr2 = intDiv((zr * zr) ?: 0, scale()) ?: 0
@@ -127,14 +127,14 @@ fn spanBit(idx, sy, x0, x1) = bit(rowOf(idx, tileEdge()) == sy
 fn spanBuf(sy, x0, x1) = gpuIota(tilePixels()) |> gpuMap(fn(idx) => spanBit(idx, sy, x0, x1))
 fn clampedSpan(sy, x0, x1) = spanBuf(sy,
     clampRange(x0, 0, (tileEdge() - 1) ?: 0), clampRange(x1, 0, (tileEdge() - 1) ?: 0))
-fn spanStart(src: GpuBuffer<int>, w: int, y: int, x: int) -> int = match x == w {
+fn spanStart(src, w, y, x) = match x == w {
     true => w
     false => match (gpuGet(src, flatIndex(x, y, w)) ?: 0) > 0 {
         true => x
         false => spanStart(src, w, y, (x + 1) ?: 0)
     }
 }
-fn rowTotal(src: GpuBuffer<int>, w: int, y: int, x: int) -> int = match x == w {
+fn rowTotal(src, w, y, x) = match x == w {
     true => 0
     false => ((gpuGet(src, flatIndex(x, y, w)) ?: 0) + rowTotal(src, w, y, (x + 1) ?: 0)) ?: 0
 }

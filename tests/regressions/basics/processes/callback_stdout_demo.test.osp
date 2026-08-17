@@ -9,7 +9,7 @@
 print("=== CALLBACK-BASED STDOUT COLLECTION DEMO ===")
 
 /// Define the callback function that C runtime will call
-fn processEventHandler(processID: int, eventType: int, data: string) = {
+fn processEventHandler(processID, eventType, data) = {
     match eventType {
         1 => print("[CALLBACK] Process ${toString(processID)} STDOUT: ${data}")
         2 => print("[CALLBACK] Process ${toString(processID)} STDERR: ${data}")

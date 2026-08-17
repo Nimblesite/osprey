@@ -25,7 +25,7 @@ fn loadConfig() -> int ![Parse, Missing, Range] = {
 }
 
 /// This helper declares and performs only Range.
-fn loadRetries(raw: int) -> (int) -> int !Range =
+fn loadRetries(raw) -> (int) -> int !Range =
     fn(hi) => perform Range.clamp(raw, hi)
 
 /// No arm uses resume, so each arm value replaces its operation result.

@@ -1,7 +1,7 @@
 // HTTP response-handle and JSON document integration. Each handle operation
 // uses its own helper. Implements [HTTP-RESPONSE-HANDLE] and [BUILTIN-JSON].
 
-fn handleRequest(method: string, path: string, headers: string, body: string) -> HttpResponse = HttpResponse {
+fn handleRequest(method, path, headers, body) = HttpResponse {
     status: 200,
     headers: "Content-Type: application/json",
     contentType: "application/json",

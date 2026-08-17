@@ -54,13 +54,13 @@ fn recoverThree() !RecoveryError = {
 }
 
 /// Report one broken rule while returning Unit so later checks still execute.
-fn reportIf(broken: bool) -> (string) -> Unit !RecoveryError = fn(message) => match broken {
+fn reportIf(broken) -> (string) -> Unit !RecoveryError = fn(message) => match broken {
         true => perform RecoveryError.report(message)
         false => {}
     }
 
 /// Run every validation rule and return only after all reports have been handled.
-fn validateRecord(name: string) -> (int) -> (string) -> string !RecoveryError =
+fn validateRecord(name) -> (int) -> (string) -> string !RecoveryError =
     fn(age) => fn(email) => {
         reportIf(name == "")("name")
         reportIf(age < 0)("age")
@@ -78,7 +78,7 @@ fn mixedRecovery() !RecoveryError = {
 }
 
 /// Ask the active stock policy how much can be allocated after a shortage.
-fn allocate(requested: int) -> (int) -> int !StockError = fn(available) => match requested > available {
+fn allocate(requested) -> (int) -> int !StockError = fn(available) => match requested > available {
         true => perform StockError.shortage(requested, available)
         false => requested
     }

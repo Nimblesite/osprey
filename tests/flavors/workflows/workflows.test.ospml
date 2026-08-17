@@ -1,19 +1,15 @@
 // ML workflow twin combining currying, matches, pipes, and Results.
 
 (** Increment an integer in direct calls and pipelines. *)
-tourInc : int -> int
 tourInc x = x + 1 ?: 0
 
 (** Add two integers through curried application. *)
-tourAdd : int -> int -> int
 tourAdd x y = x + y ?: 0
 
 (** Square an integer in direct calls and pipelines. *)
-tourSquare : int -> int
 tourSquare n = n * n ?: 0
 
 (** Capture a scale factor through partial application. *)
-tourMakeScaler : int -> int -> int
 tourMakeScaler k v = v * k ?: 0
 
 (** Name integer literals through adjacent pattern clauses. *)
@@ -69,15 +65,12 @@ curryTourCase () =
     ]
 
 (** Capture a multiplier through partial application. *)
-mixedScale : int -> int -> int
 mixedScale k v = v * k ?: 0
 
 (** Advance an integer for direct and piped calls. *)
-mixedStep : int -> int
 mixedStep x = x + 1 ?: 0
 
 (** Classify non-negative and negative integers. *)
-mixedSign : int -> string
 mixedSign n =
     match n >= 0
         true => "pos"
@@ -111,18 +104,15 @@ mixedFeaturesCase () =
     ]
 
 (** Unwrap modulo success or use the legacy sentinel on error. *)
-resultSafeMod : int -> int -> int
 resultSafeMod a b = a % b ?: ((0 - 1) ?: 0)
 
 (** Apply a concrete integer function twice. *)
-resultTwice : (int -> int) -> int -> int
 resultTwice f x = f (f x)
 
 (** Add ten as a first-class function. *)
 resultBump x = x + 10 ?: 0
 
 (** Capture one addition operand through partial application. *)
-resultAdder : int -> int -> int
 resultAdder a b = a + b ?: 0
 
 (** Verify Result fallback, HOFs, and partial application together. *)

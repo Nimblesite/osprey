@@ -197,14 +197,14 @@ module SceneBase {
     /// The three recursive functions below are the only annotated ones in this
     /// file: codegen refuses a recursive function whose signature it has not
     /// fully inferred, so these annotations are load-bearing rather than noise.
-    fn pushMotion(win: Ptr, motion, t: int, slot: int) -> int =
+    fn pushMotion(win, motion, t, slot) =
         match slot < motionCount() {
             true => ((osp_gfx_set(win, slot, motion(slot, t)) +
                 pushMotion(win, motion, t, (slot + 1) ?: slot)) ?: 0)
             false => 0
         }
 
-    fn pushLook(win: Ptr, look, slot: int) -> int =
+    fn pushLook(win, look, slot) =
         match slot <= lookLast() {
             true => ((osp_gfx_set_milli(win, slot, look(slot)) +
                 pushLook(win, look, (slot + 1) ?: slot)) ?: 0)
@@ -214,7 +214,7 @@ module SceneBase {
     /// animate advances on wall-clock time, so the motion plays at the same
     /// speed whatever frame rate the display sustains, and stops when the window
     /// closes.
-    fn animate(win: Ptr, motion, frame: int) -> int = {
+    fn animate(win, motion, frame) = {
         let pushed = pushMotion(win, motion, osp_gfx_ticks(win), 0)
         match (pushed == motionCount()) && (osp_gfx_draw(win) == 1) {
             true => animate(win, motion, (frame + 1) ?: frame)

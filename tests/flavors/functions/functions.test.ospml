@@ -8,7 +8,6 @@
     closure-returning binding through the front end, and after the ml/ example
     suite was deleted no file in tests/ did. The signature is load-bearing: it
     keeps the returned closure concrete. *)
-closureAdder : int -> (int) -> int
 closureAdder n = \x => x + n ?: 0
 
 (** Verify independent closures and direct application. *)
@@ -39,7 +38,6 @@ closuresCase () =
 (** Return an explicitly curried addition closure, mirroring the Default twin's
     `fn partialAdd(a) = fn(b) => …`: `partialAdd 5` yields a function, not a
     number. *)
-partialAdd : int -> (int) -> int
 partialAdd a = \b => a + b ?: 0
 
 (** Verify partially and fully applied addition. *)
@@ -68,19 +66,15 @@ curryPartialCase () =
     ]
 
 (** Apply a supplied function once. *)
-hofApply : (int -> int) -> int -> int
 hofApply f x = f x
 
 (** Apply a supplied function twice. *)
-hofTwice : (int -> int) -> int -> int
 hofTwice f x = f (f x)
 
 (** Double an integer as a first-class function. *)
-hofDouble : int -> int
 hofDouble n = n + n ?: 0
 
 (** Increment an integer as a first-class function. *)
-hofInc : int -> int
 hofInc n = n + 1 ?: 0
 
 (** Verify higher-order application and composition. *)
@@ -106,15 +100,12 @@ higherOrderCase () =
     ]
 
 (** Increment values in nested call expressions. *)
-nestedInc : int -> int
 nestedInc x = x + 1 ?: 0
 
 (** Double values in nested call expressions. *)
-nestedDouble : int -> int
 nestedDouble x = x + x ?: 0
 
 (** Negate values in nested call expressions. *)
-nestedNeg : int -> int
 nestedNeg x = 0 - x ?: 0
 
 (** Verify evaluation through nested unary calls. *)
@@ -142,7 +133,6 @@ nestedCallsCase () =
     ]
 
 (** Sum positive integers with adjacent pattern clauses. *)
-recursiveSumTo : int -> int
 recursiveSumTo 0 = 0
 recursiveSumTo n = n + recursiveSumTo ((n - 1) ?: 0) ?: 0
 

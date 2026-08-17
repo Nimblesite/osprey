@@ -55,46 +55,46 @@ effect Diag {
 }
 
 // ---- ANSI helpers (pure) ----------------------------------------------------
-fn cyan(s: string) -> string = "\e[36m${s}\e[0m"
-fn green(s: string) -> string = "\e[32m${s}\e[0m"
-fn yellow(s: string) -> string = "\e[33m${s}\e[0m"
-fn dim(s: string) -> string = "\e[2m${s}\e[0m"
-fn bold(s: string) -> string = "\e[1m${s}\e[0m"
-fn invert(s: string) -> string = "\e[7m${s}\e[0m"
-fn rule() -> string = dim("  ------------------------------------------")
+fn cyan(s) = "\e[36m${s}\e[0m"
+fn green(s) = "\e[32m${s}\e[0m"
+fn yellow(s) = "\e[33m${s}\e[0m"
+fn dim(s) = "\e[2m${s}\e[0m"
+fn bold(s) = "\e[1m${s}\e[0m"
+fn invert(s) = "\e[7m${s}\e[0m"
+fn rule() = dim("  ------------------------------------------")
 
 // UI counters explicitly keep their previous value on arithmetic overflow.
-fn inc(x: int) -> int = (x + 1) ?: x
-fn dec(x: int) -> int = (x - 1) ?: x
-fn shift(a: int, b: int) -> int = (a + b) ?: a
+fn inc(x) = (x + 1) ?: x
+fn dec(x) = (x - 1) ?: x
+fn shift(a, b) = (a + b) ?: a
 
 // ---- list helpers (the cached text is split into rows for rendering) --------
-fn rows(text: string) -> List<string> = match split(text, "\n") {
+fn rows(text) = match split(text, "\n") {
     Success { value } => value
     Error { message } => List()
 }
 
 // The server's list ends with a trailing newline, so the final split piece is
 // empty; the visible row count drops it.
-fn rowCount(text: string) -> int = match length(text) {
+fn rowCount(text) = match length(text) {
     0 => 0
     _ => dec(listLength(rows(text)))
 }
 
 // Highlight the selected row by inverting its "#N " prefix (the server numbers
 // tasks from 1). Pure string rewriting — no list indexing.
-fn highlight(text: string, sel: int) -> string = match replace(text, "#${toString(inc(sel))} ", invert(" #${toString(inc(sel))} ")) {
+fn highlight(text, sel) = match replace(text, "#${toString(inc(sel))} ", invert(" #${toString(inc(sel))} ")) {
     Success { value } => value
     Error { message } => text
 }
 
-fn cursorLine(text: string, sel: int) -> string = match rowCount(text) {
+fn cursorLine(text, sel) = match rowCount(text) {
     0 => dim("  (no tasks yet — press 'a' to add one)")
     _ => dim("  cursor on task ") + cyan("#${toString(inc(sel))}") + dim(" of ${toString(rowCount(text))}")
 }
 
 // ---- the screen: a pure string built from the current model -----------------
-fn screen(text: string, sel: int, msg: string) -> string =
+fn screen(text, sel, msg) =
     "\e[?25l\e[2J\e[H\n" +
     bold(cyan("  OSPREY task board")) + dim("   live @ http://127.0.0.1:8080") + "\n" +
     rule() + "\n\n" +
@@ -105,7 +105,7 @@ fn screen(text: string, sel: int, msg: string) -> string =
     yellow(msg)
 
 // ---- selection movement (pure) ----------------------------------------------
-fn clamp(x: int, hi: int) -> int = match x < 0 {
+fn clamp(x, hi) = match x < 0 {
     true  => 0
     false => match x < hi { true => x  false => match hi > 0 { true => dec(hi)  false => 0 } }
 }
@@ -139,7 +139,7 @@ fn loop() -> Unit ![Out, Term, Net, Model] = {
     }
 }
 
-fn dispatch(key: string) -> Unit ![Out, Term, Net, Model] = match key {
+fn dispatch(key) -> Unit ![Out, Term, Net, Model] = match key {
     "q"     => endApp()
     "Esc"   => endApp()
     "j"     => step(1)
@@ -151,25 +151,25 @@ fn dispatch(key: string) -> Unit ![Out, Term, Net, Model] = match key {
     _       => loop()
 }
 
-fn step(delta: int) -> Unit ![Out, Term, Net, Model] = {
+fn step(delta) -> Unit ![Out, Term, Net, Model] = {
     perform Model.moveSel(delta)
     loop()
 }
 
 // Run an effectful action, then re-enter the loop (sequences a Unit action
 // before the recursive call without a statement-level side effect in `match`).
-fn continueAfter(done: Unit) -> Unit ![Out, Term, Net, Model] = loop()
+fn continueAfter(done) -> Unit ![Out, Term, Net, Model] = loop()
 
 // ---- INTERPRETATION: the only place real I/O and client state live ---------
-fn diagFile() -> string = "/tmp/osprey_tui.log"
-fn baseUrl() -> string = "http://127.0.0.1:8080"
+fn diagFile() = "/tmp/osprey_tui.log"
+fn baseUrl() = "http://127.0.0.1:8080"
 
-fn bodyOf(h: int) -> string = match httpResponseBody(h) {
+fn bodyOf(h) = match httpResponseBody(h) {
     Success { value } => value
     Error { message } => "(no body)\n"
 }
 
-fn readFree(h: int) -> string = {
+fn readFree(h) = {
     let b = bodyOf(h)
     let freed = httpResponseFree(h)
     b
@@ -178,7 +178,7 @@ fn readFree(h: int) -> string = {
 // A FRESH client per request — a reused client can wedge after a server-side
 // connection reset, which is exactly the "GET failed" symptom. Each attempt and
 // its outcome is appended to the log file via the Diag effect.
-fn httpFetch() -> string = {
+fn httpFetch() = {
     let c = httpCreateClient(baseUrl(), 5000)
     let out = match httpGetResponse(c, "/", "") {
         Success { value } => {
@@ -195,7 +195,7 @@ fn httpFetch() -> string = {
     out
 }
 
-fn httpPush(text: string) -> Unit = {
+fn httpPush(text) -> Unit = {
     let c = httpCreateClient(baseUrl(), 5000)
     let code = toString(httpPost(c, "/tasks", text, ""))
     let closed = httpCloseClient(c)

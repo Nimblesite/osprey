@@ -98,7 +98,6 @@ module Accounts
 q = "\""
 
 (** A refusal is a domain value, not an error: classify one exhaustively. *)
-settle : Outcome -> string
 settle o = match o
     Landed balance => "landed ${balance}"
     Refused why => "refused ${why}"

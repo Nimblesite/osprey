@@ -55,7 +55,6 @@ flatIndex (x, y, w) = ((y * w) ?: 0) + x ?: 0
     before z leaves the radius-2 disc, and mandelPixel is the fragment kernel
     that shades one — flat pixel index in, brightness out, the complex plane
     sampled at pixel centers over [-2.25, 0.75] x [-1.25, 1.25]. *)
-isqrtIter : (int, int) -> int
 isqrtIter (n, guess) =
     next = intDiv ((guess + (intDiv (n, guess) ?: guess)) ?: guess, 2) ?: guess
     match next >= guess
@@ -64,7 +63,6 @@ isqrtIter (n, guess) =
 isqrt n = match n <= 0
     true => 0
     false => isqrtIter (n, n)
-escape : (int, int, int, int, int) -> int
 escape (zr, zi, cr, ci, i) = match i >= 24
     true => 24
     false =>
@@ -132,13 +130,11 @@ spanBit (idx, sy, x0, x1) = bit (rowOf (idx, tileEdge ()) == sy
 spanBuf (sy, x0, x1) = gpuIota (tilePixels ()) |> gpuMap (\idx => spanBit (idx, sy, x0, x1))
 clampedSpan (sy, x0, x1) = spanBuf (sy,
     clampRange (x0, 0, (tileEdge () - 1) ?: 0), clampRange (x1, 0, (tileEdge () - 1) ?: 0))
-spanStart : (GpuBuffer<int>, int, int, int) -> int
 spanStart (src, w, y, x) = match x == w
     true => w
     false => match (gpuGet (src, flatIndex (x, y, w)) ?: 0) > 0
         true => x
         false => spanStart (src, w, y, (x + 1) ?: 0)
-rowTotal : (GpuBuffer<int>, int, int, int) -> int
 rowTotal (src, w, y, x) = match x == w
     true => 0
     false => ((gpuGet (src, flatIndex (x, y, w)) ?: 0) + rowTotal (src, w, y, (x + 1) ?: 0)) ?: 0

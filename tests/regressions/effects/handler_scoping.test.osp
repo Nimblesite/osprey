@@ -126,14 +126,14 @@ effect Audit {
     note: fn(any) -> int
 }
 
-fn describeErased(v: any) -> string = match v {
+fn describeErased(v: any) = match v {
     { held, .. } => "held=${held}"
     _            => "other=${v}"
 }
 
 /// Both performs continue afterwards, so each one's box is live across a
 /// suspend — the heap payload is built at runtime so ARC actually counts it.
-fn auditWork() -> int = {
+fn auditWork() = {
     let a = perform Audit.note(Boxed { held: "eff" + "ect", tag: 3 })
     let b = perform Audit.note(5)
     (a + b) ?: 0

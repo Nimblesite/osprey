@@ -7,16 +7,11 @@
 minAge () = 0
 maxAge () = 150
 
-rejectNonNumber : Unit -> Result int string
 rejectNonNumber () = Error(message = "not a number")
-rejectNegative : Unit -> Result int string
 rejectNegative () = Error(message = "age must be non-negative")
-rejectTooLarge : Unit -> Result int string
 rejectTooLarge () = Error(message = "age unrealistically large")
-acceptAge : int -> Result int string
 acceptAge n = Success(value = n)
 
-checkAgeRange : int -> Result int string
 checkAgeRange n =
     match n < minAge ()
         true => rejectNegative ()
@@ -25,7 +20,6 @@ checkAgeRange n =
                 true => rejectTooLarge ()
                 false => acceptAge n
 
-parseAge : string -> Result int string
 parseAge s =
     match parseInt s
         Success value => checkAgeRange value

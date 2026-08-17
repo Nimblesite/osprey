@@ -10,7 +10,7 @@ print("Server created with ID: ${serverId}")
 
 /// Define HTTP request handler function - RESTORED TO ORIGINAL GLORY!
 /// This function receives HTTP requests from the C runtime and returns HttpResponse
-fn handleHttpRequest(method: string, path: string, headers: string, body: string) -> HttpResponse = match method {
+fn handleHttpRequest(method, path, headers, body) = match method {
     "GET" => match path {
         "/api/users" => HttpResponse {
             status: 200,

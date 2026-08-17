@@ -6,7 +6,6 @@
 
 print "=== CALLBACK-BASED STDOUT COLLECTION DEMO ==="
 
-processEventHandler : int -> int -> string -> Unit
 processEventHandler (processID, eventType, data) =
     match eventType
         1 => print "[CALLBACK] Process ${toString processID} STDOUT: ${data}"

@@ -6,7 +6,6 @@
 // Spec: [BUILTIN-STRING-CURSOR], [ERR-PAYLOAD], [TYPE-LIST], [TYPE-MAP].
 
 (** A user-declared fallible function — its Error reason must render in toString. *)
-boom : Unit -> Result<int, string>
 boom () = Error(message = "user boom")
 
 (** A Result payload is a runtime value of ANY length, so `toString` must size
@@ -16,10 +15,8 @@ boom () = Error(message = "user boom")
     corrupted whatever followed it. [BUILTIN-TOSTRING] *)
 longText () = "a Result payload far longer than the sixty-four byte block toString once formatted into, which made printing one a heap overflow"
 
-longFailure : Unit -> Result<int, string>
 longFailure () = Error(message = longText ())
 
-longSuccess : Unit -> Result<string, string>
 longSuccess () = Success(value = longText ())
 // ---- numeric parsing ----
 match parseInt "nope"

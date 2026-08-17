@@ -19,7 +19,6 @@
 // Failure payloads are threaded through Result<T, E> per [ERR-PAYLOAD].
 
 (** A user-declared fallible function: its Error message must reach the arm. *)
-failWith : string -> Result int string
 failWith reason = Error(message = reason)
 // ---- isEmpty edges ----
 print "empty-emp=${"" |> isEmpty}\n"

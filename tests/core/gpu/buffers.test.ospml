@@ -9,21 +9,18 @@
 square x = (x * x) ?: 0
 
 (** Keep the checked-arithmetic Result inside the kernel. *)
-addInts : (int, int) -> int
 addInts (acc, x) = (acc + x) ?: acc
 
 (** Pure float kernel; the buffer's element tag types x as float. *)
 scale x = x * 1.5
 
 (** Float reduction kernel for gpuFold's uncurried combine slot. *)
-addFloats : (float, float) -> float
 addFloats (a, x) = a + x
 
 (** Map an int element to a bool element, changing the buffer's type. *)
 isOdd x = (x % 2 ?: 0) == 1
 
 (** Count the true elements of a bool buffer. *)
-countOdd : (int, bool) -> int
 countOdd (acc, flag) = match flag
     true => (acc + 1) ?: acc
     false => acc

@@ -10,27 +10,27 @@
 
 /// The zero-length buffers every combinator is pushed through; the annotation
 /// supplies the element type an empty literal cannot.
-fn emptyInts() -> GpuBuffer<int> = toGpu([])
-fn emptyFloats() -> GpuBuffer<float> = toGpu([])
+fn emptyInts() = toGpu([])
+fn emptyFloats() = toGpu([])
 
 /// sumI and mulI are the associative int combines fold and scan share.
-fn sumI(a: int, b: int) -> int = (a + b) ?: a
-fn mulI(a: int, b: int) -> int = (a * b) ?: 0
+fn sumI(a, b) = (a + b) ?: a
+fn mulI(a, b) = (a * b) ?: 0
 
 /// subI and horner are deliberately non-commutative. Left-to-right is the
 /// only traversal that reproduces their results, so every assertion on them
 /// pins the order [GPU-BACKEND-HOST] rather than merely the element set.
-fn subI(a: int, b: int) -> int = (a - b) ?: a
-fn horner(a: int, d: int) -> int = (((a * 10) ?: 0) + d) ?: a
+fn subI(a, b) = (a - b) ?: a
+fn horner(a, d) = (((a * 10) ?: 0) + d) ?: a
 
 /// maxI makes a scan a running maximum; addF is the float reduction; orB is
 /// the boolean any-reduction that latches on the first accepted element.
-fn maxI(a: int, b: int) -> int = match a > b { true => a false => b }
-fn addF(a: float, x: float) -> float = a + x
-fn orB(a: bool, b: bool) -> bool = a || b
+fn maxI(a, b) = match a > b { true => a false => b }
+fn addF(a, x) = a + x
+fn orB(a, b) = a || b
 
 /// countTrue is the population count that turns a bool buffer into a scalar.
-fn countTrue(a: int, flag: bool) -> int = match flag {
+fn countTrue(a, flag) = match flag {
     true => (a + 1) ?: a
     false => a
 }
@@ -38,7 +38,7 @@ fn countTrue(a: int, flag: bool) -> int = match flag {
 /// dbl, inc and half are the one-line stages the deep chains are built from.
 fn dbl(x) = (x * 2) ?: 0
 fn inc(x) = (x + 1) ?: x
-fn half(x: float) -> float = x * 0.5
+fn half(x) = x * 0.5
 
 /// toBit widens a bool element back to an int one, closing the type cycle
 /// int -> bool -> int that [GPU-BUFFER-ELEM]'s three scalars allow.
@@ -65,14 +65,14 @@ fn truthy(b) = b
 
 /// The zip kernels below all return an element type neither operand has, so
 /// gpuZipWith is exercised as a type-changing combinator too.
-fn sameParity(a: int, b: int) -> bool = isEven(a) == isEven(b)
-fn lessF(a: float, b: float) -> bool = a < b
-fn meanF(a: int, b: int) -> float = (toFloat(a) + toFloat(b)) * 0.5
-fn mixAdd(i: int, x: float) -> float = toFloat(i) + x
+fn sameParity(a, b) = isEven(a) == isEven(b)
+fn lessF(a, b) = a < b
+fn meanF(a, b) = (toFloat(a) + toFloat(b)) * 0.5
+fn mixAdd(i, x) = toFloat(i) + x
 
 /// oobMessage renders a gpuGet outcome as text so the Error [GPU-GET] returns
 /// is visible in an assertion instead of being swallowed by a `?:` default.
-fn oobMessage(buf: GpuBuffer<int>, i: int) -> string = match gpuGet(buf, i) {
+fn oobMessage(buf, i) = match gpuGet(buf, i) {
     Success { value } => "value ${value}"
     Error { message } => message
 }

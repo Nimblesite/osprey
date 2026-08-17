@@ -9,19 +9,19 @@
 fn square(x) = (x * x) ?: 0
 
 /// addInts keeps the checked-arithmetic Result inside the kernel.
-fn addInts(acc: int, x: int) -> int = (acc + x) ?: acc
+fn addInts(acc, x) = (acc + x) ?: acc
 
 /// scale is a pure float kernel; the buffer's element tag types x as float.
 fn scale(x) = x * 1.5
 
 /// addFloats is the float reduction kernel for gpuFold's combine slot.
-fn addFloats(a: float, x: float) -> float = a + x
+fn addFloats(a, x) = a + x
 
 /// isOdd maps an int element to a bool element, changing the buffer's type.
 fn isOdd(x) = (x % 2 ?: 0) == 1
 
 /// countOdd counts the true elements of a bool buffer.
-fn countOdd(acc: int, flag: bool) -> int = match flag {
+fn countOdd(acc, flag) = match flag {
     true => (acc + 1) ?: acc
     false => acc
 }

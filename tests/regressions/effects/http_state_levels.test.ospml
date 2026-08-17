@@ -34,7 +34,6 @@ onGet path = match path
     "/stats" => textResp (200, "requests=${toString (perform Metrics.served ())} tasks=${toString (perform Db.count ())}")
     _        => textResp (200, perform Db.list ())
 
-handleReq : string -> string -> string -> string -> HttpResponse
 handleReq (method, path, headers, body) =
     perform Metrics.hit path
     match method

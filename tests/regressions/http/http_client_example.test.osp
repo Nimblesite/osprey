@@ -1,6 +1,6 @@
 // Deterministic loopback coverage for the status-only HTTP client.
 
-fn localResponse(method: string, path: string, headers: string, body: string) -> HttpResponse = HttpResponse {
+fn localResponse(method, path, headers, body) = HttpResponse {
     status: 200,
     headers: "Content-Type: text/plain",
     contentType: "text/plain",

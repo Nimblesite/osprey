@@ -6,13 +6,13 @@ effect Recover {
     overdraw: fn(int, int) -> int
 }
 
-fn drawOrder(requested: int) -> (int) -> int !Recover =
+fn drawOrder(requested) -> (int) -> int !Recover =
     fn(available) => match requested > available {
         true => perform Recover.overdraw(requested, available)
         false => requested
     }
 
-fn fulfill(orders: List<int>) -> (int) -> int !Recover =
+fn fulfill(orders) -> (int) -> int !Recover =
     fn(stock) => match orders {
         [] => stock
         [requested, ...rest] => {

@@ -43,36 +43,36 @@ effect Log {
 }
 
 // ---- ANSI pizazz (pure string wrappers) ------------------------------------
-fn esc(code: string, s: string) -> string = "\e[${code}m${s}\e[0m"
-fn c256(n: string, s: string) -> string = "\e[38;5;${n}m${s}\e[0m"   // 256-color foreground
-fn bold(s: string) -> string = esc("1", s)
-fn dim(s: string) -> string = esc("2", s)
-fn cyan(s: string) -> string = esc("36", s)
-fn green(s: string) -> string = esc("92", s)
-fn yellow(s: string) -> string = esc("93", s)
-fn magenta(s: string) -> string = esc("95", s)
+fn esc(code, s) = "\e[${code}m${s}\e[0m"
+fn c256(n, s) = "\e[38;5;${n}m${s}\e[0m"   // 256-color foreground
+fn bold(s) = esc("1", s)
+fn dim(s) = esc("2", s)
+fn cyan(s) = esc("36", s)
+fn green(s) = esc("92", s)
+fn yellow(s) = esc("93", s)
+fn magenta(s) = esc("95", s)
 // Counters explicitly keep their previous value on arithmetic overflow.
 fn inc(x) = x + 1 ?: x
 fn mn(a, b) = match a < b { true => a  false => b }
 
 // A colored, fixed-width method badge (black text on a colored block).
-fn badge(method: string) -> string = match method {
+fn badge(method) = match method {
     "POST" => "\e[1;30;48;5;213m POST \e[0m"
     "GET"  => "\e[1;30;48;5;117m GET  \e[0m"
     _      => "\e[1;30;48;5;250m ${method} \e[0m"
 }
 
 // A bar of N filled blocks (capped) — a live gauge of how many tasks exist.
-fn blocks(i: int, n: int) -> string = match i < n {
+fn blocks(i, n) = match i < n {
     true  => "▰" + blocks(inc(i), n)
     false => ""
 }
-fn gauge(n: int) -> string = c256("213", blocks(0, mn(n, 28)))
+fn gauge(n) = c256("213", blocks(0, mn(n, 28)))
 
-fn divider() -> string = c256("239", "  ──────────────────────────────────────────────────────")
+fn divider() = c256("239", "  ──────────────────────────────────────────────────────")
 
 // A six-line ASCII "OSPREY" with a cyan→magenta gradient (one color per row).
-fn art() -> string =
+fn art() =
     c256("51",  "   ██████╗ ███████╗██████╗ ██████╗ ███████╗██╗   ██╗") + "\n" +
     c256("45",  "  ██╔═══██╗██╔════╝██╔══██╗██╔══██╗██╔════╝╚██╗ ██╔╝") + "\n" +
     c256("39",  "  ██║   ██║███████╗██████╔╝██████╔╝█████╗   ╚████╔╝ ") + "\n" +
@@ -81,7 +81,7 @@ fn art() -> string =
     c256("171", "   ╚═════╝ ╚══════╝╚═╝     ╚═╝  ╚═╝╚══════╝   ╚═╝   ")
 
 // The whole startup banner as one string (one print, no consecutive prints).
-fn banner() -> string =
+fn banner() =
     "\n" + art() + "\n\n  " +
     c256("46", "●") + dim(" live  ") + bold(c256("159", "http://127.0.0.1:8080")) +
     dim("   ·   state lives in algebraic-effect handlers") + "\n" +
@@ -91,7 +91,7 @@ fn banner() -> string =
     badge("POST") + " " + dim("/tasks") + "    add a task " + dim("(body = task text)") + "\n" +
     divider()
 
-fn textResp(status: int, bodyText: string) -> HttpResponse = HttpResponse {
+fn textResp(status, bodyText) = HttpResponse {
     status: status,
     headers: "Content-Type: text/plain",
     contentType: "text/plain",
@@ -103,7 +103,7 @@ fn textResp(status: int, bodyText: string) -> HttpResponse = HttpResponse {
 // Adding a task touches every layer — Db records it, Persist writes the new
 // snapshot to disk — yet not one socket, file descriptor or mutable field
 // appears in this pure orchestration.
-fn onPost(body: string) -> HttpResponse = {
+fn onPost(body) = {
     let id = perform Db.add(body)
     let snap = perform Db.list()
     let written = perform Persist.flush(snap)
@@ -111,7 +111,7 @@ fn onPost(body: string) -> HttpResponse = {
     textResp(201, "created task #${toString(id)}\n")
 }
 
-fn onGet(path: string) -> HttpResponse = {
+fn onGet(path) = {
     perform Log.info(badge("GET") + " " + dim(path) + dim("  ·  ${toString(perform Metrics.served())} served"))
     match path {
         "/stats" => textResp(200, "requests=${toString(perform Metrics.served())} tasks=${toString(perform Db.count())}\n")
@@ -119,7 +119,7 @@ fn onGet(path: string) -> HttpResponse = {
     }
 }
 
-fn handleReq(method: string, path: string, headers: string, body: string) -> HttpResponse = {
+fn handleReq(method, path, headers, body) = {
     perform Metrics.hit(path)
     match method {
         "POST" => onPost(body)

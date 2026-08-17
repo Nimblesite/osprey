@@ -67,7 +67,7 @@ print("")
 print("=== COMPREHENSIVE FIELD ACCESS TEST COMPLETE ===")
 
 /// Derives the same conditional label from a record field.
-fn userStatus(value: User) -> string = match value.active {
+fn userStatus(value) = match value.active {
     true => "Active User"
     false => "Inactive User"
 }

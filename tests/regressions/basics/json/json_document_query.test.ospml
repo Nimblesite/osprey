@@ -15,7 +15,6 @@ type JsonValue =
     JsonObject
         fields : Map string JsonValue
 
-describe : JsonValue -> string
 describe value =
     match value
         JsonNull => "null"
@@ -28,7 +27,6 @@ describe value =
 (** This is a recursive JSON walk: match the object/array container, then pass
     each nested JsonValue to the same matcher. The document below has one root
     field, making the path and its output deterministic. *)
-reportDeepString : JsonValue -> Unit
 reportDeepString value =
     match value
         JsonObject fields => forEachList (mapValues fields) reportDeepString
@@ -52,7 +50,6 @@ print "types: ${describe JsonNull}, ${describe (JsonBoolean(value = true))}, ${d
 print "=== JSON value union complete ==="
 
 (** Recursively follow the single object/array path to its string leaf. *)
-deepString : JsonValue -> string
 deepString value =
     match value
         JsonObject fields =>
@@ -67,7 +64,6 @@ deepString value =
         _ => ""
 
 (** Count object fields while returning zero for non-object values. *)
-objectFieldCount : JsonValue -> int
 objectFieldCount value =
     match value
         JsonObject fields => mapLength fields
