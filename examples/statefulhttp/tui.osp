@@ -94,7 +94,7 @@ fn cursorLine(text: string, sel: int) = match rowCount(text) {
 }
 
 // ---- the screen: a pure string built from the current model -----------------
-fn screen(text: string, sel: int, msg: string) -> string =
+fn screen(text: string, sel: int, msg: string) =
     "\e[?25l\e[2J\e[H\n" +
     bold(cyan("  OSPREY task board")) + dim("   live @ http://127.0.0.1:8080") + "\n" +
     rule() + "\n\n" +
@@ -195,14 +195,14 @@ fn httpFetch() = {
     out
 }
 
-fn httpPush(text: string) -> Unit = {
+fn httpPush(text: string) = {
     let c = httpCreateClient(baseUrl(), 5000)
     let code = toString(httpPost(c, "/tasks", text, ""))
     let closed = httpCloseClient(c)
     perform Diag.log("POST /tasks   ${code}  \"${text}\"")
 }
 
-fn main() -> Unit = {
+fn main() = {
     mut logBuf = ""       // Diag: the session log buffer (handler-owned)
     mut cache = ""        // Model: the cached task list
     mut cursor = 0        // Model: the selected row

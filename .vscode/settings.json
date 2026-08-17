@@ -30,5 +30,5 @@
     "rust-analyzer.check.allTargets": true,
     "basilisk.enabled": true,
     "basilisk.uv.enabled": true,
-    "deslop.topOffenders.groupBy": "cluster"
+    "deslop.topOffenders.groupBy": "type"
 }

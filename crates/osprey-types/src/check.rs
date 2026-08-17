@@ -1145,6 +1145,66 @@ mod tests {
     use crate::testutil::{check, ok};
     use osprey_syntax::parse_program;
 
+    /// One generic effect over a generic RECORD, differing only in the
+    /// instantiation the handler answers at.
+    fn stash(handler_payload: &str) -> String {
+        format!(
+            "type Box<T> = {{ value: T }}\n\
+             effect Stash<T> {{\n\
+               put: fn(T) -> Unit\n\
+               take: fn() -> T\n\
+             }}\n\
+             fn stash() = perform Stash.put(Box {{ value: 42 }})\n\
+             fn main() -> Unit = {{\n\
+               let cached = handle Stash\n\
+                 put v => print(\"put\")\n\
+                 take => Box {{ value: {handler_payload} }}\n\
+               in stash()\n\
+               print(\"${{cached}}\")\n\
+             }}\n"
+        )
+    }
+
+    #[test]
+    fn a_handler_discharges_a_generic_record_instance_only_at_its_own_instantiation() {
+        // The effect-row site keys that match a perform to a handler are built
+        // by RENDERING the argument type, so a rendering that collapsed a
+        // declared record to its bare name made `Box<int>` and `Box<string>`
+        // ONE key — and the mismatch below type-checked with zero errors.
+        //
+        // Both directions are asserted here because the negative alone is
+        // one-sided: a checker that rejected every generic record instance
+        // would satisfy it while breaking the language. The end-to-end
+        // rejection lives in
+        // `examples/failscompilation/generic_effect_record_arg_mismatch.ospo`.
+        let matching = check(&stash("0"));
+        assert!(
+            matching.is_empty(),
+            "a handler at the SAME instance must discharge: {matching:?}"
+        );
+
+        let mismatched = check(&stash("\"cached text\""));
+        assert!(
+            !mismatched.is_empty(),
+            "a handler at `Stash<Box<string>>` must not discharge a \
+             `Stash<Box<int>>` operation"
+        );
+        // Exactly ONE error, naming the whole operation at its instantiation.
+        // `!is_empty()` plus a field-name substring would also be satisfied by
+        // an unrelated failure — a parse slip, a second spurious diagnostic —
+        // so the mismatch would stop being what the test proves.
+        let [only] = mismatched.as_slice() else {
+            panic!("the instantiation mismatch is the ONLY thing wrong here: {mismatched:?}")
+        };
+        assert_eq!(
+            only.message,
+            "unhandled effect operations at program entry: \
+             Stash<{ value: int }>.put; add a matching `handle`",
+            "the diagnostic must name the operation at its instantiation \
+             structurally, not collapse it to `Box`"
+        );
+    }
+
     #[test]
     fn module_bodies_are_checked_in_a_child_scope() {
         let errs = check(

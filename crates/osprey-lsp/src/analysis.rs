@@ -81,6 +81,26 @@ pub fn collect_symbols(program: &Program) -> Vec<SymbolInfo> {
     out
 }
 
+/// [`collect_symbols`] with every inferable slot filled in by the checker.
+///
+/// This is what anything that DISPLAYS a type must call. The house style
+/// deletes every inferable annotation, so a consumer reading the raw AST sees
+/// `fn twice(n)` where the checker knows `fn twice(n: int) -> int` — and the
+/// outline, signature help and completion each degraded that way independently
+/// while hover and `--symbols` reported the truth. One collector keeps them
+/// from disagreeing again. Go-to-definition and reference search do NOT belong
+/// here: they use positions only, and inference is not free.
+/// Implements [LSP-HOVER-INFERRED-SIGNATURE].
+#[must_use]
+pub fn collect_inferred_symbols(program: &Program) -> Vec<SymbolInfo> {
+    let types = osprey_types::infer_program(program);
+    let mut symbols = collect_symbols(program);
+    for sym in &mut symbols {
+        fill_inferred(sym, &types);
+    }
+    symbols
+}
+
 /// Whether a statement walk descends into expression bodies to pick up nested
 /// `let` bindings (hover) or stops at the declaration (outline).
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -489,8 +509,13 @@ fn fn_sym(
     }
 }
 
-/// The one spelling of a function signature: `fn name<T>(a: int) -> string`,
-/// with `Unit` standing in for a return type no one has supplied yet.
+/// The one spelling of a function signature: `fn name<T>(a: int) -> string`.
+///
+/// A return type nobody supplied and the checker could not prove leaves the
+/// arrow OFF. It used to read `-> Unit`, but `Unit` is a positive claim, and
+/// for a body like `if f { Success { .. } } else { Error { .. } }` the checker
+/// refutes it outright ("cannot unify Unit with Result<t5, t6>"). Saying
+/// nothing is the only honest option left once there is nothing to say.
 fn render_signature(
     name: &str,
     binder: &str,
@@ -498,22 +523,32 @@ fn render_signature(
     ret: Option<&str>,
 ) -> String {
     let shown: Vec<String> = parameters.iter().map(render_param).collect();
-    format!(
-        "fn {name}{binder}({}) -> {}",
-        shown.join(", "),
-        ret.unwrap_or("Unit")
-    )
+    let head = format!("fn {name}{binder}({})", shown.join(", "));
+    match ret {
+        Some(ret) => format!("{head} -> {ret}"),
+        None => head,
+    }
 }
 
-/// Whether a checker-supplied type is safe to show a reader.
+/// How a checker-supplied type is shown to a reader, or `None` when it carries
+/// no information at all.
 ///
-/// An inferred type that still holds a type VARIABLE is not an answer — it is
-/// the checker's private placeholder, and rendering it puts `List<t5>` in a
-/// tooltip. The name is unstable (it moves when an unrelated line is edited)
-/// and means nothing outside the inference run that produced it, so a generic
-/// slot is better left as the author wrote it: bare.
-fn resolved(ty: &osprey_types::Type) -> bool {
-    !osprey_types::has_type_var(ty)
+/// An inferred type that still holds a type VARIABLE is not a finished answer,
+/// but it is rarely empty: `Result<int, t6>` proves the payload even where the
+/// error side stays open. Rendering `t6` would leak the checker's private name,
+/// whose number moves when an unrelated line is edited, so every unsolved slot
+/// becomes `_` ([`osprey_types::render_with_holes`]). A type that is nothing
+/// BUT a hole says nothing, so it yields `None` and the slot is left as the
+/// author wrote it — bare — rather than decorated with `_`.
+///
+/// "Nothing but a hole" is a question about the type's STRUCTURE, not its
+/// spelling: nothing stops an author writing `type _ = { x: int }`, and asking
+/// whether the rendering equals `"_"` threw that fully proven type away.
+fn shown(ty: &osprey_types::Type) -> Option<String> {
+    if matches!(ty, osprey_types::Type::Var(_)) {
+        return None;
+    }
+    Some(osprey_types::render_with_holes(ty))
 }
 
 /// Fill every slot the author left to inference — unannotated parameters and an
@@ -535,17 +570,15 @@ pub(crate) fn fill_inferred(sym: &mut SymbolInfo, types: &osprey_types::ProgramT
     let inferred = types.param_types(&sym.name).unwrap_or_default();
     for (slot, (_, written)) in sym.parameters.iter_mut().enumerate() {
         if let (true, Some(found)) = (written.is_empty(), inferred.get(slot)) {
-            if resolved(found) {
-                *written = found.to_string();
+            if let Some(rendered) = shown(found) {
+                *written = rendered;
             }
         }
     }
-    sym.return_type = sym.return_type.take().or_else(|| {
-        types
-            .return_type(&sym.name)
-            .filter(|found| resolved(found))
-            .map(ToString::to_string)
-    });
+    sym.return_type = sym
+        .return_type
+        .take()
+        .or_else(|| types.return_type(&sym.name).and_then(shown));
     let signature = render_signature(
         &sym.name,
         &sym.binder,
@@ -656,13 +689,9 @@ pub fn builtin_hover(name: &str) -> Option<String> {
 /// the house style calls redundant cannot change what tooling reports.
 #[must_use]
 pub fn symbols_json(program: &Program) -> String {
-    let types = osprey_types::infer_program(program);
-    let rendered: Vec<String> = collect_symbols(program)
-        .into_iter()
-        .map(|mut sym| {
-            fill_inferred(&mut sym, &types);
-            sym_json(&sym)
-        })
+    let rendered: Vec<String> = collect_inferred_symbols(program)
+        .iter()
+        .map(sym_json)
         .collect();
     format!("[{}]", rendered.join(","))
 }
@@ -858,6 +887,60 @@ print(describeAny(42) + "!")
         assert_eq!(
             json, control_json,
             "removing an inferable annotation must not change what tooling reports"
+        );
+    }
+
+    #[test]
+    fn a_type_the_author_named_underscore_is_a_real_type_not_a_hole() {
+        // `_` is only a RENDERING for an unsolved slot; nothing stops an author
+        // declaring a type of that name. Deciding "carries no information" by
+        // comparing the rendered text to `"_"` confused the two and threw away
+        // a fully proven return type, reporting `fn make()`. The question is
+        // structural — is this a type VARIABLE — and must be asked of the type,
+        // never of its spelling.
+        let src = "type _ = { x: int }\nfn make() = _ { x: 1 }\nlet m = make()\n";
+        let parsed = osprey_syntax::parse_program(src);
+        assert!(parsed.errors.is_empty(), "{:?}", parsed.errors);
+        assert!(
+            osprey_types::check_program(&parsed.program).is_empty(),
+            "the probe must type-check, or it pins nothing"
+        );
+        let json = symbols_json(&parsed.program);
+        assert!(
+            json.contains("\"signature\":\"fn make() -> _\""),
+            "a declared type named `_` is proven and must be reported: {json}"
+        );
+    }
+
+    #[test]
+    fn a_partially_resolved_return_type_reports_its_proven_part_never_unit() {
+        // Both arms build a `Result`, so the checker proves the payload is
+        // `int` — but the ERROR side stays free, because `Error { message }`
+        // unifies with whichever error type a caller supplies. Annotating this
+        // body `-> Result<int, string>`, `-> Result<int, Error>` and
+        // `-> Result<int, MathError>` all check, which is what "free" means.
+        //
+        // [`fill_inferred`] refuses a type holding a variable — correctly, `t6`
+        // is a private name — but the fallback then claimed `-> Unit`, and the
+        // checker refutes that itself: annotating `-> Unit` fails with
+        // "cannot unify Unit with Result<t5, t6>". A tool must not assert what
+        // the compiler rejects. `Result<int, _>` says exactly what is proven.
+        let src = "fn bothArms(f) = if f { Success { value: 1 } } \
+                   else { Error { message: \"e\" } }\n";
+        let parsed = osprey_syntax::parse_program(src);
+        assert!(parsed.errors.is_empty(), "{:?}", parsed.errors);
+        let json = symbols_json(&parsed.program);
+        assert!(
+            !json.contains("Unit"),
+            "the checker refutes `Unit` for this body; got {json}"
+        );
+        assert!(
+            json.contains("\"returnType\":\"Result<int, _>\""),
+            "the proven payload must survive with a hole for the free side; got {json}"
+        );
+        assert!(
+            !json.contains(">\"t") && !json.contains(", t6"),
+            "a private inference name must never reach a reader; got {json}"
         );
     }
 

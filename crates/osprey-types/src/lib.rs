@@ -42,7 +42,7 @@ pub use builtins::{builtin_callback_type, builtin_signature};
 pub use check::{check_program, infer_program};
 pub use error::TypeError;
 pub use info::{CtorLayout, HandlerSite, OpType, PerformSite, ProgramTypes};
-pub use ty::{has_type_var, names, Scheme, Type, VarId};
+pub use ty::{has_type_var, names, render_with_holes, Scheme, Type, VarId, HOLE};
 
 #[cfg(test)]
 #[expect(

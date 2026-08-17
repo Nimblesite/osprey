@@ -1003,9 +1003,18 @@ suite("Osprey Language Features Tests", () => {
       () => hoverAt(doc.uri, 0, 3),
       (h) => nonEmptyHover(h) && hoverText(h[0]).includes("classify"),
     );
+    // `xs` is proven to be a LIST by the patterns below it; only its element
+    // type stays open. This used to assert the bare `fn classify(xs)`, because
+    // the only alternative then was `List<t5>` and `t5` is an inference
+    // artefact whose number moves when an unrelated line does. A hole is
+    // neither: it keeps what the checker proved and names nothing it did not.
     assert.ok(
-      hoverText(decl[0]).includes("fn classify(xs)"),
+      hoverText(decl[0]).includes("fn classify(xs: List<_>)"),
       `declaration hover shows classify signature, got: ${hoverText(decl[0])}`,
+    );
+    assert.ok(
+      !/\bt\d/.test(hoverText(decl[0])),
+      `an inference artefact must never reach a reader, got: ${hoverText(decl[0])}`,
     );
     const call = await pollFor(
       () => hoverAt(doc.uri, 4, 9),
@@ -1321,6 +1330,350 @@ suite("Osprey Language Features Tests", () => {
     assert.ok(
       hoverText(okHover[0]).includes("square"),
       "hover works on the corrected ML program",
+    );
+  });
+
+  // WHY THIS TEST EXISTS
+  //
+  // CLAUDE.md requires every inferable annotation to be deleted, and the LSP is
+  // what a reader uses to recover the types the source no longer spells. So the
+  // contract is not "hover says something" — it is that deleting an annotation
+  // changes NOTHING a user can see. That is a property between two states of the
+  // same buffer, and it cannot be checked by opening two files: it has to survive
+  // a live edit through the incremental-sync path a real editor drives.
+  //
+  // Every provider is queried BEFORE and AFTER the edit and compared for exact
+  // equality, plus four standing assertions that a green comparison could
+  // otherwise hide:
+  //   * non-empty            — a provider that answers nothing compares equal to
+  //                            itself and would pass a pure equality check.
+  //   * exact expected text  — pins WHICH type, so both states being wrong the
+  //                            same way still fails.
+  //   * no `tN`              — `t5` is the checker's private name; its number
+  //                            moves when an unrelated line is edited.
+  //   * no fabricated `Unit` — `Unit` was the old display fallback and is a
+  //                            positive claim the checker itself refutes
+  //                            ([TYPE-RENDER-HOLES]).
+
+  const ANNOTATED_AREA = "fn area(w: int, h: int) -> int = w * h ?: 0";
+  const INFERRED_AREA = "fn area(w, h) = w * h ?: 0";
+
+  // Proof-of-reprocessing marker, appended by the same edit that deletes the
+  // annotation. See the comment at the edit for why a marker is required.
+  const SENTINEL_NAME = "sentinelAfterEdit";
+  const SENTINEL_DECL = `fn ${SENTINEL_NAME}() = 1`;
+
+  // `area` is fully provable, so its reported signature must be IDENTICAL either
+  // way. `classify` is provable only in part: the patterns prove `xs` is a list
+  // while nothing constrains its element, so the element is a hole and stays one
+  // in both states — the annotation under edit is on `area` alone.
+  const AREA_SIGNATURE = "fn area(w: int, h: int) -> int";
+  const CLASSIFY_SIGNATURE = "fn classify(xs: List<_>) -> string";
+
+  // Hover renders one fenced Osprey block holding exactly the signature, so the
+  // WHOLE hover is predictable and is compared as a whole. `includes` would let
+  // a hover that also printed `t5`, a stale second signature or a `-> Unit`
+  // line pass on the strength of the one substring it got right.
+  const fenced = (signature: string): string =>
+    ["```osprey", signature, "```"].join("\n");
+  const AREA_HOVER = fenced(AREA_SIGNATURE);
+  const CLASSIFY_HOVER = fenced(CLASSIFY_SIGNATURE);
+
+  // The outline detail IS the signature, so the two entries under test are
+  // fully determined and compared as a list rather than searched.
+  const EXPECTED_OUTLINE = [
+    `area:${AREA_SIGNATURE}`,
+    `classify:${CLASSIFY_SIGNATURE}`,
+  ];
+
+  const PROGRAM_TAIL = [
+    "fn classify(xs) = match xs {", // 1
+    '  [] => "empty"', // 2
+    '  [head, ...tail] => "many"', // 3
+    "}", // 4
+    "let a = area(3, 4)", // 5
+    "let c = classify(List())", // 6
+    'print("${a} ${c}")', // 7
+  ].join("\n");
+
+  /// Every provider answer that must survive deleting an annotation, as plain
+  /// comparable data. Captured once per buffer state.
+  /// The two spellings no reader may ever see, asserted PER interaction so a
+  /// failure names the surface that broke. A single combined blob at the end
+  /// reported "something leaked" and left the reader to find which provider.
+  ///   * `tN` is the checker's private name; its number moves when an unrelated
+  ///     line is edited, so it means nothing outside one inference run.
+  ///   * `-> Unit` was the old display fallback and is a positive claim the
+  ///     checker itself refutes ([TYPE-RENDER-HOLES]).
+  const assertNoLeak = (where: string, text: string): void => {
+    assert.ok(
+      !/\bt\d+\b/.test(text),
+      `${where}: a private inference name reached a reader: ${text}`,
+    );
+    assert.ok(
+      !/->\s*Unit\b/.test(text),
+      `${where}: Unit is a claim the checker refutes here: ${text}`,
+    );
+  };
+
+  interface ProviderSnapshot {
+    areaHover: string;
+    classifyHover: string;
+    outline: string[];
+    signature: string;
+    completionDetail: string;
+    definitions: string[];
+  }
+
+  test("CHUNKY: deleting a provable annotation changes nothing any provider reports", async function () {
+    this.timeout(120000);
+
+    const doc = await openDoc(
+      "live-edit.osp",
+      `${ANNOTATED_AREA}\n${PROGRAM_TAIL}\n`,
+    );
+
+    /// Drive all five providers over the CURRENT buffer and assert each one is
+    /// individually sound before it is ever compared. `label` names the buffer
+    /// state so a failure says which side broke.
+    async function snapshot(label: string): Promise<ProviderSnapshot> {
+      const areaHoverRaw = await pollFor(
+        () => hoverAt(doc.uri, 0, 4),
+        (h) => nonEmptyHover(h) && hoverText(h[0]).includes("area"),
+      );
+      const areaHover = hoverText(areaHoverRaw[0]);
+      assert.strictEqual(
+        areaHover,
+        AREA_HOVER,
+        `${label}: area hover must be exactly the proved signature`,
+      );
+      assertNoLeak(`${label}: area hover`, areaHover);
+
+      const classifyHoverRaw = await pollFor(
+        () => hoverAt(doc.uri, 1, 4),
+        (h) => nonEmptyHover(h) && hoverText(h[0]).includes("classify"),
+      );
+      const classifyHover = hoverText(classifyHoverRaw[0]);
+      assert.strictEqual(
+        classifyHover,
+        CLASSIFY_HOVER,
+        `${label}: a partly proved signature must keep its proven part and hole the rest`,
+      );
+      assertNoLeak(`${label}: classify hover`, classifyHover);
+
+      // The outline is the second view of the same types, so it must agree with
+      // hover rather than carry its own rendering.
+      const symbols = await pollFor(
+        () => symbolsOf(doc.uri),
+        (s) => Array.isArray(s) && s.length >= 2,
+      );
+      // Only the two functions under test. The edit below appends a SENTINEL
+      // declaration to prove the server reprocessed, and that sentinel must not
+      // itself make the before/after outlines differ.
+      const outline = symbols
+        .filter((s) => s.name === "area" || s.name === "classify")
+        .map((s) => `${s.name}:${s.detail}`);
+      assert.deepStrictEqual(
+        outline,
+        EXPECTED_OUTLINE,
+        `${label}: the outline must name both functions with exactly their \
+signatures, in source order`,
+      );
+      assertNoLeak(`${label}: outline`, outline.join(" | "));
+
+      // Signature help inside the argument list of `area(3, 4)` on line 5.
+      const help = await pollFor(
+        () => sigHelpAt(doc.uri, 5, 15),
+        (h) => Boolean(h?.signatures?.length),
+      );
+      const signature = help.signatures[0].label;
+      // The WHOLE signature, return type included. This was an `||` that also
+      // accepted `area(w: int, h: int)` without `-> int`, so a regression that
+      // dropped the return type — the exact failure this branch is about —
+      // passed through the second branch. `features.rs` builds this label from
+      // `sym.signature`, which carries the return, so the strict form is what
+      // the server actually promises.
+      assert.strictEqual(
+        signature,
+        AREA_SIGNATURE,
+        `${label}: signature help must be exactly the full inferred signature`,
+      );
+      assertNoLeak(`${label}: signature help`, signature);
+      // The cursor sits after the comma, so the SECOND parameter is active.
+      // Without this the test would pass on a server that highlights the wrong
+      // argument — the one thing signature help is for while typing a call.
+      assert.strictEqual(
+        help.activeParameter,
+        1,
+        `${label}: the cursor is in the second argument`,
+      );
+      assert.deepStrictEqual(
+        help.signatures[0].parameters.map((p) =>
+          typeof p.label === "string" ? p.label : signature.slice(p.label[0], p.label[1]),
+        ),
+        ["w: int", "h: int"],
+        `${label}: each parameter is labelled with the type the checker proved`,
+      );
+
+      // Completion offers `area`; its detail is the same signature again.
+      const completions = await pollFor(
+        () => completionAt(doc.uri, 5, 12),
+        (list) => Boolean(list) && labelsOf(list).includes("area"),
+      );
+      const areaItem = completions.items.find(
+        (i) => (typeof i.label === "string" ? i.label : i.label.label) === "area",
+      );
+      // `if`/`throw` rather than `assert.ok`: this narrows `areaItem` for the
+      // lines below under `strict`, which an assertion helper does not do here.
+      if (!areaItem) {
+        throw new assert.AssertionError({
+          message: `${label}: completion must offer area`,
+        });
+      }
+      // A function completes AS a function, with the name the user typed.
+      assert.strictEqual(
+        typeof areaItem.label === "string" ? areaItem.label : areaItem.label.label,
+        "area",
+        `${label}: the completion label is the plain function name`,
+      );
+      assert.strictEqual(
+        areaItem.kind,
+        vscode.CompletionItemKind.Function,
+        `${label}: and it is offered as a function, not a variable`,
+      );
+      const documentation =
+        typeof areaItem.documentation === "string"
+          ? areaItem.documentation
+          : (areaItem.documentation?.value ?? "");
+      const completionDetail = `${areaItem.detail ?? ""}${documentation}`;
+      // The detail IS the rendered signature and nothing else (`complete.rs`
+      // builds it from the symbol's type), so it is compared whole. A bare
+      // label, a stale render, or a detail padded with an extra line all fail.
+      assert.strictEqual(
+        completionDetail,
+        AREA_SIGNATURE,
+        `${label}: completion detail must be exactly the inferred signature`,
+      );
+      assertNoLeak(`${label}: completion detail`, completionDetail);
+
+      // Go-to-definition from the call on line 5 must land on the declaration.
+      const defs = await pollFor(
+        () => defsAt(doc.uri, 5, 9),
+        (d) => Array.isArray(d) && d.length > 0,
+      );
+      // URI and the exact identifier span, not just the line. A line-only
+      // projection accepts a jump into the wrong file, and it accepts a range
+      // that covers the whole declaration instead of the name the editor
+      // highlights — `area` is columns 3..7 of `fn area(...)`.
+      const definitions = defs.map(
+        (d) =>
+          `${d.uri.toString()}@${d.range.start.line}:${d.range.start.character}` +
+          `-${d.range.end.line}:${d.range.end.character}`,
+      );
+      assert.deepStrictEqual(
+        definitions,
+        [`${doc.uri.toString()}@0:3-0:7`],
+        `${label}: go-to-definition must land on the identifier in this file`,
+      );
+
+      return {
+        areaHover,
+        classifyHover,
+        outline,
+        signature,
+        completionDetail,
+        definitions,
+      };
+    }
+
+    const annotated = await snapshot("annotated");
+
+    // The edit a contributor actually makes when obeying CLAUDE.md: delete the
+    // annotations, leave the body alone. Applied through WorkspaceEdit so the
+    // server sees the same incremental didChange a keystroke produces.
+    const edit = new vscode.WorkspaceEdit();
+    edit.replace(doc.uri, doc.lineAt(0).range, INFERRED_AREA);
+    // A SENTINEL in the SAME edit. Without it there is nothing to wait for: the
+    // correct post-edit answer is byte-identical to the pre-edit one, so polling
+    // for it cannot distinguish "the server reprocessed and agrees" from "the
+    // server has not looked yet and is repeating its old reply" — and the whole
+    // comparison would then pass on a stale answer. The sentinel is a symbol
+    // that did not exist before, so seeing it proves reprocessing happened.
+    // Appended at the END so every line number asserted above is unmoved.
+    edit.insert(
+      doc.uri,
+      new vscode.Position(doc.lineCount, 0),
+      `${SENTINEL_DECL}\n`,
+    );
+    assert.ok(await vscode.workspace.applyEdit(edit), "the edit must apply");
+    assert.strictEqual(
+      doc.lineAt(0).text,
+      INFERRED_AREA,
+      "the buffer must actually hold the unannotated form",
+    );
+
+    const reprocessed = await pollFor(
+      () => symbolsOf(doc.uri),
+      (s) => Array.isArray(s) && s.some((sym) => sym.name === SENTINEL_NAME),
+    );
+    assert.ok(
+      reprocessed.some((s) => s.name === SENTINEL_NAME),
+      "the server must have reprocessed the edited buffer before it is compared",
+    );
+
+    const inferred = await snapshot("inferred");
+
+    assert.strictEqual(
+      inferred.areaHover,
+      annotated.areaHover,
+      "deleting a provable annotation must not change what hover reports",
+    );
+    assert.deepStrictEqual(
+      inferred.outline,
+      annotated.outline,
+      "deleting a provable annotation must not change the outline",
+    );
+    assert.strictEqual(
+      inferred.signature,
+      annotated.signature,
+      "deleting a provable annotation must not change signature help",
+    );
+    assert.strictEqual(
+      inferred.completionDetail,
+      annotated.completionDetail,
+      "deleting a provable annotation must not change completion detail",
+    );
+    assert.deepStrictEqual(
+      inferred.definitions,
+      annotated.definitions,
+      "deleting a provable annotation must not move the definition",
+    );
+    assert.strictEqual(
+      inferred.classifyHover,
+      annotated.classifyHover,
+      "an untouched function's reported type must not drift when a NEIGHBOUR is edited — \
+  the hole in `List<_>` is stable, unlike the `t5` it replaced",
+    );
+
+    // Restore, so the file is left as the suite found it and a later test that
+    // reopens this name sees the annotated form.
+    // Restore the whole buffer — the edit both rewrote line 0 and appended the
+    // sentinel, so a line-0-only undo would leave the sentinel behind for any
+    // later test that opens this name.
+    const undo = new vscode.WorkspaceEdit();
+    undo.replace(
+      doc.uri,
+      new vscode.Range(
+        new vscode.Position(0, 0),
+        doc.lineAt(doc.lineCount - 1).range.end,
+      ),
+      `${ANNOTATED_AREA}\n${PROGRAM_TAIL}`,
+    );
+    assert.ok(await vscode.workspace.applyEdit(undo), "the undo must apply");
+    assert.strictEqual(
+      doc.lineAt(0).text,
+      ANNOTATED_AREA,
+      "the buffer must be left as the suite found it",
     );
   });
 });

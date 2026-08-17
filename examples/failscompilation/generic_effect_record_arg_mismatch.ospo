@@ -1,0 +1,29 @@
+// A declared record's NAME is not its type: `Box<int>` and `Box<string>` are
+// different instantiations of one nominal. The effect-row site keys that match
+// a perform to a handler are built by RENDERING those types (`check.rs`), so
+// rendering a declared record as its bare name made both one key and let this
+// handler discharge an operation it does not match — accepted with ZERO errors.
+// `Display` is the faithful rendering for exactly that reason; the friendly
+// nominal spelling belongs to the reader path alone.
+//
+// The mismatch must be the ONLY thing rejected here. Declaring the row
+// (`-> Unit !Stash<Box<int>>`) would reject on the written `Box<int>` instead,
+// which is the unrelated inability to annotate an instantiated generic record
+// (#214) — a case that failed before this defect existed and would go on
+// failing after it was fixed, pinning nothing. Implements [EFFECTS-GENERIC-ROWS]
+type Box<T> = { value: T }
+
+effect Stash<T> {
+    put: fn(T) -> Unit
+    take: fn() -> T
+}
+
+fn stash() = perform Stash.put(Box { value: 42 })
+
+fn main() -> Unit = {
+    let cached = handle Stash
+        put v => print("put")
+        take => Box { value: "cached text" }
+    in stash()
+    print("${cached}")
+}

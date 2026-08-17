@@ -14,34 +14,11 @@
 //! Type-checking cannot see this and neither can `compile_program`'s own return
 //! value, which is precisely why these assertions read the emitted IR.
 
-use std::collections::BTreeSet;
+mod common;
+
+use common::{bound_symbols, repo_root, sources, symbol_at, undefined_symbols};
 use std::fs;
-use std::path::{Path, PathBuf};
-
-fn repo_root() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("..").join("..")
-}
-
-fn sources(dir: &Path, ext: &str) -> Vec<PathBuf> {
-    let mut out = Vec::new();
-    collect(dir, ext, &mut out);
-    out.sort();
-    out
-}
-
-fn collect(dir: &Path, ext: &str, out: &mut Vec<PathBuf>) {
-    let Ok(entries) = fs::read_dir(dir) else {
-        return;
-    };
-    for entry in entries.flatten() {
-        let path = entry.path();
-        if path.is_dir() {
-            collect(&path, ext, out);
-        } else if path.extension().is_some_and(|e| e == ext) {
-            out.push(path);
-        }
-    }
-}
+use std::path::Path;
 
 /// Lower `source`, or `None` if it never got as far as IR.
 fn ir_for(path: &Path, source: &str) -> Option<String> {
@@ -50,61 +27,6 @@ fn ir_for(path: &Path, source: &str) -> Option<String> {
         return None;
     }
     osprey_codegen::compile_program(&parsed.program).ok()
-}
-
-/// The symbol in `@name` position starting at `start`, if it is a plain
-/// identifier. Quoted and numeric symbols are skipped rather than guessed at.
-fn symbol_at(rest: &str) -> Option<String> {
-    let name: String = rest
-        .chars()
-        .take_while(|c| c.is_ascii_alphanumeric() || *c == '_' || *c == '.')
-        .collect();
-    let first = name.chars().next()?;
-    (!name.is_empty() && !first.is_ascii_digit()).then_some(name)
-}
-
-/// Every `@symbol` the module BINDS — defined, declared or a global.
-fn bound_symbols(ir: &str) -> BTreeSet<String> {
-    let mut bound = BTreeSet::new();
-    for line in ir.lines() {
-        let trimmed = line.trim_start();
-        let binding = trimmed.starts_with("define")
-            || trimmed.starts_with("declare")
-            || (trimmed.starts_with('@') && trimmed.contains(" = "));
-        if !binding {
-            continue;
-        }
-        if let Some(at) = line.find('@') {
-            if let Some(name) = symbol_at(&line[at + 1..]) {
-                let _ = bound.insert(name);
-            }
-        }
-    }
-    bound
-}
-
-/// Every `@symbol` the module USES but never binds. A non-empty result is IR
-/// that cannot link.
-fn undefined_symbols(ir: &str) -> BTreeSet<String> {
-    let bound = bound_symbols(ir);
-    let mut missing = BTreeSet::new();
-    for line in ir.lines() {
-        let trimmed = line.trim_start();
-        if trimmed.starts_with("define")
-            || trimmed.starts_with("declare")
-            || (trimmed.starts_with('@') && trimmed.contains(" = "))
-        {
-            continue;
-        }
-        for (index, _) in line.match_indices('@') {
-            if let Some(name) = symbol_at(&line[index + 1..]) {
-                if !bound.contains(&name) {
-                    let _ = missing.insert(name);
-                }
-            }
-        }
-    }
-    missing
 }
 
 /// A callback whose type is written out — the control. Its body IS emitted.
@@ -174,13 +96,114 @@ fn a_callback_referenced_by_the_ir_must_also_be_defined_by_it() {
 }
 
 #[test]
+fn a_reference_to_an_unemitted_instantiation_is_not_absorbed_by_its_generic_stem() {
+    // The gate reads symbols out of raw IR, so its own name-scanning decides
+    // what it can see. `$` separates a generic from its instantiation, and
+    // dropping it made `@handler$mono99` indistinguishable from `@handler`.
+    // A module defining ONLY `mono0` while calling `mono99` is precisely the
+    // dangling reference clang rejects, and it must not read as clean because
+    // some other instantiation of the same function happens to exist.
+    let ir = "\
+define i64 @handler$mono0(i8* %a) {
+entry:
+  ret i64 0
+}
+define i64 @main() {
+entry:
+  %r = call i64 @handler$mono99(i8* null)
+  ret i64 0
+}
+";
+    assert_eq!(
+        symbol_at("handler$mono0("),
+        Some("handler$mono0".to_string())
+    );
+    assert!(
+        bound_symbols(ir).contains("handler$mono0"),
+        "the emitted instantiation must be recorded under its full name"
+    );
+    assert!(
+        undefined_symbols(ir).contains("handler$mono99"),
+        "a call to an instantiation that was never emitted must be reported, \
+         not absorbed by the stem it shares with an emitted one"
+    );
+}
+
+#[test]
+fn a_global_initializer_is_scanned_for_uses_like_any_other_line() {
+    // The scanner skipped every BINDING line wholesale, on the reasoning that
+    // such a line introduces a name rather than using one. A global's
+    // initializer breaks that: it sits on the same line as the binder and is a
+    // reference like any other, so `@table = global i8* @missing` — the one
+    // shape where a dangling symbol shares a line with a definition — read as
+    // clean. Only the bound name is skipped now; the rest of the line is scanned.
+    let ir = "\
+@present = global i64 0
+@table = global i8* bitcast (i64* @present to i8*)
+@broken = global i8* bitcast (i64* @missing to i8*)
+define i64 @withPersonality() personality i8* @absentPersonality {
+entry:
+  ret i64 0
+}
+@.str.0 = private unnamed_addr constant [17 x i8] c\"a@example.com\\00\"
+define i64 @main() {
+entry:
+  ret i64 0
+}
+";
+    let bound = bound_symbols(ir);
+    assert!(
+        bound.contains("present") && bound.contains("table") && bound.contains("broken"),
+        "every global still binds its own name: {bound:?}"
+    );
+    let missing = undefined_symbols(ir);
+    assert!(
+        missing.contains("missing"),
+        "an initializer naming an unbound symbol must be reported: {missing:?}"
+    );
+    assert!(
+        !missing.contains("present"),
+        "an initializer naming a BOUND symbol must not be: {missing:?}"
+    );
+    assert!(
+        !missing.contains("table") && !missing.contains("broken"),
+        "and a global must never report itself as undefined: {missing:?}"
+    );
+    // An `@` inside a `c"…"` literal is a byte of the program's own text. Every
+    // corpus program carrying an email or a URL reported a dangling `@example`
+    // the moment initializers began to be read.
+    assert!(
+        !missing.contains("example"),
+        "an `@` inside a data literal is not a symbol: {missing:?}"
+    );
+    // A `define` header can carry a real reference after the name it binds —
+    // `personality` is the common one — so skipping those lines wholesale hid
+    // it. One rule now covers every binding line: skip the binder, read the rest.
+    assert!(
+        missing.contains("absentPersonality"),
+        "a personality clause naming an unbound symbol must be reported: {missing:?}"
+    );
+    assert!(
+        !missing.contains("withPersonality"),
+        "while the function that clause belongs to is bound, not missing: {missing:?}"
+    );
+}
+
+#[test]
 fn no_corpus_program_emits_a_reference_to_an_undefined_symbol() {
     // Guards the tree as it stands: whatever else is true, nothing currently
     // committed may lower to IR that cannot link.
+    // BOTH flavors. The break that motivated this gate reached ML too, and a
+    // sweep of `osp` alone cannot see it: an `.ospml` twin lowers through the
+    // same codegen, so a dangling reference there is the same unlinkable module
+    // ([FLAVOR-IR-EQUIV]).
     let root = repo_root();
     let mut broken = Vec::new();
     for dir in ["tests", "examples", "benchmarks"] {
-        for path in sources(&root.join(dir), "osp") {
+        for path in ["osp", "ospml"]
+            .iter()
+            .flat_map(|ext| sources(&root.join(dir), ext))
+        {
             let Ok(source) = fs::read_to_string(&path) else {
                 continue;
             };

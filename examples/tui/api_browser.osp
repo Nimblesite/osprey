@@ -106,7 +106,7 @@ fn hue(frame: int) = match modv(a: frame, b: 6) {
 }
 
 // Three rotors at staggered phases + staggered hues = a flowing comet of dots.
-fn comet(frame: int) -> string =
+fn comet(frame: int) =
     hue(frame) + rotor(frame) + hue(inc(inc(frame))) + rotor(inc(inc(inc(frame)))) +
     hue(inc(inc(inc(inc(frame))))) + rotor(frame + 6 ?: frame) + "\e[0m"
 
@@ -133,7 +133,7 @@ fn waveBar(i: int, pos: int, frame: int) = match i < waveWidth() {
 }
 
 // One full frame of the loader, addressed to a freshly-cleared screen.
-fn loaderFrame(frame: int) -> string =
+fn loaderFrame(frame: int) =
     "\e[?25l\e[2J\e[H\n\n\n\n" +
     "          " + bold(cyan("O S P R E Y")) + dim("  github browser") + "\n\n" +
     "          " + comet(frame) + bold("   Talking to GitHub") + hue(frame) + dots(frame) + "\e[0m\n\n" +
@@ -158,7 +158,7 @@ fn rowsText(doc: int, i: int, sel: int, n: int) = match i < n {
     false => ""
 }
 
-fn screenText(doc: int, sel: int, n: int) -> string =
+fn screenText(doc: int, sel: int, n: int) =
     "\n" +
     bold(cyan("  OSPREY  -  GitHub Repos: ${githubUser()}  (live API)")) + "\n" +
     rule() + "\n\n" +
@@ -198,7 +198,7 @@ fn treeRows(tree: int, i: int, last: int, sel: int) = match i < last {
     false => ""
 }
 
-fn treeScreen(repo: string, path: string, tree: int, sel: int, n: int) -> string =
+fn treeScreen(repo: string, path: string, tree: int, sel: int, n: int) =
     "\e[?25l\e[2J\e[H\n  " +
     bold(cyan("FILES  ")) + green(repo) + dim("/" + path) + "\n" +
     rule() + "\n\n" +
@@ -208,7 +208,7 @@ fn treeScreen(repo: string, path: string, tree: int, sel: int, n: int) -> string
     dim("  up/down move    enter open dir/file    esc back")
 
 // The code viewer: the file's raw source, downloaded live, with a header.
-fn codeScreen(file: string, code: string) -> string =
+fn codeScreen(file: string, code: string) =
     "\e[?25l\e[2J\e[H\n  " +
     bold(magenta("CODE  ")) + green(file) + dim("   (${length(code)} bytes, live raw)") + "\n" +
     rule() + "\n\n" +
@@ -380,13 +380,13 @@ fn spinFrame(fib: Fiber, frame: int) = {
     awaitSpinning(fib: fib, frame: inc(frame))
 }
 
-fn fetchBody(path: string) -> Result<string, Error> =
+fn fetchBody(path: string) =
     collect(clientId: httpCreateClient("https://api.github.com", 10000), path: path, headers: ghHeaders())
 
-fn fetchRawBody(path: string) -> Result<string, Error> =
+fn fetchRawBody(path: string) =
     collect(clientId: httpCreateClient("https://api.github.com", 10000), path: path, headers: rawHeaders())
 
-fn collect(clientId: int, path: string, headers: string) -> Result<string, Error> =
+fn collect(clientId: int, path: string, headers: string) =
     finish(clientId: clientId,
            resp: awaitSpinning(fib: spawn rawGet(clientId: clientId, path: path, headers: headers), frame: 0))
 
@@ -409,7 +409,7 @@ fn closeAfter(clientId: int, result: Result<string, Error>) = {
 
 // `main` installs the handlers that discharge each effect into real I/O, then
 // runs the pure effect logic underneath them.
-fn main() -> Unit =
+fn main() =
     handle Console
         print line => print(line)
     in handle Terminal

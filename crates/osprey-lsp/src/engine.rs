@@ -18,7 +18,7 @@ use lspkit_vfs::{PositionEncoding, Vfs};
 use tokio::sync::broadcast::error::RecvError;
 use tokio_util::sync::CancellationToken;
 
-use crate::analysis::collect_symbols;
+use crate::analysis::collect_inferred_symbols;
 use crate::diagnostics;
 use crate::features;
 use crate::model::{At, EngineError, Query, Report};
@@ -65,7 +65,7 @@ impl OspreyEngine {
             }
             Query::Symbols(uri) => {
                 let parsed = osprey_syntax::parse_program_for_path(uri.as_str(), &self.text(&uri));
-                Report::Symbols(collect_symbols(&parsed.program))
+                Report::Symbols(collect_inferred_symbols(&parsed.program))
             }
             Query::Hover(at) => Report::Hover(self.hover(&at)),
             Query::Definition(at) => Report::Locations(self.locate(&at, true, false)),

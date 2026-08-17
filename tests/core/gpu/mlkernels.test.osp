@@ -74,7 +74,7 @@ fn matVec(m, v, cols, rows) = gpuIota(rows) |> gpuMap(fn(r) => rowDot(m, v, cols
 fn dense(m, v, cols, rows, bias) = gpuZipWith(matVec(m, v, cols, rows), bias, addF) |> gpuMap(relu)
 
 /// mse is the loss the training loop descends; w is captured by the residual.
-fn mse(w: float, xs: GpuBuffer<float>, ys: GpuBuffer<float>) -> float =
+fn mse(w: float, xs: GpuBuffer<float>, ys: GpuBuffer<float>) =
     meanOf(gpuZipWith(xs, ys, fn(x, y) => (w * x - y) * (w * x - y)))
 
 /// gradStep is one epoch of least-squares descent on y = w * x; the annotation

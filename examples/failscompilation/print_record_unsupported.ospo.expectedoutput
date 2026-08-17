@@ -1,1 +1,1 @@
-cannot convert value for printing: Pt
+cannot convert value for printing: { x: int, y: int }

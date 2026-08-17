@@ -63,6 +63,46 @@ i = identity 42          // identity<int>
 s = identity "hello"     // identity<string>
 ```
 
+### Reporting a Partly Inferred Type — [TYPE-RENDER-HOLES]
+
+Inference does not always reach a single ground type, and what a tool reports
+in that case is part of the language's contract. A slot the checker proved
+nothing about is written `_`, the type-level hole. Every slot it did prove is
+written normally, so a partial answer still carries its proven part.
+
+```osprey
+fn bothArms(f) = if f { Success { value: 1 } } else { Error { message: "e" } }
+// reported: fn bothArms(f: bool) -> Result<int, _>
+```
+
+Reporting is a property of the canonical AST, so both surfaces report the same
+signature for the same program ([FLAVOR-IR-EQUIV]).
+
+The payload is `int` in both arms, so it is reported. The error side is open:
+`Error { message }` fixes only the message, leaving `E` free to unify with
+whichever error type a call site supplies, so `-> Result<int, string>`,
+`-> Result<int, Error>` and `-> Result<int, MathError>` all check
+([Result Preservation](#result-preservation)). A hole is the only honest
+spelling for that slot.
+
+Two spellings are forbidden. A tool must not print the checker's internal
+variable name — `t5` is private, its number is an artefact of one inference run
+and it moves when an unrelated line is edited. A tool must not substitute
+`Unit`, which is a positive claim the checker itself refutes: annotating
+`bothArms` with `-> Unit` fails to unify. Where a type is nothing but a hole
+there is nothing to report, and the slot is left as the author wrote it —
+bare — rather than decorated with `_`.
+
+A hole is a reporting spelling, not syntax. The annotation grammar has no
+wildcard, so `_` written in a type position is read as an ordinary nominal name
+like any other capitalized-or-not identifier, and it unifies only where the slot
+was already free. `-> Result<int, _>` therefore happens to check on `bothArms`,
+while `fn f(x: int) -> _ = x` is rejected — `cannot unify _ with int` — exactly
+as a misspelled type name would be. A reported signature containing a hole is
+not guaranteed to be a valid annotation, and reporting one is not a suggestion
+to write it down: an annotation the checker can prove adds no information and is
+redundant ([Type Annotations](#type-annotations--type-annotation-check)).
+
 ### Rows and Record Type Unification — [TYPE-ROW]
 
 A **row** is an unordered set of `name: type` fields. It is the one structure

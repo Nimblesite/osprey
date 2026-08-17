@@ -72,7 +72,7 @@ fn gauge(n: int) = c256("213", blocks(0, mn(n, 28)))
 fn divider() = c256("239", "  ──────────────────────────────────────────────────────")
 
 // A six-line ASCII "OSPREY" with a cyan→magenta gradient (one color per row).
-fn art() -> string =
+fn art() =
     c256("51",  "   ██████╗ ███████╗██████╗ ██████╗ ███████╗██╗   ██╗") + "\n" +
     c256("45",  "  ██╔═══██╗██╔════╝██╔══██╗██╔══██╗██╔════╝╚██╗ ██╔╝") + "\n" +
     c256("39",  "  ██║   ██║███████╗██████╔╝██████╔╝█████╗   ╚████╔╝ ") + "\n" +
@@ -81,7 +81,7 @@ fn art() -> string =
     c256("171", "   ╚═════╝ ╚══════╝╚═╝     ╚═╝  ╚═╝╚══════╝   ╚═╝   ")
 
 // The whole startup banner as one string (one print, no consecutive prints).
-fn banner() -> string =
+fn banner() =
     "\n" + art() + "\n\n  " +
     c256("46", "●") + dim(" live  ") + bold(c256("159", "http://127.0.0.1:8080")) +
     dim("   ·   state lives in algebraic-effect handlers") + "\n" +
