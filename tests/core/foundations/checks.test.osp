@@ -1,5 +1,5 @@
 /// Subtracts integers through curried application.
-fn sub(a) -> (int) -> int = fn(b) => a - b ?: 0
+fn sub(a: int) -> (int) -> int = fn(b) => a - b ?: 0
 /// Classifies exact integer cases and a wildcard branch.
 fn classify(n) = match n {
     0 => "zero"

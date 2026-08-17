@@ -2,13 +2,13 @@
 // results_state_hof. It deliberately keeps cross-feature behavior together.
 
 /// Increment an integer in direct calls and pipelines.
-fn tourInc(x) = x + 1 ?: 0
+fn tourInc(x: int) -> int = x + 1 ?: 0
 /// Add two integers through curried application.
-fn tourAdd(x) -> (int) -> int = fn(y) => x + y ?: 0
+fn tourAdd(x: int) -> (int) -> int = fn(y) => x + y ?: 0
 /// Square an integer in direct calls and pipelines.
-fn tourSquare(n) = n * n ?: 0
+fn tourSquare(n: int) -> int = n * n ?: 0
 /// Capture a scale factor in a concrete returned closure.
-fn tourMakeScaler(k) -> (int) -> int = fn(v) => v * k ?: 0
+fn tourMakeScaler(k: int) -> (int) -> int = fn(v) => v * k ?: 0
 
 /// Name two integer literals and stringify the wildcard branch.
 fn tourName(n) = match n {
@@ -66,12 +66,12 @@ fn curryTourCase() = {
 }
 
 /// Capture a multiplier for the concise mixed-feature workflow.
-fn mixedScale(k) -> (int) -> int = fn(v) => v * k ?: 0
+fn mixedScale(k: int) -> (int) -> int = fn(v) => v * k ?: 0
 /// Advance an integer by one for direct and piped calls.
-fn mixedStep(x) = x + 1 ?: 0
+fn mixedStep(x: int) -> int = x + 1 ?: 0
 
 /// Classify zero and positive values separately from negative values.
-fn mixedSign(n) = match n >= 0 {
+fn mixedSign(n: int) -> string = match n >= 0 {
     true => "pos"
     false => "neg"
 }
@@ -105,14 +105,14 @@ fn mixedFeaturesCase() = {
 }
 
 /// Unwrap a successful modulo Result and map errors to the legacy sentinel.
-fn resultSafeMod(a) -> (int) -> int = fn(b) => a % b ?: ((0 - 1) ?: 0)
+fn resultSafeMod(a: int) -> (int) -> int = fn(b) => a % b ?: ((0 - 1) ?: 0)
 
 /// Apply a concrete integer function twice.
-fn resultTwice(f) -> (int) -> int = fn(x) => f(f(x))
+fn resultTwice(f: (int) -> int) -> (int) -> int = fn(x) => f(f(x))
 /// Add ten as the first-class function passed to resultTwice.
 fn resultBump(x) = x + 10 ?: 0
 /// Capture one operand in a genuinely curried addition closure.
-fn resultAdder(a) -> (int) -> int = fn(b) => a + b ?: 0
+fn resultAdder(a: int) -> (int) -> int = fn(b) => a + b ?: 0
 
 /// This case composes Result matching, bindings, HOFs, and partial application.
 fn resultsStateHigherOrderCase() = {

@@ -12,13 +12,13 @@ fn maxAge() = 150
 
 /// User-constructed Result variants, one per validation outcome. Each carries a
 /// specific, human-readable Error message that must survive to the match arm.
-fn rejectNonNumber()   = Error { message: "not a number" }
-fn rejectNegative()    = Error { message: "age must be non-negative" }
-fn rejectTooLarge()    = Error { message: "age unrealistically large" }
-fn acceptAge(n)   = Success { value: n }
+fn rejectNonNumber()   -> Result<int, string> = Error { message: "not a number" }
+fn rejectNegative()    -> Result<int, string> = Error { message: "age must be non-negative" }
+fn rejectTooLarge()    -> Result<int, string> = Error { message: "age unrealistically large" }
+fn acceptAge(n)   -> Result<int, string> = Success { value: n }
 
 /// Range-check an already-parsed integer, returning a SPECIFIC Error per mode.
-fn checkAgeRange(n) = match n < minAge() {
+fn checkAgeRange(n) -> Result<int, string> = match n < minAge() {
     true  => rejectNegative()
     false => match n > maxAge() {
         true  => rejectTooLarge()
@@ -28,7 +28,7 @@ fn checkAgeRange(n) = match n < minAge() {
 
 /// Parse a string to an int (nested match on parseInt's Result), then
 /// range-check it. parseInt's failure becomes our own "not a number" reason.
-fn parseAge(s) = match parseInt(s) {
+fn parseAge(s) -> Result<int, string> = match parseInt(s) {
     Success { value }   => checkAgeRange(value)
     Error   { message } => rejectNonNumber()
 }

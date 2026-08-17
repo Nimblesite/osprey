@@ -4,6 +4,7 @@ namespace talon
 
 import talon::App
 
+osprey_web_dispatch : string -> int
 osprey_web_dispatch payload = App::receive payload
 
 main () = App::start ()

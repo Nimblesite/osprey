@@ -1061,15 +1061,11 @@ pub(super) fn type_expr(ty: &MlType) -> Option<TypeExpr> {
 }
 
 /// ML's bare `Unit` arrow domain is the zero-argument function boundary, just
-/// as `()` is the zero-argument binding/call marker. A tuple domain is the FLAT
-/// multi-parameter function type — `(int, int) -> int` is the Default flavor's
-/// `fn(int, int) -> int` ([FLAVOR-ML-CURRY]); it used to yield `None` here,
-/// silently untyping every HOF parameter so annotated. Other domains contribute
-/// one canonical parameter.
+/// as `()` is the zero-argument binding/call marker. Other domains contribute
+/// one canonical parameter; tuple domains are handled by their callers.
 fn arrow_parameter_types(domain: &MlType) -> Option<Vec<TypeExpr>> {
     match domain {
         MlType::Name(name) if name == UNIT_PAYLOAD => Some(Vec::new()),
-        MlType::Tuple(parts) => parts.iter().map(type_expr).collect(),
         other => Some(vec![type_expr(other)?]),
     }
 }

@@ -13,15 +13,19 @@
 // normalising divide — values staged beside the buffer, never shared state.
 
 (** The float reduction and the elementwise product every sum and dot use. *)
+addF : (float, float) -> float
 addF (a, x) = a + x
 
+mulF : (float, float) -> float
 mulF (x, y) = x * y
 
 (** Fold a buffer to its extremes: what a shift and a rescale capture. *)
+maxF : (float, float) -> float
 maxF (a, x) = match x > a
     true => x
     false => a
 
+minF : (float, float) -> float
 minF (a, x) = match x < a
     true => x
     false => a
@@ -52,9 +56,11 @@ varianceOf xs =
     meanOf (xs |> gpuMap (\v => (v - mean) * (v - mean)))
 
 (** The classic a*x + y with a = 2.0. *)
+saxpy : (float, float) -> float
 saxpy (x, y) = 2.0 * x + y
 
 (** softWeight weights a score already shifted by the batch maximum, so d >= 0. *)
+softWeight : float -> float
 softWeight d = (1.0 / (1.0 + d + d * d)) ?: 0.0
 
 (** softmax is four stages, two of them captures: fold the maximum, spend it in
@@ -68,6 +74,7 @@ softmax scores =
 (** rowDot walks one row of a flat row-major matrix against a vector. The
     signature is load-bearing: only a concrete signature is emitted as a real
     definition, which recursion requires. *)
+rowDot : (GpuBuffer<float>, GpuBuffer<float>, int, int, int) -> float
 rowDot (m, v, cols, r, c) = match c == cols
     true => 0.0
     false => (at (m, (((r * cols) ?: 0) + c) ?: 0) * at (v, c)
@@ -91,6 +98,7 @@ gradStep (w, xs, ys) = w - 0.05 * (((gpuZipWith (xs, ys,
 
 (** Iterate gradStep n times, keeping the loop on buffers. Annotated for the
     same recursion-emission reason as rowDot. *)
+train : (float, GpuBuffer<float>, GpuBuffer<float>, int) -> float
 train (w, xs, ys, n) = match n
     0 => w
     _ => train (gradStep (w, xs, ys), xs, ys, (n - 1) ?: 0)

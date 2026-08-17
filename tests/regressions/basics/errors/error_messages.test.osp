@@ -5,7 +5,7 @@
 // Spec: [BUILTIN-STRING-CURSOR], [ERR-PAYLOAD], [TYPE-LIST], [TYPE-MAP].
 
 /// A user-declared fallible function — its Error reason must render in toString.
-fn boom() = Error { message: "user boom" }
+fn boom() -> Result<int, string> = Error { message: "user boom" }
 
 /// A Result payload is a runtime value of ANY length, so `toString` must size
 /// its buffer from the string it is handed. The fixed 64-byte block it used to
@@ -14,9 +14,9 @@ fn boom() = Error { message: "user boom" }
 /// corrupted whatever followed it. [BUILTIN-TOSTRING]
 fn longText() = "a Result payload far longer than the sixty-four byte block toString once formatted into, which made printing one a heap overflow"
 
-fn longFailure() = Error { message: longText() }
+fn longFailure() -> Result<int, string> = Error { message: longText() }
 
-fn longSuccess() = Success { value: longText() }
+fn longSuccess() -> Result<string, string> = Success { value: longText() }
 
   // ---- numeric parsing ----
   match parseInt("nope") {

@@ -14,7 +14,7 @@ print("Testing function composition...")
 fn square(x) = x * x ?: 0
 
 /// Higher-order function with proper function typing instead of 'any'
-fn applyFunction(value, func) = func(value)
+fn applyFunction(value, func: (int) -> int) = func(value)
 
 /// Test function composition
 let testValue = 10
@@ -120,7 +120,7 @@ print(toString(nf))
 /// === Closures: escaping capture [TYPE-FN-CLOSURE] ===
 /// A returned lambda keeps its maker's state alive (heap closure cell); each
 /// instance owns its own cell, and an annotated or inferred maker works alike.
-fn makeAdder(n) -> (int) -> int = fn(x) => x + n ?: 0
+fn makeAdder(n: int) -> (int) -> int = fn(x) => x + n ?: 0
 fn makeScaler(k) = fn(v) => v * k
 let plus5 = makeAdder(5)
 let plus10 = makeAdder(10)
@@ -132,7 +132,7 @@ print("direct: ${makeAdder(7)(3)} inferred: ${makeScaler(3)(7)}")
 let offset = 100
 let addOffset = fn(x) => x + offset ?: 0
 print("passed: ${applyFunction(value: 11, func: addOffset)}")
-fn wrap(h) -> (int) -> int = fn(b) => h(b) + 1 ?: 0
+fn wrap(h: fn(int) -> int) -> (int) -> int = fn(b) => h(b) + 1 ?: 0
 let mw = wrap(double)
 let base = 3
 let nest = fn(x: int) => fn(y: int) => x + y + base
@@ -141,7 +141,7 @@ print("wrapped: ${mw(20)} nested: ${nest(10)(20)}")
 /// Regression pins: a rebound mut calls the NEW closure (not a stale inline
 /// body); a named-function alias is a first-class value; a Result-returning
 /// call is explicitly defaulted before entering a scalar-returning slot.
-fn mkR(x) = Success { value: x }
+fn mkR(x: int) -> Result<int, string> = Success { value: x }
 effect ClosureSlot {
     /// Rebind the captured adder to `value`.
     rebindAdder: fn(int) -> Unit
@@ -188,7 +188,7 @@ print("chain3: ${tri3(1)(2)(3)} computed: ${computed} fieldcb: ${fieldcb}")
 /// let-bound generic name stays callable (call alias), and the Kotlin-style
 /// scope-function idiom works: a generic HOF applies its lambda argument at
 /// two different instantiations (int and string).
-fn identity<T>(x) = x
+fn identity<T>(x: T) -> T = x
 fn alsoDo(x, f) = f(x)
 let idAlias = identity
 print("generic-values: ${applyFunction(value: 33, func: identity)} ${idAlias(7)} ${alsoDo(21, fn(n) => n * 2)} ${alsoDo("osp", fn(s) => s + "!")}")

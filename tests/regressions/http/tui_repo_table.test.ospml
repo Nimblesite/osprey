@@ -1,6 +1,7 @@
 // ML twin of tui_repo_table.osp. Exercises [HTTP-RESPONSE-HANDLE] and
 // [BUILTIN-JSON] with positional ML calls and layout blocks.
 
+handleRequest : string -> string -> string -> string -> HttpResponse
 handleRequest (method, path, headers, body) = HttpResponse(
     status = 200,
     headers = "Content-Type: application/json",

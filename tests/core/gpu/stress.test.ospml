@@ -68,6 +68,7 @@ hugeScale x = (x * 100000000000000000) ?: maxInt ()
     int-defaults [GPU-KERNEL-ELEM-TYPING]. headBig and tailBig plant one
     enormous value at opposite ends of an otherwise all-ones buffer, so one
     fold absorbs every small term after it and the other does not. *)
+addF : (float, float) -> float
 addF (a, x) = a + x
 half x = x * 0.5
 negF x = 0.0 - x
@@ -86,14 +87,17 @@ tailBig x = match x == 1000.0
     rebuild sends the buffer back to the host and in again every pass, so each
     round trip is a fresh dense copy of its own output. The signatures are
     load-bearing: recursion needs a real emitted definition. *)
+simulate : (GpuBuffer<int>, int) -> GpuBuffer<int>
 simulate (buf, n) = match n
     0 => buf
     _ => simulate (buf |> gpuMap bump, (n - 1) ?: 0)
 
+mix : (GpuBuffer<float>, int) -> GpuBuffer<float>
 mix (buf, n) = match n
     0 => buf
     _ => mix (buf |> gpuMap stir, (n - 1) ?: 0)
 
+rebuild : (GpuBuffer<int>, int) -> GpuBuffer<int>
 rebuild (buf, n) = match n
     0 => buf
     _ => rebuild (toGpu (fromGpu (buf |> gpuMap bump)), (n - 1) ?: 0)

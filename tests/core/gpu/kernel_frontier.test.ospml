@@ -2,6 +2,7 @@
 // [GPU-KERNEL-FORM], [GPU-KERNEL-EXTRACT]). The layout-bodied lambda below is
 // intentionally the ML spelling required for parity with Default block bodies.
 
+addFloats : (float, float) -> float
 addFloats (a, x) = a + x
 
 plus (a, x) = a + x

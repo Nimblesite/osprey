@@ -21,9 +21,9 @@ fn calculateComplexity(priority) = match priority {
     Medium => 600
 }
 
-fn calculateTaskTime(complexity) = (intDiv(complexity, 10) ?: 0) + 2 ?: 0
+fn calculateTaskTime(complexity: int) -> int = (intDiv(complexity, 10) ?: 0) + 2 ?: 0
 
-fn processTask(taskId, dataSize, priority) -> int ![Logger, Metrics] = {
+fn processTask(taskId: string, dataSize: int, priority: TaskPriority) -> int ![Logger, Metrics] = {
     perform Logger.info("Starting task: " + taskId + " with data size: " + toString(dataSize))
     let complexity = calculateComplexity(priority)
     let processed = dataSize * 8 ?: 0
@@ -35,7 +35,7 @@ fn processTask(taskId, dataSize, priority) -> int ![Logger, Metrics] = {
 fn processTask1() = processTask(taskId: "task-1", dataSize: 150, priority: High)
 fn processTask2() = processTask(taskId: "task-2", dataSize: 200, priority: Medium)
 fn processTask3() = processTask(taskId: "task-3", dataSize: 75, priority: Urgent)
-fn totalProcessed(first: int, second, third) = first + second + third ?: 0
+fn totalProcessed(first: int, second: int, third: int) -> int = first + second + third ?: 0
 
 fiber_set_deterministic_mode(enabled: true)
 handle Metrics

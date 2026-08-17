@@ -1,4 +1,5 @@
 (** Subtract two integers through a curried call. *)
+sub : int -> int -> int
 sub a b = a - b ?: 0
 (** Classify exact integers before the wildcard case. *)
 classify 0 = "zero"

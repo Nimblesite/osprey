@@ -94,7 +94,7 @@ print("=== Scan Complete ===\n")
 0
 
 /// Checks a token value at an exact position without hiding index failures.
-fn tokenIs(tokens, index, expected) = match listGet(tokens, index) {
+fn tokenIs(tokens: List<int>, index: int, expected: int) -> bool = match listGet(tokens, index) {
     Success { value } => value == expected
     Error { message } => false
 }

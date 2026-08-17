@@ -1,5 +1,6 @@
 // Deterministic loopback coverage for the status-only HTTP client.
 
+localResponse : string -> string -> string -> string -> HttpResponse
 localResponse (method, path, headers, body) = HttpResponse(
     status = 200,
     headers = "Content-Type: text/plain",

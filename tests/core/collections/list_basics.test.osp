@@ -7,14 +7,14 @@ effect IterationProbe {
 }
 
 /// appendThrough builds inclusive integer ranges while preserving every prior list version.
-fn appendThrough(xs) -> (int) -> (int) -> List<int> =
+fn appendThrough(xs: List<int>) -> (int) -> (int) -> List<int> =
     fn(next) => fn(last) => match next > last {
         true => xs
         false => appendThrough(listAppend(xs, next))(next + 1 ?: next)(last)
     }
 
 /// classify exercises exact-length, singleton, pair, and head-tail list patterns.
-fn classify(xs) = match xs {
+fn classify(xs: List<int>) -> string = match xs {
     [] => "empty"
     [single] => "one(${single})"
     [first, second] => "two(${first},${second})"
@@ -22,20 +22,20 @@ fn classify(xs) = match xs {
 }
 
 /// sumList proves recursive head-tail destructuring retains every element.
-fn sumList(xs) = match xs {
+fn sumList(xs: List<int>) -> int = match xs {
     [] => 0
     [head, ...tail] => head + sumList(tail) ?: 0
 }
 
 /// restLen exercises a wildcard prefix followed by a captured list tail.
-fn restLen(xs) = match xs {
+fn restLen(xs: List<int>) -> int = match xs {
     [_, second, ...rest] => listLength(rest)
     _ => 0
 }
 
 /// encodeIteration folds callback order into a base-100 integer through a handled
 /// effect, pinning forEachList's in-order traversal ([BUILTIN-LIST-FOREACH]).
-fn encodeIteration(xs) = {
+fn encodeIteration(xs: List<int>) -> int = {
     mut encoded = 0
     handle IterationProbe
         observe value => { encoded = encoded * 100 + value ?: encoded }
@@ -247,7 +247,7 @@ fn tailBoundaryCase() = {
 /// indexingPatternsAndDispatchCase preserves Result indexing, list patterns, recursion, and receiver-directed builtins.
 fn indexingPatternsAndDispatchCase() = {
     let commands = ["echo hello", "echo world", "echo test"]
-    let empty = []
+    let empty: List<string> = []
     let a = listAppend(listAppend(listAppend(List(), 1), 2), 3)
     let b = listAppend(listAppend(List(), 10), 20)
     let singleton = listAppend(List(), 7)

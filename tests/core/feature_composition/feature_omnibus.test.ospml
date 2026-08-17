@@ -25,6 +25,7 @@ callerOfLater _ = calleeLater 10
 calleeLater n = n * 4 ?: 0
 
 (** Parse an integer or use the caller's fallback. *)
+parseOr : string -> int -> int
 parseOr text fallback = parseInt text ?: fallback
 (** Render both parse Result branches. *)
 parseStatus text = match parseInt text

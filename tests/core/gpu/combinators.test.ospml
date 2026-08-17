@@ -10,28 +10,38 @@
 
 (** The zero-length buffers every combinator is pushed through; the annotation
     supplies the element type an empty literal cannot. *)
+emptyInts : Unit -> GpuBuffer<int>
 emptyInts () = toGpu []
+emptyFloats : Unit -> GpuBuffer<float>
 emptyFloats () = toGpu []
 
 (** The associative int combines fold and scan share. *)
+sumI : (int, int) -> int
 sumI (a, b) = (a + b) ?: a
+mulI : (int, int) -> int
 mulI (a, b) = (a * b) ?: 0
 
 (** subI and horner are deliberately non-commutative. Left-to-right is the
     only traversal that reproduces their results, so every assertion on them
     pins the order [GPU-BACKEND-HOST] rather than merely the element set. *)
+subI : (int, int) -> int
 subI (a, b) = (a - b) ?: a
+horner : (int, int) -> int
 horner (a, d) = (((a * 10) ?: 0) + d) ?: a
 
 (** maxI makes a scan a running maximum; addF is the float reduction; orB is
     the boolean any-reduction that latches on the first accepted element. *)
+maxI : (int, int) -> int
 maxI (a, b) = match a > b
     true => a
     false => b
+addF : (float, float) -> float
 addF (a, x) = a + x
+orB : (bool, bool) -> bool
 orB (a, b) = a || b
 
 (** The population count that turns a bool buffer into a scalar. *)
+countTrue : (int, bool) -> int
 countTrue (a, flag) = match flag
     true => (a + 1) ?: a
     false => a
@@ -39,6 +49,7 @@ countTrue (a, flag) = match flag
 (** dbl, inc and half are the one-line stages the deep chains are built from. *)
 dbl x = (x * 2) ?: 0
 inc x = (x + 1) ?: x
+half : float -> float
 half x = x * 0.5
 
 (** toBit widens a bool element back to an int one, closing the type cycle
@@ -68,13 +79,18 @@ truthy b = b
 
 (** The zip kernels below all return an element type neither operand has, so
     gpuZipWith is exercised as a type-changing combinator too. *)
+sameParity : (int, int) -> bool
 sameParity (a, b) = isEven a == isEven b
+lessF : (float, float) -> bool
 lessF (a, b) = a < b
+meanF : (int, int) -> float
 meanF (a, b) = (toFloat a + toFloat b) * 0.5
+mixAdd : (int, float) -> float
 mixAdd (i, x) = toFloat i + x
 
 (** oobMessage renders a gpuGet outcome as text so the Error [GPU-GET] returns
     is visible in an assertion instead of being swallowed by a `?:` default. *)
+oobMessage : (GpuBuffer<int>, int) -> string
 oobMessage (buf, i) = match gpuGet (buf, i)
     Success value => "value ${value}"
     Error message => message

@@ -20,7 +20,7 @@ fn callerOfLater(_) = calleeLater(10)
 fn calleeLater(n) = n * 4 ?: 0
 
 /// Unwraps a parsed integer or returns the caller's fallback through currying.
-fn parseOr(text) -> (int) -> int = fn(fallback) => parseInt(text) ?: fallback
+fn parseOr(text: string) -> (int) -> int = fn(fallback) => parseInt(text) ?: fallback
 /// Converts both Result branches into user-facing status text.
 fn parseStatus(text) = match parseInt(text) {
     Success { value } => "parsed ${value}"

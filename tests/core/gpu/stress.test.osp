@@ -66,7 +66,7 @@ fn hugeScale(x) = (x * 100000000000000000) ?: maxInt()
 /// positivity predicate, and a mixer with several ops per element. headBig and
 /// tailBig plant one enormous value at opposite ends of an otherwise all-ones
 /// buffer, so one fold absorbs every small term after it and the other does not.
-fn addF(a, x) = a + x
+fn addF(a: float, x: float) -> float = a + x
 fn half(x) = x * 0.5
 fn negF(x) = 0.0 - x
 fn recip(x) = (1.0 / x) ?: 0.0
@@ -81,17 +81,17 @@ fn tailBig(x) = match x == 1000.0 { true => hugeFloat() false => 1.0 }
 /// to the host and in again every pass, so each round trip is a fresh dense
 /// copy of its own output. The annotations are load-bearing: recursion needs a
 /// real emitted definition.
-fn simulate(buf, n) = match n {
+fn simulate(buf: GpuBuffer<int>, n: int) -> GpuBuffer<int> = match n {
     0 => buf
     _ => simulate(buf |> gpuMap(bump), (n - 1) ?: 0)
 }
 
-fn mix(buf, n) = match n {
+fn mix(buf: GpuBuffer<float>, n: int) -> GpuBuffer<float> = match n {
     0 => buf
     _ => mix(buf |> gpuMap(stir), (n - 1) ?: 0)
 }
 
-fn rebuild(buf, n) = match n {
+fn rebuild(buf: GpuBuffer<int>, n: int) -> GpuBuffer<int> = match n {
     0 => buf
     _ => rebuild(toGpu(fromGpu(buf |> gpuMap(bump))), (n - 1) ?: 0)
 }

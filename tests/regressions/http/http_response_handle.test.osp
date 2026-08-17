@@ -4,7 +4,7 @@
 // the handle is never reused across a nested match. [BUILTIN-HTTP]
 // [HTTP-RESPONSE-HANDLE]
 
-fn handleRequest(method, path, headers, body) = HttpResponse {
+fn handleRequest(method: string, path: string, headers: string, body: string) -> HttpResponse = HttpResponse {
     status: 200,
     headers: "X-Demo: hi\r\n",
     contentType: "text/plain",

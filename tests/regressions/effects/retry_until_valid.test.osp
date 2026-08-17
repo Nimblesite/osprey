@@ -7,7 +7,7 @@ effect Prompt {
 }
 
 /// Each invalid value causes a fresh Prompt.ask operation.
-fn readPositive(label) -> int !Prompt = {
+fn readPositive(label: string) -> int !Prompt = {
     let value = perform Prompt.ask(label)
     match value > 0 {
         true => value

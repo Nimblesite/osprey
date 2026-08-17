@@ -17,12 +17,12 @@ effect Tuning {
     baseline: fn(int) -> int
 }
 
-fn add(a, b) = a + b ?: 0
-fn sub(a, b) = a - b ?: 0
+fn add(a: int, b: int) -> int = a + b ?: 0
+fn sub(a: int, b: int) -> int = a - b ?: 0
 
 /// The hot tower: naive double recursion keeps the sampler busy, and its
 /// self-time dominates the flame graph.
-fn fib(n) = match n {
+fn fib(n: int) -> int = match n {
     0 => 0
     1 => 1
     _ => add(fib(sub(n, 1)), fib(sub(n, 2)))
@@ -36,7 +36,7 @@ fn napper() = {
 
 /// Effectful compute: the resumable handler below answers from its own fib
 /// tower, so the effect continuation thread appears as its own hot fiber.
-fn tuned(n) -> int ![Tuning] = add(fib(n), perform Tuning.baseline(n))
+fn tuned(n: int) -> int ![Tuning] = add(fib(n), perform Tuning.baseline(n))
 
 /// The fib inputs are sized so the sampler still gets tens of samples per fiber
 /// while the whole run fits any memory backend. The tracing collector stops

@@ -12,10 +12,14 @@
 (** Q10 fixed point: one world unit is 1024 sub-units. *)
 unit () = 1024
 (** fpMul and fpDiv stay in Q10; a zero divisor saturates instead of failing. *)
+fpMul : (int, int) -> int
 fpMul (a, b) = intDiv ((a * b) ?: 0, unit ()) ?: 0
+fpDiv : (int, int) -> int
 fpDiv (a, b) = intDiv ((a * unit ()) ?: 0, b) ?: 0
 (** The sign helpers every component-wise kernel needs. *)
+negFp : int -> int
 negFp x = (0 - x) ?: 0
+fpAbs : int -> int
 fpAbs x = match x < 0
     true => negFp x
     false => x
@@ -23,24 +27,34 @@ fpAbs x = match x < 0
 doubleFp x = fpMul (x, (2 * unit ()) ?: 0)
 halveFp x = fpMul (x, intDiv (unit (), 2) ?: 0)
 (** sumInts doubles as elementwise vector addition; subInts is displacement. *)
+sumInts : (int, int) -> int
 sumInts (a, x) = (a + x) ?: a
+subInts : (int, int) -> int
 subInts (a, b) = (a - b) ?: a
+sqrOf : int -> int
 sqrOf v = (v * v) ?: 0
 (** Squared length in one pass, so a broadphase needs no product buffer. *)
+addSquares : (int, int) -> int
 addSquares (dx, dy) = (sqrOf dx + sqrOf dy) ?: 0
 (** speedOf accumulates absolute magnitude — total speed, or total error. *)
+speedOf : (int, int) -> int
 speedOf (acc, v) = (acc + fpAbs v) ?: acc
 (** The associative fold combines that grow an axis-aligned box. *)
+boundMin : (int, int) -> int
 boundMin (a, b) = match a <= b
     true => a
     false => b
+boundMax : (int, int) -> int
 boundMax (a, b) = match a >= b
     true => a
     false => b
 (** Collision is inclusive: volumes that merely touch already overlap. *)
+leqI : (int, int) -> bool
 leqI (a, b) = a <= b
+bothOf : (bool, bool) -> bool
 bothOf (a, b) = a && b
 (** Flag-buffer helpers: total the hits, or compact them either way. *)
+hitCost : bool -> int
 hitCost flag = match flag
     true => 1
     false => 0
@@ -48,6 +62,7 @@ isHit flag = flag == true
 isMiss flag = !flag
 (** The alpha-max-plus-beta-min length estimate, |v| ~= max + 3*min/8: what a
     broadphase reaches for because it needs no square root. *)
+octagonal : (int, int) -> int
 octagonal (x, y) =
     hi = boundMax (fpAbs x, fpAbs y)
     lo = boundMin (fpAbs x, fpAbs y)
@@ -56,25 +71,34 @@ octagonal (x, y) =
 (** A colour packs r:g:b into one int element, the way a framebuffer does. *)
 channelBits () = 256
 redShift () = (channelBits () * channelBits ()) ?: 0
+clampChannel : int -> int
 clampChannel v = match v < 0
     true => 0
     false => match v > 255
         true => 255
         false => v
+packRG : (int, int) -> int
 packRG (r, g) = ((clampChannel r * channelBits ()) ?: 0) + clampChannel g ?: 0
+packRGB : (int, int) -> int
 packRGB (rg, b) = ((rg * channelBits ()) ?: 0) + clampChannel b ?: 0
+redOf : int -> int
 redOf c = intDiv (c, redShift ()) ?: 0
+greenOf : int -> int
 greenOf c = (intDiv (c, channelBits ()) ?: 0) % channelBits () ?: 0
+blueOf : int -> int
 blueOf c = (c % channelBits ()) ?: 0
 (** Integer Rec.601 grey; the weights sum to exactly 256, so white maps to 255. *)
+luminance : int -> int
 luminance c = intDiv (
     ((77 * redOf c) ?: 0) + ((151 * greenOf c) ?: 0) + ((28 * blueOf c) ?: 0) ?: 0,
     channelBits ()) ?: 0
 (** A blend is two coverage-weighted scales and one add. *)
+scaleColor : (int, int) -> int
 scaleColor (c, w) = packRGB (
     packRG (intDiv ((redOf c * w) ?: 0, channelBits ()) ?: 0,
         intDiv ((greenOf c * w) ?: 0, channelBits ()) ?: 0),
     intDiv ((blueOf c * w) ?: 0, channelBits ()) ?: 0)
+invAlpha : int -> int
 invAlpha a = (channelBits () - a) ?: 0
 (** The reference colours; missingColor is the magenta a failed asset paints. *)
 black () = 0
@@ -85,6 +109,7 @@ missingColor () = 16711935
 (** at turns [GPU-GET]'s out-of-range Error into the engine's chosen padding. *)
 at (buf, i, miss) = gpuGet (buf, i) ?: miss
 (** clampIdx keeps a stencil tap on the field; blurAt is the three-tap average. *)
+clampIdx : (int, int) -> int
 clampIdx (i, n) = boundMin (boundMax (i, 0), (n - 1) ?: 0)
 blurAt (field, n, i) = intDiv (at (field, clampIdx ((i - 1) ?: i, n), 0)
     + at (field, i, 0) + at (field, clampIdx ((i + 1) ?: i, n), 0) ?: 0, 3) ?: 0
@@ -93,21 +118,27 @@ tileTranspose (src, w, h) = (gpuIota ((w * h) ?: 0)
     |> gpuMap (\i => at (src, ((((i % h) ?: 0) * w) ?: 0) + (intDiv (i, h) ?: 0) ?: 0, 0)))
 (** Semi-implicit Euler: velocity updates first, then position integrates the
     *new* velocity. Only a concrete signature gets a recursive helper emitted. *)
+velAfter : (GpuBuffer<int>, GpuBuffer<int>, int) -> GpuBuffer<int>
 velAfter (vel, acc, n) = match n
     0 => vel
     _ => velAfter (gpuZipWith (vel, acc, sumInts), acc, (n - 1) ?: 0)
+posAfter : (GpuBuffer<int>, GpuBuffer<int>, GpuBuffer<int>, int) -> GpuBuffer<int>
 posAfter (pos, vel, acc, n) = match n
     0 => pos
     _ => gpuZipWith (posAfter (pos, vel, acc, (n - 1) ?: 0), velAfter (vel, acc, n), sumInts)
 (** damp reruns a drag multiply over a velocity buffer n times. *)
+damp : (GpuBuffer<int>, int, int) -> GpuBuffer<int>
 damp (vel, drag, n) = match n
     0 => vel
     _ => damp (vel |> gpuMap (\v => fpMul (v, drag)), drag, (n - 1) ?: 0)
 (** A tick is 0.1s; lerpQuarter eases a quarter of the way toward the target. *)
+integrate : (float, float) -> float
 integrate (p, v) = p + v * 0.1
+lerpQuarter : (float, float) -> float
 lerpQuarter (a, b) = a + (b - a) * 0.25
 (** The draw distance, the float reduction, and the survivor predicate. *)
 visible d = d < 100.0
+sumF : (float, float) -> float
 sumF (a, x) = a + x
 alive h = h > 0
 (** clamp01 keeps a normalized channel inside [0, 1]. *)
@@ -117,6 +148,7 @@ clamp01 x = match x < 0.0
         true => 1.0
         false => x
 (** applyDamage resolves a hit, flooring health at zero. *)
+applyDamage : (int, int) -> int
 applyDamage (h, d) = match ((h - d) ?: 0) > 0
     true => (h - d) ?: 0
     false => 0
