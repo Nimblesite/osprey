@@ -160,7 +160,7 @@ type Boxed = { held: string, tag: int }
 type Pair = Pair(int, string)
 type Point = { x: int, y: int }
 
-fn describeAny(v: any) -> string = match v {
+fn describeAny(v: any) = match v {
     { held, .. } => "held=${held}"
     { value }    => "value=${value}"
     (n, s)       => "pair=${n}:${s}"

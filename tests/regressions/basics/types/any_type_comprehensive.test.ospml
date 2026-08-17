@@ -26,7 +26,6 @@ processAnyValue input = input + 10 ?: 0
 forward : any -> any
 forward x = x
 
-forwardedHeap : Unit -> string
 forwardedHeap () = processAny (forward ("dyn" + "amic"))
 
 print "Explicit any return type works"
@@ -48,8 +47,7 @@ argResult = testArgs (5, "value", true)
 print "testArgs result: ${argResult}"
 
 (** Test type inference edge cases with any *)
-processAny : any -> string
-processAny x = "Processed any"
+processAny (x : any) = "Processed any"
 
 anyProcessed1 = processAny 42
 anyProcessed2 = processAny "hello"
@@ -81,8 +79,7 @@ print "123"
 print "false"
 
 (** Test type comparison workaround since any comparison is complex *)
-compareTypes : any -> any -> string
-compareTypes (a, b) = "Type comparison tested"
+compareTypes (a : any, b : any) = "Type comparison tested"
 
 comp1 = compareTypes (42, 42)
 comp2 = compareTypes (42, "42")
@@ -180,8 +177,7 @@ type Point =
     x : int
     y : int
 
-describeAny : any -> string
-describeAny v =
+describeAny (v : any) =
     match v
         { held, .. } => "held=${held}"
         { value } => "value=${value}"
@@ -189,7 +185,6 @@ describeAny v =
         _ => "other=${v}"
 
 (** Narrowing is stable: the same box selects the same arm every time. *)
-describeTwice : any -> string
 describeTwice v = "${describeAny v}/${describeAny v}"
 
 (** Rendering reads through the shape descriptor, so an erased record prints
@@ -209,7 +204,6 @@ type Shape =
     Square
         side : int
 
-erasedKinds : Unit -> string
 erasedKinds () =
     "${forward (1.5 + 0.25)}|${forward (1 < 2)}|${forward Green}|${forward (Circle(radius = 3))}|${forward (intDiv (10, 2))}|${forward (listAppend (List ()) 1)}|${forward (mapSet (Map ()) "k" 1)}"
 
@@ -220,13 +214,11 @@ erasedKinds () =
     to survive it — the flat literal here, the runtime List below — and both a
     scalar and a heap payload, since only the heap one moves the ARC oracle off
     zero [TYPE-ANY]. *)
-erasedInList : Unit -> string
 erasedInList () =
     match [forward ("bo" + "xed"), forward 7]
         [a, b] => "${describeAny a}|${describeAny b}"
         _ => "miss"
 
-erasedInRuntimeList : Unit -> string
 erasedInRuntimeList () =
     "${listGet (listAppend (listAppend (List ()) (forward ("ap" + "pended"))) (forward 8)) 0}"
 
@@ -236,7 +228,6 @@ erasedInRuntimeList () =
     result slot had the identical bug; it is covered in
     tests/regressions/fiber/fiber_showcase, which spawns and so cannot link on
     wasm32 — keeping it here would cost this file its wasm goldens. *)
-foldAny : Unit -> string
 foldAny () =
     describeAny (range (0, 3) |> fold (forward ("se" + "ed")) (\(acc, x) => forward acc))
 
@@ -256,12 +247,10 @@ foldAny () =
 effect Swap
     swap : any => Unit
 
-swapWork : Unit -> Unit ! Swap
 swapWork () =
     perform Swap.swap (forward ("re" + "placed"))
     perform Swap.swap 11
 
-swapped : Unit -> string
 swapped () =
     mut slot = forward ("ini" + "tial")
     handle Swap
