@@ -295,6 +295,32 @@ fn flat_tuple_domain_with_wrong_arity_is_rejected() {
 }
 
 #[test]
+fn a_parenthesised_flat_function_type_is_a_valid_signature_slot() {
+    // `((int, int) -> int)` in a signature slot is a FLAT function type — the
+    // Default flavor's `fn(int, int) -> int` — not a tuple value. Rejecting it
+    // as "a tuple type has no value form" untyped `applyTwo`'s HOF parameter in
+    // type_equality_comprehensive; both binding forms must keep the type.
+    let curried =
+        ml_ok("applyTwo : ((int, int) -> int) -> int -> int -> int\napplyTwo f a b = f (a, b)\n");
+    let flat = ml_ok(
+        "applyTwo : ((int, int) -> int) -> int -> int -> int\napplyTwo (f, a, b) = f (a, b)\n",
+    );
+    for stmts in [curried, flat] {
+        match stmts.first() {
+            Some(Stmt::Function { parameters, .. }) => {
+                let ty = match parameters.first().and_then(|p| p.ty.as_ref()) {
+                    Some(ty) => ty,
+                    None => panic!("the HOF parameter lost its written type"),
+                };
+                assert!(ty.is_function, "expected a function type, got {ty:?}");
+                assert_eq!(ty.parameter_types.len(), 2);
+            }
+            other => panic!("expected a function, got {other:?}"),
+        }
+    }
+}
+
+#[test]
 fn signature_shorter_than_the_binding_is_rejected() {
     // `g : int -> string` types ONE parameter; a two-parameter binding used to
     // absorb the RETURN type as its second parameter's annotation.

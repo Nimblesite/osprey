@@ -168,7 +168,7 @@ fn describeAny(v: any) = match v {
 }
 
 /// Narrowing is stable: the same box selects the same arm every time.
-fn describeTwice(v: any) = "${describeAny(v)}/${describeAny(v)}"
+fn describeTwice(v) = "${describeAny(v)}/${describeAny(v)}"
 
 /// Rendering reads through the shape descriptor, so an erased record prints
 /// its row and an erased scalar prints itself — never a machine word.
