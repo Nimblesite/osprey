@@ -1,0 +1,4 @@
+10:9: expected ')'
+10:9: unexpected token Comma in expression
+10:14: unexpected token RParen in expression
+13:0: function `takesTuple`: a parenthesised signature domain declares flat parameters; write `takesTuple (…) = …` to match

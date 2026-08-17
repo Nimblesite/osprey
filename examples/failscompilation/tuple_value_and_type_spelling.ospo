@@ -1,0 +1,13 @@
+// Must-reject. Pins [TYPE-TUPLE] (docs/specs/0004): a tuple PATTERN is the
+// positional row spelling and is implemented, but the standalone tuple VALUE
+// and its `(int, string)` type spelling are not. A tuple pattern therefore
+// only ever selects a positionally-declared union payload, plain or erased.
+//
+// Nothing pinned this: the status note said tuple values "do not parse yet"
+// and no rejection case held the parser to it, so an accidental parse would
+// have shipped a half-built tuple silently.
+let pair = (1, "a")
+
+fn takesTuple(p: (int, string)) -> string = "unreachable"
+
+print("unreachable")

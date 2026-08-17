@@ -23,8 +23,7 @@ processAnyValue input = input + 10 ?: 0
     resurrects a pointer is rejected, and
     `examples/failscompilation/ml_any_recovery_by_annotation.ospo` pins every
     form of it in this flavor. *)
-forward : any -> any
-forward x = x
+forward (x : any) = x
 
 forwardedHeap () = processAny (forward ("dyn" + "amic"))
 

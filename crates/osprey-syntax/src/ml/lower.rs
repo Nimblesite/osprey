@@ -49,23 +49,45 @@ thread_local! {
     /// optimisation the spec assigns to the backend, done here while the surface
     /// spine is still visible.
     static BOUND_NAMES: RefCell<HashSet<String>> = RefCell::new(HashSet::new());
+
+    /// Diagnostics raised while lowering — signatures the canonical AST cannot
+    /// represent, which would otherwise be dropped SILENTLY (a written type
+    /// vanishing is exactly the miscompile [FLAVOR-ML-FN] forbids). Ambient
+    /// because lowering recurses through [`lower_expr`] blocks with no error
+    /// channel; [`lower`] clears the sink on entry and drains it on exit.
+    static LOWER_ERRORS: RefCell<Vec<crate::SyntaxError>> = RefCell::new(Vec::new());
+}
+
+/// Record one lowering diagnostic at `pos`.
+fn lower_error(message: String, pos: Position) {
+    LOWER_ERRORS.with(|sink| {
+        sink.borrow_mut().push(crate::SyntaxError {
+            message,
+            position: pos,
+        });
+    });
 }
 
 /// Lower a parsed ML CST into the canonical program. Collects every bound name
 /// first so [`lower_application`] can tell a curried user call from a saturated
 /// builtin/`extern` call.
-pub(crate) fn lower(items: Vec<MlItem>) -> Program {
+pub(crate) fn lower(items: Vec<MlItem>) -> (Program, Vec<crate::SyntaxError>) {
     BOUND_NAMES.with(|s| {
         let mut set = s.borrow_mut();
         set.clear();
         collect_bound_names(&items, &mut set);
     });
+    LOWER_ERRORS.with(|sink| sink.borrow_mut().clear());
     let mut ctors = HashMap::new();
     collect_positional_ctors(&items, &mut ctors);
     let _positional = crate::positional::install(ctors.into_iter());
-    Program {
+    let program = Program {
         statements: lower_items(items),
-    }
+    };
+    (
+        program,
+        LOWER_ERRORS.with(|sink| sink.borrow_mut().drain(..).collect()),
+    )
 }
 
 /// Apply `descend` to the items a declaration CONTAINER holds — a namespace or
@@ -640,6 +662,9 @@ pub(super) fn lower_binding(
         None => (Vec::new(), None, Vec::new()),
     };
     let ty = ty.as_ref();
+    if let Some(message) = ty.and_then(|t| signature_mismatch(&name, &params, uncurried, t)) {
+        lower_error(message, pos);
+    }
     // An empty surface parameter list is a value binding; a non-empty one (even
     // the lone unit marker `()`) is a function. `()` binds no canonical
     // parameter, so `f () = e` is a zero-parameter function like `fn f() = e`.
@@ -670,6 +695,63 @@ pub(super) fn lower_binding(
         position: Some(pos),
     }
 }
+
+/// A paired signature the lowering cannot honour, as a diagnostic — or `None`
+/// when every written type survives into the canonical AST. Guards the silent
+/// drops in [`build_function_flat`]/[`build_function`]: a tuple domain whose
+/// arity misses the binding, a spine too short to type every parameter, and any
+/// spine slot [`type_expr`] cannot represent (a bare tuple type) all previously
+/// vanished without a trace, leaving the binding checked as if unannotated
+/// ([FLAVOR-ML-FN], [FLAVOR-ML-CURRY]; tuple values/types are unimplemented,
+/// [TYPE-TUPLE]).
+fn signature_mismatch(
+    name: &str,
+    params: &[MlParam],
+    uncurried: bool,
+    ty: &MlType,
+) -> Option<String> {
+    let spine = arrow_spine(ty);
+    if params.is_empty() {
+        return type_expr(ty)
+            .is_none()
+            .then(|| format!("let `{name}` signature: a tuple type {TUPLE_UNIMPLEMENTED}"));
+    }
+    if let Some(MlType::Tuple(parts)) = spine.first() {
+        if !uncurried {
+            return Some(format!(
+                "function `{name}`: a parenthesised signature domain declares flat parameters; write `{name} (…) = …` to match"
+            ));
+        }
+        if parts.len() != params.len() {
+            return Some(format!(
+                "function `{name}` signature declares {} parameters but the binding takes {}",
+                parts.len(),
+                params.len()
+            ));
+        }
+    }
+    let spine = expand_tuple_head(spine, params.len());
+    if spine.len() <= params.len() {
+        return Some(format!(
+            "function `{name}` signature provides {} parameter types but the binding takes {}",
+            spine.len().saturating_sub(1),
+            params.len()
+        ));
+    }
+    spine
+        .iter()
+        .find(|slot| type_expr(slot).is_none())
+        .map(|slot| {
+            format!(
+                "function `{name}` signature: the tuple type {} {TUPLE_UNIMPLEMENTED}",
+                render_type(slot)
+            )
+        })
+}
+
+/// The shared tail of every tuple-type diagnostic: what is unimplemented and
+/// the working alternative ([TYPE-TUPLE]).
+const TUPLE_UNIMPLEMENTED: &str = "has no value form; declare a positional record type instead";
 
 /// A parsed signature awaiting its binding: `name<T, U> : ty ! effects`.
 pub(super) struct MlSig {

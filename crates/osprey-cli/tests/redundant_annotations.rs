@@ -97,6 +97,68 @@ fn rebuild(lines: &[&str], index: usize, replacement: &str) -> String {
         .join("\n")
 }
 
+/// What `--symbols` reports for `source`, via the exact path the CLI uses.
+fn outline(source: &str) -> String {
+    let parsed = osprey_syntax::parse_program(source);
+    osprey_lsp::symbols_json(&parsed.program)
+}
+
+#[test]
+fn deleting_an_inferable_annotation_does_not_change_what_symbols_reports() {
+    // ENFORCEMENT for the `-> Unit` defect. CLAUDE.md REQUIRES deleting an
+    // inferable annotation, and `symbols_json` renders the DECLARED return type
+    // with a `Unit` fallback — so obeying the style rule silently downgrades
+    // every outline, hover-by-outline and editor breadcrumb to `-> Unit`.
+    //
+    // The invariant is exact and needs no inference of its own: an annotation
+    // the checker can infer carries no information, so erasing it must leave
+    // the reported symbols byte-identical. Anything else means tooling is
+    // reading the source text rather than the type.
+    //
+    // Asserted over the real corpus rather than one hand-written probe, because
+    // the single-case version in osprey-lsp cannot show the blast radius.
+    let root = repo_root();
+    let mut downgraded = Vec::new();
+    for dir in ["tests", "examples", "benchmarks"] {
+        for path in sources(&root.join(dir), "osp") {
+            let Ok(source) = fs::read_to_string(&path) else {
+                continue;
+            };
+            if !type_checks(&path, &source) {
+                continue;
+            }
+            let display = path
+                .strip_prefix(&root)
+                .unwrap_or(&path)
+                .display()
+                .to_string();
+            let lines: Vec<&str> = source.lines().collect();
+            for (index, line) in lines.iter().enumerate() {
+                let Some((arrow, body, spelling)) = return_annotation(line) else {
+                    continue;
+                };
+                let stripped = format!("{}{}", &line[..arrow], &line[body..]);
+                let rebuilt = rebuild(&lines, index, &stripped);
+                if !type_checks(&path, &rebuilt) {
+                    continue;
+                }
+                if outline(&rebuilt) != outline(&source) {
+                    downgraded.push(format!("{display}:{}  -> {spelling}", index + 1));
+                }
+            }
+        }
+    }
+    assert!(
+        downgraded.is_empty(),
+        "deleting an inferable return annotation changed the reported symbols — \
+         tooling is rendering the declared type with a `Unit` fallback instead of \
+         the inferred type, so following CLAUDE.md's annotation rule downgrades \
+         every one of these to `-> Unit`. {} affected:\n{}",
+        downgraded.len(),
+        downgraded.join("\n")
+    );
+}
+
 #[test]
 fn no_corpus_program_carries_a_removable_return_annotation() {
     let root = repo_root();

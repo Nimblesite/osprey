@@ -1,0 +1,15 @@
+// osprey: flavor=ml
+// ML twin of tuple_value_and_type_spelling.ospo. Pins [TYPE-TUPLE]
+// (docs/specs/0004) in this flavor: the tuple PATTERN `(n, s)` is implemented
+// as the positional row spelling, but the standalone tuple VALUE is not, and
+// neither is `(int, string)` as a signature type.
+//
+// The distinction matters because ML parenthesises FLAT PARAMETERS with the
+// same comma syntax ([FLAVOR-ML-CURRY], docs/specs/0024), so a tuple value is
+// the one place the two spellings collide. Nothing pinned that boundary.
+pair = (1, "a")
+
+takesTuple : (int, string) -> string
+takesTuple p = "unreachable"
+
+print "unreachable"

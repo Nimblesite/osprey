@@ -42,8 +42,10 @@ pub(crate) fn parse_ml(source: &str) -> Parsed {
     // Clause sets collapse to `match` before lowering, so the shared core only
     // ever sees the plain definition form ([FLAVOR-ML-CLAUSES]).
     let items = clauses::merge(items, &mut errors);
+    let (program, lower_errors) = lower::lower(items);
+    errors.extend(lower_errors);
     Parsed {
-        program: lower::lower(items),
+        program,
         errors,
         flavor: Flavor::Ml,
     }

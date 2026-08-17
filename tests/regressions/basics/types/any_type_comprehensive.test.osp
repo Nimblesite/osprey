@@ -23,7 +23,7 @@ fn processAnyValue(input) -> any = input + 10 ?: 0
 /// of it in both flavors.
 fn forward(x: any) -> any = x
 
-fn forwardedHeap() -> string = processAny(forward("dyn" + "amic"))
+fn forwardedHeap() = processAny(forward("dyn" + "amic"))
 
 print("Explicit any return type works")
 print("getDynamicValue() = ${getDynamicValue()}")
@@ -44,7 +44,7 @@ let argResult = testArgs(a: 5, b: "value", c: true)
 print("testArgs result: ${argResult}")
 
 /// Test type inference edge cases with any
-fn processAny(x: any) -> string = "Processed any"
+fn processAny(x: any) = "Processed any"
 
 let anyProcessed1 = processAny(42)
 let anyProcessed2 = processAny("hello")
@@ -168,7 +168,7 @@ fn describeAny(v: any) = match v {
 }
 
 /// Narrowing is stable: the same box selects the same arm every time.
-fn describeTwice(v: any) -> string = "${describeAny(v)}/${describeAny(v)}"
+fn describeTwice(v: any) = "${describeAny(v)}/${describeAny(v)}"
 
 /// Rendering reads through the shape descriptor, so an erased record prints
 /// its row and an erased scalar prints itself — never a machine word.
@@ -182,7 +182,7 @@ fn erasedPoint() -> any = Point { x: 1, y: 2 }
 /// would have printed its IEEE bits and nobody would have known [TYPE-ANY].
 type Shape = Circle { radius: int } | Square { side: int }
 
-fn erasedKinds() -> string =
+fn erasedKinds() =
     "${forward(1.5 + 0.25)}|${forward(1 < 2)}|${forward(Green)}|${forward(Circle { radius: 3 })}|${forward(intDiv(10, 2))}|${forward(listAppend(List(), 1))}|${forward(mapSet(Map(), "k", 1))}"
 
 /// A container of erased values keeps them BOXED. Folding an `any` element
@@ -192,12 +192,12 @@ fn erasedKinds() -> string =
 /// to survive it — the flat literal here, the runtime `List` below — and both
 /// a scalar and a heap payload, since only the heap one moves the ARC oracle
 /// off zero [TYPE-ANY].
-fn erasedInList() -> string = match [forward("bo" + "xed"), forward(7)] {
+fn erasedInList() = match [forward("bo" + "xed"), forward(7)] {
     [a, b] => "${describeAny(a)}|${describeAny(b)}"
     _      => "miss"
 }
 
-fn erasedInRuntimeList() -> string =
+fn erasedInRuntimeList() =
     "${listGet(listAppend(listAppend(List(), forward("ap" + "pended")), forward(8)), 0)}"
 
 /// A fold's loop-carried accumulator crosses a representation boundary as a
@@ -206,7 +206,7 @@ fn erasedInRuntimeList() -> string =
 /// result slot had the identical bug; it is covered in
 /// tests/regressions/fiber/fiber_showcase, which spawns and so cannot link on
 /// wasm32 — keeping it here would cost this file its wasm goldens.
-fn foldAny() -> string =
+fn foldAny() =
     describeAny(range(0, 3) |> fold(forward("se" + "ed"), |acc, x| => forward(acc)))
 
 /// An erased operand crosses an effect mailbox as the box it is, and replacing
@@ -226,12 +226,12 @@ effect Swap {
     swap: fn(any) -> Unit
 }
 
-fn swapWork() -> Unit !Swap = {
+fn swapWork() = {
     perform Swap.swap(forward("re" + "placed"))
     perform Swap.swap(11)
 }
 
-fn swapped() -> string = {
+fn swapped() = {
     mut slot = forward("ini" + "tial")
     handle Swap
         swap item => { slot = item }

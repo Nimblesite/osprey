@@ -1,0 +1,17 @@
+// osprey: flavor=ml
+// Must-reject. Pins [FLAVOR-ML-FN]/[FLAVOR-ML-CURRY] (docs/specs/0024): a
+// parenthesised signature domain describes the FLAT binding form, so pairing
+// it with a curried binding is a form mismatch the lowering must reject.
+//
+// This program used to COMPILE AND RUN: a tuple type has no canonical TypeExpr
+// form, so the lowering dropped the whole written domain and checked the
+// binding as if unannotated — the signature below disagrees with the binding
+// in arity AND types, the call site passes a string where the signature says
+// int, and it printed `p=wrong type entirely`. A written signature the checker
+// never consults is the exact silent miscompile stabilization forbids. The
+// arity and too-short-spine twins of this case are pinned in
+// crates/osprey-syntax/tests/ml_coverage.rs.
+f : (int, string, bool) -> string
+f p = "p=${p}"
+
+print (f "wrong type entirely")

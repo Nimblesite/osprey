@@ -686,6 +686,107 @@ mod tests {
         }
     }
 
+    #[test]
+    fn an_inferred_return_type_reaches_the_outline_instead_of_unit() {
+        // RED: `--symbols` renders the DECLARED return type and falls back to
+        // `Unit` when there is none, so a function whose return type is
+        // inferred is reported as returning `Unit`. Every arm below yields a
+        // string, and the program only compiles because the caller concatenates
+        // the result — so `string` is not a guess, it is the type the checker
+        // already proved.
+        //
+        // This is what makes the annotation rule unenforceable from tooling:
+        // CLAUDE.md requires deleting an inferable `-> string`, and doing so
+        // silently downgrades what `--symbols` reports to `Unit`. Hover renders
+        // `string` correctly from the same source, so the type IS available;
+        // `symbols_json` takes only the AST and never consults inference.
+        // [TYPE-INFERENCE]
+        let inferred = r#"fn describeAny(v: any) = match v {
+    { held, .. } => "held=${held}"
+    _            => "other"
+}
+print(describeAny(42) + "!")
+"#;
+        // The same program with the annotation written out. It is the control:
+        // identical behaviour, identical inferred type, and it reports
+        // correctly today — so any difference below is the annotation's
+        // presence alone, not the program.
+        let annotated = r#"fn describeAny(v: any) -> string = match v {
+    { held, .. } => "held=${held}"
+    _            => "other"
+}
+print(describeAny(42) + "!")
+"#;
+
+        let parsed = osprey_syntax::parse_program(inferred);
+        assert!(parsed.errors.is_empty(), "{:?}", parsed.errors);
+        assert!(
+            osprey_types::check_program(&parsed.program).is_empty(),
+            "the probe must type-check, or it pins nothing: `+ \"!\"` is what \
+             proves the return type is string rather than a guess"
+        );
+        let json = symbols_json(&parsed.program);
+
+        // The control reports the truth, so the type is derivable from a
+        // program the checker already accepted.
+        let control = osprey_syntax::parse_program(annotated);
+        assert!(control.errors.is_empty(), "{:?}", control.errors);
+        let control_json = symbols_json(&control.program);
+        for frag in [
+            "\"returnType\":\"string\"",
+            "\"signature\":\"fn describeAny(v: any) -> string\"",
+        ] {
+            assert!(
+                control_json.contains(frag),
+                "control (annotated) must report {frag}; got {control_json}"
+            );
+        }
+
+        // Hover renders the same declaration from the same AST and gets it
+        // right, so the outline is not missing information — it is discarding
+        // it.
+        let hovered = crate::hover::hover(
+            inferred,
+            "file:///inferred.osp",
+            0,
+            4,
+            lspkit_vfs::PositionEncoding::Utf16,
+        )
+        .expect("hover over `describeAny`");
+        assert!(
+            hovered.contains("-> string"),
+            "hover already knows the return type is string; got {hovered}"
+        );
+
+        // The bug, asserted three ways so a partial fix cannot pass.
+        assert!(
+            !json.contains("\"returnType\":\"Unit\""),
+            "an inferred return type must not be reported as Unit; got {json}"
+        );
+        assert!(
+            !json.contains("-> Unit"),
+            "the rendered signature must not claim `-> Unit`; got {json}"
+        );
+        for frag in [
+            "\"returnType\":\"string\"",
+            "\"signature\":\"fn describeAny(v: any) -> string\"",
+            "\"type\":\"fn describeAny(v: any) -> string\"",
+        ] {
+            assert!(
+                json.contains(frag),
+                "an inferred return type must reach the outline as the type the \
+                 checker inferred: missing {frag} in {json}"
+            );
+        }
+
+        // Dropping an inferable annotation is REQUIRED by CLAUDE.md, so the two
+        // spellings must be indistinguishable to tooling.
+        assert_eq!(
+            json, control_json,
+            "removing an inferable annotation must not change what tooling reports"
+        );
+    }
+
     /// The rendered hover markdown for `name` in `src`, via the real symbol
     /// path (`collect_all_symbols` → `doc`).
     fn doc_for(src: &str, name: &str) -> Option<String> {
