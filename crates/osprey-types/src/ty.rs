@@ -204,7 +204,7 @@ pub fn has_type_var(ty: &Type) -> bool {
 pub const HOLE: &str = "_";
 
 /// Render a type for a READER: every unsolved variable spelled [`HOLE`], and
-/// every DECLARED record spelled by its name.
+/// every DECLARED record spelled by its name AND its row.
 ///
 /// [`Display`] is the faithful rendering and must stay that way — the checker
 /// keys effect-row sites off it — so both of those reader courtesies live here
@@ -226,11 +226,24 @@ fn for_reader(ty: &Type) -> Type {
     let over = |ts: &[Type]| ts.iter().map(for_reader).collect();
     match ty {
         Type::Var(_) => Type::prim(HOLE),
-        // A declared record becomes a NULLARY constructor, which Displays as
-        // the bare name — the spelling its author wrote. An anonymous literal
-        // has no name to use, so its row is the only description it has.
-        // (Its type arguments are unrecoverable here; see issue #214.)
-        Type::Record { name, .. } if !name.is_empty() => Type::prim(name.clone()),
+        // A declared record is shown by NAME AND ROW: `Point { x: int, y: int }`.
+        // The name alone was tried and lost information the reader used to
+        // have — an instantiated `Box<int>` collapsed to `Box`, because a
+        // record carries no type arguments to put back (#214). The row does
+        // carry them, so showing both keeps the author's spelling and the
+        // instantiation. Built as a `prim` so this stays a READER concern:
+        // `Display` renders the bare row and remains the faithful key
+        // `check.rs` builds effect-row sites from.
+        Type::Record { name, fields } if !name.is_empty() => Type::prim(format!(
+            "{name} {}",
+            Type::Record {
+                name: String::new(),
+                fields: fields
+                    .iter()
+                    .map(|(k, v)| (k.clone(), for_reader(v)))
+                    .collect(),
+            }
+        )),
         Type::Con { name, args } => Type::con(name.clone(), over(args)),
         Type::Fun { params, ret } => Type::Fun {
             params: over(params),
@@ -356,7 +369,7 @@ mod tests {
     }
 
     #[test]
-    fn the_reader_rendering_names_a_declared_record_and_keeps_an_anonymous_row() {
+    fn the_reader_rendering_gives_a_declared_record_its_name_and_its_row() {
         // A DECLARED record's name is inferred and carried (`infer_constructor`
         // builds `Record { name: owner, .. }`), but rendering dropped it, so a
         // function returning `Point` was reported as returning
@@ -375,7 +388,13 @@ mod tests {
             .into_iter()
             .collect(),
         };
-        assert_eq!(render_with_holes(&point), "Point");
+        assert_eq!(
+            render_with_holes(&point),
+            "Point { x: int, y: int }",
+            "the reader gets the author's NAME and the row, because a record \
+             carries no type arguments to put back and the row is where an \
+             instantiation survives (#214)"
+        );
         assert_eq!(
             point.to_string(),
             "{ x: int, y: int }",
@@ -422,7 +441,7 @@ mod tests {
     }
 
     #[test]
-    fn display_distinguishes_two_instantiations_that_the_reader_rendering_may_not() {
+    fn both_renderings_keep_two_instantiations_of_one_record_apart() {
         // `check.rs` keys effect-row perform/handler sites by rendering each
         // argument type with `Display` (check.rs:1011/1027/1050). Rendering a
         // nominal record as its bare NAME there made `Box<int>` and
@@ -442,9 +461,14 @@ mod tests {
             boxed(Type::string()).to_string(),
             "Display is an identity: two instantiations must not collide"
         );
-        // The reader path may collapse them — a tooltip wants `Box` — which is
-        // exactly why the two renderings are not the same function.
-        assert_eq!(render_with_holes(&boxed(Type::int())), "Box");
+        // The reader path keeps them apart too, and must: naming the record
+        // alone was tried, and it lost the very instantiation `Display` is
+        // being kept faithful to preserve.
+        assert_eq!(render_with_holes(&boxed(Type::int())), "Box { value: int }");
+        assert_eq!(
+            render_with_holes(&boxed(Type::string())),
+            "Box { value: string }"
+        );
     }
 
     #[test]

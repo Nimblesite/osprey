@@ -907,8 +907,14 @@ print(describeAny(42) + "!")
         );
         let json = symbols_json(&parsed.program);
         assert!(
-            json.contains("\"signature\":\"fn make() -> _\""),
-            "a declared type named `_` is proven and must be reported: {json}"
+            json.contains("\"signature\":\"fn make() -> _ { x: int }\""),
+            "a declared type named `_` is proven and must be reported, name and \
+             row alike: {json}"
+        );
+        assert!(
+            !json.contains("\"returnType\":\"_\""),
+            "and it must not be mistaken for the hole that shares its spelling: \
+             {json}"
         );
     }
 

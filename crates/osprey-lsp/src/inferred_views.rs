@@ -276,4 +276,100 @@ mod tests {
             assert!(!regex_like_type_var(clean), "must not flag {clean}");
         }
     }
+
+    /// A program declaring one plain record and one generic record, each built
+    /// by a function whose return type is left to inference.
+    const RECORDS: &str = "type Point = { x: int, y: int }\n\
+                           type Box<T> = { value: T }\n\
+                           fn origin() = Point { x: 0, y: 0 }\n\
+                           fn boxed() = Box { value: 1 }\n\
+                           let o = origin()\n\
+                           let b = boxed()\n";
+
+    #[test]
+    fn every_reader_view_shows_a_records_name_and_its_row_together() {
+        // A declared record has TWO things worth saying, and each rendering
+        // that picked one lost the other:
+        //
+        //   `{ x: int, y: int }`  — the row, but not the name its author wrote,
+        //                           and not a spelling they may write back.
+        //   `Point`               — the name, but for `Box<int>` this DROPS the
+        //                           `int`, which `main` used to show.
+        //
+        // The branch shipped the second for a while, so a generic record's
+        // instantiation vanished from every reader surface. Saying both loses
+        // nothing, and is what all five views must now agree on. Covers #214.
+        const ORIGIN: &str = "fn origin() -> Point { x: int, y: int }";
+        const BOXED: &str = "fn boxed() -> Box { value: int }";
+
+        // 1 — the outline / `--symbols`.
+        let symbols = crate::analysis::symbols_json(&{
+            let parsed = osprey_syntax::parse_program(RECORDS);
+            assert!(parsed.errors.is_empty(), "{:?}", parsed.errors);
+            parsed.program
+        });
+        // The outline is JSON, so each field is compared whole: a `contains`
+        // would pass on a signature that merely had the right text somewhere
+        // inside a longer, wrong one.
+        for (name, expected, ret) in [
+            ("origin", ORIGIN, "Point { x: int, y: int }"),
+            ("boxed", BOXED, "Box { value: int }"),
+        ] {
+            assert!(
+                symbols.contains(&format!("\"signature\":\"{expected}\"")),
+                "outline's `signature` for {name} must be exactly `{expected}`: \
+                 {symbols}"
+            );
+            assert!(
+                symbols.contains(&format!("\"returnType\":\"{ret}\"")),
+                "and its `returnType` exactly `{ret}` — the generic record \
+                 keeps the type it was instantiated at: {symbols}"
+            );
+        }
+
+        // 2 and 3 — hover, on each declaration.
+        let hover_origin =
+            crate::hover::hover(RECORDS, "file:///r.osp", 2, 4, U16).expect("hover `origin`");
+        let hover_boxed =
+            crate::hover::hover(RECORDS, "file:///r.osp", 3, 4, U16).expect("hover `boxed`");
+        // Hover is a fenced block and nothing else, so it is compared whole.
+        assert_eq!(hover_origin, format!("```osprey\n{ORIGIN}\n```"));
+        assert_eq!(hover_boxed, format!("```osprey\n{BOXED}\n```"));
+
+        // 4 — signature help at a call site.
+        let sig = crate::features::signature_help(RECORDS, "file:///r.osp", 4, 15, U16)
+            .expect("signature help for `origin(`");
+        assert_eq!(sig.label, ORIGIN, "signature help agrees with the outline");
+
+        // 5 — completion detail.
+        let detail = crate::complete::completion(RECORDS, "file:///r.osp", 4, 15, U16)
+            .iter()
+            .find(|i| i.label == "boxed")
+            .and_then(|i| i.detail.clone())
+            .expect("`boxed` is completable");
+        assert_eq!(detail, BOXED, "completion agrees with the outline");
+
+        // Every view, negatively: neither half may appear WITHOUT the other,
+        // and no private inference name may appear at all.
+        for (view, rendered) in [
+            ("outline", &symbols),
+            ("hover origin", &hover_origin),
+            ("hover boxed", &hover_boxed),
+            ("signature help", &sig.label),
+            ("completion", &detail),
+        ] {
+            assert!(
+                !regex_like_type_var(rendered),
+                "{view} leaked an inference name: {rendered}"
+            );
+            assert!(
+                !rendered.contains("-> Point\"") && !rendered.contains("-> Box\""),
+                "{view} dropped the row, losing the instantiation: {rendered}"
+            );
+            assert!(
+                !rendered.contains("-> { x:") && !rendered.contains("-> { value:"),
+                "{view} dropped the name its author wrote: {rendered}"
+            );
+        }
+    }
 }

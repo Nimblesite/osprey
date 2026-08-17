@@ -85,6 +85,21 @@ whichever error type a call site supplies, so `-> Result<int, string>`,
 ([Result Preservation](#result-preservation)). A hole is the only honest
 spelling for that slot.
 
+A declared record is reported by its **name and its row** together:
+
+```osprey
+type Box<T> = { value: T }
+fn boxed() = Box { value: 1 }
+// reported: fn boxed() -> Box { value: int }
+```
+
+Either half alone loses something. The row alone drops the name its author
+wrote — and for a record declared with `type`, the row is not even an
+annotation they may write back. The name alone drops the instantiation: a
+record carries no type arguments, so `Box<int>` cannot be reconstructed from
+`Box`, and the `int` the checker proved simply disappears. Saying both costs
+nothing.
+
 Two spellings are forbidden. A tool must not print the checker's internal
 variable name — `t5` is private, its number is an artefact of one inference run
 and it moves when an unrelated line is edited. A tool must not substitute
