@@ -82,17 +82,33 @@ fn return_annotation(line: &str) -> Option<(usize, usize, String)> {
     Some((arrow, body, spelling))
 }
 
-/// Every `(line number, spelling)` whose deletion still compiles end to end.
+/// Every `(line number, spelling)` whose deletion costs the program nothing.
+///
+/// "Still compiles" is NOT sufficient, and treating it as such gave this gate
+/// thirteen false positives. An annotation can be the only thing that pins a
+/// free type parameter — `toGpu([])` has no element type, `Error { .. }` never
+/// constrains the Success side, a recursive `animate` cannot close its own
+/// return, and a generic binder's `T` is a variable by construction. Delete one
+/// of those and the program still compiles, because inference is free to leave
+/// the slot open; what it loses is the TYPE. The checker then has nothing to
+/// report and every outline, hover and breadcrumb falls back to `Unit`.
+///
+/// So redundancy is judged on the type the checker can prove, not on exit
+/// status: an annotation is dead weight only when erasing it leaves the
+/// reported signature byte-identical. That is exactly CLAUDE.md's "still
+/// compiles with identical output", read strictly.
 fn redundant_in(path: &Path, source: &str) -> Vec<(usize, String)> {
-    source
-        .lines()
+    let lines: Vec<&str> = source.lines().collect();
+    let before = outline(source);
+    lines
+        .iter()
         .enumerate()
         .filter_map(|(index, line)| {
             let (arrow, body, spelling) = return_annotation(line)?;
             let stripped = format!("{}{}", &line[..arrow], &line[body..]);
-            let variant: Vec<&str> = source.lines().collect();
-            let rebuilt = rebuild(&variant, index, &stripped);
-            compiles(path, &rebuilt).then(|| (index + 1, spelling))
+            let rebuilt = rebuild(&lines, index, &stripped);
+            (compiles(path, &rebuilt) && outline(&rebuilt) == before)
+                .then(|| (index + 1, spelling))
         })
         .collect()
 }
@@ -112,59 +128,69 @@ fn outline(source: &str) -> String {
     osprey_lsp::symbols_json(&parsed.program)
 }
 
+/// A `Result` return that both branches determine COMPLETELY: the Success arm
+/// fixes the payload to `int`, the Error arm fixes the reason to `string`.
+/// Nothing here is left open, and the annotated twin below proves the type is
+/// spellable and that both forms run identically.
+const BOTH_ARMS: &str = r#"fn bothArms(f) = if f { Success { value: 1 } } else { Error { message: "e" } }
+print("${(bothArms(true)) ?: 0}")
+"#;
+
+const BOTH_ARMS_ANNOTATED: &str = r#"fn bothArms(f) -> Result<int, string> = if f { Success { value: 1 } } else { Error { message: "e" } }
+print("${(bothArms(true)) ?: 0}")
+"#;
+
 #[test]
-fn deleting_an_inferable_annotation_does_not_change_what_symbols_reports() {
-    // ENFORCEMENT for the `-> Unit` defect. CLAUDE.md REQUIRES deleting an
-    // inferable annotation, and `symbols_json` renders the DECLARED return type
-    // with a `Unit` fallback — so obeying the style rule silently downgrades
-    // every outline, hover-by-outline and editor breadcrumb to `-> Unit`.
+fn a_result_determined_by_its_constructor_arms_is_reported_not_defaulted_to_unit() {
+    // This gate used to assert something FALSE, and the corpus proved it: it
+    // read every `-> Unit` downgrade as a tooling defect, when thirteen of them
+    // were annotations doing real work. `toGpu([])` has no element type to
+    // infer, `Error { .. }` never mentions the Success side, `animate` recurses
+    // through its own return, and `identity<T>` binds a variable on purpose.
+    // For those, `Unit` is the checker honestly reporting that it proved
+    // nothing, and the annotation is load-bearing. `redundant_in` now judges on
+    // the proved type for exactly that reason.
     //
-    // The invariant is exact and needs no inference of its own: an annotation
-    // the checker can infer carries no information, so erasing it must leave
-    // the reported symbols byte-identical. Anything else means tooling is
-    // reading the source text rather than the type.
-    //
-    // Asserted over the real corpus rather than one hand-written probe, because
-    // the single-case version in osprey-lsp cannot show the blast radius.
-    let root = repo_root();
-    let mut downgraded = Vec::new();
-    for dir in ["tests", "examples", "benchmarks"] {
-        for path in sources(&root.join(dir), "osp") {
-            let Ok(source) = fs::read_to_string(&path) else {
-                continue;
-            };
-            if !compiles(&path, &source) {
-                continue;
-            }
-            let display = path
-                .strip_prefix(&root)
-                .unwrap_or(&path)
-                .display()
-                .to_string();
-            let lines: Vec<&str> = source.lines().collect();
-            for (index, line) in lines.iter().enumerate() {
-                let Some((arrow, body, spelling)) = return_annotation(line) else {
-                    continue;
-                };
-                let stripped = format!("{}{}", &line[..arrow], &line[body..]);
-                let rebuilt = rebuild(&lines, index, &stripped);
-                if !compiles(&path, &rebuilt) {
-                    continue;
-                }
-                if outline(&rebuilt) != outline(&source) {
-                    downgraded.push(format!("{display}:{}  -> {spelling}", index + 1));
-                }
-            }
-        }
-    }
+    // What survives that correction is a REAL defect, reduced to the narrowest
+    // program that shows it. Both arms here are concrete, so `Result<int,
+    // string>` is fully determined — the annotated and inferred twins compile
+    // and both print `1`. Yet the inferred one is reported `-> Unit`: a
+    // `Result` assembled from `Success`/`Error` constructors never reaches the
+    // recorded return type, while the same type arriving from a builtin
+    // (`parseInt`, `/`) reports fine. So obeying CLAUDE.md's annotation rule
+    // here really does cost the outline its type. [LSP-HOVER-INFERRED-SIGNATURE]
+    let probe = Path::new("both_arms.osp");
     assert!(
-        downgraded.is_empty(),
-        "deleting an inferable return annotation changed the reported symbols — \
-         tooling is rendering the declared type with a `Unit` fallback instead of \
-         the inferred type, so following CLAUDE.md's annotation rule downgrades \
-         every one of these to `-> Unit`. {} affected:\n{}",
-        downgraded.len(),
-        downgraded.join("\n")
+        compiles(probe, BOTH_ARMS_ANNOTATED),
+        "the control must compile, or the type is not even spellable"
+    );
+    assert!(
+        compiles(probe, BOTH_ARMS),
+        "the inferred twin must compile, or this pins a type error, not a report"
+    );
+
+    let control = outline(BOTH_ARMS_ANNOTATED);
+    assert!(
+        control.contains("Result<int, string>"),
+        "the control must report the written type; got {control}"
+    );
+
+    let inferred = outline(BOTH_ARMS);
+    assert!(
+        !inferred.contains("-> Unit"),
+        "both arms determine `Result<int, string>` completely and the program \
+         runs identically either way, yet erasing the annotation reports the \
+         function as returning Unit. A `Result` built from Success/Error \
+         constructors never reaches the recorded return type. got {inferred}"
+    );
+    assert!(
+        inferred.contains("Result<int, string>"),
+        "the inferred signature must name the type the checker proved; got {inferred}"
+    );
+    assert_eq!(
+        inferred, control,
+        "an annotation the checker can prove carries no information, so erasing \
+         it must leave the reported symbols byte-identical"
     );
 }
 

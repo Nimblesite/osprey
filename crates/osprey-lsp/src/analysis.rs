@@ -59,6 +59,10 @@ pub struct SymbolInfo {
     pub position: Option<Position>,
     /// Full rendered signature for functions.
     pub(crate) signature: Option<String>,
+    /// The rendered type-parameter binder (`<T, out U>`), empty when the
+    /// declaration has none. Kept apart from the signature so a signature
+    /// rebuilt from inferred slots cannot lose it.
+    pub(crate) binder: String,
     /// `(name, rendered type)` parameter pairs for functions.
     pub(crate) parameters: Vec<(String, String)>,
     /// Rendered return type for functions.
@@ -114,6 +118,7 @@ fn container_sym(
         ty: kind.as_str().to_owned(),
         position,
         signature: None,
+        binder: String::new(),
         parameters: Vec::new(),
         return_type: None,
         doc: None,
@@ -348,24 +353,14 @@ fn sym_of(stmt: &Stmt) -> Option<SymbolInfo> {
             doc,
             position,
             ..
-        } => {
-            let mut sym = fn_sym(
-                name,
-                param_pairs(parameters),
-                return_type.as_ref(),
-                render_doc(doc.as_ref()),
-                *position,
-            );
-            let binder = render_type_params(type_params);
-            if !binder.is_empty() {
-                let with_binder =
-                    sym.ty
-                        .replacen(&format!("fn {name}("), &format!("fn {name}{binder}("), 1);
-                sym.ty.clone_from(&with_binder);
-                sym.signature = Some(with_binder);
-            }
-            Some(sym)
-        }
+        } => Some(fn_sym(
+            name,
+            &render_type_params(type_params),
+            param_pairs(parameters),
+            return_type.as_ref(),
+            render_doc(doc.as_ref()),
+            *position,
+        )),
         Stmt::Extern {
             name,
             parameters,
@@ -374,6 +369,7 @@ fn sym_of(stmt: &Stmt) -> Option<SymbolInfo> {
             position,
         } => Some(fn_sym(
             name,
+            "",
             extern_pairs(parameters),
             return_type.as_ref(),
             render_doc(doc.as_ref()),
@@ -466,6 +462,7 @@ fn render_type_params(params: &[osprey_ast::TypeParam]) -> String {
 
 fn fn_sym(
     name: &str,
+    binder: &str,
     parameters: Vec<(String, String)>,
     return_type: Option<&TypeExpr>,
     doc: Option<String>,
@@ -474,12 +471,10 @@ fn fn_sym(
     let written = return_type.map(render_type);
     // `Unit` is only the *display* fallback for a function whose return type
     // the author left to inference. `return_type` keeps the written type alone
-    // (`None` when unwritten) so hover can tell "declared Unit" from "not
-    // declared" and fill the latter in from the checker
-    // ([LSP-HOVER-INFERRED-SIGNATURE]).
-    let ret = written.clone().unwrap_or_else(|| String::from("Unit"));
-    let shown: Vec<String> = parameters.iter().map(render_param).collect();
-    let signature = format!("fn {name}({}) -> {ret}", shown.join(", "));
+    // (`None` when unwritten) so a reader is told "declared Unit" apart from
+    // "not declared" and the latter is filled in from the checker by
+    // [`fill_inferred`] ([LSP-HOVER-INFERRED-SIGNATURE]).
+    let signature = render_signature(name, binder, &parameters, written.as_deref());
     SymbolInfo {
         name: name.into(),
         source_name: name.into(),
@@ -487,10 +482,78 @@ fn fn_sym(
         ty: signature.clone(),
         position,
         signature: Some(signature),
+        binder: binder.to_owned(),
         parameters,
         return_type: written,
         doc,
     }
+}
+
+/// The one spelling of a function signature: `fn name<T>(a: int) -> string`,
+/// with `Unit` standing in for a return type no one has supplied yet.
+fn render_signature(
+    name: &str,
+    binder: &str,
+    parameters: &[(String, String)],
+    ret: Option<&str>,
+) -> String {
+    let shown: Vec<String> = parameters.iter().map(render_param).collect();
+    format!(
+        "fn {name}{binder}({}) -> {}",
+        shown.join(", "),
+        ret.unwrap_or("Unit")
+    )
+}
+
+/// Whether a checker-supplied type is safe to show a reader.
+///
+/// An inferred type that still holds a type VARIABLE is not an answer — it is
+/// the checker's private placeholder, and rendering it puts `List<t5>` in a
+/// tooltip. The name is unstable (it moves when an unrelated line is edited)
+/// and means nothing outside the inference run that produced it, so a generic
+/// slot is better left as the author wrote it: bare.
+fn resolved(ty: &osprey_types::Type) -> bool {
+    !osprey_types::has_type_var(ty)
+}
+
+/// Fill every slot the author left to inference — unannotated parameters and an
+/// unwritten return type — with the type the checker proved.
+///
+/// Osprey is Hindley-Milner and the house style DELETES every inferable
+/// annotation, so blank slots are the common case. Rendering them literally
+/// reported `fn describeAny(v: any) -> Unit`: the return type flatly wrong,
+/// because `Unit` was only ever a display fallback. That made the annotation
+/// rule unenforceable from tooling — obeying it downgraded every outline entry
+/// — so both hover and `--symbols` answer from inference through here.
+/// Implements [LSP-HOVER-INFERRED-SIGNATURE].
+pub(crate) fn fill_inferred(sym: &mut SymbolInfo, types: &osprey_types::ProgramTypes) {
+    if sym.kind != SymbolKind::Function
+        || (sym.return_type.is_some() && sym.parameters.iter().all(|(_, t)| !t.is_empty()))
+    {
+        return;
+    }
+    let inferred = types.param_types(&sym.name).unwrap_or_default();
+    for (slot, (_, written)) in sym.parameters.iter_mut().enumerate() {
+        if let (true, Some(found)) = (written.is_empty(), inferred.get(slot)) {
+            if resolved(found) {
+                *written = found.to_string();
+            }
+        }
+    }
+    sym.return_type = sym.return_type.take().or_else(|| {
+        types
+            .return_type(&sym.name)
+            .filter(|found| resolved(found))
+            .map(ToString::to_string)
+    });
+    let signature = render_signature(
+        &sym.name,
+        &sym.binder,
+        &sym.parameters,
+        sym.return_type.as_deref(),
+    );
+    sym.ty.clone_from(&signature);
+    sym.signature = Some(signature);
 }
 
 pub(crate) fn render_param((n, t): &(String, String)) -> String {
@@ -514,6 +577,7 @@ fn let_sym(
         ty: ty.map(render_type).unwrap_or_default(),
         position,
         signature: None,
+        binder: String::new(),
         parameters: Vec::new(),
         return_type: None,
         doc,
@@ -528,6 +592,7 @@ fn decl_sym(name: &str, ty: &str, position: Option<Position>) -> SymbolInfo {
         ty: ty.into(),
         position,
         signature: None,
+        binder: String::new(),
         parameters: Vec::new(),
         return_type: None,
         doc: None,
@@ -586,10 +651,19 @@ pub fn builtin_hover(name: &str) -> Option<String> {
     osprey_types::builtin_hover_markdown(name)
 }
 
-/// The whole document outline as the `--symbols` JSON array.
+/// The whole document outline as the `--symbols` JSON array, every inferable
+/// slot filled in by the checker ([`fill_inferred`]) so deleting an annotation
+/// the house style calls redundant cannot change what tooling reports.
 #[must_use]
 pub fn symbols_json(program: &Program) -> String {
-    let rendered: Vec<String> = collect_symbols(program).iter().map(sym_json).collect();
+    let types = osprey_types::infer_program(program);
+    let rendered: Vec<String> = collect_symbols(program)
+        .into_iter()
+        .map(|mut sym| {
+            fill_inferred(&mut sym, &types);
+            sym_json(&sym)
+        })
+        .collect();
     format!("[{}]", rendered.join(","))
 }
 

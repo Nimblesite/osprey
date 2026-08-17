@@ -427,6 +427,7 @@ mod tests {
             ty: "int".to_owned(),
             position: Some(Position { line: 1, column: 4 }),
             signature: None,
+            binder: String::new(),
             parameters: Vec::new(),
             return_type: None,
             doc: None,

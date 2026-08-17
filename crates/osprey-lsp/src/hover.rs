@@ -160,7 +160,8 @@ fn symbol_hover(s: &SymbolInfo, program: &Program, flavor: Flavor) -> String {
 }
 
 /// A function's signature with every slot the author left blank filled in by
-/// the checker: unannotated parameters and an unwritten return type.
+/// the checker ([`crate::analysis::fill_inferred`], the same path `--symbols`
+/// answers from, so hover and the outline cannot disagree).
 ///
 /// Osprey is Hindley-Milner and the house style omits every inferable
 /// annotation, so blank slots are the COMMON case, not the exception. Rendering
@@ -169,47 +170,10 @@ fn symbol_hover(s: &SymbolInfo, program: &Program, flavor: Flavor) -> String {
 /// about the function). Hover is the main way a reader recovers the types the
 /// source deliberately omits, so it must answer from inference.
 /// Implements [LSP-HOVER-INFERRED-SIGNATURE].
-/// Whether a checker-supplied type is safe to show a reader.
-///
-/// An inferred type that still holds a type VARIABLE is not an answer — it is
-/// the checker's private placeholder, and rendering it puts `List<t5>` in a
-/// tooltip. The name is unstable (it moves when an unrelated line is edited)
-/// and means nothing outside the inference run that produced it, so a generic
-/// parameter is better left as the author wrote it: bare.
-fn resolved(ty: &osprey_types::Type) -> bool {
-    !osprey_types::has_type_var(ty)
-}
-
 fn inferred_signature(s: &SymbolInfo, sig: &str, program: &Program) -> String {
-    let complete = s.return_type.is_some() && s.parameters.iter().all(|(_, t)| !t.is_empty());
-    if complete {
-        return sig.to_string();
-    }
-    let types = osprey_types::infer_program(program);
-    let inferred = types.param_types(&s.name).unwrap_or_default();
-    let shown: Vec<String> = s
-        .parameters
-        .iter()
-        .enumerate()
-        .map(|(slot, (name, written))| {
-            let ty = match (written.is_empty(), inferred.get(slot)) {
-                (true, Some(found)) if resolved(found) => found.to_string(),
-                _ => written.clone(),
-            };
-            crate::analysis::render_param(&(name.clone(), ty))
-        })
-        .collect();
-    let ret = s
-        .return_type
-        .clone()
-        .or_else(|| {
-            types
-                .return_type(&s.name)
-                .filter(|found| resolved(found))
-                .map(ToString::to_string)
-        })
-        .unwrap_or_else(|| String::from("Unit"));
-    format!("fn {}({}) -> {ret}", s.name, shown.join(", "))
+    let mut filled = s.clone();
+    crate::analysis::fill_inferred(&mut filled, &osprey_types::infer_program(program));
+    filled.signature.unwrap_or_else(|| sig.to_string())
 }
 
 /// The type shown for a non-function symbol: its declared/category type, or —

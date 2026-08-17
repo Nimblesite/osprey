@@ -308,9 +308,8 @@ fn a_parenthesised_flat_function_type_is_a_valid_signature_slot() {
     for stmts in [curried, flat] {
         match stmts.first() {
             Some(Stmt::Function { parameters, .. }) => {
-                let ty = match parameters.first().and_then(|p| p.ty.as_ref()) {
-                    Some(ty) => ty,
-                    None => panic!("the HOF parameter lost its written type"),
+                let Some(ty) = parameters.first().and_then(|p| p.ty.as_ref()) else {
+                    panic!("the HOF parameter lost its written type")
                 };
                 assert!(ty.is_function, "expected a function type, got {ty:?}");
                 assert_eq!(ty.parameter_types.len(), 2);

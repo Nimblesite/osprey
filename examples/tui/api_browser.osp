@@ -51,19 +51,19 @@ effect Http {
 }
 
 // Which GitHub account's public repositories to browse.
-fn githubUser() -> string = "MelbourneDeveloper"
+fn githubUser() = "MelbourneDeveloper"
 
 // ---- ANSI color helpers (pure string wrappers) -----------------------------
-fn cyan(s: string) -> string = "\e[36m${s}\e[0m"
-fn green(s: string) -> string = "\e[32m${s}\e[0m"
-fn yellow(s: string) -> string = "\e[33m${s}\e[0m"
-fn magenta(s: string) -> string = "\e[35m${s}\e[0m"
-fn blue(s: string) -> string = "\e[34m${s}\e[0m"
-fn bold(s: string) -> string = "\e[1m${s}\e[0m"
-fn dim(s: string) -> string = "\e[2m${s}\e[0m"
-fn invert(s: string) -> string = "\e[7m${s}\e[0m"
+fn cyan(s: string) = "\e[36m${s}\e[0m"
+fn green(s: string) = "\e[32m${s}\e[0m"
+fn yellow(s: string) = "\e[33m${s}\e[0m"
+fn magenta(s: string) = "\e[35m${s}\e[0m"
+fn blue(s: string) = "\e[34m${s}\e[0m"
+fn bold(s: string) = "\e[1m${s}\e[0m"
+fn dim(s: string) = "\e[2m${s}\e[0m"
+fn invert(s: string) = "\e[7m${s}\e[0m"
 
-fn rule() -> string = dim("  ==================================================")
+fn rule() = dim("  ==================================================")
 
 // ---- tiny integer helpers ---------------------------------------------------
 // UI counters explicitly keep their previous value on arithmetic overflow.
@@ -73,18 +73,18 @@ fn min(a, b) = match a < b { true => a false => b }
 fn gap(a, b) = match a < b { true => b - a ?: 0 false => a - b ?: 0 }
 // `%` returns `Result<int, MathError>`; the UI uses positive constant divisors
 // and falls back to zero if that invariant is broken.
-fn modv(a: int, b: int) -> int = match a % b {
+fn modv(a: int, b: int) = match a % b {
     Success { value } => value
     Error { message } => 0
 }
 
 // ---- Result-unwrapping helpers (one expression each) ------------------------
-fn pad(s: string, n: int) -> string = match padEnd(s, n, " ") {
+fn pad(s: string, n: int) = match padEnd(s, n, " ") {
     Success { value } => value
     Error { message } => s
 }
 
-fn field(doc: int, path: string) -> string = match jsonGet(doc, path) {
+fn field(doc: int, path: string) = match jsonGet(doc, path) {
     Success { value } => value
     Error { message } => "?"
 }
@@ -95,13 +95,13 @@ fn field(doc: int, path: string) -> string = match jsonGet(doc, path) {
 // ============================================================================
 
 // Ten-frame braille rotor - the smoothest spinner glyph there is.
-fn rotor(frame: int) -> string = match modv(a: frame, b: 10) {
+fn rotor(frame: int) = match modv(a: frame, b: 10) {
     0 => "⠋" 1 => "⠙" 2 => "⠹" 3 => "⠸" 4 => "⠼"
     5 => "⠴" 6 => "⠦" 7 => "⠧" 8 => "⠇" _ => "⠏"
 }
 
 // Cycling rainbow escape, picked by frame so the colors flow.
-fn hue(frame: int) -> string = match modv(a: frame, b: 6) {
+fn hue(frame: int) = match modv(a: frame, b: 6) {
     0 => "\e[91m" 1 => "\e[93m" 2 => "\e[92m" 3 => "\e[96m" 4 => "\e[94m" _ => "\e[95m"
 }
 
@@ -111,23 +111,23 @@ fn comet(frame: int) -> string =
     hue(inc(inc(inc(inc(frame))))) + rotor(frame + 6 ?: frame) + "\e[0m"
 
 // Animated trailing dots: "" . .. ...
-fn dots(frame: int) -> string = match modv(a: frame, b: 4) {
+fn dots(frame: int) = match modv(a: frame, b: 4) {
     0 => "   " 1 => ".  " 2 => ".. " _ => "..."
 }
 
 // Knight-rider wave: a bright cell sweeps a 36-wide bar, bouncing at the ends.
-fn waveWidth() -> int = 36
-fn wavePos(frame: int) -> int = match modv(a: frame, b: 70) < waveWidth() {
+fn waveWidth() = 36
+fn wavePos(frame: int) = match modv(a: frame, b: 70) < waveWidth() {
     true  => modv(a: frame, b: 70)
     false => 70 - modv(a: frame, b: 70) ?: 0
 }
-fn waveCell(i: int, pos: int, frame: int) -> string = match gap(a: i, b: pos) {
+fn waveCell(i: int, pos: int, frame: int) = match gap(a: i, b: pos) {
     0 => hue(frame) + "█\e[0m"
     1 => "\e[96m▓\e[0m"
     2 => "\e[36m▒\e[0m"
     _ => "\e[2m░\e[0m"
 }
-fn waveBar(i: int, pos: int, frame: int) -> string = match i < waveWidth() {
+fn waveBar(i: int, pos: int, frame: int) = match i < waveWidth() {
     true  => waveCell(i: i, pos: pos, frame: frame) + waveBar(i: inc(i), pos: pos, frame: frame)
     false => ""
 }
@@ -141,19 +141,19 @@ fn loaderFrame(frame: int) -> string =
     "          " + dim("live HTTPS  -  api.github.com  -  press q to quit")
 
 // ---- list rendering: each row is a string, the list folds via recursion -----
-fn rowLine(i: int, sel: int, nameP: string, starP: string, lang: string) -> string = match i == sel {
+fn rowLine(i: int, sel: int, nameP: string, starP: string, lang: string) = match i == sel {
     true  => "  " + cyan(">") + " " + invert(" " + nameP + "* " + starP + lang + " ")
     false => "    " + bold(nameP) + yellow("* " + starP) + dim(lang)
 }
 
-fn rowText(doc: int, i: int, sel: int) -> string = rowLine(
+fn rowText(doc: int, i: int, sel: int) = rowLine(
     i: i,
     sel: sel,
     nameP: pad(s: field(doc: doc, path: "[${i}].name"), n: 20),
     starP: pad(s: field(doc: doc, path: "[${i}].stargazers_count"), n: 7),
     lang: field(doc: doc, path: "[${i}].language"))
 
-fn rowsText(doc: int, i: int, sel: int, n: int) -> string = match i < n {
+fn rowsText(doc: int, i: int, sel: int, n: int) = match i < n {
     true  => rowText(doc: doc, i: i, sel: sel) + "\n" + rowsText(doc: doc, i: inc(i), sel: sel, n: n)
     false => ""
 }
@@ -169,17 +169,17 @@ fn screenText(doc: int, sel: int, n: int) -> string =
 // ---- detail view: shows the repo header + its LIVE file tree (/contents) ----
 // Each tree entry exposes name / type / size / path. `path` is the full path
 // from the repo root, so descending needs no manual path joins.
-fn entType(tree: int, i: int) -> string = field(doc: tree, path: "[${i}].type")
-fn entName(tree: int, i: int) -> string = field(doc: tree, path: "[${i}].name")
-fn entSize(tree: int, i: int) -> string = field(doc: tree, path: "[${i}].size")
-fn entPath(tree: int, i: int) -> string = field(doc: tree, path: "[${i}].path")
+fn entType(tree: int, i: int) = field(doc: tree, path: "[${i}].type")
+fn entName(tree: int, i: int) = field(doc: tree, path: "[${i}].name")
+fn entSize(tree: int, i: int) = field(doc: tree, path: "[${i}].size")
+fn entPath(tree: int, i: int) = field(doc: tree, path: "[${i}].path")
 
-fn icon(t: string) -> string = match t { "dir" => "▸" _ => "·" }
-fn sizeText(t: string, s: string) -> string = match t { "dir" => "" _ => s + " B" }
-fn nameColor(t: string, s: string) -> string = match t { "dir" => "\e[1;34m${s}\e[0m" _ => s }
+fn icon(t: string) = match t { "dir" => "▸" _ => "·" }
+fn sizeText(t: string, s: string) = match t { "dir" => "" _ => s + " B" }
+fn nameColor(t: string, s: string) = match t { "dir" => "\e[1;34m${s}\e[0m" _ => s }
 
 // One file-tree row; the selected row is inverted, like the repo list.
-fn treeRow(tree: int, i: int, sel: int) -> string = match i == sel {
+fn treeRow(tree: int, i: int, sel: int) = match i == sel {
     true  => "  " + cyan(">") + " " + invert(" " + icon(t: entType(tree: tree, i: i)) + " " +
              pad(s: entName(tree: tree, i: i), n: 34) +
              pad(s: sizeText(t: entType(tree: tree, i: i), s: entSize(tree: tree, i: i)), n: 12) + " ")
@@ -189,11 +189,11 @@ fn treeRow(tree: int, i: int, sel: int) -> string = match i == sel {
 }
 
 // A scrolling window keeps the cursor on screen for big directories.
-fn winStart(sel: int, n: int) -> int = match n < 23 {
+fn winStart(sel: int, n: int) = match n < 23 {
     true  => 0
     false => match sel < 11 { true => 0 false => min(a: sel - 11 ?: 0, b: n - 22 ?: 0) }
 }
-fn treeRows(tree: int, i: int, last: int, sel: int) -> string = match i < last {
+fn treeRows(tree: int, i: int, last: int, sel: int) = match i < last {
     true  => treeRow(tree: tree, i: i, sel: sel) + "\n" + treeRows(tree: tree, i: inc(i), last: last, sel: sel)
     false => ""
 }
@@ -217,11 +217,11 @@ fn codeScreen(file: string, code: string) -> string =
     dim("  press any key to go back")
 
 // ---- selection movement (pure int -> int) -----------------------------------
-fn moveUp(sel: int) -> int = match sel > 0 {
+fn moveUp(sel: int) = match sel > 0 {
     true  => dec(sel)
     false => sel
 }
-fn moveDown(sel: int, n: int) -> int = match sel < dec(n) {
+fn moveDown(sel: int, n: int) = match sel < dec(n) {
     true  => inc(sel)
     false => sel
 }
@@ -240,7 +240,7 @@ fn endApp() -> Unit ![Console, Terminal] = {
 // browseDir recursively, and pressing Esc simply RETURNS to the caller, which
 // re-displays the parent level. At the repo root, returning lands back in the
 // repository list. No mutable path stack - the recursion *is* the stack.
-fn contentsPath(repo: string, path: string) -> string = match path {
+fn contentsPath(repo: string, path: string) = match path {
     "" => "/repos/" + githubUser() + "/" + repo + "/contents"
     _  => "/repos/" + githubUser() + "/" + repo + "/contents/" + path
 }
@@ -359,22 +359,22 @@ fn app() -> Unit ![Console, Terminal, Http] = match perform Http.fetch("/users/$
 //  the body, frees the handle and closes the client, threading the body Result
 //  through untouched. No locals: the Result rides through as a parameter.
 // ============================================================================
-fn ghHeaders() -> string = "User-Agent: osprey-tui\r\nAccept: application/vnd.github+json\r\n"
-fn rawHeaders() -> string = "User-Agent: osprey-tui\r\nAccept: application/vnd.github.raw\r\n"
+fn ghHeaders() = "User-Agent: osprey-tui\r\nAccept: application/vnd.github+json\r\n"
+fn rawHeaders() = "User-Agent: osprey-tui\r\nAccept: application/vnd.github.raw\r\n"
 
 // Runs on a fiber. Returns the response handle (> 0), or 0 to signal failure.
-fn rawGet(clientId: int, path: string, headers: string) -> int = match httpGetResponse(clientId, path, headers) {
+fn rawGet(clientId: int, path: string, headers: string) = match httpGetResponse(clientId, path, headers) {
     Success { value } => value
     Error { message } => 0
 }
 
 // Foreground animation loop: paint a frame, nap, re-probe - exit the instant
 // the fiber finishes and hand back the (awaited) response handle.
-fn awaitSpinning(fib: Fiber, frame: int) -> int = match fiberDone(fib) {
+fn awaitSpinning(fib: Fiber, frame: int) = match fiberDone(fib) {
     1 => await(fib)
     _ => spinFrame(fib: fib, frame: frame)
 }
-fn spinFrame(fib: Fiber, frame: int) -> int = {
+fn spinFrame(fib: Fiber, frame: int) = {
     print(loaderFrame(frame))
     sleep(60)
     awaitSpinning(fib: fib, frame: inc(frame))
@@ -390,19 +390,19 @@ fn collect(clientId: int, path: string, headers: string) -> Result<string, Error
     finish(clientId: clientId,
            resp: awaitSpinning(fib: spawn rawGet(clientId: clientId, path: path, headers: headers), frame: 0))
 
-fn finish(clientId: int, resp: int) -> Result<string, Error> = match resp > 0 {
+fn finish(clientId: int, resp: int) = match resp > 0 {
     true  => closeAfter(clientId: clientId, result: freeAfter(value: resp, result: httpResponseBody(resp)))
     false => closeAfter(clientId: clientId, result: Error { message: "request failed" })
 }
 
 /// Release the response handle, then hand back the body already read from it.
 /// The release is best-effort — a failed free must not mask the body's result.
-fn freeAfter(value: int, result: Result<string, Error>) -> Result<string, Error> = {
+fn freeAfter(value: int, result: Result<string, Error>) = {
     httpResponseFree(value) ?: 0
     result
 }
 
-fn closeAfter(clientId: int, result: Result<string, Error>) -> Result<string, Error> = {
+fn closeAfter(clientId: int, result: Result<string, Error>) = {
     httpCloseClient(clientId)
     result
 }

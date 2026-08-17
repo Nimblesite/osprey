@@ -2,11 +2,11 @@
 // results_state_hof. It deliberately keeps cross-feature behavior together.
 
 /// Increment an integer in direct calls and pipelines.
-fn tourInc(x: int) -> int = x + 1 ?: 0
+fn tourInc(x: int) = x + 1 ?: 0
 /// Add two integers through curried application.
 fn tourAdd(x: int) -> (int) -> int = fn(y) => x + y ?: 0
 /// Square an integer in direct calls and pipelines.
-fn tourSquare(n: int) -> int = n * n ?: 0
+fn tourSquare(n: int) = n * n ?: 0
 /// Capture a scale factor in a concrete returned closure.
 fn tourMakeScaler(k: int) -> (int) -> int = fn(v) => v * k ?: 0
 
@@ -68,10 +68,10 @@ fn curryTourCase() = {
 /// Capture a multiplier for the concise mixed-feature workflow.
 fn mixedScale(k: int) -> (int) -> int = fn(v) => v * k ?: 0
 /// Advance an integer by one for direct and piped calls.
-fn mixedStep(x: int) -> int = x + 1 ?: 0
+fn mixedStep(x: int) = x + 1 ?: 0
 
 /// Classify zero and positive values separately from negative values.
-fn mixedSign(n: int) -> string = match n >= 0 {
+fn mixedSign(n: int) = match n >= 0 {
     true => "pos"
     false => "neg"
 }

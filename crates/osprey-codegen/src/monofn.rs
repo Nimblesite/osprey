@@ -111,13 +111,33 @@ fn emit(
 ) -> Result<Instantiation> {
     let ret = return_slot(cg, name)?;
     let params: Vec<ParamSig> = values.iter().map(param_of).collect();
+    let owners: Vec<Option<String>> = values.iter().map(|v| v.osp_ty.clone()).collect();
+    emit_at(cg, name, key, parameters, body, (&params, ret, &owners))
+}
+
+/// One instantiation's lowered ABI: the parameter slots, the return slot paired
+/// with its `Result` inner type, and the owner tag each parameter carries in.
+type Abi<'a> = (&'a [ParamSig], (LType, Option<LType>), &'a [Option<String>]);
+
+/// Emit one instantiation of `name` from its lowered ABI: register the symbol
+/// BEFORE the body so a self-call resolves to it, then lower the body into a
+/// nested function.
+fn emit_at(
+    cg: &mut Codegen,
+    name: &str,
+    key: String,
+    parameters: &[Parameter],
+    body: &Expr,
+    slots: Abi<'_>,
+) -> Result<Instantiation> {
+    let (params, ret, owners) = slots;
     let target = Instantiation {
         symbol: format!("{name}{MONO_INFIX}{}", cg.next_monofn_id()),
-        sig: (params.clone(), ret.0, ret.1, None),
+        sig: (params.to_vec(), ret.0, ret.1, None),
     };
     let _ = cg.monofns.insert(key, target.clone());
     let saved = cg.enter_nested_fn();
-    let plist = bind_params(cg, parameters, values, &params);
+    let plist = bind_params(cg, parameters, owners, params);
     let emitted = lower_body(cg, body, &target.sig);
     let spelling = crate::llty::ret_spelling(ret.0, ret.1);
     // Restore the enclosing function BEFORE propagating, so a failed body never
@@ -126,6 +146,46 @@ fn emit(
     cg.exit_nested_fn(saved, &spelling, &target.symbol, &plist);
     let _ = emitted?;
     Ok(target)
+}
+
+/// Emit `name` as a REAL function at the types a C callback slot dictates, and
+/// return its symbol — for `httpListen`/`spawnProcess` handlers, whose only
+/// caller is the C runtime.
+///
+/// A handler whose types are inferred rather than written is generic, and a
+/// generic function has no `@name` symbol: it exists only as the body inlined
+/// per Osprey call site ([`crate::genfn`]). A callback has no Osprey call site,
+/// so codegen emitted the `@name` REFERENCE, never the body, and still returned
+/// `Ok` — clang then rejected the module with `use of undefined value`. The
+/// builtin's declared parameter type is the one instantiation the C side will
+/// ever call, so it is the one to emit ([BUILTIN-HTTP], [BUILTIN-PROCESS]).
+pub(crate) fn specialize_callback(
+    cg: &mut Codegen,
+    name: &str,
+    declared: &(Vec<osprey_types::Type>, osprey_types::Type),
+) -> Result<Option<String>> {
+    let Some((parameters, body)) = cg.fn_defs.get(name).cloned() else {
+        return Ok(None);
+    };
+    let (param_types, ret_type) = declared;
+    if parameters.len() != param_types.len() {
+        return Ok(None);
+    }
+    let params: Vec<ParamSig> = param_types.iter().map(ParamSig::of).collect();
+    let key = format!("{name}$callback");
+    if let Some(existing) = cg.monofns.get(&key) {
+        return Ok(Some(existing.symbol.clone()));
+    }
+    let owners: Vec<Option<String>> = param_types.iter().map(crate::types::owner_name).collect();
+    let ret = (
+        crate::types::ltype_of(ret_type),
+        crate::types::result_inner(ret_type),
+    );
+    // The emitted body runs whenever the C runtime dispatches to it, exactly as
+    // a monomorphic definition's line is covered [TESTING-COVERAGE-CODEGEN].
+    cg.cov_hit_inline_fn(name);
+    let target = emit_at(cg, name, key, &parameters, &body, (&params, ret, &owners))?;
+    Ok(Some(target.symbol))
 }
 
 /// The instantiation's return slot, from the signature inference resolved for
@@ -159,22 +219,22 @@ fn param_of(v: &Value) -> ParamSig {
     }
 }
 
-/// Bind each parameter to its incoming register, carrying the argument's owner
-/// tag in so the body sees the same typed handle the caller passed (a
-/// `Gpu#double` buffer stays element-typed inside the specialisation).
+/// Bind each parameter to its incoming register, carrying its owner tag in so
+/// the body sees the same typed handle the caller passed (a `Gpu#double` buffer
+/// stays element-typed inside the specialisation).
 fn bind_params(
     cg: &mut Codegen,
     parameters: &[Parameter],
-    values: &[Value],
+    owners: &[Option<String>],
     params: &[ParamSig],
 ) -> Vec<(LType, String)> {
     let mut out = Vec::with_capacity(parameters.len());
-    for (i, ((p, sig), v)) in parameters.iter().zip(params).zip(values).enumerate() {
+    for (i, ((p, sig), owner)) in parameters.iter().zip(params).zip(owners).enumerate() {
         let reg = crate::llty::param_register(i);
         // `incoming_param` registers no ownership: parameters are BORROWED for
         // the call's duration, exactly as a top-level function's are
         // [GC-ARC-PERCEUS].
-        let value = crate::cast::incoming_param(cg, format!("%{reg}"), *sig, v.osp_ty.clone());
+        let value = crate::cast::incoming_param(cg, format!("%{reg}"), *sig, owner.clone());
         cg.bind(p.name.clone(), value);
         out.push((sig.ty, reg));
     }

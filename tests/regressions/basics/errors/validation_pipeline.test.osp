@@ -18,7 +18,7 @@ fn rejectTooLarge()    -> Result<int, string> = Error { message: "age unrealisti
 fn acceptAge(n)   -> Result<int, string> = Success { value: n }
 
 /// Range-check an already-parsed integer, returning a SPECIFIC Error per mode.
-fn checkAgeRange(n) -> Result<int, string> = match n < minAge() {
+fn checkAgeRange(n) = match n < minAge() {
     true  => rejectNegative()
     false => match n > maxAge() {
         true  => rejectTooLarge()
@@ -28,7 +28,7 @@ fn checkAgeRange(n) -> Result<int, string> = match n < minAge() {
 
 /// Parse a string to an int (nested match on parseInt's Result), then
 /// range-check it. parseInt's failure becomes our own "not a number" reason.
-fn parseAge(s) -> Result<int, string> = match parseInt(s) {
+fn parseAge(s) = match parseInt(s) {
     Success { value }   => checkAgeRange(value)
     Error   { message } => rejectNonNumber()
 }

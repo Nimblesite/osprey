@@ -249,6 +249,10 @@ impl fmt::Display for Type {
                 write_seq(f, params)?;
                 write!(f, ") -> {ret}")
             }
+            // A DECLARED record is nominal: it renders as its name, exactly as
+            // a `Union` does. Only an anonymous literal's row — which has no
+            // name — falls back to the structural spelling.
+            Type::Record { name, .. } if !name.is_empty() => write!(f, "{name}"),
             Type::Record { fields, .. } => {
                 write!(f, "{{ ")?;
                 for (i, (k, v)) in fields.iter().enumerate() {
@@ -291,6 +295,33 @@ mod tests {
             "(int, int) -> bool"
         );
         assert_eq!(Type::Var(3).to_string(), "t3");
+    }
+
+    #[test]
+    fn a_named_record_renders_as_its_name_and_an_anonymous_one_structurally() {
+        // A DECLARED record's name is inferred and carried (`infer_constructor`
+        // builds `Record { name: owner, .. }`), but rendering dropped it, so a
+        // function returning `Point` was reported as returning
+        // `{ x: int, y: int }` — a spelling the author never wrote and, for a
+        // record declared with `type`, not even a valid annotation. `Union`
+        // already renders by name; a nominal record must agree.
+        let point = Type::Record {
+            name: "Point".into(),
+            fields: [
+                ("x".to_string(), Type::int()),
+                ("y".to_string(), Type::int()),
+            ]
+            .into_iter()
+            .collect(),
+        };
+        assert_eq!(point.to_string(), "Point");
+        // An anonymous literal's row has no name to render, so it stays
+        // structural — that spelling is the only description it has.
+        let anonymous = Type::Record {
+            name: String::new(),
+            fields: [("x".to_string(), Type::int())].into_iter().collect(),
+        };
+        assert_eq!(anonymous.to_string(), "{ x: int }");
     }
 
     #[test]

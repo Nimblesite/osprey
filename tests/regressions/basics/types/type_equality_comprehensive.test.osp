@@ -36,7 +36,7 @@ fn excl(s)       = s + "!"
 fn ques(s)       = s + "?"
 fn intToString(x)   = toString(x)
 fn twoArgAdd(a, b) = a + b ?: 0
-fn threeArgAdd(a: int, b: int, c: int) -> int = a + b + c ?: 0
+fn threeArgAdd(a: int, b: int, c: int) = a + b + c ?: 0
 
 fn applyInt(f, x)    = f(x)
 fn applyStr(f, s) = f(s)

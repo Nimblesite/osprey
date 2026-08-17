@@ -10,7 +10,7 @@ type JsonValue =
     | JsonArray { values: List<JsonValue> }
     | JsonObject { fields: Map<string, JsonValue> }
 
-fn describe(value: JsonValue) -> string = match value {
+fn describe(value: JsonValue) = match value {
     JsonNull => "null"
     JsonBoolean { value } => "boolean"
     JsonNumber { value } => "number"
@@ -46,7 +46,7 @@ print("types: ${describe(JsonNull)}, ${describe(JsonBoolean { value: true })}, $
 print("=== JSON value union complete ===")
 
 /// Recursively follows the single object/array path to its string leaf.
-fn deepString(value: JsonValue) -> string = match value {
+fn deepString(value: JsonValue) = match value {
     JsonObject { fields } => match mapGet(fields, "workspace") {
         Success { value } => deepString(value)
         Error { message } => ""
@@ -60,7 +60,7 @@ fn deepString(value: JsonValue) -> string = match value {
 }
 
 /// Counts object fields while returning zero for non-object values.
-fn objectFieldCount(value: JsonValue) -> int = match value {
+fn objectFieldCount(value: JsonValue) = match value {
     JsonObject { fields } => mapLength(fields)
     _ => 0
 }

@@ -108,6 +108,27 @@ pub(crate) fn fn_pointer(cg: &mut Codegen, name: &str) -> Value {
     Value::new(reg, LType::Ptr)
 }
 
+/// The raw code pointer of an emitted callback INSTANTIATION
+/// ([`crate::monofn::specialize_callback`]). The instantiation was emitted at
+/// the builtin's declared callback type, so that type — not the generic
+/// original's — is what spells the bitcast.
+pub(crate) fn mono_fn_pointer(
+    cg: &mut Codegen,
+    symbol: &str,
+    declared: &(Vec<osprey_types::Type>, osprey_types::Type),
+) -> Value {
+    let (param_types, ret_type) = declared;
+    let params = crate::llty::comma_join(param_types, |t| {
+        crate::builder::ParamSig::of(t).ty.to_string()
+    });
+    let ret = crate::llty::ret_spelling(
+        crate::types::ltype_of(ret_type),
+        crate::types::result_inner(ret_type),
+    );
+    let reg = cg.emit_reg(format!("bitcast {ret} ({params})* @{symbol} to i8*"));
+    Value::new(reg, LType::Ptr)
+}
+
 /// The LLVM function-pointer type spelling for a top-level function, e.g.
 /// `i64 (i64, i64, i8*)*` — return type (a `{ T, i8 }*` Result block, or the
 /// inferred scalar; `Unit` rides as `i64`) then its parameter type list.

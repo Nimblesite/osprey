@@ -1,1 +1,1 @@
-type mismatch: cannot unify string with { trim: string }
+type mismatch: cannot unify string with Box

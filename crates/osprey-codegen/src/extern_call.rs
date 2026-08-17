@@ -120,7 +120,7 @@ pub(crate) fn gen(
     let Some(sig) = lookup(name) else {
         return Ok(None);
     };
-    let ops = eval_args(cg, &sig, args, named)?;
+    let ops = eval_args(cg, name, &sig, args, named)?;
     Ok(Some(emit(cg, &sig, &ops)?))
 }
 
@@ -131,6 +131,7 @@ pub(crate) fn gen(
 /// function-pointer cast, so a closure cell would be jumped into as code.
 fn eval_args(
     cg: &mut Codegen,
+    name: &str,
     sig: &Sig,
     args: &[Expr],
     named: &[NamedArgument],
@@ -138,20 +139,37 @@ fn eval_args(
     sig.params
         .iter()
         .zip(crate::expr::arg_exprs(args, named))
-        .map(|(want, e)| {
+        .enumerate()
+        .map(|(index, (want, e))| {
             let v = match e {
                 Expr::Identifier(n)
                     if *want == LType::Ptr
                         && cg.lookup(n).is_none()
                         && cg.fn_params.contains_key(n) =>
                 {
-                    crate::expr::fn_pointer(cg, n)
+                    callback_pointer(cg, n, name, index)?
                 }
                 _ => gen_expr(cg, e)?,
             };
             Ok(crate::cast::coerce_to(cg, v, *want)?.operand)
         })
         .collect()
+}
+
+/// The raw code pointer for a callback argument. A handler whose types are
+/// INFERRED is generic and has no `@name` symbol of its own, so pointing at one
+/// emitted IR that references a body codegen never defined — reported as
+/// success, rejected by clang ([`crate::monofn::specialize_callback`]). The
+/// builtin's declared parameter type says exactly which instantiation the C
+/// side calls, so that one is emitted and pointed at instead.
+fn callback_pointer(cg: &mut Codegen, handler: &str, builtin: &str, index: usize) -> Result<Value> {
+    let Some(declared) = osprey_types::builtin_callback_type(builtin, index) else {
+        return Ok(crate::expr::fn_pointer(cg, handler));
+    };
+    match crate::monofn::specialize_callback(cg, handler, &declared)? {
+        Some(symbol) => Ok(crate::expr::mono_fn_pointer(cg, &symbol, &declared)),
+        None => Ok(crate::expr::fn_pointer(cg, handler)),
+    }
 }
 
 /// Emit the C call and wrap its return per the builtin's discipline.
