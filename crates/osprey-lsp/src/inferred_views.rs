@@ -340,14 +340,31 @@ mod tests {
         let sig = crate::features::signature_help(RECORDS, "file:///r.osp", 4, 15, U16)
             .expect("signature help for `origin(`");
         assert_eq!(sig.label, ORIGIN, "signature help agrees with the outline");
+        // The rest of the response, not just its label: `origin` takes no
+        // arguments, so an empty parameter list and a zero active index are
+        // the whole truth about it. Asserting them stops a future change from
+        // inventing a parameter the function does not have.
+        assert_eq!(sig.parameters, Vec::<String>::new());
+        assert_eq!(sig.active_parameter, 0);
 
-        // 5 — completion detail.
-        let detail = crate::complete::completion(RECORDS, "file:///r.osp", 4, 15, U16)
+        // 5 — completion, compared as a WHOLE item. `CompletionItem` derives
+        // `Eq`, so there is no reason to check one field and trust the rest.
+        let items = crate::complete::completion(RECORDS, "file:///r.osp", 4, 15, U16);
+        let boxed = items
             .iter()
             .find(|i| i.label == "boxed")
-            .and_then(|i| i.detail.clone())
             .expect("`boxed` is completable");
-        assert_eq!(detail, BOXED, "completion agrees with the outline");
+        assert_eq!(
+            *boxed,
+            crate::model::CompletionItem {
+                label: String::from("boxed"),
+                kind: crate::model::CompletionKind::Function,
+                detail: Some(String::from(BOXED)),
+                insert_text: None,
+            },
+            "completion agrees with the outline, field for field"
+        );
+        let detail = boxed.detail.clone().unwrap_or_default();
 
         // Every view, negatively: neither half may appear WITHOUT the other,
         // and no private inference name may appear at all.
@@ -369,6 +386,12 @@ mod tests {
             assert!(
                 !rendered.contains("-> { x:") && !rendered.contains("-> { value:"),
                 "{view} dropped the name its author wrote: {rendered}"
+            );
+            // Both functions return a record, so `Unit` here would be the old
+            // display fallback reappearing on a return the checker proved.
+            assert!(
+                !rendered.contains("Unit"),
+                "{view} fabricated `Unit` for a proven return: {rendered}"
             );
         }
     }
