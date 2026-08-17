@@ -55,7 +55,7 @@ thread_local! {
     /// vanishing is exactly the miscompile [FLAVOR-ML-FN] forbids). Ambient
     /// because lowering recurses through [`lower_expr`] blocks with no error
     /// channel; [`lower`] clears the sink on entry and drains it on exit.
-    static LOWER_ERRORS: RefCell<Vec<crate::SyntaxError>> = RefCell::new(Vec::new());
+    static LOWER_ERRORS: RefCell<Vec<crate::SyntaxError>> = const { RefCell::new(Vec::new()) };
 }
 
 /// Record one lowering diagnostic at `pos`.
