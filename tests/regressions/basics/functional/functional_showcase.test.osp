@@ -3,12 +3,12 @@
 // ranges, empty ranges, lambdas in the pipeline.
 
 fn dbl(x)   = x * 2 ?: 0
-fn sq(x: int)    -> int  = x * x ?: 0
+fn sq(x: int)    = x * x ?: 0
 fn inc(x)   = x + 1 ?: 0
 fn gt4(x)   = x > 4
 fn lt3(x)   = x < 3
 fn even(x)  = (x % 2 ?: 1) == 0
-fn add(a: int, b: int) -> int = a + b ?: 0
+fn add(a: int, b: int) = a + b ?: 0
 fn mul(a, b) = a * b ?: 0
 
 print("=== Functional Showcase ===")

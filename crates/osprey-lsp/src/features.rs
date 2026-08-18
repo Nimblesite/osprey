@@ -9,7 +9,7 @@ use lspkit_vfs::PositionEncoding;
 
 use osprey_ast::Program;
 
-use crate::analysis::{collect_symbols, SymbolInfo, SymbolKind};
+use crate::analysis::{collect_inferred_symbols, collect_symbols, SymbolInfo, SymbolKind};
 use crate::mlrender;
 use crate::model::{Location, SignatureInfo, Span};
 use crate::text::{occurrences, path_at, prefix_to, Occurrence};
@@ -246,8 +246,10 @@ fn call_target(
         .or_else(|| word_under(text, line, character, enc).map(|word| (word, 0)))
 }
 
+/// The function `name` refers to, carrying the types the checker proved — this
+/// answers signature help, which SHOWS those types ([`collect_inferred_symbols`]).
 fn function_named(program: &Program, name: &str) -> Option<SymbolInfo> {
-    collect_symbols(program)
+    collect_inferred_symbols(program)
         .into_iter()
         .find(|s| symbol_matches(s, name) && s.kind == SymbolKind::Function)
 }
@@ -492,12 +494,28 @@ mod tests {
     }
 
     #[test]
-    fn signature_help_labels_unannotated_parameters_by_name_only() {
-        // The parameter has no type annotation, so its label is the bare name.
+    fn signature_help_labels_a_parameter_with_the_type_the_checker_proved() {
+        // `id` is generic — nothing constrains `x`, so there is genuinely no
+        // type to show and the label stays the bare name.
         let src = "fn id(x) = x\nlet y = id(7)\n";
         let sig = signature_help(src, "file:///a.osp", 1, 11, U16).expect("sig");
         assert_eq!(sig.parameters, vec!["x".to_owned()]);
         assert_eq!(sig.active_parameter, 0);
+
+        // But a parameter the checker DID prove must carry its type, exactly as
+        // the outline and hover do. Signature help read raw `collect_symbols`,
+        // so it never consulted inference: deleting the inferable `: int` that
+        // CLAUDE.md requires deleting silently downgraded the help to `n`.
+        // Implements [LSP-HOVER-INFERRED-SIGNATURE].
+        let proved = "fn twice(n) = n * 2\nlet y = twice(7)\n";
+        let sig = signature_help(proved, "file:///b.osp", 1, 14, U16).expect("sig");
+        assert_eq!(sig.parameters, vec!["n: int".to_owned()]);
+        // The annotated spelling is the control: tooling must not be able to
+        // tell the two apart.
+        let annotated = "fn twice(n: int) = n * 2\nlet y = twice(7)\n";
+        let control = signature_help(annotated, "file:///c.osp", 1, 14, U16).expect("sig");
+        assert_eq!(sig.parameters, control.parameters);
+        assert_eq!(sig.label, control.label);
     }
 
     #[test]

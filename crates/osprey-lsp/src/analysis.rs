@@ -59,6 +59,10 @@ pub struct SymbolInfo {
     pub position: Option<Position>,
     /// Full rendered signature for functions.
     pub(crate) signature: Option<String>,
+    /// The rendered type-parameter binder (`<T, out U>`), empty when the
+    /// declaration has none. Kept apart from the signature so a signature
+    /// rebuilt from inferred slots cannot lose it.
+    pub(crate) binder: String,
     /// `(name, rendered type)` parameter pairs for functions.
     pub(crate) parameters: Vec<(String, String)>,
     /// Rendered return type for functions.
@@ -75,6 +79,26 @@ pub fn collect_symbols(program: &Program) -> Vec<SymbolInfo> {
     let mut out = Vec::new();
     walk_stmts(&program.statements, &[], Bodies::Skip, &mut out);
     out
+}
+
+/// [`collect_symbols`] with every inferable slot filled in by the checker.
+///
+/// This is what anything that DISPLAYS a type must call. The house style
+/// deletes every inferable annotation, so a consumer reading the raw AST sees
+/// `fn twice(n)` where the checker knows `fn twice(n: int) -> int` — and the
+/// outline, signature help and completion each degraded that way independently
+/// while hover and `--symbols` reported the truth. One collector keeps them
+/// from disagreeing again. Go-to-definition and reference search do NOT belong
+/// here: they use positions only, and inference is not free.
+/// Implements [LSP-HOVER-INFERRED-SIGNATURE].
+#[must_use]
+pub fn collect_inferred_symbols(program: &Program) -> Vec<SymbolInfo> {
+    let types = osprey_types::infer_program(program);
+    let mut symbols = collect_symbols(program);
+    for sym in &mut symbols {
+        fill_inferred(sym, &types);
+    }
+    symbols
 }
 
 /// Whether a statement walk descends into expression bodies to pick up nested
@@ -114,6 +138,7 @@ fn container_sym(
         ty: kind.as_str().to_owned(),
         position,
         signature: None,
+        binder: String::new(),
         parameters: Vec::new(),
         return_type: None,
         doc: None,
@@ -348,24 +373,14 @@ fn sym_of(stmt: &Stmt) -> Option<SymbolInfo> {
             doc,
             position,
             ..
-        } => {
-            let mut sym = fn_sym(
-                name,
-                param_pairs(parameters),
-                return_type.as_ref(),
-                render_doc(doc.as_ref()),
-                *position,
-            );
-            let binder = render_type_params(type_params);
-            if !binder.is_empty() {
-                let with_binder =
-                    sym.ty
-                        .replacen(&format!("fn {name}("), &format!("fn {name}{binder}("), 1);
-                sym.ty.clone_from(&with_binder);
-                sym.signature = Some(with_binder);
-            }
-            Some(sym)
-        }
+        } => Some(fn_sym(
+            name,
+            &render_type_params(type_params),
+            param_pairs(parameters),
+            return_type.as_ref(),
+            render_doc(doc.as_ref()),
+            *position,
+        )),
         Stmt::Extern {
             name,
             parameters,
@@ -374,6 +389,7 @@ fn sym_of(stmt: &Stmt) -> Option<SymbolInfo> {
             position,
         } => Some(fn_sym(
             name,
+            "",
             extern_pairs(parameters),
             return_type.as_ref(),
             render_doc(doc.as_ref()),
@@ -466,6 +482,7 @@ fn render_type_params(params: &[osprey_ast::TypeParam]) -> String {
 
 fn fn_sym(
     name: &str,
+    binder: &str,
     parameters: Vec<(String, String)>,
     return_type: Option<&TypeExpr>,
     doc: Option<String>,
@@ -474,12 +491,10 @@ fn fn_sym(
     let written = return_type.map(render_type);
     // `Unit` is only the *display* fallback for a function whose return type
     // the author left to inference. `return_type` keeps the written type alone
-    // (`None` when unwritten) so hover can tell "declared Unit" from "not
-    // declared" and fill the latter in from the checker
-    // ([LSP-HOVER-INFERRED-SIGNATURE]).
-    let ret = written.clone().unwrap_or_else(|| String::from("Unit"));
-    let shown: Vec<String> = parameters.iter().map(render_param).collect();
-    let signature = format!("fn {name}({}) -> {ret}", shown.join(", "));
+    // (`None` when unwritten) so a reader is told "declared Unit" apart from
+    // "not declared" and the latter is filled in from the checker by
+    // [`fill_inferred`] ([LSP-HOVER-INFERRED-SIGNATURE]).
+    let signature = render_signature(name, binder, &parameters, written.as_deref());
     SymbolInfo {
         name: name.into(),
         source_name: name.into(),
@@ -487,10 +502,91 @@ fn fn_sym(
         ty: signature.clone(),
         position,
         signature: Some(signature),
+        binder: binder.to_owned(),
         parameters,
         return_type: written,
         doc,
     }
+}
+
+/// The one spelling of a function signature: `fn name<T>(a: int) -> string`.
+///
+/// A return type nobody supplied and the checker could not prove leaves the
+/// arrow OFF. It used to read `-> Unit`, but `Unit` is a positive claim, and
+/// for a body like `if f { Success { .. } } else { Error { .. } }` the checker
+/// refutes it outright ("cannot unify Unit with Result<t5, t6>"). Saying
+/// nothing is the only honest option left once there is nothing to say.
+fn render_signature(
+    name: &str,
+    binder: &str,
+    parameters: &[(String, String)],
+    ret: Option<&str>,
+) -> String {
+    let shown: Vec<String> = parameters.iter().map(render_param).collect();
+    let head = format!("fn {name}{binder}({})", shown.join(", "));
+    match ret {
+        Some(ret) => format!("{head} -> {ret}"),
+        None => head,
+    }
+}
+
+/// How a checker-supplied type is shown to a reader, or `None` when it carries
+/// no information at all.
+///
+/// An inferred type that still holds a type VARIABLE is not a finished answer,
+/// but it is rarely empty: `Result<int, t6>` proves the payload even where the
+/// error side stays open. Rendering `t6` would leak the checker's private name,
+/// whose number moves when an unrelated line is edited, so every unsolved slot
+/// becomes `_` ([`osprey_types::render_with_holes`]). A type that is nothing
+/// BUT a hole says nothing, so it yields `None` and the slot is left as the
+/// author wrote it — bare — rather than decorated with `_`.
+///
+/// "Nothing but a hole" is a question about the type's STRUCTURE, not its
+/// spelling: nothing stops an author writing `type _ = { x: int }`, and asking
+/// whether the rendering equals `"_"` threw that fully proven type away.
+fn shown(ty: &osprey_types::Type) -> Option<String> {
+    if matches!(ty, osprey_types::Type::Var(_)) {
+        return None;
+    }
+    Some(osprey_types::render_with_holes(ty))
+}
+
+/// Fill every slot the author left to inference — unannotated parameters and an
+/// unwritten return type — with the type the checker proved.
+///
+/// Osprey is Hindley-Milner and the house style DELETES every inferable
+/// annotation, so blank slots are the common case. Rendering them literally
+/// reported `fn describeAny(v: any) -> Unit`: the return type flatly wrong,
+/// because `Unit` was only ever a display fallback. That made the annotation
+/// rule unenforceable from tooling — obeying it downgraded every outline entry
+/// — so both hover and `--symbols` answer from inference through here.
+/// Implements [LSP-HOVER-INFERRED-SIGNATURE].
+pub(crate) fn fill_inferred(sym: &mut SymbolInfo, types: &osprey_types::ProgramTypes) {
+    if sym.kind != SymbolKind::Function
+        || (sym.return_type.is_some() && sym.parameters.iter().all(|(_, t)| !t.is_empty()))
+    {
+        return;
+    }
+    let inferred = types.param_types(&sym.name).unwrap_or_default();
+    for (slot, (_, written)) in sym.parameters.iter_mut().enumerate() {
+        if let (true, Some(found)) = (written.is_empty(), inferred.get(slot)) {
+            if let Some(rendered) = shown(found) {
+                *written = rendered;
+            }
+        }
+    }
+    sym.return_type = sym
+        .return_type
+        .take()
+        .or_else(|| types.return_type(&sym.name).and_then(shown));
+    let signature = render_signature(
+        &sym.name,
+        &sym.binder,
+        &sym.parameters,
+        sym.return_type.as_deref(),
+    );
+    sym.ty.clone_from(&signature);
+    sym.signature = Some(signature);
 }
 
 pub(crate) fn render_param((n, t): &(String, String)) -> String {
@@ -514,6 +610,7 @@ fn let_sym(
         ty: ty.map(render_type).unwrap_or_default(),
         position,
         signature: None,
+        binder: String::new(),
         parameters: Vec::new(),
         return_type: None,
         doc,
@@ -528,6 +625,7 @@ fn decl_sym(name: &str, ty: &str, position: Option<Position>) -> SymbolInfo {
         ty: ty.into(),
         position,
         signature: None,
+        binder: String::new(),
         parameters: Vec::new(),
         return_type: None,
         doc: None,
@@ -586,10 +684,15 @@ pub fn builtin_hover(name: &str) -> Option<String> {
     osprey_types::builtin_hover_markdown(name)
 }
 
-/// The whole document outline as the `--symbols` JSON array.
+/// The whole document outline as the `--symbols` JSON array, every inferable
+/// slot filled in by the checker ([`fill_inferred`]) so deleting an annotation
+/// the house style calls redundant cannot change what tooling reports.
 #[must_use]
 pub fn symbols_json(program: &Program) -> String {
-    let rendered: Vec<String> = collect_symbols(program).iter().map(sym_json).collect();
+    let rendered: Vec<String> = collect_inferred_symbols(program)
+        .iter()
+        .map(sym_json)
+        .collect();
     format!("[{}]", rendered.join(","))
 }
 
@@ -684,6 +787,167 @@ mod tests {
         ] {
             assert!(json.contains(frag), "missing {frag} in {json}");
         }
+    }
+
+    #[test]
+    fn an_inferred_return_type_reaches_the_outline_instead_of_unit() {
+        // RED: `--symbols` renders the DECLARED return type and falls back to
+        // `Unit` when there is none, so a function whose return type is
+        // inferred is reported as returning `Unit`. Every arm below yields a
+        // string, and the program only compiles because the caller concatenates
+        // the result — so `string` is not a guess, it is the type the checker
+        // already proved.
+        //
+        // This is what makes the annotation rule unenforceable from tooling:
+        // CLAUDE.md requires deleting an inferable `-> string`, and doing so
+        // silently downgrades what `--symbols` reports to `Unit`. Hover renders
+        // `string` correctly from the same source, so the type IS available;
+        // `symbols_json` takes only the AST and never consults inference.
+        // [TYPE-INFERENCE]
+        let inferred = r#"fn describeAny(v: any) = match v {
+    { held, .. } => "held=${held}"
+    _            => "other"
+}
+print(describeAny(42) + "!")
+"#;
+        // The same program with the annotation written out. It is the control:
+        // identical behaviour, identical inferred type, and it reports
+        // correctly today — so any difference below is the annotation's
+        // presence alone, not the program.
+        let annotated = r#"fn describeAny(v: any) -> string = match v {
+    { held, .. } => "held=${held}"
+    _            => "other"
+}
+print(describeAny(42) + "!")
+"#;
+
+        let parsed = osprey_syntax::parse_program(inferred);
+        assert!(parsed.errors.is_empty(), "{:?}", parsed.errors);
+        assert!(
+            osprey_types::check_program(&parsed.program).is_empty(),
+            "the probe must type-check, or it pins nothing: `+ \"!\"` is what \
+             proves the return type is string rather than a guess"
+        );
+        let json = symbols_json(&parsed.program);
+
+        // The control reports the truth, so the type is derivable from a
+        // program the checker already accepted.
+        let control = osprey_syntax::parse_program(annotated);
+        assert!(control.errors.is_empty(), "{:?}", control.errors);
+        let control_json = symbols_json(&control.program);
+        for frag in [
+            "\"returnType\":\"string\"",
+            "\"signature\":\"fn describeAny(v: any) -> string\"",
+        ] {
+            assert!(
+                control_json.contains(frag),
+                "control (annotated) must report {frag}; got {control_json}"
+            );
+        }
+
+        // Hover renders the same declaration from the same AST and gets it
+        // right, so the outline is not missing information — it is discarding
+        // it.
+        let hovered = crate::hover::hover(
+            inferred,
+            "file:///inferred.osp",
+            0,
+            4,
+            lspkit_vfs::PositionEncoding::Utf16,
+        )
+        .expect("hover over `describeAny`");
+        assert!(
+            hovered.contains("-> string"),
+            "hover already knows the return type is string; got {hovered}"
+        );
+
+        // The bug, asserted three ways so a partial fix cannot pass.
+        assert!(
+            !json.contains("\"returnType\":\"Unit\""),
+            "an inferred return type must not be reported as Unit; got {json}"
+        );
+        assert!(
+            !json.contains("-> Unit"),
+            "the rendered signature must not claim `-> Unit`; got {json}"
+        );
+        for frag in [
+            "\"returnType\":\"string\"",
+            "\"signature\":\"fn describeAny(v: any) -> string\"",
+            "\"type\":\"fn describeAny(v: any) -> string\"",
+        ] {
+            assert!(
+                json.contains(frag),
+                "an inferred return type must reach the outline as the type the \
+                 checker inferred: missing {frag} in {json}"
+            );
+        }
+
+        // Dropping an inferable annotation is REQUIRED by CLAUDE.md, so the two
+        // spellings must be indistinguishable to tooling.
+        assert_eq!(
+            json, control_json,
+            "removing an inferable annotation must not change what tooling reports"
+        );
+    }
+
+    #[test]
+    fn a_type_the_author_named_underscore_is_a_real_type_not_a_hole() {
+        // `_` is only a RENDERING for an unsolved slot; nothing stops an author
+        // declaring a type of that name. Deciding "carries no information" by
+        // comparing the rendered text to `"_"` confused the two and threw away
+        // a fully proven return type, reporting `fn make()`. The question is
+        // structural — is this a type VARIABLE — and must be asked of the type,
+        // never of its spelling.
+        let src = "type _ = { x: int }\nfn make() = _ { x: 1 }\nlet m = make()\n";
+        let parsed = osprey_syntax::parse_program(src);
+        assert!(parsed.errors.is_empty(), "{:?}", parsed.errors);
+        assert!(
+            osprey_types::check_program(&parsed.program).is_empty(),
+            "the probe must type-check, or it pins nothing"
+        );
+        let json = symbols_json(&parsed.program);
+        assert!(
+            json.contains("\"signature\":\"fn make() -> _ { x: int }\""),
+            "a declared type named `_` is proven and must be reported, name and \
+             row alike: {json}"
+        );
+        assert!(
+            !json.contains("\"returnType\":\"_\""),
+            "and it must not be mistaken for the hole that shares its spelling: \
+             {json}"
+        );
+    }
+
+    #[test]
+    fn a_partially_resolved_return_type_reports_its_proven_part_never_unit() {
+        // Both arms build a `Result`, so the checker proves the payload is
+        // `int` — but the ERROR side stays free, because `Error { message }`
+        // unifies with whichever error type a caller supplies. Annotating this
+        // body `-> Result<int, string>`, `-> Result<int, Error>` and
+        // `-> Result<int, MathError>` all check, which is what "free" means.
+        //
+        // [`fill_inferred`] refuses a type holding a variable — correctly, `t6`
+        // is a private name — but the fallback then claimed `-> Unit`, and the
+        // checker refutes that itself: annotating `-> Unit` fails with
+        // "cannot unify Unit with Result<t5, t6>". A tool must not assert what
+        // the compiler rejects. `Result<int, _>` says exactly what is proven.
+        let src = "fn bothArms(f) = if f { Success { value: 1 } } \
+                   else { Error { message: \"e\" } }\n";
+        let parsed = osprey_syntax::parse_program(src);
+        assert!(parsed.errors.is_empty(), "{:?}", parsed.errors);
+        let json = symbols_json(&parsed.program);
+        assert!(
+            !json.contains("Unit"),
+            "the checker refutes `Unit` for this body; got {json}"
+        );
+        assert!(
+            json.contains("\"returnType\":\"Result<int, _>\""),
+            "the proven payload must survive with a hole for the free side; got {json}"
+        );
+        assert!(
+            !json.contains(">\"t") && !json.contains(", t6"),
+            "a private inference name must never reach a reader; got {json}"
+        );
     }
 
     /// The rendered hover markdown for `name` in `src`, via the real symbol

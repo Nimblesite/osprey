@@ -12,35 +12,35 @@
 /// Q10 fixed point: one world unit is 1024 sub-units.
 fn unit() = 1024
 /// fpMul and fpDiv stay in Q10; a zero divisor saturates instead of failing.
-fn fpMul(a: int, b: int) -> int = intDiv((a * b) ?: 0, unit()) ?: 0
-fn fpDiv(a: int, b: int) -> int = intDiv((a * unit()) ?: 0, b) ?: 0
+fn fpMul(a: int, b: int) = intDiv((a * b) ?: 0, unit()) ?: 0
+fn fpDiv(a: int, b: int) = intDiv((a * unit()) ?: 0, b) ?: 0
 /// The sign helpers every component-wise kernel needs.
-fn negFp(x: int) -> int = (0 - x) ?: 0
-fn fpAbs(x: int) -> int = match x < 0 { true => negFp(x) false => x }
+fn negFp(x: int) = (0 - x) ?: 0
+fn fpAbs(x: int) = match x < 0 { true => negFp(x) false => x }
 /// Whole-buffer scale kernels at Q10.
 fn doubleFp(x) = fpMul(x, (2 * unit()) ?: 0)
 fn halveFp(x) = fpMul(x, intDiv(unit(), 2) ?: 0)
 /// sumInts doubles as elementwise vector addition; subInts is displacement.
-fn sumInts(a: int, x: int) -> int = (a + x) ?: a
-fn subInts(a: int, b: int) -> int = (a - b) ?: a
-fn sqrOf(v: int) -> int = (v * v) ?: 0
+fn sumInts(a: int, x: int) = (a + x) ?: a
+fn subInts(a: int, b: int) = (a - b) ?: a
+fn sqrOf(v: int) = (v * v) ?: 0
 /// Squared length in one pass, so a broadphase needs no product buffer.
-fn addSquares(dx: int, dy: int) -> int = (sqrOf(dx) + sqrOf(dy)) ?: 0
+fn addSquares(dx: int, dy: int) = (sqrOf(dx) + sqrOf(dy)) ?: 0
 /// speedOf accumulates absolute magnitude — total speed, or total error.
-fn speedOf(acc: int, v: int) -> int = (acc + fpAbs(v)) ?: acc
+fn speedOf(acc: int, v: int) = (acc + fpAbs(v)) ?: acc
 /// The associative fold combines that grow an axis-aligned box.
-fn boundMin(a: int, b: int) -> int = match a <= b { true => a false => b }
-fn boundMax(a: int, b: int) -> int = match a >= b { true => a false => b }
+fn boundMin(a: int, b: int) = match a <= b { true => a false => b }
+fn boundMax(a: int, b: int) = match a >= b { true => a false => b }
 /// Collision is inclusive: volumes that merely touch already overlap.
-fn leqI(a: int, b: int) -> bool = a <= b
-fn bothOf(a: bool, b: bool) -> bool = a && b
+fn leqI(a: int, b: int) = a <= b
+fn bothOf(a: bool, b: bool) = a && b
 /// Flag-buffer helpers: total the hits, or compact them either way.
-fn hitCost(flag: bool) -> int = match flag { true => 1 false => 0 }
+fn hitCost(flag: bool) = match flag { true => 1 false => 0 }
 fn isHit(flag) = flag == true
 fn isMiss(flag) = !flag
 /// The alpha-max-plus-beta-min length estimate, |v| ~= max + 3*min/8: what a
 /// broadphase reaches for because it needs no square root.
-fn octagonal(x: int, y: int) -> int = {
+fn octagonal(x: int, y: int) = {
     let hi = boundMax(fpAbs(x), fpAbs(y))
     let lo = boundMin(fpAbs(x), fpAbs(y))
     let beta = intDiv((3 * lo) ?: 0, 8) ?: 0
@@ -49,25 +49,25 @@ fn octagonal(x: int, y: int) -> int = {
 /// A colour packs r:g:b into one int element, the way a framebuffer does.
 fn channelBits() = 256
 fn redShift() = (channelBits() * channelBits()) ?: 0
-fn clampChannel(v: int) -> int = match v < 0 {
+fn clampChannel(v: int) = match v < 0 {
     true => 0
     false => match v > 255 { true => 255 false => v }
 }
-fn packRG(r: int, g: int) -> int = ((clampChannel(r) * channelBits()) ?: 0) + clampChannel(g) ?: 0
-fn packRGB(rg: int, b: int) -> int = ((rg * channelBits()) ?: 0) + clampChannel(b) ?: 0
-fn redOf(c: int) -> int = intDiv(c, redShift()) ?: 0
-fn greenOf(c: int) -> int = (intDiv(c, channelBits()) ?: 0) % channelBits() ?: 0
-fn blueOf(c: int) -> int = (c % channelBits()) ?: 0
+fn packRG(r: int, g: int) = ((clampChannel(r) * channelBits()) ?: 0) + clampChannel(g) ?: 0
+fn packRGB(rg: int, b: int) = ((rg * channelBits()) ?: 0) + clampChannel(b) ?: 0
+fn redOf(c: int) = intDiv(c, redShift()) ?: 0
+fn greenOf(c: int) = (intDiv(c, channelBits()) ?: 0) % channelBits() ?: 0
+fn blueOf(c: int) = (c % channelBits()) ?: 0
 /// Integer Rec.601 grey; the weights sum to exactly 256, so white maps to 255.
-fn luminance(c: int) -> int = intDiv(
+fn luminance(c: int) = intDiv(
     ((77 * redOf(c)) ?: 0) + ((151 * greenOf(c)) ?: 0) + ((28 * blueOf(c)) ?: 0) ?: 0,
     channelBits()) ?: 0
 /// A blend is two coverage-weighted scales and one add.
-fn scaleColor(c: int, w: int) -> int = packRGB(
+fn scaleColor(c: int, w: int) = packRGB(
     packRG(intDiv((redOf(c) * w) ?: 0, channelBits()) ?: 0,
         intDiv((greenOf(c) * w) ?: 0, channelBits()) ?: 0),
     intDiv((blueOf(c) * w) ?: 0, channelBits()) ?: 0)
-fn invAlpha(a: int) -> int = (channelBits() - a) ?: 0
+fn invAlpha(a: int) = (channelBits() - a) ?: 0
 /// The reference colours; missingColor is the magenta a failed asset paints.
 fn black() = 0
 fn red() = 16711680
@@ -77,7 +77,7 @@ fn missingColor() = 16711935
 /// at turns [GPU-GET]'s out-of-range Error into the engine's chosen padding.
 fn at(buf, i, miss) = gpuGet(buf, i) ?: miss
 /// clampIdx keeps a stencil tap on the field; blurAt is the three-tap average.
-fn clampIdx(i: int, n: int) -> int = boundMin(boundMax(i, 0), (n - 1) ?: 0)
+fn clampIdx(i: int, n: int) = boundMin(boundMax(i, 0), (n - 1) ?: 0)
 fn blurAt(field, n, i) = intDiv(at(field, clampIdx((i - 1) ?: i, n), 0)
     + at(field, i, 0) + at(field, clampIdx((i + 1) ?: i, n), 0) ?: 0, 3) ?: 0
 /// tileTranspose reads a w-by-h tile grid column-major: dest(x, y) = src(y, x).
@@ -85,25 +85,25 @@ fn tileTranspose(src, w, h) = gpuIota((w * h) ?: 0)
     |> gpuMap(fn(i) => at(src, ((((i % h) ?: 0) * w) ?: 0) + (intDiv(i, h) ?: 0) ?: 0, 0))
 /// Semi-implicit Euler: velocity updates first, then position integrates the
 /// *new* velocity. Only a concrete signature gets a recursive helper emitted.
-fn velAfter(vel: GpuBuffer<int>, acc: GpuBuffer<int>, n: int) -> GpuBuffer<int> = match n {
+fn velAfter(vel: GpuBuffer<int>, acc: GpuBuffer<int>, n: int) = match n {
     0 => vel
     _ => velAfter(gpuZipWith(vel, acc, sumInts), acc, (n - 1) ?: 0)
 }
-fn posAfter(pos: GpuBuffer<int>, vel: GpuBuffer<int>, acc: GpuBuffer<int>, n: int) -> GpuBuffer<int> = match n {
+fn posAfter(pos: GpuBuffer<int>, vel: GpuBuffer<int>, acc: GpuBuffer<int>, n: int) = match n {
     0 => pos
     _ => gpuZipWith(posAfter(pos, vel, acc, (n - 1) ?: 0), velAfter(vel, acc, n), sumInts)
 }
 /// damp reruns a drag multiply over a velocity buffer n times.
-fn damp(vel: GpuBuffer<int>, drag: int, n: int) -> GpuBuffer<int> = match n {
+fn damp(vel: GpuBuffer<int>, drag: int, n: int) = match n {
     0 => vel
     _ => damp(vel |> gpuMap(fn(v) => fpMul(v, drag)), drag, (n - 1) ?: 0)
 }
 /// A tick is 0.1s; lerpQuarter eases a quarter of the way toward the target.
-fn integrate(p: float, v: float) -> float = p + v * 0.1
-fn lerpQuarter(a: float, b: float) -> float = a + (b - a) * 0.25
+fn integrate(p: float, v: float) = p + v * 0.1
+fn lerpQuarter(a: float, b: float) = a + (b - a) * 0.25
 /// The draw distance, the float reduction, and the survivor predicate.
 fn visible(d) = d < 100.0
-fn sumF(a: float, x: float) -> float = a + x
+fn sumF(a: float, x: float) = a + x
 fn alive(h) = h > 0
 /// clamp01 keeps a normalized channel inside [0, 1].
 fn clamp01(x) = match x < 0.0 {
@@ -111,7 +111,7 @@ fn clamp01(x) = match x < 0.0 {
     false => match x > 1.0 { true => 1.0 false => x }
 }
 /// applyDamage resolves a hit, flooring health at zero.
-fn applyDamage(h: int, d: int) -> int = match ((h - d) ?: 0) > 0 {
+fn applyDamage(h: int, d: int) = match ((h - d) ?: 0) > 0 {
     true => (h - d) ?: 0
     false => 0
 }

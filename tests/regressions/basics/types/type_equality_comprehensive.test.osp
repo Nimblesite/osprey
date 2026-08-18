@@ -29,20 +29,20 @@ print("T<I,S,I>: ${tIBI.first}/${tIBI.second}/${tIBI.third}")
 print("")
 
 /// --- Function type equality via HOFs ---
-fn addOne(x)        -> int    = x + 1 ?: 0
-fn timesTwo(x)      -> int    = x * 2 ?: 0
-fn minusOne(x)      -> int    = x - 1 ?: 0
+fn addOne(x)     = x + 1 ?: 0
+fn timesTwo(x)   = x * 2 ?: 0
+fn minusOne(x)   = x - 1 ?: 0
 fn excl(s)       = s + "!"
 fn ques(s)       = s + "?"
 fn intToString(x)   = toString(x)
-fn twoArgAdd(a: int, b: int) -> int = a + b ?: 0
-fn threeArgAdd(a: int, b: int, c: int) -> int = a + b + c ?: 0
+fn twoArgAdd(a, b) = a + b ?: 0
+fn threeArgAdd(a: int, b: int, c: int) = a + b + c ?: 0
 
 fn applyInt(f, x)    = f(x)
 fn applyStr(f, s) = f(s)
 fn applyToStr(f, x) = f(x)
-fn applyTwo(f: (int, int) -> int, a, b) = f(a, b)
-fn applyThree(f: (int, int, int) -> int, a, b, c) = f(a, b, c)
+fn applyTwo(f, a, b) = f(a, b)
+fn applyThree(f, a, b, c) = f(a, b, c)
 
 print("=== Same (int)->int passed via HOF ===")
 print(toString(applyInt(f: addOne,   x: 10)))
@@ -89,20 +89,21 @@ print("sameRB=${toString(sameColor(a: c1, b: c3))}")
 /// --- Declaration-site variance: out T (covariant) / in T (contravariant) ---
 /// Variance is position-checked: `out T` may appear only where the payload
 /// flows out, `in T` only where it flows in (function parameters flip the
-/// polarity). Payload instantiations match exactly at the leaves; function
-/// payload function signatures retain their exact, explicit Result channels.
+/// polarity). Payload instantiations match exactly at the leaves; mkGate's
+/// return annotation pins the function payload's exact Result channel, and
+/// mkFeed's is inferred from its unchecked arithmetic.
 /// Implements [TYPE-VARIANCE-DECL],
 /// [TYPE-VARIANCE-ASSIGN]
 type Feed<out T> = Feed { supply: T } | Dry
 type Gate<in T> = Gate { admit: (T) -> bool } | Open
 
-fn label(f: Feed<(int) -> Result<int, MathError>>) = match f {
+fn label(f) = match f {
     Feed { supply } => "supplied"
     Dry => "dry"
 }
-fn mkFeed() -> Feed<(int) -> Result<int, MathError>> = Feed { supply: |x| => x * 2 }
+fn mkFeed() = Feed { supply: |x| => x * 2 }
 
-fn describe(g: Gate<(int) -> Result<int, MathError>>) = match g {
+fn describe(g) = match g {
     Gate { admit } => "guarded"
     Open => "open"
 }

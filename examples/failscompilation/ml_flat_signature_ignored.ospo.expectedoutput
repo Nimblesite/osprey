@@ -1,0 +1,1 @@
+15:0: function `f`: a parenthesised signature domain declares flat parameters; write `f (…) = …` to match

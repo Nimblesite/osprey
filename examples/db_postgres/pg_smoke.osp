@@ -16,7 +16,7 @@
 
 extern fn PQlibVersion() -> int
 
-fn status(v: int) -> string = match v > 0 {
+fn status(v: int) = match v > 0 {
     true => "pg linked ok"
     false => "pg link fail"
 }

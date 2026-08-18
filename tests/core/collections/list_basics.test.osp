@@ -14,7 +14,7 @@ fn appendThrough(xs: List<int>) -> (int) -> (int) -> List<int> =
     }
 
 /// classify exercises exact-length, singleton, pair, and head-tail list patterns.
-fn classify(xs: List<int>) -> string = match xs {
+fn classify(xs: List<int>) = match xs {
     [] => "empty"
     [single] => "one(${single})"
     [first, second] => "two(${first},${second})"
@@ -22,20 +22,20 @@ fn classify(xs: List<int>) -> string = match xs {
 }
 
 /// sumList proves recursive head-tail destructuring retains every element.
-fn sumList(xs: List<int>) -> int = match xs {
+fn sumList(xs: List<int>) = match xs {
     [] => 0
     [head, ...tail] => head + sumList(tail) ?: 0
 }
 
 /// restLen exercises a wildcard prefix followed by a captured list tail.
-fn restLen(xs: List<int>) -> int = match xs {
+fn restLen(xs: List<int>) = match xs {
     [_, second, ...rest] => listLength(rest)
     _ => 0
 }
 
 /// encodeIteration folds callback order into a base-100 integer through a handled
 /// effect, pinning forEachList's in-order traversal ([BUILTIN-LIST-FOREACH]).
-fn encodeIteration(xs: List<int>) -> int = {
+fn encodeIteration(xs: List<int>) = {
     mut encoded = 0
     handle IterationProbe
         observe value => { encoded = encoded * 100 + value ?: encoded }

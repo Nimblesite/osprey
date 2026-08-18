@@ -33,18 +33,14 @@ print "T<I,S,I>: ${tIBI.first}/${tIBI.second}/${tIBI.third}"
 print ""
 
 (** --- Function type equality via HOFs ---
-    Explicit signatures keep the function values concrete and match the Default
-    flavor's annotated helpers. *)
-addOne : int -> int
+    Inference keeps the function values concrete; threeArgAdd alone needs its
+    signature to pin the operand types its checked arithmetic cannot. *)
 addOne x = x + 1 ?: 0
-timesTwo : int -> int
 timesTwo x = x * 2 ?: 0
-minusOne : int -> int
 minusOne x = x - 1 ?: 0
 excl s = s + "!"
 ques s = s + "?"
 intToString x = toString x
-twoArgAdd : int -> int -> int
 twoArgAdd (a, b) = a + b ?: 0
 threeArgAdd : int -> int -> int -> int
 threeArgAdd (a, b, c) = a + b + c ?: 0
@@ -52,9 +48,7 @@ threeArgAdd (a, b, c) = a + b + c ?: 0
 applyInt (f, x) = f x
 applyStr (f, s) = f s
 applyToStr (f, x) = f x
-applyTwo : ((int, int) -> int) -> int -> int -> int
 applyTwo (f, a, b) = f (a, b)
-applyThree : ((int, int, int) -> int) -> int -> int -> int -> int
 applyThree (f, a, b, c) = f (a, b, c)
 
 print "=== Same (int)->int passed via HOF ==="
@@ -114,8 +108,9 @@ print "sameRB=${toString (sameColor (c1, c3))}"
 (** --- Declaration-site variance: out T (covariant) / in T (contravariant) ---
     Variance is position-checked: `out T` may appear only where the payload
     flows out, `in T` only where it flows in (function parameters flip the
-    polarity). Payload instantiations match exactly at the leaves; function
-    payload function signatures retain their exact, explicit Result channels.
+    polarity). Payload instantiations match exactly at the leaves; mkGate's
+    signature pins the function payload's exact Result channel, and mkFeed's
+    is inferred from its unchecked arithmetic.
     Implements [TYPE-VARIANCE-DECL], [TYPE-VARIANCE-ASSIGN],
     [FLAVOR-ML-GENERICS] *)
 type Feed out T =
@@ -127,14 +122,11 @@ type Gate in T =
         admit : T -> bool
     Open
 
-label : Feed<(int) -> Result<int, MathError>> -> string
 label f = match f
     Feed supply => "supplied"
     Dry => "dry"
-mkFeed : Unit -> Feed<(int) -> Result<int, MathError>>
 mkFeed () = Feed(supply = \x => x * 2)
 
-describe : Gate<(int) -> Result<int, MathError>> -> string
 describe g = match g
     Gate admit => "guarded"
     Open => "open"

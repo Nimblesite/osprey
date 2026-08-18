@@ -356,10 +356,13 @@ fn ml_flavor_negative_cases_are_rejected_by_the_ml_frontend() {
 #[test]
 fn failscompilation_corpus_drives_rejection_paths() {
     // Every `.ospo` is run through the pipeline to cover the rejection branches.
-    // EVERY ill-formed program must be rejected — the corpus stands at 90/90.
+    // EVERY ill-formed program must be rejected, whatever the corpus size — the
+    // count is read from the directory rather than written down here, because a
+    // number in a comment goes stale the first time a case is added and then
+    // describes a corpus that no longer exists.
     //
     // This assertion used to read `rejected * 2 >= files.len()`, i.e. "a healthy
-    // majority", which tolerated 45 of the 90 silently starting to compile. Its
+    // majority", which tolerated half the corpus silently starting to compile. Its
     // comment deferred the exact residue to "the shell harness ratchet", but
     // that harness (crates/diff_examples.sh, FC_EXPECTED_ESCAPES=0) was deleted,
     // so the strict count it pointed at no longer existed. A must-reject corpus

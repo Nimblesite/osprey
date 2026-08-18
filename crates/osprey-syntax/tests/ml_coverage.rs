@@ -207,8 +207,9 @@ fn comparison_and_punctuation_operators_lex() {
         Expr::Binary { op, .. } => assert_eq!(op, "<="),
         other => panic!("expected binary, got {other:?}"),
     }
-    // Comma appears in a tuple type signature; dot in a field access.
-    let sig = ml_ok("f : (int, int) -> int\nf x = x\n");
+    // Comma appears in a tuple type signature (typing a FLAT binding of the
+    // same arity, the one representable form); dot in a field access.
+    let sig = ml_ok("f : (int, int) -> int\nf (a, b) = a + b\n");
     assert!(matches!(sig.first(), Some(Stmt::Function { .. })));
 }
 
@@ -263,14 +264,73 @@ fn unexpected_token_in_type_reports_an_error() {
 }
 
 #[test]
-fn tuple_type_signature_parses_and_leaves_inference_to_the_checker() {
-    // A tuple type `(int, int)` has no canonical TypeExpr form, so the lowerer
-    // leaves the parameter type as None — but it must parse without error.
-    let s = ml_ok("f : (int, int) -> int\nf x = 1\n");
-    match s.into_iter().next() {
-        Some(Stmt::Function { parameters, .. }) => assert!(parameters[0].ty.is_none()),
-        other => panic!("expected a function, got {other:?}"),
+fn tuple_domain_on_a_curried_binding_is_rejected() {
+    // A tuple type `(int, int)` has no canonical TypeExpr form. This used to
+    // lower to an UNTYPED parameter — the written signature silently vanished
+    // and the binding was checked as if unannotated, so `f "str"` compiled.
+    // The lowering now reports the mismatch instead of dropping the type.
+    let parsed = ml_err("f : (int, int) -> int\nf x = 1\n");
+    assert!(
+        parsed
+            .errors
+            .iter()
+            .any(|e| e.message.contains("parenthesised signature domain")),
+        "expected a flat-domain mismatch error, got {:?}",
+        parsed.errors
+    );
+}
+
+#[test]
+fn flat_tuple_domain_with_wrong_arity_is_rejected() {
+    // The flat form is representable only when the tuple's arity matches the
+    // binding's — a mismatch used to drop the whole domain silently.
+    let parsed = ml_err("f : (int, string, bool) -> string\nf (a, b) = \"x\"\n");
+    assert!(
+        parsed.errors.iter().any(|e| e
+            .message
+            .contains("declares 3 parameters but the binding takes 2")),
+        "expected an arity mismatch error, got {:?}",
+        parsed.errors
+    );
+}
+
+#[test]
+fn a_parenthesised_flat_function_type_is_a_valid_signature_slot() {
+    // `((int, int) -> int)` in a signature slot is a FLAT function type — the
+    // Default flavor's `fn(int, int) -> int` — not a tuple value. Rejecting it
+    // as "a tuple type has no value form" untyped `applyTwo`'s HOF parameter in
+    // type_equality_comprehensive; both binding forms must keep the type.
+    let curried =
+        ml_ok("applyTwo : ((int, int) -> int) -> int -> int -> int\napplyTwo f a b = f (a, b)\n");
+    let flat = ml_ok(
+        "applyTwo : ((int, int) -> int) -> int -> int -> int\napplyTwo (f, a, b) = f (a, b)\n",
+    );
+    for stmts in [curried, flat] {
+        match stmts.first() {
+            Some(Stmt::Function { parameters, .. }) => {
+                let Some(ty) = parameters.first().and_then(|p| p.ty.as_ref()) else {
+                    panic!("the HOF parameter lost its written type")
+                };
+                assert!(ty.is_function, "expected a function type, got {ty:?}");
+                assert_eq!(ty.parameter_types.len(), 2);
+            }
+            other => panic!("expected a function, got {other:?}"),
+        }
     }
+}
+
+#[test]
+fn signature_shorter_than_the_binding_is_rejected() {
+    // `g : int -> string` types ONE parameter; a two-parameter binding used to
+    // absorb the RETURN type as its second parameter's annotation.
+    let parsed = ml_err("g : int -> string\ng (a, b) = \"x\"\n");
+    assert!(
+        parsed.errors.iter().any(|e| e
+            .message
+            .contains("provides 1 parameter types but the binding takes 2")),
+        "expected a too-short-signature error, got {:?}",
+        parsed.errors
+    );
 }
 
 #[test]

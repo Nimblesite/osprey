@@ -1,5 +1,5 @@
 type Job = { id: int, weight: int }
-fn runJob(j: Job) -> int = j.id * j.weight ?: 0
+fn runJob(j: Job) = j.id * j.weight ?: 0
 let jHigh = Job { id: 3, weight: 9 }
 print(toString(runJob(jHigh)))
 let f = spawn runJob(jHigh)

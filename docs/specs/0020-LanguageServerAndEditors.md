@@ -162,15 +162,28 @@ One exception, in both directions:
 
 - A slot the author **did** write is shown as written — hover never restates a
   declared type in the checker's spelling.
-- An inferred type that still holds a **type variable** is not shown at all;
-  the slot stays bare. A variable name (`t5`) is an inference artefact: it
-  means nothing outside the run that produced it and it shifts when an
-  unrelated line is edited, so `fn classify(xs) -> int` is correct and
-  `fn classify(xs: List<t5>) -> int` is not.
+- An inferred type that still holds a **type variable** is shown with every
+  unsolved slot spelled `_`. A variable name (`t5`) is an inference artefact:
+  it means nothing outside the run that produced it and it shifts when an
+  unrelated line is edited, so `fn classify(xs: List<_>) -> int` is correct and
+  `fn classify(xs: List<t5>) -> int` is not. The hole keeps everything the
+  checker *did* prove — here, that `xs` is a list.
 
-Implemented by `inferred_signature` in
-[`crates/osprey-lsp/src/hover.rs`](../../crates/osprey-lsp/src/hover.rs), over
-`ProgramTypes::param_types` / `return_type` and `osprey_types::has_type_var`.
+A type that is nothing but a hole carries no information, so it is omitted
+rather than rendered: a wholly-unknown parameter stays bare, and a wholly
+unknown return type drops the arrow entirely. The arrow used to fall back to
+`-> Unit`, which is a positive claim rather than an absent one — and one the
+checker refutes, since annotating
+`fn bothArms(f) = if f { Success { value: 1 } } else { Error { message: "e" } }`
+with `-> Unit` fails as *cannot unify Unit with `Result<t5, t6>`*. That
+function now reports `-> Result<int, _>`.
+
+Implemented by `render_with_holes` in
+[`crates/osprey-types/src/ty.rs`](../../crates/osprey-types/src/ty.rs) and
+`fill_inferred` in
+[`crates/osprey-lsp/src/analysis.rs`](../../crates/osprey-lsp/src/analysis.rs),
+over `ProgramTypes::param_types` / `return_type`. Hover and `--symbols` share
+that one path, so an outline entry and a tooltip can never disagree.
 
 ### Written names `[LSP-HOVER-WRITTEN]`
 

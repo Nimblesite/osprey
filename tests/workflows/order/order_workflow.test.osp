@@ -3,7 +3,7 @@ fn itemAt(index: int) -> (string) -> string =
     fn(fallback) => ["coffee", "bread", "fruit"][index] ?: fallback
 
 /// Looks up an item's integer price and turns a missing-key Result into zero.
-fn unitPrice(item: string) -> int = { "coffee": 12, "bread": 5, "fruit": 7 }[item] ?: 0
+fn unitPrice(item: string) = { "coffee": 12, "bread": 5, "fruit": 7 }[item] ?: 0
 
 /// Applies the membership tier's percentage discount using safe integer division.
 fn loyaltyDiscount(level: string) -> (int) -> int = fn(subtotal) => match level {

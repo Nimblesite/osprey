@@ -14,13 +14,13 @@
 
 /// addF is the float reduction shared by every sum below; mulF is the
 /// elementwise product behind every dot product.
-fn addF(a: float, x: float) -> float = a + x
-fn mulF(x: float, y: float) -> float = x * y
+fn addF(a: float, x: float) = a + x
+fn mulF(x: float, y: float) = x * y
 
 /// maxF and minF fold a buffer to its extremes: the seeds a softmax shift and
 /// a min-max rescale capture.
-fn maxF(a: float, x: float) -> float = match x > a { true => x false => a }
-fn minF(a: float, x: float) -> float = match x < a { true => x false => a }
+fn maxF(a: float, x: float) = match x > a { true => x false => a }
+fn minF(a: float, x: float) = match x < a { true => x false => a }
 
 /// relu clamps negative inputs to zero; isActive marks what a relu layer lets
 /// through.
@@ -44,10 +44,10 @@ fn varianceOf(xs) = {
 }
 
 /// saxpy is the classic a*x + y with a = 2.0.
-fn saxpy(x: float, y: float) -> float = 2.0 * x + y
+fn saxpy(x: float, y: float) = 2.0 * x + y
 
 /// softWeight weights a score already shifted by the batch maximum, so d >= 0.
-fn softWeight(d: float) -> float = (1.0 / (1.0 + d + d * d)) ?: 0.0
+fn softWeight(d: float) = (1.0 / (1.0 + d + d * d)) ?: 0.0
 
 /// softmax is four stages, two of them captures: fold the maximum, spend it in
 /// the shift, fold the partition function, spend that in the divide.
@@ -61,7 +61,7 @@ fn softmax(scores) = {
 /// rowDot walks one row of a flat row-major matrix against a vector. The
 /// annotations are load-bearing: only a concrete signature is emitted as a real
 /// definition, which recursion requires.
-fn rowDot(m: GpuBuffer<float>, v: GpuBuffer<float>, cols: int, r: int, c: int) -> float = match c == cols {
+fn rowDot(m: GpuBuffer<float>, v: GpuBuffer<float>, cols: int, r: int, c: int) = match c == cols {
     true => 0.0
     false => at(m, (((r * cols) ?: 0) + c) ?: 0) * at(v, c)
         + rowDot(m, v, cols, r, (c + 1) ?: 0)
@@ -74,17 +74,17 @@ fn matVec(m, v, cols, rows) = gpuIota(rows) |> gpuMap(fn(r) => rowDot(m, v, cols
 fn dense(m, v, cols, rows, bias) = gpuZipWith(matVec(m, v, cols, rows), bias, addF) |> gpuMap(relu)
 
 /// mse is the loss the training loop descends; w is captured by the residual.
-fn mse(w: float, xs: GpuBuffer<float>, ys: GpuBuffer<float>) -> float =
+fn mse(w: float, xs: GpuBuffer<float>, ys: GpuBuffer<float>) =
     meanOf(gpuZipWith(xs, ys, fn(x, y) => (w * x - y) * (w * x - y)))
 
 /// gradStep is one epoch of least-squares descent on y = w * x; the annotation
 /// types the captured w inside the kernel lambda.
-fn gradStep(w: float, xs: GpuBuffer<float>, ys: GpuBuffer<float>) -> float = w - 0.05 * (((gpuZipWith(xs, ys,
+fn gradStep(w: float, xs: GpuBuffer<float>, ys: GpuBuffer<float>) = w - 0.05 * (((gpuZipWith(xs, ys,
     fn(x, y) => 2.0 * (w * x - y) * x) |> gpuFold(0.0, addF)) / 3.0) ?: 0.0)
 
 /// train iterates gradStep n times, keeping the loop on buffers. Annotated for
 /// the same recursion-emission reason as rowDot.
-fn train(w: float, xs: GpuBuffer<float>, ys: GpuBuffer<float>, n: int) -> float = match n {
+fn train(w: float, xs: GpuBuffer<float>, ys: GpuBuffer<float>, n: int) = match n {
     0 => w
     _ => train(gradStep(w, xs, ys), xs, ys, (n - 1) ?: 0)
 }

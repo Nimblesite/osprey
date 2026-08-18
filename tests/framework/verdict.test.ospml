@@ -12,13 +12,11 @@ assume true = Pass
 assume false = Skip "precondition not met"
 
 (** Keep the first failure or skip, otherwise return the next Verdict. *)
-andThen : Verdict -> Verdict -> Verdict
 andThen (Pass) rest = rest
 andThen (Fail reason) _ = Fail reason
 andThen (Skip why) _ = Skip why
 
 (** Add two integers for the composed Verdicts. *)
-add : int -> int -> int
 add a b = a + b ?: 0
 
 (** Fold arithmetic, interpolation, and booleans into a passing Verdict. *)

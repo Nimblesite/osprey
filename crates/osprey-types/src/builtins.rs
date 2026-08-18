@@ -444,6 +444,24 @@ fn websocket(e: &mut TypeEnv) {
     mono(e, "websocketClose", vec![i()], i());
 }
 
+/// The declared function type of a built-in's parameter — the callback
+/// contract a C-side slot dictates (`httpListen`'s handler, `spawnProcess`'s
+/// output handler), as `(parameter types, return type)`. `None` when `name` is
+/// not a built-in or the parameter is not function-typed. Codegen uses this to
+/// emit the instantiation of an inferred (generic) handler at the exact types
+/// the C runtime will call it with.
+#[must_use]
+pub fn builtin_callback_type(name: &str, index: usize) -> Option<(Vec<Type>, Type)> {
+    let scheme = base_env().get(name)?.clone();
+    let Type::Fun { params, .. } = &scheme.ty else {
+        return None;
+    };
+    match params.get(index)? {
+        Type::Fun { params, ret } => Some((params.clone(), (**ret).clone())),
+        _ => None,
+    }
+}
+
 /// The rendered signature of a built-in (`name : type`), for editor hover.
 /// `None` when `name` is not a built-in.
 #[must_use]

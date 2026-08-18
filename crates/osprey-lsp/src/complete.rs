@@ -13,7 +13,7 @@ use osprey_ast::Program;
 use osprey_syntax::Flavor;
 use osprey_types::{names, ProgramTypes, Type};
 
-use crate::analysis::{collect_all_symbols, collect_symbols, SymbolInfo, SymbolKind};
+use crate::analysis::{collect_all_symbols, collect_inferred_symbols, SymbolInfo, SymbolKind};
 use crate::context::{self, Cursor};
 use crate::features::{best_match, flavor_of};
 use crate::keywords::keyword_items;
@@ -66,9 +66,11 @@ pub(crate) fn completion(
 /// Every symbol the open document can name: its own declarations plus those of
 /// every sibling file the project links with it. Implements [LSP-WORKSPACE].
 fn visible_symbols(program: &Program, path: &str) -> Vec<SymbolInfo> {
-    let mut symbols = collect_symbols(program);
+    // Inferred, because a completion item SHOWS the symbol's type
+    // ([`collect_inferred_symbols`]) — a deleted annotation must not empty it.
+    let mut symbols = collect_inferred_symbols(program);
     for sibling in workspace::siblings(path) {
-        symbols.extend(collect_symbols(&sibling.program));
+        symbols.extend(collect_inferred_symbols(&sibling.program));
     }
     // First wins, so the open buffer's own declaration shadows an imported one
     // of the same qualified name. `dedup_by` would not do: duplicates land in
@@ -150,9 +152,63 @@ fn member_items(receiver: &str, program: &Program, line: u32) -> Vec<CompletionI
         return Vec::new();
     };
     let types = osprey_types::infer_program(program);
-    receiver_type_name(symbol, &types)
-        .map(|owner| fields_of(&types, &owner))
+    // The RECEIVER's own type first: `let b = Box { value: 1 }` infers
+    // `Box<int>`, so `b.value` is an `int` and saying anything else is a lie.
+    // The constructor layout is the generic DECLARATION (`value: T`) and is
+    // only the fallback, for a receiver whose fields inference did not reach.
+    inferred_fields(symbol, &types)
+        .or_else(|| receiver_type_name(symbol, &types).map(|owner| fields_of(&types, &owner)))
         .unwrap_or_default()
+}
+
+/// The fields of the receiver's own inferred record, at the types this binding
+/// actually instantiated them to.
+///
+/// Reading the constructor layout instead reported the DECLARATION's field
+/// types, so every instantiation of a generic record shared one answer:
+/// `b.value` on a `Box<int>` completed as the layout's type variable. Rendering
+/// that variable politely as `_` still withheld a type the checker had proved —
+/// the same defect as the old `-> Unit` fallback, one surface along
+/// ([TYPE-RENDER-HOLES]).
+fn inferred_fields(symbol: &SymbolInfo, types: &ProgramTypes) -> Option<Vec<CompletionItem>> {
+    let Type::Record { name, fields } = types.let_type(symbol.position)? else {
+        return None;
+    };
+    if fields.is_empty() {
+        return None;
+    }
+    // ORDER comes from the declaration, TYPES from this receiver. The inferred
+    // record stores its fields in a `BTreeMap`, so reading it directly listed
+    // them alphabetically while an annotated binding — which takes the layout
+    // fallback — listed them as declared. The same record then completed in two
+    // different orders depending on whether its binding carried a type nobody
+    // needed to write, which is precisely the "deleting an annotation changes
+    // nothing a reader sees" promise this branch exists to keep.
+    let declared = types.ctors.values().find(|layout| layout.owner == *name);
+    let ordered: Vec<CompletionItem> = declared.map_or_else(
+        || fields.iter().map(|(f, ty)| field_item(f, ty)).collect(),
+        |layout| {
+            layout
+                .fields
+                .iter()
+                .map(|(f, declared_ty)| field_item(f, fields.get(f).unwrap_or(declared_ty)))
+                .collect()
+        },
+    );
+    Some(ordered)
+}
+
+/// One field as a completion item, rendered for a reader.
+fn field_item(name: &str, ty: &Type) -> CompletionItem {
+    CompletionItem {
+        label: name.to_owned(),
+        kind: CompletionKind::Variable,
+        // A field whose type inference genuinely left open is shown as a hole;
+        // `t0` is the checker's private name and means nothing to a reader
+        // ([TYPE-RENDER-HOLES]).
+        detail: Some(osprey_types::render_with_holes(ty)),
+        insert_text: None,
+    }
 }
 
 /// The name of the type a binding holds: its annotation when it has one, else
@@ -182,12 +238,7 @@ fn fields_of(types: &ProgramTypes, owner: &str) -> Vec<CompletionItem> {
             layout
                 .fields
                 .iter()
-                .map(|(name, ty)| CompletionItem {
-                    label: name.clone(),
-                    kind: CompletionKind::Variable,
-                    detail: Some(ty.to_string()),
-                    insert_text: None,
-                })
+                .map(|(name, ty)| field_item(name, ty))
                 .collect()
         })
         .unwrap_or_default()
@@ -242,6 +293,28 @@ mod tests {
     }
 
     const SRC: &str = "fn add(a: int, b: int) -> int = (a + b) ?: 0\nlet total = add(1, 2)\n";
+
+    #[test]
+    fn a_completion_item_carries_the_type_the_checker_proved() {
+        // A completion item's detail is the symbol's rendered type, and it came
+        // from the raw AST — so deleting the inferable `: int` that CLAUDE.md
+        // requires deleting emptied the detail to `fn twice(n)`. Completion,
+        // signature help, the outline and hover are four views of one type and
+        // must agree ([`collect_inferred_symbols`]).
+        let items = at_end("fn twice(n) = n * 2\nlet y = twice(2)\n", "file:///t.osp");
+        let twice = items
+            .iter()
+            .find(|i| i.label == "twice")
+            .expect("`twice` is completable");
+        // `*` is fallible, so the proven return is `Result<int, MathError>` —
+        // which is precisely the detail an author who deleted the annotation
+        // cannot see for themselves.
+        assert_eq!(
+            twice.detail.as_deref(),
+            Some("fn twice(n: int) -> Result<int, MathError>"),
+            "a completion detail must carry the inferred types"
+        );
+    }
 
     #[test]
     fn completion_includes_keywords_and_declarations_at_declaration_position() {
@@ -406,5 +479,162 @@ mod tests {
         let c = items.iter().find(|i| i.label == "c").expect("c completion");
         assert_eq!(c.kind, CompletionKind::Variable);
         assert_eq!(c.detail.as_deref(), Some("int"));
+    }
+
+    #[test]
+    fn a_generic_records_field_completes_at_the_type_this_receiver_instantiated() {
+        // `layout.fields` stores a generic field (`value: T`) as a `Type::Var`
+        // — the layout table is what the BACKEND reads, where a variable means
+        // "boxed representation". Rendering it straight into a completion
+        // detail put the checker's private `t0` in front of a user, the same
+        // artefact [TYPE-RENDER-HOLES] keeps out of hover and the outline.
+        // Member completion reaches the layout by its own path, so it needed
+        // the reader rendering too.
+        let generic = "type Box<T> = { value: T }\nlet b = Box { value: 1 }\nlet v = b.\n";
+        assert_member(
+            &completion(generic, "file:///m.osp", 2, 10, PositionEncoding::Utf16),
+            &[("value", "int")],
+            "a `Box` built from an int instantiates the field to `int`, and the \
+             receiver's own type knows it",
+        );
+        // A CONCRETE declaration is unaffected — the hole must not swallow what
+        // the declaration actually fixed — and a record with MORE than one
+        // field proves the list is the receiver's, in declaration order.
+        let concrete =
+            "type Pt = { x: int, label: string }\nlet p = Pt { x: 1, label: \"a\" }\nlet v = p.\n";
+        assert_member(
+            &completion(concrete, "file:///c.osp", 2, 10, PositionEncoding::Utf16),
+            &[("x", "int"), ("label", "string")],
+            "every declared field, at its declared type, in DECLARATION order — \
+             the same list an annotated binding gets",
+        );
+    }
+
+    /// Assert a member-completion result WHOLE: the exact set of labels, and
+    /// for each item its kind, detail and insert text.
+    ///
+    /// Checking one field's `detail` and stopping would pass on a list that
+    /// also offered the whole symbol table, offered a field as a function, or
+    /// leaked an inference name into a neighbour — `origin.` is a promise that
+    /// only `origin`'s fields follow.
+    fn assert_member(items: &[CompletionItem], expected: &[(&str, &str)], why: &str) {
+        assert_eq!(
+            items.iter().map(|i| i.label.as_str()).collect::<Vec<_>>(),
+            expected.iter().map(|(name, _)| *name).collect::<Vec<_>>(),
+            "{why}"
+        );
+        for (item, (name, ty)) in items.iter().zip(expected) {
+            assert_eq!(item.detail.as_deref(), Some(*ty), "{name}: {why}");
+            assert_eq!(item.kind, CompletionKind::Variable, "{name} is a value");
+            assert_eq!(item.insert_text, None, "{name} inserts its own label");
+            assert!(
+                !item.detail.as_deref().is_some_and(mentions_inference_name),
+                "{name}: a private inference name reached a reader"
+            );
+        }
+    }
+
+    /// Whether `s` mentions an inference name (`t0`, `t42`) — a `t` starting an
+    /// identifier and followed by a digit.
+    fn mentions_inference_name(s: &str) -> bool {
+        let is_ident = |c: char| c.is_alphanumeric() || c == '_';
+        s.match_indices('t').any(|(at, _)| {
+            s[..at].chars().next_back().is_none_or(|c| !is_ident(c))
+                && s[at + 1..]
+                    .chars()
+                    .next()
+                    .is_some_and(|c| c.is_ascii_digit())
+        })
+    }
+
+    #[test]
+    fn the_constructor_layout_fallback_holes_an_open_field_and_keeps_a_fixed_one() {
+        // `member_items` answers two ways and only the first was covered: the
+        // receiver's own inferred record (instantiated), else the constructor
+        // LAYOUT — which stores a generic field as a `Type::Var`, because that
+        // table is what the BACKEND reads, where a variable means the boxed
+        // representation. `field_item` must render it for a person
+        // ([TYPE-RENDER-HOLES]); nothing asserted that, so restoring
+        // `ty.to_string()` there would have put `t0` in front of a user with
+        // every other test still green. Covers #218.
+        //
+        // An ANNOTATED binding is what reaches the fallback: the annotation
+        // names the type, so the instantiated record inference built for the
+        // initializer is not what answers.
+
+        // Annotated + GENERIC: the annotation `Box` fixes nothing about
+        // `value`, so a hole is the honest answer.
+        assert_member(
+            &completion(
+                "type Box<T> = { value: T }\nlet b: Box = Box { value: 1 }\nlet v = b.\n",
+                "file:///fallback-generic.osp",
+                2,
+                10,
+                PositionEncoding::Utf16,
+            ),
+            &[("value", "_")],
+            "the layout fallback holes a field the declaration leaves open",
+        );
+
+        // Annotated + CONCRETE, several fields: the fallback must not blank
+        // everything it touches, and it must offer the whole record.
+        assert_member(
+            &completion(
+                "type Pt = { x: int, label: string }\nlet p: Pt = Pt { x: 1, label: \"a\" }\nlet v = p.\n",
+                "file:///fallback-concrete.osp",
+                2,
+                10,
+                PositionEncoding::Utf16,
+            ),
+            // Declaration order, and the receiver path below now agrees. It
+            // did not: that path read the inferred record's `BTreeMap` and
+            // came out alphabetical, so one record completed two different
+            // ways depending on whether its binding carried an annotation
+            // nobody needed to write.
+            &[("x", "int"), ("label", "string")],
+            "a fixed field survives the fallback unchanged, in declaration order",
+        );
+
+        // THE CONTRAST: the same generic record with the annotation DELETED
+        // takes the receiver path, which knows the instantiation and answers
+        // `int`. These two differ by the annotation alone, so this pins that
+        // the paths give genuinely different answers rather than one answer
+        // reached twice — and that deleting an annotation never loses
+        // information, which is what the house style promises.
+        assert_member(
+            &completion(
+                "type Box<T> = { value: T }\nlet b = Box { value: 1 }\nlet v = b.\n",
+                "file:///receiver-path.osp",
+                2,
+                10,
+                PositionEncoding::Utf16,
+            ),
+            &[("value", "int")],
+            "an inferred receiver reports what it instantiated, never a hole",
+        );
+
+        // And the two paths agree on the LIST, differing only where they must:
+        // the type the annotation left open. Asserting the orders equal is the
+        // point — they were `[x, label]` and `[label, x]`, so a contributor
+        // obeying CLAUDE.md and deleting `: Pt` silently reordered their own
+        // completion popup.
+        let labels = |src: &str, uri: &str| {
+            completion(src, uri, 2, 10, PositionEncoding::Utf16)
+                .into_iter()
+                .map(|i| i.label)
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(
+            labels(
+                "type Pt = { x: int, label: string }\nlet p: Pt = Pt { x: 1, label: \"a\" }\nlet v = p.\n",
+                "file:///order-annotated.osp",
+            ),
+            labels(
+                "type Pt = { x: int, label: string }\nlet p = Pt { x: 1, label: \"a\" }\nlet v = p.\n",
+                "file:///order-inferred.osp",
+            ),
+            "deleting an inferable annotation must not reorder the fields a \
+             reader is offered"
+        );
     }
 }

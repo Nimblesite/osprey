@@ -160,7 +160,8 @@ fn symbol_hover(s: &SymbolInfo, program: &Program, flavor: Flavor) -> String {
 }
 
 /// A function's signature with every slot the author left blank filled in by
-/// the checker: unannotated parameters and an unwritten return type.
+/// the checker ([`crate::analysis::fill_inferred`], the same path `--symbols`
+/// answers from, so hover and the outline cannot disagree).
 ///
 /// Osprey is Hindley-Milner and the house style omits every inferable
 /// annotation, so blank slots are the COMMON case, not the exception. Rendering
@@ -169,47 +170,10 @@ fn symbol_hover(s: &SymbolInfo, program: &Program, flavor: Flavor) -> String {
 /// about the function). Hover is the main way a reader recovers the types the
 /// source deliberately omits, so it must answer from inference.
 /// Implements [LSP-HOVER-INFERRED-SIGNATURE].
-/// Whether a checker-supplied type is safe to show a reader.
-///
-/// An inferred type that still holds a type VARIABLE is not an answer — it is
-/// the checker's private placeholder, and rendering it puts `List<t5>` in a
-/// tooltip. The name is unstable (it moves when an unrelated line is edited)
-/// and means nothing outside the inference run that produced it, so a generic
-/// parameter is better left as the author wrote it: bare.
-fn resolved(ty: &osprey_types::Type) -> bool {
-    !osprey_types::has_type_var(ty)
-}
-
 fn inferred_signature(s: &SymbolInfo, sig: &str, program: &Program) -> String {
-    let complete = s.return_type.is_some() && s.parameters.iter().all(|(_, t)| !t.is_empty());
-    if complete {
-        return sig.to_string();
-    }
-    let types = osprey_types::infer_program(program);
-    let inferred = types.param_types(&s.name).unwrap_or_default();
-    let shown: Vec<String> = s
-        .parameters
-        .iter()
-        .enumerate()
-        .map(|(slot, (name, written))| {
-            let ty = match (written.is_empty(), inferred.get(slot)) {
-                (true, Some(found)) if resolved(found) => found.to_string(),
-                _ => written.clone(),
-            };
-            crate::analysis::render_param(&(name.clone(), ty))
-        })
-        .collect();
-    let ret = s
-        .return_type
-        .clone()
-        .or_else(|| {
-            types
-                .return_type(&s.name)
-                .filter(|found| resolved(found))
-                .map(ToString::to_string)
-        })
-        .unwrap_or_else(|| String::from("Unit"));
-    format!("fn {}({}) -> {ret}", s.name, shown.join(", "))
+    let mut filled = s.clone();
+    crate::analysis::fill_inferred(&mut filled, &osprey_types::infer_program(program));
+    filled.signature.unwrap_or_else(|| sig.to_string())
 }
 
 /// The type shown for a non-function symbol: its declared/category type, or —
@@ -221,7 +185,7 @@ fn displayed_type(s: &SymbolInfo, program: &Program) -> String {
     }
     osprey_types::infer_program(program)
         .let_type(s.position)
-        .map_or_else(String::new, ToString::to_string)
+        .map_or_else(String::new, osprey_types::render_with_holes)
 }
 
 /// What a name means at the place it is *written*, when no declaration of it is
@@ -277,11 +241,14 @@ fn enclosing_function(symbols: &[SymbolInfo], line: u32) -> Option<&SymbolInfo> 
         .max_by_key(|s| s.position.map_or(0, |p| p.line))
 }
 
+/// The checker's type for one parameter, rendered the way a declaration hover
+/// renders it — holes and all, so the two views cannot disagree
+/// ([TYPE-RENDER-HOLES]).
 fn inferred_parameter(program: &Program, function: &str, index: usize) -> Option<String> {
     osprey_types::infer_program(program)
         .param_types(function)?
         .get(index)
-        .map(ToString::to_string)
+        .map(osprey_types::render_with_holes)
 }
 
 #[cfg(test)]
@@ -291,12 +258,30 @@ mod tests {
     const SRC: &str = "fn add(a: int, b: int) -> int = (a + b) ?: 0\nlet total = add(1, 2)\n";
 
     #[test]
-    fn an_inferred_signature_fills_resolved_slots_and_leaves_generic_ones_bare() {
+    fn hovering_a_parameter_in_the_body_holes_it_exactly_as_the_declaration_does() {
+        // The declaration and the body are two views of ONE type, so they must
+        // spell it the same way. `inferred_parameter` and `displayed_type`
+        // rendered with `ToString` while the declaration path went through
+        // `render_with_holes`, so hovering `xs` on line 0 showed `List<_>` and
+        // hovering the same `xs` on line 2 showed `List<t5>` — the artefact
+        // [TYPE-RENDER-HOLES] exists to keep away from a reader, reachable by
+        // moving the cursor four lines.
+        let src = "fn classify(xs) = match xs {\n  [] => 0\n  [head, ...tail] => listLength(xs)\n}\nlet e = classify([1])\n";
+        let in_body = hover(src, "file:///c.osp", 2, 32, U16).expect("hover over `xs` in the body");
+        assert!(
+            !in_body.contains("t5") && !in_body.contains("<t"),
+            "a body hover must not leak an inference artefact: {in_body}"
+        );
+        assert!(
+            in_body.contains("List<_>"),
+            "a body hover holes the unsolved element exactly as the declaration does: {in_body}"
+        );
+    }
+
+    #[test]
+    fn an_inferred_signature_fills_resolved_slots_and_holes_the_unsolved_ones() {
         // Implements [LSP-HOVER-INFERRED-SIGNATURE]. `r` resolves to a concrete
-        // `int`, so the reader gets it. `xs` stays a type VARIABLE, and `t5` is
-        // an inference artefact whose name shifts when an unrelated line moves —
-        // showing it would be worse than showing nothing, so the parameter is
-        // left exactly as written.
+        // `int`, so the reader gets it.
         let concrete = hover(
             "fn area(r) = r * r\nlet a = area(5)\n",
             "file:///a.osp",
@@ -306,6 +291,11 @@ mod tests {
         )
         .expect("hover over `area`");
         assert!(concrete.contains("fn area(r: int)"), "{concrete}");
+        // `xs` is proven to be a LIST; only its element type stays open. The
+        // choice used to be `List<t5>` or nothing, and nothing won, because
+        // `t5` is an inference artefact whose number shifts when an unrelated
+        // line moves. A hole is neither: it keeps everything the checker proved
+        // and names nothing it did not ([`osprey_types::render_with_holes`]).
         let generic = hover(
             "fn classify(xs) = match xs {\n  [] => 0\n  [head, ...tail] => 1\n}\nlet e = classify([])\n",
             "file:///b.osp",
@@ -314,10 +304,15 @@ mod tests {
             U16,
         )
         .expect("hover over `classify`");
-        assert!(generic.contains("fn classify(xs) -> int"), "{generic}");
         assert!(
-            !generic.contains("xs:"),
-            "an unresolved parameter stays bare: {generic}"
+            generic.contains("fn classify(xs: List<_>) -> int"),
+            "the proven `List` must survive with a hole for its element: {generic}"
+        );
+        // The artefact itself stays banned, which is what the bare rendering
+        // was really protecting.
+        assert!(
+            !generic.contains("t5") && !generic.contains("<t"),
+            "an inference artefact must never reach a reader: {generic}"
         );
     }
 
