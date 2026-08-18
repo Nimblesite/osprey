@@ -5,6 +5,7 @@
 //! enums means the type checker and codegen get compiler-enforced totality for
 //! free: adding a variant breaks every consumer until it handles the new form.
 
+pub mod canonical;
 mod doc;
 mod generics;
 mod lower_static;

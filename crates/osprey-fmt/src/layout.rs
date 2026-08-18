@@ -8,12 +8,12 @@
 //! siblings. Blank and comment lines are layout-transparent; a standalone
 //! comment takes the depth of the code it precedes.
 
-use crate::scan::{scan_line, Line};
+use crate::scan::{scan_source, Line};
 use crate::{finalize, indent_to};
 
 /// Reformat ML-flavor `src`, re-gridding its layout to a four-space step.
 pub(crate) fn format(src: &str) -> String {
-    let lines: Vec<Line> = src.split('\n').map(scan_line).collect();
+    let lines: Vec<Line> = scan_source(src);
     let depths = code_depths(&lines);
     let out = render(&lines, &depths);
     finalize(&out)

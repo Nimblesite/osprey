@@ -466,14 +466,50 @@ shipped syntax; all of them mean this plan is not retired.
       what `compile_err` is for. Without it nothing failed if `finish_phi` went
       back to returning `Value::unit()` and silently turning type errors into unit
       expressions.
-- [ ] **The interpolation-fragment positional-table scoping guard has no test.**
-      `crates/osprey-syntax/src/positional.rs` (`DEPTH`/`Scope`): the behaviour is
-      real but nothing fails if the guard is deleted. A cheap golden addition.
-- [ ] **The formatter corpus idempotency assertion is partly self-fulfilling.**
-      `format_source` silently returns its input when `preserves_meaning` fails,
-      so `crates/osprey-fmt/tests/corpus.rs` cannot distinguish "formatted
-      identically" from "declined to format". The parse-clean half of the
-      guarantee is real; the idempotency half needs the bail to be observable.
+- [x] **The interpolation-fragment positional-table scoping guard now has
+      tests.** Two, in `crates/osprey-syntax/src/positional.rs`, each verified to
+      go red when the behaviour it pins is removed:
+      `an_interpolated_fragment_folds_against_the_enclosing_units_constructors`
+      fails (the `inside` binding stops folding) when `install`'s outermost guard
+      is deleted, and `a_units_table_does_not_outlive_its_lowering` fails when
+      the table's isolation is broken. The second needed both clear sites removed
+      to go red — `install`'s clear and `Scope::drop`'s are redundant with each
+      other — so it pins the contract rather than either line.
+- [x] **The formatter's bail is observable, and it was hiding two defects.**
+      `format_source` returned its input verbatim when the meaning-preservation
+      guard rejected the candidate, which `crates/osprey-fmt/tests/corpus.rs`
+      could not tell from "already formatted". A rejection is now the error
+      `osprey_fmt::DECLINED`, and the corpus test collects **every** failing file
+      instead of stopping at the first. Turning it on lit up **58 of the corpus's
+      ~250 files** — `osprey fmt` had been a silent no-op on every one of them:
+      - **The guard compared source positions.** `Program`'s derived `PartialEq`
+        includes `Position`, so any reindentation that *moved* a positioned node
+        — which is the formatter's entire job — failed the guard and was
+        discarded. 56 of the 58 diverged on nothing but `line`/`column`. The
+        guard now compares `osprey_ast::canonical::without_positions`, one shared
+        position-blind rendering that also replaced the two hand-copied
+        `scrub_positions` helpers in `module_equiv.rs` and
+        `cross_flavor_equiv.rs`. Being exact where those were sloppy, it
+        immediately caught a real asymmetry they had masked: Default records a
+        span on a nested `fn` `TypeExpr` in a signature and ML does not. Position
+        *presence* is parsing metadata, so it is erased too, and the reason is
+        stated where the erasing happens.
+      - **The Default formatter reindented the inside of multi-line string
+        literals.** `scan.rs` scanned line by line and lost the "still inside a
+        string" fact at the newline, so continuation lines were treated as code:
+        their indentation was rewritten and their interior double spaces
+        collapsed. That is source corruption — it changes what the program
+        prints — and the only thing that had ever stopped it reaching disk was
+        the silent bail. `scan_source` now merges the physical lines a literal
+        spans into one logical line, so the literal moves as a unit and only the
+        line that opens it is indented; `copy_string`/`copy_interpolation` report
+        termination to make that decidable. The rule is stated in the crate's
+        module docs, not a spec ID: there is no formatter spec to point at.
+        Pinned by
+        `a_multi_line_string_literal_is_not_reindented` (verified red against the
+        old per-line scan) plus three `scan.rs` unit tests, and end to end by
+        `examples/wasm/hello.osp`, whose four-line banner is byte-identical
+        through `osprey fmt`.
 
 ## TODO
 

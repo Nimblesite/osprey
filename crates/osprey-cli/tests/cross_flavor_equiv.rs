@@ -24,25 +24,11 @@ fn canonical(src: &str, flavor: Flavor) -> String {
         "unexpected {flavor} syntax errors: {:?}",
         parsed.errors
     );
-    scrub_positions(&format!("{:?}", parsed.program))
+    osprey_ast::canonical::without_positions(&parsed.program)
 }
 
 /// Drop every `Position { line: N, column: M }` from a debug string. `Position`
 /// has no nested braces, so the next `}` always closes it.
-fn scrub_positions(debug: &str) -> String {
-    let mut out = String::with_capacity(debug.len());
-    let mut rest = debug;
-    while let Some(idx) = rest.find("Position {") {
-        out.push_str(&rest[..idx]);
-        rest = &rest[idx..];
-        match rest.find('}') {
-            Some(close) => rest = &rest[close + 1..],
-            None => break,
-        }
-    }
-    out.push_str(rest);
-    out
-}
 
 #[test]
 fn doc_comments_lower_identically_across_flavors() {
