@@ -137,8 +137,10 @@ function collectOutput(stream: Readable): () => string {
 // truncate verbose test output, and `detached` enables the group kill above. A
 // spawn failure (e.g. ENOENT) maps to exit -1 with the message in stderr.
 // Cancellation kills the process tree AND settles the promise immediately, so
-// a run always reaches its end even if the child were to linger. Exported: the
-// profiler command ([PROF-VSCODE-FLAME]) launches the CLI through it too.
+// a run always reaches its end even if the child were to linger. The child's
+// stdin is closed at once, so a program that reads input sees EOF rather than
+// blocking on a pipe no one writes to. Exported: the profiler command
+// ([PROF-VSCODE-FLAME]) launches the CLI through it too.
 export function runCompiler(
   command: string,
   args: readonly string[],
@@ -148,6 +150,10 @@ export function runCompiler(
 ): Promise<ExecResult> {
   return new Promise((resolve) => {
     const child = spawn(command, [...args], { cwd, env, detached: POSIX });
+    // Close the child's stdin immediately: nothing is ever written to it, and a
+    // compiler that reads stdin (`input()`) would otherwise block forever on a
+    // pipe that never reaches EOF, hanging the run until it is cancelled.
+    child.stdin?.end();
     const stdout = collectOutput(child.stdout);
     const stderr = collectOutput(child.stderr);
     let spawnFailure = "";
