@@ -1,0 +1,1380 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Osprey benchmarks</title>
+<style>/* ============================================================================
+   Osprey design tokens — Material-3 dark theme (authoritative: docs/designs/*).
+   One source of truth for colour, type, spacing, radius. Dark-only by design.
+   ============================================================================ */
+:root {
+  /* ---- Surfaces ---- */
+  --bg: #0c1325;
+  --surface: #0c1325;
+  --surface-lowest: #070d1f;
+  --surface-low: #151b2d;
+  --surface-container: #191f32;
+  --surface-high: #23293d;
+  --surface-highest: #2e3448;
+
+  /* ---- Foreground ---- */
+  --on-surface: #dce1fb;
+  --on-surface-variant: #bdc8cd;
+
+  /* ---- Accents ---- */
+  --primary: #bdeeff;
+  --primary-container: #77d7f4;
+  --on-primary: #003642;
+  --on-primary-container: #005d70;
+  --secondary: #bbc5ec;
+  --secondary-container: #3e4868;
+  --on-secondary-container: #adb7dd;
+  --tertiary: #ffe1c0;
+  --tertiary-dim: #fbba62;
+  --tertiary-container: #ffbe65;
+  --outline: #889297;
+  --outline-variant: #3e484c;
+  --error: #ffb4ab;
+
+  /* ---- Glass panel ---- */
+  --glass-bg: rgba(13, 24, 54, 0.7);
+  --glass-border: rgba(255, 255, 255, 0.06);
+  --glass-blur: blur(12px);
+
+  /* ---- Typography ---- */
+  --font-sans: "Geist", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Inter, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Monaco, monospace;
+
+  --fs-display: clamp(2.4rem, 5.2vw, 4rem);
+  --fs-h1: clamp(1.9rem, 4vw, 2.5rem);
+  --fs-h2: clamp(1.6rem, 3vw, 2.1rem);
+  --fs-h3: 1.25rem;
+  --fs-body-lg: 1.125rem;
+  --fs-body: 1rem;
+  --fs-code: 0.875rem;
+  --fs-label: 0.75rem;
+  --lh-tight: 1.2;
+  --lh-body: 1.6;
+
+  /* ---- Spacing (techdoc structural CSS reads --space-*) ---- */
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.25rem;
+  --space-6: 1.5rem;
+  --space-8: 2rem;
+  --space-10: 2.5rem;
+  --space-12: 3rem;
+  --space-16: 4rem;
+  --space-20: 5rem;
+  --space-24: 6rem;
+
+  /* ---- Layout (techdoc structural CSS reads these) ---- */
+  --max-width: 1200px;
+  --content-width: 820px;
+  --sidebar-width: 250px;
+  --header-height: 64px;
+  --gutter: 24px;
+  --pad-x: clamp(1rem, 4vw, 3rem);
+
+  /* ---- Radius ---- */
+  --radius-sm: 6px;
+  --radius: 10px;
+  --radius-lg: 14px;
+  --radius-pill: 999px;
+
+  /* ---- Motion ---- */
+  --transition-fast: 150ms ease;
+  --transition: 250ms ease;
+
+  /* ---- techdoc colour contract (its structural CSS references these) ---- */
+  --color-bg: var(--bg);
+  --color-text: var(--on-surface);
+  --color-primary: var(--primary-container);
+  --color-border: var(--outline-variant);
+  --color-muted: var(--on-surface-variant);
+}
+
+/* ============================================================================
+   Base elements — dark Material-3 surface. Content is always visible (no JS
+   dependency); entrance motion is additive only.
+   ============================================================================ */
+html {
+  scroll-behavior: smooth;
+  scroll-padding-top: calc(var(--header-height) + var(--space-4));
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  font-family: var(--font-sans);
+  font-size: var(--fs-body);
+  line-height: var(--lh-body);
+  color: var(--on-surface);
+  background-color: var(--bg);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+img,
+svg,
+video {
+  max-width: 100%;
+  height: auto;
+}
+
+/* Centred content column shared by every section. */
+.container {
+  width: 100%;
+  max-width: var(--max-width);
+  margin-inline: auto;
+  padding-inline: var(--pad-x);
+}
+
+/* ---- Headings ---- */
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  color: var(--on-surface);
+  line-height: var(--lh-tight);
+  font-weight: 700;
+  margin: 0 0 var(--space-4);
+  letter-spacing: -0.01em;
+}
+h1 { font-size: var(--fs-h1); }
+h2 { font-size: var(--fs-h2); }
+h3 { font-size: var(--fs-h3); }
+h4 { font-size: 1.05rem; }
+
+p {
+  margin: 0 0 var(--space-4);
+}
+
+strong { color: var(--on-surface); font-weight: 600; }
+em { color: inherit; }
+
+/* ---- Links ---- */
+a {
+  color: var(--primary-container);
+  text-decoration: none;
+  transition: color var(--transition-fast);
+}
+a:hover { color: var(--primary); }
+
+/* ---- Lists ---- */
+ul,
+ol { margin: 0 0 var(--space-4); padding-left: 1.4rem; }
+li { margin: 0.35rem 0; }
+
+/* ---- Inline + block code ---- */
+code {
+  font-family: var(--font-mono);
+  font-size: 0.9em;
+}
+:not(pre) > code {
+  background: var(--surface-container);
+  color: var(--primary);
+  padding: 0.15em 0.4em;
+  border-radius: var(--radius-sm);
+}
+pre {
+  font-family: var(--font-mono);
+  font-size: var(--fs-code);
+  line-height: 1.6;
+  background: var(--surface-lowest);
+  border: 1px solid var(--outline-variant);
+  border-radius: var(--radius);
+  padding: var(--space-5);
+  margin: var(--space-6) 0;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+pre code { background: none; padding: 0; font-size: inherit; color: inherit; }
+
+/* ---- Buttons ---- */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  font-family: inherit;
+  font-weight: 600;
+  font-size: 0.95rem;
+  line-height: 1;
+  padding: 0.7rem 1.25rem;
+  border-radius: var(--radius);
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: transform var(--transition-fast), background var(--transition-fast),
+    box-shadow var(--transition-fast), border-color var(--transition-fast);
+}
+.btn:hover { transform: translateY(-1px); }
+.btn-lg { padding: 0.95rem 1.6rem; font-size: 1rem; }
+
+.btn-primary {
+  background: var(--primary);
+  color: var(--on-primary);
+}
+.btn-primary:hover {
+  color: var(--on-primary);
+  box-shadow: 0 0 24px rgba(119, 215, 244, 0.35);
+}
+.btn-secondary {
+  background: transparent;
+  border-color: var(--primary-container);
+  color: var(--primary);
+}
+.btn-secondary:hover {
+  background: rgba(119, 215, 244, 0.1);
+  color: var(--primary);
+}
+
+/* ---- Selection + scrollbars ---- */
+::selection {
+  background: var(--primary-container);
+  color: var(--on-primary);
+}
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: var(--surface-lowest); }
+::-webkit-scrollbar-thumb {
+  background: var(--surface-highest);
+  border-radius: var(--radius-pill);
+}
+::-webkit-scrollbar-thumb:hover { background: var(--outline-variant); }
+
+/* ---- Entrance motion (additive — content is visible without JS) ---- */
+@media (prefers-reduced-motion: no-preference) {
+  .animate-on-scroll {
+    animation: fade-up 0.7s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+  }
+  @keyframes fade-up {
+    from { opacity: 0; transform: translateY(16px); }
+    to { opacity: 1; transform: none; }
+  }
+}
+
+/* ============================================================================
+   Components — site shell, home sections, prose pages, blog index.
+   Built on the techdoc structural shell (.site-header/.nav/.site-footer) and
+   the existing page markup. Authoritative design: docs/designs/*.
+   ============================================================================ */
+
+/* ============================ Site shell ================================== */
+.site-header {
+  background: rgba(12, 19, 37, 0.82);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  border-bottom: 1px solid rgba(62, 72, 76, 0.4);
+}
+.nav { height: var(--header-height); }
+
+.logo {
+  display: inline-flex;
+  align-items: center;
+  min-height: 48px;
+  gap: 0.55rem;
+  font-weight: 700;
+  font-size: 1.3rem;
+  letter-spacing: -0.02em;
+  color: var(--primary);
+}
+.logo:hover { color: var(--primary); }
+.logo::before {
+  content: "";
+  width: 30px;
+  height: 30px;
+  background: url("/assets/images/logo.png") center / contain no-repeat;
+  flex-shrink: 0;
+}
+
+.nav-links { gap: var(--space-6); align-items: center; }
+.nav-link {
+  color: var(--on-surface-variant);
+  font-size: 0.95rem;
+  font-weight: 500;
+  padding-bottom: 2px;
+  border-bottom: 2px solid transparent;
+  transition: color var(--transition-fast);
+}
+.nav-link:hover { color: var(--primary); }
+.nav-link.active {
+  color: var(--primary);
+  font-weight: 700;
+  border-bottom-color: var(--primary);
+}
+
+/* Dark-only design — the theme toggle has no second theme to switch to. */
+.theme-toggle { display: none; }
+
+.mobile-menu-toggle {
+  color: var(--on-surface);
+  min-width: 48px;
+  min-height: 48px;
+  align-items: center;
+  justify-content: center;
+}
+.mobile-menu-toggle span { background: currentColor; }
+
+/* ---- Footer ---- */
+.site-footer {
+  background: var(--surface-lowest);
+  border-top: 1px solid var(--outline-variant);
+}
+.footer-section h3 {
+  font-family: var(--font-mono);
+  font-size: var(--fs-label);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--on-surface);
+  margin-bottom: var(--space-4);
+}
+.footer-section a {
+  color: var(--on-surface-variant);
+  font-size: 0.9rem;
+}
+.footer-section a:hover { color: var(--primary); }
+.footer-bottom {
+  border-top: 1px solid var(--outline-variant);
+  color: var(--on-surface-variant);
+  font-size: 0.85rem;
+}
+
+/* ============================ Hero ======================================= */
+/* Fill the viewport (minus the in-flow sticky header) before any scroll. */
+.hero {
+  min-height: calc(100dvh - var(--header-height));
+  display: flex;
+  align-items: center;
+  padding-block: clamp(2rem, 5vh, 4rem);
+}
+.hero .container {
+  display: grid;
+  grid-template-columns: 1.05fr 1fr;
+  gap: clamp(2rem, 5vw, 4rem);
+  align-items: center;
+  width: 100%;
+}
+/* Grid/flex children holding non-wrapping code must be allowed to shrink,
+   or `white-space: pre` blows the column past the viewport. */
+.hero .container > *,
+.two-column > *,
+.grid > *,
+.philosophy-grid > *,
+.showcase-grid > *,
+.install-grid > * { min-width: 0; }
+.code-example,
+.code-example pre,
+.install-code pre { max-width: 100%; }
+.hero-content { display: flex; flex-direction: column; gap: var(--space-6); }
+.hero-title {
+  font-size: var(--fs-display);
+  font-weight: 700;
+  line-height: 1.05;
+  letter-spacing: -0.03em;
+  margin: 0;
+}
+.hero-title .accent,
+.hero-title strong { color: var(--primary); font-weight: 700; }
+.hero-subtitle {
+  font-size: var(--fs-body-lg);
+  color: var(--on-surface-variant);
+  max-width: 38ch;
+  margin: 0;
+}
+.hero-actions { display: flex; flex-wrap: wrap; gap: var(--space-4); }
+.hero-code { min-width: 0; display: flex; flex-direction: column; gap: var(--space-4); }
+.hero-code-caption {
+  font-size: var(--fs-code);
+  color: var(--on-surface-variant);
+  margin: 0;
+}
+.flavor-split { display: grid; gap: var(--space-4); min-width: 0; }
+.flavor-split .code-example { min-width: 0; }
+.flavor-tag {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-5);
+  font-size: var(--fs-label);
+  letter-spacing: 0.02em;
+  font-weight: 700;
+  color: var(--primary);
+  background: var(--surface-highest);
+  border-bottom: 1px solid var(--outline-variant);
+}
+.flavor-tag span { color: var(--on-surface-variant); font-weight: 500; font-family: var(--font-mono); }
+/* These code windows label the flavor themselves, so drop the traffic-light chrome. */
+.flavor-split .code-example::before { display: none; }
+.flavor-split .code-example pre { font-size: 0.82rem; }
+
+/* ---- Code window chrome (home only; prose code is styled separately) ---- */
+.code-example {
+  background: var(--surface-lowest);
+  border: 1px solid var(--outline-variant);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.45);
+}
+.code-example::before {
+  content: "";
+  display: block;
+  height: 38px;
+  background-color: var(--surface-highest);
+  border-bottom: 1px solid var(--outline-variant);
+  background-image:
+    radial-gradient(circle 5px at 20px 19px, #ff5f57 96%, transparent),
+    radial-gradient(circle 5px at 40px 19px, #febc2e 96%, transparent),
+    radial-gradient(circle 5px at 60px 19px, #28c840 96%, transparent);
+}
+.code-example pre,
+.code-example pre[class*="language-"] {
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  padding: var(--space-5);
+}
+
+/* ============================ Sections =================================== */
+.section { padding-block: clamp(3rem, 7vw, 6rem); }
+.section-alt {
+  background: var(--surface-low);
+  border-block: 1px solid rgba(62, 72, 76, 0.4);
+}
+.section-title {
+  font-size: var(--fs-h2);
+  text-align: center;
+  margin-bottom: var(--space-4);
+}
+.section-subtitle {
+  text-align: center;
+  max-width: 60ch;
+  margin: 0 auto var(--space-12);
+  font-size: var(--fs-body-lg);
+  color: var(--on-surface-variant);
+}
+
+/* Two-column feature rows */
+.two-column {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: clamp(2rem, 5vw, 4rem);
+  align-items: center;
+}
+.two-column + .two-column { margin-top: clamp(2.5rem, 6vw, 4.5rem); }
+.two-column .content h2,
+.two-column .content h3 { margin-bottom: var(--space-4); }
+.two-column .content p { color: var(--on-surface-variant); }
+.two-column .content ul { color: var(--on-surface-variant); }
+.two-column .content li::marker { color: var(--primary-container); }
+
+/* ---- Card grids (features / philosophy) ---- */
+.grid,
+.philosophy-grid {
+  display: grid;
+  gap: var(--gutter);
+}
+.grid { grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); }
+.philosophy-grid { grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); }
+
+/* Code is NEVER squeezed into narrow columns — it clips. Real-world example
+   cards stack full-width; the heading sits beside a generous code column so
+   every line has room. Collapses to a single column on narrow screens. */
+.showcase-grid { display: flex; flex-direction: column; gap: var(--gutter); }
+.showcase-grid .card-code {
+  display: grid;
+  grid-template-columns: minmax(160px, 0.45fr) minmax(0, 2fr);
+  gap: clamp(1rem, 3vw, 2.5rem);
+  align-items: start;
+}
+.showcase-grid .card-code h3 { margin: 0; padding-top: var(--space-1); }
+.showcase-grid .card-code .code-example { margin-top: 0; }
+@media (max-width: 900px) {
+  .showcase-grid .card-code { grid-template-columns: 1fr; }
+  .showcase-grid .card-code .code-example { margin-top: var(--space-4); }
+}
+
+.card,
+.card-code {
+  background: var(--glass-bg);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-8);
+  transition: border-color var(--transition), transform var(--transition);
+}
+.card:hover,
+.card-code:hover {
+  border-color: rgba(119, 215, 244, 0.4);
+  transform: translateY(-3px);
+}
+.card h3,
+.card-code h3 { margin-bottom: var(--space-3); }
+.card p { color: var(--on-surface-variant); margin: 0; }
+.card-code .code-example { margin-top: var(--space-4); box-shadow: none; }
+
+/* ============================ Install grid =============================== */
+.blue-box-installation { padding-block: clamp(3rem, 7vw, 5rem); }
+.install-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: var(--gutter);
+}
+.install-card {
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-6);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+.install-card.primary { border-color: rgba(119, 215, 244, 0.35); }
+.install-card h3 { margin: 0; font-size: 1.1rem; }
+.install-card p { color: var(--on-surface-variant); margin: 0; flex: 1; }
+.install-card .btn { align-self: flex-start; }
+.install-code pre,
+.install-code pre[class*="language-"] {
+  margin: var(--space-2) 0 0;
+  padding: var(--space-4);
+  font-size: 0.82rem;
+}
+/* Shell commands (e.g. the long scoop URL) wrap rather than clip. */
+.install-code pre,
+.install-code pre[class*="language-"],
+.install-code code,
+.install-code code[class*="language-"] {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* ============================ Blue-box CTA bands ========================== */
+.blue-box {
+  padding-block: clamp(3rem, 7vw, 6rem);
+  background: linear-gradient(135deg, var(--surface-low) 0%, var(--surface-container) 100%);
+  border-block: 1px solid rgba(62, 72, 76, 0.4);
+}
+.blue-box-content {
+  max-width: 640px;
+  margin-inline: auto;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+.blue-box-content p { color: var(--on-surface-variant); margin: 0; }
+.blue-box-actions {
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+}
+
+/* ============================ Comparison table =========================== */
+.comparison-table { overflow-x: auto; }
+.comparison-table table {
+  width: 100%;
+  min-width: 40rem;
+  border-collapse: collapse;
+  border: 1px solid var(--outline-variant);
+  border-radius: var(--radius);
+  overflow: hidden;
+  font-size: 0.95rem;
+}
+/* `table` in the selector keeps these ahead of the `.prose td` defaults that
+   would otherwise win on a source-order tie inside an `<article class="prose">`. */
+.comparison-table table th,
+.comparison-table table td {
+  padding: var(--space-2) var(--space-4);
+  text-align: left;
+  border-bottom: 1px solid var(--outline-variant);
+}
+.comparison-table thead th {
+  background: var(--surface-high);
+  color: var(--on-surface);
+  font-family: var(--font-mono);
+  font-size: var(--fs-label);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+.comparison-table tbody td { color: var(--on-surface-variant); }
+.comparison-table tbody td:first-child { color: var(--on-surface); font-weight: 600; }
+.comparison-table tbody tr:last-child td { border-bottom: 0; }
+.comparison-table tbody tr:hover td { background: rgba(46, 52, 72, 0.4); }
+
+/* ---- Benchmark report (shared by benchmarks/report.py + /benchmarks page) ---- */
+.comparison-table th.num,
+.comparison-table td.num {
+  text-align: right;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.comparison-table thead th.col-osprey { background: var(--primary-container); color: var(--on-primary); }
+.comparison-table tbody td.col-osprey { background: rgba(119, 215, 244, 0.08); }
+.comparison-table tbody td.best { color: var(--on-surface); font-weight: 600; }
+.comparison-table tbody td.win { color: var(--tertiary-dim); font-weight: 700; }
+.bench-summary { display: flex; flex-wrap: wrap; gap: var(--space-3); margin: var(--space-6) 0; }
+.bench-card {
+  flex: 1 1 150px;
+  background: var(--surface-low);
+  border: 1px solid var(--outline-variant);
+  border-radius: var(--radius);
+  padding: var(--space-4) var(--space-5);
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+.bench-card .big { font-family: var(--font-mono); font-size: 1.7rem; font-weight: 700; color: var(--on-surface); }
+.bench-card .lbl { color: var(--on-surface-variant); font-size: var(--fs-label); text-transform: uppercase; letter-spacing: 0.04em; }
+.bench-card.is-accent .big { color: var(--tertiary-dim); }
+.bench-card.is-good .big { color: var(--primary-container); }
+.comparison-cta { text-align: center; margin-top: var(--space-6); color: var(--on-surface-variant); }
+.comparison-cta a { font-weight: 600; }
+
+/* ============================ WebAssembly SQL demo ======================= */
+.wasm-hero {
+  padding-block: clamp(3rem, 8vw, 5rem);
+}
+.wasm-copy h1,
+.wasm-hero h1 {
+  font-size: var(--fs-display);
+  max-width: 18ch;
+  margin-bottom: var(--space-5);
+}
+.wasm-lede {
+  max-width: 62ch;
+  color: var(--on-surface-variant);
+  font-size: var(--fs-body-lg);
+  margin-bottom: var(--space-6);
+}
+.eyebrow {
+  font-family: var(--font-mono);
+  font-size: var(--fs-label);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--primary-container);
+  margin: 0 0 var(--space-2);
+}
+
+/* ---- WASM demo: JUST the 3 tabs, locked to the viewport. The PAGE never
+   scrolls; the footer is hidden and only the active panel scrolls inside. ---- */
+main:has(.wasm-studio) { height: calc(100dvh - var(--header-height)); overflow: hidden; }
+body:has(.wasm-studio) .site-footer { display: none; }
+.wasm-studio {
+  height: 100%;
+  padding-block: var(--space-4);
+  overflow: hidden;
+}
+.wasm-studio .container {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-height: 0;
+}
+/* Slim live-status line (JS writes here). One line, no hero. */
+.banner-slim {
+  padding: var(--space-2) var(--space-4);
+  font-size: 0.85rem;
+  border-radius: var(--radius);
+  flex-shrink: 0;
+}
+.wasm-tabbar {
+  display: flex;
+  gap: var(--space-2);
+  border-bottom: 1px solid var(--outline-variant);
+}
+.wasm-tab {
+  flex: 1 1 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--space-4) var(--space-5);
+  background: transparent;
+  border: 1px solid transparent;
+  border-bottom: none;
+  border-radius: var(--radius) var(--radius) 0 0;
+  color: var(--on-surface-variant);
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--transition-fast), color var(--transition-fast);
+}
+.wasm-tab:hover { background: var(--surface-low); color: var(--on-surface); }
+.wasm-tab.is-active {
+  background: var(--surface-low);
+  border-color: var(--outline-variant);
+  color: var(--on-surface);
+}
+.wasm-tab-k { font-size: var(--fs-h3); font-weight: 700; }
+.wasm-tab-sub {
+  font-family: var(--font-mono);
+  font-size: var(--fs-label);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--primary-container);
+}
+.wasm-panels { flex: 1; display: flex; min-height: 0; }
+.wasm-panel {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  flex-direction: column;
+  gap: var(--space-4);
+  padding-top: var(--space-4);
+  overflow: hidden;
+}
+.wasm-panel.is-active { display: flex; }
+/* Query panel: presets + editor + buttons fixed; the RESULT table takes the
+   rest and scrolls internally so the page never grows. */
+#panel-query .console { flex: 1; min-height: 0; grid-template-rows: auto auto auto 1fr; }
+#panel-query .editor-wrap { max-height: 40%; }
+#panel-query .editor-wrap .editor-hl,
+#panel-query .console textarea { height: 100%; min-height: 6rem; }
+#panel-query .tablewrap { min-height: 0; overflow: auto; }
+/* Source panel: the code window fills and scrolls internally. */
+#panel-source .wasm-code-window { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+#panel-source .wasm-code-window pre { flex: 1; max-height: none; overflow: auto; min-height: 0; }
+.section-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  margin-bottom: var(--space-6);
+}
+.section-head h2 { margin: 0; }
+.section-head .hint {
+  max-width: 38rem;
+  margin: 0;
+  color: var(--on-surface-variant);
+  font-size: 0.9rem;
+}
+.banner {
+  border-radius: var(--radius);
+  padding: var(--space-4) var(--space-5);
+  border: 1px solid var(--outline-variant);
+  background: var(--surface-low);
+  color: var(--on-surface-variant);
+}
+.banner.warn {
+  border-color: rgba(255, 190, 101, 0.35);
+  background: rgba(255, 190, 101, 0.06);
+  color: var(--tertiary);
+}
+.banner.ok {
+  border-color: rgba(80, 250, 123, 0.3);
+  background: rgba(80, 250, 123, 0.06);
+}
+
+/* ── add-data form ── */
+.add-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--space-4);
+}
+.add-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  font-family: var(--font-mono);
+  font-size: var(--fs-label);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--on-surface-variant);
+}
+.add-form input,
+.add-form select {
+  font-family: var(--font-mono);
+  font-size: var(--fs-code);
+  color: var(--on-surface);
+  background: var(--surface-lowest);
+  border: 1px solid var(--outline-variant);
+  border-radius: var(--radius-sm);
+  padding: 0.5rem 0.75rem;
+  min-width: 8rem;
+}
+.add-form input:focus,
+.add-form select:focus {
+  outline: none;
+  border-color: var(--primary-container);
+}
+.add-status {
+  margin: var(--space-3) 0 0;
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  min-height: 1.2em;
+  color: var(--on-surface-variant);
+}
+.add-status.ok { color: #50fa7b; }
+.add-status.err { color: var(--error); }
+
+/* ── SQL console with a live highlight layer under the textarea ── */
+.console {
+  display: grid;
+  gap: var(--space-4);
+}
+.editor-wrap {
+  position: relative;
+}
+.editor-wrap .editor-hl,
+.console textarea {
+  margin: 0;
+  width: 100%;
+  min-height: 9rem;
+  font-family: var(--font-mono);
+  font-size: var(--fs-code);
+  line-height: 1.6;
+  padding: var(--space-4);
+  border: 1px solid var(--outline-variant);
+  border-radius: var(--radius);
+  white-space: pre;
+  overflow: auto;
+  tab-size: 4;
+}
+.editor-wrap .editor-hl {
+  position: absolute;
+  inset: 0;
+  background: var(--surface-lowest);
+  pointer-events: none;
+  box-shadow: none;
+}
+.console textarea {
+  position: relative;
+  resize: vertical;
+  background: transparent;
+  color: transparent;
+  caret-color: var(--on-surface);
+}
+.console textarea:focus {
+  outline: none;
+  border-color: var(--primary-container);
+  box-shadow: 0 0 0 3px rgba(119, 215, 244, 0.12);
+}
+.console-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+}
+.console-bar .spacer { flex: 1; }
+.preset {
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  color: var(--primary-container);
+  background: var(--surface-container);
+  border: 1px solid var(--outline-variant);
+  border-radius: var(--radius-pill);
+  padding: 0.35rem 0.75rem;
+  cursor: pointer;
+}
+.preset:hover { border-color: var(--primary-container); }
+.console-status {
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  color: var(--on-surface-variant);
+}
+.console-status.ok { color: #50fa7b; }
+.console-status.err { color: var(--error); }
+
+/* ── result table ── */
+.tablewrap {
+  min-width: 0;
+  overflow-x: auto;
+  border: 1px solid var(--outline-variant);
+  border-radius: var(--radius);
+}
+table.data {
+  width: 100%;
+  min-width: 22rem;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+table.data th,
+table.data td {
+  padding: var(--space-2) var(--space-4);
+  text-align: left;
+  border-bottom: 1px solid var(--outline-variant);
+  white-space: nowrap;
+}
+table.data thead th {
+  background: var(--surface-high);
+  color: var(--on-surface);
+  font-family: var(--font-mono);
+  font-size: var(--fs-label);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+table.data tbody td {
+  color: var(--on-surface-variant);
+  font-variant-numeric: tabular-nums;
+}
+table.data tbody td:first-child {
+  color: var(--on-surface);
+  font-weight: 600;
+}
+table.data tr:last-child td { border-bottom: 0; }
+table.data td.num {
+  text-align: right;
+  font-family: var(--font-mono);
+}
+
+/* ── Osprey source window ── */
+.wasm-code-window {
+  min-width: 0;
+  background: var(--surface-lowest);
+  border: 1px solid var(--outline-variant);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.35);
+}
+.wasm-code-window .chrome {
+  height: 38px;
+  background: var(--surface-highest);
+  border-bottom: 1px solid var(--outline-variant);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 14px;
+}
+.wasm-code-window .chrome span {
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+}
+.wasm-code-window .chrome span:nth-child(1) { background: #ff5f57; }
+.wasm-code-window .chrome span:nth-child(2) { background: #febc2e; }
+.wasm-code-window .chrome span:nth-child(3) { background: #28c840; }
+.wasm-code-window .chrome b {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: 0.74rem;
+  color: var(--on-surface-variant);
+  font-weight: 500;
+}
+.wasm-code-window pre {
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  max-width: 100%;
+  max-height: 34rem;
+}
+.muted {
+  color: var(--on-surface-variant);
+  padding: var(--space-4);
+  margin: 0;
+}
+.spin {
+  display: inline-block;
+  width: 0.9em;
+  height: 0.9em;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+  vertical-align: -1px;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ============================ Prose (docs / spec / blog post / status) ==== */
+/* Two-column docs layout: sticky TOC sidebar + left-aligned article, matching
+   docs/designs/prose. Article is width-capped; TOC is built by js/toc.js. */
+.prose-layout {
+  max-width: var(--max-width);
+  margin-inline: auto;
+  padding: clamp(2.5rem, 6vw, 4rem) var(--pad-x) clamp(3rem, 8vw, 5rem);
+  display: grid;
+  grid-template-columns: var(--sidebar-width) minmax(0, 1fr);
+  gap: clamp(1.5rem, 4vw, 3.5rem);
+  align-items: start;
+}
+.prose { max-width: var(--content-width); min-width: 0; }
+
+.toc {
+  position: sticky;
+  top: calc(var(--header-height) + var(--space-4));
+  max-height: calc(100vh - var(--header-height) - (2 * var(--space-4)));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  background: var(--surface-container);
+  border: 1px solid rgba(62, 72, 76, 0.4);
+  border-radius: var(--radius);
+  padding: var(--space-5);
+}
+.toc-title {
+  font-family: var(--font-mono);
+  font-size: var(--fs-label);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--on-surface-variant);
+  margin: 0 0 var(--space-3);
+}
+.toc-list { list-style: none; margin: 0; padding: 0; }
+.toc-list li { margin: 0; }
+.toc-link {
+  display: block;
+  font-size: 0.85rem;
+  line-height: 1.35;
+  color: var(--on-surface-variant);
+  padding: 0.3rem 0 0.3rem 0.8rem;
+  border-left: 2px solid transparent;
+}
+.toc-link:hover { color: var(--primary); }
+.toc-link.active {
+  color: var(--primary-container);
+  border-left-color: var(--primary-container);
+  font-weight: 600;
+}
+.toc-h3 .toc-link { padding-left: 1.6rem; font-size: 0.8rem; }
+
+/* No TOC (short page) → single, centred column. */
+.prose-layout.toc-empty { grid-template-columns: minmax(0, 1fr); }
+.prose-layout.toc-empty .prose { margin-inline: auto; }
+/* Below the docs breakpoint: drop the grid entirely (block flow) so the article
+   fills the width and nothing can land in an auto-sized implicit column. */
+@media (max-width: 1024px) {
+  .prose-layout { display: block; }
+  .toc-aside { display: none; }
+  .prose { margin-inline: auto; }
+}
+
+.prose > :first-child { margin-top: 0; }
+.prose h1 {
+  font-size: var(--fs-h1);
+  padding-bottom: var(--space-5);
+  margin-bottom: var(--space-6);
+  border-bottom: 1px solid var(--outline-variant);
+}
+.prose h1 + p {
+  font-size: var(--fs-body-lg);
+  color: var(--on-surface);
+}
+.prose h2 {
+  font-size: var(--fs-h2);
+  margin-top: var(--space-12);
+  margin-bottom: var(--space-4);
+  scroll-margin-top: calc(var(--header-height) + var(--space-4));
+}
+.prose h3 {
+  margin-top: var(--space-8);
+  scroll-margin-top: calc(var(--header-height) + var(--space-4));
+}
+.prose p,
+.prose li { color: var(--on-surface-variant); line-height: 1.75; }
+/* Blog-post header image (placeholder slot until the generated PNG lands). */
+.prose-hero {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  aspect-ratio: 1600 / 840;
+  object-fit: cover;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: var(--radius-lg);
+  margin-bottom: var(--space-8);
+}
+.prose p { margin-bottom: var(--space-6); }
+.prose ul,
+.prose ol { margin-bottom: var(--space-6); }
+.prose li::marker { color: var(--primary-container); }
+.prose a { text-decoration: underline; text-underline-offset: 2px; }
+.prose strong { color: var(--on-surface); }
+/* Heading text is wrapped in a markdown anchor link — keep headings plain. */
+.prose :is(h1, h2, h3, h4, h5, h6) .header-anchor {
+  color: inherit;
+  text-decoration: none;
+  font-weight: inherit;
+}
+.prose :is(h1, h2, h3, h4, h5, h6) .header-anchor:hover { color: var(--primary-container); }
+/* Generated docs embed type params like "Iterator<U>"; the browser parses <U>
+   as <u> and HTML reconstruction leaks the underline into following headings
+   and code. Neutralise stray <u> so it can never break the prose layout. */
+.prose u { text-decoration: none; }
+
+/* Prose code blocks carry an editor-style header bar. */
+.prose pre,
+.prose pre[class*="language-"] {
+  position: relative;
+  padding-top: 2.9rem;
+  max-width: 100%;
+  overflow-x: auto;
+}
+/* Long inline tokens — file paths, generic type names, URLs — must wrap so they
+   never leak past their box and force horizontal page overflow on narrow or
+   font-fallback environments (e.g. CI Linux without the bundled mono font). */
+.prose p,
+.prose li { overflow-wrap: break-word; }
+.prose :not(pre) > code { overflow-wrap: anywhere; }
+.prose pre[data-language]::before {
+  content: attr(data-language);
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 2.1rem;
+  display: flex;
+  align-items: center;
+  padding: 0 var(--space-4);
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--on-surface-variant);
+  background: var(--surface-high);
+  border-bottom: 1px solid var(--outline-variant);
+}
+/* Flavor badge — every Osprey code block states its flavor so a reader always
+   knows which surface (Default `.osp` vs ML `.ospml`) a snippet is written in.
+   Left accent + tinted label: Default = primary, ML = tertiary/accent. */
+.prose pre[data-flavor]::before {
+  padding-left: calc(var(--space-4) + 3px);
+  border-left: 3px solid transparent;
+}
+.prose pre[data-flavor="default"]::before {
+  border-left-color: var(--primary);
+  color: var(--primary);
+}
+.prose pre[data-flavor="ml"]::before {
+  border-left-color: var(--tertiary-dim, #ffb86c);
+  color: var(--tertiary-dim, #ffb86c);
+}
+/* Diagrams — mermaid (client-rendered) and typeDiagram (build-time SVG). Both
+   land in <figure class="diagram">, so they share one frame; the header bar and
+   padding the code-block rules add to <pre> would frame the mermaid source, not
+   the picture, so they are undone here. */
+.prose .diagram {
+  margin: var(--space-6) 0;
+  padding: var(--space-4);
+  overflow-x: auto;
+  text-align: center;
+  background: var(--surface-high);
+  border: 1px solid var(--outline-variant);
+  border-radius: var(--radius-md, 8px);
+}
+.prose .diagram pre.mermaid {
+  padding: 0;
+  margin: 0;
+  background: none;
+  border: 0;
+  overflow: visible;
+}
+.prose .diagram pre.mermaid::before { content: none; }
+.prose .diagram svg { max-width: 100%; height: auto; }
+
+.prose blockquote {
+  margin: var(--space-6) 0;
+  padding: var(--space-2) var(--space-5);
+  border-left: 4px solid var(--primary-container);
+  color: var(--on-surface-variant);
+  font-style: italic;
+}
+.prose blockquote p:last-child { margin-bottom: 0; }
+.prose-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-4);
+  margin-top: calc(-1 * var(--space-4));
+  color: var(--on-surface-variant);
+  font-family: var(--font-mono);
+  font-size: var(--fs-label);
+}
+.prose table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: var(--space-6) 0;
+  font-size: 0.95rem;
+  border: 1px solid var(--outline-variant);
+}
+.prose th,
+.prose td {
+  padding: var(--space-3) var(--space-4);
+  text-align: left;
+  border-bottom: 1px solid var(--outline-variant);
+}
+.prose thead th {
+  background: var(--surface-high);
+  font-family: var(--font-mono);
+  font-size: var(--fs-label);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+/* Wide tables scroll instead of forcing horizontal page overflow on mobile. */
+.prose table { display: block; max-width: 100%; overflow-x: auto; }
+.prose td { color: var(--on-surface-variant); }
+.prose hr { border: 0; border-top: 1px solid var(--outline-variant); margin: var(--space-8) 0; }
+.prose img { max-width: 100%; height: auto; border-radius: var(--radius); border: 1px solid var(--outline-variant); }
+
+/* ============================ Blog index ================================= */
+/* Midnight Synthetic card grid (docs/designs/blog-grid). Solid Level-1 surface
+   with a hairline white stroke; featured first post spans the full row. */
+.blog-index { padding-block: clamp(2.5rem, 6vw, 4rem); }
+.blog-posts {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--gutter);
+}
+.blog-posts .card {
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+  overflow: hidden;
+  background: #0d1836;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  border-color: rgba(255, 255, 255, 0.05);
+  border-radius: var(--radius);
+}
+.blog-posts .card-content { display: flex; flex-direction: column; flex: 1; padding: var(--space-6); }
+/* Header image (placeholder until the generated PNG slots in at the same path). */
+.card-media { display: block; aspect-ratio: 16 / 9; overflow: hidden; background: var(--surface-low); }
+.card-media picture { display: block; width: 100%; height: 100%; }
+.card-media img { width: 100%; height: 100%; object-fit: cover; display: block; transition: transform var(--transition); }
+.blog-posts .card:hover .card-media img { transform: scale(1.03); }
+/* Featured: first post spans every column as a side-by-side card — text on the
+   left, hero image on the right (docs/designs/blog-grid). A stacked full-width
+   banner towers over the fold; the split keeps the hero compact and balanced. */
+.blog-posts .card:first-child {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: 1.05fr 0.95fr;
+  align-items: stretch;
+  min-height: 22rem;
+}
+.blog-posts .card:first-child .card-content {
+  order: 1;
+  justify-content: center;
+  padding: clamp(var(--space-6), 4vw, var(--space-10));
+}
+.blog-posts .card:first-child .card-media {
+  order: 2;
+  aspect-ratio: auto;
+  height: 100%;
+  border-left: 1px solid rgba(255, 255, 255, 0.05);
+}
+.blog-posts .card:first-child .card-title { font-size: var(--fs-h2); }
+.blog-posts .card:first-child .card-excerpt {
+  font-size: var(--fs-body-lg);
+  max-width: 60ch;
+  -webkit-line-clamp: 4;
+}
+.card-tags { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-bottom: var(--space-4); }
+.tag {
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--primary-container);
+  background: rgba(119, 215, 244, 0.1);
+  padding: 0.25rem 0.55rem;
+  border-radius: var(--radius-sm);
+}
+.card-title { font-size: var(--fs-h3); line-height: var(--lh-tight); margin: 0 0 var(--space-3); }
+.card-title a { color: var(--on-surface); transition: color var(--transition-fast); }
+.card-title a:hover { color: var(--primary-container); }
+.card-excerpt {
+  color: var(--on-surface-variant);
+  margin: 0 0 var(--space-5);
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.card-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-4);
+  margin-top: auto;
+  padding-top: var(--space-4);
+  border-top: 1px solid rgba(62, 72, 76, 0.4);
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  color: var(--on-surface-variant);
+}
+.empty-state {
+  text-align: center;
+  padding: var(--space-16) var(--space-4);
+  color: var(--on-surface-variant);
+}
+
+/* ============================ Responsive ================================= */
+@media (max-width: 900px) {
+  .hero .container { grid-template-columns: 1fr; }
+  /* Code stays left-aligned even though the hero copy centers on mobile. */
+  .hero-code, .hero-code-caption { text-align: left; }
+  .wasm-hero-grid { grid-template-columns: 1fr; }
+  .wasm-copy h1 { max-width: 14ch; }
+  .hero-subtitle { max-width: none; }
+  .blog-posts { grid-template-columns: repeat(2, 1fr); }
+}
+@media (max-width: 768px) {
+  .two-column { grid-template-columns: 1fr; }
+  /* Keep the prose/code first on stacked feature rows, text after. */
+  .two-column .visual { order: -1; }
+  /* Featured post: drop the side-by-side split, stack image over text. */
+  .blog-posts .card:first-child {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+  }
+  .blog-posts .card:first-child .card-media {
+    order: 0;
+    aspect-ratio: 16 / 9;
+    height: auto;
+    border-left: 0;
+  }
+  .blog-posts .card:first-child .card-content { order: 0; }
+  .nav-links {
+    background: var(--surface-container);
+    border-bottom: 1px solid var(--outline-variant);
+    gap: var(--space-2);
+  }
+  .nav-link {
+    display: flex;
+    align-items: center;
+    width: 100%;
+    min-height: 48px;
+  }
+  .nav-link.active { border-bottom-color: transparent; }
+}
+@media (max-width: 640px) {
+  /* Mobile hero: centred text, full-width stacked actions (per mobile design). */
+  .hero-content { text-align: center; align-items: center; }
+  .hero-actions { width: 100%; flex-direction: column; }
+  .hero-actions .btn { width: 100%; }
+  .wasm-hero h1 { max-width: none; }
+  /* Three tabs stay in one row on phones: compact labels, no sub-caption. */
+  .wasm-tab { padding: var(--space-3); align-items: center; text-align: center; }
+  .wasm-tab-k { font-size: var(--fs-body); }
+  .wasm-tab-sub { display: none; }
+  .wasm-studio .container { min-height: 70vh; }
+  .console-bar { width: 100%; }
+  .console-bar .btn { width: 100%; }
+  .add-form { flex-direction: column; align-items: stretch; }
+  .add-form input,
+  .add-form select { width: 100%; }
+  /* Blog cards stack in one dark column (docs/designs/blog-grid-mobile). */
+  .blog-posts { grid-template-columns: 1fr; }
+  .blog-posts .card:first-child .card-title { font-size: var(--fs-h3); }
+}
+</style></head>
+<body><main class="container" style="padding-top:3rem;padding-bottom:4rem">
+<h1>Osprey cross-language benchmarks</h1>
+<p>Osprey, Osprey (ARC), Osprey (GC), Rust, C, C# (AOT), Dart (AOT), OCaml, Haskell, Osprey (wasm), Rust (wasm) — same naive algorithm and parameters in every language, native
+release builds, output checked against an integer oracle. CPU = hyperfine
+mean&nbsp;±&nbsp;stddev; memory = peak resident set size. Generated mechanically
+by <code>benchmarks/report.py</code>; re-run with <code>make bench</code>.</p>
+<div class="bench-summary"><div class="bench-card is-accent"><span class="big">0</span><span class="lbl">CPU wins (fastest of all)</span></div><div class="bench-card "><span class="big">11.59×</span><span class="lbl">CPU vs Rust</span></div><div class="bench-card "><span class="big">13.14×</span><span class="lbl">CPU vs C</span></div><div class="bench-card "><span class="big">9.19×</span><span class="lbl">CPU vs C# (AOT)</span></div><div class="bench-card "><span class="big">4.69×</span><span class="lbl">CPU vs Dart (AOT)</span></div><div class="bench-card "><span class="big">8.91×</span><span class="lbl">CPU vs OCaml</span></div><div class="bench-card "><span class="big">6.25×</span><span class="lbl">CPU vs Haskell</span></div><div class="bench-card "><span class="big">5.65×</span><span class="lbl">CPU vs Rust (wasm)</span></div></div><p>Osprey is the fastest of all five languages on <strong>—</strong>. Lower is better; ★ marks an Osprey win.</p>
+<h2>CPU time</h2>
+<div class="comparison-table"><table><thead><tr><th>Benchmark</th><th class="num col-osprey">Osprey</th><th class="num col-osprey">Osprey (ARC)</th><th class="num col-osprey">Osprey (GC)</th><th class="num">Rust</th><th class="num">C</th><th class="num">C# (AOT)</th><th class="num">Dart (AOT)</th><th class="num">OCaml</th><th class="num">Haskell</th><th class="num col-osprey">Osprey (wasm)</th><th class="num">Rust (wasm)</th></tr></thead><tbody><tr><td>ackermann</td><td class="num col-osprey">1.382&nbsp;s</td><td class="num col-osprey">860.8&nbsp;ms</td><td class="num col-osprey">5.514&nbsp;s</td><td class="num">129.3&nbsp;ms</td><td class="num">130.6&nbsp;ms</td><td class="num">132.4&nbsp;ms</td><td class="num">185.3&nbsp;ms</td><td class="num">111.3&nbsp;ms</td><td class="num best">65.3&nbsp;ms</td><td class="num col-osprey">wrong✗</td><td class="num">145.5&nbsp;ms</td></tr><tr><td>binarytrees</td><td class="num col-osprey">1.224&nbsp;s</td><td class="num col-osprey">1.156&nbsp;s</td><td class="num col-osprey">5.346&nbsp;s</td><td class="num">743.8&nbsp;ms</td><td class="num">362.9&nbsp;ms</td><td class="num">128.4&nbsp;ms</td><td class="num">128.6&nbsp;ms</td><td class="num">52.3&nbsp;ms</td><td class="num best">17.0&nbsp;ms</td><td class="num col-osprey">1.165&nbsp;s</td><td class="num">818.6&nbsp;ms</td></tr><tr><td>coins</td><td class="num col-osprey">660.2&nbsp;ms</td><td class="num col-osprey">416.7&nbsp;ms</td><td class="num col-osprey">2.582&nbsp;s</td><td class="num">84.5&nbsp;ms</td><td class="num">79.8&nbsp;ms</td><td class="num">104.4&nbsp;ms</td><td class="num">126.0&nbsp;ms</td><td class="num">103.3&nbsp;ms</td><td class="num best">52.3&nbsp;ms</td><td class="num col-osprey">466.5&nbsp;ms</td><td class="num">114.0&nbsp;ms</td></tr><tr><td>collatz</td><td class="num col-osprey">516.9&nbsp;ms</td><td class="num col-osprey">343.7&nbsp;ms</td><td class="num col-osprey">2.162&nbsp;s</td><td class="num">13.4&nbsp;ms</td><td class="num best">10.8&nbsp;ms</td><td class="num">59.3&nbsp;ms</td><td class="num">72.7&nbsp;ms</td><td class="num">64.6&nbsp;ms</td><td class="num">40.2&nbsp;ms</td><td class="num col-osprey">380.3&nbsp;ms</td><td class="num">25.4&nbsp;ms</td></tr><tr><td>coprime</td><td class="num col-osprey">189.7&nbsp;ms</td><td class="num col-osprey">148.4&nbsp;ms</td><td class="num col-osprey">703.3&nbsp;ms</td><td class="num">66.4&nbsp;ms</td><td class="num best">65.0&nbsp;ms</td><td class="num">80.5&nbsp;ms</td><td class="num">111.6&nbsp;ms</td><td class="num">119.4&nbsp;ms</td><td class="num">220.3&nbsp;ms</td><td class="num col-osprey">296.5&nbsp;ms</td><td class="num">163.3&nbsp;ms</td></tr><tr><td>digitsum</td><td class="num col-osprey">686.9&nbsp;ms</td><td class="num col-osprey">397.9&nbsp;ms</td><td class="num col-osprey">4.629&nbsp;s</td><td class="num">6.1&nbsp;ms</td><td class="num best">6.1&nbsp;ms</td><td class="num">21.2&nbsp;ms</td><td class="num">32.8&nbsp;ms</td><td class="num">19.5&nbsp;ms</td><td class="num">29.4&nbsp;ms</td><td class="num col-osprey">280.0&nbsp;ms</td><td class="num">18.8&nbsp;ms</td></tr><tr><td>exprtree</td><td class="num col-osprey">46.4&nbsp;ms</td><td class="num col-osprey">28.1&nbsp;ms</td><td class="num col-osprey">148.9&nbsp;ms</td><td class="num">11.1&nbsp;ms</td><td class="num">6.1&nbsp;ms</td><td class="num">7.7&nbsp;ms</td><td class="num">15.8&nbsp;ms</td><td class="num best">5.1&nbsp;ms</td><td class="num">16.3&nbsp;ms</td><td class="num col-osprey">33.7&nbsp;ms</td><td class="num">20.4&nbsp;ms</td></tr><tr><td>factorial</td><td class="num col-osprey">35.8&nbsp;ms</td><td class="num col-osprey">35.5&nbsp;ms</td><td class="num col-osprey">35.4&nbsp;ms</td><td class="num">35.6&nbsp;ms</td><td class="num best">35.3&nbsp;ms</td><td class="num">37.4&nbsp;ms</td><td class="num">51.2&nbsp;ms</td><td class="num">48.7&nbsp;ms</td><td class="num">53.5&nbsp;ms</td><td class="num col-osprey">44.7&nbsp;ms</td><td class="num">48.6&nbsp;ms</td></tr><tr><td>fib</td><td class="num col-osprey">1.097&nbsp;s</td><td class="num col-osprey">600.5&nbsp;ms</td><td class="num col-osprey">4.502&nbsp;s</td><td class="num best">22.7&nbsp;ms</td><td class="num">23.4&nbsp;ms</td><td class="num">43.3&nbsp;ms</td><td class="num">59.8&nbsp;ms</td><td class="num">29.5&nbsp;ms</td><td class="num">56.5&nbsp;ms</td><td class="num col-osprey">684.9&nbsp;ms</td><td class="num">49.4&nbsp;ms</td></tr><tr><td>gcdsum</td><td class="num col-osprey">133.9&nbsp;ms</td><td class="num col-osprey">120.1&nbsp;ms</td><td class="num col-osprey">241.2&nbsp;ms</td><td class="num best">86.1&nbsp;ms</td><td class="num">86.5&nbsp;ms</td><td class="num">92.8&nbsp;ms</td><td class="num">122.0&nbsp;ms</td><td class="num">107.7&nbsp;ms</td><td class="num">115.0&nbsp;ms</td><td class="num col-osprey">126.5&nbsp;ms</td><td class="num">104.3&nbsp;ms</td></tr><tr><td>hanoi</td><td class="num col-osprey">1.766&nbsp;s</td><td class="num col-osprey">979.3&nbsp;ms</td><td class="num col-osprey">5.488&nbsp;s</td><td class="num best">37.5&nbsp;ms</td><td class="num">38.5&nbsp;ms</td><td class="num">38.7&nbsp;ms</td><td class="num">103.9&nbsp;ms</td><td class="num">62.9&nbsp;ms</td><td class="num">54.4&nbsp;ms</td><td class="num col-osprey">766.1&nbsp;ms</td><td class="num">52.3&nbsp;ms</td></tr><tr><td>isqrt</td><td class="num col-osprey">563.8&nbsp;ms</td><td class="num col-osprey">414.3&nbsp;ms</td><td class="num col-osprey">3.009&nbsp;s</td><td class="num">10.9&nbsp;ms</td><td class="num best">10.6&nbsp;ms</td><td class="num">17.1&nbsp;ms</td><td class="num">32.5&nbsp;ms</td><td class="num">20.6&nbsp;ms</td><td class="num">41.0&nbsp;ms</td><td class="num col-osprey">412.9&nbsp;ms</td><td class="num">22.9&nbsp;ms</td></tr><tr><td>josephus</td><td class="num col-osprey">380.1&nbsp;ms</td><td class="num col-osprey">222.2&nbsp;ms</td><td class="num col-osprey">1.513&nbsp;s</td><td class="num">33.8&nbsp;ms</td><td class="num best">33.4&nbsp;ms</td><td class="num">35.9&nbsp;ms</td><td class="num">42.0&nbsp;ms</td><td class="num">42.0&nbsp;ms</td><td class="num">44.5&nbsp;ms</td><td class="num col-osprey">243.7&nbsp;ms</td><td class="num">44.4&nbsp;ms</td></tr><tr><td>listops</td><td class="num col-osprey">7.2&nbsp;ms</td><td class="num col-osprey">6.1&nbsp;ms</td><td class="num col-osprey">17.4&nbsp;ms</td><td class="num">1.5&nbsp;ms</td><td class="num best">1.3&nbsp;ms</td><td class="num">3.3&nbsp;ms</td><td class="num">10.8&nbsp;ms</td><td class="num">2.2&nbsp;ms</td><td class="num">16.6&nbsp;ms</td><td class="num col-osprey">13.4&nbsp;ms</td><td class="num">12.5&nbsp;ms</td></tr><tr><td>mutual</td><td class="num col-osprey">19.3&nbsp;ms</td><td class="num col-osprey">18.3&nbsp;ms</td><td class="num col-osprey">19.7&nbsp;ms</td><td class="num">13.1&nbsp;ms</td><td class="num best">12.9&nbsp;ms</td><td class="num">21.5&nbsp;ms</td><td class="num">335.0&nbsp;ms</td><td class="num">29.1&nbsp;ms</td><td class="num">40.7&nbsp;ms</td><td class="num col-osprey">40.4&nbsp;ms</td><td class="num">30.0&nbsp;ms</td></tr><tr><td>nestedloop</td><td class="num col-osprey">870.6&nbsp;ms</td><td class="num col-osprey">503.7&nbsp;ms</td><td class="num col-osprey">3.463&nbsp;s</td><td class="num">46.4&nbsp;ms</td><td class="num best">46.0&nbsp;ms</td><td class="num">48.4&nbsp;ms</td><td class="num">60.6&nbsp;ms</td><td class="num">58.5&nbsp;ms</td><td class="num">65.2&nbsp;ms</td><td class="num col-osprey">381.6&nbsp;ms</td><td class="num">62.9&nbsp;ms</td></tr><tr><td>pascal</td><td class="num col-osprey">1.602&nbsp;s</td><td class="num col-osprey">936.7&nbsp;ms</td><td class="num col-osprey">6.487&nbsp;s</td><td class="num best">27.9&nbsp;ms</td><td class="num">28.2&nbsp;ms</td><td class="num">34.1&nbsp;ms</td><td class="num">65.2&nbsp;ms</td><td class="num">45.1&nbsp;ms</td><td class="num">65.0&nbsp;ms</td><td class="num col-osprey">970.5&nbsp;ms</td><td class="num">46.9&nbsp;ms</td></tr><tr><td>powmod</td><td class="num col-osprey">883.9&nbsp;ms</td><td class="num col-osprey">498.5&nbsp;ms</td><td class="num col-osprey">4.019&nbsp;s</td><td class="num best">27.4&nbsp;ms</td><td class="num">27.5&nbsp;ms</td><td class="num">40.1&nbsp;ms</td><td class="num">58.8&nbsp;ms</td><td class="num">71.1&nbsp;ms</td><td class="num">65.4&nbsp;ms</td><td class="num col-osprey">407.8&nbsp;ms</td><td class="num">39.5&nbsp;ms</td></tr><tr><td>primes</td><td class="num col-osprey">316.4&nbsp;ms</td><td class="num col-osprey">171.6&nbsp;ms</td><td class="num col-osprey">1.257&nbsp;s</td><td class="num best">7.1&nbsp;ms</td><td class="num">7.1&nbsp;ms</td><td class="num">10.7&nbsp;ms</td><td class="num">52.6&nbsp;ms</td><td class="num">10.0&nbsp;ms</td><td class="num">18.7&nbsp;ms</td><td class="num col-osprey">144.4&nbsp;ms</td><td class="num">21.0&nbsp;ms</td></tr><tr><td>tak</td><td class="num col-osprey">598.0&nbsp;ms</td><td class="num col-osprey">363.7&nbsp;ms</td><td class="num col-osprey">2.673&nbsp;s</td><td class="num">37.5&nbsp;ms</td><td class="num best">37.3&nbsp;ms</td><td class="num">40.5&nbsp;ms</td><td class="num">93.3&nbsp;ms</td><td class="num">51.2&nbsp;ms</td><td class="num">75.0&nbsp;ms</td><td class="num col-osprey">480.5&nbsp;ms</td><td class="num">92.0&nbsp;ms</td></tr><tr><td>textstats</td><td class="num col-osprey">23.3&nbsp;ms</td><td class="num col-osprey">16.0&nbsp;ms</td><td class="num col-osprey">75.1&nbsp;ms</td><td class="num best">2.0&nbsp;ms</td><td class="num">2.2&nbsp;ms</td><td class="num">3.8&nbsp;ms</td><td class="num">11.4&nbsp;ms</td><td class="num">4.0&nbsp;ms</td><td class="num">16.7&nbsp;ms</td><td class="num col-osprey">25.2&nbsp;ms</td><td class="num">14.9&nbsp;ms</td></tr><tr><td>wordfreq</td><td class="num col-osprey">37.5&nbsp;ms</td><td class="num col-osprey">40.3&nbsp;ms</td><td class="num col-osprey">141.7&nbsp;ms</td><td class="num">4.5&nbsp;ms</td><td class="num best">1.5&nbsp;ms</td><td class="num">3.3&nbsp;ms</td><td class="num">10.6&nbsp;ms</td><td class="num">2.5&nbsp;ms</td><td class="num">16.4&nbsp;ms</td><td class="num col-osprey">45.7&nbsp;ms</td><td class="num">15.7&nbsp;ms</td></tr></tbody></table></div>
+<h2>Peak memory</h2>
+<div class="comparison-table"><table><thead><tr><th>Benchmark</th><th class="num col-osprey">Osprey</th><th class="num col-osprey">Osprey (ARC)</th><th class="num col-osprey">Osprey (GC)</th><th class="num">Rust</th><th class="num">C</th><th class="num">C# (AOT)</th><th class="num">Dart (AOT)</th><th class="num">OCaml</th><th class="num">Haskell</th><th class="num col-osprey">Osprey (wasm)</th><th class="num">Rust (wasm)</th></tr></thead><tbody><tr><td>ackermann</td><td class="num col-osprey">2.0&nbsp;MiB</td><td class="num col-osprey">2.0&nbsp;MiB</td><td class="num col-osprey">21.0&nbsp;MiB</td><td class="num">1.8&nbsp;MiB</td><td class="num best">1.7&nbsp;MiB</td><td class="num">7.1&nbsp;MiB</td><td class="num">14.0&nbsp;MiB</td><td class="num">2.7&nbsp;MiB</td><td class="num">15.1&nbsp;MiB</td><td class="num col-osprey">wrong✗</td><td class="num">—</td></tr><tr><td>binarytrees</td><td class="num col-osprey">1808.5&nbsp;MiB</td><td class="num col-osprey">2.9&nbsp;MiB</td><td class="num col-osprey">20.3&nbsp;MiB</td><td class="num">2.2&nbsp;MiB</td><td class="num best">1.8&nbsp;MiB</td><td class="num">16.1&nbsp;MiB</td><td class="num">22.5&nbsp;MiB</td><td class="num">5.2&nbsp;MiB</td><td class="num">11.1&nbsp;MiB</td><td class="num col-osprey">—</td><td class="num">—</td></tr><tr><td>coins</td><td class="num col-osprey">1.5&nbsp;MiB</td><td class="num col-osprey">1.5&nbsp;MiB</td><td class="num col-osprey">20.5&nbsp;MiB</td><td class="num">1.6&nbsp;MiB</td><td class="num best">1.5&nbsp;MiB</td><td class="num">6.8&nbsp;MiB</td><td class="num">13.9&nbsp;MiB</td><td class="num">2.3&nbsp;MiB</td><td class="num">11.1&nbsp;MiB</td><td class="num col-osprey">—</td><td class="num">—</td></tr><tr><td>collatz</td><td class="num col-osprey">221.8&nbsp;MiB</td><td class="num col-osprey">1.5&nbsp;MiB</td><td class="num col-osprey">18.5&nbsp;MiB</td><td class="num">1.6&nbsp;MiB</td><td class="num best">1.4&nbsp;MiB</td><td class="num">6.9&nbsp;MiB</td><td class="num">14.0&nbsp;MiB</td><td class="num">2.3&nbsp;MiB</td><td class="num">11.1&nbsp;MiB</td><td class="num col-osprey">—</td><td class="num">—</td></tr><tr><td>coprime</td><td class="num col-osprey">1.5&nbsp;MiB</td><td class="num col-osprey">1.5&nbsp;MiB</td><td class="num col-osprey">18.7&nbsp;MiB</td><td class="num">1.6&nbsp;MiB</td><td class="num best">1.4&nbsp;MiB</td><td class="num">6.8&nbsp;MiB</td><td class="num">14.0&nbsp;MiB</td><td class="num">2.3&nbsp;MiB</td><td class="num">11.1&nbsp;MiB</td><td class="num col-osprey">—</td><td class="num">—</td></tr><tr><td>digitsum</td><td class="num col-osprey">335.1&nbsp;MiB</td><td class="num col-osprey">1.5&nbsp;MiB</td><td class="num col-osprey">22.0&nbsp;MiB</td><td class="num">1.6&nbsp;MiB</td><td class="num best">1.4&nbsp;MiB</td><td class="num">6.9&nbsp;MiB</td><td class="num">14.0&nbsp;MiB</td><td class="num">2.3&nbsp;MiB</td><td class="num">11.1&nbsp;MiB</td><td class="num col-osprey">—</td><td class="num">—</td></tr><tr><td>exprtree</td><td class="num col-osprey">9.1&nbsp;MiB</td><td class="num col-osprey">3.4&nbsp;MiB</td><td class="num col-osprey">18.5&nbsp;MiB</td><td class="num best">2.7&nbsp;MiB</td><td class="num">11.5&nbsp;MiB</td><td class="num">15.2&nbsp;MiB</td><td class="num">22.5&nbsp;MiB</td><td class="num">6.1&nbsp;MiB</td><td class="num">11.4&nbsp;MiB</td><td class="num col-osprey">—</td><td class="num">—</td></tr><tr><td>factorial</td><td class="num col-osprey">1.5&nbsp;MiB</td><td class="num col-osprey">1.5&nbsp;MiB</td><td class="num col-osprey">1.5&nbsp;MiB</td><td class="num">1.6&nbsp;MiB</td><td class="num best">1.4&nbsp;MiB</td><td class="num">6.8&nbsp;MiB</td><td class="num">13.9&nbsp;MiB</td><td class="num">2.3&nbsp;MiB</td><td class="num">11.1&nbsp;MiB</td><td class="num col-osprey">—</td><td class="num">—</td></tr><tr><td>fib</td><td class="num col-osprey">1.5&nbsp;MiB</td><td class="num col-osprey">1.5&nbsp;MiB</td><td class="num col-osprey">22.4&nbsp;MiB</td><td class="num">1.6&nbsp;MiB</td><td class="num best">1.4&nbsp;MiB</td><td class="num">6.8&nbsp;MiB</td><td class="num">13.9&nbsp;MiB</td><td class="num">2.2&nbsp;MiB</td><td class="num">11.2&nbsp;MiB</td><td class="num col-osprey">—</td><td class="num">—</td></tr><tr><td>gcdsum</td><td class="num col-osprey">1.5&nbsp;MiB</td><td class="num col-osprey">1.5&nbsp;MiB</td><td class="num col-osprey">22.3&nbsp;MiB</td><td class="num">1.6&nbsp;MiB</td><td class="num best">1.4&nbsp;MiB</td><td class="num">6.9&nbsp;MiB</td><td class="num">14.0&nbsp;MiB</td><td class="num">2.3&nbsp;MiB</td><td class="num">11.1&nbsp;MiB</td><td class="num col-osprey">—</td><td class="num">—</td></tr><tr><td>hanoi</td><td class="num col-osprey">1.5&nbsp;MiB</td><td class="num col-osprey">1.5&nbsp;MiB</td><td class="num col-osprey">22.4&nbsp;MiB</td><td class="num">1.6&nbsp;MiB</td><td class="num best">1.4&nbsp;MiB</td><td class="num">6.8&nbsp;MiB</td><td class="num">13.8&nbsp;MiB</td><td class="num">2.3&nbsp;MiB</td><td class="num">11.2&nbsp;MiB</td><td class="num col-osprey">—</td><td class="num">—</td></tr><tr><td>isqrt</td><td class="num col-osprey">779.1&nbsp;MiB</td><td class="num col-osprey">1.5&nbsp;MiB</td><td class="num col-osprey">20.7&nbsp;MiB</td><td class="num">1.6&nbsp;MiB</td><td class="num best">1.4&nbsp;MiB</td><td class="num">6.8&nbsp;MiB</td><td class="num">13.9&nbsp;MiB</td><td class="num">2.3&nbsp;MiB</td><td class="num">11.1&nbsp;MiB</td><td class="num col-osprey">—</td><td class="num">—</td></tr><tr><td>josephus</td><td class="num col-osprey">1.5&nbsp;MiB</td><td class="num col-osprey">1.5&nbsp;MiB</td><td class="num col-osprey">18.6&nbsp;MiB</td><td class="num">1.6&nbsp;MiB</td><td class="num best">1.4&nbsp;MiB</td><td class="num">6.8&nbsp;MiB</td><td class="num">13.8&nbsp;MiB</td><td class="num">2.3&nbsp;MiB</td><td class="num">11.1&nbsp;MiB</td><td class="num col-osprey">—</td><td class="num">—</td></tr><tr><td>listops</td><td class="num col-osprey">14.4&nbsp;MiB</td><td class="num col-osprey">2.1&nbsp;MiB</td><td class="num col-osprey">12.9&nbsp;MiB</td><td class="num">1.7&nbsp;MiB</td><td class="num best">1.5&nbsp;MiB</td><td class="num">7.1&nbsp;MiB</td><td class="num">14.3&nbsp;MiB</td><td class="num">2.6&nbsp;MiB</td><td class="num">11.4&nbsp;MiB</td><td class="num col-osprey">—</td><td class="num">—</td></tr><tr><td>mutual</td><td class="num col-osprey">1.5&nbsp;MiB</td><td class="num col-osprey">1.5&nbsp;MiB</td><td class="num col-osprey">7.3&nbsp;MiB</td><td class="num">1.6&nbsp;MiB</td><td class="num best">1.4&nbsp;MiB</td><td class="num">6.9&nbsp;MiB</td><td class="num">14.0&nbsp;MiB</td><td class="num">2.3&nbsp;MiB</td><td class="num">11.1&nbsp;MiB</td><td class="num col-osprey">—</td><td class="num">—</td></tr><tr><td>nestedloop</td><td class="num col-osprey">1.5&nbsp;MiB</td><td class="num col-osprey">1.5&nbsp;MiB</td><td class="num col-osprey">20.2&nbsp;MiB</td><td class="num">1.6&nbsp;MiB</td><td class="num best">1.4&nbsp;MiB</td><td class="num">6.8&nbsp;MiB</td><td class="num">13.9&nbsp;MiB</td><td class="num">2.2&nbsp;MiB</td><td class="num">11.1&nbsp;MiB</td><td class="num col-osprey">—</td><td class="num">—</td></tr><tr><td>pascal</td><td class="num col-osprey">1.5&nbsp;MiB</td><td class="num col-osprey">1.5&nbsp;MiB</td><td class="num col-osprey">18.6&nbsp;MiB</td><td class="num">1.6&nbsp;MiB</td><td class="num best">1.4&nbsp;MiB</td><td class="num">6.9&nbsp;MiB</td><td class="num">13.9&nbsp;MiB</td><td class="num">2.2&nbsp;MiB</td><td class="num">11.1&nbsp;MiB</td><td class="num col-osprey">—</td><td class="num">—</td></tr><tr><td>powmod</td><td class="num col-osprey">1.5&nbsp;MiB</td><td class="num col-osprey">1.5&nbsp;MiB</td><td class="num col-osprey">20.7&nbsp;MiB</td><td class="num">1.6&nbsp;MiB</td><td class="num best">1.4&nbsp;MiB</td><td class="num">6.9&nbsp;MiB</td><td class="num">14.0&nbsp;MiB</td><td class="num">2.3&nbsp;MiB</td><td class="num">11.1&nbsp;MiB</td><td class="num col-osprey">—</td><td class="num">—</td></tr><tr><td>primes</td><td class="num col-osprey">1.5&nbsp;MiB</td><td class="num col-osprey">1.5&nbsp;MiB</td><td class="num col-osprey">19.6&nbsp;MiB</td><td class="num">1.6&nbsp;MiB</td><td class="num best">1.4&nbsp;MiB</td><td class="num">6.9&nbsp;MiB</td><td class="num">14.0&nbsp;MiB</td><td class="num">2.2&nbsp;MiB</td><td class="num">11.1&nbsp;MiB</td><td class="num col-osprey">—</td><td class="num">—</td></tr><tr><td>tak</td><td class="num col-osprey">1.5&nbsp;MiB</td><td class="num col-osprey">1.5&nbsp;MiB</td><td class="num col-osprey">20.5&nbsp;MiB</td><td class="num">1.6&nbsp;MiB</td><td class="num best">1.4&nbsp;MiB</td><td class="num">6.9&nbsp;MiB</td><td class="num">13.9&nbsp;MiB</td><td class="num">2.3&nbsp;MiB</td><td class="num">11.2&nbsp;MiB</td><td class="num col-osprey">—</td><td class="num">—</td></tr><tr><td>textstats</td><td class="num col-osprey">1.5&nbsp;MiB</td><td class="num col-osprey">1.6&nbsp;MiB</td><td class="num col-osprey">18.6&nbsp;MiB</td><td class="num">1.6&nbsp;MiB</td><td class="num best">1.4&nbsp;MiB</td><td class="num">6.8&nbsp;MiB</td><td class="num">14.0&nbsp;MiB</td><td class="num">2.3&nbsp;MiB</td><td class="num">11.4&nbsp;MiB</td><td class="num col-osprey">—</td><td class="num">—</td></tr><tr><td>wordfreq</td><td class="num col-osprey">59.1&nbsp;MiB</td><td class="num col-osprey">1.6&nbsp;MiB</td><td class="num col-osprey">18.0&nbsp;MiB</td><td class="num">1.6&nbsp;MiB</td><td class="num best">1.4&nbsp;MiB</td><td class="num">6.8&nbsp;MiB</td><td class="num">14.0&nbsp;MiB</td><td class="num">2.3&nbsp;MiB</td><td class="num">11.4&nbsp;MiB</td><td class="num col-osprey">—</td><td class="num">—</td></tr></tbody></table></div>
+</main></body></html>
