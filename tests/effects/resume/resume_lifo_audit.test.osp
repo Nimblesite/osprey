@@ -51,3 +51,325 @@ fn resumeLifoAuditCase() = {
 
 // Register the post-resume LIFO regression.
 test("post-resume code unwinds in reverse operation order", resumeLifoAuditCase)
+
+/// Alpha, Beta, Gamma and Delta are single-operation channels, one per nesting
+/// depth, so every transcript entry names both the region that answered an
+/// operation and the position at which it did so.
+effect Alpha {
+    /// Supply Alpha's numbered value for `label`.
+    alpha: fn(string) -> int
+}
+
+/// Beta is the second channel; a nested region claims it on its own.
+effect Beta {
+    /// Supply Beta's numbered value for `label`.
+    beta: fn(string) -> int
+}
+
+/// Gamma is the third channel, and also serves as a never-performed spectator.
+effect Gamma {
+    /// Supply Gamma's numbered value for `label`.
+    gamma: fn(string) -> int
+}
+
+/// Delta is the fourth channel, claimed by the innermost of four regions.
+effect Delta {
+    /// Supply Delta's numbered value for `label`.
+    delta: fn(string) -> int
+}
+
+/// Two regions, two effects, four operations performed a-b-a-b. Spec 0017
+/// [EFFECTS-RESUME] says `resume` "runs the rest of the handled computation" and
+/// "evaluates to that computation's answer", so an arm's post-resume code only
+/// runs once every suspension opened after it has already settled. The inner
+/// arm multiplies its answer and the outer arm increments its own, so the final
+/// number is only reachable through one settlement order. Per
+/// [EFFECTS-OPERATION-MAILBOX] a resumed body may perform again while an arm is
+/// still live, which is exactly the interleaving below.
+/// [EFFECTS-HANDLER-STATE]: both arms write the same four cells, so the
+/// transcripts are one shared ordering, not two private ones.
+fn nestedInterleavedDepthTwoCase() = {
+    mut alphaCalls = 0
+    mut betaCalls = 0
+    mut entered = ""
+    mut settled = ""
+    mut supplies = ""
+    mut answers = ""
+
+    let total = handle Alpha
+        alpha label => {
+            alphaCalls = alphaCalls + 1 ?: alphaCalls
+            let supplied = alphaCalls * 10 ?: 0
+            entered = "${entered}a:${label}|"
+            supplies = "${supplies}${label}=${toString(supplied)}|"
+            let answer = resume(supplied)
+            settled = "${settled}a:${label}|"
+            answers = "${answers}${label}:${toString(answer)}|"
+            answer + 1 ?: answer
+        }
+    in handle Beta
+        beta label => {
+            betaCalls = betaCalls + 1 ?: betaCalls
+            let supplied = betaCalls * 100 ?: 0
+            entered = "${entered}b:${label}|"
+            supplies = "${supplies}${label}=${toString(supplied)}|"
+            let answer = resume(supplied)
+            settled = "${settled}b:${label}|"
+            answers = "${answers}${label}:${toString(answer)}|"
+            answer * 2 ?: answer
+        }
+    in {
+        let p = perform Alpha.alpha("a1")
+        let q = perform Beta.beta("b1")
+        let r = perform Alpha.alpha("a2")
+        let s = perform Beta.beta("b2")
+        (p + q ?: 0) + (r + s ?: 0) ?: 0
+    }
+
+    // Operations enter in the order the body performs them, whichever depth
+    // answers them: the outer region answers first and third.
+    checkAll("two nested depths enter in perform order", [
+        entered == "a:a1|b:b1|a:a2|b:b2|",
+        startsWith(entered, "a:a1|"),
+        endsWith(entered, "b:b2|"),
+        contains(entered, "a:a1|b:b1|"),
+        contains(entered, "b:b1|a:a2|"),
+        contains(entered, "a:a2|b:b2|"),
+        !contains(entered, "b:b1|a:a1|"),
+        !contains(entered, "a:a3"),
+        !contains(entered, "b:b3"),
+        alphaCalls == 2,
+        betaCalls == 2,
+        alphaCalls == betaCalls,
+        (alphaCalls + betaCalls ?: 0) == 4,
+        length(entered) == 20
+    ])
+
+    // Settlement is the exact reverse: the last suspension opened is the first
+    // whose `resume` returns, and the outermost arm's `resume` returns last.
+    checkAll("two nested depths settle innermost suspension first", [
+        settled == "b:b2|a:a2|b:b1|a:a1|",
+        startsWith(settled, "b:b2|"),
+        endsWith(settled, "a:a1|"),
+        settled != entered,
+        length(settled) == length(entered),
+        length(settled) == 20,
+        contains(settled, "b:b2|a:a2|"),
+        contains(settled, "a:a2|b:b1|"),
+        contains(settled, "b:b1|a:a1|"),
+        !startsWith(settled, "a:a1|"),
+        !endsWith(settled, "b:b2|"),
+        !contains(settled, "a:a1|b:b1|"),
+        settled != "a:a1|b:b1|a:a2|b:b2|",
+        settled != "a:a2|b:b2|a:a1|b:b1|"
+    ])
+
+    // Each region supplies its own magnitude — tens from Alpha, hundreds from
+    // Beta — so a value handed to the wrong performer changes the body's sum.
+    checkAll("each nested depth supplies its own magnitude", [
+        supplies == "a1=10|b1=100|a2=20|b2=200|",
+        startsWith(supplies, "a1=10|"),
+        endsWith(supplies, "b2=200|"),
+        contains(supplies, "b1=100|"),
+        contains(supplies, "a2=20|"),
+        !contains(supplies, "a1=100|"),
+        !contains(supplies, "b1=10|"),
+        !contains(supplies, "a2=200|"),
+        !contains(supplies, "b2=20|"),
+        (10 + 100 ?: 0) == 110,
+        (20 + 200 ?: 0) == 220,
+        (110 + 220 ?: 0) == 330,
+        length(supplies) == 26
+    ])
+
+    // The first arm to settle sees the body's own answer, 330. Every later arm
+    // sees what the arm below it returned: 330 -> 660 -> 661 -> 1322 -> 1323.
+    checkAll("nested settled answers chain through the arms", [
+        answers == "b2:330|a2:660|b1:661|a1:1322|",
+        startsWith(answers, "b2:330|"),
+        endsWith(answers, "a1:1322|"),
+        contains(answers, "a2:660|"),
+        contains(answers, "b1:661|"),
+        (330 * 2 ?: 0) == 660,
+        (660 + 1 ?: 0) == 661,
+        (661 * 2 ?: 0) == 1322,
+        (1322 + 1 ?: 0) == 1323,
+        total == 1323,
+        total != 1326,
+        total != 330,
+        total > 1000,
+        total < 2000
+    ])
+
+    // The regions never traded roles: no Alpha label appears under a Beta tag,
+    // and the two transcripts are permutations rather than copies.
+    checkAll("nested regions keep their own operations", [
+        entered != settled,
+        supplies != answers,
+        !contains(answers, "a1:330|"),
+        !contains(answers, "b2:1322|"),
+        !contains(entered, "b:a1|"),
+        !contains(entered, "a:b1|"),
+        !contains(settled, "b:a2|"),
+        !contains(settled, "a:b2|"),
+        alphaCalls == 2,
+        betaCalls == 2,
+        total == (1322 + 1 ?: 0),
+        length(answers) == 29,
+        answers != "",
+        supplies != ""
+    ])
+}
+
+// Register the two-depth interleaved settlement audit.
+test("interleaved performs across two nested regions settle innermost first", nestedInterleavedDepthTwoCase)
+
+/// Three regions, rotated: the OUTERMOST region handles Gamma, the middle one
+/// Alpha and the innermost one Beta, while the body performs them in a third
+/// order entirely. Spec 0017 [EFFECTS-RESUME] ties settlement to the suspension
+/// stack, not to lexical nesting, so the first arm whose post-resume code runs
+/// belongs to a depth-2 region even though a depth-3 region is nested deeper.
+/// Each depth applies a different, non-commutative transform to the answer it
+/// receives ([EFFECTS-HANDLER-ARMS]: the arm's value is what it supplies to the
+/// suspension below it), so 120146 is reachable through exactly one order.
+fn nestedDepthThreeRotationCase() = {
+    mut gammaCalls = 0
+    mut alphaCalls = 0
+    mut betaCalls = 0
+    mut entered = ""
+    mut settled = ""
+    mut answers = ""
+
+    let total = handle Gamma
+        gamma label => {
+            gammaCalls = gammaCalls + 1 ?: gammaCalls
+            let supplied = gammaCalls * 1000 ?: 0
+            entered = "${entered}d1:${label}|"
+            let answer = resume(supplied)
+            settled = "${settled}d1:${label}|"
+            answers = "${answers}${label}:${toString(answer)}|"
+            answer * 2 ?: answer
+        }
+    in handle Alpha
+        alpha label => {
+            alphaCalls = alphaCalls + 1 ?: alphaCalls
+            let supplied = alphaCalls * 10 ?: 0
+            entered = "${entered}d2:${label}|"
+            let answer = resume(supplied)
+            settled = "${settled}d2:${label}|"
+            answers = "${answers}${label}:${toString(answer)}|"
+            answer + 7 ?: answer
+        }
+    in handle Beta
+        beta label => {
+            betaCalls = betaCalls + 1 ?: betaCalls
+            let supplied = betaCalls * 100 ?: 0
+            entered = "${entered}d3:${label}|"
+            let answer = resume(supplied)
+            settled = "${settled}d3:${label}|"
+            answers = "${answers}${label}:${toString(answer)}|"
+            answer * 3 ?: answer
+        }
+    in {
+        let g0 = perform Gamma.gamma("g0")
+        let a1 = perform Alpha.alpha("a1")
+        let b1 = perform Beta.beta("b1")
+        let g1 = perform Gamma.gamma("g1")
+        let b2 = perform Beta.beta("b2")
+        let a2 = perform Alpha.alpha("a2")
+        (g0 + a1 ?: 0) + (b1 + g1 ?: 0) + (b2 + a2 ?: 0) ?: 0
+    }
+
+    // Six operations, three depths, entered in body order: d1 d2 d3 d1 d3 d2.
+    checkAll("three rotated depths enter in perform order", [
+        entered == "d1:g0|d2:a1|d3:b1|d1:g1|d3:b2|d2:a2|",
+        startsWith(entered, "d1:g0|"),
+        endsWith(entered, "d2:a2|"),
+        contains(entered, "d1:g0|d2:a1|"),
+        contains(entered, "d2:a1|d3:b1|"),
+        contains(entered, "d3:b1|d1:g1|"),
+        contains(entered, "d1:g1|d3:b2|"),
+        contains(entered, "d3:b2|d2:a2|"),
+        !contains(entered, "d1:b1|"),
+        !contains(entered, "d3:g1|"),
+        gammaCalls == 2,
+        alphaCalls == 2,
+        betaCalls == 2,
+        length(entered) == 36
+    ])
+
+    // Settlement reverses that sequence exactly. The first arm to settle is the
+    // depth-2 Alpha region, NOT the deepest region — LIFO follows suspension
+    // order, and the outermost region's first suspension settles last.
+    checkAll("three rotated depths settle by suspension order", [
+        settled == "d2:a2|d3:b2|d1:g1|d3:b1|d2:a1|d1:g0|",
+        startsWith(settled, "d2:a2|"),
+        !startsWith(settled, "d3:"),
+        !startsWith(settled, "d1:"),
+        endsWith(settled, "d1:g0|"),
+        !endsWith(settled, "d3:"),
+        settled != entered,
+        length(settled) == length(entered),
+        length(settled) == 36,
+        contains(settled, "d3:b2|d1:g1|"),
+        contains(settled, "d1:g1|d3:b1|"),
+        contains(settled, "d2:a1|d1:g0|"),
+        !contains(settled, "d1:g0|d2:a1|"),
+        settled != "d1:g0|d2:a1|d3:b1|d1:g1|d3:b2|d2:a2|"
+    ])
+
+    // Body sum: 1000 + 10 + 100 + 2000 + 200 + 20 = 3330. Each arm then folds
+    // its own transform over the answer below it, innermost suspension first.
+    checkAll("three rotated depths chain their answers", [
+        answers == "a2:3330|b2:3337|g1:10011|b1:20022|a1:60066|g0:60073|",
+        startsWith(answers, "a2:3330|"),
+        endsWith(answers, "g0:60073|"),
+        contains(answers, "b2:3337|"),
+        contains(answers, "g1:10011|"),
+        contains(answers, "b1:20022|"),
+        contains(answers, "a1:60066|"),
+        (1000 + 10 ?: 0) == 1010,
+        (100 + 2000 ?: 0) == 2100,
+        (200 + 20 ?: 0) == 220,
+        (1010 + 2100 ?: 0) == 3110,
+        (3110 + 220 ?: 0) == 3330,
+        length(answers) == 52
+    ])
+
+    // 3330 +7 -> 3337 *3 -> 10011 *2 -> 20022 *3 -> 60066 +7 -> 60073 *2.
+    checkAll("three rotated depths fold in exactly one order", [
+        (3330 + 7 ?: 0) == 3337,
+        (3337 * 3 ?: 0) == 10011,
+        (10011 * 2 ?: 0) == 20022,
+        (20022 * 3 ?: 0) == 60066,
+        (60066 + 7 ?: 0) == 60073,
+        (60073 * 2 ?: 0) == 120146,
+        total == 120146,
+        total != 120013,
+        total != 119936,
+        total != 3330,
+        total > 100000,
+        total < 200000,
+        total != (3330 * 36 ?: 0)
+    ])
+
+    // Every depth answered only its own effect, twice, and neither transcript
+    // is the plain concatenation the other would produce.
+    checkAll("three rotated depths never answer for each other", [
+        gammaCalls == alphaCalls,
+        alphaCalls == betaCalls,
+        (gammaCalls + alphaCalls + betaCalls ?: 0) == 6,
+        !contains(answers, "g0:3330|"),
+        !contains(answers, "a2:60073|"),
+        !contains(entered, "d2:g0|"),
+        !contains(entered, "d1:a1|"),
+        !contains(settled, "d3:a2|"),
+        !contains(settled, "d2:b1|"),
+        entered != settled,
+        answers != "",
+        length(entered) == length(settled)
+    ])
+}
+
+// Register the three-depth rotated settlement audit.
+test("three nested regions settle by suspension order, not lexical depth", nestedDepthThreeRotationCase)
