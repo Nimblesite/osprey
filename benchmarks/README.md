@@ -28,7 +28,7 @@ zsh benchmarks/run.sh primes     # direct, single case
 > column on a machine with a few GB free, or skip it with `BENCH_FILTER`.
 >
 > <!-- binarytrees-results:start -->
-> Current measured peaks: default **2.53 GB**, `--memory=arc` **2.98 MB**, and `--memory=gc` **19.1 MB**.
+> Current measured peaks: default **1.9 GB**, `--memory=arc` **3.03 MB**, and `--memory=gc` **21.3 MB**.
 > <!-- binarytrees-results:end -->
 
 Results are written to `benchmarks/results/`. The measured outputs below are

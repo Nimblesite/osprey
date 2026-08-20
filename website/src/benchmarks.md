@@ -66,32 +66,38 @@ compiled to a native binary, checked for correct output, then timed.
   an opt-in safety tier. See [ARITH-CHECKED](/spec/0013-errorhandling/).
 - **The Rust command disables Rust's overflow checks.** The comparison is
   deliberately asymmetric: Osprey enforces its checked arithmetic contract
-  while this Rust configuration measures wrapping release arithmetic. Numbers
-  collected during Osprey's superseded plain-arithmetic experiment are
-  historical and must be regenerated before supporting current claims.
+  while this Rust configuration measures wrapping release arithmetic. Every
+  number on this page was measured under that contract.
 - **Osprey loops via `range |> fold`,** not deep linear recursion, because it has
   no tail-call optimization yet (a 1e6-deep recursion overflows the stack). The
   work is identical; only the iteration mechanism differs.
 - **OCaml is built without flambda** (stock `ocamlopt`), so its numbers are
   conservative versus an flambda build.
 - **Single machine, wall clock.** Treat ratios as indicative; re-run locally with
-  `make bench`. The exact set of outright wins shifts run-to-run because Osprey,
-  Rust, and C now sit within measurement noise of one another.
+  `make bench`.
 
 ## Where the gap remains
 
-The checked-arithmetic change invalidates the old attribution of CPU and memory
-gaps to `/` and `%` alone. Integer `+ - *` now produce the same explicit Result
-shape, so arithmetic-heavy rows include that safety cost too. Re-run
-`make bench` before drawing current per-case conclusions from this historical
-table.
+Osprey is not the fastest language in this table on any case. Averaged across
+the suite it runs **11.6× Rust's CPU time and 13.1× C's**, and the default
+memory backend never wins a row either — `binarytrees` peaks at **1.77 GB**
+against C's 1.75 MB.
 
-**That is a backend choice, not a language one.** Allocation funnels through the
-one swappable boundary of the
+The CPU gap is not attributable to `/` and `%` alone. Under
+[ARITH-CHECKED](/spec/0013-errorhandling/) integer `+ - *` also produce an
+explicit `Result<int, MathError>`, so every arithmetic-heavy row carries that
+safety cost: `fn addup(a, b) = a + b` returns a heap-allocated Result, not an
+`i64`. Making that representation cheap is open work; removing its failure
+channel is not.
+
+**The memory gap is a backend choice, not a language one.** Allocation funnels
+through the one swappable boundary of the
 [Memory Management spec](/spec/0018-memorymanagement/), and under
-`--memory=arc` (Perceus reference counting) **every case drops to 1.5–3.5 MB** —
-matching C throughout, beating it on `exprtree` — with no change to a line of
-Osprey source.
+`--memory=arc` (Perceus reference counting) **every case drops to 1.5–3.4 MB**,
+with no change to a line of Osprey source. That lands ARC within striking
+distance of C — a median of **1.06× C's peak RSS**, from 0.30× on `exprtree`
+(where it beats C outright) to 1.65× on `binarytrees` — turning a 1000×
+memory deficit into a rounding error.
 
 Wall clock cuts both ways, and the split is the opposite of what you might
 expect. On the 17 allocation-light cases ARC is slightly *faster* than the

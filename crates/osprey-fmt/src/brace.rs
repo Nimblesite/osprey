@@ -6,12 +6,12 @@
 //! that *begins* by closing brackets dedents to match its opener. Comments adopt
 //! the depth of the surrounding block.
 
-use crate::scan::{scan_line, Line};
+use crate::scan::{scan_source, Line};
 use crate::{finalize, indent_to};
 
 /// Reformat Default-flavor `src`, returning the canonical, reindented text.
 pub(crate) fn format(src: &str) -> String {
-    let lines: Vec<Line> = src.split('\n').map(scan_line).collect();
+    let lines: Vec<Line> = scan_source(src);
     let mut depth = 0i32;
     let mut out: Vec<String> = Vec::with_capacity(lines.len());
     for line in &lines {
@@ -56,6 +56,17 @@ mod tests {
         let src = "fn main() = {\n        print( 1 )\n   }\n";
         let once = format(src);
         assert_eq!(format(&once), once);
+    }
+
+    /// A literal written across several lines carries its own newlines and
+    /// interior spacing as *data*. Reindenting them rewrote what the program
+    /// printed — caught only because the reparse guard is loud.
+    #[test]
+    fn a_multi_line_string_literal_is_not_reindented() {
+        let src = "fn f() = {\nprint(\"one\n  two  two\nthree\")\nx\n}\n";
+        let want = "fn f() = {\n    print(\"one\n  two  two\nthree\")\n    x\n}\n";
+        assert_eq!(format(src), want);
+        assert_eq!(format(&format(src)), format(src), "not idempotent");
     }
 
     #[test]

@@ -6,10 +6,11 @@
 //! second pass changes nothing) and **meaning-preserving** (the formatted text
 //! reparses to the very same AST). Every corpus file must parse: silently
 //! skipping one would leave a formatter regression outside this audit.
-#![expect(
-    clippy::panic,
-    reason = "test assertions: a read or re-format failure here is a test failure, not a production panic"
-)]
+//!
+//! Both halves are real only because a failed meaning-preservation guard is an
+//! error (`osprey_fmt::DECLINED`) rather than the input returned verbatim —
+//! until plan 0019 closed that, "declined to format" and "already formatted"
+//! were the same observation here.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -63,32 +64,39 @@ fn is_generated(path: &Path) -> bool {
     path.ends_with("examples/projects/modules/src/web/bundle.ospml")
 }
 
-/// Format every corpus source of one extension, asserting idempotency and a clean
-/// reparse. Returns `(processed, changed)`.
-fn check_extension(ext: &str) -> (usize, usize) {
+/// Format every corpus source of one extension, collecting **every** file that
+/// fails rather than stopping at the first: one run reports the whole blast
+/// radius of a formatter regression. Returns `(processed, failures)`.
+fn check_extension(ext: &str) -> (usize, Vec<String>) {
     let mut processed = 0;
-    let mut changed = 0;
+    let mut failures = Vec::new();
     for path in sources(ext) {
         let display = path.display();
-        let src = fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {display}: {e}"));
-        let key = path.to_string_lossy();
-        let once = format_for_path(&key, &src)
-            .unwrap_or_else(|errors| panic!("format {display}: {errors:?}"));
+        let Ok(src) = fs::read_to_string(&path) else {
+            failures.push(format!("{display}: unreadable"));
+            continue;
+        };
         processed += 1;
-        if once != src {
-            changed += 1;
+        let key = path.to_string_lossy();
+        match format_for_path(&key, &src) {
+            Err(errors) => failures.push(format!("{display}: format: {errors:?}")),
+            Ok(once) => match format_for_path(&key, &once) {
+                Err(errors) => failures.push(format!("{display}: re-format: {errors:?}")),
+                Ok(twice) if twice != once => {
+                    failures.push(format!("{display}: not idempotent"));
+                }
+                Ok(_) => {}
+            },
         }
-        let twice =
-            format_for_path(&key, &once).unwrap_or_else(|e| panic!("re-format {display}: {e:?}"));
-        assert_eq!(once, twice, "formatting is not idempotent for {display}");
     }
-    (processed, changed)
+    (processed, failures)
 }
 
 #[test]
 fn default_corpus_formats_idempotently() {
-    let (processed, _changed) = check_extension("osp");
+    let (processed, failures) = check_extension("osp");
     assert!(processed > 0, "no .osp sources were processed");
+    assert!(failures.is_empty(), "{}", failures.join("\n"));
 }
 
 #[test]
@@ -106,8 +114,9 @@ fn ml_corpus_formats_idempotently() {
             "ML formatter corpus omitted {required}"
         );
     }
-    let (processed, _changed) = check_extension("ospml");
+    let (processed, failures) = check_extension("ospml");
     assert!(processed > 0, "no .ospml sources were processed");
+    assert!(failures.is_empty(), "{}", failures.join("\n"));
 }
 
 #[test]
@@ -123,7 +132,8 @@ fn ml_clause_and_match_surface_forms_are_preserved() {
         "  Some n => n\n",
         "  None => 0\n",
     );
-    let out = format_for_path("forms.ospml", src).unwrap_or_else(|e| panic!("{e:?}"));
+    let out = format_for_path("forms.ospml", src).unwrap_or_default();
+    assert!(!out.is_empty(), "forms.ospml did not format");
     assert_ne!(out, src, "the irregular layout must be reformatted");
     assert!(
         out.contains("type Choice = None | Some int"),
@@ -144,6 +154,6 @@ fn ml_clause_and_match_surface_forms_are_preserved() {
         out.contains("\n    Some n => n\n"),
         "match layout changed: {out}"
     );
-    let twice = format_for_path("forms.ospml", &out).unwrap_or_else(|e| panic!("{e:?}"));
+    let twice = format_for_path("forms.ospml", &out).unwrap_or_default();
     assert_eq!(out, twice, "Plan 0019 forms are not idempotent");
 }

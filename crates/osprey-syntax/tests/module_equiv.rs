@@ -9,22 +9,7 @@ fn canonical(source: &str, flavor: Flavor) -> String {
         "{flavor} syntax errors: {:?}",
         parsed.errors
     );
-    scrub_positions(&format!("{:?}", parsed.program))
-}
-
-fn scrub_positions(debug: &str) -> String {
-    let mut out = String::with_capacity(debug.len());
-    let mut rest = debug;
-    while let Some(start) = rest.find("Position {") {
-        out.push_str(&rest[..start]);
-        rest = &rest[start..];
-        match rest.find('}') {
-            Some(end) => rest = &rest[end.saturating_add(1)..],
-            None => break,
-        }
-    }
-    out.push_str(rest);
-    out.replace("position: Some()", "position: None")
+    osprey_ast::canonical::without_positions(&parsed.program)
 }
 
 fn assert_equivalent(default: &str, ml: &str) {

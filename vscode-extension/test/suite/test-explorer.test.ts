@@ -23,6 +23,7 @@ import {
   refreshTestFile,
   registerOspreyTestExplorer,
   removeTestFile,
+  runCompiler,
   requestedItems,
   scanWorkspaceTestFiles,
   testFileLabel,
@@ -258,6 +259,32 @@ suite("Osprey Test Explorer", () => {
   });
 
   suite("run", () => {
+    test("runCompiler closes child stdin so input reaches EOF", async function () {
+      this.timeout(3000);
+      const source = new vscode.CancellationTokenSource();
+      const cancel = setTimeout(() => source.cancel(), 500);
+      try {
+        const result = await runCompiler(
+          process.execPath,
+          [
+            "-e",
+            "process.stdin.resume(); process.stdin.on('end', () => process.exit(0));",
+          ],
+          fixtureDir,
+          process.env,
+          source.token,
+        );
+        assert.strictEqual(
+          result.exitCode,
+          0,
+          "child waited for stdin EOF until the test cancelled it",
+        );
+      } finally {
+        clearTimeout(cancel);
+        source.dispose();
+      }
+    });
+
     function token(): vscode.CancellationToken {
       return new vscode.CancellationTokenSource().token;
     }

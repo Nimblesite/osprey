@@ -135,3 +135,8 @@ benchmarks/cases/**/*.o
 /test_output.txt
 /test_stale_reason.txt
 /osprey_http_state_levels.db
+# `osprey test <dir>` runs each program from its own directory, so the same two
+# files also land beside the test. Fully anchored for the reason above: these
+# exact paths, never a bare name that could hide a real fixture elsewhere.
+/tests/regressions/basics/files/test_output.txt
+/tests/regressions/basics/files/test_stale_reason.txt
