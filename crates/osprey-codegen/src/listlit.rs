@@ -249,7 +249,11 @@ pub(crate) fn gen_index(cg: &mut Codegen, target: &Expr, index: &Expr) -> Result
     let iv = gen_expr(cg, index)?;
 
     // A runtime map handle indexes through the C map runtime.
-    if tv.osp_ty.as_deref() == Some(crate::collections::MAP_OWNER) {
+    if tv
+        .osp_ty
+        .as_deref()
+        .is_some_and(crate::collections::is_map_owner)
+    {
         let key = crate::cast::coerce_to(cg, iv, LType::Str)?;
         let k = crate::conv::box_to_i64(cg, key);
         return crate::collections::runtime_map_get(cg, &tv, &k);

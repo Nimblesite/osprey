@@ -406,10 +406,6 @@ impl Checker {
                 (Vec::new(), HashMap::new(), false)
             };
         let answer = self.ctx.fresh();
-        // Codegen picks the resuming lowering by exactly this predicate
-        // (`gen_handler` in osprey-codegen), and the two rules must agree.
-        let region_resumes = arms.iter().any(|a| osprey_ast::contains_resume(&a.body));
-        let mut aborting: Vec<(String, Type)> = Vec::new();
         for arm in arms {
             let (params, op_ret) = match inst_ops.get(&arm.operation) {
                 Some(op) if op.params.len() == arm.params.len() => {
@@ -447,28 +443,18 @@ impl Checker {
             self.resume_ctx.push((op_ret.clone(), answer.clone()));
             let arm_ty = self.infer_expr(&arm.body, &local);
             let _ = self.resume_ctx.pop();
-            // A non-resuming arm's value substitutes for the operation's
-            // RESULT (value substitution — this is what pins a generic
-            // effect's instantiation from its handler); a resuming arm's
-            // value is the handler's ANSWER. A `Unit` operation discards the
-            // arm's value, so anything goes there. Implements
-            // [EFFECTS-RESUME] and [EFFECTS-GENERIC-INSTANTIATION].
-            //
-            // Value substitution is the rule for a region where NO arm resumes:
-            // the handler is inlined at each `perform`, so the arm's value is
-            // what the `perform` evaluates to. In a region where some other arm
-            // does resume, a non-resuming arm instead ABANDONS the continuation
-            // — the body is killed and this arm's value becomes the whole
-            // `handle` expression's answer, while the operation's result is
-            // never produced at all. Constraining it to `op_ret` there checks
-            // the wrong thing and leaves the answer unchecked, which is how a
-            // `string` arm came to answer an `int` handle: codegen boxed the
-            // pointer as an integer and the program printed a heap address as a
-            // successful result. Implements [EFFECTS-HANDLER-ARMS].
+            // Mode is the ARM's, not the region's. An arm that resumes hands
+            // its value back as the handler's ANSWER, because `resume` already
+            // supplied the operation's result and the arm outlives it. An arm
+            // that never resumes SUBSTITUTES: its value is what the `perform`
+            // evaluates to, which is also what pins a generic effect's
+            // instantiation from its handler. A sibling's `resume` changes
+            // neither — reading the mode region-wide was issue #177. A `Unit`
+            // operation discards the arm's value, so anything goes there.
+            // Implements [EFFECTS-HANDLER-ARMS], [EFFECTS-RESUME] and
+            // [EFFECTS-GENERIC-INSTANTIATION].
             if osprey_ast::contains_resume(&arm.body) {
-                self.push_assign(&answer, &arm_ty);
-            } else if region_resumes {
-                aborting.push((arm.operation.clone(), arm_ty));
+                self.check_resuming_arm_answer(effect, &arm.operation, &answer, &arm_ty);
             } else if !self.ctx.prune(&op_ret).is_named(crate::ty::names::UNIT) {
                 self.push_assign(&op_ret, &arm_ty);
             } else if self.ctx.prune(&arm_ty).is_named(crate::ty::names::RESULT) {
@@ -488,30 +474,28 @@ impl Checker {
             self.handler_tys.push((pos, eff_args, inst_ops));
         }
         self.push_assign(&answer, &body_ty);
-        // Checked only now: the handled expression is what pins the answer, so
-        // blaming the arm before it is known would report the mismatch backwards.
-        for (op, arm_ty) in aborting {
-            self.check_abandoning_arm(effect, &op, &answer, &arm_ty);
-        }
         answer
     }
 
-    /// An arm that abandons the continuation answers for the whole `handle`, so
-    /// its value must be able to BE that answer — an assignment, hence the
-    /// directional check: a concrete arm erases into an `any` region, while an
-    /// erased arm cannot answer a concrete one ([TYPE-ANY]). Codegen cannot
-    /// tell an erased word from a genuine `int`, which is why this belongs in
-    /// inference. Implements [EFFECTS-HANDLER-ARMS].
-    fn check_abandoning_arm(&mut self, effect: &str, op: &str, answer: &Type, arm_ty: &Type) {
+    /// A resuming arm's value is the handler's ANSWER, not the operation's
+    /// result: `resume` already supplied the result, and the arm keeps running
+    /// afterwards, so what it finally returns answers for the whole `handle` —
+    /// as does any branch of it that returns without resuming, abandoning the
+    /// continuation. Its value must therefore be able to BE that answer — an
+    /// assignment, hence the directional check: a concrete arm erases into an
+    /// `any` region, while an erased arm cannot answer a concrete one
+    /// ([TYPE-ANY]). Codegen cannot tell an erased word from a genuine `int`,
+    /// which is why this belongs in inference. Implements
+    /// [EFFECTS-HANDLER-ARMS].
+    fn check_resuming_arm_answer(&mut self, effect: &str, op: &str, answer: &Type, arm_ty: &Type) {
         if crate::unify::unify_assignable(&mut self.ctx, answer, arm_ty).is_ok() {
             return;
         }
         let (want, got) = (self.ctx.prune(answer), self.ctx.prune(arm_ty));
         self.errors.push(TypeError::new(format!(
-            "handler arm `{effect}.{op}` never resumes, so its value becomes the whole \
+            "handler arm `{effect}.{op}` resumes, so its value becomes the whole \
              `handle` expression's result — but it is `{got}` and that result is `{want}`. \
-             Give the arm a `resume`, or make every arm of this handler agree with the \
-             handled expression's type"
+             Make the arm's value agree with the handled expression's type"
         )));
     }
 

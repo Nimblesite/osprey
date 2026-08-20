@@ -332,11 +332,10 @@ fn is_opaque_owner(owner: &str) -> bool {
     owner.is_empty()
         || owner == "HttpResponse"
         || owner == crate::collections::LIST_OWNER
-        || owner == crate::collections::MAP_OWNER
+        || crate::collections::is_map_owner(owner)
         || owner.starts_with("[]")
         || owner.starts_with(crate::collections::LIST_TAG)
         || owner.starts_with(crate::gpu::GPU_TAG)
-        || owner.starts_with("Map#")
         || owner == "GpuBuffer"
 }
 
@@ -345,7 +344,7 @@ fn is_opaque_owner(owner: &str) -> bool {
 fn opaque_label(owner: &str) -> &'static str {
     if owner.starts_with("[]") || owner.starts_with(crate::collections::LIST_TAG) {
         "<list>"
-    } else if owner == crate::collections::MAP_OWNER || owner.starts_with("Map#") {
+    } else if crate::collections::is_map_owner(owner) {
         "<map>"
     } else if owner.starts_with(crate::gpu::GPU_TAG) || owner == "GpuBuffer" {
         "<gpu>"

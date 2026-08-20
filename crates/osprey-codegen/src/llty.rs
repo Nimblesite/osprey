@@ -102,7 +102,11 @@ pub(crate) fn elem_of_tag(v: &Value, prefix: &str) -> Option<LType> {
         "double" => Some(LType::Double),
         "i1" => Some(LType::I1),
         "i64" => Some(LType::I64),
+        // Before `i8*`: an erased box IS an `i8*`, but recovering it as
+        // `LType::Str` would strcmp and print the box instead of dispatching
+        // through its shape descriptor.
         ANY_TAG_SPELLING => Some(LType::Any),
+        "i8*" => Some(LType::Str),
         _ => None,
     }
 }
@@ -119,7 +123,15 @@ pub(crate) const ANY_TAG_SPELLING: &str = "any";
 pub(crate) fn elem_tagged_owner(prefix: &str, bare: &str, elem: Option<LType>) -> String {
     match elem {
         Some(LType::Any) => format!("{prefix}{ANY_TAG_SPELLING}"),
-        Some(lt @ (LType::I64 | LType::Double | LType::I1)) => format!("{prefix}{}", lt.as_str()),
+        // `Str` belongs here with the scalars. The element ABI is a uniform
+        // `i64` word, so an untagged string element came back typed `int`: a
+        // `char*` printed as its own address, and `listGet(xs, 0) == "b"`
+        // reached `as_i64` on a pointer. The flat-literal tag has always
+        // spelled it (`[]i8*` in [`crate::listlit`]); the runtime-list tag
+        // must spell it identically. [BUILTIN-LIST-GET]
+        Some(lt @ (LType::I64 | LType::Double | LType::I1 | LType::Str)) => {
+            format!("{prefix}{}", lt.as_str())
+        }
         _ => bare.to_string(),
     }
 }

@@ -488,15 +488,7 @@ mod tests {
 
     #[test]
     fn module_keywords_are_reserved_as_identifiers() {
-        for keyword in [
-            "namespace",
-            "signature",
-            "export",
-            "opaque",
-            "state",
-            "as",
-            "extra",
-        ] {
+        for keyword in ["namespace", "signature", "export", "opaque", "state", "as"] {
             let parsed = parse_program(&format!("let {keyword} = 1\n"));
             assert!(
                 parsed

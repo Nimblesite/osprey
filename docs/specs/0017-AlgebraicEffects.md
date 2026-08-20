@@ -232,15 +232,16 @@ Resuming handlers have these rules:
   runs.
 - They are single-shot. A second resume of one continuation aborts with
   `fatal: continuation already resumed (multi-shot resume is not supported)`.
-- Handler mode is selected per region. With no `resume` in any arm, every arm
-  directly supplies its operation result and the caller continues. If any arm
-  contains `resume`, returning from the selected branch without resuming stops
-  the suspended computation and its value becomes the result of the whole
-  handler. A single operation arm may intentionally resume its success branch
-  and return from its error branch; that is the exception-style early-exit
-  pattern. The known deviation is across sibling operations: adding `resume`
-  to one arm also changes a non-resuming sibling from substitution to early
-  exit. This region-wide behavior is tracked as
+- Handler mode is selected per arm, not per region. An arm containing no
+  `resume` supplies its operation result directly and the caller continues,
+  whatever its siblings do. In an arm that does contain `resume`, returning
+  from the selected branch without resuming stops the suspended computation and
+  its value becomes the result of the whole handler; a single arm may
+  intentionally resume its success branch and return from its error branch,
+  which is the exception-style early-exit pattern. Adding `resume` to one arm
+  therefore leaves every sibling arm's mode untouched — reading the mode
+  region-wide, so that a sibling's `resume` silently converted a substituting
+  arm into an early exit, was
   [issue #177](https://github.com/Nimblesite/osprey/issues/177).
 - `resume` is lexical to the arm. It is rejected at top level and inside a
   lambda declared in an arm, because that lambda has no live arm continuation.
@@ -248,22 +249,24 @@ Resuming handlers have these rules:
   handlers but not the pthread-backed continuation runtime.
 
 `[EFFECTS-HANDLER-ARMS]` An arm's value is checked against whichever of the two
-things it actually supplies, which follows from the region's mode:
+things it actually supplies, which follows from that ARM's own mode:
 
-- No arm in the region resumes: the arm's value substitutes for its operation's
-  declared result, and the handled expression's own value is the region's result.
-- Some arm in the region resumes: an arm that returns without resuming abandons
-  the continuation. The operation's result is never produced — the `perform`
-  waiting for it never returns — and the arm's value becomes the result of the
-  whole `handle` expression, so that is what it is checked against.
+- The arm contains no `resume`: its value substitutes for its operation's
+  declared result, and the handled expression's own value is the region's
+  result. A sibling arm's `resume` does not change this.
+- The arm contains `resume`: the operation's result was already supplied by
+  `resume`, and the arm runs on afterwards, so the arm's value is the region's
+  ANSWER and that is what it is checked against. The same holds for a branch of
+  such an arm that returns without resuming: it abandons the continuation, the
+  operation's result is never produced — the `perform` waiting for it never
+  returns — and the branch's value answers for the whole `handle`.
 
 Disagreement in the second case is a type error naming both types:
 
 ```text
-handler arm `Mixed.b` never resumes, so its value becomes the whole `handle`
-expression's result — but it is `string` and that result is `int`. Give the arm
-a `resume`, or make every arm of this handler agree with the handled
-expression's type
+handler arm `Mixed.b` resumes, so its value becomes the whole `handle`
+expression's result — but it is `string` and that result is `int`. Make the
+arm's value agree with the handled expression's type
 ```
 
 The conformance cases are

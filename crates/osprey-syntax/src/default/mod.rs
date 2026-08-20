@@ -139,15 +139,13 @@ fn is_negative_numeric(node: Node<'_>, src: &[u8]) -> bool {
 /// Tree-sitter keywords are contextual at identifier-only parse states. The
 /// language contract reserves module words globally, so reject an identifier
 /// node carrying one even when the CST could otherwise accept it.
-const MODULE_KEYWORDS: &[&str] = &[
-    "namespace",
-    "signature",
-    "export",
-    "opaque",
-    "state",
-    "as",
-    "extra",
-];
+///
+/// Exactly the words [LEX-RESERVED] lists, and no others. `extra` is NOT one:
+/// the grammar uses it only in signature-ascription position (`: Sig + extra`),
+/// where it is read from its own CST field, so reserving the bare word globally
+/// rejected an ordinary binding the spec allows — and rejected it in Default
+/// only, splitting the flavors on a name ML accepts.
+const MODULE_KEYWORDS: &[&str] = &["namespace", "signature", "export", "opaque", "state", "as"];
 
 /// Convert a tree-sitter point to Osprey's one-based-line source position.
 pub(crate) fn position_from_point(point: Point) -> Position {

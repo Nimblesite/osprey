@@ -12,7 +12,6 @@ use crate::error::{CodegenError, Result};
 use crate::expr::gen_expr;
 use crate::llty::{LType, Value};
 use crate::loops::{close_list_loop, open_list_loop};
-use crate::result::result_from_flag;
 use osprey_ast::{Expr, NamedArgument};
 
 /// The owner tag carried by runtime list / map handles.
@@ -33,6 +32,33 @@ pub(crate) const LIST_TAG: &str = "List#";
 /// The owner tag for a runtime list holding `elem` words.
 pub(crate) fn list_owner(elem: Option<LType>) -> String {
     crate::llty::elem_tagged_owner(LIST_TAG, LIST_OWNER, elem)
+}
+
+/// Owner-tag prefix marking a runtime map whose VALUE type is known; the
+/// suffix is the value's LLVM spelling (`Map#i8*`), the same convention runtime
+/// lists (`List#double`) and flat literals (`[]double`) use.
+///
+/// The map runtime stores every value as a uniform `i64` word, so this tag is
+/// the ONLY surviving record of what that word means. Without it `mapGet` typed
+/// every value `int`: a `Map<string, string>` answered a `char*` as an integer
+/// and `?: "none"` printed `0`, and a `float` value came back as its IEEE-754
+/// bits. [BUILTIN-MAP-GET]
+pub(crate) const MAP_TAG: &str = "Map#";
+
+/// The owner tag for a runtime map holding `elem` value words.
+pub(crate) fn map_owner(elem: Option<LType>) -> String {
+    crate::llty::elem_tagged_owner(MAP_TAG, MAP_OWNER, elem)
+}
+
+/// Whether an owner tag names a runtime map handle — value-typed (`Map#i8*`)
+/// or bare.
+pub(crate) fn is_map_owner(owner: &str) -> bool {
+    owner == MAP_OWNER || owner.starts_with(MAP_TAG)
+}
+
+/// The value `LType` recorded on a map handle's owner tag, if any.
+pub(crate) fn tagged_map_elem(v: &Value) -> Option<LType> {
+    crate::llty::elem_of_tag(v, MAP_TAG)
 }
 
 /// Whether an owner tag names a runtime list handle — element-typed
@@ -82,7 +108,7 @@ pub(crate) fn gen(
         "mapGet" => map_get(cg, args)?,
         "mapContains" => map_contains(cg, args)?,
         "mapRemove" => map_remove(cg, args)?,
-        "mapMerge" => binary_handle_op(cg, args, "osprey_map_merge", MAP_OWNER)?,
+        "mapMerge" => map_merge(cg, args)?,
         "mapKeys" => map_to_list(cg, args, true)?,
         "mapValues" => map_to_list(cg, args, false)?,
         _ => return Ok(None),
@@ -125,7 +151,7 @@ pub(crate) fn gen_receiver_directed(
     let recv = lowered;
     let count = match recv.osp_ty.as_deref() {
         Some(owner) if is_list_owner(owner) => handle_i64(cg, &recv, "osprey_list_length"),
-        Some(MAP_OWNER) => handle_i64(cg, &recv, "osprey_map_length"),
+        Some(o) if is_map_owner(o) => handle_i64(cg, &recv, "osprey_map_length"),
         _ => match crate::listlit::lit_length(cg, &recv) {
             Some(n) => n,
             None => return crate::strings::gen_size(cg, name, recv).map(Some),
@@ -266,12 +292,6 @@ fn list_insert(cg: &mut Codegen, cname: &str, args: &[Expr]) -> Result<Value> {
 
 /// A binary runtime op on two collection-handle arguments → a new handle
 /// (`listConcat`, `mapMerge`): evaluate both, then [`combine_handles`].
-fn binary_handle_op(cg: &mut Codegen, args: &[Expr], cname: &str, owner: &str) -> Result<Value> {
-    let a = handle_arg(cg, args, 0)?;
-    let b = handle_arg(cg, args, 1)?;
-    Ok(combine_handles(cg, &a, &b, cname, owner))
-}
-
 /// A runtime op combining two collection handles into a new one — the body
 /// behind both list concat and map merge.
 fn combine_handles(cg: &mut Codegen, a: &Value, b: &Value, cname: &str, owner: &str) -> Value {
@@ -373,14 +393,18 @@ fn list_contains(cg: &mut Codegen, args: &[Expr]) -> Result<Value> {
 fn map_set(cg: &mut Codegen, args: &[Expr]) -> Result<Value> {
     let m = handle_arg(cg, args, 0)?;
     let (k, _) = stored_boxed_arg(cg, args, 1)?;
-    let (v, managed) = stored_boxed_arg(cg, args, 2)?;
+    // Read the value's type BEFORE the `i64` erasure: it is what the new
+    // handle's tag records, and the only place it is still visible.
+    let raw = unboxed_arg(cg, args, 2)?;
+    let elem = raw.ty;
+    let (v, managed) = stored_element(cg, raw)?;
     let r = cg.call(
         "i8*",
         "osprey_map_set_of",
         "i8*, i64, i64, i32",
         &[&m.operand, &k.operand, &v.operand, managed],
     );
-    Ok(own_handle(cg, Value::handle(r, MAP_OWNER)))
+    Ok(own_handle(cg, Value::handle(r, map_owner(Some(elem)))))
 }
 
 /// `mapRemove(m, k) -> Map`.
@@ -393,7 +417,10 @@ fn map_remove(cg: &mut Codegen, args: &[Expr]) -> Result<Value> {
         "i8*, i64",
         &[&m.operand, &k.operand],
     );
-    Ok(own_handle(cg, Value::handle(r, MAP_OWNER)))
+    Ok(own_handle(
+        cg,
+        Value::handle(r, map_owner(tagged_map_elem(&m))),
+    ))
 }
 
 /// `mapContains(m, k) -> bool`.
@@ -419,9 +446,18 @@ fn map_get(cg: &mut Codegen, args: &[Expr]) -> Result<Value> {
     runtime_map_get(cg, &m, &k)
 }
 
+/// `mapMerge(a, b) -> Map`, carrying whichever operand still knows the value
+/// type — an empty `Map()` operand carries none.
+fn map_merge(cg: &mut Codegen, args: &[Expr]) -> Result<Value> {
+    let a = handle_arg(cg, args, 0)?;
+    let b = handle_arg(cg, args, 1)?;
+    Ok(merge_handles(cg, &a, &b))
+}
+
 /// Emit `osprey_map_merge` on two already-evaluated map handles.
 pub(crate) fn merge_handles(cg: &mut Codegen, a: &Value, b: &Value) -> Value {
-    combine_handles(cg, a, b, "osprey_map_merge", MAP_OWNER)
+    let owner = map_owner(tagged_map_elem(a).or_else(|| tagged_map_elem(b)));
+    combine_handles(cg, a, b, "osprey_map_merge", &owner)
 }
 
 /// Runtime list-builder protocol — `new` → `push`* → `seal`, shared by every
@@ -519,6 +555,9 @@ fn map_to_list(cg: &mut Codegen, args: &[Expr], take_key: bool) -> Result<Value>
 pub(crate) fn gen_map_literal(cg: &mut Codegen, entries: &[osprey_ast::MapEntry]) -> Result<Value> {
     // OSPREY_KEY_STRING = 1.
     let bld = cg.call("i8*", "osprey_map_builder_new", "i32", &["1"]);
+    // The sealed handle's tag records the entries' value type; an empty
+    // literal has none to record [`MAP_TAG`].
+    let mut elem: Option<LType> = None;
     for e in entries {
         let k = gen_expr(cg, &e.key)?;
         let k = coerce_to(cg, k, LType::Str)?;
@@ -535,6 +574,7 @@ pub(crate) fn gen_map_literal(cg: &mut Codegen, entries: &[osprey_ast::MapEntry]
         }
         let managed = managed_flag(&v);
         crate::arc::escape_retain(cg, &v);
+        elem = Some(v.ty);
         let v = box_to_i64(cg, v);
         cg.call_void(
             "osprey_map_builder_put_of",
@@ -543,10 +583,10 @@ pub(crate) fn gen_map_literal(cg: &mut Codegen, entries: &[osprey_ast::MapEntry]
         );
     }
     let sealed = cg.call("i8*", "osprey_map_builder_seal", "i8*", &[&bld]);
-    Ok(own_handle(cg, Value::handle(sealed, MAP_OWNER)))
+    Ok(own_handle(cg, Value::handle(sealed, map_owner(elem))))
 }
 
-/// Shared runtime map lookup → `Result<i64, _>` (also used by `m[key]` indexing).
+/// Shared runtime map lookup → `Result<V, _>` (also used by `m[key]` indexing).
 pub(crate) fn runtime_map_get(cg: &mut Codegen, m: &Value, k: &Value) -> Result<Value> {
     let has = cg.call(
         "i32",
@@ -560,5 +600,10 @@ pub(crate) fn runtime_map_get(cg: &mut Codegen, m: &Value, k: &Value) -> Result<
         "i8*, i64",
         &[&m.operand, &k.operand],
     );
-    result_from_flag(cg, &has, &got, "mapGet: key not found")
+    // The success payload is the VALUE's type, not the storage word's, so a
+    // `Map<string, string>` yields `Result<string, _>` [`MAP_TAG`].
+    let value = crate::conv::from_word(cg, &got, tagged_map_elem(m));
+    let inner = value.ty;
+    let is_err = cg.emit_reg(format!("icmp eq i32 {has}, 0"));
+    crate::result::make_result_if_err(cg, value, inner, &is_err, Some("mapGet: key not found"))
 }

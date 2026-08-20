@@ -284,10 +284,6 @@ fn gen_arith(cg: &mut Codegen, op: &str, l: Value, r: Value) -> Result<Value> {
     // `[1] + [2]` — where neither operand carries the owner tag — fell past this
     // arm into integer arithmetic and failed with "expected an integer".
     if op == "+" {
-        let tagged = |owner| {
-            let has = |v: &Value| v.osp_ty.as_deref() == Some(owner);
-            has(&l) || has(&r)
-        };
         let list_like = |v: &Value| {
             v.osp_ty
                 .as_deref()
@@ -299,7 +295,12 @@ fn gen_arith(cg: &mut Codegen, op: &str, l: Value, r: Value) -> Result<Value> {
             let r = crate::listlit::to_runtime_list(cg, r);
             return Ok(crate::collections::concat_handles(cg, &l, &r));
         }
-        if tagged(crate::collections::MAP_OWNER) {
+        let map_like = |v: &Value| {
+            v.osp_ty
+                .as_deref()
+                .is_some_and(crate::collections::is_map_owner)
+        };
+        if map_like(&l) || map_like(&r) {
             return Ok(crate::collections::merge_handles(cg, &l, &r));
         }
     }
