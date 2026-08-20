@@ -1055,6 +1055,7 @@ fn checked_program(program: &Program) -> Checker {
     checker
         .errors
         .extend(crate::effect_rows::check(program, &instances));
+    checker.errors.extend(crate::init_order::check(program));
     checker
 }
 

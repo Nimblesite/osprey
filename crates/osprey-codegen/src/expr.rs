@@ -27,6 +27,12 @@ pub(crate) fn gen_expr(cg: &mut Codegen, expr: &Expr) -> Result<Value> {
         },
         Expr::Identifier(name) => match cg.lookup(name) {
             Some(v) => Ok(v),
+            // A file-scope binding read from inside a function body: the
+            // enclosing `main` frame is not on this stack, so the value comes
+            // from its module global ([`crate::globals`]).
+            None if cg.module_globals.contains_key(name) => {
+                crate::globals::read(cg, name).ok_or_else(|| CodegenError::unknown(name))
+            }
             // A bare name that is a nullary constructor (`Active`, `Red`, …) is a
             // zero-field variant value.
             None if cg.is_ctor(name) => crate::aggregate::gen_constructor(cg, name, &[]),
@@ -155,7 +161,7 @@ fn gen_block(cg: &mut Codegen, statements: &[Stmt], value: Option<&Expr>) -> Res
     cg.push_scope();
     let result = (|| {
         for (i, s) in statements.iter().enumerate() {
-            crate::lower::gen_local_stmt(cg, s)?;
+            crate::stmt::gen_local_stmt(cg, s)?;
             // Last-use drops: names the continuation no longer references die
             // here, not at function end [GC-ARC-PERCEUS].
             crate::arc::release_dead_after(cg, statements.get(i + 1..).unwrap_or(&[]), value);

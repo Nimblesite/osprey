@@ -1,0 +1,7 @@
+// `main` is the program entry, and top-level executable statements are the
+// alternative entry [MODULES-ENTRYPOINT]. A source carrying both declares two
+// entries; the backend used to resolve that by silently discarding the
+// statements, so the greeting below never ran.
+print("this greeting never reached the terminal")
+
+fn main() = print("only main ran")

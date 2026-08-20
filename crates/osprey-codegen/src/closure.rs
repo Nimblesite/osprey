@@ -20,8 +20,8 @@
 use crate::builder::{Codegen, FnSig, ParamSig};
 use crate::error::{CodegenError, Result};
 use crate::expr::gen_expr;
-use crate::freevars::free_idents;
 use crate::llty::{LType, Value};
+use osprey_ast::freevars::free_idents;
 use osprey_ast::{Expr, Parameter, Position};
 use std::collections::BTreeSet;
 

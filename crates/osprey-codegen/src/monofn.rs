@@ -46,10 +46,10 @@ pub(crate) struct Instantiation {
 /// cannot specialise. Mutual recursion still trips [`crate::genfn`]'s re-entry
 /// guard and its diagnostic. The free-identifier collector already answers
 /// "which names does this body reach", parameters subtracted
-/// ([`crate::freevars`]).
+/// ([`osprey_ast::freevars`]).
 pub(crate) fn calls_itself(name: &str, body: &Expr) -> bool {
     let mut names = std::collections::BTreeSet::new();
-    crate::freevars::free_idents(body, &mut names);
+    osprey_ast::freevars::free_idents(body, &mut names);
     names.contains(name)
 }
 

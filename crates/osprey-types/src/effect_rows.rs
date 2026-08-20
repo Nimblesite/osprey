@@ -2154,19 +2154,21 @@ pub(crate) fn check(program: &Program, instances: &Instances) -> Vec<TypeError> 
         &mut errors,
     );
 
-    // Codegen executes a user `main` instead of top-level statements. Without
-    // one, the top-level let/assignment/expression sequence is the entry.
-    let entry = index
+    // The entry is `main` when the program declares one, otherwise the
+    // top-level let/assignment/expression sequence. Either way the file-scope
+    // initializers run before it and are part of it: a `perform` in a top-level
+    // `let` needs a handler exactly as one written inside `main` does.
+    let mut entry = {
+        let mut env = CallableEnv::default();
+        analyzer.statements(&program.statements, &[], &mut env)
+    };
+    if let Some(main) = index
         .functions
         .iter()
         .position(|function| function.scope.is_empty() && function.name == "main")
-        .map_or_else(
-            || {
-                let mut env = CallableEnv::default();
-                analyzer.statements(&program.statements, &[], &mut env)
-            },
-            |main| rows.get(main).cloned().unwrap_or_default(),
-        );
+    {
+        entry.union(rows.get(main).cloned().unwrap_or_default());
+    }
     if !entry.required.is_empty() {
         let operations = entry
             .required

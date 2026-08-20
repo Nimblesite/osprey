@@ -4,7 +4,7 @@
 //! top-level statements.
 
 use crate::builder::{Codegen, CodegenOptions, ParamSig};
-use crate::error::{CodegenError, Result};
+use crate::error::Result;
 use crate::expr::gen_expr;
 use crate::llty::{LType, Value};
 use osprey_ast::{Expr, Parameter, Position, Program, Stmt};
@@ -74,8 +74,94 @@ fn compile_program_with_options(program: &Program, options: CodegenOptions) -> R
     // BEFORE any match or erasure site is emitted ([`crate::anybox`]).
     crate::anybox::seed_rows(&mut cg);
 
-    // Pre-pass: record parameter names so named-argument calls can be ordered,
-    // and parse `effect` operation signatures for `handle`/`perform`.
+    record_declarations(&mut cg, program);
+
+    let mut top_level: Vec<&Stmt> = Vec::new();
+    let mut user_main: Option<(&Expr, Option<Position>)> = None;
+    for stmt in &program.statements {
+        match stmt {
+            Stmt::Function {
+                name,
+                body,
+                position,
+                ..
+            } if name == "main" => user_main = Some((body, *position)),
+            Stmt::Let { .. } | Stmt::Assignment { .. } | Stmt::Expr { .. } => {
+                top_level.push(stmt);
+            }
+            _ => {}
+        }
+    }
+    // File-scope bindings the functions read need module storage, declared
+    // before the first function is emitted so a forward call that inlines a
+    // generic body still finds the slot [MODULES-FILE-SCOPE-BINDING].
+    let read_by_functions = crate::globals::read_by_functions(program);
+    let top_level_cells = crate::globals::cell_names(&top_level, &read_by_functions);
+    crate::globals::seed(&mut cg, program, &top_level_cells, &read_by_functions)?;
+    for stmt in &program.statements {
+        match stmt {
+            // A generic function is specialised by inlining at each call site
+            // (recorded in `fn_defs`), so it is not emitted as a monomorphic def.
+            Stmt::Function { name, .. } if name == "main" || cg.fn_defs.contains_key(name) => {}
+            Stmt::Function {
+                name,
+                parameters,
+                body,
+                position,
+                ..
+            } => gen_function(&mut cg, name, parameters, body, *position)?,
+            _ => {}
+        }
+    }
+
+    let main_position = user_main.and_then(|(_, position)| position).or_else(|| {
+        top_level
+            .iter()
+            .find_map(|stmt| crate::stmt::stmt_position(stmt))
+    });
+    cg.begin_function("main", main_position);
+    emit_main_boot(&mut cg);
+    // The file-scope statements run first either way: they are the entry when
+    // there is no user `main`, and its initializers when there is. The checker
+    // rejects executable statements beside a `main`, so nothing but bindings
+    // reaches this loop in that case [MODULES-ENTRYPOINT].
+    cg.cell_vars = top_level_cells;
+    for (i, stmt) in top_level.iter().enumerate() {
+        crate::stmt::gen_local_stmt(&mut cg, stmt)?;
+        crate::stmt::publish_binding(&mut cg, stmt)?;
+        let rest = top_level.get(i + 1..).unwrap_or(&[]);
+        crate::arc::release_dead_after(&mut cg, rest, None);
+    }
+    if let Some((body, _)) = user_main {
+        cg.cell_vars = crate::effects::captured_mut_vars(body);
+        let _ = gen_expr(&mut cg, body)?;
+    }
+    crate::globals::release_all(&mut cg);
+    // A program that used the testing built-ins exits with the TAP epilogue's
+    // status (plan + summary printed by the runtime) [TESTING-EXIT].
+    crate::arc::epilogue(&mut cg, None);
+    if cg.fibers_used {
+        // A completed fiber keeps one runtime owner so every `await` can return
+        // its own retained reference. Main's language owners are gone now, so
+        // release those runtime roots before process-exit leak accounting.
+        cg.add_extern("declare void @fiber_cleanup_results()");
+        cg.emit("call void @fiber_cleanup_results()");
+    }
+    if cg.testing_used {
+        let code = cg.call("i32", "osp_test_finalize", "", &[]);
+        cg.emit(format!("ret i32 {code}"));
+    } else {
+        cg.emit("ret i32 0");
+    }
+    cg.finish_function(LType::I32.as_str(), "main", &[]);
+
+    Ok(cg.render())
+}
+
+/// Pre-pass: record parameter names so named-argument calls can be ordered,
+/// parse `effect` operation signatures for `handle`/`perform`, and note the
+/// generic bodies that are specialised by inlining rather than emitted.
+fn record_declarations(cg: &mut Codegen, program: &Program) {
     for stmt in &program.statements {
         match stmt {
             Stmt::Function {
@@ -120,69 +206,6 @@ fn compile_program_with_options(program: &Program, options: CodegenOptions) -> R
             _ => {}
         }
     }
-
-    let mut top_level: Vec<&Stmt> = Vec::new();
-    let mut user_main: Option<(&Expr, Option<Position>)> = None;
-    for stmt in &program.statements {
-        match stmt {
-            Stmt::Function {
-                name,
-                body,
-                position,
-                ..
-            } if name == "main" => user_main = Some((body, *position)),
-            // A generic function is specialised by inlining at each call site
-            // (recorded in `fn_defs`), so it is not emitted as a monomorphic def.
-            Stmt::Function { name, .. } if cg.fn_defs.contains_key(name) => {}
-            Stmt::Function {
-                name,
-                parameters,
-                body,
-                position,
-                ..
-            } => gen_function(&mut cg, name, parameters, body, *position)?,
-            Stmt::Let { .. } | Stmt::Assignment { .. } | Stmt::Expr { .. } => {
-                top_level.push(stmt);
-            }
-            _ => {}
-        }
-    }
-
-    let main_position = user_main
-        .and_then(|(_, position)| position)
-        .or_else(|| top_level.iter().find_map(|stmt| stmt_position(stmt)));
-    cg.begin_function("main", main_position);
-    emit_main_boot(&mut cg);
-    if let Some((body, _)) = user_main {
-        cg.cell_vars = crate::effects::captured_mut_vars(body);
-        let _ = gen_expr(&mut cg, body)?;
-    } else {
-        cg.cell_vars = crate::effects::captured_mut_vars_in_stmts(&top_level);
-        for (i, stmt) in top_level.iter().enumerate() {
-            gen_local_stmt(&mut cg, stmt)?;
-            let rest = top_level.get(i + 1..).unwrap_or(&[]);
-            crate::arc::release_dead_after(&mut cg, rest, None);
-        }
-    }
-    // A program that used the testing built-ins exits with the TAP epilogue's
-    // status (plan + summary printed by the runtime) [TESTING-EXIT].
-    crate::arc::epilogue(&mut cg, None);
-    if cg.fibers_used {
-        // A completed fiber keeps one runtime owner so every `await` can return
-        // its own retained reference. Main's language owners are gone now, so
-        // release those runtime roots before process-exit leak accounting.
-        cg.add_extern("declare void @fiber_cleanup_results()");
-        cg.emit("call void @fiber_cleanup_results()");
-    }
-    if cg.testing_used {
-        let code = cg.call("i32", "osp_test_finalize", "", &[]);
-        cg.emit(format!("ret i32 {code}"));
-    } else {
-        cg.emit("ret i32 0");
-    }
-    cg.finish_function(LType::I32.as_str(), "main", &[]);
-
-    Ok(cg.render())
 }
 
 /// The runtime anchors `main` starts with, before any user code runs.
@@ -312,275 +335,4 @@ fn coerce_return(cg: &mut Codegen, name: &str, body: Value) -> Result<Value> {
     // the OTHER direction: `coerce_to` boxes it with its shape descriptor
     // ([`crate::anybox`]), which is where the erasing transfer happens (#208).
     crate::cast::coerce_to(cg, body, ret_ty)
-}
-
-/// Lower a statement inside its own ARC region: temporaries the statement
-/// produced and did not bind drop at its end [GC-ARC-PERCEUS].
-pub(crate) fn gen_local_stmt(cg: &mut Codegen, stmt: &Stmt) -> Result<()> {
-    crate::arc::push_frame(cg);
-    let lowered = gen_stmt_kind(cg, stmt);
-    crate::arc::pop_frame(cg);
-    lowered
-}
-
-fn gen_stmt_kind(cg: &mut Codegen, stmt: &Stmt) -> Result<()> {
-    match stmt {
-        // A `mut` an effect handler captures is promoted to a shared heap cell so
-        // the handler owns it; its declaration allocates the cell and a
-        // reassignment stores through it (reads `load` it, see `gen_expr`).
-        Stmt::Let {
-            name,
-            value,
-            mutable: true,
-            position,
-            ..
-        } if cg.cell_vars.contains(name) => {
-            with_stmt_debug(cg, *position, |cg| gen_cell_define(cg, name, value))
-        }
-        Stmt::Assignment {
-            name,
-            value,
-            position,
-        } if cg.cell_slots.contains_key(name) => {
-            with_stmt_debug(cg, *position, |cg| gen_cell_store(cg, name, value))
-        }
-        // Bindings preserve their inferred representation. A Result can never
-        // be silently reduced to its payload at an assignment boundary.
-        Stmt::Let {
-            name,
-            value,
-            position,
-            ..
-        } => with_stmt_debug(cg, *position, |cg| gen_bind(cg, name, value, *position)),
-        Stmt::Assignment {
-            name,
-            value,
-            position,
-        } => with_stmt_debug(cg, *position, |cg| gen_bind(cg, name, value, *position)),
-        // A statement's value is discarded, so a `match` used purely for its
-        // side effects is allowed arms of differing LLVM type — there is no
-        // `phi` to type. Everywhere else that disagreement is a hard error
-        // ([`crate::pattern::finish_phi`]).
-        Stmt::Expr {
-            value, position, ..
-        } => with_stmt_debug(cg, *position, |cg| {
-            let outer = std::mem::replace(&mut cg.value_discarded, true);
-            let generated = gen_expr(cg, value);
-            cg.value_discarded = outer;
-            generated.map(|_| ())
-        }),
-        _ => Err(CodegenError::unsupported("statement in block/main")),
-    }
-}
-
-fn stmt_position(stmt: &Stmt) -> Option<Position> {
-    match stmt {
-        Stmt::Let { position, .. }
-        | Stmt::Assignment { position, .. }
-        | Stmt::Expr { position, .. } => *position,
-        _ => None,
-    }
-}
-
-fn with_stmt_debug(
-    cg: &mut Codegen,
-    position: Option<Position>,
-    f: impl FnOnce(&mut Codegen) -> Result<()>,
-) -> Result<()> {
-    let previous = cg.set_debug_position(position);
-    // Every positioned statement is a coverable line, bumped where control
-    // flow reaches it [TESTING-COVERAGE-CODEGEN].
-    cg.cov_hit(position);
-    let result = f(cg);
-    cg.restore_debug_position(previous);
-    result
-}
-
-/// Declare a handler-captured plain-value `mut` as a heap cell. Result-backed
-/// cells require a discriminant-bearing slot and are rejected instead of being
-/// silently unwrapped.
-fn gen_cell_define(cg: &mut Codegen, name: &str, value: &Expr) -> Result<()> {
-    let v = gen_expr(cg, value)?;
-    if v.result_inner.is_some() {
-        return Err(CodegenError::invalid(
-            "mutable Result state must be handled before storage",
-        ));
-    }
-    let fn_ty = fn_result_type(cg, value);
-    let pointee = v.ty;
-    let ty = pointee.as_str();
-    let meta = crate::meta::struct_meta(&[crate::meta::MetaField::of_lty(pointee)]);
-    let cell = cg.malloc_struct(&format!("{{ {ty} }}"), meta);
-    let ptr = cg.emit_reg(format!(
-        "getelementptr {{ {ty} }}, {{ {ty} }}* {cell}, i32 0, i32 0"
-    ));
-    // The cell holds its own reference to the stored value [GC-ARC-PERCEUS].
-    crate::arc::dup_store(cg, ty, &v.operand);
-    cg.emit(format!("store {ty} {}, {ty}* {ptr}", v.operand));
-    // The cell itself is a heap allocation owned by the region that declared
-    // the `mut`. A handler env capturing it only DUPs it (`build_env`), so
-    // without this the cell outlives every region and leaks — one per captured
-    // `mut`. [GC-ARC-PERCEUS].
-    let handle = if ty == "i8*" {
-        ptr.clone()
-    } else {
-        cg.emit_reg(format!("bitcast {ty}* {ptr} to i8*"))
-    };
-    crate::arc::own_beyond_stmt(cg, &Value::new(handle, LType::Ptr));
-    let _ = cg.cell_slots.insert(
-        name.to_string(),
-        crate::builder::CellSlot {
-            ptr,
-            pointee,
-            osp_ty: v.osp_ty,
-        },
-    );
-    if let Some(ty) = fn_ty {
-        cg.bind_fn_local(name, ty);
-    }
-    Ok(())
-}
-
-/// Reassign a cell-backed `mut`: the checker requires the exact plain cell type,
-/// then codegen coerces only within that representation and stores it.
-fn gen_cell_store(cg: &mut Codegen, name: &str, value: &Expr) -> Result<()> {
-    let Some(slot) = cg.cell_slots.get(name).cloned() else {
-        return Err(CodegenError::unsupported(
-            "reassignment of an unpromoted cell",
-        ));
-    };
-    let v = gen_expr(cg, value)?;
-    let v = crate::cast::coerce_to(cg, v, slot.pointee)?;
-    let ty = slot.pointee.as_str();
-    // Rebind order: dup the incoming value BEFORE dropping the old one, so a
-    // self-assignment never frees the value it stores [GC-ARC-PERCEUS].
-    crate::arc::dup_store(cg, ty, &v.operand);
-    if slot.pointee.is_managed_ptr() {
-        let old = cg.emit_reg(format!("load {ty}, {ty}* {}", slot.ptr));
-        crate::arc::release_operand(cg, &old);
-    }
-    cg.emit(format!("store {ty} {}, {ty}* {}", v.operand, slot.ptr));
-    Ok(())
-}
-
-/// Bind `name` to `value`. A lambda is recorded for inline application at its
-/// direct call sites (a beta-reduction fast path) AND materialized as a closure
-/// cell so the name is a first-class value.
-fn gen_bind(cg: &mut Codegen, name: &str, value: &Expr, position: Option<Position>) -> Result<()> {
-    let expected_result_inner = cg
-        .prog
-        .let_type(position)
-        .and_then(crate::types::result_inner)
-        .or_else(|| cg.lookup(name).and_then(|bound| bound.result_inner));
-    if let Expr::Lambda {
-        parameters,
-        body,
-        position,
-        ..
-    } = value
-    {
-        let _ = cg.lambdas.insert(
-            name.to_string(),
-            (parameters.clone(), (**body).clone(), *position),
-        );
-        // Materialize the closure value when its type resolved concretely; a
-        // still-generic lambda stays inline-only (its cell ABI would lose the
-        // per-instantiation types).
-        if let Some(ty) = cg.prog.lambda_type(*position).cloned() {
-            if crate::types::fn_value_concrete(&ty) {
-                if let Some(sig) = Codegen::fn_value_sig(&ty) {
-                    let v = crate::closure::emit_closure(cg, parameters, body, &sig)?;
-                    cg.emit_debug_local(name, &v);
-                    crate::arc::bind_owned(cg, name, &v);
-                    cg.bind(name.to_string(), v);
-                    cg.bind_fn_local(name, ty);
-                }
-            }
-        }
-        return Ok(());
-    }
-    if let Expr::Identifier(n) = value {
-        let target = cg.call_aliases.get(n).cloned().unwrap_or_else(|| n.clone());
-        if cg.lookup(&target).is_none() && cg.fn_defs.contains_key(&target) {
-            // `let g = identity` where the target is a GENERIC function: no
-            // single concrete cell ABI exists, so bind as a call alias — g's
-            // call sites specialise the target exactly as direct calls do,
-            // and a value use resolves the alias where a consuming slot fixes
-            // the ABI ([TYPE-GENERICS-FN]).
-            let _ = cg.call_aliases.insert(name.to_string(), target);
-            return Ok(());
-        }
-    }
-    let v = gen_expr(cg, value)?;
-    let v = match expected_result_inner {
-        Some(inner) => crate::result::fit_to_inner(cg, v, inner)?,
-        None => v,
-    };
-    // A non-lambda (re)binding invalidates any stale beta-reduction entry or
-    // call alias for the name — `mut f = fn(x) => …; f = makeAdder(10)` must
-    // call the new closure, not the old inline body.
-    let _ = cg.lambdas.remove(name);
-    let _ = cg.call_aliases.remove(name);
-    // A function-valued binding (`let add5 = makeAdder(5)`) registers its
-    // function type so `add5(3)` lowers as a closure call.
-    if let Some(ty) = fn_result_type(cg, value) {
-        cg.bind_fn_local(name, ty);
-    }
-    cg.emit_debug_local(name, &v);
-    // The binding outlives the statement region: move the statement's
-    // ownership out, or retain a borrow [GC-ARC-PERCEUS].
-    crate::arc::bind_owned(cg, name, &v);
-    cg.bind(name.to_string(), v);
-    Ok(())
-}
-
-/// The function type of an expression that produces a function value: a
-/// lambda with a concretely-inferred type, a call whose callee returns a
-/// function, an alias of another function-typed local or a top-level function,
-/// or a function-typed record field. Shared with `genfn::try_inline`, which
-/// uses it to keep inlined function-typed parameters callable.
-pub(crate) fn fn_result_type(cg: &Codegen, value: &Expr) -> Option<osprey_types::Type> {
-    match value {
-        Expr::Lambda { position, .. } => cg
-            .prog
-            .lambda_type(*position)
-            .filter(|t| crate::types::fn_value_concrete(t))
-            .cloned(),
-        Expr::Call { function, .. } => match &**function {
-            Expr::Identifier(f) => cg.call_result_fn_type(f),
-            _ => None,
-        },
-        Expr::Identifier(n) => cg.fn_value_types.get(n).cloned().or_else(|| {
-            // `let d = double` — alias of a named user function.
-            if cg.fn_params.contains_key(n) {
-                cg.prog
-                    .functions
-                    .get(n)
-                    .map(|(p, r)| osprey_types::Type::fun(p.clone(), r.clone()))
-            } else {
-                None
-            }
-        }),
-        Expr::FieldAccess { field, .. } => field_fn_type(cg, field),
-        _ => None,
-    }
-}
-
-/// The type of a function-typed record field, found by field name across the
-/// known constructor layouts (same fallback discipline as
-/// `Codegen::find_field_owner`).
-fn field_fn_type(cg: &Codegen, field: &str) -> Option<osprey_types::Type> {
-    let mut tys: Vec<(&String, &osprey_types::Type)> = cg
-        .prog
-        .ctors
-        .iter()
-        .filter_map(|(owner, c)| {
-            c.fields
-                .iter()
-                .find(|(f, t)| f == field && matches!(t, osprey_types::Type::Fun { .. }))
-                .map(|(_, t)| (owner, t))
-        })
-        .collect();
-    tys.sort_by(|a, b| a.0.cmp(b.0));
-    tys.into_iter().next().map(|(_, t)| t.clone())
 }

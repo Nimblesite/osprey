@@ -8,7 +8,7 @@ use crate::types::ltype_of;
 use osprey_ast::{Expr, Position};
 use osprey_debug::DebugSource;
 use osprey_types::{ProgramTypes, Type};
-use std::collections::{BTreeSet, HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::fmt::Write as _;
 
 /// Code generation switches that alter the emitted module without changing
@@ -138,6 +138,15 @@ pub struct Codegen {
     /// reassignment stores, and an effect handler captures the cell pointer so
     /// `get`/`set` arms share one mutable location — handler-owned state.
     pub(crate) cell_slots: HashMap<String, CellSlot>,
+    /// File-scope bindings that some function body reads, and the module
+    /// global each one lives in. Module-wide, so it is NOT part of
+    /// [`SavedFn`]: a nested handler function reads the same storage its
+    /// enclosing function does ([`crate::globals`]).
+    ///
+    /// Ordered so the end-of-`main` releases are emitted in one fixed order:
+    /// register numbering must be a pure function of the source, or a
+    /// Default/ML twin pair stops matching [FLAVOR-IR-EQUIV].
+    pub(crate) module_globals: BTreeMap<String, crate::globals::GlobalSlot>,
     /// Continuation lowering context while emitting a resuming handler arm.
     pub(crate) resume_ctx: Option<ResumeCodegenContext>,
     /// Whether the expression currently being lowered sits in statement
@@ -565,6 +574,7 @@ impl Codegen {
             call_aliases: HashMap::new(),
             cell_vars: HashSet::new(),
             cell_slots: HashMap::new(),
+            module_globals: BTreeMap::new(),
             resume_ctx: None,
             testing_used: false,
             fibers_used: false,

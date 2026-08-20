@@ -30,8 +30,10 @@ mod error;
 mod expr;
 mod extern_call;
 mod fiber;
-mod freevars;
+#[cfg(test)]
+mod freevars_tests;
 mod genfn;
+mod globals;
 mod gpu;
 mod gpu_kernel;
 mod iter;
@@ -44,6 +46,7 @@ mod monofn;
 mod pattern;
 mod result;
 mod runtime;
+mod stmt;
 mod strings;
 mod testing;
 mod types;
@@ -70,10 +73,10 @@ fn stmt_idents(s: &osprey_ast::Stmt, out: &mut std::collections::BTreeSet<String
     use osprey_ast::Stmt;
     match s {
         Stmt::Let { value, .. } | Stmt::Assignment { value, .. } => {
-            freevars::free_idents(value, out);
+            osprey_ast::freevars::free_idents(value, out);
         }
         Stmt::Expr { value: e, .. } | Stmt::Function { body: e, .. } => {
-            freevars::free_idents(e, out);
+            osprey_ast::freevars::free_idents(e, out);
         }
         Stmt::Module { body, .. } => {
             for item in body {

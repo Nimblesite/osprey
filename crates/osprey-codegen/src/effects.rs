@@ -12,9 +12,9 @@ use crate::cast::coerce_to;
 use crate::conv::unbox_from_i64;
 use crate::error::Result;
 use crate::expr::gen_expr;
-use crate::freevars::free_idents;
 use crate::llty::{LType, Value};
 use crate::types::{ltype_of, result_inner};
+use osprey_ast::freevars::free_idents;
 use osprey_ast::{contains_resume, Expr, HandlerArm, MatchArm, Stmt};
 use std::collections::{BTreeSet, HashSet};
 

@@ -1,0 +1,12 @@
+// A file-scope binding lives in a module global [MODULES-FILE-SCOPE-BINDING].
+// `report` is declared below `banner`, so it may read it — but the call that
+// reaches `report` runs ABOVE the binding, when the global still holds its
+// zero. Compiling this would print an empty banner instead of the real one, so
+// the read is rejected where it is written.
+fn announce() = report()
+
+print(announce())
+
+let banner = "Talon Bank"
+
+fn report() = "welcome to ${banner}"

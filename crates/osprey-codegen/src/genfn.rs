@@ -105,7 +105,7 @@ fn bind_inline_arg(cg: &mut Codegen, p: &Parameter, a: &Expr) -> Result<()> {
     } else {
         v
     };
-    if let Some(ty) = crate::lower::fn_result_type(cg, a) {
+    if let Some(ty) = crate::stmt::fn_result_type(cg, a) {
         cg.bind_fn_local(&p.name, ty);
     }
     cg.bind(p.name.clone(), v);

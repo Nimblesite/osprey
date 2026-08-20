@@ -265,6 +265,43 @@ initialized inside a qualifying installer, so each call gets fresh cells.
 Constant initializer cycles and type-alias cycles are rejected before code
 generation.
 
+### File-scope Bindings `[MODULES-FILE-SCOPE-BINDING]`
+
+A `let` or `mut` written at the file scope of the entry source is a
+declaration, not a statement of the entry. Its initializer runs where it is
+written, in source order, before the entry runs — so a source may carry both a
+`main` and the bindings `main` reads.
+
+A function body may read a file-scope binding declared above it. The binding
+then has module storage rather than a slot in the entry's frame, and every read
+observes the current value at that storage. A `mut` an effect handler owns is
+one shared cell ([EFFECTS-HANDLER-STATE](0017-AlgebraicEffects.md#handler-owned-state)),
+so a function reads what the arms most recently wrote and not a copy taken at
+declaration time. This does not relax
+[MODULES-STATE-TOPLEVEL](#forbidden-top-level-state-modules-state-toplevel): a
+`mut` directly inside a namespace or plain module remains an error.
+
+Three programs are rejected, because each would otherwise read storage that
+holds no bound value or the wrong one:
+
+- A statement that reaches a binding *before* its initializer runs, through any
+  function it can call. Naming a function counts as calling it, since a name
+  handed to a higher-order function is invoked out of sight.
+- A file-scope name that is rebound and also read from a function body. Later
+  statements may see a newer binding; one module slot cannot hold both.
+- Reading a binding declared below the function that names it, which is already
+  an unknown identifier.
+
+```osprey
+mut hits = 0
+let total = handle Counter
+    tick amount => { hits = (hits + amount) ?: hits  hits }
+in run()
+
+// Reads the live cell and the finished total, from outside the entry.
+fn summary() = "${hits} hits, total ${total}"
+```
+
 ## Project Assembly `[MODULES-PROJECT]`
 
 A project input is a directory or `osprey.toml`. Source roots are scanned
@@ -303,6 +340,12 @@ Entry selection uses this order:
 Zero or multiple candidates are errors. Namespace-level `main` and executable
 top-level statements are rejected outside the selected entry source. Project
 `main` cannot take parameters.
+
+A source declares one entry, so a `main` and a top-level executable statement
+cannot share it: candidates 2 and 3 would both select that source and only one
+of them could run. A file-scope `let` or `mut` is a declaration and stays where
+it is ([MODULES-FILE-SCOPE-BINDING](#file-scope-bindings-modules-file-scope-binding));
+a bare expression or an assignment beside `main` is an error.
 
 ## Cycles `[MODULES-CYCLES]`
 

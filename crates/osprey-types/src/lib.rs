@@ -28,6 +28,7 @@ mod env;
 mod error;
 mod expr;
 mod info;
+mod init_order;
 mod pattern;
 #[cfg(test)]
 mod testutil;

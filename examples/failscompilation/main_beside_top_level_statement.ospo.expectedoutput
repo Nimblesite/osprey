@@ -1,0 +1,1 @@
+a top-level executable statement cannot sit beside `main`: `main` is the program entry, so move the statement into it (a file-scope `let` or `mut` is a declaration and stays where it is)
