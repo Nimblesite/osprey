@@ -21,6 +21,25 @@ guarded () =
     observe ("after second check: " + toString b)
     99
 
+(** Mixed models one handler whose two arms disagree about resuming. *)
+effect Mixed
+    (** Resumed arm: the handler supplies a value and the caller continues. *)
+    tally : int => int
+    (** Non-resuming arm: its own value substitutes for the operation result. *)
+    supply : int => int
+
+(** Perform both Mixed operations so each arm's mode is observable. *)
+mixedWork : Unit -> int ! [Mixed, Observation]
+mixedWork () =
+    observe "work start"
+    a = perform Mixed.tally 1
+    observe ("after tally: " + toString a)
+    b = perform Mixed.supply 2
+    observe ("after supply: " + toString b)
+    c = perform Mixed.supply 3
+    observe ("after second supply: " + toString c)
+    (a + b ?: 0) + c ?: 0
+
 (** Verify resume, abort, unwind, and discarded work. *)
 resumeAbortEarlyExitCase () =
     mut transcript = ""
@@ -72,3 +91,59 @@ resumeAbortEarlyExitCase () =
     ]
 
 test "returning without resume aborts the suspended continuation" resumeAbortEarlyExitCase
+
+(** [EFFECTS-HANDLER-ARMS] gives an arm's value one of two meanings: an arm that
+    does not resume "substitutes for its operation's declared result", while an
+    arm that abandons the continuation supplies "the result of the whole handle
+    expression". The choice belongs to the arm that is running — `tally` resumes,
+    `supply` does not — so a sibling's `resume` cannot turn `supply` into an
+    early exit. Issue #177: the mode is read per region today. *)
+resumeSiblingArmIndependenceCase () =
+    mut transcript = ""
+    mut tallyCalls = 0
+    mut supplyCalls = 0
+    mut lastSupplied = 0
+    mut resumedAnswer = 0
+
+    result =
+        handle Observation
+            line message =>
+                transcript := "${transcript}${message}\n"
+        in
+            handle Mixed
+                tally n =>
+                    tallyCalls := tallyCalls + 1 ?: tallyCalls
+                    answer = resume (n * 10 ?: 0)
+                    resumedAnswer := answer
+                    answer
+                supply n =>
+                    supplyCalls := supplyCalls + 1 ?: supplyCalls
+                    lastSupplied := n * 100 ?: 0
+                    lastSupplied
+            in mixedWork ()
+    legacyTranscript = "${transcript}result=${toString result}\n"
+
+    // The non-resuming arm substitutes: every later line of the body still runs.
+    checkAll "sibling-arm legacy observations" [
+        legacyTranscript == "work start\nafter tally: 10\nafter supply: 200\nafter second supply: 300\nresult=510\n",
+        contains legacyTranscript "work start\n",
+        contains legacyTranscript "after tally: 10\n",
+        contains legacyTranscript "after supply: 200\n",
+        contains legacyTranscript "after second supply: 300\n",
+        endsWith legacyTranscript "result=510\n",
+        !(contains legacyTranscript "result=200\n"),
+        !(contains legacyTranscript "result=300\n")
+    ]
+
+    // A sibling's `resume` must not turn these arms into early exits.
+    checkAll "sibling-arm internal state" [
+        result == 510,
+        tallyCalls == 1,
+        supplyCalls == 2,
+        lastSupplied == 300,
+        resumedAnswer == 510,
+        resumedAnswer == result,
+        (tallyCalls + supplyCalls ?: 0) == 3
+    ]
+
+test "a non-resuming arm is unaffected by a sibling arm's resume" resumeSiblingArmIndependenceCase

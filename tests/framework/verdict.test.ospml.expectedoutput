@@ -1,4 +1,6 @@
 ok 1 - pass folds several good interactions
 ok 2 - skip preserves an unmet precondition # SKIP precondition not met
-1..2
-# tests=2 passed=1 failed=0 skipped=1
+ok 3 - curried ML bodies perform every operation through the handler
+ok 4 - ML partial application follows the currying rule
+1..4
+# tests=4 passed=3 failed=0 skipped=1

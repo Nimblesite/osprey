@@ -31,3 +31,159 @@ skippedCase () =
 
 test "pass folds several good interactions" passingCase
 test "skip preserves an unmet precondition" skippedCase
+
+(** Trace records every operation a curried body performs. *)
+effect Trace
+    (** Record one step and answer its 1-based index. *)
+    step : string => int
+
+(** Two whitespace parameters curry [FLAVOR-ML-CURRY]. *)
+traced2 a b =
+    x = perform Trace.step a
+    y = perform Trace.step b
+    x + y ?: 0
+
+(** Three whitespace parameters curry the same way. *)
+traced3 a b c =
+    x = perform Trace.step a
+    y = perform Trace.step b
+    z = perform Trace.step c
+    (x + y ?: 0) + z ?: 0
+
+(** Four whitespace parameters — the exact shape [FLAVOR-ML-CURRY] warns about
+    in issue #184, where an operation performed through the body is silently
+    skipped. Every step below must reach the handler. *)
+traced4 a b c d =
+    w = perform Trace.step a
+    x = perform Trace.step b
+    y = perform Trace.step c
+    z = perform Trace.step d
+    ((w + x ?: 0) + y ?: 0) + z ?: 0
+
+(** Five whitespace parameters: one nesting level past the reported shape. *)
+traced5 a b c d e =
+    v = perform Trace.step a
+    w = perform Trace.step b
+    x = perform Trace.step c
+    y = perform Trace.step d
+    z = perform Trace.step e
+    (((v + w ?: 0) + x ?: 0) + y ?: 0) + z ?: 0
+
+(** Parenthesised comma-separated parameters are explicitly flat, and the spec
+    names this the form that works today — so both forms must agree. *)
+tracedFlat (a, b, c, d) =
+    w = perform Trace.step a
+    x = perform Trace.step b
+    y = perform Trace.step c
+    z = perform Trace.step d
+    ((w + x ?: 0) + y ?: 0) + z ?: 0
+
+(** Curried and flat bodies perform through the same handler, so the operation
+    indices they receive form one unbroken 1..18 sequence. A skipped operation
+    shows up three ways at once: a short transcript, a low count, and a sum that
+    no longer matches the indices its own arity should have consumed. *)
+curriedEffectsReachTheHandlerCase () =
+    mut seen = ""
+    mut steps = 0
+    traceReport =
+        handle Trace
+            step label =>
+                steps := steps + 1 ?: steps
+                seen := "${seen}${label}|"
+                steps
+        in
+            r2 = traced2 "a" "b"
+            r3 = traced3 "c" "d" "e"
+            r4 = traced4 "f" "g" "h" "i"
+            r5 = traced5 "j" "k" "l" "m" "n"
+            rf = tracedFlat ("o", "p", "q", "r")
+            "${r2}/${r3}/${r4}/${r5}/${rf}"
+
+    // Each arity consumes consecutive indices: 1-2, 3-5, 6-9, 10-14, 15-18.
+    checkAll "curried arities consume every operation index" [
+        traceReport == "3/12/30/60/66",
+        startsWith traceReport "3/",
+        endsWith traceReport "/66",
+        contains traceReport "/12/",
+        contains traceReport "/30/",
+        contains traceReport "/60/",
+        !(contains traceReport "/0/"),
+        !(contains traceReport "//")
+    ]
+
+    // The handler saw eighteen distinct labels, in source order, once each.
+    checkAll "every performed label reached the handler" [
+        steps == 18,
+        seen == "a|b|c|d|e|f|g|h|i|j|k|l|m|n|o|p|q|r|",
+        length seen == 36,
+        startsWith seen "a|b|",
+        endsWith seen "q|r|",
+        contains seen "e|f|",
+        contains seen "i|j|",
+        contains seen "n|o|",
+        steps == 18,
+        steps > 14,
+        steps != 14,
+        steps != 9
+    ]
+
+    // The arity-4 curried body and its flat twin must agree operation for
+    // operation: 6+7+8+9 == 30 and 15+16+17+18 == 66, four steps each.
+    checkAll "curried and flat four-parameter bodies agree" [
+        (6 + 7 ?: 0) + (8 + 9 ?: 0) ?: 0 == 30,
+        (15 + 16 ?: 0) + (17 + 18 ?: 0) ?: 0 == 66,
+        contains traceReport "30",
+        contains traceReport "66",
+        (1 + 2 ?: 0) == 3,
+        (3 + 4 ?: 0) + 5 ?: 0 == 12,
+        ((10 + 11 ?: 0) + (12 + 13 ?: 0) ?: 0) + 14 ?: 0 == 60,
+        steps == 18
+    ]
+
+(** Add three integers through whitespace parameters. *)
+addThree a b c = (a + b ?: 0) + c ?: 0
+
+(** The same addition with explicitly flat parenthesised parameters. *)
+addFlat (a, b, c) = (a + b ?: 0) + c ?: 0
+
+(** [FLAVOR-ML-CURRY]: `add 1 2` lowers to nested one-argument calls and `add 1`
+    returns the remaining function, while parenthesised comma parameters are
+    flat and do not partially apply. Both spellings must reach the same answer
+    from every legal application shape. *)
+partialApplicationCase () =
+    onePart = addThree 1
+    twoPart = addThree 1 2
+    otherPart = addThree 10
+    reused = onePart 2
+
+    // Every grouping of the same three arguments is the same call.
+    checkAll "curried application groups freely" [
+        addThree 1 2 3 == 6,
+        (addThree 1) 2 3 == 6,
+        (addThree 1 2) 3 == 6,
+        ((addThree 1) 2) 3 == 6,
+        onePart 2 3 == 6,
+        twoPart 3 == 6,
+        reused 3 == 6,
+        addFlat (1, 2, 3) == 6,
+        addThree 1 2 3 == addFlat (1, 2, 3)
+    ]
+
+    // A partial application is a value: reusing one does not consume it, and
+    // two partials of the same function stay independent.
+    checkAll "partial applications are independent reusable values" [
+        onePart 2 3 == 6,
+        onePart 2 4 == 7,
+        onePart 5 5 == 11,
+        otherPart 2 3 == 15,
+        otherPart 20 30 == 60,
+        twoPart 3 == 6,
+        twoPart 30 == 33,
+        reused 4 == 7,
+        onePart 2 3 != otherPart 2 3,
+        twoPart 3 == onePart 2 3,
+        addFlat (10, 2, 3) == otherPart 2 3
+    ]
+
+test "curried ML bodies perform every operation through the handler" curriedEffectsReachTheHandlerCase
+test "ML partial application follows the currying rule" partialApplicationCase

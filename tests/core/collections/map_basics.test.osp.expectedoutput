@@ -3,5 +3,6 @@ ok 2 - map generations and sibling branches remain isolated
 ok 3 - map removal and merge preserve values and bias
 ok 4 - map views and list interactions preserve both collections
 ok 5 - map literals and receiver dispatch preserve lookup semantics
-1..5
-# tests=5 passed=5 failed=0 skipped=0
+ok 6 - mapGet returns the value type for every value type
+1..6
+# tests=6 passed=6 failed=0 skipped=0

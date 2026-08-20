@@ -72,3 +72,99 @@ fn resumeOuterHandlerBridgeCase() = {
 
 // Register the resumed-body outer-handler regression.
 test("a resumed body retains its outer handlers", resumeOuterHandlerBridgeCase)
+
+/// Ledger is handled by two nested regions, only one of which is complete.
+effect Ledger {
+    /// Record an amount; both regions carry an arm for this operation.
+    record: fn(int) -> int
+    /// Audit a label; only the outer region carries an arm for it.
+    audit: fn(string) -> int
+}
+
+/// Two records, so the delegation happens more than once.
+fn ledgerWork() -> int !Ledger = {
+    let a = perform Ledger.record(5)
+    let b = perform Ledger.record(7)
+    (a + b) ?: 0
+}
+
+/// Spec 0017 draws the line inside a handler arm: an arm "is not permission to
+/// perform its own active operation recursively", but "a different operation
+/// not covered by a partial handler ... may instead be discharged by an
+/// enclosing matching handler". The inner region below handles `record` only,
+/// so the `audit` its arm performs must cross to the outer region — and the
+/// inner `record` arm must still win over the outer one, because "the innermost
+/// matching arm wins".
+fn partialHandlerDelegationCase() = {
+    mut outerRecords = 0
+    mut outerAudits = 0
+    mut innerRecords = 0
+    mut auditLog = ""
+    mut lastNoted = 0
+
+    let total = handle Ledger
+        record amount => {
+            outerRecords = outerRecords + 1 ?: outerRecords
+            amount * 1000 ?: amount
+        }
+        audit label => {
+            outerAudits = outerAudits + 1 ?: outerAudits
+            auditLog = "${auditLog}${label}|"
+            length(label)
+        }
+    in handle Ledger
+        record amount => {
+            innerRecords = innerRecords + 1 ?: innerRecords
+            let noted = perform Ledger.audit("record:${amount}")
+            lastNoted = noted
+            (amount + noted) ?: 0
+        }
+    in ledgerWork()
+
+    // The arm's own operation stays with the inner region; the operation it
+    // does not cover reaches the outer one, twice.
+    checkAll("a partial handler delegates the operation it lacks", [
+        total == 28,
+        innerRecords == 2,
+        outerAudits == 2,
+        outerRecords == 0,
+        lastNoted == 8,
+        auditLog == "record:5|record:7|",
+        innerRecords == outerAudits,
+        innerRecords != outerRecords,
+        (innerRecords + outerAudits ?: 0) == 4
+    ])
+
+    // The outer `record` arm multiplies by 1000, so any leak of a `record`
+    // operation past the inner region would be unmistakable in the total.
+    checkAll("the innermost matching arm keeps its operation", [
+        total == (13 + 15 ?: 0),
+        total != (5000 + 7000 ?: 0),
+        total != 24,
+        total < 100,
+        outerRecords == 0,
+        !contains(auditLog, "record:12"),
+        contains(auditLog, "record:5|"),
+        contains(auditLog, "record:7|"),
+        startsWith(auditLog, "record:5|"),
+        endsWith(auditLog, "record:7|"),
+        length(auditLog) == 18
+    ])
+
+    // Each delegated audit answered its own label's length, and the label the
+    // outer arm saw was built from the amount the inner arm received.
+    checkAll("delegated answers return to the performing arm", [
+        lastNoted == length("record:7"),
+        lastNoted == 8,
+        (5 + 8 ?: 0) == 13,
+        (7 + 8 ?: 0) == 15,
+        total == (5 + 7 ?: 0) + (8 + 8 ?: 0) ?: 0,
+        outerAudits == 2,
+        auditLog != "",
+        auditLog != "record:5|",
+        length(auditLog) == (9 + 9 ?: 0)
+    ])
+}
+
+// Register partial-handler delegation to the enclosing region.
+test("an arm delegates an operation its own handler does not cover", partialHandlerDelegationCase)

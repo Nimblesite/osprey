@@ -1,3 +1,4 @@
 ok 1 - returning without resume aborts the suspended continuation
-1..1
-# tests=1 passed=1 failed=0 skipped=0
+ok 2 - a non-resuming arm is unaffected by a sibling arm's resume
+1..2
+# tests=2 passed=2 failed=0 skipped=0

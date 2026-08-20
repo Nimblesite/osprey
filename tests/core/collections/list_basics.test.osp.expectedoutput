@@ -2,5 +2,6 @@ ok 1 - lists construct, reverse, prepend, concatenate, and retain contents
 ok 2 - list iteration and persistent branches retain order and isolation
 ok 3 - lists preserve content across the 32-element tail boundary
 ok 4 - list indexing, patterns, recursion, and receiver dispatch compose
-1..4
-# tests=4 passed=4 failed=0 skipped=0
+ok 5 - listGet returns the element type for every element type
+1..5
+# tests=5 passed=5 failed=0 skipped=0

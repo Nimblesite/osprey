@@ -1,5 +1,11 @@
 // Persistent Map behavior across construction, branching, and merging.
 
+(** Entry is a record value, so `mapGet` must hand back the whole record. *)
+type Entry =
+    title : string
+    score : float
+    active : bool
+
 (** Exercise construction, overwrite, membership, and source isolation. *)
 constructionAndOverwriteCase () =
     empty = Map ()
@@ -275,3 +281,121 @@ test "map removal and merge preserve values and bias" removalAndMergeCase
 test "map views and list interactions preserve both collections" viewsAndCrossCollectionCase
 
 test "map literals and receiver dispatch preserve lookup semantics" literalsAndDispatchCase
+
+(** [BUILTIN-MAP-GET] declares `mapGet(map: Map<string, V>, key: string) -> Result<V, Error>`,
+    equivalent to `map[key]`, with a missing key returning `Error`. `V` is the
+    value type, so a string-valued map yields the string, a float-valued map the
+    float, a bool-valued map the bool and a record-valued map the whole record.
+    Every case above stores `int` values, where a value and its storage word are
+    indistinguishable — the blind spot issue #211 lives in. *)
+typedValueRetrievalCase () =
+    titles = mapSet (mapSet (mapSet (Map ()) "a" "alpha") "b" "beta") "c" "gamma"
+    scores = mapSet (mapSet (Map ()) "half" 0.5) "quarter" 1.25
+    flags = mapSet (mapSet (Map ()) "on" true) "off" false
+    blank = Entry(title = "none", score = 0.0, active = false)
+    entries = mapSet (mapSet (Map ()) "left" (Entry(title = "Left", score = 1.5, active = true))) "right" (Entry(title = "Right", score = 2.5, active = false))
+    leftEntry = mapGet entries "left" ?: blank
+    rightEntry = mapGet entries "right" ?: blank
+    absentEntry = mapGet entries "middle" ?: blank
+    absentTitle = match mapGet titles "zzz"
+        Success value => value
+        Error message => message
+
+    // A string value comes back as its own string, through both spellings the
+    // spec calls equivalent, and a missing key still takes the `Error` branch.
+    checkAll "string values survive mapGet" [
+        (mapGet titles "a" ?: "none") == "alpha",
+        (mapGet titles "b" ?: "none") == "beta",
+        (mapGet titles "c" ?: "none") == "gamma",
+        (titles["a"] ?: "none") == "alpha",
+        (titles["b"] ?: "none") == "beta",
+        (titles["c"] ?: "none") == "gamma",
+        (mapGet titles "a" ?: "none") == (titles["a"] ?: "other"),
+        (mapGet titles "c" ?: "none") == (titles["c"] ?: "other"),
+        length (mapGet titles "a" ?: "") == 5,
+        length (mapGet titles "b" ?: "") == 4,
+        contains (mapGet titles "c" ?: "none") "amm",
+        startsWith (mapGet titles "a" ?: "none") "alp",
+        endsWith (mapGet titles "b" ?: "none") "eta",
+        toUpper (mapGet titles "b" ?: "none") == "BETA",
+        "${mapGet titles "a" ?: "none"}+${mapGet titles "b" ?: "none"}" == "alpha+beta",
+        absentTitle == "mapGet: key not found",
+        (mapGet titles "zzz" ?: "absent") == "absent",
+        mapContains titles "a",
+        !(mapContains titles "zzz"),
+        mapLength titles == 3
+    ]
+
+    // Persistent producers keep values typed too: an overwritten, removed or
+    // merged map still yields strings ([BUILTIN-MAP-SET], [BUILTIN-MAP-REMOVE],
+    // [BUILTIN-MAP-MERGE]).
+    checkAll "string values survive every map producer" [
+        (mapGet (mapSet titles "a" "replaced") "a" ?: "none") == "replaced",
+        (mapGet (mapSet titles "a" "replaced") "b" ?: "none") == "beta",
+        (mapGet titles "a" ?: "none") == "alpha",
+        (mapGet (mapRemove titles "b") "a" ?: "none") == "alpha",
+        (mapGet (mapRemove titles "b") "c" ?: "none") == "gamma",
+        (mapGet (mapRemove titles "b") "b" ?: "gone") == "gone",
+        !(mapContains (mapRemove titles "b") "b"),
+        mapLength (mapRemove titles "b") == 2,
+        mapLength titles == 3,
+        (mapGet (mapMerge titles (mapSet (Map ()) "d" "delta")) "d" ?: "none") == "delta",
+        (mapGet (mapMerge titles (mapSet (Map ()) "d" "delta")) "a" ?: "none") == "alpha",
+        (mapGet (mapMerge titles (mapSet (Map ()) "a" "right wins")) "a" ?: "none") == "right wins",
+        mapLength (mapMerge titles (mapSet (Map ()) "d" "delta")) == 4,
+        listContains (mapKeys titles) "a",
+        listContains (mapKeys titles) "c",
+        listLength (mapKeys titles) == 3
+    ]
+
+    // A float value keeps its IEEE value; a bool value keeps true/false.
+    checkAll "float and bool values survive mapGet" [
+        (mapGet scores "half" ?: 0.0) == 0.5,
+        (mapGet scores "quarter" ?: 0.0) == 1.25,
+        (scores["half"] ?: 0.0) == 0.5,
+        (mapGet scores "half" ?: 0.0) + (mapGet scores "quarter" ?: 0.0) == 1.75,
+        (mapGet scores "quarter" ?: 0.0) * 4.0 == 5.0,
+        (mapGet scores "missing" ?: 9.5) == 9.5,
+        (mapGet (mapSet scores "half" 3.5) "half" ?: 0.0) == 3.5,
+        (mapGet scores "half" ?: 0.0) == 0.5,
+        mapLength scores == 2,
+        (mapGet flags "on" ?: false),
+        !(mapGet flags "off" ?: true),
+        (flags["on"] ?: false),
+        !(flags["off"] ?: true),
+        (mapGet flags "on" ?: false) != (mapGet flags "off" ?: true),
+        !(mapGet flags "unknown" ?: false),
+        (mapGet (mapSet flags "on" false) "on" ?: true) == false,
+        (mapGet flags "on" ?: false),
+        mapContains flags "off",
+        !(mapContains flags "unknown"),
+        mapLength flags == 2
+    ]
+
+    // A record value comes back whole: every field of the stored record is
+    // readable off the retrieved one, and a missing key still takes `Error`.
+    checkAll "record values survive mapGet whole" [
+        leftEntry.title == "Left",
+        leftEntry.score == 1.5,
+        leftEntry.active,
+        rightEntry.title == "Right",
+        rightEntry.score == 2.5,
+        !rightEntry.active,
+        leftEntry.title != rightEntry.title,
+        leftEntry.score != rightEntry.score,
+        leftEntry.active != rightEntry.active,
+        leftEntry.score + rightEntry.score == 4.0,
+        length leftEntry.title == 4,
+        length rightEntry.title == 5,
+        "${leftEntry.title}/${rightEntry.title}" == "Left/Right",
+        absentEntry.title == "none",
+        absentEntry.score == 0.0,
+        !absentEntry.active,
+        (mapGet (mapSet entries "left" blank) "left" ?: rightEntry).title == "none",
+        (mapGet (mapSet entries "left" blank) "right" ?: blank).title == "Right",
+        (mapGet (mapRemove entries "left") "right" ?: blank).score == 2.5,
+        (mapGet (mapRemove entries "left") "left" ?: blank).title == "none",
+        mapLength entries == 2
+    ]
+
+test "mapGet returns the value type for every value type" typedValueRetrievalCase

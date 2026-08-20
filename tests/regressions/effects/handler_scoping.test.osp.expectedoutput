@@ -17,5 +17,6 @@ forward chain result: Success(42)
 nested resuming 10 shadowed resume 2
 === resume scoping done ===
 ok 1 - nested handlers override locally and restore outer scope
-1..1
-# tests=1 passed=1 failed=0 skipped=0
+ok 2 - handler-owned state is one cell across nested calls and file scope
+1..2
+# tests=2 passed=2 failed=0 skipped=0

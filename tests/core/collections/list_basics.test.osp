@@ -6,6 +6,9 @@ effect IterationProbe {
     observe: fn(int) -> Unit
 }
 
+/// Slot is a record element, so `listGet` must hand back the whole record.
+type Slot = { label: string, weight: float, ready: bool }
+
 /// appendThrough builds inclusive integer ranges while preserving every prior list version.
 fn appendThrough(xs: List<int>) -> (int) -> (int) -> List<int> =
     fn(next) => fn(last) => match next > last {
@@ -370,3 +373,126 @@ test("lists preserve content across the 32-element tail boundary", tailBoundaryC
 
 // Register Result indexing, patterns, recursion, and builtin dispatch together.
 test("list indexing, patterns, recursion, and receiver dispatch compose", indexingPatternsAndDispatchCase)
+
+/// [BUILTIN-LIST-GET] declares `listGet(list: List<T>, index: int) -> Result<T, Error>`
+/// and says it is "equivalent to `list[index]`", with an out-of-range index
+/// returning `Error`. `T` is the element type, so a string list yields the
+/// string, a float list the float, a bool list the bool and a record list the
+/// whole record — never the raw storage word behind it. Every existing case
+/// above indexes an `int` list, where a word and a value are indistinguishable,
+/// which is exactly how issue #211 survived.
+fn typedElementRetrievalCase() = {
+    let words = ["alpha", "beta", "gamma"]
+    let ratios = [0.5, 1.25, 2.75]
+    let flags = [true, false, true]
+    let slots = [
+        Slot { label: "left", weight: 1.5, ready: true },
+        Slot { label: "right", weight: 2.5, ready: false }
+    ]
+    let missingSlot = Slot { label: "missing", weight: 0.0, ready: false }
+    let firstSlot = listGet(slots, 0) ?: missingSlot
+    let secondSlot = listGet(slots, 1) ?: missingSlot
+    let pastEndSlot = listGet(slots, 2) ?: missingSlot
+
+    // A string element comes back as its own string, at every index, through
+    // both spellings the spec calls equivalent [BUILTIN-LIST-GET].
+    checkAll("string elements survive listGet", [
+        (listGet(words, 0) ?: "none") == "alpha",
+        (listGet(words, 1) ?: "none") == "beta",
+        (listGet(words, 2) ?: "none") == "gamma",
+        (words[0] ?: "none") == "alpha",
+        (words[1] ?: "none") == "beta",
+        (words[2] ?: "none") == "gamma",
+        (listGet(words, 0) ?: "none") == (words[0] ?: "other"),
+        (listGet(words, 1) ?: "none") == (words[1] ?: "other"),
+        (listGet(words, 2) ?: "none") == (words[2] ?: "other"),
+        length(listGet(words, 0) ?: "") == 5,
+        length(listGet(words, 1) ?: "") == 4,
+        length(listGet(words, 2) ?: "") == 5,
+        "${listGet(words, 0) ?: "none"}-${listGet(words, 2) ?: "none"}" == "alpha-gamma",
+        contains(listGet(words, 1) ?: "none", "et"),
+        !contains(listGet(words, 1) ?: "none", "alpha"),
+        startsWith(listGet(words, 2) ?: "none", "gam"),
+        endsWith(listGet(words, 2) ?: "none", "mma"),
+        toUpper(listGet(words, 0) ?: "none") == "ALPHA",
+        (listGet(words, 3) ?: "past end") == "past end",
+        (listGet(words, 99) ?: "past end") == "past end",
+        (words[3] ?: "past end") == "past end"
+    ])
+
+    // The same rule holds through every persistent producer: a rebuilt list
+    // still yields strings, not the words its cells happen to hold
+    // ([BUILTIN-LIST-REVERSE], [BUILTIN-LIST-PREPEND], [BUILTIN-LIST-APPEND],
+    // [BUILTIN-LIST-CONCAT]).
+    checkAll("string elements survive every list producer", [
+        (listGet(listReverse(words), 0) ?: "none") == "gamma",
+        (listGet(listReverse(words), 2) ?: "none") == "alpha",
+        (listGet(listPrepend(words, "zero"), 0) ?: "none") == "zero",
+        (listGet(listPrepend(words, "zero"), 1) ?: "none") == "alpha",
+        (listGet(listAppend(words, "delta"), 3) ?: "none") == "delta",
+        (listGet(listAppend(words, "delta"), 0) ?: "none") == "alpha",
+        (listGet(words + ["delta"], 3) ?: "none") == "delta",
+        (listGet(["zero"] + words, 0) ?: "none") == "zero",
+        (listGet(["zero"] + words, 1) ?: "none") == "alpha",
+        listLength(listAppend(words, "delta")) == 4,
+        listLength(listPrepend(words, "zero")) == 4,
+        listContains(words, "beta"),
+        !listContains(words, "delta"),
+        listContains(listAppend(words, "delta"), "delta"),
+        (listGet(listReverse(listReverse(words)), 1) ?: "none") == "beta"
+    ])
+
+    // A float element keeps its IEEE value; a bool element keeps true/false.
+    checkAll("float and bool elements survive listGet", [
+        (listGet(ratios, 0) ?: 0.0) == 0.5,
+        (listGet(ratios, 1) ?: 0.0) == 1.25,
+        (listGet(ratios, 2) ?: 0.0) == 2.75,
+        (ratios[1] ?: 0.0) == 1.25,
+        (listGet(ratios, 0) ?: 0.0) + (listGet(ratios, 1) ?: 0.0) == 1.75,
+        (listGet(ratios, 2) ?: 0.0) - (listGet(ratios, 0) ?: 0.0) == 2.25,
+        (listGet(ratios, 1) ?: 0.0) * 2.0 == 2.5,
+        (listGet(ratios, 9) ?: 9.5) == 9.5,
+        (listGet(listReverse(ratios), 0) ?: 0.0) == 2.75,
+        listLength(ratios) == 3,
+        (listGet(flags, 0) ?: false),
+        !(listGet(flags, 1) ?: true),
+        (listGet(flags, 2) ?: false),
+        (flags[0] ?: false),
+        !(flags[1] ?: true),
+        (listGet(flags, 0) ?: false) == (listGet(flags, 2) ?: true),
+        (listGet(flags, 0) ?: false) != (listGet(flags, 1) ?: true),
+        !(listGet(flags, 7) ?: false),
+        (listGet(listReverse(flags), 1) ?: true) == false,
+        listLength(flags) == 3
+    ])
+
+    // A record element comes back whole: every field of the stored record is
+    // readable off the retrieved one, and the out-of-range case still takes
+    // the declared `Error` branch rather than fabricating a record.
+    checkAll("record elements survive listGet whole", [
+        firstSlot.label == "left",
+        firstSlot.weight == 1.5,
+        firstSlot.ready,
+        secondSlot.label == "right",
+        secondSlot.weight == 2.5,
+        !secondSlot.ready,
+        firstSlot.label != secondSlot.label,
+        firstSlot.weight != secondSlot.weight,
+        firstSlot.ready != secondSlot.ready,
+        firstSlot.weight + secondSlot.weight == 4.0,
+        length(firstSlot.label) == 4,
+        length(secondSlot.label) == 5,
+        "${firstSlot.label}/${secondSlot.label}" == "left/right",
+        pastEndSlot.label == "missing",
+        pastEndSlot.weight == 0.0,
+        !pastEndSlot.ready,
+        (listGet(listReverse(slots), 0) ?: missingSlot).label == "right",
+        (listGet(listReverse(slots), 1) ?: missingSlot).label == "left",
+        (listGet(listAppend(slots, missingSlot), 2) ?: firstSlot).label == "missing",
+        (listGet(listPrepend(slots, missingSlot), 0) ?: firstSlot).weight == 0.0,
+        listLength(slots) == 2
+    ])
+}
+
+// Register typed element retrieval across string, float, bool and record lists.
+test("listGet returns the element type for every element type", typedElementRetrievalCase)
