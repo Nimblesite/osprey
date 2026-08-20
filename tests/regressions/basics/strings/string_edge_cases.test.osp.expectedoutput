@@ -101,5 +101,12 @@ user-msg=custom boom
 === Edge Cases Complete ===
 
 ok 1 - string edge cases preserve values and error payloads
-1..1
-# tests=1 passed=1 failed=0 skipped=0
+ok 2 - interpolation renders every printable scalar
+ok 3 - a Result is never unwrapped at an interpolation hole
+ok 4 - escape sequences resolve to their exact bytes
+ok 5 - search builtins scan every substring position
+ok 6 - ASCII case folding is total and round-trips
+ok 7 - concatenation and length arithmetic hold
+ok 8 - interpolation composes expressions and preserves text
+1..8
+# tests=8 passed=8 failed=0 skipped=0

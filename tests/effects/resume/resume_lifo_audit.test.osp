@@ -373,3 +373,508 @@ fn nestedDepthThreeRotationCase() = {
 
 // Register the three-depth rotated settlement audit.
 test("three nested regions settle by suspension order, not lexical depth", nestedDepthThreeRotationCase)
+
+/// Four nested regions, one effect each, performed 1-2-3-4-4-3-2-1 so the depth
+/// pattern is a palindrome while the labels are not. Spec 0017 [EFFECTS-RESUME]
+/// makes each `resume` return only after the whole remaining computation —
+/// including every suspension opened inside it — has produced an answer, so the
+/// eight arms settle in exactly reverse entry order. Every arm adds its own
+/// power of ten to the answer it received, which makes the digits of the answer
+/// each arm SAW a staircase that names the settling depth; the total alone
+/// cannot detect a reordering, which is why each step is pinned individually.
+/// [EFFECTS-OPERATION-MAILBOX] covers the four live suspensions at once: a
+/// nested suspension installs its own mailbox rather than overwriting one still
+/// in use.
+fn nestedDepthFourStaircaseCase() = {
+    mut alphaCalls = 0
+    mut betaCalls = 0
+    mut gammaCalls = 0
+    mut deltaCalls = 0
+    mut entered = ""
+    mut settled = ""
+    mut supplies = ""
+    mut answers = ""
+
+    let total = handle Alpha
+        alpha label => {
+            alphaCalls = alphaCalls + 1 ?: alphaCalls
+            let supplied = alphaCalls
+            entered = "${entered}1:${label}|"
+            supplies = "${supplies}${label}=${toString(supplied)}|"
+            let answer = resume(supplied)
+            settled = "${settled}1:${label}|"
+            answers = "${answers}${label}:${toString(answer)}|"
+            answer + 1 ?: answer
+        }
+    in handle Beta
+        beta label => {
+            betaCalls = betaCalls + 1 ?: betaCalls
+            let supplied = betaCalls * 10 ?: 0
+            entered = "${entered}2:${label}|"
+            supplies = "${supplies}${label}=${toString(supplied)}|"
+            let answer = resume(supplied)
+            settled = "${settled}2:${label}|"
+            answers = "${answers}${label}:${toString(answer)}|"
+            answer + 10 ?: answer
+        }
+    in handle Gamma
+        gamma label => {
+            gammaCalls = gammaCalls + 1 ?: gammaCalls
+            let supplied = gammaCalls * 100 ?: 0
+            entered = "${entered}3:${label}|"
+            supplies = "${supplies}${label}=${toString(supplied)}|"
+            let answer = resume(supplied)
+            settled = "${settled}3:${label}|"
+            answers = "${answers}${label}:${toString(answer)}|"
+            answer + 100 ?: answer
+        }
+    in handle Delta
+        delta label => {
+            deltaCalls = deltaCalls + 1 ?: deltaCalls
+            let supplied = deltaCalls * 1000 ?: 0
+            entered = "${entered}4:${label}|"
+            supplies = "${supplies}${label}=${toString(supplied)}|"
+            let answer = resume(supplied)
+            settled = "${settled}4:${label}|"
+            answers = "${answers}${label}:${toString(answer)}|"
+            answer + 1000 ?: answer
+        }
+    in {
+        let a1 = perform Alpha.alpha("a1")
+        let b1 = perform Beta.beta("b1")
+        let g1 = perform Gamma.gamma("g1")
+        let x1 = perform Delta.delta("x1")
+        let x2 = perform Delta.delta("x2")
+        let g2 = perform Gamma.gamma("g2")
+        let b2 = perform Beta.beta("b2")
+        let a2 = perform Alpha.alpha("a2")
+        let firstHalf = (a1 + b1 ?: 0) + (g1 + x1 ?: 0) ?: 0
+        let secondHalf = (x2 + g2 ?: 0) + (b2 + a2 ?: 0) ?: 0
+        firstHalf + secondHalf ?: 0
+    }
+
+    // Eight operations descend the four depths and climb back out.
+    checkAll("four nested depths enter in perform order", [
+        entered == "1:a1|2:b1|3:g1|4:x1|4:x2|3:g2|2:b2|1:a2|",
+        startsWith(entered, "1:a1|"),
+        endsWith(entered, "1:a2|"),
+        contains(entered, "1:a1|2:b1|"),
+        contains(entered, "2:b1|3:g1|"),
+        contains(entered, "3:g1|4:x1|"),
+        contains(entered, "4:x1|4:x2|"),
+        contains(entered, "4:x2|3:g2|"),
+        contains(entered, "3:g2|2:b2|"),
+        contains(entered, "2:b2|1:a2|"),
+        alphaCalls == 2,
+        betaCalls == 2,
+        gammaCalls == 2,
+        deltaCalls == 2,
+        length(entered) == 40
+    ])
+
+    // Reverse entry order: the second Alpha suspension, opened last, settles
+    // first even though it belongs to the OUTERMOST region.
+    checkAll("four nested depths settle in reverse entry order", [
+        settled == "1:a2|2:b2|3:g2|4:x2|4:x1|3:g1|2:b1|1:a1|",
+        startsWith(settled, "1:a2|"),
+        endsWith(settled, "1:a1|"),
+        settled != entered,
+        length(settled) == length(entered),
+        length(settled) == 40,
+        contains(settled, "4:x2|4:x1|"),
+        contains(settled, "3:g1|2:b1|"),
+        contains(settled, "2:b1|1:a1|"),
+        !contains(settled, "1:a1|2:b1|"),
+        !contains(settled, "4:x1|4:x2|"),
+        !startsWith(settled, "4:"),
+        !endsWith(settled, "4:x1|"),
+        settled != "1:a1|2:b1|3:g1|4:x1|4:x2|3:g2|2:b2|1:a2|"
+    ])
+
+    // Each depth supplies its own power of ten, twice, so a value crossing to a
+    // neighbouring region would move the body's sum by a whole digit.
+    checkAll("four nested depths supply distinct magnitudes", [
+        supplies == "a1=1|b1=10|g1=100|x1=1000|x2=2000|g2=200|b2=20|a2=2|",
+        startsWith(supplies, "a1=1|"),
+        endsWith(supplies, "a2=2|"),
+        contains(supplies, "b1=10|"),
+        contains(supplies, "g1=100|"),
+        contains(supplies, "x1=1000|"),
+        contains(supplies, "x2=2000|"),
+        contains(supplies, "g2=200|"),
+        contains(supplies, "b2=20|"),
+        !contains(supplies, "a1=1000|"),
+        !contains(supplies, "x1=1|"),
+        !contains(supplies, "b1=100|"),
+        length(supplies) == 52
+    ])
+
+    // The staircase: 3333 -> 3334 -> 3344 -> 3444 -> 4444 -> 5444 -> 5544 ->
+    // 5554, one digit per settling depth, in the order the arms unwound.
+    checkAll("four nested depths climb a digit staircase", [
+        answers == "a2:3333|b2:3334|g2:3344|x2:3444|x1:4444|g1:5444|b1:5544|a1:5554|",
+        startsWith(answers, "a2:3333|"),
+        endsWith(answers, "a1:5554|"),
+        contains(answers, "b2:3334|"),
+        contains(answers, "g2:3344|"),
+        contains(answers, "x2:3444|"),
+        contains(answers, "x1:4444|"),
+        contains(answers, "g1:5444|"),
+        contains(answers, "b1:5544|"),
+        !contains(answers, "a2:5554|"),
+        !contains(answers, "a1:3333|"),
+        !contains(answers, "x1:3444|"),
+        length(answers) == 64
+    ])
+
+    // Body sum 1111 + 2222 = 3333; the arms then add 2 * (1 + 10 + 100 + 1000).
+    checkAll("four nested depths total their halves and transforms", [
+        (1 + 10 ?: 0) == 11,
+        (100 + 1000 ?: 0) == 1100,
+        (11 + 1100 ?: 0) == 1111,
+        (2000 + 200 ?: 0) == 2200,
+        (20 + 2 ?: 0) == 22,
+        (2200 + 22 ?: 0) == 2222,
+        (1111 + 2222 ?: 0) == 3333,
+        (1 + 10 + 100 + 1000 ?: 0) == 1111,
+        (1111 * 2 ?: 0) == 2222,
+        (3333 + 2222 ?: 0) == 5555,
+        total == 5555,
+        total != 3333,
+        total != 4444,
+        total > 5000
+    ])
+
+    // No depth answered for another: each label appears under exactly one tag
+    // in both transcripts, and every count matches every other count.
+    checkAll("four nested depths never answer for each other", [
+        !contains(entered, "2:a1|"),
+        !contains(entered, "1:b1|"),
+        !contains(entered, "3:x1|"),
+        !contains(entered, "4:g2|"),
+        !contains(settled, "2:a2|"),
+        !contains(settled, "1:b2|"),
+        !contains(settled, "3:x2|"),
+        !contains(settled, "4:g1|"),
+        alphaCalls == deltaCalls,
+        betaCalls == gammaCalls,
+        (alphaCalls + betaCalls + gammaCalls + deltaCalls ?: 0) == 8,
+        entered != settled,
+        supplies != answers
+    ])
+}
+
+// Register the four-depth strict LIFO audit.
+test("four nested regions unwind in strict last-in-first-out order", nestedDepthFourStaircaseCase)
+
+/// Twin gives two nested regions something to divide between them.
+effect Twin {
+    /// The inner region claims `near`; the outer arm for it must stay unused.
+    near: fn(int) -> int
+    /// Only the outer region carries `far`, so it crosses the inner region.
+    far: fn(int) -> int
+}
+
+/// One effect, two depths, one partial inner region. Spec 0017's Handlers
+/// section says "the innermost matching arm wins and an outer arm remains
+/// available for operations not handled by the inner region", and
+/// [EFFECTS-STATIC-DISCHARGE] adds that "complementary nested partial handlers
+/// may each discharge the operation they cover". So `near` is answered by the
+/// inner region and `far` reaches the outer one while inner suspensions are
+/// still live — and by [EFFECTS-RESUME] the four suspensions still settle in
+/// reverse entry order across the two depths. The unused outer `near` arm
+/// supplies a millionfold value, so any leak past the inner region is visible.
+fn nestedPartialInnerResumeCase() = {
+    mut outerNear = 0
+    mut outerFar = 0
+    mut innerNear = 0
+    mut entered = ""
+    mut settled = ""
+    mut supplies = ""
+    mut answers = ""
+
+    let total = handle Twin
+        near amount => {
+            outerNear = outerNear + 1 ?: outerNear
+            let supplied = amount * 1000000 ?: amount
+            entered = "${entered}OUTERnear:${toString(amount)}|"
+            supplies = "${supplies}N${toString(amount)}=${toString(supplied)}|"
+            let answer = resume(supplied)
+            settled = "${settled}OUTERnear:${toString(amount)}|"
+            answers = "${answers}OUTERnear:${toString(answer)}|"
+            answer
+        }
+        far amount => {
+            outerFar = outerFar + 1 ?: outerFar
+            let supplied = amount * 1000 ?: amount
+            entered = "${entered}far:${toString(amount)}|"
+            supplies = "${supplies}f${toString(amount)}=${toString(supplied)}|"
+            let answer = resume(supplied)
+            settled = "${settled}far:${toString(amount)}|"
+            answers = "${answers}far:${toString(answer)}|"
+            answer * 2 ?: answer
+        }
+    in handle Twin
+        near amount => {
+            innerNear = innerNear + 1 ?: innerNear
+            let supplied = amount * 10 ?: amount
+            entered = "${entered}near:${toString(amount)}|"
+            supplies = "${supplies}n${toString(amount)}=${toString(supplied)}|"
+            let answer = resume(supplied)
+            settled = "${settled}near:${toString(amount)}|"
+            answers = "${answers}near:${toString(answer)}|"
+            answer + 5 ?: answer
+        }
+    in {
+        let p = perform Twin.near(1)
+        let q = perform Twin.far(2)
+        let r = perform Twin.near(3)
+        let s = perform Twin.far(4)
+        (p + q ?: 0) + (r + s ?: 0) ?: 0
+    }
+
+    // The inner region answered both `near` operations; the outer one answered
+    // both `far` operations and never saw a `near`.
+    checkAll("a partial inner region keeps only its own operation", [
+        innerNear == 2,
+        outerFar == 2,
+        outerNear == 0,
+        innerNear == outerFar,
+        innerNear != outerNear,
+        (innerNear + outerFar + outerNear ?: 0) == 4,
+        !contains(entered, "OUTERnear"),
+        !contains(settled, "OUTERnear"),
+        !contains(answers, "OUTERnear"),
+        !contains(supplies, "N1="),
+        !contains(supplies, "N3="),
+        !contains(supplies, "1000000"),
+        !contains(supplies, "3000000"),
+        total < 100000
+    ])
+
+    // Entry order is the body's order, alternating between the two depths.
+    checkAll("a crossing operation enters between inner suspensions", [
+        entered == "near:1|far:2|near:3|far:4|",
+        startsWith(entered, "near:1|"),
+        endsWith(entered, "far:4|"),
+        contains(entered, "near:1|far:2|"),
+        contains(entered, "far:2|near:3|"),
+        contains(entered, "near:3|far:4|"),
+        !contains(entered, "far:1|"),
+        !contains(entered, "near:2|"),
+        !contains(entered, "near:4|"),
+        !contains(entered, "far:3|"),
+        length(entered) == 26,
+        supplies == "n1=10|f2=2000|n3=30|f4=4000|",
+        length(supplies) == 28
+    ])
+
+    // Settlement still reverses entry across BOTH depths: the outer region's
+    // second `far` settles first, its first `far` settles third.
+    checkAll("partial nesting settles in reverse entry order", [
+        settled == "far:4|near:3|far:2|near:1|",
+        startsWith(settled, "far:4|"),
+        endsWith(settled, "near:1|"),
+        settled != entered,
+        length(settled) == length(entered),
+        contains(settled, "far:4|near:3|"),
+        contains(settled, "near:3|far:2|"),
+        contains(settled, "far:2|near:1|"),
+        !startsWith(settled, "near:1|"),
+        !endsWith(settled, "far:4|"),
+        !contains(settled, "near:1|far:2|"),
+        settled != "near:1|far:2|near:3|far:4|",
+        settled != "far:2|far:4|near:1|near:3|"
+    ])
+
+    // Body sum 10 + 2000 + 30 + 4000 = 6040, then far doubles and near adds
+    // five, alternating outward: 6040 -> 12080 -> 12085 -> 24170 -> 24175.
+    checkAll("partial nesting chains answers across both depths", [
+        answers == "far:6040|near:12080|far:12085|near:24170|",
+        startsWith(answers, "far:6040|"),
+        endsWith(answers, "near:24170|"),
+        contains(answers, "near:12080|"),
+        contains(answers, "far:12085|"),
+        (10 + 2000 ?: 0) == 2010,
+        (30 + 4000 ?: 0) == 4030,
+        (2010 + 4030 ?: 0) == 6040,
+        (6040 * 2 ?: 0) == 12080,
+        (12080 + 5 ?: 0) == 12085,
+        (12085 * 2 ?: 0) == 24170,
+        (24170 + 5 ?: 0) == 24175,
+        total == 24175,
+        length(answers) == 41
+    ])
+
+    // Negative controls: no reordering and no leak to the shadowed arm can
+    // reproduce this number, and the millionfold arm never contributed.
+    checkAll("partial nesting rejects every other settlement order", [
+        total != 24190,
+        total != 6040,
+        total != 24180,
+        total > 24000,
+        total < 25000,
+        total == (24170 + 5 ?: 0),
+        outerNear == 0,
+        !contains(answers, "far:24170|"),
+        !contains(answers, "near:6040|"),
+        !contains(answers, "near:12085|"),
+        !contains(answers, "far:12080|"),
+        entered != settled,
+        supplies != answers
+    ])
+}
+
+// Register the partial-inner-region settlement audit.
+test("a partial inner region resumes while its uncovered operation crosses outward", nestedPartialInnerResumeCase)
+
+/// Layer is handled twice at two depths, the inner region covering only part of
+/// the outer body.
+effect Layer {
+    /// Supply the value for `label`; the innermost matching arm answers.
+    pick: fn(string) -> int
+}
+
+/// The inner region wraps only the middle of the outer body, so it must produce
+/// a value before the outer body can perform again. Spec 0017 [EFFECTS-RESUME]:
+/// `resume` "evaluates to that computation's answer", and the answer of the
+/// inner `handle` expression is a value the outer body consumes — so both inner
+/// suspensions settle BEFORE the outer region's later operation is even
+/// performed. Settlement is therefore not the plain reverse of the entry
+/// transcript: it is reverse order of the live suspension stack. The Handlers
+/// section supplies the other half: the inner arm shadows the outer one only
+/// inside its lexical region, and the outer arm is restored after it.
+fn sameEffectTwoDepthsCase() = {
+    mut outerCalls = 0
+    mut innerCalls = 0
+    mut entered = ""
+    mut settled = ""
+    mut supplies = ""
+    mut answers = ""
+
+    let total = handle Layer
+        pick label => {
+            outerCalls = outerCalls + 1 ?: outerCalls
+            let supplied = outerCalls * 1000 ?: 0
+            entered = "${entered}out:${label}|"
+            supplies = "${supplies}${label}=${toString(supplied)}|"
+            let answer = resume(supplied)
+            settled = "${settled}out:${label}|"
+            answers = "${answers}${label}:${toString(answer)}|"
+            answer * 2 ?: answer
+        }
+    in {
+        let before = perform Layer.pick("before")
+        let middle = handle Layer
+            pick label => {
+                innerCalls = innerCalls + 1 ?: innerCalls
+                let supplied = innerCalls * 10 ?: 0
+                entered = "${entered}in:${label}|"
+                supplies = "${supplies}${label}=${toString(supplied)}|"
+                let answer = resume(supplied)
+                settled = "${settled}in:${label}|"
+                answers = "${answers}${label}:${toString(answer)}|"
+                answer + 3 ?: answer
+            }
+        in {
+            let m1 = perform Layer.pick("in1")
+            let m2 = perform Layer.pick("in2")
+            m1 + m2 ?: 0
+        }
+        let after = perform Layer.pick("after")
+        (before + middle ?: 0) + after ?: 0
+    }
+
+    // Shadow and restore: the inner arm answered exactly the two operations
+    // inside its region, the outer arm the one before it and the one after it.
+    checkAll("an inner region shadows only its own lexical region", [
+        outerCalls == 2,
+        innerCalls == 2,
+        outerCalls == innerCalls,
+        (outerCalls + innerCalls ?: 0) == 4,
+        entered == "out:before|in:in1|in:in2|out:after|",
+        startsWith(entered, "out:before|"),
+        endsWith(entered, "out:after|"),
+        contains(entered, "in:in1|in:in2|"),
+        !contains(entered, "in:before|"),
+        !contains(entered, "in:after|"),
+        !contains(entered, "out:in1|"),
+        !contains(entered, "out:in2|"),
+        length(entered) == 35
+    ])
+
+    // Each depth kept its own magnitude. Had the inner region failed to shadow,
+    // the outer counter would have supplied 2000 and 3000 to in1 and in2.
+    checkAll("two depths of one effect supply their own values", [
+        supplies == "before=1000|in1=10|in2=20|after=2000|",
+        startsWith(supplies, "before=1000|"),
+        endsWith(supplies, "after=2000|"),
+        contains(supplies, "in1=10|"),
+        contains(supplies, "in2=20|"),
+        !contains(supplies, "in1=2000|"),
+        !contains(supplies, "in2=3000|"),
+        !contains(supplies, "after=4000|"),
+        !contains(supplies, "after=3000|"),
+        !contains(supplies, "before=10|"),
+        (1000 + 2000 ?: 0) == 3000,
+        (10 + 20 ?: 0) == 30,
+        length(supplies) == 37
+    ])
+
+    // The inner region settles completely before `after` is performed, so the
+    // settle transcript is NOT the reverse of the entry transcript.
+    checkAll("the inner region settles before the outer body continues", [
+        settled == "in:in2|in:in1|out:after|out:before|",
+        startsWith(settled, "in:in2|"),
+        endsWith(settled, "out:before|"),
+        contains(settled, "in:in2|in:in1|"),
+        contains(settled, "in:in1|out:after|"),
+        contains(settled, "out:after|out:before|"),
+        settled != "out:after|in:in2|in:in1|out:before|",
+        settled != entered,
+        !startsWith(settled, "out:after|"),
+        !contains(settled, "out:after|in:"),
+        !contains(settled, "out:before|out:after|"),
+        length(settled) == length(entered),
+        length(settled) == 35
+    ])
+
+    // 10 + 20 = 30 is the inner body's answer; the inner arms add three each,
+    // so the inner region evaluates to 36 and the outer body sums to 3036.
+    checkAll("the inner region's answer feeds the outer body", [
+        answers == "in2:30|in1:33|after:3036|before:6072|",
+        startsWith(answers, "in2:30|"),
+        endsWith(answers, "before:6072|"),
+        contains(answers, "in1:33|"),
+        contains(answers, "after:3036|"),
+        (30 + 3 ?: 0) == 33,
+        (33 + 3 ?: 0) == 36,
+        (1000 + 36 ?: 0) == 1036,
+        (1036 + 2000 ?: 0) == 3036,
+        (3036 * 2 ?: 0) == 6072,
+        (6072 * 2 ?: 0) == 12144,
+        total == 12144,
+        length(answers) == 37
+    ])
+
+    // Negative controls: the inner region never observed the outer answer, the
+    // outer region never observed the inner body, and no other order lands here.
+    checkAll("two depths of one effect never observe each other", [
+        !contains(answers, "in1:3036|"),
+        !contains(answers, "in2:3036|"),
+        !contains(answers, "before:30|"),
+        !contains(answers, "after:36|"),
+        !contains(answers, "before:12144|"),
+        total != 3036,
+        total != 6072,
+        total != 12150,
+        total > 12000,
+        total < 13000,
+        entered != settled,
+        supplies != answers,
+        answers != ""
+    ])
+}
+
+// Register the same-effect two-depth settlement audit.
+test("an inner region settles fully before the outer region's later operation", sameEffectTwoDepthsCase)

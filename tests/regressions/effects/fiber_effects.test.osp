@@ -142,3 +142,933 @@ test("fiber results remain deterministic across effect handlers", fn() => checkA
         raceSum == 30,
         priWeight(Low) == 1
 ]))
+
+/// Handler-owned tally. `add` is the ONLY operation a job performs, so the arm's
+/// own counter is exactly the number of fiber bodies that ran — the detector for
+/// a body replayed by a second `await` ([CONCURRENCY-SPAWN-AWAIT]).
+effect Tally {
+    /// Add `amount` to the handler's running total and answer the new total.
+    add: fn(int) -> int
+}
+
+/// One perform per run.
+fn tallyJob(amount) !Tally = perform Tally.add(amount)
+
+/// Two performs in ONE fiber body: the second suspension installs its own
+/// mailbox instead of overwriting one still in use ([EFFECTS-OPERATION-MAILBOX]).
+fn tallyTwice(a, b) !Tally = {
+    let first = tallyJob(a)
+    let second = tallyJob(b)
+    (first + second) ?: 0
+}
+
+/// A `yield` between two performs in one fiber body. [CONCURRENCY-YIELD] says
+/// yield "returns the same value with the same type", so the second perform must
+/// see exactly what the first answered.
+fn yieldedJob(n) !Tally = {
+    let first = tallyJob(n)
+    let parked = yield first
+    tallyJob(parked)
+}
+
+/// Four fibers in flight at once, every answer weighted by WHICH fiber received
+/// it. [EFFECTS-FIBER-PERFORM] serializes the full suspend-to-resume round trip
+/// precisely so an argument or result cannot be "delivered to the wrong
+/// performer" — a crossed delivery changes this value, a sum would hide it.
+fn quadWeighted(a, b, c, d) !Gift = {
+    let f1 = spawn ask(a)
+    let f2 = spawn ask(b)
+    let f3 = spawn ask(c)
+    let f4 = spawn ask(d)
+    await(f1) + await(f2) * 100 + await(f3) * 10000 + await(f4) * 1000000 ?: 0
+}
+
+/// A spawned fiber that itself spawns: the innermost performs sit two fiber hops
+/// from the region that installed the handler. The fiber that awaits never
+/// performs, so no round trip ever waits on another round trip.
+fn nestedFan(a, b) !Gift = {
+    let outer = spawn pairSum(a, b)
+    let side = spawn ask(a + b ?: a)
+    await(outer) + await(side) ?: 0
+}
+
+/// Two operations, so a PARTIAL inner region can override one and leave the
+/// other to the enclosing region: "the innermost matching arm wins and an outer
+/// arm remains available for operations not handled by the inner region".
+effect Relay {
+    /// Answer the number the installed region assigns to `tag`.
+    fetch: fn(int) -> int
+    /// Answer the label the installed region assigns to `tag`.
+    stamp: fn(int) -> string
+}
+
+/// Performs both operations in a fixed order, so a partial handler must fall
+/// through to the enclosing region for the one it does not supply.
+fn relayBoth(tag) !Relay = {
+    let label = perform Relay.stamp(tag)
+    let value = perform Relay.fetch(tag)
+    "${label}=${value}"
+}
+
+/// [CONCURRENCY-SPAWN-AWAIT]: "A `Fiber<T>` handle is reusable: awaiting the same
+/// completed fiber more than once MUST return the same `T` value on every call",
+/// and teardown "MUST NOT release a cached result while another fiber can still
+/// await it". The result is CACHED, so the body runs once however many awaits ask
+/// for it. `performs` is the detector, and it stays readable across the fiber
+/// boundary by [EFFECTS-HANDLER-STATE].
+fn awaitReplaysOneEffectfulRunCase() = {
+    mut total = 0
+    mut performs = 0
+    mut lastAmount = 0
+
+    // One spawn, THREE awaits. The cell walks 0 -> 7 and stops there.
+    let replayed = handle Tally
+        add amount => {
+            performs = performs + 1 ?: performs
+            total = total + amount ?: total
+            lastAmount = amount
+            total
+        }
+    in {
+        let f = spawn tallyJob(7)
+        let a1 = await(f)
+        let a2 = await(f)
+        let a3 = await(f)
+        a1 + a2 + a3 ?: 0
+    }
+
+    // The identity amount: the run leaves the cell where it was, and both awaits
+    // still answer the total the single body produced. 7 -> 7.
+    let zeroRun = handle Tally
+        add amount => {
+            performs = performs + 1 ?: performs
+            total = total + amount ?: total
+            lastAmount = amount
+            total
+        }
+    in {
+        let fz = spawn tallyJob(0)
+        await(fz) + await(fz) ?: 0
+    }
+
+    // A negative amount walks the shared cell back. 7 -> 2.
+    let negRun = handle Tally
+        add amount => {
+            performs = performs + 1 ?: performs
+            total = total + amount ?: total
+            lastAmount = amount
+            total
+        }
+    in await(spawn tallyJob(0 - 5 ?: 0))
+
+    // Three spawn SITES, each awaited before the next is spawned, so arrival is
+    // program order. "Each spawn site allocates a distinct capture cell", so the
+    // captured `base` cannot bleed between them. 2 -> 6 -> 11 -> 17.
+    let stepped = handle Tally
+        add amount => {
+            performs = performs + 1 ?: performs
+            total = total + amount ?: total
+            lastAmount = amount
+            total
+        }
+    in {
+        let base = 4
+        let s1 = await(spawn tallyJob(base))
+        let s2 = await(spawn tallyJob(base + 1 ?: base))
+        let s3 = await(spawn tallyJob(base + 2 ?: base))
+        s1 * 10000 + s2 * 100 + s3 ?: 0
+    }
+
+    // ONE fiber body performing twice, the second nested inside the first arm's
+    // round trip. 17 -> 18 -> 17, and the body answers 18 + 17.
+    let twice = handle Tally
+        add amount => {
+            performs = performs + 1 ?: performs
+            total = total + amount ?: total
+            lastAmount = amount
+            total
+        }
+    in await(spawn tallyTwice(1, 0 - 1 ?: 0))
+
+    // Ten awaits asked for a result; eight fiber bodies produced one.
+    checkAll("one body run answers every await", [
+        replayed == 21,
+        replayed == (7 * 3 ?: 0),
+        zeroRun == 14,
+        negRun == 2,
+        stepped == 61117,
+        twice == 35,
+        performs == 8,
+        performs != 10,
+        total == 17,
+        lastAmount == (0 - 1 ?: 0),
+        replayed != zeroRun,
+        negRun < zeroRun,
+        stepped > twice,
+        total > 0
+    ])
+
+    // Every intermediate total is observable, so a lost update cannot hide
+    // behind a correct final one. Amounts in order: 7, 0, -5, 4, 5, 6, 1, -1.
+    checkAll("the shared cell walks through every intermediate total", [
+        (0 + 7 ?: 0) == 7,
+        (7 + 0 ?: 0) == 7,
+        (7 - 5 ?: 0) == 2,
+        (2 + 4 ?: 0) == 6,
+        (6 + 5 ?: 0) == 11,
+        (11 + 6 ?: 0) == 17,
+        (17 + 1 ?: 0) == 18,
+        (18 - 1 ?: 0) == 17,
+        negRun == (7 - 5 ?: 0),
+        (intDiv(stepped, 10000) ?: 0) == 6,
+        ((intDiv(stepped, 100) ?: 0) % 100 ?: 0) == 11,
+        (stepped % 100 ?: 0) == 17,
+        twice == (18 + 17 ?: 0),
+        total == 17
+    ])
+
+    // Negatives: 27 is the total a dropped minus sign on -5 would produce, 19 the
+    // one a dropped minus sign on -1 would produce, and 34 the one a single lost
+    // update inside `tallyTwice` would produce.
+    checkAll("a lost or mis-signed update cannot pass", [
+        replayed != 7,
+        replayed != 14,
+        zeroRun != 0,
+        negRun != 7,
+        negRun != 12,
+        stepped != 0,
+        twice != 34,
+        performs != 0,
+        performs != 5,
+        total != 27,
+        total != 19,
+        lastAmount != 6,
+        lastAmount < 0,
+        total > lastAmount
+    ])
+}
+
+// Register the cached-result rule for a fiber that performs.
+test("awaiting a finished effectful fiber replays one cached run", awaitReplaysOneEffectfulRunCase)
+
+/// [EFFECTS-FIBER-PERFORM]: "Concurrent performs into one resuming handler are
+/// serialized for the full suspend-to-resume round trip. This prevents arguments
+/// or results from being delivered to the wrong performer." The order in which
+/// concurrent fibers reach the region is NOT specified, so the handler's own
+/// counters are asserted as order-blind totals (sum, product, turn count) while
+/// each fiber's private answer is asserted through a positional weight.
+fn concurrentPerformsKeepTheirOwnAnswersCase() = {
+    mut turns = 0
+    mut tagSum = 0
+    mut tagProduct = 1
+    mut edgeTurns = 0
+    mut edgeSum = 0
+
+    // Four DISTINCT tags in flight at once; answers 10, 20, 30, 40.
+    let weighted = handle Gift
+        get tag => {
+            turns = turns + 1 ?: turns
+            tagSum = tagSum + tag ?: tagSum
+            tagProduct = tagProduct * tag ?: tagProduct
+            resume((tag * 10) ?: 0)
+        }
+    in quadWeighted(1, 2, 3, 4)
+
+    // DUPLICATE tags: four performers ask the same question and each still gets
+    // its own round trip, so the turn count sees all four.
+    let duplicated = handle Gift
+        get tag => {
+            turns = turns + 1 ?: turns
+            tagSum = tagSum + tag ?: tagSum
+            tagProduct = tagProduct * tag ?: tagProduct
+            resume((tag * 10) ?: 0)
+        }
+    in quadWeighted(2, 2, 2, 2)
+
+    // Zero and a negative operand: identity and sign cross the mailbox unchanged.
+    // 0*1 + (-10)*100 + 50*10000 + 0*1000000 = 500000 - 1000 = 499000.
+    let signed = handle Gift
+        get tag => {
+            edgeTurns = edgeTurns + 1 ?: edgeTurns
+            edgeSum = edgeSum + tag ?: edgeSum
+            resume((tag * 10) ?: 0)
+        }
+    in quadWeighted(0, 0 - 1 ?: 0, 5, 0)
+
+    // Two performers, one of them the identity tag: 70 + 0.
+    let pairEdge = handle Gift
+        get tag => {
+            edgeTurns = edgeTurns + 1 ?: edgeTurns
+            edgeSum = edgeSum + tag ?: edgeSum
+            resume((tag * 10) ?: 0)
+        }
+    in pairSum(7, 0)
+
+    // A fiber that spawns fibers: (30 + 40) from the inner pair, 70 from the
+    // side fiber whose tag is 3 + 4.
+    let deepFan = handle Gift
+        get tag => {
+            edgeTurns = edgeTurns + 1 ?: edgeTurns
+            edgeSum = edgeSum + tag ?: edgeSum
+            resume((tag * 10) ?: 0)
+        }
+    in nestedFan(3, 4)
+
+    // Each positional field holds the answer to that fiber's OWN tag. 40301020
+    // is what a swap between the first two performers would print, 40302040 what
+    // the fourth performer's answer landing on the first would print.
+    checkAll("each performer keeps its own answer", [
+        weighted == 40302010,
+        (weighted % 100 ?: 0) == 10,
+        ((intDiv(weighted, 100) ?: 0) % 100 ?: 0) == 20,
+        ((intDiv(weighted, 10000) ?: 0) % 100 ?: 0) == 30,
+        (intDiv(weighted, 1000000) ?: 0) == 40,
+        duplicated == 20202020,
+        (duplicated % 100 ?: 0) == 20,
+        ((intDiv(duplicated, 100) ?: 0) % 100 ?: 0) == 20,
+        ((intDiv(duplicated, 10000) ?: 0) % 100 ?: 0) == 20,
+        (intDiv(duplicated, 1000000) ?: 0) == 20,
+        weighted != duplicated,
+        weighted != 40301020,
+        weighted != 40302040,
+        weighted > duplicated
+    ])
+
+    // Sum and product are order-blind, so they hold whatever order the scheduler
+    // picks — but neither survives a dropped or doubled turn.
+    // tags 1,2,3,4 then 2,2,2,2: sum 10 + 8 = 18, product 24 * 16 = 384.
+    checkAll("turn counters total exactly across fibers", [
+        turns == 8,
+        turns == (4 + 4 ?: 0),
+        tagSum == 18,
+        tagSum == (10 + 8 ?: 0),
+        tagProduct == 384,
+        tagProduct == (24 * 16 ?: 0),
+        turns != 4,
+        turns > 0,
+        edgeTurns == 9,
+        edgeSum == 25,
+        edgeSum == (4 + 7 + 14 ?: 0),
+        (turns + edgeTurns ?: 0) == 17,
+        tagSum != tagProduct,
+        tagProduct > tagSum
+    ])
+
+    // 500000 is the value a dropped negative operand would print, 501000 the one
+    // a negative delivered without its sign would print.
+    checkAll("zero and negative operands cross the mailbox unchanged", [
+        signed == 499000,
+        (signed + 1000 ?: 0) == 500000,
+        (intDiv((signed + 1000 ?: 0), 10000) ?: 0) == 50,
+        signed != 500000,
+        signed != 501000,
+        signed < 500000,
+        signed > 0,
+        pairEdge == 70,
+        pairEdge != 0,
+        pairEdge != 700,
+        edgeTurns == 9,
+        (edgeSum + tagSum ?: 0) == 43,
+        signed != weighted,
+        signed != duplicated
+    ])
+
+    // Two fiber hops out from the region and the answers still come back paired
+    // with their own tags. 130 is what losing one of the three would print.
+    checkAll("a fiber that spawns fibers still reaches the installing region", [
+        deepFan == 140,
+        deepFan == (70 + 70 ?: 0),
+        (intDiv(deepFan, 2) ?: 0) == 70,
+        deepFan == (pairEdge * 2 ?: 0),
+        deepFan > pairEdge,
+        deepFan != 70,
+        deepFan != 0,
+        deepFan != 130,
+        (3 * 10 + 4 * 10 ?: 0) == 70,
+        ((3 + 4 ?: 0) * 10 ?: 0) == 70,
+        edgeTurns == (6 + 3 ?: 0),
+        edgeSum == (11 + 14 ?: 0),
+        edgeSum != edgeTurns,
+        edgeSum > edgeTurns
+    ])
+}
+
+// Register the no-crossed-answers rule for several fibers into one handler.
+test("concurrent fibers performing into one resuming handler keep their own answers", concurrentPerformsKeepTheirOwnAnswersCase)
+
+/// [EFFECTS-HANDLER-STATE]: "Code generation promotes the captured binding to a
+/// shared heap cell, so every arm, the handled body, and code after the region
+/// observe the same location", and "handler state is also preserved when a
+/// perform crosses a spawned-fiber boundary" — the spec names THIS file as the
+/// native conformance case. Main-fiber performs and fiber performs are
+/// interleaved below, so a per-fiber copy of the cell shows up immediately.
+fn handlerCellCrossesTheFiberBoundaryCase() = {
+    mut cell = 0
+    mut trail = ""
+    mut hops = 0
+    mut turns = 0
+    mut answered = 0
+
+    // main 3, fiber 4, main 5, fiber 6. The cell walks 0 -> 3 -> 7 -> 12 -> 18,
+    // and each perform's own answer is kept in its own positional field.
+    let mixed = handle Tally
+        add amount => {
+            hops = hops + 1 ?: hops
+            cell = cell + amount ?: cell
+            trail = "${trail}${amount}:${cell}|"
+            cell
+        }
+    in {
+        let m1 = tallyJob(3)
+        let f1 = await(spawn tallyJob(4))
+        let m2 = tallyJob(5)
+        let f2 = await(spawn tallyJob(6))
+        m1 * 1000000 + f1 * 10000 + m2 * 100 + f2 ?: 0
+    }
+
+    // A SECOND region over the same captured binding: promotion is to one heap
+    // location, not one per region. 18 -> 22.
+    let carried = handle Tally
+        add amount => {
+            hops = hops + 1 ?: hops
+            cell = cell + amount ?: cell
+            trail = "${trail}${amount}:${cell}|"
+            cell
+        }
+    in await(spawn tallyJob(4))
+
+    // Four fibers in flight into ONE resuming region: a turn is atomic end to
+    // end, so four increments of one cannot collapse into fewer.
+    let raced = handle Gift
+        get tag => {
+            turns = turns + 1 ?: turns
+            answered = answered + tag ?: answered
+            resume((tag * 10) ?: 0)
+        }
+    in quadWeighted(2, 3, 5, 0)
+
+    // A third region reads the cell back through the identity amount and never
+    // touches the trail: "code after the region observes the same location".
+    let readBack = handle Tally
+        add amount => {
+            hops = hops + 1 ?: hops
+            cell = cell + amount ?: cell
+            cell
+        }
+    in await(spawn tallyJob(0))
+
+    // 3 + 4 + 5 + 6 + 4 = 22, whether the perform came from the main fiber or a
+    // spawned one.
+    checkAll("one promoted cell serves main-fiber and fiber performs", [
+        mixed == 3071218,
+        (intDiv(mixed, 1000000) ?: 0) == 3,
+        ((intDiv(mixed, 10000) ?: 0) % 100 ?: 0) == 7,
+        ((intDiv(mixed, 100) ?: 0) % 100 ?: 0) == 12,
+        (mixed % 100 ?: 0) == 18,
+        carried == 22,
+        cell == 22,
+        hops == 6,
+        cell == (3 + 4 + 5 + 6 + 4 ?: 0),
+        carried == cell,
+        mixed != 0,
+        cell != 18,
+        hops != 4,
+        cell > 0
+    ])
+
+    // "4:11|" is the hop a main-fiber perform reading a stale cell would write,
+    // "6:14|" the one a fiber perform reading a stale cell would write.
+    checkAll("the transcript records every hop in body order", [
+        trail == "3:3|4:7|5:12|6:18|4:22|",
+        length(trail) == 23,
+        startsWith(trail, "3:3|"),
+        endsWith(trail, "4:22|"),
+        contains(trail, "4:7|"),
+        contains(trail, "5:12|"),
+        contains(trail, "6:18|"),
+        !contains(trail, "3:4|"),
+        !contains(trail, "4:11|"),
+        !contains(trail, "6:14|"),
+        contains(trail, "|4:22|"),
+        !startsWith(trail, "4:7|"),
+        !endsWith(trail, "6:18|"),
+        trail != ""
+    ])
+
+    // 305020 is what crossing the second and third performers' answers prints.
+    checkAll("a resuming region totals across four concurrent fibers", [
+        raced == 503020,
+        (raced % 100 ?: 0) == 20,
+        ((intDiv(raced, 100) ?: 0) % 100 ?: 0) == 30,
+        ((intDiv(raced, 10000) ?: 0) % 100 ?: 0) == 50,
+        (intDiv(raced, 1000000) ?: 0) == 0,
+        turns == 4,
+        answered == 10,
+        answered == (2 + 3 + 5 + 0 ?: 0),
+        turns != 3,
+        raced != 0,
+        raced != 305020,
+        answered != turns,
+        raced > answered,
+        (turns + hops ?: 0) == 10
+    ])
+
+    // The identity amount proves the cell survived two region exits unchanged.
+    checkAll("the promoted cell outlives its region", [
+        readBack == 22,
+        readBack == cell,
+        readBack == carried,
+        cell == 22,
+        hops == 6,
+        (0 + 22 ?: 0) == 22,
+        readBack != 0,
+        readBack != 18,
+        !contains(trail, "0:22|"),
+        hops != turns,
+        mixed != carried,
+        (cell - carried ?: 0) == 0,
+        (hops - 4 ?: 0) == 2,
+        cell != 0
+    ])
+}
+
+// Register the shared-cell rule the spec names this file for.
+test("handler state is one promoted cell across the fiber boundary", handlerCellCrossesTheFiberBoundaryCase)
+
+/// [CONCURRENCY-CHANNEL]: `Channel(capacity)` is a FIFO buffer whose `send`
+/// "appends `value`" and whose `recv` "removes its oldest value". Fibers are
+/// isolated and exchange only through it, while the effect the producer fires
+/// inside its own fiber still reaches the region installed outside
+/// ([EFFECTS-HANDLER-STATE]).
+fn channelHandoffKeepsFibersIsolatedCase() = {
+    mut sent = 0
+    mut trail = ""
+
+    // The producer performs for every value it sends, so the identity arm hands
+    // back exactly what goes into the buffer: 11, 22, 33, 44 in that order.
+    let drained = handle Tally
+        add amount => {
+            sent = sent + amount ?: sent
+            trail = "${trail}${amount},"
+            amount
+        }
+    in {
+        let ch = Channel(4)
+        let producer = spawn {
+            send(ch, tallyJob(11))
+            send(ch, tallyJob(22))
+            send(ch, tallyJob(33))
+            send(ch, tallyJob(44))
+        }
+        await(producer)
+        let r1 = recv(ch)
+        let r2 = recv(ch)
+        let r3 = recv(ch)
+        let r4 = recv(ch)
+        r1 * 1000000 + r2 * 10000 + r3 * 100 + r4 ?: 0
+    }
+
+    // Two fibers, no shared memory: every digit the consumer answers arrived
+    // through the buffer.
+    let ch2 = Channel(3)
+    let prod2 = spawn {
+        send(ch2, 5)
+        send(ch2, 7)
+        send(ch2, 9)
+    }
+    let cons2 = spawn {
+        let c1 = recv(ch2)
+        let c2 = recv(ch2)
+        let c3 = recv(ch2)
+        c1 * 100 + c2 * 10 + c3 ?: 0
+    }
+    await(prod2)
+    let consumed = await(cons2)
+
+    // A ONE-slot buffer reused three times, including a negative payload.
+    let ping = Channel(1)
+    send(ping, 1)
+    let p1 = recv(ping)
+    send(ping, 2)
+    let p2 = recv(ping)
+    send(ping, 0 - 3 ?: 0)
+    let p3 = recv(ping)
+
+    // 44332211 is what a last-in-first-out buffer would print.
+    checkAll("a channel hands values over oldest first", [
+        drained == 11223344,
+        (intDiv(drained, 1000000) ?: 0) == 11,
+        ((intDiv(drained, 10000) ?: 0) % 100 ?: 0) == 22,
+        ((intDiv(drained, 100) ?: 0) % 100 ?: 0) == 33,
+        (drained % 100 ?: 0) == 44,
+        drained != 44332211,
+        drained != 0,
+        sent == 110,
+        sent == (11 + 22 + 33 + 44 ?: 0),
+        trail == "11,22,33,44,",
+        length(trail) == 12,
+        startsWith(trail, "11,"),
+        endsWith(trail, "44,"),
+        !contains(trail, "44,11,")
+    ])
+
+    // 975 is what a reversed drain would print; 1 + 2 - 3 balances to zero.
+    checkAll("two fibers exchange only through the buffer", [
+        consumed == 579,
+        (intDiv(consumed, 100) ?: 0) == 5,
+        ((intDiv(consumed, 10) ?: 0) % 10 ?: 0) == 7,
+        (consumed % 10 ?: 0) == 9,
+        consumed != 975,
+        consumed != 0,
+        consumed == (500 + 70 + 9 ?: 0),
+        drained != consumed,
+        consumed > 0,
+        p1 == 1,
+        p2 == 2,
+        p3 == (0 - 3 ?: 0),
+        p1 != p2,
+        (p1 + p2 + p3 ?: 0) == 0
+    ])
+
+    // 110 = 11 * (1 + 2 + 3 + 4), so a dropped send changes both the sum and its
+    // divisibility by 11.
+    checkAll("the effect fired inside the producer reached the region outside it", [
+        sent == 110,
+        sent != 0,
+        sent != 11,
+        trail != "",
+        contains(trail, "22,"),
+        contains(trail, "33,"),
+        !contains(trail, "55,"),
+        !contains(trail, ",0,"),
+        length(trail) == 12,
+        length(trail) != 0,
+        (intDiv(sent, 11) ?: 0) == 10,
+        (sent % 11 ?: 0) == 0,
+        drained != sent,
+        sent > p1
+    ])
+}
+
+// Register channel handoff plus a perform escaping the producer fiber.
+test("a channel hands values between fibers while the effect reaches outside", channelHandoffKeepsFibersIsolatedCase)
+
+/// Handler lookup "is per effect and operation. Nested handlers may override
+/// selected operations; the innermost matching arm wins and an outer arm remains
+/// available for operations not handled by the inner region." Discharge is
+/// operation-specific ([EFFECTS-STATIC-DISCHARGE]), so the partial inner region
+/// below supplies `fetch` only and `stamp` must reach the enclosing region — all
+/// of it from inside a spawned fiber.
+fn nestedRegionsPickTheInnermostArmForFibersCase() = {
+    mut outerHits = 0
+    mut innerHits = 0
+    mut stampHits = 0
+
+    // Inner region supplies `fetch` (tag * 100); `stamp` falls through to the
+    // enclosing one. tag 3 => "outer3" and 300.
+    let inner = handle Relay
+        fetch tag => {
+            outerHits = outerHits + 1 ?: outerHits
+            tag * 2 ?: 0
+        }
+        stamp tag => {
+            stampHits = stampHits + 1 ?: stampHits
+            "outer${tag}"
+        }
+    in handle Relay
+        fetch tag => {
+            innerHits = innerHits + 1 ?: innerHits
+            tag * 100 ?: 0
+        }
+    in await(spawn relayBoth(3))
+
+    // The SAME fiber under the enclosing region alone: tag 3 => "outer3" and 6.
+    let outerOnly = handle Relay
+        fetch tag => {
+            outerHits = outerHits + 1 ?: outerHits
+            tag * 2 ?: 0
+        }
+        stamp tag => {
+            stampHits = stampHits + 1 ?: stampHits
+            "outer${tag}"
+        }
+    in await(spawn relayBoth(3))
+
+    // The inner region covers only the fiber spawned INSIDE it; the fiber
+    // spawned after it is back on the enclosing arm. 400 then 8.
+    let restored = handle Relay
+        fetch tag => {
+            outerHits = outerHits + 1 ?: outerHits
+            tag * 2 ?: 0
+        }
+        stamp tag => {
+            stampHits = stampHits + 1 ?: stampHits
+            "outer${tag}"
+        }
+    in {
+        let shadowed = handle Relay
+            fetch tag => {
+                innerHits = innerHits + 1 ?: innerHits
+                tag * 100 ?: 0
+            }
+        in await(spawn relayBoth(4))
+        let plain = await(spawn relayBoth(4))
+        "${shadowed}/${plain}"
+    }
+
+    // Two fibers under one inner region, one carrying the identity tag and one a
+    // negative tag: 0 => 0 and -2 => -200.
+    let paired = handle Relay
+        fetch tag => {
+            outerHits = outerHits + 1 ?: outerHits
+            tag * 2 ?: 0
+        }
+        stamp tag => {
+            stampHits = stampHits + 1 ?: stampHits
+            "outer${tag}"
+        }
+    in handle Relay
+        fetch tag => {
+            innerHits = innerHits + 1 ?: innerHits
+            tag * 100 ?: 0
+        }
+    in {
+        let a = await(spawn relayBoth(0))
+        let b = await(spawn relayBoth(0 - 2 ?: 0))
+        "${a}+${b}"
+    }
+
+    // "outer3=6" is the answer the enclosing arm would have given the fiber that
+    // was spawned inside the inner region.
+    checkAll("the innermost matching arm wins across the fiber boundary", [
+        inner == "outer3=300",
+        inner != "outer3=6",
+        outerOnly == "outer3=6",
+        inner != outerOnly,
+        contains(inner, "=300"),
+        contains(outerOnly, "=6"),
+        startsWith(inner, "outer3"),
+        startsWith(outerOnly, "outer3"),
+        !contains(inner, "=6"),
+        endsWith(inner, "300"),
+        endsWith(outerOnly, "6"),
+        length(inner) == 10,
+        length(outerOnly) == 8,
+        inner != ""
+    ])
+
+    // Six calls to relayBoth stamp once and fetch once each, so the stamp count
+    // must equal the two fetch counts added together: 6 == 4 + 2.
+    checkAll("an operation the inner region omits reaches the enclosing one", [
+        stampHits == 6,
+        innerHits == 4,
+        outerHits == 2,
+        (stampHits - innerHits ?: 0) == 2,
+        stampHits == (innerHits + outerHits ?: 0),
+        startsWith(inner, "outer"),
+        restored == "outer4=400/outer4=8",
+        contains(restored, "outer4=400"),
+        contains(restored, "outer4=8"),
+        length(restored) == 19,
+        contains(restored, "400/outer4"),
+        !contains(restored, "outer4=800"),
+        outerHits != innerHits,
+        outerHits < innerHits
+    ])
+
+    // "outer-2=200" is what a negative tag delivered without its sign to the
+    // inner arm would print.
+    checkAll("each fiber's own tag threads to its own arm", [
+        paired == "outer0=0+outer-2=-200",
+        contains(paired, "outer0=0"),
+        contains(paired, "outer-2=-200"),
+        startsWith(paired, "outer0=0+"),
+        endsWith(paired, "-200"),
+        !contains(paired, "outer-2=200"),
+        !contains(paired, "outer2="),
+        length(paired) == 21,
+        paired != inner,
+        paired != restored,
+        innerHits == 4,
+        !contains(paired, "=0+outer-2=200"),
+        contains(paired, "=-200"),
+        stampHits == 6
+    ])
+
+    // The enclosing arm is restored for the fiber spawned after the inner region
+    // closes, so the second half of the pair is 8 and not 400.
+    checkAll("the enclosing region is restored after the inner one ends", [
+        restored == "outer4=400/outer4=8",
+        contains(restored, "/"),
+        !endsWith(restored, "400"),
+        endsWith(restored, "=8"),
+        startsWith(restored, "outer4=400"),
+        length(restored) == 19,
+        outerHits == 2,
+        innerHits == 4,
+        (outerHits * 2 ?: 0) == innerHits,
+        restored != paired,
+        restored != inner,
+        !contains(restored, "outer4=80"),
+        contains(restored, "0/o"),
+        stampHits > innerHits
+    ])
+}
+
+// Register innermost-arm selection and partial-handler fall-through for fibers.
+test("nested regions pick the innermost arm for a spawned fiber", nestedRegionsPickTheInnermostArmForFibersCase)
+
+/// Where the spec fixes no order among concurrent fibers, the PROGRAM can fix one:
+/// each stage below awaits the previous, so [CONCURRENCY-SPAWN-AWAIT] makes the
+/// arrival order total and the handler transcript is a byte-exact contract. The
+/// yielded stage additionally pins [CONCURRENCY-YIELD] — `yield` "returns the same
+/// value with the same type" — and `fiberDone` "returns `1` after completion".
+fn fiberPipelineTranscriptIsDeterministicCase() = {
+    mut running = 0
+    mut steps = 0
+    mut script = ""
+    mut forwardTotal = 0
+    mut reverseTotal = 0
+
+    // Each stage's amount is the previous stage's answer plus one, so the cell
+    // walks 1, 3, 7, 15 — the 2^n - 1 sequence, and any reordering breaks it.
+    let piped = handle Tally
+        add amount => {
+            steps = steps + 1 ?: steps
+            running = running + amount ?: running
+            script = "${script}s${steps}=${running};"
+            running
+        }
+    in {
+        let a = await(spawn tallyJob(1))
+        let b = await(spawn tallyJob(a + 1 ?: a))
+        let c = await(spawn tallyJob(b + 1 ?: b))
+        let d = await(spawn tallyJob(c + 1 ?: c))
+        a * 1000000 + b * 10000 + c * 100 + d ?: 0
+    }
+
+    // A yield BETWEEN two performs in one fiber body: the parked value is handed
+    // straight back, so the second perform adds 20 to the 20 the first answered.
+    let yielded = handle Tally
+        add amount => {
+            steps = steps + 1 ?: steps
+            running = running + amount ?: running
+            script = "${script}s${steps}=${running};"
+            running
+        }
+    in await(spawn yieldedJob(5))
+
+    // 40 - 35 = 5, and the completion probe must read 1 once the await returned.
+    let probe = handle Tally
+        add amount => {
+            steps = steps + 1 ?: steps
+            running = running + amount ?: running
+            script = "${script}s${steps}=${running};"
+            running
+        }
+    in {
+        let f = spawn tallyJob(0 - 35 ?: 0)
+        let v = await(f)
+        v * 10 + fiberDone(f) ?: 0
+    }
+
+    // The same three amounts forwards: prefix sums 2, 6, 12 => 20.
+    let fwd = handle Tally
+        add amount => {
+            forwardTotal = forwardTotal + amount ?: forwardTotal
+            forwardTotal
+        }
+    in {
+        let x1 = await(spawn tallyJob(2))
+        let x2 = await(spawn tallyJob(4))
+        let x3 = await(spawn tallyJob(6))
+        x1 + x2 + x3 ?: 0
+    }
+
+    // ...and backwards: prefix sums 6, 10, 12 => 28. The TOTAL is order-blind,
+    // the prefix sums are not, which is exactly why a sum alone proves nothing.
+    let rev = handle Tally
+        add amount => {
+            reverseTotal = reverseTotal + amount ?: reverseTotal
+            reverseTotal
+        }
+    in {
+        let y1 = await(spawn tallyJob(6))
+        let y2 = await(spawn tallyJob(4))
+        let y3 = await(spawn tallyJob(2))
+        y1 + y2 + y3 ?: 0
+    }
+
+    checkAll("a data-dependent pipeline fixes a total order", [
+        piped == 1030715,
+        (intDiv(piped, 1000000) ?: 0) == 1,
+        ((intDiv(piped, 10000) ?: 0) % 100 ?: 0) == 3,
+        ((intDiv(piped, 100) ?: 0) % 100 ?: 0) == 7,
+        (piped % 100 ?: 0) == 15,
+        piped != 0,
+        (1 * 2 + 1 ?: 0) == 3,
+        (3 * 2 + 1 ?: 0) == 7,
+        (7 * 2 + 1 ?: 0) == 15,
+        piped != 1030716,
+        steps == 7,
+        running == 5,
+        yielded == 40,
+        probe == 51
+    ])
+
+    // "s4=14;" is the stage a single lost increment would write, "s8=" a stage
+    // that ran once too often.
+    checkAll("the handler transcript records every stage exactly once", [
+        script == "s1=1;s2=3;s3=7;s4=15;s5=20;s6=40;s7=5;",
+        length(script) == 38,
+        startsWith(script, "s1=1;"),
+        endsWith(script, "s7=5;"),
+        contains(script, "s4=15;"),
+        contains(script, "s5=20;"),
+        contains(script, "s6=40;"),
+        !contains(script, "s8="),
+        !contains(script, "s1=2;"),
+        !contains(script, "s4=14;"),
+        contains(script, ";s2=3;"),
+        !endsWith(script, "s6=40;"),
+        !startsWith(script, "s2="),
+        script != ""
+    ])
+
+    checkAll("yield hands its own value back and the fiber still completes", [
+        yielded == 40,
+        yielded == (20 + 20 ?: 0),
+        yielded != 20,
+        probe == 51,
+        (probe % 10 ?: 0) == 1,
+        (intDiv(probe, 10) ?: 0) == 5,
+        running == 5,
+        running == (40 - 35 ?: 0),
+        steps == 7,
+        steps != 6,
+        probe != 50,
+        probe != 1,
+        yielded > probe,
+        (running + 35 ?: 0) == 40
+    ])
+
+    checkAll("the accumulated total is order-blind while the prefix sums are not", [
+        fwd == 20,
+        rev == 28,
+        fwd != rev,
+        forwardTotal == 12,
+        reverseTotal == 12,
+        forwardTotal == reverseTotal,
+        forwardTotal == (2 + 4 + 6 ?: 0),
+        fwd == (2 + 6 + 12 ?: 0),
+        rev == (6 + 10 + 12 ?: 0),
+        rev > fwd,
+        (rev - fwd ?: 0) == 8,
+        forwardTotal != fwd,
+        reverseTotal != rev,
+        (fwd + rev ?: 0) == 48
+    ])
+}
+
+// Register the program-fixed ordering contract for an effectful fiber pipeline.
+test("a data-dependent fiber pipeline fixes the handler transcript order", fiberPipelineTranscriptIsDeterministicCase)
