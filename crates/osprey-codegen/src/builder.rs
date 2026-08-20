@@ -640,6 +640,12 @@ impl Codegen {
         if let Some(t) = self.fn_value_types.get(name) {
             return Some(t.clone());
         }
+        // A file-scope function value read from inside a function body: its
+        // closure cell lives in a module global, not this frame
+        // ([`crate::globals`]).
+        if let Some(t) = crate::globals::fn_type(self, name) {
+            return Some(t);
+        }
         let (params, ret) = self.prog.functions.get(name)?;
         Some(Type::Fun {
             params: params.clone(),

@@ -153,10 +153,18 @@ pub(crate) fn try_indirect(
     args: &[Expr],
     named: &[NamedArgument],
 ) -> Result<Option<Value>> {
-    let Some(sig) = cg.fn_ptr_locals.get(name).cloned() else {
+    // A function value reached through a module global has no entry in this
+    // frame's tables; its ABI comes from the global's inferred type instead
+    // ([`crate::globals`]).
+    let Some(sig) = cg.fn_ptr_locals.get(name).cloned().or_else(|| {
+        crate::globals::fn_type(cg, name)
+            .as_ref()
+            .and_then(Codegen::fn_value_sig)
+    }) else {
         return Ok(None);
     };
-    let Some(handle) = cg.cell_read(name).or_else(|| cg.lookup(name)) else {
+    let local = cg.cell_read(name).or_else(|| cg.lookup(name));
+    let Some(handle) = local.or_else(|| crate::globals::read(cg, name)) else {
         return Ok(None);
     };
     let exprs = crate::expr::arg_exprs(args, named);
