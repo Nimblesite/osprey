@@ -108,6 +108,12 @@
       "kind": "executable-evidence",
       "path": "examples/chapter-01/",
       "use": "checked and run Default and optional ML examples used by Chapter 1"
+    },
+    {
+      "id": "chapter-two-examples",
+      "kind": "executable-evidence",
+      "path": "examples/chapter-02/",
+      "use": "checked and run Default Flight Log example used by Chapter 2"
     }
   ]
 }

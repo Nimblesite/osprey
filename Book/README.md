@@ -2,7 +2,7 @@
 
 *The Osprey Book* is a practical introduction to programming with Osprey for beginner-to-intermediate developers. It starts with a program you can run in minutes, then builds toward typed data, explicit failure, effects, concurrency, and native or WebAssembly delivery.
 
-The current edition is a **structural scaffold with Chapter 1 complete**. It establishes the learning journey, teaching contract, source policy, production metadata, visual language, runnable Chapter 1 examples, and a working EPUB/HTML pipeline. Later chapters are mapped as editorial scaffolds rather than presented as finished prose.
+The current edition is a **structural scaffold with Chapters 1 and 2 complete**. It establishes the learning journey, teaching contract, source policy, production metadata, visual language, runnable examples for both completed chapters, and a working EPUB/HTML pipeline. Later chapters are mapped as editorial scaffolds rather than presented as finished prose.
 
 ## Reader promise
 
@@ -40,7 +40,7 @@ Book/
 ├── evidence.json             # chapter claim-readiness ledger
 ├── figures.json              # planned and completed visual ledger
 ├── manuscript/               # front matter, chapters, and appendices
-├── examples/chapter-01/      # runnable examples from the completed chapter
+├── examples/chapter-*/       # runnable examples from completed chapters
 ├── assets/                   # cover, diagrams, illustration, and future captures
 ├── styles/                   # EPUB and standalone HTML styling
 └── dist/                     # generated output; never hand-edited
@@ -50,7 +50,7 @@ Book/
 
 ```sh
 make check          # validate manifests and parse every manuscript file
-make check-examples # compile and run the Chapter 1 examples
+make check-examples # compile and run examples from completed chapters
 make render-assets  # render deterministic SVG masters to publication PNGs
 make epub           # build and validate the structural EPUB
 make html           # build a standalone HTML reading copy

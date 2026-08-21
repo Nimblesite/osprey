@@ -12,7 +12,9 @@ HTML := dist/index.html
 DIAGRAM_PNGS := \
 	assets/diagrams/00-reading-journey.png \
 	assets/diagrams/01-program-anatomy.png \
-	assets/diagrams/01-source-to-output.png
+	assets/diagrams/01-source-to-output.png \
+	assets/diagrams/02-value-graph.png \
+	assets/diagrams/02-expression-flow.png
 
 .PHONY: check check-examples render-assets epub html release clean
 
@@ -29,12 +31,15 @@ check-examples:
 		$(OSPREY) examples/chapter-01/hello.osp --check >/dev/null; \
 		$(OSPREY) examples/chapter-01/first-flight.osp --check >/dev/null; \
 		$(OSPREY) examples/chapter-01/first-flight.ospml --check >/dev/null; \
+		$(OSPREY) examples/chapter-02/flight-log.osp --check >/dev/null; \
 		$(OSPREY) examples/chapter-01/hello.osp --run > "$$book_tmp/hello.out"; \
 		$(OSPREY) examples/chapter-01/first-flight.osp --run > "$$book_tmp/first-flight.out"; \
 		$(OSPREY) examples/chapter-01/first-flight.ospml --run > "$$book_tmp/first-flight-ml.out"; \
+		$(OSPREY) examples/chapter-02/flight-log.osp --run > "$$book_tmp/flight-log.out"; \
 		diff -u examples/chapter-01/hello.expectedoutput "$$book_tmp/hello.out"; \
 		diff -u examples/chapter-01/first-flight.expectedoutput "$$book_tmp/first-flight.out"; \
-		diff -u examples/chapter-01/first-flight.expectedoutput "$$book_tmp/first-flight-ml.out"
+		diff -u examples/chapter-01/first-flight.expectedoutput "$$book_tmp/first-flight-ml.out"; \
+		diff -u examples/chapter-02/flight-log.expectedoutput "$$book_tmp/flight-log.out"
 
 render-assets: assets/cover/cover.png $(DIAGRAM_PNGS)
 

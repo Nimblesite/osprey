@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "title": "The Osprey Book",
-  "status": "structural-scaffold-chapter-1-complete",
+  "status": "structural-scaffold-chapters-1-2-complete",
   "editionModel": "living-release-aligned",
   "ospreyRelease": "0.0.0-dev",
   "releasePinStatus": "pin-before-publication",
@@ -42,7 +42,7 @@
       "number": 2,
       "title": "Give values useful names",
       "file": "manuscript/02-give-values-useful-names.md",
-      "status": "editorial-scaffold",
+      "status": "complete",
       "targetWords": 2500,
       "targetPages": 9,
       "targetFigures": 2
