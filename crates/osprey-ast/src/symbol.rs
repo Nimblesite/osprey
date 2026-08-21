@@ -95,9 +95,16 @@ fn decode_segment(text: &str) -> Option<(String, &str)> {
     let (length, hex) = text.split_once(LENGTH_TERMINATOR)?;
     let length: usize = length.parse().ok()?;
     let (bytes, tail) = hex.split_at_checked(length.checked_mul(HEX_PER_BYTE)?)?;
+    // `as_chunks` over `chunks_exact`: the chunk size is a constant, so the
+    // pairs are fixed-size arrays and the remainder is a separate value rather
+    // than a runtime check on every step. `split_at_checked` above already
+    // guaranteed the length is a whole number of pairs, so that remainder is
+    // empty by construction.
     let decoded = bytes
         .as_bytes()
-        .chunks_exact(HEX_PER_BYTE)
+        .as_chunks::<HEX_PER_BYTE>()
+        .0
+        .iter()
         .map(|pair| {
             std::str::from_utf8(pair)
                 .ok()

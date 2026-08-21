@@ -327,7 +327,9 @@ jobs:
       # Dead-code gate: fail if any `pub` declaration is unreachable from the
       # osprey binary (hawk::dead_public). Scoped to dead_public only — see the
       # `hawk` target in the Makefile. cargo-hawk's prebuilt driver is pinned to
-      # the stable toolchain this job installs (1.97.1); bump them together.
+      # the stable toolchain this job installs (1.98.0), and the installer below
+      # fetches the release matching it; when stable moves, hawk's own release
+      # must move with it or this gate fails on a toolchain mismatch alone.
       - name: Install cargo-hawk (dead-code gate)
         run: |
           curl --proto '=https' --tlsv1.2 -LsSf \
