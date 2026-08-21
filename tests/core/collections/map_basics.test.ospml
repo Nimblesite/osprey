@@ -1,5 +1,11 @@
 // Persistent Map behavior across construction, branching, and merging.
 
+(** Entry is a record value, so `mapGet` must hand back the whole record. *)
+type Entry =
+    title : string
+    score : float
+    active : bool
+
 (** Exercise construction, overwrite, membership, and source isolation. *)
 constructionAndOverwriteCase () =
     empty = Map ()
@@ -275,3 +281,890 @@ test "map removal and merge preserve values and bias" removalAndMergeCase
 test "map views and list interactions preserve both collections" viewsAndCrossCollectionCase
 
 test "map literals and receiver dispatch preserve lookup semantics" literalsAndDispatchCase
+
+(** [BUILTIN-MAP-GET] declares `mapGet(map: Map<string, V>, key: string) -> Result<V, Error>`,
+    equivalent to `map[key]`, with a missing key returning `Error`. `V` is the
+    value type, so a string-valued map yields the string, a float-valued map the
+    float, a bool-valued map the bool and a record-valued map the whole record.
+    Every case above stores `int` values, where a value and its storage word are
+    indistinguishable — the blind spot issue #211 lives in. *)
+typedValueRetrievalCase () =
+    titles = mapSet (mapSet (mapSet (Map ()) "a" "alpha") "b" "beta") "c" "gamma"
+    scores = mapSet (mapSet (Map ()) "half" 0.5) "quarter" 1.25
+    flags = mapSet (mapSet (Map ()) "on" true) "off" false
+    blank = Entry(title = "none", score = 0.0, active = false)
+    entries = mapSet (mapSet (Map ()) "left" (Entry(title = "Left", score = 1.5, active = true))) "right" (Entry(title = "Right", score = 2.5, active = false))
+    leftEntry = mapGet entries "left" ?: blank
+    rightEntry = mapGet entries "right" ?: blank
+    absentEntry = mapGet entries "middle" ?: blank
+    absentTitle = match mapGet titles "zzz"
+        Success value => value
+        Error message => message
+
+    // A string value comes back as its own string, through both spellings the
+    // spec calls equivalent, and a missing key still takes the `Error` branch.
+    checkAll "string values survive mapGet" [
+        (mapGet titles "a" ?: "none") == "alpha",
+        (mapGet titles "b" ?: "none") == "beta",
+        (mapGet titles "c" ?: "none") == "gamma",
+        (titles["a"] ?: "none") == "alpha",
+        (titles["b"] ?: "none") == "beta",
+        (titles["c"] ?: "none") == "gamma",
+        (mapGet titles "a" ?: "none") == (titles["a"] ?: "other"),
+        (mapGet titles "c" ?: "none") == (titles["c"] ?: "other"),
+        length (mapGet titles "a" ?: "") == 5,
+        length (mapGet titles "b" ?: "") == 4,
+        contains (mapGet titles "c" ?: "none") "amm",
+        startsWith (mapGet titles "a" ?: "none") "alp",
+        endsWith (mapGet titles "b" ?: "none") "eta",
+        toUpperCase (mapGet titles "b" ?: "none") == "BETA",
+        "${mapGet titles "a" ?: "none"}+${mapGet titles "b" ?: "none"}" == "alpha+beta",
+        absentTitle == "mapGet: key not found",
+        (mapGet titles "zzz" ?: "absent") == "absent",
+        mapContains titles "a",
+        !(mapContains titles "zzz"),
+        mapLength titles == 3
+    ]
+
+    // Persistent producers keep values typed too: an overwritten, removed or
+    // merged map still yields strings ([BUILTIN-MAP-SET], [BUILTIN-MAP-REMOVE],
+    // [BUILTIN-MAP-MERGE]).
+    checkAll "string values survive every map producer" [
+        (mapGet (mapSet titles "a" "replaced") "a" ?: "none") == "replaced",
+        (mapGet (mapSet titles "a" "replaced") "b" ?: "none") == "beta",
+        (mapGet titles "a" ?: "none") == "alpha",
+        (mapGet (mapRemove titles "b") "a" ?: "none") == "alpha",
+        (mapGet (mapRemove titles "b") "c" ?: "none") == "gamma",
+        (mapGet (mapRemove titles "b") "b" ?: "gone") == "gone",
+        !(mapContains (mapRemove titles "b") "b"),
+        mapLength (mapRemove titles "b") == 2,
+        mapLength titles == 3,
+        (mapGet (mapMerge titles (mapSet (Map ()) "d" "delta")) "d" ?: "none") == "delta",
+        (mapGet (mapMerge titles (mapSet (Map ()) "d" "delta")) "a" ?: "none") == "alpha",
+        (mapGet (mapMerge titles (mapSet (Map ()) "a" "right wins")) "a" ?: "none") == "right wins",
+        mapLength (mapMerge titles (mapSet (Map ()) "d" "delta")) == 4,
+        listContains (mapKeys titles) "a",
+        listContains (mapKeys titles) "c",
+        listLength (mapKeys titles) == 3
+    ]
+
+    // A float value keeps its IEEE value; a bool value keeps true/false.
+    checkAll "float and bool values survive mapGet" [
+        (mapGet scores "half" ?: 0.0) == 0.5,
+        (mapGet scores "quarter" ?: 0.0) == 1.25,
+        (scores["half"] ?: 0.0) == 0.5,
+        (mapGet scores "half" ?: 0.0) + (mapGet scores "quarter" ?: 0.0) == 1.75,
+        (mapGet scores "quarter" ?: 0.0) * 4.0 == 5.0,
+        (mapGet scores "missing" ?: 9.5) == 9.5,
+        (mapGet (mapSet scores "half" 3.5) "half" ?: 0.0) == 3.5,
+        (mapGet scores "half" ?: 0.0) == 0.5,
+        mapLength scores == 2,
+        (mapGet flags "on" ?: false),
+        !(mapGet flags "off" ?: true),
+        (flags["on"] ?: false),
+        !(flags["off"] ?: true),
+        (mapGet flags "on" ?: false) != (mapGet flags "off" ?: true),
+        !(mapGet flags "unknown" ?: false),
+        (mapGet (mapSet flags "on" false) "on" ?: true) == false,
+        (mapGet flags "on" ?: false),
+        mapContains flags "off",
+        !(mapContains flags "unknown"),
+        mapLength flags == 2
+    ]
+
+    // A record value comes back whole: every field of the stored record is
+    // readable off the retrieved one, and a missing key still takes `Error`.
+    checkAll "record values survive mapGet whole" [
+        leftEntry.title == "Left",
+        leftEntry.score == 1.5,
+        leftEntry.active,
+        rightEntry.title == "Right",
+        rightEntry.score == 2.5,
+        !rightEntry.active,
+        leftEntry.title != rightEntry.title,
+        leftEntry.score != rightEntry.score,
+        leftEntry.active != rightEntry.active,
+        leftEntry.score + rightEntry.score == 4.0,
+        length leftEntry.title == 4,
+        length rightEntry.title == 5,
+        "${leftEntry.title}/${rightEntry.title}" == "Left/Right",
+        absentEntry.title == "none",
+        absentEntry.score == 0.0,
+        !absentEntry.active,
+        (mapGet (mapSet entries "left" blank) "left" ?: rightEntry).title == "none",
+        (mapGet (mapSet entries "left" blank) "right" ?: blank).title == "Right",
+        (mapGet (mapRemove entries "left") "right" ?: blank).score == 2.5,
+        (mapGet (mapRemove entries "left") "left" ?: blank).title == "none",
+        mapLength entries == 2
+    ]
+
+test "mapGet returns the value type for every value type" typedValueRetrievalCase
+
+(** [BUILTIN-MAP] states that `Map()` and map literals create *string*-keyed maps,
+    and [BUILTIN-MAP-GET]/[BUILTIN-MAP-CONTAINS] key them by that string alone. A
+    key is therefore distinguished by exact content: the empty string, a lone
+    space, leading versus trailing spaces, a case difference, punctuation, a
+    digit string with a leading zero and a forty-character key are each their own
+    binding under [BUILTIN-MAP-SET], and [BUILTIN-MAP-KEYS] must report each once. *)
+keyShapeCase () =
+    shaped = ["" => 0, "a" => 1, "A" => 2, " " => 3, " a" => 4, "a " => 5, "a b" => 6, "a.b" => 7, "a-b" => 8, "a_b" => 9, "007" => 10, "7" => 11]
+    longKey = "abcdefghijklmnopqrstuvwxyz0123456789abcd"
+    longKeyPrefix = "abcdefghijklmnopqrstuvwxyz0123456789abc"
+    shapedLong = mapSet shaped longKey 12
+    gap = " "
+    emptyKeyMissing = match mapGet (mapRemove shaped "") ""
+        Success value => false
+        Error message => message == "mapGet: key not found"
+
+    // Twelve literal keys carry values 0..11 in declaration order and the long
+    // key carries 12; the long key spells 26 letters + 10 digits + "abcd" = 40.
+    checkAll "every key shape binds its own value" [
+        (mapGet shaped "" ?: ((0 - 999) ?: 0)) == 0,
+        (mapGet shaped "a" ?: ((0 - 999) ?: 0)) == 1,
+        (mapGet shaped "A" ?: ((0 - 999) ?: 0)) == 2,
+        (mapGet shaped " " ?: ((0 - 999) ?: 0)) == 3,
+        (mapGet shaped " a" ?: ((0 - 999) ?: 0)) == 4,
+        (mapGet shaped "a " ?: ((0 - 999) ?: 0)) == 5,
+        (mapGet shaped "a b" ?: ((0 - 999) ?: 0)) == 6,
+        (mapGet shaped "a.b" ?: ((0 - 999) ?: 0)) == 7,
+        (mapGet shaped "a-b" ?: ((0 - 999) ?: 0)) == 8,
+        (mapGet shaped "a_b" ?: ((0 - 999) ?: 0)) == 9,
+        (mapGet shaped "007" ?: ((0 - 999) ?: 0)) == 10,
+        (mapGet shaped "7" ?: ((0 - 999) ?: 0)) == 11,
+        (mapGet shapedLong longKey ?: ((0 - 999) ?: 0)) == 12,
+        mapLength shaped == 12,
+        mapLength shapedLong == 13,
+        length shapedLong == 13,
+        !(isEmpty shaped),
+        length longKey == 40,
+        length longKeyPrefix == 39,
+        emptyKeyMissing
+    ]
+
+    // Membership follows exact content, so every near miss — a differing case, an
+    // extra space, a longer or shorter spelling, a leading zero — must be absent.
+    checkAll "map membership follows exact key content" [
+        mapContains shaped "",
+        mapContains shaped "a",
+        mapContains shaped "A",
+        mapContains shaped " ",
+        mapContains shaped " a",
+        mapContains shaped "a ",
+        mapContains shaped "a b",
+        mapContains shaped "a.b",
+        mapContains shaped "a-b",
+        mapContains shaped "a_b",
+        mapContains shaped "007",
+        mapContains shaped "7",
+        mapContains shapedLong longKey,
+        !(mapContains shaped longKey),
+        !(mapContains shapedLong longKeyPrefix),
+        !(mapContains shapedLong (toUpperCase longKey)),
+        !(mapContains shaped "b"),
+        !(mapContains shaped "B"),
+        !(mapContains shaped "  "),
+        !(mapContains shaped " a "),
+        !(mapContains shaped "ab"),
+        !(mapContains shaped "a.b.c"),
+        !(mapContains shaped "0007"),
+        !(mapContains shaped "07"),
+        !(mapContains shaped "a-B")
+    ]
+
+    // Keys that differ only by case, spacing or punctuation hold different values,
+    // computed keys reach the same bindings as literal ones, and overwriting the
+    // empty-string key leaves the source generation at its original value.
+    checkAll "case, spacing and punctuation keys stay distinct" [
+        (mapGet shaped "a" ?: ((0 - 999) ?: 0)) != (mapGet shaped "A" ?: ((0 - 998) ?: 0)),
+        (mapGet shaped " a" ?: ((0 - 999) ?: 0)) != (mapGet shaped "a " ?: ((0 - 998) ?: 0)),
+        (mapGet shaped "a b" ?: ((0 - 999) ?: 0)) != (mapGet shaped "a.b" ?: ((0 - 998) ?: 0)),
+        (mapGet shaped "a.b" ?: ((0 - 999) ?: 0)) != (mapGet shaped "a-b" ?: ((0 - 998) ?: 0)),
+        (mapGet shaped "a-b" ?: ((0 - 999) ?: 0)) != (mapGet shaped "a_b" ?: ((0 - 998) ?: 0)),
+        (mapGet shaped "007" ?: ((0 - 999) ?: 0)) != (mapGet shaped "7" ?: ((0 - 998) ?: 0)),
+        (mapGet shaped "" ?: ((0 - 999) ?: 0)) != (mapGet shaped " " ?: ((0 - 998) ?: 0)),
+        (mapGet shaped (toUpperCase "a") ?: ((0 - 999) ?: 0)) == 2,
+        (mapGet shaped (toLowerCase "A") ?: ((0 - 999) ?: 0)) == 1,
+        (mapGet shaped "a${gap}b" ?: ((0 - 999) ?: 0)) == 6,
+        (mapGet shaped "${gap}a" ?: ((0 - 999) ?: 0)) == 4,
+        (mapGet shaped "a${gap}" ?: ((0 - 999) ?: 0)) == 5,
+        (shaped[""] ?: ((0 - 999) ?: 0)) == 0,
+        (shaped["a b"] ?: ((0 - 999) ?: 0)) == 6,
+        (shaped["007"] ?: ((0 - 999) ?: 0)) == 10,
+        (mapGet (mapSet shaped "" 99) "" ?: ((0 - 999) ?: 0)) == 99,
+        mapLength (mapSet shaped "" 99) == 12,
+        (mapGet shaped "" ?: ((0 - 999) ?: 0)) == 0,
+        (mapGet (mapSet shaped "A" 99) "a" ?: ((0 - 999) ?: 0)) == 1,
+        mapLength (mapSet shaped "b" 99) == 13
+    ]
+
+    // The key view holds all thirteen shapes and nothing else; the value view is
+    // the same length and the twelve-key parent must not have gained the long key.
+    checkAll "map key and value views report each shape once" [
+        listLength (mapKeys shapedLong) == 13,
+        listLength (mapValues shapedLong) == 13,
+        listLength (mapKeys shapedLong) == mapLength shapedLong,
+        listContains (mapKeys shapedLong) "",
+        listContains (mapKeys shapedLong) "a",
+        listContains (mapKeys shapedLong) "A",
+        listContains (mapKeys shapedLong) " ",
+        listContains (mapKeys shapedLong) " a",
+        listContains (mapKeys shapedLong) "a ",
+        listContains (mapKeys shapedLong) "a b",
+        listContains (mapKeys shapedLong) "a.b",
+        listContains (mapKeys shapedLong) "a-b",
+        listContains (mapKeys shapedLong) "a_b",
+        listContains (mapKeys shapedLong) "007",
+        listContains (mapKeys shapedLong) "7",
+        listContains (mapKeys shapedLong) longKey,
+        !(listContains (mapKeys shapedLong) longKeyPrefix),
+        !(listContains (mapKeys shapedLong) "b"),
+        !(listContains (mapKeys shapedLong) "  "),
+        !(listContains (mapKeys shaped) longKey),
+        listContains (mapValues shapedLong) 0,
+        listContains (mapValues shapedLong) 6,
+        listContains (mapValues shapedLong) 12,
+        !(listContains (mapValues shapedLong) 13),
+        !(listContains (mapValues shaped) 12)
+    ]
+
+test "map keys are distinguished by exact string content" keyShapeCase
+
+(** [BUILTIN-MAP-SET] returns a map with `key` bound to `value`, "replacing any
+    prior binding", while the Collection Functions preamble states operations
+    "return new values without changing their inputs". A chain of overwrites on
+    one key must therefore hold the length steady while every earlier generation
+    keeps its own value, and [BUILTIN-MAP-REMOVE] must undo a set exactly —
+    leaving neighbouring keys, including keys that are prefixes of one another,
+    untouched. *)
+overwriteChainCase () =
+    v0 = Map ()
+    v1 = mapSet v0 "slot" 1
+    v2 = mapSet v1 "slot" 2
+    v3 = mapSet v2 "slot" 3
+    v4 = mapSet v3 "other" 40
+    v5 = mapSet v4 "slot" 5
+    v6 = mapSet v5 "other" 60
+    v7 = mapSet v6 "slot" 5
+    prefixes = ["p" => 1, "pa" => 2, "pat" => 3, "path" => 4]
+    prefixOverwritten = mapSet prefixes "pa" 20
+
+    // Three overwrites of "slot" never grow the map; adding "other" grows it once
+    // and re-setting "slot" to the value it already holds changes nothing.
+    checkAll "overwrite chain lengths and per-generation values" [
+        mapLength v0 == 0,
+        mapLength v1 == 1,
+        mapLength v2 == 1,
+        mapLength v3 == 1,
+        mapLength v4 == 2,
+        mapLength v5 == 2,
+        mapLength v6 == 2,
+        mapLength v7 == 2,
+        (mapGet v1 "slot" ?: ((0 - 999) ?: 0)) == 1,
+        (mapGet v2 "slot" ?: ((0 - 999) ?: 0)) == 2,
+        (mapGet v3 "slot" ?: ((0 - 999) ?: 0)) == 3,
+        (mapGet v4 "slot" ?: ((0 - 999) ?: 0)) == 3,
+        (mapGet v5 "slot" ?: ((0 - 999) ?: 0)) == 5,
+        (mapGet v6 "slot" ?: ((0 - 999) ?: 0)) == 5,
+        (mapGet v7 "slot" ?: ((0 - 999) ?: 0)) == 5,
+        (mapGet v4 "other" ?: ((0 - 999) ?: 0)) == 40,
+        (mapGet v5 "other" ?: ((0 - 999) ?: 0)) == 40,
+        (mapGet v6 "other" ?: ((0 - 999) ?: 0)) == 60,
+        (mapGet v7 "other" ?: ((0 - 999) ?: 0)) == 60,
+        !(mapContains v0 "slot"),
+        !(mapContains v3 "other"),
+        isEmpty v0,
+        !(isEmpty v1)
+    ]
+
+    // Length arithmetic separates a fresh key (+1) from an overwrite (+0), and a
+    // key differing only in case counts as fresh.
+    checkAll "set length arithmetic separates fresh keys from overwrites" [
+        mapLength (mapSet v6 "fresh" 7) == (mapLength v6 + 1 ?: 0),
+        mapLength (mapSet v6 "slot" 7) == mapLength v6,
+        mapLength (mapSet v6 "other" 7) == mapLength v6,
+        mapLength (mapSet v0 "first" 1) == 1,
+        mapLength (mapSet (mapSet v0 "k" 1) "k" 2) == 1,
+        mapLength (mapSet (mapSet v0 "k" 1) "K" 2) == 2,
+        (mapGet (mapSet (mapSet v0 "k" 1) "k" 2) "k" ?: ((0 - 999) ?: 0)) == 2,
+        (mapGet (mapSet (mapSet v0 "k" 1) "K" 2) "k" ?: ((0 - 999) ?: 0)) == 1,
+        (mapGet (mapSet (mapSet v0 "k" 1) "K" 2) "K" ?: ((0 - 999) ?: 0)) == 2,
+        mapLength v6 == 2,
+        mapContains (mapSet v6 "fresh" 7) "fresh",
+        !(mapContains v6 "fresh"),
+        (mapGet (mapSet v6 "slot" 7) "slot" ?: ((0 - 999) ?: 0)) == 7,
+        (mapGet (mapSet v6 "slot" 7) "other" ?: ((0 - 999) ?: 0)) == 60,
+        (mapGet v6 "slot" ?: ((0 - 999) ?: 0)) == 5
+    ]
+
+    // set-then-remove is the identity on the key it touched, remove is idempotent
+    // because "a missing key leaves the map unchanged", and draining both keys
+    // must land on an empty map rather than a stale one.
+    checkAll "set and remove round-trip without disturbing neighbours" [
+        mapLength (mapRemove (mapSet v6 "fresh" 7) "fresh") == 2,
+        !(mapContains (mapRemove (mapSet v6 "fresh" 7) "fresh") "fresh"),
+        (mapGet (mapRemove (mapSet v6 "fresh" 7) "fresh") "slot" ?: ((0 - 999) ?: 0)) == 5,
+        (mapGet (mapRemove (mapSet v6 "fresh" 7) "fresh") "other" ?: ((0 - 999) ?: 0)) == 60,
+        mapLength (mapRemove v6 "slot") == 1,
+        mapLength (mapRemove (mapRemove v6 "slot") "slot") == 1,
+        mapLength (mapRemove (mapRemove v6 "slot") "other") == 0,
+        isEmpty (mapRemove (mapRemove v6 "slot") "other"),
+        mapLength (mapRemove v6 "absent") == 2,
+        mapLength (mapRemove v0 "absent") == 0,
+        (mapGet (mapSet (mapRemove v6 "slot") "slot" 5) "slot" ?: ((0 - 999) ?: 0)) == 5,
+        (mapGet (mapSet (mapRemove v6 "slot") "slot" 5) "other" ?: ((0 - 999) ?: 0)) == 60,
+        mapLength (mapSet (mapRemove v6 "slot") "slot" 5) == 2,
+        (mapGet (mapRemove v6 "slot") "other" ?: ((0 - 999) ?: 0)) == 60,
+        mapLength v6 == 2,
+        mapContains v6 "slot"
+    ]
+
+    // "p", "pa", "pat" and "path" are nested prefixes; overwriting "pa" alone must
+    // move only its value, and the source generation keeps the old 2.
+    checkAll "overwriting one prefix key leaves its neighbours alone" [
+        mapLength prefixes == 4,
+        mapLength prefixOverwritten == 4,
+        (mapGet prefixes "p" ?: ((0 - 999) ?: 0)) == 1,
+        (mapGet prefixes "pa" ?: ((0 - 999) ?: 0)) == 2,
+        (mapGet prefixes "pat" ?: ((0 - 999) ?: 0)) == 3,
+        (mapGet prefixes "path" ?: ((0 - 999) ?: 0)) == 4,
+        (mapGet prefixOverwritten "p" ?: ((0 - 999) ?: 0)) == 1,
+        (mapGet prefixOverwritten "pa" ?: ((0 - 999) ?: 0)) == 20,
+        (mapGet prefixOverwritten "pat" ?: ((0 - 999) ?: 0)) == 3,
+        (mapGet prefixOverwritten "path" ?: ((0 - 999) ?: 0)) == 4,
+        (mapGet prefixes "pa" ?: ((0 - 999) ?: 0)) == 2,
+        !(mapContains prefixes "pathx"),
+        !(mapContains prefixes "Path"),
+        !(mapContains prefixes ""),
+        mapContains prefixOverwritten "pat",
+        listLength (mapKeys prefixOverwritten) == 4,
+        listContains (mapKeys prefixOverwritten) "path",
+        !(listContains (mapValues prefixOverwritten) 2),
+        listContains (mapValues prefixOverwritten) 20,
+        listContains (mapValues prefixes) 2
+    ]
+
+test "map overwrite chains keep one binding per key" overwriteChainCase
+
+(** [BUILTIN-MAP-MERGE] "returns the right-biased union" and states `left + right`
+    is equivalent. Right bias makes merge non-commutative but still associative,
+    with the empty map a two-sided identity and any map idempotent against itself;
+    the Collection Functions preamble guarantees both operands survive unchanged. *)
+mergeAlgebraCase () =
+    empty = Map ()
+    left = ["k" => 1, "K" => 2, "k.k" => 3, "" => 4]
+    right = ["k" => 10, "k-k" => 30, "" => 40, " " => 50]
+    third = ["K" => 200, "k-k" => 300, "q" => 700]
+    lr = mapMerge left right
+    rl = mapMerge right left
+    lrThenThird = mapMerge (mapMerge left right) third
+    leftThenRt = mapMerge left (mapMerge right third)
+    plusChain = left + right + third
+    overrideK = mapSet empty "k" 999
+
+    // left ∪ right keeps six distinct keys: "k" and "" come from the right (10, 40),
+    // "K" and "k.k" only exist on the left (2, 3), "k-k" and " " only on the right.
+    checkAll "right-biased union values and lengths" [
+        mapLength left == 4,
+        mapLength right == 4,
+        mapLength third == 3,
+        mapLength lr == 6,
+        mapLength rl == 6,
+        (mapGet lr "k" ?: ((0 - 999) ?: 0)) == 10,
+        (mapGet lr "K" ?: ((0 - 999) ?: 0)) == 2,
+        (mapGet lr "k.k" ?: ((0 - 999) ?: 0)) == 3,
+        (mapGet lr "" ?: ((0 - 999) ?: 0)) == 40,
+        (mapGet lr "k-k" ?: ((0 - 999) ?: 0)) == 30,
+        (mapGet lr " " ?: ((0 - 999) ?: 0)) == 50,
+        (mapGet rl "k" ?: ((0 - 999) ?: 0)) == 1,
+        (mapGet rl "K" ?: ((0 - 999) ?: 0)) == 2,
+        (mapGet rl "k.k" ?: ((0 - 999) ?: 0)) == 3,
+        (mapGet rl "" ?: ((0 - 999) ?: 0)) == 4,
+        (mapGet rl "k-k" ?: ((0 - 999) ?: 0)) == 30,
+        (mapGet rl " " ?: ((0 - 999) ?: 0)) == 50,
+        (mapGet lr "k" ?: ((0 - 999) ?: 0)) != (mapGet rl "k" ?: ((0 - 998) ?: 0)),
+        (mapGet lr "" ?: ((0 - 999) ?: 0)) != (mapGet rl "" ?: ((0 - 998) ?: 0)),
+        !(mapContains lr "q"),
+        !(mapContains rl "q")
+    ]
+
+    // The empty map is a two-sided identity, merging a map with itself is the
+    // identity too, and neither operand is disturbed by any of it.
+    checkAll "merge identity, idempotence and operand preservation" [
+        mapLength (mapMerge empty left) == 4,
+        mapLength (mapMerge left empty) == 4,
+        (mapGet (mapMerge empty left) "k" ?: ((0 - 999) ?: 0)) == 1,
+        (mapGet (mapMerge empty left) "" ?: ((0 - 999) ?: 0)) == 4,
+        (mapGet (mapMerge left empty) "K" ?: ((0 - 999) ?: 0)) == 2,
+        (mapGet (mapMerge left empty) "k.k" ?: ((0 - 999) ?: 0)) == 3,
+        mapLength (mapMerge empty empty) == 0,
+        isEmpty (mapMerge empty empty),
+        mapLength (mapMerge left left) == 4,
+        (mapGet (mapMerge left left) "k" ?: ((0 - 999) ?: 0)) == 1,
+        (mapGet (mapMerge left left) "" ?: ((0 - 999) ?: 0)) == 4,
+        mapLength (mapMerge right right) == 4,
+        (mapGet (mapMerge right right) " " ?: ((0 - 999) ?: 0)) == 50,
+        mapLength left == 4,
+        mapLength right == 4,
+        (mapGet left "k" ?: ((0 - 999) ?: 0)) == 1,
+        (mapGet right "k" ?: ((0 - 999) ?: 0)) == 10,
+        (mapGet left "" ?: ((0 - 999) ?: 0)) == 4,
+        (mapGet right "" ?: ((0 - 999) ?: 0)) == 40,
+        !(mapContains left "k-k"),
+        !(mapContains right "K")
+    ]
+
+    // ((left ∪ right) ∪ third) and (left ∪ (right ∪ third)) both resolve to
+    // k=10, K=200, k.k=3, ""=40, k-k=300, " "=50, q=700 — seven keys either way —
+    // and `left + right + third` associates to the left, so it agrees as well.
+    checkAll "merge is associative and the + alias agrees" [
+        mapLength lrThenThird == 7,
+        mapLength leftThenRt == 7,
+        mapLength plusChain == 7,
+        (mapGet lrThenThird "k" ?: ((0 - 999) ?: 0)) == 10,
+        (mapGet lrThenThird "K" ?: ((0 - 999) ?: 0)) == 200,
+        (mapGet lrThenThird "k.k" ?: ((0 - 999) ?: 0)) == 3,
+        (mapGet lrThenThird "" ?: ((0 - 999) ?: 0)) == 40,
+        (mapGet lrThenThird "k-k" ?: ((0 - 999) ?: 0)) == 300,
+        (mapGet lrThenThird " " ?: ((0 - 999) ?: 0)) == 50,
+        (mapGet lrThenThird "q" ?: ((0 - 999) ?: 0)) == 700,
+        (mapGet leftThenRt "k" ?: ((0 - 999) ?: 0)) == 10,
+        (mapGet leftThenRt "K" ?: ((0 - 999) ?: 0)) == 200,
+        (mapGet leftThenRt "k.k" ?: ((0 - 999) ?: 0)) == 3,
+        (mapGet leftThenRt "" ?: ((0 - 999) ?: 0)) == 40,
+        (mapGet leftThenRt "k-k" ?: ((0 - 999) ?: 0)) == 300,
+        (mapGet leftThenRt " " ?: ((0 - 999) ?: 0)) == 50,
+        (mapGet leftThenRt "q" ?: ((0 - 999) ?: 0)) == 700,
+        (mapGet plusChain "K" ?: ((0 - 999) ?: 0)) == 200,
+        (mapGet plusChain "k-k" ?: ((0 - 999) ?: 0)) == 300,
+        (mapGet plusChain "q" ?: ((0 - 999) ?: 0)) == 700,
+        (mapGet lrThenThird "K" ?: ((0 - 999) ?: 0)) == (mapGet leftThenRt "K" ?: ((0 - 998) ?: 0)),
+        (mapGet lrThenThird "k-k" ?: ((0 - 999) ?: 0)) == (mapGet leftThenRt "k-k" ?: ((0 - 998) ?: 0))
+    ]
+
+    // Views of a merged map hold exactly the surviving bindings — 1 and 30 lost
+    // their keys to the right map — and merging a map with a subset of itself is
+    // still right-biased, so the full map wins when it stands on the right.
+    checkAll "merged views and single-key override interaction" [
+        listLength (mapKeys lr) == 6,
+        listLength (mapValues lr) == 6,
+        listContains (mapKeys lr) "",
+        listContains (mapKeys lr) " ",
+        listContains (mapKeys lr) "k-k",
+        listContains (mapKeys lr) "K",
+        !(listContains (mapKeys lr) "q"),
+        listContains (mapValues lr) 10,
+        listContains (mapValues lr) 50,
+        !(listContains (mapValues lr) 1),
+        listLength (mapKeys lrThenThird) == 7,
+        listContains (mapKeys lrThenThird) "q",
+        listContains (mapValues lrThenThird) 700,
+        !(listContains (mapValues lrThenThird) 30),
+        mapLength (mapMerge lr overrideK) == 6,
+        (mapGet (mapMerge lr overrideK) "k" ?: ((0 - 999) ?: 0)) == 999,
+        (mapGet (mapMerge overrideK lr) "k" ?: ((0 - 999) ?: 0)) == 10,
+        mapLength (mapMerge lr (mapRemove lr "k")) == 6,
+        mapLength (mapMerge (mapRemove lr "k") lr) == 6,
+        (mapGet (mapMerge (mapRemove lr "k") lr) "k" ?: ((0 - 999) ?: 0)) == 10
+    ]
+
+test "map merge is right-biased, associative, and identity-preserving" mergeAlgebraCase
+
+(** [BUILTIN-MAP-REMOVE] "returns a map without `key`" and states "a missing key
+    leaves the map unchanged". Sweeping a five-key map one key at a time must drop
+    exactly the named binding each time, removal order must not matter, removing a
+    near-miss key must be a no-op, and the source map must survive every sweep
+    intact ([BUILTIN-COLLECTION-LENGTH], [BUILTIN-COLLECTION-ISEMPTY]). *)
+removalSweepCase () =
+    base = ["a" => 1, "b" => 2, "c" => 3, "d" => 4, "e" => 5]
+    extra = ["f" => 6]
+    noA = mapRemove base "a"
+    noB = mapRemove base "b"
+    noC = mapRemove base "c"
+    noD = mapRemove base "d"
+    noE = mapRemove base "e"
+    abFirst = mapRemove (mapRemove base "a") "b"
+    baFirst = mapRemove (mapRemove base "b") "a"
+    drained = mapRemove (mapRemove (mapRemove (mapRemove (mapRemove base "a") "b") "c") "d") "e"
+    widened = mapMerge base extra
+    drainedMissing = match mapGet drained "a"
+        Success value => false
+        Error message => message == "mapGet: key not found"
+
+    // Each of the five single removals leaves four bindings, and the four that
+    // survive keep their original values.
+    checkAll "each single removal drops exactly one binding" [
+        mapLength base == 5,
+        mapLength noA == 4,
+        mapLength noB == 4,
+        mapLength noC == 4,
+        mapLength noD == 4,
+        mapLength noE == 4,
+        !(mapContains noA "a"),
+        !(mapContains noB "b"),
+        !(mapContains noC "c"),
+        !(mapContains noD "d"),
+        !(mapContains noE "e"),
+        (mapGet noA "b" ?: ((0 - 999) ?: 0)) == 2,
+        (mapGet noA "e" ?: ((0 - 999) ?: 0)) == 5,
+        (mapGet noB "a" ?: ((0 - 999) ?: 0)) == 1,
+        (mapGet noB "c" ?: ((0 - 999) ?: 0)) == 3,
+        (mapGet noC "b" ?: ((0 - 999) ?: 0)) == 2,
+        (mapGet noC "d" ?: ((0 - 999) ?: 0)) == 4,
+        (mapGet noD "c" ?: ((0 - 999) ?: 0)) == 3,
+        (mapGet noD "e" ?: ((0 - 999) ?: 0)) == 5,
+        (mapGet noE "a" ?: ((0 - 999) ?: 0)) == 1,
+        (mapGet noE "d" ?: ((0 - 999) ?: 0)) == 4,
+        mapContains base "a",
+        mapContains base "e",
+        (mapGet base "c" ?: ((0 - 999) ?: 0)) == 3
+    ]
+
+    // Removing "a" then "b" and "b" then "a" must agree on every surviving key,
+    // and removing all five must land on a genuinely empty map with empty views.
+    checkAll "removal is order-insensitive and drains to empty" [
+        mapLength abFirst == 3,
+        mapLength baFirst == 3,
+        !(mapContains abFirst "a"),
+        !(mapContains abFirst "b"),
+        !(mapContains baFirst "a"),
+        !(mapContains baFirst "b"),
+        (mapGet abFirst "c" ?: ((0 - 999) ?: 0)) == (mapGet baFirst "c" ?: ((0 - 998) ?: 0)),
+        (mapGet abFirst "d" ?: ((0 - 999) ?: 0)) == (mapGet baFirst "d" ?: ((0 - 998) ?: 0)),
+        (mapGet abFirst "e" ?: ((0 - 999) ?: 0)) == (mapGet baFirst "e" ?: ((0 - 998) ?: 0)),
+        (mapGet abFirst "c" ?: ((0 - 999) ?: 0)) == 3,
+        (mapGet baFirst "e" ?: ((0 - 999) ?: 0)) == 5,
+        mapLength drained == 0,
+        isEmpty drained,
+        length drained == 0,
+        listLength (mapKeys drained) == 0,
+        listLength (mapValues drained) == 0,
+        drainedMissing,
+        !(mapContains drained "c"),
+        mapLength base == 5,
+        !(isEmpty base)
+    ]
+
+    // A key that is absent by case, spacing, length or emptiness is still absent,
+    // so each of these removals must leave all five bindings in place, and a
+    // second removal of an already-removed key must be a no-op as well.
+    checkAll "removing an absent key leaves the map unchanged" [
+        mapLength (mapRemove base "z") == 5,
+        mapLength (mapRemove base "") == 5,
+        mapLength (mapRemove base " ") == 5,
+        mapLength (mapRemove base "A") == 5,
+        mapLength (mapRemove base "ab") == 5,
+        mapLength (mapRemove base "a ") == 5,
+        (mapGet (mapRemove base "A") "a" ?: ((0 - 999) ?: 0)) == 1,
+        (mapGet (mapRemove base "") "a" ?: ((0 - 999) ?: 0)) == 1,
+        (mapGet (mapRemove base "ab") "b" ?: ((0 - 999) ?: 0)) == 2,
+        (mapGet (mapRemove base "a ") "a" ?: ((0 - 999) ?: 0)) == 1,
+        mapContains (mapRemove base "z") "a",
+        mapContains (mapRemove base "z") "e",
+        mapLength (mapRemove drained "a") == 0,
+        isEmpty (mapRemove drained "a"),
+        mapLength (mapRemove (mapRemove base "a") "a") == 4,
+        !(mapContains (mapRemove (mapRemove base "a") "a") "a"),
+        (mapGet (mapRemove (mapRemove base "a") "a") "b" ?: ((0 - 999) ?: 0)) == 2,
+        listLength (mapKeys (mapRemove base "z")) == 5
+    ]
+
+    // Merging a removed generation back against the full map restores the missing
+    // binding from whichever side holds it, and set-after-remove rebinds the key
+    // without disturbing the source generation.
+    checkAll "removal composes with set and merge" [
+        mapLength (mapMerge noB base) == 5,
+        (mapGet (mapMerge noB base) "b" ?: ((0 - 999) ?: 0)) == 2,
+        mapLength (mapMerge base noB) == 5,
+        (mapGet (mapMerge base noB) "b" ?: ((0 - 999) ?: 0)) == 2,
+        mapLength widened == 6,
+        (mapGet widened "f" ?: ((0 - 999) ?: 0)) == 6,
+        mapLength (mapRemove widened "f") == 5,
+        !(mapContains (mapRemove widened "f") "f"),
+        mapLength (mapSet noC "c" 33) == 5,
+        (mapGet (mapSet noC "c" 33) "c" ?: ((0 - 999) ?: 0)) == 33,
+        (mapGet base "c" ?: ((0 - 999) ?: 0)) == 3,
+        mapLength (mapSet drained "a" 1) == 1,
+        (mapGet (mapSet drained "a" 1) "a" ?: ((0 - 999) ?: 0)) == 1,
+        listLength (mapKeys noA) == 4,
+        !(listContains (mapKeys noA) "a"),
+        listContains (mapKeys noA) "b",
+        listLength (mapValues noA) == 4,
+        !(listContains (mapValues noA) 1),
+        listContains (mapValues noA) 5
+    ]
+
+test "map removal drops exactly one binding and leaves absent keys alone" removalSweepCase
+
+(** Bucket holds a Map and a List field, so a record can carry whole collections. *)
+type Bucket =
+    name : string
+    items : Map string int
+    tags : List string
+
+(** [BUILTIN-MAP] fixes the value type only as `V`, so a map value may itself be a
+    map, a list or a record, and [BUILTIN-LIST] elements may be maps. Nesting must
+    not flatten: an inner collection retrieved through [BUILTIN-MAP-GET] or
+    [BUILTIN-LIST-GET] answers its own [BUILTIN-COLLECTION-LENGTH] and its own
+    lookups, and rebuilding an inner collection must leave the original nest alone. *)
+nestedCollectionCase () =
+    inner1 = ["x" => 1, "y" => 2]
+    inner2 = ["x" => 10, "z" => 30]
+    inner3 = mapRemove (mapRemove inner1 "x") "y"
+    fallbackMap = ["fallback" => 0]
+    maps = listAppend (listAppend (listAppend (List ()) inner1) inner2) inner3
+    outer = mapSet (mapSet (mapSet (Map ()) "one" inner1) "two" inner2) "three" inner3
+    outerReplaced = mapSet outer "one" inner2
+    odds = [1, 3, 5]
+    evens = [2, 4, 6, 8]
+    fallbackList = [0]
+    byParity = mapSet (mapSet (Map ()) "odds" odds) "evens" evens
+    byParityGrown = mapSet byParity "odds" (listAppend odds 7)
+    tagsA = ["red", "blue"]
+    tagsB = ["green", "red", "blue"]
+    noTags = ["none"]
+    bucketA = Bucket(name = "alpha", items = inner1, tags = tagsA)
+    bucketB = Bucket(name = "beta", items = inner2, tags = tagsB)
+    blankBucket = Bucket(name = "none", items = inner3, tags = noTags)
+    buckets = mapSet (mapSet (Map ()) "alpha" bucketA) "beta" bucketB
+    firstNested = listGet maps 0 ?: fallbackMap
+    secondNested = listGet maps 1 ?: fallbackMap
+    thirdNested = listGet maps 2 ?: fallbackMap
+    pastEndNested = listGet maps 9 ?: fallbackMap
+    innerOne = mapGet outer "one" ?: fallbackMap
+    innerTwo = mapGet outer "two" ?: fallbackMap
+    innerMissing = mapGet outer "four" ?: fallbackMap
+    innerReplaced = mapGet outerReplaced "one" ?: fallbackMap
+    oddsBack = mapGet byParity "odds" ?: fallbackList
+    evensBack = mapGet byParity "evens" ?: fallbackList
+    listMissing = mapGet byParity "primes" ?: fallbackList
+    oddsGrown = mapGet byParityGrown "odds" ?: fallbackList
+    bucketItems = bucketA.items
+    bucketTags = bucketA.tags
+    alphaBack = mapGet buckets "alpha" ?: blankBucket
+    betaBack = mapGet buckets "beta" ?: blankBucket
+    bucketMissing = mapGet buckets "gamma" ?: blankBucket
+    betaItems = betaBack.items
+    betaTags = betaBack.tags
+    missingItems = bucketMissing.items
+
+    // Three maps stored as list elements keep their own two, two and zero
+    // bindings; an out-of-range index still takes the Error branch.
+    checkAll "maps stored in a list keep their own contents" [
+        listLength maps == 3,
+        mapLength firstNested == 2,
+        mapLength secondNested == 2,
+        mapLength thirdNested == 0,
+        isEmpty thirdNested,
+        (mapGet firstNested "x" ?: ((0 - 999) ?: 0)) == 1,
+        (mapGet firstNested "y" ?: ((0 - 999) ?: 0)) == 2,
+        (mapGet secondNested "x" ?: ((0 - 999) ?: 0)) == 10,
+        (mapGet secondNested "z" ?: ((0 - 999) ?: 0)) == 30,
+        !(mapContains firstNested "z"),
+        !(mapContains secondNested "y"),
+        !(mapContains thirdNested "x"),
+        (mapGet firstNested "x" ?: ((0 - 999) ?: 0)) != (mapGet secondNested "x" ?: ((0 - 998) ?: 0)),
+        mapLength pastEndNested == 1,
+        (mapGet pastEndNested "fallback" ?: ((0 - 999) ?: 0)) == 0,
+        listLength (listAppend maps inner1) == 4,
+        listLength maps == 3,
+        mapLength inner1 == 2,
+        mapLength inner2 == 2
+    ]
+
+    // A map of maps answers three outer keys while each inner map keeps its own
+    // bindings, and replacing one inner map must not disturb the original nest.
+    checkAll "maps stored as map values keep their own contents" [
+        mapLength outer == 3,
+        listLength (mapKeys outer) == 3,
+        listContains (mapKeys outer) "one",
+        listContains (mapKeys outer) "three",
+        !(listContains (mapKeys outer) "four"),
+        mapLength innerOne == 2,
+        mapLength innerTwo == 2,
+        (mapGet innerOne "x" ?: ((0 - 999) ?: 0)) == 1,
+        (mapGet innerOne "y" ?: ((0 - 999) ?: 0)) == 2,
+        (mapGet innerTwo "x" ?: ((0 - 999) ?: 0)) == 10,
+        (mapGet innerTwo "z" ?: ((0 - 999) ?: 0)) == 30,
+        !(mapContains innerOne "z"),
+        mapLength innerMissing == 1,
+        (mapGet innerMissing "fallback" ?: ((0 - 999) ?: 0)) == 0,
+        mapLength innerReplaced == 2,
+        (mapGet innerReplaced "z" ?: ((0 - 999) ?: 0)) == 30,
+        (mapGet innerOne "x" ?: ((0 - 999) ?: 0)) == 1,
+        mapLength outer == 3,
+        mapLength (mapRemove outer "two") == 2,
+        !(mapContains (mapRemove outer "two") "two")
+    ]
+
+    // Lists stored as map values keep index order and length; growing one value
+    // list produces a four-element list while the stored three-element one stands.
+    checkAll "lists stored as map values keep index order" [
+        mapLength byParity == 2,
+        listLength oddsBack == 3,
+        listLength evensBack == 4,
+        (listGet oddsBack 0 ?: ((0 - 999) ?: 0)) == 1,
+        (listGet oddsBack 1 ?: ((0 - 999) ?: 0)) == 3,
+        (listGet oddsBack 2 ?: ((0 - 999) ?: 0)) == 5,
+        (listGet evensBack 0 ?: ((0 - 999) ?: 0)) == 2,
+        (listGet evensBack 3 ?: ((0 - 999) ?: 0)) == 8,
+        (listGet oddsBack 3 ?: ((0 - 999) ?: 0)) == ((0 - 999) ?: 0),
+        listContains oddsBack 5,
+        !(listContains oddsBack 2),
+        listContains evensBack 8,
+        !(listContains evensBack 1),
+        listLength listMissing == 1,
+        (listGet listMissing 0 ?: ((0 - 999) ?: 0)) == 0,
+        listLength oddsGrown == 4,
+        (listGet oddsGrown 3 ?: ((0 - 999) ?: 0)) == 7,
+        listLength oddsBack == 3,
+        listLength odds == 3,
+        (listGet (listReverse evensBack) 0 ?: ((0 - 999) ?: 0)) == 8
+    ]
+
+    // A record carries a whole Map and a whole List, and a map of records hands
+    // each record back whole with its nested collections still addressable.
+    checkAll "records hold collections and maps hold records" [
+        bucketA.name == "alpha",
+        mapLength bucketItems == 2,
+        mapLength bucketA.items == 2,
+        listLength bucketTags == 2,
+        (mapGet bucketItems "x" ?: ((0 - 999) ?: 0)) == 1,
+        (mapGet bucketItems "y" ?: ((0 - 999) ?: 0)) == 2,
+        !(mapContains bucketItems "z"),
+        (listGet bucketTags 0 ?: "none") == "red",
+        (listGet bucketTags 1 ?: "none") == "blue",
+        listContains bucketTags "blue",
+        !(listContains bucketTags "green"),
+        alphaBack.name == "alpha",
+        betaBack.name == "beta",
+        bucketMissing.name == "none",
+        mapLength betaItems == 2,
+        (mapGet betaItems "z" ?: ((0 - 999) ?: 0)) == 30,
+        !(mapContains betaItems "y"),
+        listLength betaTags == 3,
+        listContains betaTags "green",
+        mapLength buckets == 2,
+        listContains (mapKeys buckets) "alpha",
+        !(listContains (mapKeys buckets) "gamma"),
+        mapLength missingItems == 0,
+        isEmpty missingItems
+    ]
+
+test "maps nest inside lists, maps, and records without flattening" nestedCollectionCase
+
+(** [BUILTIN-MAP-KEYS] returns all keys "in unspecified order" and
+    [BUILTIN-MAP-VALUES] returns all values "in the same traversal order as
+    mapKeys". Order is unspecified but the *pairing* is not: for every index i,
+    `mapGet(m, keys[i])` must equal `values[i]`. Totals and view lengths are
+    order-independent too, so an overwrite must move exactly one paired value and
+    a removal must drop exactly one pair ([BUILTIN-COLLECTION-LENGTH]). *)
+keyValueViewPairingCase () =
+    m = ["a" => 1, "b" => 2, "c" => 3, "d" => 4, "e" => 5, "f" => 6]
+    keys = mapKeys m
+    values = mapValues m
+    total = (listGet values 0 ?: 0) + (listGet values 1 ?: 0) + (listGet values 2 ?: 0) + (listGet values 3 ?: 0) + (listGet values 4 ?: 0) + (listGet values 5 ?: 0) ?: 0
+    bumped = mapSet m "c" 33
+    bumpedKeys = mapKeys bumped
+    bumpedValues = mapValues bumped
+    bumpedTotal = (listGet bumpedValues 0 ?: 0) + (listGet bumpedValues 1 ?: 0) + (listGet bumpedValues 2 ?: 0) + (listGet bumpedValues 3 ?: 0) + (listGet bumpedValues 4 ?: 0) + (listGet bumpedValues 5 ?: 0) ?: 0
+    trimmed = mapRemove m "e"
+    trimmedKeys = mapKeys trimmed
+    trimmedValues = mapValues trimmed
+    trimmedTotal = (listGet trimmedValues 0 ?: 0) + (listGet trimmedValues 1 ?: 0) + (listGet trimmedValues 2 ?: 0) + (listGet trimmedValues 3 ?: 0) + (listGet trimmedValues 4 ?: 0) ?: 0
+
+    // Whatever order the views come back in, index i of one must address index i
+    // of the other; 1+2+3+4+5+6 = 21 is order-independent. The two sentinels
+    // differ so a pair of failed lookups cannot satisfy the equality.
+    checkAll "key and value views pair index by index" [
+        listLength keys == 6,
+        listLength values == 6,
+        listLength keys == mapLength m,
+        listLength values == mapLength m,
+        (mapGet m (listGet keys 0 ?: "absent") ?: ((0 - 1) ?: 0)) == (listGet values 0 ?: ((0 - 2) ?: 0)),
+        (mapGet m (listGet keys 1 ?: "absent") ?: ((0 - 1) ?: 0)) == (listGet values 1 ?: ((0 - 2) ?: 0)),
+        (mapGet m (listGet keys 2 ?: "absent") ?: ((0 - 1) ?: 0)) == (listGet values 2 ?: ((0 - 2) ?: 0)),
+        (mapGet m (listGet keys 3 ?: "absent") ?: ((0 - 1) ?: 0)) == (listGet values 3 ?: ((0 - 2) ?: 0)),
+        (mapGet m (listGet keys 4 ?: "absent") ?: ((0 - 1) ?: 0)) == (listGet values 4 ?: ((0 - 2) ?: 0)),
+        (mapGet m (listGet keys 5 ?: "absent") ?: ((0 - 1) ?: 0)) == (listGet values 5 ?: ((0 - 2) ?: 0)),
+        total == 21,
+        mapContains m (listGet keys 0 ?: "absent"),
+        mapContains m (listGet keys 1 ?: "absent"),
+        mapContains m (listGet keys 2 ?: "absent"),
+        mapContains m (listGet keys 3 ?: "absent"),
+        mapContains m (listGet keys 4 ?: "absent"),
+        mapContains m (listGet keys 5 ?: "absent")
+    ]
+
+    // Both views hold every binding and nothing extra. Reversing both preserves
+    // the pairing, because reverse maps index i to index n-1-i on either side.
+    checkAll "key and value views hold every binding once" [
+        listContains keys "a",
+        listContains keys "b",
+        listContains keys "c",
+        listContains keys "d",
+        listContains keys "e",
+        listContains keys "f",
+        !(listContains keys "g"),
+        !(listContains keys ""),
+        listContains values 1,
+        listContains values 2,
+        listContains values 3,
+        listContains values 4,
+        listContains values 5,
+        listContains values 6,
+        !(listContains values 0),
+        !(listContains values 7),
+        listLength (listReverse keys) == 6,
+        (mapGet m (listGet (listReverse keys) 0 ?: "absent") ?: ((0 - 1) ?: 0)) == (listGet (listReverse values) 0 ?: ((0 - 2) ?: 0)),
+        (mapGet m (listGet (listReverse keys) 3 ?: "absent") ?: ((0 - 1) ?: 0)) == (listGet (listReverse values) 3 ?: ((0 - 2) ?: 0)),
+        (mapGet m (listGet (listReverse keys) 5 ?: "absent") ?: ((0 - 1) ?: 0)) == (listGet (listReverse values) 5 ?: ((0 - 2) ?: 0))
+    ]
+
+    // Overwriting "c" from 3 to 33 raises the total by exactly 30 (21 -> 51),
+    // leaves the key count at six, and the source map still totals 21.
+    checkAll "an overwrite moves exactly one paired value" [
+        listLength bumpedKeys == 6,
+        listLength bumpedValues == 6,
+        mapLength bumped == 6,
+        bumpedTotal == 51,
+        (bumpedTotal - total ?: 0) == 30,
+        (mapGet bumped "c" ?: ((0 - 999) ?: 0)) == 33,
+        (mapGet m "c" ?: ((0 - 999) ?: 0)) == 3,
+        total == 21,
+        listContains bumpedValues 33,
+        !(listContains bumpedValues 3),
+        listContains values 3,
+        !(listContains values 33),
+        listContains bumpedKeys "c",
+        (mapGet bumped (listGet bumpedKeys 0 ?: "absent") ?: ((0 - 1) ?: 0)) == (listGet bumpedValues 0 ?: ((0 - 2) ?: 0)),
+        (mapGet bumped (listGet bumpedKeys 1 ?: "absent") ?: ((0 - 1) ?: 0)) == (listGet bumpedValues 1 ?: ((0 - 2) ?: 0)),
+        (mapGet bumped (listGet bumpedKeys 2 ?: "absent") ?: ((0 - 1) ?: 0)) == (listGet bumpedValues 2 ?: ((0 - 2) ?: 0)),
+        (mapGet bumped (listGet bumpedKeys 3 ?: "absent") ?: ((0 - 1) ?: 0)) == (listGet bumpedValues 3 ?: ((0 - 2) ?: 0)),
+        (mapGet bumped (listGet bumpedKeys 4 ?: "absent") ?: ((0 - 1) ?: 0)) == (listGet bumpedValues 4 ?: ((0 - 2) ?: 0)),
+        (mapGet bumped (listGet bumpedKeys 5 ?: "absent") ?: ((0 - 1) ?: 0)) == (listGet bumpedValues 5 ?: ((0 - 2) ?: 0))
+    ]
+
+    // Removing "e" drops the total by exactly its value 5 (21 -> 16) and both
+    // views by one entry, while the remaining five stay paired.
+    checkAll "a removal drops exactly one pair" [
+        listLength trimmedKeys == 5,
+        listLength trimmedValues == 5,
+        mapLength trimmed == 5,
+        trimmedTotal == 16,
+        (total - trimmedTotal ?: 0) == 5,
+        !(listContains trimmedKeys "e"),
+        !(listContains trimmedValues 5),
+        listContains trimmedKeys "a",
+        listContains trimmedValues 6,
+        listLength keys == 6,
+        listContains keys "e",
+        (mapGet trimmed (listGet trimmedKeys 0 ?: "absent") ?: ((0 - 1) ?: 0)) == (listGet trimmedValues 0 ?: ((0 - 2) ?: 0)),
+        (mapGet trimmed (listGet trimmedKeys 1 ?: "absent") ?: ((0 - 1) ?: 0)) == (listGet trimmedValues 1 ?: ((0 - 2) ?: 0)),
+        (mapGet trimmed (listGet trimmedKeys 2 ?: "absent") ?: ((0 - 1) ?: 0)) == (listGet trimmedValues 2 ?: ((0 - 2) ?: 0)),
+        (mapGet trimmed (listGet trimmedKeys 3 ?: "absent") ?: ((0 - 1) ?: 0)) == (listGet trimmedValues 3 ?: ((0 - 2) ?: 0)),
+        (mapGet trimmed (listGet trimmedKeys 4 ?: "absent") ?: ((0 - 1) ?: 0)) == (listGet trimmedValues 4 ?: ((0 - 2) ?: 0)),
+        listLength (mapKeys (mapRemove trimmed "zzz")) == 5,
+        listLength (mapValues (mapRemove trimmed "zzz")) == 5
+    ]
+
+test "mapKeys and mapValues stay paired index by index" keyValueViewPairingCase

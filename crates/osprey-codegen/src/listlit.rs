@@ -13,7 +13,7 @@ use crate::builder::Codegen;
 use crate::cast::coerce_to;
 use crate::error::{CodegenError, Result};
 use crate::expr::gen_expr;
-use crate::llty::{LType, Value, ANY_TAG_SPELLING};
+use crate::llty::{LType, Value};
 use crate::result::make_result;
 use osprey_ast::Expr;
 
@@ -33,18 +33,19 @@ pub(crate) const STRING_LIST_OWNER: &str = "[]i8*";
 /// LLVM spelling (`[]i64`); a handle element (a nested list, a record) records
 /// its own owner so access can recover it (`[][]i64`, `[]Point`).
 fn lit_owner(elem: &Value) -> String {
-    // An erased element is tagged by its ERASURE and nothing else. Its LLVM
-    // spelling `i8*` already means "string element" ([`STRING_LIST_OWNER`]),
-    // and any owner it carried names the shape it had BEFORE the box — either
-    // one makes the read-back re-type a box pointer as the thing it erased,
-    // which is how `[erased()]` came back as the box's own address.
-    if elem.ty == LType::Any {
-        return format!("{LIST_LIT}{ANY_TAG_SPELLING}");
-    }
-    match &elem.osp_ty {
-        Some(o) => format!("{LIST_LIT}{o}"),
-        None => format!("{LIST_LIT}{}", elem.ty.as_str()),
-    }
+    // Every container spells its element the same way, so a literal and the
+    // runtime list it converts into agree on what a slot holds
+    // ([`crate::llty::elem_spelling`]). A literal is recognised BY its tag
+    // ([`is_lit`]), so an element with no spelling still records the storage
+    // width it will be reloaded at.
+    lit_owner_of(
+        &crate::llty::elem_spelling(elem).unwrap_or_else(|| LType::I64.as_str().to_string()),
+    )
+}
+
+/// A flat literal's owner tag for an already-chosen element spelling.
+fn lit_owner_of(spelling: &str) -> String {
+    format!("{LIST_LIT}{spelling}")
 }
 
 /// The element of a flat list-literal handle: its storage [`LType`] and, for a
@@ -52,17 +53,7 @@ fn lit_owner(elem: &Value) -> String {
 /// lists / records stay indexable / field-accessible).
 fn lit_elem(osp_ty: Option<&str>) -> Option<(LType, Option<String>)> {
     let suffix = osp_ty?.strip_prefix(LIST_LIT)?;
-    Some(match suffix {
-        "i64" => (LType::I64, None),
-        "double" => (LType::Double, None),
-        "i1" => (LType::I1, None),
-        // Before `i8*`: an erased box IS an `i8*`, but recovering it as
-        // `LType::Str` would strcmp and print the box instead of dispatching
-        // through its descriptor.
-        ANY_TAG_SPELLING => (LType::Any, None),
-        "i8*" => (LType::Str, None),
-        other => (LType::Str, Some(other.to_string())),
-    })
+    Some(crate::llty::elem_of_spelling(suffix))
 }
 
 /// The element count of a flat list-literal handle, or `None` when `v` is not
@@ -88,11 +79,14 @@ pub(crate) fn is_lit(v: &Value) -> bool {
     lit_elem(v.osp_ty.as_deref()).is_some()
 }
 
-/// The element `LType` inference resolved for the list literal at `position`,
-/// when it resolved to a concrete scalar. A still-polymorphic element has no
+/// The element tag inference resolved for the list literal at `position`, when
+/// it resolved to something concrete. A still-polymorphic element has no
 /// representation to record.
-pub(crate) fn inferred_elem(cg: &Codegen, position: Option<osprey_ast::Position>) -> Option<LType> {
-    crate::types::scalar_elem(cg.prog.list_elem_type(position))
+pub(crate) fn inferred_elem(
+    cg: &Codegen,
+    position: Option<osprey_ast::Position>,
+) -> Option<String> {
+    crate::types::elem_tag(&cg.prog, cg.prog.list_elem_type(position))
 }
 
 /// `[e0, e1, …]` → a flat `{ length, data }` block. `position` is the literal's
@@ -110,15 +104,24 @@ pub(crate) fn gen_list(
         let obj = cg.malloc_struct(LIST_STRUCT, crate::meta::list_hdr_meta(false));
         crate::aggregate::store_field(cg, LIST_STRUCT, &obj, 0, LType::I64, "0");
         crate::aggregate::store_field(cg, LIST_STRUCT, &obj, 1, LType::Str, "null");
-        let elem = inferred_elem(cg, position).unwrap_or(LType::Str);
-        let v = Value::handle(obj, lit_owner(&Value::new("", elem)));
+        // An empty literal has no element to read a spelling off, so inference
+        // supplies one; `i8*` is the historical fallback when even that is
+        // still polymorphic.
+        let elem = inferred_elem(cg, position).unwrap_or_else(|| LType::Str.as_str().to_string());
+        let v = Value::handle(obj, lit_owner_of(&elem));
         crate::arc::own(cg, &v);
         return Ok(v);
     }
-    // Evaluate elements; the first fixes the slot type.
+    // Evaluate elements; the first fixes the slot type. A nested literal
+    // ESCAPES into its slot: the flat layout is a codegen-local optimization
+    // whose tag rides on the value, and the container it lands in may later be
+    // described only by its TYPE — `List<List<int>>` promises runtime lists, so
+    // a slot holding a `{ length, data }` block would be handed to
+    // `osprey_list_*` as an `OspreyList` and segfault ([`escaping`]).
     let mut vals = Vec::with_capacity(elements.len());
     for e in elements {
-        vals.push(gen_expr(cg, e)?);
+        let v = gen_expr(cg, e)?;
+        vals.push(escaping(cg, v));
     }
     // The first element fixes the slot type; non-empty is guaranteed above.
     let Some(first) = vals.first() else {
@@ -217,7 +220,9 @@ pub(crate) fn to_runtime_list(cg: &mut Codegen, v: Value) -> Value {
     // in its owner tag rather than losing it to the uniform `i64` element ABI
     // ([`crate::collections::LIST_TAG`]).
     let sealed = crate::collections::list_builder_seal(cg, &bld);
-    sealed.with_owner(Some(crate::collections::list_owner(Some(elem))))
+    sealed.with_owner(Some(crate::collections::list_owner(
+        crate::llty::elem_of_tag(&v, LIST_LIT).as_deref(),
+    )))
 }
 
 /// Normalize a list value that is about to ESCAPE the scope which knows its
@@ -249,10 +254,27 @@ pub(crate) fn gen_index(cg: &mut Codegen, target: &Expr, index: &Expr) -> Result
     let iv = gen_expr(cg, index)?;
 
     // A runtime map handle indexes through the C map runtime.
-    if tv.osp_ty.as_deref() == Some(crate::collections::MAP_OWNER) {
+    if tv
+        .osp_ty
+        .as_deref()
+        .is_some_and(crate::collections::is_map_owner)
+    {
         let key = crate::cast::coerce_to(cg, iv, LType::Str)?;
         let k = crate::conv::box_to_i64(cg, key);
         return crate::collections::runtime_map_get(cg, &tv, &k);
+    }
+
+    // A runtime list handle indexes through the list runtime. `xs[i]` is
+    // [BUILTIN-LIST-GET]'s other spelling, so it must accept every list the
+    // named form does — a nested row read back out of a matrix is a runtime
+    // handle, not the flat literal it was written as ([`escaping`]).
+    if tv
+        .osp_ty
+        .as_deref()
+        .is_some_and(crate::collections::is_list_owner)
+    {
+        let index = crate::conv::as_i64(cg, iv)?;
+        return crate::collections::runtime_list_get(cg, &tv, &index);
     }
 
     let (elem, elem_owner) = lit_elem(tv.osp_ty.as_deref())
@@ -308,7 +330,7 @@ pub(crate) fn gen_index(cg: &mut Codegen, target: &Expr, index: &Expr) -> Result
     let disc = cg.fresh_reg();
     cg.emit(format!("{disc} = select i1 {ok}, i8 0, i8 1"));
     // `ok` is the in-bounds flag, so the message is selected on the failing path.
-    let oob = cg.string_constant("index out of bounds");
+    let oob = cg.string_constant(crate::collections::INDEX_OOB);
     let errmsg = cg.emit_reg(format!("select i1 {ok}, i8* null, i8* {}", oob.operand));
     make_result(
         cg,

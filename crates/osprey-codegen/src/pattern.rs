@@ -258,7 +258,8 @@ fn bind_list_arm(
             "i8*, i64",
             &[&list_val.operand, &n.to_string()],
         );
-        let tail_owner = crate::collections::list_owner(crate::collections::tagged_elem(list_val));
+        let tail_owner =
+            crate::collections::list_owner(crate::collections::tagged_elem(list_val).as_deref());
         let v = Value::handle(tail, tail_owner).with_payload_owner(list_val.payload_owner.clone());
         // `osprey_list_drop` returns +1 on EVERY path (fresh view or retained
         // alias, plan 0011 M4a), so the arm owns it and must drop it at region
@@ -275,7 +276,15 @@ fn bind_list_arm(
 /// allowing [`finish_phi`] to re-layout placeholder Error Results before they
 /// meet at the closing `phi`.
 fn push_arm(cg: &mut Codegen, body: &Expr, phi_in: &mut Vec<(Value, String)>) -> Result<()> {
-    let v = gen_expr(cg, body)?;
+    // A phi is an ESCAPE: the merged value leaves the block whose static
+    // knowledge produced it, and a SIBLING arm may have produced the other list
+    // representation. `match … { Success { value } => value  Error { … } =>
+    // [777] }` merged a runtime list with a flat literal, and the joined value
+    // — whose owners disagree, so it carries none — was then read as whichever
+    // one the receiver's type predicted, dereferencing a `{ length, data }`
+    // header as an `OspreyList` ([`crate::listlit::escaping`]).
+    let raw = gen_expr(cg, body)?;
+    let v = crate::listlit::escaping(cg, raw);
     let exit = cg.fresh_label();
     cg.emit(format!("br label %{exit}"));
     phi_in.push((v, exit));

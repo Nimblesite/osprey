@@ -67,6 +67,11 @@ does not gain mutation authority.
 A binding may include a type annotation after `:`. The annotation constrains
 inference; it is not required when inference already fixes the type.
 
+A binding written at file scope is a declaration: its initializer runs where it
+is written, before the program entry, and a function declared below it may read
+it. The storage, ordering and rejection rules are
+[MODULES-FILE-SCOPE-BINDING](0025-ModulesAndNamespaces.md#file-scope-bindings-modules-file-scope-binding).
+
 ## Function Declarations
 
 ```ebnf

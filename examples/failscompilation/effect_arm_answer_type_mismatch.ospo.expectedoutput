@@ -1,3 +1,3 @@
-handler arm `Mixed.b` never resumes, so its value becomes the whole `handle` expression's result — but it is `int` and that result is `string`. Give the arm a `resume`, or make every arm of this handler agree with the handled expression's type
-handler arm `Texts.b` never resumes, so its value becomes the whole `handle` expression's result — but it is `string` and that result is `int`. Give the arm a `resume`, or make every arm of this handler agree with the handled expression's type
-handler arm `Texts.b` never resumes, so its value becomes the whole `handle` expression's result — but it is `string` and that result is `Result<int, string>`. Give the arm a `resume`, or make every arm of this handler agree with the handled expression's type
+handler arm `Mixed.b` resumes, so its value becomes the whole `handle` expression's result — but it is `int` and that result is `string`. Make the arm's value agree with the handled expression's type
+handler arm `Texts.b` resumes, so its value becomes the whole `handle` expression's result — but it is `string` and that result is `int`. Make the arm's value agree with the handled expression's type
+handler arm `Texts.b` resumes, so its value becomes the whole `handle` expression's result — but it is `string` and that result is `Result<int, string>`. Make the arm's value agree with the handled expression's type

@@ -1,9 +1,77 @@
-// ML effect-handling twin of the counter mutation suite.
+(** Portable cross-contract oracle for [EFFECTS-OP-TYPING],
+    [EFFECTS-STATIC-DISCHARGE], [EFFECTS-HANDLER-STATE], [TYPE-LIST],
+    [TYPE-MAP], [TYPE-MAP-LOOKUP], [TYPE-MAP-OPS], [FLAVOR-ML-HANDLER],
+    [FLAVOR-ML-LIST], [FLAVOR-ML-MAP], and [FLAVOR-ML-CALL]. *)
 
 (** Counter mutation is available only through this handled operation. *)
 effect FlavorCounter
     (** Add `amount` to the counter the handler owns. *)
     tick : int => Unit
+
+runBatchAssertions () =
+    mut total = 10
+    empty = [99]
+    base = ["first" => [2, 3], "second" => [5, 9]]
+    grown = base |> mapSet "third" [7, 11, 13]
+    replaced = grown |> mapSet "first" [20]
+    removed = replaced |> mapRemove "second"
+    first = mapGet base "first" ?: empty
+    second = mapGet base "second" ?: empty
+    missing = mapGet base "missing" ?: [99]
+
+    checkAll "effect batch collection preconditions" [
+        total == 10,
+        mapLength base == 2,
+        mapLength grown == 3,
+        mapLength replaced == 3,
+        mapLength removed == 2,
+        listLength first == 2,
+        listLength second == 2,
+        listLength missing == 1,
+        (listGet first 0 ?: 99) == 2,
+        (listGet first 1 ?: 99) == 3,
+        (listGet second 0 ?: 99) == 5,
+        (listGet second 1 ?: 99) == 9,
+        (listGet missing 0 ?: 0) == 99,
+        !(mapContains base "third"),
+        mapContains grown "third",
+        !(mapContains removed "second")
+    ]
+
+    handle FlavorCounter
+        tick amount =>
+            total := total + amount ?: total
+    in
+        forEachList first (\amount => perform FlavorCounter.tick amount)
+        checkAll "effectful callback applies the first generic list" [
+            total == 15,
+            "first total=${total}" == "first total=15"
+        ]
+        perform FlavorCounter.tick ((0 - 4) ?: 0)
+        checkAll "negative handled transition remains checked" [
+            total == 11,
+            total < 15
+        ]
+        forEachList second (\amount => perform FlavorCounter.tick amount)
+        perform FlavorCounter.tick 0
+        checkAll "second list and identity transition compose" [
+            total == 25,
+            total > 11,
+            "second total=${total}" == "second total=25"
+        ]
+
+    checkAll "handler exit preserves state and persistent collection versions" [
+        total == 25,
+        mapLength base == 2,
+        mapLength grown == 3,
+        listLength (mapGet grown "third" ?: empty) == 3,
+        (listGet (mapGet grown "third" ?: empty) 2 ?: 99) == 13,
+        listLength (mapGet replaced "first" ?: empty) == 1,
+        (listGet (mapGet replaced "first" ?: empty) 0 ?: 99) == 20,
+        listLength (mapGet base "first" ?: empty) == 2,
+        listLength (mapKeys grown) == 3,
+        listLength (mapValues grown) == 3
+    ]
 
 (** Verify state before, during, and after the handler. *)
 mutationCase () =
@@ -37,5 +105,7 @@ mutationCase () =
         flavorCounter == 42,
         "counter = ${flavorCounter}" == "counter = 42"
     ]
+
+    runBatchAssertions ()
 
 test "handled mutation retains every counter transition" mutationCase

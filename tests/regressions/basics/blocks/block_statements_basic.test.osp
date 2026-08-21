@@ -1,8 +1,6 @@
-// [BLOCK-SCOPE] covers nested shadowing and restoration of the outer binding.
-// Block statements as expressions: list & map access via Result-unwrap,
-// multi-statement blocks, nested blocks with shadowing, blocks inside
-// function bodies, nested collections (2D list), conditional logic
-// through match arms producing values out of a block.
+// Cross-contract oracle for [BLOCK-SCOPE], [PATTERN-RESULT-DEFAULT],
+// [TYPE-LIST], [TYPE-MAP], [TYPE-MAP-LOOKUP], [ARITH-CHECKED], and
+// [BUILTIN-STRING-UFCS].
 
 print("=== Block Statements ===")
 
@@ -10,8 +8,8 @@ print("=== Block Statements ===")
 fn listHeadBlock() = {
     let nums = [42, 84, 126]
     match nums[0] {
-        Success { value }   => value
-        Error   { message } => 0
+        Success { value } => value
+        Error { message } => 0
     }
 }
 let r1 = listHeadBlock()
@@ -20,12 +18,12 @@ print("1 list head: ${r1}")
 /// --- 2. Block with map access + multiplication ---
 fn mapProductBlock() = {
     let config = { "factor": 2, "base": 10 }
-    let x      = match config["base"]   { Success { value } => value Error { message } => 0 }
+    let x = match config["base"] { Success { value } => value Error { message } => 0 }
     let factor = match config["factor"] { Success { value } => value Error { message } => 1 }
     let m = x * factor
     match m {
-        Success { value }   => value
-        Error   { message } => 0
+        Success { value } => value
+        Error { message } => 0
     }
 }
 let r2 = mapProductBlock()
@@ -37,24 +35,24 @@ fn shadowedBlock() = {
     let config = { "multiplier": 2, "offset": 25 }
     let outer = match config["offset"] {
         Success { value } => value
-        Error   { message } => 50
+        Error { message } => 50
     }
     let inner = {
         let listData = [10, 20, 30]
         let outer = match listData[2] {
             Success { value } => value
-            Error   { message } => 25
+            Error { message } => 25
         }
         let m = outer * 2
         match m {
             Success { value } => value
-            Error   { message } => 0
+            Error { message } => 0
         }
     }
     let s = outer + inner
     match s {
         Success { value } => value
-        Error   { message } => 0
+        Error { message } => 0
     }
 }
 let r3 = shadowedBlock()
@@ -65,13 +63,13 @@ fn compute() = {
     let numbers = [5, 10, 15]
     let base = match numbers[1] {
         Success { value } => value
-        Error   { message } => 10
+        Error { message } => 10
     }
     let multiplier = 3
     let r = base * multiplier
     match r {
         Success { value } => value
-        Error   { message } => 0
+        Error { message } => 0
     }
 }
 print("4 fn block: ${compute()}")
@@ -80,15 +78,15 @@ print("4 fn block: ${compute()}")
 fn matrixBlock() = {
     let matrix = [[1, 2], [3, 4]]
     let firstRow = match matrix[0] {
-        Success { value }   => value
-        Error   { message } => [0]
+        Success { value } => value
+        Error { message } => [0]
     }
     match firstRow[1] {
         Success { value } => {
             let m = value * 10
             match m {
                 Success { result } => result
-                Error   { message } => 0
+                Error { message } => 0
             }
         }
         Error { message } => 0
@@ -108,8 +106,8 @@ fn conditionalBlock(value) = {
                 Success { sValue } => {
                     let added = sValue + 10
                     match added {
-                        Success { value }   => value
-                        Error   { message } => 0
+                        Success { value } => value
+                        Error { message } => 0
                     }
                 }
                 Error { message } => 0
@@ -120,18 +118,80 @@ fn conditionalBlock(value) = {
     }
 }
 let r6 = conditionalBlock(value)
-print("6 cond match block: ${r6}")
-
-print("=== Done ===")
+print("6 cond match block: ${r6}\n=== Done ===")
 
 /// Verifies every block result, including shadowing and the wildcard branch.
-fn blockStatementsCase() = checkAll("block statement values", [
-    listHeadBlock() == 42,
-    mapProductBlock() == 20,
-    shadowedBlock() == 85,
-    compute() == 30,
-    matrixBlock() == 20,
-    conditionalBlock(42) == 94,
-    conditionalBlock(10) == 0
-])
+fn blockStatementsCase() = {
+    let results = [r1, r2, r3, compute(), r5, r6]
+    let nestedResults = [results, [listHeadBlock(), matrixBlock()], [conditionalBlock(10)]]
+    let byName = {
+        "head": r1,
+        "map": r2,
+        "shadow": r3,
+        "compute": compute(),
+        "matrix": r5,
+        "conditional": r6
+    }
+
+    checkAll("block statement values", [
+            listHeadBlock() == 42,
+            mapProductBlock() == 20,
+            shadowedBlock() == 85,
+            compute() == 30,
+            matrixBlock() == 20,
+            conditionalBlock(42) == 94,
+            conditionalBlock(10) == 0
+    ])
+
+    checkAll("top-level bindings and lexical shadowing remain stable", [
+            r1 == 42,
+            r2 == 20,
+            r3 == 85,
+            r5 == 20,
+            r6 == 94,
+            outer == 100,
+            value == 42,
+            shadowedBlock() == r3,
+            compute() == compute(),
+            matrixBlock() == r5,
+            conditionalBlock(value) == r6,
+            conditionalBlock(0) == 0,
+            conditionalBlock(41) == 0,
+            conditionalBlock(43) == 0,
+            conditionalBlock((0 - 1) ?: 0) == 0
+    ])
+
+    checkAll("block results retain element types in nested lists", [
+            listLength(results) == 6,
+            (results.listGet(0) ?: 99) == 42,
+            (results.listGet(1) ?: 99) == 20,
+            (results.listGet(2) ?: 99) == 85,
+            (results.listGet(3) ?: 99) == 30,
+            (results.listGet(4) ?: 99) == 20,
+            (results.listGet(5) ?: 99) == 94,
+            (results.listGet(9) ?: 99) == 99,
+            listLength(nestedResults) == 3,
+            listLength(nestedResults.listGet(0) ?: [99]) == 6,
+            listLength(nestedResults.listGet(1) ?: [99]) == 2,
+            listLength(nestedResults.listGet(2) ?: [99]) == 1,
+            ((nestedResults.listGet(0) ?: [99]).listGet(2) ?: 99) == 85,
+            ((nestedResults.listGet(1) ?: [99]).listGet(1) ?: 99) == 20,
+            ((nestedResults.listGet(2) ?: [99]).listGet(0) ?: 99) == 0
+    ])
+
+    checkAll("block results remain coherent in maps and interpolation", [
+            mapLength(byName) == 6,
+            (byName.mapGet("head") ?: 99) == 42,
+            (byName.mapGet("map") ?: 99) == 20,
+            (byName.mapGet("shadow") ?: 99) == 85,
+            (byName.mapGet("compute") ?: 99) == 30,
+            (byName.mapGet("matrix") ?: 99) == 20,
+            (byName.mapGet("conditional") ?: 99) == 94,
+            (byName.mapGet("missing") ?: 99) == 99,
+            listLength(mapKeys(byName)) == 6,
+            listLength(mapValues(byName)) == 6,
+            "${r1}/${r2}/${r3}/${r5}/${r6}" == "42/20/85/20/94",
+            "outer=${outer} inner=${shadowedBlock()}" == "outer=100 inner=85"
+    ])
+}
 test("blocks preserve values and lexical scope", blockStatementsCase)

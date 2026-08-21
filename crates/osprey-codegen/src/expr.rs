@@ -27,6 +27,12 @@ pub(crate) fn gen_expr(cg: &mut Codegen, expr: &Expr) -> Result<Value> {
         },
         Expr::Identifier(name) => match cg.lookup(name) {
             Some(v) => Ok(v),
+            // A file-scope binding read from inside a function body: the
+            // enclosing `main` frame is not on this stack, so the value comes
+            // from its module global ([`crate::globals`]).
+            None if cg.module_globals.contains_key(name) => {
+                crate::globals::read(cg, name).ok_or_else(|| CodegenError::unknown(name))
+            }
             // A bare name that is a nullary constructor (`Active`, `Red`, …) is a
             // zero-field variant value.
             None if cg.is_ctor(name) => crate::aggregate::gen_constructor(cg, name, &[]),
@@ -155,7 +161,7 @@ fn gen_block(cg: &mut Codegen, statements: &[Stmt], value: Option<&Expr>) -> Res
     cg.push_scope();
     let result = (|| {
         for (i, s) in statements.iter().enumerate() {
-            crate::lower::gen_local_stmt(cg, s)?;
+            crate::stmt::gen_local_stmt(cg, s)?;
             // Last-use drops: names the continuation no longer references die
             // here, not at function end [GC-ARC-PERCEUS].
             crate::arc::release_dead_after(cg, statements.get(i + 1..).unwrap_or(&[]), value);
@@ -284,10 +290,6 @@ fn gen_arith(cg: &mut Codegen, op: &str, l: Value, r: Value) -> Result<Value> {
     // `[1] + [2]` — where neither operand carries the owner tag — fell past this
     // arm into integer arithmetic and failed with "expected an integer".
     if op == "+" {
-        let tagged = |owner| {
-            let has = |v: &Value| v.osp_ty.as_deref() == Some(owner);
-            has(&l) || has(&r)
-        };
         let list_like = |v: &Value| {
             v.osp_ty
                 .as_deref()
@@ -299,7 +301,12 @@ fn gen_arith(cg: &mut Codegen, op: &str, l: Value, r: Value) -> Result<Value> {
             let r = crate::listlit::to_runtime_list(cg, r);
             return Ok(crate::collections::concat_handles(cg, &l, &r));
         }
-        if tagged(crate::collections::MAP_OWNER) {
+        let map_like = |v: &Value| {
+            v.osp_ty
+                .as_deref()
+                .is_some_and(crate::collections::is_map_owner)
+        };
+        if map_like(&l) || map_like(&r) {
             return Ok(crate::collections::merge_handles(cg, &l, &r));
         }
     }
@@ -810,6 +817,14 @@ fn gen_call(
     {
         return apply_lambda(cg, parameters, body, *position, arguments);
     }
+    // `applyCurried g 3 4` — the callee is an application spine headed by a
+    // GENERIC user function, whose intermediate lambdas exist only inside an
+    // inlined specialisation and have no closure ABI to materialise
+    // [FLAVOR-ML-CURRY]. This runs before the closure-cell path below because
+    // that path would build exactly the cell that cannot exist.
+    if let Some(v) = crate::curry::try_spine(cg, function, arguments, named)? {
+        return Ok(v);
+    }
     // `makeAdder(5)(3)` — the callee is itself a call producing a function
     // value: evaluate it to a closure handle and call through the cell.
     if let Expr::Call {
@@ -856,7 +871,7 @@ fn gen_call(
         return Ok(v);
     }
     // A let-bound lambda with no materialized cell is inlined at its call site.
-    if let Some((params, body, position)) = cg.lambdas.get(name).cloned() {
+    if let Some((params, body, position)) = cg.lambda_def(name).cloned() {
         return apply_lambda(cg, &params, &body, position, arguments);
     }
     match name {
@@ -907,7 +922,7 @@ fn gen_call(
             }
             // A generic user function is specialised by inlining its body with
             // the concrete argument types at this call site.
-            if let Some(v) = crate::genfn::try_inline(cg, name, arguments, named)? {
+            if let Some(v) = crate::genfn::try_inline(cg, name, arguments, named, &[])? {
                 return Ok(v);
             }
             gen_user_call(cg, name, arguments, named)
@@ -944,11 +959,29 @@ fn apply_lambda(
     for a in arguments {
         values.push(gen_expr(cg, a)?);
     }
-    let sig = cg
-        .prog
+    apply_lambda_values(
+        cg,
+        parameters,
+        body,
+        values,
+        inline_sig(cg, position).as_ref(),
+    )
+}
+
+/// The signature to fit an INLINED lambda application to, or `None` when the
+/// lambda is still generic.
+///
+/// Inference records ONE type per lambda position, so fitting a generic lambda
+/// to it used whichever instantiation happened to be recorded: `let idl = |x|
+/// => x` applied to an `int` and then to a `string` coerced the string into the
+/// int slot, and the second call printed a pointer as a number. A generic
+/// lambda is specialised by its ARGUMENTS at each call site instead, exactly as
+/// a generic function is ([`crate::genfn`], [TYPE-GENERICS-FN]).
+pub(crate) fn inline_sig(cg: &Codegen, position: Option<osprey_ast::Position>) -> Option<FnSig> {
+    cg.prog
         .lambda_type(position)
-        .and_then(Codegen::fn_value_sig);
-    apply_lambda_values(cg, parameters, body, values, sig.as_ref())
+        .filter(|t| crate::types::fn_value_concrete(t))
+        .and_then(Codegen::fn_value_sig)
 }
 
 /// [`apply_lambda`] over already-evaluated argument values — shared with the
@@ -960,20 +993,51 @@ pub(crate) fn apply_lambda_values(
     values: Vec<Value>,
     sig: Option<&FnSig>,
 ) -> Result<Value> {
+    reduce_lambda(cg, parameters, body, values, sig, &[])
+}
+
+/// [`apply_lambda_values`] with the groups of a curried application spine that
+/// this lambda does not itself consume ([`crate::curry`]). While groups remain
+/// the value produced is the spine's result rather than this lambda's return,
+/// so this lambda's return adaptation is skipped until the last group.
+pub(crate) fn reduce_lambda(
+    cg: &mut Codegen,
+    parameters: &[Parameter],
+    body: &Expr,
+    values: Vec<Value>,
+    sig: Option<&FnSig>,
+    rest: &[crate::curry::ArgGroup<'_>],
+) -> Result<Value> {
     cg.push_scope();
     let lowered = (|| {
-        for (index, (p, v)) in parameters.iter().zip(values).enumerate() {
-            let v = match sig.and_then(|s| s.0.get(index)).copied() {
-                Some(want) => crate::cast::coerce_semantic_param(cg, v, want)?,
-                None => v,
-            };
-            cg.bind(p.name.clone(), v);
+        bind_lambda_params(cg, parameters, values, sig)?;
+        let value = crate::curry::apply_groups(cg, body, rest)?;
+        if rest.is_empty() {
+            fit_lambda_return(cg, value, sig)
+        } else {
+            Ok(value)
         }
-        let value = gen_expr(cg, body)?;
-        fit_lambda_return(cg, value, sig)
     })();
     cg.pop_scope();
     lowered
+}
+
+/// Bind a lambda's parameters to its argument values, coercing each to the
+/// parameter type its signature declares.
+fn bind_lambda_params(
+    cg: &mut Codegen,
+    parameters: &[Parameter],
+    values: Vec<Value>,
+    sig: Option<&FnSig>,
+) -> Result<()> {
+    for (index, (p, v)) in parameters.iter().zip(values).enumerate() {
+        let v = match sig.and_then(|s| s.0.get(index)).copied() {
+            Some(want) => crate::cast::coerce_semantic_param(cg, v, want)?,
+            None => v,
+        };
+        cg.bind(p.name.clone(), v);
+    }
+    Ok(())
 }
 
 /// Adapt a lambda body's value to the lambda's own inferred signature — the

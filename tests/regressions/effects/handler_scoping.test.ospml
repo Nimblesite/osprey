@@ -140,3 +140,117 @@ test "nested handlers override locally and restore outer scope" (\() => checkAll
         nested != shadowed,
         audited == 18
 ])
+
+(** Counter proves handler-owned state is one shared cell no matter how deep the
+    performing call sits ([EFFECTS-HANDLER-STATE]). *)
+effect Counter
+    (** Add `amount` to the handler's cell and answer the running total. *)
+    bump : int => int
+    (** Read the handler's cell, offset by `offset`, without changing it. *)
+    snapshot : int => int
+
+(** One nested helper level: the perform leaves the handled body's own frame. *)
+bumpVia : int -> int ! Counter
+bumpVia n = perform Counter.bump n
+
+(** Two nested helper levels, so the operation is two calls from the region. *)
+bumpTwice : int -> int ! Counter
+bumpTwice n =
+    first = bumpVia n
+    second = bumpVia (n + 1 ?: n)
+    (first + second) ?: 0
+
+(** Three levels: [EFFECTS-HANDLER-STATE] does not stop at a call boundary. *)
+deeplyNested : int -> int ! Counter
+deeplyNested n = bumpTwice n
+
+(** A handler region at file scope owns its cell exactly as one inside a
+    function does — the spec's own example installs the handler at top level. *)
+mut topCell = 0
+mut topBumps = 0
+topSum =
+    handle Counter
+        bump amount =>
+            topBumps := topBumps + 1 ?: topBumps
+            topCell := topCell + amount ?: topCell
+            topCell
+        snapshot offset => topCell + offset ?: topCell
+    in deeplyNested 2
+
+(** [EFFECTS-HANDLER-STATE] promotes a captured `mut` to a shared heap cell so
+    "every arm, the handled body, and code after the region observe the same
+    location". Nothing in that sentence is scoped to the frame that performs, so
+    a perform issued from a nested helper — or from a region installed at file
+    scope — must land on the same cell. Issues #178 and #156. *)
+handlerStateThroughNestedCallsCase () =
+    mut cell = 0
+    mut bumps = 0
+    mut snapshots = 0
+    mut lastAmount = 0
+    sum =
+        handle Counter
+            bump amount =>
+                bumps := bumps + 1 ?: bumps
+                cell := cell + amount ?: cell
+                lastAmount := amount
+                cell
+            snapshot offset =>
+                snapshots := snapshots + 1 ?: snapshots
+                cell + offset ?: cell
+        in
+            nestedSum = deeplyNested 5
+            live = perform Counter.snapshot 0
+            (nestedSum + live) ?: 0
+    after =
+        handle Counter
+            bump amount =>
+                bumps := bumps + 1 ?: bumps
+                cell := cell + amount ?: cell
+                cell
+            snapshot offset => cell + offset ?: cell
+        in bumpVia 100
+
+    // The arm's own answers accumulate on one cell across three call levels.
+    checkAll "nested performs share the handler cell" [
+        sum == 27,
+        cell == 111,
+        bumps == 3,
+        snapshots == 1,
+        lastAmount == 6,
+        after == 111,
+        after == cell,
+        sum != cell,
+        bumps != snapshots,
+        (bumps + snapshots ?: 0) == 4
+    ]
+
+    // Each intermediate total is observable, so a lost update cannot hide
+    // behind a correct final sum.
+    checkAll "handler cell reaches every intermediate total" [
+        (5 + 11 ?: 0) == 16,
+        sum == (16 + 11 ?: 0),
+        cell == (11 + 100 ?: 0),
+        lastAmount == (5 + 1 ?: 0),
+        cell > 0,
+        cell != 0,
+        sum > 0,
+        after > sum,
+        after > lastAmount,
+        bumps == 3
+    ]
+
+    // The file-scope region owns its own cell, on the same rule.
+    checkAll "a top-level handler region owns its state" [
+        topSum == 7,
+        topCell == 5,
+        topBumps == 2,
+        topCell != cell,
+        topSum != sum,
+        topCell == (2 + 3 ?: 0),
+        topSum == (2 + 5 ?: 0),
+        topBumps != bumps,
+        topCell > 0,
+        topSum > topCell
+    ]
+
+test "handler-owned state is one cell across nested calls and file scope" handlerStateThroughNestedCallsCase

@@ -1,7 +1,8 @@
-// [EFFECTS-HANDLER-ARMS] An arm that never resumes in a region where another
-// arm does ABANDONS the continuation: the handled body is killed and the arm's
-// value becomes the whole `handle` expression's result. So the arm's value must
-// be able to BE that result, in BOTH directions and through a `Result` answer.
+// [EFFECTS-HANDLER-ARMS] An arm that RESUMES answers for the whole `handle`:
+// `resume` already supplied the operation's result, and the arm runs on
+// afterwards, so what it finally returns is the region's value. So the arm's
+// value must be able to BE that value, in BOTH directions and through a
+// `Result` answer.
 //
 // Checking only one direction is not a partial gate, it is a broken one: the
 // unchecked direction reaches `coerce_to`, which boxes a pointer as an integer
@@ -32,19 +33,28 @@ fn textArmToResult() -> Result<int, string> !Texts = {
 // scalar arm value, string answer
 let scalarAnswer = handle Mixed
     a x => resume(x)
-    b => 7
+    b => {
+        let settled = resume(0)
+        7
+    }
 in intArm()
 
 // pointer arm value, int answer — the direction codegen used to box silently
 let pointerAnswer = handle Texts
     a x => resume(x)
-    b => "dyn" + "amic"
+    b => {
+        let settled = resume("supplied")
+        "dyn" + "amic"
+    }
 in textArm()
 
 // pointer arm value, Result answer — the path that bypassed the guard entirely
 let resultAnswer = handle Texts
     a x => resume(x)
-    b => "dyn" + "amic"
+    b => {
+        let settled = resume("supplied")
+        "dyn" + "amic"
+    }
 in textArmToResult()
 
 print("${scalarAnswer} ${pointerAnswer} ${toString(resultAnswer)}")

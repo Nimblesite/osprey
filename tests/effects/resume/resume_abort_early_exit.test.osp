@@ -23,6 +23,26 @@ fn guarded() -> int ![Stop, Observation] = {
     99
 }
 
+/// Mixed models one handler whose two arms disagree about resuming.
+effect Mixed {
+    /// Resumed arm: the handler supplies a value and the caller continues.
+    tally: fn(int) -> int
+    /// Non-resuming arm: its own value substitutes for the operation result.
+    supply: fn(int) -> int
+}
+
+/// This helper performs both Mixed operations so each arm's mode is observable.
+fn mixedWork() -> int ![Mixed, Observation] = {
+    observe("work start")
+    let a = perform Mixed.tally(1)
+    observe("after tally: " + toString(a))
+    let b = perform Mixed.supply(2)
+    observe("after supply: " + toString(b))
+    let c = perform Mixed.supply(3)
+    observe("after second supply: " + toString(c))
+    (a + b ?: 0) + c ?: 0
+}
+
 /// This case verifies resume, abort, unwind, and the discarded continuation.
 fn resumeAbortEarlyExitCase() = {
     mut transcript = ""
@@ -77,3 +97,55 @@ fn resumeAbortEarlyExitCase() = {
 
 // Register the explicit-resume early-exit regression.
 test("returning without resume aborts the suspended continuation", resumeAbortEarlyExitCase)
+
+/// This case verifies an arm's mode is its own, not its siblings'.
+fn resumeSiblingArmIndependenceCase() = {
+    mut transcript = ""
+    mut tallyCalls = 0
+    mut supplyCalls = 0
+    mut lastSupplied = 0
+    mut resumedAnswer = 0
+
+    let result = handle Observation
+        line message => { transcript = "${transcript}${message}\n" }
+    in handle Mixed
+        tally n => {
+            tallyCalls = tallyCalls + 1 ?: tallyCalls
+            let answer = resume(n * 10 ?: 0)
+            resumedAnswer = answer
+            answer
+        }
+        supply n => {
+            supplyCalls = supplyCalls + 1 ?: supplyCalls
+            lastSupplied = n * 100 ?: 0
+            lastSupplied
+        }
+    in mixedWork()
+    let legacyTranscript = "${transcript}result=${toString(result)}\n"
+
+    // The non-resuming arm substitutes: every later line of the body still runs.
+    checkAll("sibling-arm legacy observations", [
+        legacyTranscript == "work start\nafter tally: 10\nafter supply: 200\nafter second supply: 300\nresult=510\n",
+        contains(legacyTranscript, "work start\n"),
+        contains(legacyTranscript, "after tally: 10\n"),
+        contains(legacyTranscript, "after supply: 200\n"),
+        contains(legacyTranscript, "after second supply: 300\n"),
+        endsWith(legacyTranscript, "result=510\n"),
+        !contains(legacyTranscript, "result=200\n"),
+        !contains(legacyTranscript, "result=300\n")
+    ])
+
+    // A sibling's `resume` must not turn these arms into early exits.
+    checkAll("sibling-arm internal state", [
+        result == 510,
+        tallyCalls == 1,
+        supplyCalls == 2,
+        lastSupplied == 300,
+        resumedAnswer == 510,
+        resumedAnswer == result,
+        (tallyCalls + supplyCalls ?: 0) == 3
+    ])
+}
+
+// Register the sibling-arm independence regression for issue #177.
+test("a non-resuming arm is unaffected by a sibling arm's resume", resumeSiblingArmIndependenceCase)

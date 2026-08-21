@@ -28,6 +28,7 @@ mod env;
 mod error;
 mod expr;
 mod info;
+mod init_order;
 mod pattern;
 #[cfg(test)]
 mod testutil;
@@ -39,7 +40,7 @@ pub use builtin_docs::{
     builtin_doc_view, builtin_hover_markdown, builtin_names, BuiltinDocView, BuiltinParam,
 };
 pub use builtins::{builtin_callback_type, builtin_signature};
-pub use check::{check_program, infer_program};
+pub use check::{check_program, erased_var, infer_program};
 pub use error::TypeError;
 pub use info::{CtorLayout, HandlerSite, OpType, PerformSite, ProgramTypes};
 pub use ty::{has_type_var, names, render_with_holes, Scheme, Type, VarId, HOLE};

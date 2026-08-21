@@ -1,15 +1,39 @@
 ---
 layout: layouts/base.njk
 ---
+{% macro documentationNavigation(extraClass) %}
+    <nav class="toc docs-nav {{ extraClass }}" aria-label="Documentation pages">
+      <a class="docs-nav-home" href="/docs/">Documentation</a>
+{% for section in navigation.docs %}
+      <section class="docs-nav-section" aria-labelledby="docs-nav-{{ loop.index }}-{{ extraClass }}">
+        <p class="docs-nav-section-title" id="docs-nav-{{ loop.index }}-{{ extraClass }}">{{ section.title }}</p>
+        <ul class="docs-nav-list">
+{% for item in section.items %}
+          <li><a href="{{ item.url }}"{% if page.url == item.url %} class="active" aria-current="page"{% endif %}>{{ item.text }}</a></li>
+{% endfor %}
+        </ul>
+      </section>
+{% endfor %}
+    </nav>
+{% endmacro %}
 {# Shared layout for every long-form page (docs, spec, blog posts, status).
    One prose design for all of them — see src/css/components.css `.prose`.
    The TOC is built client-side from the article's own headings (toc.js), so
    it adds no content — just navigation derived from what's already on the page. #}
-<div class="prose-layout">
+{% set isDocs = page.url.startsWith('/docs/') %}
+<div class="prose-layout{% if isDocs %} docs-prose-layout{% endif %}">
   <aside class="toc-aside">
+{% if isDocs %}
+{{ documentationNavigation('docs-nav-desktop') }}
+    <details class="docs-nav-mobile">
+      <summary>Browse documentation</summary>
+{{ documentationNavigation('docs-nav-mobile-list') }}
+    </details>
+{% else %}
     <nav class="toc" id="toc" aria-label="On this page">
       <p class="toc-title">Contents</p>
     </nav>
+{% endif %}
   </aside>
   <article class="prose"{% if modified %} data-date-modified="{{ modified | isoDate }}"{% endif %}>
 {% if image %}
@@ -38,4 +62,6 @@ layout: layouts/base.njk
 {{ content | safe }}
   </article>
 </div>
+{% if not isDocs %}
 <script src="/js/toc.js" defer></script>
+{% endif %}

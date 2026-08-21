@@ -240,7 +240,7 @@ fn flat_slots(sig: &FnSig) -> bool {
 fn host_bound(cg: &Codegen, names: &BTreeSet<String>) -> bool {
     names.iter().any(|n| {
         cg.cell_slots.contains_key(n)
-            || cg.lambdas.contains_key(n)
+            || cg.lambda_def(n).is_some()
             || cg.fn_ptr_locals.contains_key(n)
             || cg.call_aliases.contains_key(n)
     })

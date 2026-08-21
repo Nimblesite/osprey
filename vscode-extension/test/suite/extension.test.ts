@@ -985,6 +985,496 @@ suite("Osprey Language Features Tests", () => {
     assert.ok(second[0].message.length > 0, "re-error has a message");
   });
 
+  // ---------- [TESTING-SKIP-WARNING] ----------
+  // NO test may be skipped or ignored without a diagnostic warning. These
+  // drive the REAL `osprey lsp` server: the warning must be there the moment
+  // the file is open, before anything runs.
+
+  /** Every `test-skipped` Warning currently published for `uri`, in order. */
+  const skipWarningsOf = (uri: vscode.Uri): vscode.Diagnostic[] =>
+    vscode.languages
+      .getDiagnostics(uri)
+      .filter((d) => d.code === "test-skipped")
+      .sort((a, b) => a.range.start.line - b.range.start.line);
+
+  /**
+   * Every Error diagnostic for `uri`. A reasoned skip is a warning and never
+   * appears here; an unexplained one does ([TESTING-SKIP-REASON]).
+   */
+  const errorsOf = (uri: vscode.Uri): vscode.Diagnostic[] =>
+    vscode.languages
+      .getDiagnostics(uri)
+      .filter((d) => d.severity === vscode.DiagnosticSeverity.Error);
+
+  /** Poll until exactly `count` skip warnings are published for `uri`. */
+  const pollSkips = (
+    uri: vscode.Uri,
+    count: number,
+  ): Promise<vscode.Diagnostic[]> =>
+    pollFor(
+      () => Promise.resolve(skipWarningsOf(uri)),
+      (found) => found.length === count,
+    );
+
+  /** Replace a document's whole text (a user editing the buffer). */
+  async function rewrite(
+    doc: vscode.TextDocument,
+    content: string,
+  ): Promise<void> {
+    const editor = await vscode.window.showTextDocument(doc);
+    await editor.edit((b) =>
+      b.replace(new vscode.Range(0, 0, doc.lineCount, 0), content),
+    );
+  }
+
+  /**
+   * Assert the shared shape every skip diagnostic must have. `severity` is
+   * Warning for a skip that names a reason and Error for one that does not
+   * ([TESTING-SKIP-REASON]); everything else about the shape is identical,
+   * because it is one rule reported at two strengths.
+   */
+  function assertSkipWarningShape(
+    warning: vscode.Diagnostic,
+    line: number,
+    label: string,
+    severity: vscode.DiagnosticSeverity = vscode.DiagnosticSeverity.Warning,
+  ): void {
+    assert.strictEqual(
+      warning.severity,
+      severity,
+      `${label}: a skipped test is reported at the severity its reason earns`,
+    );
+    assert.strictEqual(warning.source, "osprey", `${label}: source`);
+    assert.strictEqual(warning.code, "test-skipped", `${label}: code`);
+    assert.strictEqual(
+      warning.range.start.line,
+      line,
+      `${label}: underlines the test call's own line`,
+    );
+    assert.strictEqual(
+      warning.range.end.line,
+      line,
+      `${label}: the span stays on one line`,
+    );
+    assert.ok(
+      warning.range.end.character > warning.range.start.character,
+      `${label}: the span is non-empty so it renders as a squiggle`,
+    );
+    assert.ok(
+      warning.message.startsWith("test '"),
+      `${label}: message names the case first: ${warning.message}`,
+    );
+  }
+
+  const VERDICT_DEFAULT = "type Verdict = Pass | Fail(string) | Skip(string)";
+
+  test("CHUNKY: skip-warning taxonomy — every skip form is reported, every live form stays silent", async function () {
+    this.timeout(60000);
+    // One file covering every body shape [TESTING-VERDICT] admits. Only the
+    // bodies that STATICALLY yield Skip may warn; a body that merely *might*
+    // skip at run time is the Test Explorer's job, not the LSP's.
+    const lines = [
+      VERDICT_DEFAULT, //                                          0
+      "", //                                                       1
+      "fn guard(n) = match n > 100 {", //                           2
+      "    true => Pass", //                                        3
+      '    false => Skip("runtime only")', //                       4
+      "}", //                                                       5
+      'fn parked() = Skip("named function body")', //               6
+      "", //                                                        7
+      'test("static skip with reason", fn() => Skip("blocked on #123"))', // 8
+      'test("static skip empty reason", fn() => Skip(""))', //       9
+      'test("skip from a block body", fn() => {', //               10
+      '    Skip("skipped from a block")', //                       11
+      "})", //                                                     12
+      'test("passing verdict", fn() => Pass)', //                  13
+      'test("failing verdict", fn() => Fail("nope"))', //          14
+      'test("assertion case", fn() => expect(1, 1))', //           15
+      'test("dynamic skip via helper", fn() => guard(1))', //      16
+      'test("named function reference", parked)', //               17
+      "", //                                                       18
+    ];
+    const doc = await openDoc("taxonomy.test.osp", lines.join("\n") + "\n");
+
+    // Exactly three cases skip STATICALLY: lines 8, 9, and 10.
+    const warnings = await pollSkips(doc.uri, 3);
+    assert.strictEqual(
+      warnings.length,
+      3,
+      `exactly the three static skips warn: ${JSON.stringify(warnings.map((w) => w.message))}`,
+    );
+
+    // --- Case 1: a reason is quoted into the message verbatim.
+    assertSkipWarningShape(warnings[0], 8, "static skip with reason");
+    assert.strictEqual(
+      warnings[0].message,
+      "test 'static skip with reason' is skipped: blocked on #123",
+      "the reason is carried verbatim into the message",
+    );
+
+    // --- Case 2: an EMPTY reason is an ERROR, not a warning, and it names the
+    // demand instead of dangling a separator with nothing after it
+    // ([TESTING-SKIP-REASON]).
+    assertSkipWarningShape(
+      warnings[1],
+      9,
+      "static skip empty reason",
+      vscode.DiagnosticSeverity.Error,
+    );
+    assert.strictEqual(
+      warnings[1].message,
+      "test 'static skip empty reason' is skipped with no reason; every skip must name one",
+      "an unexplained skip states what is missing",
+    );
+    assert.ok(
+      !warnings[1].message.includes("skipped:"),
+      `no dangling separator: ${warnings[1].message}`,
+    );
+
+    // --- Case 3: a block body's RESULT expression is what counts, and the
+    // warning lands on the `test(` line, not on the inner `Skip` line.
+    assertSkipWarningShape(warnings[2], 10, "skip from a block body");
+    assert.strictEqual(
+      warnings[2].message,
+      "test 'skip from a block body' is skipped: skipped from a block",
+    );
+
+    // --- Silent forms: nothing else may warn, by name.
+    const messages = warnings.map((w) => w.message).join("\n");
+    for (const silent of [
+      "passing verdict",
+      "failing verdict",
+      "assertion case",
+      "dynamic skip via helper",
+      "named function reference",
+    ]) {
+      assert.ok(
+        !messages.includes(silent),
+        `'${silent}' must NOT raise a static skip warning:\n${messages}`,
+      );
+    }
+
+    // The taxonomy program is well-typed, so the ONLY error is the unexplained
+    // skip — no type error rides along with it ([TESTING-SKIP-REASON]).
+    assert.deepStrictEqual(
+      errorsOf(doc.uri).map((e) => e.message),
+      [
+        "test 'static skip empty reason' is skipped with no reason; every skip must name one",
+      ],
+      "the taxonomy program is well-typed; its only error is the unexplained skip",
+    );
+
+    // Warnings must not disturb the rest of the language service: hover on a
+    // skipped case's `test` still answers with the case ([TESTING-DOC-HOVER]),
+    // and the document outline still lists the file's functions.
+    const hov = await pollFor(
+      () => hoverAt(doc.uri, 8, 2),
+      (h) => nonEmptyHover(h),
+    );
+    assert.ok(
+      hoverText(hov[0]).includes("static skip with reason"),
+      `hover still names the skipped case: ${hoverText(hov[0])}`,
+    );
+    const symbols = await pollFor(
+      () => symbolsOf(doc.uri),
+      (s) => Array.isArray(s) && s.length > 0,
+    );
+    const symbolNames = symbols.map((s) => s.name);
+    assert.ok(
+      symbolNames.includes("guard") && symbolNames.includes("parked"),
+      `outline unaffected by skip warnings: ${symbolNames.join(", ")}`,
+    );
+  });
+
+  test("CHUNKY: skip-warning edit lifecycle — six edits, each re-checked end to end", async function () {
+    this.timeout(90000);
+    const base = [
+      VERDICT_DEFAULT, //                                     0
+      "", //                                                  1
+      'test("alpha", fn() => Pass)', //                        2
+      'test("beta", fn() => expect(1, 1))', //                 3
+      'test("gamma", fn() => Pass)', //                        4
+      "", //                                                   5
+    ];
+    const doc = await openDoc(
+      "lifecycle-skip.test.osp",
+      base.join("\n") + "\n",
+    );
+
+    // (1) A clean suite warns about nothing.
+    const clean = await pollSkips(doc.uri, 0);
+    assert.deepStrictEqual(clean, [], "no skips, no warnings");
+
+    // (2) The user parks `beta` → exactly one warning, on beta's line.
+    const oneSkip = [...base];
+    oneSkip[3] = 'test("beta", fn() => Skip("waiting on the API"))';
+    await rewrite(doc, oneSkip.join("\n") + "\n");
+    const afterPark = await pollSkips(doc.uri, 1);
+    assertSkipWarningShape(afterPark[0], 3, "parked beta");
+    assert.strictEqual(
+      afterPark[0].message,
+      "test 'beta' is skipped: waiting on the API",
+    );
+
+    // (3) The user parks `alpha` too → two warnings, in source order.
+    const twoSkips = [...oneSkip];
+    twoSkips[2] = 'test("alpha", fn() => Skip("flaky on CI"))';
+    await rewrite(doc, twoSkips.join("\n") + "\n");
+    const afterSecond = await pollSkips(doc.uri, 2);
+    assert.deepStrictEqual(
+      afterSecond.map((w) => w.range.start.line),
+      [2, 3],
+      "warnings track their own lines, in source order",
+    );
+    assert.deepStrictEqual(
+      afterSecond.map((w) => w.message),
+      [
+        "test 'alpha' is skipped: flaky on CI",
+        "test 'beta' is skipped: waiting on the API",
+      ],
+    );
+
+    // (4) Editing only the REASON updates the message in place.
+    const editedReason = [...twoSkips];
+    editedReason[2] = 'test("alpha", fn() => Skip("still flaky, see #99"))';
+    await rewrite(doc, editedReason.join("\n") + "\n");
+    const afterReason = await pollFor(
+      () => Promise.resolve(skipWarningsOf(doc.uri)),
+      (found) => found.length === 2 && found[0].message.includes("see #99"),
+    );
+    assert.strictEqual(
+      afterReason[0].message,
+      "test 'alpha' is skipped: still flaky, see #99",
+      "a reason edit is reflected without a restart",
+    );
+    assert.strictEqual(
+      afterReason[1].message,
+      "test 'beta' is skipped: waiting on the API",
+      "the untouched case keeps its own message",
+    );
+
+    // (5) Breaking the syntax suppresses skip warnings — an unparsable file
+    // reports its syntax error ALONE, matching the CLI gate [LSP-DIAGNOSTICS].
+    await rewrite(doc, editedReason.join("\n") + "\nfn broken( = 42\n");
+    const broken = await pollFor(
+      () => Promise.resolve(vscode.languages.getDiagnostics(doc.uri)),
+      (d) => d.some((item) => item.code === "syntax-error"),
+    );
+    assert.ok(
+      broken.some((d) => d.severity === vscode.DiagnosticSeverity.Error),
+      "the syntax error is reported",
+    );
+    assert.deepStrictEqual(
+      skipWarningsOf(doc.uri),
+      [],
+      "an unparsable buffer reports its syntax error alone",
+    );
+
+    // (6) Fixing the syntax brings both warnings straight back, unchanged.
+    await rewrite(doc, editedReason.join("\n") + "\n");
+    const restored = await pollSkips(doc.uri, 2);
+    assert.deepStrictEqual(
+      restored.map((w) => w.message),
+      [
+        "test 'alpha' is skipped: still flaky, see #99",
+        "test 'beta' is skipped: waiting on the API",
+      ],
+    );
+    assert.deepStrictEqual(
+      vscode.languages
+        .getDiagnostics(doc.uri)
+        .filter((d) => d.code === "syntax-error"),
+      [],
+      "the syntax error is gone",
+    );
+
+    // (7) Reviving every case clears every warning.
+    await rewrite(doc, base.join("\n") + "\n");
+    const revived = await pollSkips(doc.uri, 0);
+    assert.deepStrictEqual(revived, [], "revived cases carry no warnings");
+  });
+
+  test("CHUNKY: skip-warning damage cases — quotes, unicode, duplicates, directive-shaped names, shadowing", async function () {
+    this.timeout(90000);
+    // Hostile inputs: everything here is legal Osprey that a naive
+    // string-scraping implementation would mangle.
+    const lines = [
+      VERDICT_DEFAULT, //                                                    0
+      "", //                                                                 1
+      'test("name with # SKIP inside it", fn() => expect(1, 1))', //          2
+      'test("quoted \\"why\\" case", fn() => Skip("reason with \\"quotes\\""))', // 3
+      'test("café 🦅 unicode", fn() => Skip("héllo 🦅 wörld"))', //           4
+      'test("duplicate", fn() => Skip("first"))', //                          5
+      'test("duplicate", fn() => Skip("second"))', //                         6
+      "", //                                                                 7
+    ];
+    const doc = await openDoc("damage.test.osp", lines.join("\n") + "\n");
+    const warnings = await pollSkips(doc.uri, 4);
+
+    // --- A PASSING test whose NAME contains `# SKIP` must never be reported
+    // as skipped [TESTING-TAP-AMBIGUITY]. Nothing on line 2 may warn.
+    assert.ok(
+      warnings.every((w) => w.range.start.line !== 2),
+      `a name containing the directive is not a skip: ${JSON.stringify(warnings.map((w) => w.message))}`,
+    );
+    assert.ok(
+      !warnings.some((w) => w.message.includes("inside it")),
+      "the directive-shaped name never leaks into a warning",
+    );
+
+    // --- Quotes survive into the message unescaped.
+    assertSkipWarningShape(warnings[0], 3, "quoted case");
+    assert.strictEqual(
+      warnings[0].message,
+      `test 'quoted "why" case' is skipped: reason with "quotes"`,
+      "embedded quotes survive the round trip",
+    );
+
+    // --- Unicode: the message keeps it, and the RANGE is measured in UTF-16
+    // units so the squiggle lands on real characters [LSP-ENCODING].
+    assertSkipWarningShape(warnings[1], 4, "unicode case");
+    assert.ok(
+      warnings[1].message.includes("héllo 🦅 wörld"),
+      `unicode reason survives: ${warnings[1].message}`,
+    );
+    assert.ok(
+      warnings[1].message.includes("café 🦅 unicode"),
+      "unicode test name survives",
+    );
+    const unicodeLine = doc.lineAt(4).text;
+    assert.ok(
+      warnings[1].range.end.character <= unicodeLine.length,
+      `range stays inside the line: ${warnings[1].range.end.character} > ${unicodeLine.length}`,
+    );
+
+    // --- Duplicate names: BOTH warn, each on its own line with its own
+    // reason. A dedupe-by-name implementation would drop one and hide a skip.
+    assertSkipWarningShape(warnings[2], 5, "duplicate one");
+    assertSkipWarningShape(warnings[3], 6, "duplicate two");
+    assert.strictEqual(
+      warnings[2].message,
+      "test 'duplicate' is skipped: first",
+    );
+    assert.strictEqual(
+      warnings[3].message,
+      "test 'duplicate' is skipped: second",
+    );
+
+    // --- [TESTING-SHADOWING] a user-defined `test` shadows the built-in, so
+    // its calls are NOT test cases and must raise no skip warnings at all.
+    const shadowed = [
+      VERDICT_DEFAULT,
+      "fn test(name, body) = 0",
+      'let ignored = test("not a case", fn() => Skip("not a real skip"))',
+      "",
+    ].join("\n");
+    const shadowDoc = await openDoc("shadowed.test.osp", shadowed);
+    // Poll on a positive signal (the server answered SOMETHING for this file)
+    // so an empty result cannot pass by simply arriving before the server.
+    await pollFor(
+      () => symbolsOf(shadowDoc.uri),
+      (s) => Array.isArray(s) && s.some((sym) => sym.name === "test"),
+    );
+    assert.deepStrictEqual(
+      skipWarningsOf(shadowDoc.uri),
+      [],
+      "a shadowed `test` built-in declares no cases, so nothing is skipped",
+    );
+
+    // --- A file with no tests at all, and an empty file, warn about nothing.
+    const noTests = await openDoc(
+      "notests.osp",
+      "fn add(a, b) = a + b\nlet total = add(1, 2)\n",
+    );
+    await pollFor(
+      () => symbolsOf(noTests.uri),
+      (s) => Array.isArray(s) && s.length > 0,
+    );
+    assert.deepStrictEqual(skipWarningsOf(noTests.uri), []);
+  });
+
+  test("CHUNKY: skip warnings coexist with type errors and survive in the ML flavor", async function () {
+    this.timeout(90000);
+    // --- A file that is BOTH ill-typed and skipping must report both: a skip
+    // warning is never swallowed by an unrelated error.
+    const mixed = [
+      VERDICT_DEFAULT, //                                        0
+      "fn broken() -> int = nope(1)", //                          1
+      'test("parked while broken", fn() => Skip("blocked"))', //  2
+      "",
+    ].join("\n");
+    const doc = await openDoc("mixed.test.osp", mixed);
+    const warnings = await pollSkips(doc.uri, 1);
+    assertSkipWarningShape(warnings[0], 2, "parked while broken");
+    const errors = await pollFor(
+      () => Promise.resolve(errorsOf(doc.uri)),
+      (e) => e.length > 0,
+    );
+    assert.ok(
+      errors.some((e) => e.code === "type-error"),
+      `the type error is still reported: ${JSON.stringify(errors.map((e) => e.message))}`,
+    );
+    assert.ok(
+      errors.every((e) => e.code !== "test-skipped"),
+      "a skip that NAMES a reason is never escalated to an error",
+    );
+    assert.strictEqual(
+      warnings[0].message,
+      "test 'parked while broken' is skipped: blocked",
+    );
+
+    // --- The ML flavor gets identical treatment through its own frontend:
+    // layout syntax, `\() =>` lambdas, whitespace application [FLAVOR-ML-FN].
+    const mlLines = [
+      "type Verdict = Pass | Fail string | Skip string", //   0
+      "", //                                                  1
+      "guard n = match n > 100", //                            2
+      "    true => Pass", //                                   3
+      '    false => Skip "runtime only"', //                   4
+      "", //                                                   5
+      'test "ml parked" (\\() => Skip "ml blocked")', //        6
+      'test "ml live" (\\() => Pass)', //                       7
+      'test "ml dynamic" (\\() => guard 1)', //                 8
+      "", //                                                   9
+    ];
+    const mlDoc = await openDoc("mlskip.test.ospml", mlLines.join("\n") + "\n");
+    const mlWarnings = await pollSkips(mlDoc.uri, 1);
+    assertSkipWarningShape(mlWarnings[0], 6, "ml parked");
+    assert.strictEqual(
+      mlWarnings[0].message,
+      "test 'ml parked' is skipped: ml blocked",
+      "the ML frontend produces the SAME message as the Default flavor",
+    );
+    assert.deepStrictEqual(
+      errorsOf(mlDoc.uri).map((e) => e.message),
+      [],
+      "the ML program is well-typed",
+    );
+
+    // Editing the ML buffer re-checks it: parking the live case adds a second
+    // warning, and reviving both clears all of them.
+    const mlParked = [...mlLines];
+    mlParked[7] = 'test "ml live" (\\() => Skip "now parked too")';
+    await rewrite(mlDoc, mlParked.join("\n") + "\n");
+    const mlBoth = await pollSkips(mlDoc.uri, 2);
+    assert.deepStrictEqual(
+      mlBoth.map((w) => w.range.start.line),
+      [6, 7],
+    );
+    assert.strictEqual(
+      mlBoth[1].message,
+      "test 'ml live' is skipped: now parked too",
+    );
+    const mlRevived = [...mlLines];
+    mlRevived[6] = 'test "ml parked" (\\() => Pass)';
+    await rewrite(mlDoc, mlRevived.join("\n") + "\n");
+    assert.deepStrictEqual(
+      await pollSkips(mlDoc.uri, 0),
+      [],
+      "reviving every ML case clears every warning",
+    );
+  });
+
   test("CHUNKY: list-pattern program — hover/def/refs/symbols/completion over match patterns", async function () {
     this.timeout(60000);
     const content =
@@ -1509,7 +1999,9 @@ signatures, in source order`,
       );
       assert.deepStrictEqual(
         help.signatures[0].parameters.map((p) =>
-          typeof p.label === "string" ? p.label : signature.slice(p.label[0], p.label[1]),
+          typeof p.label === "string"
+            ? p.label
+            : signature.slice(p.label[0], p.label[1]),
         ),
         ["w: int", "h: int"],
         `${label}: each parameter is labelled with the type the checker proved`,
@@ -1521,7 +2013,8 @@ signatures, in source order`,
         (list) => Boolean(list) && labelsOf(list).includes("area"),
       );
       const areaItem = completions.items.find(
-        (i) => (typeof i.label === "string" ? i.label : i.label.label) === "area",
+        (i) =>
+          (typeof i.label === "string" ? i.label : i.label.label) === "area",
       );
       // `if`/`throw` rather than `assert.ok`: this narrows `areaItem` for the
       // lines below under `strict`, which an assertion helper does not do here.
@@ -1532,7 +2025,9 @@ signatures, in source order`,
       }
       // A function completes AS a function, with the name the user typed.
       assert.strictEqual(
-        typeof areaItem.label === "string" ? areaItem.label : areaItem.label.label,
+        typeof areaItem.label === "string"
+          ? areaItem.label
+          : areaItem.label.label,
         "area",
         `${label}: the completion label is the plain function name`,
       );

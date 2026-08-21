@@ -500,7 +500,9 @@ mod tests {
 
         assert!(md.contains("pipeline : Unit -> int"), "ML signature: {md}");
         assert!(
-            md.contains("Perform two ordered steps and combine their supplied values."),
+            md.contains(
+                "This helper performs two ordered steps and combines their supplied values."
+            ),
             "ML documentation: {md}"
         );
     }

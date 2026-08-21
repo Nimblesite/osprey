@@ -1,0 +1,126 @@
+/// Cross-contract Default twin for [TYPE-GENERICS-FN], [TYPE-MAP],
+/// [TYPE-MAP-LOOKUP], [TYPE-MAP-OPS], [TYPE-LIST], [BUILTIN-MAP-GET],
+/// [BUILTIN-MAP-SET], [BUILTIN-MAP-REMOVE], [BUILTIN-MAP-MERGE],
+/// [BUILTIN-MAP-KEYS], [BUILTIN-MAP-VALUES], [BUILTIN-LIST-GET],
+/// [EFFECTS-GENERIC-INSTANTIATION], and [EFFECTS-GENERIC-RUNTIME].
+effect MapDepot<T> {
+    fetch: fn(string) -> Map<string, List<T>>
+}
+
+fn groupAt<T>(groups: Map<string, List<T>>, key: string, index: int, fallbackList: List<T>, fallback: T) =
+listGet(mapGet(groups, key) ?: fallbackList, index) ?: fallback
+
+fn intGroups() = mapSet(mapSet(Map(), "low", [1, 2]), "high", [30, 40, 50])
+fn stringGroups() = mapSet(mapSet(Map(), "short", ["a", "bb"]), "long", ["three", "seven"])
+fn floatGroups() = mapSet(mapSet(Map(), "small", [0.5, 1.25]), "large", [8.5, 9.75])
+fn boolGroups() = mapSet(mapSet(Map(), "left", [true, false]), "right", [false, true])
+
+fn requestIntGroups() -> Map<string, List<int>> = perform MapDepot.fetch("ints")
+fn requestStringGroups() -> Map<string, List<string>> = perform MapDepot.fetch("strings")
+fn requestFloatGroups() -> Map<string, List<float>> = perform MapDepot.fetch("floats")
+fn requestBoolGroups() -> Map<string, List<bool>> = perform MapDepot.fetch("bools")
+
+fn effectIntGroups() = handle MapDepot fetch key => intGroups() in requestIntGroups()
+fn effectStringGroups() = handle MapDepot fetch key => stringGroups() in requestStringGroups()
+fn effectFloatGroups() = handle MapDepot fetch key => floatGroups() in requestFloatGroups()
+fn effectBoolGroups() = handle MapDepot fetch key => boolGroups() in requestBoolGroups()
+
+fn mapListShape<T>(groups: Map<string, List<T>>) = match mapLength(groups) {
+    0 => "empty"
+    1 => "one:${listLength(mapValues(groups))}"
+    _ => "many:${mapLength(groups)}/${listLength(mapValues(groups))}"
+}
+
+/// Crosses generic effect erasure, Map<string,List<T>> lookup, list and map
+/// nesting, Result recovery, persistent rewrites, and view materialisation.
+/// Implements [EFFECTS-GENERIC-RUNTIME], [TYPE-MAP-LOOKUP],
+/// [BUILTIN-MAP-VALUES], and [BUILTIN-LIST-GET].
+fn nestedMapEffectPipelineCase() = {
+    let ints = effectIntGroups()
+    let strings = effectStringGroups()
+    let floats = effectFloatGroups()
+    let bools = effectBoolGroups()
+    let listOfMaps = [ints, mapSet(ints, "high", [60, 70]), mapSet(Map(), "only", [80, 90])]
+    let mapOfListsOfMaps = mapSet(Map(), "generations", listOfMaps)
+    let generations = mapGet(mapOfListsOfMaps, "generations") ?: [intGroups()]
+    let second = listGet(generations, 1) ?: intGroups()
+    let third = listGet(generations, 2) ?: intGroups()
+    let rewritten = mapRemove(mapSet(ints, "extra", [6, 7]), "low")
+    let merged = mapMerge(ints, mapSet(Map(), "high", [80, 90]))
+
+    checkAll("Map<string,List<T>> recovers four concrete leaf arguments", [
+            mapLength(ints) == 2,
+            mapLength(strings) == 2,
+            mapLength(floats) == 2,
+            mapLength(bools) == 2,
+            listLength(mapGet(ints, "low") ?: [99]) == 2,
+            listLength(mapGet(ints, "high") ?: [99]) == 3,
+            groupAt(ints, "low", 0, [91], 99) == 1,
+            groupAt(ints, "low", 1, [91], 99) == 2,
+            groupAt(ints, "high", 0, [91], 99) == 30,
+            groupAt(ints, "high", 1, [91], 99) == 40,
+            groupAt(ints, "high", 2, [91], 99) == 50,
+            groupAt(ints, "missing", 0, [91], 99) == 91,
+            groupAt(ints, "low", 8, [91], 99) == 99,
+            groupAt(strings, "short", 0, ["row"], "item") == "a",
+            groupAt(strings, "short", 1, ["row"], "item") == "bb",
+            groupAt(strings, "long", 0, ["row"], "item") == "three",
+            groupAt(strings, "long", 1, ["row"], "item") == "seven",
+            length(groupAt(strings, "long", 1, ["row"], "item")) == 5,
+            groupAt(strings, "missing", 0, ["row"], "item") == "row",
+            groupAt(floats, "small", 0, [9.0], 9.5) == 0.5,
+            groupAt(floats, "small", 1, [9.0], 9.5) == 1.25,
+            groupAt(floats, "large", 0, [9.0], 9.5) == 8.5,
+            groupAt(floats, "large", 1, [9.0], 9.5) == 9.75,
+            groupAt(floats, "small", 0, [9.0], 9.5) + groupAt(floats, "small", 1, [9.0], 9.5) == 1.75,
+            groupAt(bools, "left", 0, [false], false),
+            !groupAt(bools, "left", 1, [true], true),
+            !groupAt(bools, "right", 0, [true], true),
+            groupAt(bools, "right", 1, [false], false)
+    ])
+
+    checkAll("List<Map<string,List<T>>> and Map<string,List<Map<string,List<T>>>> retain T", [
+            listLength(listOfMaps) == 3,
+            mapLength(mapOfListsOfMaps) == 1,
+            listLength(generations) == 3,
+            mapLength(listGet(generations, 0) ?: Map()) == 2,
+            mapLength(second) == 2,
+            mapLength(third) == 1,
+            groupAt(listGet(generations, 0) ?: intGroups(), "high", 2, [91], 99) == 50,
+            groupAt(second, "high", 0, [91], 99) == 60,
+            groupAt(second, "high", 1, [91], 99) == 70,
+            groupAt(third, "only", 0, [91], 99) == 80,
+            groupAt(third, "only", 1, [91], 99) == 90,
+            mapListShape(Map()) == "empty",
+            mapListShape(mapSet(Map(), "one", [1])) == "one:1",
+            mapListShape(ints) == "many:2/2",
+            mapListShape(strings) == "many:2/2",
+            mapListShape(floats) == "many:2/2",
+            mapListShape(bools) == "many:2/2"
+    ])
+
+    checkAll("persistent map pipelines preserve descendants and source generations", [
+            mapLength(rewritten) == 2,
+            !mapContains(rewritten, "low"),
+            mapContains(rewritten, "high"),
+            mapContains(rewritten, "extra"),
+            groupAt(rewritten, "high", 2, [91], 99) == 50,
+            groupAt(rewritten, "extra", 0, [91], 99) == 6,
+            groupAt(rewritten, "extra", 1, [91], 99) == 7,
+            mapLength(merged) == 2,
+            groupAt(merged, "high", 0, [91], 99) == 80,
+            groupAt(merged, "high", 1, [91], 99) == 90,
+            groupAt(ints, "high", 0, [91], 99) == 30,
+            mapContains(ints, "low"),
+            !mapContains(ints, "extra"),
+            listLength(mapKeys(ints)) == 2,
+            listLength(mapValues(ints)) == 2,
+            listContains(mapKeys(ints), "low"),
+            listContains(mapKeys(ints), "high"),
+            !listContains(mapKeys(ints), "extra"),
+            listLength(listGet(mapValues(ints), 0) ?: [99]) >= 2,
+            listLength(listGet(mapValues(ints), 1) ?: [99]) >= 2
+    ])
+}
+
+test("generic map effects mix nested lists Results views and pipelines", nestedMapEffectPipelineCase)

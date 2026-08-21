@@ -120,3 +120,826 @@ fn resumeValueRewriteCase() = {
 
 // Register the value-rewriting and generic-resume regression.
 test("resume rewrites values across scalar, Result, and generic effects", resumeValueRewriteCase)
+
+/// Script hands the performer one scripted integer per numbered slot.
+effect Script {
+    /// Supply the value the performer must observe for `slot`.
+    read: fn(int) -> int
+}
+
+/// Four reads weighted 1000/100/10/1, so a value delivered to the wrong perform
+/// site cannot cancel out against another one.
+fn weightedReads() = {
+    let a = perform Script.read(1)
+    let b = perform Script.read(2)
+    let c = perform Script.read(3)
+    let d = perform Script.read(4)
+    let weighted = ((a * 1000) ?: 0) + ((b * 100) ?: 0) + ((c * 10) ?: 0) ?: 0
+    (weighted + d) ?: 0
+}
+
+/// [EFFECTS-RESUME] "`resume(value)` supplies the current operation result and
+/// runs the rest of the handled computation." Each perform site must observe
+/// the value its own arm supplied — not the argument it sent, not a neighbour's
+/// value — and the arm's own arithmetic must stay inside the arm. The script is
+/// zero, a positive, a negative and a duplicate of the positive, so the weights
+/// give 0*1000 + 7*100 + (-4)*10 + 7 = 667.
+fn resumeSubstitutesSuppliedValueCase() = {
+    mut reads = 0
+    mut asked = ""
+    mut gave = ""
+    mut seen = ""
+
+    let picked = handle Script
+        read slot => {
+            reads = reads + 1 ?: reads
+            let value = match slot {
+                1 => 0
+                2 => 7
+                3 => (0 - 4) ?: 0
+                _ => 7
+            }
+            asked = "${asked}${toString(slot)}|"
+            gave = "${gave}${toString(value)}|"
+            let answer = resume(value)
+            seen = "${seen}${toString(slot)}:${toString(answer)}|"
+            answer
+        }
+    in weightedReads()
+
+    mut steadyReads = 0
+    let steady = handle Script
+        read slot => {
+            steadyReads = steadyReads + 1 ?: steadyReads
+            resume(1)
+        }
+    in weightedReads()
+
+    mut zeroReads = 0
+    let zeroed = handle Script
+        read slot => {
+            zeroReads = zeroReads + 1 ?: zeroReads
+            resume(0)
+        }
+    in weightedReads()
+
+    // 660 is the weighted head (0 + 700 - 40); the unit slot adds the final 7.
+    // The rejected values are the answers a broken delivery would produce: 10 is
+    // the unweighted sum, 7777 every site receiving 7, 6670 the script arriving
+    // reversed, and 1234 the slot numbers arriving instead of the script.
+    checkAll("resume substitutes the scripted value at each perform site", [
+        picked == 667, picked == ((660 + 7) ?: 0), reads == 4,
+        gave == "0|7|-4|7|", asked == "1|2|3|4|",
+        picked != 10, picked != 7777, picked != 6670, picked != 1234,
+        picked != 0, picked > 660, picked < 700,
+        length(gave) == 9, length(asked) == 8
+    ])
+
+    // Operations enter in the order the body performs them and their arms
+    // settle in the reverse order, so `asked` and `seen` must disagree.
+    checkAll("reads enter in slot order and settle in reverse", [
+        asked == "1|2|3|4|", seen == "4:667|3:667|2:667|1:667|",
+        startsWith(seen, "4:667|"), endsWith(seen, "1:667|"),
+        contains(seen, "3:667|"), contains(seen, "2:667|"),
+        !startsWith(seen, "1:"), asked != seen,
+        length(seen) == 24, reads == 4,
+        !contains(seen, "0:"), !contains(seen, ":660")
+    ])
+
+    // Every arm's resume returns the one completed answer, never the value that
+    // arm itself supplied: "4:7", "2:7", "3:-4" and "1:0" are the four ways the
+    // supplied value could have been handed back by mistake.
+    checkAll("every arm observes the completed computation answer", [
+        contains(seen, "1:667"), contains(seen, "2:667"),
+        contains(seen, "3:667"), contains(seen, "4:667"),
+        !contains(seen, "4:7|"), !contains(seen, "2:7|"),
+        !contains(seen, "3:-4|"), !contains(seen, "1:0|"),
+        contains(seen, toString(picked)),
+        contains(gave, "0|"), contains(gave, "-4|"), !contains(gave, "|4|")
+    ])
+
+    // The same body under a constant script answers 1*1000 + 1*100 + 1*10 + 1,
+    // and under an all-zero script answers 0 — the body is fixed, the supplies
+    // are what move. Neither later region disturbs the first region's state.
+    checkAll("the same body answers differently under a different script", [
+        steady == 1111, steadyReads == 4, steady != picked, picked != 1111,
+        ((steady - picked) ?: 0) == 444,
+        steady == (((1000 + 100) ?: 0) + ((10 + 1) ?: 0) ?: 0),
+        zeroed == 0, zeroReads == 4, zeroed != picked,
+        asked == "1|2|3|4|", gave == "0|7|-4|7|", reads == steadyReads
+    ])
+}
+
+// Register value substitution at the perform site.
+test("resume substitutes exactly the value each arm supplied", resumeSubstitutesSuppliedValueCase)
+
+/// Layer lets each arm adjust the answer its resumed continuation produced.
+effect Layer {
+    /// Supply the value for `slot`; the arm then adjusts the completed answer.
+    fetch: fn(int) -> int
+}
+
+/// Three fetches weighted 100/10/1, so the body's own answer is unambiguous.
+fn layered() = {
+    let a = perform Layer.fetch(1)
+    let b = perform Layer.fetch(2)
+    let c = perform Layer.fetch(3)
+    ((a * 100) ?: 0) + ((b * 10) ?: 0) + c ?: 0
+}
+
+/// One perform, so the arm's own value is unmistakably the region's answer.
+fn soloLayer() = (perform Layer.fetch(4) + 1) ?: 0
+
+/// [EFFECTS-RESUME] resume "evaluates to that computation's answer, so the arm
+/// may execute code after the resumed computation returns", and handlers "are
+/// deep: the same handler remains installed while the continuation runs". The
+/// continuation of the first perform therefore contains the other two, so each
+/// arm's post-resume value is the answer the next-outer arm observes, and
+/// [EFFECTS-HANDLER-ARMS] makes the outermost arm's value the region's result.
+/// Supplying 1, 2 and 3 gives the body 100 + 20 + 3 = 123; the three `+slot`
+/// adjustments then compose to 123 + 3 = 126, 126 + 2 = 128, 128 + 1 = 129.
+fn resumeAnswerComposesLifoCase() = {
+    mut entered = ""
+    mut observed = ""
+    mut returned = ""
+
+    let layeredResult = handle Layer
+        fetch slot => {
+            entered = "${entered}${toString(slot)}|"
+            let answer = resume(slot)
+            observed = "${observed}${toString(slot)}:${toString(answer)}|"
+            let adjusted = (answer + slot) ?: answer
+            returned = "${returned}${toString(slot)}:${toString(adjusted)}|"
+            adjusted
+        }
+    in layered()
+
+    mut plainCalls = 0
+    let plain = handle Layer
+        fetch slot => {
+            plainCalls = plainCalls + 1 ?: plainCalls
+            resume(slot)
+        }
+    in layered()
+
+    mut soloCalls = 0
+    mut soloObserved = 0
+    let solo = handle Layer
+        fetch slot => {
+            soloCalls = soloCalls + 1 ?: soloCalls
+            let answer = resume(slot)
+            soloObserved = answer
+            (answer * 3) ?: answer
+        }
+    in soloLayer()
+
+    // 124 is the answer if every arm saw the raw body value instead of the
+    // next-inner arm's value; 126 is the answer if only the innermost
+    // adjustment survived; 123 is the answer if all three were discarded.
+    checkAll("post-resume adjustments compose out of the region", [
+        layeredResult == 129, entered == "1|2|3|",
+        observed == "3:123|2:126|1:128|", returned == "3:126|2:128|1:129|",
+        layeredResult != 123, layeredResult != 126, layeredResult != 124,
+        layeredResult == ((123 + 6) ?: 0),
+        startsWith(observed, "3:"), endsWith(observed, "1:128|"),
+        observed != returned, contains(observed, "3:123|")
+    ])
+
+    // Each arm's returned value is exactly the answer the next-outer arm then
+    // observes: 3 returns 126 and 2 observes 126; 2 returns 128 and 1 observes
+    // 128; 1 returns 129, which is the whole handle expression's result.
+    checkAll("each arm's value becomes the next-outer arm's answer", [
+        contains(returned, "3:126|"), contains(observed, "2:126|"),
+        contains(returned, "2:128|"), contains(observed, "1:128|"),
+        contains(returned, "1:129|"), !contains(observed, "2:123|"),
+        !contains(observed, "1:123|"), !contains(returned, "3:123|"),
+        length(observed) == 18, length(returned) == 18,
+        layeredResult == 129, endsWith(returned, "1:129|")
+    ])
+
+    // An arm that returns its answer unchanged leaves the body's own value as
+    // the region's result, which is what the adjusting region moved by 1+2+3.
+    checkAll("an unadjusted region answers with the body value", [
+        plain == 123, plainCalls == 3,
+        plain == ((((1 * 100) ?: 0) + ((2 * 10) ?: 0) + 3) ?: 0),
+        plain != layeredResult, ((layeredResult - plain) ?: 0) == 6,
+        layeredResult == ((plain + 6) ?: 0),
+        plain > 100, plain < 129, plainCalls == 3,
+        !contains(observed, "3:129|"), entered == "1|2|3|"
+    ])
+
+    // With one perform the arm's own value is unmistakably the region answer:
+    // the body computes 4 + 1 = 5 and the arm triples it.
+    checkAll("a single-perform arm supplies the whole region answer", [
+        solo == 15, soloObserved == 5, soloCalls == 1,
+        solo == ((soloObserved * 3) ?: 0),
+        soloObserved == ((4 + 1) ?: 0),
+        solo != 5, solo != 4, solo != 12, solo != layeredResult,
+        solo > 5, solo < 129, soloObserved != 4
+    ])
+}
+
+// Register the composition of post-resume adjustments.
+test("post-resume adjustments compose into the region answer", resumeAnswerComposesLifoCase)
+
+/// Scalar carries one operation per scalar payload kind a resume can supply.
+effect Scalar {
+    /// Supply the integer the caller must observe for `step`.
+    count: fn(int) -> int
+    /// Supply the float the caller must observe for `step`.
+    ratio: fn(int) -> float
+    /// Supply the boolean the caller must observe for `step`.
+    flag: fn(int) -> bool
+    /// Acknowledge `step` with nothing at all.
+    beat: fn(int) -> Unit
+}
+
+/// Four integer supplies rendered in order: zero, negative, large, duplicate.
+fn countBody() = {
+    let zero = perform Scalar.count(1)
+    let neg = perform Scalar.count(2)
+    let big = perform Scalar.count(3)
+    let dup = perform Scalar.count(4)
+    "${toString(zero)}/${toString(neg)}/${toString(big)}/${toString(dup)}"
+}
+
+/// One float returned unchanged, so the supplied bits are asserted directly.
+fn loneRatio() = perform Scalar.ratio(9)
+
+/// Three floats, each scaled by the caller, so a lost payload moves the sum.
+fn ratioBody() = {
+    let quarter = perform Scalar.ratio(1)
+    let zero = perform Scalar.ratio(2)
+    let neg = perform Scalar.ratio(3)
+    let scaled = (quarter * 4.0) + (zero * 100.0)
+    scaled + (neg * 2.0)
+}
+
+/// [EFFECTS-RESUME] [EFFECTS-OP-TYPING] "performed values must also match its
+/// types", so each arm resumes with its own operation's declared scalar type.
+/// Integers cover zero, a negative, a large value and a duplicate; floats cover
+/// a fraction, zero and a negative. [EFFECTS-OPERATION-MAILBOX] carries both as
+/// bare scalar words, so a float converted rather than bitcast on the way
+/// through would be visible in the sum: 1.25*4 + 0*100 + (-0.75)*2 = 3.5.
+fn resumeScalarPayloadsCase() = {
+    mut countCalls = 0
+    mut countGave = ""
+    let countText = handle Scalar
+        count step => {
+            countCalls = countCalls + 1 ?: countCalls
+            let value = match step {
+                1 => 0
+                2 => (0 - 9) ?: 0
+                3 => 1000000
+                _ => (0 - 9) ?: 0
+            }
+            countGave = "${countGave}${toString(value)}|"
+            resume(value)
+        }
+    in countBody()
+
+    mut loneCalls = 0
+    let lone = handle Scalar
+        ratio step => {
+            loneCalls = loneCalls + 1 ?: loneCalls
+            resume(2.5)
+        }
+    in loneRatio()
+
+    mut ratioCalls = 0
+    mut ratioSlots = ""
+    mut ratioSettled = ""
+    mut lastRatioAnswer = 0.0
+    let ratioTotal = handle Scalar
+        ratio step => {
+            ratioCalls = ratioCalls + 1 ?: ratioCalls
+            ratioSlots = "${ratioSlots}${toString(step)}|"
+            let value = match step {
+                1 => 1.25
+                2 => 0.0
+                _ => (0.0 - 0.75)
+            }
+            let answer = resume(value)
+            ratioSettled = "${ratioSettled}${toString(step)}|"
+            lastRatioAnswer = answer
+            answer
+        }
+    in ratioBody()
+
+    // "0/-9/1000000/-9" is 15 bytes; "/0/" would appear only if the large
+    // supply had been dropped, and "|9|" only if a sign had been lost.
+    checkAll("integer payloads: zero, negative, large and duplicate", [
+        countText == "0/-9/1000000/-9", countCalls == 4,
+        length(countText) == 15,
+        startsWith(countText, "0/-9/"), endsWith(countText, "/-9"),
+        contains(countText, "/1000000/"), !contains(countText, "/0/"),
+        countGave == "0|-9|1000000|-9|", length(countGave) == 16,
+        contains(countGave, "|1000000|"), !contains(countGave, "|9|"),
+        toString(1000000) == "1000000", countText != countGave
+    ])
+
+    // A float payload crosses the mailbox as its own bits: 2.5 arrives as 2.5,
+    // and only an exactly-supplied 2.5 doubles to 5.0.
+    checkAll("float payloads arrive as the bits that were supplied", [
+        lone == 2.5, loneCalls == 1, lone != 0.0, lone != 2.0, lone != 3.0,
+        (lone * 2.0) == 5.0, (lone + lone) == 5.0, toString(lone) == "2.5",
+        ratioTotal == 3.5, ratioCalls == 3, ratioTotal != 0.0,
+        ratioTotal != 5.0, lastRatioAnswer == 3.5,
+        ratioSlots == "1|2|3|", ratioSettled == "3|2|1|",
+        ratioSlots != ratioSettled
+    ])
+
+    // The float region's answer decomposes exactly, and the three scalar
+    // regions each keep their own handler-owned counter.
+    checkAll("scalar regions keep separate state", [
+        ratioTotal == (5.0 - 1.5),
+        ratioTotal == (((1.25 * 4.0) + (0.0 * 100.0)) + ((0.0 - 0.75) * 2.0)),
+        ((0.0 - 0.75) * 2.0) == -1.5,
+        lastRatioAnswer == ratioTotal, lone != ratioTotal,
+        countCalls == 4, ratioCalls == 3, loneCalls == 1,
+        countCalls != ratioCalls,
+        (((countCalls + ratioCalls) ?: 0) + loneCalls ?: 0) == 8,
+        countText != ""
+    ])
+}
+
+// Register integer and float resume payloads.
+test("resume carries integer and float payloads", resumeScalarPayloadsCase)
+
+/// Three booleans rendered in order, so both truth values must survive.
+fn flagBody() = {
+    let yes = perform Scalar.flag(1)
+    let no = perform Scalar.flag(2)
+    let again = perform Scalar.flag(3)
+    "${toString(yes)}|${toString(no)}|${toString(again)}"
+}
+
+/// The caller branches on the supplied boolean, so a wrong bit changes route.
+fn routeBody(step) = match perform Scalar.flag(step) {
+    true => "allow"
+    false => "deny"
+}
+
+/// Two routed decisions taken inside one region.
+fn routes() = {
+    let first = routeBody(1)
+    let second = routeBody(2)
+    "${first}/${second}"
+}
+
+/// Three Unit acknowledgements before the body produces its own answer.
+fn beatBody() = {
+    perform Scalar.beat(1)
+    perform Scalar.beat(2)
+    perform Scalar.beat(3)
+    "steady"
+}
+
+/// [EFFECTS-RESUME] "`resume()` supplies `Unit`." A Unit operation still
+/// suspends its performer, so its arm still observes the handled computation's
+/// answer after resuming — here a string, three times over. The boolean half
+/// pins both truth values, including one that decides the caller's own branch.
+fn resumeBoolAndUnitPayloadsCase() = {
+    mut flagCalls = 0
+    mut flagGave = ""
+    let flagText = handle Scalar
+        flag step => {
+            flagCalls = flagCalls + 1 ?: flagCalls
+            let value = match step {
+                2 => false
+                _ => true
+            }
+            let mark = match value {
+                true => "T"
+                false => "F"
+            }
+            flagGave = "${flagGave}${mark}|"
+            resume(value)
+        }
+    in flagBody()
+
+    mut routeCalls = 0
+    mut routeGave = ""
+    let routeText = handle Scalar
+        flag step => {
+            routeCalls = routeCalls + 1 ?: routeCalls
+            let value = match step {
+                2 => false
+                _ => true
+            }
+            let mark = match value {
+                true => "T"
+                false => "F"
+            }
+            routeGave = "${routeGave}${mark}|"
+            resume(value)
+        }
+    in routes()
+
+    mut beats = 0
+    mut beatOrder = ""
+    mut beatAfter = ""
+    mut beatSeen = ""
+    let beatText = handle Scalar
+        beat step => {
+            beats = beats + 1 ?: beats
+            beatOrder = "${beatOrder}${toString(step)}|"
+            let answer = resume()
+            beatAfter = "${beatAfter}${toString(step)}|"
+            beatSeen = "${beatSeen}${answer}|"
+            answer
+        }
+    in beatBody()
+
+    // "true|false|true" is 15 bytes and holds both renderings; a boolean that
+    // collapsed to an integer would print "1" or "0" instead.
+    checkAll("boolean payloads keep both truth values", [
+        flagText == "true|false|true", length(flagText) == 15,
+        contains(flagText, "true"), contains(flagText, "false"),
+        startsWith(flagText, "true|"), endsWith(flagText, "|true"),
+        !startsWith(flagText, "false"), flagCalls == 3,
+        flagGave == "T|F|T|", !contains(flagText, "1"),
+        !contains(flagText, "0"), toString(true) == "true",
+        toString(false) == "false"
+    ])
+
+    // The supplied bit selects the caller's own match arm, so the route text
+    // orders itself by which perform received which value.
+    checkAll("a supplied boolean drives the caller's own branch", [
+        routeText == "allow/deny", length(routeText) == 10,
+        startsWith(routeText, "allow"), endsWith(routeText, "deny"),
+        contains(routeText, "/"), routeText != "deny/allow",
+        !contains(routeText, "denyallow"), routeCalls == 2,
+        routeGave == "T|F|", routeText != flagText,
+        routeCalls != flagCalls, flagGave != routeGave
+    ])
+
+    // Each Unit arm resumes with nothing and still observes the string the
+    // whole computation answers with, three times, unwinding in reverse.
+    checkAll("resume() supplies Unit and still returns the answer", [
+        beatText == "steady", beats == 3,
+        beatOrder == "1|2|3|", beatAfter == "3|2|1|",
+        beatOrder != beatAfter, beatSeen == "steady|steady|steady|",
+        length(beatSeen) == 21, contains(beatSeen, "steady|steady|"),
+        startsWith(beatOrder, "1|"), endsWith(beatAfter, "1|"),
+        beatText != "", length(beatText) == 6
+    ])
+
+    // Three regions over the same effect, each with its own counters; the
+    // boolean regions never ran a `beat` arm and vice versa.
+    checkAll("bool and Unit regions keep separate state", [
+        flagCalls == 3, routeCalls == 2, beats == 3,
+        flagCalls == beats, flagCalls != routeCalls,
+        (((flagCalls + routeCalls) ?: 0) + beats ?: 0) == 8,
+        beatSeen != flagText, beatOrder != routeGave,
+        flagText != routeText, beatText != flagText
+    ])
+}
+
+// Register boolean and Unit resume payloads.
+test("resume carries boolean and Unit payloads", resumeBoolAndUnitPayloadsCase)
+
+/// Slot is a record supplied whole through one resumed operation.
+type Slot = { label: string, weight: int, ready: bool }
+
+/// Managed carries the payload kinds that travel as managed mailbox words.
+effect Managed {
+    /// Supply the text the caller must observe for `key`.
+    text: fn(string) -> string
+    /// Supply the whole record the caller must observe for `n`.
+    slot: fn(int) -> Slot
+    /// Supply the whole Result the caller must decide about for `key`.
+    parse: fn(string) -> Result<int, string>
+}
+
+/// Four text supplies bracketed in place: empty, one byte, punctuation and
+/// digits, and a repeated substring.
+fn textBody() = {
+    let empty = perform Managed.text("empty")
+    let one = perform Managed.text("one")
+    let mixed = perform Managed.text("mixed")
+    let repeated = perform Managed.text("repeated")
+    "[${empty}][${one}][${mixed}][${repeated}]"
+}
+
+/// Two records read field by field, the second one all-empty and all-zero.
+fn slotBody() = {
+    let left = perform Managed.slot(1)
+    let right = perform Managed.slot(2)
+    "${left.label}:${left.weight}:${left.ready}/${right.label}:${right.weight}:${right.ready}"
+}
+
+/// One record whose numeric field the caller does arithmetic with.
+fn weightBody() = {
+    let held = perform Managed.slot(7)
+    (held.weight * 2) ?: 0
+}
+
+/// The caller, not the handler, turns the supplied Result into an integer.
+fn parseValue(key) = match perform Managed.parse(key) {
+    Success { value } => value
+    Error { message } => (0 - length(message)) ?: 0
+}
+
+/// One success and one error weighted 10/1, so both must arrive intact.
+fn parsedPair() = {
+    let good = parseValue("ok")
+    let bad = parseValue("bad")
+    ((good * 10) ?: 0) + bad ?: 0
+}
+
+/// [EFFECTS-RESUME] with [EFFECTS-OPERATION-MAILBOX]: a managed payload is
+/// borrowed by the arm "for the whole time it can reach them — including after
+/// a `resume` returns", so a string, a whole record and a whole `Result` must
+/// each cross unchanged. The empty string and the all-zero record are the
+/// boundary cases; the `Result` arms resume from inside a `match`, which is
+/// where an exception-style policy normally decides.
+fn resumeManagedPayloadsCase() = {
+    mut textCalls = 0
+    mut textGave = ""
+    let textResult = handle Managed
+        text key => {
+            textCalls = textCalls + 1 ?: textCalls
+            let value = match key {
+                "empty" => ""
+                "one" => "x"
+                "mixed" => "a1, b2!"
+                _ => "abab"
+            }
+            textGave = "${textGave}${key}=${value}|"
+            resume(value)
+        }
+    in textBody()
+
+    mut slotCalls = 0
+    let slotText = handle Managed
+        slot n => {
+            slotCalls = slotCalls + 1 ?: slotCalls
+            match n {
+                1 => resume(Slot { label: "left", weight: 3, ready: true })
+                _ => resume(Slot { label: "", weight: 0, ready: false })
+            }
+        }
+    in slotBody()
+
+    mut weightCalls = 0
+    let doubledWeight = handle Managed
+        slot n => {
+            weightCalls = weightCalls + 1 ?: weightCalls
+            resume(Slot { label: "seven", weight: 21, ready: true })
+        }
+    in weightBody()
+
+    mut parseCalls = 0
+    mut parseGave = ""
+    let parsedTotal = handle Managed
+        parse key => {
+            parseCalls = parseCalls + 1 ?: parseCalls
+            match key {
+                "ok" => {
+                    parseGave = "${parseGave}ok=Success|"
+                    resume(Success { value: 12 })
+                }
+                _ => {
+                    parseGave = "${parseGave}bad=Error|"
+                    resume(Error { message: "nope!" })
+                }
+            }
+        }
+    in parsedPair()
+
+    // "[][x][a1, b2!][abab]" is 20 bytes: eight brackets around 0 + 1 + 7 + 4
+    // bytes of payload. The leading "[]" is the empty supply arriving as an
+    // empty string rather than as a missing one.
+    checkAll("string payloads: empty, one byte, punctuation, repeats", [
+        textResult == "[][x][a1, b2!][abab]", length(textResult) == 20,
+        startsWith(textResult, "[][x]"), endsWith(textResult, "[abab]"),
+        contains(textResult, "[]"), contains(textResult, "a1, b2!"),
+        toUpperCase(textResult) == "[][X][A1, B2!][ABAB]",
+        toLowerCase(toUpperCase(textResult)) == "[][x][a1, b2!][abab]",
+        textCalls == 4,
+        textGave == "empty=|one=x|mixed=a1, b2!|repeated=abab|",
+        length(textGave) == 41, contains(textGave, "empty=|"),
+        !contains(textResult, "empty"), textResult != textGave
+    ])
+
+    // Both records arrive whole: three fields each, the second one carrying an
+    // empty label, a zero weight and a false flag.
+    checkAll("a whole record crosses one operation intact", [
+        slotText == "left:3:true/:0:false", length(slotText) == 20,
+        startsWith(slotText, "left:3:true"), endsWith(slotText, ":0:false"),
+        contains(slotText, "/:0:"), !contains(slotText, "//"),
+        contains(slotText, "true"), contains(slotText, "false"),
+        slotCalls == 2, doubledWeight == 42, weightCalls == 1,
+        doubledWeight == ((21 * 2) ?: 0),
+        doubledWeight != 21, doubledWeight != 0
+    ])
+
+    // Success carries 12 and Error carries a five-byte message, so the caller's
+    // own match turns them into 12 and -5, weighted to 120 - 5 = 115.
+    checkAll("resume inside a match arm supplies whole Results", [
+        parsedTotal == 115, parseCalls == 2,
+        parsedTotal == ((120 - 5) ?: 0), length("nope!") == 5,
+        parsedTotal != 120, parsedTotal != 125, parsedTotal != 12,
+        parseGave == "ok=Success|bad=Error|", length(parseGave) == 21,
+        contains(parseGave, "ok=Success|"), contains(parseGave, "bad=Error|"),
+        startsWith(parseGave, "ok="), endsWith(parseGave, "Error|")
+    ])
+
+    // Four regions over three managed operations, each with its own counter.
+    checkAll("managed regions keep separate state", [
+        textCalls == 4, slotCalls == 2, weightCalls == 1, parseCalls == 2,
+        (((textCalls + slotCalls) ?: 0) + ((weightCalls + parseCalls) ?: 0) ?: 0) == 9,
+        textCalls != parseCalls, slotCalls == parseCalls,
+        textResult != slotText, slotText != "", parsedTotal > 100
+    ])
+}
+
+// Register string, record and Result resume payloads.
+test("resume carries string record and Result payloads", resumeManagedPayloadsCase)
+
+/// Depth exposes one operation performed only by the deepest frame.
+effect Depth {
+    /// Supply the value the deepest frame will observe for `tag`.
+    supply: fn(string) -> int
+}
+
+/// The deepest frame is the only one that performs.
+fn depth3(tag) = perform Depth.supply(tag)
+
+/// One frame up performs twice through the deepest one.
+fn depth2(tag) = (depth3("${tag}.a") + depth3("${tag}.b")) ?: 0
+
+/// Each frame on the way out applies its own transform.
+fn depth1(tag) = (depth2(tag) * 2) ?: 0
+
+/// The outermost frame adds the constant the transforms must not erase.
+fn depth0() = (depth1("deep") + 5) ?: 0
+
+/// The chain performs from three different depths, before and after a resume.
+fn spanBody() = {
+    let first = depth3("shallow")
+    let inner = depth1("nested")
+    let tailValue = depth3("tail")
+    ((first + inner) ?: 0) + tailValue ?: 0
+}
+
+/// [EFFECTS-RESUME] Handlers "are deep: the same handler remains installed
+/// while the continuation runs", and [EFFECTS-STATIC-DISCHARGE] propagates the
+/// requirement "through named calls", so a perform four frames below the
+/// `handle` reaches the same arm — and so does the next one, performed after
+/// the first continuation resumed. Supplying 3 then 4 gives (3+4)*2 + 5 = 19.
+fn resumeFromNestedHelpersCase() = {
+    mut depthCalls = 0
+    mut depthSeed = 0
+    mut depthTags = ""
+    mut depthSettled = ""
+    mut depthAnswers = ""
+    let deepResult = handle Depth
+        supply tag => {
+            depthCalls = depthCalls + 1 ?: depthCalls
+            depthSeed = (depthSeed + 1) ?: depthSeed
+            depthTags = "${depthTags}${tag}|"
+            let answer = resume((depthSeed + 2) ?: depthSeed)
+            depthSettled = "${depthSettled}${tag}|"
+            depthAnswers = "${depthAnswers}${toString(answer)}|"
+            answer
+        }
+    in depth0()
+
+    mut spanCalls = 0
+    mut spanSeed = 0
+    mut spanTags = ""
+    mut spanSettled = ""
+    mut spanSeen = ""
+    let spanResult = handle Depth
+        supply tag => {
+            spanCalls = spanCalls + 1 ?: spanCalls
+            spanSeed = (spanSeed + 1) ?: spanSeed
+            spanTags = "${spanTags}${tag}|"
+            let answer = resume(spanSeed)
+            spanSettled = "${spanSettled}${tag}|"
+            spanSeen = "${spanSeen}${toString(answer)}|"
+            answer
+        }
+    in spanBody()
+
+    // 24 is the answer if the +5 had been folded in before the doubling, 14 if
+    // the outermost frame's constant were lost, 7 if the doubling were lost.
+    checkAll("a perform four frames deep reaches the region's arm", [
+        deepResult == 19, depthCalls == 2, depthSeed == 2,
+        depthTags == "deep.a|deep.b|", depthSettled == "deep.b|deep.a|",
+        depthTags != depthSettled, depthAnswers == "19|19|",
+        deepResult == ((14 + 5) ?: 0), ((3 + 4) ?: 0) == 7,
+        ((7 * 2) ?: 0) == 14,
+        deepResult != 7, deepResult != 14, deepResult != 24,
+        deepResult > 14, deepResult < 24
+    ])
+
+    // The same handler serves a perform before the nested chain, two inside it,
+    // and one after it returned: 1 + ((2+3)*2) + 4 = 15.
+    checkAll("the deep handler stays installed across the continuation", [
+        spanResult == 15, spanCalls == 4,
+        spanTags == "shallow|nested.a|nested.b|tail|",
+        spanSettled == "tail|nested.b|nested.a|shallow|",
+        startsWith(spanTags, "shallow|"), endsWith(spanTags, "tail|"),
+        startsWith(spanSettled, "tail|"), endsWith(spanSettled, "shallow|"),
+        spanTags != spanSettled, length(spanTags) == 31,
+        length(spanSettled) == 31, spanResult == ((11 + 4) ?: 0),
+        (((2 + 3) ?: 0) * 2 ?: 0) == 10, spanResult != 10, spanResult != 5
+    ])
+
+    // Every arm in the span region observed the one completed answer, and the
+    // first region's state is untouched by the second.
+    checkAll("both deep regions keep their own transcripts", [
+        contains(spanTags, "nested.a|nested.b|"),
+        contains(spanTags, "|tail|"),
+        !contains(spanSettled, "shallow|tail"),
+        spanSeen == "15|15|15|15|", length(spanSeen) == 12,
+        spanCalls == 4, spanSeed == 4,
+        depthCalls == 2, depthSeed == 2, deepResult == 19,
+        deepResult != spanResult, depthTags != spanTags
+    ])
+}
+
+// Register a perform reached through four frames of helpers.
+test("resume reaches a perform four frames deep", resumeFromNestedHelpersCase)
+
+/// Ticker supplies one scripted value per index of a twelve-step walk.
+effect Ticker {
+    /// Supply the scripted value for index `i`.
+    tick: fn(int) -> int
+}
+
+/// The script, read by index inside the arm: zero, positive, negative, a
+/// duplicate, a large value, adjacent duplicates and a trailing zero.
+fn scriptValues() = [0, 7, -4, 7, 100, 0, -1, 12, 12, 3, 0, 25]
+
+/// Twelve sequential performs in one region, folded on the way back out.
+fn drain(i) = match i < 12 {
+    true => perform Ticker.tick(i) + drain((i + 1) ?: i) ?: 0
+    false => 0
+}
+
+/// [EFFECTS-RESUME] Every suspension in one region settles exactly once, in
+/// reverse of the order the performs entered, and [EFFECTS-HANDLER-STATE]
+/// keeps one shared cell across all of them: "every arm, the handled body, and
+/// code after the region observe the same location". The script sums to
+/// 10 + 111 + 40 = 161, and twelve arms each observing that answer sum to 1932.
+fn manyPerformsOneRegionCase() = {
+    mut tickEntered = 0
+    mut tickSettled = 0
+    mut tickGave = ""
+    mut tickOrder = ""
+    mut seenSum = 0
+    let drained = handle Ticker
+        tick i => {
+            tickEntered = (tickEntered + 1) ?: tickEntered
+            let value = listGet(scriptValues(), i) ?: 0
+            tickGave = "${tickGave}${toString(value)}|"
+            let answer = resume(value)
+            tickSettled = (tickSettled + 1) ?: tickSettled
+            tickOrder = "${tickOrder}${toString(i)}|"
+            seenSum = (seenSum + answer) ?: seenSum
+            answer
+        }
+    in drain(0)
+
+    // The script is exactly twelve entries long, so the sum below is exhaustive
+    // and every out-of-range read falls back instead of contributing.
+    checkAll("twelve sequential suspensions each settle exactly once", [
+        drained == 161, tickEntered == 12, tickSettled == 12,
+        tickEntered == tickSettled, listLength(scriptValues()) == 12,
+        (listGet(scriptValues(), 0) ?: 99) == 0,
+        (listGet(scriptValues(), 11) ?: 99) == 25,
+        (listGet(scriptValues(), 12) ?: 99) == 99,
+        (listGet(scriptValues(), -1) ?: 99) == 99,
+        (listGet(scriptValues(), 1000) ?: 99) == 99,
+        drained != 0, drained > 100, drained < 200
+    ])
+
+    // Partial sums: 0+7-4+7 = 10, 100+0-1+12 = 111, 12+3+0+25 = 40.
+    checkAll("each index receives its own scripted value", [
+        tickGave == "0|7|-4|7|100|0|-1|12|12|3|0|25|",
+        length(tickGave) == 31,
+        startsWith(tickGave, "0|7|-4|"), endsWith(tickGave, "|25|"),
+        contains(tickGave, "|100|"), contains(tickGave, "|-1|"),
+        contains(tickGave, "|12|12|"), !contains(tickGave, "|13|"),
+        drained == 161, (((10 + 111) ?: 0) + 40 ?: 0) == 161,
+        drained != 10, drained != 40, drained != 111
+    ])
+
+    // Twelve arms, one completed answer: 161 * 12 = 1932.
+    checkAll("the whole region settles in reverse index order", [
+        tickOrder == "11|10|9|8|7|6|5|4|3|2|1|0|",
+        length(tickOrder) == 26,
+        startsWith(tickOrder, "11|10|"), endsWith(tickOrder, "|1|0|"),
+        !startsWith(tickOrder, "0|"), contains(tickOrder, "|5|4|"),
+        tickOrder != tickGave, tickSettled == 12, tickEntered == 12,
+        seenSum == 1932, seenSum == ((161 * 12) ?: 0),
+        seenSum != 161, seenSum != 0
+    ])
+}
+
+// Register twelve performs settling through one region.
+test("twelve performs in one region each settle once", manyPerformsOneRegionCase)

@@ -12,9 +12,9 @@ use crate::cast::coerce_to;
 use crate::conv::unbox_from_i64;
 use crate::error::Result;
 use crate::expr::gen_expr;
-use crate::freevars::free_idents;
 use crate::llty::{LType, Value};
 use crate::types::{ltype_of, result_inner};
+use osprey_ast::freevars::free_idents;
 use osprey_ast::{contains_resume, Expr, HandlerArm, MatchArm, Stmt};
 use std::collections::{BTreeSet, HashSet};
 
@@ -123,7 +123,7 @@ fn bind_arm_params(
                 param,
                 resolved
                     .and_then(|r| r.params.get(i))
-                    .and_then(crate::types::owner_name),
+                    .and_then(|t| crate::types::owner_name(&cg.prog, t)),
             ),
         };
         cg.bind(pname.clone(), bound);
@@ -660,6 +660,10 @@ struct DriveArm {
     operation: String,
     sig: OpSig,
     arm_fn: String,
+    /// Whether THIS arm captures the continuation. The mode belongs to the arm,
+    /// not the region: a sibling's `resume` must not turn a substituting arm
+    /// into an early exit. Implements [EFFECTS-HANDLER-ARMS].
+    resumes: bool,
 }
 
 /// The complete runtime shape of the handled expression's answer. Resuming
@@ -688,6 +692,25 @@ impl AnswerShape {
             unbox_coro_value(cg, raw, self.ty, self.result_inner).with_owner(self.owner.clone());
         value.payload_owner.clone_from(&self.payload_owner);
         value
+    }
+}
+
+/// Coerce a value into an operation's RESULT slot: what `resume(v)` supplies,
+/// and what a substituting arm's value becomes. Preserves a complete Result,
+/// safely promotes a plain value to `Success` when that is the declared slot,
+/// and rejects the forbidden `Result -> plain` direction.
+fn coerce_to_op_result(
+    cg: &mut Codegen,
+    value: Value,
+    ret_ty: LType,
+    result_inner: Option<LType>,
+) -> Result<Value> {
+    match result_inner {
+        Some(inner) if value.result_inner.is_some() => {
+            crate::result::repack_to_inner(cg, value, inner)
+        }
+        Some(inner) => crate::result::make_ok(cg, value, inner),
+        None => coerce_to(cg, value, ret_ty),
     }
 }
 
@@ -747,6 +770,7 @@ fn gen_resuming_handler(
         let resolved = site_ops.and_then(|m| m.ops.get(&arm.operation));
         let suspend_fn = format!("__resume_suspend_{effect}_{}_{id}_{op_id}", arm.operation);
         let arm_fn = format!("__resume_arm_{effect}_{}_{id}_{op_id}", arm.operation);
+        let resumes = contains_resume(&arm.body);
         emit_suspend_fn(cg, &suspend_fn, op_id, &sig, resolved);
         emit_resuming_arm_fn(
             cg,
@@ -759,6 +783,7 @@ fn gen_resuming_handler(
                 resolved,
                 caps: &caps,
                 env_ty: &env_ty,
+                resumes,
             },
         )?;
         drive_arms.push(DriveArm {
@@ -766,6 +791,7 @@ fn gen_resuming_handler(
             operation: arm.operation.clone(),
             sig,
             arm_fn,
+            resumes,
         });
     }
     emit_drive_fn(cg, &drive_fn, &drive_arms)?;
@@ -877,6 +903,8 @@ struct ArmFnSpec<'a> {
     resolved: Option<&'a osprey_types::OpType>,
     caps: &'a [ArmCap],
     env_ty: &'a str,
+    /// This arm's own resumption mode — see [`DriveArm::resumes`].
+    resumes: bool,
 }
 
 fn emit_resuming_arm_fn(cg: &mut Codegen, arm: &HandlerArm, spec: &ArmFnSpec<'_>) -> Result<()> {
@@ -907,7 +935,15 @@ fn emit_resuming_arm_fn(cg: &mut Codegen, arm: &HandlerArm, spec: &ArmFnSpec<'_>
         op_ret_result_inner,
     });
     let body_raw = gen_expr(cg, &arm.body)?;
-    let body = coerce_to_answer(cg, body_raw, spec.answer)?;
+    // The arm's value fills whichever slot its OWN mode supplies: a resuming
+    // arm answers for the whole region, a substituting arm supplies its
+    // operation's result exactly as `resume` would. Implements
+    // [EFFECTS-HANDLER-ARMS].
+    let body = if spec.resumes {
+        coerce_to_answer(cg, body_raw, spec.answer)?
+    } else {
+        coerce_to_op_result(cg, body_raw, op_ret_ty, op_ret_result_inner)?
+    };
     let boxed = box_codegen_value(cg, body);
     crate::arc::epilogue(cg, None);
     cg.emit(format!("ret i64 {}", boxed.operand));
@@ -977,18 +1013,11 @@ fn emit_drive_fn(cg: &mut Codegen, name: &str, arms: &[DriveArm]) -> Result<()> 
         // +1 the performer handed over. Anything the arm kept — stored into
         // handler state, returned, or passed to `resume` — it retained itself.
         cg.call_void("__osprey_coro_mail_free", "i8*", &[&mail]);
-        let done_after = cg.call("i64", "__osprey_coro_done", "i8*", &["%__coro"]);
-        let done_after_cond = cg.emit_reg(format!("icmp ne i64 {done_after}, 0"));
-        let abort_lbl = cg.fresh_label();
-        let return_lbl = cg.fresh_label();
-        cg.emit(format!(
-            "br i1 {done_after_cond}, label %{return_lbl}, label %{abort_lbl}"
-        ));
-        cg.start_block(&abort_lbl);
-        cg.call_void("__osprey_coro_abort", "i8*", &["%__coro"]);
-        cg.emit(format!("br label %{return_lbl}"));
-        cg.start_block(&return_lbl);
-        cg.emit(format!("ret i64 {arm_result}"));
+        if arm.resumes {
+            emit_abandon_or_answer(cg, &arm_result);
+        } else {
+            emit_substitute_and_continue(cg, name, &arm_result);
+        }
     }
 
     cg.start_block(&miss_lbl);
@@ -999,6 +1028,63 @@ fn emit_drive_fn(cg: &mut Codegen, name: &str, arms: &[DriveArm]) -> Result<()> 
     cg.emit("ret i64 0");
     cg.exit_nested_fn(saved, "i64", name, &params);
     Ok(())
+}
+
+/// Dispatch tail for an arm that captures the continuation. Its `resume` calls
+/// already drove the computation, so reaching here with the computation still
+/// suspended means this arm returned WITHOUT resuming on the path it took: that
+/// ABANDONS the continuation, and the arm's value answers for the whole region.
+/// Implements [EFFECTS-HANDLER-ARMS].
+fn emit_abandon_or_answer(cg: &mut Codegen, arm_result: &str) {
+    let done = cg.call("i64", "__osprey_coro_done", "i8*", &["%__coro"]);
+    let cond = cg.emit_reg(format!("icmp ne i64 {done}, 0"));
+    let abort_lbl = cg.fresh_label();
+    let return_lbl = cg.fresh_label();
+    cg.emit(format!(
+        "br i1 {cond}, label %{return_lbl}, label %{abort_lbl}"
+    ));
+    cg.start_block(&abort_lbl);
+    cg.call_void("__osprey_coro_abort", "i8*", &["%__coro"]);
+    cg.emit(format!("br label %{return_lbl}"));
+    cg.start_block(&return_lbl);
+    cg.emit(format!("ret i64 {arm_result}"));
+}
+
+/// Dispatch tail for an arm that never resumes. Its value SUBSTITUTES for the
+/// operation's result: hand it to the suspended computation and keep driving,
+/// so the rest of the handled body runs and the region still answers with the
+/// body's own value. Killing the computation here instead is issue #177 — a
+/// sibling arm's `resume` silently converted this arm into an early exit.
+/// Implements [EFFECTS-HANDLER-ARMS].
+fn emit_substitute_and_continue(cg: &mut Codegen, drive_fn: &str, arm_result: &str) {
+    let resumed = cg.call(
+        "i64",
+        "__osprey_coro_resume",
+        "i8*, i64",
+        &["%__coro", arm_result],
+    );
+    let done = cg.call("i64", "__osprey_coro_done", "i8*", &["%__coro"]);
+    let cond = cg.emit_reg(format!("icmp ne i64 {done}, 0"));
+    let done_lbl = cg.fresh_label();
+    let more_lbl = cg.fresh_label();
+    cg.emit(format!(
+        "br i1 {cond}, label %{done_lbl}, label %{more_lbl}"
+    ));
+    cg.start_block(&done_lbl);
+    cg.emit(format!("ret i64 {resumed}"));
+    cg.start_block(&more_lbl);
+    // `musttail`, not a plain call: the dispatcher continues by re-entering
+    // itself with the SAME arguments, so a handler with one resuming arm and
+    // one substituting arm grew a native frame per operation the substituting
+    // arm answered. Release builds happened to fold it away; debug builds
+    // compile at `-O0` ([`osprey_debug`]) where nothing does, and a loop of
+    // otherwise constant-space performs exhausted the host stack. `musttail`
+    // makes the reuse a VERIFIED property of the module rather than a hope
+    // about the optimizer. Implements [EFFECTS-HANDLER-ARMS].
+    let nested = cg.emit_reg(format!(
+        "musttail call i64 @{drive_fn}(i8* %__env, i8* %__coro)"
+    ));
+    cg.emit(format!("ret i64 {nested}"));
 }
 
 pub(crate) fn gen_resume(cg: &mut Codegen, value: Option<&Expr>) -> Result<Value> {
@@ -1012,18 +1098,7 @@ pub(crate) fn gen_resume(cg: &mut Codegen, value: Option<&Expr>) -> Result<Value
         Some(expr) => gen_expr(cg, expr)?,
         None => Value::unit(),
     };
-    // The resume value lands in the operation-result slot. Preserve a complete
-    // Result, safely promote a plain value to Success when that is the declared
-    // slot, and reject the forbidden Result -> plain direction.
-    let raw_value = if let Some(inner) = ctx.op_ret_result_inner {
-        if raw_value.result_inner.is_some() {
-            crate::result::repack_to_inner(cg, raw_value, inner)?
-        } else {
-            crate::result::make_ok(cg, raw_value, inner)?
-        }
-    } else {
-        coerce_to(cg, raw_value, ctx.op_ret_ty)?
-    };
+    let raw_value = coerce_to_op_result(cg, raw_value, ctx.op_ret_ty, ctx.op_ret_result_inner)?;
     let boxed_value = box_codegen_value(cg, raw_value);
     let resumed = cg.call(
         "i64",

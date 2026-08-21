@@ -1,5 +1,8 @@
-// Three typed operations use independent direct-substitution policies: parse
-// supplies 0, missing supplies a default, and range clamps to a bound.
+(** Cross-contract oracle for [EFFECTS-OP-TYPING], [EFFECTS-STATIC-DISCHARGE],
+    [EFFECTS-HANDLER-STATE], [TYPE-LIST], [TYPE-LIST-PATTERNS], [TYPE-MAP],
+    [TYPE-MAP-LOOKUP], [TYPE-MAP-OPS], [PATTERN-RESULT-DEFAULT],
+    [FLAVOR-ML-HANDLER], [FLAVOR-ML-LIST], [FLAVOR-ML-MAP], and
+    [FLAVOR-ML-MATCH]. *)
 
 (** --- three distinct, independent typed error channels --- *)
 effect Parse
@@ -81,10 +84,115 @@ relaxedRangeForTest () =
         clamp v hi => hi
     in loadRetries 500 10
 
-// Replay Range under two policies and check the composed channel result.
-test "typed error channels compose and restore shadowed handlers" (\() => checkAll "typed channel results" [
+parseUnder (raw, replacement) =
+    handle Parse
+        bad text => replacement
+    in perform Parse.bad raw
+
+missingUnder key =
+    handle Missing
+        fill name => match name
+            "timeout" => 30
+            _ => 1
+    in perform Missing.fill key
+
+clampUnder (raw, high) =
+    handle Range
+        clamp value limit => match value > limit
+            true => limit
+            false => value
+    in loadRetries raw high
+
+forceUnder (raw, high, replacement) =
+    handle Range
+        clamp value limit => replacement
+    in loadRetries raw high
+
+rangePolicyTrace (raw, high) =
+    handle Range
+        clamp value limit => match value > limit
+            true => limit
+            false => value
+    in
+        before = loadRetries raw high
+        strict =
+            handle Range
+                clamp value limit => 1
+            in loadRetries raw high
+        after = loadRetries raw high
+        [before, strict, after]
+
+traceShape values = match values
+    [] => "empty"
+    [only] => "one:${only}"
+    [first, second] => "two:${first}/${second}"
+    [head, ...tail] => "many:${head}+${listLength tail}"
+
+(** Replay Range under two policies and check the composed channel result. *)
+typedErrorChannelCase () =
+    trace = rangePolicyTrace (500, 10)
+    healthyTrace = rangePolicyTrace (5, 10)
+    scalars = [
+        "parse" => parseUnder ("bad", 7),
+        "missing" => missingUnder "timeout",
+        "range" => clampUnder (500, 10)
+    ]
+    nested = [
+        "outer-inner-outer" => trace,
+        "healthy-inner-healthy" => healthyTrace
+    ]
+    grown = nested |> mapSet "forced" [forceUnder (9, 10, 4), forceUnder (99, 10, 4)]
+
+    checkAll "typed channel direct substitution policies" [
         combined == 40,
         strictRangeForTest () == 1,
         relaxedRangeForTest () == 10,
-        strictRangeForTest () != relaxedRangeForTest ()
-])
+        strictRangeForTest () != relaxedRangeForTest (),
+        parseUnder ("bad", 0) == 0,
+        parseUnder ("bad", 7) == 7,
+        parseUnder ("other", 99) == 99,
+        missingUnder "timeout" == 30,
+        missingUnder "retries" == 1,
+        clampUnder (5, 10) == 5,
+        clampUnder (10, 10) == 10,
+        clampUnder (11, 10) == 10,
+        clampUnder (500, 10) == 10,
+        forceUnder (5, 10, 4) == 4,
+        forceUnder (500, 10, 4) == 4
+    ]
+
+    checkAll "nested handlers restore outer policies around collection values" [
+        listLength trace == 3,
+        (listGet trace 0 ?: 99) == 10,
+        (listGet trace 1 ?: 99) == 1,
+        (listGet trace 2 ?: 99) == 10,
+        listLength healthyTrace == 3,
+        (listGet healthyTrace 0 ?: 99) == 5,
+        (listGet healthyTrace 1 ?: 99) == 1,
+        (listGet healthyTrace 2 ?: 99) == 5,
+        traceShape [] == "empty",
+        traceShape [7] == "one:7",
+        traceShape [7, 8] == "two:7/8",
+        traceShape trace == "many:10+2"
+    ]
+
+    checkAll "typed effect results remain coherent inside maps of lists" [
+        mapLength scalars == 3,
+        (mapGet scalars "parse" ?: 99) == 7,
+        (mapGet scalars "missing" ?: 99) == 30,
+        (mapGet scalars "range" ?: 99) == 10,
+        (mapGet scalars "absent" ?: 99) == 99,
+        mapLength nested == 2,
+        mapLength grown == 3,
+        listLength (mapGet nested "outer-inner-outer" ?: [99]) == 3,
+        (listGet (mapGet nested "outer-inner-outer" ?: [99]) 1 ?: 99) == 1,
+        (listGet (mapGet nested "healthy-inner-healthy" ?: [99]) 2 ?: 99) == 5,
+        listLength (mapGet grown "forced" ?: [99]) == 2,
+        (listGet (mapGet grown "forced" ?: [99]) 0 ?: 99) == 4,
+        (listGet (mapGet grown "forced" ?: [99]) 1 ?: 99) == 4,
+        !(mapContains nested "forced"),
+        mapContains grown "forced",
+        listLength (mapKeys grown) == 3,
+        listLength (mapValues grown) == 3
+    ]
+test "typed error channels compose and restore shadowed handlers" typedErrorChannelCase

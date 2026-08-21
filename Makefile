@@ -249,8 +249,9 @@ deslop:
 ## over-exposure, not dead code, and several are irreducibly public for the
 ## integration tests under this workspace's `dead_code = "deny"` policy, so they
 ## must NOT fail the gate. hawk needs rustc_private (RUSTC_BOOTSTRAP=1) and its
-## prebuilt driver is pinned to the workspace toolchain (1.97.1) — bump the
-## installer and the CI toolchain together. An absent cargo-hawk FAILS this
+## prebuilt driver is pinned to one exact rustc (1.98.0 as of cargo-hawk 0.1.13)
+## — it refuses to run under any other, so bump the installed hawk and the
+## toolchain together. An absent cargo-hawk FAILS this
 ## target: a gate that cannot run must not report success.
 ## Install: https://github.com/astral-sh/hawk
 hawk:

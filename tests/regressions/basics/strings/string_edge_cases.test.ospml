@@ -317,3 +317,634 @@ stringEdgeCase () =
         divisionRejected
     ]
 test "string edge cases preserve values and error payloads" stringEdgeCase
+
+(** [STRING-INTERPOLATION] Rendering: "Integers, floats, and booleans use their
+    normal scalar rendering"; [BUILTIN-TOSTRING] "Uses the same accepted types and
+    formatting as `print`, without writing output." Every hole is compared to the
+    exact text the spec pins AND to `toString` of the same value, so the two
+    lowerings cannot silently drift apart. *)
+interpolationScalarCase () =
+    negativeSeven = (0 - 7) ?: 0
+    intMax = 9223372036854775807
+    intMin = ((0 - 9223372036854775807) - 1) ?: 0
+    emptyText = ""
+    spaceText = " "
+
+    // Integers: no thousands separator, no sign for a positive, an explicit
+    // "-" for a negative, and the two 64-bit extremes spelled in full.
+    checkAll "integers render identically in a hole and in toString" [
+        "${0}" == "0",
+        "${1}" == "1",
+        "${42}" == "42",
+        "${negativeSeven}" == "-7",
+        "${intMax}" == "9223372036854775807",
+        "${intMin}" == "-9223372036854775808",
+        toString 0 == "0",
+        toString 42 == "42",
+        toString negativeSeven == "-7",
+        toString intMax == "9223372036854775807",
+        toString intMin == "-9223372036854775808",
+        "${0}" == toString 0,
+        "${negativeSeven}" == toString negativeSeven,
+        "${intMax}" == toString intMax,
+        "${intMin}" == toString intMin,
+        length "${0}" == 1,
+        length "${negativeSeven}" == 2,
+        length "${intMin}" == 20,
+        "${0}" != "0.0",
+        "${1}" != "true"
+    ]
+
+    // Floats keep a visible fractional part so a whole-valued float never
+    // renders as an int; [BUILTIN-TOFLOAT] pins toFloat 7 == 7.0 and
+    // toFloat (-3) == -3.0. Float + - * are plain, not Result ([ARITH-CHECKED]).
+    checkAll "floats and booleans render with their scalar spelling" [
+        "${0.0}" == "0.0",
+        "${1.5}" == "1.5",
+        "${3.5}" == "3.5",
+        "${2.0}" == "2.0",
+        "${100000.0}" == "100000.0",
+        "${0.0 - 0.25}" == "-0.25",
+        "${1.5 + 2.5}" == "4.0",
+        "${1.5 * 2.0}" == "3.0",
+        toString 0.0 == "0.0",
+        toString 3.5 == "3.5",
+        "${2.0}" == toString 2.0,
+        "${toFloat 7}" == "7.0",
+        "${toFloat 0}" == "0.0",
+        "${toFloat negativeSeven}" == "-7.0",
+        "${true}" == "true",
+        "${false}" == "false",
+        toString true == "true",
+        toString false == "false",
+        "${1 == 1}" == "true",
+        "${1 != 1}" == "false",
+        "${!(1 == 2)}" == "true",
+        "${2.0}" != "2",
+        "${true}" != "1"
+    ]
+
+    // "Strings are inserted unchanged" — no quoting, no escaping, no trimming.
+    checkAll "strings are inserted into a hole unchanged" [
+        "${emptyText}" == "",
+        "${spaceText}" == " ",
+        "${"x"}" == "x",
+        "${"a b"}" == "a b",
+        "${"  padded  "}" == "  padded  ",
+        toString "abc" == "abc",
+        "${"abc"}" == toString "abc",
+        length "${emptyText}" == 0,
+        length "${spaceText}" == 1,
+        length "${"  padded  "}" == 10,
+        isEmpty "${emptyText}",
+        !(isEmpty "${spaceText}"),
+        "a${emptyText}b" == "ab",
+        "${emptyText}${emptyText}" == "",
+        "[${spaceText}]" == "[ ]",
+        "${toString 42}" == "42",
+        "${toUpperCase "ab"}" == "AB",
+        "${"ab" |> toUpperCase}" == "AB",
+        "${length "abc"}" == "3"
+    ]
+
+(** [STRING-INTERPOLATION]: "A `Result` is never unwrapped at an interpolation
+    hole. It renders as the complete `Success(value)` or `Error(message)` value,
+    preserving its failure channel exactly as `toString` does." [BUILTIN-PRINT]
+    accepts `Result<T, E>` only "when both payloads are printable", so every
+    Result below carries an int, float or string payload. *)
+interpolationResultCase () =
+    negativeOne = (0 - 1) ?: 0
+    negativeFive = (0 - 5) ?: 0
+
+    checkAll "a successful Result renders as Success(payload)" [
+        "${parseInt "42"}" == "Success(42)",
+        "${parseInt "0"}" == "Success(0)",
+        "${parseInt "-9223372036854775808"}" == "Success(-9223372036854775808)",
+        "${parseFloat "3.5"}" == "Success(3.5)",
+        "${parseFloat "2"}" == "Success(2.0)",
+        "${parseFloat "1e3"}" == "Success(1000.0)",
+        "${parseFloat "-0.5"}" == "Success(-0.5)",
+        "${intDiv (7, 2)}" == "Success(3)",
+        "${intDiv (255643, 10)}" == "Success(25564)",
+        "${10 / 4}" == "Success(2.5)",
+        "${abs negativeFive}" == "Success(5)",
+        "${fromCodePoint 65}" == "Success(A)",
+        "${indexOf "banana" "na"}" == "Success(2)",
+        "${substring "banana" 1 4}" == "Success(ana)",
+        "${repeat "ab" 2}" == "Success(abab)",
+        "${padStart "7" 3 "0"}" == "Success(007)",
+        "${byteAt "A" 0}" == "Success(65)",
+        "${codePointWidth 233}" == "Success(2)"
+    ]
+
+    // Every message here is the reason the runtime actually produces; a
+    // placeholder reason would break the byte-for-byte comparison ([ERR-PAYLOAD]).
+    checkAll "a failed Result renders as Error(message) and keeps its reason" [
+        "${parseInt "oops"}" == "Error(parseInt: invalid integer)",
+        "${parseInt " 42"}" == "Error(parseInt: invalid integer)",
+        "${parseFloat "nan"}" == "Error(parseFloat: invalid number)",
+        "${parseFloat ""}" == "Error(parseFloat: invalid number)",
+        "${intDiv (5, 0)}" == "Error(division by zero)",
+        "${10 / 0}" == "Error(division by zero)",
+        "${indexOf "hello" "zz"}" == "Error(indexOf: substring not found)",
+        "${replace "h" "" ""}" == "Error(replace: needle must not be empty)",
+        "${repeat "a" negativeOne}" == "Error(repeat: count must not be negative)",
+        "${padStart "x" 5 ""}" == "Error(padStart: fill must not be empty)",
+        "${padEnd "x" 5 ""}" == "Error(padEnd: fill must not be empty)",
+        "${substring "hi" 0 99}" == "Error(substring: index out of range)",
+        "${byteAt "a" 9}" == "Error(byteAt: index out of range)",
+        "${codePointAt "é" 1}" == "Error(codePointAt: invalid UTF-8 lead byte)",
+        "${codePointWidth 55296}" == "Error(codePointWidth: surrogate is not a scalar)",
+        "${codePointWidth 1114112}" == "Error(codePointWidth: code point out of range)",
+        "${fromCodePoint 0}" == "Error(fromCodePoint: invalid code point)",
+        "${failWith "custom boom"}" == "Error(custom boom)"
+    ]
+
+    // "Success(2)" is 10 bytes; "Error(division by zero)" is 6 + 16 + 1 = 23.
+    checkAll "toString and a hole agree on every Result" [
+        toString (parseInt "42") == "${parseInt "42"}",
+        toString (parseInt "oops") == "${parseInt "oops"}",
+        toString (10 / 0) == "${10 / 0}",
+        toString (intDiv (7, 2)) == "${intDiv (7, 2)}",
+        toString (fromCodePoint 65) == "${fromCodePoint 65}",
+        toString (failWith "custom boom") == "${failWith "custom boom"}",
+        "value=${intDiv (10, 5)}" == "value=Success(2)",
+        "a${intDiv (5, 0)}b" == "aError(division by zero)b",
+        "${intDiv (7, 2)}${intDiv (7, 2)}" == "Success(3)Success(3)",
+        length "${intDiv (10, 5)}" == 10,
+        length "${10 / 0}" == 23,
+        startsWith "${parseInt "42"}" "Success(",
+        endsWith "${parseInt "42"}" ")",
+        !(contains "${parseInt "42"}" "Error"),
+        startsWith "${parseInt "oops"}" "Error(",
+        contains "${parseInt "oops"}" "invalid integer",
+        !(contains "${parseInt "oops"}" "Success"),
+        (indexOf "${parseInt "oops"}" "(" ?: negativeOne) == 5,
+        (indexOf "${intDiv (10, 5)}" "(" ?: negativeOne) == 7
+    ]
+
+(** [LEXICAL-STRUCTURE] literals: "Shared unescaping recognizes `\n`, `\r`, `\t`,
+    `\e`, `\0`, `\"`, and `\\`; an unknown escape is preserved verbatim."
+    [STRING-INTERPOLATION] Escapes repeats the rule. `\0` is deliberately absent:
+    the runtime string is a NUL-terminated `char*` ([BUILTIN-STRING-CURSOR]), so
+    an embedded NUL has no observable length and the spec does not define one. *)
+escapeSequenceCase () =
+    tabSplitCount = match split "a\tb" "\t"
+        Success value => listLength value
+        Error message => (0 - 1) ?: 0
+
+    // ASCII: LF 10, CR 13, TAB 9, ESC 27, '"' 34, '\' 92, 'a' 97, 'b' 98.
+    checkAll "each recognised escape collapses to exactly one byte" [
+        length "\n" == 1,
+        (byteAt "\n" 0 ?: 0) == 10,
+        length "\r" == 1,
+        (byteAt "\r" 0 ?: 0) == 13,
+        length "\t" == 1,
+        (byteAt "\t" 0 ?: 0) == 9,
+        length "\e" == 1,
+        (byteAt "\e" 0 ?: 0) == 27,
+        length "\"" == 1,
+        (byteAt "\"" 0 ?: 0) == 34,
+        length "\\" == 1,
+        (byteAt "\\" 0 ?: 0) == 92,
+        byteLength "\n\r\t\e" == 4,
+        (byteAt "\n\r\t\e" 0 ?: 0) == 10,
+        (byteAt "\n\r\t\e" 3 ?: 0) == 27,
+        length "a\nb" == 3,
+        (byteAt "a\nb" 0 ?: 0) == 97,
+        (byteAt "a\nb" 1 ?: 0) == 10,
+        (byteAt "a\nb" 2 ?: 0) == 98,
+        "\n" != "n",
+        "\\n" != "\n",
+        length "\\n" == 2,
+        length "a\"b" == 3,
+        (byteAt "a\"b" 1 ?: 0) == 34
+    ]
+
+    // An unrecognised escape keeps BOTH bytes: 'q' is 113, 'd' is 100, 'x' 120.
+    checkAll "an unknown escape keeps its backslash verbatim" [
+        length "\q" == 2,
+        (byteAt "\q" 0 ?: 0) == 92,
+        (byteAt "\q" 1 ?: 0) == 113,
+        "\q" == "\\q",
+        length "\d" == 2,
+        (byteAt "\d" 1 ?: 0) == 100,
+        length "\s\q" == 4,
+        contains "\q" "\\",
+        startsWith "\q" "\\",
+        endsWith "\q" "q",
+        !(contains "\q" "\t"),
+        !(isEmpty "\q"),
+        toUpperCase "\q" == "\Q",
+        toLowerCase "\Q" == "\q",
+        reverse "\q" == "q\\",
+        length "path\to" == 6,
+        (byteAt "path\to" 4 ?: 0) == 9,
+        length "path\xo" == 7,
+        (byteAt "path\xo" 4 ?: 0) == 92,
+        (byteAt "path\xo" 5 ?: 0) == 120
+    ]
+
+    // ASCII whitespace for trim/words is space, TAB, LF, CR, VT and FF; ESC is
+    // NOT whitespace ([BUILTIN-STRING-TRIM], [BUILTIN-STRING-WORDS]).
+    // "A trailing newline does not produce an empty final element" ([BUILTIN-STRING-LINES]).
+    checkAll "escaped whitespace drives trim, words, lines and split" [
+        trim "\n\t hi \r\n" == "hi",
+        trimStart "\n\thi" == "hi",
+        trimEnd "hi\t\n" == "hi",
+        trim "\t\r\n " == "",
+        trim "\e" == "\e",
+        length (trim "\e hi ") == 4,
+        listLength (lines "a\nb\nc") == 3,
+        listLength (lines "a\n") == 1,
+        listLength (lines "a\n\nb") == 3,
+        listLength (lines "solo") == 1,
+        listLength (words "a\tb\nc") == 3,
+        listLength (words "   ") == 0,
+        listLength (words "") == 0,
+        listLength (words " a ") == 1,
+        listLength (words "a\r\nb") == 2,
+        (listGet (lines "a\nb") 1 ?: "missing") == "b",
+        (listGet (lines "a\nb") 0 ?: "missing") == "a",
+        (listGet (words "a\tb") 1 ?: "missing") == "b",
+        join (lines "a\nb\nc") "-" == "a-b-c",
+        join (words "  x  y  ") "+" == "x+y",
+        tabSplitCount == 2,
+        contains "a\nb" "\n",
+        !(contains "ab" "\n"),
+        startsWith "\tx" "\t",
+        endsWith "x\n" "\n"
+    ]
+
+(** [BUILTIN-STRING-CONTAINS]: "True if `needle` occurs anywhere in `s`. An empty
+    `needle` returns `true`." [BUILTIN-STRING-INDEXOF]: "Returns the byte index of
+    the FIRST occurrence of `needle`" and an empty needle returns
+    `Success { value: 0 }`. "banana" repeats both "a" and "na", so a scan that
+    reports the last match instead of the first cannot pass. *)
+substringPositionCase () =
+    subject = "banana"
+    missing = (0 - 1) ?: 0
+    indexAbsent = match indexOf subject "xyz"
+        Success value => false
+        Error message => message == "indexOf: substring not found"
+    indexEmptySubject = match indexOf "" "a"
+        Success value => false
+        Error message => message != ""
+
+    // "banana" byte layout: b0 a1 n2 a3 n4 a5, length 6.
+    checkAll "contains finds a needle at the start, middle, end and nowhere" [
+        contains subject "ban",
+        contains subject "nan",
+        contains subject "ana",
+        contains subject "banana",
+        contains subject "b",
+        contains subject "a",
+        contains subject "n",
+        contains subject "",
+        !(contains subject "bananas"),
+        !(contains subject "xyz"),
+        !(contains subject "BAN"),
+        !(contains subject "bn"),
+        !(contains subject " "),
+        contains "" "",
+        !(contains "" "a"),
+        contains "a" "a",
+        !(contains "a" "aa"),
+        contains "a b" " ",
+        contains (toLowerCase "BANANA") "banana",
+        length subject == 6
+    ]
+
+    checkAll "startsWith and endsWith agree with contains at both ends" [
+        startsWith subject "",
+        startsWith subject "b",
+        startsWith subject "ba",
+        startsWith subject "banana",
+        !(startsWith subject "banana!"),
+        !(startsWith subject "anana"),
+        !(startsWith subject "B"),
+        endsWith subject "",
+        endsWith subject "a",
+        endsWith subject "na",
+        endsWith subject "ana",
+        endsWith subject "banana",
+        !(endsWith subject "!banana"),
+        !(endsWith subject "banan"),
+        !(endsWith subject "A"),
+        startsWith "" "",
+        !(startsWith "" "a"),
+        endsWith "" "",
+        !(endsWith "" "a"),
+        startsWith "a" "a",
+        endsWith "a" "a",
+        contains subject "ba",
+        contains subject "na"
+    ]
+
+    // The reported index must reconstruct the needle through substring/take/drop.
+    checkAll "indexOf returns the first occurrence as a byte index" [
+        (indexOf subject "b" ?: missing) == 0,
+        (indexOf subject "a" ?: missing) == 1,
+        (indexOf subject "n" ?: missing) == 2,
+        (indexOf subject "na" ?: missing) == 2,
+        (indexOf subject "ana" ?: missing) == 1,
+        (indexOf subject "banana" ?: missing) == 0,
+        (indexOf subject "" ?: missing) == 0,
+        (indexOf "" "" ?: missing) == 0,
+        (indexOf "a" "a" ?: missing) == 0,
+        indexAbsent,
+        indexEmptySubject,
+        (substring subject 1 4 ?: "missing") == "ana",
+        (substring subject 2 4 ?: "missing") == "na",
+        (substring subject 0 6 ?: "missing") == subject,
+        (substring subject 6 6 ?: "missing") == "",
+        (substring subject 3 3 ?: "missing") == "",
+        take subject (indexOf subject "na" ?: missing) == "ba",
+        drop subject (indexOf subject "na" ?: missing) == "nana",
+        startsWith (drop subject (indexOf subject "ana" ?: missing)) "ana",
+        (indexOf (toUpperCase subject) "NA" ?: missing) == 2
+    ]
+
+(** [BUILTIN-STRING-TOUPPERCASE] / [BUILTIN-STRING-TOLOWERCASE]: "ASCII case
+    conversion. Other bytes are copied unchanged." "é" is U+00E9 (bytes 0xC3 0xA9 =
+    195 169) and "É" is U+00C9 (0xC3 0x89), so neither conversion may touch them —
+    a locale-sensitive implementation would corrupt these. *)
+caseFoldingCase () =
+    mixed = "MiXeD 123!"
+    accented = "héllo"
+    missing = (0 - 1) ?: 0
+
+    checkAll "ASCII letters fold and every other byte is copied unchanged" [
+        toUpperCase "" == "",
+        toLowerCase "" == "",
+        toUpperCase "a" == "A",
+        toLowerCase "A" == "a",
+        toUpperCase mixed == "MIXED 123!",
+        toLowerCase mixed == "mixed 123!",
+        toUpperCase "0123456789" == "0123456789",
+        toLowerCase "0123456789" == "0123456789",
+        toUpperCase "!@#%^&*()" == "!@#%^&*()",
+        toLowerCase "!@#%^&*()" == "!@#%^&*()",
+        toUpperCase " \t\n" == " \t\n",
+        toUpperCase "\e" == "\e",
+        toUpperCase accented == "HéLLO",
+        toLowerCase "HÉLLO" == "hÉllo",
+        length (toUpperCase accented) == 6,
+        byteLength (toLowerCase accented) == 6,
+        (byteAt (toUpperCase accented) 0 ?: 0) == 72,
+        (byteAt (toUpperCase accented) 1 ?: 0) == 195,
+        (byteAt (toUpperCase accented) 2 ?: 0) == 169,
+        (byteAt (toUpperCase accented) 3 ?: 0) == 76
+    ]
+
+    // Idempotent, length preserving, and a lower/upper round trip that survives
+    // the non-ASCII bytes it must not touch.
+    checkAll "case conversion is idempotent, length preserving and round trips" [
+        toUpperCase (toUpperCase mixed) == toUpperCase mixed,
+        toLowerCase (toLowerCase mixed) == toLowerCase mixed,
+        toLowerCase (toUpperCase "Hello") == "hello",
+        toUpperCase (toLowerCase "Hello") == "HELLO",
+        toLowerCase (toUpperCase accented) == accented,
+        toUpperCase (toLowerCase accented) == "HéLLO",
+        toUpperCase (toLowerCase mixed) == toUpperCase mixed,
+        toUpperCase (toLowerCase mixed) != mixed,
+        length (toUpperCase mixed) == length mixed,
+        length (toLowerCase mixed) == length mixed,
+        length (toUpperCase accented) == length accented,
+        toLowerCase "HeLLo" == toLowerCase "hEllO",
+        toUpperCase "HeLLo" == toUpperCase "hEllO",
+        toLowerCase "HeLLo" != "HeLLo",
+        toUpperCase "abc" != "abc",
+        toUpperCase "ABC" == "ABC",
+        toLowerCase "abc" == "abc",
+        reverse (toUpperCase "abc") == toUpperCase (reverse "abc"),
+        toUpperCase ("a" + "b") == (toUpperCase "a" + toUpperCase "b"),
+        toLowerCase ("A" + "B") == (toLowerCase "A" + toLowerCase "B"),
+        isEmpty (toUpperCase ""),
+        isEmpty (toLowerCase "")
+    ]
+
+    checkAll "case folding composes with the search and slicing builtins" [
+        contains (toLowerCase "HELLO WORLD") "world",
+        !(contains "HELLO WORLD" "world"),
+        startsWith (toLowerCase "GET /x") "get ",
+        !(startsWith "GET /x" "get "),
+        endsWith (toUpperCase "image.png") ".PNG",
+        !(endsWith "image.png" ".PNG"),
+        (indexOf (toUpperCase "banana") "NA" ?: missing) == 2,
+        (indexOf (toLowerCase "BANANA") "na" ?: missing) == 2,
+        toUpperCase (take "hello" 3) == take (toUpperCase "hello") 3,
+        toLowerCase (drop "HELLO" 3) == drop (toLowerCase "HELLO") 3,
+        (replace (toLowerCase "A-B") "-" "+" ?: "missing") == "a+b",
+        (repeat (toUpperCase "ab") 2 ?: "missing") == "ABAB",
+        (padStart (toUpperCase "z") 3 "y" ?: "missing") == "yyZ",
+        (padEnd (toLowerCase "Z") 3 "y" ?: "missing") == "zyy",
+        (substring (toUpperCase "banana") 0 3 ?: "missing") == "BAN",
+        trim (toUpperCase "  a  ") == "A",
+        toUpperCase (trim "  a  ") == "A",
+        join [toUpperCase "a", toLowerCase "B"] "-" == "A-b",
+        "${toUpperCase "ab"}" == "AB",
+        "${toLowerCase "AB"}" == "ab"
+    ]
+
+(** [BUILTIN-STRING-CONCAT]: "The `+` operator on two `string` values returns
+    `string` directly. String concatenation cannot fail and is never
+    `Result`-wrapped." [BUILTIN-STRING-LENGTH] counts bytes and
+    [BUILTIN-STRING-BYTELENGTH] is "Equivalent to `length(s)`". Integer `+` IS
+    checked, so every length sum is discharged with `?:` ([ARITH-CHECKED]). *)
+concatLengthCase () =
+    left = "ab"
+    middle = "cde"
+    right = "f"
+    joined = left + middle + right
+    negativeFive = (0 - 5) ?: 0
+    noParts : List<string>
+    noParts = []
+
+    checkAll "concatenation is associative with the empty string as identity" [
+        ((left + middle) + right) == "abcdef",
+        (left + (middle + right)) == "abcdef",
+        ((left + middle) + right) == (left + (middle + right)),
+        joined == "abcdef",
+        (left + "") == left,
+        ("" + left) == left,
+        ("" + "") == "",
+        (left + right) != (right + left),
+        ("ab" + "ba") == "abba",
+        ("ba" + "ab") == "baab",
+        (left + middle) == "${left}${middle}",
+        joined == "${left}${middle}${right}",
+        length joined == 6,
+        byteLength joined == length joined,
+        length (left + middle) == ((length left + length middle) ?: 0),
+        length joined == ((((length left + length middle) ?: 0) + length right) ?: 0),
+        length ("" + "") == 0,
+        isEmpty ("" + ""),
+        !(isEmpty joined),
+        startsWith joined left,
+        endsWith joined right,
+        contains joined middle
+    ]
+
+    // take s n + drop s n == s must hold at, inside and outside both ends.
+    checkAll "take and drop partition a string at every boundary" [
+        (take joined 0 + drop joined 0) == joined,
+        (take joined 1 + drop joined 1) == joined,
+        (take joined 3 + drop joined 3) == joined,
+        (take joined 6 + drop joined 6) == joined,
+        (take joined 7 + drop joined 7) == joined,
+        (take joined negativeFive + drop joined negativeFive) == joined,
+        take joined 0 == "",
+        drop joined 0 == joined,
+        take joined 6 == joined,
+        drop joined 6 == "",
+        take joined 99 == joined,
+        drop joined 99 == "",
+        take joined negativeFive == "",
+        drop joined negativeFive == joined,
+        length (take joined 3) == 3,
+        length (drop joined 3) == 3,
+        ((length (take joined 2) + length (drop joined 2)) ?: 0) == length joined,
+        take joined 3 == (substring joined 0 3 ?: "missing"),
+        drop joined 3 == (substring joined 3 6 ?: "missing"),
+        (substring joined 0 0 ?: "missing") == "",
+        (substring joined 6 6 ?: "missing") == "",
+        (substring joined 0 6 ?: "missing") == joined
+    ]
+
+    // "ab--cd--ef" is 3 parts (6 bytes) plus 2 separators (4 bytes) = 10.
+    checkAll "repeat, reverse, padding and join keep their length contracts" [
+        (repeat left 0 ?: "missing") == "",
+        (repeat left 1 ?: "missing") == left,
+        (repeat left 3 ?: "missing") == "ababab",
+        length (repeat left 5 ?: "") == 10,
+        (repeat "" 5 ?: "missing") == "",
+        length (repeat "" 5 ?: "x") == 0,
+        reverse "" == "",
+        reverse "a" == "a",
+        reverse joined == "fedcba",
+        reverse (reverse joined) == joined,
+        reverse (reverse "héllo") == "héllo",
+        length (reverse "héllo") == 6,
+        length (reverse joined) == length joined,
+        reverse (left + middle) == (reverse middle + reverse left),
+        length (padStart "7" 5 "0" ?: "") == 5,
+        length (padEnd "7" 5 "0" ?: "") == 5,
+        (padStart "7" 5 "0" ?: "missing") == "00007",
+        (padEnd "7" 5 "0" ?: "missing") == "70000",
+        (padStart "x" 6 "ab" ?: "missing") == "ababax",
+        (padEnd "x" 6 "ab" ?: "missing") == "xababa",
+        (padStart "hello" 3 "0" ?: "missing") == "hello",
+        (padEnd "hello" 3 "0" ?: "missing") == "hello",
+        join ["a", "b", "c"] "" == "abc",
+        join ["a"] "-" == "a",
+        join ["", ""] "-" == "-",
+        join noParts "-" == "",
+        length (join ["ab", "cd", "ef"] "--") == 10
+    ]
+
+(** [STRING-INTERPOLATION]: "An interpolation expression may contain operators,
+    calls, field access, or a nested braced expression." The literal text either
+    side of a hole is preserved verbatim, and a `$` NOT followed by `{` introduces
+    nothing — [LEXICAL-STRUCTURE] gives `${` alone as the interpolation opener. *)
+interpolationCompositionCase () =
+    name = "alice"
+    count = 3
+    xs = ["red", "green", "blue"]
+    prices = ["apple" => 2, "banana" => 5]
+    step0 = ""
+    step1 = "${step0}${(listGet xs 0) ?: "?"}|"
+    step2 = "${step1}${(listGet xs 1) ?: "?"}|"
+    step3 = "${step2}${(listGet xs 2) ?: "?"}|"
+    step4 = "${step3}${(listGet xs 9) ?: "?"}|"
+    segmentCount = match split step3 "|"
+        Success value => listLength value
+        Error message => (0 - 1) ?: 0
+
+    checkAll "a hole may hold a call, a pipe, an operator or an index" [
+        "${length "abc"}" == "3",
+        "${toUpperCase name}" == "ALICE",
+        "${name |> toUpperCase}" == "ALICE",
+        "${name |> length}" == "5",
+        "${toString count}" == "3",
+        "${toUpperCase (toLowerCase "AbC")}" == "ABC",
+        "${take name 2}" == "al",
+        "${drop name 2}" == "ice",
+        "${reverse name}" == "ecila",
+        "${count == 3}" == "true",
+        "${count != 3}" == "false",
+        "${!(count == 3)}" == "false",
+        "${isEmpty ""}" == "true",
+        "${contains name "lic"}" == "true",
+        "${(count + 4) ?: 0}" == "7",
+        "${(count * 4) ?: 0}" == "12",
+        "${(listGet xs 0) ?: "none"}" == "red",
+        "${(listGet xs 9) ?: "none"}" == "none",
+        "${xs[2] ?: "none"}" == "blue",
+        "${prices["apple"] ?: 0}" == "2",
+        "${prices["mango"] ?: 0}" == "0",
+        "${listLength xs}" == "3"
+    ]
+
+    // "alice has 3" is 5 + 5 + 1 = 11 bytes; '$' is byte 36.
+    checkAll "the literal text around every hole survives verbatim" [
+        "${count}" == "3",
+        "${count}x" == "3x",
+        "x${count}" == "x3",
+        "x${count}y" == "x3y",
+        "${count}${count}" == "33",
+        "${count}-${count}" == "3-3",
+        "a${count}b${count}c" == "a3b3c",
+        "no holes here" == "no holes here",
+        length "${count}" == 1,
+        length "x${count}y" == 3,
+        "${name} has ${count}" == "alice has 3",
+        length "${name} has ${count}" == 11,
+        "$" == "$",
+        length "$" == 1,
+        (byteAt "$" 0 ?: 0) == 36,
+        "$x" == "$x",
+        length "$x" == 2,
+        "a$b" == "a$b",
+        contains "cost: $5" "$",
+        !(contains "${name}" "$"),
+        ("${name}" + " has " + "${count}") == "alice has 3"
+    ]
+
+    // Grown one hole at a time. Every intermediate is asserted, so a lost
+    // append cannot hide behind a correct final transcript.
+    checkAll "a transcript built hole by hole records every intermediate" [
+        step0 == "",
+        step1 == "red|",
+        step2 == "red|green|",
+        step3 == "red|green|blue|",
+        step4 == "red|green|blue|?|",
+        length step1 == 4,
+        length step2 == 10,
+        length step3 == 15,
+        length step4 == 17,
+        startsWith step4 step3,
+        startsWith step3 step2,
+        startsWith step2 step1,
+        !(startsWith step1 step2),
+        endsWith step4 "?|",
+        endsWith step3 "blue|",
+        contains step3 "green|",
+        !(contains step2 "blue"),
+        (step1 + "green|") == step2,
+        (step2 + "blue|") == step3,
+        (indexOf step3 "green" ?: 0) == 4,
+        (indexOf step3 "blue" ?: 0) == 10,
+        segmentCount == 4,
+        toUpperCase step2 == "RED|GREEN|",
+        reverse step1 == "|der"
+    ]
+
+// Registration order fixes the TAP order in the shared golden.
+test "interpolation renders every printable scalar" interpolationScalarCase
+test "a Result is never unwrapped at an interpolation hole" interpolationResultCase
+test "escape sequences resolve to their exact bytes" escapeSequenceCase
+test "search builtins scan every substring position" substringPositionCase
+test "ASCII case folding is total and round-trips" caseFoldingCase
+test "concatenation and length arithmetic hold" concatLengthCase
+test "interpolation composes expressions and preserves text" interpolationCompositionCase

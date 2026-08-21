@@ -8,7 +8,7 @@ use crate::types::ltype_of;
 use osprey_ast::{Expr, Position};
 use osprey_debug::DebugSource;
 use osprey_types::{ProgramTypes, Type};
-use std::collections::{BTreeSet, HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::fmt::Write as _;
 
 /// Code generation switches that alter the emitted module without changing
@@ -23,6 +23,14 @@ pub struct CodegenOptions {
     /// [GPU-KERNEL-EXTRACT].
     pub gpu_kernels: crate::gpu_kernel::GpuKernelMode,
 }
+
+/// A lambda kept for inline application at its direct call sites: its
+/// parameters, its body, and the position inference keyed its type by.
+pub(crate) type LambdaDef = (
+    Vec<osprey_ast::Parameter>,
+    osprey_ast::Expr,
+    Option<osprey_ast::Position>,
+);
 
 /// Accumulates a whole module while lowering one function at a time.
 pub struct Codegen {
@@ -71,14 +79,15 @@ pub struct Codegen {
     /// (`let f = fn(x) => …` then `f(y)`) — a beta-reduction fast path. The
     /// same lambda is also materialized as a closure cell (`crate::closure`)
     /// so the name works as a first-class value.
-    pub(crate) lambdas: HashMap<
-        String,
-        (
-            Vec<osprey_ast::Parameter>,
-            osprey_ast::Expr,
-            Option<osprey_ast::Position>,
-        ),
-    >,
+    pub(crate) lambdas: HashMap<String, LambdaDef>,
+    /// FILE-SCOPE lambdas that materialise no closure cell because their type
+    /// is still generic. `lambdas` is per-function state cleared by
+    /// [`Codegen::begin_function`], which is right for a local beta-reduction
+    /// cache and wrong for a file-scope binding every function may read: the
+    /// entry was wiped before the first function body was lowered, and
+    /// `idl(7)` emitted a direct call to `@idl`, a symbol no definition
+    /// produces ([TYPE-GENERICS-FN], [MODULES-FILE-SCOPE-BINDING]).
+    pub(crate) file_lambdas: HashMap<String, LambdaDef>,
     /// Top-level functions already wrapped as closure cells (name → the cell's
     /// constant global), so the forwarder is emitted once per module.
     pub(crate) fnval_cells: HashMap<String, String>,
@@ -99,7 +108,7 @@ pub struct Codegen {
     /// Synthetic layouts of anonymous object literals (`{ a: 1, b: "x" }`),
     /// keyed by the generated owner name carried on the handle, so field access
     /// can recover the ordered `(field, LType)` slots.
-    obj_layouts: HashMap<String, Vec<(String, LType)>>,
+    obj_layouts: HashMap<String, Vec<ObjField>>,
     /// Monotonic id giving each object literal a unique synthetic owner name.
     obj_count: usize,
     /// User function `(parameters, body)` defs, for inlining a *generic*
@@ -138,6 +147,15 @@ pub struct Codegen {
     /// reassignment stores, and an effect handler captures the cell pointer so
     /// `get`/`set` arms share one mutable location — handler-owned state.
     pub(crate) cell_slots: HashMap<String, CellSlot>,
+    /// File-scope bindings that some function body reads, and the module
+    /// global each one lives in. Module-wide, so it is NOT part of
+    /// [`SavedFn`]: a nested handler function reads the same storage its
+    /// enclosing function does ([`crate::globals`]).
+    ///
+    /// Ordered so the end-of-`main` releases are emitted in one fixed order:
+    /// register numbering must be a pure function of the source, or a
+    /// Default/ML twin pair stops matching [FLAVOR-IR-EQUIV].
+    pub(crate) module_globals: BTreeMap<String, crate::globals::GlobalSlot>,
     /// Continuation lowering context while emitting a resuming handler arm.
     pub(crate) resume_ctx: Option<ResumeCodegenContext>,
     /// Whether the expression currently being lowered sits in statement
@@ -263,6 +281,11 @@ impl ParamSig {
 /// [`LType`], (when it returns `Result<T, _>`) the success inner type, and any
 /// Fiber element shape that must survive the erased integer ABI.
 pub(crate) type FnSig = (Vec<ParamSig>, LType, Option<LType>, Option<FiberSig>);
+
+/// One slot of a registered heap-block layout: field name, its LLVM type, and
+/// the owner tag the value stored there carried — the only record of a generic
+/// record's real field types, which its declaration spells as type parameters.
+pub(crate) type ObjField = (String, LType, Option<String>);
 
 /// Saved emission state of a suspended function (see [`Codegen::enter_nested_fn`]).
 pub(crate) struct SavedFn {
@@ -548,6 +571,7 @@ impl Codegen {
             prog,
             pending_iter_ops: Vec::new(),
             lambdas: HashMap::new(),
+            file_lambdas: HashMap::new(),
             fnval_cells: HashMap::new(),
             effect_ops: HashMap::new(),
             handler_count: 0,
@@ -565,6 +589,7 @@ impl Codegen {
             call_aliases: HashMap::new(),
             cell_vars: HashSet::new(),
             cell_slots: HashMap::new(),
+            module_globals: BTreeMap::new(),
             resume_ctx: None,
             testing_used: false,
             fibers_used: false,
@@ -591,17 +616,17 @@ impl Codegen {
     /// The function type of the value a call to `f` returns, when `f` is a
     /// top-level function or a function-typed local that returns a function.
     pub(crate) fn call_result_fn_type(&self, f: &str) -> Option<Type> {
-        let ret = self
-            .prog
-            .return_type(f)
-            .or_else(|| match self.fn_value_types.get(f) {
-                Some(Type::Fun { ret, .. }) => Some(&**ret),
-                _ => None,
-            })?;
-        match ret {
-            Type::Fun { .. } => Some(ret.clone()),
-            _ => None,
-        }
+        let ret = match self.prog.return_type(f) {
+            Some(ret) => ret.clone(),
+            // Not a top-level name: whatever function value `f` denotes here —
+            // a local, a module global, or an inlining alias — its return type
+            // is the arrow one application peels off ([`identifier_fn_type`]).
+            None => match self.identifier_fn_type(f)? {
+                Type::Fun { ret, .. } => *ret,
+                _ => return None,
+            },
+        };
+        matches!(ret, Type::Fun { .. }).then_some(ret)
     }
 
     /// The function [`Type`] an expression evaluates to in callee/callback
@@ -629,6 +654,21 @@ impl Codegen {
     fn identifier_fn_type(&self, name: &str) -> Option<Type> {
         if let Some(t) = self.fn_value_types.get(name) {
             return Some(t.clone());
+        }
+        // A file-scope function value read from inside a function body: its
+        // closure cell lives in a module global, not this frame
+        // ([`crate::globals`]).
+        if let Some(t) = crate::globals::fn_type(self, name) {
+            return Some(t);
+        }
+        // A function-valued parameter bound while INLINING a generic function
+        // is recorded as an alias of the callee it stands for, not as a local
+        // value ([`crate::genfn`]). A chained application through it —
+        // `fn apply(f, a, b) = f(a)(b)`, the shape ML's curry-by-default gives
+        // every higher-order body — has to follow that alias to find the
+        // arrow it is peeling. [TYPE-FN-HIGHER-ORDER]
+        if let Some(target) = self.call_aliases.get(name).filter(|t| *t != name) {
+            return self.identifier_fn_type(&target.clone());
         }
         let (params, ret) = self.prog.functions.get(name)?;
         Some(Type::Fun {
@@ -714,9 +754,17 @@ impl Codegen {
 
     /// Register an anonymous object literal's ordered field layout and return the
     /// synthetic owner name to tag its handle with.
-    pub(crate) fn register_obj_layout(&mut self, fields: Vec<(String, LType)>) -> String {
+    pub(crate) fn register_obj_layout(&mut self, fields: Vec<ObjField>) -> String {
         let name = format!("__obj_{}", self.obj_count);
         self.obj_count += 1;
+        self.register_layout(name, fields)
+    }
+
+    /// Register an ordered field layout under a caller-chosen owner name and
+    /// return it. A generic record instantiation names its layout after the
+    /// concrete field types it was built with, so every construction of the
+    /// same instantiation shares one owner ([`crate::aggregate`]).
+    pub(crate) fn register_layout(&mut self, name: String, fields: Vec<ObjField>) -> String {
         let _ = self.obj_layouts.insert(name.clone(), fields);
         name
     }
@@ -726,8 +774,9 @@ impl Codegen {
     pub(crate) fn record_layout(&self, owner: &str) -> Option<(String, Vec<(String, LType)>)> {
         if let Some(fields) = self.obj_layouts.get(owner) {
             let mut parts = vec!["i64".to_string()];
-            parts.extend(fields.iter().map(|(_, lt)| lt.as_str().to_string()));
-            return Some((format!("{{ {} }}", parts.join(", ")), fields.clone()));
+            parts.extend(fields.iter().map(|(_, lt, _)| lt.as_str().to_string()));
+            let slots = fields.iter().map(|(f, lt, _)| (f.clone(), *lt)).collect();
+            return Some((format!("{{ {} }}", parts.join(", ")), slots));
         }
         let view = self.ctor_layout(owner)?;
         Some((self.ctor_struct_ty(owner)?, view.fields))
@@ -883,7 +932,7 @@ impl Codegen {
     pub(crate) fn fn_param_sig(&self, name: &str) -> Option<Vec<(ParamSig, Option<String>)>> {
         self.prog.param_types(name).map(|ps| {
             ps.iter()
-                .map(|t| (ParamSig::of(t), crate::types::owner_name(t)))
+                .map(|t| (ParamSig::of(t), crate::types::owner_name(&self.prog, t)))
                 .collect()
         })
     }
@@ -892,7 +941,7 @@ impl Codegen {
     pub(crate) fn fn_ret_owner(&self, name: &str) -> Option<String> {
         self.prog
             .return_type(name)
-            .and_then(crate::types::owner_name)
+            .and_then(|t| crate::types::owner_name(&self.prog, t))
     }
 
     /// The inner [`LType`] when a function is declared to return `Result<T, E>`
@@ -1022,9 +1071,24 @@ impl Codegen {
     }
 
     /// The owner type name to tag a loaded aggregate field with: the field's
-    /// resolved type when that type is itself a known record/union, else `None`
-    /// (scalars carry no owner).
+    /// resolved type when that type is a known record/union or a collection
+    /// handle, else `None` (scalars carry no owner).
+    ///
+    /// Collections belong here. A field holding a `List<string>` came back
+    /// untagged, so `listGet(record.tags, 0)` read the element as the raw `i64`
+    /// storage word and a `?: "none"` default beside it printed `0`
+    /// ([`crate::collections::LIST_TAG`]).
     pub(crate) fn ctor_field_owner(&self, owner: &str, field: &str) -> Option<String> {
+        // A registered layout carries the owner each slot was BUILT with, which
+        // is the only record of it when the declared field type is a type
+        // parameter: `Envelope<Map<string, List<string>>, int>.payload` has no
+        // nominal owner in `type Envelope<T, U>`, only in the value stored.
+        if let Some(fields) = self.obj_layouts.get(owner) {
+            return fields
+                .iter()
+                .find(|(f, _, _)| f == field)
+                .and_then(|(_, _, tag)| tag.clone());
+        }
         let ty = self
             .prog
             .ctors
@@ -1033,12 +1097,12 @@ impl Codegen {
             .iter()
             .find(|(f, _)| f == field)
             .map(|(_, t)| t.clone())?;
-        let head = crate::types::owner_name(&ty)?;
-        if self.prog.ctors.contains_key(&head) || self.prog.unions.contains_key(&head) {
-            Some(head)
-        } else {
-            None
-        }
+        let head = crate::types::owner_name(&self.prog, &ty)?;
+        let known = self.prog.ctors.contains_key(&head)
+            || self.prog.unions.contains_key(&head)
+            || crate::collections::is_list_owner(&head)
+            || crate::collections::is_map_owner(&head);
+        known.then_some(head)
     }
 
     /// The success payload layout when a declared aggregate field is a
@@ -1256,6 +1320,15 @@ impl Codegen {
         let ty = slot.pointee.as_str();
         let r = self.emit_reg(format!("load {ty}, {ty}* {}", slot.ptr));
         Some(Value::new(r, slot.pointee).with_owner(slot.osp_ty))
+    }
+
+    /// The lambda `name` is bound to for inline application: this function's
+    /// own beta-reduction cache first, then the file-scope bindings that
+    /// outlive it ([`Codegen::file_lambdas`]).
+    pub(crate) fn lambda_def(&self, name: &str) -> Option<&LambdaDef> {
+        self.lambdas
+            .get(name)
+            .or_else(|| self.file_lambdas.get(name))
     }
 
     // ---- function framing ----

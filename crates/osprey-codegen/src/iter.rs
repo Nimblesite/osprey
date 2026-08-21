@@ -67,7 +67,7 @@ pub(crate) fn callback_of(cg: &mut Codegen, e: &Expr) -> Result<Callback> {
         Expr::Identifier(n) => {
             if let Some(sig) = cg.fn_ptr_locals.get(n) {
                 Ok(Callback::Local(n.clone(), sig.clone()))
-            } else if let Some((params, body, position)) = cg.lambdas.get(n) {
+            } else if let Some((params, body, position)) = cg.lambda_def(n) {
                 Ok(Callback::Lambda(
                     params.clone(),
                     body.clone(),
@@ -109,11 +109,11 @@ pub(crate) fn invoke(cg: &mut Codegen, cb: &Callback, args: Vec<Value>) -> Resul
         }
         Callback::Local(name, sig) => {
             let handle = cg.lookup(name).ok_or_else(|| CodegenError::unknown(name))?;
-            let typed = crate::closure::coerce_typed_args(cg, sig, args)?;
+            let typed = crate::closure::coerce_closure_args(cg, sig, args)?;
             Ok(crate::closure::cell_call(cg, &handle.operand, sig, &typed))
         }
         Callback::Value(operand, sig) => {
-            let typed = crate::closure::coerce_typed_args(cg, sig, args)?;
+            let typed = crate::closure::coerce_closure_args(cg, sig, args)?;
             Ok(crate::closure::cell_call(cg, operand, sig, &typed))
         }
         Callback::Extracted(kernel) => crate::gpu_kernel::extracted_call(cg, kernel, args),
@@ -410,7 +410,7 @@ fn list_builder(cg: &mut Codegen, args: &[Expr], filter: bool) -> Result<Value> 
         }
         // The callback's return type is what the built list holds, so the
         // result is tagged with it ([`crate::collections::LIST_TAG`]).
-        out_elem = Some(mapped.ty);
+        out_elem = crate::llty::elem_spelling(&mapped);
         // The built list stores the mapped element: dup it before the
         // per-iteration region drop, and tell the builder its kind
         // [GC-ARC-PERCEUS].
@@ -421,7 +421,7 @@ fn list_builder(cg: &mut Codegen, args: &[Expr], filter: bool) -> Result<Value> 
         Ok(())
     })?;
     let sealed = crate::collections::list_builder_seal(cg, &bld);
-    Ok(sealed.with_owner(Some(crate::collections::list_owner(out_elem))))
+    Ok(sealed.with_owner(Some(crate::collections::list_owner(out_elem.as_deref()))))
 }
 
 /// `foldList(list, initial, fn)` — reduce a list with `fn(acc, elem)`.

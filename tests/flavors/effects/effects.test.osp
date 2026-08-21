@@ -1,9 +1,78 @@
-// Assertion-driven replacement for the former mutation flavor golden.
+// Portable cross-contract oracle for [EFFECTS-OP-TYPING],
+// [EFFECTS-STATIC-DISCHARGE], [EFFECTS-HANDLER-STATE], [TYPE-LIST],
+// [TYPE-MAP], [TYPE-MAP-LOOKUP], [TYPE-MAP-OPS], and
+// [BUILTIN-STRING-UFCS].
 
 /// Counter exposes mutation only through its handled tick operation.
 effect FlavorCounter {
     /// Add `amount` to the counter the handler owns.
     tick: fn(int) -> Unit
+}
+
+fn runBatchAssertions() = {
+    mut total = 10
+    let empty = [99]
+    let base = { "first": [2, 3], "second": [5, 9] }
+    let grown = mapSet(base, "third", [7, 11, 13])
+    let replaced = mapSet(grown, "first", [20])
+    let removed = mapRemove(replaced, "second")
+    let first = mapGet(base, "first") ?: empty
+    let second = mapGet(base, "second") ?: empty
+    let missing = mapGet(base, "missing") ?: [99]
+
+    checkAll("effect batch collection preconditions", [
+            total == 10,
+            mapLength(base) == 2,
+            mapLength(grown) == 3,
+            mapLength(replaced) == 3,
+            mapLength(removed) == 2,
+            listLength(first) == 2,
+            listLength(second) == 2,
+            listLength(missing) == 1,
+            (first.listGet(0) ?: 99) == 2,
+            (first.listGet(1) ?: 99) == 3,
+            (second.listGet(0) ?: 99) == 5,
+            (second.listGet(1) ?: 99) == 9,
+            (missing.listGet(0) ?: 0) == 99,
+            !mapContains(base, "third"),
+            mapContains(grown, "third"),
+            !mapContains(removed, "second")
+    ])
+
+    handle FlavorCounter
+    tick amount => { total = total + amount ?: total }
+    in {
+        forEachList(first, fn(amount) => perform FlavorCounter.tick(amount))
+        checkAll("effectful callback applies the first generic list", [
+                total == 15,
+                "first total=${total}" == "first total=15"
+        ])
+        perform FlavorCounter.tick((0 - 4) ?: 0)
+        checkAll("negative handled transition remains checked", [
+                total == 11,
+                total < 15
+        ])
+        forEachList(second, fn(amount) => perform FlavorCounter.tick(amount))
+        perform FlavorCounter.tick(0)
+        checkAll("second list and identity transition compose", [
+                total == 25,
+                total > 11,
+                "second total=${total}" == "second total=25"
+        ])
+    }
+
+    checkAll("handler exit preserves state and persistent collection versions", [
+            total == 25,
+            mapLength(base) == 2,
+            mapLength(grown) == 3,
+            listLength(grown.mapGet("third") ?: empty) == 3,
+            ((grown.mapGet("third") ?: empty).listGet(2) ?: 99) == 13,
+            listLength(replaced.mapGet("first") ?: empty) == 1,
+            ((replaced.mapGet("first") ?: empty).listGet(0) ?: 99) == 20,
+            listLength(base.mapGet("first") ?: empty) == 2,
+            listLength(mapKeys(grown)) == 3,
+            listLength(mapValues(grown)) == 3
+    ])
 }
 
 /// This case proves the initial, intermediate, final, and rendered counter state.
@@ -13,34 +82,36 @@ fn mutationCase() = {
 
     // The migrated test starts from the same zero-valued state as the example.
     checkAll("counter initial state", [
-        flavorCounter == 0
+            flavorCounter == 0
     ])
 
     handle FlavorCounter
-        tick amount => {
-            flavorCounter = flavorCounter + amount ?: flavorCounter
-        }
+    tick amount => {
+        flavorCounter = flavorCounter + amount ?: flavorCounter
+    }
     in {
         perform FlavorCounter.tick(1)
 
         // The first effect is observable independently instead of only in the sum.
         checkAll("counter first transition", [
-            flavorCounter == 1
+                flavorCounter == 1
         ])
 
         perform FlavorCounter.tick(41)
 
         // The second effect reaches the legacy final value inside the handler.
         checkAll("counter second transition", [
-            flavorCounter == 42
+                flavorCounter == 42
         ])
     }
 
     // The final value and exact old output line both survive handler exit.
     checkAll("counter legacy final state and rendering", [
-        flavorCounter == 42,
-        "counter = ${flavorCounter}" == "counter = 42"
+            flavorCounter == 42,
+            "counter = ${flavorCounter}" == "counter = 42"
     ])
+
+    runBatchAssertions()
 }
 
 // Run the complete state-transition scenario as one named test.

@@ -42,13 +42,13 @@ pub(crate) fn gen_constructor(
         return gen_http_response(cg, fields);
     }
     // A generic *record* (`type R<T> = { … }`) is built with the concrete field
-    // types present at this construction — the same per-instance layout an object
-    // literal gets — so a later `r.field` recovers the real type instead of the
-    // placeholder `T → i8*`. Generic union *variants* keep the tagged path below.
+    // types present at this construction, because the declared layout types
+    // every parameter slot as the machine word `T -> i64`. Generic union
+    // *variants* keep the tagged path below.
     let generic_record = !cg.ctor_type_params(name).is_empty()
         && cg.ctor_layout(name).is_some_and(|v| v.owner_is_record);
     if generic_record {
-        return gen_object(cg, fields);
+        return gen_generic_record(cg, name, fields);
     }
     let view = cg
         .ctor_layout(name)
@@ -99,22 +99,72 @@ pub(crate) fn gen_constructor(
 /// fields… }` heap block as a named record, with a synthetic layout registered so
 /// field access can recover the slots.
 pub(crate) fn gen_object(cg: &mut Codegen, fields: &[FieldAssignment]) -> Result<Value> {
-    let mut vals = Vec::with_capacity(fields.len());
-    for fa in fields {
+    let vals = object_field_values(cg, fields, &field_names(fields))?;
+    let owner = cg.register_obj_layout(layout_of(&vals));
+    Ok(build_tagged_object(cg, owner, &vals))
+}
+
+/// A generic record instantiation. Its layout name is derived from the concrete
+/// field types rather than minted per construction site: two `Envelope<int,
+/// string>` values built in different places — a list element and the fallback
+/// beside it — must share one owner, or the phi that joins them keeps neither,
+/// `find_field_owner` falls back to the DECLARED layout whose `U` slot is a
+/// machine word, and `r.metadata` reads a string pointer as an integer.
+/// Implements [TYPE-GENERICS-DECL].
+fn gen_generic_record(cg: &mut Codegen, name: &str, fields: &[FieldAssignment]) -> Result<Value> {
+    let declared = cg
+        .ctor_layout(name)
+        .ok_or_else(|| CodegenError::unknown(name))?;
+    let order: Vec<String> = declared.fields.iter().map(|(f, _)| f.clone()).collect();
+    let vals = object_field_values(cg, fields, &order)?;
+    let shape: Vec<&str> = vals.iter().map(|(_, v)| v.ty.as_str()).collect();
+    let owner = cg.register_layout(format!("{name}#{}", shape.join(",")), layout_of(&vals));
+    Ok(build_tagged_object(cg, owner, &vals))
+}
+
+/// The declared field order of a literal, when there is no declaration to
+/// impose one.
+fn field_names(fields: &[FieldAssignment]) -> Vec<String> {
+    fields.iter().map(|fa| fa.name.clone()).collect()
+}
+
+/// Lower each field's value in `order`, so two constructions of one record
+/// agree on their slots however the source spelled them.
+fn object_field_values(
+    cg: &mut Codegen,
+    fields: &[FieldAssignment],
+    order: &[String],
+) -> Result<Vec<(String, Value)>> {
+    let mut vals = Vec::with_capacity(order.len());
+    for fname in order {
+        let fa = fields
+            .iter()
+            .find(|f| &f.name == fname)
+            .ok_or_else(|| CodegenError::invalid(format!("missing field `{fname}`")))?;
         let v = gen_expr(cg, &fa.value)?;
         let v = crate::listlit::escaping(cg, v);
         if v.result_inner.is_some() {
             return Err(result_field_unsupported());
         }
-        vals.push((fa.name.clone(), v));
+        vals.push((fname.clone(), v));
     }
+    Ok(vals)
+}
+
+/// The registered layout of lowered field values: each slot's LLVM type plus
+/// the owner tag the value carried, so field access restores it.
+fn layout_of(vals: &[(String, Value)]) -> Vec<crate::builder::ObjField> {
+    vals.iter()
+        .map(|(n, v)| (n.clone(), v.ty, v.osp_ty.clone()))
+        .collect()
+}
+
+/// Build a `{ i64 tag, fields… }` heap block under an already-registered owner.
+fn build_tagged_object(cg: &mut Codegen, owner: String, vals: &[(String, Value)]) -> Value {
     let mut parts = vec!["i64".to_string()];
     parts.extend(vals.iter().map(|(_, v)| v.ty.as_str().to_string()));
     let struct_ty = format!("{{ {} }}", parts.join(", "));
-    let layout: Vec<(String, LType)> = vals.iter().map(|(n, v)| (n.clone(), v.ty)).collect();
-    let meta = tagged_fields_meta(&layout);
-    let owner = cg.register_obj_layout(layout);
-
+    let meta = tagged_fields_meta(&layout_of(vals));
     // noinit: the tag and every field are stored below before the block
     // escapes, so ARC skips its drop-safety pre-zero.
     let obj = cg.malloc_struct_noinit(&struct_ty, meta);
@@ -122,7 +172,7 @@ pub(crate) fn gen_object(cg: &mut Codegen, fields: &[FieldAssignment]) -> Result
     for (i, (_, v)) in vals.iter().enumerate() {
         store_field(cg, &struct_ty, obj.as_str(), i + 1, v.ty, &v.operand);
     }
-    Ok(own_struct_handle(cg, &struct_ty, &obj, owner))
+    own_struct_handle(cg, &struct_ty, &obj, owner)
 }
 
 /// The layout word for an ANONYMOUS-object block `{ i64 tag, fields… }`
@@ -130,13 +180,13 @@ pub(crate) fn gen_object(cg: &mut Codegen, fields: &[FieldAssignment]) -> Result
 /// stronger Osprey-typed `CtorView::meta` instead): the leading discriminant
 /// is a scalar word; each field marks itself by its LLVM type. Generic-variant
 /// slots boxed into `i64` stay unmarked — leak-safe (meta.rs [GC-ARC-PERCEUS]).
-fn tagged_fields_meta(fields: &[(String, LType)]) -> i64 {
+fn tagged_fields_meta(fields: &[crate::builder::ObjField]) -> i64 {
     let mut mf = Vec::with_capacity(fields.len() + 1);
     mf.push(crate::meta::MetaField::Word);
     mf.extend(
         fields
             .iter()
-            .map(|(_, t)| crate::meta::MetaField::of_lty(*t)),
+            .map(|(_, t, _)| crate::meta::MetaField::of_lty(*t)),
     );
     crate::meta::struct_meta(&mf)
 }
@@ -320,6 +370,10 @@ pub(crate) fn gen_field_access(cg: &mut Codegen, target: &Expr, field: &str) -> 
         .find_map(|(i, (f, t))| (f == field).then_some((i, *t)))
         .ok_or_else(|| CodegenError::invalid(format!("`{owner}` has no field `{field}`")))?;
 
+    // A record that crossed a generic boundary — a list element, an inlined
+    // parameter whose type is still a variable — travels in the uniform machine
+    // word, so restore the handle before reading a slot out of it.
+    let tv = crate::cast::coerce_to(cg, tv, LType::Ptr)?;
     let src = cg.fresh_reg();
     cg.emit(format!(
         "{src} = bitcast i8* {} to {struct_ty}*",

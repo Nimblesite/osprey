@@ -1,5 +1,6 @@
-// Convert fallible division/remainder Results into one typed Rescue effect. Its direct
-// value-substitution handler supplies defaults and counts recoveries.
+// Cross-contract oracle for [ARITH-CHECKED], [PATTERN-RESULT-DEFAULT],
+// [ERR-PAYLOAD], [EFFECTS-OP-TYPING], [EFFECTS-HANDLER-STATE], [TYPE-LIST],
+// [TYPE-MAP], [TYPE-MAP-LOOKUP], and [BUILTIN-STRING-UFCS].
 
 effect Rescue {
     /// Supply the integer a failed operation should yield instead.
@@ -10,21 +11,32 @@ let RESCUED_DEFAULT = 100
 
 /// intDiv gives Result<int, Error>; the handler chooses the fallback value.
 fn divRescue(a, b) = match intDiv(a: a, b: b) {
-        Success { value } => value
-        Error { message } => perform Rescue.onErr(message)
+    Success { value } => value
+    Error { message } => perform Rescue.onErr(message)
 }
 
 /// % is the zero-checked remainder: 7 % 0 => Error(division by zero).
 fn modRescue(a, b) = match a % b {
-        Success { value } => value
-        Error { message } => perform Rescue.onErr(message)
+    Success { value } => value
+    Error { message } => perform Rescue.onErr(message)
 }
 
 /// checkedAdd is overflow-checked: MAX_INT + 1 => Error(integer overflow).
 fn addRescue(a, b) = match checkedAdd(a: a, b: b) {
-        Success { value } => value
-        Error { message } => perform Rescue.onErr(message)
+    Success { value } => value
+    Error { message } => perform Rescue.onErr(message)
 }
+
+fn recoveredValues(fallback) = handle Rescue
+onErr message => fallback
+in [
+    divRescue(10, 0),
+    divRescue(20, 4),
+    modRescue(7, 0),
+    modRescue(17, 5),
+    addRescue(9223372036854775807, 1),
+    addRescue(100, 23)
+]
 
 /// Every failed step receives a replacement value, so later steps still run.
 fn pipeline() = {
@@ -49,17 +61,17 @@ print("=== Result -> effect rescue pipeline ===")
 /// substituted at the perform site because this region contains no `resume`.
 mut rescues = 0
 let total = handle Rescue
-    onErr message => {
-        rescues = rescues + 1 ?: rescues
-        print("  RESCUE #${toString(rescues)}: original error \"${message}\" -> using ${toString(RESCUED_DEFAULT)}")
-        RESCUED_DEFAULT
-    }
+onErr message => {
+    rescues = rescues + 1 ?: rescues
+    print("  RESCUE #${toString(rescues)}: original error \"${message}\" -> using ${toString(RESCUED_DEFAULT)}")
+    RESCUED_DEFAULT
+}
 in pipeline()
 
 print("rescued ${toString(rescues)} failing step(s); healthy + rescued total = ${toString(total)}")
 
 /// `?:` supplies a local fallback without invoking the Rescue policy.
-let localOk  = (10 % 3) ?: ((0 - 1) ?: 0)
+let localOk = (10 % 3) ?: ((0 - 1) ?: 0)
 let localBad = (10 % 0) ?: ((0 - 1) ?: 0)
 print("local ?: default  10 % 3 -> ${toString(localOk)}   10 % 0 -> ${toString(localBad)}")
 
@@ -67,11 +79,69 @@ print("local ?: default  10 % 3 -> ${toString(localOk)}   10 % 0 -> ${toString(l
 print("raw 10 / 0 as a value = ${toString(10 / 0)}")
 print("=== pipeline complete ===")
 
-// Verifies rescued failures beside healthy Result and local-fallback paths.
-test("fallible arithmetic is recovered without masking healthy results", fn() => checkAll("Result and effect outcomes", [
-    rescues == 3,
-    total == 430,
-    localOk == 1,
-    localBad == ((0 - 1) ?: 0),
-    toString(10 / 0) == "Error(division by zero)"
-]))
+/// Verifies rescued failures beside healthy Result, nested collections, and local fallbacks.
+fn resultAndEffectsCase() = {
+    let hundreds = recoveredValues(100)
+    let sevens = recoveredValues(7)
+    let negatives = recoveredValues((0 - 1) ?: 0)
+    let policyMatrix = [hundreds, sevens, negatives]
+    let policyMap = { "hundred": hundreds, "seven": sevens, "negative": negatives }
+    let grownMap = mapSet(policyMap, "zero", recoveredValues(0))
+
+    checkAll("Result and effect pipeline state", [
+            rescues == 3,
+            total == 430,
+            localOk == 1,
+            localBad == ((0 - 1) ?: 0),
+            toString(10 / 0) == "Error(division by zero)",
+            (intDiv(20, 4) ?: ((0 - 1) ?: 0)) == 5,
+            (intDiv(20, 0) ?: ((0 - 1) ?: 0)) == ((0 - 1) ?: 0),
+            (17 % 5 ?: ((0 - 1) ?: 0)) == 2,
+            (17 % 0 ?: ((0 - 1) ?: 0)) == ((0 - 1) ?: 0),
+            (checkedAdd(100, 23) ?: 0) == 123,
+            (checkedAdd(9223372036854775807, 1) ?: 77) == 77,
+            toString(intDiv(20, 4)) == "Success(5)",
+            toString(intDiv(20, 0)) == "Error(division by zero)",
+            toString(checkedAdd(9223372036854775807, 1)) == "Error(integer overflow)"
+    ])
+
+    checkAll("each Rescue policy replaces only failing collection elements", [
+            listLength(hundreds) == 6,
+            (hundreds.listGet(0) ?: 99) == 100,
+            (hundreds.listGet(1) ?: 99) == 5,
+            (hundreds.listGet(2) ?: 99) == 100,
+            (hundreds.listGet(3) ?: 99) == 2,
+            (hundreds.listGet(4) ?: 99) == 100,
+            (hundreds.listGet(5) ?: 99) == 123,
+            (hundreds.listGet(9) ?: 99) == 99,
+            listLength(sevens) == 6,
+            (sevens.listGet(0) ?: 99) == 7,
+            (sevens.listGet(1) ?: 99) == 5,
+            (sevens.listGet(2) ?: 99) == 7,
+            (sevens.listGet(3) ?: 99) == 2,
+            (sevens.listGet(4) ?: 99) == 7,
+            (sevens.listGet(5) ?: 99) == 123,
+            (negatives.listGet(0) ?: 99) == ((0 - 1) ?: 0),
+            (negatives.listGet(4) ?: 99) == ((0 - 1) ?: 0)
+    ])
+
+    checkAll("recovered lists retain element types inside nested maps", [
+            listLength(policyMatrix) == 3,
+            listLength(policyMatrix.listGet(0) ?: [99]) == 6,
+            ((policyMatrix.listGet(0) ?: [99]).listGet(4) ?: 99) == 100,
+            ((policyMatrix.listGet(1) ?: [99]).listGet(4) ?: 99) == 7,
+            ((policyMatrix.listGet(2) ?: [99]).listGet(4) ?: 99) == ((0 - 1) ?: 0),
+            mapLength(policyMap) == 3,
+            mapLength(grownMap) == 4,
+            listLength(policyMap.mapGet("hundred") ?: [99]) == 6,
+            ((policyMap.mapGet("hundred") ?: [99]).listGet(0) ?: 99) == 100,
+            ((policyMap.mapGet("seven") ?: [99]).listGet(2) ?: 99) == 7,
+            ((policyMap.mapGet("negative") ?: [99]).listGet(4) ?: 99) == ((0 - 1) ?: 0),
+            ((grownMap.mapGet("zero") ?: [99]).listGet(0) ?: 99) == 0,
+            !mapContains(policyMap, "zero"),
+            mapContains(grownMap, "zero"),
+            listLength(mapKeys(grownMap)) == 4,
+            listLength(mapValues(grownMap)) == 4
+    ])
+}
+test("fallible arithmetic is recovered without masking healthy results", resultAndEffectsCase)

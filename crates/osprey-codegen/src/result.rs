@@ -121,25 +121,6 @@ pub(crate) fn make_result_if_err_because(
     make_result(cg, value, inner, &disc, &errmsg)
 }
 
-/// `Result<i64, _>` from a runtime `i32` success flag (`0` ⇒ Error) guarding an
-/// `i64` payload — the shared shape of `listGet` / `mapGet`. `msg` is the Error
-/// message text.
-pub(crate) fn result_from_flag(
-    cg: &mut Codegen,
-    flag: &str,
-    value: &str,
-    msg: &str,
-) -> Result<Value> {
-    let err = cg.emit_reg(format!("icmp eq i32 {flag}, 0"));
-    make_result_if_err(
-        cg,
-        Value::new(value, LType::I64),
-        LType::I64,
-        &err,
-        Some(msg),
-    )
-}
-
 /// `Result<int, _>` from a C `i64` whose negative values signal failure — the
 /// uniform convention of the file/process/HTTP/JSON runtime (a negative handle,
 /// byte count, status or process id is Error). The success value carried is the

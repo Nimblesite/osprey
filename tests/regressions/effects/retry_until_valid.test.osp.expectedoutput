@@ -13,5 +13,11 @@ attempt 3: handler feeds -3
 attempt 4: handler GIVES UP, aborting with sentinel
 SCENARIO 2 outcome: gave up (sentinel -999) after Success(3) bad answers
 ok 1 - retry handlers resume until success or abort at their limit
-1..1
-# tests=1 passed=1 failed=0 skipped=0
+ok 2 - retry loops accept after zero one two and eight rejections
+ok 3 - an exhausted retry budget stops the loop without resuming
+ok 4 - retry channels carry text boolean float checked and Unit payloads
+ok 5 - scripted list and map candidates drive one retry cursor
+ok 6 - nested retry regions override and restore around a shared budget
+ok 7 - every perform site reaches the same retry handler
+1..7
+# tests=7 passed=7 failed=0 skipped=0

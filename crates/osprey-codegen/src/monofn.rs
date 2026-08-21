@@ -46,10 +46,10 @@ pub(crate) struct Instantiation {
 /// cannot specialise. Mutual recursion still trips [`crate::genfn`]'s re-entry
 /// guard and its diagnostic. The free-identifier collector already answers
 /// "which names does this body reach", parameters subtracted
-/// ([`crate::freevars`]).
+/// ([`osprey_ast::freevars`]).
 pub(crate) fn calls_itself(name: &str, body: &Expr) -> bool {
     let mut names = std::collections::BTreeSet::new();
-    crate::freevars::free_idents(body, &mut names);
+    osprey_ast::freevars::free_idents(body, &mut names);
     names.contains(name)
 }
 
@@ -181,7 +181,10 @@ pub(crate) fn specialize_callback(
     if let Some(existing) = cg.monofns.get(&key) {
         return Ok(Some(existing.symbol.clone()));
     }
-    let owners: Vec<Option<String>> = param_types.iter().map(crate::types::owner_name).collect();
+    let owners: Vec<Option<String>> = param_types
+        .iter()
+        .map(|t| crate::types::owner_name(&cg.prog, t))
+        .collect();
     let ret = (
         crate::types::ltype_of(ret_type),
         crate::types::result_inner(ret_type),
@@ -246,6 +249,12 @@ fn bind_params(
 /// Lower the instantiation's body and emit its `ret`, fitted to the declared
 /// return slot exactly as a top-level function's body is.
 fn lower_body(cg: &mut Codegen, body: &Expr, sig: &FnSig) -> Result<Value> {
+    // Cell promotion is per lowered body, and `enter_nested_fn` cleared the
+    // host's set: without repopulating it here a `mut` this body declares and a
+    // handler arm captures is never promoted, so the arm writes a private copy
+    // and the read after the `handle` sees the initial value
+    // ([EFFECTS-HANDLER-STATE]).
+    cg.cell_vars = crate::effects::captured_mut_vars(body);
     let outer = std::mem::replace(&mut cg.value_discarded, false);
     let lowered = gen_expr(cg, body).and_then(|v| crate::expr::fit_lambda_return(cg, v, Some(sig)));
     cg.value_discarded = outer;

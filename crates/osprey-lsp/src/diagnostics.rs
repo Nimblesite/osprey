@@ -51,13 +51,45 @@ pub(crate) fn compute(source: &str, path: &str, encoding: PositionEncoding) -> V
             .map(|e| diagnostic(source, e.position, &e.message, "syntax-error", encoding))
             .collect();
     }
-    if let Some(diagnostics) = project_diagnostics(source, path, &parsed.program, encoding) {
-        return diagnostics;
-    }
-    if let Some(d) = standalone_diagnostics(source, path, flavor, &parsed.program, encoding) {
-        return d;
-    }
-    type_diagnostics(source, &parsed.program, encoding)
+    let mut diagnostics = project_diagnostics(source, path, &parsed.program, encoding)
+        .or_else(|| standalone_diagnostics(source, path, flavor, &parsed.program, encoding))
+        .unwrap_or_else(|| type_diagnostics(source, &parsed.program, encoding));
+    diagnostics.extend(skip_diagnostics(source, &parsed.program, encoding));
+    diagnostics
+}
+
+/// One diagnostic per statically-skipped test case, on the `test` call's own
+/// line ([TESTING-SKIP-WARNING-STATIC]): a skipped test must be loud in the
+/// editor, so these ride alongside whatever errors the file already has. An
+/// unparsable file never reaches here — it reports its syntax error alone.
+///
+/// A skip that names a reason is a Warning; one that names none is an Error
+/// ([TESTING-SKIP-REASON]). Both carry the same `test-skipped` code, because
+/// they are the same rule reported at two strengths.
+fn skip_diagnostics(
+    source: &str,
+    program: &Program,
+    encoding: PositionEncoding,
+) -> Vec<Diagnostic> {
+    crate::testing::collect_tests(program)
+        .iter()
+        .filter_map(|case| {
+            let report = case.skip_diagnostic()?;
+            let pos = case.position.unwrap_or(Position { line: 1, column: 0 });
+            let build = if report.unexplained {
+                diagnostic
+            } else {
+                warning
+            };
+            Some(build(
+                source,
+                pos,
+                &report.message,
+                "test-skipped",
+                encoding,
+            ))
+        })
+        .collect()
 }
 
 /// Where to underline a flavor conflict: the `// osprey: flavor=` marker line
@@ -226,6 +258,28 @@ fn diagnostic(
     code: &str,
     encoding: PositionEncoding,
 ) -> Diagnostic {
+    ranged(source, pos, Severity::Error, message, code, encoding)
+}
+
+/// Build one warning diagnostic spanning the offending line from `pos` onward.
+fn warning(
+    source: &str,
+    pos: Position,
+    message: &str,
+    code: &str,
+    encoding: PositionEncoding,
+) -> Diagnostic {
+    ranged(source, pos, Severity::Warning, message, code, encoding)
+}
+
+fn ranged(
+    source: &str,
+    pos: Position,
+    severity: Severity,
+    message: &str,
+    code: &str,
+    encoding: PositionEncoding,
+) -> Diagnostic {
     let line = pos.line.saturating_sub(1);
     let line_text = nth_line(source, line);
     // `pos.column` is a tree-sitter byte offset; re-measure the line prefix in
@@ -234,7 +288,7 @@ fn diagnostic(
     let end = line_text
         .map_or(0, |l| crate::text::measure(l, encoding))
         .max(start.saturating_add(1));
-    Diagnostic::new(Severity::Error, message, (line, start, line, end))
+    Diagnostic::new(severity, message, (line, start, line, end))
         .with_source(SOURCE)
         .with_code(code)
 }
@@ -309,6 +363,111 @@ mod tests {
         // An agreeing marker stays silent and still selects the ML frontend.
         let agree = "// osprey: flavor=ml\ninc x = x + 1\n";
         assert!(compute(agree, "file:///tour.ospml", U16).is_empty());
+    }
+
+    // ---------- [TESTING-SKIP-WARNING] ----------
+
+    #[test]
+    fn a_statically_skipped_test_raises_a_warning_diagnostic() {
+        // A skipped test is never silent: the `Skip` verdict at the body's
+        // result position warns on the `test` call's own line, in both flavors.
+        let src = "type Verdict = Pass | Fail(string) | Skip(string)\n\n\
+                   test(\"ignored case\", fn() => Skip(\"blocked on #123\"))\n\
+                   test(\"live case\", fn() => expect(1, 1))\n";
+        let diags = compute(src, OSP, U16);
+        assert_eq!(diags.len(), 1, "{diags:?}");
+        let warn = diags.first().expect("warning");
+        assert_eq!(warn.severity, Severity::Warning);
+        assert_eq!(warn.code.as_deref(), Some("test-skipped"));
+        assert_eq!(warn.source.as_deref(), Some("osprey"));
+        assert_eq!(warn.range.0, 2, "warning sits on the test call's line");
+        assert!(
+            warn.message
+                .contains("test 'ignored case' is skipped: blocked on #123"),
+            "{}",
+            warn.message
+        );
+
+        let ml = "type Verdict = Pass | Fail string | Skip string\n\n\
+                  test \"ml ignored\" (\\() => Skip \"later\")\n";
+        let diags = compute(ml, "file:///skip.ospml", U16);
+        assert_eq!(diags.len(), 1, "{diags:?}");
+        let warn = diags.first().expect("ML warning");
+        assert_eq!(warn.severity, Severity::Warning);
+        assert!(
+            warn.message.contains("test 'ml ignored' is skipped: later"),
+            "{}",
+            warn.message
+        );
+    }
+
+    #[test]
+    fn a_skip_with_no_reason_is_an_error_not_a_warning() {
+        // [TESTING-SKIP-REASON] a reasoned skip is a debt someone can weigh, so
+        // it warns; a skip that refuses to say why is a defect, so it errors.
+        // Every reasonless spelling is caught: `Skip("")`, and the bare `Skip`
+        // of a `Verdict` whose skip state declares no payload.
+        let src = "type Verdict = Pass | Fail(string) | Skip(string)\n\n\
+                   test(\"unexplained\", fn() => Skip(\"\"))\n";
+        let diags = compute(src, OSP, U16);
+        assert_eq!(diags.len(), 1, "{diags:?}");
+        let err = diags.first().expect("error");
+        assert_eq!(err.severity, Severity::Error);
+        assert_eq!(err.code.as_deref(), Some("test-skipped"));
+        assert_eq!(err.range.0, 2, "error sits on the test call's line");
+        assert!(
+            err.message
+                .contains("test 'unexplained' is skipped with no reason"),
+            "{}",
+            err.message
+        );
+
+        let bare = "type Verdict = Pass | Fail | Skip\n\n\
+                    test(\"bare skip\", fn() => Skip)\n";
+        let diags = compute(bare, OSP, U16);
+        assert!(
+            diags
+                .iter()
+                .any(|d| d.severity == Severity::Error
+                    && d.code.as_deref() == Some("test-skipped")),
+            "{diags:?}"
+        );
+    }
+
+    #[test]
+    fn skip_warnings_ride_alongside_type_errors() {
+        // The warning must not vanish because the file has other findings.
+        let src = "type Verdict = Pass | Fail(string) | Skip(string)\n\
+                   fn broken() -> int = nope(1)\n\
+                   test(\"parked\", fn() => Skip(\"awaiting fix\"))\n";
+        let diags = compute(src, OSP, U16);
+        assert!(
+            diags.iter().any(|d| d.severity == Severity::Error),
+            "{diags:?}"
+        );
+        assert!(
+            diags
+                .iter()
+                .any(|d| d.severity == Severity::Warning
+                    && d.code.as_deref() == Some("test-skipped")),
+            "{diags:?}"
+        );
+    }
+
+    #[test]
+    fn a_dynamically_guarded_test_does_not_warn_statically() {
+        // `assume`-style skips are runtime outcomes; only a body that
+        // LITERALLY results in `Skip` is statically an ignored test.
+        let src = "type Verdict = Pass | Fail(string) | Skip(string)\n\
+                   fn guard(n) = match n > 1 { true => Pass false => Skip(\"small\") }\n\
+                   test(\"guarded\", fn() => guard(2))\n";
+        let diags = compute(src, OSP, U16);
+        assert!(
+            diags
+                .iter()
+                .all(|d| d.code.as_deref() != Some("test-skipped")),
+            "{diags:?}"
+        );
     }
 
     #[test]

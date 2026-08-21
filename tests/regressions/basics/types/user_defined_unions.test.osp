@@ -1,11 +1,14 @@
-// User-defined sum types: exercises construction + pattern matching on
-// both arms, including arms that carry payload fields. Renamed away from
-// the built-in `Result` so this file documents user-defined unions and
-// not the Result<T, E> shape that ships with the language.
+// Cross-contract oracle for [TYPE-MATCH-EXHAUSTIVE], [TYPE-LIST],
+// [TYPE-LIST-PATTERNS], [TYPE-MAP], [TYPE-MAP-LOOKUP], [TYPE-MAP-OPS],
+// [EFFECTS-OP-TYPING], and [EFFECTS-HANDLER-STATE].
 
 type Outcome = Ok { value: string } | Err { message: string }
 
 type Status = Active | Inactive
+
+effect OutcomeAudit {
+    observe: fn(string) -> Unit
+}
 
 fn describe(o) = match o {
     Ok { value } => "ok: " + value
@@ -17,16 +20,96 @@ fn label(s) = match s {
     Inactive => "inactive"
 }
 
-print(describe(Ok { value: "loaded" }))
-print(describe(Err { message: "missing" }))
-print(label(Active))
-print(label(Inactive))
+fn chooseOutcome<T>(outcome: Outcome, accepted: T, rejected: T) -> T = match outcome {
+    Ok { value } => accepted
+    Err { message } => rejected
+}
 
-/// Verifies payload and payload-free variants dispatch to their matching arms.
-fn userDefinedUnionCase() = checkAll("user-defined union matching", [
-    describe(Ok { value: "loaded" }) == "ok: loaded",
-    describe(Err { message: "missing" }) == "err: missing",
-    label(Active) == "active",
-    label(Inactive) == "inactive"
-])
+fn outcomeShape(outcomes: List<Outcome>) = match outcomes {
+    [] => "empty"
+    [only] => "one:${describe(only)}"
+    [first, second] => "two:${describe(first)}/${describe(second)}"
+    [head, ...tail] => "many:${describe(head)}+${listLength(tail)}"
+}
+
+fn auditOutcomes(outcomes: List<Outcome>) = {
+    mut trace = ""
+    handle OutcomeAudit
+    observe rendered => { trace = trace + rendered + "|" }
+    in forEachList(outcomes, fn(outcome) => perform OutcomeAudit.observe(describe(outcome)))
+    trace
+}
+
+print("${describe(Ok { value: "loaded" })}\n${describe(Err { message: "missing" })}\n${label(Active)}\n${label(Inactive)}")
+
+/// Stores union values in persistent generic collections, recovers lookups
+/// through Result, and visits them through an effectful callback.
+fn userDefinedUnionCase() = {
+    let loaded = Ok { value: "loaded" }
+    let missing = Err { message: "missing" }
+    let cached = Ok { value: "cached" }
+    let outcomes = [loaded, missing]
+    let grown = listAppend(outcomes, cached)
+    let prefixed = listPrepend(grown, Err { message: "offline" })
+    let reversed = listReverse(prefixed)
+    let byName = { "primary": loaded, "failure": missing }
+    let updated = mapSet(byName, "cached", cached)
+    let withoutFailure = mapRemove(updated, "failure")
+    let merged = mapMerge(byName, { "primary": cached, "offline": Err { message: "offline" } })
+    let fallback = Err { message: "fallback" }
+
+    checkAll("union tags and payloads survive direct construction", [
+            describe(loaded) == "ok: loaded",
+            describe(missing) == "err: missing",
+            describe(cached) == "ok: cached",
+            describe(Err { message: "offline" }) == "err: offline",
+            label(Active) == "active",
+            label(Inactive) == "inactive",
+            label(Active) != label(Inactive)
+    ])
+
+    checkAll("union lists preserve order patterns Results and persistence", [
+            listLength(outcomes) == 2,
+            listLength(grown) == 3,
+            listLength(prefixed) == 4,
+            listLength(reversed) == 4,
+            describe(listGet(outcomes, 0) ?: fallback) == "ok: loaded",
+            describe(listGet(outcomes, 1) ?: fallback) == "err: missing",
+            describe(listGet(grown, 2) ?: fallback) == "ok: cached",
+            describe(listGet(prefixed, 0) ?: fallback) == "err: offline",
+            describe(listGet(reversed, 0) ?: fallback) == "ok: cached",
+            describe(listGet(reversed, 3) ?: fallback) == "err: offline",
+            describe(listGet(outcomes, 9) ?: fallback) == "err: fallback",
+            listLength(outcomes) == 2,
+            outcomeShape([]) == "empty",
+            outcomeShape([loaded]) == "one:ok: loaded",
+            outcomeShape(outcomes) == "two:ok: loaded/err: missing",
+            outcomeShape(grown) == "many:ok: loaded+2",
+            auditOutcomes(outcomes) == "ok: loaded|err: missing|",
+            auditOutcomes(grown) == "ok: loaded|err: missing|ok: cached|"
+    ])
+
+    checkAll("union maps preserve replacement removal lookup and generic choices", [
+            mapLength(byName) == 2,
+            mapLength(updated) == 3,
+            mapLength(withoutFailure) == 2,
+            mapLength(merged) == 3,
+            describe(mapGet(byName, "primary") ?: fallback) == "ok: loaded",
+            describe(mapGet(byName, "failure") ?: fallback) == "err: missing",
+            describe(mapGet(updated, "cached") ?: fallback) == "ok: cached",
+            describe(mapGet(withoutFailure, "failure") ?: fallback) == "err: fallback",
+            describe(mapGet(merged, "primary") ?: fallback) == "ok: cached",
+            describe(mapGet(merged, "offline") ?: fallback) == "err: offline",
+            mapContains(byName, "primary"),
+            mapContains(updated, "cached"),
+            !mapContains(withoutFailure, "failure"),
+            listLength(mapKeys(merged)) == 3,
+            listLength(mapValues(merged)) == 3,
+            chooseOutcome(loaded, 41, 99) == 41,
+            chooseOutcome(missing, "accepted", "rejected") == "rejected",
+            chooseOutcome(cached, true, false),
+            listLength(chooseOutcome(loaded, [[1], [2, 3]], [[9]])) == 2,
+            listLength(listGet(chooseOutcome(loaded, [[1], [2, 3]], [[9]]), 1) ?: [99]) == 2
+    ])
+}
 test("user-defined union variants preserve their tags and payloads", userDefinedUnionCase)

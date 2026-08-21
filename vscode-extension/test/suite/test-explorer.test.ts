@@ -13,6 +13,7 @@ import {
   COVERAGE_RUN,
   fileTestId,
   leafTestId,
+  PLAIN_RUN,
 } from "../../client/src/test-explorer-parse";
 import {
   coverageSink,
@@ -32,11 +33,19 @@ import { resolveBuiltOsprey } from "./osprey-test-env";
 import {
   BROKEN_FIXTURE,
   COVERAGE_FIXTURE,
+  EXPLAINED_SKIP_FIXTURE,
   FAIL_FIXTURE,
   ML_FIXTURE,
+  AMBIGUOUS_NAME_FIXTURE,
+  MIXED_FIXTURE,
+  ML_SKIP_FIXTURE,
   PASS_FIXTURE,
   RecordingSink,
+  SKIP_FIXED_FIXTURE,
+  SKIP_FIXTURE,
+  SKIP_REPARKED_FIXTURE,
   STRAY_FIXTURE,
+  UNEXPLAINED_SKIP_FIXTURE,
 } from "./test-explorer-harness";
 
 suite("Osprey Test Explorer", () => {
@@ -96,7 +105,7 @@ suite("Osprey Test Explorer", () => {
       const controller = newController();
       assert.strictEqual(controller.label, "Osprey Tests");
       assert.ok(controller.id.startsWith("ospreyTests-spec-"));
-      assert.strictEqual(disposables.length, 2);
+      assert.strictEqual(disposables.length, 3);
     });
 
     test("testFileLabel outside a workspace is the basename", () => {
@@ -377,6 +386,556 @@ suite("Osprey Test Explorer", () => {
       // The filter skipped "bad math": "good math" is the only executed case.
       assert.ok(sink.output.includes("ok 1 - good math"));
       assert.ok(!sink.output.includes("bad math"));
+    });
+
+    // [TESTING-SKIP-WARNING]: NO test skips silently. A case the TAP flags
+    // `# SKIP` must land a Warning diagnostic on its `test` line — visible in
+    // the Problems panel via vscode.languages.getDiagnostics — and a case that
+    // runs again must clear its own warning.
+    test("a skipped case raises a Warning diagnostic and a revived one clears it", async function () {
+      if (!compiler) {
+        this.skip();
+      }
+      // Two full compile+run cycles (skip, then revive) — twice the budget of
+      // the single-run tests around it.
+      this.timeout(120000);
+      const skipUri = writeFixture("skips.test.osp", SKIP_FIXTURE);
+      const controller = newController();
+      const file = await discoveredFile(controller, skipUri);
+      const sink = new RecordingSink();
+      await executeRunRequest(
+        controller,
+        new vscode.TestRunRequest([file]),
+        sink,
+        token(),
+        () => compiler,
+      );
+      const parkedId = leafTestId(skipUri.toString(), "parked case");
+      assert.deepStrictEqual(
+        sink.ofKind("skipped").map((e) => e.id),
+        [parkedId],
+      );
+      // The warning is published through a REAL DiagnosticCollection, so the
+      // editor's own diagnostics channel (Problems panel, squiggles) sees it.
+      const published = vscode.languages
+        .getDiagnostics(skipUri)
+        .filter((d) => d.code === "test-skipped");
+      assert.strictEqual(published.length, 1, JSON.stringify(published));
+      assert.strictEqual(
+        published[0].severity,
+        vscode.DiagnosticSeverity.Warning,
+      );
+      assert.strictEqual(published[0].source, "osprey tests");
+      assert.strictEqual(
+        published[0].message,
+        "Test 'parked case' was skipped: blocked on #123",
+      );
+      assert.strictEqual(
+        published[0].range.start.line,
+        2,
+        "warning sits on the test call's line",
+      );
+
+      // Revive the case and re-run: the warning must clear.
+      fs.writeFileSync(skipUri.fsPath, SKIP_FIXED_FIXTURE);
+      const revived = await discoveredFile(controller, skipUri);
+      const secondSink = new RecordingSink();
+      await executeRunRequest(
+        controller,
+        new vscode.TestRunRequest([revived]),
+        secondSink,
+        token(),
+        () => compiler,
+      );
+      assert.strictEqual(secondSink.ofKind("skipped").length, 0);
+      assert.deepStrictEqual(
+        vscode.languages
+          .getDiagnostics(skipUri)
+          .filter((d) => d.code === "test-skipped"),
+        [],
+        "revived case cleared its skip warning",
+      );
+    });
+
+    // [TESTING-SKIP-REASON] a skip that names no reason is an ERROR, not a
+    // warning: the case still reports skipped in the TAP, but the diagnostic
+    // it publishes is the strongest one the editor has.
+    test("a skip with no reason raises an Error diagnostic", async function () {
+      if (!compiler) {
+        this.skip();
+      }
+      this.timeout(120000);
+      const uri = writeFixture(
+        "unexplained.test.osp",
+        UNEXPLAINED_SKIP_FIXTURE,
+      );
+      const controller = newController();
+      const file = await discoveredFile(controller, uri);
+      const sink = new RecordingSink();
+      await executeRunRequest(
+        controller,
+        new vscode.TestRunRequest([file]),
+        sink,
+        token(),
+        () => compiler,
+      );
+      const published = vscode.languages
+        .getDiagnostics(uri)
+        .filter((d) => d.code === "test-skipped");
+      assert.strictEqual(published.length, 1, JSON.stringify(published));
+      assert.strictEqual(
+        published[0].severity,
+        vscode.DiagnosticSeverity.Error,
+        "an unexplained skip is an error, not a warning",
+      );
+      assert.strictEqual(
+        published[0].message,
+        "Test 'unexplained case' was skipped with no reason; every skip must name one",
+      );
+      // Giving the SAME case a reason downgrades it to a warning — the reason
+      // is what decides the strength, nothing else.
+      fs.writeFileSync(uri.fsPath, EXPLAINED_SKIP_FIXTURE);
+      const revived = await discoveredFile(controller, uri);
+      await executeRunRequest(
+        controller,
+        new vscode.TestRunRequest([revived]),
+        new RecordingSink(),
+        token(),
+        () => compiler,
+      );
+      const reasoned = vscode.languages
+        .getDiagnostics(uri)
+        .filter((d) => d.code === "test-skipped");
+      assert.strictEqual(reasoned.length, 1, JSON.stringify(reasoned));
+      assert.strictEqual(
+        reasoned[0].severity,
+        vscode.DiagnosticSeverity.Warning,
+      );
+      assert.strictEqual(
+        reasoned[0].message,
+        "Test 'unexplained case' was skipped: blocked on #456",
+      );
+    });
+
+    // [TESTING-SKIP-WARNING] skipped/ignored are the same: a discovered case
+    // that never appears in its run's TAP at all (ignored) warns too, and
+    // deleting the file drops its warnings.
+    test("a case missing from the TAP warns as ignored; removal clears warnings", async function () {
+      if (!compiler) {
+        this.skip();
+      }
+      this.timeout(120000);
+      const ghostUri = writeFixture("ghost.test.osp", PASS_FIXTURE);
+      const controller = newController();
+      const file = await discoveredFile(controller, ghostUri);
+      assert.strictEqual(file.children.size, 2);
+      // Drop one discovered case from the file AFTER discovery: the run's TAP
+      // never mentions it, which is an ignored test.
+      fs.writeFileSync(
+        ghostUri.fsPath,
+        'fn add(a, b) = a + b\n\ntest("addition works", fn() => expect(add(2, 3), 5))\n',
+      );
+      const sink = new RecordingSink();
+      await executeRunRequest(
+        controller,
+        new vscode.TestRunRequest([file]),
+        sink,
+        token(),
+        () => compiler,
+      );
+      const ghosts = vscode.languages
+        .getDiagnostics(ghostUri)
+        .filter((d) => d.code === "test-skipped");
+      assert.strictEqual(ghosts.length, 1, JSON.stringify(ghosts));
+      assert.strictEqual(
+        ghosts[0].message,
+        "Test 'zero identity' did not run (skipped/ignored)",
+      );
+      removeTestFile(controller, ghostUri);
+      assert.deepStrictEqual(
+        vscode.languages
+          .getDiagnostics(ghostUri)
+          .filter((d) => d.code === "test-skipped"),
+        [],
+        "removing the file drops its skip warnings",
+      );
+    });
+
+    /** Every skip warning published for `uri`, sorted by line. */
+    const skipWarnings = (uri: vscode.Uri): vscode.Diagnostic[] =>
+      vscode.languages
+        .getDiagnostics(uri)
+        .filter((d) => d.code === "test-skipped")
+        .sort((a, b) => a.range.start.line - b.range.start.line);
+
+    /** Run every case of `file` through a fresh sink and return it. */
+    async function runWholeFile(
+      controller: vscode.TestController,
+      file: vscode.TestItem,
+      mode = PLAIN_RUN,
+    ): Promise<RecordingSink> {
+      const sink = new RecordingSink();
+      await executeRunRequest(
+        controller,
+        new vscode.TestRunRequest([file]),
+        sink,
+        token(),
+        () => compiler ?? "osprey",
+        mode,
+      );
+      return sink;
+    }
+
+    // [TESTING-SKIP-WARNING] one suite, every outcome: a pass, a failure, a
+    // STATIC skip and a DYNAMIC skip. Exactly the two skips warn — a failure
+    // is a failure, not a skip, and a pass warns about nothing.
+    test("a mixed suite warns for every skip and for nothing else", async function () {
+      if (!compiler) {
+        this.skip();
+      }
+      this.timeout(120000);
+      const mixedUri = writeFixture("mixed.test.osp", MIXED_FIXTURE);
+      const controller = newController();
+      const file = await discoveredFile(controller, mixedUri);
+      assert.strictEqual(file.children.size, 4, "all four cases discovered");
+      const sink = await runWholeFile(controller, file);
+
+      const id = (name: string) => leafTestId(mixedUri.toString(), name);
+      // --- Verdicts reach the Test Explorer intact.
+      assert.deepStrictEqual(
+        sink.ofKind("passed").map((e) => e.id),
+        [id("passes cleanly")],
+      );
+      assert.deepStrictEqual(
+        sink.ofKind("failed").map((e) => e.id),
+        [id("fails loudly")],
+      );
+      assert.deepStrictEqual(
+        sink
+          .ofKind("skipped")
+          .map((e) => e.id)
+          .sort(),
+        [id("dynamically parked"), id("statically parked")].sort(),
+        "BOTH the static and the dynamic skip report as skipped",
+      );
+      assert.strictEqual(sink.ofKind("errored").length, 0);
+      assert.strictEqual(sink.ofKind("enqueued").length, 4);
+      assert.strictEqual(sink.ofKind("started").length, 4);
+
+      // --- The failure keeps its own diagnostic, unpolluted by skip handling.
+      assert.match(
+        String(sink.ofKind("failed")[0].message),
+        /expect failed: expected 3, got 1/,
+      );
+
+      // --- Exactly two warnings, one per skip, each on its own `test` line.
+      const warnings = skipWarnings(mixedUri);
+      assert.strictEqual(
+        warnings.length,
+        2,
+        `only the skips warn: ${JSON.stringify(warnings.map((w) => w.message))}`,
+      );
+      assert.deepStrictEqual(
+        warnings.map((w) => w.range.start.line),
+        [11, 13],
+        "warnings land on the two `test(` lines",
+      );
+      assert.deepStrictEqual(
+        warnings.map((w) => w.message),
+        [
+          "Test 'statically parked' was skipped: static reason",
+          "Test 'dynamically parked' was skipped: runtime precondition unmet",
+        ],
+      );
+      for (const warning of warnings) {
+        assert.strictEqual(warning.severity, vscode.DiagnosticSeverity.Warning);
+        assert.strictEqual(warning.source, "osprey tests");
+        assert.ok(
+          warning.range.end.character > warning.range.start.character,
+          "the span is non-empty so it renders as a squiggle",
+        );
+      }
+      // The pass and the failure are named in NO warning.
+      const text = warnings.map((w) => w.message).join("\n");
+      assert.ok(!text.includes("passes cleanly"), text);
+      assert.ok(!text.includes("fails loudly"), text);
+
+      // --- The raw TAP is echoed to the run's terminal, CRLF-terminated.
+      assert.ok(sink.output.includes("# SKIP static reason"));
+      assert.ok(sink.output.includes("# SKIP runtime precondition unmet"));
+      assert.ok(sink.output.includes("\r\n"));
+    });
+
+    // [TESTING-TAP-AMBIGUITY] a PASSING case whose NAME contains `# SKIP` must
+    // never be reported as skipped. This is the exact line a naive TAP split
+    // mangles, and it would have marked a green test as an ignored one.
+    test("a passing case whose name contains the SKIP directive is not warned", async function () {
+      if (!compiler) {
+        this.skip();
+      }
+      this.timeout(120000);
+      const uri = writeFixture("ambiguous.test.osp", AMBIGUOUS_NAME_FIXTURE);
+      const controller = newController();
+      const file = await discoveredFile(controller, uri);
+      const names = [...file.children].map(([, item]) => item.label).sort();
+      assert.deepStrictEqual(
+        names,
+        ["name with # SKIP inside it", "really parked"],
+        "discovery keeps the directive-shaped name whole",
+      );
+      const sink = await runWholeFile(controller, file);
+
+      const ambiguousId = leafTestId(
+        uri.toString(),
+        "name with # SKIP inside it",
+      );
+      const parkedId = leafTestId(uri.toString(), "really parked");
+      assert.deepStrictEqual(
+        sink.ofKind("passed").map((e) => e.id),
+        [ambiguousId],
+        "the ambiguous case PASSED and must be reported as passed",
+      );
+      assert.deepStrictEqual(
+        sink.ofKind("skipped").map((e) => e.id),
+        [parkedId],
+        "only the genuinely skipped case is skipped",
+      );
+
+      const warnings = skipWarnings(uri);
+      assert.strictEqual(warnings.length, 1, JSON.stringify(warnings));
+      assert.strictEqual(
+        warnings[0].message,
+        "Test 'really parked' was skipped: genuinely skipped",
+      );
+      assert.ok(
+        !warnings[0].message.includes("inside it"),
+        "the passing case's name never leaks into a warning",
+      );
+      assert.strictEqual(
+        warnings[0].range.start.line,
+        4,
+        "the warning belongs to the parked case's line, not the ambiguous one",
+      );
+    });
+
+    // [TESTING-SKIP-WARNING] the full edit lifecycle through the Explorer:
+    // park → re-park under a new reason → revive → delete. Every step is a
+    // real compile+run, and every step re-checks the published diagnostics.
+    test("skip warnings track park, re-park, revive, and delete across runs", async function () {
+      if (!compiler) {
+        this.skip();
+      }
+      // Four full compile+run cycles, each on an edited file (so the build
+      // cache misses every time): budgeted at ~75s per cycle.
+      this.timeout(300000);
+      const uri = writeFixture("lifecycle.test.osp", SKIP_FIXTURE);
+      const controller = newController();
+
+      // (1) Parked: one warning naming the original reason.
+      const parked = await discoveredFile(controller, uri);
+      await runWholeFile(controller, parked);
+      const first = skipWarnings(uri);
+      assert.strictEqual(first.length, 1, JSON.stringify(first));
+      assert.strictEqual(
+        first[0].message,
+        "Test 'parked case' was skipped: blocked on #123",
+      );
+
+      // (2) Re-parked under a DIFFERENT reason: the message must update, not
+      // duplicate — a stale warning would misreport why a test is off.
+      fs.writeFileSync(uri.fsPath, SKIP_REPARKED_FIXTURE);
+      const reparked = await discoveredFile(controller, uri);
+      await runWholeFile(controller, reparked);
+      const second = skipWarnings(uri);
+      assert.strictEqual(
+        second.length,
+        1,
+        `no duplicate: ${JSON.stringify(second)}`,
+      );
+      assert.strictEqual(
+        second[0].message,
+        "Test 'parked case' was skipped: now blocked on #456",
+      );
+
+      // (3) Revived: the warning clears and the case reports passed.
+      fs.writeFileSync(uri.fsPath, SKIP_FIXED_FIXTURE);
+      const revived = await discoveredFile(controller, uri);
+      const revivedSink = await runWholeFile(controller, revived);
+      assert.strictEqual(revivedSink.ofKind("skipped").length, 0);
+      assert.strictEqual(revivedSink.ofKind("passed").length, 2);
+      assert.deepStrictEqual(skipWarnings(uri), [], "revived case is clean");
+
+      // (4) Parked AGAIN: the warning comes back rather than staying cleared.
+      fs.writeFileSync(uri.fsPath, SKIP_FIXTURE);
+      const reparkedAgain = await discoveredFile(controller, uri);
+      await runWholeFile(controller, reparkedAgain);
+      assert.strictEqual(
+        skipWarnings(uri).length,
+        1,
+        "re-parking re-raises the warning",
+      );
+
+      // (5) Deleting the file drops its warnings entirely.
+      removeTestFile(controller, uri);
+      assert.deepStrictEqual(skipWarnings(uri), []);
+    });
+
+    // [TESTING-SKIP-WARNING] + [TESTING-FILTER]: running ONE case leaves the
+    // others unrun — which is exactly an ignored test — so they warn; running
+    // the whole file afterwards clears the ones that then execute.
+    test("a filtered single-case run warns about the cases it left unrun", async function () {
+      if (!compiler) {
+        this.skip();
+      }
+      this.timeout(180000);
+      const uri = writeFixture("filtered.test.osp", PASS_FIXTURE);
+      const controller = newController();
+      const file = await discoveredFile(controller, uri);
+      const first = file.children.get(
+        leafTestId(uri.toString(), "addition works"),
+      );
+      const second = file.children.get(
+        leafTestId(uri.toString(), "zero identity"),
+      );
+      assert.ok(first && second);
+
+      // Running ONLY the first case: the second never executes.
+      const sink = new RecordingSink();
+      await executeRunRequest(
+        controller,
+        new vscode.TestRunRequest([first]),
+        sink,
+        token(),
+        () => compiler,
+      );
+      assert.deepStrictEqual(
+        sink.ofKind("passed").map((e) => e.id),
+        [first.id],
+      );
+      assert.ok(
+        !sink.output.includes("zero identity"),
+        "the filter really excluded the other case",
+      );
+      // The executed case has no warning; the unrun one is not touched at all
+      // (a run reports only what it ran), so no stale state is invented.
+      assert.deepStrictEqual(
+        skipWarnings(uri).map((w) => w.message),
+        [],
+        "an excluded case is not a skip of THIS run",
+      );
+
+      // Now run the whole file WITH one case excluded: the excluded case is
+      // deliberately not run, so it is an ignored test and must warn.
+      const exclusionSink = new RecordingSink();
+      const request = new vscode.TestRunRequest([file], [second]);
+      await executeRunRequest(
+        controller,
+        request,
+        exclusionSink,
+        token(),
+        () => compiler,
+      );
+      assert.deepStrictEqual(
+        exclusionSink.ofKind("passed").map((e) => e.id),
+        [first.id],
+        "only the included case ran",
+      );
+      assert.ok(
+        !exclusionSink.output.includes("zero identity"),
+        "the excluded case never executed",
+      );
+
+      // Finally, running everything clears the slate: both pass, no warnings.
+      const fullSink = await runWholeFile(controller, file);
+      assert.strictEqual(fullSink.ofKind("passed").length, 2);
+      assert.strictEqual(fullSink.ofKind("skipped").length, 0);
+      assert.deepStrictEqual(
+        skipWarnings(uri),
+        [],
+        "a full green run is silent",
+      );
+    });
+
+    // [TESTING-SKIP-WARNING] the ML flavor reaches the same contract through
+    // its own frontend, and a COVERAGE run publishes the same warnings as a
+    // plain run — the profile must not change what is reported.
+    test("ML suites and coverage runs publish the same skip warnings", async function () {
+      if (!compiler) {
+        this.skip();
+      }
+      this.timeout(180000);
+      const mlUri = writeFixture("mlskip.test.ospml", ML_SKIP_FIXTURE);
+      const controller = newController();
+      const file = await discoveredFile(controller, mlUri);
+      assert.strictEqual(file.children.size, 2, "ML cases discovered");
+
+      const plain = await runWholeFile(controller, file);
+      assert.deepStrictEqual(
+        plain.ofKind("skipped").map((e) => e.id),
+        [leafTestId(mlUri.toString(), "ml parked case")],
+      );
+      const afterPlain = skipWarnings(mlUri);
+      assert.strictEqual(afterPlain.length, 1, JSON.stringify(afterPlain));
+      assert.strictEqual(
+        afterPlain[0].message,
+        "Test 'ml parked case' was skipped: ml blocked",
+        "the ML flavor produces the same message shape as Default",
+      );
+      assert.strictEqual(afterPlain[0].range.start.line, 2);
+      assert.strictEqual(afterPlain[0].source, "osprey tests");
+
+      // The same suite under the COVERAGE profile: same verdicts, same
+      // warning, plus the coverage report.
+      const coverage = await runWholeFile(controller, file, COVERAGE_RUN);
+      assert.deepStrictEqual(
+        coverage.ofKind("skipped").map((e) => e.id),
+        [leafTestId(mlUri.toString(), "ml parked case")],
+        "a coverage run reports the skip identically",
+      );
+      const afterCoverage = skipWarnings(mlUri);
+      assert.strictEqual(
+        afterCoverage.length,
+        1,
+        `coverage neither duplicates nor drops the warning: ${JSON.stringify(afterCoverage)}`,
+      );
+      assert.strictEqual(afterCoverage[0].message, afterPlain[0].message);
+      assert.ok(
+        coverage.coverage.get(mlUri.fsPath),
+        "the coverage report still reached the sink",
+      );
+    });
+
+    // [TESTING-SKIP-WARNING] damage case: a suite that does not COMPILE has no
+    // verdicts at all. It must error, not manufacture skip warnings.
+    test("a compile failure errors without inventing skip warnings", async function () {
+      if (!compiler) {
+        this.skip();
+      }
+      this.timeout(120000);
+      const uri = writeFixture("breaks.test.osp", SKIP_FIXTURE);
+      const controller = newController();
+      const file = await discoveredFile(controller, uri);
+      // Park it first so a real warning exists...
+      await runWholeFile(controller, file);
+      assert.strictEqual(skipWarnings(uri).length, 1, "warning is present");
+
+      // ...then break the file so the next run cannot compile.
+      fs.writeFileSync(uri.fsPath, `${SKIP_FIXTURE}\nfn broken( = 42\n`);
+      const sink = await runWholeFile(controller, file);
+      assert.ok(
+        sink.ofKind("errored").length > 0,
+        "a compile failure errors the run",
+      );
+      assert.strictEqual(
+        sink.ofKind("skipped").length,
+        0,
+        "a compile failure is NOT a skip",
+      );
+      assert.match(
+        String(sink.ofKind("errored")[0].message),
+        /error|syntax/i,
+        "the compiler's own message is surfaced",
+      );
     });
 
     // [TESTING-COVERAGE-VSCODE]: a coverage run maps TAP as usual AND reports

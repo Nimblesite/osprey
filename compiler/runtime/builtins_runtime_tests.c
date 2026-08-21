@@ -330,8 +330,10 @@ static void t_tap(void) {
                    1);
   run_child_expect(child_tap_empty, "",
                    "1..0\n# tests=0 passed=0 failed=0 skipped=0\n", 0);
+  // A reasonless skip ends at the bare directive — no trailing space, so the
+  // line is byte-comparable against a golden [TESTING-TAP].
   run_child_expect(child_tap_null_reasons, "",
-                   "ok 1 - s # SKIP \n"
+                   "ok 1 - s # SKIP\n"
                    "# fail: \n"
                    "not ok 2 - f\n1..2\n"
                    "# tests=2 passed=0 failed=1 skipped=1\n",

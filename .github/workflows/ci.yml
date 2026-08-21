@@ -327,7 +327,9 @@ jobs:
       # Dead-code gate: fail if any `pub` declaration is unreachable from the
       # osprey binary (hawk::dead_public). Scoped to dead_public only — see the
       # `hawk` target in the Makefile. cargo-hawk's prebuilt driver is pinned to
-      # the stable toolchain this job installs (1.97.1); bump them together.
+      # the stable toolchain this job installs (1.98.0), and the installer below
+      # fetches the release matching it; when stable moves, hawk's own release
+      # must move with it or this gate fails on a toolchain mismatch alone.
       - name: Install cargo-hawk (dead-code gate)
         run: |
           curl --proto '=https' --tlsv1.2 -LsSf \
@@ -361,7 +363,10 @@ jobs:
           # dropped on the floor. A 12-line hand-written module that writes,
           # grows and writes again reproduces it with no Osprey involved; Node
           # 24 is the first release that runs both it and the assertion corpus
-          # clean. scripts/wasm-smoke.mjs refuses to run on anything older.
+          # clean. scripts/wasm-smoke.mjs relaunches itself under a sound
+          # interpreter when the host's is older, and refuses only when no
+          # such interpreter exists — pinning 24 here keeps the runner on the
+          # direct path rather than the fallback.
           node-version: '24'
 
       - name: Install Rust (stable)

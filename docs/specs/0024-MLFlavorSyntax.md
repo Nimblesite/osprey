@@ -132,6 +132,19 @@ f (a)       -> Call(f, [a])
 Parentheses are also used for grouping and to delimit lambdas passed as
 arguments.
 
+`[FLAVOR-ML-CALL-SATURATED]` A spine whose head is BOUND — a definition, a
+parameter, or a block binding in scope at the application — keeps the curried
+form above, so partial application works. A spine whose head is not bound is a
+builtin or an `extern`, which cannot be partially applied, so its saturated
+spine folds to one flat call: `contains "alpha" "ph"` is `contains("alpha",
+"ph")`, exactly what Default spells.
+
+Whether the head is bound is a LEXICAL question, answered in the scopes
+enclosing the application: the file-scope definitions, then one scope per
+enclosing parameter list and block. A parameter therefore only changes the
+spines inside its own body. Declaring `useUnrelated contains = contains`
+elsewhere in the file leaves every other `contains a b` a flat builtin call.
+
 ## Collections and Indexing
 
 `[FLAVOR-ML-LIST]` Lists use `[a, b, c]`; `[]` is empty. A trailing comma is

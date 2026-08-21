@@ -406,10 +406,7 @@ impl Checker {
                 (Vec::new(), HashMap::new(), false)
             };
         let answer = self.ctx.fresh();
-        // Codegen picks the resuming lowering by exactly this predicate
-        // (`gen_handler` in osprey-codegen), and the two rules must agree.
-        let region_resumes = arms.iter().any(|a| osprey_ast::contains_resume(&a.body));
-        let mut aborting: Vec<(String, Type)> = Vec::new();
+        let mut answering: Vec<(String, Type)> = Vec::new();
         for arm in arms {
             let (params, op_ret) = match inst_ops.get(&arm.operation) {
                 Some(op) if op.params.len() == arm.params.len() => {
@@ -447,28 +444,18 @@ impl Checker {
             self.resume_ctx.push((op_ret.clone(), answer.clone()));
             let arm_ty = self.infer_expr(&arm.body, &local);
             let _ = self.resume_ctx.pop();
-            // A non-resuming arm's value substitutes for the operation's
-            // RESULT (value substitution — this is what pins a generic
-            // effect's instantiation from its handler); a resuming arm's
-            // value is the handler's ANSWER. A `Unit` operation discards the
-            // arm's value, so anything goes there. Implements
-            // [EFFECTS-RESUME] and [EFFECTS-GENERIC-INSTANTIATION].
-            //
-            // Value substitution is the rule for a region where NO arm resumes:
-            // the handler is inlined at each `perform`, so the arm's value is
-            // what the `perform` evaluates to. In a region where some other arm
-            // does resume, a non-resuming arm instead ABANDONS the continuation
-            // — the body is killed and this arm's value becomes the whole
-            // `handle` expression's answer, while the operation's result is
-            // never produced at all. Constraining it to `op_ret` there checks
-            // the wrong thing and leaves the answer unchecked, which is how a
-            // `string` arm came to answer an `int` handle: codegen boxed the
-            // pointer as an integer and the program printed a heap address as a
-            // successful result. Implements [EFFECTS-HANDLER-ARMS].
+            // Mode is the ARM's, not the region's. An arm that resumes hands
+            // its value back as the handler's ANSWER, because `resume` already
+            // supplied the operation's result and the arm outlives it. An arm
+            // that never resumes SUBSTITUTES: its value is what the `perform`
+            // evaluates to, which is also what pins a generic effect's
+            // instantiation from its handler. A sibling's `resume` changes
+            // neither — reading the mode region-wide was issue #177. A `Unit`
+            // operation discards the arm's value, so anything goes there.
+            // Implements [EFFECTS-HANDLER-ARMS], [EFFECTS-RESUME] and
+            // [EFFECTS-GENERIC-INSTANTIATION].
             if osprey_ast::contains_resume(&arm.body) {
-                self.push_assign(&answer, &arm_ty);
-            } else if region_resumes {
-                aborting.push((arm.operation.clone(), arm_ty));
+                answering.push((arm.operation.clone(), arm_ty));
             } else if !self.ctx.prune(&op_ret).is_named(crate::ty::names::UNIT) {
                 self.push_assign(&op_ret, &arm_ty);
             } else if self.ctx.prune(&arm_ty).is_named(crate::ty::names::RESULT) {
@@ -489,29 +476,34 @@ impl Checker {
         }
         self.push_assign(&answer, &body_ty);
         // Checked only now: the handled expression is what pins the answer, so
-        // blaming the arm before it is known would report the mismatch backwards.
-        for (op, arm_ty) in aborting {
-            self.check_abandoning_arm(effect, &op, &answer, &arm_ty);
+        // blaming an arm before it is known would report the mismatch backwards
+        // — the first resuming arm would simply BIND the still-free answer and
+        // the body would then fail with an anonymous "cannot unify".
+        for (op, arm_ty) in answering {
+            self.check_resuming_arm_answer(effect, &op, &answer, &arm_ty);
         }
         answer
     }
 
-    /// An arm that abandons the continuation answers for the whole `handle`, so
-    /// its value must be able to BE that answer — an assignment, hence the
-    /// directional check: a concrete arm erases into an `any` region, while an
-    /// erased arm cannot answer a concrete one ([TYPE-ANY]). Codegen cannot
-    /// tell an erased word from a genuine `int`, which is why this belongs in
-    /// inference. Implements [EFFECTS-HANDLER-ARMS].
-    fn check_abandoning_arm(&mut self, effect: &str, op: &str, answer: &Type, arm_ty: &Type) {
+    /// A resuming arm's value is the handler's ANSWER, not the operation's
+    /// result: `resume` already supplied the result, and the arm keeps running
+    /// afterwards, so what it finally returns answers for the whole `handle` —
+    /// as does any branch of it that returns without resuming, abandoning the
+    /// continuation. Its value must therefore be able to BE that answer — an
+    /// assignment, hence the directional check: a concrete arm erases into an
+    /// `any` region, while an erased arm cannot answer a concrete one
+    /// ([TYPE-ANY]). Codegen cannot tell an erased word from a genuine `int`,
+    /// which is why this belongs in inference. Implements
+    /// [EFFECTS-HANDLER-ARMS].
+    fn check_resuming_arm_answer(&mut self, effect: &str, op: &str, answer: &Type, arm_ty: &Type) {
         if crate::unify::unify_assignable(&mut self.ctx, answer, arm_ty).is_ok() {
             return;
         }
         let (want, got) = (self.ctx.prune(answer), self.ctx.prune(arm_ty));
         self.errors.push(TypeError::new(format!(
-            "handler arm `{effect}.{op}` never resumes, so its value becomes the whole \
+            "handler arm `{effect}.{op}` resumes, so its value becomes the whole \
              `handle` expression's result — but it is `{got}` and that result is `{want}`. \
-             Give the arm a `resume`, or make every arm of this handler agree with the \
-             handled expression's type"
+             Make the arm's value agree with the handled expression's type"
         )));
     }
 
@@ -892,12 +884,24 @@ impl Checker {
         // keeps the checker in agreement so the program is rejected here,
         // with a type error, instead of deep in codegen. [EFFECTS-RESUME]
         let saved_resume_ctx = std::mem::take(&mut self.resume_ctx);
-        // A lambda is a runtime VALUE with one ABI, not a definition the
-        // backend re-specialises per call site, so its body never leaves an
-        // arithmetic overload open ([`Self::defers`]). Where a lambda's slot
-        // pins its parameters this changes nothing — they are already concrete
-        // by the time the body is inferred.
-        let saved_defer = std::mem::replace(&mut self.defer_arith, false);
+        // A lambda whose SLOT pins its parameters never leaves an arithmetic
+        // overload open: they are already concrete by the time the body is
+        // inferred, so the selection has everything it needs
+        // ([`Self::defers`]).
+        //
+        // An unslotted lambda is the opposite case and must defer. `\x y => x +
+        // y` bound to a name has nothing pinning `x` and `y` when its body is
+        // inferred, so closing deferral there defaulted it to the integer
+        // overload and every later string use was rejected. Deferring does not
+        // make it polymorphic — the operand variables stay monomorphic
+        // ([`Checker::generalize_with_obligations`]) and the overload is still
+        // settled exactly once, by how the program actually uses it. This is
+        // also what makes ML's curry-by-default agree with Default: `f a b = a
+        // + b` lowers to a `Function` whose body is a `Lambda` chain
+        // ([FLAVOR-ML-CURRY]), so the chain must leave the overload as open as
+        // the flat `fn f(a, b) = a + b` does ([FLAVOR-IR-EQUIV]).
+        let saved_defer = self.defer_arith;
+        self.defer_arith = saved_defer && expected.is_none();
         let body_ty = self.infer_expr(body, &local);
         self.defer_arith = saved_defer;
         self.resume_ctx = saved_resume_ctx;
@@ -1516,62 +1520,84 @@ mod tests {
             }\n");
     }
 
-    /// A mixed region: `b` never resumes, so it abandons the continuation and
-    /// its value is the whole `handle` result — checked against the ANSWER, not
-    /// against `b`'s declared result, which no `perform` ever receives.
+    /// A mixed region: `b` RESUMES, so `resume` has already supplied `b`'s
+    /// declared result and the arm runs on afterwards — its own value is the
+    /// whole `handle` result and is checked against the ANSWER. The same holds
+    /// for a branch of such an arm that returns WITHOUT resuming, which
+    /// abandons the continuation.
+    ///
+    /// The mode is the arm's, never the region's: a sibling's `resume` leaves a
+    /// non-resuming arm substituting (issue #177), which is what
+    /// [`a_substituting_arm_is_unaffected_by_a_siblings_resume`] pins.
     /// [EFFECTS-HANDLER-ARMS]
-    fn mixed_region(op_ret: &str, body_ret: &str, body_tail: &str, arm: &str) -> String {
+    fn mixed_region(
+        op_ret: &str,
+        supplied: &str,
+        body_ret: &str,
+        body_tail: &str,
+        arm: &str,
+    ) -> String {
         format!(
             "effect Mixed {{ a: fn(int) -> int\n b: fn() -> {op_ret} }}\n\
              fn body() -> {body_ret} !Mixed = {{\n let ignored = perform Mixed.b()\n {body_tail}\n }}\n\
-             let out = handle Mixed\n a x => resume(x)\n b => {arm}\n in body()\n"
+             let out = handle Mixed\n a x => resume(x)\n \
+             b => {{\n let settled = resume({supplied})\n {arm}\n }}\n in body()\n"
         )
     }
 
     #[test]
-    fn an_abandoning_arm_must_be_able_to_be_the_answer() {
+    fn a_resuming_arm_must_be_able_to_be_the_answer() {
         // Both directions, and through a Result answer. Checking only one
         // direction is not a partial gate: the unchecked one reached codegen's
         // `coerce_to`, which boxed a heap address as a successful `int`.
-        for (op_ret, body_ret, body_tail, arm) in [
-            ("int", "string", "\"done\"", "7"),
-            ("string", "int", "42", "\"dynamic\""),
+        for (op_ret, supplied, body_ret, body_tail, arm) in [
+            ("int", "0", "string", "\"done\"", "7"),
+            ("string", "\"s\"", "int", "42", "\"dynamic\""),
             (
                 "string",
+                "\"s\"",
                 "Result<int, string>",
                 "Success { value: 42 }",
                 "\"dynamic\"",
             ),
         ] {
-            let errs = bad(&mixed_region(op_ret, body_ret, body_tail, arm));
+            let errs = bad(&mixed_region(op_ret, supplied, body_ret, body_tail, arm));
             assert!(
-                errs.iter().any(|e| e.message.contains("never resumes")),
+                errs.iter().any(|e| e
+                    .message
+                    .contains("becomes the whole `handle` expression's result")),
                 "arm `{arm}` must not be allowed to answer `{body_ret}`; got {errs:?}"
             );
         }
     }
 
     #[test]
-    fn an_abandoning_arm_may_disagree_with_its_own_operation_result() {
-        // The arm's value is not the operation's result — that result is never
-        // produced. `b` declares `int` and answers `string`, and the handled
-        // body answers `string`, so the region is well typed.
-        ok(&mixed_region(
-            "int",
-            "string",
-            "\"unreached\"",
-            "\"stopped\"",
-        ));
+    fn an_abandoning_branch_may_disagree_with_its_own_operation_result() {
+        // `b` declares `int` but the branch below never resumes, so `b`'s
+        // result is never produced — the `perform` waiting for it never
+        // returns — and the branch answers `string` for the whole region.
+        ok("effect Mixed { a: fn(int) -> int\n b: fn() -> int }\n\
+            fn body() -> string !Mixed = {\n\
+              let ignored = perform Mixed.b()\n\
+              \"unreached\"\n\
+            }\n\
+            let out = handle Mixed\n\
+              a x => resume(x)\n\
+              b => match 1 > 0 {\n\
+                true => \"stopped\"\n\
+                false => resume(0)\n\
+              }\n\
+            in body()\n");
     }
 
     #[test]
-    fn an_abandoning_arm_may_not_answer_an_erased_word() {
-        // An abandoning arm's value IS the region's result, so an `any` arm in
-        // a `string` region hands the caller an erased word to read as a
-        // pointer — recovery by declared type, which [TYPE-ANY] deletes. The
-        // arm must narrow structurally before it answers.
+    fn a_resuming_arm_may_not_answer_an_erased_word() {
+        // The arm's value IS the region's result, so an `any` arm in a `string`
+        // region hands the caller an erased word to read as a pointer —
+        // recovery by declared type, which [TYPE-ANY] deletes. The arm must
+        // narrow structurally before it answers.
         let errs = bad(
-            &mixed_region("int", "string", "\"unreached\"", "erased()").replace(
+            &mixed_region("int", "0", "string", "\"unreached\"", "erased()").replace(
                 "effect Mixed {",
                 "fn erased() -> any = \"x\"\neffect Mixed {",
             ),
@@ -1581,6 +1607,25 @@ mod tests {
                 .message
                 .contains("it is `any` and that result is `string`")),
             "an `any` arm must not answer a `string` region; got {errs:?}"
+        );
+    }
+
+    #[test]
+    fn a_substituting_arm_is_unaffected_by_a_siblings_resume() {
+        // Issue #177: reading the mode region-wide turned `b` — which has no
+        // `resume` of its own — into an early exit because its SIBLING resumes,
+        // and then checked its value against the region's answer. `b`'s value
+        // substitutes for `b`'s own declared result, whatever `a` does, so an
+        // `int` arm belongs in a `string` region and a `string` one does not.
+        ok("effect Mixed { a: fn(int) -> int\n b: fn() -> int }\n\
+            fn body() -> string !Mixed = \"v=${perform Mixed.b()}\"\n\
+            let out = handle Mixed\n a x => resume(x)\n b => 7\n in body()\n");
+        let errs = bad("effect Mixed { a: fn(int) -> int\n b: fn() -> int }\n\
+             fn body() -> string !Mixed = \"v=${perform Mixed.b()}\"\n\
+             let out = handle Mixed\n a x => resume(x)\n b => \"seven\"\n in body()\n");
+        assert!(
+            !errs.is_empty(),
+            "a `string` arm cannot supply an `int` result"
         );
     }
 

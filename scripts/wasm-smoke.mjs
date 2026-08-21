@@ -10,30 +10,16 @@
 
 import { openSync, closeSync, readFileSync, mkdirSync, rmSync } from "node:fs";
 import { WASI } from "node:wasi";
-import { loadModuleFromArgv, assertMatchesGolden } from "./wasm-smoke-support.mjs";
+import {
+  loadModuleFromArgv,
+  assertMatchesGolden,
+  ensureWasiCapableNode,
+} from "./wasm-smoke-support.mjs";
 
-// `node:wasi` caches the module's memory backing store when the instance starts
-// and never refreshes it after `memory.grow`, so every WASI call a growing
-// module makes afterwards reads or writes freed memory. On x86_64 that is a
-// SIGSEGV inside node — exit 139, no stderr, no wasm trap — and where the stale
-// page happens to still be mapped it silently drops the module's output
-// instead, which is worse. A 12-line hand-written module that writes, grows and
-// writes again reproduces it with no Osprey involved, and Node 24 is the first
-// release that runs both it and the assertion corpus clean. Refuse older hosts
-// rather than let a defect in the runner report itself as a compiler one; the
-// module still has a second oracle in wasm-browser-smoke.mjs, whose shim reads
-// the memory afresh per call and is unaffected. [WASM-TARGET]
-const MIN_WASI_NODE_MAJOR = 24;
-const nodeMajor = Number(process.versions.node.split(".")[0]);
-if (nodeMajor < MIN_WASI_NODE_MAJOR) {
-  console.error(
-    `FAIL: node:wasi in Node ${process.versions.node} corrupts a module's memory after ` +
-      `memory.grow (use-after-free on its cached backing store). Run under Node ` +
-      `${MIN_WASI_NODE_MAJOR}+, or use scripts/wasm-browser-smoke.mjs, which drives the ` +
-      `same module through the browser WASI shim.`,
-  );
-  process.exit(1);
-}
+// This host's `node:wasi` may be one of the broken ones; relaunch under a sound
+// interpreter before running anything, so no caller needs its own version
+// check. [WASM-TARGET]
+ensureWasiCapableNode(import.meta.url);
 
 const { wasmPath, expectedPath, bytes } = await loadModuleFromArgv(
   "usage: node wasm-smoke.mjs <module.wasm> [expected-stdout-file]",

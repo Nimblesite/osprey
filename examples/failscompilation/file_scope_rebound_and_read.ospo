@@ -1,0 +1,11 @@
+// A file-scope name may be rebound: later statements simply see the newer
+// binding. A function body cannot, because both bindings would share the one
+// module global that gives the name storage — the string would be read back
+// through the integer slot [MODULES-FILE-SCOPE-BINDING].
+let tally = 1
+
+fn readTally() = tally
+
+let tally = "one"
+
+print("${readTally()} ${tally}")

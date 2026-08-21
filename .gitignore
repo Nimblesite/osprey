@@ -140,3 +140,4 @@ benchmarks/cases/**/*.o
 # exact paths, never a bare name that could hide a real fixture elsewhere.
 /tests/regressions/basics/files/test_output.txt
 /tests/regressions/basics/files/test_stale_reason.txt
+/tests/regressions/effects/osprey_http_state_levels.db

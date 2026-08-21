@@ -3,5 +3,6 @@ ok 2 - partial application retains every curried golden
 ok 3 - higher-order functions retain every application golden
 ok 4 - nested calls retain evaluation structure
 ok 5 - recursion retains base and recursive branches
-1..5
-# tests=5 passed=5 failed=0 skipped=0
+ok 6 - file-scope generic function values resolve by name
+1..6
+# tests=6 passed=6 failed=0 skipped=0

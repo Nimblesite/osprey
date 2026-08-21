@@ -7,6 +7,7 @@
 
 pub mod canonical;
 mod doc;
+pub mod freevars;
 mod generics;
 mod lower_static;
 pub mod mutate;

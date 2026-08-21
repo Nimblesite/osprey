@@ -84,7 +84,7 @@ fn managed(cg: &Codegen, v: &Value) -> bool {
 /// `v`'s operand as a plain `i8*`, bitcasting a typed block pointer. A flat
 /// list-literal handle (`[]…` owner) travels as its raw `{ i64, i8* }*`
 /// register even though its [`LType`] spells `i8*` — undo that here.
-fn as_i8ptr(cg: &mut Codegen, v: &Value) -> String {
+pub(crate) fn as_i8ptr(cg: &mut Codegen, v: &Value) -> String {
     let spelled = if v.osp_ty.as_deref().is_some_and(|o| o.starts_with("[]")) {
         "{ i64, i8* }*".to_string()
     } else {
@@ -406,6 +406,16 @@ fn push_parent(cg: &mut Codegen, entry: Entry) {
     }
 }
 
+/// Emit `osp_retain` on a raw `i8*` operand — the mirror of
+/// [`release_operand`]. Unlike [`dup_store`] this does not inspect the operand
+/// form, so a caller that pairs it with a release cannot go out of balance for
+/// a value spelled as a constant. Both hooks are null-safe and ignore pointers
+/// the heap never registered (rodata), so an unconditional pair is correct.
+pub(crate) fn retain_operand(cg: &mut Codegen, operand: &str) {
+    cg.add_extern(RETAIN_DECL);
+    cg.emit(format!("call void @osp_retain(i8* {operand})"));
+}
+
 /// Emit `osp_release` on a raw `i8*` operand (a loaded old cell value, a
 /// runtime-held env whose structural end has been reached).
 pub(crate) fn release_operand(cg: &mut Codegen, operand: &str) {
@@ -479,7 +489,7 @@ pub(crate) fn release_dead_after<S: std::borrow::Borrow<Stmt>>(
         return;
     }
     let mut live = std::collections::BTreeSet::new();
-    crate::freevars::free_idents_of_stmts(rest, value, &mut live);
+    osprey_ast::freevars::free_idents_of_stmts(rest, value, &mut live);
     release_dead(cg, &live);
 }
 

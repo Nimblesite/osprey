@@ -93,18 +93,13 @@ impl LType {
     }
 }
 
-/// The scalar element `LType` spelled after `prefix` in a value's owner tag:
+/// The element descriptor spelled after `prefix` in a value's owner tag:
 /// `Gpu#double` on a buffer, `List#double` on a runtime list handle,
-/// `[]double` on a flat list literal. The container kinds differ; the element
-/// spelling does not, so every container reads its tag through here.
-pub(crate) fn elem_of_tag(v: &Value, prefix: &str) -> Option<LType> {
-    match v.osp_ty.as_deref()?.strip_prefix(prefix)? {
-        "double" => Some(LType::Double),
-        "i1" => Some(LType::I1),
-        "i64" => Some(LType::I64),
-        ANY_TAG_SPELLING => Some(LType::Any),
-        _ => None,
-    }
+/// `[]double` on a flat list literal, `Map#List#i8*` on a map of string lists.
+/// The container kinds differ; the element spelling does not, so every
+/// container reads and writes its tag through this one vocabulary.
+pub(crate) fn elem_of_tag(v: &Value, prefix: &str) -> Option<String> {
+    Some(v.osp_ty.as_deref()?.strip_prefix(prefix)?.to_string())
 }
 
 /// The tag spelling of an erased-`any` element. It cannot use the LLVM
@@ -112,15 +107,80 @@ pub(crate) fn elem_of_tag(v: &Value, prefix: &str) -> Option<LType> {
 /// element unambiguously so a read-back re-types the word correctly.
 pub(crate) const ANY_TAG_SPELLING: &str = "any";
 
+/// The tag spelling of a handle element with no owner to name — a closure, a
+/// bare runtime pointer. Distinct from `i8*`, which means "string": recovering
+/// an anonymous handle as [`LType::Str`] would strcmp and print it as text.
+pub(crate) const PTR_TAG_SPELLING: &str = "ptr";
+
+/// The element a tag spelling names: the [`LType`] its uniform `i64` storage
+/// word is recovered at and, for a HANDLE element, the owner descriptor to
+/// re-tag the recovered value with.
+///
+/// The handle case is what makes nesting work. A `Map<string, List<int>>` tags
+/// `Map#List#i64`, so `mapGet` hands back a value that still knows it is a
+/// `List<int>` — without it the retrieved word was typed `int`, and
+/// `listLength` of it, or a `?: [0]` default beside it, could not be emitted at
+/// all. [BUILTIN-MAP-GET] [BUILTIN-LIST-GET]
+pub(crate) fn elem_of_spelling(tag: &str) -> (LType, Option<String>) {
+    match tag {
+        "i64" => (LType::I64, None),
+        "double" => (LType::Double, None),
+        "i1" => (LType::I1, None),
+        // Before `i8*`: an erased box IS an `i8*`, but recovering it as
+        // `LType::Str` would strcmp and print the box instead of dispatching
+        // through its shape descriptor.
+        ANY_TAG_SPELLING => (LType::Any, None),
+        PTR_TAG_SPELLING => (LType::Ptr, None),
+        "i8*" => (LType::Str, None),
+        owner => (LType::Ptr, Some(owner.to_string())),
+    }
+}
+
+/// The tag spelling of a value used as a container element: its own owner
+/// descriptor when it is a handle that has one, else its LLVM spelling.
+///
+/// `Str` belongs with the scalars. The element ABI is a uniform `i64` word, so
+/// an untagged string element came back typed `int`: a `char*` printed as its
+/// own address, and `listGet(xs, 0) == "b"` reached `as_i64` on a pointer.
+/// [BUILTIN-LIST-GET]
+pub(crate) fn elem_spelling(elem: &Value) -> Option<String> {
+    // An erased element is tagged by its ERASURE and nothing else. Its LLVM
+    // spelling `i8*` already means "string element", and any owner it carried
+    // names the shape it had BEFORE the box — either one makes the read-back
+    // re-type a box pointer as the thing it erased, which is how `[erased()]`
+    // came back as the box's own address.
+    if elem.ty == LType::Any {
+        return Some(ANY_TAG_SPELLING.to_string());
+    }
+    // A `Result` block is its own discriminated pointer, not an element shape a
+    // tag could name; leaving it untagged keeps the storage word honest.
+    if elem.result_inner.is_some() {
+        return None;
+    }
+    elem.osp_ty
+        .clone()
+        .or_else(|| scalar_spelling(elem.ty).map(str::to_string))
+}
+
+/// The tag spelling of a scalar element `LType` — the whole vocabulary of a
+/// container whose element is never a handle, such as a GPU buffer.
+pub(crate) fn scalar_spelling(ty: LType) -> Option<&'static str> {
+    match ty {
+        LType::I64 | LType::Double | LType::I1 | LType::Str => Some(ty.as_str()),
+        LType::Any => Some(ANY_TAG_SPELLING),
+        LType::Ptr => Some(PTR_TAG_SPELLING),
+        // The C `main` return width is never an Osprey element.
+        LType::I32 => None,
+    }
+}
+
 /// The owner tag for a container holding `elem` words: `<prefix><spelling>`
-/// when the element is a concrete scalar (or an erased-`any` box) the uniform
-/// `i64` element ABI would otherwise flatten, the untyped `bare` owner when it
-/// is anything else.
-pub(crate) fn elem_tagged_owner(prefix: &str, bare: &str, elem: Option<LType>) -> String {
+/// when the element has a spelling the uniform `i64` element ABI would
+/// otherwise flatten, the untyped `bare` owner when it has none.
+pub(crate) fn elem_tagged_owner(prefix: &str, bare: &str, elem: Option<&str>) -> String {
     match elem {
-        Some(LType::Any) => format!("{prefix}{ANY_TAG_SPELLING}"),
-        Some(lt @ (LType::I64 | LType::Double | LType::I1)) => format!("{prefix}{}", lt.as_str()),
-        _ => bare.to_string(),
+        Some(tag) => format!("{prefix}{tag}"),
+        None => bare.to_string(),
     }
 }
 

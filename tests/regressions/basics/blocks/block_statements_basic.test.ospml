@@ -1,8 +1,7 @@
-// ML-flavor twin of block_statements_basic.osp — byte-identical IR.
-// Layout blocks as expressions: list & map access via Result-unwrap,
-// multi-statement blocks, nested blocks with shadowing, blocks inside
-// function bodies, nested collections (2D list), conditional logic
-// through match arms producing values out of a block.
+(** Cross-contract oracle for [BLOCK-SCOPE], [PATTERN-RESULT-DEFAULT],
+    [TYPE-LIST], [TYPE-MAP], [TYPE-MAP-LOOKUP], [ARITH-CHECKED],
+    [FLAVOR-ML-BLOCK], [FLAVOR-ML-LIST], [FLAVOR-ML-MAP],
+    [FLAVOR-ML-INDEX], and [FLAVOR-ML-MATCH]. *)
 
 print "=== Block Statements ==="
 
@@ -100,12 +99,21 @@ conditionalBlock value =
             _ => 0
         Error message => 0
 r6 = conditionalBlock value
-print "6 cond match block: ${r6}"
-
-print "=== Done ==="
+print "6 cond match block: ${r6}\n=== Done ==="
 
 (** Verify every block result, including shadowing and the wildcard branch. *)
 blockStatementsCase () =
+    results = [r1, r2, r3, compute (), r5, r6]
+    nestedResults = [results, [listHeadBlock (), matrixBlock ()], [conditionalBlock 10]]
+    byName = [
+        "head" => r1,
+        "map" => r2,
+        "shadow" => r3,
+        "compute" => compute (),
+        "matrix" => r5,
+        "conditional" => r6
+    ]
+
     checkAll "block statement values" [
         listHeadBlock () == 42,
         mapProductBlock () == 20,
@@ -114,5 +122,56 @@ blockStatementsCase () =
         matrixBlock () == 20,
         conditionalBlock 42 == 94,
         conditionalBlock 10 == 0
+    ]
+
+    checkAll "top-level bindings and lexical shadowing remain stable" [
+        r1 == 42,
+        r2 == 20,
+        r3 == 85,
+        r5 == 20,
+        r6 == 94,
+        outer == 100,
+        value == 42,
+        shadowedBlock () == r3,
+        compute () == compute (),
+        matrixBlock () == r5,
+        conditionalBlock value == r6,
+        conditionalBlock 0 == 0,
+        conditionalBlock 41 == 0,
+        conditionalBlock 43 == 0,
+        conditionalBlock ((0 - 1) ?: 0) == 0
+    ]
+
+    checkAll "block results retain element types in nested lists" [
+        listLength results == 6,
+        (listGet results 0 ?: 99) == 42,
+        (listGet results 1 ?: 99) == 20,
+        (listGet results 2 ?: 99) == 85,
+        (listGet results 3 ?: 99) == 30,
+        (listGet results 4 ?: 99) == 20,
+        (listGet results 5 ?: 99) == 94,
+        (listGet results 9 ?: 99) == 99,
+        listLength nestedResults == 3,
+        listLength (listGet nestedResults 0 ?: [99]) == 6,
+        listLength (listGet nestedResults 1 ?: [99]) == 2,
+        listLength (listGet nestedResults 2 ?: [99]) == 1,
+        (listGet (listGet nestedResults 0 ?: [99]) 2 ?: 99) == 85,
+        (listGet (listGet nestedResults 1 ?: [99]) 1 ?: 99) == 20,
+        (listGet (listGet nestedResults 2 ?: [99]) 0 ?: 99) == 0
+    ]
+
+    checkAll "block results remain coherent in maps and interpolation" [
+        mapLength byName == 6,
+        (mapGet byName "head" ?: 99) == 42,
+        (mapGet byName "map" ?: 99) == 20,
+        (mapGet byName "shadow" ?: 99) == 85,
+        (mapGet byName "compute" ?: 99) == 30,
+        (mapGet byName "matrix" ?: 99) == 20,
+        (mapGet byName "conditional" ?: 99) == 94,
+        (mapGet byName "missing" ?: 99) == 99,
+        listLength (mapKeys byName) == 6,
+        listLength (mapValues byName) == 6,
+        "${r1}/${r2}/${r3}/${r5}/${r6}" == "42/20/85/20/94",
+        "outer=${outer} inner=${shadowedBlock ()}" == "outer=100 inner=85"
     ]
 test "blocks preserve values and lexical scope" blockStatementsCase

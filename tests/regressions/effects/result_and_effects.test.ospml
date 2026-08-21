@@ -1,5 +1,8 @@
-// Convert fallible division/remainder Results into one typed Rescue effect. Its direct
-// value-substitution handler supplies defaults and counts recoveries.
+(** Cross-contract oracle for [ARITH-CHECKED], [PATTERN-RESULT-DEFAULT],
+    [ERR-PAYLOAD], [EFFECTS-OP-TYPING], [EFFECTS-HANDLER-STATE], [TYPE-LIST],
+    [TYPE-MAP], [TYPE-MAP-LOOKUP], [FLAVOR-ML-LIST], [FLAVOR-ML-MAP], and
+    [FLAVOR-ML-MATCH]. Fallible arithmetic is converted into one typed Rescue
+    effect whose direct-substitution handlers supply explicit policies. *)
 
 effect Rescue
     (** Supply the integer a failed operation should yield instead. *)
@@ -21,6 +24,18 @@ modRescue (a, b) = match a % b
 addRescue (a, b) = match checkedAdd a b
     Success value => value
     Error message => perform Rescue.onErr message
+
+recoveredValues fallback =
+    handle Rescue
+        onErr message => fallback
+    in [
+        divRescue (10, 0),
+        divRescue (20, 4),
+        modRescue (7, 0),
+        modRescue (17, 5),
+        addRescue (9223372036854775807, 1),
+        addRescue (100, 23)
+    ]
 
 (** Every failed step receives a replacement value, so later steps still run. *)
 pipeline () =
@@ -62,11 +77,68 @@ print "local ?: default  10 % 3 -> ${toString localOk}   10 % 0 -> ${toString lo
 print "raw 10 / 0 as a value = ${toString (10 / 0)}"
 print "=== pipeline complete ==="
 
-// Verify rescued failures beside healthy Result and local-fallback paths.
-test "fallible arithmetic is recovered without masking healthy results" (\() => checkAll "Result and effect outcomes" [
-    rescues == 3,
-    total == 430,
-    localOk == 1,
-    localBad == ((0 - 1) ?: 0),
-    toString (10 / 0) == "Error(division by zero)"
-])
+(** Verify rescued failures beside healthy Result, nested collections, and local fallbacks. *)
+resultAndEffectsCase () =
+    hundreds = recoveredValues 100
+    sevens = recoveredValues 7
+    negatives = recoveredValues ((0 - 1) ?: 0)
+    policyMatrix = [hundreds, sevens, negatives]
+    policyMap = ["hundred" => hundreds, "seven" => sevens, "negative" => negatives]
+    grownMap = policyMap |> mapSet "zero" (recoveredValues 0)
+
+    checkAll "Result and effect pipeline state" [
+        rescues == 3,
+        total == 430,
+        localOk == 1,
+        localBad == ((0 - 1) ?: 0),
+        toString (10 / 0) == "Error(division by zero)",
+        (intDiv 20 4 ?: ((0 - 1) ?: 0)) == 5,
+        (intDiv 20 0 ?: ((0 - 1) ?: 0)) == ((0 - 1) ?: 0),
+        (17 % 5 ?: ((0 - 1) ?: 0)) == 2,
+        (17 % 0 ?: ((0 - 1) ?: 0)) == ((0 - 1) ?: 0),
+        (checkedAdd 100 23 ?: 0) == 123,
+        (checkedAdd 9223372036854775807 1 ?: 77) == 77,
+        toString (intDiv 20 4) == "Success(5)",
+        toString (intDiv 20 0) == "Error(division by zero)",
+        toString (checkedAdd 9223372036854775807 1) == "Error(integer overflow)"
+    ]
+
+    checkAll "each Rescue policy replaces only failing collection elements" [
+        listLength hundreds == 6,
+        (listGet hundreds 0 ?: 99) == 100,
+        (listGet hundreds 1 ?: 99) == 5,
+        (listGet hundreds 2 ?: 99) == 100,
+        (listGet hundreds 3 ?: 99) == 2,
+        (listGet hundreds 4 ?: 99) == 100,
+        (listGet hundreds 5 ?: 99) == 123,
+        (listGet hundreds 9 ?: 99) == 99,
+        listLength sevens == 6,
+        (listGet sevens 0 ?: 99) == 7,
+        (listGet sevens 1 ?: 99) == 5,
+        (listGet sevens 2 ?: 99) == 7,
+        (listGet sevens 3 ?: 99) == 2,
+        (listGet sevens 4 ?: 99) == 7,
+        (listGet sevens 5 ?: 99) == 123,
+        (listGet negatives 0 ?: 99) == ((0 - 1) ?: 0),
+        (listGet negatives 4 ?: 99) == ((0 - 1) ?: 0)
+    ]
+
+    checkAll "recovered lists retain element types inside nested maps" [
+        listLength policyMatrix == 3,
+        listLength (listGet policyMatrix 0 ?: [99]) == 6,
+        (listGet (listGet policyMatrix 0 ?: [99]) 4 ?: 99) == 100,
+        (listGet (listGet policyMatrix 1 ?: [99]) 4 ?: 99) == 7,
+        (listGet (listGet policyMatrix 2 ?: [99]) 4 ?: 99) == ((0 - 1) ?: 0),
+        mapLength policyMap == 3,
+        mapLength grownMap == 4,
+        listLength (mapGet policyMap "hundred" ?: [99]) == 6,
+        (listGet (mapGet policyMap "hundred" ?: [99]) 0 ?: 99) == 100,
+        (listGet (mapGet policyMap "seven" ?: [99]) 2 ?: 99) == 7,
+        (listGet (mapGet policyMap "negative" ?: [99]) 4 ?: 99) == ((0 - 1) ?: 0),
+        (listGet (mapGet grownMap "zero" ?: [99]) 0 ?: 99) == 0,
+        !(mapContains policyMap "zero"),
+        mapContains grownMap "zero",
+        listLength (mapKeys grownMap) == 4,
+        listLength (mapValues grownMap) == 4
+    ]
+test "fallible arithmetic is recovered without masking healthy results" resultAndEffectsCase

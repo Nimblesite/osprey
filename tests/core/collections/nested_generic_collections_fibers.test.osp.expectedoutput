@@ -1,0 +1,4 @@
+ok 1 - fibers channels Results and persistence retain generic collection types # SKIP Channel<collection> round-trip drops nested descriptors (known bug)
+ok 2 - generic effects inside fibers retain nested collection types
+1..2
+# tests=2 passed=1 failed=0 skipped=1

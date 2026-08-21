@@ -1,5 +1,7 @@
-// Invalid.report returns Unit through a direct-substitution handler, allowing
-// every field check to run while the handler accumulates messages.
+// Cross-contract oracle for [EFFECTS-OP-TYPING], [EFFECTS-HANDLER-STATE],
+// [TYPE-LIST], [TYPE-MAP], [TYPE-MAP-LOOKUP], [TYPE-MAP-OPS],
+// [BUILTIN-STRING-UFCS], [BUILTIN-STRING-CONTAINS], and
+// [BUILTIN-STRING-INDEXOF].
 
 effect Invalid {
     /// Report one validation failure and keep checking the rest.
@@ -8,33 +10,33 @@ effect Invalid {
 
 /// Both branches return Unit, so validation continues after a report.
 fn flag(broken, msg) !Invalid = match broken {
-    true  => perform Invalid.report(msg)
+    true => perform Invalid.report(msg)
     false => {}
 }
 
 /// All six checks run on every call.
 fn validate(name, age, score, email) !Invalid = {
-    flag(name == "",                    "name is empty")
-    flag(age < 0,                       "age is negative (${toString(age)})")
-    flag(score < 0,                     "score below 0 (${toString(score)})")
-    flag(score > 100,                   "score above 100 (${toString(score)})")
-    flag(email == "",                   "email is empty")
-    flag(email.contains("@") == false,  "email is missing '@' (${email})")
+    flag(name == "", "name is empty")
+    flag(age < 0, "age is negative (${toString(age)})")
+    flag(score < 0, "score below 0 (${toString(score)})")
+    flag(score > 100, "score above 100 (${toString(score)})")
+    flag(email == "", "email is empty")
+    flag(email.contains("@") == false, "email is missing '@' (${email})")
     "validation pass finished"
 }
 
 /// `count` and `errs` are handler-owned mutable state.
 fn audit(name, age, score, email) = {
     mut count = 0
-    mut errs  = ""
+    mut errs = ""
     handle Invalid
-        report m => {
-            count = count + 1 ?: count
-            errs  = errs + "\n    #${toString(count)} ${m}"
-        }
+    report m => {
+        count = count + 1 ?: count
+        errs = errs + "\n    #${toString(count)} ${m}"
+    }
     in validate(name, age, score, email)
     match count == 0 {
-        true  => " — clean\n    => ACCEPTED (0 errors)"
+        true => " — clean\n    => ACCEPTED (0 errors)"
         false => "${errs}\n    => REJECTED (${toString(count)} errors collected in ONE pass)"
     }
 }
@@ -53,12 +55,72 @@ fn collectAllErrorsCase() = {
     let nadia = audit("", (0 - 3) ?: 0, 250, "nadia_at_example.com")
     let owen = audit("Owen", 34, 88, "owen@example.com")
     let blank = audit("", 40, 60, "")
-    checkAll("collected validation state", [
-        contains(nadia, "#1 name is empty"),
-        contains(nadia, "#4 email is missing '@'"),
-        contains(nadia, "REJECTED (4 errors"),
-        contains(owen, "ACCEPTED (0 errors)"),
-        contains(blank, "REJECTED (3 errors")
+    let onlyName = audit("", 20, 50, "name@example.com")
+    let onlyAge = audit("Ari", (0 - 1) ?: 0, 50, "ari@example.com")
+    let onlyLowScore = audit("Ari", 20, (0 - 1) ?: 0, "ari@example.com")
+    let onlyHighScore = audit("Ari", 20, 101, "ari@example.com")
+    let onlyMissingAt = audit("Ari", 20, 50, "ari.example.com")
+    let scoreZero = audit("Zero", 0, 0, "zero@example.com")
+    let scoreHundred = audit("Hundred", 0, 100, "hundred@example.com")
+    let reports = [nadia, owen, blank, onlyName, onlyAge, onlyLowScore, onlyHighScore, onlyMissingAt]
+    let byKind = {
+        "multi": [nadia, blank],
+        "clean": [owen, scoreZero, scoreHundred],
+        "single": [onlyName, onlyAge, onlyLowScore, onlyHighScore, onlyMissingAt]
+    }
+
+    checkAll("multi-error validation preserves exact order and count", [
+            contains(nadia, "#1 name is empty"),
+            contains(nadia, "#2 age is negative (-3)"),
+            contains(nadia, "#3 score above 100 (250)"),
+            contains(nadia, "#4 email is missing '@'"),
+            contains(nadia, "REJECTED (4 errors"),
+            !contains(nadia, "score below 0"),
+            !contains(nadia, "email is empty"),
+            (indexOf(nadia, "#1 name") ?: 999) < (indexOf(nadia, "#2 age") ?: 999),
+            (indexOf(nadia, "#2 age") ?: 999) < (indexOf(nadia, "#3 score") ?: 999),
+            (indexOf(nadia, "#3 score") ?: 999) < (indexOf(nadia, "#4 email") ?: 999),
+            contains(owen, "ACCEPTED (0 errors)"),
+            contains(blank, "#1 name is empty"),
+            contains(blank, "#2 email is empty"),
+            contains(blank, "#3 email is missing '@'"),
+            contains(blank, "REJECTED (3 errors"),
+            (indexOf(blank, "#1 name") ?: 999) < (indexOf(blank, "#2 email") ?: 999),
+            (indexOf(blank, "#2 email") ?: 999) < (indexOf(blank, "#3 email") ?: 999)
+    ])
+
+    checkAll("single failures and inclusive boundaries remain independent", [
+            onlyName.contains("#1 name is empty"),
+            onlyName.contains("REJECTED (1 errors"),
+            onlyAge.contains("#1 age is negative (-1)"),
+            onlyAge.contains("REJECTED (1 errors"),
+            onlyLowScore.contains("#1 score below 0 (-1)"),
+            onlyLowScore.contains("REJECTED (1 errors"),
+            onlyHighScore.contains("#1 score above 100 (101)"),
+            onlyHighScore.contains("REJECTED (1 errors"),
+            onlyMissingAt.contains("#1 email is missing '@'"),
+            onlyMissingAt.contains("REJECTED (1 errors"),
+            scoreZero.contains("ACCEPTED (0 errors)"),
+            scoreHundred.contains("ACCEPTED (0 errors)"),
+            !scoreZero.contains("REJECTED"),
+            !scoreHundred.contains("REJECTED")
+    ])
+
+    checkAll("validation reports retain strings inside nested collections", [
+            listLength(reports) == 8,
+            (reports.listGet(0) ?: "missing").contains("REJECTED (4 errors"),
+            (reports.listGet(1) ?: "missing").contains("ACCEPTED (0 errors)"),
+            (reports.listGet(7) ?: "missing").contains("missing '@'"),
+            mapLength(byKind) == 3,
+            listLength(byKind.mapGet("multi") ?: ["missing"]) == 2,
+            listLength(byKind.mapGet("clean") ?: ["missing"]) == 3,
+            listLength(byKind.mapGet("single") ?: ["missing"]) == 5,
+            ((byKind.mapGet("multi") ?: ["missing"]).listGet(1) ?: "missing").contains("REJECTED (3 errors"),
+            ((byKind.mapGet("clean") ?: ["missing"]).listGet(2) ?: "missing").contains("ACCEPTED (0 errors)"),
+            ((byKind.mapGet("single") ?: ["missing"]).listGet(3) ?: "missing").contains("score above 100"),
+            listLength(mapKeys(byKind)) == 3,
+            listLength(mapValues(byKind)) == 3,
+            !mapContains(byKind, "missing")
     ])
 }
 test("validation collects every error in field order", collectAllErrorsCase)

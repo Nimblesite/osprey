@@ -1,8 +1,29 @@
-// Assertion-driven replacement for the former paired hello golden.
+// Portable cross-contract oracle for [TYPE-GENERICS-FN], [TYPE-LIST],
+// [TYPE-MAP], [TYPE-MAP-LOOKUP], [PATTERN-RESULT-DEFAULT],
+// [BUILTIN-STRING-UFCS], [BUILTIN-STRING-LENGTH],
+// [BUILTIN-STRING-CONTAINS], and [BUILTIN-STRING-STARTSWITH].
+
+fn atOr<T>(items: List<T>, index: int, fallback: T) -> T = items.listGet(index) ?: fallback
+
+fn bucketAt<T>(buckets: Map<string, List<T>>, key: string, index: int, fallback: T) -> T =
+listGet(buckets.mapGet(key) ?: [fallback], index) ?: fallback
+
+fn nestedAt<T>(matrix: List<List<T>>, row: int, column: int, fallback: T) -> T =
+listGet(listGet(matrix, row) ?: [fallback], column) ?: fallback
+
+fn chooseByList<T, U>(items: List<T>, present: U, empty: U) -> U = match isEmpty(items) {
+    true => empty
+    false => present
+}
 
 /// This case retains both smoke-test output lines and probes the bound greeting.
 fn helloSmokeCase() = {
     let greeting = "Hello from the ML flavor"
+    let words = ["Hello", "from", "the", "ML", "flavor"]
+    let nestedWords = [words, ["portable", "IR", "wasm"]]
+    let wordBuckets = { "greeting": words, "targets": ["IR", "wasm"] }
+    let numbers = [2, 3, 5, 8]
+    let numberBuckets = { "small": numbers, "large": [13, 21, 34] }
 
     // Reconstruct both complete legacy lines byte-for-byte as string values.
     checkAll("hello legacy rendered lines", [
@@ -19,6 +40,51 @@ fn helloSmokeCase() = {
             startsWith(greeting, "Hello"),
             contains(greeting, "ML flavor"),
             (greeting == "") == false
+    ])
+
+    checkAll("generic list lookups preserve unrelated element types", [
+            listLength(words) == 5,
+            atOr(words, 0, "missing") == "Hello",
+            atOr(words, 3, "missing") == "ML",
+            atOr(words, 4, "missing") == "flavor",
+            atOr(words, 9, "missing") == "missing",
+            listLength(numbers) == 4,
+            atOr(numbers, 0, 99) == 2,
+            atOr(numbers, 1, 99) == 3,
+            atOr(numbers, 3, 99) == 8,
+            atOr(numbers, 9, 99) == 99,
+            chooseByList(words, 41, 99) == 41,
+            chooseByList(numbers, "present", "empty") == "present",
+            chooseByList(List(), true, false) == false
+    ])
+
+    checkAll("nested generic lists keep their inner descriptors", [
+            listLength(nestedWords) == 2,
+            listLength(atOr(nestedWords, 0, ["missing"])) == 5,
+            listLength(atOr(nestedWords, 1, ["missing"])) == 3,
+            nestedAt(nestedWords, 0, 0, "missing") == "Hello",
+            nestedAt(nestedWords, 0, 3, "missing") == "ML",
+            nestedAt(nestedWords, 1, 0, "missing") == "portable",
+            nestedAt(nestedWords, 1, 2, "missing") == "wasm",
+            nestedAt(nestedWords, 9, 0, "fallback") == "fallback"
+    ])
+
+    checkAll("maps of generic lists compose with interpolation and Result fallback", [
+            mapLength(wordBuckets) == 2,
+            mapLength(numberBuckets) == 2,
+            bucketAt(wordBuckets, "greeting", 0, "missing") == "Hello",
+            bucketAt(wordBuckets, "greeting", 4, "missing") == "flavor",
+            bucketAt(wordBuckets, "targets", 0, "missing") == "IR",
+            bucketAt(wordBuckets, "targets", 1, "missing") == "wasm",
+            bucketAt(wordBuckets, "missing", 0, "fallback") == "fallback",
+            bucketAt(numberBuckets, "small", 0, 99) == 2,
+            bucketAt(numberBuckets, "small", 3, 99) == 8,
+            bucketAt(numberBuckets, "large", 2, 99) == 34,
+            bucketAt(numberBuckets, "missing", 0, 99) == 99,
+            "${bucketAt(wordBuckets, "targets", 0, "missing")}/${bucketAt(wordBuckets, "targets", 1, "missing")}" == "IR/wasm",
+            "${bucketAt(numberBuckets, "small", 0, 99) + bucketAt(numberBuckets, "small", 1, 99) ?: 0}" == "5",
+            listLength(mapKeys(wordBuckets)) == 2,
+            listLength(mapValues(numberBuckets)) == 2
     ])
 }
 

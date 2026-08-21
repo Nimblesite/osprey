@@ -1,0 +1,1 @@
+file-scope `tally` is rebound and also read from a function body; both bindings would share one module slot, so rename one of them

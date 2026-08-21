@@ -1,5 +1,6 @@
-// Three typed operations use independent direct-substitution policies: parse
-// supplies 0, missing supplies a default, and range clamps to a bound.
+// Cross-contract oracle for [EFFECTS-OP-TYPING], [EFFECTS-STATIC-DISCHARGE],
+// [EFFECTS-HANDLER-STATE], [TYPE-LIST], [TYPE-LIST-PATTERNS], [TYPE-MAP],
+// [TYPE-MAP-LOOKUP], [TYPE-MAP-OPS], and [PATTERN-RESULT-DEFAULT].
 
 /// --- three distinct, independent typed error channels ---
 effect Parse {
@@ -17,55 +18,55 @@ effect Range {
 
 /// The row scopes these performs; rows are not yet propagated through calls.
 fn loadConfig() -> int ![Parse, Missing, Range] = {
-    let port    = perform Parse.bad("=80=")       // Parse channel: not a number
+    let port = perform Parse.bad("=80=") // Parse channel: not a number
     let timeout = perform Missing.fill("timeout") // Missing channel: key absent
-    let retries = perform Range.clamp(250, 10)    // Range channel: over the max
+    let retries = perform Range.clamp(250, 10) // Range channel: over the max
     print("assembled  -> port=${toString(port)} timeout=${toString(timeout)} retries=${toString(retries)}")
     port + timeout + retries ?: 0
 }
 
 /// This helper declares and performs only Range.
 fn loadRetries(raw: int) -> (int) -> int !Range =
-    fn(hi) => perform Range.clamp(raw, hi)
+fn(hi) => perform Range.clamp(raw, hi)
 
 /// No arm uses resume, so each arm value replaces its operation result.
 let combined = handle Parse
-    bad raw => {
-        print("[Parse]    cannot parse '${raw}' -> substitute 0")
-        0
-    }
+bad raw => {
+    print("[Parse]    cannot parse '${raw}' -> substitute 0")
+    0
+}
 in handle Missing
-    fill key => match key {
-        "timeout" => {
-            print("[Missing]  key '${key}' absent -> default 30")
-            30
-        }
-        _ => {
-            print("[Missing]  key '${key}' absent -> default 1")
-            1
-        }
+fill key => match key {
+    "timeout" => {
+        print("[Missing]  key '${key}' absent -> default 30")
+        30
     }
+    _ => {
+        print("[Missing]  key '${key}' absent -> default 1")
+        1
+    }
+}
 in handle Range
-    clamp v hi => match v > hi {
-        true => {
-            print("[Range]    ${toString(v)} exceeds max ${toString(hi)} -> clamp to ${toString(hi)}")
-            hi
-        }
-        false => {
-            print("[Range]    ${toString(v)} within max ${toString(hi)} -> keep")
-            v
-        }
+clamp v hi => match v > hi {
+    true => {
+        print("[Range]    ${toString(v)} exceeds max ${toString(hi)} -> clamp to ${toString(hi)}")
+        hi
     }
+    false => {
+        print("[Range]    ${toString(v)} within max ${toString(hi)} -> keep")
+        v
+    }
+}
 in {
     let total = loadConfig()
     print("combined config total = ${toString(total)}")
 
     /// The inner Range handler overrides the outer handler for one call.
     let strict = handle Range
-        clamp v hi => {
-            print("[Range*]   STRICT override: force ${toString(v)} -> 1")
-            1
-        }
+    clamp v hi => {
+        print("[Range*]   STRICT override: force ${toString(v)} -> 1")
+        1
+    }
     in loadRetries(500)(10)
     print("strict retries (inner handler)  = ${toString(strict)}")
 
@@ -83,10 +84,102 @@ fn strictRangeForTest() = handle Range clamp v hi => 1 in loadRetries(500)(10)
 /// Applies the ordinary clamping Range policy in isolation.
 fn relaxedRangeForTest() = handle Range clamp v hi => hi in loadRetries(500)(10)
 
-// Replays Range under two policies and checks the composed channel result.
-test("typed error channels compose and restore shadowed handlers", fn() => checkAll("typed channel results", [
-        combined == 40,
-        strictRangeForTest() == 1,
-        relaxedRangeForTest() == 10,
-        strictRangeForTest() != relaxedRangeForTest()
-]))
+fn parseUnder(raw, replacement) = handle Parse bad text => replacement in perform Parse.bad(raw)
+
+fn missingUnder(key) = handle Missing
+fill name => match name { "timeout" => 30 _ => 1 }
+in perform Missing.fill(key)
+
+fn clampUnder(raw, high) = handle Range
+clamp value limit => match value > limit { true => limit false => value }
+in loadRetries(raw)(high)
+
+fn forceUnder(raw, high, replacement) = handle Range
+clamp value limit => replacement
+in loadRetries(raw)(high)
+
+fn rangePolicyTrace(raw, high) = handle Range
+clamp value limit => match value > limit { true => limit false => value }
+in {
+    let before = loadRetries(raw)(high)
+    let strict = handle Range clamp value limit => 1 in loadRetries(raw)(high)
+    let after = loadRetries(raw)(high)
+    [before, strict, after]
+}
+
+fn traceShape(values) = match values {
+    [] => "empty"
+    [only] => "one:${only}"
+    [first, second] => "two:${first}/${second}"
+    [head, ...tail] => "many:${head}+${listLength(tail)}"
+}
+
+/// Replays Range under two policies and checks the composed channel result.
+fn typedErrorChannelCase() = {
+    let trace = rangePolicyTrace(500, 10)
+    let healthyTrace = rangePolicyTrace(5, 10)
+    let scalars = {
+        "parse": parseUnder("bad", 7),
+        "missing": missingUnder("timeout"),
+        "range": clampUnder(500, 10)
+    }
+    let nested = {
+        "outer-inner-outer": trace,
+        "healthy-inner-healthy": healthyTrace
+    }
+    let grown = mapSet(nested, "forced", [forceUnder(9, 10, 4), forceUnder(99, 10, 4)])
+
+    checkAll("typed channel direct substitution policies", [
+            combined == 40,
+            strictRangeForTest() == 1,
+            relaxedRangeForTest() == 10,
+            strictRangeForTest() != relaxedRangeForTest(),
+            parseUnder("bad", 0) == 0,
+            parseUnder("bad", 7) == 7,
+            parseUnder("other", 99) == 99,
+            missingUnder("timeout") == 30,
+            missingUnder("retries") == 1,
+            clampUnder(5, 10) == 5,
+            clampUnder(10, 10) == 10,
+            clampUnder(11, 10) == 10,
+            clampUnder(500, 10) == 10,
+            forceUnder(5, 10, 4) == 4,
+            forceUnder(500, 10, 4) == 4
+    ])
+
+    checkAll("nested handlers restore outer policies around collection values", [
+            listLength(trace) == 3,
+            (trace.listGet(0) ?: 99) == 10,
+            (trace.listGet(1) ?: 99) == 1,
+            (trace.listGet(2) ?: 99) == 10,
+            listLength(healthyTrace) == 3,
+            (healthyTrace.listGet(0) ?: 99) == 5,
+            (healthyTrace.listGet(1) ?: 99) == 1,
+            (healthyTrace.listGet(2) ?: 99) == 5,
+            traceShape([]) == "empty",
+            traceShape([7]) == "one:7",
+            traceShape([7, 8]) == "two:7/8",
+            traceShape(trace) == "many:10+2"
+    ])
+
+    checkAll("typed effect results remain coherent inside maps of lists", [
+            mapLength(scalars) == 3,
+            (scalars.mapGet("parse") ?: 99) == 7,
+            (scalars.mapGet("missing") ?: 99) == 30,
+            (scalars.mapGet("range") ?: 99) == 10,
+            (scalars.mapGet("absent") ?: 99) == 99,
+            mapLength(nested) == 2,
+            mapLength(grown) == 3,
+            listLength(nested.mapGet("outer-inner-outer") ?: [99]) == 3,
+            ((nested.mapGet("outer-inner-outer") ?: [99]).listGet(1) ?: 99) == 1,
+            ((nested.mapGet("healthy-inner-healthy") ?: [99]).listGet(2) ?: 99) == 5,
+            listLength(grown.mapGet("forced") ?: [99]) == 2,
+            ((grown.mapGet("forced") ?: [99]).listGet(0) ?: 99) == 4,
+            ((grown.mapGet("forced") ?: [99]).listGet(1) ?: 99) == 4,
+            !mapContains(nested, "forced"),
+            mapContains(grown, "forced"),
+            listLength(mapKeys(grown)) == 3,
+            listLength(mapValues(grown)) == 3
+    ])
+}
+test("typed error channels compose and restore shadowed handlers", typedErrorChannelCase)

@@ -1,0 +1,84 @@
+/// Default UFCS oracle for [BUILTIN-STRING-UFCS], crossed with [TYPE-LIST],
+/// [TYPE-MAP], [BUILTIN-LIST-GET], [BUILTIN-MAP-GET],
+/// [EFFECTS-GENERIC-INSTANTIATION], and [EFFECTS-GENERIC-RUNTIME].
+/// Every `value.function(args)` below must lower to `function(value, args)`.
+effect CallSupply<T> {
+    groups: fn() -> Map<string, List<T>>
+}
+
+fn intGroups() = Map().mapSet("low", [1, 2]).mapSet("high", [30, 40, 50])
+fn stringGroups() = Map().mapSet("short", ["a", "bb"]).mapSet("long", ["three", "seven"])
+
+fn requestIntGroups() -> Map<string, List<int>> = perform CallSupply.groups()
+fn requestStringGroups() -> Map<string, List<string>> = perform CallSupply.groups()
+
+fn suppliedInts() = handle CallSupply groups => intGroups() in requestIntGroups()
+fn suppliedStrings() = handle CallSupply groups => stringGroups() in requestStringGroups()
+
+fn groupAt<T>(groups: Map<string, List<T>>, key: string, index: int, fallbackList: List<T>, fallback: T) =
+(groups.mapGet(key) ?: fallbackList).listGet(index) ?: fallback
+
+/// One UFCS chain crosses generic effect erasure, Map<string,List<T>> lookup,
+/// Result recovery, persistent operations, view conversion, reversal, and leaf
+/// extraction. Implements [BUILTIN-STRING-UFCS], [EFFECTS-GENERIC-RUNTIME],
+/// [BUILTIN-MAP-VALUES], and [BUILTIN-LIST-GET].
+fn receiverFirstCollectionCase() = {
+    let ints = suppliedInts()
+    let strings = suppliedStrings()
+    let high = ints.mapGet("high") ?: [99]
+    let long = strings.mapGet("long") ?: ["missing"]
+    let grownInts = ints.mapSet("extra", [6, 7]).mapRemove("low")
+    let grownStrings = strings.mapSet("long", ["eight", "nine"])
+    let intValues = ints.mapValues().listReverse()
+    let stringKeys = strings.mapKeys().listReverse()
+
+    checkAll("ML receiver-first pipes preserve nested generic descriptors", [
+            ints.mapLength() == mapLength(ints),
+            ints.length() == 2,
+            !ints.isEmpty(),
+            strings.mapLength() == 2,
+            strings.length() == 2,
+            !strings.isEmpty(),
+            high.listLength() == 3,
+            high.length() == 3,
+            !high.isEmpty(),
+            (high.listGet(0) ?: 99) == 30,
+            (high.listGet(1) ?: 99) == 40,
+            (high.listGet(2) ?: 99) == 50,
+            long.listLength() == 2,
+            (long.listGet(0) ?: "missing") == "three",
+            (long.listGet(1) ?: "missing") == "seven",
+            length(long.listGet(0) ?: "missing") == 5,
+            groupAt(ints, "low", 0, [91], 99) == 1,
+            groupAt(ints, "low", 1, [91], 99) == 2,
+            groupAt(strings, "short", 0, ["row"], "item") == "a",
+            groupAt(strings, "short", 1, ["row"], "item") == "bb"
+    ])
+
+    checkAll("pipe chains preserve persistence views and source isolation", [
+            grownInts.mapLength() == 2,
+            !grownInts.mapContains("low"),
+            grownInts.mapContains("high"),
+            grownInts.mapContains("extra"),
+            groupAt(grownInts, "high", 2, [91], 99) == 50,
+            groupAt(grownInts, "extra", 0, [91], 99) == 6,
+            groupAt(grownInts, "extra", 1, [91], 99) == 7,
+            ints.mapContains("low"),
+            !ints.mapContains("extra"),
+            grownStrings.mapLength() == 2,
+            groupAt(grownStrings, "long", 0, ["row"], "item") == "eight",
+            groupAt(grownStrings, "long", 1, ["row"], "item") == "nine",
+            groupAt(strings, "long", 0, ["row"], "item") == "three",
+            intValues.listLength() == 2,
+            (intValues.listGet(0) ?: [99]).listLength() >= 2,
+            (intValues.listGet(1) ?: [99]).listLength() >= 2,
+            stringKeys.listLength() == 2,
+            stringKeys.listContains("short"),
+            stringKeys.listContains("long"),
+            !stringKeys.listContains("missing"),
+            ((Map().mapSet("one", [1]).mapGet("one") ?: [99]).listGet(0) ?: 99) == 1,
+            ((List().listAppend([8, 9]).listGet(0) ?: [99]).listGet(1) ?: 99) == 9
+    ])
+}
+
+test("receiver-first collection call syntax composes over nested generics", receiverFirstCollectionCase)

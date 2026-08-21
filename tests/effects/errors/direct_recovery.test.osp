@@ -304,6 +304,998 @@ fn wholeResultOperationCase() = {
     ])
 }
 
+/// Spare is the record a direct arm must hand back whole.
+type Spare = { tag: string, weight: float, ready: bool }
+
+/// Grade is the tagged union a direct arm must hand back with its payload intact.
+type Grade = Granted { score: int } | Refused { reason: string }
+
+/// ValueError declares one operation per result type a direct arm may supply.
+effect ValueError {
+    /// Supply the integer replacement for `field`.
+    asInt: fn(string) -> int
+    /// Supply the float replacement for `field`.
+    asFloat: fn(string) -> float
+    /// Supply the boolean decision for `field`.
+    asBool: fn(string) -> bool
+    /// Supply the text replacement for `field`.
+    asText: fn(string) -> string
+    /// Supply the record replacement for `field`.
+    asSpare: fn(string) -> Spare
+    /// Supply the tagged grade for `field`.
+    asGrade: fn(string) -> Grade
+    /// Supply the whole Result for `field`.
+    asResult: fn(string) -> Result<int, string>
+    /// Record a recovery without changing what the caller receives.
+    mark: fn(string) -> Unit
+}
+
+/// Fold both Grade constructors into one integer so the payload is observable.
+fn gradeScore(grade) = match grade {
+    Granted { score } => score
+    Refused { reason } => 0 - length(reason) ?: 0
+}
+
+/// Fold both Result constructors into one integer so the payload is observable.
+fn resultScore(outcome) = match outcome {
+    Success { value } => value
+    Error { message } => length(message)
+}
+
+/// Perform every declared ValueError operation once and render what came back.
+fn everyValue() !ValueError = {
+    let n = perform ValueError.asInt("count")
+    let f = perform ValueError.asFloat("ratio")
+    let b = perform ValueError.asBool("allowed")
+    let t = perform ValueError.asText("name")
+    let s = perform ValueError.asSpare("spare")
+    let g = perform ValueError.asGrade("grade")
+    let r = perform ValueError.asResult("lookup")
+    perform ValueError.mark("rendered")
+    let heavy = f + s.weight > 4.0
+    let graded = gradeScore(g)
+    let looked = resultScore(r)
+    "${toString(n)}|${t}|${toString(b)}|${s.tag}|${toString(heavy)}|${toString(graded)}|${toString(looked)}"
+}
+
+/// TierError exposes three operations so complementary partial handlers can split them.
+effect TierError {
+    /// Supply the base amount for `label`.
+    base: fn(string) -> int
+    /// Supply the bonus amount for `label`.
+    bonus: fn(string) -> int
+    /// Supply the tier name for `label`.
+    tier: fn(string) -> string
+}
+
+/// Draw all three TierError channels in a pinned order and render one quote.
+fn tierQuote(label) !TierError = {
+    let amount = perform TierError.base(label)
+    let extra = perform TierError.bonus(label)
+    let name = perform TierError.tier(label)
+    let combined = amount + extra ?: 0
+    "${name}:${toString(combined)}"
+}
+
+/// Tally lets a callback ask for a scaled contribution and then record it.
+effect Tally {
+    /// Supply the scaled contribution for `value`.
+    scale: fn(int) -> int
+    /// Record one scaled contribution.
+    add: fn(int) -> Unit
+}
+
+/// Scale one element through the handler and hand the result straight back to it.
+fn tallyOne(value) !Tally = {
+    let scaled = perform Tally.scale(value)
+    perform Tally.add(scaled)
+}
+
+/// StepError asks for one contribution per recursion level.
+effect StepError {
+    /// Supply the contribution for recursion `depth`.
+    contribute: fn(int) -> int
+}
+
+/// Perform before descending so the visit order is the recursion order.
+fn descendSum(depth) !StepError = match depth {
+    0 => 0
+    _ => {
+        let here = perform StepError.contribute(depth)
+        here + descendSum((depth - 1) ?: 0) ?: 0
+    }
+}
+
+/// Cross four effects in one body so a stack of regions has to cooperate.
+fn crossEffectBody() ![RecoveryError, AuditError, StockError, PolicyError] = {
+    let filled = perform RecoveryError.missingInt("qty")
+    perform AuditError.note("filled ${toString(filled)}")
+    let allowed = perform StockError.shortage(filled, 4)
+    perform AuditError.note("allowed ${toString(allowed)}")
+    let name = perform PolicyError.label("order")
+    let rank = perform PolicyError.score("order")
+    perform AuditError.note("scored ${toString(rank)}")
+    "${name}:${toString(filled)}:${toString(allowed)}:${toString(rank)}"
+}
+
+/// TextError supplies replacement text and numbers whose shape the caller inspects.
+effect TextError {
+    /// Supply the replacement text for `field`.
+    fill: fn(string) -> string
+    /// Supply the replacement number for `field`.
+    number: fn(string) -> int
+}
+
+/// Ask for three replacements, twice under the same field name.
+fn fillAll() !TextError = {
+    let a = perform TextError.fill("a")
+    let b = perform TextError.fill("a")
+    let c = perform TextError.fill("b")
+    "${a}/${b}/${c}"
+}
+
+/// Verify every declared operation result type survives direct substitution.
+///
+/// [EFFECTS-HANDLER-ARMS]: with no `resume` anywhere in the region, "the arm's
+/// value substitutes for its operation's declared result". [EFFECTS-OP-TYPING]
+/// requires that value to match the operation's declared type, so int, float,
+/// bool, string, record, union, `Result` and `Unit` must each arrive intact.
+/// The whole-`Result` half is the general form of the transport fixed in
+/// [issue #183](https://github.com/Nimblesite/osprey/issues/183).
+fn everyResultTypeCase() = {
+    mut marks = 0
+    mut trail = ""
+    let rendered = handle ValueError
+        asInt field => {
+            trail = "${trail}i:${field}|"
+            12
+        }
+        asFloat field => {
+            trail = "${trail}f:${field}|"
+            2.5
+        }
+        asBool field => {
+            trail = "${trail}b:${field}|"
+            true
+        }
+        asText field => {
+            trail = "${trail}t:${field}|"
+            "fallback"
+        }
+        asSpare field => {
+            trail = "${trail}s:${field}|"
+            Spare { tag: "spare", weight: 1.5, ready: true }
+        }
+        asGrade field => {
+            trail = "${trail}g:${field}|"
+            Granted { score: 30 }
+        }
+        asResult field => {
+            trail = "${trail}r:${field}|"
+            Success { value: 9 }
+        }
+        mark field => {
+            marks = marks + 1 ?: marks
+            trail = "${trail}m:${field}|"
+        }
+    in everyValue()
+    let intValue = handle ValueError
+        asInt field => 0
+    in perform ValueError.asInt("zero")
+    let negativeValue = handle ValueError
+        asInt field => -41
+    in perform ValueError.asInt("negative")
+    let floatValue = handle ValueError
+        asFloat field => 2.5
+    in perform ValueError.asFloat("ratio")
+    let boolValue = handle ValueError
+        asBool field => false
+    in perform ValueError.asBool("blocked")
+    let textValue = handle ValueError
+        asText field => ""
+    in perform ValueError.asText("empty")
+    let spareValue = handle ValueError
+        asSpare field => Spare { tag: "left", weight: 1.5, ready: true }
+    in perform ValueError.asSpare("spare")
+    let grantedValue = handle ValueError
+        asGrade field => Granted { score: 7 }
+    in perform ValueError.asGrade("good")
+    let refusedValue = handle ValueError
+        asGrade field => Refused { reason: "denied" }
+    in perform ValueError.asGrade("bad")
+    let okValue = handle ValueError
+        asResult field => Success { value: 5 }
+    in perform ValueError.asResult("hit")
+    let badValue = handle ValueError
+        asResult field => Error { message: "absent" }
+    in perform ValueError.asResult("miss")
+    let grantedScore = gradeScore(grantedValue)
+    let refusedScore = gradeScore(refusedValue)
+    let okScore = resultScore(okValue)
+    let badScore = resultScore(badValue)
+
+    // Scalar substitutions keep their declared type at the identity, zero and
+    // negative boundaries. `-41` is a folded negated literal, so it is a plain
+    // `int` and not a `Result` [ARITH-NEG-LITERAL].
+    checkAll("scalar operation results cross a direct arm", [
+        intValue == 0,
+        intValue != 12,
+        negativeValue == -41,
+        negativeValue < 0,
+        (intValue - negativeValue ?: 0) == 41,
+        (negativeValue + 41 ?: 0) == 0,
+        floatValue == 2.5,
+        floatValue > 2.0,
+        floatValue < 3.0,
+        floatValue + 1.5 == 4.0,
+        floatValue * 2.0 == 5.0,
+        floatValue - 2.5 == 0.0,
+        boolValue == false,
+        !boolValue,
+        boolValue != true,
+        textValue == "",
+        isEmpty(textValue),
+        length(textValue) == 0,
+        !contains(textValue, "a"),
+        "${textValue}x" == "x"
+    ])
+
+    // A record arrives with every field readable and a union arrives with its
+    // constructor and payload: `Refused { reason: "denied" }` folds to
+    // -length("denied") == -6, so granted - refused == 7 - (-6) == 13.
+    checkAll("record and union operation results arrive whole", [
+        spareValue.tag == "left",
+        spareValue.weight == 1.5,
+        spareValue.ready,
+        spareValue.tag != "spare",
+        length(spareValue.tag) == 4,
+        toUpperCase(spareValue.tag) == "LEFT",
+        spareValue.weight + floatValue == 4.0,
+        spareValue.weight * 2.0 == 3.0,
+        grantedScore == 7,
+        grantedScore > 0,
+        refusedScore == -6,
+        refusedScore < 0,
+        length("denied") == 6,
+        grantedScore != refusedScore,
+        (grantedScore + refusedScore ?: 0) == 1,
+        (grantedScore - refusedScore ?: 0) == 13,
+        gradeScore(Granted { score: 0 }) == 0,
+        gradeScore(Refused { reason: "" }) == 0,
+        gradeScore(Granted { score: -3 }) == -3,
+        gradeScore(Refused { reason: "no" }) == -2
+    ])
+
+    // A direct arm may choose either `Result` constructor, and the `Unit`
+    // channel changes nothing the caller receives beyond handler-owned state.
+    checkAll("Result and Unit operation results cross a direct arm", [
+        okScore == 5,
+        badScore == 6,
+        okScore != badScore,
+        (okScore + badScore ?: 0) == 11,
+        badScore == length("absent"),
+        resultScore(Success { value: 0 }) == 0,
+        resultScore(Error { message: "" }) == 0,
+        resultScore(Success { value: -2 }) == -2,
+        resultScore(Error { message: "x" }) == 1,
+        (okValue ?: 0) == 5,
+        (badValue ?: 0) == 0,
+        (badValue ?: 77) == 77,
+        marks == 1,
+        marks != 0,
+        (marks * 3 ?: 0) == 3,
+        endsWith(trail, "m:rendered|")
+    ])
+
+    // One region answers all eight operations of one effect in body order.
+    // 2.5 + 1.5 > 4.0 is false, the grade folds to 30 and the Result to 9,
+    // so the render is "12|fallback|true|spare|false|30|9" (33 characters).
+    checkAll("one region answers every operation of one effect", [
+        rendered == "12|fallback|true|spare|false|30|9",
+        length(rendered) == 33,
+        startsWith(rendered, "12|"),
+        endsWith(rendered, "|9"),
+        contains(rendered, "|spare|"),
+        contains(rendered, "|true|"),
+        !contains(rendered, "2.5"),
+        !contains(rendered, "|13|"),
+        marks == 1,
+        trail == "i:count|f:ratio|b:allowed|t:name|s:spare|g:grade|r:lookup|m:rendered|",
+        length(trail) == 69,
+        startsWith(trail, "i:count|"),
+        endsWith(trail, "m:rendered|"),
+        contains(trail, "|s:spare|"),
+        contains(trail, "b:allowed|t:name|"),
+        !contains(trail, "|i:count|")
+    ])
+}
+
+/// Verify partial, nested and complementary handlers split one effect exactly.
+///
+/// [EFFECTS-STATIC-DISCHARGE]: "Discharge is operation- and
+/// instantiation-specific. A handler for `Pair.first` does not discharge
+/// `Pair.second` ... Complementary nested partial handlers may each discharge
+/// the operation they cover." The handler section adds that "the innermost
+/// matching arm wins and an outer arm remains available for operations not
+/// handled by the inner region". Handler-owned counters make the routing
+/// visible per call [EFFECTS-HANDLER-STATE].
+fn partialOverrideLatticeCase() = {
+    mut flatCalls = 0
+    mut flatTrail = ""
+    mut outerBaseCalls = 0
+    mut innerBaseCalls = 0
+    let flat = handle TierError
+        base label => {
+            flatCalls = flatCalls + 1 ?: flatCalls
+            flatTrail = "${flatTrail}base:${label}|"
+            100
+        }
+        bonus label => {
+            flatCalls = flatCalls + 1 ?: flatCalls
+            flatTrail = "${flatTrail}bonus:${label}|"
+            5
+        }
+        tier label => {
+            flatCalls = flatCalls + 1 ?: flatCalls
+            flatTrail = "${flatTrail}tier:${label}|"
+            "gold"
+        }
+    in {
+        let first = tierQuote("a")
+        let second = tierQuote("b")
+        "${first}/${second}"
+    }
+    let overridden = handle TierError
+        base label => {
+            outerBaseCalls = outerBaseCalls + 1 ?: outerBaseCalls
+            100
+        }
+        bonus label => 5
+        tier label => "gold"
+    in {
+        let outside = tierQuote("out")
+        let inside = handle TierError
+            base label => {
+                innerBaseCalls = innerBaseCalls + 1 ?: innerBaseCalls
+                200
+            }
+        in tierQuote("in")
+        let afterwards = tierQuote("post")
+        "${outside}|${inside}|${afterwards}"
+    }
+    let split = handle TierError
+        base label => 10
+    in handle TierError
+        bonus label => 3
+    in handle TierError
+        tier label => "silver"
+    in tierQuote("c")
+    let reordered = handle TierError
+        tier label => "silver"
+    in handle TierError
+        base label => 10
+    in handle TierError
+        bonus label => 3
+    in tierQuote("d")
+    let deepest = handle TierError
+        base label => 1
+        bonus label => 0
+        tier label => "bronze"
+    in handle TierError
+        base label => 2
+    in handle TierError
+        base label => 3
+    in tierQuote("e")
+    let restored = handle TierError
+        base label => 7
+        bonus label => 1
+        tier label => "outer"
+    in {
+        let before = perform TierError.base("before")
+        let inner = handle TierError
+            base label => 70
+        in {
+            let insideBase = perform TierError.base("inside")
+            let insideTier = perform TierError.tier("inside")
+            "${insideTier}/${toString(insideBase)}"
+        }
+        let after = perform TierError.base("after")
+        "${toString(before)}|${inner}|${toString(after)}"
+    }
+
+    // Two quotes under one three-arm handler: six arm entries, base+bonus of
+    // 100+5, and a transcript in the order the body draws the channels.
+    checkAll("one handler answers every operation of one effect", [
+        flat == "gold:105/gold:105",
+        length(flat) == 17,
+        startsWith(flat, "gold:105"),
+        endsWith(flat, "gold:105"),
+        contains(flat, "105/gold"),
+        flat != "gold:105",
+        flatCalls == 6,
+        flatCalls == (2 * 3 ?: 0),
+        flatTrail == "base:a|bonus:a|tier:a|base:b|bonus:b|tier:b|",
+        length(flatTrail) == 44,
+        startsWith(flatTrail, "base:a|"),
+        endsWith(flatTrail, "tier:b|"),
+        contains(flatTrail, "tier:a|base:b|"),
+        !contains(flatTrail, "base:c")
+    ])
+
+    // The inner region supplies only `base`; `bonus` and `tier` still reach the
+    // outer arms, so the inner quote is 200+5 while both outer quotes are 100+5.
+    checkAll("an inner arm overrides one operation and the outer arms remain", [
+        overridden == "gold:105|gold:205|gold:105",
+        length(overridden) == 26,
+        outerBaseCalls == 2,
+        innerBaseCalls == 1,
+        outerBaseCalls > innerBaseCalls,
+        (outerBaseCalls + innerBaseCalls ?: 0) == 3,
+        contains(overridden, "gold:205"),
+        startsWith(overridden, "gold:105|"),
+        endsWith(overridden, "|gold:105"),
+        !contains(overridden, "gold:305"),
+        !startsWith(overridden, "gold:205"),
+        contains(overridden, "|gold:205|"),
+        overridden != flat,
+        (200 + 5 ?: 0) == 205
+    ])
+
+    // Three single-arm regions cover complementary operations; nesting them in
+    // either order discharges the same three operations to the same values.
+    checkAll("complementary partial handlers each discharge their own operation", [
+        split == "silver:13",
+        reordered == "silver:13",
+        split == reordered,
+        length(split) == 9,
+        startsWith(split, "silver:"),
+        endsWith(split, ":13"),
+        contains(split, "r:1"),
+        !contains(split, "gold"),
+        split != flat,
+        (10 + 3 ?: 0) == 13,
+        !startsWith(reordered, "13"),
+        endsWith(reordered, "13")
+    ])
+
+    // Three same-operation regions: the innermost `base` wins at 3, while
+    // `bonus` and `tier` fall through two uncovering regions to the outermost.
+    // After an inner region ends the outer policy answers again, so the
+    // before/inside/after readings are 7, 70 and 7.
+    checkAll("the innermost matching arm wins and the outer policy is restored", [
+        deepest == "bronze:3",
+        length(deepest) == 8,
+        startsWith(deepest, "bronze:"),
+        endsWith(deepest, ":3"),
+        !contains(deepest, ":1"),
+        !contains(deepest, ":2"),
+        deepest != split,
+        restored == "7|outer/70|7",
+        length(restored) == 12,
+        startsWith(restored, "7|"),
+        endsWith(restored, "|7"),
+        contains(restored, "outer/70"),
+        !contains(restored, "70|outer"),
+        !contains(restored, "|70|")
+    ])
+}
+
+/// Verify an operation performed inside a lambda handed to a higher-order
+/// function reaches the installed handler.
+///
+/// [EFFECTS-STATIC-DISCHARGE]: the checker "propagates them through named calls
+/// and higher-order callback calls", and "Constructing a lambda is pure, but
+/// invoking it contributes its latent requirements". `forEachList` "Calls
+/// `function` once per element in index order" [BUILTIN-LIST-FOREACH], so the
+/// handler-owned transcript is the traversal order.
+fn higherOrderRecoveryCase() = {
+    let none = List()
+    let one = [7]
+    let dup = [3, 3, 3]
+    let mixed = [1, 2, 3, 4, 5]
+    let nested = [[10, 20], [30]]
+    let missing = -1
+    mut total = 0
+    mut steps = 0
+    mut scaled = 0
+    mut trail = ""
+    mut negatives = 0
+    let finished = handle Tally
+        scale value => {
+            scaled = scaled + 1 ?: scaled
+            value * 2 ?: 0
+        }
+        add value => {
+            total = total + value ?: total
+            steps = steps + 1 ?: steps
+            trail = "${trail}${toString(value)}|"
+        }
+    in {
+        forEachList(none, fn(value) => tallyOne(value))
+        forEachList(one, fn(value) => tallyOne(value))
+        forEachList(dup, fn(value) => tallyOne(value))
+        forEachList(mixed, fn(value) => tallyOne(value))
+        forEachList(nested, fn(inner) => forEachList(inner, fn(value) => tallyOne(value)))
+        "finished"
+    }
+    let negated = handle Tally
+        scale value => 0 - value ?: 0
+        add value => {
+            negatives = negatives + value ?: negatives
+        }
+    in {
+        forEachList(mixed, fn(value) => tallyOne(value))
+        "negated"
+    }
+
+    // Twelve elements are visited in five traversals: 7 doubles to 14, three
+    // 3s to 6 each (18), 1..5 to 2..10 (30) and [[10,20],[30]] to 20+40+60
+    // (120). 14 + 18 + 30 + 120 == 182.
+    checkAll("a lambda handed to a higher-order function reaches the handler", [
+        finished == "finished",
+        steps == 12,
+        scaled == 12,
+        scaled == steps,
+        total == 182,
+        total == (14 + 18 + 30 + 120 ?: 0),
+        total > 0,
+        total != 91,
+        trail == "14|6|6|6|2|4|6|8|10|20|40|60|",
+        length(trail) == 29,
+        startsWith(trail, "14|"),
+        endsWith(trail, "60|"),
+        contains(trail, "6|6|6|"),
+        !contains(trail, "|7|")
+    ])
+
+    // An empty list performs nothing, a singleton performs once, duplicates
+    // perform once per occurrence, and the nested traversal adds three more.
+    checkAll("empty, singleton, duplicate and nested inputs each contribute once", [
+        listLength(none) == 0,
+        listLength(one) == 1,
+        listLength(dup) == 3,
+        listLength(mixed) == 5,
+        listLength(nested) == 2,
+        isEmpty(none),
+        !isEmpty(one),
+        steps == (listLength(one) + listLength(dup) + listLength(mixed) + 3 ?: 0),
+        listContains(dup, 3),
+        !listContains(dup, 6),
+        listContains(mixed, 5),
+        !listContains(mixed, 0),
+        listContains(one, 7),
+        !listContains(none, 7)
+    ])
+
+    // Every traversed list is unchanged afterwards, at the first index, the
+    // last index, one past the end and a negative index.
+    checkAll("the traversed lists are unchanged by the effectful callback", [
+        (listGet(none, 0) ?: missing) == missing,
+        (listGet(one, 0) ?: missing) == 7,
+        (listGet(one, 1) ?: missing) == missing,
+        (listGet(dup, 0) ?: missing) == 3,
+        (listGet(dup, 2) ?: missing) == 3,
+        (listGet(dup, 3) ?: missing) == missing,
+        (listGet(mixed, 0) ?: missing) == 1,
+        (listGet(mixed, 4) ?: missing) == 5,
+        (listGet(mixed, 5) ?: missing) == missing,
+        (listGet(mixed, missing) ?: 0) == 0,
+        (listGet(listReverse(mixed), 0) ?: missing) == 5,
+        listLength(listGet(nested, 0) ?: none) == 2,
+        (listGet(listGet(nested, 0) ?: none, 1) ?: missing) == 20,
+        (listGet(listGet(nested, 1) ?: none, 0) ?: missing) == 30
+    ])
+
+    // The second region negates instead of doubling and touches only its own
+    // cell: 1..5 negated sums to -15 while the first region's state stands.
+    checkAll("a second policy over the same callback changes only its own state", [
+        negated == "negated",
+        negatives == -15,
+        negatives < 0,
+        (negatives + 15 ?: 0) == 0,
+        (0 - negatives ?: 0) == 15,
+        (1 + 2 + 3 + 4 + 5 ?: 0) == 15,
+        total == 182,
+        steps == 12,
+        scaled == 12,
+        trail == "14|6|6|6|2|4|6|8|10|20|40|60|",
+        negatives != total,
+        negated != finished
+    ])
+}
+
+/// Verify recursion inside the handled body enters the handler once per level.
+///
+/// The handler section states the operation result "is the value returned by
+/// its active handler arm" and [EFFECTS-HANDLER-STATE] promotes the captured
+/// `mut` cell so "every arm, the handled body, and code after the region
+/// observe the same location". A counter incremented per arm entry therefore
+/// makes a lost or duplicated recovery impossible to hide behind a right total.
+fn recursiveAccumulationCase() = {
+    mut visits = 0
+    mut lastDepth = 0
+    mut trail = ""
+    mut zeroVisits = 0
+    mut oneVisits = 0
+    mut deepVisits = 0
+    let total = handle StepError
+        contribute depth => {
+            visits = visits + 1 ?: visits
+            lastDepth = depth
+            trail = "${trail}${toString(depth)}:${toString(visits)}|"
+            visits * 10 ?: 0
+        }
+    in descendSum(8)
+    let zeroTotal = handle StepError
+        contribute depth => {
+            zeroVisits = zeroVisits + 1 ?: zeroVisits
+            99
+        }
+    in descendSum(0)
+    let oneTotal = handle StepError
+        contribute depth => {
+            oneVisits = oneVisits + 1 ?: oneVisits
+            depth * 3 ?: 0
+        }
+    in descendSum(1)
+    let deepTotal = handle StepError
+        contribute depth => {
+            deepVisits = deepVisits + 1 ?: deepVisits
+            depth
+        }
+    in descendSum(33)
+    let doubled = handle StepError
+        contribute depth => depth * 2 ?: 0
+    in descendSum(33)
+
+    // Eight levels answer 10, 20 ... 80 from the handler's own counter, so the
+    // total is 360 and the transcript pairs each depth with its visit number.
+    checkAll("each recursion level enters the handler exactly once", [
+        total == 360,
+        total == (10 + 20 + 30 + 40 + 50 + 60 + 70 + 80 ?: 0),
+        visits == 8,
+        lastDepth == 1,
+        trail == "8:1|7:2|6:3|5:4|4:5|3:6|2:7|1:8|",
+        length(trail) == 32,
+        startsWith(trail, "8:1|"),
+        endsWith(trail, "1:8|"),
+        contains(trail, "|4:5|"),
+        !contains(trail, "9:"),
+        !contains(trail, "0:"),
+        (visits * 10 ?: 0) == 80,
+        total > 0,
+        total != 36
+    ])
+
+    // Depth zero performs nothing at all, so an installed arm stays untouched;
+    // depth one performs exactly once and answers 1 * 3.
+    checkAll("zero and one level recursions", [
+        zeroTotal == 0,
+        zeroVisits == 0,
+        oneTotal == 3,
+        oneVisits == 1,
+        zeroVisits < oneVisits,
+        zeroTotal != oneTotal,
+        zeroTotal < oneTotal,
+        (oneTotal - zeroTotal ?: 0) == 3,
+        oneTotal != 99,
+        zeroTotal != 99,
+        (zeroVisits + oneVisits ?: 0) == 1,
+        oneVisits != visits
+    ])
+
+    // 33 levels echoing their own depth sum to 33 * 34 / 2 == 561, and the
+    // doubling policy over the same body yields exactly twice that.
+    checkAll("recursion past the thirty-two level boundary", [
+        deepTotal == 561,
+        // `/` is always float division [ARITH-CHECKED], so the integer
+        // half-sum goes through `intDiv`.
+        deepTotal == (intDiv(33 * 34 ?: 0, 2) ?: 0),
+        deepVisits == 33,
+        deepVisits > 32,
+        doubled == 1122,
+        doubled == (deepTotal * 2 ?: 0),
+        doubled != deepTotal,
+        (doubled - deepTotal ?: 0) == 561,
+        deepTotal > total,
+        deepVisits > visits,
+        (deepVisits - visits ?: 0) == 25,
+        deepTotal != 528
+    ])
+
+    // Across all four runs 8 + 0 + 1 + 33 == 42 arm entries happened, and each
+    // run's own answer is still readable after the later regions have closed.
+    checkAll("every level of every run entered its own handler", [
+        (visits + zeroVisits + oneVisits + deepVisits ?: 0) == 42,
+        visits == 8,
+        deepVisits == 33,
+        total == 360,
+        deepTotal == 561,
+        doubled == 1122,
+        oneTotal == 3,
+        zeroTotal == 0,
+        (total + oneTotal + zeroTotal ?: 0) == 363,
+        (deepTotal + doubled ?: 0) == 1683
+    ])
+}
+
+/// Verify four effects compose in one stack of nested direct regions.
+///
+/// "Lookup is per effect and operation", so four regions each discharge their
+/// own effect while the body performs across all four
+/// [EFFECTS-STATIC-DISCHARGE]. One shared `mut` transcript written by arms of
+/// different effects pins the interleaving [EFFECTS-HANDLER-STATE].
+fn multiEffectRegionCase() = {
+    mut trail = ""
+    mut notes = 0
+    mut recoveries = 0
+    mut shortages = 0
+    mut policies = 0
+    mut auditTrail = ""
+    mut generousAudits = 0
+    let rendered = handle AuditError
+        note message => {
+            notes = notes + 1 ?: notes
+            trail = "${trail}A(${message})|"
+        }
+    in handle RecoveryError
+        missingInt reason => {
+            recoveries = recoveries + 1 ?: recoveries
+            trail = "${trail}R(${reason})|"
+            6
+        }
+    in handle StockError
+        shortage requested available => {
+            shortages = shortages + 1 ?: shortages
+            trail = "${trail}S(${toString(requested)},${toString(available)})|"
+            available
+        }
+    in handle PolicyError
+        score key => {
+            policies = policies + 1 ?: policies
+            trail = "${trail}P(${key})|"
+            25
+        }
+        label key => {
+            policies = policies + 1 ?: policies
+            trail = "${trail}L(${key})|"
+            "priority"
+        }
+    in crossEffectBody()
+    let reordered = handle PolicyError
+        score key => 25
+        label key => "priority"
+    in handle StockError
+        shortage requested available => available
+    in handle RecoveryError
+        missingInt reason => 6
+    in handle AuditError
+        note message => {
+            auditTrail = "${auditTrail}${message}|"
+        }
+    in crossEffectBody()
+    let generous = handle AuditError
+        note message => {
+            generousAudits = generousAudits + 1 ?: generousAudits
+        }
+    in handle RecoveryError
+        missingInt reason => 2
+    in handle StockError
+        shortage requested available => requested + available ?: 0
+    in handle PolicyError
+        score key => 0
+        label key => "basic"
+    in crossEffectBody()
+
+    // The body draws 6 from RecoveryError, 4 from StockError, "priority" and
+    // 25 from PolicyError and audits three times, so 3+1+1+2 == 7 arm entries.
+    checkAll("four effects cooperate inside one nested region stack", [
+        rendered == "priority:6:4:25",
+        length(rendered) == 15,
+        startsWith(rendered, "priority:"),
+        endsWith(rendered, ":25"),
+        contains(rendered, ":6:4:"),
+        !contains(rendered, ":25:"),
+        notes == 3,
+        recoveries == 1,
+        shortages == 1,
+        policies == 2,
+        (notes + recoveries + shortages + policies ?: 0) == 7,
+        notes > recoveries,
+        policies > shortages,
+        recoveries == shortages
+    ])
+
+    // One transcript written by arms of four different effects records the
+    // body's exact interleaving, including that `label` precedes `score`.
+    checkAll("the four channels interleave in the body's order", [
+        trail == "R(qty)|A(filled 6)|S(6,4)|A(allowed 4)|L(order)|P(order)|A(scored 25)|",
+        length(trail) == 70,
+        startsWith(trail, "R(qty)|"),
+        endsWith(trail, "A(scored 25)|"),
+        contains(trail, "|S(6,4)|"),
+        contains(trail, "|L(order)|P(order)|"),
+        !contains(trail, "P(order)|L(order)"),
+        !contains(trail, "A(qty)"),
+        contains(trail, "A(filled 6)"),
+        contains(trail, "A(allowed 4)"),
+        !contains(trail, "S(4,6)"),
+        !startsWith(trail, "A("),
+        !endsWith(trail, "|P(order)|"),
+        contains(trail, "R(qty)|A(filled 6)|")
+    ])
+
+    // Nesting the same four regions in the opposite order changes nothing the
+    // body sees, and the first stack's own state is untouched by the second.
+    checkAll("reordering independent handler regions preserves every value", [
+        reordered == rendered,
+        reordered == "priority:6:4:25",
+        auditTrail == "filled 6|allowed 4|scored 25|",
+        length(auditTrail) == 29,
+        startsWith(auditTrail, "filled 6|"),
+        endsWith(auditTrail, "scored 25|"),
+        contains(auditTrail, "|allowed 4|"),
+        !contains(auditTrail, "qty"),
+        notes == 3,
+        trail == "R(qty)|A(filled 6)|S(6,4)|A(allowed 4)|L(order)|P(order)|A(scored 25)|",
+        recoveries == 1,
+        policies == 2
+    ])
+
+    // A third stack changes every policy: 2 filled, 2+4 allocated, "basic" and
+    // 0, so the render is "basic:2:6:0" while the audit count is unchanged.
+    checkAll("changing the policies changes only the handled decisions", [
+        generous == "basic:2:6:0",
+        length(generous) == 11,
+        generous != rendered,
+        startsWith(generous, "basic:"),
+        endsWith(generous, ":0"),
+        contains(generous, ":2:6:"),
+        !contains(generous, "priority"),
+        generousAudits == 3,
+        generousAudits == notes,
+        notes == 3,
+        recoveries == 1,
+        shortages == 1,
+        policies == 2,
+        auditTrail == "filled 6|allowed 4|scored 25|"
+    ])
+}
+
+/// Verify boundary values cross a direct arm without being reshaped.
+///
+/// Each `perform` gets its own answer from the same arm, so three requests in
+/// one region are answered independently [EFFECTS-HANDLER-ARMS]. The recovered
+/// text is then read with the total string builtins
+/// ([BUILTIN-STRING-CONTAINS], [BUILTIN-STRING-TRANSFORM]) and the recovered
+/// numbers with checked arithmetic [ARITH-CHECKED].
+fn boundaryValueRecoveryCase() = {
+    mut fills = 0
+    mut seen = ""
+    let joined = handle TextError
+        fill field => {
+            fills = fills + 1 ?: fills
+            seen = "${seen}${field}${toString(fills)}|"
+            match fills {
+                1 => ""
+                2 => "x"
+                _ => "  spaced  "
+            }
+        }
+    in fillAll()
+    let blank = handle TextError
+        fill field => ""
+    in perform TextError.fill("blank")
+    let single = handle TextError
+        fill field => "z"
+    in perform TextError.fill("single")
+    let digits = handle TextError
+        fill field => "007"
+    in perform TextError.fill("digits")
+    let mixedCase = handle TextError
+        fill field => "OsPrey"
+    in perform TextError.fill("case")
+    let punctuated = handle TextError
+        fill field => "a-b_c.d,e"
+    in perform TextError.fill("punct")
+    let repeated = handle TextError
+        fill field => "abab abab"
+    in perform TextError.fill("repeat")
+    let zero = handle TextError
+        number field => 0
+    in perform TextError.number("zero")
+    let big = handle TextError
+        number field => 2147483647
+    in perform TextError.number("big")
+    let negative = handle TextError
+        number field => -2147483647
+    in perform TextError.number("negative")
+
+    // Three performs, two of them under the duplicate field name "a", get the
+    // first, second and third answers: "" then "x" then "  spaced  ", joined
+    // as "/x/  spaced  " (13 characters).
+    checkAll("repeated failures in one region are answered one at a time", [
+        joined == "/x/  spaced  ",
+        length(joined) == 13,
+        trim(joined) == "/x/  spaced",
+        fills == 3,
+        fills != 1,
+        seen == "a1|a2|b3|",
+        length(seen) == 9,
+        startsWith(seen, "a1|"),
+        endsWith(seen, "b3|"),
+        contains(seen, "|a2|"),
+        !contains(seen, "b1|"),
+        !contains(seen, "a3|"),
+        startsWith(joined, "/x/"),
+        endsWith(joined, "  "),
+        contains(joined, "spaced")
+    ])
+
+    // Empty, one-character and digit-bearing replacements keep their exact
+    // bytes rather than being normalised on the way out of the arm.
+    checkAll("empty, single-character and digit-bearing replacements", [
+        blank == "",
+        isEmpty(blank),
+        length(blank) == 0,
+        single == "z",
+        length(single) == 1,
+        !isEmpty(single),
+        single != blank,
+        digits == "007",
+        length(digits) == 3,
+        startsWith(digits, "0"),
+        endsWith(digits, "7"),
+        contains(digits, "07"),
+        !contains(digits, "70"),
+        digits != "7"
+    ])
+
+    // Case folding is ASCII-only and total, and a substring is found at the
+    // start, in the middle and at the end but not in the wrong orientation.
+    checkAll("case folding and substring position at start, middle and end", [
+        mixedCase == "OsPrey",
+        length(mixedCase) == 6,
+        toUpperCase(mixedCase) == "OSPREY",
+        toLowerCase(mixedCase) == "osprey",
+        mixedCase != toUpperCase(mixedCase),
+        mixedCase != toLowerCase(mixedCase),
+        toUpperCase(mixedCase) != toLowerCase(mixedCase),
+        punctuated == "a-b_c.d,e",
+        length(punctuated) == 9,
+        startsWith(punctuated, "a-"),
+        contains(punctuated, "_c."),
+        endsWith(punctuated, ",e"),
+        !startsWith(punctuated, "-"),
+        !endsWith(punctuated, "e,"),
+        repeated == "abab abab",
+        startsWith(repeated, "abab"),
+        endsWith(repeated, "abab"),
+        contains(repeated, "b a"),
+        !contains(repeated, "abc"),
+        length(repeated) == 9
+    ])
+
+    // Zero, the largest 32-bit positive and its negation cross the arm and then
+    // cancel exactly under checked arithmetic.
+    checkAll("numeric boundaries survive direct substitution", [
+        zero == 0,
+        !(zero > 0),
+        !(zero < 0),
+        big == 2147483647,
+        big > zero,
+        big > 0,
+        negative == -2147483647,
+        negative < zero,
+        negative < 0,
+        (big + negative ?: 0) == 0,
+        (big - big ?: 0) == 0,
+        (zero - negative ?: 0) == big,
+        big != negative,
+        (abs(negative) ?: 0) == big
+    ])
+}
+
 /// A run that never fails must never enter a recovery arm.
 ///
 /// The handler is installed but its operations stay untouched, so the
@@ -343,3 +1335,25 @@ test("recovery reaches through helpers and recursion", deepRecursionCase)
 /// # Since
 /// 0.3
 test("handlers can return whole Result operation values", wholeResultOperationCase)
+/// A direct arm may supply `int`, `float`, `bool`, `string`, a record, a
+/// tagged union, a whole `Result` or `Unit`, and each one reaches the
+/// perform site with its declared type and payload intact.
+test("every declared operation result type crosses a direct arm", everyResultTypeCase)
+/// Discharge is per operation: partial regions cover complementary
+/// operations, an inner arm overrides one operation while its siblings fall
+/// through, and the outer policy answers again once the inner region ends.
+test("partial and nested handlers split one effect's operations", partialOverrideLatticeCase)
+/// A `perform` inside a lambda handed to `forEachList` reaches the installed
+/// handler once per element, in index order, for empty, singleton, duplicate
+/// and nested inputs alike.
+test("a callback passed to a higher-order function reaches the handler", higherOrderRecoveryCase)
+/// Recursion in the handled body enters the handler exactly once per level,
+/// including at depth zero, depth one and past the thirty-two level mark.
+test("recursion in the handled body enters the handler once per level", recursiveAccumulationCase)
+/// Four effects performed by one body are discharged by four nested regions;
+/// nesting order does not change any value, and one shared transcript records
+/// the exact interleaving of the four channels.
+test("four effects compose in one nested region stack", multiEffectRegionCase)
+/// Empty, single-character, punctuated, repeated and case-mixed text, and
+/// zero, maximum and negated numbers, all cross a direct arm unchanged.
+test("boundary values cross a direct arm unchanged", boundaryValueRecoveryCase)

@@ -30,4 +30,4 @@ pub mod workspace;
 pub use crate::analysis::{builtin_hover, symbols_json};
 pub use crate::engine::OspreyEngine;
 pub use crate::server::run_stdio;
-pub use crate::testing::tests_json;
+pub use crate::testing::{test_case_names, tests_json};

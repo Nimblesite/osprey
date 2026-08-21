@@ -26,9 +26,49 @@ pub struct TestCase {
     pub(crate) position: Option<Position>,
     /// The doc comment attached to the case's own statement ([TESTING-DOC]).
     pub(crate) doc: Option<DocComment>,
+    /// The literal `Skip` reason when the case's body statically yields the
+    /// `Skip` verdict — the "ignored test" idiom ([TESTING-SKIP-WARNING]).
+    /// `None` when the body can only skip dynamically (reported at run time).
+    pub(crate) skip: Option<String>,
 }
 
+/// A statically-detected skip and how loudly it must be reported.
+///
+/// A skip that names a reason is a visible debt, so it warns. A skip that names
+/// NONE is a defect: nobody can weigh a hole in coverage whose cause was never
+/// written down, so it is reported at Error severity and fails the run
+/// ([TESTING-SKIP-REASON]).
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) struct SkipReport {
+    /// The skip carries no reason, so this diagnostic is an error.
+    pub(crate) unexplained: bool,
+    /// The rendered diagnostic message.
+    pub(crate) message: String,
+}
+
+/// What an unexplained skip must do about itself ([TESTING-SKIP-REASON]).
+const SKIP_REASON_DEMAND: &str = "with no reason; every skip must name one";
+
 impl TestCase {
+    /// The diagnostic raised for a statically-skipped case, if any
+    /// ([TESTING-SKIP-WARNING], [TESTING-SKIP-REASON]): a skipped test is never
+    /// silent, and an unexplained one is an error rather than a warning.
+    pub(crate) fn skip_diagnostic(&self) -> Option<SkipReport> {
+        let reason = self.skip.as_ref()?;
+        let head = format!("test '{}' is skipped", self.name);
+        Some(if reason.is_empty() {
+            SkipReport {
+                unexplained: true,
+                message: format!("{head} {SKIP_REASON_DEMAND}"),
+            }
+        } else {
+            SkipReport {
+                unexplained: false,
+                message: format!("{head}: {reason}"),
+            }
+        })
+    }
+
     /// The doc's first paragraph — the inline description beside the case name.
     /// Empty when undocumented.
     pub(crate) fn summary(&self) -> &str {
@@ -77,12 +117,47 @@ fn push_field(out: &mut String, key: &str, value: &str) {
     }
 }
 
-/// Collect every statically-visible test case, in source order.
+/// Collect every statically-visible test case, in source order. A program that
+/// declares its own `test` function or `extern` has SHADOWED the built-in
+/// ([TESTING-SHADOWING]), so none of its `test(...)` calls are test cases and
+/// none are listed, hovered, or warned about.
 #[must_use]
 pub(crate) fn collect_tests(program: &Program) -> Vec<TestCase> {
+    if shadows_test_builtin(&program.statements) {
+        return Vec::new();
+    }
     let mut out = Vec::new();
     walk_stmts(&program.statements, None, &mut out);
     out
+}
+
+/// Whether a declaration named `test` shadows the testing built-in
+/// ([TESTING-SHADOWING]). Only top-level and container-level declarations can:
+/// the built-in is resolved at the call site's scope.
+fn shadows_test_builtin(stmts: &[Stmt]) -> bool {
+    stmts.iter().any(|stmt| match stmt {
+        Stmt::Function { name, .. } | Stmt::Extern { name, .. } => name == TEST_BUILTIN,
+        Stmt::Namespace { body, .. } => shadows_test_builtin(body),
+        Stmt::Module { body, .. } => body.iter().any(|item| match &*item.declaration {
+            Stmt::Function { name, .. } | Stmt::Extern { name, .. } => name == TEST_BUILTIN,
+            _ => false,
+        }),
+        _ => false,
+    })
+}
+
+/// The built-in that declares a test case ([TESTING-BUILTIN-TEST]).
+const TEST_BUILTIN: &str = "test";
+
+/// Every statically-discoverable test case name, in source order. Consumers
+/// disambiguate a TAP line whose description itself contains `# SKIP` by
+/// checking it against these names ([TESTING-TAP], [TESTING-SKIP-WARNING]).
+#[must_use]
+pub fn test_case_names(program: &Program) -> Vec<String> {
+    collect_tests(program)
+        .into_iter()
+        .map(|case| case.name)
+        .collect()
 }
 
 fn walk_stmts(stmts: &[Stmt], pos: Option<Position>, out: &mut Vec<TestCase>) {
@@ -171,13 +246,58 @@ fn record_test_call(
     out: &mut Vec<TestCase>,
 ) {
     if let (Expr::Identifier(callee), Some(Expr::Str(name))) = (function, arguments.first()) {
-        if callee == "test" {
+        if callee == TEST_BUILTIN {
             out.push(TestCase {
                 name: name.clone(),
                 position: pos,
                 doc: doc.cloned(),
+                skip: static_skip(arguments.get(1)),
             });
         }
+    }
+}
+
+/// The literal `Skip` reason when `body` is a lambda whose result expression is
+/// the `Skip` verdict constructor ([TESTING-SKIP-WARNING], [TESTING-VERDICT]).
+fn static_skip(body: Option<&Expr>) -> Option<String> {
+    match body? {
+        Expr::Lambda { body, .. } => skip_reason(result_expr(body)),
+        _ => None,
+    }
+}
+
+/// A block's trailing value; any other expression is its own result.
+fn result_expr(expr: &Expr) -> &Expr {
+    match expr {
+        Expr::Block {
+            value: Some(value), ..
+        } => result_expr(value),
+        _ => expr,
+    }
+}
+
+/// `Skip`, `Skip("why")` (Default) or `Skip "why"` (ML) at the result
+/// position. Both frontends lower the applied constructor to
+/// [`Expr::TypeConstructor`]; a bare `Skip` reference stays an identifier.
+fn skip_reason(expr: &Expr) -> Option<String> {
+    match expr {
+        Expr::Identifier(name) if name == "Skip" => Some(String::new()),
+        Expr::TypeConstructor { name, fields, .. } if name == "Skip" => {
+            Some(match fields.first().map(|field| &field.value) {
+                Some(Expr::Str(why)) => why.clone(),
+                _ => String::new(),
+            })
+        }
+        Expr::Call {
+            function,
+            arguments,
+            ..
+        } => match (function.as_ref(), arguments.first()) {
+            (Expr::Identifier(name), Some(Expr::Str(why))) if name == "Skip" => Some(why.clone()),
+            (Expr::Identifier(name), _) if name == "Skip" => Some(String::new()),
+            _ => None,
+        },
+        _ => None,
     }
 }
 
@@ -271,6 +391,82 @@ mod tests {
         assert_eq!(names, ["fast case", "slow case"]);
     }
 
+    // [TESTING-SHADOWING] a user-defined `test` is NOT the built-in, so its
+    // calls declare no cases: nothing is listed, hovered, or skip-warned.
+    #[test]
+    fn a_user_defined_test_function_shadows_the_builtin_and_declares_no_cases() {
+        let shadowed = program(
+            "fn test(name, body) = 0\n\
+             let ignored = test(\"not a case\", fn() => Skip(\"not a real skip\"))\n",
+        );
+        assert!(
+            collect_tests(&shadowed).is_empty(),
+            "shadowed by a function"
+        );
+        assert_eq!(tests_json(&shadowed), "[]");
+        assert!(test_case_names(&shadowed).is_empty());
+        assert_eq!(test_case_hover(&shadowed, 2), None);
+
+        // An `extern` named `test` shadows it just the same.
+        let externed = program(
+            "extern fn test(name: string, body: int) -> int\n\
+             let ignored = test(\"not a case\", 1)\n",
+        );
+        assert!(collect_tests(&externed).is_empty(), "shadowed by an extern");
+
+        // WITHOUT the shadowing declaration the very same call IS a case, so
+        // the rule turns on the declaration and nothing else.
+        let real = program("test(\"a case\", fn() => Skip(\"parked\"))\n");
+        assert_eq!(collect_tests(&real).len(), 1);
+        assert_eq!(test_case_names(&real), ["a case"]);
+    }
+
+    // [TESTING-SKIP-WARNING] every statically-recognised `Skip` form, and the
+    // forms that must stay silent because they can only skip at run time.
+    // [TESTING-SKIP-REASON] a skip that names no reason is an ERROR.
+    #[test]
+    fn skip_warnings_cover_every_static_form_and_no_dynamic_one() {
+        let cases = cases(
+            "test(\"reasoned\", fn() => Skip(\"why not\"))\n\
+             test(\"empty reason\", fn() => Skip(\"\"))\n\
+             test(\"block body\", fn() => { Skip(\"from a block\") })\n\
+             test(\"nested block\", fn() => { { Skip(\"deep\") } })\n\
+             test(\"passes\", fn() => Pass)\n\
+             test(\"asserts\", fn() => expect(1, 1))\n\
+             test(\"helper\", fn() => guard(1))\n\
+             test(\"named ref\", parked)\n",
+        );
+        let reported: Vec<Option<(bool, String)>> = cases
+            .iter()
+            .map(|case| {
+                case.skip_diagnostic()
+                    .map(|report| (report.unexplained, report.message))
+            })
+            .collect();
+        assert_eq!(
+            reported,
+            vec![
+                Some((false, String::from("test 'reasoned' is skipped: why not"))),
+                Some((
+                    true,
+                    String::from(
+                        "test 'empty reason' is skipped with no reason; \
+                                  every skip must name one"
+                    )
+                )),
+                Some((
+                    false,
+                    String::from("test 'block body' is skipped: from a block")
+                )),
+                Some((false, String::from("test 'nested block' is skipped: deep"))),
+                None,
+                None,
+                None,
+                None,
+            ]
+        );
+    }
+
     #[test]
     fn json_escapes_quoted_test_names_and_renders_empty_array() {
         let json = tests_json(&program("test(\"lit \\\"q\\\"\", fn() => expect(1, 1))\n"));
@@ -287,6 +483,7 @@ mod tests {
             name: String::from("anon"),
             position: None,
             doc: None,
+            skip: None,
         };
         assert_eq!(
             case_json(&case),

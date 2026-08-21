@@ -26,6 +26,8 @@
 # Anything portable has been ported: file I/O and the OS CSPRNG moved into the
 # wasm runtime archive rather than staying on this list. Shrink it further by
 # porting a capability, never by loosening the check.
+tests/core/collections/nested_generic_collections_fibers.test.osp fiber_spawn_env_owned
+tests/core/collections/nested_generic_collections_fibers.test.ospml fiber_spawn_env_owned
 tests/effects/resume/resume_abort_early_exit.test.osp __osprey_coro_suspend
 tests/effects/resume/resume_abort_early_exit.test.ospml __osprey_coro_suspend
 tests/effects/resume/resume_error_policies.test.osp __osprey_coro_suspend

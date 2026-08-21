@@ -40,6 +40,13 @@ SMOKE=$ROOT/scripts/wasm-smoke.mjs
 # [WASM-TARGET]. Set with OSPREY_TARGET=wasm32.
 TARGET=${OSPREY_TARGET:-native}
 
+# The Node version rule is NOT restated here: `scripts/wasm-smoke.mjs`
+# re-executes itself under a sound interpreter when this host's is too old
+# ([WASM-TARGET-NODE]). One copy of that policy, so this harness cannot drift
+# from it — an earlier copy here is exactly what let a box on Node 22 report the
+# RUNNER's use-after-free as every program in the corpus failing.
+NODE=node
+
 # Status sentinel for a program the wasm32 target deliberately cannot link.
 SKIP_STATUS=skip
 
@@ -53,15 +60,15 @@ WASM_MANIFEST=$TESTDIR/WASM_UNPORTABLE.txt
 # Silence is not success — if coverage ever drops below this floor the harness
 # FAILS rather than quietly checking less than it used to.
 #
-# Natively all 179 programs are covered by 93 golden files: 86 are shared by a
-# Default/ML flavor pair, 7 belong to a program with no twin. On wasm32 the 53
+# Natively all 189 programs are covered by 98 golden files: 91 are shared by a
+# Default/ML flavor pair, 7 belong to a program with no twin. On wasm32 the 55
 # programs blocked on a capability WASI does not have are skipped — each named
-# in tests/WASM_UNPORTABLE.txt — leaving 126.
+# in tests/WASM_UNPORTABLE.txt — leaving 134.
 # Ratchet UP as goldens are added; never lower it to turn a red build green.
 if [[ $TARGET == wasm32 ]]; then
-  GOLDEN_MIN=${OSPREY_GOLDEN_MIN:-126}
+  GOLDEN_MIN=${OSPREY_GOLDEN_MIN:-134}
 else
-  GOLDEN_MIN=${OSPREY_GOLDEN_MIN:-179}
+  GOLDEN_MIN=${OSPREY_GOLDEN_MIN:-189}
 fi
 
 # [GPU-KERNEL-EXTRACT] differential. The extracted-kernel lowering and the
@@ -105,7 +112,7 @@ run_wasm() {
     grep -qE 'undefined symbol: [A-Za-z0-9_]+' "$err" && return $SKIP_CODE
     return 1
   fi
-  node "$SMOKE" "$module" >"$out" 2>"$err"
+  "$NODE" "$SMOKE" "$module" >"$out" 2>"$err"
 }
 
 run_worker() {

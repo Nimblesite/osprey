@@ -773,7 +773,17 @@ impl Analyzer<'_> {
                 return Some(value);
             }
         }
-        let Some(Callable::Known(known)) = self.callable(function, scope, env) else {
+        // A PARTIAL application of a parameter is still that parameter being
+        // invoked: `f a b` curries to `Call(Call(f, [a]), [b])`
+        // ([FLAVOR-ML-CURRY]), and the effect requirement belongs to `f`
+        // whichever spelling reaches here. Dropping the callable at the inner
+        // call left the outer one with a `Call` head, which no rule can name,
+        // so the whole entry was reported unprovable.
+        let resolved = self.callable(function, scope, env);
+        if let Some(parameter @ Callable::Parameter { .. }) = resolved {
+            return Some(Value::from_callable(parameter));
+        }
+        let Some(Callable::Known(known)) = resolved else {
             // The RESULT of a call we cannot resolve is not thereby a callable.
             // This branch catches every builtin without a modelled value
             // (`print`, `listAppend`, …), whose result is plain data; calling
@@ -2154,19 +2164,21 @@ pub(crate) fn check(program: &Program, instances: &Instances) -> Vec<TypeError> 
         &mut errors,
     );
 
-    // Codegen executes a user `main` instead of top-level statements. Without
-    // one, the top-level let/assignment/expression sequence is the entry.
-    let entry = index
+    // The entry is `main` when the program declares one, otherwise the
+    // top-level let/assignment/expression sequence. Either way the file-scope
+    // initializers run before it and are part of it: a `perform` in a top-level
+    // `let` needs a handler exactly as one written inside `main` does.
+    let mut entry = {
+        let mut env = CallableEnv::default();
+        analyzer.statements(&program.statements, &[], &mut env)
+    };
+    if let Some(main) = index
         .functions
         .iter()
         .position(|function| function.scope.is_empty() && function.name == "main")
-        .map_or_else(
-            || {
-                let mut env = CallableEnv::default();
-                analyzer.statements(&program.statements, &[], &mut env)
-            },
-            |main| rows.get(main).cloned().unwrap_or_default(),
-        );
+    {
+        entry.union(rows.get(main).cloned().unwrap_or_default());
+    }
     if !entry.required.is_empty() {
         let operations = entry
             .required

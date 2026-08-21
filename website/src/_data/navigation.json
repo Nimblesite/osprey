@@ -10,15 +10,54 @@
     { "text": "Blog", "url": "/blog/" },
     { "text": "GitHub", "url": "https://github.com/Nimblesite/osprey", "external": true }
   ],
-  "footer": [
+  "docs": [
+    {
+      "title": "Start here",
+      "items": [
+        { "text": "Documentation home", "url": "/docs/" },
+        { "text": "Installation", "url": "/docs/installation/" },
+        { "text": "My First App", "url": "/docs/my-first-app/" }
+      ]
+    },
+    {
+      "title": "Build applications",
+      "items": [
+        { "text": "Web apps", "url": "/docs/web-apps/" },
+        { "text": "Playground", "url": "/playground/" },
+        { "text": "WebAssembly studio", "url": "/wasm/" }
+      ]
+    },
     {
       "title": "Language",
       "items": [
+        { "text": "Language specification", "url": "/spec/" },
+        { "text": "Feature status", "url": "/status/" },
+        { "text": "Keywords", "url": "/docs/keywords/" }
+      ]
+    },
+    {
+      "title": "Reference",
+      "items": [
+        { "text": "Functions", "url": "/docs/functions/" },
+        { "text": "Types", "url": "/docs/types/" },
+        { "text": "Operators", "url": "/docs/operators/" }
+      ]
+    }
+  ],
+  "footer": [
+    {
+      "title": "Start",
+      "items": [
         { "text": "Installation", "url": "/docs/installation/" },
-        { "text": "Try Online", "url": "/playground/" },
-        { "text": "WebAssembly Demo", "url": "/wasm/" },
-        { "text": "Web Apps Guide", "url": "/docs/web-apps/" },
+        { "text": "My First App", "url": "/docs/my-first-app/" },
+        { "text": "Try Online", "url": "/playground/" }
+      ]
+    },
+    {
+      "title": "Learn",
+      "items": [
         { "text": "Documentation", "url": "/docs/" },
+        { "text": "Web Apps Guide", "url": "/docs/web-apps/" },
         { "text": "Feature Status", "url": "/status/" },
         { "text": "Specification", "url": "/spec/" }
       ]

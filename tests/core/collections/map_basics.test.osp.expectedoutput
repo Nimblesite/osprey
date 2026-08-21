@@ -3,5 +3,12 @@ ok 2 - map generations and sibling branches remain isolated
 ok 3 - map removal and merge preserve values and bias
 ok 4 - map views and list interactions preserve both collections
 ok 5 - map literals and receiver dispatch preserve lookup semantics
-1..5
-# tests=5 passed=5 failed=0 skipped=0
+ok 6 - mapGet returns the value type for every value type
+ok 7 - map keys are distinguished by exact string content
+ok 8 - map overwrite chains keep one binding per key
+ok 9 - map merge is right-biased, associative, and identity-preserving
+ok 10 - map removal drops exactly one binding and leaves absent keys alone
+ok 11 - maps nest inside lists, maps, and records without flattening
+ok 12 - mapKeys and mapValues stay paired index by index
+1..12
+# tests=12 passed=12 failed=0 skipped=0

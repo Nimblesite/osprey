@@ -23,6 +23,7 @@ mod closure;
 mod collections;
 mod conv;
 mod coverage;
+mod curry;
 mod effect_generics;
 mod effect_mailbox;
 mod effects;
@@ -30,8 +31,10 @@ mod error;
 mod expr;
 mod extern_call;
 mod fiber;
-mod freevars;
+#[cfg(test)]
+mod freevars_tests;
 mod genfn;
+mod globals;
 mod gpu;
 mod gpu_kernel;
 mod iter;
@@ -44,6 +47,7 @@ mod monofn;
 mod pattern;
 mod result;
 mod runtime;
+mod stmt;
 mod strings;
 mod testing;
 mod types;
@@ -70,10 +74,10 @@ fn stmt_idents(s: &osprey_ast::Stmt, out: &mut std::collections::BTreeSet<String
     use osprey_ast::Stmt;
     match s {
         Stmt::Let { value, .. } | Stmt::Assignment { value, .. } => {
-            freevars::free_idents(value, out);
+            osprey_ast::freevars::free_idents(value, out);
         }
         Stmt::Expr { value: e, .. } | Stmt::Function { body: e, .. } => {
-            freevars::free_idents(e, out);
+            osprey_ast::freevars::free_idents(e, out);
         }
         Stmt::Module { body, .. } => {
             for item in body {
@@ -1937,6 +1941,42 @@ card doc index selected =
         let kernel = function_body(&ir, header);
         assert!(kernel.contains("fmul double %$p0, %$p2"), "{kernel}");
         assert!(kernel.contains("fadd double %$p1,"), "{kernel}");
+    }
+
+    /// A handler with one RESUMING arm and one SUBSTITUTING arm continues by
+    /// re-entering its own dispatcher with the same arguments. A plain call
+    /// there grew one native frame per operation the substituting arm answered:
+    /// release builds happened to fold it away, debug builds compile at `-O0`
+    /// where nothing does, and a loop of otherwise constant-space performs
+    /// exhausted the host stack. The reuse must be a property of the MODULE,
+    /// not a hope about the optimizer. Implements [EFFECTS-HANDLER-ARMS].
+    #[test]
+    fn a_mixed_handler_dispatcher_continues_by_guaranteed_tail_call() {
+        let ir = module(
+            "effect Log {\n\
+               note: fn(int) -> Unit\n\
+               ask: fn(int) -> int\n\
+             }\n\
+             fn hammer(n) = range(0, n) |> forEach(fn(i) => perform Log.note(i))\n\
+             let done = handle Log\n\
+               note value => value\n\
+               ask value => resume(1)\n\
+               in hammer(3)\n\
+             print(\"done\")\n",
+        );
+        let body = function_body(
+            &ir,
+            "define i64 @__resume_drive_Log_0(i8* %__env, i8* %__coro)",
+        );
+        let reentries: Vec<&str> = body
+            .lines()
+            .filter(|line| line.contains("call i64 @__resume_drive_Log_0"))
+            .collect();
+        assert_eq!(reentries.len(), 1, "one re-entry per dispatcher: {body}");
+        assert!(
+            reentries.iter().all(|line| line.contains("musttail call")),
+            "the dispatcher must re-enter itself with a guaranteed tail call, saw: {reentries:?}"
+        );
     }
 
     #[test]

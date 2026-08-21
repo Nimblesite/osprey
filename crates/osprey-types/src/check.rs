@@ -767,7 +767,14 @@ impl Checker {
         if let Some(p) = pos {
             self.let_tys.push((p, binding_ty.clone()));
         }
-        let scheme = generalize(&mut self.ctx, env, &binding_ty);
+        // A let-bound value carries obligations exactly as a named function
+        // does: quantifying a variable that still holds a pending arithmetic
+        // overload would hand every use its own fresh copy, so nothing could
+        // inform the choice and `let join = |a, b| => a + b` used only on
+        // strings defaulted to the CHECKED INTEGER overload — `join("a", "b")`
+        // printed `Success(<pointer>)` instead of `ab`
+        // ([`Checker::deferred_arith`]).
+        let scheme = self.generalize_with_obligations(env, &binding_ty);
         if mutable {
             env.insert_mutable(name, scheme);
         } else {
@@ -1055,6 +1062,7 @@ fn checked_program(program: &Program) -> Checker {
     checker
         .errors
         .extend(crate::effect_rows::check(program, &instances));
+    checker.errors.extend(crate::init_order::check(program));
     checker
 }
 
@@ -1063,8 +1071,19 @@ fn checked_program(program: &Program) -> Checker {
 fn erased_type_params(type_params: &[String]) -> HashMap<String, Type> {
     type_params
         .iter()
-        .map(|parameter| (parameter.clone(), Type::Var(0)))
+        .enumerate()
+        .map(|(index, parameter)| (parameter.clone(), Type::Var(erased_var(index))))
         .collect()
+}
+
+/// The variable id standing for the type parameter at `index`. Numbering the
+/// erasure by POSITION is what lets the backend read a generic record's real
+/// field types back out of an instantiation: `Envelope<Map<…>, int>.metadata`
+/// is declared `U`, and only the parameter's position says that `U` is the
+/// second argument. Implements [TYPE-GENERICS-DECL].
+#[must_use]
+pub fn erased_var(index: usize) -> u32 {
+    u32::try_from(index).unwrap_or(u32::MAX)
 }
 
 /// Resolve one operation signature against the final substitution.

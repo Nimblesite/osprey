@@ -232,38 +232,83 @@ Resuming handlers have these rules:
   runs.
 - They are single-shot. A second resume of one continuation aborts with
   `fatal: continuation already resumed (multi-shot resume is not supported)`.
-- Handler mode is selected per region. With no `resume` in any arm, every arm
-  directly supplies its operation result and the caller continues. If any arm
-  contains `resume`, returning from the selected branch without resuming stops
-  the suspended computation and its value becomes the result of the whole
-  handler. A single operation arm may intentionally resume its success branch
-  and return from its error branch; that is the exception-style early-exit
-  pattern. The known deviation is across sibling operations: adding `resume`
-  to one arm also changes a non-resuming sibling from substitution to early
-  exit. This region-wide behavior is tracked as
+- Handler mode is selected per arm, not per region. An arm containing no
+  `resume` supplies its operation result directly and the caller continues,
+  whatever its siblings do. In an arm that does contain `resume`, returning
+  from the selected branch without resuming stops the suspended computation and
+  its value becomes the result of the whole handler; a single arm may
+  intentionally resume its success branch and return from its error branch,
+  which is the exception-style early-exit pattern. Adding `resume` to one arm
+  therefore leaves every sibling arm's mode untouched — reading the mode
+  region-wide, so that a sibling's `resume` silently converted a substituting
+  arm into an early exit, was
   [issue #177](https://github.com/Nimblesite/osprey/issues/177).
 - `resume` is lexical to the arm. It is rejected at top level and inside a
   lambda declared in an arm, because that lambda has no live arm continuation.
 - Explicit resume is native-only. WebAssembly supports direct value-substitution
   handlers but not the pthread-backed continuation runtime.
 
-`[EFFECTS-HANDLER-ARMS]` An arm's value is checked against whichever of the two
-things it actually supplies, which follows from the region's mode:
+`[EFFECTS-RESUME-NESTING]` A continuation reaches from its `perform` out to the
+handler that answers it, so it CONTAINS every arm suspended in between. An
+operation that crosses an inner region to reach an outer one therefore has its
+arm installed OUTSIDE the inner arm that was live, and `resume` puts that inner
+arm back inside — so the inner arm's post-resume code always settles before the
+outer arm's. Settlement is reverse order of the live arm frames, which equals
+reverse order of entry only while no operation crosses a region.
 
-- No arm in the region resumes: the arm's value substitutes for its operation's
-  declared result, and the handled expression's own value is the region's result.
-- Some arm in the region resumes: an arm that returns without resuming abandons
-  the continuation. The operation's result is never produced — the `perform`
-  waiting for it never returns — and the arm's value becomes the result of the
-  whole `handle` expression, so that is what it is checked against.
+```osprey
+effect Alpha { alpha: fn(string) -> int }
+effect Beta { beta: fn(string) -> int }
+
+mut settled = ""
+let total = handle Alpha
+    alpha label => {
+        let answer = resume(10)
+        settled = "${settled}a:${label}|"
+        answer
+    }
+in handle Beta
+    beta label => {
+        let answer = resume(100)
+        settled = "${settled}b:${label}|"
+        answer
+    }
+in {
+    let p = perform Alpha.alpha("a1")
+    let q = perform Beta.beta("b1")
+    let r = perform Alpha.alpha("a2")
+    let s = perform Beta.beta("b2")
+    (p + q ?: 0) + (r + s ?: 0) ?: 0
+}
+print("${settled}")
+```
+
+Entry order is `a1 b1 a2 b2`, but `a2` crosses the Beta region while `b1` is
+still live, so `a2`'s arm sits outside `b1`'s and `settled` is
+`b:b2|b:b1|a:a2|a:a1|` — NOT the `b:b2|a:a2|b:b1|a:a1|` that reversing the entry
+order would give. The conformance case is
+`tests/effects/resume/resume_lifo_audit.test.osp`, which pins the crossing
+orders at two, three and four depths and with a partial inner region.
+
+`[EFFECTS-HANDLER-ARMS]` An arm's value is checked against whichever of the two
+things it actually supplies, which follows from that ARM's own mode:
+
+- The arm contains no `resume`: its value substitutes for its operation's
+  declared result, and the handled expression's own value is the region's
+  result. A sibling arm's `resume` does not change this.
+- The arm contains `resume`: the operation's result was already supplied by
+  `resume`, and the arm runs on afterwards, so the arm's value is the region's
+  ANSWER and that is what it is checked against. The same holds for a branch of
+  such an arm that returns without resuming: it abandons the continuation, the
+  operation's result is never produced — the `perform` waiting for it never
+  returns — and the branch's value answers for the whole `handle`.
 
 Disagreement in the second case is a type error naming both types:
 
 ```text
-handler arm `Mixed.b` never resumes, so its value becomes the whole `handle`
-expression's result — but it is `string` and that result is `int`. Give the arm
-a `resume`, or make every arm of this handler agree with the handled
-expression's type
+handler arm `Mixed.b` resumes, so its value becomes the whole `handle`
+expression's result — but it is `string` and that result is `int`. Make the
+arm's value agree with the handled expression's type
 ```
 
 The conformance cases are

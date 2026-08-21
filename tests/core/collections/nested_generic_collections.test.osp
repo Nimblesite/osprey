@@ -1,0 +1,133 @@
+/// Cross-contract Default twin for [TYPE-GENERICS-FN], [TYPE-LIST],
+/// [TYPE-LIST-PATTERNS], [BUILTIN-LIST-GET], [BUILTIN-LIST-APPEND],
+/// [BUILTIN-LIST-PREPEND], [BUILTIN-LIST-REVERSE], [BUILTIN-LIST-FOREACH],
+/// [EFFECTS-GENERIC-INSTANTIATION], and [EFFECTS-GENERIC-RUNTIME].
+effect LeafAudit<T> {
+    observe: fn(T) -> Unit
+}
+
+fn nestedAt<T>(matrix: List<List<T>>, row: int, column: int, fallbackRow: List<T>, fallback: T) =
+listGet(listGet(matrix, row) ?: fallbackRow, column) ?: fallback
+
+fn chooseByCollection<T, U>(items: List<T>, present: U, empty: U) -> U = match isEmpty(items) {
+    true => empty
+    false => present
+}
+
+fn matrixShape<T>(matrix: List<List<T>>) = match matrix {
+    [] => "empty"
+    [row] => match row {
+        [] => "one-empty-row"
+        [only] => "one-singleton-row"
+        _ => "one:${listLength(row)}"
+    }
+    [first, second] => "two:${listLength(first)}/${listLength(second)}"
+    [head, ...tail] => "many:${listLength(head)}+${listLength(tail)}"
+}
+
+fn auditInts(rows) = {
+    mut encoded = 0
+    handle LeafAudit
+    observe value => { encoded = encoded * 10 + value ?: encoded }
+    in forEachList(rows, fn(row) => forEachList(row, fn(value) => perform LeafAudit.observe(value)))
+    encoded
+}
+
+fn auditStrings(rows) = {
+    mut encoded = ""
+    handle LeafAudit
+    observe value => { encoded = encoded + value + "/" }
+    in forEachList(rows, fn(row) => forEachList(row, fn(value) => perform LeafAudit.observe(value)))
+    encoded
+}
+
+/// Crosses generic inference, nested storage, Result recovery, patterns,
+/// persistent rebuilds, callbacks, and generic operation erasure. Implements
+/// [TYPE-GENERICS-FN], [TYPE-LIST-PATTERNS], [BUILTIN-LIST-GET],
+/// [BUILTIN-LIST-FOREACH], and [EFFECTS-GENERIC-RUNTIME].
+fn nestedListEffectPatternCase() = {
+    let ints = [[1, 2], [3, 4, 5]]
+    let strings = [["ant", "bee"], ["cat", "dog", "eel"]]
+    let floats = [[1.25, 2.5], [3.75, 4.5, 5.25]]
+    let bools = [[true, false], [false, true, true]]
+    let intCube = [ints, [[6], [7, 8, 9]], [[10, 11, 12, 13]]]
+    let stringCube = [strings, [["fox"], ["gnu", "hare"]], [["ibis", "jay"]]]
+    let intPlane = listGet(intCube, 1) ?: [[99]]
+    let stringPlane = listGet(stringCube, 1) ?: [["missing"]]
+    let grownInts = listReverse(listPrepend(listAppend(ints, [6, 7]), [8, 9]))
+    let grownStrings = listReverse(listAppend(strings, ["fox", "gnu"]))
+
+    checkAll("four leaf arguments survive nested Result extraction", [
+            listLength(ints) == 2,
+            listLength(strings) == 2,
+            listLength(floats) == 2,
+            listLength(bools) == 2,
+            listLength(listGet(ints, 0) ?: [99]) == 2,
+            listLength(listGet(ints, 1) ?: [99]) == 3,
+            nestedAt(ints, 0, 0, [99], 99) == 1,
+            nestedAt(ints, 0, 1, [99], 99) == 2,
+            nestedAt(ints, 1, 0, [99], 99) == 3,
+            nestedAt(ints, 1, 1, [99], 99) == 4,
+            nestedAt(ints, 1, 2, [99], 99) == 5,
+            nestedAt(ints, 8, 0, [91, 92], 99) == 91,
+            nestedAt(ints, 0, 8, [91], 99) == 99,
+            nestedAt(strings, 0, 0, ["row"], "item") == "ant",
+            nestedAt(strings, 0, 1, ["row"], "item") == "bee",
+            nestedAt(strings, 1, 0, ["row"], "item") == "cat",
+            nestedAt(strings, 1, 1, ["row"], "item") == "dog",
+            nestedAt(strings, 1, 2, ["row"], "item") == "eel",
+            nestedAt(strings, 8, 0, ["row"], "item") == "row",
+            nestedAt(strings, 0, 8, ["row"], "item") == "item",
+            length(nestedAt(strings, 1, 0, ["row"], "item")) == 3,
+            nestedAt(floats, 0, 0, [9.0], 9.5) == 1.25,
+            nestedAt(floats, 0, 1, [9.0], 9.5) == 2.5,
+            nestedAt(floats, 1, 0, [9.0], 9.5) == 3.75,
+            nestedAt(floats, 1, 1, [9.0], 9.5) == 4.5,
+            nestedAt(floats, 1, 2, [9.0], 9.5) == 5.25,
+            nestedAt(floats, 0, 0, [9.0], 9.5) + nestedAt(floats, 0, 1, [9.0], 9.5) == 3.75,
+            nestedAt(floats, 9, 0, [9.0], 9.5) == 9.0,
+            nestedAt(floats, 0, 9, [9.0], 9.5) == 9.5,
+            nestedAt(bools, 0, 0, [false], false),
+            !nestedAt(bools, 0, 1, [true], true),
+            !nestedAt(bools, 1, 0, [true], true),
+            nestedAt(bools, 1, 1, [false], false),
+            nestedAt(bools, 1, 2, [false], false),
+            nestedAt(bools, 9, 0, [true], false),
+            !nestedAt(bools, 0, 9, [true], false)
+    ])
+
+    checkAll("deep persistence patterns and generic effects stay coherent", [
+            listLength(intCube) == 3,
+            listLength(stringCube) == 3,
+            nestedAt(intPlane, 1, 2, [99], 99) == 9,
+            nestedAt(stringPlane, 1, 1, ["row"], "item") == "hare",
+            nestedAt(listGet(intCube, 2) ?: [[99]], 0, 3, [99], 99) == 13,
+            nestedAt(listGet(stringCube, 2) ?: [["missing"]], 0, 1, ["row"], "item") == "jay",
+            matrixShape(List()) == "empty",
+            matrixShape([[]]) == "one-empty-row",
+            matrixShape([[7]]) == "one-singleton-row",
+            matrixShape(ints) == "two:2/3",
+            matrixShape(strings) == "two:2/3",
+            matrixShape([[1], [2], [3]]) == "many:1+2",
+            auditInts(ints) == 12345,
+            auditInts([[6], [7, 8]]) == 678,
+            auditStrings(strings) == "ant/bee/cat/dog/eel/",
+            auditStrings([["fox"], ["gnu", "hare"]]) == "fox/gnu/hare/",
+            listLength(grownInts) == 4,
+            nestedAt(grownInts, 0, 0, [99], 99) == 6,
+            nestedAt(grownInts, 0, 1, [99], 99) == 7,
+            nestedAt(grownInts, 1, 0, [99], 99) == 3,
+            nestedAt(grownInts, 2, 0, [99], 99) == 1,
+            nestedAt(grownInts, 3, 0, [99], 99) == 8,
+            nestedAt(grownInts, 3, 1, [99], 99) == 9,
+            listLength(grownStrings) == 3,
+            nestedAt(grownStrings, 0, 0, ["row"], "item") == "fox",
+            nestedAt(grownStrings, 2, 1, ["row"], "item") == "bee",
+            chooseByCollection(listGet(ints, 0) ?: [99], "present", "empty") == "present",
+            chooseByCollection(listGet(strings, 0) ?: ["x"], 41, 99) == 41,
+            chooseByCollection(List(), true, false) == false,
+            chooseByCollection(listGet(floats, 1) ?: [0.0], 6.5, 7.5) == 6.5
+    ])
+}
+
+test("nested generic lists mix effects patterns Results and persistence", nestedListEffectPatternCase)
