@@ -18,6 +18,16 @@ use osprey_ast::{Expr, NamedArgument};
 pub(crate) const LIST_OWNER: &str = "List";
 pub(crate) const MAP_OWNER: &str = "Map";
 
+/// The `Error { message }` an out-of-range list read reports.
+///
+/// One constant, because [BUILTIN-LIST-GET] declares `listGet(list, index)`
+/// "equivalent to `list[index]`" — two spellings of one operation, which must
+/// therefore fail identically. They did not: the flat-literal index path said
+/// `index out of bounds` while `listGet` said `listGet: index out of bounds`,
+/// so a program that swapped one spelling for the other silently stopped
+/// matching its own error text [ERR-PAYLOAD].
+pub(crate) const INDEX_OOB: &str = "index out of bounds";
+
 /// Owner-tag prefix marking a runtime list whose element type is known; the
 /// suffix is the element's LLVM spelling (`List#double`), the same convention
 /// GPU buffers (`Gpu#double`) and flat literals (`[]double`) use.
@@ -30,7 +40,7 @@ pub(crate) const MAP_OWNER: &str = "Map";
 pub(crate) const LIST_TAG: &str = "List#";
 
 /// The owner tag for a runtime list holding `elem` words.
-pub(crate) fn list_owner(elem: Option<LType>) -> String {
+pub(crate) fn list_owner(elem: Option<&str>) -> String {
     crate::llty::elem_tagged_owner(LIST_TAG, LIST_OWNER, elem)
 }
 
@@ -46,7 +56,7 @@ pub(crate) fn list_owner(elem: Option<LType>) -> String {
 pub(crate) const MAP_TAG: &str = "Map#";
 
 /// The owner tag for a runtime map holding `elem` value words.
-pub(crate) fn map_owner(elem: Option<LType>) -> String {
+pub(crate) fn map_owner(elem: Option<&str>) -> String {
     crate::llty::elem_tagged_owner(MAP_TAG, MAP_OWNER, elem)
 }
 
@@ -56,8 +66,8 @@ pub(crate) fn is_map_owner(owner: &str) -> bool {
     owner == MAP_OWNER || owner.starts_with(MAP_TAG)
 }
 
-/// The value `LType` recorded on a map handle's owner tag, if any.
-pub(crate) fn tagged_map_elem(v: &Value) -> Option<LType> {
+/// The value descriptor recorded on a map handle's owner tag, if any.
+pub(crate) fn tagged_map_elem(v: &Value) -> Option<String> {
     crate::llty::elem_of_tag(v, MAP_TAG)
 }
 
@@ -67,8 +77,8 @@ pub(crate) fn is_list_owner(owner: &str) -> bool {
     owner == LIST_OWNER || owner.starts_with(LIST_TAG)
 }
 
-/// The element `LType` recorded on a list handle's owner tag, if any.
-pub(crate) fn tagged_elem(v: &Value) -> Option<LType> {
+/// The element descriptor recorded on a list handle's owner tag, if any.
+pub(crate) fn tagged_elem(v: &Value) -> Option<String> {
     crate::llty::elem_of_tag(v, LIST_TAG)
 }
 
@@ -76,13 +86,13 @@ pub(crate) fn tagged_elem(v: &Value) -> Option<LType> {
 /// what every consumer (a callback, a `?:` default, a `match` arm) must see
 /// instead of the storage word [`LIST_TAG`].
 pub(crate) fn elem_value(cg: &mut Codegen, list: &Value, raw: &str) -> Value {
-    crate::conv::from_word(cg, raw, tagged_elem(list))
+    crate::conv::from_word(cg, raw, tagged_elem(list).as_deref())
 }
 
 /// A fresh list handle tagged with the element type of the list it derives
 /// from (`listReverse`, `filterList`), or with the element it stores
 /// (`listAppend`).
-fn derived_list(cg: &mut Codegen, operand: String, elem: Option<LType>) -> Value {
+fn derived_list(cg: &mut Codegen, operand: String, elem: Option<&str>) -> Value {
     own_handle(cg, Value::handle(operand, list_owner(elem)))
 }
 
@@ -185,11 +195,19 @@ fn handle_arg(cg: &mut Codegen, args: &[Expr], i: usize) -> Result<Value> {
 
 /// The `i`-th positional argument, evaluated without changing its Result
 /// representation.
+///
+/// This is the element/key funnel, so it is where a nested flat literal
+/// ESCAPES. The flat layout is a codegen-local optimization whose tag rides on
+/// the value; once stored, the container is described by its TYPE alone, and
+/// `List<List<int>>` promises runtime lists — a slot still holding a
+/// `{ length, data }` block reaches `osprey_list_*` as an `OspreyList` and
+/// segfaults ([`crate::listlit::escaping`]).
 fn unboxed_arg(cg: &mut Codegen, args: &[Expr], i: usize) -> Result<Value> {
     let e = args
         .get(i)
         .ok_or_else(|| CodegenError::invalid("collection builtin: missing argument"))?;
-    gen_expr(cg, e)
+    let v = gen_expr(cg, e)?;
+    Ok(crate::listlit::escaping(cg, v))
 }
 
 /// The `i`-th positional argument, boxed to the uniform `i64` element ABI.
@@ -269,7 +287,7 @@ fn one_list_i64(cg: &mut Codegen, cname: &str, args: &[Expr]) -> Result<Value> {
 fn one_list_handle(cg: &mut Codegen, cname: &str, args: &[Expr]) -> Result<Value> {
     let h = handle_arg(cg, args, 0)?;
     let r = cg.call("i8*", cname, "i8*", &[&h.operand]);
-    Ok(derived_list(cg, r, tagged_elem(&h)))
+    Ok(derived_list(cg, r, tagged_elem(&h).as_deref()))
 }
 
 /// `f(handle, element, elem_managed) -> handle` — `listAppend` / `listPrepend`.
@@ -279,7 +297,7 @@ fn one_list_handle(cg: &mut Codegen, cname: &str, args: &[Expr]) -> Result<Value
 fn list_insert(cg: &mut Codegen, cname: &str, args: &[Expr]) -> Result<Value> {
     let h = handle_arg(cg, args, 0)?;
     let x = unboxed_arg(cg, args, 1)?;
-    let elem = tagged_elem(&h).or(Some(x.ty));
+    let elem = tagged_elem(&h).or_else(|| crate::llty::elem_spelling(&x));
     let (x, managed) = stored_element(cg, x)?;
     let r = cg.call(
         "i8*",
@@ -287,7 +305,7 @@ fn list_insert(cg: &mut Codegen, cname: &str, args: &[Expr]) -> Result<Value> {
         "i8*, i64, i32",
         &[&h.operand, &x.operand, managed],
     );
-    Ok(derived_list(cg, r, elem))
+    Ok(derived_list(cg, r, elem.as_deref()))
 }
 
 /// A binary runtime op on two collection-handle arguments → a new handle
@@ -310,7 +328,7 @@ fn list_concat(cg: &mut Codegen, args: &[Expr]) -> Result<Value> {
 /// Emit `osprey_list_concat` on two already-evaluated list handles. Both hold
 /// the same element type, so either operand's tag types the result.
 pub(crate) fn concat_handles(cg: &mut Codegen, a: &Value, b: &Value) -> Value {
-    let owner = list_owner(tagged_elem(a).or_else(|| tagged_elem(b)));
+    let owner = list_owner(tagged_elem(a).or_else(|| tagged_elem(b)).as_deref());
     combine_handles(cg, a, b, "osprey_list_concat", &owner)
 }
 
@@ -318,6 +336,14 @@ pub(crate) fn concat_handles(cg: &mut Codegen, a: &Value, b: &Value) -> Value {
 fn list_get(cg: &mut Codegen, args: &[Expr]) -> Result<Value> {
     let l = handle_arg(cg, args, 0)?;
     let i = boxed_arg(cg, args, 1)?;
+    runtime_list_get(cg, &l, &i)
+}
+
+/// Shared runtime list read → `Result<T, _>`, gated on `osprey_list_in_bounds`.
+/// Both spellings of [BUILTIN-LIST-GET] land here — `listGet(xs, i)` and the
+/// `xs[i]` form once its target turns out to be a runtime handle rather than a
+/// flat literal — so the two cannot drift apart.
+pub(crate) fn runtime_list_get(cg: &mut Codegen, l: &Value, i: &Value) -> Result<Value> {
     let inb = cg.call(
         "i32",
         "osprey_list_in_bounds",
@@ -332,16 +358,10 @@ fn list_get(cg: &mut Codegen, args: &[Expr]) -> Result<Value> {
     );
     // The success payload is the ELEMENT's type, not the storage word's, so a
     // `List<float>` yields `Result<float, _>` [`LIST_TAG`].
-    let value = elem_value(cg, &l, &raw);
+    let value = elem_value(cg, l, &raw);
     let inner = value.ty;
     let is_err = cg.emit_reg(format!("icmp eq i32 {inb}, 0"));
-    crate::result::make_result_if_err(
-        cg,
-        value,
-        inner,
-        &is_err,
-        Some("listGet: index out of bounds"),
-    )
+    crate::result::make_result_if_err(cg, value, inner, &is_err, Some(INDEX_OOB))
 }
 
 /// `listContains(l, x) -> bool`: linear scan, content-equality for strings.
@@ -396,7 +416,7 @@ fn map_set(cg: &mut Codegen, args: &[Expr]) -> Result<Value> {
     // Read the value's type BEFORE the `i64` erasure: it is what the new
     // handle's tag records, and the only place it is still visible.
     let raw = unboxed_arg(cg, args, 2)?;
-    let elem = raw.ty;
+    let elem = crate::llty::elem_spelling(&raw).or_else(|| tagged_map_elem(&m));
     let (v, managed) = stored_element(cg, raw)?;
     let r = cg.call(
         "i8*",
@@ -404,7 +424,7 @@ fn map_set(cg: &mut Codegen, args: &[Expr]) -> Result<Value> {
         "i8*, i64, i64, i32",
         &[&m.operand, &k.operand, &v.operand, managed],
     );
-    Ok(own_handle(cg, Value::handle(r, map_owner(Some(elem)))))
+    Ok(own_handle(cg, Value::handle(r, map_owner(elem.as_deref()))))
 }
 
 /// `mapRemove(m, k) -> Map`.
@@ -419,7 +439,7 @@ fn map_remove(cg: &mut Codegen, args: &[Expr]) -> Result<Value> {
     );
     Ok(own_handle(
         cg,
-        Value::handle(r, map_owner(tagged_map_elem(&m))),
+        Value::handle(r, map_owner(tagged_map_elem(&m).as_deref())),
     ))
 }
 
@@ -456,7 +476,7 @@ fn map_merge(cg: &mut Codegen, args: &[Expr]) -> Result<Value> {
 
 /// Emit `osprey_map_merge` on two already-evaluated map handles.
 pub(crate) fn merge_handles(cg: &mut Codegen, a: &Value, b: &Value) -> Value {
-    let owner = map_owner(tagged_map_elem(a).or_else(|| tagged_map_elem(b)));
+    let owner = map_owner(tagged_map_elem(a).or_else(|| tagged_map_elem(b)).as_deref());
     combine_handles(cg, a, b, "osprey_map_merge", &owner)
 }
 
@@ -548,7 +568,15 @@ fn map_to_list(cg: &mut Codegen, args: &[Expr], take_key: bool) -> Result<Value>
     // The cursor borrows the map and is dead once the walk ends; without this
     // every mapKeys/mapValues call leaks one OspreyMapIter on every backend.
     cg.call_void("osprey_map_iter_free", "i8*", &[&iter]);
-    Ok(list_builder_seal(cg, &bld))
+    // Keys are the map's own string keys; values are whatever its tag records.
+    // The produced list must say so, or its elements read back as raw words
+    // [`LIST_TAG`].
+    let elem = if take_key {
+        Some(LType::Str.as_str().to_string())
+    } else {
+        tagged_map_elem(&m)
+    };
+    Ok(list_builder_seal(cg, &bld).with_owner(Some(list_owner(elem.as_deref()))))
 }
 
 /// `{ k: v, … }` — build a runtime string-key map [TYPE-MAP-LITERAL].
@@ -557,7 +585,7 @@ pub(crate) fn gen_map_literal(cg: &mut Codegen, entries: &[osprey_ast::MapEntry]
     let bld = cg.call("i8*", "osprey_map_builder_new", "i32", &["1"]);
     // The sealed handle's tag records the entries' value type; an empty
     // literal has none to record [`MAP_TAG`].
-    let mut elem: Option<LType> = None;
+    let mut elem: Option<String> = None;
     for e in entries {
         let k = gen_expr(cg, &e.key)?;
         let k = coerce_to(cg, k, LType::Str)?;
@@ -566,7 +594,10 @@ pub(crate) fn gen_map_literal(cg: &mut Codegen, entries: &[osprey_ast::MapEntry]
         // (see stored_boxed_arg) [GC-ARC-PERCEUS].
         crate::arc::escape_retain(cg, &k);
         let k = box_to_i64(cg, k);
-        let v = gen_expr(cg, &e.value)?;
+        // Stored, so a nested literal escapes into its slot for the same
+        // reason it does in [`unboxed_arg`].
+        let raw = gen_expr(cg, &e.value)?;
+        let v = crate::listlit::escaping(cg, raw);
         if v.result_inner.is_some() {
             return Err(CodegenError::unsupported(
                 "Result-valued map entries are not yet supported; handle the Result before storing it",
@@ -574,7 +605,7 @@ pub(crate) fn gen_map_literal(cg: &mut Codegen, entries: &[osprey_ast::MapEntry]
         }
         let managed = managed_flag(&v);
         crate::arc::escape_retain(cg, &v);
-        elem = Some(v.ty);
+        elem = crate::llty::elem_spelling(&v);
         let v = box_to_i64(cg, v);
         cg.call_void(
             "osprey_map_builder_put_of",
@@ -583,7 +614,10 @@ pub(crate) fn gen_map_literal(cg: &mut Codegen, entries: &[osprey_ast::MapEntry]
         );
     }
     let sealed = cg.call("i8*", "osprey_map_builder_seal", "i8*", &[&bld]);
-    Ok(own_handle(cg, Value::handle(sealed, map_owner(elem))))
+    Ok(own_handle(
+        cg,
+        Value::handle(sealed, map_owner(elem.as_deref())),
+    ))
 }
 
 /// Shared runtime map lookup → `Result<V, _>` (also used by `m[key]` indexing).
@@ -602,7 +636,7 @@ pub(crate) fn runtime_map_get(cg: &mut Codegen, m: &Value, k: &Value) -> Result<
     );
     // The success payload is the VALUE's type, not the storage word's, so a
     // `Map<string, string>` yields `Result<string, _>` [`MAP_TAG`].
-    let value = crate::conv::from_word(cg, &got, tagged_map_elem(m));
+    let value = crate::conv::from_word(cg, &got, tagged_map_elem(m).as_deref());
     let inner = value.ty;
     let is_err = cg.emit_reg(format!("icmp eq i32 {has}, 0"));
     crate::result::make_result_if_err(cg, value, inner, &is_err, Some("mapGet: key not found"))

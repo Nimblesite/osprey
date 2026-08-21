@@ -887,6 +887,151 @@ fn list_tests_carries_case_documentation() {
 // [TESTING-CLI-RUN][TESTING-FILE-CONVENTION] the runner discovers
 // *.test.osp{,ml} under a directory, streams TAP under headers, and aggregates
 // the exit status.
+/// [TESTING-SKIP-WARNING] a skipped case is never silent: `osprey test` echoes
+/// every TAP `# SKIP` directive as a stderr warning naming the case and reason.
+#[test]
+fn test_subcommand_warns_on_every_skipped_case() {
+    let dir = temp_dir("skip-warns");
+    let _ = write_in(
+        &dir,
+        "skips.test.osp",
+        "type Verdict = Pass | Fail(string) | Skip(string)\n\
+         test(\"parked case\", fn() => Skip(\"blocked on #123\"))\n\
+         test(\"live case\", fn() => expect(1, 1))\n",
+    );
+    let o = run_args(&["test", dir.to_string_lossy().as_ref()]);
+    assert_eq!(o.code, Some(0), "{}\n{}", o.stdout, o.stderr);
+    assert!(o.stdout.contains("# SKIP blocked on #123"), "{}", o.stdout);
+    assert!(
+        o.stderr
+            .contains("warning: test 'parked case' skipped: blocked on #123"),
+        "{}",
+        o.stderr
+    );
+    assert!(!o.stderr.contains("live case"), "{}", o.stderr);
+}
+
+/// [TESTING-VERDICT] `test` reports the states the program's OWN `Verdict`
+/// declares. A payload-free `Skip`/`Fail` reports with no reason rather than
+/// failing codegen on a binder the declaration never named, and a reasonless
+/// skip still prints a bare `# SKIP` directive that the diagnostic path sees.
+///
+/// [TESTING-SKIP-REASON] and that reasonless skip is an ERROR: the TAP is
+/// unchanged — the case still reports skipped, not failed — but the runner
+/// fails the suite, because a hole in coverage nobody wrote a cause for is a
+/// defect rather than a debt someone chose.
+#[test]
+fn a_verdict_declaring_payload_free_states_reports_each_of_them() {
+    let dir = temp_dir("verdict-bare");
+    let _ = write_in(
+        &dir,
+        "bare.test.osp",
+        "type Verdict = Pass | Fail | Skip\n\
+         test(\"parked\", fn() => Skip)\n\
+         test(\"green\", fn() => Pass)\n",
+    );
+    let o = run_args(&["test", dir.to_string_lossy().as_ref()]);
+    assert_eq!(o.code, Some(1), "{}\n{}", o.stdout, o.stderr);
+    assert!(o.stdout.contains("ok 1 - parked # SKIP\n"), "{}", o.stdout);
+    assert!(o.stdout.contains("ok 2 - green\n"), "{}", o.stdout);
+    assert!(
+        o.stdout.contains("# tests=2 passed=1 failed=0 skipped=1"),
+        "{}",
+        o.stdout
+    );
+    assert!(
+        o.stderr
+            .contains("error: test 'parked' skipped with no reason; every skip must name one"),
+        "{}",
+        o.stderr
+    );
+    assert!(
+        !o.stderr.contains("warning: test 'parked'"),
+        "an unexplained skip is an error, never also a warning: {}",
+        o.stderr
+    );
+}
+
+/// [TESTING-SKIP-REASON] a skip that NAMES a reason stays a warning and keeps
+/// the suite green — the two strengths are decided by the reason alone, not by
+/// whether the `Verdict` declaration gives `Skip` a payload at all.
+#[test]
+fn a_reasoned_skip_warns_while_an_unexplained_one_fails_the_suite() {
+    let reasoned = temp_dir("skip-reasoned");
+    let _ = write_in(
+        &reasoned,
+        "ok.test.osp",
+        "type Verdict = Pass | Fail(string) | Skip(string)\n\
+         test(\"parked\", fn() => Skip(\"blocked on #123\"))\n",
+    );
+    let green = run_args(&["test", reasoned.to_string_lossy().as_ref()]);
+    assert_eq!(green.code, Some(0), "{}\n{}", green.stdout, green.stderr);
+    assert!(
+        green
+            .stderr
+            .contains("warning: test 'parked' skipped: blocked on #123"),
+        "{}",
+        green.stderr
+    );
+
+    // The SAME declaration with an empty reason is the error case: the author
+    // had somewhere to write the cause and left it blank.
+    let blank = temp_dir("skip-blank");
+    let _ = write_in(
+        &blank,
+        "blank.test.osp",
+        "type Verdict = Pass | Fail(string) | Skip(string)\n\
+         test(\"parked\", fn() => Skip(\"\"))\n",
+    );
+    let red = run_args(&["test", blank.to_string_lossy().as_ref()]);
+    assert_eq!(red.code, Some(1), "{}\n{}", red.stdout, red.stderr);
+    assert!(
+        red.stderr
+            .contains("error: test 'parked' skipped with no reason"),
+        "{}",
+        red.stderr
+    );
+    assert!(
+        red.stdout.contains("# suites: 0 passed, 1 failed"),
+        "{}",
+        red.stdout
+    );
+}
+
+/// [TESTING-VERDICT] the payload is read per state, not per union: a `Verdict`
+/// that gives `Fail` a reason and `Skip` none reports both correctly.
+#[test]
+fn a_verdict_may_give_one_state_a_reason_and_another_none() {
+    let dir = temp_dir("verdict-mixed");
+    let _ = write_in(
+        &dir,
+        "mixed.test.osp",
+        "type Verdict = Pass | Fail(string) | Skip\n\
+         test(\"parked\", fn() => Skip)\n\
+         test(\"broken\", fn() => Fail(\"expected 3\"))\n",
+    );
+    let o = run_args(&["test", dir.to_string_lossy().as_ref()]);
+    assert_eq!(o.code, Some(1), "{}\n{}", o.stdout, o.stderr);
+    assert!(o.stdout.contains("ok 1 - parked # SKIP\n"), "{}", o.stdout);
+    assert!(o.stdout.contains("# fail: expected 3"), "{}", o.stdout);
+    assert!(o.stdout.contains("not ok 2 - broken"), "{}", o.stdout);
+}
+
+/// [TESTING-VERDICT] a `Verdict` state `test` has no report primitive for is
+/// rejected by name, not by a binder error from a pattern nobody wrote.
+#[test]
+fn a_verdict_state_test_cannot_report_is_rejected_by_name() {
+    let prog = temp_osp(
+        "verdict_extra_state",
+        "type Verdict = Pass | Fail(string) | Skip(string) | Todo(string)\n\
+         test(\"case\", fn() => Pass)\n",
+    );
+    let o = run_file(&prog, &["--run"]);
+    assert_ne!(o.code, Some(0), "{}", o.stdout);
+    assert!(o.stderr.contains("Todo"), "{}", o.stderr);
+    assert!(o.stderr.contains("Verdict"), "{}", o.stderr);
+}
+
 #[test]
 fn test_subcommand_runs_directories_and_files() {
     let dir = temp_dir("suite");

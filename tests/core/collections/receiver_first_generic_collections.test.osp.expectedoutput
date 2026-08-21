@@ -1,0 +1,3 @@
+ok 1 - receiver-first collection call syntax composes over nested generics
+1..1
+# tests=1 passed=1 failed=0 skipped=0

@@ -248,6 +248,48 @@ Resuming handlers have these rules:
 - Explicit resume is native-only. WebAssembly supports direct value-substitution
   handlers but not the pthread-backed continuation runtime.
 
+`[EFFECTS-RESUME-NESTING]` A continuation reaches from its `perform` out to the
+handler that answers it, so it CONTAINS every arm suspended in between. An
+operation that crosses an inner region to reach an outer one therefore has its
+arm installed OUTSIDE the inner arm that was live, and `resume` puts that inner
+arm back inside — so the inner arm's post-resume code always settles before the
+outer arm's. Settlement is reverse order of the live arm frames, which equals
+reverse order of entry only while no operation crosses a region.
+
+```osprey
+effect Alpha { alpha: fn(string) -> int }
+effect Beta { beta: fn(string) -> int }
+
+mut settled = ""
+let total = handle Alpha
+    alpha label => {
+        let answer = resume(10)
+        settled = "${settled}a:${label}|"
+        answer
+    }
+in handle Beta
+    beta label => {
+        let answer = resume(100)
+        settled = "${settled}b:${label}|"
+        answer
+    }
+in {
+    let p = perform Alpha.alpha("a1")
+    let q = perform Beta.beta("b1")
+    let r = perform Alpha.alpha("a2")
+    let s = perform Beta.beta("b2")
+    (p + q ?: 0) + (r + s ?: 0) ?: 0
+}
+print("${settled}")
+```
+
+Entry order is `a1 b1 a2 b2`, but `a2` crosses the Beta region while `b1` is
+still live, so `a2`'s arm sits outside `b1`'s and `settled` is
+`b:b2|b:b1|a:a2|a:a1|` — NOT the `b:b2|a:a2|b:b1|a:a1|` that reversing the entry
+order would give. The conformance case is
+`tests/effects/resume/resume_lifo_audit.test.osp`, which pins the crossing
+orders at two, three and four depths and with a partial inner region.
+
 `[EFFECTS-HANDLER-ARMS]` An arm's value is checked against whichever of the two
 things it actually supplies, which follows from that ARM's own mode:
 

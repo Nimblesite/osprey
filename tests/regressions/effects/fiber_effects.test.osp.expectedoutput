@@ -21,5 +21,11 @@ regions prod=10 silent=0
 race-free sum 30
 === done ===
 ok 1 - fiber results remain deterministic across effect handlers
-1..1
-# tests=1 passed=1 failed=0 skipped=0
+ok 2 - awaiting a finished effectful fiber replays one cached run
+ok 3 - concurrent fibers performing into one resuming handler keep their own answers
+ok 4 - handler state is one promoted cell across the fiber boundary
+ok 5 - a channel hands values between fibers while the effect reaches outside
+ok 6 - nested regions pick the innermost arm for a spawned fiber
+ok 7 - a data-dependent fiber pipeline fixes the handler transcript order
+1..7
+# tests=7 passed=7 failed=0 skipped=0

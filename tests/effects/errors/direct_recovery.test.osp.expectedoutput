@@ -8,5 +8,11 @@ ok 7 - nested handlers override locally and restore outer behavior
 ok 8 - a recovery arm can use an outer effect
 ok 9 - recovery reaches through helpers and recursion
 ok 10 - handlers can return whole Result operation values
-1..10
-# tests=10 passed=10 failed=0 skipped=0
+ok 11 - every declared operation result type crosses a direct arm
+ok 12 - partial and nested handlers split one effect's operations
+ok 13 - a callback passed to a higher-order function reaches the handler
+ok 14 - recursion in the handled body enters the handler once per level
+ok 15 - four effects compose in one nested region stack
+ok 16 - boundary values cross a direct arm unchanged
+1..16
+# tests=16 passed=16 failed=0 skipped=0

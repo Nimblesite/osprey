@@ -105,6 +105,15 @@ short-circuit type checking. A syntax-error-free parse is assembled and type-che
 the same single-source assembly path as the CLI. Closing the document removes it
 from the live VFS.
 
+Diagnostics are not all errors. A test case whose body statically yields the
+`Skip` verdict publishes a **Warning** (code `test-skipped`, source `osprey`)
+spanning its `test` line — unless the skip names no reason, which publishes the
+same code at **Error** severity (`[TESTING-SKIP-REASON]`). `[TESTING-SKIP-WARNING-STATIC]`
+in [0027-TestingFramework.md](0027-TestingFramework.md) is the authority on
+which bodies qualify and what the messages read. Skip diagnostics ride alongside
+whatever type errors the file already has, and are suppressed only when the
+file does not parse, since an unparsable buffer reports its syntax error alone.
+
 ## Hover `[LSP-HOVER]`
 
 `textDocument/hover` locates the word through `[LSP-REUSE-LSPKIT]`, walks the

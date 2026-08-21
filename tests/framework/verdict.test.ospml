@@ -130,13 +130,16 @@ curriedEffectsReachTheHandlerCase () =
     // The arity-4 curried body and its flat twin must agree operation for
     // operation: 6+7+8+9 == 30 and 15+16+17+18 == 66, four steps each.
     checkAll "curried and flat four-parameter bodies agree" [
-        (6 + 7 ?: 0) + (8 + 9 ?: 0) ?: 0 == 30,
-        (15 + 16 ?: 0) + (17 + 18 ?: 0) ?: 0 == 66,
+        // `?:` is the LOWEST precedence and right-associative, so every sum
+        // that ends in one needs its own parentheses to sit under the `==`
+        // [SYNTAX] — without them `x ?: 0 == 30` reads `x ?: (0 == 30)`.
+        ((6 + 7 ?: 0) + (8 + 9 ?: 0) ?: 0) == 30,
+        ((15 + 16 ?: 0) + (17 + 18 ?: 0) ?: 0) == 66,
         contains traceReport "30",
         contains traceReport "66",
         (1 + 2 ?: 0) == 3,
-        (3 + 4 ?: 0) + 5 ?: 0 == 12,
-        ((10 + 11 ?: 0) + (12 + 13 ?: 0) ?: 0) + 14 ?: 0 == 60,
+        ((3 + 4 ?: 0) + 5 ?: 0) == 12,
+        (((10 + 11 ?: 0) + (12 + 13 ?: 0) ?: 0) + 14 ?: 0) == 60,
         steps == 18
     ]
 

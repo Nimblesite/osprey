@@ -1,0 +1,3 @@
+ok 1 - multi-argument generic records mix effects lists maps and Results
+1..1
+# tests=1 passed=1 failed=0 skipped=0

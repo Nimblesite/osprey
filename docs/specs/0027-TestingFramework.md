@@ -58,6 +58,11 @@ in helper functions called from tests, or at the top level of a script.
 declaration with the same name shadows the built-in in both the type
 environment and codegen dispatch.
 
+A file that shadows `test` declares no test cases, so the editor surfaces none
+either: static discovery (`[TESTING-LIST]`), the test-case hover
+(`[TESTING-DOC-HOVER]`), and skip warnings (`[TESTING-SKIP-WARNING]`) all treat
+its `test(...)` calls as ordinary calls to the user's own function.
+
 ## Equality semantics
 
 **`[TESTING-EQUALITY]`** Assertion equality is canonical-string equality
@@ -117,6 +122,22 @@ Verdict helpers use these contracts:
 outcome. `Pass` records no failure, `Fail` fails the case and prints its reason,
 and `Skip` emits the TAP `# SKIP` directive.
 
+**`[TESTING-VERDICT-DECLARED]`** The reporting boundary reads the program's own
+declaration rather than assuming the field names above. A state may declare no
+payload at all, in which case it reports no reason: `type Verdict = Pass | Fail |
+Skip` is a valid declaration, a case answering `Skip` prints a bare `# SKIP`
+directive with no reason text, and one answering `Fail` fails the case with an
+empty reason. The payload field may also be spelled anything — `Skip(because)`
+reports identically to `Skip(why)` — because the binder comes from the
+declaration, not from the compiler.
+
+Two shapes are rejected at compile time, each named truthfully:
+
+| Declaration | Rejection |
+| --- | --- |
+| A state `test` has no report primitive for, e.g. `… \| Todo(string)` | `` `test` reports only the Pass, Fail and Skip states of `Verdict`; it has no report for `Todo` `` |
+| A `Fail` or `Skip` carrying more than one field | `` `Verdict` state `Skip` declares 2 fields; `test` reports a single reason `` |
+
 ## TAP output protocol
 
 **`[TESTING-TAP]`** A compiled test binary writes
@@ -136,7 +157,9 @@ ok 3 - overflow guard # SKIP precondition not met
   from 1 in execution order, printed when the case's body finishes.
 - A case whose `Verdict` is `Skip` still prints an `ok` line, suffixed with the
   TAP `# SKIP <why>` directive (`[TESTING-VERDICT]`); it counts as skipped,
-  neither passed nor failed.
+  neither passed nor failed. A skip with no reason prints the directive bare —
+  `ok 3 - overflow guard # SKIP` — never with a trailing space, so the line
+  survives a byte-exact golden comparison.
 - Each failing assertion prints one `#` diagnostic line at the moment it
   fails: `# expect failed: expected E, got A`,
   `# check 'label' failed: expected E, got A`, or `# fail: <reason>` for a
@@ -152,12 +175,140 @@ ok 3 - overflow guard # SKIP precondition not met
   only for programs that use a
   testing built-in; ordinary programs are unaffected.
 
+## Skipped cases are loud
+
+**`[TESTING-SKIP-WARNING]`** A skipped test is never silent. *Skipped* and
+*ignored* mean the same thing here — a case that did not report a real verdict —
+and neither is allowed to pass unnoticed. Every front end raises a warning for
+it. The warnings change no exit codes and no TAP output (`[TESTING-EXIT]` still
+governs pass/fail); they exist so a skip is a visible debt rather than a quiet
+hole in coverage.
+
+**`[TESTING-SKIP-REASON]`** A skip must name its reason, and the reason decides
+how loudly the skip is reported. A skip that names one is a debt a reader can
+weigh — who is blocked, on what, and when it ends — so it is a **Warning**. A
+skip that names none is a defect: nobody can weigh a hole in coverage whose
+cause was never written down, and nothing distinguishes it from a case somebody
+parked and forgot. Every front end reports it at **Error** severity instead, and
+`osprey test` fails the suite it appears in.
+
+The rule reads the reason, never the declaration. `Skip("")` and the bare `Skip`
+of a `Verdict` whose skip state declares no payload (`[TESTING-VERDICT-DECLARED]`)
+are the same case — an empty reason — and both are errors. A case that is merely
+absent from its run's TAP is not: a filtered run legitimately prints no line for
+it, so there is no reason to demand.
+
+The TAP output is unchanged either way (`[TESTING-TAP]`), and so is the test
+binary's own exit code (`[TESTING-EXIT]`): an unexplained skip is still a skip,
+not a failed assertion. What changes is the runner's verdict on the suite.
+
+| Reason | Reported as | `osprey test` |
+| --- | --- | --- |
+| `Skip("blocked on #123")` | Warning | suite may pass |
+| `Skip("")`, bare `Skip` | Error | suite fails |
+| discovered, absent from the TAP | Warning | suite may pass |
+
+A skip is detectable at two different moments, and the two are not
+interchangeable:
+
+| | **Static skip** | **Dynamic skip** |
+| --- | --- | --- |
+| Shape | the case body's result expression *is* the `Skip` constructor | any other path to `Skip` — `assume`, a helper call, a `match` arm, a named function passed as the body |
+| Known | at parse time, with no run | only by running the case |
+| Reported by | language server, plus both run reporters | the run reporters |
+
+```mermaid
+flowchart LR
+  src["test(...) in the editor"] --> lsp["Language server<br/>static analysis"]
+  lsp -->|body literally yields Skip| warn1["Warning: test-skipped<br/>source: osprey"]
+  src --> run["osprey test / --run"]
+  run --> tap["TAP: ok N - name # SKIP reason"]
+  tap --> cli["osprey test stderr<br/>warning: test '...' skipped"]
+  tap --> vsix["Test Explorer<br/>Warning: test-skipped<br/>source: osprey tests"]
+  disc["Discovered but absent from TAP"] --> vsix
+```
+
+### The static rule — `[TESTING-SKIP-WARNING-STATIC]`
+
+The language server raises a **Warning** diagnostic (code `test-skipped`,
+source `osprey`) spanning the `test` call's own line whenever the case body is
+a lambda whose **result expression** is the `Skip` constructor. The result
+expression is the lambda body itself, or — when that body is a block — the
+block's trailing value, recursively. Both flavors are recognised: Default
+`fn() => Skip("why")` and ML `\() => Skip "why"`.
+
+The message is `test '<name>' is skipped: <reason>`. When the reason is the
+empty string the diagnostic is an **Error** under the same `test-skipped` code —
+one rule reported at two strengths (`[TESTING-SKIP-REASON]`) — and its message
+is `test '<name>' is skipped with no reason; every skip must name one`. Reasons
+and names are carried verbatim, including quotes and non-ASCII text; the span is
+measured in the session's position encoding (`[LSP-ENCODING]`).
+
+These bodies are **not** static skips and must raise no warning, because
+whether they skip is a run-time question: a `Pass` or `Fail` result, an
+assertion body, a call to a helper that returns `Skip`, or a bare function
+reference (`test("n", parked)`).
+
+A file that does not parse reports its syntax error alone (`[LSP-DIAGNOSTICS]`)
+and raises no skip warnings; a file that parses but is ill-typed reports its
+type errors **and** its skip warnings together. Where a declaration shadows the
+`test` built-in (`[TESTING-SHADOWING]`) the file declares no cases at all, so
+no warning is raised for any call in it.
+
+### The run rules — `[TESTING-SKIP-WARNING-RUN]`
+
+- **`osprey test`** echoes every TAP `# SKIP` directive to stderr as
+  `warning: test '<name>' skipped: <reason>`, one line per skipped case, printed
+  after that suite's own output replays. A directive carrying no reason is
+  instead `error: test '<name>' skipped with no reason; every skip must name
+  one`, and that suite counts as failed in `# suites: X passed, Y failed`
+  (`[TESTING-SKIP-REASON]`).
+- **The VS Code Test Explorer** publishes a diagnostic (code `test-skipped`,
+  source `osprey tests`) spanning the case's `test` line for every case a run
+  reports `# SKIP`, reason included, and for every discovered case that never
+  appears in its run's TAP at all. It is a Warning, except for a `# SKIP` that
+  named no reason, which is an Error (`[TESTING-SKIP-REASON]`) reading
+  `Test '<name>' was skipped with no reason; every skip must name one`. The two reasons a case can
+  be absent — filtered out, or deleted since discovery — are both ignored
+  tests, and its message is `Test '<name>' did not run (skipped/ignored)`.
+  A case that runs again clears its own warning, a re-parked case replaces its
+  message rather than accumulating a second one, and deleting the file clears
+  all of its warnings. The span reaches the end of the `test` line so the
+  warning renders as a squiggle and not merely as a Problems-panel row. Every
+  run profile reports identically: a coverage run neither drops nor duplicates
+  the warnings a plain run raises.
+
+A run that fails to compile has no verdicts at all: it reports a compile error
+and raises no skip warnings.
+
+### Directive ambiguity — `[TESTING-TAP-AMBIGUITY]`
+
+A test *name* may itself contain `# SKIP`, which makes a raw TAP line
+ambiguous: `ok 1 - name with # SKIP inside it` is both a passing case with an
+odd name and a skipped case named `name with`. Two rules resolve it, and both
+reporters apply them:
+
+1. The directive is always **last** on the line, so the split is taken from the
+   right. A skipped case keeps every earlier `# SKIP` as part of its name.
+2. A description that matches a **statically discovered name verbatim**
+   (`[TESTING-LIST]`) is that case's whole name, so the case ran and no warning
+   is due. Only when no discovered name matches is the directive reading
+   believed.
+
+A dynamically-named case whose name contains `# SKIP` cannot be discovered and
+therefore cannot be disambiguated; it is reported by the directive reading.
+
 ## Exit code
 
 **`[TESTING-EXIT]`** A test binary exits `0` when every executed test case
 passed or skipped and no out-of-case assertion failed, else `1`. A `Skip`
 verdict is not a failure and does not change the exit code. Compile errors keep
 their existing CLI exit codes.
+
+The `osprey test` runner aggregates on top of that: it fails a suite whose
+binary failed, **and** a suite that skipped a case without naming a reason
+(`[TESTING-SKIP-REASON]`). The binary's own exit code is untouched by the second
+rule — the runner reads the TAP.
 
 ## Test filtering
 
@@ -186,7 +337,8 @@ recursively for `[TESTING-FILE-CONVENTION]` files in sorted order. Hidden,
 Each file runs like `osprey <file> --run`, with its TAP output under a
 `# file: <path>` header. `--filter` sets `OSPREY_TEST_FILTER` for child
 processes. The runner prints `# suites: X passed, Y failed` and exits `1` if a
-suite fails to compile or run, otherwise `0`. An empty discovery set fails with
+suite fails to compile, fails to run, or skips a case without naming a reason
+(`[TESTING-SKIP-REASON]`), otherwise `0`. An empty discovery set fails with
 `no test files found`.
 
 One invocation runs every discovered suite under exactly one memory backend.
@@ -230,7 +382,12 @@ block statements, lambda/handler/match bodies, namespaces, modules):
 statement — the call's own line in the conventional top-level layout; for a
 test that is a function or lambda body, the enclosing declaration's line.
 Dynamically named tests (non-literal first argument) still run and report via
-TAP; they are not listed statically.
+TAP; they are not listed statically. A file that shadows the `test` built-in
+(`[TESTING-SHADOWING]`) lists nothing at all.
+
+The listed names are also the tie-breaker for an ambiguous TAP line
+(`[TESTING-TAP-AMBIGUITY]`): a run reporter compares a result's description
+against them before believing a `# SKIP` directive.
 
 ### Documented test cases — `[TESTING-DOC]`
 
@@ -321,9 +478,13 @@ and coverage measures that file (`[TESTING-CLI-RUN]`).
 - resolves the compiler from `osprey.server.compilerPath`, then the bundled
   platform binary, then `PATH`;
 - runs requested files with `osprey <file> --run`, using
-  `OSPREY_TEST_FILTER=<name>` for a single case; and
+  `OSPREY_TEST_FILTER=<name>` for a single case;
 - maps TAP results, diagnostics, skips, and non-TAP process failures to test
-  items.
+  items; and
+- publishes a `test-skipped` Warning for every case a run skipped or ignored
+  (`[TESTING-SKIP-WARNING-RUN]`), into its own `DiagnosticCollection` so the
+  warnings reach the Problems panel and the editor gutter without disturbing
+  the language server's own diagnostics.
 
 **`[TESTING-COVERAGE-VSCODE]`** Its coverage profile runs
 `osprey test <file> --coverage-json <tmp> --quiet`, adding `--filter <name>` for

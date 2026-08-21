@@ -1,21 +1,117 @@
+// Regression oracle for [TYPE-GENERICS-FN], [TYPE-MAP], [TYPE-MAP-LOOKUP],
+// [TYPE-MAP-OPS], [TYPE-LIST], [TYPE-LIST-OPS], [BUILTIN-MAP-GET],
+// [BUILTIN-MAP-SET], [BUILTIN-MAP-REMOVE], [BUILTIN-MAP-MERGE],
+// [BUILTIN-STRING-UFCS], [EFFECTS-GENERIC-DECL],
+// [EFFECTS-GENERIC-INSTANTIATION], and [EFFECTS-GENERIC-RUNTIME].
+
+effect MapLookupAudit<T> {
+    observe: fn(T) -> Unit
+}
+
+fn valueOr<T>(items: Map<string, T>, key: string, fallback: T) -> T = mapGet(items, key) ?: fallback
+
+fn listValueAt<T>(items: Map<string, List<T>>, key: string, index: int, fallback: T) -> T =
+listGet(valueOr(items, key, [fallback]), index) ?: fallback
+
+fn auditIntKeys(items, keys) = {
+    mut encoded = 0
+    handle MapLookupAudit
+    observe value => { encoded = encoded * 100 + value ?: encoded }
+    in forEachList(keys, fn(key) => perform MapLookupAudit.observe(valueOr(items, key, 0)))
+    encoded
+}
+
+fn auditStringKeys(items, keys) = {
+    mut encoded = ""
+    handle MapLookupAudit
+    observe value => { encoded = encoded + value + "/" }
+    in forEachList(keys, fn(key) => perform MapLookupAudit.observe(valueOr(items, key, "missing")))
+    encoded
+}
+
 let ra = 9
 let m = mapSet(mapSet(Map(), "a", ra), "b", 16)
 match m["a"] { Success { value } => print("a=" + toString(value)) Error { message } => print("miss") }
 print("len " + toString(mapLength(m)))
 
-/// Verifies indexing a built map returns the stored values and a real miss.
+/// Exercises generic lookup at scalar and nested collection types, then routes
+/// recovered values through generic effects and receiver-first calls.
 fn builtMapIndexCase() = {
     let built = mapSet(mapSet(Map(), "a", 9), "b", 16)
+    let replaced = mapSet(built, "a", 25)
+    let removed = mapRemove(replaced, "b")
+    let merged = mapMerge(built, { "b": 36, "c": 49 })
+    let words = { "first": "ant", "second": "bee" }
+    let wordGrowth = mapSet(words, "third", "cat")
+    let buckets = { "odd": [1, 3, 5], "even": [2, 4, 6] }
+    let bucketGrowth = mapSet(buckets, "prime", [2, 3, 5, 7])
+    let stringBuckets = { "short": ["a", "bb"], "long": ["three", "seven"] }
+    let nestedMaps = [buckets, bucketGrowth]
     let missing = match built["missing"] {
         Success { value } => false
         Error { message } => message != ""
     }
-    checkAll("built map index state", [
-        (built["a"] ?: ((0 - 1) ?: 0)) == 9,
-        (built["b"] ?: ((0 - 1) ?: 0)) == 16,
-        mapLength(built) == 2,
-        mapContains(built, "a"),
-        missing
+    checkAll("built scalar maps preserve lookup replacement and persistence", [
+            (built["a"] ?: ((0 - 1) ?: 0)) == 9,
+            (built["b"] ?: ((0 - 1) ?: 0)) == 16,
+            valueOr(built, "a", ((0 - 1) ?: 0)) == 9,
+            valueOr(built, "missing", ((0 - 1) ?: 0)) == ((0 - 1) ?: 0),
+            mapLength(built) == 2,
+            mapContains(built, "a"),
+            mapContains(built, "b"),
+            !mapContains(built, "missing"),
+            missing,
+            mapLength(replaced) == 2,
+            valueOr(replaced, "a", 0) == 25,
+            valueOr(built, "a", 0) == 9,
+            mapLength(removed) == 1,
+            mapContains(removed, "a"),
+            !mapContains(removed, "b"),
+            mapLength(merged) == 3,
+            valueOr(merged, "a", 0) == 9,
+            valueOr(merged, "b", 0) == 36,
+            valueOr(merged, "c", 0) == 49,
+            listLength(mapKeys(merged)) == 3,
+            listLength(mapValues(merged)) == 3,
+            auditIntKeys(built, ["a", "b"]) == 916,
+            auditIntKeys(merged, ["a", "b", "c"]) == 93649
+    ])
+
+    checkAll("generic lookup instantiations stay isolated across leaf types", [
+            valueOr(words, "first", "missing") == "ant",
+            valueOr(words, "second", "missing") == "bee",
+            valueOr(words, "absent", "missing") == "missing",
+            mapLength(words) == 2,
+            mapLength(wordGrowth) == 3,
+            valueOr(wordGrowth, "third", "missing") == "cat",
+            valueOr(words, "third", "missing") == "missing",
+            auditStringKeys(words, ["first", "second"]) == "ant/bee/",
+            auditStringKeys(wordGrowth, ["third", "first"]) == "cat/ant/",
+            listLength(mapKeys(wordGrowth)) == 3,
+            listLength(mapValues(wordGrowth)) == 3
+    ])
+
+    checkAll("maps of lists retain their nested element descriptors", [
+            mapLength(buckets) == 2,
+            mapLength(bucketGrowth) == 3,
+            listLength(valueOr(buckets, "odd", [99])) == 3,
+            listLength(valueOr(buckets, "even", [99])) == 3,
+            listLength(valueOr(bucketGrowth, "prime", [99])) == 4,
+            listValueAt(buckets, "odd", 0, 99) == 1,
+            listValueAt(buckets, "odd", 1, 99) == 3,
+            listValueAt(buckets, "odd", 2, 99) == 5,
+            listValueAt(buckets, "even", 0, 99) == 2,
+            listValueAt(buckets, "even", 2, 99) == 6,
+            listValueAt(bucketGrowth, "prime", 3, 99) == 7,
+            listValueAt(buckets, "missing", 0, 99) == 99,
+            listValueAt(buckets, "odd", 9, 99) == 99,
+            listValueAt(stringBuckets, "short", 0, "missing") == "a",
+            listValueAt(stringBuckets, "short", 1, "missing") == "bb",
+            listValueAt(stringBuckets, "long", 0, "missing") == "three",
+            listValueAt(stringBuckets, "long", 1, "missing") == "seven",
+            listLength(nestedMaps) == 2,
+            listValueAt(listGet(nestedMaps, 0) ?: { "fallback": [99] }, "odd", 2, 99) == 5,
+            listValueAt(listGet(nestedMaps, 1) ?: { "fallback": [99] }, "prime", 3, 99) == 7
     ])
 }
 test("built maps support indexed lookup", builtMapIndexCase)

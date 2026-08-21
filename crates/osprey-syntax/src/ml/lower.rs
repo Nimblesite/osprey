@@ -40,15 +40,25 @@ use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 
 thread_local! {
-    /// Names BOUND (as a function or value) in the program currently being
-    /// lowered. A whitespace-application spine whose head is one of these is a
-    /// user definition, kept CURRIED — nested one-argument calls — so partial
-    /// application works ([FLAVOR-ML-CURRY]). Any other head (a multi-argument
-    /// builtin or `extern`, which cannot be partially applied) has its SATURATED
-    /// spine folded to ONE flat multi-argument call — the saturated-call
-    /// optimisation the spec assigns to the backend, done here while the surface
-    /// spine is still visible.
-    static BOUND_NAMES: RefCell<HashSet<String>> = RefCell::new(HashSet::new());
+    /// The LEXICAL scopes enclosing the expression being lowered, outermost
+    /// first: the file-scope definitions, then one frame per enclosing
+    /// parameter list and block.
+    ///
+    /// A whitespace-application spine whose head is bound in one of these is a
+    /// user definition or a parameter, kept CURRIED — nested one-argument
+    /// calls — so partial application works ([FLAVOR-ML-CURRY]). Any other head
+    /// (a multi-argument builtin or `extern`, which cannot be partially
+    /// applied) has its SATURATED spine folded to ONE flat multi-argument call
+    /// — the saturated-call optimisation the spec assigns to the backend, done
+    /// here while the surface spine is still visible.
+    ///
+    /// The frames are what make this scope-SAFE. A single program-wide set of
+    /// spellings let an unrelated parameter change calls outside its own scope:
+    /// declaring `useUnrelated contains = contains` anywhere in the file made
+    /// `contains "alpha" "ph"` lower as `contains("alpha")("ph")`, so the
+    /// two-argument builtin was called with one argument and the program was
+    /// rejected ([FLAVOR-ML-CALL-SATURATED]).
+    static SCOPES: RefCell<Vec<HashSet<String>>> = const { RefCell::new(Vec::new()) };
 
     /// Diagnostics raised while lowering — signatures the canonical AST cannot
     /// represent, which would otherwise be dropped SILENTLY (a written type
@@ -72,17 +82,14 @@ fn lower_error(message: String, pos: Position) {
 /// first so [`lower_application`] can tell a curried user call from a saturated
 /// builtin/`extern` call.
 pub(crate) fn lower(items: Vec<MlItem>) -> (Program, Vec<crate::SyntaxError>) {
-    BOUND_NAMES.with(|s| {
-        let mut set = s.borrow_mut();
-        set.clear();
-        collect_bound_names(&items, &mut set);
-    });
+    SCOPES.with(|s| s.borrow_mut().clear());
     LOWER_ERRORS.with(|sink| sink.borrow_mut().clear());
     let mut ctors = HashMap::new();
     collect_positional_ctors(&items, &mut ctors);
     let _positional = crate::positional::install(ctors.into_iter());
+    let file_scope = scope_of(&items);
     let program = Program {
-        statements: lower_items(items),
+        statements: in_scope(file_scope, move || lower_items(items)),
     };
     (
         program,
@@ -108,21 +115,47 @@ fn descend_containers<T>(item: &MlItem, out: &mut T, descend: fn(&[MlItem], &mut
     true
 }
 
-/// Record every name a `name … = …` binding introduces (functions and values),
-/// recursing into nested blocks so block-local definitions are seen too.
-fn collect_bound_names(items: &[MlItem], out: &mut HashSet<String>) {
+/// Lower with `names` pushed as a lexical frame, popping it after.
+fn in_scope<T>(names: HashSet<String>, lower: impl FnOnce() -> T) -> T {
+    SCOPES.with(|s| s.borrow_mut().push(names));
+    let lowered = lower();
+    SCOPES.with(|s| {
+        let _ = s.borrow_mut().pop();
+    });
+    lowered
+}
+
+/// Whether `name` is BOUND at the point being lowered — a file-scope
+/// definition, an enclosing parameter, or a binding of an enclosing block.
+fn is_bound(name: &str) -> bool {
+    SCOPES.with(|s| s.borrow().iter().any(|frame| frame.contains(name)))
+}
+
+/// The names the items at ONE lexical level bind. Every binding of a level is
+/// visible to every other (file-scope definitions are mutually recursive), so a
+/// level's frame is collected whole before it is entered.
+fn scope_of(items: &[MlItem]) -> HashSet<String> {
+    let mut out = HashSet::new();
+    collect_scope_names(items, &mut out);
+    out
+}
+
+/// The names a parameter list binds.
+fn params_scope(params: &[MlParam]) -> HashSet<String> {
+    let mut out = HashSet::new();
+    collect_param_names(params, &mut out);
+    out
+}
+
+/// Record every name a `name … = …` binding introduces at THIS level,
+/// recursing only through declaration containers — never into expressions,
+/// whose own bindings belong to the inner scopes those expressions open.
+fn collect_scope_names(items: &[MlItem], out: &mut HashSet<String>) {
     for item in items {
-        match item {
-            MlItem::Binding { name, body, .. } => {
-                let _ = out.insert(name.clone());
-                collect_names_in_expr(body, out);
-            }
-            MlItem::Assign { value, .. } | MlItem::Expr { value, .. } => {
-                collect_names_in_expr(value, out);
-            }
-            other => {
-                let _ = descend_containers(other, out, collect_bound_names);
-            }
+        if let MlItem::Binding { name, .. } = item {
+            let _ = out.insert(name.clone());
+        } else {
+            let _ = descend_containers(item, out, collect_scope_names);
         }
     }
 }
@@ -162,86 +195,21 @@ fn positional_construction(head: &MlExpr, args: &[MlExpr]) -> Option<Expr> {
     )
 }
 
-/// Walk an expression for nested binding names (a block's items, and the bodies
-/// of lambdas/matches/handlers that may themselves contain blocks).
-fn collect_names_in_expr(expr: &MlExpr, out: &mut HashSet<String>) {
-    match expr {
-        MlExpr::Block { items, value } => {
-            collect_bound_names(items, out);
-            if let Some(v) = value {
-                collect_names_in_expr(v, out);
+/// Record the names a binding or lambda head BINDS. A parameter is a callable
+/// like any other name: `apply f a b = f a b` applies `f` one argument at a
+/// time, so its spine must stay curried. Leaving parameters out made every
+/// higher-order whitespace spine fold to one flat call, and passing a curried
+/// function to it was rejected with `function arity mismatch: 2 vs 1
+/// parameters` while the Default twin `fn apply(f, a, b) = f(a)(b)` was
+/// accepted ([FLAVOR-ML-CURRY], [FLAVOR-IR-EQUIV]).
+fn collect_param_names(params: &[MlParam], out: &mut HashSet<String>) {
+    for param in params {
+        match param {
+            MlParam::Named(name) | MlParam::Typed(name, _) => {
+                let _ = out.insert(name.clone());
             }
+            MlParam::Unit | MlParam::Pattern(_) => {}
         }
-        MlExpr::Lambda { body, .. }
-        | MlExpr::Spawn(body)
-        | MlExpr::Await(body)
-        | MlExpr::Recv(body)
-        | MlExpr::Paren(body) => collect_names_in_expr(body, out),
-        MlExpr::App { func, arg } => {
-            collect_names_in_expr(func, out);
-            collect_names_in_expr(arg, out);
-        }
-        MlExpr::AppMulti { func, args } => {
-            collect_names_in_expr(func, out);
-            for a in args {
-                collect_names_in_expr(a, out);
-            }
-        }
-        MlExpr::UnitApp { func } => collect_names_in_expr(func, out),
-        MlExpr::Binary { left, right, .. } => {
-            collect_names_in_expr(left, out);
-            collect_names_in_expr(right, out);
-        }
-        MlExpr::Unary { operand, .. } => collect_names_in_expr(operand, out),
-        MlExpr::Index { target, index } => {
-            collect_names_in_expr(target, out);
-            collect_names_in_expr(index, out);
-        }
-        MlExpr::Field { target, .. } => collect_names_in_expr(target, out),
-        MlExpr::Send { channel, value } => {
-            collect_names_in_expr(channel, out);
-            collect_names_in_expr(value, out);
-        }
-        MlExpr::Match { scrutinee, arms } => {
-            collect_names_in_expr(scrutinee, out);
-            for a in arms {
-                collect_names_in_expr(&a.body, out);
-            }
-        }
-        MlExpr::Handle { arms, body, .. } => {
-            for a in arms {
-                collect_names_in_expr(&a.body, out);
-            }
-            collect_names_in_expr(body, out);
-        }
-        MlExpr::Select(arms) => {
-            for a in arms {
-                collect_names_in_expr(&a.body, out);
-            }
-        }
-        MlExpr::List(items, ..) => {
-            for i in items {
-                collect_names_in_expr(i, out);
-            }
-        }
-        MlExpr::Map(entries) => {
-            for (k, v) in entries {
-                collect_names_in_expr(k, out);
-                collect_names_in_expr(v, out);
-            }
-        }
-        MlExpr::Record { fields, .. } => {
-            for f in fields {
-                collect_names_in_expr(&f.value, out);
-            }
-        }
-        MlExpr::Perform { args, .. } => {
-            for a in args {
-                collect_names_in_expr(a, out);
-            }
-        }
-        MlExpr::Yield(Some(v)) | MlExpr::Resume(Some(v)) => collect_names_in_expr(v, out),
-        _ => {}
     }
 }
 
@@ -654,7 +622,7 @@ pub(super) fn lower_binding(
     pos: Position,
     sig: Option<MlSig>,
 ) -> Stmt {
-    let body = lower_expr(body);
+    let body = in_scope(params_scope(&params), move || lower_expr(body));
     // Split the paired signature into its type params, declared type and
     // effect row.
     let (type_params, ty, effects) = match sig {
@@ -1205,7 +1173,7 @@ fn lower_record(name: String, type_args: &[MlType], fields: Vec<MlField>) -> Exp
 }
 
 fn lower_lambda_node(params: Vec<MlParam>, uncurried: bool, body: MlExpr, pos: Position) -> Expr {
-    let body = lower_expr(body);
+    let body = in_scope(params_scope(&params), move || lower_expr(body));
     if !uncurried {
         return lower_lambda(params, body, pos);
     }
@@ -1250,8 +1218,9 @@ fn lower_binary(op: &str, left: MlExpr, right: MlExpr) -> Expr {
 /// with no statements unwraps to that value, so it is structurally identical to
 /// the Default inline body.
 fn lower_block(items: Vec<MlItem>, value: Option<Box<MlExpr>>) -> Expr {
-    let statements = lower_items(items);
-    let value = value.map(|v| Box::new(lower_expr(*v)));
+    let (statements, value) = in_scope(scope_of(&items), move || {
+        (lower_items(items), value.map(|v| Box::new(lower_expr(*v))))
+    });
     match (statements.is_empty(), value) {
         (true, Some(value)) => *value,
         (_, value) => Expr::Block { statements, value },
@@ -1369,7 +1338,7 @@ fn lower_application(func: MlExpr, arg: MlExpr) -> Expr {
         return built;
     }
     let curried = match &head {
-        MlExpr::Ident(name) => BOUND_NAMES.with(|s| s.borrow().contains(name)),
+        MlExpr::Ident(name) => is_bound(name),
         // Qualified and higher-order callables preserve ML's curry-by-default
         // spine; `(a, b)` explicitly selects a flat interop call.
         _ => true,

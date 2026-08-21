@@ -39,6 +39,11 @@ in-process — the same engine targeted at Neovim and Zed next.
   in the Testing view, with three run profiles: **Run**, **Coverage**, and
   **Profile** (runs the suite under the sampling CPU profiler and opens its
   flame graph plus inline heat annotations).
+- **No test skips silently** — a skipped or ignored case raises a warning you
+  cannot miss: a squiggle on the `test(...)` line and a row in the Problems
+  panel. A case whose body simply returns `Skip` is flagged as you type, before
+  anything runs; a case that skips at run time, or that a run never executed at
+  all, is flagged when the run reports. Reviving the case clears its warning.
 - **Documented tests** — a `///` block (or ML `(** … *)`) above a `test(...)`
   case shows as the case's description in the Testing tree, renders in full when
   you hover the `test(...)` call, opens as Markdown via

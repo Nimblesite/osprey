@@ -2,5 +2,11 @@ ok 1 - pass folds several good interactions
 ok 2 - skip preserves an unmet precondition # SKIP precondition not met
 ok 3 - curried ML bodies perform every operation through the handler
 ok 4 - ML partial application follows the currying rule
-1..4
-# tests=4 passed=3 failed=0 skipped=1
+ok 5 - Verdict folding obeys the andThen monoid laws
+ok 6 - curried arities two through six apply in every grouping
+ok 7 - curried and flat lambda heads split as specified
+ok 8 - ML record layout, inline heads and updates agree
+ok 9 - ML match layout, clauses and list patterns select correctly
+ok 10 - ML layout blocks and interpolation render juxtaposed calls
+1..10
+# tests=10 passed=9 failed=0 skipped=1

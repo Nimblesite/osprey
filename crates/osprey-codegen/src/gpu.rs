@@ -32,13 +32,21 @@ pub(crate) const GPU_TAG: &str = "Gpu#";
 
 /// The owner tag for a `GpuBuffer<elem>` static type: element-typed when the
 /// element is a concrete scalar, the bare owner otherwise.
-pub(crate) fn buffer_owner(elem: Option<&osprey_types::Type>) -> String {
-    elem_owner(crate::types::scalar_elem(elem))
+pub(crate) fn buffer_owner(
+    prog: &osprey_types::ProgramTypes,
+    elem: Option<&osprey_types::Type>,
+) -> String {
+    crate::llty::elem_tagged_owner(
+        GPU_TAG,
+        GPU_OWNER,
+        crate::types::elem_tag(prog, elem).as_deref(),
+    )
 }
 
-/// The element `LType` recorded on a buffer value's owner tag, if any.
+/// The element `LType` recorded on a buffer value's owner tag, if any. A buffer
+/// element is always a scalar, so the descriptor's owner half is never set.
 pub(crate) fn tagged_elem(v: &Value) -> Option<LType> {
-    crate::llty::elem_of_tag(v, GPU_TAG)
+    crate::llty::elem_of_tag(v, GPU_TAG).map(|tag| crate::llty::elem_of_spelling(&tag).0)
 }
 
 /// Whether an owner tag names a GPU buffer handle — element-typed (`Gpu#double`)
@@ -53,12 +61,18 @@ pub(crate) fn is_buffer_owner(owner: &str) -> bool {
 /// into a buffer is element-blind without it, so `toGpu` of a `List<float>`
 /// value produced a bare-tagged buffer whose reads mis-typed [GPU-BUFFER-ELEM].
 fn list_elem(v: &Value) -> Option<LType> {
-    crate::llty::elem_of_tag(v, "[]").or_else(|| crate::collections::tagged_elem(v))
+    crate::llty::elem_of_tag(v, "[]")
+        .or_else(|| crate::collections::tagged_elem(v))
+        .map(|tag| crate::llty::elem_of_spelling(&tag).0)
 }
 
 /// The owner tag for a buffer holding `elem` words.
 fn elem_owner(elem: Option<LType>) -> String {
-    crate::llty::elem_tagged_owner(GPU_TAG, GPU_OWNER, elem)
+    crate::llty::elem_tagged_owner(
+        GPU_TAG,
+        GPU_OWNER,
+        elem.and_then(crate::llty::scalar_spelling),
+    )
 }
 
 /// Dispatch a GPU builtin by name, or `None` if `name` is not one.
@@ -120,7 +134,7 @@ fn buffer_set(cg: &mut Codegen, buf: &Value, index: &str, word: &str) {
 /// raw bits become a `double` operand (never an integer conversion), a `bool`
 /// becomes `i1`, and an unknown element passes through as the raw word.
 fn elem_value(cg: &mut Codegen, raw: String, elem: Option<LType>) -> Value {
-    crate::conv::from_word(cg, raw, elem)
+    crate::conv::from_word(cg, raw, elem.and_then(crate::llty::scalar_spelling))
 }
 
 /// The scalar-element backstop [GPU-BUFFER-ELEM]: a buffer word is an `int`,
@@ -156,11 +170,15 @@ fn buffer_literal(
     let mut elem = crate::listlit::inferred_elem(cg, position);
     for (i, e) in elements.iter().enumerate() {
         let v = gen_expr(cg, e)?;
-        elem = elem.or(Some(v.ty));
+        elem = elem.or_else(|| crate::llty::scalar_spelling(v.ty).map(str::to_string));
         let word = scalar_word(cg, v, "a GPU buffer literal element")?;
         buffer_set(cg, &out, &i.to_string(), &word.operand);
     }
-    Ok(out.with_owner(Some(elem_owner(elem))))
+    Ok(out.with_owner(Some(crate::llty::elem_tagged_owner(
+        GPU_TAG,
+        GPU_OWNER,
+        elem.as_deref(),
+    ))))
 }
 
 /// The compaction counter shared by `gpuFilter` and iterator fusion: a stack
@@ -254,7 +272,9 @@ fn from_gpu(cg: &mut Codegen, args: &[Expr]) -> Result<Value> {
     // materializes as a `List<float>` that reads back as floats, not as the
     // IEEE-754 words the uniform element ABI stores [GPU-BUFFER-TO-LIST].
     let sealed = crate::collections::list_builder_seal(cg, &bld);
-    Ok(sealed.with_owner(Some(crate::collections::list_owner(tagged_elem(&b)))))
+    Ok(sealed.with_owner(Some(crate::collections::list_owner(
+        tagged_elem(&b).and_then(crate::llty::scalar_spelling),
+    ))))
 }
 
 /// `gpuLength(buffer)` — the element count [GPU-BUFFER-LENGTH].

@@ -63,6 +63,7 @@ pub(crate) fn seed(
     for statement in &program.statements {
         let Stmt::Let {
             name,
+            value,
             position,
             mutable,
             ..
@@ -71,6 +72,11 @@ pub(crate) fn seed(
             continue;
         };
         if !read.contains(name) || cg.module_globals.contains_key(name) {
+            continue;
+        }
+        // A binding that materialises no value has nothing to publish here,
+        // and its readers resolve it by NAME instead ([`crate::stmt`]).
+        if crate::stmt::binds_no_value(cg, value) {
             continue;
         }
         let slot = describe(cg, name, *position, *mutable && cells.contains(name))?;
@@ -101,7 +107,7 @@ fn describe(
     Ok(GlobalSlot {
         symbol: format!("osp.g.{name}"),
         sig: ParamSig::of(ty),
-        owner: crate::types::owner_name(ty),
+        owner: crate::types::owner_name(&cg.prog, ty),
         cell,
         ty: ty.clone(),
     })

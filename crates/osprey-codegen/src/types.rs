@@ -6,15 +6,21 @@
 //! the C runtime's uniform machine-word representation for generic values.
 
 use crate::llty::LType;
-use osprey_types::{names, Type};
+use osprey_types::{names, ProgramTypes, Type};
 
-/// The `LType` of a container's element type argument when inference resolved
-/// it concretely — the input to an element-typed owner tag
+/// The tag spelling of a container's element type argument when inference
+/// resolved it concretely — the input to an element-typed owner tag
 /// ([`crate::llty::elem_tagged_owner`]). A still-polymorphic element has no
 /// type to record, so its container stays untagged.
-pub(crate) fn scalar_elem(elem: Option<&Type>) -> Option<LType> {
-    elem.filter(|ty| !osprey_types::has_type_var(ty))
-        .map(ltype_of)
+///
+/// A nested container records its own descriptor, so `List<List<int>>` reaches
+/// the backend as `List#List#i64` and an element read out of it is still a
+/// list. Recording only the element's `LType` collapsed every handle element to
+/// the bare owner, which is what made `listGet(rows, i)` on a `List<List<int>>`
+/// answer an untyped machine word.
+pub(crate) fn elem_tag(prog: &ProgramTypes, elem: Option<&Type>) -> Option<String> {
+    let ty = elem.filter(|ty| !osprey_types::has_type_var(ty))?;
+    owner_name(prog, ty).or_else(|| crate::llty::scalar_spelling(ltype_of(ty)).map(str::to_string))
 }
 
 /// Map an inferred type to the LLVM type a runtime value of it travels as.
@@ -58,7 +64,7 @@ fn ltype_of_con(name: &str, args: &[Type]) -> LType {
 /// tag `Gpu#<spelling>` ([`crate::gpu::GPU_TAG`]), the same convention flat
 /// list literals use (`[]double`), so combinator lowering recovers the
 /// element's `LType` through parameters and returns [GPU-BUFFER-ELEM].
-pub fn owner_name(ty: &Type) -> Option<String> {
+pub fn owner_name(prog: &ProgramTypes, ty: &Type) -> Option<String> {
     match ty {
         Type::Record { name, .. } | Type::Union { name, .. } => Some(name.clone()),
         Type::Con { name, args } => match name.as_str() {
@@ -69,20 +75,70 @@ pub fn owner_name(ty: &Type) -> Option<String> {
             | names::UNIT
             | names::ANY
             | names::RESULT
-            | names::MAP
             | names::ITERATOR
             | names::FIBER
             | names::CHANNEL
             | names::PTR => None,
-            names::GPU_BUFFER => Some(crate::gpu::buffer_owner(args.first())),
+            names::GPU_BUFFER => Some(crate::gpu::buffer_owner(prog, args.first())),
             // A `List<T>` handle carries its element the same way, so a float
             // list read back through a parameter, a return or a field is
             // floats rather than the `i64` words the runtime stores it as
             // ([`crate::collections::LIST_TAG`]).
-            names::LIST => Some(crate::collections::list_owner(scalar_elem(args.first()))),
-            other => Some(other.to_string()),
+            names::LIST => Some(crate::collections::list_owner(
+                elem_tag(prog, args.first()).as_deref(),
+            )),
+            // A `Map<K, V>` carries its VALUE the same way. Without it a map
+            // that crossed a parameter or a record field lost even its
+            // map-ness, so `mapGet` inside the callee saw an untagged handle
+            // ([`crate::collections::MAP_TAG`]).
+            names::MAP => Some(crate::collections::map_owner(
+                elem_tag(prog, args.get(1)).as_deref(),
+            )),
+            other => Some(nominal_tag(prog, other, args)),
         },
         _ => None,
+    }
+}
+
+/// The owner tag a nominal type's values carry. A GENERIC RECORD is built with
+/// the concrete field types of its instantiation ([`crate::aggregate`]), so one
+/// declared name covers as many layouts as the program instantiates and the tag
+/// has to name the instantiation. A value that crossed a parameter, a list, a
+/// map or a `Result` must land back on its own layout — reading
+/// `Envelope<Map<…>, int>` through the declared layout, whose `T` and `U` slots
+/// are machine words, loads a pointer field as an integer.
+fn nominal_tag(prog: &ProgramTypes, name: &str, args: &[Type]) -> String {
+    record_shape(prog, name, args).unwrap_or_else(|| name.to_string())
+}
+
+/// The layout name of one generic-record instantiation, or `None` when `name`
+/// is not a generic record. Implements [TYPE-GENERICS-DECL].
+pub(crate) fn record_shape(prog: &ProgramTypes, name: &str, args: &[Type]) -> Option<String> {
+    let layout = prog.ctors.get(name)?;
+    if !layout.owner_is_record || layout.type_params.is_empty() {
+        return None;
+    }
+    let shape: Vec<&str> = layout
+        .fields
+        .iter()
+        .map(|(_, t)| ltype_of(&substituted(t, args)).as_str())
+        .collect();
+    Some(format!("{name}#{}", shape.join(",")))
+}
+
+/// Replace each erased type parameter with the type argument at its position
+/// ([`osprey_types::erased_var`]).
+fn substituted(ty: &Type, args: &[Type]) -> Type {
+    match ty {
+        Type::Var(id) => usize::try_from(*id)
+            .ok()
+            .and_then(|index| args.get(index).cloned())
+            .unwrap_or_else(|| ty.clone()),
+        Type::Con { name, args: inner } => Type::Con {
+            name: name.clone(),
+            args: inner.iter().map(|t| substituted(t, args)).collect(),
+        },
+        _ => ty.clone(),
     }
 }
 

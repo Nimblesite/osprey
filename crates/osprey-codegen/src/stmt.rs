@@ -3,11 +3,12 @@
 //! `mut` cells among them. Every one of these appears both inside a function
 //! and at file scope, so they lower through exactly one path.
 
-use crate::builder::Codegen;
+use crate::builder::{Codegen, FnSig};
 use crate::error::{CodegenError, Result};
 use crate::expr::gen_expr;
 use crate::llty::{LType, Value};
-use osprey_ast::{Expr, Position, Stmt};
+use osprey_ast::{Expr, Position, Program, Stmt};
+use std::collections::BTreeSet;
 
 /// Lower a statement inside its own ARC region: temporaries the statement
 /// produced and did not bind drop at its end [GC-ARC-PERCEUS].
@@ -220,30 +221,23 @@ fn gen_bind(cg: &mut Codegen, name: &str, value: &Expr, position: Option<Positio
         // Materialize the closure value when its type resolved concretely; a
         // still-generic lambda stays inline-only (its cell ABI would lose the
         // per-instantiation types).
-        if let Some(ty) = cg.prog.lambda_type(*position).cloned() {
-            if crate::types::fn_value_concrete(&ty) {
-                if let Some(sig) = Codegen::fn_value_sig(&ty) {
-                    let v = crate::closure::emit_closure(cg, parameters, body, &sig)?;
-                    cg.emit_debug_local(name, &v);
-                    crate::arc::bind_owned(cg, name, &v);
-                    cg.bind(name.to_string(), v);
-                    cg.bind_fn_local(name, ty);
-                }
-            }
+        if let Some((ty, sig)) = lambda_cell(cg, *position) {
+            let v = crate::closure::emit_closure(cg, parameters, body, &sig)?;
+            cg.emit_debug_local(name, &v);
+            crate::arc::bind_owned(cg, name, &v);
+            cg.bind(name.to_string(), v);
+            cg.bind_fn_local(name, ty);
         }
         return Ok(());
     }
-    if let Expr::Identifier(n) = value {
-        let target = cg.call_aliases.get(n).cloned().unwrap_or_else(|| n.clone());
-        if cg.lookup(&target).is_none() && cg.fn_defs.contains_key(&target) {
-            // `let g = identity` where the target is a GENERIC function: no
-            // single concrete cell ABI exists, so bind as a call alias — g's
-            // call sites specialise the target exactly as direct calls do,
-            // and a value use resolves the alias where a consuming slot fixes
-            // the ABI ([TYPE-GENERICS-FN]).
-            let _ = cg.call_aliases.insert(name.to_string(), target);
-            return Ok(());
-        }
+    if let Some(target) = alias_target(cg, value) {
+        // `let g = identity` where the target is a GENERIC function: no
+        // single concrete cell ABI exists, so bind as a call alias — g's
+        // call sites specialise the target exactly as direct calls do,
+        // and a value use resolves the alias where a consuming slot fixes
+        // the ABI ([TYPE-GENERICS-FN]).
+        let _ = cg.call_aliases.insert(name.to_string(), target);
+        return Ok(());
     }
     let v = gen_expr(cg, value)?;
     let v = match expected_result_inner {
@@ -268,6 +262,80 @@ fn gen_bind(cg: &mut Codegen, name: &str, value: &Expr, position: Option<Positio
     Ok(())
 }
 
+/// The concrete function type and closure ABI a file-scope lambda binding
+/// materialises, or `None` when the lambda is still GENERIC — no single cell
+/// ABI exists for it, so it stays an inline body its call sites specialise
+/// ([TYPE-GENERICS-FN]).
+fn lambda_cell(cg: &Codegen, position: Option<Position>) -> Option<(osprey_types::Type, FnSig)> {
+    let ty = cg
+        .prog
+        .lambda_type(position)
+        .filter(|t| crate::types::fn_value_concrete(t))?;
+    Some((ty.clone(), Codegen::fn_value_sig(ty)?))
+}
+
+/// The definition `value` is a bare ALIAS for, when binding it materialises no
+/// value of its own — `let g = identity` with a generic `identity`.
+fn alias_target(cg: &Codegen, value: &Expr) -> Option<String> {
+    let Expr::Identifier(n) = value else {
+        return None;
+    };
+    let target = cg.call_aliases.get(n).cloned().unwrap_or_else(|| n.clone());
+    (cg.lookup(&target).is_none() && cg.fn_defs.contains_key(&target)).then_some(target)
+}
+
+/// Register the file-scope bindings that resolve by NAME rather than by value,
+/// BEFORE any function body is emitted.
+///
+/// [`gen_bind`] records a generic lambda in `cg.lambdas` and a generic-function
+/// alias in `cg.call_aliases`, but it does not run until `main`'s statements
+/// are lowered — which is AFTER every function. A function reading such a
+/// binding therefore found both tables empty and emitted a direct call to
+/// `@alias`, a symbol no definition ever produces, so the module failed to
+/// link ([TYPE-GENERICS-FN], [MODULES-FILE-SCOPE-BINDING]).
+pub(crate) fn seed_name_bindings(cg: &mut Codegen, program: &Program, read: &BTreeSet<String>) {
+    for statement in &program.statements {
+        let Stmt::Let { name, value, .. } = statement else {
+            continue;
+        };
+        if !read.contains(name) || !binds_no_value(cg, value) {
+            continue;
+        }
+        if let Expr::Lambda {
+            parameters,
+            body,
+            position,
+            ..
+        } = value
+        {
+            let _ = cg.file_lambdas.insert(
+                name.clone(),
+                (parameters.clone(), (**body).clone(), *position),
+            );
+        } else if let Some(target) = alias_target(cg, value) {
+            let _ = cg.call_aliases.insert(name.clone(), target);
+        }
+    }
+}
+
+/// Whether `let name = value` materialises NO runtime value, so nothing could
+/// ever be stored into a module global for it.
+///
+/// [`gen_bind`] leaves exactly two shapes name-resolved instead of
+/// value-bound: a still-generic lambda (inline body) and an alias for a
+/// generic definition (call alias). [`crate::globals::seed`] asks this before
+/// declaring storage, because a global that is declared and never filled wins
+/// over the alias in identifier resolution — the reader then loaded a zeroed
+/// slot, and publication failed outright with `unknown name` on a program that
+/// is otherwise valid ([MODULES-FILE-SCOPE-BINDING], [TYPE-GENERICS-FN]).
+pub(crate) fn binds_no_value(cg: &Codegen, value: &Expr) -> bool {
+    match value {
+        Expr::Lambda { position, .. } => lambda_cell(cg, *position).is_none(),
+        Expr::Identifier(_) => alias_target(cg, value).is_some(),
+        _ => false,
+    }
+}
+
 /// The function type of an expression that produces a function value: a
 /// lambda with a concretely-inferred type, a call whose callee returns a
 /// function, an alias of another function-typed local or a top-level function,
@@ -282,7 +350,14 @@ pub(crate) fn fn_result_type(cg: &Codegen, value: &Expr) -> Option<osprey_types:
             .cloned(),
         Expr::Call { function, .. } => match &**function {
             Expr::Identifier(f) => cg.call_result_fn_type(f),
-            _ => None,
+            // A curried spine (`let p3 = sum6 1 2 3`): every application peels
+            // one arrow off the head's type, so the partial application's own
+            // type is what is left of the chain [FLAVOR-ML-CURRY]. Without
+            // this the binding stayed unregistered and `p3 4 5 6` lowered to a
+            // direct call to a symbol no definition emits.
+            _ => cg
+                .callee_fn_type(value)
+                .filter(|t| matches!(t, osprey_types::Type::Fun { .. })),
         },
         Expr::Identifier(n) => cg.fn_value_types.get(n).cloned().or_else(|| {
             // `let d = double` — alias of a named user function.

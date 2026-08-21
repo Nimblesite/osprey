@@ -1,8 +1,8 @@
 // osprey: flavor=ml
 // ML twin of effect_arm_answer_type_mismatch.ospo. [EFFECTS-HANDLER-ARMS]
-// An arm that never resumes in a region where another arm does abandons the
-// continuation, so its value becomes the whole `handle` result — checked in
-// both directions and through a `Result` answer, in both flavors.
+// An arm that resumes answers for the whole `handle`, so its value becomes the
+// region's result — checked in both directions and through a `Result` answer,
+// in both flavors.
 effect Mixed
     a : int => int
     b : Unit => int
@@ -28,21 +28,27 @@ textArmToResult () =
 scalarAnswer =
     handle Mixed
         a x => resume x
-        b => 7
+        b =>
+            settled = resume 0
+            7
     in intArm ()
 
 // pointer arm value, int answer — the direction codegen used to box silently
 pointerAnswer =
     handle Texts
         a x => resume x
-        b => "dyn" + "amic"
+        b =>
+            settled = resume "supplied"
+            "dyn" + "amic"
     in textArm ()
 
 // pointer arm value, Result answer — the path that bypassed the guard entirely
 resultAnswer =
     handle Texts
         a x => resume x
-        b => "dyn" + "amic"
+        b =>
+            settled = resume "supplied"
+            "dyn" + "amic"
     in textArmToResult ()
 
 print "${scalarAnswer} ${pointerAnswer} ${toString resultAnswer}"

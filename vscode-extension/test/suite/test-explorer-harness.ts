@@ -35,6 +35,99 @@ test "ml addition" (\\() =>
     check "sum" 5 (add (2, 3)))
 `;
 
+/**
+ * "parked case" reports the `Skip` verdict, "live case" passes
+ * ([TESTING-SKIP-WARNING]): a run must raise a Warning diagnostic for the
+ * skipped case and none for the live one.
+ */
+export const SKIP_FIXTURE = `type Verdict = Pass | Fail(string) | Skip(string)
+
+test("parked case", fn() => Skip("blocked on #123"))
+
+test("live case", fn() => expect(1, 1))
+`;
+
+/**
+ * A skip that names NO reason ([TESTING-SKIP-REASON]): the run must raise an
+ * ERROR diagnostic rather than a warning, because a hole in coverage whose
+ * cause was never written down cannot be weighed by anyone reading it.
+ */
+export const UNEXPLAINED_SKIP_FIXTURE = `type Verdict = Pass | Fail(string) | Skip(string)
+
+test("unexplained case", fn() => Skip(""))
+
+test("live case", fn() => expect(1, 1))
+`;
+
+/**
+ * UNEXPLAINED_SKIP_FIXTURE with the SAME case given a reason: its Error must
+ * become a Warning in place ([TESTING-SKIP-REASON]).
+ */
+export const EXPLAINED_SKIP_FIXTURE = `type Verdict = Pass | Fail(string) | Skip(string)
+
+test("unexplained case", fn() => Skip("blocked on #456"))
+
+test("live case", fn() => expect(1, 1))
+`;
+
+/** SKIP_FIXTURE with "parked case" revived — its warning must clear. */
+export const SKIP_FIXED_FIXTURE = `type Verdict = Pass | Fail(string) | Skip(string)
+
+test("parked case", fn() => Pass)
+
+test("live case", fn() => expect(1, 1))
+`;
+
+/** SKIP_FIXTURE re-parked under a DIFFERENT reason — the message must update. */
+export const SKIP_REPARKED_FIXTURE = `type Verdict = Pass | Fail(string) | Skip(string)
+
+test("parked case", fn() => Skip("now blocked on #456"))
+
+test("live case", fn() => expect(1, 1))
+`;
+
+/**
+ * Every outcome in one suite ([TESTING-TAP], [TESTING-VERDICT]): a pass, a
+ * failure, a STATIC skip, and a DYNAMIC skip that only the run can discover
+ * (line 3 helper). Exactly the two skips may warn; the pass and the failure
+ * must not.
+ */
+export const MIXED_FIXTURE = `type Verdict = Pass | Fail(string) | Skip(string)
+
+fn guard(n) = match n > 100 {
+    true => Pass
+    false => Skip("runtime precondition unmet")
+}
+
+test("passes cleanly", fn() => expect(2 + 2, 4))
+
+test("fails loudly", fn() => expect(1, 3))
+
+test("statically parked", fn() => Skip("static reason"))
+
+test("dynamically parked", fn() => guard(1))
+`;
+
+/**
+ * [TESTING-TAP-AMBIGUITY] a PASSING case whose NAME contains `# SKIP`, beside
+ * a genuinely skipped one. A naive TAP split reports the passing case as
+ * skipped; the discovered names must break the tie.
+ */
+export const AMBIGUOUS_NAME_FIXTURE = `type Verdict = Pass | Fail(string) | Skip(string)
+
+test("name with # SKIP inside it", fn() => expect(1, 1))
+
+test("really parked", fn() => Skip("genuinely skipped"))
+`;
+
+/** The ML twin of SKIP_FIXTURE — layout syntax, same warnings. */
+export const ML_SKIP_FIXTURE = `type Verdict = Pass | Fail string | Skip string
+
+test "ml parked case" (\\() => Skip "ml blocked")
+
+test "ml live case" (\\() => Pass)
+`;
+
 /** Does not parse — `--list-tests` and `--run` both fail with syntax errors. */
 export const BROKEN_FIXTURE = "fn broken( = nonsense !!\n";
 

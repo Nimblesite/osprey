@@ -33,7 +33,16 @@ export type TestListParse =
 
 /** One TAP result line with the `#` diagnostics that preceded it. */
 export interface TapResult {
+  /** The case name: the description with any trailing `# SKIP` directive
+   *  removed. Equal to `description` when the case was not skipped. */
   readonly name: string;
+  /**
+   * The line's WHOLE description, directive text included. A test name may
+   * itself contain `# SKIP`, which makes the raw line ambiguous
+   * ([TESTING-TAP-AMBIGUITY]); keeping both readings lets `outcomeForLeaf`
+   * break the tie against the names discovery actually found.
+   */
+  readonly description: string;
   readonly ok: boolean;
   readonly comments: string[];
   /** A `# SKIP` directive marked the case skipped ([TESTING-VERDICT]); its
@@ -41,11 +50,13 @@ export interface TapResult {
   readonly skipReason?: string;
 }
 
-/** What a run should report for one leaf test ([TESTING-TAP]). */
+/** What a run should report for one leaf test ([TESTING-TAP]). A skipped
+ *  outcome carries the TAP `# SKIP` reason (possibly empty); `reason` is
+ *  absent entirely when the case never appeared in the run's TAP at all. */
 export type LeafOutcome =
   | { readonly status: "passed" }
   | { readonly status: "failed"; readonly message: string }
-  | { readonly status: "skipped" };
+  | { readonly status: "skipped"; readonly reason?: string };
 
 /** What one finished compiler process looked like. */
 export interface ExecResult {
@@ -136,10 +147,13 @@ export interface TapStream {
 
 // The runtime prints results as exactly `ok N - name` / `not ok N - name`,
 // with an optional ` # SKIP reason` directive on a skipped case ([TESTING-TAP],
-// [TESTING-VERDICT]); the name is everything after "- " up to any directive,
-// captured byte-exact (leading/trailing whitespace preserved) so it matches
-// `--list-tests` names precisely.
-const TAP_RESULT = /^(not )?ok \d+ - (.*?)(?: # SKIP ?(.*))?$/;
+// [TESTING-VERDICT]). The description is captured byte-exact (leading/trailing
+// whitespace preserved) so it matches `--list-tests` names precisely; the
+// directive is split off separately by SKIP_DIRECTIVE below.
+const TAP_RESULT = /^(not )?ok \d+ - (.*)$/;
+// The directive is always LAST on the line, so it is split from the RIGHT: a
+// name that itself contains `# SKIP` keeps all of it ([TESTING-TAP-AMBIGUITY]).
+const SKIP_DIRECTIVE = /^(.*) # SKIP ?(.*)$/;
 const TAP_COMMENT = /^#\s?(.*)$/;
 const TAP_PLAN = /^\d+\.\.\d+$/;
 const TAP_SUMMARY = /^tests=\d+ passed=\d+ failed=\d+/;
@@ -163,12 +177,14 @@ export function parseTapStream(stdout: string): TapStream {
   for (const line of stdout.split(/\r?\n/)) {
     const result = TAP_RESULT.exec(line);
     if (result) {
-      const skipped = result[3] !== undefined;
+      const description = result[2];
+      const directive = SKIP_DIRECTIVE.exec(description);
       results.push({
-        name: result[2],
+        name: directive ? directive[1] : description,
+        description,
         ok: result[1] === undefined,
         comments,
-        ...(skipped ? { skipReason: result[3] } : {}),
+        ...(directive ? { skipReason: directive[2] } : {}),
       });
       comments = [];
     } else if (TAP_PLAN.test(line)) {
@@ -279,13 +295,19 @@ export function outcomeForLeaf(
   name: string,
   results: readonly TapResult[],
 ): LeafOutcome {
-  const matches = results.filter((result) => result.name === name);
+  // A line whose WHOLE description is this case's name is that case's own
+  // result, even when the name contains `# SKIP` — the case ran, and the
+  // directive-looking text is just part of its name ([TESTING-TAP-AMBIGUITY]).
+  // Only when no line matches verbatim is the directive reading believed.
+  const verbatim = results.filter((result) => result.description === name);
+  const split = results.filter((result) => result.name === name);
+  const matches = verbatim.length > 0 ? verbatim : split;
   const result = matches[matches.length - 1];
   if (result === undefined) {
     return { status: "skipped" };
   }
-  if (result.skipReason !== undefined) {
-    return { status: "skipped" };
+  if (verbatim.length === 0 && result.skipReason !== undefined) {
+    return { status: "skipped", reason: result.skipReason };
   }
   if (result.ok) {
     return { status: "passed" };
@@ -294,6 +316,52 @@ export function outcomeForLeaf(
     status: "failed",
     message: result.comments.join("\n") || `Test failed: ${name}`,
   };
+}
+
+/**
+ * A published skip diagnostic: its message, and whether the skip named no
+ * reason and is therefore an error ([TESTING-SKIP-REASON]).
+ */
+export interface SkipReport {
+  readonly message: string;
+  readonly unexplained: boolean;
+}
+
+/**
+ * The Problems-panel diagnostic for a leaf that did not actually run
+ * ([TESTING-SKIP-WARNING]): a case the TAP flagged `# SKIP` (reason included
+ * when it gave one), or a case that silently never appeared in its run's TAP
+ * (filtered out, or removed since discovery — an ignored test either way).
+ * `undefined` for a case that ran: no test skips without a diagnostic, and no
+ * test that ran carries one.
+ *
+ * A case that skipped and named NO reason is `unexplained`, reported at Error
+ * severity ([TESTING-SKIP-REASON]). A case merely absent from the TAP is not:
+ * a filtered run legitimately produces no line for it, so no reason could
+ * exist to demand.
+ */
+export function skipReportFor(
+  name: string,
+  outcome: LeafOutcome,
+): SkipReport | undefined {
+  if (outcome.status !== "skipped") {
+    return undefined;
+  }
+  if (outcome.reason === undefined) {
+    return {
+      message: `Test '${name}' did not run (skipped/ignored)`,
+      unexplained: false,
+    };
+  }
+  return outcome.reason === ""
+    ? {
+        message: `Test '${name}' was skipped with no reason; every skip must name one`,
+        unexplained: true,
+      }
+    : {
+        message: `Test '${name}' was skipped: ${outcome.reason}`,
+        unexplained: false,
+      };
 }
 
 /**

@@ -164,8 +164,8 @@ bumpTwice n =
 deeplyNested : int -> int ! Counter
 deeplyNested n = bumpTwice n
 
-// A handler region at file scope owns its cell exactly as one inside a
-// function does — the spec's own example installs the handler at top level.
+(** A handler region at file scope owns its cell exactly as one inside a
+    function does — the spec's own example installs the handler at top level. *)
 mut topCell = 0
 mut topBumps = 0
 topSum =

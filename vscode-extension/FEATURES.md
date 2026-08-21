@@ -112,6 +112,28 @@ Intelligent autocompletion for:
   source, with each suite's artifacts (`.speedscope.json`, `.cpuprofile`,
   `.folded`, `.profile.json`) kept in a per-run directory named in the output
 
+### Skipped tests are never silent
+
+A test that does not report a real verdict is a hole in your coverage, so the
+extension refuses to let one hide. Every skipped or ignored case raises a
+**warning** — a squiggle on its `test(...)` line and a row in the Problems
+panel — from whichever surface notices it first:
+
+- **As you type**: a case whose body simply returns `Skip` is flagged by the
+  language server the moment the file opens, before anything is run.
+- **When a run reports**: a case that skips at run time (an unmet `assume`, a
+  helper that returns `Skip`) is flagged by the Test Explorer, carrying the
+  reason the run gave.
+- **When a case never ran at all**: a discovered case missing from the run's
+  output — filtered out, or deleted since discovery — is an ignored test, and
+  says so.
+
+The warning names the case and its reason, for example
+`Test 'parked case' was skipped: blocked on #123`. Reviving a case clears its
+warning; re-parking it under a new reason replaces the message rather than
+stacking up a second one. `osprey test` prints the same warnings to stderr, so
+a skip is just as visible in CI as it is in the editor.
+
 ### Test documentation
 
 A `///` block (ML: `(** … *)`) directly above a `test(...)` case documents that

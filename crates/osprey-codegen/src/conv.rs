@@ -85,14 +85,16 @@ pub(crate) fn unbox_from_i64(cg: &mut Codegen, raw: &str, ty: LType) -> Value {
 
 /// A container's uniform `i64` element word recovered at the type its owner tag
 /// records ([`crate::llty::elem_of_tag`]): a `float` element's raw bits become a
-/// `double` operand — never an integer conversion — a `bool` becomes `i1`, and
-/// an untagged element stays the raw word.
-pub(crate) fn from_word(cg: &mut Codegen, raw: impl Into<String>, elem: Option<LType>) -> Value {
+/// `double` operand — never an integer conversion — a `bool` becomes `i1`, a
+/// nested container or record keeps its own owner so it stays usable as one,
+/// and an untagged element stays the raw word.
+pub(crate) fn from_word(cg: &mut Codegen, raw: impl Into<String>, elem: Option<&str>) -> Value {
     let raw = raw.into();
-    match elem {
-        Some(ty) => unbox_from_i64(cg, &raw, ty),
-        None => Value::new(raw, LType::I64),
-    }
+    let Some(tag) = elem else {
+        return Value::new(raw, LType::I64);
+    };
+    let (ty, owner) = crate::llty::elem_of_spelling(tag);
+    unbox_from_i64(cg, &raw, ty).with_owner(owner)
 }
 
 /// Coerce to `double` (promoting an integer operand for mixed arithmetic).

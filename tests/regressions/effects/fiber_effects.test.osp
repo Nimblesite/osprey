@@ -221,7 +221,7 @@ fn awaitReplaysOneEffectfulRunCase() = {
     mut performs = 0
     mut lastAmount = 0
 
-    // One spawn, THREE awaits. The cell walks 0 -> 7 and stops there.
+    /// One spawn, THREE awaits. The cell walks 0 -> 7 and stops there.
     let replayed = handle Tally
         add amount => {
             performs = performs + 1 ?: performs
@@ -237,8 +237,8 @@ fn awaitReplaysOneEffectfulRunCase() = {
         a1 + a2 + a3 ?: 0
     }
 
-    // The identity amount: the run leaves the cell where it was, and both awaits
-    // still answer the total the single body produced. 7 -> 7.
+    /// The identity amount: the run leaves the cell where it was, and both awaits
+    /// still answer the total the single body produced. 7 -> 7.
     let zeroRun = handle Tally
         add amount => {
             performs = performs + 1 ?: performs
@@ -251,7 +251,7 @@ fn awaitReplaysOneEffectfulRunCase() = {
         await(fz) + await(fz) ?: 0
     }
 
-    // A negative amount walks the shared cell back. 7 -> 2.
+    /// A negative amount walks the shared cell back. 7 -> 2.
     let negRun = handle Tally
         add amount => {
             performs = performs + 1 ?: performs
@@ -261,9 +261,9 @@ fn awaitReplaysOneEffectfulRunCase() = {
         }
     in await(spawn tallyJob(0 - 5 ?: 0))
 
-    // Three spawn SITES, each awaited before the next is spawned, so arrival is
-    // program order. "Each spawn site allocates a distinct capture cell", so the
-    // captured `base` cannot bleed between them. 2 -> 6 -> 11 -> 17.
+    /// Three spawn SITES, each awaited before the next is spawned, so arrival is
+    /// program order. "Each spawn site allocates a distinct capture cell", so the
+    /// captured `base` cannot bleed between them. 2 -> 6 -> 11 -> 17.
     let stepped = handle Tally
         add amount => {
             performs = performs + 1 ?: performs
@@ -279,8 +279,8 @@ fn awaitReplaysOneEffectfulRunCase() = {
         s1 * 10000 + s2 * 100 + s3 ?: 0
     }
 
-    // ONE fiber body performing twice, the second nested inside the first arm's
-    // round trip. 17 -> 18 -> 17, and the body answers 18 + 17.
+    /// ONE fiber body performing twice, the second nested inside the first arm's
+    /// round trip. 17 -> 18 -> 17, and the body answers 18 + 17.
     let twice = handle Tally
         add amount => {
             performs = performs + 1 ?: performs
@@ -364,7 +364,7 @@ fn concurrentPerformsKeepTheirOwnAnswersCase() = {
     mut edgeTurns = 0
     mut edgeSum = 0
 
-    // Four DISTINCT tags in flight at once; answers 10, 20, 30, 40.
+    /// Four DISTINCT tags in flight at once; answers 10, 20, 30, 40.
     let weighted = handle Gift
         get tag => {
             turns = turns + 1 ?: turns
@@ -374,8 +374,8 @@ fn concurrentPerformsKeepTheirOwnAnswersCase() = {
         }
     in quadWeighted(1, 2, 3, 4)
 
-    // DUPLICATE tags: four performers ask the same question and each still gets
-    // its own round trip, so the turn count sees all four.
+    /// DUPLICATE tags: four performers ask the same question and each still gets
+    /// its own round trip, so the turn count sees all four.
     let duplicated = handle Gift
         get tag => {
             turns = turns + 1 ?: turns
@@ -385,8 +385,8 @@ fn concurrentPerformsKeepTheirOwnAnswersCase() = {
         }
     in quadWeighted(2, 2, 2, 2)
 
-    // Zero and a negative operand: identity and sign cross the mailbox unchanged.
-    // 0*1 + (-10)*100 + 50*10000 + 0*1000000 = 500000 - 1000 = 499000.
+    /// Zero and a negative operand: identity and sign cross the mailbox unchanged.
+    /// 0*1 + (-10)*100 + 50*10000 + 0*1000000 = 500000 - 1000 = 499000.
     let signed = handle Gift
         get tag => {
             edgeTurns = edgeTurns + 1 ?: edgeTurns
@@ -395,7 +395,7 @@ fn concurrentPerformsKeepTheirOwnAnswersCase() = {
         }
     in quadWeighted(0, 0 - 1 ?: 0, 5, 0)
 
-    // Two performers, one of them the identity tag: 70 + 0.
+    /// Two performers, one of them the identity tag: 70 + 0.
     let pairEdge = handle Gift
         get tag => {
             edgeTurns = edgeTurns + 1 ?: edgeTurns
@@ -404,8 +404,8 @@ fn concurrentPerformsKeepTheirOwnAnswersCase() = {
         }
     in pairSum(7, 0)
 
-    // A fiber that spawns fibers: (30 + 40) from the inner pair, 70 from the
-    // side fiber whose tag is 3 + 4.
+    /// A fiber that spawns fibers: (30 + 40) from the inner pair, 70 from the
+    /// side fiber whose tag is 3 + 4.
     let deepFan = handle Gift
         get tag => {
             edgeTurns = edgeTurns + 1 ?: edgeTurns
@@ -509,8 +509,8 @@ fn handlerCellCrossesTheFiberBoundaryCase() = {
     mut turns = 0
     mut answered = 0
 
-    // main 3, fiber 4, main 5, fiber 6. The cell walks 0 -> 3 -> 7 -> 12 -> 18,
-    // and each perform's own answer is kept in its own positional field.
+    /// main 3, fiber 4, main 5, fiber 6. The cell walks 0 -> 3 -> 7 -> 12 -> 18,
+    /// and each perform's own answer is kept in its own positional field.
     let mixed = handle Tally
         add amount => {
             hops = hops + 1 ?: hops
@@ -526,8 +526,8 @@ fn handlerCellCrossesTheFiberBoundaryCase() = {
         m1 * 1000000 + f1 * 10000 + m2 * 100 + f2 ?: 0
     }
 
-    // A SECOND region over the same captured binding: promotion is to one heap
-    // location, not one per region. 18 -> 22.
+    /// A SECOND region over the same captured binding: promotion is to one heap
+    /// location, not one per region. 18 -> 22.
     let carried = handle Tally
         add amount => {
             hops = hops + 1 ?: hops
@@ -537,8 +537,8 @@ fn handlerCellCrossesTheFiberBoundaryCase() = {
         }
     in await(spawn tallyJob(4))
 
-    // Four fibers in flight into ONE resuming region: a turn is atomic end to
-    // end, so four increments of one cannot collapse into fewer.
+    /// Four fibers in flight into ONE resuming region: a turn is atomic end to
+    /// end, so four increments of one cannot collapse into fewer.
     let raced = handle Gift
         get tag => {
             turns = turns + 1 ?: turns
@@ -547,8 +547,8 @@ fn handlerCellCrossesTheFiberBoundaryCase() = {
         }
     in quadWeighted(2, 3, 5, 0)
 
-    // A third region reads the cell back through the identity amount and never
-    // touches the trail: "code after the region observes the same location".
+    /// A third region reads the cell back through the identity amount and never
+    /// touches the trail: "code after the region observes the same location".
     let readBack = handle Tally
         add amount => {
             hops = hops + 1 ?: hops
@@ -644,8 +644,8 @@ fn channelHandoffKeepsFibersIsolatedCase() = {
     mut sent = 0
     mut trail = ""
 
-    // The producer performs for every value it sends, so the identity arm hands
-    // back exactly what goes into the buffer: 11, 22, 33, 44 in that order.
+    /// The producer performs for every value it sends, so the identity arm hands
+    /// back exactly what goes into the buffer: 11, 22, 33, 44 in that order.
     let drained = handle Tally
         add amount => {
             sent = sent + amount ?: sent
@@ -668,8 +668,8 @@ fn channelHandoffKeepsFibersIsolatedCase() = {
         r1 * 1000000 + r2 * 10000 + r3 * 100 + r4 ?: 0
     }
 
-    // Two fibers, no shared memory: every digit the consumer answers arrived
-    // through the buffer.
+    /// Two fibers, no shared memory: every digit the consumer answers arrived
+    /// through the buffer.
     let ch2 = Channel(3)
     let prod2 = spawn {
         send(ch2, 5)
@@ -685,7 +685,7 @@ fn channelHandoffKeepsFibersIsolatedCase() = {
     await(prod2)
     let consumed = await(cons2)
 
-    // A ONE-slot buffer reused three times, including a negative payload.
+    /// A ONE-slot buffer reused three times, including a negative payload.
     let ping = Channel(1)
     send(ping, 1)
     let p1 = recv(ping)
@@ -764,8 +764,8 @@ fn nestedRegionsPickTheInnermostArmForFibersCase() = {
     mut innerHits = 0
     mut stampHits = 0
 
-    // Inner region supplies `fetch` (tag * 100); `stamp` falls through to the
-    // enclosing one. tag 3 => "outer3" and 300.
+    /// Inner region supplies `fetch` (tag * 100); `stamp` falls through to the
+    /// enclosing one. tag 3 => "outer3" and 300.
     let inner = handle Relay
         fetch tag => {
             outerHits = outerHits + 1 ?: outerHits
@@ -782,7 +782,7 @@ fn nestedRegionsPickTheInnermostArmForFibersCase() = {
         }
     in await(spawn relayBoth(3))
 
-    // The SAME fiber under the enclosing region alone: tag 3 => "outer3" and 6.
+    /// The SAME fiber under the enclosing region alone: tag 3 => "outer3" and 6.
     let outerOnly = handle Relay
         fetch tag => {
             outerHits = outerHits + 1 ?: outerHits
@@ -794,8 +794,8 @@ fn nestedRegionsPickTheInnermostArmForFibersCase() = {
         }
     in await(spawn relayBoth(3))
 
-    // The inner region covers only the fiber spawned INSIDE it; the fiber
-    // spawned after it is back on the enclosing arm. 400 then 8.
+    /// The inner region covers only the fiber spawned INSIDE it; the fiber
+    /// spawned after it is back on the enclosing arm. 400 then 8.
     let restored = handle Relay
         fetch tag => {
             outerHits = outerHits + 1 ?: outerHits
@@ -816,8 +816,8 @@ fn nestedRegionsPickTheInnermostArmForFibersCase() = {
         "${shadowed}/${plain}"
     }
 
-    // Two fibers under one inner region, one carrying the identity tag and one a
-    // negative tag: 0 => 0 and -2 => -200.
+    /// Two fibers under one inner region, one carrying the identity tag and one a
+    /// negative tag: 0 => 0 and -2 => -200.
     let paired = handle Relay
         fetch tag => {
             outerHits = outerHits + 1 ?: outerHits
@@ -930,8 +930,8 @@ fn fiberPipelineTranscriptIsDeterministicCase() = {
     mut forwardTotal = 0
     mut reverseTotal = 0
 
-    // Each stage's amount is the previous stage's answer plus one, so the cell
-    // walks 1, 3, 7, 15 — the 2^n - 1 sequence, and any reordering breaks it.
+    /// Each stage's amount is the previous stage's answer plus one, so the cell
+    /// walks 1, 3, 7, 15 — the 2^n - 1 sequence, and any reordering breaks it.
     let piped = handle Tally
         add amount => {
             steps = steps + 1 ?: steps
@@ -947,8 +947,8 @@ fn fiberPipelineTranscriptIsDeterministicCase() = {
         a * 1000000 + b * 10000 + c * 100 + d ?: 0
     }
 
-    // A yield BETWEEN two performs in one fiber body: the parked value is handed
-    // straight back, so the second perform adds 20 to the 20 the first answered.
+    /// A yield BETWEEN two performs in one fiber body: the parked value is handed
+    /// straight back, so the second perform adds 20 to the 20 the first answered.
     let yielded = handle Tally
         add amount => {
             steps = steps + 1 ?: steps
@@ -958,7 +958,7 @@ fn fiberPipelineTranscriptIsDeterministicCase() = {
         }
     in await(spawn yieldedJob(5))
 
-    // 40 - 35 = 5, and the completion probe must read 1 once the await returned.
+    /// 40 - 35 = 5, and the completion probe must read 1 once the await returned.
     let probe = handle Tally
         add amount => {
             steps = steps + 1 ?: steps
@@ -972,7 +972,7 @@ fn fiberPipelineTranscriptIsDeterministicCase() = {
         v * 10 + fiberDone(f) ?: 0
     }
 
-    // The same three amounts forwards: prefix sums 2, 6, 12 => 20.
+    /// The same three amounts forwards: prefix sums 2, 6, 12 => 20.
     let fwd = handle Tally
         add amount => {
             forwardTotal = forwardTotal + amount ?: forwardTotal
@@ -985,8 +985,8 @@ fn fiberPipelineTranscriptIsDeterministicCase() = {
         x1 + x2 + x3 ?: 0
     }
 
-    // ...and backwards: prefix sums 6, 10, 12 => 28. The TOTAL is order-blind,
-    // the prefix sums are not, which is exactly why a sum alone proves nothing.
+    /// ...and backwards: prefix sums 6, 10, 12 => 28. The TOTAL is order-blind,
+    /// the prefix sums are not, which is exactly why a sum alone proves nothing.
     let rev = handle Tally
         add amount => {
             reverseTotal = reverseTotal + amount ?: reverseTotal
@@ -1048,7 +1048,7 @@ fn fiberPipelineTranscriptIsDeterministicCase() = {
         steps != 6,
         probe != 50,
         probe != 1,
-        yielded > probe,
+        probe > yielded,
         (running + 35 ?: 0) == 40
     ])
 

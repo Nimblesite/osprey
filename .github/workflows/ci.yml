@@ -361,7 +361,10 @@ jobs:
           # dropped on the floor. A 12-line hand-written module that writes,
           # grows and writes again reproduces it with no Osprey involved; Node
           # 24 is the first release that runs both it and the assertion corpus
-          # clean. scripts/wasm-smoke.mjs refuses to run on anything older.
+          # clean. scripts/wasm-smoke.mjs relaunches itself under a sound
+          # interpreter when the host's is older, and refuses only when no
+          # such interpreter exists — pinning 24 here keeps the runner on the
+          # direct path rather than the fallback.
           node-version: '24'
 
       - name: Install Rust (stable)

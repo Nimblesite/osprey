@@ -136,9 +136,8 @@ ordinary wasm linear memory.
 The CI `wasm` job runs the validate, Node-WASI, browser-shim, and golden-harness
 checks with a pinned WASI sysroot.
 
-Every check that *runs* a module under `node:wasi` requires **Node 24 or newer**,
-and `scripts/wasm-smoke.mjs` refuses to start on anything older. Before 24 that
-host caches the module's memory backing store when the instance starts and never
+Every check that *runs* a module under `node:wasi` requires **Node 24 or newer**.
+Before 24 that host caches the module's memory backing store when the instance starts and never
 refreshes it after `memory.grow`, so each WASI call a growing module makes
 afterwards touches freed memory: on x86_64 a SIGSEGV inside node — no stderr, no
 wasm trap — and where the stale page is still mapped, the module's output is
@@ -147,3 +146,13 @@ and writes again reproduces it, so the constraint is the host's, not this
 target's. `scripts/wasm-browser-smoke.mjs` reads the memory afresh per call and
 runs on any supported Node, which is what makes it a second, independent oracle
 rather than a copy of the first.
+
+**`[WASM-TARGET-NODE]`** The version rule lives in exactly one place:
+`scripts/wasm-smoke.mjs` re-executes itself under a sound interpreter when the
+one it was started with is too old — `OSPREY_NODE` when set, else the newest
+qualifying `~/.nvm` install — and fails with the defect's own explanation only
+when no such interpreter exists. Every caller therefore invokes a plain `node`:
+the `Makefile` targets, the CI workflow, `crates/run_test_corpus.sh` and
+osprey-cli's wasm end-to-end test carry no version logic of their own, so none
+of them can drift from this one. A relaunched child is marked in its
+environment, so a second too-old hop fails loudly rather than recursing.

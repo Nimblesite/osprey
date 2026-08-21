@@ -39,10 +39,16 @@ suite("Test Explorer parsing", () => {
       assert.deepStrictEqual(parseTapOutput(stream), [
         {
           name: "bad math",
+          description: "bad math",
           ok: false,
           comments: ["expect failed: expected 3, got 2"],
         },
-        { name: "good math", ok: true, comments: [] },
+        {
+          name: "good math",
+          description: "good math",
+          ok: true,
+          comments: [],
+        },
       ]);
     });
 
@@ -50,8 +56,13 @@ suite("Test Explorer parsing", () => {
       const stream =
         "program output\r\n# first\r\n# second\r\nnot ok 1 - x\r\nok 2 - y\r\n1..2\r\n";
       assert.deepStrictEqual(parseTapOutput(stream), [
-        { name: "x", ok: false, comments: ["first", "second"] },
-        { name: "y", ok: true, comments: [] },
+        {
+          name: "x",
+          description: "x",
+          ok: false,
+          comments: ["first", "second"],
+        },
+        { name: "y", description: "y", ok: true, comments: [] },
       ]);
     });
 
@@ -78,15 +89,51 @@ suite("Test Explorer parsing", () => {
         "ok 1 - runs\nok 2 - precondition unmet # SKIP not on a full moon\nok 3 - bare skip # SKIP\n1..3\n",
       );
       assert.deepStrictEqual(results, [
-        { name: "runs", ok: true, comments: [] },
+        { name: "runs", description: "runs", ok: true, comments: [] },
         {
           name: "precondition unmet",
+          description: "precondition unmet # SKIP not on a full moon",
           ok: true,
           comments: [],
           skipReason: "not on a full moon",
         },
-        { name: "bare skip", ok: true, comments: [], skipReason: "" },
+        {
+          name: "bare skip",
+          description: "bare skip # SKIP",
+          ok: true,
+          comments: [],
+          skipReason: "",
+        },
       ]);
+    });
+
+    // [TESTING-TAP-AMBIGUITY] a test NAME may itself contain `# SKIP`. The
+    // directive is always LAST, so the split is taken from the right and the
+    // whole description is kept for the tie-break in outcomeForLeaf.
+    test("a name containing the directive keeps it, splitting only the trailing directive", () => {
+      const results = parseTapOutput(
+        [
+          "ok 1 - name with # SKIP inside it",
+          "ok 2 - name with # SKIP inside it # SKIP really parked",
+          "1..2",
+          "",
+        ].join("\n"),
+      );
+      // The parser is name-agnostic: it cannot know whether `# SKIP inside it`
+      // is a directive or part of the name, so it records BOTH readings and
+      // leaves the tie-break to outcomeForLeaf, which knows the real names.
+      assert.strictEqual(results[0].description, "name with # SKIP inside it");
+      assert.strictEqual(results[0].name, "name with");
+      assert.strictEqual(results[0].skipReason, "inside it");
+      assert.strictEqual(results[0].ok, true);
+      // The genuinely skipped case: only the LAST directive is split off, so
+      // the name keeps its embedded `# SKIP` verbatim.
+      assert.strictEqual(results[1].name, "name with # SKIP inside it");
+      assert.strictEqual(results[1].skipReason, "really parked");
+      assert.strictEqual(
+        results[1].description,
+        "name with # SKIP inside it # SKIP really parked",
+      );
     });
 
     test("parseTapStream reports the plan line and stray trailing diagnostics", () => {
@@ -184,11 +231,21 @@ suite("Test Explorer parsing", () => {
 
     test("outcomeForLeaf maps pass, fail, fallback message, absent, and duplicates", () => {
       const results = [
-        { name: "p", ok: true, comments: [] },
-        { name: "f", ok: false, comments: ["expected 3, got 2", "second"] },
-        { name: "bare", ok: false, comments: [] },
-        { name: "dup", ok: true, comments: [] },
-        { name: "dup", ok: false, comments: ["later loss"] },
+        { name: "p", description: "p", ok: true, comments: [] },
+        {
+          name: "f",
+          description: "f",
+          ok: false,
+          comments: ["expected 3, got 2", "second"],
+        },
+        { name: "bare", description: "bare", ok: false, comments: [] },
+        { name: "dup", description: "dup", ok: true, comments: [] },
+        {
+          name: "dup",
+          description: "dup",
+          ok: false,
+          comments: ["later loss"],
+        },
       ];
       assert.deepStrictEqual(outcomeForLeaf("p", results), {
         status: "passed",
@@ -211,17 +268,63 @@ suite("Test Explorer parsing", () => {
       const results = [
         {
           name: "s",
+          description: "s # SKIP precondition not met",
           ok: true,
           comments: [],
           skipReason: "precondition not met",
         },
-        { name: "t", ok: true, comments: [], skipReason: "" },
+        { name: "t", description: "t # SKIP", ok: true, comments: [], skipReason: "" },
       ];
+      // The `# SKIP` reason rides along so the warning diagnostic can carry
+      // it ([TESTING-SKIP-WARNING]); an empty directive keeps an empty reason.
       assert.deepStrictEqual(outcomeForLeaf("s", results), {
         status: "skipped",
+        reason: "precondition not met",
       });
       assert.deepStrictEqual(outcomeForLeaf("t", results), {
         status: "skipped",
+        reason: "",
+      });
+    });
+
+    // [TESTING-TAP-AMBIGUITY] the tie-break: a leaf whose NAME contains
+    // `# SKIP` and whose line matches VERBATIM ran; it is never reported as
+    // skipped just because its name looks like a directive.
+    test("outcomeForLeaf prefers a verbatim description over the directive reading", () => {
+      const ambiguous = "name with # SKIP inside it";
+      const passed = [
+        { name: "name with", description: ambiguous, ok: true, comments: [] },
+      ];
+      assert.deepStrictEqual(outcomeForLeaf(ambiguous, passed), {
+        status: "passed",
+      });
+      // A FAILING case with the same shape is a failure, not a skip.
+      const failed = [
+        {
+          name: "name with",
+          description: ambiguous,
+          ok: false,
+          comments: ["expect failed: expected 2, got 1"],
+        },
+      ];
+      assert.deepStrictEqual(outcomeForLeaf(ambiguous, failed), {
+        status: "failed",
+        message: "expect failed: expected 2, got 1",
+      });
+      // The same name genuinely skipped: no verbatim line exists, so the
+      // directive reading wins and the reason survives.
+      const skipped = [
+        {
+          name: ambiguous,
+          description: `${ambiguous} # SKIP really parked`,
+          ok: true,
+          comments: [],
+          skipReason: "really parked",
+        },
+      ];
+      assert.deepStrictEqual(outcomeForLeaf(ambiguous, skipped), {
+        status: "skipped",
+        reason: "really parked",
       });
     });
 

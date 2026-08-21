@@ -414,7 +414,7 @@ fn typedElementRetrievalCase() = {
         !contains(listGet(words, 1) ?: "none", "alpha"),
         startsWith(listGet(words, 2) ?: "none", "gam"),
         endsWith(listGet(words, 2) ?: "none", "mma"),
-        toUpper(listGet(words, 0) ?: "none") == "ALPHA",
+        toUpperCase(listGet(words, 0) ?: "none") == "ALPHA",
         (listGet(words, 3) ?: "past end") == "past end",
         (listGet(words, 99) ?: "past end") == "past end",
         (words[3] ?: "past end") == "past end"

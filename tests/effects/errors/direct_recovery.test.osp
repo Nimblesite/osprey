@@ -988,7 +988,9 @@ fn recursiveAccumulationCase() = {
     // doubling policy over the same body yields exactly twice that.
     checkAll("recursion past the thirty-two level boundary", [
         deepTotal == 561,
-        deepTotal == (33 * 34 / 2 ?: 0),
+        // `/` is always float division [ARITH-CHECKED], so the integer
+        // half-sum goes through `intDiv`.
+        deepTotal == (intDiv(33 * 34 ?: 0, 2) ?: 0),
         deepVisits == 33,
         deepVisits > 32,
         doubled == 1122,

@@ -186,6 +186,12 @@ fn emit_closure_fn(
     let (param_tys, ret_ty, ret_inner, _) = sig;
     let (ret_spelling, _) = spelling(sig);
     let saved = cg.enter_nested_fn();
+    // Cell promotion is per lowered body and `enter_nested_fn` cleared the
+    // host's set. Without repopulating it, a `mut` this closure declares and a
+    // handler arm inside it captures stays an unpromoted local: the arm writes a
+    // private copy and the read after the `handle` returns the initial value
+    // ([EFFECTS-HANDLER-STATE]).
+    cg.cell_vars = crate::effects::captured_mut_vars(body);
     reload_captures(cg, cell_ty, caps);
     let mut params = vec![(LType::Ptr, String::from("__env"))];
     params.extend(bind_params_from(cg, parameters, param_tys, 0));
@@ -330,6 +336,31 @@ pub(crate) fn coerce_typed_args(
     Ok(typed)
 }
 
+/// Coerce arguments for a call through a CLOSURE slot, which is typed but
+/// UNTAGGED. A flat list literal handed through one arrives as
+/// `{ i64 length, i8* data }` while the body reads it as an `OspreyList`
+/// handle, so `osprey_list_length` read a foreign header and the walk that
+/// followed segfaulted — the literal must escape to the runtime layout first
+/// ([`crate::listlit::escaping`]).
+///
+/// A monomorphised generic is the OPPOSITE case and must NOT come through
+/// here: [`crate::monofn`] builds the instantiation's signature FROM the
+/// argument values and carries each one's owner tag into the body, so its flat
+/// slot is real. Escaping there handed the callee an `OspreyList` handle
+/// against a signature that reads `{ i64, i8* }` out of it — a garbage length
+/// and a garbage data pointer, and the same segfault one level up.
+pub(crate) fn coerce_closure_args(
+    cg: &mut Codegen,
+    sig: &FnSig,
+    args: Vec<Value>,
+) -> Result<Vec<String>> {
+    let escaped = args
+        .into_iter()
+        .map(|a| crate::listlit::escaping(cg, a))
+        .collect();
+    coerce_typed_args(cg, sig, escaped)
+}
+
 /// Evaluate argument expressions, coerce them to the signature, and call
 /// through the closure handle.
 pub(crate) fn cell_call_exprs(
@@ -342,7 +373,7 @@ pub(crate) fn cell_call_exprs(
     for e in exprs {
         vals.push(gen_expr(cg, e)?);
     }
-    let typed = coerce_typed_args(cg, sig, vals)?;
+    let typed = coerce_closure_args(cg, sig, vals)?;
     Ok(cell_call(cg, handle, sig, &typed))
 }
 

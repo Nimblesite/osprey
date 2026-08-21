@@ -220,6 +220,40 @@ test.describe("mobile interactions", () => {
   });
 });
 
+test.describe("documentation sub-page navigation", () => {
+  test("groups subpages on desktop and remains available on mobile", async ({ browser }) => {
+    const desktop = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+    await desktop.goto("/docs/web-apps/");
+
+    await expect(desktop.locator(".prose-layout .prose")).toBeVisible();
+    const navigation = desktop.locator(".toc-aside .docs-nav-desktop");
+    await expect(navigation).toBeVisible();
+    await expect(navigation.locator(".docs-nav-section-title")).toHaveText([
+      "Start here",
+      "Build applications",
+      "Language",
+      "Reference",
+    ]);
+    await expect(navigation.getByRole("link", { name: "Web apps" })).toHaveClass(/active/);
+
+    const mobile = await browser.newPage({ viewport: { width: 390, height: 844 } });
+    await mobile.goto("/docs/web-apps/");
+    const mobileNavigation = mobile.locator(".docs-nav-mobile");
+    await expect(mobileNavigation).toBeVisible();
+    await mobileNavigation.locator("summary").click();
+    await expect(mobileNavigation.getByRole("link", { name: "My First App" })).toBeVisible();
+
+    await desktop.close();
+    await mobile.close();
+  });
+
+  test("keeps the single-file first app tutorial in Default flavor", async ({ page }) => {
+    await page.goto("/docs/my-first-app/");
+    await expect(page.locator('.prose pre[data-flavor="default"]')).not.toHaveCount(0);
+    await expect(page.locator('.prose pre[data-flavor="ml"]')).toHaveCount(0);
+  });
+});
+
 test.describe("blog search and social metadata", () => {
   const path = "/blog/2026-07-25-semver-is-all-lies-please-stop/";
   const image = "https://www.ospreylang.dev/assets/images/blog/semver-is-all-lies-please-stop.png";

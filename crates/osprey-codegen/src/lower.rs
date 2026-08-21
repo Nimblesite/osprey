@@ -98,6 +98,9 @@ fn compile_program_with_options(program: &Program, options: CodegenOptions) -> R
     let read_by_functions = crate::globals::read_by_functions(program);
     let top_level_cells = crate::globals::cell_names(&top_level, &read_by_functions);
     crate::globals::seed(&mut cg, program, &top_level_cells, &read_by_functions)?;
+    // A binding with no runtime value resolves by name instead, so its tables
+    // must be populated before the readers are emitted too ([`crate::stmt`]).
+    crate::stmt::seed_name_bindings(&mut cg, program, &read_by_functions);
     for stmt in &program.statements {
         match stmt {
             // A generic function is specialised by inlining at each call site

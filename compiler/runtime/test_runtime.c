@@ -99,9 +99,13 @@ void osp_test_end(const char *name) {
         tests_failed += 1;
         printf("not ok %lld - %s\n", (long long)tests_run, name);
     } else if (case_skipped != 0) {
+        /* A reasonless skip prints a BARE `# SKIP` — no trailing space. TAP
+           consumers split the directive off the description, and a line ending
+           in whitespace is both invalid to diff against a golden and stripped
+           by every editor that touches one [TESTING-TAP]. */
         tests_skipped += 1;
-        printf("ok %lld - %s # SKIP %s\n", (long long)tests_run, name,
-               skip_reason);
+        printf("ok %lld - %s # SKIP%s%s\n", (long long)tests_run, name,
+               skip_reason[0] == '\0' ? "" : " ", skip_reason);
     } else {
         printf("ok %lld - %s\n", (long long)tests_run, name);
     }

@@ -301,6 +301,23 @@ in run()
 // Reads the live cell and the finished total, from outside the entry.
 fn summary() = "${hits} hits, total ${total}"
 ```
+A binding whose value is a GENERIC function is the one case with no module
+storage at all. A generic definition has no single machine-level shape, so it
+exists only as a body each call site specialises
+([TYPE-GENERICS-FN](0004-TypeSystem.md)); binding it produces no runtime value
+to store. `let alias = identity` and `let idl = |x| => x` therefore resolve by
+NAME, and a function that calls one specialises the same body its own arguments
+fix. Every such call site is independent: the binding is not narrowed to
+whichever type the first caller used.
+
+```osprey
+fn identity(x) = x
+let alias = identity
+
+// Specialised twice from one binding, before the entry runs a statement.
+fn round(n) = alias(n)
+fn label(s) = alias(s)
+```
 
 ## Project Assembly `[MODULES-PROJECT]`
 

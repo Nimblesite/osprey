@@ -1,3 +1,10 @@
 ok 1 - resume rewrites values across scalar, Result, and generic effects
-1..1
-# tests=1 passed=1 failed=0 skipped=0
+ok 2 - resume substitutes exactly the value each arm supplied
+ok 3 - post-resume adjustments compose into the region answer
+ok 4 - resume carries integer and float payloads
+ok 5 - resume carries boolean and Unit payloads
+ok 6 - resume carries string record and Result payloads
+ok 7 - resume reaches a perform four frames deep
+ok 8 - twelve performs in one region each settle once
+1..8
+# tests=8 passed=8 failed=0 skipped=0

@@ -56,13 +56,20 @@ let aborted = handle Step
 in pipeline()
 print("aborted result=" + toString(aborted))
 
-/// An abandoning arm answers for the WHOLE `handle`, so it is the arm's value
-/// that must match the handled expression's type. The operation's declared
-/// result is never produced — the `perform` asking for it never returns — so
-/// `stop` may answer a `string` while declaring `int`. Reconciling the two is
-/// inference's job, not codegen's: by the time codegen sees an arm value, the
-/// erased machine word an `any` travels in is indistinguishable from an `int`,
-/// so a shape test there would reject valid programs and miss invalid ones.
+/// A BRANCH of a resuming arm that returns without resuming abandons the
+/// continuation and answers for the WHOLE `handle`, so it is that branch's
+/// value which must match the handled expression's type. The operation's
+/// declared result is never produced — the `perform` asking for it never
+/// returns — so `stop` may answer a `string` while declaring `int`. Reconciling
+/// the two is inference's job, not codegen's: by the time codegen sees an arm
+/// value, the erased machine word an `any` travels in is indistinguishable from
+/// an `int`, so a shape test there would reject valid programs and miss invalid
+/// ones.
+///
+/// The `resume` in the untaken branch is what makes this arm a resuming one.
+/// Without it the arm SUBSTITUTES — its value would fill `stop`'s declared
+/// `int` and the pipeline would run on — because handler mode is per arm, not
+/// per region (issue #177, `resume_abort_early_exit.test.osp`).
 /// [EFFECTS-HANDLER-ARMS]
 effect Mixed {
     scale: fn(int) -> int
@@ -77,7 +84,10 @@ fn mixedPipeline() -> string !Mixed = {
 
 let stoppedAnswer = handle Mixed
     scale x => resume((x * 2) ?: 0)
-    stop => "stopped"
+    stop => match true {
+        true => "stopped"
+        false => resume(0)
+    }
 in mixedPipeline()
 
 print("mixed answer: ${stoppedAnswer}")

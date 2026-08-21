@@ -329,7 +329,7 @@ fn retryBudgetExhaustionCase() = {
         }
     in acceptPositive(1)
 
-    // A generous budget the loop never reaches: success arrives on attempt 3.
+    /// A generous budget the loop never reaches: success arrives on attempt 3.
     mut calls5 = 0
     mut trail5 = ""
     mut settled5 = ""
@@ -768,8 +768,8 @@ fn retryScriptedCandidateMatrixCase() = {
         }
     in acceptPositive(1)
 
-    // A sparse table: the three missing keys take the declared `Error` branch,
-    // whose message length is the negative candidate that asks again.
+    /// A sparse table: the three missing keys take the declared `Error` branch,
+    /// whose message length is the negative candidate that asks again.
     let sparse = mapSet(Map(), "4", 5555)
     mut sparseCalls = 0
     mut sparseTrail = ""
@@ -785,7 +785,7 @@ fn retryScriptedCandidateMatrixCase() = {
         }
     in acceptPositive(1)
 
-    // Boundary candidates: zero, minus one, then the smallest accepted value.
+    /// Boundary candidates: zero, minus one, then the smallest accepted value.
     mut boundaryCalls = 0
     mut boundaryTrail = ""
     let fromBoundary = handle Retry

@@ -773,7 +773,17 @@ impl Analyzer<'_> {
                 return Some(value);
             }
         }
-        let Some(Callable::Known(known)) = self.callable(function, scope, env) else {
+        // A PARTIAL application of a parameter is still that parameter being
+        // invoked: `f a b` curries to `Call(Call(f, [a]), [b])`
+        // ([FLAVOR-ML-CURRY]), and the effect requirement belongs to `f`
+        // whichever spelling reaches here. Dropping the callable at the inner
+        // call left the outer one with a `Call` head, which no rule can name,
+        // so the whole entry was reported unprovable.
+        let resolved = self.callable(function, scope, env);
+        if let Some(parameter @ Callable::Parameter { .. }) = resolved {
+            return Some(Value::from_callable(parameter));
+        }
+        let Some(Callable::Known(known)) = resolved else {
             // The RESULT of a call we cannot resolve is not thereby a callable.
             // This branch catches every builtin without a modelled value
             // (`print`, `listAppend`, …), whose result is plain data; calling

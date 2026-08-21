@@ -151,7 +151,9 @@ partialHandlerDelegationCase () =
         lastNoted == 8,
         (5 + 8 ?: 0) == 13,
         (7 + 8 ?: 0) == 15,
-        total == (5 + 7 ?: 0) + (8 + 8 ?: 0) ?: 0,
+        // `?:` is the LOWEST precedence and right-associative, so the whole
+        // sum needs its own parentheses to sit under the `==` [SYNTAX].
+        total == ((5 + 7 ?: 0) + (8 + 8 ?: 0) ?: 0),
         outerAudits == 2,
         auditLog != "",
         auditLog != "record:5|",

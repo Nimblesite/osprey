@@ -38,9 +38,9 @@ pub(crate) fn gen(
         "checkAll" => gen_all(cg, &args, true).map(Some),
         "checkTrue" => gen_bool_expect(cg, &args, true, Some("checkTrue")).map(Some),
         "checkFalse" => gen_bool_expect(cg, &args, false, Some("checkFalse")).map(Some),
-        "reportPass" => gen_report(cg, "osp_test_pass", None).map(Some),
-        "reportFail" => gen_report(cg, "osp_test_fail", args.first().copied()).map(Some),
-        "reportSkip" => gen_report(cg, "osp_test_skip", args.first().copied()).map(Some),
+        "reportPass" => Ok(Some(gen_pass_report(cg))),
+        "reportFail" => gen_reason_report(cg, "osp_test_fail", args.first().copied()).map(Some),
+        "reportSkip" => gen_reason_report(cg, "osp_test_skip", args.first().copied()).map(Some),
         _ => Ok(None),
     }
 }
@@ -77,6 +77,15 @@ fn gen_test(cg: &mut Codegen, args: &[&Expr]) -> Result<Value> {
     Ok(Value::unit())
 }
 
+/// The report primitive each `Verdict` state drives. `Pass` takes no reason —
+/// `osp_test_pass` has nothing to say — so only the two failing states read a
+/// payload [TESTING-VERDICT].
+const VERDICT_REPORTS: [(&str, &str, bool); 3] = [
+    ("Pass", "reportPass", false),
+    ("Fail", "reportFail", true),
+    ("Skip", "reportSkip", true),
+];
+
 /// Drive a `Verdict`-returning case body into the TAP runtime: pattern-match the
 /// value and call exactly one report primitive [TESTING-VERDICT]. A body that is
 /// not a `Verdict` (the Default flavor's Unit-returning imperative case) reports
@@ -85,32 +94,82 @@ fn report_verdict(cg: &mut Codegen, body: &Value) -> Result<()> {
     if body.osp_ty.as_deref() != Some(VERDICT_TY) {
         return Ok(());
     }
+    let arms = verdict_arms(cg)?;
     let subject = format!("__verdict.{}", cg.fresh_label());
     cg.bind(subject.clone(), body.clone());
-    let arms = vec![
-        verdict_arm("Pass", &[], "reportPass", None),
-        verdict_arm("Fail", &["reason"], "reportFail", Some("reason")),
-        verdict_arm("Skip", &["why"], "reportSkip", Some("why")),
-    ];
     let _ = crate::pattern::gen_match(cg, &Expr::Identifier(subject), &arms)?;
     Ok(())
 }
 
-/// One `Verdict` arm: `Ctor field => reportFn(field)` (or `Ctor => reportFn()`).
-fn verdict_arm(ctor: &str, fields: &[&str], report_fn: &str, arg: Option<&str>) -> MatchArm {
-    MatchArm {
+/// One arm per state the program's OWN `Verdict` declares. Reading the
+/// declaration — instead of assuming `Fail(reason)` and `Skip(why)` — is what
+/// lets a payload-free state compile: the synthesized pattern binds exactly the
+/// fields that exist, so `Skip` with no reason reports none rather than failing
+/// codegen on an invented binder. Implements [TESTING-VERDICT].
+fn verdict_arms(cg: &Codegen) -> Result<Vec<MatchArm>> {
+    let states = cg.union_variants(VERDICT_TY).ok_or_else(|| {
+        CodegenError::unsupported(format!(
+            "a test case answering `{VERDICT_TY}` needs a `type {VERDICT_TY}` union with Pass, Fail and Skip states"
+        ))
+    })?;
+    states
+        .to_vec()
+        .iter()
+        .map(|state| verdict_arm(cg, state))
+        .collect()
+}
+
+/// One `Verdict` arm: `Ctor reason => reportFn(reason)` when the state declares
+/// a payload, `Ctor => reportFn()` when it declares none.
+fn verdict_arm(cg: &Codegen, state: &str) -> Result<MatchArm> {
+    let (report_fn, takes_reason) = verdict_report(state)?;
+    let binder: Vec<String> = takes_reason
+        .then(|| verdict_reason(cg, state))
+        .transpose()?
+        .flatten()
+        .into_iter()
+        .collect();
+    Ok(MatchArm {
         pattern: Pattern::Constructor {
-            name: ctor.to_string(),
-            fields: fields.iter().map(|f| (*f).to_string()).collect(),
+            name: state.to_string(),
+            fields: binder.clone(),
             sub_patterns: Vec::new(),
         },
         body: Expr::Call {
             function: Box::new(Expr::Identifier(report_fn.to_string())),
-            arguments: arg
-                .map(|a| vec![Expr::Identifier(a.to_string())])
-                .unwrap_or_default(),
+            arguments: binder.into_iter().map(Expr::Identifier).collect(),
             named_arguments: Vec::new(),
         },
+    })
+}
+
+/// The report primitive a `Verdict` state drives, and whether it carries a
+/// reason. A state `test` has no primitive for is named in the rejection rather
+/// than reaching pattern lowering as a binder nobody wrote.
+fn verdict_report(state: &str) -> Result<(&'static str, bool)> {
+    VERDICT_REPORTS
+        .iter()
+        .find(|(name, _, _)| *name == state)
+        .map(|(_, report_fn, takes_reason)| (*report_fn, *takes_reason))
+        .ok_or_else(|| {
+            CodegenError::unsupported(format!(
+                "`test` reports only the Pass, Fail and Skip states of `{VERDICT_TY}`; it has no report for `{state}`"
+            ))
+        })
+}
+
+/// The single field a failing `Verdict` state carries, whatever the declaration
+/// spells it, or `None` when it carries no payload. A state with several fields
+/// has no one reason to report, so say that rather than silently picking one.
+fn verdict_reason(cg: &Codegen, state: &str) -> Result<Option<String>> {
+    let fields = cg.ctor_layout(state).map(|c| c.fields).unwrap_or_default();
+    match fields.as_slice() {
+        [] => Ok(None),
+        [(only, _)] => Ok(Some(only.clone())),
+        many => Err(CodegenError::unsupported(format!(
+            "`{VERDICT_TY}` state `{state}` declares {} fields; `test` reports a single reason",
+            many.len()
+        ))),
     }
 }
 
@@ -215,20 +274,30 @@ fn gen_bool_expect(
     ))
 }
 
-/// `reportPass()` / `reportFail(reason)` / `reportSkip(reason)`: the effect
-/// boundary of the pure ML-flavor `Verdict` model — the library pattern-matches
-/// a `Verdict` and calls exactly one of these to record it with the runtime
-/// [TESTING-VERDICT]. Returns Unit; the reason (when present) lowers to a
-/// canonical string like any assertion operand.
-fn gen_report(cg: &mut Codegen, runtime_fn: &str, reason: Option<&Expr>) -> Result<Value> {
+/// `reportPass()`: the one report primitive with nothing to say — `osp_test_pass`
+/// takes no arguments [TESTING-VERDICT].
+fn gen_pass_report(cg: &mut Codegen) -> Value {
     cg.testing_used = true;
-    match reason {
-        None => cg.call_void(runtime_fn, "", &[]),
-        Some(expr) => {
-            let r = eval_to_string(cg, expr)?;
-            cg.call_void(runtime_fn, "i8*", &[&r.operand]);
-        }
-    }
+    cg.call_void("osp_test_pass", "", &[]);
+    Value::unit()
+}
+
+/// `reportFail(reason)` / `reportSkip(reason)`: the effect boundary of the pure
+/// ML-flavor `Verdict` model — the library pattern-matches a `Verdict` and calls
+/// exactly one report primitive to record it with the runtime [TESTING-VERDICT].
+/// The reason lowers to a canonical string like any assertion operand.
+///
+/// A state whose declaration carries no payload passes an explicit `null`, which
+/// both primitives read as "no reason given". Calling the one-argument C function
+/// with no argument instead left its reason register holding whatever the caller
+/// last put there, and `osp_test_skip` then formatted that as a string.
+fn gen_reason_report(cg: &mut Codegen, runtime_fn: &str, reason: Option<&Expr>) -> Result<Value> {
+    cg.testing_used = true;
+    let operand = match reason {
+        None => "null".to_string(),
+        Some(expr) => eval_to_string(cg, expr)?.operand,
+    };
+    cg.call_void(runtime_fn, "i8*", &[&operand]);
     Ok(Value::unit())
 }
 

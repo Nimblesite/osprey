@@ -30,8 +30,8 @@ accepted =
     in readPositive "age"
 print "SCENARIO 1 accepted=${toString accepted} after ${toString attempt} attempts"
 
-mut tries = 0
 (** After three invalid values, return a sentinel without resuming. *)
+mut tries = 0
 outcome =
     handle Prompt
         ask label =>
@@ -51,7 +51,7 @@ verdict = match outcome > 0
     false => "gave up (sentinel ${toString outcome}) after ${toString (tries - 1)} bad answers"
 print "SCENARIO 2 outcome: ${verdict}"
 
-// Verify successful retries and the non-resuming early-exit policy.
+// Verifies successful retries and the non-resuming early-exit policy.
 test "retry handlers resume until success or abort at their limit" (\() => checkAll "retry outcomes" [
     accepted == 7,
     attempt == 3,
@@ -59,3 +59,1133 @@ test "retry handlers resume until success or abort at their limit" (\() => check
     tries == 4,
     contains verdict "after Success(3) bad answers"
 ])
+
+// ---------------------------------------------------------------------------
+// Retry permutation matrices. Everything below is silent: a retry loop is
+// observed through handler-owned `mut` cells ([EFFECTS-HANDLER-STATE]) and
+// through the answer `resume` hands back ([EFFECTS-RESUME]), never stdout.
+// ---------------------------------------------------------------------------
+
+(** Retry drives the same silent validation loop under every handler policy below. *)
+effect Retry
+    (** Supply the candidate for `attempt`; a non-positive answer asks again. *)
+    supply : int => int
+
+(** Silent twin of `readPositive`: each rejected candidate causes a fresh operation. *)
+acceptPositive attempt =
+    candidate = perform Retry.supply attempt
+    match candidate > 0
+        true => candidate
+        false => acceptPositive ((attempt + 1) ?: attempt)
+
+(** [EFFECTS-RESUME] The handler alone decides how many rejections precede
+    success, so one body crosses the retry-count axis 0, 1, 2 and 8. Each arm
+    records what it issued before `resume` and what the resumed computation
+    answered afterwards, which pins both the issue order and the LIFO unwind. *)
+retryAttemptMatrixCase () =
+    mut callsA = 0
+    mut issuedA = ""
+    mut settledA = ""
+    acceptedA =
+        handle Retry
+            supply n =>
+                callsA := callsA + 1 ?: callsA
+                candidate = (n * 100) ?: 0
+                issuedA := "${issuedA}${toString n}:${toString candidate}|"
+                answer = resume candidate
+                settledA := "${settledA}${toString n}:${toString answer}|"
+                answer
+        in acceptPositive 1
+
+    mut callsB = 0
+    mut issuedB = ""
+    mut settledB = ""
+    acceptedB =
+        handle Retry
+            supply n =>
+                callsB := callsB + 1 ?: callsB
+                candidate = match n
+                    1 => 0
+                    _ => 200
+                issuedB := "${issuedB}${toString n}:${toString candidate}|"
+                answer = resume candidate
+                settledB := "${settledB}${toString n}:${toString answer}|"
+                answer
+        in acceptPositive 1
+
+    mut callsC = 0
+    mut issuedC = ""
+    mut settledC = ""
+    acceptedC =
+        handle Retry
+            supply n =>
+                callsC := callsC + 1 ?: callsC
+                candidate = match n
+                    1 => 0
+                    2 => (0 - 5) ?: 0
+                    _ => 300
+                issuedC := "${issuedC}${toString n}:${toString candidate}|"
+                answer = resume candidate
+                settledC := "${settledC}${toString n}:${toString answer}|"
+                answer
+        in acceptPositive 1
+
+    mut callsD = 0
+    mut issuedD = ""
+    mut settledD = ""
+    acceptedD =
+        handle Retry
+            supply n =>
+                callsD := callsD + 1 ?: callsD
+                candidate = match n > 8
+                    true => 900
+                    false => (0 - n) ?: 0
+                issuedD := "${issuedD}${toString n}:${toString candidate}|"
+                answer = resume candidate
+                settledD := "${settledD}${toString n}:${toString answer}|"
+                answer
+        in acceptPositive 1
+
+    // Distinctive magnitudes: 100, 200, 300 and 900 cannot sum by coincidence.
+    checkAll "each rejection count accepts its own magnitude" [
+        acceptedA == 100,
+        acceptedB == 200,
+        acceptedC == 300,
+        acceptedD == 900,
+        acceptedA != acceptedB,
+        acceptedB != acceptedC,
+        acceptedC != acceptedD,
+        acceptedA < acceptedB,
+        acceptedB < acceptedC,
+        acceptedC < acceptedD,
+        (acceptedA + acceptedB ?: 0) == 300,
+        (acceptedA + acceptedB + acceptedC + acceptedD ?: 0) == 1500,
+        acceptedD == (acceptedA * 9 ?: 0),
+        acceptedC == (acceptedA * 3 ?: 0)
+    ]
+
+    // Attempts are rejections plus one: 0+1, 1+1, 2+1 and 8+1.
+    checkAll "one operation per attempt and not one more" [
+        callsA == 1,
+        callsB == 2,
+        callsC == 3,
+        callsD == 9,
+        (callsA + callsB + callsC + callsD ?: 0) == 15,
+        (callsB - callsA ?: 0) == 1,
+        (callsC - callsB ?: 0) == 1,
+        (callsD - callsC ?: 0) == 6,
+        callsA != callsB,
+        callsB != callsD,
+        callsA > 0,
+        callsD > callsC,
+        callsC > callsB,
+        callsB > callsA,
+        (callsD - 1 ?: 0) == 8,
+        (callsC - 1 ?: 0) == 2
+    ]
+
+    // The issue transcript names every candidate in the order it was supplied.
+    checkAll "issue transcripts record every attempt in order" [
+        issuedA == "1:100|",
+        issuedB == "1:0|2:200|",
+        issuedC == "1:0|2:-5|3:300|",
+        issuedD == "1:-1|2:-2|3:-3|4:-4|5:-5|6:-6|7:-7|8:-8|9:900|",
+        startsWith issuedB "1:0|",
+        endsWith issuedB "2:200|",
+        startsWith issuedC "1:0|2:-5|",
+        endsWith issuedC "3:300|",
+        startsWith issuedD "1:-1|",
+        endsWith issuedD "9:900|",
+        contains issuedD "5:-5|",
+        contains issuedC "2:-5|",
+        !(contains issuedA "2:"),
+        !(contains issuedB "3:"),
+        !(contains issuedC "4:"),
+        !(contains issuedD "10:"),
+        length issuedA == 6
+    ]
+
+    // Post-resume code unwinds in reverse, each frame seeing the accepted answer.
+    checkAll "settlement unwinds LIFO with the accepted answer" [
+        settledA == "1:100|",
+        settledB == "2:200|1:200|",
+        settledC == "3:300|2:300|1:300|",
+        settledD == "9:900|8:900|7:900|6:900|5:900|4:900|3:900|2:900|1:900|",
+        settledA == issuedA,
+        settledB != issuedB,
+        settledC != issuedC,
+        settledD != issuedD,
+        startsWith settledB "2:200|",
+        endsWith settledB "1:200|",
+        startsWith settledC "3:300|",
+        endsWith settledC "1:300|",
+        startsWith settledD "9:900|",
+        endsWith settledD "1:900|",
+        !(contains settledB "1:0|"),
+        !(contains settledC "2:-5|")
+    ]
+
+    // Four regions, four separate cells: nothing crosses between them.
+    checkAll "no retry region leaks into another" [
+        issuedA != issuedB,
+        issuedB != issuedC,
+        issuedC != issuedD,
+        !(contains issuedA "200"),
+        !(contains issuedB "300"),
+        !(contains issuedC "900"),
+        !(contains issuedD "100|"),
+        !(contains settledD "300"),
+        contains issuedD "900",
+        acceptedD != acceptedC,
+        (acceptedD - acceptedC ?: 0) == 600,
+        length settledB == 12,
+        length settledC == 18,
+        length settledD == 54
+    ]
+
+// Crosses the retry-count axis 0/1/2/8 against issue and settlement order.
+test "retry loops accept after zero one two and eight rejections" retryAttemptMatrixCase
+
+(** [EFFECTS-RESUME] "returning from the selected branch without resuming stops
+    the suspended computation and its value becomes the result of the whole
+    handler." A retry budget therefore ends the loop by NOT resuming, and the
+    sentinel it returns is what every still-suspended frame observes. *)
+retryBudgetExhaustionCase () =
+    mut calls1 = 0
+    mut trail1 = ""
+    mut settled1 = ""
+    out1 =
+        handle Retry
+            supply n =>
+                calls1 := calls1 + 1 ?: calls1
+                match n > 1
+                    true =>
+                        trail1 := "${trail1}giveup:${toString n}|"
+                        (0 - 1000) ?: 0
+                    false =>
+                        trail1 := "${trail1}try:${toString n}|"
+                        answer = resume ((0 - n) ?: 0)
+                        settled1 := "${settled1}${toString n}:${toString answer}|"
+                        answer
+        in acceptPositive 1
+
+    mut calls2 = 0
+    mut trail2 = ""
+    mut settled2 = ""
+    out2 =
+        handle Retry
+            supply n =>
+                calls2 := calls2 + 1 ?: calls2
+                match n > 2
+                    true =>
+                        trail2 := "${trail2}giveup:${toString n}|"
+                        (0 - 2000) ?: 0
+                    false =>
+                        trail2 := "${trail2}try:${toString n}|"
+                        answer = resume ((0 - n) ?: 0)
+                        settled2 := "${settled2}${toString n}:${toString answer}|"
+                        answer
+        in acceptPositive 1
+
+    mut calls3 = 0
+    mut trail3 = ""
+    mut settled3 = ""
+    out3 =
+        handle Retry
+            supply n =>
+                calls3 := calls3 + 1 ?: calls3
+                match n > 3
+                    true =>
+                        trail3 := "${trail3}giveup:${toString n}|"
+                        (0 - 3000) ?: 0
+                    false =>
+                        trail3 := "${trail3}try:${toString n}|"
+                        answer = resume ((0 - n) ?: 0)
+                        settled3 := "${settled3}${toString n}:${toString answer}|"
+                        answer
+        in acceptPositive 1
+
+    (** A generous budget the loop never reaches: success arrives on attempt 3. *)
+    mut calls5 = 0
+    mut trail5 = ""
+    mut settled5 = ""
+    out5 =
+        handle Retry
+            supply n =>
+                calls5 := calls5 + 1 ?: calls5
+                match n > 5
+                    true =>
+                        trail5 := "${trail5}giveup:${toString n}|"
+                        (0 - 5000) ?: 0
+                    false =>
+                        candidate = match n
+                            3 => 777
+                            _ => (0 - n) ?: 0
+                        trail5 := "${trail5}try:${toString n}|"
+                        answer = resume candidate
+                        settled5 := "${settled5}${toString n}:${toString answer}|"
+                        answer
+        in acceptPositive 1
+
+    // Each exhausted budget answers with its own sentinel, never a shared one.
+    checkAll "an exhausted budget answers with its own sentinel" [
+        out1 == ((0 - 1000) ?: 0),
+        out2 == ((0 - 2000) ?: 0),
+        out3 == ((0 - 3000) ?: 0),
+        out5 == 777,
+        out1 < 0,
+        out2 < 0,
+        out3 < 0,
+        out5 > 0,
+        out1 != out2,
+        out2 != out3,
+        out1 != out5,
+        (out1 + out2 + out3 ?: 0) == ((0 - 6000) ?: 0),
+        (out2 - out1 ?: 0) == ((0 - 1000) ?: 0),
+        out3 == (out1 * 3 ?: 0)
+    ]
+
+    // Budget B costs B resuming attempts plus the one refusal that ends it.
+    checkAll "attempt count is the budget plus one refusal" [
+        calls1 == 2,
+        calls2 == 3,
+        calls3 == 4,
+        calls5 == 3,
+        (calls1 - 1 ?: 0) == 1,
+        (calls2 - 1 ?: 0) == 2,
+        (calls3 - 1 ?: 0) == 3,
+        calls1 < calls2,
+        calls2 < calls3,
+        calls2 == calls5,
+        (calls1 + calls2 + calls3 ?: 0) == 9,
+        calls1 != calls3,
+        calls3 > calls5,
+        calls1 > 0
+    ]
+
+    // The ordered trail distinguishes a resumed try from the terminal refusal.
+    checkAll "the trail names every try and then the refusal" [
+        trail1 == "try:1|giveup:2|",
+        trail2 == "try:1|try:2|giveup:3|",
+        trail3 == "try:1|try:2|try:3|giveup:4|",
+        trail5 == "try:1|try:2|try:3|",
+        startsWith trail1 "try:1|",
+        endsWith trail1 "giveup:2|",
+        endsWith trail2 "giveup:3|",
+        endsWith trail3 "giveup:4|",
+        endsWith trail5 "try:3|",
+        contains trail3 "try:2|",
+        !(contains trail5 "giveup"),
+        !(contains trail1 "try:2|"),
+        !(contains trail2 "try:3|"),
+        !(contains trail3 "try:4|"),
+        length trail1 == 15,
+        length trail5 == 18
+    ]
+
+    // Abandoning the innermost frame still delivers the sentinel to every
+    // outer frame's `resume`, so their post-resume code runs with it.
+    checkAll "an abandoned continuation settles the outer frames" [
+        settled1 == "1:-1000|",
+        settled2 == "2:-2000|1:-2000|",
+        settled3 == "3:-3000|2:-3000|1:-3000|",
+        settled5 == "3:777|2:777|1:777|",
+        startsWith settled2 "2:-2000|",
+        endsWith settled2 "1:-2000|",
+        startsWith settled3 "3:-3000|",
+        endsWith settled3 "1:-3000|",
+        contains settled3 "2:-3000|",
+        !(contains settled1 "2:"),
+        !(contains settled2 "3:"),
+        !(contains settled3 "4:"),
+        length settled1 == 8,
+        length settled5 == 18,
+        settled1 != settled2
+    ]
+
+    // The refusing attempt is issued but never settles: it has no continuation.
+    checkAll "the refusing attempt is issued but never settles" [
+        contains trail1 "giveup:2|",
+        !(contains settled1 "2:"),
+        contains trail2 "giveup:3|",
+        !(contains settled2 "3:"),
+        contains trail3 "giveup:4|",
+        !(contains settled3 "4:"),
+        !(contains trail5 "giveup:"),
+        contains settled5 "3:777|",
+        out1 == ((0 - 1000) ?: 0),
+        out2 != out5,
+        out5 != out3,
+        trail1 != trail2,
+        settled5 != settled3
+    ]
+
+// Crosses the retry-budget axis 1/2/3/exhausted against 5/succeeded-early.
+test "an exhausted retry budget stops the loop without resuming" retryBudgetExhaustionCase
+
+(** [EFFECTS-OP-TYPING] Every operation named by a handler arm must match the
+    declared payload type, so one effect can carry a retry loop per type. Each
+    arm below resumes with exactly what its operation declares. *)
+effect Payload
+    (** Supply the text candidate for `attempt`; fewer than four characters asks again. *)
+    text : int => string
+    (** Supply the verdict for `attempt`; `false` asks again. *)
+    flag : int => bool
+    (** Supply the ratio for `attempt`; anything at or below 1.0 asks again. *)
+    ratio : int => float
+    (** Supply the checked candidate for `attempt`; an `Error` asks again. *)
+    checked : int => Result<int, string>
+    (** Record `attempt` on the Unit channel, supplying no value at all. *)
+    mark : int => Unit
+    (** Supply the candidate scaled from `base` and `step` for `attempt`. *)
+    scaled : (int, int, int) => int
+
+(** Text channel: the loop asks again until the candidate is long enough. *)
+takeText n =
+    word = perform Payload.text n
+    match length word > 3
+        true => word
+        false => takeText ((n + 1) ?: n)
+
+(** Boolean channel: the accepted value is the attempt the handler approved. *)
+takeFlag n =
+    ok = perform Payload.flag n
+    match ok
+        true => n
+        false => takeFlag ((n + 1) ?: n)
+
+(** Float channel: a ratio at or below 1.0 asks again. *)
+takeRatio n =
+    r = perform Payload.ratio n
+    match r > 1.0
+        true => r
+        false => takeRatio ((n + 1) ?: n)
+
+(** Result channel: the CALLER, not the handler, treats `Error` as "ask again". *)
+takeChecked n = match perform Payload.checked n
+    Success value => value
+    Error message => takeChecked ((n + 1) ?: n)
+
+(** Three-argument channel: the retry arithmetic lives in the handler. *)
+takeScaled (n, base, step) =
+    v = perform Payload.scaled n base step
+    match v > 0
+        true => v
+        false => takeScaled ((n + 1) ?: n, base, step)
+
+(** Unit channel: nothing to validate, so `left` alone bounds the loop. *)
+markDown left = match left
+    0 => 0
+    _ =>
+        perform Payload.mark left
+        (markDown ((left - 1) ?: left) + 1) ?: 0
+
+(** One region with six arms drives every channel once, in body order. *)
+comboBody () =
+    word = takeText 1
+    firstTrue = takeFlag 1
+    r = takeRatio 1
+    value = takeChecked 1
+    perform Payload.mark 0
+    scaledValue = takeScaled (1, 40, 7)
+    ratioFlag = match r > 1.0
+        true => 1
+        false => 0
+    length word + firstTrue + ratioFlag + value + scaledValue ?: 0
+
+(** [EFFECTS-RESUME] `resume(value)` supplies the current operation result, so
+    its type is the operation's, not the region's. Five partial one-arm regions
+    cross the payload-type axis; a sixth region supplies all six arms at once. *)
+retryPayloadChannelMatrixCase () =
+    mut textCalls = 0
+    mut textTrail = ""
+    word =
+        handle Payload
+            text n =>
+                textCalls := textCalls + 1 ?: textCalls
+                candidate = match n
+                    1 => "no"
+                    2 => "abc"
+                    _ => "ready"
+                textTrail := "${textTrail}${toString n}:${candidate}|"
+                resume candidate
+        in takeText 1
+
+    mut flagCalls = 0
+    mut flagTrail = ""
+    firstTrue =
+        handle Payload
+            flag n =>
+                flagCalls := flagCalls + 1 ?: flagCalls
+                ok = n > 3
+                flagTrail := "${flagTrail}${toString n}:${toString ok}|"
+                resume ok
+        in takeFlag 1
+
+    mut ratioCalls = 0
+    mut ratioTrail = ""
+    acceptedRatio =
+        handle Payload
+            ratio n =>
+                ratioCalls := ratioCalls + 1 ?: ratioCalls
+                candidate = match n
+                    1 => 0.25
+                    2 => 1.0
+                    _ => 2.5
+                ratioTrail := "${ratioTrail}${toString n}|"
+                resume candidate
+        in takeRatio 1
+
+    mut checkedCalls = 0
+    mut checkedTrail = ""
+    checkedValue =
+        handle Payload
+            checked n =>
+                checkedCalls := checkedCalls + 1 ?: checkedCalls
+                checkedTrail := "${checkedTrail}${toString n}|"
+                match n
+                    1 => resume (Error(message = "cold"))
+                    2 => resume (Error(message = "warm"))
+                    _ => resume (Success(value = 4200))
+        in takeChecked 1
+
+    mut markCalls = 0
+    mut markTrail = ""
+    markTotal =
+        handle Payload
+            mark n =>
+                markCalls := markCalls + 1 ?: markCalls
+                markTrail := "${markTrail}${toString n}|"
+                resume
+        in markDown 4
+
+    mut comboCalls = 0
+    mut comboTrail = ""
+    combo =
+        handle Payload
+            text n =>
+                comboCalls := comboCalls + 1 ?: comboCalls
+                comboTrail := "${comboTrail}t${toString n}|"
+                resume "steady"
+            flag n =>
+                comboCalls := comboCalls + 1 ?: comboCalls
+                comboTrail := "${comboTrail}f${toString n}|"
+                resume (n > 1)
+            ratio n =>
+                comboCalls := comboCalls + 1 ?: comboCalls
+                comboTrail := "${comboTrail}r${toString n}|"
+                resume 3.5
+            checked n =>
+                comboCalls := comboCalls + 1 ?: comboCalls
+                comboTrail := "${comboTrail}c${toString n}|"
+                resume (Success(value = 60))
+            mark n =>
+                comboCalls := comboCalls + 1 ?: comboCalls
+                comboTrail := "${comboTrail}m${toString n}|"
+                resume
+            scaled n base step =>
+                comboCalls := comboCalls + 1 ?: comboCalls
+                comboTrail := "${comboTrail}s${toString n}|"
+                candidate = (base + ((n * step) ?: 0) - 50) ?: 0
+                resume candidate
+        in comboBody ()
+
+    // Combo total: length("steady") 6 + firstTrue 2 + ratioFlag 1 + 60 + 4 = 73.
+    checkAll "each payload type completes its own retry loop" [
+        word == "ready",
+        length word == 5,
+        firstTrue == 4,
+        acceptedRatio == 2.5,
+        acceptedRatio > 1.0,
+        checkedValue == 4200,
+        markTotal == 4,
+        combo == 73,
+        word != "abc",
+        firstTrue != 3,
+        acceptedRatio != 1.0,
+        checkedValue != 0,
+        markTotal != 0,
+        combo < checkedValue,
+        (markTotal + firstTrue ?: 0) == 8
+    ]
+
+    // Counts per channel: 3, 4, 3, 3, 4 and eight in the six-arm region.
+    checkAll "operation counts per payload channel" [
+        textCalls == 3,
+        flagCalls == 4,
+        ratioCalls == 3,
+        checkedCalls == 3,
+        markCalls == 4,
+        comboCalls == 8,
+        textCalls == ratioCalls,
+        ratioCalls == checkedCalls,
+        flagCalls == markCalls,
+        textCalls != flagCalls,
+        (textCalls + flagCalls + ratioCalls + checkedCalls + markCalls ?: 0) == 17,
+        comboCalls > textCalls,
+        (comboCalls - markCalls ?: 0) == 4,
+        markCalls == markTotal
+    ]
+
+    // Every channel's transcript is its own, in issue order.
+    checkAll "channel transcripts record each candidate in order" [
+        textTrail == "1:no|2:abc|3:ready|",
+        flagTrail == "1:false|2:false|3:false|4:true|",
+        ratioTrail == "1|2|3|",
+        checkedTrail == "1|2|3|",
+        markTrail == "4|3|2|1|",
+        ratioTrail == checkedTrail,
+        markTrail != ratioTrail,
+        startsWith textTrail "1:no|",
+        endsWith textTrail "3:ready|",
+        contains textTrail "2:abc|",
+        startsWith flagTrail "1:false|",
+        endsWith flagTrail "4:true|",
+        !(contains flagTrail "5:"),
+        !(contains textTrail "4:"),
+        startsWith markTrail "4|",
+        endsWith markTrail "1|"
+    ]
+
+    // The six-arm region interleaves all six channels in body order.
+    checkAll "a six-arm region serves every channel in body order" [
+        comboTrail == "t1|f1|f2|r1|c1|m0|s1|s2|",
+        startsWith comboTrail "t1|",
+        endsWith comboTrail "s2|",
+        contains comboTrail "f1|f2|",
+        contains comboTrail "m0|",
+        contains comboTrail "c1|",
+        !(contains comboTrail "t2|"),
+        !(contains comboTrail "s3|"),
+        !(contains comboTrail "f3|"),
+        length comboTrail == 24,
+        combo == (6 + 2 + 1 + 60 + 4 ?: 0),
+        comboCalls == 8,
+        comboTrail != textTrail,
+        combo != checkedValue
+    ]
+
+    // One channel's retries never disturb another's cell.
+    checkAll "one channel's retries never disturb another" [
+        !(contains textTrail "true"),
+        !(contains flagTrail "ready"),
+        !(contains ratioTrail ":"),
+        !(contains checkedTrail ":"),
+        !(contains markTrail ":"),
+        textTrail != flagTrail,
+        textCalls != markCalls,
+        word != "steady",
+        checkedValue != combo,
+        acceptedRatio != 3.5,
+        firstTrue == markTotal,
+        length ratioTrail == 6,
+        length markTrail == 8,
+        length flagTrail == 31
+    ]
+
+// Crosses the payload-type axis against partial one-arm and six-arm regions.
+test "retry channels carry text boolean float checked and Unit payloads" retryPayloadChannelMatrixCase
+
+(** [EFFECTS-HANDLER-STATE] The scripted candidates live outside the handler;
+    only the handler's own cursor cell advances, so a lost, repeated or
+    reordered operation changes which candidate the loop accepts. *)
+retryScriptedCandidateMatrixCase () =
+    script = [0, (0 - 1) ?: 0, 0, (0 - 100000) ?: 0, 0, 4321]
+    mut cursor = 0
+    mut drawn = ""
+    mut scriptCalls = 0
+    fromList =
+        handle Retry
+            supply n =>
+                scriptCalls := scriptCalls + 1 ?: scriptCalls
+                cursor := cursor + 1 ?: cursor
+                candidate = listGet (script, (cursor - 1) ?: 0) ?: 0
+                drawn := "${drawn}${toString candidate}|"
+                resume candidate
+        in acceptPositive 1
+
+    table = mapSet (mapSet (mapSet (Map (), "1", 0), "2", 0), "3", 8888)
+    mut mapCalls = 0
+    mut mapTrail = ""
+    fromMap =
+        handle Retry
+            supply n =>
+                mapCalls := mapCalls + 1 ?: mapCalls
+                candidate = mapGet (table, toString n) ?: ((0 - 7) ?: 0)
+                mapTrail := "${mapTrail}${toString n}=>${toString candidate}|"
+                resume candidate
+        in acceptPositive 1
+
+    (** A sparse table: the three missing keys take the declared `Error` branch,
+        whose message length is the negative candidate that asks again. *)
+    sparse = mapSet (Map (), "4", 5555)
+    mut sparseCalls = 0
+    mut sparseTrail = ""
+    fromSparse =
+        handle Retry
+            supply n =>
+                sparseCalls := sparseCalls + 1 ?: sparseCalls
+                candidate = match mapGet (sparse, toString n)
+                    Success value => value
+                    Error message => (0 - length message) ?: 0
+                sparseTrail := "${sparseTrail}${toString n}:${toString candidate}|"
+                resume candidate
+        in acceptPositive 1
+
+    (** Boundary candidates: zero, minus one, then the smallest accepted value. *)
+    mut boundaryCalls = 0
+    mut boundaryTrail = ""
+    fromBoundary =
+        handle Retry
+            supply n =>
+                boundaryCalls := boundaryCalls + 1 ?: boundaryCalls
+                candidate = match n
+                    1 => 0
+                    2 => (0 - 1) ?: 0
+                    3 => 1
+                    _ => 0
+                boundaryTrail := "${boundaryTrail}${toString candidate}|"
+                resume candidate
+        in acceptPositive 1
+
+    // Each loop stops on the first valid candidate its source offers.
+    checkAll "scripted loops accept the first valid candidate" [
+        fromList == 4321,
+        fromMap == 8888,
+        fromSparse == 5555,
+        fromBoundary == 1,
+        fromList != fromMap,
+        fromMap != fromSparse,
+        fromBoundary < fromList,
+        fromList > 0,
+        fromMap > 0,
+        fromSparse > 0,
+        fromBoundary > 0,
+        (fromList + fromMap + fromSparse + fromBoundary ?: 0) == 18765,
+        fromMap > fromSparse,
+        fromSparse > fromList
+    ]
+
+    // The cursor advances exactly once per operation, never more.
+    checkAll "the cursor advances once per operation" [
+        scriptCalls == 6,
+        cursor == 6,
+        cursor == scriptCalls,
+        mapCalls == 3,
+        sparseCalls == 4,
+        boundaryCalls == 3,
+        cursor == listLength script,
+        listLength script == 6,
+        (scriptCalls - mapCalls ?: 0) == 3,
+        (sparseCalls - boundaryCalls ?: 0) == 1,
+        mapCalls == boundaryCalls,
+        scriptCalls > sparseCalls,
+        (scriptCalls + mapCalls + sparseCalls + boundaryCalls ?: 0) == 16,
+        cursor != 0
+    ]
+
+    // The drawn transcript follows list order exactly, boundaries included.
+    checkAll "the drawn transcript follows list order" [
+        drawn == "0|-1|0|-100000|0|4321|",
+        startsWith drawn "0|-1|",
+        endsWith drawn "4321|",
+        contains drawn "-100000|",
+        !(contains drawn "|4321|4321"),
+        (listGet (script, 0) ?: 1) == 0,
+        (listGet (script, 1) ?: 0) == ((0 - 1) ?: 0),
+        (listGet (script, 3) ?: 0) == ((0 - 100000) ?: 0),
+        (listGet (script, 5) ?: 0) == 4321,
+        listContains script 4321,
+        !(listContains script 8888),
+        (listGet (listReverse script, 0) ?: 0) == 4321,
+        !(isEmpty script),
+        length drawn == 22,
+        fromList == (listGet (script, 5) ?: 0)
+    ]
+
+    // A map-driven loop reads exactly one key per attempt.
+    checkAll "map-driven retries read one key per attempt" [
+        mapTrail == "1=>0|2=>0|3=>8888|",
+        sparseTrail == "1:-21|2:-21|3:-21|4:5555|",
+        mapLength table == 3,
+        mapLength sparse == 1,
+        mapContains table "3",
+        !(mapContains table "4"),
+        mapContains sparse "4",
+        !(mapContains sparse "1"),
+        (mapGet (table, "3") ?: 0) == 8888,
+        (mapGet (sparse, "4") ?: 0) == 5555,
+        length "mapGet: key not found" == 21,
+        startsWith mapTrail "1=>0|",
+        endsWith mapTrail "3=>8888|",
+        endsWith sparseTrail "4:5555|",
+        contains sparseTrail "3:-21|"
+    ]
+
+    // Zero and minus one are rejected; one is the smallest accepted candidate.
+    checkAll "zero and minus one are rejected and one is accepted" [
+        boundaryTrail == "0|-1|1|",
+        fromBoundary == 1,
+        startsWith boundaryTrail "0|",
+        contains boundaryTrail "-1|",
+        endsWith boundaryTrail "1|",
+        !(contains boundaryTrail "2|"),
+        length boundaryTrail == 7,
+        boundaryCalls == 3,
+        boundaryTrail != drawn,
+        !(contains drawn "8888"),
+        !(contains mapTrail "4321"),
+        !(contains sparseTrail "8888"),
+        fromBoundary != fromSparse
+    ]
+
+// Crosses the candidate-source axis: list, map, missing key and boundaries.
+test "scripted list and map candidates drive one retry cursor" retryScriptedCandidateMatrixCase
+
+(** Budget is a DIFFERENT effect handled outside both retry regions, so a Retry
+    arm may perform it — an arm may not perform its own active operation, but an
+    enclosing handler discharges anything the arm's region does not cover. *)
+effect Budget
+    (** Charge `weight` against the shared budget and answer the running charge. *)
+    charge : int => int
+
+(** [EFFECTS-HANDLER-STATE] One `mut` cell is shared by two retry regions at
+    different depths; [EFFECTS-RESUME] settles both of them innermost-first. *)
+nestedRetryRegionsCase () =
+    mut charged = 0
+    mut chargeCalls = 0
+    mut chargeTrail = ""
+    mut outerCalls = 0
+    mut outerTrail = ""
+    mut outerSettled = ""
+    mut innerCalls = 0
+    mut innerTrail = ""
+    mut innerSettled = ""
+
+    total =
+        handle Budget
+            charge weight =>
+                chargeCalls := chargeCalls + 1 ?: chargeCalls
+                charged := charged + weight ?: charged
+                chargeTrail := "${chargeTrail}${toString weight}@${toString charged}|"
+                charged
+        in
+            handle Retry
+                supply n =>
+                    outerCalls := outerCalls + 1 ?: outerCalls
+                    tag = outerCalls
+                    candidate = match n > 2
+                        true => 50
+                        false => 0
+                    outerTrail := "${outerTrail}o${toString tag}=${toString n}:${toString candidate}|"
+                    perform Budget.charge 10
+                    answer = resume candidate
+                    outerSettled := "${outerSettled}o${toString tag}:${toString answer}|"
+                    answer
+            in
+                before = acceptPositive 1
+                inside =
+                    handle Retry
+                        supply n =>
+                            innerCalls := innerCalls + 1 ?: innerCalls
+                            tag = innerCalls
+                            candidate = match n > 1
+                                true => 700
+                                false => 0
+                            innerTrail := "${innerTrail}i${toString tag}=${toString n}:${toString candidate}|"
+                            perform Budget.charge 1
+                            answer = resume candidate
+                            innerSettled := "${innerSettled}i${toString tag}:${toString answer}|"
+                            answer
+                    in acceptPositive 1
+                after = acceptPositive 1
+                before + inside + after ?: 0
+
+    // 50 before the inner region, 700 inside it, 50 after it is torn down.
+    checkAll "nested retry regions each accept their own value" [
+        total == 800,
+        charged == 62,
+        outerCalls == 6,
+        innerCalls == 2,
+        chargeCalls == 8,
+        chargeCalls == (outerCalls + innerCalls ?: 0),
+        total == (50 + 700 + 50 ?: 0),
+        outerCalls > innerCalls,
+        charged > outerCalls,
+        charged != total,
+        total > charged,
+        innerCalls != outerCalls,
+        (outerCalls - innerCalls ?: 0) == 4,
+        charged == (30 + 2 + 30 ?: 0)
+    ]
+
+    // The inner region owns only its own body; the outer one resumes after it.
+    checkAll "the inner region overrides then restores the outer" [
+        outerTrail == "o1=1:0|o2=2:0|o3=3:50|o4=1:0|o5=2:0|o6=3:50|",
+        innerTrail == "i1=1:0|i2=2:700|",
+        startsWith outerTrail "o1=1:0|",
+        endsWith outerTrail "o6=3:50|",
+        contains outerTrail "o4=1:0|",
+        contains outerTrail "o3=3:50|",
+        !(contains outerTrail "700"),
+        !(contains innerTrail "50|"),
+        startsWith innerTrail "i1=1:0|",
+        endsWith innerTrail "i2=2:700|",
+        !(contains innerTrail "i3"),
+        !(contains outerTrail "o7"),
+        outerTrail != innerTrail,
+        length innerTrail == 16
+    ]
+
+    // Every outer frame settles with the whole region's answer, LIFO by tag.
+    checkAll "settlement unwinds LIFO across the whole nest" [
+        outerSettled == "o6:800|o5:800|o4:800|o3:800|o2:800|o1:800|",
+        innerSettled == "i2:700|i1:700|",
+        startsWith outerSettled "o6:800|",
+        endsWith outerSettled "o1:800|",
+        startsWith innerSettled "i2:700|",
+        endsWith innerSettled "i1:700|",
+        contains outerSettled "o4:800|",
+        !(contains outerSettled "700"),
+        !(contains innerSettled "800"),
+        !(contains outerSettled "o7"),
+        length outerSettled == 42,
+        length innerSettled == 14,
+        outerSettled != outerTrail,
+        innerSettled != innerTrail
+    ]
+
+    // One outer Budget cell serves both regions; its running total is ordered.
+    checkAll "the outer Budget handler serves both retry regions" [
+        chargeTrail == "10@10|10@20|10@30|1@31|1@32|10@42|10@52|10@62|",
+        chargeCalls == 8,
+        charged == 62,
+        startsWith chargeTrail "10@10|",
+        endsWith chargeTrail "10@62|",
+        contains chargeTrail "1@31|1@32|",
+        contains chargeTrail "10@42|",
+        !(contains chargeTrail "1@33"),
+        !(contains chargeTrail "10@70"),
+        !(contains chargeTrail "@63"),
+        length chargeTrail == 46,
+        charged > 0,
+        (charged - 2 ?: 0) == 60,
+        chargeCalls != charged
+    ]
+
+    // A Retry arm performs Budget, never its own Retry.supply.
+    checkAll "an arm performs a different effect, never its own" [
+        innerCalls == 2,
+        outerCalls == 6,
+        chargeCalls == 8,
+        contains chargeTrail "1@31|",
+        contains chargeTrail "1@32|",
+        !(contains innerTrail "o"),
+        !(contains outerTrail "i"),
+        charged == 62,
+        total == 800,
+        innerCalls < outerCalls,
+        (innerCalls * 4 ?: 0) == 8,
+        chargeCalls == (outerCalls + innerCalls ?: 0),
+        innerSettled != outerSettled
+    ]
+
+// Crosses nesting depth against a shared outer effect and LIFO settlement.
+test "nested retry regions override and restore around a shared budget" nestedRetryRegionsCase
+
+(** [EFFECTS-OPERATION-MAILBOX] The mailbox is sized by the operation's real
+    arity, so zero-, one-, two-, three- and four-argument operations all deliver
+    every argument they were given. [EFFECTS-STATIC-DISCHARGE] carries the
+    requirement through named calls and through a callback handed to a HOF. *)
+effect Arity
+    (** Supply the next candidate with no argument at all. *)
+    zero : Unit => int
+    (** Supply the candidate for `a`. *)
+    one : int => int
+    (** Supply the candidate for `a` and `b`. *)
+    two : (int, int) => int
+    (** Supply the candidate for `a`, `b` and `c`. *)
+    three : (int, int, int) => int
+    (** Supply the candidate for `a`, `b`, `c` and `d`. *)
+    four : (int, int, int, int) => int
+    (** Record `v` on the Unit channel from inside a callback. *)
+    note : int => Unit
+
+(** One call level from the handled body. *)
+siteOne a = perform Arity.one a
+
+(** Two call levels: the perform is one frame below the body's callee. *)
+sitePair n = perform Arity.two n ((n * 10) ?: 0)
+sitePairCaller n = sitePair n
+
+(** Three call levels from the handled body down to the perform. *)
+siteDeep a = perform Arity.three a 20 300
+siteMid a = siteDeep a
+siteTop a = siteMid a
+
+(** Recursive perform site: the handler's own counter decides when to accept. *)
+retryZero guard =
+    candidate = perform Arity.zero ()
+    match candidate > 0
+        true => candidate
+        false => retryZero ((guard + 1) ?: guard)
+
+(** Every perform site in one body: recursion, one/two/three call levels, a
+    lambda passed to a higher-order function, and a match arm. *)
+performSiteBody xs =
+    fromLoop = retryZero 1
+    fromHelper = siteOne 4
+    fromTwoDeep = sitePairCaller 5
+    fromThreeDeep = siteTop 6
+    forEachList xs (\v => perform Arity.note v)
+    fromMatchArm = match fromLoop > 0
+        true => perform Arity.four 1 2 3 4
+        false => 0
+    fromLoop + fromHelper + fromTwoDeep + fromThreeDeep + fromMatchArm ?: 0
+
+(** Crosses the perform-site axis against the operation-arity axis. Every
+    supplied value is position-sensitive, so a swapped or dropped argument
+    changes it rather than cancelling out. *)
+retryPerformSiteMatrixCase () =
+    probe = [7, 8]
+    mut zeroCalls = 0
+    mut oneCalls = 0
+    mut twoCalls = 0
+    mut threeCalls = 0
+    mut fourCalls = 0
+    mut noteCalls = 0
+    mut noteTotal = 0
+    mut suppliedZero = 0
+    mut suppliedOne = 0
+    mut suppliedTwo = 0
+    mut suppliedThree = 0
+    mut suppliedFour = 0
+    mut trail = ""
+
+    sited =
+        handle Arity
+            zero =>
+                zeroCalls := zeroCalls + 1 ?: zeroCalls
+                trail := "${trail}z${toString zeroCalls}|"
+                suppliedZero := match zeroCalls > 2
+                    true => 9
+                    false => 0
+                resume suppliedZero
+            one a =>
+                oneCalls := oneCalls + 1 ?: oneCalls
+                trail := "${trail}o${toString a}|"
+                suppliedOne := (a * 100) ?: 0
+                resume suppliedOne
+            two a b =>
+                twoCalls := twoCalls + 1 ?: twoCalls
+                trail := "${trail}t${toString a}+${toString b}|"
+                suppliedTwo := (a + b) ?: 0
+                resume suppliedTwo
+            three a b c =>
+                threeCalls := threeCalls + 1 ?: threeCalls
+                trail := "${trail}h${toString a}+${toString b}+${toString c}|"
+                suppliedThree := (a + b + c) ?: 0
+                resume suppliedThree
+            four a b c d =>
+                fourCalls := fourCalls + 1 ?: fourCalls
+                trail := "${trail}f${toString a}${toString b}${toString c}${toString d}|"
+                suppliedFour := (a * 1000 + b * 100 + c * 10 + d) ?: 0
+                resume suppliedFour
+            note v =>
+                noteCalls := noteCalls + 1 ?: noteCalls
+                noteTotal := noteTotal + v ?: noteTotal
+                trail := "${trail}n${toString v}|"
+                resume
+        in performSiteBody probe
+
+    // 9 + 400 + 55 + 326 + 1234 = 2024, and nine operations produced it.
+    checkAll "every perform site reaches the same region" [
+        sited == 2024,
+        zeroCalls == 3,
+        oneCalls == 1,
+        twoCalls == 1,
+        threeCalls == 1,
+        fourCalls == 1,
+        noteCalls == 2,
+        (zeroCalls + oneCalls + twoCalls + threeCalls + fourCalls + noteCalls ?: 0) == 9,
+        sited == (9 + 400 + 55 + 326 + 1234 ?: 0),
+        zeroCalls > noteCalls,
+        noteCalls > oneCalls,
+        oneCalls == fourCalls,
+        twoCalls == threeCalls,
+        sited > 2000,
+        sited != 800
+    ]
+
+    // Argument order is load-bearing: a swap would change these strings.
+    checkAll "arity is preserved and every argument keeps its slot" [
+        trail == "z1|z2|z3|o4|t5+50|h6+20+300|n7|n8|f1234|",
+        contains trail "o4|",
+        contains trail "t5+50|",
+        contains trail "h6+20+300|",
+        contains trail "f1234|",
+        contains trail "n7|n8|",
+        !(contains trail "t50+5|"),
+        !(contains trail "h300+20+6|"),
+        !(contains trail "f4321|"),
+        !(contains trail "n8|n7|"),
+        !(contains trail "z4|"),
+        startsWith trail "z1|z2|z3|",
+        endsWith trail "f1234|",
+        length trail == 40
+    ]
+
+    // Call depth changes nothing about which handler answers.
+    checkAll "call depth does not change which handler answers" [
+        suppliedZero == 9,
+        suppliedOne == 400,
+        suppliedTwo == 55,
+        suppliedThree == 326,
+        suppliedFour == 1234,
+        sited == (suppliedZero + suppliedOne + suppliedTwo + suppliedThree + suppliedFour ?: 0),
+        suppliedOne != suppliedTwo,
+        suppliedTwo != suppliedThree,
+        suppliedThree != suppliedFour,
+        suppliedFour > suppliedOne,
+        suppliedOne > suppliedThree,
+        suppliedThree > suppliedTwo,
+        suppliedTwo > suppliedZero,
+        suppliedZero > 0
+    ]
+
+    // A lambda handed to forEachList performs under the very same handler.
+    checkAll "a callback passed to a HOF performs under the handler" [
+        noteCalls == 2,
+        noteCalls == listLength probe,
+        listLength probe == 2,
+        (listGet (probe, 0) ?: 0) == 7,
+        (listGet (probe, 1) ?: 0) == 8,
+        contains trail "n7|",
+        contains trail "n8|",
+        !(contains trail "n9|"),
+        listContains probe 7,
+        !(listContains probe 9),
+        noteTotal == 15,
+        noteCalls != zeroCalls,
+        !(isEmpty probe)
+    ]
+
+    // The recursion and the match arm are ordinary perform sites.
+    checkAll "recursion and a match arm are ordinary perform sites" [
+        zeroCalls == 3,
+        suppliedZero == 9,
+        startsWith trail "z1|",
+        contains trail "z3|o4|",
+        !(contains trail "z3|z4|"),
+        fourCalls == 1,
+        suppliedFour == 1234,
+        endsWith trail "f1234|",
+        !(contains trail "|f1234|f"),
+        sited == 2024,
+        (zeroCalls - 1 ?: 0) == 2,
+        suppliedFour != suppliedOne,
+        trail != ""
+    ]
+
+// Crosses the perform-site axis against operation arities zero through four.
+test "every perform site reaches the same retry handler" retryPerformSiteMatrixCase

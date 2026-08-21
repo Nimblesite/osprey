@@ -1,19 +1,22 @@
 // Osprey Data Studio — the program behind the /wasm/ browser demo.
-// [WASM-TARGET] ML (layout) flavor. The Default twin is studio.osp; both emit a
-// byte-identical manifest (proven by the wasm differential harness).
+// [WASM-TARGET] ML (layout) flavor. studio.osp is the Default twin; both emit
+// a byte-identical manifest (proven by the wasm differential harness).
 //
-// Same program as studio.osp in the curry-by-default, indentation-delimited ML
-// surface: `=` binds, `:=` mutates, whitespace is application, blocks are layout.
-// Multi-line SQL is spelled with `\n` because the layout lexer ends a string at
-// the newline (the one place the two sources read differently).
+// Compiled to wasm32-wasip1 and run in the browser, THIS module computes a
+// sales dataset, its schema, and its analytics queries, then prints them as a
+// delimited manifest. The page loads the schema + seed into sql.js (SQLite as
+// wasm) so visitors add rows and write SQL against a real in-browser database.
 //
-// Compiled to wasm and run in the browser, THIS module computes a sales
-// dataset, its schema, and its analytics queries; the /wasm/ page loads the
-// schema + seed into sql.js (SQLite, also wasm) so visitors add rows and write
-// SQL against a real in-browser database. Showcased: algebraic
-// effects (the handler IS the database writer + accountant), union types +
-// exhaustive match, records as an effect payload, HM inference, persistent
-// state, string interpolation.
+// Showcased, all linking the portable wasm32 runtime (strings, maps, effects):
+//   algebraic effects (the handler IS the database writer + accountant),
+//   union types + exhaustive match (grade classification, revenue tier),
+//   records (a Sale row as an effect payload), Hindley-Milner inference,
+//   persistent Map, string interpolation. No fibers, sockets, or syscalls.
+//
+// The ML surface reads the same program curried by default: `=` binds, `:=`
+// mutates, whitespace is application, blocks are layout. Multi-line SQL is
+// spelled with `\n` because the layout lexer ends a string at the newline —
+// the one place the two sources read differently.
 
 // ── domain ────────────────────────────────────────────────────────────────
 type Region =
@@ -42,7 +45,7 @@ regionName r =
         West => "West"
 
 // Price bands → a Grade. Drop an arm and the compiler rejects the program; the
-// SQL `grade_mix` query mirrors these exact thresholds so both engines agree.
+// SQL `grade_mix` query below mirrors these exact thresholds so both engines agree.
 grade price =
     match price >= 15
         true => Premium
@@ -75,6 +78,7 @@ mkSale (id, product, region, qty, price) =
         price = price
 
 // ── the books ── one ledger entry per sale, replayed through the handler ────
+books : Unit -> int ! Db
 books () =
     perform Db.record (mkSale (1, "Espresso", North, 4, 18))
     perform Db.record (mkSale (2, "Latte", South, 6, 12))
@@ -86,6 +90,9 @@ books () =
     perform Db.record (mkSale (8, "Drip", West, 10, 7))
 
 // ── algebraic effect ── the handler is the SQLite writer AND the accountant ──
+// Each performed Sale appends an INSERT to the seed script and folds the row
+// into running totals. The same pass produces the DML the page feeds SQLite and
+// the gold-standard numbers it checks SQLite's answers against.
 effect Db
     (** Record one `Sale` and return its assigned id. *)
     record : Sale => int
@@ -96,6 +103,8 @@ ddl () =
 insertLine s =
     "INSERT INTO sales VALUES (${s.id}, '${s.product}', '${s.region}', ${s.qty}, ${s.price});"
 
+// Named queries the dashboard runs live against SQLite. Kept beside the Osprey
+// logic so the schema, the seed, and the analytics ship as one artifact.
 queries () =
     "::QUERY|revenue_by_region|Revenue by region\nSELECT region, SUM(qty * price) AS revenue, SUM(qty) AS units\nFROM sales GROUP BY region ORDER BY revenue DESC;\n::QUERY|top_products|Top products by revenue\nSELECT product, SUM(qty) AS units, SUM(qty * price) AS revenue\nFROM sales GROUP BY product ORDER BY revenue DESC;\n::QUERY|grade_mix|Order grade mix\nSELECT CASE WHEN price >= 15 THEN 'Premium'\n            WHEN price >= 9  THEN 'Standard'\n            ELSE 'Budget' END AS grade,\n       COUNT(*) AS orders, SUM(qty * price) AS revenue\nFROM sales GROUP BY grade ORDER BY revenue DESC;\n::QUERY|big_orders|Biggest orders\nSELECT id, product, region, qty, price, qty * price AS revenue\nFROM sales ORDER BY revenue DESC LIMIT 5;"
 
@@ -107,7 +116,7 @@ run () =
     mut premium = 0
     handle Db
         record sale =>
-            seed := "${seed}${insertLine sale}\n"
+            seed := seed + insertLine sale + "\n"
             revenue := revenue + (sale.qty * sale.price ?: 0) ?: revenue
             units := units + sale.qty ?: units
             count := count + 1 ?: count

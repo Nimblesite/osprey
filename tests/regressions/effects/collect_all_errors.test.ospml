@@ -1,5 +1,8 @@
-// Invalid.report returns Unit through a direct-substitution handler, allowing
-// every field check to run while the handler accumulates messages.
+(** Cross-contract oracle for [EFFECTS-OP-TYPING], [EFFECTS-HANDLER-STATE],
+    [TYPE-LIST], [TYPE-MAP], [TYPE-MAP-LOOKUP], [TYPE-MAP-OPS],
+    [BUILTIN-STRING-CONTAINS], [BUILTIN-STRING-INDEXOF], [FLAVOR-ML-LIST],
+    and [FLAVOR-ML-MAP]. Invalid.report returns Unit through direct
+    substitution, allowing every validation check to run. *)
 
 effect Invalid
     (** Report one validation failure and keep checking the rest. *)
@@ -49,11 +52,71 @@ collectAllErrorsCase () =
     nadia = audit ("", (0 - 3) ?: 0, 250, "nadia_at_example.com")
     owen = audit ("Owen", 34, 88, "owen@example.com")
     blank = audit ("", 40, 60, "")
-    checkAll "collected validation state" [
+    onlyName = audit ("", 20, 50, "name@example.com")
+    onlyAge = audit ("Ari", (0 - 1) ?: 0, 50, "ari@example.com")
+    onlyLowScore = audit ("Ari", 20, (0 - 1) ?: 0, "ari@example.com")
+    onlyHighScore = audit ("Ari", 20, 101, "ari@example.com")
+    onlyMissingAt = audit ("Ari", 20, 50, "ari.example.com")
+    scoreZero = audit ("Zero", 0, 0, "zero@example.com")
+    scoreHundred = audit ("Hundred", 0, 100, "hundred@example.com")
+    reports = [nadia, owen, blank, onlyName, onlyAge, onlyLowScore, onlyHighScore, onlyMissingAt]
+    byKind = [
+        "multi" => [nadia, blank],
+        "clean" => [owen, scoreZero, scoreHundred],
+        "single" => [onlyName, onlyAge, onlyLowScore, onlyHighScore, onlyMissingAt]
+    ]
+
+    checkAll "multi-error validation preserves exact order and count" [
         contains nadia "#1 name is empty",
+        contains nadia "#2 age is negative (-3)",
+        contains nadia "#3 score above 100 (250)",
         contains nadia "#4 email is missing '@'",
         contains nadia "REJECTED (4 errors",
+        !(contains nadia "score below 0"),
+        !(contains nadia "email is empty"),
+        (indexOf nadia "#1 name" ?: 999) < (indexOf nadia "#2 age" ?: 999),
+        (indexOf nadia "#2 age" ?: 999) < (indexOf nadia "#3 score" ?: 999),
+        (indexOf nadia "#3 score" ?: 999) < (indexOf nadia "#4 email" ?: 999),
         contains owen "ACCEPTED (0 errors)",
-        contains blank "REJECTED (3 errors"
+        contains blank "#1 name is empty",
+        contains blank "#2 email is empty",
+        contains blank "#3 email is missing '@'",
+        contains blank "REJECTED (3 errors",
+        (indexOf blank "#1 name" ?: 999) < (indexOf blank "#2 email" ?: 999),
+        (indexOf blank "#2 email" ?: 999) < (indexOf blank "#3 email" ?: 999)
+    ]
+
+    checkAll "single failures and inclusive boundaries remain independent" [
+        contains onlyName "#1 name is empty",
+        contains onlyName "REJECTED (1 errors",
+        contains onlyAge "#1 age is negative (-1)",
+        contains onlyAge "REJECTED (1 errors",
+        contains onlyLowScore "#1 score below 0 (-1)",
+        contains onlyLowScore "REJECTED (1 errors",
+        contains onlyHighScore "#1 score above 100 (101)",
+        contains onlyHighScore "REJECTED (1 errors",
+        contains onlyMissingAt "#1 email is missing '@'",
+        contains onlyMissingAt "REJECTED (1 errors",
+        contains scoreZero "ACCEPTED (0 errors)",
+        contains scoreHundred "ACCEPTED (0 errors)",
+        !(contains scoreZero "REJECTED"),
+        !(contains scoreHundred "REJECTED")
+    ]
+
+    checkAll "validation reports retain strings inside nested collections" [
+        listLength reports == 8,
+        contains (listGet reports 0 ?: "missing") "REJECTED (4 errors",
+        contains (listGet reports 1 ?: "missing") "ACCEPTED (0 errors)",
+        contains (listGet reports 7 ?: "missing") "missing '@'",
+        mapLength byKind == 3,
+        listLength (mapGet byKind "multi" ?: ["missing"]) == 2,
+        listLength (mapGet byKind "clean" ?: ["missing"]) == 3,
+        listLength (mapGet byKind "single" ?: ["missing"]) == 5,
+        contains (listGet (mapGet byKind "multi" ?: ["missing"]) 1 ?: "missing") "REJECTED (3 errors",
+        contains (listGet (mapGet byKind "clean" ?: ["missing"]) 2 ?: "missing") "ACCEPTED (0 errors)",
+        contains (listGet (mapGet byKind "single" ?: ["missing"]) 3 ?: "missing") "score above 100",
+        listLength (mapKeys byKind) == 3,
+        listLength (mapValues byKind) == 3,
+        !(mapContains byKind "missing")
     ]
 test "validation collects every error in field order" collectAllErrorsCase

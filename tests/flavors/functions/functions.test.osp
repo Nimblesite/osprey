@@ -159,3 +159,70 @@ test("higher-order functions retain every application golden", higherOrderCase)
 test("nested calls retain evaluation structure", nestedCallsCase)
 // Register the recursive-sum scenario.
 test("recursion retains base and recursive branches", recursionCase)
+
+/// Identity as a GENERIC definition — no single concrete ABI, so it exists
+/// only as a body its call sites specialise ([TYPE-GENERICS-FN]).
+fn genericIdentity(x) = x
+
+/// A file-scope binding of that definition. `gen_bind` materialises NO value
+/// for it: a generic function has no closure cell, so the name resolves
+/// through the call-alias table instead. That table is populated while `main`
+/// is lowered — which is AFTER every function body — so a function reading
+/// `idAlias` found it empty and emitted a direct call to `@idAlias`, a symbol
+/// no definition produces, and the module failed to link. The module global
+/// the same reader triggered could not be filled either, so publication failed
+/// with `unknown name`. Implements [MODULES-FILE-SCOPE-BINDING].
+let idAlias = genericIdentity
+
+/// The same hole for a still-generic file-scope LAMBDA, whose inline body is
+/// per-function state that `begin_function` clears.
+let idLambda = |x| => x
+
+/// Read the alias from inside a function body, before `main` runs.
+fn throughAlias(x) = idAlias(x)
+
+/// Read the generic lambda from inside a function body.
+fn throughLambda(x) = idLambda(x)
+
+/// A generic call nested inside its OWN argument is not recursion: the
+/// re-entry guard was armed before the argument was lowered, so this was
+/// rejected as "`genericIdentity` is recursive but its signature is not fully
+/// inferred".
+fn nestedGeneric(x) = genericIdentity(genericIdentity(x))
+
+/// A parameter spelled like a two-argument builtin. Callability must be
+/// LEXICAL: this parameter may not change `contains(a, b)` anywhere else in
+/// the program ([FLAVOR-ML-CALL]).
+fn shadowsBuiltin(contains) = contains
+
+/// The builtin call that the parameter above must leave alone.
+fn builtinAfterShadow() = contains("alpha", "ph")
+
+/// Apply a curried function through a parameter — the case that requires a
+/// parameter to stay callable INSIDE its own scope.
+fn applyTwo(f, a, b) = f(a)(b)
+
+/// This case pins file-scope generic function values and lexical callability.
+fn genericValueCase() = {
+    let curriedSum = |a| => |b| => a + b ?: 0
+    checkAll("file-scope generic function values resolve by name", [
+            throughAlias(7) == 7,
+            throughAlias("osp") == "osp",
+            throughLambda(9) == 9,
+            throughLambda("ml") == "ml",
+            nestedGeneric(21) == 21,
+            nestedGeneric("x") == "x",
+            genericIdentity(genericIdentity(genericIdentity(5))) == 5
+    ])
+    checkAll("a parameter never changes calls outside its own scope", [
+            shadowsBuiltin(3) == 3,
+            shadowsBuiltin("keep") == "keep",
+            builtinAfterShadow(),
+            contains("alpha", "ph"),
+            !contains("alpha", "zz"),
+            applyTwo(curriedSum, 20, 22) == 42
+    ])
+}
+
+// Register the file-scope generic function value scenario.
+test("file-scope generic function values resolve by name", genericValueCase)

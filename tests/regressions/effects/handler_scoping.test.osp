@@ -180,8 +180,8 @@ fn bumpTwice(n) !Counter = {
 /// Three levels: [EFFECTS-HANDLER-STATE] does not stop at a call boundary.
 fn deeplyNested(n) !Counter = bumpTwice(n)
 
-// A handler region at file scope owns its cell exactly as one inside a
-// function does — the spec's own example installs the handler at top level.
+/// A handler region at file scope owns its cell exactly as one inside a
+/// function does — the spec's own example installs the handler at top level.
 mut topCell = 0
 mut topBumps = 0
 let topSum = handle Counter

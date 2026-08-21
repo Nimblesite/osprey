@@ -1,0 +1,110 @@
+(** Cross-contract oracle for [TYPE-GENERICS-DECL], [FLAVOR-ML-GENERICS],
+    [TYPE-LIST], [TYPE-MAP], [TYPE-MAP-LOOKUP], [BUILTIN-LIST-GET],
+    [BUILTIN-MAP-GET], [BUILTIN-LIST-APPEND], [BUILTIN-MAP-SET], and
+    [BUILTIN-LIST-FOREACH]. *)
+type Envelope T U =
+    payload : T
+    metadata : U
+
+effect RecordAudit
+    note : string => Unit
+
+nestedAt<T> : (List (List T), int, int, List T, T) -> T
+nestedAt (matrix, row, column, fallbackRow, fallback) =
+    listGet (listGet matrix row ?: fallbackRow) column ?: fallback
+
+groupAt<T> : (Map string (List T), string, int, List T, T) -> T
+groupAt (groups, key, index, fallbackList, fallback) =
+    listGet (mapGet groups key ?: fallbackList) index ?: fallback
+
+auditEnvelopeMetadata envelopes =
+    mut transcript = ""
+    handle RecordAudit
+        note value =>
+            transcript := transcript + value + "/"
+    in forEachList envelopes (\envelope => perform RecordAudit.note envelope.metadata)
+    transcript
+
+(** The same two-parameter generic record crosses an effectful callback, list
+    and map storage, `Result` fallbacks, field recovery, an effectful callback,
+    and persistent descendants. This jointly enforces [TYPE-GENERICS-DECL],
+    [BUILTIN-LIST-FOREACH], [BUILTIN-LIST-GET], and [BUILTIN-MAP-GET]. *)
+genericRecordCollectionEffectCase () =
+    first = Envelope<List<List<int>>, string>(payload = [[1, 2], [3, 4, 5]], metadata = "int-matrix")
+    second = Envelope<List<List<int>>, string>(payload = [[6, 7], [8, 9, 10]], metadata = "second")
+    fallback = Envelope<List<List<int>>, string>(payload = [[99]], metadata = "fallback")
+    envelopes = [first, second]
+    grown = envelopes |> listAppend (Envelope<List<List<int>>, string>(payload = [[11, 12]], metadata = "third"))
+    firstBack = listGet envelopes 0 ?: fallback
+    secondBack = listGet envelopes 1 ?: fallback
+    thirdBack = listGet grown 2 ?: fallback
+    stringEnvelope = Envelope<Map<string, List<string>>, int>(
+        payload = Map () |> mapSet "short" ["a", "bb"] |> mapSet "long" ["three", "seven"],
+        metadata = 17)
+    stringFallback = Envelope<Map<string, List<string>>, int>(payload = mapSet (Map ()) "missing" ["fallback"], metadata = 99)
+    envelopeMap = Map () |> mapSet "primary" stringEnvelope
+    stringBack = mapGet envelopeMap "primary" ?: stringFallback
+    missingBack = mapGet envelopeMap "missing" ?: stringFallback
+
+    checkAll "Envelope<List<List<int>>,string> survives list storage and persistence" [
+        listLength envelopes == 2,
+        listLength grown == 3,
+        firstBack.metadata == "int-matrix",
+        secondBack.metadata == "second",
+        thirdBack.metadata == "third",
+        length firstBack.metadata == 10,
+        length secondBack.metadata == 6,
+        length thirdBack.metadata == 5,
+        nestedAt (firstBack.payload, 0, 0, [99], 99) == 1,
+        nestedAt (firstBack.payload, 0, 1, [99], 99) == 2,
+        nestedAt (firstBack.payload, 1, 0, [99], 99) == 3,
+        nestedAt (firstBack.payload, 1, 2, [99], 99) == 5,
+        nestedAt (secondBack.payload, 0, 0, [99], 99) == 6,
+        nestedAt (secondBack.payload, 0, 1, [99], 99) == 7,
+        nestedAt (secondBack.payload, 1, 0, [99], 99) == 8,
+        nestedAt (secondBack.payload, 1, 2, [99], 99) == 10,
+        nestedAt (thirdBack.payload, 0, 0, [99], 99) == 11,
+        nestedAt (thirdBack.payload, 0, 1, [99], 99) == 12,
+        (listGet envelopes 8 ?: fallback).metadata == "fallback",
+        nestedAt ((listGet envelopes 8 ?: fallback).payload, 0, 0, [91], 98) == 99,
+        listLength envelopes == 2,
+        firstBack.metadata == "int-matrix",
+        auditEnvelopeMetadata envelopes == "int-matrix/second/",
+        auditEnvelopeMetadata grown == "int-matrix/second/third/"
+    ]
+
+    checkAll "Envelope<Map<string,List<string>>,int> survives map storage and lookup" [
+        mapLength envelopeMap == 1,
+        mapContains envelopeMap "primary",
+        !(mapContains envelopeMap "missing"),
+        stringBack.metadata == 17,
+        groupAt (stringBack.payload, "short", 0, ["row"], "item") == "a",
+        groupAt (stringBack.payload, "short", 1, ["row"], "item") == "bb",
+        groupAt (stringBack.payload, "long", 0, ["row"], "item") == "three",
+        groupAt (stringBack.payload, "long", 1, ["row"], "item") == "seven",
+        length (groupAt (stringBack.payload, "long", 1, ["row"], "item")) == 5,
+        listLength (mapGet stringBack.payload "short" ?: ["missing"]) == 2,
+        listLength (mapGet stringBack.payload "long" ?: ["missing"]) == 2,
+        missingBack.metadata == 99,
+        groupAt (missingBack.payload, "missing", 0, ["row"], "item") == "fallback",
+        mapLength stringBack.payload == 2,
+        mapLength missingBack.payload == 1,
+        listLength (mapKeys stringBack.payload) == 2,
+        listContains (mapKeys stringBack.payload) "short",
+        listContains (mapKeys stringBack.payload) "long",
+        !(listContains (mapKeys stringBack.payload) "missing")
+    ]
+
+    checkAll "different T and U argument lists remain isolated" [
+        firstBack.metadata != secondBack.metadata,
+        secondBack.metadata != thirdBack.metadata,
+        nestedAt (firstBack.payload, 0, 0, [99], 99) != nestedAt (secondBack.payload, 0, 0, [99], 99),
+        nestedAt (secondBack.payload, 0, 0, [99], 99) != nestedAt (thirdBack.payload, 0, 0, [99], 99),
+        stringBack.metadata != missingBack.metadata,
+        groupAt (stringBack.payload, "short", 0, ["row"], "item") != groupAt (missingBack.payload, "missing", 0, ["row"], "item"),
+        mapLength envelopeMap == 1,
+        listLength envelopes == 2,
+        listLength grown == 3
+    ]
+
+test "multi-argument generic records mix effects lists maps and Results" genericRecordCollectionEffectCase

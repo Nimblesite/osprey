@@ -1,3 +1,8 @@
 ok 1 - post-resume code unwinds in reverse operation order
-1..1
-# tests=1 passed=1 failed=0 skipped=0
+ok 2 - interleaved performs across two nested regions settle innermost first
+ok 3 - three rotated regions settle by live arm nesting, not by perform order
+ok 4 - four nested regions settle by live arm nesting, deepest arm first
+ok 5 - a partial inner region resumes while its uncovered operation crosses outward
+ok 6 - an inner region settles fully before the outer region's later operation
+1..6
+# tests=6 passed=6 failed=0 skipped=0

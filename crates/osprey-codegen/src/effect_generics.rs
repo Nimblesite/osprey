@@ -81,7 +81,7 @@ pub(crate) fn unbox_erased(cg: &mut Codegen, raw: &str, resolved: &Type) -> Valu
     let target = ltype_of(resolved);
     let value = unbox_coro_value(cg, raw, target, result_inner(resolved));
     if value.osp_ty.is_none() && target == LType::Ptr {
-        return value.with_owner(owner_name(resolved));
+        return value.with_owner(owner_name(&cg.prog, resolved));
     }
     value
 }

@@ -123,7 +123,7 @@ fn bind_arm_params(
                 param,
                 resolved
                     .and_then(|r| r.params.get(i))
-                    .and_then(crate::types::owner_name),
+                    .and_then(|t| crate::types::owner_name(&cg.prog, t)),
             ),
         };
         cg.bind(pname.clone(), bound);
@@ -1073,7 +1073,17 @@ fn emit_substitute_and_continue(cg: &mut Codegen, drive_fn: &str, arm_result: &s
     cg.start_block(&done_lbl);
     cg.emit(format!("ret i64 {resumed}"));
     cg.start_block(&more_lbl);
-    let nested = cg.emit_reg(format!("call i64 @{drive_fn}(i8* %__env, i8* %__coro)"));
+    // `musttail`, not a plain call: the dispatcher continues by re-entering
+    // itself with the SAME arguments, so a handler with one resuming arm and
+    // one substituting arm grew a native frame per operation the substituting
+    // arm answered. Release builds happened to fold it away; debug builds
+    // compile at `-O0` ([`osprey_debug`]) where nothing does, and a loop of
+    // otherwise constant-space performs exhausted the host stack. `musttail`
+    // makes the reuse a VERIFIED property of the module rather than a hope
+    // about the optimizer. Implements [EFFECTS-HANDLER-ARMS].
+    let nested = cg.emit_reg(format!(
+        "musttail call i64 @{drive_fn}(i8* %__env, i8* %__coro)"
+    ));
     cg.emit(format!("ret i64 {nested}"));
 }
 

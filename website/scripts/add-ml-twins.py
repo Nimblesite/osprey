@@ -546,6 +546,12 @@ def main():
     files = sorted(DOCS.rglob("*.md"))
     n = 0
     for f in files:
+        source = f.read_text()
+        if re.search(r'^mlTwins:\s*false\s*$', source, re.M):
+            without_twins = strip_twins(source)
+            if without_twins != source:
+                f.write_text(without_twins)
+            continue
         rel = f.relative_to(DOCS).as_posix()
         hand = HAND_TWINS.get(rel)
         changed, _ = process(f, hand_ml=hand)

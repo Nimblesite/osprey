@@ -666,6 +666,9 @@ mod tests {
         let runner = Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("../../scripts")
             .join(script);
+        // Plain `node`: `scripts/wasm-smoke.mjs` relaunches itself under a
+        // WASI-sound interpreter when this one is too old, so the version
+        // policy lives there alone ([WASM-TARGET]).
         let output = Command::new("node")
             .arg(runner)
             .arg(wasm)
