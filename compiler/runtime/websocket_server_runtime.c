@@ -2,7 +2,8 @@
 #include "memory_hooks.h"
 #include <signal.h>
 
-// Native text-frame server transport [BUILTIN-WEBSOCKET].
+// Native text-frame server transport [BUILTIN-WEBSOCKET-SERVER]
+// (docs/specs/0015-WebSockets.md). Lifecycle: [BUILTIN-WEBSOCKET-LIFECYCLE].
 
 // Global variable for runtime lifecycle
 static volatile int keep_runtime_running = 1;

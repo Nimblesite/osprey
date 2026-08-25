@@ -102,6 +102,72 @@ int64_t osp_random_below(int64_t n) {
 
 #define OSP_INPUT_INIT_CAP ((size_t)128)
 
+#if !defined(_WIN32) && !defined(__wasm__)
+#include <sys/select.h>
+#include <unistd.h>
+
+// How long a NON-INTERACTIVE stdin may stay silent before `input()` concludes
+// nothing is coming. [BUILTIN-INPUT] requires the empty string rather than
+// blocking when stdin is "empty or not connected", and an fd that is open but
+// SILENT -- the stdin pipe an editor's `execFile` opens and never writes, or an
+// idle redirect -- is neither EOF nor data, so an ungated read parks on it
+// forever. That is not hypothetical: it hung "Compile and Run" with no output
+// at all, because stdout is block-buffered and nothing is flushed before the
+// read blocks.
+//
+// A terminal is exempt. It is connected and WILL deliver once the user types,
+// which is the entire point of reading a line interactively, so there the wait
+// stays unbounded. So is every byte after the first -- see `osp_input_byte`.
+//
+// KNOWN RESIDUAL: a pipe whose writer is merely SLOW is indistinguishable from
+// one whose writer will never speak, so a producer that stays silent past this
+// grace before its first byte reads as empty. That is the spec's own trade --
+// "empty or not connected" yields "" -- and it is bounded to whole lines: a
+// line already begun is never cut short.
+#define OSP_INPUT_SILENT_MS 1000
+
+// Whether stdin has a byte to give. Waits forever when `bounded` is 0 or stdin
+// is a terminal, otherwise at most [`OSP_INPUT_SILENT_MS`].
+static int osp_input_ready(int bounded) {
+  if (!bounded || isatty(STDIN_FILENO)) {
+    return 1;
+  }
+  fd_set set;
+  FD_ZERO(&set);
+  FD_SET(STDIN_FILENO, &set);
+  struct timeval tv;
+  tv.tv_sec = OSP_INPUT_SILENT_MS / 1000;
+  tv.tv_usec = (OSP_INPUT_SILENT_MS % 1000) * 1000;
+  return select(STDIN_FILENO + 1, &set, NULL, NULL, &tv) > 0;
+}
+
+// One byte of stdin, or EOF. `bounded` gates ONLY the first byte of a line: a
+// producer that writes "he", pauses past the grace, then writes "llo\n" must
+// still deliver `hello`. Truncating a line mid-way hands the program a value it
+// then computes with, which is worse than the unbounded wait the grace exists
+// to avoid -- so once a line has started, this blocks until its newline or a
+// real EOF.
+//
+// Reads the descriptor directly rather than through stdio: `select` reports
+// what the DESCRIPTOR holds, so a buffering layer between the two would report
+// "nothing to read" with a line already sitting in its buffer.
+// `term_runtime.c` reads keystrokes the same way.
+static int osp_input_byte(int bounded) {
+  if (!osp_input_ready(bounded)) {
+    return EOF;
+  }
+  unsigned char ch;
+  return read(STDIN_FILENO, &ch, 1) == 1 ? (int)ch : EOF;
+}
+#else
+// Windows and wasm keep the stdio reader: neither can `select` a stdin handle,
+// and the wasm runtime excludes `input` altogether ([WASM-TARGET]).
+static int osp_input_byte(int bounded) {
+  (void)bounded;
+  return getchar();
+}
+#endif
+
 // Implements [BUILTIN-INPUT]: read one line from stdin without its trailing
 // newline, returning a heap string ("" on EOF/empty). The caller owns the
 // result, matching the string-runtime builtins which also malloc their returns.
@@ -112,8 +178,12 @@ char *osp_input(void) {
   if (buf == NULL) {
     return NULL;
   }
+  // Anything already staged for stdout must reach the user BEFORE this
+  // parks: stdout is block-buffered off a terminal, so an unflushed prompt
+  // is invisible for exactly as long as the read waits.
+  fflush(stdout);
   int c;
-  while ((c = getchar()) != EOF && c != '\n') {
+  while ((c = osp_input_byte(len == 0)) != EOF && c != '\n') {
     if (len + 1 >= cap) {
       cap *= 2;
       char *grown = (char *)realloc(buf, cap);

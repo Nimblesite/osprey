@@ -544,7 +544,8 @@ C_TEST_SUITES ?= memory_gc_stack_root_tests memory_arc_tests memory_gc_tests \
   effects_runtime_tests builtins_runtime_tests test_system_runtime \
   test_file_runtime \
   test_http_length_validation http_server_send_tests http_server_request_tests \
-  fiber_runtime_tests http_runtime_tests profiler_runtime_tests \
+  fiber_runtime_tests http_runtime_tests http_shared_tests \
+  websocket_runtime_tests profiler_runtime_tests \
   coverage_runtime_tests
 C_SRC_memory_gc_stack_root_tests = runtime/memory_gc_stack_root_tests.c runtime/memory_gc.c
 C_LIBS_memory_gc_stack_root_tests = -pthread
@@ -579,8 +580,22 @@ C_LIBS_http_server_request_tests = -pthread
 C_SRC_fiber_runtime_tests = runtime/fiber_runtime_tests.c runtime/memory_runtime.c $(RT_THREADS)
 C_LIBS_fiber_runtime_tests = -pthread
 C_FLAGS_http_runtime_tests = $(OSSL_CFLAGS)
-C_SRC_http_runtime_tests = runtime/http_runtime_tests.c runtime/http_client_runtime.c runtime/http_server_runtime.c runtime/http_server_request.c runtime/http_server_response.c runtime/http_shared.c runtime/websocket_client_runtime.c runtime/websocket_server_runtime.c runtime/string_runtime.c runtime/memory_runtime.c runtime/random_runtime.c $(RT_THREADS)
+C_SRC_http_runtime_tests = runtime/http_runtime_tests.c runtime/http_client_runtime.c runtime/http_server_runtime.c runtime/http_server_request.c runtime/http_server_response.c runtime/http_shared.c runtime/string_runtime.c runtime/memory_runtime.c runtime/random_runtime.c $(RT_THREADS)
 C_LIBS_http_runtime_tests = -pthread $(OSSL_LIBS)
+# http_shared.c's coverage number is OWNED by this suite: it is the only one
+# that drives every helper in the unit rather than the subset one transport
+# reaches. Keep it that way -- the gate takes the MAX across suites, never a
+# union, so splitting these tests across transports would lower the number
+# while testing exactly as much.
+C_FLAGS_http_shared_tests = $(OSSL_CFLAGS)
+C_SRC_http_shared_tests = runtime/http_shared_tests.c runtime/http_shared.c runtime/random_runtime.c
+C_LIBS_http_shared_tests = -pthread $(OSSL_LIBS)
+# Owns websocket_client_runtime.c and websocket_server_runtime.c. Binds real
+# loopback ports (18086/18087) and runs a real accept loop, so it is single
+# threaded across suites by construction -- the Makefile runs suites serially.
+C_FLAGS_websocket_runtime_tests = $(OSSL_CFLAGS)
+C_SRC_websocket_runtime_tests = runtime/websocket_runtime_tests.c runtime/websocket_client_runtime.c runtime/websocket_server_runtime.c runtime/http_shared.c runtime/random_runtime.c runtime/memory_runtime.c
+C_LIBS_websocket_runtime_tests = -pthread $(OSSL_LIBS)
 C_PROFILE_profiler_runtime_tests = $(PROF_T)
 C_SRC_profiler_runtime_tests = runtime/profiler_runtime_tests.c runtime/profiler_runtime.c runtime/profiler_sampler.c
 C_LIBS_profiler_runtime_tests = -pthread
@@ -736,17 +751,32 @@ _test_vscode_extension: _vsix_bundle
 	  ./node_modules/.bin/vscode-test --coverage --coverage-output coverage \
 	    --coverage-reporter text-summary --coverage-reporter json-summary --coverage-reporter html 2>&1 | tee -a test.log
 
+# Gates EVERY metric the summary reports, not lines alone. Lines-only was the
+# dishonest half of this gate: branches and functions were measured, printed by
+# the text-summary reporter, and then thrown away, so a module could add an
+# untested `else` arm or an unreachable handler without moving the number the
+# gate reads. All four are held to the one threshold the project declares.
 _coverage_check_vscode_extension:
 	@if [ ! -f "$(COVERAGE_THRESHOLDS_FILE)" ]; then echo "FAIL: $(COVERAGE_THRESHOLDS_FILE) not found"; exit 1; fi; \
 	THRESHOLD=$$(jq -r '.projects["vscode-extension"].threshold' "$(COVERAGE_THRESHOLDS_FILE)"); \
-	if [ ! -f "$(EXT_DIR)/coverage/coverage-summary.json" ]; then \
+	SUMMARY="$(EXT_DIR)/coverage/coverage-summary.json"; \
+	if [ ! -f "$$SUMMARY" ]; then \
 	  echo "[vscode-extension] FAIL: coverage-summary.json not produced"; exit 1; \
 	fi; \
-	PCT=$$(jq -r '.total.lines.pct' "$(EXT_DIR)/coverage/coverage-summary.json"); \
-	PCT_INT=$$(echo "$$PCT" | awk '{printf "%d", $$1}'); \
-	echo "[vscode-extension] coverage: $${PCT}% (threshold: $${THRESHOLD}%)"; \
-	if [ "$$PCT_INT" -lt "$$THRESHOLD" ]; then echo "[vscode-extension] FAIL: $${PCT}% < $${THRESHOLD}%"; exit 1; fi; \
-	echo "[vscode-extension] OK: $${PCT}% >= $${THRESHOLD}%"
+	SHORTFALL=""; \
+	for METRIC in lines statements branches functions; do \
+	  PCT=$$(jq -r --arg m "$$METRIC" '.total[$$m].pct' "$$SUMMARY"); \
+	  if [ "$$PCT" = "null" ]; then \
+	    echo "[vscode-extension] FAIL: the summary reports no $$METRIC total"; exit 1; \
+	  fi; \
+	  PCT_INT=$$(echo "$$PCT" | awk '{printf "%d", $$1}'); \
+	  echo "[vscode-extension] $$METRIC: $${PCT}% (threshold: $${THRESHOLD}%)"; \
+	  if [ "$$PCT_INT" -lt "$$THRESHOLD" ]; then SHORTFALL="$$SHORTFALL $$METRIC=$${PCT}%"; fi; \
+	done; \
+	if [ -n "$$SHORTFALL" ]; then \
+	  echo "[vscode-extension] FAIL: below $${THRESHOLD}% -$$SHORTFALL"; exit 1; \
+	fi; \
+	echo "[vscode-extension] OK: lines, statements, branches and functions all >= $${THRESHOLD}%"
 
 # =============================================================================
 # Repo-Specific Targets

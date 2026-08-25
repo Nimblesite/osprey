@@ -180,41 +180,85 @@ static void t_input_lines(void) {
   run_child_expect(child_input_lines, input, want, 0);
 }
 
-// Read one line through `osp_input` with STDIN redirected IN THIS PROCESS, and
-// answer it. Unlike `run_child_expect` this keeps the call in the parent, whose
-// gcov counters are actually flushed at exit — a forked child `_exit`s, so the
-// coverage of everything it ran is discarded ([BUILTIN-INPUT] was measured at
-// zero for exactly that reason). The write end is closed before the read, so
-// the descriptor reaches a real EOF rather than staying open and silent.
-static char *input_through_pipe(const char *feed) {
-  int pipe_fds[2];
-  CHECK(pipe(pipe_fds) == 0);
+// Longer than OSP_INPUT_SILENT_MS in random_runtime.c, so a writer that pauses
+// for it has certainly outlasted the first-byte grace.
+#define GAP_PAST_GRACE_US ((useconds_t)1500000)
+
+// Point STDIN at `read_fd` (consumed), answering the saved original descriptor.
+static int stdin_redirect(int read_fd) {
   int saved = dup(STDIN_FILENO);
   CHECK(saved >= 0);
-  CHECK(dup2(pipe_fds[0], STDIN_FILENO) >= 0);
-  close(pipe_fds[0]);
+  CHECK(dup2(read_fd, STDIN_FILENO) >= 0);
+  close(read_fd);
+  return saved;
+}
+
+// Put back the descriptor `stdin_redirect` displaced.
+static void stdin_restore(int saved) {
+  CHECK(dup2(saved, STDIN_FILENO) >= 0);
+  close(saved);
+}
+
+// Read one line through `osp_input` with STDIN redirected IN THIS PROCESS, and
+// answer it. Unlike `run_child_expect` this keeps the call in the parent, whose
+// gcov counters are actually flushed at exit -- a forked child `_exit`s, so the
+// coverage of everything it ran is discarded ([BUILTIN-INPUT] was measured at
+// zero for exactly that reason). `keep_open` holds the write end alive across
+// the read, which is the OPEN BUT SILENT state an editor's `execFile` leaves
+// stdin in: neither data nor EOF.
+static char *input_through_pipe(const char *feed, int keep_open) {
+  int pipe_fds[2];
+  CHECK(pipe(pipe_fds) == 0);
   if (feed != NULL) {
     size_t len = strlen(feed);
     CHECK(write(pipe_fds[1], feed, len) == (ssize_t)len);
   }
-  close(pipe_fds[1]);
+  if (!keep_open) {
+    close(pipe_fds[1]);
+  }
+  int saved = stdin_redirect(pipe_fds[0]);
   char *line = osp_input();
-  CHECK(dup2(saved, STDIN_FILENO) >= 0);
-  close(saved);
+  stdin_restore(saved);
+  if (keep_open) {
+    close(pipe_fds[1]);
+  }
+  return line;
+}
+
+// Read one line while a FORKED writer sends `first`, sleeps past the silence
+// grace, then sends `rest`. The gap is the whole point: it proves the grace
+// bounds only the FIRST byte of a line. A reader that re-armed the timeout for
+// every byte would answer `first` alone and hand the program a truncated value
+// to compute with -- corruption, not merely a missing line.
+static char *input_split_across_gap(const char *first, const char *rest) {
+  int pipe_fds[2];
+  CHECK(pipe(pipe_fds) == 0);
+  pid_t writer = fork();
+  CHECK(writer >= 0);
+  if (writer == 0) {
+    close(pipe_fds[0]);
+    ssize_t head = write(pipe_fds[1], first, strlen(first));
+    usleep(GAP_PAST_GRACE_US);
+    ssize_t tail = write(pipe_fds[1], rest, strlen(rest));
+    close(pipe_fds[1]);
+    _exit(head > 0 && tail > 0 ? 0 : 1);
+  }
+  close(pipe_fds[1]);
+  int saved = stdin_redirect(pipe_fds[0]);
+  char *line = osp_input();
+  stdin_restore(saved);
+  int status = 0;
+  CHECK(waitpid(writer, &status, 0) == writer);
+  CHECK(WIFEXITED(status) && WEXITSTATUS(status) == 0);
   return line;
 }
 
 // [BUILTIN-INPUT] end to end, in-process: a short line, a line longer than the
-// initial buffer (the realloc growth path), and a closed-and-empty descriptor.
-//
-// An OPEN BUT SILENT descriptor is deliberately NOT asserted here. A pipe whose
-// writer is still alive is "connected", so the spec's EOF clause does not cover
-// it, and the read must keep waiting: a runtime that gave up after a timeout
-// returned "" for a producer that was merely slow, and truncated a line
-// delivered in two halves. `input_never_blocks` in osprey-cli owns that open
-// question at the process level.
+// initial buffer (the realloc growth path), a closed-and-empty descriptor, an
+// OPEN but silent one, and a line delivered in two halves either side of a
+// pause longer than the silence grace.
 static void t_input_descriptor_states(void) {
-  char *line = input_through_pipe("alpha\n");
+  char *line = input_through_pipe("alpha\n", 0);
   CHECK(line != NULL && strcmp(line, "alpha") == 0);
   free(line);
 
@@ -222,13 +266,24 @@ static void t_input_descriptor_states(void) {
   memset(big, 'z', LONG_LINE);
   big[LONG_LINE] = '\n';
   big[LONG_LINE + 1] = '\0';
-  line = input_through_pipe(big);
+  line = input_through_pipe(big, 0);
   CHECK(line != NULL && strlen(line) == LONG_LINE);
   free(line);
 
   // EOF: the documented empty string, never NULL.
-  line = input_through_pipe(NULL);
+  line = input_through_pipe(NULL, 0);
   CHECK(line != NULL && line[0] == '\0');
+  free(line);
+
+  // Open and silent. The spec's "empty or not connected" clause answers "",
+  // and it must answer it rather than parking in `read` forever.
+  line = input_through_pipe(NULL, 1);
+  CHECK(line != NULL && line[0] == '\0');
+  free(line);
+
+  // A slow producer still delivers its WHOLE line.
+  line = input_split_across_gap("he", "llo\n");
+  CHECK(line != NULL && strcmp(line, "hello") == 0);
   free(line);
 }
 
