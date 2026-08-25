@@ -112,11 +112,30 @@ fn verdict_arms(cg: &Codegen) -> Result<Vec<MatchArm>> {
             "a test case answering `{VERDICT_TY}` needs a `type {VERDICT_TY}` union with Pass, Fail and Skip states"
         ))
     })?;
-    states
-        .to_vec()
+    let states = states.to_vec();
+    verdict_states_complete(&states)?;
+    states.iter().map(|state| verdict_arm(cg, state)).collect()
+}
+
+/// Reject a `Verdict` that omits one of the three states. Generating arms only
+/// for what happens to be declared made `type Verdict = Pass` compile and
+/// report a passing case: the missing constructors simply never appeared in the
+/// match, so a suite that could not express failure still looked green. Extra
+/// states are caught by [`verdict_report`]; this is the other direction.
+/// Implements [TESTING-VERDICT].
+fn verdict_states_complete(states: &[String]) -> Result<()> {
+    let missing: Vec<&str> = VERDICT_REPORTS
         .iter()
-        .map(|state| verdict_arm(cg, state))
-        .collect()
+        .map(|(name, _, _)| *name)
+        .filter(|name| !states.iter().any(|state| state == name))
+        .collect();
+    if missing.is_empty() {
+        return Ok(());
+    }
+    Err(CodegenError::unsupported(format!(
+        "`type {VERDICT_TY}` must declare Pass, Fail and Skip; it is missing {}",
+        missing.join(", ")
+    )))
 }
 
 /// One `Verdict` arm: `Ctor reason => reportFn(reason)` when the state declares

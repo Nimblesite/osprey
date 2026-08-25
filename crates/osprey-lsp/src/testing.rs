@@ -131,19 +131,25 @@ pub(crate) fn collect_tests(program: &Program) -> Vec<TestCase> {
     out
 }
 
-/// Whether a declaration named `test` shadows the testing built-in
-/// ([TESTING-SHADOWING]). Only top-level and container-level declarations can:
-/// the built-in is resolved at the call site's scope.
+/// Whether THIS scope declares a `test` that shadows the testing built-in
+/// ([TESTING-SHADOWING]). Shadowing is lexical: the built-in is resolved at the
+/// call site's scope, so only declarations at the same level as the call can
+/// capture it. Deliberately NOT recursive — descending into namespace and
+/// module bodies turned a scoped helper into a whole-file kill switch, because
+/// the file-wide bail-out below would then fire on a `test` that no top-level
+/// call site can even see.
 fn shadows_test_builtin(stmts: &[Stmt]) -> bool {
     stmts.iter().any(|stmt| match stmt {
         Stmt::Function { name, .. } | Stmt::Extern { name, .. } => name == TEST_BUILTIN,
-        Stmt::Namespace { body, .. } => shadows_test_builtin(body),
-        Stmt::Module { body, .. } => body.iter().any(|item| match &*item.declaration {
-            Stmt::Function { name, .. } | Stmt::Extern { name, .. } => name == TEST_BUILTIN,
-            _ => false,
-        }),
         _ => false,
     })
+}
+
+/// The declarations a module body contributes to its own scope.
+fn module_scope(body: &[osprey_ast::ModuleItem]) -> Vec<Stmt> {
+    body.iter()
+        .map(|item| (*item.declaration).clone())
+        .collect()
 }
 
 /// The built-in that declares a test case ([TESTING-BUILTIN-TEST]).
@@ -182,8 +188,14 @@ fn walk_stmt(stmt: &Stmt, pos: Option<Position>, out: &mut Vec<TestCase>) {
             value, position, ..
         } => walk_value(value, position.or(pos), None, out),
         Stmt::Function { body, position, .. } => walk_value(body, position.or(pos), None, out),
-        Stmt::Namespace { body, .. } => walk_stmts(body, pos, out),
-        Stmt::Module { body, .. } => {
+        // A container that declares its own `test` shadows the built-in for the
+        // calls INSIDE it, and only those: its siblings keep the built-in.
+        Stmt::Namespace { body, .. } => {
+            if !shadows_test_builtin(body) {
+                walk_stmts(body, pos, out);
+            }
+        }
+        Stmt::Module { body, .. } if !shadows_test_builtin(&module_scope(body)) => {
             for item in body {
                 walk_stmt(&item.declaration, pos, out);
             }
@@ -419,6 +431,32 @@ mod tests {
         let real = program("test(\"a case\", fn() => Skip(\"parked\"))\n");
         assert_eq!(collect_tests(&real).len(), 1);
         assert_eq!(test_case_names(&real), ["a case"]);
+    }
+
+    // [TESTING-SHADOWING] shadowing is LEXICAL. A `test` declared inside a
+    // namespace or module is `Helpers::test` — it cannot capture a bare
+    // top-level `test(...)` call, so it must not remove the sibling case from
+    // discovery. `collect_tests` bails out for the whole file when it sees a
+    // shadowing declaration, and that scan descends into container bodies, so
+    // this pins the one thing keeping the bail-out honest: nested declarations
+    // carry a qualified name and never match. A regression that unqualified
+    // them would silently empty the inventory of every file with a private
+    // helper called `test` — no error, no warning, just no tests.
+    #[test]
+    fn a_test_declared_inside_a_container_does_not_erase_sibling_cases() {
+        for source in [
+            "namespace Helpers {\n    fn test(name, body) = 0\n}\n\
+             test(\"must stay visible\", fn() => Skip(\"parked\"))\n",
+            "module Helpers {\n    fn test(name, body) = 0\n}\n\
+             test(\"must stay visible\", fn() => Skip(\"parked\"))\n",
+        ] {
+            let nested = program(source);
+            assert_eq!(
+                test_case_names(&nested),
+                ["must stay visible"],
+                "a container-scoped `test` must not erase the top-level case in:\n{source}"
+            );
+        }
     }
 
     // [TESTING-SKIP-WARNING] every statically-recognised `Skip` form, and the

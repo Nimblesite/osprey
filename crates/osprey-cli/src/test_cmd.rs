@@ -188,6 +188,7 @@ struct SuiteOutput {
 fn run_suites(files: &[PathBuf], opts: &Opts, jobs: usize) -> ExitCode {
     let outputs = execute_suites(files, opts, jobs);
     let mut failed = 0usize;
+    let mut coverage_broken = false;
     let mut report = BTreeMap::new();
     for output in outputs {
         let Some(file) = files.get(output.index) else {
@@ -200,21 +201,34 @@ fn run_suites(files: &[PathBuf], opts: &Opts, jobs: usize) -> ExitCode {
         }
         if opts.coverage {
             let dump = coverage_dump_path(file);
-            collect_suite_coverage(file, &dump, &mut report, opts.quiet);
+            let collected = collect_suite_coverage(file, &dump, &mut report, opts.quiet);
+            // Only a suite that PASSED is expected to have left evidence. A
+            // failed one may have died before writing — it is reported either
+            // way, but it already counted as a failure and must not count twice.
+            if !collected && output.passed {
+                coverage_broken = true;
+            }
         }
     }
     if opts.coverage {
         report_total(&report);
     }
     if let Some(out) = &opts.coverage_json {
-        write_coverage_json(out, &report);
+        // An explicitly requested artifact that was not produced is a failure:
+        // a green exit code otherwise claims a file the caller cannot read.
+        if !write_coverage_json(out, &report) {
+            coverage_broken = true;
+        }
     }
     println!(
         "# suites: {} passed, {} failed",
         files.len() - failed,
         failed
     );
-    if failed > 0 {
+    // Counted apart from `failed`: a coverage problem is not a suite verdict,
+    // so folding it in would misreport the `# suites:` line. It still fails the
+    // COMMAND — absent evidence must never exit green ([TESTING-COVERAGE]).
+    if failed > 0 || coverage_broken {
         ExitCode::FAILURE
     } else {
         ExitCode::SUCCESS
@@ -259,6 +273,13 @@ fn suite_worker(
 
 fn execute_suite(file: &Path, opts: &Opts, index: usize) -> SuiteOutput {
     let dump = opts.coverage.then(|| coverage_dump_path(file));
+    // The dump path is derived from the suite path, so it is stable across
+    // runs. Remove any leftover before the process starts: without this an
+    // artifact from an interrupted earlier run is read back as if it were this
+    // run's evidence ([TESTING-COVERAGE-DUMP]).
+    if let Some(stale) = dump.as_deref() {
+        let _ = std::fs::remove_file(stale);
+    }
     let result = suite_command(
         file,
         opts.filter.as_deref(),
@@ -405,16 +426,28 @@ fn coverage_dump_path(file: &Path) -> PathBuf {
 }
 
 /// Parse one suite's dump into the merged report and print its line rate.
+/// `false` when the suite produced no usable evidence — a missing, unreadable,
+/// malformed or EMPTY dump. Coverage that cannot be evidenced must fail the
+/// command rather than print to stderr and let `percent(0, 0)` report `100.0%`
+/// over nothing ([TESTING-COVERAGE]).
 fn collect_suite_coverage(
     file: &Path,
     dump: &Path,
     report: &mut BTreeMap<String, LineHits>,
     quiet: bool,
-) {
+) -> bool {
     let Some(hits) = parse_dump(dump) else {
         eprintln!("osprey test: no coverage dump for {}", file.display());
-        return;
+        return false;
     };
+    if hits.is_empty() {
+        eprintln!(
+            "osprey test: empty coverage dump for {}; no coverable lines were recorded",
+            file.display()
+        );
+        let _ = std::fs::remove_file(dump);
+        return false;
+    }
     let _ = std::fs::remove_file(dump);
     let (covered, total) = line_rate(&hits);
     if !quiet {
@@ -425,6 +458,7 @@ fn collect_suite_coverage(
         );
     }
     let _ = report.insert(file.display().to_string(), hits);
+    true
 }
 
 /// Read a `[TESTING-COVERAGE-DUMP]` file: `# osprey-coverage v1` then one
@@ -477,7 +511,8 @@ fn report_total(report: &BTreeMap<String, LineHits>) {
 
 /// Write the merged machine-readable report the editor integration consumes
 /// [TESTING-COVERAGE-JSON]: `{"files":{"<path>":{"lines":{"<line>":hits}}}}`.
-fn write_coverage_json(out: &str, report: &BTreeMap<String, LineHits>) {
+/// `false` when the requested JSON could not be written.
+fn write_coverage_json(out: &str, report: &BTreeMap<String, LineHits>) -> bool {
     let files = report
         .iter()
         .map(|(file, hits)| {
@@ -492,7 +527,9 @@ fn write_coverage_json(out: &str, report: &BTreeMap<String, LineHits>) {
         .join(",");
     if let Err(e) = std::fs::write(out, format!("{{\"files\":{{{files}}}}}")) {
         eprintln!("osprey test: cannot write coverage json {out}: {e}");
+        return false;
     }
+    true
 }
 
 /// Minimal JSON string encoding for a path (quotes and backslashes only —
@@ -716,7 +753,10 @@ mod tests {
         let mut report = BTreeMap::new();
         let _ = report.insert(String::from("a\"b.test.osp"), hits);
         let json = dir.join("cov.json");
-        write_coverage_json(&json.display().to_string(), &report);
+        assert!(
+            write_coverage_json(&json.display().to_string(), &report),
+            "a writable path must report success"
+        );
         let text = std::fs::read_to_string(&json).expect("read json");
         assert_eq!(
             text,
