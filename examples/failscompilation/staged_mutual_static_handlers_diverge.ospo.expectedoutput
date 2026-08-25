@@ -1,1 +1,1 @@
-4:12: static discharge of `Ping.go` exceeded the rewrite bound (10000 steps)
+19:12: static discharge of `Ping.go` exceeded the rewrite bound (10000 steps)

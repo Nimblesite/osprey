@@ -2,8 +2,9 @@
     records, unions and generic functions declared inside a module, matched and
     consumed across the boundary through the module's exported factories.
 
-    A union's constructors are NOT part of a module's exported surface — only the
-    declarations the module marks `export` are — so every value here is built by
+    An exported union's constructors ARE public — [MODULES-OPAQUE-TYPES] makes
+    only the OPAQUE ones private — but a factory is still the surface to prefer:
+    it keeps the representation free to change, so every value here is built by
     an exported factory and inspected by an exported accessor. *)
 
 namespace shapes

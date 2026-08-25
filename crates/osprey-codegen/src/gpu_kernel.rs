@@ -99,7 +99,7 @@ fn kernel_elem_ltype(
         .as_ref()
         .and_then(Codegen::fn_value_sig)
         .or_else(|| match kernel {
-            Callback::Lambda(_, _, sig) => sig.clone(),
+            Callback::Lambda(_, _, sig, _) => sig.clone(),
             Callback::Local(_, sig) | Callback::Value(_, sig) => Some(sig.clone()),
             Callback::Named(_) | Callback::Extracted(_) => None,
         });
@@ -168,7 +168,9 @@ pub(crate) fn extract(cg: &mut Codegen, cb: Callback, slots: &[LType]) -> Result
         Callback::Named(_) | Callback::Local(..) | Callback::Value(..) | Callback::Extracted(_) => {
             Ok(cb)
         }
-        Callback::Lambda(parameters, body, own) => lift(cg, parameters, body, own, slots),
+        Callback::Lambda(parameters, body, own, position) => {
+            lift(cg, parameters, body, own, position, slots)
+        }
     }
 }
 
@@ -181,11 +183,12 @@ fn lift(
     parameters: Vec<Parameter>,
     body: Expr,
     own: Option<FnSig>,
+    position: Option<osprey_ast::Position>,
     slots: &[LType],
 ) -> Result<Callback> {
     let caps = crate::closure::capture_list(cg, &parameters, &body);
     if !admissible(cg, &parameters, &body, own.as_ref(), &caps, slots) {
-        return Ok(Callback::Lambda(parameters, body, own));
+        return Ok(Callback::Lambda(parameters, body, own, position));
     }
     let params = param_sigs(&parameters, own.as_ref(), slots);
     let kernel = Lifting {

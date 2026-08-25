@@ -965,6 +965,7 @@ fn apply_lambda(
         body,
         values,
         inline_sig(cg, position).as_ref(),
+        position,
     )
 }
 
@@ -992,8 +993,9 @@ pub(crate) fn apply_lambda_values(
     body: &Expr,
     values: Vec<Value>,
     sig: Option<&FnSig>,
+    position: Option<osprey_ast::Position>,
 ) -> Result<Value> {
-    reduce_lambda(cg, parameters, body, values, sig, &[])
+    reduce_lambda(cg, parameters, body, values, sig, &[], position)
 }
 
 /// [`apply_lambda_values`] with the groups of a curried application spine that
@@ -1007,10 +1009,15 @@ pub(crate) fn reduce_lambda(
     values: Vec<Value>,
     sig: Option<&FnSig>,
     rest: &[crate::curry::ArgGroup<'_>],
+    position: Option<osprey_ast::Position>,
 ) -> Result<Value> {
     cg.push_scope();
+    // `fn_ptr_locals` is per-FUNCTION, not per-scope ([`Codegen::begin_function`]),
+    // so a function-typed lambda parameter registered below must be unwound by
+    // hand — exactly as an inlined call does ([`crate::genfn`]).
+    let saved_fn_ptrs = cg.fn_ptr_locals.clone();
     let lowered = (|| {
-        bind_lambda_params(cg, parameters, values, sig)?;
+        bind_lambda_params(cg, parameters, values, sig, position)?;
         let value = crate::curry::apply_groups(cg, body, rest)?;
         if rest.is_empty() {
             fit_lambda_return(cg, value, sig)
@@ -1018,6 +1025,7 @@ pub(crate) fn reduce_lambda(
             Ok(value)
         }
     })();
+    cg.fn_ptr_locals = saved_fn_ptrs;
     cg.pop_scope();
     lowered
 }
@@ -1029,8 +1037,11 @@ fn bind_lambda_params(
     parameters: &[Parameter],
     values: Vec<Value>,
     sig: Option<&FnSig>,
+    position: Option<osprey_ast::Position>,
 ) -> Result<()> {
+    let declared = cg.prog.lambda_type(position).cloned();
     for (index, (p, v)) in parameters.iter().zip(values).enumerate() {
+        bind_lambda_fn_param(cg, &p.name, declared.as_ref(), index);
         let v = match sig.and_then(|s| s.0.get(index)).copied() {
             Some(want) => crate::cast::coerce_semantic_param(cg, v, want)?,
             None => v,
@@ -1038,6 +1049,30 @@ fn bind_lambda_params(
         cg.bind(p.name.clone(), v);
     }
     Ok(())
+}
+
+/// Register a function-typed lambda parameter so a call through it lowers to an
+/// indirect call, the way a top-level function's own higher-order parameters are
+/// registered ([`crate::lower`]).
+///
+/// Without this the curried ML head `feeding reading body = handle … in body ()`
+/// — whose `body` is a LAMBDA parameter, not a function parameter — lowered
+/// `body ()` to a direct call on an `@body` symbol nothing defines, and the
+/// program failed at the LINKER. The tupled head `feeding (reading, body)` put
+/// the same parameter on the function itself and so always worked
+/// [FLAVOR-ML-CURRY], [FLAVOR-IR-EQUIV].
+fn bind_lambda_fn_param(
+    cg: &mut Codegen,
+    name: &str,
+    declared: Option<&osprey_types::Type>,
+    index: usize,
+) {
+    let Some(osprey_types::Type::Fun { params, .. }) = declared else {
+        return;
+    };
+    if let Some(ty @ osprey_types::Type::Fun { .. }) = params.get(index) {
+        cg.bind_fn_local(name, ty.clone());
+    }
 }
 
 /// Adapt a lambda body's value to the lambda's own inferred signature — the

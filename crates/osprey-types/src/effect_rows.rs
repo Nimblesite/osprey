@@ -390,12 +390,6 @@ impl CallableEnv {
         }
     }
 
-    fn for_parameters(parameters: &[String]) -> Self {
-        let mut env = Self::default();
-        env.bind_parameters(parameters);
-        env
-    }
-
     fn enter_lambda(&self, parameters: &[String]) -> Self {
         let mut env = self.clone();
         for value in env.values.values_mut() {
@@ -414,6 +408,11 @@ struct Analyzer<'a> {
     rows: &'a [Summary],
     returns: &'a [Option<Value>],
     instances: &'a Instances,
+    /// Provenance the file-scope statements establish, seeded underneath every
+    /// function body. Without it a callee named by a top-level `let` resolves
+    /// to nothing and the provenance verdict fails closed — see
+    /// [`statically_named_callee`].
+    file_scope: CallableEnv,
 }
 
 impl Analyzer<'_> {
@@ -462,16 +461,25 @@ impl Analyzer<'_> {
         vec![vec![format!("$unresolved-perform-{location}")]]
     }
 
+    /// A function's starting environment: the file-scope bindings with the
+    /// function's own parameters bound over the top, so a parameter shadows a
+    /// top-level `let` of the same name.
+    fn scoped_env(&self, parameters: &[String]) -> CallableEnv {
+        let mut env = self.file_scope.clone();
+        env.bind_parameters(parameters);
+        env
+    }
+
     fn function_body(&self, function: &Function) -> Summary {
         self.expression(
             &function.body,
             &function.scope,
-            &CallableEnv::for_parameters(&function.parameters),
+            &self.scoped_env(&function.parameters),
         )
     }
 
     fn function_return(&self, function: &Function) -> Option<Value> {
-        let mut env = CallableEnv::for_parameters(&function.parameters);
+        let mut env = self.scoped_env(&function.parameters);
         self.returned_value(&function.body, &function.scope, &mut env)
     }
 
@@ -1988,11 +1996,38 @@ fn advance_function(
     changed
 }
 
+/// The provenance environment the file-scope statements establish, threaded in
+/// execution order so a later `let` sees an earlier one.
+///
+/// Built with an empty file scope of its own: the top-level statements are the
+/// very thing being summarised, and nothing at file scope can name a binding
+/// that has not been walked yet, so one pass is a complete answer for the rows
+/// it was given. The enclosing fixed point re-derives it as those rows sharpen.
+fn file_scope_env(
+    index: &Index,
+    instances: &Instances,
+    statements: &[Stmt],
+    rows: &[Summary],
+    returns: &[Option<Value>],
+) -> CallableEnv {
+    let bootstrap = Analyzer {
+        index,
+        rows,
+        returns,
+        instances,
+        file_scope: CallableEnv::default(),
+    };
+    let mut env = CallableEnv::default();
+    let _ = bootstrap.statements(statements, &[], &mut env);
+    env
+}
+
 /// Least fixed point over every function's row and return provenance:
 /// recursive and forward calls only add requirements.
 fn converge(
     index: &Index,
     instances: &Instances,
+    statements: &[Stmt],
     rows: &mut Vec<Summary>,
     returns: &mut Vec<Option<Value>>,
 ) {
@@ -2002,6 +2037,7 @@ fn converge(
             rows,
             returns,
             instances,
+            file_scope: file_scope_env(index, instances, statements, rows, returns),
         };
         let mut next = rows.clone();
         let mut next_returns = returns.clone();
@@ -2107,15 +2143,28 @@ pub(crate) fn check(program: &Program, instances: &Instances) -> Vec<TypeError> 
     // converged provenance. Nothing genuine is lost: every verdict is
     // recomputed from the body, from a stored `Callable::Unknown`, or from a
     // callee whose own verdict the second sweep raises first and propagates.
-    converge(&index, instances, &mut rows, &mut returns);
+    converge(
+        &index,
+        instances,
+        &program.statements,
+        &mut rows,
+        &mut returns,
+    );
     clear_verdicts(&mut rows, &mut returns);
-    converge(&index, instances, &mut rows, &mut returns);
+    converge(
+        &index,
+        instances,
+        &program.statements,
+        &mut rows,
+        &mut returns,
+    );
 
     let analyzer = Analyzer {
         index: &index,
         rows: &rows,
         returns: &returns,
         instances,
+        file_scope: file_scope_env(&index, instances, &program.statements, &rows, &returns),
     };
     // An annotation is a row contract/instantiation hint, never a handler.
     // Inferred operations outside its named effects are therefore an error.
@@ -2151,7 +2200,7 @@ pub(crate) fn check(program: &Program, instances: &Instances) -> Vec<TypeError> 
             &analyzer,
             &function.body,
             &function.scope,
-            &CallableEnv::for_parameters(&function.parameters),
+            &analyzer.scoped_env(&function.parameters),
             &mut errors,
         );
     }

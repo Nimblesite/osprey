@@ -14,7 +14,7 @@ use crate::error::{CodegenError, Result};
 use crate::expr::{apply_lambda_values, call_with_values, gen_expr};
 use crate::llty::{LType, Value};
 use crate::loops::{close_list_loop, close_range_loop, open_list_loop, open_range_loop, ListLoop};
-use osprey_ast::{Expr, NamedArgument, Parameter};
+use osprey_ast::{Expr, NamedArgument, Parameter, Position};
 
 const RANGE_TY: &str = "{ i64, i64 }";
 pub(crate) const RANGE_OWNER: &str = "Range";
@@ -32,8 +32,10 @@ pub(crate) enum Callback {
     /// A top-level function/builtin name — a direct call.
     Named(String),
     /// An inline (or let-bound) lambda — beta-reduced per element, so its
-    /// captures resolve in the enclosing scope.
-    Lambda(Vec<Parameter>, Expr, Option<FnSig>),
+    /// captures resolve in the enclosing scope. The position is the key its
+    /// declared parameter types are published under, so a function-typed
+    /// parameter still lowers to an indirect call ([`crate::expr`]).
+    Lambda(Vec<Parameter>, Expr, Option<FnSig>, Option<Position>),
     /// A function-typed local (closure value) — called through its cell.
     Local(String, FnSig),
     /// A computed closure value (a call result like `makeAdder(1)` or a field
@@ -63,17 +65,20 @@ pub(crate) fn callback_of(cg: &mut Codegen, e: &Expr) -> Result<Callback> {
             cg.prog
                 .lambda_type(*position)
                 .and_then(Codegen::fn_value_sig),
+            *position,
         )),
         Expr::Identifier(n) => {
             if let Some(sig) = cg.fn_ptr_locals.get(n) {
                 Ok(Callback::Local(n.clone(), sig.clone()))
             } else if let Some((params, body, position)) = cg.lambda_def(n) {
+                let position = *position;
                 Ok(Callback::Lambda(
                     params.clone(),
                     body.clone(),
                     cg.prog
-                        .lambda_type(*position)
+                        .lambda_type(position)
                         .and_then(Codegen::fn_value_sig),
+                    position,
                 ))
             } else if let Some((params, body)) = cg.fn_defs.get(n) {
                 // A generic (unannotated) user function has NO emitted `@name`
@@ -81,7 +86,7 @@ pub(crate) fn callback_of(cg: &mut Codegen, e: &Expr) -> Result<Callback> {
                 // (lower.rs). As an iterator callback it must be beta-reduced
                 // per element the same way, not dispatched through a
                 // `call @name` that was never defined. [BUILTIN-ITER-CALLBACK]
-                Ok(Callback::Lambda(params.clone(), body.clone(), None))
+                Ok(Callback::Lambda(params.clone(), body.clone(), None, None))
             } else {
                 Ok(Callback::Named(n.clone()))
             }
@@ -104,8 +109,8 @@ pub(crate) fn callback_of(cg: &mut Codegen, e: &Expr) -> Result<Callback> {
 pub(crate) fn invoke(cg: &mut Codegen, cb: &Callback, args: Vec<Value>) -> Result<Value> {
     match cb {
         Callback::Named(name) => call_with_values(cg, name, args),
-        Callback::Lambda(params, body, sig) => {
-            apply_lambda_values(cg, params, body, args, sig.as_ref())
+        Callback::Lambda(params, body, sig, position) => {
+            apply_lambda_values(cg, params, body, args, sig.as_ref(), *position)
         }
         Callback::Local(name, sig) => {
             let handle = cg.lookup(name).ok_or_else(|| CodegenError::unknown(name))?;

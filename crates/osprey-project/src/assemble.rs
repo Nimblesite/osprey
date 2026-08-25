@@ -92,6 +92,9 @@ fn choose_entry(
     metadata: &[SourceMetadata],
     errors: &mut Vec<ProjectError>,
 ) -> Option<usize> {
+    // Independent of HOW the entry is chosen: a source declaring both entries is
+    // ill-formed whether or not it is the one selected.
+    report_entry_conflicts(sources, metadata, errors);
     if let Some(configured) = &config.entry {
         let candidates = metadata
             .iter()
@@ -162,6 +165,44 @@ fn has_namespace_main(statements: &[Stmt]) -> bool {
     statements.iter().any(|statement| match statement {
         Stmt::Function { name, .. } => name == "main",
         Stmt::Namespace { body, .. } => has_namespace_main(body),
+        _ => false,
+    })
+}
+
+/// A source declaring `main` AND a top-level executable statement declares TWO
+/// entries [MODULES-ENTRYPOINT] — `choose_entry`'s `main` and executable-
+/// statement candidates would both select it, and only one could run.
+///
+/// The type checker rejects this for a plain source, but a source carrying a
+/// namespace routes through assembly instead, where the check was missing: both
+/// entries were kept and BOTH ran — the statement first, then `main` — the
+/// exact situation the rule exists to prevent.
+fn report_entry_conflicts(
+    sources: &[SourceFile],
+    metadata: &[SourceMetadata],
+    errors: &mut Vec<ProjectError>,
+) {
+    for (index, source) in sources.iter().enumerate() {
+        let statements = &source.program.statements;
+        if !has_namespace_main(statements) || !has_top_level_statement(statements) {
+            continue;
+        }
+        errors.push(ProjectError {
+            message: osprey_ast::ENTRY_CONFLICT.to_string(),
+            path: metadata.get(index).map(|entry| entry.path.clone()),
+            line: None,
+            column: None,
+        });
+    }
+}
+
+/// An executable statement at file scope. A `let`/`mut` DECLARATION is not one
+/// — it initialises a binding wherever the entry is — so this is narrower than
+/// [`has_executable`], which only asks whether a source could be an entry.
+fn has_top_level_statement(statements: &[Stmt]) -> bool {
+    statements.iter().any(|statement| match statement {
+        Stmt::Expr { .. } | Stmt::Assignment { .. } => true,
+        Stmt::Namespace { body, .. } => has_top_level_statement(body),
         _ => false,
     })
 }

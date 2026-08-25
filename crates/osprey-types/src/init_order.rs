@@ -200,11 +200,7 @@ fn entry_conflicts(program: &Program) -> Vec<TypeError> {
         .iter()
         .any(|statement| matches!(statement, Stmt::Assignment { .. } | Stmt::Expr { .. }));
     if executable {
-        vec![TypeError::new(
-            "a top-level executable statement cannot sit beside `main`: `main` is the \
-             program entry, so move the statement into it (a file-scope `let` or `mut` \
-             is a declaration and stays where it is)",
-        )]
+        vec![TypeError::new(osprey_ast::ENTRY_CONFLICT)]
     } else {
         Vec::new()
     }

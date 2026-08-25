@@ -180,6 +180,63 @@ static void t_input_lines(void) {
   run_child_expect(child_input_lines, input, want, 0);
 }
 
+// Read one line through `osp_input` with STDIN redirected IN THIS PROCESS, and
+// answer it. Unlike `run_child_expect` this keeps the call in the parent, whose
+// gcov counters are actually flushed at exit — a forked child `_exit`s, so the
+// coverage of everything it ran is discarded ([BUILTIN-INPUT] was measured at
+// zero for exactly that reason). `keep_open` leaves the write end alive with
+// nothing on it, which is the "open but silent" descriptor the builtin must
+// answer "" for rather than blocking forever.
+static char *input_through_pipe(const char *feed, int keep_open) {
+  int pipe_fds[2];
+  CHECK(pipe(pipe_fds) == 0);
+  int saved = dup(STDIN_FILENO);
+  CHECK(saved >= 0);
+  CHECK(dup2(pipe_fds[0], STDIN_FILENO) >= 0);
+  close(pipe_fds[0]);
+  if (feed != NULL) {
+    size_t len = strlen(feed);
+    CHECK(write(pipe_fds[1], feed, len) == (ssize_t)len);
+  }
+  if (!keep_open) {
+    close(pipe_fds[1]);
+  }
+  char *line = osp_input();
+  CHECK(dup2(saved, STDIN_FILENO) >= 0);
+  close(saved);
+  if (keep_open) {
+    close(pipe_fds[1]);
+  }
+  return line;
+}
+
+// [BUILTIN-INPUT] end to end, in-process: a short line, a line longer than the
+// initial buffer (the realloc growth path), a closed-and-empty descriptor, and
+// the OPEN BUT SILENT one that used to hang the read forever.
+static void t_input_descriptor_states(void) {
+  char *line = input_through_pipe("alpha\n", 0);
+  CHECK(line != NULL && strcmp(line, "alpha") == 0);
+  free(line);
+
+  static char big[LONG_LINE + 2];
+  memset(big, 'z', LONG_LINE);
+  big[LONG_LINE] = '\n';
+  big[LONG_LINE + 1] = '\0';
+  line = input_through_pipe(big, 0);
+  CHECK(line != NULL && strlen(line) == LONG_LINE);
+  free(line);
+
+  // EOF: the documented empty string, never NULL.
+  line = input_through_pipe(NULL, 0);
+  CHECK(line != NULL && line[0] == '\0');
+  free(line);
+
+  // Open and silent: the spec requires "" rather than blocking or failing.
+  line = input_through_pipe(NULL, 1);
+  CHECK(line != NULL && line[0] == '\0');
+  free(line);
+}
+
 // --- term_runtime ------------------------------------------------------------
 
 // With stdout a pipe (not a tty), size queries and raw mode must fail SOFTLY
@@ -345,6 +402,7 @@ int main(void) {
   t_random_bounds();
   t_random_below();
   t_input_lines();
+  t_input_descriptor_states();
   t_term();
   t_tap();
   printf("[ok] builtins_runtime: %ld assertions\n", g_checks);

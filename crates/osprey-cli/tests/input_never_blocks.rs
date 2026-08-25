@@ -7,7 +7,7 @@
 //! neither EOF nor data and the read never returns.
 //!
 //! That is not a hypothetical. `tests/regressions/basics/math/comprehensive_math`
-//! calls `input()` twice, and the VSCode "Compile and Run" command spawns the
+//! calls `input()` twice, and the `VSCode` "Compile and Run" command spawns the
 //! compiler through `execFile`, which opens a stdin pipe and never ends it.
 //! The command hangs forever with no output, because stdout is block-buffered
 //! and nothing is flushed before the read parks. Two of the extension's three
@@ -34,10 +34,14 @@ fn repo_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("..").join("..")
 }
 
-/// Outcome of waiting on a child for at most `RUN_BUDGET`.
+/// Outcome of waiting on a child for at most `RUN_BUDGET`. `Failed` carries a
+/// spawn/poll error out to the `#[test]` body rather than panicking here: these
+/// helpers are not test functions, so a panic in them is a denied restriction
+/// lint — and the assertion belongs with the other assertions anyway.
 enum Wait {
     Exited { success: bool, stdout: String },
     TimedOut,
+    Failed { reason: String },
 }
 
 /// Wait for `child`, killing it and reporting `TimedOut` once the budget is
@@ -65,7 +69,11 @@ fn wait_bounded(mut child: Child) -> Wait {
                 }
                 std::thread::sleep(POLL_INTERVAL);
             }
-            Err(error) => panic!("could not poll the compiler child: {error}"),
+            Err(error) => {
+                return Wait::Failed {
+                    reason: format!("could not poll the compiler child: {error}"),
+                };
+            }
         }
     }
 }
@@ -86,7 +94,9 @@ fn run_with_open_stdin(program: &Path) -> Wait {
         .spawn();
     match child {
         Ok(child) => wait_bounded(child),
-        Err(error) => panic!("could not spawn the compiler: {error}"),
+        Err(error) => Wait::Failed {
+            reason: format!("could not spawn the compiler: {error}"),
+        },
     }
 }
 
@@ -110,5 +120,6 @@ fn input_does_not_block_when_stdin_is_open_and_silent() {
              [BUILTIN-INPUT] requires it to return \"\" instead of blocking, \
              and a test that never terminates cannot be run from an editor."
         ),
+        Wait::Failed { reason } => panic!("{reason}"),
     }
 }

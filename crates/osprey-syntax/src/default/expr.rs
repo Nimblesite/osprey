@@ -383,14 +383,22 @@ impl Lowerer<'_> {
                 // `string`. Detect the `${` marker here and interpolate either way.
                 let raw = self.text(inner);
                 if raw.contains("${") {
-                    Expr::InterpolatedStr(lower_interpolation(&raw, parse_fragment))
+                    Expr::InterpolatedStr(lower_interpolation(
+                        &raw,
+                        Some(self.pos(inner)),
+                        fragment_prefix(),
+                        parse_fragment,
+                    ))
                 } else {
                     Expr::Str(unquote(&raw))
                 }
             }
-            "interpolated_string" => {
-                Expr::InterpolatedStr(lower_interpolation(&self.text(inner), parse_fragment))
-            }
+            "interpolated_string" => Expr::InterpolatedStr(lower_interpolation(
+                &self.text(inner),
+                Some(self.pos(inner)),
+                fragment_prefix(),
+                parse_fragment,
+            )),
             "list_literal" => Expr::List(
                 self.exprs_of_kind(inner, "expression"),
                 Some(self.pos(inner)),
@@ -413,8 +421,18 @@ impl Lowerer<'_> {
 }
 
 /// Parse an interpolation fragment (`${ ... }` contents) into a single [`Expr`].
+/// The binding `parse_fragment` wraps a `${…}` fragment in. Its length is what
+/// [`lower_interpolation`] subtracts to map the mini-program's line-1 columns
+/// back onto the real source, so the two must come from this one string.
+const FRAGMENT_BINDING: &str = "let __frag__ = ";
+
+/// [`FRAGMENT_BINDING`]'s width, as the column offset a rebase needs.
+fn fragment_prefix() -> u32 {
+    u32::try_from(FRAGMENT_BINDING.len()).unwrap_or(0)
+}
+
 fn parse_fragment(frag: &str) -> Expr {
-    let parsed = crate::parse_program(&format!("let __frag__ = {frag}\n"));
+    let parsed = crate::parse_program(&format!("{FRAGMENT_BINDING}{frag}\n"));
     match parsed.program.statements.into_iter().next() {
         Some(Stmt::Let { value, .. }) => value,
         _ => Expr::Identifier(frag.trim().to_string()),

@@ -5,17 +5,29 @@
 //! exactly one place rather than being reached out of either flavor's folder
 //! ([FLAVOR-FRONTEND], [STRING-INTERPOLATION]).
 
-use osprey_ast::{Expr, InterpolatedPart};
+use osprey_ast::{mutate::children_mut, Expr, InterpolatedPart, Position, Stmt};
 
 /// Split a `"text ${expr} more"` literal into [`InterpolatedPart`]s, parsing
 /// each embedded expression with `parse_frag` (the active flavor's fragment
 /// parser). Shared by the Default and ML frontends so the `${…}`-scanning and
 /// escape handling exist in exactly one place. [STRING-INTERPOLATION]
+///
+/// `base` is where the literal's own first character sits in the enclosing
+/// file, and `prefix` how many characters `parse_frag` prepends on the
+/// fragment's first line; together they let each parsed fragment be rebased off
+/// the synthetic mini-program it was parsed in and onto the real source. Pass
+/// `base: None` where no position is known — the fragment then keeps its
+/// mini-program positions, which is the pre-rebase behaviour.
 pub(crate) fn lower_interpolation(
     raw: &str,
+    base: Option<Position>,
+    prefix: u32,
     parse_frag: impl Fn(&str) -> Expr,
 ) -> Vec<InterpolatedPart> {
     let inner = unquote(raw);
+    // `unquote` drops a matched `"…"` pair, so a Default token's contents start
+    // one character into the literal; an ML raw arrives already unquoted.
+    let quote = u32::from(inner.len() < raw.len() && raw.starts_with('"'));
     let bytes = inner.as_bytes();
     let mut parts = Vec::new();
     let mut text_start = 0usize;
@@ -45,7 +57,11 @@ pub(crate) fn lower_interpolation(
                 j += 1;
             }
             if let Some(frag) = inner.get(i + 2..j) {
-                parts.push(InterpolatedPart::Expr(parse_frag(frag)));
+                let mut expr = parse_frag(frag);
+                if let Some(base) = base {
+                    rebase_expr(&mut expr, Rebase::at(base, quote, i, prefix));
+                }
+                parts.push(InterpolatedPart::Expr(expr));
             }
             i = j + 1;
             text_start = i;
@@ -59,6 +75,101 @@ pub(crate) fn lower_interpolation(
         }
     }
     parts
+}
+
+/// How to map a position inside the synthetic single-binding program a fragment
+/// parser builds back onto the enclosing file.
+///
+/// A `${…}` fragment is re-parsed as its own mini-program (`let __frag__ = …` /
+/// `__frag__ = …`), so every position inside it is relative to THAT text: line
+/// 1, column shifted by the binding prefix. Left unmapped, two fragments whose
+/// lambdas sit at the same fragment column land on the SAME key in the
+/// position-indexed tables inference publishes (`lambdas`, `lets`, `lists`,
+/// `performs`, `handler_ops`) and the later one silently replaces the earlier.
+/// That is how `"${feeding(9, fn() => "done")}"` beside
+/// `"${feeding(3, fn() => perform Feed.next())}"` made the STRING call render
+/// its pointer through `%lld`: both lambdas resolved to the `int` type, exit
+/// code zero, a different number every run. [STRING-INTERPOLATION]
+#[derive(Clone, Copy)]
+struct Rebase {
+    /// Where the fragment's first character sits in the real source.
+    base: Position,
+    /// Characters the fragment parser prepends before it on line 1.
+    prefix: u32,
+}
+
+impl Rebase {
+    /// The mapping for the fragment whose `${` opened at byte `offset` of the
+    /// unquoted literal text.
+    fn at(literal: Position, quote: u32, offset: usize, prefix: u32) -> Self {
+        // `+ 2` steps past the `${` itself. A `\n`-style escape earlier in the
+        // literal shortens the unquoted text, so a fragment behind one lands a
+        // column or two early — still unique per fragment, which is what the
+        // published tables key on.
+        let column = literal.column + quote + u32::try_from(offset).unwrap_or(0) + 2;
+        Self {
+            base: Position {
+                line: literal.line,
+                column,
+            },
+            prefix,
+        }
+    }
+
+    /// Where `inner`, a position in the mini-program, really sits.
+    fn map(self, inner: Position) -> Position {
+        if inner.line <= 1 {
+            return Position {
+                line: self.base.line,
+                column: self.base.column + inner.column.saturating_sub(self.prefix),
+            };
+        }
+        // A fragment spanning lines carries its own columns past the first: the
+        // prefix only displaces line 1.
+        Position {
+            line: self.base.line + inner.line - 1,
+            column: inner.column,
+        }
+    }
+}
+
+fn rebase_slot(slot: &mut Option<Position>, rebase: Rebase) {
+    if let Some(inner) = *slot {
+        *slot = Some(rebase.map(inner));
+    }
+}
+
+/// Rebase every published position in a freshly parsed fragment, then recurse.
+fn rebase_expr(expr: &mut Expr, rebase: Rebase) {
+    match expr {
+        Expr::List(_, position)
+        | Expr::Lambda { position, .. }
+        | Expr::Perform { position, .. }
+        | Expr::Handler { position, .. } => rebase_slot(position, rebase),
+        Expr::Block { statements, .. } => {
+            for statement in statements.iter_mut() {
+                rebase_stmt(statement, rebase);
+            }
+        }
+        _ => {}
+    }
+    children_mut(expr, &mut |child| rebase_expr(child, rebase));
+}
+
+fn rebase_stmt(statement: &mut Stmt, rebase: Rebase) {
+    match statement {
+        Stmt::Namespace { position, .. }
+        | Stmt::Let { position, .. }
+        | Stmt::Assignment { position, .. }
+        | Stmt::Function { position, .. }
+        | Stmt::Extern { position, .. }
+        | Stmt::Type { position, .. }
+        | Stmt::Effect { position, .. }
+        | Stmt::Module { position, .. }
+        | Stmt::Signature { position, .. }
+        | Stmt::Expr { position, .. } => rebase_slot(position, rebase),
+        Stmt::Import(_) => {}
+    }
 }
 
 /// Strip surrounding quotes and resolve backslash escapes in one pass (so a
@@ -144,7 +255,7 @@ mod tests {
 
     #[test]
     fn interpolation_splits_text_expr_text_and_handles_nested_braces() {
-        let parts = lower_interpolation("\"v ${1 + 2} end\"", frag);
+        let parts = lower_interpolation("\"v ${1 + 2} end\"", None, 0, frag);
         assert_eq!(parts.len(), 3);
         assert!(matches!(parts[0], InterpolatedPart::Text(ref t) if t == "v "));
         assert!(
@@ -153,7 +264,7 @@ mod tests {
         assert!(matches!(parts[2], InterpolatedPart::Text(ref t) if t == " end"));
         // Nested braces inside `${…}` are captured whole, and an interpolation
         // ending exactly at `}` leaves no trailing text part.
-        let nested = lower_interpolation("\"${match x { a => 1 }}\"", frag);
+        let nested = lower_interpolation("\"${match x { a => 1 }}\"", None, 0, frag);
         assert_eq!(nested.len(), 1);
         assert!(matches!(nested[0], InterpolatedPart::Expr(_)));
     }
