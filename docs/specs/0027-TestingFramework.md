@@ -131,12 +131,16 @@ empty reason. The payload field may also be spelled anything — `Skip(because)`
 reports identically to `Skip(why)` — because the binder comes from the
 declaration, not from the compiler.
 
-Two shapes are rejected at compile time, each named truthfully:
+Three shapes are rejected at compile time, each named truthfully. The last is
+why the reporting boundary reads the declaration rather than trusting it: a
+`Verdict` that cannot express failure would otherwise generate a match with no
+`Fail` arm, and a suite unable to fail would report green.
 
 | Declaration | Rejection |
 | --- | --- |
 | A state `test` has no report primitive for, e.g. `… \| Todo(string)` | `` `test` reports only the Pass, Fail and Skip states of `Verdict`; it has no report for `Todo` `` |
 | A `Fail` or `Skip` carrying more than one field | `` `Verdict` state `Skip` declares 2 fields; `test` reports a single reason `` |
+| A declaration omitting any of the three states, e.g. `type Verdict = Pass` | `` `type Verdict` must declare Pass, Fail and Skip; it is missing Fail, Skip `` |
 
 ## TAP output protocol
 

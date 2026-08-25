@@ -366,3 +366,92 @@ fn emit_assert(cg: &mut Codegen, label_op: &str, expected: &Value, actual: &Valu
     );
     Value::unit()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{verdict_report, verdict_states_complete, VERDICT_REPORTS};
+
+    fn states(names: &[&str]) -> Vec<String> {
+        names.iter().map(|name| (*name).to_string()).collect()
+    }
+
+    fn rejection(names: &[&str]) -> String {
+        match verdict_states_complete(&states(names)) {
+            Ok(()) => panic!("`type Verdict = {}` must be rejected", names.join(" | ")),
+            Err(error) => error.to_string(),
+        }
+    }
+
+    /// [TESTING-VERDICT] The three states and the primitive each drives. A
+    /// `Verdict` that cannot express failure must never compile: generating
+    /// arms for only what is declared made `type Verdict = Pass` report a
+    /// passing case out of a suite with no way to fail.
+    #[test]
+    fn a_verdict_missing_any_state_is_rejected_by_name() {
+        assert!(verdict_states_complete(&states(&["Pass", "Fail", "Skip"])).is_ok());
+        // Declaration order is the program's business, not the checker's.
+        assert!(verdict_states_complete(&states(&["Skip", "Pass", "Fail"])).is_ok());
+
+        for (missing, rest) in [
+            ("Pass", vec!["Fail", "Skip"]),
+            ("Fail", vec!["Pass", "Skip"]),
+            ("Skip", vec!["Pass", "Fail"]),
+        ] {
+            let message = rejection(&rest);
+            assert!(
+                message.contains("must declare Pass, Fail and Skip"),
+                "missing {missing} must name the contract: {message}"
+            );
+            assert!(
+                message.contains(missing),
+                "missing {missing} must be named in: {message}"
+            );
+            for present in &rest {
+                assert!(
+                    !message.contains(&format!("missing {present}")),
+                    "{present} is declared and must not be listed missing: {message}"
+                );
+            }
+        }
+
+        // Every state absent: all three are named, in contract order.
+        assert_eq!(
+            rejection(&[]),
+            "codegen: unsupported construct: `type Verdict` must declare Pass, Fail and Skip; \
+             it is missing Pass, Fail, Skip"
+        );
+        // Two absent: only those two.
+        assert_eq!(
+            rejection(&["Pass"]),
+            "codegen: unsupported construct: `type Verdict` must declare Pass, Fail and Skip; \
+             it is missing Fail, Skip"
+        );
+        // An unrelated extra state does not satisfy a missing one.
+        assert_eq!(
+            rejection(&["Pass", "Fail", "Todo"]),
+            "codegen: unsupported construct: `type Verdict` must declare Pass, Fail and Skip; \
+             it is missing Skip"
+        );
+    }
+
+    /// [TESTING-VERDICT] Only `Fail` and `Skip` carry a reason; `Pass` has
+    /// nothing to report. A state with no primitive is named in the rejection.
+    #[test]
+    fn each_state_drives_its_own_report_primitive() {
+        assert_eq!(verdict_report("Pass").expect("Pass"), ("reportPass", false));
+        assert_eq!(verdict_report("Fail").expect("Fail"), ("reportFail", true));
+        assert_eq!(verdict_report("Skip").expect("Skip"), ("reportSkip", true));
+        assert_eq!(VERDICT_REPORTS.len(), 3);
+
+        for unknown in ["Todo", "pass", "PASS", ""] {
+            let message = match verdict_report(unknown) {
+                Ok(found) => panic!("`{unknown}` must have no report primitive, got {found:?}"),
+                Err(error) => error.to_string(),
+            };
+            assert!(
+                message.contains(&format!("no report for `{unknown}`")),
+                "the unreportable state must be named: {message}"
+            );
+        }
+    }
+}

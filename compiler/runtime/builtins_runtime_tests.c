@@ -180,9 +180,9 @@ static void t_input_lines(void) {
   run_child_expect(child_input_lines, input, want, 0);
 }
 
-// Longer than OSP_INPUT_SILENT_MS in random_runtime.c, so a writer that pauses
-// for it has certainly outlasted the first-byte grace.
-#define GAP_PAST_GRACE_US ((useconds_t)1500000)
+// Long enough that the reader is certainly parked inside `read` before the
+// writer speaks: that is the whole point of the delayed-writer cases.
+#define INPUT_WRITER_DELAY_US ((useconds_t)400000)
 
 // Point STDIN at `read_fd` (consumed), answering the saved original descriptor.
 static int stdin_redirect(int read_fd) {
@@ -203,45 +203,44 @@ static void stdin_restore(int saved) {
 // answer it. Unlike `run_child_expect` this keeps the call in the parent, whose
 // gcov counters are actually flushed at exit -- a forked child `_exit`s, so the
 // coverage of everything it ran is discarded ([BUILTIN-INPUT] was measured at
-// zero for exactly that reason). `keep_open` holds the write end alive across
-// the read, which is the OPEN BUT SILENT state an editor's `execFile` leaves
-// stdin in: neither data nor EOF.
-static char *input_through_pipe(const char *feed, int keep_open) {
+// zero for exactly that reason). The write end is closed before the read, so
+// the descriptor is at end-of-file the moment `feed` runs out.
+static char *input_through_pipe(const char *feed) {
   int pipe_fds[2];
   CHECK(pipe(pipe_fds) == 0);
   if (feed != NULL) {
     size_t len = strlen(feed);
     CHECK(write(pipe_fds[1], feed, len) == (ssize_t)len);
   }
-  if (!keep_open) {
-    close(pipe_fds[1]);
-  }
+  close(pipe_fds[1]);
   int saved = stdin_redirect(pipe_fds[0]);
   char *line = osp_input();
   stdin_restore(saved);
-  if (keep_open) {
-    close(pipe_fds[1]);
-  }
   return line;
 }
 
-// Read one line while a FORKED writer sends `first`, sleeps past the silence
-// grace, then sends `rest`. The gap is the whole point: it proves the grace
-// bounds only the FIRST byte of a line. A reader that re-armed the timeout for
-// every byte would answer `first` alone and hand the program a truncated value
-// to compute with -- corruption, not merely a missing line.
-static char *input_split_across_gap(const char *first, const char *rest) {
+// Read one line while a FORKED writer stays SILENT for a while and only then
+// speaks. Silence is not end-of-file: an open pipe whose producer has not
+// spoken yet is connected, and whatever it eventually sends must arrive whole.
+// `before` is written immediately (NULL for nothing at all) and `after` once
+// the delay has passed (NULL to close in silence instead) [BUILTIN-INPUT].
+static char *input_from_delayed_writer(const char *before, const char *after) {
   int pipe_fds[2];
   CHECK(pipe(pipe_fds) == 0);
   pid_t writer = fork();
   CHECK(writer >= 0);
   if (writer == 0) {
     close(pipe_fds[0]);
-    ssize_t head = write(pipe_fds[1], first, strlen(first));
-    usleep(GAP_PAST_GRACE_US);
-    ssize_t tail = write(pipe_fds[1], rest, strlen(rest));
+    int ok = 1;
+    if (before != NULL) {
+      ok = write(pipe_fds[1], before, strlen(before)) > 0;
+    }
+    usleep(INPUT_WRITER_DELAY_US);
+    if (ok && after != NULL) {
+      ok = write(pipe_fds[1], after, strlen(after)) > 0;
+    }
     close(pipe_fds[1]);
-    _exit(head > 0 && tail > 0 ? 0 : 1);
+    _exit(ok ? 0 : 1);
   }
   close(pipe_fds[1]);
   int saved = stdin_redirect(pipe_fds[0]);
@@ -253,12 +252,18 @@ static char *input_split_across_gap(const char *first, const char *rest) {
   return line;
 }
 
-// [BUILTIN-INPUT] end to end, in-process: a short line, a line longer than the
-// initial buffer (the realloc growth path), a closed-and-empty descriptor, an
-// OPEN but silent one, and a line delivered in two halves either side of a
-// pause longer than the silence grace.
+// [BUILTIN-INPUT] end to end, in-process. Seven descriptor states: a short
+// line, a line longer than the initial buffer (the realloc growth path), a
+// closed-and-empty descriptor, a line whose only terminator is EOF, and three
+// delayed-writer cases -- a late FIRST byte, a mid-line pause, and a writer
+// that closes in silence.
+//
+// The delayed cases are the contract that a wall-clock reader breaks. Treating
+// elapsed silence as end-of-file answers "" for the late first byte and "he"
+// for the mid-line pause: a value the program then computes with. Only a real
+// end-of-file ends a line.
 static void t_input_descriptor_states(void) {
-  char *line = input_through_pipe("alpha\n", 0);
+  char *line = input_through_pipe("alpha\n");
   CHECK(line != NULL && strcmp(line, "alpha") == 0);
   free(line);
 
@@ -266,24 +271,52 @@ static void t_input_descriptor_states(void) {
   memset(big, 'z', LONG_LINE);
   big[LONG_LINE] = '\n';
   big[LONG_LINE + 1] = '\0';
-  line = input_through_pipe(big, 0);
+  line = input_through_pipe(big);
   CHECK(line != NULL && strlen(line) == LONG_LINE);
   free(line);
 
   // EOF: the documented empty string, never NULL.
-  line = input_through_pipe(NULL, 0);
+  line = input_through_pipe(NULL);
   CHECK(line != NULL && line[0] == '\0');
   free(line);
 
-  // Open and silent. The spec's "empty or not connected" clause answers "",
-  // and it must answer it rather than parking in `read` forever.
-  line = input_through_pipe(NULL, 1);
-  CHECK(line != NULL && line[0] == '\0');
+  // End-of-file terminates a line just as a newline would.
+  line = input_through_pipe("no-newline");
+  CHECK(line != NULL && strcmp(line, "no-newline") == 0);
   free(line);
 
-  // A slow producer still delivers its WHOLE line.
-  line = input_split_across_gap("he", "llo\n");
+  // Only the second line's worth is consumed per call: the reader stops at the
+  // newline and leaves the rest of the descriptor alone.
+  int pipe_fds[2];
+  CHECK(pipe(pipe_fds) == 0);
+  CHECK(write(pipe_fds[1], "one\ntwo\n", 8) == 8);
+  close(pipe_fds[1]);
+  int saved = stdin_redirect(pipe_fds[0]);
+  char *first = osp_input();
+  char *second = osp_input();
+  char *third = osp_input();
+  stdin_restore(saved);
+  CHECK(first != NULL && strcmp(first, "one") == 0);
+  CHECK(second != NULL && strcmp(second, "two") == 0);
+  CHECK(third != NULL && third[0] == '\0');
+  free(first);
+  free(second);
+  free(third);
+
+  // A producer silent well past any plausible grace, then speaking, is NOT
+  // end-of-file: its whole line arrives.
+  line = input_from_delayed_writer(NULL, "late\n");
+  CHECK(line != NULL && strcmp(line, "late") == 0);
+  free(line);
+
+  // The same producer pausing MID-LINE must not truncate it either.
+  line = input_from_delayed_writer("he", "llo\n");
   CHECK(line != NULL && strcmp(line, "hello") == 0);
+  free(line);
+
+  // A writer that closes in silence IS end-of-file, and answers "".
+  line = input_from_delayed_writer(NULL, NULL);
+  CHECK(line != NULL && line[0] == '\0');
   free(line);
 }
 

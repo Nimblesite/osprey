@@ -428,8 +428,8 @@ fn coverage_dump_path(file: &Path) -> PathBuf {
 /// Parse one suite's dump into the merged report and print its line rate.
 /// `false` when the suite produced no usable evidence — a missing, unreadable,
 /// malformed or EMPTY dump. Coverage that cannot be evidenced must fail the
-/// command rather than print to stderr and let `percent(0, 0)` report `100.0%`
-/// over nothing ([TESTING-COVERAGE]).
+/// command rather than print to stderr and let the aggregate row stand in for
+/// evidence nobody produced ([TESTING-COVERAGE]).
 fn collect_suite_coverage(
     file: &Path,
     dump: &Path,
@@ -486,9 +486,12 @@ fn line_rate(hits: &LineHits) -> (usize, usize) {
     (hits.values().filter(|h| **h > 0).count(), hits.len())
 }
 
+/// A rate over NOTHING is not perfection. Reporting `100.0%` for `0/0` reads
+/// as a fully covered run to every human and every log scraper, which is the
+/// exact opposite of what an empty report means ([TESTING-COVERAGE]).
 fn percent(covered: usize, total: usize) -> String {
     if total == 0 {
-        return String::from("100.0%");
+        return String::from("n/a");
     }
     // Line counts fit u32 comfortably; saturate rather than misconvert.
     let as_f64 = |n: usize| f64::from(u32::try_from(n).unwrap_or(u32::MAX));
@@ -744,7 +747,10 @@ mod tests {
         let hits = parse_dump(&dump).expect("parse");
         assert_eq!(line_rate(&hits), (2, 3));
         assert_eq!(percent(2, 3), "66.7%");
-        assert_eq!(percent(0, 0), "100.0%");
+        // No coverable lines is "n/a": a rate over nothing is not 100%.
+        assert_eq!(percent(0, 0), "n/a");
+        assert_eq!(percent(0, 3), "0.0%");
+        assert_eq!(percent(3, 3), "100.0%");
 
         // A dump without the v1 header is rejected, not misread.
         std::fs::write(&dump, "3 2\n").expect("rewrite");
@@ -761,6 +767,71 @@ mod tests {
         assert_eq!(
             text,
             "{\"files\":{\"a\\\"b.test.osp\":{\"lines\":{\"3\":2,\"7\":0,\"12\":1}}}}"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    // [TESTING-COVERAGE] Absent evidence must FAIL the command, not print to
+    // stderr and let the run exit green. Every way a dump can be useless is a
+    // `false` return, asserted here rather than inferred from stderr text: a
+    // missing file, a file without the v1 header, a truncated header, a dump
+    // with no rows at all, and a directory where a dump should be. The
+    // successful path is asserted alongside them so a change that made
+    // collection always fail -- or always succeed -- cannot pass.
+    #[test]
+    fn coverage_evidence_that_cannot_be_read_fails_collection() {
+        let dir = std::env::temp_dir().join(format!("osprey-cov-fail-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).expect("mkdir");
+        let suite = Path::new("suite.test.osp");
+        let dump = dir.join("evidence.oscov.txt");
+
+        let collect = |report: &mut BTreeMap<String, LineHits>| {
+            collect_suite_coverage(suite, &dump, report, true)
+        };
+
+        let mut report = BTreeMap::new();
+        assert!(!collect(&mut report), "a dump that was never written");
+        assert!(report.is_empty(), "nothing may enter the report");
+
+        for (label, body) in [
+            ("no header", "3 2\n"),
+            ("truncated header", "# osprey-coverage\n3 2\n"),
+            ("a later version", "# osprey-coverage v2\n3 2\n"),
+            ("empty file", ""),
+        ] {
+            std::fs::write(&dump, body).expect("write dump");
+            assert!(!collect(&mut report), "{label} must not count as evidence");
+            assert!(report.is_empty(), "{label} must not enter the report");
+        }
+
+        // The header alone: parseable, but it evidences no coverable line.
+        std::fs::write(&dump, "# osprey-coverage v1\n").expect("write dump");
+        assert!(!collect(&mut report), "a dump with no rows is no evidence");
+        assert!(report.is_empty());
+        assert!(!dump.exists(), "an empty dump is cleaned up, not left behind");
+
+        // Rows that are not `<line> <hits>` pairs are skipped, so a dump of
+        // nothing but junk is still empty -- and still a failure.
+        std::fs::write(&dump, "# osprey-coverage v1\nnot a row\n9\n").expect("write dump");
+        assert!(!collect(&mut report), "unparseable rows are not evidence");
+        assert!(report.is_empty());
+
+        // One real row is evidence: collection succeeds, the report gains the
+        // suite, and the dump is consumed so a later run cannot reuse it.
+        std::fs::write(&dump, "# osprey-coverage v1\n4 1\n5 0\n").expect("write dump");
+        assert!(collect(&mut report), "a well-formed dump must be accepted");
+        assert_eq!(report.len(), 1);
+        assert_eq!(
+            line_rate(report.get("suite.test.osp").expect("suite entry")),
+            (1, 2)
+        );
+        assert!(!dump.exists(), "a consumed dump must not survive the run");
+
+        // A JSON artifact that cannot be written is a failure too: exiting
+        // green would claim a file the caller cannot read.
+        assert!(
+            !write_coverage_json(&dir.display().to_string(), &report),
+            "writing over a directory must report failure"
         );
         let _ = std::fs::remove_dir_all(&dir);
     }

@@ -437,11 +437,10 @@ mod tests {
     // namespace or module is `Helpers::test` — it cannot capture a bare
     // top-level `test(...)` call, so it must not remove the sibling case from
     // discovery. `collect_tests` bails out for the whole file when it sees a
-    // shadowing declaration, and that scan descends into container bodies, so
-    // this pins the one thing keeping the bail-out honest: nested declarations
-    // carry a qualified name and never match. A regression that unqualified
-    // them would silently empty the inventory of every file with a private
-    // helper called `test` — no error, no warning, just no tests.
+    // shadowing declaration, but that scan looks at ONE scope: the top-level
+    // statements. A regression that made it descend into container bodies
+    // would silently empty the inventory of every file with a private helper
+    // called `test` — no error, no warning, just no tests.
     #[test]
     fn a_test_declared_inside_a_container_does_not_erase_sibling_cases() {
         for source in [

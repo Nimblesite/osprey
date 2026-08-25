@@ -36,8 +36,12 @@ print true
 
 ### `input() -> string` — [BUILTIN-INPUT]
 Reads one line from standard input (without its trailing newline) and returns it
-as a string. At end-of-file — including when stdin is empty or not connected —
-it returns the empty string `""` rather than blocking or failing. Parse it with
+as a string. End-of-file ends a line just as a newline does, and at end-of-file
+with nothing read — including when stdin is closed or not connected — the result
+is the empty string `""` rather than a failure. Elapsed silence is not
+end-of-file: a producer that is connected but has not written yet is waited for,
+so a slow writer's line still arrives whole. A launcher that cannot supply input
+must close the child's standard input. Parse the line with
 `parseInt`/`parseFloat` when a number is wanted.
 
 ```osprey

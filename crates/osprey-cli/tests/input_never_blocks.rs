@@ -1,37 +1,56 @@
-//! `input()` must never block a program's own termination ([BUILTIN-INPUT]).
+//! The compiler's own launchers must never park a program on `input()`.
 //!
-//! The spec is unambiguous: input "returns the empty string `""` rather than
-//! blocking or failing" when stdin is "empty or not connected". The C runtime
-//! disagrees — `osp_input` is a bare `getchar()` loop, so an fd that is open
-//! but silent (a pipe an editor holds and never writes, an idle terminal) is
-//! neither EOF nor data and the read never returns.
+//! [BUILTIN-INPUT] splits the obligation in two, and this file owns the launcher
+//! half. The runtime half — that a connected-but-silent writer is *waited for*,
+//! that a pause mid-line does not truncate, that EOF ends a line — lives in
+//! `input_descriptor_states.rs`, which pins each descriptor state against the
+//! spec table.
 //!
-//! That is not a hypothetical. `tests/regressions/basics/math/comprehensive_math`
-//! calls `input()` twice, and the `VSCode` "Compile and Run" command spawns the
-//! compiler through `execFile`, which opens a stdin pipe and never ends it.
-//! The command hangs forever with no output, because stdout is block-buffered
-//! and nothing is flushed before the read parks. Two of the extension's three
-//! spawn sites remember to close stdin; the third does not, which is precisely
-//! why "every caller must remember" is not a working contract.
+//! The launcher obligation is one sentence: "A launcher that cannot supply input
+//! must close the child's standard input." Waiting on a writer that will speak is
+//! correct; waiting on a descriptor nobody will ever write to is a hang, and the
+//! fix belongs to whoever opened it. `osprey ... --run` hands its own stdin
+//! straight to the program, so a closed stdin must reach it as a real EOF; and
+//! `osprey test` runs cases it cannot answer for, so `test_cmd.rs` gives every
+//! child `Stdio::null` rather than a descriptor that is neither data nor EOF.
 //!
-//! A timeout is the only honest oracle here: the defect IS unbounded waiting,
-//! and no assertion over a value can observe a process that never returns one.
+//! This is the exact shape that hung the editor: `execFile` opens a stdin pipe
+//! and never ends it, so a compiler that ever reads stdin parks on a descriptor
+//! with no writer, with nothing on stdout because it is block-buffered. Two of
+//! the extension's three spawn sites remembered to close stdin and the third did
+//! not — which is why "every caller must remember" is not a working contract, and
+//! why each launcher gets an assertion here rather than a code review.
+//!
+//! A timeout is the only honest oracle for a hang: the defect IS unbounded
+//! waiting, and no assertion over a value can observe a process that never
+//! produces one.
 
 use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::time::{Duration, Instant};
 
-/// Long enough that a loaded machine compiling and linking a program cannot
-/// trip it, short enough that a red run reports in seconds rather than hanging
-/// the suite it is supposed to be protecting.
-const RUN_BUDGET: Duration = Duration::from_secs(30);
+/// Long enough that a loaded machine compiling and linking a program cannot trip
+/// it, short enough that a red run reports in seconds rather than hanging the
+/// suite it is supposed to be protecting.
+const RUN_BUDGET: Duration = Duration::from_secs(120);
 
 /// How often the poll loop re-checks a child that has not exited yet.
 const POLL_INTERVAL: Duration = Duration::from_millis(50);
 
 fn repo_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("..").join("..")
+}
+
+/// A committed program that calls `input()` — twice, and once inside an
+/// assertion — so a launcher that leaves stdin unwritable parks on it.
+fn program_that_reads_stdin() -> PathBuf {
+    repo_root()
+        .join("tests")
+        .join("regressions")
+        .join("basics")
+        .join("math")
+        .join("comprehensive_math.test.osp")
 }
 
 /// Outcome of waiting on a child for at most `RUN_BUDGET`. `Failed` carries a
@@ -78,17 +97,12 @@ fn wait_bounded(mut child: Child) -> Wait {
     }
 }
 
-/// Run `program` through `--run` with stdin held OPEN and silent — the state an
-/// editor's `execFile` leaves it in. `Stdio::piped()` is the whole point: the
-/// write end stays alive in this process, so the child sees neither data nor
-/// EOF, which is the condition [BUILTIN-INPUT] says must still yield `""`.
-fn run_with_open_stdin(program: &Path) -> Wait {
+/// Run the compiler with `args` and the given `stdin`, bounded by `RUN_BUDGET`.
+fn run_compiler(args: &[&std::ffi::OsStr], stdin: Stdio) -> Wait {
     let child = Command::new(env!("CARGO_BIN_EXE_osprey"))
-        .arg(program)
-        .arg("--run")
-        .arg("--quiet")
+        .args(args)
         .current_dir(repo_root())
-        .stdin(Stdio::piped())
+        .stdin(stdin)
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
         .spawn();
@@ -100,26 +114,48 @@ fn run_with_open_stdin(program: &Path) -> Wait {
     }
 }
 
-#[test]
-fn input_does_not_block_when_stdin_is_open_and_silent() {
-    let program = repo_root()
-        .join("tests")
-        .join("regressions")
-        .join("basics")
-        .join("math")
-        .join("comprehensive_math.test.osp");
-    match run_with_open_stdin(&program) {
-        Wait::Exited { success, stdout } => {
-            assert!(
-                success,
-                "the program must pass with an open, silent stdin; stdout was:\n{stdout}"
-            );
-        }
+/// Assert `outcome` finished cleanly, naming the launcher that would otherwise
+/// have parked and what the program managed to print before it did.
+fn assert_finished(outcome: Wait, launcher: &str) {
+    match outcome {
+        Wait::Exited { success, stdout } => assert!(
+            success,
+            "`{launcher}` must run a program that reads stdin to completion; stdout was:\n{stdout}"
+        ),
         Wait::TimedOut => panic!(
-            "`input()` blocked forever on an open, silent stdin. \
-             [BUILTIN-INPUT] requires it to return \"\" instead of blocking, \
-             and a test that never terminates cannot be run from an editor."
+            "`{launcher}` parked a program on `input()`. [BUILTIN-INPUT] requires a \
+             launcher that cannot supply input to CLOSE the child's standard input, so \
+             the read sees a real end-of-file instead of a descriptor that is neither \
+             data nor EOF."
         ),
         Wait::Failed { reason } => panic!("{reason}"),
     }
+}
+
+#[test]
+fn run_delivers_a_closed_stdin_to_the_program_as_end_of_file() {
+    let program = program_that_reads_stdin();
+    let outcome = run_compiler(
+        &[
+            program.as_os_str(),
+            "--run".as_ref(),
+            "--quiet".as_ref(),
+            "--memory=default".as_ref(),
+        ],
+        Stdio::null(),
+    );
+    assert_finished(outcome, "osprey --run");
+}
+
+#[test]
+fn the_test_runner_closes_each_case_s_stdin_even_when_its_own_is_open() {
+    let program = program_that_reads_stdin();
+    // `Stdio::piped()` on the RUNNER is the whole point: the write end stays
+    // alive in this process, so an inherited descriptor would be neither data
+    // nor EOF. `test_cmd.rs` must hand the case `Stdio::null` regardless.
+    let outcome = run_compiler(
+        &["test".as_ref(), program.as_os_str(), "--quiet".as_ref()],
+        Stdio::piped(),
+    );
+    assert_finished(outcome, "osprey test");
 }
