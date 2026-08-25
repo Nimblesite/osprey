@@ -18,6 +18,17 @@ stage2 x = x * 2 ?: 0
 stage3 x = x - 50 ?: 0
 combine (a, b) = a * 100 + b ?: 0
 
+(** A record argument crossing the fiber boundary. The spawned closure once
+    referenced the PARENT function's SSA values for any non-constant capture, so
+    `spawn (runJob job)` emitted `use of undefined value`; captures are now
+    spilled to per-spawn globals and reloaded inside the closure.
+    [CONCURRENCY-SPAWN-AWAIT] [TYPE-RECORD] *)
+type Job =
+    id : int
+    weight : int
+
+runJob j = j.id * j.weight ?: 0
+
 print "=== Fiber Showcase ==="
 
 f1 = spawn (simpleTask 1)
@@ -80,6 +91,11 @@ capArg = 7
 capF = spawn (combine (capArg, 5))
 print "captured spawn = ${await capF} done=${fiberDone capF}"
 
+jobHigh = Job(id = 3, weight = 9)
+jobWide = Job(id = 4, weight = 7)
+spawnedJob = await (spawn (runJob jobWide))
+print "record spawn direct=${runJob jobHigh} spawned=${spawnedJob}"
+
 print "=== Fiber Showcase Complete ==="
 
 // Verify each composed fiber/yield/lambda result instead of merely printing it.
@@ -109,5 +125,10 @@ test "fiber primitives compose into deterministic values" (\() => checkAll "fibe
     await (spawn (fetchUserData 5)) == 5123,
     await (spawn (fetchOrderData 5)) == 545,
     combine (capArg, 5) == 705,
-    fiberDone capF == 1
+    fiberDone capF == 1,
+    runJob jobHigh == 27,
+    runJob jobWide == 28,
+    spawnedJob == 28,
+    jobHigh.id == 3,
+    jobHigh.weight == 9
 ])

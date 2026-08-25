@@ -1,0 +1,6 @@
+14 6 9:v=9|
+ok 1 - effects cross module boundaries to caller handlers
+ok 2 - effect rows survive higher-order module calls
+ok 3 - effects from separate modules nest independently
+1..3
+# tests=3 passed=3 failed=0 skipped=0

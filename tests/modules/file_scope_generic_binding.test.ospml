@@ -1,0 +1,61 @@
+(** ML surface for the generic clause of [MODULES-FILE-SCOPE-BINDING]: a binding
+    whose value is a GENERIC function is the one case with no module storage at
+    all. A generic definition has no single machine-level shape
+    ([TYPE-GENERICS-FN]), so binding it produces no runtime value to store — the
+    name resolves to the body, and every call site specialises it independently.
+
+    This lives beside `file_scope_bindings` rather than inside it because that
+    program also installs a file-scope handler, and the two together are
+    currently rejected: see `tests/modules/README.md`. *)
+
+(** A generic identity, bound by name below. *)
+identity x = x
+
+(** A generic wrapper, so the binding is exercised at two arities of use. *)
+labelled (tag, value) = "${tag}:${value}"
+
+alias = identity
+tagged = labelled
+
+(** Specialised at `int` by this call site alone. *)
+round n = alias n
+
+(** Specialised at `string` by this call site alone; the binding is not narrowed
+    to whichever type the first caller happened to fix. *)
+label s = alias s
+
+(** Specialised at `bool` through a third, independent site. *)
+flag b = alias b
+
+(** One binding, three unrelated instantiations. *)
+independentSpecialisationCase () = checkAll ("generic binding specialises per site", [
+    round 1 == 1,
+    round 0 == 0,
+    label "s" == "s",
+    label "" == "",
+    flag true == true,
+    flag false == false
+])
+
+(** The binding and the function it names are the same declaration. *)
+bindingEqualsNameCase () = checkAll ("the binding resolves to the named body", [
+    alias 7 == identity 7,
+    alias "seven" == identity "seven",
+    round (identity 3) == 3,
+    label (alias "x") == "x",
+    alias (alias (alias 2)) == 2
+])
+
+(** A second generic binding specialises independently of the first. *)
+secondBindingCase () = checkAll ("a second generic binding is independent", [
+    tagged ("n", 1) == "n:1",
+    tagged ("s", "one") == "s:one",
+    tagged ("b", true) == "b:true",
+    tagged ("nested", tagged ("in", 2)) == "nested:in:2",
+    tagged ("via", round 4) == "via:4"
+])
+
+print "${round 1} ${label "s"} ${flag true} ${tagged ("n", 1)}"
+test ("one generic binding specialises at every call site", independentSpecialisationCase)
+test ("a generic binding resolves to the named body", bindingEqualsNameCase)
+test ("generic bindings specialise independently of each other", secondBindingCase)

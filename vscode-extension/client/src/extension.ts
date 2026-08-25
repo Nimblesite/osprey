@@ -741,13 +741,20 @@ function runCompileTask(compilerCommand: string, task: CompileTask) {
     outputChannel.show();
     outputChannel.appendLine(task.startLine(document.fileName));
     const fileDir = path.dirname(document.fileName);
-    execFile(
+    const child = execFile(
       compilerCommand,
       task.args(document.fileName),
       { cwd: fileDir },
       (error: any, stdout: any, stderr: any) =>
         reportCompileOutput(outputChannel, task, error, stdout, stderr),
     );
+    // Close stdin at once, exactly as the test explorer's spawn does. execFile
+    // OPENS a stdin pipe and never ends it, so a program that reads stdin
+    // (`input()`) parks in `read` forever: the run never finishes, and the
+    // channel stays empty because stdout is block-buffered and never flushed.
+    // An output-channel run has no keyboard attached to it, so EOF — not an
+    // eternal wait — is the honest thing for the child to see.
+    child.stdin?.end();
   });
 }
 

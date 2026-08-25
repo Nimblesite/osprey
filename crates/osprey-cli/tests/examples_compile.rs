@@ -54,13 +54,45 @@ fn compile(path: &Path, source: &str) -> Result<usize, String> {
     if let Some(first) = parsed.errors.first() {
         return Err(format!("parse: {}", first.message));
     }
-    let type_errors = osprey_types::check_program(&parsed.program);
+    let program = assemble_if_needed(path, source, parsed.program)?;
+    let type_errors = osprey_types::check_program(&program);
     if let Some(first) = type_errors.first() {
         return Err(format!("typecheck: {first:?}"));
     }
-    osprey_codegen::compile_program(&parsed.program)
+    osprey_codegen::compile_program(&program)
         .map(|ir| ir.len())
         .map_err(|e| format!("codegen: {e:?}"))
+}
+
+/// Resolve a module-bearing source through the project layer before grading it.
+///
+/// A namespace, module, import or signature is not a program until
+/// `osprey_project` resolves its paths and flattens the graph ([MODULES-MODEL]);
+/// `Tax::add` is an unknown identifier until then. Grading the raw parse would
+/// report every module program as broken while the CLI runs it perfectly — so
+/// this reproduces the CLI's own single-source path. Ordinary scripts skip it
+/// and keep exactly the IR and symbol names they had.
+fn assemble_if_needed(
+    path: &Path,
+    source: &str,
+    program: osprey_ast::Program,
+) -> Result<osprey_ast::Program, String> {
+    if !osprey_project::needs_assembly(&program) {
+        return Ok(program);
+    }
+    let source_file = osprey_project::SourceFile {
+        path: path.to_path_buf(),
+        flavor: osprey_syntax::resolve_flavor(None, &path.to_string_lossy(), source)
+            .unwrap_or(osprey_syntax::Flavor::Default),
+        source: source.to_string(),
+        program,
+    };
+    osprey_project::assemble_one(source_file)
+        .map(|assembled| assembled.program)
+        .map_err(|errors| match errors.first() {
+            Some(first) => format!("project: {}", first.message),
+            None => "project: assembly failed with no diagnostic".to_string(),
+        })
 }
 
 #[test]

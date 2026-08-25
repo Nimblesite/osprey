@@ -126,9 +126,7 @@ module Update
     formValue data name = Json::getOr data name ""
 
     integer : string -> int
-    integer raw = match parseInt raw
-        Success value => value
-        Error message => 0
+    integer raw = parseInt raw ?: 0
 
     invalid : AppModel -> string -> string -> UpdateResult
     invalid model title body = noCommand (Model::notice model "error" title body)

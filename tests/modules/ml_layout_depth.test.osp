@@ -1,0 +1,80 @@
+/// Default twin of the ML layout-depth program. ML layout is the one place the
+/// two surfaces genuinely differ: Default marks every boundary with braces, ML
+/// marks them only with indentation. Holding both to one golden is what proves
+/// a layout bug that closed a block one line early would be caught
+/// ([FLAVOR-ML-LAYOUT], [MODULES-FLAVOR-PROJECTION]).
+
+namespace depth {
+    signature LeafApi {
+        fn value() -> int
+        fn scaled(n: int) -> int
+    }
+
+    module Trunk {
+        /// Private at the trunk, so only the trunk's own exports may use it.
+        let factor = 3
+
+        export module Branch {
+            export module Twig : LeafApi {
+                fn value() = 7
+                fn scaled(n) = (n * 7) ?: 0
+            }
+
+            /// A branch reaches its own twig without qualification.
+            export fn pick() = Twig::value()
+
+            export module Bud {
+                export effect Sap {
+                    draw : fn(int) -> int
+                }
+
+                /// Four segments deep, and the row still reaches the caller.
+                export fn drink(n) = perform Sap.draw(n)
+            }
+        }
+
+        export fn amplify(n) = (n * factor) ?: 0
+    }
+}
+
+import depth::Trunk::Branch::Twig
+import depth::Trunk::Branch::Bud as Bud
+import depth::Trunk::{amplify, amplify as boost}
+
+/// Installs a doubling handler for the effect declared at the deepest level.
+fn tapping(rate, body) = handle Bud::Sap
+    draw amount => resume((amount * rate) ?: 0)
+in body()
+
+/// Every nesting level stays addressable by its full path and by its import.
+fn nestingDepthCase() = checkAll("layout nesting keeps every level addressable", [
+    depth::Trunk::Branch::Twig::value() == 7,
+    Twig::value() == 7,
+    depth::Trunk::Branch::pick() == 7,
+    Twig::scaled(2) == 14,
+    depth::Trunk::Branch::Twig::scaled(3) == 21,
+    depth::Trunk::amplify(2) == 6
+])
+
+/// A layout import selecting two members binds both, alias included.
+fn layoutImportCase() = checkAll("indented member selection binds each name", [
+    amplify(2) == 6,
+    boost(2) == 6,
+    amplify(0) == 0,
+    boost(Twig::value()) == 21,
+    amplify(boost(1)) == 9
+])
+
+/// The deepest module's effect is handled by a top-level installer.
+fn deepEffectCase() = checkAll("an effect four segments deep still propagates", [
+    tapping(2, fn() => Bud::drink(5)) == 10,
+    tapping(1, fn() => Bud::drink(5)) == 5,
+    tapping(0, fn() => Bud::drink(5)) == 0,
+    tapping(3, fn() => (Bud::drink(2) + Bud::drink(4)) ?: 0) == 18,
+    tapping(2, fn() => Bud::drink(Twig::value())) == 14
+])
+
+print("${Twig::scaled(3)} ${boost(2)} ${tapping(2, fn() => Bud::drink(5))} ${depth::Trunk::Branch::pick()}")
+test("layout nesting keeps every level addressable", nestingDepthCase)
+test("an indented import selection binds every member", layoutImportCase)
+test("an effect declared four segments deep propagates", deepEffectCase)

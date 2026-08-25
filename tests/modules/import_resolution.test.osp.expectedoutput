@@ -1,0 +1,6 @@
+24 48 2000 1 300
+ok 1 - member imports bind selected exports
+ok 2 - whole-module imports bind a module name
+ok 3 - nearer declarations outrank imported ones
+1..3
+# tests=3 passed=3 failed=0 skipped=0

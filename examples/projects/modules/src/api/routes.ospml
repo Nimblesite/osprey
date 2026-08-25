@@ -40,16 +40,12 @@ module Api
     field : string -> string -> string
     field body path =
         doc = jsonParse body ?: 0
-        v = match jsonGet doc path
-            Success value => value
-            Error message => ""
+        v = jsonGet doc path ?: ""
         freed = jsonFree doc ?: 0
         v
 
     num : string -> string -> int
-    num body path = match parseInt (field body path)
-        Success value => value
-        Error message => 0
+    num body path = parseInt (field body path) ?: 0
 
     load : int -> Account ! Ledger::Store
     load id = Account(id = id, owner = perform Ledger::Store.owner id, balance = perform Ledger::Store.balance id)

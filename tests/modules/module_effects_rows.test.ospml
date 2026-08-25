@@ -1,0 +1,84 @@
+(** ML surface for [MODULES-EFFECTS]: module boundaries do not erase effect
+    rows. An operation performed inside a module still reaches a handler the
+    caller installs, through helpers, higher-order functions and nested
+    handlers. *)
+
+namespace pipeline
+
+module Source
+    export effect Feed
+        next : Unit => int
+
+    (** A module function performing an unhandled operation propagates it. *)
+    export pull () = perform Feed.next ()
+
+    (** The row survives a private helper in between. *)
+    twice () = (pull () + pull ()) ?: 0
+
+    export pair () = twice ()
+
+module Sink
+    export effect Report
+        line : string => Unit
+
+    (** A second module's effect composes with the first under nested handlers. *)
+    export emit value = perform Report.line "v=${value}"
+
+module Stage
+    (** Importing a module installs nothing; the caller must still handle. *)
+    export run transform = transform (Source::pull ())
+
+    (** Performs one operation from each module and answers the pulled reading. *)
+    export describe () =
+        reading = Source::pull ()
+        Sink::emit reading
+        reading
+
+(** Replays a fixed reading for every `Feed.next`. *)
+feeding (reading, body) =
+    handle Source::Feed
+        next => resume reading
+    in body ()
+
+(** Collects the lines a body emits, appended after the body's own answer. *)
+collecting body =
+    mut seen = ""
+    outcome = handle Sink::Report
+        line message =>
+            seen := "${seen}${message}|"
+    in body ()
+    "${outcome}:${seen}"
+
+(** An operation performed inside a module reaches the caller's handler. *)
+crossBoundaryCase () = checkAll ("module operations reach caller handlers", [
+    feeding (7, Source::pull) == 7,
+    feeding (0, Source::pull) == 0,
+    feeding (7, Source::pair) == 14,
+    feeding (21, Source::pair) == 42,
+    feeding (3, \() => Stage::run (\v => (v * 2) ?: 0)) == 6,
+    feeding (5, \() => Stage::run (\v => (v + 1) ?: v)) == 6
+])
+
+(** A lambda handed to a module's higher-order function keeps the row. *)
+higherOrderCase () = checkAll ("rows survive higher-order calls", [
+    feeding (4, \() => Stage::run (\v => (v + Source::pull ()) ?: 0)) == 8,
+    feeding (6, \() => (Stage::run (\v => v) + Source::pull ()) ?: 0) == 12,
+    feeding (2, \() => Stage::run (\v => (v * v) ?: 0)) == 4
+])
+
+(** Two modules' effects nest without either handler capturing the other. *)
+nestedHandlerCase () = checkAll ("independent module effects nest", [
+    collecting (\() => feeding (9, Stage::describe)) == "9:v=9|",
+    collecting (\() => feeding (1, Stage::describe)) == "1:v=1|",
+    collecting (\() => feeding (4, \() => (Stage::describe () + Stage::describe ()) ?: 0)) == "8:v=4|v=4|",
+    collecting (\() => (feeding (2, Stage::describe) + feeding (3, Stage::describe)) ?: 0) == "5:v=2|v=3|",
+    feeding (5, \() => length (collecting Stage::describe)) == 6
+])
+
+(** One transcript line covering the three shapes the cases assert. *)
+transcript () = "${feeding (7, Source::pair)} ${feeding (3, \() => Stage::run (\v => (v * 2) ?: 0))} ${collecting (\() => feeding (9, Stage::describe))}"
+
+print (transcript ())
+test ("effects cross module boundaries to caller handlers", crossBoundaryCase)
+test ("effect rows survive higher-order module calls", higherOrderCase)
+test ("effects from separate modules nest independently", nestedHandlerCase)

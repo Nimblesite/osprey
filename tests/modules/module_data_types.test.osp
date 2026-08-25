@@ -1,0 +1,80 @@
+/// Default surface for [MODULES-MODULE] and [MODULES-EXPORTS] carrying data:
+/// records, unions and generic functions declared inside a module, matched and
+/// consumed across the boundary through the module's exported factories.
+///
+/// A union's constructors are NOT part of a module's exported surface — only the
+/// declarations the module marks `export` are — so every value here is built by
+/// an exported factory and inspected by an exported accessor.
+
+namespace shapes;
+
+module Geo {
+    export type Shape = Circle { radius: int } | Square { side: int }
+
+    export type Extent = { width: int, height: int }
+
+    export fn circle(radius) = Circle { radius: radius }
+
+    export fn square(side) = Square { side: side }
+
+    export fn area(shape) = match shape {
+        Circle { radius } => (radius * radius) ?: 0
+        Square { side } => (side * side) ?: 0
+    }
+
+    export fn name(shape) = match shape {
+        Circle { radius } => "circle"
+        Square { side } => "square"
+    }
+
+    export fn extent(shape) = match shape {
+        Circle { radius } => Extent { width: ((radius * 2) ?: 0), height: ((radius * 2) ?: 0) }
+        Square { side } => Extent { width: side, height: side }
+    }
+
+    export fn perimeterOf(extent) = ((((extent.width + extent.height) ?: 0) * 2) ?: 0)
+}
+
+module Boxes {
+    export type Box<T> = { held: T }
+
+    /// A generic module function specialises independently at every call site.
+    export fn wrap(value) = Box { held: value }
+
+    export fn held(box) = box.held
+
+    export fn rewrap(box) = wrap(held(box))
+}
+
+/// Constructors reached through exported factories keep their payloads.
+fn unionPayloadCase() = checkAll("module union payloads survive the boundary", [
+    Geo::area(Geo::circle(3)) == 9,
+    Geo::area(Geo::square(4)) == 16,
+    Geo::area(Geo::circle(0)) == 0,
+    Geo::name(Geo::circle(3)) == "circle",
+    Geo::name(Geo::square(4)) == "square",
+    Geo::area(Geo::square(Geo::area(Geo::square(2)))) == 16
+])
+
+/// A record declared in a module crosses the boundary with its fields intact.
+fn recordFieldCase() = checkAll("module record fields cross the boundary", [
+    Geo::extent(Geo::circle(3)).width == 6,
+    Geo::extent(Geo::circle(3)).height == 6,
+    Geo::extent(Geo::square(5)).width == 5,
+    Geo::perimeterOf(Geo::extent(Geo::square(5))) == 20,
+    Geo::perimeterOf(Geo::extent(Geo::circle(1))) == 8
+])
+
+/// One generic module function serves several unrelated instantiations.
+fn genericModuleCase() = checkAll("generic module functions specialise per site", [
+    Boxes::held(Boxes::wrap(7)) == 7,
+    Boxes::held(Boxes::wrap("seven")) == "seven",
+    Boxes::held(Boxes::wrap(true)) == true,
+    Boxes::held(Boxes::rewrap(Boxes::wrap(2))) == 2,
+    Boxes::held(Boxes::wrap(Geo::area(Geo::square(3)))) == 9
+])
+
+print("${Geo::area(Geo::circle(3))} ${Geo::name(Geo::square(4))} ${Geo::perimeterOf(Geo::extent(Geo::square(5)))} ${Boxes::held(Boxes::wrap("seven"))}")
+test("module unions keep their payloads", unionPayloadCase)
+test("module records keep their fields", recordFieldCase)
+test("module generics specialise per call site", genericModuleCase)

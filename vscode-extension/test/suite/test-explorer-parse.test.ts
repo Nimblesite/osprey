@@ -273,7 +273,13 @@ suite("Test Explorer parsing", () => {
           comments: [],
           skipReason: "precondition not met",
         },
-        { name: "t", description: "t # SKIP", ok: true, comments: [], skipReason: "" },
+        {
+          name: "t",
+          description: "t # SKIP",
+          ok: true,
+          comments: [],
+          skipReason: "",
+        },
       ];
       // The `# SKIP` reason rides along so the warning diagnostic can carry
       // it ([TESTING-SKIP-WARNING]); an empty directive keeps an empty reason.

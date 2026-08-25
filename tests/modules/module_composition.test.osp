@@ -1,0 +1,79 @@
+/// Default surface for [MODULES-ABI] and [MODULES-PROJECT]: module-qualified
+/// declarations compose with the rest of the language — fibers, iterators,
+/// `Result` and interpolation — and identical simple names in different
+/// modules and namespaces keep distinct linkage identities.
+
+namespace compute {
+    module Adder {
+        /// Four declarations across this file share the simple name `apply`.
+        export fn apply(n) = (n + 1) ?: n
+    }
+
+    module Scaler {
+        export fn apply(n) = (n * 3) ?: n
+
+        export module Inner {
+            export fn apply(n) = (n * 10) ?: n
+        }
+    }
+
+    module Runner {
+        /// A module function spawns a fiber running another module's export.
+        export fn spawned(n) = {
+            let job = spawn Scaler::apply(n)
+            await(job)
+        }
+
+        /// Iterator pipelines fold module functions without losing the boundary.
+        export fn folded(limit) = fold(range(0, limit), 0, fn(acc, v) => (acc + Adder::apply(v)) ?: acc)
+
+        /// The error channel survives the module boundary [MODULES-MODULE].
+        export fn halve(n) = intDiv(n, 2)
+    }
+}
+
+namespace report {
+    module Adder {
+        /// A same-named module in another namespace is a different declaration.
+        export fn apply(text) = "<${text}>"
+    }
+}
+
+/// Renders a `Result` a module produced, whichever way it went.
+fn rendered(outcome) = match outcome {
+    Success { value } => "ok ${value}"
+    Error { message } => "err ${message}"
+}
+
+/// Four `apply` declarations resolve independently [MODULES-ABI].
+fn linkageIdentityCase() = checkAll("same simple name, four declarations", [
+    compute::Adder::apply(1) == 2,
+    compute::Scaler::apply(2) == 6,
+    compute::Scaler::Inner::apply(2) == 20,
+    report::Adder::apply("x") == "<x>",
+    compute::Adder::apply(compute::Scaler::apply(1)) == 4,
+    compute::Scaler::Inner::apply(compute::Adder::apply(0)) == 10
+])
+
+/// Fibers and iterators call module exports without special handling.
+fn concurrencyAndIterationCase() = checkAll("modules compose with fibers and iterators", [
+    compute::Runner::spawned(4) == 12,
+    compute::Runner::spawned(0) == 0,
+    compute::Runner::folded(4) == 10,
+    compute::Runner::folded(1) == 1,
+    compute::Runner::folded(0) == 0
+])
+
+/// Module boundaries do not erase a `Result`'s error channel.
+fn resultChannelCase() = checkAll("module Results keep both branches", [
+    rendered(compute::Runner::halve(10)) == "ok 5",
+    rendered(compute::Runner::halve(0)) == "ok 0",
+    rendered(compute::Runner::halve(9)) == "ok 4",
+    (compute::Runner::halve(7) ?: 0) == 3,
+    (((compute::Runner::halve(7) ?: 0) + compute::Scaler::apply(1)) ?: 0) == 6
+])
+
+print("${compute::Adder::apply(1)} ${compute::Scaler::Inner::apply(2)} ${report::Adder::apply("x")} ${compute::Runner::spawned(4)} ${rendered(compute::Runner::halve(10))}")
+test("identical simple names keep distinct identities", linkageIdentityCase)
+test("modules compose with fibers and iterators", concurrencyAndIterationCase)
+test("module results keep their error channel", resultChannelCase)

@@ -40,8 +40,14 @@ tests/effects/resume/resume_unit_markers.test.osp __osprey_coro_suspend
 tests/effects/resume/resume_unit_markers.test.ospml __osprey_coro_suspend
 tests/effects/resume/resume_value_rewrite.test.osp __osprey_coro_suspend
 tests/effects/resume/resume_value_rewrite.test.ospml __osprey_coro_suspend
-tests/regressions/basics/knownbugs/bug1_spawn_record.test.osp fiber_spawn_env_owned
-tests/regressions/basics/knownbugs/bug1_spawn_record.test.ospml fiber_spawn_env_owned
+tests/modules/ml_layout_depth.test.osp __osprey_coro_suspend
+tests/modules/ml_layout_depth.test.ospml __osprey_coro_suspend
+tests/modules/module_composition.test.osp fiber_spawn_env_owned
+tests/modules/module_composition.test.ospml fiber_spawn_env_owned
+tests/modules/module_effects_rows.test.osp __osprey_coro_suspend
+tests/modules/module_effects_rows.test.ospml __osprey_coro_suspend
+tests/modules/signature_ascription.test.osp __osprey_coro_suspend
+tests/modules/signature_ascription.test.ospml __osprey_coro_suspend
 tests/regressions/basics/osprey_mega_showcase.test.osp fiber_spawn_env_owned
 tests/regressions/basics/osprey_mega_showcase.test.ospml fiber_spawn_env_owned
 tests/regressions/basics/processes/async_process_management.test.osp spawn_process_with_handler

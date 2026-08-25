@@ -39,9 +39,7 @@ module ActivityView
         _ => Money::show cents
 
     increment : int -> int
-    increment number = match number + 1
-        Success value => value
-        Error message => number
+    increment number = number + 1 ?: number
 
     export row : int -> int -> string
     row doc index =

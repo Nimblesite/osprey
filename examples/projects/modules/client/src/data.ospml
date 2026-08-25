@@ -24,9 +24,7 @@ module BankData
     export activityCount : string -> int
     activityCount source = accountCount source
 
-    remove source token = match replace source token ""
-        Success value => value
-        Error message => source
+    remove source token = replace source token "" ?: source
 
     digitAt source index = match byteAt source index
         Success value => value >= 48 && value <= 57

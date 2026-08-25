@@ -1,0 +1,6 @@
+9 square 20 seven
+ok 1 - module unions keep their payloads
+ok 2 - module records keep their fields
+ok 3 - module generics specialise per call site
+1..3
+# tests=3 passed=3 failed=0 skipped=0
