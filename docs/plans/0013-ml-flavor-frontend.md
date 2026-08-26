@@ -83,7 +83,8 @@ The post-AST pipeline is already flavor-agnostic by construction:
 - **Currying needs no core change.** `Type::Fun` (`…/osprey-types/src/ty.rs:67`)
   is flat multi-arity; a curried function is nested `Fun` + nested one-param
   `Expr::Lambda` + nested one-arg `Expr::Call` — all implemented today
-  (lambdas-as-values: [plan 0002](0002-codegen-generic-function-values.md)). The
+  (lambdas-as-values: [spec 0004](../specs/0004-TypeSystem.md) `[TYPE-GENERICS-FN]`,
+  plan 0002 retired). The
   ML lowerer does the currying desugar; the checker and codegen are untouched.
 
 The new work consists of **(a)** a layout-sensitive parser — a

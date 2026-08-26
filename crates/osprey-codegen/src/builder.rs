@@ -107,6 +107,17 @@ pub struct Codegen {
     /// `idl(7)` emitted a direct call to `@idl`, a symbol no definition
     /// produces ([TYPE-GENERICS-FN], [MODULES-FILE-SCOPE-BINDING]).
     pub(crate) file_lambdas: HashMap<String, LambdaDef>,
+    /// Values already lowered for the CALLEE parameters a generic returned
+    /// lambda closes over, keyed by the binding name
+    /// (`crate::stmt::generic_returned_lambda`).
+    ///
+    /// `let c = constly("hi")` for `fn constly(v) = |x| => v` evaluates the
+    /// argument ONCE here; each later `c(7)` prepends these values to its own,
+    /// so the inlined body reads `v` from the binding's evaluation rather than
+    /// from whatever scope it was inlined into. These are SSA registers of the
+    /// function being emitted, so the map is cleared whenever emission moves to
+    /// another function body.
+    pub(crate) lambda_prefix: HashMap<String, (Vec<osprey_ast::Parameter>, Vec<Value>)>,
     /// Top-level functions already wrapped as closure cells (name → the cell's
     /// constant global), so the forwarder is emitted once per module.
     pub(crate) fnval_cells: HashMap<String, String>,
@@ -346,6 +357,9 @@ pub(crate) struct SavedFn {
     labels: usize,
     scopes: Vec<HashMap<String, Value>>,
     scope_ids: Vec<usize>,
+    /// Saved with the rest of the function frame: the prefix values are SSA
+    /// registers of the SUSPENDED function, so a nested body must not read them.
+    lambda_prefix: HashMap<String, (Vec<osprey_ast::Parameter>, Vec<Value>)>,
     /// Stream-fusion stages are per-function: a stage recorded inside a nested
     /// function body must never replay in the suspended function's next loop.
     pending_iter_ops: Vec<crate::iter::IterOp>,
@@ -623,6 +637,7 @@ impl Codegen {
             pending_iter_ops: Vec::new(),
             lambdas: HashMap::new(),
             file_lambdas: HashMap::new(),
+            lambda_prefix: HashMap::new(),
             fnval_cells: HashMap::new(),
             effect_ops: HashMap::new(),
             handler_count: 0,
@@ -881,6 +896,7 @@ impl Codegen {
             regs: self.reg_count,
             labels: self.label_count,
             scopes: std::mem::take(&mut self.scopes),
+            lambda_prefix: std::mem::take(&mut self.lambda_prefix),
             scope_ids: std::mem::take(&mut self.scope_ids),
             pending_iter_ops: std::mem::take(&mut self.pending_iter_ops),
             cell_vars: std::mem::take(&mut self.cell_vars),
@@ -924,6 +940,7 @@ impl Codegen {
         self.label_count = saved.labels;
         self.scopes = saved.scopes;
         self.scope_ids = saved.scope_ids;
+        self.lambda_prefix = saved.lambda_prefix;
         self.pending_iter_ops = saved.pending_iter_ops;
         self.cell_vars = saved.cell_vars;
         self.cell_slots = saved.cell_slots;
@@ -1430,6 +1447,7 @@ impl Codegen {
         // The beta-reduction cache is per-function too: a stale entry from an
         // earlier function must not hijack a same-named local here.
         self.lambdas.clear();
+        self.lambda_prefix.clear();
         // Cell-promotion is per-function; `lower` repopulates `cell_vars` from
         // this function's body before lowering it.
         self.cell_vars.clear();

@@ -1721,17 +1721,39 @@ card doc index selected =
     }
 
     #[test]
-    fn generic_function_value_without_a_slot_is_rejected() {
-        // With NO consuming slot to fix the ABI (a still-generic lambda
-        // returned from a generic function), codegen still rejects loudly —
-        // a variables-as-i64 ABI would silently corrupt string/float
-        // instantiations (closure.rs lambda_value).
-        let err = compile_err(
+    fn a_generic_functions_returned_lambda_is_inlined_per_call_site() {
+        // This program used to be REJECTED: one closure cell has one ABI and
+        // the binding may be used at several, so `lambda_value` bailed. The
+        // lambda is recorded for inline application instead, so each call site
+        // specialises it — and the callee's argument is evaluated ONCE, at the
+        // binding, then carried as a value (stmt.rs generic_returned_lambda,
+        // Codegen::lambda_prefix).
+        let ir = module(
             "fn mk<T>(x: T) = |y| => x\n\
              fn main() -> Unit = {\n\
                let f = mk(1)\n\
                print(\"${f(0)}\")\n\
+               print(\"${f(\"a different instantiation\")}\")\n\
              }\n",
+        );
+        // Both uses answer the captured `1`, so both print the int form; a
+        // per-instantiation ABI failure would print one of them as a pointer.
+        assert_eq!(
+            ir.matches("i64 1").count(),
+            2,
+            "each call site specialises against the captured value:\n{ir}"
+        );
+    }
+
+    #[test]
+    fn a_still_generic_lambda_with_no_slot_at_all_is_rejected() {
+        // The remaining boundary. Inlining needs a call site to specialise
+        // against; used as a bare VALUE there is none, and a
+        // variables-as-i64 ABI would silently corrupt the string/float
+        // instantiations (closure.rs lambda_value).
+        let err = compile_err(
+            "fn mk<T>(x: T) = |y| => x\n\
+             fn main() -> Unit = print(\"${mk(1)}\")\n",
         );
         assert!(matches!(err, CodegenError::Unsupported(_)));
     }

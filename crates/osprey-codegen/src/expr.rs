@@ -872,7 +872,7 @@ fn gen_call(
     }
     // A let-bound lambda with no materialized cell is inlined at its call site.
     if let Some((params, body, position)) = cg.lambda_def(name).cloned() {
-        return apply_lambda(cg, &params, &body, position, arguments);
+        return apply_bound_lambda(cg, name, &params, &body, position, arguments);
     }
     match name {
         "print" => {
@@ -948,6 +948,35 @@ fn call_fn_value(
 /// Beta-reduce a lambda at its application site: bind each parameter to its
 /// argument and lower the body in a fresh scope. The returned value keeps its
 /// complete inferred representation, including a Result wrapper.
+/// Apply a let-bound lambda that was recorded for inlining rather than
+/// materialized as a cell.
+///
+/// A lambda a GENERIC function returned also closes over that call's
+/// parameters, evaluated once at the binding
+/// ([`Codegen::lambda_prefix`], [`crate::stmt`]). Those values are prepended
+/// here so the inlined body reads the binding's evaluation rather than
+/// resolving the callee's parameter names in whatever scope it landed in.
+fn apply_bound_lambda(
+    cg: &mut Codegen,
+    name: &str,
+    params: &[Parameter],
+    body: &Expr,
+    position: Option<osprey_ast::Position>,
+    arguments: &[Expr],
+) -> Result<Value> {
+    let Some((prefix_params, prefix_values)) = cg.lambda_prefix.get(name).cloned() else {
+        return apply_lambda(cg, params, body, position, arguments);
+    };
+    let mut values = prefix_values;
+    for a in arguments {
+        values.push(gen_expr(cg, a)?);
+    }
+    let mut all = prefix_params;
+    all.extend_from_slice(params);
+    let sig = inline_sig(cg, position);
+    apply_lambda_values(cg, &all, body, values, sig.as_ref(), position)
+}
+
 fn apply_lambda(
     cg: &mut Codegen,
     parameters: &[Parameter],

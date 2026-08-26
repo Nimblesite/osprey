@@ -20,7 +20,8 @@
 //! recursive helper reached from a kernel — a row walk over a flat matrix is
 //! the canonical one — is a valid kernel, so it must compile without the
 //! annotations Osprey's inference otherwise makes redundant. Also
-//! [TYPE-FN-GENERIC] via [plan 0002](docs/plans/0002-codegen-generic-function-values.md).
+//! [TYPE-FN-GENERIC]; the function-value contract is [TYPE-GENERICS-FN] in
+//! `docs/specs/0004-TypeSystem.md` (plan 0002 retired).
 
 use crate::builder::{Codegen, FnSig, ParamSig};
 use crate::error::{CodegenError, Result};

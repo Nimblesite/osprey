@@ -170,8 +170,69 @@ functionValueCollectionCase () =
         mapLength (groupsFrom "k") == 1
     ]
 
+(** A GENERIC function whose body is a lambda. One closure cell has one ABI and
+    the binding may be used at several, so `f = pick ()` was rejected outright:
+    `a closure value with a still-generic type`. The lambda is now recorded for
+    inline application, so each call site specialises it at that site's real
+    types — the same beta-reduction that already made a directly bound
+    `f = \x => x` work at two instantiations.
+
+    The producing call's arguments are evaluated ONCE at the binding and carried
+    as values, so a captured parameter is neither re-evaluated per instantiation
+    nor read from whatever scope the body was inlined into. `countedSeed`
+    performs an effect, so `runs` counts that evaluation for real.
+    Implements [TYPE-GENERICS-FN]. *)
+pick () = \x => x
+constly v = \x => v
+
+(** Bound at FILE SCOPE and read from inside a function below. That crosses
+    function boundaries, so the lambda must be seeded before any body is
+    emitted — otherwise the reader emits `call @sharedIdentity` to a symbol no
+    definition produces and the module fails to LINK, which no type or codegen
+    check would have caught. *)
+sharedIdentity = pick ()
+countedSeed () =
+    perform Tally.note 1
+    99
+
+(** Binds the seeded lambda and applies it at TWO instantiations, so the
+    evaluation count is observed across both. *)
+agreesFromSeed () =
+    counted = constly (countedSeed ())
+    match counted 0 == counted "a different instantiation"
+        true => 1
+        false => 0
+
+genericReturnedLambdaCase () =
+    identityValue = pick ()
+    alwaysText = constly "kept"
+    alwaysNumber = constly (41 + 1 ?: 0)
+    mut runs = 0
+    seedAgrees =
+        handle Tally
+            note value =>
+                runs := runs + value ?: runs
+        in agreesFromSeed ()
+    checkAll "a generic function's returned lambda specialises per call site" [
+        identityValue 7 == 7,
+        identityValue "os" == "os",
+        identityValue 2.5 == 2.5,
+        identityValue true,
+        alwaysText 0 == "kept",
+        alwaysText "any" == "kept",
+        alwaysText 1.5 == "kept",
+        alwaysNumber "z" == 42,
+        alwaysNumber false == 42,
+        sharedIdentity 5 == 5,
+        sharedIdentity "across a function boundary" == "across a function boundary",
+        sharedIdentity 1.25 == 1.25,
+        seedAgrees == 1,
+        runs == 1
+    ]
+
 test "scalar pipes preserve helper composition" scalarPipelineCase
 test "iterator pipes preserve order and boundaries" iteratorPipelineCase
 test "a let-bound lambda picks its arithmetic overload from its use" lambdaOverloadCase
 test "a handler inside a closure keeps its captured state" closureHandlerCase
 test "a function value returning a collection keeps its element type" functionValueCollectionCase
+test "a generic function's returned lambda specialises per call site" genericReturnedLambdaCase
