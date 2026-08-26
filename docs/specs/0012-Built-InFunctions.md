@@ -150,8 +150,19 @@ twice n = checkedMul (n, 2)
 ### `random() -> int` — [BUILTIN-RANDOM]
 A cryptographically-secure uniform random non-negative integer in `[0, 2^63-1]`,
 drawn fresh from the operating system's CSPRNG (`arc4random_buf` on macOS/BSD,
-`getrandom(2)` on Linux, falling back to `/dev/urandom`). It carries no userspace
-seed or state, so calls are not reproducible.
+`getrandom(2)` on Linux, falling back to `/dev/urandom`, `rand_s` on Windows,
+`getentropy` on wasm). It carries no userspace seed or state, so calls are not
+reproducible.
+
+A draw either carries OS entropy or the process stops. `random()` answers `int`,
+not `Result<int, Error>`, so a source that cannot supply the bytes has nowhere to
+report — and a predictable value returned from this call is undetectable by the
+caller and worst exactly where it matters, since the WebSocket handshake nonce
+draws from it too. When no source can fill the request the runtime prints
+`FATAL: the OS entropy source gave <n> of the <m> bytes random() needs` and
+aborts; it never substitutes zeros or leaves the caller's word unwritten. On the
+supported platforms no source fails, so this is unreachable in practice and is
+reached in the test suite only by taking the source away.
 
 ```osprey
 let token = random()        // e.g. 7240982340198 (varies every call)

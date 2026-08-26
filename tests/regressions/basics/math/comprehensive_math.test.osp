@@ -178,6 +178,11 @@ fn comprehensiveMathCase() = {
         boundedRandom,
         invalidRandomBound,
         random() >= 0,
+        // [BUILTIN-RANDOM]: "calls are not reproducible". Two draws that match
+        // mean the source is not one -- an uninitialised stack word reused from
+        // the same frame slot satisfies `>= 0` above and this catches it. A
+        // genuine collision is one in 2^63.
+        random() != random(),
         input() == ""
     ])
 }

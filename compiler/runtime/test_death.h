@@ -14,18 +14,17 @@
 // possible: `osp_death_signal` reports 0 for a child that returned normally,
 // which is a failing result for a guard whose whole contract is that it stops.
 //
-// `__gcov_dump` is found at RUNTIME, never referenced at link time. These
-// suites are also built WITHOUT `--coverage` by `make _test_c_runtime`, where
-// the symbol does not exist, and a hard reference would fail to link there and
-// take the functional suite down with it.
+// The counter dump itself is `OSP_GCOV_DUMP` from test_gcov.h, shared with the
+// fork harnesses that are not death tests.
 #ifndef OSPREY_TEST_DEATH_H
 #define OSPREY_TEST_DEATH_H
 
-#include <dlfcn.h>
 #include <signal.h>
 #include <stddef.h>
 #include <sys/wait.h>
 #include <unistd.h>
+
+#include "test_gcov.h"
 
 // Reported when the fork itself failed, so a test can say "could not observe"
 // rather than silently passing on a child that never ran.
@@ -35,11 +34,6 @@
 // from every signal number, so a stalled body can never be counted as a guard
 // that fired.
 #define OSP_DEATH_STALLED (-2)
-
-// A weak reference is the obvious spelling for an optional symbol and does not
-// work here: Mach-O refuses an undefined weak symbol that no linked image
-// defines, and `weak_import` only relaxes that for a symbol some dylib does
-// define. `dlsym` is what works on both Mach-O and ELF.
 
 // The code under test.
 typedef void (*OspDeathBody)(void);
@@ -51,34 +45,15 @@ typedef void (*OspDeathBody)(void);
 // a loaded machine cannot trip it.
 enum { OSP_DEATH_BUDGET_SECONDS = 30, OSP_DEATH_POLL_US = 2000 };
 
-// Resolved ONCE, from ordinary code, before any handler can run. `dlsym` takes
-// the loader's lock, and a signal handler that takes a lock the interrupted
-// thread may already hold deadlocks the child instead of killing it — the test
-// would then hang rather than fail. Nothing in a handler may look a symbol up;
-// it may only read what was already found.
-static void *osp_gcov_dump_fn;
-
-static inline void osp_death_resolve_gcov_dump(void) {
-  // Present only in a `--coverage` build. Nothing else about the child's
-  // behaviour depends on it, so a functional run is byte-identical.
-  osp_gcov_dump_fn = dlsym(RTLD_DEFAULT, "__gcov_dump");
-}
-
 // NOT async-signal-safe, and it cannot be made so: `__gcov_dump` walks
 // libgcov's own state and writes files, none of which POSIX permits from a
-// handler. What was removed is the part that COULD be — the symbol is resolved
-// before the fork, so the handler never takes the loader's lock, which is the
-// deadlock that would have fired on every abort rather than on a rare
-// interleaving. The residual risk is aborting inside libgcov itself, and it is
+// handler. The residual risk is aborting inside libgcov itself, and it is
 // bounded rather than argued away: a handler that wedges is a child that never
 // exits, and the parent's deadline turns that into OSP_DEATH_STALLED — a
 // reported failure, not a hang. It is also confined to the `--coverage` build;
-// the functional build has no such symbol and this call never happens.
+// the functional build expands OSP_GCOV_DUMP to nothing.
 static void osp_death_dump_and_reraise(int sig) {
-  void *dump = osp_gcov_dump_fn;
-  if (dump != NULL) {
-    (*(void (*)(void))dump)();
-  }
+  OSP_GCOV_DUMP();
   (void)signal(sig, SIG_DFL);
   (void)raise(sig);
 }
@@ -112,7 +87,6 @@ static inline int osp_death_reap(pid_t pid, unsigned budget) {
 // report the signal that killed it — 0 if it ran to completion, which means the
 // guard under test did NOT fire, and OSP_DEATH_STALLED if it did neither.
 static inline int osp_death_signal_within(OspDeathBody body, unsigned budget) {
-  osp_death_resolve_gcov_dump(); // before the fork, never inside the handler
   pid_t pid = fork();
   if (pid < 0) {
     return OSP_DEATH_UNOBSERVED;

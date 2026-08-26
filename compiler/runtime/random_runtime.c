@@ -2,11 +2,22 @@
 // Implements [BUILTIN-RANDOM], [BUILTIN-RANDOM-BELOW], [BUILTIN-INPUT].
 //
 // Entropy comes straight from the OS CSPRNG — arc4random_buf on macOS/BSD,
-// getrandom(2) on Linux (falling back to /dev/urandom) — so the stream is
-// unpredictable and carries no userspace seed/state. That makes it suitable
-// both for security use and for the benchmark suite's "randomized" input mode,
-// where a run draws a fresh seed each time. The matching "constant" mode never
-// calls these and stays byte-for-byte deterministic.
+// getrandom(2) on Linux (falling back to /dev/urandom), rand_s on Windows,
+// getentropy on wasm — so the stream is unpredictable and carries no userspace
+// seed/state. That makes it suitable both for security use and for the
+// benchmark suite's "randomized" input mode, where a run draws a fresh seed
+// each time. The matching "constant" mode never calls these and stays
+// byte-for-byte deterministic.
+//
+// A draw either carries OS entropy or the process stops: there is no degraded
+// mode that answers zero or a stale stack word and calls it random.
+
+#ifdef _WIN32
+// Must precede <stdlib.h>: msvcrt only DECLARES rand_s when this is defined,
+// and without the declaration the call would be an implicit int-returning
+// function -- a hard error under -Werror, and the wrong ABI if it were not.
+#define _CRT_RAND_S
+#endif
 
 #include <stdint.h>
 #include <stdio.h>
@@ -32,22 +43,67 @@ int getentropy(void *, size_t);
 #include <sys/random.h>
 #include <sys/types.h> // ssize_t for the getrandom(2) return
 #define OSP_HAVE_GETRANDOM 1
+#elif defined(_WIN32)
+// Windows had NO entropy source at all: it fell through to the POSIX
+// `/dev/urandom` fallback, which a native Windows binary cannot open, and the
+// old code then returned the caller's UNINITIALISED stack word as a
+// "cryptographically-secure" draw. `random() >= 0` and `randomBelow(100) < 100`
+// both hold for stack garbage, so the corpus passed on it. rand_s is msvcrt's
+// wrapper over RtlGenRandom -- the OS CSPRNG, not the seeded `rand()`.
+// [BUILTIN-RANDOM]
+#define OSP_HAVE_RAND_S 1
+#endif
+
+#ifndef OSP_HAVE_ARC4RANDOM
+// No entropy source could fill the request. There is nowhere to report it:
+// `random()` answers `int` in the language, not `Result<int, Error>`, and the
+// WebSocket handshake nonce in http_shared.c draws from this same call.
+//
+// The two previous answers were both silently wrong. `getentropy` failing
+// memset the buffer to ZERO and returned, and a `/dev/urandom` that would not
+// open left the caller's word UNWRITTEN -- an uninitialised stack `uint64_t`
+// read back as a draw -- while the comment above claimed the tail was zeroed.
+// Neither is entropy. A predictable "cryptographically-secure" value is a
+// security defect no caller can detect, and a nonce is exactly where it does
+// the most damage. Stopping is the only truthful answer [BUILTIN-RANDOM].
+static void osp_entropy_exhausted(size_t got, size_t len) {
+  fprintf(stderr,
+          "FATAL: the OS entropy source gave %zu of the %zu bytes random() "
+          "needs; there is no unpredictable value to return\n",
+          got, len);
+  // abort() does not flush stdio. stderr is unbuffered by default, but an
+  // embedder that redirected it -- which is how CI captures a crash -- gets a
+  // fully-buffered stream, and the one line explaining the death would die
+  // with it.
+  (void)fflush(stderr);
+  abort();
+}
 #endif
 
 // Drain the OS entropy source into `buf` — the runtime-wide source of
 // unpredictable bytes, also used for the WebSocket handshake nonce in
-// http_shared.c so there is exactly one CSPRNG entry point.
-// Drain the OS entropy source into `buf`. Best-effort on the /dev/urandom
-// fallback path: a short read leaves the tail zeroed rather than aborting,
-// which never happens on the supported platforms.
+// http_shared.c so there is exactly one CSPRNG entry point. Fills `len` bytes
+// or does not return [BUILTIN-RANDOM].
 void osp_random_bytes(void *buf, size_t len) {
 #ifdef OSP_HAVE_GETENTROPY
   // getentropy caps a single call at 256 bytes; every caller here asks for 8.
   if (getentropy(buf, len) != 0) {
-    memset(buf, 0, len);
+    osp_entropy_exhausted(0, len);
   }
 #elif defined(OSP_HAVE_ARC4RANDOM)
   arc4random_buf(buf, len);
+#elif defined(OSP_HAVE_RAND_S)
+  // rand_s yields one 32-bit word per call, so a wider request is assembled a
+  // word at a time and the last one is truncated to what is left.
+  for (size_t off = 0; off < len;) {
+    unsigned int word = 0;
+    if (rand_s(&word) != 0) {
+      osp_entropy_exhausted(off, len);
+    }
+    size_t take = len - off < sizeof(word) ? len - off : sizeof(word);
+    memcpy((unsigned char *)buf + off, &word, take);
+    off += take;
+  }
 #else
 #ifdef OSP_HAVE_GETRANDOM
   size_t off = 0;
@@ -62,11 +118,17 @@ void osp_random_bytes(void *buf, size_t len) {
     return;
   }
 #endif
+  // The fallback refills from offset 0 rather than patching the tail: a
+  // partial getrandom draw is discarded, so the buffer is whole-cloth from one
+  // source instead of a splice of two.
+  size_t got = 0;
   FILE *f = fopen("/dev/urandom", "rb");
   if (f != NULL) {
-    size_t got = fread(buf, 1, len, f);
-    (void)got;
+    got = fread(buf, 1, len, f);
     fclose(f);
+  }
+  if (got < len) {
+    osp_entropy_exhausted(got, len);
   }
 #endif
 }

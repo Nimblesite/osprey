@@ -229,8 +229,8 @@ _lint:
 ## deslop: Code-duplication gate. Fails the build when measured
 ## duplication exceeds the ceiling in .deslop.toml (exit 3). Exclusions and the
 ## threshold live in that committed config — the single source of truth. When
-## the `deslop` binary is absent the gate is skipped with a loud warning so a
-## fresh checkout still builds; CI enforces the gate through the official action.
+## the `deslop` binary is absent this target FAILS: a gate that cannot run must
+## not report success. CI enforces the same ceiling through the official action.
 deslop:
 	@echo "==> Duplication gate (deslop)..."
 	@if ! command -v deslop >/dev/null 2>&1; then \
@@ -565,7 +565,7 @@ C_SRC_json_runtime_tests = runtime/json_runtime_tests.c runtime/json_grammar_tes
 C_LIBS_json_runtime_tests = -pthread
 C_SRC_effects_runtime_tests = runtime/effects_runtime_tests.c runtime/effects_runtime.c runtime/effects_coro.c runtime/memory_arc.c runtime/gpu_runtime.c runtime/profiler_runtime.c runtime/profiler_sampler.c
 C_LIBS_effects_runtime_tests = -pthread
-C_SRC_builtins_runtime_tests = runtime/builtins_runtime_tests.c runtime/ffi_runtime.c runtime/random_runtime.c runtime/term_runtime.c runtime/test_runtime.c
+C_SRC_builtins_runtime_tests = runtime/builtins_runtime_tests.c runtime/random_entropy_tests.c runtime/ffi_runtime.c runtime/random_runtime.c runtime/term_runtime.c runtime/test_runtime.c
 C_SRC_test_system_runtime = runtime/test_system_runtime.c runtime/test_system_failures.c runtime/system_runtime.c runtime/file_runtime.c runtime/memory_runtime.c
 C_LIBS_test_system_runtime = -pthread
 C_SRC_test_file_runtime = runtime/test_file_runtime.c runtime/file_runtime.c runtime/memory_runtime.c
@@ -637,11 +637,12 @@ _test_c_runtime:
 # they do not build natively, so gcov has nothing to measure.
 C_SHIPPED_UNITS = $(sort $(basename $(notdir $(FIB_OBJ) $(HTTP_OBJ) \
                     $(FIB_OBJ_GC) $(HTTP_OBJ_GC) $(FIB_OBJ_ARC) $(HTTP_OBJ_ARC))))
-# The exemptions, and why: term_runtime.c and test_runtime.c run every case in a
-# FORKED CHILD whose gcov counters are never flushed back, so gcov reports 0%
-# against passing assertions — gate them once the harness calls __gcov_dump in
-# the child.
-C_COV_EXEMPT ?= term_runtime test_runtime
+# No native unit is exempt any more. term_runtime.c and test_runtime.c used to
+# be: every one of their cases runs in a FORKED CHILD, whose gcov counters were
+# never flushed back, so gcov reported 0% against thousands of passing
+# assertions. The harness now calls __gcov_dump before the child _exits
+# (compiler/runtime/test_gcov.h), which is what that exemption was waiting for.
+C_COV_EXEMPT ?=
 GCOV_TOOL ?= $(shell if $(CC) --version 2>/dev/null | grep -qi clang; then \
     if command -v xcrun >/dev/null 2>&1; then echo "xcrun llvm-cov gcov"; \
     else echo "llvm-cov gcov"; fi; \
@@ -651,7 +652,7 @@ _coverage_check_c_runtime:
 	@echo "==> [c-runtime] per-library line coverage (gcov)..."
 	@rm -rf compiler/bin/cov
 	@set -e; cd compiler/bin && mkdir -p cov && cd cov; \
-	$(foreach s,$(C_TEST_SUITES),mkdir -p $(s) && (cd $(s) && $(CC) $(or $(C_PROFILE_$(s)),$(T)) --coverage $(C_FLAGS_$(s)) $(addprefix ../../../,$(C_SRC_$(s))) $(C_LIBS_$(s)) -o $(s) && { ./$(s) >/dev/null 2>&1 || true; } && { $(GCOV_TOOL) *.gcda > summary.txt 2>/dev/null || true; }) && ) true
+	$(foreach s,$(C_TEST_SUITES),mkdir -p $(s) && (cd $(s) && $(CC) $(or $(C_PROFILE_$(s)),$(T)) --coverage -DOSP_COVERAGE_DUMP $(C_FLAGS_$(s)) $(addprefix ../../../,$(C_SRC_$(s))) $(C_LIBS_$(s)) -o $(s) && { ./$(s) >/dev/null 2>&1 || true; } && { $(GCOV_TOOL) *.gcda > summary.txt 2>/dev/null || true; }) && ) true
 	@command -v jq >/dev/null || { echo "[c] FAIL: jq is required to read $(COVERAGE_THRESHOLDS_FILE); a gate that cannot run must not report success"; exit 1; }
 	@libs=$$(jq -r '.projects | to_entries[] | select(.value.language=="c") | .key' "$(COVERAGE_THRESHOLDS_FILE)"); \
 	if [ -z "$$libs" ]; then echo "[c] FAIL: no C entries in $(COVERAGE_THRESHOLDS_FILE) -- the gate would pass vacuously"; exit 1; fi; \

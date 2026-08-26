@@ -4,6 +4,8 @@
 //   term_runtime.c   — [BUILTIN-TERM] raw mode, key decoding, ANSI writes
 //   test_runtime.c   — [TESTING-RUNTIME], [TESTING-TAP], [TESTING-EXIT],
 //                      [TESTING-FILTER] TAP state machine
+// random_runtime.c's entropy source is in the sibling random_entropy_tests.c,
+// which installs interposers this half must not run under.
 // Linked by the Makefile's _test_c_runtime. POSIX harness: scenarios that own
 // process-global state (TAP counters, stdin, the terminal) each run in a fork
 // with stdin fed from a buffer and stdout captured, then compared BYTE-EXACT.
@@ -15,7 +17,9 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
+#include "builtins_tests_shared.h"
 #include "test_alloc.h"
+#include "test_gcov.h"
 
 void *osprey_ffi_cell(void);
 void *osprey_ffi_deref(void *cell);
@@ -23,8 +27,6 @@ int64_t osprey_ffi_free(void *cell);
 void *osprey_ffi_null(void);
 void *osprey_ffi_transient(void);
 int64_t osprey_ffi_is_null(void *ptr);
-int64_t osp_random(void);
-int64_t osp_random_below(int64_t n);
 char *osp_input(void);
 int64_t term_raw_mode(int64_t on);
 int64_t term_cols(void);
@@ -43,12 +45,7 @@ void osp_test_assert(const char *label, int32_t ok, const char *expected,
 void osp_test_end(const char *name);
 int32_t osp_test_finalize(void);
 
-static long g_checks = 0;
-#define CHECK(c)                                                               \
-  do {                                                                         \
-    g_checks++;                                                                \
-    assert(c);                                                                 \
-  } while (0)
+long g_checks = 0;
 
 #define DRAWS 10000
 #define BELOW_N 7
@@ -75,6 +72,10 @@ static void run_child_expect(int (*fn)(void), const char *input,
     close(out_pipe[1]);
     int code = fn();
     fflush(stdout);
+    // `_exit` skips atexit, so without this the child's counters are lost and
+    // term_runtime.c and test_runtime.c -- whose every scenario runs HERE --
+    // measure 0% against thousands of passing assertions [test_gcov.h].
+    OSP_GCOV_DUMP();
     _exit(code);
   }
   close(in_pipe[0]);
@@ -575,6 +576,9 @@ int main(void) {
   t_ffi_cells();
   t_random_bounds();
   t_random_below();
+  // Installs the getrandom/fopen interposers; runs before the stdin and TAP
+  // scenarios so none of them execute under a replaced entropy source.
+  t_entropy_source();
   t_input_lines();
   t_input_descriptor_states();
   t_input_allocation_failure();
