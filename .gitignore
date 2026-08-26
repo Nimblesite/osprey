@@ -141,3 +141,7 @@ benchmarks/cases/**/*.o
 /tests/regressions/basics/files/test_output.txt
 /tests/regressions/basics/files/test_stale_reason.txt
 /tests/regressions/effects/osprey_http_state_levels.db
+
+# Core dumps from a crashed C test binary (a container run leaves them here).
+core
+core.*
