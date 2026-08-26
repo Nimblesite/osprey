@@ -97,13 +97,13 @@ fn kernel_elem_ltype(
     let sig: Option<FnSig> = cg
         .callee_fn_type(kernel_expr)
         .as_ref()
-        .and_then(Codegen::fn_value_sig)
+        .and_then(|t| Codegen::fn_value_sig(&cg.prog, t))
         .or_else(|| match kernel {
             Callback::Lambda(_, _, sig, _) => sig.clone(),
             Callback::Local(_, sig) | Callback::Value(_, sig) => Some(sig.clone()),
             Callback::Named(_) | Callback::Extracted(_) => None,
         });
-    sig.and_then(|(params, _, _, _)| params.get(slot).map(|param| param.ty))
+    sig.and_then(|(params, _, _, _, _)| params.get(slot).map(|param| param.ty))
 }
 
 /// The element `LType` a kernel's parameter at `slot` receives from `src`: the
@@ -269,7 +269,7 @@ fn uniform_admissible(v: &Value) -> bool {
 /// else the combinator-derived element/accumulator types.
 fn param_sigs(parameters: &[Parameter], own: Option<&FnSig>, slots: &[LType]) -> Vec<ParamSig> {
     (0..parameters.len())
-        .map(|i| match own.and_then(|s| s.0.get(i)).copied() {
+        .map(|i| match own.and_then(|s| s.0.get(i)).cloned() {
             Some(declared) => declared,
             None => ParamSig {
                 ty: slots.get(i).copied().unwrap_or(LType::I64),
@@ -299,7 +299,8 @@ fn emit(cg: &mut Codegen, k: &Lifting<'_>, params: Vec<ParamSig>) -> Result<Call
         params,
         value.ty,
         value.result_inner,
-        k.own.and_then(|s| s.3),
+        k.own.and_then(|s| s.3.clone()),
+        value.osp_ty.clone(),
     );
     Ok(Callback::Extracted(Extracted {
         symbol,

@@ -136,7 +136,42 @@ closureHandlerCase () =
         digits [9, 0] == 90
     ]
 
+(** A function VALUE that returns a tagged collection. A named function recovers
+    its return owner from the declaration; a call through a closure cell has only
+    the lowered signature to go on, and that signature carried no owner slot — so
+    `listGet` on the result met an `i64` payload against a `double`/`i8*` default
+    and the program was REJECTED with `match arms disagree on type`, naming no
+    user construct. The same loss reached a captured value, a lambda passed as a
+    function-value parameter, and a generic HOF. Implements [BUILTIN-LIST-GET],
+    [BUILTIN-MAP-GET], [TYPE-GENERICS-FN]. *)
+applyTo f x = f x
+
+functionValueCollectionCase () =
+    floatsFrom = \n => [n, n * 2.0]
+    namesFrom = \s => [s, s + "!"]
+    nestedFrom = \n => [[n, n + 1 ?: n], [n + 2 ?: n]]
+    captured = [0.25, 0.5, 0.75]
+    takeCaptured = \i => listGet captured i
+    groupsFrom = \k => mapSet (Map ()) k [1.5, 2.5]
+    checkAll "a function value returning a collection keeps its element type" [
+        (listGet (floatsFrom 0.5) 0 ?: 9.5) == 0.5,
+        (listGet (floatsFrom 0.5) 1 ?: 9.5) == 1.0,
+        listLength (floatsFrom 0.5) == 2,
+        (listGet (namesFrom "os") 0 ?: "none") == "os",
+        (listGet (namesFrom "os") 1 ?: "none") == "os!",
+        (listGet (listGet (nestedFrom 1) 0 ?: [99]) 1 ?: 99) == 2,
+        (listGet (listGet (nestedFrom 1) 1 ?: [99]) 0 ?: 99) == 3,
+        listLength (listGet (nestedFrom 1) 0 ?: [99]) == 2,
+        (takeCaptured 0 ?: 9.5) == 0.25,
+        (takeCaptured 2 ?: 9.5) == 0.75,
+        (listGet (applyTo floatsFrom 1.25) 0 ?: 9.5) == 1.25,
+        (listGet (applyTo namesFrom "hi") 1 ?: "none") == "hi!",
+        (listGet (mapGet (groupsFrom "k") "k" ?: [9.0]) 1 ?: 9.5) == 2.5,
+        mapLength (groupsFrom "k") == 1
+    ]
+
 test "scalar pipes preserve helper composition" scalarPipelineCase
 test "iterator pipes preserve order and boundaries" iteratorPipelineCase
 test "a let-bound lambda picks its arithmetic overload from its use" lambdaOverloadCase
 test "a handler inside a closure keeps its captured state" closureHandlerCase
+test "a function value returning a collection keeps its element type" functionValueCollectionCase

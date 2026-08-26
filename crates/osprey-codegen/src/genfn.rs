@@ -257,7 +257,7 @@ pub(crate) fn try_indirect(
     let Some(sig) = cg.fn_ptr_locals.get(name).cloned().or_else(|| {
         crate::globals::fn_type(cg, name)
             .as_ref()
-            .and_then(Codegen::fn_value_sig)
+            .and_then(|t| Codegen::fn_value_sig(&cg.prog, t))
     }) else {
         return Ok(None);
     };

@@ -81,12 +81,12 @@ fn tailBig(x) = match x == 1000.0 { true => hugeFloat() false => 1.0 }
 /// to the host and in again every pass, so each round trip is a fresh dense
 /// copy of its own output. The annotations are load-bearing: recursion needs a
 /// real emitted definition.
-fn simulate(buf: GpuBuffer<int>, n: int) = match n {
+fn simulate(buf, n) = match n {
     0 => buf
     _ => simulate(buf |> gpuMap(bump), (n - 1) ?: 0)
 }
 
-fn mix(buf: GpuBuffer<float>, n: int) = match n {
+fn mix(buf, n) = match n {
     0 => buf
     _ => mix(buf |> gpuMap(stir), (n - 1) ?: 0)
 }

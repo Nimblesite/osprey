@@ -39,7 +39,7 @@ pub(crate) fn gen_spawn(cg: &mut Codegen, e: &Expr) -> Result<Value> {
     let elem = thunk_body(cg, e);
     cg.exit_nested_fn(saved, "i64", &thunk, &[(LType::Ptr, String::from("__env"))]);
     let elem = elem?;
-    let sig = (Vec::new(), THUNK_SIG.0, THUNK_SIG.1, None);
+    let sig = (Vec::new(), THUNK_SIG.0, THUNK_SIG.1, None, None);
     let cell = crate::closure::cell_value(cg, id, &thunk, &cell_ty, &caps, &sig);
     let result_managed = i64::from(elem.ty.is_managed_ptr()).to_string();
     let r = cg.call(

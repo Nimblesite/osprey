@@ -275,7 +275,7 @@ fn tag_handle_element(cg: &Codegen, position: Option<Position>, value: Value) ->
     let Some(ty) = cg.prog.let_type(position) else {
         return value;
     };
-    let Some(sig) = crate::builder::FiberSig::of(ty) else {
+    let Some(sig) = crate::builder::FiberSig::of(&cg.prog, ty) else {
         return value;
     };
     let owner = match ty {
@@ -296,7 +296,7 @@ fn lambda_cell(cg: &Codegen, position: Option<Position>) -> Option<(osprey_types
         .prog
         .lambda_type(position)
         .filter(|t| crate::types::fn_value_concrete(t))?;
-    Some((ty.clone(), Codegen::fn_value_sig(ty)?))
+    Some((ty.clone(), Codegen::fn_value_sig(&cg.prog, ty)?))
 }
 
 /// The definition `value` is a bare ALIAS for, when binding it materialises no

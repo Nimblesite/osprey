@@ -125,7 +125,7 @@ pub(crate) fn mono_fn_pointer(
 ) -> Value {
     let (param_types, ret_type) = declared;
     let params = crate::llty::comma_join(param_types, |t| {
-        crate::builder::ParamSig::of(t).ty.to_string()
+        crate::builder::ParamSig::of(&cg.prog, t).ty.to_string()
     });
     let ret = crate::llty::ret_spelling(
         crate::types::ltype_of(ret_type),
@@ -835,7 +835,7 @@ fn gen_call(
             let sig = cg
                 .call_result_fn_type(f)
                 .as_ref()
-                .and_then(Codegen::fn_value_sig);
+                .and_then(|t| Codegen::fn_value_sig(&cg.prog, t));
             if let Some(sig) = sig {
                 return call_fn_value(cg, function, &sig, arguments, named);
             }
@@ -849,7 +849,7 @@ fn gen_call(
         if let Some(sig) = cg
             .callee_fn_type(function)
             .as_ref()
-            .and_then(Codegen::fn_value_sig)
+            .and_then(|t| Codegen::fn_value_sig(&cg.prog, t))
         {
             return call_fn_value(cg, function, &sig, arguments, named);
         }
@@ -982,7 +982,7 @@ pub(crate) fn inline_sig(cg: &Codegen, position: Option<osprey_ast::Position>) -
     cg.prog
         .lambda_type(position)
         .filter(|t| crate::types::fn_value_concrete(t))
-        .and_then(Codegen::fn_value_sig)
+        .and_then(|t| Codegen::fn_value_sig(&cg.prog, t))
 }
 
 /// [`apply_lambda`] over already-evaluated argument values — shared with the
@@ -1042,7 +1042,7 @@ fn bind_lambda_params(
     let declared = cg.prog.lambda_type(position).cloned();
     for (index, (p, v)) in parameters.iter().zip(values).enumerate() {
         bind_lambda_fn_param(cg, &p.name, declared.as_ref(), index);
-        let v = match sig.and_then(|s| s.0.get(index)).copied() {
+        let v = match sig.and_then(|s| s.0.get(index)) {
             Some(want) => crate::cast::coerce_semantic_param(cg, v, want)?,
             None => v,
         };
@@ -1088,14 +1088,14 @@ pub(crate) fn fit_lambda_return(
     // returned through a cell loses the flat tag [`crate::listlit::escaping`].
     let value = crate::listlit::escaping(cg, value);
     let value = match sig {
-        Some((_, _, Some(inner), _)) if value.result_inner.is_some() => {
+        Some((_, _, Some(inner), _, _)) if value.result_inner.is_some() => {
             crate::result::repack_to_inner(cg, value, *inner)?
         }
-        Some((_, _, Some(inner), _)) => crate::result::make_ok(cg, value, *inner)?,
-        Some((_, ret, None, _)) => crate::cast::coerce_to(cg, value, *ret)?,
+        Some((_, _, Some(inner), _, _)) => crate::result::make_ok(cg, value, *inner)?,
+        Some((_, ret, None, _, _)) => crate::cast::coerce_to(cg, value, *ret)?,
         None => value,
     };
-    Ok(match sig.and_then(|signature| signature.3) {
+    Ok(match sig.and_then(|signature| signature.3.clone()) {
         Some(fiber) => fiber.restore(value),
         None => value,
     })
@@ -1152,7 +1152,7 @@ pub(crate) fn call_with_values(cg: &mut Codegen, name: &str, args: Vec<Value>) -
         Some(ptys) if ptys.len() == args.len() => args
             .into_iter()
             .zip(ptys)
-            .map(|(a, want)| crate::cast::coerce_param(cg, a, want))
+            .map(|(a, want)| crate::cast::coerce_param(cg, a, &want))
             .collect::<Result<Vec<_>>>()?,
         _ => args,
     };
@@ -1207,7 +1207,11 @@ fn ordered_args(
     let sigs: Vec<Option<FnSig>> = cg
         .prog
         .param_types(name)
-        .map(|ts| ts.iter().map(Codegen::fn_value_sig).collect())
+        .map(|ts| {
+            ts.iter()
+                .map(|t| Codegen::fn_value_sig(&cg.prog, t))
+                .collect()
+        })
         .unwrap_or_default();
     let ffi = !cg.fn_params.contains_key(name) && cg.prog.functions.contains_key(name);
     if !named.is_empty() {

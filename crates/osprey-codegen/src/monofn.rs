@@ -116,8 +116,15 @@ fn emit(
 }
 
 /// One instantiation's lowered ABI: the parameter slots, the return slot paired
-/// with its `Result` inner type, and the owner tag each parameter carries in.
-type Abi<'a> = (&'a [ParamSig], (LType, Option<LType>), &'a [Option<String>]);
+/// with its `Result` inner type and OWNER tag, and the owner tag each parameter
+/// carries in. The return owner rides along so a specialisation handing back a
+/// tagged collection stays element-typed at its call site
+/// ([BUILTIN-LIST-GET]).
+type Abi<'a> = (
+    &'a [ParamSig],
+    (LType, Option<LType>, Option<String>),
+    &'a [Option<String>],
+);
 
 /// Emit one instantiation of `name` from its lowered ABI: register the symbol
 /// BEFORE the body so a self-call resolves to it, then lower the body into a
@@ -133,7 +140,7 @@ fn emit_at(
     let (params, ret, owners) = slots;
     let target = Instantiation {
         symbol: format!("{name}{MONO_INFIX}{}", cg.next_monofn_id()),
-        sig: (params.to_vec(), ret.0, ret.1, None),
+        sig: (params.to_vec(), ret.0, ret.1, None, ret.2.clone()),
     };
     let _ = cg.monofns.insert(key, target.clone());
     let saved = cg.enter_nested_fn();
@@ -176,7 +183,10 @@ pub(crate) fn specialize_callback(
     if parameters.len() != param_types.len() {
         return Ok(None);
     }
-    let params: Vec<ParamSig> = param_types.iter().map(ParamSig::of).collect();
+    let params: Vec<ParamSig> = param_types
+        .iter()
+        .map(|t| ParamSig::of(&cg.prog, t))
+        .collect();
     let key = format!("{name}$callback");
     if let Some(existing) = cg.monofns.get(&key) {
         return Ok(Some(existing.symbol.clone()));
@@ -188,6 +198,7 @@ pub(crate) fn specialize_callback(
     let ret = (
         crate::types::ltype_of(ret_type),
         crate::types::result_inner(ret_type),
+        crate::types::owner_name(&cg.prog, ret_type),
     );
     let target = emit_at(cg, name, key, &parameters, &body, (&params, ret, &owners))?;
     Ok(Some(target.symbol))
@@ -196,12 +207,16 @@ pub(crate) fn specialize_callback(
 /// The instantiation's return slot, from the signature inference resolved for
 /// the function. A return type inference left open has no slot to emit, so the
 /// annotation diagnostic still stands for that case.
-fn return_slot(cg: &Codegen, name: &str) -> Result<(LType, Option<LType>)> {
+fn return_slot(cg: &Codegen, name: &str) -> Result<(LType, Option<LType>, Option<String>)> {
     let ty = cg.prog.return_type(name).ok_or_else(|| unresolved(name))?;
     if osprey_types::has_type_var(ty) {
         return Err(unresolved(name));
     }
-    Ok((crate::types::ltype_of(ty), crate::types::result_inner(ty)))
+    Ok((
+        crate::types::ltype_of(ty),
+        crate::types::result_inner(ty),
+        crate::types::owner_name(&cg.prog, ty),
+    ))
 }
 
 /// The diagnostic for a recursive generic whose return type inference could not
@@ -239,7 +254,7 @@ fn bind_params(
         // `incoming_param` registers no ownership: parameters are BORROWED for
         // the call's duration, exactly as a top-level function's are
         // [GC-ARC-PERCEUS].
-        let value = crate::cast::incoming_param(cg, format!("%{reg}"), *sig, owner.clone());
+        let value = crate::cast::incoming_param(cg, format!("%{reg}"), sig.clone(), owner.clone());
         cg.bind(p.name.clone(), value);
         out.push((sig.ty, reg));
     }

@@ -63,7 +63,7 @@ pub(crate) fn coerce_to(cg: &mut Codegen, v: Value, want: LType) -> Result<Value
 /// Adapt an argument to a function parameter ABI slot. Result parameters use
 /// an opaque pointer at the call boundary while retaining their complete block;
 /// a plain value is safely promoted to Success, never the reverse.
-pub(crate) fn coerce_param(cg: &mut Codegen, v: Value, want: ParamSig) -> Result<Value> {
+pub(crate) fn coerce_param(cg: &mut Codegen, v: Value, want: &ParamSig) -> Result<Value> {
     let semantic = coerce_semantic_param(cg, v, want)?;
     let Some(_) = want.result_inner else {
         return Ok(semantic);
@@ -78,12 +78,12 @@ pub(crate) fn coerce_param(cg: &mut Codegen, v: Value, want: ParamSig) -> Result
 
 /// Adapt an inline argument to the semantic parameter shape while keeping a
 /// Result as a typed block (there is no emitted ABI boundary to erase here).
-pub(crate) fn coerce_semantic_param(cg: &mut Codegen, v: Value, want: ParamSig) -> Result<Value> {
+pub(crate) fn coerce_semantic_param(cg: &mut Codegen, v: Value, want: &ParamSig) -> Result<Value> {
     let value = match want.result_inner {
         Some(inner) => crate::result::fit_to_inner(cg, v, inner)?,
         None => coerce_to(cg, v, want.ty)?,
     };
-    Ok(match want.fiber {
+    Ok(match want.fiber.clone() {
         Some(fiber) => fiber.restore(value),
         None => value,
     })

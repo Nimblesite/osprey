@@ -37,5 +37,6 @@ ok 1 - scalar pipes preserve helper composition
 ok 2 - iterator pipes preserve order and boundaries
 ok 3 - a let-bound lambda picks its arithmetic overload from its use
 ok 4 - a handler inside a closure keeps its captured state
-1..4
-# tests=4 passed=4 failed=0 skipped=0
+ok 5 - a function value returning a collection keeps its element type
+1..5
+# tests=5 passed=5 failed=0 skipped=0

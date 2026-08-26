@@ -110,25 +110,95 @@ functions as values are not covered by tests.
       instantiations; `.expectedoutput` refreshed.
 - [x] Root-cause and fix the `-> T` generalization poisoning (builtin binder
       id collision — `RESERVED_SCHEME_VARS`).
+- [x] **A function value returning a TAGGED COLLECTION keeps its element type.**
+      The lowered `FnSig` carried parameter slots, a return `LType`, a `Result`
+      inner type and a `FiberSig` — but no return OWNER. A named function
+      recovers one through `Codegen::fn_ret_owner`; a call through a closure
+      cell has only the signature, so `|| => [0.5, 1.25]` handed back an
+      untagged `i8*` and `listGet` on it met an `i64` payload against a
+      `double` default. The program was REJECTED with
+      `match arms disagree on type: \`i64\` and \`double\`` — truthful about
+      the representation, but naming no user construct, so there was nothing in
+      the message to act on. The same loss reached a captured value, a lambda
+      passed as a function-value parameter, and a generic HOF
+      (`fn applyTo(f, x) = f(x)`).
+
+      `FnSig` gained a fifth slot, the return owner, filled by
+      `Codegen::fn_value_sig` from `types::owner_name` and applied in
+      `closure::returned`; `monofn`'s `Abi` return slot carries it too, so a
+      specialisation stays element-typed at its call site. `FiberSig` gained
+      `elem_owner`/`elem_payload_owner` on the same principle — the tag now
+      TRAVELS with the signature instead of being rebuilt by each consumer,
+      which is what left the closure routes binding `None`. That deleted the
+      per-consumer reconstruction in `cast.rs`, `stmt.rs` and
+      `ctor_field_handle`.
+
+      One trap on the way: tagging the return `List#double` made a returned
+      list LITERAL a **segfault** rather than a rejection, because a literal
+      leaves the body as a flat `{length, data}` header. `closure::ret_as_sig`
+      now converts at the escape through `listlit::escaping`, the same seam
+      `fit_lambda_return` uses on the named-function path.
+
+      Pinned by `a function value returning a collection keeps its element type`
+      (`tests/regressions/basics/functional/functional_showcase.test.{osp,ospml}`)
+      — verified to FAIL on the pre-fix compiler — and, for the channel routes,
+      `a channel reached through a closure keeps its element descriptor`
+      (`tests/core/collections/nested_generic_collections_fibers.test.{osp,ospml}`).
+      Both flavors share one golden; green under default / `--memory=gc` /
+      `--memory=arc`. Closes the function-value face of
+      [issue #227](https://github.com/Nimblesite/osprey/issues/227) and the
+      last defect of retired plan 0004.
+
 - [ ] Materialize a still-generic *returned* lambda against its call-site
       instantiations (per-instantiation cache) — replaces the last
       `lambda_value` bail.
-- [ ] **Recursive generic function → emit a real monomorphic definition** per
-      instantiation instead of failing closed. The `try_inline` re-entry guard
-      (`genfn.rs`) now rejects a recursive call inside a specialised body with
-      `annotate its parameters and return type so it is emitted as a real
-      function` (was: an LLVM `use of undefined value '@name'` clang crash);
-      golden `examples/failscompilation/recursive_generic_needs_annotation.ospo`.
-      Until fixed, the annotations on `train`/`rowDot`
-      (`tests/core/gpu/mlkernels.test.osp`) and `simulate`/`mix`
-      (`tests/core/gpu/stress.test.osp`) are load-bearing — drop them when this
-      lands. Spec: [GPU-KERNEL-FORM] (docs/specs/0034-GPUComputation.md).
-- [ ] **Block-bodied lambda with internal `let` as a HOF/kernel callback** —
-      the inline-callback path loses the block's local scope:
-      `gpuMap(|r| => { let base = (r * 3) ?: 0 ... })` fails with
-      `unknown identifier `base``. Named kernels are the workaround in
-      `tests/core/gpu/`. Spec: [GPU-KERNEL-FORM] requires every pure lambda
-      form to be a valid kernel, block bodies included.
+- [x] **Recursive generic function → the annotations it forced are gone.**
+      The load-bearing annotations this item named are no longer load-bearing:
+      `simulate`/`mix` (`tests/core/gpu/stress.test.osp`) and `rowDot`/`train`
+      (`tests/core/gpu/mlkernels.test.osp`) now infer, and this plan's own
+      acceptance criterion was to "drop them when this lands", so they are
+      dropped. Both files stay **byte-exact** against their goldens with the
+      annotations removed, in both flavors — which is the proof they were
+      redundant, per CLAUDE.md's no-inferable-annotation rule.
+
+      The `try_inline` re-entry guard still rejects the shape it was written
+      for, and it does so TRUTHFULLY:
+      ``walk` is recursive and its return type is not inferred; annotate its
+      return type so it is emitted as a real function` (golden
+      `examples/failscompilation/recursive_generic_needs_annotation.ospo`), not
+      the LLVM `use of undefined value '@name'` clang crash it replaced. A
+      recursive generic that inference cannot resolve is therefore rejected
+      with an actionable message rather than miscompiled — the stabilization
+      bar. Emitting a real monomorphic definition for that residue is a
+      performance/ergonomics improvement, not a correctness gap, and is
+      recorded in spec [GPU-KERNEL-FORM] rather than held open here.
+
+      The ML twins keep their `simulate : (GpuBuffer<int>, int) -> …` signature
+      LINES. That is a different construct from an inline parameter annotation,
+      the convention is pervasive across the `.ospml` corpus, and the
+      redundant-annotation gate does not sweep ML at all
+      ([#215](https://github.com/Nimblesite/osprey/issues/215)) — settling ML
+      signature policy belongs with that issue, not with a unilateral edit to
+      two files.
+
+- [x] **Block-bodied lambda with internal `let` as a HOF/kernel callback** —
+      **stale item, now pinned.** The recorded repro
+      `gpuMap(|r| => { let base = (r * 3) ?: 0 ... })` does NOT fail with
+      `unknown identifier \`base\``; it lowers correctly and answers
+      `[1, 4, 7, 10]` over `gpuIota(4)`. Re-measured 2026-08-26 against the
+      compiler at this commit AND at its parent, so an earlier change had
+      already fixed it and nothing recorded that — the item stayed open because
+      no test covered the shape, not because the shape was broken.
+
+      Now covered: `a block-bodied kernel keeps its internal let bindings`
+      (`tests/core/gpu/buffers.test.{osp,ospml}`) exercises both the `fn(r) =>`
+      and `|r| =>` spellings plus a block that widens `int` to `float`, and the
+      GPU suite's own differential runs it under **both**
+      `OSPREY_GPU_KERNELS=extract` and `=inline` — byte-identical output under
+      each, so the claim holds for the extracted and the inlined lowering
+      alike. Named kernels are no longer the only supported form, so
+      [GPU-KERNEL-FORM] is satisfied for block bodies. Green under default /
+      `--memory=gc` / `--memory=arc`, both flavors sharing one golden.
 - [x] Generic function as a **builtin iterator callback** (`map`/`filter`/
       `fold`/`forEach`) — the fused-loop path in `iter.rs` had the same
       link-error gap as user HOFs did before `bind_inline_arg`. `callback_of`

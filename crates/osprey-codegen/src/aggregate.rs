@@ -383,10 +383,8 @@ pub(crate) fn gen_field_access(cg: &mut Codegen, target: &Expr, field: &str) -> 
     // A handle field carries its ELEMENT's ABI, not an owner of its own: the
     // slot holds a runtime id, and `recv`/`await` on it needs the element type
     // to unbox with ([CONCURRENCY-CHANNEL]).
-    if let Some((handle, elem_owner)) = cg.ctor_field_handle(&owner, field) {
-        let mut value = handle.restore(Value::new(loaded, fty));
-        value.fiber_elem_owner = elem_owner;
-        return Ok(value);
+    if let Some(handle) = cg.ctor_field_handle(&owner, field) {
+        return Ok(handle.restore(Value::new(loaded, fty)));
     }
     let owner = cg.ctor_field_owner(&owner, field);
     Ok(Value::new(loaded, fty).with_owner(owner))
