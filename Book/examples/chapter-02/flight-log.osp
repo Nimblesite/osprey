@@ -1,0 +1,14 @@
+fn plannedMinutes(sessionCount, minutesPerSession) =
+    sessionCount * minutesPerSession
+
+fn summary(owner, goal, isActive, sessionCount, minutesPerSession) =
+    "${owner} | goal: ${goal} | active: ${isActive} | sessions: ${sessionCount} | minutes: ${plannedMinutes(sessionCount, minutesPerSession)}"
+
+fn main() = {
+    let owner = "Mika"
+    let goal = "Build a small Osprey CLI"
+    let isActive = true
+    let sessionCount = 3
+    let minutesPerSession = 25
+    summary(owner, goal, isActive, sessionCount, minutesPerSession) |> print
+}

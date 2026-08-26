@@ -2,6 +2,7 @@
 import * as assert from "assert";
 import {
   buildFlameModel,
+  byFrameKeyThenIndex,
   colorForRank,
   frameColors,
   frameStats,
@@ -252,6 +253,63 @@ suite("flame-model colors", () => {
 
   test("frames without a file rank as runtime", () => {
     assert.ok(frameColors([{ name: "anon" }])[0].startsWith("hsl(215"));
+  });
+
+  // Two frames can share a file AND a name -- the same function inlined at two
+  // sites, or two runtime frames with no file at all. Their keys are then equal
+  // and only the index tie-break decides their order, which decides their rank,
+  // which decides their colour. `Array.prototype.sort` is required to be stable,
+  // so deleting the tie-break changes NOTHING a sort's output can show: the
+  // policy has to be asserted directly or it is not pinned at all.
+  test("the frame ordering policy is total: equal keys are broken by index", () => {
+    const tie = { key: "x", i: 0 };
+    assert.strictEqual(byFrameKeyThenIndex(tie, tie), 0, "identity alone ties");
+    assert.ok(byFrameKeyThenIndex({ key: "x", i: 0 }, { key: "x", i: 1 }) < 0);
+    assert.ok(byFrameKeyThenIndex({ key: "x", i: 2 }, { key: "x", i: 1 }) > 0);
+    // The key still outranks the index, in both directions.
+    assert.ok(byFrameKeyThenIndex({ key: "a", i: 9 }, { key: "b", i: 0 }) < 0);
+    assert.ok(byFrameKeyThenIndex({ key: "b", i: 0 }, { key: "a", i: 9 }) > 0);
+    // Over a whole set of key-identical frames: no two DISTINCT positions may
+    // compare equal, and every verdict must agree with their index order. A
+    // zero anywhere off the diagonal is the engine picking the colour.
+    const ranks = [0, 1, 2].map((i) => ({ key: "same", i }));
+    ranks.forEach((a, ai) =>
+      ranks.forEach((b, bi) => {
+        const verdict = byFrameKeyThenIndex(a, b);
+        assert.strictEqual(verdict === 0, ai === bi, `${ai} vs ${bi} tie`);
+        assert.strictEqual(Math.sign(verdict), Math.sign(ai - bi));
+      }),
+    );
+  });
+
+  // The twins carry an OSPREY file on purpose. Three runtime frames (no file)
+  // all land on the same gray-blue, so every permutation of them produces the
+  // same three strings and this test could not fail whatever the order was.
+  // An Osprey source ramps over HUE, so rank 0, 1 and 2 are three visibly
+  // different colours and a reordering shows up in the array.
+  test("frames with identical keys keep their input order's colours", () => {
+    const twins = [
+      { name: "same", file: "/w/twin.osp" },
+      { name: "same", file: "/w/twin.osp" },
+      { name: "same", file: "/w/twin.osp" },
+    ];
+    const colors = frameColors(twins);
+    assert.strictEqual(colors.length, 3);
+    assert.ok(
+      colors.every((color) => color.startsWith("hsl(")),
+      "every frame is assigned a color",
+    );
+    // Rank follows index exactly, so the colours are the rank ramp in order —
+    // not merely "some three colours".
+    assert.deepStrictEqual(
+      colors,
+      [0, 1, 2].map((rank) => colorForRank("/w/twin.osp", rank, 3)),
+    );
+    // And the three are genuinely different, so the assertion above is a claim
+    // about ORDER rather than about three copies of one string.
+    assert.strictEqual(new Set(colors).size, 3, "each rank is its own colour");
+    assert.deepStrictEqual(frameColors(twins), colors, "and repeatably so");
+    assert.deepStrictEqual(frameColors([...twins].reverse()), colors);
   });
 });
 

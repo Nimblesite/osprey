@@ -100,6 +100,10 @@ static RequestLogLabels make_log_labels(const HttpRequestBuffer *request) {
   RequestLogLabels labels;
   sanitize_log_token(request->method, labels.method, sizeof(labels.method));
   sanitize_log_token(request->path, labels.path, sizeof(labels.path));
+  /* The query and fragment are attacker-supplied and unbounded; the path alone
+     is what identifies the route. Truncating here means the placeholder for an
+     unparseable path must avoid these two characters -- hence HTTP_LOG_UNKNOWN
+     rather than the "?" this used to silently erase. */
   char *query = strpbrk(labels.path, "?#");
   if (query) {
     *query = '\0';

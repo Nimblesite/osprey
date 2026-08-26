@@ -19,6 +19,7 @@
 
 #include "effects_runtime.h"
 #include "memory_hooks.h"
+#include "test_death.h"
 
 size_t osp_arc_live_objects(void);
 
@@ -388,6 +389,121 @@ static void t_multishot_resume_exits(void) {
   CHECK(WIFEXITED(status) && WEXITSTATUS(status) == 1);
 }
 
+// Each fatal guard below is a `fprintf(stderr, "FATAL: ..."); abort();` arm in
+// effects_coro.c. Every one of them exists because the alternative — a return
+// value invented for a state that cannot be described — is silent corruption:
+// an operation id nobody performed, an argument nobody sent, a continuation
+// with no body. Asserting they abort is the only way to keep them from being
+// "simplified" into a default. [EFFECTS-OPERATION-MAILBOX], [EFFECTS-RESUME]
+
+static void death_mail_op_without_a_mailbox(void) {
+  (void)__osprey_coro_mail_op(NULL);
+}
+
+static void death_mail_arg_without_a_mailbox(void) {
+  (void)__osprey_coro_mail_arg(NULL, 0);
+}
+
+// A REAL mailbox, read one slot past the arity it carries. This is the arm that
+// matters most: a NULL mailbox is obviously wrong, whereas a live one answering
+// 0 for a slot nobody filled looks exactly like a legitimate zero argument.
+static void death_mail_arg_past_the_arity_sent(void) {
+  CoroEnv env = {.coro = __osprey_coro_new(NULL), .base = CORO_BASE};
+  __osprey_coro_start(env.coro, body_two_performs, &env, NULL);
+  void *mail = __osprey_coro_take_args(env.coro);
+  (void)__osprey_coro_mail_arg(mail, WIDE_ARITY); // slots 0..WIDE_ARITY-1 exist
+}
+
+// The same slot read on the low side. `index < 0` is a separate branch from
+// `index >= count`, and a negative subscript reads BEHIND the argument array.
+static void death_mail_arg_before_the_first_slot(void) {
+  CoroEnv env = {.coro = __osprey_coro_new(NULL), .base = CORO_BASE};
+  __osprey_coro_start(env.coro, body_two_performs, &env, NULL);
+  void *mail = __osprey_coro_take_args(env.coro);
+  (void)__osprey_coro_mail_arg(mail, -1);
+}
+
+static void death_start_without_a_continuation(void) {
+  __osprey_coro_start(NULL, body_immediate, NULL, NULL);
+}
+
+static void death_start_without_a_body(void) {
+  __osprey_coro_start(__osprey_coro_new(NULL), NULL, NULL, NULL);
+}
+
+// A positive arity with a NULL argument array can only come from a codegen bug.
+// Suspending is what builds the mailbox, so this has to be performed from
+// inside a running continuation rather than by calling the constructor.
+static int64_t body_lying_arity(void *raw) {
+  return __osprey_coro_suspend(raw, OP_FIRST, NULL, NULL, 2);
+}
+
+static void death_perform_declaring_arguments_it_did_not_send(void) {
+  void *coro = __osprey_coro_new(NULL);
+  __osprey_coro_start(coro, body_lying_arity, coro, NULL);
+}
+
+static void check_death(OspDeathBody body, const char *what) {
+  int signalled = osp_death_signal(body);
+  if (signalled != SIGABRT) {
+    fprintf(stderr, "expected %s to abort, got signal %d\n", what, signalled);
+  }
+  CHECK(signalled == SIGABRT);
+}
+
+// Not a guard: the harness's own watchdog. `check_death` above waits on the
+// child, so a body that neither aborts nor returns would park this suite for
+// good -- and a hung suite is read as broken infrastructure, never as the
+// failing assertion it is.
+static void body_that_never_returns(void) {
+  for (;;) {
+    (void)pause();
+  }
+}
+
+// The same stall, with every polite way of being stopped disarmed: SIGALRM
+// ignored AND every signal blocked. An in-child `alarm` would leave this
+// running forever, which is why the deadline is enforced from the parent with
+// SIGKILL -- the one signal a process cannot refuse.
+static void body_that_refuses_to_be_alarmed(void) {
+  (void)signal(SIGALRM, SIG_IGN);
+  sigset_t everything;
+  (void)sigfillset(&everything);
+  (void)sigprocmask(SIG_BLOCK, &everything, NULL);
+  for (;;) {
+    (void)pause();
+  }
+}
+
+// One second rather than OSP_DEATH_BUDGET_SECONDS: what is under test is the
+// deadline, and proving it at the real budget would cost the suite 30 seconds.
+static void check_stall(OspDeathBody body, const char *what) {
+  int signalled = osp_death_signal_within(body, 1);
+  if (signalled != OSP_DEATH_STALLED) {
+    fprintf(stderr, "expected %s to be killed at its deadline, got %d\n", what,
+            signalled);
+  }
+  CHECK(signalled == OSP_DEATH_STALLED);
+  CHECK(signalled != SIGABRT); // and never mistaken for a guard that fired
+}
+
+static void t_death_watchdog_kills_a_body_that_stalls(void) {
+  check_stall(body_that_never_returns, "a body that never returns");
+  check_stall(body_that_refuses_to_be_alarmed, "a body that refuses SIGALRM");
+}
+
+// Every state effects_coro.c refuses to guess a value for.
+static void t_fatal_guards_abort(void) {
+  check_death(death_mail_op_without_a_mailbox, "dispatch with no mailbox");
+  check_death(death_mail_arg_without_a_mailbox, "argument read with no mailbox");
+  check_death(death_mail_arg_past_the_arity_sent, "argument past the arity sent");
+  check_death(death_mail_arg_before_the_first_slot, "argument before the first slot");
+  check_death(death_start_without_a_continuation, "start with no continuation");
+  check_death(death_start_without_a_body, "start with no body");
+  check_death(death_perform_declaring_arguments_it_did_not_send,
+              "perform declaring arguments it did not send");
+}
+
 int main(void) {
   // The ARC live-object counters are armed by OSPREY_ARC_DEBUG at boot and read
   // 0 otherwise, so arm before any allocation — an unarmed run would make the
@@ -407,6 +523,8 @@ int main(void) {
   t_coro_free_while_suspended();
   t_coro_null_safety();
   t_multishot_resume_exits();
+  t_fatal_guards_abort();
+  t_death_watchdog_kills_a_body_that_stalls();
   printf("[ok] effects_runtime: %ld assertions\n", g_checks);
   return 0;
 }

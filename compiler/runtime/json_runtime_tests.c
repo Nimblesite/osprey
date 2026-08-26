@@ -14,27 +14,15 @@
 #include <stdlib.h>
 #include <string.h>
 
-int64_t json_parse(char *s);
-char *json_get(int64_t handle, char *path);
-int64_t json_length(int64_t handle, char *path);
-int64_t json_free(int64_t handle);
+#include "json_tests_shared.h"
+#include "test_alloc.h"
 
-static long g_checks = 0;
-#define CHECK(c)                                                               \
-  do {                                                                         \
-    g_checks++;                                                                \
-    assert(c);                                                                 \
-  } while (0)
-
-#define ERR_NULL ((int64_t)-1)
-#define ERR_MALFORMED ((int64_t)-2)
-#define ERR_TRAILING ((int64_t)-3)
-#define ERR_TABLE_FULL ((int64_t)-4)
+long g_checks = 0;
 #define MAX_DOCS 1024 // mirrors MAX_JSON_DOCS
 #define BIG_ARRAY_LEN 1000
 
 // json_get result must equal `want`, exactly, and is caller-freed.
-static void expect_get(int64_t h, const char *path, const char *want) {
+void expect_get(int64_t h, const char *path, const char *want) {
   char *got = json_get(h, (char *)(uintptr_t)path);
   if (want == NULL) {
     CHECK(got == NULL);
@@ -45,7 +33,7 @@ static void expect_get(int64_t h, const char *path, const char *want) {
   free(got);
 }
 
-static int64_t parse_ok(const char *src) {
+int64_t parse_ok(const char *src) {
   int64_t h = json_parse((char *)(uintptr_t)src);
   CHECK(h >= 1);
   return h;
@@ -87,9 +75,6 @@ static void t_string_escapes(void) {
   int64_t p = parse_ok("\"\\uD83D\\uDE00\"");
   expect_get(p, "", "\xF0\x9F\x98\x80"); // 😀 via surrogate pair, 4 bytes
   CHECK(json_free(p) == 0);
-  int64_t lax = parse_ok("\"\\x\""); // unknown escape passes the char through
-  expect_get(lax, "", "x");
-  CHECK(json_free(lax) == 0);
   int64_t key = parse_ok("{\"\\u0041\":7}"); // escapes decode in KEYS too
   expect_get(key, "A", "7");
   CHECK(json_free(key) == 0);
@@ -132,7 +117,9 @@ static void t_parse_errors(void) {
   CHECK(json_parse(NULL) == ERR_NULL);
   const char *bad[] = {"",       "   ",      "{",        "[1,",  "tru",
                        "fals",   "nul",      "\"open",   "{\"a\" 1}",
-                       "{\"a\":}", "[1 2]",  "{1:2}",    "@"};
+                       "{\"a\":}", "[1 2]",  "{1:2}",    "@",
+                       // a member that is neither followed by ',' nor closed
+                       "{\"a\":1 \"b\":2}", "{\"a\":1 2}", "{\"a\":1]"};
   for (unsigned i = 0; i < sizeof(bad) / sizeof(bad[0]); i++) {
     CHECK(json_parse((char *)(uintptr_t)bad[i]) == ERR_MALFORMED);
   }
@@ -199,6 +186,92 @@ static void t_big_array(void) {
   free(src);
 }
 
+// Deep enough to run PAST the last allocation either operation makes, which is
+// what `survived` below asserts. A sweep that never gets past the allocator
+// proves the arms it reached and silently says nothing about the rest.
+#define ALLOC_SWEEP_DEPTH 300
+
+// Every construct the parser allocates for, in one document: nested objects
+// and arrays, each scalar kind, an escape run, and a surrogate pair.
+#define ALLOC_SWEEP_DOC                                                        \
+  "{\"a\":[1,2.5,-3e4,true,false,null,\"\\u00e9\\ud83d\\ude00\\t\\\\\"],"      \
+  "\"b\":{\"c\":{\"d\":[{\"e\":\"f\"}]}},\"g\":\"h\","                        \
+  "\"long\":\"past the sixteen byte initial string buffer, twice over\"}"
+
+// Failing the Nth allocation of a parse must produce the DOCUMENTED rejection
+// — never a handle onto a half-built document, never a crash. Every
+// `if (!p) { free(...); ok = false; return NULL; }` arm in this parser is a
+// real contract, and no input can reach one: they exist for the day the
+// allocator says no. [BUILTIN-JSON]
+static void t_parse_survives_every_allocation_failure(void) {
+  // The parser's very first allocation failing is the same rejection as
+  // malformed input, not a different one: no input distinguishes them, so
+  // neither may the caller.
+  osp_alloc_fail_next();
+  CHECK(json_parse((char *)(uintptr_t) "{\"k\":\"v\"}") == ERR_MALFORMED);
+  osp_alloc_fail_off();
+  long refused = 0;
+  long survived = 0;
+  const long live_before = osp_alloc_live();
+  for (long nth = 0; nth < ALLOC_SWEEP_DEPTH; nth++) {
+    osp_alloc_fail_after(nth);
+    int64_t handle = json_parse((char *)(uintptr_t)ALLOC_SWEEP_DOC);
+    osp_alloc_fail_off();
+    if (handle >= 1) {
+      survived++;
+      // A parse that survived is WHOLE: the same document as an unfailed one.
+      expect_get(handle, "b.c.d[0].e", "f");
+      expect_get(handle, "a[3]", "true");
+      CHECK(json_length(handle, "a") == 7);
+      CHECK(json_free(handle) == 0);
+      continue;
+    }
+    refused++;
+    CHECK(handle == ERR_MALFORMED); // not -1, -3 or -4: the parse ran and failed
+  }
+  CHECK(refused > 0); // the sweep really did reach the allocator
+  CHECK(survived > 0); // ...and ran past the last allocation the parse makes
+  // An abandoned parse must free everything it built. Leaking the half-tree
+  // instead is the other way to fail this contract, and it is invisible to a
+  // return value.
+  CHECK(osp_alloc_live() == live_before);
+}
+
+// The same sweep over the accessors. A get that cannot allocate its result
+// must answer NULL; one that answers at all must be byte-exact, because a
+// truncated scalar is indistinguishable from a shorter one in the document.
+static void t_accessors_survive_every_allocation_failure(void) {
+  int64_t handle = parse_ok(ALLOC_SWEEP_DOC);
+  long refused = 0;
+  long survived = 0;
+  const long live_before = osp_alloc_live();
+  for (long nth = 0; nth < ALLOC_SWEEP_DEPTH; nth++) {
+    osp_alloc_fail_after(nth);
+    char *got = json_get(handle, (char *)(uintptr_t) "a[0]");
+    osp_alloc_fail_off();
+    if (got == NULL) {
+      refused++;
+      continue;
+    }
+    survived++;
+    CHECK(strcmp(got, "1") == 0);
+    free(got);
+    // Counting never allocates, so it must answer through a failed allocation.
+    osp_alloc_fail_after(nth);
+    int64_t length = json_length(handle, (char *)(uintptr_t) "a");
+    osp_alloc_fail_off();
+    CHECK(length == 7);
+  }
+  CHECK(refused > 0);
+  CHECK(survived > 0);
+  CHECK(osp_alloc_live() == live_before); // a refused get leaks nothing either
+  CHECK(json_free(handle) == 0);
+  CHECK(osp_alloc_live() < live_before); // ...and the document really is gone
+}
+
+// A \u escape is four HEX digits. Decoding a non-hex digit as zero accepted
+// "\uZZZZ" as U+0000 — malformed input turned into an embedded NUL that
+// truncates the string the caller reads back, with no error anywhere.
 int main(void) {
   t_scalars();
   t_string_escapes();
@@ -207,6 +280,10 @@ int main(void) {
   t_handle_lifecycle();
   t_table_capacity_exact();
   t_big_array();
+  t_string_grammar_rejects_everything_outside_it();
+  t_number_grammar();
+  t_parse_survives_every_allocation_failure();
+  t_accessors_survive_every_allocation_failure();
   printf("[ok] json_runtime: %ld assertions\n", g_checks);
   return 0;
 }

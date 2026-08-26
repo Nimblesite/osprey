@@ -21,6 +21,15 @@ pub use resume::contains_resume;
 pub use stage::Stage;
 pub use visit::{walk_each, walk_program, AstVisitor};
 
+/// The one wording for an entry conflict [MODULES-ENTRYPOINT]. Two phases can
+/// reach it — the type checker for a plain source, the project assembler for a
+/// namespaced one — and a reader must not be able to tell which one spoke, so
+/// the text lives here, in the crate both already depend on.
+pub const ENTRY_CONFLICT: &str =
+    "a top-level executable statement cannot sit beside `main`: `main` is the \
+     program entry, so move the statement into it (a file-scope `let` or `mut` \
+     is a declaration and stays where it is)";
+
 /// A source position: 1-based line, 0-based column.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct Position {

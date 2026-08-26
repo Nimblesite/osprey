@@ -2,11 +2,22 @@
 // Implements [BUILTIN-RANDOM], [BUILTIN-RANDOM-BELOW], [BUILTIN-INPUT].
 //
 // Entropy comes straight from the OS CSPRNG — arc4random_buf on macOS/BSD,
-// getrandom(2) on Linux (falling back to /dev/urandom) — so the stream is
-// unpredictable and carries no userspace seed/state. That makes it suitable
-// both for security use and for the benchmark suite's "randomized" input mode,
-// where a run draws a fresh seed each time. The matching "constant" mode never
-// calls these and stays byte-for-byte deterministic.
+// getrandom(2) on Linux (falling back to /dev/urandom), rand_s on Windows,
+// getentropy on wasm — so the stream is unpredictable and carries no userspace
+// seed/state. That makes it suitable both for security use and for the
+// benchmark suite's "randomized" input mode, where a run draws a fresh seed
+// each time. The matching "constant" mode never calls these and stays
+// byte-for-byte deterministic.
+//
+// A draw either carries OS entropy or the process stops: there is no degraded
+// mode that answers zero or a stale stack word and calls it random.
+
+#ifdef _WIN32
+// Must precede <stdlib.h>: msvcrt only DECLARES rand_s when this is defined,
+// and without the declaration the call would be an implicit int-returning
+// function -- a hard error under -Werror, and the wrong ABI if it were not.
+#define _CRT_RAND_S
+#endif
 
 #include <stdint.h>
 #include <stdio.h>
@@ -32,22 +43,67 @@ int getentropy(void *, size_t);
 #include <sys/random.h>
 #include <sys/types.h> // ssize_t for the getrandom(2) return
 #define OSP_HAVE_GETRANDOM 1
+#elif defined(_WIN32)
+// Windows had NO entropy source at all: it fell through to the POSIX
+// `/dev/urandom` fallback, which a native Windows binary cannot open, and the
+// old code then returned the caller's UNINITIALISED stack word as a
+// "cryptographically-secure" draw. `random() >= 0` and `randomBelow(100) < 100`
+// both hold for stack garbage, so the corpus passed on it. rand_s is msvcrt's
+// wrapper over RtlGenRandom -- the OS CSPRNG, not the seeded `rand()`.
+// [BUILTIN-RANDOM]
+#define OSP_HAVE_RAND_S 1
+#endif
+
+#ifndef OSP_HAVE_ARC4RANDOM
+// No entropy source could fill the request. There is nowhere to report it:
+// `random()` answers `int` in the language, not `Result<int, Error>`, and the
+// WebSocket handshake nonce in http_shared.c draws from this same call.
+//
+// The two previous answers were both silently wrong. `getentropy` failing
+// memset the buffer to ZERO and returned, and a `/dev/urandom` that would not
+// open left the caller's word UNWRITTEN -- an uninitialised stack `uint64_t`
+// read back as a draw -- while the comment above claimed the tail was zeroed.
+// Neither is entropy. A predictable "cryptographically-secure" value is a
+// security defect no caller can detect, and a nonce is exactly where it does
+// the most damage. Stopping is the only truthful answer [BUILTIN-RANDOM].
+static void osp_entropy_exhausted(size_t got, size_t len) {
+  fprintf(stderr,
+          "FATAL: the OS entropy source gave %zu of the %zu bytes random() "
+          "needs; there is no unpredictable value to return\n",
+          got, len);
+  // abort() does not flush stdio. stderr is unbuffered by default, but an
+  // embedder that redirected it -- which is how CI captures a crash -- gets a
+  // fully-buffered stream, and the one line explaining the death would die
+  // with it.
+  (void)fflush(stderr);
+  abort();
+}
 #endif
 
 // Drain the OS entropy source into `buf` — the runtime-wide source of
 // unpredictable bytes, also used for the WebSocket handshake nonce in
-// http_shared.c so there is exactly one CSPRNG entry point.
-// Drain the OS entropy source into `buf`. Best-effort on the /dev/urandom
-// fallback path: a short read leaves the tail zeroed rather than aborting,
-// which never happens on the supported platforms.
+// http_shared.c so there is exactly one CSPRNG entry point. Fills `len` bytes
+// or does not return [BUILTIN-RANDOM].
 void osp_random_bytes(void *buf, size_t len) {
 #ifdef OSP_HAVE_GETENTROPY
   // getentropy caps a single call at 256 bytes; every caller here asks for 8.
   if (getentropy(buf, len) != 0) {
-    memset(buf, 0, len);
+    osp_entropy_exhausted(0, len);
   }
 #elif defined(OSP_HAVE_ARC4RANDOM)
   arc4random_buf(buf, len);
+#elif defined(OSP_HAVE_RAND_S)
+  // rand_s yields one 32-bit word per call, so a wider request is assembled a
+  // word at a time and the last one is truncated to what is left.
+  for (size_t off = 0; off < len;) {
+    unsigned int word = 0;
+    if (rand_s(&word) != 0) {
+      osp_entropy_exhausted(off, len);
+    }
+    size_t take = len - off < sizeof(word) ? len - off : sizeof(word);
+    memcpy((unsigned char *)buf + off, &word, take);
+    off += take;
+  }
 #else
 #ifdef OSP_HAVE_GETRANDOM
   size_t off = 0;
@@ -62,11 +118,17 @@ void osp_random_bytes(void *buf, size_t len) {
     return;
   }
 #endif
+  // The fallback refills from offset 0 rather than patching the tail: a
+  // partial getrandom draw is discarded, so the buffer is whole-cloth from one
+  // source instead of a splice of two.
+  size_t got = 0;
   FILE *f = fopen("/dev/urandom", "rb");
   if (f != NULL) {
-    size_t got = fread(buf, 1, len, f);
-    (void)got;
+    got = fread(buf, 1, len, f);
     fclose(f);
+  }
+  if (got < len) {
+    osp_entropy_exhausted(got, len);
   }
 #endif
 }
@@ -102,6 +164,33 @@ int64_t osp_random_below(int64_t n) {
 
 #define OSP_INPUT_INIT_CAP ((size_t)128)
 
+#if !defined(_WIN32) && !defined(__wasm__)
+#include <unistd.h>
+
+// One byte of stdin, or EOF.
+//
+// This BLOCKS until a byte arrives or the descriptor really ends. Elapsed
+// silence is NOT end-of-file: a pipe whose writer has not spoken yet is
+// connected, and answering "" for it truncates or discards a line the program
+// then computes with. An earlier revision timed the first byte out after a
+// second to stop a non-interactive launcher hanging; that hang belongs to the
+// launcher, and both of ours now close the child's stdin so the read sees a
+// real EOF (vscode-extension/client/src/extension.ts, and `Stdio::null` in
+// crates/osprey-cli/src/test_cmd.rs) [BUILTIN-INPUT].
+//
+// Reads the descriptor directly rather than through stdio: `term_runtime.c`
+// reads keystrokes the same way, and a buffering layer between the two would
+// strand bytes in whichever one read first.
+static int osp_input_byte(void) {
+  unsigned char ch;
+  return read(STDIN_FILENO, &ch, 1) == 1 ? (int)ch : EOF;
+}
+#else
+// Windows and wasm keep the stdio reader: the wasm runtime excludes `input`
+// altogether ([WASM-TARGET]).
+static int osp_input_byte(void) { return getchar(); }
+#endif
+
 // Implements [BUILTIN-INPUT]: read one line from stdin without its trailing
 // newline, returning a heap string ("" on EOF/empty). The caller owns the
 // result, matching the string-runtime builtins which also malloc their returns.
@@ -112,8 +201,12 @@ char *osp_input(void) {
   if (buf == NULL) {
     return NULL;
   }
+  // Anything already staged for stdout must reach the user BEFORE this
+  // parks: stdout is block-buffered off a terminal, so an unflushed prompt
+  // is invisible for exactly as long as the read waits.
+  fflush(stdout);
   int c;
-  while ((c = getchar()) != EOF && c != '\n') {
+  while ((c = osp_input_byte()) != EOF && c != '\n') {
     if (len + 1 >= cap) {
       cap *= 2;
       char *grown = (char *)realloc(buf, cap);

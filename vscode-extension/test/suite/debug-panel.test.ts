@@ -213,6 +213,50 @@ suite("readDebugSnapshot", () => {
     assert.strictEqual(snapshot.state, "running");
     assert.deepStrictEqual(snapshot.frames, []);
   });
+
+  // Every array in a DAP response is optional per the protocol, and an adapter
+  // that omits one is conforming, not broken. Each omission is read at a
+  // different depth -- threads, then frames, then scopes, then variables -- and
+  // the first `undefined.length` on any of them takes down the whole panel with
+  // a TypeError the user sees as an empty view and no explanation.
+  test("an omitted array at any depth degrades rather than throwing", async () => {
+    // A live thread whose stackTrace carries no stackFrames: still "running",
+    // because a thread with no frames is not a thread that has stopped.
+    const noFrames = await readDebugSnapshot(
+      fakeSession({ threads: { threads: [{ id: 1 }] }, stackTrace: {} }),
+      undefined,
+    );
+    assert.strictEqual(noFrames.state, "running");
+    assert.deepStrictEqual(noFrames.frames, []);
+
+    // Frames present, but the scopes response omits `scopes`: the frame is
+    // reported stopped and its variable list is empty rather than absent.
+    const frame = { id: 10, name: "main", path: "/a.osp", line: 3, column: 1 };
+    const noScopes = await readDebugSnapshot(
+      fakeSession({
+        threads: { threads: [{ id: 1 }] },
+        stackTrace: { stackFrames: [frame] },
+        scopes: {},
+      }),
+      undefined,
+    );
+    assert.strictEqual(noScopes.state, "stopped");
+    assert.deepStrictEqual(noScopes.frames, [frame]);
+    assert.deepStrictEqual(noScopes.topVariables, []);
+
+    // A scope that IS requested, whose variables response omits `variables`.
+    const noVariables = await readDebugSnapshot(
+      fakeSession({
+        threads: { threads: [{ id: 1 }] },
+        stackTrace: { stackFrames: [frame] },
+        scopes: { scopes: [{ name: "Locals", variablesReference: 7 }] },
+        variables: {},
+      }),
+      undefined,
+    );
+    assert.strictEqual(noVariables.state, "stopped");
+    assert.deepStrictEqual(noVariables.topVariables, []);
+  });
 });
 
 suite("makePanelMessageHandler", () => {

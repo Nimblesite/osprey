@@ -25,7 +25,9 @@
 
 use std::path::{Path, PathBuf};
 
+use osprey_ast::Program;
 use osprey_codegen::compile_program;
+use osprey_project::SourceFile;
 use osprey_syntax::{parse_program_with_flavor, Flavor};
 
 /// Stems that are an intentionally ML-only surface (no Default twin, exempt from
@@ -78,7 +80,34 @@ fn ir_for(source: &str, flavor: Flavor, label: &str) -> Result<String, String> {
         "{label}: unexpected {flavor} parse errors: {:?}",
         parsed.errors
     );
-    compile_program(&parsed.program).map_err(|e| format!("{label}: codegen failed: {e:?}"))
+    let program = assembled_if_module_aware(parsed.program, flavor, label, source)?;
+    compile_program(&program).map_err(|e| format!("{label}: codegen failed: {e:?}"))
+}
+
+/// A module-bearing source is not a program until the project layer resolves its
+/// paths and flattens the graph — `Tax::add` and an import alias like `U::pack`
+/// have no meaning before that. Lowering the raw parse would compare IR neither
+/// flavor ever runs, so this reproduces the CLI's own single-source path
+/// ([MODULES-MODEL]) for both flavors alike, leaving ordinary scripts untouched.
+fn assembled_if_module_aware(
+    program: Program,
+    flavor: Flavor,
+    label: &str,
+    source: &str,
+) -> Result<Program, String> {
+    if !osprey_project::needs_assembly(&program) {
+        return Ok(program);
+    }
+    let source_file = SourceFile {
+        path: PathBuf::from(label),
+        flavor,
+        source: source.to_string(),
+        program,
+    };
+    match osprey_project::assemble_one(source_file) {
+        Ok(assembled) => Ok(assembled.program),
+        Err(errors) => Err(format!("{label}: project assembly failed: {errors:?}")),
+    }
 }
 
 /// Every `.ospml` file anywhere under `dir`, found by a recursive walk and

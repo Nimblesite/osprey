@@ -4,6 +4,8 @@
 //   term_runtime.c   — [BUILTIN-TERM] raw mode, key decoding, ANSI writes
 //   test_runtime.c   — [TESTING-RUNTIME], [TESTING-TAP], [TESTING-EXIT],
 //                      [TESTING-FILTER] TAP state machine
+// random_runtime.c's entropy source is in the sibling random_entropy_tests.c,
+// which installs interposers this half must not run under.
 // Linked by the Makefile's _test_c_runtime. POSIX harness: scenarios that own
 // process-global state (TAP counters, stdin, the terminal) each run in a fork
 // with stdin fed from a buffer and stdout captured, then compared BYTE-EXACT.
@@ -15,14 +17,16 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
+#include "builtins_tests_shared.h"
+#include "test_alloc.h"
+#include "test_gcov.h"
+
 void *osprey_ffi_cell(void);
 void *osprey_ffi_deref(void *cell);
 int64_t osprey_ffi_free(void *cell);
 void *osprey_ffi_null(void);
 void *osprey_ffi_transient(void);
 int64_t osprey_ffi_is_null(void *ptr);
-int64_t osp_random(void);
-int64_t osp_random_below(int64_t n);
 char *osp_input(void);
 int64_t term_raw_mode(int64_t on);
 int64_t term_cols(void);
@@ -41,12 +45,7 @@ void osp_test_assert(const char *label, int32_t ok, const char *expected,
 void osp_test_end(const char *name);
 int32_t osp_test_finalize(void);
 
-static long g_checks = 0;
-#define CHECK(c)                                                               \
-  do {                                                                         \
-    g_checks++;                                                                \
-    assert(c);                                                                 \
-  } while (0)
+long g_checks = 0;
 
 #define DRAWS 10000
 #define BELOW_N 7
@@ -73,6 +72,10 @@ static void run_child_expect(int (*fn)(void), const char *input,
     close(out_pipe[1]);
     int code = fn();
     fflush(stdout);
+    // `_exit` skips atexit, so without this the child's counters are lost and
+    // term_runtime.c and test_runtime.c -- whose every scenario runs HERE --
+    // measure 0% against thousands of passing assertions [test_gcov.h].
+    OSP_GCOV_DUMP();
     _exit(code);
   }
   close(in_pipe[0]);
@@ -178,6 +181,146 @@ static void t_input_lines(void) {
   memset(want + strlen(want), 'z', LONG_LINE);
   strcat(want, "][]"); // EOF yields the empty string, not NULL
   run_child_expect(child_input_lines, input, want, 0);
+}
+
+// Long enough that the reader is certainly parked inside `read` before the
+// writer speaks: that is the whole point of the delayed-writer cases.
+#define INPUT_WRITER_DELAY_US ((useconds_t)400000)
+
+// Point STDIN at `read_fd` (consumed), answering the saved original descriptor.
+static int stdin_redirect(int read_fd) {
+  int saved = dup(STDIN_FILENO);
+  CHECK(saved >= 0);
+  CHECK(dup2(read_fd, STDIN_FILENO) >= 0);
+  close(read_fd);
+  return saved;
+}
+
+// Put back the descriptor `stdin_redirect` displaced.
+static void stdin_restore(int saved) {
+  CHECK(dup2(saved, STDIN_FILENO) >= 0);
+  close(saved);
+}
+
+// Read one line through `osp_input` with STDIN redirected IN THIS PROCESS, and
+// answer it. Unlike `run_child_expect` this keeps the call in the parent, whose
+// gcov counters are actually flushed at exit -- a forked child `_exit`s, so the
+// coverage of everything it ran is discarded ([BUILTIN-INPUT] was measured at
+// zero for exactly that reason). The write end is closed before the read, so
+// the descriptor is at end-of-file the moment `feed` runs out.
+static char *input_through_pipe(const char *feed) {
+  int pipe_fds[2];
+  CHECK(pipe(pipe_fds) == 0);
+  if (feed != NULL) {
+    size_t len = strlen(feed);
+    CHECK(write(pipe_fds[1], feed, len) == (ssize_t)len);
+  }
+  close(pipe_fds[1]);
+  int saved = stdin_redirect(pipe_fds[0]);
+  char *line = osp_input();
+  stdin_restore(saved);
+  return line;
+}
+
+// Read one line while a FORKED writer stays SILENT for a while and only then
+// speaks. Silence is not end-of-file: an open pipe whose producer has not
+// spoken yet is connected, and whatever it eventually sends must arrive whole.
+// `before` is written immediately (NULL for nothing at all) and `after` once
+// the delay has passed (NULL to close in silence instead) [BUILTIN-INPUT].
+static char *input_from_delayed_writer(const char *before, const char *after) {
+  int pipe_fds[2];
+  CHECK(pipe(pipe_fds) == 0);
+  pid_t writer = fork();
+  CHECK(writer >= 0);
+  if (writer == 0) {
+    close(pipe_fds[0]);
+    int ok = 1;
+    if (before != NULL) {
+      ok = write(pipe_fds[1], before, strlen(before)) > 0;
+    }
+    usleep(INPUT_WRITER_DELAY_US);
+    if (ok && after != NULL) {
+      ok = write(pipe_fds[1], after, strlen(after)) > 0;
+    }
+    close(pipe_fds[1]);
+    _exit(ok ? 0 : 1);
+  }
+  close(pipe_fds[1]);
+  int saved = stdin_redirect(pipe_fds[0]);
+  char *line = osp_input();
+  stdin_restore(saved);
+  int status = 0;
+  CHECK(waitpid(writer, &status, 0) == writer);
+  CHECK(WIFEXITED(status) && WEXITSTATUS(status) == 0);
+  return line;
+}
+
+// [BUILTIN-INPUT] end to end, in-process. Seven descriptor states: a short
+// line, a line longer than the initial buffer (the realloc growth path), a
+// closed-and-empty descriptor, a line whose only terminator is EOF, and three
+// delayed-writer cases -- a late FIRST byte, a mid-line pause, and a writer
+// that closes in silence.
+//
+// The delayed cases are the contract that a wall-clock reader breaks. Treating
+// elapsed silence as end-of-file answers "" for the late first byte and "he"
+// for the mid-line pause: a value the program then computes with. Only a real
+// end-of-file ends a line.
+static void t_input_descriptor_states(void) {
+  char *line = input_through_pipe("alpha\n");
+  CHECK(line != NULL && strcmp(line, "alpha") == 0);
+  free(line);
+
+  static char big[LONG_LINE + 2];
+  memset(big, 'z', LONG_LINE);
+  big[LONG_LINE] = '\n';
+  big[LONG_LINE + 1] = '\0';
+  line = input_through_pipe(big);
+  CHECK(line != NULL && strlen(line) == LONG_LINE);
+  free(line);
+
+  // EOF: the documented empty string, never NULL.
+  line = input_through_pipe(NULL);
+  CHECK(line != NULL && line[0] == '\0');
+  free(line);
+
+  // End-of-file terminates a line just as a newline would.
+  line = input_through_pipe("no-newline");
+  CHECK(line != NULL && strcmp(line, "no-newline") == 0);
+  free(line);
+
+  // Only the second line's worth is consumed per call: the reader stops at the
+  // newline and leaves the rest of the descriptor alone.
+  int pipe_fds[2];
+  CHECK(pipe(pipe_fds) == 0);
+  CHECK(write(pipe_fds[1], "one\ntwo\n", 8) == 8);
+  close(pipe_fds[1]);
+  int saved = stdin_redirect(pipe_fds[0]);
+  char *first = osp_input();
+  char *second = osp_input();
+  char *third = osp_input();
+  stdin_restore(saved);
+  CHECK(first != NULL && strcmp(first, "one") == 0);
+  CHECK(second != NULL && strcmp(second, "two") == 0);
+  CHECK(third != NULL && third[0] == '\0');
+  free(first);
+  free(second);
+  free(third);
+
+  // A producer silent well past any plausible grace, then speaking, is NOT
+  // end-of-file: its whole line arrives.
+  line = input_from_delayed_writer(NULL, "late\n");
+  CHECK(line != NULL && strcmp(line, "late") == 0);
+  free(line);
+
+  // The same producer pausing MID-LINE must not truncate it either.
+  line = input_from_delayed_writer("he", "llo\n");
+  CHECK(line != NULL && strcmp(line, "hello") == 0);
+  free(line);
+
+  // A writer that closes in silence IS end-of-file, and answers "".
+  line = input_from_delayed_writer(NULL, NULL);
+  CHECK(line != NULL && line[0] == '\0');
+  free(line);
 }
 
 // --- term_runtime ------------------------------------------------------------
@@ -340,11 +483,107 @@ static void t_tap(void) {
                    1);
 }
 
+// [BUILTIN-INPUT]: a read that cannot allocate reports NULL and OWNS NOTHING.
+//
+// Both arms are real contracts and neither can be reached by asking the kernel
+// nicely -- a 128-byte malloc does not fail on demand -- so the allocator is
+// interposed and told exactly which call to refuse. What is asserted is not
+// that the arm ran but what it left behind: the RETURN VALUE (NULL, never a
+// pointer into a buffer that was never grown) and the OWNERSHIP (the live-block
+// count back where it started, which is the only way to see that the growth
+// failure freed the buffer it was growing). A leak here costs one buffer per
+// failed line and shows up in no return value at all.
+static void t_input_allocation_failure(void) {
+  long live = osp_alloc_live();
+
+  // Arm 1: the initial line buffer. Nothing has been allocated yet, so nothing
+  // may be retained.
+  int pipe_fds[2];
+  CHECK(pipe(pipe_fds) == 0);
+  CHECK(write(pipe_fds[1], "alpha\n", 6) == 6);
+  close(pipe_fds[1]);
+  int saved = stdin_redirect(pipe_fds[0]);
+  osp_alloc_fail_next();
+  char *line = osp_input();
+  stdin_restore(saved);
+  CHECK(line == NULL);
+  CHECK(osp_alloc_live() == live);
+
+  // Arm 2: the growth realloc, reached only by a line longer than the initial
+  // buffer. The buffer EXISTS by then, so returning NULL without freeing it is
+  // a leak the return value cannot show.
+  static char big[LONG_LINE + 2];
+  memset(big, 'z', LONG_LINE);
+  big[LONG_LINE] = '\n';
+  big[LONG_LINE + 1] = '\0';
+  CHECK(pipe(pipe_fds) == 0);
+  CHECK(write(pipe_fds[1], big, LONG_LINE + 1) == (ssize_t)(LONG_LINE + 1));
+  close(pipe_fds[1]);
+  saved = stdin_redirect(pipe_fds[0]);
+  osp_alloc_fail_after(1); // the initial malloc succeeds; the growth does not
+  line = osp_input();
+  stdin_restore(saved);
+  CHECK(line == NULL);
+  CHECK(osp_alloc_live() == live);
+
+  // Disarmed again, the very same read succeeds: the injector under test is
+  // the injector, not a permanent change to the allocator.
+  osp_alloc_fail_off();
+  CHECK(pipe(pipe_fds) == 0);
+  CHECK(write(pipe_fds[1], "alpha\n", 6) == 6);
+  close(pipe_fds[1]);
+  saved = stdin_redirect(pipe_fds[0]);
+  line = osp_input();
+  stdin_restore(saved);
+  CHECK(line != NULL && strcmp(line, "alpha") == 0);
+  free(line);
+  CHECK(osp_alloc_live() == live);
+}
+
+// The bootstrap arena inside test_alloc.h serves the dlsym recursion that
+// resolves the real allocator, so an address it hands out that is NOT its own
+// corrupts whatever runs next rather than the test that caused it. Draining it
+// here is safe and deliberate: the resolver runs once, at the first allocation
+// of the process, and never touches the arena again.
+static void t_bootstrap_arena_hands_out_only_its_own_bytes(void) {
+  // Refused, not rounded into a size that fits: `(size_t)-4 + 7` wraps to 3,
+  // and 3 bytes fit any arena.
+  CHECK(osp_bootstrap_alloc((size_t)-1) == NULL);
+  CHECK(osp_bootstrap_alloc((size_t)-4) == NULL);
+  CHECK(osp_bootstrap_alloc((size_t)OSP_BOOTSTRAP_BYTES + 1u) == NULL);
+
+  // Drain it with the request that reserves the least. Every address must be
+  // inside the arena and distinct from the one before it.
+  const void *previous = NULL;
+  long served = 0;
+  for (void *at = osp_bootstrap_alloc(0); at != NULL;
+       at = osp_bootstrap_alloc(0)) {
+    CHECK(osp_from_bootstrap(at));
+    CHECK(at != previous);
+    previous = at;
+    served += 1;
+  }
+  CHECK(served <= OSP_BOOTSTRAP_BYTES / 8);
+
+  // A spent arena refuses EVERY size, including the one that would reserve
+  // nothing and answer one-past-the-end.
+  CHECK(osp_bootstrap_alloc(0) == NULL);
+  CHECK(osp_bootstrap_alloc(1) == NULL);
+  CHECK(osp_bootstrap_alloc(OSP_BOOTSTRAP_BYTES) == NULL);
+}
+
 int main(void) {
   t_ffi_cells();
   t_random_bounds();
   t_random_below();
+  // Installs the getrandom/fopen interposers; runs before the stdin and TAP
+  // scenarios so none of them execute under a replaced entropy source.
+  t_entropy_source();
   t_input_lines();
+  t_input_descriptor_states();
+  t_input_allocation_failure();
+  // Last: it spends the bootstrap arena, and nothing after it may need one.
+  t_bootstrap_arena_hands_out_only_its_own_bytes();
   t_term();
   t_tap();
   printf("[ok] builtins_runtime: %ld assertions\n", g_checks);

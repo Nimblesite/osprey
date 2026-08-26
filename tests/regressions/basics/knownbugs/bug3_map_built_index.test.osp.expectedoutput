@@ -1,5 +1,0 @@
-a=9
-len 2
-ok 1 - built maps support indexed lookup
-1..1
-# tests=1 passed=1 failed=0 skipped=0

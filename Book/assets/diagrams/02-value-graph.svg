@@ -1,0 +1,65 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1000" viewBox="0 0 1600 1000" role="img" aria-labelledby="title description">
+  <title id="title">Stable names form a readable value graph</title>
+  <desc id="description">Five immutable Flight Log values flow into one summary function and produce one output line.</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto">
+      <path d="M0 0 L10 5 L0 10 Z" fill="#77d7f4"/>
+    </marker>
+  </defs>
+  <rect width="1600" height="1000" fill="#0c1325"/>
+  <text x="72" y="104" fill="#77d7f4" font-family="JetBrains Mono, monospace" font-size="22" font-weight="700" letter-spacing="4">VALUE GRAPH</text>
+  <text x="72" y="172" fill="#dce1fb" font-family="Geist, Inter, sans-serif" font-size="54" font-weight="720" letter-spacing="-2">Names expose the shape of the problem</text>
+  <text x="72" y="218" fill="#bdc8cd" font-family="Geist, Inter, sans-serif" font-size="25">Each binding contributes one stable fact; summary only combines them.</text>
+
+  <g font-family="Geist, Inter, sans-serif">
+    <g transform="translate(72 304)">
+      <rect width="370" height="108" rx="14" fill="#151b2d" stroke="#3e484c"/>
+      <text x="24" y="42" fill="#77d7f4" font-family="JetBrains Mono, monospace" font-size="18">owner</text>
+      <text x="24" y="80" fill="#dce1fb" font-size="25">&quot;Mika&quot;</text>
+    </g>
+    <g transform="translate(72 438)">
+      <rect width="370" height="108" rx="14" fill="#151b2d" stroke="#3e484c"/>
+      <text x="24" y="42" fill="#77d7f4" font-family="JetBrains Mono, monospace" font-size="18">goal</text>
+      <text x="24" y="80" fill="#dce1fb" font-size="23">&quot;Build a small CLI&quot;</text>
+    </g>
+    <g transform="translate(72 572)">
+      <rect width="370" height="108" rx="14" fill="#151b2d" stroke="#3e484c"/>
+      <text x="24" y="42" fill="#77d7f4" font-family="JetBrains Mono, monospace" font-size="18">isActive</text>
+      <text x="24" y="80" fill="#dce1fb" font-size="25">true</text>
+    </g>
+    <g transform="translate(72 706)">
+      <rect width="174" height="108" rx="14" fill="#151b2d" stroke="#3e484c"/>
+      <text x="18" y="42" fill="#77d7f4" font-family="JetBrains Mono, monospace" font-size="16">sessions</text>
+      <text x="18" y="80" fill="#dce1fb" font-size="25">3</text>
+    </g>
+    <g transform="translate(268 706)">
+      <rect width="174" height="108" rx="14" fill="#151b2d" stroke="#3e484c"/>
+      <text x="18" y="42" fill="#77d7f4" font-family="JetBrains Mono, monospace" font-size="16">minutes</text>
+      <text x="18" y="80" fill="#dce1fb" font-size="25">25</text>
+    </g>
+
+    <path d="M442 358 C560 358 572 500 680 500" fill="none" stroke="#77d7f4" stroke-width="4" marker-end="url(#arrow)"/>
+    <path d="M442 492 L680 500" fill="none" stroke="#77d7f4" stroke-width="4" marker-end="url(#arrow)"/>
+    <path d="M442 626 C560 626 572 514 680 506" fill="none" stroke="#77d7f4" stroke-width="4" marker-end="url(#arrow)"/>
+    <path d="M246 760 C510 760 550 560 680 520" fill="none" stroke="#77d7f4" stroke-width="4" marker-end="url(#arrow)"/>
+    <path d="M442 760 C600 760 610 574 680 530" fill="none" stroke="#77d7f4" stroke-width="4" marker-end="url(#arrow)"/>
+
+    <g transform="translate(700 394)">
+      <rect width="330" height="224" rx="18" fill="#23293d" stroke="#77d7f4" stroke-width="3"/>
+      <text x="34" y="64" fill="#77d7f4" font-family="JetBrains Mono, monospace" font-size="20">summary</text>
+      <text x="34" y="120" fill="#dce1fb" font-size="30" font-weight="700">Combine facts</text>
+      <text x="34" y="166" fill="#bdc8cd" font-size="21">No input changes.</text>
+      <text x="34" y="198" fill="#bdc8cd" font-size="21">One new string leaves.</text>
+    </g>
+
+    <path d="M1030 506 L1160 506" fill="none" stroke="#77d7f4" stroke-width="5" marker-end="url(#arrow)"/>
+    <g transform="translate(1180 368)">
+      <rect width="348" height="276" rx="18" fill="#070d1f" stroke="#3e484c"/>
+      <text x="26" y="52" fill="#77d7f4" font-family="JetBrains Mono, monospace" font-size="18">OUTPUT</text>
+      <text x="26" y="112" fill="#dce1fb" font-size="24" font-weight="700">Mika</text>
+      <text x="26" y="152" fill="#bdc8cd" font-size="21">goal: Build a small CLI</text>
+      <text x="26" y="190" fill="#bdc8cd" font-size="21">active: true · sessions: 3</text>
+      <text x="26" y="228" fill="#ffbe65" font-size="21">minutes: Success(75)</text>
+    </g>
+  </g>
+</svg>

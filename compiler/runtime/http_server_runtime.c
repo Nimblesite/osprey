@@ -23,10 +23,10 @@ static void label_partial_request(HttpRequestBuffer *request) {
     (void)sscanf(request->data, "%15s %255s", request->method, request->path);
   }
   if (request->method[0] == '\0') {
-    strcpy(request->method, "?");
+    strcpy(request->method, HTTP_LOG_UNKNOWN);
   }
   if (request->path[0] == '\0') {
-    strcpy(request->path, "?");
+    strcpy(request->path, HTTP_LOG_UNKNOWN);
   }
 }
 
@@ -376,11 +376,17 @@ static bool stop_is_from_server(HttpServer *server) {
          pthread_equal(server->server_thread, pthread_self()) != 0;
 }
 
-static void shutdown_server_sockets(HttpServer *server) {
+// Shutting down the listener wakes the accept loop. The active client socket
+// is torn down only when the stop comes from ANOTHER thread: a stop issued by
+// the handler itself is still holding that socket open to write its own
+// response, and tearing it down there discards the reply the caller is
+// waiting for. The loop exits after the exchange completes either way
+// [HTTP-SERVER].
+static void shutdown_server_sockets(HttpServer *server, bool self_stop) {
   if (server->socket_fd >= 0) {
     (void)shutdown(server->socket_fd, HTTP_SHUTDOWN_BOTH);
   }
-  if (server->active_client_fd >= 0) {
+  if (!self_stop && server->active_client_fd >= 0) {
     (void)shutdown(server->active_client_fd, HTTP_SHUTDOWN_BOTH);
   }
 }
@@ -401,7 +407,7 @@ static int64_t request_server_stop(HttpServer *server, bool *self_stop) {
   *self_stop = stop_is_from_server(server);
   server->destroy_on_exit = *self_stop;
   int64_t fiber_id = server->server_fiber_id;
-  shutdown_server_sockets(server);
+  shutdown_server_sockets(server, *self_stop);
   pthread_mutex_unlock(&server->mutex);
   return fiber_id;
 }

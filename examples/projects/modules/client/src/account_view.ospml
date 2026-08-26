@@ -5,9 +5,7 @@ import talon::BankData
 
 module AccountView
     increment : int -> int
-    increment number = match number + 1
-        Success value => value
-        Error message => number
+    increment number = number + 1 ?: number
 
     export card : int -> int -> string -> string
     card doc index selected =

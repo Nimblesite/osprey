@@ -229,8 +229,8 @@ _lint:
 ## deslop: Code-duplication gate. Fails the build when measured
 ## duplication exceeds the ceiling in .deslop.toml (exit 3). Exclusions and the
 ## threshold live in that committed config — the single source of truth. When
-## the `deslop` binary is absent the gate is skipped with a loud warning so a
-## fresh checkout still builds; CI enforces the gate through the official action.
+## the `deslop` binary is absent this target FAILS: a gate that cannot run must
+## not report success. CI enforces the same ceiling through the official action.
 deslop:
 	@echo "==> Duplication gate (deslop)..."
 	@if ! command -v deslop >/dev/null 2>&1; then \
@@ -544,7 +544,8 @@ C_TEST_SUITES ?= memory_gc_stack_root_tests memory_arc_tests memory_gc_tests \
   effects_runtime_tests builtins_runtime_tests test_system_runtime \
   test_file_runtime \
   test_http_length_validation http_server_send_tests http_server_request_tests \
-  fiber_runtime_tests http_runtime_tests profiler_runtime_tests \
+  fiber_runtime_tests http_runtime_tests http_shared_tests \
+  websocket_runtime_tests profiler_runtime_tests \
   coverage_runtime_tests
 C_SRC_memory_gc_stack_root_tests = runtime/memory_gc_stack_root_tests.c runtime/memory_gc.c
 C_LIBS_memory_gc_stack_root_tests = -pthread
@@ -560,12 +561,12 @@ C_SRC_gpu_runtime_tests = runtime/gpu_runtime_tests.c runtime/gpu_runtime.c runt
 C_SRC_list_tests = runtime/list_tests.c runtime/list_runtime.c runtime/memory_runtime.c
 C_SRC_map_tests = runtime/map_tests.c runtime/map_runtime.c runtime/map_runtime_hamt.c runtime/memory_runtime.c
 C_SRC_string_runtime_tests = runtime/string_runtime_tests.c runtime/string_runtime.c runtime/string_runtime_list.c runtime/memory_runtime.c
-C_SRC_json_runtime_tests = runtime/json_runtime_tests.c runtime/json_runtime.c
+C_SRC_json_runtime_tests = runtime/json_runtime_tests.c runtime/json_grammar_tests.c runtime/json_runtime.c
 C_LIBS_json_runtime_tests = -pthread
 C_SRC_effects_runtime_tests = runtime/effects_runtime_tests.c runtime/effects_runtime.c runtime/effects_coro.c runtime/memory_arc.c runtime/gpu_runtime.c runtime/profiler_runtime.c runtime/profiler_sampler.c
 C_LIBS_effects_runtime_tests = -pthread
-C_SRC_builtins_runtime_tests = runtime/builtins_runtime_tests.c runtime/ffi_runtime.c runtime/random_runtime.c runtime/term_runtime.c runtime/test_runtime.c
-C_SRC_test_system_runtime = runtime/test_system_runtime.c runtime/system_runtime.c runtime/file_runtime.c runtime/memory_runtime.c
+C_SRC_builtins_runtime_tests = runtime/builtins_runtime_tests.c runtime/random_entropy_tests.c runtime/ffi_runtime.c runtime/random_runtime.c runtime/term_runtime.c runtime/test_runtime.c
+C_SRC_test_system_runtime = runtime/test_system_runtime.c runtime/test_system_failures.c runtime/system_runtime.c runtime/file_runtime.c runtime/memory_runtime.c
 C_LIBS_test_system_runtime = -pthread
 C_SRC_test_file_runtime = runtime/test_file_runtime.c runtime/file_runtime.c runtime/memory_runtime.c
 C_FLAGS_test_http_length_validation = $(OSSL_CFLAGS)
@@ -579,8 +580,22 @@ C_LIBS_http_server_request_tests = -pthread
 C_SRC_fiber_runtime_tests = runtime/fiber_runtime_tests.c runtime/memory_runtime.c $(RT_THREADS)
 C_LIBS_fiber_runtime_tests = -pthread
 C_FLAGS_http_runtime_tests = $(OSSL_CFLAGS)
-C_SRC_http_runtime_tests = runtime/http_runtime_tests.c runtime/http_client_runtime.c runtime/http_server_runtime.c runtime/http_server_request.c runtime/http_server_response.c runtime/http_shared.c runtime/websocket_client_runtime.c runtime/websocket_server_runtime.c runtime/string_runtime.c runtime/memory_runtime.c runtime/random_runtime.c $(RT_THREADS)
+C_SRC_http_runtime_tests = runtime/http_runtime_tests.c runtime/http_client_runtime.c runtime/http_server_runtime.c runtime/http_server_request.c runtime/http_server_response.c runtime/http_shared.c runtime/string_runtime.c runtime/memory_runtime.c runtime/random_runtime.c $(RT_THREADS)
 C_LIBS_http_runtime_tests = -pthread $(OSSL_LIBS)
+# http_shared.c's coverage number is OWNED by this suite: it is the only one
+# that drives every helper in the unit rather than the subset one transport
+# reaches. Keep it that way -- the gate takes the MAX across suites, never a
+# union, so splitting these tests across transports would lower the number
+# while testing exactly as much.
+C_FLAGS_http_shared_tests = $(OSSL_CFLAGS)
+C_SRC_http_shared_tests = runtime/http_shared_tests.c runtime/http_shared.c runtime/random_runtime.c
+C_LIBS_http_shared_tests = -pthread $(OSSL_LIBS)
+# Owns websocket_client_runtime.c and websocket_server_runtime.c. Binds real
+# loopback ports (18086/18087) and runs a real accept loop, so it is single
+# threaded across suites by construction -- the Makefile runs suites serially.
+C_FLAGS_websocket_runtime_tests = $(OSSL_CFLAGS)
+C_SRC_websocket_runtime_tests = runtime/websocket_runtime_tests.c runtime/websocket_client_runtime.c runtime/websocket_server_runtime.c runtime/http_shared.c runtime/random_runtime.c runtime/memory_runtime.c
+C_LIBS_websocket_runtime_tests = -pthread $(OSSL_LIBS)
 C_PROFILE_profiler_runtime_tests = $(PROF_T)
 C_SRC_profiler_runtime_tests = runtime/profiler_runtime_tests.c runtime/profiler_runtime.c runtime/profiler_sampler.c
 C_LIBS_profiler_runtime_tests = -pthread
@@ -622,11 +637,12 @@ _test_c_runtime:
 # they do not build natively, so gcov has nothing to measure.
 C_SHIPPED_UNITS = $(sort $(basename $(notdir $(FIB_OBJ) $(HTTP_OBJ) \
                     $(FIB_OBJ_GC) $(HTTP_OBJ_GC) $(FIB_OBJ_ARC) $(HTTP_OBJ_ARC))))
-# The exemptions, and why: term_runtime.c and test_runtime.c run every case in a
-# FORKED CHILD whose gcov counters are never flushed back, so gcov reports 0%
-# against passing assertions — gate them once the harness calls __gcov_dump in
-# the child.
-C_COV_EXEMPT ?= term_runtime test_runtime
+# No native unit is exempt any more. term_runtime.c and test_runtime.c used to
+# be: every one of their cases runs in a FORKED CHILD, whose gcov counters were
+# never flushed back, so gcov reported 0% against thousands of passing
+# assertions. The harness now calls __gcov_dump before the child _exits
+# (compiler/runtime/test_gcov.h), which is what that exemption was waiting for.
+C_COV_EXEMPT ?=
 GCOV_TOOL ?= $(shell if $(CC) --version 2>/dev/null | grep -qi clang; then \
     if command -v xcrun >/dev/null 2>&1; then echo "xcrun llvm-cov gcov"; \
     else echo "llvm-cov gcov"; fi; \
@@ -636,7 +652,7 @@ _coverage_check_c_runtime:
 	@echo "==> [c-runtime] per-library line coverage (gcov)..."
 	@rm -rf compiler/bin/cov
 	@set -e; cd compiler/bin && mkdir -p cov && cd cov; \
-	$(foreach s,$(C_TEST_SUITES),mkdir -p $(s) && (cd $(s) && $(CC) $(or $(C_PROFILE_$(s)),$(T)) --coverage $(C_FLAGS_$(s)) $(addprefix ../../../,$(C_SRC_$(s))) $(C_LIBS_$(s)) -o $(s) && { ./$(s) >/dev/null 2>&1 || true; } && { $(GCOV_TOOL) *.gcda > summary.txt 2>/dev/null || true; }) && ) true
+	$(foreach s,$(C_TEST_SUITES),mkdir -p $(s) && (cd $(s) && $(CC) $(or $(C_PROFILE_$(s)),$(T)) --coverage -DOSP_COVERAGE_DUMP $(C_FLAGS_$(s)) $(addprefix ../../../,$(C_SRC_$(s))) $(C_LIBS_$(s)) -o $(s) && { ./$(s) >/dev/null 2>&1 || true; } && { $(GCOV_TOOL) *.gcda > summary.txt 2>/dev/null || true; }) && ) true
 	@command -v jq >/dev/null || { echo "[c] FAIL: jq is required to read $(COVERAGE_THRESHOLDS_FILE); a gate that cannot run must not report success"; exit 1; }
 	@libs=$$(jq -r '.projects | to_entries[] | select(.value.language=="c") | .key' "$(COVERAGE_THRESHOLDS_FILE)"); \
 	if [ -z "$$libs" ]; then echo "[c] FAIL: no C entries in $(COVERAGE_THRESHOLDS_FILE) -- the gate would pass vacuously"; exit 1; fi; \
@@ -736,17 +752,32 @@ _test_vscode_extension: _vsix_bundle
 	  ./node_modules/.bin/vscode-test --coverage --coverage-output coverage \
 	    --coverage-reporter text-summary --coverage-reporter json-summary --coverage-reporter html 2>&1 | tee -a test.log
 
+# Gates EVERY metric the summary reports, not lines alone. Lines-only was the
+# dishonest half of this gate: branches and functions were measured, printed by
+# the text-summary reporter, and then thrown away, so a module could add an
+# untested `else` arm or an unreachable handler without moving the number the
+# gate reads. All four are held to the one threshold the project declares.
 _coverage_check_vscode_extension:
 	@if [ ! -f "$(COVERAGE_THRESHOLDS_FILE)" ]; then echo "FAIL: $(COVERAGE_THRESHOLDS_FILE) not found"; exit 1; fi; \
 	THRESHOLD=$$(jq -r '.projects["vscode-extension"].threshold' "$(COVERAGE_THRESHOLDS_FILE)"); \
-	if [ ! -f "$(EXT_DIR)/coverage/coverage-summary.json" ]; then \
+	SUMMARY="$(EXT_DIR)/coverage/coverage-summary.json"; \
+	if [ ! -f "$$SUMMARY" ]; then \
 	  echo "[vscode-extension] FAIL: coverage-summary.json not produced"; exit 1; \
 	fi; \
-	PCT=$$(jq -r '.total.lines.pct' "$(EXT_DIR)/coverage/coverage-summary.json"); \
-	PCT_INT=$$(echo "$$PCT" | awk '{printf "%d", $$1}'); \
-	echo "[vscode-extension] coverage: $${PCT}% (threshold: $${THRESHOLD}%)"; \
-	if [ "$$PCT_INT" -lt "$$THRESHOLD" ]; then echo "[vscode-extension] FAIL: $${PCT}% < $${THRESHOLD}%"; exit 1; fi; \
-	echo "[vscode-extension] OK: $${PCT}% >= $${THRESHOLD}%"
+	SHORTFALL=""; \
+	for METRIC in lines statements branches functions; do \
+	  PCT=$$(jq -r --arg m "$$METRIC" '.total[$$m].pct' "$$SUMMARY"); \
+	  if [ "$$PCT" = "null" ]; then \
+	    echo "[vscode-extension] FAIL: the summary reports no $$METRIC total"; exit 1; \
+	  fi; \
+	  PCT_INT=$$(echo "$$PCT" | awk '{printf "%d", $$1}'); \
+	  echo "[vscode-extension] $$METRIC: $${PCT}% (threshold: $${THRESHOLD}%)"; \
+	  if [ "$$PCT_INT" -lt "$$THRESHOLD" ]; then SHORTFALL="$$SHORTFALL $$METRIC=$${PCT}%"; fi; \
+	done; \
+	if [ -n "$$SHORTFALL" ]; then \
+	  echo "[vscode-extension] FAIL: below $${THRESHOLD}% -$$SHORTFALL"; exit 1; \
+	fi; \
+	echo "[vscode-extension] OK: lines, statements, branches and functions all >= $${THRESHOLD}%"
 
 # =============================================================================
 # Repo-Specific Targets

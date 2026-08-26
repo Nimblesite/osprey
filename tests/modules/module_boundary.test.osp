@@ -1,0 +1,70 @@
+/// Default surface for [MODULES-MODULE] and [MODULES-EXPORTS]: a closed,
+/// stateless declaration boundary whose items are private until exported, with
+/// nested plain modules and module-owned constants.
+
+namespace billing;
+
+module Tax {
+    /// Unascribed module items are private unless marked `export`.
+    let rate = 10
+
+    /// A private helper is callable from its own module only.
+    fn hundredths(cents) = intDiv((cents * rate) ?: 0, 100) ?: 0
+
+    export fn add(cents) = (cents + hundredths(cents)) ?: cents
+
+    export fn rateUsed() = rate
+
+    /// A nested plain module is itself a closed boundary.
+    export module Rounding {
+        let step = 5
+
+        /// A private nested item stays private to the nested module.
+        fn remainder(cents) = (cents % step) ?: 0
+
+        export fn down(cents) = (cents - remainder(cents)) ?: cents
+    }
+
+    /// The parent reaches its own nested module without qualification.
+    export fn addRounded(cents) = Rounding::down(add(cents))
+}
+
+module Ledger {
+    /// A module reads another module's exported surface, not its privates.
+    export fn withTax(cents) = Tax::add(cents)
+
+    export fn label(cents) = "cents=${withTax(cents)}"
+}
+
+/// Exported functions compute across the private constant and helper.
+fn exportedSurfaceCase() = checkAll("Tax exported surface", [
+    Tax::add(100) == 110,
+    Tax::add(0) == 0,
+    Tax::add(1) == 1,
+    Tax::add(9) == 9,
+    Tax::add(10) == 11,
+    Tax::rateUsed() == 10
+])
+
+/// Nested modules are addressable through their exporting parent.
+fn nestedModuleCase() = checkAll("nested module boundary", [
+    Tax::Rounding::down(13) == 10,
+    Tax::Rounding::down(10) == 10,
+    Tax::Rounding::down(4) == 0,
+    Tax::addRounded(100) == 110,
+    Tax::addRounded(37) == 40,
+    Tax::addRounded(9) == 5
+])
+
+/// One module consuming another's exports keeps both boundaries intact.
+fn crossModuleCase() = checkAll("cross-module consumption", [
+    Ledger::withTax(200) == 220,
+    Ledger::withTax(100) == Tax::add(100),
+    Ledger::label(100) == "cents=110",
+    Ledger::label(0) == "cents=0"
+])
+
+print("${Tax::add(100)} ${Tax::Rounding::down(13)} ${Tax::addRounded(37)} ${Ledger::label(200)}")
+test("module exports expose only marked items", exportedSurfaceCase)
+test("nested plain modules nest their boundaries", nestedModuleCase)
+test("modules consume each other through exports", crossModuleCase)

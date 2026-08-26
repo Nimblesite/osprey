@@ -244,6 +244,13 @@ fn gen_bind(cg: &mut Codegen, name: &str, value: &Expr, position: Option<Positio
         Some(inner) => crate::result::fit_to_inner(cg, v, inner)?,
         None => v,
     };
+    // A bound `Fiber<T>`/`Channel<T>` carries its element ABI from INFERENCE,
+    // not from whatever the right-hand side happened to know. `Channel(2)` has
+    // no element yet, an alias copies whatever the original was tagged with,
+    // and a handle received before its first `send` was tagged with nothing at
+    // all — each of those made `recv` hand back the raw `i64` wire word, so a
+    // list element arrived as an integer ([CONCURRENCY-CHANNEL]).
+    let v = tag_handle_element(cg, position, v);
     // A non-lambda (re)binding invalidates any stale beta-reduction entry or
     // call alias for the name — `mut f = fn(x) => …; f = makeAdder(10)` must
     // call the new closure, not the old inline body.
@@ -260,6 +267,24 @@ fn gen_bind(cg: &mut Codegen, name: &str, value: &Expr, position: Option<Positio
     crate::arc::bind_owned(cg, name, &v);
     cg.bind(name.to_string(), v);
     Ok(())
+}
+
+/// Re-tag a bound handle with the element ABI inference resolved for it. Not a
+/// handle, or a handle whose element is still polymorphic: unchanged.
+fn tag_handle_element(cg: &Codegen, position: Option<Position>, value: Value) -> Value {
+    let Some(ty) = cg.prog.let_type(position) else {
+        return value;
+    };
+    let Some(sig) = crate::builder::FiberSig::of(ty) else {
+        return value;
+    };
+    let owner = match ty {
+        osprey_types::Type::Con { args, .. } => crate::types::elem_tag(&cg.prog, args.first()),
+        _ => None,
+    };
+    let mut tagged = sig.restore(value);
+    tagged.fiber_elem_owner = owner;
+    tagged
 }
 
 /// The concrete function type and closure ABI a file-scope lambda binding

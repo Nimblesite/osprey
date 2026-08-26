@@ -1,0 +1,84 @@
+/// Default surface for [MODULES-STATE], [MODULES-STATE-MODULE],
+/// [MODULES-STATE-SOURCE-OF-TRUTH] and [MODULES-INIT]: durable module-owned
+/// cells live only inside a qualifying installer, are reachable only through
+/// the module's own exported effect, and are allocated fresh per installer call.
+
+namespace metrics;
+
+state module Tally {
+    /// The assembler removes these cells from module scope and injects a fresh
+    /// pair into every call of the installer below.
+    mut total = 0
+    mut calls = 0
+
+    export effect Counter {
+        add : fn(int) -> int
+        reads : fn() -> int
+        reset : fn() -> int
+    }
+
+    /// The one lexical handler that owns the cells [MODULES-STATE-MODULE].
+    export fn withTally(body) = handle Counter
+        add amount => {
+            total = (total + amount) ?: total
+            calls = (calls + 1) ?: calls
+            total
+        }
+        reads => calls
+        reset => {
+            let seen = total
+            total = 0
+            seen
+        }
+    in body()
+}
+
+/// Sums three additions inside one installed scope.
+fn threeAdds() = {
+    let a = perform Tally::Counter.add(1)
+    let b = perform Tally::Counter.add(10)
+    let c = perform Tally::Counter.add(100)
+    "${a}/${b}/${c}"
+}
+
+/// Reports the call counter alongside the running total.
+fn addThenCount() = {
+    let sum = perform Tally::Counter.add(5)
+    "${sum}:${perform Tally::Counter.reads()}"
+}
+
+/// Clears the cell and reports the value it held.
+fn addThenReset() = {
+    let ignored = perform Tally::Counter.add(9)
+    let cleared = perform Tally::Counter.reset()
+    "${cleared}->${perform Tally::Counter.reads()}"
+}
+
+/// Cell writes accumulate across operations inside one installed scope.
+fn accumulationCase() = checkAll("state accumulates within one scope", [
+    Tally::withTally(threeAdds) == "1/11/111",
+    Tally::withTally(addThenCount) == "5:1",
+    Tally::withTally(addThenReset) == "9->1"
+])
+
+/// Every installer call allocates its own cells [MODULES-STATE-MODULE].
+fn freshCellsCase() = checkAll("each installer call gets fresh cells", [
+    Tally::withTally(threeAdds) == Tally::withTally(threeAdds),
+    Tally::withTally(addThenCount) == "5:1",
+    Tally::withTally(addThenCount) == "5:1",
+    Tally::withTally(threeAdds) == "1/11/111",
+    Tally::withTally(addThenReset) == "9->1"
+])
+
+/// Reading through the effect is the only route to the owned state.
+fn effectMediatedCase() = checkAll("all access is effect-mediated", [
+    Tally::withTally(fn() => perform Tally::Counter.reads()) == 0,
+    Tally::withTally(fn() => perform Tally::Counter.reset()) == 0,
+    Tally::withTally(fn() => perform Tally::Counter.add(3)) == 3,
+    Tally::withTally(fn() => "${perform Tally::Counter.add(2)}") == "2"
+])
+
+print("${Tally::withTally(threeAdds)} ${Tally::withTally(addThenCount)} ${Tally::withTally(addThenReset)}")
+test("owned cells accumulate inside one installer scope", accumulationCase)
+test("installer calls do not share cells", freshCellsCase)
+test("owned state is reachable only through the effect", effectMediatedCase)

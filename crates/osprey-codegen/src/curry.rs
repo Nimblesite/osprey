@@ -93,7 +93,7 @@ pub(crate) fn apply_groups(
     // by the one type inference recorded for its position
     // ([`crate::expr::inline_sig`]).
     let sig = crate::expr::inline_sig(cg, *position);
-    crate::expr::reduce_lambda(cg, parameters, inner, values, sig.as_ref(), rest)
+    crate::expr::reduce_lambda(cg, parameters, inner, values, sig.as_ref(), rest, *position)
 }
 
 /// Lower one group's arguments, named ones in their parameter's position.

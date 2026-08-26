@@ -165,6 +165,94 @@ static void test_io_failures_report_a_truthful_reason(void) {
   assert(osp_io_error() != NULL);
 }
 
+#define FILE_DIRECTORY_PATH "/tmp/osprey_file_runtime_dir"
+
+// A read that fails AFTER fopen succeeded must not hand back a partial buffer
+// as if it were the file. Reading a directory is exactly that shape: the open
+// is legal, every fread fails, and the only witness is ferror. Dropping it
+// would return an empty string for a path the process could not read — the
+// same silent-success defect the write path guards against.
+// Implements [BUILTIN-FILE].
+static void test_read_file_reports_a_stream_error(void) {
+  (void)rmdir(FILE_DIRECTORY_PATH);
+  assert(mkdir(FILE_DIRECTORY_PATH, 0700) == 0);
+  char *content = read_file((char *)(uintptr_t)FILE_DIRECTORY_PATH);
+  assert(content == NULL && "a stream error must not yield a buffer");
+  const char *reason = osp_io_error();
+  assert(reason != NULL && "a failed read owes a reason");
+  assert(strncmp(reason, "readFile: ", strlen("readFile: ")) == 0 &&
+         "the reason names the operation that failed");
+  assert(strstr(reason, FILE_DIRECTORY_PATH) != NULL &&
+         "the reason names the path that failed");
+  assert(rmdir(FILE_DIRECTORY_PATH) == 0);
+}
+
+// The reason channel is the only thing between an Osprey `Error { message }`
+// and the placeholder word "Error", so every shape it can be handed must
+// produce a truthful sentence: a real errno, an errno the C library cannot
+// name, a failure with no errno at all, and the NULL op/subject the header
+// documents. Implements [BUILTIN-FILE-ERRMSG].
+static void test_error_channel_shapes(void) {
+  const char *subject = "/some/path";
+  const char *read_prefix = "readFile: /some/path: ";
+  osp_io_error_clear();
+  assert(osp_io_error() == NULL && "a cleared channel holds nothing");
+  assert(osp_io_error_take() == NULL &&
+         "take on a cleared channel yields nothing to own");
+
+  osp_io_error_set("readFile", subject, ENOENT);
+  const char *reason = osp_io_error();
+  assert(reason != NULL);
+  assert(strncmp(reason, read_prefix, strlen(read_prefix)) == 0 &&
+         "the sentence is op, then subject, then reason");
+  assert(strstr(reason, strerror(ENOENT)) != NULL &&
+         "a real errno is spelled out, not printed as a number");
+
+  // A reason must OUTLIVE the channel: `take` hands back an owned copy, so a
+  // Result carrying it cannot later read whatever failed most recently.
+  char *owned = osp_io_error_take();
+  assert(owned != NULL && strcmp(owned, reason) == 0);
+  osp_io_error_set("writeFile", "/other", EACCES);
+  assert(strcmp(owned, reason) != 0 &&
+         "the taken copy is independent of the channel buffer");
+  assert(strstr(owned, "readFile") != NULL &&
+         "the taken copy still reads the failure it was taken from");
+  assert(strstr(osp_io_error(), "writeFile: /other: ") == osp_io_error());
+  assert(strstr(osp_io_error(), strerror(EACCES)) != NULL);
+  free(owned);
+
+  // An errno the C library cannot name still yields text — never an empty or
+  // uninitialised tail that would read as a successful, reasonless failure.
+  const int unnameable = 999999;
+  osp_io_error_set("readFile", subject, unnameable);
+  const char *unknown = osp_io_error();
+  assert(unknown != NULL);
+  assert(strncmp(unknown, read_prefix, strlen(read_prefix)) == 0);
+  assert(strlen(unknown) > strlen(read_prefix) &&
+         "an unnameable errno still produces a reason");
+  assert(strstr(unknown, strerror(ENOENT)) == NULL &&
+         "and it is not the previous failure's reason left in the buffer");
+
+  // A failure with no errno at all is named as such, not reported as errno 0
+  // (which spells "Undefined error: 0" or, worse, "Success").
+  osp_io_error_set("writeFile", subject, 0);
+  assert(strcmp(osp_io_error(), "writeFile: /some/path: unspecified failure") ==
+             0 &&
+         "a cause that is not an errno is stated plainly");
+
+  // NULL op and NULL subject are documented inputs, not crashes.
+  osp_io_error_set("readFile", NULL, EINVAL);
+  assert(strstr(osp_io_error(), "readFile: <null path>: ") == osp_io_error());
+  osp_io_error_set(NULL, subject, EINVAL);
+  assert(strstr(osp_io_error(), "io: /some/path: ") == osp_io_error());
+  osp_io_error_set(NULL, NULL, 0);
+  assert(strcmp(osp_io_error(), "io: <null path>: unspecified failure") == 0);
+
+  osp_io_error_clear();
+  assert(osp_io_error() == NULL && "clear retires the reason");
+  assert(osp_io_error_take() == NULL);
+}
+
 int main(void) {
   printf("Running File Runtime Tests...\n\n");
 
@@ -172,6 +260,8 @@ int main(void) {
   test_read_file_non_seekable();
   test_write_file_reports_a_failed_flush();
   test_io_failures_report_a_truthful_reason();
+  test_read_file_reports_a_stream_error();
+  test_error_channel_shapes();
 
   printf("=== ALL FILE RUNTIME TESTS PASSED ===\n");
   return 0;

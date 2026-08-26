@@ -2,6 +2,11 @@ ok: loaded
 err: missing
 active
 inactive
+score 27
+reason empty
+a=9
+len 2
 ok 1 - user-defined union variants preserve their tags and payloads
-1..1
-# tests=1 passed=1 failed=0 skipped=0
+ok 2 - built maps support indexed lookup
+1..2
+# tests=2 passed=2 failed=0 skipped=0

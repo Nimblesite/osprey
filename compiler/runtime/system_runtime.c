@@ -175,7 +175,29 @@ static void *process_monitor_thread(void *arg) {
   return NULL;
 }
 
-// Spawn process with event handler - similar to HTTP server pattern
+// Close both ends of a pipe pair created for a process that will not run.
+static void close_pipe_pair(const int fds[2]) {
+  close(fds[0]);
+  close(fds[1]);
+}
+
+// Release a process record that never reached its monitor thread. The caller
+// holds process_mutex and no other thread can see `proc`, so this is the only
+// owner. Returns `code` so every half-built teardown is one statement and the
+// four paths that share it cannot drift apart.
+static int64_t abandon_process(ProcessResult *proc, int64_t code) {
+  free(proc->command);
+  pthread_mutex_destroy(&proc->mutex);
+  free(proc);
+  pthread_mutex_unlock(&process_mutex);
+  return code;
+}
+
+// Spawn process with event handler - similar to HTTP server pattern.
+// Implements [BUILTIN-PROCESS] and [BUILTIN-PROCESS-FAILURE]: the argument
+// check runs before the capacity check, and every one of the five failure
+// codes below leaves the process exactly as the call found it -- no descriptor
+// held, no child unreaped, no table slot occupied, one handle number spent.
 int64_t spawn_process_with_handler(const char *command, ProcessEventHandler handler) {
   if (!command || !handler) {
     return -1;
@@ -195,20 +217,35 @@ int64_t spawn_process_with_handler(const char *command, ProcessEventHandler hand
     return -3; // Memory allocation failed
   }
 
-  // Initialize process structure
+  // Initialize process structure. The mutex comes FIRST and its result is
+  // checked, because every teardown below destroys it: abandoning a record
+  // whose mutex was never initialised is undefined, and one whose mutex
+  // silently failed to initialise is a record the monitor thread will lock.
   proc->process_id = process_id;
-  proc->command = strdup(command); // strdup handles const char * correctly
   proc->exit_code = -999; // Not finished yet
   proc->is_running = true;
   proc->handler = handler;
-  pthread_mutex_init(&proc->mutex, NULL);
-
-  // Create pipes for stdout and stderr
-  if (pipe(proc->stdout_pipe) != 0 || pipe(proc->stderr_pipe) != 0) {
-    free(proc->command);
-    free(proc);
+  if (pthread_mutex_init(&proc->mutex, NULL) != 0) {
+    free(proc); // nothing to destroy and nothing else owned yet
     pthread_mutex_unlock(&process_mutex);
-    return -4; // Pipe creation failed
+    return -3; // Memory allocation failed
+  }
+  // Unchecked, this left `command` NULL on a record the monitor thread and
+  // every diagnostic read.
+  proc->command = strdup(command);
+  if (proc->command == NULL) {
+    return abandon_process(proc, -3); // Memory allocation failed
+  }
+
+  // Create pipes for stdout and stderr. Checked separately: when the table has
+  // room for the first pair and not the second, folding them into one condition
+  // leaks the pair that succeeded.
+  if (pipe(proc->stdout_pipe) != 0) {
+    return abandon_process(proc, -4); // Pipe creation failed
+  }
+  if (pipe(proc->stderr_pipe) != 0) {
+    close_pipe_pair(proc->stdout_pipe);
+    return abandon_process(proc, -4); // Pipe creation failed
   }
 
   // Fork the process
@@ -238,32 +275,32 @@ int64_t spawn_process_with_handler(const char *command, ProcessEventHandler hand
     // Create monitoring thread
     if (pthread_create(&proc->monitor_thread, NULL, process_monitor_thread,
                        proc) != 0) {
-      // Thread creation failed, clean up
-      close(proc->stdout_pipe[0]);
-      close(proc->stdout_pipe[1]);
-      close(proc->stderr_pipe[0]);
-      close(proc->stderr_pipe[1]);
-      kill(proc->pid, SIGTERM);
-      waitpid(proc->pid, NULL, 0);
-      free(proc->command);
-      free(proc);
+      // Thread creation failed: nothing will ever reap the child, so end it
+      // here rather than leave an unmonitored process behind.
+      close_pipe_pair(proc->stdout_pipe);
+      close_pipe_pair(proc->stderr_pipe);
+      // SIGKILL, not SIGTERM. This child has no monitor and has never produced
+      // an observable byte, so there is nothing to shut down gracefully -- and
+      // the caller is holding process_mutex across the reap below. A child
+      // that ignores TERM would park that wait, and the mutex with it,
+      // forever: "the monitor thread could not start" would become a program
+      // that never returns. KILL cannot be caught, blocked or ignored, so the
+      // reap is bounded.
+      kill(proc->pid, SIGKILL);
+      while (waitpid(proc->pid, NULL, 0) < 0 && errno == EINTR) {
+        // Interrupted before the child was collected; it is still owed to us.
+      }
       processes[process_id] = NULL;
-      pthread_mutex_unlock(&process_mutex);
-      return -5; // Thread creation failed
+      return abandon_process(proc, -5); // Thread creation failed
     }
 
     pthread_mutex_unlock(&process_mutex);
     return process_id;
   } else {
     // Fork failed
-    close(proc->stdout_pipe[0]);
-    close(proc->stdout_pipe[1]);
-    close(proc->stderr_pipe[0]);
-    close(proc->stderr_pipe[1]);
-    free(proc->command);
-    free(proc);
-    pthread_mutex_unlock(&process_mutex);
-    return -6; // Fork failed
+    close_pipe_pair(proc->stdout_pipe);
+    close_pipe_pair(proc->stderr_pipe);
+    return abandon_process(proc, -6); // Fork failed
   }
 }
 
@@ -374,6 +411,25 @@ static ProcessResult *processes[MAX_PROCESSES];
 static int64_t next_process_id = 1;
 static pthread_mutex_t process_mutex = PTHREAD_MUTEX_INITIALIZER;
 
+// Close both ends of a handle pair created for a process that will not run.
+static void close_handle_pair(HANDLE first, HANDLE second) {
+  CloseHandle(first);
+  CloseHandle(second);
+}
+
+// Release a process record that never reached its monitor thread. The caller
+// holds process_mutex and no other thread can see `proc`, so this is the only
+// owner. Returns `code` so every half-built teardown is one statement and the
+// four paths that share it cannot drift apart -- and so this half of the file
+// releases exactly what the POSIX half does, the per-record mutex included.
+static int64_t abandon_process(ProcessResult *proc, int64_t code) {
+  free(proc->command);
+  pthread_mutex_destroy(&proc->mutex);
+  free(proc);
+  pthread_mutex_unlock(&process_mutex);
+  return code;
+}
+
 // Drain whatever is currently readable on a pipe, dispatching it to the handler.
 static void drain_pipe(ProcessResult *proc, HANDLE pipe, int64_t event_type) {
   DWORD avail = 0;
@@ -427,6 +483,11 @@ static void *process_monitor_thread(void *arg) {
   return NULL;
 }
 
+// The Win32 twin. [BUILTIN-PROCESS-FAILURE] is platform-neutral, so this must
+// unwind exactly as the POSIX path does: pipes checked separately so a failed
+// second one does not strand the first, the record's mutex destroyed on every
+// teardown, and the unmonitorable child both ended and WAITED FOR before its
+// handle is released.
 int64_t spawn_process_with_handler(const char *command,
                                    ProcessEventHandler handler) {
   if (!command || !handler) {
@@ -447,25 +508,41 @@ int64_t spawn_process_with_handler(const char *command,
   }
 
   proc->process_id = process_id;
-  proc->command = strdup(command);
   proc->exit_code = -999;
   proc->is_running = true;
   proc->handler = handler;
-  pthread_mutex_init(&proc->mutex, NULL);
-
-  // Inheritable pipes for the child's stdout/stderr.
-  SECURITY_ATTRIBUTES sa = {sizeof(sa), NULL, TRUE};
-  HANDLE out_rd = NULL, out_wr = NULL, err_rd = NULL, err_wr = NULL;
-  if (!CreatePipe(&out_rd, &out_wr, &sa, 0) ||
-      !CreatePipe(&err_rd, &err_wr, &sa, 0)) {
-    free(proc->command);
+  if (pthread_mutex_init(&proc->mutex, NULL) != 0) {
     free(proc);
     pthread_mutex_unlock(&process_mutex);
-    return -4;
+    return -3;
   }
-  // The read ends stay in this process — don't let the child inherit them.
-  SetHandleInformation(out_rd, HANDLE_FLAG_INHERIT, 0);
-  SetHandleInformation(err_rd, HANDLE_FLAG_INHERIT, 0);
+  proc->command = strdup(command);
+  if (proc->command == NULL) {
+    return abandon_process(proc, -3);
+  }
+
+  // Inheritable pipes for the child's stdout/stderr. Checked separately for
+  // the same reason as the POSIX pipes: one combined condition leaks the pair
+  // that succeeded when the second one fails.
+  SECURITY_ATTRIBUTES sa = {sizeof(sa), NULL, TRUE};
+  HANDLE out_rd = NULL, out_wr = NULL, err_rd = NULL, err_wr = NULL;
+  if (!CreatePipe(&out_rd, &out_wr, &sa, 0)) {
+    return abandon_process(proc, -4);
+  }
+  if (!CreatePipe(&err_rd, &err_wr, &sa, 0)) {
+    close_handle_pair(out_rd, out_wr);
+    return abandon_process(proc, -4);
+  }
+  // The read ends stay in this process. If they cannot be marked
+  // non-inheritable the child would hold a copy of each, and the reads here
+  // would never see EOF because the write end is not the only one left open.
+  // That is a spawn that can never finish, so it is a spawn that must fail.
+  if (!SetHandleInformation(out_rd, HANDLE_FLAG_INHERIT, 0) ||
+      !SetHandleInformation(err_rd, HANDLE_FLAG_INHERIT, 0)) {
+    close_handle_pair(out_rd, out_wr);
+    close_handle_pair(err_rd, err_wr);
+    return abandon_process(proc, -4);
+  }
 
   // Build "cmd.exe /c <command>" in a mutable buffer (CreateProcess needs one).
   char cmdline[8192];
@@ -486,12 +563,8 @@ int64_t spawn_process_with_handler(const char *command,
   CloseHandle(err_wr);
 
   if (!ok) {
-    CloseHandle(out_rd);
-    CloseHandle(err_rd);
-    free(proc->command);
-    free(proc);
-    pthread_mutex_unlock(&process_mutex);
-    return -6;
+    close_handle_pair(out_rd, err_rd);
+    return abandon_process(proc, -6);
   }
 
   CloseHandle(pi.hThread);
@@ -503,15 +576,20 @@ int64_t spawn_process_with_handler(const char *command,
   // Monitor thread fires user callbacks concurrently with the caller.
   osp_mem_notify_multithreaded();
   if (pthread_create(&proc->monitor_thread, NULL, process_monitor_thread, proc) != 0) {
-    TerminateProcess(proc->process, 1);
+    // Same contract as the POSIX -5 arm: end the unmonitorable child and WAIT
+    // for it before releasing the handle. The WAIT is what proves nothing is
+    // left, not the request: TerminateProcess is asynchronous, so its success
+    // only says the kernel accepted it, and its one realistic failure is that
+    // the process has already exited -- which is the same outcome. So both
+    // branches wait. This cannot park the way a SIGTERM can: the handle came
+    // from CreateProcess with full access and termination is not something the
+    // target may decline.
+    (void)TerminateProcess(proc->process, 1);
+    WaitForSingleObject(proc->process, INFINITE);
     CloseHandle(proc->process);
-    CloseHandle(out_rd);
-    CloseHandle(err_rd);
-    free(proc->command);
-    free(proc);
+    close_handle_pair(out_rd, err_rd);
     processes[process_id] = NULL;
-    pthread_mutex_unlock(&process_mutex);
-    return -5;
+    return abandon_process(proc, -5);
   }
 
   pthread_mutex_unlock(&process_mutex);

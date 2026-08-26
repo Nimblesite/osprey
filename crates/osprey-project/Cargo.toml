@@ -10,5 +10,11 @@ repository.workspace = true
 osprey-ast = { workspace = true }
 osprey-syntax = { workspace = true }
 
+# Type-checking the ASSEMBLED program is how the module-boundary tests prove a
+# flattened project is still a well-typed program — the assembler alone cannot
+# tell an unreachable constructor from a reachable one.
+[dev-dependencies]
+osprey-types = { workspace = true }
+
 [lints]
 workspace = true

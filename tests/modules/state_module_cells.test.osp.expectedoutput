@@ -1,0 +1,6 @@
+1/11/111 5:1 9->1
+ok 1 - owned cells accumulate inside one installer scope
+ok 2 - installer calls do not share cells
+ok 3 - owned state is reachable only through the effect
+1..3
+# tests=3 passed=3 failed=0 skipped=0

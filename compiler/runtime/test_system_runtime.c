@@ -4,18 +4,17 @@
 // test_file_runtime.c with the source it covers. Linked with memory_runtime.c
 // by the Makefile's _test_c_runtime; POSIX-only harness.
 #include <assert.h>
+#include <errno.h>
 #include <pthread.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/resource.h>
+#include <sys/wait.h>
 #include <unistd.h>
 
-// system_runtime.c caps concurrently tracked processes at MAX_PROCESSES and
-// never recycles an id. The probe below must be free to burn every one of
-// them, so it bounds itself well past that cap rather than guessing it.
-#define MAX_PROCESSES_PROBE_LIMIT 4000
+#include "test_system_shared.h"
 
 // Include the system runtime header (we'll define the interface)
 extern int64_t spawn_process_with_handler(const char *command,
@@ -238,8 +237,7 @@ static void capture_reset(void) {
   pthread_mutex_unlock(&g_capture.mutex);
 }
 
-static void capture_handler(int64_t process_id, int64_t event_type,
-                            char *data) {
+void capture_handler(int64_t process_id, int64_t event_type, char *data) {
   (void)process_id;
   pthread_mutex_lock(&g_capture.mutex);
   switch (event_type) {
@@ -357,59 +355,12 @@ static void test_signalled_child_reports_minus_one(void) {
   cleanup_process(pid);
 }
 
-// Deny every new descriptor for the duration of `probe`. `dup` hands back the
-// LOWEST free descriptor, so capping RLIMIT_NOFILE at that number makes each
-// later allocation fail with EMFILE and nothing already open change. This is
-// the only portable way to reach the out-of-descriptors branches: no argument
-// can provoke them, and they are the ones that run when a long-lived program
-// finally exhausts its table.
-static void with_no_free_descriptors(void (*probe)(void)) {
-  int probe_fd = dup(STDIN_FILENO);
-  assert(probe_fd >= 0);
-  assert(close(probe_fd) == 0);
-
-  struct rlimit saved;
-  assert(getrlimit(RLIMIT_NOFILE, &saved) == 0);
-  struct rlimit tight = saved;
-  tight.rlim_cur = (rlim_t)probe_fd;
-  assert(setrlimit(RLIMIT_NOFILE, &tight) == 0);
-
-  probe();
-
-  assert(setrlimit(RLIMIT_NOFILE, &saved) == 0);
-}
-
-// popen cannot get a descriptor, so the legacy blocking spawn reports failure
-// rather than reading from a pipe it never opened.
-static void probe_legacy_spawn_without_descriptors(void) {
-  assert(spawn_process("echo unreachable") == NULL);
-}
-
-// Every id burned here is burned for the rest of the process, so this runs
-// LAST. `next_process_id` only ever increments — cleanup_process frees the
-// slot but never returns the id — so a program that has spawned MAX_PROCESSES
-// times can never spawn again even with every slot free. The -2 below is that
-// ceiling, reached without a single fork because the descriptor cap fails each
-// attempt at the pipe, one id later.
-static void probe_spawn_exhausts_descriptors_then_ids(void) {
-  int saw_pipe_failure = 0;
-  int saw_id_exhaustion = 0;
-  for (int attempt = 0; attempt < MAX_PROCESSES_PROBE_LIMIT; attempt++) {
-    int64_t result = spawn_process_with_handler("true", capture_handler);
-    assert(result == -4 || result == -2); // never a live process id
-    if (result == -4) {
-      saw_pipe_failure = 1;
-    } else {
-      saw_id_exhaustion = 1;
-      break;
-    }
-  }
-  assert(saw_pipe_failure); // pipe() denied, reported as -4
-  assert(saw_id_exhaustion); // ids ran out, reported as -2
-}
-
 int main(void) {
   printf("Running System Runtime Tests...\n\n");
+
+  // FIRST: the injected-failure seams need a process with exactly one thread
+  // and no children of its own.
+  run_spawn_failure_tests();
 
   test_basic_process_spawn();
   test_multiple_processes();
@@ -422,9 +373,8 @@ int main(void) {
   test_process_argument_rejection();
   test_legacy_spawn_process();
   test_signalled_child_reports_minus_one();
-  with_no_free_descriptors(probe_legacy_spawn_without_descriptors);
   // LAST: exhausts the process-id space for the rest of this process.
-  with_no_free_descriptors(probe_spawn_exhausts_descriptors_then_ids);
+  run_descriptor_exhaustion_tests();
 
   printf("=== ALL SYSTEM RUNTIME TESTS PASSED ===\n");
   return 0;

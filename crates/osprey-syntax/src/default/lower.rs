@@ -130,13 +130,20 @@ impl<'a> Lowerer<'a> {
                 index += 1;
                 continue;
             };
-            // A file-scoped namespace owns every following declaration in the
-            // file. Canonicalise that relationship here rather than making
-            // later phases reinterpret source order. [MODULES-FILE-SCOPED-NAMESPACE]
-            if node.kind() == "namespace_declaration" && node.child_by_field_name("body").is_none()
-            {
+            // A file-scoped namespace owns the declarations after its header UP
+            // TO the next file-scoped header, which opens a SIBLING namespace.
+            // Canonicalise that relationship here rather than making later
+            // phases reinterpret source order. [MODULES-FILE-SCOPED-NAMESPACE]
+            //
+            // Taking the whole remainder and stopping instead filed every later
+            // declaration under the FIRST namespace: `namespace two;` was
+            // lowered as an ordinary nested statement and `module B` after it
+            // answered to `one::B::v`, a name the source never wrote. Nothing
+            // was reported — the call site asking for `two::B::v` was blamed.
+            if Self::is_file_scoped_namespace(node) {
+                let end = self.next_file_scoped(&source_statements, index.saturating_add(1));
                 let body = source_statements
-                    .get(index.saturating_add(1)..)
+                    .get(index.saturating_add(1)..end)
                     .unwrap_or_default()
                     .iter()
                     .filter_map(|s| self.first_named(*s))
@@ -148,7 +155,8 @@ impl<'a> Lowerer<'a> {
                     file_scoped: true,
                     position: Some(self.field_pos(node, "keyword")),
                 });
-                break;
+                index = end;
+                continue;
             }
             if let Some(stmt) = self.lower_stmt(node) {
                 statements.push(stmt);
@@ -156,6 +164,27 @@ impl<'a> Lowerer<'a> {
             index += 1;
         }
         Program { statements }
+    }
+
+    /// A `namespace x;` header with no `{ … }` body — it scopes the rest of the
+    /// file rather than a block. [MODULES-FILE-SCOPED-NAMESPACE]
+    fn is_file_scoped_namespace(node: Node<'_>) -> bool {
+        node.kind() == "namespace_declaration" && node.child_by_field_name("body").is_none()
+    }
+
+    /// Index of the next file-scoped namespace header at or after `from`, or the
+    /// end of the file when there is none — the boundary of what the header
+    /// before it owns.
+    fn next_file_scoped(&self, statements: &[Node<'_>], from: usize) -> usize {
+        statements
+            .iter()
+            .enumerate()
+            .skip(from)
+            .find(|(_, wrapper)| {
+                self.first_named(**wrapper)
+                    .is_some_and(Self::is_file_scoped_namespace)
+            })
+            .map_or(statements.len(), |(at, _)| at)
     }
 
     pub(crate) fn lower_stmt(&self, node: Node<'_>) -> Option<Stmt> {

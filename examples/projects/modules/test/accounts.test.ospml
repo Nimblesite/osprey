@@ -35,11 +35,6 @@ module Money
     positive cents = cents > 0
 
 module Json
-    unwrap : Result<string, Error> -> string
-    unwrap r = match r
-        Success value => value
-        Error message => ""
-
     escape : string -> string
     escape s =
         bslash = "\\"
@@ -84,15 +79,9 @@ module Accounts
 
     export row : Account -> string
     row a =
-        owner = match padEnd a.owner 12 " "
-            Success value => value
-            Error message => a.owner
-        cash = match padStart (Money::show a.balance) 9 " "
-            Success value => value
-            Error message => Money::show a.balance
-        id = match padStart (toString a.id) 2 " "
-            Success value => value
-            Error message => toString a.id
+        owner = padEnd a.owner 12 " " ?: a.owner
+        cash = padStart (Money::show a.balance) 9 " " ?: Money::show a.balance
+        id = padStart (toString a.id) 2 " " ?: toString a.id
         "│ ${id} │ ${owner} │ ${cash} │"
 
 q = "\""

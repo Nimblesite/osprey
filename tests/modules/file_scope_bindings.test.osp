@@ -1,0 +1,66 @@
+/// Default surface for [MODULES-FILE-SCOPE-BINDING] and [MODULES-INIT]: a
+/// file-scope `let` or `mut` is a declaration whose initializer runs where it is
+/// written, in source order, before the entry's statements. A function body
+/// reading one reads module storage, so it observes the value the handler arms
+/// most recently wrote rather than a copy taken at declaration time.
+
+effect Counter {
+    tick : fn(int) -> int
+}
+
+/// Performs two operations the file-scope handler below discharges.
+fn run() = (perform Counter.tick(3) + perform Counter.tick(4)) ?: 0
+
+/// A plain file-scope constant, readable from every function below it.
+let base = 100
+
+/// A cell the file-scope handler arm owns [EFFECTS-HANDLER-STATE].
+mut hits = 0
+
+/// The initializer runs here, in source order, before any entry statement.
+let total = handle Counter
+    tick amount => {
+        hits = (hits + amount) ?: hits
+        hits
+    }
+in run()
+
+/// Records the order in which the file-scope initializers completed.
+let trace = "base=${base},hits=${hits},total=${total}"
+
+/// Reads the live cell and the finished total, from outside the entry.
+fn summary() = "${hits} hits, total ${total}"
+
+/// A later function still reads the same module storage, not a copy.
+fn scaled() = (hits * base) ?: 0
+
+/// Both file-scope bindings are readable from ordinary function bodies.
+fn constantReadCase() = checkAll("functions read file-scope bindings", [
+    base == 100,
+    total == 10,
+    scaled() == 700,
+    ((base + total) ?: 0) == 110,
+    "${base}" == "100"
+])
+
+/// The handler arms ran during initialization, so the cell holds their writes.
+fn handlerOwnedCellCase() = checkAll("handler-owned cell is one shared storage", [
+    hits == 7,
+    summary() == "7 hits, total 10",
+    total == 10,
+    ((hits * 2) ?: 0) == 14,
+    summary() == "${hits} hits, total ${total}"
+])
+
+/// Initializers completed in source order, before the entry ran a statement.
+fn initializationOrderCase() = checkAll("initializers run in source order", [
+    trace == "base=100,hits=7,total=10",
+    trace == "base=${base},hits=${hits},total=${total}",
+    total == 10,
+    hits == 7
+])
+
+print("${summary()} ${scaled()} ${trace}")
+test("file-scope constants are readable from functions", constantReadCase)
+test("a handler-owned cell is one shared storage", handlerOwnedCellCase)
+test("file-scope initializers run in source order", initializationOrderCase)

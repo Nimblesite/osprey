@@ -227,23 +227,44 @@ pub(super) fn lower_items(items: Vec<MlItem>) -> Vec<Stmt> {
     ItemLower::default().lower_all(items)
 }
 
-/// A file-scoped namespace owns every declaration after its header. Imports
-/// before the header remain file-level edges.
+/// A file-scoped namespace owns the declarations after its header UP TO the
+/// next file-scoped header, which opens a SIBLING namespace rather than a
+/// nested one ([MODULES-FILE-SCOPED-NAMESPACE]). Imports before the first
+/// header remain file-level edges.
+///
+/// Handing the whole tail to `lower_items` instead nested every later header
+/// inside the first namespace's body, where `osprey_project::contribution` —
+/// which walks only TOP-LEVEL `Stmt::Namespace` — filed it as an ordinary
+/// declaration: the second namespace never registered and every statement
+/// written after its header was dropped, the program still exiting ZERO.
 fn lower_file_namespace(mut items: Vec<MlItem>, index: usize) -> Vec<Stmt> {
     let tail = items.split_off(index.saturating_add(1));
-    match items.pop() {
-        Some(MlItem::Namespace { name, pos, .. }) => {
-            let mut out = lower_items(items);
-            out.push(Stmt::Namespace {
-                name: lower_namespace_name(name),
-                body: lower_items(tail),
-                file_scoped: true,
-                position: Some(pos),
-            });
-            out
-        }
-        _ => lower_items(items),
-    }
+    let Some(MlItem::Namespace { name, pos, .. }) = items.pop() else {
+        return lower_items(items);
+    };
+    let (owned, rest) = split_at_next_file_namespace(tail);
+    let mut out = lower_items(items);
+    out.push(Stmt::Namespace {
+        name: lower_namespace_name(name),
+        body: lower_items(owned),
+        file_scoped: true,
+        position: Some(pos),
+    });
+    out.extend(lower_items(rest));
+    out
+}
+
+/// Split `items` before the next file-scoped namespace header: what the current
+/// namespace owns, and what the next header opens (empty when there is none).
+fn split_at_next_file_namespace(mut items: Vec<MlItem>) -> (Vec<MlItem>, Vec<MlItem>) {
+    let Some(at) = items
+        .iter()
+        .position(|item| matches!(item, MlItem::Namespace { body: None, .. }))
+    else {
+        return (items, Vec::new());
+    };
+    let rest = items.split_off(at);
+    (items, rest)
 }
 
 /// Stateful pairing of docs/signatures with the declaration they annotate.
@@ -1051,7 +1072,7 @@ fn lower_expr(expr: MlExpr) -> Expr {
         MlExpr::Int(n) => Expr::Integer(n),
         MlExpr::Float(f) => Expr::Float(f),
         MlExpr::Bool(b) => Expr::Bool(b),
-        MlExpr::Str(raw) => lower_string(&raw),
+        MlExpr::Str { raw, pos } => lower_string(&raw, Some(pos)),
         MlExpr::Ident(name) => Expr::Identifier(name),
         MlExpr::Path(path) => Expr::Path(SymbolPath {
             segments: path.segments,
@@ -1154,7 +1175,7 @@ fn lower_expr(expr: MlExpr) -> Expr {
 /// This mirrors the Default flavor's distinct `TypeConstructor`/`Update` nodes.
 fn lower_record(name: String, type_args: &[MlType], fields: Vec<MlField>) -> Expr {
     let fields = fields.into_iter().map(lower_field).collect();
-    if !super::parser::is_constructor(&name) {
+    if !super::parser::is_constructor(super::parser::constructor_segment(&name)) {
         return Expr::Update {
             record: name,
             fields,
@@ -1244,7 +1265,7 @@ fn lower_pattern(pattern: MlPattern) -> Pattern {
     match pattern {
         MlPattern::Wildcard => Pattern::Wildcard,
         MlPattern::Int(n) => Pattern::Literal(Box::new(Expr::Integer(n))),
-        MlPattern::Str(raw) => Pattern::Literal(Box::new(lower_string(&raw))),
+        MlPattern::Str(raw) => Pattern::Literal(Box::new(lower_string(&raw, None))),
         MlPattern::Bool(b) => Pattern::Literal(Box::new(Expr::Bool(b))),
         MlPattern::Bind(name) => Pattern::Binding(name),
         MlPattern::Structural { fields, open } => Pattern::Structural {
@@ -1354,18 +1375,33 @@ fn lower_application(func: MlExpr, arg: MlExpr) -> Expr {
 /// Lower a raw string token to a plain or interpolated string expression,
 /// reusing the Default frontend's escape/`${…}` handling with an ML fragment
 /// parser ([FLAVOR-FRONTEND]).
-fn lower_string(raw: &str) -> Expr {
+fn lower_string(raw: &str, pos: Option<Position>) -> Expr {
     if raw.contains("${") {
-        Expr::InterpolatedStr(lower_interpolation(raw, parse_fragment))
+        Expr::InterpolatedStr(lower_interpolation(
+            raw,
+            pos,
+            fragment_prefix(),
+            parse_fragment,
+        ))
     } else {
         Expr::Str(unquote(raw))
     }
 }
 
+/// The binding `parse_fragment` wraps a `${…}` fragment in. Its length is what
+/// [`lower_interpolation`] subtracts to map the mini-program's line-1 columns
+/// back onto the real source, so the two must come from this one string.
+const FRAGMENT_BINDING: &str = "__frag__ = ";
+
+/// [`FRAGMENT_BINDING`]'s width, as the column offset a rebase needs.
+fn fragment_prefix() -> u32 {
+    u32::try_from(FRAGMENT_BINDING.len()).unwrap_or(0)
+}
+
 /// Parse a `${…}` fragment as an ML expression (`${toString id}` is ML
 /// application), threading the flavor through interpolation re-entry.
 fn parse_fragment(frag: &str) -> Expr {
-    let (items, _) = super::parser::parse(&format!("__frag__ = {frag}\n"));
+    let (items, _) = super::parser::parse(&format!("{FRAGMENT_BINDING}{frag}\n"));
     match items.into_iter().next() {
         Some(MlItem::Binding { body, .. }) => lower_expr(body),
         _ => Expr::Identifier(frag.trim().to_owned()),

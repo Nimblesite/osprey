@@ -53,6 +53,28 @@
       "alt": "Source code passes through Osprey's parser, checker, and LLVM-backed build before a native program prints output."
     },
     {
+      "id": "value-graph",
+      "kind": "concept-diagram",
+      "status": "ready",
+      "master": "assets/diagrams/02-value-graph.svg",
+      "publication": "assets/diagrams/02-value-graph.png",
+      "width": 1600,
+      "height": 1000,
+      "chapter": 2,
+      "alt": "Five immutable Flight Log values flow into a summary function and produce one output line."
+    },
+    {
+      "id": "expression-flow",
+      "kind": "concept-diagram",
+      "status": "ready",
+      "master": "assets/diagrams/02-expression-flow.svg",
+      "publication": "assets/diagrams/02-expression-flow.png",
+      "width": 1600,
+      "height": 1000,
+      "chapter": 2,
+      "alt": "Two integer inputs flow through checked multiplication to either a successful value or an overflow error."
+    },
+    {
       "id": "flavors-converge",
       "kind": "concept-diagram",
       "status": "planned",

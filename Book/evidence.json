@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "editionStatus": "structural-scaffold-chapter-1-complete",
+  "editionStatus": "structural-scaffold-chapters-1-2-complete",
   "releasePinned": false,
   "compilerVersion": "0.0.0-dev",
   "chapters": [
@@ -12,7 +12,14 @@
       "examples": "run-with-pinned-dev-binary",
       "capture": "concept-diagrams-and-editorial-opener-ready"
     },
-    { "number": 2, "spec": "mapped", "examples": "planned", "capture": "planned" },
+    {
+      "number": 2,
+      "editorial": "complete",
+      "spec": "mapped",
+      "implementation": "compiler-checked",
+      "examples": "run-with-pinned-dev-binary",
+      "capture": "concept-diagrams-ready"
+    },
     { "number": 3, "spec": "mapped", "examples": "planned", "capture": "planned" },
     { "number": 4, "spec": "mapped", "examples": "planned", "capture": "planned" },
     { "number": 5, "spec": "mapped", "examples": "planned", "capture": "planned" },

@@ -14,6 +14,14 @@
 //     response body and headers in a heap slot and returns an opaque handle so
 //     Osprey can read the body. Implements [HTTP-RESPONSE-HANDLE].
 
+// A client handle indexes clients[] directly, so EVERY entry point must prove
+// the handle is inside the table first: get_next_id() is a process-global
+// counter shared with servers and sockets, and a caller-supplied handle is
+// arbitrary. Handle 0 is never issued [HTTP-STATUS-CLIENT].
+static bool valid_client_id(int64_t client_id) {
+  return client_id > 0 && client_id < MAX_CLIENTS;
+}
+
 // Create HTTP client - returns client_id or negative error
 int64_t http_create_client(char *base_url, int64_t timeout) {
   if (!base_url) {
@@ -25,6 +33,9 @@ int64_t http_create_client(char *base_url, int64_t timeout) {
   }
 
   int64_t id = get_next_id();
+  if (!valid_client_id(id)) {
+    return -5; // handle table exhausted: refuse rather than write past its end
+  }
   HttpClient *client = malloc(sizeof(HttpClient));
   if (!client) {
     return -3;
@@ -93,6 +104,9 @@ static ssize_t transport_recv(SSL *ssl, int sock, char *buf, int cap) {
 static int64_t http_perform(int64_t client_id, int64_t method, char *path,
                             char *headers, char *body, char **out_raw,
                             size_t *out_len) {
+  if (!valid_client_id(client_id)) {
+    return -1;
+  }
   pthread_mutex_lock(&runtime_mutex);
   HttpClient *client = clients[client_id];
   pthread_mutex_unlock(&runtime_mutex);
@@ -308,6 +322,9 @@ static int64_t http_request(int64_t client_id, int64_t method, char *path,
 
 // Close HTTP client - returns 0 on success
 int64_t http_close_client(int64_t client_id) {
+  if (!valid_client_id(client_id)) {
+    return -1;
+  }
   pthread_mutex_lock(&runtime_mutex);
   HttpClient *client = clients[client_id];
   if (client) {

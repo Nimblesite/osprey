@@ -13,11 +13,6 @@ signature JsonApi
     error : string -> string
 
 module Json : JsonApi
-    unwrap : Result<string, Error> -> string
-    unwrap r = match r
-        Success value => value
-        Error message => ""
-
     escape : string -> string
     escape s =
         bslash = "\\"

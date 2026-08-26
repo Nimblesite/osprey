@@ -147,18 +147,58 @@ fn a_handler_discharges_a_recursive_curried_function() {
 }
 
 /// The guard on the fix above: provenance verdicts are re-derived after the
-/// rows converge, NOT merely erased. A call this pass cannot resolve — here a
-/// top-level `let` alias the function environment never sees — must still be
-/// reported when it hides inside a returned closure.
+/// rows converge, NOT merely erased. A call this pass genuinely cannot resolve
+/// must still be reported when it hides inside a returned closure, where the
+/// stored summary is what the next iteration reads back.
+///
+/// The unresolvable callee is an element that crossed into a SEPARATE eager
+/// callback slot, as in `an_element_mapped_into_one_callback_and_invoked_in_
+/// another_fails_closed` — not a top-level `let` alias, which this pass now
+/// resolves through the file-scope environment seeded under every function
+/// body ([`Analyzer::scoped_env`]). That alias is reported by its own truthful
+/// diagnostic, `unhandled effect operations at program entry`, instead.
 #[test]
 fn an_unresolvable_call_inside_a_returned_closure_is_still_rejected() {
+    assert_rejected_with(
+        "effect Alarm { ring: fn() -> Unit }\n\
+         fn ring() = perform Alarm.ring()\n\
+         let armed = map(range(0, 3), |n| => ring)\n\
+         fn make() = fn() => forEach(armed, |armedRing| => armedRing())\n\
+         let answer = make()()\n",
+        &["effect provenance cannot be proven"],
+    );
+}
+
+/// A callee named by a file-scope `let` resolves through the environment seeded
+/// under every function body, so its effects are the CALLER's effects: the
+/// program is rejected for the operation it actually performs rather than for
+/// the analyser's inability to see the binding.
+#[test]
+fn a_file_scope_alias_reports_the_effect_it_performs() {
     assert_rejected_with(
         "effect Alarm { ring: fn() -> int }\n\
          fn ring() = perform Alarm.ring()\n\
          let siren = ring\n\
-         fn make() = fn() => siren()\n\
-         let answer = make()()\n",
-        &["effect provenance cannot be proven"],
+         fn relay() = siren()\n\
+         let answer = relay()\n",
+        &["unhandled effect operations at program entry: Alarm.ring"],
+    );
+}
+
+/// The other half of the same seeding: once the alias IS handled, nothing is
+/// reported. A file-scope handler and a file-scope generic binding are both
+/// sanctioned by [MODULES-FILE-SCOPE-BINDING] and must coexist — the
+/// provenance check used to fail closed on the pair.
+#[test]
+fn a_handled_file_scope_alias_is_accepted() {
+    assert_accepted(
+        "effect Alarm { ring: fn() -> int }\n\
+         fn ringer() = perform Alarm.ring()\n\
+         let siren = ringer\n\
+         fn relay() = siren()\n\
+         let got = handle Alarm\n\
+           ring => resume(7)\n\
+         in relay()\n",
     );
 }
 

@@ -1,0 +1,105 @@
+(** ML surface for [MODULES-SIGNATURE] and [MODULES-EXPORTS]: an ascribed module
+    publishes exactly the items its signature names, keeps everything else
+    private, and conforms in kind, arity, types, effects and nesting. ML
+    ascription is exact, so no item carries a redundant `export` marker. *)
+
+namespace store
+
+signature CounterApi
+    type Counter
+    empty : Unit -> Counter
+    bump : Counter -> Counter
+    size : Counter -> int
+
+signature ClockApi
+    effect Clock
+        now : Unit => int
+    reading : Unit -> int
+
+signature LeafApi
+    value : Unit -> int
+
+signature TreeApi
+    module Leaf : LeafApi
+    doubled : Unit -> int
+
+(** An ascribed module's signature is its whole public surface. *)
+module Counters : CounterApi
+    type Counter =
+        count : int
+
+    (** A private helper is not in the signature, so it stays module-private. *)
+    step n = (n + 1) ?: n
+
+    empty () =
+        Counter
+            count = 0
+    bump c =
+        Counter
+            count = step c.count
+    size c = c.count
+
+(** A signature may carry an effect declaration alongside its functions. *)
+module Clocks : ClockApi
+    effect Clock
+        now : Unit => int
+
+    reading () = perform Clock.now ()
+
+(** Nested-module ascription conforms recursively. *)
+module Trees : TreeApi
+    module Leaf : LeafApi
+        value () = 21
+
+    doubled () = (Leaf::value () * 2) ?: 0
+
+(** An unascribed module reaches the same surface through plain `export`. *)
+module Extended
+    type Counter =
+        count : int
+    export empty () =
+        Counter
+            count = 5
+    export bump c =
+        Counter
+            count = (c.count + 2) ?: c.count
+    export size c = c.count
+
+    export seeded () = size (empty ())
+
+(** The abstract `Counter` flows through the ascribed surface without leaking. *)
+abstractTypeCase () = checkAll ("abstract signature type round-trips", [
+    Counters::size (Counters::empty ()) == 0,
+    Counters::size (Counters::bump (Counters::empty ())) == 1,
+    Counters::size (Counters::bump (Counters::bump (Counters::empty ()))) == 2,
+    Counters::size (Counters::bump (Counters::bump (Counters::bump (Counters::empty ())))) == 3
+])
+
+(** Reads the module's clock through a caller-installed handler. *)
+readAs stamp =
+    handle Clocks::Clock
+        now => resume stamp
+    in Clocks::reading ()
+
+(** A signature effect is declared by the module and handled by the caller. *)
+signatureEffectCase () = checkAll ("signature effect stays performable", [
+    readAs 7 == 7,
+    readAs 0 == 0,
+    readAs 41 == 41,
+    ((readAs 41 + 1) ?: 0) == 42,
+    readAs (readAs 3) == 3
+])
+
+(** Nested ascription and the plain-export surface both stay addressable. *)
+nestedAndExtraCase () = checkAll ("nested ascription and extra exports", [
+    Trees::Leaf::value () == 21,
+    Trees::doubled () == 42,
+    Extended::size (Extended::empty ()) == 5,
+    Extended::size (Extended::bump (Extended::empty ())) == 7,
+    Extended::seeded () == 5
+])
+
+print "${Counters::size (Counters::bump (Counters::empty ()))} ${Trees::doubled ()} ${Extended::seeded ()}"
+test ("abstract signature types stay abstract", abstractTypeCase)
+test ("signature effects remain performable", signatureEffectCase)
+test ("nested ascription and extra exports conform", nestedAndExtraCase)

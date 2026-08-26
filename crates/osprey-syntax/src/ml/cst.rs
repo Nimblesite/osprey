@@ -419,7 +419,13 @@ pub(crate) enum MlExpr {
     /// Boolean literal.
     Bool(bool),
     /// Raw string literal text (quotes/escapes/`${…}` unresolved).
-    Str(String),
+    Str {
+        /// The literal's source text, delimiters already dropped by the lexer.
+        raw: String,
+        /// Source position of the literal — the anchor a `${…}` fragment's own
+        /// positions are rebased onto ([`crate::strings`]).
+        pos: Position,
+    },
     /// Identifier or constructor reference.
     Ident(String),
     /// A namespace/module/member-qualified reference such as `Tax::addTax`.

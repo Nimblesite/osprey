@@ -1,0 +1,1 @@
+codegen: invalid program: this channel's element type did not reach `recv`: it was read out of a field or structure whose declared type is a type variable, which carries no element type. Give the field the channel's concrete type

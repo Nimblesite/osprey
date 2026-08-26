@@ -1,0 +1,65 @@
+(** ML surface for [MODULES-IMPORT] and [MODULES-RESOLUTION]: whole-module,
+    aliased, member and aliased-member imports, and the rule that a nearer local
+    or module declaration always wins over an imported binding. *)
+
+namespace catalog
+    module Units
+        export each = 1
+        export pack count = (count * 12) ?: 0
+        export crate count = (pack count * 4) ?: 0
+
+        export module Metric
+            export grams kilos = (kilos * 1000) ?: 0
+
+    module Pricing
+        export cents dollars = (dollars * 100) ?: 0
+
+import catalog::Units
+import catalog::Units as U
+import catalog::Units
+    pack
+    crate as bigCrate
+import catalog::Units::Metric
+import catalog::Pricing
+    cents
+
+(** A local declaration is nearer than any import, so it shadows `cents`. *)
+localWins () = 7
+
+(** The imported member name and the qualified path denote one declaration. *)
+memberImportCase () = checkAll ("member imports bind exported members", [
+    pack 2 == 24,
+    pack 0 == 0,
+    bigCrate 1 == 48,
+    bigCrate 2 == 96,
+    cents 3 == 300,
+    pack 2 == Units::pack 2,
+    bigCrate 1 == catalog::Units::crate 1
+])
+
+(** A whole-module import binds its final segment, or its explicit alias. *)
+wholeModuleImportCase () = checkAll ("whole-module imports and aliases", [
+    Units::each == 1,
+    U::each == 1,
+    Units::pack 3 == 36,
+    U::pack 3 == 36,
+    U::crate 1 == 48,
+    Units::Metric::grams 2 == 2000,
+    Metric::grams 2 == 2000,
+    U::Metric::grams 1 == 1000
+])
+
+(** Every spelling of one declaration agrees, and locals outrank imports. *)
+resolutionOrderCase () = checkAll ("resolution prefers the nearest binding", [
+    localWins () == 7,
+    catalog::Pricing::cents 1 == 100,
+    cents 1 == 100,
+    catalog::Units::Metric::grams 3 == Metric::grams 3,
+    Units::crate 2 == bigCrate 2,
+    U::pack U::each == 12
+])
+
+print "${pack 2} ${bigCrate 1} ${Metric::grams 2} ${U::each} ${cents 3}"
+test ("member imports bind selected exports", memberImportCase)
+test ("whole-module imports bind a module name", wholeModuleImportCase)
+test ("nearer declarations outrank imported ones", resolutionOrderCase)

@@ -1,0 +1,6 @@
+1 42 5
+ok 1 - abstract signature types stay abstract
+ok 2 - signature effects remain performable
+ok 3 - nested ascription and extra exports conform
+1..3
+# tests=3 passed=3 failed=0 skipped=0

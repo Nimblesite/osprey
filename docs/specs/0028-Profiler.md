@@ -122,6 +122,26 @@ self/total hot-function table. It also adds after-line heat decorations
 (`NN.N% · M samples`) with overview-ruler marks [PROF-VSCODE-HEAT], driven by
 `<stem>.profile.json`.
 
+Frame colors are a function of the profile alone, never of the engine. Frames
+are ranked by their file path, then their name, then their original index, and
+each rank picks one colour from a fixed ramp; a frame's colour therefore depends
+only on the document, and the same profile looks the same on every run and every
+machine. The index term carries the whole weight of that promise for frames that
+share a file AND a name — the same function inlined at two sites, or two runtime
+frames with no file at all. An ordering that answered "equal" for those would
+make their ranks a property of the ARRAY, not of the frames: a host sort is
+required to be stable, so the ranks would come out in whatever order the
+document happened to list them, and a profile that named the same two frames in
+the other order would colour them the other way round. The ordering is therefore
+a TOTAL one — it reports two distinct frames as equal only when they are the
+same frame — and that is a property of the comparator, which no observation of
+a sort's output can confirm, so it is asserted on the comparator directly.
+
+Ranking by file THEN name is ranking on the pair, not on a string that happens
+to contain both: any separator used to splice them must be one no path and no
+frame name can contain, or `("/w/a b.osp", "z")` and `("/w/a", "b.osp z")`
+collapse onto one key and two distinct frames become indistinguishable.
+
 ## [PROF-TEST] Testing
 
 - The C runtime suite verifies thread registration, sample capture, stack

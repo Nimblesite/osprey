@@ -1,0 +1,52 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1000" viewBox="0 0 1600 1000" role="img" aria-labelledby="title description">
+  <title id="title">A checked integer expression has two possible results</title>
+  <desc id="description">Session count and minutes per session flow into checked multiplication, which produces either Success with 75 or Error with integer overflow.</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto">
+      <path d="M0 0 L10 5 L0 10 Z" fill="#77d7f4"/>
+    </marker>
+  </defs>
+  <rect width="1600" height="1000" fill="#0c1325"/>
+  <text x="72" y="104" fill="#77d7f4" font-family="JetBrains Mono, monospace" font-size="22" font-weight="700" letter-spacing="4">EXPRESSION → RESULT</text>
+  <text x="72" y="172" fill="#dce1fb" font-family="Geist, Inter, sans-serif" font-size="54" font-weight="720" letter-spacing="-2">Integer arithmetic keeps both outcomes visible</text>
+  <text x="72" y="218" fill="#bdc8cd" font-family="Geist, Inter, sans-serif" font-size="25">The successful value is ordinary; overflow is data, never a wrapped guess.</text>
+
+  <g font-family="Geist, Inter, sans-serif">
+    <g transform="translate(94 388)">
+      <rect width="260" height="176" rx="16" fill="#151b2d" stroke="#3e484c"/>
+      <text x="28" y="52" fill="#77d7f4" font-family="JetBrains Mono, monospace" font-size="18">sessionCount</text>
+      <text x="28" y="124" fill="#dce1fb" font-size="54" font-weight="720">3</text>
+    </g>
+    <g transform="translate(94 612)">
+      <rect width="260" height="176" rx="16" fill="#151b2d" stroke="#3e484c"/>
+      <text x="28" y="52" fill="#77d7f4" font-family="JetBrains Mono, monospace" font-size="18">minutesEach</text>
+      <text x="28" y="124" fill="#dce1fb" font-size="54" font-weight="720">25</text>
+    </g>
+
+    <path d="M354 476 C500 476 500 530 612 530" fill="none" stroke="#77d7f4" stroke-width="5" marker-end="url(#arrow)"/>
+    <path d="M354 700 C500 700 500 580 612 560" fill="none" stroke="#77d7f4" stroke-width="5" marker-end="url(#arrow)"/>
+
+    <g transform="translate(638 422)">
+      <rect width="330" height="260" rx="18" fill="#23293d" stroke="#77d7f4" stroke-width="3"/>
+      <text x="32" y="58" fill="#77d7f4" font-family="JetBrains Mono, monospace" font-size="18">CHECKED EXPRESSION</text>
+      <text x="32" y="132" fill="#dce1fb" font-family="JetBrains Mono, monospace" font-size="40">3 * 25</text>
+      <text x="32" y="190" fill="#bdc8cd" font-size="22">The result can take</text>
+      <text x="32" y="224" fill="#bdc8cd" font-size="22">one of two routes.</text>
+    </g>
+
+    <path d="M968 492 C1080 492 1090 394 1188 394" fill="none" stroke="#77d7f4" stroke-width="5" marker-end="url(#arrow)"/>
+    <path d="M968 612 C1080 612 1090 714 1188 714" fill="none" stroke="#77d7f4" stroke-width="5" marker-end="url(#arrow)"/>
+
+    <g transform="translate(1214 310)">
+      <rect width="314" height="176" rx="16" fill="#162d32" stroke="#77d7f4"/>
+      <text x="26" y="54" fill="#77d7f4" font-family="JetBrains Mono, monospace" font-size="18">SUCCESS</text>
+      <text x="26" y="118" fill="#dce1fb" font-family="JetBrains Mono, monospace" font-size="34">Success(75)</text>
+    </g>
+    <g transform="translate(1214 630)">
+      <rect width="314" height="176" rx="16" fill="#332329" stroke="#ffb4ab"/>
+      <text x="26" y="54" fill="#ffb4ab" font-family="JetBrains Mono, monospace" font-size="18">OVERFLOW</text>
+      <text x="26" y="112" fill="#dce1fb" font-size="25">Error</text>
+      <text x="26" y="146" fill="#bdc8cd" font-size="20">&quot;integer overflow&quot;</text>
+    </g>
+  </g>
+</svg>

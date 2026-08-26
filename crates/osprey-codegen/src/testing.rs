@@ -55,7 +55,7 @@ fn gen_test(cg: &mut Codegen, args: &[&Expr]) -> Result<Value> {
         return Err(CodegenError::invalid("test needs (name, body) arguments"));
     };
     let name_str = eval_to_string(cg, name_expr)?;
-    cg.testing_used = true;
+    cg.lowered.testing = true;
     let run = cg.call("i32", "osp_test_begin", "i8*", &[&name_str.operand]);
     let cond = cg.emit_reg(format!("icmp ne i32 {run}, 0"));
     let (run_bb, end_bb) = (cg.fresh_label(), cg.fresh_label());
@@ -112,11 +112,30 @@ fn verdict_arms(cg: &Codegen) -> Result<Vec<MatchArm>> {
             "a test case answering `{VERDICT_TY}` needs a `type {VERDICT_TY}` union with Pass, Fail and Skip states"
         ))
     })?;
-    states
-        .to_vec()
+    let states = states.to_vec();
+    verdict_states_complete(&states)?;
+    states.iter().map(|state| verdict_arm(cg, state)).collect()
+}
+
+/// Reject a `Verdict` that omits one of the three states. Generating arms only
+/// for what happens to be declared made `type Verdict = Pass` compile and
+/// report a passing case: the missing constructors simply never appeared in the
+/// match, so a suite that could not express failure still looked green. Extra
+/// states are caught by [`verdict_report`]; this is the other direction.
+/// Implements [TESTING-VERDICT].
+fn verdict_states_complete(states: &[String]) -> Result<()> {
+    let missing: Vec<&str> = VERDICT_REPORTS
         .iter()
-        .map(|state| verdict_arm(cg, state))
-        .collect()
+        .map(|(name, _, _)| *name)
+        .filter(|name| !states.iter().any(|state| state == name))
+        .collect();
+    if missing.is_empty() {
+        return Ok(());
+    }
+    Err(CodegenError::unsupported(format!(
+        "`type {VERDICT_TY}` must declare Pass, Fail and Skip; it is missing {}",
+        missing.join(", ")
+    )))
 }
 
 /// One `Verdict` arm: `Ctor reason => reportFn(reason)` when the state declares
@@ -277,7 +296,7 @@ fn gen_bool_expect(
 /// `reportPass()`: the one report primitive with nothing to say — `osp_test_pass`
 /// takes no arguments [TESTING-VERDICT].
 fn gen_pass_report(cg: &mut Codegen) -> Value {
-    cg.testing_used = true;
+    cg.lowered.testing = true;
     cg.call_void("osp_test_pass", "", &[]);
     Value::unit()
 }
@@ -292,7 +311,7 @@ fn gen_pass_report(cg: &mut Codegen) -> Value {
 /// with no argument instead left its reason register holding whatever the caller
 /// last put there, and `osp_test_skip` then formatted that as a string.
 fn gen_reason_report(cg: &mut Codegen, runtime_fn: &str, reason: Option<&Expr>) -> Result<Value> {
-    cg.testing_used = true;
+    cg.lowered.testing = true;
     let operand = match reason {
         None => "null".to_string(),
         Some(expr) => eval_to_string(cg, expr)?.operand,
@@ -331,7 +350,7 @@ fn reject_opaque_handle(v: &Value) -> Result<()> {
 /// Compare two canonical strings and record the verdict with the runtime.
 /// `label_op` is the rendered label operand — `null` for `expect`.
 fn emit_assert(cg: &mut Codegen, label_op: &str, expected: &Value, actual: &Value) -> Value {
-    cg.testing_used = true;
+    cg.lowered.testing = true;
     let c = cg.call(
         "i32",
         "strcmp",
@@ -346,4 +365,93 @@ fn emit_assert(cg: &mut Codegen, label_op: &str, expected: &Value, actual: &Valu
         &[label_op, &ok32, &expected.operand, &actual.operand],
     );
     Value::unit()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{verdict_report, verdict_states_complete, VERDICT_REPORTS};
+
+    fn states(names: &[&str]) -> Vec<String> {
+        names.iter().map(|name| (*name).to_string()).collect()
+    }
+
+    fn rejection(names: &[&str]) -> String {
+        match verdict_states_complete(&states(names)) {
+            Ok(()) => panic!("`type Verdict = {}` must be rejected", names.join(" | ")),
+            Err(error) => error.to_string(),
+        }
+    }
+
+    /// [TESTING-VERDICT] The three states and the primitive each drives. A
+    /// `Verdict` that cannot express failure must never compile: generating
+    /// arms for only what is declared made `type Verdict = Pass` report a
+    /// passing case out of a suite with no way to fail.
+    #[test]
+    fn a_verdict_missing_any_state_is_rejected_by_name() {
+        assert!(verdict_states_complete(&states(&["Pass", "Fail", "Skip"])).is_ok());
+        // Declaration order is the program's business, not the checker's.
+        assert!(verdict_states_complete(&states(&["Skip", "Pass", "Fail"])).is_ok());
+
+        for (missing, rest) in [
+            ("Pass", vec!["Fail", "Skip"]),
+            ("Fail", vec!["Pass", "Skip"]),
+            ("Skip", vec!["Pass", "Fail"]),
+        ] {
+            let message = rejection(&rest);
+            assert!(
+                message.contains("must declare Pass, Fail and Skip"),
+                "missing {missing} must name the contract: {message}"
+            );
+            assert!(
+                message.contains(missing),
+                "missing {missing} must be named in: {message}"
+            );
+            for present in &rest {
+                assert!(
+                    !message.contains(&format!("missing {present}")),
+                    "{present} is declared and must not be listed missing: {message}"
+                );
+            }
+        }
+
+        // Every state absent: all three are named, in contract order.
+        assert_eq!(
+            rejection(&[]),
+            "codegen: unsupported construct: `type Verdict` must declare Pass, Fail and Skip; \
+             it is missing Pass, Fail, Skip"
+        );
+        // Two absent: only those two.
+        assert_eq!(
+            rejection(&["Pass"]),
+            "codegen: unsupported construct: `type Verdict` must declare Pass, Fail and Skip; \
+             it is missing Fail, Skip"
+        );
+        // An unrelated extra state does not satisfy a missing one.
+        assert_eq!(
+            rejection(&["Pass", "Fail", "Todo"]),
+            "codegen: unsupported construct: `type Verdict` must declare Pass, Fail and Skip; \
+             it is missing Skip"
+        );
+    }
+
+    /// [TESTING-VERDICT] Only `Fail` and `Skip` carry a reason; `Pass` has
+    /// nothing to report. A state with no primitive is named in the rejection.
+    #[test]
+    fn each_state_drives_its_own_report_primitive() {
+        assert_eq!(verdict_report("Pass").expect("Pass"), ("reportPass", false));
+        assert_eq!(verdict_report("Fail").expect("Fail"), ("reportFail", true));
+        assert_eq!(verdict_report("Skip").expect("Skip"), ("reportSkip", true));
+        assert_eq!(VERDICT_REPORTS.len(), 3);
+
+        for unknown in ["Todo", "pass", "PASS", ""] {
+            let message = match verdict_report(unknown) {
+                Ok(found) => panic!("`{unknown}` must have no report primitive, got {found:?}"),
+                Err(error) => error.to_string(),
+            };
+            assert!(
+                message.contains(&format!("no report for `{unknown}`")),
+                "the unreportable state must be named: {message}"
+            );
+        }
+    }
 }

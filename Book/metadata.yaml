@@ -11,7 +11,7 @@ description: >-
   A beginner-friendly guide to Osprey that teaches programming through the
   Default flavor, then builds toward inferred types, pattern matching,
   explicit failure, effects, fibers, deployment, and optional source flavors.
-edition: "Structural scaffold — Chapter 1 complete"
+edition: "Structural scaffold — Chapters 1–2 complete"
 osprey-version: "0.0.0-dev"
 website: "https://www.ospreylang.dev/"
 ...

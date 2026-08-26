@@ -35,17 +35,19 @@ import { registerTestProfileProfile } from "./test-profile";
 let client: LanguageClient;
 
 // shipwrightPlatform maps the Node platform/arch to the Shipwright platform id
-// (e.g. darwin-arm64, win32-x64) used in the bundled binary path. Exported for
-// unit testing of the platform-string mapping.
-export function shipwrightPlatform(): string {
-  const arch = process.arch === "arm64" ? "arm64" : "x64";
+// (e.g. darwin-arm64, win32-x64) used in the bundled binary path. Both inputs
+// are parameters rather than direct `process` reads so every arm of the mapping
+// is reachable from a unit test: a VSIX is staged for platforms CI never runs
+// on, and a mapping that is only ever exercised for the host's own triple is
+// the half of this function most likely to be wrong.
+export function shipwrightPlatform(
+  platform: NodeJS.Platform = process.platform,
+  arch: string = process.arch,
+): string {
+  const cpu = arch === "arm64" ? "arm64" : "x64";
   const os =
-    process.platform === "win32"
-      ? "win32"
-      : process.platform === "darwin"
-        ? "darwin"
-        : "linux";
-  return `${os}-${arch}`;
+    platform === "win32" ? "win32" : platform === "darwin" ? "darwin" : "linux";
+  return `${os}-${cpu}`;
 }
 
 // resolveBundledCompiler returns the absolute path to the version-matched
@@ -330,7 +332,7 @@ function compileDebugProgram(
 ): Promise<void> {
   fs.mkdirSync(path.dirname(debugOutput), { recursive: true });
   return new Promise((resolve, reject) => {
-    execFile(
+    const build = execFile(
       compilerCommand,
       [sourceProgram, "--debug", "--compile", "-o", debugOutput],
       { cwd },
@@ -352,6 +354,12 @@ function compileDebugProgram(
         resolve();
       },
     );
+    // The third of this extension's three spawn sites, and the one that used to
+    // forget: `execFile` OPENS a stdin pipe and never ends it, so a compiler
+    // that ever reads stdin parks on a descriptor that is neither data nor EOF.
+    // Nothing writes to a debug build's stdin, so EOF is the honest thing for
+    // it to see -- and "every caller must remember" is not a working contract.
+    build.stdin?.end();
   });
 }
 
@@ -741,13 +749,20 @@ function runCompileTask(compilerCommand: string, task: CompileTask) {
     outputChannel.show();
     outputChannel.appendLine(task.startLine(document.fileName));
     const fileDir = path.dirname(document.fileName);
-    execFile(
+    const child = execFile(
       compilerCommand,
       task.args(document.fileName),
       { cwd: fileDir },
       (error: any, stdout: any, stderr: any) =>
         reportCompileOutput(outputChannel, task, error, stdout, stderr),
     );
+    // Close stdin at once, exactly as the test explorer's spawn does. execFile
+    // OPENS a stdin pipe and never ends it, so a program that reads stdin
+    // (`input()`) parks in `read` forever: the run never finishes, and the
+    // channel stays empty because stdout is block-buffered and never flushed.
+    // An output-channel run has no keyboard attached to it, so EOF — not an
+    // eternal wait — is the honest thing for the child to see.
+    child.stdin?.end();
   });
 }
 

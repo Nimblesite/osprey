@@ -774,11 +774,65 @@ impl Checker {
         // strings defaulted to the CHECKED INTEGER overload — `join("a", "b")`
         // printed `Success(<pointer>)` instead of `ab`
         // ([`Checker::deferred_arith`]).
-        let scheme = self.generalize_with_obligations(env, &binding_ty);
+        let mut scheme = self.generalize_with_obligations(env, &binding_ty);
+        let pinned = self.stateful_handle_vars(&binding_ty);
+        scheme.vars.retain(|v| !pinned.contains(v));
         if mutable {
             env.insert_mutable(name, scheme);
         } else {
             env.insert(name, scheme);
+        }
+    }
+
+    /// Every type variable sitting inside a STATEFUL HANDLE VALUE in `ty` — the
+    /// ML value restriction, narrowed to the two constructors that need it.
+    ///
+    /// A `let` generalizes, so quantifying such a variable hands every USE of
+    /// the one handle its own copy, and nothing ties them together:
+    ///
+    /// ```text
+    /// let ch = Channel(1)
+    /// send(ch, "text")
+    /// print("${recv(ch) + 1}")   // accepted; printed a raw pointer as an int
+    /// ```
+    ///
+    /// A channel's element type is fixed at run time by what was sent, and a
+    /// fiber's by the thunk that produced it; neither is a fresh value per use
+    /// the way an immutable `List<t>` is. The same hole is why a
+    /// `Channel<List<List<int>>>` was received back as `List<int>` and every
+    /// nested read answered its fallback.
+    /// Implements [CONCURRENCY-CHANNEL] and [CONCURRENCY-SPAWN-AWAIT].
+    fn stateful_handle_vars(&mut self, ty: &Type) -> BTreeSet<VarId> {
+        let mut pinned = BTreeSet::new();
+        let applied = self.ctx.apply(ty);
+        self.collect_handle_vars(&applied, &mut pinned);
+        pinned
+    }
+
+    fn collect_handle_vars(&mut self, ty: &Type, out: &mut BTreeSet<VarId>) {
+        match ty {
+            Type::Con { name, args } if name == names::CHANNEL || name == names::FIBER => {
+                for arg in args {
+                    self.ctx.free_vars(arg, out);
+                }
+            }
+            Type::Con { args, .. } => {
+                for arg in args {
+                    self.collect_handle_vars(arg, out);
+                }
+            }
+            // NOT into a function. A function's type variables are instantiated
+            // fresh at every call, so a factory or helper that merely mentions a
+            // handle — `let make = |n| => Channel(n)`, or a generic drain
+            // helper — hands each call its own and stays soundly polymorphic.
+            // Pinning those would reject safe code to fix an unsafe case that
+            // only arises when one handle VALUE is shared between uses.
+            Type::Record { fields, .. } => {
+                for field in fields.values() {
+                    self.collect_handle_vars(field, out);
+                }
+            }
+            _ => {}
         }
     }
 

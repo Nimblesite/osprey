@@ -27,6 +27,12 @@ void *osp_arc_calloc(size_t n, size_t size);
 void *osp_arc_realloc(void *old, size_t size);
 void osp_arc_free(void *p);
 char *osp_arc_strdup(const char *s);
+// Diagnostics snapshots: read-only, not on any hot path, so they live outside
+// memory_hooks.h and are declared where they are exercised.
+size_t osp_arc_live_objects(void);
+size_t osp_arc_live_bytes(void);
+size_t osp_arc_peak_bytes(void);
+void osp_arc_peak_reset(void);
 static _Atomic long g_checks = 0; // atomic: the mt_churn threads CHECK too
 #define CHECK(c) do { g_checks++; assert(c); } while (0)
 #define W ((size_t)8)             // managed word size
@@ -42,6 +48,7 @@ static _Atomic long g_checks = 0; // atomic: the mt_churn threads CHECK too
 #define CHURN_LIVE 6000 // > INIT_CAP/4: forces at least one real rehash
 #define CHURN_ITERS 60000
 #define LONG_LEN 4096
+#define DIAG_BYTES ((size_t)64) // one diagnostics-test object, a whole number of words
 
 static int32_t rc_of(const void *b) {
   int32_t v; memcpy(&v, (const char *)b - HDR_RC_OFF, sizeof v); return v;
@@ -505,6 +512,64 @@ static void *mt_churn(void *arg) {
   }
   return arg;
 }
+// --- diagnostics ---------------------------------------------------------------
+// The read-only snapshot surface the memory GOLDEN tests pin exact numbers
+// against: the live set must return to a known baseline, and the high-water
+// mark must stay visible after it does — that is the property an RSS
+// measurement cannot give. Armed by OSPREY_ARC_DEBUG, which main() sets before
+// the first allocation. [GC-ARC-PERCEUS]
+static void t_diagnostic_counters(void) {
+  osp_mem_boot(); // arming latches once: booting again changes nothing below
+  const size_t objects_before = osp_arc_live_objects();
+  const size_t bytes_before = osp_arc_live_bytes();
+  osp_arc_peak_reset();
+  CHECK(osp_arc_peak_bytes() == bytes_before); // a reset starts at the live level
+
+  void *first = mk(DIAG_BYTES, OSP_MEM_RAW);
+  CHECK(osp_arc_live_objects() == objects_before + 1);
+  CHECK(osp_arc_live_bytes() == bytes_before + DIAG_BYTES); // the BODY, not the header
+  CHECK(osp_arc_peak_bytes() == bytes_before + DIAG_BYTES);
+  void *second = mk(DIAG_BYTES, OSP_MEM_RAW);
+  const size_t peak_at_two = bytes_before + 2 * DIAG_BYTES;
+  CHECK(osp_arc_live_objects() == objects_before + 2);
+  CHECK(osp_arc_live_bytes() == peak_at_two);
+  CHECK(osp_arc_peak_bytes() == peak_at_two);
+
+  osp_release(first);
+  CHECK(osp_arc_live_objects() == objects_before + 1);
+  CHECK(osp_arc_live_bytes() == bytes_before + DIAG_BYTES);
+  osp_release(second);
+  CHECK(osp_arc_live_objects() == objects_before); // exactly back to baseline
+  CHECK(osp_arc_live_bytes() == bytes_before);
+  // The spike survives the live set returning to baseline. Losing it here is
+  // how a transient allocation blow-up becomes invisible to a golden test.
+  CHECK(osp_arc_peak_bytes() == peak_at_two);
+  osp_arc_peak_reset();
+  CHECK(osp_arc_peak_bytes() == bytes_before);
+
+  // A retained object is still live: only the LAST release retires it, and the
+  // counters follow the reference count rather than the release call count.
+  void *shared = mk(DIAG_BYTES, OSP_MEM_RAW);
+  osp_retain(shared);
+  CHECK(rc_of(shared) == 2);
+  osp_release(shared);
+  CHECK(rc_of(shared) == 1);
+  CHECK(osp_arc_live_objects() == objects_before + 1);
+  CHECK(osp_arc_live_bytes() == bytes_before + DIAG_BYTES);
+  osp_release(shared);
+  CHECK(osp_arc_live_objects() == objects_before);
+  CHECK(osp_arc_live_bytes() == bytes_before);
+  // A zero-byte object is still an object: it counts once and adds no bytes.
+  osp_arc_peak_reset();
+  void *empty = osp_alloc_tagged(0, OSP_MEM_RAW);
+  CHECK(empty != NULL);
+  CHECK(osp_arc_live_objects() == objects_before + 1);
+  CHECK(osp_arc_live_bytes() == bytes_before);
+  osp_release(empty);
+  CHECK(osp_arc_live_objects() == objects_before);
+  CHECK(osp_arc_peak_bytes() == bytes_before); // and it moved no high-water mark
+}
+
 static void t_multithreaded(void) {
   osp_mem_notify_multithreaded(); osp_mem_notify_multithreaded();
   pthread_t a, b;
@@ -547,7 +612,7 @@ int main(void) {
   t_ptr_array(); t_ptr_array_ragged();
   t_list_hdr_kinds(); t_list_hdr_edges();
   t_deep_chain(); t_alloc_noinit(); t_mask_direct(); t_wide_fanout();
-  t_registry_churn(); t_slot_reuse();
+  t_registry_churn(); t_slot_reuse(); t_diagnostic_counters();
   // Everything below runs LOCKED (notify is monotonic): the shim suite
   // re-exercises the whole ABI down the arc_lock mutex branch.
   t_multithreaded(); t_shim_malloc_calloc_free();

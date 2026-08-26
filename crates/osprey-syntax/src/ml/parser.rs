@@ -1115,15 +1115,13 @@ impl Parser<'_> {
         // update (`receiver(...)`). Both lower to the same `MlExpr::Record` node —
         // and to the same canonical `Expr::TypeConstructor { name }` the Default
         // `Ctor { f: v }` / `receiver { f: v }` produce ([FLAVOR-ML-RECORD]).
-        if let MlExpr::Ident(name) = &func {
+        if let Some(name) = record_head(&func) {
             if self.at_inline_record() {
-                let name = name.clone();
                 func = self.inline_record(name, Vec::new());
-            } else if is_constructor(name) && self.at_generic_record() {
+            } else if is_constructor(constructor_segment(&name)) && self.at_generic_record() {
                 // `Box<int>(item = 7)` — explicit construction-site type
                 // arguments. Implements [TYPE-GENERICS-DECL],
                 // [FLAVOR-ML-GENERICS].
-                let name = name.clone();
                 let type_args = match self.ty_generic_args(name.clone()) {
                     MlType::App { args, .. } => args,
                     _ => Vec::new(),
@@ -1296,8 +1294,9 @@ impl Parser<'_> {
                 MlExpr::Bool(false)
             }
             TokKind::Str(raw) => {
+                let pos = self.pos();
                 self.advance();
-                MlExpr::Str(raw)
+                MlExpr::Str { raw, pos }
             }
             TokKind::KwMatch => self.match_expr(),
             TokKind::KwSpawn => self.spawn_expr(),
@@ -1963,12 +1962,33 @@ impl Parser<'_> {
     /// block whose trailing expression is its value ([FLAVOR-ML-BLOCK]).
     fn body_after_eq(&mut self) -> MlExpr {
         if !matches!(self.peek(), TokKind::Indent) {
-            return self.expr(0);
+            return self.inline_body();
         }
         self.advance(); // `Indent`
         let (items, value) = self.block_items();
         let _ = self.eat(&TokKind::Dedent);
         MlExpr::Block { items, value }
+    }
+
+    /// A body written on one line. `name := value` is an ITEM, not an
+    /// expression, so `expr` can never reach it — yet [FLAVOR-ML-BIND] spells
+    /// its own handler-arm example `tick => requests := (requests + 1) ?:
+    /// requests`, and the indented spelling of that same arm already parses via
+    /// `block_items`. Route the inline form through the same `assignment` item
+    /// and wrap it in the one-item block the indented form produces, so both
+    /// spellings lower to identical IR ([FLAVOR-IR-EQUIV]).
+    fn inline_body(&mut self) -> MlExpr {
+        if !matches!(self.peek(), TokKind::Ident(_)) || !matches!(self.peek_at(1), TokKind::ColonEq)
+        {
+            return self.expr(0);
+        }
+        match self.assignment() {
+            Some(item) => MlExpr::Block {
+                items: vec![item],
+                value: None,
+            },
+            None => self.expr(0),
+        }
     }
 
     /// The items (and optional trailing value) of an indented block.
@@ -2047,6 +2067,32 @@ impl Parser<'_> {
 
 /// An uppercase initial marks a constructor/type name; lowercase marks a value
 /// binding or variable, mirroring the Default flavor's lexical convention.
+/// The name an inline record literal would construct, for the heads that can
+/// carry one: a bare identifier, or a QUALIFIED PATH naming a constructor
+/// reached across a module boundary (`Geo::Circle(radius = 3)`). Rendered with
+/// `::` exactly as the Default flavor's `field_text` renders the name in
+/// `Geo::Circle { radius: 3 }`, so both spellings reach the assembler as one
+/// name ([FLAVOR-IR-EQUIV]).
+///
+/// Without the path arm the qualified form was parsed as APPLICATION to a
+/// parenthesised group: `radius = 3` collapsed to a bare `radius` and the value
+/// was dropped, so an exported union's constructors were reachable only from
+/// inside their own module ([MODULES-EXPORTS], [MODULES-OPAQUE-TYPES] — which
+/// singles out OPAQUE constructors as the private ones).
+fn record_head(head: &MlExpr) -> Option<String> {
+    match head {
+        MlExpr::Ident(name) => Some(name.clone()),
+        MlExpr::Path(path) => Some(path.segments.join("::")),
+        _ => None,
+    }
+}
+
+/// The segment that decides construction versus record update: the last one, so
+/// a qualified head is judged by the name it actually reaches.
+pub(super) fn constructor_segment(name: &str) -> &str {
+    name.rsplit("::").next().unwrap_or(name)
+}
+
 pub(super) fn is_constructor(name: &str) -> bool {
     name.chars().next().is_some_and(char::is_uppercase)
 }

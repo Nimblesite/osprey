@@ -36,9 +36,10 @@ struct Opts {
     memory: Option<String>,
 }
 
-/// One suite's parsed coverage dump: flattened line → hit count
-/// [TESTING-COVERAGE-DUMP].
-type LineHits = BTreeMap<u32, u64>;
+use crate::test_coverage::{
+    collect_suite_coverage, coverage_dump_path, report_total, write_coverage_json,
+};
+use crate::test_skips::{declared_test_names, skip_diagnostics, SKIP_ERROR};
 
 pub(crate) fn run(args: &[String]) -> ExitCode {
     let opts = match parse(args) {
@@ -188,6 +189,7 @@ struct SuiteOutput {
 fn run_suites(files: &[PathBuf], opts: &Opts, jobs: usize) -> ExitCode {
     let outputs = execute_suites(files, opts, jobs);
     let mut failed = 0usize;
+    let mut coverage_broken = false;
     let mut report = BTreeMap::new();
     for output in outputs {
         let Some(file) = files.get(output.index) else {
@@ -200,21 +202,34 @@ fn run_suites(files: &[PathBuf], opts: &Opts, jobs: usize) -> ExitCode {
         }
         if opts.coverage {
             let dump = coverage_dump_path(file);
-            collect_suite_coverage(file, &dump, &mut report, opts.quiet);
+            let collected = collect_suite_coverage(file, &dump, &mut report, opts.quiet);
+            // Only a suite that PASSED is expected to have left evidence. A
+            // failed one may have died before writing — it is reported either
+            // way, but it already counted as a failure and must not count twice.
+            if !collected && output.passed {
+                coverage_broken = true;
+            }
         }
     }
     if opts.coverage {
         report_total(&report);
     }
     if let Some(out) = &opts.coverage_json {
-        write_coverage_json(out, &report);
+        // An explicitly requested artifact that was not produced is a failure:
+        // a green exit code otherwise claims a file the caller cannot read.
+        if !write_coverage_json(out, &report) {
+            coverage_broken = true;
+        }
     }
     println!(
         "# suites: {} passed, {} failed",
         files.len() - failed,
         failed
     );
-    if failed > 0 {
+    // Counted apart from `failed`: a coverage problem is not a suite verdict,
+    // so folding it in would misreport the `# suites:` line. It still fails the
+    // COMMAND — absent evidence must never exit green ([TESTING-COVERAGE]).
+    if failed > 0 || coverage_broken {
         ExitCode::FAILURE
     } else {
         ExitCode::SUCCESS
@@ -259,6 +274,13 @@ fn suite_worker(
 
 fn execute_suite(file: &Path, opts: &Opts, index: usize) -> SuiteOutput {
     let dump = opts.coverage.then(|| coverage_dump_path(file));
+    // The dump path is derived from the suite path, so it is stable across
+    // runs. Remove any leftover before the process starts: without this an
+    // artifact from an interrupted earlier run is read back as if it were this
+    // run's evidence ([TESTING-COVERAGE-DUMP]).
+    if let Some(stale) = dump.as_deref() {
+        let _ = std::fs::remove_file(stale);
+    }
     let result = suite_command(
         file,
         opts.filter.as_deref(),
@@ -340,168 +362,6 @@ fn replay_suite(file: &Path, output: &SuiteOutput, quiet: bool) -> bool {
     reported.iter().any(|line| line.starts_with(SKIP_ERROR))
 }
 
-/// The suite's statically-discoverable test names, used only to disambiguate a
-/// TAP description that itself contains `# SKIP` ([TESTING-TAP-AMBIGUITY]).
-/// An unreadable or unparsable file yields none — the suite already failed
-/// loudly elsewhere, and skip detection then falls back to the plain split.
-fn declared_test_names(file: &Path) -> Vec<String> {
-    let Ok(source) = std::fs::read_to_string(file) else {
-        return Vec::new();
-    };
-    let Ok(flavor) = osprey_syntax::resolve_flavor(None, &file.display().to_string(), &source)
-    else {
-        return Vec::new();
-    };
-    osprey_lsp::test_case_names(&osprey_syntax::parse_program_with_flavor(&source, flavor).program)
-}
-
-/// One diagnostic line per TAP `# SKIP` directive in a suite's output — a
-/// skipped case is never silent ([TESTING-SKIP-WARNING-RUN], [TESTING-TAP]).
-fn skip_diagnostics(stdout: &[u8], declared: &[String]) -> Vec<String> {
-    String::from_utf8_lossy(stdout)
-        .lines()
-        .filter_map(|line| skip_diagnostic(line, declared))
-        .collect()
-}
-
-/// The prefix an unexplained skip carries ([TESTING-SKIP-REASON]). Callers
-/// match on it to decide whether the suite failed.
-const SKIP_ERROR: &str = "error: ";
-
-/// The diagnostic for one TAP line carrying the `# SKIP` directive
-/// (`ok N - name # SKIP reason`); `None` for every other line.
-///
-/// A reasoned skip is a `warning:`; a directive that names no reason is an
-/// `error:` and fails the suite ([TESTING-SKIP-REASON]) — a hole in coverage
-/// nobody wrote a cause for cannot be weighed, only discovered later.
-///
-/// A test NAME may itself contain `# SKIP`, which makes the raw TAP line
-/// ambiguous ([TESTING-TAP-AMBIGUITY]). The declared names break the tie: a
-/// description that matches one verbatim is that case's whole name, so the
-/// case ran and no diagnostic is due.
-fn skip_diagnostic(line: &str, declared: &[String]) -> Option<String> {
-    let description = line.strip_prefix("ok ")?.split_once(" - ")?.1;
-    if declared.iter().any(|known| known == description) {
-        return None;
-    }
-    // The directive is always LAST on the line, so split from the right: a name
-    // that itself contains `# SKIP` keeps all of it ([TESTING-TAP-AMBIGUITY]).
-    let (name, directive) = description.rsplit_once(" # SKIP")?;
-    let reason = directive.trim();
-    Some(if reason.is_empty() {
-        format!("{SKIP_ERROR}test '{name}' skipped with no reason; every skip must name one")
-    } else {
-        format!("warning: test '{name}' skipped: {reason}")
-    })
-}
-
-/// Where one suite's coverage dump lands (the scratch dir the compiled
-/// binaries already use).
-fn coverage_dump_path(file: &Path) -> PathBuf {
-    std::env::temp_dir().join(format!(
-        "{}.oscov.txt",
-        crate::scratch_stem(&file.display().to_string())
-    ))
-}
-
-/// Parse one suite's dump into the merged report and print its line rate.
-fn collect_suite_coverage(
-    file: &Path,
-    dump: &Path,
-    report: &mut BTreeMap<String, LineHits>,
-    quiet: bool,
-) {
-    let Some(hits) = parse_dump(dump) else {
-        eprintln!("osprey test: no coverage dump for {}", file.display());
-        return;
-    };
-    let _ = std::fs::remove_file(dump);
-    let (covered, total) = line_rate(&hits);
-    if !quiet {
-        println!(
-            "# coverage: {} ({covered}/{total} lines) {}",
-            percent(covered, total),
-            file.display()
-        );
-    }
-    let _ = report.insert(file.display().to_string(), hits);
-}
-
-/// Read a `[TESTING-COVERAGE-DUMP]` file: `# osprey-coverage v1` then one
-/// `<line> <hits>` row per coverable line. `None` when missing/unreadable.
-fn parse_dump(path: &Path) -> Option<LineHits> {
-    let text = std::fs::read_to_string(path).ok()?;
-    let mut lines = text.lines();
-    if lines.next() != Some("# osprey-coverage v1") {
-        return None;
-    }
-    let mut hits = LineHits::new();
-    for row in lines {
-        let mut cols = row.split_whitespace();
-        if let (Some(line), Some(count)) = (
-            cols.next().and_then(|c| c.parse().ok()),
-            cols.next().and_then(|c| c.parse().ok()),
-        ) {
-            let _ = hits.insert(line, count);
-        }
-    }
-    Some(hits)
-}
-
-fn line_rate(hits: &LineHits) -> (usize, usize) {
-    (hits.values().filter(|h| **h > 0).count(), hits.len())
-}
-
-fn percent(covered: usize, total: usize) -> String {
-    if total == 0 {
-        return String::from("100.0%");
-    }
-    // Line counts fit u32 comfortably; saturate rather than misconvert.
-    let as_f64 = |n: usize| f64::from(u32::try_from(n).unwrap_or(u32::MAX));
-    let pct = as_f64(covered) / as_f64(total) * 100.0;
-    format!("{pct:.1}%")
-}
-
-/// Print the aggregate `# coverage total:` row across every suite
-/// [TESTING-COVERAGE-CLI].
-fn report_total(report: &BTreeMap<String, LineHits>) {
-    let (covered, total) = report
-        .values()
-        .map(line_rate)
-        .fold((0, 0), |(c, t), (sc, st)| (c + sc, t + st));
-    println!(
-        "# coverage total: {} ({covered}/{total} lines)",
-        percent(covered, total)
-    );
-}
-
-/// Write the merged machine-readable report the editor integration consumes
-/// [TESTING-COVERAGE-JSON]: `{"files":{"<path>":{"lines":{"<line>":hits}}}}`.
-fn write_coverage_json(out: &str, report: &BTreeMap<String, LineHits>) {
-    let files = report
-        .iter()
-        .map(|(file, hits)| {
-            let lines = hits
-                .iter()
-                .map(|(line, count)| format!("\"{line}\":{count}"))
-                .collect::<Vec<_>>()
-                .join(",");
-            format!("{}:{{\"lines\":{{{lines}}}}}", json_string(file))
-        })
-        .collect::<Vec<_>>()
-        .join(",");
-    if let Err(e) = std::fs::write(out, format!("{{\"files\":{{{files}}}}}")) {
-        eprintln!("osprey test: cannot write coverage json {out}: {e}");
-    }
-}
-
-/// Minimal JSON string encoding for a path (quotes and backslashes only —
-/// paths never contain control characters the discovery walk would produce).
-fn json_string(text: &str) -> String {
-    let escaped = text.replace('\\', "\\\\").replace('"', "\\\"");
-    format!("\"{escaped}\"")
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -518,17 +378,6 @@ mod tests {
             !output.status.success(),
             "suite children must receive EOF rather than reading terminal input"
         );
-    }
-
-    #[test]
-    fn coverage_dump_path_is_stable_and_scratch_scoped() {
-        let file = Path::new("/proj/tests/math_test.osp");
-        let dump = coverage_dump_path(file);
-        assert!(dump.starts_with(std::env::temp_dir()));
-        let name = dump.file_name().and_then(|n| n.to_str()).unwrap_or("");
-        assert!(name.ends_with(".oscov.txt"), "dump name: {name}");
-        // Same suite → same dump path (the run and the collector must agree).
-        assert_eq!(dump, coverage_dump_path(file));
     }
 
     #[test]
@@ -574,58 +423,6 @@ mod tests {
         assert!(gc_command
             .get_args()
             .any(|arg| arg == std::ffi::OsStr::new("--memory=gc")));
-    }
-
-    // [TESTING-SKIP-WARNING]: every TAP `# SKIP` directive becomes one stderr
-    // diagnostic, reason included; passing, failing, and plan lines stay
-    // silent. [TESTING-SKIP-REASON]: a directive with no reason is an `error:`,
-    // not a `warning:`, and the caller fails the suite on it.
-    #[test]
-    fn skip_warnings_echo_each_tap_skip_directive() {
-        let stdout =
-            b"ok 1 - kept\nok 2 - parked # SKIP blocked on #123\nnot ok 3 - bad\nok 4 - bare # SKIP \n1..4\n";
-        let reported = skip_diagnostics(stdout, &[]);
-        assert_eq!(
-            reported,
-            [
-                "warning: test 'parked' skipped: blocked on #123",
-                "error: test 'bare' skipped with no reason; every skip must name one",
-            ]
-        );
-        assert!(
-            reported
-                .iter()
-                .filter(|line| line.starts_with(SKIP_ERROR))
-                .count()
-                == 1,
-            "exactly the unexplained skip fails the suite: {reported:?}"
-        );
-        assert!(skip_diagnostics(b"ok 1 - clean\n1..1\n", &[]).is_empty());
-    }
-
-    // [TESTING-TAP-AMBIGUITY] a PASSING case whose NAME contains `# SKIP`
-    // must not be reported as skipped: the declared names break the tie.
-    #[test]
-    fn a_test_name_containing_the_skip_directive_is_not_a_skip() {
-        let declared = [String::from("name with # SKIP inside it")];
-        let passing = b"ok 1 - name with # SKIP inside it\n1..1\n";
-        assert!(
-            skip_diagnostics(passing, &declared).is_empty(),
-            "a name that merely contains the directive is not a skip"
-        );
-        // The SAME name genuinely skipped still warns: its description is the
-        // name PLUS a directive, so it matches no declared name verbatim.
-        let skipped = b"ok 1 - name with # SKIP inside it # SKIP really parked\n1..1\n";
-        assert_eq!(
-            skip_diagnostics(skipped, &declared),
-            ["warning: test 'name with # SKIP inside it' skipped: really parked"]
-        );
-        // With no declared names (unparsable suite) the plain split still runs,
-        // so a genuine skip is never silently dropped.
-        assert_eq!(
-            skip_diagnostics(b"ok 1 - parked # SKIP why\n", &[]),
-            ["warning: test 'parked' skipped: why"]
-        );
     }
 
     // [TESTING-COVERAGE-CLI]: --coverage turns instrumentation on;
@@ -694,34 +491,5 @@ mod tests {
         assert!(discover(&root.join("does-not-exist")).is_empty());
 
         let _ = std::fs::remove_dir_all(&root);
-    }
-
-    // [TESTING-COVERAGE-DUMP] parsing, rates, and the JSON shape the editor
-    // integration reads [TESTING-COVERAGE-JSON].
-    #[test]
-    fn dump_parsing_rates_and_json_round_trip() {
-        let dir = std::env::temp_dir().join(format!("osprey-cov-cli-{}", std::process::id()));
-        std::fs::create_dir_all(&dir).expect("mkdir");
-        let dump = dir.join("suite.oscov.txt");
-        std::fs::write(&dump, "# osprey-coverage v1\n3 2\n7 0\n12 1\n").expect("write dump");
-        let hits = parse_dump(&dump).expect("parse");
-        assert_eq!(line_rate(&hits), (2, 3));
-        assert_eq!(percent(2, 3), "66.7%");
-        assert_eq!(percent(0, 0), "100.0%");
-
-        // A dump without the v1 header is rejected, not misread.
-        std::fs::write(&dump, "3 2\n").expect("rewrite");
-        assert!(parse_dump(&dump).is_none());
-
-        let mut report = BTreeMap::new();
-        let _ = report.insert(String::from("a\"b.test.osp"), hits);
-        let json = dir.join("cov.json");
-        write_coverage_json(&json.display().to_string(), &report);
-        let text = std::fs::read_to_string(&json).expect("read json");
-        assert_eq!(
-            text,
-            "{\"files\":{\"a\\\"b.test.osp\":{\"lines\":{\"3\":2,\"7\":0,\"12\":1}}}}"
-        );
-        let _ = std::fs::remove_dir_all(&dir);
     }
 }

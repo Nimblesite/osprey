@@ -131,12 +131,16 @@ empty reason. The payload field may also be spelled anything — `Skip(because)`
 reports identically to `Skip(why)` — because the binder comes from the
 declaration, not from the compiler.
 
-Two shapes are rejected at compile time, each named truthfully:
+Three shapes are rejected at compile time, each named truthfully. The last is
+why the reporting boundary reads the declaration rather than trusting it: a
+`Verdict` that cannot express failure would otherwise generate a match with no
+`Fail` arm, and a suite unable to fail would report green.
 
 | Declaration | Rejection |
 | --- | --- |
 | A state `test` has no report primitive for, e.g. `… \| Todo(string)` | `` `test` reports only the Pass, Fail and Skip states of `Verdict`; it has no report for `Todo` `` |
 | A `Fail` or `Skip` carrying more than one field | `` `Verdict` state `Skip` declares 2 fields; `test` reports a single reason `` |
+| A declaration omitting any of the three states, e.g. `type Verdict = Pass` | `` `type Verdict` must declare Pass, Fail and Skip; it is missing Fail, Skip `` |
 
 ## TAP output protocol
 
@@ -438,7 +442,12 @@ named `test` keeps hovering as itself.
 line-coverage instrumentation, runs it, and prints one
 `# coverage: P% (covered/total lines) <file>` row per suite (suppressed by
 `--quiet`) plus a final `# coverage total: P% (covered/total lines)` row.
-Coverage never changes suite outcomes or the exit code.
+Coverage never changes a suite's OUTCOME — a passing suite passes whatever its
+dump says, and a low percentage is never a failure. Evidence that cannot be
+read is a different thing entirely: when a suite passed but its dump is absent,
+unreadable or rejected, the command reports it and exits non-zero, because a run
+that printed no percentage for a suite and exited green is indistinguishable
+from one that measured it.
 `--coverage-json <path>` (implies `--coverage`) also writes the merged
 machine-readable report **`[TESTING-COVERAGE-JSON]`**:
 `{"files":{"<suite path>":{"lines":{"<line>":hits}}}}` — 1-based source
@@ -462,9 +471,31 @@ Coverage builds keep release optimization and emit no DWARF.
 `osp_cov_register_line(line, &counter)`. Inert unless
 **`[TESTING-COVERAGE-ENV]`** `OSPREY_COVERAGE=<path>` names the dump file at
 process start; then an exit-time hook writes
-**`[TESTING-COVERAGE-DUMP]`**: a `# osprey-coverage v1` header followed by
-one `<line> <hits>` row per registered line, ascending, zero-hit rows
-included.
+**`[TESTING-COVERAGE-DUMP]`**: a `# osprey-coverage v2` header, one
+`<line> <hits>` row per registered line, ascending, zero-hit rows included, and
+a `# rows <n>` completion footer naming how many rows precede it. Every record,
+the footer included, is newline-terminated.
+
+The dump is published by renaming a sibling `<path>.partial`, so a reader opens
+either nothing or a whole file. The footer is what makes a file that lost its
+tail detectable: without it, a dump truncated after a valid prefix parses
+cleanly and reports a HIGHER percentage over a smaller universe — partial
+evidence presented as a complete result. A run whose line table could not be
+grown writes no dump at all, because an under-reporting dump is indistinguishable
+from honestly-uncovered code.
+
+The reader rejects the whole file on any departure: a missing or unknown header,
+a row that is not exactly two non-negative integers separated by one space, a
+line number of `0` (source lines are 1-based, so `0` names nothing and would add
+a phantom entry to the denominator), a repeated line number, a
+missing footer, a footer whose count disagrees with the rows read, anything
+after the footer, or a final record left unterminated. Skipping a row it cannot
+parse is what let one good row and one corrupt row report `100.0% (1/1)`. The
+terminator rule covers the one corpse the others cannot see: a dump is a strict
+prefix of what its writer meant to emit, so a footer whose digits were cut short
+always declares fewer rows than survived it and the count catches it — but a
+file that lost nothing except its final newline agrees with itself in every
+other respect, and only the missing terminator says the writer never finished.
 
 Lines are the compiled suite's own 1-based lines. Each suite compiles standalone
 and coverage measures that file (`[TESTING-CLI-RUN]`).

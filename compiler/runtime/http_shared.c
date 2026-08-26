@@ -183,15 +183,15 @@ int send_websocket_frame(int socket_fd, const char *payload) {
   // Opcode: 0x1 for text frame
   frame[frame_len++] = 0x81;
 
-  // Payload length
+  // Payload length. The 4096-byte guard above already bounds payload_len well
+  // under the 16-bit extended form's 65535 limit, so the 64-bit form is
+  // unreachable here and is not emitted [BUILTIN-WEBSOCKET-FRAMING].
   if (payload_len < 126) {
     frame[frame_len++] = payload_len;
-  } else if (payload_len < 65536) {
+  } else {
     frame[frame_len++] = 126;
     frame[frame_len++] = (payload_len >> 8) & 0xFF;
     frame[frame_len++] = payload_len & 0xFF;
-  } else {
-    return -1; // Payload too large for this implementation
   }
 
   // Copy payload
@@ -265,158 +265,106 @@ int parse_websocket_frame(const char *frame_data, size_t frame_len,
   return payload_len;
 }
 
-// Modern OpenSSL 3.5.0+ SHA-1 implementation using EVP API 🛡️💀
-void sha1_websocket(const char *input, unsigned char output[20]) {
-  // SECURITY: Validate input parameters with strict validation
-  if (!input || !output) {
-    memset(output, 0, 20);
+// SHA-1 over `<key><RFC 6455 GUID>`, the accept-token digest
+// [BUILTIN-WEBSOCKET-HANDSHAKE]. Every refusal and every OpenSSL failure
+// leaves `output` fully zeroed through ONE cleanup path: a partial digest must
+// never reach the wire, and a caller that ignores the zeroing is caught by
+// create_websocket_handshake_response's all-zero check.
+enum { SHA1_DIGEST_BYTES = 20, WS_KEY_MAX = 4096 };
+
+void sha1_websocket(const char *input, unsigned char output[SHA1_DIGEST_BYTES]) {
+  if (!output) {
+    return; // nowhere to write: zeroing a null digest would fault
+  }
+  memset(output, 0, SHA1_DIGEST_BYTES);
+  // SECURITY: reject an absent, empty or over-long key before hashing.
+  size_t key_len = input ? strnlen(input, WS_KEY_MAX) : 0;
+  if (key_len == 0 || key_len >= WS_KEY_MAX) {
     return;
   }
 
-  // SECURITY: Enforce maximum key length to prevent attacks
-  size_t key_len = strnlen(input, 4096);
-  if (key_len >= 4096 || key_len == 0) {
-    memset(output, 0, 20);
-    return;
-  }
-
-  const char *websocket_guid = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
-  size_t guid_len = strlen(websocket_guid);
-
-  // Create concatenated string for hashing
+  static const char websocket_guid[] = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
+  size_t guid_len = sizeof(websocket_guid) - 1;
   size_t total_len = key_len + guid_len;
   char *combined = malloc(total_len + 1);
   if (!combined) {
-    memset(output, 0, 20);
     return;
   }
-
   memcpy(combined, input, key_len);
   memcpy(combined + key_len, websocket_guid, guid_len);
   combined[total_len] = '\0';
 
-  // OpenSSL 3.5 EVP API implementation
   EVP_MD_CTX *ctx = EVP_MD_CTX_new();
-  if (!ctx) {
-    free(combined);
-    memset(output, 0, 20);
-    return;
+  const EVP_MD *md = ctx ? EVP_sha1() : NULL;
+  unsigned int hash_len = SHA1_DIGEST_BYTES;
+  bool hashed = md != NULL && EVP_DigestInit_ex(ctx, md, NULL) == 1 &&
+                EVP_DigestUpdate(ctx, combined, total_len) == 1 &&
+                EVP_DigestFinal_ex(ctx, output, &hash_len) == 1 &&
+                hash_len == SHA1_DIGEST_BYTES;
+  if (!hashed) {
+    memset(output, 0, SHA1_DIGEST_BYTES);
   }
-
-  const EVP_MD *md = EVP_sha1();
-  if (!md) {
-    EVP_MD_CTX_free(ctx);
-    free(combined);
-    memset(output, 0, 20);
-    return;
-  }
-
-  // Initialize digest context
-  if (EVP_DigestInit_ex(ctx, md, NULL) != 1) {
-    EVP_MD_CTX_free(ctx);
-    free(combined);
-    memset(output, 0, 20);
-    return;
-  }
-
-  // Update digest with data
-  if (EVP_DigestUpdate(ctx, combined, total_len) != 1) {
-    EVP_MD_CTX_free(ctx);
-    free(combined);
-    memset(output, 0, 20);
-    return;
-  }
-
-  // Finalize digest
-  unsigned int hash_len = 20;
-  if (EVP_DigestFinal_ex(ctx, output, &hash_len) != 1 || hash_len != 20) {
-    EVP_MD_CTX_free(ctx);
-    free(combined);
-    memset(output, 0, 20);
-    return;
-  }
-
-  // Clean up
-  EVP_MD_CTX_free(ctx);
+  EVP_MD_CTX_free(ctx); // documented no-op on NULL
   free(combined);
 }
 
-// TITANIUM-ARMORED WebSocket handshake response with GUN TURRET VALIDATION
-// 🛡️💀
-char *create_websocket_handshake_response(const char *key) {
-  // SECURITY: Bulletproof input validation
-  if (!key)
-    return NULL;
+// A Sec-WebSocket-Key is exactly 24 base64 characters; anything else is
+// refused before it can reach the digest [BUILTIN-WEBSOCKET-HANDSHAKE].
+enum { WS_KEY_LEN = 24, WS_ACCEPT_LEN = 28, WS_RESPONSE_SIZE = 512 };
 
-  // SECURITY: Validate WebSocket key format (must be 24 chars base64)
-  size_t key_len = strnlen(key, 256);
-  if (key_len != 24)
-    return NULL;
-
-  // SECURITY: Validate base64 characters only
-  for (size_t i = 0; i < key_len; i++) {
+static bool ws_key_is_valid(const char *key) {
+  if (!key || strnlen(key, WS_KEY_LEN + 1) != WS_KEY_LEN) {
+    return false;
+  }
+  for (size_t i = 0; i < WS_KEY_LEN; i++) {
     char c = key[i];
     if (!((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') ||
           (c >= '0' && c <= '9') || c == '+' || c == '/' || c == '=')) {
-      return NULL;
+      return false;
     }
   }
+  return true;
+}
 
-  // SECURITY: Generate SHA-1 hash with military-grade protection
-  unsigned char hash[20];
-  memset(hash, 0, sizeof(hash));
+static bool digest_is_zero(const unsigned char *digest) {
+  for (int i = 0; i < SHA1_DIGEST_BYTES; i++) {
+    if (digest[i] != 0) {
+      return false;
+    }
+  }
+  return true; // sha1_websocket zeroes on every refusal and every failure
+}
+
+// The 101 upgrade response carrying Sec-WebSocket-Accept
+// [BUILTIN-WEBSOCKET-HANDSHAKE]. NULL on any refusal or failure; the encoded
+// accept token is wiped before release on every path.
+char *create_websocket_handshake_response(const char *key) {
+  if (!ws_key_is_valid(key)) {
+    return NULL;
+  }
+  unsigned char hash[SHA1_DIGEST_BYTES];
   sha1_websocket(key, hash);
-
-  // SECURITY: Verify hash was generated successfully
-  bool hash_valid = false;
-  for (int i = 0; i < 20; i++) {
-    if (hash[i] != 0) {
-      hash_valid = true;
-      break;
+  char *encoded = digest_is_zero(hash) ? NULL : base64_encode(hash, sizeof(hash));
+  char *response = NULL;
+  if (encoded && strnlen(encoded, WS_ACCEPT_LEN + 1) == WS_ACCEPT_LEN) {
+    response = calloc(WS_RESPONSE_SIZE, 1);
+  }
+  if (response) {
+    int written = snprintf(response, WS_RESPONSE_SIZE,
+                           "HTTP/1.1 101 Switching Protocols\r\n"
+                           "Upgrade: websocket\r\n"
+                           "Connection: Upgrade\r\n"
+                           "Sec-WebSocket-Accept: %s\r\n"
+                           "\r\n",
+                           encoded);
+    if (written < 0 || written >= WS_RESPONSE_SIZE) {
+      free(response); // truncated: a half-written handshake is not a handshake
+      response = NULL;
     }
   }
-  if (!hash_valid)
-    return NULL;
-
-  // SECURITY: Base64 encode with error checking
-  char *encoded_hash = base64_encode(hash, 20);
-  if (!encoded_hash)
-    return NULL;
-
-  // SECURITY: Validate encoded hash length (SHA-1 base64 = 28 chars)
-  if (strnlen(encoded_hash, 64) != 28) {
-    free(encoded_hash);
-    return NULL;
+  if (encoded) {
+    memset(encoded, 0, strlen(encoded));
+    free(encoded);
   }
-
-  // SECURITY: Use secure buffer allocation with bounds checking
-  const size_t response_size = 512;
-  char *response = calloc(response_size, 1);
-  if (!response) {
-    memset(encoded_hash, 0, strlen(encoded_hash));
-    free(encoded_hash);
-    return NULL;
-  }
-
-  // SECURITY: Use safe formatted output with bounds checking
-  int written = snprintf(response, response_size,
-                         "HTTP/1.1 101 Switching Protocols\r\n"
-                         "Upgrade: websocket\r\n"
-                         "Connection: Upgrade\r\n"
-                         "Sec-WebSocket-Accept: %s\r\n"
-                         "\r\n",
-                         encoded_hash);
-
-  // SECURITY: Verify output was not truncated
-  if (written < 0 || written >= (int)response_size) {
-    memset(response, 0, response_size);
-    free(response);
-    response = NULL;
-  }
-
-  // SECURITY: Zero out sensitive memory
-  memset(encoded_hash, 0, strlen(encoded_hash));
-  free(encoded_hash);
-
   return response;
 }

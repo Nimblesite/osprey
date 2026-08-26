@@ -30,10 +30,7 @@ resumeLifoAuditCase () =
 
     (* Preserve all three legacy lines and their exact unwind ordering. *)
     checkAll "LIFO legacy observations" [
-        legacyTranscript == "after parse: answer=3\nafter load: answer=3\ntotal=3\n",
-        startsWith legacyTranscript "after parse: answer=3\n",
-        contains legacyTranscript "after load: answer=3\n",
-        endsWith legacyTranscript "total=3\n"
+        legacyTranscript == "after parse: answer=3\nafter load: answer=3\ntotal=3\n"
     ]
 
     (* Assert issue order, settle order, operation count, and combined answer. *)
@@ -41,9 +38,7 @@ resumeLifoAuditCase () =
         total == 3,
         n == 2,
         issued == "load:1|parse:2|",
-        settled == "parse:3|load:3|",
-        issued != settled,
-        total == (1 + 2 ?: 0)
+        settled == "parse:3|load:3|"
     ]
 
 (* Register the post-resume LIFO regression. *)
@@ -127,58 +122,22 @@ nestedInterleavedDepthTwoCase () =
        answers them: the outer region answers first and third. *)
     checkAll "two nested depths enter in perform order" [
         entered == "a:a1|b:b1|a:a2|b:b2|",
-        startsWith entered "a:a1|",
-        endsWith entered "b:b2|",
-        contains entered "a:a1|b:b1|",
-        contains entered "b:b1|a:a2|",
-        contains entered "a:a2|b:b2|",
-        !(contains entered "b:b1|a:a1|"),
-        !(contains entered "a:a3"),
-        !(contains entered "b:b3"),
         alphaCalls == 2,
-        betaCalls == 2,
-        alphaCalls == betaCalls,
-        (alphaCalls + betaCalls ?: 0) == 4,
-        length entered == 20
+        betaCalls == 2
     ]
 
     (* Settlement follows the live arm nesting: `a2` crossed the Beta region on
-       its way out, so its arm sits OUTSIDE `b1`'s and settles after it. The
-       last assertion is the order a plain reverse of `entered` would predict
-       [EFFECTS-RESUME-NESTING]. *)
+       its way out, so its arm sits OUTSIDE `b1`'s and settles after it. A plain
+       reverse of `entered` would predict `b:b2|a:a2|b:b1|a:a1|`, which is not
+       what this transcript says [EFFECTS-RESUME-NESTING]. *)
     checkAll "two nested depths settle innermost suspension first" [
-        settled == "b:b2|b:b1|a:a2|a:a1|",
-        startsWith settled "b:b2|",
-        endsWith settled "a:a1|",
-        settled != entered,
-        length settled == length entered,
-        length settled == 20,
-        contains settled "b:b2|b:b1|",
-        contains settled "b:b1|a:a2|",
-        contains settled "a:a2|a:a1|",
-        !(startsWith settled "a:a1|"),
-        !(endsWith settled "b:b2|"),
-        !(contains settled "a:a1|b:b1|"),
-        settled != "a:a1|b:b1|a:a2|b:b2|",
-        settled != "b:b2|a:a2|b:b1|a:a1|"
+        settled == "b:b2|b:b1|a:a2|a:a1|"
     ]
 
     (* Each region supplies its own magnitude — tens from Alpha, hundreds from
        Beta — so a value handed to the wrong performer changes the body's sum. *)
     checkAll "each nested depth supplies its own magnitude" [
-        supplies == "a1=10|b1=100|a2=20|b2=200|",
-        startsWith supplies "a1=10|",
-        endsWith supplies "b2=200|",
-        contains supplies "b1=100|",
-        contains supplies "a2=20|",
-        !(contains supplies "a1=100|"),
-        !(contains supplies "b1=10|"),
-        !(contains supplies "a2=200|"),
-        !(contains supplies "b2=20|"),
-        (10 + 100 ?: 0) == 110,
-        (20 + 200 ?: 0) == 220,
-        (110 + 220 ?: 0) == 330,
-        length supplies == 26
+        supplies == "a1=10|b1=100|a2=20|b2=200|"
     ]
 
     (* The first arm to settle sees the body's own answer, 330. Every later arm
@@ -186,38 +145,7 @@ nestedInterleavedDepthTwoCase () =
        Alpha arms increment: 330 -> 660 -> 1320 -> 1321 -> 1322. *)
     checkAll "nested settled answers chain through the arms" [
         answers == "b2:330|b1:660|a2:1320|a1:1321|",
-        startsWith answers "b2:330|",
-        endsWith answers "a1:1321|",
-        contains answers "b1:660|",
-        contains answers "a2:1320|",
-        (330 * 2 ?: 0) == 660,
-        (660 * 2 ?: 0) == 1320,
-        (1320 + 1 ?: 0) == 1321,
-        (1321 + 1 ?: 0) == 1322,
-        total == 1322,
-        total != 1323,
-        total != 330,
-        total > 1000,
-        total < 2000
-    ]
-
-    (* The regions never traded roles: no Alpha label appears under a Beta tag,
-       and the two transcripts are permutations rather than copies. *)
-    checkAll "nested regions keep their own operations" [
-        entered != settled,
-        supplies != answers,
-        !(contains answers "a1:330|"),
-        !(contains answers "b2:1321|"),
-        !(contains entered "b:a1|"),
-        !(contains entered "a:b1|"),
-        !(contains settled "b:a2|"),
-        !(contains settled "a:b2|"),
-        alphaCalls == 2,
-        betaCalls == 2,
-        total == (1321 + 1 ?: 0),
-        length answers == 30,
-        answers != "",
-        supplies != ""
+        total == 1322
     ]
 
 (* Register the two-depth interleaved settlement audit. *)
@@ -283,94 +211,30 @@ nestedDepthThreeRotationCase () =
     (* Six operations, three depths, entered in body order: d1 d2 d3 d1 d3 d2. *)
     checkAll "three rotated depths enter in perform order" [
         entered == "d1:g0|d2:a1|d3:b1|d1:g1|d3:b2|d2:a2|",
-        startsWith entered "d1:g0|",
-        endsWith entered "d2:a2|",
-        contains entered "d1:g0|d2:a1|",
-        contains entered "d2:a1|d3:b1|",
-        contains entered "d3:b1|d1:g1|",
-        contains entered "d1:g1|d3:b2|",
-        contains entered "d3:b2|d2:a2|",
-        !(contains entered "d1:b1|"),
-        !(contains entered "d3:g1|"),
         gammaCalls == 2,
         alphaCalls == 2,
-        betaCalls == 2,
-        length entered == 36
+        betaCalls == 2
     ]
 
     (* Settlement does NOT reverse that sequence: each crossing operation put
        its arm outside the arms it crossed, so the deepest live arms settle
        first and each region's later suspension settles before its earlier one.
-       The last assertion is the order reversing `entered` would predict. *)
+       Reversing `entered` would predict `d2:a2|d3:b2|d1:g1|d3:b1|d2:a1|d1:g0|`. *)
     checkAll "three rotated depths settle by live arm nesting" [
-        settled == "d3:b2|d3:b1|d2:a2|d2:a1|d1:g1|d1:g0|",
-        startsWith settled "d3:b2|",
-        !(startsWith settled "d2:"),
-        !(startsWith settled "d1:"),
-        endsWith settled "d1:g0|",
-        !(endsWith settled "d3:"),
-        settled != entered,
-        length settled == length entered,
-        length settled == 36,
-        contains settled "d3:b2|d3:b1|",
-        contains settled "d3:b1|d2:a2|",
-        contains settled "d2:a1|d1:g1|",
-        !(contains settled "d1:g0|d2:a1|"),
-        settled != "d2:a2|d3:b2|d1:g1|d3:b1|d2:a1|d1:g0|"
+        settled == "d3:b2|d3:b1|d2:a2|d2:a1|d1:g1|d1:g0|"
     ]
 
     (* Body sum: 1000 + 10 + 100 + 2000 + 200 + 20 = 3330. Each arm then folds
        its own transform over the answer below it, deepest live arm first. *)
     checkAll "three rotated depths chain their answers" [
-        answers == "b2:3330|b1:9990|a2:29970|a1:29977|g1:29984|g0:59968|",
-        startsWith answers "b2:3330|",
-        endsWith answers "g0:59968|",
-        contains answers "b1:9990|",
-        contains answers "a2:29970|",
-        contains answers "a1:29977|",
-        contains answers "g1:29984|",
-        (1000 + 10 ?: 0) == 1010,
-        (100 + 2000 ?: 0) == 2100,
-        (200 + 20 ?: 0) == 220,
-        (1010 + 2100 ?: 0) == 3110,
-        (3110 + 220 ?: 0) == 3330,
-        length answers == 52
+        answers == "b2:3330|b1:9990|a2:29970|a1:29977|g1:29984|g0:59968|"
     ]
 
     (* 3330 *3 -> 9990 *3 -> 29970 +7 -> 29977 +7 -> 29984 *2 -> 59968 *2. The
-       third assertion from the bottom is the total the reverse-entry order
-       would produce, which no arrangement of these transforms reaches. *)
+       reverse-entry order would fold +7 *3 *2 *3 +7 *2 over the same body sum
+       and reach 120146, so the total alone separates the two orders. *)
     checkAll "three rotated depths fold in exactly one order" [
-        (3330 * 3 ?: 0) == 9990,
-        (9990 * 3 ?: 0) == 29970,
-        (29970 + 7 ?: 0) == 29977,
-        (29977 + 7 ?: 0) == 29984,
-        (29984 * 2 ?: 0) == 59968,
-        (59968 * 2 ?: 0) == 119936,
-        total == 119936,
-        total != 120013,
-        total != 120146,
-        total != 3330,
-        total > 100000,
-        total < 200000,
-        total != (3330 * 36 ?: 0)
-    ]
-
-    (* Every depth answered only its own effect, twice, and neither transcript
-       is the plain concatenation the other would produce. *)
-    checkAll "three rotated depths never answer for each other" [
-        gammaCalls == alphaCalls,
-        alphaCalls == betaCalls,
-        (gammaCalls + alphaCalls + betaCalls ?: 0) == 6,
-        !(contains answers "g0:3330|"),
-        !(contains answers "a2:59968|"),
-        !(contains entered "d2:g0|"),
-        !(contains entered "d1:a1|"),
-        !(contains settled "d3:a2|"),
-        !(contains settled "d2:b1|"),
-        entered != settled,
-        answers != "",
-        length entered == length settled
+        total == 119936
     ]
 
 (* Register the three-depth rotated settlement audit. *)
@@ -460,114 +324,37 @@ nestedDepthFourStaircaseCase () =
     (* Eight operations descend the four depths and climb back out. *)
     checkAll "four nested depths enter in perform order" [
         entered == "1:a1|2:b1|3:g1|4:x1|4:x2|3:g2|2:b2|1:a2|",
-        startsWith entered "1:a1|",
-        endsWith entered "1:a2|",
-        contains entered "1:a1|2:b1|",
-        contains entered "2:b1|3:g1|",
-        contains entered "3:g1|4:x1|",
-        contains entered "4:x1|4:x2|",
-        contains entered "4:x2|3:g2|",
-        contains entered "3:g2|2:b2|",
-        contains entered "2:b2|1:a2|",
         alphaCalls == 2,
         betaCalls == 2,
         gammaCalls == 2,
-        deltaCalls == 2,
-        length entered == 40
+        deltaCalls == 2
     ]
 
     (* Deepest live arm first: both Delta suspensions, then both Gamma, then
        both Beta, then both Alpha. The second Alpha suspension was opened LAST
        and settles seventh, because every operation it crossed put its arm
-       inside it. The final assertion is the reverse of the entry order. *)
+       inside it. Reversing `entered` would instead predict
+       `1:a2|2:b2|3:g2|4:x2|4:x1|3:g1|2:b1|1:a1|`. *)
     checkAll "four nested depths settle deepest live arm first" [
-        settled == "4:x2|4:x1|3:g2|3:g1|2:b2|2:b1|1:a2|1:a1|",
-        startsWith settled "4:x2|",
-        endsWith settled "1:a1|",
-        settled != entered,
-        length settled == length entered,
-        length settled == 40,
-        contains settled "4:x2|4:x1|",
-        contains settled "4:x1|3:g2|",
-        contains settled "2:b1|1:a2|",
-        !(contains settled "1:a1|2:b1|"),
-        !(contains settled "4:x1|4:x2|"),
-        !(startsWith settled "1:"),
-        !(endsWith settled "4:x1|"),
-        settled != "1:a2|2:b2|3:g2|4:x2|4:x1|3:g1|2:b1|1:a1|"
+        settled == "4:x2|4:x1|3:g2|3:g1|2:b2|2:b1|1:a2|1:a1|"
     ]
 
     (* Each depth supplies its own power of ten, twice, so a value crossing to a
        neighbouring region would move the body's sum by a whole digit. *)
     checkAll "four nested depths supply distinct magnitudes" [
-        supplies == "a1=1|b1=10|g1=100|x1=1000|x2=2000|g2=200|b2=20|a2=2|",
-        startsWith supplies "a1=1|",
-        endsWith supplies "a2=2|",
-        contains supplies "b1=10|",
-        contains supplies "g1=100|",
-        contains supplies "x1=1000|",
-        contains supplies "x2=2000|",
-        contains supplies "g2=200|",
-        contains supplies "b2=20|",
-        !(contains supplies "a1=1000|"),
-        !(contains supplies "x1=1|"),
-        !(contains supplies "b1=100|"),
-        length supplies == 52
+        supplies == "a1=1|b1=10|g1=100|x1=1000|x2=2000|g2=200|b2=20|a2=2|"
     ]
 
     (* The staircase: 3333 -> 4333 -> 5333 -> 5433 -> 5533 -> 5543 -> 5553 ->
        5554, one digit per settling depth, in the order the arms unwound — the
        thousands digit first because the Delta arms settle first. *)
     checkAll "four nested depths climb a digit staircase" [
-        answers == "x2:3333|x1:4333|g2:5333|g1:5433|b2:5533|b1:5543|a2:5553|a1:5554|",
-        startsWith answers "x2:3333|",
-        endsWith answers "a1:5554|",
-        contains answers "x1:4333|",
-        contains answers "g2:5333|",
-        contains answers "g1:5433|",
-        contains answers "b2:5533|",
-        contains answers "b1:5543|",
-        contains answers "a2:5553|",
-        !(contains answers "a2:5554|"),
-        !(contains answers "a1:3333|"),
-        !(contains answers "x1:3444|"),
-        length answers == 64
+        answers == "x2:3333|x1:4333|g2:5333|g1:5433|b2:5533|b1:5543|a2:5553|a1:5554|"
     ]
 
     (* Body sum 1111 + 2222 = 3333; the arms then add 2 * (1 + 10 + 100 + 1000). *)
     checkAll "four nested depths total their halves and transforms" [
-        (1 + 10 ?: 0) == 11,
-        (100 + 1000 ?: 0) == 1100,
-        (11 + 1100 ?: 0) == 1111,
-        (2000 + 200 ?: 0) == 2200,
-        (20 + 2 ?: 0) == 22,
-        (2200 + 22 ?: 0) == 2222,
-        (1111 + 2222 ?: 0) == 3333,
-        (1 + 10 + 100 + 1000 ?: 0) == 1111,
-        (1111 * 2 ?: 0) == 2222,
-        (3333 + 2222 ?: 0) == 5555,
-        total == 5555,
-        total != 3333,
-        total != 4444,
-        total > 5000
-    ]
-
-    (* No depth answered for another: each label appears under exactly one tag
-       in both transcripts, and every count matches every other count. *)
-    checkAll "four nested depths never answer for each other" [
-        !(contains entered "2:a1|"),
-        !(contains entered "1:b1|"),
-        !(contains entered "3:x1|"),
-        !(contains entered "4:g2|"),
-        !(contains settled "2:a2|"),
-        !(contains settled "1:b2|"),
-        !(contains settled "3:x2|"),
-        !(contains settled "4:g1|"),
-        alphaCalls == deltaCalls,
-        betaCalls == gammaCalls,
-        (alphaCalls + betaCalls + gammaCalls + deltaCalls ?: 0) == 8,
-        entered != settled,
-        supplies != answers
+        total == 5555
     ]
 
 (* Register the four-depth nested settlement audit. *)
@@ -643,92 +430,27 @@ nestedPartialInnerResumeCase () =
     checkAll "a partial inner region keeps only its own operation" [
         innerNear == 2,
         outerFar == 2,
-        outerNear == 0,
-        innerNear == outerFar,
-        innerNear != outerNear,
-        (innerNear + outerFar + outerNear ?: 0) == 4,
-        !(contains entered "OUTERnear"),
-        !(contains settled "OUTERnear"),
-        !(contains answers "OUTERnear"),
-        !(contains supplies "N1="),
-        !(contains supplies "N3="),
-        !(contains supplies "1000000"),
-        !(contains supplies "3000000"),
-        total < 100000
+        outerNear == 0
     ]
 
     (* Entry order is the body's order, alternating between the two depths. *)
     checkAll "a crossing operation enters between inner suspensions" [
         entered == "near:1|far:2|near:3|far:4|",
-        startsWith entered "near:1|",
-        endsWith entered "far:4|",
-        contains entered "near:1|far:2|",
-        contains entered "far:2|near:3|",
-        contains entered "near:3|far:4|",
-        !(contains entered "far:1|"),
-        !(contains entered "near:2|"),
-        !(contains entered "near:4|"),
-        !(contains entered "far:3|"),
-        length entered == 26,
-        supplies == "n1=10|f2=2000|n3=30|f4=4000|",
-        length supplies == 28
+        supplies == "n1=10|f2=2000|n3=30|f4=4000|"
     ]
 
     (* Both inner `near` arms settle first: each `far` crossed them on its way
-       out, so its arm sits outside theirs. The last assertion is the order
-       reversing `entered` would predict [EFFECTS-RESUME-NESTING]. *)
+       out, so its arm sits outside theirs. Reversing `entered` would predict
+       `far:4|near:3|far:2|near:1|` [EFFECTS-RESUME-NESTING]. *)
     checkAll "partial nesting settles its live inner arms first" [
-        settled == "near:3|near:1|far:4|far:2|",
-        startsWith settled "near:3|",
-        endsWith settled "far:2|",
-        settled != entered,
-        length settled == length entered,
-        contains settled "near:3|near:1|",
-        contains settled "near:1|far:4|",
-        contains settled "far:4|far:2|",
-        !(startsWith settled "near:1|"),
-        !(endsWith settled "far:4|"),
-        !(contains settled "near:1|far:2|"),
-        settled != "near:1|far:2|near:3|far:4|",
-        settled != "far:4|near:3|far:2|near:1|"
+        settled == "near:3|near:1|far:4|far:2|"
     ]
 
     (* Body sum 10 + 2000 + 30 + 4000 = 6040, then both `near` arms add five and
        both `far` arms double: 6040 -> 6045 -> 6050 -> 12100 -> 24200. *)
     checkAll "partial nesting chains answers across both depths" [
         answers == "near:6040|near:6045|far:6050|far:12100|",
-        startsWith answers "near:6040|",
-        endsWith answers "far:12100|",
-        contains answers "near:6045|",
-        contains answers "far:6050|",
-        (10 + 2000 ?: 0) == 2010,
-        (30 + 4000 ?: 0) == 4030,
-        (2010 + 4030 ?: 0) == 6040,
-        (6040 + 5 ?: 0) == 6045,
-        (6045 + 5 ?: 0) == 6050,
-        (6050 * 2 ?: 0) == 12100,
-        (12100 * 2 ?: 0) == 24200,
-        total == 24200,
-        length answers == 39
-    ]
-
-    (* Negative controls: no reordering and no leak to the shadowed arm can
-       reproduce this number, and the millionfold arm never contributed. 24175
-       is the total the reverse-entry settlement order would have produced. *)
-    checkAll "partial nesting rejects every other settlement order" [
-        total != 24175,
-        total != 6040,
-        total != 24180,
-        total > 24000,
-        total < 25000,
-        total == (12100 * 2 ?: 0),
-        outerNear == 0,
-        !(contains answers "far:24200|"),
-        !(contains answers "near:12100|"),
-        !(contains answers "near:24200|"),
-        !(contains answers "far:6040|"),
-        entered != settled,
-        supplies != answers
+        total == 24200
     ]
 
 (* Register the partial-inner-region settlement audit. *)
@@ -793,89 +515,26 @@ sameEffectTwoDepthsCase () =
     checkAll "an inner region shadows only its own lexical region" [
         outerCalls == 2,
         innerCalls == 2,
-        outerCalls == innerCalls,
-        (outerCalls + innerCalls ?: 0) == 4,
-        entered == "out:before|in:in1|in:in2|out:after|",
-        startsWith entered "out:before|",
-        endsWith entered "out:after|",
-        contains entered "in:in1|in:in2|",
-        !(contains entered "in:before|"),
-        !(contains entered "in:after|"),
-        !(contains entered "out:in1|"),
-        !(contains entered "out:in2|"),
-        length entered == 35
+        entered == "out:before|in:in1|in:in2|out:after|"
     ]
 
     (* Each depth kept its own magnitude. Had the inner region failed to shadow,
        the outer counter would have supplied 2000 and 3000 to in1 and in2. *)
     checkAll "two depths of one effect supply their own values" [
-        supplies == "before=1000|in1=10|in2=20|after=2000|",
-        startsWith supplies "before=1000|",
-        endsWith supplies "after=2000|",
-        contains supplies "in1=10|",
-        contains supplies "in2=20|",
-        !(contains supplies "in1=2000|"),
-        !(contains supplies "in2=3000|"),
-        !(contains supplies "after=4000|"),
-        !(contains supplies "after=3000|"),
-        !(contains supplies "before=10|"),
-        (1000 + 2000 ?: 0) == 3000,
-        (10 + 20 ?: 0) == 30,
-        length supplies == 37
+        supplies == "before=1000|in1=10|in2=20|after=2000|"
     ]
 
     (* The inner region settles completely before `after` is performed, so the
        settle transcript is NOT the reverse of the entry transcript. *)
     checkAll "the inner region settles before the outer body continues" [
-        settled == "in:in2|in:in1|out:after|out:before|",
-        startsWith settled "in:in2|",
-        endsWith settled "out:before|",
-        contains settled "in:in2|in:in1|",
-        contains settled "in:in1|out:after|",
-        contains settled "out:after|out:before|",
-        settled != "out:after|in:in2|in:in1|out:before|",
-        settled != entered,
-        !(startsWith settled "out:after|"),
-        !(contains settled "out:after|in:"),
-        !(contains settled "out:before|out:after|"),
-        length settled == length entered,
-        length settled == 35
+        settled == "in:in2|in:in1|out:after|out:before|"
     ]
 
     (* 10 + 20 = 30 is the inner body's answer; the inner arms add three each,
        so the inner region evaluates to 36 and the outer body sums to 3036. *)
     checkAll "the inner region's answer feeds the outer body" [
         answers == "in2:30|in1:33|after:3036|before:6072|",
-        startsWith answers "in2:30|",
-        endsWith answers "before:6072|",
-        contains answers "in1:33|",
-        contains answers "after:3036|",
-        (30 + 3 ?: 0) == 33,
-        (33 + 3 ?: 0) == 36,
-        (1000 + 36 ?: 0) == 1036,
-        (1036 + 2000 ?: 0) == 3036,
-        (3036 * 2 ?: 0) == 6072,
-        (6072 * 2 ?: 0) == 12144,
-        total == 12144,
-        length answers == 37
-    ]
-
-    (* Negative controls: the inner region never observed the outer answer, the
-       outer region never observed the inner body, and no other order lands here. *)
-    checkAll "two depths of one effect never observe each other" [
-        !(contains answers "in1:3036|"),
-        !(contains answers "in2:3036|"),
-        !(contains answers "before:30|"),
-        !(contains answers "after:36|"),
-        !(contains answers "before:12144|"),
-        total != 3036,
-        total != 6072,
-        total != 12150,
-        total > 12000,
-        total < 13000,
-        entered != settled,
-        supplies != answers,
-        answers != ""
+        total == 12144
     ]
 
 (* Register the same-effect two-depth settlement audit. *)

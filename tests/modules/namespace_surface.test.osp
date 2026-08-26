@@ -1,0 +1,62 @@
+/// Default surface for [MODULES-NAMESPACE], [MODULES-FILE-SCOPED-NAMESPACE],
+/// [MODULES-FLAVOR-PROJECTION] and [MODULES-RESOLUTION]: an open logical group
+/// that several block contributions may extend, addressed by explicit label.
+
+namespace geometry {
+    /// A private constant is reachable from its own namespace only.
+    let unitSide = 2
+
+    /// Namespace-level declarations are visible across the namespace graph.
+    fn square(side) = (side * side) ?: 0
+
+    fn unitSquare() = square(unitSide)
+}
+
+namespace geometry {
+    /// A second contribution to the same label extends the first group.
+    fn cube(side) = (side * square(side)) ?: 0
+}
+
+namespace text {
+    /// A different namespace may reuse a simple name without colliding.
+    fn square(word) = "${word}${word}"
+}
+
+namespace "geometry/metric" {
+    /// A quoted label is opaque: `/` builds no parent namespace.
+    module Metric {
+        export fn centimetres(metres) = (metres * 100) ?: 0
+    }
+}
+
+import "geometry/metric"::Metric as Metric
+
+/// Every path spelling that must resolve to the geometry contributions.
+fn geometryPathsCase() = checkAll("geometry namespace paths", [
+    geometry::square(4) == 16,
+    geometry::cube(3) == 27,
+    geometry::unitSquare() == 4,
+    geometry::square(0) == 0,
+    geometry::cube(1) == 1,
+    geometry::square(geometry::square(2)) == 16
+])
+
+/// Two namespaces holding the same simple name stay distinct [MODULES-ABI].
+fn sameNameDifferentNamespaceCase() = checkAll("same name, two namespaces", [
+    geometry::square(3) == 9,
+    text::square("ab") == "abab",
+    "${geometry::square(5)}" == "25",
+    text::square("") == ""
+])
+
+/// A quoted label is one opaque segment, not a nested `geometry` child.
+fn quotedLabelCase() = checkAll("quoted namespace label", [
+    Metric::centimetres(3) == 300,
+    Metric::centimetres(0) == 0,
+    geometry::square(Metric::centimetres(1)) == 10000
+])
+
+print("${geometry::square(4)} ${geometry::cube(3)} ${text::square("ab")} ${Metric::centimetres(2)}")
+test("namespace paths resolve every contribution", geometryPathsCase)
+test("namespaces keep same-named declarations apart", sameNameDifferentNamespaceCase)
+test("quoted namespace labels are opaque", quotedLabelCase)
