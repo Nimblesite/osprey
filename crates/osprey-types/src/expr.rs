@@ -1431,6 +1431,80 @@ mod tests {
     }
 
     #[test]
+    fn a_let_bound_channel_or_fiber_is_monomorphic_in_its_element() {
+        // The ML value restriction, narrowed to the two stateful handles.
+        // A `let` generalizes, so quantifying the element of a handle gave
+        // every USE its own copy and nothing tied the two ends together: this
+        // program COMPILED and printed a raw pointer as an integer.
+        // Implements [CONCURRENCY-CHANNEL] and [CONCURRENCY-SPAWN-AWAIT].
+        let sent_string_read_as_int = bad("fn main() -> Unit = {\n\
+              let ch = Channel(1)\n\
+              send(ch, \"text\")\n\
+              print(\"${recv(ch) + 1}\")\n\
+            }\n");
+        assert!(
+            sent_string_read_as_int
+                .iter()
+                .any(|e| e.message.contains("cannot unify string with int")),
+            "a channel sent a string must not receive an int: {sent_string_read_as_int:?}"
+        );
+        // Two sends of different types into ONE channel are the same hole seen
+        // from the other side.
+        let two_element_types = bad("fn main() -> Unit = {\n\
+              let ch = Channel(2)\n\
+              send(ch, 1)\n\
+              send(ch, \"two\")\n\
+            }\n");
+        assert!(
+            !two_element_types.is_empty(),
+            "one channel may carry exactly one element type"
+        );
+        // A fiber handle is fixed by the thunk that produced it, so awaiting it
+        // at another type is the same error.
+        let fiber_at_two_types = bad("fn text() -> string = \"t\"\n\
+            fn main() -> Unit = {\n\
+              let f = spawn text()\n\
+              print(\"${await(f) + 1}\")\n\
+            }\n");
+        assert!(
+            !fiber_at_two_types.is_empty(),
+            "an awaited fiber keeps its thunk's type"
+        );
+        // ...and the honest programs still type: one element type per handle,
+        // used consistently at both ends, including a nested collection.
+        ok("fn main() -> Unit = {\n\
+              let ch = Channel(2)\n\
+              send(ch, [[1, 2], [3]])\n\
+              let back = recv(ch)\n\
+              print(\"${listLength(back)}\")\n\
+            }\n");
+        // Pinning is confined to handle VALUES. An immutable constructor still
+        // generalizes, and so does a FUNCTION that merely mentions a handle:
+        // every call instantiates its own, so a factory or a generic drain
+        // helper is not collateral damage.
+        ok("fn main() -> Unit = {\n\
+              let identity = |x| => x\n\
+              print(\"${identity(1)} ${identity(\"two\")}\")\n\
+            }\n");
+        ok("fn main() -> Unit = {\n\
+              let make = |n| => Channel(n)\n\
+              let ints = make(1)\n\
+              let words = make(1)\n\
+              send(ints, 7)\n\
+              send(words, \"seven\")\n\
+              print(\"${recv(ints)} ${recv(words)}\")\n\
+            }\n");
+        ok("fn firstOf(ch) = recv(ch)\n\
+            fn main() -> Unit = {\n\
+              let ints = Channel(1)\n\
+              let words = Channel(1)\n\
+              send(ints, 7)\n\
+              send(words, \"seven\")\n\
+              print(\"${firstOf(ints)} ${firstOf(words)}\")\n\
+            }\n");
+    }
+
+    #[test]
     fn a_unit_operation_arm_may_not_swallow_a_result() {
         // A `Unit` operation discards its arm's value, so a `Result` produced
         // there would lose its failure with nothing left to observe it.

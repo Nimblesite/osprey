@@ -492,6 +492,38 @@ suite("Osprey test documentation and profiling", () => {
       );
     });
 
+    // An id can be in the inventory while its documentation is not: discovery
+    // and doc lookup are separate reads, and they can disagree after an edit.
+    // Such an id has no declaration line, and a case with no line must not win
+    // the cursor race -- line 0 sorts ABOVE every real declaration, so treating
+    // it as a position would make the phantom the answer for every cursor in
+    // the file.
+    test("an id with no documentation cannot win the cursor race", () => {
+      const uri = vscode.Uri.file("/w/a.test.osp");
+      const known = [
+        `${uri.toString()} phantom`,
+        `${uri.toString()} real`,
+      ];
+      const lines = new Map([[known[1], 5]]);
+      const docOf = (id: string) => {
+        const line = lines.get(id);
+        return line === undefined
+          ? undefined
+          : { name: "real", line, summary: "", markdown: "" };
+      };
+      assert.strictEqual(
+        resolveTargetId(undefined, uri, 10, known, docOf),
+        known[1],
+        "the documented case owns the cursor",
+      );
+      // With the only documented case removed, nothing resolves -- the phantom
+      // does not step in at line 0.
+      assert.strictEqual(
+        resolveTargetId(undefined, uri, 10, [known[0]], docOf),
+        undefined,
+      );
+    });
+
     test("a TestItem argument wins over the cursor position", async function () {
       if (!compiler) {
         this.skip();

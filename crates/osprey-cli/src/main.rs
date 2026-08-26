@@ -23,6 +23,8 @@ mod fmt;
 mod project;
 mod sandbox;
 mod test_cmd;
+mod test_coverage;
+mod test_skips;
 mod wasm;
 
 use osprey_syntax::Flavor;

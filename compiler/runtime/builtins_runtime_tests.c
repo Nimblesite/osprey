@@ -15,6 +15,8 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
+#include "test_alloc.h"
+
 void *osprey_ffi_cell(void);
 void *osprey_ffi_deref(void *cell);
 int64_t osprey_ffi_free(void *cell);
@@ -480,12 +482,104 @@ static void t_tap(void) {
                    1);
 }
 
+// [BUILTIN-INPUT]: a read that cannot allocate reports NULL and OWNS NOTHING.
+//
+// Both arms are real contracts and neither can be reached by asking the kernel
+// nicely -- a 128-byte malloc does not fail on demand -- so the allocator is
+// interposed and told exactly which call to refuse. What is asserted is not
+// that the arm ran but what it left behind: the RETURN VALUE (NULL, never a
+// pointer into a buffer that was never grown) and the OWNERSHIP (the live-block
+// count back where it started, which is the only way to see that the growth
+// failure freed the buffer it was growing). A leak here costs one buffer per
+// failed line and shows up in no return value at all.
+static void t_input_allocation_failure(void) {
+  long live = osp_alloc_live();
+
+  // Arm 1: the initial line buffer. Nothing has been allocated yet, so nothing
+  // may be retained.
+  int pipe_fds[2];
+  CHECK(pipe(pipe_fds) == 0);
+  CHECK(write(pipe_fds[1], "alpha\n", 6) == 6);
+  close(pipe_fds[1]);
+  int saved = stdin_redirect(pipe_fds[0]);
+  osp_alloc_fail_next();
+  char *line = osp_input();
+  stdin_restore(saved);
+  CHECK(line == NULL);
+  CHECK(osp_alloc_live() == live);
+
+  // Arm 2: the growth realloc, reached only by a line longer than the initial
+  // buffer. The buffer EXISTS by then, so returning NULL without freeing it is
+  // a leak the return value cannot show.
+  static char big[LONG_LINE + 2];
+  memset(big, 'z', LONG_LINE);
+  big[LONG_LINE] = '\n';
+  big[LONG_LINE + 1] = '\0';
+  CHECK(pipe(pipe_fds) == 0);
+  CHECK(write(pipe_fds[1], big, LONG_LINE + 1) == (ssize_t)(LONG_LINE + 1));
+  close(pipe_fds[1]);
+  saved = stdin_redirect(pipe_fds[0]);
+  osp_alloc_fail_after(1); // the initial malloc succeeds; the growth does not
+  line = osp_input();
+  stdin_restore(saved);
+  CHECK(line == NULL);
+  CHECK(osp_alloc_live() == live);
+
+  // Disarmed again, the very same read succeeds: the injector under test is
+  // the injector, not a permanent change to the allocator.
+  osp_alloc_fail_off();
+  CHECK(pipe(pipe_fds) == 0);
+  CHECK(write(pipe_fds[1], "alpha\n", 6) == 6);
+  close(pipe_fds[1]);
+  saved = stdin_redirect(pipe_fds[0]);
+  line = osp_input();
+  stdin_restore(saved);
+  CHECK(line != NULL && strcmp(line, "alpha") == 0);
+  free(line);
+  CHECK(osp_alloc_live() == live);
+}
+
+// The bootstrap arena inside test_alloc.h serves the dlsym recursion that
+// resolves the real allocator, so an address it hands out that is NOT its own
+// corrupts whatever runs next rather than the test that caused it. Draining it
+// here is safe and deliberate: the resolver runs once, at the first allocation
+// of the process, and never touches the arena again.
+static void t_bootstrap_arena_hands_out_only_its_own_bytes(void) {
+  // Refused, not rounded into a size that fits: `(size_t)-4 + 7` wraps to 3,
+  // and 3 bytes fit any arena.
+  CHECK(osp_bootstrap_alloc((size_t)-1) == NULL);
+  CHECK(osp_bootstrap_alloc((size_t)-4) == NULL);
+  CHECK(osp_bootstrap_alloc((size_t)OSP_BOOTSTRAP_BYTES + 1u) == NULL);
+
+  // Drain it with the request that reserves the least. Every address must be
+  // inside the arena and distinct from the one before it.
+  const void *previous = NULL;
+  long served = 0;
+  for (void *at = osp_bootstrap_alloc(0); at != NULL;
+       at = osp_bootstrap_alloc(0)) {
+    CHECK(osp_from_bootstrap(at));
+    CHECK(at != previous);
+    previous = at;
+    served += 1;
+  }
+  CHECK(served <= OSP_BOOTSTRAP_BYTES / 8);
+
+  // A spent arena refuses EVERY size, including the one that would reserve
+  // nothing and answer one-past-the-end.
+  CHECK(osp_bootstrap_alloc(0) == NULL);
+  CHECK(osp_bootstrap_alloc(1) == NULL);
+  CHECK(osp_bootstrap_alloc(OSP_BOOTSTRAP_BYTES) == NULL);
+}
+
 int main(void) {
   t_ffi_cells();
   t_random_bounds();
   t_random_below();
   t_input_lines();
   t_input_descriptor_states();
+  t_input_allocation_failure();
+  // Last: it spends the bootstrap arena, and nothing after it may need one.
+  t_bootstrap_arena_hands_out_only_its_own_bytes();
   t_term();
   t_tap();
   printf("[ok] builtins_runtime: %ld assertions\n", g_checks);

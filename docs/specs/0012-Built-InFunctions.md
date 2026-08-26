@@ -492,6 +492,23 @@ is outside the valid range or has no process.
 ### `cleanupProcess(processId: int) -> Unit`
 Releases process resources.
 
+### Failure and resource release — [BUILTIN-PROCESS-FAILURE]
+
+`spawnProcess` yields `Success` only for a handle a monitor is already
+watching; every other outcome is `Error`. The runtime distinguishes them as
+`-1` a missing command or callback, `-2` the handle space is used up, `-3` the
+process record could not be allocated, `-4` a pipe could not be opened, `-5`
+the monitor thread could not be started, and `-6` the process could not be
+created. The argument check runs before the capacity check, so a call that is
+both malformed and unaffordable reports `-1`.
+
+Every failing path leaves the process as the call found it: no descriptor
+opened for the attempt stays open, no child stays unreaped, no table slot stays
+occupied, and a later `spawnProcess` succeeds once the condition clears. A
+failed spawn does consume a handle number — handle numbers only ever increase —
+but never a table slot. `awaitProcess` on a handle whose slot was released
+returns `-1`.
+
 ## JSON Document Functions — [BUILTIN-JSON]
 
 ```osprey
@@ -508,6 +525,61 @@ string and returns `Error` for an invalid path, handle, array, or object.
 `jsonLength` returns an array length or object member count and returns `-1`
 for an invalid path, handle, or scalar. A successful handle must be released
 once with `jsonFree`; an invalid handle or double free returns `Error`.
+
+### Malformed documents and string grammar — [BUILTIN-JSON-STRING]
+
+`jsonParse` returns `Error` for any text that is not one complete JSON value,
+and it returns exactly that one failure: a document is either parsed whole or
+rejected whole, never truncated at the first surprise and reported as a
+success. Trailing text after the value, a missing separator, an unterminated
+container, and an empty document are all rejections.
+
+Inside a string the accepted grammar is RFC 8259's, with no extensions:
+
+- the only escapes are `\"`, `\\`, `\/`, `\b`, `\f`, `\n`, `\r`, `\t` and
+  `\uXXXX`. Any other character after a backslash is a rejection — the
+  backslash is never dropped and the character never taken literally;
+- `\u` must be followed by exactly four hexadecimal digits. Fewer digits, a
+  non-hexadecimal digit, or the end of the text is a rejection;
+- a `\u` escape naming a high surrogate (U+D800–U+DBFF) must be immediately
+  followed by a `\u` escape naming a low surrogate (U+DC00–U+DFFF); the pair
+  decodes to the one code point they spell. A high surrogate followed by
+  anything else, and a low surrogate that no high surrogate precedes, are both
+  rejections; and
+- the characters U+0000 through U+001F must appear escaped. A raw one is a
+  rejection; and
+- the text is UTF-8. A literal byte sequence that is not valid UTF-8 — an
+  overlong form, a surrogate spelled in UTF-8, a code point past U+10FFFF, a
+  truncated sequence, or a continuation byte with no lead — is a rejection,
+  exactly as the equivalent `\u` escape is; and
+- `\u0000` is rejected outright, escaped or not. Every scalar is delivered as a
+  NUL-terminated string, so a decoded U+0000 would not embed a NUL — it would
+  truncate the value, and `"a\u0000b"` would read back as `a` with nothing
+  reporting the loss.
+
+### Number grammar — [BUILTIN-JSON-NUMBER]
+
+A number is stored as its source text and `jsonGet` returns that text
+unchanged, so whatever the grammar accepts is what a caller reads back. The
+accepted form is RFC 8259's, and nothing else:
+
+```
+number = [ "-" ] int [ frac ] [ exp ]
+int    = "0" / ( digit1-9 *DIGIT )
+frac   = "." 1*DIGIT
+exp    = ( "e" / "E" ) [ "+" / "-" ] 1*DIGIT
+```
+
+So `-`, `+1`, `.5`, `1.`, `1.e5`, `1e`, `1e+`, `--1` and `1..2` are all
+rejected, and a leading zero ends the integer part: `01` is `0` followed by
+text that is not part of the number. Inside a container that unfinished number
+makes the whole document malformed; at the root a value that is complete and
+followed by more text is the distinct trailing-text failure instead.
+
+Allocation failure at any point during a parse is reported the same way as
+malformed input — `Error`, no handle, and nothing retained — because a
+partially built document is not a document. A parse that fails, for either
+reason, frees everything it allocated.
 
 ## Terminal Functions — [BUILTIN-TERM]
 

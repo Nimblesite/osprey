@@ -41,7 +41,7 @@ use std::time::{Duration, Instant};
 const RUN_BUDGET: Duration = Duration::from_secs(30);
 
 /// Compiling and linking is slower than running, and only happens once.
-const COMPILE_BUDGET: Duration = Duration::from_secs(180);
+const COMPILE_BUDGET: Duration = Duration::from_mins(3);
 
 /// How often a poll loop re-checks a child that has not moved yet.
 const POLL_INTERVAL: Duration = Duration::from_millis(50);
@@ -74,14 +74,30 @@ fn repo_root() -> PathBuf {
 ///
 /// Returns the error as a value rather than panicking: this is not a `#[test]`
 /// function, and the assertion belongs with the other assertions.
-fn echo_binary() -> Result<PathBuf, String> {
-    static BUILT: OnceLock<Result<PathBuf, String>> = OnceLock::new();
+/// The compiled program AND how long compiling it actually took. The duration
+/// is recorded here, at the one place the build happens, because the budget
+/// assertion below cannot measure it from outside: whichever test touches the
+/// `OnceLock` first pays the compile and every later caller gets a cached
+/// lookup, so a test that timed its own call would measure nothing at all
+/// whenever it lost that race — and pass.
+fn echo_build() -> Result<(PathBuf, Duration), String> {
+    static BUILT: OnceLock<Result<(PathBuf, Duration), String>> = OnceLock::new();
     BUILT.get_or_init(build_echo_binary).clone()
 }
 
-fn build_echo_binary() -> Result<PathBuf, String> {
+fn echo_binary() -> Result<PathBuf, String> {
+    echo_build().map(|(path, _)| path)
+}
+
+fn build_echo_binary() -> Result<(PathBuf, Duration), String> {
+    let started = Instant::now();
+    compile_echo_binary().map(|path| (path, started.elapsed()))
+}
+
+fn compile_echo_binary() -> Result<PathBuf, String> {
     let dir = std::env::temp_dir().join(format!("osprey_input_states_{}", std::process::id()));
-    std::fs::create_dir_all(&dir).map_err(|e| format!("could not create {}: {e}", dir.display()))?;
+    std::fs::create_dir_all(&dir)
+        .map_err(|e| format!("could not create {}: {e}", dir.display()))?;
     let source = dir.join("echo.osp");
     std::fs::write(&source, ECHO_SOURCE)
         .map_err(|e| format!("could not write {}: {e}", source.display()))?;
@@ -208,17 +224,21 @@ impl Drop for Running {
 fn drain(mut pipe: ChildStdout) -> Arc<Mutex<String>> {
     let seen = Arc::new(Mutex::new(String::new()));
     let sink = Arc::clone(&seen);
-    std::thread::spawn(move || {
+    // The handle is deliberately dropped: the thread ends when the pipe closes,
+    // and nothing here may join on a pipe that the parked case never closes.
+    drop(std::thread::spawn(move || {
         let mut chunk = [0_u8; 256];
         while let Ok(read) = pipe.read(&mut chunk) {
             if read == 0 {
                 return;
             }
             if let Ok(mut held) = sink.lock() {
-                held.push_str(&String::from_utf8_lossy(&chunk[..read]));
+                held.push_str(&String::from_utf8_lossy(
+                    chunk.get(..read).unwrap_or_default(),
+                ));
             }
         }
-    });
+    }));
     seen
 }
 
@@ -357,20 +377,16 @@ fn an_open_silent_descriptor_is_waited_on_and_released_by_its_close() {
 
 #[test]
 fn the_echo_program_compiles_within_its_budget() {
-    let started = Instant::now();
-    match echo_binary() {
-        Ok(path) => {
-            assert!(
-                path.exists(),
-                "the compiler reported success but produced no binary at {}",
-                path.display()
-            );
-            assert!(
-                started.elapsed() < COMPILE_BUDGET,
-                "compiling a two-line program took {:?}",
-                started.elapsed()
-            );
+    let complaint = match echo_build() {
+        Ok((path, _)) if !path.exists() => format!(
+            "the compiler reported success but produced no binary at {}",
+            path.display()
+        ),
+        Ok((_, took)) if took >= COMPILE_BUDGET => {
+            format!("compiling a two-line program took {took:?}")
         }
-        Err(reason) => panic!("{reason}"),
-    }
+        Ok(_) => String::new(),
+        Err(reason) => reason,
+    };
+    assert!(complaint.is_empty(), "{complaint}");
 }

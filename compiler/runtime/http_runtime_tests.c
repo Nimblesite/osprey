@@ -1,5 +1,6 @@
 #include "http_server_internal.h"
 #include "http_shared.h"
+#include "test_alloc.h"
 #include <assert.h>
 
 // Include all runtime modules
@@ -694,6 +695,175 @@ void test_server_handle_bounds(void) {
   assert(http_stop_server(MAX_SERVERS - 1) == 0); // in range, no server
 }
 
+// The fiber id space is shared by spawns and channels, and a channel costs no
+// thread -- so this is how a test can reach the state where no fiber can be
+// spawned without creating a thousand of them.
+extern int64_t channel_create(int64_t capacity);
+
+// A request whose line yields no method and no path is still LOGGED, with both
+// fields carrying HTTP_LOG_UNKNOWN rather than left empty. An empty field in a
+// log line is indistinguishable from a missing one, and the rejection log is
+// the only record that the exchange happened at all [HTTP-SERVER].
+// Run one exchange with this process's stderr on a pipe, and return what the
+// server logged. The log line is written by the server fiber inside THIS
+// process, so a pipe on fd 2 is enough to read it; one line is far short of the
+// pipe buffer, so the writer cannot block.
+static void exchange_capturing_log(const char *request, char *reply,
+                                   size_t reply_size, char *log,
+                                   size_t log_size) {
+  int pipe_fds[2];
+  assert(pipe(pipe_fds) == 0);
+  fflush(stderr);
+  int saved = dup(STDERR_FILENO);
+  assert(saved >= 0);
+  assert(dup2(pipe_fds[1], STDERR_FILENO) == STDERR_FILENO);
+  assert(close(pipe_fds[1]) == 0);
+
+  server_exchange(request, reply, reply_size);
+
+  fflush(stderr);
+  assert(dup2(saved, STDERR_FILENO) == STDERR_FILENO);
+  assert(close(saved) == 0); // the last write end; the read below cannot block
+  ssize_t got = read(pipe_fds[0], log, log_size - 1);
+  log[got > 0 ? (size_t)got : 0] = '\0';
+  assert(close(pipe_fds[0]) == 0);
+}
+
+void test_server_labels_an_unparseable_request(void) {
+  int64_t server_id =
+      http_create_server(SERVER_TEST_PORT, (char *)(uintptr_t) "127.0.0.1");
+  assert(server_id > 0);
+  assert(http_listen(server_id, server_test_handler) == 0);
+
+  // A header block with no request line at all: `sscanf` finds neither token.
+  char reply[1024];
+  char log[1024];
+  exchange_capturing_log("\r\n\r\n", reply, sizeof(reply), log, sizeof(log));
+  assert(strstr(reply, "HTTP/1.1 400") == reply);
+  assert(strstr(reply, "malformed HTTP request") != NULL);
+
+  // The LABELLING this test is named for, asserted rather than implied. An
+  // operator reading the log has only these tokens to tell an unparseable
+  // request from one that simply asked for `/`, and a placeholder that goes
+  // missing makes those two look identical [HTTP-SERVER].
+  assert(strstr(log, "[http] request_id=") != NULL &&
+         "the exchange is logged at all");
+  assert(strstr(log, "read=malformed") != NULL &&
+         "an unparseable read is labelled malformed, never complete");
+  assert(strstr(log, "status=400") != NULL && "and carries the status sent");
+  // The trailing space matters: `path=- ` is the placeholder, `path= ` is the
+  // empty field the query stripper once produced by eating the placeholder.
+  assert(strstr(log, "method=- ") != NULL &&
+         "a request line with no method logs the placeholder");
+  assert(strstr(log, "path=- ") != NULL &&
+         "and the path placeholder survives the query stripper");
+
+  assert(http_stop_server(server_id) == 0);
+}
+
+// When the listener fiber cannot be spawned, `httpListen` reports -6 and the
+// server is left EXACTLY as it was found: not listening, no loop scheduled, and
+// no listening socket held. A server marked live whose loop never ran would
+// accept nothing forever while every retry answered -7 ("already listening").
+//
+// Runs late: exhausting the fiber id space is permanent for the process
+// [HTTP-SERVER], [CONCURRENCY-SPAWN-AWAIT].
+// Descriptors this process holds open. A listener that reports failure while
+// keeping its socket leaks one per attempt, and EVERY return value in this unit
+// looks identical when it does -- the leak is only visible from outside the
+// call, in the process's own table.
+enum { FD_SCAN_LIMIT = 4096 };
+
+static int open_descriptor_count(void) {
+  int limit = getdtablesize();
+  int scanned = limit < FD_SCAN_LIMIT ? limit : FD_SCAN_LIMIT;
+  int open_count = 0;
+  for (int fd = 0; fd < scanned; fd++) {
+    if (fcntl(fd, F_GETFD) != -1) {
+      open_count++;
+    }
+  }
+  return open_count;
+}
+
+void test_listener_spawn_failure_is_reported(void) {
+  int64_t server_id =
+      http_create_server(SERVER_TEST_PORT, (char *)(uintptr_t) "127.0.0.1");
+  assert(server_id > 0);
+
+  // Burn the id space with channels rather than fibers: same counter, no
+  // threads. It is exhausted the moment creation starts refusing.
+  int64_t created = 0;
+  for (int i = 0; i < 1100; i++) {
+    created = channel_create(1);
+    if (created < 0) {
+      break;
+    }
+  }
+  assert(created == -4 && "the fiber id space must report exhaustion");
+
+  int before = open_descriptor_count();
+  assert(http_listen(server_id, server_test_handler) == -6);
+
+  // The socket was opened and BOUND before the spawn failed, so at the moment
+  // -6 is returned it is a live listener on a real port. Unwinding it is the
+  // whole obligation of this arm, and none of it reaches the caller: the record
+  // must survive, disowned of its socket and of the loop it never scheduled.
+  HttpServer *server = servers[server_id];
+  assert(server != NULL && "a failed listen must not unregister the server");
+  assert(server->socket_fd == -1 && "the bound socket must be disowned");
+  assert(!server->is_listening && "a failed listen must not claim to listen");
+  assert(!server->loop_scheduled && "and must schedule no accept loop");
+  assert(server->server_fiber_id == -1 &&
+         "a spawn that produced no fiber must record no fiber id");
+  assert(open_descriptor_count() == before &&
+         "the bound socket must be CLOSED, not merely forgotten");
+
+  // Not -7: a -7 here would mean the failed attempt left the server marked as
+  // listening, which is the state that can never be recovered from. And the
+  // second attempt binds and unwinds its own socket, so a release that only
+  // worked once is caught by the same count.
+  assert(http_listen(server_id, server_test_handler) == -6);
+  assert(open_descriptor_count() == before &&
+         "every retry must release its socket too");
+  assert(http_stop_server(server_id) == 0);
+  assert(open_descriptor_count() == before &&
+         "stopping a server that never listened releases nothing further");
+}
+
+// The server table is finite and its exhaustion is REPORTED. The id counter is
+// shared with clients, so by this point it is already past the table -- and a
+// create that answered with an out-of-range id would write servers[id] outside
+// the array, which is exactly the defect the client handles carried.
+//
+// The same -3 also covers a create that cannot allocate, and that arm has an
+// ownership obligation the return value cannot show: the record is built in two
+// steps, and a failure at the second must release the first. A server record
+// leaked per failed create is invisible to every caller [HTTP-SERVER].
+void test_server_handle_exhaustion(void) {
+  assert(http_create_server(SERVER_TEST_PORT,
+                            (char *)(uintptr_t) "127.0.0.1") == -3);
+  assert(http_create_server(1, (char *)(uintptr_t) "127.0.0.1") == -3);
+
+  // Back inside the table, so the id is no longer what is being refused.
+  long live = osp_alloc_live();
+  next_id = 1;
+  osp_alloc_fail_next(); // the record itself
+  assert(http_create_server(SERVER_TEST_PORT,
+                            (char *)(uintptr_t) "127.0.0.1") == -3);
+  assert(servers[1] == NULL && "a create that failed registers nothing");
+  assert(osp_alloc_live() == live);
+
+  next_id = 1;
+  osp_alloc_fail_after(1); // the record succeeds; its address copy does not
+  assert(http_create_server(SERVER_TEST_PORT,
+                            (char *)(uintptr_t) "127.0.0.1") == -3);
+  assert(servers[1] == NULL);
+  assert(osp_alloc_live() == live &&
+         "the half-built record must be released, not abandoned");
+  osp_alloc_fail_off();
+}
+
 void run_all_http_tests(void) {
   printf("🧪 Starting HTTP Runtime Test Suite\n");
   printf("=====================================\n\n");
@@ -717,7 +887,11 @@ void run_all_http_tests(void) {
   test_server_self_stop_from_handler();
   test_server_handle_bounds();
   test_live_loopback_exchange();    // full end-to-end request path
-  test_client_handle_exhaustion();  // LAST: burns the shared id space
+  test_server_labels_an_unparseable_request();
+  // The three below burn finite id spaces and are permanent for the process.
+  test_listener_spawn_failure_is_reported(); // burns the FIBER id space
+  test_client_handle_exhaustion();           // burns the shared HTTP id space
+  test_server_handle_exhaustion();           // observes that same exhaustion
 
   printf("🎉 All HTTP runtime tests passed!\n");
   printf("=====================================\n");

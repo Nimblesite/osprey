@@ -32,6 +32,25 @@ pub(crate) type LambdaDef = (
     Option<osprey_ast::Position>,
 );
 
+/// What the program turned out to CONTAIN — decided while lowering, read once
+/// by `main`'s epilogue. These belong together because they are answered the
+/// same way and spent in the same place: each one buys a cleanup call or an
+/// exit status, and a program that never sets one must emit a module identical
+/// to a program that could not have set it.
+#[derive(Debug, Default)]
+pub(crate) struct Lowered {
+    /// A testing built-in was lowered — `main` returns the TAP epilogue's exit
+    /// status [TESTING-EXIT].
+    pub(crate) testing: bool,
+    /// A fiber was spawned. Completed fiber results keep one runtime owner so
+    /// repeated `await` calls can each receive a live value; `main` releases
+    /// those runtime owners during its final cleanup.
+    pub(crate) fibers: bool,
+    /// A `send` or `recv` was lowered, so the program's exit must release
+    /// whatever is still buffered in a channel ([CONCURRENCY-CHANNEL]).
+    pub(crate) channels: bool,
+}
+
 /// Accumulates a whole module while lowering one function at a time.
 pub struct Codegen {
     /// `declare` lines, de-duplicated and stably ordered.
@@ -164,13 +183,8 @@ pub struct Codegen {
     /// `phi` to type. In value position that disagreement is a hard error
     /// ([`crate::pattern::finish_phi`]).
     pub(crate) value_discarded: bool,
-    /// Whether any testing built-in was lowered — makes `main` return the TAP
-    /// epilogue's exit status [TESTING-EXIT].
-    pub(crate) testing_used: bool,
-    /// Whether any fiber was spawned. Completed fiber results keep one runtime
-    /// owner so repeated `await` calls can each receive a live value; `main`
-    /// releases those runtime owners during its final cleanup.
-    pub(crate) fibers_used: bool,
+    /// What the program turned out to contain, read once by `main`'s epilogue.
+    pub(crate) lowered: Lowered,
     /// LLVM/DWARF debug metadata state, when `--debug` was requested.
     debug: Option<DebugState>,
     /// Coverage instrumentation state, when coverage was requested
@@ -219,6 +233,14 @@ pub(crate) struct ResumeCodegenContext {
 /// One function-parameter ABI slot. Result parameters travel as opaque `i8*`
 /// arguments plus the success-layout metadata needed to reconstruct their
 /// discriminant-bearing block inside the callee.
+/// The element ABI of a STATEFUL HANDLE — `Fiber<T>` or `Channel<T>`.
+///
+/// Both travel as a bare `i64` runtime id and both hand their element back
+/// through a uniform `i64` wire word (`fiber_await`, `channel_recv`), so the
+/// receiving side can only reconstruct a pointer element from the handle's
+/// static type. Named for the fiber case it was written for; a channel needs
+/// exactly the same thing, and without it every `recv` of a list, map or
+/// string handed back the raw word ([CONCURRENCY-CHANNEL]).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) struct FiberSig {
     pub(crate) elem: LType,
@@ -226,11 +248,11 @@ pub(crate) struct FiberSig {
 }
 
 impl FiberSig {
-    fn of(ty: &Type) -> Option<Self> {
+    pub(crate) fn of(ty: &Type) -> Option<Self> {
         let Type::Con { name, args } = ty else {
             return None;
         };
-        if name != osprey_types::names::FIBER {
+        if name != osprey_types::names::FIBER && name != osprey_types::names::CHANNEL {
             return None;
         }
         let elem = args.first()?;
@@ -591,8 +613,7 @@ impl Codegen {
             cell_slots: HashMap::new(),
             module_globals: BTreeMap::new(),
             resume_ctx: None,
-            testing_used: false,
-            fibers_used: false,
+            lowered: Lowered::default(),
             debug: options.debug_source.map(DebugState::new),
             coverage: options
                 .coverage
@@ -932,7 +953,13 @@ impl Codegen {
     pub(crate) fn fn_param_sig(&self, name: &str) -> Option<Vec<(ParamSig, Option<String>)>> {
         self.prog.param_types(name).map(|ps| {
             ps.iter()
-                .map(|t| (ParamSig::of(t), crate::types::owner_name(&self.prog, t)))
+                .map(|t| {
+                    // A handle parameter has no owner of its own, so that slot
+                    // carries its ELEMENT's tag for `recv`/`await` to restore.
+                    let owner = crate::types::owner_name(&self.prog, t)
+                        .or_else(|| crate::types::handle_elem_owner(&self.prog, t));
+                    (ParamSig::of(t), owner)
+                })
                 .collect()
         })
     }
@@ -1109,6 +1136,30 @@ impl Codegen {
     /// `Result<T, E>`. Aggregate slots currently carry only an [`LType`], so
     /// callers use this to reject a field before its discriminant could be
     /// erased.
+    /// The element ABI of a STATEFUL HANDLE stored in a record field, plus its
+    /// element's owner tag. A field holding a `Channel<List<T>>` is a machine
+    /// word like any other handle, so without this a `recv` on `hub.channel`
+    /// read the wire word raw and the element came back untyped.
+    /// Implements [CONCURRENCY-CHANNEL].
+    pub(crate) fn ctor_field_handle(
+        &self,
+        owner: &str,
+        field: &str,
+    ) -> Option<(FiberSig, Option<String>)> {
+        let ty = self
+            .prog
+            .ctors
+            .get(owner)?
+            .fields
+            .iter()
+            .find(|(name, _)| name == field)
+            .map(|(_, ty)| ty)?;
+        Some((
+            FiberSig::of(ty)?,
+            crate::types::handle_elem_owner(&self.prog, ty),
+        ))
+    }
+
     pub(crate) fn ctor_field_result_inner(&self, owner: &str, field: &str) -> Option<LType> {
         self.prog
             .ctors
@@ -1310,6 +1361,18 @@ impl Codegen {
 
     pub(crate) fn lookup(&self, name: &str) -> Option<Value> {
         self.scopes.iter().rev().find_map(|s| s.get(name).cloned())
+    }
+
+    /// Re-tag an already-bound name in the innermost scope that holds it. Used
+    /// to record a channel's element type at the `send` that establishes it, so
+    /// a later `recv` on the same binding unboxes to that type rather than to
+    /// the uniform `i64` wire word ([CONCURRENCY-CHANNEL]).
+    pub(crate) fn retag(&mut self, name: &str, retag: impl FnOnce(Value) -> Value) {
+        if let Some(scope) = self.scopes.iter_mut().rev().find(|s| s.contains_key(name)) {
+            if let Some(stored) = scope.remove(name) {
+                let _ = scope.insert(String::from(name), retag(stored));
+            }
+        }
     }
 
     /// Read a cell-backed variable: `load` its current value from the heap slot.

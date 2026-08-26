@@ -55,7 +55,7 @@ fn gen_test(cg: &mut Codegen, args: &[&Expr]) -> Result<Value> {
         return Err(CodegenError::invalid("test needs (name, body) arguments"));
     };
     let name_str = eval_to_string(cg, name_expr)?;
-    cg.testing_used = true;
+    cg.lowered.testing = true;
     let run = cg.call("i32", "osp_test_begin", "i8*", &[&name_str.operand]);
     let cond = cg.emit_reg(format!("icmp ne i32 {run}, 0"));
     let (run_bb, end_bb) = (cg.fresh_label(), cg.fresh_label());
@@ -296,7 +296,7 @@ fn gen_bool_expect(
 /// `reportPass()`: the one report primitive with nothing to say — `osp_test_pass`
 /// takes no arguments [TESTING-VERDICT].
 fn gen_pass_report(cg: &mut Codegen) -> Value {
-    cg.testing_used = true;
+    cg.lowered.testing = true;
     cg.call_void("osp_test_pass", "", &[]);
     Value::unit()
 }
@@ -311,7 +311,7 @@ fn gen_pass_report(cg: &mut Codegen) -> Value {
 /// with no argument instead left its reason register holding whatever the caller
 /// last put there, and `osp_test_skip` then formatted that as a string.
 fn gen_reason_report(cg: &mut Codegen, runtime_fn: &str, reason: Option<&Expr>) -> Result<Value> {
-    cg.testing_used = true;
+    cg.lowered.testing = true;
     let operand = match reason {
         None => "null".to_string(),
         Some(expr) => eval_to_string(cg, expr)?.operand,
@@ -350,7 +350,7 @@ fn reject_opaque_handle(v: &Value) -> Result<()> {
 /// Compare two canonical strings and record the verdict with the runtime.
 /// `label_op` is the rendered label operand — `null` for `expect`.
 fn emit_assert(cg: &mut Codegen, label_op: &str, expected: &Value, actual: &Value) -> Value {
-    cg.testing_used = true;
+    cg.lowered.testing = true;
     let c = cg.call(
         "i32",
         "strcmp",

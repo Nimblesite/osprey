@@ -65,6 +65,36 @@ runtime does not implement rendezvous channels.
 | `send(channel, value)` | `(Channel<T>, T) -> Unit` | Block while the buffer is full, then append `value`. |
 | `recv(channel)` | `Channel<T> -> T` | Block while the buffer is empty, then remove its oldest value. |
 
+A channel handle is MONOMORPHIC in `T`. Binding one with `let` does not
+generalize its element type, so every `send` and `recv` on that handle agrees
+on one `T`; sending a `string` and receiving an `int` from the same channel is
+a type error, not two independent instantiations. `Fiber<T>` is fixed the same
+way by the thunk that produced it.
+
+`recv` returns `T` with its FULL representation, and the guarantee does not
+depend on how the handle was reached: a channel read through a `let` binding,
+an alias, a function parameter or a function return all deliver the same value.
+A nested `List<List<U>>` comes back whole rather than as its outer shape with
+the element type erased, and a collection crosses the wire in the runtime
+representation a receiver can read — a backend may not put a construction-time
+layout on a channel that only its own scope knows how to interpret.
+
+One route does NOT carry `T`, and it is REJECTED rather than guessed at: a
+handle stored in a field whose DECLARED type is a type variable — `type Box<t> =
+Box { slot: t }` — reaches `recv` with nothing to unbox by, because the
+declaration is all the field read has. `recv` and `await` refuse such a program
+and name the field. They used to fall back to the uniform wire word, which is a
+plausible WRONG VALUE and not an error: a `Channel<List<List<int>>>` read out of
+such a field answered its outer shape as an integer, so reading a row out of it
+produced `0` where the answer was `3` — exit status 0, no diagnostic, nothing to
+notice. The same rule and the same refusal apply to `Fiber<T>`.
+
+A managed `T` handed to `send` is OWNED by the channel until a `recv` takes it.
+A send the runtime rejects owns nothing and releases the value again; a value
+still buffered when the program ends is released at teardown. Neither an
+unreceived send nor a rejected one may leave a live object behind — the ARC
+corpus is run with leak accounting armed and holds every program to zero.
+
 `send` is not a `Result`: its native status is internal to the runtime call and
 the language expression evaluates to `Unit`. `recv` directly returns `T`. A
 backend MUST preserve a `Result<U, E>` element as a complete value; a backend

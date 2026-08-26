@@ -57,6 +57,24 @@ fn ltype_of_con(name: &str, args: &[Type]) -> LType {
     }
 }
 
+/// The owner tag of a STATEFUL HANDLE's element — what `await`/`recv` must
+/// restore so the value they hand back is read as the container it is.
+///
+/// A handle itself has no owner (`owner_name` answers `None` for `Fiber` and
+/// `Channel`: they are runtime ids, not aggregates), which leaves that slot
+/// free to carry the element's tag across a parameter. Without it a `List<int>`
+/// received through a `Channel<List<int>>` parameter came back as an untagged
+/// handle. Implements [CONCURRENCY-CHANNEL] and [CONCURRENCY-SPAWN-AWAIT].
+pub(crate) fn handle_elem_owner(prog: &ProgramTypes, ty: &Type) -> Option<String> {
+    let Type::Con { name, args } = ty else {
+        return None;
+    };
+    if name != names::FIBER && name != names::CHANNEL {
+        return None;
+    }
+    owner_name(prog, args.first()?)
+}
+
 /// The Osprey owner type name to tag an aggregate value with, if `ty` is a
 /// nominal record/union (so field access / match can recover its layout).
 /// Scalars, collections and `Result` carry no nominal aggregate owner. A

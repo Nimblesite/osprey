@@ -23,10 +23,10 @@ static void label_partial_request(HttpRequestBuffer *request) {
     (void)sscanf(request->data, "%15s %255s", request->method, request->path);
   }
   if (request->method[0] == '\0') {
-    strcpy(request->method, "?");
+    strcpy(request->method, HTTP_LOG_UNKNOWN);
   }
   if (request->path[0] == '\0') {
-    strcpy(request->path, "?");
+    strcpy(request->path, HTTP_LOG_UNKNOWN);
   }
 }
 

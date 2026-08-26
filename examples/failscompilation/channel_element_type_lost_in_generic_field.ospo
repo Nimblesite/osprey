@@ -1,0 +1,12 @@
+// A `Channel<T>` stored in a field whose DECLARED type is a type variable
+// arrives at `recv` with no element type, and the field read has only the
+// declaration to go on. Guessing the wire word is what this rejection replaces:
+// it answered a plausible wrong value -- `listLength(listGet(m, 0))` printed
+// `0` where the answer was `3`, with exit status 0 and no diagnostic.
+// [CONCURRENCY-CHANNEL]
+type Box<t> = Box { slot: t }
+
+let boxed = Box { slot: Channel(2) }
+send(boxed.slot, [[1, 2, 3]])
+let m = recv(boxed.slot)
+print(toString(listLength(listGet(m, 0) ?: [99])))

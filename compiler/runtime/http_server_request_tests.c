@@ -60,6 +60,7 @@ static int select_results[8];
 static uint64_t select_timeouts[8];
 static size_t select_result_count;
 static size_t select_result_index;
+static int select_errno;
 static uint64_t monotonic_values[8];
 static size_t monotonic_count;
 static size_t monotonic_index;
@@ -125,9 +126,17 @@ static int mock_select(int descriptor_count, fd_set *read_set,
   assert(select_calls < sizeof(select_timeouts) / sizeof(select_timeouts[0]));
   select_timeouts[select_calls] = milliseconds;
   select_calls++;
-  return select_result_index < select_result_count
-             ? select_results[select_result_index++]
-             : 1;
+  int result = select_result_index < select_result_count
+                   ? select_results[select_result_index++]
+                   : 1;
+  if (result < 0) {
+    // A failing select only means something together with its errno: EINTR is
+    // "ask again", anything else ends the read. Leaving errno to whatever an
+    // unrelated call last set would make which branch runs a property of the
+    // harness rather than of the case under test.
+    errno = select_errno;
+  }
+  return result;
 }
 
 static ssize_t mock_send(int socket_fd, const void *data, size_t length,
@@ -402,6 +411,23 @@ static void test_logs_are_correlated_and_sanitized(void) {
          strstr(captured_log, "secret") == NULL);
   assert(strstr(captured_log, "request_id=") != NULL);
   assert(strstr(captured_log, "client_request_id=") != NULL);
+
+  // A request too broken to yield a method or a path is still LOGGED, and its
+  // placeholders must survive to the line. The first placeholder was "?", which
+  // is also the query delimiter this logger truncates at -- so `path=?` was
+  // erased back to `path=`, the empty field the placeholder exists to prevent,
+  // and every unparseable request logged as though the path had simply been
+  // omitted. [HTTP-SERVER]
+  HttpRequestBuffer unparseable = {0};
+  strcpy(unparseable.method, HTTP_LOG_UNKNOWN);
+  strcpy(unparseable.path, HTTP_LOG_UNKNOWN);
+  strcpy(unparseable.client_request_id, HTTP_LOG_UNKNOWN);
+  captured_log[0] = '\0';
+  http_log_exchange(&unparseable, REQUEST_MALFORMED, 400, 34, true);
+  assert(strstr(captured_log, "method=" HTTP_LOG_UNKNOWN " ") != NULL);
+  assert(strstr(captured_log, "path=" HTTP_LOG_UNKNOWN " ") != NULL &&
+         "the path placeholder must reach the log, not be eaten as a query");
+  assert(strstr(captured_log, "path= ") == NULL);
 }
 
 static void test_bridge_request_id_is_parsed_and_sanitized(void) {
@@ -479,6 +505,202 @@ static void run_framing_tests(void) {
   test_oversized_body_is_rejected();
 }
 
+// --- rejection paths [HTTP-SERVER] -------------------------------------------
+// "The listener rejects malformed framing, transfer encoding, timeouts, and
+// oversized requests before invoking the handler." Each case below drives one
+// of those rejections to its RETURN VALUE, because a request the listener
+// merely mishandles quietly is one the handler ends up seeing.
+
+// EINTR means "the wait was interrupted, ask again"; every other errno means
+// the read is over. Conflating them either spins forever on a dead socket or
+// drops a live request on a signal.
+static void test_interrupt_detection_is_eintr_and_nothing_else(void) {
+  errno = EINTR;
+  assert(http_socket_interrupted());
+  errno = EBADF;
+  assert(!http_socket_interrupted());
+  errno = 0;
+  assert(!http_socket_interrupted());
+}
+
+// Log tokens are attacker-controlled: a request id with a newline in it would
+// otherwise forge a whole log line. Every byte outside printable ASCII becomes
+// '_', the token is NUL-terminated within the capacity given, and a capacity of
+// zero writes NOTHING rather than a stray terminator into a caller's buffer.
+static void test_log_token_sanitizing_covers_its_boundaries(void) {
+  char out[8];
+  memset(out, 'x', sizeof(out));
+  sanitize_log_token("abc", out, 0);
+  assert(out[0] == 'x' && "a zero capacity is not room for a terminator");
+
+  sanitize_log_token(NULL, out, sizeof(out));
+  assert(out[0] == '\0' && "no token is the empty token");
+
+  sanitize_log_token("a b\tc\x7f", out, sizeof(out));
+  assert(strcmp(out, "a_b_c_") == 0 && "space, tab and DEL are all unsafe");
+
+  sanitize_log_token("abcdefghij", out, 4);
+  assert(strcmp(out, "abc") == 0 && "the terminator fits inside the capacity");
+}
+
+// Header NAMES: a line with no colon, a line whose colon is first, and a name
+// containing a space are all malformed. A name that merely resembles a framing
+// header is not that header -- matching it would let `Xontent-Length` set the
+// body length.
+static void test_malformed_header_names_are_rejected(void) {
+  HttpRequestBuffer request;
+  const char *no_colon[] = {"POST / HTTP/1.1\r\nNoColonHere\r\n\r\n"};
+  assert(read_chunks(no_colon, 1, &request) == REQUEST_MALFORMED);
+  free(request.data);
+
+  const char *empty_name[] = {"POST / HTTP/1.1\r\n: value\r\n\r\n"};
+  assert(read_chunks(empty_name, 1, &request) == REQUEST_MALFORMED);
+  free(request.data);
+
+  const char *spaced_name[] = {"POST / HTTP/1.1\r\nBad Header: x\r\n\r\n"};
+  assert(read_chunks(spaced_name, 1, &request) == REQUEST_MALFORMED);
+  free(request.data);
+
+  // Same length as "Content-Length", one letter different: it must NOT set the
+  // body length, so the request completes with an empty body.
+  const char *near_miss[] = {"POST / HTTP/1.1\r\nXontent-Length: 2\r\n\r\n"};
+  assert(read_chunks(near_miss, 1, &request) == REQUEST_COMPLETE);
+  assert(request.expected_body_bytes == 0);
+  assert(strcmp(request.body, "") == 0);
+  free(request.data);
+}
+
+// Optional whitespace around a header value is not part of the value: RFC 9110
+// allows it, so trimming it is what makes `Content-Length: 2  ` mean 2 rather
+// than malformed.
+static void test_header_values_tolerate_surrounding_space(void) {
+  HttpRequestBuffer request;
+  const char *padded[] = {"POST / HTTP/1.1\r\nContent-Length:   2  \r\n\r\n{}"};
+  assert(read_chunks(padded, 1, &request) == REQUEST_COMPLETE);
+  assert(request.expected_body_bytes == 2);
+  assert(strcmp(request.body, "{}") == 0);
+  free(request.data);
+}
+
+// A client request id longer than the field is TRUNCATED, never written past
+// the end of it. The truncation is the interesting half: the field is a fixed
+// array inside the request buffer, and a memcpy sized by the header would
+// overwrite everything after it.
+static void test_over_long_client_request_id_is_truncated(void) {
+  char headers[256];
+  char identifier[HTTP_CLIENT_REQUEST_ID_BYTES * 2];
+  memset(identifier, 'a', sizeof(identifier) - 1U);
+  identifier[sizeof(identifier) - 1U] = '\0';
+  int written = snprintf(headers, sizeof(headers),
+                         "POST / HTTP/1.1\r\nX-Osprey-Request-Id: %s\r\n\r\n",
+                         identifier);
+  assert(written > 0 && (size_t)written < sizeof(headers));
+
+  HttpRequestBuffer request;
+  const char *chunks[] = {headers};
+  assert(read_chunks(chunks, 1, &request) == REQUEST_COMPLETE);
+  assert(strlen(request.client_request_id) == HTTP_CLIENT_REQUEST_ID_BYTES - 1U);
+  assert(request.client_request_id[0] == 'a');
+  free(request.data);
+}
+
+// Oversize is rejected in TWO distinct places, and only one of them was
+// exercised: a header block past MAX_HTTP_HEADER_BYTES that nonetheless ends
+// properly, and a well-formed Content-Length that no buffer could hold once the
+// headers are accounted for.
+static void test_oversized_headers_and_body_are_rejected(void) {
+  static char huge[MAX_HTTP_HEADER_BYTES + 128U];
+  int prefix = snprintf(huge, sizeof(huge), "POST / HTTP/1.1\r\nX-Pad: ");
+  assert(prefix > 0);
+  size_t padding = sizeof(huge) - (size_t)prefix - 5U;
+  memset(huge + prefix, 'p', padding);
+  memcpy(huge + (size_t)prefix + padding, "\r\n\r\n", 5U);
+
+  HttpRequestBuffer request;
+  const char *chunks[] = {huge};
+  assert(read_chunks(chunks, 1, &request) == REQUEST_TOO_LARGE &&
+         "a complete but over-long header block is still too large");
+  free(request.data);
+
+  char body_headers[128];
+  int written = snprintf(body_headers, sizeof(body_headers),
+                         "POST / HTTP/1.1\r\nContent-Length: %u\r\n\r\n",
+                         MAX_HTTP_REQUEST_BYTES);
+  assert(written > 0 && (size_t)written < sizeof(body_headers));
+  const char *body_chunks[] = {body_headers};
+  assert(read_chunks(body_chunks, 1, &request) == REQUEST_TOO_LARGE &&
+         "headers plus body must fit the buffer, not just the body");
+  free(request.data);
+}
+
+// The wait before a read has three failure modes and they are NOT the same
+// answer: a descriptor select cannot watch, a deadline already spent, and a
+// select that failed for a reason other than a signal.
+static void test_unreadable_descriptor_and_timeout_are_distinguished(void) {
+  HttpRequestBuffer request;
+  const char *nothing[] = {NULL};
+
+  reset_receive(nothing, 1);
+  assert(read_http_request(-1, &request) == REQUEST_READ_FAILED &&
+         "a descriptor select cannot watch is a read failure, not a timeout");
+  assert(select_calls == 0 && "and it is refused before select is consulted");
+  free(request.data);
+
+  // The deadline is absolute: the clock reads past it before the first select.
+  const uint64_t spent[] = {1000U, 1000U + HTTP_REQUEST_TIMEOUT_MS};
+  reset_receive(nothing, 1);
+  set_monotonic_values(spent, sizeof(spent) / sizeof(spent[0]));
+  assert(read_http_request(42, &request) == REQUEST_TIMED_OUT);
+  assert(select_calls == 0 && "an expired deadline never waits");
+  free(request.data);
+
+  // A select that failed for a reason other than EINTR ends the read.
+  const int failed[] = {-1};
+  reset_receive(nothing, 1);
+  set_select_results(failed, 1);
+  select_errno = EBADF;
+  assert(read_http_request(42, &request) == REQUEST_READ_FAILED);
+  free(request.data);
+
+  // EINTR is retried, and the retry succeeds: the request is read normally.
+  const int interrupted_then_ready[] = {-1, 1};
+  const char *complete[] = {"POST / HTTP/1.1\r\nContent-Length: 2\r\n\r\n{}"};
+  reset_receive(complete, 1);
+  set_select_results(interrupted_then_ready,
+                     sizeof(interrupted_then_ready) / sizeof(int));
+  select_errno = EINTR;
+  assert(read_http_request(42, &request) == REQUEST_COMPLETE);
+  assert(select_calls == 2 && "the interrupted wait was retried, not abandoned");
+  assert(strcmp(request.body, "{}") == 0);
+  free(request.data);
+  select_errno = 0;
+}
+
+// A socket that ERRORS mid-request is a read failure; one that merely ends is
+// an incomplete request. Answering the same way for both would let a client
+// truncate a body and have the handler see it as whole.
+static void test_socket_error_and_close_differ(void) {
+  HttpRequestBuffer request;
+  // No chunk left: the mock recv reports -1, the way a broken socket does.
+  const char *starved[] = {"POST / HTTP/1.1\r\nContent-Length: 5\r\n\r\n"};
+  assert(read_chunks(starved, 1, &request) == REQUEST_READ_FAILED);
+  free(request.data);
+
+  // A clean end-of-stream partway through a body is incomplete, not an error.
+  const char *closed[] = {"POST / HTTP/1.1\r\nContent-Length: 5\r\n\r\nab", NULL};
+  assert(read_chunks(closed, 2, &request) == REQUEST_INCOMPLETE);
+  free(request.data);
+}
+
+// A request line that is not `<method> <target>` is malformed, even when the
+// header block around it is perfectly well formed.
+static void test_missing_request_line_is_rejected(void) {
+  HttpRequestBuffer request;
+  const char *headerless[] = {"\r\n\r\n"};
+  assert(read_chunks(headerless, 1, &request) == REQUEST_MALFORMED);
+  free(request.data);
+}
+
 static void run_hardening_tests(void) {
   test_partial_request_waits_with_a_deadline();
   test_deadline_is_absolute_across_reads();
@@ -490,6 +712,15 @@ static void run_hardening_tests(void) {
   test_accepted_socket_suppresses_sigpipe();
   test_self_stop_defers_server_destruction();
   test_external_stop_awaits_before_destruction();
+  test_interrupt_detection_is_eintr_and_nothing_else();
+  test_log_token_sanitizing_covers_its_boundaries();
+  test_malformed_header_names_are_rejected();
+  test_header_values_tolerate_surrounding_space();
+  test_over_long_client_request_id_is_truncated();
+  test_oversized_headers_and_body_are_rejected();
+  test_unreadable_descriptor_and_timeout_are_distinguished();
+  test_socket_error_and_close_differ();
+  test_missing_request_line_is_rejected();
 }
 
 int main(void) {

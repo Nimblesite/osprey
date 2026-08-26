@@ -3,6 +3,8 @@
 // env-carrying spawn forms, and the process bridge — plus the pthread
 // transition in [MEM-FIBER-ISOLATION].
 // Spec: docs/specs/0011-LightweightFibersAndConcurrency.md.
+#include "test_death.h"
+
 #include <assert.h>
 #include <stdbool.h>
 #include <stdint.h>
@@ -25,7 +27,9 @@ extern int64_t fiber_await_process_with_callback(int64_t process_id,
                                                  void (*stdout_callback)(char *));
 extern void fiber_cleanup_process(int64_t process_id);
 extern int64_t channel_create(int64_t capacity);
-extern int64_t channel_send(int64_t channel_id, int64_t value);
+extern int64_t channel_create_checked(int64_t capacity);
+extern int64_t channel_send(int64_t channel_id, int64_t value, int64_t managed);
+extern void channel_cleanup(void);
 extern int64_t channel_recv(int64_t channel_id);
 extern int64_t spawn_process_with_handler(const char *command,
                                           void (*handler)(int64_t, int64_t,
@@ -266,7 +270,7 @@ static int64_t blocking_channel = 0;
 // on `not_full` until the consumer drains rather than drop or overwrite.
 static int64_t channel_overfiller(void) {
   for (int64_t i = 0; i < CHANNEL_MESSAGES; i++) {
-    if (channel_send(blocking_channel, CHANNEL_FIRST_VALUE + i) != 1) {
+    if (channel_send(blocking_channel, CHANNEL_FIRST_VALUE + i, 0) != 1) {
       return -1;
     }
   }
@@ -276,7 +280,7 @@ static int64_t channel_overfiller(void) {
 // Sends exactly once, late, so a recv issued first must park on `not_empty`.
 static int64_t channel_late_sender(void) {
   usleep(CHANNEL_SETTLE_US);
-  return channel_send(blocking_channel, CHANNEL_HANDOFF_VALUE);
+  return channel_send(blocking_channel, CHANNEL_HANDOFF_VALUE, 0);
 }
 
 // A ring driven well past its capacity: head and tail both wrap, and the
@@ -288,15 +292,15 @@ void test_channel_fifo_and_wraparound(void) {
   assert(other > 0 && "a capacity-1 channel is legal");
   assert(ch != other && "each channel gets a distinct handle");
   for (int64_t round = 0; round < CHANNEL_MESSAGES; round++) {
-    assert(channel_send(ch, round) == 1);
-    assert(channel_send(ch, round + CHANNEL_WRAP_TAG) == 1);
+    assert(channel_send(ch, round, 0) == 1);
+    assert(channel_send(ch, round + CHANNEL_WRAP_TAG, 0) == 1);
     assert(channel_recv(ch) == round && "FIFO: the oldest value leaves first");
     assert(channel_recv(ch) == round + CHANNEL_WRAP_TAG &&
            "the ring wraps without reordering");
   }
   // Two channels are two buffers, not one shared queue.
-  assert(channel_send(other, 7) == 1);
-  assert(channel_send(ch, 8) == 1);
+  assert(channel_send(other, 7, 0) == 1);
+  assert(channel_send(ch, 8, 0) == 1);
   assert(channel_recv(other) == 7 && "handles do not alias");
   assert(channel_recv(ch) == 8 && "handles do not alias");
 }
@@ -313,19 +317,56 @@ void test_channel_capacity_rejections(void) {
   assert(channel_create(INT64_MAX) == -1 && "the element count cannot overflow");
 }
 
+// `Channel(capacity)` answers `Channel<T>`, not a Result, so the LANGUAGE has
+// nowhere to put a refusal. `channel_create_checked` is that boundary: it turns
+// every negative code into a death rather than a handle. Codegen calls it and
+// only it, so a value the rest of the lowering treats as a channel is one this
+// function let through. [CONCURRENCY-CHANNEL]
+static void death_channel_of_zero_capacity(void) {
+  (void)channel_create_checked(0);
+}
+
+static void death_channel_of_negative_capacity(void) {
+  (void)channel_create_checked(-1);
+}
+
+static void death_channel_of_oversized_capacity(void) {
+  (void)channel_create_checked(INT64_MAX);
+}
+
+static void check_refusal(OspDeathBody body, const char *what) {
+  int signalled = osp_death_signal(body);
+  if (signalled != SIGABRT) {
+    fprintf(stderr, "expected %s to be refused, got %d\n", what, signalled);
+  }
+  assert(signalled == SIGABRT);
+}
+
+void test_unusable_capacities_are_refused_not_returned(void) {
+  check_refusal(death_channel_of_zero_capacity, "a zero capacity");
+  check_refusal(death_channel_of_negative_capacity, "a negative capacity");
+  check_refusal(death_channel_of_oversized_capacity, "an unallocatable capacity");
+  // And the capacity that IS usable still is: a refusal that refused
+  // everything would satisfy every assertion above.
+  int64_t ok = channel_create_checked(1);
+  assert(ok >= 1 && "the smallest positive capacity is a real handle");
+  assert(channel_send(ok, 7, 0) == 1 && channel_recv(ok) == 7 &&
+         "and it carries a value end to end");
+}
+
 // An id inside the array that names no channel is a failure, never a wild
 // dereference; an id outside it is rejected before the array is touched.
 void test_channel_handle_guards(void) {
   const int64_t unassigned = 999;
-  assert(channel_send(unassigned, 1) == 0 && "no channel at this id");
+  assert(channel_send(unassigned, 1, 0) == 0 && "no channel at this id");
   assert(channel_recv(unassigned) == -1 && "no channel at this id");
-  assert(channel_send(0, 1) == 0 && "id 0 is below the first handle");
+  assert(channel_send(0, 1, 0) == 0 && "id 0 is below the first handle");
   assert(channel_recv(0) == -1 && "id 0 is below the first handle");
-  assert(channel_send(-1, 1) == 0 && "negative ids are rejected");
+  assert(channel_send(-1, 1, 0) == 0 && "negative ids are rejected");
   assert(channel_recv(-1) == -1 && "negative ids are rejected");
-  assert(channel_send(1000, 1) == 0 && "the array bound is exclusive");
+  assert(channel_send(1000, 1, 0) == 0 && "the array bound is exclusive");
   assert(channel_recv(1000) == -1 && "the array bound is exclusive");
-  assert(channel_send(INT64_MAX, 1) == 0);
+  assert(channel_send(INT64_MAX, 1, 0) == 0);
   assert(channel_recv(INT64_MIN) == -1);
 }
 
@@ -413,6 +454,53 @@ void test_handle_space_exhaustion(void) {
   assert(fiber_done(99999) == -1);
 }
 
+// A value sent and never received holds the reference `send` transferred to the
+// channel: nothing else can hand it back, because the runtime's completed-result
+// cleanup walks FIBERS, not channels. Teardown must release it, and must drain
+// the buffer so a value it dropped can never reach a later receiver.
+// [CONCURRENCY-CHANNEL]
+void test_cleanup_drains_unreceived_values(void) {
+  int64_t ch = channel_create(4);
+  assert(ch > 0);
+  assert(channel_send(ch, 111, 1) == 1);
+  assert(channel_send(ch, 222, 1) == 1);
+  channel_cleanup();
+  // The buffer is empty now, so the next send is exactly what the next recv
+  // sees — a dropped value that stayed queued would come out first.
+  assert(channel_send(ch, 333, 0) == 1);
+  assert(channel_recv(ch) == 333 &&
+         "cleanup drops unreceived values rather than queueing them");
+  // Idempotent, and the channel is still usable afterwards.
+  channel_cleanup();
+  channel_cleanup();
+  assert(channel_send(ch, 444, 0) == 1);
+  assert(channel_recv(ch) == 444);
+  // A channel that never carried a managed value is untouched by cleanup.
+  int64_t plain = channel_create(2);
+  assert(plain > 0);
+  assert(channel_send(plain, 55, 0) == 1);
+  channel_cleanup();
+  assert(channel_recv(plain) == 55 &&
+         "cleanup must not drain a channel that owns no references");
+}
+
+// A send the runtime REJECTS still consumed the caller's transfer: ownership
+// moved at the call, so the value is released again on every rejection path
+// rather than left with a reference no receiver will ever adopt.
+void test_rejected_managed_send_releases_its_value(void) {
+  const int64_t unassigned = 998;
+  assert(channel_send(unassigned, 1, 1) == 0 && "no channel at this id");
+  assert(channel_send(0, 1, 1) == 0 && "id 0 is below the first handle");
+  assert(channel_send(-1, 1, 1) == 0 && "negative ids are rejected");
+  assert(channel_send(1000, 1, 1) == 0 && "the array bound is exclusive");
+  assert(channel_send(INT64_MIN, 1, 1) == 0);
+  // ...and a live channel still accepts the same managed shape.
+  int64_t ch = channel_create(1);
+  assert(ch > 0);
+  assert(channel_send(ch, 77, 1) == 1);
+  assert(channel_recv(ch) == 77);
+}
+
 void run_all_fiber_tests(void) {
   test_null_function_pointer();
   test_invalid_fiber_await();
@@ -430,10 +518,13 @@ void run_all_fiber_tests(void) {
   test_fiber_process_bridge();
   test_channel_fifo_and_wraparound();
   test_channel_capacity_rejections();
+  test_unusable_capacities_are_refused_not_returned();
   test_channel_handle_guards();
   test_channel_blocks_both_directions();
   test_unassigned_fiber_handles();
   test_cleanup_defers_while_a_fiber_runs();
+  test_cleanup_drains_unreceived_values();
+  test_rejected_managed_send_releases_its_value();
   test_handle_space_exhaustion(); // LAST: spends the process's handle space
 
   puts("fiber runtime tests passed");

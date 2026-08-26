@@ -64,6 +64,11 @@ typedef struct Channel {
   int head;
   int tail;
   int count;
+  // A sent managed value arrives carrying a +1 the CHANNEL owns until a `recv`
+  // adopts it. Recorded per channel — the element type is monomorphic
+  // ([CONCURRENCY-CHANNEL]) — so teardown knows whether what is still buffered
+  // has references to release. [GC-ARC-PERCEUS]
+  bool elem_managed;
   pthread_mutex_t mutex;
   pthread_cond_t not_empty;
   pthread_cond_t not_full;
@@ -398,6 +403,7 @@ int64_t channel_create(int64_t capacity) {
   channel->head = 0;
   channel->tail = 0;
   channel->count = 0;
+  channel->elem_managed = false;
   pthread_mutex_init(&channel->mutex, NULL);
   pthread_cond_init(&channel->not_empty, NULL);
   pthread_cond_init(&channel->not_full, NULL);
@@ -409,11 +415,46 @@ int64_t channel_create(int64_t capacity) {
   return id;
 }
 
-// Send value to channel
-int64_t channel_send(int64_t channel_id, int64_t value) {
+// `Channel(capacity)` answers `Channel<T>` in the language, not
+// `Result<Channel<T>, E>`, so a creation that cannot be honoured has NOWHERE to
+// report. Handing the negative code back as if it were a handle is what turned
+// `Channel(0)` into a poison value: `send` on it enqueued nothing and returned
+// as though it had, and `recv` on it answered `-1` AS THE VALUE, which the
+// caller then read as a pointer -- a segfault with no diagnostic, arbitrarily
+// far from the `Channel(0)` that caused it.
+//
+// Every route reaches this, not just a literal: `fn channelOf(n) = Channel(n)`
+// called with `0` poisons exactly the same handle, so the check belongs where
+// the capacity is, not where it was written. [CONCURRENCY-CHANNEL]
+int64_t channel_create_checked(int64_t capacity) {
+  int64_t id = channel_create(capacity);
+  if (id >= 1) {
+    return id;
+  }
+  fprintf(stderr,
+          "FATAL: Channel(%lld) has no channel to give: capacity must be "
+          "positive and a handle must be free (code %lld)\n",
+          (long long)capacity, (long long)id);
+  abort();
+}
+
+// A send that does not enqueue must not keep the +1 the caller transferred:
+// ownership moved at the call, so a rejected value has no receiver and would
+// leak for the life of the process. [GC-ARC-PERCEUS]
+static int64_t channel_send_rejected(int64_t value, int64_t managed) {
+  if (managed) {
+    osp_release((void *)(uintptr_t)value);
+  }
+  return 0;
+}
+
+// Send value to channel. `managed` says the value is a heap object whose
+// reference the channel now owns until a `recv` adopts it, or until
+// `channel_cleanup` releases what was never received [CONCURRENCY-CHANNEL].
+int64_t channel_send(int64_t channel_id, int64_t value, int64_t managed) {
   // Check bounds first to prevent buffer overflow
   if (channel_id < 1 || channel_id >= 1000) {
-    return 0;
+    return channel_send_rejected(value, managed);
   }
 
   pthread_mutex_lock(&runtime_mutex);
@@ -421,9 +462,12 @@ int64_t channel_send(int64_t channel_id, int64_t value) {
   pthread_mutex_unlock(&runtime_mutex);
 
   if (!channel)
-    return 0;
+    return channel_send_rejected(value, managed);
 
   pthread_mutex_lock(&channel->mutex);
+  if (managed) {
+    channel->elem_managed = true;
+  }
 
   // Wait while channel is full
   while (channel->count == channel->capacity) {
@@ -475,6 +519,31 @@ int64_t channel_recv(int64_t channel_id) {
   pthread_mutex_unlock(&channel->mutex);
 
   return value;
+}
+
+// Release every managed value still buffered when the program ends. A value
+// that was sent and never received holds the +1 `send` transferred to the
+// channel, and nothing else can ever hand it back: `fiber_cleanup_results`
+// walks fibers, not channels, so without this every unreceived managed send is
+// a leak the ARC report counts at exit. Codegen calls this once at the end of
+// main, after language owners have dropped. [GC-ARC-PERCEUS]
+void channel_cleanup(void) {
+  pthread_mutex_lock(&runtime_mutex);
+  for (int64_t id = 1; id < next_id && id < 1000; id++) {
+    Channel *channel = channels[id];
+    if (!channel || !channel->elem_managed) {
+      continue;
+    }
+    pthread_mutex_lock(&channel->mutex);
+    while (channel->count > 0) {
+      int64_t value = channel->buffer[channel->head];
+      channel->head = (channel->head + 1) % channel->capacity;
+      channel->count--;
+      osp_release((void *)(uintptr_t)value);
+    }
+    pthread_mutex_unlock(&channel->mutex);
+  }
+  pthread_mutex_unlock(&runtime_mutex);
 }
 
 // Sleep for specified milliseconds. On Linux the profiler's directed SIGPROF

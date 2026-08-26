@@ -8,6 +8,17 @@
 #define HTTP_REQUEST_TIMEOUT_MS 5000U
 #define HTTP_CLIENT_REQUEST_ID_BYTES 64U
 
+/* What a request-log field says when its value could not be read: a method and
+   path that never parsed, or a client id the request never sent. An EMPTY field
+   is indistinguishable from a missing one in a log line, which is the whole
+   reason a placeholder exists.
+
+   It must not contain '?' or '#'. `make_log_labels` truncates the path at the
+   first of those to drop the query string, so a "?" placeholder was eaten right
+   back to the empty field it was standing in for -- the log read
+   `method=? path=` for every unparseable request. */
+#define HTTP_LOG_UNKNOWN "-"
+
 #ifdef MSG_NOSIGNAL
 #define HTTP_SEND_FLAGS MSG_NOSIGNAL
 #else

@@ -33,7 +33,7 @@ use std::time::{Duration, Instant};
 /// Long enough that a loaded machine compiling and linking a program cannot trip
 /// it, short enough that a red run reports in seconds rather than hanging the
 /// suite it is supposed to be protecting.
-const RUN_BUDGET: Duration = Duration::from_secs(120);
+const RUN_BUDGET: Duration = Duration::from_mins(2);
 
 /// How often the poll loop re-checks a child that has not exited yet.
 const POLL_INTERVAL: Duration = Duration::from_millis(50);
@@ -114,22 +114,42 @@ fn run_compiler(args: &[&std::ffi::OsStr], stdin: Stdio) -> Wait {
     }
 }
 
+/// Printed by the program under test with whatever `input()` returned. A
+/// launcher that closes stdin makes that `""` — and asserting the marker is
+/// what keeps these tests from going VACUOUS: without it, a program that no
+/// longer calls `input()` at all would exit 0 and pass, testing nothing.
+const READ_EVIDENCE: &str = "stdin=[]";
+
 /// Assert `outcome` finished cleanly, naming the launcher that would otherwise
 /// have parked and what the program managed to print before it did.
 fn assert_finished(outcome: Wait, launcher: &str) {
-    match outcome {
-        Wait::Exited { success, stdout } => assert!(
-            success,
+    // Each way of failing becomes a complaint rather than its own panic, so
+    // one assertion carries all three.
+    let complaint = match outcome {
+        Wait::Exited {
+            success: true,
+            stdout,
+        } if !stdout.contains(READ_EVIDENCE) => format!(
+            "`{launcher}` exited cleanly, but the program never reported reading \
+             stdin. Either it no longer calls `input()` — in which case this test \
+             proves nothing — or the read did not return end-of-file. Printed:\n{stdout}"
+        ),
+        Wait::Exited { success: true, .. } => String::new(),
+        Wait::Exited {
+            success: false,
+            stdout,
+        } => format!(
             "`{launcher}` must run a program that reads stdin to completion; stdout was:\n{stdout}"
         ),
-        Wait::TimedOut => panic!(
+        Wait::TimedOut => format!(
             "`{launcher}` parked a program on `input()`. [BUILTIN-INPUT] requires a \
              launcher that cannot supply input to CLOSE the child's standard input, so \
              the read sees a real end-of-file instead of a descriptor that is neither \
              data nor EOF."
         ),
-        Wait::Failed { reason } => panic!("{reason}"),
-    }
+        Wait::Failed { reason } => reason,
+    };
+    assert!(complaint.is_empty(), "{complaint}");
 }
 
 #[test]

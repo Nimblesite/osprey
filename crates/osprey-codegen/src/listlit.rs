@@ -227,7 +227,7 @@ pub(crate) fn to_runtime_list(cg: &mut Codegen, v: Value) -> Value {
 
 /// Normalize a list value that is about to ESCAPE the scope which knows its
 /// representation — a function return, a record field, an object literal, a
-/// lambda's return slot.
+/// lambda's return slot, or a channel send.
 ///
 /// The flat layout is a codegen-local optimization whose element tag rides on
 /// the VALUE (`[]double`), never on the type: `List<T>` has no owner tag

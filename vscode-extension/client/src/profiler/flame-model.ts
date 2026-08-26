@@ -331,11 +331,33 @@ export function colorForRank(file: string, rank: number, n: number): string {
   return `hsl(${(324 * t).toFixed(1)}, ${(25 + 20 * x).toFixed(1)}%, ${(65 - 15 * x).toFixed(1)}%)`;
 }
 
+/** A frame reduced to what decides its rank: its key, and where it came from. */
+export type FrameRank = { key: string; i: number };
+
+/**
+ * The frame ordering policy: by key, then by original index.
+ *
+ * The index term is not decoration. Two frames can share a file AND a name --
+ * one function inlined at two sites, or two runtime frames with no file at all
+ * -- and a comparator that answers 0 for those hands their order to whatever
+ * the engine does with elements it was told are equal. Rank is what picks a
+ * frame's colour, so an order the engine decides is a colour the engine
+ * decides, and the same profile stops looking the same twice.
+ *
+ * Exported because a sort's OUTPUT cannot tell this apart from a comparator
+ * with no tie-break at all: `Array.prototype.sort` is required to be stable,
+ * so equal elements come back in input order either way. The policy has to be
+ * asserted directly or it is not pinned.
+ */
+export function byFrameKeyThenIndex(a: FrameRank, b: FrameRank): number {
+  return a.key < b.key ? -1 : a.key > b.key ? 1 : a.i - b.i;
+}
+
 /** Stable per-frame colors: frames ranked by (file+name), ramped over hue. */
 export function frameColors(frames: SpeedscopeFrame[]): string[] {
   const order = frames
-    .map((frame, i) => ({ key: `${frame.file ?? ""} ${frame.name}`, i }))
-    .sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : a.i - b.i));
+    .map((frame, i) => ({ key: `${frame.file ?? ""}\u0000${frame.name}`, i }))
+    .sort(byFrameKeyThenIndex);
   const colors = new Array<string>(frames.length);
   order.forEach(({ i }, rank) => {
     colors[i] = colorForRank(frames[i].file ?? "", rank, frames.length);

@@ -19,6 +19,20 @@ stringMatrix () = [["ant", "bee"], ["cat", "dog", "eel"]]
 floatGroups () = Map () |> mapSet "small" [0.5, 1.25] |> mapSet "large" [8.5, 9.75]
 boolGroups () = Map () |> mapSet "left" [true, false] |> mapSet "right" [false, true]
 
+(** A channel reached through a PARAMETER is the seam no send-site knowledge
+    can cover: the callee sees only the declared `Channel T`, so the element
+    representation has to come from inference, and what crossed the wire has to
+    be a real collection rather than a literal's flat `{length, data}` header.
+    Reading that header as a list ran off the end of a 16-byte block.
+    Implements [CONCURRENCY-CHANNEL]. *)
+type MatrixHub =
+    channel : Channel (List (List int))
+
+drainMatrix : Channel (List (List int)) -> List (List int)
+drainMatrix channel = recv channel
+drainGroups : Channel (Map string (List float)) -> Map string (List float)
+drainGroups channel = recv channel
+
 requestIntMatrix : Unit -> List (List int)
 requestIntMatrix () = perform FiberDepot.fetch "ints"
 requestBoolGroups : Unit -> Map string (List bool)
@@ -58,6 +72,22 @@ fiberChannelCollectionCase () =
     secondMatrix = recv matrixChannel
     firstGroups = recv groupChannel
     secondGroups = recv groupChannel
+    send matrixChannel secondMatrix
+    send groupChannel secondGroups
+    matrixViaParameter = drainMatrix matrixChannel
+    groupsViaParameter = drainGroups groupChannel
+    hub = MatrixHub(channel = Channel 1)
+    send hub.channel matrixViaParameter
+    matrixViaField = recv hub.channel
+    (** ABANDONED on purpose: a managed value that is sent and never received
+       still holds the reference `send` transferred to the channel, and nothing
+       can hand it back — the runtime's completed-result cleanup walks fibers,
+       not channels. Program teardown has to release it, and the ARC corpus
+       harness fails this file if a single object survives exit. *)
+    abandonedMatrices = Channel 2
+    abandonedGroups = Channel 2
+    send abandonedMatrices (listAppend matrixViaField [8, 9])
+    send abandonedGroups (mapSet floats "orphan" [1.5])
 
     checkAll "spawn and out-of-order await reconstruct nested collection owners" [
         nestedAt (ints, 0, 0, [99], 99) == 1,
@@ -103,7 +133,20 @@ fiberChannelCollectionCase () =
         nestedAt (ints, 1, 2, [99], 99) == 5,
         groupAt (floats, "small", 0, [9.0], 9.5) == 0.5,
         listLength ints == 2,
-        mapLength floats == 2
+        mapLength floats == 2,
+        listLength matrixViaParameter == 3,
+        nestedAt (matrixViaParameter, 0, 0, [99], 99) == 1,
+        nestedAt (matrixViaParameter, 1, 2, [99], 99) == 5,
+        nestedAt (matrixViaParameter, 2, 0, [99], 99) == 6,
+        nestedAt (matrixViaParameter, 2, 1, [99], 99) == 7,
+        mapLength groupsViaParameter == 3,
+        groupAt (groupsViaParameter, "small", 0, [9.0], 9.5) == 0.5,
+        groupAt (groupsViaParameter, "extra", 0, [9.0], 9.5) == 6.25,
+        groupAt (groupsViaParameter, "extra", 1, [9.0], 9.5) == 7.5,
+        listLength matrixViaField == 3,
+        nestedAt (matrixViaField, 0, 1, [99], 99) == 2,
+        nestedAt (matrixViaField, 1, 2, [99], 99) == 5,
+        nestedAt (matrixViaField, 2, 1, [99], 99) == 7
     ]
 
 (** A generic effect is performed inside a spawned body, answered by an
@@ -141,12 +184,14 @@ fiberEffectCollectionCase () =
         !(mapContains bools "extra")
     ]
 
-(* [TESTING-SKIP-WARNING] demo: the case below pins a real defect —
-    Channel<collection> drops nested generic descriptors in transit
-    (fiberChannelCollectionCase's channel checkAll fails). It is parked with a
-    Skip verdict, which raises warnings in `osprey test` stderr, the LSP, and
-    the VS Code Test Explorer. Re-enable fiberChannelCollectionCase to fix. *)
+(* The channel case was parked with a Skip verdict while `Channel<collection>`
+    lost its element type in transit: the wire word is a uniform `i64`, `recv`
+    never unboxed it back, and a `List<List<int>>` came back readable only as
+    `List<int>` — every nested access answered its fallback. `send` now records
+    the element on the channel binding and `recv` unboxes to it, and the
+    let-bound handle no longer generalizes, so the two ends can no longer
+    disagree. Both cases run for real, identically to the Default twin. *)
 type Verdict = Pass | Fail string | Skip string
 
-test "fibers channels Results and persistence retain generic collection types" (\() => Skip "Channel<collection> round-trip drops nested descriptors (known bug)")
+test "fibers channels Results and persistence retain generic collection types" fiberChannelCollectionCase
 test "generic effects inside fibers retain nested collection types" fiberEffectCollectionCase

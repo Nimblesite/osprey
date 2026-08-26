@@ -143,14 +143,21 @@ fn compile_program_with_options(program: &Program, options: CodegenOptions) -> R
     // A program that used the testing built-ins exits with the TAP epilogue's
     // status (plan + summary printed by the runtime) [TESTING-EXIT].
     crate::arc::epilogue(&mut cg, None);
-    if cg.fibers_used {
+    if cg.lowered.fibers {
         // A completed fiber keeps one runtime owner so every `await` can return
         // its own retained reference. Main's language owners are gone now, so
         // release those runtime roots before process-exit leak accounting.
         cg.add_extern("declare void @fiber_cleanup_results()");
         cg.emit("call void @fiber_cleanup_results()");
     }
-    if cg.testing_used {
+    if cg.lowered.channels {
+        // A value sent and never received still holds the reference `send`
+        // transferred to the channel, and nothing else can hand it back —
+        // `fiber_cleanup_results` walks fibers, not channels [GC-ARC-PERCEUS].
+        cg.add_extern("declare void @channel_cleanup()");
+        cg.emit("call void @channel_cleanup()");
+    }
+    if cg.lowered.testing {
         let code = cg.call("i32", "osp_test_finalize", "", &[]);
         cg.emit(format!("ret i32 {code}"));
     } else {
