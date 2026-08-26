@@ -2,6 +2,12 @@
 #include "memory_hooks.h"
 #include <signal.h>
 
+#ifdef _WIN32
+#define WS_SHUTDOWN_BOTH SD_BOTH
+#else
+#define WS_SHUTDOWN_BOTH SHUT_RDWR
+#endif
+
 // Native text-frame server transport [BUILTIN-WEBSOCKET-SERVER]
 // (docs/specs/0015-WebSockets.md). Lifecycle: [BUILTIN-WEBSOCKET-LIFECYCLE].
 
@@ -330,8 +336,16 @@ int64_t websocket_stop_server(int64_t server_id) {
     }
     pthread_mutex_unlock(&server->mutex);
 
-    // Close server socket
+    // SHUT DOWN before closing, or the join below never returns. A `close()`
+    // does NOT interrupt a thread already blocked in `accept()` on Linux — the
+    // descriptor goes away and the thread stays parked on it forever. macOS
+    // does wake it, which is why this suite passed here and hung for the whole
+    // 60-minute CI budget on the runner, killed as an orphan process with no
+    // failing assertion to name. `shutdown` wakes a blocked `accept()` on both,
+    // and `is_listening` is already false above, so the loop ends rather than
+    // spinning on the error.
     if (server->socket_fd >= 0) {
+      (void)shutdown(server->socket_fd, WS_SHUTDOWN_BOTH);
       close(server->socket_fd);
     }
 
