@@ -131,6 +131,7 @@ struct Running {
     child: Child,
     stdin: Option<ChildStdin>,
     seen: Arc<Mutex<String>>,
+    reader: Option<std::thread::JoinHandle<()>>,
 }
 
 impl Running {
@@ -150,19 +151,40 @@ impl Running {
             .stderr(Stdio::null())
             .spawn()
             .map_err(|e| format!("could not spawn {}: {e}", program.display()))?;
-        let seen = match child.stdout.take() {
+        let (seen, reader) = match child.stdout.take() {
             Some(pipe) => drain(pipe),
             None => return Err("the child was spawned without a stdout pipe".to_owned()),
         };
         let stdin = child.stdin.take();
-        Ok(Self { child, stdin, seen })
+        Ok(Self {
+            child,
+            stdin,
+            seen,
+            reader: Some(reader),
+        })
     }
 
+    /// What has arrived SO FAR. Correct only while the child is still running —
+    /// for polling, and for reporting a parked child that will never close its
+    /// pipe. After an exit, use [`Running::settled_output`].
     fn output(&self) -> String {
         match self.seen.lock() {
             Ok(held) => held.clone(),
             Err(poisoned) => poisoned.into_inner().clone(),
         }
+    }
+
+    /// Everything the child printed. A process can exit before the thread
+    /// copying its pipe has run, so reading the buffer the instant `try_wait`
+    /// succeeds is a RACE — and it lost it on a CI runner, reporting a program
+    /// that printed `ready\ngot[]` as one that printed nothing at all. Joining
+    /// the reader is what makes the buffer final; it returns promptly because
+    /// the exit already closed the write end.
+    fn settled_output(&mut self) -> String {
+        if let Some(reader) = self.reader.take() {
+            let _ = reader.join();
+        }
+        self.output()
     }
 
     /// Block until the readiness marker surfaces, proving the child is inside
@@ -221,12 +243,10 @@ impl Drop for Running {
 /// Copy `pipe` into a shared string as it arrives. A dedicated thread is what
 /// makes partial output readable: `read_to_string` would only return at EOF, and
 /// the whole point of the parked case is that EOF has not happened.
-fn drain(mut pipe: ChildStdout) -> Arc<Mutex<String>> {
+fn drain(mut pipe: ChildStdout) -> (Arc<Mutex<String>>, std::thread::JoinHandle<()>) {
     let seen = Arc::new(Mutex::new(String::new()));
     let sink = Arc::clone(&seen);
-    // The handle is deliberately dropped: the thread ends when the pipe closes,
-    // and nothing here may join on a pipe that the parked case never closes.
-    drop(std::thread::spawn(move || {
+    let reader = std::thread::spawn(move || {
         let mut chunk = [0_u8; 256];
         while let Ok(read) = pipe.read(&mut chunk) {
             if read == 0 {
@@ -238,8 +258,11 @@ fn drain(mut pipe: ChildStdout) -> Arc<Mutex<String>> {
                 ));
             }
         }
-    }));
-    seen
+    });
+    // The handle is returned rather than joined here: only a caller that knows
+    // the child has EXITED may join, because the parked case never closes the
+    // pipe and joining it would hang the suite.
+    (seen, reader)
 }
 
 /// Run the echo program against a writer that performs `feed`, and return what it
@@ -255,8 +278,13 @@ fn echo_after(feed: impl FnOnce(&mut Running) -> Result<(), String>) -> Result<S
     feed(&mut run)?;
     run.close_stdin();
     match run.exited_within(RUN_BUDGET) {
-        Some(true) => Ok(run.output()),
-        Some(false) => Err(format!("the program failed; it printed:\n{}", run.output())),
+        Some(true) => Ok(run.settled_output()),
+        Some(false) => Err(format!(
+            "the program failed; it printed:\n{}",
+            run.settled_output()
+        )),
+        // NOT settled: a child still running has not closed its pipe, so
+        // joining the reader here would hang instead of reporting the hang.
         None => Err(format!(
             "the program never finished after its writer closed stdin; it printed:\n{}",
             run.output()
@@ -271,7 +299,10 @@ fn a_closed_descriptor_reads_as_end_of_file() {
         Err(reason) => panic!("{reason}"),
     };
     let exited = run.exited_within(RUN_BUDGET);
-    let printed = run.output();
+    let printed = match exited {
+        Some(_) => run.settled_output(),
+        None => run.output(),
+    };
     assert_eq!(
         exited,
         Some(true),
@@ -362,7 +393,10 @@ fn an_open_silent_descriptor_is_waited_on_and_released_by_its_close() {
     );
     run.close_stdin();
     let released = run.exited_within(RUN_BUDGET);
-    let printed = run.output();
+    let printed = match released {
+        Some(_) => run.settled_output(),
+        None => run.output(),
+    };
     assert_eq!(
         released,
         Some(true),

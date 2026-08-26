@@ -9,6 +9,10 @@
 //   [BUILTIN-WEBSOCKET-HANDSHAKE] docs/specs/0015-WebSockets.md
 #include "http_shared.h"
 #include <assert.h>
+// `signal`/`SIGPIPE`/`SIG_IGN` below. macOS pulls this in transitively through
+// the socket headers and glibc does not, so leaving it out compiles here and
+// fails on Linux with -Werror=implicit-function-declaration.
+#include <signal.h>
 
 // Not in the header: internal to the handshake pipeline, asserted directly so
 // its input-validation contract is pinned rather than inferred.
