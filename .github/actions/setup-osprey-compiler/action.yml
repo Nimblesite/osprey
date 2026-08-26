@@ -9,6 +9,15 @@ inputs:
     description: "Version to stamp into the binary (OSPREY_VERSION); empty keeps the 0.0.0-dev placeholder"
     required: false
     default: ""
+  build:
+    description: >-
+      "true" (default) installs the toolchain AND builds the C runtime archives
+      and the release binary. "false" installs the toolchain only, for a job
+      that downloads those artifacts from an earlier build job instead of
+      compiling the compiler a second time — the whole point of staging the
+      pipeline. `compiler-path` is empty when this is "false".
+    required: false
+    default: "true"
 
 outputs:
   compiler-path:
@@ -107,11 +116,13 @@ runs:
         echo "PKG_CONFIG_PATH=$(brew --prefix openssl@3)/lib/pkgconfig" >> "$GITHUB_ENV"
 
     - name: Build C runtime archives
+      if: inputs.build == 'true'
       shell: bash
       run: make _runtime
 
     - name: Build osprey (release)
       id: build-compiler
+      if: inputs.build == 'true'
       shell: bash
       env:
         OSPREY_VERSION: ${{ inputs.version }}

@@ -32,12 +32,26 @@ const WORKFLOW_DIR = '.github/workflows'
 
 // The gate list. Adding a required check means adding it here AND to the
 // ruleset; this script fails until the two agree, in either direction.
+// Every job in the four-stage pipeline is here, because every job blocks.
+// There is no advisory tier: a suite worth running is worth failing the merge,
+// and one marked "not required" has been deleted in all but name.
 const EXPECTED_CONTEXTS = [
   'Detect changed areas',
-  'Test, Format, Build & Validate',
-  'Rust Compiler (fmt, clippy, test, corpus)',
-  'WebAssembly target (wasm32-wasip1)',
-  'Website E2E (Playwright)',
+  'Build, Format & Analyse',
+  'Tests: Rust workspace (coverage)',
+  'Tests: language corpus (default)',
+  'Tests: language corpus (gc)',
+  'Tests: language corpus (arc)',
+  'Tests: C runtime (coverage)',
+  'Tests: VS Code extension (coverage)',
+  'Tests: WebAssembly target (wasm32-wasip1)',
+  'Tests: Website E2E (Playwright)',
+  'Tests: integration (bank, profiler, web compiler)',
+  'Coverage thresholds',
+  // Required because `windows-core` skips on its output, and a skipped check
+  // reports as PASSING. Left unrequired, a failure in this job silently
+  // vanished the entire Windows gate rather than blocking on it.
+  'Detect changed areas (Windows)',
   'Windows Core Build & Smoke Test',
 ]
 

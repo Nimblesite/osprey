@@ -166,7 +166,13 @@ test: build
 	$(MAKE) _coverage_check_rust
 	$(MAKE) _test_c_runtime
 	$(MAKE) _coverage_check_c_runtime
-	$(MAKE) _test_language_corpus
+# _test_language_corpus is deliberately NOT here. It runs every program in
+# tests/ through the TAP subcommand, and _test_goldens then runs every one of
+# them AGAIN — `run_test_corpus.sh` checks the in-language assertions AND the
+# byte-exact golden in a single pass (see its header), so the golden run is
+# strictly the stronger of the two observations. Executing the same assertions
+# twice buys nothing and doubles the slowest stage in the build. The `osprey
+# test` subcommand itself stays covered by bank-test and the CLI e2e suite.
 	$(MAKE) _test_goldens
 	$(MAKE) _conformance-gc
 	$(MAKE) _conformance-arc
