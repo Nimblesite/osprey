@@ -523,9 +523,12 @@ jobs:
   # Builds the site and runs the Playwright suite: every page template at three
   # breakpoints (no JS errors, no horizontal overflow, dark theme, chrome
   # present, logo resolves) plus nav / hero / mobile-menu / TOC assertions.
+  # Deliberately depends on NOTHING. It is the one suite that is meaningful for
+  # a website-only PR, so it must not be gated on `changes` — a job that
+  # `needs:` a failed job is SKIPPED, and skipping every suite the moment the
+  # gate-verification step trips would leave a PR with no test signal at all.
   test-website:
     name: "Tests: Website E2E (Playwright)"
-    needs: changes
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
