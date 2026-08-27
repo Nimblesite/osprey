@@ -111,7 +111,7 @@ echo "$out" | grep -qE 'wall.*CPU.*samples.*Hz.*fiber' \
   || { echo "FAIL [PROF-CLI-REPORT]: header line missing a required field"; exit 1; }
 
 python3 - <<'EOF'
-import json, shutil, subprocess
+import json, subprocess
 summary = json.load(open("profdemo.profile.json"))
 total = summary["sampleCount"]
 frames = summary["hotFunctions"]
@@ -138,19 +138,31 @@ assert fib["totalPct"] > 50.0, (
 # [PROF-SYMBOLIZE-OFFLINE] "...falling back to `atos` on macOS and raw hex
 # names when no symbolizer is present." A symbolizer IS present here, so raw
 # hex names are not an available fallback.
-have_symbolizer = bool(shutil.which("llvm-symbolizer") or shutil.which("atos"))
-if have_symbolizer:
-    hexed = [f["name"] for f in frames if f["name"].startswith("0x")]
-    assert not hexed, (
-        f"[PROF-SYMBOLIZE-OFFLINE] {len(hexed)} frames came back as raw hex "
-        f"({hexed[:3]}) although a symbolizer is installed; raw hex is spec'd "
-        "only for when none is present")
-else:
-    # Say so. A guarded assertion that goes quiet when it does not run is
-    # indistinguishable from one that ran and passed.
-    print("SKIP [PROF-SYMBOLIZE-OFFLINE]: neither llvm-symbolizer nor atos is "
-          "on PATH, so raw hex names are spec-correct here and the "
-          "wrong-object/wrong-slice check cannot run")
+# [PROF-SYMBOLIZE-OFFLINE] Every function profdemo DEFINES must be named, and
+# named as user code. That is the assertion the wrong-object defect actually
+# broke: the profiled binary was being substituted for images it does not
+# describe, and the reverse — resolving Osprey's own addresses against the
+# wrong object — turns exactly these four into hex.
+#
+# It is deliberately NOT "no frame anywhere is hex". Ubuntu ships glibc
+# stripped, so an allocator leaf there has no symbol to find and hex is the
+# honest answer; the earlier form of this check only ever passed because the
+# symbolizer was inventing names for images it could not read. The
+# wrong-object rule itself is pinned exactly, in
+# osprey-profiler symbolize::tools::resolve_object_refuses_to_stand_a_foreign_image_in.
+defined = {"fib", "add", "sub", "main"}
+named = {f["name"] for f in frames if f["kind"] == "user"}
+missing = sorted(defined - named)
+assert not missing, (
+    f"[PROF-SYMBOLIZE-OFFLINE] profdemo defines {sorted(defined)} but "
+    f"{missing} did not symbolize as user code; the main image is being "
+    "resolved against the wrong object")
+
+# Not a gate — visibility. A silent change in how much of the run cannot be
+# named is exactly the drift that hid the wrong-object defect for so long.
+hexed = [f["name"] for f in frames if f["name"].startswith("0x")]
+print(f"[PROF-SYMBOLIZE-OFFLINE] {len(hexed)}/{len(frames)} frames unnamed "
+      f"(stripped system images have no symbols to find): {hexed[:3]}")
 
 # [PROF-CLI-REPORT] "Below about 100 samples, the report flags low confidence."
 # This run is far above that, so no low-confidence flag may appear.
