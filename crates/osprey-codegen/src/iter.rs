@@ -64,7 +64,7 @@ pub(crate) fn callback_of(cg: &mut Codegen, e: &Expr) -> Result<Callback> {
             (**body).clone(),
             cg.prog
                 .lambda_type(*position)
-                .and_then(Codegen::fn_value_sig),
+                .and_then(|t| Codegen::fn_value_sig(&cg.prog, t)),
             *position,
         )),
         Expr::Identifier(n) => {
@@ -77,7 +77,7 @@ pub(crate) fn callback_of(cg: &mut Codegen, e: &Expr) -> Result<Callback> {
                     body.clone(),
                     cg.prog
                         .lambda_type(position)
-                        .and_then(Codegen::fn_value_sig),
+                        .and_then(|t| Codegen::fn_value_sig(&cg.prog, t)),
                     position,
                 ))
             } else if let Some((params, body)) = cg.fn_defs.get(n) {
@@ -95,7 +95,7 @@ pub(crate) fn callback_of(cg: &mut Codegen, e: &Expr) -> Result<Callback> {
             let sig = cg
                 .callee_fn_type(e)
                 .as_ref()
-                .and_then(Codegen::fn_value_sig)
+                .and_then(|t| Codegen::fn_value_sig(&cg.prog, t))
                 .ok_or_else(|| {
                     CodegenError::unsupported("iterator callback must be a function name or lambda")
                 })?;

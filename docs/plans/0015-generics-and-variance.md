@@ -212,7 +212,8 @@ Remaining:
 - [ ] **Call-site type application** `identity<int>(5)` — grammar +
       `Expr::Call.type_args` + both-flavor lowering + checker unification
       (§What-is-left 1).
-- [x] **Generic functions as values** — landed via [plan 0002](0002-codegen-generic-function-values.md):
+- [x] **Generic functions as values** — landed via plan 0002, now retired; the
+      shipped contract is [spec 0004](../specs/0004-TypeSystem.md) `[TYPE-GENERICS-FN]`:
       slot-driven specialization + let-alias + inline fn-typed arg
       registration; `let g = identity` passed to a HOF compiles and runs
       (§What-is-left 2). Only the returned still-generic lambda remains, in

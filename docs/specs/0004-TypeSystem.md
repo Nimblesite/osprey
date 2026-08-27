@@ -198,6 +198,24 @@ s = pick ("left", "right")
 In the ML flavor the binder lives on the signature line (`pick<T> : …`); a
 binding without a signature cannot declare type parameters.
 
+A generic function used as a VALUE is specialised wherever its ABI can be
+fixed: by a consuming slot, by a call alias, or — when a generic function
+returns a lambda — at each call site of the binding, which is inlined and
+specialised there. `fn pick() = |x| => x` followed by `let f = pick()`
+therefore serves `f(7)`, `f("os")` and `f(2.5)` from one binding. A lambda so
+returned may close over the producing call's parameters
+(`fn constly(v) = |x| => v`); those are evaluated **once**, at the binding, so
+the call's effects happen as often as the source performs it, not once per
+instantiation.
+
+One shape has no ABI to fix and is rejected rather than guessed: a
+still-generic lambda used as a bare value, with no call site to specialise
+against — `print("${mk(1)}")` for `fn mk(x) = |y| => x`. The compiler answers
+`a closure value with a still-generic type`. This is a permanent restriction,
+not a missing feature: one runtime closure has one representation, and lowering
+an unresolved type variable as a machine word would read a `string` or `float`
+instantiation as an integer.
+
 `[TYPE-VARIANCE-DECL]` **Type parameters declare variance at the declaration
 site**: `out T` (covariant — `T` only flows out), `in T` (contravariant — `T`
 only flows in), unannotated (invariant — exact match). `out` and `in` are

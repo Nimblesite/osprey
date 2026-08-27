@@ -52,7 +52,7 @@ pub(crate) fn lambda_value(
             "a closure value with a still-generic type (wrap it in a function with concrete parameter/return types)",
         ));
     }
-    let sig = Codegen::fn_value_sig(ty)
+    let sig = Codegen::fn_value_sig(&cg.prog, ty)
         .ok_or_else(|| CodegenError::invalid("lambda has no inferred function type"))?;
     emit_closure(cg, parameters, body, &sig)
 }
@@ -183,7 +183,7 @@ fn emit_closure_fn(
     body: &Expr,
     sig: &FnSig,
 ) -> Result<()> {
-    let (param_tys, ret_ty, ret_inner, _) = sig;
+    let (param_tys, ret_ty, ret_inner, _, _) = sig;
     let (ret_spelling, _) = spelling(sig);
     let saved = cg.enter_nested_fn();
     // Cell promotion is per lowered body and `enter_nested_fn` cleared the
@@ -213,7 +213,7 @@ pub(crate) fn bind_params_from(
     let mut out = Vec::with_capacity(parameters.len());
     for (i, (p, pty)) in parameters.iter().zip(param_tys).enumerate() {
         let reg = crate::llty::param_register(first + i);
-        let value = crate::cast::incoming_param(cg, format!("%{reg}"), *pty, None);
+        let value = crate::cast::incoming_param(cg, format!("%{reg}"), pty.clone(), None);
         cg.bind(p.name.clone(), value);
         out.push((pty.ty, reg));
     }
@@ -303,7 +303,7 @@ pub(crate) fn raw_callback_lambda(
             "a capturing lambda as an FFI callback (captures cannot cross the C boundary; use a named function)",
         ));
     }
-    let (param_tys, ret_ty, ret_inner, _) = sig;
+    let (param_tys, ret_ty, ret_inner, _, _) = sig;
     let (ret_spelling, plist) = spelling(sig);
     let name = format!("__callback_{}", cg.next_lambda_id());
     let saved = cg.enter_nested_fn();
@@ -331,7 +331,7 @@ pub(crate) fn coerce_typed_args(
 ) -> Result<Vec<String>> {
     let mut typed = Vec::with_capacity(args.len());
     for (want, a) in sig.0.iter().zip(args) {
-        typed.push(crate::cast::coerce_param(cg, a, *want)?.typed());
+        typed.push(crate::cast::coerce_param(cg, a, want)?.typed());
     }
     Ok(typed)
 }
@@ -409,9 +409,9 @@ pub(crate) fn cell_call(
 pub(crate) fn returned(reg: String, sig: &FnSig) -> Value {
     let value = match sig.2 {
         Some(inner) => Value::result(reg, inner),
-        None => Value::new(reg, sig.1),
+        None => Value::new(reg, sig.1).with_owner(sig.4.clone()),
     };
-    match sig.3 {
+    match sig.3.clone() {
         Some(fiber) => fiber.restore(value),
         None => value,
     }
@@ -479,14 +479,17 @@ fn emit_forwarder(cg: &mut Codegen, name: &str) -> Result<String> {
 /// The canonical value-ABI [`FnSig`] of a named top-level function.
 fn named_fn_sig(cg: &Codegen, name: &str) -> Option<FnSig> {
     let (params, ret) = cg.prog.functions.get(name)?;
-    Codegen::fn_value_sig(&osprey_types::Type::fun(params.clone(), ret.clone()))
+    Codegen::fn_value_sig(
+        &cg.prog,
+        &osprey_types::Type::fun(params.clone(), ret.clone()),
+    )
 }
 
 /// The LLVM return-type and parameter-list spellings of a function value's
 /// signature (no env): the return is a Result block `{ T, i8 }*` when it
 /// returns `Result<T, _>`, else the plain scalar.
 fn spelling(sig: &FnSig) -> (String, String) {
-    let (param_tys, ret_ty, ret_inner, _) = sig;
+    let (param_tys, ret_ty, ret_inner, _, _) = sig;
     let ret = crate::llty::ret_spelling(*ret_ty, *ret_inner);
     (
         ret,
@@ -525,6 +528,13 @@ fn closure_return(
 /// `Result<T, _>` slot wraps a bare value into Success (or preserves an existing
 /// Result); a scalar slot accepts only a plain value.
 fn ret_as_sig(cg: &mut Codegen, v: Value, ret_ty: LType, ret_inner: Option<LType>) -> Result<()> {
+    // The signature advertises a runtime `List` handle, so the epilogue has to
+    // hand back one: a list LITERAL leaves the body as a flat
+    // `{ length, data }` header, and returning it under a `List#` tag makes the
+    // caller's `listGet` read that header as an `OspreyList` and segfault
+    // ([`crate::listlit::escaping`]). The named-function path converts at the
+    // same seam in `fit_lambda_return`.
+    let v = crate::listlit::escaping(cg, v);
     let rv = match ret_inner {
         Some(inner) => crate::result::fit_to_inner(cg, v, inner)?,
         None => crate::cast::coerce_to(cg, v, ret_ty)?,

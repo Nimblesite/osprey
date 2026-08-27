@@ -61,7 +61,7 @@ fn softmax(scores) = {
 /// rowDot walks one row of a flat row-major matrix against a vector. The
 /// annotations are load-bearing: only a concrete signature is emitted as a real
 /// definition, which recursion requires.
-fn rowDot(m: GpuBuffer<float>, v: GpuBuffer<float>, cols: int, r: int, c: int) = match c == cols {
+fn rowDot(m, v, cols, r, c) = match c == cols {
     true => 0.0
     false => at(m, (((r * cols) ?: 0) + c) ?: 0) * at(v, c)
         + rowDot(m, v, cols, r, (c + 1) ?: 0)
@@ -84,7 +84,7 @@ fn gradStep(w: float, xs: GpuBuffer<float>, ys: GpuBuffer<float>) = w - 0.05 * (
 
 /// train iterates gradStep n times, keeping the loop on buffers. Annotated for
 /// the same recursion-emission reason as rowDot.
-fn train(w: float, xs: GpuBuffer<float>, ys: GpuBuffer<float>, n: int) = match n {
+fn train(w, xs, ys, n) = match n {
     0 => w
     _ => train(gradStep(w, xs, ys), xs, ys, (n - 1) ?: 0)
 }

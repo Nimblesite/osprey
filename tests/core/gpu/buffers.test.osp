@@ -447,6 +447,36 @@ fn bigCase() = {
     ])
 }
 
+/// A kernel whose body is a BLOCK with an internal `let`. Plan 0002 recorded
+/// this as failing with `unknown identifier \`base\`` — the inline-callback
+/// path was said to lose the block's local scope, with named kernels as the
+/// workaround. It lowers correctly; nothing pinned it, so the item could not
+/// be closed. Both lambda spellings are exercised because they reach the
+/// lowering by different routes, and the suite runs under BOTH
+/// `OSPREY_GPU_KERNELS=extract` and `=inline`, so this holds for the extracted
+/// and the inlined lowering alike. Implements [GPU-KERNEL-FORM].
+fn blockBodiedKernelCase() = {
+    let fromFn = gpuIota(4) |> gpuMap(fn(r) => { let base = (r * 3) ?: 0
+                                                 base + 1 ?: base })
+    let fromLambda = gpuIota(4) |> gpuMap(|r| => { let tripled = (r * 3) ?: 0
+                                                   tripled + 1 ?: tripled })
+    let widened = gpuIota(3) |> gpuMap(fn(r) => { let asFloat = toFloat(r)
+                                                  asFloat * 0.5 })
+    checkAll("a block-bodied kernel keeps its internal let bindings", [
+        gpuLength(fromFn) == 4,
+        (gpuGet(fromFn, 0) ?: 99) == 1,
+        (gpuGet(fromFn, 1) ?: 99) == 4,
+        (gpuGet(fromFn, 3) ?: 99) == 10,
+        gpuLength(fromLambda) == 4,
+        (gpuGet(fromLambda, 0) ?: 99) == 1,
+        (gpuGet(fromLambda, 3) ?: 99) == 10,
+        (fromFn |> gpuFold(0, addInts)) == 22,
+        gpuLength(widened) == 3,
+        (gpuGet(widened, 0) ?: 9.5) == 0.0,
+        (gpuGet(widened, 2) ?: 9.5) == 1.0
+    ])
+}
+
 test("buffer literals store elements densely at constant indices", literalCase)
 test("a list value copies into a buffer element for element", listCopyCase)
 test("gpu buffers round-trip lists densely", roundTripCase)
@@ -462,3 +492,4 @@ test("pure int kernels map and fold on buffers", intKernelCase)
 test("float kernels keep element bits through map and fold", floatKernelCase)
 test("kernels may change the element scalar type", boolKernelCase)
 test("the copy path stays exact at a hundred thousand elements", bigCase)
+test("a block-bodied kernel keeps its internal let bindings", blockBodiedKernelCase)

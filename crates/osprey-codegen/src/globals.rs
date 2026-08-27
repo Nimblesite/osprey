@@ -106,7 +106,7 @@ fn describe(
     })?;
     Ok(GlobalSlot {
         symbol: format!("osp.g.{name}"),
-        sig: ParamSig::of(ty),
+        sig: ParamSig::of(&cg.prog, ty),
         owner: crate::types::owner_name(&cg.prog, ty),
         cell,
         ty: ty.clone(),
@@ -197,7 +197,7 @@ pub(crate) fn publish(cg: &mut Codegen, name: &str, value: Value) -> Result<()> 
              address; storing the value here would leave every reader dereferencing it"
         )));
     }
-    let stored = crate::cast::coerce_param(cg, value, slot.sig)?;
+    let stored = crate::cast::coerce_param(cg, value, &slot.sig)?;
     store(cg, &slot, &stored.operand);
     Ok(())
 }
@@ -264,7 +264,7 @@ pub(crate) fn assign(cg: &mut Codegen, name: &str, value: Value) -> Result<()> {
     let incoming = if slot.cell {
         crate::cast::coerce_to(cg, value, held)?
     } else {
-        crate::cast::coerce_param(cg, value, slot.sig)?
+        crate::cast::coerce_param(cg, value, &slot.sig)?
     };
     if held.is_managed_ptr() {
         crate::arc::retain_operand(cg, &incoming.operand);

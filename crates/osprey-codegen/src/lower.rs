@@ -199,11 +199,18 @@ fn record_declarations(cg: &mut Codegen, program: &Program) {
                 name, operations, ..
             } => {
                 for op in operations {
-                    if let Some(sig) = cg.prog.effects.get(name).and_then(|m| m.get(&op.name)) {
-                        cg.register_effect_op(
-                            format!("{name}.{}", op.name),
-                            crate::effects::op_sig_of(sig),
-                        );
+                    // The signature is read out before `register_effect_op`
+                    // takes `cg` mutably; `op_sig_of` needs the same
+                    // `ProgramTypes` to tag a handle operand's element.
+                    let sig = cg
+                        .prog
+                        .effects
+                        .get(name)
+                        .and_then(|m| m.get(&op.name))
+                        .cloned();
+                    if let Some(sig) = sig {
+                        let lowered = crate::effects::op_sig_of(&cg.prog, &sig);
+                        cg.register_effect_op(format!("{name}.{}", op.name), lowered);
                     }
                 }
             }
@@ -281,7 +288,7 @@ fn gen_function(
     let mut params = Vec::new();
     for (i, (p, (pty, owner))) in parameters.iter().zip(param_sig.iter()).enumerate() {
         let reg = crate::llty::param_register(i);
-        let v = crate::cast::incoming_param(cg, format!("%{reg}"), *pty, owner.clone());
+        let v = crate::cast::incoming_param(cg, format!("%{reg}"), pty.clone(), owner.clone());
         cg.emit_debug_param(&p.name, &v);
         cg.bind(p.name.clone(), v);
         params.push((pty.ty, reg));
@@ -315,7 +322,11 @@ fn gen_fn_body(cg: &mut Codegen, name: &str, body: &Expr) -> Result<Value> {
         ..
     } = body
     {
-        if let Some(sig) = cg.prog.return_type(name).and_then(Codegen::fn_value_sig) {
+        if let Some(sig) = cg
+            .prog
+            .return_type(name)
+            .and_then(|t| Codegen::fn_value_sig(&cg.prog, t))
+        {
             return crate::closure::emit_closure(cg, parameters, lbody, &sig);
         }
     }

@@ -8,7 +8,7 @@
 # =============================================================================
 
 .PHONY: build test language-test lint fmt clean ci setup run install bench partial-bench wasm wasm-site wasm-serve vsix-rebuild-reinstall bank bank-web bank-test bank-e2e hawk gpu-demo graphics graphics-shader _test_gc_stack_root \
-	_test_c_runtime _coverage_check_c_runtime \
+	_test_c_runtime _coverage_check_c_runtime _bank_test \
 	_rebuild-install-vsix _vsix_clean _vsix_build _vsix_bundle _vsix_package _vsix_install
 
 # ---------------------------------------------------------------------------
@@ -166,7 +166,13 @@ test: build
 	$(MAKE) _coverage_check_rust
 	$(MAKE) _test_c_runtime
 	$(MAKE) _coverage_check_c_runtime
-	$(MAKE) _test_language_corpus
+# _test_language_corpus is deliberately NOT here. It runs every program in
+# tests/ through the TAP subcommand, and _test_goldens then runs every one of
+# them AGAIN — `run_test_corpus.sh` checks the in-language assertions AND the
+# byte-exact golden in a single pass (see its header), so the golden run is
+# strictly the stronger of the two observations. Executing the same assertions
+# twice buys nothing and doubles the slowest stage in the build. The `osprey
+# test` subcommand itself stays covered by bank-test and the CLI e2e suite.
 	$(MAKE) _test_goldens
 	$(MAKE) _conformance-gc
 	$(MAKE) _conformance-arc
@@ -200,6 +206,14 @@ bank-web: build _runtime_wasm
 ## bank-test: Native Osprey unit tests for the Talon Bank pure domain layer,
 ##            run through the built-in `osprey test` harness (TAP output).
 bank-test: build
+	$(MAKE) _bank_test
+
+# The same suite against an ALREADY-BUILT binary. No prerequisites, so the
+# staged pipeline can run it on the downloaded `osprey-build` artifact. Going
+# through `bank-test` there rebuilt the whole workspace and then ran `tsc -b`
+# in vscode-extension, whose node_modules that job never installs — three
+# TS2688 errors and a dead stage, for work the build job had already done.
+_bank_test:
 	@echo "==> Bank native tests (osprey test)..."
 	./$(BIN) test examples/projects/modules/test
 

@@ -75,6 +75,19 @@ pub(crate) fn handle_elem_owner(prog: &ProgramTypes, ty: &Type) -> Option<String
     owner_name(prog, args.first()?)
 }
 
+/// The owner tag of a `Result<T, E>`'s Success payload — what an unwrapped
+/// `T` must be tagged with to stay a usable handle. `None` when `ty` is not a
+/// `Result`, or its payload is a scalar owning nothing.
+pub(crate) fn result_payload_owner(prog: &ProgramTypes, ty: &Type) -> Option<String> {
+    let Type::Con { name, args } = ty else {
+        return None;
+    };
+    if name != names::RESULT {
+        return None;
+    }
+    elem_tag(prog, args.first())
+}
+
 /// The Osprey owner type name to tag an aggregate value with, if `ty` is a
 /// nominal record/union (so field access / match can recover its layout).
 /// Scalars, collections and `Result` carry no nominal aggregate owner. A

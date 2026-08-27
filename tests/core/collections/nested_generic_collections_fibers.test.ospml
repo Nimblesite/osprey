@@ -191,7 +191,43 @@ fiberEffectCollectionCase () =
     the element on the channel binding and `recv` unboxes to it, and the
     let-bound handle no longer generalizes, so the two ends can no longer
     disagree. Both cases run for real, identically to the Default twin. *)
+(** A channel reached through a CLOSURE — passed as a function-value parameter,
+    or captured — is the route no declaration covers: a lambda's lowered
+    signature is all the callee has, and it carried no return owner, so `recv`'s
+    nested descriptor was lost and `listGet` on the result met an `i64` payload
+    against an `i8*` default. The program was rejected with `match arms disagree
+    on type`, naming no user construct. Implements [CONCURRENCY-CHANNEL],
+    [BUILTIN-LIST-GET], [TYPE-GENERICS-FN]. *)
+drainVia f channel = f channel
+
+channelThroughClosureCase () =
+    matrices = Channel 4
+    send matrices (intMatrix ())
+    send matrices (listAppend (intMatrix ()) [6, 7])
+    viaLambdaParameter = drainVia (\c => recv c) matrices
+    takeNext = \() => recv matrices
+    viaCapture = takeNext ()
+    groups = Channel 2
+    send groups (floatGroups ())
+    groupsViaLambdaParameter = drainVia (\c => recv c) groups
+    checkAll "a channel reached through a closure keeps its element descriptor" [
+            listLength viaLambdaParameter == 2,
+            nestedAt (viaLambdaParameter, 0, 0, [99], 99) == 1,
+            nestedAt (viaLambdaParameter, 0, 1, [99], 99) == 2,
+            nestedAt (viaLambdaParameter, 1, 2, [99], 99) == 5,
+            listLength (listGet viaLambdaParameter 1 ?: [99]) == 3,
+            listLength viaCapture == 3,
+            nestedAt (viaCapture, 0, 0, [99], 99) == 1,
+            nestedAt (viaCapture, 2, 0, [99], 99) == 6,
+            nestedAt (viaCapture, 2, 1, [99], 99) == 7,
+            listLength (listGet viaCapture 2 ?: [99]) == 2,
+            mapLength groupsViaLambdaParameter == 2,
+            groupAt (groupsViaLambdaParameter, "small", 0, [9.0], 9.5) == 0.5,
+            groupAt (groupsViaLambdaParameter, "large", 1, [9.0], 9.5) == 9.75
+    ]
+
 type Verdict = Pass | Fail string | Skip string
 
 test "fibers channels Results and persistence retain generic collection types" fiberChannelCollectionCase
 test "generic effects inside fibers retain nested collection types" fiberEffectCollectionCase
+test "a channel reached through a closure keeps its element descriptor" channelThroughClosureCase

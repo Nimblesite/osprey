@@ -88,13 +88,17 @@ Every behaviour above is locked in by tests at two levels:
 
 ## What's deferred
 
-A few items from the [collections plan](https://github.com/Nimblesite/osprey/blob/main/docs/plans/0004-collection-stdlib-completion.md) are explicitly deferred:
+A few items were explicitly deferred at the time of this release:
 
 - **`[head, ...tail]` and subset map patterns** in `match` — requires grammar additions and a parser regeneration cycle.
 - **List comprehensions** (`[x * x for x in xs]`) — same grammar pipeline.
 - **Bare `contains` / `get` / `reverse` / `indexOf`** without a `list`/`map` prefix. `length` and `isEmpty` already collapse: they dispatch on the receiver's runtime layout, so one spelling covers strings, lists and maps. The rest need overload resolution keyed on the first argument, which the one-scheme-per-name type environment cannot express yet.
 
-The plan document tracks each of these with its specific blocker.
+*Update:* the collections plan has since been retired. The grammar-dependent
+items above are still open, but the bare `contains` / `get` / `reverse` /
+`indexOf` surface was **withdrawn** rather than deferred — [spec
+0012](/spec/0012-built-infunctions/) now specifies the prefixed names as the
+shipped surface, with `length` and `isEmpty` the only bare ones.
 
 ## Try it
 

@@ -16,6 +16,7 @@ use crate::llty::{LType, Value};
 use crate::types::{ltype_of, result_inner};
 use osprey_ast::freevars::free_idents;
 use osprey_ast::{contains_resume, Expr, HandlerArm, MatchArm, Stmt};
+use osprey_types::ProgramTypes;
 use std::collections::{BTreeSet, HashSet};
 
 /// A parsed effect-operation signature: parameter types, the result LLVM type,
@@ -46,7 +47,7 @@ impl OpSig {
     pub(crate) fn param(&self, index: usize) -> ParamSig {
         self.params
             .get(index)
-            .copied()
+            .cloned()
             .unwrap_or_else(Self::word_param)
     }
 
@@ -120,7 +121,7 @@ fn bind_arm_params(
             None => crate::cast::incoming_param(
                 cg,
                 reg.clone(),
-                param,
+                param.clone(),
                 resolved
                     .and_then(|r| r.params.get(i))
                     .and_then(|t| crate::types::owner_name(&cg.prog, t)),
@@ -168,7 +169,7 @@ impl ArmCap {
 
 /// Build an [`OpSig`] from inference's resolved operation signature — the one
 /// source of truth for effect types (no string re-parsing in the backend).
-pub(crate) fn op_sig_of(op: &osprey_types::OpType) -> OpSig {
+pub(crate) fn op_sig_of(prog: &ProgramTypes, op: &osprey_types::OpType) -> OpSig {
     // A slot mentioning a type parameter ANYWHERE (a bare `T` or a nested
     // `Result<T, string>`) is erased: it travels as one boxed `i64`, boxed
     // and unboxed against each site's resolved instantiation — a nested
@@ -195,7 +196,7 @@ pub(crate) fn op_sig_of(op: &osprey_types::OpType) -> OpSig {
                 if osprey_types::has_type_var(t) {
                     OpSig::word_param()
                 } else {
-                    ParamSig::of(t)
+                    ParamSig::of(prog, t)
                 }
             })
             .collect(),
@@ -866,7 +867,7 @@ fn emit_suspend_fn(
 ) {
     let saved = cg.enter_nested_fn();
     let mut params = vec![(LType::Ptr, String::from("__coro"))];
-    for (i, param) in sig.params.iter().copied().enumerate() {
+    for (i, param) in sig.params.iter().cloned().enumerate() {
         params.push((param.ty, format!("__arg{i}")));
     }
 
@@ -997,7 +998,7 @@ fn emit_drive_fn(cg: &mut Codegen, name: &str, arms: &[DriveArm]) -> Result<()> 
     for (arm, arm_label) in arms.iter().zip(&arm_labels) {
         cg.start_block(arm_label);
         let mut args = vec![String::from("i8* %__env"), String::from("i8* %__coro")];
-        for (idx, param) in arm.sig.params.iter().copied().enumerate() {
+        for (idx, param) in arm.sig.params.iter().cloned().enumerate() {
             let raw = cg.call(
                 "i64",
                 "__osprey_coro_mail_arg",
@@ -1005,7 +1006,7 @@ fn emit_drive_fn(cg: &mut Codegen, name: &str, arms: &[DriveArm]) -> Result<()> 
                 &[&mail, &idx.to_string()],
             );
             let value = unbox_coro_value(cg, &raw, param.ty, param.result_inner);
-            let value = crate::cast::coerce_param(cg, value, param)?;
+            let value = crate::cast::coerce_param(cg, value, &param)?;
             args.push(value.typed());
         }
         let arm_result = cg.emit_reg(format!("call i64 @{}({})", arm.arm_fn, args.join(", ")));
@@ -1200,7 +1201,7 @@ pub(crate) fn gen_perform(
                 site.as_ref().and_then(|s| s.op.params.get(i)),
             )?
         } else {
-            crate::cast::coerce_param(cg, v, sig.param(i))?
+            crate::cast::coerce_param(cg, v, &sig.param(i))?
         };
         typed.push(v.typed());
     }

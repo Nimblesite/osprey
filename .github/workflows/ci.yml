@@ -3,6 +3,45 @@ name: CI
 
 # CI runs ONLY on PRs to main. Merging to main triggers nothing; releases are
 # tag-triggered (release.yml). See docs/RELEASING.md.
+#
+# ─── Shape of this pipeline ─────────────────────────────────────────────────
+# Four stages, and every test runs EXACTLY ONCE:
+#
+#   1. `build`  — every static check (format, clippy, extension lint,
+#      duplication, dead code, manifest) plus every artifact the test stage
+#      needs: the C runtime archives, the wasm runtime archive, the release
+#      `osprey` binary and the compiled extension bundle.
+#   2. Those artifacts are uploaded once and downloaded by each test job, so
+#      nothing is compiled twice for the sake of being tested.
+#   3. Every test suite runs in parallel, each collecting coverage where the
+#      language has a coverage story (Rust via llvm-cov, C via gcov, the
+#      extension via V8).
+#   4. `coverage` gathers those reports and enforces the per-project
+#      thresholds in coverage-thresholds.json.
+#
+# This replaced a pipeline that ran the language corpus SEVEN times per PR —
+# `make test` ran it as TAP, again for goldens, and again under GC and ARC,
+# while a separate `rust` job ran all three backends a second time — and ran
+# the Rust suite twice over, once plain and once re-executed under llvm-cov.
+# `crates/run_test_corpus.sh` already performs both observations in ONE pass
+# (exit status AND byte-exact golden, see its header), so one invocation per
+# memory backend is the whole matrix. Re-running a suite to collect coverage
+# it could have collected the first time is the specific waste this shape
+# exists to prevent: if a suite is worth running, it is worth running
+# instrumented, once.
+#
+# ─── Required-check note ────────────────────────────────────────────────────
+# Ruleset 6154907 pins the required checks by their DISPLAY NAME, and
+# scripts/verify-branch-protection.mjs asserts that same list from inside the
+# tree. The two must be changed together — the `changes` job fails until they
+# agree, which is deliberate: a gate that drifts silently is the failure that
+# script exists to catch.
+#
+# Skipping a job via an `if:` condition reports its check as "skipped", which
+# branch protection treats as PASSING — so a website-only PR still merges. Do
+# NOT convert any of these to an `on: paths:` filter: a workflow skipped by
+# path filtering leaves the required check pending forever and blocks merges.
+
 on:
   pull_request:
     branches: [main]
@@ -11,19 +50,19 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  CARGO_TERM_COLOR: always
+  # 24 everywhere a wasm module is EXECUTED under `node:wasi`: that host caches
+  # a module's memory backing store when the instance starts and never
+  # refreshes it after `memory.grow`, so every later WASI call reads or writes
+  # freed memory — on x86_64 a SIGSEGV inside node itself (exit 139, no stderr,
+  # no wasm trap), or silently dropped output where the stale page is still
+  # mapped. Node 24 is the first release that runs the assertion corpus clean.
+  NODE_VERSION: "24"
+  WASI_SDK_VERSION: "24"
+
 jobs:
   # ─── Change detection ───────────────────────────────────────────────────────
-  # Website-only PRs (changes confined to website/**) don't need the compiler, C
-  # runtime, VS Code extension or web-compiler toolchain. Detect whether anything
-  # OUTSIDE website/ changed so the heavy jobs below can skip.
-  #
-  # Required-check note: ruleset 6154907 requires FIVE checks on `main` — this
-  # `changes` job, `ci`, `rust`, `wasm` and `website` — plus ci-windows.yml's
-  # `windows-core`. Skipping a job via an `if:`
-  # condition reports its check as "skipped", which branch protection treats as
-  # PASSING — so a website-only PR still merges. Do NOT convert this to an
-  # `on: paths:` filter: a workflow skipped by path filtering leaves the required
-  # check pending forever and blocks the merge.
   changes:
     name: Detect changed areas
     runs-on: ubuntu-latest
@@ -52,48 +91,21 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: node scripts/verify-branch-protection.mjs
 
-  ci:
-    # IMPORTANT: this name is a required status check on `main` (ruleset 6154907).
-    # Renaming it will break branch protection — coordinate with the ruleset update.
-    name: Test, Format, Build & Validate
+  # ═══ STAGE 1 ════════════════════════════════════════════════════════════════
+  # Every static check, and every artifact the test stage consumes. Nothing
+  # here executes a test suite; nothing after here compiles the compiler.
+  build:
+    name: Build, Format & Analyse
     needs: changes
-    # Skip the full compiler/runtime/extension pipeline for website-only PRs.
-    # A skipped required check reports as passing (see the `changes` job note).
     if: ${{ needs.changes.outputs.code == 'true' }}
     runs-on: ubuntu-latest
-    # TIMEOUT EXCEPTION. The "~15 min" this budget was written for was never a
-    # measurement of a COMPLETE run: the job used to die early — at the Rust
-    # tests, then the C compile, then the C coverage gate — so no run had ever
-    # reached the later stages. The first run that got through them all was
-    # killed at 30 minutes mid-way through the extension suite. Measured stage
-    # times from that run:
-    #
-    #   C + wasm runtime archives   2m30s
-    #   lint + build                  25s
-    #   rust tests with coverage    2m35s
-    #   C suites + coverage gate      35s
-    #   language corpus             2m35s
-    #   golden comparison           2m50s
-    #   GC conformance              3m05s
-    #   ARC conformance             2m50s
-    #   extension suite            12m+ (killed, still progressing)
-    #
-    # The extension suite dominates: it drives a real VS Code under xvfb and
-    # spawns lldb-dap per debug-adapter case, which is minutes slower on a
-    # runner than the ~2 min it takes locally. 60 leaves headroom for that
-    # without hiding a hang — a stuck run still fails, just later.
-    timeout-minutes: 60
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-node@v4
         with:
-          # 24 because `make test` runs osprey-cli's
-          # wasm::tests::build_and_run_end_to_end_when_toolchain_present, which
-          # shells out to scripts/wasm-smoke.mjs and so RUNS a module under
-          # `node:wasi` — the host whose cached memory backing store goes stale
-          # on `memory.grow` before 24. See the comment on the wasm job below.
-          node-version: '24'
+          node-version: ${{ env.NODE_VERSION }}
           cache: 'npm'
           cache-dependency-path: |
             vscode-extension/package-lock.json
@@ -101,7 +113,8 @@ jobs:
             website/package-lock.json
             examples/projects/modules/e2e/package-lock.json
 
-      # Rust toolchain + clang/LLVM + C runtime archives + the osprey binary.
+      # Rust toolchain + clang/LLVM + lldb-dap + the C runtime archives + the
+      # release binary.
       - name: Setup Osprey Compiler
         uses: ./.github/actions/setup-osprey-compiler
 
@@ -109,37 +122,32 @@ jobs:
         run: npm ci
         working-directory: ./vscode-extension
 
-      - name: Install jq, Xvfb and coverage tooling
-        # jq reads coverage-thresholds.json; Xvfb backs the VS Code extension
-        # tests; cargo-llvm-cov produces the Rust lcov report `make test` checks.
+      - name: Install jq and the wasm toolchain
         run: |
-          sudo apt-get install -y jq xvfb
-          cargo install cargo-llvm-cov --locked || true
-
-      # The `ci` job's coverage gate already DEPENDS on this toolchain, so it is
-      # not optional here. `osprey-cli`'s wasm end-to-end test
-      # (crates/osprey-cli/src/wasm.rs) self-skips unless wasm-ld, a WASI
-      # sysroot and libosprey_runtime_wasm.a are all present; skipping it drops
-      # osprey-cli from 96.7% to 94.8%, under its 95% floor, and fails this
-      # required check. Without these steps the gate could only ever go red, so
-      # the cost is already being paid — this makes the dependency explicit
-      # instead of leaving it to whatever a runner happens to have installed.
-      - name: Install lld (wasm-ld) and a WASI sysroot
-        run: |
-          sudo apt-get install -y lld wabt
-          WASI_VERSION=24
+          set -euo pipefail
+          sudo apt-get install -y jq lld wabt
           curl -fsSL -o /tmp/wasi-sysroot.tar.gz \
-            "https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-${WASI_VERSION}/wasi-sysroot-${WASI_VERSION}.0.tar.gz"
+            "https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-${WASI_SDK_VERSION}/wasi-sysroot-${WASI_SDK_VERSION}.0.tar.gz"
           # The tarball unpacks to a versioned top dir; strip it so the sysroot
           # lands at a stable path containing lib/wasm32-wasip1.
           sudo mkdir -p /opt/wasi-sdk/share/wasi-sysroot
           sudo tar -xzf /tmp/wasi-sysroot.tar.gz -C /opt/wasi-sdk/share/wasi-sysroot --strip-components=1
           test -d /opt/wasi-sdk/share/wasi-sysroot/lib/wasm32-wasip1
           echo "OSPREY_WASI_SYSROOT=/opt/wasi-sdk/share/wasi-sysroot" >> "$GITHUB_ENV"
-          wasm-ld --version
 
       - name: Build the wasm runtime archive
         run: make _runtime_wasm
+
+      # ── Static analysis. All of it, before anything is tested. ──
+      - name: Format check
+        run: cargo fmt --all --check
+
+      - name: Clippy (all targets, warnings as errors)
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+      - name: Extension lint (tsc --noEmit)
+        run: npm run lint
+        working-directory: ./vscode-extension
 
       # [EDITOR-VERSIONING] Keep shipwright.json valid against the in-repo
       # Shipwright schema. Do not use @nimblesite/shipwright-validate-manifest:
@@ -148,188 +156,24 @@ jobs:
         run: npm run test:shipwright
         working-directory: ./vscode-extension
 
-      # Official duplication gate. This lives in the `ci` job because deslop
-      # measures source text — one platform's verdict is every platform's, so a
-      # second copy in ci-windows.yml would only duplicate this one. (It did sit
-      # there once, back when `windows-core` was not a required check, which
-      # silently turned the duplication ceiling into a suggestion. Every job
-      # named in ruleset 6154907 can block a merge now; this one is `ci`'s.)
-      # The committed .deslop.toml is
-      # the threshold source (deslop exits 3 when over); reports stay ephemeral
-      # rather than consuming Actions artifact storage. `version` is explicit
-      # because the action is pinned to the immutable commit for v0.27.0 rather
-      # than its mutable tag. Docs: https://deslop.live/docs/github-action/
+      # Official duplication gate. deslop measures source text, so one
+      # platform's verdict is every platform's and a second copy elsewhere
+      # would only duplicate this. The committed .deslop.toml is the threshold
+      # source (deslop exits 3 when over); reports stay ephemeral rather than
+      # consuming Actions artifact storage. `version` is explicit because the
+      # action is pinned to the immutable commit for v0.27.0 rather than its
+      # mutable tag. Docs: https://deslop.live/docs/github-action/
       - name: Deslop duplication gate
         uses: Nimblesite/Deslop@f1915e6328165f23a4bd1c6cd4262a64dd7d9033 # v0.27.0
         with:
           version: "0.27.0"
           upload-artifact: "false"
 
-      - name: Lint
-        # Duplication is gated by the Deslop action step above, so this internal
-        # target runs the remaining linters without re-invoking the local CLI.
-        run: make _lint
-
-      # make test = fail-fast + per-project coverage + threshold enforcement +
-      # the Default/ML assertion corpus under tests/ in the compiler-default,
-      # GC, and ARC memory modes, PLUS the byte-exact stdout goldens (a program
-      # whose assertions all pass can still have stopped printing in the right
-      # order — only the golden sees that).
-      # Thresholds live in coverage-thresholds.json.
-      # Xvfb is needed because vscode-extension
-      # tests spawn a real VS Code Electron build.
-      - name: Test
-        run: xvfb-run -a make test
-
-      # Talon Bank native unit tests: the pure domain layer (money, json,
-      # accounts) exercised through the built-in `osprey test` harness.
-      - name: Bank native tests (osprey test)
-        run: make bank-test
-
-      # Talon Bank modules showcase (examples/projects/modules): real Chromium
-      # drives the compiled osprey binary serving its HTTP API and web UI.
-      - name: Install bank e2e dependencies
-        run: npm ci
-        working-directory: ./examples/projects/modules/e2e
-      - name: Install Playwright Chromium
-        run: npx playwright install --with-deps chromium
-        working-directory: ./examples/projects/modules/e2e
-      - name: Bank e2e (Playwright)
-        run: npx playwright test
-        working-directory: ./examples/projects/modules/e2e
-      - name: Upload bank e2e results on failure
-        uses: actions/upload-artifact@v4
-        if: failure()
-        with:
-          name: bank-e2e-results
-          path: examples/projects/modules/e2e/test-results/
-          if-no-files-found: ignore
-          retention-days: 7
-
-      - name: Upload test logs on failure
-        uses: actions/upload-artifact@v4
-        if: failure()
-        with:
-          name: test-logs
-          path: |
-            test.log
-            vscode-extension/test.log
-          if-no-files-found: ignore
-          retention-days: 7
-
-      - name: Upload coverage
-        uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: coverage-report
-          path: |
-            lcov.info
-            vscode-extension/coverage/
-          retention-days: 7
-
-      - name: Build
-        run: make build
-
-      - name: Upload build artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: build-artifacts
-          path: |
-            target/release/osprey
-            compiler/lib/
-            vscode-extension/out/
-          retention-days: 7
-
-      - name: Test example compilation and execution
-        run: |
-          target/release/osprey test tests/regressions/basics/math/comprehensive_math.test.osp
-          target/release/osprey test tests/core/feature_composition/feature_omnibus.test.osp
-
-      - name: Test Web Compiler
-        run: |
-          cd webcompiler
-          docker build -t osprey-web-compiler-ci -f Dockerfile ..
-          docker run -d --name osprey-web-compiler-ci -p 3001:3001 \
-            -e NODE_ENV=production -e PORT=3001 \
-            --memory=256m --memory-reservation=256m \
-            osprey-web-compiler-ci
-          sleep 15
-          chmod +x test.sh && ./test.sh
-          docker stop osprey-web-compiler-ci
-          docker rm osprey-web-compiler-ci
-
-  # ─── Focused compiler gate ──────────────────────────────────────────────────
-  # Fast signal on the compiler alone: format + clippy (-D warnings: clippy::all
-  # + pedantic + restriction) + workspace tests + the complete assertion-driven
-  # Default/ML language corpus in all three memory modes.
-  rust:
-    name: Rust Compiler (fmt, clippy, test, corpus)
-    needs: changes
-    # Compiler-only gate — irrelevant to website-only PRs, so skip them.
-    if: ${{ needs.changes.outputs.code == 'true' }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    env:
-      CARGO_TERM_COLOR: always
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Install Rust (stable + rustfmt + clippy)
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          components: rustfmt, clippy
-
-      - name: Cache cargo registry + target
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            target/
-          key: ${{ runner.os }}-cargo-rust-${{ hashFiles('Cargo.lock') }}
-          restore-keys: ${{ runner.os }}-cargo-rust-
-
-      - name: Install clang/LLVM, OpenSSL, SQLite and zsh
-        # clang links the osprey-emitted IR; libssl-dev/libsqlite3-dev satisfy
-        # the HTTP and FFI-database runtimes the assertion corpus links; zsh
-        # runs its GC and ARC backend harness.
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y clang llvm libssl-dev libsqlite3-dev pkg-config zsh
-          clang --version
-
-      - name: Build the C runtime archives (pure C — osprey links these)
-        run: make _runtime
-
-      - name: Format check
-        run: cargo fmt --all --check
-
-      - name: Clippy (all targets, warnings as errors)
-        run: cargo clippy --workspace --all-targets -- -D warnings
-
-      - name: Build (release)
-        run: cargo build --release --workspace
-
-      - name: Test (workspace)
-        run: cargo test --workspace
-
-      - name: Core language assertion corpus — no memory management
-        # Fixed-port loopback twins must not contend with one another.
-        run: OSPREY_TEST_JOBS=1 target/release/osprey test tests
-
-      - name: Core language assertion corpus — GC
-        run: OSPREY_TEST_JOBS=1 target/release/osprey test tests --memory=gc
-
-      - name: Core language assertion corpus — ARC
-        run: OSPREY_ARC_DEBUG=1 OSPREY_TEST_JOBS=1 target/release/osprey test tests --memory=arc
-
       # Dead-code gate: fail if any `pub` declaration is unreachable from the
-      # osprey binary (hawk::dead_public). Scoped to dead_public only — see the
-      # `hawk` target in the Makefile. cargo-hawk's prebuilt driver is pinned to
-      # the stable toolchain this job installs (1.98.0), and the installer below
-      # fetches the release matching it; when stable moves, hawk's own release
-      # must move with it or this gate fails on a toolchain mismatch alone.
+      # osprey binary (hawk::dead_public). cargo-hawk's prebuilt driver is
+      # pinned to the stable toolchain this job installs; when stable moves,
+      # hawk's own release must move with it or this gate fails on a toolchain
+      # mismatch alone.
       - name: Install cargo-hawk (dead-code gate)
         run: |
           curl --proto '=https' --tlsv1.2 -LsSf \
@@ -337,66 +181,322 @@ jobs:
       - name: Dead-code gate (hawk)
         run: make hawk
 
-  # ─── WebAssembly target ─────────────────────────────────────────────────────
-  # Compiles a sample Osprey program to wasm32-wasip1 with `osprey --target=wasm32`
-  # and gates on the artifact being well-formed (`wasm-validate`) and producing
-  # the expected stdout under a WASI host (Node's built-in `node:wasi`). Proves
-  # the wasm runtime archive links and the emitted module actually runs.
-  # Self-contained (no VS Code toolchain) so it stays fast. [WASM-TARGET]
-  wasm:
-    name: WebAssembly target (wasm32-wasip1)
-    needs: changes
+      # ── Artifacts for stage 3. ──
+      - name: Build the extension bundle
+        run: make _vsix_bundle
+
+      - name: Package the VSIX
+        run: make _vsix_package
+
+      - name: Upload compiler artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: osprey-build
+          # The archives only — compiler/bin also holds ~12M of object files
+          # and C test binaries, and the C suite rebuilds those instrumented
+          # anyway. `_vsix_bundle` reads them from compiler/bin ($(RTB)); the
+          # compiler itself resolves them via compiler/lib.
+          path: |
+            target/release/osprey
+            compiler/lib/
+            compiler/bin/*.a
+          retention-days: 7
+          if-no-files-found: error
+
+      - name: Upload extension artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: osprey-extension
+          path: |
+            vscode-extension/out/
+            vscode-extension/*.vsix
+          retention-days: 7
+          if-no-files-found: error
+
+  # ═══ STAGE 3 ════════════════════════════════════════════════════════════════
+  # Every suite, in parallel, each instrumented. None of these rebuilds the
+  # compiler: they download stage 1's artifacts.
+
+  # The Rust workspace, run ONCE under llvm-cov. There is no separate plain
+  # `cargo test` run: an instrumented run asserts everything an uninstrumented
+  # one does, so running both is pure duplication.
+  test-rust:
+    name: "Tests: Rust workspace (coverage)"
+    needs: [changes, build]
+    if: ${{ needs.changes.outputs.code == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Setup Osprey toolchain (no rebuild)
+        uses: ./.github/actions/setup-osprey-compiler
+        with:
+          build: "false"
+
+      # osprey-cli's wasm end-to-end test self-skips unless wasm-ld, a WASI
+      # sysroot and libosprey_runtime_wasm.a are all present; skipping it drops
+      # osprey-cli under its coverage floor and fails the threshold gate. The
+      # dependency is therefore explicit rather than left to whatever the
+      # runner happens to carry.
+      - name: Install the wasm toolchain
+        run: |
+          set -euo pipefail
+          sudo apt-get install -y lld wabt
+          curl -fsSL -o /tmp/wasi-sysroot.tar.gz \
+            "https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-${WASI_SDK_VERSION}/wasi-sysroot-${WASI_SDK_VERSION}.0.tar.gz"
+          sudo mkdir -p /opt/wasi-sdk/share/wasi-sysroot
+          sudo tar -xzf /tmp/wasi-sysroot.tar.gz -C /opt/wasi-sdk/share/wasi-sysroot --strip-components=1
+          echo "OSPREY_WASI_SYSROOT=/opt/wasi-sdk/share/wasi-sysroot" >> "$GITHUB_ENV"
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: osprey-build
+      - name: Restore artifact permissions
+        run: chmod +x target/release/osprey
+
+      - name: Build the wasm runtime archive
+        run: make _runtime_wasm
+
+      - name: Install cargo-llvm-cov
+        run: cargo install cargo-llvm-cov --locked || true
+
+      - name: Tests with coverage
+        run: make _test_rust
+
+      - name: Upload Rust coverage
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-rust
+          path: lcov.info
+          retention-days: 7
+          if-no-files-found: error
+
+      - name: Upload test log on failure
+        uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: test-log-rust
+          path: test.log
+          if-no-files-found: ignore
+          retention-days: 7
+
+  # The assertion corpus, once per memory backend. `run_test_corpus.sh` checks
+  # BOTH the in-language assertions and the byte-exact stdout golden in a
+  # single pass, and comparing one golden across every backend is the
+  # [MEM-BACKENDS] [MEM-OPAQUE] oracle: swapping the allocator must not perturb
+  # one byte of output.
+  #
+  # These are three explicit jobs rather than one matrix ON PURPOSE. The gate
+  # is verified from inside the tree by scripts/verify-branch-protection.mjs,
+  # which matches each required context against a literal job `name:`. A matrix
+  # name interpolates (`(${{ matrix.memory }})`) and so matches nothing, which
+  # that script correctly reports as a check that can never report. A
+  # verifiable gate is worth more here than three saved stanzas.
+  test-corpus-default:
+    name: "Tests: language corpus (default)"
+    needs: [changes, build]
+    if: ${{ needs.changes.outputs.code == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Osprey toolchain (no rebuild)
+        uses: ./.github/actions/setup-osprey-compiler
+        with:
+          build: "false"
+      - uses: actions/download-artifact@v4
+        with:
+          name: osprey-build
+      - name: Restore artifact permissions
+        run: chmod +x target/release/osprey
+      - name: Corpus and goldens (compiler-default allocator)
+        run: make _test_goldens
+
+  test-corpus-gc:
+    name: "Tests: language corpus (gc)"
+    needs: [changes, build]
+    if: ${{ needs.changes.outputs.code == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Osprey toolchain (no rebuild)
+        uses: ./.github/actions/setup-osprey-compiler
+        with:
+          build: "false"
+      - uses: actions/download-artifact@v4
+        with:
+          name: osprey-build
+      - name: Restore artifact permissions
+        run: chmod +x target/release/osprey
+      - name: Corpus and goldens (GC)
+        run: make _conformance-gc
+
+  test-corpus-arc:
+    name: "Tests: language corpus (arc)"
+    needs: [changes, build]
+    if: ${{ needs.changes.outputs.code == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Osprey toolchain (no rebuild)
+        uses: ./.github/actions/setup-osprey-compiler
+        with:
+          build: "false"
+      - uses: actions/download-artifact@v4
+        with:
+          name: osprey-build
+      - name: Restore artifact permissions
+        run: chmod +x target/release/osprey
+      - name: Corpus and goldens (ARC, leak oracle enabled)
+        run: make _conformance-arc
+
+  test-c-runtime:
+    name: "Tests: C runtime (coverage)"
+    needs: [changes, build]
     if: ${{ needs.changes.outputs.code == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
 
+      - name: Setup Osprey toolchain (no rebuild)
+        uses: ./.github/actions/setup-osprey-compiler
+        with:
+          build: "false"
+
+      - name: Install jq
+        run: sudo apt-get install -y jq
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: osprey-build
+      - name: Restore artifact permissions
+        run: chmod +x target/release/osprey
+
+      - name: C runtime suites with coverage
+        run: make _test_c_runtime
+
+      - name: C runtime coverage thresholds
+        run: make _coverage_check_c_runtime
+
+  # The COMPLETE extension suite — unit, integration and the debugger E2E
+  # workflows that drive a real VS Code under xvfb and spawn lldb-dap per case.
+  # It is slow because it is real; it is not sampled and it is not split.
+  test-extension:
+    name: "Tests: VS Code extension (coverage)"
+    needs: [changes, build]
+    if: ${{ needs.changes.outputs.code == 'true' }}
+    runs-on: ubuntu-latest
+    # The extension suite dominates every budget in this file: it drives a real
+    # VS Code and spawns lldb-dap per debug-adapter case, which is minutes
+    # slower on a runner than locally. 45 leaves headroom without hiding a
+    # hang — a stuck run still fails, just later.
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          # 24, not 20: this job EXECUTES wasm modules under `node:wasi`, and
-          # that host caches a module's memory backing store when the instance
-          # starts without refreshing it after `memory.grow`. Every WASI call a
-          # growing module makes afterwards then reads or writes freed memory —
-          # on x86_64 a SIGSEGV in node itself (exit 139, no stderr, no wasm
-          # trap), or, where the stale page is still mapped, output silently
-          # dropped on the floor. A 12-line hand-written module that writes,
-          # grows and writes again reproduces it with no Osprey involved; Node
-          # 24 is the first release that runs both it and the assertion corpus
-          # clean. scripts/wasm-smoke.mjs relaunches itself under a sound
-          # interpreter when the host's is older, and refuses only when no
-          # such interpreter exists — pinning 24 here keeps the runner on the
-          # direct path rather than the fallback.
-          node-version: '24'
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: vscode-extension/package-lock.json
 
-      - name: Install Rust (stable)
-        uses: dtolnay/rust-toolchain@stable
+      - name: Setup Osprey toolchain (no rebuild)
+        uses: ./.github/actions/setup-osprey-compiler
+        with:
+          build: "false"
 
-      - name: Install clang/LLVM, lld (wasm-ld), wabt and a WASI sysroot
-        # clang's wasm32 backend lowers the IR; lld provides wasm-ld; wabt gives
-        # wasm-validate; the wasi-sdk sysroot supplies wasm32-wasip1 libc + crt1.
+      - name: Install jq and Xvfb
+        run: sudo apt-get install -y jq xvfb
+
+      - name: Install VS Code extension dependencies
+        run: npm ci
+        working-directory: ./vscode-extension
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: osprey-build
+      # Stage 1 already compiled the extension; restoring out/ lets `tsc -b`
+      # no-op instead of rebuilding what has been built once.
+      - uses: actions/download-artifact@v4
+        with:
+          name: osprey-extension
+          path: vscode-extension/
+      - name: Restore artifact permissions
+        run: chmod +x target/release/osprey
+
+      - name: Extension suite with V8 coverage
+        run: xvfb-run -a make _test_vscode_extension
+
+      - name: Upload extension coverage
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-extension
+          path: vscode-extension/coverage/
+          retention-days: 7
+          if-no-files-found: error
+
+      - name: Upload extension test log on failure
+        uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: test-log-extension
+          path: vscode-extension/test.log
+          if-no-files-found: ignore
+          retention-days: 7
+
+  # Compiles to wasm32-wasip1, gates on the artifact being well-formed
+  # (`wasm-validate`) and producing the expected stdout under a WASI host, then
+  # holds EVERY program in tests/ that links on wasm32 to the byte-exact stdout
+  # the native backend produces. The programs that may skip are pinned — name
+  # and symbol — in tests/WASM_UNPORTABLE.txt, and the harness fails on any
+  # drift, so the covered count lives in exactly one place. [WASM-TARGET]
+  test-wasm:
+    name: "Tests: WebAssembly target (wasm32-wasip1)"
+    needs: [changes, build]
+    if: ${{ needs.changes.outputs.code == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Setup Osprey toolchain (no rebuild)
+        uses: ./.github/actions/setup-osprey-compiler
+        with:
+          build: "false"
+
+      - name: Install lld (wasm-ld), wabt and a WASI sysroot
         run: |
-          sudo apt-get update
-          sudo apt-get install -y clang llvm lld wabt zsh
-          WASI_VERSION=24
+          set -euo pipefail
+          sudo apt-get install -y lld wabt
           curl -fsSL -o /tmp/wasi-sysroot.tar.gz \
-            "https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-${WASI_VERSION}/wasi-sysroot-${WASI_VERSION}.0.tar.gz"
-          # The release tarball unpacks to a versioned top dir (wasi-sysroot-<v>.0/);
-          # strip it so the sysroot lands at a stable path containing lib/wasm32-wasip1.
+            "https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-${WASI_SDK_VERSION}/wasi-sysroot-${WASI_SDK_VERSION}.0.tar.gz"
           sudo mkdir -p /opt/wasi-sdk/share/wasi-sysroot
           sudo tar -xzf /tmp/wasi-sysroot.tar.gz -C /opt/wasi-sdk/share/wasi-sysroot --strip-components=1
           test -d /opt/wasi-sdk/share/wasi-sysroot/lib/wasm32-wasip1
           echo "OSPREY_WASI_SYSROOT=/opt/wasi-sdk/share/wasi-sysroot" >> "$GITHUB_ENV"
           wasm-ld --version
 
-      - name: Build native + wasm runtime archives and the compiler
-        run: |
-          make _runtime
-          make _runtime_wasm
-          cargo build --release -p osprey-cli
+      - uses: actions/download-artifact@v4
+        with:
+          name: osprey-build
+      - name: Restore artifact permissions
+        run: chmod +x target/release/osprey
 
-      - name: Compile the example to wasm, validate, and smoke-run under WASI
+      - name: Build the wasm runtime archive
+        run: make _runtime_wasm
+
+      - name: Compile, validate and smoke-run the examples
         run: |
+          set -euo pipefail
           mkdir -p examples/wasm/build
           target/release/osprey examples/wasm/hello.osp --target=wasm32 \
             --compile -o examples/wasm/build/hello.wasm
@@ -404,60 +504,38 @@ jobs:
           node scripts/wasm-smoke.mjs examples/wasm/build/hello.wasm examples/wasm/hello.expectedoutput
           node scripts/wasm-browser-smoke.mjs examples/wasm/build/hello.wasm examples/wasm/hello.expectedoutput
 
+      # Both source flavors compile to portable WASI modules and must produce
+      # the same committed manifest under Node and the browser WASI shim.
       - name: WebAssembly Data Studio suite (Default + ML)
-        # Both source flavors compile to portable WASI modules and must produce
-        # the same committed manifest under Node and the browser WASI shim.
         run: |
-          target/release/osprey examples/wasm/studio.osp --target=wasm32 \
-            --compile -o examples/wasm/build/studio.osp.wasm
-          target/release/osprey examples/wasm/studio.ospml --target=wasm32 \
-            --compile -o examples/wasm/build/studio.ospml.wasm
-          wasm-validate examples/wasm/build/studio.osp.wasm
-          wasm-validate examples/wasm/build/studio.ospml.wasm
-          node scripts/wasm-smoke.mjs examples/wasm/build/studio.osp.wasm examples/wasm/studio.expectedoutput
-          node scripts/wasm-browser-smoke.mjs examples/wasm/build/studio.osp.wasm examples/wasm/studio.expectedoutput
-          node scripts/wasm-smoke.mjs examples/wasm/build/studio.ospml.wasm examples/wasm/studio.expectedoutput
-          node scripts/wasm-browser-smoke.mjs examples/wasm/build/studio.ospml.wasm examples/wasm/studio.expectedoutput
+          set -euo pipefail
+          for flavor in osp ospml; do
+            target/release/osprey "examples/wasm/studio.$flavor" --target=wasm32 \
+              --compile -o "examples/wasm/build/studio.$flavor.wasm"
+            wasm-validate "examples/wasm/build/studio.$flavor.wasm"
+            node scripts/wasm-smoke.mjs "examples/wasm/build/studio.$flavor.wasm" examples/wasm/studio.expectedoutput
+            node scripts/wasm-browser-smoke.mjs "examples/wasm/build/studio.$flavor.wasm" examples/wasm/studio.expectedoutput
+          done
 
       - name: WebAssembly differential — whole tests/ corpus vs the native goldens
-        # The three steps above gate the wasm backend on three hand-picked
-        # programs. This one runs EVERY program in tests/ that links on wasm32
-        # and holds each to the byte-exact stdout the native backend produces.
-        # The programs that may skip are pinned — name and symbol — in
-        # tests/WASM_UNPORTABLE.txt, and the harness fails on any drift, so the
-        # covered count lives in exactly one place instead of going stale here.
-        # A backend that miscompiles arithmetic, strings, maps or pattern
-        # matching outside hello/studio has nowhere else to be caught.
-        #
-        # This `wasm` job IS a required status check on `main` (ruleset
-        # 6154907), so a red result here blocks the merge. It was advisory once,
-        # which meant a wasm-only miscompile could land unopposed; issue #202
-        # was found that way. Do not demote it back without demoting the ruleset
-        # entry with it — an advisory gate reads as a gate and is not one.
         run: OSPREY_TARGET=wasm32 zsh crates/run_test_corpus.sh
 
-  # ─── Website end-to-end (Playwright) ────────────────────────────────────────
-  # Builds the site (compiler-free; committed reference docs) and runs the
-  # Playwright suite: every page template at three breakpoints (no JS errors,
-  # no horizontal overflow, dark theme, chrome present, logo resolves) plus
-  # nav / hero / mobile-menu / TOC interaction assertions.
-  website:
-    name: Website E2E (Playwright)
+  # Builds the site and runs the Playwright suite: every page template at three
+  # breakpoints (no JS errors, no horizontal overflow, dark theme, chrome
+  # present, logo resolves) plus nav / hero / mobile-menu / TOC assertions.
+  # Deliberately depends on NOTHING. It is the one suite that is meaningful for
+  # a website-only PR, so it must not be gated on `changes` — a job that
+  # `needs:` a failed job is SKIPPED, and skipping every suite the moment the
+  # gate-verification step trips would leave a PR with no test signal at all.
+  test-website:
+    name: "Tests: Website E2E (Playwright)"
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    defaults:
-      run:
-        working-directory: ./website
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-node@v4
         with:
-          # 24 because `npm test` here starts with `build:wasm` -> `make
-          # wasm-site`, which RUNS the studio modules under `node:wasi` — the
-          # host whose cached memory backing store goes stale on `memory.grow`
-          # before 24. See the comment on the wasm job above.
-          node-version: '24'
+          node-version: ${{ env.NODE_VERSION }}
           cache: 'npm'
           cache-dependency-path: website/package-lock.json
 
@@ -475,28 +553,29 @@ jobs:
           key: ${{ runner.os }}-cargo-website-wasm-${{ hashFiles('Cargo.lock') }}
           restore-keys: ${{ runner.os }}-cargo-website-wasm-
 
-      - name: Install wasm toolchain
+      - name: Install the wasm toolchain
         run: |
+          set -euo pipefail
           sudo apt-get update
           sudo apt-get install -y clang llvm lld wabt zsh
-          WASI_VERSION=24
           curl -fsSL -o /tmp/wasi-sysroot.tar.gz \
-            "https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-${WASI_VERSION}/wasi-sysroot-${WASI_VERSION}.0.tar.gz"
+            "https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-${WASI_SDK_VERSION}/wasi-sysroot-${WASI_SDK_VERSION}.0.tar.gz"
           sudo mkdir -p /opt/wasi-sdk/share/wasi-sysroot
           sudo tar -xzf /tmp/wasi-sysroot.tar.gz -C /opt/wasi-sdk/share/wasi-sysroot --strip-components=1
           test -d /opt/wasi-sdk/share/wasi-sysroot/lib/wasm32-wasip1
           echo "OSPREY_WASI_SYSROOT=/opt/wasi-sdk/share/wasi-sysroot" >> "$GITHUB_ENV"
-          wasm-ld --version
-        working-directory: .
 
       - name: Install dependencies
         run: npm ci
+        working-directory: ./website
 
       - name: Install Playwright browser
         run: npx playwright install --with-deps chromium
+        working-directory: ./website
 
       - name: Run end-to-end tests
         run: npm test
+        working-directory: ./website
 
       - name: Upload Playwright report on failure
         if: failure()
@@ -504,4 +583,117 @@ jobs:
         with:
           name: playwright-report
           path: website/playwright-report/
+          retention-days: 7
+
+  # The showcases that exercise the compiler as a PRODUCT rather than a
+  # library: the `osprey test` subcommand over the bank's native suites, a real
+  # Chromium against the compiled binary serving its HTTP API, the profiler,
+  # and the containerised web compiler.
+  test-integration:
+    name: "Tests: integration (bank, profiler, web compiler)"
+    needs: [changes, build]
+    if: ${{ needs.changes.outputs.code == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: examples/projects/modules/e2e/package-lock.json
+
+      - name: Setup Osprey toolchain (no rebuild)
+        uses: ./.github/actions/setup-osprey-compiler
+        with:
+          build: "false"
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: osprey-build
+      - name: Restore artifact permissions
+        run: chmod +x target/release/osprey
+
+      # Exercises the `osprey test` subcommand itself — the one execution path
+      # the corpus harness does not take, since it runs programs with `--run`.
+      - name: Bank native tests (osprey test)
+        run: make _bank_test
+
+      - name: Profiler suite
+        run: make _test_profiler
+
+      - name: Install bank e2e dependencies
+        run: npm ci
+        working-directory: ./examples/projects/modules/e2e
+      - name: Install Playwright Chromium
+        run: npx playwright install --with-deps chromium
+        working-directory: ./examples/projects/modules/e2e
+      - name: Bank e2e (Playwright)
+        run: npx playwright test
+        working-directory: ./examples/projects/modules/e2e
+
+      - name: Upload bank e2e results on failure
+        uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: bank-e2e-results
+          path: examples/projects/modules/e2e/test-results/
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Test Web Compiler
+        run: |
+          set -euo pipefail
+          cd webcompiler
+          docker build -t osprey-web-compiler-ci -f Dockerfile ..
+          docker run -d --name osprey-web-compiler-ci -p 3001:3001 \
+            -e NODE_ENV=production -e PORT=3001 \
+            --memory=256m --memory-reservation=256m \
+            osprey-web-compiler-ci
+          for _ in $(seq 1 60); do
+            curl -fsS http://localhost:3001/api >/dev/null 2>&1 && break
+            sleep 1
+          done
+          chmod +x test.sh && ./test.sh
+          docker stop osprey-web-compiler-ci
+          docker rm osprey-web-compiler-ci
+
+  # ═══ STAGE 4 ════════════════════════════════════════════════════════════════
+  # Thresholds are enforced HERE, against reports the test jobs produced, so no
+  # suite is ever re-run to measure what it already measured. The C runtime
+  # gate lives in its own job because gcov data never leaves that container.
+  coverage:
+    name: Coverage thresholds
+    needs: [changes, test-rust, test-extension]
+    if: ${{ needs.changes.outputs.code == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install jq
+        run: sudo apt-get install -y jq
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: coverage-rust
+      - uses: actions/download-artifact@v4
+        with:
+          name: coverage-extension
+          path: vscode-extension/coverage/
+
+      - name: Rust per-crate thresholds
+        run: make _coverage_check_rust
+
+      - name: VS Code extension thresholds
+        run: make _coverage_check_vscode_extension
+
+      - name: Upload combined coverage
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: coverage-report
+          path: |
+            lcov.info
+            vscode-extension/coverage/
           retention-days: 7

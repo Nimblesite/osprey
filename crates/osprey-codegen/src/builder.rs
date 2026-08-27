@@ -107,6 +107,17 @@ pub struct Codegen {
     /// `idl(7)` emitted a direct call to `@idl`, a symbol no definition
     /// produces ([TYPE-GENERICS-FN], [MODULES-FILE-SCOPE-BINDING]).
     pub(crate) file_lambdas: HashMap<String, LambdaDef>,
+    /// Values already lowered for the CALLEE parameters a generic returned
+    /// lambda closes over, keyed by the binding name
+    /// (`crate::stmt::generic_returned_lambda`).
+    ///
+    /// `let c = constly("hi")` for `fn constly(v) = |x| => v` evaluates the
+    /// argument ONCE here; each later `c(7)` prepends these values to its own,
+    /// so the inlined body reads `v` from the binding's evaluation rather than
+    /// from whatever scope it was inlined into. These are SSA registers of the
+    /// function being emitted, so the map is cleared whenever emission moves to
+    /// another function body.
+    pub(crate) lambda_prefix: HashMap<String, (Vec<osprey_ast::Parameter>, Vec<Value>)>,
     /// Top-level functions already wrapped as closure cells (name → the cell's
     /// constant global), so the forwarder is emitted once per module.
     pub(crate) fnval_cells: HashMap<String, String>,
@@ -241,14 +252,25 @@ pub(crate) struct ResumeCodegenContext {
 /// static type. Named for the fiber case it was written for; a channel needs
 /// exactly the same thing, and without it every `recv` of a list, map or
 /// string handed back the raw word ([CONCURRENCY-CHANNEL]).
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct FiberSig {
     pub(crate) elem: LType,
     pub(crate) result_inner: Option<LType>,
+    /// The element's aggregate owner tag — `List#double`, `Map#i8*`, a record
+    /// name. Carried HERE rather than rebuilt by each consumer: a handle's own
+    /// `osp_ty` is empty (an id is a machine word owning nothing), so the
+    /// element tag is the only record of what the uniform wire word means. When
+    /// each consumer reconstructed it from a declaration instead, every route
+    /// with no declaration to consult — a function-value parameter, a closure
+    /// capture — silently bound `None` and `recv` unboxed an untagged pointer
+    /// ([CONCURRENCY-CHANNEL]).
+    pub(crate) elem_owner: Option<String>,
+    /// The owner tag of the Success payload when the element is a `Result`.
+    pub(crate) elem_payload_owner: Option<String>,
 }
 
 impl FiberSig {
-    pub(crate) fn of(ty: &Type) -> Option<Self> {
+    pub(crate) fn of(prog: &ProgramTypes, ty: &Type) -> Option<Self> {
         let Type::Con { name, args } = ty else {
             return None;
         };
@@ -264,17 +286,21 @@ impl FiberSig {
                 ltype_of(elem)
             },
             result_inner,
+            elem_owner: crate::types::elem_tag(prog, Some(elem)),
+            elem_payload_owner: crate::types::result_payload_owner(prog, elem),
         })
     }
 
     pub(crate) fn restore(self, mut value: Value) -> Value {
         value.fiber_elem = Some(self.elem);
         value.fiber_elem_result_inner = self.result_inner;
+        value.fiber_elem_owner = self.elem_owner;
+        value.fiber_elem_payload_owner = self.elem_payload_owner;
         value
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct ParamSig {
     pub(crate) ty: LType,
     pub(crate) result_inner: Option<LType>,
@@ -282,8 +308,8 @@ pub(crate) struct ParamSig {
 }
 
 impl ParamSig {
-    pub(crate) fn of(ty: &Type) -> Self {
-        let fiber = FiberSig::of(ty);
+    pub(crate) fn of(prog: &ProgramTypes, ty: &Type) -> Self {
+        let fiber = FiberSig::of(prog, ty);
         match crate::types::result_inner(ty) {
             Some(inner) => Self {
                 ty: LType::Ptr,
@@ -300,9 +326,23 @@ impl ParamSig {
 }
 
 /// A function value's lowered signature: parameter ABI slots, the return
-/// [`LType`], (when it returns `Result<T, _>`) the success inner type, and any
-/// Fiber element shape that must survive the erased integer ABI.
-pub(crate) type FnSig = (Vec<ParamSig>, LType, Option<LType>, Option<FiberSig>);
+/// [`LType`], (when it returns `Result<T, _>`) the success inner type, any
+/// Fiber element shape that must survive the erased integer ABI, and the
+/// return's OWNER tag.
+///
+/// The owner is the fifth slot because a closure call had nowhere to put it: a
+/// named function recovers it through [`Codegen::fn_ret_owner`], but a call
+/// through a function value has only this signature to go on, so a lambda
+/// returning `List<float>` handed back an untagged `i8*` and `listGet` on it
+/// met an `i64` payload against a `double` default. Implements
+/// [BUILTIN-LIST-GET], [TYPE-GENERICS-FN].
+pub(crate) type FnSig = (
+    Vec<ParamSig>,
+    LType,
+    Option<LType>,
+    Option<FiberSig>,
+    Option<String>,
+);
 
 /// One slot of a registered heap-block layout: field name, its LLVM type, and
 /// the owner tag the value stored there carried — the only record of a generic
@@ -317,6 +357,9 @@ pub(crate) struct SavedFn {
     labels: usize,
     scopes: Vec<HashMap<String, Value>>,
     scope_ids: Vec<usize>,
+    /// Saved with the rest of the function frame: the prefix values are SSA
+    /// registers of the SUSPENDED function, so a nested body must not read them.
+    lambda_prefix: HashMap<String, (Vec<osprey_ast::Parameter>, Vec<Value>)>,
     /// Stream-fusion stages are per-function: a stage recorded inside a nested
     /// function body must never replay in the suspended function's next loop.
     pending_iter_ops: Vec<crate::iter::IterOp>,
@@ -594,6 +637,7 @@ impl Codegen {
             pending_iter_ops: Vec::new(),
             lambdas: HashMap::new(),
             file_lambdas: HashMap::new(),
+            lambda_prefix: HashMap::new(),
             fnval_cells: HashMap::new(),
             effect_ops: HashMap::new(),
             handler_count: 0,
@@ -628,7 +672,7 @@ impl Codegen {
     /// Register a function-typed local: its lowered signature for indirect
     /// calls plus its full [`Type`] for chained applications.
     pub(crate) fn bind_fn_local(&mut self, name: &str, ty: Type) {
-        if let Some(sig) = Codegen::fn_value_sig(&ty) {
+        if let Some(sig) = Codegen::fn_value_sig(&self.prog, &ty) {
             let _ = self.fn_ptr_locals.insert(name.to_string(), sig);
             let _ = self.fn_value_types.insert(name.to_string(), ty);
         }
@@ -761,13 +805,14 @@ impl Codegen {
     /// The lowered [`FnSig`] of a function-typed value `ty`, for the closure
     /// ABI — `None` if `ty` is not a function. Result returns retain their
     /// discriminant-bearing ABI; function values must never erase failure.
-    pub(crate) fn fn_value_sig(ty: &Type) -> Option<FnSig> {
+    pub(crate) fn fn_value_sig(prog: &ProgramTypes, ty: &Type) -> Option<FnSig> {
         match ty {
             Type::Fun { params, ret } => Some((
-                params.iter().map(ParamSig::of).collect(),
+                params.iter().map(|t| ParamSig::of(prog, t)).collect(),
                 ltype_of(ret),
                 crate::types::result_inner(ret),
-                FiberSig::of(ret),
+                FiberSig::of(prog, ret),
+                crate::types::owner_name(prog, ret),
             )),
             _ => None,
         }
@@ -851,6 +896,7 @@ impl Codegen {
             regs: self.reg_count,
             labels: self.label_count,
             scopes: std::mem::take(&mut self.scopes),
+            lambda_prefix: std::mem::take(&mut self.lambda_prefix),
             scope_ids: std::mem::take(&mut self.scope_ids),
             pending_iter_ops: std::mem::take(&mut self.pending_iter_ops),
             cell_vars: std::mem::take(&mut self.cell_vars),
@@ -894,6 +940,7 @@ impl Codegen {
         self.label_count = saved.labels;
         self.scopes = saved.scopes;
         self.scope_ids = saved.scope_ids;
+        self.lambda_prefix = saved.lambda_prefix;
         self.pending_iter_ops = saved.pending_iter_ops;
         self.cell_vars = saved.cell_vars;
         self.cell_slots = saved.cell_slots;
@@ -938,14 +985,14 @@ impl Codegen {
     pub(crate) fn fn_param_ltypes(&self, name: &str) -> Option<Vec<LType>> {
         self.prog
             .param_types(name)
-            .map(|ps| ps.iter().map(|t| ParamSig::of(t).ty).collect())
+            .map(|ps| ps.iter().map(|t| ParamSig::of(&self.prog, t).ty).collect())
     }
 
     /// Full parameter ABI slots, including Result layout metadata.
     pub(crate) fn fn_param_abis(&self, name: &str) -> Option<Vec<ParamSig>> {
         self.prog
             .param_types(name)
-            .map(|ps| ps.iter().map(ParamSig::of).collect())
+            .map(|ps| ps.iter().map(|t| ParamSig::of(&self.prog, t)).collect())
     }
 
     /// The `(LType, owner)` parameter signature — `owner` tags record/union
@@ -958,7 +1005,7 @@ impl Codegen {
                     // carries its ELEMENT's tag for `recv`/`await` to restore.
                     let owner = crate::types::owner_name(&self.prog, t)
                         .or_else(|| crate::types::handle_elem_owner(&self.prog, t));
-                    (ParamSig::of(t), owner)
+                    (ParamSig::of(&self.prog, t), owner)
                 })
                 .collect()
         })
@@ -980,7 +1027,7 @@ impl Codegen {
 
     /// Fiber element shape carried by a function's erased `i64` return slot.
     pub(crate) fn fn_ret_fiber_sig(&self, name: &str) -> Option<FiberSig> {
-        FiberSig::of(self.prog.return_type(name)?)
+        FiberSig::of(&self.prog, self.prog.return_type(name)?)
     }
 
     /// The LLVM spelling of `name`'s emitted return slot (Result block or
@@ -1141,11 +1188,7 @@ impl Codegen {
     /// word like any other handle, so without this a `recv` on `hub.channel`
     /// read the wire word raw and the element came back untyped.
     /// Implements [CONCURRENCY-CHANNEL].
-    pub(crate) fn ctor_field_handle(
-        &self,
-        owner: &str,
-        field: &str,
-    ) -> Option<(FiberSig, Option<String>)> {
+    pub(crate) fn ctor_field_handle(&self, owner: &str, field: &str) -> Option<FiberSig> {
         let ty = self
             .prog
             .ctors
@@ -1154,10 +1197,7 @@ impl Codegen {
             .iter()
             .find(|(name, _)| name == field)
             .map(|(_, ty)| ty)?;
-        Some((
-            FiberSig::of(ty)?,
-            crate::types::handle_elem_owner(&self.prog, ty),
-        ))
+        FiberSig::of(&self.prog, ty)
     }
 
     pub(crate) fn ctor_field_result_inner(&self, owner: &str, field: &str) -> Option<LType> {
@@ -1407,6 +1447,7 @@ impl Codegen {
         // The beta-reduction cache is per-function too: a stale entry from an
         // earlier function must not hijack a same-named local here.
         self.lambdas.clear();
+        self.lambda_prefix.clear();
         // Cell-promotion is per-function; `lower` repopulates `cell_vars` from
         // this function's body before lowering it.
         self.cell_vars.clear();

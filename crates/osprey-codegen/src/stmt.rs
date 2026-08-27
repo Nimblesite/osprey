@@ -230,6 +230,44 @@ fn gen_bind(cg: &mut Codegen, name: &str, value: &Expr, position: Option<Positio
         }
         return Ok(());
     }
+    // A generic function whose body IS a lambda hands back a value with no
+    // single cell ABI; record it for inline application instead of rejecting.
+    // Never fire for a name that already has module storage: that slot is
+    // declared for cross-function readers and this path fills nothing, so the
+    // reader would load a zeroed global.
+    if let Some((callee_params, parameters, body, lambda_position)) =
+        generic_returned_lambda(cg, value).filter(|_| !cg.module_globals.contains_key(name))
+    {
+        // The callee's arguments are evaluated exactly ONCE, here — the call
+        // in the source happens once, so its effects must too, however many
+        // instantiations the binding is later used at.
+        let mut prefix = Vec::new();
+        if let Expr::Call {
+            arguments,
+            named_arguments,
+            ..
+        } = value
+        {
+            for argument in arguments {
+                prefix.push(gen_expr(cg, argument)?);
+            }
+            for argument in named_arguments {
+                prefix.push(gen_expr(cg, &argument.value)?);
+            }
+        }
+        if prefix.len() == callee_params.len() {
+            let _ = cg
+                .lambda_prefix
+                .insert(name.to_string(), (callee_params, prefix));
+        } else {
+            let _ = cg.lambda_prefix.remove(name);
+        }
+        let _ = cg
+            .lambdas
+            .insert(name.to_string(), (parameters, body, lambda_position));
+        let _ = cg.call_aliases.remove(name);
+        return Ok(());
+    }
     if let Some(target) = alias_target(cg, value) {
         // `let g = identity` where the target is a GENERIC function: no
         // single concrete cell ABI exists, so bind as a call alias — g's
@@ -275,7 +313,7 @@ fn tag_handle_element(cg: &Codegen, position: Option<Position>, value: Value) ->
     let Some(ty) = cg.prog.let_type(position) else {
         return value;
     };
-    let Some(sig) = crate::builder::FiberSig::of(ty) else {
+    let Some(sig) = crate::builder::FiberSig::of(&cg.prog, ty) else {
         return value;
     };
     let owner = match ty {
@@ -287,6 +325,87 @@ fn tag_handle_element(cg: &Codegen, position: Option<Position>, value: Value) ->
     tagged
 }
 
+/// The lambda a call to a GENERIC function hands back, when that lambda can be
+/// applied inline at each of the binding's call sites instead of materialized
+/// as one closure cell.
+///
+/// `let f = pick()` for `fn pick() = |x| => x` used to be rejected outright —
+/// `a closure value with a still-generic type` — because one cell has one ABI
+/// and `f` may be used at several. The lambda's own source position serves
+/// every instantiation, so its recorded type stays generic and
+/// [`crate::closure::lambda_value`] had nothing concrete to emit against.
+///
+/// Beta-reduction is what already makes a directly-bound `let f = |x| => x`
+/// work at two instantiations, and this reuses it: the lambda is recorded for
+/// inline application, so each call site specialises it at that site's real
+/// types ([TYPE-GENERICS-FN]).
+///
+/// Two conditions keep this SOUND rather than merely permissive:
+///
+/// 1. The callee's body must be syntactically the lambda, so calling it
+///    performs no work of its own that inlining could duplicate or drop.
+/// 2. What the lambda reads from the callee's parameters is evaluated ONCE,
+///    here, and carried as values in [`Codegen::lambda_prefix`]. A body
+///    inlined later would otherwise read those names from whatever scope it
+///    landed in — a silently wrong answer — and re-evaluating the argument
+///    expression per call site would duplicate its effects. `fn constly(v) =
+///    |x| => v` therefore evaluates `"hi"` at the binding and every `c(7)`
+///    reuses that value.
+type ReturnedLambda = (
+    Vec<osprey_ast::Parameter>,
+    Vec<osprey_ast::Parameter>,
+    Expr,
+    Option<Position>,
+);
+
+fn generic_returned_lambda(cg: &Codegen, value: &Expr) -> Option<ReturnedLambda> {
+    let Expr::Call { function, .. } = value else {
+        return None;
+    };
+    let Expr::Identifier(callee) = &**function else {
+        return None;
+    };
+    // A CONCRETELY-typed result materializes a real cell on the ordinary path,
+    // which keeps one-evaluation semantics; this is only for the generic shape
+    // that has no single ABI to emit.
+    if fn_result_type(cg, value).is_some_and(|t| crate::types::fn_value_concrete(&t)) {
+        return None;
+    }
+    let (params, body) = cg.fn_defs.get(callee)?;
+    let Expr::Lambda {
+        parameters,
+        body: lambda_body,
+        position,
+        ..
+    } = body
+    else {
+        return None;
+    };
+    Some((
+        params.clone(),
+        parameters.clone(),
+        (**lambda_body).clone(),
+        *position,
+    ))
+}
+
+/// Whether a generic returned lambda reads the producing call's parameters.
+///
+/// Those are carried as SSA registers of the function that evaluated the call
+/// ([`Codegen::lambda_prefix`]), so such a binding can only serve readers in
+/// that same function. A FILE-SCOPE one read from another function cannot be
+/// inlined there — the registers do not exist — so it keeps the ordinary path,
+/// which rejects it truthfully rather than emitting a call to a symbol no
+/// definition produces.
+fn captures_callee_params(cg: &Codegen, value: &Expr) -> bool {
+    let Some((callee_params, _, body, _)) = generic_returned_lambda(cg, value) else {
+        return false;
+    };
+    let mut free = std::collections::BTreeSet::new();
+    osprey_ast::freevars::free_idents(&body, &mut free);
+    callee_params.iter().any(|p| free.contains(&p.name))
+}
+
 /// The concrete function type and closure ABI a file-scope lambda binding
 /// materialises, or `None` when the lambda is still GENERIC — no single cell
 /// ABI exists for it, so it stays an inline body its call sites specialise
@@ -296,7 +415,7 @@ fn lambda_cell(cg: &Codegen, position: Option<Position>) -> Option<(osprey_types
         .prog
         .lambda_type(position)
         .filter(|t| crate::types::fn_value_concrete(t))?;
-    Some((ty.clone(), Codegen::fn_value_sig(ty)?))
+    Some((ty.clone(), Codegen::fn_value_sig(&cg.prog, ty)?))
 }
 
 /// The definition `value` is a bare ALIAS for, when binding it materialises no
@@ -339,6 +458,16 @@ pub(crate) fn seed_name_bindings(cg: &mut Codegen, program: &Program, read: &BTr
             );
         } else if let Some(target) = alias_target(cg, value) {
             let _ = cg.call_aliases.insert(name.clone(), target);
+        } else if let Some((_, parameters, body, position)) =
+            generic_returned_lambda(cg, value).filter(|_| !captures_callee_params(cg, value))
+        {
+            // A generic function's returned lambda bound at FILE SCOPE and read
+            // by a function: seed it here, or that function emits `call @name`
+            // to a symbol no definition produces and the module fails to LINK —
+            // which neither the type gate nor codegen would have caught.
+            let _ = cg
+                .file_lambdas
+                .insert(name.clone(), (parameters, body, position));
         }
     }
 }
@@ -357,6 +486,11 @@ pub(crate) fn binds_no_value(cg: &Codegen, value: &Expr) -> bool {
     match value {
         Expr::Lambda { position, .. } => lambda_cell(cg, *position).is_none(),
         Expr::Identifier(_) => alias_target(cg, value).is_some(),
+        // Capture-free only: a capturing one cannot be seeded for
+        // cross-function readers, so it must keep ordinary storage handling.
+        Expr::Call { .. } => {
+            generic_returned_lambda(cg, value).is_some() && !captures_callee_params(cg, value)
+        }
         _ => false,
     }
 }
