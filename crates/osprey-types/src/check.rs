@@ -76,6 +76,25 @@ pub(crate) struct EffectInfo {
     pub ops: Vec<(String, String)>,
 }
 
+/// One value thrown away, banked until the substitution is final.
+/// Implements [BLOCK-DISCARD].
+struct Discard {
+    ty: Type,
+    position: Option<Position>,
+    /// Written as `let _ = e` rather than left bare in statement position.
+    explicit: bool,
+}
+
+impl Discard {
+    fn implicit(ty: Type, position: Option<Position>) -> Self {
+        Self { ty, position, explicit: false }
+    }
+
+    fn explicit(ty: Type, position: Option<Position>) -> Self {
+        Self { ty, position, explicit: true }
+    }
+}
+
 /// All cross-cutting declaration tables, plus the inference context.
 pub struct Checker {
     pub(crate) ctx: InferCtx,
@@ -106,10 +125,10 @@ pub struct Checker {
     /// are validated after inference so a variable constrained later in the
     /// same body is checked at its final type.
     pub(crate) builtin_uses: Vec<(String, Type)>,
-    /// Every statement-position value and where it was written. Validated after
-    /// inference for the same reason `builtin_uses` is. Implements
-    /// [BLOCK-DISCARD].
-    discards: Vec<(Type, Option<Position>)>,
+    /// Every discarded value, where it was written, and whether the author said
+    /// so with `let _ =`. Validated after inference for the same reason
+    /// `builtin_uses` is. Implements [BLOCK-DISCARD].
+    discards: Vec<Discard>,
     /// The built-in function names — user code may not redefine these.
     builtins: HashSet<String>,
     /// Stack of `(operation result type, handler answer type)` for the handler
@@ -294,7 +313,7 @@ impl Checker {
                 // constrained further down — so the type is banked for
                 // [`Checker::validate_discards`]. Implements [BLOCK-DISCARD].
                 let inferred = self.infer_expr(value, env);
-                self.discards.push((inferred, *position));
+                self.discards.push(Discard::implicit(inferred, *position));
             }
             _ => {}
         }
@@ -757,6 +776,13 @@ impl Checker {
         pos: Option<Position>,
     ) {
         let value_ty = self.infer_expr(value, env);
+        if name == DISCARD_BINDING {
+            // `let _ = e` is a deliberate discard, so it answers to the same
+            // rule a bare statement does — which lets an ordinary value through
+            // and still refuses a `Result`, whose error channel `_` cannot
+            // consent to losing. Implements [BLOCK-DISCARD], [ERROR-RESULT-DISCARD].
+            self.discards.push(Discard::explicit(value_ty.clone(), pos));
+        }
         let binding_ty = if let Some(te) = ty {
             let annotated = type_expr_to_type(te, &HashMap::new());
             self.unify_or_err(&annotated, &value_ty, &format!("let `{name}`"), pos);
@@ -911,10 +937,10 @@ impl Checker {
     /// proves it is not `Unit`. Implements [BLOCK-DISCARD].
     fn validate_discards(&mut self) {
         let discards = std::mem::take(&mut self.discards);
-        for (ty, pos) in discards {
-            let resolved = self.ctx.apply(&ty);
-            if let Some(message) = discard_error(&resolved) {
-                self.record_err(TypeError::new(message), pos);
+        for d in discards {
+            let resolved = self.ctx.apply(&d.ty);
+            if let Some(message) = discard_error(&resolved, d.explicit) {
+                self.record_err(TypeError::new(message), d.position);
             }
         }
     }
@@ -962,21 +988,29 @@ impl Checker {
     }
 }
 
-/// The diagnostic for discarding a value of type `ty` in statement position,
-/// or `None` when discarding it is legal. Implements [BLOCK-DISCARD].
-fn discard_error(ty: &Type) -> Option<String> {
+/// The binding name that means "throw this away" — the one spelling that opts
+/// out of [BLOCK-DISCARD] for an ordinary value.
+const DISCARD_BINDING: &str = "_";
+
+/// The diagnostic for discarding a value of type `ty`, or `None` when
+/// discarding it is legal. `explicit` marks a `let _ =`, which the author wrote
+/// on purpose and so needs no advice about binding it.
+/// Implements [BLOCK-DISCARD], [ERROR-RESULT-DISCARD].
+fn discard_error(ty: &Type, explicit: bool) -> Option<String> {
     match ty {
         // Never constrained, so nothing here proves it is not `Unit`.
         Type::Var(_) => None,
         Type::Con { name, .. } if name == names::UNIT => None,
-        // `Result` keeps its own wording: the fix is to handle the error
-        // channel, not to bind the value. Implements [ERROR-RESULT-DISCARD].
+        // A `Result` is refused either way: dropping it drops the error channel,
+        // which is the one thing the type exists to make visible, and `_` cannot
+        // consent to that on the caller's behalf.
         Type::Con { name, .. } if name == names::RESULT => {
             Some("an unhandled `Result` cannot be discarded; use `match` or `?:`".to_string())
         }
+        _ if explicit => None,
         other => Some(format!(
-            "a `{other}` value cannot be discarded; bind it with `let`, \
-             or remove the statement"
+            "a `{other}` value cannot be discarded; bind it with `let _ =` \
+             if that is deliberate, or remove the statement"
         )),
     }
 }
@@ -1572,49 +1606,46 @@ mod tests {
         }
     }
 
-    /// SECOND ROOT, seen from the checker. A block's trailing expression
-    /// absorbs the orphan a juxtaposition split leaves behind, so `let r =
-    /// double 5` becomes `let r = double` with the block's TAIL set to `5` and
-    /// `go()` returns 5 where the source says 10.
+    /// The second root, seen from the checker. A block's trailing expression
+    /// used to absorb the orphan a juxtaposition split left behind, so
+    /// `let r = double 5` became `let r = double` with the block's TAIL set to
+    /// `5`, and `go()` returned 5 where the source says 10.
     ///
-    /// The point of this test is what it proves about the FIRST root's fix:
-    /// after the split the block holds exactly one statement, a `Let`. There is
-    /// no `Stmt::Expr` for `infer_block_stmt` to look at, so generalising its
-    /// `is_named(names::RESULT)` guard — however far — can never make this
-    /// program an error. The tail is not discarded; it is RETURNED.
+    /// Why this could never be a checker fix: after the split the block holds
+    /// exactly one statement, a `Let`. There is no `Stmt::Expr` for
+    /// `infer_block_stmt` to look at, so generalising [BLOCK-DISCARD] — however
+    /// far — cannot reach it. The tail was not discarded; it was RETURNED. The
+    /// fix is [LEX-STATEMENT-BREAK], in the parser.
     ///
-    /// The fix therefore has to land in the parser, and this test stays red
-    /// until it does. The parse-shape twins live in
-    /// `osprey-syntax::default::tests`.
+    /// So this asserts the outcome, not the diagnosis: the program is rejected,
+    /// AND no tree survives in which the block yields the bare argument. The
+    /// second half is what keeps the test honest — a rejection for some
+    /// unrelated reason would satisfy the first half alone.
     #[test]
-    fn the_discard_rule_cannot_reach_a_juxtaposed_argument_in_tail_position() {
+    fn a_juxtaposed_argument_never_becomes_a_blocks_returned_value() {
         const SRC: &str = "fn double(x) = x * 2\n\
                            fn go() -> int = {\n\
                              let r = double 5\n\
                            }\n";
         let parsed = parse_program(SRC);
-        // A parse-level rejection is the correct outcome, and satisfies this.
-        if !parsed.errors.is_empty() {
-            return;
-        }
-        let errs = check_program(&parsed.program);
-        let discardable = match parsed.program.statements.get(1) {
-            Some(Stmt::Function {
-                body: Expr::Block { statements, .. },
-                ..
-            }) => statements
-                .iter()
-                .filter(|s| matches!(s, Stmt::Expr { .. }))
-                .count(),
-            _ => 0,
-        };
         assert!(
-            !errs.is_empty(),
-            "`let r = double 5` returns the ARGUMENT 5 instead of applying \
-             `double`, and must be rejected. It parsed clean with {discardable} \
-             discardable statement(s) in the block, so no discard rule can \
-             reach it. Errors were {:?}",
-            errs.iter().map(|e| &e.message).collect::<Vec<_>>()
+            !parsed.errors.is_empty(),
+            "`let r = double 5` applies nothing and must be rejected; it parsed \
+             clean into {:?}",
+            parsed.program.statements
+        );
+        let tail = match parsed.program.statements.get(1) {
+            Some(Stmt::Function {
+                body: Expr::Block { value, .. },
+                ..
+            }) => value.as_deref(),
+            _ => None,
+        };
+        assert_ne!(
+            tail,
+            Some(&Expr::Integer(5)),
+            "the block still yields the ARGUMENT 5, so `go()` would return it \
+             instead of applying `double`"
         );
     }
 

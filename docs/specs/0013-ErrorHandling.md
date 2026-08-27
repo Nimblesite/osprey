@@ -41,6 +41,8 @@ match result
 
 ## Arithmetic and Result — [ARITH-CHECKED]
 
+> **Status:** this section describes the shipped compiler and remains authoritative. A replacement model — arithmetic returning plain `int`/`float` with failure dispatched to a statically required `Arith` effect handler — is specified as a normative target in [Arithmetic Effects](0037-ArithmeticEffects.md) and delivered by [plan 0027](../plans/0027-arithmetic-effects.md), motivated by [#230](https://github.com/Nimblesite/osprey/issues/230): the corpus discharges these `Result`s with fabricated `?:` fallbacks, which silently produce wrong answers.
+
 Integer arithmetic is overflow checked. Integer `+`, `-`, `*`, unary `-`, and
 `abs` return `Result<int, MathError>`; overflow returns
 `Error("integer overflow")` and never wraps or panics. Floating-point `+`, `-`,

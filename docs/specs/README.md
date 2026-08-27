@@ -74,6 +74,15 @@ This directory holds **all spec documents** for the project:
     data-parallel kernels with compile-time purity proofs, the host execution
     baseline, and the cited research foundation; the staged device-backend
     roadmap lives in [plan 0023](../plans/0023-gpu-computation.md).
+  - [`0037-ArithmeticEffects.md`](0037-ArithmeticEffects.md) — **normative
+    target**: integer arithmetic returns plain `int`/`float` and a fault
+    (overflow, zero divisor) dispatches to a compiler-declared `Arith` effect
+    through the shipped substituting-handler path — one region states the
+    policy (wrapping, fault-sticky, saturating) instead of a fabricated `?:`
+    fallback at every call site. Includes the Default `handle … do` binder
+    rename. Motivated by
+    [#230](https://github.com/Nimblesite/osprey/issues/230); delivery in
+    [plan 0027](../plans/0027-arithmetic-effects.md).
 
 ## Spec ID convention
 
@@ -83,6 +92,6 @@ project's [`CLAUDE.md`](../../CLAUDE.md) for the full convention.
 
 Code implementing a spec section MUST repeat that section's bracketed ID in a
 comment. The `spec-check` skill enforces this by grep. Specs whose header
-declares **Status: normative target** (0029–0033, 0036) are not implemented yet;
+declares **Status: normative target** (0029–0033, 0036, 0037) are not implemented yet;
 their IDs are exempt from the code-citation requirement until their delivery
 plan lands, at which point every landed section must be cited as usual.

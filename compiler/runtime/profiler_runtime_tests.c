@@ -10,6 +10,8 @@
 #include <string.h>
 #include <unistd.h>
 
+#include "test_death.h"
+
 bool osp_prof_start(const char *out_path, uint32_t rate_hz);
 void osp_prof_stop_and_dump(void);
 
@@ -268,88 +270,52 @@ static void test_churn_under_max_rate_sampling(void) {
 }
 
 
-// ---- QUARANTINE: macOS leaf-PC capture [PROF-COLLECT-UNWIND] -----------------
-// Every test in this block is RED and must stay red until the leaf PC captured
-// by read_regs() in profiler_sampler.c is provably the running instruction.
-// See the quarantine note there. They fail for three distinct reasons, so a
-// partial fix cannot turn the block green by accident:
-//   (a) osp_prof_walk emits `pc` with no validation at all, while `lr` and every
-//       chained return address are floored at OSP_PROF_MIN_CODE_ADDR;
-//   (b) nothing cross-checks the leaf against the code region the fp chain
-//       already proved the thread is executing in — the observed failure was a
-//       libsystem_kernel pc sitting under an Osprey `sub` frame;
-//   (c) the quarantine's own explanation is lost when stderr is redirected,
-//       because the abort arm does not fflush (compare osp_entropy_exhausted in
-//       random_runtime.c, which learned this already).
+// ---- SPEC VIOLATIONS: macOS stack capture -----------------------------------
+// Every assertion below quotes the clause of docs/specs/0028-Profiler.md it
+// enforces. They are RED and must stay red until the capture honours the spec.
+// See the quarantine note on read_regs() in profiler_sampler.c for the evidence.
 
-// (a) The leaf pc is emitted unconditionally. `lr` below the floor is dropped
-// (osp_prof_walk line ~420) and so is every chained return (walk_chain line
-// ~394) — the pc, the ONE frame that decides self-time, is trusted blindly.
-static void test_walk_rejects_pc_below_min_code_addr(void) {
-  uint64_t mem[FAKE_STACK_WORDS];
-  memset(mem, 0, sizeof(mem));
-  uintptr_t lo = (uintptr_t)mem;
-  uintptr_t hi = (uintptr_t)(mem + FAKE_STACK_WORDS);
-  mem[0] = 0; // terminate the chain immediately
-  mem[1] = 0x100000AAAA;
-  uint64_t out[OSP_PROF_MAX_FRAMES];
-  // A null pc is not an instruction. It must not become the leaf frame.
-  int n = osp_prof_walk(0, (uint64_t)lo, 0x100000BBBB, lo, hi, out,
-                        OSP_PROF_MAX_FRAMES);
-  assert(n > 0);
-  assert(out[0] != 0);
-}
-
-// (a, cont.) The same floor `lr` gets. 42 is not a code address.
-static void test_walk_applies_same_floor_to_pc_as_to_lr(void) {
-  uint64_t mem[FAKE_STACK_WORDS];
-  memset(mem, 0, sizeof(mem));
-  uintptr_t lo = (uintptr_t)mem;
-  uintptr_t hi = (uintptr_t)(mem + FAKE_STACK_WORDS);
-  mem[0] = 0;
-  mem[1] = 0x100000AAAA;
-  uint64_t out[OSP_PROF_MAX_FRAMES];
-  for (uint64_t bogus = 0; bogus < 4096; bogus += 1021) {
-    int n = osp_prof_walk(bogus, (uint64_t)lo, 0x100000BBBB, lo, hi, out,
-                          OSP_PROF_MAX_FRAMES);
-    assert(n > 0);
-    // An lr of `bogus` would be dropped here. A pc of `bogus` is kept.
-    assert(out[0] != bogus);
-  }
-}
-
-// (b) The exact shape observed on benchmarks/cases/fib: the fp chain proves the
-// thread is inside Osprey code, and the pc claims a completely unrelated image.
-// `fn sub(a, b) = a - b ?: 0` performs no syscall, so a leaf in libsystem_kernel
-// is impossible. The walk currently records it and self-time follows it.
-static void test_walk_rejects_leaf_outside_the_chains_code_region(void) {
-  enum { OSPREY_CODE_LO = 0x100000000ULL, OSPREY_CODE_HI = 0x100100000ULL };
-  const uint64_t kernel_pc = 0x18030F483ULL; // observed leaf, libsystem_kernel
+// [PROF-COLLECT-UNWIND] "Frame 0 is the precise PC."
+//
+// Precise means the instruction the sampled thread is executing. The observed
+// capture on benchmarks/cases/fib violates this: the fp chain — which the same
+// clause requires be validated for alignment, monotonic growth and [lo, hi)
+// bounds — places the thread inside Osprey code, while frame 0 is 2 GB away in
+// libsystem_kernel, reached from `fn sub(a, b) = a - b ?: 0`, which executes no
+// syscall. Frame 0 and the chain cannot describe different threads: read_regs
+// returns one register set. One of them is wrong, and the clause names frame 0.
+static void test_frame_zero_is_the_precise_pc(void) {
+  enum { CODE_LO = 0x100000000ULL, CODE_HI = 0x100100000ULL };
+  const uint64_t observed_kernel_pc = 0x18030F483ULL;
   uint64_t mem[FAKE_STACK_WORDS];
   memset(mem, 0, sizeof(mem));
   uintptr_t lo = (uintptr_t)mem;
   uintptr_t hi = (uintptr_t)(mem + FAKE_STACK_WORDS);
   mem[0] = (uint64_t)(uintptr_t)&mem[8];
-  mem[1] = OSPREY_CODE_LO + 0x2000; // `sub`
+  mem[1] = CODE_LO + 0x2000; // `sub`
   mem[8] = 0;
-  mem[9] = OSPREY_CODE_LO + 0x1000; // `fib`
+  mem[9] = CODE_LO + 0x1000; // `fib`
   uint64_t out[OSP_PROF_MAX_FRAMES];
-  int n = osp_prof_walk(kernel_pc, (uint64_t)lo, 0, lo, hi, out,
+  int n = osp_prof_walk(observed_kernel_pc, (uint64_t)lo, 0, lo, hi, out,
                         OSP_PROF_MAX_FRAMES);
   assert(n >= 2);
-  // Every frame the chain produced is Osprey code; the leaf is 2 GB away from
-  // all of them and was reached from a function that cannot call the kernel.
-  bool chain_is_osprey = true;
+  bool chain_in_code = true;
   for (int i = 1; i < n; i++) {
-    chain_is_osprey &= out[i] >= OSPREY_CODE_LO && out[i] < OSPREY_CODE_HI;
+    chain_in_code &= out[i] >= CODE_LO && out[i] < CODE_HI;
   }
-  assert(chain_is_osprey);
-  assert(!(out[0] < OSPREY_CODE_LO || out[0] >= OSPREY_CODE_HI));
+  assert(chain_in_code); // the validated chain agrees on where the thread is
+  assert(out[0] >= CODE_LO && out[0] < CODE_HI); // frame 0 must too
 }
 
 #if defined(__APPLE__)
-// The quarantine must actually stop the capture. A child that returns normally
-// means the broken path is live again and is publishing fictional self-time.
+// [PROF-COLLECT-SAMPLER] "macOS: `thread_suspend` ->
+// `thread_get_state(ARM_THREAD_STATE64)` -> frame-pointer walk ->
+// `thread_resume`."
+//
+// That pipeline is the sole source of frame 0 on macOS, so the clause above is
+// unsatisfiable until it yields the suspended thread's user-mode pc. The arm is
+// quarantined; a child that runs to completion means it is live again and is
+// publishing fictional self-time.
 static void quarantined_capture_body(void) {
   char out[] = "/tmp/osprey-prof-quarantine-XXXXXX";
   int fd = mkstemp(out);
@@ -357,30 +323,37 @@ static void quarantined_capture_body(void) {
     (void)close(fd);
   }
   (void)osp_prof_start(out, TEST_RATE_HZ);
-  for (int i = 0; i < 40000000; i++) {
-    g_sink += (double)i * 0.5; // burn cpu so the sampler reaches read_regs
-  }
+  // [PROF-COLLECT-REGISTRY] the sampler only samples REGISTERED threads, so
+  // without this the macOS capture arm is never reached at all.
+  osp_prof_thread_register(0, "main");
+  g_sink += busy_work(40000000); // burn cpu so the sampler reaches read_regs
+  osp_prof_thread_unregister();
   osp_prof_stop_and_dump();
   (void)unlink(out);
 }
 
-static void test_macos_leaf_capture_is_quarantined(void) {
+static void test_macos_capture_arm_is_quarantined(void) {
   assert(osp_death_signal(quarantined_capture_body) == SIGABRT);
 }
 
-// (c) The abort arm explains itself on stderr. CI captures crashes by
-// REDIRECTING stderr, which makes it fully buffered, and abort() does not flush
-// stdio — so the one line naming the defect dies with the buffer and the reader
-// gets a bare SIGABRT. A quarantine nobody can read is the silent failure it
-// exists to prevent.
-static void test_quarantine_message_survives_redirected_stderr(void) {
+// [PROF-TEST] "The C runtime suite verifies thread registration, sample
+// capture, stack bounds, and raw JSON output."
+//
+// A quarantine whose reason cannot be read is not a verified capture failure,
+// it is an unexplained SIGABRT. This one is GREEN on macOS, whose libc leaves
+// stderr unbuffered even when redirected to a file, and it is here to stay that
+// way: random_runtime.c's osp_entropy_exhausted documents a libc where a
+// redirected stderr IS fully buffered, and abort() does not flush stdio, so the
+// line naming the defect would die with the buffer. This arm has no fflush, so
+// this assertion is what would catch that port.
+static void test_quarantine_reason_survives_redirected_stderr(void) {
   char path[] = "/tmp/osprey-prof-quarantine-err-XXXXXX";
   int fd = mkstemp(path);
   assert(fd >= 0);
   pid_t pid = fork();
   assert(pid >= 0);
   if (pid == 0) {
-    (void)dup2(fd, STDERR_FILENO); // a FILE, so stderr is fully buffered
+    (void)dup2(fd, STDERR_FILENO); // a FILE => fully buffered
     (void)close(fd);
     quarantined_capture_body();
     _exit(0);
@@ -400,12 +373,10 @@ int main(void) {
   test_walk_recovers_planted_chain();
   test_walk_dedupes_lr();
   test_walk_rejects_invalid_fp();
-  test_walk_rejects_pc_below_min_code_addr();
-  test_walk_applies_same_floor_to_pc_as_to_lr();
-  test_walk_rejects_leaf_outside_the_chains_code_region();
+  test_frame_zero_is_the_precise_pc();
 #if defined(__APPLE__)
-  test_macos_leaf_capture_is_quarantined();
-  test_quarantine_message_survives_redirected_stderr();
+  test_macos_capture_arm_is_quarantined();
+  test_quarantine_reason_survives_redirected_stderr();
 #endif
   test_hooks_inactive_noop();
   test_record_drop_returns_sentinel();

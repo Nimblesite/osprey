@@ -776,12 +776,25 @@ mod tests {
             }
             other => panic!("expected an index, got {other:?}"),
         }
-        // Spaced: NOT an index — and since [LEX-STATEMENT-BREAK] the leftover
-        // `[0]` can no longer become a silently discarded statement either, so
-        // the whole line is rejected.
+        // Spaced: NOT an index. The `[0]` can no longer become a silently
+        // discarded statement either, so the line is rejected outright
+        // [LEX-STATEMENT-BREAK]. BOTH halves are asserted: rejection alone
+        // would still hold if the `[` had wrongly bound as an index and some
+        // later rule complained, which is the very confusion under test.
+        const SPACED: &str = "let r = xs [0]\n";
         assert!(
-            !crate::parse_program("let r = xs [0]\n").errors.is_empty(),
-            "a spaced `[` must neither bind as an index nor split the statement"
+            !crate::parse_program(SPACED).errors.is_empty(),
+            "a spaced `[` must not split the statement"
+        );
+        let Some(tree) = parse_tree(SPACED) else {
+            panic!("tree-sitter produced no tree for {SPACED:?}");
+        };
+        // An index binds inside `call_expression` (the postfix chain), so its
+        // absence is what proves the `[` did not attach to `xs`.
+        assert!(
+            find_kind(tree.root_node(), "call_expression").is_none(),
+            "a spaced `[` must not bind as an index; tree was {}",
+            tree.root_node().to_sexp()
         );
         // The single-line list-arm match the strict rule exists to protect.
         match let_value("let r = match xs { [] => 0  [head, ...tail] => head }\n") {
