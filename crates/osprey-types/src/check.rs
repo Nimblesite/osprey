@@ -106,6 +106,10 @@ pub struct Checker {
     /// are validated after inference so a variable constrained later in the
     /// same body is checked at its final type.
     pub(crate) builtin_uses: Vec<(String, Type)>,
+    /// Every statement-position value and where it was written. Validated after
+    /// inference for the same reason `builtin_uses` is. Implements
+    /// [BLOCK-DISCARD].
+    discards: Vec<(Type, Option<Position>)>,
     /// The built-in function names — user code may not redefine these.
     builtins: HashSet<String>,
     /// Stack of `(operation result type, handler answer type)` for the handler
@@ -158,6 +162,7 @@ impl Checker {
             let_tys: Vec::new(),
             list_tys: Vec::new(),
             builtin_uses: Vec::new(),
+            discards: Vec::new(),
             builtins: HashSet::new(),
             resume_ctx: Vec::new(),
             handler_scopes: Vec::new(),
@@ -283,15 +288,13 @@ impl Checker {
             Stmt::Expr {
                 value, position, ..
             } => {
+                // A statement is evaluated for its effects and its value is
+                // thrown away, so only `Unit` may stand here. Judging that
+                // needs the final substitution — a body-local variable can be
+                // constrained further down — so the type is banked for
+                // [`Checker::validate_discards`]. Implements [BLOCK-DISCARD].
                 let inferred = self.infer_expr(value, env);
-                if self.ctx.prune(&inferred).is_named(names::RESULT) {
-                    self.record_err(
-                        TypeError::new(
-                            "an unhandled `Result` cannot be discarded; use `match` or `?:`",
-                        ),
-                        *position,
-                    );
-                }
+                self.discards.push((inferred, *position));
             }
             _ => {}
         }
@@ -901,6 +904,21 @@ impl Checker {
         }
     }
 
+    /// Reject every statement whose value is thrown away. A statement runs for
+    /// its effects, so `Unit` is the only type it may have; anything else is
+    /// dead computation, and most often a juxtaposition the reader took for a
+    /// call. A type variable that never resolved is left alone — nothing
+    /// proves it is not `Unit`. Implements [BLOCK-DISCARD].
+    fn validate_discards(&mut self) {
+        let discards = std::mem::take(&mut self.discards);
+        for (ty, pos) in discards {
+            let resolved = self.ctx.apply(&ty);
+            if let Some(message) = discard_error(&resolved) {
+                self.record_err(TypeError::new(message), pos);
+            }
+        }
+    }
+
     /// Settle every arithmetic overload left open by
     /// [`Checker::deferred_arith`], now that nothing further can constrain an
     /// operand. Resolving one site can constrain another's operand — `fn twice(x)
@@ -941,6 +959,25 @@ impl Checker {
             .map(|(fname, fty)| (fname.clone(), type_name_to_type(fty, &pmap)))
             .collect();
         Some((args, fields, owner, is_record))
+    }
+}
+
+/// The diagnostic for discarding a value of type `ty` in statement position,
+/// or `None` when discarding it is legal. Implements [BLOCK-DISCARD].
+fn discard_error(ty: &Type) -> Option<String> {
+    match ty {
+        // Never constrained, so nothing here proves it is not `Unit`.
+        Type::Var(_) => None,
+        Type::Con { name, .. } if name == names::UNIT => None,
+        // `Result` keeps its own wording: the fix is to handle the error
+        // channel, not to bind the value. Implements [ERROR-RESULT-DISCARD].
+        Type::Con { name, .. } if name == names::RESULT => {
+            Some("an unhandled `Result` cannot be discarded; use `match` or `?:`".to_string())
+        }
+        other => Some(format!(
+            "a `{other}` value cannot be discarded; bind it with `let`, \
+             or remove the statement"
+        )),
     }
 }
 
@@ -1060,6 +1097,7 @@ fn checked_program(program: &Program) -> Checker {
     checker.check(program, &mut env);
     checker.resolve_deferred_arithmetic();
     checker.validate_builtin_uses();
+    checker.validate_discards();
     let perform_tys = checker.perform_tys.clone();
     let perform_actual_tys = checker.perform_actual_tys.clone();
     let handler_tys = checker.handler_tys.clone();

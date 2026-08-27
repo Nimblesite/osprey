@@ -10,9 +10,14 @@
 # suite runs today with whatever is installed and lights up the rest later.
 #
 # Mirrors the conventions of crates/run_test_corpus.sh (zsh, set -u, ROOT from
-# the script path). Results land in benchmarks/results/ (gitignored).
+# the script path). Results land in benchmarks/results/, where raw.jsonl and the
+# two rendered reports are TRACKED — only bin/ and hf/ are gitignored.
 #
 # Usage: run.sh [name-filter]
+#   BENCH_PARTIAL=1              Osprey columns only (`make bench-osprey`): times
+#                                the Osprey backends in a temp dir and merges
+#                                them into benchmarks/results/, leaving every
+#                                other language's recorded numbers untouched.
 #   BENCH_WARMUP   (default 3)   warmup runs per command
 #   BENCH_MINRUNS  (default 10)  minimum timed runs per command
 #   BENCH_MEMRUNS  (default 3)   memory-sampling runs per command
@@ -25,9 +30,17 @@ OSP=$ROOT/target/release/osprey
 CASEDIR=$BENCHDIR/cases
 OUT=$BENCHDIR/results
 RUNOUT=$OUT
+FILTER=${1:-}
 PARTIAL=${BENCH_PARTIAL:-0}
-if [[ "$PARTIAL" == 1 ]]; then
-  RUNOUT=$(mktemp -d "${TMPDIR:-/tmp}/osprey-partial-bench.XXXXXX")
+# A run that does not measure every case in every language must NOT replace the
+# published set wholesale: it stages into a temp dir and merges its cells back.
+# That covers the Osprey-only re-run (BENCH_PARTIAL=1) and equally any filtered
+# run — `make bench BENCH_FILTER=fib` used to `rm -rf` every recorded result and
+# then die in report.py, whose README refresh needs a case the filter excluded.
+MERGE=0
+[[ "$PARTIAL" == 1 || -n "$FILTER" ]] && [[ -f "$OUT/raw.jsonl" ]] && MERGE=1
+if [[ "$MERGE" == 1 ]]; then
+  RUNOUT=$(mktemp -d "${TMPDIR:-/tmp}/osprey-bench-merge.XXXXXX")
   trap 'rm -rf "$RUNOUT"' EXIT INT TERM
 fi
 TMP=$RUNOUT/tmp
@@ -35,7 +48,6 @@ BINDIR=$RUNOUT/bin
 HFDIR=$RUNOUT/hf
 RAW=$RUNOUT/raw.jsonl
 
-FILTER=${1:-}
 WARMUP=${BENCH_WARMUP:-3}
 MINRUNS=${BENCH_MINRUNS:-10}
 MEMRUNS=${BENCH_MEMRUNS:-3}
@@ -142,14 +154,11 @@ json_row() {
     "$1" "$2" "$3" "$4" "$5" "${6:-0}" >> "$RAW"
 }
 
-if [[ "$PARTIAL" == 1 ]]; then
-  [[ -f "$OUT/raw.jsonl" ]] || {
-    echo "FATAL: partial-bench needs existing results at $OUT; run 'make bench' first." >&2
-    exit 1
-  }
-else
-  rm -rf "$OUT"
+if [[ "$PARTIAL" == 1 && "$MERGE" != 1 ]]; then
+  echo "FATAL: bench-osprey needs existing results at $OUT; run 'make bench' first." >&2
+  exit 1
 fi
+[[ "$MERGE" == 1 ]] || rm -rf "$OUT"
 mkdir -p "$TMP" "$BINDIR" "$HFDIR"; : > "$RAW"
 
 # Benchmark input modes. A case may read its first stdin line to pick a token
@@ -252,9 +261,11 @@ for dir in $CASEDIR/*/(/); do
 done
 
 echo "\n==> rendering report"
-if [[ "$PARTIAL" == 1 ]]; then
-  python3 "$BENCHDIR/merge_results.py" "$OUT" "$RUNOUT" osprey osprey-arc osprey-gc osprey-wasm \
-    || { echo "result merge failed" >&2; exit 1; }
+if [[ "$MERGE" == 1 ]]; then
+  # $LANGS, not a hardcoded list: the merge replaces exactly the (case, language)
+  # cells this run measured and leaves every other published record untouched.
+  python3 "$BENCHDIR/merge_results.py" "$OUT" "$RUNOUT" $LANGS \
+    || { echo "result merge failed — published results left untouched" >&2; exit 1; }
 fi
 python3 "$BENCHDIR/report.py" "$OUT" || { echo "report failed" >&2; exit 1; }
 rm -rf "$TMP"

@@ -15,10 +15,20 @@ benchmarks/cases/<name>/
 
 ```bash
 make bench                       # build everything, run the whole suite
+make bench-osprey                # ONLY the Osprey columns; other languages untouched
 BENCH_FILTER=fib make bench      # only cases whose name contains "fib"
 zsh benchmarks/run.sh            # run directly (assumes `make build` already ran)
 zsh benchmarks/run.sh primes     # direct, single case
 ```
+
+`make bench-osprey` is the fast loop for a compiler or runtime change: it
+compiles and times only `osprey`, `osprey-arc`, `osprey-gc` and `osprey-wasm`,
+never Rust/C/C#/Dart/OCaml/Haskell. It stages into a temp directory and merges
+only the `(case, language)` cells it actually measured, so every other
+language's tracked record survives byte-for-byte — and if any case fails to
+build or mismatches its oracle, nothing is published at all. It needs one prior
+`make bench` for the baseline. Any run narrowed by `BENCH_FILTER` merges the
+same way, for the same reason.
 
 > **Heads-up on RAM.** With the optimized build (below) the non-allocating cases
 > peak at ~1.4 MB — on par with C. The allocating ones use substantially more

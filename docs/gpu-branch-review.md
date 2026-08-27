@@ -113,7 +113,7 @@ What is genuinely delivered:
 - The extracted lambda ABI is first-order: sorted scalar/buffer uniforms,
   element slots, scalar return, no environment pointer. The documented suite
   counts `21/9/20/78/11/13` match the emitted IR measured for the commit.
-- `gpuDevice()` and the `gpu-demo` target honestly report CPU/host execution.
+- `gpuDevice()` and the `_gpu-demo` target honestly report CPU/host execution.
 - Plan 0025 is candid about unverified D3D12, and plan 0024 lists several
   prototype limitations rather than hiding them.
 - GPU runtime archive integration is consistent across native memory backends

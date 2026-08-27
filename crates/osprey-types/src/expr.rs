@@ -1342,7 +1342,22 @@ mod tests {
     use crate::check::check_program;
     use crate::testutil::{bad, check, ok};
     use crate::{infer_program, Type};
+    use osprey_ast::Stmt;
     use osprey_syntax::parse_program;
+
+    /// Bind `value` to `name`. A hand-built expression under test must be bound
+    /// rather than left in statement position, where its value would be
+    /// discarded and rejected by [BLOCK-DISCARD].
+    fn bind(name: &str, value: osprey_ast::Expr) -> Stmt {
+        Stmt::Let {
+            name: name.into(),
+            mutable: false,
+            ty: None,
+            value,
+            doc: None,
+            position: None,
+        }
+    }
 
     #[test]
     fn pipe_into_call_and_bare_function() {
@@ -1793,52 +1808,33 @@ mod tests {
             position: None,
         };
         // Pipe, non-call form: `10 |> inc` applies `inc(10)`.
-        let bare_pipe = Stmt::Expr {
-            value: Expr::Pipe {
-                left: Box::new(Expr::Integer(10)),
-                right: Box::new(Expr::Identifier("inc".into())),
-            },
-            doc: None,
-            position: None,
-        };
+        let bare_pipe = bind("piped", Expr::Pipe {
+            left: Box::new(Expr::Integer(10)),
+            right: Box::new(Expr::Identifier("inc".into())),
+        });
         // Pipe, call form: `10 |> inc(0)` prepends `10`, becoming `inc(10, 0)`
         // (an arity mismatch — but the call-form branch is what we exercise).
-        let call_pipe = Stmt::Expr {
-            value: Expr::Pipe {
-                left: Box::new(Expr::Integer(10)),
-                right: Box::new(Expr::Call {
-                    function: Box::new(Expr::Identifier("inc".into())),
-                    arguments: vec![Expr::Integer(0)],
-                    named_arguments: Vec::new(),
-                }),
-            },
-            doc: None,
-            position: None,
-        };
+        let call_pipe = bind("call_piped", Expr::Pipe {
+            left: Box::new(Expr::Integer(10)),
+            right: Box::new(Expr::Call {
+                function: Box::new(Expr::Identifier("inc".into())),
+                arguments: vec![Expr::Integer(0)],
+                named_arguments: Vec::new(),
+            }),
+        });
         // `Expr::Update` over a non-record binding hits the else arm of
         // `infer_update` (the field values are still inferred).
-        let update = Stmt::Expr {
-            value: Expr::Update {
-                record: "n".into(),
-                fields: vec![FieldAssignment {
-                    name: "x".into(),
-                    value: Expr::Integer(1),
-                }],
-            },
-            doc: None,
-            position: None,
-        };
+        let update = bind("updated", Expr::Update {
+            record: "n".into(),
+            fields: vec![FieldAssignment {
+                name: "x".into(),
+                value: Expr::Integer(1),
+            }],
+        });
         let prog = Program {
             statements: vec![
                 inc,
-                Stmt::Let {
-                    name: "n".into(),
-                    mutable: false,
-                    ty: None,
-                    value: Expr::Integer(2),
-                    doc: None,
-                    position: None,
-                },
+                bind("n", Expr::Integer(2)),
                 bare_pipe,
                 call_pipe,
                 update,
@@ -1891,13 +1887,9 @@ mod tests {
             }],
         };
         // The function's signature pass registers `combine`; the MethodCall is a
-        // bare top-level expression statement that drives `infer_method_call`.
+        // top-level binding whose initializer drives `infer_method_call`.
         let mut stmts = prog.statements;
-        stmts.push(Stmt::Expr {
-            value: body,
-            doc: None,
-            position: None,
-        });
+        stmts.push(bind("called", body));
         let errs = check_program(&Program { statements: stmts });
         assert!(errs.is_empty(), "unexpected type errors: {errs:?}");
     }
