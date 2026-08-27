@@ -71,17 +71,8 @@ EOF
 # profiler CANNOT satisfy that premise. `fib` legitimately holds ~1% SELF and
 # ~100% TOTAL, and TOTAL is asserted below.
 python3 - <<'EOF'
-import json, shutil
+import json
 summary = json.load(open("profdemo.profile.json"))
-total = summary["sampleCount"]
-# [PROF-SYMBOLIZE-OFFLINE] "raw hex names when no symbolizer is present" — so
-# hex is only a defect when a symbolizer IS present to do better.
-if shutil.which("llvm-symbolizer") or shutil.which("atos"):
-    hexed = [f["name"] for f in summary["hotFunctions"] if f["name"].startswith("0x")]
-    assert not hexed, (
-        f"unsymbolized hex leaves {hexed[:3]}: an image is being resolved "
-        "against the wrong object or the wrong architecture slice "
-        "[PROF-SYMBOLIZE-OFFLINE]")
 # [PROF-COLLECT-UNWIND] The fp chain must still reach the program's own code:
 # whatever the leaf is, `fib` has to hold essentially all of the TOTAL time.
 fib = next((f for f in summary["hotFunctions"] if f["name"] == "fib"), None)
@@ -154,6 +145,12 @@ if have_symbolizer:
         f"[PROF-SYMBOLIZE-OFFLINE] {len(hexed)} frames came back as raw hex "
         f"({hexed[:3]}) although a symbolizer is installed; raw hex is spec'd "
         "only for when none is present")
+else:
+    # Say so. A guarded assertion that goes quiet when it does not run is
+    # indistinguishable from one that ran and passed.
+    print("SKIP [PROF-SYMBOLIZE-OFFLINE]: neither llvm-symbolizer nor atos is "
+          "on PATH, so raw hex names are spec-correct here and the "
+          "wrong-object/wrong-slice check cannot run")
 
 # [PROF-CLI-REPORT] "Below about 100 samples, the report flags low confidence."
 # This run is far above that, so no low-confidence flag may appear.
