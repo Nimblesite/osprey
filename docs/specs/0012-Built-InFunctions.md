@@ -73,10 +73,9 @@ editor integration are specified in [Testing Framework](0027-TestingFramework.md
 
 ## Numeric Functions
 
-### `abs(n: int) -> Result<int, MathError>` — [BUILTIN-ABS]
-Returns `Success` containing the absolute value. Because `2^63` is not
-representable, the minimum signed 64-bit input returns
-`Error("integer overflow")`; it never wraps or panics.
+The numeric builtins are inside the arithmetic totality guarantee: none may trap, panic, wrap silently, or return an unspecified value, and every failure they can express must be discharged by the caller or the program is rejected ([ARITH-TOTAL](0037-ArithmeticEffects.md#the-guarantee--arith-total)). The `Result` returns below are today's mechanism for that. Under [plan 0027](../plans/0027-arithmetic-effects.md), `abs` and `intDiv` return plain `int` and dispatch their faults to the `Arith` handler, while `checkedAdd`/`checkedSub`/`checkedMul` keep their `Result` as the explicit value-level spelling.
+
+### `abs(n: int) -> Result<int, MathError>` — [BUILTIN-ABS] Returns `Success` containing the absolute value. Because `2^63` is not representable, the minimum signed 64-bit input returns `Error("integer overflow")`; it never wraps or panics — and never will, under any spelling ([ARITH-TOTAL](0037-ArithmeticEffects.md#the-guarantee--arith-total)).
 
 ### `intDiv(a: int, b: int) -> Result<int, Error>` — [BUILTIN-INTDIV]
 Truncates toward zero. A zero divisor returns `Error("division by zero")`;

@@ -110,11 +110,7 @@ module Tax
         answer
 ```
 
-Under [ARITH-CHECKED](0013-ErrorHandling.md#arithmetic-and-result--arith-checked),
-this example keeps the original cent amount if the checked multiplication,
-integer division, or final addition fails. A module that needs to expose the
-failure instead may export a `Result`-returning function; module boundaries do
-not erase its error channel.
+Under [ARITH-CHECKED](0013-ErrorHandling.md#arithmetic-and-result--arith-checked), this example keeps the original cent amount if the checked multiplication, integer division, or final addition fails. A module that needs to expose the failure instead may export a `Result`-returning function; module boundaries do not erase its error channel — nor do they erase an arithmetic fault, which crosses them as an undischarged requirement and is rejected at the program entry if nothing handles it ([ARITH-TOTAL](0037-ArithmeticEffects.md#the-guarantee--arith-total)). Under [plan 0027](../plans/0027-arithmetic-effects.md) each program entry installs one policy rather than each module fabricating its own fallback.
 
 Unascribed module items are private unless marked `export`. An ascribed module
 exports the items named by its signature.

@@ -39,11 +39,7 @@ task = spawn (work 41)
 answer = (await task) ?: 0
 ```
 
-Under [ARITH-CHECKED](0013-ErrorHandling.md#arithmetic-and-result--arith-checked),
-`task` is a `Fiber<Result<int, MathError>>`: `await` returns that complete source
-type and `?: 0` explicitly selects the example's overflow policy. It never
-erases a `Result` channel. Each spawn site allocates a distinct capture cell.
-Pointer and floating-point values likewise return with their source type.
+Under [ARITH-CHECKED](0013-ErrorHandling.md#arithmetic-and-result--arith-checked), `task` is a `Fiber<Result<int, MathError>>`: `await` returns that complete source type and `?: 0` explicitly selects the example's overflow policy. It never erases a `Result` channel. A fiber is inside the totality guarantee, not outside it: arithmetic in a spawned body cannot trap or wrap silently, and its fault is discharged by a handler or the program is rejected ([ARITH-TOTAL](0037-ArithmeticEffects.md#the-guarantee--arith-total); under [plan 0027](../plans/0027-arithmetic-effects.md) the fault reaches that handler through the serialized `[EFFECTS-FIBER-PERFORM]` round trip). Each spawn site allocates a distinct capture cell. Pointer and floating-point values likewise return with their source type.
 
 A `Fiber<T>` handle is reusable: awaiting the same completed fiber more than
 once MUST return the same `T` value on every call. For a managed `T`, every

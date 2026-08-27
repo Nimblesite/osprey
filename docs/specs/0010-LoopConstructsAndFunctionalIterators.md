@@ -69,12 +69,7 @@ range (1, 5) |> fold (0, add)   // 0+1+2+3+4 = 10
 
 ## Callbacks and Accumulators — [BUILTIN-ITER-CALLBACK]
 
-Callbacks may be lambdas, named functions, or function values. Generic named
-functions are specialized at the call site. Iterator combinators preserve a
-callback's complete return type, including `Result<T, E>`; they never unwrap a
-failure channel. A callback used where a plain accumulator or record field is
-required must handle checked integer arithmetic explicitly
-([ARITH-CHECKED](0013-ErrorHandling.md#arithmetic-and-result--arith-checked)).
+Callbacks may be lambdas, named functions, or function values. Generic named functions are specialized at the call site. Iterator combinators preserve a callback's complete return type, including `Result<T, E>`; they never unwrap a failure channel. A callback used where a plain accumulator or record field is required must handle checked integer arithmetic explicitly ([ARITH-CHECKED](0013-ErrorHandling.md#arithmetic-and-result--arith-checked)). The requirement reaches into callbacks precisely because the totality guarantee does: a fault inside a lambda passed to a combinator is discharged or the program is rejected, never dropped ([ARITH-TOTAL](0037-ArithmeticEffects.md#the-guarantee--arith-total)). Under [plan 0027](../plans/0027-arithmetic-effects.md) the callbacks below lose their `?:` and the region installs one policy instead.
 
 ```osprey
 fn energy(p) = (p.mass + p.spin) ?: 0      // generic: inferred, no annotations

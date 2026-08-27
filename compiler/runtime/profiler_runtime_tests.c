@@ -275,6 +275,48 @@ static void test_churn_under_max_rate_sampling(void) {
 // enforces. They are RED and must stay red until the capture honours the spec.
 // See the quarantine note on read_regs() in profiler_sampler.c for the evidence.
 
+// [PROF-COLLECT-UNWIND] "Frame 0 is the precise PC." — validation.
+//
+// The leaf pc is emitted unconditionally by osp_prof_walk (profiler_runtime.c
+// line ~413: `out[n++] = strip_pac(pc);`). `lr` is floored at
+// OSP_PROF_MIN_CODE_ADDR on line ~420, and so is every chained return address
+// in walk_chain on line ~394 — the pc, the ONE frame that decides self-time, is
+// the only one trusted blindly. These two are RED for that reason alone, which
+// is distinct from the frame-0/chain disagreement below: a fix for either
+// leaves the other standing, so the block cannot go green by halves.
+static void test_walk_rejects_pc_below_min_code_addr(void) {
+  uint64_t mem[FAKE_STACK_WORDS];
+  memset(mem, 0, sizeof(mem));
+  uintptr_t lo = (uintptr_t)mem;
+  uintptr_t hi = (uintptr_t)(mem + FAKE_STACK_WORDS);
+  mem[0] = 0; // terminate the chain immediately
+  mem[1] = 0x100000AAAA;
+  uint64_t out[OSP_PROF_MAX_FRAMES];
+  // A null pc is not an instruction. It must not become the leaf frame.
+  int n = osp_prof_walk(0, (uint64_t)lo, 0x100000BBBB, lo, hi, out,
+                        OSP_PROF_MAX_FRAMES);
+  assert(n > 0);
+  assert(out[0] != 0);
+}
+
+// The same floor `lr` gets. 42 is not a code address.
+static void test_walk_applies_same_floor_to_pc_as_to_lr(void) {
+  uint64_t mem[FAKE_STACK_WORDS];
+  memset(mem, 0, sizeof(mem));
+  uintptr_t lo = (uintptr_t)mem;
+  uintptr_t hi = (uintptr_t)(mem + FAKE_STACK_WORDS);
+  mem[0] = 0;
+  mem[1] = 0x100000AAAA;
+  uint64_t out[OSP_PROF_MAX_FRAMES];
+  for (uint64_t bogus = 0; bogus < 4096; bogus += 1021) {
+    int n = osp_prof_walk(bogus, (uint64_t)lo, 0x100000BBBB, lo, hi, out,
+                          OSP_PROF_MAX_FRAMES);
+    assert(n > 0);
+    // An lr of `bogus` would be dropped here. A pc of `bogus` is kept.
+    assert(out[0] != bogus);
+  }
+}
+
 // [PROF-COLLECT-UNWIND] "Frame 0 is the precise PC."
 //
 // Precise means the instruction the sampled thread is executing. The observed
@@ -373,6 +415,8 @@ int main(void) {
   test_walk_recovers_planted_chain();
   test_walk_dedupes_lr();
   test_walk_rejects_invalid_fp();
+  test_walk_rejects_pc_below_min_code_addr();
+  test_walk_applies_same_floor_to_pc_as_to_lr();
   test_frame_zero_is_the_precise_pc();
 #if defined(__APPLE__)
   test_macos_capture_arm_is_quarantined();

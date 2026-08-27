@@ -217,6 +217,8 @@ something else, binding `xs` and lowering `[0]` as a separate statement.
 8. Logical OR `||`
 9. Ternary `? :` and Result default `?:`, both right-associative
 
+`?:` appears throughout this chapter's arithmetic examples because integer operators currently return a `Result`. That is a spelling, not a licence for arithmetic to fail: in an accepted program arithmetic can never trap, panic, wrap silently, or yield an unspecified value ([ARITH-TOTAL](0037-ArithmeticEffects.md#the-guarantee--arith-total)). Under [plan 0027](../plans/0027-arithmetic-effects.md) these operators return plain `int`, the `?:` disappears from every arithmetic site, and the handle binder in this flavor becomes `do`.
+
 `x |> f(a)` lowers to `f(x, a)`. The two Default lambda spellings lower to
 `Expr::Lambda`:
 

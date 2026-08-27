@@ -284,24 +284,11 @@ Primitive spellings are case-sensitive.
 | `Map<K, V>`      | Immutable key/value collection                                     |
 | `Iterator<T>`    | Opaque range pipeline (see [Iterators](0010-LoopConstructsAndFunctionalIterators.md)) |
 
-Mixed numeric arithmetic promotes `int` to `float`. Integer `+`, `-`, `*`, and
-unary `-` return `Result<int, MathError>`; `/` and `%` return
-`Result<_, MathError>`. Floating-point `+`, `-`, `*`, and unary `-` return plain
-`float` ([ARITH-CHECKED](0013-ErrorHandling.md#arithmetic-and-result--arith-checked)).
+Mixed numeric arithmetic promotes `int` to `float`. Integer `+`, `-`, `*`, and unary `-` return `Result<int, MathError>`; `/` and `%` return `Result<_, MathError>`. Floating-point `+`, `-`, `*`, and unary `-` return plain `float` ([ARITH-CHECKED](0013-ErrorHandling.md#arithmetic-and-result--arith-checked)). Whatever the spelling, arithmetic in an accepted program is total — no trap, no panic, no silent wrap, no unspecified value, and no undischarged fault ([ARITH-TOTAL](0037-ArithmeticEffects.md#the-guarantee--arith-total); [plan 0027](../plans/0027-arithmetic-effects.md)).
 
 ## Result Preservation
 
-A fallible expression has type `Result<T, E>`, and the compiler never
-implicitly erases that wrapper
-([FAILURE-EXPLICIT](0001-Introduction.md#failure-safety--failure-explicit)).
-Every consuming position — arguments, bindings, plain-`T` returns, comparisons,
-function-value calls — preserves the `Result` or is rejected; interpolation
-displays the complete `Success` or `Error` value. Callers obtain the payload
-only through an exhaustive `match` or an explicit `?:` fallback. The sole
-compositional exception is failure-preserving arithmetic chaining
-([Chaining Arithmetic](0013-ErrorHandling.md#chaining-arithmetic)), which
-flattens compatible `Result<T, MathError>` chains to one `Result` and never
-yields a plain number.
+A fallible expression has type `Result<T, E>`, and the compiler never implicitly erases that wrapper ([FAILURE-EXPLICIT](0001-Introduction.md#failure-safety--failure-explicit)). Every consuming position — arguments, bindings, plain-`T` returns, comparisons, function-value calls — preserves the `Result` or is rejected; interpolation displays the complete `Success` or `Error` value. Callers obtain the payload only through an exhaustive `match` or an explicit `?:` fallback. The sole compositional exception is failure-preserving arithmetic chaining ([Chaining Arithmetic](0013-ErrorHandling.md#chaining-arithmetic)), which flattens compatible `Result<T, MathError>` chains to one `Result` and never yields a plain number. That exception exists only while arithmetic is spelled as a `Result`. Under [plan 0027](../plans/0027-arithmetic-effects.md) arithmetic carries no wrapper to flatten and the exception is deleted, leaving Result Preservation with no exceptions at all; the totality it protects is restated as [ARITH-TOTAL](0037-ArithmeticEffects.md#the-guarantee--arith-total).
 
 ## Function Types
 

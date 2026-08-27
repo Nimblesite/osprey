@@ -68,10 +68,7 @@ are defined in [Type System](0004-TypeSystem.md).
 
 ## Operators
 
-- Arithmetic: `+`, `-`, `*`, `/`, `%`. Integer `+`, `-`, and `*`, integer
-  unary `-`, and `/` and `%` return a checked `Result`; floating-point `+`,
-  `-`, `*`, and unary `-` remain plain IEEE-754 operations
-  ([ARITH-CHECKED](0013-ErrorHandling.md#arithmetic-and-result--arith-checked)).
+- Arithmetic: `+`, `-`, `*`, `/`, `%`. Integer `+`, `-`, and `*`, integer unary `-`, and `/` and `%` return a checked `Result`; floating-point `+`, `-`, `*`, and unary `-` remain plain IEEE-754 operations ([ARITH-CHECKED](0013-ErrorHandling.md#arithmetic-and-result--arith-checked)). No arithmetic operator can trap, panic, or wrap silently in an accepted program ([ARITH-TOTAL](0037-ArithmeticEffects.md#the-guarantee--arith-total)); [plan 0027](../plans/0027-arithmetic-effects.md) changes the spelling of that guarantee, never its strength.
 - Comparison: `==`, `!=`, `<`, `>`, `<=`, `>=`.
 - Boolean: `&&`, `||`, `!`. `&&` and `||` short-circuit.
 - Calls and data access: `()`, `.`, `[]`.

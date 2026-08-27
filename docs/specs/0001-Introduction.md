@@ -33,6 +33,8 @@ fallback with `?:`. Failure-preserving arithmetic chaining may flatten
 `Result<Result<T, MathError>, MathError>` to one `Result<T, MathError>`; this is
 propagation, not implicit handling, and preserves the first `Error` unchanged.
 
+Arithmetic itself is total in an accepted program: it can never trap, panic, wrap silently, or produce an unspecified value, and a fault that cannot be proven impossible must be discharged by a handler the program installs, or the program is rejected — [ARITH-TOTAL](0037-ArithmeticEffects.md#the-guarantee--arith-total). The `Result` spelling described here is today's mechanism for that guarantee; [plan 0027](../plans/0027-arithmetic-effects.md) replaces it with `Arith` effect dispatch without weakening any clause.
+
 Raw foreign declarations may expose a C integer status as ABI data. Safe
 Osprey-facing APIs MUST translate a failing status into `Result` or a typed
 effect before returning it to ordinary language code.

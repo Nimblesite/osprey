@@ -58,10 +58,7 @@ effect handler arm; the handled `in` body remains ordinary client code.
 
 ## Functions and Currying
 
-`[FLAVOR-ML-FN]` A signature precedes its binding. Function arrows associate to
-the right. Checked integer arithmetic keeps its `Result` return in both written
-and inferred signatures
-([ARITH-CHECKED](0013-ErrorHandling.md#arithmetic-and-result--arith-checked)).
+`[FLAVOR-ML-FN]` A signature precedes its binding. Function arrows associate to the right. Checked integer arithmetic keeps its `Result` return in both written and inferred signatures ([ARITH-CHECKED](0013-ErrorHandling.md#arithmetic-and-result--arith-checked)). Both flavors are inside one arithmetic totality guarantee — it is a property of the shared core, not of a surface ([ARITH-TOTAL](0037-ArithmeticEffects.md#the-guarantee--arith-total)). Under [plan 0027](../plans/0027-arithmetic-effects.md) these signatures become `int -> int`, ML keeps `in` as its handle binder while Default moves to `do`, and the guarantee is unchanged in either surface.
 
 ```osprey-ml
 inc : int -> Result<int, MathError>

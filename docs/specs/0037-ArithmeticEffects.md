@@ -4,6 +4,24 @@
 
 The key words `MUST`, `MUST NOT`, `SHOULD`, and `MAY` are to be interpreted as described by BCP 14 (RFC 2119 and RFC 8174) when they appear in capitals. A feature is not implemented merely because this document specifies it.
 
+## The guarantee — [ARITH-TOTAL]
+
+**In an accepted Osprey program, arithmetic cannot fail.** Every arithmetic expression evaluates to a defined value of its static type, in every reachable runtime state, on every target. This is a compile-time-enforced totality guarantee, not a runtime aspiration: a conforming compiler MUST reject any program for which it cannot prove every clause below.
+
+- **No trap, panic, or abort.** No arithmetic operation may raise a hardware fault or terminate the program. The zero-divisor and minimum-value guards branch *before* any faulting instruction, overflow is detected by non-trapping intrinsics, and `-9223372036854775808 % -1` produces `0` without executing the faulting `srem` path.
+- **No silent wraparound.** A two's-complement result reaches the program only where the program names it: the `wrapped` payload of `Arith.overflow` inside a handler some region installed, or the total helpers `wrapAdd`/`wrapSub`/`wrapMul` ([ARITH-EFFECT-TOTAL-HELPERS](#total-helpers--arith-effect-total-helpers)).
+- **No unspecified value.** No arithmetic result is undefined behavior, poison, or target-dependent.
+- **No unhandled fault.** Every arithmetic site is, statically, exactly one of three things: proven total ([ARITH-EFFECT-TOTAL-SITES](#provably-total-sites--arith-effect-total-sites), [ARITH-EFFECT-CONST](#constant-folding--arith-effect-const), float IEEE-754 closure); discharged by an `Arith` handler on every execution path, through helpers, lambdas, and fibers ([ARITH-EFFECT-DISCHARGE](#static-discharge--arith-effect-discharge)); or the program is rejected at compile time. There is no fourth case.
+- **No declined fault.** The installed handler cannot refuse to produce a value: an `Arith` arm's value *is* the operation's result and is typed by the operation signature ([ARITH-EFFECT-ARMS](#handlers-substitute-they-cannot-decline--arith-effect-arms)); `resume` is rejected in `Arith` arms, so abandoning the faulting computation is unrepresentable.
+- **No divergence through the policy.** An `Arith` arm cannot itself fault — checked arithmetic inside any arm of an `Arith` handler is rejected ([ARITH-EFFECT-ARMS-NO-REENTRY](#no-re-entry--arith-effect-arms-no-reentry)) — so dispatch terminates after exactly one substitution.
+- **No fabricated fallback.** A plain `int`/`float` is never a `?:` scrutinee (`` `?:` needs a Result on its left, found int ``), and there is no ambient or implicit default policy: a recovery value exists only inside a handler a region installed by name.
+
+Floating-point `+`, `-`, `*`, and unary `-` satisfy the same totality through IEEE-754 closure — `inf` and `NaN` are defined values of `float`, not failures. Whether they should *additionally* surface through `Arith` is [plan 0022](../plans/0022-arithmetic-totality-audit.md)'s open float decision, out of scope here.
+
+The numeric builtins are inside the guarantee: `abs` and `intDiv` follow the operators — plain `int` results, with `abs(-9223372036854775808)` and `intDiv(-9223372036854775808, -1)` performing `Arith.overflow` and `intDiv(_, 0)` performing `Arith.remainderByZero`. `checkedAdd`/`checkedSub`/`checkedMul` remain the explicit value-level spelling; an `Error` they return is ordinary data, produced totally.
+
+Conformance: [plan 0027](../plans/0027-arithmetic-effects.md) MUST land a rejection fixture or differential runtime test for every clause above, exercised on native under all three memory backends and on wasm32.
+
 ## The model — [ARITH-EFFECT]
 
 Integer arithmetic returns `int`. Failure is not erased and does not panic: an operation whose mathematical result is unrepresentable performs an operation of the compiler-declared `Arith` effect, and the statically required handler substitutes the value the region's policy chooses. The overflow check compiled today stays exactly where it is; only the cold branch's destination changes, from constructing `Error("integer overflow")` to dispatching the operation.
