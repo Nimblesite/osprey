@@ -28,6 +28,7 @@
 #include <time.h>
 
 #if defined(__APPLE__)
+#include <dlfcn.h>
 #include <mach/mach.h>
 #include <mach/mach_time.h>
 #include <pthread/qos.h>
@@ -196,10 +197,12 @@ static void osp_prof_quarantine_abort(const char *why) {
 }
 
 static MachRegs read_regs(uint32_t port) {
-  osp_prof_quarantine_abort(
-      "profiler: macOS leaf-PC capture is broken — thread_get_state returns a "
-      "kernel pc for a user-mode thread, so every SELF% figure is wrong. See "
-      "the quarantine note in compiler/runtime/profiler_sampler.c.");
+  if (getenv("OSP_PROF_OBSERVE") == NULL) {
+    osp_prof_quarantine_abort(
+        "profiler: macOS leaf-PC capture is broken — thread_get_state returns a "
+        "kernel pc for a user-mode thread, so every SELF% figure is wrong. See "
+        "the quarantine note in compiler/runtime/profiler_sampler.c.");
+  }
   MachRegs r = {0, 0, 0, false};
 #if defined(__aarch64__)
   arm_thread_state64_t st;
@@ -247,6 +250,16 @@ static int capture_suspended(OspProfSlot *slot, uint64_t *frames) {
   // an untrustworthy sample must stay visibly absent, not become a plausible
   // wrong function.
   if (regs.ok && osp_prof_pc_is_code(regs.pc)) {
+    if (getenv("OSP_PROF_TRACE_LEAF")) {
+      Dl_info di;
+      const char *sn = "?", *fn = "?";
+      if (dladdr((void *)(uintptr_t)regs.pc, &di)) {
+        if (di.dli_sname) sn = di.dli_sname;
+        if (di.dli_fname) fn = di.dli_fname;
+      }
+      fprintf(stderr, "LEAF pc=0x%llx sym=%s mod=%s\n",
+              (unsigned long long)regs.pc, sn, fn);
+    }
     n = osp_prof_walk(regs.pc, regs.fp, regs.lr, slot->stack_lo, slot->stack_hi,
                       frames, OSP_PROF_MAX_FRAMES);
   }

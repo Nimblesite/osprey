@@ -499,12 +499,24 @@ _test_rust: _runtime_wasm
 	@echo "==> [rust] running tests with coverage..."
 	set -o pipefail && cargo llvm-cov --workspace --profile ci --lcov --output-path lcov.info 2>&1 | tee test.log
 
-# Per-crate enforcement: every rust crate is gated
-# independently against its own threshold (floor 95% + monotonic ratchet). lcov
-# SF records are grouped by their crates/<name>/ path; a single crate below its
-# gate fails the whole target. Aggregating the workspace into one number would
-# let a well-covered crate mask an under-tested one — exactly what the ratchet
-# exists to prevent.
+# Per-crate enforcement: each rust crate NAMED IN $(COVERAGE_THRESHOLDS_FILE) is
+# gated independently against its own threshold (floor 95% + monotonic ratchet).
+# lcov SF records are grouped by their crates/<name>/ path; a single crate below
+# its gate fails the whole target. Aggregating the workspace into one number
+# would let a well-covered crate mask an under-tested one — exactly what the
+# ratchet exists to prevent.
+#
+# ⚠️ THIS GATE IS INCOMPLETE, and the loop below cannot notice. It iterates the
+# JSON's keys, not the workspace's crates, so a crate absent from the JSON is
+# compiled, instrumented, measured by llvm-cov and then DISCARDED. Measured
+# 2026-08-27: crates/ has 11 members, the JSON names 9. osprey-fmt is at 98.8%
+# (487/493) and would pass; osprey-project is at 83.9% (3063/3652) — 3652 lines
+# eleven points under the floor this gate claims to enforce, invisible to it.
+# _coverage_check_c_runtime already solved exactly this for C: it walks
+# C_SHIPPED_UNITS and FAILS on any shipped unit that is neither gated nor
+# explicitly exempt, because "an ungated library cannot regress visibly". Rust
+# needs the same completeness loop over crates/*/Cargo.toml, with osprey-project
+# ratcheted in at its measured value so the check can land without masking it.
 _coverage_check_rust:
 	@if [ ! -f "$(COVERAGE_THRESHOLDS_FILE)" ]; then echo "FAIL: $(COVERAGE_THRESHOLDS_FILE) not found"; exit 1; fi; \
 	if [ ! -f lcov.info ]; then echo "[rust] FAIL: lcov.info not produced"; exit 1; fi; \

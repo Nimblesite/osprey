@@ -25,6 +25,8 @@ void osp_prof_thread_unregister(void) {}
 
 #if defined(__APPLE__)
 #include <mach-o/dyld.h>
+#include <mach-o/getsect.h>
+#include <mach-o/loader.h>
 #include <mach/mach.h>
 #else
 #include <link.h>
@@ -451,15 +453,40 @@ static void json_escape_into(FILE *f, const char *s) {
 }
 
 #if defined(__APPLE__)
+// [PROF-SYMBOLIZE-OFFLINE] The mach header address alone cannot decide which
+// image owns a pc. In the dyld shared cache every system dylib's header lives in
+// one region and its __TEXT in another, so header order is NOT text order, and
+// "greatest base <= pc" hands a libsystem_malloc pc to whichever unrelated image
+// has the nearest lower header — which is how a `_xzm_free` leaf was reported as
+// `task_get_special_port`. Emit the real executable range so the offline
+// symbolizer can decide ownership by containment.
+static const uint8_t *image_text_range(const struct mach_header *mh,
+                                       unsigned long *size) {
+  *size = 0;
+  if (mh == NULL) {
+    return NULL;
+  }
+#if defined(__LP64__)
+  return getsegmentdata((const struct mach_header_64 *)mh, SEG_TEXT, size);
+#else
+  return getsegmentdata(mh, SEG_TEXT, size);
+#endif
+}
+
 static void dump_images(FILE *f) {
   uint32_t count = _dyld_image_count();
   for (uint32_t i = 0; i < count; i++) {
     fprintf(f, "%s{\"path\":\"", i == 0 ? "" : ",");
     json_escape_into(f, _dyld_get_image_name(i));
     const struct mach_header *mh = _dyld_get_image_header(i);
-    fprintf(f, "\",\"base\":%" PRIu64 ",\"slide\":%" PRIu64 "}",
+    unsigned long text_size = 0;
+    const uint8_t *text = image_text_range(mh, &text_size);
+    fprintf(f,
+            "\",\"base\":%" PRIu64 ",\"slide\":%" PRIu64 ",\"text\":%" PRIu64
+            ",\"text_size\":%" PRIu64 "}",
             (uint64_t)(uintptr_t)mh,
-            (uint64_t)_dyld_get_image_vmaddr_slide(i));
+            (uint64_t)_dyld_get_image_vmaddr_slide(i),
+            (uint64_t)(uintptr_t)text, (uint64_t)text_size);
   }
 }
 static void write_exe_path(FILE *f) {
@@ -482,14 +509,40 @@ typedef struct {
   int written;
 } OspImageDump;
 
+// The ELF twin of image_text_range: the span of this image's EXECUTABLE PT_LOAD
+// segments. ELF has no shared cache, so header order does hold here — but the
+// symbolizer picks containment first on every platform, and a range it can trust
+// beats an ordering it has to assume.
+static uint64_t exec_span(const struct dl_phdr_info *info, uint64_t *start) {
+  uint64_t lo = 0, hi = 0;
+  int seen = 0;
+  for (uint16_t j = 0; j < info->dlpi_phnum; j++) {
+    const ElfW(Phdr) *ph = &info->dlpi_phdr[j];
+    if (ph->p_type != PT_LOAD || (ph->p_flags & PF_X) == 0) {
+      continue;
+    }
+    uint64_t seg_lo = (uint64_t)info->dlpi_addr + (uint64_t)ph->p_vaddr;
+    uint64_t seg_hi = seg_lo + (uint64_t)ph->p_memsz;
+    lo = (!seen || seg_lo < lo) ? seg_lo : lo;
+    hi = (!seen || seg_hi > hi) ? seg_hi : hi;
+    seen = 1;
+  }
+  *start = lo;
+  return hi > lo ? hi - lo : 0;
+}
+
 static int dump_image_cb(struct dl_phdr_info *info, size_t size, void *data) {
   (void)size;
   OspImageDump *dump = data;
   fprintf(dump->f, "%s{\"path\":\"", dump->written ? "," : "");
   dump->written = 1;
   json_escape_into(dump->f, info->dlpi_name ? info->dlpi_name : "");
-  fprintf(dump->f, "\",\"base\":%" PRIu64 ",\"slide\":%" PRIu64 "}",
-          (uint64_t)info->dlpi_addr, (uint64_t)info->dlpi_addr);
+  uint64_t text = 0;
+  uint64_t text_size = exec_span(info, &text);
+  fprintf(dump->f,
+          "\",\"base\":%" PRIu64 ",\"slide\":%" PRIu64 ",\"text\":%" PRIu64
+          ",\"text_size\":%" PRIu64 "}",
+          (uint64_t)info->dlpi_addr, (uint64_t)info->dlpi_addr, text, text_size);
   return 0;
 }
 static void dump_images(FILE *f) {

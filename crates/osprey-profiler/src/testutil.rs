@@ -40,6 +40,8 @@ pub(crate) fn profile(
             path: "/bin/app".to_owned(),
             base: 0,
             slide: 0,
+            text: 0,
+            text_size: 0,
         }],
         threads,
         stacks,

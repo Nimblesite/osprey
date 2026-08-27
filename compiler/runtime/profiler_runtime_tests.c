@@ -742,20 +742,35 @@ static void quarantined_capture_body(void) {
 // not exist -- and hid the walk defect (a) from Linux CI entirely.
 
 // ---- QUARANTINE: macOS leaf-PC capture [PROF-COLLECT-UNWIND] -----------------
-// Every test in this block is RED and must stay red until the leaf PC captured
-// by read_regs() in profiler_sampler.c is provably the running instruction.
-// See the quarantine note there. They fail for distinct reasons, so a partial
-// fix cannot turn the block green by accident:
-//   (a) osp_prof_walk emits `pc` with no validation at all, while `lr` and every
-//       chained return address are floored at OSP_PROF_MIN_CODE_ADDR;
-//   (b) nothing cross-checks the leaf against the code region the fp chain
+// This block held two DISTINCT defects, so that a partial fix could not turn it
+// green by accident. That worked: (a) is fixed and its two tests are GREEN; (b)
+// is untouched and STAYS RED until the leaf PC captured by read_regs() in
+// profiler_sampler.c is provably the running instruction. See the note there.
+//
+//   (a) FIXED. osp_prof_walk emitted `pc` with no validation at all, while `lr`
+//       and every chained return address were floored at OSP_PROF_MIN_CODE_ADDR.
+//       The floor now applies to the leaf too, via osp_prof_pc_is_code(). This
+//       does NOT paper over (b): the observed kernel pc is 0x18030F483, far
+//       above the floor, so the floor never fires on it and (b) is still red.
+//   (b) OPEN. Nothing cross-checks the leaf against the code region the fp chain
 //       already proved the thread is executing in — the observed failure was a
 //       libsystem_kernel pc sitting under an Osprey `sub` frame.
+//
+// ⚠️ (b) IS NOT SATISFIABLE BY ANY read_regs() FIX. It calls osp_prof_walk
+// directly with a hard-coded pc and synthetic stack memory; read_regs is not in
+// its call graph, is `static`, and is not even compiled off macOS. The only
+// change that can green it is rejecting the leaf at walk level — which the
+// quarantine note in profiler_sampler.c explicitly forbids. As written it is
+// permanently red, and it blocks every merge. Resolving it means deciding which
+// of the two is wrong: this assertion, or that prohibition.
 
-// (a) The leaf pc is emitted unconditionally (profiler_runtime.c line ~413:
-// `out[n++] = strip_pac(pc);`). `lr` is floored at OSP_PROF_MIN_CODE_ADDR on
-// line ~420 and every chained return in walk_chain on line ~394 — the pc, the
-// ONE frame that decides self-time, is the only one trusted blindly.
+// (a) FIXED — the leaf pc used to be emitted unconditionally while `lr` was
+// floored at OSP_PROF_MIN_CODE_ADDR and every chained return in walk_chain was
+// too, leaving the pc — the ONE frame that decides self-time — trusted blindly.
+// osp_prof_walk now floors the leaf through osp_prof_pc_is_code(); a capture
+// whose leaf fails that test is dropped and counted by the sampler rather than
+// recorded, so frame 0 of a RECORDED sample is still the precise interrupted pc
+// as [PROF-SYMBOLIZE-OFFLINE] requires.
 static void test_walk_rejects_pc_below_min_code_addr(void) {
   uint64_t mem[FAKE_STACK_WORDS];
   memset(mem, 0, sizeof(mem));

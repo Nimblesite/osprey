@@ -411,6 +411,8 @@ mod tests {
             path: bin.to_string_lossy().into_owned(),
             base,
             slide: 0,
+            text: 0,
+            text_size: 0,
         };
         let sym = LlvmSymbolizer::new(&bin, &[image]);
         let Some(chains) = sym.try_atos(&bin, &[addr]) else {
