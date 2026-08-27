@@ -617,7 +617,7 @@ jobs:
       # Exercises the `osprey test` subcommand itself — the one execution path
       # the corpus harness does not take, since it runs programs with `--run`.
       - name: Bank native tests (osprey test)
-        run: make bank-test
+        run: make _bank_test
 
       - name: Profiler suite
         run: make _test_profiler
