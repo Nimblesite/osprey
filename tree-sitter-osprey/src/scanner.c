@@ -104,15 +104,16 @@ static bool skip_line_comment(TSLexer *lexer) {
 // expression before it — an operator with no prefix reading, so no statement
 // could start there. Unary-capable `+`, `-`, and `!` are deliberately absent:
 // a line they open is a NEW statement (whose discarded value [BLOCK-DISCARD]
-// then reports loudly), exactly Go's semicolon rule. `||` opens a zero-argument
-// lambda, but a lambda heading a statement is itself a discarded value, so the
-// or-continuation is the only reading that can compile.
+// then reports loudly), exactly Go's semicolon rule. `|` continues in EVERY
+// spelling: `|>` pipes, `||` disjoins, a bare `|` extends a union type
+// declaration (`type J = A` then `| B { .. }`) — and the one statement a `|`
+// could open, a bare lambda, is itself a discarded value that cannot compile.
 static bool continues_expression(int32_t first, int32_t second) {
   switch (first) {
     case '*': case '%': case '<': case '>': case '?': case ':': case '.':
+    case '|':
       return true;
     case '/': return second != '/';  // division; `//` opens a comment
-    case '|': return second == '>' || second == '|';
     case '&': return second == '&';
     case '=': return second == '=';
     case '!': return second == '=';

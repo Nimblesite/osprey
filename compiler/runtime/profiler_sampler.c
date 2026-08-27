@@ -157,7 +157,44 @@ typedef struct MachRegs {
   bool ok;
 } MachRegs;
 
+// QUARANTINED [PROF-COLLECT-UNWIND] — the pc/lr this returns are WRONG, and the
+// profiler reported fiction for as long as it went unnoticed.
+//
+// thread_suspend() + thread_get_state() on a compute-bound thread yields a
+// pc/lr pair pointing into libsystem_kernel, while the fp read from the SAME
+// register set correctly places the thread inside Osprey code. Measured on
+// benchmarks/cases/fib (`fn sub(a, b) = a - b ?: 0` — pure integer arithmetic,
+// zero syscalls) the folded stacks read:
+//
+//     main;main;fib;fib;...;fib;sub;0x18030f483;task_get_special_port
+//
+// `sub` cannot call a Mach routine. The fp chain is sound; the leaf is not.
+// Because self-time IS the leaf frame, every SELF% the profiler printed was
+// garbage: across the benchmark corpus 32-81% of samples landed on kernel or
+// unsymbolized leaves, and the genuinely hot function was reported at 1-7% self
+// while holding 90-100% total. TOTAL% (fp chain) was and remains correct.
+//
+// It failed SILENTLY. The report looked plausible and scripts/test_profiler.sh
+// only asserted that `fib` appeared SOMEWHERE in the table — it did, as a 1.1%
+// entry underneath a Mach call. That assertion is now strengthened and red.
+//
+// Do NOT paper over this by dropping the leaf frame or filtering kernel symbols
+// out of the report: that hides a bad capture behind a tidier table. The fix is
+// to establish why thread_get_state reports a kernel pc for a user-mode thread
+// (thread_suspend is not synchronous with respect to the AST that stops the
+// target) and to capture a leaf that is provably the running instruction.
+//
+// The body below is retained unchanged for whoever fixes it.
+static void osp_prof_quarantine_abort(const char *why) {
+  fprintf(stderr, "\nOSPREY BROKEN-CODE QUARANTINE: %s\n", why);
+  abort();
+}
+
 static MachRegs read_regs(uint32_t port) {
+  osp_prof_quarantine_abort(
+      "profiler: macOS leaf-PC capture is broken — thread_get_state returns a "
+      "kernel pc for a user-mode thread, so every SELF% figure is wrong. See "
+      "the quarantine note in compiler/runtime/profiler_sampler.c.");
   MachRegs r = {0, 0, 0, false};
 #if defined(__aarch64__)
   arm_thread_state64_t st;
@@ -189,48 +226,20 @@ static MachRegs read_regs(uint32_t port) {
   return r;
 }
 
-// Broken-code quarantine exit: a loud abort, never a silently-wrong number.
-static void osp_prof_quarantine_abort(const char *why) {
-  fprintf(stderr, "\nOSPREY BROKEN-CODE QUARANTINE: %s\n", why);
-  abort();
-}
-
-// QUARANTINED [PROF-COLLECT-UNWIND] — the leaf PC read here is WRONG, and the
-// profiler reported fiction for as long as it went unnoticed.
-//
-// thread_suspend() + thread_get_state() on a compute-bound thread returns a
-// pc/lr pair pointing into libsystem_kernel, while the fp chain read from the
-// SAME register set correctly shows the thread inside Osprey code. Measured on
-// benchmarks/cases/fib (`fn sub(a, b) = a - b ?: 0`, pure integer arithmetic,
-// zero syscalls) the folded stacks read:
-//
-//     main;main;fib;fib;...;fib;sub;0x18030f483;task_get_special_port
-//
-// `sub` cannot call a Mach routine. The fp chain is sound; the leaf is not.
-// Because self-time IS the leaf frame, every SELF% figure the profiler printed
-// was garbage — 72% of samples landed on kernel or unsymbolized leaves across
-// the whole benchmark corpus, and the true hot function was reported at 1-7%
-// self while holding 90-100% total. TOTAL% (fp chain) was and is correct.
-//
-// This failed SILENTLY: the report looked plausible, and scripts/test_profiler.sh
-// only checked that `fib` appeared SOMEWHERE in the table, which it did — as a
-// 1.1% entry under a Mach call. That assertion has been strengthened and now
-// fails, which is the point.
-//
-// Do not paper over this by dropping the leaf frame or filtering kernel symbols
-// out of the report: that hides a bad capture behind a tidier table instead of
-// establishing where the pc actually comes from. The fix is to determine why
-// thread_get_state yields a kernel pc for a user-mode thread (suspension is not
-// synchronous with respect to the AST that stops the target) and capture a leaf
-// that is provably the running instruction.
+// Capture one thread's stack while it is suspended. Returns the frame count.
+// Runs under the registry lock; allocates nothing.
 static int capture_suspended(OspProfSlot *slot, uint64_t *frames) {
-  (void)slot;
-  (void)frames;
-  osp_prof_quarantine_abort(
-      "profiler: macOS leaf-PC capture is broken — thread_get_state returns a "
-      "kernel pc for a user-mode thread, so every SELF% figure is wrong. See "
-      "the quarantine note in compiler/runtime/profiler_sampler.c.");
-  return 0;
+  if (thread_suspend(slot->mach_port) != KERN_SUCCESS) {
+    return 0;
+  }
+  MachRegs regs = read_regs(slot->mach_port);
+  int n = 0;
+  if (regs.ok) {
+    n = osp_prof_walk(regs.pc, regs.fp, regs.lr, slot->stack_lo, slot->stack_hi,
+                      frames, OSP_PROF_MAX_FRAMES);
+  }
+  thread_resume(slot->mach_port);
+  return n;
 }
 
 static void sample_thread(const OspProfSnap *snap) {
