@@ -11,51 +11,60 @@
       }
     },
     "statement": {
-      "type": "CHOICE",
+      "type": "SEQ",
       "members": [
         {
-          "type": "SYMBOL",
-          "name": "import_statement"
+          "type": "CHOICE",
+          "members": [
+            {
+              "type": "SYMBOL",
+              "name": "import_statement"
+            },
+            {
+              "type": "SYMBOL",
+              "name": "namespace_declaration"
+            },
+            {
+              "type": "SYMBOL",
+              "name": "let_declaration"
+            },
+            {
+              "type": "SYMBOL",
+              "name": "assignment"
+            },
+            {
+              "type": "SYMBOL",
+              "name": "function_declaration"
+            },
+            {
+              "type": "SYMBOL",
+              "name": "extern_declaration"
+            },
+            {
+              "type": "SYMBOL",
+              "name": "type_declaration"
+            },
+            {
+              "type": "SYMBOL",
+              "name": "effect_declaration"
+            },
+            {
+              "type": "SYMBOL",
+              "name": "module_declaration"
+            },
+            {
+              "type": "SYMBOL",
+              "name": "signature_declaration"
+            },
+            {
+              "type": "SYMBOL",
+              "name": "expression_statement"
+            }
+          ]
         },
         {
           "type": "SYMBOL",
-          "name": "namespace_declaration"
-        },
-        {
-          "type": "SYMBOL",
-          "name": "let_declaration"
-        },
-        {
-          "type": "SYMBOL",
-          "name": "assignment"
-        },
-        {
-          "type": "SYMBOL",
-          "name": "function_declaration"
-        },
-        {
-          "type": "SYMBOL",
-          "name": "extern_declaration"
-        },
-        {
-          "type": "SYMBOL",
-          "name": "type_declaration"
-        },
-        {
-          "type": "SYMBOL",
-          "name": "effect_declaration"
-        },
-        {
-          "type": "SYMBOL",
-          "name": "module_declaration"
-        },
-        {
-          "type": "SYMBOL",
-          "name": "signature_declaration"
-        },
-        {
-          "type": "SYMBOL",
-          "name": "expression_statement"
+          "name": "_statement_break"
         }
       ]
     },
@@ -4918,6 +4927,10 @@
     {
       "type": "SYMBOL",
       "name": "_call_open_gap"
+    },
+    {
+      "type": "SYMBOL",
+      "name": "_statement_break"
     }
   ],
   "inline": [],

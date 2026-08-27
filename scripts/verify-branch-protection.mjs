@@ -8,7 +8,7 @@
 // branch protection lives in GitHub's settings, not in the tree, so it drifts
 // silently and by definition no test covers it. This is that test.
 //
-// Two traps are checked structurally, because both are why the gates were off:
+// Four traps are checked structurally, because each is a way the gates go quiet:
 //
 //   Phantom context — ruleset 7726557 required a check named "CI". No job
 //   reports that name (jobs report their `name:`, and the workflow's own name
@@ -21,6 +21,16 @@
 //   never reports blocks the merge forever. A job skipped by a job-level `if:`
 //   reports "skipped", which counts as PASSING. Required jobs must therefore
 //   skip via `if:`, never via path filtering.
+//
+//   Advisory tier — a job that runs on every PR but is absent from the ruleset
+//   burns runner minutes and blocks nothing. EXPECTED_CONTEXTS said "every job
+//   is here" while nothing compared the two, so the next job added would have
+//   been advisory by omission and this script would still have printed intact.
+//
+//   Unrequired upstream — a job gated on `needs.X.outputs` SKIPS when X fails,
+//   and a skipped check reports as PASSING. If X is not itself required, one
+//   failure in X silently vanishes every job downstream of it. That is exactly
+//   why "Detect changed areas (Windows)" is in the list below.
 //
 // Run: node scripts/verify-branch-protection.mjs [--repo owner/name]
 
@@ -73,8 +83,8 @@ const api = async (path, token) => {
 const indentOf = (line) => line.length - line.trimStart().length
 
 // Every `name:` at job level (4 spaces) inside the `jobs:` block, paired with
-// whether that job carries a job-level `if:`. Those names ARE the check-run
-// contexts GitHub reports.
+// the job-level `if:` expression that gates it. Those names ARE the check-run
+// contexts GitHub reports; the `if:` text is what the upstream trap reads.
 const scanJobs = (text) => {
   const lines = text.split('\n')
   const start = lines.findIndex((l) => /^jobs:\s*$/.test(l))
@@ -85,14 +95,15 @@ const scanJobs = (text) => {
     if (line.trim() === '' || line.trimStart().startsWith('#')) continue
     if (indentOf(line) === 0) break
     if (indentOf(line) === 2 && /^\s{2}[\w-]+:\s*$/.test(line)) {
-      current = { key: line.trim().replace(':', ''), name: null, hasIf: false }
+      current = { key: line.trim().replace(':', ''), name: null, ifText: '' }
       jobs.push(current)
       continue
     }
     if (!current || indentOf(line) !== 4) continue
     const name = line.match(/^\s{4}name:\s*(.+?)\s*$/)
     if (name) current.name = name[1].replace(/^['"]|['"]$/g, '')
-    if (/^\s{4}if:/.test(line)) current.hasIf = true
+    const gate = line.match(/^\s{4}if:\s*(.+?)\s*$/)
+    if (gate) current.ifText = gate[1]
   }
   return jobs
 }
@@ -110,12 +121,25 @@ const hasPathFilter = (text) => {
   return false
 }
 
+// A `pull_request:` key inside the `on:` block. Only these workflows report
+// check runs on a PR, so only their jobs can be required — or advisory.
+const onPullRequest = (text) => {
+  const lines = text.split('\n')
+  const start = lines.findIndex((l) => /^on:\s*$/.test(l))
+  if (start < 0) return false
+  for (const line of lines.slice(start + 1)) {
+    if (indentOf(line) === 0 && line.trim() !== '') break
+    if (/^\s{2}pull_request:/.test(line)) return true
+  }
+  return false
+}
+
 const readWorkflows = () =>
   readdirSync(WORKFLOW_DIR)
     .filter((f) => f.endsWith('.yml') || f.endsWith('.yaml'))
     .map((f) => {
       const text = readFileSync(join(WORKFLOW_DIR, f), 'utf8')
-      return { file: f, jobs: scanJobs(text), pathFiltered: hasPathFilter(text) }
+      return { file: f, jobs: scanJobs(text), pathFiltered: hasPathFilter(text), pullRequest: onPullRequest(text) }
     })
 
 // --- assertions -------------------------------------------------------------
@@ -146,6 +170,37 @@ const requiredContexts = (onDefault, detail) =>
       .filter((rule) => rule.type === 'required_status_checks')
       .flatMap((rule) => rule.parameters.required_status_checks.map((c) => c.context)),
   )
+
+// Every job that reports on a PR must be required. A job that runs and cannot
+// fail the merge is the advisory tier this repo does not have.
+const checkNoAdvisoryTier = (workflows) =>
+  workflows
+    .filter((w) => w.pullRequest)
+    .flatMap((w) => w.jobs.map((j) => ({ ...j, file: w.file })))
+    .filter((j) => j.name && !EXPECTED_CONTEXTS.includes(j.name))
+    .map(
+      (j) =>
+        `job "${j.name}" (${j.file}) runs on every PR but is absent from EXPECTED_CONTEXTS — ` +
+        'it burns runner minutes and blocks nothing; require it or delete the job',
+    )
+
+// A job gated on `needs.X.outputs` skips when X fails, and skipped counts as
+// PASSING — so X must block the merge too, or its failure vanishes downstream.
+const checkConditionalUpstreams = (workflows) =>
+  workflows
+    .filter((w) => w.pullRequest)
+    .flatMap((w) =>
+      w.jobs.flatMap((j) =>
+        [...j.ifText.matchAll(/needs\.([\w-]+)\.outputs/g)]
+          .map((m) => w.jobs.find((u) => u.key === m[1]))
+          .filter((up) => up && !EXPECTED_CONTEXTS.includes(up.name))
+          .map(
+            (up) =>
+              `job "${j.name}" (${w.file}) is gated on \`needs.${up.key}.outputs\`, but "${up.name}" ` +
+              'is not required — a failure there makes this job skip, and a skipped check reports as PASSING',
+          ),
+      ),
+    )
 
 const checkContexts = (actual, workflows) => {
   const failures = []
@@ -182,7 +237,13 @@ const detail = Object.fromEntries(
 
 const { failures: rulesetFailures, onDefault } = checkRulesets(summary, detail)
 const contexts = requiredContexts(onDefault, detail)
-const failures = [...rulesetFailures, ...checkContexts(contexts, readWorkflows())]
+const workflows = readWorkflows()
+const failures = [
+  ...rulesetFailures,
+  ...checkContexts(contexts, workflows),
+  ...checkNoAdvisoryTier(workflows),
+  ...checkConditionalUpstreams(workflows),
+]
 
 if (failures.length > 0) {
   console.error(`Branch protection on ${repo} is not intact:\n`)

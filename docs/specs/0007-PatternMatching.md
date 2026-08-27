@@ -178,9 +178,7 @@ match calculation {
 }
 ```
 
-The error type of `intDiv` and other fallible built-ins is `Error`. Checked
-integer operators `+`, `-`, `*`, unary `-`, and numeric `/` and `%` use
-`MathError` ([ARITH-CHECKED](0013-ErrorHandling.md#arithmetic-and-result--arith-checked)).
+The error type of fallible built-ins is `Error`. Arithmetic operators produce no `Result` and are matched no differently from any other total expression ([ARITH-TOTAL](0037-ArithmeticEffects.md#the-guarantee--arith-total)).
 
 ### Non-Result Scrutinees Auto-Wrap — [PATTERN-RESULT-AUTOWRAP]
 

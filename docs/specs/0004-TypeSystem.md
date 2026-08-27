@@ -22,7 +22,7 @@ Type annotations are optional everywhere they can be inferred:
 
 ```osprey
 fn identity(x)         = x                       // <T>(T) -> T
-fn add(a, b)           = a + b                   // (int, int) -> Result<int, MathError>
+fn add(a, b)           = a + b                   // (int, int) -> int
 fn greet(name)         = "Hello, " + name        // (string) -> string
 fn makeUser(n, a)      = User { name: n, age: a }  // (string, int) -> User
 fn getName(u)          = u.name                  // (User) -> string
@@ -32,7 +32,7 @@ fn compose(f, g)       = fn(x) => f(g(x))        // <A,B,C>((B)->C,(A)->B) -> (A
 
 ```osprey-ml
 identity x       = x                        // <T>(T) -> T
-add (a, b)       = a + b                     // (int, int) -> Result<int, MathError>
+add (a, b)       = a + b                     // (int, int) -> int
 greet name       = "Hello, " + name          // (string) -> string
 makeUser (n, a)  =
     User
@@ -43,10 +43,7 @@ twice (f, x)     = f (f x)                   // <T>((T) -> T, T) -> T
 compose (f, g)   = \x => f (g x)             // <A,B,C>((B)->C,(A)->B) -> (A)->C
 ```
 
-`add` follows [ARITH-CHECKED]
-([Error Handling](0013-ErrorHandling.md#arithmetic-and-result--arith-checked)):
-integer `+ - *` return `Result<int, MathError>`. With a `float` operand, the
-integer is promoted and the IEEE-754 operation returns plain `float`.
+`add` follows [ARITH-CHECKED](0013-ErrorHandling.md#arithmetic--arith-checked): integer `+ - *` return `int`. With a `float` operand, the integer is promoted and the IEEE-754 operation returns plain `float`.
 
 Record fields and foreign declarations include types as part of their syntax;
 annotations on bindings and functions constrain the inferred type.
@@ -81,7 +78,7 @@ signature for the same program ([FLAVOR-IR-EQUIV]).
 The payload is `int` in both arms, so it is reported. The error side is open:
 `Error { message }` fixes only the message, leaving `E` free to unify with
 whichever error type a call site supplies, so `-> Result<int, string>`,
-`-> Result<int, Error>` and `-> Result<int, MathError>` all check
+`-> Result<int, Error>` and `-> int` all check
 ([Result Preservation](#result-preservation)). A hole is the only honest
 spelling for that slot.
 
@@ -284,24 +281,11 @@ Primitive spellings are case-sensitive.
 | `Map<K, V>`      | Immutable key/value collection                                     |
 | `Iterator<T>`    | Opaque range pipeline (see [Iterators](0010-LoopConstructsAndFunctionalIterators.md)) |
 
-Mixed numeric arithmetic promotes `int` to `float`. Integer `+`, `-`, `*`, and
-unary `-` return `Result<int, MathError>`; `/` and `%` return
-`Result<_, MathError>`. Floating-point `+`, `-`, `*`, and unary `-` return plain
-`float` ([ARITH-CHECKED](0013-ErrorHandling.md#arithmetic-and-result--arith-checked)).
+Mixed numeric arithmetic promotes `int` to `float`. Integer `+`, `-`, `*`, `%`, and unary `-` have type `int`; `/` has type `float`; floating-point `+`, `-`, `*`, and unary `-` have type `float`. Arithmetic is total: no trap, no panic, no silent wrap, no unspecified value, and no undischarged fault ([ARITH-CHECKED](0013-ErrorHandling.md#arithmetic--arith-checked), [ARITH-TOTAL](0037-ArithmeticEffects.md#the-guarantee--arith-total)).
 
 ## Result Preservation
 
-A fallible expression has type `Result<T, E>`, and the compiler never
-implicitly erases that wrapper
-([FAILURE-EXPLICIT](0001-Introduction.md#failure-safety--failure-explicit)).
-Every consuming position — arguments, bindings, plain-`T` returns, comparisons,
-function-value calls — preserves the `Result` or is rejected; interpolation
-displays the complete `Success` or `Error` value. Callers obtain the payload
-only through an exhaustive `match` or an explicit `?:` fallback. The sole
-compositional exception is failure-preserving arithmetic chaining
-([Chaining Arithmetic](0013-ErrorHandling.md#chaining-arithmetic)), which
-flattens compatible `Result<T, MathError>` chains to one `Result` and never
-yields a plain number.
+A fallible expression has type `Result<T, E>`, and the compiler never implicitly erases that wrapper ([FAILURE-EXPLICIT](0001-Introduction.md#failure-safety--failure-explicit)). Every consuming position — arguments, bindings, plain-`T` returns, comparisons, function-value calls — preserves the `Result` or is rejected; interpolation displays the complete `Success` or `Error` value. Callers obtain the payload only through an exhaustive `match` or an explicit `?:` fallback. This rule has no exceptions. Arithmetic is not one: it carries no `Result` wrapper at all, and its faults are discharged by an `Arith` handler rather than by erasing a wrapper ([ARITH-TOTAL](0037-ArithmeticEffects.md#the-guarantee--arith-total)).
 
 ## Function Types
 
@@ -319,19 +303,19 @@ functionType ::= "(" (type ("," type)*)? ")" "->" type
 ```osprey
 fn applyFunction(value: int, transform: (int) -> int) -> int = transform(value)
 
-let doubler: (int) -> Result<int, MathError> = fn(x: int) => x * 2
+let doubler: (int) -> int = fn(x: int) => x * 2
 
-fn createAdder(n: int) -> (int) -> Result<int, MathError> = fn(x: int) => x + n
+fn createAdder(n: int) -> (int) -> int = fn(x: int) => x + n
 ```
 
 ```osprey-ml
 applyFunction : (int, (int) -> int) -> int
 applyFunction (value, transform) = transform value
 
-doubler : int -> Result<int, MathError>
+doubler : int -> int
 doubler = \x => x * 2
 
-createAdder : int -> int -> Result<int, MathError>
+createAdder : int -> int -> int
 createAdder n = \x => x + n
 ```
 
@@ -342,7 +326,7 @@ Multi-argument call syntax (named arguments are required for two or more paramet
 A lambda (`fn(...) => expr` or `|x| => expr`) captures every free identifier from its enclosing lexical scope by reference to its value at capture time. Captured bindings are immutable, so by-reference and by-value capture are observationally identical and the implementation MAY choose either. A captured binding outlives the surrounding stack frame: a closure returned from a function remains callable and continues to read the captured values.
 
 ```osprey
-fn makeAdder(n: int) -> (int) -> Result<int, MathError> = fn(x: int) => x + n
+fn makeAdder(n: int) -> (int) -> int = fn(x: int) => x + n
 
 let add5    = makeAdder(5)
 let add10   = makeAdder(10)
@@ -355,7 +339,7 @@ print(greet("world"))                                         // "hello world"
 ```
 
 ```osprey-ml
-makeAdder : int -> (int) -> Result<int, MathError>
+makeAdder : int -> (int) -> int
 makeAdder n = \(x : int) => x + n               // captures n
 
 add5    = makeAdder 5
@@ -517,7 +501,7 @@ match personResult {
 // Union: discriminate first
 let area = match shape {
     Circle    { radius }         => 3.14 * radius * radius
-    Rectangle { width, height }  => (width * height) ?: 0
+    Rectangle { width, height }  => width * height
 }
 ```
 
@@ -533,7 +517,7 @@ match personResult
 area =
     match shape
         Circle radius => 3.14 * radius * radius
-        Rectangle width height => (width * height) ?: 0
+        Rectangle width height => width * height
 ```
 
 Codegen resolves a **named-field** payload by name, never by declaration order, so reordering fields in a `type` cannot silently rebind a pattern. A **positionally-declared** variant ([TYPE-UNION-POSITIONAL](0003-Syntax.md#type-declarations)) has no field names to resolve against and is the one case resolved by index — the binder in column *i* binds payload slot *i*.
@@ -758,8 +742,7 @@ let values     = mapValues(ages)
 
 | Type        | Used by |
 | ----------- | ------- |
-| `MathError` | Checked numeric operators and `abs` |
-| `Error`     | Fallible builtins, including parsing, checked arithmetic, collection lookup, files, and processes |
+| `Error`     | Fallible builtins, including parsing, `checkedAdd`/`checkedSub`/`checkedMul`, collection lookup, files, and processes |
 
 `Success` and `Error` are the constructors of `Result<T, E>` (see [Error Handling](0013-ErrorHandling.md)).
 

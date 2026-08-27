@@ -97,7 +97,6 @@ print "tokenCount=${listLength tokens}\n"
 forEachList tokens print
 
 print "=== Scan Complete ===\n"
-0
 
 (** Check a token value at an exact position without hiding index failures. *)
 tokenIs : List int -> int -> int -> bool

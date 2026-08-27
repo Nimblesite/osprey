@@ -11,7 +11,7 @@
 [threshold]
 # Ceiling = 4.4% (2026-08-11), ratcheted down from 5%. Measured duplication is
 # 4.29% (2932 / 68400 LOC), down from 5.12% — the branch had BREACHED the old
-# 5% ceiling. Adding a clone of any size fails the build; run `make deslop`
+# 5% ceiling. Adding a clone of any size fails the build; run `make _deslop`
 # before pushing rather than discovering it in CI. This is deliberate: the
 # ceiling ratchets DOWN with the measurement, so it stays a ceiling rather than
 # drifting into headroom.

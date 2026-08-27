@@ -25,7 +25,11 @@ void osp_prof_thread_unregister(void) {}
 
 #if defined(__APPLE__)
 #include <mach-o/dyld.h>
+#include <mach-o/dyld_images.h>
+#include <mach-o/getsect.h>
+#include <mach-o/loader.h>
 #include <mach/mach.h>
+#include <mach/task_info.h>
 #else
 #include <link.h>
 #endif
@@ -378,6 +382,10 @@ static uint64_t strip_pac(uint64_t addr) {
 #endif
 }
 
+bool osp_prof_pc_is_code(uint64_t pc) {
+  return strip_pac(pc) >= OSP_PROF_MIN_CODE_ADDR;
+}
+
 static int walk_chain(uint64_t fp, uintptr_t lo, uintptr_t hi, uint64_t *out,
                       int max) {
   if (hi < lo + 16) {
@@ -410,14 +418,23 @@ int osp_prof_walk(uint64_t pc, uint64_t fp, uint64_t lr, uintptr_t lo,
     return 0;
   }
   int n = 0;
-  out[n++] = strip_pac(pc);
+  // [PROF-COLLECT-UNWIND] Frame 0 decides self-time, so it earns the floor every
+  // other frame already gets: `lr` below and every chained return in walk_chain
+  // are dropped under OSP_PROF_MIN_CODE_ADDR. The pc was the one frame trusted
+  // blindly, so a leaf that is not a code address became the self-time bucket.
+  const uint64_t leaf = strip_pac(pc);
+  if (osp_prof_pc_is_code(pc)) {
+    out[n++] = leaf;
+  }
   uint64_t chain[OSP_PROF_MAX_FRAMES];
   int chain_max = max - 2 < OSP_PROF_MAX_FRAMES ? max - 2 : OSP_PROF_MAX_FRAMES;
   int c = walk_chain(strip_pac(fp), lo, hi, chain, chain_max);
   lr = strip_pac(lr);
   // The leaf's caller may exist only in lr (prologue not yet run); dedupe
   // against the first chained return address so it is never double-counted.
-  if (lr >= OSP_PROF_MIN_CODE_ADDR && lr != out[0] && (c == 0 || chain[0] != lr)) {
+  // `n == 0` when the pc was floored out: there is no out[0] to dedupe against.
+  if (lr >= OSP_PROF_MIN_CODE_ADDR && (n == 0 || lr != out[0]) &&
+      (c == 0 || chain[0] != lr)) {
     out[n++] = lr;
   }
   for (int i = 0; i < c && n < max; i++) {
@@ -438,15 +455,82 @@ static void json_escape_into(FILE *f, const char *s) {
 }
 
 #if defined(__APPLE__)
+// [PROF-SYMBOLIZE-OFFLINE] The mach header address alone cannot decide which
+// image owns a pc. In the dyld shared cache every system dylib's header lives in
+// one region and its __TEXT in another, so header order is NOT text order, and
+// "greatest base <= pc" hands a libsystem_malloc pc to whichever unrelated image
+// has the nearest lower header — which is how a `_xzm_free` leaf was reported as
+// `task_get_special_port`. Emit the real executable range so the offline
+// symbolizer can decide ownership by containment.
+static const uint8_t *image_text_range(const struct mach_header *mh,
+                                       unsigned long *size) {
+  *size = 0;
+  if (mh == NULL) {
+    return NULL;
+  }
+#if defined(__LP64__)
+  return getsegmentdata((const struct mach_header_64 *)mh, SEG_TEXT, size);
+#else
+  return getsegmentdata(mh, SEG_TEXT, size);
+#endif
+}
+
+// The mach-o slice this image was mapped as, as `atos -arch` spells it.
+static const char *image_arch(const struct mach_header *mh) {
+#if defined(__LP64__)
+  const struct mach_header_64 *h = (const struct mach_header_64 *)mh;
+#else
+  const struct mach_header *h = mh;
+#endif
+  if (h->cputype != CPU_TYPE_ARM64) {
+    return h->cputype == CPU_TYPE_X86_64 ? "x86_64" : "unknown";
+  }
+  return (h->cpusubtype & ~CPU_SUBTYPE_MASK) == CPU_SUBTYPE_ARM64E ? "arm64e"
+                                                                  : "arm64";
+}
+
+// One image row. Shared by the dyld-registered loop and by dyld itself, which
+// is NOT in that list.
+static void dump_one_image(FILE *f, const char *sep, const char *path,
+                           const struct mach_header *mh, uint64_t slide) {
+  fprintf(f, "%s{\"path\":\"", sep);
+  json_escape_into(f, path);
+  unsigned long text_size = 0;
+  const uint8_t *text = image_text_range(mh, &text_size);
+  fprintf(f,
+          "\",\"base\":%" PRIu64 ",\"slide\":%" PRIu64 ",\"text\":%" PRIu64
+          ",\"text_size\":%" PRIu64 ",\"arch\":\"%s\"}",
+          (uint64_t)(uintptr_t)mh, slide, (uint64_t)(uintptr_t)text,
+          (uint64_t)text_size, image_arch(mh));
+}
+
+// dyld maps itself and every frame of process startup lives in it, but
+// `_dyld_image_count()` does not report it — the list it walks is the one dyld
+// keeps of what IT loaded. Without this row those frames have no owning image,
+// so they can only be printed as raw hex [PROF-SYMBOLIZE-OFFLINE]. The loader's
+// base comes from the task's dyld info, which is the only published route to it.
+static const struct mach_header *dyld_image(void) {
+  struct task_dyld_info info;
+  mach_msg_type_number_t count = TASK_DYLD_INFO_COUNT;
+  if (task_info(mach_task_self(), TASK_DYLD_INFO, (task_info_t)&info, &count) !=
+      KERN_SUCCESS) {
+    return NULL;
+  }
+  const struct dyld_all_image_infos *all =
+      (const struct dyld_all_image_infos *)(uintptr_t)info.all_image_info_addr;
+  return all ? all->dyldImageLoadAddress : NULL;
+}
+
 static void dump_images(FILE *f) {
   uint32_t count = _dyld_image_count();
   for (uint32_t i = 0; i < count; i++) {
-    fprintf(f, "%s{\"path\":\"", i == 0 ? "" : ",");
-    json_escape_into(f, _dyld_get_image_name(i));
-    const struct mach_header *mh = _dyld_get_image_header(i);
-    fprintf(f, "\",\"base\":%" PRIu64 ",\"slide\":%" PRIu64 "}",
-            (uint64_t)(uintptr_t)mh,
-            (uint64_t)_dyld_get_image_vmaddr_slide(i));
+    dump_one_image(f, i == 0 ? "" : ",", _dyld_get_image_name(i),
+                   _dyld_get_image_header(i),
+                   (uint64_t)_dyld_get_image_vmaddr_slide(i));
+  }
+  const struct mach_header *loader = dyld_image();
+  if (loader) {
+    dump_one_image(f, count == 0 ? "" : ",", "/usr/lib/dyld", loader, 0);
   }
 }
 static void write_exe_path(FILE *f) {
@@ -469,14 +553,40 @@ typedef struct {
   int written;
 } OspImageDump;
 
+// The ELF twin of image_text_range: the span of this image's EXECUTABLE PT_LOAD
+// segments. ELF has no shared cache, so header order does hold here — but the
+// symbolizer picks containment first on every platform, and a range it can trust
+// beats an ordering it has to assume.
+static uint64_t exec_span(const struct dl_phdr_info *info, uint64_t *start) {
+  uint64_t lo = 0, hi = 0;
+  int seen = 0;
+  for (uint16_t j = 0; j < info->dlpi_phnum; j++) {
+    const ElfW(Phdr) *ph = &info->dlpi_phdr[j];
+    if (ph->p_type != PT_LOAD || (ph->p_flags & PF_X) == 0) {
+      continue;
+    }
+    uint64_t seg_lo = (uint64_t)info->dlpi_addr + (uint64_t)ph->p_vaddr;
+    uint64_t seg_hi = seg_lo + (uint64_t)ph->p_memsz;
+    lo = (!seen || seg_lo < lo) ? seg_lo : lo;
+    hi = (!seen || seg_hi > hi) ? seg_hi : hi;
+    seen = 1;
+  }
+  *start = lo;
+  return hi > lo ? hi - lo : 0;
+}
+
 static int dump_image_cb(struct dl_phdr_info *info, size_t size, void *data) {
   (void)size;
   OspImageDump *dump = data;
   fprintf(dump->f, "%s{\"path\":\"", dump->written ? "," : "");
   dump->written = 1;
   json_escape_into(dump->f, info->dlpi_name ? info->dlpi_name : "");
-  fprintf(dump->f, "\",\"base\":%" PRIu64 ",\"slide\":%" PRIu64 "}",
-          (uint64_t)info->dlpi_addr, (uint64_t)info->dlpi_addr);
+  uint64_t text = 0;
+  uint64_t text_size = exec_span(info, &text);
+  fprintf(dump->f,
+          "\",\"base\":%" PRIu64 ",\"slide\":%" PRIu64 ",\"text\":%" PRIu64
+          ",\"text_size\":%" PRIu64 "}",
+          (uint64_t)info->dlpi_addr, (uint64_t)info->dlpi_addr, text, text_size);
   return 0;
 }
 static void dump_images(FILE *f) {

@@ -221,7 +221,10 @@ fn main() = {
         moveSel d   => { cursor = clamp(shift(cursor, d), rowCount(cache)) }
         flash       => status
         setFlash m  => { status = m }
-        nextSeq     => { seq = (seq + 1) ?: seq  seq }
+        nextSeq     => {
+            seq = (seq + 1) ?: seq
+            seq
+        }
     in handle Net
         fetch    => httpFetch()
         push t   => httpPush(t)

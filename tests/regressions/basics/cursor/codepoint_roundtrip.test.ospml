@@ -28,7 +28,6 @@ roundTrip cp =
         Error message =>
             print "cp=${cp} encode FAILED: ${message}\n"
             0
-    0
 
 (** An invalid scalar must be rejected by encode with an Error message. *)
 rejectInvalid cp =
@@ -95,7 +94,6 @@ match byteAt "é" 1
     Error message => print "b err\n"
 
 print "=== codepoint roundtrip complete ===\n"
-0
 
 (** Return whether encoding, decoding, and width calculation agree for a scalar. *)
 scalarRoundTrips cp =

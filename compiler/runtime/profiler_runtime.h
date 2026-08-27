@@ -110,8 +110,20 @@ void osp_prof_record_repeat(uint64_t t_ns, uint32_t thread_index,
                             uint32_t stack_index, uint8_t state);
 void osp_prof_note_drop(void);
 
+// True when `pc` can be a code address at all [PROF-COLLECT-UNWIND]. The first
+// page is never mapped executable on any supported platform, so a pc below it
+// is not an instruction. osp_prof_walk floors such a pc out of frame 0, which
+// means a caller that recorded the result anyway would publish a stack whose
+// frame 0 is a RETURN address -- and the offline symbolizer decides the -1
+// return-address adjustment POSITIONALLY ([PROF-SYMBOLIZE-OFFLINE]), so the
+// sample would attribute to the line after the call. Sample sources must
+// therefore drop such a capture rather than reshape it; see profiler_sampler.c.
+bool osp_prof_pc_is_code(uint64_t pc);
+
 // Validated frame-pointer chain walk [PROF-COLLECT-UNWIND]. Returns the frame
-// count written to `out` (leaf-first: pc, deduplicated lr, then the chain).
+// count written to `out`: the pc first when osp_prof_pc_is_code(pc), then the
+// deduplicated lr, then the chain. Every frame is floored at the same code
+// address bound, the leaf included, so the count can be 0 when nothing survives.
 int osp_prof_walk(uint64_t pc, uint64_t fp, uint64_t lr, uintptr_t lo,
                   uintptr_t hi, uint64_t *out, int max);
 

@@ -25,25 +25,21 @@ that computation finishes and returns its `T` value. `Fiber<T>` has no public
 record constructor; `spawn` is the construction operation.
 
 ```osprey
-fn work(value: int) -> Result<int, MathError> = value + 1
+fn work(value: int) -> int = value + 1
 
 let task = spawn work(41)
 let answer = await(task) ?: 0
 ```
 
 ```osprey-ml
-work : int -> Result<int, MathError>
+work : int -> int
 work value = value + 1
 
 task = spawn (work 41)
 answer = (await task) ?: 0
 ```
 
-Under [ARITH-CHECKED](0013-ErrorHandling.md#arithmetic-and-result--arith-checked),
-`task` is a `Fiber<Result<int, MathError>>`: `await` returns that complete source
-type and `?: 0` explicitly selects the example's overflow policy. It never
-erases a `Result` channel. Each spawn site allocates a distinct capture cell.
-Pointer and floating-point values likewise return with their source type.
+`await` returns the fiber's complete source type and never erases a `Result` channel. A fiber is inside the arithmetic totality guarantee: arithmetic in a spawned body cannot trap or wrap silently, and a fault reaches the enclosing `Arith` handler through the serialized `[EFFECTS-FIBER-PERFORM]` round trip, or the program is rejected ([ARITH-TOTAL](0037-ArithmeticEffects.md#the-guarantee--arith-total)). Each spawn site allocates a distinct capture cell. Pointer and floating-point values likewise return with their source type.
 
 A `Fiber<T>` handle is reusable: awaiting the same completed fiber more than
 once MUST return the same `T` value on every call. For a managed `T`, every

@@ -878,7 +878,7 @@ nestedRetryRegionsCase () =
                         true => 50
                         false => 0
                     outerTrail := "${outerTrail}o${toString tag}=${toString n}:${toString candidate}|"
-                    perform Budget.charge 10
+                    _ = perform Budget.charge 10
                     answer = resume candidate
                     outerSettled := "${outerSettled}o${toString tag}:${toString answer}|"
                     answer
@@ -893,7 +893,7 @@ nestedRetryRegionsCase () =
                                 true => 700
                                 false => 0
                             innerTrail := "${innerTrail}i${toString tag}=${toString n}:${toString candidate}|"
-                            perform Budget.charge 1
+                            _ = perform Budget.charge 1
                             answer = resume candidate
                             innerSettled := "${innerSettled}i${toString tag}:${toString answer}|"
                             answer

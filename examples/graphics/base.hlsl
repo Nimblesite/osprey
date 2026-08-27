@@ -8,7 +8,7 @@
 //
 // UNVERIFIED ON THE MACHINE THAT WROTE IT. Authored on macOS, which has no fxc,
 // no dxc and no Windows SDK, so this file has never been through a shader
-// compiler. `make graphics-shader` on Windows compiles all four entry points
+// compiler. `make _graphics-shader` on Windows compiles all four entry points
 // and is what turns careful transcription into a fact; README.md in this
 // directory lists the exact commands.
 //

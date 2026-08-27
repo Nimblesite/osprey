@@ -14,8 +14,7 @@ surface unless an ML example clarifies different call syntax.
 
 `printable` is documentation shorthand, not a user-declared type. It includes
 `int`, `float`, `bool`, `string`, `Unit`, explicitly erased `any`, and
-`Result<T, E>` when both payloads are printable (with `Error` and `MathError`
-accepted as error payloads). Concrete records, collections, functions,
+`Result<T, E>` when both payloads are printable. Concrete records, collections, functions,
 iterators, fibers, channels, and pointers are rejected. Results render as
 `Success(value)` or `Error(message)`; `Unit` renders as `0`; `print` appends a
 newline. An explicitly erased `any` value is a compatibility exception, not a
@@ -73,24 +72,19 @@ editor integration are specified in [Testing Framework](0027-TestingFramework.md
 
 ## Numeric Functions
 
-### `abs(n: int) -> Result<int, MathError>` — [BUILTIN-ABS]
-Returns `Success` containing the absolute value. Because `2^63` is not
-representable, the minimum signed 64-bit input returns
-`Error("integer overflow")`; it never wraps or panics.
+The numeric builtins are inside the arithmetic totality guarantee: none may trap, panic, wrap silently, or return an unspecified value ([ARITH-TOTAL](0037-ArithmeticEffects.md#the-guarantee--arith-total)). `abs` and `intDiv` follow the operators — plain `int`, with faults dispatched to the `Arith` handler. `checkedAdd`/`checkedSub`/`checkedMul` return a `Result` and are the explicit value-level form for code that wants overflow as data.
 
-### `intDiv(a: int, b: int) -> Result<int, Error>` — [BUILTIN-INTDIV]
-Truncates toward zero. A zero divisor returns `Error("division by zero")`;
-`intDiv(-9223372036854775808, -1)` returns `Error("integer overflow")`;
-all other inputs return `Success(quotient)`. The `/` operator instead returns
-`Result<float, MathError>`. A caller must handle either result explicitly
-([Result Preservation](0004-TypeSystem.md#result-preservation)).
+### `abs(n: int) -> int` — [BUILTIN-ABS] Returns the absolute value. Because `2^63` is not representable, the minimum signed 64-bit input performs `Arith.overflow`; it never wraps or panics.
+
+### `intDiv(a: int, b: int) -> int` — [BUILTIN-INTDIV]
+Truncates toward zero. A zero divisor performs `Arith.remainderByZero`; `intDiv(-9223372036854775808, -1)` performs `Arith.overflow`; every other input yields the quotient. The `/` operator instead returns `float`.
 
 ```osprey
-intDiv(7, 2)        // Success(3)
-intDiv(255643, 10)  // Success(25564)
-intDiv(5, 0)        // Error — "division by zero"
-intDiv(-9223372036854775808, -1) // Error — "integer overflow"
-fn half(n) -> Result<int, Error> = intDiv(n, 2)
+intDiv(7, 2)        // 3
+intDiv(255643, 10)  // 25564
+intDiv(5, 0)        // performs Arith.remainderByZero
+intDiv(-9223372036854775808, -1) // performs Arith.overflow
+fn half(n) = intDiv(n, 2)
 ```
 
 ### `toFloat(n: int) -> float` — [BUILTIN-TOFLOAT]
@@ -119,19 +113,14 @@ half : int -> Result<int, Error>
 half n = intDiv (n, 2)
 ```
 
-Without the declared return type, `half` also infers `Result<int, Error>`.
-A declared `-> int` is rejected rather than erasing failure.
+`half` infers `int` and requires an `Arith` handler at the program entry.
 
 ### `checkedAdd` / `checkedSub` / `checkedMul` — [BUILTIN-CHECKED-ARITH]
 Each has signature `(a: int, b: int) -> Result<int, Error>`. Overflow-checked
 integer addition, subtraction, and multiplication, lowering to
 `llvm.sadd.with.overflow`, `llvm.ssub.with.overflow`, and
 `llvm.smul.with.overflow` respectively. An overflowing operation returns
-`Error`; otherwise `Success(result)`. They are legacy named equivalents of the
-checked integer `+ - *` operators, but retain `Error` rather than `MathError`
-as their error payload for compatibility
-([ARITH-CHECKED](0013-ErrorHandling.md#arithmetic-and-result--arith-checked)).
-Their `Success` payload is never implicitly unwrapped.
+`Error`; otherwise `Success(result)`. They are the value-level form of overflow checking, for code that wants the failure as data rather than as an `Arith` operation ([ARITH-CHECKED](0013-ErrorHandling.md#arithmetic--arith-checked)). Their `Success` payload is never implicitly unwrapped.
 
 ```osprey
 checkedAdd(2, 3)                      // Success(5)
@@ -182,7 +171,7 @@ A cryptographically-secure uniform random integer in the half-open range
 `[0, n)`. The result is **unbiased**: it is drawn by rejection sampling, so every
 value in the range is equally likely (a plain `random() % n` is not). A
 non-positive `n` returns `Error`; otherwise `Success(value)` with
-`0 <= value < n`. Compose for an arbitrary range: `lo + (randomBelow(hi - lo) ?: 0)`.
+`0 <= value < n`. Compose for an arbitrary range: `lo + (randomBelowhi - lo)`.
 
 ```osprey
 let die = randomBelow(6) ?: 0          // a fair face 0..5
@@ -320,7 +309,7 @@ type CharStep = { codePoint: int, nextIndex: int }
 
 fn nextChar(s, i) = match codePointAt(s, i) {
     Success { value: cp } => match codePointWidth(cp) {
-        Success { value: w } => Success { value: CharStep { codePoint: cp, nextIndex: (i + w) ?: i } }
+        Success { value: w } => Success { value: CharStep { codePoint: cp, nextIndex: i + w } }
         Error   { message }  => Error { message }
     }
     Error { message } => Error { message }
@@ -336,7 +325,7 @@ nextChar (s, i) =
     match codePointAt (s, i)
         Success cp =>
             match codePointWidth cp
-                Success w => Success(value = CharStep(codePoint = cp, nextIndex = (i + w) ?: i))
+                Success w => Success(value = CharStep(codePoint = cp, nextIndex = i + w))
                 Error message => Error(message = message)
         Error message => Error(message = message)
 ```

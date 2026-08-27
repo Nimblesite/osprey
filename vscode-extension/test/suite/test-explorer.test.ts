@@ -207,6 +207,73 @@ suite("Osprey Test Explorer", () => {
       }
     });
 
+    // removeTestFile has to find a file item that is NOT a direct child of the
+    // controller — inside a workspace every test file hangs off a chain of
+    // directory items — and then leave no empty directories behind. Both arms
+    // of the prune matter: an inner directory is dropped from its parent, the
+    // outermost from the controller itself. A stale empty folder in the
+    // Explorer is how a deleted test file appears to still exist.
+    test("removeTestFile prunes the directory chain it emptied", async function () {
+      if (!compiler) {
+        this.skip();
+      }
+      this.timeout(30000);
+      const controller = newController();
+      const workspaceUri = vscode.Uri.file(fixtureDir);
+      const nestedDir = path.join(fixtureDir, "suites", "unit");
+      fs.mkdirSync(nestedDir, { recursive: true });
+      const uri = vscode.Uri.file(path.join(nestedDir, "nested.test.osp"));
+      fs.writeFileSync(uri.fsPath, PASS_FIXTURE);
+      const workspaceFolder = {
+        uri: workspaceUri,
+        name: "fixture",
+        index: 0,
+      } satisfies vscode.WorkspaceFolder;
+      const getWorkspaceFolder = sinon
+        .stub(vscode.workspace, "getWorkspaceFolder")
+        .returns(workspaceFolder);
+      const asRelativePath = sinon
+        .stub(vscode.workspace, "asRelativePath")
+        .callsFake((resource: vscode.Uri | string) =>
+          path.relative(
+            fixtureDir,
+            typeof resource === "string" ? resource : resource.fsPath,
+          ),
+        );
+      try {
+        // The workspace-relative path is the label, not the basename.
+        assert.strictEqual(
+          testFileLabel(uri),
+          path.join("suites", "unit", "nested.test.osp"),
+        );
+        const file = await refreshTestFile(controller, uri, compiler);
+        // Discovering the same file twice must reuse the chain, not clone it.
+        await refreshTestFile(controller, uri, compiler);
+        const suites = [...controller.items].map(([, item]) => item);
+        assert.strictEqual(suites.length, 1);
+        const unit = [...suites[0].children].map(([, item]) => item);
+        assert.strictEqual(unit.length, 1);
+        assert.strictEqual(unit[0].children.get(file.id), file);
+
+        // A file the tree has never seen is a no-op, not a throw.
+        removeTestFile(
+          controller,
+          vscode.Uri.file(path.join(nestedDir, "ghost.test.osp")),
+        );
+        assert.strictEqual(controller.items.size, 1);
+
+        removeTestFile(controller, uri);
+        assert.strictEqual(controller.items.size, 0);
+      } finally {
+        getWorkspaceFolder.restore();
+        asRelativePath.restore();
+        fs.rmSync(path.join(fixtureDir, "suites"), {
+          recursive: true,
+          force: true,
+        });
+      }
+    });
+
     test("a syntax error surfaces on the file item with no children", async function () {
       if (!compiler) {
         this.skip();

@@ -130,7 +130,7 @@ mut requests = 0      // Metrics layer  (server runtime)
 mut tasks = ""        // Db layer       (application data)
 mut taskCount = 0     // Db layer
 
-handle Persist
+let _ = handle Persist
     flush snap => {
         /// A relative path resolves against the PROCESS's working directory, not
         /// the program's, so this lands wherever the corpus was invoked from —
@@ -144,7 +144,10 @@ handle Persist
             // Say WHY [BUILTIN-FILE-ERRMSG]. Storing a bare -1 here is how a
             // failed persist reached the assertions as "expected true, got
             // false", with the operating system's own explanation discarded.
-            Error { message } => { print("[persist] ${message}") 0 - 1 ?: 0 }
+            Error { message } => {
+                print("[persist] ${message}")
+                0 - 1 ?: 0
+            }
         }
         diskBytes
     }

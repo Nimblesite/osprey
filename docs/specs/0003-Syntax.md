@@ -44,7 +44,10 @@ let name = "Alice"
 // and this arm interprets it — the sanctioned form of mutation.
 mut count = 0
 let total = handle Counter
-    tick => { count = (count + 1) ?: count  count }
+    tick => {
+        count = count + 1 ?: count
+        count
+    }
 in run()
 ```
 
@@ -55,7 +58,9 @@ name = "Alice"
 
 mut count = 0
 total = handle Counter
-    tick => count := (count + 1) ?: count
+    tick =>
+        count := count + 1 ?: count
+        count
 in run ()
 ```
 
@@ -96,7 +101,7 @@ distinct unspellable internal name, so repeated ignored parameters do not
 collide.
 
 ```osprey
-let count = range(0, 10) |> fold(0, |acc, _| => (acc + 1) ?: acc)
+let count = range(0, 10) |> fold(0, |acc, _| => acc + 1)
 ```
 
 A named function can use `_` only where its caller supplies arguments
@@ -149,7 +154,7 @@ A positional payload is declared, constructed, and matched in slot order:
 type Tree = Leaf | Node(Tree, Tree)
 let tree = Node(Node(Leaf, Leaf), Leaf)
 
-fn size(tree) -> Result<int, MathError> = match tree {
+fn size(tree) -> int = match tree {
     Leaf          => Success { value: 1 }
     Node(left, _) => 1 + size(left)
 }
@@ -216,6 +221,8 @@ something else, binding `xs` and lowering `[0]` as a separate statement.
 7. Logical AND `&&`
 8. Logical OR `||`
 9. Ternary `? :` and Result default `?:`, both right-associative
+
+`?:` supplies a fallback for a `Result` — an index, a lookup, a parse, a fallible call. Arithmetic is not a `Result` and never appears on its left ([ARITH-TOTAL](0037-ArithmeticEffects.md#the-guarantee--arith-total)).
 
 `x |> f(a)` lowers to `f(x, a)`. The two Default lambda spellings lower to
 `Expr::Lambda`:

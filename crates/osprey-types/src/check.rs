@@ -76,6 +76,33 @@ pub(crate) struct EffectInfo {
     pub ops: Vec<(String, String)>,
 }
 
+/// One value thrown away, banked until the substitution is final.
+/// Implements [BLOCK-DISCARD].
+struct Discard {
+    ty: Type,
+    position: Option<Position>,
+    /// Written as `let _ = e` rather than left bare in statement position.
+    explicit: bool,
+}
+
+impl Discard {
+    fn implicit(ty: Type, position: Option<Position>) -> Self {
+        Self {
+            ty,
+            position,
+            explicit: false,
+        }
+    }
+
+    fn explicit(ty: Type, position: Option<Position>) -> Self {
+        Self {
+            ty,
+            position,
+            explicit: true,
+        }
+    }
+}
+
 /// All cross-cutting declaration tables, plus the inference context.
 pub struct Checker {
     pub(crate) ctx: InferCtx,
@@ -106,6 +133,10 @@ pub struct Checker {
     /// are validated after inference so a variable constrained later in the
     /// same body is checked at its final type.
     pub(crate) builtin_uses: Vec<(String, Type)>,
+    /// Every discarded value, where it was written, and whether the author said
+    /// so with `let _ =`. Validated after inference for the same reason
+    /// `builtin_uses` is. Implements [BLOCK-DISCARD].
+    discards: Vec<Discard>,
     /// The built-in function names — user code may not redefine these.
     builtins: HashSet<String>,
     /// Stack of `(operation result type, handler answer type)` for the handler
@@ -158,6 +189,7 @@ impl Checker {
             let_tys: Vec::new(),
             list_tys: Vec::new(),
             builtin_uses: Vec::new(),
+            discards: Vec::new(),
             builtins: HashSet::new(),
             resume_ctx: Vec::new(),
             handler_scopes: Vec::new(),
@@ -283,15 +315,13 @@ impl Checker {
             Stmt::Expr {
                 value, position, ..
             } => {
+                // A statement is evaluated for its effects and its value is
+                // thrown away, so only `Unit` may stand here. Judging that
+                // needs the final substitution — a body-local variable can be
+                // constrained further down — so the type is banked for
+                // [`Checker::validate_discards`]. Implements [BLOCK-DISCARD].
                 let inferred = self.infer_expr(value, env);
-                if self.ctx.prune(&inferred).is_named(names::RESULT) {
-                    self.record_err(
-                        TypeError::new(
-                            "an unhandled `Result` cannot be discarded; use `match` or `?:`",
-                        ),
-                        *position,
-                    );
-                }
+                self.discards.push(Discard::implicit(inferred, *position));
             }
             _ => {}
         }
@@ -754,6 +784,13 @@ impl Checker {
         pos: Option<Position>,
     ) {
         let value_ty = self.infer_expr(value, env);
+        if name == DISCARD_BINDING {
+            // `let _ = e` is a deliberate discard, so it answers to the same
+            // rule a bare statement does — which lets an ordinary value through
+            // and still refuses a `Result`, whose error channel `_` cannot
+            // consent to losing. Implements [BLOCK-DISCARD], [ERROR-RESULT-DISCARD].
+            self.discards.push(Discard::explicit(value_ty.clone(), pos));
+        }
         let binding_ty = if let Some(te) = ty {
             let annotated = type_expr_to_type(te, &HashMap::new());
             self.unify_or_err(&annotated, &value_ty, &format!("let `{name}`"), pos);
@@ -901,6 +938,21 @@ impl Checker {
         }
     }
 
+    /// Reject every statement whose value is thrown away. A statement runs for
+    /// its effects, so `Unit` is the only type it may have; anything else is
+    /// dead computation, and most often a juxtaposition the reader took for a
+    /// call. A type variable that never resolved is left alone — nothing
+    /// proves it is not `Unit`. Implements [BLOCK-DISCARD].
+    fn validate_discards(&mut self) {
+        let discards = std::mem::take(&mut self.discards);
+        for d in discards {
+            let resolved = self.ctx.apply(&d.ty);
+            if let Some(message) = discard_error(&resolved, d.explicit) {
+                self.record_err(TypeError::new(message), d.position);
+            }
+        }
+    }
+
     /// Settle every arithmetic overload left open by
     /// [`Checker::deferred_arith`], now that nothing further can constrain an
     /// operand. Resolving one site can constrain another's operand — `fn twice(x)
@@ -941,6 +993,33 @@ impl Checker {
             .map(|(fname, fty)| (fname.clone(), type_name_to_type(fty, &pmap)))
             .collect();
         Some((args, fields, owner, is_record))
+    }
+}
+
+/// The binding name that means "throw this away" — the one spelling that opts
+/// out of [BLOCK-DISCARD] for an ordinary value.
+const DISCARD_BINDING: &str = "_";
+
+/// The diagnostic for discarding a value of type `ty`, or `None` when
+/// discarding it is legal. `explicit` marks a `let _ =`, which the author wrote
+/// on purpose and so needs no advice about binding it.
+/// Implements [BLOCK-DISCARD], [ERROR-RESULT-DISCARD].
+fn discard_error(ty: &Type, explicit: bool) -> Option<String> {
+    match ty {
+        // Never constrained, so nothing here proves it is not `Unit`.
+        Type::Var(_) => None,
+        Type::Con { name, .. } if name == names::UNIT => None,
+        // A `Result` is refused either way: dropping it drops the error channel,
+        // which is the one thing the type exists to make visible, and `_` cannot
+        // consent to that on the caller's behalf.
+        Type::Con { name, .. } if name == names::RESULT => {
+            Some("an unhandled `Result` cannot be discarded; use `match` or `?:`".to_string())
+        }
+        _ if explicit => None,
+        other => Some(format!(
+            "a `{other}` value cannot be discarded; bind it with `let _ =` \
+             if that is deliberate, or remove the statement"
+        )),
     }
 }
 
@@ -1060,6 +1139,7 @@ fn checked_program(program: &Program) -> Checker {
     checker.check(program, &mut env);
     checker.resolve_deferred_arithmetic();
     checker.validate_builtin_uses();
+    checker.validate_discards();
     let perform_tys = checker.perform_tys.clone();
     let perform_actual_tys = checker.perform_actual_tys.clone();
     let handler_tys = checker.handler_tys.clone();
@@ -1215,7 +1295,10 @@ fn resolve_positioned(ctx: &mut InferCtx, tys: &[(Position, Type)]) -> HashMap<(
 #[cfg(test)]
 mod tests {
     use super::infer_program;
+    use crate::check::check_program;
+    use crate::error::TypeError;
     use crate::testutil::{check, ok};
+    use osprey_ast::{Expr, Stmt};
     use osprey_syntax::parse_program;
 
     /// One generic effect over a generic RECORD, differing only in the
@@ -1322,6 +1405,269 @@ mod tests {
               let handled = risky(1) ?: 0\n\
               handled\n\
             }\n");
+    }
+
+    /// The fixed prelude every discard case is wrapped in. The orphan
+    /// statement always lands on LINE 5, so the position assertion below can
+    /// demand the error point AT the discarded value rather than at the block.
+    fn in_block(orphan: &str) -> String {
+        format!(
+            "fn add(a, b) = a + b\n\
+             fn double(x) = x * 2\n\
+             type Point = {{ x: int, y: int }}\n\
+             fn go() -> int = {{\n\
+               {orphan}\n\
+               0\n\
+             }}\n"
+        )
+    }
+
+    /// The orphan line of `in_block`.
+    const ORPHAN_LINE: u32 = 5;
+
+    /// Shapes whose value is computed and then THROWN AWAY. Not one of them
+    /// involves `Result`, which is the entire point: the guard in
+    /// `infer_block_stmt` tests `is_named(names::RESULT)`, so every shape here
+    /// is accepted in silence today.
+    const DISCARDED_PURE_VALUES: &[(&str, &str)] = &[
+        ("int literal", "42"),
+        ("string literal", "\"orphan\""),
+        ("bool literal", "true"),
+        ("float literal", "3.5"),
+        ("list literal", "[1, 2, 3]"),
+        ("comparison", "1 < 2"),
+        ("function value", "add"),
+        ("lambda", "|x| => x"),
+        ("interpolated string", "\"n=${42}\""),
+        ("record construction", "Point { x: 1, y: 2 }"),
+        ("field access", "Point { x: 1, y: 2 }.x"),
+        ("block value", "{ 1 }"),
+    ];
+
+    /// The same defect reached through ML-style juxtaposition. Default has no
+    /// application production, so `add 2 3` is not a call — before
+    /// [LEX-STATEMENT-BREAK] it silently split into `add` plus two orphan
+    /// literals. Each entry is a WHOLE program because the split changes the
+    /// statement count, including at TOP LEVEL.
+    const JUXTAPOSITION_SPLITS: &[(&str, &str)] = &[
+        (
+            "two arguments",
+            "fn add(a, b) = a + b\n\
+             fn go() -> int = {\n\
+               let r = add 2 3\n\
+               0\n\
+             }\n",
+        ),
+        (
+            "one argument",
+            "fn double(x) = x * 2\n\
+             fn go() -> int = {\n\
+               let r = double 5\n\
+               0\n\
+             }\n",
+        ),
+        (
+            "bare statement, not a let",
+            "fn add(a, b) = a + b\n\
+             fn go() -> int = {\n\
+               add 2 3\n\
+               0\n\
+             }\n",
+        ),
+        (
+            "identifier arguments",
+            "fn add(a, b) = a + b\n\
+             fn go(a, b) -> int = {\n\
+               let r = add a b\n\
+               0\n\
+             }\n",
+        ),
+        (
+            "inside a lambda body",
+            "fn double(x) = x * 2\n\
+             fn go() -> int = {\n\
+               let f = |n| => {\n\
+                 let r = double n\n\
+                 0\n\
+               }\n\
+               f(1)\n\
+             }\n",
+        ),
+        (
+            "inside a nested block",
+            "fn add(a, b) = a + b\n\
+             fn go() -> int = {\n\
+               let inner = {\n\
+                 let r = add 2 3\n\
+                 0\n\
+               }\n\
+               inner\n\
+             }\n",
+        ),
+        (
+            "at top level, outside any block",
+            "fn add(a, b) = a + b\n\
+             let r = add 2 3\n",
+        ),
+    ];
+
+    /// Statements that discard NOTHING and must stay accepted. Without these
+    /// the rule above is satisfied by a checker that rejects every expression
+    /// statement, which would delete side effects from the language.
+    const DISCARDS_NOTHING: &[(&str, &str)] = &[
+        (
+            "Unit-valued effectful call",
+            "fn go() -> int = {\n\
+               print(\"effect\")\n\
+               0\n\
+             }\n",
+        ),
+        (
+            "two Unit-valued calls in sequence",
+            "fn go() -> int = {\n\
+               print(\"a\")\n\
+               print(\"b\")\n\
+               0\n\
+             }\n",
+        ),
+        (
+            "the block's own tail expression",
+            "fn go() -> int = {\n\
+               let x = 1\n\
+               x\n\
+             }\n",
+        ),
+        (
+            "a nested block's tail expression",
+            "fn go() -> int = {\n\
+               let inner = {\n\
+                 let y = 2\n\
+                 y\n\
+               }\n\
+               inner\n\
+             }\n",
+        ),
+        (
+            "a Result consumed with ?:",
+            "fn risky(n: int) -> Result<int, MathError> = n + 1\n\
+             fn go() -> int = {\n\
+               let handled = risky(1) ?: 0\n\
+               handled\n\
+             }\n",
+        ),
+    ];
+
+    fn discard_errors(src: &str) -> Vec<TypeError> {
+        check(src)
+            .into_iter()
+            .filter(|e| e.message.contains("cannot be discarded"))
+            .collect()
+    }
+
+    fn messages(src: &str) -> Vec<String> {
+        check(src).into_iter().map(|e| e.message).collect()
+    }
+
+    #[test]
+    fn a_discarded_pure_value_statement_is_rejected() {
+        // ROOT CAUSE. `infer_block_stmt` guards the discard with
+        // `is_named(names::RESULT)`, so ONLY a discarded `Result` is an error;
+        // every other discarded value is accepted in silence. The rule is not
+        // "reject a discarded Result" — it is "a statement whose value is
+        // thrown away must have had nothing to throw away".
+        for (label, orphan) in DISCARDED_PURE_VALUES {
+            let src = in_block(orphan);
+            let found = discard_errors(&src);
+            assert!(
+                !found.is_empty(),
+                "a discarded {label} must be rejected; all errors were {:?} for:\n{src}",
+                messages(&src)
+            );
+            // A rejection with no source location is not a truthful error: it
+            // cannot point the author at the value being thrown away.
+            assert!(
+                found
+                    .iter()
+                    .any(|e| e.position.map(|p| p.line) == Some(ORPHAN_LINE)),
+                "the {label} rejection must point at the orphan on line \
+                 {ORPHAN_LINE}, got {:?}",
+                found.iter().map(|e| e.position).collect::<Vec<_>>()
+            );
+        }
+    }
+
+    #[test]
+    fn juxtaposition_does_not_split_into_silently_discarded_statements() {
+        // Before the fixes, `add 2 3` parsed as `let r = add` plus two orphan
+        // literals, so the program compiled, `r` bound a function value, and
+        // the binary printed a raw (ASLR-varying) pointer to stdout and
+        // exited 0. Rejection at EITHER stage satisfies this: a parse error
+        // from [LEX-STATEMENT-BREAK] is the primary outcome, and a discard
+        // error from [BLOCK-DISCARD] is the backstop.
+        for (label, src) in JUXTAPOSITION_SPLITS {
+            let parsed = parse_program(src);
+            assert!(
+                !parsed.errors.is_empty() || !check_program(&parsed.program).is_empty(),
+                "juxtaposition with {label} must be rejected, not split into \
+                 discarded statements; got zero errors for:\n{src}"
+            );
+        }
+    }
+
+    /// The second root, seen from the checker. A block's trailing expression
+    /// used to absorb the orphan a juxtaposition split left behind, so
+    /// `let r = double 5` became `let r = double` with the block's TAIL set to
+    /// `5`, and `go()` returned 5 where the source says 10.
+    ///
+    /// Why this could never be a checker fix: after the split the block holds
+    /// exactly one statement, a `Let`. There is no `Stmt::Expr` for
+    /// `infer_block_stmt` to look at, so generalising [BLOCK-DISCARD] — however
+    /// far — cannot reach it. The tail was not discarded; it was RETURNED. The
+    /// fix is [LEX-STATEMENT-BREAK], in the parser.
+    ///
+    /// So this asserts the outcome, not the diagnosis: the program is rejected,
+    /// AND no tree survives in which the block yields the bare argument. The
+    /// second half is what keeps the test honest — a rejection for some
+    /// unrelated reason would satisfy the first half alone.
+    #[test]
+    fn a_juxtaposed_argument_never_becomes_a_blocks_returned_value() {
+        const SRC: &str = "fn double(x) = x * 2\n\
+                           fn go() -> int = {\n\
+                             let r = double 5\n\
+                           }\n";
+        let parsed = parse_program(SRC);
+        assert!(
+            !parsed.errors.is_empty(),
+            "`let r = double 5` applies nothing and must be rejected; it parsed \
+             clean into {:?}",
+            parsed.program.statements
+        );
+        let tail = match parsed.program.statements.get(1) {
+            Some(Stmt::Function {
+                body: Expr::Block { value, .. },
+                ..
+            }) => value.as_deref(),
+            _ => None,
+        };
+        assert_ne!(
+            tail,
+            Some(&Expr::Integer(5)),
+            "the block still yields the ARGUMENT 5, so `go()` would return it \
+             instead of applying `double`"
+        );
+    }
+
+    #[test]
+    fn a_statement_that_discards_nothing_stays_accepted() {
+        // The counterweight: the rule must not be satisfied by rejecting every
+        // expression statement, which would delete side effects wholesale.
+        for (label, src) in DISCARDS_NOTHING {
+            assert!(
+                check(src).is_empty(),
+                "{label} discards nothing and must be accepted, got {:?} for:\n{src}",
+                messages(src)
+            );
+        }
     }
 
     #[test]

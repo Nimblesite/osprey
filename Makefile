@@ -7,8 +7,9 @@
 # --run`) and TypeScript sub-projects (vscode-extension, webcompiler, website).
 # =============================================================================
 
-.PHONY: build test language-test lint fmt clean ci setup run install bench partial-bench wasm wasm-site wasm-serve vsix-rebuild-reinstall bank bank-web bank-test bank-e2e hawk gpu-demo graphics graphics-shader _test_gc_stack_root \
-	_test_c_runtime _coverage_check_c_runtime _bank_test \
+.PHONY: build test lint fmt clean ci setup run install bench bench-osprey wasm wasm-site wasm-serve bank bank-web bank-test bank-e2e hawk graphics \
+	_language-test _deslop _gpu-demo _graphics-shader _vsix-rebuild-reinstall \
+	_test_gc_stack_root _test_c_runtime _coverage_check_c_runtime _bank_test _test_bench_tools \
 	_rebuild-install-vsix _vsix_clean _vsix_build _vsix_bundle _vsix_package _vsix_install
 
 # ---------------------------------------------------------------------------
@@ -179,6 +180,7 @@ test: build
 	$(MAKE) _test_profiler
 	$(MAKE) _test_vscode_extension
 	$(MAKE) _coverage_check_vscode_extension
+	$(MAKE) _test_bench_tools
 
 ## bank: Rebuild and run the Talon Bank showcase for manual testing.
 ##       Opens http://127.0.0.1:18790 (dashboard) / /api/accounts (JSON API).
@@ -217,8 +219,8 @@ _bank_test:
 	@echo "==> Bank native tests (osprey test)..."
 	./$(BIN) test examples/projects/modules/test
 
-## language-test: Run the assertion-driven Default + ML core language corpus.
-language-test: build
+# _language-test: Run the assertion-driven Default + ML core language corpus.
+_language-test: build
 	$(MAKE) _test_language_corpus
 
 ## bank-e2e: Browser end-to-end tests for the Talon Bank modules showcase
@@ -232,7 +234,7 @@ bank-e2e: bank-web
 ## NOT rewrite it — `make fmt` does that. The fmt check lives HERE because
 ## `lint` is what the required CI job runs; a format gate only in an optional
 ## job cannot block a merge.
-lint: deslop _lint
+lint: _deslop _lint
 
 _lint:
 	@echo "==> Linting..."
@@ -240,12 +242,12 @@ _lint:
 	cargo clippy --workspace --all-targets -- -D warnings
 	cd $(EXT_DIR) && npm run lint
 
-## deslop: Code-duplication gate. Fails the build when measured
-## duplication exceeds the ceiling in .deslop.toml (exit 3). Exclusions and the
-## threshold live in that committed config — the single source of truth. When
-## the `deslop` binary is absent this target FAILS: a gate that cannot run must
-## not report success. CI enforces the same ceiling through the official action.
-deslop:
+# _deslop: Code-duplication gate. Fails the build when measured
+# duplication exceeds the ceiling in .deslop.toml (exit 3). Exclusions and the
+# threshold live in that committed config — the single source of truth. When
+# the `deslop` binary is absent this target FAILS: a gate that cannot run must
+# not report success. CI enforces the same ceiling through the official action.
+_deslop:
 	@echo "==> Duplication gate (deslop)..."
 	@if ! command -v deslop >/dev/null 2>&1; then \
 		echo "FAIL: deslop is not installed, so the duplication gate cannot run."; \
@@ -497,12 +499,24 @@ _test_rust: _runtime_wasm
 	@echo "==> [rust] running tests with coverage..."
 	set -o pipefail && cargo llvm-cov --workspace --profile ci --lcov --output-path lcov.info 2>&1 | tee test.log
 
-# Per-crate enforcement: every rust crate is gated
-# independently against its own threshold (floor 95% + monotonic ratchet). lcov
-# SF records are grouped by their crates/<name>/ path; a single crate below its
-# gate fails the whole target. Aggregating the workspace into one number would
-# let a well-covered crate mask an under-tested one — exactly what the ratchet
-# exists to prevent.
+# Per-crate enforcement: each rust crate NAMED IN $(COVERAGE_THRESHOLDS_FILE) is
+# gated independently against its own threshold (floor 95% + monotonic ratchet).
+# lcov SF records are grouped by their crates/<name>/ path; a single crate below
+# its gate fails the whole target. Aggregating the workspace into one number
+# would let a well-covered crate mask an under-tested one — exactly what the
+# ratchet exists to prevent.
+#
+# ⚠️ THIS GATE IS INCOMPLETE, and the loop below cannot notice. It iterates the
+# JSON's keys, not the workspace's crates, so a crate absent from the JSON is
+# compiled, instrumented, measured by llvm-cov and then DISCARDED. Measured
+# 2026-08-27: crates/ has 11 members, the JSON names 9. osprey-fmt is at 98.8%
+# (487/493) and would pass; osprey-project is at 83.9% (3063/3652) — 3652 lines
+# eleven points under the floor this gate claims to enforce, invisible to it.
+# _coverage_check_c_runtime already solved exactly this for C: it walks
+# C_SHIPPED_UNITS and FAILS on any shipped unit that is neither gated nor
+# explicitly exempt, because "an ungated library cannot regress visibly". Rust
+# needs the same completeness loop over crates/*/Cargo.toml, with osprey-project
+# ratcheted in at its measured value so the check can land without masking it.
 _coverage_check_rust:
 	@if [ ! -f "$(COVERAGE_THRESHOLDS_FILE)" ]; then echo "FAIL: $(COVERAGE_THRESHOLDS_FILE) not found"; exit 1; fi; \
 	if [ ! -f lcov.info ]; then echo "[rust] FAIL: lcov.info not produced"; exit 1; fi; \
@@ -803,12 +817,12 @@ _tui: build
 	@echo "==> launching TUI demo (live GitHub API browser)"
 	./$(BIN) examples/tui/api_browser.osp --run
 
-## gpu-demo: Render the gpu* kernel demo (fractal, shaded sphere, composite)
+# _gpu-demo: Render the gpu* kernel demo (fractal, shaded sphere, composite)
 #            Runs on the CPU: [GPU-BACKEND-HOST] is the only backend, so the
 #            gpu* builtins are a dispatch surface, not silicon. For pixels on
 #            the actual GPU, see `make graphics`.
 #            FLAVOR=ml renders the ML twin, which prints byte-identical output.
-gpu-demo: build
+_gpu-demo: build
 	@echo "==> rendering gpu* kernel demo on the host backend (CPU)"
 	./$(BIN) tests/core/gpu/raster.test.$(if $(filter ml,$(FLAVOR)),ospml,osp) --run
 
@@ -838,14 +852,14 @@ GFX_DLL    := $(GFX_DIR)/ospgfx.dll
 GFX_LIB    := $(GFX_DIR)/libospgfx.dll.a
 GFX_SYSLIB := -ld3d12 -ldxgi -ld3dcompiler -ldxguid -luser32
 # Every entry point the run-time compiler will be asked for, with its target
-# profile. `make graphics-shader` compiles all four so a typo in one scene's
+# profile. `make _graphics-shader` compiles all four so a typo in one scene's
 # fragment cannot hide behind another scene running fine.
 GFX_ENTRIES := osp_vertex:vs_5_0 osp_fragment:ps_5_0 \
 	osp_fragment_opal:ps_5_0 osp_fragment_character:ps_5_0
 
 ifeq ($(MSYSTEM),)
 # Native PowerShell has neither bash for the recipes below nor a MinGW cc.
-graphics graphics-shader:
+graphics _graphics-shader:
 	@Write-Host "make graphics needs the MSYS2 UCRT64 shell -- see $(GFX_DIR)/README.md"
 else
 $(GFX_LIB): $(GFX_SRC) $(GFX_DIR)/ospgfx_d3d12.h
@@ -857,7 +871,7 @@ $(GFX_LIB): $(GFX_SRC) $(GFX_DIR)/ospgfx_d3d12.h
 # only surface as a window that refuses to open. fxc is the same compiler
 # D3DCompile is, so checking here checks exactly what the bridge will do; the
 # Windows SDK ships it, but not on PATH, so the check skips when it is absent.
-graphics-shader:
+_graphics-shader:
 	@if command -v fxc.exe >/dev/null 2>&1; then \
 		for entry in $(GFX_ENTRIES); do \
 			echo "==> checking $(GFX_SHADER) $${entry%%:*}"; \
@@ -871,7 +885,7 @@ graphics-shader:
 
 # The DLL lives beside its source rather than beside the compiled scene, so the
 # loader is pointed at it for the length of the run.
-graphics: build $(GFX_LIB) graphics-shader
+graphics: build $(GFX_LIB) _graphics-shader
 	@echo "==> launching Osprey graphics demo: $(SCENE) (close the window to exit)"
 	PATH="$(CURDIR)/$(GFX_DIR):$$PATH" ./$(BIN) $(GFX_DIR)/$(SCENE) --run
 endif
@@ -890,7 +904,7 @@ $(GFX_LIB): $(GFX_DIR)/ospgfx.m
 # The bridge compiles the shader at run time, so a syntax error in it would
 # otherwise only surface as a window that refuses to open. Check it up front
 # when the Metal toolchain is installed, and skip quietly when it is not.
-graphics-shader:
+_graphics-shader:
 	@if xcrun -sdk macosx --find metal >/dev/null 2>&1; then \
 		echo "==> checking $(GFX_SHADER)"; \
 		xcrun -sdk macosx metal -c $(GFX_SHADER) -o /dev/null; \
@@ -898,7 +912,7 @@ graphics-shader:
 		echo "==> skipping shader check (no Metal toolchain)"; \
 	fi
 
-graphics: build $(GFX_LIB) graphics-shader
+graphics: build $(GFX_LIB) _graphics-shader
 	@echo "==> launching Osprey graphics demo: $(SCENE) (close the window to exit)"
 	./$(BIN) $(GFX_DIR)/$(SCENE) --run
 endif
@@ -929,6 +943,14 @@ _website-dev:
 _website-build:
 	cd website && npm run build
 
+# _test_bench_tools: Unit-test the benchmark result merger. It is the component
+# that decides whether an Osprey-only re-run (`make bench-osprey`) is allowed to
+# overwrite published measurements, so it guards the whole recorded data set
+# against a failed partial run. The test existed but nothing ran it.
+_test_bench_tools:
+	@echo "==> Bench tooling tests..."
+	python3 benchmarks/test_merge_results.py
+
 ## bench: Build, then run the cross-language performance benchmark suite
 ##        (Osprey vs Rust/C/OCaml/Haskell — CPU via hyperfine, peak memory via
 ##        /usr/bin/time). Absent toolchains are skipped. Informational only:
@@ -938,27 +960,33 @@ _website-build:
 bench: build
 	@zsh benchmarks/run.sh $(BENCH_FILTER)
 
-## partial-bench: Re-run only the Osprey implementations and merge those
-##        measurements into the existing results. Every non-Osprey result is
-##        preserved byte-for-byte at the data-record level.
-partial-bench: build
+## bench-osprey: Re-time ONLY the Osprey columns — default, `--memory=arc`,
+##        `--memory=gc` and wasm32 — and merge them into the results already on
+##        disk. No other language is compiled, run or timed, so this is the fast
+##        loop for a compiler/runtime change. Every non-Osprey measurement in
+##        benchmarks/results/ survives byte-for-byte at the data-record level;
+##        the Osprey re-run happens in a temp dir and is published only if every
+##        case succeeded, so a broken build can never erase the recorded data.
+##        Needs one prior `make bench` for the other languages' baseline.
+##        Honours BENCH_FILTER=<substr>. See benchmarks/README.md.
+bench-osprey: build
 	@BENCH_PARTIAL=1 zsh benchmarks/run.sh $(BENCH_FILTER)
 
-## vsix-rebuild-reinstall: Clean → build → reinstall the Osprey VSCode
+# _vsix-rebuild-reinstall: Clean → build → reinstall the Osprey VSCode
 ##      extension in place, bundling the freshly-built Rust compiler as `osprey`.
 ##      Touches ONLY the Osprey extension ($(EXT_ID)) in the DEFAULT profile —
 ##      never another extension, never another VSCode profile. macOS only.
 ##      ONE `code` invocation (install --force, no separate uninstall) so the
 ##      running VSCode reconciles its extension host exactly once, not twice.
-vsix-rebuild-reinstall:
+_vsix-rebuild-reinstall:
 	$(MAKE) _vsix_clean
 	$(MAKE) build
 	$(MAKE) _vsix_bundle
 	$(MAKE) _vsix_package
 	$(MAKE) _vsix_install
 
-# _rebuild-install-vsix: deprecated private alias of `vsix-rebuild-reinstall`.
-_rebuild-install-vsix: vsix-rebuild-reinstall
+# _rebuild-install-vsix: deprecated private alias of `_vsix-rebuild-reinstall`.
+_rebuild-install-vsix: _vsix-rebuild-reinstall
 
 # --- vsix sub-steps ---------------------------------------------------------
 _vsix_clean:
