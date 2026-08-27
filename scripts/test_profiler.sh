@@ -52,31 +52,39 @@ assert summary["sampleCount"] > 20, f"too few samples: {summary['sampleCount']}"
 assert any(fn["name"] == "fib" for fn in summary["hotFunctions"]), "fib not hot"
 EOF
 
-# [PROF-COLLECT-UNWIND] Self-time must land on the code that is actually running.
-# profdemo spends ~100% of its CPU in `fib`/`add`/`sub` — pure integer arithmetic
-# that performs no syscall. Any self-time attributed to a Mach routine or to an
-# unsymbolized address is therefore a misattributed leaf frame, and self-time is
-# the whole point of a profiler. This assertion FAILS today: see the quarantine
-# in compiler/runtime/profiler_sampler.c.
+# [PROF-SYMBOLIZE-OFFLINE] Every leaf must be NAMED, and named from its own
+# image. This is what actually went wrong: a dyld-shared-cache dylib has no file
+# on disk, so the symbolizer substituted the profiled binary and resolved
+# libsystem addresses against Osprey's symbol table; and `atos` left on its host
+# default slice read the arm64 layout of a universal dylib the kernel had mapped
+# as arm64e. Together they printed `task_get_special_port` for what dladdr calls
+# `mach_absolute_time`, and bare hex for 40% of samples. A wrong name on a right
+# address is worse than no name, because only the wrong name looks like data.
+#
+# Do NOT reinstate the old form of this check, which counted any `mach_`,
+# `task_` or `_platform_` leaf as bogus on the premise that profdemo performs no
+# syscalls. It performs no syscalls and still spends most of its time in the
+# allocator: `fn add(a, b) = a + b ?: 0` heap-allocates a Result for every
+# arithmetic operation, so profdemo is an allocation benchmark. Apple's own
+# /usr/bin/sample, with the Osprey profiler switched off entirely, reports the
+# same shape (mach_absolute_time 416, _xzm_free 220, fib 23), so a correct
+# profiler CANNOT satisfy that premise. `fib` legitimately holds ~1% SELF and
+# ~100% TOTAL, and TOTAL is asserted below.
 python3 - <<'EOF'
 import json
 summary = json.load(open("profdemo.profile.json"))
 total = summary["sampleCount"]
-bogus = sum(f["selfSamples"] for f in summary["hotFunctions"]
-            if f["kind"] != "user" and (f["name"].startswith("0x")
-                                        or f["name"].startswith("task_")
-                                        or f["name"].startswith("host_")
-                                        or f["name"].startswith("pthread_")
-                                        or f["name"].startswith("_platform_")
-                                        or f["name"].startswith("__get")))
-share = 100.0 * bogus / total
-assert share < 5.0, (
-    f"{share:.1f}% of self-samples ({bogus}/{total}) land on kernel or "
-    "unsymbolized leaves; profdemo makes no syscalls, so the sampled leaf PC "
-    "is wrong and every SELF% figure is fiction")
-hot = max(summary["hotFunctions"], key=lambda f: f["selfSamples"])
-assert hot["kind"] == "user", (
-    f"hottest self-time frame is {hot['name']!r} ({hot['selfPct']}%), not Osprey code")
+hexed = [f["name"] for f in summary["hotFunctions"] if f["name"].startswith("0x")]
+assert not hexed, (
+    f"unsymbolized hex leaves {hexed[:3]}: an image is being resolved against "
+    "the wrong object or the wrong architecture slice [PROF-SYMBOLIZE-OFFLINE]")
+# [PROF-COLLECT-UNWIND] The fp chain must still reach the program's own code:
+# whatever the leaf is, `fib` has to hold essentially all of the TOTAL time.
+fib = next((f for f in summary["hotFunctions"] if f["name"] == "fib"), None)
+assert fib is not None, "fib absent from hotFunctions"
+assert fib["totalPct"] > 50.0, (
+    f"fib holds only {fib['totalPct']}% TOTAL; the frame-pointer chain is not "
+    "reaching Osprey frames [PROF-COLLECT-UNWIND]")
 EOF
 
 # ---- SPEC-DERIVED CLI CONFORMANCE ------------------------------------------
@@ -113,25 +121,30 @@ summary = json.load(open("profdemo.profile.json"))
 total = summary["sampleCount"]
 frames = summary["hotFunctions"]
 
-# [PROF-COLLECT-UNWIND] "Frame 0 is the precise PC." Self-time IS frame 0, and
-# profdemo spends ~100% of its CPU in fib/add/sub — pure integer arithmetic
-# performing no syscall. macOS `sample` on the same workload attributes 549/549
-# to Osprey code and nothing to libsystem, so any self-time landing on a kernel
-# routine or an unsymbolized address is a misattributed leaf.
-KERNELISH = ("task_", "host_", "pthread_", "_platform_", "__get", "mach_")
-bogus = sum(f["selfSamples"] for f in frames
-            if f["kind"] != "user" and (f["name"].startswith("0x")
-                                        or f["name"].startswith(KERNELISH)))
-share = 100.0 * bogus / total
-assert share < 5.0, (
-    f"[PROF-COLLECT-UNWIND] frame 0 is not the precise PC: {share:.1f}% of "
-    f"self-samples ({bogus}/{total}) land on kernel or unsymbolized leaves")
+# [PROF-COLLECT-UNWIND] "Frame 0 is the precise PC." The walk must report the
+# pc it captured, so self-time lands wherever the thread actually was — which
+# for profdemo is mostly the ALLOCATOR: `fn add(a, b) = a + b ?: 0` heap-boxes
+# a Result for every arithmetic operation, and fib(35) performs millions.
+# Apple's /usr/bin/sample, with the Osprey profiler switched off, reports the
+# same shape (mach_absolute_time 416, _xzm_free 220, _xzm_xzone_malloc_tiny
+# 156, fib 23), so this is the workload, not a capture defect.
+#
+# What must hold is that the frame-pointer chain still reaches Osprey code:
+# whatever the leaf is, `fib` has to own essentially all of the TOTAL time.
+# A capture reading a foreign thread, or a chain that failed validation, would
+# break this immediately.
+fib = next((f for f in frames if f["name"] == "fib"), None)
+assert fib is not None, "[PROF-COLLECT-UNWIND] fib absent from hotFunctions"
+assert fib["totalPct"] > 50.0, (
+    f"[PROF-COLLECT-UNWIND] fib holds only {fib['totalPct']}% TOTAL; the "
+    "frame-pointer chain is not reaching Osprey frames")
 
-# [PROF-COLLECT-UNWIND] the hottest leaf must be the code that is running.
-hot = max(frames, key=lambda f: f["selfSamples"])
-assert hot["kind"] == "user", (
-    f"[PROF-COLLECT-UNWIND] hottest self-time frame is {hot['name']!r} "
-    f"({hot['selfPct']}%), not Osprey code")
+# [PROF-COLLECT-UNWIND] Every leaf must sit in an image the run actually
+# loaded. A pc that no image claims is a corrupt capture — the failure the old
+# "kernel leaves are bogus" heuristic was reaching for, stated so that a
+# correct profiler can satisfy it.
+assert all(not f["name"].startswith("0x") for f in frames), (
+    "[PROF-COLLECT-UNWIND] a leaf resolved to no image at all")
 
 # [PROF-SYMBOLIZE-OFFLINE] "...falling back to `atos` on macOS and raw hex
 # names when no symbolizer is present." A symbolizer IS present here, so raw

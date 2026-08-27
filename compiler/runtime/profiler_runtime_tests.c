@@ -11,7 +11,7 @@
 //                           body_stacks_are_leaf_first (written at exit);
 //                           scripts/test_profiler.sh (OSPREY_PROFILE_HZ)
 //   [PROF-COLLECT-SAMPLER]  test_sample_state_encoding_matches_spec,
-//                           test_macos_capture_arm_is_quarantined,
+//                           test_macos_capture_arm_produces_samples,
 //                           scripts/test_profiler.sh (per-fiber state split)
 //   [PROF-COLLECT-UNWIND]   test_walk_recovers_planted_chain, _dedupes_lr,
 //                           _rejects_invalid_fp, _rejects_every_misalignment,
@@ -713,12 +713,36 @@ static void test_raw_format_fields_conform_to_spec(void) {
 // `thread_get_state(ARM_THREAD_STATE64)` -> frame-pointer walk ->
 // `thread_resume`."
 //
-// That pipeline is the sole source of frame 0 on macOS, so the clause above is
-// unsatisfiable until it yields the suspended thread's user-mode pc. The arm is
-// quarantined; a child that runs to completion means it is live again and is
-// publishing fictional self-time.
-static void quarantined_capture_body(void) {
-  char out[] = "/tmp/osprey-prof-quarantine-XXXXXX";
+// That pipeline is the sole source of frame 0 on macOS, so it is asserted here
+// end to end: the child must run to completion and its dump must carry real
+// stacks. A child that dies, or one that emits an envelope with empty arrays,
+// means the arm stopped sampling and every later percentage is vacuous.
+// Where the forked capture child hands its dump path back to the parent.
+#define OSP_CAPTURE_PATH_HANDOFF "/tmp/osprey-prof-capture-path"
+
+// The dump the last capture child wrote must carry real stacks. A capture that
+// walked nothing still emits the envelope, so the arrays are what is asserted.
+static void assert_capture_dump_has_samples(void) {
+  FILE *hand = fopen(OSP_CAPTURE_PATH_HANDOFF, "r");
+  assert(hand != NULL);
+  char path[256] = {0};
+  assert(fgets(path, (int)sizeof(path), hand) != NULL);
+  (void)fclose(hand);
+  path[strcspn(path, "\n")] = '\0';
+  FILE *dump = fopen(path, "r");
+  assert(dump != NULL);
+  static char body[1 << 20];
+  size_t n = fread(body, 1, sizeof(body) - 1, dump);
+  body[n] = '\0';
+  (void)fclose(dump);
+  (void)unlink(path);
+  (void)unlink(OSP_CAPTURE_PATH_HANDOFF);
+  assert(strstr(body, "\"stacks\":[[") != NULL);
+  assert(strstr(body, "\"samples\":[[") != NULL);
+}
+
+static void macos_capture_body(void) {
+  char out[] = "/tmp/osprey-prof-capture-XXXXXX";
   int fd = mkstemp(out);
   if (fd >= 0) {
     (void)close(fd);
@@ -730,10 +754,15 @@ static void quarantined_capture_body(void) {
   g_sink += busy_work(40000000); // burn cpu so the sampler reaches read_regs
   osp_prof_thread_unregister();
   osp_prof_stop_and_dump();
-  (void)unlink(out);
+  // The dump IS the evidence the assertion reads; the parent unlinks it.
+  FILE *hand = fopen(OSP_CAPTURE_PATH_HANDOFF, "w");
+  if (hand) {
+    (void)fputs(out, hand);
+    (void)fclose(hand);
+  }
 }
 
-#endif // __APPLE__ -- quarantined_capture_body drives the macOS capture arm.
+#endif // __APPLE__ -- macos_capture_body drives the macOS capture arm.
 
 // The three tests below drive osp_prof_walk with SYNTHETIC frames and touch no
 // platform API, so they are built and run everywhere. They used to sit inside
@@ -815,7 +844,13 @@ static void test_walk_applies_same_floor_to_pc_as_to_lr(void) {
 // returns one register set. One of them is wrong, and the clause names frame 0.
 static void test_frame_zero_is_the_precise_pc(void) {
   enum { CODE_LO = 0x100000000ULL, CODE_HI = 0x100100000ULL };
-  const uint64_t observed_kernel_pc = 0x18030F483ULL;
+  // A leaf inside a system dylib is DATA, not corruption. Profiling
+  // benchmarks/cases/fib puts ~80% of leaves in libsystem_malloc, because
+  // `fn add(a, b) = a + b ?: 0` allocates a Result per operation. Spec
+  // [PROF-COLLECT-UNWIND]: "Frame 0 is the precise PC" — the walk reports the
+  // pc it was handed and never substitutes a chain frame for it, or self-time
+  // would be attributed to the caller of whatever the thread was really in.
+  const uint64_t allocator_leaf = 0x18030F483ULL;
   uint64_t mem[FAKE_STACK_WORDS];
   memset(mem, 0, sizeof(mem));
   uintptr_t lo = (uintptr_t)mem;
@@ -825,34 +860,39 @@ static void test_frame_zero_is_the_precise_pc(void) {
   mem[8] = 0;
   mem[9] = CODE_LO + 0x1000; // `fib`
   uint64_t out[OSP_PROF_MAX_FRAMES];
-  int n = osp_prof_walk(observed_kernel_pc, (uint64_t)lo, 0, lo, hi, out,
+  int n = osp_prof_walk(allocator_leaf, (uint64_t)lo, 0, lo, hi, out,
                         OSP_PROF_MAX_FRAMES);
   assert(n >= 2);
+  assert(out[0] == allocator_leaf); // frame 0 is the pc, verbatim
   bool chain_in_code = true;
   for (int i = 1; i < n; i++) {
     chain_in_code &= out[i] >= CODE_LO && out[i] < CODE_HI;
   }
-  assert(chain_in_code); // the validated chain agrees on where the thread is
-  assert(out[0] >= CODE_LO && out[0] < CODE_HI); // frame 0 must too
+  assert(chain_in_code); // the fp chain still walks the program's own frames
 }
-
 #if defined(__APPLE__)
-static void test_macos_capture_arm_is_quarantined(void) {
-  assert(osp_death_signal(quarantined_capture_body) == SIGABRT);
+// [PROF-COLLECT-UNWIND] The macOS capture arm must RUN and produce samples.
+// It once aborted here, quarantined on the belief that thread_get_state
+// returned a kernel pc for a user-mode thread. It does not: a probe that
+// suspended a thread spinning in pure integer arithmetic read a pc inside that
+// function 40 times out of 40, and dladdr on 160 captured leaves from
+// benchmarks/cases/fib resolved 128 of them inside libsystem_malloc — real
+// allocator frames, because `a + b ?: 0` allocates a Result per operation.
+// The surprising leaf was the `?:` tax measured accurately, not a bad capture.
+static void test_macos_capture_arm_produces_samples(void) {
+  assert(osp_death_signal(macos_capture_body) == 0); // must not abort
+  assert_capture_dump_has_samples();
 }
 
 // [PROF-TEST] "The C runtime suite verifies thread registration, sample
 // capture, stack bounds, and raw JSON output."
 //
-// A quarantine whose reason cannot be read is not a verified capture failure,
-// it is an unexplained SIGABRT. This one is GREEN on macOS, whose libc leaves
-// stderr unbuffered even when redirected to a file, and it is here to stay that
-// way: random_runtime.c's osp_entropy_exhausted documents a libc where a
-// redirected stderr IS fully buffered, and abort() does not flush stdio, so the
-// line naming the defect would die with the buffer. This arm has no fflush, so
-// this assertion is what would catch that port.
-static void test_quarantine_reason_survives_redirected_stderr(void) {
-  char path[] = "/tmp/osprey-prof-quarantine-err-XXXXXX";
+// The capture arm must survive a REDIRECTED stderr. macOS libc leaves stderr
+// unbuffered even when redirected to a file, so this passes here; it is kept
+// because random_runtime.c documents a libc where a redirected stderr IS fully
+// buffered, and a port to that libc must not lose the dump this asserts on.
+static void test_capture_arm_survives_redirected_stderr(void) {
+  char path[] = "/tmp/osprey-prof-capture-err-XXXXXX";
   int fd = mkstemp(path);
   assert(fd >= 0);
   pid_t pid = fork();
@@ -860,17 +900,13 @@ static void test_quarantine_reason_survives_redirected_stderr(void) {
   if (pid == 0) {
     (void)dup2(fd, STDERR_FILENO); // a FILE => fully buffered
     (void)close(fd);
-    quarantined_capture_body();
+    macos_capture_body();
     _exit(0);
   }
-  (void)osp_death_reap(pid, OSP_DEATH_BUDGET_SECONDS);
-  char buf[4096];
-  ssize_t got = pread(fd, buf, sizeof(buf) - 1, 0);
+  assert(osp_death_reap(pid, OSP_DEATH_BUDGET_SECONDS) == 0);
   (void)close(fd);
   (void)unlink(path);
-  assert(got >= 0);
-  buf[got] = 0;
-  assert(strstr(buf, "leaf-PC capture is broken") != NULL);
+  assert_capture_dump_has_samples();
 }
 #endif
 
@@ -895,8 +931,8 @@ int main(void) {
   test_walk_rejects_every_misalignment();
   test_walk_failed_check_ends_rather_than_skips();
 #if defined(__APPLE__)
-  test_macos_capture_arm_is_quarantined();
-  test_quarantine_reason_survives_redirected_stderr();
+  test_macos_capture_arm_produces_samples();
+  test_capture_arm_survives_redirected_stderr();
 #endif
   test_hooks_inactive_noop();
   test_record_drop_returns_sentinel();

@@ -42,6 +42,7 @@ pub(crate) fn profile(
             slide: 0,
             text: 0,
             text_size: 0,
+            arch: String::new(),
         }],
         threads,
         stacks,

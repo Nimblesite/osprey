@@ -21,9 +21,10 @@ pub(crate) struct LlvmSymbolizer {
     /// The executable handed to the CLI — the fallback object when an image
     /// path recorded in the profile no longer exists.
     binary: PathBuf,
-    /// image path → `(base, slide)`, needed to rebuild SLID addresses for
-    /// the `atos -l <base>` fallback.
-    images: BTreeMap<PathBuf, (u64, u64)>,
+    /// image path → `(base, slide, arch)`, needed to rebuild SLID addresses for
+    /// the `atos -l <base>` fallback and to pin `atos -arch` to the slice the
+    /// runtime actually mapped.
+    images: BTreeMap<PathBuf, (u64, u64, String)>,
 }
 
 impl LlvmSymbolizer {
@@ -31,7 +32,7 @@ impl LlvmSymbolizer {
     pub(crate) fn new(binary: &Path, images: &[Image]) -> Self {
         let images = images
             .iter()
-            .map(|i| (PathBuf::from(&i.path), (i.base, i.slide)))
+            .map(|i| (PathBuf::from(&i.path), (i.base, i.slide, i.arch.clone())))
             .collect();
         Self {
             binary: binary.to_path_buf(),
@@ -44,13 +45,26 @@ impl LlvmSymbolizer {
     /// output line becomes a single-frame chain (`atos -i` is not used).
     fn try_atos(&self, image: &Path, unslid_addrs: &[u64]) -> Option<Vec<Vec<SymFrame>>> {
         let tool = find_tool("atos")?;
-        let (base, slide) = self.images.get(image).copied().unwrap_or((0, 0));
-        let object = if image.exists() {
-            image
-        } else {
+        let (base, slide, arch) = self
+            .images
+            .get(image)
+            .cloned()
+            .unwrap_or((0, 0, String::new()));
+        // `atos` resolves a dyld-shared-cache image from the LIVE cache, so the
+        // recorded path is handed over even when no such file exists on disk —
+        // /usr/lib/system/libsystem_malloc.dylib is cache-only on current macOS
+        // and atos still names `_xzm_free` correctly from it. Only the main
+        // image may fall back to the CLI binary, and only because that one is
+        // genuinely the same object under a moved path.
+        let object = if !image.exists() && is_main_image(image, &self.binary) {
             self.binary.as_path()
+        } else {
+            image
         };
         let mut command = Command::new(tool);
+        if !arch.is_empty() {
+            let _ = command.arg("-arch").arg(&arch);
+        }
         let _ = command
             .arg("-o")
             .arg(object)
@@ -79,19 +93,40 @@ impl Symbolize for LlvmSymbolizer {
         image: &Path,
         unslid_addrs: &[u64],
     ) -> Result<Vec<Vec<SymFrame>>, ProfileError> {
-        let object = resolve_object(image, &self.binary);
-        Ok(try_llvm(&object, unslid_addrs)
+        Ok(resolve_object(image, &self.binary)
+            .and_then(|object| try_llvm(&object, unslid_addrs))
             .or_else(|| self.try_atos(image, unslid_addrs))
             .unwrap_or_else(|| hex_chains(unslid_addrs)))
     }
 }
 
-/// Prefer the dSYM DWARF companion when dsymutil produced one, else the
-/// image itself (falling back to the CLI-provided binary if the recorded
-/// image path is gone).
-fn resolve_object(image: &Path, fallback: &Path) -> PathBuf {
-    let primary = if image.exists() { image } else { fallback };
-    dsym_object(primary).unwrap_or_else(|| primary.to_path_buf())
+/// Prefer the dSYM DWARF companion when dsymutil produced one, else the image
+/// itself. `None` when this image has no object on disk that describes IT.
+///
+/// The CLI binary substitutes only for the main image under a moved path.
+/// Substituting it for any other image is what invented symbol names: every
+/// dyld-shared-cache dylib is absent from disk, so their addresses were
+/// resolved against the profiled program's own symbol table and came back as
+/// whatever symbol happened to precede that offset — `mach_absolute_time`
+/// reported as `task_get_special_port`. A wrong name is worse than no name,
+/// because only the wrong name looks like data [PROF-SYMBOLIZE-OFFLINE].
+fn resolve_object(image: &Path, fallback: &Path) -> Option<PathBuf> {
+    let primary = match (image.exists(), is_main_image(image, fallback)) {
+        (true, _) => image,
+        (false, true) => fallback,
+        (false, false) => return None,
+    };
+    Some(dsym_object(primary).unwrap_or_else(|| primary.to_path_buf()))
+}
+
+/// Whether `image` names the same binary as the CLI's `fallback`. Compared by
+/// file name because the recorded path is where the program ran, which need
+/// not be where it now sits.
+fn is_main_image(image: &Path, fallback: &Path) -> bool {
+    match (image.file_name(), fallback.file_name()) {
+        (Some(a), Some(b)) => a == b,
+        _ => false,
+    }
 }
 
 /// dsymutil layout: `<bin>.dSYM/Contents/Resources/DWARF/<basename>`.
@@ -322,11 +357,34 @@ mod tests {
         std::fs::create_dir_all(&dwarf_dir).unwrap();
         let dwarf = dwarf_dir.join("app");
         std::fs::write(&dwarf, b"dwarf").unwrap();
-        assert_eq!(resolve_object(&binary, Path::new("/fallback")), dwarf);
-        // Missing image -> the CLI-provided binary stands in.
-        assert_eq!(resolve_object(&dir.join("gone"), &binary), dwarf);
+        assert_eq!(
+            resolve_object(&binary, Path::new("/fallback")),
+            Some(dwarf.clone())
+        );
+        // The MAIN image under a moved path still stands in: same file name,
+        // so it is the same object.
+        assert_eq!(resolve_object(&dir.join("moved/app"), &binary), Some(dwarf));
         std::fs::remove_dir_all(dir.join("app.dSYM")).unwrap();
-        assert_eq!(resolve_object(&binary, Path::new("/fallback")), binary);
+        assert_eq!(
+            resolve_object(&binary, Path::new("/fallback")),
+            Some(binary.clone())
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A foreign image with no file on disk resolves to NO object. Standing the
+    /// profiled binary in for it is what named `mach_absolute_time` as
+    /// `task_get_special_port`: every dyld-shared-cache dylib is absent from
+    /// disk, so their addresses were read against Osprey's own symbol table
+    /// [PROF-SYMBOLIZE-OFFLINE].
+    #[test]
+    fn resolve_object_refuses_to_stand_a_foreign_image_in() {
+        let dir = testutil::temp_dir("foreign");
+        let binary = dir.join("app");
+        std::fs::write(&binary, b"bin").unwrap();
+        let cache_only = Path::new("/usr/lib/system/libsystem_malloc.dylib");
+        assert!(!cache_only.exists(), "fixture assumes a cache-only dylib");
+        assert_eq!(resolve_object(cache_only, &binary), None);
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -413,6 +471,7 @@ mod tests {
             slide: 0,
             text: 0,
             text_size: 0,
+            arch: String::new(),
         };
         let sym = LlvmSymbolizer::new(&bin, &[image]);
         let Some(chains) = sym.try_atos(&bin, &[addr]) else {

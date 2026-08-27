@@ -288,6 +288,7 @@ mod tests {
                 slide: 0,
                 text: 0,
                 text_size: 0,
+                arch: String::new(),
             },
             Image {
                 path: "/b".to_owned(),
@@ -295,6 +296,7 @@ mod tests {
                 slide: 0,
                 text: 0,
                 text_size: 0,
+                arch: String::new(),
             },
         ];
         assert_eq!(image_index_for(&images, 499), Some(0));
@@ -308,7 +310,7 @@ mod tests {
     /// This is the dyld shared cache's real layout: every system dylib's header
     /// lives in one region and its `__TEXT` in another, so header order and text
     /// order disagree. Here `/usr/lib/system/libsystem_kernel` has the greater
-    /// header base, while the pc is inside libsystem_malloc's text. Greatest
+    /// header base, while the pc is inside `libsystem_malloc`'s text. Greatest
     /// `base <= pc` answers "kernel" — which is exactly how a `_xzm_free` leaf
     /// was reported as `task_get_special_port`.
     #[test]
@@ -320,6 +322,7 @@ mod tests {
                 slide: 0,
                 text: 0x1_8030_0000,
                 text_size: 0x2_0000,
+                arch: String::new(),
             },
             Image {
                 path: "/usr/lib/system/libsystem_kernel.dylib".to_owned(),
@@ -327,6 +330,7 @@ mod tests {
                 slide: 0,
                 text: 0x1_8040_0000,
                 text_size: 0x2_0000,
+                arch: String::new(),
             },
         ];
         // The observed leaf: inside libsystem_malloc's __TEXT, but BELOW the
@@ -342,17 +346,18 @@ mod tests {
     /// the end is not.
     #[test]
     fn a_reported_text_range_is_half_open() {
-        let images = vec![Image {
+        let image = Image {
             path: "/bin/app".to_owned(),
             base: 0,
             slide: 0,
             text: 0x4000,
             text_size: 0x1000,
-        }];
-        assert!(images[0].text_contains(0x4000));
-        assert!(images[0].text_contains(0x4FFF));
-        assert!(!images[0].text_contains(0x5000));
-        assert!(!images[0].text_contains(0x3FFF));
+            arch: String::new(),
+        };
+        assert!(image.text_contains(0x4000));
+        assert!(image.text_contains(0x4FFF));
+        assert!(!image.text_contains(0x5000));
+        assert!(!image.text_contains(0x3FFF));
     }
 
     /// Records every address batch it is asked to resolve.
@@ -382,6 +387,7 @@ mod tests {
                     slide: 100,
                     text: 0,
                     text_size: 0,
+                    arch: String::new(),
                 },
                 Image {
                     path: "/usr/lib/sys".to_owned(),
@@ -389,6 +395,7 @@ mod tests {
                     slide: 0,
                     text: 0,
                     text_size: 0,
+                    arch: String::new(),
                 },
             ],
             threads: vec![Thread {

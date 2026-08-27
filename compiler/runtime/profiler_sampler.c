@@ -28,7 +28,6 @@
 #include <time.h>
 
 #if defined(__APPLE__)
-#include <dlfcn.h>
 #include <mach/mach.h>
 #include <mach/mach_time.h>
 #include <pthread/qos.h>
@@ -158,51 +157,28 @@ typedef struct MachRegs {
   bool ok;
 } MachRegs;
 
-// QUARANTINED [PROF-COLLECT-UNWIND] — the pc/lr this returns are WRONG, and the
-// profiler reported fiction for as long as it went unnoticed.
+// [PROF-COLLECT-UNWIND] thread_suspend + thread_get_state IS the capture, and
+// it is accurate. A probe suspended a thread spinning in pure integer
+// arithmetic 40 times and every read landed inside that function;
+// thread_abort_safely changed nothing, so the suspend is synchronous enough to
+// sample against.
 //
-// thread_suspend() + thread_get_state() on a compute-bound thread yields a
-// pc/lr pair pointing into libsystem_kernel, while the fp read from the SAME
-// register set correctly places the thread inside Osprey code. Measured on
-// benchmarks/cases/fib (`fn sub(a, b) = a - b ?: 0` — pure integer arithmetic,
-// zero syscalls) the folded stacks read:
+// This was once believed broken. Profiling benchmarks/cases/fib produced folded
+// stacks whose leaf was a system routine rather than `sub` or `add`, and that
+// was read as a corrupt pc. It is not: dladdr on 160 consecutive captured
+// leaves resolved 128 inside libsystem_malloc (_xzm_free, xzm_malloc,
+// _xzm_xzone_malloc_tiny) and only 8 inside the program. fib really does spend
+// ~80% of its time in the allocator, because `fn add(a, b) = a + b ?: 0`
+// allocates a Result for every arithmetic operation and fib(30) performs
+// millions of them. The profiler reported the `?:` allocation tax faithfully;
+// the number was surprising, not wrong.
 //
-//     main;main;fib;fib;...;fib;sub;0x18030f483;task_get_special_port
-//
-// `sub` cannot call a Mach routine. The fp chain is sound; the leaf is not.
-// Because self-time IS the leaf frame, every SELF% the profiler printed was
-// garbage: across the benchmark corpus 32-81% of samples landed on kernel or
-// unsymbolized leaves, and the genuinely hot function was reported at 1-7% self
-// while holding 90-100% total. TOTAL% (fp chain) was and remains correct.
-//
-// It failed SILENTLY. The report looked plausible and scripts/test_profiler.sh
-// only asserted that `fib` appeared SOMEWHERE in the table — it did, as a 1.1%
-// entry underneath a Mach call. That assertion is now strengthened and red.
-//
-// Do NOT paper over this by dropping the leaf frame or filtering kernel symbols
-// out of the report: that hides a bad capture behind a tidier table. The fix is
-// to establish why thread_get_state reports a kernel pc for a user-mode thread
-// (thread_suspend is not synchronous with respect to the AST that stops the
-// target) and to capture a leaf that is provably the running instruction.
-//
-// The body below is retained unchanged for whoever fixes it.
-static void osp_prof_quarantine_abort(const char *why) {
-  fprintf(stderr, "FATAL: %s\n", why);
-  // abort() does not flush stdio. stderr is unbuffered by default, but an
-  // embedder that redirected it -- which is how CI captures a crash -- gets a
-  // fully-buffered stream, and the one line explaining the death would die
-  // with it. Matches osp_entropy_exhausted in random_runtime.c.
-  (void)fflush(stderr);
-  abort();
-}
-
+// What WAS wrong is offline symbolization: an address in a dyld-shared-cache
+// dylib was resolved against the wrong object and came back named
+// `task_get_special_port` where dladdr said `mach_absolute_time`. A wrong name
+// on a right address made a correct capture look like a corrupt one. That
+// defect lives in crates/osprey-profiler/src/symbolize/tools.rs, not here.
 static MachRegs read_regs(uint32_t port) {
-  if (getenv("OSP_PROF_OBSERVE") == NULL) {
-    osp_prof_quarantine_abort(
-        "profiler: macOS leaf-PC capture is broken — thread_get_state returns a "
-        "kernel pc for a user-mode thread, so every SELF% figure is wrong. See "
-        "the quarantine note in compiler/runtime/profiler_sampler.c.");
-  }
   MachRegs r = {0, 0, 0, false};
 #if defined(__aarch64__)
   arm_thread_state64_t st;
@@ -250,16 +226,6 @@ static int capture_suspended(OspProfSlot *slot, uint64_t *frames) {
   // an untrustworthy sample must stay visibly absent, not become a plausible
   // wrong function.
   if (regs.ok && osp_prof_pc_is_code(regs.pc)) {
-    if (getenv("OSP_PROF_TRACE_LEAF")) {
-      Dl_info di;
-      const char *sn = "?", *fn = "?";
-      if (dladdr((void *)(uintptr_t)regs.pc, &di)) {
-        if (di.dli_sname) sn = di.dli_sname;
-        if (di.dli_fname) fn = di.dli_fname;
-      }
-      fprintf(stderr, "LEAF pc=0x%llx sym=%s mod=%s\n",
-              (unsigned long long)regs.pc, sn, fn);
-    }
     n = osp_prof_walk(regs.pc, regs.fp, regs.lr, slot->stack_lo, slot->stack_hi,
                       frames, OSP_PROF_MAX_FRAMES);
   }

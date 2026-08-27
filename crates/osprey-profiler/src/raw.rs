@@ -40,6 +40,14 @@ pub(crate) struct Image {
     /// Size of the executable range in bytes. 0 means "not reported".
     #[serde(default)]
     pub text_size: u64,
+    /// The mach-o slice this image was MAPPED as (`arm64e`, `arm64`, `x86_64`),
+    /// as recorded by the runtime that ran it. Empty when the producer did not
+    /// report one. `atos` must be told: the host default slice of a universal
+    /// system dylib lays `__TEXT` out differently from the arm64e slice the
+    /// kernel actually maps, and naming an address against the wrong slice
+    /// yields a wrong-but-plausible neighbour [PROF-SYMBOLIZE-OFFLINE].
+    #[serde(default)]
+    pub arch: String,
 }
 
 impl Image {

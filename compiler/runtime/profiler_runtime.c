@@ -26,7 +26,10 @@ void osp_prof_thread_unregister(void) {}
 #if defined(__APPLE__)
 #include <mach-o/dyld.h>
 #include <mach-o/getsect.h>
+#include <mach-o/dyld_images.h>
 #include <mach-o/loader.h>
+#include <mach/mach.h>
+#include <mach/task_info.h>
 #include <mach/mach.h>
 #else
 #include <link.h>
@@ -473,20 +476,62 @@ static const uint8_t *image_text_range(const struct mach_header *mh,
 #endif
 }
 
+// The mach-o slice this image was mapped as, as `atos -arch` spells it.
+static const char *image_arch(const struct mach_header *mh) {
+#if defined(__LP64__)
+  const struct mach_header_64 *h = (const struct mach_header_64 *)mh;
+#else
+  const struct mach_header *h = mh;
+#endif
+  if (h->cputype != CPU_TYPE_ARM64) {
+    return h->cputype == CPU_TYPE_X86_64 ? "x86_64" : "unknown";
+  }
+  return (h->cpusubtype & ~CPU_SUBTYPE_MASK) == CPU_SUBTYPE_ARM64E ? "arm64e"
+                                                                  : "arm64";
+}
+
+// One image row. Shared by the dyld-registered loop and by dyld itself, which
+// is NOT in that list.
+static void dump_one_image(FILE *f, const char *sep, const char *path,
+                           const struct mach_header *mh, uint64_t slide) {
+  fprintf(f, "%s{\"path\":\"", sep);
+  json_escape_into(f, path);
+  unsigned long text_size = 0;
+  const uint8_t *text = image_text_range(mh, &text_size);
+  fprintf(f,
+          "\",\"base\":%" PRIu64 ",\"slide\":%" PRIu64 ",\"text\":%" PRIu64
+          ",\"text_size\":%" PRIu64 ",\"arch\":\"%s\"}",
+          (uint64_t)(uintptr_t)mh, slide, (uint64_t)(uintptr_t)text,
+          (uint64_t)text_size, image_arch(mh));
+}
+
+// dyld maps itself and every frame of process startup lives in it, but
+// `_dyld_image_count()` does not report it — the list it walks is the one dyld
+// keeps of what IT loaded. Without this row those frames have no owning image,
+// so they can only be printed as raw hex [PROF-SYMBOLIZE-OFFLINE]. The loader's
+// base comes from the task's dyld info, which is the only published route to it.
+static const struct mach_header *dyld_image(void) {
+  struct task_dyld_info info;
+  mach_msg_type_number_t count = TASK_DYLD_INFO_COUNT;
+  if (task_info(mach_task_self(), TASK_DYLD_INFO, (task_info_t)&info, &count) !=
+      KERN_SUCCESS) {
+    return NULL;
+  }
+  const struct dyld_all_image_infos *all =
+      (const struct dyld_all_image_infos *)(uintptr_t)info.all_image_info_addr;
+  return all ? all->dyldImageLoadAddress : NULL;
+}
+
 static void dump_images(FILE *f) {
   uint32_t count = _dyld_image_count();
   for (uint32_t i = 0; i < count; i++) {
-    fprintf(f, "%s{\"path\":\"", i == 0 ? "" : ",");
-    json_escape_into(f, _dyld_get_image_name(i));
-    const struct mach_header *mh = _dyld_get_image_header(i);
-    unsigned long text_size = 0;
-    const uint8_t *text = image_text_range(mh, &text_size);
-    fprintf(f,
-            "\",\"base\":%" PRIu64 ",\"slide\":%" PRIu64 ",\"text\":%" PRIu64
-            ",\"text_size\":%" PRIu64 "}",
-            (uint64_t)(uintptr_t)mh,
-            (uint64_t)_dyld_get_image_vmaddr_slide(i),
-            (uint64_t)(uintptr_t)text, (uint64_t)text_size);
+    dump_one_image(f, i == 0 ? "" : ",", _dyld_get_image_name(i),
+                   _dyld_get_image_header(i),
+                   (uint64_t)_dyld_get_image_vmaddr_slide(i));
+  }
+  const struct mach_header *loader = dyld_image();
+  if (loader) {
+    dump_one_image(f, count == 0 ? "" : ",", "/usr/lib/dyld", loader, 0);
   }
 }
 static void write_exe_path(FILE *f) {
