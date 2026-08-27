@@ -206,3 +206,26 @@ match split ("abc", "")
 
 This requirement applies to every `Result`-returning operator, builtin, and
 user function, including failure-preserving arithmetic chains.
+
+## Discarding a Result — [ERROR-RESULT-DISCARD]
+
+A `Result` left in statement position is rejected, because dropping it drops the
+error channel with it — the one thing the type exists to make visible:
+
+```
+an unhandled `Result` cannot be discarded; use `match` or `?:`
+```
+
+```osprey
+fn go() -> int = {
+    risky(1)                    // rejected: the Error arm would vanish
+    let _ = risky(1)            // rejected: `_` cannot consent to losing an error
+    let ok = risky(1) ?: 0      // accepted: the failure has an answer
+    ok
+}
+```
+
+`let _ =` is the sanctioned way to discard an ordinary value
+([BLOCK-DISCARD](0008-BlockExpressions.md#discarded-values--block-discard)), but
+it does not discharge a `Result`. Handle the failure with `match` or `?:`, or
+return it to a caller who will.

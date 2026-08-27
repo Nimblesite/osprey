@@ -89,6 +89,54 @@ effect handler arm.
 `?:` is a single token and is matched before bare `?` or `:`. Its semantics are
 defined by [PATTERN-RESULT-DEFAULT](0007-PatternMatching.md#result-default---pattern-result-default).
 
+## Statement Boundaries
+
+Default has no statement terminator: a statement ends where its line ends. The
+grammar spells that as a zero-width `_statement_break` token, produced by the
+external scanner in `tree-sitter-osprey/src/scanner.c`.
+
+### The rule [LEX-STATEMENT-BREAK]
+
+A statement ends at the first newline, `//` comment, `}` closing its block or
+namespace body, or end of file that follows it. Two statements on one line are a
+syntax error, because nothing would separate them:
+
+```osprey
+let r = add 2 3     // rejected: Default has no juxtaposition application
+print("a") print("b")   // rejected: two statements, one line
+```
+
+Without this rule nothing delimited a statement, and the greedy parse chose the
+boundary silently. `let r = add 2 3` became `let r = add` followed by the orphan
+expression-statements `2` and `3`; inside a block the orphan was absorbed by the
+trailing block value, so `{ let r = double 5 }` evaluated to the **argument** 5
+rather than applying `double`. Both are well-formed trees for source that means
+a call, which is why the boundary is now a lexical decision rather than an
+accident of precedence.
+
+A line whose first token can only continue the preceding expression does not
+begin a statement, so an expression may still be laid out across lines:
+
+```osprey
+let total = buffer
+    |> gpuMap(scale)
+    |> gpuMap(clamp)
+
+type Json = JNull
+    | JBool { value: bool }
+    | JNum { value: int }
+```
+
+The continuing tokens are `*`, `%`, `/`, `<`, `>`, `?`, `:`, `.`, `|`, `|>`,
+`||`, `&&`, `==`, `!=`, `<=`, `>=`, and `::`. `+`, `-`, and `!` are deliberately
+absent: each has a prefix reading, so a line opening with one starts a new
+statement whose discarded value is then reported by
+[BLOCK-DISCARD](0008-BlockExpressions.md#discarded-values--block-discard). Write
+a continued sum with the operator trailing the first line.
+
+ML needs no such marker. Its lexer emits explicit `NEWLINE`, `INDENT`, and
+`DEDENT` tokens, so layout already delimits its statements.
+
 ## Comments
 
 Default uses `//` line comments and `///` documentation comments. ML accepts

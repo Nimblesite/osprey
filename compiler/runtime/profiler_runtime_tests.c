@@ -3,6 +3,7 @@
 #include "profiler_runtime.h"
 
 #include <assert.h>
+#include <fcntl.h>
 #include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -266,10 +267,146 @@ static void test_churn_under_max_rate_sampling(void) {
   unlink(out);
 }
 
+
+// ---- QUARANTINE: macOS leaf-PC capture [PROF-COLLECT-UNWIND] -----------------
+// Every test in this block is RED and must stay red until the leaf PC captured
+// by read_regs() in profiler_sampler.c is provably the running instruction.
+// See the quarantine note there. They fail for three distinct reasons, so a
+// partial fix cannot turn the block green by accident:
+//   (a) osp_prof_walk emits `pc` with no validation at all, while `lr` and every
+//       chained return address are floored at OSP_PROF_MIN_CODE_ADDR;
+//   (b) nothing cross-checks the leaf against the code region the fp chain
+//       already proved the thread is executing in — the observed failure was a
+//       libsystem_kernel pc sitting under an Osprey `sub` frame;
+//   (c) the quarantine's own explanation is lost when stderr is redirected,
+//       because the abort arm does not fflush (compare osp_entropy_exhausted in
+//       random_runtime.c, which learned this already).
+
+// (a) The leaf pc is emitted unconditionally. `lr` below the floor is dropped
+// (osp_prof_walk line ~420) and so is every chained return (walk_chain line
+// ~394) — the pc, the ONE frame that decides self-time, is trusted blindly.
+static void test_walk_rejects_pc_below_min_code_addr(void) {
+  uint64_t mem[FAKE_STACK_WORDS];
+  memset(mem, 0, sizeof(mem));
+  uintptr_t lo = (uintptr_t)mem;
+  uintptr_t hi = (uintptr_t)(mem + FAKE_STACK_WORDS);
+  mem[0] = 0; // terminate the chain immediately
+  mem[1] = 0x100000AAAA;
+  uint64_t out[OSP_PROF_MAX_FRAMES];
+  // A null pc is not an instruction. It must not become the leaf frame.
+  int n = osp_prof_walk(0, (uint64_t)lo, 0x100000BBBB, lo, hi, out,
+                        OSP_PROF_MAX_FRAMES);
+  assert(n > 0);
+  assert(out[0] != 0);
+}
+
+// (a, cont.) The same floor `lr` gets. 42 is not a code address.
+static void test_walk_applies_same_floor_to_pc_as_to_lr(void) {
+  uint64_t mem[FAKE_STACK_WORDS];
+  memset(mem, 0, sizeof(mem));
+  uintptr_t lo = (uintptr_t)mem;
+  uintptr_t hi = (uintptr_t)(mem + FAKE_STACK_WORDS);
+  mem[0] = 0;
+  mem[1] = 0x100000AAAA;
+  uint64_t out[OSP_PROF_MAX_FRAMES];
+  for (uint64_t bogus = 0; bogus < 4096; bogus += 1021) {
+    int n = osp_prof_walk(bogus, (uint64_t)lo, 0x100000BBBB, lo, hi, out,
+                          OSP_PROF_MAX_FRAMES);
+    assert(n > 0);
+    // An lr of `bogus` would be dropped here. A pc of `bogus` is kept.
+    assert(out[0] != bogus);
+  }
+}
+
+// (b) The exact shape observed on benchmarks/cases/fib: the fp chain proves the
+// thread is inside Osprey code, and the pc claims a completely unrelated image.
+// `fn sub(a, b) = a - b ?: 0` performs no syscall, so a leaf in libsystem_kernel
+// is impossible. The walk currently records it and self-time follows it.
+static void test_walk_rejects_leaf_outside_the_chains_code_region(void) {
+  enum { OSPREY_CODE_LO = 0x100000000ULL, OSPREY_CODE_HI = 0x100100000ULL };
+  const uint64_t kernel_pc = 0x18030F483ULL; // observed leaf, libsystem_kernel
+  uint64_t mem[FAKE_STACK_WORDS];
+  memset(mem, 0, sizeof(mem));
+  uintptr_t lo = (uintptr_t)mem;
+  uintptr_t hi = (uintptr_t)(mem + FAKE_STACK_WORDS);
+  mem[0] = (uint64_t)(uintptr_t)&mem[8];
+  mem[1] = OSPREY_CODE_LO + 0x2000; // `sub`
+  mem[8] = 0;
+  mem[9] = OSPREY_CODE_LO + 0x1000; // `fib`
+  uint64_t out[OSP_PROF_MAX_FRAMES];
+  int n = osp_prof_walk(kernel_pc, (uint64_t)lo, 0, lo, hi, out,
+                        OSP_PROF_MAX_FRAMES);
+  assert(n >= 2);
+  // Every frame the chain produced is Osprey code; the leaf is 2 GB away from
+  // all of them and was reached from a function that cannot call the kernel.
+  bool chain_is_osprey = true;
+  for (int i = 1; i < n; i++) {
+    chain_is_osprey &= out[i] >= OSPREY_CODE_LO && out[i] < OSPREY_CODE_HI;
+  }
+  assert(chain_is_osprey);
+  assert(!(out[0] < OSPREY_CODE_LO || out[0] >= OSPREY_CODE_HI));
+}
+
+#if defined(__APPLE__)
+// The quarantine must actually stop the capture. A child that returns normally
+// means the broken path is live again and is publishing fictional self-time.
+static void quarantined_capture_body(void) {
+  char out[] = "/tmp/osprey-prof-quarantine-XXXXXX";
+  int fd = mkstemp(out);
+  if (fd >= 0) {
+    (void)close(fd);
+  }
+  (void)osp_prof_start(out, TEST_RATE_HZ);
+  for (int i = 0; i < 40000000; i++) {
+    g_sink += (double)i * 0.5; // burn cpu so the sampler reaches read_regs
+  }
+  osp_prof_stop_and_dump();
+  (void)unlink(out);
+}
+
+static void test_macos_leaf_capture_is_quarantined(void) {
+  assert(osp_death_signal(quarantined_capture_body) == SIGABRT);
+}
+
+// (c) The abort arm explains itself on stderr. CI captures crashes by
+// REDIRECTING stderr, which makes it fully buffered, and abort() does not flush
+// stdio — so the one line naming the defect dies with the buffer and the reader
+// gets a bare SIGABRT. A quarantine nobody can read is the silent failure it
+// exists to prevent.
+static void test_quarantine_message_survives_redirected_stderr(void) {
+  char path[] = "/tmp/osprey-prof-quarantine-err-XXXXXX";
+  int fd = mkstemp(path);
+  assert(fd >= 0);
+  pid_t pid = fork();
+  assert(pid >= 0);
+  if (pid == 0) {
+    (void)dup2(fd, STDERR_FILENO); // a FILE, so stderr is fully buffered
+    (void)close(fd);
+    quarantined_capture_body();
+    _exit(0);
+  }
+  (void)osp_death_reap(pid, OSP_DEATH_BUDGET_SECONDS);
+  char buf[4096];
+  ssize_t got = pread(fd, buf, sizeof(buf) - 1, 0);
+  (void)close(fd);
+  (void)unlink(path);
+  assert(got >= 0);
+  buf[got] = 0;
+  assert(strstr(buf, "leaf-PC capture is broken") != NULL);
+}
+#endif
+
 int main(void) {
   test_walk_recovers_planted_chain();
   test_walk_dedupes_lr();
   test_walk_rejects_invalid_fp();
+  test_walk_rejects_pc_below_min_code_addr();
+  test_walk_applies_same_floor_to_pc_as_to_lr();
+  test_walk_rejects_leaf_outside_the_chains_code_region();
+#if defined(__APPLE__)
+  test_macos_leaf_capture_is_quarantined();
+  test_quarantine_message_survives_redirected_stderr();
+#endif
   test_hooks_inactive_noop();
   test_record_drop_returns_sentinel();
   test_boot_and_clocks();

@@ -186,7 +186,12 @@ typedef struct MachRegs {
 //
 // The body below is retained unchanged for whoever fixes it.
 static void osp_prof_quarantine_abort(const char *why) {
-  fprintf(stderr, "\nOSPREY BROKEN-CODE QUARANTINE: %s\n", why);
+  fprintf(stderr, "FATAL: %s\n", why);
+  // abort() does not flush stdio. stderr is unbuffered by default, but an
+  // embedder that redirected it -- which is how CI captures a crash -- gets a
+  // fully-buffered stream, and the one line explaining the death would die
+  // with it. Matches osp_entropy_exhausted in random_runtime.c.
+  (void)fflush(stderr);
   abort();
 }
 
