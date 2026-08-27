@@ -1325,6 +1325,64 @@ mod tests {
     }
 
     #[test]
+    fn a_discarded_pure_value_statement_is_rejected() {
+        // ROOT CAUSE. `infer_block_stmt` guards the discard with
+        // `is_named(names::RESULT)`, so ONLY a discarded `Result` is an error;
+        // every other discarded value is accepted in silence. The rule is not
+        // "reject a discarded Result" — it is "a statement whose value is
+        // thrown away must have had nothing to throw away".
+        //
+        // That missing generality is what lets the Default flavor swallow
+        // ML-style juxtaposition. `let r = add 2 3` has no application
+        // production, so it parses as `let r = add` followed by two ORPHAN
+        // literal statements. Nothing rejects the orphans, so the program
+        // compiles, `r` binds a function value, and the binary prints a raw
+        // (ASLR-varying) pointer to stdout and exits 0.
+        //
+        // Every case below is the same defect; none of them involves `Result`.
+        for src in [
+            // The orphans juxtaposition leaves behind — the reported defect.
+            "fn add(a, b) = a + b\n\
+             fn go() -> int = {\n\
+               let r = add 2 3\n\
+               0\n\
+             }\n",
+            // The same discard with no juxtaposition in sight: a bare literal.
+            "fn go() -> int = {\n\
+               42\n\
+               0\n\
+             }\n",
+            // A discarded string.
+            "fn go() -> int = {\n\
+               \"orphan\"\n\
+               0\n\
+             }\n",
+            // A discarded function value — precisely what `let r = add` binds,
+            // and the value whose rendering leaks the pointer.
+            "fn add(a, b) = a + b\n\
+             fn go() -> int = {\n\
+               add\n\
+               0\n\
+             }\n",
+        ] {
+            let errs = check(src);
+            assert!(
+                errs.iter().any(|e| e.message.contains("cannot be discarded")),
+                "a discarded pure value must be rejected, got {:?} for:\n{}",
+                errs.iter().map(|e| &e.message).collect::<Vec<_>>(),
+                src
+            );
+        }
+
+        // The rule must stay off the statements that discard nothing: a
+        // Unit-valued effectful call, and the block's own tail expression.
+        ok("fn go() -> int = {\n\
+              print(\"effect\")\n\
+              0\n\
+            }\n");
+    }
+
+    #[test]
     fn testing_builtins_typecheck_and_reject_bad_arity() {
         // [TESTING-BUILTINS] all assertion schemes accept the documented shapes.
         let errs = check(
