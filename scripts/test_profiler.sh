@@ -150,13 +150,18 @@ assert fib["totalPct"] > 50.0, (
 # symbolizer was inventing names for images it could not read. The
 # wrong-object rule itself is pinned exactly, in
 # osprey-profiler symbolize::tools::resolve_object_refuses_to_stand_a_foreign_image_in.
+# Read the speedscope frame table, not hotFunctions: that one caps at 50 and
+# sorts by self-samples, and on a host with stripped system libraries each
+# unnamed address becomes its own entry, so `main` (0% self) can be truncated
+# out of a list this assertion would then quietly stop checking.
 defined = {"fib", "add", "sub", "main"}
-named = {f["name"] for f in frames if f["kind"] == "user"}
+table = json.load(open("profdemo.speedscope.json"))["shared"]["frames"]
+named = {f["name"] for f in table if f.get("file", "").endswith((".osp", ".ospml"))}
 missing = sorted(defined - named)
 assert not missing, (
     f"[PROF-SYMBOLIZE-OFFLINE] profdemo defines {sorted(defined)} but "
-    f"{missing} did not symbolize as user code; the main image is being "
-    "resolved against the wrong object")
+    f"{missing} did not symbolize to an .osp source file; the main image is "
+    "being resolved against the wrong object")
 
 # Not a gate — visibility. A silent change in how much of the run cannot be
 # named is exactly the drift that hid the wrong-object defect for so long.
