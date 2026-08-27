@@ -310,9 +310,9 @@ mod tests {
 
     #[test]
     fn reports_missing_node_error() {
-        // `type T =` with no variant name forces tree-sitter to insert a MISSING
+        // An arm with no body forces tree-sitter to insert a MISSING
         // identifier; collect_errors reports it via the is_missing format branch.
-        let parsed = parse_program("type T =\n");
+        let parsed = parse_program("fn f() = match v { 1 => }\n");
         assert!(
             parsed
                 .errors

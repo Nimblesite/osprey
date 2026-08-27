@@ -1402,12 +1402,11 @@ mod tests {
         ("block value", "{ 1 }"),
     ];
 
-    /// The same root reached through ML-style juxtaposition. Default has no
-    /// application production, so `add 2 3` is not a call — it is `add`
-    /// followed by two orphan literals, and the orphans are what nothing
-    /// rejects. Each entry is a WHOLE program because the split changes the
-    /// statement count, including at TOP LEVEL where `infer_block_stmt` is
-    /// never consulted at all.
+    /// The same defect reached through ML-style juxtaposition. Default has no
+    /// application production, so `add 2 3` is not a call — before
+    /// [LEX-STATEMENT-BREAK] it silently split into `add` plus two orphan
+    /// literals. Each entry is a WHOLE program because the split changes the
+    /// statement count, including at TOP LEVEL.
     const JUXTAPOSITION_SPLITS: &[(&str, &str)] = &[
         (
             "two arguments",
@@ -1557,18 +1556,16 @@ mod tests {
 
     #[test]
     fn juxtaposition_does_not_split_into_silently_discarded_statements() {
-        // The same root seen through the defect that motivated it. Default
-        // flavor swallows ML-style application: `add 2 3` parses as `let r =
-        // add` plus two orphan literals, so the program compiles, `r` binds a
-        // function value, and the binary prints a raw (ASLR-varying) pointer
-        // to stdout and exits 0.
-        //
-        // The last case is TOP LEVEL, which `infer_block_stmt` never sees —
-        // the split has a second root site, and a fix that only generalises
-        // the block guard leaves it standing.
+        // Before the fixes, `add 2 3` parsed as `let r = add` plus two orphan
+        // literals, so the program compiled, `r` bound a function value, and
+        // the binary printed a raw (ASLR-varying) pointer to stdout and
+        // exited 0. Rejection at EITHER stage satisfies this: a parse error
+        // from [LEX-STATEMENT-BREAK] is the primary outcome, and a discard
+        // error from [BLOCK-DISCARD] is the backstop.
         for (label, src) in JUXTAPOSITION_SPLITS {
+            let parsed = parse_program(src);
             assert!(
-                !check(src).is_empty(),
+                !parsed.errors.is_empty() || !check_program(&parsed.program).is_empty(),
                 "juxtaposition with {label} must be rejected, not split into \
                  discarded statements; got zero errors for:\n{src}"
             );

@@ -776,10 +776,12 @@ mod tests {
             }
             other => panic!("expected an index, got {other:?}"),
         }
-        // Spaced: NOT an index — the `let` takes `xs` alone.
+        // Spaced: NOT an index — and since [LEX-STATEMENT-BREAK] the leftover
+        // `[0]` can no longer become a silently discarded statement either, so
+        // the whole line is rejected.
         assert!(
-            matches!(let_value("let r = xs [0]\n"), Expr::Identifier(ref n) if n == "xs"),
-            "a spaced `[` must not bind as an index"
+            !crate::parse_program("let r = xs [0]\n").errors.is_empty(),
+            "a spaced `[` must neither bind as an index nor split the statement"
         );
         // The single-line list-arm match the strict rule exists to protect.
         match let_value("let r = match xs { [] => 0  [head, ...tail] => head }\n") {

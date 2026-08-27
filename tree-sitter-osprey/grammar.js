@@ -33,11 +33,20 @@ module.exports = grammar({
 
   word: ($) => $.identifier,
 
-  // A zero-width marker that holds only when the next `(` sits on the SAME LINE
-  // as the callee — the one thing that tells a postfix call from the following
-  // match arm's tuple pattern, and a decision no precedence can encode. See
-  // src/scanner.c for why it lives in the lexer [PATTERN-TUPLE].
-  externals: ($) => [$._call_open_gap],
+  // Two zero-width markers lexed by src/scanner.c, each answering a question
+  // about the line a token sits on — the one thing the parser cannot see,
+  // because whitespace is an extra.
+  //
+  //   _call_open_gap   holds only when the next `(` sits on the SAME LINE as
+  //                    the callee — the one thing that tells a postfix call
+  //                    from the following match arm's tuple pattern, and a
+  //                    decision no precedence can encode [PATTERN-TUPLE].
+  //   _statement_break holds only where the statement's line ends — the
+  //                    statement terminator. Without it nothing delimited two
+  //                    statements, so `let r = add 2 3` silently split into
+  //                    `let r = add` plus the orphans `2` and `3`
+  //                    [LEX-STATEMENT-BREAK].
+  externals: ($) => [$._call_open_gap, $._statement_break],
 
   conflicts: ($) => [
     // `ID { ... }` is ambiguous between an update/type-constructor expression and
@@ -101,19 +110,26 @@ module.exports = grammar({
     // ---------- TOP LEVEL ----------
     source_file: ($) => repeat($.statement),
 
+    // Every statement ends at its line's end: the trailing `_statement_break`
+    // (zero-width, scanner.c) demands a newline, `//` comment, `}`, or EOF
+    // before anything else follows. Two constructs on one line are therefore a
+    // parse error, never a silent split [LEX-STATEMENT-BREAK].
     statement: ($) =>
-      choice(
-        $.import_statement,
-        $.namespace_declaration,
-        $.let_declaration,
-        $.assignment,
-        $.function_declaration,
-        $.extern_declaration,
-        $.type_declaration,
-        $.effect_declaration,
-        $.module_declaration,
-        $.signature_declaration,
-        $.expression_statement,
+      seq(
+        choice(
+          $.import_statement,
+          $.namespace_declaration,
+          $.let_declaration,
+          $.assignment,
+          $.function_declaration,
+          $.extern_declaration,
+          $.type_declaration,
+          $.effect_declaration,
+          $.module_declaration,
+          $.signature_declaration,
+          $.expression_statement,
+        ),
+        $._statement_break,
       ),
 
     import_statement: ($) =>
