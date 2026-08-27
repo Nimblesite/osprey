@@ -40,6 +40,7 @@
 
 #include <assert.h>
 #include <fcntl.h>
+#include <inttypes.h>
 #include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -585,6 +586,39 @@ static void body_raw_header_fields(void) {
   (void)unlink(out);
 }
 
+// [PROF-RAW-FORMAT] "`text`/`text_size` are the start and byte length of the
+// image's executable range". [PROF-SYMBOLIZE-OFFLINE] decides which image owns
+// a pc by containment in that range, so a range that does not really contain
+// the image's code hands every one of its samples to a neighbouring image --
+// which is exactly how a libsystem_malloc leaf was reported as
+// `task_get_special_port`. Presence of the two keys proves nothing; only
+// containment does.
+//
+// The first row is this process's own executable on BOTH producers
+// (`_dyld_image_count` index 0, and `dl_iterate_phdr`'s first callback), so its
+// range must contain the address of a function compiled into this very binary.
+static void body_image_ranges_locate_this_program_code(void) {
+  const char *out = "/tmp/osprey_imagerange_spec.json";
+  unlink(out);
+  assert(osp_prof_start(out, TEST_RATE_HZ));
+  osp_prof_stop_and_dump();
+  char *json = slurp(out);
+  const char *p = strstr(json, "\"text\":");
+  assert(p != NULL);
+  uint64_t text = 0;
+  uint64_t size = 0;
+  assert(sscanf(p, "\"text\":%" SCNu64 ",\"text_size\":%" SCNu64, &text,
+                &size) == 2);
+  // 0 means "the producer could not determine the range", never "empty image".
+  assert(size > 0);
+  const uint64_t here =
+      (uint64_t)(uintptr_t)&body_image_ranges_locate_this_program_code;
+  assert(here >= text);
+  assert(here - text < size);
+  free(json);
+  (void)unlink(out);
+}
+
 // [PROF-COLLECT-REGISTRY] "Call sites: the main thread (label `main`, fiber 0),
 // `fiber_thread_func` (label `fiber`), and effect continuation threads (label
 // `effect`, fiber -1)." Every label the spec names must round-trip.
@@ -685,6 +719,7 @@ static void test_raw_format_fields_conform_to_spec(void) {
   assert(osp_death_signal(body_raw_header_fields) == 0);
   assert(osp_death_signal(body_registry_labels_round_trip) == 0);
   assert(osp_death_signal(body_label_is_bounded) == 0);
+  assert(osp_death_signal(body_image_ranges_locate_this_program_code) == 0);
 }
 
 // ---- macOS stack capture: quarantine guards ---------------------------------
