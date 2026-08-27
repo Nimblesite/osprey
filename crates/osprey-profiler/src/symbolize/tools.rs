@@ -119,10 +119,17 @@ fn resolve_object(image: &Path, fallback: &Path) -> Option<PathBuf> {
     Some(dsym_object(primary).unwrap_or_else(|| primary.to_path_buf()))
 }
 
-/// Whether `image` names the same binary as the CLI's `fallback`. Compared by
-/// file name because the recorded path is where the program ran, which need
-/// not be where it now sits.
+/// Whether `image` names the same binary as the CLI's `fallback`, so the
+/// fallback may stand in for it.
+///
+/// Compared by file name because the recorded path is where the program ran,
+/// which need not be where it now sits. An EMPTY path also qualifies: on Linux
+/// `dl_iterate_phdr` reports the main executable with `dlpi_name == ""`, and
+/// treating that as a foreign image would leave every Osprey frame unnamed.
 fn is_main_image(image: &Path, fallback: &Path) -> bool {
+    if image.as_os_str().is_empty() {
+        return true;
+    }
     match (image.file_name(), fallback.file_name()) {
         (Some(a), Some(b)) => a == b,
         _ => false,
@@ -377,6 +384,18 @@ mod tests {
     /// `task_get_special_port`: every dyld-shared-cache dylib is absent from
     /// disk, so their addresses were read against Osprey's own symbol table
     /// [PROF-SYMBOLIZE-OFFLINE].
+    /// Linux reports the main executable with an empty `dlpi_name`. It must
+    /// still resolve to the CLI binary, or every Osprey frame goes unnamed on
+    /// the platform CI actually runs.
+    #[test]
+    fn resolve_object_treats_an_empty_image_path_as_the_main_binary() {
+        let dir = testutil::temp_dir("emptypath");
+        let binary = dir.join("app");
+        std::fs::write(&binary, b"bin").unwrap();
+        assert_eq!(resolve_object(Path::new(""), &binary), Some(binary.clone()));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     #[test]
     fn resolve_object_refuses_to_stand_a_foreign_image_in() {
         let dir = testutil::temp_dir("foreign");
