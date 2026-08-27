@@ -93,5 +93,8 @@ project's [`CLAUDE.md`](../../CLAUDE.md) for the full convention.
 Code implementing a spec section MUST repeat that section's bracketed ID in a
 comment. The `spec-check` skill enforces this by grep. Specs whose header
 declares **Status: normative target** (0029–0033, 0036, 0037) are not implemented yet;
+the arithmetic totality model of [ARITH-TOTAL](0037-ArithmeticEffects.md) is likewise
+specified ahead of the compiler and is cited from 0001–0004, 0007, 0010–0013, 0024,
+0025 and 0034, so those arithmetic sections are exempt on the same terms;
 their IDs are exempt from the code-citation requirement until their delivery
 plan lands, at which point every landed section must be cited as usual.

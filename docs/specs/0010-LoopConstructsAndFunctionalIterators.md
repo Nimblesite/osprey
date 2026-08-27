@@ -56,31 +56,31 @@ range (1, 10) |> filter isEven
 Reduces an iterator to a single value.
 
 ```osprey
-fn add(total: int, value: int) -> int = (total + value) ?: total
+fn add(total: int, value: int) -> int = total + value
 range(1, 5) |> fold(0, add)   // 0+1+2+3+4 = 10
 ```
 
 ```osprey-ml
 add : (int, int) -> int
-add (total, value) = (total + value) ?: total
+add (total, value) = total + value
 
 range (1, 5) |> fold (0, add)   // 0+1+2+3+4 = 10
 ```
 
 ## Callbacks and Accumulators — [BUILTIN-ITER-CALLBACK]
 
-Callbacks may be lambdas, named functions, or function values. Generic named functions are specialized at the call site. Iterator combinators preserve a callback's complete return type, including `Result<T, E>`; they never unwrap a failure channel. A callback used where a plain accumulator or record field is required must handle checked integer arithmetic explicitly ([ARITH-CHECKED](0013-ErrorHandling.md#arithmetic-and-result--arith-checked)). The requirement reaches into callbacks precisely because the totality guarantee does: a fault inside a lambda passed to a combinator is discharged or the program is rejected, never dropped ([ARITH-TOTAL](0037-ArithmeticEffects.md#the-guarantee--arith-total)). Under [plan 0027](../plans/0027-arithmetic-effects.md) the callbacks below lose their `?:` and the region installs one policy instead.
+Callbacks may be lambdas, named functions, or function values. Generic named functions are specialized at the call site. Iterator combinators preserve a callback's complete return type, including `Result<T, E>`; they never unwrap a failure channel. Arithmetic in a callback needs no fallback, because it produces no `Result`; an arithmetic fault inside a lambda passed to a combinator propagates to the enclosing `Arith` handler, or the program is rejected ([ARITH-TOTAL](0037-ArithmeticEffects.md#the-guarantee--arith-total)).
 
 ```osprey
-fn energy(p) = (p.mass + p.spin) ?: 0      // generic: inferred, no annotations
-fn addEnergy(total: int, value: int) -> int = (total + value) ?: total
+fn energy(p) = p.mass + p.spin      // generic: inferred, no annotations
+fn addEnergy(total: int, value: int) -> int = total + value
 range(1, n) |> map(forge) |> map(energy) |> fold(0, addEnergy)
 ```
 
 A `fold` accumulator may be any inferred type, including a record:
 
 ```osprey
-fn bump(p, step) = p { mass: (p.mass + 1) ?: p.mass }
+fn bump(p, step) = p { mass: p.mass + 1 }
 range(1, n) |> fold(Particle { id: 0, mass: 0, spin: 0 }, bump)   // -> Particle
 ```
 

@@ -46,7 +46,7 @@ answer = 42
 
 mut requests = 0
 total = handle Counter
-    tick => requests := (requests + 1) ?: requests
+    tick => requests := requests + 1
 in run ()
 ```
 
@@ -58,13 +58,13 @@ effect handler arm; the handled `in` body remains ordinary client code.
 
 ## Functions and Currying
 
-`[FLAVOR-ML-FN]` A signature precedes its binding. Function arrows associate to the right. Checked integer arithmetic keeps its `Result` return in both written and inferred signatures ([ARITH-CHECKED](0013-ErrorHandling.md#arithmetic-and-result--arith-checked)). Both flavors are inside one arithmetic totality guarantee — it is a property of the shared core, not of a surface ([ARITH-TOTAL](0037-ArithmeticEffects.md#the-guarantee--arith-total)). Under [plan 0027](../plans/0027-arithmetic-effects.md) these signatures become `int -> int`, ML keeps `in` as its handle binder while Default moves to `do`, and the guarantee is unchanged in either surface.
+`[FLAVOR-ML-FN]` A signature precedes its binding. Function arrows associate to the right. Arithmetic is total in both flavors — a property of the shared core, not of a surface — so integer arithmetic returns `int` in written and inferred signatures alike ([ARITH-TOTAL](0037-ArithmeticEffects.md#the-guarantee--arith-total)). ML's handle binder is `in`; Default's is `do` ([EFFECTS-HANDLE-DO](0037-ArithmeticEffects.md#the-default-handle-binder--effects-handle-do)).
 
 ```osprey-ml
-inc : int -> Result<int, MathError>
+inc : int -> int
 inc x = x + 1
 
-add : int -> int -> Result<int, MathError>
+add : int -> int -> int
 add x y = x + y
 ```
 
@@ -83,7 +83,7 @@ parameters.
 Parenthesised comma-separated parameters are explicitly flat:
 
 ```osprey-ml
-add : (int, int) -> Result<int, MathError>
+add : (int, int) -> int
 add (x, y) = x + y
 
 sum = add (10, 20)
@@ -91,7 +91,7 @@ sum = add (10, 20)
 
 The flat binding lowers to one two-parameter `Stmt::Function`; the call lowers
 to one two-argument `Expr::Call`. `sum` retains the complete
-`Result<int, MathError>` return; neither flat nor curried application unwraps
+`int` return; neither flat nor curried application unwraps
 it. The parenthesised list is a tuple
 ([FLAVOR-ML-TUPLE](#match)), and a tuple applied to a
 known head is exactly this flat call — which is why the ML and Default twins
@@ -107,7 +107,7 @@ form one function by cases:
 ```osprey-ml
 make 0 = Leaf
 make depth =
-    next = (depth - 1) ?: 0
+    next = depth - 1
     Node (make next) (make next)
 ```
 
@@ -165,7 +165,7 @@ namespace, module, state-module, signature, and import bodies.
 namespace billing
 
 signature TaxApi
-    addTax : int -> Result<int, MathError>
+    addTax : int -> int
 
 module Tax : TaxApi
     addTax cents = cents + 1
@@ -180,7 +180,7 @@ A namespace without an indented body is file-scoped. An ascribed module exports
 exactly its signature; explicit `export` inside it is rejected. An unascribed
 module marks public declarations with `export`. `state Name` is the ML spelling
 of a state module. `::` qualifies logical symbols; `.` accesses a value field.
-Here `gross` is `Result<int, MathError>`; module ascription and import boundaries
+Here `gross` is `int`; module ascription and import boundaries
 preserve the exported failure channel.
 
 Imports support whole targets, `as` aliases, indented member selection with
@@ -305,7 +305,7 @@ the exception, binding by role.
 disappear during parsing. They allow a constructor pattern in a clause head:
 
 ```osprey-ml
-size : Tree -> Result<int, MathError>
+size : Tree -> int
 size Leaf = Success(value = 0)
 size (Node left right) = 1 + size left + size right
 ```
@@ -383,7 +383,7 @@ and matched by juxtaposition:
 
 ```osprey-ml
 tree = Node Leaf Leaf
-depth : Tree -> Result<int, MathError>
+depth : Tree -> int
 depth Leaf = Success(value = 0)
 depth (Node left right) = 1 + depth left + depth right
 ```

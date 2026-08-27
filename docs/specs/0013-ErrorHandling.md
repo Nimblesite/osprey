@@ -4,7 +4,7 @@ Osprey has no language-level exceptions. Every fallible language operation
 uses `Result` or a statically handled algebraic effect. A raw foreign status is
 ABI data and MUST be translated at the safe Osprey boundary.
 
-**Arithmetic is not merely checked; it is total.** In an accepted Osprey program an arithmetic expression always evaluates to a defined value of its static type: it can never trap, panic, wrap silently, or produce an unspecified value, and a fault that cannot be proven impossible MUST be discharged — or the program is rejected at compile time. That guarantee is normative and spelling-independent; its clauses and conformance obligations are [ARITH-TOTAL](0037-ArithmeticEffects.md#the-guarantee--arith-total). The `Result` mechanism specified below is how the shipped compiler delivers it, and [plan 0027](../plans/0027-arithmetic-effects.md) changes the mechanism without weakening a single clause.
+**Arithmetic is total.** An arithmetic expression always evaluates to a defined value of its static type: it can never trap, panic, wrap silently, or produce an unspecified value, and a fault that cannot be proven impossible MUST be discharged — or the program is rejected at compile time. The clauses and conformance obligations are [ARITH-TOTAL](0037-ArithmeticEffects.md#the-guarantee--arith-total).
 
 The two language flavors share these semantics. Examples show both surfaces
 where their syntax differs.
@@ -108,13 +108,15 @@ unhandled effect operations at program entry: Arith.overflow; add a matching han
 A `Result` formats as `Success(<value>)` or `Error(<message>)`:
 
 ```osprey
-print(toString(15 / 3))   // "Success(5.0)"  — division is always float
-print(toString(10 / 0))   // "Error(division by zero)"
+print(toString(15 / 3))          // "5.0"  — division is always float
+print(toString(checkedAdd(2, 3)))   // "Success(5)"
+print(toString(checkedMul(4294967296, 4294967296)))  // "Error(integer overflow)"
 ```
 
 ```osprey-ml
-print (toString (15 / 3))   // "Success(5.0)"  — division is always float
-print (toString (10 / 0))   // "Error(division by zero)"
+print (toString (15 / 3))          // "5.0"  — division is always float
+print (toString (checkedAdd (2, 3)))   // "Success(5)"
+print (toString (checkedMul (4294967296, 4294967296)))  // "Error(integer overflow)"
 ```
 
 ## Error Payload Propagation — [ERR-PAYLOAD]

@@ -270,20 +270,67 @@ static void test_churn_under_max_rate_sampling(void) {
 }
 
 
-// ---- SPEC VIOLATIONS: macOS stack capture -----------------------------------
-// Every assertion below quotes the clause of docs/specs/0028-Profiler.md it
-// enforces. They are RED and must stay red until the capture honours the spec.
-// See the quarantine note on read_regs() in profiler_sampler.c for the evidence.
-
-// [PROF-COLLECT-UNWIND] "Frame 0 is the precise PC." — validation.
+// ---- macOS stack capture: quarantine guards ---------------------------------
+// The defect these guard is NOT reproducible from this suite: the leaf pc is
+// captured correctly for a plain cc-built binary (measured 17/17 unique stacks
+// resolving to the test image via dladdr). It reproduces only for an
+// Osprey-compiled program, so the assertion that pins it lives in
+// scripts/test_profiler.sh, which [PROF-TEST] designates for exactly that:
+// "The end-to-end profiler script runs an example under `--profile` and parses
+// every export." That assertion was measured RED before the quarantine landed
+// (72.2% of self-samples on kernel or unsymbolized leaves) and is now masked by
+// the abort below, which fires first.
 //
-// The leaf pc is emitted unconditionally by osp_prof_walk (profiler_runtime.c
-// line ~413: `out[n++] = strip_pac(pc);`). `lr` is floored at
-// OSP_PROF_MIN_CODE_ADDR on line ~420, and so is every chained return address
-// in walk_chain on line ~394 — the pc, the ONE frame that decides self-time, is
-// the only one trusted blindly. These two are RED for that reason alone, which
-// is distinct from the frame-0/chain disagreement below: a fix for either
-// leaves the other standing, so the block cannot go green by halves.
+// Ground truth for the defect, from macOS's own sampler on the compiled
+// benchmarks/cases/fib binary:
+//
+//     549 main (in fib) + 36
+//       531 fib (in fib) + 124        <- every frame in the Osprey image
+//
+// `sample` attributes 549/549 to Osprey code and nothing to libsystem, while
+// the Osprey profiler reported 49.3% self in task_get_special_port. The two
+// cannot both be right, and `sample` is not the one under test.
+
+#if defined(__APPLE__)
+// [PROF-COLLECT-SAMPLER] "macOS: `thread_suspend` ->
+// `thread_get_state(ARM_THREAD_STATE64)` -> frame-pointer walk ->
+// `thread_resume`."
+//
+// That pipeline is the sole source of frame 0 on macOS, so the clause above is
+// unsatisfiable until it yields the suspended thread's user-mode pc. The arm is
+// quarantined; a child that runs to completion means it is live again and is
+// publishing fictional self-time.
+static void quarantined_capture_body(void) {
+  char out[] = "/tmp/osprey-prof-quarantine-XXXXXX";
+  int fd = mkstemp(out);
+  if (fd >= 0) {
+    (void)close(fd);
+  }
+  (void)osp_prof_start(out, TEST_RATE_HZ);
+  // [PROF-COLLECT-REGISTRY] the sampler only samples REGISTERED threads, so
+  // without this the macOS capture arm is never reached at all.
+  osp_prof_thread_register(0, "main");
+  g_sink += busy_work(40000000); // burn cpu so the sampler reaches read_regs
+  osp_prof_thread_unregister();
+  osp_prof_stop_and_dump();
+  (void)unlink(out);
+}
+
+// ---- QUARANTINE: macOS leaf-PC capture [PROF-COLLECT-UNWIND] -----------------
+// Every test in this block is RED and must stay red until the leaf PC captured
+// by read_regs() in profiler_sampler.c is provably the running instruction.
+// See the quarantine note there. They fail for distinct reasons, so a partial
+// fix cannot turn the block green by accident:
+//   (a) osp_prof_walk emits `pc` with no validation at all, while `lr` and every
+//       chained return address are floored at OSP_PROF_MIN_CODE_ADDR;
+//   (b) nothing cross-checks the leaf against the code region the fp chain
+//       already proved the thread is executing in — the observed failure was a
+//       libsystem_kernel pc sitting under an Osprey `sub` frame.
+
+// (a) The leaf pc is emitted unconditionally (profiler_runtime.c line ~413:
+// `out[n++] = strip_pac(pc);`). `lr` is floored at OSP_PROF_MIN_CODE_ADDR on
+// line ~420 and every chained return in walk_chain on line ~394 — the pc, the
+// ONE frame that decides self-time, is the only one trusted blindly.
 static void test_walk_rejects_pc_below_min_code_addr(void) {
   uint64_t mem[FAKE_STACK_WORDS];
   memset(mem, 0, sizeof(mem));
@@ -299,7 +346,7 @@ static void test_walk_rejects_pc_below_min_code_addr(void) {
   assert(out[0] != 0);
 }
 
-// The same floor `lr` gets. 42 is not a code address.
+// (a, cont.) The same floor `lr` gets. 42 is not a code address.
 static void test_walk_applies_same_floor_to_pc_as_to_lr(void) {
   uint64_t mem[FAKE_STACK_WORDS];
   memset(mem, 0, sizeof(mem));
@@ -317,7 +364,7 @@ static void test_walk_applies_same_floor_to_pc_as_to_lr(void) {
   }
 }
 
-// [PROF-COLLECT-UNWIND] "Frame 0 is the precise PC."
+// (b) [PROF-COLLECT-UNWIND] "Frame 0 is the precise PC."
 //
 // Precise means the instruction the sampled thread is executing. The observed
 // capture on benchmarks/cases/fib violates this: the fp chain — which the same
@@ -347,31 +394,6 @@ static void test_frame_zero_is_the_precise_pc(void) {
   }
   assert(chain_in_code); // the validated chain agrees on where the thread is
   assert(out[0] >= CODE_LO && out[0] < CODE_HI); // frame 0 must too
-}
-
-#if defined(__APPLE__)
-// [PROF-COLLECT-SAMPLER] "macOS: `thread_suspend` ->
-// `thread_get_state(ARM_THREAD_STATE64)` -> frame-pointer walk ->
-// `thread_resume`."
-//
-// That pipeline is the sole source of frame 0 on macOS, so the clause above is
-// unsatisfiable until it yields the suspended thread's user-mode pc. The arm is
-// quarantined; a child that runs to completion means it is live again and is
-// publishing fictional self-time.
-static void quarantined_capture_body(void) {
-  char out[] = "/tmp/osprey-prof-quarantine-XXXXXX";
-  int fd = mkstemp(out);
-  if (fd >= 0) {
-    (void)close(fd);
-  }
-  (void)osp_prof_start(out, TEST_RATE_HZ);
-  // [PROF-COLLECT-REGISTRY] the sampler only samples REGISTERED threads, so
-  // without this the macOS capture arm is never reached at all.
-  osp_prof_thread_register(0, "main");
-  g_sink += busy_work(40000000); // burn cpu so the sampler reaches read_regs
-  osp_prof_thread_unregister();
-  osp_prof_stop_and_dump();
-  (void)unlink(out);
 }
 
 static void test_macos_capture_arm_is_quarantined(void) {

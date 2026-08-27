@@ -20,7 +20,9 @@ This also aligns the Default flavor with the systems languages it is converging 
 | 3 | Codegen: cold branch dispatches to the active `Arith` handler | 2 |
 | 4 | Total helpers (`wrapAdd`…`satMul`), constant folding, file-scope rule | 2 |
 | 5 | Corpus conversion (checklist at the bottom of this document) | 3, 4 |
-| 6 | Spec/doc/website finalization; benchmark re-run | 5 |
+| 6 | Doc/website finalization; benchmark re-run; spec status flip | 5 |
+
+The specs already describe this model as normative: [0037](../specs/0037-ArithmeticEffects.md) carries the guarantee and the operation signatures, and 0001, 0002, 0003, 0004, 0007, 0010, 0011, 0012, 0013, 0024, 0025 and 0034 were rewritten to it — no spec describes arithmetic as returning a `Result`. Phase 6 flips their status from specified to shipped; it does not author them.
 
 Phases 2–5 land as one PR: the type change breaks every arithmetic `?:` site by design, so the tree is not green between them. Phase 1 lands first and separately — small, mechanical, reversible — so every handler the conversion writes uses `do` from birth. Phase 0 lands before everything, red.
 
@@ -65,7 +67,7 @@ All in `crates/osprey-codegen/`:
 
 ## 8. Phase 6 — finalization
 
-- Rewrite `[ARITH-CHECKED]`, `[ARITH-NEG-LITERAL]` context, "Chaining Arithmetic" and "Choosing and preserving a policy" in spec 0013 to the shipped model; delete the Result Preservation arithmetic carve-out in spec 0004; update the 0017 handle EBNF and 0003's precedence/keyword prose; fold spec 0037's content into the mainline specs and retire its normative-target status header.
+- Flip spec 0037's status header from normative target to shipped, and drop the arithmetic exemption from `docs/specs/README.md`. Verify each spec snippet compiles under the landed compiler — the specs are already written to this model, so any disagreement is a compiler defect, not a doc edit.
 - `docs/messaging.md`: "Arithmetic does not silently wrap" stands; add the one-region-policy sentence; update Current qualifications.
 - Re-run `make bench` and regenerate `website/src/benchmarks.md` from fresh `results.json` — removing per-op Result wrappers may move numbers, and benchmark claims must stay attached to reproduced data.
 - Audit whether anything still produces `MathError`; if nothing does, retire the type and its `names::MATH_ERROR` seat.
@@ -122,7 +124,7 @@ Ground rules for every box below. **The compiler is the site classifier**: after
 
 ### D. Docs, specs, website, tooling
 
-- [ ] Spec snippets: 0013 (rewritten in Phase 6), 0003 (`handle` example at the bindings section, precedence notes for `?:` prose), 0004 (Result Preservation carve-out), 0008/0010/0012/0017/0034/0035 wherever a snippet does arithmetic with `?:` — every Default snippet uses `do`, every snippet type-checks under the new rules (spot-compile them; snippets are code).
+- [ ] Spec snippets: already rewritten to this model across 0001–0004, 0007, 0008, 0010–0013, 0017, 0024, 0025, 0034, 0035 and 0036, with every Default `handle` using `do`. Spot-compile each one against the landed compiler — snippets are code, and a snippet that fails to compile means the compiler disagrees with the spec.
 - [ ] `docs/messaging.md` snippet accuracy pass (Phase 6 items).
 - [ ] Website: prose pages and playground samples that show arithmetic; regenerate `website/src/spec/*.md` via `npm run build`, never by hand (gitignored build output).
 - [ ] `vscode-extension/`: tmLanguage keyword lists (`do`), any bundled sample code, `npm test`.

@@ -90,9 +90,9 @@ namespace billing;
 module Tax {
     let rate = 10
     export fn add(cents: int) -> int = {
-        let scaled = (cents * rate) ?: 0
+        let scaled = cents * rate
         let tax = intDiv(scaled, 100) ?: 0
-        let answer = (cents + tax) ?: cents
+        let answer = cents + tax
         answer
     }
 }
@@ -104,13 +104,13 @@ namespace billing
 module Tax
     rate = 10
     export add cents =
-        scaled = (cents * rate) ?: 0
+        scaled = cents * rate
         tax = intDiv (scaled, 100) ?: 0
-        answer = (cents + tax) ?: cents
+        answer = cents + tax
         answer
 ```
 
-Under [ARITH-CHECKED](0013-ErrorHandling.md#arithmetic-and-result--arith-checked), this example keeps the original cent amount if the checked multiplication, integer division, or final addition fails. A module that needs to expose the failure instead may export a `Result`-returning function; module boundaries do not erase its error channel — nor do they erase an arithmetic fault, which crosses them as an undischarged requirement and is rejected at the program entry if nothing handles it ([ARITH-TOTAL](0037-ArithmeticEffects.md#the-guarantee--arith-total)). Under [plan 0027](../plans/0027-arithmetic-effects.md) each program entry installs one policy rather than each module fabricating its own fallback.
+A module that needs to expose a failure may export a `Result`-returning function; module boundaries do not erase its error channel. Nor do they erase an arithmetic fault: it crosses the boundary as an undischarged requirement and is rejected at the program entry if nothing handles it, so the policy is installed once per program rather than once per module ([ARITH-TOTAL](0037-ArithmeticEffects.md#the-guarantee--arith-total)).
 
 Unascribed module items are private unless marked `export`. An ascribed module
 exports the items named by its signature.
@@ -291,8 +291,8 @@ holds no bound value or the wrong one:
 ```osprey
 mut hits = 0
 let total = handle Counter
-    tick amount => { hits = (hits + amount) ?: hits  hits }
-in run()
+    tick amount => { hits = hits + amount  hits }
+do run()
 
 // Reads the live cell and the finished total, from outside the entry.
 fn summary() = "${hits} hits, total ${total}"

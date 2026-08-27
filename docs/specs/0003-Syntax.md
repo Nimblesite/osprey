@@ -44,8 +44,8 @@ let name = "Alice"
 // and this arm interprets it — the sanctioned form of mutation.
 mut count = 0
 let total = handle Counter
-    tick => { count = (count + 1) ?: count  count }
-in run()
+    tick => { count = count + 1  count }
+do run()
 ```
 
 ML omits `let`; its reassignment operator is `:=` and follows the same rule.
@@ -55,7 +55,7 @@ name = "Alice"
 
 mut count = 0
 total = handle Counter
-    tick => count := (count + 1) ?: count
+    tick => count := count + 1
 in run ()
 ```
 
@@ -96,7 +96,7 @@ distinct unspellable internal name, so repeated ignored parameters do not
 collide.
 
 ```osprey
-let count = range(0, 10) |> fold(0, |acc, _| => (acc + 1) ?: acc)
+let count = range(0, 10) |> fold(0, |acc, _| => acc + 1)
 ```
 
 A named function can use `_` only where its caller supplies arguments
@@ -149,7 +149,7 @@ A positional payload is declared, constructed, and matched in slot order:
 type Tree = Leaf | Node(Tree, Tree)
 let tree = Node(Node(Leaf, Leaf), Leaf)
 
-fn size(tree) -> Result<int, MathError> = match tree {
+fn size(tree) -> int = match tree {
     Leaf          => Success { value: 1 }
     Node(left, _) => 1 + size(left)
 }
@@ -217,7 +217,7 @@ something else, binding `xs` and lowering `[0]` as a separate statement.
 8. Logical OR `||`
 9. Ternary `? :` and Result default `?:`, both right-associative
 
-`?:` appears throughout this chapter's arithmetic examples because integer operators currently return a `Result`. That is a spelling, not a licence for arithmetic to fail: in an accepted program arithmetic can never trap, panic, wrap silently, or yield an unspecified value ([ARITH-TOTAL](0037-ArithmeticEffects.md#the-guarantee--arith-total)). Under [plan 0027](../plans/0027-arithmetic-effects.md) these operators return plain `int`, the `?:` disappears from every arithmetic site, and the handle binder in this flavor becomes `do`.
+`?:` supplies a fallback for a `Result` — an index, a lookup, a parse, a fallible call. Arithmetic is not a `Result` and never appears on its left ([ARITH-TOTAL](0037-ArithmeticEffects.md#the-guarantee--arith-total)).
 
 `x |> f(a)` lowers to `f(x, a)`. The two Default lambda spellings lower to
 `Expr::Lambda`:

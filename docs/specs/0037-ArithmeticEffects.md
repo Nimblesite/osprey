@@ -1,6 +1,6 @@
 # Arithmetic Effects
 
-**Status:** normative target; implementation has not started. Delivery is fixed by [plan 0027](../plans/0027-arithmetic-effects.md). Today's shipped behavior — integer arithmetic returning `Result<int, MathError>` — is specified in [Error Handling](0013-ErrorHandling.md#arithmetic-and-result--arith-checked) and remains authoritative until that plan lands. Issue [#230](https://github.com/Nimblesite/osprey/issues/230) records why the shipped model must change: `?:` with a fabricated fallback is the corpus-wide idiom for discharging arithmetic Results, and a fabricated fallback is a silent wrong answer.
+**Status:** normative target; implementation has not started. Delivery is fixed by [plan 0027](../plans/0027-arithmetic-effects.md).
 
 The key words `MUST`, `MUST NOT`, `SHOULD`, and `MAY` are to be interpreted as described by BCP 14 (RFC 2119 and RFC 8174) when they appear in capitals. A feature is not implemented merely because this document specifies it.
 
@@ -24,7 +24,7 @@ Conformance: [plan 0027](../plans/0027-arithmetic-effects.md) MUST land a reject
 
 ## The model — [ARITH-EFFECT]
 
-Integer arithmetic returns `int`. Failure is not erased and does not panic: an operation whose mathematical result is unrepresentable performs an operation of the compiler-declared `Arith` effect, and the statically required handler substitutes the value the region's policy chooses. The overflow check compiled today stays exactly where it is; only the cold branch's destination changes, from constructing `Error("integer overflow")` to dispatching the operation.
+Integer arithmetic returns `int`. Failure is neither erased nor raised: an operation whose mathematical result is unrepresentable performs an operation of the compiler-declared `Arith` effect, and the statically required handler substitutes the value the region's policy chooses. The overflow test is a non-trapping intrinsic and its fault branch is cold, so a total site costs one predictable branch.
 
 | Operator | int, int | float, float | int, float / float, int |
 | --- | --- | --- | --- |
@@ -33,9 +33,9 @@ Integer arithmetic returns `int`. Failure is not erased and does not panic: an o
 | `%` | `int`, MAY perform `Arith.remainderByZero` | `float`, MAY perform `Arith.divideByZero` | `float` (int promoted), MAY perform `Arith.divideByZero` |
 | unary `-`, `abs` | `int`, MAY perform `Arith.overflow` | `float` (total) | — |
 
-Unchanged by this design: string/list/map `+` overloads; float `+ - *` and unary float `-` as plain IEEE-754 ([plan 0022](../plans/0022-arithmetic-totality-audit.md) owns the open float questions); the negated-literal fold [ARITH-NEG-LITERAL](0013-ErrorHandling.md#negated-literals--arith-neg-literal); integer `-9223372036854775808 % -1` producing the representable remainder `0` without faulting; the `checkedAdd`/`checkedSub`/`checkedMul` builtins, which remain the explicit `Result`-returning spelling for code that wants a value-level answer.
+Outside the `Arith` channel: string, list and map `+` overloads; float `+ - *` and unary float `-` as plain IEEE-754 ([plan 0022](../plans/0022-arithmetic-totality-audit.md) owns the open float questions); the negated-literal fold [ARITH-NEG-LITERAL](0013-ErrorHandling.md#negated-literals--arith-neg-literal); and `checkedAdd`/`checkedSub`/`checkedMul`, which return `Result<int, Error>` for code that wants overflow as data.
 
-There is no `Result` in any arithmetic type, so the failure-preserving chain flattening of [ARITH-CHECKED] and its carve-out in [Result Preservation](0004-TypeSystem.md#result-preservation) are deleted with it. `Result` itself is untouched everywhere it is earned — indexing, HTTP, parsing, user functions.
+No arithmetic type contains a `Result`, so [Result Preservation](0004-TypeSystem.md#result-preservation) governs arithmetic vacuously and has no arithmetic exception. `Result` is reserved for failures a value genuinely carries — indexing, HTTP, parsing, user functions.
 
 ## The `Arith` effect — [ARITH-EFFECT-OPS]
 
@@ -68,7 +68,7 @@ A site whose failure is impossible MUST NOT seed a requirement:
 - `/` or `%` whose divisor is a nonzero numeric literal (after the [ARITH-NEG-LITERAL] fold). `x % 2` and `x / 4` are total and need no handler.
 - A constant expression, which is folded under [ARITH-EFFECT-CONST] and never reaches runtime.
 
-This also closes the secondary defect of [#230](https://github.com/Nimblesite/osprey/issues/230): today `x % 2 ?: 1` carries a provably dead fallback the checker accepts. Under this design the site is total, the type is `int`, and any `?:` on it is the existing rejection `` `?:` needs a Result on its left, found int ``.
+A total site's type is `int` or `float`, so `?:` on it is rejected: `` `?:` needs a Result on its left, found int ``.
 
 ### Constant folding — [ARITH-EFFECT-CONST]
 
@@ -88,7 +88,7 @@ Substituting arms are the direct handler-call path on native and the supported h
 
 ### No re-entry — [ARITH-EFFECT-ARMS-NO-REENTRY]
 
-Checked arithmetic inside any arm of an `Arith` handler is rejected at compile time. The shipped rule rejects only performing the *active operation* from its own arm; for `Arith` that is not enough, because sibling operations could recurse mutually (an `overflow` arm whose `%` faults into `remainderByZero`, whose `+` faults back into `overflow`). The rejection is whole-effect:
+Checked arithmetic inside any arm of an `Arith` handler is rejected at compile time. The rejection is whole-effect, not per-operation: sibling operations could otherwise recurse mutually — an `overflow` arm whose `%` faults into `remainderByZero`, whose `+` faults back into `overflow`.
 
 ```text
 handler arm `Arith.overflow` contains checked arithmetic, which performs `Arith` while that handler is active; use wrapAdd/satAdd or the operation's `wrapped` payload
@@ -102,7 +102,7 @@ The compiler provides total integer builtins that never fault and seed nothing: 
 
 ## Policies
 
-The point of the design is that one region states one policy once, instead of 6,408 `?:` sites each fabricating a value. All four shapes below use only shipped handler machinery.
+A region states its policy once, and every arithmetic fault inside it — through helpers, lambdas and fibers — is answered by that policy.
 
 Wrapping — modular arithmetic by declared intent, C's `-fwrapv` scoped to a region:
 
@@ -134,7 +134,7 @@ let delay = handle Arith
 do backoff(64)
 ```
 
-Nested and partial — the inner region wraps checksums; everything else faults to the outer policy, per the shipped innermost-arm-wins and partial-handler rules:
+Nested and partial — the inner region wraps checksums; everything else faults to the outer policy, by the innermost-arm-wins and partial-handler rules of [Algebraic Effects](0017-AlgebraicEffects.md#handlers):
 
 ```osprey
 handle Arith
@@ -155,22 +155,8 @@ handlerExprDefault ::= "handle" IDENT handlerArm+ "do" expression
 handlerExprML      ::= "handle" IDENT handlerArm+ "in" expression
 ```
 
-The rename is a clean break: `in` in Default handle position is a parse error after it lands, and it lands before the arithmetic change so every migrated handler is written with `do` from birth. `in`/`out` variance markers on type parameters are unaffected.
+`in` is not a handle binder in Default; `in`/`out` remain the variance markers on type parameters.
 
-## What this deletes
+## Scope
 
-- The 6,408 `?:` fabrication sites become compile errors — `` `?:` needs a Result on its left, found int `` — so the compiler enumerates the entire migration. `?:` itself is untouched where its scrutinee is a genuine `Result`.
-- `Result<_, MathError>` disappears from arithmetic types, inferred signatures, and diagnostics. Whether any producer of `MathError` remains (and whether the type retires) is an audit item in plan 0027.
-- The arithmetic chain-flattening rule and its Result Preservation exception ([0004](0004-TypeSystem.md#result-preservation), [0013](0013-ErrorHandling.md#chaining-arithmetic)) are deleted; there is no wrapper to flatten.
-- The `ArithmeticFailure` policy pattern in [0013](0013-ErrorHandling.md#choosing-and-preserving-a-policy) is subsumed: `Arith` is that pattern, built in, statically required.
-
-## What this preserves
-
-- **No panics.** The runtime division guard still branches before the divide; overflow still branches on the intrinsic's bit; an arm cannot decline to produce a value. Arithmetic cannot terminate the program even deliberately.
-- **No silent wrap.** Wrapping exists only where a region names it (`wrapped`, `wrapAdd`) — visible in source, scoped, greppable.
-- **Hot-path codegen.** The checked intrinsics and branch layout are unchanged; the fault path is the cold branch it already is.
-- **Fibers.** A fault inside a fiber reaches its handler through the shipped serialized perform round trip ([EFFECTS-FIBER-PERFORM](0017-AlgebraicEffects.md)) — cold path only.
-
-## Status
-
-Nothing in this document is implemented. The shipped arithmetic model is [ARITH-CHECKED](0013-ErrorHandling.md#arithmetic-and-result--arith-checked). Sequencing, edit sites, risks, and the corpus conversion checklist are in [plan 0027](../plans/0027-arithmetic-effects.md). Prelude-named policies (`handle Arith.saturating do ...`) require handler values ([plan 0016](../plans/0016-algebraic-effects-and-handlers.md) Phase B) and are out of scope for the initial landing; compile-time-selected policies via `handle static Arith` ([Staged Effects](0035-StagedEffects.md)) are a recorded synergy, not a commitment.
+Prelude-named policies (`handle Arith.saturating do ...`) require handler values ([plan 0016](../plans/0016-algebraic-effects-and-handlers.md) Phase B) and are outside the initial delivery. Compile-time-selected policies via `handle static Arith` ([Staged Effects](0035-StagedEffects.md)) are the intended answer for device backends, which have no runtime handler stack; that is a recorded direction, not a commitment.

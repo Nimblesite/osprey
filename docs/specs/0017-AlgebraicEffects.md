@@ -64,7 +64,7 @@ agree on that instantiation. This handler instantiates `Stash<string>`:
 let word = handle Stash
     put value => print(value)
     take => "ready"
-in perform Stash.take()
+do perform Stash.take()
 ```
 
 `[EFFECTS-GENERIC-RUNTIME]` Generic operation payloads use an erased machine-word
@@ -133,7 +133,7 @@ performExpr ::= "perform" IDENT "." IDENT "(" args? ")"
 ```osprey
 fn increment() -> int !State = {
     let current = perform State.get()
-    perform State.set((current + 1) ?: current)
+    perform State.set(current + 1)
     perform State.get()
 }
 ```
@@ -156,7 +156,7 @@ returns the operation result and execution continues after `perform`.
 let result = handle State
     get => 41
     set value => print("set ${value}")
-in increment()
+do increment()
 ```
 
 Lookup is per effect and operation. Nested handlers may override selected
@@ -166,9 +166,9 @@ for operations not handled by the inner region.
 ```osprey
 handle Logger
     log message => print("outer: ${message}")
-in handle Logger
+do handle Logger
     log message => print("inner: ${message}")
-in perform Logger.log("test")
+do perform Logger.log("test")
 ```
 
 A handler arm is not permission to perform its own active operation
@@ -194,7 +194,7 @@ mut cell = 0
 let result = handle State
     get => cell
     set value => { cell = value }
-in increment()
+do increment()
 print("result=${result} cell=${cell}")
 ```
 
@@ -223,7 +223,7 @@ let answer = handle Ask
         print("completed=${completed}")
         completed
     }
-in perform Ask.value() * 2
+do perform Ask.value() * 2
 ```
 
 Resuming handlers have these rules:
@@ -267,18 +267,18 @@ let total = handle Alpha
         settled = "${settled}a:${label}|"
         answer
     }
-in handle Beta
+do handle Beta
     beta label => {
         let answer = resume(100)
         settled = "${settled}b:${label}|"
         answer
     }
-in {
+do {
     let p = perform Alpha.alpha("a1")
     let q = perform Beta.beta("b1")
     let r = perform Alpha.alpha("a2")
     let s = perform Beta.beta("b2")
-    (p + q ?: 0) + (r + s ?: 0) ?: 0
+    (p + q) + (r + s)
 }
 print("${settled}")
 ```
@@ -349,7 +349,7 @@ let answer = handle Label
         true  => "stopped at ${subject}"
         false => resume("saw ${subject}")
     }
-in ask("al" + "pha")
+do ask("al" + "pha")
 ```
 
 Reclaiming them needs generated cleanup along the abort path — unwinding — not a

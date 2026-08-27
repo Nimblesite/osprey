@@ -123,7 +123,7 @@ handlerExpr ::= "handle" "static"? IDENT handlerArm+ "in" expr
 ```osprey
 let total = handle static Parallel
     forEach n body => rangeApply(n, body)
-in sumOfSquares(1000)
+do sumOfSquares(1000)
 ```
 
 A static handler is a **rewriting rule**, not a value. Its arms are inlined
@@ -302,7 +302,7 @@ its body is allowed to use.
 let frame = kernel
     Parallel forEach n body => deviceGrid(n, body)
     Alloc scratch bytes => deviceShared(bytes)
-in gpuMap(pixels, shade)
+do gpuMap(pixels, shade)
 ```
 
 `[STAGE-GPU-DIAG]` A body that is not stage-legal is rejected at the `kernel`

@@ -175,7 +175,7 @@ finallyArm  ::= "finally" "=>" expr
 handle Db
     query sql => runQuery(pool, sql)
     finally => releasePool(pool)
-in report()
+do report()
 ```
 
 ```osprey-ml
