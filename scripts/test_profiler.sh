@@ -52,4 +52,31 @@ assert summary["sampleCount"] > 20, f"too few samples: {summary['sampleCount']}"
 assert any(fn["name"] == "fib" for fn in summary["hotFunctions"]), "fib not hot"
 EOF
 
+# [PROF-COLLECT-UNWIND] Self-time must land on the code that is actually running.
+# profdemo spends ~100% of its CPU in `fib`/`add`/`sub` — pure integer arithmetic
+# that performs no syscall. Any self-time attributed to a Mach routine or to an
+# unsymbolized address is therefore a misattributed leaf frame, and self-time is
+# the whole point of a profiler. This assertion FAILS today: see the quarantine
+# in compiler/runtime/profiler_sampler.c.
+python3 - <<'EOF'
+import json
+summary = json.load(open("profdemo.profile.json"))
+total = summary["sampleCount"]
+bogus = sum(f["selfSamples"] for f in summary["hotFunctions"]
+            if f["kind"] != "user" and (f["name"].startswith("0x")
+                                        or f["name"].startswith("task_")
+                                        or f["name"].startswith("host_")
+                                        or f["name"].startswith("pthread_")
+                                        or f["name"].startswith("_platform_")
+                                        or f["name"].startswith("__get")))
+share = 100.0 * bogus / total
+assert share < 5.0, (
+    f"{share:.1f}% of self-samples ({bogus}/{total}) land on kernel or "
+    "unsymbolized leaves; profdemo makes no syscalls, so the sampled leaf PC "
+    "is wrong and every SELF% figure is fiction")
+hot = max(summary["hotFunctions"], key=lambda f: f["selfSamples"])
+assert hot["kind"] == "user", (
+    f"hottest self-time frame is {hot['name']!r} ({hot['selfPct']}%), not Osprey code")
+EOF
+
 echo "PROFILER-E2E-OK"

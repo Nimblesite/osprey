@@ -87,21 +87,72 @@ static bool scan_call_open_gap(TSLexer *lexer) {
   return lexer->lookahead == '(';
 }
 
-// Succeeds once the rest of the line holds nothing that could extend the
-// statement: a newline, a `//` comment running to one, the `}` closing the
-// enclosing block or namespace body, or end of file.
+// Consumes a `//`-to-end-of-line comment. Returns false on a lone `/`, which
+// is division and therefore not a line ending.
+static bool skip_line_comment(TSLexer *lexer) {
+  lexer->advance(lexer, true);
+  if (lexer->lookahead != '/') {
+    return false;
+  }
+  while (lexer->lookahead != '\n' && lexer->lookahead != '\r' && !lexer->eof(lexer)) {
+    lexer->advance(lexer, true);
+  }
+  return true;
+}
+
+// True when a line beginning with `first` then `second` can only CONTINUE the
+// expression before it — an operator with no prefix reading, so no statement
+// could start there. Unary-capable `+`, `-`, and `!` are deliberately absent:
+// a line they open is a NEW statement (whose discarded value [BLOCK-DISCARD]
+// then reports loudly), exactly Go's semicolon rule. `||` opens a zero-argument
+// lambda, but a lambda heading a statement is itself a discarded value, so the
+// or-continuation is the only reading that can compile.
+static bool continues_expression(int32_t first, int32_t second) {
+  switch (first) {
+    case '*': case '%': case '<': case '>': case '?': case ':': case '.':
+      return true;
+    case '/': return second != '/';  // division; `//` opens a comment
+    case '|': return second == '>' || second == '|';
+    case '&': return second == '&';
+    case '=': return second == '=';
+    case '!': return second == '=';
+    default:  return false;
+  }
+}
+
+// Succeeds once the statement's line is over — a newline, a `//` comment
+// running to one, the `}` closing the enclosing block or namespace body, or
+// end of file — UNLESS the next line's first token can only continue the
+// expression (`continues_expression`), which keeps multi-line pipelines and
+// trailing conditions legal. Everything here is consumed with skip=true, so a
+// refusal costs nothing: the lexer restarts from the token's start.
 static bool scan_statement_break(TSLexer *lexer) {
   lexer->result_symbol = STATEMENT_BREAK;
   lexer->mark_end(lexer);
-  skip_blanks(lexer);
-  if (lexer->lookahead == '/') {
-    // `//` and `///` both run to end of line, so either ends the statement.
-    // A lone `/` is division, which continues it.
+  bool line_ended = false;
+  for (;;) {
+    skip_blanks(lexer);
+    if (lexer->eof(lexer) || lexer->lookahead == '}') {
+      return true;  // The encloser terminates the statement outright.
+    }
+    if (lexer->lookahead == '\n' || lexer->lookahead == '\r') {
+      line_ended = true;
+      lexer->advance(lexer, true);
+      continue;
+    }
+    if (lexer->lookahead == '/' ) {
+      if (skip_line_comment(lexer)) {
+        continue;  // A comment ends the line as surely as the newline does.
+      }
+      return line_ended && !continues_expression('/', lexer->lookahead);
+    }
+    if (!line_ended) {
+      return false;  // Something else on the SAME line: the statement goes on.
+    }
+    int32_t first = lexer->lookahead;
     lexer->advance(lexer, true);
-    return lexer->lookahead == '/';
+    return !continues_expression(first, lexer->lookahead);
   }
-  return lexer->lookahead == '\n' || lexer->lookahead == '\r' ||
-         lexer->lookahead == '}' || lexer->eof(lexer);
 }
 
 // CALL_OPEN_GAP is tried first, and only its failure can end a statement: where
