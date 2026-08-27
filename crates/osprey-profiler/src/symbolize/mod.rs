@@ -133,7 +133,7 @@ fn adjusted_unslid(pc: u64, frame_index: usize, slide: u64) -> u64 {
 /// cache. `base` is the mach-header address; the cache stores every system
 /// dylib's header in one region and its `__TEXT` in another, so the image with
 /// the nearest lower header is not the image the pc is executing in. A
-/// libsystem_malloc leaf was being handed to a neighbouring image and
+/// `libsystem_malloc` leaf was being handed to a neighbouring image and
 /// symbolizing as a function it never entered.
 ///
 /// The `base` arm stays for producers that report no executable range (older

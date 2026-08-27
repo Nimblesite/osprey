@@ -20,7 +20,7 @@ const STATE_WAITING: u64 = 1;
 /// `base` alone cannot decide ownership. `base` is the mach-header address, and
 /// in the dyld shared cache every system dylib's header sits in one region while
 /// its `__TEXT` lives in another, so header order is not text order: picking the
-/// greatest `base <= pc` hands a libsystem_malloc pc to whichever unrelated
+/// greatest `base <= pc` hands a `libsystem_malloc` pc to whichever unrelated
 /// image happens to have the nearest lower header. That is how `_xzm_free`
 /// symbolized as `task_get_special_port`. `text`/`text_size` carry the real
 /// executable range so ownership is decided by containment.
