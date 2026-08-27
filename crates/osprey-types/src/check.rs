@@ -1215,8 +1215,10 @@ fn resolve_positioned(ctx: &mut InferCtx, tys: &[(Position, Type)]) -> HashMap<(
 #[cfg(test)]
 mod tests {
     use super::infer_program;
+    use crate::check::check_program;
     use crate::error::TypeError;
     use crate::testutil::{check, ok};
+    use osprey_ast::{Expr, Stmt};
     use osprey_syntax::parse_program;
 
     /// One generic effect over a generic RECORD, differing only in the
@@ -1533,6 +1535,52 @@ mod tests {
                  discarded statements; got zero errors for:\n{src}"
             );
         }
+    }
+
+    /// SECOND ROOT, seen from the checker. A block's trailing expression
+    /// absorbs the orphan a juxtaposition split leaves behind, so `let r =
+    /// double 5` becomes `let r = double` with the block's TAIL set to `5` and
+    /// `go()` returns 5 where the source says 10.
+    ///
+    /// The point of this test is what it proves about the FIRST root's fix:
+    /// after the split the block holds exactly one statement, a `Let`. There is
+    /// no `Stmt::Expr` for `infer_block_stmt` to look at, so generalising its
+    /// `is_named(names::RESULT)` guard — however far — can never make this
+    /// program an error. The tail is not discarded; it is RETURNED.
+    ///
+    /// The fix therefore has to land in the parser, and this test stays red
+    /// until it does. The parse-shape twins live in
+    /// `osprey-syntax::default::tests`.
+    #[test]
+    fn the_discard_rule_cannot_reach_a_juxtaposed_argument_in_tail_position() {
+        const SRC: &str = "fn double(x) = x * 2\n\
+                           fn go() -> int = {\n\
+                             let r = double 5\n\
+                           }\n";
+        let parsed = parse_program(SRC);
+        // A parse-level rejection is the correct outcome, and satisfies this.
+        if !parsed.errors.is_empty() {
+            return;
+        }
+        let errs = check_program(&parsed.program);
+        let discardable = match parsed.program.statements.get(1) {
+            Some(Stmt::Function {
+                body: Expr::Block { statements, .. },
+                ..
+            }) => statements
+                .iter()
+                .filter(|s| matches!(s, Stmt::Expr { .. }))
+                .count(),
+            _ => 0,
+        };
+        assert!(
+            !errs.is_empty(),
+            "`let r = double 5` returns the ARGUMENT 5 instead of applying \
+             `double`, and must be rejected. It parsed clean with {discardable} \
+             discardable statement(s) in the block, so no discard rule can \
+             reach it. Errors were {:?}",
+            errs.iter().map(|e| &e.message).collect::<Vec<_>>()
+        );
     }
 
     #[test]
