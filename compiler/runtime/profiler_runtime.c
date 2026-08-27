@@ -25,12 +25,11 @@ void osp_prof_thread_unregister(void) {}
 
 #if defined(__APPLE__)
 #include <mach-o/dyld.h>
-#include <mach-o/getsect.h>
 #include <mach-o/dyld_images.h>
+#include <mach-o/getsect.h>
 #include <mach-o/loader.h>
 #include <mach/mach.h>
 #include <mach/task_info.h>
-#include <mach/mach.h>
 #else
 #include <link.h>
 #endif
