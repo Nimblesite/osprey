@@ -8,6 +8,7 @@ use super::{SymFrame, Symbolize};
 use crate::raw::Image;
 use crate::ProfileError;
 use std::collections::BTreeMap;
+use std::ffi::OsString;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
@@ -62,19 +63,7 @@ impl LlvmSymbolizer {
             image
         };
         let mut command = Command::new(tool);
-        if !arch.is_empty() {
-            let _ = command.arg("-arch").arg(&arch);
-        }
-        let _ = command
-            .arg("-o")
-            .arg(object)
-            .arg("-l")
-            .arg(format!("{base:#x}"));
-        let _ = command.args(
-            unslid_addrs
-                .iter()
-                .map(|a| format!("{:#x}", a.saturating_add(slide))),
-        );
+        let _ = command.args(atos_args(&arch, object, base, slide, unslid_addrs));
         let out = run_capture(&mut command)?;
         let lines = out.lines().chain(std::iter::repeat(""));
         Some(
@@ -117,6 +106,41 @@ fn resolve_object(image: &Path, fallback: &Path) -> Option<PathBuf> {
         (false, false) => return None,
     };
     Some(dsym_object(primary).unwrap_or_else(|| primary.to_path_buf()))
+}
+
+/// `atos` argv for one image: the slice, the object, its load address, and the
+/// addresses re-slid (atos undoes the slide itself).
+///
+/// `-arch` is not decoration. Every system dylib is universal, and `atos` left
+/// on its host default reads the `arm64` slice of an image the kernel mapped
+/// as `arm64e`: one address is `task_get_special_port + 40` under the first
+/// slice and `mach_absolute_time + 108` under the second, and only the second
+/// agrees with `dladdr` and `/usr/bin/sample` [PROF-SYMBOLIZE-OFFLINE].
+fn atos_args(
+    arch: &str,
+    object: &Path,
+    base: u64,
+    slide: u64,
+    unslid_addrs: &[u64],
+) -> Vec<OsString> {
+    // `unwrap_or_default()` here would emit TWO EMPTY arguments, which atos
+    // takes as addresses and fails on; the Option must be flattened away.
+    let arch_flag = (!arch.is_empty()).then(|| [OsString::from("-arch"), OsString::from(arch)]);
+    arch_flag
+        .into_iter()
+        .flatten()
+        .chain([
+            OsString::from("-o"),
+            object.into(),
+            OsString::from("-l"),
+            OsString::from(format!("{base:#x}")),
+        ])
+        .chain(
+            unslid_addrs
+                .iter()
+                .map(|a| OsString::from(format!("{:#x}", a.saturating_add(slide)))),
+        )
+        .collect()
 }
 
 /// Whether `image` names the same binary as the CLI's `fallback`, so the
@@ -405,6 +429,52 @@ mod tests {
         assert!(!cache_only.exists(), "fixture assumes a cache-only dylib");
         assert_eq!(resolve_object(cache_only, &binary), None);
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// [PROF-SYMBOLIZE-OFFLINE] The slice must be pinned on the command line.
+    /// Drop `-arch` and `atos` reads a universal dylib on its host default,
+    /// which for an `arm64e` process is the wrong slice: the same address is
+    /// `task_get_special_port + 40` under `arm64` and `mach_absolute_time +
+    /// 108` under `arm64e`. Nothing downstream can tell those apart, because a
+    /// wrong name looks exactly like a right one. The addresses are re-slid
+    /// here too, since `atos` undoes the slide itself.
+    #[test]
+    fn atos_argv_pins_the_slice_the_image_was_mapped_as() {
+        let args = atos_args(
+            "arm64e",
+            Path::new("/usr/lib/system/libsystem_kernel.dylib"),
+            0x1_8DE9_1000,
+            0x0D9E_4000,
+            &[0x1_804A_E10C],
+        );
+        let flat: Vec<String> = args
+            .iter()
+            .map(|a| a.to_string_lossy().into_owned())
+            .collect();
+        assert_eq!(
+            flat,
+            [
+                "-arch",
+                "arm64e",
+                "-o",
+                "/usr/lib/system/libsystem_kernel.dylib",
+                "-l",
+                "0x18de91000",
+                "0x18de9210c",
+            ]
+        );
+    }
+
+    /// An image that recorded no slice must not grow an empty `-arch`, which
+    /// `atos` rejects outright — that would turn every frame of that image hex.
+    #[test]
+    fn atos_argv_omits_the_slice_when_none_was_recorded() {
+        let args = atos_args("", Path::new("/bin/app"), 0, 0, &[0x20]);
+        let flat: Vec<String> = args
+            .iter()
+            .map(|a| a.to_string_lossy().into_owned())
+            .collect();
+        assert_eq!(flat, ["-o", "/bin/app", "-l", "0x0", "0x20"]);
     }
 
     #[test]
