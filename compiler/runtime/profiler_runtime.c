@@ -410,14 +410,23 @@ int osp_prof_walk(uint64_t pc, uint64_t fp, uint64_t lr, uintptr_t lo,
     return 0;
   }
   int n = 0;
-  out[n++] = strip_pac(pc);
+  // [PROF-COLLECT-UNWIND] Frame 0 decides self-time, so it earns the floor every
+  // other frame already gets: `lr` below and every chained return in walk_chain
+  // are dropped under OSP_PROF_MIN_CODE_ADDR. The pc was the one frame trusted
+  // blindly, so a leaf that is not a code address became the self-time bucket.
+  const uint64_t leaf = strip_pac(pc);
+  if (leaf >= OSP_PROF_MIN_CODE_ADDR) {
+    out[n++] = leaf;
+  }
   uint64_t chain[OSP_PROF_MAX_FRAMES];
   int chain_max = max - 2 < OSP_PROF_MAX_FRAMES ? max - 2 : OSP_PROF_MAX_FRAMES;
   int c = walk_chain(strip_pac(fp), lo, hi, chain, chain_max);
   lr = strip_pac(lr);
   // The leaf's caller may exist only in lr (prologue not yet run); dedupe
   // against the first chained return address so it is never double-counted.
-  if (lr >= OSP_PROF_MIN_CODE_ADDR && lr != out[0] && (c == 0 || chain[0] != lr)) {
+  // `n == 0` when the pc was floored out: there is no out[0] to dedupe against.
+  if (lr >= OSP_PROF_MIN_CODE_ADDR && (n == 0 || lr != out[0]) &&
+      (c == 0 || chain[0] != lr)) {
     out[n++] = lr;
   }
   for (int i = 0; i < c && n < max; i++) {

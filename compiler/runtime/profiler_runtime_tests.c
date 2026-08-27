@@ -733,6 +733,14 @@ static void quarantined_capture_body(void) {
   (void)unlink(out);
 }
 
+#endif // __APPLE__ -- quarantined_capture_body drives the macOS capture arm.
+
+// The three tests below drive osp_prof_walk with SYNTHETIC frames and touch no
+// platform API, so they are built and run everywhere. They used to sit inside
+// the __APPLE__ guard above while main() called them unconditionally, which is
+// a build failure on every other platform -- three calls to functions that do
+// not exist -- and hid the walk defect (a) from Linux CI entirely.
+
 // ---- QUARANTINE: macOS leaf-PC capture [PROF-COLLECT-UNWIND] -----------------
 // Every test in this block is RED and must stay red until the leaf PC captured
 // by read_regs() in profiler_sampler.c is provably the running instruction.
@@ -813,6 +821,7 @@ static void test_frame_zero_is_the_precise_pc(void) {
   assert(out[0] >= CODE_LO && out[0] < CODE_HI); // frame 0 must too
 }
 
+#if defined(__APPLE__)
 static void test_macos_capture_arm_is_quarantined(void) {
   assert(osp_death_signal(quarantined_capture_body) == SIGABRT);
 }
