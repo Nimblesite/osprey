@@ -769,6 +769,7 @@ mod tests {
     /// [TYPE-LIST-PATTERNS]
     #[test]
     fn an_index_bracket_must_touch_its_target_unlike_a_call() {
+        const SPACED: &str = "let r = xs [0]\n";
         match let_value("let r = xs[0]\n") {
             Expr::Index { target, index } => {
                 assert!(matches!(*target, Expr::Identifier(ref n) if n == "xs"));
@@ -781,7 +782,6 @@ mod tests {
         // [LEX-STATEMENT-BREAK]. BOTH halves are asserted: rejection alone
         // would still hold if the `[` had wrongly bound as an index and some
         // later rule complained, which is the very confusion under test.
-        const SPACED: &str = "let r = xs [0]\n";
         assert!(
             !crate::parse_program(SPACED).errors.is_empty(),
             "a spaced `[` must not split the statement"

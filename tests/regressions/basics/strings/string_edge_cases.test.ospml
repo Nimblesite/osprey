@@ -183,7 +183,6 @@ match failWith "custom boom"
     Error   message => print "user-msg=${message}\n"
 
 print "=== Edge Cases Complete ===\n"
-0
 
 (** Re-evaluate successful boundaries, rejected inputs, cursor values, and payloads. *)
 stringEdgeCase () =

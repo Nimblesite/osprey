@@ -217,7 +217,6 @@ Error   { message } => print("user-msg=${message}\n")
   }
 
   print("=== Edge Cases Complete ===\n")
-  0
 
 /// Re-evaluates successful boundaries, rejected inputs, cursor values, and payloads.
 fn stringEdgeCase() = {

@@ -1808,29 +1808,38 @@ mod tests {
             position: None,
         };
         // Pipe, non-call form: `10 |> inc` applies `inc(10)`.
-        let bare_pipe = bind("piped", Expr::Pipe {
-            left: Box::new(Expr::Integer(10)),
-            right: Box::new(Expr::Identifier("inc".into())),
-        });
+        let bare_pipe = bind(
+            "piped",
+            Expr::Pipe {
+                left: Box::new(Expr::Integer(10)),
+                right: Box::new(Expr::Identifier("inc".into())),
+            },
+        );
         // Pipe, call form: `10 |> inc(0)` prepends `10`, becoming `inc(10, 0)`
         // (an arity mismatch — but the call-form branch is what we exercise).
-        let call_pipe = bind("call_piped", Expr::Pipe {
-            left: Box::new(Expr::Integer(10)),
-            right: Box::new(Expr::Call {
-                function: Box::new(Expr::Identifier("inc".into())),
-                arguments: vec![Expr::Integer(0)],
-                named_arguments: Vec::new(),
-            }),
-        });
+        let call_pipe = bind(
+            "call_piped",
+            Expr::Pipe {
+                left: Box::new(Expr::Integer(10)),
+                right: Box::new(Expr::Call {
+                    function: Box::new(Expr::Identifier("inc".into())),
+                    arguments: vec![Expr::Integer(0)],
+                    named_arguments: Vec::new(),
+                }),
+            },
+        );
         // `Expr::Update` over a non-record binding hits the else arm of
         // `infer_update` (the field values are still inferred).
-        let update = bind("updated", Expr::Update {
-            record: "n".into(),
-            fields: vec![FieldAssignment {
-                name: "x".into(),
-                value: Expr::Integer(1),
-            }],
-        });
+        let update = bind(
+            "updated",
+            Expr::Update {
+                record: "n".into(),
+                fields: vec![FieldAssignment {
+                    name: "x".into(),
+                    value: Expr::Integer(1),
+                }],
+            },
+        );
         let prog = Program {
             statements: vec![
                 inc,

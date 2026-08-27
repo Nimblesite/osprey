@@ -64,7 +64,6 @@ let mid = match codePointAt(s, 7) {
 }
 print(mid)
 print("=== walk complete ===")
-0
 
 /// Checks a decoded scalar at a known byte boundary.
 fn codepointIs(s, index, expected) = match codePointAt(s, index) {

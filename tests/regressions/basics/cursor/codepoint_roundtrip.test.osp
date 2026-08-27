@@ -26,9 +26,11 @@ fn checkDecode(cp, ch) = {
 fn roundTrip(cp) = {
     match fromCodePoint(cp) {
         Success { value }   => checkDecode(cp, value)
-        Error   { message } => { print("cp=${cp} encode FAILED: ${message}\n") 0 }
+        Error   { message } => {
+            print("cp=${cp} encode FAILED: ${message}\n")
+            0
+        }
     }
-    0
 }
 
 /// An invalid scalar must be rejected by encode with an Error message.
@@ -86,7 +88,6 @@ match byteAt("é", 0) { Success { value } => print("byteAt(é,0)=${value}\n") Er
 match byteAt("é", 1) { Success { value } => print("byteAt(é,1)=${value}\n") Error { message } => print("b err\n") }
 
 print("=== codepoint roundtrip complete ===\n")
-0
 
 /// Returns whether encoding, decoding, and width calculation agree for a scalar.
 fn scalarRoundTrips(cp) = match fromCodePoint(cp) {

@@ -44,8 +44,11 @@ let name = "Alice"
 // and this arm interprets it — the sanctioned form of mutation.
 mut count = 0
 let total = handle Counter
-    tick => { count = count + 1  count }
-do run()
+    tick => {
+        count = count + 1 ?: count
+        count
+    }
+in run()
 ```
 
 ML omits `let`; its reassignment operator is `:=` and follows the same rule.
@@ -55,7 +58,9 @@ name = "Alice"
 
 mut count = 0
 total = handle Counter
-    tick => count := count + 1
+    tick =>
+        count := count + 1 ?: count
+        count
 in run ()
 ```
 

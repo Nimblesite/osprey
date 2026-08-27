@@ -291,8 +291,11 @@ holds no bound value or the wrong one:
 ```osprey
 mut hits = 0
 let total = handle Counter
-    tick amount => { hits = hits + amount  hits }
-do run()
+    tick amount => {
+        hits = hits + amount
+        hits
+    }
+in run()
 
 // Reads the live cell and the finished total, from outside the entry.
 fn summary() = "${hits} hits, total ${total}"

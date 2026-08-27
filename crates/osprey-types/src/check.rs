@@ -87,11 +87,19 @@ struct Discard {
 
 impl Discard {
     fn implicit(ty: Type, position: Option<Position>) -> Self {
-        Self { ty, position, explicit: false }
+        Self {
+            ty,
+            position,
+            explicit: false,
+        }
     }
 
     fn explicit(ty: Type, position: Option<Position>) -> Self {
-        Self { ty, position, explicit: true }
+        Self {
+            ty,
+            position,
+            explicit: true,
+        }
     }
 }
 

@@ -1,0 +1,9 @@
+// Implements [LEX-STATEMENT-BREAK] negative test.
+//
+// Two statements cannot share a line, because nothing would separate them.
+// This is the sibling of `statement_break_juxtaposition.ospo`: there the
+// greedy parse invented an application, here it would have to invent a
+// boundary. A separate file because the parser reports the FIRST syntax error
+// and stops, so a second case in one source pins nothing.
+
+print("a") print("b")

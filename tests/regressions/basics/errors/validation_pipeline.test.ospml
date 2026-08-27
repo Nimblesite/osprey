@@ -49,7 +49,7 @@ runAll (i, n) =
                 _ => runAll ((i + 1) ?: i, n)
 
 print "=== Validation Pipeline ==="
-runAll (0, 4)
+_ = runAll (0, 4)
 match parseAge "abc"
     Success value => print "unexpected success"
     Error message =>
@@ -57,7 +57,6 @@ match parseAge "abc"
             Success value2 => print "unexpected success"
             Error reason2 => print "threaded reasons = \"${message}\" / \"${reason2}\""
 print "=== Validation Pipeline Complete ==="
-0
 
 (** Check the accepted payload of a validated age. *)
 accepts (s, expected) =

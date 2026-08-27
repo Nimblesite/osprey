@@ -91,7 +91,6 @@ print("tokenCount=${listLength(tokens)}\n")    // 5
 forEachList(tokens, print)                     // 12 345 6789 0 42
 
 print("=== Scan Complete ===\n")
-0
 
 /// Checks a token value at an exact position without hiding index failures.
 fn tokenIs(tokens: List<int>, index: int, expected: int) = match listGet(tokens, index) {

@@ -54,7 +54,12 @@ mod tests {
 
     #[test]
     fn block_lets_scope_following_statements() {
-        let f = frees("let f = fn() => { let a = seed  let b = step(a)  result(a, b, glob) }");
+        let f = frees(
+            "let f = fn() => {\n\
+               let a = seed\n\
+               let b = step(a)\n\
+               result(a, b, glob) }",
+        );
         assert!(
             f.contains("seed") && f.contains("step") && f.contains("result") && f.contains("glob")
         );
@@ -134,7 +139,12 @@ mod tests {
     #[test]
     fn block_assignment_and_expr_statements_are_walked() {
         // walk_block's Assignment + Expr statement arms.
-        let f = frees("let f = fn() => { mut a = seed  a = step(a)  emit(a) }");
+        let f = frees(
+            "let f = fn() => {\n\
+               mut a = seed\n\
+               a = step(a)\n\
+               emit(a) }",
+        );
         assert!(f.contains("seed") && f.contains("step") && f.contains("emit"));
     }
 }

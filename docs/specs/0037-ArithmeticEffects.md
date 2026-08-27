@@ -119,8 +119,14 @@ Fault-sticky — IEEE-754's sticky-flag discipline for integers; the value flows
 ```osprey
 mut faulted = false
 let total = handle Arith
-    overflow _ l _ _ => { faulted = true  l }
-    remainderByZero l => { faulted = true  l }
+    overflow _ l _ _ => {
+        faulted = true
+        l
+    }
+    remainderByZero l => {
+        faulted = true
+        l
+    }
 do settle(ledger)
 
 print("${faulted ? "REJECTED: ledger overflow" : "settled ${total} cents"}")
@@ -138,7 +144,10 @@ Nested and partial — the inner region wraps checksums; everything else faults 
 
 ```osprey
 handle Arith
-    overflow _ l _ _ => { faulted = true  l }
+    overflow _ l _ _ => {
+        faulted = true
+        l
+    }
 do {
     let checksum = handle Arith overflow _ _ _ wrapped => wrapped do djb2(payload)
     let total = settle(postings)
