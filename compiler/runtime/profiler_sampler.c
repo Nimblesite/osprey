@@ -239,7 +239,14 @@ static int capture_suspended(OspProfSlot *slot, uint64_t *frames) {
   }
   MachRegs regs = read_regs(slot->mach_port);
   int n = 0;
-  if (regs.ok) {
+  // [PROF-SYMBOLIZE-OFFLINE] frame 0 must be the precise interrupted pc. When
+  // the captured pc is not a code address osp_prof_walk floors it out, so
+  // frame 0 would become a RETURN address that the symbolizer -- which decides
+  // the -1 adjustment positionally -- would attribute to the line AFTER the
+  // call. A capture whose leaf cannot be trusted is dropped, never reshaped:
+  // an untrustworthy sample must stay visibly absent, not become a plausible
+  // wrong function.
+  if (regs.ok && osp_prof_pc_is_code(regs.pc)) {
     n = osp_prof_walk(regs.pc, regs.fp, regs.lr, slot->stack_lo, slot->stack_hi,
                       frames, OSP_PROF_MAX_FRAMES);
   }
@@ -315,12 +322,21 @@ static void sigprof_handler(int sig, siginfo_t *si, void *uctx) {
       uint64_t fp = (uint64_t)uc->uc_mcontext.gregs[REG_RBP];
       uint64_t lr = 0;
 #endif
-      e->t_ns = osp_prof_mono_ns();
-      e->row = slot->index;
-      int n = osp_prof_walk(pc, fp, lr, slot->stack_lo, slot->stack_hi, e->pcs,
-                            OSP_PROF_MAX_FRAMES);
-      e->n = n > 0 ? (uint32_t)n : 0;
-      atomic_store_explicit(&ring->head, head + 1, memory_order_release);
+      // Same leaf rule as the macOS arm above [PROF-SYMBOLIZE-OFFLINE]: a pc
+      // that is not a code address would be floored out of frame 0, leaving a
+      // return address the symbolizer positionally trusts as a precise pc.
+      // Count it through the ring's existing drop channel so the loss reaches
+      // `dropped` ([PROF-RAW-FORMAT]) instead of disappearing.
+      if (!osp_prof_pc_is_code(pc)) {
+        atomic_fetch_add_explicit(&ring->drops, 1, memory_order_relaxed);
+      } else {
+        e->t_ns = osp_prof_mono_ns();
+        e->row = slot->index;
+        int n = osp_prof_walk(pc, fp, lr, slot->stack_lo, slot->stack_hi,
+                              e->pcs, OSP_PROF_MAX_FRAMES);
+        e->n = n > 0 ? (uint32_t)n : 0;
+        atomic_store_explicit(&ring->head, head + 1, memory_order_release);
+      }
     } else {
       atomic_fetch_add_explicit(&ring->drops, 1, memory_order_relaxed);
     }

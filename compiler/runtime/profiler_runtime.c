@@ -378,6 +378,10 @@ static uint64_t strip_pac(uint64_t addr) {
 #endif
 }
 
+bool osp_prof_pc_is_code(uint64_t pc) {
+  return strip_pac(pc) >= OSP_PROF_MIN_CODE_ADDR;
+}
+
 static int walk_chain(uint64_t fp, uintptr_t lo, uintptr_t hi, uint64_t *out,
                       int max) {
   if (hi < lo + 16) {
@@ -415,7 +419,7 @@ int osp_prof_walk(uint64_t pc, uint64_t fp, uint64_t lr, uintptr_t lo,
   // are dropped under OSP_PROF_MIN_CODE_ADDR. The pc was the one frame trusted
   // blindly, so a leaf that is not a code address became the self-time bucket.
   const uint64_t leaf = strip_pac(pc);
-  if (leaf >= OSP_PROF_MIN_CODE_ADDR) {
+  if (osp_prof_pc_is_code(pc)) {
     out[n++] = leaf;
   }
   uint64_t chain[OSP_PROF_MAX_FRAMES];
