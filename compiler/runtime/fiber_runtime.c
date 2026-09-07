@@ -607,7 +607,7 @@ int64_t fiber_done(int64_t fiber_id) {
 // iOS supports fibers but excludes the fork/exec process runtime. Keeping these
 // wrappers in its archive would make ordinary fiber programs fail to link even
 // when they never spawn an external process. [IOS-TARGET-CAPABILITIES]
-#ifndef OSPREY_IOS
+#if !defined(OSPREY_IOS) && !defined(OSPREY_ANDROID)
 extern int64_t await_process(int64_t process_id);
 extern void cleanup_process(int64_t process_id);
 

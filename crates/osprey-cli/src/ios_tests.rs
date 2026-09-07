@@ -53,8 +53,8 @@ fn rejects_unsupported_build_options_before_toolchain_work() {
 
 #[test]
 fn scratch_paths_are_unique_and_cleaned_on_failure() {
-    let first = Scratch::new("app.osp", Target::Device).expect("temp directory");
-    let second = Scratch::new("app.osp", Target::Device).expect("temp directory");
+    let first = Scratch::new("app.osp", Target::Device.sdk()).expect("temp directory");
+    let second = Scratch::new("app.osp", Target::Device.sdk()).expect("temp directory");
     let path = first.path.clone();
     assert_ne!(path, second.path);
     assert!(path.is_dir());
@@ -64,7 +64,7 @@ fn scratch_paths_are_unique_and_cleaned_on_failure() {
 
 #[test]
 fn publishes_archive_and_header_in_new_output_directory() {
-    let scratch = Scratch::new("publish.osp", Target::Device).expect("scratch");
+    let scratch = Scratch::new("publish.osp", Target::Device.sdk()).expect("scratch");
     let archive = scratch.path.join("source.a");
     write(&archive, "archive").expect("fixture");
     let out = scratch.path.join("new/app.a");

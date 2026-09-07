@@ -2,6 +2,7 @@
 //! `wasm-ld`, `xcrun`). Shared by the wasm and iOS drivers so an overridable
 //! tool name, a failed exit and a missing program are reported one way.
 
+use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode};
 
 /// The tool to invoke for `env`, defaulting to `default` when unset.
@@ -44,5 +45,47 @@ mod tests {
         assert!(run_tool("true", &[], "install it").is_ok());
         assert!(run_tool("false", &[], "install it").is_err());
         assert!(run_tool("/no/such/tool/osprey_xyz", &[], "install it").is_err());
+    }
+}
+
+pub(crate) fn write(path: &Path, contents: &str) -> Result<(), ExitCode> {
+    std::fs::write(path, contents)
+        .map_err(|e| fail(&format!("cannot write {}: {e}", path.display())))
+}
+
+pub(crate) fn publish(archive: &Path, out: &Path, header: &str) -> Result<(), ExitCode> {
+    if let Some(parent) = out.parent().filter(|p| !p.as_os_str().is_empty()) {
+        std::fs::create_dir_all(parent)
+            .map_err(|e| fail(&format!("cannot create {}: {e}", parent.display())))?;
+    }
+    let _ = std::fs::copy(archive, out)
+        .map_err(|e| fail(&format!("cannot write {}: {e}", out.display())))?;
+    write(&out.with_extension("h"), header)
+}
+
+/// Remove intermediate IR and objects even when clang or libtool fails.
+pub(crate) struct Scratch {
+    pub(crate) path: PathBuf,
+}
+
+impl Scratch {
+    pub(crate) fn new(source: &str, target: &str) -> Result<Self, ExitCode> {
+        use std::sync::atomic::{AtomicU64, Ordering};
+        static NEXT: AtomicU64 = AtomicU64::new(0);
+        let sequence = NEXT.fetch_add(1, Ordering::Relaxed);
+        let path = std::env::temp_dir().join(format!(
+            "{}-{}-{sequence}",
+            crate::scratch_stem(source),
+            target
+        ));
+        std::fs::create_dir(&path)
+            .map_err(|e| fail(&format!("cannot create {}: {e}", path.display())))?;
+        Ok(Self { path })
+    }
+}
+
+impl Drop for Scratch {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.path);
     }
 }

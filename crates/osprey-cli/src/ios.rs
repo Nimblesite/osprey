@@ -1,8 +1,8 @@
 //! iPhone app-logic archives with a generated C interface. [IOS-TARGET]
 
 use crate::ios_abi;
-use crate::toolchain::{fail, run_tool, tool};
-use crate::{find_runtime_lib, scratch_stem, Cli};
+use crate::toolchain::{fail, publish, run_tool, tool, write, Scratch};
+use crate::{find_runtime_lib, Cli};
 use osprey_ast::Program;
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode};
@@ -67,15 +67,7 @@ pub(crate) fn validate(cli: &Cli) -> Result<(), ExitCode> {
 /// Emit the app's C ABI and LLVM implementation before any toolchain work.
 /// Implements [IOS-HOST-ABI] and [IOS-TARGET-ENTRY].
 pub(crate) fn source(program: &Program, path: &str) -> Result<(String, String), String> {
-    crate::target_capabilities::validate(program, "ios")?;
-    let ir = osprey_codegen::compile_library(program).map_err(|e| format!("{path}: {e}"))?;
-    let types = osprey_types::infer_program(program);
-    let abi = ios_abi::host_abi(program, &types, &ir)
-        .map_err(|error| format!("{path}: iOS C ABI: {error}"))?;
-    Ok((
-        ios_abi::with_host_abi(&ir, &abi)?,
-        ios_abi::header(&abi, path),
-    ))
+    ios_abi::source(program, path, "ios", true)
 }
 
 /// Compile an ARM64 static archive, bundling the matching C runtime, plus its
@@ -96,7 +88,7 @@ pub(crate) fn build(
             target.runtime()
         ))
     })?;
-    let scratch = Scratch::new(path, target)?;
+    let scratch = Scratch::new(path, target.sdk())?;
     write(&scratch.path.join("app.ll"), &ir)?;
     let obj = scratch.path.join("app.o");
     xcrun(
@@ -166,48 +158,6 @@ fn archive_args(obj: &Path, runtime: &str, out: &Path) -> Vec<String> {
         obj.display().to_string(),
         runtime.to_string(),
     ]
-}
-
-fn write(path: &Path, contents: &str) -> Result<(), ExitCode> {
-    std::fs::write(path, contents)
-        .map_err(|e| fail(&format!("cannot write {}: {e}", path.display())))
-}
-
-fn publish(archive: &Path, out: &Path, header: &str) -> Result<(), ExitCode> {
-    if let Some(parent) = out.parent().filter(|p| !p.as_os_str().is_empty()) {
-        std::fs::create_dir_all(parent)
-            .map_err(|e| fail(&format!("cannot create {}: {e}", parent.display())))?;
-    }
-    let _ = std::fs::copy(archive, out)
-        .map_err(|e| fail(&format!("cannot write {}: {e}", out.display())))?;
-    write(&out.with_extension("h"), header)
-}
-
-/// Remove intermediate IR and objects even when clang or libtool fails.
-struct Scratch {
-    path: PathBuf,
-}
-
-impl Scratch {
-    fn new(source: &str, target: Target) -> Result<Self, ExitCode> {
-        use std::sync::atomic::{AtomicU64, Ordering};
-        static NEXT: AtomicU64 = AtomicU64::new(0);
-        let sequence = NEXT.fetch_add(1, Ordering::Relaxed);
-        let path = std::env::temp_dir().join(format!(
-            "{}-{}-{sequence}",
-            scratch_stem(source),
-            target.sdk()
-        ));
-        std::fs::create_dir(&path)
-            .map_err(|e| fail(&format!("cannot create {}: {e}", path.display())))?;
-        Ok(Self { path })
-    }
-}
-
-impl Drop for Scratch {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.path);
-    }
 }
 
 #[cfg(test)]

@@ -26,7 +26,10 @@ const TERMINAL_FNS: &[&str] = &[
 const WEB_IMPORTS: &[&str] = &["osprey_web_render", "osprey_web_command"];
 
 pub(crate) fn validate(program: &Program, target: &str) -> Result<(), String> {
-    if !matches!(target, "wasm32" | "ios" | "ios-sim") {
+    if !matches!(
+        target,
+        "wasm32" | "ios" | "ios-sim" | "android-arm64" | "android-x64"
+    ) {
         return Ok(());
     }
     let mut visitor = Capabilities {

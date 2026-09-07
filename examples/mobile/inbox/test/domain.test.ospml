@@ -1,0 +1,10 @@
+namespace inboxtests
+
+import bank::Json
+
+jsonControlCase () =
+    source = "line one\nline two\t\r" + (fromCodePoint 1 ?: "")
+    encoded = Json::obj (Json::strField "value" source)
+    check "control characters round trip through valid JSON" source (Json::getOr encoded "value" "INVALID JSON")
+
+test "shared JSON encoder escapes control characters" jsonControlCase

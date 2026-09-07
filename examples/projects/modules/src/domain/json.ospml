@@ -23,15 +23,31 @@ signature JsonApi
     getOr : string -> string -> string -> string
 
 module Json : JsonApi
-    // JSON string escaping: backslash first (so we never double-escape the
-    // escapes we just added), then the double-quote. `replace` is fallible;
-    // `?:` supplies the empty string on the impossible failure path.
+    controlEscape code =
+        digits = "0123456789abcdef"
+        high = match code >= 16
+            true => 1
+            false => 0
+        low = (code % 16) ?: 0
+        "\\u00" + take (drop digits high) 1 + take (drop digits low) 1
+
+    escapeControls source code = match code >= 32
+        true => source
+        false =>
+            character = fromCodePoint code ?: ""
+            escaped = match contains source character
+                true => replace source character (controlEscape code) ?: source
+                false => source
+            escapeControls escaped ((code + 1) ?: 32)
+
+    // Escape original slashes first; later JSON escapes must remain single.
+    // Runtime strings cannot contain NUL, so representable controls start at 1.
     escape : string -> string
     escape s =
         bslash = "\\"
         quote = "\""
         step = replace s bslash (bslash + bslash) ?: ""
-        replace step quote (bslash + quote) ?: ""
+        escapeControls (replace step quote (bslash + quote) ?: "") 1
 
     quote : string -> string
     quote s =

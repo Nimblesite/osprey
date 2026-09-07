@@ -21,7 +21,7 @@ The products are `build/ios/products/OspreyCounter.app` and `build/ios-sim/produ
 To build and run on a physical iPhone, run `make ios` once to prepare the compiler and runtime, connect and unlock your phone, trust the Mac, and enable Developer Mode. Sign in to your Apple developer account in Xcode, then run:
 
 ```sh
-OSPREY_DEVELOPMENT_TEAM=<your-team-id> examples/ios/run-device.sh
+OSPREY_DEVELOPMENT_TEAM=YOUR_TEAM_ID examples/ios/run-device.sh
 ```
 
 The script selects the only connected iPhone, recompiles `app.osp`, signs the app using Xcode, installs it, and opens it on the phone. With multiple phones, set `OSPREY_DEVICE_ID` to the identifier shown by `xcrun devicectl list devices`. The signed product is `build/ios-device/products/OspreyCounter.app`; signing and provisioning errors stop the script. You can also open `OspreyCounter.xcodeproj`, select your signing team and phone, and run after `make ios`.

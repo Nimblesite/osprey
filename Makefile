@@ -1028,3 +1028,5 @@ _vsix_install:
 
 # Apple SDK builds reuse the native warning profile and portable runtime units.
 include scripts/ios.mk
+
+include scripts/android.mk

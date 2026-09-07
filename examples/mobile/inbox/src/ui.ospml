@@ -1,0 +1,88 @@
+// Implements [MOBILE-REACTIVE-UI]: both native hosts render this Osprey tree.
+namespace mobile
+
+import bank::Json
+
+module Ui
+    value doc path fallback = jsonGet doc path ?: fallback
+    field key content = Json::strField key content
+    event kind = Json::obj (field "type" kind)
+    valued kind content = Json::obj (field "type" kind + "," + field "value" content)
+    text style content = Json::obj (field "kind" "text" + "," + field "style" style + "," + field "text" content)
+    group kind style children = Json::obj (field "kind" kind + "," + field "style" style + "," + Json::rawField "children" (Json::arr children))
+    button style caption action = Json::obj (field "kind" "button" + "," + field "style" style + "," + field "text" caption + "," + Json::rawField "event" action)
+    link caption url = Json::obj (field "kind" "link" + "," + field "style" "secondary" + "," + field "text" caption + "," + field "url" url)
+    input id content placeholder action submit = Json::obj (field "kind" "input" + "," + field "id" id + "," + field "value" content + "," + field "placeholder" placeholder + "," + Json::rawField "event" action + "," + Json::rawField "submit" (toString submit))
+
+    filterStyle selected expected = match selected == expected
+        true => "primary"
+        false => "secondary"
+
+    heading doc =
+        total = value doc "total" "0"
+        saved = value doc "bookmarked" "0"
+        intro = text "accent" "YOUR OPEN SOURCE WORKSPACE" + "," + text "hero" "Issue Inbox"
+        metrics = text "title" "${total} open issues" + "," + text "caption" "${saved} saved for later"
+        group "column" "header" (intro + "," + group "row" "metrics" metrics)
+
+    controls doc =
+        repo = input "repository" (value doc "repo" "") "owner/repository · press Done to load" (event "repository") true
+        refresh = match value doc "loading" "false" == "true"
+            true => "Refreshing…"
+            false => "↻ Refresh"
+        tools = group "row" "toolbar" (text "caption" "PUBLIC REPOSITORY" + "," + button "secondary" refresh (event "refresh"))
+        search = input "search" (value doc "search" "") "Search issue titles or authors" (event "search") false
+        selected = value doc "filter" "all"
+        filters = button (filterStyle selected "all") "All issues" (valued "filter" "all") + "," + button (filterStyle selected "saved") "★ Saved" (valued "filter" "saved")
+        group "column" "card" (tools + "," + repo + "," + search + "," + group "row" "toolbar" filters)
+
+    notice doc =
+        status = text "caption" (value doc "status" "")
+        error = value doc "error" ""
+        match length error == 0
+            true => status
+            false => group "column" "error" (status + "," + text "error" error)
+
+    issue doc index =
+        prefix = "items[${index}]."
+        id = value doc (prefix + "id") ""
+        number = value doc (prefix + "number") ""
+        author = value doc (prefix + "author") ""
+        comments = value doc (prefix + "comments") "0"
+        title = value doc (prefix + "title") ""
+        saved = value doc (prefix + "bookmarked") "false" == "true"
+        caption = match saved
+            true => "★ Saved"
+            false => "☆ Save"
+        action = Json::obj (field "type" "bookmark" + "," + field "id" id)
+        metadata = text "accent" "#${number}" + "," + text "caption" "${author} · ${comments} comments"
+        actions = button (filterStyle (toString saved) "true") caption action + "," + link "Open issue ↗" (value doc (prefix + "url") "")
+        group "column" "card" (group "row" "toolbar" metadata + "," + text "title" title + "," + group "row" "toolbar" actions)
+
+    issues doc index count = match index >= count
+        true => ""
+        false =>
+            next = (index + 1) ?: count
+            rest = issues doc next count
+            separator = match length rest == 0
+                true => ""
+                false => ","
+            issue doc index + separator + rest
+
+    content doc =
+        count = jsonLength doc "items"
+        match count == 0
+            true =>
+                message = match value doc "loading" "false" == "true"
+                    true => "Fetching the latest issues…"
+                    false => "No matching issues. Try another search, switch filters, or refresh."
+                group "column" "card" (text "title" "Your inbox" + "," + text "body" message)
+            false => group "column" "list" (issues doc 0 count)
+
+    export render view = match jsonParse view
+        Error message => group "column" "screen" (text "error" ("Cannot render the inbox: " + message))
+        Success doc =>
+            body = heading doc + "," + controls doc + "," + notice doc + "," + content doc
+            tree = group "scroll" "screen" (group "column" "page" body)
+            freed = jsonFree doc ?: 0
+            tree

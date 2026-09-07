@@ -40,4 +40,10 @@ read -r device device_udid <<< "$selection"
 OSPREY_DEVICE_UDID="$device_udid" "$example_dir/build.sh" ios-device
 app="$example_dir/build/ios-device/products/OspreyCounter.app"
 xcrun devicectl device install app --device "$device" "$app"
-xcrun devicectl device process launch --terminate-existing --device "$device" org.ospreylang.OspreyCounter
+if xcrun devicectl device process launch --terminate-existing --device "$device" org.ospreylang.OspreyCounter; then
+    echo "Osprey Counter launched on your iPhone."
+else
+    status=$?
+    echo "Launch failed. Keep the iPhone unlocked and resolve the device error above, then retry." >&2
+    exit "$status"
+fi

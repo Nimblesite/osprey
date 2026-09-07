@@ -1,0 +1,74 @@
+namespace mobile
+
+import bank::Json
+
+type IssueRows =
+    elements : string
+    total : int
+    bookmarked : int
+
+module View
+    export saved model id = contains model.saved ("|" + id + "|")
+
+    text doc path = jsonGet doc path ?: ""
+
+    export exists model wanted =
+        doc = jsonParse model.items ?: 0
+        found = containsId doc 0 (jsonLength doc "") wanted
+        freed = jsonFree doc ?: 0
+        found
+
+    containsId doc index count wanted = match index >= count
+        true => false
+        false => text doc "[${index}].id" == wanted || containsId doc ((index + 1) ?: count) count wanted
+
+    visible model doc prefix bookmarked =
+        title = text doc (prefix + ".title")
+        author = text doc (prefix + ".author")
+        number = text doc (prefix + ".number")
+        matchesSearch = contains (toLowerCase (title + " " + author + " #" + number)) (toLowerCase model.search)
+        matchesSearch && (model.filter != "saved" || bookmarked)
+
+    item model doc prefix bookmarked = Json::obj (
+        Json::strField "id" (text doc (prefix + ".id")) + "," +
+        Json::numField "number" (parseInt (text doc (prefix + ".number")) ?: 0) + "," +
+        Json::strField "title" (text doc (prefix + ".title")) + "," +
+        Json::strField "url" ("https://github.com/" + model.repo + "/issues/" + text doc (prefix + ".number")) + "," +
+        Json::strField "author" (text doc (prefix + ".author")) + "," +
+        Json::numField "comments" (parseInt (text doc (prefix + ".comments")) ?: 0) + "," +
+        Json::rawField "bookmarked" (toString bookmarked))
+
+    append left right = match length left == 0
+        true => right
+        false => left + "," + right
+
+    rows model doc index count output marked = match index >= count
+        true => IssueRows(elements = output, total = count, bookmarked = marked)
+        false =>
+            prefix = "[${index}]"
+            bookmarked = saved model (text doc (prefix + ".id"))
+            nextMarked = match bookmarked
+                true => (marked + 1) ?: marked
+                false => marked
+            nextOutput = match visible model doc prefix bookmarked
+                true => append output (item model doc prefix bookmarked)
+                false => output
+            rows model doc ((index + 1) ?: count) count nextOutput nextMarked
+
+    errors model = match length model.storageError > 0 && length model.error > 0
+        true => model.error + " " + model.storageError
+        false => model.error + model.storageError
+
+    document model result = Json::obj (
+        Json::strField "repo" model.repo + "," + Json::strField "search" model.search + "," +
+        Json::strField "filter" model.filter + "," + Json::strField "status" model.status + "," +
+        Json::strField "error" (errors model) + "," + Json::rawField "loading" model.loading + "," +
+        Json::rawField "items" (Json::arr result.elements) + "," +
+        Json::numField "total" result.total + "," + Json::numField "bookmarked" result.bookmarked)
+
+    export render model =
+        doc = jsonParse model.items ?: 0
+        result = rows model doc 0 (jsonLength doc "") "" 0
+        output = document model result
+        freed = jsonFree doc ?: 0
+        output

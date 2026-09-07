@@ -1,0 +1,6 @@
+namespace mobile
+
+import bank::Json
+
+start () = Json::obj ""
+dispatch model event = model + event

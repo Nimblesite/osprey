@@ -1,0 +1,8 @@
+[project]
+name = "osprey-inbox"
+source_roots = ["src", "../../projects/modules/src/domain/json.ospml"]
+default_namespace = "mobile"
+entry = "src/main.ospml"
+
+[modules]
+allow_wildcard_imports = false

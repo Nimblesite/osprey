@@ -300,7 +300,7 @@ fn artifact(base: &Path, target: &str, keep_parent: bool) -> PathBuf {
     };
     let extension = match target {
         "wasm32" => ".wasm",
-        "ios" | "ios-sim" => ".a",
+        "ios" | "ios-sim" | "android-arm64" | "android-x64" => ".a",
         _ => "",
     };
     let mut artifact = output.into_os_string();

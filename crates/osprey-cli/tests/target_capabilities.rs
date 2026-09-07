@@ -36,7 +36,7 @@ fn resumable_effects_reject_for_both_flavors_before_ir() -> std::io::Result<()> 
         let path = root.join(format!(
             "tests/effects/resume/resume_value_rewrite.test.{extension}"
         ));
-        for target in ["wasm32", "ios", "ios-sim"] {
+        for target in ["wasm32", "ios", "ios-sim", "android-arm64", "android-x64"] {
             let output = Command::new(env!("CARGO_BIN_EXE_osprey"))
                 .arg(&path)
                 .arg("--llvm")
@@ -56,7 +56,7 @@ fn resumable_effects_reject_for_both_flavors_before_ir() -> std::io::Result<()> 
 
 #[test]
 fn unsupported_runtime_builtins_reject_through_aliases() -> std::io::Result<()> {
-    for target in ["wasm32", "ios", "ios-sim"] {
+    for target in ["wasm32", "ios", "ios-sim", "android-arm64", "android-x64"] {
         for name in ["httpGet", "websocketConnect", "spawnProcess"] {
             rejects(&format!("let aliased = {name}\n"), target, name)?;
         }
@@ -157,4 +157,21 @@ fn browser_dispatcher_requires_its_own_effect_handlers() -> std::io::Result<()> 
                     print(result)\n\
                   }\n";
     rejects(source, "wasm32", "Supply.ask")
+}
+
+#[test]
+fn android_library_abi_rejects_unhandled_exports_and_aggregate_imports() -> std::io::Result<()> {
+    for target in ["android-arm64", "android-x64"] {
+        for (source, feature) in [
+            ("effect Supply { ask: fn() -> int }\nfn answer() = perform Supply.ask()\nfn main() = print(0)\n", "Supply.ask"),
+            ("extern fn host(values: List<int>) -> int\n", "unsupported C ABI signature"),
+        ] {
+            let output = compile(source, target)?;
+            let error = String::from_utf8_lossy(&output.stderr);
+            assert!(!output.status.success());
+            assert!(error.contains(feature), "{error}");
+            assert!(output.stdout.is_empty());
+        }
+    }
+    Ok(())
 }

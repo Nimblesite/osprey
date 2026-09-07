@@ -18,6 +18,7 @@
 //! crate, built on the published lspkit crates); the `--symbols`/`--hover`
 //! outline/signature helpers it shares now live there too.
 
+mod android;
 mod docs;
 mod fmt;
 mod ios;
@@ -40,10 +41,10 @@ use std::process::{Command, ExitCode};
 pub(crate) const USAGE: &str =
     "usage: osprey <file-or-project> [--check | --ast | --llvm | --compile | --run | \
 --symbols | --list-tests | --deps] [--quiet] [--debug] [--profile] [--flavor default|ml] \
-[--memory=default|gc|arc] [--target=native|wasm32|ios|ios-sim] [-o <out>] \
+[--memory=default|gc|arc] [--target=native|wasm32|ios|ios-sim|android-arm64|android-x64] [-o <out>] \
 [--sandbox | --no-http | --no-websocket | --no-fs | --no-ffi]\n\
        osprey build [project] [--quiet] [--debug] [--memory=default|gc|arc] \
-[--target=native|wasm32|ios|ios-sim] [-o <out>]\n\
+[--target=native|wasm32|ios|ios-sim|android-arm64|android-x64] [-o <out>]\n\
        osprey test [path] [--filter <name>] [--quiet] [--coverage] \
 [--coverage-json <path>] [--memory=default|gc|arc]\n\
        osprey fmt [--check | --stdout] [--flavor default|ml] <path...>\n\
@@ -313,9 +314,9 @@ optimized code; debugging needs -O0)\n{USAGE}"
 /// [WASM-TARGET] [IOS-TARGET-TRIPLE]
 fn parse_target(value: &str) -> Result<String, String> {
     match value {
-        "native" | "wasm32" | "ios" | "ios-sim" => Ok(value.to_string()),
+        "native" | "wasm32" | "ios" | "ios-sim" | "android-arm64" | "android-x64" => Ok(value.to_string()),
         other => Err(format!(
-            "unknown target '{other}' (available: native, wasm32, ios, ios-sim)\n{USAGE}"
+            "unknown target '{other}' (available: native, wasm32, ios, ios-sim, android-arm64, android-x64)\n{USAGE}"
         )),
     }
 }
@@ -488,6 +489,16 @@ fn target_error(cli: &Cli, input: &CompilationInput) -> Option<ExitCode> {
             ));
         }
     }
+    if let Some(target) = android::Target::parse(&cli.target) {
+        if let Err(code) = android::validate(cli) {
+            return Some(code);
+        }
+        if cli.mode == "--check" {
+            return android::source(input.program(), input.debug_path(), target)
+                .err()
+                .map(|error| toolchain::fail(&error));
+        }
+    }
     if ios::Target::parse(&cli.target).is_some() {
         if let Err(code) = ios::validate(cli) {
             return Some(code);
@@ -502,6 +513,9 @@ fn target_error(cli: &Cli, input: &CompilationInput) -> Option<ExitCode> {
 }
 
 fn target_ir(cli: &Cli, input: &CompilationInput) -> Result<String, String> {
+    if let Some(target) = android::Target::parse(&cli.target) {
+        return android::source(input.program(), input.debug_path(), target).map(|(ir, _)| ir);
+    }
     if ios::Target::parse(&cli.target).is_some() {
         return ios::source(input.program(), input.debug_path()).map(|(ir, _)| ir);
     }
@@ -545,6 +559,8 @@ fn compile_program_to_disk(cli: &Cli, input: &CompilationInput) -> ExitCode {
             return code;
         }
         wasm::build(input.debug_path(), input.program(), &out)
+    } else if let Some(target) = android::Target::parse(&cli.target) {
+        android::build(input.debug_path(), input.program(), &out, target)
     } else if let Some(target) = ios::Target::parse(&cli.target) {
         if let Err(code) = ios::validate(cli) {
             return code;
@@ -585,6 +601,9 @@ fn output_path(src: &str, output: Option<&str>, target: &str) -> PathBuf {
 /// Compile to a temp artifact and run it — the `--run` end-to-end path. Native
 /// runs the executable directly; wasm runs it under a WASI host (`wasmtime`).
 fn run_program(cli: &Cli, input: &CompilationInput) -> ExitCode {
+    if android::Target::parse(&cli.target).is_some() {
+        return toolchain::fail("Android libraries must run inside a host app; use --compile");
+    }
     if ios::Target::parse(&cli.target).is_some() {
         return match ios::validate(cli) {
             Err(code) => code,

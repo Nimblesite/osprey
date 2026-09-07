@@ -1,0 +1,51 @@
+namespace mobile
+
+import bank::Json
+import mobile::Model
+import mobile::Github
+
+module Storage
+    sql id statement params = Json::arr (Json::obj (
+        Json::strField "kind" "sql" + "," + Json::strField "id" id + "," +
+        Json::strField "sql" statement + "," + Json::rawField "params" params))
+
+    export schema () = sql "schema" "CREATE TABLE IF NOT EXISTS app_state (key TEXT PRIMARY KEY, value TEXT NOT NULL)" "[]"
+
+    export load () = sql "load" "SELECT value FROM app_state WHERE key = ?" (Json::arr (Json::quote "inbox"))
+
+    export save model = sql model.write "INSERT INTO app_state (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value" (Json::arr (Json::quote "inbox" + "," + Json::quote (Model::snapshot model)))
+
+    export http model = Json::arr (Json::obj (
+        Json::strField "kind" "http" + "," + Json::strField "id" model.pending + "," +
+        Json::strField "url" (Github::url model.repo)))
+
+    validItem doc index =
+        prefix = "[${index}]"
+        id = jsonGet doc (prefix + ".id") ?: ""
+        number = parseInt (jsonGet doc (prefix + ".number") ?: "") ?: 0
+        title = jsonGet doc (prefix + ".title") ?: ""
+        author = jsonGet doc (prefix + ".author") ?: ""
+        comments = parseInt (jsonGet doc (prefix + ".comments") ?: "") ?: ((0 - 1) ?: 0)
+        (parseInt id ?: 0) > 0 && number > 0 && length title > 0 && length author > 0 && comments >= 0
+
+    validItems doc index count = match index >= count
+        true => true
+        false => validItem doc index && validItems doc ((index + 1) ?: count) count
+
+    validArray source = match startsWith (trimStart source) "["
+        false => false
+        true => match jsonParse source
+            Error why => false
+            Success doc =>
+                count = jsonLength doc ""
+                valid = count >= 0 && count <= 100 && validItems doc 0 count
+                freed = jsonFree doc ?: 0
+                valid
+
+    export restore model snapshot =
+        repo = Json::getOr snapshot "repo" ""
+        items = Json::getOr snapshot "items" "INVALID"
+        version = Json::getOr snapshot "version" ""
+        match version == "1" && Github::validRepository repo && validArray items
+            false => Error "The SQLite cache is invalid or uses an unsupported version. Refresh to replace it."
+            true => Success (Model::set (Model::set (Model::set model "repo" repo) "items" items) "saved" (Json::getOr snapshot "saved" "|"))

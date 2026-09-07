@@ -1,4 +1,4 @@
-//! The C ABI an iOS archive exposes to its host application. [IOS-HOST-ABI]
+//! Shared checked mobile C boundary. [IOS-HOST-ABI] [ANDROID-HOST-ABI]
 //!
 //! Scalar functions receive stable C exports, and host-provided extern
 //! functions become imports. Thunks adapt Apple's bool attributes and Unit
@@ -10,7 +10,7 @@ use osprey_types::{names, ProgramTypes, Type};
 use std::collections::BTreeSet;
 #[path = "ios_abi_header.rs"]
 mod c_header;
-pub(crate) use c_header::header;
+pub(crate) use c_header::{header, header_for_target};
 
 /// Prefix on every exported C symbol.
 const EXPORT_PREFIX: &str = "osprey_";
@@ -95,9 +95,9 @@ impl CType {
 
     /// Apple's arm64 C ABI zero-extends `bool` in both directions; clang spells
     /// that `zeroext` on the boundary, and so must the thunk.
-    fn zeroext(self) -> &'static str {
+    fn zeroext(self, extend_bool: bool) -> &'static str {
         match self {
-            Self::Bool => "zeroext ",
+            Self::Bool if extend_bool => "zeroext ",
             _ => "",
         }
     }
@@ -161,7 +161,7 @@ pub(crate) fn host_abi(
             } => {
                 let names = parameters.iter().map(|p| p.name.as_str());
                 let (params, ret) = c_signature(types, name, names).ok_or_else(|| format!(
-                    "iOS extern `{name}` has an unsupported C ABI signature: parameters must be int, float, bool or string; returns may also be Unit"
+                    "extern `{name}` has an unsupported C ABI signature: parameters must be int, float, bool or string; returns may also be Unit"
                 ))?;
                 abi.imports.push(Import {
                     symbol: name.clone(),
@@ -239,7 +239,7 @@ fn reject_clashes(abi: &HostAbi, program: &Program, ir: &str) -> Result<(), Stri
     for i in &abi.imports {
         if !c_identifier(&i.symbol) || i.symbol == SOURCE_MAIN {
             return Err(format!(
-                "iOS import `{}` is not an available C function name",
+                "import `{}` is not an available C function name",
                 i.symbol
             ));
         }
@@ -259,7 +259,7 @@ fn defined_symbol(line: &str) -> Option<&str> {
 fn reserve(taken: &mut BTreeSet<String>, symbol: &str) -> Result<(), String> {
     if !c_identifier(symbol) || !taken.insert(symbol.to_string()) {
         return Err(format!(
-            "iOS boundary symbol `{symbol}` is invalid or collides with another symbol; rename it"
+            "C ABI boundary symbol `{symbol}` is invalid or collides with another symbol; rename it"
         ));
     }
     Ok(())
@@ -273,6 +273,14 @@ fn reserve(taken: &mut BTreeSet<String>, symbol: &str) -> Result<(), String> {
 /// else means the backend changed underneath this driver, which must not be
 /// papered over with a guess.
 pub(crate) fn with_host_abi(ir: &str, abi: &HostAbi) -> Result<String, String> {
+    with_host_abi_for_target(ir, abi, true)
+}
+
+pub(crate) fn with_host_abi_for_target(
+    ir: &str,
+    abi: &HostAbi,
+    extend_bool: bool,
+) -> Result<String, String> {
     if ir
         .lines()
         .filter(|line| line.starts_with(CODEGEN_ENTRY_DEFINE))
@@ -280,15 +288,15 @@ pub(crate) fn with_host_abi(ir: &str, abi: &HostAbi) -> Result<String, String> {
         != 1
     {
         return Err(format!(
-            "codegen did not emit the `{CODEGEN_ENTRY_DEFINE}` entry the iOS target renames"
+            "codegen did not emit the `{CODEGEN_ENTRY_DEFINE}` entry the mobile target renames"
         ));
     }
     let mut out = rename_symbol(ir, SOURCE_MAIN, INIT_FUNCTION);
     for import in &abi.imports {
-        out = adapt_import(&out, import);
+        out = adapt_import(&out, import, extend_bool);
     }
     for export in &abi.exports {
-        out.push_str(&thunk(export));
+        out.push_str(&thunk(export, extend_bool));
     }
     out.push_str(&initialization_thunk());
     Ok(out)
@@ -330,7 +338,7 @@ fn rename_symbol(ir: &str, from: &str, to: &str) -> String {
     out
 }
 
-fn adapt_import(ir: &str, import: &Import) -> String {
+fn adapt_import(ir: &str, import: &Import, extend_bool: bool) -> String {
     let needle = format!("@{}(", import.symbol);
     let Some(declaration) = ir
         .lines()
@@ -344,7 +352,7 @@ fn adapt_import(ir: &str, import: &Import) -> String {
         .params
         .iter()
         .map(|(_, c)| {
-            format!("{} {}", c.llvm(), c.zeroext())
+            format!("{} {}", c.llvm(), c.zeroext(extend_bool))
                 .trim_end()
                 .to_string()
         })
@@ -352,20 +360,20 @@ fn adapt_import(ir: &str, import: &Import) -> String {
         .join(", ");
     format!(
         "{renamed}\ndeclare {}{} @{}({params})\n{}",
-        import.ret.zeroext(),
+        import.ret.zeroext(extend_bool),
         import.ret.llvm(),
         import.symbol,
-        import_thunk(import, &adapter)
+        import_thunk(import, &adapter, extend_bool)
     )
 }
 
-fn import_thunk(import: &Import, adapter: &str) -> String {
+fn import_thunk(import: &Import, adapter: &str, extend_bool: bool) -> String {
     let internal = llvm_params(&import.params, false);
-    let boundary = llvm_params(&import.params, true);
+    let boundary = llvm_params(&import.params, extend_bool);
     let ret = import.ret;
     let call = format!(
         "call {}{} @{}({boundary})",
-        ret.zeroext(),
+        ret.zeroext(extend_bool),
         ret.llvm(),
         import.symbol
     );
@@ -384,19 +392,13 @@ fn llvm_params(params: &[(String, CType)], boundary: bool) -> String {
     params
         .iter()
         .enumerate()
-        .map(|(i, (_, c))| {
-            format!(
-                "{} {}%p{i}",
-                c.llvm(),
-                if boundary { c.zeroext() } else { "" }
-            )
-        })
+        .map(|(i, (_, c))| format!("{} {}%p{i}", c.llvm(), c.zeroext(boundary)))
         .collect::<Vec<_>>()
         .join(", ")
 }
 
-fn thunk(export: &Export) -> String {
-    let boundary = llvm_params(&export.params, true);
+fn thunk(export: &Export, extend_bool: bool) -> String {
+    let boundary = llvm_params(&export.params, extend_bool);
     let forwarded = llvm_params(&export.params, false);
     let ret = export.ret;
     let call = format!(
@@ -411,7 +413,7 @@ fn thunk(export: &Export) -> String {
     };
     format!(
         "\ndefine {}{} @{}({boundary}) {{\n{body}\n}}\n",
-        ret.zeroext(),
+        ret.zeroext(extend_bool),
         ret.llvm(),
         export.c_name
     )
@@ -429,3 +431,28 @@ fn c_identifier(name: &str) -> bool {
 #[cfg(test)]
 #[path = "ios_abi_tests.rs"]
 mod tests;
+
+/// Check the entire library boundary before discovering a platform toolchain.
+/// Implements [IOS-HOST-ABI] and [ANDROID-HOST-ABI].
+pub(crate) fn source(
+    program: &Program,
+    path: &str,
+    target: &str,
+    extend_bool: bool,
+) -> Result<(String, String), String> {
+    crate::target_capabilities::validate(program, target)?;
+    let ir = osprey_codegen::compile_library(program).map_err(|e| format!("{path}: {e}"))?;
+    let abi = host_abi(program, &osprey_types::infer_program(program), &ir)
+        .map_err(|error| format!("{path}: target `{target}` C ABI: {error}"))?;
+    let adapted = if extend_bool {
+        with_host_abi(&ir, &abi)?
+    } else {
+        with_host_abi_for_target(&ir, &abi, false)?
+    };
+    let header = if target == "ios" {
+        header(&abi, path)
+    } else {
+        header_for_target(&abi, path, target)
+    };
+    Ok((adapted, header))
+}
