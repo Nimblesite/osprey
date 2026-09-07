@@ -1,17 +1,17 @@
 # iOS device and simulator archives, using Xcode's SDK and Apple clang.
 # Processes and HTTP/OpenSSL have no implementation in this target. Files,
-# fibers and resumable effects use the existing native runtime. [IOS-RUNTIME]
+# fibers and substituting effects use the existing native runtime. [IOS-TARGET-CAPABILITIES]
 IOS_RT_SRC ?= $(filter-out system_runtime,$(basename $(notdir $(FIB_OBJ))))
 
 .PHONY: ios ios-test _runtime_ios _runtime_ios_sim _test_ios
 
 _runtime_ios:
 	@bash scripts/ios-runtime.sh iphoneos arm64-apple-ios15.0 \
-		$(RTB)/libosprey_runtime_ios.a $(B) -- $(IOS_RT_SRC)
+		$(RTB)/libosprey_runtime_ios.a $(B) -DOSPREY_IOS -- $(IOS_RT_SRC)
 
 _runtime_ios_sim:
 	@bash scripts/ios-runtime.sh iphonesimulator arm64-apple-ios15.0-simulator \
-		$(RTB)/libosprey_runtime_ios_sim.a $(B) -- $(IOS_RT_SRC)
+		$(RTB)/libosprey_runtime_ios_sim.a $(B) -DOSPREY_IOS -- $(IOS_RT_SRC)
 
 ## ios: Build the iPhone and simulator libraries and SwiftUI example apps.
 ##      Requires macOS, Xcode and both iOS SDKs. Device output is unsigned.

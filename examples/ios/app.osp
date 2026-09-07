@@ -1,0 +1,15 @@
+// Implements [IOS-SWIFT-HOST]: Swift owns the screen; Osprey owns the behavior.
+extern fn ios_host_log(message: string) -> int
+
+fn greeting() = "Osprey on iPhone"
+fn reset() = 0
+fn increment(count) = count + 1 ?: count
+fn decrement(count) = match count > 0 {
+    true => count - 1 ?: count
+    false => 0
+}
+fn milestone(count) = count >= 5
+fn summary(count: int) = "Count: ${count}"
+fn notify(count) = ios_host_log(summary(count))
+
+let _ = ios_host_log("Osprey initialized")

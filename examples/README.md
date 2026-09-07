@@ -57,6 +57,7 @@ proving both flavors print the same bytes.
 - **`api/`, `db_postgres/`, `statefulhttp/`, `websocketserver/`, `tui/`, `wasm/`** —
   larger application/runtime examples.
 - **`bugs/`** — regression reproductions.
+- **[`ios/`](ios/)** — a SwiftUI iPhone app calling Osprey logic through a generated C header, with device/simulator builds and executable smoke checks.
 
 ## Paired flavor tests (`../tests/flavors/`)
 

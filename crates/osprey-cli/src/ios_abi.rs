@@ -1,25 +1,25 @@
 //! The C ABI an iOS archive exposes to its host application. [IOS-HOST-ABI]
 //!
-//! Osprey functions are already emitted as plain LLVM functions over C-shaped
-//! scalars (`i64`, `double`, `i1`, `i8*`), so the host needs no runtime bridge
-//! — only a stable name and a C signature for each one. This module derives
-//! both from the checked program: every top-level function whose resolved
-//! parameter and return types are `int`, `float`, `bool`, `string` or `Unit`
-//! (return only) becomes an `osprey_<name>` export backed by a forwarding
-//! thunk in the IR, and every `extern fn` over those types is listed as an
-//! import the host must define. Everything else — generic functions, `Result`,
-//! collections, records, effects — stays internal to the archive.
+//! Scalar functions receive stable C exports, and host-provided extern
+//! functions become imports. Thunks adapt Apple's bool attributes and Unit
+//! returns. Generic and aggregate function signatures stay internal; extern
+//! signatures must be scalar. Every export must discharge its own effects.
 
 use osprey_ast::{Program, Stmt};
 use osprey_types::{names, ProgramTypes, Type};
 use std::collections::BTreeSet;
-use std::fmt::Write as _;
+#[path = "ios_abi_header.rs"]
+mod c_header;
+pub(crate) use c_header::header;
 
 /// Prefix on every exported C symbol.
 const EXPORT_PREFIX: &str = "osprey_";
 /// The C-linkage entry point that replaces codegen's `main`, so the host app
 /// keeps its own. [IOS-TARGET-ENTRY]
 pub(crate) const ENTRY: &str = "osprey_main";
+const INIT_FUNCTION: &str = "__osprey_ios_initialize";
+const INIT_STATE: &str = "__osprey_ios_init_state";
+const INIT_STATUS: &str = "__osprey_ios_init_status";
 /// Codegen's entry definition, exactly as `lower.rs` renders it.
 const CODEGEN_ENTRY_DEFINE: &str = "define i32 @main() ";
 /// The source-level entry, never exported as a function.
@@ -140,32 +140,55 @@ pub(crate) struct HostAbi {
 /// Two functions whose C names coincide (`app::x_y` and `app_x::y`), or an
 /// export whose name an import already takes, would silently shadow one
 /// another at link time, so the ABI refuses to be generated.
-pub(crate) fn host_abi(program: &Program, types: &ProgramTypes, ir: &str) -> Result<HostAbi, String> {
+pub(crate) fn host_abi(
+    program: &Program,
+    types: &ProgramTypes,
+    ir: &str,
+) -> Result<HostAbi, String> {
     let mut abi = HostAbi::default();
     for statement in &program.statements {
         match statement {
-            Stmt::Function { name, parameters, .. } if name != SOURCE_MAIN && defines(ir, name) => {
+            Stmt::Function {
+                name, parameters, ..
+            } if name != SOURCE_MAIN && defines(ir, name) => {
                 let names = parameters.iter().map(|p| p.name.as_str());
                 if let Some((params, ret)) = c_signature(types, name, names) {
                     abi.exports.push(export(name, params, ret));
                 }
             }
-            Stmt::Extern { name, parameters, .. } => {
+            Stmt::Extern {
+                name, parameters, ..
+            } => {
                 let names = parameters.iter().map(|p| p.name.as_str());
-                if let Some((params, ret)) = c_signature(types, name, names) {
-                    abi.imports.push(Import { symbol: name.clone(), params, ret });
-                }
+                let (params, ret) = c_signature(types, name, names).ok_or_else(|| format!(
+                    "iOS extern `{name}` has an unsupported C ABI signature: parameters must be int, float, bool or string; returns may also be Unit"
+                ))?;
+                abi.imports.push(Import {
+                    symbol: name.clone(),
+                    params,
+                    ret,
+                });
             }
             _ => {}
         }
     }
-    reject_clashes(&abi)?;
+    reject_clashes(&abi, program, ir)?;
+    let exports: Vec<_> = abi.exports.iter().map(|e| e.symbol.as_str()).collect();
+    let errors = osprey_types::check_program_exports(program, &exports);
+    if !errors.is_empty() {
+        return Err(errors
+            .iter()
+            .map(|e| e.message.as_str())
+            .collect::<Vec<_>>()
+            .join("\n"));
+    }
     Ok(abi)
 }
 
 fn defines(ir: &str, symbol: &str) -> bool {
     let needle = format!(" @{symbol}(");
-    ir.lines().any(|line| line.starts_with("define ") && line.contains(&needle))
+    ir.lines()
+        .any(|line| line.starts_with("define ") && line.contains(&needle))
 }
 
 /// The C signature of `symbol`, if every parameter and the return type map.
@@ -197,21 +220,52 @@ fn export(symbol: &str, params: Vec<(String, CType)>, ret: CType) -> Export {
     }
 }
 
-fn reject_clashes(abi: &HostAbi) -> Result<(), String> {
-    let mut taken: BTreeSet<&str> = abi.imports.iter().map(|i| i.symbol.as_str()).collect();
-    let _ = taken.insert(ENTRY);
-    for export in &abi.exports {
-        if !taken.insert(&export.c_name) {
+fn reject_clashes(abi: &HostAbi, program: &Program, ir: &str) -> Result<(), String> {
+    let mut taken: BTreeSet<_> = ir
+        .lines()
+        .filter_map(defined_symbol)
+        .map(str::to_owned)
+        .collect();
+    taken.extend(program.statements.iter().filter_map(|s| match s {
+        Stmt::Extern { name, .. } => Some(name.clone()),
+        _ => None,
+    }));
+    for symbol in [ENTRY, INIT_FUNCTION, INIT_STATE, INIT_STATUS] {
+        reserve(&mut taken, symbol)?;
+    }
+    for e in &abi.exports {
+        reserve(&mut taken, &e.c_name)?;
+    }
+    for i in &abi.imports {
+        if !c_identifier(&i.symbol) || i.symbol == SOURCE_MAIN {
             return Err(format!(
-                "iOS export {} for `{}` collides with another boundary symbol; rename one of them",
-                export.c_name, export.source_name
+                "iOS import `{}` is not an available C function name",
+                i.symbol
             ));
         }
+        reserve(&mut taken, &import_adapter_name(i))?;
     }
     Ok(())
 }
 
-/// Rename codegen's entry to [`ENTRY`] and append one C-ABI thunk per export.
+fn defined_symbol(line: &str) -> Option<&str> {
+    (line.starts_with("define ") || line.starts_with("declare ") || line.starts_with('@'))
+        .then(|| line.split_once('@'))??
+        .1
+        .split(['(', ' ', '='])
+        .next()
+}
+
+fn reserve(taken: &mut BTreeSet<String>, symbol: &str) -> Result<(), String> {
+    if !c_identifier(symbol) || !taken.insert(symbol.to_string()) {
+        return Err(format!(
+            "iOS boundary symbol `{symbol}` is invalid or collides with another symbol; rename it"
+        ));
+    }
+    Ok(())
+}
+
+/// Wrap codegen's entry with initialization tracking and adapt C ABI calls.
 ///
 /// # Errors
 ///
@@ -219,33 +273,137 @@ fn reject_clashes(abi: &HostAbi) -> Result<(), String> {
 /// else means the backend changed underneath this driver, which must not be
 /// papered over with a guess.
 pub(crate) fn with_host_abi(ir: &str, abi: &HostAbi) -> Result<String, String> {
-    if !ir.contains(CODEGEN_ENTRY_DEFINE) {
-        return Err(format!("codegen did not emit the `{CODEGEN_ENTRY_DEFINE}` entry the iOS target renames"));
+    if ir
+        .lines()
+        .filter(|line| line.starts_with(CODEGEN_ENTRY_DEFINE))
+        .count()
+        != 1
+    {
+        return Err(format!(
+            "codegen did not emit the `{CODEGEN_ENTRY_DEFINE}` entry the iOS target renames"
+        ));
     }
-    let mut out = ir.replacen(CODEGEN_ENTRY_DEFINE, &format!("define i32 @{ENTRY}() "), 1);
+    let mut out = rename_symbol(ir, SOURCE_MAIN, INIT_FUNCTION);
+    for import in &abi.imports {
+        out = adapt_import(&out, import);
+    }
     for export in &abi.exports {
         out.push_str(&thunk(export));
     }
+    out.push_str(&initialization_thunk());
     Ok(out)
 }
 
+fn initialization_thunk() -> String {
+    format!(
+        "\n@{INIT_STATE} = internal global i8 0\n@{INIT_STATUS} = internal global i32 0\n\
+         define i32 @{ENTRY}() {{\nentry:\n  %state = load i8, i8* @{INIT_STATE}\n\
+           switch i8 %state, label %busy [ i8 0, label %initialize i8 2, label %complete ]\n\
+         initialize:\n  store i8 1, i8* @{INIT_STATE}\n  %status = call i32 @{INIT_FUNCTION}()\n\
+           store i32 %status, i32* @{INIT_STATUS}\n  store i8 2, i8* @{INIT_STATE}\n  ret i32 %status\n\
+         complete:\n  %cached = load i32, i32* @{INIT_STATUS}\n  ret i32 %cached\n\
+         busy:\n  ret i32 1\n}}\n"
+    )
+}
+
+fn import_adapter_name(import: &Import) -> String {
+    format!("__osprey_host_{}", import.symbol)
+}
+
+fn rename_symbol(ir: &str, from: &str, to: &str) -> String {
+    let mut out = String::new();
+    let mut quoted = false;
+    let mut chars = ir.chars().peekable();
+    while let Some(c) = chars.next() {
+        if c == '"' {
+            quoted = !quoted;
+        }
+        out.push(c);
+        if c == '@' && !quoted {
+            let symbol: String = std::iter::from_fn(|| {
+                chars.next_if(|c| c.is_ascii_alphanumeric() || "_.$-".contains(*c))
+            })
+            .collect();
+            out.push_str(if symbol == from { to } else { &symbol });
+        }
+    }
+    out
+}
+
+fn adapt_import(ir: &str, import: &Import) -> String {
+    let needle = format!("@{}(", import.symbol);
+    let Some(declaration) = ir
+        .lines()
+        .find(|line| line.starts_with("declare ") && line.contains(&needle))
+    else {
+        return ir.to_string();
+    };
+    let adapter = import_adapter_name(import);
+    let renamed = rename_symbol(&ir.replace(declaration, ""), &import.symbol, &adapter);
+    let params = import
+        .params
+        .iter()
+        .map(|(_, c)| {
+            format!("{} {}", c.llvm(), c.zeroext())
+                .trim_end()
+                .to_string()
+        })
+        .collect::<Vec<_>>()
+        .join(", ");
+    format!(
+        "{renamed}\ndeclare {}{} @{}({params})\n{}",
+        import.ret.zeroext(),
+        import.ret.llvm(),
+        import.symbol,
+        import_thunk(import, &adapter)
+    )
+}
+
+fn import_thunk(import: &Import, adapter: &str) -> String {
+    let internal = llvm_params(&import.params, false);
+    let boundary = llvm_params(&import.params, true);
+    let ret = import.ret;
+    let call = format!(
+        "call {}{} @{}({boundary})",
+        ret.zeroext(),
+        ret.llvm(),
+        import.symbol
+    );
+    let body = if ret == CType::Unit {
+        format!("  {call}\n  ret i64 0")
+    } else {
+        format!("  %r = {call}\n  ret {} %r", ret.llvm())
+    };
+    format!(
+        "\ndefine internal {} @{adapter}({internal}) {{\n{body}\n}}\n",
+        ret.llvm_internal()
+    )
+}
+
+fn llvm_params(params: &[(String, CType)], boundary: bool) -> String {
+    params
+        .iter()
+        .enumerate()
+        .map(|(i, (_, c))| {
+            format!(
+                "{} {}%p{i}",
+                c.llvm(),
+                if boundary { c.zeroext() } else { "" }
+            )
+        })
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
 fn thunk(export: &Export) -> String {
-    let boundary = export
-        .params
-        .iter()
-        .enumerate()
-        .map(|(i, (_, c))| format!("{} {}%p{i}", c.llvm(), c.zeroext()))
-        .collect::<Vec<_>>()
-        .join(", ");
-    let forwarded = export
-        .params
-        .iter()
-        .enumerate()
-        .map(|(i, (_, c))| format!("{} %p{i}", c.llvm()))
-        .collect::<Vec<_>>()
-        .join(", ");
+    let boundary = llvm_params(&export.params, true);
+    let forwarded = llvm_params(&export.params, false);
     let ret = export.ret;
-    let call = format!("call {} @{}({forwarded})", ret.llvm_internal(), export.symbol);
+    let call = format!(
+        "call {} @{}({forwarded})",
+        ret.llvm_internal(),
+        export.symbol
+    );
     let body = if ret == CType::Unit {
         format!("  {call}\n  ret void")
     } else {
@@ -259,63 +417,13 @@ fn thunk(export: &Export) -> String {
     )
 }
 
-/// Render the C header a host compiles against. [IOS-HOST-ABI]
-pub(crate) fn header(abi: &HostAbi, source: &str) -> String {
-    let mut h = format!(
-        "// Osprey iOS host ABI for {source}.\n\
-         // Generated by `osprey --target=ios`; do not edit. [IOS-HOST-ABI]\n\
-         #pragma once\n#include <stdbool.h>\n#include <stdint.h>\n\n\
-         #ifdef __cplusplus\nextern \"C\" {{\n#endif\n\n\
-         // Runs the program's top-level statements and `fn main`, returning its\n\
-         // exit status. Call it once, before any other export. [IOS-TARGET-ENTRY]\n\
-         int32_t {ENTRY}(void);\n"
-    );
-    if !abi.exports.is_empty() {
-        h.push_str(
-            "\n// Exports: Osprey functions the host may call. A returned string belongs\n\
-             // to the Osprey runtime; copy it before the next call into the library.\n",
-        );
-    }
-    for e in &abi.exports {
-        let _ = writeln!(h, "// fn {}{}", e.source_name, osprey_signature(&e.params, e.ret));
-        let _ = writeln!(h, "{}", prototype(&e.c_name, &e.params, e.ret));
-    }
-    if !abi.imports.is_empty() {
-        h.push_str(
-            "\n// Imports: functions the host must define with C linkage\n\
-             // (Swift: `@_cdecl(\"name\")`). Osprey calls them through `extern fn`.\n",
-        );
-    }
-    for i in &abi.imports {
-        let _ = writeln!(h, "// extern fn {}{}", i.symbol, osprey_signature(&i.params, i.ret));
-        let _ = writeln!(h, "{}", prototype(&i.symbol, &i.params, i.ret));
-    }
-    h.push_str("\n#ifdef __cplusplus\n}\n#endif\n");
-    h
-}
-
-fn osprey_signature(params: &[(String, CType)], ret: CType) -> String {
-    let params = params
-        .iter()
-        .map(|(name, c)| format!("{name}: {}", c.osprey()))
-        .collect::<Vec<_>>()
-        .join(", ");
-    format!("({params}) -> {}", ret.osprey())
-}
-
-fn prototype(name: &str, params: &[(String, CType)], ret: CType) -> String {
-    let params = if params.is_empty() {
-        "void".to_string()
-    } else {
-        params
-            .iter()
-            .map(|(n, c)| format!("{}{n}", c.c()).replace("* ", "*"))
-            .collect::<Vec<_>>()
-            .join(", ")
-    };
-    let ret = ret.c();
-    let space = if ret.ends_with('*') { "" } else { " " };
-    format!("{ret}{space}{name}({params});")
+fn c_identifier(name: &str) -> bool {
+    let reserved = "alignas alignof and and_eq asm atomic_auto atomic_cancel atomic_commit atomic_noexcept auto bitand bitor bool break case catch char char8_t char16_t char32_t class compl concept const consteval constexpr constinit const_cast continue co_await co_return co_yield decltype default delete do double dynamic_cast else enum explicit export extern false float for friend goto if inline int int32_t int64_t long mutable namespace new noexcept not not_eq nullptr operator or or_eq private protected public register reinterpret_cast requires restrict return short signed sizeof size_t static static_assert static_cast struct switch template this thread_local throw true try typedef typeid typename union unsigned using virtual void volatile wchar_t while xor xor_eq _Alignas _Alignof _Atomic _Bool _Complex _Generic _Imaginary _Noreturn _Static_assert _Thread_local";
+    !name.is_empty()
+        && !name.starts_with(|c: char| c.is_ascii_digit())
+        && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
+        && !reserved.split_whitespace().any(|word| word == name)
+        && !c_header::reserved_identifier(name)
 }
 
 #[cfg(test)]

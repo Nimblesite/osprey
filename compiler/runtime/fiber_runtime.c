@@ -575,16 +575,6 @@ int64_t fiber_sleep(int64_t milliseconds) {
   return 0;
 }
 
-// FIBER-BASED PROCESS SPAWNING FUNCTIONS
-// These functions integrate process spawning with the fiber runtime
-
-// External process functions from system_runtime.c. `spawnProcess` lowers
-// straight to `spawn_process_with_handler` there ([BUILTIN-PROCESS]); only the
-// await/cleanup halves need a fiber-side wrapper.
-extern int64_t await_process(int64_t process_id);
-extern void cleanup_process(int64_t process_id);
-
-// Await process completion in fiber context
 // Non-blocking completion probe. Returns 1 if the fiber has finished, 0 if it
 // is still running, -1 for an invalid id. Lets a caller animate (sleep + redraw)
 // while a fiber does real work, then `fiber_await` it the instant it reports
@@ -614,6 +604,13 @@ int64_t fiber_done(int64_t fiber_id) {
   return done ? 1 : 0;
 }
 
+// iOS supports fibers but excludes the fork/exec process runtime. Keeping these
+// wrappers in its archive would make ordinary fiber programs fail to link even
+// when they never spawn an external process. [IOS-TARGET-CAPABILITIES]
+#ifndef OSPREY_IOS
+extern int64_t await_process(int64_t process_id);
+extern void cleanup_process(int64_t process_id);
+
 int64_t fiber_await_process(int64_t process_id) {
   return await_process(process_id);
 }
@@ -630,3 +627,4 @@ int64_t fiber_await_process_with_callback(int64_t process_id,
 
 // Clean up process resources
 void fiber_cleanup_process(int64_t process_id) { cleanup_process(process_id); }
+#endif

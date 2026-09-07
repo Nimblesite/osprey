@@ -52,8 +52,10 @@ const TOOLCHAIN_HINT: &str = "is the wasm toolchain installed?";
 /// Returns the CLI failure code if codegen fails, the toolchain (sysroot /
 /// runtime archive / `wasm-ld`) is missing, or clang/`wasm-ld` exits non-zero.
 pub(crate) fn build(path: &str, program: &osprey_ast::Program, out: &Path) -> Result<(), ExitCode> {
+    crate::target_capabilities::validate(program, "wasm32")
+        .map_err(|error| fail(&format!("{path}: {error}")))?;
     let web_dispatch = web_dispatch_export(program);
-    let ir = match osprey_codegen::compile_program(program) {
+    let ir = match program_ir(program) {
         Ok(ir) => with_web_dispatch_thunk(&with_entry_thunk(&ir), web_dispatch),
         Err(e) => return Err(fail(&format!("{path}: {e}"))),
     };
@@ -66,6 +68,15 @@ pub(crate) fn build(path: &str, program: &osprey_ast::Program, out: &Path) -> Re
     })?;
     let obj = compile_object(&scratch_stem(path), &ir)?;
     link(&obj, &archive, &libdir, out, web_dispatch)
+}
+
+/// Browser exports continue using module globals after the WASI entry returns.
+pub(crate) fn program_ir(program: &osprey_ast::Program) -> osprey_codegen::Result<String> {
+    if web_dispatch_export(program).is_some() {
+        osprey_codegen::compile_library(program)
+    } else {
+        osprey_codegen::compile_program(program)
+    }
 }
 
 /// `--run` for wasm: build to a temp `.wasm`, then execute it under a WASI host.
@@ -278,6 +289,8 @@ mod tests {
     /// (`OSPREY_WASM_*`, `*_SYSROOT`) so they neither race each other nor the
     /// end-to-end build below — env is shared across the parallel test threads.
     static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    const GLOBAL_WEB_SOURCE: &str = "let saved = \"hello\" + \" world\"\n\
+        fn osprey_web_dispatch(message: string) = { print(\"${saved} ${message}\")\n 0 }\n";
     const WEB_ABI_SOURCE: &str = "namespace app;\n\
          extern fn osprey_web_render(message: string) -> int\n\
          extern fn osprey_web_command(message: string) -> int\n\
@@ -305,6 +318,18 @@ mod tests {
         )
         .expect("assemble web project")
         .program
+    }
+
+    #[test]
+    fn browser_dispatcher_keeps_its_globals_after_wasi_start_returns() {
+        // [WASM-WEB-ABI] Browser events arrive after the command entry returns.
+        let parsed = osprey_syntax::parse_program(GLOBAL_WEB_SOURCE);
+        assert!(osprey_types::check_program(&parsed.program).is_empty());
+        let ir = program_ir(&parsed.program).expect("browser module");
+        assert!(
+            !ir.contains("store i8* null, i8** @"),
+            "browser globals cleared at startup:\n{ir}"
+        );
     }
 
     #[test]
@@ -629,6 +654,36 @@ mod tests {
         assert_wasm_stdout("wasm-smoke.mjs", &out, "product=42, overflow=true");
         assert_wasm_stdout("wasm-browser-smoke.mjs", &out, "product=42, overflow=true");
         build_web_abi_fixture();
+        build_browser_globals_fixture();
+    }
+
+    fn build_browser_globals_fixture() {
+        let program = osprey_syntax::parse_program(GLOBAL_WEB_SOURCE).program;
+        let out =
+            std::env::temp_dir().join(format!("osprey_web_globals_{}.wasm", std::process::id()));
+        build("web-globals.osp", &program, &out).expect("browser globals build");
+        let script = "import {readFileSync} from 'node:fs';\n\
+            import {runModule} from './examples/wasm/wasi-shim.mjs';\n\
+            const e = await runModule(readFileSync(process.argv[1]), s => process.stdout.write(s));\n\
+            const p = e.osp_alloc(6n);\n\
+            new Uint8Array(e.memory.buffer).set(new TextEncoder().encode('event\\0'), p);\n\
+            if (e.osprey_web_dispatch(p) !== 0n) throw new Error('dispatch failed');";
+        let result = Command::new("node")
+            .args(["--input-type=module", "-e", script])
+            .arg(&out)
+            .current_dir(Path::new(env!("CARGO_MANIFEST_DIR")).join("../.."))
+            .output()
+            .expect("browser event run");
+        assert!(
+            result.status.success(),
+            "{}",
+            String::from_utf8_lossy(&result.stderr)
+        );
+        assert_eq!(
+            String::from_utf8_lossy(&result.stdout),
+            "hello world event\n"
+        );
+        std::fs::remove_file(out).expect("remove fixture");
     }
 
     fn assert_wasm_stdout(script: &str, wasm: &Path, expected: &str) {

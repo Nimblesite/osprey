@@ -298,12 +298,14 @@ fn artifact(base: &Path, target: &str, keep_parent: bool) -> PathBuf {
                 .unwrap_or("osprey_out"),
         )
     };
-    if target == "wasm32" {
-        let mut wasm = output.into_os_string();
-        wasm.push(".wasm");
-        return PathBuf::from(wasm);
-    }
-    output
+    let extension = match target {
+        "wasm32" => ".wasm",
+        "ios" | "ios-sim" => ".a",
+        _ => "",
+    };
+    let mut artifact = output.into_os_string();
+    artifact.push(extension);
+    PathBuf::from(artifact)
 }
 
 #[cfg(test)]

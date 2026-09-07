@@ -2102,9 +2102,22 @@ fn clear_value_verdicts(value: &mut Value) {
     clippy::too_many_lines,
     reason = "the fixed point, contract validation, and entry proof form one ordered checker pass"
 )]
-pub(crate) fn check(program: &Program, instances: &Instances) -> Vec<TypeError> {
+pub(crate) fn check(program: &Program, instances: &Instances, exports: &[&str]) -> Vec<TypeError> {
     let index = Index::collect(program);
     let mut errors = Vec::new();
+    let exported: Vec<_> = exports
+        .iter()
+        .filter_map(|name| {
+            if let Some(id) = index.functions.iter().position(|f| f.qualified == *name) {
+                Some((id, *name))
+            } else {
+                errors.push(TypeError::new(format!(
+                    "library export `{name}` is not a defined function"
+                )));
+                None
+            }
+        })
+        .collect();
     for function in &index.functions {
         let unknown: BTreeSet<_> = function
             .declared_effects
@@ -2228,6 +2241,17 @@ pub(crate) fn check(program: &Program, instances: &Instances) -> Vec<TypeError> 
     {
         entry.union(rows.get(main).cloned().unwrap_or_default());
     }
+    errors.extend(entry_errors(&entry, "program entry"));
+    for (id, name) in exported {
+        if let Some(row) = rows.get(id) {
+            errors.extend(entry_errors(row, &format!("library export `{name}`")));
+        }
+    }
+    errors
+}
+
+fn entry_errors(entry: &Summary, context: &str) -> Vec<TypeError> {
+    let mut errors = Vec::new();
     if !entry.required.is_empty() {
         let operations = entry
             .required
@@ -2236,18 +2260,18 @@ pub(crate) fn check(program: &Program, instances: &Instances) -> Vec<TypeError> 
             .collect::<Vec<_>>()
             .join(", ");
         errors.push(TypeError::new(format!(
-            "unhandled effect operations at program entry: {operations}; add a matching `handle`"
+            "unhandled effect operations at {context}: {operations}; add a matching `handle`"
         )));
     }
     if !entry.parameter_uses.is_empty() {
-        errors.push(TypeError::new(
-            "program entry invokes an effect-polymorphic callback whose effects cannot be discharged",
-        ));
+        errors.push(TypeError::new(format!(
+            "{context} invokes an effect-polymorphic callback whose effects cannot be discharged"
+        )));
     }
     if entry.unresolved_dynamic_call {
-        errors.push(TypeError::new(
-            "program entry invokes a dynamic callable whose effect provenance cannot be proven; preserve the callable through a statically tracked value path",
-        ));
+        errors.push(TypeError::new(format!(
+            "{context} invokes a dynamic callable whose effect provenance cannot be proven; preserve the callable through a statically tracked value path"
+        )));
     }
     errors
 }

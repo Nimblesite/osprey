@@ -55,7 +55,9 @@ mod types;
 pub use error::{CodegenError, Result};
 pub use gpu_kernel::{GpuKernelMode, GPU_KERNELS_ENV};
 pub use llty::{LType, Value};
-pub use lower::{compile_program, compile_program_coverage, compile_program_debug};
+pub use lower::{
+    compile_library, compile_program, compile_program_coverage, compile_program_debug,
+};
 pub use osprey_debug::DebugSource;
 
 /// Every identifier referenced anywhere in `program` — function bodies, lets,

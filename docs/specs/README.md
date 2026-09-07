@@ -89,6 +89,10 @@ This directory holds **all spec documents** for the project:
     rename. Motivated by
     [#230](https://github.com/Nimblesite/osprey/issues/230); delivery in
     [plan 0027](../plans/0027-arithmetic-effects.md).
+  - [`0038-iOSTarget.md`](0038-iOSTarget.md) — iPhone and ARM64 simulator static
+    libraries with inferred C headers, synchronous Swift host calls, target
+    capability rejection before LLVM, and a runnable SwiftUI sample. Implementation
+    and verification are tracked in [plan 0029](../plans/0029-ios-c-abi.md).
 
 ## Spec ID convention
 

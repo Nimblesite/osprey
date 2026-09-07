@@ -148,9 +148,6 @@ WASM_RT_SRC  ?= memory_runtime gpu_runtime string_runtime string_runtime_list li
 WASM_SERVE_DIR  ?= examples/wasm
 WASM_SERVE_PORT ?= 8080
 
-# Apple SDK builds reuse the native warning profile and portable runtime units.
-include scripts/ios.mk
-
 # =============================================================================
 # Standard Targets
 # =============================================================================
@@ -1027,4 +1024,7 @@ _vsix_install:
 	@VSIX=$$(ls -t $(EXT_DIR)/osprey-*.vsix 2>/dev/null | head -1); \
 	if [ -z "$$VSIX" ]; then echo "FAIL: no osprey-*.vsix in $(EXT_DIR)/"; exit 1; fi; \
 	echo "  vsix: $$VSIX"; \
-	code --install-extension "$$VSIX" --force && echo "  installed $(EXT_ID)"
+		code --install-extension "$$VSIX" --force && echo "  installed $(EXT_ID)"
+
+# Apple SDK builds reuse the native warning profile and portable runtime units.
+include scripts/ios.mk

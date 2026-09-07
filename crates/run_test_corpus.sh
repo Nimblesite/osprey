@@ -47,11 +47,11 @@ TARGET=${OSPREY_TARGET:-native}
 # RUNNER's use-after-free as every program in the corpus failing.
 NODE=node
 
-# Status sentinel for a program the wasm32 target deliberately cannot link.
+# Status sentinel for a program the wasm32 target deliberately rejects.
 SKIP_STATUS=skip
 
-# Reviewed, committed record of every program allowed to link-fail on wasm32 and
-# the symbol it fails on. Compared EXACTLY after the run — see the check below.
+# Reviewed record of every program rejected for an unsupported WASM capability
+# and its diagnostic reason. Compared EXACTLY after the run.
 WASM_MANIFEST=$TESTDIR/WASM_UNPORTABLE.txt
 
 # Anti-regression ratchet: the number of PROGRAMS that must be golden-compared.
@@ -100,16 +100,19 @@ GPU_MODE_MIN=${OSPREY_GPU_MODE_MIN:-18}
 # from any status the compiler or Node can return on its own.
 SKIP_CODE=200
 
-# Compile to wasm32 and execute the module under Node's WASI host. The portable
-# runtime archive links every symbol it ports, so an `undefined symbol` link
-# error means the program uses a feature deliberately left off the wasm target
-# (fibers, HTTP/WebSocket, processes, FFI, file I/O, random, or resumable
-# continuations [WASM-TARGET-EFFECTS]) — a documented limitation, reported as
-# SKIP. Any OTHER build error is a real failure and must stay one.
+# Extract the compiler's explicit capability rejection. Unexpected linker
+# errors remain failures: target legality must be checked before LLVM/linking.
+# [WASM-TARGET-CAPABILITIES]
+wasm_rejection() {
+  sed -n 's/^.*target `wasm32` does not support \(.*\); use a supported target.*$/\1/p' "$1" | sed 's/ near line [0-9:]*$//' | head -1
+}
+
+# Compile and execute under Node's WASI host. Only explicit capability errors
+# may skip execution; the exact program and reason remain pinned below.
 run_wasm() {
   local file=$1 out=$2 err=$3 module=$4
   if ! $BIN "$file" --target=wasm32 --compile -o "$module" >"$err" 2>&1; then
-    grep -qE 'undefined symbol: [A-Za-z0-9_]+' "$err" && return $SKIP_CODE
+    [[ -n $(wasm_rejection "$err") ]] && return $SKIP_CODE
     return 1
   fi
   "$NODE" "$SMOKE" "$module" >"$out" 2>"$err"
@@ -283,7 +286,7 @@ for (( index = 1; index <= ${#FILES}; index++ )); do
     # program was never built, so drop it before the numeric coercion below.
     if [[ "$rc" == "$SKIP_STATUS" ]]; then
       skipped=$((skipped + 1))
-      sym=$(grep -m1 -oE 'undefined symbol: [A-Za-z0-9_]+' "$ERRFILE" | sed 's/undefined symbol: //')
+      sym=$(wasm_rejection "$ERRFILE")
       SKIPPED+=("$rel ${sym:-UNKNOWN}")
       continue
     fi
@@ -338,15 +341,15 @@ skips_ok=1
 if [[ $TARGET == wasm32 ]]; then
   # The skip set is PINNED, not merely counted. A skip is a hole in coverage;
   # the only thing that makes one acceptable is that a human agreed to it in
-  # review. tests/WASM_UNPORTABLE.txt records every program that may link-fail
-  # on wasm32 AND the symbol it fails on, and this compares the actual set to it
+  # review. tests/WASM_UNPORTABLE.txt records every program rejected for a WASM
+  # capability AND the diagnostic reason, and compares the actual set to it
   # EXACTLY — in both directions:
   #
   #   * a NEW skip fails the build, so nobody can quietly make a program
   #     unportable, or add one that never runs on this target;
   #   * a REMOVED skip also fails, forcing the manifest to ratchet DOWN when a
   #     feature is ported instead of leaving a stale entry as cover;
-  #   * a CHANGED symbol fails, so a program cannot start skipping for a
+  #   * a CHANGED reason fails, so a program cannot start skipping for a
   #     different — possibly accidental — reason under the same line.
   #
   # There is no regeneration flag on purpose. Editing this file is a deliberate,
