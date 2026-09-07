@@ -27,3 +27,18 @@ ios-test: ios
 _test_ios:
 	OSPREY_BIN="$(CURDIR)/$(BIN)" bash scripts/test-ios.sh
 	OSPREY_BIN="$(CURDIR)/$(BIN)" OSPREY_IOS_SKIP_BUILD=1 bash examples/ios/run.sh --smoke
+
+.PHONY: mobile-ios mobile-ios-test mobile-domain-test mobile-test
+mobile-ios: _runtime_ios _runtime_ios_sim
+	cargo build --release -p osprey-cli
+	bash examples/mobile/ios/run.sh --build ios
+	bash examples/mobile/ios/run.sh --build ios-sim
+
+mobile-ios-test: mobile-ios
+	OSPREY_IOS_SKIP_BUILD=1 bash examples/mobile/ios/run.sh --smoke
+
+mobile-domain-test: _runtime
+	cargo build --release -p osprey-cli
+	$(BIN) examples/mobile/inbox/test --run
+
+mobile-test: mobile-domain-test mobile-ios-test android-test

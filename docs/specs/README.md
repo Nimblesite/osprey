@@ -93,6 +93,8 @@ This directory holds **all spec documents** for the project:
     libraries with inferred C headers, synchronous Swift host calls, target
     capability rejection before LLVM, and a runnable SwiftUI sample. Implementation
     and verification are tracked in [plan 0029](../plans/0029-ios-c-abi.md).
+  - [`0039-AndroidTarget.md`](0039-AndroidTarget.md) — Android ARM64/x64 archives, checked C ABI, NDK runtime builds, and JNI integration.
+  - [`0040-ReactiveMobileApplications.md`](0040-ReactiveMobileApplications.md) — one Osprey application defining screens, reactive state, SQLite persistence, and API commands for generic iOS and Android hosts. Delivery is tracked in [plan 0030](../plans/0030-reactive-mobile-apps.md).
 
 ## Spec ID convention
 

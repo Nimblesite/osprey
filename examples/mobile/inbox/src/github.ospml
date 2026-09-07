@@ -23,17 +23,34 @@ module Github
 
     issueValid doc prefix = positive doc (prefix + ".id") && positive doc (prefix + ".number") && length (scalar doc (prefix + ".title")) > 0 && length (scalar doc (prefix + ".user.login")) > 0 && (parseInt (scalar doc (prefix + ".comments")) ?: ((0 - 1) ?: 0)) >= 0
 
+    optional doc path = match scalar doc path
+        "null" => ""
+        value => value
+
+    labels : int -> string -> int -> int -> string
+    labels doc prefix index count = match index >= count || index >= 10
+        true => ""
+        false =>
+            name = scalar doc "${prefix}.labels[${index}].name"
+            rest = labels doc prefix ((index + 1) ?: count) count
+            match length rest > 0
+                true => name + " · " + rest
+                false => name
+
     issue doc prefix = Json::obj (
         Json::strField "id" (scalar doc (prefix + ".id")) + "," +
         Json::numField "number" (parseInt (scalar doc (prefix + ".number")) ?: 0) + "," +
         Json::strField "title" (scalar doc (prefix + ".title")) + "," +
         Json::strField "author" (scalar doc (prefix + ".user.login")) + "," +
-        Json::numField "comments" (parseInt (scalar doc (prefix + ".comments")) ?: 0))
+        Json::numField "comments" (parseInt (scalar doc (prefix + ".comments")) ?: 0) + "," +
+        Json::strField "body" (take (optional doc (prefix + ".body")) 2000) + "," +
+        Json::strField "labels" (labels doc prefix 0 (jsonLength doc (prefix + ".labels"))))
 
     append left right = match length left == 0
         true => right
         false => left + "," + right
 
+    collect : int -> int -> int -> string -> Result<string, string>
     collect doc index count output = match index >= count
         true => Success(value = Json::arr output)
         false =>

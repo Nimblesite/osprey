@@ -93,8 +93,8 @@ impl CType {
         }
     }
 
-    /// Apple's arm64 C ABI zero-extends `bool` in both directions; clang spells
-    /// that `zeroext` on the boundary, and so must the thunk.
+    /// Apple ARM64 and Android x86-64 extend bool; Android AAPCS64 does not.
+    /// The thunk must match clang for the chosen C ABI.
     fn zeroext(self, extend_bool: bool) -> &'static str {
         match self {
             Self::Bool if extend_bool => "zeroext ",
@@ -428,10 +428,6 @@ fn c_identifier(name: &str) -> bool {
         && !c_header::reserved_identifier(name)
 }
 
-#[cfg(test)]
-#[path = "ios_abi_tests.rs"]
-mod tests;
-
 /// Check the entire library boundary before discovering a platform toolchain.
 /// Implements [IOS-HOST-ABI] and [ANDROID-HOST-ABI].
 pub(crate) fn source(
@@ -456,3 +452,7 @@ pub(crate) fn source(
     };
     Ok((adapted, header))
 }
+
+#[cfg(test)]
+#[path = "ios_abi_tests.rs"]
+mod tests;

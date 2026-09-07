@@ -1,6 +1,6 @@
 # iOS Application Target [IOS-TARGET]
 
-Osprey application logic compiles through LLVM into an ARM64 iOS static library with a generated C header. A Swift application links that library, owns the iOS lifecycle and platform APIs, and calls Osprey through the C ABI. This target covers iPhone devices and the Apple silicon iOS Simulator. Android and other host platforms are outside this implementation.
+Osprey application logic compiles through LLVM into an ARM64 iOS static library with a generated C header. A Swift application links that library, owns the iOS lifecycle and platform APIs, and calls Osprey through the C ABI. This target covers iPhone devices and the Apple silicon iOS Simulator. [Android](0039-AndroidTarget.md) has a separate target contract and shares the [reactive mobile application](0040-ReactiveMobileApplications.md) boundary.
 
 Implementation sequence, test evidence, and remaining validation are tracked in [plan 0029 — iOS C ABI application logic and Swift host](../plans/0029-ios-c-abi.md).
 

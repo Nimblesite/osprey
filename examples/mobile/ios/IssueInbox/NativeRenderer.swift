@@ -82,7 +82,11 @@ private struct NativeInput: View {
 
 private struct NodeStyle: ViewModifier {
     let style: String
-    private let accent = Color(red: 0.29, green: 0.25, blue: 0.81)
+    @Environment(\.colorScheme) private var scheme
+    private let fill = Color(red: 0.29, green: 0.25, blue: 0.81)
+    private var accent: Color {
+        scheme == .dark ? Color(red: 0.68, green: 0.65, blue: 1) : fill
+    }
 
     @ViewBuilder func body(content: Content) -> some View {
         switch style {
@@ -97,7 +101,7 @@ private struct NodeStyle: ViewModifier {
         case "accent": content.font(.caption.weight(.bold)).foregroundColor(accent)
         case "error": content.font(.callout).foregroundColor(.red)
         case "primary": content.font(.subheadline.weight(.semibold)).padding(.horizontal, 16).padding(.vertical, 10)
-                .foregroundColor(.white).background(accent, in: Capsule())
+                .foregroundColor(.white).background(fill, in: Capsule())
         case "secondary": content.font(.subheadline.weight(.medium)).padding(.horizontal, 12).padding(.vertical, 10)
                 .foregroundColor(accent).background(accent.opacity(0.09), in: Capsule())
         default: content

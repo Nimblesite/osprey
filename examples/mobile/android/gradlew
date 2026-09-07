@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+# Prefer an installed Gradle, then the standard local Gradle distribution cache.
+set -euo pipefail
+if [[ -n ${GRADLE_BIN:-} ]]; then exec "$GRADLE_BIN" "$@"; fi
+if command -v gradle >/dev/null; then exec gradle "$@"; fi
+for candidate in "$HOME"/.gradle/wrapper/dists/gradle-8.7-*/**/gradle-8.7/bin/gradle; do
+    if [[ -x "$candidate" ]]; then exec "$candidate" "$@"; fi
+done
+cache="${GRADLE_USER_HOME:-$HOME/.gradle}/osprey-distributions"
+mkdir -p "$cache"
+if [[ ! -x "$cache/gradle-8.7/bin/gradle" ]]; then
+    curl --fail --location --retry 2 https://services.gradle.org/distributions/gradle-8.7-bin.zip -o "$cache/gradle-8.7-bin.zip"
+    curl --fail --location --retry 2 https://services.gradle.org/distributions/gradle-8.7-bin.zip.sha256 -o "$cache/gradle-8.7-bin.zip.sha256"
+    expected=$(cat "$cache/gradle-8.7-bin.zip.sha256")
+    actual=$(shasum -a 256 "$cache/gradle-8.7-bin.zip")
+    [[ ${actual%% *} == "$expected" ]] || { echo 'Gradle checksum mismatch' >&2; exit 1; }
+    unzip -q "$cache/gradle-8.7-bin.zip" -d "$cache"
+fi
+exec "$cache/gradle-8.7/bin/gradle" "$@"

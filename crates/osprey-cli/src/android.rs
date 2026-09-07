@@ -6,6 +6,7 @@ use osprey_ast::Program;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
+/// Architecture and minimum platform API are inseparable. [ANDROID-TARGET-TRIPLE]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Target {
     Arm64,

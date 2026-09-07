@@ -58,6 +58,7 @@ proving both flavors print the same bytes.
   larger application/runtime examples.
 - **`bugs/`** — regression reproductions.
 - **[`ios/`](ios/)** — a SwiftUI iPhone app calling Osprey logic through a generated C header, with device/simulator builds and executable smoke checks.
+- **[`mobile/`](mobile/README.md)** — the same reactive issue inbox on iOS and Android, with Osprey modules defining the native screen tree, state, SQLite persistence, GitHub requests, and triage workflows.
 
 ## Paired flavor tests (`../tests/flavors/`)
 

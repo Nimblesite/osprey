@@ -141,6 +141,9 @@ internal class NativeRenderer(private val context: Context, private val dispatch
             }
             val padding = dp(if (name == "screen") 20 else 14)
             view.setPadding(padding, padding, padding, padding)
+        } else if (view is ViewGroup) {
+            view.background = null
+            view.setPadding(0, 0, 0, 0)
         }
     }
 }

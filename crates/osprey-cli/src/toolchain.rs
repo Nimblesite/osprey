@@ -26,28 +26,6 @@ pub(crate) fn fail(msg: &str) -> ExitCode {
     ExitCode::FAILURE
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn tool_falls_back_to_default_when_env_unset() {
-        assert_eq!(
-            tool("OSPREY_WASM_CC_DEFINITELY_UNSET_XYZ", "clang"),
-            "clang"
-        );
-    }
-
-    #[test]
-    fn run_tool_reports_success_failure_and_a_missing_program() {
-        // A program that exits 0 succeeds; a non-zero exit and a missing program
-        // are both mapped to a CLI failure (exercising `run_tool` + `fail`).
-        assert!(run_tool("true", &[], "install it").is_ok());
-        assert!(run_tool("false", &[], "install it").is_err());
-        assert!(run_tool("/no/such/tool/osprey_xyz", &[], "install it").is_err());
-    }
-}
-
 pub(crate) fn write(path: &Path, contents: &str) -> Result<(), ExitCode> {
     std::fs::write(path, contents)
         .map_err(|e| fail(&format!("cannot write {}: {e}", path.display())))
@@ -87,5 +65,27 @@ impl Scratch {
 impl Drop for Scratch {
     fn drop(&mut self) {
         let _ = std::fs::remove_dir_all(&self.path);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn tool_falls_back_to_default_when_env_unset() {
+        assert_eq!(
+            tool("OSPREY_WASM_CC_DEFINITELY_UNSET_XYZ", "clang"),
+            "clang"
+        );
+    }
+
+    #[test]
+    fn run_tool_reports_success_failure_and_a_missing_program() {
+        // A program that exits 0 succeeds; a non-zero exit and a missing program
+        // are both mapped to a CLI failure (exercising `run_tool` + `fail`).
+        assert!(run_tool("true", &[], "install it").is_ok());
+        assert!(run_tool("false", &[], "install it").is_err());
+        assert!(run_tool("/no/such/tool/osprey_xyz", &[], "install it").is_err());
     }
 }

@@ -9,45 +9,8 @@ simulator=$(bash scripts/ios-simulator.sh)
 scratch=$(mktemp -d "$root/compiler/bin/.ios-tests.XXXXXX")
 trap 'rm -rf "$scratch"' EXIT
 
-cat >"$scratch/abi.osp" <<'OSPREY'
-extern fn hostRecord(value: int, ready: bool, label: string) -> Unit
-extern fn hostNegate(value: bool) -> bool
-let seed = "persisted ${41}"
-fn stored() = seed
-fn greet(name: string) = "Hello ${name}"
-fn invert(value) = !value
-fn invertViaHost(value) = hostNegate(value)
-fn big() = 9223372036854775807
-fn scale(value: float) = value * 1.5
-fn emit(value, ready, label) = hostRecord(value, ready, label)
-hostRecord(41, true, "boot")
-OSPREY
-
-cat >"$scratch/abi.c" <<'C'
-#include "abi.h"
-#include <assert.h>
-#include <limits.h>
-#include <stdio.h>
-#include <string.h>
-static int calls;
-void hostRecord(int64_t value, bool ready, const char *label) {
-    assert(value == 41 && ready && strcmp(label, "boot") == 0);
-    calls++;
-}
-bool hostNegate(bool value) { return !value; }
-int main(void) {
-    assert(osprey_main() == 0 && calls == 1);
-    assert(osprey_big() == INT64_MAX && osprey_scale(4.0) == 6.0);
-    assert(osprey_invert(false) && !osprey_invert(true));
-    assert(osprey_invertViaHost(false) && !osprey_invertViaHost(true));
-    assert(strcmp(osprey_stored(), "persisted 41") == 0);
-    assert(strcmp(osprey_greet("Swift"), "Hello Swift") == 0);
-    osprey_emit(41, true, "boot");
-    assert(calls == 2 && strcmp(osprey_stored(), "persisted 41") == 0);
-    puts("iOS C ABI passed");
-    return 0;
-}
-C
+cp scripts/mobile-abi.osp "$scratch/abi.osp"
+cp scripts/mobile-abi.c "$scratch/abi.c"
 
 link_host() {
     local sdk=$1 triple=$2 source=$3 archive=$4 executable=$5
@@ -64,7 +27,7 @@ for target in ios ios-sim; do
     link_host "$sdk" "$triple" "$scratch/abi.c" "$scratch/abi.a" "$scratch/abi-$target"
 done
 xcrun simctl spawn "$simulator" "$scratch/abi-ios-sim" >"$scratch/abi.stdout"
-printf 'iOS C ABI passed\n' >"$scratch/abi.expected"
+printf 'Mobile C ABI passed\n' >"$scratch/abi.expected"
 diff -u "$scratch/abi.expected" "$scratch/abi.stdout"
 echo "==> iOS device C host linked; simulator scalar imports/exports and global lifetime passed"
 

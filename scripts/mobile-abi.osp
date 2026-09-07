@@ -1,0 +1,11 @@
+extern fn hostRecord(value: int, ready: bool, label: string) -> Unit
+extern fn hostNegate(value: bool) -> bool
+let seed = "persisted ${41}"
+fn stored() = seed
+fn greet(name: string) = "Hello ${name}"
+fn invert(value) = !value
+fn invertViaHost(value) = hostNegate(value)
+fn big() = 9223372036854775807
+fn scale(value: float) = value * 1.5
+fn emit(value, ready, label) = hostRecord(value, ready, label)
+hostRecord(41, true, "boot")

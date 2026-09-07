@@ -328,7 +328,7 @@ impl ParamSig {
 /// A function value's lowered signature: parameter ABI slots, the return
 /// [`LType`], (when it returns `Result<T, _>`) the success inner type, any
 /// Fiber element shape that must survive the erased integer ABI, and the
-/// return's OWNER tag.
+/// return's OWNER tag (the Success payload owner for a Result).
 ///
 /// The owner is the fifth slot because a closure call had nowhere to put it: a
 /// named function recovers it through [`Codegen::fn_ret_owner`], but a call
@@ -812,7 +812,8 @@ impl Codegen {
                 ltype_of(ret),
                 crate::types::result_inner(ret),
                 FiberSig::of(prog, ret),
-                crate::types::owner_name(prog, ret),
+                crate::types::result_payload_owner(prog, ret)
+                    .or_else(|| crate::types::owner_name(prog, ret)),
             )),
             _ => None,
         }

@@ -1,6 +1,7 @@
 namespace mobile
 
 import bank::Json
+import mobile::Annotations
 
 type IssueRows =
     elements : string
@@ -29,6 +30,10 @@ module View
         matchesSearch = contains (toLowerCase (title + " " + author + " #" + number)) (toLowerCase model.search)
         matchesSearch && (model.filter != "saved" || bookmarked)
 
+    metadata model doc prefix =
+        local = Annotations::get model.annotations (text doc (prefix + ".id"))
+        Json::strField "body" (text doc (prefix + ".body")) + "," + Json::strField "labels" (text doc (prefix + ".labels")) + "," + Json::strField "note" local.note + "," + Json::strField "priority" local.priority
+
     item model doc prefix bookmarked = Json::obj (
         Json::strField "id" (text doc (prefix + ".id")) + "," +
         Json::numField "number" (parseInt (text doc (prefix + ".number")) ?: 0) + "," +
@@ -36,7 +41,15 @@ module View
         Json::strField "url" ("https://github.com/" + model.repo + "/issues/" + text doc (prefix + ".number")) + "," +
         Json::strField "author" (text doc (prefix + ".author")) + "," +
         Json::numField "comments" (parseInt (text doc (prefix + ".comments")) ?: 0) + "," +
-        Json::rawField "bookmarked" (toString bookmarked))
+        Json::rawField "bookmarked" (toString bookmarked) + "," + metadata model doc prefix)
+
+    detail model doc index count = match index >= count
+        true => "null"
+        false =>
+            prefix = "[${index}]"
+            match text doc (prefix + ".id") == model.selected
+                true => item model doc prefix (saved model model.selected)
+                false => detail model doc ((index + 1) ?: count) count
 
     append left right = match length left == 0
         true => right
@@ -55,21 +68,21 @@ module View
                 false => output
             rows model doc ((index + 1) ?: count) count nextOutput nextMarked
 
-    errors : InboxModel -> string
     errors model = match length model.storageError > 0 && length model.error > 0
-        true => model.error + " " + model.storageError
-        false => model.error + model.storageError
+        true => "${model.error} ${model.storageError}"
+        false => "${model.error}${model.storageError}"
 
-    document model result = Json::obj (
+    document model result selected = Json::obj (
         Json::strField "repo" model.repo + "," + Json::strField "search" model.search + "," +
         Json::strField "filter" model.filter + "," + Json::strField "status" model.status + "," +
         Json::strField "error" (errors model) + "," + Json::rawField "loading" model.loading + "," +
         Json::rawField "items" (Json::arr result.elements) + "," +
-        Json::numField "total" result.total + "," + Json::numField "bookmarked" result.bookmarked)
+        Json::numField "total" result.total + "," + Json::numField "bookmarked" result.bookmarked + "," +
+        Json::strField "selected" model.selected + "," + Json::rawField "detail" selected)
 
     export render model =
         doc = jsonParse model.items ?: 0
         result = rows model doc 0 (jsonLength doc "") "" 0
-        output = document model result
+        output = document model result (detail model doc 0 (jsonLength doc ""))
         freed = jsonFree doc ?: 0
         output

@@ -8,6 +8,8 @@ module Ui
     field key content = Json::strField key content
     event kind = Json::obj (field "type" kind)
     valued kind content = Json::obj (field "type" kind + "," + field "value" content)
+    targeted kind id = Json::obj (field "type" kind + "," + field "id" id)
+    targetedValue kind id content = Json::obj (field "type" kind + "," + field "id" id + "," + field "value" content)
     text style content = Json::obj (field "kind" "text" + "," + field "style" style + "," + field "text" content)
     group kind style children = Json::obj (field "kind" kind + "," + field "style" style + "," + Json::rawField "children" (Json::arr children))
     button style caption action = Json::obj (field "kind" "button" + "," + field "style" style + "," + field "text" caption + "," + Json::rawField "event" action)
@@ -43,21 +45,34 @@ module Ui
             true => status
             false => group "column" "error" (status + "," + text "error" error)
 
-    issue doc index =
-        prefix = "items[${index}]."
-        id = value doc (prefix + "id") ""
+    metadata doc prefix =
         number = value doc (prefix + "number") ""
         author = value doc (prefix + "author") ""
         comments = value doc (prefix + "comments") "0"
-        title = value doc (prefix + "title") ""
+        group "row" "toolbar" (text "accent" "#${number}" + "," + text "caption" "${author} · ${comments} comments")
+
+    bookmark doc prefix =
         saved = value doc (prefix + "bookmarked") "false" == "true"
         caption = match saved
             true => "★ Saved"
             false => "☆ Save"
-        action = Json::obj (field "type" "bookmark" + "," + field "id" id)
-        metadata = text "accent" "#${number}" + "," + text "caption" "${author} · ${comments} comments"
-        actions = button (filterStyle (toString saved) "true") caption action + "," + link "Open issue ↗" (value doc (prefix + "url") "")
-        group "column" "card" (group "row" "toolbar" metadata + "," + text "title" title + "," + group "row" "toolbar" actions)
+        button (filterStyle (toString saved) "true") caption (targeted "bookmark" (value doc (prefix + "id") ""))
+
+    itemStatus doc prefix =
+        priority = match value doc (prefix + "priority") "normal" == "high"
+            true => "HIGH PRIORITY"
+            false => "Normal priority"
+        note = match length (value doc (prefix + "note") "") > 0
+            true => " · Local note saved"
+            false => ""
+        text "caption" (priority + note)
+
+    issue doc index =
+        prefix = "items[${index}]."
+        title = text "title" (value doc (prefix + "title") "")
+        details = button "secondary" "Details →" (targeted "open" (value doc (prefix + "id") ""))
+        actions = group "row" "toolbar" (bookmark doc prefix + "," + details)
+        group "column" "card" (metadata doc prefix + "," + title + "," + itemStatus doc prefix + "," + actions)
 
     issues doc index count = match index >= count
         true => ""
@@ -79,10 +94,48 @@ module Ui
                 group "column" "card" (text "title" "Your inbox" + "," + text "body" message)
             false => group "column" "list" (issues doc 0 count)
 
+    detailSummary doc =
+        title = text "title" (value doc "detail.title" "")
+        labels = value doc "detail.labels" ""
+        labelText = match length labels > 0
+            true => labels
+            false => "No labels"
+        actions = group "row" "toolbar" (bookmark doc "detail." + "," + link "View on GitHub ↗" (value doc "detail.url" ""))
+        group "column" "card" (metadata doc "detail." + "," + title + "," + text "accent" labelText + "," + actions)
+
+    detailBody doc =
+        source = value doc "detail.body" ""
+        body = match length source > 0
+            true => source
+            false => "The author has not added a description."
+        group "column" "card" (text "accent" "DESCRIPTION" + "," + text "body" body)
+
+    detailTriage doc =
+        id = value doc "detail.id" ""
+        priority = value doc "detail.priority" "normal"
+        normal = button (filterStyle priority "normal") "Normal" (targetedValue "priority" id "normal")
+        high = button (filterStyle priority "high") "↑ High priority" (targetedValue "priority" id "high")
+        priorities = group "row" "toolbar" (normal + "," + high)
+        note = input ("note-" + id) (value doc "detail.note" "") "Your note · press Done to save" (targeted "note" id) true
+        guidance = text "caption" "Notes and priority stay in your inbox. They do not change the GitHub issue."
+        group "column" "card" (text "accent" "YOUR TRIAGE" + "," + priorities + "," + note + "," + guidance)
+
+    detailScreen doc =
+        navigation = group "row" "toolbar" (button "secondary" "← Inbox" (event "back") + "," + text "caption" (value doc "repo" ""))
+        heading = text "accent" "ISSUE DETAILS"
+        content = match length (value doc "detail.id" "") > 0
+            true => detailSummary doc + "," + detailTriage doc + "," + detailBody doc
+            false => group "column" "card" (text "title" "Issue unavailable" + "," + text "body" "Return to the inbox and refresh to choose another issue.")
+        navigation + "," + heading + "," + notice doc + "," + content
+
+    screen doc = match length (value doc "selected" "") > 0
+        true => detailScreen doc
+        false => heading doc + "," + controls doc + "," + notice doc + "," + content doc
+
     export render view = match jsonParse view
         Error message => group "column" "screen" (text "error" ("Cannot render the inbox: " + message))
         Success doc =>
-            body = heading doc + "," + controls doc + "," + notice doc + "," + content doc
+            body = screen doc
             tree = group "scroll" "screen" (group "column" "page" body)
             freed = jsonFree doc ?: 0
             tree

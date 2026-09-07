@@ -10,6 +10,10 @@ export OSPREY_IOS_BUNDLE_ID=org.ospreylang.IssueInbox
 export OSPREY_IOS_SMOKE_FILE=inbox-smoke-result.txt
 export OSPREY_IOS_SMOKE_ARG=--inbox-smoke
 export OSPREY_IOS_SMOKE_EXPECT=OSPREY_INBOX_SMOKE_OK
+icon="$example_dir/build/Assets.xcassets/AppIcon.appiconset/Icon.png"
+if [[ ! -f "$icon" || "$example_dir/make-icon.swift" -nt "$icon" ]]; then
+    swift "$example_dir/make-icon.swift" "$example_dir/build/Assets.xcassets"
+fi
 case "${1:-ios-sim}" in
     ios-sim) exec "$repo_dir/examples/ios/run.sh" ;;
     ios-device) exec "$repo_dir/examples/ios/run-device.sh" ;;

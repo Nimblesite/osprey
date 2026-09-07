@@ -1,5 +1,5 @@
 //! Reject target facilities before code generation or toolchain discovery.
-//! Implements [IOS-TARGET-CAPABILITIES] and [WASM-TARGET-CAPABILITIES].
+//! Implements [IOS-TARGET-CAPABILITIES], [ANDROID-TARGET-CAPABILITIES] and [WASM-TARGET-CAPABILITIES].
 use osprey_ast::{walk_program, AstVisitor, Expr, Position, Program, Stmt};
 use std::collections::BTreeSet;
 

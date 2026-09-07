@@ -1,0 +1,145 @@
+namespace inboxtests
+
+import bank::Json
+import mobile::Model
+import mobile::Github
+import mobile::Storage
+import mobile::Update
+import mobile::View
+import mobile::App
+import inboxtests::Support
+
+jsonControlCase () =
+    source = "line one\nline two\t\r" + (fromCodePoint 1 ?: "")
+    encoded = Json::obj (Json::strField "value" source)
+    check "control characters round trip through valid JSON" source (Json::getOr encoded "value" "INVALID JSON")
+
+test "shared JSON encoder escapes control characters" jsonControlCase
+
+repositoryCase () =
+    check "valid path" true (Github::validRepository "rust-lang/rust")
+    check "no traversal" false (Github::validRepository "../rust")
+    check "no query injection" false (Github::validRepository "owner/repo?token=bad")
+    check "exactly two components" false (Github::validRepository "owner/repo/issues")
+    check "no empty owner" false (Github::validRepository "/repo")
+    check "no spaces" false (Github::validRepository "own er/repo")
+
+startupCase () =
+    initial = Update::initial ()
+    schema = Update::dispatch initial.model (Support::sql "schema" true "[]" "")
+    fetching = Update::dispatch schema.model (Support::sql "load" true "[]" "")
+    check "schema first" "schema" (Support::projected initial.commands "[0].id")
+    check "prepared cache read" "inbox" (Support::projected schema.commands "[0].params[0]")
+    check "fetch after empty cache" "http" (Support::projected fetching.commands "[0].kind")
+    check "bounded public API URL" (Github::url "swiftlang/swift") (Support::projected fetching.commands "[0].url")
+
+loadedCase () =
+    updated = Support::loaded ()
+    view = View::render updated.model
+    check "pull request excluded" "2" (Support::projected view "total")
+    check "scalar id" "101" (Support::projected view "items[0].id")
+    check "safe URL constructed in Osprey" "https://github.com/swiftlang/swift/issues/42" (Support::projected view "items[0].url")
+    check "loading finished" "false" (Support::projected view "loading")
+    check "cache emitted" "sql" (Support::projected updated.commands "[0].kind")
+
+searchCase () =
+    loaded = Support::loaded ()
+    searched = Update::dispatch loaded.model (Support::value "search" "ALICE")
+    view = View::render searched.model
+    check "case insensitive author match" "101" (Support::projected view "items[0].id")
+    check "second item filtered" "MISSING" (Support::projected view "items[1].id")
+    check "total remains full inbox" "2" (Support::projected view "total")
+    check "search is pure" "[]" searched.commands
+
+bookmarkCase () =
+    loaded = Support::loaded ()
+    saved = Update::dispatch loaded.model (Support::bookmark "102")
+    filtered = Update::dispatch saved.model (Support::value "filter" "saved")
+    view = View::render filtered.model
+    check "saved count changes immediately" "1" (Support::projected view "bookmarked")
+    check "saved filter" "102" (Support::projected view "items[0].id")
+    check "bookmark boolean" "true" (Support::projected view "items[0].bookmarked")
+    check "prepared write" "INSERT OR REPLACE INTO app_state (key, value) VALUES (?, ?)" (Support::projected saved.commands "[0].sql")
+
+cacheCase () =
+    loaded = Support::loaded ()
+    saved = Update::dispatch loaded.model (Support::bookmark "101")
+    snapshot = Model::snapshot saved.model
+    initial = Update::initial ()
+    schema = Update::dispatch initial.model (Support::sql "schema" true "[]" "")
+    restored = Update::dispatch schema.model (Support::sql "load" true (Json::arr (Json::obj (Json::strField "value" snapshot))) "")
+    check "reopen restores issues" saved.model.items restored.model.items
+    check "reopen restores bookmarks" saved.model.saved restored.model.saved
+    check "cached launch stays offline" "[]" restored.commands
+    check "transient filter resets" "all" restored.model.filter
+
+staleCase () =
+    first = Support::awaiting ()
+    second = Update::dispatch first.model (Support::value "repository" "rust-lang/rust")
+    stale = Update::dispatch second.model (Support::http first.model.pending 200 (Support::fixture ()) "")
+    check "old response ignored" (Model::encode second.model) (Model::encode stale.model)
+    check "old response cannot persist" "[]" stale.commands
+
+offlineCase () =
+    loaded = Support::loaded ()
+    refresh = Update::dispatch loaded.model (Support::event "refresh")
+    failed = Update::dispatch refresh.model (Support::http refresh.model.pending 0 "" "The internet connection is offline.")
+    check "offline retains issues" loaded.model.items failed.model.items
+    check "error is visible" true (contains failed.model.error "offline")
+    check "loading stops on failure" "false" failed.model.loading
+    check "failed response never overwrites SQLite" "[]" failed.commands
+
+malformedCase () =
+    loaded = Support::loaded ()
+    refresh = Update::dispatch loaded.model (Support::event "refresh")
+    failed = Update::dispatch refresh.model (Support::http refresh.model.pending 200 "[{\"id\":7}]" "")
+    check "invalid issue rejected" true (contains failed.model.error "missing a valid")
+    check "invalid API cannot replace cache" loaded.model.items failed.model.items
+    check "invalid API cannot persist" "[]" failed.commands
+
+sqliteFailureCase () =
+    loaded = Support::loaded ()
+    failed = Update::dispatch loaded.model (Support::sql loaded.model.write false "[]" "disk full")
+    check "save error visible" true (contains (View::render failed.model) "disk full")
+    check "save error retains data" loaded.model.items failed.model.items
+    check "failed save not retried silently" "[]" failed.commands
+
+injectionCase () =
+    loaded = Support::loaded ()
+    snapshot = Support::projected loaded.commands "[0].params[1]"
+    check "snapshot stays bound data" (Model::snapshot loaded.model) snapshot
+    check "quotes preserved" true (contains snapshot "Windows paths")
+    check "SQL contains no issue title" false (contains (Support::projected loaded.commands "[0].sql") "Windows")
+
+envelopeCase () =
+    loaded = Support::loaded ()
+    envelope = App::envelope loaded
+    check "opaque model round trip" (Model::encode loaded.model) (Support::projected envelope "model")
+    check "native neutral UI" "scroll" (Support::projected envelope "ui.kind")
+    check "view included" "2" (Support::projected envelope "view.total")
+
+test "repository validation prevents path and query injection" repositoryCase
+test "startup sequences SQLite schema load and HTTP" startupCase
+test "GitHub data normalized and pull requests excluded" loadedCase
+test "search reacts locally without network or SQL" searchCase
+test "bookmarks derive views and prepared SQLite writes" bookmarkCase
+test "SQLite snapshot restores offline across app starts" cacheCase
+test "out of order HTTP response cannot replace a new repository" staleCase
+test "network failure retains cached issues and reports cause" offlineCase
+test "malformed successful API response is rejected" malformedCase
+test "SQLite errors remain visible without losing in memory data" sqliteFailureCase
+test "SQL parameter binding preserves escaped user data" injectionCase
+test "one boundary returns model view commands and Osprey UI" envelopeCase
+
+test "issue details and navigation are Osprey transitions" detailCase
+test "local notes persist safely with quotes newlines and SQL text" noteCase
+test "local priority changes reactively and rejects invalid values" priorityCase
+test "GitHub descriptions and labels normalize for details" bodyCase
+test "all control characters and Unicode survive shared JSON encoding" allControlCase
+test "SQLite schema failure is visible and supports memory only operation" schemaFailureCase
+test "stale SQLite completion cannot overwrite current save status" staleSaveCase
+test "invalid or newer SQLite cache cannot become app state" invalidCacheCase
+test "GitHub rate limit status and cause reach the user" rateLimitCase
+test "clearing notes and priority releases annotation capacity" clearAnnotationCase
+test "SQLite save failure cannot stop an independent HTTP loading state" saveDuringRefreshCase
+test "refresh removing selected issue returns to the inbox" removedSelectionCase

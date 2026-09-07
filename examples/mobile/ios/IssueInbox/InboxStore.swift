@@ -9,6 +9,10 @@ struct InboxItem: Identifiable, Decodable {
     let author: String
     let comments: Int64
     let bookmarked: Bool
+    let body: String
+    let labels: String
+    let note: String
+    let priority: String
 }
 
 struct InboxSnapshot: Decodable {
@@ -21,9 +25,11 @@ struct InboxSnapshot: Decodable {
     let items: [InboxItem]
     let total: Int64
     let bookmarked: Int64
+    let selected: String
+    let detail: InboxItem?
 
     static let empty = InboxSnapshot(repo: "", search: "", filter: "all", status: "Starting Osprey",
-                                     error: "", loading: false, items: [], total: 0, bookmarked: 0)
+                                     error: "", loading: false, items: [], total: 0, bookmarked: 0, selected: "", detail: nil)
 }
 
 private struct InboxEnvelope: Decodable {

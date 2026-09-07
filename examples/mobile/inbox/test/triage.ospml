@@ -1,0 +1,55 @@
+namespace inboxtests
+
+import bank::Json
+import mobile::Model
+import mobile::Storage
+import mobile::Update
+import mobile::View
+import mobile::Annotations
+import inboxtests::Support
+
+module TriageSupport
+    export edit kind id value = Json::obj (Json::strField "type" kind + "," + Json::strField "id" id + "," + Json::strField "value" value)
+    export selected () =
+        loaded = Support::loaded ()
+        Update::dispatch loaded.model (edit "open" "101" "")
+
+detailCase () =
+    selected = TriageSupport::selected ()
+    view = View::render selected.model
+    closed = Update::dispatch selected.model (Support::event "back")
+    check "selection is Osprey state" "101" selected.model.selected
+    check "detail resolves selected issue" "Fix parser" (Support::projected view "detail.title")
+    check "default priority" "normal" (Support::projected view "detail.priority")
+    check "back clears selection" "" closed.model.selected
+    check "selection has no side effects" "[]" selected.commands
+
+noteCase () =
+    selected = TriageSupport::selected ()
+    note = "Reproduce the \"parser\" issue.\nCheck C:\\tmp; DROP TABLE app_state;"
+    edited = Update::dispatch selected.model (TriageSupport::edit "note" "101" note)
+    view = View::render edited.model
+    snapshot = Support::projected edited.commands "[0].params[1]"
+    restored = Storage::restore (Model::initial ()) snapshot
+    local = Annotations::get restored.model.annotations "101"
+    check "note reacts immediately" note (Support::projected view "detail.note")
+    check "note survives SQLite snapshot" note local.note
+    check "statement does not contain note" false (contains (Support::projected edited.commands "[0].sql") "DROP TABLE")
+
+priorityCase () =
+    selected = TriageSupport::selected ()
+    raised = Update::dispatch selected.model (TriageSupport::edit "priority" "101" "high")
+    invalid = Update::dispatch raised.model (TriageSupport::edit "priority" "101" "urgent")
+    check "high priority visible" "high" (Support::projected (View::render raised.model) "detail.priority")
+    check "invalid priority rejected" true (contains invalid.model.error "Normal or High")
+    check "invalid priority does not persist" "[]" invalid.commands
+
+bodyCase () =
+    waiting = Support::awaiting ()
+    body = "[{\"id\":101,\"number\":42,\"title\":\"Investigate\",\"user\":{\"login\":\"alice\"},\"comments\":0,\"body\":\"Steps:\\n1. Open app\\n2. Reproduce\",\"labels\":[{\"name\":\"bug\"},{\"name\":\"compiler\"}]}]"
+    loaded = Update::dispatch waiting.model (Support::http waiting.model.pending 200 body "")
+    selected = Update::dispatch loaded.model (TriageSupport::edit "open" "101" "")
+    view = View::render selected.model
+    check "body keeps newlines" "Steps:\n1. Open app\n2. Reproduce" (Support::projected view "detail.body")
+    check "labels normalized" "bug · compiler" (Support::projected view "detail.labels")
+

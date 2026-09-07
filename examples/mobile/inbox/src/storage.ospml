@@ -1,8 +1,15 @@
+// Implements [MOBILE-HOST-SERVICES]: Osprey supplies SQL and bound parameters.
 namespace mobile
 
 import bank::Json
 import mobile::Model
 import mobile::Github
+import mobile::Annotations
+
+type CacheResult =
+    model : InboxModel
+    valid : bool
+    error : string
 
 module Storage
     sql id statement params = Json::arr (Json::obj (
@@ -46,6 +53,7 @@ module Storage
         repo = Json::getOr snapshot "repo" ""
         items = Json::getOr snapshot "items" "INVALID"
         version = Json::getOr snapshot "version" ""
-        match version == "1" && Github::validRepository repo && validArray items
-            false => Error(message = "The SQLite cache is invalid or uses an unsupported version. Refresh to replace it.")
-            true => Success(value = Model::set (Model::set (Model::set model "repo" repo) "items" items) "saved" (Json::getOr snapshot "saved" "|"))
+        annotations = Json::getOr snapshot "annotations" "[]"
+        match version == "1" && Github::validRepository repo && validArray items && Annotations::valid annotations
+            false => CacheResult(model = model, valid = false, error = "The SQLite cache is invalid or uses an unsupported version. Refresh to replace it.")
+            true => CacheResult(model = Model::set (Model::set (Model::set (Model::set model "repo" repo) "items" items) "saved" (Json::getOr snapshot "saved" "|")) "annotations" annotations, valid = true, error = "")

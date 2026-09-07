@@ -4,7 +4,7 @@ import SQLite3
 // Implements [MOBILE-HOST-SERVICES]: platform transport; SQL and URLs come from Osprey.
 enum HostFailure: LocalizedError {
     case invalid(String)
-    var errorDescription: String? { if case let .invalid(message) = self { return message } }
+    var errorDescription: String? { switch self { case let .invalid(message): return message } }
 }
 
 enum SQLScalar: Decodable {
@@ -42,7 +42,7 @@ final class SQLiteStore {
             database = nil
             throw failure
         }
-        sqlite3_busy_timeout(database, 3_000)
+        guard sqlite3_busy_timeout(database, 3_000) == SQLITE_OK else { throw problem() }
     }
 
     deinit { sqlite3_close(database) }

@@ -297,7 +297,7 @@ clean:
 	cd $(EXT_DIR) && $(RM) out dist coverage test.log
 
 ## ci: lint + hawk + test + bank-test + bank-e2e + build (full CI simulation)
-ci: lint hawk test bank-test bank-e2e build
+ci: lint hawk test bank-test bank-e2e mobile-domain-test build
 
 ## wasm: Build everything for the WebAssembly target, ready to go — the wasm
 ## runtime archive (compiler/bin/libosprey_runtime_wasm.a), the hello example,

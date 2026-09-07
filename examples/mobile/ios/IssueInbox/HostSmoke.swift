@@ -5,7 +5,7 @@ import Foundation
 enum HostSmoke {
     private static let fixture = """
     [
-      {"id":101,"number":42,"title":"First issue","html_url":"https://github.com/swiftlang/swift/issues/42","user":{"login":"alice"},"comments":3},
+      {"id":101,"number":42,"title":"First issue","html_url":"https://github.com/swiftlang/swift/issues/42","user":{"login":"alice"},"comments":3,"body":"Steps to reproduce 🦉","labels":[{"name":"bug"},{"name":"triage"}]},
       {"id":102,"number":43,"title":"Second issue","user":{"login":"bob"},"comments":0},
       {"id":103,"number":44,"title":"A pull request","user":{"login":"carol"},"comments":0,"pull_request":{}}
     ]
@@ -68,6 +68,7 @@ enum HostSmoke {
         try require(store.error.isEmpty && store.ui != nil, "Osprey startup/envelope failed: \(store.error)")
         try require(store.snapshot.total == 2 && store.snapshot.items.count == 2, "HTTP issue decoding or pull-request exclusion failed")
         try await verifyReactiveEvents(store)
+        try await verifyDetailEvents(store)
         try await verifyCache(url)
     }
 
@@ -95,10 +96,34 @@ enum HostSmoke {
         await store.waitUntilIdle()
         try require(requests == 0 && store.error.isEmpty, "Cached startup unexpectedly required HTTP")
         try require(store.snapshot.total == 2 && store.snapshot.bookmarked == 1, "Osprey cache lost issues or bookmarks")
+        try verifyRestoredDetail(store)
         store.send(["type": "refresh"])
         await store.waitUntilIdle()
         try require(requests == 1 && !store.error.isEmpty, "HTTP failure was not exposed to the view")
         try require(store.snapshot.total == 2 && store.snapshot.bookmarked == 1, "HTTP failure destroyed cached state")
+    }
+
+    private static func verifyDetailEvents(_ store: InboxStore) async throws {
+        store.send(["type": "open", "id": "101"])
+        try require(store.snapshot.selected == "101" && store.snapshot.detail?.id == "101", "Osprey did not open the selected issue")
+        try require(store.snapshot.detail?.body == "Steps to reproduce 🦉" && store.snapshot.detail?.labels.contains("bug") == true,
+                    "Osprey detail lost the issue description or labels")
+        store.send(["type": "note", "id": "101", "value": "Review parser's 🦉 handling"])
+        store.send(["type": "priority", "id": "101", "value": "high"])
+        await store.waitUntilIdle()
+        try require(store.error.isEmpty && store.snapshot.detail?.note == "Review parser's 🦉 handling",
+                    "Osprey note update or persistence failed: \(store.error)")
+        try require(store.snapshot.detail?.priority == "high", "Osprey priority did not react")
+        store.send(["type": "back"])
+        try require(store.snapshot.selected.isEmpty && store.snapshot.detail == nil, "Osprey did not return to the inbox")
+    }
+
+    private static func verifyRestoredDetail(_ store: InboxStore) throws {
+        try require(store.snapshot.selected.isEmpty, "Transient detail selection was restored from cache")
+        store.send(["type": "open", "id": "101"])
+        try require(store.snapshot.detail?.note == "Review parser's 🦉 handling" && store.snapshot.detail?.priority == "high",
+                    "Osprey SQLite cache lost the note or priority")
+        store.send(["type": "back"])
     }
 
     private static func require(_ condition: Bool, _ message: String) throws {

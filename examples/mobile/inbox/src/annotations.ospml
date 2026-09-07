@@ -1,0 +1,69 @@
+namespace mobile
+
+import bank::Json
+
+type LocalNote =
+    note : string
+    priority : string
+
+module Annotations
+    field doc index key fallback = jsonGet doc "[${index}].${key}" ?: fallback
+
+    find doc id index count = match index >= count
+        true => LocalNote(note = "", priority = "normal")
+        false => match field doc index "id" "" == id
+            true => LocalNote(note = field doc index "note" "", priority = field doc index "priority" "normal")
+            false => find doc id ((index + 1) ?: count) count
+
+    export get source id =
+        doc = jsonParse source ?: 0
+        found = find doc id 0 (jsonLength doc "")
+        freed = jsonFree doc ?: 0
+        found
+
+    row id note priority = Json::obj (Json::strField "id" id + "," + Json::strField "note" note + "," + Json::strField "priority" priority)
+
+    retain doc id index count = match index >= count
+        true => ""
+        false =>
+            rest = retain doc id ((index + 1) ?: count) count
+            current = field doc index "id" ""
+            match current == id
+                true => rest
+                false => "," + row current (field doc index "note" "") (field doc index "priority" "normal") + rest
+
+    export set source id note priority =
+        doc = jsonParse source ?: 0
+        rest = retain doc id 0 (jsonLength doc "")
+        output = match note == "" && priority == "normal"
+            true => Json::arr (drop rest 1)
+            false => Json::arr (row id note priority + rest)
+        freed = jsonFree doc ?: 0
+        output
+
+    validRow doc index =
+        id = parseInt (field doc index "id" "") ?: 0
+        note = field doc index "note" ""
+        priority = field doc index "priority" "INVALID"
+        id > 0 && length note <= 2000 && (priority == "normal" || priority == "high")
+
+    validRows doc index count = match index >= count
+        true => true
+        false => validRow doc index && validRows doc ((index + 1) ?: count) count
+
+    export valid source = match startsWith (trimStart source) "["
+        false => false
+        true => match jsonParse source
+            Error why => false
+            Success doc =>
+                count = jsonLength doc ""
+                valid = count <= 200 && validRows doc 0 count
+                freed = jsonFree doc ?: 0
+                valid
+
+    export capacity source id =
+        doc = jsonParse source ?: 0
+        count = jsonLength doc ""
+        existing = find doc id 0 count
+        freed = jsonFree doc ?: 0
+        count < 200 || existing.note != "" || existing.priority != "normal"

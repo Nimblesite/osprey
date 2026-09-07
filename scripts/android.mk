@@ -10,4 +10,5 @@ android: _runtime_android
 	cargo build --release -p osprey-cli
 	OSPREY_BIN="$(CURDIR)/$(BIN)" bash examples/mobile/android/build.sh
 android-test: android
+	OSPREY_BIN="$(CURDIR)/$(BIN)" bash scripts/test-android.sh
 	OSPREY_ANDROID_SKIP_BUILD=1 bash examples/mobile/android/run.sh --smoke

@@ -1,8 +1,8 @@
 [project]
 name = "osprey-inbox-tests"
-source_roots = ["../src", "../../../projects/modules/src/domain/json.ospml", "domain.test.ospml"]
+source_roots = ["../src", "../../../projects/modules/src/domain/json.ospml", "."]
 default_namespace = "inboxtests"
-entry = "domain.test.ospml"
+entry = "main.ospml"
 
 [modules]
 allow_wildcard_imports = false

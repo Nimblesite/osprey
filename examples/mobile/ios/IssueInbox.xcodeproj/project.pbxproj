@@ -4,6 +4,8 @@
     classes = {};
     objectVersion = 56;
     objects = {
+        C00000000000000000000001 = {isa = PBXBuildFile; fileRef = C00000000000000000000002; };
+        C00000000000000000000002 = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = build/Assets.xcassets; sourceTree = SOURCE_ROOT; };
         B00000000000000000000005 = {isa = PBXBuildFile; fileRef = B00000000000000000000015; };
         B00000000000000000000015 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HostSmoke.swift; sourceTree = "<group>"; };
         B00000000000000000000004 = {isa = PBXBuildFile; fileRef = B00000000000000000000014; };
@@ -46,7 +48,7 @@
         };
         A00000000000000000000031 = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (A00000000000000000000001, A00000000000000000000002, B00000000000000000000004, B00000000000000000000005, A00000000000000000000003); runOnlyForDeploymentPostprocessing = 0; };
         A00000000000000000000032 = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
-        A00000000000000000000033 = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
+        A00000000000000000000033 = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (C00000000000000000000001); runOnlyForDeploymentPostprocessing = 0; };
         A00000000000000000000040 = {
             isa = PBXProject;
             attributes = {BuildIndependentTargetsInParallel = YES; LastSwiftUpdateCheck = 2610; LastUpgradeCheck = 2610; };
