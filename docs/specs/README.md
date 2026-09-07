@@ -56,13 +56,19 @@ This directory holds **all spec documents** for the project:
     stdin-only input ferry (one JSON line via `input`), the `key=value` →
     `$GITHUB_OUTPUT` contract, Docker vs composite packaging, and why the native
     target is forced (wasm omits `input`) with the deferred wasm path.
-  - [`0035-StagedEffects.md`](0035-StagedEffects.md) — **stage** as a second
-    axis on an effect: a `static effect` is answered by the compiler and leaves
-    no runtime trace, a dynamic one keeps today's handler stack. One rewrite,
-    run before type checking, that makes GPU legality a typing question,
-    removes WebAssembly's stack-switching dependency for static rows, and turns
-    an effect row into an exact reactive dependency set. Delivery in
-    [plan 0024](../plans/0024-staged-effects.md).
+  - [`0035-StagedEffects.md`](0035-StagedEffects.md) — the two axes an effect
+    declaration carries beyond its operations. **Stage** (prototyped) says
+    *when* a request is answered: a `static effect` is answered by the compiler
+    and leaves no runtime trace, a dynamic one keeps today's handler stack. One
+    rewrite, run before type checking, that makes GPU legality a typing
+    question, removes WebAssembly's stack-switching dependency for static rows,
+    and turns an effect row into an exact reactive dependency set.
+    **Multiplicity** says *how many times*: `abort`, `once` or `many` per
+    operation, with `replayable` marking a request safe to re-perform, so the
+    compiler rejects a multi-shot handler over a body that sends an email
+    instead of sending it twice. Delivery in
+    [plan 0024](../plans/0024-staged-effects.md) for stage and
+    [plan 0028](../plans/0028-resumption-multiplicity.md) for multiplicity.
   - [`0036-StructuredConcurrency.md`](0036-StructuredConcurrency.md) —
     **normative target**: structured fiber scopes, cancellation as an
     effect-handler action (decline to resume, run `finally` finalizers,
@@ -93,6 +99,10 @@ project's [`CLAUDE.md`](../../CLAUDE.md) for the full convention.
 Code implementing a spec section MUST repeat that section's bracketed ID in a
 comment. The `spec-check` skill enforces this by grep. Specs whose header
 declares **Status: normative target** (0029–0033, 0036, 0037) are not implemented yet;
+the `[MULTI-*]` sections of [0035](0035-StagedEffects.md), plus
+`[DEBUGGER-EFFECT-TRACE]`, `[LSP-EFFECT-MULTIPLICITY]` and
+`[FLAVOR-ML-EFFECT-ANNOTATIONS]`, are exempt on the same terms until
+[plan 0028](../plans/0028-resumption-multiplicity.md) lands;
 the arithmetic totality model of [ARITH-TOTAL](0037-ArithmeticEffects.md) is likewise
 specified ahead of the compiler and is cited from 0001–0004, 0007, 0010–0013, 0024,
 0025 and 0034, so those arithmetic sections are exempt on the same terms;

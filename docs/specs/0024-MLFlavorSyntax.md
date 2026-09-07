@@ -217,6 +217,28 @@ An effect declaration lowers to `Stmt::Effect`; a performance lowers to
 `Expr::Perform`. `resume` and `resume value` lower to `Expr::Resume` inside a
 handler arm.
 
+`[FLAVOR-ML-EFFECT-ANNOTATIONS]` An effect declaration carries two axes beyond
+its operations, and ML spells both as prefix keywords: `static` before `effect`
+fixes the stage
+([STAGE-DECL](0035-StagedEffects.md#declaring-a-stage--stage-decl)), and a
+multiplicity keyword with an optional `replayable` before an operation name
+fixes how many times that operation may be answered
+([MULTI-DECL](0035-StagedEffects.md#declaring-multiplicity--multi-decl)).
+Neither disturbs layout or the `=>` payload arrow.
+
+```osprey-ml
+static effect Parallel
+    forEach : (int, int => Unit) => Unit
+
+effect Choice T
+    many pick : List<T> => T
+```
+
+Both are fields on the shared `Stmt::Effect` node and its operation list rather
+than nodes of their own, so the two flavors are the same declaration written
+twice and parity here is surface work, not semantic work
+([FLAVOR-BOUNDARY](0023-LanguageFlavors.md#canonical-ast-boundary)).
+
 ## Handlers
 
 `[FLAVOR-ML-HANDLER]` A handler is lexical: it names an effect,

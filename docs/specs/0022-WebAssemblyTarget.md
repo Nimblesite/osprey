@@ -111,6 +111,19 @@ the wasm archive. Resumable continuations use pthreads and are compiled out
 under `__wasm__`; an expression that needs `__osprey_coro_*` therefore fails to
 link. The golden harness classifies that known undefined-symbol case as `SKIP`.
 
+A link failure is the wrong place to decide this, and the effect declaration
+carries what is needed to decide it in the type instead.
+
+A `static effect` is rewritten away before code generation and needs no
+continuation on any target, so it compiles here exactly as it compiles natively
+([STAGE-WASM](0035-StagedEffects.md#webassembly--stage-wasm)). For a dynamic
+effect the WebAssembly stack-switching proposal specifies **one-shot**
+continuations only, so this target MUST reject an operation that resumes at
+compile time with the operation named — becoming accepted, with no change to
+user code, once stack switching is available — and MUST reject a multi-shot
+operation permanently
+([MULTI-WASM](0035-StagedEffects.md#multiplicity-on-wasm32--multi-wasm)).
+
 ## Memory Backend [WASM-TARGET-MEMORY]
 
 The wasm archive contains `memory_runtime.c`, the same default allocator used by

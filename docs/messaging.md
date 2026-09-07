@@ -232,6 +232,12 @@ These constraints materially affect how the language must be described:
   features the design enables are not built. Describe what it does today —
   compile-time answers with no runtime cost, and a compiler-derived list of
   which data a function reads — not the roadmap it opens.
+- The same spec sets a second target: an effect says **how many times** it may
+  be answered, so the compiler refuses to re-run work that must not happen
+  twice. None of it is built — no syntax, no checks — and today an effect
+  answered twice stops the program when it runs rather than when it is written.
+  Describe it only as specified behaviour, on the same footing as the other
+  normative targets, and never as something a developer can use now.
 - Tail-call optimisation is not implemented.
 - Generics, complete multi-file module imports and a package manager remain
   roadmap work.

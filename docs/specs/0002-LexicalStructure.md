@@ -128,7 +128,7 @@ The continuing tokens are `*`, `%`, `/`, `<`, `>`, `?`, `:`, `.`, `|`, `|>`,
 `||`, `&&`, `==`, `!=`, `<=`, `>=`, and `::`. `+`, `-`, and `!` are deliberately
 absent: each has a prefix reading, so a line opening with one starts a new
 statement whose discarded value is then reported by
-[BLOCK-DISCARD](0008-BlockExpressions.md#discarded-values--block-discard). Write
+[BLOCK-DISCARD](0008-BlockExpressions.md#discarded-values-block-discard). Write
 a continued sum with the operator trailing the first line.
 
 ML needs no such marker. Its lexer emits explicit `NEWLINE`, `INDENT`, and

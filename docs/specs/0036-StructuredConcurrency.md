@@ -159,6 +159,16 @@ keep running; code can only finalize. This makes the Kotlin bug class of a
 swallowed `CancellationException` — a fiber that ignores its own cancellation
 — unrepresentable rather than discouraged.
 
+Declining to resume is the bottom of the resumption-multiplicity lattice
+([MULTI-AXIS](0035-StagedEffects.md#multiplicity--multi-axis)). Cancellation
+delivery is an `abort`, and an ordinary suspension point is a `once` whose
+affine half — the permission to drop rather than answer — is what makes this
+delivery legal without a second mechanism. The finalizers below are the same
+unwinding [MULTI-COST-ABORT](0035-StagedEffects.md#cost-model--multi-cost)
+requires of every dropped continuation, cancelled or not; the runtime satisfies
+it for neither today
+([known limits](0017-AlgebraicEffects.md#known-limits-of-abandoning-a-region)).
+
 ### Finalizers — [CANCEL-FINALLY]
 
 A handler region MAY declare one `finally` arm. It takes no parameters,
