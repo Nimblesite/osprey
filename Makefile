@@ -148,6 +148,9 @@ WASM_RT_SRC  ?= memory_runtime gpu_runtime string_runtime string_runtime_list li
 WASM_SERVE_DIR  ?= examples/wasm
 WASM_SERVE_PORT ?= 8080
 
+# Apple SDK builds reuse the native warning profile and portable runtime units.
+include scripts/ios.mk
+
 # =============================================================================
 # Standard Targets
 # =============================================================================

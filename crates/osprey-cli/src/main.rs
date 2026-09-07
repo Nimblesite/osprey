@@ -20,11 +20,13 @@
 
 mod docs;
 mod fmt;
+mod ios_abi;
 mod project;
 mod sandbox;
 mod test_cmd;
 mod test_coverage;
 mod test_skips;
+mod toolchain;
 mod wasm;
 
 use osprey_syntax::Flavor;
@@ -1236,6 +1238,8 @@ mod tests {
     fn parse_target_accepts_known_and_rejects_unknown() {
         assert_eq!(parse_target("native").as_deref(), Ok("native"));
         assert_eq!(parse_target("wasm32").as_deref(), Ok("wasm32"));
+        assert_eq!(parse_target("ios").as_deref(), Ok("ios"));
+        assert_eq!(parse_target("ios-sim").as_deref(), Ok("ios-sim"));
         assert!(parse_target("x86").is_err());
     }
 

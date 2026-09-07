@@ -355,6 +355,8 @@ mod tests {
         let program = osprey_syntax::parse_program("let answer = 42\n").program;
         let input = CompilationInput::script("nested/main.osp", String::new(), program);
         assert_eq!(input.output_path(None, "native"), PathBuf::from("main"));
+        assert_eq!(input.output_path(None, "ios"), PathBuf::from("main.a"));
+        assert_eq!(input.output_path(None, "ios-sim"), PathBuf::from("main.a"));
         assert_eq!(
             input.output_path(None, "wasm32"),
             PathBuf::from("main.wasm")

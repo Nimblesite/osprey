@@ -23,6 +23,7 @@
 //! symbol, not silently. Browser UI messaging uses the portable `osprey_web`
 //! host ABI below.
 
+use crate::toolchain::{fail, run_tool, tool};
 use crate::{find_runtime_lib, scratch_stem};
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode};
@@ -41,6 +42,8 @@ const WEB_DISPATCH: &str = "osprey_web_dispatch";
 /// A flattened project symbol ends in a length-prefixed, hex-encoded source
 /// segment. This is the mangled terminal segment for [`WEB_DISPATCH`].
 const WEB_DISPATCH_MANGLED_SUFFIX: &str = "_19x6f73707265795f7765625f6469737061746368";
+/// What a failed tool spawn suggests installing.
+const TOOLCHAIN_HINT: &str = "is the wasm toolchain installed?";
 
 /// Lower `program` to the `.wasm` at `out`. [WASM-TARGET]
 ///
@@ -90,7 +93,11 @@ fn compile_object(stem: &str, ir: &str) -> Result<PathBuf, ExitCode> {
     if let Err(e) = std::fs::write(&ll, ir.as_bytes()) {
         return Err(fail(&format!("cannot write IR to {}: {e}", ll.display())));
     }
-    run_tool(&tool("OSPREY_WASM_CC", "clang"), &clang_argv(&ll, &obj))?;
+    run_tool(
+        &tool("OSPREY_WASM_CC", "clang"),
+        &clang_argv(&ll, &obj),
+        TOOLCHAIN_HINT,
+    )?;
     Ok(obj)
 }
 
@@ -106,6 +113,7 @@ fn link(
     run_tool(
         &tool("OSPREY_WASM_LD", "wasm-ld"),
         &link_argv(obj, archive, libdir, out, web_dispatch),
+        TOOLCHAIN_HINT,
     )
 }
 
@@ -262,28 +270,6 @@ fn run_host(wasm: &Path) -> ExitCode {
     }
 }
 
-/// The tool to invoke for `env`, defaulting to `default` when unset.
-fn tool(env: &str, default: &str) -> String {
-    std::env::var(env).unwrap_or_else(|_| default.to_string())
-}
-
-/// Spawn `prog args`, mapping a non-zero exit or spawn failure to a CLI failure.
-fn run_tool(prog: &str, args: &[String]) -> Result<(), ExitCode> {
-    match Command::new(prog).args(args).status() {
-        Ok(s) if s.success() => Ok(()),
-        Ok(_) => Err(fail(&format!("{prog} failed"))),
-        Err(e) => Err(fail(&format!(
-            "could not invoke {prog}: {e} — is the wasm toolchain installed?"
-        ))),
-    }
-}
-
-/// Print a wasm build error and yield the failure exit code.
-fn fail(msg: &str) -> ExitCode {
-    eprintln!("error: {msg}");
-    ExitCode::FAILURE
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -419,14 +405,6 @@ mod tests {
         assert_eq!(web_dispatch_export(&ordinary), None);
     }
 
-    #[test]
-    fn tool_falls_back_to_default_when_env_unset() {
-        assert_eq!(
-            tool("OSPREY_WASM_CC_DEFINITELY_UNSET_XYZ", "clang"),
-            "clang"
-        );
-    }
-
     fn unique_dir(tag: &str) -> PathBuf {
         let p = std::env::temp_dir().join(format!("osprey_wasm_test_{tag}_{}", std::process::id()));
         std::fs::create_dir_all(&p).expect("mk test dir");
@@ -464,15 +442,6 @@ mod tests {
         let want = sysroot.join("lib").join("wasm32-wasip1");
         std::fs::create_dir_all(&want).expect("mk wasip1");
         assert_eq!(lib_dir(&sysroot).expect("found"), want);
-    }
-
-    #[test]
-    fn run_tool_reports_success_failure_and_a_missing_program() {
-        // A program that exits 0 succeeds; a non-zero exit and a missing program
-        // are both mapped to a CLI failure (exercising `run_tool` + `fail`).
-        assert!(run_tool("true", &[]).is_ok());
-        assert!(run_tool("false", &[]).is_err());
-        assert!(run_tool("/no/such/tool/osprey_xyz", &[]).is_err());
     }
 
     #[test]
