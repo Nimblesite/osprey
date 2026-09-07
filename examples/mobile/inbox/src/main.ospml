@@ -1,6 +1,15 @@
 namespace mobile
 
 import bank::Json
+import mobile::Model
+import mobile::Update
+import mobile::View
+import mobile::Ui
 
-start () = Json::obj ""
-dispatch model event = model + event
+module App
+    export envelope update =
+        view = View::render update.model
+        Json::obj (Json::strField "model" (Model::encode update.model) + "," + Json::rawField "view" view + "," + Json::rawField "commands" update.commands + "," + Json::rawField "ui" (Ui::render view))
+
+start () = App::envelope (Update::initial ())
+dispatch model event = App::envelope (Update::dispatch (Model::decode model) event)

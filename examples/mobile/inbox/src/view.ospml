@@ -55,6 +55,7 @@ module View
                 false => output
             rows model doc ((index + 1) ?: count) count nextOutput nextMarked
 
+    errors : InboxModel -> string
     errors model = match length model.storageError > 0 && length model.error > 0
         true => model.error + " " + model.storageError
         false => model.error + model.storageError

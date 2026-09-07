@@ -13,7 +13,7 @@ module Storage
 
     export load () = sql "load" "SELECT value FROM app_state WHERE key = ?" (Json::arr (Json::quote "inbox"))
 
-    export save model = sql model.write "INSERT INTO app_state (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value" (Json::arr (Json::quote "inbox" + "," + Json::quote (Model::snapshot model)))
+    export save model = sql model.write "INSERT OR REPLACE INTO app_state (key, value) VALUES (?, ?)" (Json::arr (Json::quote "inbox" + "," + Json::quote (Model::snapshot model)))
 
     export http model = Json::arr (Json::obj (
         Json::strField "kind" "http" + "," + Json::strField "id" model.pending + "," +
@@ -47,5 +47,5 @@ module Storage
         items = Json::getOr snapshot "items" "INVALID"
         version = Json::getOr snapshot "version" ""
         match version == "1" && Github::validRepository repo && validArray items
-            false => Error "The SQLite cache is invalid or uses an unsupported version. Refresh to replace it."
-            true => Success (Model::set (Model::set (Model::set model "repo" repo) "items" items) "saved" (Json::getOr snapshot "saved" "|"))
+            false => Error(message = "The SQLite cache is invalid or uses an unsupported version. Refresh to replace it.")
+            true => Success(value = Model::set (Model::set (Model::set model "repo" repo) "items" items) "saved" (Json::getOr snapshot "saved" "|"))

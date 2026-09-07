@@ -35,7 +35,7 @@ module Github
         false => left + "," + right
 
     collect doc index count output = match index >= count
-        true => Success (Json::arr output)
+        true => Success(value = Json::arr output)
         false =>
             prefix = "[${index}]"
             next = (index + 1) ?: count
@@ -43,16 +43,16 @@ module Github
                 true => collect doc next count output
                 false => match issueValid doc prefix
                     true => collect doc next count (append output (issue doc prefix))
-                    false => Error "GitHub returned an issue missing a valid id, number, title, author, or comment count."
+                    false => Error(message = "GitHub returned an issue missing a valid id, number, title, author, or comment count.")
 
     parseDocument doc = match jsonLength doc "" <= 100
         true => collect doc 0 (jsonLength doc "") ""
-        false => Error "GitHub returned more than 100 entries; this inbox accepts one bounded page."
+        false => Error(message = "GitHub returned more than 100 entries; this inbox accepts one bounded page.")
 
     export parse source = match startsWith (trimStart source) "["
-        false => Error "GitHub returned an unexpected document; an issue array was required."
+        false => Error(message = "GitHub returned an unexpected document; an issue array was required.")
         true => match jsonParse source
-            Error why => Error "GitHub returned invalid JSON: ${why}"
+            Error why => Error(message = "GitHub returned invalid JSON: ${why}")
             Success doc =>
                 result = parseDocument doc
                 freed = jsonFree doc ?: 0

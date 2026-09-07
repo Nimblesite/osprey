@@ -36,7 +36,7 @@
 // [WASM-TARGET] [BUILTIN-RANDOM]
 #define OSP_HAVE_GETENTROPY 1
 int getentropy(void *, size_t);
-#elif defined(__APPLE__) || defined(__FreeBSD__) || defined(__OpenBSD__) ||    \
+#elif defined(__APPLE__) || defined(__ANDROID__) || defined(__FreeBSD__) || defined(__OpenBSD__) ||    \
     defined(__NetBSD__)
 #define OSP_HAVE_ARC4RANDOM 1
 #elif defined(__linux__)

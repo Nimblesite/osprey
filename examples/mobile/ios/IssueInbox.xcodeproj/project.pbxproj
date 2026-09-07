@@ -1,0 +1,105 @@
+// !$*UTF8*$!
+{
+    archiveVersion = 1;
+    classes = {};
+    objectVersion = 56;
+    objects = {
+        B00000000000000000000005 = {isa = PBXBuildFile; fileRef = B00000000000000000000015; };
+        B00000000000000000000015 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HostSmoke.swift; sourceTree = "<group>"; };
+        B00000000000000000000004 = {isa = PBXBuildFile; fileRef = B00000000000000000000014; };
+        B00000000000000000000014 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HostServices.swift; sourceTree = "<group>"; };
+        A00000000000000000000001 = {isa = PBXBuildFile; fileRef = A00000000000000000000011; };
+        A00000000000000000000002 = {isa = PBXBuildFile; fileRef = A00000000000000000000012; };
+        A00000000000000000000003 = {isa = PBXBuildFile; fileRef = A00000000000000000000013; };
+        A00000000000000000000011 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IssueInboxApp.swift; sourceTree = "<group>"; };
+        A00000000000000000000012 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeRenderer.swift; sourceTree = "<group>"; };
+        A00000000000000000000013 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InboxStore.swift; sourceTree = "<group>"; };
+        A00000000000000000000014 = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = Bridge.h; sourceTree = "<group>"; };
+        A00000000000000000000015 = {isa = PBXFileReference; explicitFileType = wrapper.application; path = IssueInbox.app; sourceTree = BUILT_PRODUCTS_DIR; };
+        A00000000000000000000020 = {
+            isa = PBXGroup;
+            children = (A00000000000000000000021, A00000000000000000000022);
+            sourceTree = "<group>";
+        };
+        A00000000000000000000021 = {
+            isa = PBXGroup;
+            children = (A00000000000000000000011, A00000000000000000000012, A00000000000000000000013, B00000000000000000000014, B00000000000000000000015, A00000000000000000000014);
+            path = IssueInbox;
+            sourceTree = "<group>";
+        };
+        A00000000000000000000022 = {
+            isa = PBXGroup;
+            children = (A00000000000000000000015);
+            name = Products;
+            sourceTree = "<group>";
+        };
+        A00000000000000000000030 = {
+            isa = PBXNativeTarget;
+            buildConfigurationList = A00000000000000000000051;
+            buildPhases = (A00000000000000000000031, A00000000000000000000032, A00000000000000000000033);
+            buildRules = ();
+            dependencies = ();
+            name = IssueInbox;
+            productName = IssueInbox;
+            productReference = A00000000000000000000015;
+            productType = "com.apple.product-type.application";
+        };
+        A00000000000000000000031 = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (A00000000000000000000001, A00000000000000000000002, B00000000000000000000004, B00000000000000000000005, A00000000000000000000003); runOnlyForDeploymentPostprocessing = 0; };
+        A00000000000000000000032 = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
+        A00000000000000000000033 = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
+        A00000000000000000000040 = {
+            isa = PBXProject;
+            attributes = {BuildIndependentTargetsInParallel = YES; LastSwiftUpdateCheck = 2610; LastUpgradeCheck = 2610; };
+            buildConfigurationList = A00000000000000000000050;
+            compatibilityVersion = "Xcode 14.0";
+            developmentRegion = en;
+            hasScannedForEncodings = 0;
+            knownRegions = (en, Base);
+            mainGroup = A00000000000000000000020;
+            productRefGroup = A00000000000000000000022;
+            projectDirPath = "";
+            projectRoot = "";
+            targets = (A00000000000000000000030);
+        };
+        A00000000000000000000050 = {isa = XCConfigurationList; buildConfigurations = (A00000000000000000000060, A00000000000000000000061); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
+        A00000000000000000000051 = {isa = XCConfigurationList; buildConfigurations = (A00000000000000000000062, A00000000000000000000063); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
+        A00000000000000000000060 = {
+            isa = XCBuildConfiguration;
+            buildSettings = {
+                ARCHS = arm64;
+                CLANG_ENABLE_MODULES = YES;
+                IPHONEOS_DEPLOYMENT_TARGET = 15.0;
+                SWIFT_VERSION = 5.0;
+                SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+                SDKROOT = iphoneos;
+            };
+            name = Debug;
+        };
+        A00000000000000000000061 = {
+            isa = XCBuildConfiguration;
+            buildSettings = {
+                ARCHS = arm64;
+                CLANG_ENABLE_MODULES = YES;
+                IPHONEOS_DEPLOYMENT_TARGET = 15.0;
+                SWIFT_VERSION = 5.0;
+                SWIFT_COMPILATION_MODE = wholemodule;
+                SDKROOT = iphoneos;
+            };
+            name = Release;
+        };
+        A00000000000000000000062 = {
+            isa = XCBuildConfiguration;
+            baseConfigurationReference = A00000000000000000000016;
+            buildSettings = {};
+            name = Debug;
+        };
+        A00000000000000000000063 = {
+            isa = XCBuildConfiguration;
+            baseConfigurationReference = A00000000000000000000016;
+            buildSettings = {};
+            name = Release;
+        };
+        A00000000000000000000016 = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = IssueInbox.xcconfig; sourceTree = SOURCE_ROOT; };
+    };
+    rootObject = A00000000000000000000040;
+}

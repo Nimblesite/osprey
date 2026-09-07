@@ -11,7 +11,10 @@ if [[ $# != 0 ]]; then
 fi
 : "${OSPREY_DEVELOPMENT_TEAM:?Set OSPREY_DEVELOPMENT_TEAM to your Xcode signing team ID.}"
 
-example_dir=$(cd "$(dirname "$0")" && pwd)
+script_dir=$(cd "$(dirname "$0")" && pwd)
+example_dir=${OSPREY_IOS_EXAMPLE_DIR:-$script_dir}
+scheme=${OSPREY_IOS_SCHEME:-OspreyCounter}
+bundle_id=${OSPREY_IOS_BUNDLE_ID:-org.ospreylang.OspreyCounter}
 scratch=$(mktemp -d "${TMPDIR:-/tmp}/osprey-device.XXXXXX")
 trap 'rm -rf "$scratch"' EXIT
 xcrun devicectl list devices --quiet --json-output "$scratch/devices.json"
@@ -37,11 +40,11 @@ print(phone["identifier"], phone["hardwareProperties"]["udid"])
 PY
 )
 read -r device device_udid <<< "$selection"
-OSPREY_DEVICE_UDID="$device_udid" "$example_dir/build.sh" ios-device
-app="$example_dir/build/ios-device/products/OspreyCounter.app"
+OSPREY_DEVICE_UDID="$device_udid" "$script_dir/build.sh" ios-device
+app="$example_dir/build/ios-device/products/$scheme.app"
 xcrun devicectl device install app --device "$device" "$app"
-if xcrun devicectl device process launch --terminate-existing --device "$device" org.ospreylang.OspreyCounter; then
-    echo "Osprey Counter launched on your iPhone."
+if xcrun devicectl device process launch --terminate-existing --device "$device" "$bundle_id"; then
+    echo "$scheme launched on your iPhone."
 else
     status=$?
     echo "Launch failed. Keep the iPhone unlocked and resolve the device error above, then retry." >&2
