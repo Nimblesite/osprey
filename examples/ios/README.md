@@ -16,7 +16,15 @@ make ios-test                  # Check C ABI, language output, and the SwiftUI a
 
 `run.sh` selects a booted iPhone when available, otherwise boots an installed iPhone simulator. Set `OSPREY_SIMULATOR_UDID` to choose one explicitly. Set `OSPREY_BIN` to use another compiler binary. `OSPREY_IOS_SKIP_BUILD=1 examples/ios/run.sh` launches the existing simulator build.
 
-The products are `build/ios/products/OspreyCounter.app` and `build/ios-sim/products/OspreyCounter.app`. Device builds are unsigned. To run on your iPhone, first run `make ios`, open `OspreyCounter.xcodeproj`, choose your signing team under Signing & Capabilities, select the phone, and run. Xcode owns signing and deployment; the Osprey compiler produces the linked library.
+The products are `build/ios/products/OspreyCounter.app` and `build/ios-sim/products/OspreyCounter.app`. `make ios` leaves device builds unsigned.
+
+To build and run on a physical iPhone, run `make ios` once to prepare the compiler and runtime, connect and unlock your phone, trust the Mac, and enable Developer Mode. Sign in to your Apple developer account in Xcode, then run:
+
+```sh
+OSPREY_DEVELOPMENT_TEAM=<your-team-id> examples/ios/run-device.sh
+```
+
+The script selects the only connected iPhone, recompiles `app.osp`, signs the app using Xcode, installs it, and opens it on the phone. With multiple phones, set `OSPREY_DEVICE_ID` to the identifier shown by `xcrun devicectl list devices`. The signed product is `build/ios-device/products/OspreyCounter.app`; signing and provisioning errors stop the script. You can also open `OspreyCounter.xcodeproj`, select your signing team and phone, and run after `make ios`.
 
 After changing `app.osp`, rerun `examples/ios/build.sh ios-sim` or `examples/ios/build.sh ios` for the relevant platform. Xcode builds Swift sources against the already generated Osprey archive.
 
