@@ -513,12 +513,12 @@ fn target_error(cli: &Cli, input: &CompilationInput) -> Option<ExitCode> {
                 .map(|error| toolchain::fail(&error));
         }
     }
-    if ios::Target::parse(&cli.target).is_some() {
+    if let Some(target) = ios::Target::parse(&cli.target) {
         if let Err(code) = ios::validate(cli) {
             return Some(code);
         }
         if cli.mode == "--check" {
-            return ios::source(input.program(), input.debug_path())
+            return ios::source(input.program(), input.debug_path(), target)
                 .err()
                 .map(|error| toolchain::fail(&error));
         }
@@ -530,8 +530,8 @@ fn target_ir(cli: &Cli, input: &CompilationInput) -> Result<String, String> {
     if let Some(target) = android::Target::parse(&cli.target) {
         return android::source(input.program(), input.debug_path(), target).map(|(ir, _)| ir);
     }
-    if ios::Target::parse(&cli.target).is_some() {
-        return ios::source(input.program(), input.debug_path()).map(|(ir, _)| ir);
+    if let Some(target) = ios::Target::parse(&cli.target) {
+        return ios::source(input.program(), input.debug_path(), target).map(|(ir, _)| ir);
     }
     if cli.target == "wasm32" {
         return wasm::program_ir(input.program()).map_err(|error| error.to_string());

@@ -44,6 +44,8 @@ The driver locates the Android NDK through `ANDROID_NDK_HOME` or `ANDROID_NDK_RO
 
 ## Verification [ANDROID-VERIFICATION]
 
-`make android-test` checks the native C ABI fixture, Default/ML language goldens on an Android device or emulator, and the actual application's deterministic reactive/SQLite smoke test. The separate live smoke performs real GitHub requests. ARM64 execution and x64 compilation are recorded separately; a packaged ABI is not evidence that it executed.
+`make android-test` checks the shared C ABI fixture, the whole `tests/` corpus, and the actual application's deterministic reactive/SQLite smoke test. The fixture and the corpus are the same ones iOS runs: [`scripts/mobile-abi.osp`](../../scripts/mobile-abi.osp) states the boundary contract once, and `make _test_android_goldens` builds every accepted corpus program as a library, links it with the NDK, pushes it to the attached device and holds its stdout to the byte-exact native golden. Rejections are pinned in the shared [`MOBILE_UNPORTABLE.txt`](../../tests/MOBILE_UNPORTABLE.txt).
+
+The slice follows the hardware: `OSPREY_TARGET=android` runs whichever ABI the attached device reports, so an ARM64 phone and an x86-64 emulator need the same command, and naming a slice that the device cannot run is an error rather than a per-program failure. The separate live smoke performs real GitHub requests. Execution is recorded per ABI; a packaged ABI is not evidence that it executed.
 
 Implementation lives in [android.rs](../../crates/osprey-cli/src/android.rs), the shared [mobile ABI generator](../../crates/osprey-cli/src/ios_abi.rs), [target capability validator](../../crates/osprey-cli/src/target_capabilities.rs), and [Android runtime/build scripts](../../scripts/android.mk). Application sources and runnable commands are in [examples/mobile](../../examples/mobile/README.md).

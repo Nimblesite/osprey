@@ -4,7 +4,7 @@
 
 **Spec:** [0038-iOSTarget.md](../specs/0038-iOSTarget.md), with shared target restrictions in [0022-WebAssemblyTarget.md](../specs/0022-WebAssemblyTarget.md).
 
-**Status:** Reviewed against `407e0c3d0a69cf3cc39583b09a5670bd8732fd0e`; confirmed regressions are fixed with tests. Release sign-off remains blocked by macOS authorization for Xcode components and debugger access, plus the final hosted PR checks. Completed and pending gates are recorded below. Historical platform results are retained separately from this review's results.
+**Status:** Reviewed against `407e0c3d0a69cf3cc39583b09a5670bd8732fd0e`; confirmed regressions are fixed with tests. The Xcode component and debugger blockers are now resolved and their checks pass. Two truthfulness defects found while building the mobile golden differential are fixed with tests. What remains is a physical-iPhone smoke that needs the phone unlocked, and the hosted PR checks. Completed and pending gates are recorded below.
 
 ## Scope and architecture
 
@@ -53,7 +53,7 @@ Implement `[IOS-TARGET-TRIPLE]`, `[IOS-TARGET-OPTIONS]`, and `[IOS-TARGET-LINK]`
 
 Implementation: [ios.rs](../../crates/osprey-cli/src/ios.rs), [ios.mk](../../scripts/ios.mk), [ios-runtime.sh](../../scripts/ios-runtime.sh), and the iOS conditional in [fiber_runtime.c](../../compiler/runtime/fiber_runtime.c).
 
-Evidence: driver unit tests and the real device/simulator C host compilation and simulator execution in [test-ios.sh](../../scripts/test-ios.sh).
+Evidence: driver unit tests and the real device/simulator C host compilation and simulator execution in [test-ios.sh](../../scripts/test-ios.sh). `each_slice_names_itself_in_its_header_and_diagnostics` pins that a simulator build names `ios-sim` in its generated header and its errors; it previously told the reader to rebuild with `--target=ios`, which produces the device archive that cannot link into a simulator host.
 
 ## Phase 4 — Integrate the Swift application
 
@@ -68,9 +68,9 @@ Evidence: [SmokeCheck.swift](../../examples/ios/OspreyCounter/SmokeCheck.swift) 
 
 ## Phase 5 — Verify and record delivery
 
-The implementation session verified device and simulator builds, C host links, the running SwiftUI simulator application, and 14 Default/ML language goldens covering arithmetic, collections, strings, JSON, files, and fibers. It also passed the CLI, codegen, and type suites, target rejection tests, strict workspace Clippy, and formatting checks. The original counter's `make ios-test` passed again after the subsequent shared mobile application was added.
+The implementation session verified device and simulator builds, C host links, the running SwiftUI simulator application, and the language goldens then in scope. It also passed the CLI, codegen, and type suites, target rejection tests, strict workspace Clippy, and formatting checks.
 
-Physical-device execution is now verified through the [Issue Inbox application](0030-reactive-mobile-apps.md): the signed app installed and launched on an iPhone 16, passed the full `OSPREY_INBOX_SMOKE_OK` workflow, and displayed eight actual GitHub issues with persisted bookmarks and no application error. Its final simulator smoke also passed. Signing belongs to the native host deployment flow; the compiler still emits an unsigned library and the default device build does not assume signing credentials.
+Physical-device execution is verified through the [Issue Inbox application](0030-reactive-mobile-apps.md): the signed app installed and launched on an iPhone 16, passed the full `OSPREY_INBOX_SMOKE_OK` workflow, and displayed eight actual GitHub issues with persisted bookmarks and no application error. Signing belongs to the native host deployment flow; the compiler still emits an unsigned library and the default device build does not assume signing credentials.
 
 The WASM harness passed 142 supported-program goldens and 18 alternative GPU-lowering comparisons. Its same 61 excluded programs remain pinned in [WASM_UNPORTABLE.txt](../../tests/WASM_UNPORTABLE.txt), now with compiler capability reasons. Unexpected LLVM/linker failures are test failures, and changes to either the excluded file set or its reasons fail the harness.
 
@@ -86,6 +86,19 @@ make ci
 ```
 
 The earlier full-CI attempt used a local Deslop `0.0.0-dev` binary and stopped at its 9.4% duplication report. The release review reran the gate with the official **0.27.0** version pinned in CI: **4.7%**, passing the unchanged **5%** ceiling. The development build result is superseded; no threshold or exclusion was relaxed. Memory backends, continuation support, teardown, and packaging still require their own scoped work and tests before changing the current rejection rules.
+
+## Phase 6 — Hold the boundary with the whole corpus
+
+Fourteen hand-picked Default/ML goldens were the entire runtime evidence for this target. That set cannot notice a boundary that truncates a string, loses a bool's high bits, or miscompiles arithmetic inside an archive — the same weakness the WASM harness was built to remove, and for the same reason.
+
+Two layers now cover it, and both run on iOS and Android from one source:
+
+- The shared C ABI fixture ([`mobile-abi.osp`](../../scripts/mobile-abi.osp), [`mobile-abi.c`](../../scripts/mobile-abi.c)) asserts what a header cannot state: both 64-bit integer extremes, checked arithmetic yielding its `?:` default, doubles round-tripping, C booleans passed through registers under both bool ABIs, UTF-8 crossing intact both ways, empty and 4096-byte strings, an Osprey-allocated string reaching a host import, and a borrowed host buffer being copied rather than aliased.
+- `make _test_ios_goldens` and `make _test_android_goldens` run the WHOLE `tests/` corpus through the mobile C ABI — built as a library, linked into a C host, executed on a simulator or device — and hold each program to the byte-exact stdout the native backend produces. Both ride inside the existing `ios-test` and `android-test` targets, so the already-required CI jobs pick them up with no new gate.
+
+Result: **130 byte-exact goldens and 18 alternate GPU-lowering comparisons on each platform**, up from 14. The 79 rejected programs are pinned by name and reason in the shared [`MOBILE_UNPORTABLE.txt`](../../tests/MOBILE_UNPORTABLE.txt); a new, removed or changed entry fails the harness, and an unexpected clang, linker, simulator or device failure is a failure rather than a skip. Removing one entry was verified to fail the run. The two platforms share one manifest because they share one boundary implementation; if they ever diverge, the comparison fails and the file must be split rather than widened.
+
+Building this surfaced two diagnostics that named the wrong thing, both now fixed with tests: a simulator build reported itself as `ios`, and a continuation rejected on a phone cited a WebAssembly proposal. The hand-picked golden loops were deleted from both platform scripts rather than left to re-run a strict subset of what the harness already observes.
 
 ## Release review — 8 September 2026
 
@@ -111,15 +124,18 @@ The checked items record implementation and earlier validation. The open items a
 - [x] Add explicit iOS/WASM capability errors and independent exported-entry effect checks.
 - [x] Build device/simulator archives and generated headers through LLVM.
 - [x] Deliver the SwiftUI host with a real Swift platform callback.
-- [x] Verify C ABI execution, 14 simulator goldens, and the actual SwiftUI application.
+- [x] Verify C ABI execution, simulator goldens, and the actual SwiftUI application.
+- [x] Run the whole `tests/` corpus through the mobile C ABI on both platforms — 130 byte-exact goldens and 18 GPU comparisons each — with rejections pinned in a shared reviewed manifest.
+- [x] Extend the shared C ABI fixture to the boundary contract: integer extremes, float round-tripping, register-passed booleans, UTF-8, empty/long strings, host-allocated strings, and the borrowed-input copy rule.
+- [x] Fix the diagnostics that named the wrong target: `ios-sim` reported as `ios`, and a phone told about a WebAssembly proposal.
 - [x] Verify signed physical-iPhone execution through the shared Issue Inbox, including its full native smoke and real GitHub data.
 - [x] Verify compiler tests, WASM goldens, strict Clippy, formatting, and the unchanged WASM exclusion set.
 - [x] Complete the branch code review against `407e0c3d0a69cf3cc39583b09a5670bd8732fd0e`, covering the iOS/Android boundary and changes to shared native/WASM compiler behavior.
 - [x] Resolve the review findings and add regression coverage for confirmed defects.
 - [x] Verify the reviewed compiler/native/WASM checks and record fresh results separately from the earlier validation.
 - [x] Verify Android ARM64 execution, both architecture builds, shared tests, deterministic/live app workflows, and lint.
-- [ ] Verify the final iOS application builds and simulator execution after Xcode component installation.
-- [ ] Complete the updated Markdown smoke on the physical iPhone, as tracked in [plan 0030](0030-reactive-mobile-apps.md).
+- [x] Verify the final iOS application builds and simulator execution after Xcode component installation. `make ios-test` and `make mobile-ios-test` both pass, ending in `OSPREY_IOS_SMOKE_OK` and `OSPREY_INBOX_SMOKE_OK`.
+- [ ] Complete the updated Markdown smoke on the physical iPhone, as tracked in [plan 0030](0030-reactive-mobile-apps.md). Blocked on the phone itself: it is paired with Developer Mode enabled, but reports `tunnelState=disconnected` over the local network, so the device build refuses before signing. Unlock it and connect it to this Mac, then rerun.
 - [x] Resolve the duplication gate discrepancy using CI's pinned Deslop version; preserve the 5% ceiling.
-- [ ] Pass every unchanged `make ci` gate on the reviewed tree; extension debugger execution and fresh extension coverage remain blocked by macOS authorization.
+- [x] Run the extension suite and its coverage gate, previously blocked by macOS Developer Tools authorization: 316 tests pass and coverage is 98.3% lines, 98.3% statements, 95.9% branches, 96.5% functions, all above the 95% threshold.
 - [ ] Pass both hosted PR workflows, including the newly enforced mobile checks, before merging.

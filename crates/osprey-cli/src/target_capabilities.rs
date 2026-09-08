@@ -251,6 +251,18 @@ fn browser_boundary(statement: &Stmt) -> Option<(&str, Option<Position>)> {
     }
 }
 
+/// Why THIS target cannot suspend a request. The two targets are blocked for
+/// unrelated reasons, and a diagnostic that cites the other one sends the
+/// reader to a roadmap that will never move their build.
+/// [WASM-TARGET-CAPABILITIES] [IOS-TARGET-CAPABILITIES]
+fn continuation_limit(target: &str) -> &'static str {
+    if target == "wasm32" {
+        "wasm32 acquires one-shot continuations when the stack-switching proposal lands"
+    } else {
+        "a suspended continuation cannot cross or outlive a synchronous host call"
+    }
+}
+
 fn wasm_builtin(name: &str) -> Option<&'static str> {
     if FIBER_FNS.contains(&name) {
         Some("fiber concurrency")
@@ -287,8 +299,9 @@ impl AstVisitor for Capabilities<'_> {
                     // symbol; the author wrote `Clocks::Clock`, so that is what
                     // the diagnostic must say.
                     let effect = osprey_ast::symbol::demangle_message(effect);
+                    let why = continuation_limit(self.target);
                     self.reject(&format!(
-                        "a continuation for `{effect}.{}` (wasm32 acquires one-shot continuations when the stack-switching proposal lands)",
+                        "a continuation for `{effect}.{}` ({why})",
                         arm.operation
                     ));
                 }

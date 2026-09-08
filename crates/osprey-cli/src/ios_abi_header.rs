@@ -46,11 +46,9 @@ fn integer_type(name: &str) -> bool {
     })
 }
 
-/// Render the C header a host compiles against. [IOS-HOST-ABI]
-pub(crate) fn header(abi: &HostAbi, source: &str) -> String {
-    header_for_target(abi, source, "ios")
-}
-
+/// Render the C header a host compiles against, named for the slice that
+/// produced it so following the header's own instruction rebuilds that slice.
+/// [IOS-HOST-ABI] [ANDROID-HOST-ABI]
 pub(crate) fn header_for_target(abi: &HostAbi, source: &str, target: &str) -> String {
     let group = if target.starts_with("android") {
         "ANDROID"

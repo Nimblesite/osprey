@@ -35,9 +35,15 @@ SMOKE=$ROOT/scripts/wasm-smoke.mjs
 
 # Which backend executes each program: `native` runs it through the compiler's
 # own `--run`, `wasm32` compiles it to a WebAssembly module and executes that
-# under Node's WASI host. Same corpus, same goldens, second code generator —
-# so the wasm backend is held to the byte-exact output the native one produces
-# [WASM-TARGET]. Set with OSPREY_TARGET=wasm32.
+# under Node's WASI host, and `ios-sim` builds the mobile C ABI archive, links
+# it into a C host and runs that in an iPhone simulator. Same corpus, same
+# goldens, a different code generator or a different ABI — each backend is held
+# to the byte-exact output the native one produces [WASM-TARGET] [IOS-TARGET].
+#
+# The mobile targets earn their place the same way wasm did: before this, iOS
+# was gated by seven hand-picked programs, which cannot notice a boundary that
+# truncates a string, drops a bool's high bits or miscompiles arithmetic in an
+# archive. Set with OSPREY_TARGET=ios-sim.
 TARGET=${OSPREY_TARGET:-native}
 
 # The Node version rule is NOT restated here: `scripts/wasm-smoke.mjs`
@@ -47,12 +53,14 @@ TARGET=${OSPREY_TARGET:-native}
 # RUNNER's use-after-free as every program in the corpus failing.
 NODE=node
 
-# Status sentinel for a program the wasm32 target deliberately rejects.
-SKIP_STATUS=skip
-
-# Reviewed record of every program rejected for an unsupported WASM capability
-# and its diagnostic reason. Compared EXACTLY after the run.
-WASM_MANIFEST=$TESTDIR/WASM_UNPORTABLE.txt
+# Reviewed record of every program a cross target rejects and the reason it
+# gave. Compared EXACTLY after the run. Empty for `native`, which may not
+# reject anything at all.
+case $TARGET in
+  wasm32)          MANIFEST=$TESTDIR/WASM_UNPORTABLE.txt ;;
+  ios-sim|android*) MANIFEST=$TESTDIR/MOBILE_UNPORTABLE.txt ;;
+  *)               MANIFEST= ;;
+esac
 
 # Anti-regression ratchet: the number of PROGRAMS that must be golden-compared.
 # Goldens were once deleted wholesale during a corpus migration and nothing
@@ -64,13 +72,15 @@ WASM_MANIFEST=$TESTDIR/WASM_UNPORTABLE.txt
 # Default/ML flavor pair. On wasm32 the programs blocked on a capability WASI
 # does not have are skipped — each named in tests/WASM_UNPORTABLE.txt, and a
 # resumable one named by the OPERATION it cannot suspend [MULTI-WASM] — leaving
-# 144.
+# 144. On the mobile C ABI targets the same accounting leaves 130: the rest are
+# rejected for a missing capability or for a boundary the scalar C ABI cannot
+# express, each pinned in tests/MOBILE_UNPORTABLE.txt.
 # Ratchet UP as goldens are added; never lower it to turn a red build green.
-if [[ $TARGET == wasm32 ]]; then
-  GOLDEN_MIN=${OSPREY_GOLDEN_MIN:-144}
-else
-  GOLDEN_MIN=${OSPREY_GOLDEN_MIN:-209}
-fi
+case $TARGET in
+  wasm32)            GOLDEN_MIN=${OSPREY_GOLDEN_MIN:-144} ;;
+  ios-sim|android*) GOLDEN_MIN=${OSPREY_GOLDEN_MIN:-130} ;;
+  *)                 GOLDEN_MIN=${OSPREY_GOLDEN_MIN:-209} ;;
+esac
 
 # [GPU-KERNEL-EXTRACT] differential. The extracted-kernel lowering and the
 # pre-stage-3 inlined host-loop lowering are two code generators for the same
@@ -97,40 +107,37 @@ esac
 # Nine suites x two flavors. Ratchet UP; never lower it to turn a build green.
 GPU_MODE_MIN=${OSPREY_GPU_MODE_MIN:-18}
 
-# Exit code run_wasm uses to say "not a failure, an unported feature". Distinct
-# from any status the compiler or Node can return on its own.
-SKIP_CODE=200
 
-# Extract the compiler's explicit capability rejection. Unexpected linker
-# errors remain failures: target legality must be checked before LLVM/linking.
-# [WASM-TARGET-CAPABILITIES]
-wasm_rejection() {
-  sed -n 's/^.*target `wasm32` does not support \(.*\); use a supported target.*$/\1/p' "$1" | sed 's/ near line [0-9:]*$//' | head -1
-}
-
-# Compile and execute under Node's WASI host. Only explicit capability errors
-# may skip execution; the exact program and reason remain pinned below.
-run_wasm() {
-  local file=$1 out=$2 err=$3 module=$4
-  if ! $BIN "$file" --target=wasm32 --compile -o "$module" >"$err" 2>&1; then
-    [[ -n $(wasm_rejection "$err") ]] && return $SKIP_CODE
-    return 1
-  fi
-  "$NODE" "$SMOKE" "$module" >"$out" 2>"$err"
-}
+# Backend execution — one `run_*` per target, plus the one-time device and
+# toolchain setup each needs. Sourced so this file keeps its subject: what a
+# result means, not how it was produced.
+source "${0:A:h}/corpus_backends.sh"
 
 run_worker() {
   local memory=$1 resultdir=$2 index=$3 file=$4
   local errfile=$resultdir/$index.stderr out=$resultdir/$index.stdout
   local run_code
-  if [[ $TARGET == wasm32 ]]; then
-    run_wasm "$file" "$out" "$errfile" "$resultdir/$index.wasm"
-    run_code=$?
-    [[ $run_code -eq $SKIP_CODE ]] && run_code=$SKIP_STATUS
-  else
-    $BIN "$file" --run --quiet --memory="$memory" >"$out" 2>"$errfile"
-    run_code=$?
-  fi
+  case $TARGET in
+    wasm32)
+      run_wasm "$file" "$out" "$errfile" "$resultdir/$index.wasm"
+      run_code=$?
+      [[ $run_code -eq $SKIP_CODE ]] && run_code=$SKIP_STATUS
+      ;;
+    ios-sim)
+      run_ios "$file" "$out" "$errfile" "$resultdir/$index.work"
+      run_code=$?
+      [[ $run_code -eq $SKIP_CODE ]] && run_code=$SKIP_STATUS
+      ;;
+    android-*)
+      run_android "$file" "$out" "$errfile" "$resultdir/$index.work" "$index"
+      run_code=$?
+      [[ $run_code -eq $SKIP_CODE ]] && run_code=$SKIP_STATUS
+      ;;
+    *)
+      $BIN "$file" --run --quiet --memory="$memory" >"$out" 2>"$errfile" </dev/null
+      run_code=$?
+      ;;
+  esac
   print -r -- "$run_code" >"$resultdir/$index.status"
 }
 
@@ -196,6 +203,9 @@ configured_jobs() {
   print -r -- "$jobs"
 }
 
+
+backend_setup
+
 MEMORY=${1:-default}
 # The ARC leak oracle reads the runtime's exit report, which memory_arc.c
 # arms only under OSPREY_ARC_DEBUG. The harness arms it ITSELF whenever it
@@ -223,7 +233,11 @@ typeset -a GOLDEN_MISSING=()
 typeset -a FILES=()
 RESULTDIR=$(mktemp -d -t osprey-test-corpus.XXXXXX) || exit 1
 [[ -n "$RESULTDIR" && -d "$RESULTDIR" ]] || exit 1
-cleanup_results() { [[ -n ${RESULTDIR:-} && -d $RESULTDIR ]] && rm -rf -- "$RESULTDIR" }
+cleanup_results() {
+  [[ -n ${RESULTDIR:-} && -d $RESULTDIR ]] && rm -rf -- "$RESULTDIR"
+  [[ -n ${ANDROID_REMOTE:-} ]] && "$ANDROID_ADB_BIN" -s "$ANDROID_SERIAL" shell rm -rf "$ANDROID_REMOTE" >/dev/null 2>&1
+  return 0
+}
 trap cleanup_results EXIT
 trap 'cleanup_results; exit 130' INT TERM
 
@@ -283,11 +297,11 @@ for (( index = 1; index <= ${#FILES}; index++ )); do
   STATUSFILE=$RESULTDIR/$index.status
   if [[ -r "$STATUSFILE" ]]; then
     rc=$(<$STATUSFILE)
-    # A wasm SKIP is neither pass nor fail, and has no output to compare: the
+    # A SKIP is neither pass nor fail, and has no output to compare: the
     # program was never built, so drop it before the numeric coercion below.
     if [[ "$rc" == "$SKIP_STATUS" ]]; then
       skipped=$((skipped + 1))
-      sym=$(wasm_rejection "$ERRFILE")
+      sym=$(target_rejection "$ERRFILE")
       SKIPPED+=("$rel ${sym:-UNKNOWN}")
       continue
     fi
@@ -339,7 +353,7 @@ done
 echo "TEST_CORPUS_PASS=$pass TEST_CORPUS_FAIL=$fail MEMORY=$MEMORY TARGET=$TARGET"
 for item in $FAILED; do echo "  failed: $item"; done
 skips_ok=1
-if [[ $TARGET == wasm32 ]]; then
+if [[ -n $MANIFEST ]]; then
   # The skip set is PINNED, not merely counted. A skip is a hole in coverage;
   # the only thing that makes one acceptable is that a human agreed to it in
   # review. tests/WASM_UNPORTABLE.txt records every program rejected for a WASM
@@ -356,20 +370,20 @@ if [[ $TARGET == wasm32 ]]; then
   # There is no regeneration flag on purpose. Editing this file is a deliberate,
   # reviewable act; a `--update` switch would turn every new hole into one
   # keystroke. [WASM-TARGET-EFFECTS]
-  echo "TEST_CORPUS_WASM_SKIPPED=$skipped (pinned by ${WASM_MANIFEST#$ROOT/})"
-  for item in $SKIPPED; do echo "  wasm skip: $item"; done
+  echo "TEST_CORPUS_SKIPPED=$skipped TARGET=$TARGET (pinned by ${MANIFEST#$ROOT/})"
+  for item in $SKIPPED; do echo "  $TARGET skip: $item"; done
   actual=${(F)SKIPPED}
   actual=$(print -r -- "$actual" | LC_ALL=C sort)
-  if [[ -f "$WASM_MANIFEST" ]]; then
-    expected=$(grep -vE '^[[:space:]]*(#|$)' "$WASM_MANIFEST" | LC_ALL=C sort)
+  if [[ -f "$MANIFEST" ]]; then
+    expected=$(grep -vE '^[[:space:]]*(#|$)' "$MANIFEST" | LC_ALL=C sort)
   else
     expected=""
-    echo "MISSING $WASM_MANIFEST — the skip set is unpinned." >&2
+    echo "MISSING $MANIFEST — the skip set is unpinned." >&2
   fi
   if [[ "$actual" != "$expected" ]]; then
     skips_ok=0
-    echo "WASM SKIP SET CHANGED. Skips are holes; this set is reviewed, not inferred." >&2
-    echo "Port the feature, or justify the change and edit ${WASM_MANIFEST#$ROOT/}:" >&2
+    echo "$TARGET SKIP SET CHANGED. Skips are holes; this set is reviewed, not inferred." >&2
+    echo "Port the feature, or justify the change and edit ${MANIFEST#$ROOT/}:" >&2
     diff -u <(print -r -- "$expected") <(print -r -- "$actual") | sed -n '3,$p' | sed 's/^/  /' >&2
   fi
 fi

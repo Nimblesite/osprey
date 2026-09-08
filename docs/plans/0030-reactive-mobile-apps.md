@@ -2,7 +2,7 @@
 
 **Subsystem:** `examples/mobile/inbox`, iOS Swift host, Android Kotlin/JNI host, and native C ABI targets.
 
-**Status:** Release review fixes and fresh validation are recorded in [plan 0029](0029-ios-c-abi.md#release-review--8-september-2026). The shared suite now has 32 cases, passing natively and on Android ARM64. Android x86-64 builds and links; execution is added to required PR CI. iOS revalidation is waiting for Xcode's component installation. Historical device evidence below does not replace the pending final smoke.
+**Status:** Release review fixes and fresh validation are recorded in [plan 0029](0029-ios-c-abi.md#release-review--8-september-2026). The shared suite has 32 cases, passing natively, on the iOS simulator and on Android ARM64. iOS revalidation is complete: `make ios-test` and `make mobile-ios-test` both pass after the Xcode component installation. The whole `tests/` corpus now runs through the mobile C ABI on both platforms. The only open device item is the Markdown smoke on the physical iPhone, which is blocked on the phone being unlocked and connected.
 
 **Contract:** [Reactive Mobile Applications](../specs/0040-ReactiveMobileApplications.md), [iOS Target](../specs/0038-iOSTarget.md), and [Android Target](../specs/0039-AndroidTarget.md).
 
@@ -17,7 +17,7 @@ Deliver the same usable GitHub Issue Inbox on iPhone and Android. Osprey owns th
 | Shared state and update rules | `inbox/src/model.ospml`, `update.ospml`, `annotations.ospml` | Initial load, search, saved filter, detail navigation, annotations, request ordering, visible errors | Passed: 32 shared domain cases natively and on Android ARM64; earlier native workflows below |
 | GitHub input and persistence | `github.ospml`, `storage.ospml` | Pull-request exclusion, invalid-response rejection, bound SQL, cache reopen | Passed: fixture responses, real GitHub requests, SQLite recovery |
 | Shared screen | `view.ospml`, `ui.ospml` | Both platforms display the same state and emit equivalent events | Passed: native rendering, interaction checks, and visual inspection |
-| Scalar application boundary | `main.osp`, `app.ospml`, and generated C headers | Start/dispatch envelope crosses both native bridges | Passed: iOS device/simulator and Android ARM64/x86-64 builds; execution on ARM64 |
+| Scalar application boundary | `main.osp`, `app.ospml`, and generated C headers | Start/dispatch envelope crosses both native bridges | Passed: iOS device/simulator and Android ARM64/x86-64 builds; execution on the iOS simulator and Android ARM64. The shared C ABI fixture covers integer extremes, float round-tripping, register-passed booleans, UTF-8, empty/long strings and the borrowed-input copy rule on every slice |
 | Swift host | `ios/IssueInbox/` | Real SQLite, bounded HTTPS, main-thread dispatch, diagnostics | Passed: full simulator and physical-iPhone smoke, live GitHub diagnostics |
 | Kotlin/JNI host | `android/app/src/main/` | Real SQLite, bounded HTTPS, UI-thread dispatch | Passed: deterministic/live smoke, process restart, renderer regression, lint |
 | Delivery | Platform launch scripts and README | Repeatable simulator/emulator and signed-device launch | Passed: signed iPhone 16 installation/launch and emulator/simulator runs |
@@ -41,7 +41,9 @@ Deliver the same usable GitHub Issue Inbox on iPhone and Android. Osprey owns th
 
 Success markers, live state snapshots, and screenshots live under the ignored platform build directories. Device identifiers and signing credentials are not part of the tracked validation record.
 
-The later Markdown extension passed the expanded 29-case shared suite and native simulator/emulator checks. Its signed iPhone update is installed; iOS refused its launch while the phone was locked. The earlier physical-device smoke and live-data verification remain recorded separately.
+The later Markdown extension passed the expanded shared suite and native simulator/emulator checks. Its signed iPhone update is installed; iOS refused its launch while the phone was locked, and the phone has not been reachable since. The earlier physical-device smoke and live-data verification remain recorded separately.
+
+The mobile C ABI is now held to the whole corpus rather than a hand-picked subset. `make _test_ios_goldens` and `make _test_android_goldens` build every accepted `tests/` program as a library, link it into a C host, run it on a simulator or device, and compare its stdout byte-for-byte with the native golden — 130 programs and 18 alternate GPU lowerings on each platform. Both ride inside the existing `ios-test` and `android-test` targets, so the already-required CI jobs enforce them without a new gate.
 
 ## Completion checklist
 
@@ -51,12 +53,13 @@ The later Markdown extension passed the expanded 29-case shared suite and native
 - [x] Display actual GitHub responses and verify native interaction and persistence.
 - [x] Install, launch, and run the full smoke on a signed physical iPhone build.
 - [x] Pass shared domain tests, compiler checks, native renderer regression, lint, Clippy, and formatting.
-- [ ] Run the updated Markdown smoke on the physical iPhone after it is unlocked.
+- [ ] Run the updated Markdown smoke on the physical iPhone after it is unlocked. Attempted again: the iPhone 16 is paired with Developer Mode enabled but its tunnel is disconnected over the local network, so `run.sh ios-device` stops before signing. Unlock the phone and connect it, then rerun.
 - [x] Fix Unicode boundary regressions and verify all 32 shared cases natively and on Android ARM64.
 - [x] Fix Gradle version selection and add a build-tool regression test.
 - [x] Add both mobile workflows to existing required CI jobs.
 - [x] Pass the unchanged duplication gate with CI's pinned Deslop 0.27.0.
-- [ ] Complete Xcode/Developer Tools authorization, rerun iOS app validation and the extension debugger/coverage suite, and pass every unchanged `make ci` gate.
+- [x] Complete Xcode/Developer Tools authorization and rerun iOS app validation and the extension debugger/coverage suite. The iOS 26.5 platform is installed, both iOS suites pass, and the extension suite runs its debugger tests: 316 passing with coverage above every threshold.
+- [x] Run the whole `tests/` corpus across the mobile C ABI on both platforms: 130 byte-exact goldens and 18 GPU-lowering comparisons each, with 79 rejections pinned in the shared [`MOBILE_UNPORTABLE.txt`](../../tests/MOBILE_UNPORTABLE.txt).
 - [ ] Pass hosted PR checks, including Android x86-64 execution.
 
 ## Verification requirements

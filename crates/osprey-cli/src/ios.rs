@@ -25,6 +25,16 @@ impl Target {
         }
     }
 
+    /// The `--target` value that selects this slice. A generated header and
+    /// every diagnostic must name it, so following either one rebuilds the
+    /// slice the reader already chose rather than the other one.
+    pub(crate) fn name(self) -> &'static str {
+        match self {
+            Self::Device => "ios",
+            Self::Simulator => "ios-sim",
+        }
+    }
+
     fn sdk(self) -> &'static str {
         match self {
             Self::Device => "iphoneos",
@@ -66,8 +76,13 @@ pub(crate) fn validate(cli: &Cli) -> Result<(), ExitCode> {
 
 /// Emit the app's C ABI and LLVM implementation before any toolchain work.
 /// Implements [IOS-HOST-ABI] and [IOS-TARGET-ENTRY].
-pub(crate) fn source(program: &Program, path: &str) -> Result<(String, String), String> {
-    ios_abi::source(program, path, "ios", true)
+pub(crate) fn source(
+    program: &Program,
+    path: &str,
+    target: Target,
+) -> Result<(String, String), String> {
+    // Apple ARM64 zero-extends a C bool in both slices.
+    ios_abi::source(program, path, target.name(), true)
 }
 
 /// Compile an ARM64 static archive, bundling the matching C runtime, plus its
@@ -80,7 +95,7 @@ pub(crate) fn build(
     target: Target,
 ) -> Result<(), ExitCode> {
     validate_output(out).map_err(|e| fail(&e))?;
-    let (ir, header) = source(program, path).map_err(|e| fail(&e))?;
+    let (ir, header) = source(program, path, target).map_err(|e| fail(&e))?;
     let sdk = sdk_path(target)?;
     let runtime = find_runtime_lib(target.runtime()).ok_or_else(|| {
         fail(&format!(

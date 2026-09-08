@@ -10,7 +10,7 @@ use osprey_types::{names, ProgramTypes, Type};
 use std::collections::BTreeSet;
 #[path = "ios_abi_header.rs"]
 mod c_header;
-pub(crate) use c_header::{header, header_for_target};
+pub(crate) use c_header::header_for_target;
 
 /// Prefix on every exported C symbol.
 const EXPORT_PREFIX: &str = "osprey_";
@@ -475,11 +475,7 @@ pub(crate) fn source(
     } else {
         with_host_abi_for_target(&ir, &abi, false)?
     };
-    let header = if target == "ios" {
-        header(&abi, path)
-    } else {
-        header_for_target(&abi, path, target)
-    };
+    let header = header_for_target(&abi, path, target);
     Ok((adapted, header))
 }
 

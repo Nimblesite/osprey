@@ -37,28 +37,16 @@ run_host "$scratch/abi"
 printf 'Mobile C ABI passed\n' >"$scratch/expected"
 diff -u "$scratch/expected" "$scratch/actual"
 echo "==> Android scalar imports/exports, bool, Unit and persistent global ABI passed ($abi)"
+# The seven hand-picked goldens that used to run here are gone: `make
+# _test_android_goldens` now runs the WHOLE corpus on this device against the
+# same byte-exact goldens, with its rejections pinned in
+# tests/MOBILE_UNPORTABLE.txt. Repeating fourteen of them here would observe a
+# strict subset of what that harness already observed.
+
 cat >"$scratch/golden.c" <<'C'
 #include "golden.h"
 int main(void) { return osprey_main(); }
 C
-goldens=(
-    tests/core/arithmetic/calculator.test
-    tests/core/collections/list_basics.test
-    tests/core/collections/map_basics.test
-    tests/regressions/basics/strings/string_pipeline.test
-    tests/regressions/basics/json/json_document_query.test
-    tests/regressions/basics/files/file_io_json_workflow.test
-    tests/regressions/fiber/fiber_showcase.test
-)
-for base in "${goldens[@]}"; do
-    for flavor in osp ospml; do
-        "$compiler" "$base.$flavor" --target="$target" --compile -o "$scratch/golden.a"
-        link_host "$scratch/golden.c" "$scratch/golden.a" "$scratch/golden"
-        run_host "$scratch/golden"
-        diff -u "$base.osp.expectedoutput" "$scratch/actual"
-        echo "==> Android golden passed: $base.$flavor"
-    done
-done
 
 # Run the same app tests on the device ABI, including the UTF-8 regressions.
 "$compiler" examples/mobile/inbox/test --target="$target" --compile -o "$scratch/golden.a"

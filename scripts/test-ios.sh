@@ -32,6 +32,13 @@ printf 'Mobile C ABI passed\n' >"$scratch/abi.expected"
 diff -u "$scratch/abi.expected" "$scratch/abi.stdout"
 echo "==> iOS device C host linked; simulator scalar imports/exports and global lifetime passed"
 
+# The seven hand-picked goldens that used to run here are gone, and nothing is
+# lost: `OSPREY_TARGET=ios-sim crates/run_test_corpus.sh` now runs the WHOLE
+# corpus on the simulator against the same byte-exact goldens, with its
+# rejections pinned in tests/IOS_UNPORTABLE.txt. Running fourteen of those
+# programs a second time here would double the slowest stage to observe a
+# strict subset of what the harness already observed.
+
 cat >"$scratch/golden.c" <<'C'
 #include "golden.h"
 #include <stdio.h>
@@ -41,26 +48,6 @@ int main(int argc, char **argv) {
     return osprey_main();
 }
 C
-
-goldens=(
-    tests/core/arithmetic/calculator.test
-    tests/core/collections/list_basics.test
-    tests/core/collections/map_basics.test
-    tests/regressions/basics/strings/string_pipeline.test
-    tests/regressions/basics/json/json_document_query.test
-    tests/regressions/basics/files/file_io_json_workflow.test
-    tests/regressions/fiber/fiber_showcase.test
-)
-for base in "${goldens[@]}"; do
-    for flavor in osp ospml; do
-        "$compiler" "$base.$flavor" --target=ios-sim --compile -o "$scratch/golden.a"
-        link_host iphonesimulator arm64-apple-ios15.0-simulator \
-            "$scratch/golden.c" "$scratch/golden.a" "$scratch/golden"
-        xcrun simctl spawn "$simulator" "$scratch/golden" "$scratch" >"$scratch/golden.stdout"
-        diff -u "$base.osp.expectedoutput" "$scratch/golden.stdout"
-        echo "==> iOS simulator golden passed: $base.$flavor"
-    done
-done
 
 # Exercise the shared app logic, including Unicode limits, on the real target.
 "$compiler" examples/mobile/inbox/test --target=ios-sim --compile -o "$scratch/golden.a"

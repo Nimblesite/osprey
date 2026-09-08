@@ -76,6 +76,12 @@ The project links separate device/simulator archives through SDK-specific build 
 
 ## Verification [IOS-VERIFICATION]
 
-`make ios-test` builds both platform variants and runs C ABI tests, supported language goldens in the simulator, and the actual SwiftUI app's smoke assertions. The Swift assertions cover initialization exactly once, scalar and allocated string returns, checked arithmetic, and calls back into Swift. The launch script removes old output and requires a fresh success marker from the app sandbox.
+`make ios-test` builds both platform variants and runs three layers of checks.
+
+The C ABI fixture in [`scripts/mobile-abi.osp`](../../scripts/mobile-abi.osp) and its C host link for the device and execute in the simulator. Its assertions cover what a header cannot state: integers at both 64-bit extremes, checked arithmetic yielding its `?:` default, doubles round-tripping, C booleans passed through registers under both bool ABIs, UTF-8 strings crossing intact in both directions, an empty and a 4096-byte string, an Osprey-allocated string reaching a host import, and a borrowed host buffer being copied rather than aliased. Android runs the same fixture, so one file states the boundary contract once.
+
+`make _test_ios_goldens` then runs the WHOLE `tests/` corpus through this target: each accepted program is built as a library, linked into a C host and executed in an iPhone simulator, then held to the byte-exact stdout the native backend produces. Programs the compiler rejects are pinned by name and reason in [`MOBILE_UNPORTABLE.txt`](../../tests/MOBILE_UNPORTABLE.txt), which iOS and Android share because they share one boundary implementation; a new, removed or changed entry fails the harness, and an unexpected clang, linker or simulator failure is a failure rather than a skip. Seven hand-picked programs used to stand in for this and could not have noticed a boundary that truncated a string or miscompiled arithmetic inside an archive.
+
+Finally the actual SwiftUI app's smoke assertions run. They cover initialization exactly once, scalar and allocated string returns, checked arithmetic, and calls back into Swift. The launch script removes old output and requires a fresh success marker from the app sandbox.
 
 Compiler unit tests pin target selection, options, inferred header types, symbol collision rejection, boolean/Unit adaptation, initialization, and target capability diagnostics. Unsupported effect resumption and unavailable APIs have negative tests that run before SDK discovery, so target legality remains verifiable on machines without Xcode.

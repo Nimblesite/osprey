@@ -1,11 +1,44 @@
+// The scalar C boundary both mobile targets must honour, exercised by
+// scripts/mobile-abi.c on a real iPhone/simulator link and on Android.
+// Implements [IOS-HOST-ABI] [IOS-TARGET-ENTRY] [ANDROID-HOST-ABI].
+//
+// Every export here exists to pin one property of the boundary the header
+// cannot state: the width and sign of an integer, that a double survives
+// round-tripping, that a C bool arrives canonical under both bool ABIs, that
+// a UTF-8 string crosses intact in both directions, and that Osprey copies a
+// borrowed host string instead of aliasing it.
+
 extern fn hostRecord(value: int, ready: bool, label: string) -> Unit
 extern fn hostNegate(value: bool) -> bool
+extern fn hostMeasure(text: string) -> int
+
 let seed = "persisted ${41}"
+
 fn stored() = seed
 fn greet(name: string) = "Hello ${name}"
 fn invert(value) = !value
 fn invertViaHost(value) = hostNegate(value)
+fn both(left, right) = left && right
 fn big() = 9223372036854775807
+fn small() = (0 - 9223372036854775807 ?: 0) - 1 ?: 0
+fn overflowDefault() = 9223372036854775807 + 1 ?: -1
+fn negate(value) = 0 - value ?: 0
 fn scale(value: float) = value * 1.5
+fn half(value: float) -> float = value / 2.0 ?: 0.0
+
+/// `length`, string interpolation and `/` are polymorphic, so these three
+/// annotations are what resolve the signatures the C boundary can carry. A
+/// function left generic is inlined at its call sites, has no symbol, and is
+/// therefore absent from the header — the boundary reports what codegen
+/// emitted, never what a caller hoped for. [IOS-HOST-ABI]
+fn spanOf(text: string) -> int = length(text)
+fn bytes(text) = byteLength(text)
+fn upper(text) = toUpperCase(text)
+fn joinWith(left: string, right: string) -> string = "${left}|${right}"
+
+/// An Osprey-allocated string crossing into C, rather than a literal.
+fn measured(text) = hostMeasure(toUpperCase(text))
+
 fn emit(value, ready, label) = hostRecord(value, ready, label)
+
 hostRecord(41, true, "boot")

@@ -83,7 +83,8 @@ fn app_globals_remain_initialized_after_the_host_calls_entry() {
         "let greeting = \"hello\" + \" world\"\nfn greet() = greeting\n",
     );
     assert!(osprey_types::check_program(&parsed.program).is_empty());
-    let (ir, header) = source(&parsed.program, "globals.osp").expect("library source");
+    let (ir, header) =
+        source(&parsed.program, "globals.osp", Target::Device).expect("library source");
     assert!(header.contains("osprey_greet(void)"));
     assert!(
         !ir.contains("store i8* null, i8** @"),
@@ -95,4 +96,32 @@ fn app_globals_remain_initialized_after_the_host_calls_entry() {
         executable.contains("store i8* null, i8** @"),
         "executables still release globals at exit"
     );
+}
+
+#[test]
+fn each_slice_names_itself_in_its_header_and_diagnostics() {
+    // A simulator build used to emit a header saying `--target=ios` and to
+    // report ABI errors against `ios`. Following that instruction rebuilds the
+    // DEVICE archive, which cannot link into a simulator host — the generated
+    // artifact told the reader to undo the choice they had just made.
+    let parsed = osprey_syntax::parse_program("fn greet(name: string) = \"hi ${name}\"\n");
+    for (target, name) in [(Target::Device, "ios"), (Target::Simulator, "ios-sim")] {
+        let (_, header) = source(&parsed.program, "app.osp", target).expect("abi");
+        assert!(
+            header.contains(&format!("--target={name}")),
+            "{name} header must name its own slice:\n{header}"
+        );
+        assert!(header.contains("[IOS-HOST-ABI]"), "{header}");
+    }
+
+    // The same slice name must appear in a rejection, so a diagnostic never
+    // sends the reader to the other slice.
+    let rejected = osprey_syntax::parse_program("extern fn host(values: List<int>) -> int\n");
+    for (target, name) in [(Target::Device, "ios"), (Target::Simulator, "ios-sim")] {
+        let error = source(&rejected.program, "app.osp", target).expect_err("aggregate extern");
+        assert!(
+            error.contains(&format!("target `{name}`")),
+            "{name} diagnostic must name its own slice: {error}"
+        );
+    }
 }

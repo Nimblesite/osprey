@@ -81,7 +81,7 @@ fn thunks_rename_the_entry_and_forward_with_the_c_bool_convention() {
 fn header_declares_entry_exports_and_imports_in_c() {
     // [IOS-HOST-ABI]
     let (abi, _) = abi_of(SOURCE);
-    let h = header(&abi, "demo.osp");
+    let h = header_for_target(&abi, "demo.osp", "ios");
     for line in [
         "#pragma once",
         "int32_t osprey_main(void);",
@@ -238,7 +238,7 @@ fn header_parameter_names_do_not_collide_with_c_keywords_or_macros() {
         )],
         imports: vec![],
     };
-    let h = header(&abi, "demo.osp");
+    let h = header_for_target(&abi, "demo.osp", "ios");
     assert!(
         h.contains("void osprey_run(bool osprey_arg0, int64_t osprey_arg1);"),
         "{h}"
@@ -346,7 +346,7 @@ fn generated_header_and_ir_compile_with_clang() -> Result<(), Box<dyn std::error
                 "-fsyntax-only",
                 "-",
             ],
-            &header(&abi, "demo.osp"),
+            &header_for_target(&abi, "demo.osp", "ios"),
         )?;
     }
     clang_accepts(
@@ -412,7 +412,7 @@ fn headers_accept_standard_c_macros_and_typedefs_as_parameters(
                 "-fsyntax-only",
                 "-",
             ],
-            &header(&abi, "demo.osp"),
+            &header_for_target(&abi, "demo.osp", "ios"),
         )?;
     }
     Ok(())

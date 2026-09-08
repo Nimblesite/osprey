@@ -58,6 +58,39 @@ fn resumable_effects_reject_for_both_flavors_before_ir() -> std::io::Result<()> 
     Ok(())
 }
 
+/// A rejection must explain why THIS target cannot run the program. The
+/// resumable-effect diagnostic once told every target about a WebAssembly
+/// proposal, so an iPhone build was answered with a roadmap for a runtime it
+/// does not use. [IOS-TARGET-CAPABILITIES] [WASM-TARGET-CAPABILITIES]
+#[test]
+fn a_continuation_rejection_explains_the_target_it_names() -> std::io::Result<()> {
+    let source = "effect Supply { next: fn() -> int }\n\
+                  fn ask() = handle Supply next => resume(1) in perform Supply.next()\n";
+    for (target, expected, forbidden) in [
+        ("wasm32", "stack-switching", "synchronous host call"),
+        ("ios", "synchronous host call", "stack-switching"),
+        ("ios-sim", "synchronous host call", "stack-switching"),
+        ("android-arm64", "synchronous host call", "stack-switching"),
+    ] {
+        let output = compile(source, target)?;
+        let error = String::from_utf8_lossy(&output.stderr);
+        assert!(!output.status.success(), "{target} accepted a continuation");
+        assert!(
+            error.contains("a continuation for `Supply.next`"),
+            "{target}: {error}"
+        );
+        assert!(
+            error.contains(expected),
+            "{target} must explain itself: {error}"
+        );
+        assert!(
+            !error.contains(forbidden),
+            "{target} must not cite another target's roadmap: {error}"
+        );
+    }
+    Ok(())
+}
+
 #[test]
 fn unsupported_runtime_builtins_reject_through_aliases() -> std::io::Result<()> {
     for target in ["wasm32", "ios", "ios-sim", "android-arm64", "android-x64"] {
