@@ -8,9 +8,10 @@
 # =============================================================================
 
 .PHONY: build test lint fmt clean ci setup run install bench bench-osprey wasm wasm-site wasm-serve bank bank-web bank-test bank-e2e hawk graphics \
-	_language-test _deslop _gpu-demo _graphics-shader _vsix-rebuild-reinstall \
+	vsix-rebuild-reinstall \
+	_language-test _deslop _gpu-demo _graphics-shader \
 	_test_gc_stack_root _test_c_runtime _coverage_check_c_runtime _bank_test _test_bench_tools \
-	_rebuild-install-vsix _vsix_clean _vsix_build _vsix_bundle _vsix_package _vsix_install
+	_vsix_clean _vsix_bundle _vsix_package _vsix_install
 
 # ---------------------------------------------------------------------------
 # OS Detection
@@ -58,6 +59,12 @@ RTB ?= compiler/bin
 # they never enumerate VSCode profiles and never affect any other extension.
 EXT_DIR        ?= vscode-extension
 EXT_ID         ?= nimblesite.osprey
+# The extension loads its bundled compiler from bin/<os>-<arch>/osprey
+# (resolveBundledCompiler in client/src/extension.ts), so bundling, packaging
+# and install-verification must all agree on one triple — computed here once.
+EXT_OS         ?= $(shell case "$$(uname -s)" in Darwin) echo darwin;; Linux) echo linux;; *) echo win32;; esac)
+EXT_ARCH       ?= $(shell case "$$(uname -m)" in arm64|aarch64) echo arm64;; *) echo x64;; esac)
+EXT_PLATFORM   ?= $(EXT_OS)-$(EXT_ARCH)
 
 # ---------------------------------------------------------------------------
 # Node dependency guard

@@ -85,7 +85,7 @@ make _runtime_wasm _test_wasm_goldens
 make ci
 ```
 
-The earlier full-CI attempt used a local Deslop `0.0.0-dev` binary and stopped at its 9.4% duplication report. The release review reran the gate with the official **0.27.0** version pinned in CI: **4.7%**, passing the unchanged **5%** ceiling. The development build result is superseded; no threshold or exclusion was relaxed. Memory backends, continuation support, teardown, and packaging still require their own scoped work and tests before changing the current rejection rules.
+The earlier full-CI attempt used a local Deslop `0.0.0-dev` binary and stopped at its 9.4% duplication report. The release review reran the gate with the official **0.27.0** version pinned in CI: **4.8%** (3,941 of 81,987 LOC), passing the unchanged **5%** ceiling. The development build result is superseded; no threshold or exclusion was relaxed. Memory backends, continuation support, teardown, and packaging still require their own scoped work and tests before changing the current rejection rules.
 
 ## Phase 6 — Hold the boundary with the whole corpus
 
