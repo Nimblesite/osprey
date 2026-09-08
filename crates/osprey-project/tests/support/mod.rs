@@ -83,6 +83,8 @@ pub(crate) fn state_module(
                 type_params: Vec::new(),
                 operations: vec![EffectOperation {
                     name: "next".to_string(),
+                    declared_multiplicity: None,
+                    replayable: false,
                     ty: "fn() -> int".to_string(),
                     parameters: Vec::new(),
                     return_type: "int".to_string(),

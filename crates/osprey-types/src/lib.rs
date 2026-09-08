@@ -21,6 +21,8 @@ mod convert;
 mod ctx;
 mod effect_rows;
 #[cfg(test)]
+mod effect_rows_exports_tests;
+#[cfg(test)]
 mod effect_rows_expr_tests;
 #[cfg(test)]
 mod effect_rows_tests;
@@ -29,6 +31,7 @@ mod error;
 mod expr;
 mod info;
 mod init_order;
+mod multiplicity;
 mod pattern;
 #[cfg(test)]
 mod testutil;
@@ -40,7 +43,7 @@ pub use builtin_docs::{
     builtin_doc_view, builtin_hover_markdown, builtin_names, BuiltinDocView, BuiltinParam,
 };
 pub use builtins::{builtin_callback_type, builtin_signature};
-pub use check::{check_program, erased_var, infer_program};
+pub use check::{check_program, check_program_exports, erased_var, infer_program};
 pub use error::TypeError;
 pub use info::{CtorLayout, HandlerSite, OpType, PerformSite, ProgramTypes};
 pub use ty::{has_type_var, names, render_with_holes, Scheme, Type, VarId, HOLE};

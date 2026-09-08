@@ -1,0 +1,21 @@
+// [MULTI-HANDLE-ABORT] An arm for an `abort` operation MUST NOT contain
+// `resume`: its value answers the whole `handle` region and the `perform`
+// never returns. The rejection is a compile error naming the arm, never a
+// runtime guard — Osprey can see the arm.
+//
+// Everything else here is well formed on purpose. A fixture that also carries
+// an unrelated type error records THAT error as its expected rejection and
+// leaves the rule with zero coverage; `multishot_resume_rejected.ospo` was
+// deleted for exactly that (see crates/osprey-cli/tests/cli_e2e.rs).
+effect Fail {
+    abort fail: fn(string) -> int
+}
+
+fn risky() = (perform Fail.fail("nope") + 1) ?: 0
+
+fn main() = {
+    let outcome = handle Fail
+        fail reason => resume(0)
+    in risky()
+    print("outcome=${outcome}")
+}

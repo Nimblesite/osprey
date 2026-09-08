@@ -459,6 +459,10 @@
           "named": true
         },
         {
+          "type": "kernel_expression",
+          "named": true
+        },
+        {
           "type": "match_expression",
           "named": true
         },
@@ -951,6 +955,16 @@
           }
         ]
       },
+      "instantiation": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "type_arguments",
+            "named": true
+          }
+        ]
+      },
       "stage": {
         "multiple": false,
         "required": false,
@@ -987,6 +1001,11 @@
         }
       ]
     }
+  },
+  {
+    "type": "identifier",
+    "named": true,
+    "fields": {}
   },
   {
     "type": "if_expression",
@@ -1155,6 +1174,78 @@
           }
         ]
       }
+    }
+  },
+  {
+    "type": "kernel_arm",
+    "named": true,
+    "fields": {
+      "body": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "expression",
+            "named": true
+          }
+        ]
+      },
+      "effect": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "identifier",
+            "named": true
+          }
+        ]
+      },
+      "operation": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "identifier",
+            "named": true
+          }
+        ]
+      }
+    },
+    "children": {
+      "multiple": false,
+      "required": false,
+      "types": [
+        {
+          "type": "handler_params",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "kernel_expression",
+    "named": true,
+    "fields": {
+      "body": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "expression",
+            "named": true
+          }
+        ]
+      }
+    },
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "kernel_arm",
+          "named": true
+        }
+      ]
     }
   },
   {
@@ -1563,6 +1654,11 @@
     }
   },
   {
+    "type": "multiplicity",
+    "named": true,
+    "fields": {}
+  },
+  {
     "type": "named_argument",
     "named": true,
     "fields": {
@@ -1702,12 +1798,32 @@
     "type": "operation_declaration",
     "named": true,
     "fields": {
+      "multiplicity": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "multiplicity",
+            "named": true
+          }
+        ]
+      },
       "name": {
         "multiple": false,
         "required": true,
         "types": [
           {
             "type": "identifier",
+            "named": true
+          }
+        ]
+      },
+      "replayable": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "replayable",
             "named": true
           }
         ]
@@ -1929,6 +2045,16 @@
           },
           {
             "type": "qualified_path",
+            "named": true
+          }
+        ]
+      },
+      "instantiation": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "type_arguments",
             "named": true
           }
         ]
@@ -3164,6 +3290,10 @@
     "named": false
   },
   {
+    "type": "abort",
+    "named": false
+  },
+  {
     "type": "as",
     "named": false
   },
@@ -3208,10 +3338,6 @@
     "named": false
   },
   {
-    "type": "identifier",
-    "named": true
-  },
-  {
     "type": "if",
     "named": false
   },
@@ -3232,12 +3358,20 @@
     "named": true
   },
   {
+    "type": "kernel",
+    "named": false
+  },
+  {
     "type": "let",
     "named": false
   },
   {
     "type": "line_comment",
     "named": true
+  },
+  {
+    "type": "many",
+    "named": false
   },
   {
     "type": "match",
@@ -3256,6 +3390,10 @@
     "named": false
   },
   {
+    "type": "once",
+    "named": false
+  },
+  {
     "type": "opaque",
     "named": false
   },
@@ -3270,6 +3408,10 @@
   {
     "type": "recv",
     "named": false
+  },
+  {
+    "type": "replayable",
+    "named": true
   },
   {
     "type": "resume",

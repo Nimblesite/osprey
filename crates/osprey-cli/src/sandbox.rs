@@ -45,7 +45,7 @@ impl Policy {
     }
 }
 
-const HTTP_FNS: &[&str] = &[
+pub(crate) const HTTP_FNS: &[&str] = &[
     "httpCreateServer",
     "httpListen",
     "httpStopServer",
@@ -61,7 +61,7 @@ const HTTP_FNS: &[&str] = &[
     "httpResponseHeader",
     "httpResponseFree",
 ];
-const WEBSOCKET_FNS: &[&str] = &[
+pub(crate) const WEBSOCKET_FNS: &[&str] = &[
     "websocketConnect",
     "websocketSend",
     "websocketKeepAlive",
@@ -71,7 +71,7 @@ const WEBSOCKET_FNS: &[&str] = &[
     "websocketServerBroadcast",
 ];
 const FS_FNS: &[&str] = &["readFile", "writeFile"];
-const PROCESS_FNS: &[&str] = &["spawnProcess", "awaitProcess", "cleanupProcess"];
+pub(crate) const PROCESS_FNS: &[&str] = &["spawnProcess", "awaitProcess", "cleanupProcess"];
 
 /// Every policy violation in `program`, as ready-to-print messages. Empty means
 /// the program is allowed to compile under `policy`.

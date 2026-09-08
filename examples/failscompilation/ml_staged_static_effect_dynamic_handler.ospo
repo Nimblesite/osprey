@@ -1,0 +1,15 @@
+// osprey: flavor=ml
+// [STAGE-DECL] [STAGE-ROW-DISCHARGE] The ML surface carries the stage axis too:
+// `static effect` declares one, and a static entry may be discharged only by a
+// static handler. There is no implicit promotion in either direction, so an
+// undecorated `handle` over a static effect is rejected — the ML twin of
+// `staged_static_effect_dynamic_handler.ospo`.
+static effect Tile
+    size : Unit => int
+
+scaled n = n * perform Tile.size () ?: 0
+
+answer =
+    handle Tile
+        size => 8
+    in scaled 2

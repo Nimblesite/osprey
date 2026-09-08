@@ -1,0 +1,86 @@
+namespace mobile
+
+import bank::Json
+
+type InboxModel =
+    selected : string
+    annotations : string
+    repo : string
+    search : string
+    filter : string
+    status : string
+    error : string
+    storageError : string
+    loading : string
+    items : string
+    saved : string
+    seq : string
+    pending : string
+    write : string
+    stage : string
+    dbReady : string
+
+module Model
+    export initial () = InboxModel(selected = "", annotations = "[]", repo = "swiftlang/swift", search = "", filter = "all", status = "Opening SQLite…", error = "", storageError = "", loading = "true", items = "[]", saved = "|", seq = "0", pending = "", write = "", stage = "schema", dbReady = "false")
+
+    export decode source = InboxModel(
+        selected = Json::getOr source "selected" "",
+        annotations = Json::getOr source "annotations" "[]",
+        repo = Json::getOr source "repo" "swiftlang/swift",
+        search = Json::getOr source "search" "",
+        filter = Json::getOr source "filter" "all",
+        status = Json::getOr source "status" "Opening SQLite…",
+        error = Json::getOr source "error" "",
+        storageError = Json::getOr source "storageError" "",
+        loading = Json::getOr source "loading" "true",
+        items = Json::getOr source "items" "[]",
+        saved = Json::getOr source "saved" "|",
+        seq = Json::getOr source "seq" "0",
+        pending = Json::getOr source "pending" "",
+        write = Json::getOr source "write" "",
+        stage = Json::getOr source "stage" "schema",
+        dbReady = Json::getOr source "dbReady" "false")
+
+    export encode m = Json::obj (
+        Json::strField "selected" m.selected + "," + Json::strField "annotations" m.annotations + "," +
+        Json::strField "repo" m.repo + "," +
+        Json::strField "search" m.search + "," +
+        Json::strField "filter" m.filter + "," +
+        Json::strField "status" m.status + "," +
+        Json::strField "error" m.error + "," +
+        Json::strField "storageError" m.storageError + "," +
+        Json::strField "loading" m.loading + "," +
+        Json::strField "items" m.items + "," +
+        Json::strField "saved" m.saved + "," +
+        Json::strField "seq" m.seq + "," +
+        Json::strField "pending" m.pending + "," +
+        Json::strField "write" m.write + "," +
+        Json::strField "stage" m.stage + "," +
+        Json::strField "dbReady" m.dbReady)
+
+    choose changed target value old = match changed == target
+        true => value
+        false => old
+
+    export set m changed value = InboxModel(
+        selected = choose changed "selected" value m.selected,
+        annotations = choose changed "annotations" value m.annotations,
+        repo = choose changed "repo" value m.repo,
+        search = choose changed "search" value m.search,
+        filter = choose changed "filter" value m.filter,
+        status = choose changed "status" value m.status,
+        error = choose changed "error" value m.error,
+        storageError = choose changed "storageError" value m.storageError,
+        loading = choose changed "loading" value m.loading,
+        items = choose changed "items" value m.items,
+        saved = choose changed "saved" value m.saved,
+        seq = choose changed "seq" value m.seq,
+        pending = choose changed "pending" value m.pending,
+        write = choose changed "write" value m.write,
+        stage = choose changed "stage" value m.stage,
+        dbReady = choose changed "dbReady" value m.dbReady)
+
+    export snapshot m = Json::obj (
+        Json::numField "version" 1 + "," + Json::strField "repo" m.repo + "," +
+        Json::strField "items" m.items + "," + Json::strField "saved" m.saved + "," +
+        Json::strField "annotations" m.annotations)

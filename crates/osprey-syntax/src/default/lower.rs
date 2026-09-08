@@ -3,9 +3,9 @@
 
 use super::position_from_point;
 use osprey_ast::{
-    DocComment, DocScope, EffectOperation, EffectRef, Expr, ExternParameter, ModuleKind, Parameter,
-    Pattern, Position, Program, Stage, Stmt, SymbolPath, TypeExpr, TypeField, TypeParam,
-    TypeVariant, Variance,
+    DocComment, DocScope, EffectOperation, EffectRef, Expr, ExternParameter, ModuleKind,
+    Multiplicity, Parameter, Pattern, Position, Program, Stage, Stmt, SymbolPath, TypeExpr,
+    TypeField, TypeParam, TypeVariant, Variance,
 };
 use tree_sitter::Node;
 
@@ -399,6 +399,13 @@ impl<'a> Lowerer<'a> {
             .iter()
             .map(|op| EffectOperation {
                 name: self.field_text(*op, "name"),
+                // The keyword AS WRITTEN: absent means `once` everywhere it is
+                // read as a value, but [MULTI-AXIS-STATIC] needs to know it was
+                // never written. Implements [MULTI-DECL].
+                declared_multiplicity: op
+                    .child_by_field_name("multiplicity")
+                    .and_then(|n| Multiplicity::from_keyword(&self.text(n))),
+                replayable: op.child_by_field_name("replayable").is_some(),
                 ty: op
                     .child_by_field_name("type")
                     .map(|n| self.text(n))

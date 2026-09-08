@@ -1029,6 +1029,13 @@ pub fn check_program(program: &Program) -> Vec<TypeError> {
     checked_program(program).errors
 }
 
+/// Check a program and require each named library export to discharge its own
+/// effects, independently of handlers installed by `main`. [IOS-HOST-ABI]
+#[must_use]
+pub fn check_program_exports(program: &Program, exports: &[&str]) -> Vec<TypeError> {
+    checked_program_with_exports(program, exports).errors
+}
+
 /// Run inference and publish the resolved signatures, constructor layouts and
 /// union tags for the code generator. Type errors are intentionally dropped
 /// here — codegen runs after `check_program` has gated correctness — so the
@@ -1133,6 +1140,10 @@ pub fn infer_program(program: &Program) -> crate::info::ProgramTypes {
 /// Collect declarations and type-check a program before either caller consumes
 /// diagnostics or publishes inferred backend metadata.
 fn checked_program(program: &Program) -> Checker {
+    checked_program_with_exports(program, &[])
+}
+
+fn checked_program_with_exports(program: &Program, exports: &[&str]) -> Checker {
     let mut checker = Checker::new();
     let mut env = base_env();
     checker.collect(program, &mut env);
@@ -1195,7 +1206,7 @@ fn checked_program(program: &Program) -> Checker {
     };
     checker
         .errors
-        .extend(crate::effect_rows::check(program, &instances));
+        .extend(crate::effect_rows::check(program, &instances, exports));
     checker.errors.extend(crate::init_order::check(program));
     checker
 }

@@ -409,15 +409,14 @@ impl ItemLower {
                 });
             }
             MlItem::Effect {
+                stage,
                 name,
                 type_params,
                 operations,
                 pos,
             } => {
                 self.out.push(Stmt::Effect {
-                    // The ML flavor has no `static` surface yet; every ML
-                    // effect is dynamic. Implements [STAGE-COMPAT].
-                    stage: osprey_ast::Stage::Dynamic,
+                    stage,
                     name,
                     type_params: type_params.into_iter().map(lower_type_param).collect(),
                     operations: operations.into_iter().map(lower_effect_op).collect(),
@@ -844,6 +843,8 @@ pub(super) fn lower_effect_op(op: MlEffectOp) -> EffectOperation {
             render_type(&op.result)
         ),
         name: op.name,
+        declared_multiplicity: op.multiplicity,
+        replayable: op.replayable,
         parameters: Vec::new(),
         return_type: String::new(),
         doc: op
@@ -1146,12 +1147,13 @@ fn lower_expr(expr: MlExpr) -> Expr {
             position: Some(pos),
         },
         MlExpr::Handle {
+            stage,
             effect,
             arms,
             body,
             pos,
         } => Expr::Handler {
-            stage: osprey_ast::Stage::Dynamic,
+            stage,
             effect,
             arms: arms.into_iter().map(lower_handle_arm).collect(),
             body: Box::new(lower_expr(*body)),

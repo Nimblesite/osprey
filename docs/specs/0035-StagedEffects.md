@@ -4,7 +4,7 @@
 implements [STAGE-DECL], [STAGE-HANDLE-STATIC], the four static-handler
 obligations, [STAGE-LOWER], [STAGE-RESIDUE] and [STAGE-SIGNALS-DIRTY] in the
 Default flavor (`crates/osprey-ast/src/stage.rs` and `lower_static.rs`), and the
-[falsification gate](#falsification-gate--stage-falsify) has been run and
+[falsification gate](#falsification-gates--stage-falsify) has been run and
 passed. What remains — the ML surface, per-region rules, generic instantiation
 identity and everything device-side — is staged in
 [plan 0024](../plans/0024-staged-effects.md). This spec extends
@@ -12,9 +12,18 @@ identity and everything device-side — is staged in
 and every program that compiles today keeps its meaning
 ([STAGE-COMPAT](#compatibility--stage-compat)).
 
+The second axis, multiplicity (`[MULTI-*]` and `[MULTI-WASM]`), is specified
+here rather than in a document of its own because
+[MULTI-STAGE](#relation-to-stage--multi-stage) makes the two axes one
+declaration answering two questions, and splitting them would put half of an
+effect's declaration surface in each of two files.
+
+The key words `MUST`, `MUST NOT`, `SHOULD`, and `MAY` are to be interpreted as
+described by BCP 14 (RFC 2119 and RFC 8174) when they appear in capitals.
+
 An effect already says *what* a function needs from the outside world without
-saying *who* provides it. This document adds one more thing to that
-declaration: **when the request gets answered.**
+saying *who* provides it. This document adds two more things to that
+declaration: **when the request gets answered**, and **how many times.**
 
 Some requests can be answered by the compiler before the program ever runs, so
 nothing is left at runtime — no lookup, no continuation, no allocation. Others
@@ -37,6 +46,13 @@ turns four separate hard problems into one mechanism:
 - **Compiler pipelines.** A statically answered effect is a compiler pass in
   disguise ([STAGE-DIALECT](#effects-as-dialects--stage-dialect)).
 
+Stage answers *when*, and stops there. What a handler may do with the
+continuation — drop it, answer once, answer repeatedly — decides what the
+request costs to represent, which targets can run it, and whether re-running
+the handled body is safe, and a row that cannot state it leaves all three
+unanswerable. So the declaration carries a second axis: **how many times the
+request may be answered** ([MULTI-AXIS](#multiplicity--multi-axis)).
+
 ## Stage — [STAGE-AXIS]
 
 `[STAGE-AXIS]` Every effect declaration has a **stage**, one of `static` or
@@ -52,7 +68,9 @@ union Stage {
   Static { dischargedBy: String }
   Dynamic { dischargedBy: String }
 }
-type EffectDecl { name: EffectName stage: Stage operations: List<OperationName> }
+union Multiplicity { Abort {} Once {} Many {} }
+type OpDecl { name: OperationName multiplicity: Multiplicity replayable: Bool }
+type EffectDecl { name: EffectName stage: Stage operations: List<OpDecl> }
 type RowEntry { effect: EffectName arguments: List<String> stage: Stage }
 type EffectRow { entries: List<RowEntry> }
 type StageSplit { staticPart: EffectRow dynamicPart: EffectRow }
@@ -298,11 +316,15 @@ whose signature admits only rows satisfying [STAGE-GPU-LEGAL], supplying the
 static handlers for the device dialects — `Parallel`, `Alloc`, `Tensor` — that
 its body is allowed to use.
 
+Each arm names its effect, because one region answers several dialects where a
+`handle` answers exactly one; the region closes with `in`, as every handler
+region does.
+
 ```osprey
 let frame = kernel
     Parallel forEach n body => deviceGrid(n, body)
     Alloc scratch bytes => deviceShared(bytes)
-do gpuMap(pixels, shade)
+in gpuMap(pixels, shade)
 ```
 
 `[STAGE-GPU-DIAG]` A body that is not stage-legal is rejected at the `kernel`
@@ -328,6 +350,30 @@ generation as native — nothing is deferred to the stack-switching proposal.
 Dynamic handlers remain the marked slow path, and a program that needs one on
 `wasm32` is rejected with the effect and operation named, exactly as an
 unhandled effect is today.
+
+### Multiplicity on wasm32 — [MULTI-WASM]
+
+`[MULTI-WASM]` The WebAssembly stack-switching proposal specifies **one-shot**
+continuations only; multi-shot is out of its scope and no path exists by which
+`wasm32` acquires it. Multiplicity states that boundary in the row, so a
+`wasm32` build decides it from a function's type:
+
+- static and `abort` operations compile, as [STAGE-WASM] already provides —
+  neither needs a continuation;
+- `once` operations MUST be rejected at compile time with the operation named,
+  replacing the `__osprey_coro_*` link failure that
+  [WASM-TARGET-EFFECTS](0022-WebAssemblyTarget.md#effect-support-wasm-target-effects)
+  records, and become accepted when stack switching is available with no change
+  to user code;
+- `many` operations MUST be rejected permanently, and the diagnostic MUST say
+  so rather than deferring to the target's eventual capabilities.
+
+> `Choice.pick is declared many; multi-shot resumption is not available on`
+> `wasm32`
+
+Without multiplicity the arrival of stack switching makes *some* dynamic
+effects work on WebAssembly and leaves the rest failing, with the row unable to
+say which.
 
 ## Reactive signals — [STAGE-SIGNALS]
 
@@ -443,7 +489,397 @@ second-class capabilities and Koka's `fun`/`ctl`/`final ctl` handler kinds,
 neither of which treats stage as lowering. **Inference over stage variables is
 out of scope.** If the case is admitted at all, it is admitted with an explicit
 annotation and no inference, and only after
-[STAGE-FALSIFY](#falsification-gate--stage-falsify) shows it is needed.
+[STAGE-FALSIFY](#falsification-gates--stage-falsify) shows it is needed.
+
+The same erasure argument carries the second axis with no extra mechanism,
+except that multiplicity is read off a row that survives to inference rather
+than off one that is rewritten away
+([MULTI-STAGE-POLY](#relation-to-stage--multi-stage)).
+
+## Multiplicity — [MULTI-AXIS]
+
+`[MULTI-AXIS]` Every operation of a dynamic effect has a **multiplicity**, one
+of `abort`, `once` or `many`. Multiplicity is a property of the operation
+declaration, so every mention of that operation in every row carries it, and a
+row's multiplicity content is readable from a function's type alone without
+inspecting any handler.
+
+Stage says when a request is answered. Multiplicity says **how many times.** A
+handler that resumes twice re-runs the remainder of the handled computation, so
+a body that sends an email sends it twice; a handler that never resumes ends
+the computation where it stands. Those are different programs, they cost
+different amounts to represent, and they run on different targets. An effect
+row that cannot tell them apart is under-specified.
+
+> **Terminology.** The property is *multiplicity*, not *arity*, which in a
+> curried language already names a function's parameter count
+> ([FLAVOR-ML-FN](0024-MLFlavorSyntax.md#functions-and-currying)). The
+> literature's *one-shot* and *multi-shot* are the `once` and `many` points of
+> this axis.
+
+Multiplicity is declared per operation while stage is declared per effect. A
+static rewrite consumes a whole dialect and MUST cover every operation
+([STAGE-STATIC-TOTAL](#static-handlers--stage-handle-static)); a continuation
+belongs to one perform site, and operations within one effect legitimately
+differ — `Async.await` resumes once, `Async.cancel` aborts, and neither shape
+forces the other. This matches discharge, which is already operation-specific
+([EFFECTS-STATIC-DISCHARGE](0017-AlgebraicEffects.md#effectful-function-types)).
+
+The three multiplicities form a lattice ordered by what a handler is permitted
+to do with the continuation.
+
+```mermaid
+flowchart LR
+    D[dynamic operation] --> A["abort — resume 0 times"]
+    A --> O["once — resume at most once"]
+    O --> M["many — resume any number of times"]
+    S[static operation] --> T["outside the lattice — tail-once, rewritten away"]
+```
+
+A handler for a `many` operation MAY resume zero, one or several times. A
+handler for a `once` operation MAY resume zero times or one — `once` is
+**affine**, not linear, because dropping a continuation is always the safe
+direction. Osprey already relies on that direction: a branch of an arm that
+returns without resuming is the sanctioned early exit
+([EFFECTS-HANDLER-ARMS](0017-AlgebraicEffects.md#resuming-handlers)), and it is
+how [CANCEL-DELIVERY](0036-StructuredConcurrency.md#delivery-decline-to-resume--cancel-delivery)
+delivers cancellation. A handler for an `abort` operation MUST NOT resume.
+
+`[MULTI-AXIS-STATIC]` Static effects sit outside the lattice.
+[STAGE-STATIC-TAIL](#static-handlers--stage-handle-static) pins them at
+exactly-once-in-tail-position, the one point where a continuation need not
+exist. A multiplicity written on a static operation MUST be rejected.
+
+> `multiplicity on static effect Parallel.forEach; static operations are`
+> `always tail-resumptive`
+
+## Declaring multiplicity — [MULTI-DECL]
+
+`[MULTI-DECL]` The `opDecl` form of
+[0017](0017-AlgebraicEffects.md#effect-declarations) carries an optional
+leading multiplicity keyword and an optional `replayable`
+([MULTI-REPLAY](#replayability--multi-replay)). An undecorated operation is
+`once`.
+
+```ebnf
+opDecl ::= docComment? ("abort" | "once" | "many")? "replayable"? IDENT ":" fnType
+```
+
+```osprey
+effect Fail {
+    abort fail: fn(string) -> Unit
+}
+
+effect Choice<T> {
+    many pick: fn(List<T>) -> T
+}
+
+effect Log {
+    write: fn(string) -> Unit        // once, by default
+}
+
+effect Random {
+    replayable next: fn() -> int     // once, and safe to re-run
+}
+```
+
+```osprey-ml
+effect Fail
+    abort fail : string => Unit
+
+effect Choice T
+    many pick : List<T> => T
+```
+
+`[MULTI-DECL-ABORT-RESULT]` An `abort` operation's declared result is never
+produced: the `perform` waiting for it never returns. Osprey has no bottom type
+([0004](0004-TypeSystem.md)), so the declaration still names a result type and
+every perform site is still checked against it; the type is unreachable rather
+than absent. `Unit` is the convention. Adding a bottom type so
+`abort fail: fn(string) -> Never` can be written is a type-system change and is
+out of scope for this document.
+
+`once` is the default because it is the shape of nearly every effect a working
+program uses, the shape the runtime already enforces
+([EFFECTS-RESUME](0017-AlgebraicEffects.md#resuming-handlers)), the shape
+WebAssembly will support ([MULTI-WASM](#multiplicity-on-wasm32--multi-wasm)),
+and the shape whose safety condition is trivial. `many` is opt-in because its
+safety condition is not.
+
+## Handler obligations — [MULTI-HANDLE]
+
+`[MULTI-HANDLE]` A dynamic handler arm for an operation of multiplicity `m` MAY
+use `resume` only as `m` permits. The check is syntactic over the arm's
+`resume` sites, in the same family as
+[STAGE-STATIC-TAIL](#static-handlers--stage-handle-static), and it fails with a
+message naming the arm. It is conservative: an arm the checker cannot prove
+conforming MUST be rejected, never deferred to a runtime guard. Runtime
+one-shot guards are the fallback for a language that cannot see the arm; Osprey
+can see the arm, and the guard in
+[`compiler/runtime/effects_coro.c`](../../compiler/runtime/effects_coro.c) is a
+defensive backstop in the same sense as the generic handler-key null lookup
+([EFFECTS-GENERIC-RUNTIME](0017-AlgebraicEffects.md#generic-effects)) — never
+the normal rejection path.
+
+`[MULTI-HANDLE-ABORT]` An arm for an `abort` operation MUST NOT contain
+`resume`. Its value answers the whole `handle` region and the `perform` never
+returns.
+
+> `handler arm Fail.fail resumes; Fail.fail is declared abort`
+
+`[MULTI-HANDLE-ABORT-MODE]` **The declaration selects the arm's mode, not the
+arm's syntax.** Osprey otherwise reads mode from syntax: an arm containing no
+`resume` substitutes its value for the *operation's* result and the body runs
+on ([EFFECTS-HANDLER-ARMS](0017-AlgebraicEffects.md#resuming-handlers)), which
+is tail-once, not zero; abandoning is reachable only from a branch of an arm
+that resumes elsewhere. For an operation declared `abort` that reading is
+inverted: a `resume`-free arm abandons. Reading mode from the declaration is
+the correct direction — a mode read from the wrong scope was
+[issue #177](https://github.com/Nimblesite/osprey/issues/177) — and an
+operation acquires it only by being declared `abort`. Undeclared operations
+keep the syntactic rule unchanged
+([MULTI-COMPAT](#compatibility--stage-compat)).
+
+`[MULTI-HANDLE-ONCE]` An arm for a `once` operation MUST use `resume` at most
+once on every control path. Two `resume` sites on one path are rejected; two on
+*different* branches of a `match` are permitted, which is the shape
+`tests/regressions/effects/abort_vs_resume.test.osp` already exercises. Osprey
+has no loop construct
+([BUILTIN-ITER](0010-LoopConstructsAndFunctionalIterators.md)), so the check is
+over `match` branches and calls, and the "resume inside a loop" case other
+languages must handle does not arise.
+
+> `handler arm Async.await may resume more than once; Async.await is declared`
+> `once`
+
+`[MULTI-HANDLE-MANY]` An arm for a `many` operation MAY use `resume` freely,
+subject to [MULTI-REPLAY](#replayability--multi-replay).
+
+`[MULTI-HANDLE-MANY-LEXICAL]` **`many` changes the lexical `resume` rule of
+[EFFECTS-RESUME](0017-AlgebraicEffects.md#resuming-handlers).** That rule
+rejects `resume` inside a lambda declared in an arm, on the ground that such a
+lambda has no live arm continuation. For a `many` arm the ground does not hold,
+and the rule MUST be relaxed exactly as far as the ground extends: `resume` is
+permitted inside a lambda declared in a `many` arm when that lambda is invoked
+**before the arm returns** — passed directly to a higher-order function called
+by the arm, never stored, returned or captured by anything that outlives the
+arm. A lambda that escapes the arm keeps the existing rejection, because its
+continuation is dead by the time it runs.
+
+Without this relaxation `many` has no spelling at all: Osprey has no loop, so
+resuming once per alternative can only be written as a callback.
+
+```osprey
+// The canonical many arm: one resume per alternative, combined functionally.
+// The lambda is consumed by fold before the arm returns, so its continuation
+// is live at every call.
+handle Choice
+    pick options => fold(options, 0, |best, option| => max(best, resume(option)))
+do search(board)
+```
+
+> `resume inside a lambda that outlives handler arm Choice.pick; the`
+> `continuation is not live when the lambda runs`
+
+## Replayability — [MULTI-REPLAY]
+
+A `many` handler that resumes a second time re-executes the remainder of the
+handled computation, and every effect that remainder performs is performed
+again. For a pure remainder that is the point. For a remainder that writes to a
+log, charges a card or sends an email, it is a defect that no effect row today
+reports.
+
+`[MULTI-REPLAY]` An operation MAY be declared `replayable`, asserting that
+performing it twice with the same arguments in the same handler context is
+acceptable to the program. Replayability is declared, never inferred, because
+it is a statement about the world outside the program.
+
+`[MULTI-REPLAY-CHECK]` A dynamic handler region whose arm for operation `E.op`
+may resume more than once — that is, whose multiplicity is `many` — is legal
+only if every entry in the handled expression's effect row, other than the
+entries of `E` itself, is replayable. The check runs at the handle site and
+names the first offending operation.
+
+> `handler for Choice.pick may resume more than once, but the handled`
+> `expression requires non-replayable effect Email.send`
+
+Static entries in the row are replayable. After
+[STAGE-LOWER](#handlers-are-lowering-passes--stage-lower) they are ordinary
+code, and re-running ordinary code is what
+[GPU-KERNEL-PURE](0034-GPUComputation.md#kernel-purity--gpu-kernel-pure)
+already assumes is harmless; this reuses that gate rather than duplicating it.
+Entries of `E` itself are excluded because they route to the same handler,
+whose author is the one writing the multi-shot arm and is therefore already
+answerable for what re-performing them means.
+
+`[MULTI-REPLAY-COARSE]` The check uses the row of the whole handled expression,
+not the row of the code following each `perform` site. A body that sends an
+email *before* the multi-shot operation is rejected even though replay would
+never reach the send. This is the cost of reading multiplicity from the row
+instead of from control flow, and it is deliberate: the remedy is to move the
+non-replayable work outside the handler region, which is also the shape that
+makes the program's intent legible. It is the same coarseness the closed-program
+operation summary already has
+([EFFECTS-STATIC-DISCHARGE](0017-AlgebraicEffects.md#effectful-function-types)).
+
+`[MULTI-REPLAY-STATE]` An arm for a `many` operation MUST NOT capture a mutable
+binding ([EFFECTS-HANDLER-STATE](0017-AlgebraicEffects.md#handler-owned-state)).
+Handler-owned state is a single shared heap cell, so a second resumption would
+observe the writes of the first — the source of most multi-shot bugs in every
+system that permits it. Osprey rejects the shape instead, and the sanctioned
+way to combine resumptions is the value `resume` already returns: it evaluates
+to the handled computation's answer, so an arm folds its alternatives
+functionally, as the `[MULTI-HANDLE-MANY-LEXICAL]` example does. This also
+settles replay of handler state: `State.set` is not replayable, so a body
+performing it under a multi-shot handler is already rejected by
+[MULTI-REPLAY-CHECK].
+
+> `handler arm Choice.pick captures mutable binding best; a many arm cannot`
+> `own state — combine resumptions through the value resume returns`
+
+`[MULTI-REPLAY-FIBER]` A `many` operation MUST NOT be answered across a fiber
+boundary. Rows propagate through fibers
+([STAGE-ROW-DISCHARGE](#rows-and-discharge--stage-row)) and multiplicity
+propagates with them, but a resuming handler serializes each perform for the
+full suspend-to-resume round trip
+([EFFECTS-FIBER-PERFORM](0017-AlgebraicEffects.md#resuming-handlers)), and a
+second resumption of a continuation that spans a spawned fiber has no
+serialization order to belong to. The handle site is rejected, naming the
+fiber's perform site.
+
+With these rules the two retry shapes type differently. The first retries one
+operation with the surrounding state intact — the thing a composed decorator
+cannot do:
+
+```osprey
+effect Charge { charge: fn(int) -> int }        // once, by default
+effect Email  { send: fn(string) -> Unit }      // once, not replayable
+
+// Accepted. Charge.charge is once, so each perform is answered at most once
+// and placeOrder's Email.send runs exactly once whether or not the charge was
+// retried. The failing branch abandons the region, which once permits, so it
+// answers for the whole handle and placeOrder's result type is string
+// ([EFFECTS-HANDLER-ARMS]).
+let outcome = handle Charge
+    charge amount => match settle(amount) {
+        Success { value } => resume(value)
+        _                 => match settle(amount) {
+            Success { value } => resume(value)
+            Error { message } => "declined: ${message}"
+        }
+    }
+do placeOrder(order)
+```
+
+The second is what a composed decorator would do, and the compiler says why it
+is wrong:
+
+```osprey
+// Rejected at the handle site: Choice.pick is many, and placeOrder's row
+// contains the non-replayable Email.send.
+handle Choice
+    pick options => fold(options, 0, |best, option| => max(best, resume(option)))
+do placeOrder(order)
+```
+
+## Cost model — [MULTI-COST]
+
+`[MULTI-COST]` Multiplicity determines the runtime representation of the
+continuation, and a program is entitled to rely on this table the way
+[STAGE-RESIDUE](#zero-residue--stage-residue) entitles it to rely on "static is
+free."
+
+| Multiplicity | Continuation representation | Cost |
+| --- | --- | --- |
+| static | none — rewritten away | zero |
+| `abort` | none — a non-local exit to the handler frame | no suspension at all |
+| `once` | one suspended stack, switched to and never switched back | one switch, no copy |
+| `many` | a copyable stack segment or a CPS transform | a copy per additional resume |
+
+`once` is satisfied by a suspended stack switched to and never switched back,
+which is what native resume already uses
+([EFFECTS-RESUME](0017-AlgebraicEffects.md#resuming-handlers)).
+
+`abort` is the row the declaration buys. An arm's mode is otherwise known only
+once its body is read, and an arm that resumes on one branch must be able to
+resume on any, so abandoning a region pays for a suspension it then throws
+away. An operation declared `abort` is known not to resume before its perform
+site is compiled, so that site MUST NOT allocate a continuation at all: a
+non-local exit to the handler frame is the whole implementation. Removing work,
+not naming a shape, is what earns the keyword.
+
+`many` is the only row requiring a continuation that can be re-entered, so it
+requires a representation a single suspended stack cannot provide — a copyable
+segment or a CPS transform. Reading multiplicity from the declaration is what
+confines that cost to `many`: without it every dynamic effect must be
+represented pessimistically, because nothing distinguishes the rows.
+
+`[MULTI-COST-ABORT]` A dropped continuation MUST run the `finally` arm of every
+handler region it unwinds through
+([CANCEL-FINALLY](0036-StructuredConcurrency.md#finalizers--cancel-finally))
+and MUST release the heap operands owned by the frames it discards. `once`
+being affine means any `once` handler may drop a continuation, not only an
+`abort` one, so the obligation covers the ordinary case rather than an exotic
+corner, and it holds however the drop arose — an early-exit branch, a
+cancellation, or an `abort` operation. Discarding a continuation is not a
+licence to discard what its frames own.
+
+## Effect trace — [MULTI-TRACE]
+
+`[MULTI-TRACE]` Dynamic handlers are lexically installed, so the handler
+answering each `perform` site is known at compile time. A captured continuation
+carries a record of the perform sites it has passed through — a linked list of
+static site identifiers, one word per hop.
+
+The runtime exposes that record as an **effect trace** alongside the physical
+stack: performed at *site*, handled at *region*, resumed *n* times. For `once`
+and `abort` continuations the trace is a straight line. For `many` it is the
+only stack corresponding to what the programmer wrote, because the physical
+stack after a second resume describes a control path no source line expresses.
+Static perform sites are absent from the trace because they are absent from the
+program ([STAGE-RESIDUE](#zero-residue--stage-residue)).
+
+The trace MUST be derivable and reportable — through
+[DEBUGGER-EFFECT-TRACE](0021-Debugger.md#effect-trace-debugger-effect-trace)
+for a paused program and through
+[LSP-EFFECT-MULTIPLICITY](0020-LanguageServerAndEditors.md#find-implementations-lsp-implementations-effect-handlers)
+for a static one — so a developer can see which perform sites feed a `many`
+handler. Whether a debugger consumes it is that tool's choice; deriving it is
+not.
+
+## Relation to stage — [MULTI-STAGE]
+
+`[MULTI-STAGE]` Stage and multiplicity are orthogonal axes on one declaration.
+Static fixes multiplicity at tail-once and admits no annotation; dynamic
+carries the full lattice. The two meet at one diagnostic. A dynamic handler
+that covers every operation ([STAGE-STATIC-TOTAL]), whose arms require only
+static effects ([STAGE-STATIC-MONOTONE]) and resume only in tail position
+([STAGE-STATIC-TAIL]) over operations declared `once`, has met every obligation
+a static handler carries and asked for none of them.
+[STAGE-ROW-DISCHARGE](#rows-and-discharge--stage-row) forbids implicit
+promotion, and this section does not weaken it. What it permits is a
+language-server hint:
+
+> `handler for Log is tail-resumptive on every arm; declaring Log static would`
+> `remove it from the runtime`
+
+`[MULTI-STAGE-POLY]` Multiplicity inherits the erasure result of
+[STAGE-POLY-ERASURE](#stage-polymorphism--stage-poly). Because multiplicity is
+read from the declaration, a row-polymorphic function such as `map` is
+multiplicity-polymorphic without annotation: instantiated with a `many`
+callback its row carries a `many` entry, and any enclosing multi-shot handler
+is checked at that instantiation. No multiplicity variable is inferred because
+no multiplicity survives to be inferred. Unlike stage, multiplicity is not
+erased by a rewrite — a dynamic entry reaches inference intact — so the check
+runs on the row the checker already builds rather than before it.
+
+`[MULTI-STAGE-TURN]` A `many` arm's turn spans every resumption. A handler
+region is an implicit monitor whose turn ends when the arm returns
+([SERIAL-TURN](0036-StructuredConcurrency.md#the-handler-is-the-monitor--serial-turn)),
+and an arm that resumes several times has not returned between resumptions, so
+the region holds its turn across all of them. This follows from the existing
+definition; it is stated because multi-shot resumption is the case in which a
+reader is most likely to expect otherwise.
 
 ## Compatibility — [STAGE-COMPAT]
 
@@ -452,12 +888,29 @@ annotation and no inference, and only after
 program changes meaning, no existing diagnostic changes wording, and the
 differential corpus stays byte-exact under every memory backend and on
 `wasm32`. Staging is additive surface: a program that never writes `static`
-never encounters any rule in this document.
+never encounters any rule in that half of this document.
 
-## Falsification gate — [STAGE-FALSIFY]
+`[MULTI-COMPAT]` An operation without a multiplicity keyword is `once`, which
+is what the runtime enforces, so no running program changes meaning.
+Multiplicity narrows in exactly one place: a program that resumes one
+continuation twice from an undecorated operation aborts at runtime now and MUST
+fail [MULTI-HANDLE-ONCE] at compile time instead — the same program rejected
+earlier, not a program that stops working. Making it compile means declaring
+the operation `many`. Two rules change a meaning rather than a verdict, and
+each applies only to a declaration that opts in:
+[MULTI-HANDLE-ABORT-MODE](#handler-obligations--multi-handle) to an operation
+declared `abort`, and
+[MULTI-HANDLE-MANY-LEXICAL](#handler-obligations--multi-handle) to an arm for
+one declared `many`. A program that writes none of `abort`, `many` or
+`replayable`, and never resumes twice, encounters no rule in this axis.
 
-`[STAGE-FALSIFY]` Three programs decide whether this design survives, and they
-are written **before** any implementation work begins:
+The narrowing is the correct default. A program that resumes twice without
+saying so is the program this axis exists to catch.
+
+## Falsification gates — [STAGE-FALSIFY]
+
+`[STAGE-FALSIFY]` Three programs decide whether the stage axis survives, and
+they are written **before** any implementation work begins:
 
 1. A reactive counter — a view function whose dependency set the compiler
    derives, and a rebuild driven by that set.
@@ -470,6 +923,33 @@ hit its wall and this spec is wrong in a way worth knowing early. The gate is
 normative: the plan may not proceed past its first stage until all three are
 written and their outcome recorded.
 
+`[MULTI-FALSIFY]` Four more programs decide the multiplicity axis, under the
+same rule — written before implementation, outcome recorded:
+
+1. **Single-op retry.** A `Charge.charge` handler that retries on failure, over
+   a body that also performs `Email.send`. Must be accepted, and the email must
+   be sent exactly once when the retry succeeds.
+2. **Backtracking over impure code.** A `Choice.pick` handler enumerating
+   alternatives over that same body. Must be rejected at the handle site,
+   naming `Email.send`.
+3. **Backtracking over pure code.** The same `Choice.pick` handler over a body
+   whose only other effects are `Random.next` (declared `replayable`) and
+   static entries. Must be accepted and must produce every alternative. It
+   exercises [MULTI-HANDLE-MANY-LEXICAL] and the multi-shot continuation
+   [MULTI-COST] requires, so it is the gate's real cost.
+4. **Shared `map`.** One unannotated `fn map(xs, f)` applied to a `once`
+   callback under a `once` handler and a `many` callback under a `many`
+   handler, in the same program. Must compile with no multiplicity annotation
+   on `map` — the multiplicity twin of
+   `tests/regressions/effects/staged_shared.test.osp`.
+
+If (2) cannot be rejected without control-flow analysis finer than the row —
+that is, if [MULTI-REPLAY-COARSE] rejects enough real code that the check would
+routinely be turned off — the axis has hit its wall and this spec is wrong in a
+way worth knowing early. The gate is normative on the same terms as
+[STAGE-FALSIFY]: stage 7 may not proceed until all four are written and their
+outcome recorded.
+
 ## References — [STAGE-RESEARCH]
 
 - Leijen. *Koka: Programming with Row-Polymorphic Effect Types.* MSFP 2014.
@@ -478,14 +958,22 @@ written and their outcome recorded.
   are the nearest existing handler-kind distinction to [STAGE-STATIC-TAIL].
 - Leijen. *Type Directed Compilation of Row-Typed Algebraic Effects.* POPL
   2017. <https://doi.org/10.1145/3009837.3009872> — compiling handlers by
-  type-directed rewriting, the mechanism [STAGE-LOWER] adopts.
+  type-directed rewriting, the mechanism [STAGE-LOWER] adopts; Koka's
+  `fun`/`ctl`/`final ctl` handler kinds are the nearest existing distinction to
+  the multiplicity lattice, and its linear effects the nearest to
+  [MULTI-REPLAY].
+- Dolan, Eliopoulos, Hillerström, Madhavapeddy, Sivaramakrishnan, White.
+  *Concurrent System Programming with Effect Handlers.* TFP 2017.
+  <https://doi.org/10.1007/978-3-319-89719-6_6> — one-shot continuations as the
+  pragmatic default, and the affine discipline [MULTI-HANDLE-ONCE] adopts.
 - Brachthäuser, Schuster, Ostermann. *Effects as Capabilities: Effect Handlers
   and Lightweight Effect Polymorphism* (Effekt). OOPSLA 2020.
   <https://doi.org/10.1145/3428194> — second-class capabilities, the closest
   existing answer to "which handlers need no runtime representation."
 - Xie, Cong, Li, et al. *Compiling Effect Handlers in Capability-Passing
   Style.* ICFP 2020. <https://doi.org/10.1145/3408975> — evidence passing and
-  the conditions under which a handler compiles to a direct call.
+  the conditions under which a handler compiles to a direct call, and under
+  which a one-shot continuation needs no copy ([MULTI-COST]).
 - Xie et al. *Parallel Algebraic Effect Handlers.* ICFP 2024.
   <https://dl.acm.org/toc/pacmpl/2024/8/ICFP> — which handler shapes commute
   with parallel evaluation; governs any relaxation of [STAGE-GPU-LEGAL].
@@ -502,4 +990,5 @@ written and their outcome recorded.
   [STAGE-POLY-PARAMETRIC] keeps inference out of scope.
 - WebAssembly stack switching proposal.
   <https://github.com/WebAssembly/stack-switching> — the dependency
-  [STAGE-WASM] removes for static rows.
+  [STAGE-WASM] removes for static rows, and one-shot only, which is the basis
+  for [MULTI-WASM].

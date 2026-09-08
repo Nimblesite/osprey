@@ -408,7 +408,7 @@ pub(crate) fn cell_call(
 /// closure-cell calls here and extracted GPU kernels [GPU-KERNEL-EXTRACT].
 pub(crate) fn returned(reg: String, sig: &FnSig) -> Value {
     let value = match sig.2 {
-        Some(inner) => Value::result(reg, inner),
+        Some(inner) => Value::result(reg, inner).with_payload_owner(sig.4.clone()),
         None => Value::new(reg, sig.1).with_owner(sig.4.clone()),
     };
     match sig.3.clone() {

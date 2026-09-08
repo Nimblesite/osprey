@@ -27,6 +27,7 @@ use crate::{Flavor, Parsed};
 
 mod clauses;
 mod cst;
+mod kernel;
 mod lexer;
 mod lower;
 mod module_lower;

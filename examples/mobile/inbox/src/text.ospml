@@ -1,0 +1,17 @@
+// UI limits count Unicode scalars; Osprey's take/length primitives count bytes.
+// Keep every envelope and persisted snapshot valid UTF-8. [MOBILE-REACTIVE-UI]
+namespace mobile
+
+module Text
+    boundary : string -> int -> int -> int
+    boundary source remaining offset = match remaining <= 0 || offset >= byteLength source
+        true => offset
+        false => match codePointAt source offset
+            Error why => offset
+            Success scalar =>
+                width = codePointWidth scalar ?: 1
+                boundary source ((remaining - 1) ?: 0) ((offset + width) ?: byteLength source)
+
+    export prefix source limit = take source (boundary source limit 0)
+
+    export within source limit = boundary source limit 0 == byteLength source

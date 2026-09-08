@@ -1,0 +1,19 @@
+// [MULTI-HANDLE-ONCE] An arm for a `once` operation MUST use `resume` at most
+// once on every control path. Two `resume` sites on ONE path are rejected;
+// two on different `match` branches stay legal.
+effect Async {
+    once await: fn(int) -> int
+}
+
+fn pipeline() = (perform Async.await(1) + 1) ?: 0
+
+fn main() = {
+    let total = handle Async
+        await ticket => {
+            let a = resume(10)
+            let b = resume(20)
+            a + b ?: 0
+        }
+    in pipeline()
+    print("total=${total}")
+}

@@ -443,6 +443,24 @@ static void death_perform_declaring_arguments_it_did_not_send(void) {
   __osprey_coro_start(coro, body_lying_arity, coro, NULL);
 }
 
+// Resuming a continuation that has already run to completion. The
+// thread-as-continuation model is single-shot: a consumed pthread stack cannot
+// be re-run, so a second resume would silently return the stale first result —
+// a wrong answer with exit 0.
+//
+// [MULTI-HANDLE-ONCE] moved this verdict to the checker, and Osprey installs
+// handlers lexically, so NO source program reaches this guard any more. That is
+// exactly why it is proven here instead of through a compiled program: a
+// backstop against invalid compiler output has no source-level path by
+// construction, and an unproven backstop is indistinguishable from a removed
+// one. It exits rather than aborts, so the exit status is what this asserts.
+static void death_second_resume_of_a_finished_continuation(void) {
+  CoroEnv env = {.coro = __osprey_coro_new(NULL), .base = 0};
+  __osprey_coro_start(env.coro, body_one_perform, &env, NULL);
+  (void)__osprey_coro_resume(env.coro, 0); // the body runs to completion
+  (void)__osprey_coro_resume(env.coro, 0); // nothing left to resume
+}
+
 static void check_death(OspDeathBody body, const char *what) {
   int signalled = osp_death_signal(body);
   if (signalled != SIGABRT) {
@@ -502,6 +520,13 @@ static void t_fatal_guards_abort(void) {
   check_death(death_start_without_a_body, "start with no body");
   check_death(death_perform_declaring_arguments_it_did_not_send,
               "perform declaring arguments it did not send");
+  // The one guard that exits instead of aborting [EFFECTS-RESUME],
+  // [MULTI-HANDLE-ONCE].
+  int ended = osp_death_exit(death_second_resume_of_a_finished_continuation);
+  if (ended != OSP_DEATH_EXITED + 1) {
+    fprintf(stderr, "expected a second resume to exit 1, got %d\n", ended);
+  }
+  CHECK(ended == OSP_DEATH_EXITED + 1);
 }
 
 int main(void) {

@@ -1,0 +1,87 @@
+namespace mobile
+
+import bank::Json
+import mobile::Text
+
+module Github
+    allowed code = (code >= 48 && code <= 57) || (code >= 65 && code <= 90) || (code >= 97 && code <= 122) || code == 45 || code == 46 || code == 95
+
+    componentFrom source index = match index >= byteLength source
+        true => true
+        false => allowed (byteAt source index ?: 0) && componentFrom source ((index + 1) ?: byteLength source)
+
+    component source = length source > 0 && length source <= 100 && source != "." && source != ".." && componentFrom source 0
+
+    export validRepository source = match indexOf source "/"
+        Error why => false
+        Success slash => component (take source slash) && component (drop source ((slash + 1) ?: 0))
+
+    export url repo = "https://api.github.com/repos/${repo}/issues?state=open&per_page=30"
+
+    scalar doc path = jsonGet doc path ?: ""
+
+    positive doc path = (parseInt (scalar doc path) ?: 0) > 0
+
+    issueValid doc prefix = positive doc (prefix + ".id") && positive doc (prefix + ".number") && length (scalar doc (prefix + ".title")) > 0 && length (scalar doc (prefix + ".user.login")) > 0 && (parseInt (scalar doc (prefix + ".comments")) ?: ((0 - 1) ?: 0)) >= 0
+
+    optional doc path = match scalar doc path
+        "null" => ""
+        value => value
+
+    labels : int -> string -> int -> int -> string
+    labels doc prefix index count = match index >= count || index >= 10
+        true => ""
+        false =>
+            name = scalar doc "${prefix}.labels[${index}].name"
+            rest = labels doc prefix ((index + 1) ?: count) count
+            match length rest > 0
+                true => name + " · " + rest
+                false => name
+
+    issue doc prefix = Json::obj (
+        Json::strField "id" (scalar doc (prefix + ".id")) + "," +
+        Json::numField "number" (parseInt (scalar doc (prefix + ".number")) ?: 0) + "," +
+        Json::strField "title" (scalar doc (prefix + ".title")) + "," +
+        Json::strField "author" (scalar doc (prefix + ".user.login")) + "," +
+        Json::numField "comments" (parseInt (scalar doc (prefix + ".comments")) ?: 0) + "," +
+        Json::strField "body" (Text::prefix (optional doc (prefix + ".body")) 2000) + "," +
+        Json::strField "labels" (labels doc prefix 0 (jsonLength doc (prefix + ".labels"))))
+
+    append left right = match length left == 0
+        true => right
+        false => left + "," + right
+
+    collect : int -> int -> int -> string -> Result<string, string>
+    collect doc index count output = match index >= count
+        true => Success(value = Json::arr output)
+        false =>
+            prefix = "[${index}]"
+            next = (index + 1) ?: count
+            match jsonLength doc (prefix + ".pull_request") >= 0
+                true => collect doc next count output
+                false => match issueValid doc prefix
+                    true => collect doc next count (append output (issue doc prefix))
+                    false => Error(message = "GitHub returned an issue missing a valid id, number, title, author, or comment count.")
+
+    parseDocument doc = match jsonLength doc "" <= 100
+        true => collect doc 0 (jsonLength doc "") ""
+        false => Error(message = "GitHub returned more than 100 entries; this inbox accepts one bounded page.")
+
+    export parse source = match startsWith (trimStart source) "["
+        false => Error(message = "GitHub returned an unexpected document; an issue array was required.")
+        true => match jsonParse source
+            Error why => Error(message = "GitHub returned invalid JSON: ${why}")
+            Success doc =>
+                result = parseDocument doc
+                freed = jsonFree doc ?: 0
+                result
+
+    export responseError event =
+        status = Json::getOr event "status" "0"
+        transport = Json::getOr event "error" ""
+        detail = Json::getOr (Json::getOr event "body" "{}") "message" ""
+        match length transport > 0
+            true => "Network request failed: ${transport}"
+            false => match length detail > 0
+                true => "GitHub HTTP ${status}: ${detail}"
+                false => "GitHub returned HTTP ${status}. Refresh to try again."

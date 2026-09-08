@@ -8,6 +8,7 @@
 @import url("/css/base.css");
 @import url("/css/components.css");
 @import url("/css/syntax.css");
+@import url("/css/mobile.css");
 
 /* Skip link (techdoc positions it; we supply the colours). */
 .skip-link {

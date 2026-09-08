@@ -12,12 +12,12 @@ name: CI
 #      needs: the C runtime archives, the wasm runtime archive, the release
 #      `osprey` binary and the compiled extension bundle.
 #   2. Those artifacts are uploaded once and downloaded by each test job, so
-#      nothing is compiled twice for the sake of being tested.
+#      Linux jobs reuse the build; iOS builds its own macOS compiler and SDK artifacts.
 #   3. Every test suite runs in parallel, each collecting coverage where the
 #      language has a coverage story (Rust via llvm-cov, C via gcov, the
 #      extension via V8).
 #   4. `coverage` gathers those reports and enforces the per-project
-#      thresholds in coverage-thresholds.json.
+#      thresholds in coverage-thresholds.json, then runs the iOS platform gate.
 #
 # This replaced a pipeline that ran the language corpus SEVEN times per PR —
 # `make test` ran it as TAP, again for goldens, and again under GC and ARC,
@@ -93,7 +93,7 @@ jobs:
 
   # ═══ STAGE 1 ════════════════════════════════════════════════════════════════
   # Every static check, and every artifact the test stage consumes. Nothing
-  # here executes a test suite; nothing after here compiles the compiler.
+  # here executes a test suite; Linux test jobs reuse this compiler artifact.
   build:
     name: Build, Format & Analyse
     needs: changes
@@ -139,6 +139,17 @@ jobs:
         run: make _runtime_wasm
 
       # ── Static analysis. All of it, before anything is tested. ──
+
+      # A Make target that runs a node tool without depending on that
+      # subproject's install stamp only fails on a machine that has never
+      # installed it — never on a CI runner that installs everything up front,
+      # and never on the author's machine. This asserts the prerequisite is
+      # there. It is a step in an already-required job, not a new required
+      # check, so the pinned context list in verify-branch-protection.mjs and
+      # the ruleset stay in agreement.
+      - name: Make node dependency guard intact
+        run: node scripts/verify-node-deps-guard.mjs
+
       - name: Format check
         run: cargo fmt --all --check
 
@@ -588,13 +599,13 @@ jobs:
   # The showcases that exercise the compiler as a PRODUCT rather than a
   # library: the `osprey test` subcommand over the bank's native suites, a real
   # Chromium against the compiled binary serving its HTTP API, the profiler,
-  # and the containerised web compiler.
+  # the containerised web compiler, and the shared mobile domain + Android host.
   test-integration:
     name: "Tests: integration (bank, profiler, web compiler)"
     needs: [changes, build]
     if: ${{ needs.changes.outputs.code == 'true' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -621,6 +632,45 @@ jobs:
 
       - name: Profiler suite
         run: make _test_profiler
+
+      - name: Shared mobile domain and build-tool regressions
+        run: |
+          python3 scripts/test-mobile-tools.py
+          target/release/osprey examples/mobile/inbox/test --run
+
+      - name: Set up Java for Android
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      # The runner image ships the Android SDK but leaves cmdline-tools off
+      # PATH, so a bare `sdkmanager` exits 127 and the whole Android gate never
+      # runs. Resolve the newest installed cmdline-tools rather than assuming a
+      # `latest/` symlink, and fail loudly when there is none: a gate that
+      # cannot install its NDK must not report success.
+      - name: Install Android build tools and enable emulator acceleration
+        run: |
+          set -euo pipefail
+          sdk_root=${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}
+          sdkmanager=$(ls -d "$sdk_root"/cmdline-tools/*/bin/sdkmanager 2>/dev/null | sort -V | tail -1 || true)
+          [ -x "$sdkmanager" ] || { echo "no sdkmanager under $sdk_root/cmdline-tools"; exit 1; }
+          "$sdkmanager" "ndk;28.2.13676358" "platforms;android-34" "build-tools;34.0.0"
+          echo "ANDROID_HOME=$sdk_root" >> "$GITHUB_ENV"
+          echo "ANDROID_NDK_HOME=$sdk_root/ndk/28.2.13676358" >> "$GITHUB_ENV"
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Android ABI, language goldens, app persistence and lint
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          target: google_apis
+          arch: x86_64
+          script: |
+            make android-test
+            cd examples/mobile/android && ./gradlew --console=plain :app:lintDebug
 
       - name: Install bank e2e dependencies
         run: npm ci
@@ -662,17 +712,22 @@ jobs:
   # Thresholds are enforced HERE, against reports the test jobs produced, so no
   # suite is ever re-run to measure what it already measured. The C runtime
   # gate lives in its own job because gcov data never leaves that container.
+  # This existing required context also gates the iOS device/simulator builds
+  # and simulator tests. macos-15 is ARM64, matching the simulator archive.
   coverage:
     name: Coverage thresholds
     needs: [changes, test-rust, test-extension]
     if: ${{ needs.changes.outputs.code == 'true' }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
+    runs-on: macos-15
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
 
       - name: Install jq
-        run: sudo apt-get install -y jq
+        run: command -v jq >/dev/null || brew install jq
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
 
       - uses: actions/download-artifact@v4
         with:
@@ -687,6 +742,9 @@ jobs:
 
       - name: VS Code extension thresholds
         run: make _coverage_check_vscode_extension
+
+      - name: iOS device and simulator builds, ABI, goldens and app persistence
+        run: make ios-test mobile-ios-test
 
       - name: Upload combined coverage
         uses: actions/upload-artifact@v4

@@ -49,6 +49,10 @@ module.exports = grammar({
   externals: ($) => [$._call_open_gap, $._statement_break],
 
   conflicts: ($) => [
+    // `abort` / `once` / `many` / `replayable` opening an operation line are
+    // either the modifier or the operation's own name; only the token after
+    // them tells which. Implements [MULTI-DECL].
+    [$.operation_declaration],
     // `ID { ... }` is ambiguous between an update/type-constructor expression and
     // an object/map literal until the brace body is seen; GLR resolves it.
     [$.update_expression, $.type_constructor],
@@ -309,13 +313,39 @@ module.exports = grammar({
         repeat($.operation_declaration),
         '}',
       ),
+    // How many times an operation's request may be answered — `abort` (never),
+    // `once` (the default, at most one) or `many` (any number). A bare keyword
+    // node in `static_stage`'s shape, not a general modifier list. Both this
+    // and `replayable` are CONTEXTUAL: `word: $.identifier` above means the
+    // lexer only reads them as keywords where the parser accepts one, so
+    // `abort: fn() -> Unit` still declares an operation called `abort`.
+    // Implements [MULTI-DECL].
+    multiplicity: ($) => choice('abort', 'once', 'many'),
+    // Asserts that performing the operation twice with the same arguments in
+    // the same handler context is acceptable to the program — the property a
+    // multi-shot handler's replay check reads. Implements [MULTI-REPLAY].
+    replayable: ($) => 'replayable',
     // Each operation carries its OWN `///` docs — an effect's operations are
     // independent entry points, so `Prompt.ask` and `Prompt.tell` must hover
     // with their own prose, not the effect's. Implements [DOC-EFFECT-OP].
     operation_declaration: ($) =>
       seq(
         optional($.doc_comment),
-        field('name', $.identifier),
+        optional(field('multiplicity', $.multiplicity)),
+        optional(field('replayable', $.replayable)),
+        // The modifier words are also legal operation NAMES. The lexer emits
+        // the keyword token wherever a modifier is acceptable, so recovering
+        // `abort: fn() -> Unit` cannot be a lexical decision — it is a parse
+        // one, and the alias lets GLR carry both readings until `:` (a name)
+        // or an identifier (a modifier) settles it. Implements [MULTI-DECL].
+        field(
+          'name',
+          choice(
+            $.identifier,
+            alias($.multiplicity, $.identifier),
+            alias($.replayable, $.identifier),
+          ),
+        ),
         ':',
         field('type', $._type),
       ),
@@ -361,6 +391,7 @@ module.exports = grammar({
         $.match_expression,
         $.if_expression,
         $.handler_expression,
+        $.kernel_expression,
         $.select_expression,
         $.ternary_expression,
         $.binary_expression,
@@ -404,11 +435,25 @@ module.exports = grammar({
 
     // `handle static E ... in body` marks a region the compiler discharges by
     // rewriting, leaving no runtime handler. Implements [STAGE-HANDLE-STATIC].
+    // The optional `<...>` names the INSTANTIATION being handled: `Signal<Count>`
+    // and `Signal<Cursor>` are different effects to a row, so they are different
+    // effects to a handler. Implements [STAGE-SIGNALS-EXACT].
     handler_expression: ($) =>
-      prec.right(seq('handle', optional(field('stage', $.static_stage)), field('effect', choice($.qualified_path, $.identifier)), repeat1($.handler_arm), 'in', field('body', $.expression))),
+      prec.right(seq('handle', optional(field('stage', $.static_stage)), field('effect', choice($.qualified_path, $.identifier)), optional(field('instantiation', $.type_arguments)), repeat1($.handler_arm), 'in', field('body', $.expression))),
     handler_arm: ($) =>
       seq(field('operation', $.identifier), optional($.handler_params), '=>', field('body', $.expression)),
     handler_params: ($) => repeat1($.identifier),
+
+    // `kernel E op ... in body` is not a magic block: it is a handler region
+    // that supplies the STATIC handlers for the device dialects its body may
+    // use, and admits only bodies whose residual dynamic row is empty. Each arm
+    // names its effect because one kernel answers several dialects — `Parallel`,
+    // `Alloc`, `Tensor` — where `handle` answers exactly one.
+    // Implements [STAGE-GPU-KERNEL], [STAGE-GPU-LEGAL].
+    kernel_expression: ($) =>
+      prec.right(seq('kernel', repeat1($.kernel_arm), 'in', field('body', $.expression))),
+    kernel_arm: ($) =>
+      seq(field('effect', $.identifier), field('operation', $.identifier), optional($.handler_params), '=>', field('body', $.expression)),
 
     select_expression: ($) => seq('select', '{', repeat1($.select_arm), '}'),
     select_arm: ($) =>
@@ -528,7 +573,7 @@ module.exports = grammar({
     send_call: ($) => seq('send', '(', $.expression, ',', $.expression, ')'),
     recv_call: ($) => seq('recv', '(', $.expression, ')'),
     perform_expression: ($) =>
-      seq('perform', field('effect', choice($.qualified_path, $.identifier)), '.', field('operation', $.identifier), '(', optional($.argument_list), ')'),
+      seq('perform', field('effect', choice($.qualified_path, $.identifier)), optional(field('instantiation', $.type_arguments)), '.', field('operation', $.identifier), '(', optional($.argument_list), ')'),
     // `resume(v)` resumes the performer's delimited continuation with `v`;
     // `resume()` resumes with Unit. Only legal inside a handler arm body.
     // Implements [EFFECTS-RESUME].

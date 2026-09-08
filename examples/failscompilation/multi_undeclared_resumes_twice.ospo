@@ -1,0 +1,25 @@
+// [MULTI-COMPAT] [MULTI-HANDLE-ONCE] An operation without a multiplicity
+// keyword is `once`. This is the ONE place the axis narrows: a program that
+// resumes one continuation twice from an undecorated operation aborts at run
+// time today ("fatal: continuation already resumed") and MUST fail at compile
+// time instead — the same program rejected earlier, not one that stops working.
+//
+// This fixture is the axis's load-bearing case: today the compiler ACCEPTS it,
+// so it escapes the must-reject corpus entirely. Making it compile again means
+// declaring `pick` as `many`, which then owes [MULTI-REPLAY-CHECK].
+effect Choose {
+    pick: fn() -> int
+}
+
+fn both() = (perform Choose.pick() + 1) ?: 0
+
+fn main() = {
+    let total = handle Choose
+        pick => {
+            let a = resume(10)
+            let b = resume(20)
+            a + b ?: 0
+        }
+    in both()
+    print("total=${total}")
+}

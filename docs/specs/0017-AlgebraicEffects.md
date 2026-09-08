@@ -43,6 +43,13 @@ effect State
     set : int => Unit
 ```
 
+An operation also carries a **multiplicity** — `abort`, `once` or `many`, plus
+`replayable` for one whose effects are safe to re-perform — fixing how many
+times a handler arm may resume it. The declaration form and its rules are
+[MULTI-DECL](0035-StagedEffects.md#declaring-multiplicity--multi-decl). An
+undecorated operation is `once`, which is the behaviour this document
+describes.
+
 ## Generic Effects
 
 `[EFFECTS-GENERIC-DECL]` An effect may declare type parameters, including
@@ -198,6 +205,12 @@ do increment()
 print("result=${result} cell=${cell}")
 ```
 
+A `many` arm may own no state: one shared cell would let a second resumption
+observe the first one's writes, so
+[MULTI-REPLAY-STATE](0035-StagedEffects.md#replayability--multi-replay) rejects
+the capture and multi-shot arms combine their resumptions through the value
+`resume` returns instead.
+
 Handler state is also preserved when a perform crosses a spawned-fiber or HTTP
 callback boundary. The native conformance cases are
 `tests/regressions/effects/fiber_effects.test.osp` and
@@ -232,6 +245,13 @@ Resuming handlers have these rules:
   runs.
 - They are single-shot. A second resume of one continuation aborts with
   `fatal: continuation already resumed (multi-shot resume is not supported)`.
+  This is the runtime form of
+  [MULTI-HANDLE-ONCE](0035-StagedEffects.md#handler-obligations--multi-handle),
+  which rejects the same arm in the checker; the guard remains as a backstop.
+  A `many` operation, the one shape that lifts the restriction, needs a
+  continuation the compiler cannot build today — the native continuation is a
+  suspended pthread stack and a live pthread stack cannot be cloned
+  ([plan 0016](../plans/0016-algebraic-effects-and-handlers.md)).
 - Handler mode is selected per arm, not per region. An arm containing no
   `resume` supplies its operation result directly and the caller continues,
   whatever its siblings do. In an arm that does contain `resume`, returning
@@ -245,6 +265,13 @@ Resuming handlers have these rules:
   [issue #177](https://github.com/Nimblesite/osprey/issues/177).
 - `resume` is lexical to the arm. It is rejected at top level and inside a
   lambda declared in an arm, because that lambda has no live arm continuation.
+  [MULTI-HANDLE-MANY-LEXICAL](0035-StagedEffects.md#handler-obligations--multi-handle)
+  narrows the second half to exactly the ground it stands on: in an arm for a
+  `many` operation, a lambda invoked before the arm returns DOES have a live
+  continuation and may resume, while one that escapes the arm stays rejected.
+  Osprey has no loop construct
+  ([BUILTIN-ITER](0010-LoopConstructsAndFunctionalIterators.md#core-iterator-functions--builtin-iter)),
+  so that narrowing is what gives repeated resumption any spelling at all.
 - Explicit resume is native-only. WebAssembly supports direct value-substitution
   handlers but not the pthread-backed continuation runtime.
 
@@ -327,9 +354,17 @@ types, not representation.
 ### Known limits of abandoning a region
 
 Abandoning a region ends the suspended computation with `pthread_exit`, and a
-killed thread runs no epilogue. Two consequences are unresolved. Both predate
-the operation mailbox and neither is reachable with scalar operands, which is
-why `tests/regressions/effects/abort_vs_resume.test.osp` passes the ARC leak
+killed thread runs no epilogue. Any arm that resumes can reach this path: a
+branch returning without resuming abandons the region, which is the sanctioned
+early exit above and the shape
+[CANCEL-DELIVERY](0036-StructuredConcurrency.md#delivery-decline-to-resume--cancel-delivery)
+delivers cancellation with. These limits are therefore a property of the
+language surface as it exists, not of an exotic corner
+([MULTI-COST-ABORT](0035-StagedEffects.md#cost-model--multi-cost)).
+
+Two consequences are unresolved. Both predate the operation mailbox and neither
+is reachable with scalar operands, which is why
+`tests/regressions/effects/abort_vs_resume.test.osp` passes the ARC leak
 oracle: its operands are integers.
 
 **Heap operands owned by the killed frames are not reclaimed.** The mailbox's

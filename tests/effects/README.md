@@ -72,6 +72,16 @@ therefore change the sibling from substitution to early exit. This is tracked by
 `resume` and early exit inside one operation arm is the intended exception-style
 pattern.
 
+### How many times a request may be answered
+
+An operation also declares its **multiplicity** — `abort`, `once` (the default)
+or `many` — because a handler that resumes twice re-runs the remainder of the
+handled computation, so a body that sends an email sends it twice. `once` is
+affine: an arm may resume at most once on any one control path, and may resume
+zero times, which is the early exit above. The paired
+[multiplicity suites](multiplicity/README.md) hold the `[MULTI-FALSIFY]`
+programs that must be accepted and record what the whole gate measured.
+
 ## Choosing an error shape
 
 | Need | Use | Behavior |

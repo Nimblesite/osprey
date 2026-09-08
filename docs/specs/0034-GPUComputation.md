@@ -276,13 +276,20 @@ site, or a closure whose provenance analysis widens out) is rejected with a
 `cannot prove GPU kernel pure` error. Passing a named function or an inline
 lambda always gives the checker what it needs.
 
+When the checker *can* see the kernel's provenance and the answer is no, it
+says so instead: the rejection names the dynamic operations the body still
+requires, because that is evidence of a dynamic row rather than an absence of
+evidence. That wording is normative in
+[STAGE-GPU-DIAG](0035-StagedEffects.md#gpu-legality--stage-gpu-legal), which
+generalizes this section's empty-row rule to stage legality.
+
 ```osprey
 effect Log { write: fn(string) -> Unit }
 fn loud(x) = {
     perform Log.write("saw it")   // kernel performs Log.write
     x
 }
-// COMPILE ERROR: GPU kernel must be pure; it performs: Log.write
+// COMPILE ERROR: kernel body is not stage-legal; it requires dynamic effects: Log.write
 // let bad = toGpu([1]) |> gpuMap(loud)
 ```
 
@@ -293,7 +300,7 @@ effect Log
 loud x =
     perform Log.write "saw it"   (* kernel performs Log.write *)
     x
-(* COMPILE ERROR: GPU kernel must be pure; it performs: Log.write *)
+(* COMPILE ERROR: kernel body is not stage-legal; it requires dynamic effects: Log.write *)
 (* bad = toGpu [1] |> gpuMap loud *)
 ```
 

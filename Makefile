@@ -8,9 +8,10 @@
 # =============================================================================
 
 .PHONY: build test lint fmt clean ci setup run install bench bench-osprey wasm wasm-site wasm-serve bank bank-web bank-test bank-e2e hawk graphics \
-	_language-test _deslop _gpu-demo _graphics-shader _vsix-rebuild-reinstall \
+	vsix-rebuild-reinstall \
+	_language-test _deslop _gpu-demo _graphics-shader \
 	_test_gc_stack_root _test_c_runtime _coverage_check_c_runtime _bank_test _test_bench_tools \
-	_rebuild-install-vsix _vsix_clean _vsix_build _vsix_bundle _vsix_package _vsix_install
+	_vsix_clean _vsix_bundle _vsix_package _vsix_install
 
 # ---------------------------------------------------------------------------
 # OS Detection
@@ -58,6 +59,45 @@ RTB ?= compiler/bin
 # they never enumerate VSCode profiles and never affect any other extension.
 EXT_DIR        ?= vscode-extension
 EXT_ID         ?= nimblesite.osprey
+# The extension loads its bundled compiler from bin/<os>-<arch>/osprey
+# (resolveBundledCompiler in client/src/extension.ts), so bundling, packaging
+# and install-verification must all agree on one triple — computed here once.
+# (make's $(shell ...) ends at the first unbalanced ")", so a shell `case` is
+# not expressible here — the mapping is done with make's own functions.)
+UNAME_S        ?= $(shell uname -s)
+UNAME_M        ?= $(shell uname -m)
+EXT_OS         ?= $(if $(filter Darwin,$(UNAME_S)),darwin,$(if $(filter Linux,$(UNAME_S)),linux,win32))
+EXT_ARCH       ?= $(if $(filter arm64 aarch64,$(UNAME_M)),arm64,x64)
+EXT_PLATFORM   ?= $(EXT_OS)-$(EXT_ARCH)
+
+# ---------------------------------------------------------------------------
+# Node dependency guard
+# ---------------------------------------------------------------------------
+# Every recipe that runs a tool out of a node subproject needs that project's
+# node_modules, and nothing in this Makefile installed one. `make build` on a
+# tree that had never run `make setup` reached `tsc -b` and died with
+# "tsc: command not found" — `npm run compile` silently assumed the install had
+# already happened somewhere else. A build target that only works after an
+# undocumented manual step is not a build target, and it fails as a missing
+# binary rather than as the missing install it actually is. The comment above
+# `_bank_test` records the same trap being routed around in CI instead of
+# fixed.
+#
+# npm writes node_modules/.package-lock.json as the last act of a successful
+# install, so it is a truthful stamp: newer than package-lock.json exactly when
+# the installed tree matches the lockfile. Make re-runs the install only when
+# the lockfile moves or the tree is gone, so an up-to-date project costs one
+# stat rather than a reinstall. `npm ci` is the right installer precisely
+# because it refuses to paper over a package.json that disagrees with its lock.
+EXT_NODE_DEPS         = $(EXT_DIR)/node_modules/.package-lock.json
+WEBSITE_NODE_DEPS     = website/node_modules/.package-lock.json
+WEBCOMPILER_NODE_DEPS = webcompiler/node_modules/.package-lock.json
+BANK_WEB_NODE_DEPS    = examples/projects/modules/web/node_modules/.package-lock.json
+BANK_E2E_NODE_DEPS    = examples/projects/modules/e2e/node_modules/.package-lock.json
+
+%/node_modules/.package-lock.json: %/package-lock.json
+	@echo "==> [$*] installing node dependencies (npm ci)..."
+	npm --prefix $* ci
 
 # Shared hardened warning sets — defined ONCE so a lint added here reaches every
 # C recipe below (archives, fiber, http_shared, unit tests). WARN is the core
@@ -153,7 +193,7 @@ WASM_SERVE_PORT ?= 8080
 # =============================================================================
 
 ## build: C runtime archives + Rust workspace (release) + VSCode extension
-build: _runtime
+build: _runtime $(EXT_NODE_DEPS)
 	@echo "==> Building..."
 	cargo build --release --workspace
 	cd $(EXT_DIR) && npm run compile
@@ -201,9 +241,9 @@ bank: bank-web
 ## bank-web: Regenerate the embedded React host + Osprey WebAssembly client.
 ##           Requires Node and a WASI sysroot; the generated Osprey Bundle is
 ##           committed so ordinary native/CI builds do not need either tool.
-bank-web: build _runtime_wasm
+bank-web: build _runtime_wasm $(BANK_WEB_NODE_DEPS)
 	@echo "==> Building Talon Bank browser application..."
-	cd examples/projects/modules/web && npm ci && npm run build
+	cd examples/projects/modules/web && npm run build
 
 ## bank-test: Native Osprey unit tests for the Talon Bank pure domain layer,
 ##            run through the built-in `osprey test` harness (TAP output).
@@ -226,9 +266,9 @@ _language-test: build
 ## bank-e2e: Browser end-to-end tests for the Talon Bank modules showcase
 ##           (examples/projects/modules) — real Chromium via Playwright drives
 ##           the compiled osprey binary serving its HTTP API and web UI.
-bank-e2e: bank-web
+bank-e2e: bank-web $(BANK_E2E_NODE_DEPS)
 	@echo "==> Bank e2e (Playwright)..."
-	cd examples/projects/modules/e2e && npm ci && npx playwright install chromium && npx playwright test
+	cd examples/projects/modules/e2e && npx playwright install chromium && npx playwright test
 
 ## lint: Run all linters/analyzers (read-only). Checks formatting but does
 ## NOT rewrite it — `make fmt` does that. The fmt check lives HERE because
@@ -236,8 +276,9 @@ bank-e2e: bank-web
 ## job cannot block a merge.
 lint: _deslop _lint
 
-_lint:
+_lint: $(EXT_NODE_DEPS)
 	@echo "==> Linting..."
+	node scripts/verify-node-deps-guard.mjs
 	cargo fmt --all --check
 	cargo clippy --workspace --all-targets -- -D warnings
 	cd $(EXT_DIR) && npm run lint
@@ -284,7 +325,7 @@ hawk:
 	RUSTC_BOOTSTRAP=1 cargo hawk check --only dead-public -D hawk::dead_public --target-dir $(CURDIR)/target/hawk
 
 ## fmt: Format all code in-place. Pass CHECK=1 for read-only check (CI use).
-fmt:
+fmt: $(EXT_NODE_DEPS)
 	@echo "==> Formatting$(if $(CHECK), (check mode),)..."
 	cargo fmt --all$(if $(CHECK), --check,)
 	cd $(EXT_DIR) && npx prettier$(if $(CHECK), --check, --write) .
@@ -297,7 +338,7 @@ clean:
 	cd $(EXT_DIR) && $(RM) out dist coverage test.log
 
 ## ci: lint + hawk + test + bank-test + bank-e2e + build (full CI simulation)
-ci: lint hawk test bank-test bank-e2e build
+ci: lint hawk test bank-test bank-e2e mobile-domain-test build
 
 ## wasm: Build everything for the WebAssembly target, ready to go — the wasm
 ## runtime archive (compiler/bin/libosprey_runtime_wasm.a), the hello example,
@@ -362,13 +403,10 @@ wasm-serve: wasm
 	  cd $(WASM_SERVE_DIR) && exec python3 -m http.server $(WASM_SERVE_PORT)
 
 ## setup: Post-create dev environment setup (used by devcontainer)
-setup:
+setup: $(EXT_NODE_DEPS) $(WEBCOMPILER_NODE_DEPS) $(WEBSITE_NODE_DEPS)
 	@echo "==> Setting up development environment..."
 	rustup component add rustfmt clippy llvm-tools-preview
 	command -v cargo-llvm-cov >/dev/null 2>&1 || cargo install cargo-llvm-cov
-	cd $(EXT_DIR) && npm ci
-	cd webcompiler && npm ci
-	cd website && npm ci
 	@echo "==> Setup complete. Run 'make ci' to validate."
 
 # ---------------------------------------------------------------------------
@@ -767,7 +805,7 @@ _conformance-arc:
 # checks out a tree with no bin/ and falls through to PATH — which makes it
 # exactly the kind of failure a developer cannot reproduce from a green CI run.
 # Restaging keeps `make test` honest about which compiler it just tested.
-_test_vscode_extension: _vsix_bundle
+_test_vscode_extension: _vsix_bundle $(EXT_NODE_DEPS)
 	@echo "==> [vscode-extension] staging osprey as 'osprey' for LSP integration..."
 	$(MKDIR) target/path-bin
 	cp $(BIN) target/path-bin/osprey
@@ -936,11 +974,11 @@ _uninstall:
 	@echo "==> uninstalled."
 
 # _website-dev: Start local website development server
-_website-dev:
+_website-dev: $(WEBSITE_NODE_DEPS)
 	cd website && npm run dev
 
 # _website-build: Build static site
-_website-build:
+_website-build: $(WEBSITE_NODE_DEPS)
 	cd website && npm run build
 
 # _test_bench_tools: Unit-test the benchmark result merger. It is the component
@@ -972,56 +1010,106 @@ bench: build
 bench-osprey: build
 	@BENCH_PARTIAL=1 zsh benchmarks/run.sh $(BENCH_FILTER)
 
-# _vsix-rebuild-reinstall: Clean → build → reinstall the Osprey VSCode
-##      extension in place, bundling the freshly-built Rust compiler as `osprey`.
+## vsix-rebuild-reinstall: Rebuild the compiler and reinstall the Osprey VSCode
+##      extension in place, bundling the freshly-built Rust binary as `osprey`.
 ##      Touches ONLY the Osprey extension ($(EXT_ID)) in the DEFAULT profile —
 ##      never another extension, never another VSCode profile. macOS only.
 ##      ONE `code` invocation (install --force, no separate uninstall) so the
 ##      running VSCode reconciles its extension host exactly once, not twice.
-_vsix-rebuild-reinstall:
+##      Every step is verified: the VSIX must contain the bundled compiler and
+##      the installed extension must be byte-identical to this build, so
+##      "installed" is a fact rather than a claim `code` printed.
+vsix-rebuild-reinstall:
 	$(MAKE) _vsix_clean
 	$(MAKE) build
 	$(MAKE) _vsix_bundle
 	$(MAKE) _vsix_package
 	$(MAKE) _vsix_install
 
-# _rebuild-install-vsix: deprecated private alias of `_vsix-rebuild-reinstall`.
-_rebuild-install-vsix: _vsix-rebuild-reinstall
-
 # --- vsix sub-steps ---------------------------------------------------------
+# Extension artefacts only. This used to run `$(MAKE) clean`, i.e. `cargo
+# clean` plus the C runtime archives, which bought a from-scratch release
+# build on every single reinstall and no correctness at all: cargo tracks its
+# own inputs, and `_runtime` rebuilds through a stamp that fingerprints the
+# compiler, the archiver and every runtime source. The artefacts a reinstall
+# genuinely must drop are the extension's own — a previous bundle, a previous
+# VSIX, and `out/` (which carries tsconfig.tsbuildinfo, so `tsc -b` cannot
+# decide it is up to date and emit nothing).
 _vsix_clean:
-	$(MAKE) clean
-	cd $(EXT_DIR) && $(RM) bin osprey-*.vsix
-
-_vsix_build:
-	$(MAKE) build
+	cd $(EXT_DIR) && $(RM) bin out dist osprey-*.vsix
 
 # Stage the freshly-built Rust binary AND the C runtime archives where the
 # extension expects its bundled compiler (bin/<os>-<arch>/), so the VSIX runs
 # against THIS build. The compiler locates its runtime archives next to its own
 # executable (find_runtime_lib in osprey-cli), so every native runtime variant
 # must sit beside the bundled `osprey` for `--run --memory=<mode>` to link.
+# shipwright.json is gitignored build output (release.yml writes a stamped copy
+# per platform); nothing generated it locally, so the extension's activation-
+# time version check either shipped a stale manifest or silently skipped. Local
+# builds report 0.0.0-dev, exactly what the committed manifest expects, so the
+# root manifest is the truthful local copy. [EDITOR-VERSIONING]
 _vsix_bundle:
-	@OS=$$(uname -s | tr '[:upper:]' '[:lower:]'); \
-	case "$$OS" in darwin) OS=darwin;; linux) OS=linux;; *) OS=win32;; esac; \
-	ARCH=$$(uname -m); case "$$ARCH" in arm64|aarch64) ARCH=arm64;; *) ARCH=x64;; esac; \
-	DEST="$(EXT_DIR)/bin/$$OS-$$ARCH"; $(MKDIR) "$$DEST"; \
+	@DEST="$(EXT_DIR)/bin/$(EXT_PLATFORM)"; $(MKDIR) "$$DEST"; \
 	cp $(BIN) "$$DEST/osprey"; \
 	cp $(RTB)/libfiber_runtime.a $(RTB)/libhttp_runtime.a \
 	   $(RTB)/libfiber_runtime_gc.a $(RTB)/libhttp_runtime_gc.a \
 	   $(RTB)/libfiber_runtime_arc.a $(RTB)/libhttp_runtime_arc.a "$$DEST/"; \
+	cp shipwright.json $(EXT_DIR)/shipwright.json; \
 	echo "  bundled $(BIN) + all native runtime archives -> $$DEST/"
 
-_vsix_package:
+# Package, then prove the VSIX carries the bundled compiler: `vsce` ships
+# whatever `.vscodeignore` leaves behind and reports success either way, so a
+# packaging regression is invisible until the installed extension quietly falls
+# back to whatever `osprey` is on PATH. Same assertion as the `vsix` job in
+# .github/workflows/release.yml.
+_vsix_package: $(EXT_NODE_DEPS)
 	cd $(EXT_DIR) && npm run package
+	@set -e; VSIX=$$(ls -t $(EXT_DIR)/osprey-*.vsix 2>/dev/null | head -1); \
+	if [ -z "$$VSIX" ]; then echo "FAIL: npm run package produced no osprey-*.vsix"; exit 1; fi; \
+	unzip -l "$$VSIX" | grep -qF "extension/bin/$(EXT_PLATFORM)/osprey" || \
+	  { echo "FAIL: $$VSIX carries no extension/bin/$(EXT_PLATFORM)/osprey"; exit 1; }; \
+	unzip -l "$$VSIX" | grep -qF "extension/out/client/src/extension.js" || \
+	  { echo "FAIL: $$VSIX carries no compiled extension (out/client/src/extension.js)"; exit 1; }
 
 # Install the newest Osprey VSIX into the DEFAULT profile only. `--install-
 # extension <file> --force` upgrades that one extension id in place — no
 # separate uninstall needed, so the live VSCode reconciles its extension host
 # once. It installs exactly that VSIX (the Osprey extension) and no other, and
 # does NOT enumerate VSCode profiles, so it can never touch any other extension.
+#
+# Then verify. `code` prints "was successfully installed" and exits 0 in cases
+# where the extension directory does not end up holding this build, and the
+# local version string never moves off 0.0.0-dev, so VSCode never offers the
+# reload prompt it shows for a real version bump — leaving a running window on
+# the previous extension host with nothing on screen saying so. The comparison
+# below turns that silent staleness into a hard failure, and the notice below
+# that says the one thing the running editor still needs from a human.
 _vsix_install:
-	@VSIX=$$(ls -t $(EXT_DIR)/osprey-*.vsix 2>/dev/null | head -1); \
+	@command -v code >/dev/null 2>&1 || \
+	  { echo "FAIL: no 'code' CLI on PATH — run VSCode's \"Shell Command: Install 'code' command in PATH\""; exit 1; }
+	@set -e; \
+	VSIX=$$(ls -t $(EXT_DIR)/osprey-*.vsix 2>/dev/null | head -1); \
 	if [ -z "$$VSIX" ]; then echo "FAIL: no osprey-*.vsix in $(EXT_DIR)/"; exit 1; fi; \
 	echo "  vsix: $$VSIX"; \
-	code --install-extension "$$VSIX" --force && echo "  installed $(EXT_ID)"
+	code --install-extension "$$VSIX" --force; \
+	VERSION=$$(node -p "require('$(CURDIR)/$(EXT_DIR)/package.json').version"); \
+	INSTALLED="$${VSCODE_EXTENSIONS:-$$HOME/.vscode/extensions}/$(EXT_ID)-$$VERSION"; \
+	if [ ! -d "$$INSTALLED" ]; then \
+	  echo "FAIL: code reported success but $$INSTALLED does not exist"; exit 1; fi; \
+	cmp -s "$(BIN)" "$$INSTALLED/bin/$(EXT_PLATFORM)/osprey" || \
+	  { echo "FAIL: $$INSTALLED/bin/$(EXT_PLATFORM)/osprey is not this build ($(BIN))"; exit 1; }; \
+	cmp -s "$(EXT_DIR)/out/client/src/extension.js" "$$INSTALLED/out/client/src/extension.js" || \
+	  { echo "FAIL: $$INSTALLED/out/client/src/extension.js is not this build"; exit 1; }; \
+	echo "  installed $(EXT_ID) $$VERSION -> $$INSTALLED"; \
+	echo "  verified: bundled compiler and extension.js are byte-identical to this build"; \
+	if pgrep -f "Visual Studio Code.app" >/dev/null 2>&1; then \
+	  echo ""; \
+	  echo "  VSCode is RUNNING and still hosts the previous build — the version never"; \
+	  echo "  changes (0.0.0-dev), so VSCode has no update to notice. Reload it:"; \
+	  echo "      Cmd+Shift+P -> Developer: Reload Window"; \
+	fi
+
+# Apple SDK builds reuse the native warning profile and portable runtime units.
+include scripts/ios.mk
+
+include scripts/android.mk

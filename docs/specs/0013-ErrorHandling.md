@@ -158,6 +158,6 @@ fn go() -> int = {
 ```
 
 `let _ =` is the sanctioned way to discard an ordinary value
-([BLOCK-DISCARD](0008-BlockExpressions.md#discarded-values--block-discard)), but
+([BLOCK-DISCARD](0008-BlockExpressions.md#discarded-values-block-discard)), but
 it does not discharge a `Result`. Handle the failure with `match` or `?:`, or
 return it to a caller who will.

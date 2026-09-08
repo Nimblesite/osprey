@@ -4,14 +4,14 @@
   "fileTypes": ["ospml"],
   "patterns": [
     { "include": "#comments" },
-    { "include": "#keywords" },
     { "include": "#interpolated-strings" },
+    { "include": "#modules" },
+    { "include": "#types" },
+    { "include": "#effect-operations" },
+    { "include": "#function-heads" },
+    { "include": "#keywords" },
     { "include": "#numbers" },
     { "include": "#booleans" },
-    { "include": "#effect-operations" },
-    { "include": "#modules" },
-    { "include": "#function-heads" },
-    { "include": "#types" },
     { "include": "#operators" },
     { "include": "#type-names" },
     { "include": "#identifiers" }
@@ -51,12 +51,28 @@
     "keywords": {
       "patterns": [
         {
+          "name": "meta.effect.multiplicity.osprey-ml",
+          "match": "^\\s*(once|many|replayable)\\s+([a-z_][a-zA-Z0-9_]*)\\s*(?=:)",
+          "captures": {
+            "1": { "name": "storage.modifier.multiplicity.osprey-ml" },
+            "2": { "name": "entity.name.function.effect.osprey-ml" }
+          }
+        },
+        {
+          "name": "storage.modifier.static.osprey-ml",
+          "match": "\\b(static)\\b(?=\\s+(?:effect\\b|[A-Z]))"
+        },
+        {
           "name": "keyword.control.osprey-ml",
-          "match": "\\b(match|handle|do|perform)\\b"
+          "match": "\\b(match|handle|do|perform|in|resume)\\b"
         },
         {
           "name": "keyword.declaration.osprey-ml",
-          "match": "\\b(mut|effect|handler|type|namespace|import|module|signature|export|opaque|state|as)\\b"
+          "match": "\\b(mut|extern|effect|handler|type|namespace|import|module|signature|export|opaque|state|as)\\b"
+        },
+        {
+          "name": "keyword.fiber.osprey-ml",
+          "match": "\\b(spawn|await|yield|send|recv)\\b"
         }
       ]
     },
@@ -95,6 +111,15 @@
             "2": { "name": "entity.name.type.module.osprey-ml" },
             "3": { "name": "keyword.control.import.alias.osprey-ml" },
             "4": { "name": "entity.name.namespace.alias.osprey-ml" }
+          }
+        },
+        {
+          "name": "meta.export.binding.osprey-ml",
+          "match": "^\\s*(export)\\s+([a-z_][a-zA-Z0-9_]*)((?:\\s+[a-z_][a-zA-Z0-9_]*)*)\\s*(?==(?![=>]))",
+          "captures": {
+            "1": { "name": "storage.modifier.export.osprey-ml" },
+            "2": { "name": "entity.name.function.osprey-ml" },
+            "3": { "name": "variable.parameter.osprey-ml" }
           }
         },
         {
@@ -193,12 +218,13 @@
       "patterns": [
         {
           "name": "meta.function.binding.osprey-ml",
-          "begin": "^\\s*([a-z_][a-zA-Z0-9_]*)((?:\\s+[a-z_][a-zA-Z0-9_]*)*)\\s*(=)(?!=)",
+          "begin": "^\\s*(?!(?:extern|type|effect|handler|namespace|import|module|signature|export|opaque|state|as|match|handle|do|perform|in|resume|true|false)\\b\\s*(?!=))(?:(mut)\\s+)?([a-z_][a-zA-Z0-9_]*)((?:\\s+[a-z_][a-zA-Z0-9_]*)*)\\s*(=)(?![=>])",
           "end": "(?<==)",
           "beginCaptures": {
-            "1": { "name": "entity.name.function.osprey-ml" },
-            "2": { "name": "variable.parameter.osprey-ml" },
-            "3": { "name": "keyword.operator.assignment.osprey-ml" }
+            "1": { "name": "keyword.declaration.osprey-ml" },
+            "2": { "name": "entity.name.function.osprey-ml" },
+            "3": { "name": "variable.parameter.osprey-ml" },
+            "4": { "name": "keyword.operator.assignment.osprey-ml" }
           }
         }
       ]
@@ -208,13 +234,25 @@
         {
           "name": "meta.type.declaration.osprey-ml",
           "begin": "\\b(type)\\s+([A-Z][a-zA-Z0-9_]*)\\s*(=)",
-          "end": "(?=\\n|$)",
+          "end": "^(?=\\S)",
           "beginCaptures": {
             "1": { "name": "keyword.declaration.type.osprey-ml" },
             "2": { "name": "entity.name.type.osprey-ml" },
             "3": { "name": "keyword.operator.assignment.osprey-ml" }
           },
           "patterns": [
+            {
+              "name": "meta.type.field.osprey-ml",
+              "match": "^\\s*([a-z_][a-zA-Z0-9_]*)\\s*(:)",
+              "captures": {
+                "1": { "name": "variable.other.member.osprey-ml" },
+                "2": { "name": "punctuation.separator.osprey-ml" }
+              }
+            },
+            {
+              "name": "support.type.primitive.osprey-ml",
+              "match": "\\b(int|float|string|bool|Unit|any)\\b"
+            },
             {
               "name": "punctuation.separator.type.union.osprey-ml",
               "match": "\\|"
@@ -230,6 +268,10 @@
     },
     "operators": {
       "patterns": [
+        {
+          "name": "keyword.operator.error-propagation.osprey-ml",
+          "match": "\\?:"
+        },
         {
           "name": "keyword.operator.qualifier.osprey-ml",
           "match": "::"

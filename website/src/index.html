@@ -1,11 +1,13 @@
 ---
 layout: layouts/base.njk
 title: "Osprey — Safe, Fast Functional Programming"
-description: "Osprey is a practical functional language for safe, fast native programs: strong inferred types, first-class effects, lightweight concurrency and clean, readable code."
+description: "A practical functional language for native programs, WebAssembly, iOS and Android. See the same reactive Osprey app running with native mobile interfaces, SQLite and live APIs."
 # Read from git history, not the filesystem: a fresh CI checkout gives every
 # file a birthtime of "now", which would put a fake date in the sitemap.
 date: "git Last Modified"
 ---
+
+{% from "mobile-gallery.njk" import gallery %}
 
 <section class="hero">
   <div class="container">
@@ -15,12 +17,15 @@ date: "git Last Modified"
       </h1>
       <p class="hero-subtitle animate-on-scroll">
         A practical language with strong inferred types, explicit errors, first-class effects and
-        lightweight concurrency. Osprey compiles through LLVM to native programs, with no VM or JIT warm-up.
+        lightweight concurrency. Compile through LLVM to native programs, WebAssembly, or shared app logic for iOS and Android.
       </p>
       <div class="hero-actions animate-on-scroll">
         <a href="/playground/" class="btn btn-primary btn-lg">Try Osprey Online</a>
         <a href="/docs/" class="btn btn-secondary btn-lg">Read the Docs</a>
       </div>
+      <nav class="target-links" aria-label="Compilation targets">
+        <a href="#targets">Native</a><a href="/docs/web-apps/">WebAssembly</a><a href="/docs/mobile-apps/#run-on-ios">iOS</a><a href="/docs/mobile-apps/#run-on-android">Android</a>
+      </nav>
     </div>
 
     <div class="hero-code animate-on-scroll">
@@ -42,6 +47,57 @@ match doubleFound(Found { value: 21 }) {
   </div>
 </section>
 
+<section class="section section-alt mobile-showcase" id="mobile-apps" aria-labelledby="mobile-title">
+  <div class="container">
+    <div class="mobile-intro">
+      <p class="mobile-eyebrow">Running on iOS and Android</p>
+      <h2 id="mobile-title">One Osprey app.<br>Two native interfaces.</h2>
+      <p>Issue Inbox puts the model, reactive updates, UI layout, GitHub decoding, and SQLite commands in shared Osprey modules. SwiftUI and Android widgets render the same application.</p>
+      <ul class="mobile-capabilities">
+        <li>Browse and search live GitHub issues</li>
+        <li>Read details, save issues, and add local notes and priorities</li>
+        <li>Reopen the inbox from its SQLite cache</li>
+      </ul>
+      <div class="mobile-actions">
+        <a class="btn btn-primary" href="/docs/mobile-apps/">Build the mobile app</a>
+        <a class="btn btn-secondary" href="https://github.com/Nimblesite/osprey/tree/main/examples/mobile">Explore the source</a>
+      </div>
+      <p class="mobile-proof">Actual simulator and emulator captures. The iOS app has also been installed and verified on a physical iPhone. Native hosts supply rendering, SQLite, HTTPS, and lifecycle services through the generated C interface.</p>
+    </div>
+    {{ gallery(mobile.screenshots) }}
+  </div>
+</section>
+
+<section class="section" id="targets" aria-labelledby="targets-title">
+  <div class="container">
+    <h2 class="section-title" id="targets-title">Choose your target</h2>
+    <p class="section-subtitle">Build a native executable, a WebAssembly module, or application logic for a native mobile host.</p>
+    <div class="target-grid">
+      <article class="card">
+        <h3>Native</h3><code>--target=native</code>
+        <p>Executables for your host platform, with native networking, files, processes, and a choice of memory backends.</p>
+        <a href="/docs/my-first-app/">Build a native app →</a>
+      </article>
+      <article class="card">
+        <h3>WebAssembly</h3><code>--target=wasm32</code>
+        <p>A WASI module with browser examples that connect Osprey application logic to a JavaScript host.</p>
+        <a href="/docs/web-apps/">Build a web app →</a>
+      </article>
+      <article class="card">
+        <h3>iOS</h3><code>--target=ios / ios-sim</code>
+        <p>ARM64 app-logic archives and C headers for iPhone and simulator applications, called from Swift.</p>
+        <a href="/docs/mobile-apps/#run-on-ios">Build for iOS →</a>
+      </article>
+      <article class="card">
+        <h3>Android</h3><code>--target=android-arm64 / android-x64</code>
+        <p>ARM64 and x86-64 app-logic archives and C headers, linked into Android applications through JNI.</p>
+        <a href="/docs/mobile-apps/#run-on-android">Build for Android →</a>
+      </article>
+    </div>
+    <p class="target-note">The compiler rejects unsupported operations before generating code, including resumable effects on mobile and WebAssembly. <a href="/status/#target-support">See target capabilities and current limits.</a></p>
+  </div>
+</section>
+
 <section class="section section-alt">
   <div class="container">
     <h2 class="section-title">Built for real programs</h2>
@@ -52,7 +108,7 @@ match doubleFound(Found { value: 21 }) {
     <div class="philosophy-grid">
       <div class="card">
         <h3>Practical by design</h3>
-        <p>Write direct code, call existing C libraries and compile native binaries or WebAssembly. Useful abstractions should remove work, not create ceremony.</p>
+        <p>Write direct code, call existing C libraries, and build native, WebAssembly, iOS, or Android applications. Useful abstractions should remove work, not create ceremony.</p>
       </div>
       <div class="card">
         <h3>Safe where it matters</h3>
@@ -129,8 +185,8 @@ in process(21)</code></pre>
           function. Swap a handler in a test without changing the code under test.
         </p>
         <p>
-          Effect inputs and outputs are type-checked. Complete compile-time checking for missing effect setup
-          is still in progress; a missing handler currently produces a runtime diagnostic.
+          Effect inputs and outputs are type-checked. If an operation has no matching handler, the compiler
+          rejects the program and names the missing effect. Target checks also reject unsupported effect resumption.
         </p>
       </div>
     </div>
@@ -148,7 +204,7 @@ in process(21)</code></pre>
           Fibers communicate by moving or copying values through channels rather than sharing mutable state.
         </p>
         <ul>
-          <li>Lightweight tasks instead of one operating-system thread per job</li>
+          <li>Spawn and await work with ordinary functions</li>
           <li>Channels for isolated communication</li>
           <li>Ordinary direct-style functions and results</li>
         </ul>
@@ -180,8 +236,8 @@ print(recv(messages))</code></pre>
     </p>
     <div class="philosophy-grid">
       <div class="card">
-        <h3>Native and WebAssembly</h3>
-        <p>Build native binaries for systems-oriented deployment or target WebAssembly for the browser.</p>
+        <h3>Native, web, and mobile</h3>
+        <p>Compile executables, WebAssembly modules, or C ABI libraries for native iOS and Android hosts.</p>
       </div>
       <div class="card">
         <h3>Selectable memory</h3>
@@ -236,8 +292,8 @@ greet "Ada"</code></pre>
       </div>
     </div>
     <p class="section-subtitle">
-      Files choose a flavor independently. Cross-flavor multi-file integration is the design direction and is
-      not yet described as complete. <a href="/blog/2026-06-30-osprey-flavors/">Read about the two flavors →</a>
+      Files choose a flavor independently. Issue Inbox combines ML application modules with a small Default-flavor
+      C entry point in one project. <a href="/blog/2026-06-30-osprey-flavors/">Read about the two flavors →</a>
     </p>
   </div>
 </section>

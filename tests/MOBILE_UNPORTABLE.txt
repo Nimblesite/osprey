@@ -1,0 +1,109 @@
+# Programs the mobile C ABI targets reject, with the exact reason they gave.
+#
+# One file covers ios-sim, android-arm64 and android-x64 because they share one
+# boundary implementation and therefore one set of holes. If a target ever
+# rejects a different set, this comparison fails and the file must be split
+# rather than widened — a shared manifest that quietly accepted either set
+# would hide the divergence it exists to catch.
+#
+# The program set is unchanged by running the corpus on a phone: each name
+# below is a program the COMPILER refuses before emitting code, never one that
+# built and then misbehaved. The harness compares both the file set and the
+# reasons exactly, and fails on a new, removed or changed entry. An unexpected
+# LLVM, clang or simulator failure is a test failure, never a skip. There is no
+# regeneration flag. [IOS-TARGET-CAPABILITIES] [IOS-HOST-ABI]
+#
+# Four reasons appear, and they are not the same kind of limit:
+#
+#   * a continuation — the mobile C ABI is synchronous, so a suspended
+#     continuation cannot cross or outlive a host call. Named by the OPERATION
+#     that cannot be suspended, so a reader can see which effects would start
+#     working if that changed [MULTI-WASM].
+#   * HTTP and process spawning builtins — no iOS implementation; the Swift
+#     host supplies networking and platform services through explicit imports.
+#   * C ABI: unhandled effect operations at a library export — every scalar
+#     top-level function is exported, and an export must discharge its own
+#     effects because the handler `main` installs is gone once startup returns.
+#     Wrap the helper in a function that handles the effect inside Osprey.
+#   * C ABI: an unsupported extern signature or an invalid generated C name —
+#     a `Ptr` parameter and a quoted namespace label containing `/` have no
+#     legal C spelling.
+tests/effects/errors/direct_recovery.test.osp C ABI: unhandled effect operations at library export `requirePositive`: RecoveryError.missingInt; add a matching `handle`
+tests/effects/errors/direct_recovery.test.ospml C ABI: unhandled effect operations at library export `requirePositive`: RecoveryError.missingInt; add a matching `handle`
+tests/effects/multiplicity/multiplicity.test.osp a continuation for `Charge.charge` (a suspended continuation cannot cross or outlive a synchronous host call)
+tests/effects/multiplicity/multiplicity.test.ospml a continuation for `Charge.charge` (a suspended continuation cannot cross or outlive a synchronous host call)
+tests/effects/resume/resume_abort_early_exit.test.osp a continuation for `Stop.check` (a suspended continuation cannot cross or outlive a synchronous host call)
+tests/effects/resume/resume_abort_early_exit.test.ospml a continuation for `Stop.check` (a suspended continuation cannot cross or outlive a synchronous host call)
+tests/effects/resume/resume_error_policies.test.osp a continuation for `ResumeFallback.recover` (a suspended continuation cannot cross or outlive a synchronous host call)
+tests/effects/resume/resume_error_policies.test.ospml a continuation for `ResumeFallback.recover` (a suspended continuation cannot cross or outlive a synchronous host call)
+tests/effects/resume/resume_lifo_audit.test.osp a continuation for `Audit.step` (a suspended continuation cannot cross or outlive a synchronous host call)
+tests/effects/resume/resume_lifo_audit.test.ospml a continuation for `Audit.step` (a suspended continuation cannot cross or outlive a synchronous host call)
+tests/effects/resume/resume_outer_handler_bridge.test.osp a continuation for `Prompt.ask` (a suspended continuation cannot cross or outlive a synchronous host call)
+tests/effects/resume/resume_outer_handler_bridge.test.ospml a continuation for `Prompt.ask` (a suspended continuation cannot cross or outlive a synchronous host call)
+tests/effects/resume/resume_unit_markers.test.osp a continuation for `Trace.mark` (a suspended continuation cannot cross or outlive a synchronous host call)
+tests/effects/resume/resume_unit_markers.test.ospml a continuation for `Trace.mark` (a suspended continuation cannot cross or outlive a synchronous host call)
+tests/effects/resume/resume_value_rewrite.test.osp a continuation for `Supply.next` (a suspended continuation cannot cross or outlive a synchronous host call)
+tests/effects/resume/resume_value_rewrite.test.ospml a continuation for `Supply.next` (a suspended continuation cannot cross or outlive a synchronous host call)
+tests/effects/staged/staged_effects.test.osp C ABI: unhandled effect operations at library export `logged`: Log.write; add a matching `handle`
+tests/framework/verdict.test.ospml C ABI: unhandled effect operations at library export `tracedFlat`: Trace.step; add a matching `handle`
+tests/modules/file_scope_bindings.test.osp C ABI: unhandled effect operations at library export `run`: Counter.tick; add a matching `handle`
+tests/modules/file_scope_bindings.test.ospml C ABI: unhandled effect operations at library export `run`: Counter.tick; add a matching `handle`
+tests/modules/ml_layout_depth.test.osp a continuation for `depth::Trunk::Branch::Bud::Sap.draw` (a suspended continuation cannot cross or outlive a synchronous host call)
+tests/modules/ml_layout_depth.test.ospml a continuation for `depth::Trunk::Branch::Bud::Sap.draw` (a suspended continuation cannot cross or outlive a synchronous host call)
+tests/modules/module_effects_rows.test.osp a continuation for `pipeline::Source::Feed.next` (a suspended continuation cannot cross or outlive a synchronous host call)
+tests/modules/module_effects_rows.test.ospml a continuation for `pipeline::Source::Feed.next` (a suspended continuation cannot cross or outlive a synchronous host call)
+tests/modules/namespace_surface.test.osp C ABI: C ABI boundary symbol `osprey_geometry/metric_Metric_centimetres` is invalid or collides with another symbol; rename it
+tests/modules/namespace_surface.test.ospml C ABI: C ABI boundary symbol `osprey_geometry/metric_Metric_centimetres` is invalid or collides with another symbol; rename it
+tests/modules/signature_ascription.test.osp a continuation for `store::Clocks::Clock.now` (a suspended continuation cannot cross or outlive a synchronous host call)
+tests/modules/signature_ascription.test.ospml a continuation for `store::Clocks::Clock.now` (a suspended continuation cannot cross or outlive a synchronous host call)
+tests/modules/state_module_cells.test.osp C ABI: unhandled effect operations at library export `metrics::threeAdds`: metrics::Tally::Counter.add; add a matching `handle`
+tests/modules/state_module_cells.test.ospml C ABI: unhandled effect operations at library export `metrics::threeAdds`: metrics::Tally::Counter.add; add a matching `handle`
+tests/regressions/basics/functional/functional_showcase.test.osp C ABI: unhandled effect operations at library export `countedSeed`: Tally.note; add a matching `handle`
+tests/regressions/basics/functional/functional_showcase.test.ospml C ABI: unhandled effect operations at library export `countedSeed`: Tally.note; add a matching `handle`
+tests/regressions/basics/osprey_mega_showcase.test.osp C ABI: unhandled effect operations at library export `account`: Console.emit, Ledger.post; add a matching `handle`
+tests/regressions/basics/osprey_mega_showcase.test.ospml C ABI: unhandled effect operations at library export `account`: Console.emit, Ledger.post; add a matching `handle`
+tests/regressions/basics/processes/async_process_management.test.osp process spawning builtin `spawnProcess`
+tests/regressions/basics/processes/async_process_management.test.ospml process spawning builtin `spawnProcess`
+tests/regressions/basics/processes/callback_stdout_demo.test.osp process spawning builtin `spawnProcess`
+tests/regressions/basics/processes/callback_stdout_demo.test.ospml process spawning builtin `spawnProcess`
+tests/regressions/basics/types/any_type_comprehensive.test.osp C ABI: unhandled effect operations at library export `swapWork`: Swap.swap; add a matching `handle`
+tests/regressions/basics/types/any_type_comprehensive.test.ospml C ABI: unhandled effect operations at library export `swapWork`: Swap.swap; add a matching `handle`
+tests/regressions/db/database_effect.test.osp C ABI: extern `sqlite3_open` has an unsupported C ABI signature: parameters must be int, float, bool or string; returns may also be Unit
+tests/regressions/db/database_effect.test.ospml C ABI: extern `sqlite3_open` has an unsupported C ABI signature: parameters must be int, float, bool or string; returns may also be Unit
+tests/regressions/db/sqlite_basics.test.osp C ABI: extern `sqlite3_open` has an unsupported C ABI signature: parameters must be int, float, bool or string; returns may also be Unit
+tests/regressions/db/sqlite_basics.test.ospml C ABI: extern `sqlite3_open` has an unsupported C ABI signature: parameters must be int, float, bool or string; returns may also be Unit
+tests/regressions/effects/abort_vs_resume.test.osp a continuation for `Step.run` (a suspended continuation cannot cross or outlive a synchronous host call)
+tests/regressions/effects/abort_vs_resume.test.ospml a continuation for `Step.run` (a suspended continuation cannot cross or outlive a synchronous host call)
+tests/regressions/effects/algebraic_effects_comprehensive.test.osp C ABI: unhandled effect operations at library export `processItems`: Counter.getValue, Counter.increment, Counter.reset, Logger.error, Logger.log; add a matching `handle`
+tests/regressions/effects/algebraic_effects_comprehensive.test.ospml C ABI: unhandled effect operations at library export `processItems`: Counter.getValue, Counter.increment, Counter.reset, Logger.error, Logger.log; add a matching `handle`
+tests/regressions/effects/collect_all_errors.test.osp C ABI: unhandled effect operations at library export `flag`: Invalid.report; add a matching `handle`
+tests/regressions/effects/collect_all_errors.test.ospml C ABI: unhandled effect operations at library export `flag`: Invalid.report; add a matching `handle`
+tests/regressions/effects/fiber_effects.test.osp a continuation for `Gift.get` (a suspended continuation cannot cross or outlive a synchronous host call)
+tests/regressions/effects/fiber_effects.test.ospml a continuation for `Gift.get` (a suspended continuation cannot cross or outlive a synchronous host call)
+tests/regressions/effects/handler_scoping.test.osp a continuation for `Ask.ask` (a suspended continuation cannot cross or outlive a synchronous host call)
+tests/regressions/effects/handler_scoping.test.ospml a continuation for `Ask.ask` (a suspended continuation cannot cross or outlive a synchronous host call)
+tests/regressions/effects/http_state_levels.test.osp HTTP builtin `httpResponseBody`
+tests/regressions/effects/http_state_levels.test.ospml HTTP builtin `httpResponseBody`
+tests/regressions/effects/result_and_effects.test.osp C ABI: unhandled effect operations at library export `divRescue`: Rescue.onErr; add a matching `handle`
+tests/regressions/effects/result_and_effects.test.ospml C ABI: unhandled effect operations at library export `divRescue`: Rescue.onErr; add a matching `handle`
+tests/regressions/effects/retry_until_valid.test.osp a continuation for `Prompt.ask` (a suspended continuation cannot cross or outlive a synchronous host call)
+tests/regressions/effects/retry_until_valid.test.ospml a continuation for `Prompt.ask` (a suspended continuation cannot cross or outlive a synchronous host call)
+tests/regressions/effects/staged_shared.test.osp a continuation for `Audit.note` (a suspended continuation cannot cross or outlive a synchronous host call)
+tests/regressions/effects/staged_shared.test.ospml a continuation for `Audit.note` (a suspended continuation cannot cross or outlive a synchronous host call)
+tests/regressions/effects/static_discharge.test.osp C ABI: unhandled effect operations at library export `direct`: Supply.direct; add a matching `handle`
+tests/regressions/effects/static_discharge.test.ospml C ABI: unhandled effect operations at library export `direct`: Supply.direct; add a matching `handle`
+tests/regressions/effects/typed_error_channels.test.osp C ABI: unhandled effect operations at library export `loadConfig`: Missing.fill, Parse.bad, Range.clamp; add a matching `handle`
+tests/regressions/effects/typed_error_channels.test.ospml C ABI: unhandled effect operations at library export `loadConfig`: Missing.fill, Parse.bad, Range.clamp; add a matching `handle`
+tests/regressions/fiber/cpu_profiling_demo.test.osp a continuation for `Tuning.baseline` (a suspended continuation cannot cross or outlive a synchronous host call)
+tests/regressions/fiber/fiber_determinism.test.osp C ABI: unhandled effect operations at library export `processTask1`: Logger.info, Metrics.recordSuccess; add a matching `handle`
+tests/regressions/fiber/fiber_exact_replica.test.osp C ABI: unhandled effect operations at library export `processAlphaTask1`: Logger.info, Metrics.recordSuccess; add a matching `handle`
+tests/regressions/http/http_client_example.test.osp HTTP builtin `httpCreateServer`
+tests/regressions/http/http_client_example.test.ospml HTTP builtin `httpCreateServer`
+tests/regressions/http/http_create_client.test.osp HTTP builtin `httpCreateClient`
+tests/regressions/http/http_create_client.test.ospml HTTP builtin `httpCreateClient`
+tests/regressions/http/http_response_handle.test.osp HTTP builtin `httpResponseBody`
+tests/regressions/http/http_response_handle.test.ospml HTTP builtin `httpResponseBody`
+tests/regressions/http/http_server_example.test.osp HTTP builtin `httpCreateServer`
+tests/regressions/http/http_server_example.test.ospml HTTP builtin `httpCreateServer`
+tests/regressions/http/tui_repo_table.test.osp HTTP builtin `httpResponseBody`
+tests/regressions/http/tui_repo_table.test.ospml HTTP builtin `httpResponseBody`

@@ -1,0 +1,6 @@
+ok 1 - a once arm retrying internally sends exactly one receipt
+ok 2 - a once arm that declines to resume sends no receipt
+ok 3 - one unannotated function serves both multiplicities
+ok 4 - abort, once, many and replayable stay legal identifiers
+1..4
+# tests=4 passed=4 failed=0 skipped=0

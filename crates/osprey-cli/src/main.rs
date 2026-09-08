@@ -18,13 +18,18 @@
 //! crate, built on the published lspkit crates); the `--symbols`/`--hover`
 //! outline/signature helpers it shares now live there too.
 
+mod android;
 mod docs;
 mod fmt;
+mod ios;
+mod ios_abi;
 mod project;
 mod sandbox;
+mod target_capabilities;
 mod test_cmd;
 mod test_coverage;
 mod test_skips;
+mod toolchain;
 mod wasm;
 
 use osprey_syntax::Flavor;
@@ -36,10 +41,10 @@ use std::process::{Command, ExitCode};
 pub(crate) const USAGE: &str =
     "usage: osprey <file-or-project> [--check | --ast | --llvm | --compile | --run | \
 --symbols | --list-tests | --deps] [--quiet] [--debug] [--profile] [--flavor default|ml] \
-[--memory=default|gc|arc] [--target=native|wasm32] [-o <out>] \
+[--memory=default|gc|arc] [--target=native|wasm32|ios|ios-sim|android-arm64|android-x64] [-o <out>] \
 [--sandbox | --no-http | --no-websocket | --no-fs | --no-ffi]\n\
        osprey build [project] [--quiet] [--debug] [--memory=default|gc|arc] \
-[--target=native|wasm32] [-o <out>]\n\
+[--target=native|wasm32|ios|ios-sim|android-arm64|android-x64] [-o <out>]\n\
        osprey test [path] [--filter <name>] [--quiet] [--coverage] \
 [--coverage-json <path>] [--memory=default|gc|arc]\n\
        osprey fmt [--check | --stdout] [--flavor default|ml] <path...>\n\
@@ -63,8 +68,8 @@ pub(crate) struct Cli {
     /// passthrough), `gc` (tracing collector), or `arc` (reference counting).
     /// Link-time only; native IR is identical [MEM-BACKENDS].
     memory: String,
-    /// Codegen/link target: `native` (host executable via clang) or `wasm32`
-    /// (browser-ready WebAssembly via wasm-ld; wasm32-wasip1). [WASM-TARGET]
+    /// Host executable, WebAssembly, or iPhone C ABI archive.
+    /// [WASM-TARGET] [IOS-TARGET]
     target: String,
     /// Explicit output artifact path (`-o`); defaults to the source stem.
     output: Option<String>,
@@ -154,12 +159,32 @@ fn report_dependencies(path: &str, flavor: Option<Flavor>) -> ExitCode {
         eprintln!("error: cannot resolve the flavor of {path}");
         return ExitCode::from(2);
     };
-    for (function, operations) in osprey_syntax::dependency_sets(&source, flavor) {
+    let (sets, errors) = osprey_syntax::dependency_report(&source, flavor);
+    // A partial tree yields short dependency sets, and a wrongly empty one is a
+    // subtree that never rebuilds. Refuse to answer instead of answering wrong.
+    // Implements [STAGE-SIGNALS-EXACT].
+    if report_syntax_errors(path, &errors) {
+        return ExitCode::FAILURE;
+    }
+    for (function, operations) in sets {
         if !operations.is_empty() {
             println!("{function}: {}", operations.join(", "));
         }
     }
     ExitCode::SUCCESS
+}
+
+/// Print syntax errors in the one canonical `path:line:col: message` form and
+/// say whether there were any, so every mode that refuses to answer from a file
+/// that did not parse refuses it identically.
+fn report_syntax_errors(path: &str, errors: &[osprey_syntax::SyntaxError]) -> bool {
+    for err in errors {
+        eprintln!(
+            "{path}:{}:{}: {}",
+            err.position.line, err.position.column, err.message
+        );
+    }
+    !errors.is_empty()
 }
 
 /// Run the stdio language server to completion on a fresh Tokio runtime.
@@ -305,13 +330,13 @@ optimized code; debugging needs -O0)\n{USAGE}"
     Ok(())
 }
 
-/// Validate the `--target=` value: `native` (host executable) or `wasm32`
-/// (browser-ready WebAssembly, wasm32-wasip1). [WASM-TARGET]
+/// Validate the executable, WebAssembly and iPhone archive targets.
+/// [WASM-TARGET] [IOS-TARGET-TRIPLE]
 fn parse_target(value: &str) -> Result<String, String> {
     match value {
-        "native" | "wasm32" => Ok(value.to_string()),
+        "native" | "wasm32" | "ios" | "ios-sim" | "android-arm64" | "android-x64" => Ok(value.to_string()),
         other => Err(format!(
-            "unknown target '{other}' (available: native, wasm32)\n{USAGE}"
+            "unknown target '{other}' (available: native, wasm32, ios, ios-sim, android-arm64, android-x64)\n{USAGE}"
         )),
     }
 }
@@ -376,13 +401,7 @@ pub(crate) fn load_input(cli: &Cli) -> Result<CompilationInput, ExitCode> {
         }
     };
     let parsed = osprey_syntax::parse_program_with_flavor(&source, flavor);
-    if !parsed.errors.is_empty() {
-        for err in &parsed.errors {
-            eprintln!(
-                "{path}:{}:{}: {}",
-                err.position.line, err.position.column, err.message
-            );
-        }
+    if report_syntax_errors(path, &parsed.errors) {
         return Err(ExitCode::FAILURE);
     }
     // Static handlers were already discharged at the flavor boundary
@@ -423,7 +442,8 @@ fn dispatch(cli: &Cli, input: &CompilationInput) -> ExitCode {
             ExitCode::SUCCESS
         }
         "--llvm" | "--run" | "--compile" if report_type_errors(input) > 0 => ExitCode::FAILURE,
-        "--llvm" => match compile_ir(input.debug_path(), program, build_kind(cli)) {
+        "--llvm" | "--run" | "--compile" if target_error(cli, input).is_some() => ExitCode::FAILURE,
+        "--llvm" => match target_ir(cli, input) {
             Ok(ir) => {
                 print!("{ir}");
                 ExitCode::SUCCESS
@@ -453,7 +473,7 @@ pub(crate) fn report_type_errors(input: &CompilationInput) -> usize {
 }
 
 fn run_check(cli: &Cli, input: &CompilationInput) -> ExitCode {
-    if report_type_errors(input) == 0 {
+    if report_type_errors(input) == 0 && target_error(cli, input).is_none() {
         if !cli.quiet {
             println!(
                 "{}: ok ({} statements)",
@@ -466,7 +486,60 @@ fn run_check(cli: &Cli, input: &CompilationInput) -> ExitCode {
     ExitCode::FAILURE
 }
 
-fn reject_debug_wasm(cli: &Cli) -> Option<ExitCode> {
+/// Capability errors are compilation diagnostics, before LLVM or linking.
+/// [IOS-TARGET-CAPABILITIES] [WASM-TARGET-CAPABILITIES]
+fn target_error(cli: &Cli, input: &CompilationInput) -> Option<ExitCode> {
+    if let Err(error) = target_capabilities::validate(input.program(), &cli.target) {
+        eprintln!("{}: {error}", input.display_path());
+        return Some(ExitCode::FAILURE);
+    }
+    if cli.target == "wasm32" {
+        if let Some(code) = reject_debug_cross_target(cli) {
+            return Some(code);
+        }
+        if cli.memory != "default" {
+            return Some(toolchain::fail(
+                "wasm32 supports --memory=default; other runtime archives are not available",
+            ));
+        }
+    }
+    if let Some(target) = android::Target::parse(&cli.target) {
+        if let Err(code) = android::validate(cli) {
+            return Some(code);
+        }
+        if cli.mode == "--check" {
+            return android::source(input.program(), input.debug_path(), target)
+                .err()
+                .map(|error| toolchain::fail(&error));
+        }
+    }
+    if let Some(target) = ios::Target::parse(&cli.target) {
+        if let Err(code) = ios::validate(cli) {
+            return Some(code);
+        }
+        if cli.mode == "--check" {
+            return ios::source(input.program(), input.debug_path(), target)
+                .err()
+                .map(|error| toolchain::fail(&error));
+        }
+    }
+    None
+}
+
+fn target_ir(cli: &Cli, input: &CompilationInput) -> Result<String, String> {
+    if let Some(target) = android::Target::parse(&cli.target) {
+        return android::source(input.program(), input.debug_path(), target).map(|(ir, _)| ir);
+    }
+    if let Some(target) = ios::Target::parse(&cli.target) {
+        return ios::source(input.program(), input.debug_path(), target).map(|(ir, _)| ir);
+    }
+    if cli.target == "wasm32" {
+        return wasm::program_ir(input.program()).map_err(|error| error.to_string());
+    }
+    compile_ir(input.debug_path(), input.program(), build_kind(cli)).map_err(|e| e.to_string())
+}
+
+fn reject_debug_cross_target(cli: &Cli) -> Option<ExitCode> {
     if cli.debug {
         eprintln!("error: --debug is currently supported only for --target=native");
         return Some(ExitCode::from(2));
@@ -492,15 +565,21 @@ fn build_kind(cli: &Cli) -> osprey_debug::BuildKind {
     }
 }
 
-/// `--compile`: build the artifact at `-o` (or the source stem, `.wasm` for the
-/// wasm target) — a host executable via clang, or WebAssembly via wasm-ld.
+/// `--compile`: build the executable, WASM module or iPhone C ABI archive.
 fn compile_program_to_disk(cli: &Cli, input: &CompilationInput) -> ExitCode {
     let out = input.output_path(cli.output.as_deref(), &cli.target);
     let result = if cli.target == "wasm32" {
-        if let Some(code) = reject_debug_wasm(cli) {
+        if let Some(code) = reject_debug_cross_target(cli) {
             return code;
         }
         wasm::build(input.debug_path(), input.program(), &out)
+    } else if let Some(target) = android::Target::parse(&cli.target) {
+        android::build(input.debug_path(), input.program(), &out, target)
+    } else if let Some(target) = ios::Target::parse(&cli.target) {
+        if let Err(code) = ios::validate(cli) {
+            return code;
+        }
+        ios::build(input.debug_path(), input.program(), &out, target)
     } else {
         build_executable(
             input.debug_path(),
@@ -536,8 +615,17 @@ fn output_path(src: &str, output: Option<&str>, target: &str) -> PathBuf {
 /// Compile to a temp artifact and run it — the `--run` end-to-end path. Native
 /// runs the executable directly; wasm runs it under a WASI host (`wasmtime`).
 fn run_program(cli: &Cli, input: &CompilationInput) -> ExitCode {
+    if android::Target::parse(&cli.target).is_some() {
+        return toolchain::fail("Android libraries must run inside a host app; use --compile");
+    }
+    if ios::Target::parse(&cli.target).is_some() {
+        return match ios::validate(cli) {
+            Err(code) => code,
+            Ok(()) => toolchain::fail("iOS libraries must run inside a host app"),
+        };
+    }
     if cli.target == "wasm32" {
-        if let Some(code) = reject_debug_wasm(cli) {
+        if let Some(code) = reject_debug_cross_target(cli) {
             return code;
         }
         return wasm::run(input.debug_path(), input.program());
@@ -1236,6 +1324,8 @@ mod tests {
     fn parse_target_accepts_known_and_rejects_unknown() {
         assert_eq!(parse_target("native").as_deref(), Ok("native"));
         assert_eq!(parse_target("wasm32").as_deref(), Ok("wasm32"));
+        assert_eq!(parse_target("ios").as_deref(), Ok("ios"));
+        assert_eq!(parse_target("ios-sim").as_deref(), Ok("ios-sim"));
         assert!(parse_target("x86").is_err());
     }
 
@@ -1255,12 +1345,28 @@ mod tests {
     #[test]
     fn debug_wasm_rejection_is_centralized() {
         let mut c = cli("p.osp", "--run", Policy::allow_all());
-        assert!(reject_debug_wasm(&c).is_none());
+        assert!(reject_debug_cross_target(&c).is_none());
         c.debug = true;
-        assert!(reject_debug_wasm(&c).is_some());
+        assert!(reject_debug_cross_target(&c).is_some());
         c.debug = false;
         c.profile = true;
-        assert!(reject_debug_wasm(&c).is_some());
+        assert!(reject_debug_cross_target(&c).is_some());
+    }
+
+    #[test]
+    fn wasm_rejects_native_only_options_in_ir_and_check_modes() {
+        let parsed = osprey_syntax::parse_program("print(1)\n");
+        let input = CompilationInput::script("app.osp", "print(1)\n".to_string(), parsed.program);
+        for mode in ["--llvm", "--check"] {
+            for flag in ["--memory=gc", "--memory=arc", "--debug"] {
+                let args = ["app.osp", "--target=wasm32", mode, flag].map(str::to_string);
+                let cli = parse_args(&args).expect("valid arguments");
+                assert!(
+                    target_error(&cli, &input).is_some(),
+                    "{mode} accepted {flag}"
+                );
+            }
+        }
     }
 
     #[test]

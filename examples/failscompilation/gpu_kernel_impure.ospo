@@ -1,6 +1,8 @@
-// [GPU-KERNEL-PURE]: a kernel that performs an effect is rejected even when a
-// handler surrounds the combinator call — handlers make effects dischargeable
-// on the host, but a kernel body cannot leave the device to reach one.
+// [GPU-KERNEL-PURE], [STAGE-GPU-LEGAL]: a kernel that performs a DYNAMIC effect
+// is rejected even when a handler surrounds the combinator call — handlers make
+// effects dischargeable on the host, but a kernel body cannot leave the device
+// to reach one. A static effect is answered before the kernel runs and stays
+// legal, which is why the message names the residual row rather than purity.
 effect Log {
     write: fn(string) -> Unit
 }

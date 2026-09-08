@@ -2102,9 +2102,23 @@ fn clear_value_verdicts(value: &mut Value) {
     clippy::too_many_lines,
     reason = "the fixed point, contract validation, and entry proof form one ordered checker pass"
 )]
-pub(crate) fn check(program: &Program, instances: &Instances) -> Vec<TypeError> {
+pub(crate) fn check(program: &Program, instances: &Instances, exports: &[&str]) -> Vec<TypeError> {
     let index = Index::collect(program);
+    let axis = crate::multiplicity::OperationAxis::collect(program);
     let mut errors = Vec::new();
+    let exported: Vec<_> = exports
+        .iter()
+        .filter_map(|name| {
+            if let Some(id) = index.functions.iter().position(|f| f.qualified == *name) {
+                Some((id, *name))
+            } else {
+                errors.push(TypeError::new(format!(
+                    "library export `{name}` is not a defined function"
+                )));
+                None
+            }
+        })
+        .collect();
     for function in &index.functions {
         let unknown: BTreeSet<_> = function
             .declared_effects
@@ -2198,6 +2212,7 @@ pub(crate) fn check(program: &Program, instances: &Instances) -> Vec<TypeError> 
         }
         validate_handler_arms(
             &analyzer,
+            &axis,
             &function.body,
             &function.scope,
             &analyzer.scoped_env(&function.parameters),
@@ -2207,6 +2222,7 @@ pub(crate) fn check(program: &Program, instances: &Instances) -> Vec<TypeError> 
     let mut top_level_env = CallableEnv::default();
     validate_statement_handlers(
         &analyzer,
+        &axis,
         &program.statements,
         &[],
         &mut top_level_env,
@@ -2228,6 +2244,17 @@ pub(crate) fn check(program: &Program, instances: &Instances) -> Vec<TypeError> 
     {
         entry.union(rows.get(main).cloned().unwrap_or_default());
     }
+    errors.extend(entry_errors(&entry, "program entry"));
+    for (id, name) in exported {
+        if let Some(row) = rows.get(id) {
+            errors.extend(entry_errors(row, &format!("library export `{name}`")));
+        }
+    }
+    errors
+}
+
+fn entry_errors(entry: &Summary, context: &str) -> Vec<TypeError> {
+    let mut errors = Vec::new();
     if !entry.required.is_empty() {
         let operations = entry
             .required
@@ -2236,24 +2263,25 @@ pub(crate) fn check(program: &Program, instances: &Instances) -> Vec<TypeError> 
             .collect::<Vec<_>>()
             .join(", ");
         errors.push(TypeError::new(format!(
-            "unhandled effect operations at program entry: {operations}; add a matching `handle`"
+            "unhandled effect operations at {context}: {operations}; add a matching `handle`"
         )));
     }
     if !entry.parameter_uses.is_empty() {
-        errors.push(TypeError::new(
-            "program entry invokes an effect-polymorphic callback whose effects cannot be discharged",
-        ));
+        errors.push(TypeError::new(format!(
+            "{context} invokes an effect-polymorphic callback whose effects cannot be discharged"
+        )));
     }
     if entry.unresolved_dynamic_call {
-        errors.push(TypeError::new(
-            "program entry invokes a dynamic callable whose effect provenance cannot be proven; preserve the callable through a statically tracked value path",
-        ));
+        errors.push(TypeError::new(format!(
+            "{context} invokes a dynamic callable whose effect provenance cannot be proven; preserve the callable through a statically tracked value path"
+        )));
     }
     errors
 }
 
 fn validate_statement_handlers(
     analyzer: &Analyzer<'_>,
+    axis: &crate::multiplicity::OperationAxis,
     statements: &[Stmt],
     scope: &[String],
     env: &mut CallableEnv,
@@ -2267,7 +2295,7 @@ fn validate_statement_handlers(
             _ => None,
         };
         if let Some(value) = value {
-            validate_handler_arms(analyzer, value, scope, env, errors);
+            validate_handler_arms(analyzer, axis, value, scope, env, errors);
         }
         match statement {
             Stmt::Let { name, value, .. } | Stmt::Assignment { name, value, .. } => {
@@ -2328,8 +2356,15 @@ fn validate_gpu_kernel(
     }
 }
 
-/// The rejection message for a GPU combinator kernel, or `None` when the
-/// kernel is provably pure [GPU-KERNEL-PURE].
+/// The rejection message for a GPU combinator kernel, or `None` when the kernel
+/// is stage-legal.
+///
+/// Two rejections, and the difference is what the checker could see. When it
+/// cannot resolve the callback to a definition it says so and fails closed
+/// ([GPU-KERNEL-PURE]); when it CAN, and the row it read still needs a runtime
+/// handler, it names those operations instead — a kernel is no longer required
+/// to be pure, only to have nothing left to answer at the boundary.
+/// Implements [STAGE-GPU-LEGAL], [STAGE-GPU-DIAG].
 fn gpu_kernel_verdict(
     analyzer: &Analyzer<'_>,
     kernel: &Expr,
@@ -2345,7 +2380,7 @@ fn gpu_kernel_verdict(
     if !row.required.is_empty() {
         let performed: Vec<String> = row.required.iter().map(requirement_name).collect();
         return Some(format!(
-            "GPU kernel must be pure; it performs: {}",
+            "kernel body is not stage-legal; it requires dynamic effects: {}",
             performed.join(", ")
         ));
     }
@@ -2367,6 +2402,7 @@ fn kernel_position(kernel: &Expr) -> Option<Position> {
 
 fn validate_handler_arms(
     analyzer: &Analyzer<'_>,
+    axis: &crate::multiplicity::OperationAxis,
     expression: &Expr,
     scope: &[String],
     env: &CallableEnv,
@@ -2383,7 +2419,18 @@ fn validate_handler_arms(
     {
         let handler_arguments =
             analyzer.instance_arguments(effect, *position, &analyzer.instances.handlers, "handler");
+        // The row [MULTI-REPLAY-COARSE] reads: every operation the handled
+        // expression requires, before this handler discharges any of them.
+        let handled_row = operation_pairs(&analyzer.expression(body, scope, env));
+        let fibered = fibered_operation(analyzer, effect, body, scope, env);
         for arm in arms {
+            errors.extend(crate::multiplicity::arm_errors(
+                axis,
+                effect,
+                arm,
+                &handled_row,
+                fibered.as_deref(),
+            ));
             let local = analyzer.handler_arm_env(effect, arm, body, scope, env);
             let row = analyzer.expression(&arm.body, scope, &local);
             if row.required.iter().any(|requirement| {
@@ -2399,14 +2446,104 @@ fn validate_handler_arms(
                     .with_pos(arm.position),
                 );
             }
-            validate_handler_arms(analyzer, &arm.body, scope, &local, errors);
+            validate_handler_arms(analyzer, axis, &arm.body, scope, &local, errors);
         }
-        validate_handler_arms(analyzer, body, scope, env, errors);
+        validate_handler_arms(analyzer, axis, body, scope, env, errors);
         return;
     }
     walk_children(expression, |child| {
-        validate_handler_arms(analyzer, child, scope, env, errors);
+        validate_handler_arms(analyzer, axis, child, scope, env, errors);
     });
+}
+
+/// A summary's requirements as bare `(effect, operation)` pairs. Multiplicity
+/// is a property of the DECLARATION, so the instance arguments a row entry
+/// carries are irrelevant to every rule in that axis. Implements [MULTI-REPLAY-CHECK].
+fn operation_pairs(summary: &Summary) -> BTreeSet<(String, String)> {
+    summary
+        .required
+        .iter()
+        .map(|requirement| (requirement.effect.clone(), requirement.operation.clone()))
+        .collect()
+}
+
+/// The first operation of `effect` that the handled expression performs inside
+/// a `spawn` — through the functions it calls as well as in its own syntax,
+/// because `spawn ask(a)` is almost always one call away from the `handle`.
+///
+/// A resuming handler serializes one suspend-to-resume round trip per perform
+/// ([EFFECTS-FIBER-PERFORM]); a second resumption of a continuation spanning a
+/// spawned fiber has no order to belong to. Implements [MULTI-REPLAY-FIBER].
+fn fibered_operation(
+    analyzer: &Analyzer<'_>,
+    effect: &str,
+    body: &Expr,
+    scope: &[String],
+    env: &CallableEnv,
+) -> Option<String> {
+    let mut operations = BTreeSet::new();
+    for (region, region_scope) in reachable_bodies(analyzer.index, body, scope) {
+        spawned_bodies(region, &mut |spawned| {
+            operations.extend(
+                operation_pairs(&analyzer.expression(spawned, region_scope, env))
+                    .into_iter()
+                    .filter(|(row_effect, _)| row_effect == effect)
+                    .map(|(_, operation)| operation),
+            );
+        });
+    }
+    operations.into_iter().next()
+}
+
+/// The handled expression and the body of every function it can reach through
+/// a statically named call, each paired with the scope its names resolve in.
+///
+/// Conservative on purpose: any mention of a function's name counts as reaching
+/// it, since a name passed as a value is a call the row engine must assume
+/// happens. Over-reaching costs a rejection the plan already fails closed on;
+/// under-reaching would miss the fiber boundary this rule exists to find.
+fn reachable_bodies<'a>(
+    index: &'a Index,
+    body: &'a Expr,
+    scope: &'a [String],
+) -> Vec<(&'a Expr, &'a [String])> {
+    let mut regions: Vec<(&Expr, &[String])> = vec![(body, scope)];
+    let mut visited = HashSet::new();
+    let mut next = 0;
+    while let Some((region, region_scope)) = regions.get(next).copied() {
+        next += 1;
+        let mut names = Vec::new();
+        named_references(region, &mut |name| names.push(name.to_string()));
+        for id in names
+            .iter()
+            .filter_map(|name| index.resolve(region_scope, name))
+        {
+            if visited.insert(id) {
+                if let Some(function) = index.functions.get(id) {
+                    regions.push((&function.body, &function.scope));
+                }
+            }
+        }
+    }
+    regions
+}
+
+/// Apply `visit` to every identifier and path mentioned in `expression`.
+fn named_references<'a>(expression: &'a Expr, visit: &mut impl FnMut(&'a str)) {
+    if let Some(name) = expression_name(expression) {
+        visit(name);
+    }
+    walk_children(expression, |child| named_references(child, visit));
+}
+
+/// Apply `visit` to the body of every `spawn` inside `expression`, including
+/// those below a nested handler — a fiber spawned there still crosses this
+/// region's continuation.
+fn spawned_bodies<'a>(expression: &'a Expr, visit: &mut impl FnMut(&'a Expr)) {
+    if let Expr::Spawn(spawned) = expression {
+        visit(spawned);
+    }
+    walk_children(expression, |child| spawned_bodies(child, visit));
 }
 
 #[expect(

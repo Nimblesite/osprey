@@ -55,8 +55,7 @@ values, not an unrelated checklist.
   plumbing and concurrent functions do not need a separate colour.
 - **Failures are ordinary data.** Results make expected failure visible and let
   the caller decide what to do.
-- **Deployment is direct.** Compile native binaries or WebAssembly and call
-  existing C libraries when needed.
+- **Deployment is direct.** Compile native binaries, WebAssembly, or C ABI application libraries for iOS and Android. Call existing C libraries when needed.
 - **Choices remain local.** Select syntax per file and memory management per
   build instead of reshaping the whole application.
 
@@ -121,8 +120,7 @@ quickly:
   shared mutable state or colored functions.
 - **Selectable memory management** — reference counting, garbage collection or
   a strict static mode, without rewriting the application.
-- **Native LLVM and WebAssembly output** — systems-oriented deployment with a
-  direct C FFI.
+- **Native LLVM, WebAssembly, and mobile C ABI output** — compile application logic for native iOS and Android hosts, with target-specific capability checks.
 
 Not every page needs every point. Preserve the order and select the features
 relevant to the page rather than inventing a new identity for Osprey.
@@ -180,8 +178,7 @@ language layered on top. Both are intended to expose the full language.
 - Default (`.osp`) is familiar to developers from brace-based languages.
 - ML (`.ospml`) is layout-sensitive and curry-by-default.
 - Both become the same internal program before type checking and compilation.
-- Files may choose a flavor independently; cross-flavor project integration is
-  the design direction and must not be described as complete until it is.
+- Files may choose a flavor independently, and project modules can import files in either flavor. The [mobile example](../examples/mobile/README.md) combines ML application modules with a small Default C ABI entry file.
 
 Prefer “two flavors, one language.” Avoid “two tribes,” which suggests that the
 project is dividing people rather than giving them a readable surface.
@@ -222,19 +219,23 @@ These constraints materially affect how the language must be described:
   at compile time. The remaining scope limit is representational, not a hole in
   the check: it reasons over closed-program operation summaries rather than an
   effect-row variable in a function type.
-- Effects that pause work and later continue it are currently available only in
-  native programs. WebAssembly supports effects that return immediately.
+- Effects that pause work and later continue it are available on the host `native` target. WebAssembly and iOS/Android C ABI targets support substituting handlers and reject unsupported resumable effects, including explicit `resume`, before LLVM emission or linking. Do not call resumption simply "native-only" without distinguishing host-native programs from native mobile libraries.
 - An effect can now say **when** it is answered. An effect declared `static` is
   worked out by the compiler before the program runs and leaves nothing behind;
   an ordinary effect is answered while the program runs, exactly as before. This
   is a prototype in the brace flavor only (docs/specs/0035-StagedEffects.md):
-  the ML flavor has no `static` surface yet, and the reactive and device
-  features the design enables are not built. Describe what it does today —
+  the ML flavor has no `static` surface yet, and the effect-derived reactive runtime and device features proposed by that spec are not built. Describe what it does today —
   compile-time answers with no runtime cost, and a compiler-derived list of
   which data a function reads — not the roadmap it opens.
+- The [reactive mobile application](../examples/mobile/README.md) is implemented using ordinary Osprey modules and explicit event/state/command transitions. Osprey defines its screen tree, state, GitHub request and decoding logic, SQLite schema and statements, offline cache, search, bookmarks, notes, and priorities. Native hosts render the tree and execute platform services. This working application does not imply that the staged-effects reactive runtime is implemented.
+- The same spec sets a second target: an effect says **how many times** it may
+  be answered, so the compiler refuses to re-run work that must not happen
+  twice. None of it is built — no syntax, no checks — and today an effect
+  answered twice stops the program when it runs rather than when it is written.
+  Describe it only as specified behaviour, on the same footing as the other
+  normative targets, and never as something a developer can use now.
 - Tail-call optimisation is not implemented.
-- Generics, complete multi-file module imports and a package manager remain
-  roadmap work.
+- Multi-file project modules and cross-flavor imports are implemented. A package manager remains roadmap work; describe further module or generic features according to their individual implementation status.
 - GPU computation is a typed language surface with a host execution backend:
   `GpuBuffer` types, data-parallel kernels the compiler proves pure at compile
   time, and dense buffers that run as native loops today
@@ -243,6 +244,7 @@ These constraints materially affect how the language must be described:
   hardware yet.
 - WebAssembly memory behavior must be checked against what the browser runtime
   currently supports rather than assumed from native builds.
+- Mobile C ABI targets currently support the default allocator, which retains general allocations for the process lifetime. They do not expose a stable library teardown or returned-string release API. Platform networking belongs to the native host; unsupported built-in native process, HTTP, WebSocket, and resumable-effect operations fail compilation.
 - The C FFI is outside Osprey's memory-safety guarantee.
 
 Update this section when implementation status changes. A claim becoming true in

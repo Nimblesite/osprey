@@ -21,6 +21,17 @@ pub fn compile_program(program: &Program) -> Result<String> {
     compile_program_with_options(program, CodegenOptions::default())
 }
 
+/// Compile app logic whose module state remains live after initialization.
+/// The host owns process lifetime and calls exported functions after entry
+/// returns. [IOS-TARGET-ENTRY] [WASM-WEB-ABI]
+///
+/// # Errors
+///
+/// Returns `Err` under the same conditions as [`compile_program`].
+pub fn compile_library(program: &Program) -> Result<String> {
+    compile_module(program, CodegenOptions::default(), true)
+}
+
 /// Compile a whole program with LLVM/DWARF debug metadata rooted at `source`.
 ///
 /// # Errors
@@ -64,6 +75,10 @@ fn with_kernel_mode(options: CodegenOptions) -> Result<CodegenOptions> {
 }
 
 fn compile_program_with_options(program: &Program, options: CodegenOptions) -> Result<String> {
+    compile_module(program, options, false)
+}
+
+fn compile_module(program: &Program, options: CodegenOptions, library: bool) -> Result<String> {
     let options = with_kernel_mode(options)?;
     let prog = osprey_types::infer_program(program);
     let mut cg = Codegen::with_options(prog, options);
@@ -139,18 +154,20 @@ fn compile_program_with_options(program: &Program, options: CodegenOptions) -> R
         cg.cell_vars = crate::effects::captured_mut_vars(body);
         let _ = gen_expr(&mut cg, body)?;
     }
-    crate::globals::release_all(&mut cg);
+    if !library {
+        crate::globals::release_all(&mut cg);
+    }
     // A program that used the testing built-ins exits with the TAP epilogue's
     // status (plan + summary printed by the runtime) [TESTING-EXIT].
     crate::arc::epilogue(&mut cg, None);
-    if cg.lowered.fibers {
+    if cg.lowered.fibers && !library {
         // A completed fiber keeps one runtime owner so every `await` can return
         // its own retained reference. Main's language owners are gone now, so
         // release those runtime roots before process-exit leak accounting.
         cg.add_extern("declare void @fiber_cleanup_results()");
         cg.emit("call void @fiber_cleanup_results()");
     }
-    if cg.lowered.channels {
+    if cg.lowered.channels && !library {
         // A value sent and never received still holds the reference `send`
         // transferred to the channel, and nothing else can hand it back —
         // `fiber_cleanup_results` walks fibers, not channels [GC-ARC-PERCEUS].

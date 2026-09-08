@@ -17,8 +17,22 @@
 //! spec's per-region rule ([STAGE-LOWER-ORDER]) is a superset of this.
 
 use crate::mutate::children_mut;
-use crate::{contains_resume, walk_program, AstVisitor, Expr, HandlerArm, Position, Program, Stmt};
+use crate::{
+    contains_resume, effect_name, walk_program, AstVisitor, Expr, HandlerArm, Multiplicity,
+    Position, Program, Stmt,
+};
 use std::collections::BTreeMap;
+
+pub use crate::stage_rows::dependencies;
+pub(crate) use crate::stage_rows::{body_requirements, runtime_requirements};
+
+/// The marker that declares a compile-time stage, spelled once so both flavors'
+/// surfaces and every diagnostic agree. Implements [STAGE-DECL].
+pub const STATIC_STAGE_KEYWORD: &str = "static";
+
+/// The marker that opens a device-offload region, spelled once so the grammar,
+/// both lowerers and every diagnostic agree. Implements [STAGE-GPU-KERNEL].
+pub const KERNEL_REGION_KEYWORD: &str = "kernel";
 
 /// When an effect's operations are answered. Implements [STAGE-AXIS].
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -29,6 +43,32 @@ pub enum Stage {
     Dynamic,
     /// Answered by rewriting, before type checking. Implements [STAGE-DECL].
     Static,
+    /// A `kernel` region: discharged exactly as [`Stage::Static`] is, and
+    /// additionally obliged to leave a body whose residual DYNAMIC row is
+    /// empty — the offload boundary cannot reach a runtime handler.
+    /// Implements [STAGE-GPU-KERNEL], [STAGE-GPU-LEGAL].
+    Kernel,
+}
+
+impl Stage {
+    /// Whether the region is answered by rewriting rather than at runtime.
+    /// A `kernel` is a static handler region that carries one extra obligation,
+    /// so every phase that asks "is this discharged before the checker?" asks
+    /// this rather than comparing against one variant. Implements [STAGE-LOWER].
+    #[must_use]
+    pub const fn is_compile_time(self) -> bool {
+        matches!(self, Self::Static | Self::Kernel)
+    }
+
+    /// How a region of this stage is written, as diagnostics spell it.
+    #[must_use]
+    pub const fn region_keyword(self) -> &'static str {
+        match self {
+            Self::Dynamic => "handle",
+            Self::Static => "handle static",
+            Self::Kernel => KERNEL_REGION_KEYWORD,
+        }
+    }
 }
 
 /// One violated staging rule, reported like any other compile error.
@@ -67,7 +107,23 @@ pub(crate) const REWRITE_DEPTH_BOUND: u32 = 256;
 /// The declared operations of one effect, with its stage.
 pub(crate) struct EffectDecl {
     pub(crate) stage: Stage,
-    operations: Vec<String>,
+    operations: Vec<DeclaredOperation>,
+    /// How many type parameters the declaration takes. An explicit mention
+    /// must supply exactly this many, so `Signal<Count>` names an instantiation
+    /// the declaration can actually have. Implements [STAGE-SIGNALS-EXACT].
+    type_parameters: usize,
+    position: Option<Position>,
+}
+
+/// One operation as its declaration wrote it. Multiplicity travels in the
+/// summary so [MULTI-AXIS-STATIC] is decided by the pass that already knows
+/// each effect's stage, rather than by a second walk over the same declarations.
+struct DeclaredOperation {
+    name: String,
+    /// The keyword as WRITTEN. [MULTI-AXIS-STATIC] rejects a multiplicity
+    /// written on a static operation, and `once` — the default — is a legal
+    /// thing to write, so the annotation's presence is what this records.
+    declared_multiplicity: Option<Multiplicity>,
     position: Option<Position>,
 }
 
@@ -80,7 +136,15 @@ pub(crate) struct EffectDecl {
 /// capture ([STAGE-STATIC-TAIL]), a runtime request from a compile-time answer
 /// ([STAGE-STATIC-MONOTONE]) or an unbounded rewrite ([STAGE-STATIC-FINITE]).
 pub fn discharge(program: &Program) -> Result<Program, Vec<StageError>> {
-    let errors = validate_handlers(program, &effect_declarations(program));
+    let declarations = effect_declarations(program);
+    let mut errors = static_multiplicities(&declarations);
+    errors.extend(validate_handlers(program, &declarations));
+    // The offload obligation reads the row a WELL-FORMED region leaves behind,
+    // so a region that broke a rule above would cascade a second, derived
+    // complaint about the effect the first one already named.
+    if errors.is_empty() {
+        errors.extend(crate::kernel::legality(program));
+    }
     if !errors.is_empty() {
         return Err(errors);
     }
@@ -97,13 +161,22 @@ pub(crate) fn effect_declarations(program: &Program) -> BTreeMap<String, EffectD
                 stage,
                 name,
                 operations,
+                type_params,
                 position,
                 ..
             } = statement
             {
                 let declared = EffectDecl {
                     stage: *stage,
-                    operations: operations.iter().map(|op| op.name.clone()).collect(),
+                    type_parameters: type_params.len(),
+                    operations: operations
+                        .iter()
+                        .map(|op| DeclaredOperation {
+                            name: op.name.clone(),
+                            declared_multiplicity: op.declared_multiplicity,
+                            position: op.position,
+                        })
+                        .collect(),
                     position: *position,
                 };
                 let _ = self.0.insert(name.clone(), declared);
@@ -133,17 +206,113 @@ struct RuleCollector<'a> {
 
 impl AstVisitor for RuleCollector<'_> {
     fn expression(&mut self, expression: &Expr) {
-        if let Expr::Handler {
-            stage,
-            effect,
-            arms,
-            position,
-            ..
-        } = expression
-        {
-            self.register(*stage, effect, arms, *position);
+        match expression {
+            Expr::Handler {
+                stage,
+                effect,
+                arms,
+                position,
+                ..
+            } => {
+                self.errors.extend(instantiation_errors(
+                    self.effects,
+                    effect,
+                    Site::region(*stage),
+                    *position,
+                ));
+                self.register(*stage, effect, arms, *position);
+            }
+            Expr::Perform {
+                effect, position, ..
+            } => self.errors.extend(instantiation_errors(
+                self.effects,
+                effect,
+                Site::REQUEST,
+                *position,
+            )),
+            _ => {}
         }
     }
+}
+
+/// Where an effect mention appears: a `perform`, or a region of some stage.
+/// The stage matters because a region whose stage disagrees with its effect's
+/// is already rejected by that rule, and a second complaint about the same
+/// mention would advise a spelling the first rule still forbids.
+#[derive(Clone, Copy)]
+struct Site {
+    keyword: &'static str,
+    stage: Option<Stage>,
+}
+
+impl Site {
+    /// A `perform`, which has no stage of its own.
+    const REQUEST: Self = Self {
+        keyword: "perform",
+        stage: None,
+    };
+
+    /// A handler region, written as its stage writes it.
+    const fn region(stage: Stage) -> Self {
+        Self {
+            keyword: stage.region_keyword(),
+            stage: Some(stage),
+        }
+    }
+
+    /// Whether this site's stage can answer an effect declared at `declared`.
+    /// A `perform` can be answered at either, so it never disagrees.
+    fn agrees_with(self, declared: Stage) -> bool {
+        self.stage
+            .is_none_or(|stage| stage.is_compile_time() == (declared == Stage::Static))
+    }
+}
+
+/// What an explicit instantiation at a mention site must satisfy.
+///
+/// Identity is the instantiation ([STAGE-SIGNALS-EXACT]), which is what makes a
+/// dependency set exact — and which only the STATIC stage can represent: a
+/// dynamic handler is keyed by effect name at runtime, so two instantiations of
+/// one dynamic effect would share a key and the second would silently answer
+/// the first. Saying so is the obligation; accepting it is the silent wrong
+/// answer. Implements [STAGE-SIGNALS-EXACT].
+fn instantiation_errors(
+    effects: &BTreeMap<String, EffectDecl>,
+    effect: &str,
+    site: Site,
+    position: Option<Position>,
+) -> Vec<StageError> {
+    if effect_name::instantiation(effect).is_none() {
+        return Vec::new();
+    }
+    let base = effect_name::base(effect);
+    let Some(declared) = effects.get(base) else {
+        return Vec::new();
+    };
+    if !site.agrees_with(declared.stage) {
+        return Vec::new();
+    }
+    let site = site.keyword;
+    let supplied = effect_name::arity(effect);
+    if declared.stage == Stage::Dynamic {
+        return vec![StageError::new(
+            format!(
+                "`{site} {effect}` names an instantiation of dynamic effect `{base}`; a dynamic handler is keyed by effect name at runtime, so instantiations share one key and cannot be told apart (docs/plans/0024-staged-effects.md). Declare `static effect {base}`, or write `{site} {base}` and let inference instantiate it"
+            ),
+            position,
+        )];
+    }
+    if supplied != declared.type_parameters {
+        let expected = declared.type_parameters;
+        let plural = if expected == 1 { "" } else { "s" };
+        return vec![StageError::new(
+            format!(
+                "effect `{base}` takes {expected} type parameter{plural}; `{effect}` supplies {supplied}"
+            ),
+            position,
+        )];
+    }
+    Vec::new()
 }
 
 impl RuleCollector<'_> {
@@ -156,25 +325,34 @@ impl RuleCollector<'_> {
         arms: &[HandlerArm],
         position: Option<Position>,
     ) {
-        let declared_stage = self.effects.get(effect).map(|declared| declared.stage);
+        let base = effect_name::base(effect);
+        let declared_stage = self.effects.get(base).map(|declared| declared.stage);
         match (stage, declared_stage) {
+            (Stage::Kernel, Some(Stage::Dynamic)) => self.errors.push(StageError::new(
+                format!(
+                    "kernel arm names dynamic effect `{base}`; a kernel supplies the STATIC handlers for the device dialects its body uses, so declare `static effect {base}`"
+                ),
+                position,
+            )),
             (Stage::Static, Some(Stage::Dynamic)) => self.errors.push(StageError::new(
                 format!(
-                    "effect `{effect}` is dynamic; a static handler requires `static effect {effect}`"
+                    "effect `{base}` is dynamic; a static handler requires `static effect {base}`"
                 ),
                 position,
             )),
             (Stage::Dynamic, Some(Stage::Static)) => self.errors.push(StageError::new(
                 format!(
-                    "effect `{effect}` is static; handle it with `handle static {effect}` so it is discharged at compile time"
+                    "effect `{base}` is static; handle it with `handle static {base}` so it is discharged at compile time"
                 ),
                 position,
             )),
-            (Stage::Static, None) => self.errors.push(StageError::new(
-                format!("static handler names unknown effect `{effect}`"),
+            (Stage::Static | Stage::Kernel, None) => self.errors.push(StageError::new(
+                format!("{} names unknown effect `{base}`", stage.region_keyword()),
                 position,
             )),
-            (Stage::Static, Some(Stage::Static)) => self.register_static(effect, arms, position),
+            (Stage::Static | Stage::Kernel, Some(_)) => {
+                self.register_static(effect, arms, position);
+            }
             (Stage::Dynamic, _) => {}
         }
     }
@@ -215,20 +393,43 @@ fn missing_arms(
     arms: &[HandlerArm],
     position: Option<Position>,
 ) -> Vec<StageError> {
-    let Some(declared) = effects.get(effect) else {
+    let Some(declared) = effects.get(effect_name::base(effect)) else {
         return Vec::new();
     };
     declared
         .operations
         .iter()
-        .filter(|operation| !arms.iter().any(|arm| &&arm.operation == operation))
+        .filter(|operation| !arms.iter().any(|arm| arm.operation == operation.name))
         .map(|operation| {
+            let name = &operation.name;
             StageError::new(
-                format!(
-                    "static handler for `{effect}` does not cover operation `{effect}.{operation}`"
-                ),
+                format!("static handler for `{effect}` does not cover operation `{effect}.{name}`"),
                 position.or(declared.position),
             )
+        })
+        .collect()
+}
+
+/// Static effects sit outside the multiplicity lattice: [STAGE-STATIC-TAIL]
+/// pins them at exactly-once-in-tail-position, the one point where a
+/// continuation need not exist, so a multiplicity written on one is not a
+/// narrowing but a contradiction. Implements [MULTI-AXIS-STATIC].
+fn static_multiplicities(effects: &BTreeMap<String, EffectDecl>) -> Vec<StageError> {
+    effects
+        .iter()
+        .filter(|(_, declared)| declared.stage == Stage::Static)
+        .flat_map(|(effect, declared)| {
+            declared
+                .operations
+                .iter()
+                .filter(|operation| operation.declared_multiplicity.is_some())
+                .map(move |operation| {
+                    let name = &operation.name;
+                    StageError::new(
+                        format!("multiplicity on static effect `{effect}.{name}`; static operations are always tail-resumptive"),
+                        operation.position.or(declared.position),
+                    )
+                })
         })
         .collect()
 }
@@ -243,7 +444,7 @@ fn dynamic_requests(
         .into_iter()
         .filter(|(performed, _)| {
             effects
-                .get(performed)
+                .get(effect_name::base(performed))
                 .is_none_or(|declared| declared.stage == Stage::Dynamic)
         })
         .map(|(performed, operation)| {
@@ -273,149 +474,4 @@ fn collect_performs(expression: &mut Expr, found: &mut Vec<(String, String)>) {
         found.push((effect.clone(), operation.clone()));
     }
     children_mut(expression, &mut |child| collect_performs(child, found));
-}
-
-/// The static-effect operations each named function requires, transitively
-/// through the calls it makes, minus everything it discharges itself.
-/// Implements [STAGE-SIGNALS-DIRTY].
-///
-/// This is the dependency set: a reactive read is a static operation, so the
-/// row a function already carries names exactly the data it touches. The query
-/// runs on the program **before** [`discharge`] erases those operations —
-/// erasure is what makes the read free, and this is what makes it exact.
-#[must_use]
-pub fn dependencies(program: &Program) -> BTreeMap<String, Vec<String>> {
-    let effects = effect_declarations(program);
-    let facts: BTreeMap<String, BodyFacts> = function_bodies(program)
-        .iter()
-        .map(|(name, body)| (name.clone(), body_facts(body, &effects)))
-        .collect();
-    let mut required: BTreeMap<String, Vec<String>> = facts
-        .iter()
-        .map(|(name, fact)| (name.clone(), fact.direct.clone()))
-        .collect();
-    for _ in 0..=facts.len() {
-        let propagated = propagate(&facts, &required);
-        if propagated == required {
-            break;
-        }
-        required = propagated;
-    }
-    required
-}
-
-/// What one function body contributes to its own dependency set: the static
-/// operations it performs outside any region that answers them, and the names
-/// it references together with the effects already answered at that point.
-struct BodyFacts {
-    direct: Vec<String>,
-    references: Vec<(String, Vec<String>)>,
-}
-
-/// One fixed-point step: each function gains every requirement of what it
-/// references, except the effects a region already answered around it.
-fn propagate(
-    facts: &BTreeMap<String, BodyFacts>,
-    required: &BTreeMap<String, Vec<String>>,
-) -> BTreeMap<String, Vec<String>> {
-    facts
-        .iter()
-        .map(|(name, fact)| {
-            let mut operations = fact.direct.clone();
-            for (callee, handled) in &fact.references {
-                let inherited = required.get(callee).into_iter().flatten();
-                operations.extend(
-                    inherited
-                        .filter(|operation| !handled.iter().any(|e| owns(e, operation)))
-                        .cloned(),
-                );
-            }
-            (name.clone(), sorted(operations))
-        })
-        .collect()
-}
-
-/// Whether `effect` declares `operation` (an `Effect.op` name).
-fn owns(effect: &str, operation: &str) -> bool {
-    operation.split('.').next() == Some(effect)
-}
-
-fn sorted(mut operations: Vec<String>) -> Vec<String> {
-    operations.sort();
-    operations.dedup();
-    operations
-}
-
-/// Walk one body, tracking which static effects an enclosing region already
-/// answers so a self-handled effect never counts as a dependency.
-fn body_facts(body: &Expr, effects: &BTreeMap<String, EffectDecl>) -> BodyFacts {
-    let mut facts = BodyFacts {
-        direct: Vec::new(),
-        references: Vec::new(),
-    };
-    scan_body(&mut body.clone(), effects, &mut Vec::new(), &mut facts);
-    facts.direct = sorted(std::mem::take(&mut facts.direct));
-    facts
-}
-
-fn scan_body(
-    expression: &mut Expr,
-    effects: &BTreeMap<String, EffectDecl>,
-    handled: &mut Vec<String>,
-    facts: &mut BodyFacts,
-) {
-    match expression {
-        Expr::Handler {
-            stage: Stage::Static,
-            effect,
-            arms,
-            body,
-            ..
-        } => {
-            let effect = effect.clone();
-            for arm in arms {
-                scan_body(&mut arm.body, effects, handled, facts);
-            }
-            handled.push(effect);
-            scan_body(body, effects, handled, facts);
-            let _ = handled.pop();
-        }
-        Expr::Perform {
-            effect, operation, ..
-        } => {
-            let (effect, operation) = (effect.clone(), operation.clone());
-            if is_static(effects, &effect) && !handled.contains(&effect) {
-                facts.direct.push(format!("{effect}.{operation}"));
-            }
-            children_mut(expression, &mut |child| {
-                scan_body(child, effects, handled, facts);
-            });
-        }
-        Expr::Identifier(name) => facts.references.push((name.clone(), handled.clone())),
-        _ => children_mut(expression, &mut |child| {
-            scan_body(child, effects, handled, facts);
-        }),
-    }
-}
-
-fn is_static(effects: &BTreeMap<String, EffectDecl>, effect: &str) -> bool {
-    effects
-        .get(effect)
-        .is_some_and(|declared| declared.stage == Stage::Static)
-}
-
-/// Every named function in the program, at any nesting depth.
-fn function_bodies(program: &Program) -> BTreeMap<String, Expr> {
-    #[derive(Default)]
-    struct Collector(BTreeMap<String, Expr>);
-    impl AstVisitor for Collector {
-        fn statement(&mut self, statement: &Stmt) {
-            if let Stmt::Function { name, body, .. } = statement {
-                let _ = self.0.insert(name.clone(), body.clone());
-            }
-        }
-    }
-    let mut collector = Collector::default();
-    walk_program(program, &mut collector);
-    collector.0
 }

@@ -298,12 +298,14 @@ fn artifact(base: &Path, target: &str, keep_parent: bool) -> PathBuf {
                 .unwrap_or("osprey_out"),
         )
     };
-    if target == "wasm32" {
-        let mut wasm = output.into_os_string();
-        wasm.push(".wasm");
-        return PathBuf::from(wasm);
-    }
-    output
+    let extension = match target {
+        "wasm32" => ".wasm",
+        "ios" | "ios-sim" | "android-arm64" | "android-x64" => ".a",
+        _ => "",
+    };
+    let mut artifact = output.into_os_string();
+    artifact.push(extension);
+    PathBuf::from(artifact)
 }
 
 #[cfg(test)]
@@ -355,6 +357,8 @@ mod tests {
         let program = osprey_syntax::parse_program("let answer = 42\n").program;
         let input = CompilationInput::script("nested/main.osp", String::new(), program);
         assert_eq!(input.output_path(None, "native"), PathBuf::from("main"));
+        assert_eq!(input.output_path(None, "ios"), PathBuf::from("main.a"));
+        assert_eq!(input.output_path(None, "ios-sim"), PathBuf::from("main.a"));
         assert_eq!(
             input.output_path(None, "wasm32"),
             PathBuf::from("main.wasm")

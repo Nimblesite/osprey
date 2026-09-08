@@ -1,0 +1,12 @@
+{% macro gallery(screenshots) %}
+<div class="mobile-gallery{% if screenshots.length == 1 %} mobile-gallery-single{% endif %}">
+{% for screenshot in screenshots %}
+  <figure class="mobile-capture">
+    <a href="{{ screenshot.src }}" aria-label="Open full-size screenshot: {{ screenshot.platform }}">
+      <img src="{{ screenshot.src }}" alt="{{ screenshot.alt }}" width="{{ screenshot.width }}" height="{{ screenshot.height }}" loading="lazy" decoding="async">
+    </a>
+    <figcaption><strong>{{ screenshot.platform }}</strong><span>{{ screenshot.caption }}</span></figcaption>
+  </figure>
+{% endfor %}
+</div>
+{% endmacro %}

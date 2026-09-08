@@ -10,7 +10,7 @@
 //! *what was written*; the lowerer decides *what it means*. Nothing in this
 //! module references `osprey_ast`.
 
-use osprey_ast::Position;
+use osprey_ast::{Multiplicity, Position, Stage};
 
 /// A source-level namespace/module/member path. Segments are kept separate so
 /// qualification can never be confused with value-level `.` access
@@ -265,6 +265,10 @@ pub(crate) enum MlItem {
     /// `effect Name` + an indented block of `op : P => R` operation lines — an
     /// algebraic effect declaration ([FLAVOR-ML-EFFECT]).
     Effect {
+        /// Whether the effect is answered by a compile-time rewrite
+        /// (`static effect`) or through the runtime handler stack. Implements
+        /// [STAGE-DECL].
+        stage: Stage,
         /// The effect name.
         name: String,
         /// Type parameters between the name and the operation block (e.g. `T`
@@ -337,6 +341,11 @@ pub(crate) struct MlExternParam {
 pub(crate) struct MlEffectOp {
     /// The operation name.
     pub name: String,
+    /// The multiplicity keyword as written, absent when undecorated
+    /// ([MULTI-DECL]).
+    pub multiplicity: Option<Multiplicity>,
+    /// Whether re-performing the operation is acceptable ([MULTI-REPLAY]).
+    pub replayable: bool,
     /// The operation's payload (argument) type.
     pub payload: MlType,
     /// The operation's result type.
@@ -555,6 +564,9 @@ pub(crate) enum MlExpr {
     /// `handle Effect` + indented arms + `in body` — install an effect handler
     /// over the `body` expression ([FLAVOR-ML-EFFECT]).
     Handle {
+        /// Whether the handler is discharged at compile time (`handle static`)
+        /// or installed on the runtime handler stack. Implements [STAGE-DECL].
+        stage: Stage,
         /// The handled effect name.
         effect: String,
         /// The per-operation handler arms.

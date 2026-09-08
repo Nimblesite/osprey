@@ -1,0 +1,153 @@
+(** Resumption multiplicity — how many times an effect's request may be answered
+    ([MULTI-AXIS], docs/specs/0035-StagedEffects.md). The ML twin of
+    `multiplicity.test.osp`, sharing its golden.
+    Implements [MULTI-AXIS], [MULTI-DECL], [MULTI-HANDLE-ONCE], [MULTI-COMPAT]. *)
+
+effect Charge
+    (** Settle `amount`. The handler may retry internally before answering, but
+        answers this request at most once — `once`, written out here to pin that
+        the default and the keyword mean the same thing. *)
+    once charge : int => int
+
+effect Email
+    (** Deliver `body`. Not replayable: sending a receipt twice is a defect. *)
+    deliver : string => Unit
+
+effect Audit
+    (** Record a performer-side event without touching stdout. *)
+    line : string => Unit
+
+effect Random
+    (** A fresh draw; `replayable` asserts re-performing is acceptable
+        ([MULTI-REPLAY]). *)
+    replayable next : Unit => int
+
+(** The modifier words stay ordinary identifiers everywhere else, including as
+    operation names — the contextual-keyword rule of [MULTI-DECL]. *)
+effect Vocabulary
+    abort : Unit => int
+    once : Unit => int
+    many : Unit => int
+    replayable : Unit => int
+
+(** The gateway declines the first settlement of an amount and accepts the next. *)
+settle (amount, attempt) = match attempt
+    1 => Error(message = "gateway timeout")
+    _ => Success(value = amount)
+
+(** One order: settle it, then send exactly one receipt for what was settled. *)
+placeOrder amount =
+    settled = perform Charge.charge amount
+    perform Email.deliver "receipt for ${toString settled}"
+    "settled ${toString settled}"
+
+(** [MULTI-FALSIFY] 1 — a `once` arm that retries internally still answers its
+    request exactly once, so the body's `Email.deliver` runs exactly once. The
+    two `resume` sites sit on different `match` branches, which is the shape
+    [MULTI-HANDLE-ONCE] must keep legal: at most one per control path. *)
+retrySendsOneReceiptCase () =
+    mut transcript = ""
+    mut attempts = 0
+    mut receipts = 0
+    outcome =
+        handle Audit
+            line message => transcript := "${transcript}${message}\n"
+        in handle Email
+            deliver body =>
+                receipts := receipts + 1 ?: receipts
+                perform Audit.line "email: ${body}"
+        in handle Charge
+            charge amount =>
+                attempts := attempts + 1 ?: attempts
+                match settle (amount, attempts)
+                    Success value => resume value
+                    Error message =>
+                        perform Audit.line "declined: ${message}; retrying"
+                        attempts := attempts + 1 ?: attempts
+                        match settle (amount, attempts)
+                            Success value => resume value
+                            Error message => "declined: ${message}"
+        in placeOrder 120
+    checkAll "retry answers once and mails once" [
+        outcome == "settled 120",
+        attempts == 2,
+        receipts == 1,
+        transcript == "declined: gateway timeout; retrying\nemail: receipt for 120\n",
+        !contains transcript "email: receipt for 120\nemail: receipt for 120\n"
+    ]
+
+(** Declining to resume is the safe direction `once` permits: `once` is affine,
+    not linear, so zero resumptions is always legal. *)
+declineSendsNoReceiptCase () =
+    mut transcript = ""
+    mut receipts = 0
+    outcome =
+        handle Audit
+            line message => transcript := "${transcript}${message}\n"
+        in handle Email
+            deliver body =>
+                receipts := receipts + 1 ?: receipts
+                perform Audit.line "email: ${body}"
+        in handle Charge
+            charge amount => match settle (amount, 1)
+                Success value => resume value
+                Error message =>
+                    perform Audit.line "abandoned ${toString amount}: ${message}"
+                    "declined: ${message}"
+        in placeOrder 75
+    checkAll "abandoning the continuation mails nothing" [
+        outcome == "declined: gateway timeout",
+        receipts == 0,
+        transcript == "abandoned 75: gateway timeout\n"
+    ]
+
+(** ONE unannotated definition applied under two different effects — the
+    multiplicity twin of [STAGE-FALSIFY]'s shared function ([MULTI-STAGE-POLY]). *)
+applyTwice (f, x) = f (f x)
+
+(** A callback over a `replayable` operation. *)
+jitter n = (n + perform Random.next ()) ?: n
+
+(** A callback over an ordinary, non-replayable `once` operation. *)
+audited n =
+    perform Email.deliver "audit ${toString n}"
+    (n * 2) ?: n
+
+(** [MULTI-FALSIFY] 4, for the multiplicities the runtime can represent. *)
+sharedAcrossMultiplicitiesCase () =
+    mut audits = 0
+    noisy =
+        handle Random
+            next => resume 3
+        in applyTwice (jitter, 10)
+    doubled =
+        handle Email
+            deliver body => audits := audits + 1 ?: audits
+        in applyTwice (audited, 5)
+    checkAll "one function serves both multiplicities" [
+        noisy == 16, doubled == 20, audits == 2
+    ]
+
+(** An operation NAMED with a modifier word declares, performs and handles like
+    any other, and the same words bind as ordinary values. *)
+contextualKeywordCase () =
+    total =
+        handle Vocabulary
+            abort => resume 1
+            once => resume 2
+            many => resume 4
+            replayable => resume 8
+        in
+            low = (perform Vocabulary.abort () + perform Vocabulary.once ()) ?: 0
+            high = (perform Vocabulary.many () + perform Vocabulary.replayable ()) ?: 0
+            (low + high) ?: 0
+    many = 100
+    abort = (many + total) ?: total
+    checkAll "modifier words stay ordinary identifiers" [
+        total == 15, abort == 115
+    ]
+
+test "a once arm retrying internally sends exactly one receipt" retrySendsOneReceiptCase
+test "a once arm that declines to resume sends no receipt" declineSendsNoReceiptCase
+test "one unannotated function serves both multiplicities" sharedAcrossMultiplicitiesCase
+test "abort, once, many and replayable stay legal identifiers" contextualKeywordCase

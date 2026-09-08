@@ -737,7 +737,11 @@ fn finish_phi(
         && incoming_values
             .iter()
             .all(|(v, _)| v.result_inner_is_placeholder);
-    out.payload_owner = common(|v| v.payload_owner.clone());
+    out.payload_owner = if result_inner.is_some() {
+        result_join_owner(phi_in)
+    } else {
+        common(|v| v.payload_owner.clone())
+    };
     // Perceus join transfer: if every arm produced a fresh owner AFTER `mark`
     // (i.e. inside its own arm — never the scrutinee, which predates the mark
     // and lives on every path), the phi owns the merged value directly — the
@@ -774,6 +778,20 @@ fn result_join_inner(phi_in: &[(Value, String)]) -> Result<Option<LType>> {
         }
     }
     Ok(target)
+}
+
+/// [MODULES-ABI]: Error has no Success payload whose owner can disagree with
+/// a record-producing arm. Use the original arms before placeholder repacking.
+fn result_join_owner(phi_in: &[(Value, String)]) -> Option<String> {
+    let mut owners = phi_in
+        .iter()
+        .filter(|(value, _)| !value.result_inner_is_placeholder)
+        .map(|(value, _)| value.payload_owner.clone());
+    let first = owners.next()?;
+    owners
+        .all(|owner| owner == first)
+        .then_some(first)
+        .flatten()
 }
 
 /// Take a catch-all arm: bind the scrutinee under the arm's name and evaluate

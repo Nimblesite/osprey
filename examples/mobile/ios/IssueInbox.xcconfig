@@ -1,0 +1,22 @@
+// Implements [MOBILE-NATIVE-HOST] and [IOS-HOST-ABI].
+OSPREY_PLATFORM = ios
+OSPREY_PLATFORM[sdk=iphonesimulator*] = ios-sim
+OSPREY_LIBRARY_DIR = $(SRCROOT)/build/$(OSPREY_PLATFORM)
+HEADER_SEARCH_PATHS = $(inherited) "$(OSPREY_LIBRARY_DIR)"
+LIBRARY_SEARCH_PATHS = $(inherited) "$(OSPREY_LIBRARY_DIR)"
+OTHER_LDFLAGS = $(inherited) -lOspreyApp -lsqlite3
+SWIFT_OBJC_BRIDGING_HEADER = IssueInbox/Bridge.h
+PRODUCT_BUNDLE_IDENTIFIER = org.ospreylang.IssueInbox
+PRODUCT_NAME = $(TARGET_NAME)
+ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon
+MARKETING_VERSION = 1.0
+CURRENT_PROJECT_VERSION = 1
+CODE_SIGN_STYLE = Automatic
+GENERATE_INFOPLIST_FILE = YES
+INFOPLIST_KEY_CFBundleDisplayName = Issue Inbox
+INFOPLIST_KEY_LSRequiresIPhoneOS = YES
+INFOPLIST_KEY_UILaunchScreen_Generation = YES
+INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES
+INFOPLIST_KEY_UISupportedInterfaceOrientations = UIInterfaceOrientationPortrait
+TARGETED_DEVICE_FAMILY = 1
+SUPPORTED_PLATFORMS = iphoneos iphonesimulator

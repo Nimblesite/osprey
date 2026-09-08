@@ -7,18 +7,25 @@
 
 pub mod canonical;
 mod doc;
+pub mod effect_name;
 pub mod freevars;
 mod generics;
+mod kernel;
 mod lower_static;
+pub mod multiplicity;
 pub mod mutate;
 mod resume;
+#[cfg(test)]
+mod resume_tests;
 pub mod stage;
+mod stage_rows;
 pub mod symbol;
 mod visit;
 pub use doc::{DocComment, DocExample, DocScope};
 pub use generics::{EffectRef, TypeParam, Variance};
-pub use resume::contains_resume;
-pub use stage::Stage;
+pub use multiplicity::{Multiplicity, OperationTable, REPLAYABLE_KEYWORD};
+pub use resume::{contains_resume, resumes_on_one_path};
+pub use stage::{Stage, STATIC_STAGE_KEYWORD};
 pub use visit::{walk_each, walk_program, AstVisitor};
 
 /// The one wording for an entry conflict [MODULES-ENTRYPOINT]. Two phases can
@@ -337,6 +344,18 @@ pub struct TypeField {
 pub struct EffectOperation {
     /// Operation name.
     pub name: String,
+    /// The multiplicity keyword as WRITTEN, absent when the operation is
+    /// undecorated. Kept as an option rather than defaulted at lowering because
+    /// [MULTI-AXIS-STATIC] rejects a multiplicity *written* on a static
+    /// operation, and `once` — the default — is a legal thing to write.
+    /// Read the effective value through [`EffectOperation::multiplicity`].
+    /// Implements [MULTI-DECL].
+    pub declared_multiplicity: Option<Multiplicity>,
+    /// Whether performing this operation twice with the same arguments in the
+    /// same handler context is acceptable to the program. Declared, never
+    /// inferred: it is a statement about the world outside the program.
+    /// Implements [MULTI-REPLAY].
+    pub replayable: bool,
     /// The operation's written function type (`fn(T) -> R`).
     pub ty: String,
     /// Parsed parameters of the operation.
@@ -351,6 +370,17 @@ pub struct EffectOperation {
     /// Source position of the operation name. Implements
     /// [LSP-HOVER-EFFECT-OPERATIONS].
     pub position: Option<Position>,
+}
+
+impl EffectOperation {
+    /// How many times a handler may answer this operation's request: the
+    /// keyword when one was written, otherwise [`Multiplicity::Once`] — which
+    /// is what the runtime already enforces, so no existing program changes
+    /// meaning. Implements [MULTI-COMPAT].
+    #[must_use]
+    pub fn multiplicity(&self) -> Multiplicity {
+        self.declared_multiplicity.unwrap_or_default()
+    }
 }
 
 /// Whether a signature type is abstract or exposes a manifest representation.

@@ -1,89 +1,77 @@
-# Programs that CANNOT link on wasm32-wasip1, and the symbol each fails on.
+# Programs rejected by the wasm32 capability checker, with the exact reason.
 #
-# A skip is a hole in coverage. This file is what makes each one deliberate:
-# crates/run_test_corpus.sh compares the actual skip set to this list EXACTLY
-# and fails the build on any difference — a new skip, a removed one, or the
-# same program skipping for a different reason. There is no regeneration flag;
-# editing this file is meant to be a reviewed act.
+# The program set is unchanged by moving these failures from linking into the
+# compiler. Each named feature has no WASM implementation. The harness compares
+# both the file set and diagnostic reasons exactly, and fails on new, removed,
+# or changed entries. Unexpected LLVM/linker errors are failures, never skips.
+# There is no regeneration flag. [WASM-TARGET-CAPABILITIES]
 #
-# Every entry below is blocked on a capability wasm32-wasip1 does not have, not
-# on unfinished work:
-#
-#   __osprey_coro_suspend       resumable effect continuations — the handler
-#                               runs the suspended computation on its own
-#                               thread; wasm32-wasip1 has no usable pthreads.
-#                               [WASM-TARGET-EFFECTS]
-#   fiber_spawn_env_owned       fibers, same reason. `fiber_sleep` entries also
-#                               spawn and await; sleep is merely the first
-#                               unresolved symbol the linker names.
-#   http_create_server          HTTP/WebSocket — BSD sockets, absent from WASI
-#   http_create_client          preview1 (sockets arrive in preview2).
-#   http_get_response
-#   http_response_body
-#   spawn_process_with_handler  subprocesses — no fork/exec under WASI.
-#   osprey_ffi_cell             FFI — no dlopen under WASI.
-#
-# Anything portable has been ported: file I/O and the OS CSPRNG moved into the
-# wasm runtime archive rather than staying on this list. Shrink it further by
-# porting a capability, never by loosening the check.
-tests/core/collections/nested_generic_collections_fibers.test.osp fiber_spawn_env_owned
-tests/core/collections/nested_generic_collections_fibers.test.ospml fiber_spawn_env_owned
-tests/effects/resume/resume_abort_early_exit.test.osp __osprey_coro_suspend
-tests/effects/resume/resume_abort_early_exit.test.ospml __osprey_coro_suspend
-tests/effects/resume/resume_error_policies.test.osp __osprey_coro_suspend
-tests/effects/resume/resume_error_policies.test.ospml __osprey_coro_suspend
-tests/effects/resume/resume_lifo_audit.test.osp __osprey_coro_suspend
-tests/effects/resume/resume_lifo_audit.test.ospml __osprey_coro_suspend
-tests/effects/resume/resume_outer_handler_bridge.test.osp __osprey_coro_suspend
-tests/effects/resume/resume_outer_handler_bridge.test.ospml __osprey_coro_suspend
-tests/effects/resume/resume_unit_markers.test.osp __osprey_coro_suspend
-tests/effects/resume/resume_unit_markers.test.ospml __osprey_coro_suspend
-tests/effects/resume/resume_value_rewrite.test.osp __osprey_coro_suspend
-tests/effects/resume/resume_value_rewrite.test.ospml __osprey_coro_suspend
-tests/modules/ml_layout_depth.test.osp __osprey_coro_suspend
-tests/modules/ml_layout_depth.test.ospml __osprey_coro_suspend
-tests/modules/module_composition.test.osp fiber_spawn_env_owned
-tests/modules/module_composition.test.ospml fiber_spawn_env_owned
-tests/modules/module_effects_rows.test.osp __osprey_coro_suspend
-tests/modules/module_effects_rows.test.ospml __osprey_coro_suspend
-tests/modules/signature_ascription.test.osp __osprey_coro_suspend
-tests/modules/signature_ascription.test.ospml __osprey_coro_suspend
-tests/regressions/basics/osprey_mega_showcase.test.osp fiber_spawn_env_owned
-tests/regressions/basics/osprey_mega_showcase.test.ospml fiber_spawn_env_owned
-tests/regressions/basics/processes/async_process_management.test.osp spawn_process_with_handler
-tests/regressions/basics/processes/async_process_management.test.ospml spawn_process_with_handler
-tests/regressions/basics/processes/callback_stdout_demo.test.osp spawn_process_with_handler
-tests/regressions/basics/processes/callback_stdout_demo.test.ospml spawn_process_with_handler
-tests/regressions/basics/website/website_examples.test.osp fiber_spawn_env_owned
-tests/regressions/basics/website/website_examples.test.ospml fiber_spawn_env_owned
-tests/regressions/db/database_effect.test.osp osprey_ffi_cell
-tests/regressions/db/database_effect.test.ospml osprey_ffi_cell
-tests/regressions/db/sqlite_basics.test.osp osprey_ffi_cell
-tests/regressions/db/sqlite_basics.test.ospml osprey_ffi_cell
-tests/regressions/effects/abort_vs_resume.test.osp __osprey_coro_suspend
-tests/regressions/effects/abort_vs_resume.test.ospml __osprey_coro_suspend
-tests/regressions/effects/algebraic_effects_comprehensive.test.osp fiber_sleep
-tests/regressions/effects/algebraic_effects_comprehensive.test.ospml fiber_sleep
-tests/regressions/effects/fiber_effects.test.osp fiber_spawn_env_owned
-tests/regressions/effects/fiber_effects.test.ospml fiber_spawn_env_owned
-tests/regressions/effects/handler_scoping.test.osp __osprey_coro_suspend
-tests/regressions/effects/handler_scoping.test.ospml __osprey_coro_suspend
-tests/regressions/effects/http_state_levels.test.osp http_response_body
-tests/regressions/effects/http_state_levels.test.ospml http_response_body
-tests/regressions/effects/retry_until_valid.test.osp __osprey_coro_suspend
-tests/regressions/effects/retry_until_valid.test.ospml __osprey_coro_suspend
-tests/regressions/fiber/cpu_profiling_demo.test.osp __osprey_coro_suspend
-tests/regressions/fiber/fiber_determinism.test.osp fiber_spawn_env_owned
-tests/regressions/fiber/fiber_exact_replica.test.osp fiber_spawn_env_owned
-tests/regressions/fiber/fiber_showcase.test.osp fiber_spawn_env_owned
-tests/regressions/fiber/fiber_showcase.test.ospml fiber_spawn_env_owned
-tests/regressions/http/http_client_example.test.osp http_create_server
-tests/regressions/http/http_client_example.test.ospml http_create_server
-tests/regressions/http/http_create_client.test.osp http_create_client
-tests/regressions/http/http_create_client.test.ospml http_create_client
-tests/regressions/http/http_response_handle.test.osp http_response_body
-tests/regressions/http/http_response_handle.test.ospml http_response_body
-tests/regressions/http/http_server_example.test.osp http_create_server
-tests/regressions/http/http_server_example.test.ospml http_create_server
-tests/regressions/http/tui_repo_table.test.osp http_response_body
-tests/regressions/http/tui_repo_table.test.ospml http_response_body
+# Resumable effects and fibers need threads, process spawning needs fork/exec,
+# built-in HTTP/WebSocket needs sockets, and foreign C imports need a native
+# implementation. The two documented browser host imports remain supported.
+# File operations, stdin, random numbers and substituting effects are supported.
+tests/core/collections/nested_generic_collections_fibers.test.osp fiber concurrency
+tests/core/collections/nested_generic_collections_fibers.test.ospml fiber concurrency
+tests/effects/multiplicity/multiplicity.test.osp a continuation for `Charge.charge` (wasm32 acquires one-shot continuations when the stack-switching proposal lands)
+tests/effects/multiplicity/multiplicity.test.ospml a continuation for `Charge.charge` (wasm32 acquires one-shot continuations when the stack-switching proposal lands)
+tests/effects/resume/resume_abort_early_exit.test.osp a continuation for `Stop.check` (wasm32 acquires one-shot continuations when the stack-switching proposal lands)
+tests/effects/resume/resume_abort_early_exit.test.ospml a continuation for `Stop.check` (wasm32 acquires one-shot continuations when the stack-switching proposal lands)
+tests/effects/resume/resume_error_policies.test.osp a continuation for `ResumeFallback.recover` (wasm32 acquires one-shot continuations when the stack-switching proposal lands)
+tests/effects/resume/resume_error_policies.test.ospml a continuation for `ResumeFallback.recover` (wasm32 acquires one-shot continuations when the stack-switching proposal lands)
+tests/effects/resume/resume_lifo_audit.test.osp a continuation for `Audit.step` (wasm32 acquires one-shot continuations when the stack-switching proposal lands)
+tests/effects/resume/resume_lifo_audit.test.ospml a continuation for `Audit.step` (wasm32 acquires one-shot continuations when the stack-switching proposal lands)
+tests/effects/resume/resume_outer_handler_bridge.test.osp a continuation for `Prompt.ask` (wasm32 acquires one-shot continuations when the stack-switching proposal lands)
+tests/effects/resume/resume_outer_handler_bridge.test.ospml a continuation for `Prompt.ask` (wasm32 acquires one-shot continuations when the stack-switching proposal lands)
+tests/effects/resume/resume_unit_markers.test.osp a continuation for `Trace.mark` (wasm32 acquires one-shot continuations when the stack-switching proposal lands)
+tests/effects/resume/resume_unit_markers.test.ospml a continuation for `Trace.mark` (wasm32 acquires one-shot continuations when the stack-switching proposal lands)
+tests/effects/resume/resume_value_rewrite.test.osp a continuation for `Supply.next` (wasm32 acquires one-shot continuations when the stack-switching proposal lands)
+tests/effects/resume/resume_value_rewrite.test.ospml a continuation for `Supply.next` (wasm32 acquires one-shot continuations when the stack-switching proposal lands)
+tests/modules/ml_layout_depth.test.osp a continuation for `depth::Trunk::Branch::Bud::Sap.draw` (wasm32 acquires one-shot continuations when the stack-switching proposal lands)
+tests/modules/ml_layout_depth.test.ospml a continuation for `depth::Trunk::Branch::Bud::Sap.draw` (wasm32 acquires one-shot continuations when the stack-switching proposal lands)
+tests/modules/module_composition.test.osp fiber concurrency
+tests/modules/module_composition.test.ospml fiber concurrency
+tests/modules/module_effects_rows.test.osp a continuation for `pipeline::Source::Feed.next` (wasm32 acquires one-shot continuations when the stack-switching proposal lands)
+tests/modules/module_effects_rows.test.ospml a continuation for `pipeline::Source::Feed.next` (wasm32 acquires one-shot continuations when the stack-switching proposal lands)
+tests/modules/signature_ascription.test.osp a continuation for `store::Clocks::Clock.now` (wasm32 acquires one-shot continuations when the stack-switching proposal lands)
+tests/modules/signature_ascription.test.ospml a continuation for `store::Clocks::Clock.now` (wasm32 acquires one-shot continuations when the stack-switching proposal lands)
+tests/regressions/basics/osprey_mega_showcase.test.osp fiber concurrency
+tests/regressions/basics/osprey_mega_showcase.test.ospml fiber concurrency
+tests/regressions/basics/processes/async_process_management.test.osp process spawning builtin `spawnProcess`
+tests/regressions/basics/processes/async_process_management.test.ospml process spawning builtin `spawnProcess`
+tests/regressions/basics/processes/callback_stdout_demo.test.osp process spawning builtin `spawnProcess`
+tests/regressions/basics/processes/callback_stdout_demo.test.ospml process spawning builtin `spawnProcess`
+tests/regressions/basics/website/website_examples.test.osp fiber concurrency
+tests/regressions/basics/website/website_examples.test.ospml fiber concurrency
+tests/regressions/db/database_effect.test.osp foreign C import `sqlite3_open`
+tests/regressions/db/database_effect.test.ospml foreign C import `sqlite3_open`
+tests/regressions/db/sqlite_basics.test.osp foreign C import `sqlite3_open`
+tests/regressions/db/sqlite_basics.test.ospml foreign C import `sqlite3_open`
+tests/regressions/effects/abort_vs_resume.test.osp a continuation for `Step.run` (wasm32 acquires one-shot continuations when the stack-switching proposal lands)
+tests/regressions/effects/abort_vs_resume.test.ospml a continuation for `Step.run` (wasm32 acquires one-shot continuations when the stack-switching proposal lands)
+tests/regressions/effects/algebraic_effects_comprehensive.test.osp fiber concurrency
+tests/regressions/effects/algebraic_effects_comprehensive.test.ospml fiber concurrency
+tests/regressions/effects/fiber_effects.test.osp fiber concurrency
+tests/regressions/effects/fiber_effects.test.ospml fiber concurrency
+tests/regressions/effects/handler_scoping.test.osp a continuation for `Ask.ask` (wasm32 acquires one-shot continuations when the stack-switching proposal lands)
+tests/regressions/effects/handler_scoping.test.ospml a continuation for `Ask.ask` (wasm32 acquires one-shot continuations when the stack-switching proposal lands)
+tests/regressions/effects/http_state_levels.test.osp HTTP builtin `httpResponseBody`
+tests/regressions/effects/http_state_levels.test.ospml HTTP builtin `httpResponseBody`
+tests/regressions/effects/retry_until_valid.test.osp a continuation for `Prompt.ask` (wasm32 acquires one-shot continuations when the stack-switching proposal lands)
+tests/regressions/effects/retry_until_valid.test.ospml a continuation for `Prompt.ask` (wasm32 acquires one-shot continuations when the stack-switching proposal lands)
+tests/regressions/effects/staged_shared.test.osp a continuation for `Audit.note` (wasm32 acquires one-shot continuations when the stack-switching proposal lands)
+tests/regressions/effects/staged_shared.test.ospml a continuation for `Audit.note` (wasm32 acquires one-shot continuations when the stack-switching proposal lands)
+tests/regressions/fiber/cpu_profiling_demo.test.osp fiber concurrency builtin `sleep`
+tests/regressions/fiber/fiber_determinism.test.osp foreign C import `fiber_set_deterministic_mode`
+tests/regressions/fiber/fiber_exact_replica.test.osp foreign C import `fiber_set_deterministic_mode`
+tests/regressions/fiber/fiber_showcase.test.osp fiber concurrency
+tests/regressions/fiber/fiber_showcase.test.ospml fiber concurrency
+tests/regressions/http/http_client_example.test.osp HTTP builtin `httpCreateServer`
+tests/regressions/http/http_client_example.test.ospml HTTP builtin `httpCreateServer`
+tests/regressions/http/http_create_client.test.osp HTTP builtin `httpCreateClient`
+tests/regressions/http/http_create_client.test.ospml HTTP builtin `httpCreateClient`
+tests/regressions/http/http_response_handle.test.osp HTTP builtin `httpResponseBody`
+tests/regressions/http/http_response_handle.test.ospml HTTP builtin `httpResponseBody`
+tests/regressions/http/http_server_example.test.osp HTTP builtin `httpCreateServer`
+tests/regressions/http/http_server_example.test.ospml HTTP builtin `httpCreateServer`
+tests/regressions/http/tui_repo_table.test.osp HTTP builtin `httpResponseBody`
+tests/regressions/http/tui_repo_table.test.ospml HTTP builtin `httpResponseBody`

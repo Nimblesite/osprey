@@ -44,7 +44,7 @@ use super::cst::{
 use super::lexer::lex;
 use super::token::{TokKind, Token};
 use crate::SyntaxError;
-use osprey_ast::Position;
+use osprey_ast::{Multiplicity, Position, Stage, REPLAYABLE_KEYWORD, STATIC_STAGE_KEYWORD};
 
 /// Parse ML-flavor `source` into the ML CST plus any syntax errors. Best-effort:
 /// errors never abort the parse ([FLAVOR-LOWER-CONTRACT]).
@@ -103,7 +103,7 @@ impl Parser<'_> {
         self.toks.get(self.i).map_or(&TokKind::Eof, |t| &t.kind)
     }
 
-    fn peek_at(&self, ahead: usize) -> &TokKind {
+    pub(super) fn peek_at(&self, ahead: usize) -> &TokKind {
         self.toks
             .get(self.i + ahead)
             .map_or(&TokKind::Eof, |t| &t.kind)
@@ -192,7 +192,7 @@ impl Parser<'_> {
             TokKind::KwMut => self.mut_binding(),
             TokKind::KwType => self.type_decl(),
             TokKind::KwExtern => self.extern_decl(),
-            TokKind::KwEffect => self.effect_decl(),
+            TokKind::KwEffect => self.effect_decl(Stage::Dynamic),
             TokKind::KwImport => self.import_decl(),
             TokKind::KwNamespace => self.namespace_decl(),
             TokKind::KwModule => self.module_decl(MlModuleKind::Plain),
@@ -204,6 +204,17 @@ impl Parser<'_> {
                 let word = word.clone();
                 self.error(format!("ML construct '{word}' is not yet supported"));
                 None
+            }
+            // `static effect E` — `static` is CONTEXTUAL, marking a stage only
+            // directly in front of `effect`, so it stays an ordinary identifier
+            // everywhere else. Without this the marker was silently dropped and
+            // the effect lowered DYNAMIC, which is a wrong answer rather than a
+            // diagnostic. Implements [STAGE-DECL], [FLAVOR-ML-EFFECT].
+            TokKind::Ident(word)
+                if word == STATIC_STAGE_KEYWORD && *self.peek_at(1) == TokKind::KwEffect =>
+            {
+                self.advance();
+                self.effect_decl(Stage::Static)
             }
             TokKind::Ident(_) => self.ident_item(),
             _ => Some(self.expr_item()),
@@ -552,7 +563,7 @@ impl Parser<'_> {
     /// `effect Name` + an indented block of `op : P => R` operation lines — an
     /// algebraic effect declaration ([FLAVOR-ML-EFFECT]). Mirrors [`Self::type_decl`]'s
     /// layout-block parsing.
-    fn effect_decl(&mut self) -> Option<MlItem> {
+    fn effect_decl(&mut self, stage: Stage) -> Option<MlItem> {
         let pos = self.pos();
         self.advance(); // `effect`
         let name = self.ident()?;
@@ -561,6 +572,7 @@ impl Parser<'_> {
         let type_params = self.type_params();
         let operations = self.effect_operations();
         Some(MlItem::Effect {
+            stage,
             name,
             type_params,
             operations,
@@ -597,7 +609,7 @@ impl Parser<'_> {
     fn effect_op(&mut self) -> Option<MlEffectOp> {
         let doc = self.effect_op_doc();
         let pos = self.pos();
-        let name = self.ident()?;
+        let (multiplicity, replayable, name) = self.operation_markers()?;
         if !self.eat(&TokKind::Colon) {
             self.error("expected ':' in effect operation");
         }
@@ -608,11 +620,44 @@ impl Parser<'_> {
         let result = self.ty();
         Some(MlEffectOp {
             name,
+            multiplicity,
+            replayable,
             payload,
             result,
             doc,
             pos,
         })
+    }
+
+    /// The optional `abort` / `once` / `many` and `replayable` markers an
+    /// operation line may carry before its name, and the name itself.
+    ///
+    /// A marker is only a marker when ANOTHER identifier follows it: ML has no
+    /// keyword for any of these words, so `abort : string => Unit` still
+    /// declares an operation *called* `abort`. That is the same contextual rule
+    /// the Default flavor's grammar resolves with GLR. Implements [MULTI-DECL],
+    /// [FLAVOR-ML-EFFECT-ANNOTATIONS].
+    fn operation_markers(&mut self) -> Option<(Option<Multiplicity>, bool, String)> {
+        let mut multiplicity = None;
+        let mut replayable = false;
+        let mut word = self.ident()?;
+        if let Some(declared) = Multiplicity::from_keyword(&word) {
+            if self.at_operation_name() {
+                multiplicity = Some(declared);
+                word = self.ident()?;
+            }
+        }
+        if word == REPLAYABLE_KEYWORD && self.at_operation_name() {
+            replayable = true;
+            word = self.ident()?;
+        }
+        Some((multiplicity, replayable, word))
+    }
+
+    /// Whether the cursor sits on an identifier — the token that proves the
+    /// word just read was a marker rather than the operation's own name.
+    fn at_operation_name(&self) -> bool {
+        matches!(self.peek(), TokKind::Ident(_))
     }
 
     /// Consume a `(** … *)` doc token sitting in front of an operation line.
@@ -1311,6 +1356,9 @@ impl Parser<'_> {
             TokKind::Backslash => self.lambda(),
             TokKind::LParen => self.paren(),
             TokKind::LBracket => self.list(),
+            // `kernel` opens a region only where an indented arm block follows;
+            // everywhere else it is an ordinary name. Implements [STAGE-GPU-KERNEL].
+            TokKind::Ident(_) if self.at_kernel_region() => self.kernel_expr(),
             TokKind::Ident(name) => {
                 self.advance();
                 self.ident_atom(name)
@@ -1478,7 +1526,7 @@ impl Parser<'_> {
         let pos = self.pos();
         self.advance(); // `perform`
         let first = self.ident().unwrap_or_default();
-        let effect = self.qualified_name_tail(first);
+        let effect = self.instantiated_effect(first);
         if !self.eat(&TokKind::Dot) {
             self.error("expected '.' between effect and operation in perform");
         }
@@ -1511,8 +1559,18 @@ impl Parser<'_> {
     fn handle_expr(&mut self) -> MlExpr {
         let pos = self.pos();
         self.advance(); // `handle`
+                        // `handle static E` — the discharge half of [STAGE-DECL]. Contextual on
+                        // the same terms as the declaration marker: only a following effect
+                        // name makes `static` a stage rather than the handled effect's name.
+        let stage = match (self.peek(), self.peek_at(1)) {
+            (TokKind::Ident(word), TokKind::Ident(_)) if word == STATIC_STAGE_KEYWORD => {
+                self.advance();
+                Stage::Static
+            }
+            _ => Stage::Dynamic,
+        };
         let first = self.ident().unwrap_or_default();
-        let effect = self.qualified_name_tail(first);
+        let effect = self.instantiated_effect(first);
         let mut arms = Vec::new();
         if self.eat(&TokKind::Indent) {
             while !self.at_block_end() {
@@ -1534,6 +1592,7 @@ impl Parser<'_> {
         }
         let body = self.body_after_eq();
         MlExpr::Handle {
+            stage,
             effect,
             arms,
             body: Box::new(body),
@@ -1541,8 +1600,27 @@ impl Parser<'_> {
         }
     }
 
+    /// The effect a request or region names, INCLUDING the instantiation when
+    /// it wrote one. `Signal<Count>` and `Signal<Cursor>` are different effects
+    /// to a row, so they are different effects to a handler, and both flavors
+    /// spell the mention the same way. Implements [STAGE-SIGNALS-EXACT].
+    fn instantiated_effect(&mut self, first: String) -> String {
+        let name = self.qualified_name_tail(first);
+        if !self.at_angle_open() {
+            return name;
+        }
+        let applied = self.ty_generic_args(name);
+        super::lower::render_type(&applied)
+    }
+
+    /// The parser's own cursor, so a sibling module can tell whether an arm
+    /// consumed anything and recover when it did not.
+    pub(super) fn position_index(&self) -> usize {
+        self.i
+    }
+
     /// One `op param* => body` arm of a `handle` expression.
-    fn handle_arm(&mut self) -> MlHandleArm {
+    pub(super) fn handle_arm(&mut self) -> MlHandleArm {
         let pos = self.pos();
         let operation = self.ident().unwrap_or_default();
         let mut params = Vec::new();
@@ -1960,7 +2038,7 @@ impl Parser<'_> {
 
     /// The body after `=`/`=>`: an inline expression, or an indented layout
     /// block whose trailing expression is its value ([FLAVOR-ML-BLOCK]).
-    fn body_after_eq(&mut self) -> MlExpr {
+    pub(super) fn body_after_eq(&mut self) -> MlExpr {
         if !matches!(self.peek(), TokKind::Indent) {
             return self.inline_body();
         }

@@ -1,7 +1,7 @@
 // Cryptographically-secure random + stdin line reader runtime.
 // Implements [BUILTIN-RANDOM], [BUILTIN-RANDOM-BELOW], [BUILTIN-INPUT].
 //
-// Entropy comes straight from the OS CSPRNG — arc4random_buf on macOS/BSD,
+// Entropy comes straight from the OS CSPRNG — arc4random_buf on macOS/BSD/Android,
 // getrandom(2) on Linux (falling back to /dev/urandom), rand_s on Windows,
 // getentropy on wasm — so the stream is unpredictable and carries no userspace
 // seed/state. That makes it suitable both for security use and for the
@@ -36,7 +36,7 @@
 // [WASM-TARGET] [BUILTIN-RANDOM]
 #define OSP_HAVE_GETENTROPY 1
 int getentropy(void *, size_t);
-#elif defined(__APPLE__) || defined(__FreeBSD__) || defined(__OpenBSD__) ||    \
+#elif defined(__APPLE__) || defined(__ANDROID__) || defined(__FreeBSD__) || defined(__OpenBSD__) ||    \
     defined(__NetBSD__)
 #define OSP_HAVE_ARC4RANDOM 1
 #elif defined(__linux__)

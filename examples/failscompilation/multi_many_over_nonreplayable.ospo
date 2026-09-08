@@ -1,0 +1,30 @@
+// [MULTI-REPLAY-CHECK] [MULTI-FALSIFY] gate 2. A `many` handler re-runs the
+// remainder of the handled computation, so every non-`E` entry of the handled
+// expression's row must be `replayable`. `Email.send` is not, so the handle
+// site is rejected naming it — the check that makes backtracking over impure
+// code a compile error rather than a duplicated email.
+//
+// `Email.send` IS handled here, and the whole program is otherwise well formed:
+// the only thing wrong with it is the rule this fixture pins.
+effect Choice {
+    many pick: fn(int) -> int
+}
+
+effect Email {
+    send: fn(string) -> Unit
+}
+
+fn placeOrder(id) = {
+    let chosen = perform Choice.pick(id)
+    perform Email.send("order ${chosen} confirmed")
+    chosen
+}
+
+fn main() = {
+    let best = handle Email
+        send body => resume(print(body))
+    in handle Choice
+        pick option => resume(option)
+    in placeOrder(3)
+    print("best=${best}")
+}

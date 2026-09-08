@@ -10,19 +10,14 @@ hello fixture, runs it through Node's WASI host and the browser shim, then runs
 the native backend uses, pointed at the other code generator. It compiles every
 program under `tests/` to wasm32, runs it under Node's WASI host, and compares
 stdout byte-for-byte to the same `.expectedoutput` golden the native run must
-match. The harness classifies an `undefined symbol` compile error as `SKIP` and
-names each one; every other build or runtime error fails. CI requires
+match. Only an explicit compiler diagnostic that ``target `wasm32` does not support`` a named capability qualifies as `SKIP`; the exact 61 excluded programs and their diagnostic reasons are pinned in the skip manifest. Unexpected linker errors fail, as do other build or runtime errors. CI requires
 `TEST_CORPUS_FAIL=0`, `TEST_CORPUS_GOLDEN_FAIL=0` and
 `TEST_CORPUS_GOLDEN_MISSING=0`, plus a golden floor so coverage cannot quietly
-shrink — 107 on wasm32 and 160 natively (`crates/run_test_corpus.sh`,
+shrink — 142 on wasm32 and 203 natively (`crates/run_test_corpus.sh`,
 `OSPREY_GOLDEN_MIN`). The floor ratchets up as goldens are added and is never
 lowered to turn a red build green.
 
-The wasm runtime includes strings, persistent collections, JSON, test and
-coverage hooks, the effect-handler stack, profiler stubs, and the browser host
-bridge. It excludes fibers, sockets, HTTP/WebSocket, process and file APIs,
-terminal APIs, FFI, random/input, and resumable effect continuations. A program
-that calls an excluded symbol fails at link time.
+The wasm runtime includes strings, persistent collections, JSON, file operations, random/input, test and coverage hooks, the effect-handler stack, profiler stubs, and the browser host bridge. It excludes fibers, sockets, HTTP/WebSocket, process APIs, terminal APIs, general FFI, and resumable effect continuations. The compiler rejects operations requiring unavailable runtime features before LLVM emission or linking, as specified by [WASM-TARGET-CAPABILITIES].
 
 ## Target Triple [WASM-TARGET-TRIPLE]
 
@@ -104,20 +99,34 @@ NUL-terminated message with `osp_alloc`, refreshes its view of `memory.buffer`,
 copies the bytes, and calls the exported dispatcher. At the JavaScript boundary
 the `i64` allocation size and dispatcher status use `BigInt`.
 
+Modules with a browser dispatcher retain their initialized globals after the WASI entry returns, so later events can read application state. The dispatcher must handle its own effects; a handler installed only during `main` cannot satisfy a later browser call. The compiler validates that the dispatcher and both browser imports have the signature `(string) -> int` and rejects incompatible signatures before LLVM emission.
+
+## Target Capability Checking [WASM-TARGET-CAPABILITIES]
+
+Before LLVM emission, the compiler checks the complete program for unsupported target constructs, including inside otherwise unused helper functions. `--check`, `--compile`, `--run`, and `--llvm` enforce the same rules. Diagnostics name `wasm32`, the offending operation or construct, and the unavailable capability. Native debugger and profiler flags are rejected for this target, including with `--check` and `--llvm`.
+
+Explicit `resume`, fibers/channels and their scheduling operations, process APIs, built-in HTTP/WebSocket operations, terminal APIs, and arbitrary host FFI are rejected at compile time. Runtime-provided browser bridge imports remain supported. File, random, and input operations use their existing portable runtime implementations; access still depends on the WASI host. Missing implementation must not be hidden by successfully emitting an artifact that only fails when another application links it. Adding support requires a working runtime implementation and target tests before removing a rejection.
+
 ## Effect Support [WASM-TARGET-EFFECTS]
 
-The handler-stack portion of `effects_runtime.c` is portable and is included in
-the wasm archive. Resumable continuations use pthreads and are compiled out
-under `__wasm__`; an expression that needs `__osprey_coro_*` therefore fails to
-link. The golden harness classifies that known undefined-symbol case as `SKIP`.
+The handler-stack portion of `effects_runtime.c` is portable and is included in the wasm archive. Substituting handlers remain supported. Resumable continuations use pthreads and are compiled out under `__wasm__`; the compiler rejects explicit `resume` before LLVM emission, naming the unsupported target feature, rather than relying on undefined continuation symbols at link time.
+
+A `static effect` is rewritten away before code generation and needs no
+continuation on any target, so it compiles here exactly as it compiles natively
+([STAGE-WASM](0035-StagedEffects.md#webassembly--stage-wasm)). For a dynamic
+effect the WebAssembly stack-switching proposal specifies **one-shot**
+continuations only, so this target MUST reject an operation that resumes at
+compile time with the operation named — becoming accepted, with no change to
+user code, once stack switching is available — and MUST reject a multi-shot
+operation permanently
+([MULTI-WASM](0035-StagedEffects.md#multiplicity-on-wasm32--multi-wasm)).
 
 ## Memory Backend [WASM-TARGET-MEMORY]
 
 The wasm archive contains `memory_runtime.c`, the same default allocator used by
 native `--memory=default`. General releases do not reclaim aliased values, but
 the compiler's proved-unique release hook frees uniquely consumed temporaries.
-The wasm driver does not receive the parsed `--memory` value, so `--memory=gc`
-and `--memory=arc` also link this default archive.
+Only `--memory=default` is supported. `--memory=gc` and `--memory=arc` are compiler errors because matching WebAssembly runtime archives are unavailable; the compiler never silently substitutes the default allocator. This validation also applies to `--check` and `--llvm`.
 
 The native conservative collector is not in `WASM_RT_SRC`: it depends on native
 stack/register/data-segment scanning, `setjmp`, and pthread synchronization.

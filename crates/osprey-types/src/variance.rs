@@ -297,6 +297,8 @@ mod tests {
         let out_t = [tp("T", Variance::Covariant)];
         let op = |ty: &str| EffectOperation {
             name: "op".into(),
+            declared_multiplicity: None,
+            replayable: false,
             ty: ty.into(),
             parameters: Vec::new(),
             return_type: String::new(),

@@ -1190,7 +1190,12 @@ pub(crate) fn call_with_values(cg: &mut Codegen, name: &str, args: Vec<Value>) -
     if let Some(inner) = cg.fn_ret_result_inner(name) {
         let rty = format!("{}*", crate::llty::result_struct_ty(inner));
         let reg = emit_user_call(cg, name, &rty, &coerced, &typed);
-        let v = Value::result(reg, inner);
+        // [MODULES-ABI]: unwrapping a returned record must retain its field layout.
+        let owner = cg
+            .prog
+            .return_type(name)
+            .and_then(|ty| crate::types::result_payload_owner(&cg.prog, ty));
+        let v = Value::result(reg, inner).with_payload_owner(owner);
         // Callee epilogues transfer +1 on every return [GC-ARC-PERCEUS].
         crate::arc::own(cg, &v);
         return Ok(v);

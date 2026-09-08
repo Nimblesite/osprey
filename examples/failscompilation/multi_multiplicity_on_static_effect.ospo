@@ -1,0 +1,13 @@
+// [MULTI-AXIS-STATIC] Static effects sit outside the multiplicity lattice:
+// [STAGE-STATIC-TAIL] pins them at exactly-once-in-tail-position, the one point
+// where a continuation need not exist. A multiplicity written on a static
+// operation MUST be rejected.
+static effect Parallel {
+    once forEach: fn(int) -> int
+}
+
+let answered = handle static Parallel
+    forEach n => n
+in perform Parallel.forEach(4)
+
+fn main() = print("${answered}")

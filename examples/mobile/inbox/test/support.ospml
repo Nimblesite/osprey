@@ -1,0 +1,27 @@
+namespace inboxtests
+
+import bank::Json
+import mobile::Model
+import mobile::Update
+
+module Support
+    export event kind = Json::obj (Json::strField "type" kind)
+    export value kind content = Json::obj (Json::strField "type" kind + "," + Json::strField "value" content)
+    export bookmark id = Json::obj (Json::strField "type" "bookmark" + "," + Json::strField "id" id)
+
+    export sql id ok rows error = Json::obj (Json::strField "type" "sql" + "," + Json::strField "id" id + "," + Json::rawField "ok" (toString ok) + "," + Json::rawField "rows" rows + "," + Json::strField "error" error)
+
+    export http id status body error = Json::obj (Json::strField "type" "http" + "," + Json::strField "id" id + "," + Json::numField "status" status + "," + Json::strField "body" body + "," + Json::strField "error" error)
+
+    export fixture () = "[{\"id\":101,\"number\":42,\"title\":\"Fix parser\",\"user\":{\"login\":\"alice\"},\"comments\":3},{\"id\":102,\"number\":43,\"title\":\"Windows paths \\\"C:\\\\tmp\\\"\",\"user\":{\"login\":\"bob\"},\"comments\":0},{\"id\":103,\"number\":44,\"pull_request\":{\"url\":\"ignored\"}}]"
+
+    export awaiting () =
+        initial = Update::initial ()
+        schema = Update::dispatch initial.model (sql "schema" true "[]" "")
+        Update::dispatch schema.model (sql "load" true "[]" "")
+
+    export loaded () =
+        loading = awaiting ()
+        Update::dispatch loading.model (http loading.model.pending 200 (fixture ()) "")
+
+    export projected source path = Json::getOr source path "MISSING"

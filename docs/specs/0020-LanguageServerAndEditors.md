@@ -272,6 +272,30 @@ both the owning effect and operation, so `Trace.mark` never returns a handler
 for `Other.mark`. The unsaved open buffer is searched first, followed by project
 siblings through `[LSP-WORKSPACE]`; a standalone file searches only itself.
 
+`[LSP-EFFECT-MULTIPLICITY]` Multiplicity
+([MULTI-AXIS](0035-StagedEffects.md#multiplicity--multi-axis)) adds two reports,
+both this query read in the opposite direction.
+
+On a handler arm, `textDocument/implementation` returns every `perform` site the
+arm can answer. For an arm of a `many` operation that set IS the replay set the
+author is responsible for, so the server surfaces it before the arm is written
+([MULTI-TRACE](0035-StagedEffects.md#effect-trace--multi-trace)).
+
+On a handler region whose arms are all tail-resumptive over operations declared
+`once`, the server publishes an informational diagnostic:
+
+```text
+handler for Log is tail-resumptive on every arm; declaring Log static would
+remove it from the runtime
+```
+
+It is a hint and never a promotion:
+[STAGE-ROW-DISCHARGE](0035-StagedEffects.md#rows-and-discharge--stage-row)
+forbids implicit promotion in either direction, and the server MUST NOT offer a
+code action that changes the stage of an effect used elsewhere in the project
+without the workspace-wide check of `[LSP-WORKSPACE]`
+([MULTI-STAGE](0035-StagedEffects.md#relation-to-stage--multi-stage)).
+
 ## Answering in the authoring flavor `[LSP-FLAVOR-RENDER]`
 
 Both source surfaces lower to a flavor-blind `osprey_ast::Program`
