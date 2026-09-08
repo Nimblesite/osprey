@@ -316,11 +316,15 @@ whose signature admits only rows satisfying [STAGE-GPU-LEGAL], supplying the
 static handlers for the device dialects — `Parallel`, `Alloc`, `Tensor` — that
 its body is allowed to use.
 
+Each arm names its effect, because one region answers several dialects where a
+`handle` answers exactly one; the region closes with `in`, as every handler
+region does.
+
 ```osprey
 let frame = kernel
     Parallel forEach n body => deviceGrid(n, body)
     Alloc scratch bytes => deviceShared(bytes)
-do gpuMap(pixels, shade)
+in gpuMap(pixels, shade)
 ```
 
 `[STAGE-GPU-DIAG]` A body that is not stage-legal is rejected at the `kernel`

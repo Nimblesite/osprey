@@ -7,8 +7,10 @@
 
 pub mod canonical;
 mod doc;
+pub mod effect_name;
 pub mod freevars;
 mod generics;
+mod kernel;
 mod lower_static;
 pub mod multiplicity;
 pub mod mutate;
@@ -16,6 +18,7 @@ mod resume;
 #[cfg(test)]
 mod resume_tests;
 pub mod stage;
+mod stage_rows;
 pub mod symbol;
 mod visit;
 pub use doc::{DocComment, DocExample, DocScope};

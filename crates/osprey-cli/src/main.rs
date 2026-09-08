@@ -159,12 +159,32 @@ fn report_dependencies(path: &str, flavor: Option<Flavor>) -> ExitCode {
         eprintln!("error: cannot resolve the flavor of {path}");
         return ExitCode::from(2);
     };
-    for (function, operations) in osprey_syntax::dependency_sets(&source, flavor) {
+    let (sets, errors) = osprey_syntax::dependency_report(&source, flavor);
+    // A partial tree yields short dependency sets, and a wrongly empty one is a
+    // subtree that never rebuilds. Refuse to answer instead of answering wrong.
+    // Implements [STAGE-SIGNALS-EXACT].
+    if report_syntax_errors(path, &errors) {
+        return ExitCode::FAILURE;
+    }
+    for (function, operations) in sets {
         if !operations.is_empty() {
             println!("{function}: {}", operations.join(", "));
         }
     }
     ExitCode::SUCCESS
+}
+
+/// Print syntax errors in the one canonical `path:line:col: message` form and
+/// say whether there were any, so every mode that refuses to answer from a file
+/// that did not parse refuses it identically.
+fn report_syntax_errors(path: &str, errors: &[osprey_syntax::SyntaxError]) -> bool {
+    for err in errors {
+        eprintln!(
+            "{path}:{}:{}: {}",
+            err.position.line, err.position.column, err.message
+        );
+    }
+    !errors.is_empty()
 }
 
 /// Run the stdio language server to completion on a fresh Tokio runtime.
@@ -381,13 +401,7 @@ pub(crate) fn load_input(cli: &Cli) -> Result<CompilationInput, ExitCode> {
         }
     };
     let parsed = osprey_syntax::parse_program_with_flavor(&source, flavor);
-    if !parsed.errors.is_empty() {
-        for err in &parsed.errors {
-            eprintln!(
-                "{path}:{}:{}: {}",
-                err.position.line, err.position.column, err.message
-            );
-        }
+    if report_syntax_errors(path, &parsed.errors) {
         return Err(ExitCode::FAILURE);
     }
     // Static handlers were already discharged at the flavor boundary

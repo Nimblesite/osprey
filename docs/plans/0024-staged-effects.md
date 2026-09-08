@@ -38,7 +38,7 @@ fixtures named below.
 | Claim | Result |
 | --- | --- |
 | Zero residue ([STAGE-RESIDUE]) | A static handler emits **no** `__osprey_handler_push`, `__osprey_handler_lookup` or arm thunk: 114 IR lines versus 148 for the dynamic twin, with identical output. The operation's arm body appears inline as straight-line code. |
-| GPU legality ([STAGE-GPU-LEGAL]) | A kernel performing a **static** effect compiles and runs. The same kernel performing a **dynamic** effect is still rejected — `GPU kernel must be pure; it performs: Log.write`. **The GPU checker was not modified.** Erasure before checking turned the existing purity gate into the stage-legality gate. |
+| GPU legality ([STAGE-GPU-LEGAL]) | A kernel performing a **static** effect compiles and runs. The same kernel performing a **dynamic** effect is still rejected — `kernel body is not stage-legal; it requires dynamic effects: Log.write`. Erasure before checking turned the existing purity gate into the stage-legality gate; the gate's *wording* then had to change, because "must be pure" became false the moment a kernel could legally perform a static effect. |
 | WebAssembly ([STAGE-WASM]) | The static program links to a 27 KB `wasm32` module. Its resuming dynamic twin fails to link: `undefined symbol: __osprey_coro_free`. The continuation runtime is exactly what static handlers do not need. |
 | Dependency sets ([STAGE-SIGNALS-DIRTY]) | `osprey --deps` derives them exactly: a helper reading one signal reports one, its caller inherits it transitively, a function reading two reports two, and a function reading none **appears nowhere**. No dependency arrays, no runtime tracking. |
 | The falsification gate ([STAGE-FALSIFY]) | **Passed for the higher-order case only.** One unannotated `fn twice(f, x) = f(f(x))` serves a static callback and a dynamic one in the same program. The spec names three falsifiers; the generic-signal identity/reactive-rebuild and nested-parallel-matmul programs do not exist yet, so the gate as specified is incomplete — the prototype status holds until all three pass. |
@@ -126,9 +126,18 @@ These are real and none of them is hidden by a passing test:
    index.
 10. **`--deps` is approximate and error-tolerant.** Dependencies come from
     raw identifier names, so shadowing or passing an effectful function value
-    can fabricate or hide one, and parse errors are dropped while the CLI
-    still exits `0`. [STAGE-SIGNALS-EXACT] requires resolved effect-row
-    provenance and a nonzero exit on any diagnostic.
+    can fabricate or hide one. **Measured:** a local `let realReader = |x| => x`
+    shadowing a top-level reader still reports the reader's signal for the
+    shadowing function, because `scan_body`
+    (`crates/osprey-ast/src/stage_rows.rs`) pushes EVERY `Expr::Identifier` with
+    no binder tracking — a silent over-approximation, which is the one thing
+    [STAGE-SIGNALS-EXACT] forbids over reporting the imprecision. The fix is
+    `freevars::free_idents`, which already encodes every binding form, rather
+    than a second scope walk here. The **parse-error half is fixed**: `--deps`
+    now surfaces syntax errors and exits nonzero instead of printing a short
+    dependency set from a partial tree
+    (`osprey_syntax::dependency_report`, pinned by
+    `deps_refuses_a_file_that_did_not_parse` in `cli_e2e.rs`).
 11. **The wasm rejection contract is not implemented.** Spec 0035 requires a
     diagnostic naming the effect and operation for a residual dynamic effect
     on wasm32; today the build dies on an undefined coroutine symbol, which
@@ -287,27 +296,33 @@ the code generator, and the MLIR-versus-direct decision stays with that plan.
 Three rules of [spec 0035](../specs/0035-StagedEffects.md) were written out as
 executable contracts while the multiplicity axis
 ([plan 0028](0028-resumption-multiplicity.md)) was built beside them, and each
-was measured against the compiler as it stands. None has an implementation or a
-surface that parses, so they are recorded here rather than left as red tests on
-an unrelated branch.
+was measured against the compiler as it stands. All three have since been
+delivered; each entry keeps the measurement that motivated it beside what
+replaced it.
 
 - `[STAGE-GPU-KERNEL]` — a `kernel` region is a handler region whose signature
   admits only stage-legal rows, supplying the static handlers for the device
-  dialects its body may use. **Measured:** `let frame = kernel` / `Tile size => 8`
-  / `in shade(2)` is `syntax error near "Tile size =>"`. The form does not
-  parse, so a kernel cannot carry its own dialect handlers and `Parallel`,
-  `Alloc` and `Tensor` have nowhere to be answered. A static effect performed
-  inside `gpuMap` *is* already accepted, which is the payoff
-  `tests/effects/staged/staged_effects.test.osp` pins.
+  dialects its body may use. **Delivered.** `kernel E op … in body` parses in
+  both flavors and desugars to the nested static handler regions it means, with
+  the outermost marked `Stage::Kernel` so the offload obligation is checked once
+  at the boundary the source wrote. Because it IS a handler region, discharge,
+  totality and monotonicity apply to it unchanged — no second mechanism.
 - `[STAGE-GPU-DIAG]` — a kernel whose row has a dynamic part must be rejected
-  with a stage-legality diagnostic naming the operation. **Measured:** the
-  message is still `GPU kernel must be pure; it performs: Log.write`, which
-  describes an absence of evidence rather than the evidence of a dynamic row.
+  with a stage-legality diagnostic naming the operation. **Delivered.**
+  `kernel body is not stage-legal; it requires dynamic effects: Log.write`, at
+  the `kernel` boundary (`crates/osprey-ast/src/kernel.rs`) and at the `gpuMap`
+  offload boundary (`crates/osprey-types/src/effect_rows.rs`). The fail-closed
+  `cannot prove GPU kernel pure` is retained for the case where the checker
+  cannot see the callback's provenance — the two rejections now differ by what
+  the checker could see, which is the distinction the rule asks for.
 - `[STAGE-SIGNALS-EXACT]` — signal identity is the generic instantiation, so
-  `Signal<Count>` and `Signal<Cursor>` are distinct dependencies. **Measured:**
-  `dependency_sets` reports `Signal.read` for both; the explicit instantiation
-  at the `perform` site does not parse, so two signals are indistinguishable in
-  a row and a widget's dirty set cannot be its row.
+  `Signal<Count>` and `Signal<Cursor>` are distinct dependencies. **Delivered.**
+  The instantiation is written at the `perform` and `handle` sites, travels in
+  the effect mention itself, and `dependency_sets` reports `Signal<Count>.read`
+  and `Signal<Cursor>.read` as two entries. Identity is representable only at
+  the static stage: a dynamic handler is keyed by effect name at runtime, so an
+  instantiated mention of a dynamic effect is REJECTED naming that reason rather
+  than compiled to a shared key.
 
 ## TODO
 
@@ -330,12 +345,28 @@ an unrelated branch.
 - [ ] A fixture for [STAGE-STATIC-FINITE]'s rewrite bound
 - [ ] The two missing [STAGE-FALSIFY] falsifiers: generic-signal
       identity/reactive rebuild, nested-parallel matmul
-- [ ] [STAGE-SIGNALS-EXACT]: `--deps` from resolved effect rows, diagnostics
-      propagated, nonzero exit on error (limitation 10)
+- [x] [STAGE-SIGNALS-EXACT]: signal identity is the generic instantiation.
+      Written at the `perform` and `handle` sites in both flavors, carried in
+      the effect mention, and reported by `--deps` as `Signal<Count>.read` /
+      `Signal<Cursor>.read`. An instantiated mention of a DYNAMIC effect is
+      rejected — a runtime handler is keyed by effect name, so the identity has
+      no key — and an arity that the declaration cannot have is rejected too
+- [ ] [STAGE-SIGNALS-EXACT]'s remaining half: `--deps` from resolved effect
+      rows rather than the syntactic mention, so an instantiation inference
+      chose is reported as exactly as one the source wrote, and a name a local
+      binder shadows stops fabricating its dependency (limitation 10). The
+      nonzero-exit half of that limitation is done — `--deps` refuses a file
+      that did not parse instead of printing a short set from a partial tree
 - [ ] Wasm residual-effect rejection naming effect and operation before
       linking (limitation 11)
 - [ ] Static handler-state coverage either way (limitation 6)
-- [ ] Stage 2: ML surface + twin + `[FLAVOR-IR-EQUIV]` coverage
+- [ ] Stage 2's remaining half: an ML twin of
+      `tests/effects/staged/staged_effects.test.osp` sharing its golden. The ML
+      SURFACE is complete — `static effect`, `handle static`, `kernel` and
+      instantiated mentions all parse and discharge, with cross-flavor AST
+      equivalence asserted in `crates/osprey-syntax/src/lib.rs` — but the twin
+      program itself is not written, so `[FLAVOR-IR-EQUIV]` is proven at the
+      AST and not yet at the IR
 - [ ] Stage 3: name resolution before rewriting; keep originals for
       diagnostics; hygienic argument binding; arm validation against
       signatures and transitive rows before erasure (limitation 7 / review
@@ -343,7 +374,13 @@ an unrelated branch.
       project assembly (limitation 9)
 - [ ] Stage 4: instantiation-keyed rewrite rules
 - [ ] Stage 5: `signal` form, LSP dependency view, reactive example
-- [ ] Stage 6: device dialects and the `kernel` region form
+- [x] Stage 6, the `kernel` region form: `kernel E op … in body` parses in both
+      flavors and lowers to the nested static handler regions it means, with the
+      outermost marked `Stage::Kernel`. Its body's residual dynamic row must be
+      empty ([STAGE-GPU-LEGAL]), rejected by name at the boundary
+      ([STAGE-GPU-DIAG]) — as is the same row at a `gpuMap` offload boundary
+- [ ] Stage 6's device dialects themselves: `Parallel`, `Alloc` and `Tensor`
+      declarations with device lowerings for the arms a kernel supplies
 - [ ] Re-evaluate the MLIR decision at [plan 0023](0023-gpu-computation.md)
       stage 4's checkpoint against the adoption criteria above; record the
       outcome here either way

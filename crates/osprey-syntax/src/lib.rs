@@ -21,6 +21,7 @@ pub(crate) const I64_MIN_MAGNITUDE: &str = "9223372036854775808";
 mod default;
 mod desugar;
 mod docparse;
+mod kernel;
 mod ml;
 mod positional;
 mod strings;
@@ -128,11 +129,34 @@ pub fn dependency_sets(
     source: &str,
     flavor: Flavor,
 ) -> std::collections::BTreeMap<String, Vec<String>> {
+    dependency_report(source, flavor).0
+}
+
+/// The same dependency sets, paired with the syntax errors found deriving them.
+///
+/// Parsing is best-effort, so a source that did not parse still yields a tree —
+/// and the dependency sets read off it are silently short. "This view reads no
+/// signals" and "this file did not parse" print identically, and a dirty set
+/// that is wrongly empty is a subtree that never rebuilds: the exact class of
+/// bug [STAGE-SIGNALS-DIRTY] claims to remove. So any caller answering a human
+/// or a build MUST surface these errors rather than the sets alone, which is
+/// the nonzero exit [STAGE-SIGNALS-EXACT] requires of `--deps`.
+#[must_use]
+pub fn dependency_report(
+    source: &str,
+    flavor: Flavor,
+) -> (
+    std::collections::BTreeMap<String, Vec<String>>,
+    Vec<SyntaxError>,
+) {
     let parsed = match flavor {
         Flavor::Default => default::parse(source),
         Flavor::Ml => ml::parse_ml(source),
     };
-    osprey_ast::stage::dependencies(&parsed.program)
+    (
+        osprey_ast::stage::dependencies(&parsed.program),
+        parsed.errors,
+    )
 }
 
 /// Answer every `static` effect before the canonical program leaves the flavor
@@ -254,6 +278,87 @@ mod tests {
         assert!(resolve_flavor(None, "a.osp", "// osprey: flavor=ml\n").is_err());
         // An unknown marker name fails loudly too.
         assert!(resolve_flavor(None, "a.txt", "// osprey: flavor=fsharp\n").is_err());
+    }
+
+    /// The Default and ML spellings of one staged program, for the two surfaces
+    /// added with the stage axis. Both must reach the SAME canonical AST, which
+    /// is the whole content of [FLAVOR-BOUNDARY].
+    const KERNEL_DEFAULT: &str = "static effect Tile { size: fn() -> int }\n\
+fn shade(px) = (px * perform Tile.size()) ?: 0\n\
+fn frame() = kernel\n    Tile size => 8\nin shade(2)\n";
+    const KERNEL_ML: &str =
+        "static effect Tile\n    size : Unit => int\n\nshade px = px * perform Tile.size () ?: 0\n\nframe =\n    kernel\n        Tile size => 8\n    in shade 2\n";
+
+    /// [STAGE-GPU-KERNEL]: a `kernel` is a handler region, so it discharges by
+    /// the same rewrite and leaves the same nothing behind — from either
+    /// surface. Implements [STAGE-RESIDUE], [FLAVOR-BOUNDARY].
+    #[test]
+    fn both_flavors_discharge_a_kernel_region_to_zero_residue() {
+        for (flavor, source) in [(Flavor::Default, KERNEL_DEFAULT), (Flavor::Ml, KERNEL_ML)] {
+            let parsed = parse_program_with_flavor(source, flavor);
+            assert!(parsed.errors.is_empty(), "{flavor:?}: {:?}", parsed.errors);
+            let rendered = format!("{:?}", parsed.program);
+            assert!(
+                !rendered.contains("Handler"),
+                "{flavor:?}: a discharged kernel must leave no handler"
+            );
+            assert!(
+                !rendered.contains("Perform"),
+                "{flavor:?}: a discharged kernel must leave no request"
+            );
+        }
+    }
+
+    /// [STAGE-SIGNALS-EXACT]: identity is the instantiation, and both surfaces
+    /// spell the mention the same way, so a dependency set is the same set.
+    #[test]
+    fn both_flavors_name_a_signal_by_its_instantiation() {
+        let default = "static effect Signal<T> { read: fn() -> T }\n\
+fn counter(n) = (perform Signal<Count>.read()) ?: n\n";
+        let ml = "static effect Signal T\n    read : Unit => T\n\ncounter n = perform Signal<Count>.read () ?: n\n";
+        for (flavor, source) in [(Flavor::Default, default), (Flavor::Ml, ml)] {
+            let deps = dependency_sets(source, flavor);
+            assert_eq!(
+                deps.get("counter").cloned().unwrap_or_default(),
+                vec!["Signal<Count>.read"],
+                "{flavor:?}: the dependency is the instantiation, not the bare effect"
+            );
+        }
+    }
+
+    /// [STAGE-GPU-LEGAL]: a kernel body that still needs a runtime handler is
+    /// rejected at the boundary, naming what forced it — device code cannot
+    /// leave the device to reach one.
+    #[test]
+    fn a_kernel_body_with_a_residual_dynamic_row_is_rejected() {
+        let source = "static effect Tile { size: fn() -> int }\n\
+effect Log { write: fn(string) -> Unit }\n\
+fn shade(px) = {\n    perform Log.write(\"px\")\n    (px * perform Tile.size()) ?: 0\n}\n\
+fn frame() = kernel\n    Tile size => 8\nin shade(2)\n";
+        let errors = parse_program_with_flavor(source, Flavor::Default).errors;
+        assert!(
+            errors.iter().any(|e| e.message.contains(
+                "kernel body is not stage-legal; it requires dynamic effects: Log.write"
+            )),
+            "expected the stage-legality rejection, got: {errors:?}"
+        );
+    }
+
+    /// [STAGE-SIGNALS-EXACT]: only the static stage can represent instantiation
+    /// identity — a dynamic handler is keyed by effect name at runtime — so an
+    /// instantiated mention of a dynamic effect is rejected rather than
+    /// compiled to a key it shares with every other instantiation.
+    #[test]
+    fn an_instantiated_dynamic_effect_is_rejected_rather_than_shared() {
+        let source = "effect Signal<T> { read: fn() -> T }\n\
+fn counter(n) = (perform Signal<Count>.read()) ?: n\n";
+        let errors = parse_program_with_flavor(source, Flavor::Default).errors;
+        assert!(
+            errors.iter().any(|e| e
+                .message
+                .contains("names an instantiation of dynamic effect `Signal`")),
+            "expected the dynamic-instantiation rejection, got: {errors:?}"
+        );
     }
 
     #[test]

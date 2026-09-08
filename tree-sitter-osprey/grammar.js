@@ -391,6 +391,7 @@ module.exports = grammar({
         $.match_expression,
         $.if_expression,
         $.handler_expression,
+        $.kernel_expression,
         $.select_expression,
         $.ternary_expression,
         $.binary_expression,
@@ -434,11 +435,25 @@ module.exports = grammar({
 
     // `handle static E ... in body` marks a region the compiler discharges by
     // rewriting, leaving no runtime handler. Implements [STAGE-HANDLE-STATIC].
+    // The optional `<...>` names the INSTANTIATION being handled: `Signal<Count>`
+    // and `Signal<Cursor>` are different effects to a row, so they are different
+    // effects to a handler. Implements [STAGE-SIGNALS-EXACT].
     handler_expression: ($) =>
-      prec.right(seq('handle', optional(field('stage', $.static_stage)), field('effect', choice($.qualified_path, $.identifier)), repeat1($.handler_arm), 'in', field('body', $.expression))),
+      prec.right(seq('handle', optional(field('stage', $.static_stage)), field('effect', choice($.qualified_path, $.identifier)), optional(field('instantiation', $.type_arguments)), repeat1($.handler_arm), 'in', field('body', $.expression))),
     handler_arm: ($) =>
       seq(field('operation', $.identifier), optional($.handler_params), '=>', field('body', $.expression)),
     handler_params: ($) => repeat1($.identifier),
+
+    // `kernel E op ... in body` is not a magic block: it is a handler region
+    // that supplies the STATIC handlers for the device dialects its body may
+    // use, and admits only bodies whose residual dynamic row is empty. Each arm
+    // names its effect because one kernel answers several dialects — `Parallel`,
+    // `Alloc`, `Tensor` — where `handle` answers exactly one.
+    // Implements [STAGE-GPU-KERNEL], [STAGE-GPU-LEGAL].
+    kernel_expression: ($) =>
+      prec.right(seq('kernel', repeat1($.kernel_arm), 'in', field('body', $.expression))),
+    kernel_arm: ($) =>
+      seq(field('effect', $.identifier), field('operation', $.identifier), optional($.handler_params), '=>', field('body', $.expression)),
 
     select_expression: ($) => seq('select', '{', repeat1($.select_arm), '}'),
     select_arm: ($) =>
@@ -558,7 +573,7 @@ module.exports = grammar({
     send_call: ($) => seq('send', '(', $.expression, ',', $.expression, ')'),
     recv_call: ($) => seq('recv', '(', $.expression, ')'),
     perform_expression: ($) =>
-      seq('perform', field('effect', choice($.qualified_path, $.identifier)), '.', field('operation', $.identifier), '(', optional($.argument_list), ')'),
+      seq('perform', field('effect', choice($.qualified_path, $.identifier)), optional(field('instantiation', $.type_arguments)), '.', field('operation', $.identifier), '(', optional($.argument_list), ')'),
     // `resume(v)` resumes the performer's delimited continuation with `v`;
     // `resume()` resumes with Unit. Only legal inside a handler arm body.
     // Implements [EFFECTS-RESUME].

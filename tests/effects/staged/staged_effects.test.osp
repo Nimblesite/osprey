@@ -14,6 +14,26 @@ static effect Alloc {
     scratch: fn(int) -> int
 }
 
+/// A reactive value is a generic static effect, and its identity is the
+/// INSTANTIATION: `Signal<Count>` and `Signal<Cursor>` are two dependencies
+/// sharing one declaration, not one dependency ([STAGE-SIGNALS],
+/// [STAGE-SIGNALS-EXACT]).
+static effect Signal<T> {
+    /// The current value of this signal, answered at compile time.
+    read: fn() -> T
+}
+
+/// One signal's payload. A distinct type per signal is the surface contract
+/// [STAGE-SIGNALS-EXACT] states until a dedicated declaration form exists.
+type Count = {
+    value: int
+}
+
+/// A second signal's payload, so the two instantiations are distinguishable.
+type Cursor = {
+    at: int
+}
+
 /// An ordinary runtime effect, unchanged by staging ([STAGE-COMPAT]).
 effect Log {
     /// Record one line through whichever handler is active.
@@ -22,6 +42,12 @@ effect Log {
 
 /// A helper reached from a static region: discharge follows calls, not syntax.
 fn tiled(n) = (n * perform Tile.size()) ?: 0
+
+/// Two views, each reading exactly one signal. Neither declares a dependency
+/// array; the row it carries IS its dependency set ([STAGE-SIGNALS-DIRTY]).
+fn counterLabel() = "count: ${(perform Signal<Count>.read()).value}"
+
+fn cursorLabel() = "at: ${(perform Signal<Cursor>.read()).at}"
 
 /// A helper reached from a dynamic region, for the shared-callee case.
 fn logged(n) = {
@@ -80,6 +106,35 @@ fn stagedKernelCase() = {
     ])
 }
 
+/// `kernel` is a handler region, not a magic block: ONE region supplies the
+/// static handlers for several device dialects, where `handle` answers exactly
+/// one ([STAGE-GPU-KERNEL]). Its body carries the extra obligation that nothing
+/// is left to answer at runtime ([STAGE-GPU-LEGAL]).
+fn kernelRegionCase() = {
+    let frame = kernel
+        Tile size => 8
+        Alloc scratch bytes => (bytes * 2) ?: 0
+    in "${tiled(3)}/${perform Alloc.scratch(16)}"
+    checkAll("a kernel region answers several dialects at once", [
+        frame == "24/32"
+    ])
+}
+
+/// Two signals sharing one operation stay two dependencies, so a region
+/// answering one leaves the other untouched ([STAGE-SIGNALS-EXACT]).
+fn signalIdentityCase() = {
+    let labels = handle static Signal<Count>
+        read => Count { value: 7 }
+    in handle static Signal<Cursor>
+        read => Cursor { at: 2 }
+    in "${counterLabel()} ${cursorLabel()}"
+    checkAll("signal identity is the generic instantiation", [
+        labels == "count: 7 at: 2"
+    ])
+}
+
 test("static handlers are discharged before the program runs", staticDischargeCase)
 test("one function serves the static and dynamic stages", sharedAcrossStagesCase)
 test("a GPU kernel may perform a static effect", stagedKernelCase)
+test("a kernel region supplies its own device dialects", kernelRegionCase)
+test("two signal instantiations are two dependencies", signalIdentityCase)

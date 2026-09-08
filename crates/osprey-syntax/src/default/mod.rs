@@ -15,6 +15,7 @@ use osprey_ast::{Position, Program};
 use tree_sitter::{Node, Parser, Point, Tree};
 
 mod expr;
+mod kernel;
 mod lower;
 mod modules;
 

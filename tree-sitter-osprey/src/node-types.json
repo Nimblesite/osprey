@@ -459,6 +459,10 @@
           "named": true
         },
         {
+          "type": "kernel_expression",
+          "named": true
+        },
+        {
           "type": "match_expression",
           "named": true
         },
@@ -951,6 +955,16 @@
           }
         ]
       },
+      "instantiation": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "type_arguments",
+            "named": true
+          }
+        ]
+      },
       "stage": {
         "multiple": false,
         "required": false,
@@ -1160,6 +1174,78 @@
           }
         ]
       }
+    }
+  },
+  {
+    "type": "kernel_arm",
+    "named": true,
+    "fields": {
+      "body": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "expression",
+            "named": true
+          }
+        ]
+      },
+      "effect": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "identifier",
+            "named": true
+          }
+        ]
+      },
+      "operation": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "identifier",
+            "named": true
+          }
+        ]
+      }
+    },
+    "children": {
+      "multiple": false,
+      "required": false,
+      "types": [
+        {
+          "type": "handler_params",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "kernel_expression",
+    "named": true,
+    "fields": {
+      "body": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "expression",
+            "named": true
+          }
+        ]
+      }
+    },
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "kernel_arm",
+          "named": true
+        }
+      ]
     }
   },
   {
@@ -1959,6 +2045,16 @@
           },
           {
             "type": "qualified_path",
+            "named": true
+          }
+        ]
+      },
+      "instantiation": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "type_arguments",
             "named": true
           }
         ]
@@ -3260,6 +3356,10 @@
   {
     "type": "interpolated_string",
     "named": true
+  },
+  {
+    "type": "kernel",
+    "named": false
   },
   {
     "type": "let",

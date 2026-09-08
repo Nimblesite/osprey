@@ -903,8 +903,14 @@ fn unknown_declared_effect_is_rejected() {
     );
 }
 
-// -------------------- GPU kernel purity [GPU-KERNEL-PURE] --------------------
-// (docs/specs/0034-GPUComputation.md)
+// ---------- GPU kernel purity [GPU-KERNEL-PURE], [STAGE-GPU-LEGAL] ----------
+// (docs/specs/0034-GPUComputation.md, docs/specs/0035-StagedEffects.md)
+//
+// Staging generalised the rule from "empty row" to "empty DYNAMIC row", so the
+// rejection names what is left to answer at the boundary rather than calling
+// the kernel impure: a kernel MAY perform a static effect and still be legal.
+// The fail-closed message for an unprovable callback is unchanged
+// ([STAGE-GPU-DIAG]).
 
 #[test]
 fn gpu_kernels_must_be_pure_even_under_a_matching_handler() {
@@ -922,7 +928,7 @@ fn gpu_kernels_must_be_pure_even_under_a_matching_handler() {
              in toGpu([1, 2]) |> gpuMap(loud) |> gpuLength()\n\
              print(n)\n\
          }\n",
-        &["GPU kernel must be pure; it performs: Log.write"],
+        &["kernel body is not stage-legal; it requires dynamic effects: Log.write"],
     );
 }
 
@@ -940,7 +946,7 @@ fn gpu_fold_combine_kernels_are_purity_checked_too() {
              in toGpu([1, 2]) |> gpuFold(0, noisyAdd)\n\
              print(n)\n\
          }\n",
-        &["GPU kernel must be pure; it performs: Log.write"],
+        &["kernel body is not stage-legal; it requires dynamic effects: Log.write"],
     );
 }
 

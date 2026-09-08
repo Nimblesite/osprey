@@ -139,6 +139,17 @@ jobs:
         run: make _runtime_wasm
 
       # ── Static analysis. All of it, before anything is tested. ──
+
+      # A Make target that runs a node tool without depending on that
+      # subproject's install stamp only fails on a machine that has never
+      # installed it — never on a CI runner that installs everything up front,
+      # and never on the author's machine. This asserts the prerequisite is
+      # there. It is a step in an already-required job, not a new required
+      # check, so the pinned context list in verify-branch-protection.mjs and
+      # the ruleset stay in agreement.
+      - name: Make node dependency guard intact
+        run: node scripts/verify-node-deps-guard.mjs
+
       - name: Format check
         run: cargo fmt --all --check
 

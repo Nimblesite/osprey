@@ -555,3 +555,45 @@ test("undocumented", bareCase)
             (expression
               (primary_expression
                 (identifier)))))))))
+
+================================================================================
+A kernel region and an instantiated effect mention [STAGE-GPU-KERNEL] [STAGE-SIGNALS-EXACT]
+================================================================================
+
+fn main() = kernel
+    Tile size => 8
+    Alloc scratch bytes => bytes
+in perform Signal<Count>.read()
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (statement
+    (function_declaration
+      name: (identifier)
+      body: (expression
+        (kernel_expression
+          (kernel_arm
+            effect: (identifier)
+            operation: (identifier)
+            body: (expression
+              (primary_expression
+                (literal
+                  (integer)))))
+          (kernel_arm
+            effect: (identifier)
+            operation: (identifier)
+            (handler_params
+              (identifier))
+            body: (expression
+              (primary_expression
+                (identifier))))
+          body: (expression
+            (primary_expression
+              (perform_expression
+                effect: (identifier)
+                instantiation: (type_arguments
+                  (type_list
+                    (type_identifier
+                      (identifier))))
+                operation: (identifier)))))))))

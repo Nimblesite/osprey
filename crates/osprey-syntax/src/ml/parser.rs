@@ -103,7 +103,7 @@ impl Parser<'_> {
         self.toks.get(self.i).map_or(&TokKind::Eof, |t| &t.kind)
     }
 
-    fn peek_at(&self, ahead: usize) -> &TokKind {
+    pub(super) fn peek_at(&self, ahead: usize) -> &TokKind {
         self.toks
             .get(self.i + ahead)
             .map_or(&TokKind::Eof, |t| &t.kind)
@@ -1356,6 +1356,9 @@ impl Parser<'_> {
             TokKind::Backslash => self.lambda(),
             TokKind::LParen => self.paren(),
             TokKind::LBracket => self.list(),
+            // `kernel` opens a region only where an indented arm block follows;
+            // everywhere else it is an ordinary name. Implements [STAGE-GPU-KERNEL].
+            TokKind::Ident(_) if self.at_kernel_region() => self.kernel_expr(),
             TokKind::Ident(name) => {
                 self.advance();
                 self.ident_atom(name)
@@ -1523,7 +1526,7 @@ impl Parser<'_> {
         let pos = self.pos();
         self.advance(); // `perform`
         let first = self.ident().unwrap_or_default();
-        let effect = self.qualified_name_tail(first);
+        let effect = self.instantiated_effect(first);
         if !self.eat(&TokKind::Dot) {
             self.error("expected '.' between effect and operation in perform");
         }
@@ -1567,7 +1570,7 @@ impl Parser<'_> {
             _ => Stage::Dynamic,
         };
         let first = self.ident().unwrap_or_default();
-        let effect = self.qualified_name_tail(first);
+        let effect = self.instantiated_effect(first);
         let mut arms = Vec::new();
         if self.eat(&TokKind::Indent) {
             while !self.at_block_end() {
@@ -1597,8 +1600,27 @@ impl Parser<'_> {
         }
     }
 
+    /// The effect a request or region names, INCLUDING the instantiation when
+    /// it wrote one. `Signal<Count>` and `Signal<Cursor>` are different effects
+    /// to a row, so they are different effects to a handler, and both flavors
+    /// spell the mention the same way. Implements [STAGE-SIGNALS-EXACT].
+    fn instantiated_effect(&mut self, first: String) -> String {
+        let name = self.qualified_name_tail(first);
+        if !self.at_angle_open() {
+            return name;
+        }
+        let applied = self.ty_generic_args(name);
+        super::lower::render_type(&applied)
+    }
+
+    /// The parser's own cursor, so a sibling module can tell whether an arm
+    /// consumed anything and recover when it did not.
+    pub(super) fn position_index(&self) -> usize {
+        self.i
+    }
+
     /// One `op param* => body` arm of a `handle` expression.
-    fn handle_arm(&mut self) -> MlHandleArm {
+    pub(super) fn handle_arm(&mut self) -> MlHandleArm {
         let pos = self.pos();
         let operation = self.ident().unwrap_or_default();
         let mut params = Vec::new();
@@ -2016,7 +2038,7 @@ impl Parser<'_> {
 
     /// The body after `=`/`=>`: an inline expression, or an indented layout
     /// block whose trailing expression is its value ([FLAVOR-ML-BLOCK]).
-    fn body_after_eq(&mut self) -> MlExpr {
+    pub(super) fn body_after_eq(&mut self) -> MlExpr {
         if !matches!(self.peek(), TokKind::Indent) {
             return self.inline_body();
         }

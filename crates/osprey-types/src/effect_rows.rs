@@ -2356,8 +2356,15 @@ fn validate_gpu_kernel(
     }
 }
 
-/// The rejection message for a GPU combinator kernel, or `None` when the
-/// kernel is provably pure [GPU-KERNEL-PURE].
+/// The rejection message for a GPU combinator kernel, or `None` when the kernel
+/// is stage-legal.
+///
+/// Two rejections, and the difference is what the checker could see. When it
+/// cannot resolve the callback to a definition it says so and fails closed
+/// ([GPU-KERNEL-PURE]); when it CAN, and the row it read still needs a runtime
+/// handler, it names those operations instead — a kernel is no longer required
+/// to be pure, only to have nothing left to answer at the boundary.
+/// Implements [STAGE-GPU-LEGAL], [STAGE-GPU-DIAG].
 fn gpu_kernel_verdict(
     analyzer: &Analyzer<'_>,
     kernel: &Expr,
@@ -2373,7 +2380,7 @@ fn gpu_kernel_verdict(
     if !row.required.is_empty() {
         let performed: Vec<String> = row.required.iter().map(requirement_name).collect();
         return Some(format!(
-            "GPU kernel must be pure; it performs: {}",
+            "kernel body is not stage-legal; it requires dynamic effects: {}",
             performed.join(", ")
         ));
     }

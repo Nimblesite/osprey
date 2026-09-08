@@ -59,6 +59,35 @@ RTB ?= compiler/bin
 EXT_DIR        ?= vscode-extension
 EXT_ID         ?= nimblesite.osprey
 
+# ---------------------------------------------------------------------------
+# Node dependency guard
+# ---------------------------------------------------------------------------
+# Every recipe that runs a tool out of a node subproject needs that project's
+# node_modules, and nothing in this Makefile installed one. `make build` on a
+# tree that had never run `make setup` reached `tsc -b` and died with
+# "tsc: command not found" — `npm run compile` silently assumed the install had
+# already happened somewhere else. A build target that only works after an
+# undocumented manual step is not a build target, and it fails as a missing
+# binary rather than as the missing install it actually is. The comment above
+# `_bank_test` records the same trap being routed around in CI instead of
+# fixed.
+#
+# npm writes node_modules/.package-lock.json as the last act of a successful
+# install, so it is a truthful stamp: newer than package-lock.json exactly when
+# the installed tree matches the lockfile. Make re-runs the install only when
+# the lockfile moves or the tree is gone, so an up-to-date project costs one
+# stat rather than a reinstall. `npm ci` is the right installer precisely
+# because it refuses to paper over a package.json that disagrees with its lock.
+EXT_NODE_DEPS         = $(EXT_DIR)/node_modules/.package-lock.json
+WEBSITE_NODE_DEPS     = website/node_modules/.package-lock.json
+WEBCOMPILER_NODE_DEPS = webcompiler/node_modules/.package-lock.json
+BANK_WEB_NODE_DEPS    = examples/projects/modules/web/node_modules/.package-lock.json
+BANK_E2E_NODE_DEPS    = examples/projects/modules/e2e/node_modules/.package-lock.json
+
+%/node_modules/.package-lock.json: %/package-lock.json
+	@echo "==> [$*] installing node dependencies (npm ci)..."
+	npm --prefix $* ci
+
 # Shared hardened warning sets — defined ONCE so a lint added here reaches every
 # C recipe below (archives, fiber, http_shared, unit tests). WARN is the core
 # every C translation unit compiles under. WARN_MAX adds two lints the SHIPPED
@@ -153,7 +182,7 @@ WASM_SERVE_PORT ?= 8080
 # =============================================================================
 
 ## build: C runtime archives + Rust workspace (release) + VSCode extension
-build: _runtime
+build: _runtime $(EXT_NODE_DEPS)
 	@echo "==> Building..."
 	cargo build --release --workspace
 	cd $(EXT_DIR) && npm run compile
@@ -201,9 +230,9 @@ bank: bank-web
 ## bank-web: Regenerate the embedded React host + Osprey WebAssembly client.
 ##           Requires Node and a WASI sysroot; the generated Osprey Bundle is
 ##           committed so ordinary native/CI builds do not need either tool.
-bank-web: build _runtime_wasm
+bank-web: build _runtime_wasm $(BANK_WEB_NODE_DEPS)
 	@echo "==> Building Talon Bank browser application..."
-	cd examples/projects/modules/web && npm ci && npm run build
+	cd examples/projects/modules/web && npm run build
 
 ## bank-test: Native Osprey unit tests for the Talon Bank pure domain layer,
 ##            run through the built-in `osprey test` harness (TAP output).
@@ -226,9 +255,9 @@ _language-test: build
 ## bank-e2e: Browser end-to-end tests for the Talon Bank modules showcase
 ##           (examples/projects/modules) — real Chromium via Playwright drives
 ##           the compiled osprey binary serving its HTTP API and web UI.
-bank-e2e: bank-web
+bank-e2e: bank-web $(BANK_E2E_NODE_DEPS)
 	@echo "==> Bank e2e (Playwright)..."
-	cd examples/projects/modules/e2e && npm ci && npx playwright install chromium && npx playwright test
+	cd examples/projects/modules/e2e && npx playwright install chromium && npx playwright test
 
 ## lint: Run all linters/analyzers (read-only). Checks formatting but does
 ## NOT rewrite it — `make fmt` does that. The fmt check lives HERE because
@@ -236,8 +265,9 @@ bank-e2e: bank-web
 ## job cannot block a merge.
 lint: _deslop _lint
 
-_lint:
+_lint: $(EXT_NODE_DEPS)
 	@echo "==> Linting..."
+	node scripts/verify-node-deps-guard.mjs
 	cargo fmt --all --check
 	cargo clippy --workspace --all-targets -- -D warnings
 	cd $(EXT_DIR) && npm run lint
@@ -284,7 +314,7 @@ hawk:
 	RUSTC_BOOTSTRAP=1 cargo hawk check --only dead-public -D hawk::dead_public --target-dir $(CURDIR)/target/hawk
 
 ## fmt: Format all code in-place. Pass CHECK=1 for read-only check (CI use).
-fmt:
+fmt: $(EXT_NODE_DEPS)
 	@echo "==> Formatting$(if $(CHECK), (check mode),)..."
 	cargo fmt --all$(if $(CHECK), --check,)
 	cd $(EXT_DIR) && npx prettier$(if $(CHECK), --check, --write) .
@@ -362,13 +392,10 @@ wasm-serve: wasm
 	  cd $(WASM_SERVE_DIR) && exec python3 -m http.server $(WASM_SERVE_PORT)
 
 ## setup: Post-create dev environment setup (used by devcontainer)
-setup:
+setup: $(EXT_NODE_DEPS) $(WEBCOMPILER_NODE_DEPS) $(WEBSITE_NODE_DEPS)
 	@echo "==> Setting up development environment..."
 	rustup component add rustfmt clippy llvm-tools-preview
 	command -v cargo-llvm-cov >/dev/null 2>&1 || cargo install cargo-llvm-cov
-	cd $(EXT_DIR) && npm ci
-	cd webcompiler && npm ci
-	cd website && npm ci
 	@echo "==> Setup complete. Run 'make ci' to validate."
 
 # ---------------------------------------------------------------------------
@@ -767,7 +794,7 @@ _conformance-arc:
 # checks out a tree with no bin/ and falls through to PATH — which makes it
 # exactly the kind of failure a developer cannot reproduce from a green CI run.
 # Restaging keeps `make test` honest about which compiler it just tested.
-_test_vscode_extension: _vsix_bundle
+_test_vscode_extension: _vsix_bundle $(EXT_NODE_DEPS)
 	@echo "==> [vscode-extension] staging osprey as 'osprey' for LSP integration..."
 	$(MKDIR) target/path-bin
 	cp $(BIN) target/path-bin/osprey
@@ -936,11 +963,11 @@ _uninstall:
 	@echo "==> uninstalled."
 
 # _website-dev: Start local website development server
-_website-dev:
+_website-dev: $(WEBSITE_NODE_DEPS)
 	cd website && npm run dev
 
 # _website-build: Build static site
-_website-build:
+_website-build: $(WEBSITE_NODE_DEPS)
 	cd website && npm run build
 
 # _test_bench_tools: Unit-test the benchmark result merger. It is the component
@@ -1012,7 +1039,7 @@ _vsix_bundle:
 	   $(RTB)/libfiber_runtime_arc.a $(RTB)/libhttp_runtime_arc.a "$$DEST/"; \
 	echo "  bundled $(BIN) + all native runtime archives -> $$DEST/"
 
-_vsix_package:
+_vsix_package: $(EXT_NODE_DEPS)
 	cd $(EXT_DIR) && npm run package
 
 # Install the newest Osprey VSIX into the DEFAULT profile only. `--install-

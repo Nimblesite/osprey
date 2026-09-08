@@ -1,0 +1,23 @@
+// [STAGE-GPU-DIAG]: a kernel supplies the STATIC handlers its body may use, so
+// a request its arms did not answer is one nothing can answer — device code
+// cannot leave the device to reach a runtime handler. The rejection names the
+// operations that forced it rather than calling the body impure.
+static effect Tile {
+    size: fn() -> int
+}
+
+effect Log {
+    write: fn(string) -> Unit
+}
+
+fn shade(px) = {
+    perform Log.write("shading")
+    (px * perform Tile.size()) ?: 0
+}
+
+fn main() = {
+    let frame = kernel
+        Tile size => 8
+    in shade(2)
+    print("${frame}")
+}

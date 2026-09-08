@@ -274,6 +274,52 @@ fn hover_prints_known_builtin_and_is_silent_for_unknown() {
 }
 
 #[test]
+fn deps_refuses_a_file_that_did_not_parse() {
+    // [STAGE-SIGNALS-EXACT] A dependency set is only exact if it is derived
+    // from a program that exists. Parsing is best-effort, so a broken file
+    // still yields a partial tree, and reading dependencies off it prints
+    // FEWER than the source asks for — with no way to tell that apart from a
+    // view that genuinely reads nothing. A wrongly empty dirty set is a
+    // subtree that never rebuilds, which is the one bug [STAGE-SIGNALS-DIRTY]
+    // exists to remove, so `--deps` must refuse rather than under-report.
+    let broken = temp_osp(
+        "deps_unparsed",
+        "static effect Signal<T> { read: fn( -> T }\n",
+    );
+    let out = run_file(&broken, &["--deps"]);
+    assert_eq!(
+        out.code,
+        Some(1),
+        "a file that did not parse must not report a dependency set; stdout={} stderr={}",
+        out.stdout,
+        out.stderr
+    );
+    assert!(
+        out.stderr.contains("syntax error"),
+        "the refusal must name the syntax error; stderr={}",
+        out.stderr
+    );
+    assert!(
+        out.stdout.trim().is_empty(),
+        "no dependency line may be printed from a partial tree; stdout={}",
+        out.stdout
+    );
+
+    // The positive control: the same shape, parsing, still reports and exits 0.
+    let good = temp_osp(
+        "deps_parsed",
+        "type Count = { value: int }\nstatic effect Signal<T> { read: fn() -> T }\n         fn counterLabel() = \"count: ${(perform Signal<Count>.read()).value}\"\n",
+    );
+    let ok = run_file(&good, &["--deps"]);
+    assert_eq!(ok.code, Some(0), "stderr={}", ok.stderr);
+    assert!(
+        ok.stdout.contains("counterLabel: Signal<Count>.read"),
+        "stdout={}",
+        ok.stdout
+    );
+}
+
+#[test]
 fn fmt_stdout_check_and_rewrite_modes() {
     let prog = temp_osp("fmt_modes", "fn main() = {\nprint(1)\n}\n");
     let path = prog.to_string_lossy().into_owned();

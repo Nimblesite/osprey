@@ -139,10 +139,12 @@ fn main() = {
 }
 
 // ---------------------------------------------------------------------------
-// The rules of docs/specs/0035-StagedEffects.md that have no implementation
-// yet. Each test below states the spec's contract, so it fails until the rule
-// exists — a red test that pins the gap is worth more than a comment saying
-// the gap is known. Every one names the spec ID it is the executable form of.
+// The rules of docs/specs/0035-StagedEffects.md that reach past discharge: the
+// target a static row may be built for, the offload boundary a kernel is, and
+// the identity a reactive read carries. Each test below states the spec's
+// contract in the form the spec states it, so the rule cannot regress into a
+// comment saying it once worked. Every one names the spec ID it is the
+// executable form of.
 // ---------------------------------------------------------------------------
 
 const STATIC_ROW_SOURCE: &str = r#"
@@ -189,12 +191,82 @@ fn main() = {
     );
 }
 
-// [STAGE-GPU-KERNEL], [STAGE-GPU-DIAG] and [STAGE-SIGNALS-EXACT] have no
-// implementation and no surface that parses. Their executable contracts are
-// written out in the TODO of docs/plans/0024-staged-effects.md rather than as
-// red tests here: they belong to that plan's stages, not to the multiplicity
-// axis this file's sibling covers, and a red test for another plan's unbuilt
-// feature blocks every merge on this one.
+#[test]
+fn a_kernel_region_is_a_handler_region_not_a_magic_block() {
+    // [STAGE-GPU-KERNEL] `kernel` is a handler region whose signature admits
+    // only stage-legal rows, supplying the static handlers for the device
+    // dialects its body may use. There is no such form today: the surface does
+    // not parse, so a kernel cannot carry its own dialect handlers and the
+    // device effects `Parallel`, `Alloc` and `Tensor` have nowhere to be
+    // answered.
+    let source = r#"
+static effect Tile { size: fn() -> int }
+fn shade(px) = (px * perform Tile.size()) ?: 0
+fn main() = {
+    let frame = kernel
+        Tile size => 8
+    in shade(2)
+    print("${frame}")
+}
+"#;
+    let errors = diagnostics(source, Flavor::Default);
+    assert!(
+        errors.is_empty(),
+        "a `kernel` region supplying its dialect handlers must be accepted: {errors}"
+    );
+}
+
+#[test]
+fn an_unstage_legal_kernel_says_so_instead_of_only_saying_impure() {
+    // [STAGE-GPU-DIAG] Stage adds the case where the checker CAN see the
+    // body's provenance and the answer is no. The existing fail-closed message
+    // ("cannot prove GPU kernel pure") is retained for the case where it
+    // cannot; it is the wrong message here, because it describes an absence of
+    // evidence rather than the evidence of a dynamic row.
+    let source = r#"
+effect Log { write: fn(string) -> Unit }
+fn noisy(px) = {
+    perform Log.write("px")
+    px
+}
+fn main() = {
+    let out = handle Log
+        write msg => resume(print(msg))
+    in fromGpu(toGpu([1, 2, 3]) |> gpuMap(noisy))
+    print("${listGet(out, 0) ?: 0}")
+}
+"#;
+    let errors = diagnostics(source, Flavor::Default);
+    assert!(
+        errors.contains("not stage-legal") && errors.contains("Log.write"),
+        "expected the stage-legality diagnostic naming the dynamic effect, got: {errors}"
+    );
+}
+
+#[test]
+fn signal_identity_is_the_generic_instantiation() {
+    // [STAGE-SIGNALS-EXACT] "Signal identity is the generic instantiation:
+    // `Signal<Count>` and `Signal<Cursor>` are distinct dependencies." That is
+    // the surface contract the whole reactive story rests on — a widget's
+    // dirty set is its row — and the explicit instantiation it requires at the
+    // `perform` and `handle` sites does not parse today, so two signals are
+    // indistinguishable in a row.
+    let source = r#"
+type Count = { value: int }
+type Cursor = { at: int }
+static effect Signal<T> { read: fn() -> T }
+fn counterLabel() = "count: ${(perform Signal<Count>.read()).value}"
+fn cursorLabel() = "at: ${(perform Signal<Cursor>.read()).at}"
+"#;
+    let deps = dependency_sets(source, Flavor::Default);
+    let of = |name: &str| deps.get(name).cloned().unwrap_or_default();
+    assert_eq!(
+        of("counterLabel"),
+        vec!["Signal<Count>.read"],
+        "a view depends on the instantiation it reads, not the bare effect"
+    );
+    assert_eq!(of("cursorLabel"), vec!["Signal<Cursor>.read"]);
+}
 
 #[test]
 fn the_ml_surface_carries_the_stage_axis_too() {

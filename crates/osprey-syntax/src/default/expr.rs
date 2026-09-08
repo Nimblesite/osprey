@@ -57,15 +57,16 @@ impl Lowerer<'_> {
             },
             "handler_expression" => Expr::Handler {
                 stage: self.stage(node),
-                effect: self.field_text(node, "effect"),
+                effect: self.mentioned_effect(node),
                 arms: self.lower_handler_arms(node),
                 body: Box::new(self.lower_expr_field(node, "body")),
                 position: Some(self.pos(node)),
             },
+            "kernel_expression" => self.lower_kernel(node),
             "perform_expression" => {
                 let (arguments, named_arguments) = self.lower_arg_list(node);
                 Expr::Perform {
-                    effect: self.field_text(node, "effect"),
+                    effect: self.mentioned_effect(node),
                     operation: self.field_text(node, "operation"),
                     arguments,
                     named_arguments,
@@ -280,18 +281,38 @@ impl Lowerer<'_> {
             .collect()
     }
 
+    /// The effect a `perform` or `handle` site names, INCLUDING the
+    /// instantiation when it wrote one: `Signal<Count>` and `Signal<Cursor>` are
+    /// different effects to a row, so they are different effects to the name a
+    /// row carries. Implements [STAGE-SIGNALS-EXACT].
+    fn mentioned_effect(&self, node: Node<'_>) -> String {
+        let base = self.field_text(node, "effect");
+        let arguments = node
+            .child_by_field_name("instantiation")
+            .and_then(|ta| self.first_child_of_kind(ta, "type_list"))
+            .map(|list| self.lower_type_list(list))
+            .unwrap_or_default();
+        osprey_ast::effect_name::instantiated(&base, &arguments)
+    }
+
+    /// The operation, parameters and body shared by a handler arm and a kernel
+    /// arm — the two differ only in whether the effect is written per arm.
+    pub(crate) fn lower_arm(&self, arm: Node<'_>) -> HandlerArm {
+        HandlerArm {
+            operation: self.field_text(arm, "operation"),
+            params: self
+                .first_child_of_kind(arm, "handler_params")
+                .map(|hp| self.texts_of_kind(hp, "identifier"))
+                .unwrap_or_default(),
+            body: self.lower_expr_field(arm, "body"),
+            position: Some(self.pos(arm)),
+        }
+    }
+
     fn lower_handler_arms(&self, node: Node<'_>) -> Vec<HandlerArm> {
         self.named_of_kind(node, "handler_arm")
             .iter()
-            .map(|arm| HandlerArm {
-                operation: self.field_text(*arm, "operation"),
-                params: self
-                    .first_child_of_kind(*arm, "handler_params")
-                    .map(|hp| self.texts_of_kind(hp, "identifier"))
-                    .unwrap_or_default(),
-                body: self.lower_expr_field(*arm, "body"),
-                position: Some(self.pos(*arm)),
-            })
+            .map(|arm| self.lower_arm(*arm))
             .collect()
     }
 
