@@ -57,7 +57,7 @@ are compiled and compared with checked-in expected output.
 
 The compiler rejects unsupported target operations during `--check`, `--llvm`, and compilation. iOS and Android reject `resume` and unavailable built-in process, HTTP, and WebSocket operations. Their hosts provide platform networking through the C boundary. WebAssembly also rejects fibers, terminal control, and arbitrary C imports; approved browser imports and supported host filesystem operations remain available.
 
-[Issue Inbox](/docs/mobile-apps/) demonstrates the same Osprey project on iOS and Android, including ML modules and a small Default-flavor C entry point. Its screenshots come from actual simulator/emulator runs. The iOS app has also been installed and verified on a physical iPhone. ARM64 Android execution and x86-64 compilation are reported separately.
+[Issue Inbox](/docs/mobile-apps/) demonstrates the same Osprey project on iOS and Android, including ML modules and a small Default-flavor C entry point. Its screenshots come from actual simulator/emulator runs. The iOS app has also been installed and verified on a physical iPhone. Both Android ABIs execute the shared test corpus through the C ABI.
 
 ## Current limits
 

@@ -138,4 +138,4 @@ The checked items record implementation and earlier validation. The open items a
 - [ ] Complete the updated Markdown smoke on the physical iPhone, as tracked in [plan 0030](0030-reactive-mobile-apps.md). Blocked on the phone itself: it is paired with Developer Mode enabled, but reports `tunnelState=disconnected` over the local network, so the device build refuses before signing. Unlock it and connect it to this Mac, then rerun.
 - [x] Resolve the duplication gate discrepancy using CI's pinned Deslop version; preserve the 5% ceiling.
 - [x] Run the extension suite and its coverage gate, previously blocked by macOS Developer Tools authorization: 316 tests pass and coverage is 98.3% lines, 98.3% statements, 95.9% branches, 96.5% functions, all above the 95% threshold.
-- [ ] Pass both hosted PR workflows, including the newly enforced mobile checks, before merging.
+- [x] Pass both hosted PR workflows, including the newly enforced mobile checks, before merging. All fourteen checks pass, including the macOS job that builds the iOS device and simulator archives and runs the mobile goldens, and the emulator job that executes the corpus on Android x86-64.

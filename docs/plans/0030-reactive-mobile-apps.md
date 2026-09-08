@@ -35,7 +35,7 @@ Deliver the same usable GitHub Issue Inbox on iPhone and Android. Osprey owns th
 
 - The final iOS simulator smoke returned `OSPREY_INBOX_SMOKE_OK`. The signed Issue Inbox application installed and launched on a physical iPhone 16 and returned the same success marker. Physical-device diagnostics showed eight live public GitHub issues, saved bookmarks, and no application error.
 - `make ios-test` passed again for the original counter, including its C ABI fixture, 14 Default/ML simulator goldens, and `OSPREY_IOS_SMOKE_OK`.
-- `make android-test` passed C ABI checks, 14 Default/ML language goldens, and the deterministic application workflow. The separate live workflow displayed eight GitHub issues and verified notes/priorities, bookmarks, and SQLite restoration after process restart. The native renderer regression and Android lint passed. ARM64 code was executed; x86-64 code was compiled and linked only.
+- `make android-test` passed C ABI checks, 14 Default/ML language goldens, and the deterministic application workflow. The separate live workflow displayed eight GitHub issues and verified notes/priorities, bookmarks, and SQLite restoration after process restart. The native renderer regression and Android lint passed. That validation executed ARM64 only; x86-64 was compiled and linked. Hosted CI has since executed x86-64 as well — see the entry below.
 - Shared Osprey verification passed 29 domain assertions. Compiler verification passed 124 codegen tests and the complete CLI coverage across focused runs, including project imports, annotation checks, staged effects, target capabilities, and the entry/IR regressions found during integration. Strict workspace Clippy and formatting passed.
 - Full unchanged `make ci` ran after an existing local Deslop `0.0.0-dev` binary was made available through `PATH`. The duplication report recorded 7,516 duplicated lines out of 79,911 (9.4%), exceeding the configured 5% ceiling. Deslop returned exit 3 and `make ci` exited before its later steps. That development-tool result is superseded by the release review: official Deslop 0.27.0, matching CI, measures 4.8% (3,941 of 81,987 LOC) and passes the unchanged 5% gate. No gate or threshold was changed.
 
@@ -60,7 +60,7 @@ The mobile C ABI is now held to the whole corpus rather than a hand-picked subse
 - [x] Pass the unchanged duplication gate with CI's pinned Deslop 0.27.0.
 - [x] Complete Xcode/Developer Tools authorization and rerun iOS app validation and the extension debugger/coverage suite. The iOS 26.5 platform is installed, both iOS suites pass, and the extension suite runs its debugger tests: 316 passing with coverage above every threshold.
 - [x] Run the whole `tests/` corpus across the mobile C ABI on both platforms: 130 byte-exact goldens and 18 GPU-lowering comparisons each, with 79 rejections pinned in the shared [`MOBILE_UNPORTABLE.txt`](../../tests/MOBILE_UNPORTABLE.txt).
-- [ ] Pass hosted PR checks, including Android x86-64 execution.
+- [x] Pass hosted PR checks, including Android x86-64 execution. All fourteen checks pass on the pull request. The x86-64 emulator ran the whole corpus through the mobile C ABI — `TEST_CORPUS_GOLDEN_PASS=130 TEST_CORPUS_GOLDEN_FAIL=0 TEST_CORPUS_GOLDEN_MISSING=0`, `TEST_CORPUS_SKIPPED=79`, `TEST_CORPUS_GPU_MODE_PASS=18` — and the application smoke returned `OSPREY_ANDROID_SMOKE_OK` for both its fresh and restored phases.
 
 ## Verification requirements
 
