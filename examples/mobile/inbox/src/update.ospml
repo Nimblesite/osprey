@@ -7,6 +7,7 @@ import mobile::Github
 import mobile::Storage
 import mobile::View
 import mobile::Annotations
+import mobile::Text
 
 type InboxUpdate =
     model : InboxModel
@@ -124,7 +125,7 @@ module Update
         id = Json::getOr event "id" ""
         value = Json::getOr event "value" ""
         current = Annotations::get model.annotations id
-        match length value > 2000
+        match !Text::within value 2000
             true => failure model "Keep local notes within 2000 characters."
             false => annotate model id value current.priority
 
@@ -150,7 +151,7 @@ module Update
     interaction model event = match Json::getOr event "type" ""
         "refresh" => fetch model
         "repository" => repository model (Json::getOr event "value" "")
-        "search" => unchanged (Model::set model "search" (take (Json::getOr event "value" "") 256))
+        "search" => unchanged (Model::set model "search" (Text::prefix (Json::getOr event "value" "") 256))
         "filter" => filter model (Json::getOr event "value" "all")
         "bookmark" => bookmark model (Json::getOr event "id" "")
         _ => detailEvent model event

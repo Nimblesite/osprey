@@ -38,6 +38,7 @@ mobile-ios-test: mobile-ios
 	OSPREY_IOS_SKIP_BUILD=1 bash examples/mobile/ios/run.sh --smoke
 
 mobile-domain-test: _runtime
+	python3 scripts/test-mobile-tools.py
 	cargo build --release -p osprey-cli
 	$(BIN) examples/mobile/inbox/test --run
 

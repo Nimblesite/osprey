@@ -52,4 +52,3 @@ bodyCase () =
     view = View::render selected.model
     check "body keeps newlines" "Steps:\n1. Open app\n2. Reproduce" (Support::projected view "detail.body")
     check "labels normalized" "bug · compiler" (Support::projected view "detail.labels")
-

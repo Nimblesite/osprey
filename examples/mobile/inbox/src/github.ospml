@@ -1,6 +1,7 @@
 namespace mobile
 
 import bank::Json
+import mobile::Text
 
 module Github
     allowed code = (code >= 48 && code <= 57) || (code >= 65 && code <= 90) || (code >= 97 && code <= 122) || code == 45 || code == 46 || code == 95
@@ -43,7 +44,7 @@ module Github
         Json::strField "title" (scalar doc (prefix + ".title")) + "," +
         Json::strField "author" (scalar doc (prefix + ".user.login")) + "," +
         Json::numField "comments" (parseInt (scalar doc (prefix + ".comments")) ?: 0) + "," +
-        Json::strField "body" (take (optional doc (prefix + ".body")) 2000) + "," +
+        Json::strField "body" (Text::prefix (optional doc (prefix + ".body")) 2000) + "," +
         Json::strField "labels" (labels doc prefix 0 (jsonLength doc (prefix + ".labels"))))
 
     append left right = match length left == 0

@@ -221,6 +221,7 @@ fn export(symbol: &str, params: Vec<(String, CType)>, ret: CType) -> Export {
 }
 
 fn reject_clashes(abi: &HostAbi, program: &Program, ir: &str) -> Result<(), String> {
+    reject_runtime_imports(abi, ir)?;
     let mut taken: BTreeSet<_> = ir
         .lines()
         .filter_map(defined_symbol)
@@ -244,6 +245,35 @@ fn reject_clashes(abi: &HostAbi, program: &Program, ir: &str) -> Result<(), Stri
             ));
         }
         reserve(&mut taken, &import_adapter_name(i))?;
+    }
+    Ok(())
+}
+
+/// A host adapter may only replace its own internal declaration. Collecting
+/// names into a set loses incompatible runtime declarations of the same name;
+/// adapting that name would rewrite runtime calls to the wrong signature too.
+fn reject_runtime_imports(abi: &HostAbi, ir: &str) -> Result<(), String> {
+    for import in &abi.imports {
+        let params = import
+            .params
+            .iter()
+            .map(|(_, ty)| ty.llvm_internal())
+            .collect::<Vec<_>>()
+            .join(", ");
+        let expected = format!(
+            "declare {} @{}({params})",
+            import.ret.llvm_internal(),
+            import.symbol
+        );
+        if ir
+            .lines()
+            .any(|line| defined_symbol(line) == Some(import.symbol.as_str()) && line != expected)
+        {
+            return Err(format!(
+                "host import `{}` collides with an incompatible runtime declaration; rename the import",
+                import.symbol
+            ));
+        }
     }
     Ok(())
 }

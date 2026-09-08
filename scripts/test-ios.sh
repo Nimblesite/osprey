@@ -26,6 +26,7 @@ for target in ios ios-sim; do
     if [[ $target == ios-sim ]]; then sdk=iphonesimulator; triple+=-simulator; fi
     link_host "$sdk" "$triple" "$scratch/abi.c" "$scratch/abi.a" "$scratch/abi-$target"
 done
+
 xcrun simctl spawn "$simulator" "$scratch/abi-ios-sim" >"$scratch/abi.stdout"
 printf 'Mobile C ABI passed\n' >"$scratch/abi.expected"
 diff -u "$scratch/abi.expected" "$scratch/abi.stdout"
@@ -60,3 +61,10 @@ for base in "${goldens[@]}"; do
         echo "==> iOS simulator golden passed: $base.$flavor"
     done
 done
+
+# Exercise the shared app logic, including Unicode limits, on the real target.
+"$compiler" examples/mobile/inbox/test --target=ios-sim --compile -o "$scratch/golden.a"
+link_host iphonesimulator arm64-apple-ios15.0-simulator \
+    "$scratch/golden.c" "$scratch/golden.a" "$scratch/golden"
+xcrun simctl spawn "$simulator" "$scratch/golden" "$scratch"
+echo "==> iOS shared mobile domain suite passed"

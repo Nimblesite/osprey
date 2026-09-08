@@ -4,7 +4,7 @@
 
 **Spec:** [0038-iOSTarget.md](../specs/0038-iOSTarget.md), with shared target restrictions in [0022-WebAssemblyTarget.md](../specs/0022-WebAssemblyTarget.md).
 
-**Status:** The iOS implementation and targeted validation are complete. Full `make ci` verification remains open: the final run reached the unchanged duplication gate and measured 9.4% duplicated code against its 5% ceiling.
+**Status:** Reviewed against `407e0c3d0a69cf3cc39583b09a5670bd8732fd0e`; confirmed regressions are fixed with tests. Release sign-off remains blocked by macOS authorization for Xcode components and debugger access, plus the final hosted PR checks. Completed and pending gates are recorded below. Historical platform results are retained separately from this review's results.
 
 ## Scope and architecture
 
@@ -85,9 +85,27 @@ make _runtime_wasm _test_wasm_goldens
 make ci
 ```
 
-The final full-CI attempt used an existing local Deslop `0.0.0-dev` binary through `PATH`, resolving the earlier missing-tool prerequisite. Its actual report measured 7,516 duplicated lines out of 79,911 (9.4%) against the unchanged 5% ceiling. Deslop exited 3, stopping `make ci` before later steps. Full CI therefore remains unverified beyond that gate; broad repository deduplication is outside this target's delivery. Memory backends, continuation support, teardown, and packaging require their own scoped work and tests before changing the current rejection rules.
+The earlier full-CI attempt used a local Deslop `0.0.0-dev` binary and stopped at its 9.4% duplication report. The release review reran the gate with the official **0.27.0** version pinned in CI: **4.7%**, passing the unchanged **5%** ceiling. The development build result is superseded; no threshold or exclusion was relaxed. Memory backends, continuation support, teardown, and packaging still require their own scoped work and tests before changing the current rejection rules.
+
+## Release review — 8 September 2026
+
+Compared the branch with `407e0c3d0a69cf3cc39583b09a5670bd8732fd0e`, including mobile hosts, C ABI generation, runtime changes, target restrictions, shared compiler changes, and build/CI packaging.
+
+- Fixed UTF-8 truncation in descriptions/search and byte-based note validation. Limits now count Unicode scalars, and regression tests verify complete envelopes and persisted notes at the limit. All 32 shared app cases passed natively and on Android ARM64; the suite is now included in both platform harnesses.
+- Fixed incompatible runtime/host-import collisions that previously emitted invalid LLVM. All 21 ABI unit tests pass, including the new collision cases.
+- Pinned Android's launcher to Gradle 8.7 while preserving the explicit `GRADLE_BIN` override and respecting `GRADLE_USER_HOME`. The reproduced wrong-version regression now passes.
+- Fixed the web compiler Docker build by including the Makefile's required scripts. The rebuilt container passed the real API integration test.
+- Fixed a WASM test race by sharing the environment lock with tests that substitute tool commands. The workspace tests pass. Added mobile build-driver tests for both Android architectures and iOS targets, SDK/NDK selection, scratch cleanup, and failed builds preserving existing artifacts. CLI coverage rose from 92.2% to **95.3%**; every existing Rust coverage gate passes.
+- Added Android emulator/domain/lint validation to the existing required integration job and iOS device/simulator validation to the existing required coverage job. Workflow lint and the live branch-protection check pass; hosted execution of the edited workflow is still pending.
+- Fresh independent checks passed: Android APKs for ARM64/x86-64, ARM64 C ABI and 14 language goldens, application deterministic/live GitHub fresh/restart smoke, Android lint, all C runtime coverage gates, 209 language goldens in each of default/GC/ARC (zero ARC leaks), 144 WASM goldens plus 18 alternate GPU comparisons, and 107 website tests.
+- Real Xcode SDK builds of both iOS runtime slices and the shared application archives pass, and the C ABI fixture links for both device and simulator.
+- The profiler end-to-end suite, benchmark tooling, 13 bank native cases, and 17 bank browser tests pass. The bank build regenerated its committed browser bundle with the reviewed compiler, so ordinary native builds also receive the current WASM output. Formatting, strict workspace Clippy, Hawk, and the node dependency guard pass.
+- Full `make ci` is **not green**. After fixing the WASM test race and restoring the CLI coverage gate, its remaining stages were run directly. The extension suite reached debugger execution and timed out waiting for a session. macOS reports Developer Tools access disabled; standalone LLDB also times out launching a trivial C program. Repeated blocked debugger attempts were stopped, and the subsequent independent bank/tool/domain targets passed. Fresh extension coverage therefore remains unverified.
+- Xcode's first-launch component installer is waiting for administrator authorization; the first full iOS build attempt failed because `IDESimulatorFoundation` could not load the installed system framework. Complete `xcodebuild -runFirstLaunch` and the macOS Developer Tools authorization, then rerun `make ios-test mobile-ios-test` and `make _test_vscode_extension _coverage_check_vscode_extension`. The final physical-iPhone smoke and hosted macOS/Linux/Windows PR checks remain required.
 
 ## TODO checklist
+
+The checked items record implementation and earlier validation. The open items are requirements before declaring this branch ready to merge into `main`.
 
 - [x] Define and implement the scalar C ABI, imports, initialization, and application lifetime.
 - [x] Add explicit iOS/WASM capability errors and independent exported-entry effect checks.
@@ -96,4 +114,12 @@ The final full-CI attempt used an existing local Deslop `0.0.0-dev` binary throu
 - [x] Verify C ABI execution, 14 simulator goldens, and the actual SwiftUI application.
 - [x] Verify signed physical-iPhone execution through the shared Issue Inbox, including its full native smoke and real GitHub data.
 - [x] Verify compiler tests, WASM goldens, strict Clippy, formatting, and the unchanged WASM exclusion set.
-- [ ] Resolve the duplication gate failure and pass the full unchanged `make ci`.
+- [x] Complete the branch code review against `407e0c3d0a69cf3cc39583b09a5670bd8732fd0e`, covering the iOS/Android boundary and changes to shared native/WASM compiler behavior.
+- [x] Resolve the review findings and add regression coverage for confirmed defects.
+- [x] Verify the reviewed compiler/native/WASM checks and record fresh results separately from the earlier validation.
+- [x] Verify Android ARM64 execution, both architecture builds, shared tests, deterministic/live app workflows, and lint.
+- [ ] Verify the final iOS application builds and simulator execution after Xcode component installation.
+- [ ] Complete the updated Markdown smoke on the physical iPhone, as tracked in [plan 0030](0030-reactive-mobile-apps.md).
+- [x] Resolve the duplication gate discrepancy using CI's pinned Deslop version; preserve the 5% ceiling.
+- [ ] Pass every unchanged `make ci` gate on the reviewed tree; extension debugger execution and fresh extension coverage remain blocked by macOS authorization.
+- [ ] Pass both hosted PR workflows, including the newly enforced mobile checks, before merging.

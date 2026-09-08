@@ -142,6 +142,24 @@ fn a_boundary_name_clash_is_refused() {
 }
 
 #[test]
+fn host_imports_cannot_replace_incompatible_runtime_declarations() {
+    // [IOS-HOST-ABI] [ANDROID-HOST-ABI] These used to pass --check and
+    // produce an invalid adapter instead of rejecting the runtime collision.
+    for (source, symbol) in [
+        (
+            "extern fn osp_alloc(size: int) -> int\nfn allocate(size: int) = osp_alloc(size)\nfn greeting() = \"hello\" + \" world\"\n",
+            "osp_alloc",
+        ),
+        ("extern fn osp_mem_boot() -> Unit\n", "osp_mem_boot"),
+        ("extern fn osp_prof_boot() -> int\n", "osp_prof_boot"),
+    ] {
+        let (program, types, ir) = checked(source);
+        let error = host_abi(&program, &types, &ir).expect_err("runtime import collision");
+        assert!(error.contains(symbol) && error.contains("runtime"), "{error}");
+    }
+}
+
+#[test]
 fn c_types_map_only_scalars() {
     let con = |name: &str| Type::Con {
         name: name.to_string(),

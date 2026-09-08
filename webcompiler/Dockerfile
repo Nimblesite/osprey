@@ -16,6 +16,7 @@ RUN apt-get update && apt-get upgrade -y \
 
 # Copy the Rust workspace + the C runtime sources (root Makefile builds both)
 COPY Cargo.toml Cargo.lock Makefile rustfmt.toml clippy.toml /workspace/
+COPY scripts /workspace/scripts
 COPY crates /workspace/crates
 COPY tree-sitter-osprey /workspace/tree-sitter-osprey
 COPY compiler/runtime /workspace/compiler/runtime
@@ -104,4 +105,4 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
     CMD wget --no-verbose --tries=1 --spider http://localhost:3001/api || exit 1
 
 # Start the server
-CMD ["npm", "run", "server"] 
+CMD ["npm", "run", "server"]

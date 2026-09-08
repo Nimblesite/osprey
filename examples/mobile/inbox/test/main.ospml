@@ -148,3 +148,7 @@ test "issue body blocks become headings, lists, quotes, rules and code" markdown
 test "inline emphasis, code and https links are spans; unmatched markers are literal" markdownInlineCase
 test "degenerate Markdown never breaks rendering" markdownEdgeCase
 test "the detail screen renders Markdown while the view keeps the raw body" markdownDetailCase
+
+test "Unicode limits preserve complete GitHub description characters" unicodeBodyCase
+test "Unicode limits preserve complete search characters" unicodeSearchCase
+test "Unicode limits accept and restore bounded notes" unicodeNoteCase

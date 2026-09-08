@@ -1,6 +1,7 @@
 namespace mobile
 
 import bank::Json
+import mobile::Text
 
 type LocalNote =
     note : string
@@ -45,7 +46,7 @@ module Annotations
         id = parseInt (field doc index "id" "") ?: 0
         note = field doc index "note" ""
         priority = field doc index "priority" "INVALID"
-        id > 0 && length note <= 2000 && (priority == "normal" || priority == "high")
+        id > 0 && Text::within note 2000 && (priority == "normal" || priority == "high")
 
     validRows doc index count = match index >= count
         true => true

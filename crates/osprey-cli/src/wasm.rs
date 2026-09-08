@@ -471,6 +471,8 @@ mod tests {
 
     #[test]
     fn compile_object_lowers_textual_ir_with_clang() {
+        // Other driver tests replace OSPREY_WASM_CC with a no-op stub.
+        let _g = lock_env();
         // [WASM-TARGET-IR] [WASM-TARGET-LINK]
         // Requires clang (present wherever `make test` runs); a tiny valid module
         // exercises the write-IR + `clang -c` lowering path end to end.
@@ -482,7 +484,8 @@ mod tests {
             eprintln!("skipping compile_object test: clang absent");
             return;
         }
-        let obj = compile_object("osprey_cli_unit", "define i32 @main() {\n  ret i32 0\n}\n")
+        let stem = format!("osprey_cli_unit_{}", std::process::id());
+        let obj = compile_object(&stem, "define i32 @main() {\n  ret i32 0\n}\n")
             .expect("clang lowers trivial IR to a wasm object");
         assert!(obj.exists(), "object emitted at {}", obj.display());
     }

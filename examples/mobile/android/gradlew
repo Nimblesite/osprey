@@ -1,12 +1,13 @@
 #!/usr/bin/env bash
-# Prefer an installed Gradle, then the standard local Gradle distribution cache.
+# Use Gradle 8.7 unless the caller explicitly overrides it with GRADLE_BIN.
 set -euo pipefail
 if [[ -n ${GRADLE_BIN:-} ]]; then exec "$GRADLE_BIN" "$@"; fi
-if command -v gradle >/dev/null; then exec gradle "$@"; fi
-for candidate in "$HOME"/.gradle/wrapper/dists/gradle-8.7-*/**/gradle-8.7/bin/gradle; do
+gradle_user_home="${GRADLE_USER_HOME:-$HOME/.gradle}"
+cache="$gradle_user_home/osprey-distributions"
+if [[ -x "$cache/gradle-8.7/bin/gradle" ]]; then exec "$cache/gradle-8.7/bin/gradle" "$@"; fi
+for candidate in "$gradle_user_home"/wrapper/dists/gradle-8.7-*/**/gradle-8.7/bin/gradle; do
     if [[ -x "$candidate" ]]; then exec "$candidate" "$@"; fi
 done
-cache="${GRADLE_USER_HOME:-$HOME/.gradle}/osprey-distributions"
 mkdir -p "$cache"
 if [[ ! -x "$cache/gradle-8.7/bin/gradle" ]]; then
     curl --fail --location --retry 2 https://services.gradle.org/distributions/gradle-8.7-bin.zip -o "$cache/gradle-8.7-bin.zip"
