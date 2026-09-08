@@ -1,6 +1,6 @@
 //! Reject target facilities before code generation or toolchain discovery.
 //! Implements [IOS-TARGET-CAPABILITIES], [ANDROID-TARGET-CAPABILITIES] and [WASM-TARGET-CAPABILITIES].
-use osprey_ast::{walk_program, AstVisitor, Expr, Position, Program, Stmt};
+use osprey_ast::{contains_resume, walk_program, AstVisitor, Expr, Position, Program, Stmt};
 use std::collections::BTreeSet;
 
 const FIBER_FNS: &[&str] = &[
@@ -273,7 +273,26 @@ impl AstVisitor for Capabilities<'_> {
 
     fn expression(&mut self, expression: &Expr) {
         match expression {
-            Expr::Resume(_) => self.reject("resumable algebraic effects (`resume`)"),
+            // A resuming ARM is what needs a continuation, so the rejection
+            // names the operation whose request cannot be suspended rather than
+            // the `resume` keyword — a row that cannot say which effects will
+            // start working is a row that cannot be planned against. A static or
+            // substituting arm needs no continuation and compiles. The permanent
+            // wording `many` deserves waits until `many` runs on any target: the
+            // checker rejects it before this gate is reached (phase 5 of
+            // docs/plans/0028-resumption-multiplicity.md). Implements [MULTI-WASM].
+            Expr::Handler { effect, arms, .. } => {
+                for arm in arms.iter().filter(|arm| contains_resume(&arm.body)) {
+                    // A module-scoped effect reaches here under its encoded
+                    // symbol; the author wrote `Clocks::Clock`, so that is what
+                    // the diagnostic must say.
+                    let effect = osprey_ast::symbol::demangle_message(effect);
+                    self.reject(&format!(
+                        "a continuation for `{effect}.{}` (wasm32 acquires one-shot continuations when the stack-switching proposal lands)",
+                        arm.operation
+                    ));
+                }
+            }
             Expr::Spawn(_)
             | Expr::Await(_)
             | Expr::Yield(_)

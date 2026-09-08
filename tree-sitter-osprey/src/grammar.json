@@ -1343,6 +1343,27 @@
         }
       ]
     },
+    "multiplicity": {
+      "type": "CHOICE",
+      "members": [
+        {
+          "type": "STRING",
+          "value": "abort"
+        },
+        {
+          "type": "STRING",
+          "value": "once"
+        },
+        {
+          "type": "STRING",
+          "value": "many"
+        }
+      ]
+    },
+    "replayable": {
+      "type": "STRING",
+      "value": "replayable"
+    },
     "operation_declaration": {
       "type": "SEQ",
       "members": [
@@ -1359,11 +1380,66 @@
           ]
         },
         {
+          "type": "CHOICE",
+          "members": [
+            {
+              "type": "FIELD",
+              "name": "multiplicity",
+              "content": {
+                "type": "SYMBOL",
+                "name": "multiplicity"
+              }
+            },
+            {
+              "type": "BLANK"
+            }
+          ]
+        },
+        {
+          "type": "CHOICE",
+          "members": [
+            {
+              "type": "FIELD",
+              "name": "replayable",
+              "content": {
+                "type": "SYMBOL",
+                "name": "replayable"
+              }
+            },
+            {
+              "type": "BLANK"
+            }
+          ]
+        },
+        {
           "type": "FIELD",
           "name": "name",
           "content": {
-            "type": "SYMBOL",
-            "name": "identifier"
+            "type": "CHOICE",
+            "members": [
+              {
+                "type": "SYMBOL",
+                "name": "identifier"
+              },
+              {
+                "type": "ALIAS",
+                "content": {
+                  "type": "SYMBOL",
+                  "name": "multiplicity"
+                },
+                "named": true,
+                "value": "identifier"
+              },
+              {
+                "type": "ALIAS",
+                "content": {
+                  "type": "SYMBOL",
+                  "name": "replayable"
+                },
+                "named": true,
+                "value": "identifier"
+              }
+            ]
           }
         },
         {
@@ -4809,6 +4885,9 @@
     }
   ],
   "conflicts": [
+    [
+      "operation_declaration"
+    ],
     [
       "update_expression",
       "type_constructor"

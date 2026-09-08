@@ -84,6 +84,15 @@ final class InboxStore: ObservableObject {
 
     func waitUntilIdle() async { await work?.value }
 
+    // `--inbox-open-first`: an explicit local diagnostics mode that opens the
+    // first loaded issue so the detail screen can be captured without taps.
+    // It is one ordinary Osprey `open` event; nothing about the inbox changes.
+    // Implements [MOBILE-VERIFICATION].
+    func openFirstIssue() {
+        guard snapshot.selected.isEmpty, let first = snapshot.items.first else { return }
+        send(["type": "open", "id": first.id])
+    }
+
     private func accept(_ json: String) throws {
         let envelope = try JSONDecoder().decode(InboxEnvelope.self, from: Data(json.utf8))
         guard envelope.commands.allSatisfy(validCommand) else { throw HostFailure.invalid("Osprey returned an invalid host command") }

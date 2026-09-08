@@ -105,10 +105,21 @@ project's [`CLAUDE.md`](../../CLAUDE.md) for the full convention.
 Code implementing a spec section MUST repeat that section's bracketed ID in a
 comment. The `spec-check` skill enforces this by grep. Specs whose header
 declares **Status: normative target** (0029–0033, 0036, 0037) are not implemented yet;
-the `[MULTI-*]` sections of [0035](0035-StagedEffects.md), plus
-`[DEBUGGER-EFFECT-TRACE]`, `[LSP-EFFECT-MULTIPLICITY]` and
-`[FLAVOR-ML-EFFECT-ANNOTATIONS]`, are exempt on the same terms until
-[plan 0028](../plans/0028-resumption-multiplicity.md) lands;
+the `[MULTI-*]` sections of [0035](0035-StagedEffects.md) are implemented and
+cited except for the seven that
+[plan 0028](../plans/0028-resumption-multiplicity.md) records as blocked on
+another plan, which stay exempt on the same terms:
+`[MULTI-HANDLE-ABORT-MODE]`, `[MULTI-DECL-ABORT-RESULT]` and
+`[MULTI-COST-ABORT]` wait on
+[plan 0026](../plans/0026-structured-concurrency.md)'s unwinding;
+`[MULTI-HANDLE-MANY-LEXICAL]`, `[MULTI-STAGE-TURN]` and the `many` row of
+`[MULTI-COST]` wait on
+[plan 0016](../plans/0016-algebraic-effects-and-handlers.md)'s multi-shot
+continuation; and `[MULTI-TRACE]` with `[MULTI-STAGE]`'s tail-resumptive hint,
+`[DEBUGGER-EFFECT-TRACE]` and `[LSP-EFFECT-MULTIPLICITY]` follow those. A
+declaration needing any of them is REJECTED with a diagnostic naming the
+blocking plan, never compiled to a wrong answer, so no exempt section is a
+silent gap;
 the arithmetic totality model of [ARITH-TOTAL](0037-ArithmeticEffects.md) is likewise
 specified ahead of the compiler and is cited from 0001–0004, 0007, 0010–0013, 0024,
 0025 and 0034, so those arithmetic sections are exempt on the same terms;

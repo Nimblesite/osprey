@@ -179,16 +179,17 @@ fn main() = {
 }
 "#;
 
-/// A handler arm that resumes its continuation TWICE. Single-shot is the shipped
-/// contract ([EFFECTS-RESUME]); the second `resume` aborts at run time.
+/// A handler arm that resumes its continuation TWICE on ONE control path.
+/// `Choose.pick` carries no multiplicity keyword, so it is `once`, and the arm
+/// is rejected before it can run ([MULTI-HANDLE-ONCE], [MULTI-COMPAT]).
 ///
 /// This lived as `examples/failscompilation/multishot_resume_rejected.ospo`,
-/// which was a category error: the program is well formed, so a must-reject
-/// fixture could never observe the abort. It "passed" only because `x + 1` and
-/// `a + b` lacked the `?:` that `[ARITH-CHECKED]` requires, and the corpus
-/// recorded that unrelated type error as the expected rejection — leaving the
-/// multi-shot guard with zero coverage while three documents cited the fixture
-/// as its proof.
+/// which was a category error while the rejection was a RUNTIME one: the
+/// program was well formed, so a must-reject fixture could never observe the
+/// abort. It "passed" only because `x + 1` and `a + b` lacked the `?:` that
+/// `[ARITH-CHECKED]` requires, and the corpus recorded that unrelated type
+/// error as the expected rejection. Multiplicity moves the verdict back to
+/// compile time, where the arm has always been visible.
 const MULTISHOT_RESUME: &str = r#"
 effect Choose {
     pick: fn() -> int
@@ -205,6 +206,30 @@ fn main() = {
             let a = resume(10)
             let b = resume(20)
             a + b ?: 0
+        }
+    in both()
+    print("total=" + toString(total))
+}
+"#;
+
+/// The same effect answered by an arm with one `resume` per `match` branch.
+/// Two `resume` SITES, at most one per control path — the shape
+/// [MULTI-HANDLE-ONCE] must keep accepting.
+const BRANCHWISE_RESUME: &str = r#"
+effect Choose {
+    pick: fn() -> int
+}
+
+fn both() -> int !Choose = {
+    let x = perform Choose.pick()
+    x + 1 ?: 0
+}
+
+fn main() = {
+    let total = handle Choose
+        pick => match true {
+            true => resume(29)
+            false => resume(0)
         }
     in both()
     print("total=" + toString(total))
@@ -495,31 +520,69 @@ fn explicit_resume_runs_the_performer_continuation() {
 }
 
 #[test]
-fn a_second_resume_aborts_the_program_at_runtime() {
-    // [EFFECTS-RESUME] A continuation is single-shot. The program COMPILES — this
-    // is a runtime contract, not a static one — and the second `resume` aborts
-    // with a named diagnostic rather than resuming a spent continuation.
+fn a_second_resume_on_one_path_is_rejected_at_compile_time() {
+    // [MULTI-HANDLE-ONCE] An arm for a `once` operation may use `resume` at most
+    // once on every control path, and `Choose.pick` is `once` because it carries
+    // no multiplicity keyword ([MULTI-COMPAT]). The arm is visible at compile
+    // time, so the rejection is too: this program aborted at run time with
+    // `fatal: continuation already resumed` before multiplicity existed, and
+    // [MULTI-COMPAT] narrows exactly that program to a compile-time error — the
+    // same program rejected earlier, not a program that stops working.
+    //
+    // The runtime guard in `compiler/runtime/effects_coro.c` stays as a
+    // defensive backstop for invalid compiler output, in the same sense as the
+    // generic handler-key null lookup ([EFFECTS-GENERIC-RUNTIME]). It is no
+    // longer reachable from a source program, which is why this test asserts
+    // the diagnostic instead of the abort.
     let prog = temp_osp("multishot_resume", MULTISHOT_RESUME);
+    let check = run_file(&prog, &["--check"]);
+    assert_ne!(
+        check.code,
+        Some(0),
+        "two `resume` sites on one path must not type-check; stdout={} stderr={}",
+        check.stdout,
+        check.stderr
+    );
+    let diagnostic = format!("{}{}", check.stdout, check.stderr);
+    for fragment in ["Choose.pick", "may resume more than once", "once"] {
+        assert!(
+            diagnostic.contains(fragment),
+            "expected the [MULTI-HANDLE-ONCE] diagnostic to name {fragment:?}; got {diagnostic}"
+        );
+    }
+    // Rejected at the checker, so nothing is emitted and nothing runs.
+    let run = run_file(&prog, &["--run"]);
+    assert_ne!(run.code, Some(0), "stdout={}", run.stdout);
+    assert!(
+        !run.stdout.contains("total="),
+        "the program must not reach its print; stdout={}",
+        run.stdout
+    );
+}
+
+#[test]
+fn two_resume_sites_on_different_branches_stay_legal() {
+    // [MULTI-HANDLE-ONCE] is affine per PATH, not per arm: only one branch of a
+    // `match` runs, so an arm with a `resume` in each branch resumes at most
+    // once. Osprey has no loop construct ([BUILTIN-ITER]), so branch and
+    // sequence are the only two shapes, and this is the positive control that
+    // keeps the check from degenerating into `contains_resume`. The corpus
+    // program `tests/regressions/effects/abort_vs_resume.test.osp` is the same
+    // shape end to end; this pins the CLI verdict beside its negative.
+    let prog = temp_osp("branchwise_resume", BRANCHWISE_RESUME);
     let check = run_file(&prog, &["--check"]);
     assert_eq!(
         check.code,
         Some(0),
-        "multi-shot resume must be well typed, so the abort is what gets observed; stderr={}",
+        "one `resume` per branch is at most one per path; stderr={}",
         check.stderr
     );
-    let o = run_file(&prog, &["--run"]);
-    let out = format!("{}{}", o.stdout, o.stderr);
+    let run = run_file(&prog, &["--run"]);
+    assert_eq!(run.code, Some(0), "stderr={}", run.stderr);
     assert!(
-        out.contains("continuation already resumed"),
-        "expected the single-shot abort, got code={:?} stdout={} stderr={}",
-        o.code,
-        o.stdout,
-        o.stderr
-    );
-    assert!(
-        !o.stdout.contains("total="),
-        "the program must not reach its print; stdout={}",
-        o.stdout
+        run.stdout.contains("total=30"),
+        "expected the resumed answer; stdout={}",
+        run.stdout
     );
 }
 

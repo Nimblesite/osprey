@@ -1,25 +1,12 @@
 # Osprey Examples
 
-**One core. Two surfaces. Zero compromise.**
-
-Osprey is one language — one Hindley-Milner type checker, one effect system, one
-runtime, one standard library, one LLVM/wasm backend — fronted by two first-class,
-permanent syntaxes called **flavors**:
+These examples cover native programs, WebAssembly, and native iOS and Android applications. Osprey has two first-class syntax **flavors**:
 
 - **Default flavor (`.osp`)** — C-style braces, `fn`, `f(x: a, y: b)` calls with
-  named arguments. Block-structured and explicit. **Fully implemented today**
-  (specs 0001–0022).
+  named arguments.
 - **ML flavor (`.ospml`)** — offside-rule layout (indentation, no braces),
   curry-by-default, whitespace application `f a b`, `\x => e` lambdas, `:=`
-  mutation, `->` for types and `=>` for clauses. Terse and expression-first.
-  **In active development**, with runnable proof in the paired
-  [`tests/flavors/`](../tests/flavors) assertion corpus.
-
-Neither flavor is the watered-down one. The Default surface is what a **systems
-programmer** reaches for — real braces, explicit calls, nothing optional. The ML
-surface is what an **FP devotee** reaches for — real layout, real currying, no
-braces in sight. Each goes all the way in its own direction: pick your flavor and
-go all in. The language belongs to your tribe.
+  mutation, `->` for types and `=>` for clauses. Both flavors have runnable coverage in the paired [`tests/flavors/`](../tests/flavors) assertion corpus.
 
 Both surfaces lower to the same canonical AST before any type checking. After
 lowering, nothing — type checker, effect checker, optimiser, codegen — can tell
@@ -37,8 +24,7 @@ which flavor you wrote. Same safety, same effects, same performance.
 Precedence: **flag > marker > extension > Default**. One flavor per file; a project
 folder may mix flavors across files. Because every file lowers to the same AST, a
 `.osp` module and a `.ospml` module in the same folder compile into one program and
-import each other normally (per-file selection ships today; multi-file cross-flavor
-imports are the design direction).
+import each other. The [mobile application](mobile/README.md) uses this composition for its C ABI entry file and shared ML application modules.
 
 The differential harness ([`../crates/run_test_corpus.sh`](../crates/run_test_corpus.sh))
 discovers programs additively across both flavors. A `.osp`/`.ospml` twin that
@@ -59,6 +45,12 @@ proving both flavors print the same bytes.
 - **`bugs/`** — regression reproductions.
 - **[`ios/`](ios/)** — a SwiftUI iPhone app calling Osprey logic through a generated C header, with device/simulator builds and executable smoke checks.
 - **[`mobile/`](mobile/README.md)** — the same reactive issue inbox on iOS and Android, with Osprey modules defining the native screen tree, state, SQLite persistence, GitHub requests, and triage workflows.
+
+## Native mobile application
+
+[Issue Inbox](mobile/README.md) has been exercised on a physical iPhone 16 and an Android ARM64 emulator. Its Osprey modules own the application UI and behavior; SwiftUI and Android hosts render the UI tree and execute platform commands. The [screenshots and run instructions](mobile/README.md) include issue details, local notes, priorities, and SQLite cache recovery.
+
+See the [iOS target](../docs/specs/0038-iOSTarget.md), [Android target](../docs/specs/0039-AndroidTarget.md), and [shared application boundary](../docs/specs/0040-ReactiveMobileApplications.md). WebAssembly and mobile C ABI targets reject unsupported capabilities, including resumable effects, during compilation.
 
 ## Paired flavor tests (`../tests/flavors/`)
 

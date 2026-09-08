@@ -2,6 +2,7 @@
 namespace mobile
 
 import bank::Json
+import mobile::Markdown
 
 module Ui
     value doc path fallback = jsonGet doc path ?: fallback
@@ -103,12 +104,13 @@ module Ui
         actions = group "row" "toolbar" (bookmark doc "detail." + "," + link "View on GitHub ↗" (value doc "detail.url" ""))
         group "column" "card" (metadata doc "detail." + "," + title + "," + text "accent" labelText + "," + actions)
 
+    // The description is Markdown; Osprey renders it to nodes [MOBILE-MARKDOWN].
     detailBody doc =
-        source = value doc "detail.body" ""
-        body = match length source > 0
-            true => source
-            false => "The author has not added a description."
-        group "column" "card" (text "accent" "DESCRIPTION" + "," + text "body" body)
+        rendered = Markdown::render (value doc "detail.body" "")
+        body = match length rendered > 0
+            true => rendered
+            false => text "body" "The author has not added a description."
+        group "column" "card" (text "accent" "DESCRIPTION" + "," + body)
 
     detailTriage doc =
         id = value doc "detail.id" ""

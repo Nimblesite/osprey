@@ -49,6 +49,10 @@ module.exports = grammar({
   externals: ($) => [$._call_open_gap, $._statement_break],
 
   conflicts: ($) => [
+    // `abort` / `once` / `many` / `replayable` opening an operation line are
+    // either the modifier or the operation's own name; only the token after
+    // them tells which. Implements [MULTI-DECL].
+    [$.operation_declaration],
     // `ID { ... }` is ambiguous between an update/type-constructor expression and
     // an object/map literal until the brace body is seen; GLR resolves it.
     [$.update_expression, $.type_constructor],
@@ -309,13 +313,39 @@ module.exports = grammar({
         repeat($.operation_declaration),
         '}',
       ),
+    // How many times an operation's request may be answered — `abort` (never),
+    // `once` (the default, at most one) or `many` (any number). A bare keyword
+    // node in `static_stage`'s shape, not a general modifier list. Both this
+    // and `replayable` are CONTEXTUAL: `word: $.identifier` above means the
+    // lexer only reads them as keywords where the parser accepts one, so
+    // `abort: fn() -> Unit` still declares an operation called `abort`.
+    // Implements [MULTI-DECL].
+    multiplicity: ($) => choice('abort', 'once', 'many'),
+    // Asserts that performing the operation twice with the same arguments in
+    // the same handler context is acceptable to the program — the property a
+    // multi-shot handler's replay check reads. Implements [MULTI-REPLAY].
+    replayable: ($) => 'replayable',
     // Each operation carries its OWN `///` docs — an effect's operations are
     // independent entry points, so `Prompt.ask` and `Prompt.tell` must hover
     // with their own prose, not the effect's. Implements [DOC-EFFECT-OP].
     operation_declaration: ($) =>
       seq(
         optional($.doc_comment),
-        field('name', $.identifier),
+        optional(field('multiplicity', $.multiplicity)),
+        optional(field('replayable', $.replayable)),
+        // The modifier words are also legal operation NAMES. The lexer emits
+        // the keyword token wherever a modifier is acceptable, so recovering
+        // `abort: fn() -> Unit` cannot be a lexical decision — it is a parse
+        // one, and the alias lets GLR carry both readings until `:` (a name)
+        // or an identifier (a modifier) settles it. Implements [MULTI-DECL].
+        field(
+          'name',
+          choice(
+            $.identifier,
+            alias($.multiplicity, $.identifier),
+            alias($.replayable, $.identifier),
+          ),
+        ),
         ':',
         field('type', $._type),
       ),

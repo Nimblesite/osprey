@@ -1,6 +1,6 @@
 # Reactive Mobile Applications
 
-**Status:** implementation in progress; final iOS and Android application verification is pending.
+**Status:** implemented and verified on an ARM64 iOS simulator, a physical iPhone 16, and an ARM64 Android emulator. Android x86-64 is compile/link verified only. Targeted compiler, application, and native integration checks passed; full `make ci` remains red because the unchanged duplication gate measured 9.4% duplicated code against its 5% ceiling.
 
 The Issue Inbox sample shares its application state, repository validation, GitHub decoding, SQL statements, filtering, bookmarking, issue details, local notes/priorities, messages, and UI tree in Osprey. Swift and Kotlin provide native rendering and platform services. Both applications compile the same [`examples/mobile/inbox/`](../../examples/mobile/inbox/) project through the C ABI.
 
@@ -31,13 +31,37 @@ Startup creates the schema and reads the stored snapshot. A valid snapshot opens
 
 ## UI rendering [MOBILE-REACTIVE-UI]
 
-The shared `Ui` module specifies labels, layout, input values, issue cards, empty states, status messages, actions, and links. Both native renderers understand `column`, `row`, `scroll`, `text`, `button`, `input`, `link`, and `divider` nodes. Optional fields include `id`, `text`, `style`, `value`, `placeholder`, `url`, `submit`, `event`, and `children`.
+The shared `Ui` module specifies labels, layout, input values, issue cards, empty states, status messages, actions, and links. Both native renderers understand `column`, `row`, `scroll`, `text`, `rich`, `button`, `input`, `link`, and `divider` nodes. Optional fields include `id`, `text`, `style`, `value`, `placeholder`, `url`, `submit`, `event`, `children`, and `spans`.
 
 Native code maps these generic nodes and style names to SwiftUI or Android widgets. Platform typography, colors, keyboard handling, accessibility identifiers, and opening HTTPS links remain native responsibilities. Application-specific layout and behavior stay in Osprey. The platforms need not produce identical pixels, but must display the same state and send equivalent events for the same interactions.
 
 The structured `view` contains repository, search, filter, status, error, loading state, visible issues, issue count, bookmark count, selected issue ID, and a nullable detail object. Each issue provides its stable string ID, issue number, title, URL, author, comment count, bookmark state, description, labels, note, and priority. Descriptions and notes are bounded to 2,000 characters; annotations are bounded to 200 issue IDs. This view supports diagnostics and assertions; the native renderer consumes `ui` for the actual screen.
 
-The detail screen is also assembled in `Ui`: back navigation, issue metadata, labels and description, normal/high priority buttons, a note input submitted with Done, a bookmark action, and a GitHub link. Native code receives the same generic node types as the list screen. Descriptions are rendered as plain text; Markdown rendering and multiline note editing are not implemented.
+The detail screen is also assembled in `Ui`: back navigation, issue metadata, labels and description, normal/high priority buttons, a note input submitted with Done, a bookmark action, and a GitHub link. Native code receives the same generic node types as the list screen, plus the `rich` node the description uses. Multiline note editing is not implemented.
+
+## Issue description Markdown [MOBILE-MARKDOWN]
+
+GitHub issue bodies are Markdown, and the shared `Markdown` module (`inbox/src/markdown.ospml`) turns a description into ordinary UI nodes before it reaches a host. Osprey decides the structure; the hosts only draw it. The `view` keeps the raw Markdown source so assertions and diagnostics can compare it with what the API returned.
+
+Block syntax, one construct per line, recognised after leading whitespace is removed:
+
+| Markdown | Node |
+| --- | --- |
+| `#` to `######` followed by a space | `rich` with style `heading` (levels 1 and 2) or `subheading` (3 to 6) |
+| ```` ``` ```` fence until the closing fence | `text` with style `code`; lines and blank lines inside are kept verbatim |
+| `- `, `* `, `+ ` | `row` with style `item`: a `text` bullet `•` and a `rich` body |
+| `1. ` with any number | the same `row`, bullet `1.` |
+| `- [ ] ` and `- [x] ` | the same `row`, bullet `☐` or `☑` |
+| `> ` | `column` with style `quote` around a `rich` body |
+| three or more `-`, `*` or `_` alone | `divider` with style `rule` |
+| a blank line | ends the current paragraph |
+| anything else | joins the current paragraph; a single newline stays a line break, as GitHub renders it |
+
+An unclosed fence still renders as code, `#tag` without a space is text, and seven or more `#` are text.
+
+A `rich` node carries `spans`, an ordered array of `{"text", "style", "url"}` objects. Inline syntax inside paragraphs, headings, list items and quotes: `**bold**`, `*italic*`, `` `code` `` and `[text](https://…)`. A span style is `plain`, `bold`, `italic`, `code` or `link`; only a link span has a non-empty `url`, and only `https://` URLs become links. A marker without a closing marker, an empty `****`, and a non-HTTPS link are literal text, so every description renders. An underscore pair is emphasis only at a word boundary, so GitHub's `_No Description_` placeholder is italic while `snake_case` identifiers stay literal. Nested emphasis is not interpreted; the inner text is shown as written.
+
+Native renderers concatenate the spans into one text view: SwiftUI through `AttributedString` presentation intents and `link` attributes, Android through `StyleSpan`, `TypefaceSpan` and `URLSpan`. The host smoke fixtures include a bold marker in an issue body and assert that the rendered tree contains a bold span while the `view` still holds the raw Markdown. Tables, images, HTML, footnotes, task-list toggling and syntax highlighting are not implemented; they render as text.
 
 ## Platform commands [MOBILE-HOST-SERVICES]
 
@@ -66,6 +90,10 @@ The Android smoke exercises shared state transitions through JNI, Android SQLite
 
 [`examples/mobile/README.md`](../../examples/mobile/README.md) contains the reproducible build and launch commands. Final acceptance requires shared Osprey checks, both native application builds, deterministic host smoke on both platforms, a live public GitHub response displayed by the application, and a subsequent cache-backed launch.
 
-On iOS, `--inbox-diagnostics` writes the latest complete envelope to `Documents/inbox-state.json`. It is an explicit local debugging mode, disabled during ordinary launch. The envelope allows checking that the displayed UI, issue data, pending commands, and persisted application state came from Osprey. Screenshots provide visual evidence alongside those protocol assertions.
+The shared application passed 29 Osprey domain assertions, including the Markdown rendering suites. The expanded Markdown smoke passed on the iOS simulator. The original application smoke passed inside the signed application on a physical iPhone 16; its diagnostics recorded eight live GitHub issues, saved bookmarks, and no application error. The subsequent Markdown build installed on that phone, but its launch check is waiting for the device to be unlocked. Android passed deterministic and live workflows, including detail navigation, notes/priorities, bookmarks, Unicode search, failed-refresh cache retention, and restoration after terminating and restarting the process. Its live workflow displayed eight issues. Native renderer regression checks and Android lint also passed.
+
+Both mobile runtimes passed C ABI checks and 14 Default/ML language goldens on ARM64. The original iOS counter's `make ios-test` still passes. Compiler verification passed 124 codegen tests, the complete CLI test coverage across focused runs, strict workspace Clippy, and formatting. These checks do not replace the full repository gate: the unchanged `make ci` ran with an available local Deslop binary and stopped at its duplication check, reporting 7,516 duplicated lines out of 79,911 (9.4%) against a 5% ceiling. Later `make ci` steps did not run. Android x86-64 archives and application libraries compiled and linked but were not executed in this validation.
+
+On iOS, `--inbox-diagnostics` writes the latest complete envelope to `Documents/inbox-state.json`, and `--inbox-open-first` sends one ordinary `open` event for the first loaded issue once startup commands finish, so the Markdown detail screen can be captured without simulated taps. Both are explicit local debugging modes, disabled during ordinary launch. The envelope allows checking that the displayed UI, issue data, pending commands, and persisted application state came from Osprey. Screenshots provide visual evidence alongside those protocol assertions.
 
 Source responsibilities are `inbox/src/{model,update,annotations,github,storage,view,ui,app}.ospml`, the scalar entry wrappers in `inbox/src/main.osp`, the Swift files in `ios/IssueInbox/`, and the Kotlin/JNI files in `android/app/src/main/`. Dedicated reactive dependency inference, platform GPU rendering, private GitHub authentication, full repository pagination, cache migration across future schema versions, and an Osprey string-release API are outside this delivery. The default runtime's general allocations remain alive for the process lifetime, so this is not yet a bounded-memory deployment contract.

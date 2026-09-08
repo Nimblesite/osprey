@@ -266,7 +266,13 @@ fn same_operation(
     left_binders: &[TypeParam],
     right_binders: &[TypeParam],
 ) -> bool {
-    left.parameters.len() == right.parameters.len()
+    // Multiplicity and replayability are part of the operation's contract, not
+    // of its implementation: a caller reads them off the row to know what its
+    // own handler arms owe ([MULTI-AXIS]). A module promising `once next` may
+    // not supply `many next`, so they compare alongside the written types.
+    left.multiplicity() == right.multiplicity()
+        && left.replayable == right.replayable
+        && left.parameters.len() == right.parameters.len()
         && left
             .parameters
             .iter()

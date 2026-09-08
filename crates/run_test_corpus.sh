@@ -60,15 +60,16 @@ WASM_MANIFEST=$TESTDIR/WASM_UNPORTABLE.txt
 # Silence is not success — if coverage ever drops below this floor the harness
 # FAILS rather than quietly checking less than it used to.
 #
-# Natively all 203 programs are covered by 105 golden files: 98 are shared by a
-# Default/ML flavor pair, 7 belong to a program with no twin. On wasm32 the 61
-# programs blocked on a capability WASI does not have are skipped — each named
-# in tests/WASM_UNPORTABLE.txt — leaving 142.
+# Natively all 209 programs are covered by golden files, most shared by a
+# Default/ML flavor pair. On wasm32 the programs blocked on a capability WASI
+# does not have are skipped — each named in tests/WASM_UNPORTABLE.txt, and a
+# resumable one named by the OPERATION it cannot suspend [MULTI-WASM] — leaving
+# 144.
 # Ratchet UP as goldens are added; never lower it to turn a red build green.
 if [[ $TARGET == wasm32 ]]; then
-  GOLDEN_MIN=${OSPREY_GOLDEN_MIN:-142}
+  GOLDEN_MIN=${OSPREY_GOLDEN_MIN:-144}
 else
-  GOLDEN_MIN=${OSPREY_GOLDEN_MIN:-203}
+  GOLDEN_MIN=${OSPREY_GOLDEN_MIN:-209}
 fi
 
 # [GPU-KERNEL-EXTRACT] differential. The extracted-kernel lowering and the

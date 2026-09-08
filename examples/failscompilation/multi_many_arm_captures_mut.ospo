@@ -1,0 +1,19 @@
+// [MULTI-REPLAY-STATE] Handler-owned state is a single shared heap cell, so a
+// second resumption would observe the writes of the first. A `many` arm must
+// combine resumptions through the value `resume` returns instead.
+effect Choice {
+    many pick: fn(int) -> int
+}
+
+fn search(seed) = perform Choice.pick(seed)
+
+mut best = 0
+
+let found = handle Choice
+    pick option => {
+        best = resume(option)
+        best
+    }
+in search(2)
+
+fn main() = print("${found}")

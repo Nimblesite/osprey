@@ -72,6 +72,67 @@ effect Log { info: fn(string) -> Unit }
             (identifier)))))))
 
 ================================================================================
+A modifier keyword naming the operation it modifies [MULTI-DECL]
+================================================================================
+
+effect Random {
+    /// Answered afresh on every replay.
+    once replayable: fn() -> int
+    replayable next: fn() -> int
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (statement
+    (effect_declaration
+      name: (identifier)
+      (operation_declaration
+        (doc_comment)
+        multiplicity: (multiplicity)
+        name: (identifier)
+        type: (function_type
+          (type_identifier
+            (identifier))))
+      (operation_declaration
+        replayable: (replayable)
+        name: (identifier)
+        type: (function_type
+          (type_identifier
+            (identifier)))))))
+
+================================================================================
+Multiplicity and replayable modifiers, and the same words as names [MULTI-DECL]
+================================================================================
+
+effect Choice {
+    many replayable pick: fn(int) -> int
+    abort: fn() -> Unit
+}
+
+--------------------------------------------------------------------------------
+
+(source_file
+  (statement
+    (effect_declaration
+      name: (identifier)
+      (operation_declaration
+        multiplicity: (multiplicity)
+        replayable: (replayable)
+        name: (identifier)
+        type: (function_type
+          (type_list
+            (type_identifier
+              (identifier)))
+          (type_identifier
+            (identifier))))
+      (operation_declaration
+        name: (identifier)
+        type: (function_type
+          (type_identifier
+            (identifier)))))))
+
+================================================================================
 Short lambda
 ================================================================================
 

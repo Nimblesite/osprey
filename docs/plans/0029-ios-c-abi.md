@@ -4,13 +4,13 @@
 
 **Spec:** [0038-iOSTarget.md](../specs/0038-iOSTarget.md), with shared target restrictions in [0022-WebAssemblyTarget.md](../specs/0022-WebAssemblyTarget.md).
 
-**Status:** The iOS implementation and targeted validation are complete. Full `make ci` verification remains open: the implementation session's attempt stopped because `deslop` was unavailable. The existing CI gates remain unchanged.
+**Status:** The iOS implementation and targeted validation are complete. Full `make ci` verification remains open: the final run reached the unchanged duplication gate and measured 9.4% duplicated code against its 5% ceiling.
 
 ## Scope and architecture
 
 Osprey supplies application logic through a synchronous C ABI. Swift owns the iOS application lifecycle, UI, and platform APIs. Swift calls generated Osprey exports; Osprey requests platform services through explicit C imports implemented by the Swift host.
 
-This delivery covers `--target=ios` for ARM64 iPhones and `--target=ios-sim` for the ARM64 iOS Simulator. Android is a future platform for the same architectural boundary and is outside this plan. The exact type mapping, ownership contract, deployment version, and unsupported options belong to the spec rather than a second definition here.
+This delivery covers `--target=ios` for ARM64 iPhones and `--target=ios-sim` for the ARM64 iOS Simulator. Android uses the same architectural boundary in [plan 0030](0030-reactive-mobile-apps.md) and [spec 0039](../specs/0039-AndroidTarget.md); that extension remains outside this plan's original iOS scope. The exact type mapping, ownership contract, deployment version, and unsupported options belong to the spec rather than a second definition here.
 
 ## Phase 1 — Define the host boundary
 
@@ -68,7 +68,9 @@ Evidence: [SmokeCheck.swift](../../examples/ios/OspreyCounter/SmokeCheck.swift) 
 
 ## Phase 5 — Verify and record delivery
 
-The implementation session verified device and simulator builds, C host links, the running SwiftUI simulator application, and 14 Default/ML language goldens covering arithmetic, collections, strings, JSON, files, and fibers. It also passed the CLI, codegen, and type suites, target rejection tests, strict workspace Clippy, and formatting checks. Device execution was not claimed; the built device application is unsigned and requires Xcode signing for installation.
+The implementation session verified device and simulator builds, C host links, the running SwiftUI simulator application, and 14 Default/ML language goldens covering arithmetic, collections, strings, JSON, files, and fibers. It also passed the CLI, codegen, and type suites, target rejection tests, strict workspace Clippy, and formatting checks. The original counter's `make ios-test` passed again after the subsequent shared mobile application was added.
+
+Physical-device execution is now verified through the [Issue Inbox application](0030-reactive-mobile-apps.md): the signed app installed and launched on an iPhone 16, passed the full `OSPREY_INBOX_SMOKE_OK` workflow, and displayed eight actual GitHub issues with persisted bookmarks and no application error. Its final simulator smoke also passed. Signing belongs to the native host deployment flow; the compiler still emits an unsigned library and the default device build does not assume signing credentials.
 
 The WASM harness passed 142 supported-program goldens and 18 alternative GPU-lowering comparisons. Its same 61 excluded programs remain pinned in [WASM_UNPORTABLE.txt](../../tests/WASM_UNPORTABLE.txt), now with compiler capability reasons. Unexpected LLVM/linker failures are test failures, and changes to either the excluded file set or its reasons fail the harness.
 
@@ -83,7 +85,7 @@ make _runtime_wasm _test_wasm_goldens
 make ci
 ```
 
-Full CI completion requires the repository's normal tools, including `deslop`. Install or provide the missing prerequisite and run the unchanged gate; do not remove, bypass, or weaken it. Additional platforms, memory backends, continuation support, teardown, and packaging require their own scoped work and tests before changing the current rejection rules.
+The final full-CI attempt used an existing local Deslop `0.0.0-dev` binary through `PATH`, resolving the earlier missing-tool prerequisite. Its actual report measured 7,516 duplicated lines out of 79,911 (9.4%) against the unchanged 5% ceiling. Deslop exited 3, stopping `make ci` before later steps. Full CI therefore remains unverified beyond that gate; broad repository deduplication is outside this target's delivery. Memory backends, continuation support, teardown, and packaging require their own scoped work and tests before changing the current rejection rules.
 
 ## TODO checklist
 
@@ -92,5 +94,6 @@ Full CI completion requires the repository's normal tools, including `deslop`. I
 - [x] Build device/simulator archives and generated headers through LLVM.
 - [x] Deliver the SwiftUI host with a real Swift platform callback.
 - [x] Verify C ABI execution, 14 simulator goldens, and the actual SwiftUI application.
+- [x] Verify signed physical-iPhone execution through the shared Issue Inbox, including its full native smoke and real GitHub data.
 - [x] Verify compiler tests, WASM goldens, strict Clippy, formatting, and the unchanged WASM exclusion set.
-- [ ] Run the full unchanged `make ci` with its required tools available and record the result.
+- [ ] Resolve the duplication gate failure and pass the full unchanged `make ci`.

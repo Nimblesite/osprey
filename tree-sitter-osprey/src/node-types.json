@@ -989,6 +989,11 @@
     }
   },
   {
+    "type": "identifier",
+    "named": true,
+    "fields": {}
+  },
+  {
     "type": "if_expression",
     "named": true,
     "fields": {
@@ -1563,6 +1568,11 @@
     }
   },
   {
+    "type": "multiplicity",
+    "named": true,
+    "fields": {}
+  },
+  {
     "type": "named_argument",
     "named": true,
     "fields": {
@@ -1702,12 +1712,32 @@
     "type": "operation_declaration",
     "named": true,
     "fields": {
+      "multiplicity": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "multiplicity",
+            "named": true
+          }
+        ]
+      },
       "name": {
         "multiple": false,
         "required": true,
         "types": [
           {
             "type": "identifier",
+            "named": true
+          }
+        ]
+      },
+      "replayable": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "replayable",
             "named": true
           }
         ]
@@ -3164,6 +3194,10 @@
     "named": false
   },
   {
+    "type": "abort",
+    "named": false
+  },
+  {
     "type": "as",
     "named": false
   },
@@ -3208,10 +3242,6 @@
     "named": false
   },
   {
-    "type": "identifier",
-    "named": true
-  },
-  {
     "type": "if",
     "named": false
   },
@@ -3240,6 +3270,10 @@
     "named": true
   },
   {
+    "type": "many",
+    "named": false
+  },
+  {
     "type": "match",
     "named": false
   },
@@ -3253,6 +3287,10 @@
   },
   {
     "type": "namespace",
+    "named": false
+  },
+  {
+    "type": "once",
     "named": false
   },
   {
@@ -3270,6 +3308,10 @@
   {
     "type": "recv",
     "named": false
+  },
+  {
+    "type": "replayable",
+    "named": true
   },
   {
     "type": "resume",

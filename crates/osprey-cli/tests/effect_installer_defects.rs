@@ -172,3 +172,48 @@ fn a_file_scope_handler_and_a_generic_binding_coexist() {
         "the two file-scope forms did not coexist"
     );
 }
+
+/// [EFFECTS-HANDLER-STATE] promotes a file-scope `mut` to a cell a handler arm
+/// may read, and Osprey's Hindley-Milner inference means a helper whose types
+/// are inferable carries no annotation. Each half is ordinary Osprey, and the
+/// pair is the natural spelling of the retry handler in [MULTI-FALSIFY] case 1
+/// (docs/specs/0035-StagedEffects.md, plan 0028).
+///
+/// DEFECT: reading such a cell as the ARGUMENT of an unannotated helper whose
+/// result is a `Result` is rejected at lowering with "`attempts` has no
+/// resolved signature". That message comes from `named_fn_cell`
+/// (crates/osprey-codegen/src/closure.rs), which emits a forwarder for a
+/// top-level FUNCTION used as a value — so codegen resolved the mutable binding
+/// as a named function. Three variants of the same program compile and print
+/// `0`: annotating the helper `fn settle(attempt: int) -> Result<int, string>`,
+/// making the binding a `let`, or moving the call out of the arm. Nothing about
+/// the program is genuinely unresolved, and the diagnostic names a signature the
+/// author never wrote.
+///
+/// A helper returning a non-`Result` type from the same arm compiles, which is
+/// what makes this a `Result`-shaped lowering defect rather than a rule about
+/// mutable capture.
+#[test]
+fn a_handler_arm_reads_a_mut_cell_into_an_inferred_result_helper() {
+    let source = concat!(
+        "effect Charge { charge : fn(int) -> int }\n\n",
+        "fn settle(attempt) = match attempt {\n",
+        "    1 => Error { message: \"declined\" }\n",
+        "    _ => Success { value: 7 }\n",
+        "}\n\n",
+        "mut attempts = 1\n",
+        "let outcome = handle Charge\n",
+        "    charge amount => match settle(attempts) {\n",
+        "        Success { value } => value\n",
+        "        Error { message } => 0\n",
+        "    }\n",
+        "in perform Charge.charge(1)\n\n",
+        "print(\"${outcome}\")\n",
+    );
+    let (code, transcript) = run_source("arm_mut_cell_into_result_helper", "osp", source);
+    assert_eq!(code, Some(0), "run did not complete: {transcript}");
+    assert_eq!(
+        transcript, "0\n",
+        "the arm did not read the promoted mutable cell"
+    );
+}

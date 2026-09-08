@@ -1,0 +1,77 @@
+namespace inboxtests
+
+import bank::Json
+import mobile::Markdown
+import mobile::Update
+import mobile::View
+import mobile::Ui
+import inboxtests::Support
+import inboxtests::TriageSupport
+
+module MarkdownSupport
+    export nodes source = Json::arr (Markdown::render source)
+    export at source path = Support::projected (nodes source) path
+    export spanAt source path = Support::projected (Json::arr (Markdown::spans source)) path
+
+markdownBlocksCase () =
+    source = "# Crash on launch\n\nThe app **crashes** when `main.osp` is empty.\nSecond line.\n\n### Steps\n1. Open app\n2. Reproduce\n- [x] macOS\n- [ ] iOS\n* bullet\n\n> quoted advice\n\n---\n```\nlet x = 1\n\nprint(x)\n```\ntrailing"
+    check "heading is rich" "rich" (MarkdownSupport::at source "[0].kind")
+    check "level one heading style" "heading" (MarkdownSupport::at source "[0].style")
+    check "heading text" "Crash on launch" (MarkdownSupport::at source "[0].spans[0].text")
+    check "paragraph keeps line break" " is empty.\nSecond line." (MarkdownSupport::at source "[1].spans[4].text")
+    check "bold span" "bold" (MarkdownSupport::at source "[1].spans[1].style")
+    check "code span" "main.osp" (MarkdownSupport::at source "[1].spans[3].text")
+    check "deeper heading" "subheading" (MarkdownSupport::at source "[2].style")
+    check "ordered item keeps its number" "1." (MarkdownSupport::at source "[3].children[0].text")
+    check "ordered item body" "Open app" (MarkdownSupport::at source "[3].children[1].spans[0].text")
+    check "done task" "☑" (MarkdownSupport::at source "[5].children[0].text")
+    check "open task" "☐" (MarkdownSupport::at source "[6].children[0].text")
+    check "bullet item" "•" (MarkdownSupport::at source "[7].children[0].text")
+    check "quote block" "quote" (MarkdownSupport::at source "[8].style")
+    check "quote text" "quoted advice" (MarkdownSupport::at source "[8].children[0].spans[0].text")
+    check "horizontal rule" "divider" (MarkdownSupport::at source "[9].kind")
+    check "fenced code keeps blank lines" "let x = 1\n\nprint(x)" (MarkdownSupport::at source "[10].text")
+    check "code style" "code" (MarkdownSupport::at source "[10].style")
+    check "text after the fence" "trailing" (MarkdownSupport::at source "[11].spans[0].text")
+    check "nothing after the last block" "MISSING" (MarkdownSupport::at source "[12].kind")
+
+markdownInlineCase () =
+    check "https link keeps its url" "https://github.com/x" (MarkdownSupport::spanAt "see [docs](https://github.com/x) now" "[1].url")
+    check "link style" "link" (MarkdownSupport::spanAt "see [docs](https://github.com/x) now" "[1].style")
+    check "text after a link" " now" (MarkdownSupport::spanAt "see [docs](https://github.com/x) now" "[2].text")
+    check "plain http link is literal" "[" (MarkdownSupport::spanAt "[x](http://evil)" "[0].text")
+    check "unterminated bold stays literal" "**" (MarkdownSupport::spanAt "a **b" "[1].text")
+    check "unterminated code stays literal" "`" (MarkdownSupport::spanAt "tick ` mark" "[1].text")
+    check "italic" "italic" (MarkdownSupport::spanAt "an *em* word" "[1].style")
+    check "empty emphasis is literal" "**" (MarkdownSupport::spanAt "****" "[0].text")
+    check "quotes and unicode survive escaping" "say \"hi\" 🦉" (MarkdownSupport::spanAt "say \"hi\" 🦉" "[0].text")
+    check "underscores are text" "snake_case_name" (MarkdownSupport::spanAt "snake_case_name" "[0].text")
+    check "word boundary underscore emphasis" "italic" (MarkdownSupport::spanAt "_No Description_" "[0].style")
+    check "word boundary underscore text" "No Description" (MarkdownSupport::spanAt "_No Description_" "[0].text")
+    check "underscore emphasis before punctuation" "italic" (MarkdownSupport::spanAt "see _this_." "[1].style")
+    check "underscore closing inside a word stays literal" "_" (MarkdownSupport::spanAt "_a_b" "[0].text")
+    check "intraword underscore after emphasis stays literal" " my_var" (MarkdownSupport::spanAt "_x_ my_var" "[1].text")
+
+markdownEdgeCase () =
+    check "empty body renders nothing" "" (Markdown::render "")
+    check "whitespace body renders nothing" "" (Markdown::render " \n\n  ")
+    check "hashtag is a paragraph" "rich" (MarkdownSupport::at "#tag" "[0].kind")
+    check "hashtag style" "body" (MarkdownSupport::at "#tag" "[0].style")
+    check "unclosed fence still renders as code" "code" (MarkdownSupport::at "```\nlost" "[0].style")
+    check "unclosed fence content" "lost" (MarkdownSupport::at "```\nlost" "[0].text")
+    check "seven hashes are text" "body" (MarkdownSupport::at "####### deep" "[0].style")
+    check "rule needs three marks" "--" (MarkdownSupport::at "--" "[0].spans[0].text")
+    check "indented bullet" "•" (MarkdownSupport::at "   - nested" "[0].children[0].text")
+
+markdownDetailCase () =
+    waiting = Support::awaiting ()
+    body = "[{\"id\":101,\"number\":42,\"title\":\"Investigate\",\"user\":{\"login\":\"alice\"},\"comments\":0,\"body\":\"**Steps**\\n- open\\n- crash\",\"labels\":[]}]"
+    loaded = Update::dispatch waiting.model (Support::http waiting.model.pending 200 body "")
+    selected = Update::dispatch loaded.model (TriageSupport::edit "open" "101" "")
+    view = View::render selected.model
+    ui = Ui::render view
+    check "view keeps the raw markdown" "**Steps**\n- open\n- crash" (Support::projected view "detail.body")
+    check "detail screen renders rich nodes" true (contains ui "\"kind\":\"rich\"")
+    check "detail screen renders the bold step" true (contains ui "\"text\":\"Steps\",\"style\":\"bold\"")
+    check "detail screen renders bullets" true (contains ui "\"text\":\"•\"")
+    check "no description keeps the placeholder" true (contains (Ui::render (View::render (Update::dispatch (Support::loaded ()).model (TriageSupport::edit "open" "101" "")).model)) "The author has not added a description.")

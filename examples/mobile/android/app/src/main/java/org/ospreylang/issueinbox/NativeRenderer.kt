@@ -7,12 +7,19 @@ import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.net.Uri
 import android.text.Editable
+import android.text.SpannableStringBuilder
+import android.text.Spanned
 import android.text.TextWatcher
+import android.text.method.LinkMovementMethod
+import android.text.style.StyleSpan
+import android.text.style.TypefaceSpan
+import android.text.style.URLSpan
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
 import android.view.inputmethod.EditorInfo
 import android.widget.*
+import org.json.JSONArray
 import org.json.JSONObject
 import java.util.WeakHashMap
 
@@ -53,7 +60,7 @@ internal class NativeRenderer(private val context: Context, private val dispatch
             gravity = Gravity.CENTER_VERTICAL
         }
         "scroll" -> ScrollView(context).apply { isFillViewport = true }
-        "text" -> TextView(context)
+        "text", "rich" -> TextView(context)
         "button", "link" -> Button(context).apply { isAllCaps = false }
         "input" -> newInput()
         "divider" -> View(context).apply { setBackgroundColor(muted); minimumHeight = dp(1) }
@@ -77,7 +84,7 @@ internal class NativeRenderer(private val context: Context, private val dispatch
 
     private fun layout(parent: ViewGroup, child: View, node: JSONObject) {
         val row = parent is LinearLayout && parent.orientation == LinearLayout.HORIZONTAL
-        val flexible = row && node.getString("kind") == "text"
+        val flexible = row && node.getString("kind") in listOf("text", "rich")
         val width = if (flexible) 0 else if (row) -2 else -1
         child.layoutParams = if (parent is LinearLayout) LinearLayout.LayoutParams(width, -2).apply {
             if (flexible) weight = 1f
@@ -86,13 +93,36 @@ internal class NativeRenderer(private val context: Context, private val dispatch
     }
 
     private fun text(view: TextView, node: JSONObject) {
-        view.text = node.optString("text")
+        val rich = node.getString("kind") == "rich"
+        view.text = if (rich) spans(node.optJSONArray("spans") ?: JSONArray()) else node.optString("text")
+        if (rich) view.movementMethod = LinkMovementMethod.getInstance()
         view.setOnClickListener(if (node.has("event")) View.OnClickListener { dispatch(node.getJSONObject("event")) }
             else if (node.getString("kind") == "link") View.OnClickListener {
                 val uri = Uri.parse(node.getString("url"))
                 require(uri.scheme == "https") { "Only HTTPS links are supported" }
                 context.startActivity(Intent(Intent.ACTION_VIEW, uri))
             } else null)
+    }
+
+    // Implements [MOBILE-MARKDOWN]: spans carry Osprey's emphasis, code and
+    // HTTPS link decisions; Android only applies the platform presentation.
+    private fun spans(spans: JSONArray): CharSequence {
+        val builder = SpannableStringBuilder()
+        for (index in 0 until spans.length()) {
+            val span = spans.getJSONObject(index)
+            val start = builder.length
+            builder.append(span.optString("text"))
+            val style: Any? = when (span.optString("style")) {
+                "bold" -> StyleSpan(Typeface.BOLD)
+                "italic" -> StyleSpan(Typeface.ITALIC)
+                "code" -> TypefaceSpan("monospace")
+                else -> null
+            }
+            if (style != null) builder.setSpan(style, start, builder.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+            val url = span.optString("url")
+            if (url.startsWith("https://")) builder.setSpan(URLSpan(url), start, builder.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+        }
+        return builder
     }
 
     private fun newInput() = EditText(context).apply {
@@ -128,19 +158,23 @@ internal class NativeRenderer(private val context: Context, private val dispatch
 
     private fun style(view: View, name: String) {
         if (view is TextView) {
-            view.setTextColor(when (name) { "accent" -> accent; "caption" -> muted; "error" -> Color.rgb(255, 143, 143); "primary" -> Color.rgb(12, 30, 36); else -> ink })
-            view.textSize = when (name) { "hero" -> 36f; "title" -> 19f; "caption", "accent" -> 13f; else -> 16f }
-            view.setTypeface(null, if (name in listOf("hero", "title", "accent")) Typeface.BOLD else Typeface.NORMAL)
+            view.setTextColor(when (name) { "accent" -> accent; "caption", "bullet", "quote" -> muted; "error" -> Color.rgb(255, 143, 143); "primary" -> Color.rgb(12, 30, 36); else -> ink })
+            view.textSize = when (name) { "hero" -> 36f; "heading" -> 22f; "title" -> 19f; "subheading" -> 18f; "caption", "accent" -> 13f; "code" -> 14f; else -> 16f }
+            view.setTypeface(if (name == "code") Typeface.MONOSPACE else null,
+                if (name in listOf("hero", "title", "accent", "heading", "subheading")) Typeface.BOLD else Typeface.NORMAL)
             if (view is EditText) view.setHintTextColor(muted)
         }
-        if (name in listOf("screen", "card", "primary", "secondary")) {
+        if (name in listOf("screen", "card", "primary", "secondary", "code")) {
             view.background = GradientDrawable().apply {
-                setColor(when (name) { "screen" -> Color.rgb(12, 20, 34); "primary" -> accent; else -> Color.rgb(25, 39, 59) })
+                setColor(when (name) { "screen" -> Color.rgb(12, 20, 34); "primary" -> accent; "code" -> Color.rgb(18, 28, 44); else -> Color.rgb(25, 39, 59) })
                 cornerRadius = if (name == "screen") 0f else dp(14).toFloat()
                 if (name == "secondary") setStroke(dp(1), Color.rgb(53, 74, 100))
             }
-            val padding = dp(if (name == "screen") 20 else 14)
+            val padding = dp(when (name) { "screen" -> 20; "code" -> 12; else -> 14 })
             view.setPadding(padding, padding, padding, padding)
+        } else if (name == "quote") {
+            view.background = null
+            view.setPadding(dp(12), 0, 0, 0)
         } else if (view is ViewGroup) {
             view.background = null
             view.setPadding(0, 0, 0, 0)

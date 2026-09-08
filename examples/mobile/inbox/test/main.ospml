@@ -143,3 +143,8 @@ test "GitHub rate limit status and cause reach the user" rateLimitCase
 test "clearing notes and priority releases annotation capacity" clearAnnotationCase
 test "SQLite save failure cannot stop an independent HTTP loading state" saveDuringRefreshCase
 test "refresh removing selected issue returns to the inbox" removedSelectionCase
+
+test "issue body blocks become headings, lists, quotes, rules and code" markdownBlocksCase
+test "inline emphasis, code and https links are spans; unmatched markers are literal" markdownInlineCase
+test "degenerate Markdown never breaks rendering" markdownEdgeCase
+test "the detail screen renders Markdown while the view keeps the raw body" markdownDetailCase

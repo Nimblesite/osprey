@@ -31,6 +31,7 @@ mod error;
 mod expr;
 mod info;
 mod init_order;
+mod multiplicity;
 mod pattern;
 #[cfg(test)]
 mod testutil;

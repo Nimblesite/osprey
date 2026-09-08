@@ -1,0 +1,1 @@
+17:8: handler for `Choice.pick` may resume more than once, but the handled expression performs `Choice.pick` inside a fiber; a second resumption of a continuation spanning a spawned fiber has no serialization order

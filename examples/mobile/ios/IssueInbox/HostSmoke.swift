@@ -5,7 +5,7 @@ import Foundation
 enum HostSmoke {
     private static let fixture = """
     [
-      {"id":101,"number":42,"title":"First issue","html_url":"https://github.com/swiftlang/swift/issues/42","user":{"login":"alice"},"comments":3,"body":"Steps to reproduce 🦉","labels":[{"name":"bug"},{"name":"triage"}]},
+      {"id":101,"number":42,"title":"First issue","html_url":"https://github.com/swiftlang/swift/issues/42","user":{"login":"alice"},"comments":3,"body":"Steps to **reproduce** 🦉","labels":[{"name":"bug"},{"name":"triage"}]},
       {"id":102,"number":43,"title":"Second issue","user":{"login":"bob"},"comments":0},
       {"id":103,"number":44,"title":"A pull request","user":{"login":"carol"},"comments":0,"pull_request":{}}
     ]
@@ -106,8 +106,10 @@ enum HostSmoke {
     private static func verifyDetailEvents(_ store: InboxStore) async throws {
         store.send(["type": "open", "id": "101"])
         try require(store.snapshot.selected == "101" && store.snapshot.detail?.id == "101", "Osprey did not open the selected issue")
-        try require(store.snapshot.detail?.body == "Steps to reproduce 🦉" && store.snapshot.detail?.labels.contains("bug") == true,
+        try require(store.snapshot.detail?.body == "Steps to **reproduce** 🦉" && store.snapshot.detail?.labels.contains("bug") == true,
                     "Osprey detail lost the issue description or labels")
+        try require(spans(store.ui).contains { $0.style == "bold" && $0.text == "reproduce" },
+                    "Osprey did not render the Markdown description as rich spans")
         store.send(["type": "note", "id": "101", "value": "Review parser's 🦉 handling"])
         store.send(["type": "priority", "id": "101", "value": "high"])
         await store.waitUntilIdle()
@@ -124,6 +126,12 @@ enum HostSmoke {
         try require(store.snapshot.detail?.note == "Review parser's 🦉 handling" && store.snapshot.detail?.priority == "high",
                     "Osprey SQLite cache lost the note or priority")
         store.send(["type": "back"])
+    }
+
+    // Every span in the rendered tree, depth first. [MOBILE-MARKDOWN]
+    private static func spans(_ node: InboxNode?) -> [InboxSpan] {
+        guard let node else { return [] }
+        return (node.spans ?? []) + (node.children ?? []).flatMap { spans($0) }
     }
 
     private static func require(_ condition: Bool, _ message: String) throws {

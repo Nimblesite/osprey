@@ -23,6 +23,7 @@
       "title": "Build applications",
       "items": [
         { "text": "Web apps", "url": "/docs/web-apps/" },
+        { "text": "iOS and Android apps", "url": "/docs/mobile-apps/" },
         { "text": "Playground", "url": "/playground/" },
         { "text": "WebAssembly studio", "url": "/wasm/" }
       ]
@@ -58,6 +59,7 @@
       "items": [
         { "text": "Documentation", "url": "/docs/" },
         { "text": "Web Apps Guide", "url": "/docs/web-apps/" },
+        { "text": "Mobile Apps Guide", "url": "/docs/mobile-apps/" },
         { "text": "Feature Status", "url": "/status/" },
         { "text": "Specification", "url": "/spec/" }
       ]

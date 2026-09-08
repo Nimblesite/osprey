@@ -14,6 +14,7 @@ Osprey is a practical functional language for safe, fast native programs. Start 
 
 ## Build applications
 
+- **[Build an iOS and Android app](/docs/mobile-apps/)** — run the same modular Osprey application with native controls, SQLite, GitHub requests, and reactive updates.
 - **[Build a web app](/docs/web-apps/)** — use an Osprey WebAssembly model/update core with a React renderer.
 - **[Explore the WebAssembly studio](/wasm/)** — compare the currently available Default and ML flavors in a browser-hosted example.
 - **[Browse working examples](https://github.com/Nimblesite/osprey/tree/main/examples)** — study native, HTTP, WebSocket, terminal, graphics, and WebAssembly programs.

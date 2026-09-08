@@ -7,8 +7,7 @@
 Osprey is a functional language with inferred types, algebraic effects, fiber
 concurrency, and a choice of brace or ML layout syntax.
 
-Osprey compiles through LLVM to native binaries and can also target
-WebAssembly. Osprey is alpha software.
+Osprey compiles through LLVM to native binaries, WebAssembly, and C ABI libraries for iOS and Android applications. Osprey is alpha software.
 
 ## Language features
 
@@ -25,15 +24,11 @@ WebAssembly. Osprey is alpha software.
 - **Selectable memory management** — native builds support the default
   non-reclaiming allocator, tracing garbage collection (`--memory=gc`) and
   Perceus reference counting (`--memory=arc`).
-- **Native and WebAssembly output** — native builds can call C through the FFI;
-  C code remains outside Osprey's memory-safety guarantee.
+- **Native, WebAssembly, iOS and Android output** — mobile applications link compiled Osprey logic through a generated C interface. C code remains outside Osprey's memory-safety guarantee.
 
-Effect operation inputs and outputs are checked statically. Missing-handler and
-undeclared-row checks are incomplete, so an unhandled effect can produce a
-runtime diagnostic. Effect resumption is native-only.
+Effect operation inputs and outputs are checked statically, and the compiler rejects unhandled effect operations at program entry. Resumable effects are supported on the host `native` target. WebAssembly and mobile C ABI targets reject unsupported operations, including `resume`, before emitting an artifact.
 
-Each file selects its flavor by extension, a source marker, or `--flavor` for a
-single-file build. Multi-file cross-flavor imports are unsupported.
+Each file selects its flavor by extension, a source marker, or `--flavor` for a single-file build. Project modules can import files written in either flavor; the mobile example combines an ML application with a small Default C ABI entry file.
 
 ## Example
 
@@ -64,6 +59,17 @@ answer = addTen 32 ?: 0
 ```
 
 Executable language tests live in [`tests/`](tests/).
+
+## The same app on iOS and Android
+
+[Issue Inbox](examples/mobile/README.md) is a working reactive application built from shared Osprey modules. Osprey defines the screen tree, state transitions, GitHub requests and decoding, SQLite statements, offline cache, search, bookmarks, issue details, local notes, and priorities. SwiftUI and Android hosts provide native rendering, networking, and SQLite execution.
+
+<p align="center">
+  <img src="website/src/assets/images/mobile/issue-inbox-ios.png" alt="Issue Inbox with live GitHub issues on the iPhone 17 Pro simulator" width="280" />
+  <img src="website/src/assets/images/mobile/issue-inbox-android.png" alt="Issue Inbox restored from SQLite on the Pixel 7 Android emulator" width="280" />
+</p>
+
+iPhone 17 Pro simulator (left) and Pixel 7 Android emulator (right), running the same Osprey application. The signed iOS app was also installed, launched, and smoke-tested on a physical iPhone 16. Android ARM64 smoke and live GitHub checks passed; Android x86-64 was compiled and packaged. See the [run commands and validation record](examples/mobile/README.md#validation).
 
 ## Installation
 
@@ -108,12 +114,13 @@ osprey program.osp --check
 osprey program.osp --compile -o program
 osprey program.osp --run
 osprey program.osp --target=wasm32 --compile -o program.wasm
+osprey examples/mobile/inbox --target=ios --compile -o libInbox.a
+osprey examples/mobile/inbox --target=android-arm64 --compile -o libInbox.a
 ```
 
-The WebAssembly target supports the portable runtime subset. Fibers, HTTP,
-WebSockets, the C FFI, processes and file I/O are not available on that target.
-See the [WebAssembly specification](docs/specs/0022-WebAssemblyTarget.md) and
-[`examples/wasm/`](examples/wasm/) for details.
+The WebAssembly target supports a portable runtime subset, with file access supplied by the WASI host and a defined browser bridge. Fibers, built-in HTTP/WebSocket operations, processes, general C FFI, and resumable effects are rejected. See the [WebAssembly specification](docs/specs/0022-WebAssemblyTarget.md) and [`examples/wasm/`](examples/wasm/).
+
+The [iOS](docs/specs/0038-iOSTarget.md) and [Android](docs/specs/0039-AndroidTarget.md) targets emit an archive and C header for the platform application to link. They require their matching SDK/NDK and runtime builds. The mobile example includes these build steps. Mobile C ABI builds currently support the default allocator, which retains general allocations for the process lifetime.
 
 ## Documentation
 

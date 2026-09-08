@@ -17,8 +17,15 @@
 //! spec's per-region rule ([STAGE-LOWER-ORDER]) is a superset of this.
 
 use crate::mutate::children_mut;
-use crate::{contains_resume, walk_program, AstVisitor, Expr, HandlerArm, Position, Program, Stmt};
+use crate::{
+    contains_resume, walk_program, AstVisitor, Expr, HandlerArm, Multiplicity, Position, Program,
+    Stmt,
+};
 use std::collections::BTreeMap;
+
+/// The marker that declares a compile-time stage, spelled once so both flavors'
+/// surfaces and every diagnostic agree. Implements [STAGE-DECL].
+pub const STATIC_STAGE_KEYWORD: &str = "static";
 
 /// When an effect's operations are answered. Implements [STAGE-AXIS].
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -67,7 +74,19 @@ pub(crate) const REWRITE_DEPTH_BOUND: u32 = 256;
 /// The declared operations of one effect, with its stage.
 pub(crate) struct EffectDecl {
     pub(crate) stage: Stage,
-    operations: Vec<String>,
+    operations: Vec<DeclaredOperation>,
+    position: Option<Position>,
+}
+
+/// One operation as its declaration wrote it. Multiplicity travels in the
+/// summary so [MULTI-AXIS-STATIC] is decided by the pass that already knows
+/// each effect's stage, rather than by a second walk over the same declarations.
+struct DeclaredOperation {
+    name: String,
+    /// The keyword as WRITTEN. [MULTI-AXIS-STATIC] rejects a multiplicity
+    /// written on a static operation, and `once` — the default — is a legal
+    /// thing to write, so the annotation's presence is what this records.
+    declared_multiplicity: Option<Multiplicity>,
     position: Option<Position>,
 }
 
@@ -80,7 +99,9 @@ pub(crate) struct EffectDecl {
 /// capture ([STAGE-STATIC-TAIL]), a runtime request from a compile-time answer
 /// ([STAGE-STATIC-MONOTONE]) or an unbounded rewrite ([STAGE-STATIC-FINITE]).
 pub fn discharge(program: &Program) -> Result<Program, Vec<StageError>> {
-    let errors = validate_handlers(program, &effect_declarations(program));
+    let declarations = effect_declarations(program);
+    let mut errors = static_multiplicities(&declarations);
+    errors.extend(validate_handlers(program, &declarations));
     if !errors.is_empty() {
         return Err(errors);
     }
@@ -103,7 +124,14 @@ pub(crate) fn effect_declarations(program: &Program) -> BTreeMap<String, EffectD
             {
                 let declared = EffectDecl {
                     stage: *stage,
-                    operations: operations.iter().map(|op| op.name.clone()).collect(),
+                    operations: operations
+                        .iter()
+                        .map(|op| DeclaredOperation {
+                            name: op.name.clone(),
+                            declared_multiplicity: op.declared_multiplicity,
+                            position: op.position,
+                        })
+                        .collect(),
                     position: *position,
                 };
                 let _ = self.0.insert(name.clone(), declared);
@@ -221,14 +249,37 @@ fn missing_arms(
     declared
         .operations
         .iter()
-        .filter(|operation| !arms.iter().any(|arm| &&arm.operation == operation))
+        .filter(|operation| !arms.iter().any(|arm| arm.operation == operation.name))
         .map(|operation| {
+            let name = &operation.name;
             StageError::new(
-                format!(
-                    "static handler for `{effect}` does not cover operation `{effect}.{operation}`"
-                ),
+                format!("static handler for `{effect}` does not cover operation `{effect}.{name}`"),
                 position.or(declared.position),
             )
+        })
+        .collect()
+}
+
+/// Static effects sit outside the multiplicity lattice: [STAGE-STATIC-TAIL]
+/// pins them at exactly-once-in-tail-position, the one point where a
+/// continuation need not exist, so a multiplicity written on one is not a
+/// narrowing but a contradiction. Implements [MULTI-AXIS-STATIC].
+fn static_multiplicities(effects: &BTreeMap<String, EffectDecl>) -> Vec<StageError> {
+    effects
+        .iter()
+        .filter(|(_, declared)| declared.stage == Stage::Static)
+        .flat_map(|(effect, declared)| {
+            declared
+                .operations
+                .iter()
+                .filter(|operation| operation.declared_multiplicity.is_some())
+                .map(move |operation| {
+                    let name = &operation.name;
+                    StageError::new(
+                        format!("multiplicity on static effect `{effect}.{name}`; static operations are always tail-resumptive"),
+                        operation.position.or(declared.position),
+                    )
+                })
         })
         .collect()
 }

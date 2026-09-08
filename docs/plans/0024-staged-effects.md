@@ -282,6 +282,33 @@ lowering passes a device backend needs, and the `kernel` region form of
 [plan 0023](0023-gpu-computation.md) stage 3–4**: it supplies the surface, not
 the code generator, and the MLIR-versus-direct decision stays with that plan.
 
+### Contracts measured but not yet built
+
+Three rules of [spec 0035](../specs/0035-StagedEffects.md) were written out as
+executable contracts while the multiplicity axis
+([plan 0028](0028-resumption-multiplicity.md)) was built beside them, and each
+was measured against the compiler as it stands. None has an implementation or a
+surface that parses, so they are recorded here rather than left as red tests on
+an unrelated branch.
+
+- `[STAGE-GPU-KERNEL]` — a `kernel` region is a handler region whose signature
+  admits only stage-legal rows, supplying the static handlers for the device
+  dialects its body may use. **Measured:** `let frame = kernel` / `Tile size => 8`
+  / `in shade(2)` is `syntax error near "Tile size =>"`. The form does not
+  parse, so a kernel cannot carry its own dialect handlers and `Parallel`,
+  `Alloc` and `Tensor` have nowhere to be answered. A static effect performed
+  inside `gpuMap` *is* already accepted, which is the payoff
+  `tests/effects/staged/staged_effects.test.osp` pins.
+- `[STAGE-GPU-DIAG]` — a kernel whose row has a dynamic part must be rejected
+  with a stage-legality diagnostic naming the operation. **Measured:** the
+  message is still `GPU kernel must be pure; it performs: Log.write`, which
+  describes an absence of evidence rather than the evidence of a dynamic row.
+- `[STAGE-SIGNALS-EXACT]` — signal identity is the generic instantiation, so
+  `Signal<Count>` and `Signal<Cursor>` are distinct dependencies. **Measured:**
+  `dependency_sets` reports `Signal.read` for both; the explicit instantiation
+  at the `perform` site does not parse, so two signals are indistinguishable in
+  a row and a widget's dirty set cannot be its row.
+
 ## TODO
 
 - [x] `static_stage` grammar rule; regenerate `tree-sitter-osprey/src/parser.c`

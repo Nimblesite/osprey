@@ -12,26 +12,28 @@
 # File operations, stdin, random numbers and substituting effects are supported.
 tests/core/collections/nested_generic_collections_fibers.test.osp fiber concurrency
 tests/core/collections/nested_generic_collections_fibers.test.ospml fiber concurrency
-tests/effects/resume/resume_abort_early_exit.test.osp resumable algebraic effects (`resume`)
-tests/effects/resume/resume_abort_early_exit.test.ospml resumable algebraic effects (`resume`)
-tests/effects/resume/resume_error_policies.test.osp resumable algebraic effects (`resume`)
-tests/effects/resume/resume_error_policies.test.ospml resumable algebraic effects (`resume`)
-tests/effects/resume/resume_lifo_audit.test.osp resumable algebraic effects (`resume`)
-tests/effects/resume/resume_lifo_audit.test.ospml resumable algebraic effects (`resume`)
-tests/effects/resume/resume_outer_handler_bridge.test.osp resumable algebraic effects (`resume`)
-tests/effects/resume/resume_outer_handler_bridge.test.ospml resumable algebraic effects (`resume`)
-tests/effects/resume/resume_unit_markers.test.osp resumable algebraic effects (`resume`)
-tests/effects/resume/resume_unit_markers.test.ospml resumable algebraic effects (`resume`)
-tests/effects/resume/resume_value_rewrite.test.osp resumable algebraic effects (`resume`)
-tests/effects/resume/resume_value_rewrite.test.ospml resumable algebraic effects (`resume`)
-tests/modules/ml_layout_depth.test.osp resumable algebraic effects (`resume`)
-tests/modules/ml_layout_depth.test.ospml resumable algebraic effects (`resume`)
+tests/effects/multiplicity/multiplicity.test.osp a continuation for `Charge.charge` (wasm32 acquires one-shot continuations when the stack-switching proposal lands)
+tests/effects/multiplicity/multiplicity.test.ospml a continuation for `Charge.charge` (wasm32 acquires one-shot continuations when the stack-switching proposal lands)
+tests/effects/resume/resume_abort_early_exit.test.osp a continuation for `Stop.check` (wasm32 acquires one-shot continuations when the stack-switching proposal lands)
+tests/effects/resume/resume_abort_early_exit.test.ospml a continuation for `Stop.check` (wasm32 acquires one-shot continuations when the stack-switching proposal lands)
+tests/effects/resume/resume_error_policies.test.osp a continuation for `ResumeFallback.recover` (wasm32 acquires one-shot continuations when the stack-switching proposal lands)
+tests/effects/resume/resume_error_policies.test.ospml a continuation for `ResumeFallback.recover` (wasm32 acquires one-shot continuations when the stack-switching proposal lands)
+tests/effects/resume/resume_lifo_audit.test.osp a continuation for `Audit.step` (wasm32 acquires one-shot continuations when the stack-switching proposal lands)
+tests/effects/resume/resume_lifo_audit.test.ospml a continuation for `Audit.step` (wasm32 acquires one-shot continuations when the stack-switching proposal lands)
+tests/effects/resume/resume_outer_handler_bridge.test.osp a continuation for `Prompt.ask` (wasm32 acquires one-shot continuations when the stack-switching proposal lands)
+tests/effects/resume/resume_outer_handler_bridge.test.ospml a continuation for `Prompt.ask` (wasm32 acquires one-shot continuations when the stack-switching proposal lands)
+tests/effects/resume/resume_unit_markers.test.osp a continuation for `Trace.mark` (wasm32 acquires one-shot continuations when the stack-switching proposal lands)
+tests/effects/resume/resume_unit_markers.test.ospml a continuation for `Trace.mark` (wasm32 acquires one-shot continuations when the stack-switching proposal lands)
+tests/effects/resume/resume_value_rewrite.test.osp a continuation for `Supply.next` (wasm32 acquires one-shot continuations when the stack-switching proposal lands)
+tests/effects/resume/resume_value_rewrite.test.ospml a continuation for `Supply.next` (wasm32 acquires one-shot continuations when the stack-switching proposal lands)
+tests/modules/ml_layout_depth.test.osp a continuation for `depth::Trunk::Branch::Bud::Sap.draw` (wasm32 acquires one-shot continuations when the stack-switching proposal lands)
+tests/modules/ml_layout_depth.test.ospml a continuation for `depth::Trunk::Branch::Bud::Sap.draw` (wasm32 acquires one-shot continuations when the stack-switching proposal lands)
 tests/modules/module_composition.test.osp fiber concurrency
 tests/modules/module_composition.test.ospml fiber concurrency
-tests/modules/module_effects_rows.test.osp resumable algebraic effects (`resume`)
-tests/modules/module_effects_rows.test.ospml resumable algebraic effects (`resume`)
-tests/modules/signature_ascription.test.osp resumable algebraic effects (`resume`)
-tests/modules/signature_ascription.test.ospml resumable algebraic effects (`resume`)
+tests/modules/module_effects_rows.test.osp a continuation for `pipeline::Source::Feed.next` (wasm32 acquires one-shot continuations when the stack-switching proposal lands)
+tests/modules/module_effects_rows.test.ospml a continuation for `pipeline::Source::Feed.next` (wasm32 acquires one-shot continuations when the stack-switching proposal lands)
+tests/modules/signature_ascription.test.osp a continuation for `store::Clocks::Clock.now` (wasm32 acquires one-shot continuations when the stack-switching proposal lands)
+tests/modules/signature_ascription.test.ospml a continuation for `store::Clocks::Clock.now` (wasm32 acquires one-shot continuations when the stack-switching proposal lands)
 tests/regressions/basics/osprey_mega_showcase.test.osp fiber concurrency
 tests/regressions/basics/osprey_mega_showcase.test.ospml fiber concurrency
 tests/regressions/basics/processes/async_process_management.test.osp process spawning builtin `spawnProcess`
@@ -44,18 +46,20 @@ tests/regressions/db/database_effect.test.osp foreign C import `sqlite3_open`
 tests/regressions/db/database_effect.test.ospml foreign C import `sqlite3_open`
 tests/regressions/db/sqlite_basics.test.osp foreign C import `sqlite3_open`
 tests/regressions/db/sqlite_basics.test.ospml foreign C import `sqlite3_open`
-tests/regressions/effects/abort_vs_resume.test.osp resumable algebraic effects (`resume`)
-tests/regressions/effects/abort_vs_resume.test.ospml resumable algebraic effects (`resume`)
+tests/regressions/effects/abort_vs_resume.test.osp a continuation for `Step.run` (wasm32 acquires one-shot continuations when the stack-switching proposal lands)
+tests/regressions/effects/abort_vs_resume.test.ospml a continuation for `Step.run` (wasm32 acquires one-shot continuations when the stack-switching proposal lands)
 tests/regressions/effects/algebraic_effects_comprehensive.test.osp fiber concurrency
 tests/regressions/effects/algebraic_effects_comprehensive.test.ospml fiber concurrency
 tests/regressions/effects/fiber_effects.test.osp fiber concurrency
 tests/regressions/effects/fiber_effects.test.ospml fiber concurrency
-tests/regressions/effects/handler_scoping.test.osp resumable algebraic effects (`resume`)
-tests/regressions/effects/handler_scoping.test.ospml resumable algebraic effects (`resume`)
+tests/regressions/effects/handler_scoping.test.osp a continuation for `Ask.ask` (wasm32 acquires one-shot continuations when the stack-switching proposal lands)
+tests/regressions/effects/handler_scoping.test.ospml a continuation for `Ask.ask` (wasm32 acquires one-shot continuations when the stack-switching proposal lands)
 tests/regressions/effects/http_state_levels.test.osp HTTP builtin `httpResponseBody`
 tests/regressions/effects/http_state_levels.test.ospml HTTP builtin `httpResponseBody`
-tests/regressions/effects/retry_until_valid.test.osp resumable algebraic effects (`resume`)
-tests/regressions/effects/retry_until_valid.test.ospml resumable algebraic effects (`resume`)
+tests/regressions/effects/retry_until_valid.test.osp a continuation for `Prompt.ask` (wasm32 acquires one-shot continuations when the stack-switching proposal lands)
+tests/regressions/effects/retry_until_valid.test.ospml a continuation for `Prompt.ask` (wasm32 acquires one-shot continuations when the stack-switching proposal lands)
+tests/regressions/effects/staged_shared.test.osp a continuation for `Audit.note` (wasm32 acquires one-shot continuations when the stack-switching proposal lands)
+tests/regressions/effects/staged_shared.test.ospml a continuation for `Audit.note` (wasm32 acquires one-shot continuations when the stack-switching proposal lands)
 tests/regressions/fiber/cpu_profiling_demo.test.osp fiber concurrency builtin `sleep`
 tests/regressions/fiber/fiber_determinism.test.osp foreign C import `fiber_set_deterministic_mode`
 tests/regressions/fiber/fiber_exact_replica.test.osp foreign C import `fiber_set_deterministic_mode`

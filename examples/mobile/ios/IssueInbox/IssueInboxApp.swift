@@ -22,10 +22,15 @@ struct IssueInboxApp: App {
                 }
             }
             .task {
-                if ProcessInfo.processInfo.arguments.contains("--inbox-smoke") {
+                let arguments = ProcessInfo.processInfo.arguments
+                if arguments.contains("--inbox-smoke") {
                     await HostSmoke.run()
                 }
                 store.start()
+                if arguments.contains("--inbox-open-first") {
+                    await store.waitUntilIdle()
+                    store.openFirstIssue()
+                }
             }
         }
     }

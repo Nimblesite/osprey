@@ -237,9 +237,28 @@ fn pair_args<'a>(
 /// parameter can redirect calls to it.
 fn alias_target(cg: &Codegen, arg: &Expr) -> Option<String> {
     match arg {
-        Expr::Identifier(n) if cg.lookup(n).is_none() && !cg.is_ctor(n) => Some(n.clone()),
+        Expr::Identifier(n)
+            if cg.lookup(n).is_none() && !cg.is_ctor(n) && !value_binding(cg, n) =>
+        {
+            Some(n.clone())
+        }
         _ => None,
     }
+}
+
+/// Whether `name` is a file-scope or handler-promoted binding holding a VALUE.
+///
+/// Absence from `lookup` does not mean "a bare callee name". Two ordinary
+/// bindings are deliberately not scope-bound: a `mut` a handler arm reads,
+/// which [EFFECTS-HANDLER-STATE] promotes to a heap cell, and a file-scope
+/// binding read from inside a function body, which lives in its module global
+/// ([`crate::globals`]). Reading either as a callee aliased it as a function,
+/// and codegen then demanded a signature the author never wrote. A global that
+/// really does hold a function keeps aliasing, which is what `let g = identity`
+/// needs.
+fn value_binding(cg: &Codegen, name: &str) -> bool {
+    cg.cell_slots.contains_key(name)
+        || (cg.module_globals.contains_key(name) && crate::globals::fn_type(cg, name).is_none())
 }
 
 /// If `name` is a function-typed local (a higher-order parameter or a let-bound

@@ -44,8 +44,12 @@ fn resumable_effects_reject_for_both_flavors_before_ir() -> std::io::Result<()> 
                 .output()?;
             let error = String::from_utf8_lossy(&output.stderr);
             assert!(!output.status.success(), "accepted {target} {extension}");
+            // [MULTI-WASM] The rejection names the OPERATION whose request
+            // cannot be suspended, not the `resume` keyword: a row that cannot
+            // say which effects will start working when stack switching lands
+            // is a row that cannot be planned against.
             assert!(
-                error.contains("resumable algebraic effects") && error.contains("resume"),
+                error.contains("a continuation for `Supply.next`"),
                 "{error}"
             );
             assert!(output.stdout.is_empty());

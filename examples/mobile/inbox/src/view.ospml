@@ -51,9 +51,12 @@ module View
                 true => item model doc prefix (saved model model.selected)
                 false => detail model doc ((index + 1) ?: count) count
 
-    append left right = match length left == 0
+    // Join two comma-separated JSON member lists, either of which may be empty.
+    export append left right = match length left == 0
         true => right
-        false => left + "," + right
+        false => match length right == 0
+            true => left
+            false => left + "," + right
 
     rows model doc index count output marked = match index >= count
         true => IssueRows(elements = output, total = count, bookmarked = marked)

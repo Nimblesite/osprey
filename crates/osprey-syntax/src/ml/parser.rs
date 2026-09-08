@@ -44,7 +44,7 @@ use super::cst::{
 use super::lexer::lex;
 use super::token::{TokKind, Token};
 use crate::SyntaxError;
-use osprey_ast::Position;
+use osprey_ast::{Multiplicity, Position, Stage, REPLAYABLE_KEYWORD, STATIC_STAGE_KEYWORD};
 
 /// Parse ML-flavor `source` into the ML CST plus any syntax errors. Best-effort:
 /// errors never abort the parse ([FLAVOR-LOWER-CONTRACT]).
@@ -192,7 +192,7 @@ impl Parser<'_> {
             TokKind::KwMut => self.mut_binding(),
             TokKind::KwType => self.type_decl(),
             TokKind::KwExtern => self.extern_decl(),
-            TokKind::KwEffect => self.effect_decl(),
+            TokKind::KwEffect => self.effect_decl(Stage::Dynamic),
             TokKind::KwImport => self.import_decl(),
             TokKind::KwNamespace => self.namespace_decl(),
             TokKind::KwModule => self.module_decl(MlModuleKind::Plain),
@@ -204,6 +204,17 @@ impl Parser<'_> {
                 let word = word.clone();
                 self.error(format!("ML construct '{word}' is not yet supported"));
                 None
+            }
+            // `static effect E` — `static` is CONTEXTUAL, marking a stage only
+            // directly in front of `effect`, so it stays an ordinary identifier
+            // everywhere else. Without this the marker was silently dropped and
+            // the effect lowered DYNAMIC, which is a wrong answer rather than a
+            // diagnostic. Implements [STAGE-DECL], [FLAVOR-ML-EFFECT].
+            TokKind::Ident(word)
+                if word == STATIC_STAGE_KEYWORD && *self.peek_at(1) == TokKind::KwEffect =>
+            {
+                self.advance();
+                self.effect_decl(Stage::Static)
             }
             TokKind::Ident(_) => self.ident_item(),
             _ => Some(self.expr_item()),
@@ -552,7 +563,7 @@ impl Parser<'_> {
     /// `effect Name` + an indented block of `op : P => R` operation lines — an
     /// algebraic effect declaration ([FLAVOR-ML-EFFECT]). Mirrors [`Self::type_decl`]'s
     /// layout-block parsing.
-    fn effect_decl(&mut self) -> Option<MlItem> {
+    fn effect_decl(&mut self, stage: Stage) -> Option<MlItem> {
         let pos = self.pos();
         self.advance(); // `effect`
         let name = self.ident()?;
@@ -561,6 +572,7 @@ impl Parser<'_> {
         let type_params = self.type_params();
         let operations = self.effect_operations();
         Some(MlItem::Effect {
+            stage,
             name,
             type_params,
             operations,
@@ -597,7 +609,7 @@ impl Parser<'_> {
     fn effect_op(&mut self) -> Option<MlEffectOp> {
         let doc = self.effect_op_doc();
         let pos = self.pos();
-        let name = self.ident()?;
+        let (multiplicity, replayable, name) = self.operation_markers()?;
         if !self.eat(&TokKind::Colon) {
             self.error("expected ':' in effect operation");
         }
@@ -608,11 +620,44 @@ impl Parser<'_> {
         let result = self.ty();
         Some(MlEffectOp {
             name,
+            multiplicity,
+            replayable,
             payload,
             result,
             doc,
             pos,
         })
+    }
+
+    /// The optional `abort` / `once` / `many` and `replayable` markers an
+    /// operation line may carry before its name, and the name itself.
+    ///
+    /// A marker is only a marker when ANOTHER identifier follows it: ML has no
+    /// keyword for any of these words, so `abort : string => Unit` still
+    /// declares an operation *called* `abort`. That is the same contextual rule
+    /// the Default flavor's grammar resolves with GLR. Implements [MULTI-DECL],
+    /// [FLAVOR-ML-EFFECT-ANNOTATIONS].
+    fn operation_markers(&mut self) -> Option<(Option<Multiplicity>, bool, String)> {
+        let mut multiplicity = None;
+        let mut replayable = false;
+        let mut word = self.ident()?;
+        if let Some(declared) = Multiplicity::from_keyword(&word) {
+            if self.at_operation_name() {
+                multiplicity = Some(declared);
+                word = self.ident()?;
+            }
+        }
+        if word == REPLAYABLE_KEYWORD && self.at_operation_name() {
+            replayable = true;
+            word = self.ident()?;
+        }
+        Some((multiplicity, replayable, word))
+    }
+
+    /// Whether the cursor sits on an identifier — the token that proves the
+    /// word just read was a marker rather than the operation's own name.
+    fn at_operation_name(&self) -> bool {
+        matches!(self.peek(), TokKind::Ident(_))
     }
 
     /// Consume a `(** … *)` doc token sitting in front of an operation line.
@@ -1511,6 +1556,16 @@ impl Parser<'_> {
     fn handle_expr(&mut self) -> MlExpr {
         let pos = self.pos();
         self.advance(); // `handle`
+                        // `handle static E` — the discharge half of [STAGE-DECL]. Contextual on
+                        // the same terms as the declaration marker: only a following effect
+                        // name makes `static` a stage rather than the handled effect's name.
+        let stage = match (self.peek(), self.peek_at(1)) {
+            (TokKind::Ident(word), TokKind::Ident(_)) if word == STATIC_STAGE_KEYWORD => {
+                self.advance();
+                Stage::Static
+            }
+            _ => Stage::Dynamic,
+        };
         let first = self.ident().unwrap_or_default();
         let effect = self.qualified_name_tail(first);
         let mut arms = Vec::new();
@@ -1534,6 +1589,7 @@ impl Parser<'_> {
         }
         let body = self.body_after_eq();
         MlExpr::Handle {
+            stage,
             effect,
             arms,
             body: Box::new(body),

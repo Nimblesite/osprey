@@ -63,7 +63,7 @@ internal class SmokeCheck(context: Context, private val phase: String, private v
         when (step) {
             5 -> {
                 check(view.getString("selected") == savedId && view.getJSONObject("detail").getString("id") == savedId)
-                if (!live) check(view.getJSONObject("detail").getString("body") == "Steps to reproduce 🦉" && view.getJSONObject("detail").getString("labels").contains("bug"))
+                if (!live) check(view.getJSONObject("detail").getString("body") == "Steps to **reproduce** 🦉" && view.getJSONObject("detail").getString("labels").contains("bug"))
                 step = 6; dispatch(JSONObject().put("type", "note").put("id", savedId).put("value", note))
             }
             6 -> {
@@ -103,7 +103,7 @@ internal class SmokeCheck(context: Context, private val phase: String, private v
         fun fixture(phase: String): (JSONObject) -> JSONObject = { command ->
             val status = if (phase == "restore") 403 else 200
             val body = if (status == 403) "{\"message\":\"API rate limit exceeded\"}" else """
-                [{"id":101,"number":42,"title":"First issue 🦅","body":"Steps to reproduce 🦉","labels":[{"name":"bug"}],"user":{"login":"alice"},"comments":3},
+                [{"id":101,"number":42,"title":"First issue 🦅","body":"Steps to **reproduce** 🦉","labels":[{"name":"bug"}],"user":{"login":"alice"},"comments":3},
                  {"id":102,"number":43,"title":"Second issue","user":{"login":"bob"},"comments":0},
                  {"id":103,"number":44,"title":"A pull request","user":{"login":"carol"},"comments":0,"pull_request":{}}]
             """.trimIndent()

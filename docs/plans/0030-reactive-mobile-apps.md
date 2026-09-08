@@ -2,7 +2,7 @@
 
 **Subsystem:** `examples/mobile/inbox`, iOS Swift host, Android Kotlin/JNI host, and native C ABI targets.
 
-**Status:** implementation in progress; integrated platform and live-network verification is pending.
+**Status:** implementation and targeted validation complete. The shared application runs on a physical iPhone, the iOS simulator, and an ARM64 Android emulator. Android x86-64 compiled and linked but was not executed. Full `make ci` remains open: the unchanged duplication gate reported 9.4% against its 5% ceiling.
 
 **Contract:** [Reactive Mobile Applications](../specs/0040-ReactiveMobileApplications.md), [iOS Target](../specs/0038-iOSTarget.md), and [Android Target](../specs/0039-AndroidTarget.md).
 
@@ -14,13 +14,13 @@ Deliver the same usable GitHub Issue Inbox on iPhone and Android. Osprey owns th
 
 | Work | Implementation | Acceptance evidence | Status |
 | --- | --- | --- | --- |
-| Shared state and update rules | `inbox/src/model.ospml`, `update.ospml`, `annotations.ospml` | Initial load, search, saved filter, detail navigation, annotations, request ordering, visible errors | Implemented; integrated assertions pending |
-| GitHub input and persistence | `github.ospml`, `storage.ospml` | Pull-request exclusion, invalid-response rejection, bound SQL, cache reopen | Implemented; integrated assertions pending |
-| Shared screen | `view.ospml`, `ui.ospml` | Both platforms display the same state and emit equivalent events | Implemented; visual verification pending |
-| Scalar application boundary | `main.osp`, `app.ospml`, and generated C headers | Start/dispatch envelope crosses both native bridges | Final builds pending |
-| Swift host | `ios/IssueInbox/` | Real SQLite, bounded HTTPS, main-thread dispatch, diagnostics | Isolated native SQL/transport checks passed; app smoke pending |
-| Kotlin/JNI host | `android/app/src/main/` | Real SQLite, bounded HTTPS, UI-thread dispatch | Build and app smoke pending |
-| Delivery | Platform launch scripts and README | Repeatable simulator/emulator and signed-device launch | Final command verification pending |
+| Shared state and update rules | `inbox/src/model.ospml`, `update.ospml`, `annotations.ospml` | Initial load, search, saved filter, detail navigation, annotations, request ordering, visible errors | Passed: 29 shared domain assertions and native workflows |
+| GitHub input and persistence | `github.ospml`, `storage.ospml` | Pull-request exclusion, invalid-response rejection, bound SQL, cache reopen | Passed: fixture responses, real GitHub requests, SQLite recovery |
+| Shared screen | `view.ospml`, `ui.ospml` | Both platforms display the same state and emit equivalent events | Passed: native rendering, interaction checks, and visual inspection |
+| Scalar application boundary | `main.osp`, `app.ospml`, and generated C headers | Start/dispatch envelope crosses both native bridges | Passed: iOS device/simulator and Android ARM64/x86-64 builds; execution on ARM64 |
+| Swift host | `ios/IssueInbox/` | Real SQLite, bounded HTTPS, main-thread dispatch, diagnostics | Passed: full simulator and physical-iPhone smoke, live GitHub diagnostics |
+| Kotlin/JNI host | `android/app/src/main/` | Real SQLite, bounded HTTPS, UI-thread dispatch | Passed: deterministic/live smoke, process restart, renderer regression, lint |
+| Delivery | Platform launch scripts and README | Repeatable simulator/emulator and signed-device launch | Passed: signed iPhone 16 installation/launch and emulator/simulator runs |
 
 ## Completion sequence
 
@@ -29,7 +29,30 @@ Deliver the same usable GitHub Issue Inbox on iPhone and Android. Osprey owns th
 3. Run deterministic smoke assertions on both platforms using isolated databases and canned HTTP completions, including Android's process-restart phase. A stale marker cannot pass.
 4. Fetch live public GitHub issues and inspect the Osprey envelope and native screen. Confirm pull requests are excluded and HTTP errors are visible.
 5. Relaunch against the saved SQLite snapshot and verify the cache and bookmarks survive without requiring another network request.
-6. Record the actual commands and results here, and update the spec's implementation status only when both platform checks pass.
+6. Record the actual commands and results here, and update the spec's implementation status only when both platform checks pass. This platform acceptance is complete; the separate full-CI failure remains open below.
+
+## Recorded validation
+
+- The final iOS simulator smoke returned `OSPREY_INBOX_SMOKE_OK`. The signed Issue Inbox application installed and launched on a physical iPhone 16 and returned the same success marker. Physical-device diagnostics showed eight live public GitHub issues, saved bookmarks, and no application error.
+- `make ios-test` passed again for the original counter, including its C ABI fixture, 14 Default/ML simulator goldens, and `OSPREY_IOS_SMOKE_OK`.
+- `make android-test` passed C ABI checks, 14 Default/ML language goldens, and the deterministic application workflow. The separate live workflow displayed eight GitHub issues and verified notes/priorities, bookmarks, and SQLite restoration after process restart. The native renderer regression and Android lint passed. ARM64 code was executed; x86-64 code was compiled and linked only.
+- Shared Osprey verification passed 29 domain assertions. Compiler verification passed 124 codegen tests and the complete CLI coverage across focused runs, including project imports, annotation checks, staged effects, target capabilities, and the entry/IR regressions found during integration. Strict workspace Clippy and formatting passed.
+- Full unchanged `make ci` ran after an existing local Deslop `0.0.0-dev` binary was made available through `PATH`. The duplication report recorded 7,516 duplicated lines out of 79,911 (9.4%), exceeding the configured 5% ceiling. Deslop returned exit 3 and `make ci` exited before its later steps. The earlier default-`PATH` attempt lacked Deslop, but the final blocker is the measured duplication failure. No gate or threshold was changed.
+
+Success markers, live state snapshots, and screenshots live under the ignored platform build directories. Device identifiers and signing credentials are not part of the tracked validation record.
+
+The later Markdown extension passed the expanded 29-case shared suite and native simulator/emulator checks. Its signed iPhone update is installed; iOS refused its launch while the phone was locked. The earlier physical-device smoke and live-data verification remain recorded separately.
+
+## Completion checklist
+
+- [x] Compile the same Osprey application and UI for iOS and Android.
+- [x] Verify the scalar boundaries, native services, and supported language goldens.
+- [x] Pass deterministic application workflows on both platforms, including annotations and cache recovery.
+- [x] Display actual GitHub responses and verify native interaction and persistence.
+- [x] Install, launch, and run the full smoke on a signed physical iPhone build.
+- [x] Pass shared domain tests, compiler checks, native renderer regression, lint, Clippy, and formatting.
+- [ ] Run the updated Markdown smoke on the physical iPhone after it is unlocked.
+- [ ] Resolve the duplication gate failure and pass the full unchanged `make ci`; broad repository deduplication is outside this application's delivery.
 
 ## Verification requirements
 

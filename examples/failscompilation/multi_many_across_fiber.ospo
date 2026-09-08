@@ -1,0 +1,23 @@
+// [MULTI-REPLAY-FIBER] Rows propagate through fibers and multiplicity
+// propagates with them, but a resuming handler serializes each perform for the
+// full suspend-to-resume round trip, and a second resumption of a continuation
+// that spans a spawned fiber has no serialization order to belong to. The
+// handle site is rejected, naming the fiber's perform site.
+//
+// The fiber plumbing is correct on purpose: the only thing wrong here is that
+// a `many` operation is answered across the boundary.
+effect Choice {
+    many pick: fn(int) -> int
+}
+
+fn worker(seed) = perform Choice.pick(seed)
+
+fn main() = {
+    let spread = handle Choice
+        pick option => resume(option)
+    in {
+        let f = spawn worker(5)
+        await(f)
+    }
+    print("spread=${spread}")
+}

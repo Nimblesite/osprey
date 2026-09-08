@@ -88,6 +88,81 @@ under `tests/effects/multiplicity/` (Default and ML twins sharing one golden):
 Programs 2–4 do not compile before their phases land. They go in red, as
 CLAUDE.md requires, and are never weakened to go green.
 
+### Recorded outcomes
+
+`[MULTI-FALSIFY]` is normative about recording, not only about writing, so each
+measurement lands here as it is taken. Baselines below were measured with the
+pre-multiplicity compiler, so they say what the axis changes rather than what it
+is hoped to change.
+
+| Observation | Measured | Verdict |
+|---|---|---|
+| Two `resume` sites in one block, undecorated operation | `--check` exits 0; `--run` prints `fatal: continuation already resumed` and exits 0 | The runtime guard is the ONLY thing standing between this program and a wrong answer, and it does not fail the process |
+| One `resume` per `match` branch, undecorated operation | `--check` exits 0; `--run` prints `total=30` | The affine rule is per PATH; reading it as `contains_resume` would reject this |
+| `abort`/`once`/`many`/`replayable` as ordinary identifiers — a function name, a parameter, two `let` bindings — beside an `effect` declaration | Runs, prints `outcome=44`, both flavors | Contextual, as `[MULTI-DECL]` requires |
+| The same four words as operation NAMES (`abort: fn() -> Unit`, …), performed and handled | Runs, prints `total=7`, both flavors | The keyword reading is a parse decision, not a lexical one; nothing is reserved |
+| The same double-resume program after `[MULTI-HANDLE-ONCE]` landed | `--check` exits 1 with ``handler arm `Choose.pick` may resume more than once; `Choose.pick` is declared `once` `` | [MULTI-COMPAT]'s narrowing, measured: the runtime abort became a compile error and the branchwise control stayed green |
+
+Rows 1–4 describe the compiler before this plan; row 5 was measured on a working
+tree carrying the phase 1–2 surface and check, so it records that the narrowing
+behaves as [MULTI-COMPAT] specifies, not that it has shipped. The durable
+evidence is the test names, which fail if it ever stops holding.
+
+#### The four gate programs, as delivered
+
+| Gate | Outcome | Where it lives |
+|---|---|---|
+| 1. Single-op retry | **Accepted.** The arm retries the gateway inside one answer, so `Charge.charge` is answered once and the body's `Email.deliver` runs exactly once. Its two `resume` sites are on different `match` branches, which the affine rule permits | `tests/effects/multiplicity/multiplicity.test.osp`, both flavors, one golden |
+| 2. Backtracking over impure code | **Rejected at the handle site, naming `Email.send`**, exactly as `[MULTI-REPLAY-CHECK]` specifies | `examples/failscompilation/multi_many_over_nonreplayable.ospo` |
+| 3. Backtracking over pure code | **Cannot be written.** The replay checks all pass — the body's only other effect is `replayable` — and the program is then rejected because no re-entrant continuation exists: native resume is one suspended pthread stack, and a live stack cannot be cloned. This is the gate's real finding: `many` is a declaration surface and four checks, with no representation behind it until [plan 0016](0016-algebraic-effects-and-handlers.md) supplies one | `a_many_arm_is_rejected_because_no_re_entrant_continuation_exists` (cli) |
+| 4. Shared `map` | **Accepted for the multiplicities that have a representation.** One unannotated `applyTwice(f, x)` serves a `replayable` callback and a plain `once` one in one program, with no multiplicity annotation and no multiplicity variable inferred — `[MULTI-STAGE-POLY]` holds. The `many` half is blocked with gate 3 | `sharedAcrossMultiplicitiesCase`, both flavors |
+
+Gate 2 is answered without control flow finer than the row, so
+`[MULTI-REPLAY-COARSE]` has **not** hit the wall its own gate describes and
+spec 0035 stands. Gate 3 says what the axis costs: the declaration, the four
+checks and the cost model are separable from the runtime, and shipping the first
+three without the fourth is honest only because a `many` handle site is rejected
+rather than mis-compiled.
+
+**A defect the gate found on the way.** Writing gate 1 in its natural spelling —
+a handler arm reading a promoted `mut` into an inferred `Result` helper — was
+rejected at lowering with ``  `attempts` has no resolved signature ``.
+`genfn::alias_target` classified any identifier absent from `lookup` as a bare
+callee name, and two ordinary bindings are deliberately absent from it: a
+handler-promoted `mut` ([EFFECTS-HANDLER-STATE]) and a file-scope binding read
+inside a function body ([`globals`]). Both were aliased as functions, and codegen
+then demanded a signature the author never wrote. Fixed at the classification
+site, with `a_handler_arm_reads_a_mut_cell_into_an_inferred_result_helper`
+(`crates/osprey-cli/tests/effect_installer_defects.rs`) pinning it.
+
+**A silent wrong answer the ML surface was giving.** `static effect E` parsed in
+ML as the bare identifier `static` followed by a **dynamic** `effect E`, and
+`handle static E` read `static` as the effect's name. The stage marker was
+dropped without a diagnostic, so an ML program asking for compile-time discharge
+got runtime dispatch. `handle static` now parses in ML and both markers are
+contextual, which also turns `tests/regressions/effects/staged_shared.test.ospml`
+— red in the tree before this work — green. Implements [STAGE-DECL] for the ML
+surface, the `[FLAVOR-ML-EFFECT-ANNOTATIONS]` work this plan shares with
+[plan 0024](0024-staged-effects.md).
+
+The second row is the positive control the check must not swallow, pinned at the
+CLI by `two_resume_sites_on_different_branches_stay_legal` and end to end by
+`tests/regressions/effects/abort_vs_resume.test.osp`.
+
+**The plan's own claim about the runtime guard was wrong.** The TODO below used
+to require that `a_second_resume_aborts_the_program_at_runtime` (cli_e2e) keep
+passing, reasoning that the checker "cannot see through a dynamically selected
+handler". Osprey installs handlers lexically and rejects `resume` outside an arm
+([EFFECTS-RESUME]), so every arm that could reach the guard is visible at the
+handle site, and no source program reaches it once `[MULTI-HANDLE-ONCE]` lands.
+That test now asserts the compile-time rejection instead — which is exactly what
+[MULTI-COMPAT] demands of it ("the same program rejected earlier, not a program
+that stops working") — and the guard in `effects_coro.c` stays as a backstop for
+invalid compiler output, in the same sense as the generic handler-key null
+lookup ([EFFECTS-GENERIC-RUNTIME]). A backstop with no source-level path to it
+is not uncovered work; it is a guard that has been made unreachable, which is
+the point of moving the verdict to compile time.
+
 ## 4. Phase 1 — the declaration surface
 
 - `tree-sitter-osprey/grammar.js` — add a `multiplicity` rule beside
@@ -228,30 +303,62 @@ for, plus the tail-resumptive hint of `[MULTI-STAGE]`.
 
 ### S. Surface (phase 1)
 
-- [ ] `multiplicity` + `replayable` rules in `tree-sitter-osprey/grammar.js`
-      beside `static_stage`; regenerate `src/parser.c`
-- [ ] `Multiplicity` enum + fields on `EffectOperation` (`osprey-ast/src/lib.rs:337`),
-      carried through both `Stmt::Effect` sites
-- [ ] Default lowerer reads both fields; ML lowerer likewise
-      (`[FLAVOR-ML-EFFECT-ANNOTATIONS]`, shared with plan 0024 stage 2)
-- [ ] Multiplicity in `stage.rs`'s operation summary, so `[MULTI-AXIS-STATIC]`
-      rejects during discharge
-- [ ] Verify `abort` / `once` / `many` / `replayable` remain legal identifiers
-      everywhere else; grep the corpus before reserving
+- [x] `multiplicity` + `replayable` rules in `tree-sitter-osprey/grammar.js`
+      beside `static_stage`; `src/parser.c` regenerated. The modifier words are
+      also legal operation NAMES, which GLR resolves — no external scanner
+- [x] `Multiplicity` enum (`osprey-ast/src/multiplicity.rs`) + `declared_multiplicity`
+      / `replayable` on `EffectOperation`. The annotation is kept AS WRITTEN
+      (`Option<Multiplicity>`) because `[MULTI-AXIS-STATIC]` rejects one that was
+      written and `once` — the default — is a legal thing to write
+- [x] Default lowerer reads both fields; ML lowerer likewise, contextually
+      (`[FLAVOR-ML-EFFECT-ANNOTATIONS]`). The shared plan 0024 work — ML
+      `static effect` and `handle static` — landed with it, since ML was
+      silently dropping the stage marker
+- [x] Multiplicity in `stage.rs`'s operation summary; `[MULTI-AXIS-STATIC]`
+      rejects during discharge, fixture
+      `multi_multiplicity_on_static_effect.ospo`
+- [x] Verify `abort` / `once` / `many` / `replayable` remain legal identifiers
+      everywhere else — both as ordinary bindings and as operation NAMES, in
+      both flavors; recorded in [Recorded outcomes](#recorded-outcomes)
 
 ### C. Checks (phases 2–3)
 
-- [ ] `[MULTI-HANDLE-ONCE]` affine pass over arm `resume` sites
-- [ ] `[MULTI-AXIS-STATIC]` rejection with the spec's message
-- [ ] `[MULTI-REPLAY-CHECK]` at the handle site, naming the first offender
-- [ ] `[MULTI-REPLAY-STATE]` — `mut` capture in a `many` arm rejected
-- [ ] `[MULTI-REPLAY-FIBER]` — `many` across a fiber boundary rejected
-- [ ] `tests/regressions/effects/abort_vs_resume.test.osp` compiles unchanged
-      (two `resume` sites on different `match` branches stay legal)
-- [ ] `a_second_resume_aborts_the_program_at_runtime` (cli_e2e) still passes:
-      the runtime guard is a backstop, not a removed check
+- [x] `[MULTI-HANDLE-ONCE]` affine pass — `resumes_on_one_path` is branch-AWARE
+      (max over `match` arms, sum in sequence), which is why it is not
+      `contains_resume`
+- [x] `[MULTI-AXIS-STATIC]` rejection with the spec's message
+- [x] `[MULTI-REPLAY-CHECK]` at the handle site, naming the first offender in
+      sorted row order so the diagnostic is deterministic
+- [x] `[MULTI-REPLAY-STATE]` — `mut` capture in a `many` arm rejected
+- [x] `[MULTI-REPLAY-FIBER]` — `many` across a fiber boundary rejected, following
+      the call graph out of the handled expression, not only its syntax
+- [x] `tests/regressions/effects/abort_vs_resume.test.osp` compiles unchanged
+- [x] `a_second_resume_on_one_path_is_rejected_at_compile_time` (cli_e2e)
+      replaces `a_second_resume_aborts_the_program_at_runtime`: the arm is
+      visible, so the verdict moves to the checker ([MULTI-COMPAT]) and the
+      runtime guard becomes a backstop with no source-level path to it. The
+      positive control `two_resume_sites_on_different_branches_stay_legal` is
+      green
+- [x] The backstop is proven where it now lives — at the C level, by
+      `death_second_resume_of_a_finished_continuation`
+      (`compiler/runtime/effects_runtime_tests.c`). A guard whose only path is
+      invalid compiler output cannot be reached from a source program by
+      construction, and an unproven backstop is indistinguishable from a removed
+      one. It `exit`s rather than `abort`s, so `test_death.h` grew
+      `osp_death_exit` to read the status
 
 ### A. `abort` (phase 4 — blocked on plan 0026)
+
+Landed now: `[MULTI-HANDLE-ABORT]` rejects a `resume` in an `abort` arm, and a
+`resume`-free `abort` arm is rejected too, naming plan 0026. That second
+rejection is the honest answer, not a placeholder: `[MULTI-HANDLE-ABORT-MODE]`
+requires such an arm to ABANDON the region, compiling it under today's
+substituting rule would make the `perform` return, and routing it onto the
+abandon path leaks the discarded frames' owned operands. `MIXED_UNDECLARED`'s
+two suspension sites are pinned by
+`the_undeclared_control_pays_for_a_continuation_at_every_perform_site`, so
+phase 4's saving is measured against a recorded number.
+
 
 - [ ] `[CANCEL-FINALLY]` unwinding exists and releases the abandoned frames'
       owned operands; the ARC exit audit in `crates/run_test_corpus.sh` reports
@@ -266,6 +373,15 @@ for, plus the tail-resumptive hint of `[MULTI-STAGE]`.
 
 ### M. `many` (phase 5 — blocked on plan 0016)
 
+Landed now: the declaration surface, all four replay checks, and — after they
+pass — a rejection naming this plan's prerequisite. A `many` handle site is
+never compiled, because a re-entrant continuation does not exist and answering a
+re-entrant request with one that cannot be re-entered is a silently wrong
+answer. The checks run BEFORE that rejection so each stays live and tested: a
+`many` region over non-replayable code reports `Email.send`, not the missing
+runtime.
+
+
 - [ ] A multi-shot-capable continuation exists (plan 0016)
 - [ ] `[MULTI-HANDLE-MANY-LEXICAL]` — escape analysis over arm-local lambdas at
       `osprey-types/src/expr.rs:881-907`; `resume_inside_an_arm_lambda_is_a_type_error`
@@ -276,8 +392,11 @@ for, plus the tail-resumptive hint of `[MULTI-STAGE]`.
 
 ### W. Targets and tools (phases 6–7)
 
-- [ ] `[MULTI-WASM]` — `once` rejected by name on `wasm32`, `many` rejected
-      permanently; each harness `SKIP` that becomes a rejection verified singly
+- [x] `[MULTI-WASM]` — the rejection names the OPERATION (demangled for a
+      module-scoped effect) instead of the `resume` keyword; all 28 manifest
+      reasons in `tests/WASM_UNPORTABLE.txt` re-verified. `many`'s PERMANENT
+      wording is not reachable: the checker rejects `many` on every target
+      before the per-target gate, so it lands with phase 5
 - [ ] `[MULTI-TRACE]` perform-site chain on the continuation
 - [ ] `[DEBUGGER-EFFECT-TRACE]` view, static sites absent
 - [ ] `[LSP-EFFECT-MULTIPLICITY]` reverse implementation query + the
@@ -285,14 +404,23 @@ for, plus the tail-resumptive hint of `[MULTI-STAGE]`.
 
 ### V. Verification (gating retirement)
 
-- [ ] `make ci` green; clippy auto-fixes taken, none hand-suppressed
-- [ ] `crates/run_test_corpus.sh` byte-exact under the default backend,
-      `--memory=arc` (zero leaks), `--memory=gc`, and `OSPREY_TARGET=wasm32`
-- [ ] Every `[MULTI-*]` section of spec 0035 cited by a comment in the code
+- [x] `cargo fmt --all`, `cargo clippy --workspace --all-targets -- -D warnings`
+      and `cargo test --workspace` clean; nothing hand-suppressed. `make ci`'s
+      `_deslop` gate needs the `deslop` binary, which is absent on this machine
+- [x] `crates/run_test_corpus.sh` byte-exact at 209/209 under the default
+      backend, `--memory=gc`, and `--memory=arc` with `TEST_CORPUS_ARC_LEAKY=0`;
+      144/144 under `OSPREY_TARGET=wasm32`. The golden floors were ratcheted
+      203 → 209 and 142 → 144
+- [x] Every landed `[MULTI-*]` section cited by a comment in the code
       implementing it, and removed from the exemption list in
-      [`docs/specs/README.md`](../specs/README.md)
-- [ ] Rejection fixtures under `examples/failscompilation/` for each check,
-      with exact `.expectedoutput` text and ML twins where the surface exists
+      [`docs/specs/README.md`](../specs/README.md). The seven still blocked on
+      plan 0016 or plan 0026 stay listed there, each naming its blocker
+- [x] Rejection fixtures under `examples/failscompilation/` for each check,
+      with exact `.expectedoutput` text: `multi_multiplicity_on_static_effect`,
+      `multi_once_arm_resumes_twice`, `multi_undeclared_resumes_twice`,
+      `multi_abort_arm_resumes` (+ `ml_` twin), `multi_many_over_nonreplayable`,
+      `multi_many_arm_captures_mut`, `multi_many_across_fiber`,
+      `multi_many_resume_in_escaping_lambda`
 - [ ] Coverage thresholds in `coverage-thresholds.json` did not go down
 - [ ] deslop `top-offenders` over the touched Rust; no new duplication
 - [ ] Plan retired in `docs/plans/README.md` with named tests as evidence

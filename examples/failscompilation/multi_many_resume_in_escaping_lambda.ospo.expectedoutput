@@ -1,0 +1,2 @@
+`resume` is only valid inside a handler arm
+24:8: `Choice.pick` is declared `many`, but a re-entrant continuation does not exist: native resume is one suspended stack, switched to and never switched back (docs/plans/0016-algebraic-effects-and-handlers.md). Declare `Choice.pick` `once`
