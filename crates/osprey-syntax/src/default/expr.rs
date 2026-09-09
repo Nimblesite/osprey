@@ -199,7 +199,14 @@ impl Lowerer<'_> {
     }
 
     fn lower_call(&self, node: Node<'_>) -> Expr {
-        let callee = self.lower_expr_field(node, "callee");
+        let mut callee = self.lower_expr_field(node, "callee");
+        if let Some(args) = node.child_by_field_name("type_arguments") {
+            callee = Expr::TypeApply {
+                function: Box::new(callee),
+                type_args: self.named_of_kind(args, "type_list").into_iter()
+                    .flat_map(|list| self.lower_type_list(list)).collect(),
+            };
+        }
         if let Some(member) = node.child_by_field_name("member") {
             return Expr::FieldAccess {
                 target: Box::new(callee),

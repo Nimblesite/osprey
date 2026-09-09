@@ -1079,6 +1079,10 @@ fn lower_expr(expr: MlExpr) -> Expr {
             segments: path.segments,
         }),
         MlExpr::Paren(inner) => lower_expr(*inner),
+        MlExpr::TypeApply { func, args } => Expr::TypeApply {
+            function: Box::new(lower_expr(*func)),
+            type_args: args.iter().filter_map(type_expr).collect(),
+        },
         // `-literal` folds to the literal so both flavors agree that `-1` is an
         // `int`, not a fallible `Result` ([ARITH-NEG-LITERAL], [FLAVOR-IR-EQUIV]).
         MlExpr::Unary { op, operand } if op == "-" => Expr::negated(lower_expr(*operand)),

@@ -1174,6 +1174,16 @@ impl Parser<'_> {
                 func = self.inline_record(name, type_args);
             }
         }
+        if record_head(&func).is_some() && self.at_angle_open() && self.glued() {
+            let args = match self.ty_generic_args(String::new()) {
+                MlType::App { args, .. } => args,
+                _ => Vec::new(),
+            };
+            if !self.starts_atom() && !self.at_negative_literal_arg() {
+                self.error("type arguments require a call argument");
+            }
+            func = MlExpr::TypeApply { func: Box::new(func), args };
+        }
         // `f ()` is a zero-argument application, not application to unit.
         if matches!(self.peek(), TokKind::LParen) && matches!(self.peek_at(1), TokKind::RParen) {
             self.advance();

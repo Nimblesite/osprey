@@ -59,6 +59,17 @@ pub(crate) fn rejects_with(flavor: Flavor, src: &str, needle: &str) {
     );
 }
 
+/// Assert the CHECKER rejects `src`, whatever the wording. Used where the claim
+/// is that a relation does NOT hold, and pinning one sentence would over-specify
+/// which of several true diagnostics must be the one reported.
+pub(crate) fn rejects(flavor: Flavor, src: &str) {
+    let errs = typecheck(flavor, src);
+    assert!(
+        !errs.is_empty(),
+        "{flavor}: expected a type error, got none\n{src}"
+    );
+}
+
 /// Assert `src` is rejected SOMEHOW — by the parser or by the checker. Used
 /// where the spec forbids a form without fixing which layer must catch it.
 pub(crate) fn rejected_somehow(flavor: Flavor, src: &str) {

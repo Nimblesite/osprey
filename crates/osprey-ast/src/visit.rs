@@ -99,7 +99,7 @@ fn push_expression_children<'a>(expression: &'a Expr, pending: &mut Vec<Node<'a>
             pending.push(Node::Expression(right));
             pending.push(Node::Expression(left));
         }
-        Expr::Unary { operand, .. }
+        Expr::TypeApply { function: operand, .. } | Expr::Unary { operand, .. }
         | Expr::Spawn(operand)
         | Expr::Await(operand)
         | Expr::Recv(operand) => pending.push(Node::Expression(operand)),

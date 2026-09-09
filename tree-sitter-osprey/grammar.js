@@ -523,6 +523,10 @@ module.exports = grammar({
             // arm's `(a, b)` tuple pattern instead. Implements [PATTERN-TUPLE]
             // coexistence with postfix calls.
             seq($._call_open_gap, '(', optional($.argument_list), ')'),
+            // [TYPE-GENERICS-APPLY]: both delimiters abut the call. Alias the
+            // immediate opening form to the shared construction-site CST.
+            seq(field('type_arguments', alias($._call_type_arguments, $.type_arguments)),
+              token.immediate('('), optional($.argument_list), ')'),
             // The index `[` must IMMEDIATELY follow its target — a stricter rule
             // than the call's same-line one, and deliberately so. List-pattern
             // arms are written on ONE line in real source:
@@ -582,7 +586,8 @@ module.exports = grammar({
 
     type_constructor: ($) =>
       prec.dynamic(1, seq(field('name', choice($.qualified_path, $.identifier)), optional($.type_arguments), '{', $.field_assignments, '}')),
-    type_arguments: ($) => seq('<', $.type_list, '>'),
+    type_arguments: ($) => seq(token.immediate('<'), $.type_list, '>'),
+    _call_type_arguments: ($) => seq(token.immediate('<'), $.type_list, '>'),
 
     update_expression: ($) =>
       prec.dynamic(0, seq(field('record', $.identifier), '{', $.field_assignments, '}')),

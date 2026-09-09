@@ -12,6 +12,8 @@ use std::collections::{BTreeSet, HashMap, HashSet};
 #[derive(Debug, Clone, Default)]
 pub struct TypeEnv {
     vars: HashMap<String, Scheme>,
+    /// Ordered declaration binders, cleared whenever a value shadows a name.
+    type_params: HashMap<String, Vec<Type>>,
     /// Names declared `mut` — the only bindings handler-arm assignment may target.
     mutables: HashSet<String>,
 }
@@ -29,12 +31,14 @@ impl TypeEnv {
         let name = name.into();
         // A fresh binding shadows any outer `mut` of the same name.
         let _ = self.mutables.remove(&name);
+        let _ = self.type_params.remove(&name);
         let _ = self.vars.insert(name, scheme);
     }
 
     /// Bind a `mut` declaration — the one binding form handler arms may assign.
     pub fn insert_mutable(&mut self, name: impl Into<String>, scheme: Scheme) {
         let name = name.into();
+        let _ = self.type_params.remove(&name);
         let _ = self.vars.insert(name.clone(), scheme);
         let _ = self.mutables.insert(name);
     }
@@ -51,6 +55,24 @@ impl TypeEnv {
 
     pub fn remove(&mut self, name: &str) {
         let _ = self.vars.remove(name);
+        let _ = self.type_params.remove(name);
+    }
+
+    /// Attach declaration-site binders to this exact lexical binding.
+    pub(crate) fn declare_type_params(&mut self, name: &str, params: Vec<Type>) {
+        let _ = self.type_params.insert(name.to_owned(), params);
+    }
+
+    /// Instantiate the signature and its declared binders with one substitution.
+    pub(crate) fn applied(&self, ctx: &mut InferCtx, name: &str)
+        -> Option<(Type, Vec<(String, Type)>, Vec<Type>)> {
+        let scheme = self.get(name)?;
+        let map = scheme.vars.iter().map(|v| (*v, ctx.fresh())).collect();
+        let params = self.type_params.get(name).into_iter().flatten()
+            .map(|ty| subst_vars(&ctx.apply(ty), &map)).collect();
+        let obligations = scheme.obligations.iter()
+            .map(|(name, ty)| (name.clone(), subst_vars(ty, &map))).collect();
+        Some((subst_vars(&scheme.ty, &map), obligations, params))
     }
 
     /// A fresh child scope (a clone — bindings added to the child don't leak).

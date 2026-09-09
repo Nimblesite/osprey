@@ -475,6 +475,13 @@ pub(crate) enum MlExpr {
         /// The argument list (two or more), in order.
         args: Vec<MlExpr>,
     },
+    /// Explicit call-site type arguments [FLAVOR-ML-GENERICS].
+    TypeApply {
+        /// Named callee.
+        func: Box<MlExpr>,
+        /// Written arguments in binder order.
+        args: Vec<MlType>,
+    },
     /// Zero-argument application `func ()`.
     UnitApp {
         /// The applied expression.

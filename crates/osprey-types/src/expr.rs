@@ -86,6 +86,7 @@ impl Checker {
                     self.infer_negation(&t)
                 }
             }
+            Expr::TypeApply { function, type_args } => self.infer_type_application(function, type_args, env).1,
             Expr::Call {
                 function,
                 arguments,
@@ -549,6 +550,7 @@ impl Checker {
 
     fn infer_callee(&mut self, function: &Expr, env: &TypeEnv) -> (Option<String>, Type) {
         match function {
+            Expr::TypeApply { function, type_args } => self.infer_type_application(function, type_args, env),
             Expr::Identifier(name) => (Some(name.clone()), self.lookup_ident(name, env)),
             Expr::Path(path) => {
                 let name = path.to_string();
@@ -557,6 +559,33 @@ impl Checker {
             }
             other => (None, self.infer_expr(other, env)),
         }
+    }
+
+    /// Pin declared binders in this call's fresh instantiation [TYPE-GENERICS-APPLY].
+    fn infer_type_application(&mut self, function: &Expr, type_args: &[osprey_ast::TypeExpr], env: &TypeEnv)
+        -> (Option<String>, Type) {
+        let name = match function {
+            Expr::Identifier(name) => name.clone(),
+            Expr::Path(path) => path.to_string(),
+            _ => {
+                self.errors.push(TypeError::new("type arguments require a named function"));
+                return (None, self.infer_expr(function, env));
+            }
+        };
+        let Some((ty, obligations, params)) = env.applied(&mut self.ctx, &name) else {
+            return (Some(name.clone()), self.lookup_ident(&name, env));
+        };
+        self.builtin_uses.extend(obligations);
+        if params.len() != type_args.len() {
+            self.errors.push(TypeError::new(format!("function `{name}` takes {} type argument(s), got {}", params.len(), type_args.len())));
+        } else {
+            let binder = self.current_fn_typarams.clone();
+            for (param, arg) in params.iter().zip(type_args) {
+                let written = crate::convert::type_expr_to_type(arg, &binder);
+                self.push_unify(param, &written);
+            }
+        }
+        (Some(name), ty)
     }
 
     fn infer_method_call(

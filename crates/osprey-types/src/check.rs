@@ -599,7 +599,9 @@ impl Checker {
         let mut typarams = HashMap::new();
         for tp in type_params {
             let v = self.ctx.fresh();
-            let _ = typarams.insert(tp.name.clone(), v);
+            if typarams.insert(tp.name.clone(), v).is_some() {
+                self.errors.push(TypeError::new(format!("duplicate type parameter `{}`", tp.name)));
+            }
         }
         let params: Vec<Type> = parameters
             .iter()
@@ -612,8 +614,10 @@ impl Checker {
             Some(te) => type_expr_to_type(te, &typarams),
             None => self.ctx.fresh(),
         };
+        let ordered = type_params.iter().filter_map(|p| typarams.get(&p.name).cloned()).collect();
         let _ = self.fn_typarams.insert(name.to_string(), typarams);
         self.publish_signature(name, parameters, params, ret, env);
+        env.declare_type_params(name, ordered);
     }
 
     /// Pass two: infer bodies and run top-level statements.
@@ -697,9 +701,11 @@ impl Checker {
         // variables would count as "free in the environment" and nothing would
         // generalize.
         let fun_ty = Type::fun(params, ret);
+        let declared = env.applied(&mut self.ctx, name).map(|(_, _, ps)| ps).unwrap_or_default();
         env.remove(name);
         let scheme = self.generalize_with_obligations(env, &fun_ty);
         env.insert(name, scheme);
+        env.declare_type_params(name, declared);
     }
 
     /// Generalize `ty`, carrying every built-in obligation recorded on a

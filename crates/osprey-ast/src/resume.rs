@@ -30,7 +30,7 @@ pub fn contains_resume(e: &Expr) -> bool {
         Expr::Binary { left, right, .. } | Expr::Pipe { left, right } => {
             contains_resume(left) || contains_resume(right)
         }
-        Expr::Unary { operand, .. } => contains_resume(operand),
+        Expr::TypeApply { function: operand, .. } | Expr::Unary { operand, .. } => contains_resume(operand),
         Expr::Call {
             function,
             arguments,
@@ -153,7 +153,7 @@ fn sequential_children(body: &Expr) -> u32 {
         Expr::Binary { left, right, .. } | Expr::Pipe { left, right } => {
             resumes_on_one_path(left) + resumes_on_one_path(right)
         }
-        Expr::Unary { operand, .. } => resumes_on_one_path(operand),
+        Expr::TypeApply { function: operand, .. } | Expr::Unary { operand, .. } => resumes_on_one_path(operand),
         Expr::Call {
             function,
             arguments,

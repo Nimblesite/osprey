@@ -765,6 +765,15 @@ pub enum Expr {
         /// Named arguments.
         named_arguments: Vec<NamedArgument>,
     },
+    /// Explicit declaration-binder arguments on a call's callee.
+    /// Both flavors use this node for [TYPE-GENERICS-APPLY]. Keeping the
+    /// application on the callee preserves ordinary and curried call nodes.
+    TypeApply {
+        /// The named function being instantiated.
+        function: Box<Expr>,
+        /// Written type arguments, in declaration order.
+        type_args: Vec<TypeExpr>,
+    },
     /// `a |> b` pipe.
     Pipe {
         /// Piped value.

@@ -38,6 +38,12 @@ mod generics_apply_tests;
 #[cfg(test)]
 mod generics_decl_tests;
 #[cfg(test)]
+mod generics_variance_assign_tests;
+#[cfg(test)]
+mod generics_variance_builtin_tests;
+#[cfg(test)]
+mod generics_variance_shape_tests;
+#[cfg(test)]
 mod generics_variance_tests;
 mod info;
 mod init_order;

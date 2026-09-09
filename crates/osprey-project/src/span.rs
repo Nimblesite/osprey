@@ -232,7 +232,7 @@ fn offset_expr(expr: &mut Expr, offset: u32) {
             offset_expr(left, offset);
             offset_expr(right, offset);
         }
-        Expr::Unary { operand, .. }
+        Expr::TypeApply { function: operand, .. } | Expr::Unary { operand, .. }
         | Expr::Spawn(operand)
         | Expr::Await(operand)
         | Expr::Recv(operand) => offset_expr(operand, offset),

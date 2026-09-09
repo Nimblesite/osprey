@@ -549,7 +549,7 @@ impl Analyzer<'_> {
                 out
             }
             Expr::Pipe { left, right } => self.pipe_call(left, right, scope, env),
-            Expr::Unary { operand, .. }
+            Expr::TypeApply { function: operand, .. } | Expr::Unary { operand, .. }
             | Expr::FieldAccess {
                 target: operand, ..
             }
@@ -984,6 +984,7 @@ impl Analyzer<'_> {
     )]
     fn value(&self, expression: &Expr, scope: &[String], env: &CallableEnv) -> Option<Value> {
         match expression {
+            Expr::TypeApply { function, .. } => self.value(function, scope, env),
             Expr::Identifier(name) => {
                 if let Some(value) = env.values.get(name) {
                     return Some(value.clone());
@@ -1553,6 +1554,7 @@ fn receiver_first(receiver: &Expr, arguments: &[Expr]) -> Vec<Expr> {
 
 fn expression_name(expression: &Expr) -> Option<&str> {
     match expression {
+        Expr::TypeApply { function, .. } => expression_name(function),
         Expr::Identifier(name) => Some(name),
         Expr::Path(path) => path.last(),
         _ => None,
@@ -1571,6 +1573,7 @@ fn expression_name(expression: &Expr) -> Option<&str> {
 /// contributed nothing at all, not even a provenance failure.
 fn statically_named_callee(expression: &Expr, env: &CallableEnv, index: &Index) -> bool {
     match expression {
+        Expr::TypeApply { function, .. } => statically_named_callee(function, env, index),
         Expr::Identifier(name) => {
             !env.shadowed.contains(name)
                 && (crate::builtins::builtin_signature(name).is_some()
@@ -2577,7 +2580,7 @@ fn walk_children<'a>(expression: &'a Expr, mut visit: impl FnMut(&'a Expr)) {
             visit(left);
             visit(right);
         }
-        Expr::Unary { operand, .. }
+        Expr::TypeApply { function: operand, .. } | Expr::Unary { operand, .. }
         | Expr::FieldAccess {
             target: operand, ..
         }

@@ -15,12 +15,12 @@ use crate::testutil::{accepts, rejected_somehow, rejects_with, variance_position
 use osprey_syntax::Flavor;
 
 /// The position diagnostic for a type declaration's FIELD.
-fn position_message(param: &str, marker: &str, position: &str, field: &str, owner: &str) -> String {
+pub(crate) fn position_message(param: &str, marker: &str, position: &str, field: &str, owner: &str) -> String {
     variance_position_message(param, marker, position, "field", field, owner)
 }
 
 /// A one-field record declaration, the smallest carrier of a position.
-fn decl(params: &str, field: &str, ty: &str) -> String {
+pub(crate) fn decl(params: &str, field: &str, ty: &str) -> String {
     format!("type Holder{params} = {{ {field}: {ty} }}\nprint(\"declared\")")
 }
 
