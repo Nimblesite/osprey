@@ -15,7 +15,13 @@ use crate::testutil::{accepts, rejected_somehow, rejects_with, variance_position
 use osprey_syntax::Flavor;
 
 /// The position diagnostic for a type declaration's FIELD.
-pub(crate) fn position_message(param: &str, marker: &str, position: &str, field: &str, owner: &str) -> String {
+pub(crate) fn position_message(
+    param: &str,
+    marker: &str,
+    position: &str,
+    field: &str,
+    owner: &str,
+) -> String {
     variance_position_message(param, marker, position, "field", field, owner)
 }
 
@@ -53,7 +59,10 @@ fn out_in_a_function_parameter_is_rejected() {
 /// Two flips compose back to an output position, so `out T` is legal again.
 #[test]
 fn out_under_two_parameter_flips_is_legal() {
-    accepts(Flavor::Default, &decl("<out T>", "hof", "((T) -> int) -> int"));
+    accepts(
+        Flavor::Default,
+        &decl("<out T>", "hof", "((T) -> int) -> int"),
+    );
 }
 
 /// An `in` parameter belongs in an input position.
@@ -108,7 +117,10 @@ fn an_invariant_parameter_is_legal_in_both_positions() {
 fn out_inside_a_covariant_constructor_argument_is_legal() {
     accepts(
         Flavor::Default,
-        &format!("type Feed<out A> = {{ supply: A }}\n{}", decl("<out T>", "nested", "Feed<T>")),
+        &format!(
+            "type Feed<out A> = {{ supply: A }}\n{}",
+            decl("<out T>", "nested", "Feed<T>")
+        ),
     );
 }
 
@@ -117,7 +129,10 @@ fn out_inside_a_covariant_constructor_argument_is_legal() {
 fn out_inside_a_contravariant_constructor_argument_is_rejected() {
     rejects_with(
         Flavor::Default,
-        &format!("type Gate<in A> = {{ admit: (A) -> bool }}\n{}", decl("<out T>", "nested", "Gate<T>")),
+        &format!(
+            "type Gate<in A> = {{ admit: (A) -> bool }}\n{}",
+            decl("<out T>", "nested", "Gate<T>")
+        ),
         &position_message("T", "out", "input", "nested", "Holder"),
     );
 }
@@ -129,7 +144,10 @@ fn out_inside_a_contravariant_constructor_argument_is_rejected() {
 fn in_inside_a_contravariant_constructor_argument_is_legal() {
     accepts(
         Flavor::Default,
-        &format!("type Gate<in A> = {{ admit: (A) -> bool }}\n{}", decl("<in T>", "nested", "Gate<T>")),
+        &format!(
+            "type Gate<in A> = {{ admit: (A) -> bool }}\n{}",
+            decl("<in T>", "nested", "Gate<T>")
+        ),
     );
 }
 
@@ -139,7 +157,10 @@ fn in_inside_a_contravariant_constructor_argument_is_legal() {
 fn out_inside_an_invariant_constructor_argument_is_rejected() {
     rejected_somehow(
         Flavor::Default,
-        &format!("type Cell<A> = {{ slot: A }}\n{}", decl("<out T>", "nested", "Cell<T>")),
+        &format!(
+            "type Cell<A> = {{ slot: A }}\n{}",
+            decl("<out T>", "nested", "Cell<T>")
+        ),
     );
 }
 
@@ -148,7 +169,10 @@ fn out_inside_an_invariant_constructor_argument_is_rejected() {
 fn in_inside_an_invariant_constructor_argument_is_rejected() {
     rejected_somehow(
         Flavor::Default,
-        &format!("type Cell<A> = {{ slot: A }}\n{}", decl("<in T>", "nested", "Cell<T>")),
+        &format!(
+            "type Cell<A> = {{ slot: A }}\n{}",
+            decl("<in T>", "nested", "Cell<T>")
+        ),
     );
 }
 
@@ -157,7 +181,10 @@ fn in_inside_an_invariant_constructor_argument_is_rejected() {
 fn an_invariant_parameter_inside_an_invariant_argument_is_legal() {
     accepts(
         Flavor::Default,
-        &format!("type Cell<A> = {{ slot: A }}\n{}", decl("<T>", "nested", "Cell<T>")),
+        &format!(
+            "type Cell<A> = {{ slot: A }}\n{}",
+            decl("<T>", "nested", "Cell<T>")
+        ),
     );
 }
 
@@ -174,8 +201,14 @@ fn list_is_covariant_in_its_element() {
 /// `Result<out T, out E>`: both arguments are covariant.
 #[test]
 fn result_is_covariant_in_both_arguments() {
-    accepts(Flavor::Default, &decl("<out T>", "value", "Result<T, string>"));
-    accepts(Flavor::Default, &decl("<out T>", "failure", "Result<int, T>"));
+    accepts(
+        Flavor::Default,
+        &decl("<out T>", "value", "Result<T, string>"),
+    );
+    accepts(
+        Flavor::Default,
+        &decl("<out T>", "failure", "Result<int, T>"),
+    );
 }
 
 /// `Fiber<out T>`: covariant in its answer.
@@ -187,7 +220,10 @@ fn fiber_is_covariant_in_its_answer() {
 /// `Map<K, out V>`: the VALUE is covariant.
 #[test]
 fn map_is_covariant_in_its_value() {
-    accepts(Flavor::Default, &decl("<out T>", "byName", "Map<string, T>"));
+    accepts(
+        Flavor::Default,
+        &decl("<out T>", "byName", "Map<string, T>"),
+    );
 }
 
 /// `Map<K, out V>`: the KEY is invariant, so a covariant parameter is rejected.
@@ -234,7 +270,11 @@ print("${{firstItem(mkFeed())}}")"#
 /// Under `out T`.
 #[test]
 fn a_result_payload_does_not_collapse_under_a_covariant_container() {
-    rejects_with(Flavor::Default, &feed_payload_program("out "), "cannot unify");
+    rejects_with(
+        Flavor::Default,
+        &feed_payload_program("out "),
+        "cannot unify",
+    );
 }
 
 /// Under an invariant parameter.

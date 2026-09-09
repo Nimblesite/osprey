@@ -66,20 +66,27 @@ pub(crate) fn collect(
             let site = match expression {
                 Expr::Call { function, .. } => Some(function.as_ref()),
                 Expr::Pipe { right, .. } => Some(right.as_ref()),
+                Expr::MethodCall { .. } | Expr::Identifier(_) | Expr::Path(_) => Some(expression),
                 _ => None,
             };
             if let Some(bindings) = site
-                .filter(|e| matches!(e, Expr::Identifier(_) | Expr::Path(_)))
+                .filter(|e| {
+                    matches!(
+                        e,
+                        Expr::Identifier(_) | Expr::Path(_) | Expr::MethodCall { .. }
+                    )
+                })
                 .and_then(|e| self.sites.get(&std::ptr::from_ref(e).addr()))
                 .filter(|b| !b.is_empty())
             {
-                let _ = self.calls.insert(
-                    self.index,
-                    bindings
-                        .iter()
-                        .map(|(v, t)| (*v, self.ctx.apply(t)))
-                        .collect(),
-                );
+                let bindings: Bindings = bindings
+                    .iter()
+                    .map(|(v, t)| (*v, self.ctx.apply(t)))
+                    .collect();
+                let standalone = matches!(expression, Expr::Identifier(_) | Expr::Path(_));
+                if !standalone || bindings.values().all(|ty| !crate::has_type_var(ty)) {
+                    let _ = self.calls.insert(self.index, bindings);
+                }
             }
             self.index += 1;
         }
@@ -115,7 +122,7 @@ pub(crate) fn elaborate(program: &Program, types: &mut ProgramTypes) -> Program 
     let mut index = 0;
     for statement in &mut result.statements {
         osprey_ast::mutate::statement_children_mut(statement, &mut |e| {
-            elaborate_expr(e, &mut index, types)
+            elaborate_expr(e, &mut index, types);
         });
     }
     result
@@ -125,12 +132,36 @@ fn elaborate_expr(expression: &mut Expr, index: &mut usize, types: &mut ProgramT
     let current = *index;
     *index += 1;
     osprey_ast::mutate::children_mut(expression, &mut |child| elaborate_expr(child, index, types));
+    if let Some(target) = types.methods.get(&current) {
+        crate::methods::lower(expression, target);
+    }
     let Some(bindings) = types.call_bindings.get(&current).cloned() else {
         return;
     };
     let Ok(column) = u32::try_from(current) else {
         return;
     };
+    if matches!(expression, Expr::Identifier(_) | Expr::Path(_)) {
+        let _ = types.applications.insert((0, column), bindings);
+        *expression = Expr::TypeApply {
+            function: Box::new(expression.clone()),
+            type_args: Vec::new(),
+            position: Some(Position { line: 0, column }),
+        };
+        return;
+    }
+    if matches!(
+        types.methods.get(&current),
+        Some(crate::methods::Target::Deferred(_))
+    ) {
+        let _ = types.applications.insert((0, column), bindings);
+        *expression = Expr::TypeApply {
+            function: Box::new(expression.clone()),
+            type_args: Vec::new(),
+            position: Some(Position { line: 0, column }),
+        };
+        return;
+    }
     let function = match expression {
         Expr::Call { function, .. } => function,
         Expr::Pipe { right, .. } => right,

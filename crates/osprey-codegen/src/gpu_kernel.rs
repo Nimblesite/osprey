@@ -275,6 +275,7 @@ fn param_sigs(parameters: &[Parameter], own: Option<&FnSig>, slots: &[LType]) ->
                 ty: slots.get(i).copied().unwrap_or(LType::I64),
                 result_inner: None,
                 fiber: None,
+                inferred_type: None,
             },
         })
         .collect()
@@ -332,6 +333,7 @@ fn bind_uniforms(cg: &mut Codegen, caps: &[crate::closure::Capture]) -> Vec<(LTy
             ty: c.val.ty,
             result_inner: None,
             fiber: None,
+            inferred_type: c.val.inferred_type.clone(),
         };
         // `incoming_param` registers no ownership: a uniform buffer handle is
         // BORROWED for the call's duration, exactly as a top-level function's

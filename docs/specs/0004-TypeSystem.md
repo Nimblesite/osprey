@@ -381,7 +381,8 @@ createAdder : int -> int -> int
 createAdder n = \x => x + n
 ```
 
-Multi-argument call syntax (named arguments are required for two or more parameters) is in [Function Calls](0005-FunctionCalls.md).
+Multi-argument calls accept positional arguments or a fully named argument
+list, as specified in [Function Calls](0005-FunctionCalls.md).
 
 ### Closures — [TYPE-FN-CLOSURE]
 
@@ -890,25 +891,63 @@ reading the annotation: `string -> int -> string` is redundant on one function
 and load-bearing on the next. It is decided by inference, and only by
 inference.
 
-**The decision procedure.** Start from a well-typed program. Erase exactly one written parameter, return, lambda, or binding annotation from a copy of that program and run inference again. Compare all solved function, binding, lambda, list, handler, and operation types, including effect arguments and the relationships between declared generic binders and those types. The comparison uses one consistent bijection between inference variables. Report a warning only when the copied program remains well-typed and every compared type is equal under that renaming. Any changed type, changed binder relationship, or type error keeps the annotation.
+**The decision procedure.** Replace the annotations under test with fresh type
+variables, solve, and generalise. Compare every type the solver publishes to
+the types it published for the untouched program, up to renaming of bound type
+variables. Equal ⇒ redundant. Different, or no solution ⇒ the annotations were
+constraining something and are kept.
 
-Each warning is evaluated against the original program with its other annotations present. Several independent warnings do not prove that all their annotations can be removed together. For example, either annotation in `fn identity<T>(x: T) -> T = x` can individually be inferred from the other; deleting both would disconnect the declared `T` from the function's parameter. Re-run diagnostics after a deletion. An ML signature header is one source construct containing several canonical slots; deleting its whole header requires checking the whole edit.
+The comparison includes local, lambda, and list types, declared binders,
+operation and handler instantiations, and generalized field or callable
+constraints. It also preserves each dotted call's selected field, free
+function, or deferred selection rule ([BUILTIN-STRING-UFCS]). Matching only
+the enclosing function's parameter and return types is insufficient: removing
+an annotation must not change a callback's requirements or the implementation
+selected by a call with the same result type.
+
+**Redundancy is a property of a set, not of one annotation.** Annotations pin
+each other. In `fn pick(a: int, b: int) -> int = match a <= b { ... }` the body
+only compares, so nothing forces `int` except the annotations themselves — and
+each one alone is removable, because the other two still hold the type down.
+Judged one at a time, all three report; delete all three and `pick` generalises,
+which is a different program. A reader acts on the whole list, so the whole list
+is what gets solved for: the rule reports a set it has verified can be deleted
+together, growing it in source order and dropping any annotation that stops
+being removable alongside the ones already reported. What it reports is
+therefore always true of the report as a whole — delete every warning it gives
+you and the program's types are unchanged.
+
+The same coupling is why a lowered signature is judged whole. ML writes a
+signature as one arrow type, and lowering splits it across a parameter, a
+curried function-typed return and a nested lambda holding the rest. Those
+fragments hold each other up, so judging them apart reports a header that
+cannot be deleted at all — four warnings for one line, one of them blaming a
+`<lambda>` for a parameter the reader named. Fragments of one written type are
+one unit: judged together, erased together, and reported once.
+
+An ML header that also declares generic binders or an effect row is retained.
+The current erasure pass removes type constraints, not those declarations, so
+it cannot prove that deleting such a header preserves the complete contract.
+An inline parameter annotation alongside a standalone header remains a separate
+constraint: both are checked, disagreement is rejected, and removing either
+annotation leaves the other present.
 
 ```mermaid
 flowchart LR
-  A["written annotation"] --> B["erase → fresh var"]
+  A["written annotations"] --> B["erase the whole set → fresh vars"]
   B --> C["infer + generalise"]
-  C --> D{"solved type<br/>vs written"}
-  D -- "alpha-equal" --> E["redundant — report"]
-  D -- "strictly more general" --> F["constraining — keep"]
-  D -- "no solution" --> F
+  C --> D{"solved types, constraints<br/>and dispatch vs baseline"}
+  D -- "equivalent" --> E["the set is redundant — report it"]
+  D -- "differs, or no solution" --> F["drop the last one and retry"]
+  F --> B
 ```
 
 **Where it applies.** Function parameter annotations, function return
 annotations, lambda parameter annotations, and binding annotations, in both
-surfaces ([FLAVOR-BOUNDARY]) — an ML `f : string -> int` header and a Default
-`fn f(x: string) -> int` are the same canonical annotation and are judged
-identically.
+surfaces ([FLAVOR-BOUNDARY]). Both use the same type-equivalence rule. An ML
+`f : string -> int` header is one source annotation; a Default
+`fn f(x: string) -> int` contains two independently removable annotations.
+Their diagnostic counts therefore need not match.
 
 ```osprey-ml
 (** Both slots are inferred as string from concatenation. *)
@@ -945,18 +984,32 @@ compiles and runs exactly as it did. Severity is fixed today and becomes
 configurable per rule; the rule identifier is `redundant-annotation`, and it is
 that identifier a future configuration names.
 
-**The message** identifies the annotation and prints the type inference derives
-without that slot. There is
-one line per slot the rule judges:
+**The message** identifies the written annotation and prints the type inference
+derives without it. There is one line per written annotation the rule judges:
 
 ```
 redundant type annotation on parameter `key` of `numField`: inference derives `string` without it
 redundant return type annotation on `numField`: inference derives `string` without it
 redundant type annotation on `seen`: inference derives `List<int>` without it
+redundant type signature on `decorate`: inference derives `(string) -> string` without it
+redundant type signature on `combine`: inference derives `(int) -> (int) -> int` without it
 ```
 
-An annotation written on an anonymous function names `<lambda>` as its owner,
-and a name that assembly mangled is reported in its source spelling
+The last shape is one whole curried signature. Its nested arrows are preserved:
+`int -> int -> int` takes one argument and returns another function, whereas
+`(int, int) -> int` takes two arguments in one call. These types have different
+call conventions and diagnostics must not flatten one into the other.
+ML spells a signature as a single arrow
+type on its own line, and lowering splits it across a parameter, a curried
+function-typed return and a nested lambda holding the rest. Those fragments are
+one written line: they are judged together, erased together, and reported once,
+naming the function. Judging them apart is not merely noisier, it is wrong —
+each fragment looks derivable while the others still hold the type down, so a
+header that cannot be deleted gets reported anyway.
+
+An annotation written on an anonymous function names `<lambda>` as its owner;
+an implicit curry lambda is not a written anonymous function. A name that
+assembly mangled is reported in its source spelling
 ([MODULES-ABI](0025-ModulesAndNamespaces.md#name-mangling-and-abi-modules-abi)),
 so `bank::Api::json` is never shown as its encoded symbol.
 
@@ -965,4 +1018,4 @@ grouped by source file under an aligned `line:column` gutter and closed by a
 count and the rules that raised it; and the language server as a Warning
 diagnostic anchored at the containing declaration and spanning the rest of that source line
 ([LSP-DIAGNOSTICS](0020-LanguageServerAndEditors.md#diagnostics-lsp-diagnostics)),
-The message names the parameter, return, or binding slot. The range identifies the declaration; it is not a deletion edit. The compiler does not offer an automatic bulk deletion based on these independent warnings.
+The message names the written signature, parameter, return, or binding annotation. An ML signature range starts at its header. Other ranges identify the containing declaration. A range is not a deletion edit. The compiler does not offer an automatic deletion action. For an assembled project, the safe set is chosen for the entire program before filtering diagnostics to an open file, so opening a different file cannot change which annotations are reported as removable.

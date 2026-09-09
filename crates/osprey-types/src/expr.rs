@@ -5,19 +5,7 @@
 //! lambdas, match) do real unification.
 
 use crate::check::Checker;
-use crate::convert::type_expr_to_type;
 
-/// Builtin types that carry no fields, so `x.field` on one can never resolve.
-/// Deliberately excludes `any` (which unifies with everything, including
-/// records) and every collection/generic whose element MIGHT be a record.
-/// Implements [TYPE-FIELD-ACCESS-NON-RECORD].
-const FIELDLESS_TYPES: &[&str] = &[
-    names::INT,
-    names::FLOAT,
-    names::STRING,
-    names::BOOL,
-    names::UNIT,
-];
 use crate::env::TypeEnv;
 use crate::error::TypeError;
 use crate::ty::{names, Type};
@@ -35,6 +23,23 @@ fn res_math(ok: Type) -> Type {
 }
 fn generic_err() -> Type {
     Type::prim("Error")
+}
+
+/// A bound type variable is a type, not a higher-kinded constructor. Check
+/// the written form before conversion resolves that name to its variable.
+fn applied_type_parameter<'a>(
+    ty: &'a TypeExpr,
+    binders: &HashMap<String, Type>,
+) -> Option<&'a str> {
+    if binders.contains_key(&ty.name) && !ty.generic_params.is_empty() {
+        return Some(&ty.name);
+    }
+    ty.generic_params
+        .iter()
+        .chain(&ty.parameter_types)
+        .chain(ty.array_element.as_deref())
+        .chain(ty.return_type.as_deref())
+        .find_map(|child| applied_type_parameter(child, binders))
 }
 
 impl Checker {
@@ -99,15 +104,13 @@ impl Checker {
                 function,
                 arguments,
                 named_arguments,
-            } => self.infer_call(function, arguments, named_arguments, env),
+            } => self.infer_call(e, function, arguments, named_arguments, env),
             Expr::Pipe { left, right } => self.infer_pipe(left, right, env),
             Expr::FieldAccess { target, field } => self.infer_field_access(target, field, env),
-            Expr::MethodCall {
-                target,
-                method,
-                arguments,
-                named_arguments,
-            } => self.infer_method_call(target, method, arguments, named_arguments, env),
+            Expr::MethodCall { .. } => match crate::methods::parts(e) {
+                Some(parts) => self.infer_method_call(e, parts, env),
+                None => self.ctx.fresh(),
+            },
             Expr::Index { target, index } => self.infer_index(target, index, env),
             Expr::Lambda {
                 parameters,
@@ -181,55 +184,27 @@ impl Checker {
         }
     }
 
-    /// Field access yields the record field's declared type, or a fresh var when
-    /// the target is not a known record (split out of [`Self::infer_expr`]).
+    /// Field access retains a relation between the receiver and its field even
+    /// when the receiver is a parameter whose record is fixed at a later call.
     fn infer_field_access(&mut self, target: &Expr, field: &str, env: &TypeEnv) -> Type {
         let tt = self.infer_expr(target, env);
+        self.infer_record_field_type(&tt, field)
+    }
+
+    pub(crate) fn infer_record_field_type(&mut self, receiver: &Type, field: &str) -> Type {
         // Reading a field assumes a record layout the erased word cannot
         // prove it has — the address-as-integer bug reached through `.field`
         // ([TYPE-FIELD-ACCESS-NON-RECORD], [TYPE-ANY]).
-        if self.reject_erased_operand(&format!("access field `{field}` on"), &tt) {
+        if self.reject_erased_operand(&format!("access field `{field}` on"), receiver) {
             return self.ctx.fresh();
         }
-        let pruned = self.ctx.prune(&tt);
-        match &pruned {
-            Type::Record { fields, .. } => fields
-                .get(field)
-                .cloned()
-                .unwrap_or_else(|| self.ctx.fresh()),
-            other => {
-                if let Type::Con { name, .. } = other {
-                    if FIELDLESS_TYPES.contains(&name.as_str()) {
-                        self.record_field_access_on_fieldless(field, name);
-                    }
-                }
-                if let Type::Con { name, args } = other {
-                    if let Some(ty) = self
-                        .ctx
-                        .record_fields(name, args)
-                        .and_then(|fields| fields.get(field).cloned())
-                    {
-                        return ty;
-                    }
-                }
-                self.ctx.fresh()
-            }
-        }
-    }
-
-    /// Reject `x.field` where `x` is a builtin that has no fields at all.
-    ///
-    /// This arm used to fall through to a fresh variable, so the program passed
-    /// the checker and CODEGEN emitted invalid LLVM (`bitcast i8* 42 to
-    /// { i64, i64 }*`) — the "error" then surfaced from clang, naming a
-    /// temporary `.ll` file rather than the offending source line. Only names
-    /// that can NEVER be a user record are listed, and an unresolved type
-    /// variable is deliberately left alone: inference may still resolve it to a
-    /// record. Implements [TYPE-FIELD-ACCESS-NON-RECORD].
-    fn record_field_access_on_fieldless(&mut self, field: &str, ty: &str) {
-        self.errors.push(TypeError::new(format!(
-            "cannot access field '{field}' on non-struct type {ty}"
-        )));
+        let result = self.ctx.fresh();
+        self.builtin_uses.push((
+            crate::fields::obligation_name(field),
+            Type::fun(vec![receiver.clone()], result.clone()),
+        ));
+        self.resolve_field_uses();
+        result
     }
 
     /// A channel and its sent value share one element type; the send is `Unit`.
@@ -563,11 +538,15 @@ impl Checker {
 
     fn infer_call(
         &mut self,
+        site: &Expr,
         function: &Expr,
         arguments: &[Expr],
         named: &[NamedArgument],
         env: &TypeEnv,
     ) -> Type {
+        if let Some(parts) = crate::methods::parts(site) {
+            return self.infer_method_call(site, parts, env);
+        }
         let (fname, ft) = self.infer_callee(function, env);
         let args = self.ordered_arg_types(fname.as_deref(), &ft, arguments, named, env);
         self.apply_named_fn(fname.as_deref(), &ft, args)
@@ -629,8 +608,7 @@ impl Checker {
         if params.len() == type_args.len() {
             let binder = self.current_fn_typarams.clone();
             for (param, arg) in params.iter().zip(type_args) {
-                let written = crate::convert::type_expr_to_type(arg, &binder);
-                self.validate_type_argument(&written, position);
+                let written = self.written_type_argument(arg, &binder, position);
                 self.push_unify(param, &written);
             }
         } else {
@@ -644,6 +622,38 @@ impl Checker {
             );
         }
         (Some(name), ty)
+    }
+
+    /// Validate written arguments before conversion can discard an invalid
+    /// application of an enclosing binder [TYPE-GENERICS-APPLY].
+    pub(crate) fn written_type_argument(
+        &mut self,
+        argument: &osprey_ast::TypeExpr,
+        binder: &HashMap<String, Type>,
+        position: Option<osprey_ast::Position>,
+    ) -> Type {
+        let written = self.annotation_type(argument, binder, position);
+        self.validate_type_argument(&written, position);
+        written
+    }
+
+    /// Preserve lexical binders in annotations without accepting applications
+    /// that conversion would otherwise silently drop [TYPE-GENERICS-FN].
+    pub(crate) fn annotation_type(
+        &mut self,
+        argument: &osprey_ast::TypeExpr,
+        binder: &HashMap<String, Type>,
+        position: Option<osprey_ast::Position>,
+    ) -> Type {
+        if let Some(name) = applied_type_parameter(argument, binder) {
+            self.errors.push(
+                TypeError::new(format!(
+                    "type parameter `{name}` cannot take type arguments"
+                ))
+                .with_pos(position),
+            );
+        }
+        crate::convert::type_expr_to_type(argument, binder)
     }
 
     /// Written arguments name declared types or an enclosing binder, never a
@@ -672,6 +682,31 @@ impl Checker {
                     self.errors
                         .push(TypeError::new(format!("unknown type `{name}`")).with_pos(position));
                 }
+                let arity = self
+                    .ctx
+                    .variance_of(name)
+                    .map(<[_]>::len)
+                    .or_else(|| {
+                        self.ctors
+                            .values()
+                            .find(|ctor| ctor.owner == *name)
+                            .map(|ctor| ctor.type_params.len())
+                    })
+                    .or_else(|| {
+                        primitive.then_some(usize::from(matches!(
+                            name.as_str(),
+                            names::CHANNEL | names::ITERATOR | names::GPU_BUFFER
+                        )))
+                    });
+                if let Some(expected) = arity.filter(|expected| *expected != args.len()) {
+                    self.errors.push(
+                        TypeError::new(format!(
+                            "type `{name}` takes {expected} type argument(s), got {}",
+                            args.len()
+                        ))
+                        .with_pos(position),
+                    );
+                }
                 for arg in args {
                     self.validate_type_argument(arg, position);
                 }
@@ -688,22 +723,174 @@ impl Checker {
 
     fn infer_method_call(
         &mut self,
-        target: &Expr,
-        method: &str,
-        arguments: &[Expr],
-        named: &[NamedArgument],
+        site: &Expr,
+        parts: crate::methods::Parts<'_>,
         env: &TypeEnv,
     ) -> Type {
-        // UFCS: `t.m(a)` is `m(t, a)`.
-        let ft = self.lookup_ident(method, env);
-        let mut args = vec![self.infer_expr(target, env)];
-        for a in arguments {
-            args.push(self.infer_expr(a, env));
+        let receiver = self.infer_expr(parts.target, env);
+        let field = crate::methods::field_name(parts.method);
+        if matches!(self.ctx.prune(&receiver), Type::Var(_)) && env.get(parts.method).is_some() {
+            let _ = self.methods.insert(
+                std::ptr::from_ref(site).addr(),
+                crate::methods::Target::Deferred(field.clone()),
+            );
+            return self.infer_deferred_method(site, receiver, &field, &parts, env);
+        }
+        let known_field = match self.ctx.prune(&receiver) {
+            Type::Record { fields, .. } => fields.contains_key(&field),
+            Type::Con { name, args } => self
+                .ctx
+                .record_fields(&name, &args)
+                .is_some_and(|fields| fields.contains_key(&field)),
+            Type::Var(_) => env.get(parts.method).is_none(),
+            _ => false,
+        };
+        if known_field {
+            let _ = self.methods.insert(
+                std::ptr::from_ref(site).addr(),
+                crate::methods::Target::Field(field.clone()),
+            );
+            return self.infer_field_call(&receiver, &field, &parts, env);
+        }
+        if env.get(parts.method).is_some() {
+            let _ = self.methods.insert(
+                std::ptr::from_ref(site).addr(),
+                crate::methods::Target::Function,
+            );
+        }
+        self.infer_ufcs_call(site, &receiver, &parts, env)
+    }
+
+    fn infer_deferred_method(
+        &mut self,
+        site: &Expr,
+        receiver: Type,
+        field: &str,
+        parts: &crate::methods::Parts<'_>,
+        env: &TypeEnv,
+    ) -> Type {
+        let Some(fallback) = env.applied(&mut self.ctx, parts.method) else {
+            return self.ctx.fresh();
+        };
+        let _ = self
+            .instantiations
+            .insert(std::ptr::from_ref(site).addr(), fallback.bindings.clone());
+        let (count, position, written) = match parts.application {
+            Some((args, position)) => {
+                if let Some(position) = position {
+                    self.application_tys.push((position, fallback.bindings));
+                }
+                let binder = self.current_fn_typarams.clone();
+                let written = args
+                    .iter()
+                    .map(|arg| self.written_type_argument(arg, &binder, position))
+                    .collect();
+                (args.len().to_string(), position, written)
+            }
+            None => ("-".to_owned(), None, Vec::new()),
+        };
+        let arguments = parts
+            .arguments
+            .iter()
+            .map(|arg| self.infer_expr(arg, env))
+            .collect();
+        let named = parts
+            .named
+            .iter()
+            .map(|arg| Type::con(arg.name.clone(), vec![self.infer_expr(&arg.value, env)]))
+            .collect();
+        let result = self.ctx.fresh();
+        let relation = Type::con(
+            "$method-relation",
+            vec![
+                receiver,
+                fallback.ty,
+                Type::fun(arguments, result.clone()),
+                Type::con(
+                    "$obligations",
+                    fallback
+                        .obligations
+                        .into_iter()
+                        .map(|(name, ty)| Type::con(name, vec![ty]))
+                        .collect(),
+                ),
+                Type::con("$binders", fallback.params),
+                Type::con("$written", written),
+                Type::con("$named", named),
+            ],
+        );
+        let line = position.map_or(0, |position| position.line);
+        let column = position.map_or(0, |position| position.column);
+        self.builtin_uses.push((
+            format!(
+                "{}{count}:{line}:{column}:{field}:{}",
+                crate::methods::OBLIGATION,
+                parts.method
+            ),
+            relation,
+        ));
+        self.resolve_field_uses();
+        result
+    }
+
+    fn infer_field_call(
+        &mut self,
+        receiver: &Type,
+        field: &str,
+        parts: &crate::methods::Parts<'_>,
+        env: &TypeEnv,
+    ) -> Type {
+        if let Some((args, position)) = parts.application {
+            self.errors.push(
+                TypeError::new(format!(
+                    "function `{field}` takes 0 type argument(s), got {}",
+                    args.len()
+                ))
+                .with_pos(position),
+            );
+        }
+        let ft = self.infer_record_field_type(receiver, field);
+        let args = self.ordered_arg_types(None, &ft, parts.arguments, parts.named, env);
+        self.apply_named_fn(None, &ft, args)
+    }
+
+    fn infer_ufcs_call(
+        &mut self,
+        site: &Expr,
+        receiver: &Type,
+        parts: &crate::methods::Parts<'_>,
+        env: &TypeEnv,
+    ) -> Type {
+        let ft = match parts.application {
+            Some((arguments, position)) => {
+                let callee = Expr::Identifier(parts.method.to_owned());
+                let (_, ty) = self.infer_type_application(&callee, arguments, position, env);
+                if let Some(bindings) = self
+                    .instantiations
+                    .remove(&std::ptr::from_ref(&callee).addr())
+                {
+                    let _ = self
+                        .instantiations
+                        .insert(std::ptr::from_ref(site).addr(), bindings);
+                }
+                ty
+            }
+            None => self.lookup_ident_at(parts.method, env, Some(site)),
+        };
+        let tail = match self.ctx.prune(&ft) {
+            Type::Fun { params, ret } => Type::fun(params.into_iter().skip(1).collect(), *ret),
+            other => other,
+        };
+        let mut args = vec![receiver.clone()];
+        args.extend(self.positional_arg_types(&tail, parts.arguments, env));
+        let mut named: Vec<_> = parts.named.iter().collect();
+        if let Some(parameters) = self.fn_params.get(parts.method) {
+            named.sort_by_key(|arg| parameters.iter().position(|name| name == &arg.name));
         }
         for na in named {
             args.push(self.infer_expr(&na.value, env));
         }
-        self.apply_named_fn(Some(method), &ft, args)
+        self.apply_named_fn(Some(parts.method), &ft, args)
     }
 
     /// Resolve call arguments to types, reordering named arguments to the
@@ -866,7 +1053,12 @@ impl Checker {
         param.is_named(names::ANY) && (deferred || matches!(self.ctx.prune(argument), Type::Var(_)))
     }
 
-    fn apply_named_fn(&mut self, name: Option<&str>, ft: &Type, args: Vec<Type>) -> Type {
+    pub(crate) fn apply_named_fn(
+        &mut self,
+        name: Option<&str>,
+        ft: &Type,
+        args: Vec<Type>,
+    ) -> Type {
         let constrained_builtin = name.is_some_and(|name| {
             matches!(name, "length" | "isEmpty" | "print" | "toString" | "toGpu")
                 || crate::builtin_constraints::is_gpu_buffer_builtin(name)
@@ -992,13 +1184,13 @@ impl Checker {
         env: &TypeEnv,
         expected: Option<&Type>,
     ) -> Type {
-        let empty = HashMap::new();
+        let binder = self.current_fn_typarams.clone();
         let mut local = env.child();
         let mut ptys = Vec::new();
         let wanted = expected_params(expected, parameters.len());
         for (i, p) in parameters.iter().enumerate() {
             let ty = match &p.ty {
-                Some(te) => type_expr_to_type(te, &empty),
+                Some(te) => self.annotation_type(te, &binder, te.position.or(position)),
                 None => wanted.get(i).cloned().unwrap_or_else(|| self.ctx.fresh()),
             };
             local.insert(p.name.clone(), crate::ty::Scheme::mono(ty.clone()));
@@ -1034,7 +1226,7 @@ impl Checker {
         self.resume_ctx = saved_resume_ctx;
         let ret = match return_type {
             Some(te) => {
-                let r = type_expr_to_type(te, &empty);
+                let r = self.annotation_type(te, &binder, te.position.or(position));
                 self.push_assign(&r, &body_ty);
                 r
             }
@@ -1076,7 +1268,7 @@ impl Checker {
                 if type_args.len() == args.len() {
                     let binder = self.current_fn_typarams.clone();
                     for (a, te) in args.iter().zip(type_args) {
-                        let written = crate::convert::type_expr_to_type(te, &binder);
+                        let written = self.written_type_argument(te, &binder, te.position);
                         self.push_unify(a, &written);
                     }
                 } else {
@@ -1463,7 +1655,6 @@ fn classify(op: &str) -> OpKind {
         _ => OpKind::Arith,
     }
 }
-
 #[cfg(test)]
 mod tests {
     use crate::check::check_program;

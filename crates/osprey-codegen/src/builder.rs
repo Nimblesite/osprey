@@ -300,11 +300,12 @@ impl FiberSig {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq)]
 pub(crate) struct ParamSig {
     pub(crate) ty: LType,
     pub(crate) result_inner: Option<LType>,
     pub(crate) fiber: Option<FiberSig>,
+    pub(crate) inferred_type: Option<Type>,
 }
 
 impl ParamSig {
@@ -315,11 +316,13 @@ impl ParamSig {
                 ty: LType::Ptr,
                 result_inner: Some(inner),
                 fiber,
+                inferred_type: Some(ty.clone()),
             },
             None => Self {
                 ty: ltype_of(ty),
                 result_inner: None,
                 fiber,
+                inferred_type: Some(ty.clone()),
             },
         }
     }
@@ -702,7 +705,10 @@ impl Codegen {
     /// [TYPE-FN-HIGHER-ORDER].
     pub(crate) fn callee_fn_type(&self, expr: &Expr) -> Option<Type> {
         match expr {
-            Expr::TypeApply { function, position, .. } => self.callee_fn_type(function)
+            Expr::TypeApply {
+                function, position, ..
+            } => self
+                .callee_fn_type(function)
                 .map(|ty| self.prog.application_type(*position, &ty)),
             Expr::Identifier(name) => self.identifier_fn_type(name),
             // A call evaluates to its callee's return type — recurse so a chain

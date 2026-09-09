@@ -294,6 +294,9 @@ impl Resolver<'_> {
                 ..
             } => {
                 self.rewrite_expr(function, context, locals);
+                if let Expr::FieldAccess { field, .. } = function.as_mut() {
+                    self.rewrite_value_name(field, context, false);
+                }
                 for argument in type_args {
                     self.rewrite_type(argument, context, locals);
                 }

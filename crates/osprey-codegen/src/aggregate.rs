@@ -347,7 +347,10 @@ pub(crate) fn gen_update(
 /// load the field.
 pub(crate) fn gen_field_access(cg: &mut Codegen, target: &Expr, field: &str) -> Result<Value> {
     let tv = gen_expr(cg, target)?;
-    let inferred = tv.inferred_type.as_ref().and_then(|ty| cg.prog.field_type(ty, field));
+    let inferred = tv
+        .inferred_type
+        .as_ref()
+        .and_then(|ty| cg.prog.field_type(ty, field));
     // Use the statically-known owner (a named record or an anonymous object
     // literal) when it actually declares `field`; otherwise (a generic accessor
     // whose parameter infers to a type variable) resolve the field by name across
@@ -385,13 +388,19 @@ pub(crate) fn gen_field_access(cg: &mut Codegen, target: &Expr, field: &str) -> 
     // A handle field carries its ELEMENT's ABI, not an owner of its own: the
     // slot holds a runtime id, and `recv`/`await` on it needs the element type
     // to unbox with ([CONCURRENCY-CHANNEL]).
-    if let Some(handle) = inferred.as_ref().and_then(|ty| crate::builder::FiberSig::of(&cg.prog, ty))
-        .or_else(|| cg.ctor_field_handle(&owner, field)) {
+    if let Some(handle) = inferred
+        .as_ref()
+        .and_then(|ty| crate::builder::FiberSig::of(&cg.prog, ty))
+        .or_else(|| cg.ctor_field_handle(&owner, field))
+    {
         let mut value = handle.restore(Value::new(loaded, fty));
         value.inferred_type = inferred;
         return Ok(value);
     }
-    let owner = inferred.as_ref().map_or_else(|| cg.ctor_field_owner(&owner, field), |ty| crate::types::owner_name(&cg.prog, ty));
+    let owner = inferred.as_ref().map_or_else(
+        || cg.ctor_field_owner(&owner, field),
+        |ty| crate::types::owner_name(&cg.prog, ty),
+    );
     let mut value = Value::new(loaded, fty).with_owner(owner);
     value.inferred_type = inferred;
     Ok(value)

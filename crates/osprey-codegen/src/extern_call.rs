@@ -141,19 +141,32 @@ fn eval_args(
         .zip(crate::expr::arg_exprs(args, named))
         .enumerate()
         .map(|(index, (want, e))| {
-            let v = match e {
-                Expr::Identifier(n)
-                    if *want == LType::Ptr
-                        && cg.lookup(n).is_none()
-                        && cg.fn_params.contains_key(n) =>
-                {
-                    callback_pointer(cg, n, name, index)?
-                }
-                _ => gen_expr(cg, e)?,
-            };
+            let v = argument_value(cg, e, *want, name, index)?;
             Ok(crate::cast::coerce_to(cg, v, *want)?.operand)
         })
         .collect()
+}
+
+fn argument_value(
+    cg: &mut Codegen,
+    expr: &Expr,
+    want: LType,
+    name: &str,
+    index: usize,
+) -> Result<Value> {
+    match expr {
+        Expr::TypeApply {
+            function, position, ..
+        } => crate::expr::with_application(cg, *position, |cg| {
+            argument_value(cg, function, want, name, index)
+        }),
+        Expr::Identifier(n)
+            if want == LType::Ptr && cg.lookup(n).is_none() && cg.fn_params.contains_key(n) =>
+        {
+            callback_pointer(cg, n, name, index)
+        }
+        _ => gen_expr(cg, expr),
+    }
 }
 
 /// The raw code pointer for a callback argument. A handler whose types are

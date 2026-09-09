@@ -103,6 +103,15 @@ impl Discard {
     }
 }
 
+/// Generated wildcard binders still name the source `_` in diagnostics.
+pub(crate) fn annotation_name(name: &str) -> String {
+    if name.starts_with("$wild") {
+        "_".to_owned()
+    } else {
+        name.to_owned()
+    }
+}
+
 /// All cross-cutting declaration tables, plus the inference context.
 pub struct Checker {
     pub(crate) ctx: InferCtx,
@@ -131,12 +140,16 @@ pub struct Checker {
     pub(crate) list_tys: Vec<(Position, Type)>,
     /// Fresh substitutions at value uses, retained for the effect proof.
     pub(crate) instantiations: HashMap<usize, HashMap<VarId, Type>>,
+    /// Dotted call identity: a field name, or receiver-first function dispatch.
+    pub(crate) methods: crate::methods::Targets,
     /// Explicit applications have stable source positions for backend cloning.
     pub(crate) application_tys: Vec<(Position, HashMap<VarId, Type>)>,
     /// Concrete arguments passed to representation-sensitive built-ins. These
     /// are validated after inference so a variable constrained later in the
     /// same body is checked at its final type.
     pub(crate) builtin_uses: Vec<(String, Type)>,
+    /// Generalized constraints remain part of each source binding's contract.
+    scheme_obligations: HashMap<String, Vec<(String, Type)>>,
     /// Every discarded value, where it was written, and whether the author said
     /// so with `let _ =`. Validated after inference for the same reason
     /// `builtin_uses` is. Implements [BLOCK-DISCARD].
@@ -193,8 +206,10 @@ impl Checker {
             let_tys: Vec::new(),
             list_tys: Vec::new(),
             instantiations: HashMap::new(),
+            methods: HashMap::new(),
             application_tys: Vec::new(),
             builtin_uses: Vec::new(),
+            scheme_obligations: HashMap::new(),
             discards: Vec::new(),
             builtins: HashSet::new(),
             resume_ctx: Vec::new(),
@@ -498,19 +513,32 @@ impl Checker {
 
     /// Instantiate an effect at an effect-row entry's declared type arguments
     /// (`!State<int>`), resolving each argument against the enclosing
-    /// function's type parameters; missing arguments become fresh variables.
+    /// function's type parameters. An omitted argument list is inferred; a
+    /// written list must supply exactly the declared number of arguments.
     /// Implements [EFFECTS-GENERIC-ROWS].
     fn effect_row_scope(
         &mut self,
         row: &EffectRef,
         fn_typarams: &HashMap<String, Type>,
+        position: Option<Position>,
     ) -> Option<EffectScope> {
         let info = self.effects.get(&row.name)?.clone();
+        if !row.type_args.is_empty() && row.type_args.len() != info.type_params.len() {
+            self.errors.push(
+                TypeError::new(format!(
+                    "effect `{}` takes {} type argument(s), got {}",
+                    row.name,
+                    info.type_params.len(),
+                    row.type_args.len()
+                ))
+                .with_pos(position),
+            );
+        }
         let mut pmap = HashMap::new();
         let mut args = Vec::new();
         for (i, p) in info.type_params.iter().enumerate() {
             let t = match row.type_args.get(i) {
-                Some(te) => type_expr_to_type(te, fn_typarams),
+                Some(te) => self.written_type_argument(te, fn_typarams, position),
                 None => self.ctx.fresh(),
             };
             args.push(t.clone());
@@ -627,12 +655,12 @@ impl Checker {
         let params: Vec<Type> = parameters
             .iter()
             .map(|p| match &p.ty {
-                Some(te) => type_expr_to_type(te, &typarams),
+                Some(te) => self.annotation_type(te, &typarams, te.position),
                 None => self.ctx.fresh(),
             })
             .collect();
         let ret = match return_type {
-            Some(te) => type_expr_to_type(te, &typarams),
+            Some(te) => self.annotation_type(te, &typarams, te.position),
             None => self.ctx.fresh(),
         };
         let ordered = type_params
@@ -710,7 +738,7 @@ impl Checker {
         let typarams = self.fn_typarams.get(name).cloned().unwrap_or_default();
         let scopes: Vec<_> = effects
             .iter()
-            .filter_map(|r| self.effect_row_scope(r, &typarams))
+            .filter_map(|r| self.effect_row_scope(r, &typarams, pos))
             .collect();
         let pushed = scopes.len();
         self.handler_scopes.extend(scopes);
@@ -744,6 +772,9 @@ impl Checker {
                 }
             }
         }
+        let _ = self
+            .scheme_obligations
+            .insert(format!("fn {name}"), scheme.obligations.clone());
         env.insert(name, scheme);
         env.declare_type_params(name, declared);
     }
@@ -757,10 +788,12 @@ impl Checker {
     /// report the wrapper itself, which is not an error, so the obligation
     /// MOVES into the scheme.
     fn generalize_with_obligations(&mut self, env: &TypeEnv, ty: &Type) -> Scheme {
+        self.resolve_field_uses();
         let mut scheme = generalize(&mut self.ctx, env, ty);
         if scheme.vars.is_empty() {
             return scheme;
         }
+        self.generalize_connected_obligations(env, &mut scheme.vars);
         let (deferred, kept) = self.split_obligations(&scheme.vars);
         // Quantifying a variable that still carries a pending arithmetic
         // overload would hand every call site its own fresh copy, so no use
@@ -772,6 +805,27 @@ impl Checker {
         self.builtin_uses = kept;
         scheme.obligations = deferred;
         scheme
+    }
+
+    /// Field relations can mention callback variables absent from the visible
+    /// function signature. Quantify their entire connected component together.
+    fn generalize_connected_obligations(&mut self, env: &TypeEnv, vars: &mut Vec<VarId>) {
+        let external = env.free_vars(&mut self.ctx);
+        let mut connected: BTreeSet<_> = vars.iter().copied().collect();
+        loop {
+            let before = connected.len();
+            for (_, ty) in &self.builtin_uses {
+                let mut free = BTreeSet::new();
+                self.ctx.free_vars(ty, &mut free);
+                if !free.is_disjoint(&connected) {
+                    connected.extend(free.difference(&external));
+                }
+            }
+            if connected.len() == before {
+                *vars = connected.into_iter().collect();
+                return;
+            }
+        }
     }
 
     /// Every type variable a pending arithmetic overload rests on.
@@ -838,8 +892,14 @@ impl Checker {
             self.discards.push(Discard::explicit(value_ty.clone(), pos));
         }
         let binding_ty = if let Some(te) = ty {
-            let annotated = type_expr_to_type(te, &HashMap::new());
-            self.unify_or_err(&annotated, &value_ty, &format!("let `{name}`"), pos);
+            let binder = self.current_fn_typarams.clone();
+            let annotated = self.annotation_type(te, &binder, te.position.or(pos));
+            self.unify_or_err(
+                &annotated,
+                &value_ty,
+                &format!("let `{}`", annotation_name(name)),
+                pos,
+            );
             annotated
         } else {
             value_ty.clone()
@@ -860,6 +920,9 @@ impl Checker {
         let mut scheme = self.generalize_with_obligations(env, &binding_ty);
         let pinned = self.stateful_handle_vars(&binding_ty);
         scheme.vars.retain(|v| !pinned.contains(v));
+        let _ = self
+            .scheme_obligations
+            .insert(format!("let {pos:?} {name}"), scheme.obligations.clone());
         if mutable {
             env.insert_mutable(name, scheme);
         } else {
@@ -1009,6 +1072,7 @@ impl Checker {
         self.defer_arith = false;
         for _ in 0..self.builtin_uses.len().saturating_add(1) {
             let before = self.ctx.bound_count();
+            self.resolve_field_uses();
             let uses = self.builtin_uses.clone();
             for (name, ty) in &uses {
                 self.resolve_deferred_arith(name, ty);
@@ -1088,10 +1152,32 @@ pub fn check_program_exports(program: &Program, exports: &[&str]) -> Vec<TypeErr
 /// backend always receives the best-effort resolved shape of every declaration.
 #[must_use]
 pub fn infer_program(program: &Program) -> crate::info::ProgramTypes {
-    use crate::info::{CtorLayout, ProgramTypes};
-    let mut checker = checked_program(program);
-    let call_bindings =
-        crate::applications::collect(program, &checker.instantiations, &mut checker.ctx);
+    publish_program(program, checked_program(program), true)
+}
+
+/// Diagnostics need one checked solve and no backend call elaboration.
+pub(crate) fn infer_checked(
+    program: &Program,
+) -> Result<crate::info::ProgramTypes, Vec<TypeError>> {
+    let checker = checked_program(program);
+    if checker.errors.is_empty() {
+        Ok(publish_program(program, checker, false))
+    } else {
+        Err(checker.errors)
+    }
+}
+
+fn publish_program(
+    program: &Program,
+    mut checker: Checker,
+    applications: bool,
+) -> crate::info::ProgramTypes {
+    use crate::info::ProgramTypes;
+    let call_bindings = if applications {
+        crate::applications::collect(program, &checker.instantiations, &mut checker.ctx)
+    } else {
+        HashMap::new()
+    };
 
     let functions = checker
         .fn_sigs
@@ -1102,30 +1188,7 @@ pub fn infer_program(program: &Program) -> crate::info::ProgramTypes {
             (name.clone(), (rp, rr))
         })
         .collect();
-    let ctors = checker
-        .ctors
-        .iter()
-        .map(|(name, info)| {
-            // A declared type parameter resolves to a type variable — the
-            // backend lowers a variable to its uniform boxed representation,
-            // which is exactly the generic-payload rule.
-            let pmap = erased_type_params(&info.type_params);
-            let fields = info
-                .fields
-                .iter()
-                .map(|(f, written)| (f.clone(), type_name_to_type(written, &pmap)))
-                .collect();
-            (
-                name.clone(),
-                CtorLayout {
-                    owner: info.owner.clone(),
-                    owner_is_record: info.owner_is_record,
-                    type_params: info.type_params.clone(),
-                    fields,
-                },
-            )
-        })
-        .collect();
+    let ctors = publish_ctors(&checker);
     let unions = checker.union_variants.clone();
     // The erased view of every effect: each declared type parameter resolves
     // to a type variable, which the backend lowers to its uniform boxed
@@ -1173,6 +1236,8 @@ pub fn infer_program(program: &Program) -> crate::info::ProgramTypes {
         ((pos.line, pos.column), site)
     }));
     ProgramTypes {
+        obligations: publish_obligations(&mut checker),
+        methods: crate::methods::collect(program, &checker.methods),
         functions,
         ctors,
         unions,
@@ -1212,6 +1277,49 @@ pub fn infer_program(program: &Program) -> crate::info::ProgramTypes {
     }
 }
 
+/// Publish constructor fields using the common erased binder numbering.
+fn publish_obligations(checker: &mut Checker) -> HashMap<String, Vec<(String, Type)>> {
+    checker
+        .scheme_obligations
+        .iter()
+        .map(|(owner, obligations)| {
+            let resolved = obligations
+                .iter()
+                .map(|(name, ty)| (name.clone(), checker.ctx.apply(ty)))
+                .collect();
+            (owner.clone(), resolved)
+        })
+        .collect()
+}
+
+fn publish_ctors(checker: &Checker) -> HashMap<String, crate::info::CtorLayout> {
+    use crate::info::CtorLayout;
+    checker
+        .ctors
+        .iter()
+        .map(|(name, info)| {
+            // A declared type parameter resolves to a type variable — the
+            // backend lowers a variable to its uniform boxed representation,
+            // which is exactly the generic-payload rule.
+            let pmap = erased_type_params(&info.type_params);
+            let fields = info
+                .fields
+                .iter()
+                .map(|(f, written)| (f.clone(), type_name_to_type(written, &pmap)))
+                .collect();
+            (
+                name.clone(),
+                CtorLayout {
+                    owner: info.owner.clone(),
+                    owner_is_record: info.owner_is_record,
+                    type_params: info.type_params.clone(),
+                    fields,
+                },
+            )
+        })
+        .collect()
+}
+
 /// Collect declarations and type-check a program before either caller consumes
 /// diagnostics or publishes inferred backend metadata.
 fn checked_program(program: &Program) -> Checker {
@@ -1225,6 +1333,7 @@ fn checked_program_with_exports(program: &Program, exports: &[&str]) -> Checker 
     checker.check(program, &mut env);
     checker.resolve_deferred_arithmetic();
     loop {
+        checker.resolve_field_uses();
         let instances = effect_instances(&mut checker);
         let errors = crate::effect_rows::check(program, &instances, exports);
         if !refine_handler_arguments(&mut checker, &instances) {
@@ -1238,8 +1347,8 @@ fn checked_program_with_exports(program: &Program, exports: &[&str]) -> Checker 
     checker
 }
 
-/// Publish the current inference solution for the closed-program effect proof.
-fn effect_instances(checker: &mut Checker) -> crate::effect_rows::Instances {
+/// Compose call substitutions through aliases before specializing effects.
+fn resolved_instantiations(checker: &mut Checker) -> HashMap<usize, HashMap<VarId, Type>> {
     let substitutions: HashMap<_, HashMap<_, _>> = checker
         .instantiations
         .iter()
@@ -1253,7 +1362,7 @@ fn effect_instances(checker: &mut Checker) -> crate::effect_rows::Instances {
             )
         })
         .collect();
-    let substitutions: HashMap<_, _> = substitutions
+    substitutions
         .iter()
         .map(|(site, bindings)| {
             (
@@ -1261,8 +1370,12 @@ fn effect_instances(checker: &mut Checker) -> crate::effect_rows::Instances {
                 crate::applications::expanded(bindings, &substitutions),
             )
         })
-        .collect();
-    let resolved_arguments: Vec<Vec<Type>> = checker
+        .collect()
+}
+
+/// Preserve open as well as closed argument types for handler refinement.
+fn resolved_effect_arguments(checker: &mut Checker) -> Vec<Vec<Type>> {
+    checker
         .perform_tys
         .clone()
         .into_iter()
@@ -1271,7 +1384,13 @@ fn effect_instances(checker: &mut Checker) -> crate::effect_rows::Instances {
                 .map(|arg| checker.ctx.apply(arg))
                 .collect::<Vec<_>>()
         })
-        .collect();
+        .collect()
+}
+
+/// Publish the current inference solution for the closed-program effect proof.
+fn effect_instances(checker: &mut Checker) -> crate::effect_rows::Instances {
+    let substitutions = resolved_instantiations(checker);
+    let resolved_arguments = resolved_effect_arguments(checker);
     let argument_types = resolved_arguments
         .iter()
         .cloned()
@@ -1326,6 +1445,7 @@ fn effect_instances(checker: &mut Checker) -> crate::effect_rows::Instances {
         }
     }
     crate::effect_rows::Instances {
+        methods: checker.methods.clone(),
         performs,
         handlers: dedupe_sites(handler_tys.into_iter().map(|(position, arguments, _)| {
             (

@@ -7,11 +7,11 @@
 //! the next. The rule is therefore decided by re-running the inferrer over an
 //! erased copy of the program and comparing what it published.
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, HashMap, HashSet};
 
 use osprey_ast::{Position, Program};
 
-use crate::check::{check_program, infer_program};
+use crate::check::infer_checked;
 use crate::redundant_sites::{erase, sites, Site, Slot};
 use crate::ty::{Type, VarId};
 
@@ -41,6 +41,13 @@ pub struct TypeWarning {
 /// `let`'s type is still an annotation that changed something.
 type Published = BTreeMap<String, Type>;
 
+/// Equal signatures alone do not prove that dotted calls choose the same
+/// implementation. Preserve dispatch choices alongside the inferred types.
+struct Snapshot {
+    types: Published,
+    methods: crate::methods::Targets,
+}
+
 /// Every redundant annotation in `program`, in source order.
 ///
 /// An ill-typed program yields none: its inferred types are the checker's
@@ -48,36 +55,77 @@ type Published = BTreeMap<String, Type>;
 /// from comparing them would be trustworthy.
 #[must_use]
 pub fn redundant_annotations(program: &Program) -> Vec<TypeWarning> {
-    if !check_program(program).is_empty() {
-        return Vec::new();
-    }
+    redundant_annotations_where(program, |_| true)
+}
+
+/// Select one jointly removable set for the entire program, then report the
+/// requested source annotations. Reports for separate files share that set.
+#[must_use]
+pub fn redundant_annotations_where(
+    program: &Program,
+    include: impl Fn(Option<Position>) -> bool,
+) -> Vec<TypeWarning> {
     let written = sites(program);
-    if written.is_empty() {
+    if !written.iter().any(|site| include(site.position)) {
         return Vec::new();
     }
-    let baseline = published(program);
-    written
+    let Some(baseline) = published(program) else {
+        return Vec::new();
+    };
+    let all: Vec<usize> = (0..written.len()).collect();
+    let removable = if preserves(program, &baseline, &written, &all) {
+        all
+    } else {
+        accumulate(program, &baseline, &written)
+    };
+    removable
         .iter()
-        .enumerate()
-        .filter(|(index, _)| preserves(program, &baseline, *index))
-        .map(|(_, site)| warn(site))
+        .filter_map(|index| written.get(*index))
+        .filter(|site| include(site.position))
+        .map(warn)
         .collect()
 }
 
-/// Whether erasing this annotation leaves `program` typechecking
-/// and publishing the same types, up to renaming of type variables.
+/// Grow the reported set one annotation at a time, in source order, keeping
+/// only those that stay removable alongside everything already kept.
 ///
-/// The published types are compared first because they are what usually
-/// differs, and re-checking is a second full solve this can then skip.
-fn preserves(program: &Program, baseline: &Published, index: usize) -> bool {
-    let candidate = erase(program, &mut |site| site != index);
-    same_types(baseline, &published(&candidate)) && check_program(&candidate).is_empty()
+/// A reader acts on the whole list, so the whole list has to be safe. Judging
+/// each annotation against the untouched program answers a question nobody
+/// asked: mutually-pinning annotations each look removable while the others
+/// hold the type down, and a reader who deletes all of them gets a different
+/// program. Every set this returns has been solved for as a set.
+fn accumulate(program: &Program, baseline: &Snapshot, written: &[Site]) -> Vec<usize> {
+    let mut kept: Vec<usize> = Vec::new();
+    for index in 0..written.len() {
+        kept.push(index);
+        if !preserves(program, baseline, written, &kept) {
+            let _ = kept.pop();
+        }
+    }
+    kept
+}
+
+/// Whether erasing every annotation in `chosen` — all of them at once — leaves
+/// `program` typechecking and publishing the same types, up to renaming of
+/// type variables.
+///
+/// One checked solve both validates the candidate and publishes its types.
+fn preserves(program: &Program, baseline: &Snapshot, written: &[Site], chosen: &[usize]) -> bool {
+    let erasing: HashSet<usize> = chosen
+        .iter()
+        .filter_map(|index| written.get(*index))
+        .flat_map(|site| site.members.iter().copied())
+        .collect();
+    let candidate = erase(program, &mut |slot| !erasing.contains(&slot));
+    published(&candidate).is_some_and(|candidate| {
+        baseline.methods == candidate.methods && same_types(&baseline.types, &candidate.types)
+    })
 }
 
 /// Everything the inferrer resolved, labelled so two runs compare entry by
 /// entry.
-fn published(program: &Program) -> Published {
-    let types = infer_program(program);
+fn published(program: &Program) -> Option<Snapshot> {
+    let types = infer_checked(program).ok()?;
     let functions = types.functions.iter().map(|(name, (params, ret))| {
         let signature = Type::Fun {
             params: params.clone(),
@@ -95,19 +143,45 @@ fn published(program: &Program) -> Published {
             let _ = published.insert(format!("binder {function} {name}"), ty.clone());
         }
     }
+    for (owner, obligations) in &types.obligations {
+        for (index, (name, ty)) in obligations.iter().enumerate() {
+            let _ = published.insert(format!("constraint {owner} {index} {name}"), ty.clone());
+        }
+    }
     for (position, site) in &types.performs {
-        publish_operation(&mut published, &format!("perform {position:?}"), &site.op, &site.effect_args);
+        publish_operation(
+            &mut published,
+            &format!("perform {position:?}"),
+            &site.op,
+            &site.effect_args,
+        );
     }
     for (position, site) in &types.handler_ops {
         for (operation, op) in &site.ops {
-            publish_operation(&mut published, &format!("handler {position:?} {operation}"), op, &site.effect_args);
+            publish_operation(
+                &mut published,
+                &format!("handler {position:?} {operation}"),
+                op,
+                &site.effect_args,
+            );
         }
     }
-    published
+    Some(Snapshot {
+        types: published,
+        methods: types.methods,
+    })
 }
 
-fn publish_operation(published: &mut Published, label: &str, operation: &crate::info::OpType, arguments: &[Type]) {
-    let _ = published.insert(label.to_owned(), Type::fun(operation.params.clone(), operation.ret.clone()));
+fn publish_operation(
+    published: &mut Published,
+    label: &str,
+    operation: &crate::info::OpType,
+    arguments: &[Type],
+) {
+    let _ = published.insert(
+        label.to_owned(),
+        Type::fun(operation.params.clone(), operation.ret.clone()),
+    );
     for (index, argument) in arguments.iter().enumerate() {
         let _ = published.insert(format!("{label} argument {index}"), argument.clone());
     }
@@ -130,6 +204,9 @@ fn sited<'a>(
 fn warn(site: &Site) -> TypeWarning {
     let written = &site.written;
     let message = match &site.slot {
+        Slot::Signature { owner } => format!(
+            "redundant type signature on `{owner}`: inference derives `{written}` without it"
+        ),
         Slot::Param {
             owner, parameter, ..
         } => format!(

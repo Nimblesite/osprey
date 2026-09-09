@@ -96,23 +96,29 @@ pub(crate) fn incoming_param(
     sig: ParamSig,
     owner: Option<String>,
 ) -> Value {
+    let owner = owner.or_else(|| {
+        sig.inferred_type
+            .as_ref()
+            .and_then(|ty| crate::types::owner_name(&cg.prog, ty))
+    });
     // A handle parameter's `owner` slot carries its ELEMENT's tag, not its own
     // — a fiber or channel id is a machine word with nothing to own.
     let (own_tag, elem_tag) = match sig.fiber {
         Some(_) => (None, owner),
         None => (owner, None),
     };
-    let value = if let Some(inner) = sig.result_inner {
+    let mut value = if let Some(inner) = sig.result_inner {
         let struct_ty = crate::llty::result_struct_ty(inner);
         let typed = cg.emit_reg(format!("bitcast i8* {operand} to {struct_ty}*"));
         Value::result(typed, inner)
     } else {
         Value::new(operand, sig.ty).with_owner(own_tag)
     };
+    value.inferred_type = sig.inferred_type;
     match sig.fiber {
         Some(fiber) => {
             let mut restored = fiber.restore(value);
-            restored.fiber_elem_owner = elem_tag;
+            restored.fiber_elem_owner = elem_tag.or(restored.fiber_elem_owner);
             restored
         }
         None => value,

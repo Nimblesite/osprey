@@ -1,6 +1,10 @@
 # Function Calls
 
-Default calls lower to one `Expr::Call`. ML whitespace application and
+Ordinary Default calls lower to one `Expr::Call`. Dotted calls retain their
+receiver until its type determines field access or UFCS fallback
+([BUILTIN-STRING-UFCS](0012-Built-InFunctions.md#calling-style--builtin-string-ufcs)).
+For a generic receiver this selection occurs at each instantiation.
+ML whitespace application and
 uncurried grouping lower to the same node shapes as described in
 [FLAVOR-CURRY](0023-LanguageFlavors.md#currying-canonicalisation) and
 [FLAVOR-ML-CALL](0024-MLFlavorSyntax.md).
@@ -38,6 +42,11 @@ For a known function or extern, named values are reordered to the declaration's
 parameter order. The grammar does not permit positional and named arguments in
 one argument list. Unknown and duplicate argument names are not rejected
 consistently; a named call must use each declared name exactly once.
+
+In a UFCS call such as `receiver.f(second: value)`, the receiver supplies the
+first declared parameter. Written names supply the remaining parameters in
+declaration order. The implicit receiver is preserved even though the written
+argument list is named.
 
 The ML equivalent of the flat two-parameter function is uncurried application:
 

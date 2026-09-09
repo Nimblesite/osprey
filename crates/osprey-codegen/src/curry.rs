@@ -32,7 +32,12 @@ pub(crate) fn try_spine(
     arguments: &[Expr],
     named: &[NamedArgument],
 ) -> Result<Option<Value>> {
-    let Some(Spine { head, application, mut groups }) = spine(function) else {
+    let Some(Spine {
+        head,
+        application,
+        mut groups,
+    }) = spine(function)
+    else {
         return Ok(None);
     };
     if !cg.fn_defs.contains_key(head) {
@@ -42,7 +47,9 @@ pub(crate) fn try_spine(
     let Some((first, rest)) = groups.split_first() else {
         return Ok(None);
     };
-    crate::expr::with_application(cg, application, |cg| crate::genfn::try_inline(cg, head, first.0, first.1, rest))
+    crate::expr::with_application(cg, application, |cg| {
+        crate::genfn::try_inline(cg, head, first.0, first.1, rest)
+    })
 }
 
 /// Flatten an application spine into its head identifier and argument groups,
@@ -53,10 +60,12 @@ fn spine(expr: &Expr) -> Option<Spine<'_>> {
     let mut application = None;
     loop {
         match node {
-            Expr::TypeApply { function, position, .. } => {
+            Expr::TypeApply {
+                function, position, ..
+            } => {
                 application = *position;
                 node = function;
-            },
+            }
             Expr::Call {
                 function,
                 arguments,
@@ -67,7 +76,11 @@ fn spine(expr: &Expr) -> Option<Spine<'_>> {
             }
             Expr::Identifier(name) => {
                 groups.reverse();
-                return Some(Spine { head: name, application, groups });
+                return Some(Spine {
+                    head: name,
+                    application,
+                    groups,
+                });
             }
             _ => return None,
         }

@@ -237,6 +237,7 @@ fn param_of(v: &Value) -> ParamSig {
         ty: v.ty,
         result_inner: v.result_inner,
         fiber: None,
+        inferred_type: v.inferred_type.clone(),
     }
 }
 
@@ -256,6 +257,9 @@ fn bind_params(
         // the call's duration, exactly as a top-level function's are
         // [GC-ARC-PERCEUS].
         let value = crate::cast::incoming_param(cg, format!("%{reg}"), sig.clone(), owner.clone());
+        if let Some(ty) = &value.inferred_type {
+            cg.bind_fn_local(&p.name, ty.clone());
+        }
         cg.bind(p.name.clone(), value);
         out.push((sig.ty, reg));
     }

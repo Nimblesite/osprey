@@ -52,8 +52,10 @@ fn type_application_pins_a_binder_no_argument_mentions() {
 fn the_unpinnable_binder_is_the_control_for_that_case() {
     rejected_somehow(
         Flavor::Default,
-        &format!(r#"{EMPTY}let held = empty()
-print("${{length(held)}}")"#),
+        &format!(
+            r#"{EMPTY}let held = empty()
+print("${{length(held)}}")"#
+        ),
     );
 }
 

@@ -41,6 +41,7 @@ impl OpSig {
             ty: LType::I64,
             result_inner: None,
             fiber: None,
+            inferred_type: None,
         }
     }
 

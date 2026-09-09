@@ -235,6 +235,29 @@ All three desugar to the same call. Rules:
 - **UFCS (`x.f(args)`)** rewrites to `f(x, args)`. **Parens are required** to disambiguate from field access — `x.f` always means field access, never a method call. If a record has a field named `f`, field access wins; UFCS is the fallback.
 - **Direct call** is ordinary function application.
 
+For dotted calls, the receiver's resolved type determines the choice. A
+declared field named `f` is selected even when a free function with that name
+is in scope. The field value must be callable; a non-callable field is an
+error and does not enable fallback. Calling the field passes only the written
+arguments. UFCS passes the receiver first, followed by the written arguments,
+and is considered only when the receiver has no such field.
+
+This rule also applies inside generic functions. If the receiver is still a
+type variable when the body is checked, selection remains deferred and is
+resolved for each instantiation. For example, `dispatch<T>(x:T) = x.m()` may
+select a record's `m` field for one call and a free `m(x)` for a scalar call.
+The receiver, argument, result, and callback type constraints remain linked
+through generalization and instantiation. An annotation cannot be required
+solely to compensate for losing those links.
+
+Written type arguments apply to the selected callable's declaration binders.
+A function-valued field has no declaration binders, so `record.f<int>()` is
+rejected even if an in-scope free `f` declares a type parameter. The selected
+callable also determines the call's effect requirements: an ignored free
+function contributes none, and selecting a field cannot discard its effects.
+Evaluation of the receiver and written argument expressions still contributes
+their own effects exactly once.
+
 Multi-argument functions in this spec are documented subject-first (e.g. `split(s: string, separator: string)`) so all three forms work uniformly.
 
 ### Inspection (total) — [BUILTIN-STRING-INSPECTION]

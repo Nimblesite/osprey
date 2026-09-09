@@ -57,6 +57,9 @@ pub(crate) fn gen_spawn(cg: &mut Codegen, e: &Expr) -> Result<Value> {
 /// can tag the handle for `await` to unbox.
 fn thunk_body(cg: &mut Codegen, e: &Expr) -> Result<Value> {
     let v = gen_expr(cg, e)?;
+    // Await restores the runtime list ABI, so materialize an inlined generic
+    // call's literal result before its pointer crosses the fiber boundary.
+    let v = crate::listlit::escaping(cg, v);
     let elem = v.clone();
     // The result escapes boxed across the fiber boundary: dup it before the
     // thunk's owners drop, so the runtime's completed-result slot holds +1

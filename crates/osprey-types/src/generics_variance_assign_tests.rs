@@ -164,7 +164,11 @@ fn every_marker_rejects_an_unrelated_payload() {
 /// `out` inside `out` recurses, and still bottoms out exact.
 #[test]
 fn covariance_inside_covariance_still_bottoms_out_exact() {
-    blocked(NESTED, "Feed<Feed<Result<int, MathError>>>", "feedFeedInt()");
+    blocked(
+        NESTED,
+        "Feed<Feed<Result<int, MathError>>>",
+        "feedFeedInt()",
+    );
     flows(NESTED, "Feed<Feed<int>>", "feedFeedInt()");
 }
 

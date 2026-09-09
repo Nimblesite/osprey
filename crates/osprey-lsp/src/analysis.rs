@@ -252,7 +252,10 @@ fn walk_expr(e: &Expr, prefix: &[String], out: &mut Vec<SymbolInfo>) {
             walk_expr(left, prefix, out);
             walk_expr(right, prefix, out);
         }
-        Expr::Unary { operand, .. } => walk_expr(operand, prefix, out),
+        Expr::TypeApply {
+            function: operand, ..
+        }
+        | Expr::Unary { operand, .. } => walk_expr(operand, prefix, out),
         other => walk_expr_rest(other, prefix, out),
     }
 }

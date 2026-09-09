@@ -279,6 +279,7 @@ fn gen_function(
                     ty: LType::I64,
                     result_inner: None,
                     fiber: None,
+                    inferred_type: None,
                 },
                 None,
             );
@@ -308,7 +309,11 @@ fn gen_function(
     for (i, (p, (pty, owner))) in parameters.iter().zip(param_sig.iter()).enumerate() {
         let reg = crate::llty::param_register(i);
         let mut v = crate::cast::incoming_param(cg, format!("%{reg}"), pty.clone(), owner.clone());
-        v.inferred_type = cg.prog.param_types(name).and_then(|types| types.get(i)).cloned();
+        v.inferred_type = cg
+            .prog
+            .param_types(name)
+            .and_then(|types| types.get(i))
+            .cloned();
         cg.emit_debug_param(&p.name, &v);
         cg.bind(p.name.clone(), v);
         params.push((pty.ty, reg));

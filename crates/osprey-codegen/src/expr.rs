@@ -14,20 +14,40 @@ use osprey_ast::{Expr, InterpolatedPart, NamedArgument, Parameter, Position, Stm
 
 pub(crate) fn gen_expr(cg: &mut Codegen, expr: &Expr) -> Result<Value> {
     let inferred = match expr {
-        Expr::Integer(_) => Some(osprey_types::Type::con(osprey_types::names::INT, Vec::new())),
-        Expr::Float(_) => Some(osprey_types::Type::con(osprey_types::names::FLOAT, Vec::new())),
-        Expr::Bool(_) => Some(osprey_types::Type::con(osprey_types::names::BOOL, Vec::new())),
-        Expr::Str(_) | Expr::InterpolatedStr(_) => Some(osprey_types::Type::con(osprey_types::names::STRING, Vec::new())),
+        Expr::Integer(_) => Some(osprey_types::Type::con(
+            osprey_types::names::INT,
+            Vec::new(),
+        )),
+        Expr::Float(_) => Some(osprey_types::Type::con(
+            osprey_types::names::FLOAT,
+            Vec::new(),
+        )),
+        Expr::Bool(_) => Some(osprey_types::Type::con(
+            osprey_types::names::BOOL,
+            Vec::new(),
+        )),
+        Expr::Str(_) | Expr::InterpolatedStr(_) => Some(osprey_types::Type::con(
+            osprey_types::names::STRING,
+            Vec::new(),
+        )),
         Expr::Call { function, .. } => cg.callee_fn_type(function).and_then(|ty| match ty {
             osprey_types::Type::Fun { ret, .. } => Some(*ret),
             _ => None,
         }),
-        Expr::List(_, position) => cg.prog.list_elem_type(*position).cloned().map(|element| osprey_types::Type::con(osprey_types::names::LIST, vec![element])),
-        Expr::Perform { position, .. } => position.and_then(|p| cg.prog.performs.get(&(p.line, p.column))).map(|site| site.op.ret.clone()),
+        Expr::List(_, position) => cg
+            .prog
+            .list_elem_type(*position)
+            .cloned()
+            .map(|element| osprey_types::Type::con(osprey_types::names::LIST, vec![element])),
+        Expr::Perform { position, .. } => position
+            .and_then(|p| cg.prog.performs.get(&(p.line, p.column)))
+            .map(|site| site.op.ret.clone()),
         _ => None,
     };
     let mut value = gen_expr_raw(cg, expr)?;
-    if let Some(ty) = inferred.filter(|ty| !osprey_types::has_type_var(ty)) { value.inferred_type = Some(ty); }
+    if let Some(ty) = inferred.filter(|ty| !osprey_types::has_type_var(ty)) {
+        value.inferred_type = Some(ty);
+    }
     Ok(value)
 }
 
@@ -67,7 +87,9 @@ fn gen_expr_raw(cg: &mut Codegen, expr: &Expr) -> Result<Value> {
                 None => Err(CodegenError::unknown(name)),
             },
         },
-        Expr::TypeApply { function, .. } => gen_expr(cg, function),
+        Expr::TypeApply {
+            function, position, ..
+        } => with_application(cg, *position, |cg| gen_expr(cg, function)),
         Expr::Binary { op, left, right } => gen_binary(cg, op, left, right),
         Expr::Unary { op, operand } => gen_unary(cg, op, operand),
         Expr::Call {
@@ -75,6 +97,12 @@ fn gen_expr_raw(cg: &mut Codegen, expr: &Expr) -> Result<Value> {
             arguments,
             named_arguments,
         } => gen_call(cg, function, arguments, named_arguments),
+        Expr::MethodCall {
+            target,
+            method,
+            arguments,
+            named_arguments,
+        } => gen_method_call(cg, target, method, arguments, named_arguments),
         Expr::Match { value, arms } => gen_match(cg, value, arms),
         Expr::Block { statements, value } => gen_block(cg, statements, value.as_deref()),
         Expr::TypeConstructor { name, fields, .. } => {
@@ -821,18 +849,80 @@ const BUILTIN_DISPATCH: [BuiltinDispatch; 8] = [
 ];
 
 pub(crate) fn unapplied(mut expression: &Expr) -> &Expr {
-    while let Expr::TypeApply { function, .. } = expression { expression = function; }
+    while let Expr::TypeApply { function, .. } = expression {
+        expression = function;
+    }
     expression
 }
 
-pub(crate) fn with_application<R>(cg: &mut Codegen, position: Option<Position>, generate: impl FnOnce(&mut Codegen) -> R) -> R {
-    let bindings = position.and_then(|p| cg.prog.applications.get(&(p.line, p.column))).cloned();
+pub(crate) fn with_application<R>(
+    cg: &mut Codegen,
+    position: Option<Position>,
+    generate: impl FnOnce(&mut Codegen) -> R,
+) -> R {
+    let bindings = position
+        .and_then(|p| cg.prog.applications.get(&(p.line, p.column)))
+        .cloned();
     let original = bindings.map(|b| {
         let specialized = cg.prog.specialized(&b);
         std::mem::replace(&mut cg.prog, specialized)
     });
     let result = generate(cg);
-    if let Some(original) = original { cg.prog = original; }
+    if let Some(original) = original {
+        cg.prog = original;
+    }
+    result
+}
+
+/// Deferred generic dotted calls select against the instantiated receiver.
+/// Binding its value before selecting also guarantees exactly one evaluation.
+fn gen_method_call(
+    cg: &mut Codegen,
+    target: &Expr,
+    method: &str,
+    arguments: &[Expr],
+    named: &[NamedArgument],
+) -> Result<Value> {
+    let receiver = gen_expr(cg, target)?;
+    let source = osprey_ast::symbol::demangle(method).unwrap_or_else(|| method.to_owned());
+    let field = source.rsplit("::").next().unwrap_or(&source);
+    let has_field = receiver
+        .inferred_type
+        .as_ref()
+        .and_then(|ty| cg.prog.field_type(ty, field))
+        .is_some()
+        || receiver
+            .osp_ty
+            .as_ref()
+            .and_then(|owner| cg.prog.ctors.get(owner))
+            .is_some_and(|ctor| ctor.fields.iter().any(|(name, _)| name == field));
+    let temporary = osprey_ast::generated_name("method_receiver", 0);
+    if !has_field
+        && !cg.fn_params.contains_key(method)
+        && !cg.prog.functions.contains_key(method)
+        && !cg.call_aliases.contains_key(method)
+        && !cg.module_globals.contains_key(method)
+        && cg.lambda_def(method).is_none()
+        && cg.lookup(method).is_none()
+        && osprey_types::builtin_signature(method).is_none()
+    {
+        return Err(CodegenError::unsupported("method call"));
+    }
+    let target = Expr::Identifier(temporary.clone());
+    let mut arguments = arguments.to_vec();
+    let function = if has_field {
+        Expr::FieldAccess {
+            target: Box::new(target),
+            field: field.to_owned(),
+        }
+    } else {
+        arguments.insert(0, target);
+        Expr::Identifier(method.to_owned())
+    };
+    cg.push_scope();
+    cg.bind(temporary, receiver);
+    let result = gen_call(cg, &function, &arguments, named);
+    cg.pop_scope();
     result
 }
 
@@ -842,7 +932,10 @@ fn gen_call(
     arguments: &[Expr],
     named: &[NamedArgument],
 ) -> Result<Value> {
-    if let Expr::TypeApply { function, position, .. } = function {
+    if let Expr::TypeApply {
+        function, position, ..
+    } = function
+    {
         return with_application(cg, *position, |cg| gen_call(cg, function, arguments, named));
     }
     // A directly-applied lambda (`x |> fn(y) => …`, `(fn(y) => …)(x)`) is
@@ -876,7 +969,7 @@ fn gen_call(
                 .as_ref()
                 .and_then(|t| Codegen::fn_value_sig(&cg.prog, t));
             if let Some(sig) = sig {
-                return call_fn_value(cg, function, &sig, arguments, named);
+                return call_fn_value(cg, function, Some(&sig), arguments, named);
             }
         }
     }
@@ -885,14 +978,11 @@ fn gen_call(
         // application (`add3(1)(2)(3)`) or a function held in a record field.
         // Recover its signature from the type table and dispatch through the
         // closure cell; fail loudly only when the callee is not a function value.
-        if let Some(sig) = cg
+        let sig = cg
             .callee_fn_type(function)
             .as_ref()
-            .and_then(|t| Codegen::fn_value_sig(&cg.prog, t))
-        {
-            return call_fn_value(cg, function, &sig, arguments, named);
-        }
-        return Err(CodegenError::unsupported("indirect / higher-order call"));
+            .and_then(|t| Codegen::fn_value_sig(&cg.prog, t));
+        return call_fn_value(cg, function, sig.as_ref(), arguments, named);
     };
     // A function-valued parameter (bound while inlining a generic function)
     // redirects to its real callee, so `f(x)` becomes `toString(x)` / `addOne(x)`.
@@ -975,13 +1065,38 @@ fn gen_call(
 fn call_fn_value(
     cg: &mut Codegen,
     callee: &Expr,
-    sig: &FnSig,
+    sig: Option<&FnSig>,
     arguments: &[Expr],
     named: &[NamedArgument],
 ) -> Result<Value> {
     let handle = gen_expr(cg, callee)?;
+    // Generic constructor layouts retain erased field templates. The loaded
+    // closure carries its instantiated type, including float returns and the
+    // function types of callback parameters.
+    let semantic = handle.inferred_type.as_ref();
+    let actual = semantic.and_then(|ty| Codegen::fn_value_sig(&cg.prog, ty));
+    let sig = actual
+        .as_ref()
+        .or(sig)
+        .ok_or_else(|| CodegenError::unsupported("indirect / higher-order call"))?;
+    let slots: Vec<_> = match semantic {
+        Some(osprey_types::Type::Fun { params, .. }) => params
+            .iter()
+            .map(|ty| Codegen::fn_value_sig(&cg.prog, ty))
+            .collect(),
+        _ => Vec::new(),
+    };
     let exprs = arg_exprs(arguments, named);
-    crate::closure::cell_call_exprs(cg, &handle.operand, sig, &exprs)
+    let values = exprs
+        .iter()
+        .enumerate()
+        .map(|(i, expr)| eval_arg(cg, expr, slots.get(i).and_then(Option::as_ref), false))
+        .collect::<Result<Vec<_>>>()?;
+    let mut result = crate::closure::cell_call_values(cg, &handle.operand, sig, values)?;
+    if let Some(osprey_types::Type::Fun { ret, .. }) = semantic {
+        result.inferred_type = Some((**ret).clone());
+    }
+    Ok(result)
 }
 
 /// Beta-reduce a lambda at its application site: bind each parameter to its
@@ -1291,20 +1406,27 @@ fn ordered_args(
         if let Some(pnames) = cg.fn_params.get(name).cloned() {
             let mut out = Vec::new();
             for (i, pn) in pnames.iter().enumerate() {
-                if let Some(na) = named.iter().find(|a| &a.name == pn) {
+                if let Some(argument) = arguments
+                    .get(i)
+                    .or_else(|| named.iter().find(|a| &a.name == pn).map(|a| &a.value))
+                {
                     out.push(eval_arg(
                         cg,
-                        &na.value,
+                        argument,
                         sigs.get(i).and_then(Option::as_ref),
                         ffi,
                     )?);
                 }
             }
-            if out.len() == named.len() {
+            if out.len() == arguments.len() + named.len() {
                 return Ok(out);
             }
         }
-        return named.iter().map(|na| gen_expr(cg, &na.value)).collect();
+        return arguments
+            .iter()
+            .chain(named.iter().map(|na| &na.value))
+            .map(|argument| gen_expr(cg, argument))
+            .collect();
     }
     arguments
         .iter()
@@ -1320,6 +1442,12 @@ fn ordered_args(
 /// Everything else goes through `gen_expr` (where a user function name becomes
 /// its forwarder cell).
 fn eval_arg(cg: &mut Codegen, expr: &Expr, sig: Option<&FnSig>, ffi: bool) -> Result<Value> {
+    if let Expr::TypeApply {
+        function, position, ..
+    } = expr
+    {
+        return with_application(cg, *position, |cg| eval_arg(cg, function, sig, ffi));
+    }
     match (expr, sig) {
         (
             Expr::Lambda {

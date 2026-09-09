@@ -97,9 +97,18 @@ pub(crate) fn result_payload_owner(prog: &ProgramTypes, ty: &Type) -> Option<Str
 /// element's `LType` through parameters and returns [GPU-BUFFER-ELEM].
 pub fn owner_name(prog: &ProgramTypes, ty: &Type) -> Option<String> {
     match ty {
-        Type::Record { name, fields } if prog.ctors.get(name).is_some_and(|layout| !layout.type_params.is_empty()) => {
+        Type::Record { name, fields }
+            if prog
+                .ctors
+                .get(name)
+                .is_some_and(|layout| !layout.type_params.is_empty()) =>
+        {
             let layout = prog.ctors.get(name)?;
-            let shape: Option<Vec<_>> = layout.fields.iter().map(|(field, _)| fields.get(field).map(|ty| ltype_of(ty).as_str())).collect();
+            let shape: Option<Vec<_>> = layout
+                .fields
+                .iter()
+                .map(|(field, _)| fields.get(field).map(|ty| ltype_of(ty).as_str()))
+                .collect();
             shape.map(|shape| format!("{name}#{}", shape.join(",")))
         }
         Type::Record { name, .. } | Type::Union { name, .. } => Some(name.clone()),
@@ -154,7 +163,11 @@ pub(crate) fn record_shape(prog: &ProgramTypes, name: &str, args: &[Type]) -> Op
     if !layout.owner_is_record || layout.type_params.is_empty() {
         return None;
     }
-    let shape: Vec<&str> = layout.fields.iter().map(|(_, t)| ltype_of(&substituted(t, args)).as_str()).collect();
+    let shape: Vec<&str> = layout
+        .fields
+        .iter()
+        .map(|(_, t)| ltype_of(&substituted(t, args)).as_str())
+        .collect();
     Some(format!("{name}#{}", shape.join(",")))
 }
 

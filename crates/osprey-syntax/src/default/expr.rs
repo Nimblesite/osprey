@@ -212,16 +212,11 @@ impl Lowerer<'_> {
                 index: Box::new(self.lower_expr(index)),
             };
         }
-        // function/method call. UFCS [BUILTIN-STRING-UFCS]: `x.f(a, …)` is
-        // sugar for `f(x, a, …)`, so a
-        // field-access callee lowers to an ordinary call with the receiver as the
-        // first positional argument — keeping method calls invisible downstream.
-        let (mut arguments, named_arguments) = self.lower_arg_list(node);
+        // Keep an ordinary dotted call until inference can distinguish a
+        // callable record field from receiver-first sugar [BUILTIN-STRING-UFCS].
+        // Written type arguments apply a named function's declared binders.
+        let (arguments, named_arguments) = self.lower_arg_list(node);
         if let Some(args) = node.child_by_field_name("type_arguments") {
-            if let Expr::FieldAccess { target, field } = callee {
-                arguments.insert(0, *target);
-                callee = Expr::Identifier(field);
-            }
             callee = Expr::TypeApply {
                 function: Box::new(callee),
                 type_args: self
@@ -233,14 +228,12 @@ impl Lowerer<'_> {
             };
         }
         match callee {
-            Expr::FieldAccess { target, field } => {
-                arguments.insert(0, *target);
-                Expr::Call {
-                    function: Box::new(Expr::Identifier(field)),
-                    arguments,
-                    named_arguments,
-                }
-            }
+            Expr::FieldAccess { target, field } => Expr::MethodCall {
+                target,
+                method: field,
+                arguments,
+                named_arguments,
+            },
             // A saturated call of a positionally-declared constructor is a
             // construction, not a call ([TYPE-UNION-POSITIONAL]) — the one
             // call-shaped expression exempt from the named-argument rule,

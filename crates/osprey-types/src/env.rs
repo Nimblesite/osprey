@@ -107,6 +107,9 @@ impl TypeEnv {
         for scheme in self.vars.values() {
             let mut fv = BTreeSet::new();
             ctx.free_vars(&scheme.ty, &mut fv);
+            for (_, obligation) in &scheme.obligations {
+                ctx.free_vars(obligation, &mut fv);
+            }
             for q in &scheme.vars {
                 let _ = fv.remove(q);
             }
@@ -177,7 +180,6 @@ pub(crate) fn subst_vars(t: &Type, map: &HashMap<VarId, Type>) -> Type {
         },
     }
 }
-
 #[cfg(test)]
 #[expect(
     clippy::indexing_slicing,

@@ -24,7 +24,10 @@ fn out_in_a_function_parameter_inside_a_list_is_rejected() {
 /// The `Result` ERROR channel is an output position too.
 #[test]
 fn out_is_legal_in_the_result_error_channel() {
-    accepts(Flavor::Default, &decl("<out T>", "failure", "Result<int, T>"));
+    accepts(
+        Flavor::Default,
+        &decl("<out T>", "failure", "Result<int, T>"),
+    );
 }
 
 /// …so a contravariant parameter is rejected there.
@@ -116,17 +119,17 @@ fn mixed_markers_are_checked_per_parameter() {
 /// Swapping the two markers puts each parameter in the wrong position.
 #[test]
 fn swapped_markers_are_rejected_per_parameter() {
-    let errs = check(
-        "type Two<in A, out B> = { give: A, take: (B) -> bool }\nprint(\"declared\")",
-    );
+    let errs = check("type Two<in A, out B> = { give: A, take: (B) -> bool }\nprint(\"declared\")");
     assert!(
-        errs.iter()
-            .any(|e| e.message.contains(&position_message("A", "in", "output", "give", "Two"))),
+        errs.iter().any(|e| e
+            .message
+            .contains(&position_message("A", "in", "output", "give", "Two"))),
         "expected the `A` violation: {errs:?}"
     );
     assert!(
-        errs.iter()
-            .any(|e| e.message.contains(&position_message("B", "out", "input", "take", "Two"))),
+        errs.iter().any(|e| e
+            .message
+            .contains(&position_message("B", "out", "input", "take", "Two"))),
         "expected the `B` violation: {errs:?}"
     );
 }

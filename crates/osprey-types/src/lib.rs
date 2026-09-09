@@ -32,6 +32,7 @@ mod effect_rows_tests;
 mod env;
 mod error;
 mod expr;
+mod fields;
 #[cfg(test)]
 mod generic_effects_tests;
 #[cfg(test)]
@@ -50,6 +51,7 @@ mod generics_variance_shape_tests;
 mod generics_variance_tests;
 mod info;
 mod init_order;
+mod methods;
 mod multiplicity;
 mod pattern;
 mod redundant;
@@ -69,7 +71,9 @@ pub use builtins::{builtin_callback_type, builtin_signature};
 pub use check::{check_program, check_program_exports, erased_var, infer_program};
 pub use error::TypeError;
 pub use info::{CtorLayout, HandlerSite, OpType, PerformSite, ProgramTypes};
-pub use redundant::{redundant_annotations, TypeWarning, REDUNDANT_ANNOTATION};
+pub use redundant::{
+    redundant_annotations, redundant_annotations_where, TypeWarning, REDUNDANT_ANNOTATION,
+};
 pub use ty::{has_type_var, names, render_with_holes, Scheme, Type, VarId, HOLE};
 
 #[cfg(test)]

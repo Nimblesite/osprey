@@ -76,6 +76,9 @@ pub struct ProgramTypes {
     /// Binder identity is part of the contract even when its spelling is omitted.
     pub(crate) declared_params: HashMap<String, HashMap<String, Type>>,
     pub(crate) call_bindings: HashMap<usize, HashMap<VarId, Type>>,
+    pub(crate) methods: crate::methods::Targets,
+    /// Generalized source-binding constraints compared by annotation diagnostics.
+    pub(crate) obligations: HashMap<String, Vec<(String, Type)>>,
 }
 
 /// One `perform` site's resolved instantiation.
@@ -105,7 +108,11 @@ impl ProgramTypes {
             Type::Con { name, args } => {
                 let layout = self.ctors.get(name)?;
                 let (_, ty) = layout.fields.iter().find(|(name, _)| name == field)?;
-                let bindings = args.iter().enumerate().filter_map(|(i, ty)| u32::try_from(i).ok().map(|i| (i, ty.clone()))).collect();
+                let bindings = args
+                    .iter()
+                    .enumerate()
+                    .filter_map(|(i, ty)| u32::try_from(i).ok().map(|i| (i, ty.clone())))
+                    .collect();
                 Some(crate::env::subst_vars(ty, &bindings))
             }
             _ => None,

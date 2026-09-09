@@ -118,9 +118,19 @@ fn type_diagnostics(
         })
         .collect();
     if diagnostics.is_empty() {
-        diagnostics.extend(osprey_types::redundant_annotations(program).into_iter().map(|raised| {
-            warning(source, raised.position.unwrap_or(Position { line: 1, column: 0 }), &raised.message, raised.rule, encoding)
-        }));
+        diagnostics.extend(
+            osprey_types::redundant_annotations(program)
+                .into_iter()
+                .map(|raised| {
+                    warning(
+                        source,
+                        raised.position.unwrap_or(Position { line: 1, column: 0 }),
+                        &raised.message,
+                        raised.rule,
+                        encoding,
+                    )
+                }),
+        );
     }
     diagnostics
 }
@@ -226,11 +236,30 @@ fn assembled_type_errors(
         })
         .collect();
     if errors.is_empty() {
-        diagnostics.extend(osprey_types::redundant_annotations(&project.program).into_iter().filter_map(|raised| {
-            let global = raised.position?;
-            let (owner, line) = project.source_at_line(global.line)?;
-            same_path(&owner.path, file).then(|| warning(source, Position { line, column: global.column }, &raised.message, raised.rule, encoding))
-        }));
+        diagnostics.extend(
+            osprey_types::redundant_annotations_where(&project.program, |position| {
+                position
+                    .and_then(|p| project.source_at_line(p.line))
+                    .is_some_and(|(owner, _)| same_path(&owner.path, file))
+            })
+            .into_iter()
+            .filter_map(|raised| {
+                let global = raised.position?;
+                let (owner, line) = project.source_at_line(global.line)?;
+                same_path(&owner.path, file).then(|| {
+                    warning(
+                        source,
+                        Position {
+                            line,
+                            column: global.column,
+                        },
+                        &raised.message,
+                        raised.rule,
+                        encoding,
+                    )
+                })
+            }),
+        );
     }
     diagnostics
 }

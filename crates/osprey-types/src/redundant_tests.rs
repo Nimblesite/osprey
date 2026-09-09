@@ -134,14 +134,13 @@ fn an_ill_typed_program_reports_no_redundancy() {
 }
 
 #[test]
-fn a_redundant_generic_signature_is_reported_with_its_binder() {
+fn a_redundant_generic_signature_reports_only_what_can_go_together() {
+    // `-> T` is what keeps the declared binder `T` in use once `x: T` goes, so
+    // the two cannot both be deleted and only the first is reported.
     reports(
         Flavor::Default,
         "fn identity<T>(x: T) -> T = x\nlet i = identity(42)\n",
-        &[
-            "redundant type annotation on parameter `x` of `identity`: inference derives `T` without it",
-            "redundant return type annotation on `identity`: inference derives `T` without it",
-        ],
+        &["redundant type annotation on parameter `x` of `identity`: inference derives `T` without it"],
     );
 }
 
@@ -168,14 +167,25 @@ fn a_return_annotation_naming_the_wrong_error_type_is_a_type_error_not_a_warning
 }
 
 #[test]
-fn ml_and_default_spellings_of_one_signature_report_identically() {
-    let default = messages(Flavor::Default, GREET);
-    let ml = messages(
+fn each_flavor_reports_the_lines_that_flavor_lets_you_delete() {
+    // Both surfaces agree the annotation is redundant and agree on the type
+    // inference derives. They differ in how many warnings that is, because
+    // they differ in how many things there are to delete: Default writes the
+    // parameter and the return separately and either can go on its own, while
+    // ML writes one header line that goes as a whole.
+    reports(
+        Flavor::Default,
+        GREET,
+        &[
+            "redundant type annotation on parameter `name` of `greet`: inference derives `string` without it",
+            "redundant return type annotation on `greet`: inference derives `string` without it",
+        ],
+    );
+    reports(
         Flavor::Ml,
         "greet : string -> string\ngreet name = \"hi \" + name\n",
+        &["redundant type signature on `greet`: inference derives `(string) -> string` without it"],
     );
-    assert_eq!(default, ml, "flavors disagreed about the same signature");
-    assert_eq!(ml.len(), 2, "{ml:?}");
 }
 
 #[test]
@@ -188,10 +198,7 @@ fn an_ml_module_body_repeating_its_signature_is_still_redundant() {
     reports(
         Flavor::Ml,
         "signature Api\n    shout : string -> string\n\nmodule M : Api\n    shout : string -> string\n    shout s = s + \"!\"\n",
-        &[
-            "redundant type annotation on parameter `s` of `shout`: inference derives `string` without it",
-            "redundant return type annotation on `shout`: inference derives `string` without it",
-        ],
+        &["redundant type signature on `shout`: inference derives `(string) -> string` without it"],
     );
 }
 
@@ -202,10 +209,7 @@ fn a_module_member_annotation_that_is_not_its_contract_is_still_reported() {
     reports(
         Flavor::Ml,
         "signature Api\n    shout : string -> string\n\nmodule M : Api\n    louder : string -> string\n    louder s = s + \"!!\"\n    shout s = louder s\n",
-        &[
-            "redundant type annotation on parameter `s` of `louder`: inference derives `string` without it",
-            "redundant return type annotation on `louder`: inference derives `string` without it",
-        ],
+        &["redundant type signature on `louder`: inference derives `(string) -> string` without it"],
     );
 }
 
@@ -322,10 +326,7 @@ fn a_namespaced_function_is_reported_by_its_source_name_not_its_symbol() {
     reports(
         Flavor::Ml,
         "namespace tax\n\nrate : string -> string\nrate band = band + \"%\"\n",
-        &[
-            "redundant type annotation on parameter `band` of `rate`: inference derives `string` without it",
-            "redundant return type annotation on `rate`: inference derives `string` without it",
-        ],
+        &["redundant type signature on `rate`: inference derives `(string) -> string` without it"],
     );
 }
 
@@ -449,3 +450,111 @@ fn an_effect_operation_signature_is_never_reported() {
     );
 }
 
+/// The ML header `smaller : int -> int -> int` with `smaller a b = ...`.
+/// One written line; the lowering turns it into a parameter, a curried
+/// function-typed return, and a nested lambda carrying the rest.
+const CURRIED_ML: &str = "smaller : int -> int -> int\n\
+                          smaller a b = match a <= b\n    true => a\n    false => b\n";
+
+#[test]
+fn a_curried_ml_header_that_monomorphises_a_polymorphic_body_is_kept() {
+    // `smaller a b = match a <= b ...` generalises to a comparison over any
+    // one type. The header pins it to `int`, so it is doing real work and no
+    // part of it is redundant. Judging the lowering's fragments one at a time
+    // said the opposite — each slot looked derivable because the others were
+    // still holding the type down — and reported four warnings for a line
+    // that cannot be deleted.
+    silent(Flavor::Ml, CURRIED_ML);
+}
+
+#[test]
+fn a_curried_ml_header_never_blames_a_lambda_for_a_named_parameter() {
+    // `b` is a parameter the reader named on the `smaller a b = ...` line.
+    // Attributing it to `<lambda>` points at code nobody wrote.
+    let raised = messages(Flavor::Ml, CURRIED_ML);
+    assert!(
+        !raised.iter().any(|m| m.contains("<lambda>")),
+        "blamed a lambda for a written parameter: {raised:?}"
+    );
+}
+
+#[test]
+fn a_genuinely_redundant_curried_header_is_one_warning_naming_the_function() {
+    // Here the body pins both parameters to `int` on its own, so the header
+    // really is deletable — and it is ONE line, so it is ONE warning naming
+    // the function and the whole signature. Reporting `(int) -> int` as the
+    // "return type" would be the curried remainder, which appears nowhere in
+    // the source.
+    reports(
+        Flavor::Ml,
+        "combine : int -> int -> int\ncombine a b = intDiv a b ?: 0\n",
+        &["redundant type signature on `combine`: inference derives `(int, int) -> int` without it"],
+    );
+}
+
+#[test]
+fn a_default_signature_is_unaffected_by_the_curried_collapse() {
+    // Nothing curries in Default flavor: each annotation is its own written
+    // thing and keeps its own warning. The return type stays unreported
+    // because the body only compares — something has to keep `smaller` at
+    // `int`, and with both parameters gone that is the return.
+    reports(
+        Flavor::Default,
+        "fn smaller(a: int, b: int) -> int = match a <= b {\n  true => a\n  false => b\n}\n",
+        &[
+            "redundant type annotation on parameter `a` of `smaller`: inference derives `int` without it",
+            "redundant type annotation on parameter `b` of `smaller`: inference derives `int` without it",
+        ],
+    );
+}
+
+#[test]
+fn a_hand_written_lambda_is_still_reported_against_the_lambda() {
+    // The collapse is specific to a curry chain the lowering produced. A
+    // lambda somebody actually wrote still names itself.
+    reports(
+        Flavor::Ml,
+        "exclaim = \\(s: string) => s + \"!\"\nr = exclaim \"hi\"\n",
+        &["redundant type annotation on parameter `s` of `<lambda>`: inference derives `string` without it"],
+    );
+}
+
+#[test]
+fn a_three_argument_curried_header_flattens_all_the_way() {
+    // Two lambda levels, not one. Collapsing only the first leaves the report
+    // half-curried — `(string) -> (int) -> (int) -> int` — which is the
+    // lowering's shape rather than the signature the reader wrote.
+    reports(
+        Flavor::Ml,
+        "clamp : int -> int -> int -> int\nclamp a b c = intDiv (intDiv a b ?: 0) c ?: 0\n",
+        &["redundant type signature on `clamp`: inference derives `(int, int, int) -> int` without it"],
+    );
+}
+
+#[test]
+fn the_reported_set_is_deletable_as_a_whole_not_only_one_at_a_time() {
+    // `pick` is pinned to `int` by its annotations and nothing else: the body
+    // only compares. Each annotation alone IS removable, because the other two
+    // still hold the type down — so judging them one at a time reports all
+    // three. Delete all three and `pick` generalises, which is a different
+    // program. A reader acts on the whole list, so the whole list has to be
+    // safe: the rule reports a set it has verified can go together.
+    let raised = messages(
+        Flavor::Default,
+        "fn pick(a: int, b: int) -> int = match a <= b {\n  true => a\n  false => b\n}\nlet chosen = pick(1, 2)\n",
+    );
+    assert!(
+        !raised
+            .iter()
+            .any(|m| m.starts_with("redundant return type annotation on `pick`")),
+        "reported every annotation of a mutually-pinned signature: {raised:?}"
+    );
+    assert_eq!(
+        raised,
+        vec![
+            "redundant type annotation on parameter `a` of `pick`: inference derives `int` without it",
+            "redundant type annotation on parameter `b` of `pick`: inference derives `int` without it",
+        ],
+        "the set must be one the reader can delete whole"
+    );
+}

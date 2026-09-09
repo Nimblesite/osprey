@@ -289,7 +289,11 @@ fn gen_bind(cg: &mut Codegen, name: &str, value: &Expr, position: Option<Positio
     // all — each of those made `recv` hand back the raw `i64` wire word, so a
     // list element arrived as an integer ([CONCURRENCY-CHANNEL]).
     let mut v = tag_handle_element(cg, position, v);
-    if let Some(ty) = cg.prog.let_type(position).filter(|ty| !osprey_types::has_type_var(ty)) {
+    if let Some(ty) = cg
+        .prog
+        .let_type(position)
+        .filter(|ty| !osprey_types::has_type_var(ty))
+    {
         v.inferred_type = Some(ty.clone());
     }
     // A non-lambda (re)binding invalidates any stale beta-reduction entry or
@@ -505,6 +509,9 @@ pub(crate) fn binds_no_value(cg: &Codegen, value: &Expr) -> bool {
 /// uses it to keep inlined function-typed parameters callable.
 pub(crate) fn fn_result_type(cg: &Codegen, value: &Expr) -> Option<osprey_types::Type> {
     match value {
+        Expr::TypeApply { .. } => cg
+            .callee_fn_type(value)
+            .filter(crate::types::fn_value_concrete),
         Expr::Lambda { position, .. } => cg
             .prog
             .lambda_type(*position)
