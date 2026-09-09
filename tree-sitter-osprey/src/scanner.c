@@ -42,6 +42,7 @@
 enum TokenType {
   CALL_OPEN_GAP,
   STATEMENT_BREAK,
+  TYPE_APPLICATION_AHEAD,
 };
 
 void *tree_sitter_osprey_external_scanner_create(void) { return NULL; }
@@ -85,6 +86,47 @@ static bool scan_call_open_gap(TSLexer *lexer) {
   lexer->mark_end(lexer);
   skip_blanks(lexer);
   return lexer->lookahead == '(';
+}
+
+// A glued angle run belongs to a call only when its complete type-shaped
+// contents close immediately before '('. A failed lookahead leaves '<' to
+// the ordinary comparison/constructor grammar. [TYPE-GENERICS-APPLY]
+static bool scan_type_application(TSLexer *lexer) {
+  lexer->result_symbol = TYPE_APPLICATION_AHEAD;
+  lexer->mark_end(lexer);
+  unsigned angles = 0;
+  bool saw_type = false;
+  bool word = false;
+  while (!lexer->eof(lexer)) {
+    int32_t ch = lexer->lookahead;
+    if (ch == '<') {
+      angles++;
+      word = false;
+    } else if (ch == '>') {
+      if (--angles == 0) {
+        lexer->advance(lexer, false);
+        return saw_type && lexer->lookahead == '(';
+      }
+      word = false;
+    } else if (ch == '-') {
+      lexer->advance(lexer, false);
+      if (lexer->lookahead != '>') return false;
+      word = false;
+    } else if ((ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || ch == '_') {
+      saw_type = true;
+      word = true;
+    } else if (ch >= '0' && ch <= '9') {
+      if (!word) return false;
+    } else if (ch == ' ' || ch == '\t' || ch == '\n' || ch == '\r' ||
+               ch == ',' || ch == ':' || ch == '(' || ch == ')' ||
+               ch == '[' || ch == ']' || ch == '|') {
+      word = false;
+    } else {
+      return false;
+    }
+    lexer->advance(lexer, false);
+  }
+  return false;
 }
 
 // Consumes a `//`-to-end-of-line comment. Returns false on a lone `/`, which
@@ -162,6 +204,9 @@ static bool scan_statement_break(TSLexer *lexer) {
 bool tree_sitter_osprey_external_scanner_scan(void *payload, TSLexer *lexer,
                                               const bool *valid_symbols) {
   (void)payload;
+  if (valid_symbols[TYPE_APPLICATION_AHEAD] && lexer->lookahead == '<') {
+    return scan_type_application(lexer);
+  }
   if (valid_symbols[CALL_OPEN_GAP] && scan_call_open_gap(lexer)) {
     return true;
   }

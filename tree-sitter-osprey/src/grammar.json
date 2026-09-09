@@ -3424,11 +3424,8 @@
       "type": "SEQ",
       "members": [
         {
-          "type": "IMMEDIATE_TOKEN",
-          "content": {
-            "type": "STRING",
-            "value": "<"
-          }
+          "type": "STRING",
+          "value": "<"
         },
         {
           "type": "SYMBOL",
@@ -3443,6 +3440,10 @@
     "_call_type_arguments": {
       "type": "SEQ",
       "members": [
+        {
+          "type": "SYMBOL",
+          "name": "_type_application_ahead"
+        },
         {
           "type": "IMMEDIATE_TOKEN",
           "content": {
@@ -5286,6 +5287,10 @@
     {
       "type": "SYMBOL",
       "name": "_statement_break"
+    },
+    {
+      "type": "SYMBOL",
+      "name": "_type_application_ahead"
     }
   ],
   "inline": [],

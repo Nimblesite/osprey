@@ -46,7 +46,7 @@ module.exports = grammar({
   //                    statements, so `let r = add 2 3` silently split into
   //                    `let r = add` plus the orphans `2` and `3`
   //                    [LEX-STATEMENT-BREAK].
-  externals: ($) => [$._call_open_gap, $._statement_break],
+  externals: ($) => [$._call_open_gap, $._statement_break, $._type_application_ahead],
 
   conflicts: ($) => [
     // `abort` / `once` / `many` / `replayable` opening an operation line are
@@ -586,8 +586,8 @@ module.exports = grammar({
 
     type_constructor: ($) =>
       prec.dynamic(1, seq(field('name', choice($.qualified_path, $.identifier)), optional($.type_arguments), '{', $.field_assignments, '}')),
-    type_arguments: ($) => seq(token.immediate('<'), $.type_list, '>'),
-    _call_type_arguments: ($) => seq(token.immediate('<'), alias($._call_type_list, $.type_list), '>'),
+    type_arguments: ($) => seq('<', $.type_list, '>'),
+    _call_type_arguments: ($) => seq($._type_application_ahead, token.immediate('<'), alias($._call_type_list, $.type_list), '>'),
     // Keep misplaced declaration markers visible for a precise diagnostic.
     _call_type_list: ($) => sep1(',', seq(optional(field('variance', choice('in', 'out'))), $._type)),
 
